@@ -80,16 +80,17 @@ type DoctorService interface {
 }
 
 type Deps struct {
-	Doctor   DoctorService
-	Router   *command.Router
-	Sessions *session.Supervisor
-	Requests *request.Manager
-	Turns    *turn.Supervisor
-	Store    storage.Store
-	Scope    func(context.Context) session.Scope
-	Models   ModelService
-	Compact  CompactService
-	Contexts ContextService
+	CommandText func(string, ...string) string // 由根部绑定配置首个前缀的命令组装能力。
+	Doctor      DoctorService
+	Router      *command.Router
+	Sessions    *session.Supervisor
+	Requests    *request.Manager
+	Turns       *turn.Supervisor
+	Store       storage.Store
+	Scope       func(context.Context) session.Scope
+	Models      ModelService
+	Compact     CompactService
+	Contexts    ContextService
 
 	Tools              ToolService
 	Skills             SkillService

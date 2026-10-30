@@ -38,7 +38,7 @@ func TestCommandsPreserveDrainAndJoinAdmittedCalls(t *testing.T) {
 					}
 				}()
 				service := commandTestControl{list: func() []share.Info { close(entered); <-release; return nil }}
-				m.commands = []command.Handler{control.NewHooks(service, m.beginCall)}
+				m.commands = []command.Handler{control.NewHooks(service, m.beginCall, testCommandText)}
 				handlers := m.Commands()
 				handler := handlers[0]
 				handlers[0] = nil
@@ -94,7 +94,7 @@ func TestCommandStopReceivesCloseCancellation(t *testing.T) {
 			<-ctx.Done()
 			return false, ctx.Err()
 		}}
-		handler := control.NewHooks(service, m.beginCall)
+		handler := control.NewHooks(service, m.beginCall, testCommandText)
 		finished := make(chan *command.Result, 1)
 		go func() {
 			result, err := handler.Handle(context.Background(), command.Request{Args: "stop worker"})
@@ -115,3 +115,5 @@ func TestCommandStopReceivesCloseCancellation(t *testing.T) {
 		}
 	})
 }
+
+func testCommandText(name string, args ...string) string { return command.Format("/", name, args...) }

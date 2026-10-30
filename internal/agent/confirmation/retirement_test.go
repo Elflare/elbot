@@ -21,7 +21,7 @@ func TestRetiredSessionDoesNotRestoreAutomaticConfirmation(t *testing.T) {
 	s := newSessionSupervisor(t, store, func(deps *session.SupervisorDeps) { deps.ReleaseSession = func(id string) { c.ForgetSession(id) } })
 	defer s.Close(context.Background())
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: security.DefaultPermission()})
-	c = NewConfirmationCoordinator(ConfirmationCoordinatorDeps{Sessions: s, Identity: identity})
+	c = NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: testCommandText, Sessions: s, Identity: identity})
 	scope := identity.Scope(t.Context())
 	row, err := s.Create(t.Context(), scope, session.CreateRequest{})
 	if err != nil {

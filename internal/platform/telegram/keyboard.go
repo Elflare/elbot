@@ -1,28 +1,18 @@
-// keyboard.go 构造风险确认键盘与命令按钮载荷；按钮回调处理归 message.go。
+// keyboard.go 将业务操作转换为 Telegram 命令按钮；按钮回调处理归 message.go。
 
 package telegram
 
-import "strings"
+import "elbot/internal/delivery"
 
-func shouldAttachRiskKeyboard(text string) bool {
-	return strings.Contains(text, "高风险工具调用等待确认") && strings.Contains(text, "/confirm")
-}
-
-func riskKeyboard() *replyMarkup {
-	return &replyMarkup{InlineKeyboard: [][]inlineKeyboardButton{
-		{
-			commandButton("详情", "/detail"),
-			commandButton("确认", "/confirm"),
-		},
-		{
-			commandButton("确认此工具", "/confirmtool"),
-			commandButton("全部确认", "/confirmall"),
-		},
-		{
-			commandButton("拒绝", "/reject"),
-			commandButton("停止", "/stop"),
-		},
-	}}
+func commandKeyboard(actions []delivery.Action) *replyMarkup {
+	var rows [][]inlineKeyboardButton
+	for i, action := range actions {
+		if i%2 == 0 {
+			rows = append(rows, nil)
+		}
+		rows[len(rows)-1] = append(rows[len(rows)-1], commandButton(action.Label, action.Command))
+	}
+	return &replyMarkup{InlineKeyboard: rows}
 }
 
 func commandButton(label, command string) inlineKeyboardButton {

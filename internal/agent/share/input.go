@@ -111,9 +111,9 @@ const (
 	InputRiskConfirmation
 )
 
-var ErrInputCompacting = errors.New("compacting · 等待或 /stop")
+var ErrInputCompacting = errors.New("compacting")
 
-var ErrInputArchived = errors.New("会话已归档 · /unarchive 后继续")
+var ErrInputArchived = errors.New("会话已归档")
 
 func StripWakeupPrefix(ctx context.Context, text string) string {
 	if msg, ok := MessageContextFrom(ctx); ok {

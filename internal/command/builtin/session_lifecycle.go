@@ -20,7 +20,7 @@ func NewArchive(deps Deps) command.Handler {
 	return sessionTargetCommand{
 		deps:        deps,
 		name:        "archive",
-		usage:       "/archive [number|session_id] --confirm",
+		args:        "[number|session_id] --confirm",
 		description: "归档会话",
 		confirm:     true,
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
@@ -49,7 +49,7 @@ func NewUnarchive(deps Deps) command.Handler {
 	return sessionTargetCommand{
 		deps:        deps,
 		name:        "unarchive",
-		usage:       "/unarchive [number|session_id]",
+		args:        "[number|session_id]",
 		description: "取消归档",
 		archived:    true,
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
@@ -70,7 +70,7 @@ func NewPin(deps Deps) command.Handler {
 	return sessionTargetCommand{
 		deps:        deps,
 		name:        "pin",
-		usage:       "/pin [number|session_id]",
+		args:        "[number|session_id]",
 		description: "置顶会话",
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
 			sessionID, err := resolveSessionTarget(ctx, deps, req.Args)
@@ -90,7 +90,7 @@ func NewUnpin(deps Deps) command.Handler {
 	return sessionTargetCommand{
 		deps:        deps,
 		name:        "unpin",
-		usage:       "/unpin [number|session_id]",
+		args:        "[number|session_id]",
 		description: "取消置顶",
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
 			sessionID, err := resolveSessionTarget(ctx, deps, req.Args)
@@ -117,7 +117,7 @@ type renameCommand struct {
 func (c renameCommand) Info() command.Info {
 	return command.Info{
 		Name:          "rename",
-		Usage:         "/rename [number|session_id|current_title] <title>",
+		Args:          "[number|session_id|current_title] <title>",
 		Description:   "重命名会话",
 		SessionEffect: command.SessionEffectMutate,
 		MinRole:       contextinfo.RoleUser,
@@ -150,13 +150,13 @@ func NewDelete(deps Deps) command.Handler {
 	return sessionTargetCommand{
 		deps:        deps,
 		name:        "delete",
-		usage:       "/delete <number|session_id> --confirm",
+		args:        "<number|session_id> --confirm",
 		description: "永久删除会话",
 		confirm:     true,
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
 			target, confirmed := parseTargetConfirm(req.Args)
 			if target == "" {
-				return nil, fmt.Errorf("usage: /delete <number|session_id> --confirm")
+				return nil, fmt.Errorf("usage: %s", deps.CommandText("delete", "<number|session_id>", "--confirm"))
 			}
 			if !confirmed {
 				content, err := confirmCommandMessage(ctx, deps, "delete", target)
@@ -188,7 +188,7 @@ type cleanCommand struct {
 func (c cleanCommand) Info() command.Info {
 	return command.Info{
 		Name:          "clean",
-		Usage:         "/clean --confirm",
+		Args:          "--confirm",
 		Description:   "清理过期会话",
 		SessionEffect: command.SessionEffectMutate,
 	}
@@ -198,7 +198,7 @@ func (c cleanCommand) Handle(ctx context.Context, req command.Request) (*command
 	deps := c.deps
 	_, confirmed := parseTargetConfirm(req.Args)
 	if !confirmed {
-		return &command.Result{Content: "永久删除过期且未归档、未置顶的会话？\n/clean --confirm"}, nil
+		return &command.Result{Content: "永久删除过期且未归档、未置顶的会话？\n" + deps.CommandText("clean", "--confirm")}, nil
 	}
 	deleted, err := deps.Sessions.CleanupExpired(ctx, storage.Now().AddDate(0, 0, -cleanupRetentionDays(deps)))
 	if err != nil {
@@ -219,7 +219,7 @@ func (c cleanCommand) Complete(ctx context.Context, req command.CompletionReques
 type sessionTargetCommand struct {
 	deps        Deps
 	name        string
-	usage       string
+	args        string
 	description string
 	archived    bool
 	confirm     bool
@@ -227,7 +227,7 @@ type sessionTargetCommand struct {
 }
 
 func (c sessionTargetCommand) Info() command.Info {
-	return command.Info{Name: c.name, Usage: c.usage, Description: c.description, SessionEffect: command.SessionEffectMutate, MinRole: contextinfo.RoleUser}
+	return command.Info{Name: c.name, Args: c.args, Description: c.description, SessionEffect: command.SessionEffectMutate, MinRole: contextinfo.RoleUser}
 }
 
 func (c sessionTargetCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
@@ -263,7 +263,7 @@ func cleanupRetentionDays(deps Deps) int {
 func parseRenameArgs(ctx context.Context, deps Deps, args string) (string, string, error) {
 	fields := strings.Fields(args)
 	if len(fields) == 0 {
-		return "", "", fmt.Errorf("usage: /rename [number|session_id|current_title] <title>")
+		return "", "", fmt.Errorf("usage: %s", deps.CommandText("rename", "[number|session_id|current_title]", "<title>"))
 	}
 	if len(fields) == 1 {
 		return "", fields[0], nil
@@ -280,7 +280,7 @@ func resolveRenameTarget(ctx context.Context, deps Deps, target string) (string,
 	if idx, err := strconv.Atoi(target); err == nil {
 		ids := deps.SessionState.get(deps.Scope(ctx))
 		if idx < 1 || idx > len(ids) {
-			return "", true, fmt.Errorf("session index %d out of range; run /sessions or /archives first", idx)
+			return "", true, fmt.Errorf("session index %d out of range; %s · %s", idx, deps.CommandText("sessions"), deps.CommandText("archives"))
 		}
 		return ids[idx-1], true, nil
 	}
@@ -309,7 +309,7 @@ func resolveRenameTarget(ctx context.Context, deps Deps, target string) (string,
 	case 1:
 		return matches[0], true, nil
 	default:
-		return "", true, fmt.Errorf("session title %q matches multiple sessions; use /sessions and rename by number or session id", target)
+		return "", true, fmt.Errorf("session title %q matches multiple sessions; %s → 用编号或 ID", target, deps.CommandText("sessions"))
 	}
 }
 
@@ -330,7 +330,7 @@ func parseSessionsArgs(args string) (int, string, error) {
 func parseResumePageArg(args string) (int, error) {
 	fields := strings.Fields(args)
 	if len(fields) != 2 || fields[0] != "--page" {
-		return 0, fmt.Errorf("usage: /resume --page <page>")
+		return 0, fmt.Errorf("expected --page <page>")
 	}
 	page, err := strconv.Atoi(fields[1])
 	if err != nil || page < 1 {
@@ -362,7 +362,7 @@ func confirmCommandMessage(ctx context.Context, deps Deps, name, target string) 
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%s? %s · %s\n/%s %s --confirm", name, emptyTitle(session.Title), session.ID, name, session.ID), nil
+	return fmt.Sprintf("%s? %s · %s\n%s", name, emptyTitle(session.Title), session.ID, deps.CommandText(name, session.ID, "--confirm")), nil
 }
 
 func emptyTitle(title string) string {
@@ -384,7 +384,7 @@ func resolveSessionTarget(ctx context.Context, deps Deps, target string) (string
 	if idx, err := strconv.Atoi(target); err == nil {
 		ids := deps.SessionState.get(deps.Scope(ctx))
 		if idx < 1 || idx > len(ids) {
-			return "", fmt.Errorf("session index %d out of range; run /sessions or /archives first", idx)
+			return "", fmt.Errorf("session index %d out of range; %s · %s", idx, deps.CommandText("sessions"), deps.CommandText("archives"))
 		}
 		return ids[idx-1], nil
 	}

@@ -28,7 +28,8 @@ func (wiringTestPlatform) CallPlatformAPI(context.Context, string, string, map[s
 }
 
 func TestSupervisorLoadsRulesAtStartAndKeepsConfigFailureNonFatal(t *testing.T) {
-	cfg := &config.Config{ConfigPath: filepath.Join(t.TempDir(), "config.toml")}
+	cfg := config.Default()
+	cfg.ConfigPath = filepath.Join(t.TempDir(), "config.toml")
 	dir := config.PluginConfigDir(cfg.ConfigPath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)

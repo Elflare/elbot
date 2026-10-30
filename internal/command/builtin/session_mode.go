@@ -14,7 +14,7 @@ import (
 func NewWork(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:          "work",
-		Usage:         "/work [message]",
+		Args:          "[message]",
 		Description:   "切换 work",
 		SessionEffect: command.SessionEffectSwitchCurrent,
 		MinRole:       contextinfo.RoleUser,
@@ -38,7 +38,7 @@ func NewWork(deps Deps) command.Handler {
 func NewChat(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:          "chat",
-		Usage:         "/chat [message]",
+		Args:          "[message]",
 		Description:   "切换 chat",
 		SessionEffect: command.SessionEffectSwitchCurrent,
 		MinRole:       contextinfo.RoleUser,
@@ -46,7 +46,7 @@ func NewChat(deps Deps) command.Handler {
 		activated, err := deps.Sessions.ActivateMode(ctx, deps.Scope(ctx), sessionpkg.ActivateModeRequest{Mode: storage.SessionModeChat, NewSessionTitle: "New chat session"})
 		if err != nil {
 			if errors.Is(err, sessionpkg.ErrChatModeRequiresEmptySession) {
-				return &command.Result{Content: "已有对话记录，请先 /new 再 /chat"}, nil
+				return &command.Result{Content: fmt.Sprintf("已有对话记录，请先 %s 再 %s", deps.CommandText("new"), deps.CommandText("chat"))}, nil
 			}
 			return nil, err
 		}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"reflect"
+	"strings"
 	"testing"
 
 	"elbot/internal/contextinfo"
@@ -78,5 +79,32 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestCommandTextWiringUsesConfigurationFirstPrefix(t *testing.T) {
+	deps := isolatedModuleDeps(t)
+	cfg := isolatedAgentConfig()
+	cfg.Commands.Prefixes = []string{"!", "!!"}
+	m, err := NewSupervisor(t.Context(), cfg, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = m.Close(context.Background()) })
+	var notices []events.Notification
+	connection, err := events.NotificationRequested.Observe(func(_ context.Context, notice events.Notification) error {
+		notices = append(notices, notice)
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = connection.Close(context.Background()) })
+	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "cli:local", Role: contextinfo.RoleSuperadmin})
+	if err := m.HandleMessage(ctx, MessageRequest{Text: "!!help"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(notices) != 1 || !strings.Contains(notices[0].Text, "!stop [request_id|number]") || strings.Contains(notices[0].Text, "!!") || strings.Contains(notices[0].Text, "/help") {
+		t.Fatalf("notices=%+v", notices)
 	}
 }

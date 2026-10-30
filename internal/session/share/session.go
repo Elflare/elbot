@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	ErrSessionBusy       = errors.New("会话忙，等待或先 /stop 再切换")
+	ErrSessionBusy       = errors.New("会话忙")
 	ErrForegroundSession = errors.New("会话已由前台接管")
 )
 

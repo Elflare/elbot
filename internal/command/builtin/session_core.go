@@ -16,7 +16,7 @@ import (
 )
 
 func NewNew(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "new", Usage: "/new", Description: "重置会话", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{Name: "new", Args: "", Description: "重置会话", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		if err := deps.Sessions.ResetCurrent(ctx, deps.Scope(ctx)); err != nil {
 			return nil, err
 		}
@@ -25,7 +25,7 @@ func NewNew(deps Deps) command.Handler {
 }
 
 func NewStatus(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "status", Usage: "/status", Description: "会话状态", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{Name: "status", Args: "", Description: "会话状态", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		status, err := deps.Sessions.Status(ctx, deps.Scope(ctx))
 		if errors.Is(err, session.ErrNoCurrentSession) {
 			return &command.Result{Content: formatEmptyStatus(ctx, deps)}, nil

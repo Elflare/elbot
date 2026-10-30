@@ -1,152 +1,79 @@
 # 命令速查
 
-ElBot 的 slash 命令由 Agent Core 统一处理，CLI、QQ、后续平台共享同一套语义。默认命令前缀是 `/`，可在 `app.toml` 的 `[commands]` 中配置。
+slash 命令由 Agent Core 统一处理，CLI、QQ 等平台共享同一套语义。默认前缀 `/`，可在 `app.toml` 的 `[commands]` 配置。
 
-## 帮助
-
-| 命令 | 作用 |
-| --- | --- |
-| `/help` | 查看可用命令列表。 |
-| `/help <command>` | 查看某个命令的详细帮助。 |
-
-示例：
-
-```text
-/help
-/help model
-/help log
-```
-
-## 配置诊断
+## 帮助与诊断
 
 | 命令 | 作用 |
 | --- | --- |
-| `/doctor` | 只读检查当前服务的配置及内置 Skill，按文件列出问题并生成可复制给 Elbot 的处理请求；仅超级管理员可用。 |
+| `/help` | 可用命令列表。 |
+| `/help <command>` | 某个命令的详细帮助，例如 `/help model`。 |
+| `/doctor` | 只读检查当前配置及内置 Skill（仅超级管理员）。 |
 
-在聊天窗口发送 `/doctor`，无需参数。检查使用当前服务启动时选定的主配置路径，分离配置按主文件中的 `config_files` 定位。有问题时会附上实际文件路径、具体问题、配置说明和默认模板的 GitHub raw 地址；请复制输出的请求给能访问这些文件的 Elbot。检查本身不会修改文件或自动发起修复。
-
-没有发现问题时仅返回 `Everything is OK`。检查范围及限制见 [配置诊断](configuration.md#配置诊断)。
+`/doctor` 使用服务启动时选定的主配置路径，分离配置按 `config_files` 定位。有问题时列出实际文件路径、具体问题、说明和默认模板的 GitHub raw 地址，并生成可复制给 Elbot 的处理请求；复制给能访问这些文件的 Elbot 处理。检查本身不改文件、不自动修复，无问题只返回 `Everything is OK`。范围见 [配置诊断](configuration.md#配置诊断)。
 
 ## 模型
 
 | 命令 | 作用 |
 | --- | --- |
-| `/models` | 查看模型列表。 |
-| `/models --fresh` 或 `/models --refresh` | 重载厂商配置文件，再强制刷新模型列表。 |
+| `/checkmodel [关键词]`（别名 `/models`） | 查看或搜索模型。 |
+| `/models --fresh` / `--refresh` | 重载厂商配置并强制刷新模型列表。 |
 | `/model <编号或名称>` | 切换当前 Session 模式使用的模型。 |
-| `/model --chat <模型>` | 切换 chat 模式模型。 |
-| `/model --work <模型>` | 切换 work 模式模型。 |
-| `/model --elwisp1 <模型>` | 切换 Elnis elwisp1 模型槽位。 |
-| `/model --elwisp2 <模型>` | 切换 Elnis elwisp2 模型槽位。 |
-| `/model --elwisp3 <模型>` | 切换 Elnis elwisp3 模型槽位。 |
+| `/model --chat <模型>` / `--work <模型>` | 切换 chat / work 模式模型。 |
+| `/model --elwisp<1\|2\|3> <模型>` | 切换 Elnis elwisp1/2/3 模型槽位。 |
 | `/model --compact <模型>` | 切换 Chat 文字摘要模型；Responses 原生压缩使用当前对话模型。 |
 | `/model --naming <模型>` | 切换 Session 自动命名模型。 |
-| `/checkmodel [关键词]` | 查看或搜索模型。 |
 
-模型参数可以是列表编号、模型名或 `provider/model`。
+模型参数可以是列表编号、模型名或 `provider/model`，例如 `/model --work deepseek/deepseek-chat`。
 
-模型选择按模式／槽位全局生效，`/model` 未指定目标时使用当前 Session 的模式，无当前 Session 时使用默认模式。切换成功会保存到 `state.toml。
-
-示例：
-
-```text
-/models
-/models --fresh
-/models --refresh
-/model 2
-/model --work deepseek/deepseek-chat
-/model --chat openai/gpt-4o-mini
-/model --elwisp2 openai/gpt-4.1
-/checkmodel deepseek
-```
+模型选择按模式／槽位全局生效并保存到 `state.toml`；`/model` 未指定目标时使用当前 Session 的模式，无当前 Session 时使用默认模式。
 
 ## 模式
 
 | 命令 | 作用 |
 | --- | --- |
-| `/chat [消息]` | 切换到 chat 模式，或创建新的 chat Session；提供消息时会切换后立即发送。 |
-| `/work [消息]` | 切换到 work 模式，或创建新的 work Session；提供消息时会切换后立即发送。 |
+| `/chat [消息]` | 切换到 chat 模式或新建 chat Session，不注入工具。 |
+| `/work [消息]` | 切换到 work 模式或新建 work Session，启用工具发现与调用。 |
 
-说明：
-
-- `chat` 模式不注入工具，适合闲聊、陪伴和低成本问答。
-- `work` 模式启用工具发现和工具调用。
-- 已有历史的 work Session 不能直接切到 chat；需要先 `/new`，再 `/chat`。
-- 例如 `/chat 随便聊聊` 会先切换到 chat 模式，再把“随便聊聊”作为同一条用户消息发给模型；若模式切换被拒绝，消息不会发送。
+- 带消息时先切换再把它作为同一条用户消息发送；模式切换被拒绝时消息不发送（例如 `/chat 随便聊聊`）。
+- 已有历史的 work Session 不能直接切到 chat，需要先 `/new`。
 
 ## Session
 
 | 命令 | 作用 |
 | --- | --- |
 | `/new` | 创建并切换到新 Session。 |
-| `/status` | 查看当前 Session 状态。 |
+| `/status` | 当前 Session 状态。 |
 | `/sessions [关键词]` | 列出或搜索可见 Session。 |
-| `/resume [最近编号或session_id]` | 恢复历史 Session；编号 `1` 表示最近更新的非当前 Session。 |
-| `/archives [页码] [关键词]` | 查看已归档 Session。 |
-| `/archive [编号或session_id] --confirm` | 归档 Session，默认当前 Session。 |
-| `/unarchive [编号或session_id]` | 取消归档 Session，默认当前 Session。 |
-| `/pin [编号或session_id]` | 置顶 Session，默认当前 Session。 |
-| `/unpin [编号或session_id]` | 取消置顶 Session，默认当前 Session。 |
-| `/rename [编号或session_id|当前标题] <新标题>` | 重命名当前或指定 Session。 |
-| `/delete <编号或session_id> --confirm` | 永久删除 Session。 |
+| `/resume [编号或 session_id]` | 恢复历史 Session。 |
+| `/archives [页码] [关键词]` | 已归档 Session 列表。 |
+| `/archive [编号或 session_id] --confirm` | 归档。 |
+| `/unarchive [编号或 session_id]` | 取消归档。 |
+| `/pin` / `/unpin [编号或 session_id]` | 置顶 / 取消置顶。 |
+| `/rename [编号或 session_id\|当前标题] <新标题>` | 重命名。 |
+| `/delete <编号或 session_id> --confirm` | 永久删除。 |
 | `/clean --confirm` | 删除过期且未归档、未置顶的 Session。 |
 
-示例：
-
-```text
-/new
-/status
-/sessions
-/sessions project
-/resume 1
-/rename 我的新会话标题
-/archive --confirm
-/delete 2 --confirm
-```
-
-说明：
-
-- `/resume 1` 可以直接恢复最近更新的非当前 Session，无需先执行裸 `/resume`；编号按更新时间排列，不受置顶影响，翻页时编号连续。
-- 当前会话处理中时，不支持执行 `/new`、`/resume`、`/fork`、`/chat`、`/work` 等 Session 切换命令；如有必要，请先使用 `/stop` 结束当前处理。
-- `/sessions` 展示的编号可被 `/archive`、`/pin`、`/delete` 等 Session 操作命令复用。
-- CLI 作为本地高权限入口，可以跨平台查看 Session；非 CLI 平台默认只查看当前平台和作用域下的 Session。
-- 删除是永久操作，需要显式 `--confirm`；执行中的会话不能删除，自动清理也会跳过。
-- Cron／Elnis 后台会话仅能由所属用户在同平台私聊恢复，或从 CLI 管理入口恢复；群聊、频道不显示，也不能通过直接 ID、引用消息或解除归档绕过。
-- 首次恢复后台会话会永久转为当前前台归属，切走不会恢复后台身份。
+- 除 `/rename` 与 `/delete` 外，带 `[编号或 session_id]` 的命令省略参数时作用于当前 Session；编号由 `/sessions`、`/archives` 展示，可被这些命令复用。
+- `/resume 1` 直接恢复最近更新的非当前 Session，无需先执行裸 `/resume`；编号按更新时间排列、不受置顶影响，翻页连续。
+- CLI 是本地高权限入口，可跨平台查看和管理 Session；非 CLI 平台只看当前平台和作用域。Cron／Elnis 后台会话仅所属用户可同平台私聊恢复，或从 CLI 管理入口恢复，群聊和频道不显示，也无法通过直接 ID、引用消息或解除归档绕过；首次恢复会永久转为前台归属，切走不会恢复后台身份。
+- 当前会话处理中时不能执行 `/new`、`/resume`、`/fork`、`/chat`、`/work` 等切换类命令，需要先 `/stop`。
+- 删除是永久操作且需要 `--confirm`；执行中的会话不能删除，自动清理也会跳过。
 
 ## Fork
 
 | 命令 | 作用 |
 | --- | --- |
 | `/messages [页码]` | 列出当前 Session 中可用于 fork 的 assistant message ID。 |
-| `/fork <message_id>` | 从指定 assistant 消息创建分支 Session。 |
-
-示例：
-
-```text
-/messages
-/fork msg_xxx
-```
-
-Fork 会保留原会话，并从指定 assistant 消息位置创建新的上下文分支。
+| `/fork <message_id>` | 从该 assistant 消息创建分支 Session，原会话不变。 |
 
 ## 请求管理
 
 | 命令 | 作用 |
 | --- | --- |
-| `/requests` | 查看当前进程中的 active request，包括 turn、LLM、tool、hook 等请求；turn 会显示运行阶段和阶段耗时。 |
-| `/stop [request_id]` | 停止指定请求；也可使用 `/requests` 显示的编号；不传参数时停止当前 Session 的请求。停止一次性 exec Hook 时会结束该 Hook 的完整进程树；持久 Worker 只取消当前调用。 |
-| `/stopall` | 停止当前进程中的所有 active request。 |
-
-示例：
-
-```text
-/requests
-/stop
-/stop 1.1
-/stop req_xxx
-/stopall
-```
+| `/requests` | 当前进程的 active request，包括 turn、LLM、tool、hook；turn 显示运行阶段和阶段耗时。 |
+| `/stop [request_id\|编号]` | 停止指定请求，编号取自 `/requests`；不传参数时停止当前 Session 的请求。一次性 exec Hook 会结束完整进程树，持久 Worker 只取消当前调用。 |
+| `/stopall` | 停止当前进程的所有 active request。 |
 
 ## 上下文压缩
 
@@ -154,10 +81,8 @@ Fork 会保留原会话，并从指定 assistant 消息位置创建新的上下�
 | --- | --- |
 | `/compact` | 手动压缩当前 Session 上下文。 |
 
-说明：
-
 - 自动压缩由 `[context] compact_enabled` 和 `compact_trigger_ratio` 控制。
-- 压缩会保留历史用户原话、忽略工具返回值，成功后创建并切换到独立的 `原标题 compacted-N` Session；旧 Session 不修改。可用 `/stop` 取消
+- 压缩保留历史用户原话、忽略工具返回值，成功后创建并切换到独立的 `原标题 compacted-N` Session，旧 Session 不修改；可用 `/stop` 取消。
 
 ## 工具与 Skill
 
@@ -165,183 +90,86 @@ Fork 会保留原会话，并从指定 assistant 消息位置创建新的上下�
 | --- | --- |
 | `/tools` | 列出已注册工具和外置 Skill。 |
 | `/tools reload` | 重新扫描并加载 Skill。 |
-| `/tools remove <name> --confirm` | 删除外置 Skill 及其目录。 |
-| `/tools uninstall <name> --confirm` | 等同于 remove。 |
+| `/tools remove <name> --confirm`（别名 `/tools uninstall`） | 删除外置 Skill 及其目录。 |
 
-示例：
+`reload` 先完整扫描并验证候选 Skill，再一次性替换当前集合；存在重名 Skill、与内置工具重名或读取失败时返回错误并保留原有工具集合。
 
-```text
-/tools
-/tools reload
-/tools remove my_skill --confirm
-```
-
-`/tools reload` 会先完整扫描并验证候选 Skill，再一次性替换当前集合。若存在重名 Skill、与内置工具重名或读取失败，reload 会返回错误并保留原有工具集合。
-
-LLM 在 work 模式下可以通过 `discover_tool` 按需发现工具详情。聊天中也可以用 `@tool:<name-or-tag>`（简写 `@t:<name-or-tag>`）预载工具，或用 `@skill:<name>`（简写 `@s:<name>`）把 Skill 文档加入本轮消息并预载对应运行 wrapper。冒号也可以写成中文全角冒号 `：`。
+work 模式下 LLM 可用 `discover_tool` 按需发现；聊天中也可用 `@tool:<name-or-tag>`（简写 `@t:`）预载工具，或用 `@skill:<name>`（简写 `@s:`）把 Skill 文档加入本轮并预载运行 wrapper。语法与示例见 [内联预载](concepts.md#内联预载)。
 
 ## 文件编辑撤销
 
-以下命令仅超级管理员可用：
+仅超级管理员可用。
 
 | 命令 | 作用 |
 | --- | --- |
-| `/rollback` | 列出当前会话可撤销的文件，显示编号、绝对路径、编辑时间和撤销动作。 |
+| `/rollback` | 列出可撤销文件：编号、绝对路径、编辑时间、撤销动作。 |
 | `/rollback <编号>` | 直接撤销该编号对应的文件编辑。 |
 
-每个文件保留最近一次成功的 `edit_file` 修改。已有文件恢复编辑前的原始内容和权限；新建文件删除，父目录保留。撤销成功后备份消耗，不支持连续撤销或重做。
-
-编号绑定具体修改：同一文件再次编辑会获得新编号，旧编号失效；编号在进程内不复用。文件再被修改后会拒绝撤销。实际撤销要求当前会话没有运行中的任务或压缩，可以等待完成或先 `/stop`。
-
-备份仅保存在内存中，按用户、平台 Scope 和当前 Session 隔离。切换或清空 Session 后原备份立即失效，切回来也不能恢复；重启同样失效。整个进程最多保留 256 MiB 原始内容、1024 条记录，超限淘汰最旧记录并在编辑结果中提示。失败与预览不替换已有备份。
+- 每个文件保留最近一次成功的 `edit_file` 修改：已有文件恢复原内容和权限，新建文件删除、父目录保留；撤销后备份消耗，不支持连续撤销或重做。
+- 编号绑定具体修改：再次编辑会获得新编号并令旧编号失效，编号在进程内不复用；文件再被修改后会拒绝撤销。撤销要求当前会话没有运行中的任务或压缩（可等待完成或 `/stop`）。
+- 备份仅存内存，按用户、平台 Scope 和当前 Session 隔离：切换或清空 Session 后立即失效，切回来也不能恢复，重启同样失效。整个进程最多 256 MiB 原始内容、1024 条记录，超限淘汰最旧记录并在编辑结果中提示；失败与预览不替换已有备份。
 
 ## Hook
-
 
 | 命令 | 作用 |
 | --- | --- |
 | `/hooks` | 列出所有已注册 Hook。 |
-| `/hooks <name>` | 查看某个 Hook 的详细配置。 |
-| `/hooks start <id>` | 启动一个持久 Hook。 |
-| `/hooks stop <id>` | 优雅停止一个 Hook。 |
+| `/hooks <name>` | 某个 Hook 的详细配置。 |
+| `/hooks start <id>` / `stop <id>` | 启动 / 优雅停止一个持久 Hook。 |
 | `/hooks restart <id>` | 停止并重新启动一个持久 Hook。 |
-| `/hooks reload` | 重读规则和持久 Hook 配置，并重新协调进程生命周期。 |
+| `/hooks reload` | 重读规则和持久 Hook 配置，重新协调进程生命周期。 |
 
-示例：
-
-```text
-/hooks
-/hooks greet
-/hooks restart weather
-/hooks reload
-```
-
-说明：
-
-- 规则 Hook 直接使用配置里的 `name`；内置 Hook 使用 `builtin.*` 名称，例如 `builtin.cron.missed_once`。
-- `Description` 会显示在列表和详情里；规则细节只在详情里显示。
-- `reload` 会重新读取 `hooks.toml` 和各插件 `hook.toml`，并重建 Hook 注册、替换受影响的持久进程。
+- 规则 Hook 用配置里的 `name`；内置 Hook 用 `builtin.*`，例如 `builtin.cron.missed_once`。
+- `Description` 显示在列表和详情里；规则细节只在详情里显示。
+- `reload` 重读 `hooks.toml` 和各插件 `hook.toml`，重建 Hook 注册并替换受影响的持久进程。
 - `/hooks` 为超级管理员命令。
 
 ## 日志和审计
 
-| 命令 | 作用 |
-| --- | --- |
-| `/log [options]` | 查询运行日志。 |
-| `/audit [options]` | 查询审计日志。 |
-| `/elwisp [name] [options]` | 查询 Elnis/Elwisp 事件日志。 |
+| 命令 | 日志文件 | 作用 |
+| --- | --- | --- |
+| `/log [options]` | `elbot-YYYY-MM-DD.log` | 运行日志。 |
+| `/audit [options]` | `audit-YYYY-MM-DD.log` | 审计日志。 |
+| `/elwisp [name] [options]` | `elnis-YYYY-MM-DD.log` | Elnis/Elwisp 事件日志。 |
+| `/usage [options]` | 审计日志 | 汇总 token 消耗（仅超级管理员）。 |
 
-常用选项：
+选项（“适用”列省略即三者通用）：
 
-| 选项 | 作用 |
-| --- | --- |
-| `-n, --limit <n>` | 返回条数，默认 5。 |
-| `--days <n>` | 读取最近 n 天日志，默认 1。 |
-| `--level <level>` | 最低等级：`debug`、`info`、`warn`、`error`。 |
-| `-d, -i, -w, -e` | 最低等级快捷方式，不改变展示方式。 |
-| `--raw` | 显示文件中的完整原始记录，与等级筛选独立。 |
-| `--since <time>` | 只看某时间之后，例如 `2h`、`30m`、`2026-06-03`。 |
-| `--until <time>` | 只看某时间之前。 |
-| `--msg <text>` | 按消息正文过滤。 |
-| `--contains <text>` | 按解码后的记录内容或原始记录过滤。 |
+| 选项 | 适用 | 作用 |
+| --- | --- | --- |
+| `-n, --limit <n>` | log/audit/elwisp | 返回条数，默认 5。 |
+| `-d, --days <n>` | log/audit/elwisp | 读取最近 n 天，默认 1。 |
+| `--level <level>` | log/audit/elwisp | 最低等级：`debug`、`info`、`warn`、`error`。 |
+| `-d, -i, -w, -e` | log/audit/elwisp | 等级快捷方式，不改变展示方式。 |
+| `--raw` | log/audit/elwisp | 显示文件中的完整原始记录，与等级筛选独立。 |
+| `--since <time>` / `--until <time>` | log/audit/elwisp | 时间范围，例如 `2h`、`30m`、`2026-06-03`。 |
+| `--msg <text>` | log/audit/elwisp | 按消息正文过滤。 |
+| `--contains <text>` | log/audit/elwisp | 按解码后的记录内容或原始记录过滤。 |
+| `-u` / `-a` | log | 筛选用户 / 助手事件。 |
+| `-s, --system` | log | 筛选并显示 `system prompt` 日志。 |
+| `--hook` | log/audit | 筛选 `module=hook` 的记录。 |
+| `-t` | audit | 筛选 `event=tool_call` 的工具审计。 |
+| `--run_source <来源>` | audit | `foreground`、`cron`、`elnis`；可与 `-t` 及其他条件组合。 |
+| `--event <name>` | audit | 例如 `tool_call`、`llm_usage`、`permission_denied`。 |
+| `--risk <level>` | audit | 风险等级。 |
+| `--actor <id>` / `--session <id>` / `--tool <name>` | audit | 按 actor、Session、工具名过滤。 |
+| `[name]`、`--name`、`--elwisp <name>` | elwisp | 按 Elwisp 名过滤，三种写法等价。 |
+| `--source` / `--id`（= `--source-id`） | elwisp | 按事件来源 / 外部事件 ID。 |
+| `--mode <record\|direct\|llm>` | elwisp | 事件模式。 |
+| `--event-key <key>` / `--event-id <id>` | elwisp | Elnis event key / 内部 event ID。 |
+| `--token <name>` | elwisp | token name（不含原文）。 |
+| `--tag <tag>` | elwisp | 包含指定标签，可重复，要求全部匹配。 |
+| `-d, --days <n>` | usage | 汇总最近 n 天，默认 1。 |
+| `-n <x[-y]>` | usage | 汇总倒数第 x 到第 y 次模型调用（含两端），序号 1–100000；省略 y 只取第 x 次。 |
+| `-m, --model <name>` | usage | 模型名。 |
+| `-s, --session <id>` | usage | Session ID。 |
+| `--by <key>` | usage | `model`（默认）、`day`、`session`。 |
+| `--since <time>` / `--until <time>` | usage | 时间范围。 |
 
-`/log` 额外支持：
+示例：`/log -w -n 10` · `/log --system` · `/audit --event tool_call --risk high` · `/audit -t --run_source cron` · `/elwisp server-watchdog --mode llm --since 2h` · `/usage --by day -d 30` · `/usage -n 2-4 -m gpt-4o`。
 
-| 选项 | 作用 |
-| --- | --- |
-| `-u`、`-a` | 分别筛选用户、助手事件。 |
-| `-s, --system` | 筛选并显示 `system prompt` 日志。 |
-| `--hook` | 筛选 `module=hook` 的运行记录。 |
-
-`/audit` 额外支持：
-
-| 选项 | 作用 |
-| --- | --- |
-| `-t` | 筛选 `event=tool_call` 的工具审计。 |
-| `--run_source <来源>` | 按工具调用来源筛选：`foreground`、`cron`、`elnis`；可与 `-t` 和其他条件组合。 |
-| `--hook` | 筛选 `module=hook` 的审计，可与 `--event` 等条件同时使用。 |
-| `--event <name>` | 按审计事件过滤，例如 `tool_call`、`llm_usage`、`permission_denied`。 |
-| `--risk <level>` | 按风险等级过滤。 |
-| `--actor <id>` | 按 actor ID 过滤。 |
-| `--session <id>` | 按 Session ID 过滤。 |
-| `--tool <name>` | 按工具名过滤。 |
-
-`/elwisp` 查询 `elnis-YYYY-MM-DD.log`，额外支持：
-
-| 选项 | 作用 |
-| --- | --- |
-| `[name]` | 按 Elwisp 名称过滤，等同于 `--name`。 |
-| `--name <name>` 或 `--elwisp <name>` | 按 Elwisp 名称过滤。 |
-| `--source <source>` | 按事件来源过滤。 |
-| `--id <id>` 或 `--source-id <id>` | 按外部事件 ID 过滤。 |
-| `--mode <record|direct|llm>` | 按事件模式过滤。 |
-| `--event-key <key>` | 按 Elnis event key 过滤。 |
-| `--event-id <id>` | 按内部 Elnis event ID 过滤。 |
-| `--token <name>` | 按 token name 过滤，不包含 token 原文。 |
-| `--tag <tag>` | 筛选包含指定标签的记录，可重复，要求全部标签匹配。 |
-
-示例：
-
-```text
-/log
-/log -w -n 10
-/log --system
-/log -u -d
-/log -u -d --raw
-/log --msg startup --days 3
-/audit --event tool_call --risk high -n 10
-/audit --actor cli:local --since 24h
-/audit --hook --event hook_tool_call
-/audit --hook --event hook_tool_log
-/audit --hook --tool shell --contains <tool_call_id>
-/audit --event llm_error -d
-/audit -t --run_source cron -n 20
-/audit -t --run_source elnis --raw
-/audit -t --run_source foreground -i
-/elwisp
-/elwisp server-watchdog -n 20
-/elwisp --source minecraft-main --mode llm --since 2h
-```
-
-> 工具参数日志最多 512 rune，各工具返回的日志摘要最多 1024 rune，截断省略号计入上限。普通汉字按 1 rune 计算。实际调用参数和返回给模型的结果不受日志限长影响。
-
-## Token 消耗统计
-
-| 命令 | 作用 |
-| --- | --- |
-| `/usage [options]` | 汇总审计日志中的 token 消耗数据。 |
-
-选项：
-
-| 选项 | 作用 |
-| --- | --- |
-| `-d, --days <n>` | 查看最近 n 天，默认 1。 |
-| `-n <x[-y]>` | 汇总倒数第 x 到第 y 次模型调用（含两端）；省略 y 时只取第 x 次，序号为 1–100000。 |
-| `-m, --model <name>` | 按模型名过滤。 |
-| `-s, --session <id>` | 按 Session ID 过滤。 |
-| `--by <key>` | 按维度汇总：`model`（默认）、`day`、`session`。 |
-| `--since <time>` | 只看某时间之后，例如 `2h`、`30m`、`2026-06-03`。 |
-| `--until <time>` | 只看某时间之前。 |
-
-示例：
-
-```text
-/usage
-/usage -d 7
-/usage -m gpt-4o
-/usage -s sess-xxx
-/usage --by day -d 30
-/usage --since 2h
-/usage -n 1
-/usage -n 1-3
-/usage -n 2-4 -m gpt-4o
-```
-
-说明：
-
-- `/usage` 从审计日志的 `llm_usage` 事件聚合 token 用量，按模型/天/会话分组统计 prompt、completion、total、cache 和耗时。
-- 未知、非法或溢出的值显示 `null`，并传递到受影响的分组和总计项；明确的零正常统计，其他已知项不受影响。用量未知的调用仍计入次数。扫描遇到损坏记录时提示统计可能不完整。
-- 仅超级管理员可用。
+- `/usage` 从审计日志的 `llm_usage` 事件聚合，按模型/天/会话分组统计 prompt、completion、total、cache 和耗时；未知、非法或溢出的值显示 `null` 并传递到受影响的分组和总计项，明确的零正常统计，用量未知的调用仍计入次数，扫描遇到损坏记录时提示统计可能不完整。
+- 工具参数日志最多 512 rune，工具返回的日志摘要最多 1024 rune，截断省略号计入上限（汉字按 1 rune）；实际调用参数和返回给模型的结果不受日志限长影响。
 
 ## 高风险工具确认
 

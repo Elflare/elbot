@@ -12,9 +12,9 @@ func wantsCommandHelp(args string) bool {
 	return arg == "--help" || arg == "-h"
 }
 
-func formatCommandHelp(prefix string, info command.Info) *command.Result {
+func formatCommandHelp(commandText func(string, ...string) string, info command.Info) *command.Result {
 	var sb strings.Builder
-	sb.WriteString(commandUsage(prefix, info) + "\n")
+	sb.WriteString(commandText(info.Name, info.Args) + "\n")
 	if len(info.Aliases) > 0 {
 		sb.WriteString(fmt.Sprintf("aliases: %s\n", strings.Join(info.Aliases, ", ")))
 	}
@@ -31,15 +31,4 @@ func formatCommandHelp(prefix string, info command.Info) *command.Result {
 
 func trimTrailingNewlines(text string) string {
 	return strings.TrimRight(text, "\n")
-}
-
-func commandUsage(prefix string, info command.Info) string {
-	usage := info.Usage
-	if usage == "" {
-		usage = prefix + info.Name
-	}
-	if prefix != "/" && strings.HasPrefix(usage, "/") {
-		usage = prefix + strings.TrimPrefix(usage, "/")
-	}
-	return usage
 }

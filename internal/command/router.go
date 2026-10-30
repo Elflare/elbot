@@ -10,10 +10,11 @@ import (
 )
 
 type Router struct {
-	prefixes []string
-	handlers map[string]Handler
-	primary  map[string]bool
-	order    []string
+	prefixes    []string
+	handlers    map[string]Handler
+	primary     map[string]bool
+	order       []string
+	commandText func(string, ...string) string // 绑定配置首个前缀，不受解析排序影响。
 }
 
 type Parsed struct {
@@ -23,12 +24,16 @@ type Parsed struct {
 	Args   string
 }
 
+// NewRouter 接收 config 已规范化且非空的前缀；解析使用独立的最长优先副本。
 func NewRouter(prefixes []string) *Router {
-	prefixes = normalizePrefixes(prefixes)
+	prefix := prefixes[0]
+	prefixes = append([]string(nil), prefixes...)
+	sort.SliceStable(prefixes, func(i, j int) bool { return len(prefixes[i]) > len(prefixes[j]) })
 	return &Router{
-		prefixes: prefixes,
-		handlers: map[string]Handler{},
-		primary:  map[string]bool{},
+		commandText: func(name string, args ...string) string { return Format(prefix, name, args...) },
+		prefixes:    prefixes,
+		handlers:    map[string]Handler{},
+		primary:     map[string]bool{},
 	}
 }
 
@@ -85,7 +90,7 @@ func (r *Router) Dispatch(ctx context.Context, raw string) (*Result, error) {
 	}
 	h, ok := r.handlers[parsed.Name]
 	if !ok {
-		return &Result{Content: fmt.Sprintf("unk command: %s%s\n%shelp", parsed.Prefix, parsed.Name, parsed.Prefix)}, nil
+		return &Result{Content: fmt.Sprintf("unk command: %s%s\n%s", parsed.Prefix, parsed.Name, r.commandText("help"))}, nil
 	}
 	return h.Handle(ctx, Request{Raw: raw, Prefix: parsed.Prefix, Name: parsed.Name, Args: parsed.Args})
 }
@@ -213,28 +218,6 @@ func (r *Router) completionNames(actor *contextinfo.Actor) []string {
 
 func (r *Router) Prefixes() []string {
 	out := append([]string(nil), r.prefixes...)
-	return out
-}
-
-func normalizePrefixes(prefixes []string) []string {
-
-	if len(prefixes) == 0 {
-		prefixes = []string{"/"}
-	}
-	seen := map[string]bool{}
-	out := []string{}
-	for _, prefix := range prefixes {
-		prefix = strings.TrimSpace(prefix)
-		if prefix == "" || seen[prefix] {
-			continue
-		}
-		seen[prefix] = true
-		out = append(out, prefix)
-	}
-	if len(out) == 0 {
-		out = []string{"/"}
-	}
-	sort.SliceStable(out, func(i, j int) bool { return len(out[i]) > len(out[j]) })
 	return out
 }
 

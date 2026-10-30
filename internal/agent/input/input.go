@@ -22,6 +22,7 @@ import (
 // InputCoordinator prepares input outside admission and delegates execution state
 // changes to ExecutionCoordinator and the existing Session/Turn services.
 type InputCoordinator struct {
+	commandText func(string, ...string) string
 	// NewWorkspaceStore binds workspace operations to the admitted session.
 	NewWorkspaceStore func(string) workspace.WorkspaceStore
 	sessions          interface {
@@ -51,15 +52,15 @@ type InputCoordinator struct {
 	}
 }
 
-func compactCommandBlockedText(command string) string {
-	return fmt.Sprintf("%s: compacting · 等待或 /stop", command)
+func compactCommandBlockedText(text string, commandText func(string, ...string) string) string {
+	return fmt.Sprintf("%s: compacting · 等待或 %s", text, commandText("stop"))
 }
 
 func (c *InputCoordinator) HandleInput(ctx context.Context, text string) error {
 	ctx, session, err := c.execution.ResolveInput(ctx, text)
 	if err != nil {
 		if errors.Is(err, sessionpkg.ErrSessionBusy) {
-			_, err = globalevents.NotificationRequested.Emit(sessionpkg.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, err.Error()))
+			_, err = globalevents.NotificationRequested.Emit(sessionpkg.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, fmt.Sprintf("%v · 等待或先 %s", err, c.commandText("stop"))))
 		} else if ctx.Err() == nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) {
 			agentshare.ReportFailure(ctx, "", fmt.Errorf("准备会话: %w", err), c.output.Notify)
 		}
@@ -96,8 +97,11 @@ func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuatio
 
 func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *storage.Session, text string) error {
 	locked, release, err := c.execution.EnterInput(ctx, session)
-	if errors.Is(err, agentshare.ErrInputCompacting) || errors.Is(err, agentshare.ErrInputArchived) {
-		return c.output.SendChat(ctx, err.Error())
+	if errors.Is(err, agentshare.ErrInputCompacting) {
+		return c.output.SendChat(ctx, fmt.Sprintf("%v · 等待或 %s", err, c.commandText("stop")))
+	}
+	if errors.Is(err, agentshare.ErrInputArchived) {
+		return c.output.SendChat(ctx, fmt.Sprintf("%v · %s 后继续", err, c.commandText("unarchive")))
 	}
 	if err != nil {
 		if ctx.Err() == nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) {
@@ -181,6 +185,7 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 // NewInputCoordinator initializes InputCoordinator without installing cross-service callbacks.
 func NewInputCoordinator(deps InputCoordinatorDeps) *InputCoordinator {
 	return &InputCoordinator{
+		commandText:       deps.CommandText,
 		sessions:          deps.Sessions,
 		NewWorkspaceStore: deps.NewWorkspaceStore,
 		sessionRows:       deps.SessionRows,

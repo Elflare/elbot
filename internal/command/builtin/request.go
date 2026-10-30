@@ -37,7 +37,7 @@ type requestNode struct {
 func NewRequests(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:        "requests",
-		Usage:       "/requests",
+		Args:        "",
 		Description: "运行中的请求",
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		requests := deps.Requests.List()
@@ -59,8 +59,8 @@ type stopCommand struct {
 func (c stopCommand) Info() command.Info {
 	return command.Info{
 		Name:        "stop",
-		Usage:       "/stop [request_id|number]",
-		Description: "停止请求；编号见 /requests",
+		Args:        "[request_id|number]",
+		Description: fmt.Sprintf("停止请求；编号见 %s", c.deps.CommandText("requests")),
 		MinRole:     contextinfo.RoleUser,
 	}
 }
@@ -140,7 +140,7 @@ func (c stopCommand) Complete(ctx context.Context, req command.CompletionRequest
 func NewStopAll(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:        "stopall",
-		Usage:       "/stopall",
+		Args:        "",
 		Description: "停止全部请求",
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		ids := []string{}

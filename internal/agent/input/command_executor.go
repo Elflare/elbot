@@ -17,6 +17,7 @@ import (
 )
 
 type CommandExecutor struct {
+	commandText               func(string, ...string) string
 	IsRiskConfirmationCommand func(string) bool
 	router                    interface {
 		IsCommand(string) bool
@@ -64,11 +65,11 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		return true, e.confirmations.SubmitResponse(ctx, sessionRow.ID, text)
 	}
 	if sessionErr == nil && hasInfo && snapshot.Phase != turn.PhaseIdle && blocksDuringActiveTurn(info.SessionEffect) {
-		_, err := globalevents.NotificationRequested.Emit(session.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, session.ErrSessionBusy.Error()))
+		_, err := globalevents.NotificationRequested.Emit(session.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, fmt.Sprintf("%v · 等待或先 %s 再切换", session.ErrSessionBusy, e.commandText("stop"))))
 		return true, err
 	}
 	if sessionErr == nil && hasInfo && e.execution.CompactActive(sessionRow.ID) && blocksDuringCompact(info.SessionEffect) {
-		return true, e.output.SendChat(ctx, compactCommandBlockedText(text))
+		return true, e.output.SendChat(ctx, compactCommandBlockedText(text, e.commandText))
 	}
 
 	actor, _ := contextinfo.ActorFromContext(ctx)
@@ -119,6 +120,9 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		result, err = &command.Result{Content: session.ErrNoCurrentSession.Error()}, nil
 	}
 	if err != nil {
+		if errors.Is(err, session.ErrSessionBusy) {
+			err = fmt.Errorf("%w · 等待或先 %s", err, e.commandText("stop"))
+		}
 		_, notifyErr := globalevents.NotificationRequested.Emit(session.WithBinding(ctx, nil), globalevents.NewNotification(ctx, slog.LevelError, fmt.Sprintf("%s%s: %v", parsed.Prefix, parsed.Name, err)))
 		return true, errors.Join(err, notifyErr)
 	}
@@ -166,6 +170,7 @@ type CommandInput interface {
 
 // CommandExecutorDeps declares only the capabilities consumed by CommandExecutor.
 type CommandExecutorDeps struct {
+	CommandText               func(string, ...string) string // 根部绑定配置首个前缀的命令组装能力。
 	IsRiskConfirmationCommand func(string) bool
 	Router                    interface {
 		IsCommand(string) bool
@@ -191,6 +196,7 @@ type CommandExecutorDeps struct {
 // NewCommandExecutor initializes CommandExecutor without installing cross-service callbacks.
 func NewCommandExecutor(deps CommandExecutorDeps) *CommandExecutor {
 	return &CommandExecutor{
+		commandText:               deps.CommandText,
 		router:                    deps.Router,
 		IsRiskConfirmationCommand: deps.IsRiskConfirmationCommand,
 		sessions:                  deps.Sessions,

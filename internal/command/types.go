@@ -8,7 +8,7 @@ import (
 
 type Info struct {
 	Name          string
-	Usage         string
+	Args          string // 用法中的参数语法，不含命令名和前缀。
 	Description   string
 	Aliases       []string
 	Help          string

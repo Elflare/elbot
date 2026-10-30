@@ -68,15 +68,15 @@ func listResumablePage(ctx context.Context, deps Deps, page, pageSize int) ([]st
 	return sessions, hasNext, nil
 }
 
-func formatSessionsPage(sessions []storage.SessionSummary, currentID string, page int, query string, hasNext bool, commandPrefix string) string {
-	return formatSessionsPageWithOffset(sessions, currentID, page, query, hasNext, commandPrefix, 0)
+func formatSessionsPage(sessions []storage.SessionSummary, currentID string, page int, query string, hasNext bool, commandText func(string, ...string) string, name string) string {
+	return formatSessionsPageWithOffset(sessions, currentID, page, query, hasNext, commandText, name, 0)
 }
 
-func formatResumableSessionsPage(sessions []storage.SessionSummary, page, pageSize int, hasNext bool) string {
-	return formatSessionsPageWithOffset(sessions, "", page, "", hasNext, "/resume --page", (page-1)*pageSize)
+func formatResumableSessionsPage(sessions []storage.SessionSummary, page, pageSize int, hasNext bool, commandText func(string, ...string) string) string {
+	return formatSessionsPageWithOffset(sessions, "", page, "", hasNext, commandText, "resume", (page-1)*pageSize)
 }
 
-func formatSessionsPageWithOffset(sessions []storage.SessionSummary, currentID string, page int, query string, hasNext bool, commandPrefix string, numberOffset int) string {
+func formatSessionsPageWithOffset(sessions []storage.SessionSummary, currentID string, page int, query string, hasNext bool, commandText func(string, ...string) string, name string, numberOffset int) string {
 	content := formatSessionsWithOffset(sessions, currentID, numberOffset)
 	var sb strings.Builder
 	sb.WriteString(content)
@@ -85,19 +85,19 @@ func formatSessionsPageWithOffset(sessions []storage.SessionSummary, currentID s
 	}
 	sb.WriteString(fmt.Sprintf("page=%d", page))
 	if page > 1 {
-		sb.WriteString(fmt.Sprintf(" · prev: %s", nextPageCommand(commandPrefix, page-1, query)))
+		sb.WriteString(fmt.Sprintf(" · prev: %s", nextPageCommand(commandText, name, page-1, query)))
 	}
 	if hasNext {
-		sb.WriteString(fmt.Sprintf(" · next: %s", nextPageCommand(commandPrefix, page+1, query)))
+		sb.WriteString(fmt.Sprintf(" · next: %s", nextPageCommand(commandText, name, page+1, query)))
 	}
 	return trimTrailingNewlines(sb.String())
 }
 
-func nextPageCommand(commandPrefix string, page int, query string) string {
-	if commandPrefix == "/resume --page" || strings.TrimSpace(query) == "" {
-		return fmt.Sprintf("%s %d", commandPrefix, page)
+func nextPageCommand(commandText func(string, ...string) string, name string, page int, query string) string {
+	if name == "resume" {
+		return commandText(name, "--page", fmt.Sprint(page))
 	}
-	return fmt.Sprintf("%s %d %s", commandPrefix, page, query)
+	return commandText(name, fmt.Sprint(page), query)
 }
 
 func currentSessionID(ctx context.Context, deps Deps) string {

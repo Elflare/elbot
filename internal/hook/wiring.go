@@ -68,6 +68,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		send:   deps.Platform.SendTo,
 		parent: ctx, ctx: callCtx, cancel: cancel, done: make(chan struct{}),
 	}
-	m.commands = []command.Handler{control.NewHooks(service, m.beginCall)}
+	prefix := cfg.Commands.Prefixes[0]
+	commandText := func(name string, args ...string) string { return command.Format(prefix, name, args...) }
+	m.commands = []command.Handler{control.NewHooks(service, m.beginCall, commandText)}
 	return m, nil
 }

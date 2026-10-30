@@ -54,7 +54,7 @@ func (p *FileCommandPreparer) PrepareFileCommand(ctx context.Context, idleOnly b
 		return ctx, fileops.ErrRollbackExpired
 	}
 	if idleOnly && (p.turns.Snapshot(row.ID).Phase != turn.PhaseIdle || agentshare.CompactActive(p.turns, p.requests, row.ID)) {
-		return ctx, fmt.Errorf("当前会话仍在执行任务或压缩；请等待完成，或先 /stop")
+		return ctx, session.ErrSessionBusy
 	}
 	ctx = session.WithBinding(contextinfo.WithActor(ctx, p.identity.Actor(ctx)), binding)
 	// Listing never enters commit admission, but a reused command context must

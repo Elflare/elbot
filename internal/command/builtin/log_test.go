@@ -64,7 +64,7 @@ func TestAuditCommandParsesFilters(t *testing.T) {
 		Time:         time.Date(2026, 6, 3, 15, 0, 0, 0, time.Local),
 		LegacyFields: map[string]string{"event": "tool_call_completed", "risk": "high", "tool": "shell"},
 	}}}
-	result, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: "--event tool_call_completed --risk high --tool shell -n 3 --days 2"})
+	result, err := NewAudit(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: "--event tool_call_completed --risk high --tool shell -n 3 --days 2"})
 	if err != nil {
 		t.Fatalf("audit handle: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestLogCommandDefaultsToDebugAndFiveEntries(t *testing.T) {
 		Content:      "started",
 		LegacyFields: map[string]string{},
 	}}}
-	result, err := NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{})
+	result, err := NewLog(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{})
 	if err != nil {
 		t.Fatalf("log handle: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestAuditCommandRunSourceFilterAndCompletion(t *testing.T) {
 	for _, source := range []string{"foreground", "cron", "elnis"} {
 		for _, args := range []string{"-t --run_source " + source + " -i --raw -n 3", "--run_source " + source + " -t -n 3 --raw -i", "--run_source " + source} {
 			service := &fakeLogService{}
-			_, err := NewAudit(Deps{Logs: service}).Handle(t.Context(), command.Request{Args: args})
+			_, err := NewAudit(Deps{CommandText: testCommandText, Logs: service}).Handle(t.Context(), command.Request{Args: args})
 			if err != nil || service.query.Prefix != "audit" || service.query.ContentFields["run_source"] != source {
 				t.Fatalf("args=%q query=%#v err=%v", args, service.query, err)
 			}
@@ -119,7 +119,7 @@ func TestAuditCommandRunSourceFilterAndCompletion(t *testing.T) {
 			t.Fatalf("invalid source accepted: %q", args)
 		}
 	}
-	cmd := NewAudit(Deps{})
+	cmd := NewAudit(Deps{CommandText: testCommandText})
 	if !strings.Contains(cmd.Info().Help, "--run_source") {
 		t.Fatal("help omits run source")
 	}
@@ -148,7 +148,7 @@ func TestElwispCommandDefaultsToElnisDebugAndFiveEntries(t *testing.T) {
 		Content:      "elnis event accepted",
 		LegacyFields: map[string]string{"elwisp_name": "server-watchdog", "source": "minecraft-main", "source_id": "cpu-alert-001", "mode": "llm"},
 	}}}
-	result, err := NewElwisp(Deps{Logs: service}).Handle(context.Background(), command.Request{})
+	result, err := NewElwisp(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{})
 	if err != nil {
 		t.Fatalf("elwisp handle: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestLogCommandShowsStructuredRuntimeFields(t *testing.T) {
 			"raw_content":    "secret raw",
 		},
 	}}}
-	result, err := NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{})
+	result, err := NewLog(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{})
 	if err != nil {
 		t.Fatalf("log handle: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestLogCommandShowsStructuredRuntimeFields(t *testing.T) {
 
 func TestElwispCommandParsesFiltersAndPositionalName(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{Content: "elnis llm completed", LegacyFields: map[string]string{"elwisp_name": "server-watchdog"}}}}
-	_, err := NewElwisp(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `server-watchdog --source minecraft-main --id cpu-alert-001 --mode llm --event-key server-watchdog/minecraft-main/cpu-alert-001 --event-id evt-1 --token home -n 3 --since 2h`})
+	_, err := NewElwisp(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: `server-watchdog --source minecraft-main --id cpu-alert-001 --mode llm --event-key server-watchdog/minecraft-main/cpu-alert-001 --event-id evt-1 --token home -n 3 --since 2h`})
 	if err != nil {
 		t.Fatalf("elwisp handle: %v", err)
 	}
@@ -210,7 +210,7 @@ func TestElwispCommandParsesFiltersAndPositionalName(t *testing.T) {
 		t.Fatalf("query = %#v", service.query)
 	}
 
-	_, err = NewElwisp(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `foo --name bar`})
+	_, err = NewElwisp(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: `foo --name bar`})
 	if err == nil {
 		t.Fatal("conflicting elwisp names should fail")
 	}
@@ -223,7 +223,7 @@ func TestElwispCommandParsesTagFilters(t *testing.T) {
 		Content:      "elnis event accepted",
 		LegacyFields: map[string]string{"elwisp_name": "watcher", "tags": "[\"windows\",\"onedrive\",\"watchdog\"]"},
 	}}}
-	result, err := NewElwisp(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `--tag onedrive --tag watchdog`})
+	result, err := NewElwisp(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: `--tag onedrive --tag watchdog`})
 	if err != nil {
 		t.Fatalf("elwisp handle: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestElwispCommandParsesTagFilters(t *testing.T) {
 
 func TestLogCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{Content: "user input", LegacyFields: map[string]string{"event": "user_message", "text": "hello world"}}}}
-	_, err := NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `-u --contains "hello world"`})
+	_, err := NewLog(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: `-u --contains "hello world"`})
 	if err != nil {
 		t.Fatalf("log handle: %v", err)
 	}
@@ -246,7 +246,7 @@ func TestLogCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 		t.Fatalf("query = %#v", service.query)
 	}
 
-	_, err = NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `-a`})
+	_, err = NewLog(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: `-a`})
 	if err != nil {
 		t.Fatalf("log handle -a: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestLogCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 		LegacyFields: map[string]string{"event": "system_message", "first_system_message_json": `{"role":"system","content":"You are ElBot."}`},
 	}}
 	for _, arg := range []string{"-s", "--system"} {
-		result, err := NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: arg})
+		result, err := NewLog(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: arg})
 		if err != nil {
 			t.Fatalf("log handle %s: %v", arg, err)
 		}
@@ -272,12 +272,12 @@ func TestLogCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 	}
 
 	for _, args := range []string{"-t", "--run_source cron"} {
-		if _, err = NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: args}); err == nil {
+		if _, err = NewLog(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: args}); err == nil {
 			t.Fatalf("runtime accepted migrated tool option: %s", args)
 		}
 	}
 
-	_, err = NewLog(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `--hook`})
+	_, err = NewLog(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: `--hook`})
 	if err != nil {
 		t.Fatalf("log handle --hook: %v", err)
 	}
@@ -288,7 +288,7 @@ func TestLogCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 
 func TestAuditCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{Content: "audit event", LegacyFields: map[string]string{"event": "tool_call_completed", "arguments": "hello world"}}}}
-	_, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `-t --contains "hello world"`})
+	_, err := NewAudit(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: `-t --contains "hello world"`})
 	if err != nil {
 		t.Fatalf("audit handle: %v", err)
 	}
@@ -296,7 +296,7 @@ func TestAuditCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 		t.Fatalf("query = %#v", service.query)
 	}
 
-	_, err = NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `--hook`})
+	_, err = NewAudit(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: `--hook`})
 	if err != nil {
 		t.Fatalf("audit handle --hook: %v", err)
 	}
@@ -307,7 +307,7 @@ func TestAuditCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 
 func TestAuditCommandPreservesLiteralEventNames(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{Content: "audit event", LegacyFields: map[string]string{"event": "user_message"}}}}
-	_, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `--event user_input`})
+	_, err := NewAudit(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: `--event user_input`})
 	if err != nil {
 		t.Fatalf("audit handle user_input: %v", err)
 	}
@@ -315,7 +315,7 @@ func TestAuditCommandPreservesLiteralEventNames(t *testing.T) {
 		t.Fatalf("query = %#v", service.query)
 	}
 
-	_, err = NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: `--event assistant_output`})
+	_, err = NewAudit(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: `--event assistant_output`})
 	if err != nil {
 		t.Fatalf("audit handle assistant_output: %v", err)
 	}
@@ -327,18 +327,18 @@ func TestAuditCommandPreservesLiteralEventNames(t *testing.T) {
 func TestAuditCommandRejectsUnknownOptionsAndCombinesHookFilters(t *testing.T) {
 	service := &fakeLogService{}
 	for _, option := range []string{"-u", "-a"} {
-		_, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: option})
+		_, err := NewAudit(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: option})
 		if err == nil || !strings.Contains(err.Error(), "unknown option: "+option) {
 			t.Fatalf("%s: %v", option, err)
 		}
 	}
 	for _, args := range []string{"--hook --event hook_tool_call_completed", "--event hook_tool_call_completed --hook"} {
-		_, err := NewAudit(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: args})
+		_, err := NewAudit(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: args})
 		if err != nil || service.query.Fields["module"] != "hook" || service.query.Fields["event"] != "hook_tool_call_completed" {
 			t.Fatalf("%s: query=%+v err=%v", args, service.query, err)
 		}
 	}
-	cmd := NewAudit(Deps{})
+	cmd := NewAudit(Deps{CommandText: testCommandText})
 	for _, tc := range []struct {
 		raw  string
 		want []string
@@ -395,7 +395,7 @@ func TestLogCommandsQueryGlobalRecords(t *testing.T) {
 				}
 			}
 			closeCenter()
-			deps := Deps{Logs: logging.Reader{Dir: center.LogDir()}}
+			deps := Deps{CommandText: testCommandText, Logs: logging.Reader{Dir: center.LogDir()}}
 			query := func(handler command.Handler, args string) string {
 				t.Helper()
 				result, err := handler.Handle(context.Background(), command.Request{Args: args})
@@ -445,7 +445,7 @@ func TestLogCommandsQueryGlobalRecords(t *testing.T) {
 }
 
 func TestLogAndAuditCommandsCompleteOptionsAndValues(t *testing.T) {
-	logCmd := NewLog(Deps{}).(command.Completer)
+	logCmd := NewLog(Deps{CommandText: testCommandText}).(command.Completer)
 	got := logCmd.Complete(context.Background(), command.CompletionRequest{Raw: "/log --le", Prefix: "/", Name: "log", Args: "--le", Cursor: len("/log --le")})
 	if len(got) != 1 || got[0].Text != "--level" {
 		t.Fatalf("log option Complete = %#v", got)
@@ -459,7 +459,7 @@ func TestLogAndAuditCommandsCompleteOptionsAndValues(t *testing.T) {
 		t.Fatalf("log system Complete = %#v", got)
 	}
 
-	elwispCmd := NewElwisp(Deps{}).(command.Completer)
+	elwispCmd := NewElwisp(Deps{CommandText: testCommandText}).(command.Completer)
 	got = elwispCmd.Complete(context.Background(), command.CompletionRequest{Raw: "/elwisp --mo", Prefix: "/", Name: "elwisp", Args: "--mo", Cursor: len("/elwisp --mo")})
 	if len(got) != 1 || got[0].Text != "--mode" {
 		t.Fatalf("elwisp option Complete = %#v", got)
@@ -469,7 +469,7 @@ func TestLogAndAuditCommandsCompleteOptionsAndValues(t *testing.T) {
 		t.Fatalf("elwisp mode Complete = %#v", got)
 	}
 
-	auditCmd := NewAudit(Deps{Tools: &fakeToolService{infos: []toolshare.Info{{Name: "shell"}, {Name: "web_search"}}}}).(command.Completer)
+	auditCmd := NewAudit(Deps{CommandText: testCommandText, Tools: &fakeToolService{infos: []toolshare.Info{{Name: "shell"}, {Name: "web_search"}}}}).(command.Completer)
 	got = auditCmd.Complete(context.Background(), command.CompletionRequest{Raw: "/audit --risk h", Prefix: "/", Name: "audit", Args: "--risk h", Cursor: len("/audit --risk h")})
 	if len(got) != 1 || got[0].Text != "high" {
 		t.Fatalf("audit risk Complete = %#v", got)
@@ -484,7 +484,7 @@ func TestLogRawIndependentOfLevelAndContentRendering(t *testing.T) {
 	for _, factory := range []func(Deps) command.Handler{NewLog, NewAudit, NewElwisp} {
 		for _, args := range []string{"-d", "--level debug", "--raw -w", "-w --raw", "--raw --level debug", "--level error --raw"} {
 			service := &fakeLogService{entries: []logging.LogEntry{{Level: "WARN", EventName: "tool_call_completed", Content: `{"tool":"shell","count":9007199254740993}`, Type: events.ContentJSON, ResultStatus: events.ResultFailed, Raw: "ORIGINAL_PHYSICAL_RECORD"}}}
-			result, err := factory(Deps{Logs: service}).Handle(t.Context(), command.Request{Args: args})
+			result, err := factory(Deps{CommandText: testCommandText, Logs: service}).Handle(t.Context(), command.Request{Args: args})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -500,7 +500,7 @@ func TestLogRawIndependentOfLevelAndContentRendering(t *testing.T) {
 }
 func TestLogUnspecifiedResultAndHelp(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{Level: "INFO", Content: "plain", EventName: "progress"}}}
-	handler := NewLog(Deps{Logs: service})
+	handler := NewLog(Deps{CommandText: testCommandText, Logs: service})
 	result, err := handler.Handle(t.Context(), command.Request{})
 	if err != nil || !strings.Contains(result.Content, "  INFO  progress\nplain") {
 		t.Fatalf("result=%+v err=%v", result, err)

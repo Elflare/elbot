@@ -19,7 +19,7 @@ const defaultLogListLimit = 5
 func auditInfo() command.Info {
 	return command.Info{
 		Name:        "audit",
-		Usage:       "/audit [options]",
+		Args:        "[options]",
 		Description: "审计日志",
 		Help: strings.TrimSpace(`-n, --limit <n>       条数，默认 5
 --days <n>            天数，默认 1
@@ -46,7 +46,7 @@ func NewAudit(deps Deps) command.Handler {
 func elwispInfo() command.Info {
 	return command.Info{
 		Name:        "elwisp",
-		Usage:       "/elwisp [name] [options]",
+		Args:        "[name] [options]",
 		Description: "Elwisp 日志",
 		Help: strings.TrimSpace(`[name], --name/--elwisp <name>  Elwisp 名称
 -n, --limit <n>       条数，默认 5
@@ -74,7 +74,7 @@ func NewElwisp(deps Deps) command.Handler {
 func logInfo() command.Info {
 	return command.Info{
 		Name:        "log",
-		Usage:       "/log [options]",
+		Args:        "[options]",
 		Description: "运行日志",
 		Help: strings.TrimSpace(`-n, --limit <n>       条数，默认 5
 --days <n>            天数，默认 1
@@ -105,7 +105,7 @@ func (c logCommand) Info() command.Info { return c.info }
 
 func (c logCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
 	if wantsCommandHelp(req.Args) {
-		return formatCommandHelp(req.Prefix, c.info), nil
+		return formatCommandHelp(c.deps.CommandText, c.info), nil
 	}
 	if c.audit {
 		query, err := parseAuditQuery(req.Args)

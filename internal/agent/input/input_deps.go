@@ -38,6 +38,7 @@ type InputConfirmations interface {
 
 // InputCoordinatorDeps declares only the capabilities consumed by InputCoordinator.
 type InputCoordinatorDeps struct {
+	CommandText func(string, ...string) string // 根部绑定配置首个前缀的命令组装能力。
 	// NewWorkspaceStore binds workspace operations to the admitted session.
 	NewWorkspaceStore func(string) workspace.WorkspaceStore
 	Sessions          interface {

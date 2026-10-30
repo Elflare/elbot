@@ -10,7 +10,7 @@ import (
 func NewCompact(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:          "compact",
-		Usage:         "/compact",
+		Args:          "",
 		Description:   "压缩上下文",
 		SessionEffect: command.SessionEffectMutate,
 		MinRole:       contextinfo.RoleUser,

@@ -73,13 +73,13 @@ func TestUsageUnknownAndOverflowDoNotLoseCallsOrOtherTotals(t *testing.T) {
 func TestDamagedLogsAreReportedWithoutMatchedEntries(t *testing.T) {
 	for _, factory := range []func(Deps) command.Handler{NewLog, NewAudit, NewElwisp, NewUsage} {
 		service := &fakeLogService{damagedCount: 12, damagedLines: []string{"{broken"}}
-		result, err := factory(Deps{Logs: service}).Handle(t.Context(), command.Request{})
+		result, err := factory(Deps{CommandText: testCommandText, Logs: service}).Handle(t.Context(), command.Request{})
 		if err != nil || !strings.Contains(result.Content, "damaged=12") || !strings.Contains(result.Content, "incomplete") || strings.Contains(result.Content, "{broken") {
 			t.Fatalf("result=%+v err=%v", result, err)
 		}
 	}
 	service := &fakeLogService{damagedCount: 12, damagedLines: []string{"{broken"}}
-	result, err := NewLog(Deps{Logs: service}).Handle(t.Context(), command.Request{Args: "--raw -e"})
+	result, err := NewLog(Deps{CommandText: testCommandText, Logs: service}).Handle(t.Context(), command.Request{Args: "--raw -e"})
 	if err != nil || !strings.Contains(result.Content, "无法判断是否匹配筛选条件") || !strings.Contains(result.Content, "{broken") || !strings.Contains(result.Content, "damaged hidden=11") {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
@@ -156,7 +156,7 @@ func TestAuditPreservesSourceOrderThroughStorageAndFiltering(t *testing.T) {
 	if err != nil || len(entries.Entries) != 1 || entries.Entries[0].Content != body {
 		t.Fatalf("stored content changed: entries=%+v err=%v", entries, err)
 	}
-	result, err := NewAudit(Deps{Logs: reader}).Handle(t.Context(), command.Request{Args: "-t --tool shell --run_source foreground --risk low"})
+	result, err := NewAudit(Deps{CommandText: testCommandText, Logs: reader}).Handle(t.Context(), command.Request{Args: "-t --tool shell --run_source foreground --risk low"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestLogQueriesRenderDecodedJSONStrings(t *testing.T) {
 			Content: `{"result":"first\n\tsecond","literal":"printf '\\n'","nested":{"items":["line one\nline two",9007199254740993]},"empty":[],"flag":false,"none":null}`,
 			Raw:     "ORIGINAL_PHYSICAL_RECORD",
 		}}}
-		result, err := factory(Deps{Logs: service}).Handle(t.Context(), command.Request{})
+		result, err := factory(Deps{CommandText: testCommandText, Logs: service}).Handle(t.Context(), command.Request{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -190,7 +190,7 @@ func TestLogQueriesRenderDecodedJSONStrings(t *testing.T) {
 		if strings.Contains(result.Content, `first\n\tsecond`) || strings.Contains(result.Content, `line one\nline two`) {
 			t.Errorf("JSON escapes leaked into normal display: %s", result.Content)
 		}
-		result, err = factory(Deps{Logs: service}).Handle(t.Context(), command.Request{Args: "--raw"})
+		result, err = factory(Deps{CommandText: testCommandText, Logs: service}).Handle(t.Context(), command.Request{Args: "--raw"})
 		if err != nil || !strings.Contains(result.Content, service.entries[0].Raw) {
 			t.Fatalf("raw display changed: result=%+v err=%v", result, err)
 		}

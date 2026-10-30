@@ -43,6 +43,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	m.turns = turn.NewSupervisor()
 	m.contexts = contextmgr.New(contextmgr.Options{Compactors: m.routes, Store: deps.Store, Models: deps.Models, Config: cfg.Context})
 	m.commands = command.NewRouter(cfg.Commands.Prefixes)
+	prefix := cfg.Commands.Prefixes[0]
+	commandText := func(name string, args ...string) string { return command.Format(prefix, name, args...) }
 	sessionCommands := commandbuiltin.NewSessionCommandState(cfg.View.SessionListPageSize, cfg.Maintenance.SessionCleanup.RetentionDays)
 	signals := m.signals
 	view := dialogue.ExecutionView{Sessions: deps.Store.Sessions()}
@@ -94,13 +96,14 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	output := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Dispatcher: deps.Platform, Hooks: bridge, Reasoning: deps.Platform.StartReasoning})
 	policy := agentconfirmation.NewConfirmationPolicy(agentconfirmation.ConfirmationPolicyDeps{Identity: identity, IdleExpiration: cfg.Session.IdleExpiration, UserConfirmationTimeout: 10 * time.Minute})
 	confirmations = agentconfirmation.NewConfirmationCoordinator(agentconfirmation.ConfirmationCoordinatorDeps{
-		Sessions: m.sessions,
-		Requests: m.requests,
-		Turns:    m.turns,
-		Commands: m.commands,
-		Identity: identity,
-		Output:   output,
-		Policy:   policy,
+		CommandText: commandText,
+		Sessions:    m.sessions,
+		Requests:    m.requests,
+		Turns:       m.turns,
+		Commands:    m.commands,
+		Identity:    identity,
+		Output:      output,
+		Policy:      policy,
 	})
 	toolRuntime := agenttools.NewToolRuntimeState(agenttools.ToolRuntimeStateDeps{Manager: deps.Tools, FileRollback: deps.Tools, Identity: identity})
 	toolDeps := agenttools.NewToolRunDeps(agenttools.ToolRunDeps{
@@ -208,6 +211,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		},
 	})
 	input := agentinput.NewInputCoordinator(agentinput.InputCoordinatorDeps{
+		CommandText: commandText,
 		NewWorkspaceStore: func(id string) workspace.WorkspaceStore {
 			return m.sessions.WorkspaceStore(id)
 		},
@@ -233,6 +237,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Identity: identity,
 	})
 	commands, err := wireCommands(agentinput.CommandExecutorDeps{
+		CommandText:               commandText,
 		IsRiskConfirmationCommand: func(text string) bool { return agentconfirmation.IsRiskConfirmationCommand(text, m.commands) },
 		Router:                    m.commands,
 		Sessions:                  m.sessions,
@@ -243,6 +248,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Confirmations:             confirmations,
 		Input:                     input,
 	}, commandbuiltin.Deps{
+		CommandText:        commandText,
 		Doctor:             deps.Doctor,
 		Router:             m.commands,
 		Sessions:           m.sessions,

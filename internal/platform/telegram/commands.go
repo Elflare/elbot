@@ -35,7 +35,7 @@ func telegramBotCommands(infos []command.Info) []botCommand {
 		}
 		description := strings.TrimSpace(info.Description)
 		if description == "" {
-			description = strings.TrimSpace(info.Usage)
+			description = strings.TrimSpace(info.Name + " " + info.Args)
 		}
 		if description == "" {
 			continue

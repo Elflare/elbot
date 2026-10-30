@@ -39,7 +39,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	sessions := newSessionSupervisor(t, store)
 	t.Cleanup(func() { _ = sessions.Close(context.Background()) })
 	stateService := toolstate.NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
-	coordinator := NewInputCoordinator(InputCoordinatorDeps{Sessions: sessions, SessionRows: store.Sessions(), Identity: identity, Execution: directiveExecution{}, ToolState: directiveState{stateService},
+	coordinator := NewInputCoordinator(InputCoordinatorDeps{CommandText: testCommandText, Sessions: sessions, SessionRows: store.Sessions(), Identity: identity, Execution: directiveExecution{}, ToolState: directiveState{stateService},
 		NewWorkspaceStore: func(id string) workspace.WorkspaceStore {
 			return sessions.WorkspaceStore(id)
 		},

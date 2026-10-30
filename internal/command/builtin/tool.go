@@ -21,7 +21,7 @@ type toolsCommand struct {
 func (c toolsCommand) Info() command.Info {
 	return command.Info{
 		Name:        "tools",
-		Usage:       "/tools [reload|uninstall|remove] [name]",
+		Args:        "[reload|uninstall|remove] [name]",
 		Description: "工具与 Skill",
 	}
 }
@@ -44,11 +44,11 @@ func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command
 		return &command.Result{Content: "skills reloaded"}, nil
 	case "uninstall", "remove":
 		if len(fields) < 2 {
-			return &command.Result{Content: "usage: /tools remove <name> --confirm"}, nil
+			return &command.Result{Content: "usage: " + deps.CommandText("tools", "remove", "<name>", "--confirm")}, nil
 		}
 		name := fields[1]
 		if !slices.Contains(fields[2:], "--confirm") {
-			return &command.Result{Content: fmt.Sprintf("删除 %q 及目录？\n/tools remove %s --confirm", name, name)}, nil
+			return &command.Result{Content: fmt.Sprintf("删除 %q 及目录？\n%s", name, deps.CommandText("tools", "remove", name, "--confirm"))}, nil
 		}
 		err := deps.Skills.Remove(ctx, name)
 		if err != nil {
@@ -56,7 +56,7 @@ func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command
 		}
 		return &command.Result{Content: fmt.Sprintf("removed: %s", name)}, nil
 	default:
-		return &command.Result{Content: "usage: /tools [reload|uninstall|remove] [name]"}, nil
+		return &command.Result{Content: "usage: " + deps.CommandText("tools", c.Info().Args)}, nil
 	}
 }
 

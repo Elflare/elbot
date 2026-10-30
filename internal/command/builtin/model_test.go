@@ -56,7 +56,7 @@ func (s fakeModelService) ModelList(query string, opts modelmgr.ModelListOptions
 
 func TestModelCompletionCursorAndFuzzyCase(t *testing.T) {
 	model := modelmgr.ModelOption{Provider: "DeepSeek", Model: "deepseek-v3"}
-	completer := NewModel(Deps{Models: fakeModelService{models: []modelmgr.ModelOption{model, model}}}).(command.Completer)
+	completer := NewModel(Deps{CommandText: testCommandText, Models: fakeModelService{models: []modelmgr.ModelOption{model, model}}}).(command.Completer)
 	for _, tc := range []struct {
 		raw         string
 		cursor, end int
@@ -79,7 +79,7 @@ func TestModelCommandSuccessTextForEveryTarget(t *testing.T) {
 		if target != "" {
 			args, want = "--"+target+" model", target+".model → /"
 		}
-		got, err := NewModel(Deps{Models: fakeModelService{}}).Handle(t.Context(), command.Request{Args: args})
+		got, err := NewModel(Deps{CommandText: testCommandText, Models: fakeModelService{}}).Handle(t.Context(), command.Request{Args: args})
 		if err != nil || got.Content != want {
 			t.Fatalf("target=%s got=%+v err=%v", target, got, err)
 		}
@@ -87,7 +87,7 @@ func TestModelCommandSuccessTextForEveryTarget(t *testing.T) {
 }
 
 func TestModelCommandCompletesOptions(t *testing.T) {
-	completer := NewModel(Deps{Models: fakeModelService{}}).(command.Completer)
+	completer := NewModel(Deps{CommandText: testCommandText, Models: fakeModelService{}}).(command.Completer)
 	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model --", Prefix: "/", Name: "model", Args: "--", Cursor: len("/model --")})
 	if len(got) < 7 {
 		t.Fatalf("Complete options = %#v", got)
@@ -98,7 +98,7 @@ func TestModelCommandCompletesOptions(t *testing.T) {
 }
 
 func TestModelCommandCompletesElwispOptions(t *testing.T) {
-	completer := NewModel(Deps{Models: fakeModelService{}}).(command.Completer)
+	completer := NewModel(Deps{CommandText: testCommandText, Models: fakeModelService{}}).(command.Completer)
 	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model --elw", Prefix: "/", Name: "model", Args: "--elw", Cursor: len("/model --elw")})
 	if len(got) != 3 {
 		t.Fatalf("Complete elwisp options = %#v", got)
@@ -110,7 +110,7 @@ func TestModelCommandCompletesElwispOptions(t *testing.T) {
 
 func TestModelCommandCompletesModelNames(t *testing.T) {
 	models := fakeModelService{models: []modelmgr.ModelOption{{Provider: "openai", Model: "gpt-4o"}, {Provider: "anthropic", Model: "claude-sonnet"}}}
-	completer := NewModel(Deps{Models: models}).(command.Completer)
+	completer := NewModel(Deps{CommandText: testCommandText, Models: models}).(command.Completer)
 	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model gp", Prefix: "/", Name: "model", Args: "gp", Cursor: len("/model gp")})
 	if len(got) != 1 {
 		t.Fatalf("Complete models = %#v", got)
@@ -122,7 +122,7 @@ func TestModelCommandCompletesModelNames(t *testing.T) {
 
 func TestModelCommandCompletesModelAfterTargetOption(t *testing.T) {
 	models := fakeModelService{models: []modelmgr.ModelOption{{Provider: "openai", Model: "gpt-4o"}, {Provider: "anthropic", Model: "claude-sonnet"}}}
-	completer := NewModel(Deps{Models: models}).(command.Completer)
+	completer := NewModel(Deps{CommandText: testCommandText, Models: models}).(command.Completer)
 	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model --chat cla", Prefix: "/", Name: "model", Args: "--chat cla", Cursor: len("/model --chat cla")})
 	if len(got) != 1 {
 		t.Fatalf("Complete option models = %#v", got)
@@ -134,7 +134,7 @@ func TestModelCommandCompletesModelAfterTargetOption(t *testing.T) {
 
 func TestModelCommandFuzzyCompletesAbbreviation(t *testing.T) {
 	models := fakeModelService{models: []modelmgr.ModelOption{{Provider: "deepseek", Model: "deepseek-v3"}, {Provider: "openai", Model: "gpt-4o"}}}
-	completer := NewModel(Deps{Models: models}).(command.Completer)
+	completer := NewModel(Deps{CommandText: testCommandText, Models: models}).(command.Completer)
 	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model dpsk", Prefix: "/", Name: "model", Args: "dpsk", Cursor: len("/model dpsk")})
 	if len(got) != 1 {
 		t.Fatalf("fuzzy completion = %#v", got)
@@ -146,7 +146,7 @@ func TestModelCommandFuzzyCompletesAbbreviation(t *testing.T) {
 
 func TestModelCommandDoesNotCompleteModelImmediatelyAfterOption(t *testing.T) {
 	models := fakeModelService{models: []modelmgr.ModelOption{{Provider: "openai", Model: "gpt-4o"}}}
-	completer := NewModel(Deps{Models: models}).(command.Completer)
+	completer := NewModel(Deps{CommandText: testCommandText, Models: models}).(command.Completer)
 	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model --chat", Prefix: "/", Name: "model", Args: "--chat", Cursor: len("/model --chat")})
 	if len(got) != 1 || got[0].Text != "--chat" {
 		t.Fatalf("Complete option token = %#v", got)
@@ -155,7 +155,7 @@ func TestModelCommandDoesNotCompleteModelImmediatelyAfterOption(t *testing.T) {
 
 func TestModelCommandSwitchesElwispSlot(t *testing.T) {
 	models := &recordingModelService{}
-	result, err := NewModel(Deps{Models: models}).Handle(context.Background(), command.Request{Prefix: "/", Name: "model", Args: "--elwisp2 openai/gpt-4.1"})
+	result, err := NewModel(Deps{CommandText: testCommandText, Models: models}).Handle(context.Background(), command.Request{Prefix: "/", Name: "model", Args: "--elwisp2 openai/gpt-4.1"})
 	if err != nil {
 		t.Fatalf("Handle elwisp model: %v", err)
 	}

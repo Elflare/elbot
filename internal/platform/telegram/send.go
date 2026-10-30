@@ -148,13 +148,13 @@ func telegramReceipt(receipt delivery.Receipt, target target, mediaIndexes ...in
 func (a *Adapter) sendToTarget(ctx context.Context, t target, out delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	switch out.Kind {
 	case delivery.KindText:
-		return a.sendText(ctx, t, out.Text, 0, shouldAttachRiskKeyboard(out.Text))
+		return a.sendText(ctx, t, out.Text, 0, out.Actions)
 	case delivery.KindReply:
 		replyID, err := strconv.ParseInt(strings.TrimSpace(out.ReplyToPlatformMessageID), 10, 64)
 		if err != nil {
 			return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 		}
-		return a.sendText(ctx, t, out.Text, replyID, shouldAttachRiskKeyboard(out.Text))
+		return a.sendText(ctx, t, out.Text, replyID, out.Actions)
 	case delivery.KindEmoticon:
 		return a.sendSticker(ctx, t, out, 0)
 	case delivery.KindImage:
@@ -162,26 +162,26 @@ func (a *Adapter) sendToTarget(ctx context.Context, t target, out delivery.Outpu
 	case delivery.KindFile:
 		return a.sendDocument(ctx, t, out, 0)
 	default:
-		return a.sendText(ctx, t, delivery.FallbackText(out), 0, false)
+		return a.sendText(ctx, t, delivery.FallbackText(out), 0, nil)
 	}
 }
 
-func (a *Adapter) sendText(ctx context.Context, t target, text string, replyTo int64, keyboard bool) (delivery.Receipt, globalevents.LogResult, error) {
+func (a *Adapter) sendText(ctx context.Context, t target, text string, replyTo int64, actions []delivery.Action) (delivery.Receipt, globalevents.LogResult, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
 	switch a.cfg.Format {
 	case "rich":
-		return a.sendRichText(ctx, t, text, replyTo, keyboard)
+		return a.sendRichText(ctx, t, text, replyTo, actions)
 	case "plain":
-		return a.sendPlainText(ctx, t, text, replyTo, keyboard)
+		return a.sendPlainText(ctx, t, text, replyTo, actions)
 	default:
-		return a.sendHTMLText(ctx, t, text, replyTo, keyboard)
+		return a.sendHTMLText(ctx, t, text, replyTo, actions)
 	}
 }
 
-func (a *Adapter) sendRichText(ctx context.Context, t target, text string, replyTo int64, keyboard bool) (delivery.Receipt, globalevents.LogResult, error) {
+func (a *Adapter) sendRichText(ctx context.Context, t target, text string, replyTo int64, actions []delivery.Action) (delivery.Receipt, globalevents.LogResult, error) {
 	pages := telegramRichTextPages(text)
 	var receipt delivery.Receipt
 	for i, page := range pages {
@@ -190,8 +190,8 @@ func (a *Adapter) sendRichText(ctx context.Context, t target, text string, reply
 			if replyTo != 0 {
 				req.ReplyParameters = &replyParameters{MessageID: replyTo}
 			}
-			if keyboard {
-				req.ReplyMarkup = riskKeyboard()
+			if len(actions) > 0 {
+				req.ReplyMarkup = commandKeyboard(actions)
 			}
 		}
 		msg, err := a.client.sendRichMessage(ctx, req)
@@ -209,23 +209,23 @@ func (a *Adapter) sendRichText(ctx context.Context, t target, text string, reply
 	return receipt, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
-func (a *Adapter) sendHTMLText(ctx context.Context, t target, text string, replyTo int64, keyboard bool) (delivery.Receipt, globalevents.LogResult, error) {
-	return a.sendFormattedText(ctx, t, telegramHTMLFromMarkdown(text), "HTML", replyTo, keyboard)
+func (a *Adapter) sendHTMLText(ctx context.Context, t target, text string, replyTo int64, actions []delivery.Action) (delivery.Receipt, globalevents.LogResult, error) {
+	return a.sendFormattedText(ctx, t, telegramHTMLFromMarkdown(text), "HTML", replyTo, actions)
 }
 
-func (a *Adapter) sendPlainText(ctx context.Context, t target, text string, replyTo int64, keyboard bool) (delivery.Receipt, globalevents.LogResult, error) {
-	return a.sendFormattedText(ctx, t, plainTextFromMarkdown(text), "", replyTo, keyboard)
+func (a *Adapter) sendPlainText(ctx context.Context, t target, text string, replyTo int64, actions []delivery.Action) (delivery.Receipt, globalevents.LogResult, error) {
+	return a.sendFormattedText(ctx, t, plainTextFromMarkdown(text), "", replyTo, actions)
 }
 
-func (a *Adapter) sendFormattedText(ctx context.Context, t target, text, parseMode string, replyTo int64, keyboard bool) (delivery.Receipt, globalevents.LogResult, error) {
+func (a *Adapter) sendFormattedText(ctx context.Context, t target, text, parseMode string, replyTo int64, actions []delivery.Action) (delivery.Receipt, globalevents.LogResult, error) {
 	pages := telegramTextPages(text)
 	var receipt delivery.Receipt
 	for i, page := range pages {
 		req := sendMessageRequest{ChatID: t.ChatID, Text: page, ParseMode: parseMode}
 		if i == 0 {
 			req.ReplyToMessageID = replyTo
-			if keyboard {
-				req.ReplyMarkup = riskKeyboard()
+			if len(actions) > 0 {
+				req.ReplyMarkup = commandKeyboard(actions)
 			}
 		}
 		msg, err := a.client.sendMessage(ctx, req)

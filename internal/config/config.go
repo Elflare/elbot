@@ -124,7 +124,7 @@ type ContextConfig struct {
 }
 
 type CommandsConfig struct {
-	Prefixes []string `toml:"prefixes"`
+	Prefixes []string `toml:"prefixes"` // 声明顺序保留；规范化后的首项用于提示和按钮。
 }
 
 type ToolsConfig struct {
@@ -501,9 +501,19 @@ func (c *Config) applyAppDefaults() {
 	if c.Context.CompactTriggerRatio == 0 {
 		c.Context.CompactTriggerRatio = 0.8
 	}
-	if len(c.Commands.Prefixes) == 0 {
-		c.Commands.Prefixes = []string{"/"}
+	seen := make(map[string]bool)
+	prefixes := make([]string, 0, len(c.Commands.Prefixes))
+	for _, prefix := range c.Commands.Prefixes {
+		prefix = strings.TrimSpace(prefix)
+		if prefix != "" && !seen[prefix] {
+			seen[prefix] = true
+			prefixes = append(prefixes, prefix)
+		}
 	}
+	if len(prefixes) == 0 {
+		prefixes = []string{"/"}
+	}
+	c.Commands.Prefixes = prefixes
 	if c.Tools.MaxRoundsPerTurn <= 0 {
 		c.Tools.MaxRoundsPerTurn = 2
 	}

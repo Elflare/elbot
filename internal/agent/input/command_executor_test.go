@@ -16,3 +16,5 @@ func TestCompactBlockedCommandSet(t *testing.T) {
 		t.Fatal("commands without session effects should remain available")
 	}
 }
+
+func testCommandText(name string, args ...string) string { return command.Format("/", name, args...) }

@@ -14,7 +14,7 @@ import (
 )
 
 func NewSessions(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "sessions", Usage: "/sessions [keyword]", Description: "会话列表/搜索", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{Name: "sessions", Args: "[keyword]", Description: "会话列表/搜索", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page, query, err := parseSessionsArgs(req.Args)
 		if err != nil {
 			return nil, err
@@ -27,7 +27,7 @@ func NewSessions(deps Deps) command.Handler {
 		if len(sessions) == 0 {
 			return &command.Result{Content: "nil"}, nil
 		}
-		return &command.Result{Content: formatSessionsPage(sessions, currentSessionID(ctx, deps), page, query, hasNext, "/sessions")}, nil
+		return &command.Result{Content: formatSessionsPage(sessions, currentSessionID(ctx, deps), page, query, hasNext, deps.CommandText, "sessions")}, nil
 	})
 }
 
@@ -36,7 +36,7 @@ func NewResume(deps Deps) command.Handler { return resumeCommand{deps: deps} }
 type resumeCommand struct{ deps Deps }
 
 func (c resumeCommand) Info() command.Info {
-	return command.Info{Name: "resume", Usage: "/resume [number|session_id]", Description: "恢复会话", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser}
+	return command.Info{Name: "resume", Args: "[number|session_id]", Description: "恢复会话", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser}
 }
 
 func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
@@ -45,7 +45,7 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 	if strings.HasPrefix(arg, "--page") {
 		page, err := parseResumePageArg(arg)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%v\n%s", err, deps.CommandText("resume", "--page", "<page>"))
 		}
 		return resumePage(ctx, deps, page)
 	}
@@ -105,7 +105,7 @@ func resumePage(ctx context.Context, deps Deps, page int) (*command.Result, erro
 	if len(sessions) == 0 {
 		return &command.Result{Content: "nil"}, nil
 	}
-	return &command.Result{Content: formatResumableSessionsPage(sessions, page, pageSize, hasNext)}, nil
+	return &command.Result{Content: formatResumableSessionsPage(sessions, page, pageSize, hasNext, deps.CommandText)}, nil
 }
 
 func (c resumeCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -128,7 +128,7 @@ func (c resumeCommand) Complete(ctx context.Context, req command.CompletionReque
 }
 
 func NewArchives(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "archives", Usage: "/archives [page] [keyword]", Description: "归档列表", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{Name: "archives", Args: "[page] [keyword]", Description: "归档列表", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page, query, err := parseSessionsArgs(req.Args)
 		if err != nil {
 			return nil, err
@@ -141,12 +141,12 @@ func NewArchives(deps Deps) command.Handler {
 		if len(sessions) == 0 {
 			return &command.Result{Content: "nil"}, nil
 		}
-		return &command.Result{Content: formatSessionsPage(sessions, currentSessionID(ctx, deps), page, query, hasNext, "/archives")}, nil
+		return &command.Result{Content: formatSessionsPage(sessions, currentSessionID(ctx, deps), page, query, hasNext, deps.CommandText, "archives")}, nil
 	})
 }
 
 func NewMessages(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "messages", Usage: "/messages [page]", Description: "消息 ID 列表", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{Name: "messages", Args: "[page]", Description: "消息 ID 列表", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page := 1
 		if arg := strings.TrimSpace(req.Args); arg != "" {
 			parsed, err := strconv.Atoi(arg)
@@ -176,10 +176,10 @@ func NewMessages(deps Deps) command.Handler {
 }
 
 func NewFork(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "fork", Usage: "/fork <message_id>", Description: "从消息创建分支", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{Name: "fork", Args: "<message_id>", Description: "从消息创建分支", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		messageID := strings.TrimSpace(req.Args)
 		if messageID == "" {
-			return nil, fmt.Errorf("usage: /fork <message_id>")
+			return nil, fmt.Errorf("usage: %s", deps.CommandText("fork", "<message_id>"))
 		}
 		session, err := deps.Sessions.Fork(ctx, deps.Scope(ctx), messageID)
 		if err != nil {

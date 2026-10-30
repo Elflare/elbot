@@ -138,9 +138,19 @@ flowchart LR
 
 `CommandExecutor → Router → command.Handler → 领域服务`。Agent 统一注册内置及 Hook 提供的命令，执行器统一发送结果和错误通知；用法见[命令文档](../docs/commands.md)。
 
+- `config` 统一前缀默认值与规范化，保留配置顺序。Agent、Hook 根部绑定首个前缀，通过 `CommandText` 函数向提示生成组件注入组装能力；`command.Format` 只负责拼接，不读配置。Router 排序副本进行最长匹配，输入补全保留实际输入前缀。
+- 命令元数据由 `Name` 和不含前缀、命令名的 `Args` 组成；帮助、分页与确认操作直接组装，不拆解或替换展示文本。业务错误只说明原因，含命令的建议由用户输出层追加。
 - 改变 Session 的命令声明 SessionEffect，执行器协调压缩／确认冲突，Session 判断绑定规则。
 - 普通用户查询与停止限定当前 Session，超管可管理全局；取消仍复核原 binding 和目标请求。
 - 结果成功发送后才执行 Continuation；通知保留原会话与连接，不依赖可能失效的旧 binding。
+
+```mermaid
+flowchart TD
+    Config["config/config.go<br/>默认值、前缀规范化与声明顺序"] --> Wiring["agent/wiring.go、hook/wiring.go<br/>绑定首个前缀并注入 CommandText"]
+    Format["command/format.go<br/>纯函数组装命令文本"] --> Wiring
+    Wiring --> Hints["命令、确认与输入组件<br/>生成提示及 Action.Command"]
+    Hints --> Platforms["qqofficial/keyboard.go、telegram/keyboard.go<br/>渲染结构化操作，不解析正文"]
+```
 
 <!-- locator:request-turn -->
 ## Request、Turn 与状态
@@ -255,7 +265,7 @@ flowchart TD
 
 - `delivery.MessageSender` 是普通发送契约；`Manager` 在发送前校验输出并复用校验返回的批次目标，显式目标优先。表情名称在该边界校验为非空。
 - `Output.Delivery` 使用值类型 `DeliveryInfo` 保存发送时机与 Hook 来源；降级文案由 `FallbackText` 统一计算。
-- `Output.Actions` 随正文传递业务提供的操作标识、标签与完整命令；展示 Hook 只改正文，平台只渲染操作，不从正文推断交互类型。按钮点击仍经过原有命令入口校验。
+- `Output.Actions` 随正文传递业务提供的操作标识、标签与完整命令；展示 Hook 只改正文，QQ 官方平台和 Telegram 将操作转换为原生按钮，不从正文推断交互类型。Telegram 只在正文首个分页附加按钮；点击仍经过原有命令入口校验。
 - 回复先执行展示 Hook 并发送正文，再保存模型原文与成功回执关联，最后发送附加输出。部分失败保留已成功回执，不重发成功内容。
 - Dialogue 统一归一终态并报告失败，前置失败由负责入口报告，错误转交不重复通知；通知保留原会话并解除请求取消和旧 binding。是否静默取消依据实际请求状态，不能只看错误类型。
 - 通知只接纯文本，显式目标优先；各平台独立排队、同目标有序，共用覆盖排队与发送的期限，队满拒绝不自动重试。入队不等于送达，观察状态不承担提交。

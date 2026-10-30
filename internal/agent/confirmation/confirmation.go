@@ -33,7 +33,8 @@ type ConfirmationPolicy struct {
 }
 
 type ConfirmationCoordinator struct {
-	sessions interface {
+	commandText func(string, ...string) string
+	sessions    interface {
 		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
 		EnterActivation(context.Context, session.Scope, ...string) (context.Context, func(), error)
 		RecordActivity(context.Context, *session.Binding) error
@@ -118,7 +119,7 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 	if !c.commands.IsCommand(text) {
 		observed = confirmationAction(ctx, sessionID, "invalid_text", confirmation, "")
 		release()
-		return c.output.SendChat(ctx, riskConfirmationWaitingText())
+		return c.output.SendChat(ctx, riskConfirmationWaitingText(c.commandText))
 	}
 
 	parsed := c.commands.Parse(text)
@@ -160,7 +161,7 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 	default:
 		observed = confirmationAction(ctx, sessionID, "invalid_command", confirmation, parsed.Name)
 		release()
-		return c.output.SendChat(ctx, riskConfirmationWaitingText())
+		return c.output.SendChat(ctx, riskConfirmationWaitingText(c.commandText))
 
 	}
 	release()
@@ -298,9 +299,9 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 		c.publishConfirmationWait(ctx, sessionID, call, assessment.Level, assessment.Reasons)
 		var actions []delivery.Action
 		for _, cmd := range riskConfirmationCommands() {
-			actions = append(actions, delivery.Action{ID: cmd.Name, Label: cmd.Description, Command: "/" + cmd.Name})
+			actions = append(actions, delivery.Action{ID: cmd.Name, Label: cmd.Description, Command: c.commandText(cmd.Name)})
 		}
-		if _, logResult, err := c.output.SendAssistant(ctx, fmt.Sprintf("%s [%s] · confirm\n%s%s\n\n%s", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout)), actions...); err != nil {
+		if _, logResult, err := c.output.SendAssistant(ctx, fmt.Sprintf("%s [%s] · confirm\n%s%s\n\n%s", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout, c.commandText)), actions...); err != nil {
 			resultStatus, level := logResult.ResultStatus, slog.LevelError
 			if resultStatus == events.ResultCanceled {
 				level = slog.LevelInfo
@@ -390,6 +391,7 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 // NewConfirmationCoordinator initializes ConfirmationCoordinator without installing cross-service callbacks.
 func NewConfirmationCoordinator(deps ConfirmationCoordinatorDeps) *ConfirmationCoordinator {
 	return &ConfirmationCoordinator{
+		commandText:        deps.CommandText,
 		sessions:           deps.Sessions,
 		requests:           deps.Requests,
 		turns:              deps.Turns,

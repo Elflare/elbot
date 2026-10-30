@@ -2,7 +2,6 @@ package share
 
 import (
 	"context"
-	"fmt"
 
 	"elbot/internal/fileops"
 	"elbot/internal/request"
@@ -44,7 +43,7 @@ func FileRollbackContext(ctx context.Context, service interface {
 		}
 		if len(idleOnly) > 0 && idleOnly[0] && (turns.Snapshot(row.ID).Phase != turn.PhaseIdle || CompactActive(turns, requests, row.ID)) {
 			release()
-			return ctx, nil, fmt.Errorf("当前会话仍在执行任务或压缩；请等待完成，或先 /stop")
+			return ctx, nil, session.ErrSessionBusy
 		}
 		return locked, release, nil
 	})

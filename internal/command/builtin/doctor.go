@@ -16,7 +16,7 @@ func NewDoctor(deps Deps) command.Handler { return doctorCommand{deps: deps} }
 func (c doctorCommand) Info() command.Info {
 	return command.Info{
 		Name:        "doctor",
-		Usage:       "/doctor",
+		Args:        "",
 		Description: "检查配置与内置 Skill",
 		Help:        "只读检查当前服务的配置文件和内置 Skill，生成可复制给 Elbot 的处理请求。",
 		MinRole:     contextinfo.RoleSuperadmin,
@@ -25,7 +25,7 @@ func (c doctorCommand) Info() command.Info {
 
 func (c doctorCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
 	if strings.TrimSpace(req.Args) != "" {
-		return nil, fmt.Errorf("usage: /doctor")
+		return nil, fmt.Errorf("usage: %s", c.deps.CommandText("doctor"))
 	}
 	if c.deps.Doctor == nil {
 		return nil, fmt.Errorf("doctor service is not configured")

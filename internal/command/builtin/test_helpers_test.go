@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/command"
 	"testing"
 
 	"elbot/internal/storage"
@@ -17,3 +18,5 @@ func newCommandTestStore(t *testing.T) storage.Store {
 	t.Cleanup(func() { _ = store.Close() })
 	return store
 }
+
+func testCommandText(name string, args ...string) string { return command.Format("/", name, args...) }

@@ -9,6 +9,7 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/storage/sqlite"
 	"errors"
+	"strings"
 
 	"testing"
 	"testing/synctest"
@@ -49,7 +50,7 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 			if !turns.StartAttempt(row.ID, turn.Input{Text: "hello"}, execution, "attempt") || !turns.StartToolPhase(row.ID, "attempt") {
 				t.Fatal("start tools")
 			}
-			coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{Sessions: sessions, Requests: request.NewManager(0), Turns: turns, Commands: commandpkg.NewRouter([]string{"/"}), Identity: identity, Output: confirmationOutput{}, Policy: NewConfirmationPolicy(ConfirmationPolicyDeps{Identity: identity, UserConfirmationTimeout: time.Second})})
+			coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: testCommandText, Sessions: sessions, Requests: request.NewManager(0), Turns: turns, Commands: commandpkg.NewRouter([]string{"/"}), Identity: identity, Output: confirmationOutput{}, Policy: NewConfirmationPolicy(ConfirmationPolicyDeps{Identity: identity, UserConfirmationTimeout: time.Second})})
 
 			done := make(chan toolshare.ConfirmResult, 1)
 			go func() {
@@ -102,7 +103,7 @@ func TestConfirmationTerminationAndPromptFailure(t *testing.T) {
 				if mode == "prompt_failed" {
 					output.err = errors.New("delivery failed")
 				}
-				coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{Turns: turns, Output: output, Policy: fixedWaitPolicy(time.Second)})
+				coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: testCommandText, Turns: turns, Output: output, Policy: fixedWaitPolicy(time.Second)})
 				result, err := coordinator.AwaitToolConfirmation(ctx, "s", llm.ToolCallRequest{ID: "call", Name: "danger", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, "detail")
 				if !result.Stopped || result.Allowed || !errors.Is(err, output.err) {
 					t.Fatalf("result=%+v err=%v", result, err)
@@ -121,12 +122,16 @@ type fixedWaitPolicy time.Duration
 func (p fixedWaitPolicy) WaitTimeout(context.Context) time.Duration { return time.Duration(p) }
 
 type confirmationOutput struct {
-	err  error
-	sent chan []delivery.Action
+	err   error
+	sent  chan []delivery.Action
+	texts chan string
 }
 
 func (confirmationOutput) SendChat(context.Context, string) error { return nil }
-func (o confirmationOutput) SendAssistant(_ context.Context, _ string, actions ...delivery.Action) (delivery.Receipt, events.LogResult, error) {
+func (o confirmationOutput) SendAssistant(_ context.Context, text string, actions ...delivery.Action) (delivery.Receipt, events.LogResult, error) {
+	if o.texts != nil {
+		o.texts <- text
+	}
 	if o.sent != nil {
 		o.sent <- actions
 	}
@@ -143,22 +148,31 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 		turns.StartAttempt("s", turn.Input{}, execution, "a")
 		turns.StartToolPhase("s", "a")
 		ctx := turn.WithAttempt(turn.WithExecution(t.Context(), execution), "a")
-		output := confirmationOutput{sent: make(chan []delivery.Action, 1)}
-		coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{Turns: turns, Output: output, Policy: fixedWaitPolicy(time.Second)})
+		output := confirmationOutput{sent: make(chan []delivery.Action, 1), texts: make(chan string, 1)}
+		commandText := func(name string, args ...string) string { return commandpkg.Format("!", name, args...) }
+		coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: commandText, Turns: turns, Output: output, Policy: fixedWaitPolicy(time.Second)})
 		result, err := coordinator.AwaitToolConfirmation(ctx, "s", llm.ToolCallRequest{ID: "call", Name: "shell", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, "detail")
 		if err != nil || !result.Stopped {
 			t.Fatalf("result=%+v err=%v", result, err)
 		}
 		actions := <-output.sent
+		text := <-output.texts
+		if !strings.Contains(text, "!c 本次") || !strings.Contains(text, "!detail 重置计时") || strings.Contains(text, "/confirm") {
+			t.Fatal(text)
+		}
 		want := []string{"detail", "confirm", "confirmtool", "confirmall", "reject", "stop"}
 		if len(actions) != len(want) {
 			t.Fatalf("actions=%#v", actions)
 		}
 		for i, name := range want {
-			if actions[i].ID != name || actions[i].Label == "" || actions[i].Command != "/"+name {
+			if actions[i].ID != name || actions[i].Label == "" || actions[i].Command != "!"+name {
 				t.Fatalf("action=%#v", actions[i])
 			}
 		}
 		turns.FinishAttempt("s", "a")
 	})
+}
+
+func testCommandText(name string, args ...string) string {
+	return commandpkg.Format("/", name, args...)
 }

@@ -28,7 +28,7 @@ func TestLifecycleCommandsArchiveAndArchives(t *testing.T) {
 	}
 	selections := NewSessionCommandState(1, 30)
 	selections.set(scope, []storage.SessionSummary{{ID: first.ID}})
-	deps := Deps{
+	deps := Deps{CommandText: testCommandText,
 		Sessions:     svc,
 		Requests:     request.NewManager(0),
 		Turns:        turn.NewSupervisor(),
@@ -93,7 +93,7 @@ func TestArchiveCurrentConfirmationPinsSessionID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create current: %v", err)
 	}
-	deps := Deps{
+	deps := Deps{CommandText: testCommandText,
 		Sessions: svc,
 		Store:    store,
 		Scope:    func(context.Context) session.Scope { return scope },
@@ -147,7 +147,7 @@ func TestSessionTargetCommandsCompleteSessionIDsAndConfirm(t *testing.T) {
 	if _, err := svc.Archive(ctx, scope, archived.ID); err != nil {
 		t.Fatalf("archive: %v", err)
 	}
-	deps := Deps{Sessions: svc, Scope: func(context.Context) session.Scope { return scope }, SessionState: NewSessionCommandState(10, 30)}
+	deps := Deps{CommandText: testCommandText, Sessions: svc, Scope: func(context.Context) session.Scope { return scope }, SessionState: NewSessionCommandState(10, 30)}
 
 	deleteCmd := NewDelete(deps).(command.Completer)
 	prefix := first.ID[:8]

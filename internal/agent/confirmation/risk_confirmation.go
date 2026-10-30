@@ -17,39 +17,45 @@ import (
 type riskConfirmationCommand struct {
 	Name        string
 	Aliases     []string
-	Usage       string
+	Args        string
 	Description string
 }
 
 func riskConfirmationCommands() []riskConfirmationCommand {
 	return []riskConfirmationCommand{
-		{Name: "detail", Aliases: []string{"details"}, Usage: "/detail", Description: "详情"},
-		{Name: "confirm", Aliases: []string{"c"}, Usage: "/c", Description: "本次"},
-		{Name: "confirmtool", Aliases: []string{"ct"}, Usage: "/ct", Description: "本会话同工具免确认"},
-		{Name: "confirmall", Aliases: []string{"ca"}, Usage: "/ca", Description: "本会话全部免确认"},
-		{Name: "reject", Usage: "/reject [原因]", Description: "拒绝"},
-		{Name: "stop", Usage: "/stop", Description: "停止"},
+		{Name: "detail", Aliases: []string{"details"}, Args: "", Description: "详情"},
+		{Name: "confirm", Aliases: []string{"c"}, Args: "", Description: "本次"},
+		{Name: "confirmtool", Aliases: []string{"ct"}, Args: "", Description: "本会话同工具免确认"},
+		{Name: "confirmall", Aliases: []string{"ca"}, Args: "", Description: "本会话全部免确认"},
+		{Name: "reject", Args: "[原因]", Description: "拒绝"},
+		{Name: "stop", Args: "", Description: "停止"},
 	}
 }
 
-func riskConfirmationCommandHelp() string {
+func riskConfirmationCommandHelp(commandText func(string, ...string) string) string {
 	parts := make([]string, 0, len(riskConfirmationCommands()))
 	for _, cmd := range riskConfirmationCommands() {
-		parts = append(parts, cmd.Usage+" "+cmd.Description)
+		name := cmd.Name
+		for _, alias := range cmd.Aliases {
+			if len(alias) < len(name) {
+				name = alias
+			}
+		}
+		parts = append(parts, commandText(name, cmd.Args)+" "+cmd.Description)
 	}
 	return strings.Join(parts, " · ")
 }
 
-func riskConfirmationPromptText(timeout time.Duration) string {
-	text := riskConfirmationCommandHelp()
+func riskConfirmationPromptText(timeout time.Duration, commandText func(string, ...string) string) string {
+	text := riskConfirmationCommandHelp(commandText)
 	if timeout > 0 {
-		text += fmt.Sprintf("\nidle=%s → stop · /detail 重置计时", agentshare.ConfirmationWaitDurationText(timeout))
+		text += fmt.Sprintf("\nidle=%s → stop · %s 重置计时", agentshare.ConfirmationWaitDurationText(timeout), commandText("detail"))
 	}
 	return text
 }
 
-func riskConfirmationWaitingText() string {
-	return "待确认\n" + riskConfirmationCommandHelp()
+func riskConfirmationWaitingText(commandText func(string, ...string) string) string {
+	return "待确认\n" + riskConfirmationCommandHelp(commandText)
 }
 
 func riskConfirmationDetailText(confirmation turn.RiskConfirmation) string {

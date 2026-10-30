@@ -30,6 +30,20 @@ func TestDefaultWriteElbotHookSkillMarkdown(t *testing.T) {
 	}
 }
 
+func TestCommandPrefixesNormalizeInConfigurationOrder(t *testing.T) {
+	for _, tc := range []struct{ prefixes, want []string }{
+		{nil, []string{"/"}},
+		{[]string{"", "  "}, []string{"/"}},
+		{[]string{" ! ", "!!", "!", "  ", "！"}, []string{"!", "!!", "！"}},
+	} {
+		cfg := &Config{Commands: CommandsConfig{Prefixes: tc.prefixes}}
+		cfg.applyAppDefaults()
+		if !reflect.DeepEqual(cfg.Commands.Prefixes, tc.want) {
+			t.Fatalf("prefixes=%#v want=%#v", cfg.Commands.Prefixes, tc.want)
+		}
+	}
+}
+
 func TestResolvePathUsesExplicitPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "app.toml")
 	resolved, err := ResolvePath(path)

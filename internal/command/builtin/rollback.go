@@ -28,7 +28,7 @@ func NewRollback(deps Deps) command.Handler { return rollbackCommand{deps: deps}
 
 func (rollbackCommand) Info() command.Info {
 	return command.Info{
-		Name: "rollback", Usage: "/rollback [编号]",
+		Name: "rollback", Args: "[编号]",
 		Description: "撤销文件编辑",
 		Help:        "无参数列出备份；指定编号直接撤销。",
 		MinRole:     contextinfo.RoleSuperadmin,
@@ -56,19 +56,22 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 			}
 			fmt.Fprintf(&b, "%d  %s  %s  %s\n", record.ID, record.Path, formatTime(record.EditedAt), action)
 		}
-		fmt.Fprintf(&b, "\n%srollback <编号>", req.Prefix)
+		fmt.Fprintf(&b, "\n%s", c.deps.CommandText("rollback", "<编号>"))
 		return &command.Result{Content: b.String()}, nil
 	}
 	id, err := strconv.ParseUint(arg, 10, 64)
 	if err != nil || id == 0 {
-		return nil, fmt.Errorf("%srollback [编号]", req.Prefix)
+		return nil, fmt.Errorf("%s", c.deps.CommandText("rollback", "[编号]"))
 	}
 	ctx, err = c.deps.PrepareFileContext(ctx, true)
 	if errors.Is(err, session.ErrNoCurrentSession) {
 		return nil, err
 	}
 	if err != nil {
-		return &command.Result{Content: fmt.Sprintf("rollback: %v\n%srollback", err, req.Prefix)}, nil
+		if errors.Is(err, session.ErrSessionBusy) {
+			err = fmt.Errorf("%w · 等待或先 %s", err, c.deps.CommandText("stop"))
+		}
+		return &command.Result{Content: fmt.Sprintf("rollback: %v\n%s", err, c.deps.CommandText("rollback"))}, nil
 	}
 	result, err := c.deps.FileRollback.RollbackByID(ctx, id)
 	actor, _ := contextinfo.ActorFromContext(ctx)
@@ -108,7 +111,10 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 		_ = globalevents.EmitLog(ctx, record)
 	}
 	if err != nil {
-		return &command.Result{Content: fmt.Sprintf("rollback: %v\n%srollback", err, req.Prefix)}, nil
+		if errors.Is(err, session.ErrSessionBusy) {
+			err = fmt.Errorf("%w · 等待或先 %s", err, c.deps.CommandText("stop"))
+		}
+		return &command.Result{Content: fmt.Sprintf("rollback: %v\n%s", err, c.deps.CommandText("rollback"))}, nil
 	}
 	if result.Deleted {
 		return &command.Result{Content: fmt.Sprintf("deleted: %s", result.Path)}, nil

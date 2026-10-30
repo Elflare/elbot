@@ -26,7 +26,7 @@ func TestModeCommandsReturnBoundContinuation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			deps := Deps{Sessions: svc, Scope: func(context.Context) session.Scope { return tt.scope }}
+			deps := Deps{CommandText: testCommandText, Sessions: svc, Scope: func(context.Context) session.Scope { return tt.scope }}
 			result, err := tt.handler(deps).Handle(ctx, command.Request{Args: "hello world"})
 			if err != nil {
 				t.Fatalf("Handle: %v", err)
@@ -58,7 +58,7 @@ func TestChatCommandDoesNotContinueWhenHistoryBlocksSwitch(t *testing.T) {
 	if err := store.Messages().Append(ctx, &storage.Message{SessionID: work.ID, Role: storage.RoleUser, Content: "history"}); err != nil {
 		t.Fatalf("Append: %v", err)
 	}
-	result, err := NewChat(Deps{Sessions: svc, Scope: func(context.Context) session.Scope { return scope }}).Handle(ctx, command.Request{Args: "do not send"})
+	result, err := NewChat(Deps{CommandText: testCommandText, Sessions: svc, Scope: func(context.Context) session.Scope { return scope }}).Handle(ctx, command.Request{Args: "do not send"})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}

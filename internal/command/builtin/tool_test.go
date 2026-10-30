@@ -26,7 +26,7 @@ func (s *fakeToolService) Remove(_ context.Context, name string) error {
 
 func TestToolsRemoveRequiresConfirm(t *testing.T) {
 	tools := &fakeToolService{}
-	h := NewTools(Deps{Tools: tools, Skills: tools})
+	h := NewTools(Deps{CommandText: testCommandText, Tools: tools, Skills: tools})
 	result, err := h.Handle(context.Background(), command.Request{Args: "remove echo"})
 	if err != nil {
 		t.Fatal(err)
@@ -38,7 +38,7 @@ func TestToolsRemoveRequiresConfirm(t *testing.T) {
 
 func TestToolsRemoveConfirmedCallsRemove(t *testing.T) {
 	tools := &fakeToolService{}
-	h := NewTools(Deps{Tools: tools, Skills: tools})
+	h := NewTools(Deps{CommandText: testCommandText, Tools: tools, Skills: tools})
 	result, err := h.Handle(context.Background(), command.Request{Args: "remove echo --confirm"})
 	if err != nil {
 		t.Fatal(err)
@@ -50,7 +50,7 @@ func TestToolsRemoveConfirmedCallsRemove(t *testing.T) {
 
 func TestToolsCommandCompletesActionsNamesAndConfirm(t *testing.T) {
 	tools := &fakeToolService{infos: []toolshare.Info{{Name: "echo", Description: "echo skill"}, {Name: "web_search", Description: "search"}}}
-	cmd := NewTools(Deps{Tools: tools, Skills: tools}).(command.Completer)
+	cmd := NewTools(Deps{CommandText: testCommandText, Tools: tools, Skills: tools}).(command.Completer)
 
 	got := cmd.Complete(context.Background(), command.CompletionRequest{Raw: "/tools r", Prefix: "/", Name: "tools", Args: "r", Cursor: len("/tools r")})
 	if len(got) != 2 || got[0].Text != "reload" || got[1].Text != "remove" {
@@ -88,7 +88,7 @@ func TestToolsListUsesQualifiedQueryAndReturnsQueryFailure(t *testing.T) {
 			}
 			return []toolshare.Info{{Name: "qualified", Hidden: true}}, nil
 		}
-		result, err := NewTools(Deps{Tools: service}).Handle(t.Context(), command.Request{})
+		result, err := NewTools(Deps{CommandText: testCommandText, Tools: service}).Handle(t.Context(), command.Request{})
 		if fail {
 			if !errors.Is(err, failure) {
 				t.Fatalf("error=%v", err)

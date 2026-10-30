@@ -13,13 +13,14 @@ import (
 
 const hookListDescriptionLimit = 60
 
-func NewHooks(deps HookService, beginCall func(context.Context) (context.Context, func(), error)) command.Handler {
-	return hooksCommand{deps: deps, beginCall: beginCall}
+func NewHooks(deps HookService, beginCall func(context.Context) (context.Context, func(), error), commandText func(string, ...string) string) command.Handler {
+	return hooksCommand{deps: deps, beginCall: beginCall, commandText: commandText}
 }
 
 type hooksCommand struct {
-	deps      HookService                                            // 命令实际消费的管理能力。
-	beginCall func(context.Context) (context.Context, func(), error) // 根部准入、取消与在途登记。
+	commandText func(string, ...string) string                         // 根部绑定配置前缀的命令组装能力。
+	deps        HookService                                            // 命令实际消费的管理能力。
+	beginCall   func(context.Context) (context.Context, func(), error) // 根部准入、取消与在途登记。
 }
 
 type hookGroup struct {
@@ -32,7 +33,7 @@ type hookGroup struct {
 func (c hooksCommand) Info() command.Info {
 	return command.Info{
 		Name:        "hooks",
-		Usage:       "/hooks [reload|start|stop|restart|<name>]",
+		Args:        "[reload|start|stop|restart|<name>]",
 		Description: "Hook 列表与管理",
 	}
 }
@@ -58,7 +59,7 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 		return &command.Result{Content: formatHookReloadResult(report)}, nil
 	case "start", "stop", "restart":
 		if len(fields) != 2 {
-			return &command.Result{Content: fmt.Sprintf("usage: /hooks %s <id>", fields[0])}, nil
+			return &command.Result{Content: fmt.Sprintf("usage: %s", c.commandText("hooks", fields[0], "<id>"))}, nil
 		}
 		var err error
 		switch fields[0] {
@@ -75,7 +76,7 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 		return &command.Result{Content: fmt.Sprintf("hook %s: %s · OK", fields[0], fields[1])}, nil
 	default:
 		name := fields[0]
-		return &command.Result{Content: formatHookDetail(deps, name)}, nil
+		return &command.Result{Content: formatHookDetail(deps, name, c.commandText)}, nil
 	}
 }
 
@@ -229,7 +230,7 @@ func formatHookReloadResult(report share.ReloadReport) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-func formatHookDetail(deps HookService, name string) string {
+func formatHookDetail(deps HookService, name string, commandText func(string, ...string) string) string {
 	groups := collectHookGroups(deps)
 	for _, group := range groups {
 		if group.plugin && group.name == name {
@@ -243,7 +244,7 @@ func formatHookDetail(deps HookService, name string) string {
 			}
 		}
 	}
-	return fmt.Sprintf("hook %q: not found\n/hooks", name)
+	return fmt.Sprintf("hook %q: not found\n%s", name, commandText("hooks"))
 }
 
 func formatPluginHookDetail(group *hookGroup) string {

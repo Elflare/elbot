@@ -20,7 +20,7 @@ type helpCommand struct {
 func (h helpCommand) Info() command.Info {
 	return command.Info{
 		Name:        "help",
-		Usage:       "/help [command]",
+		Args:        "[command]",
 		Description: "命令帮助",
 		MinRole:     contextinfo.RoleUser,
 		Help:        "省略 command 列出命令。",
@@ -30,16 +30,16 @@ func (h helpCommand) Info() command.Info {
 func (h helpCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
 	arg := strings.TrimSpace(req.Args)
 	if arg != "" {
-		return detailedHelp(ctx, req.Prefix, h.deps, arg)
+		return detailedHelp(ctx, h.deps, arg)
 	}
 
 	var sb strings.Builder
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	for _, info := range h.deps.Router.CommandsForActor(actor) {
-		usage := commandUsage(req.Prefix, info)
+		usage := h.deps.CommandText(info.Name, info.Args)
 		sb.WriteString(fmt.Sprintf("%s · %s\n", usage, info.Description))
 	}
-	sb.WriteString("\n" + req.Prefix + "help <command>")
+	sb.WriteString("\n" + h.deps.CommandText("help", "<command>"))
 	return &command.Result{Content: sb.String()}, nil
 }
 
@@ -64,13 +64,13 @@ func (h helpCommand) Complete(ctx context.Context, req command.CompletionRequest
 	return out
 }
 
-func detailedHelp(ctx context.Context, prefix string, deps Deps, name string) (*command.Result, error) {
+func detailedHelp(ctx context.Context, deps Deps, name string) (*command.Result, error) {
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	info, ok := deps.Router.CommandInfoForActor(name, actor)
 	if !ok {
 		return &command.Result{Content: fmt.Sprintf("unk command: %s", strings.TrimSpace(name))}, nil
 	}
-	return formatCommandHelp(prefix, info), nil
+	return formatCommandHelp(deps.CommandText, info), nil
 }
 
 type HelpModule struct{}

@@ -20,7 +20,7 @@ const usageQueryLimit = 100000
 func usageInfo() command.Info {
 	return command.Info{
 		Name:        "usage",
-		Usage:       "/usage [options]",
+		Args:        "[options]",
 		Description: "用量统计",
 		MinRole:     contextinfo.RoleSuperadmin,
 		Help: strings.TrimSpace(`-d, --days <n>       天数，默认 1
@@ -44,7 +44,7 @@ func (c usageCommand) Info() command.Info { return usageInfo() }
 
 func (c usageCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
 	if wantsCommandHelp(req.Args) {
-		return formatCommandHelp(req.Prefix, usageInfo()), nil
+		return formatCommandHelp(c.deps.CommandText, usageInfo()), nil
 	}
 	query, groupBy, callRange, err := parseUsageQuery(req.Args)
 	if err != nil {

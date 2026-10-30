@@ -187,13 +187,66 @@ func TestTargetFromDeliveryScope(t *testing.T) {
 	}
 }
 
-func TestRiskKeyboard(t *testing.T) {
-	keyboard := riskKeyboard()
+func TestCommandKeyboard(t *testing.T) {
+	keyboard := commandKeyboard([]delivery.Action{
+		{Label: "详情", Command: "!detail"}, {Label: "确认", Command: "!confirm"},
+		{Label: "同工具", Command: "!confirmtool"}, {Label: "全部", Command: "!confirmall"},
+		{Label: "拒绝", Command: "!reject"}, {Label: "停止", Command: "!stop"},
+	})
 	if keyboard == nil || len(keyboard.InlineKeyboard) != 3 {
 		t.Fatalf("keyboard = %#v", keyboard)
 	}
-	if keyboard.InlineKeyboard[0][1].CallbackData != "/confirm" {
+	if keyboard.InlineKeyboard[0][1].CallbackData != "!confirm" {
 		t.Fatalf("confirm callback = %q", keyboard.InlineKeyboard[0][1].CallbackData)
+	}
+}
+
+func TestSendActionsIndependentOfTextAndOnlyOnFirstPage(t *testing.T) {
+	actions := []delivery.Action{{ID: "custom", Label: "自定义操作", Command: "!custom"}}
+	for _, format := range []string{"plain", "html", "rich"} {
+		for _, hasActions := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/actions=%t", format, hasActions), func(t *testing.T) {
+				var bodies []struct {
+					ReplyMarkup *replyMarkup `json:"reply_markup"`
+				}
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					var body struct {
+						ReplyMarkup *replyMarkup `json:"reply_markup"`
+					}
+					if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+						t.Error(err)
+					}
+					bodies = append(bodies, body)
+					w.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(w).Encode(apiResponse[sentMessage]{OK: true, Result: sentMessage{MessageID: int64(len(bodies))}})
+				}))
+				defer server.Close()
+				adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: format}, nil)
+				ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ConversationKind: contextinfo.ConversationPrivate, ConversationID: "1"}})
+				out := delivery.Text("高风险工具调用等待确认 /confirm\n" + strings.Repeat("a", telegramRichTextRunes+1))
+				if hasActions {
+					out.Text = "正文完全改写\n" + strings.Repeat("a", telegramRichTextRunes+1)
+					out.Actions = actions
+				}
+				if _, _, err := adapter.SendChat(ctx, []delivery.Output{out}); err != nil {
+					t.Fatal(err)
+				}
+				if len(bodies) < 2 {
+					t.Fatalf("pages=%d", len(bodies))
+				}
+				for i, body := range bodies {
+					if (body.ReplyMarkup != nil) != (hasActions && i == 0) {
+						t.Fatalf("page %d markup=%#v", i, body.ReplyMarkup)
+					}
+					if body.ReplyMarkup != nil {
+						button := body.ReplyMarkup.InlineKeyboard[0][0]
+						if button.Text != actions[0].Label || button.CallbackData != actions[0].Command {
+							t.Fatalf("button=%#v", button)
+						}
+					}
+				}
+			})
+		}
 	}
 }
 
@@ -209,7 +262,7 @@ func TestSendTextUsesHTMLByDefault(t *testing.T) {
 	}))
 	defer server.Close()
 	adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL}, nil)
-	receipt, _, err := adapter.sendText(context.Background(), target{ChatID: 1}, "# 标题\n\n| A | B |\n|---|---|", 0, false)
+	receipt, _, err := adapter.sendText(context.Background(), target{ChatID: 1}, "# 标题\n\n| A | B |\n|---|---|", 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +289,7 @@ func TestSendTextRichFailure(t *testing.T) {
 	}))
 	defer server.Close()
 	adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: "rich"}, nil)
-	receipt, _, err := adapter.sendText(context.Background(), target{ChatID: 1}, "# bad", 0, false)
+	receipt, _, err := adapter.sendText(context.Background(), target{ChatID: 1}, "# bad", 0, nil)
 	if err == nil || len(receipt.PlatformMessageIDs) != 0 {
 		t.Fatalf("receipt=%#v err=%v", receipt, err)
 	}
@@ -423,7 +476,7 @@ func TestTelegramBotCommands(t *testing.T) {
 	commands := telegramBotCommands([]command.Info{
 		{Name: "help", Description: "查看帮助"},
 		{Name: "bad-name", Description: "invalid"},
-		{Name: "model", Usage: "/model <name>"},
+		{Name: "model", Args: "<name>"},
 		{Name: "UPPER", Description: "invalid"},
 		{Name: "help", Description: "duplicate"},
 	})
@@ -433,7 +486,7 @@ func TestTelegramBotCommands(t *testing.T) {
 	if commands[0].Command != "help" || commands[0].Description != "查看帮助" {
 		t.Fatalf("commands[0] = %#v", commands[0])
 	}
-	if commands[1].Command != "model" || commands[1].Description != "/model <name>" {
+	if commands[1].Command != "model" || commands[1].Description != "model <name>" {
 		t.Fatalf("commands[1] = %#v", commands[1])
 	}
 }

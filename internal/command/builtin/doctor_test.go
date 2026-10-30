@@ -26,7 +26,7 @@ func (d *doctorStub) Check(context.Context) (doctor.Report, error) {
 
 func TestDoctorCommandUsesDiagnosisAndRejectsArguments(t *testing.T) {
 	service := &doctorStub{}
-	cmd := NewDoctor(Deps{Doctor: service})
+	cmd := NewDoctor(Deps{CommandText: testCommandText, Doctor: service})
 	result, err := cmd.Handle(context.Background(), command.Request{})
 	if err != nil || result.Content != "Everything is OK" || service.calls != 1 {
 		t.Fatalf("result=%#v, err=%v, calls=%d", result, err, service.calls)
@@ -48,14 +48,14 @@ func TestDoctorCommandUsesDiagnosisAndRejectsArguments(t *testing.T) {
 	if _, err := cmd.Handle(context.Background(), command.Request{}); !errors.Is(err, service.err) {
 		t.Fatalf("error = %v", err)
 	}
-	if _, err := NewDoctor(Deps{}).Handle(context.Background(), command.Request{}); err == nil {
+	if _, err := NewDoctor(Deps{CommandText: testCommandText}).Handle(context.Background(), command.Request{}); err == nil {
 		t.Fatal("unconfigured doctor reported success")
 	}
 }
 
 func TestDoctorRegistrationPermissionsHelpAndCompletion(t *testing.T) {
 	router := command.NewRouter([]string{"/"})
-	deps := Deps{Router: router, Doctor: &doctorStub{}}
+	deps := Deps{CommandText: testCommandText, Router: router, Doctor: &doctorStub{}}
 	if err := RegisterDefaultModules(router, deps); err != nil {
 		t.Fatal(err)
 	}

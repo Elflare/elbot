@@ -28,7 +28,7 @@ func (c modelCommand) Info() command.Info {
 func modelCommandInfo() command.Info {
 	return command.Info{
 		Name:        "model",
-		Usage:       "/model [--chat|--work|--elwisp1|--elwisp2|--elwisp3|--compact|--naming] <name or number>",
+		Args:        "[--chat|--work|--elwisp1|--elwisp2|--elwisp3|--compact|--naming] <name or number>",
 		Description: "切换模型",
 		Help:        "省略目标=当前模式；模型=编号、名称或 provider/model。\n--compact 压缩 · --naming 命名 · --elwisp1/2/3 Elnis 槽位",
 	}
@@ -38,11 +38,11 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 	info := c.Info()
 	deps := c.deps
 	if wantsCommandHelp(req.Args) {
-		return formatCommandHelp(req.Prefix, info), nil
+		return formatCommandHelp(c.deps.CommandText, info), nil
 	}
 	args, target, err := parseModelArgs(req.Args)
 	if err != nil {
-		return &command.Result{Content: err.Error()}, nil
+		return &command.Result{Content: fmt.Sprintf("%v\n%s", err, deps.CommandText(info.Name, info.Args))}, nil
 	}
 	var selected modelmgr.ModelOption
 	switch target {
@@ -176,7 +176,7 @@ func optionOnlyModelArgs(args string) bool {
 func NewCheckModel(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:        "checkmodel",
-		Usage:       "/checkmodel [--fresh|--refresh] [query]",
+		Args:        "[--fresh|--refresh] [query]",
 		Description: "模型列表/搜索",
 		Aliases:     []string{"models"},
 		Help:        "--fresh, --refresh 重载厂商配置并刷新模型列表",
@@ -313,7 +313,7 @@ func parseModelArgs(args string) (string, modelTarget, error) {
 		}
 		if nextTarget != "" {
 			if target != modelTargetCurrent {
-				return "", "", fmt.Errorf("usage: /model [--chat|--work|--compact|--naming] <name or number>")
+				return "", "", fmt.Errorf("model target 重复")
 			}
 			target = nextTarget
 			continue

@@ -66,7 +66,7 @@ func TestUsageDefaultQueryByModel(t *testing.T) {
 		makeUsageEntry(time.Date(2026, 7, 1, 12, 0, 0, 0, time.Local), "openai", "gpt-4o", "sess-2", 500, 50, 550, 0, 300),
 	}
 	service := &fakeLogService{entries: entries}
-	result, err := NewUsage(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: ""})
+	result, err := NewUsage(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: ""})
 	if err != nil {
 		t.Fatalf("usage handle: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestUsageQueryByDay(t *testing.T) {
 		makeUsageEntry(time.Date(2026, 7, 1, 12, 0, 0, 0, time.Local), "openai", "gpt-4o", "sess-3", 300, 50, 350, 0, 300),
 	}
 	service := &fakeLogService{entries: entries}
-	result, err := NewUsage(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: "--by day -d 7"})
+	result, err := NewUsage(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: "--by day -d 7"})
 	if err != nil {
 		t.Fatalf("usage handle: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestUsageQueryBySession(t *testing.T) {
 		makeUsageEntry(time.Date(2026, 7, 1, 12, 0, 0, 0, time.Local), "openai", "gpt-4o", "sess-2", 300, 50, 350, 0, 300),
 	}
 	service := &fakeLogService{entries: entries}
-	result, err := NewUsage(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: "--by session"})
+	result, err := NewUsage(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: "--by session"})
 	if err != nil {
 		t.Fatalf("usage handle: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestUsageQueryBySession(t *testing.T) {
 
 func TestUsageFiltersByModel(t *testing.T) {
 	service := &fakeLogService{entries: nil}
-	_, err := NewUsage(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: "-m gpt-4o"})
+	_, err := NewUsage(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: "-m gpt-4o"})
 	if err != nil {
 		t.Fatalf("usage handle: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestUsageFiltersByModel(t *testing.T) {
 
 func TestUsageFiltersBySession(t *testing.T) {
 	service := &fakeLogService{entries: nil}
-	_, err := NewUsage(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: "-s sess-1"})
+	_, err := NewUsage(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: "-s sess-1"})
 	if err != nil {
 		t.Fatalf("usage handle: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestUsageFiltersBySession(t *testing.T) {
 
 func TestUsageNoData(t *testing.T) {
 	service := &fakeLogService{entries: nil}
-	result, err := NewUsage(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: ""})
+	result, err := NewUsage(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: ""})
 	if err != nil {
 		t.Fatalf("usage handle: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestUsageSinceFilter(t *testing.T) {
 		makeUsageEntry(time.Date(2026, 7, 1, 10, 0, 0, 0, time.Local), "deepseek", "deepseek-v4", "sess-1", 1000, 200, 1200, 0, 1000),
 	}
 	service := &fakeLogService{entries: entries}
-	_, err := NewUsage(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: "--since 2h"})
+	_, err := NewUsage(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: "--since 2h"})
 	if err != nil {
 		t.Fatalf("usage handle: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestUsageSinceFilter(t *testing.T) {
 
 func TestUsageInvalidByOption(t *testing.T) {
 	service := &fakeLogService{entries: nil}
-	_, err := NewUsage(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: "--by foo"})
+	_, err := NewUsage(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: "--by foo"})
 	if err == nil || !strings.Contains(err.Error(), "must be model, day or session") {
 		t.Fatalf("expected error, got: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestUsageInvalidByOption(t *testing.T) {
 
 func TestUsageShortFlags(t *testing.T) {
 	service := &fakeLogService{entries: nil}
-	_, err := NewUsage(Deps{Logs: service}).Handle(context.Background(), command.Request{Args: "-d 7 -m gpt-4o -s sess-1"})
+	_, err := NewUsage(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: "-d 7 -m gpt-4o -s sess-1"})
 	if err != nil {
 		t.Fatalf("usage handle: %v", err)
 	}
@@ -291,7 +291,7 @@ func TestUsageRejectsInvalidCallRanges(t *testing.T) {
 	} {
 		t.Run(args, func(t *testing.T) {
 			service := &fakeLogService{}
-			_, err := NewUsage(Deps{Logs: service}).Handle(t.Context(), command.Request{Args: args})
+			_, err := NewUsage(Deps{CommandText: testCommandText, Logs: service}).Handle(t.Context(), command.Request{Args: args})
 			if err == nil || !strings.Contains(err.Error(), "-n") {
 				t.Fatalf("expected range error, got %v", err)
 			}
@@ -360,7 +360,7 @@ func TestUsageCallRangesWithLogReader(t *testing.T) {
 		{name: "no matches", args: "-n 1 -m missing", notice: "nil"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := NewUsage(Deps{Logs: logging.Reader{Dir: dir}}).Handle(t.Context(), command.Request{Args: tc.args})
+			result, err := NewUsage(Deps{CommandText: testCommandText, Logs: logging.Reader{Dir: dir}}).Handle(t.Context(), command.Request{Args: tc.args})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -403,7 +403,7 @@ func TestUsageCallRangePreservesUnknownAndDamage(t *testing.T) {
 	} {
 		t.Run(tc.args, func(t *testing.T) {
 			service := &fakeLogService{entries: []logging.LogEntry{entry}, damagedCount: 2}
-			result, err := NewUsage(Deps{Logs: service}).Handle(t.Context(), command.Request{Args: tc.args})
+			result, err := NewUsage(Deps{CommandText: testCommandText, Logs: service}).Handle(t.Context(), command.Request{Args: tc.args})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -414,14 +414,14 @@ func TestUsageCallRangePreservesUnknownAndDamage(t *testing.T) {
 			}
 		})
 	}
-	result, err := NewUsage(Deps{Logs: &fakeLogService{damagedCount: 2}}).Handle(t.Context(), command.Request{Args: "-n 1"})
+	result, err := NewUsage(Deps{CommandText: testCommandText, Logs: &fakeLogService{damagedCount: 2}}).Handle(t.Context(), command.Request{Args: "-n 1"})
 	if err != nil || result.Content != "nil\nwarn: damaged=2 · usage incomplete" {
 		t.Fatalf("result = %+v, err = %v", result, err)
 	}
 }
 
 func TestUsageCallRangeHelp(t *testing.T) {
-	result, err := NewUsage(Deps{}).Handle(t.Context(), command.Request{Args: "--help"})
+	result, err := NewUsage(Deps{CommandText: testCommandText}).Handle(t.Context(), command.Request{Args: "--help"})
 	if err != nil {
 		t.Fatal(err)
 	}

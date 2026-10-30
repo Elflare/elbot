@@ -28,7 +28,8 @@ type ConfirmationOutput interface {
 
 // ConfirmationCoordinatorDeps declares only the capabilities consumed by ConfirmationCoordinator.
 type ConfirmationCoordinatorDeps struct {
-	Sessions interface {
+	CommandText func(string, ...string) string // 根部绑定配置首个前缀的命令组装能力。
+	Sessions    interface {
 		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
 		EnterActivation(context.Context, session.Scope, ...string) (context.Context, func(), error)
 		RecordActivity(context.Context, *session.Binding) error

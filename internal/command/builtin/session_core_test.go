@@ -62,7 +62,7 @@ func TestStatusSessionMarkers(t *testing.T) {
 			requests := request.NewManager(0)
 			_, _, done := requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn, Label: "chat"})
 			defer done()
-			result, err := NewStatus(Deps{
+			result, err := NewStatus(Deps{CommandText: testCommandText,
 				Sessions: svc, Models: models, Requests: requests, Turns: turn.NewSupervisor(),
 				Store: store, Scope: func(context.Context) session.Scope { return scope },
 			}).Handle(ctx, command.Request{})
@@ -96,15 +96,15 @@ func TestFormatTimeForDisplay(t *testing.T) {
 }
 
 func TestFormatSessionsPageShowsNextCommand(t *testing.T) {
-	content := formatSessionsPage([]storage.SessionSummary{{ID: "s1", Title: "one", UpdatedAt: time.Date(2026, 1, 1, 1, 2, 3, 0, time.UTC)}}, "", 1, "foo", true, "/sessions")
+	content := formatSessionsPage([]storage.SessionSummary{{ID: "s1", Title: "one", UpdatedAt: time.Date(2026, 1, 1, 1, 2, 3, 0, time.UTC)}}, "", 1, "foo", true, testCommandText, "sessions")
 	if !strings.Contains(content, "page=1") || !strings.Contains(content, "next: /sessions 2 foo") {
 		t.Fatalf("content = %q", content)
 	}
-	resume := formatSessionsPage([]storage.SessionSummary{{ID: "s1", Title: "one", UpdatedAt: time.Date(2026, 1, 1, 1, 2, 3, 0, time.UTC)}}, "", 2, "", false, "/resume --page")
+	resume := formatSessionsPage([]storage.SessionSummary{{ID: "s1", Title: "one", UpdatedAt: time.Date(2026, 1, 1, 1, 2, 3, 0, time.UTC)}}, "", 2, "", false, testCommandText, "resume")
 	if !strings.Contains(resume, "prev: /resume --page 1") {
 		t.Fatalf("resume content = %q", resume)
 	}
-	resumable := formatResumableSessionsPage([]storage.SessionSummary{{ID: "s11", Title: "eleven"}}, 2, 10, false)
+	resumable := formatResumableSessionsPage([]storage.SessionSummary{{ID: "s11", Title: "eleven"}}, 2, 10, false, testCommandText)
 	if !strings.Contains(resumable, "[11] eleven") || !strings.Contains(resumable, "prev: /resume --page 1") {
 		t.Fatalf("resumable content = %q", resumable)
 	}

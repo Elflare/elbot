@@ -11,13 +11,13 @@ import (
 
 func TestHelpCommandShowsDetailedHelp(t *testing.T) {
 	router := command.NewRouter([]string{"/"})
-	deps := Deps{Router: router}
+	deps := Deps{CommandText: testCommandText, Router: router}
 	if err := RegisterFactories(router, deps, NewHelp); err != nil {
 		t.Fatalf("register help: %v", err)
 	}
 	if err := router.Register(command.NewFunc(command.Info{
 		Name:        "audit",
-		Usage:       "/audit [options]",
+		Args:        "[options]",
 		Description: "Show audit events.",
 		Aliases:     []string{"aud"},
 		Help:        "Options:\n  --event <name>",
@@ -37,16 +37,52 @@ func TestHelpCommandShowsDetailedHelp(t *testing.T) {
 	}
 }
 
+func TestCommandsUseConfiguredPrefixInsteadOfRequestPrefix(t *testing.T) {
+	router := command.NewRouter([]string{"!", "!!"})
+	commandText := func(name string, args ...string) string { return command.Format("!", name, args...) }
+	tools := &fakeToolService{}
+	deps := Deps{CommandText: commandText, Router: router, Tools: tools, Skills: tools}
+	if err := RegisterDefaultModules(router, deps); err != nil {
+		t.Fatal(err)
+	}
+	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	for _, tc := range []struct{ input, want string }{
+		{"!!help", "!stop [request_id|number]"},
+		{"!!help model", "!model [--chat"},
+		{"!!tools remove echo", "!tools remove echo --confirm"},
+		{"!!doctor invalid", "usage: !doctor"},
+	} {
+		result, err := router.Dispatch(ctx, tc.input)
+		if err != nil {
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("%s: %v", tc.input, err)
+			}
+			continue
+		}
+		if result == nil || !strings.Contains(result.Content, tc.want) || strings.Contains(result.Content, "!!") {
+			t.Fatalf("%s: %+v", tc.input, result)
+		}
+	}
+	page := formatSessionsPage(nil, "", 2, "query text", true, commandText, "sessions")
+	if !strings.Contains(page, "prev: !sessions 1 query text") || !strings.Contains(page, "next: !sessions 3 query text") {
+		t.Fatal(page)
+	}
+	resume := formatResumableSessionsPage(nil, 2, 10, true, commandText)
+	if !strings.Contains(resume, "prev: !resume --page 1") || !strings.Contains(resume, "next: !resume --page 3") {
+		t.Fatal(resume)
+	}
+}
+
 func TestHelpCommandFiltersByActor(t *testing.T) {
 	router := command.NewRouter([]string{"/"})
-	deps := Deps{Router: router}
+	deps := Deps{CommandText: testCommandText, Router: router}
 	if err := RegisterFactories(router, deps, NewHelp); err != nil {
 		t.Fatalf("register help: %v", err)
 	}
-	if err := router.Register(command.NewFunc(command.Info{Name: "public", Usage: "/public", Description: "Public command.", MinRole: contextinfo.RoleUser}, nil)); err != nil {
+	if err := router.Register(command.NewFunc(command.Info{Name: "public", Args: "", Description: "Public command.", MinRole: contextinfo.RoleUser}, nil)); err != nil {
 		t.Fatalf("register public: %v", err)
 	}
-	if err := router.Register(command.NewFunc(command.Info{Name: "secret", Usage: "/secret", Description: "Private command.", Aliases: []string{"sec"}}, nil)); err != nil {
+	if err := router.Register(command.NewFunc(command.Info{Name: "secret", Args: "", Description: "Private command.", Aliases: []string{"sec"}}, nil)); err != nil {
 		t.Fatalf("register secret: %v", err)
 	}
 

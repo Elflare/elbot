@@ -89,7 +89,7 @@ func TestResumeAndForkTruncateHistoryWithoutChangingMessages(t *testing.T) {
 	if _, err := svc.Create(ctx, scope, session.CreateRequest{Title: "current"}); err != nil {
 		t.Fatalf("create current: %v", err)
 	}
-	deps := Deps{
+	deps := Deps{CommandText: testCommandText,
 		Sessions: svc,
 		Requests: request.NewManager(0),
 		Turns:    turn.NewSupervisor(),
@@ -140,7 +140,7 @@ func TestResumeCommandCompletesSessionIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create second: %v", err)
 	}
-	cmd := NewResume(Deps{Sessions: svc, Scope: func(context.Context) session.Scope { return scope }, SessionState: NewSessionCommandState(10, 30)}).(command.Completer)
+	cmd := NewResume(Deps{CommandText: testCommandText, Sessions: svc, Scope: func(context.Context) session.Scope { return scope }, SessionState: NewSessionCommandState(10, 30)}).(command.Completer)
 
 	got := cmd.Complete(ctx, command.CompletionRequest{Raw: "/resume ", Prefix: "/", Name: "resume", Args: "", Cursor: len("/resume ")})
 	if len(got) != 1 || got[0].Text != first.ID {
@@ -175,7 +175,7 @@ func TestResumeCommandEmitsAudit(t *testing.T) {
 	}, signal.ConnectOptions{})
 	defer connection.Disconnect()
 	selections := NewSessionCommandState(10, 30)
-	deps := Deps{
+	deps := Deps{CommandText: testCommandText,
 		Sessions:     svc,
 		Store:        store,
 		Scope:        func(context.Context) session.Scope { return scope },
@@ -223,7 +223,7 @@ func TestResumeCommandUsesPinnedNonCurrentGlobalIndex(t *testing.T) {
 		t.Fatalf("create current: %v", err)
 	}
 
-	deps := Deps{Sessions: svc, Store: store, Scope: func(context.Context) session.Scope { return scope }, SessionState: NewSessionCommandState(1, 30)}
+	deps := Deps{CommandText: testCommandText, Sessions: svc, Store: store, Scope: func(context.Context) session.Scope { return scope }, SessionState: NewSessionCommandState(1, 30)}
 	page, err := NewResume(deps).Handle(ctx, command.Request{})
 	if err != nil {
 		t.Fatalf("resume page: %v", err)
@@ -279,7 +279,7 @@ func TestSessionsCommandCLIListsAllPlatformOwners(t *testing.T) {
 		t.Fatalf("create qq session: %v", err)
 	}
 	cliScope := session.Scope{ActorID: "cli:local", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
-	deps := Deps{
+	deps := Deps{CommandText: testCommandText,
 		Sessions:     svc,
 		Scope:        func(context.Context) session.Scope { return cliScope },
 		SessionState: NewSessionCommandState(20, 30),
@@ -346,7 +346,7 @@ func TestForkMessagesUseForkContextAndForkShowsHistory(t *testing.T) {
 			t.Fatalf("append message: %v", err)
 		}
 	}
-	deps := Deps{
+	deps := Deps{CommandText: testCommandText,
 		Sessions: svc,
 		Requests: request.NewManager(0),
 		Turns:    turn.NewSupervisor(),

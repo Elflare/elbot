@@ -13,7 +13,7 @@ func TestRouterDispatchAndHelpInfo(t *testing.T) {
 	called := false
 	if err := r.Register(NewFunc(Info{
 		Name:        "ping",
-		Usage:       "/ping [text]",
+		Args:        "[text]",
 		Description: "Ping command.",
 		Aliases:     []string{"p"},
 	}, func(ctx context.Context, req Request) (*Result, error) {
@@ -51,7 +51,7 @@ func TestRouterRejectsDuplicateAlias(t *testing.T) {
 
 func TestRouterCommandInfoFindsPrimaryAndAlias(t *testing.T) {
 	r := NewRouter([]string{"/"})
-	if err := r.Register(NewFunc(Info{Name: "audit", Usage: "/audit", Aliases: []string{"aud"}, Help: "details"}, nil)); err != nil {
+	if err := r.Register(NewFunc(Info{Name: "audit", Args: "", Aliases: []string{"aud"}, Help: "details"}, nil)); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 	for _, name := range []string{"audit", "aud", "/audit"} {
@@ -81,6 +81,18 @@ func TestRouterLongestPrefixWins(t *testing.T) {
 	parsed := r.Parse("//help")
 	if !parsed.OK || parsed.Prefix != "//" || parsed.Name != "help" {
 		t.Fatalf("parsed = %#v", parsed)
+	}
+}
+
+func TestRouterAdviceUsesFirstConfiguredPrefix(t *testing.T) {
+	prefixes := []string{"!", "!!"}
+	r := NewRouter(prefixes)
+	result, err := r.Dispatch(t.Context(), "!!missing")
+	if err != nil || result.Content != "unk command: !!missing\n!help" {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	if prefixes[0] != "!" || prefixes[1] != "!!" {
+		t.Fatalf("configuration reordered: %#v", prefixes)
 	}
 }
 
