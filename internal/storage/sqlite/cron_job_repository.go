@@ -241,7 +241,7 @@ INSERT INTO cron_jobs (
 		job.Name,
 		job.Handler,
 		job.Schedule,
-		boolInt(job.Enabled),
+		job.Enabled,
 		nullString(job.Metadata),
 		nullTime(job.LastRunAt),
 		nullTime(job.NextRunAt),
@@ -262,7 +262,7 @@ SET handler = ?, schedule = ?, enabled = ?, metadata = ?, next_run_at = ?, updat
 	args := []any{
 		job.Handler,
 		job.Schedule,
-		boolInt(job.Enabled),
+		job.Enabled,
 		nullString(job.Metadata),
 		nullTime(job.NextRunAt),
 		storage.FormatTime(job.UpdatedAt),

@@ -269,12 +269,7 @@ func ResolvePath(path string) (string, error) {
 			return "", fmt.Errorf("stat default config %q: %w", defaultPath, err)
 		}
 	}
-	if generatedPath, err := EnsurePlatformDefaults(); err == nil {
-		return generatedPath, nil
-	} else if _, ok := platformDefaultConfigPath(); ok {
-		return "", err
-	}
-	return "", fmt.Errorf("platform config dir is unavailable")
+	return EnsurePlatformDefaults()
 }
 
 func platformDefaultConfigPath() (string, bool) {
@@ -455,32 +450,13 @@ func Default() *Config {
 func defaultAppConfig() *Config {
 	cfg := &Config{}
 	cfg.applyAppDefaults()
-	cfg.Session.IdleExpiration = defaultSessionIdleExpirationConfig()
-	return cfg
-}
-
-func defaultSessionIdleExpirationConfig() SessionIdleExpirationConfig {
-	return SessionIdleExpirationConfig{
+	cfg.Session.IdleExpiration = SessionIdleExpirationConfig{
 		GroupUserTTLMinutes:         10,
 		GroupSuperadminTTLMinutes:   10,
 		PrivateUserTTLMinutes:       10,
 		PrivateSuperadminTTLMinutes: 0,
 	}
-}
-
-func (c *Config) applySessionIdleExpirationDefaults() {
-	if c.Session.IdleExpiration.GroupUserTTLMinutes < 0 {
-		c.Session.IdleExpiration.GroupUserTTLMinutes = 0
-	}
-	if c.Session.IdleExpiration.GroupSuperadminTTLMinutes < 0 {
-		c.Session.IdleExpiration.GroupSuperadminTTLMinutes = 0
-	}
-	if c.Session.IdleExpiration.PrivateUserTTLMinutes < 0 {
-		c.Session.IdleExpiration.PrivateUserTTLMinutes = 0
-	}
-	if c.Session.IdleExpiration.PrivateSuperadminTTLMinutes < 0 {
-		c.Session.IdleExpiration.PrivateSuperadminTTLMinutes = 0
-	}
+	return cfg
 }
 
 func loadTOML(path string, out any) error {
@@ -568,7 +544,10 @@ func (c *Config) applyAppDefaults() {
 		c.Platform = PlatformConfig{}
 	}
 	c.applyElnisDefaults()
-	c.applySessionIdleExpirationDefaults()
+	c.Session.IdleExpiration.GroupUserTTLMinutes = max(c.Session.IdleExpiration.GroupUserTTLMinutes, 0)
+	c.Session.IdleExpiration.GroupSuperadminTTLMinutes = max(c.Session.IdleExpiration.GroupSuperadminTTLMinutes, 0)
+	c.Session.IdleExpiration.PrivateUserTTLMinutes = max(c.Session.IdleExpiration.PrivateUserTTLMinutes, 0)
+	c.Session.IdleExpiration.PrivateSuperadminTTLMinutes = max(c.Session.IdleExpiration.PrivateSuperadminTTLMinutes, 0)
 	if c.Maintenance.LogCleanup.Schedule == "" {
 		c.Maintenance.LogCleanup.Schedule = "0 3 * * *"
 	}

@@ -239,23 +239,19 @@ func assetReadIssue(asset DefaultAsset, path string, err error) Issue {
 
 func (r *Inspection) add(issues ...Issue) {
 	for _, issue := range issues {
-		skip := false
-		for _, previous := range r.Issues {
+		if slices.ContainsFunc(r.Issues, func(previous Issue) bool {
 			same := previous.Path == issue.Path && previous.Level == issue.Level && previous.Topic == issue.Topic && previous.Message == issue.Message && slices.Equal(previous.Field, issue.Field)
 			parent := previous.Path == issue.Path && previous.Missing && len(previous.Field) > 0 && len(issue.Field) > len(previous.Field) && hasPrefix(issue.Field, previous.Field)
-			if same || parent {
-				skip = true
-				break
-			}
+			return same || parent
+		}) {
+			continue
 		}
-		if !skip {
-			if issue.Missing && len(issue.Field) > 0 {
-				r.Issues = slices.DeleteFunc(r.Issues, func(previous Issue) bool {
-					return previous.Path == issue.Path && previous.Missing && len(previous.Field) > len(issue.Field) && hasPrefix(previous.Field, issue.Field)
-				})
-			}
-			r.Issues = append(r.Issues, issue)
+		if issue.Missing && len(issue.Field) > 0 {
+			r.Issues = slices.DeleteFunc(r.Issues, func(previous Issue) bool {
+				return previous.Path == issue.Path && previous.Missing && len(previous.Field) > len(issue.Field) && hasPrefix(previous.Field, issue.Field)
+			})
 		}
+		r.Issues = append(r.Issues, issue)
 	}
 }
 

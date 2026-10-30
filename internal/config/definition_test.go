@@ -195,6 +195,42 @@ func TestInspectionAndLoadShareDefaultsAndOverrides(t *testing.T) {
 	}
 }
 
+func TestAssetPathDefaultsAndInvalidReferences(t *testing.T) {
+	main := filepath.Join(t.TempDir(), "app.toml")
+	for _, asset := range DefaultAssets() {
+		if len(asset.Reference) == 0 {
+			continue
+		}
+		for _, tc := range []struct {
+			name, content, path string
+		}{
+			{"missing parent", "", asset.Path},
+			{"missing field", "[" + asset.Reference[0] + "]", asset.Path},
+			{"empty", keyPath(asset.Reference) + "=''", asset.Path},
+			{"relative", keyPath(asset.Reference) + "='custom/file'", "custom/file"},
+			{"absolute", keyPath(asset.Reference) + "='" + main + "'", main},
+			{"invalid parent", asset.Reference[0] + "=123", ""},
+			{"invalid field", keyPath(asset.Reference) + "=123", ""},
+			{"invalid TOML", "[", ""},
+		} {
+			t.Run(asset.Path+"/"+tc.name, func(t *testing.T) {
+				state := newConfiguration(main, nil)
+				doc := &document{data: []byte(tc.content)}
+				decodeDocument(doc, nil)
+				state.documents[state.root] = doc
+				path, err := state.assetPath(asset.Path)
+				if tc.path == "" {
+					if err == nil || path != "" {
+						t.Fatalf("guessed dependent path: %q, %v", path, err)
+					}
+				} else if err != nil || path != resolveRelative(main, tc.path) {
+					t.Fatalf("path = %q, err = %v; want %q", path, err, tc.path)
+				}
+			})
+		}
+	}
+}
+
 func TestExplicitModuleDefinition(t *testing.T) {
 	type module struct {
 		Value string `toml:"value"`

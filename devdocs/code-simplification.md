@@ -45,7 +45,7 @@
 
 按包记录具体问题、精简建议、讨论结论与验证结果，确认方案后再实施。任务入口见 [任务清单](tasks.md)。
 
-当前进度：`internal/app`、`internal/delivery`、`internal/turn`、`internal/tool/builtin`、`internal/memory/resident`、`internal/hook/rules`、`internal/storage/sqlite` 已完成一轮审查与调整；`internal/config` 已完成第二轮精简；`internal/hook/runtime` 已完成第三轮精简，其余包进度分别记录。
+当前进度：`internal/app`、`internal/delivery`、`internal/turn`、`internal/tool/builtin`、`internal/memory/resident`、`internal/hook/rules`、`internal/storage/sqlite` 已完成一轮审查与调整；`internal/config` 已完成第三轮精简；`internal/hook/runtime` 已完成第三轮精简，其余包进度分别记录。
 
 ### delivery
 
@@ -95,6 +95,9 @@
 - TOML 解析错误统一由 `wrapDecodeError` 包装；厂商配置在定义的 Apply 中直接赋值，维护任务共用 `MaintenanceCleanupConfig`。无消费者的 `ModelConfigs` 及冗余私有包装已删除。
 - `ruleAt` 通过局部递归只访问匹配前缀的分支；`CheckRules` 递归传递完整路径与 Topic，直接生成诊断，不再改写已有消息。
 - 模块子树只解码一次，按声明检查类型与未知字段；模块规则统一由根文档检查，诊断直接使用完整字段路径，不展示重编码子树的行列号。资产排序只读遍历包内资产列表。
+- 资产定位以资产声明提供默认路径，字段类型错误仍阻断定位；删除无效路径错误缓存与来源空前缀记录，由 Source 统一回退主配置来源。
+- 平台路径初始化直接返回现有入口的结果；会话超时在默认配置中初始化，在应用默认值时归零负数，保留显式零禁用语义。
+- 状态模型槽只查询一次存在性；诊断通过 ContainsFunc 提前跳过重复或被缺失父节点覆盖的条目；厂商刷新通过 loadTOML 单次解码。
 - 仍为原有 8 个生产文件；公开接口、配置格式、默认值与默认资产保持现有契约。
 
 ### storage/sqlite
@@ -103,12 +106,13 @@
 - 原生待处理输入复用扫描函数，工具批次复用已解码 metadata，时间空值统一使用 nullTime；聊天历史反转使用 slices.Reverse，删除 Cron 无效参数和 nil 分支。
 - 媒体回收使用 ClaimOrphans／FinishDelete，删除无业务调用的 DeleteOrphans 及接口声明。Session 列表在错误路径关闭 rows，并在读取消息摘录前显式释放连接。
 - 回归先复现损坏时间导致 List 返回后仍占用唯一连接，修复后验证连接释放及后续查询。已执行 gofmt，Storage 包测试、SQLite 竞态测试和 go test ./... 全仓测试均通过。
+- 第二轮直接绑定布尔 SQL 参数，媒体 JSON 单次解码，分批查询使用 slices.Chunk；输入消费和消息摘录的固定条件移至循环外，错误返回复用已有 rows 关闭。新增非法媒体 JSON 事务回滚、无 checkpoint 消费拒绝及 500／501 条分批回归；gofmt、Storage 包测试与 SQLite 竞态测试通过。
 
 ## 已完成精简
 
 | 包 | 完成情况 | 非测试 Go 行数 |
 | --- | --- | --- |
-| `internal/storage/sqlite` | 共用连接初始化、扫描和已解析数据，删除遗留媒体接口，修复列表错误路径连接泄漏。 | 4,768 → 4,717，减少 51 行（约 1.1%），仍为 17 个生产文件；连同 Storage 接口声明共减少 52 行。 |
+| `internal/storage/sqlite` | 已完成第二轮；共用连接和扫描，删除遗留接口与重复转换、校验及关闭，简化分批和循环判断。 | 本轮 4,717 → 4,708，减少 9 行；相对初始基线累计减少 60 行（约 1.3%），仍为 17 个生产文件；连同 Storage 接口声明累计减少 61 行。 |
 | `internal/app` | 已完成一轮；本文件未登记具体改动及对比数据。 | 基线为 719 行。 |
 | `internal/delivery` | 统一发送与投递信息契约、复用目标校验结果、收拢降级文案并清理重复日志处理。 | 479 → 415，减少 64 行（约 13.4%）。 |
 | `internal/turn`（含子包） | 完成生命周期与确认等待职责拆分、新接口及调用方迁移、刷新与过期原子裁决；删除旧接口测试，保留有效行为覆盖。 | 932 → 1,010，增加 78 行（约 8.4%）；当前共 11 个生产文件，含装配与内部契约，未实现总代码量下降。 |
@@ -116,7 +120,7 @@
 | `internal/tool/builtin` | 统一日志截断、复用 Shell AST、合并分支收尾、清理无效状态并显式注入依赖。 | 7,311 → 6,988，减少 323 行（约 4.4%），仍为 21 个生产文件。 |
 | `internal/memory/resident` | 删除重复身份与路径检查，合并修改和长度校验，缓存仅在提交修改前复制列表。 | 345 → 315，减少 30 行（约 8.7%），仍为 1 个生产文件。 |
 | `internal/hook/rules` | 已完成第二轮；统一路径与 stderr 入口校验，删除无效等待状态，快捷输出直接比较零值，协议日志复用错误正文。 | 本轮 2,152 → 2,141，减少 11 行；相对初始基线 2,640 行累计减少 499 行（约 18.9%），仍为 8 个生产文件。 |
-| `internal/config` | 已完成第二轮；规则查询只走匹配分支，诊断直接生成完整路径，模块单次解码并由根文档统一检查规则。 | 本轮 2,579 → 2,580，增加 1 行；相对初始基线 2,611 行累计减少 31 行（约 1.2%），仍为 8 个生产文件。 |
+| `internal/config` | 已完成第三轮；删除无效路径状态与重复兜底，内联会话超时默认值，简化诊断分支，厂商刷新单次解码。 | 本轮 2,580 → 2,542，减少 38 行；相对初始基线 2,611 行累计减少 69 行（约 2.6%），仍为 8 个生产文件。 |
 
 delivery 本轮连同 Hook 调用方共净减 70 行非测试 Go 代码，未拆分文件。回归覆盖表情名称、发送时机重设与复制隔离、目标选择与冲突、Hook 来源、媒体降级及日志与业务结果独立；已执行 `gofmt`，相关包测试与 `go test ./...` 通过。
 
@@ -134,6 +138,6 @@ Tool 竞态检查中除 execution 外的包均通过，无数据竞争报告。e
 
 memory/resident 保留原有行为覆盖，新增拒绝写入不污染缓存与其他用户、无变化不落盘及时间戳不变、空文件与外部编辑内容追加的回归。测试代码增加 121 行，本轮 Go 代码合计增加 91 行。已执行 `gofmt`；resident、Tool 根包及 Agent dialogue／execution 包测试，以及 `GORACE=atexit_sleep_ms=0 go test -race ./internal/memory/resident` 均通过。
 
-config 回归覆盖状态覆盖与来源一致性、规则声明顺序与属性继承、可选父节点、特殊键名与完整消息路径，以及模块类型错误、未知字段排序、检查开关和规则单次报告。首轮测试代码增加 51 行、Go 代码合计增加 19 行；第二轮测试代码增加 70 行、Go 代码合计增加 71 行。第二轮主要减少重复解码、规则展开和消息加工，未实现物理行数下降。已执行 `gofmt`，config、doctor 包测试及 `go test ./...` 全仓测试通过。
+config 回归覆盖状态覆盖与来源一致性、规则继承、模块类型与未知字段检查、资产路径缺省及错误引用、超时缺省与显式禁用、父子诊断顺序、厂商解析错误位置和凭据优先级。第三轮生产代码净减 38 行，测试代码增加 77 行，Go 代码合计增加 39 行；已执行 `gofmt`，`go test ./internal/config ./internal/doctor` 及本轮 diff 检查通过。
 
 hook/rules 回归先复现并修复多角色命中时重复执行、Worker 角色条件绕过和角色别名未归一化；覆盖跨文件最终命名与动作环境、日志身份缺失和事件覆盖、普通文本与动作模板、TOML 原生诊断及错误链。首轮测试代码净增 207 行、Go 代码合计净减 281 行；第二轮补充路径越界与归一化、stderr 分段与空行、快捷输出冲突、协议错误链与日志一致性回归，测试净增 67 行、Go 代码合计增加 56 行。已执行 `gofmt`，`go test ./internal/hook/rules`、`go test -race ./internal/hook/rules` 与 `go test ./internal/hook/...` 均通过。

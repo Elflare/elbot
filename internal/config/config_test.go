@@ -536,6 +536,18 @@ model = "deepseek-chat"
 	if cfg.Providers == nil {
 		t.Fatal("Providers map is nil")
 	}
+	for _, value := range []string{"-1", "0"} {
+		t.Run("idle expiration "+value, func(t *testing.T) {
+			writeFile(t, appPath, "[session.idle_expiration]\ngroup_user_ttl_minutes="+value+"\ngroup_superadmin_ttl_minutes="+value+"\nprivate_user_ttl_minutes="+value+"\nprivate_superadmin_ttl_minutes="+value+"\n")
+			cfg, err := Load(appPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Session.IdleExpiration != (SessionIdleExpirationConfig{}) {
+				t.Fatalf("idle expiration = %+v, want disabled", cfg.Session.IdleExpiration)
+			}
+		})
+	}
 }
 
 func TestSaveState(t *testing.T) {

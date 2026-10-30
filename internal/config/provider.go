@@ -9,11 +9,10 @@ type ProviderFile struct {
 // LoadProviders reads only the selected provider file. Secrets use the main
 // configuration directory, even when the provider file is stored elsewhere.
 func LoadProviders(path, configDir string) (ProviderFile, error) {
-	doc := readDocument(path, func() any { return &Config{} })
-	if doc.err != nil {
-		return ProviderFile{}, doc.err
+	cfg := &Config{}
+	if err := loadTOML(path, cfg); err != nil {
+		return ProviderFile{}, err
 	}
-	cfg := doc.value.(*Config)
 	cfg.applyProviderDefaults()
 	if err := FirstError(cfg.ValidateProviders()); err != nil {
 		return ProviderFile{}, err

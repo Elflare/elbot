@@ -32,7 +32,6 @@ type configuration struct {
 	definitions []Definition
 	documents   map[string]*document
 	paths       map[string]string
-	pathErrors  map[string]error
 	origins     []origin
 }
 
@@ -42,7 +41,6 @@ func newConfiguration(path string, definitions []Definition) *configuration {
 		cfg: defaultAppConfig(), root: core[0].Asset,
 		assets: map[string]DefaultAsset{}, definitions: append(core, definitions...),
 		documents: map[string]*document{}, paths: map[string]string{core[0].Asset: path},
-		pathErrors: map[string]error{}, origins: []origin{{path: path}},
 	}
 	state.cfg.ConfigPath = path
 	for _, asset := range DefaultAssets() {
@@ -72,7 +70,7 @@ func (s *configuration) definition(asset string) (Definition, bool) {
 
 func (s *configuration) assetPath(name string) (string, error) {
 	if path, exists := s.paths[name]; exists {
-		return path, s.pathErrors[name]
+		return path, nil
 	}
 	asset := s.assets[name]
 	rootPath := s.paths[s.root]
@@ -82,8 +80,6 @@ func (s *configuration) assetPath(name string) (string, error) {
 		if main == nil || main.raw == nil {
 			return "", fmt.Errorf("主配置无法读取或解析，未检查依赖 config_files 和 soul.path 定位的文件。")
 		}
-		fallback, _ := lookup(defaultAppConfig(), asset.Reference)
-		value := fallback
 		var current any = main.raw
 		for _, key := range asset.Reference {
 			table, ok := current.(map[string]any)
@@ -92,22 +88,18 @@ func (s *configuration) assetPath(name string) (string, error) {
 			}
 			child, exists := table[key]
 			if !exists {
-				current = fallback
+				current = asset.Path
 				break
 			}
 			current = child
 		}
-		if current != nil {
-			value = current
-		}
-		text, ok := value.(string)
+		text, ok := current.(string)
 		if !ok {
 			return "", fmt.Errorf("无法定位 %s，未检查该文件。", name)
 		}
-		if text == "" {
-			text, _ = fallback.(string)
+		if text != "" {
+			path = resolveRelative(rootPath, text)
 		}
-		path = resolveRelative(rootPath, text)
 	}
 	s.paths[name] = path
 	return path, nil
@@ -168,7 +160,6 @@ func (s *configuration) readCore(ctx context.Context, collect bool) error {
 		}
 		path, err := s.assetPath(definition.Asset)
 		if err != nil {
-			s.pathErrors[definition.Asset] = err
 			continue
 		}
 		doc := readDocument(path, definition.New)

@@ -37,10 +37,12 @@ func TestLoadProvidersUsesSelectedFileAndReloadsConfigEnv(t *testing.T) {
 	if err != nil || file.Providers["p"].APIKey != "process" {
 		t.Fatal("process environment precedence changed", err)
 	}
-	for _, invalid := range []string{"[", "[providers.p]\napi_mode='invalid'"} {
+	for _, invalid := range []string{"[", "[providers.p]\napi_mode=123", "[providers.p]\napi_mode='invalid'"} {
 		write(path, invalid)
 		if _, err := LoadProviders(path, dir); err == nil {
 			t.Fatal("invalid provider file accepted")
+		} else if invalid != "[providers.p]\napi_mode='invalid'" && (!strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "line ") || !strings.Contains(err.Error(), "column ")) {
+			t.Fatalf("parse error lost file or position: %v", err)
 		}
 	}
 	if err := os.Remove(path); err != nil {

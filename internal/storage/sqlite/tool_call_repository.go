@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"slices"
 	"strings"
 
 	"elbot/internal/storage"
@@ -39,7 +40,7 @@ INSERT INTO tool_call_records (
 		record.ToolName,
 		record.ActorID,
 		record.RiskLevel,
-		boolInt(record.Success),
+		record.Success,
 		nullString(record.Error),
 		storage.FormatTime(record.StartedAt),
 		storage.FormatTime(record.FinishedAt),
@@ -66,9 +67,7 @@ func (r *ToolCallRepository) SuccessfulIDs(ctx context.Context, toolCallIDs []st
 	}
 
 	successful := map[string]bool{}
-	for start := 0; start < len(unique); start += batchSize {
-		end := min(start+batchSize, len(unique))
-		batch := unique[start:end]
+	for batch := range slices.Chunk(unique, batchSize) {
 		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(batch)), ",")
 		args := make([]any, len(batch))
 		for i, id := range batch {
@@ -122,11 +121,4 @@ ORDER BY tool_name ASC`, sessionID)
 		return nil, fmt.Errorf("iterate tool usage: %w", err)
 	}
 	return out, nil
-}
-
-func boolInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
 }

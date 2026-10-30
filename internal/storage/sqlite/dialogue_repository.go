@@ -68,8 +68,18 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 		exchanges := map[string]struct{ owner, status string }{}
 		for i := range native.Inputs {
 			input := &native.Inputs[i]
-			if input.SessionID != commit.SessionID || !json.Valid([]byte(input.ItemJSON)) || (input.MediaJSON != "" && !json.Valid([]byte(input.MediaJSON))) {
+			if input.SessionID != commit.SessionID || !json.Valid([]byte(input.ItemJSON)) {
 				return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("invalid native input")
+			}
+			var materials []struct {
+				Segments []struct {
+					MediaID string `json:"media"`
+				} `json:"segments"`
+			}
+			if input.MediaJSON != "" {
+				if err := json.Unmarshal([]byte(input.MediaJSON), &materials); err != nil {
+					return events.LogResult{ResultStatus: events.ResultSkipped}, err
+				}
 			}
 			if input.ID == "" {
 				input.ID = storage.NewID()
@@ -83,16 +93,6 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			}
 			if count, err := result.RowsAffected(); err != nil || count != 1 {
 				return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("native result is already sealed or consumed")
-			}
-			var materials []struct {
-				Segments []struct {
-					MediaID string `json:"media"`
-				} `json:"segments"`
-			}
-			if input.MediaJSON != "" {
-				if err := json.Unmarshal([]byte(input.MediaJSON), &materials); err != nil {
-					return events.LogResult{ResultStatus: events.ResultSkipped}, err
-				}
 			}
 			var ids []string
 			for _, material := range materials {
@@ -176,10 +176,10 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 				return events.LogResult{ResultStatus: events.ResultSkipped}, err
 			}
 		}
+		if len(native.ConsumedInputs) > 0 && checkpoint.ID == "" {
+			return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("input consumption requires a checkpoint")
+		}
 		for _, id := range native.ConsumedInputs {
-			if checkpoint.ID == "" {
-				return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("input consumption requires a checkpoint")
-			}
 			result, err := tx.ExecContext(ctx, `UPDATE native_inputs SET consumed_by=? WHERE id=? AND session_id=? AND consumed_by=''`, checkpoint.ExchangeID, id, commit.SessionID)
 			if err != nil {
 				return events.LogResult{ResultStatus: events.ResultFailed}, err

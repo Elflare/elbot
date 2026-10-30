@@ -1,9 +1,36 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestInspectionDeduplicationAndMissingParents(t *testing.T) {
+	parent := Issue{Path: "app.toml", Field: []string{"config_files"}, Missing: true, Level: LevelHint}
+	child := Issue{Path: "app.toml", Field: []string{"config_files", "providers"}, Missing: true, Level: LevelHint}
+	invalid := child
+	invalid.Missing, invalid.Level = false, LevelError
+	other := child
+	other.Path = "other.toml"
+	for _, tc := range []struct {
+		name     string
+		in, want []Issue
+	}{
+		{"duplicate", []Issue{child, child}, []Issue{child}},
+		{"parent first", []Issue{parent, child, invalid}, []Issue{parent}},
+		{"parent last", []Issue{child, invalid, parent}, []Issue{invalid, parent}},
+		{"different file", []Issue{parent, other}, []Issue{parent, other}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var inspection Inspection
+			inspection.add(tc.in...)
+			if !reflect.DeepEqual(inspection.Issues, tc.want) {
+				t.Fatalf("issues = %+v, want %+v", inspection.Issues, tc.want)
+			}
+		})
+	}
+}
 
 func inspectTestDocument(t *testing.T, name, content, template string) []Issue {
 	t.Helper()

@@ -9,6 +9,66 @@ import (
 	"elbot/internal/storage"
 )
 
+func TestNativeInputMediaValidation(t *testing.T) {
+	for _, raw := range []string{"", "[]", "[", `{}`, `[{"segments":false}]`} {
+		t.Run(raw, func(t *testing.T) {
+			store, _ := nativeStorageFixture(t)
+			commit := nativeStorageCommit("media", "")
+			commit.Native.Inputs = []storage.NativeInput{{ID: "input", SessionID: "s", ItemJSON: `{}`, MediaJSON: raw}}
+			result, err := store.Dialogues().Commit(t.Context(), commit)
+			valid := raw == "" || raw == "[]"
+			if valid && err != nil || !valid && (err == nil || result.ResultStatus != events.ResultSkipped) {
+				t.Fatalf("result=%+v err=%v", result, err)
+			}
+			for _, table := range []string{"messages", "native_inputs"} {
+				var count int
+				if err := store.db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+table).Scan(&count); err != nil {
+					t.Fatal(err)
+				}
+				if valid && count != 1 || !valid && count != 0 {
+					t.Fatalf("%s count=%d", table, count)
+				}
+			}
+		})
+	}
+}
+
+func TestNativeInputConsumptionRequiresCheckpoint(t *testing.T) {
+	store, _ := nativeStorageFixture(t)
+	commit := storage.DialogueCommit{SessionID: "s", Native: &storage.NativeCommit{ConsumedInputs: []string{"one", "two"}}}
+	result, err := store.Dialogues().Commit(t.Context(), commit)
+	if err == nil || err.Error() != "input consumption requires a checkpoint" || result.ResultStatus != events.ResultSkipped {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+}
+
+func TestSuccessfulIDsBatchBoundaries(t *testing.T) {
+	store, _ := nativeStorageFixture(t)
+	var ids []string
+	for i := range 501 {
+		id := fmt.Sprint(i)
+		ids = append(ids, id)
+		if err := store.ToolCalls().Create(t.Context(), &storage.ToolCallRecord{SessionID: "s", ToolCallID: id, Success: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, size := range []int{0, 500, 501} {
+		input := append([]string{}, ids[:size]...)
+		if size > 0 {
+			input = append(input, ids[0], " ")
+		}
+		got, err := store.ToolCalls().SuccessfulIDs(t.Context(), input)
+		if err != nil || len(got) != size {
+			t.Fatalf("size=%d results=%d err=%v", size, len(got), err)
+		}
+		for _, id := range ids[:size] {
+			if !got[id] {
+				t.Fatalf("missing %s", id)
+			}
+		}
+	}
+}
+
 func nativeStorageFixture(t *testing.T) (*Store, *storage.NativeExchange) {
 	t.Helper()
 	ctx := t.Context()

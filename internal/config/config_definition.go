@@ -85,16 +85,13 @@ func stateDefinition() Definition {
 			}
 			var out []Issue
 			for _, issue := range issues {
-				// A missing optional document is enough of a hint when no
-				// explicit value for the slot exists in main either.
-				if issue.Level == LevelHint && !ctx.Present("state.toml") {
-					if _, exists := ctx.Config.ModeModels[issue.Field[1]]; !exists {
-						continue
-					}
-				}
 				issue.Path = ctx.Source(issue.Field...)
 				if len(issue.Field) >= 2 && issue.Field[0] == "mode_models" {
 					if _, exists := ctx.Config.ModeModels[issue.Field[1]]; !exists {
+						// A missing optional document already explains absent slots.
+						if issue.Level == LevelHint && !ctx.Present("state.toml") {
+							continue
+						}
 						issue.Path = ctx.Path("state.toml")
 					}
 				}

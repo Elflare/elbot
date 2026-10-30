@@ -273,14 +273,13 @@ LIMIT ? OFFSET ?`, strings.Join(where, " AND "), orderBy)
 		sessions = append(sessions, summary)
 	}
 	if err := rows.Err(); err != nil {
-		_ = rows.Close()
 		return nil, fmt.Errorf("iterate sessions: %w", err)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, fmt.Errorf("close session rows: %w", err)
 	}
-	for i := range sessions {
-		if req.MessageLimit > 0 {
+	if req.MessageLimit > 0 {
+		for i := range sessions {
 			sessions[i].Messages, err = r.messageExcerpts(ctx, sessions[i].ID, req.MessageLimit)
 			if err != nil {
 				return nil, err
