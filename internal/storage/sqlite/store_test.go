@@ -184,6 +184,56 @@ func TestSessionRepositoryCRUDAndScope(t *testing.T) {
 	}
 }
 
+func TestSessionRepositoryPinnedOrderAcrossPages(t *testing.T) {
+	store := newTestStore(t)
+	ctx := t.Context()
+	now := storage.Now()
+	oldPin, oldUpdate := now.Add(-time.Hour), now.Add(-2*time.Hour)
+	for _, row := range []storage.Session{
+		{ID: "pinned-a", UpdatedAt: oldUpdate, PinnedAt: &now},
+		{ID: "pinned-b", UpdatedAt: oldUpdate, PinnedAt: &now},
+		{ID: "pinned-old", UpdatedAt: now.Add(time.Hour), PinnedAt: &oldPin},
+		{ID: "normal-y", UpdatedAt: now},
+		{ID: "normal-z", UpdatedAt: now},
+		{ID: "normal-old", UpdatedAt: oldUpdate.Add(-time.Hour)},
+	} {
+		row.OwnerID, row.Platform, row.PlatformScopeID = "u1", "cli", "local"
+		if err := store.Sessions().Create(ctx, &row); err != nil {
+			t.Fatal(err)
+		}
+	}
+	checkPages := func(exclude, want string) {
+		t.Helper()
+		for _, limit := range []int{1, 2, 20} {
+			var ids []string
+			for offset := 0; ; offset += limit {
+				rows, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", ExcludeSessionID: exclude, Limit: limit, Offset: offset})
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, row := range rows {
+					ids = append(ids, row.ID)
+				}
+				if len(rows) < limit {
+					break
+				}
+			}
+			if strings.Join(ids, ",") != want {
+				t.Fatalf("limit=%d exclude=%q ids=%v, want %s", limit, exclude, ids, want)
+			}
+		}
+	}
+	checkPages("", "pinned-b,pinned-a,pinned-old,normal-z,normal-y,normal-old")
+	checkPages("pinned-b", "pinned-a,pinned-old,normal-z,normal-y,normal-old")
+	if _, err := store.Sessions().Mutate(ctx, "pinned-b", func(row *storage.Session) error {
+		row.PinnedAt = nil
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	checkPages("", "pinned-a,pinned-old,normal-z,normal-y,pinned-b,normal-old")
+}
+
 func TestSessionRepositoryArchivePinAndCleanup(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
@@ -206,14 +256,7 @@ func TestSessionRepositoryArchivePinAndCleanup(t *testing.T) {
 	if len(listed) != 2 || listed[0].ID != pinned.ID || listed[1].ID != normal.ID {
 		t.Fatalf("active list = %#v", listed)
 	}
-	recent, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", OrderByUpdatedAt: true})
-	if err != nil {
-		t.Fatalf("list recent: %v", err)
-	}
-	if len(recent) != 2 || recent[0].ID != normal.ID || recent[1].ID != pinned.ID {
-		t.Fatalf("recent list = %#v", recent)
-	}
-	excluded, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", ExcludeSessionID: normal.ID, OrderByUpdatedAt: true})
+	excluded, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", ExcludeSessionID: normal.ID})
 	if err != nil {
 		t.Fatalf("list excluding current: %v", err)
 	}

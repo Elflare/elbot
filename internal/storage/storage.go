@@ -394,7 +394,6 @@ type ListSessionsRequest struct {
 	IncludeArchived               bool
 	ArchivedOnly                  bool
 	ExcludeSessionID              string
-	OrderByUpdatedAt              bool
 	Query                         string
 	Limit                         int
 	Offset                        int

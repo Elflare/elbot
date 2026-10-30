@@ -28,7 +28,7 @@ func (s *Service) ListResumablePage(ctx context.Context, scope share.Scope, limi
 	return s.deps.Sessions.List(ctx, storage.ListSessionsRequest{
 		ActorID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID,
 		IncludeAllPlatforms: scope.IsCLI, IncludeSamePlatformBackground: !scope.IsCLI && scope.ConversationKind == contextinfo.ConversationPrivate,
-		ExcludeSessionID: currentID, OrderByUpdatedAt: true, Limit: limit, Offset: offset, MessageLimit: 5,
+		ExcludeSessionID: currentID, Limit: limit, Offset: offset, MessageLimit: 5,
 	})
 }
 

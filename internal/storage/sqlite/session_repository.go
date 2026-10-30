@@ -204,10 +204,6 @@ func (r *SessionRepository) List(ctx context.Context, req storage.ListSessionsRe
 	}
 	args = append(args, limit, max(0, req.Offset))
 
-	orderBy := "CASE WHEN s.pinned_at IS NULL THEN 1 ELSE 0 END, s.pinned_at DESC, s.updated_at DESC"
-	if req.OrderByUpdatedAt {
-		orderBy = "s.updated_at DESC, s.id DESC"
-	}
 	query := fmt.Sprintf(`
 SELECT s.id, s.owner_id, s.platform, s.platform_scope_id, s.title, s.mode, s.status,
        s.created_at, s.updated_at, s.archived_at, s.pinned_at,
@@ -218,8 +214,8 @@ FROM sessions s
 LEFT JOIN messages m ON m.session_id = s.id
 WHERE %s
 GROUP BY s.id
-ORDER BY %s
-LIMIT ? OFFSET ?`, strings.Join(where, " AND "), orderBy)
+ORDER BY CASE WHEN s.pinned_at IS NULL THEN 1 ELSE 0 END, s.pinned_at DESC, s.updated_at DESC, s.id DESC
+LIMIT ? OFFSET ?`, strings.Join(where, " AND "))
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
