@@ -45,7 +45,7 @@
 
 按包记录具体问题、精简建议、讨论结论与验证结果，确认方案后再实施。任务入口见 [任务清单](tasks.md)。
 
-当前进度：`internal/app`、`internal/delivery`、`internal/turn`、`internal/tool/builtin` 已完成一轮审查与调整；`internal/hook/runtime` 已完成第二轮精简，其余包进度分别记录。
+当前进度：`internal/app`、`internal/delivery`、`internal/turn`、`internal/tool/builtin`、`internal/memory/resident` 已完成一轮审查与调整；`internal/hook/runtime` 已完成第三轮精简，其余包进度分别记录。
 
 ### delivery
 
@@ -60,10 +60,11 @@
 - 活动事件统一按 token 保存 `invocation`，同时承载工具授权、触发事实和取消能力；事件完整收尾后回收。同路由多个 Worker 均可取消，工具次数耗尽或其他进程误用 token 不影响原调用的取消能力。
 - 临时 Worker 按插件与路由索引；waiting 直接持有所属 Worker，统一查询和过期处理。租约覆盖、停止及退出只清理对应实例；事件输出和消息校验成功后才发布 waiting。
 - RPC 回包在同一把锁内取走 pending 项并投递一次，退出只关闭剩余请求；重复回包不阻塞。路由锁在持有者和等待者全部离开后回收，Worker 状态在最后一个活动调用结束后恢复 ready。
-- 媒体租约仅使用 `busy` 表示独占，清理和重试共用日志入口；共享 KV 的 Set/CAS 共用写入路径，先清理过期项再执行 LRU 淘汰，JSON 压缩同时完成校验。
+- 媒体租约仅使用 `busy` 表示独占，清理和重试共用日志入口；共享 KV 的 Get/Delete 共用 key 解析，Set/CAS 共用参数解析、TTL 校验及写入路径，先清理过期项再执行 LRU 淘汰，JSON 压缩同时完成校验。
 - 普通后台任务通过 `startTask` 原子检查关闭并登记收尾计数；持锁登记的进程退出、调用与 waiting 定时器保留各自原子边界。配置替换与整体关闭共用 `stopWorkers` 并发停止并汇总错误。
 - KV 与媒体通过 `maintain` 共用调度循环实现，但各自独立运行；清理后读取下一期限，保留到期索引、唤醒、媒体重试及关闭等待，媒体 I/O 不阻塞 KV 到期。
 - 消息修改后统一同步工具结果，保留 segments 优先级及空修改语义；工具授权复用审计阶段已选定的 invocation。当前共 9 个生产文件，无新增包、文件或公共接口。
+- 工具审计只确定一次触发者身份，授权仍独立核验 token 并登记次数；续接与工具审计共用 `logIdentity`，调用前通用失败共用局部 `failCall`。Worker 就绪等待及 RPC 失败共用 `withFault` 补充当前故障，插件明确返回的错误保持独立。
 
 ### tool/builtin
 
@@ -72,6 +73,12 @@
 - 文件搜索与 Cron 写操作各自共用结果和日志收尾；删除无意义嵌套块、无消费者字段和辅助函数。
 - Shell、文件与 Web 工具显式接收构造依赖；编辑与撤销工具共用装配层注入的 `fileops.Service`。实现仍位于原有 21 个生产文件，工具参数、业务输出与持久化格式保持现有契约。
 
+### memory/resident
+
+- Store 直接使用上游规范身份，按平台与 ActorID 精确匹配；路径判空集中在加载入口，空 TOML 交给解析器处理。追加内容非空、空记录删除等业务判断保留。
+- 读取共用锁内缓存；修改先作用于单条记录副本，校验通过且需要落盘后只复制一次列表，保存成功后直接更新缓存。保留外部文件变化检测及原有写盘方式。
+- 修改回调直接返回目标部分的长度校验结果，core 与 normal 共用校验函数；内容清理不再重复处理同一输入。校验先于无变化判定，未修改部分超限不影响操作。
+
 ## 已完成精简
 
 | 包 | 完成情况 | 非测试 Go 行数 |
@@ -79,8 +86,9 @@
 | `internal/app` | 已完成一轮；本文件未登记具体改动及对比数据。 | 基线为 719 行。 |
 | `internal/delivery` | 统一发送与投递信息契约、复用目标校验结果、收拢降级文案并清理重复日志处理。 | 479 → 415，减少 64 行（约 13.4%）。 |
 | `internal/turn`（含子包） | 完成生命周期与确认等待职责拆分、新接口及调用方迁移、刷新与过期原子裁决；删除旧接口测试，保留有效行为覆盖。 | 932 → 1,010，增加 78 行（约 8.4%）；当前共 11 个生产文件，含装配与内部契约，未实现总代码量下降。 |
-| `internal/hook/runtime` | 已完成第二轮；收拢后台任务登记、并发停止与维护循环，去除消息结果和授权 token 的重复处理，保留已有修复。 | 本轮 3,051 → 2,995，减少 56 行（约 1.8%），仍为 9 个生产文件；相对初始基线 2,836 行仍增加 159 行。 |
+| `internal/hook/runtime` | 已完成第三轮；共享 RPC 按参数分组，收拢日志身份、调用前失败及 Worker 故障补充，删除重复触发者身份推导。 | 本轮 2,995 → 2,950，减少 45 行（约 1.5%），仍为 9 个生产文件；近两轮共减少 101 行，相对初始基线 2,836 行仍增加 114 行。 |
 | `internal/tool/builtin` | 统一日志截断、复用 Shell AST、合并分支收尾、清理无效状态并显式注入依赖。 | 7,311 → 6,988，减少 323 行（约 4.4%），仍为 21 个生产文件。 |
+| `internal/memory/resident` | 删除重复身份与路径检查，合并修改和长度校验，缓存仅在提交修改前复制列表。 | 345 → 315，减少 30 行（约 8.7%），仍为 1 个生产文件。 |
 
 delivery 本轮连同 Hook 调用方共净减 70 行非测试 Go 代码，未拆分文件。回归覆盖表情名称、发送时机重设与复制隔离、目标选择与冲突、Hook 来源、媒体降级及日志与业务结果独立；已执行 `gofmt`，相关包测试与 `go test ./...` 通过。
 
@@ -88,10 +96,12 @@ turn 已完成五项 review 修复：统一 `Supervisor`、attempt 与 `Snapshot
 
 turn 回归保留输入与媒体合并、工具计数、停止后等待真实退出、提前回复和迟到清理；使用 `testing/synctest` 覆盖旧计时器触发后的刷新竞争及再次过期。调用方验证批准范围、拒绝、停止、过期、取消及提示发送失败。已执行 `gofmt`；相关包测试、`go test ./...` 及 Turn、Agent confirmation／execution／dialogue 的竞态检查通过。
 
-hook/runtime 本轮基线取继续精简前的 3,051 行，保留既有关闭、可取消写入及到期维护修复。已有生命周期、授权、RPC、租约及重试回归保留；补充消息修改表驱动测试，覆盖未提供修改、空消息对象、text、空 text、segments 优先及空 segments 优先，并分别验证工具完成和普通消息事件。测试代码增加 47 行，本轮 Go 代码合计净减 9 行。
+hook/runtime 本轮基线为 2,995 行，保留既有关闭、可取消写入、到期维护及消息修改语义。共享 RPC 测试改为连续操作表，覆盖各方法响应、无关字段忽略、CAS 的 expected 缺省与 null 区别；审计测试补充事件 session 优先、context 回退及身份缺失，协议失败测试验证已有 Worker 故障不会污染插件明确返回的错误。测试代码净增 7 行，本轮 Go 代码合计净减 38 行。
 
-hook/runtime 已执行 `gofmt`，包测试及 `GORACE=atexit_sleep_ms=0 go test -race ./internal/hook/runtime` 通过。全仓回归已覆盖 Hook 全部包并通过；rules 的日志测试遵循 Tool 统一的 1024 rune 日志契约。
+hook/runtime 已执行 `gofmt`、`go test ./internal/hook/...` 及 `GORACE=atexit_sleep_ms=0 go test -race ./internal/hook/runtime`，全部通过。
 
 tool/builtin 本轮连同 Tool 内部调用方共净减 332 行非测试 Go 代码。回归覆盖日志边界与完整业务结果、Shell 检查顺序与解析失败、Cron 四种写操作的结果和错误；相关构造调用及 Hook 日志测试已迁移。已执行 `gofmt`，`go test ./...` 通过。
 
 Tool 竞态检查中除 execution 外的包均通过，无数据竞争报告。execution 的 `TestRunConcurrentFailuresKeepOriginalResultOrderAndFlushOnce` 存在调度顺序断言不稳定，使用改动前执行边界的 Go overlay 已复现；本轮未调整执行调度。初次竞态检查还出现取消完成断言失败，单独重复检查及最终整包检查未再次出现。
+
+memory/resident 保留原有行为覆盖，新增拒绝写入不污染缓存与其他用户、无变化不落盘及时间戳不变、空文件与外部编辑内容追加的回归。测试代码增加 121 行，本轮 Go 代码合计增加 91 行。已执行 `gofmt`；resident、Tool 根包及 Agent dialogue／execution 包测试，以及 `GORACE=atexit_sleep_ms=0 go test -race ./internal/memory/resident` 均通过。

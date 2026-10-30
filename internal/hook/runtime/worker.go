@@ -89,19 +89,23 @@ func (w *worker) waitReady(ctx context.Context) (globalevents.LogResult, error) 
 			if ctx.Err() == context.Canceled {
 				logResult.ResultStatus = globalevents.ResultCanceled
 			}
-			w.mu.Lock()
-			status, detail := w.status, w.detail
-			w.mu.Unlock()
-			if status == StatusFailed || status == StatusDegraded {
-				logResult.ResultStatus = globalevents.ResultFailed
-				logResult.Content += "\nworker_fault=" + detail
-			}
-			return logResult, ctx.Err()
+			return w.withFault(logResult), ctx.Err()
 		case <-deadline.C:
 			return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook worker %q startup timed out", w.config.ID)}, fmt.Errorf("hook worker %q startup timed out", w.config.ID)
 		case <-ticker.C:
 		}
 	}
+}
+
+func (w *worker) withFault(logResult globalevents.LogResult) globalevents.LogResult {
+	w.mu.Lock()
+	status, detail := w.status, w.detail
+	w.mu.Unlock()
+	if status == StatusFailed || status == StatusDegraded {
+		logResult.ResultStatus = globalevents.ResultFailed
+		logResult.Content += "\nworker_fault=" + detail
+	}
+	return logResult
 }
 
 func (w *worker) info() share.RuntimeInfo {
@@ -636,13 +640,7 @@ func (w *worker) request(ctx context.Context, method string, params any) (json.R
 			err = ctx.Err()
 		case value, ok := <-response:
 			if !ok {
-				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "hook process exited while waiting for " + method}
-				w.mu.Lock()
-				status, detail := w.status, w.detail
-				w.mu.Unlock()
-				if status == StatusFailed || status == StatusDegraded {
-					logResult.Content += "\nworker_fault=" + detail
-				}
+				logResult := w.withFault(globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "hook process exited while waiting for " + method})
 				if ctx.Err() != nil {
 					logResult.Content += "\ncontext_error=" + ctx.Err().Error()
 				}
@@ -661,14 +659,7 @@ func (w *worker) request(ctx context.Context, method string, params any) (json.R
 	if errors.Is(err, context.Canceled) {
 		logResult.ResultStatus = globalevents.ResultCanceled
 	}
-	w.mu.Lock()
-	status, detail := w.status, w.detail
-	w.mu.Unlock()
-	if status == StatusFailed || status == StatusDegraded {
-		logResult.ResultStatus = globalevents.ResultFailed
-		logResult.Content += "\nworker_fault=" + detail
-	}
-	return nil, logResult, err
+	return nil, w.withFault(logResult), err
 }
 
 func (w *worker) write(ctx context.Context, value frame) error {

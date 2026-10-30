@@ -202,7 +202,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/hook/rules/`：规则配置与执行；`rule.go` 编排动作及只读校验。
 - `internal/hook/control/service.go`：插件查询、重载与进程管理。
 - `internal/hook/control/command.go`：Hook 管理命令与补全；`internal/hook/share/logging.go` 管日志摘要。
-- `internal/hook/runtime/`：插件进程、RPC 与续接；`runtime/routes.go` 管 waiting 路由、一次性到期定时器及撤销计数，`runtime/media.go` 管媒体租约、释放通知和有上限的清理退避。
+- `internal/hook/runtime/`：插件进程、RPC 与续接；`runtime/routes.go` 管 waiting 路由、一次性到期定时器及撤销计数，并提供续接与工具审计共用的日志身份构造；`runtime/media.go` 管媒体租约、释放通知和有上限的清理退避。
 - `internal/hook/runtime/manager.go`、`worker.go`：分别负责运行任务登记、并发停止与实际退出等待，以及插件进程、可取消协议写入和统一关闭预算；`lifecycle_test.go` 测试运行时关闭，`behavior_test.go` 覆盖管道阻塞、续接取消及 waiting 到期竞态。
 - `internal/hook/runtime/expiry.go`：KV／媒体共用的带索引最小堆；`shared.go` 管 KV 续期与到期删除，`manager.go` 的 `maintain` 共用调度循环实现、独立运行 KV／媒体维护并等待退出；`expiry_test.go` 验证调度、退避、错误日志与关闭。
 - `internal/hook/runtime/maintenance_bench_test.go`：使用实际到期索引测量 KV／媒体维护、续期与到期成本；逐项定时器保留为调度成本对照，不包含真实媒体 I/O。

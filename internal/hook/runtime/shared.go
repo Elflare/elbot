@@ -53,49 +53,19 @@ func NewSharedState() *SharedState {
 // HandleRequest applies a hook.v2 shared-state request.
 func (s *SharedState) HandleRequest(method string, params json.RawMessage) (any, error) {
 	switch method {
-	case "shared.get":
+	case "shared.get", "shared.delete":
 		var request struct {
 			Key string `json:"key"`
 		}
 		if err := json.Unmarshal(params, &request); err != nil {
 			return nil, err
+		}
+		if method == "shared.delete" {
+			return map[string]any{"deleted": s.Delete(request.Key)}, nil
 		}
 		value, ok := s.Get(request.Key)
 		return map[string]any{"found": ok, "value": json.RawMessage(value)}, nil
-	case "shared.set":
-		var request struct {
-			Key        string          `json:"key"`
-			Value      json.RawMessage `json:"value"`
-			TTLSeconds *int64          `json:"ttl_seconds"`
-		}
-		if err := json.Unmarshal(params, &request); err != nil {
-			return nil, err
-		}
-		ttl, err := sharedTTL(request.TTLSeconds)
-		if err != nil {
-			return nil, err
-		}
-		if err := s.SetWithTTL(request.Key, request.Value, ttl); err != nil {
-			return nil, err
-		}
-		return map[string]any{"ok": true}, nil
-	case "shared.delete":
-		var request struct {
-			Key string `json:"key"`
-		}
-		if err := json.Unmarshal(params, &request); err != nil {
-			return nil, err
-		}
-		return map[string]any{"deleted": s.Delete(request.Key)}, nil
-	case "shared.list":
-		var request struct {
-			Prefix string `json:"prefix"`
-		}
-		if err := json.Unmarshal(params, &request); err != nil {
-			return nil, err
-		}
-		return map[string]any{"keys": s.List(request.Prefix)}, nil
-	case "shared.compare_and_swap":
+	case "shared.set", "shared.compare_and_swap":
 		var request struct {
 			Key        string          `json:"key"`
 			Expected   json.RawMessage `json:"expected"`
@@ -109,11 +79,25 @@ func (s *SharedState) HandleRequest(method string, params json.RawMessage) (any,
 		if err != nil {
 			return nil, err
 		}
+		if method == "shared.set" {
+			if err := s.SetWithTTL(request.Key, request.Value, ttl); err != nil {
+				return nil, err
+			}
+			return map[string]any{"ok": true}, nil
+		}
 		swapped, err := s.CompareAndSwapWithTTL(request.Key, request.Expected, request.Value, ttl)
 		if err != nil {
 			return nil, err
 		}
 		return map[string]any{"swapped": swapped}, nil
+	case "shared.list":
+		var request struct {
+			Prefix string `json:"prefix"`
+		}
+		if err := json.Unmarshal(params, &request); err != nil {
+			return nil, err
+		}
+		return map[string]any{"keys": s.List(request.Prefix)}, nil
 	default:
 		return nil, fmt.Errorf("unsupported hook shared method %q", method)
 	}

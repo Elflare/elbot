@@ -75,24 +75,7 @@ func (m *Manager) Route(ctx context.Context, event share.Event, observe func(con
 	if logResult.ResultStatus == globalevents.ResultCanceled {
 		record.EventName = "hook_canceled"
 	}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if event.Session.ID != "" {
-		record.Identity.SessionID = &event.Session.ID
-	} else if facts.SessionID != "" {
-		record.Identity.SessionID = &facts.SessionID
-	}
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
+	record.Identity = logIdentity(ctx, event.Session.ID)
 	m.opts.Log(ctx, record)
 	if err == nil && !updated.Control.StopPropagation {
 		if updated.Metadata == nil {
@@ -101,6 +84,31 @@ func (m *Manager) Route(ctx context.Context, event share.Event, observe func(con
 		updated.Metadata[skipHookIDMetadataKey] = worker.config.ID
 	}
 	return updated, true, logResult, err
+}
+
+// logIdentity 优先使用事件 session，其余身份来自 context；空字段保持缺失。
+func logIdentity(ctx context.Context, sessionID string) globalevents.LogIdentity {
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if sessionID == "" {
+		sessionID = facts.SessionID
+	}
+	record := globalevents.LogIdentity{}
+	if sessionID != "" {
+		record.SessionID = &sessionID
+	}
+	if facts.RunID != "" {
+		record.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		record.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		record.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		record.RootRequestID = &facts.RootRequestID
+	}
+	return record
 }
 
 func (m *Manager) Cancel(event share.Event) bool {

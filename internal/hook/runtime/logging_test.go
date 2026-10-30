@@ -197,14 +197,16 @@ func TestPluginToolArgumentPreviewDoesNotChangeInvocation(t *testing.T) {
 }
 
 func TestToolAuditUsesTriggerActorAndKeepsEnteredCancellation(t *testing.T) {
-	for _, tc := range []struct{ name, sessionActor, sessionID, expected string }{
-		{"session", "trigger", "session", "trigger"},
-		{"missing_session_actor", "", "session", ""},
-		{"without_session", "permission-only", "", "context"},
+	for _, tc := range []struct{ name, sessionActor, sessionID, expected, contextSession, expectedSession string }{
+		{"session", "trigger", "session", "trigger", "context-session", "session"},
+		{"missing_session_actor", "", "session", "", "context-session", "session"},
+		{"without_session", "permission-only", "", "context", "context-session", "context-session"},
+		{"missing_session_identity", "permission-only", "", "context", "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			records := captureHookRecords(t)
 			ctx, cancel := context.WithCancel(contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "context"}))
+			ctx = contextinfo.WithExecution(ctx, contextinfo.Execution{SessionID: tc.contextSession})
 			registry := tool.NewRegistry(security.DefaultPermission())
 			if err := registry.Register(loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
 				actor, _ := contextinfo.ActorFromContext(ctx)
@@ -236,6 +238,14 @@ func TestToolAuditUsesTriggerActorAndKeepsEnteredCancellation(t *testing.T) {
 				}
 			} else if content["actor_id"] != tc.expected {
 				t.Fatal(content)
+			}
+			identity := (*records)[0].Identity
+			if tc.expectedSession == "" {
+				if identity.SessionID != nil {
+					t.Fatalf("absent session became explicit: %+v", identity)
+				}
+			} else if identity.SessionID == nil || *identity.SessionID != tc.expectedSession {
+				t.Fatalf("session identity = %+v; want %q", identity, tc.expectedSession)
 			}
 		})
 	}
@@ -274,6 +284,7 @@ func (protocolTestWriter) Close() error                     { return nil }
 
 func TestWorkerRequestKeepsExplicitProtocolFailure(t *testing.T) {
 	worker := newWorker(nil, share.RuntimeConfig{})
+	worker.status, worker.detail = StatusDegraded, "independent protocol fault"
 	worker.stdin = protocolTestWriter{write: func(data []byte) error {
 		var request frame
 		if err := json.Unmarshal(data, &request); err != nil {
