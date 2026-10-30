@@ -121,8 +121,8 @@ func TestServiceDelegatesStatefulLifecycle(t *testing.T) {
 	if err := service.StartStatefulHook("start"); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.StopStatefulHook(context.Background(), "stop"); err != nil {
-		t.Fatal(err)
+	if matched, err := service.StopHook(context.Background(), "stop"); err != nil || !matched {
+		t.Fatalf("StopHook = %v, %v", matched, err)
 	}
 	if err := service.RestartStatefulHook(context.Background(), "restart"); err != nil {
 		t.Fatal(err)

@@ -36,6 +36,30 @@ func (s *fakeHookService) RestartStatefulHook(_ context.Context, id string) erro
 	return nil
 }
 
+func TestHookListPreservesDescriptionsAndActivity(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		infos    []share.Info
+		runtimes []share.RuntimeInfo
+		want     string
+	}{
+		{name: "empty", want: "hooks: none"},
+		{name: "standalone", infos: []share.Info{{Name: "rule", Point: share.PointPlatformConnected, Priority: 3, Description: "  description  ", Active: 2}}, want: "hooks:\n  rule  [platform.connected]  priority=3 - description | 2 actived"},
+		{name: "plugin sum", infos: []share.Info{{PluginID: "plugin", Active: 2}, {PluginID: "plugin", Description: " fallback ", Active: 3}}, want: "hooks:\n  plugin  [plugin]  rules=2 - fallback | 5 actived"},
+		{name: "runtime precedence", infos: []share.Info{{PluginID: "plugin", Description: "rule", Active: 9}}, runtimes: []share.RuntimeInfo{{ID: "plugin", Mode: "persistent", Status: "ready", Description: " runtime ", Active: 2, Waiting: 1}}, want: "hooks:\n  plugin  [persistent:ready]  rules=1 - runtime | 2 actived | 1 waiting"},
+		{name: "runtime zero", infos: []share.Info{{PluginID: "plugin", Description: " fallback ", Active: 9}}, runtimes: []share.RuntimeInfo{{ID: "plugin", Mode: "persistent", Status: "ready", Description: " "}}, want: "hooks:\n  plugin  [persistent:ready]  rules=1 - fallback"},
+		{name: "separate runtimes", runtimes: []share.RuntimeInfo{{ID: "b", Mode: "transient", Status: "stopped"}, {ID: "a", Mode: "persistent", Status: "ready", Waiting: 1}}, want: "hooks:\n  a  [persistent:ready] | 1 waiting\n  b  [transient:stopped]"},
+		{name: "unicode truncation", infos: []share.Info{{Name: "rule", Description: " " + strings.Repeat("雪", 61) + " "}}, want: "hooks:\n  rule  []  priority=0 - " + strings.Repeat("雪", 60) + "..."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := formatHookList(&fakeHookService{infos: tc.infos, runtimeInfos: tc.runtimes})
+			if got != tc.want {
+				t.Fatalf("list = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestHooksCommandShowsDescriptionsAndDetails(t *testing.T) {
 	longDescription := "123456789012345678901234567890123456789012345678901234567890tail"
 	hooks := &fakeHookService{infos: []share.Info{

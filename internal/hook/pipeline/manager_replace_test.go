@@ -9,6 +9,50 @@ import (
 	"testing"
 )
 
+func TestReplacePluginAddsRemovesAndOrdersPoints(t *testing.T) {
+	manager, candidate := newTestManager(), newTestManager()
+	register := func(m *Manager, point share.Point, plugin, name string) {
+		m.Register(share.Registration{Point: point, PluginID: plugin, Name: name})
+	}
+	register(manager, share.PointToolCallPrepared, "demo", "old")
+	register(manager, share.PointToolCallPrepared, "other", "other")
+	register(manager, share.PointToolCallCompleted, "demo", "removed")
+	register(candidate, share.PointToolCallPrepared, "other", "ignored")
+	register(candidate, share.PointToolCallPrepared, "demo", "new-one")
+	register(candidate, share.PointToolCallPrepared, "demo", "new-two")
+	register(candidate, share.PointErrorOccurred, "demo", "added")
+	manager.ReplacePlugin("demo", candidate)
+	got := manager.handlersFor(share.PointToolCallPrepared)
+	if len(got) != 3 || got[0].name != "other" || got[1].name != "new-one" || got[2].name != "new-two" {
+		t.Fatalf("order=%+v", got)
+	}
+	if len(manager.handlersFor(share.PointToolCallCompleted)) != 0 {
+		t.Fatal("old point retained")
+	}
+	if got := manager.handlersFor(share.PointErrorOccurred); len(got) != 1 || got[0].name != "added" {
+		t.Fatalf("added=%+v", got)
+	}
+}
+
+func TestListCountsSameNameAndStopCancels(t *testing.T) {
+	manager := newTestManager()
+	for _, point := range []share.Point{share.PointToolCallPrepared, share.PointToolCallCompleted} {
+		manager.Register(share.Registration{Point: point, Name: "same"})
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	id := manager.startActive(registration{name: "same", pluginID: "plugin"}, cancel)
+	defer manager.finishActive(id)
+	for _, info := range manager.List() {
+		if info.Active != 1 {
+			t.Fatalf("info=%+v", info)
+		}
+	}
+	if manager.Stop("plugin") != 1 || ctx.Err() != context.Canceled {
+		t.Fatal("Stop did not cancel active handler")
+	}
+}
+
 func TestManagerReplaceSwapsHandlersAndKeepsRuntimeIntegrations(t *testing.T) {
 	routed, logged, observed, runs := 0, 0, 0, 0
 	active := NewManager(func(context.Context, events.LogRecord) { logged++ }, func(_ context.Context, event share.Event, _ func(context.Context, string) (context.Context, func())) (share.Event, bool, events.LogResult, error) {

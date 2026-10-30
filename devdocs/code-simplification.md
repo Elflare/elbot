@@ -45,7 +45,7 @@
 
 按包记录具体问题、精简建议、讨论结论与验证结果，确认方案后再实施。任务入口见 [任务清单](tasks.md)。
 
-当前进度：`internal/app`、`internal/delivery`、`internal/turn`、`internal/tool/builtin`、`internal/memory/resident`、`internal/hook/rules`、`internal/storage/sqlite` 已完成一轮审查与调整；`internal/config` 已完成第三轮精简；`internal/hook/runtime` 已完成第三轮精简，其余包进度分别记录。
+当前进度：`internal/app`、`internal/delivery`、`internal/turn`、`internal/tool/builtin`、`internal/memory/resident`、`internal/hook/rules`、`internal/storage/sqlite` 已完成一轮审查与调整；`internal/config` 已完成第三轮精简；`internal/hook/runtime` 已完成第三轮精简；`internal/hook/control` 已完成一轮精简，其余包进度分别记录。
 
 ### delivery
 
@@ -88,6 +88,12 @@
 - TOML 诊断保留解析器提供的位置、字段、片段与原始错误链，删除英文错误字符串匹配和源码扫描猜测。仍为原有 8 个生产文件。
 - 插件相对路径在拼接前完成范围校验；进程启动成功后的退出路径各执行一次 Wait 和 stderr Flush。stderr 行清理与空行过滤集中在日志入口，失败收尾只读取一次尾部；快捷输出直接比较结构体零值，协议错误正文供日志复用并保留错误链。
 
+### hook/control
+
+- 重载直接在 HookReload 持锁执行，停止统一走 StopHook，删除单调用方重载包装和无生产调用方的停止包装。
+- 列表在 formatHookList 按类型生成头部，共用描述、活动数和换行；runtime 活动数（含零值）优先，普通插件按规则汇总。
+- 保留准备与提交阶段校验、候选快照、插件名优先查询及原有输出格式；补全忽略未使用的 context 返回值，列表删除重复去空白和循环变量复制。
+
 ### config
 
 - `applyState` 在合并状态时返回实际覆盖的字段路径，配置合并与诊断来源共用同一组条件；模型槽整项覆盖，命名与压缩模型任一字段非空即覆盖。
@@ -108,10 +114,17 @@
 - 回归先复现损坏时间导致 List 返回后仍占用唯一连接，修复后验证连接释放及后续查询。已执行 gofmt，Storage 包测试、SQLite 竞态测试和 go test ./... 全仓测试均通过。
 - 第二轮直接绑定布尔 SQL 参数，媒体 JSON 单次解码，分批查询使用 slices.Chunk；输入消费和消息摘录的固定条件移至循环外，错误返回复用已有 rows 关闭。新增非法媒体 JSON 事务回滚、无 checkpoint 消费拒绝及 500／501 条分批回归；gofmt、Storage 包测试与 SQLite 竞态测试通过。
 
+### hook/pipeline
+
+- run／notify 共用 invoke 管理 handler context、Observe 和 active 登记；正常、失败及 panic 路径均释放资源，保留各自事件传递、错误和日志策略。
+- 插件替换一次遍历收集候选顺序与注册，使用 slices.Insert 保持插入位置；List 按规则名一次统计活动执行。唤醒默认值直接由执行分支处理，输出标记原地修改，消息日志文本只提取一次。
+- 回归覆盖执行结束取消、父 context 隔离、Observe 收尾、panic 释放、插件新增与删除及排序、同名活动计数、Stop 取消和输出长度缩短。gofmt、go test ./internal/hook/... 与 go test -race ./internal/hook/pipeline 均通过。
+
 ## 已完成精简
 
 | 包 | 完成情况 | 非测试 Go 行数 |
 | --- | --- | --- |
+| `internal/hook/pipeline` | 共用 handler 执行收尾并补齐 context 取消，简化插件替换、活动计数及重复处理。 | 本轮 522 → 499，减少 23 行；相对初始基线 528 行累计减少 29 行（约 5.5%），仍为 2 个生产文件。 |
 | `internal/storage/sqlite` | 已完成第二轮；共用连接和扫描，删除遗留接口与重复转换、校验及关闭，简化分批和循环判断。 | 本轮 4,717 → 4,708，减少 9 行；相对初始基线累计减少 60 行（约 1.3%），仍为 17 个生产文件；连同 Storage 接口声明累计减少 61 行。 |
 | `internal/app` | 已完成一轮；本文件未登记具体改动及对比数据。 | 基线为 719 行。 |
 | `internal/delivery` | 统一发送与投递信息契约、复用目标校验结果、收拢降级文案并清理重复日志处理。 | 479 → 415，减少 64 行（约 13.4%）。 |
@@ -120,6 +133,7 @@
 | `internal/tool/builtin` | 统一日志截断、复用 Shell AST、合并分支收尾、清理无效状态并显式注入依赖。 | 7,311 → 6,988，减少 323 行（约 4.4%），仍为 21 个生产文件。 |
 | `internal/memory/resident` | 删除重复身份与路径检查，合并修改和长度校验，缓存仅在提交修改前复制列表。 | 345 → 315，减少 30 行（约 8.7%），仍为 1 个生产文件。 |
 | `internal/hook/rules` | 已完成第二轮；统一路径与 stderr 入口校验，删除无效等待状态，快捷输出直接比较零值，协议日志复用错误正文。 | 本轮 2,152 → 2,141，减少 11 行；相对初始基线 2,640 行累计减少 499 行（约 18.9%），仍为 8 个生产文件。 |
+| `internal/hook/control` | 合并列表展示与活动数统计，删除冗余重载、停止包装及重复处理。 | 490 → 459，减少 31 行（约 6.3%），仍为 2 个生产文件。 |
 | `internal/config` | 已完成第三轮；删除无效路径状态与重复兜底，内联会话超时默认值，简化诊断分支，厂商刷新单次解码。 | 本轮 2,580 → 2,542，减少 38 行；相对初始基线 2,611 行累计减少 69 行（约 2.6%），仍为 8 个生产文件。 |
 
 delivery 本轮连同 Hook 调用方共净减 70 行非测试 Go 代码，未拆分文件。回归覆盖表情名称、发送时机重设与复制隔离、目标选择与冲突、Hook 来源、媒体降级及日志与业务结果独立；已执行 `gofmt`，相关包测试与 `go test ./...` 通过。
@@ -137,6 +151,8 @@ tool/builtin 本轮连同 Tool 内部调用方共净减 332 行非测试 Go 代�
 Tool 竞态检查中除 execution 外的包均通过，无数据竞争报告。execution 的 `TestRunConcurrentFailuresKeepOriginalResultOrderAndFlushOnce` 存在调度顺序断言不稳定，使用改动前执行边界的 Go overlay 已复现；本轮未调整执行调度。初次竞态检查还出现取消完成断言失败，单独重复检查及最终整包检查未再次出现。
 
 memory/resident 保留原有行为覆盖，新增拒绝写入不污染缓存与其他用户、无变化不落盘及时间戳不变、空文件与外部编辑内容追加的回归。测试代码增加 121 行，本轮 Go 代码合计增加 91 行。已执行 `gofmt`；resident、Tool 根包及 Agent dialogue／execution 包测试，以及 `GORACE=atexit_sleep_ms=0 go test -race ./internal/memory/resident` 均通过。
+
+hook/control 回归覆盖空列表、独立规则、普通插件活动数汇总、runtime 活动数与描述优先级、多插件状态独立和 Unicode 截断；停止测试直接验证 StopHook。生产代码净减 31 行，测试代码增加 24 行，Go 代码合计净减 7 行。已执行 `gofmt`，`go test ./internal/hook/...` 与本轮 diff 检查通过。
 
 config 回归覆盖状态覆盖与来源一致性、规则继承、模块类型与未知字段检查、资产路径缺省及错误引用、超时缺省与显式禁用、父子诊断顺序、厂商解析错误位置和凭据优先级。第三轮生产代码净减 38 行，测试代码增加 77 行，Go 代码合计增加 39 行；已执行 `gofmt`，`go test ./internal/config ./internal/doctor` 及本轮 diff 检查通过。
 

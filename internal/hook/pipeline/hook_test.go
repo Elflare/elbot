@@ -542,7 +542,9 @@ func TestManagerMarksHookOutputs(t *testing.T) {
 func TestMarkHookOutputsPreservesExistingSource(t *testing.T) {
 	info := delivery.DeliveryInfo{Timing: delivery.DeliveryAfterAssistant, HookName: "inner", HookPoint: "inner.point", HookMode: "run"}
 	event := share.Event{Point: share.PointPlatformConnected, Outputs: []delivery.Output{{Kind: delivery.KindText, Text: "hello", Delivery: info}}}
-	got := markHookOutputs(event, 0, registration{name: "outer"}, "notify")
+	got := event
+	markHookOutputs(got, 0, registration{name: "outer"}, "notify")
+	markHookOutputs(got, 2, registration{name: "outer"}, "notify")
 	if got.Outputs[0].Delivery != info {
 		t.Fatalf("source changed: %#v, want %#v", got.Outputs[0].Delivery, info)
 	}

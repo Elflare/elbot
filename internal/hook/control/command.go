@@ -80,12 +80,11 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 }
 
 func (c hooksCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
-	ctx, done, err := c.beginCall(ctx)
+	_, done, err := c.beginCall(ctx)
 	if err != nil {
 		return nil
 	}
 	defer done()
-	_ = ctx
 	token := command.CurrentCompletionToken(req)
 	if command.IsFirstArg(req, token) {
 		options := []command.CompletionOption{{Text: "reload", Description: "Reload all hooks"}, {Text: "start", Description: "Start a stateful hook"}, {Text: "stop", Description: "Stop a stateful hook"}, {Text: "restart", Description: "Restart a stateful hook"}}
@@ -131,8 +130,7 @@ func collectHookGroups(deps HookService) []*hookGroup {
 			plugins[id] = group
 			groups = append(groups, group)
 		}
-		value := info
-		group.stateful = &value
+		group.stateful = &info
 	}
 	sort.SliceStable(groups, func(i, j int) bool {
 		if groups[i].name == groups[j].name {
@@ -151,49 +149,38 @@ func formatHookList(deps HookService) string {
 	var sb strings.Builder
 	sb.WriteString("hooks:\n")
 	for _, group := range groups {
-		if group.plugin {
-			writePluginHookListLine(&sb, group)
-			continue
+		switch {
+		case !group.plugin:
+			info := group.infos[0]
+			fmt.Fprintf(&sb, "  %s  [%s]  priority=%d", info.Name, info.Point, info.Priority)
+		case group.stateful != nil:
+			fmt.Fprintf(&sb, "  %s  [%s:%s]", group.name, group.stateful.Mode, group.stateful.Status)
+		default:
+			fmt.Fprintf(&sb, "  %s  [plugin]", group.name)
 		}
-		writeStandaloneHookListLine(&sb, group.infos[0])
+		if group.plugin && len(group.infos) > 0 {
+			fmt.Fprintf(&sb, "  rules=%d", len(group.infos))
+		}
+		if description := hookGroupDescription(group); description != "" {
+			sb.WriteString(" - " + truncateHookDescription(description))
+		}
+		active := 0
+		if group.stateful != nil {
+			active = group.stateful.Active
+		} else {
+			for _, info := range group.infos {
+				active += info.Active
+			}
+		}
+		if active > 0 {
+			fmt.Fprintf(&sb, " | %d actived", active)
+		}
+		if group.stateful != nil && group.stateful.Waiting > 0 {
+			fmt.Fprintf(&sb, " | %d waiting", group.stateful.Waiting)
+		}
+		sb.WriteString("\n")
 	}
 	return strings.TrimRight(sb.String(), "\n")
-}
-
-func writePluginHookListLine(sb *strings.Builder, group *hookGroup) {
-	if group.stateful != nil {
-		fmt.Fprintf(sb, "  %s  [%s:%s]", group.name, group.stateful.Mode, group.stateful.Status)
-	} else {
-		fmt.Fprintf(sb, "  %s  [plugin]", group.name)
-	}
-	if len(group.infos) > 0 {
-		fmt.Fprintf(sb, "  rules=%d", len(group.infos))
-	}
-	if description := hookGroupDescription(group); description != "" {
-		sb.WriteString(" - " + truncateHookDescription(description))
-	}
-	if group.stateful != nil {
-		if group.stateful.Active > 0 {
-			fmt.Fprintf(sb, " | %d actived", group.stateful.Active)
-		}
-		if group.stateful.Waiting > 0 {
-			fmt.Fprintf(sb, " | %d waiting", group.stateful.Waiting)
-		}
-	} else if active := hookGroupActive(group); active > 0 {
-		fmt.Fprintf(sb, " | %d actived", active)
-	}
-	sb.WriteString("\n")
-}
-
-func writeStandaloneHookListLine(sb *strings.Builder, info share.Info) {
-	fmt.Fprintf(sb, "  %s  [%s]  priority=%d", info.Name, info.Point, info.Priority)
-	if description := strings.TrimSpace(info.Description); description != "" {
-		sb.WriteString(" - " + truncateHookDescription(description))
-	}
-	if info.Active > 0 {
-		fmt.Fprintf(sb, " | %d actived", info.Active)
-	}
-	sb.WriteString("\n")
 }
 
 func hookGroupDescription(group *hookGroup) string {
@@ -208,14 +195,6 @@ func hookGroupDescription(group *hookGroup) string {
 		}
 	}
 	return ""
-}
-
-func hookGroupActive(group *hookGroup) int {
-	active := 0
-	for _, info := range group.infos {
-		active += info.Active
-	}
-	return active
 }
 
 func hookCompletionDescription(group *hookGroup) string {
@@ -324,7 +303,6 @@ func formatSingleHookDetail(info share.Info) string {
 }
 
 func truncateHookDescription(description string) string {
-	description = strings.TrimSpace(description)
 	if utf8.RuneCountInString(description) <= hookListDescriptionLimit {
 		return description
 	}

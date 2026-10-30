@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -55,7 +56,7 @@ func (m *Manager) Register(reg share.Registration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.next++
-	m.handlers[reg.Point] = append(m.handlers[reg.Point], registration{priority: reg.Priority, order: m.next, pluginID: strings.TrimSpace(reg.PluginID), name: reg.Name, description: strings.TrimSpace(reg.Description), match: reg.Match, block: reg.Block, handler: reg.Handler, detail: reg.Detail, wakeup: normalizeWakeupPolicy(reg.Wakeup)})
+	m.handlers[reg.Point] = append(m.handlers[reg.Point], registration{priority: reg.Priority, order: m.next, pluginID: strings.TrimSpace(reg.PluginID), name: reg.Name, description: strings.TrimSpace(reg.Description), match: reg.Match, block: reg.Block, handler: reg.Handler, detail: reg.Detail, wakeup: reg.Wakeup})
 	sort.SliceStable(m.handlers[reg.Point], func(i, j int) bool {
 		left := m.handlers[reg.Point][i]
 		right := m.handlers[reg.Point][j]
@@ -64,13 +65,6 @@ func (m *Manager) Register(reg share.Registration) {
 		}
 		return left.priority < right.priority
 	})
-}
-
-func normalizeWakeupPolicy(policy share.WakeupPolicy) share.WakeupPolicy {
-	if policy == "" {
-		return share.WakeupRequired
-	}
-	return policy
 }
 
 // Run first tries an inbound continuation, then runs ordinary rules unless stopped.
@@ -134,16 +128,7 @@ func (m *Manager) run(ctx context.Context, event share.Event, options CallOption
 		}
 		event.Metadata["match"] = matchResult.Context
 		before := share.SnapshotCalls(event)
-		handlerCtx, cancel := context.WithCancel(ctx)
-		activeID := m.startActive(reg, cancel)
-		runCtx, done := m.observe(handlerCtx, reg, options)
-		updated, handlerResult, err := func() (share.Event, globalevents.LogResult, error) {
-			defer func() {
-				done()
-				m.finishActive(activeID)
-			}()
-			return reg.handler.HandleHook(runCtx, event, options.ReadOnlyCalls)
-		}()
+		runCtx, updated, handlerResult, err := m.invoke(ctx, reg, event, options)
 		delete(event.Metadata, "match")
 
 		logResult = mergeLogResult(logResult, handlerResult)
@@ -151,7 +136,7 @@ func (m *Manager) run(ctx context.Context, event share.Event, options CallOption
 			m.logHook(runCtx, "run", reg, before, before, handlerResult)
 			return before, logResult, wrapHookError(reg, err)
 		}
-		updated = markHookOutputs(updated, len(before.Outputs), reg, "run")
+		markHookOutputs(updated, len(before.Outputs), reg, "run")
 		event = share.PrepareEvent(updated)
 		m.logHook(runCtx, "run", reg, before, event, handlerResult)
 
@@ -179,16 +164,7 @@ func (m *Manager) notify(ctx context.Context, event share.Event, options CallOpt
 		}
 		event.Metadata["match"] = matchResult.Context
 		before := event
-		handlerCtx, cancel := context.WithCancel(ctx)
-		activeID := m.startActive(reg, cancel)
-		runCtx, done := m.observe(handlerCtx, reg, options)
-		updated, handlerResult, err := func() (share.Event, globalevents.LogResult, error) {
-			defer func() {
-				done()
-				m.finishActive(activeID)
-			}()
-			return reg.handler.HandleHook(runCtx, event, options.ReadOnlyCalls)
-		}()
+		runCtx, updated, handlerResult, err := m.invoke(ctx, reg, event, options)
 		delete(event.Metadata, "match")
 		logResult = mergeLogResult(logResult, handlerResult)
 		if err != nil {
@@ -196,7 +172,7 @@ func (m *Manager) notify(ctx context.Context, event share.Event, options CallOpt
 			joined = errors.Join(joined, wrapHookError(reg, err))
 			continue
 		}
-		_ = markHookOutputs(updated, len(before.Outputs), reg, "notify")
+		markHookOutputs(updated, len(before.Outputs), reg, "notify")
 		m.logHook(runCtx, "notify", reg, before, before, handlerResult)
 		if updated.Control.StopPropagation {
 			break
@@ -241,6 +217,17 @@ func (m *Manager) skipForWakeup(woken bool, reg registration) bool {
 	default:
 		return !woken
 	}
+}
+
+func (m *Manager) invoke(ctx context.Context, reg registration, event share.Event, options CallOptions) (context.Context, share.Event, globalevents.LogResult, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	activeID := m.startActive(reg, cancel)
+	defer m.finishActive(activeID)
+	runCtx, done := m.observe(ctx, reg, options)
+	defer done()
+	updated, result, err := reg.handler.HandleHook(runCtx, event, options.ReadOnlyCalls)
+	return runCtx, updated, result, err
 }
 
 func (m *Manager) observe(ctx context.Context, reg registration, options CallOptions) (context.Context, func()) {
@@ -303,15 +290,13 @@ func (m *Manager) List() []share.Info {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var out []share.Info
+	activeCounts := make(map[string]int, len(m.active))
+	for _, running := range m.active {
+		activeCounts[running.name]++
+	}
 	for point, items := range m.handlers {
 		for _, reg := range items {
-			active := 0
-			for _, running := range m.active {
-				if running.name == reg.name {
-					active++
-				}
-			}
-			out = append(out, share.Info{PluginID: reg.pluginID, Name: reg.name, Description: reg.description, Point: point, Priority: reg.priority, Detail: reg.detail, Active: active})
+			out = append(out, share.Info{PluginID: reg.pluginID, Name: reg.name, Description: reg.description, Point: point, Priority: reg.priority, Detail: reg.detail, Active: activeCounts[reg.name]})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -346,15 +331,11 @@ func (m *Manager) ReplacePlugin(pluginID string, next *Manager) {
 	next.mu.RLock()
 	replacements := make(map[share.Point][]registration)
 	order := map[string]int{}
-	for _, items := range next.handlers {
+	for point, items := range next.handlers {
 		for _, reg := range items {
 			if previous, ok := order[reg.pluginID]; !ok || reg.order < previous {
 				order[reg.pluginID] = reg.order
 			}
-		}
-	}
-	for point, items := range next.handlers {
-		for _, reg := range items {
 			if reg.pluginID == pluginID {
 				replacements[point] = append(replacements[point], reg)
 			}
@@ -386,9 +367,7 @@ func (m *Manager) ReplacePlugin(pluginID string, next *Manager) {
 		if insertAt == -1 {
 			insertAt = len(kept)
 		}
-		kept = append(kept, make([]registration, len(replacements[point]))...)
-		copy(kept[insertAt+len(replacements[point]):], kept[insertAt:len(kept)-len(replacements[point])])
-		copy(kept[insertAt:], replacements[point])
+		kept = slices.Insert(kept, insertAt, replacements[point]...)
 		for _, reg := range kept {
 			m.next = max(m.next, reg.order)
 		}
@@ -420,10 +399,7 @@ func wrapHookError(reg registration, err error) error {
 	return fmt.Errorf("hook %s: %w", reg.name, err)
 }
 
-func markHookOutputs(event share.Event, start int, reg registration, mode string) share.Event {
-	if start > len(event.Outputs) {
-		start = len(event.Outputs)
-	}
+func markHookOutputs(event share.Event, start int, reg registration, mode string) {
 	for i := start; i < len(event.Outputs); i++ {
 		info := &event.Outputs[i].Delivery
 		if info.HookPoint == "" {
@@ -436,7 +412,6 @@ func markHookOutputs(event share.Event, start int, reg registration, mode string
 			info.HookMode = mode
 		}
 	}
-	return event
 }
 
 func (m *Manager) logHook(ctx context.Context, mode string, reg registration, before, after share.Event, logResult globalevents.LogResult) {
@@ -496,11 +471,13 @@ func (m *Manager) logHook(ctx context.Context, mode string, reg registration, be
 }
 
 func eventText(event share.Event) string {
-	switch {
-	case event.LLM.Text != "":
+	if event.LLM.Text != "" {
 		return event.LLM.Text
-	case llm.SegmentsContentText(event.Message.Segments) != "":
-		return llm.SegmentsContentText(event.Message.Segments)
+	}
+	text := llm.SegmentsContentText(event.Message.Segments)
+	switch {
+	case text != "":
+		return text
 	case event.Tool.Result != "":
 		return event.Tool.Result
 	case event.Tool.Arguments != "":

@@ -40,10 +40,6 @@ func (s *Service) HookList() []share.Info {
 func (s *Service) HookReload() (share.ReloadReport, error) {
 	s.reloadMu.Lock()
 	defer s.reloadMu.Unlock()
-	return s.hookReload()
-}
-
-func (s *Service) hookReload() (share.ReloadReport, error) {
 	report, candidate, err := s.loader()
 	if err != nil {
 		return report, err
@@ -121,11 +117,6 @@ func (s *Service) StartStatefulHook(id string) error {
 	s.reloadMu.Lock()
 	defer s.reloadMu.Unlock()
 	return s.runtime.Start(id)
-}
-
-func (s *Service) StopStatefulHook(ctx context.Context, id string) error {
-	_, err := s.StopHook(ctx, id)
-	return err
 }
 
 func (s *Service) StopHook(ctx context.Context, id string) (bool, error) {
