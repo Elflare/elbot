@@ -156,7 +156,7 @@ func recentConversationMessages(ctx context.Context, deps Deps, sessionID string
 }
 
 func previewContent(text string) string {
-	return truncateRunes(strings.TrimSpace(strings.ReplaceAll(text, "\n", " ")), 200)
+	return truncateRunes(strings.TrimSpace(strings.ReplaceAll(text, "\n", " ")), 80)
 }
 
 func assistantMessages(messages []storage.Message) []storage.Message {
@@ -248,7 +248,7 @@ default=%s · model=%s/%s
 compact.model=%s/%s
 platform=%s/%s
 %sphase=idle · pending=0
-tools: work only`, deps.Sessions.DefaultMode(), modeModel.Provider, modeModel.Model, compactModel.Provider, compactModel.Model, scope.Platform, scope.PlatformScopeID, indentStatusBlock(active)))
+`, deps.Sessions.DefaultMode(), modeModel.Provider, modeModel.Model, compactModel.Provider, compactModel.Model, scope.Platform, scope.PlatformScopeID, indentStatusBlock(active)))
 }
 
 func indentStatusBlock(text string) string {

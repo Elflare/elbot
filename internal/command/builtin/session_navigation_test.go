@@ -52,12 +52,12 @@ func TestPreviewContentTruncatesLongMessages(t *testing.T) {
 		{name: "empty"},
 		{name: "short", text: "short message", want: "short message"},
 		{name: "whitespace", text: "  first\nsecond  ", want: "first second"},
-		{name: "at limit", text: strings.Repeat("a", 200), want: strings.Repeat("a", 200)},
-		{name: "over limit", text: strings.Repeat("a", 201), want: strings.Repeat("a", 200) + "..."},
-		{name: "unicode at limit", text: strings.Repeat("中😀", 100), want: strings.Repeat("中😀", 100)},
-		{name: "unicode over limit", text: strings.Repeat("中😀", 101), want: strings.Repeat("中😀", 100) + "..."},
-		{name: "trim before limit", text: "  " + strings.Repeat("中", 200) + "\n ", want: strings.Repeat("中", 200)},
-		{name: "newline before limit", text: strings.Repeat("中", 199) + "\n尾", want: strings.Repeat("中", 199) + " ..."},
+		{name: "at limit", text: strings.Repeat("a", 80), want: strings.Repeat("a", 80)},
+		{name: "over limit", text: strings.Repeat("a", 81), want: strings.Repeat("a", 80) + "..."},
+		{name: "unicode at limit", text: strings.Repeat("中😀", 40), want: strings.Repeat("中😀", 40)},
+		{name: "unicode over limit", text: strings.Repeat("中😀", 41), want: strings.Repeat("中😀", 40) + "..."},
+		{name: "trim before limit", text: "  " + strings.Repeat("中", 80) + "\n ", want: strings.Repeat("中", 80)},
+		{name: "newline before limit", text: strings.Repeat("中", 79) + "\n尾", want: strings.Repeat("中", 79) + " ..."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := previewContent(tc.text); got != tc.want {
@@ -96,7 +96,7 @@ func TestResumeAndForkTruncateHistoryWithoutChangingMessages(t *testing.T) {
 		Store:    store,
 		Scope:    func(context.Context) session.Scope { return scope },
 	}
-	wantHistory := "user: " + strings.Repeat("中😀", 100) + "...\nbot: " + strings.Repeat("中😀", 100) + "..."
+	wantHistory := "user: " + strings.Repeat("中😀", 40) + "...\nbot: " + strings.Repeat("中😀", 40) + "..."
 	for _, tc := range []struct {
 		name    string
 		handler command.Handler

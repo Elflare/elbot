@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"elbot/internal/command"
 	"elbot/internal/config"
@@ -49,15 +50,14 @@ func NewStatus(deps Deps) command.Handler {
 		turnSnapshot := deps.Turns.Snapshot(s.ID)
 		pendingInput := fmt.Sprintf("%d", turnSnapshot.PendingCount)
 		currentModel := deps.Models.CurrentModelForMode(s.Mode)
-		return &command.Result{Content: fmt.Sprintf(`%s · %s
+		return &command.Result{Content: trimTrailingNewlines(fmt.Sprintf(`%s · %s
 %s · %s/%s · msgs=%d
 %screated=%s
 updated=%s
 user: %s
 bot: %s
 %sphase=%s · pending=%s
-%s
-%s`, s.ID, s.Title, s.Mode, currentModel.Provider, currentModel.Model, status.MessageCount, indentStatusBlock(pinned+archived), formatTime(s.CreatedAt), formatTime(s.UpdatedAt), emptyTODO(sessionStatusPreview(status.LastUserContent)), emptyTODO(sessionStatusPreview(status.LastAnswerContent)), indentStatusBlock(active), turnSnapshot.Phase, pendingInput, formatToolUsage(ctx, deps, s.ID, turnSnapshot.Tools), formatContextStatus(ctx, deps, s, currentModel))}, nil
+%s%s`, s.ID, s.Title, s.Mode, currentModel.Provider, currentModel.Model, status.MessageCount, indentStatusBlock(pinned+archived), formatTime(s.CreatedAt), formatTime(s.UpdatedAt), emptyTODO(sessionStatusPreview(status.LastUserContent)), emptyTODO(sessionStatusPreview(status.LastAnswerContent)), indentStatusBlock(active), turnSnapshot.Phase, pendingInput, formatToolUsage(ctx, deps, s.ID, turnSnapshot.Tools), formatContextStatus(ctx, deps, s, currentModel)))}, nil
 	})
 }
 
@@ -106,11 +106,12 @@ func formatToolUsage(ctx context.Context, deps Deps, sessionID string, live map[
 		}
 	}
 	persisted, current := toolsString(usage), toolsString(live)
-	if persisted == "" {
-		persisted = "nil"
+	var sb strings.Builder
+	if persisted != "" {
+		fmt.Fprintf(&sb, "tools.saved: %s\n", persisted)
 	}
-	if current == "" {
-		current = "nil"
+	if current != "" {
+		fmt.Fprintf(&sb, "tools.turn: %s\n", current)
 	}
-	return fmt.Sprintf("tools.saved: %s\ntools.turn: %s", persisted, current)
+	return sb.String()
 }

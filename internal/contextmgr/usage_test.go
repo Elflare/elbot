@@ -95,3 +95,30 @@ func TestUsageUnknownAndZero(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatTokensCachePercentage(t *testing.T) {
+	zero, negative, input, cache, total := int64(0), int64(-1), int64(30), int64(10), int64(90)
+	for _, tc := range []struct {
+		name                string
+		input, cache, total *int64
+		want                string
+	}{
+		{"input denominator and rounding", &input, &cache, &total, "tokens=90 · cache=10 (33.3%)"},
+		{"zero cache", &input, &zero, &total, "tokens=90 · cache=0 (0.0%)"},
+		{"full cache", &input, &input, &total, "tokens=90 · cache=30 (100.0%)"},
+		{"unknown input", nil, &cache, &total, "tokens=90 · cache=10"},
+		{"zero input", &zero, &zero, &total, "tokens=90 · cache=0"},
+		{"negative input", &negative, &cache, &total, "tokens=90 · cache=10"},
+		{"unknown cache", &input, nil, &total, "tokens=90 · cache=unk"},
+		{"negative cache", &input, &negative, &total, "tokens=90 · cache=unk"},
+		{"unknown total", &input, &cache, nil, "tokens=unk · cache=10 (33.3%)"},
+		{"negative total", &input, &cache, &negative, "tokens=unk · cache=10 (33.3%)"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := FormatTokens(&llm.Usage{PromptTokens: tc.input, CacheHitTokens: tc.cache, TotalTokens: tc.total})
+			if got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

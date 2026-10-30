@@ -32,14 +32,15 @@ func FormatTokens(usage *llm.Usage) string {
 	if usage == nil {
 		return "tokens=unk · cache=unk"
 	}
-	if usage.TotalTokens == nil || *usage.TotalTokens < 0 {
-		if usage.CacheHitTokens == nil || *usage.CacheHitTokens < 0 {
-			return "tokens=unk · cache=unk"
+	tokens, cache := "unk", "unk"
+	if usage.TotalTokens != nil && *usage.TotalTokens >= 0 {
+		tokens = fmt.Sprint(*usage.TotalTokens)
+	}
+	if usage.CacheHitTokens != nil && *usage.CacheHitTokens >= 0 {
+		cache = fmt.Sprint(*usage.CacheHitTokens)
+		if usage.PromptTokens != nil && *usage.PromptTokens > 0 {
+			cache += fmt.Sprintf(" (%.1f%%)", float64(*usage.CacheHitTokens)/float64(*usage.PromptTokens)*100)
 		}
-		return fmt.Sprintf("tokens=unk · cache=%d", *usage.CacheHitTokens)
 	}
-	if usage.CacheHitTokens == nil || *usage.CacheHitTokens < 0 {
-		return fmt.Sprintf("tokens=%d · cache=unk", *usage.TotalTokens)
-	}
-	return fmt.Sprintf("tokens=%d · cache=%d", *usage.TotalTokens, *usage.CacheHitTokens)
+	return fmt.Sprintf("tokens=%s · cache=%s", tokens, cache)
 }

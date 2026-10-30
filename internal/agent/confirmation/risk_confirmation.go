@@ -25,8 +25,8 @@ func riskConfirmationCommands() []riskConfirmationCommand {
 	return []riskConfirmationCommand{
 		{Name: "detail", Aliases: []string{"details"}, Args: "", Description: "详情"},
 		{Name: "confirm", Aliases: []string{"c"}, Args: "", Description: "本次"},
-		{Name: "confirmtool", Aliases: []string{"ct"}, Args: "", Description: "本会话同工具免确认"},
-		{Name: "confirmall", Aliases: []string{"ca"}, Args: "", Description: "本会话全部免确认"},
+		{Name: "confirmtool", Aliases: []string{"ct"}, Args: "", Description: "确认工具"},
+		{Name: "confirmall", Aliases: []string{"ca"}, Args: "", Description: "确认全部"},
 		{Name: "reject", Args: "[原因]", Description: "拒绝"},
 		{Name: "stop", Args: "", Description: "停止"},
 	}

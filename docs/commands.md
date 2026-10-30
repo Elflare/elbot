@@ -55,7 +55,7 @@ slash 命令由 Agent Core 统一处理，CLI、QQ 等平台共享同一套语�
 | `/clean --confirm` | 删除过期且未归档、未置顶的 Session。 |
 
 - 除 `/rename` 与 `/delete` 外，带 `[编号或 session_id]` 的命令省略参数时作用于当前 Session；编号由 `/sessions`、`/archives` 展示，可被这些命令复用。
-- `/resume 1` 直接恢复最近更新的非当前 Session，无需先执行裸 `/resume`；编号按更新时间排列、不受置顶影响，翻页连续。
+- `/resume 1` 直接恢复最近更新的非当前 Session，无需先执行裸 `/resume`；编号按更新时间排列，翻页连续。
 - CLI 是本地高权限入口，可跨平台查看和管理 Session；非 CLI 平台只看当前平台和作用域。Cron／Elnis 后台会话仅所属用户可同平台私聊恢复，或从 CLI 管理入口恢复，群聊和频道不显示，也无法通过直接 ID、引用消息或解除归档绕过；首次恢复会永久转为前台归属，切走不会恢复后台身份。
 - 当前会话处理中时不能执行 `/new`、`/resume`、`/fork`、`/chat`、`/work` 等切换类命令，需要先 `/stop`。
 - 删除是永久操作且需要 `--confirm`；执行中的会话不能删除，自动清理也会跳过。

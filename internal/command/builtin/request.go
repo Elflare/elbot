@@ -182,7 +182,7 @@ func formatRequests(ctx context.Context, deps Deps, requests []request.Request) 
 
 func formatRequestTree(ctx context.Context, deps Deps, requests []request.Request, showNone bool, writeDetails func(*strings.Builder, RequestInfo)) string {
 	if len(requests) == 0 && showNone {
-		return "requests=nil"
+		return ""
 	}
 	tree := buildRequestTree(requests)
 	var sb strings.Builder

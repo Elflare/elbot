@@ -86,7 +86,7 @@ func TestRequestCommandsWithoutActiveRequests(t *testing.T) {
 	if result.Content != "nil" {
 		t.Fatalf("requests = %q", result.Content)
 	}
-	if got := formatActiveRequests(ctx, deps, nil); got != "requests=nil" {
+	if got := formatActiveRequests(ctx, deps, nil); got != "" {
 		t.Fatalf("active requests = %q", got)
 	}
 }

@@ -42,6 +42,13 @@ func TestStatusSessionMarkers(t *testing.T) {
 			store := newCommandTestStore(t)
 			svc := newSessionSupervisor(t, store)
 			scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+			empty, err := NewStatus(Deps{Sessions: svc, Models: models, Scope: func(context.Context) session.Scope { return scope }}).Handle(ctx, command.Request{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(empty.Content, "session=nil") || strings.Contains(empty.Content, "requests") || strings.Contains(empty.Content, "tools") || strings.Contains(empty.Content, "\n\n") {
+				t.Fatalf("empty status = %q", empty.Content)
+			}
 			row, err := svc.Create(ctx, scope, session.CreateRequest{Title: "status test"})
 			if err != nil {
 				t.Fatal(err)
@@ -62,10 +69,11 @@ func TestStatusSessionMarkers(t *testing.T) {
 			requests := request.NewManager(0)
 			_, _, done := requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn, Label: "chat"})
 			defer done()
-			result, err := NewStatus(Deps{CommandText: testCommandText,
+			handler := NewStatus(Deps{CommandText: testCommandText,
 				Sessions: svc, Models: models, Requests: requests, Turns: turn.NewSupervisor(),
 				Store: store, Scope: func(context.Context) session.Scope { return scope },
-			}).Handle(ctx, command.Request{})
+			})
+			result, err := handler.Handle(ctx, command.Request{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -83,6 +91,45 @@ func TestStatusSessionMarkers(t *testing.T) {
 			}
 			if strings.Contains(result.Content, "pinned:") || strings.Contains(result.Content, "archived:") || strings.Contains(result.Content, "\n\n") {
 				t.Fatalf("status contains old fields or blank lines: %q", result.Content)
+			}
+			done()
+			result, err = handler.Handle(ctx, command.Request{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(result.Content, "requests") || strings.Contains(result.Content, "tools.") || strings.Contains(result.Content, "\n\n") {
+				t.Fatalf("idle status contains empty sections: %q", result.Content)
+			}
+		})
+	}
+}
+
+func TestFormatToolUsageHidesEmptyLines(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		saved bool
+		live  map[string]int
+		want  string
+	}{
+		{name: "empty"},
+		{name: "empty map", live: map[string]int{}},
+		{name: "saved only", saved: true, want: "tools.saved: shell×1\n"},
+		{name: "turn only", live: map[string]int{"shell": 2}, want: "tools.turn: shell×2\n"},
+		{name: "both", saved: true, live: map[string]int{"shell": 2}, want: "tools.saved: shell×1\ntools.turn: shell×2\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newCommandTestStore(t)
+			row := &storage.Session{OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Title: "tools"}
+			if err := store.Sessions().Create(t.Context(), row); err != nil {
+				t.Fatal(err)
+			}
+			if tc.saved {
+				if err := store.ToolCalls().Create(t.Context(), &storage.ToolCallRecord{SessionID: row.ID, ToolCallID: "call_1", ToolName: "shell", Success: true}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := formatToolUsage(t.Context(), Deps{Store: store}, row.ID, tc.live); got != tc.want {
+				t.Fatalf("tool usage = %q, want %q", got, tc.want)
 			}
 		})
 	}
