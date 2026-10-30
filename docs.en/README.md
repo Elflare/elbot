@@ -2,27 +2,22 @@
 
 # ElBot Documentation
 
-This is the user-facing ElBot documentation. Development plans, task breakdowns, and internal design materials have been moved to [`../devdocs/`](../devdocs/).
+User-facing documentation. Development plans, architecture, and internal design are in [`../devdocs/`](../devdocs/).
 
-## Recommended Reading Order
+## Reading Order
 
-1. [Quick Start](getting-started.md): From configuring the API Key to launching the CLI, complete your first conversation.
-2. [Configuration Guide](configuration.md): Learn about configuration files, path rules, Providers, runtime data, and plugin directories.
-3. [Command Cheat Sheet](commands.md): View common slash commands and Session management methods.
-4. [Core Concepts](concepts.md): Understand Chat / Work modes, tool discovery, Session, Hook, Cron, Skill, and security policies.
-5. [Hook](hooks.md): Rule Hook configuration, action types, segments multi-part output, exec scripts, and emoji extraction examples.
-6. [Elnis Listening Hub](elnis.md): Learn about Elnis, Elwisp, Elvena, and external event access.
-7. [Elnis Configuration and Usage](elnis-usage.md): Enable Elnis, configure Elwisp, and deliver events using Elvena.
-8. [Frontend API](frontend-api.md): WebSocket protocol, message types, and completion interfaces, used for writing custom frontends.
+1. [Quick Start](getting-started.md): Configure API Key → Start CLI → First Conversation.
+2. [Configuration Guide](configuration.md): Configuration file layout, path rules, Provider, runtime data, plugin directory.
+3. [Command Cheat Sheet](commands.md): Slash commands and Session management.
+4. [Core Concepts](concepts.md): Chat / Work mode, tool discovery, Session, Hook, Cron, Skill, security policies.
+5. [Hook](hooks.md): Rule Hook, action types, multi-segment output, exec scripts.
+6. [Elnis Listening Hub](elnis.md): Elnis / Elwisp / Elvena and external event integration.
+7. [Elnis Configuration and Usage](elnis-usage.md): Enable Elnis, configure Elwisp, and deliver events.
+8. [ELyph Task Notation](elyph.md): The task syntax shared by Skills and Cron task entries.
+9. [Frontend API](frontend-api.md): WebSocket protocol, message types, and completion interfaces.
 
-## Documentation Maintenance Conventions
+## Documentation Maintenance
 
-- `README` only retains the project introduction, quick entry points, and the minimum startup path.
-- `docs/` contains user documentation, avoiding the inclusion of development task logs.
-- `devdocs/` is used for development plans, task breakdowns, architecture, and interfaces.
-- When adding user-visible features, prioritize updating the corresponding topic documentation instead of stuffing all details into the README.
-- `CHANGELOG.md` is the Chinese source file, and `CHANGELOG.en.md` is automatically translated by GitHub Actions; do not edit it manually; Using versions (tags) as nodes, regular changes should be written into `## [Unreleased]`; when releasing, change it to `## [vX.Y.Z] - YYYY-MM-DD` and create a new empty Unreleased.
+- Maintenance rules can be found in [`../AGENTS.md`](../AGENTS.md). This directory only contains user documentation; internal materials are placed in [`../devdocs/`](../devdocs/).
+- `CHANGELOG.md` is the Chinese source file, and `CHANGELOG.en.md` is automatically translated by GitHub Actions; please do not edit it manually. Using versions (tags) as nodes: write routine changes into `## [Unreleased]`, and when releasing, change it to `## [vX.Y.Z] - YYYY-MM-DD` and create a new empty Unreleased.
 
-## Current Status
-
-ElBot is still under development; configurations, commands, and extension interfaces may be adjusted. Documentation prioritizes coverage of current stable and commonly used paths; experimental capabilities will be labeled as such where possible.
