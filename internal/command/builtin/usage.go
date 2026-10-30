@@ -240,12 +240,13 @@ func parseUsageQuery(args string) (logging.LogQuery, usageGroupKey, *usageCallRa
 
 type usageBucket struct {
 	calls int
-	// Token and elapsed totals use -1 for unknown; overflow also becomes unknown.
-	promptTokens     int64
-	completionTokens int64
-	totalTokens      int64
-	cacheHitTokens   int64
-	elapsedMs        int64
+	// Token and elapsed totals sum known values only. Nil means no known values;
+	// zero is an explicit known total, and -1 marks an overflowed total.
+	promptTokens     *int64
+	completionTokens *int64
+	totalTokens      *int64
+	cacheHitTokens   *int64
+	elapsedMs        *int64
 }
 
 func formatUsageSummary(entries []logging.LogEntry, query logging.LogQuery, groupBy usageGroupKey) string {
@@ -277,11 +278,17 @@ func formatUsageSummary(entries []logging.LogEntry, query logging.LogQuery, grou
 		elapsed := atoiSafe(fields["elapsed_ms"])
 		for _, b := range []*usageBucket{b, grand} {
 			b.calls++
-			for total, value := range map[*int64]int64{&b.promptTokens: prompt, &b.completionTokens: completion, &b.totalTokens: total, &b.cacheHitTokens: cache, &b.elapsedMs: elapsed} {
-				if *total < 0 || value < 0 || value > math.MaxInt64-*total {
-					*total = -1
+			for total, value := range map[**int64]int64{&b.promptTokens: prompt, &b.completionTokens: completion, &b.totalTokens: total, &b.cacheHitTokens: cache, &b.elapsedMs: elapsed} {
+				if value < 0 {
+					continue
+				}
+				if *total == nil {
+					*total = new(int64)
+				}
+				if **total < 0 || value > math.MaxInt64-**total {
+					**total = -1
 				} else {
-					*total += value
+					**total += value
 				}
 			}
 		}
@@ -360,14 +367,14 @@ func atoiSafe(value string) int64 {
 	return n
 }
 
-func formatThousands(n int64) string {
-	if n < 0 {
+func formatThousands(n *int64) string {
+	if n == nil || *n < 0 {
 		return "unk"
 	}
-	if n == 0 {
+	if *n == 0 {
 		return "0"
 	}
-	digits := strconv.FormatInt(n, 10)
+	digits := strconv.FormatInt(*n, 10)
 	if len(digits) <= 3 {
 		return digits
 	}
@@ -399,9 +406,9 @@ func formatUsageBucket(sb *strings.Builder, label string, b *usageBucket) {
 		formatElapsed(b.elapsedMs)))
 }
 
-func formatElapsed(ms int64) string {
-	if ms < 0 {
+func formatElapsed(ms *int64) string {
+	if ms == nil || *ms < 0 {
 		return "unk"
 	}
-	return fmt.Sprintf("%.1fs", float64(ms)/1000)
+	return fmt.Sprintf("%.1fs", float64(*ms)/1000)
 }

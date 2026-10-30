@@ -59,6 +59,80 @@ func TestUsageJSONGroupingPreservesTokenTypes(t *testing.T) {
 	}
 }
 
+func TestUsageSummarySkipsUnknown(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		bodies []string
+		want   string
+	}{
+		{
+			name:   "known then unknown",
+			bodies: []string{`{"prompt_tokens":1000,"completion_tokens":20,"total_tokens":1020,"cache_hit_tokens":500,"elapsed_ms":100}`, `{}`},
+			want:   "prompt: 1,000 | completion: 20 | total: 1,020\n  cache: 500 | elapsed: 0.1s",
+		},
+		{
+			name:   "unknown then known",
+			bodies: []string{`{"prompt_tokens":null,"completion_tokens":null,"total_tokens":null,"cache_hit_tokens":null,"elapsed_ms":null}`, `{"prompt_tokens":1000,"completion_tokens":20,"total_tokens":1020,"cache_hit_tokens":500,"elapsed_ms":100}`},
+			want:   "prompt: 1,000 | completion: 20 | total: 1,020\n  cache: 500 | elapsed: 0.1s",
+		},
+		{
+			name:   "independent fields without inferred total",
+			bodies: []string{`{"prompt_tokens":1000,"cache_hit_tokens":0}`, `{"completion_tokens":20,"elapsed_ms":100}`},
+			want:   "prompt: 1,000 | completion: 20 | total: unk\n  cache: 0 | elapsed: 0.1s",
+		},
+		{
+			name:   "all unknown",
+			bodies: []string{`{}`, `{"prompt_tokens":null,"completion_tokens":"2","total_tokens":-1}`},
+			want:   "prompt: unk | completion: unk | total: unk\n  cache: unk | elapsed: unk",
+		},
+		{
+			name:   "zero is known",
+			bodies: []string{`{}`, `{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0,"cache_hit_tokens":0,"elapsed_ms":0}`},
+			want:   "prompt: 0 | completion: 0 | total: 0\n  cache: 0 | elapsed: 0.0s",
+		},
+		{
+			name:   "overflow stays unknown",
+			bodies: []string{`{"prompt_tokens":9223372036854775807}`, `{"prompt_tokens":1}`, `{}`, `{"prompt_tokens":10}`},
+			want:   "prompt: unk | completion: unk | total: unk\n  cache: unk | elapsed: unk",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var entries []logging.LogEntry
+			for _, body := range tc.bodies {
+				entries = append(entries, logging.LogEntry{Type: events.ContentJSON, Content: body})
+			}
+			for _, group := range []usageGroupKey{groupByModel, groupByDay, groupBySession} {
+				got := formatUsageSummary(entries, logging.LogQuery{}, group)
+				if strings.Count(got, tc.want) != 2 || !strings.Contains(got, fmt.Sprintf("[total] calls: %d", len(entries))) {
+					t.Fatalf("group=%s: %s", group, got)
+				}
+			}
+		})
+	}
+}
+
+func TestUsageKnownTotalsAcrossGroupsAndCallRange(t *testing.T) {
+	entries := []logging.LogEntry{
+		makeUsageEntry(time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC), "p", "a", "s1", 100, 20, 120, 0, 100),
+		makeUsageEntry(time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC), "p", "b", "s2", -1, -1, -1, -1, -1),
+		makeUsageEntry(time.Date(2026, 10, 28, 0, 0, 0, 0, time.UTC), "p", "c", "s3", 200, 30, 230, 10, 200),
+	}
+	for _, group := range []usageGroupKey{groupByModel, groupByDay, groupBySession} {
+		got := formatUsageSummary(entries, logging.LogQuery{}, group)
+		want := "[total] calls: 3\n  prompt: 300 | completion: 50 | total: 350\n  cache: 10 | elapsed: 0.3s\n"
+		if !strings.HasSuffix(got, want) || strings.Count(got, "calls: 1") != 3 || strings.Count(got, "prompt: unk") != 1 {
+			t.Fatalf("group=%s: %s", group, got)
+		}
+	}
+	result, err := NewUsage(Deps{CommandText: testCommandText, Logs: &fakeLogService{entries: entries}}).Handle(t.Context(), command.Request{Args: "-n 2-3"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(result.Content, "[total] calls: 2\n  prompt: 200 | completion: 30 | total: 230\n  cache: 10 | elapsed: 0.2s\n") {
+		t.Fatal(result.Content)
+	}
+}
+
 func TestUsageDefaultQueryByModel(t *testing.T) {
 	entries := []logging.LogEntry{
 		makeUsageEntry(time.Date(2026, 7, 1, 10, 0, 0, 0, time.Local), "deepseek", "deepseek-v4", "sess-1", 1000, 200, 1200, 500, 1500),

@@ -55,7 +55,7 @@ func TestUsageUnknownAndOverflowDoNotLoseCallsOrOtherTotals(t *testing.T) {
 		{Type: events.ContentJSON, Content: `{"provider":"p","model":"b","prompt_tokens":5,"completion_tokens":6,"total_tokens":11,"cache_hit_tokens":"illegal","elapsed_ms":30}`},
 	}
 	content := formatUsageSummary(entries, logging.LogQuery{Days: 1}, groupByModel)
-	for _, want := range []string{"[p/a] calls: 2", "prompt: unk | completion: 5 | total: unk", "[p/b] calls: 1", "prompt: 5 | completion: 6 | total: 11", "[total] calls: 3", "prompt: unk | completion: 11 | total: unk", "cache: unk"} {
+	for _, want := range []string{"[p/a] calls: 2", "prompt: unk | completion: 5 | total: 4", "[p/b] calls: 1", "prompt: 5 | completion: 6 | total: 11", "[total] calls: 3", "prompt: unk | completion: 11 | total: 15", "cache: unk"} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("missing %q in %s", want, content)
 		}
