@@ -89,9 +89,13 @@ elbot service run  # Headless service: start enabled platforms and background ta
 ```
 
 Automatic mode prioritizes connecting to the CLI server using the default connection configuration. When `-c` is not explicitly specified, it will fallback to local startup only if the CLI is disabled, there are no connection configurations, or a network dialing failure occurs with the default local service; Configuration, authentication, and handshake errors are reported directly.
- Service mode does not start the local interactive interface; The CLI server and other messaging platforms run independently: exiting a single platform will not stop other platforms or background tasks; When no messaging platforms are configured or all platforms have exited, the service remains running until it is stopped externally. When an interactively started CLI exits, it will terminate the associated application process.
+Service mode does not start the local interactive interface; The CLI server and other messaging platforms run independently. When no messaging platforms are configured or all platforms have exited, the service remains running until it is stopped externally. When an interactively started CLI exits, it will terminate the associated application process.
 
-Upon normal exit, platform connection events will be stopped and corresponding processing will be canceled; components share a cleanup budget of up to 30 seconds; stop waiting and exit after the timeout expires. Expected cancellations and cleanup timeouts are not treated as application failures; actual runtime or shutdown errors will still be reported.
+Only one local instance can run with the same configuration.
+
+The lock file is located next to the actual configuration, for example `app.toml.lock`. The lock will be released after a normal shutdown or an abnormal process exit; no manual cleanup is required. Do not delete the lock file while running; saving or replacing the configuration file does not affect the acquired lock.
+
+A normal exit happens instantly; if it hangs, it will be given up to 30 seconds before being forcibly closed.
 
 Common CLI TUI keys:
 

@@ -376,14 +376,6 @@
       "translation": "Service mode does not start the local interactive interface;",
       "updated_at": 1792502240
     },
-    "docs/getting-started.md:paragraph:139be984ebdf43dde507b91c17254b6e6ec878656f68fd4241fa675782ec8003": {
-      "kind": "paragraph",
-      "source": "CLI 服务端和其他消息平台独立运行：单个平台退出不会停止其他平台或后台任务；",
-      "source_file": "docs/getting-started.md",
-      "source_hash": "139be984ebdf43dde507b91c17254b6e6ec878656f68fd4241fa675782ec8003",
-      "translation": "The CLI server and other messaging platforms run independently: exiting a single platform will not stop other platforms or background tasks;",
-      "updated_at": 1792502240
-    },
     "docs/getting-started.md:paragraph:172e996a8220bb173868d383d8e388706221e6839ee02147275d7e68733c7066": {
       "kind": "paragraph",
       "source": "直接启动的交互 CLI 退出时会结束所属应用进程。\n",
@@ -391,14 +383,6 @@
       "source_hash": "172e996a8220bb173868d383d8e388706221e6839ee02147275d7e68733c7066",
       "translation": "When an interactively started CLI exits, it will terminate the associated application process.\n",
       "updated_at": 1791726027
-    },
-    "docs/getting-started.md:paragraph:1764c45ccdf9752d90fb85d4f8f10eac4884ee3a0f2b04a849a6afcf60213beb": {
-      "kind": "paragraph",
-      "source": "到期后停止等待并退出。",
-      "source_file": "docs/getting-started.md",
-      "source_hash": "1764c45ccdf9752d90fb85d4f8f10eac4884ee3a0f2b04a849a6afcf60213beb",
-      "translation": "stop waiting and exit after the timeout expires.",
-      "updated_at": 1791194071
     },
     "docs/getting-started.md:paragraph:196b8190cdc27860f073549b9b80c13718beb92ba249e8313b93b64fe256b364": {
       "kind": "paragraph",
@@ -416,6 +400,14 @@
       "translation": "`default_mode` is set manually; other settings can be configured using commands in the CLI.\n",
       "updated_at": 1781534482
     },
+    "docs/getting-started.md:paragraph:211f852a6cbe9e454dc1881f90f900e9c1637dd3f51a8aa0ebc752791f3dd777": {
+      "kind": "paragraph",
+      "source": "运行期间不要删除锁文件，保存或替换配置文件不影响已取得的锁。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "211f852a6cbe9e454dc1881f90f900e9c1637dd3f51a8aa0ebc752791f3dd777",
+      "translation": "Do not delete the lock file while running; saving or replacing the configuration file does not affect the acquired lock.\n",
+      "updated_at": 1793334060
+    },
     "docs/getting-started.md:paragraph:447a0b6ec8d5e3e1886ee9faff3b1dc56b70d4acc72769b0d3e5f0fac2e92d21": {
       "kind": "paragraph",
       "source": "需要工具时再输入 __ELBOT_CODE_0__。\n",
@@ -431,6 +423,22 @@
       "source_hash": "56825f21d0020609b6800ca52ac2da0e9f6bd8d80f29875e20a63f7d62fb1ccf",
       "translation": "Existing configuration files will not be overwritten.\n",
       "updated_at": 1781854929
+    },
+    "docs/getting-started.md:paragraph:56e5e582592791fd37c58d4182e3bd75154829210662787b35ee5834e76e598e": {
+      "kind": "paragraph",
+      "source": "锁文件位于实际配置旁，例如 __ELBOT_CODE_0__。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "56e5e582592791fd37c58d4182e3bd75154829210662787b35ee5834e76e598e",
+      "translation": "The lock file is located next to the actual configuration, for example __ELBOT_CODE_0__.",
+      "updated_at": 1793334060
+    },
+    "docs/getting-started.md:paragraph:59129b774b6e0a218c2481a32f00188f4eedcee69cbdd3ac11581ca3162edd23": {
+      "kind": "paragraph",
+      "source": "正常关闭或进程异常退出后锁会释放，无需手动清理。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "59129b774b6e0a218c2481a32f00188f4eedcee69cbdd3ac11581ca3162edd23",
+      "translation": "The lock will be released after a normal shutdown or an abnormal process exit; no manual cleanup is required.",
+      "updated_at": 1793334060
     },
     "docs/getting-started.md:paragraph:68d560c5bd914873c5becf526acf5148658b37581a10f1b69fbd54ea3e975f23": {
       "kind": "paragraph",
@@ -464,14 +472,6 @@
       "translation": "Common running modes:\n",
       "updated_at": 1781575108
     },
-    "docs/getting-started.md:paragraph:7a25c9d3a9616d92a52a65a4050e83bdf0c4c832e27969b43f4425e992647a4c": {
-      "kind": "paragraph",
-      "source": "预期取消和收尾超时不作为应用失败，真实运行或关闭错误仍会报告。\n",
-      "source_file": "docs/getting-started.md",
-      "source_hash": "7a25c9d3a9616d92a52a65a4050e83bdf0c4c832e27969b43f4425e992647a4c",
-      "translation": "Expected cancellations and cleanup timeouts are not treated as application failures; actual runtime or shutdown errors will still be reported.\n",
-      "updated_at": 1791194071
-    },
     "docs/getting-started.md:paragraph:7bd09adb76891246e11b404932655ad4bd07eae98fdc9861dbf8ca409ea2ce9d": {
       "kind": "paragraph",
       "source": "示例：nushell\n",
@@ -479,14 +479,6 @@
       "source_hash": "7bd09adb76891246e11b404932655ad4bd07eae98fdc9861dbf8ca409ea2ce9d",
       "translation": "Example: nushell\n",
       "updated_at": 1781575108
-    },
-    "docs/getting-started.md:paragraph:7dc52493c1ee933bc4688324821bb2227fa2e510632081d5012e9c3e97d55bfa": {
-      "kind": "paragraph",
-      "source": "正常退出时会停止平台连接事件并取消相应处理，组件共享最多 30 秒的收尾预算；",
-      "source_file": "docs/getting-started.md",
-      "source_hash": "7dc52493c1ee933bc4688324821bb2227fa2e510632081d5012e9c3e97d55bfa",
-      "translation": "Upon normal exit, platform connection events will be stopped and corresponding processing will be canceled; components share a cleanup budget of up to 30 seconds;",
-      "updated_at": 1791194071
     },
     "docs/getting-started.md:paragraph:8429e5040d047904b63a1e7135a5b45e7348f29018bd9dd79f6cb7deca6c39bd": {
       "kind": "paragraph",
@@ -511,6 +503,14 @@
       "source_hash": "8fa4cf76f98c84b6312ccbae6d959777d0931c94893cdf984982cc1f5e957526",
       "translation": "When __ELBOT_CODE_0__ is not explicitly specified, it will fallback to local startup only if the CLI is disabled, there are no connection configurations, or a network dialing failure occurs with the default local service;",
       "updated_at": 1792502240
+    },
+    "docs/getting-started.md:paragraph:90267b7a5bc413e14d6805bcb2b8f39752a6cb64f8da7c375fe0eb11f63d067b": {
+      "kind": "paragraph",
+      "source": "CLI 服务端和其他消息平台独立运行。",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "90267b7a5bc413e14d6805bcb2b8f39752a6cb64f8da7c375fe0eb11f63d067b",
+      "translation": "The CLI server and other messaging platforms run independently.",
+      "updated_at": 1793334060
     },
     "docs/getting-started.md:paragraph:9c79075c1d42ffa41b8f0a6ac4efe5e40520193862e33bbf95520baa73dd4b14": {
       "kind": "paragraph",
@@ -584,6 +584,14 @@
       "translation": "After starting, simply enter your message. In the default example, the __ELBOT_CODE_1__ of __ELBOT_CODE_0__ is __ELBOT_CODE_2__, which enables tool discovery capabilities.\n",
       "updated_at": 1781515975
     },
+    "docs/getting-started.md:paragraph:ca4012f690c9c8f9b5d2b6a924a2a3ed189ffe0cf9941cbb702bacd3ddedfa78": {
+      "kind": "paragraph",
+      "source": "同一份配置只能运行一个本地实例。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "ca4012f690c9c8f9b5d2b6a924a2a3ed189ffe0cf9941cbb702bacd3ddedfa78",
+      "translation": "Only one local instance can run with the same configuration.\n",
+      "updated_at": 1793334060
+    },
     "docs/getting-started.md:paragraph:ccadb6024e5c66db566b18d85e16f45021630c35aa5184b90fb336f178114d57": {
       "kind": "paragraph",
       "source": "ElBot 可以生成常见 shell 的补全脚本：\n",
@@ -640,6 +648,14 @@
       "translation": "Then source this file in your Nushell configuration.\n",
       "updated_at": 1781575108
     },
+    "docs/getting-started.md:paragraph:fb6ff82d49f7e741fa3e6561afa29f1c8bbab5e064c0e54fa702a54be4b4d00e": {
+      "kind": "paragraph",
+      "source": "正常退出是秒退出，若卡了会最多给 30 秒，到时强制关闭。\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "fb6ff82d49f7e741fa3e6561afa29f1c8bbab5e064c0e54fa702a54be4b4d00e",
+      "translation": "A normal exit happens instantly; if it hangs, it will be given up to 30 seconds before being forcibly closed.\n",
+      "updated_at": 1793334060
+    },
     "docs/getting-started.md:paragraph:fd742b0b560cb65dd498330ec208c73674264e043698b3e3b640fe9a3670af10": {
       "kind": "paragraph",
       "source": "构建二进制：\n",
@@ -658,8 +674,8 @@
     }
   },
   "source": "docs/getting-started.md",
-  "source_hash": "f6d1656e89982b621de3aaceccdf96c4a047f91ece6790786009e35abfb66dca",
+  "source_hash": "6d21166f2adc91f568e45e9a58f19efc2231c140a5c2f52dcbeee5a93eb93b2f",
   "target": "docs.en/getting-started.md",
-  "updated_at": 1792502240,
+  "updated_at": 1793334060,
   "version": 2
 }
