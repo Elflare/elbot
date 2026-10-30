@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"container/heap"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,11 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/events"
 	"elbot/internal/media"
 )
 
-// These benchmarks compare existing maintenance with scheduling-only models.
-// The models do not replace production KV/media behavior or perform media I/O.
+// Benchmarks use the production expiry index. Timer comparisons measure only
+// scheduling costs; media failures use a probe without filesystem/network I/O.
 func BenchmarkSharedMaintenance(b *testing.B) {
 	for _, count := range []int{100, 1000, 10000} {
 		for _, operation := range []string{"get", "set", "cas", "prune", "evict"} {
@@ -29,6 +29,7 @@ func BenchmarkSharedMaintenance(b *testing.B) {
 						entry := sharedEntry{value: json.RawMessage(`1`), ttl: time.Hour, lastAccess: now}
 						s.items[keys[i]] = entry
 						s.size += sharedEntrySize(keys[i], entry)
+						s.scheduleExpiryLocked(keys[i], entry)
 					}
 				}
 				b.ReportAllocs()
@@ -59,27 +60,6 @@ func BenchmarkSharedMaintenance(b *testing.B) {
 	}
 }
 
-type benchmarkDeadline struct {
-	at    time.Time
-	index int
-}
-type benchmarkDeadlines []*benchmarkDeadline
-
-func (h benchmarkDeadlines) Len() int           { return len(h) }
-func (h benchmarkDeadlines) Less(i, j int) bool { return h[i].at.Before(h[j].at) }
-func (h benchmarkDeadlines) Swap(i, j int)      { h[i], h[j] = h[j], h[i]; h[i].index, h[j].index = i, j }
-func (h *benchmarkDeadlines) Push(value any) {
-	item := value.(*benchmarkDeadline)
-	item.index = len(*h)
-	*h = append(*h, item)
-}
-func (h *benchmarkDeadlines) Pop() any {
-	old := *h
-	item := old[len(old)-1]
-	*h = old[:len(old)-1]
-	return item
-}
-
 func BenchmarkMaintenanceRenewal(b *testing.B) {
 	for _, count := range []int{100, 1000, 10000} {
 		b.Run(fmt.Sprintf("per-item/%d", count), func(b *testing.B) {
@@ -102,13 +82,12 @@ func BenchmarkMaintenanceRenewal(b *testing.B) {
 			}
 		})
 		b.Run(fmt.Sprintf("nearest/%d", count), func(b *testing.B) {
-			h := make(benchmarkDeadlines, count)
-			items := make([]*benchmarkDeadline, count)
-			for i := range h {
-				h[i] = &benchmarkDeadline{at: time.Now().Add(time.Hour), index: i}
-				items[i] = h[i]
+			var q expiryQueue
+			keys := make([]string, count)
+			for i := range keys {
+				keys[i] = fmt.Sprintf("key-%d", i)
+				q.set(keys[i], time.Now().Add(time.Hour))
 			}
-			heap.Init(&h)
 			timer := time.NewTimer(time.Hour)
 			defer timer.Stop()
 			var mu sync.Mutex
@@ -116,12 +95,8 @@ func BenchmarkMaintenanceRenewal(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				mu.Lock()
-				item := items[i%count]
-				old := h[0].at
-				item.at = time.Now().Add(time.Hour)
-				heap.Fix(&h, item.index)
-				if !old.Equal(h[0].at) {
-					timer.Reset(time.Until(h[0].at))
+				if q.set(keys[i%count], time.Now().Add(time.Hour)) {
+					timer.Reset(time.Until(q.next()))
 				}
 				mu.Unlock()
 			}
@@ -131,6 +106,10 @@ func BenchmarkMaintenanceRenewal(b *testing.B) {
 
 func BenchmarkMaintenanceSetup(b *testing.B) {
 	const count = 10000
+	keys := make([]string, count)
+	for i := range keys {
+		keys[i] = fmt.Sprintf("key-%d", i)
+	}
 	b.Run("per-item", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -146,12 +125,11 @@ func BenchmarkMaintenanceSetup(b *testing.B) {
 	b.Run("nearest", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			h := make(benchmarkDeadlines, count)
-			for j := range h {
-				h[j] = &benchmarkDeadline{at: time.Now().Add(time.Hour), index: j}
+			var q expiryQueue
+			for _, key := range keys {
+				q.set(key, time.Now().Add(time.Hour))
 			}
-			heap.Init(&h)
-			timer := time.NewTimer(time.Until(h[0].at))
+			timer := time.NewTimer(time.Until(q.next()))
 			timer.Stop()
 		}
 	})
@@ -159,17 +137,22 @@ func BenchmarkMaintenanceSetup(b *testing.B) {
 
 func BenchmarkMediaMaintenance(b *testing.B) {
 	for _, count := range []int{100, 1000, 10000} {
-		for _, mode := range []string{"live", "busy-expired", "failed-retry"} {
+		for _, mode := range []string{"live", "busy-waiting-release", "failed-retry"} {
 			b.Run(fmt.Sprintf("%s/%d", mode, count), func(b *testing.B) {
 				bridge := newMediaBridge(nil)
 				now := time.Now()
 				for i := 0; i < count; i++ {
 					lease := &mediaLease{expires: now.Add(time.Hour)}
-					if mode == "busy-expired" {
+					if mode == "busy-waiting-release" {
 						lease.expires = now.Add(-time.Second)
 						lease.busy = make(chan struct{})
 					}
-					bridge.leases[fmt.Sprintf("media-%d", i)] = lease
+					id := fmt.Sprintf("media-%d", i)
+					bridge.leases[id] = lease
+					bridge.scheduleExpiryLocked(id, lease.expires)
+				}
+				if mode == "busy-waiting-release" {
+					_ = bridge.prune(b.Context(), now, false, func(events.LogResult) {})
 				}
 				// A single failed lease among live leases: simulate reference-release
 				// failure without filesystem/network cost, preserving it for retry.
@@ -182,10 +165,42 @@ func BenchmarkMediaMaintenance(b *testing.B) {
 				b.ReportAllocs()
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					_, _ = bridge.prune(b.Context(), now, false)
+					if mode == "failed-retry" {
+						// Each iteration models one due failed attempt, not the idle
+						// time between retries or an already exhausted lease.
+						now = time.Now()
+						bridge.leases["media-0"].cleanupFailures = 0
+						bridge.scheduleExpiryLocked("media-0", now)
+					}
+					_ = bridge.prune(b.Context(), now, false, func(events.LogResult) {})
 				}
 			})
 		}
+	}
+}
+
+func BenchmarkExpiryQueueDrain(b *testing.B) {
+	for _, count := range []int{100, 1000, 10000} {
+		b.Run(fmt.Sprintf("%d", count), func(b *testing.B) {
+			keys := make([]string, count)
+			for i := range keys {
+				keys[i] = fmt.Sprintf("key-%d", i)
+			}
+			now := time.Now()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				var q expiryQueue
+				for _, key := range keys {
+					q.set(key, now)
+				}
+				b.StartTimer()
+				for j := 0; j < count; j++ {
+					q.popDue(now)
+				}
+			}
+		})
 	}
 }
 

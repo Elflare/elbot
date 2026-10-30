@@ -24,6 +24,7 @@ import (
 
 const mediaInlineBytes = 1024 * 1024
 const mediaLeaseTTL = time.Hour
+const mediaCleanupRetries = 3 // 首次清理之外的自动重试上限，间隔依次为 1、2、4 分钟。
 
 // Only this projection is sent over the pipe, never storage.Media itself.
 type mediaResult struct {
@@ -37,12 +38,13 @@ type mediaResult struct {
 }
 
 type mediaLease struct {
-	reference media.Reference // 租约对应的持久引用身份。
-	expires   time.Time       // 最后一次使用后的到期时间，由集合锁保护。
-	dir       string          // 租约拥有的临时目录，由占用者独占访问。
-	path      string          // 已完成导出的路径，由占用者独占访问。
-	retained  bool            // 引用已取得且尚未成功释放，避免重复清理成功项。
-	busy      chan struct{}   // 当前独占操作结束时关闭；等待者可取消。
+	reference       media.Reference // 租约对应的持久引用身份。
+	expires         time.Time       // 最后一次使用后的到期时间，由集合锁保护。
+	dir             string          // 租约拥有的临时目录，由占用者独占访问。
+	path            string          // 已完成导出的路径，由占用者独占访问。
+	retained        bool            // 引用已取得且尚未成功释放，避免重复清理成功项。
+	busy            chan struct{}   // 当前独占操作结束时关闭；等待者可取消。
+	cleanupFailures int             // 本次租约周期的清理失败次数，由集合锁保护；成功续用后归零。
 }
 
 // mediaAPI is runtime's borrowed media capability, limited to plugin RPC and leases.
@@ -63,10 +65,12 @@ type mediaBridge struct {
 	api    mediaAPI
 	owner  string
 	leases map[string]*mediaLease
+	expiry expiryQueue   // 到期与失败重试共用的索引，由 mu 保护。
+	wake   chan struct{} // 最近期限变化通知，可合并，由维护循环消费。
 }
 
 func newMediaBridge(api mediaAPI) *mediaBridge {
-	return &mediaBridge{api: api, owner: randomID("hook-media"), leases: map[string]*mediaLease{}}
+	return &mediaBridge{api: api, owner: randomID("hook-media"), leases: map[string]*mediaLease{}, wake: make(chan struct{}, 1)}
 }
 
 // MediaRequest is shared by once-exec and Worker Hook RPC dispatchers.
@@ -152,13 +156,22 @@ func (b *mediaBridge) retain(ctx context.Context, id string) (*mediaLease, error
 			b.leases[id] = lease
 		}
 		lease.busy = make(chan struct{})
-		lease.expires = time.Now().Add(mediaLeaseTTL)
+		expires := time.Now().Add(mediaLeaseTTL)
+		deadline := lease.expires
+		if entry := b.expiry.byKey[id]; entry != nil {
+			deadline = entry.deadline
+		}
 		b.mu.Unlock()
 		if !lease.retained {
 			if err := b.api.AddReference(ctx, lease.reference); err != nil {
 				b.mu.Lock()
 				if lease.dir == "" {
 					delete(b.leases, id)
+					if b.expiry.remove(id) {
+						b.wakeExpiry()
+					}
+				} else if lease.cleanupFailures <= mediaCleanupRetries {
+					b.scheduleExpiryLocked(id, deadline)
 				}
 				close(lease.busy)
 				lease.busy = nil
@@ -167,6 +180,11 @@ func (b *mediaBridge) retain(ctx context.Context, id string) (*mediaLease, error
 			}
 			lease.retained = true
 		}
+		b.mu.Lock()
+		lease.expires = expires
+		lease.cleanupFailures = 0
+		b.scheduleExpiryLocked(id, expires)
+		b.mu.Unlock()
 		return lease, nil
 	}
 }
@@ -175,7 +193,23 @@ func (b *mediaBridge) release(lease *mediaLease) {
 	b.mu.Lock()
 	close(lease.busy)
 	lease.busy = nil
+	if !time.Now().Before(lease.expires) && lease.cleanupFailures <= mediaCleanupRetries {
+		b.scheduleExpiryLocked(lease.reference.MediaID, lease.expires)
+	}
 	b.mu.Unlock()
+}
+
+func (b *mediaBridge) scheduleExpiryLocked(id string, deadline time.Time) {
+	if b.expiry.set(id, deadline) {
+		b.wakeExpiry()
+	}
+}
+
+func (b *mediaBridge) wakeExpiry() {
+	select {
+	case b.wake <- struct{}{}:
+	default:
+	}
 }
 
 func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw json.RawMessage) (any, error) {
@@ -291,54 +325,105 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 	return result, nil
 }
 
-func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool) (events.LogResult, error) {
-	b.mu.Lock()
-	selected := make(map[string]*mediaLease)
-	for id, lease := range b.leases {
-		if lease.busy != nil || (!closeAll && now.Before(lease.expires)) {
-			continue
-		}
-		lease.busy = make(chan struct{})
-		selected[id] = lease
-	}
-	b.mu.Unlock()
-	var failures []error
-	logResult := events.LogResult{ResultStatus: events.ResultSkipped, Content: "no Hook media leases due"}
-	for id, lease := range selected {
-		if logResult.ResultStatus == events.ResultSkipped {
-			logResult = events.LogResult{ResultStatus: events.ResultSucceeded, Content: "Hook media lease release"}
-		}
-		if lease.retained {
-			if err := b.api.RemoveReference(ctx, lease.reference); err != nil {
-				failures = append(failures, err)
-				if !errors.Is(err, context.Canceled) {
-					logResult.ResultStatus = events.ResultFailed
-				} else if logResult.ResultStatus != events.ResultFailed {
-					logResult.ResultStatus = events.ResultCanceled
-				}
-				logResult.Content += fmt.Sprintf("\nmedia_id=%s reference_release_error=%v", id, err)
-			} else {
-				lease.retained = false
-				logResult.Content += "\nmedia_id=" + id + " reference_released"
-			}
-		}
-		if lease.dir != "" {
-			if err := os.RemoveAll(lease.dir); err != nil {
-				failures = append(failures, err)
-				logResult.ResultStatus = events.ResultFailed
-				logResult.Content += fmt.Sprintf("\nmedia_id=%s directory_release_error=%v", id, err)
-			} else {
-				lease.dir, lease.path = "", ""
-			}
-		}
+func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool, log func(events.LogResult)) error {
+	// Only shutdown visits the entire collection. Snapshot keys so a failed
+	// lease is attempted once per Close, without occupying the whole batch.
+	var keys []string
+	if closeAll {
 		b.mu.Lock()
-		if !lease.retained && lease.dir == "" {
-			delete(b.leases, id)
-			logResult.Content += "\nmedia_id=" + id + " released"
+		for id := range b.leases {
+			keys = append(keys, id)
 		}
-		close(lease.busy)
-		lease.busy = nil
 		b.mu.Unlock()
 	}
+	var failures []error
+	for {
+		if !closeAll && ctx.Err() != nil {
+			break
+		}
+		b.mu.Lock()
+		var id string
+		if closeAll {
+			if len(keys) == 0 {
+				b.mu.Unlock()
+				break
+			}
+			id, keys = keys[len(keys)-1], keys[:len(keys)-1]
+			if b.expiry.remove(id) {
+				b.wakeExpiry()
+			}
+		} else {
+			var ok bool
+			id, ok = b.expiry.popDue(now)
+			if !ok {
+				b.mu.Unlock()
+				break
+			}
+			b.wakeExpiry()
+		}
+		lease := b.leases[id]
+		if lease.busy != nil {
+			b.mu.Unlock()
+			continue // release will schedule this lease if it remains expired.
+		}
+		lease.busy = make(chan struct{})
+		b.mu.Unlock()
+		result, err := b.pruneLease(ctx, id, lease, closeAll)
+		log(result)
+		if err != nil {
+			failures = append(failures, err)
+		}
+	}
+	return errors.Join(failures...)
+}
+
+// pruneLease holds this lease's busy slot throughout I/O and final state changes.
+func (b *mediaBridge) pruneLease(ctx context.Context, id string, lease *mediaLease, closeAll bool) (events.LogResult, error) {
+	var failures []error
+	logResult := events.LogResult{ResultStatus: events.ResultSucceeded, Content: "Hook media lease release\nmedia_id=" + id}
+	if lease.retained {
+		if err := b.api.RemoveReference(ctx, lease.reference); err != nil {
+			failures = append(failures, err)
+			logResult.ResultStatus = events.ResultFailed
+			if errors.Is(err, context.Canceled) && ctx.Err() != nil {
+				logResult.ResultStatus = events.ResultCanceled
+			}
+			logResult.Content += fmt.Sprintf("\nreference_release_error=%v", err)
+		} else {
+			lease.retained = false
+			logResult.Content += "\nreference_released"
+		}
+	}
+	if lease.dir != "" {
+		if err := os.RemoveAll(lease.dir); err != nil {
+			failures = append(failures, err)
+			logResult.ResultStatus = events.ResultFailed
+			logResult.Content += fmt.Sprintf("\ndirectory_release_error=%v", err)
+		} else {
+			lease.dir, lease.path = "", ""
+		}
+	}
+	b.mu.Lock()
+	if !lease.retained && lease.dir == "" {
+		delete(b.leases, id)
+		logResult.Content += "\nreleased"
+	} else if closeAll {
+		logResult.Content += "\ncleanup_mode=shutdown"
+	} else if ctx.Err() == nil {
+		lease.cleanupFailures++
+		logResult.Content += fmt.Sprintf("\nattempt=%d retry_limit=%d", lease.cleanupFailures, mediaCleanupRetries)
+		if lease.cleanupFailures <= mediaCleanupRetries {
+			next := time.Now().Add(time.Minute << (lease.cleanupFailures - 1))
+			b.scheduleExpiryLocked(id, next)
+			logResult.Content += "\nnext_retry_at=" + next.Format(time.RFC3339Nano)
+		} else {
+			logResult.Content += "\nretry_exhausted=true"
+		}
+	} else {
+		logResult.Content += "\nretry_stopped=runtime_canceled"
+	}
+	close(lease.busy)
+	lease.busy = nil
+	b.mu.Unlock()
 	return logResult, errors.Join(failures...)
 }

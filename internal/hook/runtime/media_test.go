@@ -89,7 +89,7 @@ func TestMediaProtocolImportReadExportAndLeases(t *testing.T) {
 	if err := center.AddReference(ctx, ref); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.media.prune(ctx, time.Now().Add(2*mediaLeaseTTL), false); err != nil {
+	if _, err := pruneMediaForTest(ctx, m.media, time.Now().Add(2*mediaLeaseTTL), false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(exported.Path); !os.IsNotExist(err) {

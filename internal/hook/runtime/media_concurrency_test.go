@@ -117,7 +117,7 @@ func TestLeaseWaitCancellationPruneAndCloseDuringExport(t *testing.T) {
 	if _, err := m.MediaRequest(ctx, dir, "media.export", mustJSON(map[string]string{"media": item.ID})); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal("same-lease wait ignored cancellation", err)
 	}
-	if _, err := m.media.prune(t.Context(), time.Now().Add(2*mediaLeaseTTL), false); err != nil {
+	if _, err := pruneMediaForTest(t.Context(), m.media, time.Now().Add(2*mediaLeaseTTL), false); err != nil {
 		t.Fatal(err)
 	}
 	refs, err := store.MediaReferences().ListByOwner(t.Context(), "hook", m.media.owner)
@@ -178,7 +178,10 @@ func TestLeaseCleanupBlocksOnlySameLeaseAndReacquiresAfterRemoval(t *testing.T) 
 		}
 	})
 	done := make(chan error, 1)
-	go func() { _, err := m.media.prune(t.Context(), time.Now().Add(2*mediaLeaseTTL), false); done <- err }()
+	go func() {
+		_, err := pruneMediaForTest(t.Context(), m.media, time.Now().Add(2*mediaLeaseTTL), false)
+		done <- err
+	}()
 	<-started
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 	defer cancel()

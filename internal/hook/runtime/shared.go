@@ -18,7 +18,6 @@ const (
 	maxSharedStateBytes   = 32 << 20
 	maxSharedStateEntries = 10_000
 	defaultSharedTTL      = 10 * time.Minute
-	sharedCleanupInterval = time.Minute
 	maxSharedTTLSeconds   = int64((1<<63 - 1) / 1_000_000_000)
 )
 
@@ -37,6 +36,8 @@ type SharedState struct {
 	maxEntries int
 	maxSize    int
 	now        func() time.Time
+	expiry     expiryQueue   // TTL 到期索引，由 mu 保护；ttl=0 不入队。
+	wake       chan struct{} // 最近期限变化通知，可合并，由维护循环消费。
 }
 
 func NewSharedState() *SharedState {
@@ -45,6 +46,7 @@ func NewSharedState() *SharedState {
 		maxEntries: maxSharedStateEntries,
 		maxSize:    maxSharedStateBytes,
 		now:        time.Now,
+		wake:       make(chan struct{}, 1),
 	}
 }
 
@@ -132,6 +134,7 @@ func (s *SharedState) Get(key string) (json.RawMessage, bool) {
 	}
 	entry.lastAccess = now
 	s.items[key] = entry
+	s.scheduleExpiryLocked(key, entry)
 	return append(json.RawMessage(nil), entry.value...), true
 }
 
@@ -219,6 +222,7 @@ func (s *SharedState) storeLocked(key string, entry sharedEntry) error {
 	}
 	s.items[key] = entry
 	s.size += sharedEntrySize(key, entry)
+	s.scheduleExpiryLocked(key, entry)
 	return nil
 }
 
@@ -276,11 +280,16 @@ func (s *SharedState) makeRoomLocked(key string, incoming sharedEntry) error {
 
 func (s *SharedState) pruneExpiredLocked(now time.Time) int {
 	removed := 0
-	for key, entry := range s.items {
-		if entry.expired(now) {
-			s.deleteLocked(key, entry)
-			removed++
+	for {
+		key, ok := s.expiry.popDue(now)
+		if !ok {
+			break
 		}
+		s.deleteLocked(key, s.items[key])
+		removed++
+	}
+	if removed > 0 {
+		s.wakeExpiry()
 	}
 	return removed
 }
@@ -288,6 +297,28 @@ func (s *SharedState) pruneExpiredLocked(now time.Time) int {
 func (s *SharedState) deleteLocked(key string, entry sharedEntry) {
 	delete(s.items, key)
 	s.size -= sharedEntrySize(key, entry)
+	if s.expiry.remove(key) {
+		s.wakeExpiry()
+	}
+}
+
+func (s *SharedState) scheduleExpiryLocked(key string, entry sharedEntry) {
+	var changed bool
+	if entry.ttl == 0 {
+		changed = s.expiry.remove(key)
+	} else {
+		changed = s.expiry.set(key, entry.lastAccess.Add(entry.ttl))
+	}
+	if changed {
+		s.wakeExpiry()
+	}
+}
+
+func (s *SharedState) wakeExpiry() {
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
 }
 
 func (entry sharedEntry) expired(now time.Time) bool {

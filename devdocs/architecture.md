@@ -220,7 +220,9 @@ Hook 根部负责外部接入与装配；pipeline 编排续接、规则及错误
 - 同一 pipeline 按优先级及注册顺序串行运行；只读策略逐动作校验，llm.messages 只读，turn／request Hook 分别只改初始 user／新 pending，保存后才调用模型。
 - 重载先验证候选再替换，异步进程失败交 runtime 恢复。关闭停止新接入，保留在途生产者需要的回调，等待进程、请求及媒体租约操作实际退出后清理。
 - runtime 的协议写权限等待、实际写入和响应等待共用请求 context；写入取消或失败关闭捕获的管道并终止对应进程树，完整发送后的普通响应等待取消保留 Persistent Worker。异步取消通知和插件响应使用受 rootCtx 约束的事件超时；shutdown 独立共用一次关闭预算。
-- waiting 使用一次性定时器主动回收；回调先取 Worker 路由锁，再取 Manager 锁核对定时器身份，不打断已开始的续接或误删新租约。撤销成功或回调完成恰好释放一次 workWG 计数；Done 等待所属任务实际退出。KV／媒体周期维护共用 rootCtx，媒体在途等待及清理失败重试由原有机制负责。
+- waiting 使用一次性定时器主动回收；回调先取 Worker 路由锁，再取 Manager 锁核对定时器身份，不打断已开始的续接或误删新租约。撤销成功或回调完成恰好释放一次 workWG 计数；Done 等待所属任务实际退出。
+- KV／媒体各自持有带索引最小堆、可合并通知 channel 和一个定时器；按最近期限唤醒，空队列停止计时，不做周期扫描。共用的队列结构由各自集合锁保护，续期原位更新，不积累旧任务。两个维护循环受 rootCtx 取消并计入 workWG。
+- KV 写入只从到期索引移除已到期项，容量不足时仍按访问时间排序淘汰。媒体逐项认领并在锁外清理；到期占用等待 release 通知，失败仅重试未完成步骤，最多追加三次，延迟为 1／2／4 分钟。每次失败记 Error 及下次重试时间，耗尽保留资源并停止自动重试；成功续用重置失败次数。关闭等待维护循环与在途操作后，遍历剩余租约清理，失败可再次 Close 重试。
 
 ```mermaid
 flowchart TD
@@ -229,6 +231,10 @@ flowchart TD
     Identity --> Manager["runtime/manager.go<br/>关闭到期临时进程、登记并等待所属任务"]
     Worker["runtime/worker.go<br/>可取消协议写入、单次 shutdown 预算"] --> Manager
     Manager --> Done["Manager.Done<br/>所属工作实际结束"]
+    Shared["runtime/shared.go<br/>KV 到期索引与续期"] --> Queue["runtime/expiry.go<br/>带索引最小堆"]
+    Media["runtime/media.go<br/>媒体到期、释放通知、清理退避"] --> Queue
+    Manager --> Shared
+    Manager --> Media
 ```
 
 <!-- locator:output -->

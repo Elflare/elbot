@@ -28,7 +28,6 @@ type Manager struct {
 	tokens        map[string]invocation // 活动事件按 token 登记，同时供取消与工具授权使用。
 	shared        *SharedState
 	media         *mediaBridge
-	sharedDone    chan struct{}
 	prepareReload func(string) (func() (globalevents.LogResult, error), error)
 	rootCtx       context.Context
 	rootCancel    context.CancelFunc
@@ -76,41 +75,75 @@ func NewManager(opts Options) (*Manager, error) {
 		tokens:     map[string]invocation{},
 		shared:     NewSharedState(),
 		media:      newMediaBridge(opts.Media),
-		sharedDone: make(chan struct{}),
 		rootCtx:    rootCtx,
 		rootCancel: rootCancel,
 		closeDone:  make(chan struct{}),
 		closeMedia: make(chan struct{}, 1),
 	}
+	m.workWG.Add(2)
 	go m.cleanSharedState(rootCtx)
+	go m.cleanMedia(rootCtx)
 	return m, nil
 }
 
 func (m *Manager) cleanSharedState(ctx context.Context) {
-	defer close(m.sharedDone)
-	ticker := time.NewTicker(sharedCleanupInterval)
-	defer ticker.Stop()
-	for {
+	defer m.workWG.Done()
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+	for ctx.Err() == nil {
+		m.shared.mu.Lock()
+		m.shared.pruneExpiredLocked(m.shared.now())
+		next := m.shared.expiry.next()
+		m.shared.mu.Unlock()
+		var due <-chan time.Time
+		if next.IsZero() {
+			timer.Stop()
+		} else {
+			timer.Reset(time.Until(next))
+			due = timer.C
+		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			m.shared.PruneExpired()
-			_ = m.pruneMedia(ctx, false)
+		case <-m.shared.wake:
+		case <-due:
+		}
+	}
+}
+
+func (m *Manager) cleanMedia(ctx context.Context) {
+	defer m.workWG.Done()
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+	for ctx.Err() == nil {
+		_ = m.pruneMedia(ctx, false)
+		m.media.mu.Lock()
+		next := m.media.expiry.next()
+		m.media.mu.Unlock()
+		var due <-chan time.Time
+		if next.IsZero() {
+			timer.Stop()
+		} else {
+			timer.Reset(time.Until(next))
+			due = timer.C
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-m.media.wake:
+		case <-due:
 		}
 	}
 }
 
 func (m *Manager) pruneMedia(ctx context.Context, closeAll bool) error {
-	logResult, err := m.media.prune(ctx, time.Now(), closeAll)
-	if logResult.ResultStatus != globalevents.ResultSkipped {
+	return m.media.prune(ctx, time.Now(), closeAll, func(logResult globalevents.LogResult) {
 		level := slog.LevelInfo
 		if logResult.ResultStatus == globalevents.ResultFailed {
 			level = slog.LevelError
 		}
 		m.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: level, EventName: "prune_hook_media", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: logResult.Content, ResultStatus: logResult.ResultStatus})
-	}
-	return err
+	})
 }
 
 func (m *Manager) SharedRequest(method string, params json.RawMessage) (any, error) {
@@ -339,7 +372,6 @@ func (m *Manager) finishClose(ctx context.Context, workers []*worker) {
 	}
 	wg.Wait()
 	m.workWG.Wait()
-	<-m.sharedDone
 
 	err := m.pruneMedia(ctx, true)
 	m.mu.Lock()
