@@ -15,7 +15,7 @@ It supports general chat, tool calling, Hook extensions, long-term task scheduli
 
 | Metric           | Value                            |
 | -------------- | ------------------------------- |
-| Local startup time   | ~10ms (Tested on N5105, SATA SSD) |
+| Local startup time   | ~10ms (tested on N5105, SATA SSD) |
 | Resident memory       | ~50MB                           |
 | Binary file size | <20MB                           |
 
