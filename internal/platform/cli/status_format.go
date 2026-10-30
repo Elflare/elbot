@@ -55,14 +55,14 @@ func FormatUsage(usage *llm.Usage) string {
 	if usage == nil {
 		return ""
 	}
-	text := "tokens unknown"
+	text := "tokens unk"
 	if usage.TotalTokens != nil && *usage.TotalTokens >= 0 {
 		text = "tokens " + formatInt(*usage.TotalTokens)
 	}
 	if usage.CacheHitTokens != nil && *usage.CacheHitTokens >= 0 {
 		text += " · cache " + formatInt(*usage.CacheHitTokens)
 	} else {
-		text += " · cache unknown"
+		text += " · cache unk"
 	}
 	return text
 }

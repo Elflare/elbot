@@ -29,26 +29,8 @@ func modelCommandInfo() command.Info {
 	return command.Info{
 		Name:        "model",
 		Usage:       "/model [--chat|--work|--elwisp1|--elwisp2|--elwisp3|--compact|--naming] <name or number>",
-		Description: "Switch model for current or specified mode.",
-		Help: strings.TrimSpace(`Options:
-  --chat <model>       Switch chat mode model.
-  --work <model>       Switch work mode model.
-  --elwisp1 <model>    Switch Elnis elwisp1 model slot.
-  --elwisp2 <model>    Switch Elnis elwisp2 model slot.
-  --elwisp3 <model>    Switch Elnis elwisp3 model slot.
-  --compact <model>    Switch context compact model.
-  --naming <model>     Switch session naming model.
-
-Without a target option, /model switches the current session mode model.
-Model can be a list number, model name, or provider/model.
-
-Examples:
-  /model 2
-  /model --chat gpt-4o
-  /model --work openai/gpt-4.1
-  /model --elwisp2 openai/gpt-4.1
-  /model --compact claude-3-5-haiku
-  /model --naming gpt-4o-mini`),
+		Description: "切换模型",
+		Help:        "省略目标=当前模式；模型=编号、名称或 provider/model。\n--compact 压缩 · --naming 命名 · --elwisp1/2/3 Elnis 槽位",
 	}
 }
 
@@ -108,9 +90,9 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 		return &command.Result{Content: err.Error()}, nil
 	}
 	if target == modelTargetCurrent {
-		return &command.Result{Content: fmt.Sprintf("switched to model: %s/%s", selected.Provider, selected.Model)}, nil
+		return &command.Result{Content: fmt.Sprintf("model → %s/%s", selected.Provider, selected.Model)}, nil
 	}
-	return &command.Result{Content: fmt.Sprintf("switched %s model: %s/%s", target, selected.Provider, selected.Model)}, nil
+	return &command.Result{Content: fmt.Sprintf("%s.model → %s/%s", target, selected.Provider, selected.Model)}, nil
 }
 
 func (c modelCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -169,15 +151,15 @@ func fuzzySubsequenceMatch(value, query string) bool {
 
 func completeModelOptions(query string, start, end int) []command.Completion {
 	options := []command.CompletionOption{
-		{Text: "--chat", Description: "Switch chat mode model"},
-		{Text: "--work", Description: "Switch work mode model"},
-		{Text: "--elwisp1", Description: "Switch Elnis elwisp1 model slot"},
-		{Text: "--elwisp2", Description: "Switch Elnis elwisp2 model slot"},
-		{Text: "--elwisp3", Description: "Switch Elnis elwisp3 model slot"},
-		{Text: "--compact", Description: "Switch context compact model"},
-		{Text: "--naming", Description: "Switch session naming model"},
-		{Text: "-c", Description: "Switch context compact model"},
-		{Text: "-n", Description: "Switch session naming model"},
+		{Text: "--chat", Description: "chat 模型"},
+		{Text: "--work", Description: "work 模型"},
+		{Text: "--elwisp1", Description: "elwisp1 模型"},
+		{Text: "--elwisp2", Description: "elwisp2 模型"},
+		{Text: "--elwisp3", Description: "elwisp3 模型"},
+		{Text: "--compact", Description: "压缩模型"},
+		{Text: "--naming", Description: "命名模型"},
+		{Text: "-c", Description: "压缩模型"},
+		{Text: "-n", Description: "命名模型"},
 	}
 	return command.CompleteStaticOptions(options, query, start, end, "model_option")
 }
@@ -195,16 +177,9 @@ func NewCheckModel(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:        "checkmodel",
 		Usage:       "/checkmodel [--fresh|--refresh] [query]",
-		Description: "List or search available models.",
+		Description: "模型列表/搜索",
 		Aliases:     []string{"models"},
-		Help: strings.TrimSpace(`Options:
-  --fresh, --refresh    Reload provider configuration and refresh model lists.
-
-Examples:
-  /models
-  /models claude
-  /models --fresh
-  /models --refresh`),
+		Help:        "--fresh, --refresh 重载厂商配置并刷新模型列表",
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		args, fresh := parseModelListArgs(req.Args)
 		if fresh {
@@ -218,16 +193,15 @@ Examples:
 		if len(models) == 0 {
 			var sb strings.Builder
 			if strings.TrimSpace(args) != "" {
-				sb.WriteString(fmt.Sprintf("no models matching %q", strings.TrimSpace(args)))
+				sb.WriteString(fmt.Sprintf("models[%q]: nil", strings.TrimSpace(args)))
 			} else {
-				sb.WriteString("no models available")
+				sb.WriteString("nil")
 			}
 			appendModelProviderErrors(&sb, result.Errors)
 			return &command.Result{Content: trimTrailingNewlines(sb.String())}, nil
 		}
 
 		var sb strings.Builder
-		sb.WriteString("available models:\n")
 		currentProvider := ""
 		for _, m := range models {
 			if m.Provider != currentProvider {
@@ -259,7 +233,7 @@ func appendModelProviderErrors(sb *strings.Builder, errors []modelmgr.ModelProvi
 			continue
 		}
 		if !hasError {
-			sb.WriteString("\nmodel provider errors:")
+			sb.WriteString("\nproviders err:")
 			hasError = true
 		}
 		sb.WriteString(fmt.Sprintf("\n  - %s: %v", providerErr.Provider, providerErr.Err))

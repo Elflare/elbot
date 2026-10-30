@@ -41,7 +41,7 @@ func TestLifecycleCommandsArchiveAndArchives(t *testing.T) {
 	if err != nil {
 		t.Fatalf("archive preview: %v", err)
 	}
-	if !strings.Contains(preview.Content, "/archive "+first.ID+" --confirm") || !strings.Contains(preview.Content, "title: first") || !strings.Contains(preview.Content, "id: "+first.ID) {
+	if !strings.Contains(preview.Content, "/archive "+first.ID+" --confirm") || !strings.Contains(preview.Content, "archive? first") || !strings.Contains(preview.Content, first.ID) {
 		t.Fatalf("archive preview = %q", preview.Content)
 	}
 	selections.set(scope, []storage.SessionSummary{{ID: second.ID}})
@@ -56,7 +56,7 @@ func TestLifecycleCommandsArchiveAndArchives(t *testing.T) {
 	if !strings.Contains(list.Content, "first") || strings.Contains(list.Content, "second") {
 		t.Fatalf("archives list = %q", list.Content)
 	}
-	if !strings.Contains(list.Content, "page: 1") {
+	if !strings.Contains(list.Content, "page=1") {
 		t.Fatalf("archives list missing page: %q", list.Content)
 	}
 
@@ -64,7 +64,7 @@ func TestLifecycleCommandsArchiveAndArchives(t *testing.T) {
 	if err != nil {
 		t.Fatalf("delete preview: %v", err)
 	}
-	if !strings.Contains(deletePreview.Content, "title: first") || !strings.Contains(deletePreview.Content, "id: "+first.ID) {
+	if !strings.Contains(deletePreview.Content, "delete? first") || !strings.Contains(deletePreview.Content, first.ID) {
 		t.Fatalf("delete preview = %q", deletePreview.Content)
 	}
 	if !strings.Contains(deletePreview.Content, "/delete "+first.ID+" --confirm") {

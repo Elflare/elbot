@@ -23,7 +23,7 @@ type ConfirmationIdentity interface {
 
 type ConfirmationOutput interface {
 	SendChat(context.Context, string) error
-	SendAssistant(context.Context, string) (delivery.Receipt, events.LogResult, error)
+	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, events.LogResult, error)
 }
 
 // ConfirmationCoordinatorDeps declares only the capabilities consumed by ConfirmationCoordinator.

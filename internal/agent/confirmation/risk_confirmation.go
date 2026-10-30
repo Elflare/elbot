@@ -23,12 +23,12 @@ type riskConfirmationCommand struct {
 
 func riskConfirmationCommands() []riskConfirmationCommand {
 	return []riskConfirmationCommand{
-		{Name: "detail", Aliases: []string{"details"}, Usage: "/detail", Description: "查看完整参数"},
-		{Name: "confirm", Aliases: []string{"c"}, Usage: "/confirm", Description: "确认本次"},
-		{Name: "confirmtool", Aliases: []string{"ct"}, Usage: "/confirmtool", Description: "确认本次并自动确认后续同工具调用"},
-		{Name: "confirmall", Aliases: []string{"ca"}, Usage: "/confirmall", Description: "确认本次并自动确认当前 Session 后续所有工具调用"},
-		{Name: "reject", Usage: "/reject <原因>", Description: "拒绝"},
-		{Name: "stop", Usage: "/stop", Description: "停止当前请求"},
+		{Name: "detail", Aliases: []string{"details"}, Usage: "/detail", Description: "详情"},
+		{Name: "confirm", Aliases: []string{"c"}, Usage: "/c", Description: "本次"},
+		{Name: "confirmtool", Aliases: []string{"ct"}, Usage: "/ct", Description: "本会话同工具免确认"},
+		{Name: "confirmall", Aliases: []string{"ca"}, Usage: "/ca", Description: "本会话全部免确认"},
+		{Name: "reject", Usage: "/reject [原因]", Description: "拒绝"},
+		{Name: "stop", Usage: "/stop", Description: "停止"},
 	}
 }
 
@@ -37,19 +37,19 @@ func riskConfirmationCommandHelp() string {
 	for _, cmd := range riskConfirmationCommands() {
 		parts = append(parts, cmd.Usage+" "+cmd.Description)
 	}
-	return strings.Join(parts, "；")
+	return strings.Join(parts, " · ")
 }
 
 func riskConfirmationPromptText(timeout time.Duration) string {
-	text := "可用指令：" + riskConfirmationCommandHelp()
+	text := riskConfirmationCommandHelp()
 	if timeout > 0 {
-		text += fmt.Sprintf("；超过 %s 没有执行有效操作将自动停止，/detail 可重新计时", agentshare.ConfirmationWaitDurationText(timeout))
+		text += fmt.Sprintf("\nidle=%s → stop · /detail 重置计时", agentshare.ConfirmationWaitDurationText(timeout))
 	}
 	return text
 }
 
 func riskConfirmationWaitingText() string {
-	return "正在等待高风险工具调用确认，只接受：" + riskConfirmationCommandHelp() + "。\n"
+	return "待确认\n" + riskConfirmationCommandHelp()
 }
 
 func riskConfirmationDetailText(confirmation turn.RiskConfirmation) string {
@@ -57,7 +57,7 @@ func riskConfirmationDetailText(confirmation turn.RiskConfirmation) string {
 	if detail == "" {
 		detail = formatRiskConfirmationArguments(confirmation.Arguments)
 	}
-	return fmt.Sprintf("高风险工具调用详情\n工具：%s\n风险：%s\n参数：\n%s\n", confirmation.ToolName, confirmation.Risk, detail)
+	return fmt.Sprintf("%s [%s]\n%s", confirmation.ToolName, confirmation.Risk, detail)
 }
 
 func formatRiskConfirmationArguments(args string) string {

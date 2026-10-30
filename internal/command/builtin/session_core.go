@@ -16,16 +16,16 @@ import (
 )
 
 func NewNew(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "new", Usage: "/new", Description: "Reset the current session; the next message creates a new one.", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{Name: "new", Usage: "/new", Description: "重置会话", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		if err := deps.Sessions.ResetCurrent(ctx, deps.Scope(ctx)); err != nil {
 			return nil, err
 		}
-		return &command.Result{Content: "new session ready; it will be created when you send the first message"}, nil
+		return &command.Result{Content: "OK"}, nil
 	})
 }
 
 func NewStatus(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "status", Usage: "/status", Description: "Show current session status.", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{Name: "status", Usage: "/status", Description: "会话状态", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		status, err := deps.Sessions.Status(ctx, deps.Scope(ctx))
 		if errors.Is(err, session.ErrNoCurrentSession) {
 			return &command.Result{Content: formatEmptyStatus(ctx, deps)}, nil
@@ -47,24 +47,16 @@ func NewStatus(deps Deps) command.Handler {
 		}
 		active := formatActiveRequests(ctx, deps, deps.Requests.ListBySession(s.ID))
 		turnSnapshot := deps.Turns.Snapshot(s.ID)
-		pendingInput := "none"
-		if turnSnapshot.PendingCount > 0 {
-			pendingInput = fmt.Sprintf("%d message(s)", turnSnapshot.PendingCount)
-		}
+		pendingInput := fmt.Sprintf("%d", turnSnapshot.PendingCount)
 		currentModel := deps.Models.CurrentModelForMode(s.Mode)
-		return &command.Result{Content: fmt.Sprintf(`session status:
-  id: %s
-  title: %s
-  mode: %s
-  current model: %s/%s
-  message count: %d
-%s  created at: %s
-  updated at: %s
-  last ask: %s
-  last answer: %s
-%s  turn phase: %s
-  pending input: %s
-  tool usage: %s
+		return &command.Result{Content: fmt.Sprintf(`%s · %s
+%s · %s/%s · msgs=%d
+%screated=%s
+updated=%s
+u: %s
+b: %s
+%sphase=%s · pending=%s
+%s
 %s`, s.ID, s.Title, s.Mode, currentModel.Provider, currentModel.Model, status.MessageCount, indentStatusBlock(pinned+archived), formatTime(s.CreatedAt), formatTime(s.UpdatedAt), emptyTODO(sessionStatusPreview(status.LastUserContent)), emptyTODO(sessionStatusPreview(status.LastAnswerContent)), indentStatusBlock(active), turnSnapshot.Phase, pendingInput, formatToolUsage(ctx, deps, s.ID, turnSnapshot.Tools), formatContextStatus(ctx, deps, s, currentModel))}, nil
 	})
 }
@@ -115,10 +107,10 @@ func formatToolUsage(ctx context.Context, deps Deps, sessionID string, live map[
 	}
 	persisted, current := toolsString(usage), toolsString(live)
 	if persisted == "" {
-		persisted = "none"
+		persisted = "nil"
 	}
 	if current == "" {
-		current = "none"
+		current = "nil"
 	}
-	return fmt.Sprintf("persisted: %s; current turn: %s", persisted, current)
+	return fmt.Sprintf("tools.saved: %s\ntools.turn: %s", persisted, current)
 }

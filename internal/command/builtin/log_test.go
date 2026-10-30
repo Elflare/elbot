@@ -414,7 +414,7 @@ func TestLogCommandsQueryGlobalRecords(t *testing.T) {
 					if !strings.Contains(summary, "中文正文") || !strings.Contains(summary, "…") {
 						t.Fatalf("missing summary: %s", summary)
 					}
-				} else if summary != "no log entries found" {
+				} else if summary != "nil" {
 					t.Fatalf("runtime filtering: %s", summary)
 				}
 				if strings.Contains(raw, "TAIL_BODY") {
@@ -431,7 +431,7 @@ func TestLogCommandsQueryGlobalRecords(t *testing.T) {
 			if strings.Count(content, "hook_tool_call_completed") != 1 {
 				t.Fatalf("combined hook selection: %s", content)
 			}
-			if query(NewAudit(deps), "--hook --event llm_usage") != "no log entries found" {
+			if query(NewAudit(deps), "--hook --event llm_usage") != "nil" {
 				t.Fatal("hook and event filters did not intersect")
 			}
 			if content := query(NewAudit(deps), "--event llm_error -d"); !strings.Contains(content, "upstream diagnostic marker") {

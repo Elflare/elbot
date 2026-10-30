@@ -105,7 +105,7 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 	}
 	if s.adapter.cfg.richMessageEnabled() {
 		if s.message != 0 {
-			_, _ = s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.ChatID, MessageID: s.message, Text: "回复已生成："})
+			_, _ = s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.ChatID, MessageID: s.message, Text: "done"})
 		}
 		receipt, logResult, err := s.adapter.sendRichText(ctx, s.target, text, 0, false)
 		s.finished = true

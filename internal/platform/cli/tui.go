@@ -949,7 +949,7 @@ func (m *tuiModel) refreshNotices() {
 	sb.WriteString(tuiNoticeStyle.Bold(true).Render("Notices"))
 	if len(m.notices) == 0 {
 		sb.WriteString("\n")
-		sb.WriteString(tuiTitleMutedStyle.Render("暂无通知"))
+		sb.WriteString(tuiTitleMutedStyle.Render("nil"))
 		m.noticeViewport.SetContent(sb.String())
 		return
 	}

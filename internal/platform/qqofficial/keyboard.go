@@ -1,41 +1,30 @@
-// keyboard.go 构造风险确认提示所用的命令按钮与键盘载荷。
+// keyboard.go 将业务提供的操作转换为 QQ 命令按钮与键盘载荷。
 // 这里只生成平台消息组件，不执行按钮对应的业务命令。
 
 package qqofficial
 
-import "strings"
+import "elbot/internal/delivery"
 
-func shouldAttachRiskKeyboard(text string) bool {
-	return strings.Contains(text, "高风险工具调用等待确认") && strings.Contains(text, "/confirm")
-}
-
-func riskKeyboard(appID string) *messageKeyboard {
+func commandKeyboard(appID string, actions []delivery.Action) *messageKeyboard {
+	var rows []keyboardRow
+	for i, action := range actions {
+		if i%2 == 0 {
+			rows = append(rows, keyboardRow{})
+		}
+		rows[len(rows)-1].Buttons = append(rows[len(rows)-1].Buttons, commandButton(action))
+	}
 	return &messageKeyboard{Content: &inlineKeyboardContent{
 		BotAppID: appID,
-		Rows: []keyboardRow{
-			{Buttons: []keyboardButton{
-				commandButton("detail", "详情", "已查看", "/detail", 0),
-				commandButton("confirm", "确认", "已确认", "/confirm", 1),
-			}},
-			{Buttons: []keyboardButton{
-				commandButton("confirmtool", "确认此工具", "已确认此工具", "/confirmtool", 1),
-				commandButton("confirmall", "全部确认", "已全部确认", "/confirmall", 1),
-			}},
-			{Buttons: []keyboardButton{
-				commandButton("reject", "拒绝", "已拒绝", "/reject", 0),
-				commandButton("stop", "停止", "已停止", "/stop", 0),
-			}},
-		},
+		Rows:     rows,
 	}}
 }
 
-func commandButton(id, label, visited, command string, style int) keyboardButton {
+func commandButton(action delivery.Action) keyboardButton {
 	return keyboardButton{
-		ID: id,
+		ID: action.ID,
 		RenderData: keyboardRenderData{
-			Label:        label,
-			VisitedLabel: visited,
-			Style:        style,
+			Label:        action.Label,
+			VisitedLabel: action.Label,
 		},
 		Action: keyboardButtonAction{
 			Type: 2,
@@ -43,8 +32,8 @@ func commandButton(id, label, visited, command string, style int) keyboardButton
 				Type: 2,
 			},
 			ClickLimit:    10,
-			UnsupportTips: command,
-			Data:          command,
+			UnsupportTips: action.Command,
+			Data:          action.Command,
 			Enter:         true,
 		},
 	}

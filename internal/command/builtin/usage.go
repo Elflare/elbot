@@ -21,26 +21,14 @@ func usageInfo() command.Info {
 	return command.Info{
 		Name:        "usage",
 		Usage:       "/usage [options]",
-		Description: "Aggregate token usage from audit logs.",
+		Description: "用量统计",
 		MinRole:     contextinfo.RoleSuperadmin,
-		Help: strings.TrimSpace(`Options:
-  -d, --days <n>        Days to look back. Default: 1.
-  -n <x[-y]>           Select calls from newest, inclusive (1..100000), after filters.
-  -m, --model <name>    Filter by model name.
-  -s, --session <id>    Filter by session ID.
-  --by <key>            Group by: model (default), day, session.
-  --since <time>        Show usage after a time, e.g. 2h, 30m, 2026-06-03.
-  --until <time>        Show usage before a time.
-
-Examples:
-  /usage
-  /usage -d 7
-  /usage -m gpt-4o
-  /usage -s sess-xxx
-  /usage --by day -d 30
-  /usage --since 2h
-  /usage -n 1
-  /usage -n 1-3`),
+		Help: strings.TrimSpace(`-d, --days <n>       天数，默认 1
+-n <x[-y]>           筛选后按新到旧取第 x..y 次，1..100000
+-m, --model <name>   模型
+-s, --session <id>   会话
+--by model|day|session  分组，默认 model
+--since/--until <time>  时间范围，如 2h、2026-06-03`),
 	}
 }
 
@@ -63,19 +51,19 @@ func (c usageCommand) Handle(ctx context.Context, req command.Request) (*command
 		return nil, err
 	}
 	if c.deps.Logs == nil {
-		return &command.Result{Content: "log reader is not configured"}, nil
+		return &command.Result{Content: "logs: not configured"}, nil
 	}
 	entries, err := c.deps.Logs.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
-	content := "no usage data found"
+	content := "nil"
 	if callRange == nil {
 		if len(entries.Entries) > 0 {
 			content = formatUsageSummary(entries.Entries, query, groupBy)
 		}
 	} else {
-		content = "没有调用记录"
+		content = "nil"
 		if len(entries.Entries) > 0 {
 			if len(entries.Entries) >= callRange.start {
 				content = formatUsageSummary(entries.Entries[callRange.start-1:min(callRange.end, len(entries.Entries))], query, groupBy)
@@ -91,7 +79,7 @@ func (c usageCommand) Handle(ctx context.Context, req command.Request) (*command
 		}
 	}
 	if entries.DamagedCount > 0 {
-		content += fmt.Sprintf("\n本次扫描发现 %d 条损坏记录，用量统计可能不完整。", entries.DamagedCount)
+		content += fmt.Sprintf("\nwarn: damaged=%d · usage incomplete", entries.DamagedCount)
 	}
 	return &command.Result{Content: content}, nil
 }
@@ -111,16 +99,16 @@ func (c usageCommand) Complete(ctx context.Context, req command.CompletionReques
 
 func usageCompletionOptions() []command.CompletionOption {
 	return []command.CompletionOption{
-		{Text: "-d", Description: "Days to look back"},
-		{Text: "--days", Description: "Days to look back"},
-		{Text: "-n", Description: "Select calls from newest: x or x-y"},
-		{Text: "-m", Description: "Filter by model"},
-		{Text: "--model", Description: "Filter by model"},
-		{Text: "-s", Description: "Filter by session"},
-		{Text: "--session", Description: "Filter by session"},
-		{Text: "--by", Description: "Group by model/day/session"},
-		{Text: "--since", Description: "Show after time"},
-		{Text: "--until", Description: "Show before time"},
+		{Text: "-d", Description: "天数"},
+		{Text: "--days", Description: "天数"},
+		{Text: "-n", Description: "按新到旧取 x 或 x-y 次"},
+		{Text: "-m", Description: "模型过滤"},
+		{Text: "--model", Description: "模型过滤"},
+		{Text: "-s", Description: "会话过滤"},
+		{Text: "--session", Description: "会话过滤"},
+		{Text: "--by", Description: "分组: model/day/session"},
+		{Text: "--since", Description: "起始时间"},
+		{Text: "--until", Description: "截止时间"},
 	}
 }
 
@@ -304,13 +292,12 @@ func formatUsageSummary(entries []logging.LogEntry, query logging.LogQuery, grou
 	rangeDesc := usageRangeDesc(query)
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("token usage (%s, by %s):\n\n", rangeDesc, groupBy))
+	sb.WriteString(fmt.Sprintf("usage · %s · by=%s\n", rangeDesc, groupBy))
 	for _, key := range order {
 		b := buckets[key]
 		formatUsageBucket(&sb, key, b)
 		sb.WriteString("\n")
 	}
-	sb.WriteString("─────────────────────────────\n")
 	formatUsageBucket(&sb, "total", grand)
 	return sb.String()
 }
@@ -319,14 +306,14 @@ func usageGroupKeyFor(entry logging.LogEntry, groupBy usageGroupKey, content map
 	switch groupBy {
 	case groupByDay:
 		if entry.Time.IsZero() {
-			return "unknown-date"
+			return "unk-date"
 		}
 		return entry.Time.Format("2006-01-02")
 	case groupBySession:
 		if entry.Identity.SessionID != nil {
-			return firstNonEmpty(*entry.Identity.SessionID, "unknown-session")
+			return firstNonEmpty(*entry.Identity.SessionID, "unk-session")
 		}
-		return "unknown-session"
+		return "unk-session"
 	default:
 		var provider, model string
 		if entry.Type == events.ContentJSON {
@@ -340,7 +327,7 @@ func usageGroupKeyFor(entry logging.LogEntry, groupBy usageGroupKey, content map
 		if provider != "" && model != "" {
 			return provider + "/" + model
 		}
-		return firstNonEmpty(model, provider, "unknown-model")
+		return firstNonEmpty(model, provider, "unk-model")
 	}
 }
 
@@ -356,9 +343,9 @@ func usageRangeDesc(query logging.LogQuery) string {
 		return strings.Join(parts, ", ")
 	}
 	if query.Days > 0 {
-		return fmt.Sprintf("last %d day(s)", query.Days)
+		return fmt.Sprintf("%dd", query.Days)
 	}
-	return "all time"
+	return "all"
 }
 
 func atoiSafe(value string) int64 {
@@ -375,7 +362,7 @@ func atoiSafe(value string) int64 {
 
 func formatThousands(n int64) string {
 	if n < 0 {
-		return "null"
+		return "unk"
 	}
 	if n == 0 {
 		return "0"
@@ -414,7 +401,7 @@ func formatUsageBucket(sb *strings.Builder, label string, b *usageBucket) {
 
 func formatElapsed(ms int64) string {
 	if ms < 0 {
-		return "null"
+		return "unk"
 	}
 	return fmt.Sprintf("%.1fs", float64(ms)/1000)
 }

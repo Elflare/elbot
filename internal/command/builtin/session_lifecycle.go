@@ -21,7 +21,7 @@ func NewArchive(deps Deps) command.Handler {
 		deps:        deps,
 		name:        "archive",
 		usage:       "/archive [number|session_id] --confirm",
-		description: "Archive a session. Defaults to current session.",
+		description: "归档会话",
 		confirm:     true,
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
 			target, confirmed := parseTargetConfirm(req.Args)
@@ -40,7 +40,7 @@ func NewArchive(deps Deps) command.Handler {
 			if err != nil {
 				return nil, err
 			}
-			return &command.Result{Content: fmt.Sprintf("archived session:\n  id: %s\n  title: %s", session.ID, session.Title)}, nil
+			return &command.Result{Content: fmt.Sprintf("archived: %s · %s", session.Title, session.ID)}, nil
 		},
 	}
 }
@@ -50,7 +50,7 @@ func NewUnarchive(deps Deps) command.Handler {
 		deps:        deps,
 		name:        "unarchive",
 		usage:       "/unarchive [number|session_id]",
-		description: "Unarchive a session. Defaults to current session.",
+		description: "取消归档",
 		archived:    true,
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
 			sessionID, err := resolveSessionTarget(ctx, deps, req.Args)
@@ -61,7 +61,7 @@ func NewUnarchive(deps Deps) command.Handler {
 			if err != nil {
 				return nil, err
 			}
-			return &command.Result{Content: fmt.Sprintf("unarchived session:\n  id: %s\n  title: %s", session.ID, session.Title)}, nil
+			return &command.Result{Content: fmt.Sprintf("unarchived: %s · %s", session.Title, session.ID)}, nil
 		},
 	}
 }
@@ -71,7 +71,7 @@ func NewPin(deps Deps) command.Handler {
 		deps:        deps,
 		name:        "pin",
 		usage:       "/pin [number|session_id]",
-		description: "Pin a session. Defaults to current session.",
+		description: "置顶会话",
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
 			sessionID, err := resolveSessionTarget(ctx, deps, req.Args)
 			if err != nil {
@@ -81,7 +81,7 @@ func NewPin(deps Deps) command.Handler {
 			if err != nil {
 				return nil, err
 			}
-			return &command.Result{Content: fmt.Sprintf("pinned session:\n  id: %s\n  title: %s", session.ID, session.Title)}, nil
+			return &command.Result{Content: fmt.Sprintf("pinned: %s · %s", session.Title, session.ID)}, nil
 		},
 	}
 }
@@ -91,7 +91,7 @@ func NewUnpin(deps Deps) command.Handler {
 		deps:        deps,
 		name:        "unpin",
 		usage:       "/unpin [number|session_id]",
-		description: "Unpin a session. Defaults to current session.",
+		description: "取消置顶",
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
 			sessionID, err := resolveSessionTarget(ctx, deps, req.Args)
 			if err != nil {
@@ -101,7 +101,7 @@ func NewUnpin(deps Deps) command.Handler {
 			if err != nil {
 				return nil, err
 			}
-			return &command.Result{Content: fmt.Sprintf("unpinned session:\n  id: %s\n  title: %s", session.ID, session.Title)}, nil
+			return &command.Result{Content: fmt.Sprintf("unpinned: %s · %s", session.Title, session.ID)}, nil
 		},
 	}
 }
@@ -118,10 +118,10 @@ func (c renameCommand) Info() command.Info {
 	return command.Info{
 		Name:          "rename",
 		Usage:         "/rename [number|session_id|current_title] <title>",
-		Description:   "Rename current or selected session.",
+		Description:   "重命名会话",
 		SessionEffect: command.SessionEffectMutate,
 		MinRole:       contextinfo.RoleUser,
-		Help:          "Usage:\n  /rename <title>\n  /rename <number|session_id|current_title> <title>\n\nIf current_title matches more than one visible session, use /sessions and rename by number or session id.",
+		Help:          "省略目标=当前会话；重名时用编号或 ID。",
 	}
 }
 
@@ -135,7 +135,7 @@ func (c renameCommand) Handle(ctx context.Context, req command.Request) (*comman
 	if err != nil {
 		return nil, err
 	}
-	return &command.Result{Content: fmt.Sprintf("renamed session:\n  id: %s\n  title: %s", session.ID, session.Title)}, nil
+	return &command.Result{Content: fmt.Sprintf("renamed: %s · %s", session.Title, session.ID)}, nil
 }
 
 func (c renameCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -151,7 +151,7 @@ func NewDelete(deps Deps) command.Handler {
 		deps:        deps,
 		name:        "delete",
 		usage:       "/delete <number|session_id> --confirm",
-		description: "Delete a session permanently.",
+		description: "永久删除会话",
 		confirm:     true,
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
 			target, confirmed := parseTargetConfirm(req.Args)
@@ -172,7 +172,7 @@ func NewDelete(deps Deps) command.Handler {
 			if err := deps.Sessions.Delete(ctx, deps.Scope(ctx), sessionID); err != nil {
 				return nil, err
 			}
-			return &command.Result{Content: fmt.Sprintf("deleted session:\n  id: %s", sessionID)}, nil
+			return &command.Result{Content: fmt.Sprintf("deleted: %s", sessionID)}, nil
 		},
 	}
 }
@@ -189,7 +189,7 @@ func (c cleanCommand) Info() command.Info {
 	return command.Info{
 		Name:          "clean",
 		Usage:         "/clean --confirm",
-		Description:   "Delete expired non-archived and non-pinned sessions.",
+		Description:   "清理过期会话",
 		SessionEffect: command.SessionEffectMutate,
 	}
 }
@@ -198,13 +198,13 @@ func (c cleanCommand) Handle(ctx context.Context, req command.Request) (*command
 	deps := c.deps
 	_, confirmed := parseTargetConfirm(req.Args)
 	if !confirmed {
-		return &command.Result{Content: "clean will permanently delete expired sessions that are not archived or pinned. Run /clean --confirm to continue."}, nil
+		return &command.Result{Content: "永久删除过期且未归档、未置顶的会话？\n/clean --confirm"}, nil
 	}
 	deleted, err := deps.Sessions.CleanupExpired(ctx, storage.Now().AddDate(0, 0, -cleanupRetentionDays(deps)))
 	if err != nil {
 		return nil, err
 	}
-	return &command.Result{Content: fmt.Sprintf("cleaned expired sessions: %d", deleted)}, nil
+	return &command.Result{Content: fmt.Sprintf("cleaned: %d", deleted)}, nil
 }
 
 func (c cleanCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -362,7 +362,7 @@ func confirmCommandMessage(ctx context.Context, deps Deps, name, target string) 
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%s will modify session:\n  title: %s\n  id: %s\nRun /%s %s --confirm to continue.", name, emptyTitle(session.Title), session.ID, name, session.ID), nil
+	return fmt.Sprintf("%s? %s · %s\n/%s %s --confirm", name, emptyTitle(session.Title), session.ID, name, session.ID), nil
 }
 
 func emptyTitle(title string) string {

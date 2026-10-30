@@ -29,7 +29,7 @@ type ExecutionSender interface {
 	StartStream(context.Context) (delivery.MessageStream, error)
 	FinishIntermediate(context.Context, context.Context, delivery.MessageStream, string, bool) error
 	ReplaceAndFinishStream(context.Context, context.Context, delivery.MessageStream, string) (delivery.Receipt, events.LogResult, error)
-	SendAssistant(context.Context, string) (delivery.Receipt, events.LogResult, error)
+	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, events.LogResult, error)
 	SendOutputs(context.Context, []delivery.Output) (events.LogResult, error)
 	Notify(context.Context, slog.Level, string)
 	// Preview takes one complete notice per tool call; multiline bodies stay in

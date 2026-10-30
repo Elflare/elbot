@@ -11,7 +11,7 @@ func NewCompact(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:          "compact",
 		Usage:         "/compact",
-		Description:   "Compact current session context.",
+		Description:   "压缩上下文",
 		SessionEffect: command.SessionEffectMutate,
 		MinRole:       contextinfo.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {

@@ -21,15 +21,9 @@ func (h helpCommand) Info() command.Info {
 	return command.Info{
 		Name:        "help",
 		Usage:       "/help [command]",
-		Description: "Show available commands or detailed command help.",
+		Description: "命令帮助",
 		MinRole:     contextinfo.RoleUser,
-		Help: strings.TrimSpace(`Usage:
-  /help
-  /help <command>
-
-Examples:
-  /help audit
-  /help log`),
+		Help:        "省略 command 列出命令。",
 	}
 }
 
@@ -40,13 +34,12 @@ func (h helpCommand) Handle(ctx context.Context, req command.Request) (*command.
 	}
 
 	var sb strings.Builder
-	sb.WriteString("available commands:\n")
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	for _, info := range h.deps.Router.CommandsForActor(actor) {
 		usage := commandUsage(req.Prefix, info)
-		sb.WriteString(fmt.Sprintf("  %-24s %s\n", usage, info.Description))
+		sb.WriteString(fmt.Sprintf("%s · %s\n", usage, info.Description))
 	}
-	sb.WriteString("\nUse /help <command> for details.")
+	sb.WriteString("\n" + req.Prefix + "help <command>")
 	return &command.Result{Content: sb.String()}, nil
 }
 
@@ -75,7 +68,7 @@ func detailedHelp(ctx context.Context, prefix string, deps Deps, name string) (*
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	info, ok := deps.Router.CommandInfoForActor(name, actor)
 	if !ok {
-		return &command.Result{Content: fmt.Sprintf("unknown command: %s", strings.TrimSpace(name))}, nil
+		return &command.Result{Content: fmt.Sprintf("unk command: %s", strings.TrimSpace(name))}, nil
 	}
 	return formatCommandHelp(prefix, info), nil
 }

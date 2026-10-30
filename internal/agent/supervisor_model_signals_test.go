@@ -27,7 +27,7 @@ type retryNoticePlatform struct {
 
 func (p *retryNoticePlatform) SendTo(ctx context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	text := delivery.FallbackOutput(noticeOutputs).Text
-	if strings.Contains(text, "正在重试") {
+	if strings.Contains(text, "LLM retry") {
 		info, _ := contextinfo.ConversationFromContext(ctx)
 		p.retryNotices <- info.Source.ScopeID
 	}

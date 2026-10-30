@@ -68,6 +68,22 @@ func TestIncompleteMediaReceiptReportsStorageFailure(t *testing.T) {
 	}
 }
 
+func TestRouterPreservesOutputActions(t *testing.T) {
+	want := []delivery.Output{{Kind: delivery.KindText, Text: "confirm", Actions: []delivery.Action{{ID: "c", Label: "确认", Command: "/confirm"}}}}
+	var got []delivery.Output
+	sender := testSender{send: func(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+		got = outputs
+		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+	}}
+	router := New(Options{Primary: sender})
+	if _, _, err := router.SendChat(t.Context(), want); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("outputs=%#v want=%#v", got, want)
+	}
+}
+
 type releasingMedia struct {
 	*media.MediaCenter
 	resolved, released int

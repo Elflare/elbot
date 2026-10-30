@@ -38,7 +38,7 @@ func (s *Compactor) Prepare(ctx context.Context, current *storage.Session, reaso
 		return nil, err
 	}
 	if len(loaded.Messages) == 0 {
-		return nil, fmt.Errorf("没有可压缩的历史消息")
+		return nil, fmt.Errorf("无可压缩历史")
 	}
 	raw, err := s.Loader.LoadRawMessages(ctx, current.ID)
 	if err != nil {

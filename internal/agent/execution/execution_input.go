@@ -55,7 +55,7 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Se
 		case agentshare.IsAppendCancel(text):
 			c.turns.CancelAppend(row.ID)
 			release()
-			return c.output.SendChat(ctx, "已取消追加，正在结束本轮处理。")
+			return c.output.SendChat(ctx, "append canceled · stopping")
 		default:
 			c.turns.AppendPendingInput(row.ID, agentshare.InboundTurnInput(ctx, text))
 			release()
@@ -132,14 +132,14 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 				defer finishWait()
 				defer c.sessionIdle(waitCtx, session.ID)
 				if wait.Wait(waitCtx, timeout) {
-					_ = c.output.SendChat(waitCtx, "追加确认已过期，待追加内容已丢弃，本轮处理已停止。")
+					_ = c.output.SendChat(waitCtx, "append timeout → dropped · stopped")
 				}
 			}()
 			return agentshare.InputHandled, err
 		case turn.PhaseTool:
 			c.turns.AppendPendingInput(session.ID, agentshare.InboundTurnInput(ctx, text))
 			release()
-			return agentshare.InputHandled, c.output.SendChat(ctx, "已追加，将在当前流程下一次模型调用时带上。发送 /stop 可打断当前流程。")
+			return agentshare.InputHandled, c.output.SendChat(ctx, "queued → next LLM call")
 		default:
 			release()
 			err = c.Run(ctx, session, text, foregroundTurnOutput{sender: c.output})
@@ -153,9 +153,9 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 }
 
 func appendConfirmPromptText(timeout time.Duration) string {
-	text := "已停止当前处理。是否追加这条消息并重新发送？\n发送 $ / 是 / y / yes 确认；发送 取消 / 否 / n / no 放弃。\n也可以继续发送内容，发送完后再确认。"
+	text := "stopped · append?\ny=send · n=drop+stop"
 	if timeout > 0 {
-		text += fmt.Sprintf("\n超过 %s 没有继续发送内容或确认，将自动放弃。", agentshare.ConfirmationWaitDurationText(timeout))
+		text += fmt.Sprintf("\nidle=%s → drop+stop", agentshare.ConfirmationWaitDurationText(timeout))
 	}
 	return text
 }

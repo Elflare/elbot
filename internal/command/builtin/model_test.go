@@ -75,9 +75,9 @@ func TestModelCompletionCursorAndFuzzyCase(t *testing.T) {
 
 func TestModelCommandSuccessTextForEveryTarget(t *testing.T) {
 	for _, target := range []string{"", "chat", "work", "elwisp1", "elwisp2", "elwisp3", "compact", "naming"} {
-		args, want := "model", "switched to model: /"
+		args, want := "model", "model → /"
 		if target != "" {
-			args, want = "--"+target+" model", "switched "+target+" model: /"
+			args, want = "--"+target+" model", target+".model → /"
 		}
 		got, err := NewModel(Deps{Models: fakeModelService{}}).Handle(t.Context(), command.Request{Args: args})
 		if err != nil || got.Content != want {
@@ -162,7 +162,7 @@ func TestModelCommandSwitchesElwispSlot(t *testing.T) {
 	if models.mode != "elwisp2" || models.arg != "openai/gpt-4.1" {
 		t.Fatalf("selected mode=%q arg=%q", models.mode, models.arg)
 	}
-	if result == nil || !strings.Contains(result.Content, "switched elwisp2 model") {
+	if result == nil || !strings.Contains(result.Content, "elwisp2.model →") {
 		t.Fatalf("result = %#v", result)
 	}
 }

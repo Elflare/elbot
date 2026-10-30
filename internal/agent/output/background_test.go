@@ -3,6 +3,7 @@ package output
 import (
 	"context"
 	"log/slog"
+	"reflect"
 	"testing"
 
 	"elbot/internal/contextinfo"
@@ -11,14 +12,35 @@ import (
 )
 
 type backgroundDeliveryProbe struct {
-	calls  int
-	target delivery.Target
+	calls   int
+	target  delivery.Target
+	outputs []delivery.Output
 }
 
-func (p *backgroundDeliveryProbe) SendTo(_ context.Context, target delivery.Target, _ []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+func (p *backgroundDeliveryProbe) SendTo(_ context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	p.calls++
 	p.target = target
+	p.outputs = outputs
 	return delivery.Receipt{}, events.LogResult{}, nil
+}
+
+func TestAssistantActionsSurviveTextHook(t *testing.T) {
+	probe := &backgroundDeliveryProbe{}
+	hooks := &previewTestHooks{rewrite: true, output: "正文完全改写"}
+	out := NewOutputSender(OutputSenderDeps{Dispatcher: probe, Hooks: hooks})
+	actions := []delivery.Action{{ID: "confirm", Label: "确认", Command: "/confirm"}}
+	if _, _, err := out.SendAssistant(t.Context(), "original", actions...); err != nil {
+		t.Fatal(err)
+	}
+	if probe.calls != 1 || len(probe.outputs) != 1 || probe.outputs[0].Text != hooks.output || !reflect.DeepEqual(probe.outputs[0].Actions, actions) {
+		t.Fatalf("output lost text or actions: %#v", probe.outputs)
+	}
+	if _, _, err := out.SendAssistant(t.Context(), "高风险工具调用等待确认 /confirm"); err != nil {
+		t.Fatal(err)
+	}
+	if len(probe.outputs[0].Actions) != 0 {
+		t.Fatal("plain text acquired actions")
+	}
 }
 func (p *backgroundDeliveryProbe) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	return p.SendTo(ctx, delivery.Target{}, outputs)

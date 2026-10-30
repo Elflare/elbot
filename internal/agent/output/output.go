@@ -98,7 +98,7 @@ func (o *OutputSender) PrepareAssistant(ctx context.Context, text string) (strin
 	return prepared, logResult, nil
 }
 
-func (o *OutputSender) SendAssistant(ctx context.Context, text string) (receipt delivery.Receipt, logResult globalevents.LogResult, err error) {
+func (o *OutputSender) SendAssistant(ctx context.Context, text string, actions ...delivery.Action) (receipt delivery.Receipt, logResult globalevents.LogResult, err error) {
 	if contextinfo.BackgroundContext(ctx) {
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "background output is silent"}, nil
 	}
@@ -110,7 +110,8 @@ func (o *OutputSender) SendAssistant(ctx context.Context, text string) (receipt 
 	if err != nil {
 		return delivery.Receipt{}, logResult, err
 	}
-	receipt, logResult, err = o.dispatcher.SendChat(ctx, []delivery.Output{delivery.Text(preparedText)})
+	// Hook 只改正文，操作由业务源提供，与展示文本独立。
+	receipt, logResult, err = o.dispatcher.SendChat(ctx, []delivery.Output{{Kind: delivery.KindText, Text: preparedText, Actions: slices.Clone(actions)}})
 	if logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
 
 		{

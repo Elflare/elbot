@@ -114,19 +114,19 @@ func WriteUsage(w io.Writer) {
   elbot service run [--config path]
   elbot completion [auto|bash|zsh|fish|nushell|powershell]
 
-Default: try the default CLI connection; fall back to local startup when eligible.
+Default: CLI client → eligible local fallback.
 
 Commands:
-  run          Run local TUI with enabled platforms and background tasks.
-  client       Run the CLI client and connect to a server.
-  service run  Run a headless service with enabled platforms and an optional CLI server.
-  completion   Generate shell completion scripts.
+  run          Local TUI + platforms + background tasks.
+  client       Connect to CLI server.
+  service run  Headless service.
+  completion   Shell completion.
 
 Options:
-  -c, --client name  CLI connection profile name.
-  --config path       Path to TOML config file.
-  --help         Show this help.
-  --version      Show version.
+  -c, --client name  Connection profile.
+  --config path     TOML config.
+  --help            Help.
+  --version         Version.
 `)
 }
 

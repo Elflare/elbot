@@ -13,7 +13,7 @@ func riskReasonsText(reasons []string) string {
 		return ""
 	}
 	var sb strings.Builder
-	sb.WriteString("\n风险原因：")
+	sb.WriteString("\nrisk:")
 	for _, reason := range reasons {
 		reason = strings.TrimSpace(reason)
 		if reason != "" {

@@ -125,13 +125,13 @@ func containsAny(text string, values ...string) bool {
 func (c *InputCoordinator) notifyToolDirectiveResult(ctx context.Context, result toolDirectiveResult) error {
 	parts := []string{}
 	if len(result.Injected) > 0 {
-		parts = append(parts, "已注入工具："+strings.Join(sortedUnique(result.Injected), ", "))
+		parts = append(parts, "已加载: "+strings.Join(sortedUnique(result.Injected), ", "))
 	}
 	if len(result.Existing) > 0 {
-		parts = append(parts, "已存在工具："+strings.Join(sortedUnique(result.Existing), ", "))
+		parts = append(parts, "已存在: "+strings.Join(sortedUnique(result.Existing), ", "))
 	}
 	if len(result.Invalid) > 0 {
-		parts = append(parts, "未找到或不可用的工具："+strings.Join(sortedUnique(result.Invalid), ", "))
+		parts = append(parts, "tools unavailable: "+strings.Join(sortedUnique(result.Invalid), ", "))
 	}
 	if len(parts) == 0 {
 		return nil
@@ -142,16 +142,16 @@ func (c *InputCoordinator) notifyToolDirectiveResult(ctx context.Context, result
 func (c *InputCoordinator) notifySkillDirectiveResult(ctx context.Context, result skillDirectiveResult) error {
 	parts := []string{}
 	if len(result.Skills) > 0 {
-		parts = append(parts, "已注入 Skill："+strings.Join(sortedUnique(result.Skills), ", "))
+		parts = append(parts, "已加载: "+strings.Join(sortedUnique(result.Skills), ", "))
 	}
 	if len(result.InjectedWrappers) > 0 {
-		parts = append(parts, "已注入 Skill 工具："+strings.Join(sortedUnique(result.InjectedWrappers), ", "))
+		parts = append(parts, "已加载: "+strings.Join(sortedUnique(result.InjectedWrappers), ", "))
 	}
 	if len(result.ExistingWrappers) > 0 {
-		parts = append(parts, "已存在 Skill 工具："+strings.Join(sortedUnique(result.ExistingWrappers), ", "))
+		parts = append(parts, "已存在: "+strings.Join(sortedUnique(result.ExistingWrappers), ", "))
 	}
 	if len(result.Invalid) > 0 {
-		parts = append(parts, "未找到或不可用的 Skill："+strings.Join(sortedUnique(result.Invalid), ", "))
+		parts = append(parts, "skills unavailable: "+strings.Join(sortedUnique(result.Invalid), ", "))
 	}
 	if len(parts) == 0 {
 		return nil

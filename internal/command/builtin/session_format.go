@@ -19,7 +19,7 @@ func toolsString(tools map[string]int) string {
 	sort.Strings(names)
 	parts := make([]string, 0, len(names))
 	for _, name := range names {
-		parts = append(parts, fmt.Sprintf("%s x%d", name, tools[name]))
+		parts = append(parts, fmt.Sprintf("%s×%d", name, tools[name]))
 	}
 	return strings.Join(parts, ", ")
 }
@@ -83,12 +83,12 @@ func formatSessionsPageWithOffset(sessions []storage.SessionSummary, currentID s
 	if content != "" {
 		sb.WriteString("\n")
 	}
-	sb.WriteString(fmt.Sprintf("page: %d\n", page))
+	sb.WriteString(fmt.Sprintf("page=%d", page))
 	if page > 1 {
-		sb.WriteString(fmt.Sprintf("prev: %s\n", nextPageCommand(commandPrefix, page-1, query)))
+		sb.WriteString(fmt.Sprintf(" · prev: %s", nextPageCommand(commandPrefix, page-1, query)))
 	}
 	if hasNext {
-		sb.WriteString(fmt.Sprintf("next: %s\n", nextPageCommand(commandPrefix, page+1, query)))
+		sb.WriteString(fmt.Sprintf(" · next: %s", nextPageCommand(commandPrefix, page+1, query)))
 	}
 	return trimTrailingNewlines(sb.String())
 }
@@ -110,14 +110,14 @@ func currentSessionID(ctx context.Context, deps Deps) string {
 
 func formatResumeResult(ctx context.Context, deps Deps, session *storage.Session) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("resumed session:\n  id: %s\n  title: %s\n", session.ID, session.Title))
+	sb.WriteString(fmt.Sprintf("resume → %s · %s\n", session.Title, session.ID))
 	appendRecentMessages(&sb, ctx, deps, session.ID)
 	return trimTrailingNewlines(sb.String())
 }
 
 func formatForkResult(ctx context.Context, deps Deps, session *storage.Session) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("forked session:\n  id: %s\n  parent: %s\n  from message: %s\n  mode: %s\n", session.ID, session.ParentSessionID, session.ForkFromMessageID, session.Mode))
+	sb.WriteString(fmt.Sprintf("fork → %s · %s\nparent=%s · from=%s\n", session.ID, session.Mode, session.ParentSessionID, session.ForkFromMessageID))
 	appendRecentMessages(&sb, ctx, deps, session.ID)
 	return trimTrailingNewlines(sb.String())
 }
@@ -127,9 +127,8 @@ func appendRecentMessages(sb *strings.Builder, ctx context.Context, deps Deps, s
 	if len(history) == 0 {
 		return
 	}
-	sb.WriteString("recent messages:\n")
 	for _, message := range history {
-		sb.WriteString(fmt.Sprintf("  %s: %s\n", message.Role, previewContent(message.Content)))
+		sb.WriteString(fmt.Sprintf("%s: %s\n", message.Role, previewContent(message.Content)))
 	}
 }
 
@@ -177,9 +176,9 @@ func formatMessagePage(messages []storage.Message, page, pageSize int) (string, 
 	start := (page - 1) * pageSize
 	end := min(start+pageSize, len(messages))
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("messages page %d/%d:\n", page, totalPages))
+	sb.WriteString(fmt.Sprintf("page=%d/%d\n", page, totalPages))
 	for _, message := range messages[start:end] {
-		sb.WriteString(fmt.Sprintf("  %s: %s\n", message.ID, messagePreview(message.Content)))
+		sb.WriteString(fmt.Sprintf("%s: %s\n", message.ID, messagePreview(message.Content)))
 	}
 	return trimTrailingNewlines(sb.String()), nil
 }
@@ -202,15 +201,17 @@ func formatSessions(sessions []storage.SessionSummary, currentID string) string 
 
 func formatSessionsWithOffset(sessions []storage.SessionSummary, currentID string, numberOffset int) string {
 	var sb strings.Builder
-	sb.WriteString("sessions:\n")
 	for i, s := range sessions {
 		title := s.Title
 		if title == "" {
 			title = "(untitled)"
 		}
-		sb.WriteString(fmt.Sprintf("  [%d] %s%s\n      id: %s\n      platform: %s/%s\n      updated: %s\n      messages: %d\n", numberOffset+i+1, title, sessionMarkers(s, currentID), s.ID, s.Platform, s.PlatformScopeID, formatTime(s.UpdatedAt), s.MessageCount))
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(fmt.Sprintf("[%d] %s%s\n%s · %s/%s · %s · msgs=%d\n", numberOffset+i+1, title, sessionMarkers(s, currentID), s.ID, s.Platform, s.PlatformScopeID, formatTime(s.UpdatedAt), s.MessageCount))
 		if preview := sessionMessagePreview(s.Messages); preview != "" {
-			sb.WriteString(fmt.Sprintf("      preview: %s\n", preview))
+			sb.WriteString(preview + "\n")
 		}
 	}
 	return trimTrailingNewlines(sb.String())
@@ -238,16 +239,12 @@ func formatEmptyStatus(ctx context.Context, deps Deps) string {
 	modeModel := deps.Models.CurrentModelForMode(deps.Sessions.DefaultMode())
 	compactModel := deps.Models.CurrentCompactModel(deps.Sessions.DefaultMode())
 	active := formatActiveRequests(ctx, deps, nil)
-	return trimTrailingNewlines(fmt.Sprintf(`session status:
-  current session: none
-  default mode: %s
-  current mode model: %s/%s
-  compact model: %s/%s
-  platform: %s/%s
-%s  turn phase: %s
-  pending input: %s
-  tools: available in work mode
-`, deps.Sessions.DefaultMode(), modeModel.Provider, modeModel.Model, compactModel.Provider, compactModel.Model, scope.Platform, scope.PlatformScopeID, indentStatusBlock(active), "idle", "none"))
+	return trimTrailingNewlines(fmt.Sprintf(`session=nil
+default=%s · model=%s/%s
+compact.model=%s/%s
+platform=%s/%s
+%sphase=idle · pending=0
+tools: work only`, deps.Sessions.DefaultMode(), modeModel.Provider, modeModel.Model, compactModel.Provider, compactModel.Model, scope.Platform, scope.PlatformScopeID, indentStatusBlock(active)))
 }
 
 func indentStatusBlock(text string) string {
@@ -264,7 +261,7 @@ func formatTime(t time.Time) string { return t.Format("2006-01-02 15:04:05") }
 
 func emptyTODO(s string) string {
 	if s == "" {
-		return "TODO"
+		return "nil"
 	}
 	return s
 }

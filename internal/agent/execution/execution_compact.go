@@ -27,7 +27,7 @@ func (c *ExecutionCoordinator) compactSession(ctx context.Context, current *stor
 	if err != nil {
 		return nil, "", err
 	}
-	return next, fmt.Sprintf("上下文压缩完成。\nnew session: %s", next.ID), nil
+	return next, fmt.Sprintf("compacted → %s", next.ID), nil
 }
 
 func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.Session, scope sessionpkg.Scope, triggerReason string, selection modelmgr.Selection) (*storage.Session, error) {
@@ -37,7 +37,7 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 	}
 	if len(c.requests.ListBySession(current.ID)) > 0 {
 		release()
-		return nil, fmt.Errorf("当前会话有正在运行的请求，无法压缩")
+		return nil, fmt.Errorf("会话有运行中的请求，暂不能压缩")
 	}
 	if err := c.view.CheckSelection(current, selection); err != nil {
 		release()
@@ -47,7 +47,7 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 	if !c.turns.StartCompactRun(current.ID, info.ID, turn.ExecutionFromContext(ctx)) {
 		done()
 		release()
-		return nil, fmt.Errorf("当前会话正在处理其他任务，无法压缩")
+		return nil, fmt.Errorf("会话忙，暂不能压缩")
 	}
 	reqCtx = turn.WithAttempt(reqCtx, info.ID)
 	release()

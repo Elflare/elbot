@@ -38,11 +38,11 @@ func NewRequests(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:        "requests",
 		Usage:       "/requests",
-		Description: "List active requests.",
+		Description: "运行中的请求",
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		requests := deps.Requests.List()
 		if len(requests) == 0 {
-			return &command.Result{Content: "no active requests"}, nil
+			return &command.Result{Content: "nil"}, nil
 		}
 		return &command.Result{Content: formatRequests(ctx, deps, requests)}, nil
 	})
@@ -60,7 +60,7 @@ func (c stopCommand) Info() command.Info {
 	return command.Info{
 		Name:        "stop",
 		Usage:       "/stop [request_id|number]",
-		Description: "Stop a request or all requests in current session. Use /requests to see numbers like 1 or 1.1.",
+		Description: "停止请求；编号见 /requests",
 		MinRole:     contextinfo.RoleUser,
 	}
 }
@@ -90,20 +90,20 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 		ctx = locked
 		latest, exists := deps.Requests.Get(id)
 		if !exists || latest.SessionID != stopped.SessionID || (binding != nil && latest.SessionID != binding.SessionID()) {
-			return &command.Result{Content: "request already stopped"}, nil
+			return &command.Result{Content: "stopped"}, nil
 		}
 		if stopped.Kind == request.KindTurn {
 			deps.Turns.StopSession(stopped.SessionID)
 			count := deps.Requests.CancelSession(stopped.SessionID)
-			return &command.Result{Content: fmt.Sprintf("正在停止 %d 个请求。", count)}, nil
+			return &command.Result{Content: fmt.Sprintf("stopping: %d", count)}, nil
 		}
 		if latest.Stopping {
-			return &command.Result{Content: "请求正在停止，等待执行收尾。"}, nil
+			return &command.Result{Content: "stopping"}, nil
 		}
 		if !deps.Requests.Cancel(id) {
 			return &command.Result{Content: fmt.Sprintf("request not found: %s", arg)}, nil
 		}
-		return &command.Result{Content: "正在停止 1 个请求。"}, nil
+		return &command.Result{Content: "stopping: 1"}, nil
 	}
 
 	actor, _ := contextinfo.ActorFromContext(ctx)
@@ -125,7 +125,7 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 	}
 	deps.Turns.StopSession(current.ID)
 	count := deps.Requests.CancelSession(current.ID)
-	return &command.Result{Content: fmt.Sprintf("正在停止 %d 个请求。", count)}, nil
+	return &command.Result{Content: fmt.Sprintf("stopping: %d", count)}, nil
 }
 
 func (c stopCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -141,7 +141,7 @@ func NewStopAll(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:        "stopall",
 		Usage:       "/stopall",
-		Description: "Stop all active requests in this process.",
+		Description: "停止全部请求",
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		ids := []string{}
 		seen := map[string]bool{}
@@ -165,13 +165,13 @@ func NewStopAll(deps Deps) command.Handler {
 			deps.Turns.StopSession(id)
 			count += deps.Requests.CancelSession(id)
 		}
-		return &command.Result{Content: fmt.Sprintf("正在停止 %d 个请求。", count)}, nil
+		return &command.Result{Content: fmt.Sprintf("stopping: %d", count)}, nil
 	})
 }
 
 func formatRequests(ctx context.Context, deps Deps, requests []request.Request) string {
 	return formatRequestTree(ctx, deps, requests, false, func(sb *strings.Builder, info RequestInfo) {
-		title := "(unknown)"
+		title := "unk"
 		if info.Session != nil && info.Session.Title != "" {
 			title = info.Session.Title
 		}
@@ -182,11 +182,11 @@ func formatRequests(ctx context.Context, deps Deps, requests []request.Request) 
 
 func formatRequestTree(ctx context.Context, deps Deps, requests []request.Request, showNone bool, writeDetails func(*strings.Builder, RequestInfo)) string {
 	if len(requests) == 0 && showNone {
-		return "active requests: none"
+		return "requests=nil"
 	}
 	tree := buildRequestTree(requests)
 	var sb strings.Builder
-	sb.WriteString("active requests:")
+	sb.WriteString("requests:")
 	if len(requests) > 0 {
 		sb.WriteString("\n")
 	}
@@ -216,7 +216,7 @@ func writeRequestLine(sb *strings.Builder, number, prefix string, req request.Re
 	if req.Stopping {
 		label += " stopping"
 	}
-	sb.WriteString(fmt.Sprintf("  %s[%s] %s %s request %s\n", prefix, number, label, kind, formatDuration(time.Since(req.StartedAt))))
+	sb.WriteString(fmt.Sprintf("  %s[%s] %s · %s · %s\n", prefix, number, label, kind, formatDuration(time.Since(req.StartedAt))))
 	if prefix == "" {
 		return
 	}
@@ -247,7 +247,7 @@ func writeRequestDetails(sb *strings.Builder, info RequestInfo) {
 		}
 		sb.WriteString(fmt.Sprintf("      phase: %s (%s)\n", phaseText, formatDuration(snapshot.StageElapsed(time.Now()))))
 	}
-	mode := "(unknown)"
+	mode := "unk"
 	if info.Session != nil {
 		mode = info.Session.Mode
 	}

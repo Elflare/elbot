@@ -339,7 +339,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 				return fail(err)
 			}
 			s.tools = nil
-			out.SendPreview(s.ctx, fmt.Sprintf("已达到 max_rounds_per_turn=%d，正在请求模型总结当前进度。", s.route.Tools.MaxRoundsPerTurn()))
+			out.SendPreview(s.ctx, fmt.Sprintf("max_rounds_per_turn=%d → 总结", s.route.Tools.MaxRoundsPerTurn()))
 			summaryInput := &storage.Message{
 				ID:        storage.NewID(),
 				SessionID: s.session.ID,

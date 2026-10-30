@@ -71,7 +71,7 @@ func TestRouterUnknownCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Dispatch unknown: %v", err)
 	}
-	if !strings.Contains(result.Content, "unknown command: /missing") {
+	if !strings.Contains(result.Content, "unk command: /missing") {
 		t.Fatalf("unexpected content: %q", result.Content)
 	}
 }

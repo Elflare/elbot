@@ -30,7 +30,7 @@ func TestHelpCommandShowsDetailedHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("help handle: %v", err)
 	}
-	for _, want := range []string{"command: audit", "usage: /audit [options]", "aliases: aud", "--event <name>"} {
+	for _, want := range []string{"/audit [options]", "Show audit events.", "aliases: aud", "--event <name>"} {
 		if !strings.Contains(result.Content, want) {
 			t.Fatalf("help content missing %q: %q", want, result.Content)
 		}
@@ -63,11 +63,11 @@ func TestHelpCommandFiltersByActor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("user private help: %v", err)
 	}
-	if privateDetail.Content != "unknown command: sec" {
+	if privateDetail.Content != "unk command: sec" {
 		t.Fatalf("private help content = %q", privateDetail.Content)
 	}
 	publicDetail, err := help.Handle(userCtx, command.Request{Prefix: "/", Args: "public"})
-	if err != nil || !strings.Contains(publicDetail.Content, "command: public") {
+	if err != nil || !strings.Contains(publicDetail.Content, "/public") {
 		t.Fatalf("public help = %#v, %v", publicDetail, err)
 	}
 
@@ -82,7 +82,7 @@ func TestHelpCommandFiltersByActor(t *testing.T) {
 		t.Fatalf("admin help = %#v, %v", adminList, err)
 	}
 	adminDetail, err := help.Handle(adminCtx, command.Request{Prefix: "/", Args: "sec"})
-	if err != nil || !strings.Contains(adminDetail.Content, "command: secret") {
+	if err != nil || !strings.Contains(adminDetail.Content, "/secret") {
 		t.Fatalf("admin private help = %#v, %v", adminDetail, err)
 	}
 	if got := completer.Complete(adminCtx, command.CompletionRequest{Raw: "/help s", Prefix: "/", Name: "help", Args: "s", Cursor: len("/help s")}); len(got) != 1 || got[0].Text != "secret" {

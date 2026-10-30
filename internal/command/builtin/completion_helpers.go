@@ -70,7 +70,7 @@ func completeConfirmFlag(args string, token command.CompletionToken) []command.C
 	if strings.Contains(" "+args+" ", " --confirm ") {
 		return nil
 	}
-	return command.CompleteStaticOptions([]command.CompletionOption{{Text: "--confirm", Description: "Confirm this destructive action"}}, token.Text, token.Start, token.End, "option")
+	return command.CompleteStaticOptions([]command.CompletionOption{{Text: "--confirm", Description: "确认操作"}}, token.Text, token.Start, token.End, "option")
 }
 
 func firstNonEmpty(values ...string) string {

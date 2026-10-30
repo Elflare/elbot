@@ -46,14 +46,14 @@ func TestUsageJSONGroupingPreservesTokenTypes(t *testing.T) {
 	}
 	for group, key := range map[usageGroupKey]string{groupByModel: "p/m", groupByDay: "2026-10-30", groupBySession: "session"} {
 		got := formatUsageSummary([]logging.LogEntry{entry}, logging.LogQuery{}, group)
-		if !strings.Contains(got, "["+key+"] calls: 1") || !strings.Contains(got, "prompt: 9,007,199,254,740,993 | completion: null | total: null") {
+		if !strings.Contains(got, "["+key+"] calls: 1") || !strings.Contains(got, "prompt: 9,007,199,254,740,993 | completion: unk | total: unk") {
 			t.Fatalf("group=%s: %s", group, got)
 		}
 	}
 	for _, body := range []string{`{"provider":12,"model":null}`, `{}`} {
 		entry.Content = body
 		got := formatUsageSummary([]logging.LogEntry{entry}, logging.LogQuery{}, groupByModel)
-		if !strings.Contains(got, "[unknown-model] calls: 1") {
+		if !strings.Contains(got, "[unk-model] calls: 1") {
 			t.Fatal(got)
 		}
 	}
@@ -74,7 +74,7 @@ func TestUsageDefaultQueryByModel(t *testing.T) {
 		t.Fatalf("query = %#v", service.query)
 	}
 	for _, want := range []string{
-		"by model",
+		"by=model",
 		"[deepseek/deepseek-v4] calls: 2",
 		"prompt: 1,800 | completion: 300 | total: 2,100",
 		"cache: 500 | elapsed: 2.3s",
@@ -106,7 +106,7 @@ func TestUsageQueryByDay(t *testing.T) {
 		t.Fatalf("Days = %d", service.query.Days)
 	}
 	for _, want := range []string{
-		"by day",
+		"by=day",
 		"[2026-06-30] calls: 1",
 		"prompt: 1,000 | completion: 200 | total: 1,200",
 		"cache: 0 | elapsed: 1.0s",
@@ -135,7 +135,7 @@ func TestUsageQueryBySession(t *testing.T) {
 		t.Fatalf("usage handle: %v", err)
 	}
 	for _, want := range []string{
-		"by session",
+		"by=session",
 		"[sess-1] calls: 2",
 		"prompt: 1,500 | completion: 300 | total: 1,800",
 		"cache: 100 | elapsed: 1.5s",
@@ -180,7 +180,7 @@ func TestUsageNoData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("usage handle: %v", err)
 	}
-	if result.Content != "no usage data found" {
+	if result.Content != "nil" {
 		t.Fatalf("content = %q", result.Content)
 	}
 }
@@ -357,7 +357,7 @@ func TestUsageCallRangesWithLogReader(t *testing.T) {
 		{name: "short range with offset", args: "-n 3-6", calls: 2, prompt: 50, notice: "仅有 4 次调用"},
 		{name: "start out of range", args: "-n 5-6", notice: "仅有 4 次调用"},
 		{name: "last allowed position", args: "-n 100000", notice: "仅有 4 次调用"},
-		{name: "no matches", args: "-n 1 -m missing", notice: "没有调用记录"},
+		{name: "no matches", args: "-n 1 -m missing", notice: "nil"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			result, err := NewUsage(Deps{Logs: logging.Reader{Dir: dir}}).Handle(t.Context(), command.Request{Args: tc.args})
@@ -397,7 +397,7 @@ func TestUsageCallRangePreservesUnknownAndDamage(t *testing.T) {
 		args string
 		want []string
 	}{
-		{"-n 1", []string{"[total] calls: 1", "prompt: null | completion: 2 | total: null", "cache: 0 | elapsed: 0.1s"}},
+		{"-n 1", []string{"[total] calls: 1", "prompt: unk | completion: 2 | total: unk", "cache: 0 | elapsed: 0.1s"}},
 		{"-n 1-3", []string{"[total] calls: 1", "仅有 1 次调用"}},
 		{"-n 2", []string{"仅有 1 次调用"}},
 	} {
@@ -407,7 +407,7 @@ func TestUsageCallRangePreservesUnknownAndDamage(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, want := range append(tc.want, "本次扫描发现 2 条损坏记录，用量统计可能不完整。") {
+			for _, want := range append(tc.want, "warn: damaged=2 · usage incomplete") {
 				if !strings.Contains(result.Content, want) {
 					t.Fatalf("missing %q in:\n%s", want, result.Content)
 				}
@@ -415,7 +415,7 @@ func TestUsageCallRangePreservesUnknownAndDamage(t *testing.T) {
 		})
 	}
 	result, err := NewUsage(Deps{Logs: &fakeLogService{damagedCount: 2}}).Handle(t.Context(), command.Request{Args: "-n 1"})
-	if err != nil || result.Content != "没有调用记录\n本次扫描发现 2 条损坏记录，用量统计可能不完整。" {
+	if err != nil || result.Content != "nil\nwarn: damaged=2 · usage incomplete" {
 		t.Fatalf("result = %+v, err = %v", result, err)
 	}
 }
@@ -425,7 +425,7 @@ func TestUsageCallRangeHelp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"-n <x[-y]>", "/usage -n 1", "/usage -n 1-3"} {
+	for _, want := range []string{"-n <x[-y]>", "筛选后按新到旧", "1..100000"} {
 		if !strings.Contains(result.Content, want) {
 			t.Fatalf("help missing %q:\n%s", want, result.Content)
 		}

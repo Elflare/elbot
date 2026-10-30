@@ -396,7 +396,7 @@ func TestReplyCommitEmptyAndBackground(t *testing.T) {
 				if err != nil || got.Persisted != (mode == "outputs_only" || mode == "background_reply") {
 					t.Fatalf("result=%+v err=%v", got, err)
 				}
-				if mode == "empty" && f.platform.text != "模型这次没有返回可见内容。" {
+				if mode == "empty" && f.platform.text != "LLM: nil" {
 					t.Fatalf("fallback=%q", f.platform.text)
 				}
 				if mode != "empty" && f.platform.text != "" {

@@ -14,13 +14,12 @@ func wantsCommandHelp(args string) bool {
 
 func formatCommandHelp(prefix string, info command.Info) *command.Result {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("command: %s\n", info.Name))
-	sb.WriteString(fmt.Sprintf("usage: %s\n", commandUsage(prefix, info)))
+	sb.WriteString(commandUsage(prefix, info) + "\n")
 	if len(info.Aliases) > 0 {
 		sb.WriteString(fmt.Sprintf("aliases: %s\n", strings.Join(info.Aliases, ", ")))
 	}
 	if info.Description != "" {
-		sb.WriteString(fmt.Sprintf("description: %s\n", info.Description))
+		sb.WriteString(info.Description + "\n")
 	}
 	if strings.TrimSpace(info.Help) != "" {
 		sb.WriteString("\n")

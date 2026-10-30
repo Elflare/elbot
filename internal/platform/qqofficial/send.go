@@ -78,10 +78,10 @@ func qqOfficialTargetScope(target sendTarget) string {
 func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	switch out.Kind {
 	case delivery.KindText:
-		return a.sendText(ctx, t, out.Text)
+		return a.sendText(ctx, t, out.Text, out.Actions...)
 	case delivery.KindReply:
 		text := delivery.FallbackText(out)
-		return a.sendText(ctx, t, text)
+		return a.sendText(ctx, t, text, out.Actions...)
 	case delivery.KindEmoticon:
 		return a.sendText(ctx, t, delivery.FallbackText(out))
 	case delivery.KindImage:
@@ -120,7 +120,7 @@ func (a *Adapter) contextTarget(ctx context.Context) (sendTarget, error) {
 	return t, nil
 }
 
-func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) (delivery.Receipt, globalevents.LogResult, error) {
+func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string, actions ...delivery.Action) (delivery.Receipt, globalevents.LogResult, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
@@ -133,8 +133,8 @@ func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string) 
 	if a.cfg.markdownByDefault() {
 		msg.MsgType = msgTypeMarkdown
 		msg.Markdown = &messageMarkdown{Content: text}
-		if a.cfg.enableKeyboard() && shouldAttachRiskKeyboard(text) {
-			msg.Keyboard = riskKeyboard(a.cfg.AppID)
+		if a.cfg.enableKeyboard() && len(actions) > 0 {
+			msg.Keyboard = commandKeyboard(a.cfg.AppID, actions)
 		}
 	} else {
 		msg.MsgType = msgTypeText

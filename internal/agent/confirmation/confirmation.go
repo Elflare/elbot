@@ -15,6 +15,7 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/llm"
 
@@ -155,7 +156,7 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 		c.turns.StopSession(sessionID)
 		c.requests.CancelSession(sessionID)
 		release()
-		return c.output.SendChat(context.WithoutCancel(ctx), "正在停止，等待执行收尾。")
+		return c.output.SendChat(context.WithoutCancel(ctx), "stopping")
 	default:
 		observed = confirmationAction(ctx, sessionID, "invalid_command", confirmation, parsed.Name)
 		release()
@@ -295,7 +296,11 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	defer wait.Cancel()
 	if wait != nil && ctx.Err() == nil {
 		c.publishConfirmationWait(ctx, sessionID, call, assessment.Level, assessment.Reasons)
-		if _, logResult, err := c.output.SendAssistant(ctx, fmt.Sprintf("高风险工具调用等待确认\n工具：%s\n风险：%s\n参数：%s%s\n%s。", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout))); err != nil {
+		var actions []delivery.Action
+		for _, cmd := range riskConfirmationCommands() {
+			actions = append(actions, delivery.Action{ID: cmd.Name, Label: cmd.Description, Command: "/" + cmd.Name})
+		}
+		if _, logResult, err := c.output.SendAssistant(ctx, fmt.Sprintf("%s [%s] · confirm\n%s%s\n\n%s", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout)), actions...); err != nil {
 			resultStatus, level := logResult.ResultStatus, slog.LevelError
 			if resultStatus == events.ResultCanceled {
 				level = slog.LevelInfo
@@ -308,7 +313,7 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	resp := result.Decision
 	if result.Outcome == turn.RiskExpired {
 		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "expire", resp.Extra, "confirmation wait expired", events.ResultFailed, slog.LevelInfo)
-		err := c.output.SendChat(context.WithoutCancel(ctx), "高风险工具确认已过期，当前处理已停止。")
+		err := c.output.SendChat(context.WithoutCancel(ctx), "confirm timeout → stopped")
 		return tool.ConfirmResult{
 			Allowed: false,
 			Extra:   resp.Extra,
@@ -344,13 +349,13 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	}
 	if resp.Action == turn.RiskConfirmTool {
 		c.setToolAutoConfirmed(sessionID, call.Name)
-		if err := c.output.SendChat(ctx, fmt.Sprintf("已为当前 Session 自动确认后续 %s 工具调用。", call.Name)); err != nil {
+		if err := c.output.SendChat(ctx, fmt.Sprintf("本会话 %s 免确认", call.Name)); err != nil {
 			return tool.ConfirmResult{Allowed: true, Extra: resp.Extra}, err
 		}
 	}
 	if resp.Action == turn.RiskConfirmAll {
 		c.setSessionAutoConfirmed(sessionID)
-		if err := c.output.SendChat(ctx, "已为当前 Session 自动确认后续高风险工具调用。"); err != nil {
+		if err := c.output.SendChat(ctx, "本会话全部工具免确认"); err != nil {
 			return tool.ConfirmResult{Allowed: true, Extra: resp.Extra}, err
 		}
 	}

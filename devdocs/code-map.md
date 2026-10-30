@@ -224,6 +224,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/platform/wiring.go`：平台装配、通知管理器与故障通知接线。
 - `internal/platform/{cli,qq-onebot,qqofficial,telegram}/notifications.go`：平台通知协议与实际发送。
 - `internal/agent/output/output.go`、`internal/agent/execution/turn_output.go`、`execution_output.go`：分别负责输出 Hook、单轮输出与跨轮输出。
+- `internal/agent/confirmation/confirmation.go` 生成确认正文与 `delivery.Action`；`internal/platform/qqofficial/keyboard.go` 将操作列表转换为平台按钮，不解析正文。
 - `internal/agent/dialogue/output.go`、`reply_commit.go`：分别定义正文／思考输出能力与提交回复。
 
 <!-- locator:platform -->

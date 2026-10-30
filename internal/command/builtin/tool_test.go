@@ -43,7 +43,7 @@ func TestToolsRemoveConfirmedCallsRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "removed skill: echo") || len(tools.removed) != 1 || tools.removed[0] != "echo" {
+	if !strings.Contains(result.Content, "removed: echo") || len(tools.removed) != 1 || tools.removed[0] != "echo" {
 		t.Fatalf("result=%q removed=%#v", result.Content, tools.removed)
 	}
 }

@@ -43,12 +43,12 @@ func TestHookListPreservesDescriptionsAndActivity(t *testing.T) {
 		runtimes []share.RuntimeInfo
 		want     string
 	}{
-		{name: "empty", want: "hooks: none"},
-		{name: "standalone", infos: []share.Info{{Name: "rule", Point: share.PointPlatformConnected, Priority: 3, Description: "  description  ", Active: 2}}, want: "hooks:\n  rule  [platform.connected]  priority=3 - description | 2 actived"},
-		{name: "plugin sum", infos: []share.Info{{PluginID: "plugin", Active: 2}, {PluginID: "plugin", Description: " fallback ", Active: 3}}, want: "hooks:\n  plugin  [plugin]  rules=2 - fallback | 5 actived"},
-		{name: "runtime precedence", infos: []share.Info{{PluginID: "plugin", Description: "rule", Active: 9}}, runtimes: []share.RuntimeInfo{{ID: "plugin", Mode: "persistent", Status: "ready", Description: " runtime ", Active: 2, Waiting: 1}}, want: "hooks:\n  plugin  [persistent:ready]  rules=1 - runtime | 2 actived | 1 waiting"},
+		{name: "empty", want: "nil"},
+		{name: "standalone", infos: []share.Info{{Name: "rule", Point: share.PointPlatformConnected, Priority: 3, Description: "  description  ", Active: 2}}, want: "hooks:\n  rule  [platform.connected]  priority=3 - description · active=2"},
+		{name: "plugin sum", infos: []share.Info{{PluginID: "plugin", Active: 2}, {PluginID: "plugin", Description: " fallback ", Active: 3}}, want: "hooks:\n  plugin  [plugin]  rules=2 - fallback · active=5"},
+		{name: "runtime precedence", infos: []share.Info{{PluginID: "plugin", Description: "rule", Active: 9}}, runtimes: []share.RuntimeInfo{{ID: "plugin", Mode: "persistent", Status: "ready", Description: " runtime ", Active: 2, Waiting: 1}}, want: "hooks:\n  plugin  [persistent:ready]  rules=1 - runtime · active=2 · waiting=1"},
 		{name: "runtime zero", infos: []share.Info{{PluginID: "plugin", Description: " fallback ", Active: 9}}, runtimes: []share.RuntimeInfo{{ID: "plugin", Mode: "persistent", Status: "ready", Description: " "}}, want: "hooks:\n  plugin  [persistent:ready]  rules=1 - fallback"},
-		{name: "separate runtimes", runtimes: []share.RuntimeInfo{{ID: "b", Mode: "transient", Status: "stopped"}, {ID: "a", Mode: "persistent", Status: "ready", Waiting: 1}}, want: "hooks:\n  a  [persistent:ready] | 1 waiting\n  b  [transient:stopped]"},
+		{name: "separate runtimes", runtimes: []share.RuntimeInfo{{ID: "b", Mode: "transient", Status: "stopped"}, {ID: "a", Mode: "persistent", Status: "ready", Waiting: 1}}, want: "hooks:\n  a  [persistent:ready] · waiting=1\n  b  [transient:stopped]"},
 		{name: "unicode truncation", infos: []share.Info{{Name: "rule", Description: " " + strings.Repeat("雪", 61) + " "}}, want: "hooks:\n  rule  []  priority=0 - " + strings.Repeat("雪", 60) + "..."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -164,7 +164,7 @@ func TestHooksReloadShowsWarnings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "hook reload completed with warnings") || !strings.Contains(result.Content, "gpt_image") {
+	if !strings.Contains(result.Content, "hooks reloaded · warn:") || !strings.Contains(result.Content, "gpt_image") {
 		t.Fatalf("reload content = %q", result.Content)
 	}
 }
@@ -182,7 +182,7 @@ func TestHooksCommandManagesStatefulHooks(t *testing.T) {
 		t.Fatalf("detail = %#v, %v", result, err)
 	}
 	result, err = cmd.Handle(context.Background(), command.Request{Args: "restart weather"})
-	if err != nil || hooks.restarted != "weather" || !strings.Contains(result.Content, "completed") {
+	if err != nil || hooks.restarted != "weather" || !strings.Contains(result.Content, "OK") {
 		t.Fatalf("restart = %#v, restarted=%q, err=%v", result, hooks.restarted, err)
 	}
 }

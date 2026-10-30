@@ -35,18 +35,22 @@ func TestStatusCompactLayout(t *testing.T) {
 	}{
 		{name: "normal", usage: &llm.Usage{TotalTokens: &normal}, percent: "42.5%", status: "ok"},
 		{name: "zero", usage: &llm.Usage{TotalTokens: &zero}, percent: "0.0%", status: "ok"},
-		{name: "near", usage: &llm.Usage{TotalTokens: &near}, percent: "75.0%", status: "near threshold"},
-		{name: "threshold", usage: &llm.Usage{TotalTokens: &threshold}, percent: "80.0%", status: "will compact before next request"},
-		{name: "disabled", usage: &llm.Usage{TotalTokens: &threshold}, disabled: true, percent: "80.0%", status: "disabled"},
-		{name: "nil usage", percent: "unknown", status: "unknown"},
-		{name: "missing total", usage: &llm.Usage{}, percent: "unknown", status: "unknown"},
-		{name: "negative total", usage: &llm.Usage{TotalTokens: &negative}, percent: "unknown", status: "unknown"},
-		{name: "unknown disabled", disabled: true, percent: "unknown", status: "disabled"},
+		{name: "near", usage: &llm.Usage{TotalTokens: &near}, percent: "75.0%", status: "near"},
+		{name: "threshold", usage: &llm.Usage{TotalTokens: &threshold}, percent: "80.0%", status: "next request"},
+		{name: "disabled", usage: &llm.Usage{TotalTokens: &threshold}, disabled: true, percent: "80.0%", status: "off"},
+		{name: "nil usage", percent: "unk", status: "unk"},
+		{name: "missing total", usage: &llm.Usage{}, percent: "unk", status: "unk"},
+		{name: "negative total", usage: &llm.Usage{TotalTokens: &negative}, percent: "unk", status: "unk"},
+		{name: "unknown disabled", disabled: true, percent: "unk", status: "off"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := New(Options{Models: models, Config: config.ContextConfig{CompactEnabled: !tc.disabled, CompactTriggerRatio: 0.8}})
 			got := svc.Status(context.Background(), tc.usage, selection)
-			want := fmt.Sprintf("  context window: 128000 (%s)\n  compact threshold: 80%%, status: %s\n", tc.percent, tc.status)
+			want := "ctx.window=128000 · ratio=unk\n"
+			if tc.percent != "unk" {
+				want = fmt.Sprintf("ctx=%d/128000 (%s)\n", *tc.usage.TotalTokens, tc.percent)
+			}
+			want += fmt.Sprintf("compact=80%% · %s\n", tc.status)
 			if !strings.HasSuffix(got, want) || strings.Count(got, "\n") != 3 {
 				t.Fatalf("status = %q, want token line followed by %q", got, want)
 			}
@@ -60,10 +64,10 @@ func TestUsageStateAndFormatTokens(t *testing.T) {
 	if !state.ReachedThreshold() {
 		t.Fatal("expected threshold reached")
 	}
-	if got := FormatTokens(state.Usage); got != "tokens：90（命中：10）" {
+	if got := FormatTokens(state.Usage); got != "tokens=90 · cache=10" {
 		t.Fatalf("tokens = %q", got)
 	}
-	if got := FormatTokens(nil); got != "tokens：unknown（命中：unknown）" {
+	if got := FormatTokens(nil); got != "tokens=unk · cache=unk" {
 		t.Fatalf("unknown tokens = %q", got)
 	}
 }
@@ -75,12 +79,12 @@ func TestUsageUnknownAndZero(t *testing.T) {
 		known bool
 		text  string
 	}{
-		{nil, false, "tokens：unknown（命中：unknown）"},
-		{&llm.Usage{}, false, "tokens：unknown（命中：unknown）"},
-		{&llm.Usage{CacheHitTokens: &cache}, false, "tokens：unknown（命中：3）"},
-		{&llm.Usage{TotalTokens: &zero}, true, "tokens：0（命中：unknown）"},
-		{&llm.Usage{TotalTokens: &zero, CacheHitTokens: &zero}, true, "tokens：0（命中：0）"},
-		{&llm.Usage{TotalTokens: &negative, CacheHitTokens: &cache}, false, "tokens：unknown（命中：3）"},
+		{nil, false, "tokens=unk · cache=unk"},
+		{&llm.Usage{}, false, "tokens=unk · cache=unk"},
+		{&llm.Usage{CacheHitTokens: &cache}, false, "tokens=unk · cache=3"},
+		{&llm.Usage{TotalTokens: &zero}, true, "tokens=0 · cache=unk"},
+		{&llm.Usage{TotalTokens: &zero, CacheHitTokens: &zero}, true, "tokens=0 · cache=0"},
+		{&llm.Usage{TotalTokens: &negative, CacheHitTokens: &cache}, false, "tokens=unk · cache=3"},
 	} {
 		state := UsageState{Usage: tc.usage, ContextWindow: 100, TriggerRatio: 0.8}
 		if state.TokensKnown() != tc.known || state.ReachedThreshold() || state.UsageRatio() != 0 {

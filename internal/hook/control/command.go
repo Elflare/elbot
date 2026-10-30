@@ -33,7 +33,7 @@ func (c hooksCommand) Info() command.Info {
 	return command.Info{
 		Name:        "hooks",
 		Usage:       "/hooks [reload|start|stop|restart|<name>]",
-		Description: "List hooks, inspect hooks, reload configuration, or control stateful hooks.",
+		Description: "Hook 列表与管理",
 	}
 }
 
@@ -53,7 +53,7 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 	case "reload":
 		report, err := deps.HookReload()
 		if err != nil {
-			return &command.Result{Content: fmt.Sprintf("hook reload finished; errors:\n%v", err) + "\n" + strings.Join(report.Notices, "\n")}, nil
+			return &command.Result{Content: fmt.Sprintf("hooks reload: %v", err) + "\n" + strings.Join(report.Notices, "\n")}, nil
 		}
 		return &command.Result{Content: formatHookReloadResult(report)}, nil
 	case "start", "stop", "restart":
@@ -70,9 +70,9 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 			err = deps.RestartStatefulHook(ctx, fields[1])
 		}
 		if err != nil {
-			return &command.Result{Content: fmt.Sprintf("hook %s failed: %v", fields[0], err)}, nil
+			return &command.Result{Content: fmt.Sprintf("hook %s %s: %v", fields[0], fields[1], err)}, nil
 		}
-		return &command.Result{Content: fmt.Sprintf("hook %s completed: %s", fields[0], fields[1])}, nil
+		return &command.Result{Content: fmt.Sprintf("hook %s: %s · OK", fields[0], fields[1])}, nil
 	default:
 		name := fields[0]
 		return &command.Result{Content: formatHookDetail(deps, name)}, nil
@@ -87,7 +87,7 @@ func (c hooksCommand) Complete(ctx context.Context, req command.CompletionReques
 	defer done()
 	token := command.CurrentCompletionToken(req)
 	if command.IsFirstArg(req, token) {
-		options := []command.CompletionOption{{Text: "reload", Description: "Reload all hooks"}, {Text: "start", Description: "Start a stateful hook"}, {Text: "stop", Description: "Stop a stateful hook"}, {Text: "restart", Description: "Restart a stateful hook"}}
+		options := []command.CompletionOption{{Text: "reload", Description: "重载 Hook"}, {Text: "start", Description: "启动 Hook"}, {Text: "stop", Description: "停止 Hook"}, {Text: "restart", Description: "重启 Hook"}}
 		for _, group := range collectHookGroups(c.deps) {
 			description := hookCompletionDescription(group)
 			options = append(options, command.CompletionOption{Text: group.name, Description: description})
@@ -144,7 +144,7 @@ func collectHookGroups(deps HookService) []*hookGroup {
 func formatHookList(deps HookService) string {
 	groups := collectHookGroups(deps)
 	if len(groups) == 0 {
-		return "hooks: none"
+		return "nil"
 	}
 	var sb strings.Builder
 	sb.WriteString("hooks:\n")
@@ -173,10 +173,10 @@ func formatHookList(deps HookService) string {
 			}
 		}
 		if active > 0 {
-			fmt.Fprintf(&sb, " | %d actived", active)
+			fmt.Fprintf(&sb, " · active=%d", active)
 		}
 		if group.stateful != nil && group.stateful.Waiting > 0 {
-			fmt.Fprintf(&sb, " | %d waiting", group.stateful.Waiting)
+			fmt.Fprintf(&sb, " · waiting=%d", group.stateful.Waiting)
 		}
 		sb.WriteString("\n")
 	}
@@ -213,10 +213,10 @@ func hookCompletionDescription(group *hookGroup) string {
 
 func formatHookReloadResult(report share.ReloadReport) string {
 	if len(report.Notices) == 0 {
-		return "hook reload completed"
+		return "hooks reloaded"
 	}
 	var sb strings.Builder
-	sb.WriteString("hook reload completed with warnings:\n")
+	sb.WriteString("hooks reloaded · warn:\n")
 	for _, notice := range report.Notices {
 		notice = strings.TrimSpace(notice)
 		if notice == "" {
@@ -243,7 +243,7 @@ func formatHookDetail(deps HookService, name string) string {
 			}
 		}
 	}
-	return fmt.Sprintf("hook %q not found. Use /hooks to list all hooks.", name)
+	return fmt.Sprintf("hook %q: not found\n/hooks", name)
 }
 
 func formatPluginHookDetail(group *hookGroup) string {

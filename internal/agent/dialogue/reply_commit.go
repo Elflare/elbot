@@ -30,7 +30,7 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 	text := in.PlatformText
 	empty := strings.TrimSpace(text) == "" && strings.TrimSpace(in.Text) == "" && len(in.Outputs) == 0
 	if empty && !session.IsBackground(in.Session) {
-		text = "模型这次没有返回可见内容。"
+		text = "LLM: nil"
 	}
 	if strings.TrimSpace(text) != "" {
 		var err error

@@ -173,7 +173,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			inToolPhase = true
 		}
 		if toolRounds >= r.Tools.MaxRoundsPerTurn() {
-			s.output.SendPreview(s.ctx, fmt.Sprintf("已达到 max_rounds_per_turn=%d，后续工具调用未执行，正在请求模型总结当前进度。", r.Tools.MaxRoundsPerTurn()))
+			s.output.SendPreview(s.ctx, fmt.Sprintf("max_rounds_per_turn=%d → 跳过后续工具，生成总结", r.Tools.MaxRoundsPerTurn()))
 			skipped := skippedToolMessages(result.ToolCalls, r.Tools.MaxRoundsPerTurn())
 			committer := r.NewToolTranscriptCommitter()
 			head := agentshare.ToolCallStorageMessage(s.session.ID, assistantRawText, assistantRawText, result.ToolCalls)
@@ -212,7 +212,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 			if len(summary.ToolCalls) > 0 {
 				// TODO: 后续支持强制 tool_choice=none；当前总结请求已不传 tools，若仍返回工具调用则忽略。
-				s.output.SendPreview(s.ctx, "总结请求仍返回了工具调用，已忽略。")
+				s.output.SendPreview(s.ctx, "总结中的工具调用已忽略")
 			}
 			immediateOutputs, laterOutputs := delivery.SplitByDeliveryTiming(summary.Outputs)
 			deferredOutputs = append(deferredOutputs, laterOutputs...)

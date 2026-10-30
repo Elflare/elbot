@@ -81,7 +81,7 @@ func TestDoctorRegistrationPermissionsHelpAndCompletion(t *testing.T) {
 			if !strings.Contains(result.Content, "只读检查") {
 				t.Fatal(result.Content)
 			}
-		} else if result.Content != "unknown command: doctor" {
+		} else if result.Content != "unk command: doctor" {
 			t.Fatal(result.Content)
 		}
 	}

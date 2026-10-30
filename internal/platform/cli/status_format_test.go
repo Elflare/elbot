@@ -23,10 +23,10 @@ func TestFormatUsage(t *testing.T) {
 		usage llm.Usage
 		want  string
 	}{
-		{llm.Usage{}, "tokens unknown · cache unknown"},
+		{llm.Usage{}, "tokens unk · cache unk"},
 		{llm.Usage{TotalTokens: &zero, CacheHitTokens: &zero}, "tokens 0 · cache 0"},
-		{llm.Usage{CacheHitTokens: &cache}, "tokens unknown · cache 12,100"},
-		{llm.Usage{TotalTokens: &total}, "tokens 18,240 · cache unknown"},
+		{llm.Usage{CacheHitTokens: &cache}, "tokens unk · cache 12,100"},
+		{llm.Usage{TotalTokens: &total}, "tokens 18,240 · cache unk"},
 	} {
 		if got := FormatUsage(&tc.usage); got != tc.want {
 			t.Errorf("got %q, want %q", got, tc.want)

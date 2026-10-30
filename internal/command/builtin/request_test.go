@@ -34,7 +34,7 @@ func TestRequestsCommandFormatsTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	for _, want := range []string{"[1] chat turn request", "[1.1]", "[1.2]", "shell tool request", "gpt_image_draw_fullwidth hook request", "session: 测试会话", "tool: shell", "hook: gpt_image_draw_fullwidth"} {
+	for _, want := range []string{"[1] chat · turn", "[1.1]", "[1.2]", "shell · tool", "gpt_image_draw_fullwidth · hook", "session: 测试会话", "tool: shell", "hook: gpt_image_draw_fullwidth"} {
 		if !strings.Contains(result.Content, want) {
 			t.Fatalf("requests output missing %q:\n%s", want, result.Content)
 		}
@@ -66,7 +66,7 @@ func TestFormatActiveRequestsUsesTree(t *testing.T) {
 	defer hookDone()
 
 	got := formatActiveRequests(ctx, Deps{Requests: manager, Store: store, Turns: turn.NewSupervisor()}, manager.ListBySession("s1"))
-	for _, want := range []string{"[1] chat turn request", "[1.1]", "[1.2]", "shell tool request", "gpt_image_draw_fullwidth hook request", "mode: work", "tool: shell", "hook: gpt_image_draw_fullwidth"} {
+	for _, want := range []string{"[1] chat · turn", "[1.1]", "[1.2]", "shell · tool", "gpt_image_draw_fullwidth · hook", "mode: work", "tool: shell", "hook: gpt_image_draw_fullwidth"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("active requests output missing %q:\n%s", want, got)
 		}
@@ -83,10 +83,10 @@ func TestRequestCommandsWithoutActiveRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Content != "no active requests" {
+	if result.Content != "nil" {
 		t.Fatalf("requests = %q", result.Content)
 	}
-	if got := formatActiveRequests(ctx, deps, nil); got != "active requests: none" {
+	if got := formatActiveRequests(ctx, deps, nil); got != "requests=nil" {
 		t.Fatalf("active requests = %q", got)
 	}
 }
@@ -127,7 +127,7 @@ func TestRequestFormatsPreserveDetails(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := tc.format(ctx, deps, manager.List())
-			for _, want := range []string{"phase: tool shell (", "mode: work", "tools: shell x2"} {
+			for _, want := range []string{"phase: tool shell (", "mode: work", "tools: shell×2"} {
 				if !strings.Contains(got, want) {
 					t.Fatalf("output missing %q:\n%s", want, got)
 				}

@@ -69,7 +69,7 @@ func TestStatusSessionMarkers(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, want := range []string{"  id: " + row.ID, "  title: status test", "active requests:", "[1] chat turn request"} {
+			for _, want := range []string{row.ID, "status test", "requests:", "[1] chat · turn"} {
 				if !strings.Contains(result.Content, want) {
 					t.Fatalf("status missing %q:\n%s", want, result.Content)
 				}
@@ -77,7 +77,7 @@ func TestStatusSessionMarkers(t *testing.T) {
 			if strings.Contains(result.Content, "      session:") || strings.Count(result.Content, "status test") != 1 {
 				t.Fatalf("status repeats session information:\n%s", result.Content)
 			}
-			want := "  message count: 0\n" + tc.want + "  created at: "
+			want := "msgs=0\n" + tc.want + "created="
 			if !strings.Contains(result.Content, want) {
 				t.Fatalf("status = %q, want contiguous block %q", result.Content, want)
 			}
@@ -97,7 +97,7 @@ func TestFormatTimeForDisplay(t *testing.T) {
 
 func TestFormatSessionsPageShowsNextCommand(t *testing.T) {
 	content := formatSessionsPage([]storage.SessionSummary{{ID: "s1", Title: "one", UpdatedAt: time.Date(2026, 1, 1, 1, 2, 3, 0, time.UTC)}}, "", 1, "foo", true, "/sessions")
-	if !strings.Contains(content, "page: 1") || !strings.Contains(content, "next: /sessions 2 foo") {
+	if !strings.Contains(content, "page=1") || !strings.Contains(content, "next: /sessions 2 foo") {
 		t.Fatalf("content = %q", content)
 	}
 	resume := formatSessionsPage([]storage.SessionSummary{{ID: "s1", Title: "one", UpdatedAt: time.Date(2026, 1, 1, 1, 2, 3, 0, time.UTC)}}, "", 2, "", false, "/resume --page")

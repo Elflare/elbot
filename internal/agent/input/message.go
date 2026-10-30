@@ -48,7 +48,7 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	message := agentshare.Message{Role: string(llm.RoleUser), Segments: segments}
 	if strings.TrimSpace(llm.SegmentsTextOnly(segments)) == "/cancel" {
 		if h.hooks.CancelRoute(ctx, message) {
-			return h.output.SendChat(ctx, "已取消当前 Hook 会话。")
+			return h.output.SendChat(ctx, "Hook canceled")
 		}
 	}
 	waiting := h.hooks.HasRoute(ctx, message)
@@ -91,7 +91,7 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	text = llm.SegmentsTextOnly(segments)
 	message.Segments = result.Segments
 	if strings.TrimSpace(text) == "/cancel" && h.hooks.CancelRoute(ctx, message) {
-		return h.output.SendChat(ctx, "已取消当前 Hook 会话。")
+		return h.output.SendChat(ctx, "Hook canceled")
 	}
 	if !woken {
 		return nil

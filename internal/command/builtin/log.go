@@ -20,33 +20,22 @@ func auditInfo() command.Info {
 	return command.Info{
 		Name:        "audit",
 		Usage:       "/audit [options]",
-		Description: "Show recent audit events.",
-		Help: strings.TrimSpace(`Options:
-  -n, --limit <n>       Number of events to show. Default: 5.
-  --days <n>            Read logs from the last n days. Default: 1.
-  --level <level>       Minimum level: debug, info, warn, error. Default: debug.
-  -d, -i, -w, -e       Shorthand for --level debug/info/warn/error.
-  --raw                Show original physical log records.
-  -t                   Filter tool start and end events.
-  --run_source <name>   Filter tool run source: foreground, cron, elnis.
-  --hook               Filter records from the hook module.
-  --since <time>        Show events after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
-
-  --until <time>        Show events before a time.
-  --event <name>        Filter by event, e.g. tool_call_prepared, tool_call_completed, llm_usage.
-  --risk <level>        Filter by risk.
-  --actor <id>          Filter by actor_id.
-  --session <id>        Filter by session_id.
-  --tool [name]         Filter by tool name; without a name, same as -t.
-  --msg <text>          Filter decoded log content.
-  --contains <text>     Search decoded content and raw records.
-
-Examples:
-  /audit
-  /audit --event tool_call_completed --risk high -n 10
-  /audit -t --run_source cron -n 20
-  /audit -d --contains "hello"
-  /audit --actor cli:local --since 24h`),
+		Description: "审计日志",
+		Help: strings.TrimSpace(`-n, --limit <n>       条数，默认 5
+--days <n>            天数，默认 1
+--level <level>       最低 debug|info|warn|error，默认 debug
+-d/-i/-w/-e           级别简写
+--raw                原始记录
+-t, --tool [name]     工具开始/结束，可指定名称
+--run_source <name>   foreground|cron|elnis
+--hook               Hook 日志
+--since/--until <time>  时间范围，如 2h、2026-06-03
+--event <name>        事件
+--risk <level>        风险
+--actor <id>          用户
+--session <id>        会话
+--msg <text>          正文过滤
+--contains <text>     正文及原始记录搜索`),
 	}
 }
 
@@ -58,34 +47,23 @@ func elwispInfo() command.Info {
 	return command.Info{
 		Name:        "elwisp",
 		Usage:       "/elwisp [name] [options]",
-		Description: "Show recent Elnis/Elwisp logs.",
-		Help: strings.TrimSpace(`Options:
-  [name]                Filter by Elwisp name. Equivalent to --name.
-  -n, --limit <n>       Number of log lines to show. Default: 5.
-  --days <n>            Read logs from the last n days. Default: 1.
-  --level <level>       Minimum level: debug, info, warn, error. Default: debug.
-  -d, -i, -w, -e       Shorthand for --level debug/info/warn/error.
-  --raw                Show original physical log records.
-  --since <time>        Show logs after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
-  --until <time>        Show logs before a time.
-  --name <name>         Filter by Elwisp name.
-  --elwisp <name>       Alias of --name.
-  --source <source>     Filter by event source.
-  --id <id>             Filter by external source id.
-  --source-id <id>      Alias of --id.
-  --mode <mode>         Filter by mode: record, direct, llm.
-  --event-key <key>     Filter by Elnis event key.
-  --event-id <id>       Filter by internal Elnis event id.
-  --token <name>        Filter by Elnis token name.
-  --tag <tag>           Filter by Elwisp tag. Can be repeated.
-  --msg <text>          Filter decoded log content.
-  --contains <text>     Search decoded content and raw records.
-
-Examples:
-  /elwisp
-  /elwisp server-watchdog -n 20
-  /elwisp --name server-watchdog --since 2h
-  /elwisp --source minecraft-main --mode llm -w`),
+		Description: "Elwisp 日志",
+		Help: strings.TrimSpace(`[name], --name/--elwisp <name>  Elwisp 名称
+-n, --limit <n>       条数，默认 5
+--days <n>            天数，默认 1
+--level <level>       最低 debug|info|warn|error，默认 debug
+-d/-i/-w/-e           级别简写
+--raw                原始记录
+--since/--until <time>  时间范围，如 2h、2026-06-03
+--source <source>    来源
+--id/--source-id <id> 外部来源 ID
+--mode <mode>        record|direct|llm
+--event-key <key>    事件 key
+--event-id <id>      内部事件 ID
+--token <name>       token 名
+--tag <tag>          标签，可重复
+--msg <text>         正文过滤
+--contains <text>    正文及原始记录搜索`),
 	}
 }
 
@@ -97,27 +75,18 @@ func logInfo() command.Info {
 	return command.Info{
 		Name:        "log",
 		Usage:       "/log [options]",
-		Description: "Show recent runtime logs.",
-		Help: strings.TrimSpace(`Options:
-  -n, --limit <n>       Number of log lines to show. Default: 5.
-  --days <n>            Read logs from the last n days. Default: 1.
-  --level <level>       Minimum level: debug, info, warn, error. Default: debug.
-  -d, -i, -w, -e       Shorthand for --level debug/info/warn/error.
-  --raw                Show original physical log records.
-  -u, -a               Filter user/assistant events.
-  -s, --system         Filter system prompt events.
-  --hook               Filter records from the hook module.
-  --since <time>        Show logs after a time, e.g. 2h, 30m, 2026-06-03, 2026-06-03T15:04:05.
-
-  --until <time>        Show logs before a time.
-  --msg <text>          Filter decoded log content.
-  --contains <text>     Search decoded content and raw records.
-
-Examples:
-  /log
-  /log -w -n 10
-  /log --msg startup --days 3
-  /log -u -n 20`),
+		Description: "运行日志",
+		Help: strings.TrimSpace(`-n, --limit <n>       条数，默认 5
+--days <n>            天数，默认 1
+--level <level>       最低 debug|info|warn|error，默认 debug
+-d/-i/-w/-e           级别简写
+--raw                原始记录
+-u/-a                用户/助手消息
+-s, --system         系统提示词
+--hook               Hook 日志
+--since/--until <time>  时间范围，如 2h、2026-06-03
+--msg <text>          正文过滤
+--contains <text>     正文及原始记录搜索`),
 	}
 }
 
@@ -188,56 +157,56 @@ func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest)
 
 func logCompletionOptions(audit, elwisp bool) []command.CompletionOption {
 	options := []command.CompletionOption{
-		{Text: "-n", Description: "Number of entries"},
-		{Text: "--limit", Description: "Number of entries"},
-		{Text: "--days", Description: "Read logs from recent days"},
-		{Text: "--level", Description: "Minimum level"},
-		{Text: "--raw", Description: "Original physical records"},
-		{Text: "-d", Description: "Minimum debug level"},
-		{Text: "-i", Description: "Info level"},
-		{Text: "-w", Description: "Warn level"},
-		{Text: "-e", Description: "Error level"},
-		{Text: "--since", Description: "Show entries after time"},
-		{Text: "--until", Description: "Show entries before time"},
-		{Text: "--msg", Description: "Filter decoded content"},
-		{Text: "--contains", Description: "Filter text fields"},
+		{Text: "-n", Description: "条数"},
+		{Text: "--limit", Description: "条数"},
+		{Text: "--days", Description: "天数"},
+		{Text: "--level", Description: "最低级别"},
+		{Text: "--raw", Description: "原始记录"},
+		{Text: "-d", Description: "debug"},
+		{Text: "-i", Description: "info"},
+		{Text: "-w", Description: "warn"},
+		{Text: "-e", Description: "error"},
+		{Text: "--since", Description: "起始时间"},
+		{Text: "--until", Description: "截止时间"},
+		{Text: "--msg", Description: "正文过滤"},
+		{Text: "--contains", Description: "文本搜索"},
 	}
 	if !elwisp {
 		options = append(options,
-			command.CompletionOption{Text: "--hook", Description: "Hook module records"},
+			command.CompletionOption{Text: "--hook", Description: "Hook 日志"},
 		)
 	}
 	if !audit && !elwisp {
 		options = append(options,
-			command.CompletionOption{Text: "-u", Description: "User events"},
-			command.CompletionOption{Text: "-a", Description: "Assistant events"},
-			command.CompletionOption{Text: "-s", Description: "System prompt events"},
-			command.CompletionOption{Text: "--system", Description: "System prompt events"},
+			command.CompletionOption{Text: "-u", Description: "用户消息"},
+			command.CompletionOption{Text: "-a", Description: "助手消息"},
+			command.CompletionOption{Text: "-s", Description: "系统提示词"},
+			command.CompletionOption{Text: "--system", Description: "系统提示词"},
 		)
 	}
 	if audit {
 		options = append(options,
-			command.CompletionOption{Text: "-t", Description: "Tool start and end events"},
-			command.CompletionOption{Text: "--run_source", Description: "Tool run source: foreground, cron, elnis"},
-			command.CompletionOption{Text: "--event", Description: "Filter audit event"},
-			command.CompletionOption{Text: "--risk", Description: "Filter risk level"},
-			command.CompletionOption{Text: "--actor", Description: "Filter actor ID"},
-			command.CompletionOption{Text: "--session", Description: "Filter session ID"},
-			command.CompletionOption{Text: "--tool", Description: "Tool events or filter tool name"},
+			command.CompletionOption{Text: "-t", Description: "工具开始/结束"},
+			command.CompletionOption{Text: "--run_source", Description: "来源: foreground/cron/elnis"},
+			command.CompletionOption{Text: "--event", Description: "事件过滤"},
+			command.CompletionOption{Text: "--risk", Description: "风险过滤"},
+			command.CompletionOption{Text: "--actor", Description: "用户 ID"},
+			command.CompletionOption{Text: "--session", Description: "会话 ID"},
+			command.CompletionOption{Text: "--tool", Description: "工具名称"},
 		)
 	}
 	if elwisp {
 		options = append(options,
-			command.CompletionOption{Text: "--name", Description: "Filter Elwisp name"},
-			command.CompletionOption{Text: "--elwisp", Description: "Filter Elwisp name"},
-			command.CompletionOption{Text: "--source", Description: "Filter event source"},
-			command.CompletionOption{Text: "--tag", Description: "Filter Elwisp tag"},
-			command.CompletionOption{Text: "--id", Description: "Filter source event ID"},
-			command.CompletionOption{Text: "--source-id", Description: "Filter source event ID"},
-			command.CompletionOption{Text: "--mode", Description: "Filter Elnis mode"},
-			command.CompletionOption{Text: "--event-key", Description: "Filter event key"},
-			command.CompletionOption{Text: "--event-id", Description: "Filter internal event ID"},
-			command.CompletionOption{Text: "--token", Description: "Filter token name"},
+			command.CompletionOption{Text: "--name", Description: "Elwisp 名称"},
+			command.CompletionOption{Text: "--elwisp", Description: "Elwisp 名称"},
+			command.CompletionOption{Text: "--source", Description: "事件来源"},
+			command.CompletionOption{Text: "--tag", Description: "Elwisp 标签"},
+			command.CompletionOption{Text: "--id", Description: "来源事件 ID"},
+			command.CompletionOption{Text: "--source-id", Description: "来源事件 ID"},
+			command.CompletionOption{Text: "--mode", Description: "Elnis 模式"},
+			command.CompletionOption{Text: "--event-key", Description: "事件 key"},
+			command.CompletionOption{Text: "--event-id", Description: "内部事件 ID"},
+			command.CompletionOption{Text: "--token", Description: "token 名"},
 		)
 	}
 	return options
@@ -257,24 +226,24 @@ func previousLogToken(raw string, tokenStart int) string {
 
 func queryLogs(ctx context.Context, deps Deps, query logging.LogQuery, formatter func([]logging.LogEntry) string) (*command.Result, error) {
 	if deps.Logs == nil {
-		return &command.Result{Content: "log reader is not configured"}, nil
+		return &command.Result{Content: "logs: not configured"}, nil
 	}
 	entries, err := deps.Logs.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
-	content := "no log entries found"
+	content := "nil"
 	if len(entries.Entries) > 0 {
 		content = formatter(entries.Entries)
 	}
 	if entries.DamagedCount > 0 {
-		content += fmt.Sprintf("\n本次扫描发现 %d 条损坏记录，查询结果可能不完整。", entries.DamagedCount)
+		content += fmt.Sprintf("\nwarn: damaged=%d · results incomplete", entries.DamagedCount)
 		if query.Raw {
 			for _, raw := range entries.DamagedLines {
 				content += "\n损坏记录（无法判断是否匹配筛选条件）：\n" + raw
 			}
 			if entries.DamagedCount > len(entries.DamagedLines) {
-				content += fmt.Sprintf("\n另有 %d 条损坏记录未展示。", entries.DamagedCount-len(entries.DamagedLines))
+				content += fmt.Sprintf("\ndamaged hidden=%d", entries.DamagedCount-len(entries.DamagedLines))
 			}
 		}
 	}
@@ -725,7 +694,7 @@ func formatRawLogEntries(title string, entries []logging.LogEntry) string {
 
 func formatLogEntryTime(entry logging.LogEntry) string {
 	if entry.Time.IsZero() {
-		return "unknown-time"
+		return "unk-time"
 	}
 	return entry.Time.Format("2006-01-02 15:04:05")
 }

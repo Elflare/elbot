@@ -120,12 +120,45 @@ type fixedWaitPolicy time.Duration
 
 func (p fixedWaitPolicy) WaitTimeout(context.Context) time.Duration { return time.Duration(p) }
 
-type confirmationOutput struct{ err error }
+type confirmationOutput struct {
+	err  error
+	sent chan []delivery.Action
+}
 
 func (confirmationOutput) SendChat(context.Context, string) error { return nil }
-func (o confirmationOutput) SendAssistant(context.Context, string) (delivery.Receipt, events.LogResult, error) {
+func (o confirmationOutput) SendAssistant(_ context.Context, _ string, actions ...delivery.Action) (delivery.Receipt, events.LogResult, error) {
+	if o.sent != nil {
+		o.sent <- actions
+	}
 	if o.err != nil {
 		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultFailed}, o.err
 	}
 	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+}
+
+func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		turns := turn.NewSupervisor()
+		execution := turn.NewExecution("run")
+		turns.StartAttempt("s", turn.Input{}, execution, "a")
+		turns.StartToolPhase("s", "a")
+		ctx := turn.WithAttempt(turn.WithExecution(t.Context(), execution), "a")
+		output := confirmationOutput{sent: make(chan []delivery.Action, 1)}
+		coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{Turns: turns, Output: output, Policy: fixedWaitPolicy(time.Second)})
+		result, err := coordinator.AwaitToolConfirmation(ctx, "s", llm.ToolCallRequest{ID: "call", Name: "shell", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, "detail")
+		if err != nil || !result.Stopped {
+			t.Fatalf("result=%+v err=%v", result, err)
+		}
+		actions := <-output.sent
+		want := []string{"detail", "confirm", "confirmtool", "confirmall", "reject", "stop"}
+		if len(actions) != len(want) {
+			t.Fatalf("actions=%#v", actions)
+		}
+		for i, name := range want {
+			if actions[i].ID != name || actions[i].Label == "" || actions[i].Command != "/"+name {
+				t.Fatalf("action=%#v", actions[i])
+			}
+		}
+		turns.FinishAttempt("s", "a")
+	})
 }

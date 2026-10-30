@@ -45,6 +45,61 @@ func TestSendChatUsesGroupMessageAPI(t *testing.T) {
 	}
 }
 
+func TestKeyboardUsesOnlyStructuredActions(t *testing.T) {
+	actions := []delivery.Action{
+		{ID: "first", Label: "自定义操作", Command: "/custom one"},
+		{ID: "second", Label: "另一操作", Command: "/custom two"},
+		{ID: "third", Label: "第三操作", Command: "/custom three"},
+	}
+	for _, test := range []struct {
+		name     string
+		text     string
+		actions  []delivery.Action
+		markdown bool
+		enabled  bool
+		want     bool
+	}{
+		{"rewritten", "正文完全改写", actions, true, true, true},
+		{"keyword_only", "高风险工具调用等待确认 /confirm", nil, true, true, false},
+		{"disabled", "确认", actions, true, false, false},
+		{"plain_text", "确认", actions, false, true, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var body messageToCreate
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Error(err)
+				}
+				_, _ = w.Write([]byte(`{"id":"sent"}`))
+			}))
+			defer server.Close()
+			adapter := newQQOfficialSendTestAdapter(t, server)
+			adapter.cfg.MarkdownByDefault = &test.markdown
+			adapter.cfg.EnableKeyboard = &test.enabled
+			ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ScopeID: "group:1"}, PlatformMessageID: "incoming"})
+			if _, _, err := adapter.SendChat(ctx, []delivery.Output{{Kind: delivery.KindText, Text: test.text, Actions: test.actions}}); err != nil {
+				t.Fatal(err)
+			}
+			if (body.Keyboard != nil) != test.want {
+				t.Fatalf("keyboard=%#v", body.Keyboard)
+			}
+			if !test.want {
+				return
+			}
+			rows := body.Keyboard.Content.Rows
+			if len(rows) != 2 || len(rows[0].Buttons) != 2 || len(rows[1].Buttons) != 1 {
+				t.Fatalf("rows=%#v", rows)
+			}
+			for i, want := range actions {
+				button := rows[i/2].Buttons[i%2]
+				if button.ID != want.ID || button.RenderData.Label != want.Label || button.Action.Data != want.Command || !button.Action.Enter {
+					t.Fatalf("button=%#v want=%#v", button, want)
+				}
+			}
+		})
+	}
+}
+
 func TestSendToUploadsGroupMediaToGroupAPI(t *testing.T) {
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

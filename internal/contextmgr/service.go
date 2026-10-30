@@ -113,29 +113,28 @@ func (r *Service) Status(ctx context.Context, usage *llm.Usage, selection config
 	window := r.models.Resolve(selection).ContextWindow(ctx)
 	threshold := ctxCfg.CompactTriggerRatio
 	var sb strings.Builder
-	sb.WriteString("  ")
 	sb.WriteString(FormatTokens(usage))
 	sb.WriteString("\n")
 	if usage == nil || usage.TotalTokens == nil || *usage.TotalTokens < 0 || window <= 0 {
-		sb.WriteString(fmt.Sprintf("  context window: %d (unknown)\n", window))
-		status := "unknown"
+		sb.WriteString(fmt.Sprintf("ctx.window=%d · ratio=unk\n", window))
+		status := "unk"
 		if !ctxCfg.CompactEnabled {
-			status = "disabled"
+			status = "off"
 		}
-		sb.WriteString(fmt.Sprintf("  compact threshold: %.0f%%, status: %s\n", threshold*100, status))
+		sb.WriteString(fmt.Sprintf("compact=%.0f%% · %s\n", threshold*100, status))
 		return sb.String()
 	}
 	ratio := float64(*usage.TotalTokens) / float64(window)
-	sb.WriteString(fmt.Sprintf("  context window: %d (%.1f%%)\n", window, ratio*100))
+	sb.WriteString(fmt.Sprintf("ctx=%d/%d (%.1f%%)\n", *usage.TotalTokens, window, ratio*100))
 	status := "ok"
 	if !ctxCfg.CompactEnabled {
-		status = "disabled"
+		status = "off"
 	} else if ratio >= threshold {
-		status = "will compact before next request"
+		status = "next request"
 	} else if ratio >= math.Max(0, threshold-0.1) {
-		status = "near threshold"
+		status = "near"
 	}
-	sb.WriteString(fmt.Sprintf("  compact threshold: %.0f%%, status: %s\n", threshold*100, status))
+	sb.WriteString(fmt.Sprintf("compact=%.0f%% · %s\n", threshold*100, status))
 	return sb.String()
 }
 

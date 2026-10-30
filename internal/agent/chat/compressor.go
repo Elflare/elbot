@@ -41,7 +41,7 @@ type Compressor struct {
 
 func (c Compressor) Compact(ctx context.Context, req CompactRequest) (*CompactResult, error) {
 	if len(req.Messages) == 0 {
-		return nil, fmt.Errorf("没有可压缩的历史消息")
+		return nil, fmt.Errorf("无可压缩历史")
 	}
 	if req.Provider == "" || req.Model == "" {
 		return nil, fmt.Errorf("压缩模型未配置")

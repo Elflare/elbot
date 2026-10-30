@@ -15,7 +15,7 @@ func NewWork(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:          "work",
 		Usage:         "/work [message]",
-		Description:   "Switch current session to work mode.",
+		Description:   "切换 work",
 		SessionEffect: command.SessionEffectSwitchCurrent,
 		MinRole:       contextinfo.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
@@ -23,9 +23,9 @@ func NewWork(deps Deps) command.Handler {
 		if err != nil {
 			return nil, err
 		}
-		content := fmt.Sprintf("work mode active:\n  id: %s\n  mode: %s\n  tools: enabled", activated.Session.ID, activated.Session.Mode)
+		content := fmt.Sprintf("%s · %s", activated.Session.Mode, activated.Session.ID)
 		if activated.AlreadyActive {
-			content = fmt.Sprintf("already in work mode:\n  id: %s\n  tools: enabled", activated.Session.ID)
+			content = fmt.Sprintf("work · %s · unchanged", activated.Session.ID)
 		}
 		result := &command.Result{Content: content}
 		if req.Args != "" {
@@ -39,20 +39,20 @@ func NewChat(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:          "chat",
 		Usage:         "/chat [message]",
-		Description:   "Switch an empty session to chat mode, or create a chat session.",
+		Description:   "切换 chat",
 		SessionEffect: command.SessionEffectSwitchCurrent,
 		MinRole:       contextinfo.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		activated, err := deps.Sessions.ActivateMode(ctx, deps.Scope(ctx), sessionpkg.ActivateModeRequest{Mode: storage.SessionModeChat, NewSessionTitle: "New chat session"})
 		if err != nil {
 			if errors.Is(err, sessionpkg.ErrChatModeRequiresEmptySession) {
-				return &command.Result{Content: "current work session has history; run /new then /chat to start a clean chat session"}, nil
+				return &command.Result{Content: "已有对话记录，请先 /new 再 /chat"}, nil
 			}
 			return nil, err
 		}
-		content := fmt.Sprintf("chat mode active:\n  id: %s\n  mode: %s", activated.Session.ID, activated.Session.Mode)
+		content := fmt.Sprintf("%s · %s", activated.Session.Mode, activated.Session.ID)
 		if activated.AlreadyActive {
-			content = fmt.Sprintf("already in chat mode:\n  id: %s", activated.Session.ID)
+			content = fmt.Sprintf("chat · %s · unchanged", activated.Session.ID)
 		}
 		result := &command.Result{Content: content}
 		if req.Args != "" {

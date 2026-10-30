@@ -30,16 +30,16 @@ func (s UsageState) ReachedThreshold() bool {
 
 func FormatTokens(usage *llm.Usage) string {
 	if usage == nil {
-		return "tokens：unknown（命中：unknown）"
+		return "tokens=unk · cache=unk"
 	}
 	if usage.TotalTokens == nil || *usage.TotalTokens < 0 {
 		if usage.CacheHitTokens == nil || *usage.CacheHitTokens < 0 {
-			return "tokens：unknown（命中：unknown）"
+			return "tokens=unk · cache=unk"
 		}
-		return fmt.Sprintf("tokens：unknown（命中：%d）", *usage.CacheHitTokens)
+		return fmt.Sprintf("tokens=unk · cache=%d", *usage.CacheHitTokens)
 	}
 	if usage.CacheHitTokens == nil || *usage.CacheHitTokens < 0 {
-		return fmt.Sprintf("tokens：%d（命中：unknown）", *usage.TotalTokens)
+		return fmt.Sprintf("tokens=%d · cache=unk", *usage.TotalTokens)
 	}
-	return fmt.Sprintf("tokens：%d（命中：%d）", *usage.TotalTokens, *usage.CacheHitTokens)
+	return fmt.Sprintf("tokens=%d · cache=%d", *usage.TotalTokens, *usage.CacheHitTokens)
 }

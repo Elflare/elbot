@@ -22,14 +22,14 @@ func (c toolsCommand) Info() command.Info {
 	return command.Info{
 		Name:        "tools",
 		Usage:       "/tools [reload|uninstall|remove] [name]",
-		Description: "List tools or manage external skills.",
+		Description: "工具与 Skill",
 	}
 }
 
 func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
 	deps := c.deps
 	if deps.Tools == nil {
-		return &command.Result{Content: "tool runtime is not configured"}, nil
+		return &command.Result{Content: "tools: not configured"}, nil
 	}
 	fields := strings.Fields(req.Args)
 	if len(fields) == 0 {
@@ -41,20 +41,20 @@ func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command
 		if err := deps.Skills.Reload(ctx); err != nil {
 			return nil, err
 		}
-		return &command.Result{Content: "skill reload completed"}, nil
+		return &command.Result{Content: "skills reloaded"}, nil
 	case "uninstall", "remove":
 		if len(fields) < 2 {
 			return &command.Result{Content: "usage: /tools remove <name> --confirm"}, nil
 		}
 		name := fields[1]
 		if !slices.Contains(fields[2:], "--confirm") {
-			return &command.Result{Content: fmt.Sprintf("将删除外置 skill %q 及其目录。确认请执行：/tools remove %s --confirm", name, name)}, nil
+			return &command.Result{Content: fmt.Sprintf("删除 %q 及目录？\n/tools remove %s --confirm", name, name)}, nil
 		}
 		err := deps.Skills.Remove(ctx, name)
 		if err != nil {
-			return &command.Result{Content: fmt.Sprintf("remove failed: %v", err)}, nil
+			return &command.Result{Content: fmt.Sprintf("remove %s: %v", name, err)}, nil
 		}
-		return &command.Result{Content: fmt.Sprintf("removed skill: %s", name)}, nil
+		return &command.Result{Content: fmt.Sprintf("removed: %s", name)}, nil
 	default:
 		return &command.Result{Content: "usage: /tools [reload|uninstall|remove] [name]"}, nil
 	}
@@ -65,9 +65,9 @@ func (c toolsCommand) Complete(ctx context.Context, req command.CompletionReques
 	fields := strings.Fields(req.Args)
 	if len(fields) == 0 || command.IsFirstArg(req, token) {
 		return command.CompleteStaticOptions([]command.CompletionOption{
-			{Text: "reload", Description: "Reload external skills"},
-			{Text: "remove", Description: "Remove an external skill"},
-			{Text: "uninstall", Description: "Remove an external skill"},
+			{Text: "reload", Description: "重载 Skill"},
+			{Text: "remove", Description: "删除 Skill"},
+			{Text: "uninstall", Description: "删除 Skill"},
 		}, token.Text, token.Start, token.End, "tools_action")
 	}
 	if fields[0] != "remove" && fields[0] != "uninstall" {
@@ -85,7 +85,7 @@ func formatTools(ctx context.Context, deps Deps) (string, error) {
 		return "", err
 	}
 	if len(infos) == 0 {
-		return "tools: none", nil
+		return "nil", nil
 	}
 	var sb strings.Builder
 	sb.WriteString("tools:\n")

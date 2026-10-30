@@ -52,7 +52,7 @@ type InputCoordinator struct {
 }
 
 func compactCommandBlockedText(command string) string {
-	return fmt.Sprintf("正在压缩当前会话，暂不执行 %s。请等待压缩完成，或先使用 /stop 取消。", command)
+	return fmt.Sprintf("%s: compacting · 等待或 /stop", command)
 }
 
 func (c *InputCoordinator) HandleInput(ctx context.Context, text string) error {
