@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	"elbot/internal/contextinfo"
@@ -25,55 +26,6 @@ func validateExecAction(action Action) error {
 	return nil
 }
 
-func ruleRegistrations(rule Rule) []share.Match {
-	roleConditions := ruleRoleConditions(rule)
-	if len(roleConditions) == 0 {
-		return []share.Match{{Conditions: rule.Match}}
-	}
-	out := make([]share.Match, 0, len(roleConditions))
-	for _, condition := range roleConditions {
-		conditions := append([]share.Condition{}, rule.Match...)
-		conditions = append(conditions, condition)
-		out = append(out, share.Match{Conditions: conditions})
-	}
-	return out
-}
-
-func ruleRoleConditions(rule Rule) []share.Condition {
-	seen := map[string]bool{}
-	var out []share.Condition
-	add := func(field, role string) {
-		role = strings.TrimSpace(role)
-		if role == "" {
-			return
-		}
-		key := field + ":" + role
-		if seen[key] {
-			return
-		}
-		seen[key] = true
-		out = append(out, share.Condition{Field: field, Op: share.MatchFull, Value: role})
-	}
-	for _, role := range rule.Roles {
-		role = strings.TrimSpace(role)
-		switch contextinfo.Role(role) {
-		case contextinfo.RoleSuperadmin, contextinfo.RoleUser:
-			add("actor.role", role)
-		default:
-			if parsed := security.ParseGroupRole(role); parsed != contextinfo.GroupRoleUnknown || role == string(contextinfo.GroupRoleUnknown) {
-				add("actor.group_role", string(parsed))
-			}
-		}
-	}
-	for _, role := range rule.ActorRoles {
-		add("actor.role", role)
-	}
-	for _, role := range rule.GroupRoles {
-		add("actor.group_role", string(security.ParseGroupRole(role)))
-	}
-	return out
-}
-
 func (r *Rule) normalize() error {
 	conditions, err := r.conditions()
 	if err != nil {
@@ -81,9 +33,6 @@ func (r *Rule) normalize() error {
 	}
 	r.Match = conditions
 
-	for i := range r.Actions {
-		r.Actions[i].normalize()
-	}
 	if strings.TrimSpace(r.Action) == "" {
 		return nil
 	}
@@ -112,7 +61,7 @@ func (r Rule) conditions() ([]share.Condition, error) {
 }
 
 func (r Rule) inlineAction() Action {
-	action := Action{
+	return Action{
 		Type:           r.Action,
 		Field:          r.Field,
 		Text:           r.Text,
@@ -129,21 +78,13 @@ func (r Rule) inlineAction() Action {
 		All:            r.All,
 		Target:         r.Target,
 	}
-	action.normalize()
-	return action
-}
-
-func (a *Action) normalize() {
-	if a.Match == "" {
-		a.Match = a.Pattern
-	}
 }
 
 func (r Rule) enabled() bool {
 	return r.Enabled == nil || *r.Enabled
 }
 
-func validateRule(rule Rule) error {
+func validateRule(rule *Rule) error {
 	if strings.TrimSpace(rule.On) == "" {
 		return fmt.Errorf("hook rule %q missing on", rule.Name)
 	}
@@ -165,7 +106,7 @@ func validateRule(rule Rule) error {
 		return fmt.Errorf("hook rule %q matches: %w", rule.Name, err)
 	}
 
-	if err := rule.validateRoles(); err != nil {
+	if err := rule.normalizeRoles(); err != nil {
 		return fmt.Errorf("hook rule %q: %w", rule.Name, err)
 	}
 	if err := rule.Wakeup.Validate(); err != nil {
@@ -175,7 +116,7 @@ func validateRule(rule Rule) error {
 		if strings.TrimSpace(action.Type) == "" {
 			return fmt.Errorf("hook rule %q has action without type", rule.Name)
 		}
-		if err := validateActionTiming(action.Timing); err != nil {
+		if err := delivery.ValidateDeliveryTiming(action.Timing); err != nil {
 			return fmt.Errorf("hook rule %q action %q: %w", rule.Name, firstNonEmpty(action.ActionName, action.Type), err)
 		}
 		if strings.TrimSpace(action.Type) == "exec" {
@@ -187,39 +128,47 @@ func validateRule(rule Rule) error {
 	return nil
 }
 
-func (r Rule) validateRoles() error {
-	for _, role := range r.Roles {
+func (r *Rule) normalizeRoles() error {
+	for i, role := range r.Roles {
 		role = strings.TrimSpace(role)
 		switch contextinfo.Role(role) {
 		case contextinfo.RoleSuperadmin, contextinfo.RoleUser:
-			continue
-		}
-		if security.ParseGroupRole(role) == contextinfo.GroupRoleUnknown && role != string(contextinfo.GroupRoleUnknown) {
-			return fmt.Errorf("unsupported role %q", role)
+			r.Roles[i] = role
+		default:
+			parsed := security.ParseGroupRole(role)
+			if parsed == contextinfo.GroupRoleUnknown && role != string(contextinfo.GroupRoleUnknown) {
+				return fmt.Errorf("unsupported role %q", role)
+			}
+			r.Roles[i] = string(parsed)
 		}
 	}
-	for _, role := range r.ActorRoles {
-		switch contextinfo.Role(strings.TrimSpace(role)) {
+	for i, role := range r.ActorRoles {
+		role = strings.TrimSpace(role)
+		switch contextinfo.Role(role) {
 		case contextinfo.RoleSuperadmin, contextinfo.RoleUser:
+			r.ActorRoles[i] = role
 		default:
 			return fmt.Errorf("unsupported actor role %q", role)
 		}
 	}
-	for _, role := range r.GroupRoles {
-		if security.ParseGroupRole(role) == contextinfo.GroupRoleUnknown && strings.TrimSpace(role) != string(contextinfo.GroupRoleUnknown) {
+	for i, role := range r.GroupRoles {
+		parsed := security.ParseGroupRole(role)
+		if parsed == contextinfo.GroupRoleUnknown && strings.TrimSpace(role) != string(contextinfo.GroupRoleUnknown) {
 			return fmt.Errorf("unsupported group role %q", role)
 		}
+		r.GroupRoles[i] = string(parsed)
 	}
 	return nil
-}
-
-func validateActionTiming(timing string) error {
-	return delivery.ValidateDeliveryTiming(timing)
 }
 
 func (m Module) runRule(ctx context.Context, rule Rule, event share.Event, readOnlyCalls bool) (share.Event, globalevents.LogResult, error) {
 	if !rule.matchRoles(event) {
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "role did not match"}, nil
+	}
+	if rule.source.RuntimeID != "" {
+		return m.Opts.Runtime.Handle(ctx, rule.source.RuntimeID, event, share.Control{
+			Consume: rule.Consume, StopPropagation: rule.StopPropagation,
+		})
 	}
 	before := share.SnapshotCalls(event)
 	state := state{Actions: map[string]actionResult{}}
@@ -265,26 +214,9 @@ func (m Module) runRule(ctx context.Context, rule Rule, event share.Event, readO
 }
 
 func (r Rule) matchRoles(event share.Event) bool {
-	if len(r.Roles) > 0 && !matchesUnifiedRole(r.Roles, event) {
-		return false
-	}
-	if len(r.ActorRoles) > 0 && !containsString(r.ActorRoles, event.Actor.Role) {
-		return false
-	}
-	if len(r.GroupRoles) > 0 && !containsString(r.GroupRoles, event.Actor.GroupRole) {
-		return false
-	}
-	return true
-}
-
-func matchesUnifiedRole(roles []string, event share.Event) bool {
-	for _, role := range roles {
-		role = strings.TrimSpace(role)
-		if role == event.Actor.Role || role == event.Actor.GroupRole {
-			return true
-		}
-	}
-	return false
+	return (len(r.Roles) == 0 || slices.Contains(r.Roles, event.Actor.Role) || slices.Contains(r.Roles, event.Actor.GroupRole)) &&
+		(len(r.ActorRoles) == 0 || slices.Contains(r.ActorRoles, event.Actor.Role)) &&
+		(len(r.GroupRoles) == 0 || slices.Contains(r.GroupRoles, event.Actor.GroupRole))
 }
 
 // validateCalls enforces the explicit caller policy after each rule action.
@@ -296,14 +228,4 @@ func validateCalls(readOnlyCalls bool, before, after share.Event) error {
 		return fmt.Errorf("returned tool calls, IDs, names and arguments are read-only for this execution")
 	}
 	return nil
-}
-
-func containsString(values []string, target string) bool {
-	target = strings.TrimSpace(target)
-	for _, value := range values {
-		if strings.TrimSpace(value) == target {
-			return true
-		}
-	}
-	return false
 }

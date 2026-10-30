@@ -378,7 +378,7 @@ prompt = "Use agent tools."
 		LogCleanup:         CronTaskConfig{Enabled: true, Schedule: "0 4 * * *"},
 		SessionCleanup:     MaintenanceCleanupConfig{Enabled: true, Schedule: "15 3 * * *", RetentionDays: 14},
 		SandboxCleanup:     MaintenanceCleanupConfig{Enabled: true, Schedule: "0 5 * * *", RetentionDays: 9},
-		ChatHistoryCleanup: ChatHistoryCleanupConfig{Schedule: "35 4 * * *", RetentionDays: 180},
+		ChatHistoryCleanup: MaintenanceCleanupConfig{Schedule: "35 4 * * *", RetentionDays: 180},
 	}
 	if !reflect.DeepEqual(cfg.Maintenance, wantMaintenance) {
 		t.Fatalf("maintenance = %#v, want %#v", cfg.Maintenance, wantMaintenance)

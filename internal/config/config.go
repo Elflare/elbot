@@ -81,8 +81,6 @@ type ModelConfig struct {
 	ExtraPayload  map[string]any `toml:"extra_payload"`
 }
 
-type ModelConfigs map[string]ModelConfig
-
 type ModelMetadataConfig struct {
 	DefaultContextWindow int `toml:"default_context_window"`
 }
@@ -165,7 +163,7 @@ type MaintenanceConfig struct {
 	LogCleanup         CronTaskConfig           `toml:"log_cleanup"`
 	SessionCleanup     MaintenanceCleanupConfig `toml:"session_cleanup"`
 	SandboxCleanup     MaintenanceCleanupConfig `toml:"sandbox_cleanup"`
-	ChatHistoryCleanup ChatHistoryCleanupConfig `toml:"chat_history_cleanup"`
+	ChatHistoryCleanup MaintenanceCleanupConfig `toml:"chat_history_cleanup"`
 }
 
 type SandboxConfig struct {
@@ -253,12 +251,6 @@ type CronTaskConfig struct {
 	Schedule string `toml:"schedule"`
 }
 
-type ChatHistoryCleanupConfig struct {
-	Enabled       bool   `toml:"enabled"`
-	Schedule      string `toml:"schedule"`
-	RetentionDays int    `toml:"retention_days"`
-}
-
 type SessionNamingConfig struct {
 	TriggerStep int `toml:"trigger_step"`
 }
@@ -317,7 +309,12 @@ func ConfigEnv(key, configDir string) (string, bool, error) {
 	if value := strings.TrimSpace(os.Getenv(key)); value != "" {
 		return value, true, nil
 	}
-	return lookupDotEnv(key, filepath.Join(configDir, ".env"))
+	values, err := LoadDotEnv(configDir)
+	if err != nil {
+		return "", false, err
+	}
+	value, ok := values[key]
+	return value, ok, nil
 }
 
 // LoadDotEnv reads all variables from the config directory .env file.
@@ -328,19 +325,6 @@ func LoadDotEnv(configDir string) (map[string]string, error) {
 
 // LoadEnvFile reads variables from an exact dotenv file path.
 func LoadEnvFile(path string) (map[string]string, error) {
-	return loadDotEnvFile(path)
-}
-
-func lookupDotEnv(key, path string) (string, bool, error) {
-	values, err := loadDotEnvFile(path)
-	if err != nil {
-		return "", false, err
-	}
-	value, ok := values[key]
-	return value, ok, nil
-}
-
-func loadDotEnvFile(path string) (map[string]string, error) {
 	values := map[string]string{}
 	if strings.TrimSpace(path) == "" {
 		return values, nil
@@ -505,12 +489,7 @@ func loadTOML(path string, out any) error {
 		return fmt.Errorf("read config %q: %w", path, err)
 	}
 	if err := toml.Unmarshal(data, out); err != nil {
-		var decodeErr *toml.DecodeError
-		if errors.As(err, &decodeErr) {
-			row, col := decodeErr.Position()
-			return fmt.Errorf("parse config %q at line %d, column %d: %w", path, row, col, err)
-		}
-		return fmt.Errorf("parse config %q: %w", path, err)
+		return wrapDecodeError(path, err)
 	}
 	return nil
 }
@@ -694,25 +673,32 @@ func (c *Config) applyProviderDefaults() {
 	}
 }
 
-func (c *Config) applyState(state *StateConfig) {
+// applyState returns the field paths overwritten by the state document.
+func (c *Config) applyState(state *StateConfig) [][]string {
+	var fields [][]string
 	if len(state.ModeModels) > 0 {
 		if c.ModeModels == nil {
 			c.ModeModels = map[string]ModelSelection{}
 		}
 		for mode, model := range state.ModeModels {
 			c.ModeModels[mode] = model
+			fields = append(fields, []string{"mode_models", mode})
 		}
 	}
 	if state.NamingModel.Provider != "" || state.NamingModel.Model != "" {
 		c.NamingModel = state.NamingModel
+		fields = append(fields, []string{"naming_model"})
 	}
 	if state.CompactModel.Provider != "" || state.CompactModel.Model != "" {
 		// 压缩模型是运行态选择，只从 state.toml 读取；未配置时由调用方用当前模式模型兜底。
 		c.CompactModel = state.CompactModel
+		fields = append(fields, []string{"compact_model"})
 	}
 	if state.Session.DefaultMode != "" {
 		c.Session.DefaultMode = state.Session.DefaultMode
+		fields = append(fields, []string{"session", "default_mode"})
 	}
+	return fields
 }
 
 func (c *Config) resolveProviderAPIKeys(configDir string) error {
@@ -731,11 +717,6 @@ func (c *Config) resolveProviderAPIKeys(configDir string) error {
 		c.Providers[name] = provider
 	}
 	return nil
-}
-
-func (c *Config) mergeProviders(providerCfg *Config) {
-	c.Providers = providerCfg.Providers
-	c.ModelMetadata = providerCfg.ModelMetadata
 }
 
 func resolveRelative(baseFile, path string) string {

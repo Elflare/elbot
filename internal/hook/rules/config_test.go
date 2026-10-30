@@ -4,13 +4,18 @@ package rules
 
 import (
 	"context"
-	"elbot/internal/hook/pipeline"
-	"elbot/internal/hook/share"
-	"elbot/internal/processenv"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"elbot/internal/events"
+	"elbot/internal/hook/pipeline"
+	"elbot/internal/hook/share"
+	"elbot/internal/processenv"
+
+	"github.com/pelletier/go-toml/v2"
 )
 
 func TestDecodeTOMLRejectsStringCommands(t *testing.T) {
@@ -551,5 +556,86 @@ unknown_field = true
 	_, _, err := loadConfig(Options{Log: testLog, Notify: testNotify, ConfigDir: dir})
 	if err == nil || !strings.Contains(err.Error(), "unknown_field") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestLoadConfigFinalizesNamesAndActionSources(t *testing.T) {
+	dir := t.TempDir()
+	pluginDir := filepath.Join(dir, "demo")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rule := "[[rules]]\nname = \"same\"\non = \"llm.response.received\"\nalways = true\naction = \"send\"\ntext = \"ok\"\n"
+	for path, data := range map[string]string{
+		filepath.Join(dir, ConfigFile):        "[[plugins]]\nname = \"demo\"\n" + rule,
+		filepath.Join(pluginDir, "hook.toml"): rule + rule,
+		filepath.Join(pluginDir, ".env"):      "TOKEN=plugin\n",
+	} {
+		if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var renamed []events.LogRecord
+	cfg, _, err := loadConfig(Options{
+		ConfigDir: dir, Notify: testNotify,
+		Log: func(_ context.Context, record events.LogRecord) {
+			if record.EventName == "duplicate_hook_rule_name_renamed" {
+				renamed = append(renamed, record)
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Rules) != 3 || len(renamed) != 2 {
+		t.Fatalf("rules=%d rename logs=%d", len(cfg.Rules), len(renamed))
+	}
+	for i, want := range []string{"same", "same.1", "same.2"} {
+		rule := cfg.Rules[i]
+		if rule.source.FinalName != want || len(rule.Actions) != 1 {
+			t.Fatalf("rule %d = %+v", i, rule)
+		}
+		source := rule.Actions[0].source
+		if source.FinalName != want || source.ConfigPath != rule.source.ConfigPath || source.BaseDir != rule.source.BaseDir {
+			t.Fatalf("action source = %+v, rule source = %+v", source, rule.source)
+		}
+		if i > 0 {
+			if source.BaseDir != pluginDir || processEnvValue(source.ProcessEnv, "TOKEN") != "plugin" {
+				t.Fatalf("plugin action lost source: %+v", source)
+			}
+			if !strings.Contains(renamed[i-1].Content, "final_name="+want+"\n") {
+				t.Fatalf("rename log does not contain final name: %s", renamed[i-1].Content)
+			}
+		}
+	}
+}
+
+func TestTOMLDiagnosticsPreserveParserErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name, data string
+		want       []string
+	}{
+		{name: "type", data: "[[rules]]\nname = 1\n", want: []string{"line 2", "name"}},
+		{name: "unknown field", data: "[[rules]]\nunknown_field = true\n", want: []string{"line 2", "unknown_field"}},
+		{name: "conflicting array", data: "[[rules]]\nactions = []\n[[rules.actions]]\ntype = \"send\"\n", want: []string{"actions"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			decoder := toml.NewDecoder(strings.NewReader(tc.data))
+			decoder.DisallowUnknownFields()
+			var cfg Config
+			source := decoder.Decode(&cfg)
+			if source == nil {
+				t.Fatal("expected parser error")
+			}
+			got := detailedTOMLDecodeError("hook.toml", source)
+			if !errors.Is(got, source) || !strings.Contains(got.Error(), "hook.toml") {
+				t.Fatalf("lost parser error or path: %v", got)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(got.Error(), want) {
+					t.Fatalf("diagnostic lacks %q: %v", want, got)
+				}
+			}
+		})
 	}
 }

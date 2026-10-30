@@ -41,7 +41,7 @@ func TestSendActionSetsDeliveryTiming(t *testing.T) {
 func TestTurnOutputPreparedAllowsMessageText(t *testing.T) {
 	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
 	event := share.Event{Point: share.PointAgentTurnOutputPrepared, Message: share.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments("猫")}}
-	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "replace", Field: "message.text", Match: "猫", Replace: "狗", All: true}}}, event, false)
+	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "replace", Field: "message.text", Pattern: "猫", Replace: "狗", All: true}}}, event, false)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestTextActionsKeepMediaSegmentsInPlace(t *testing.T) {
 	rule := Rule{Actions: []Action{
 		{Type: "prepend", Field: "message.text", Text: "pre "},
 		{Type: "append", Field: "message.text", Text: " post"},
-		{Type: "replace", Field: "message.text", Match: "cat", Replace: "dog"},
+		{Type: "replace", Field: "message.text", Pattern: "cat", Replace: "dog"},
 	}}
 	got, _, err := module.runRule(context.Background(), rule, event, false)
 	if err != nil {
@@ -115,14 +115,14 @@ func TestReplaceActionFirstAndAllAcrossTextSegments(t *testing.T) {
 			{Type: llm.SegmentText, Text: "cat two"},
 		}},
 	}
-	first, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "replace", Field: "message.text", Match: "cat", Replace: "dog"}}}, event, false)
+	first, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "replace", Field: "message.text", Pattern: "cat", Replace: "dog"}}}, event, false)
 	if err != nil {
 		t.Fatalf("first replace: %v", err)
 	}
 	if first.Message.Segments[0].Text != "dog one cat" || first.Message.Segments[2].Text != "cat two" {
 		t.Fatalf("first replace segments = %#v", first.Message.Segments)
 	}
-	all, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "replace", Field: "message.text", Match: "cat", Replace: "dog", All: true}}}, event, false)
+	all, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "replace", Field: "message.text", Pattern: "cat", Replace: "dog", All: true}}}, event, false)
 	if err != nil {
 		t.Fatalf("all replace: %v", err)
 	}
@@ -449,5 +449,20 @@ func TestSetTextFieldLatestUserText(t *testing.T) {
 	}
 	if text := llm.SegmentsTextOnly(got.LLM.Messages[1].Segments); text != "history" {
 		t.Fatalf("history = %q, want unchanged", text)
+	}
+}
+
+func TestRenderPlainTextAndActionResults(t *testing.T) {
+	event := share.Event{Actor: share.ActorContext{ID: "actor"}}
+	state := state{Actions: map[string]actionResult{"previous": {Result: "done", Error: "failed"}}}
+	for _, tc := range []struct{ text, want string }{
+		{"", ""},
+		{"plain 雪 {text}", "plain 雪 {text}"},
+		{"{{actor.id}}/{{actions.previous.result}}/{{actions.previous.error}}", "actor/done/failed"},
+		{"{{unrecognized}}", "{{unrecognized}}"},
+	} {
+		if got := render(tc.text, event, state); got != tc.want {
+			t.Fatalf("render(%q) = %q, want %q", tc.text, got, tc.want)
+		}
 	}
 }

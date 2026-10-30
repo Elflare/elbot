@@ -222,6 +222,7 @@ Hook 根部负责外部接入与装配；pipeline 编排续接、规则及错误
 - Agent 注册一组业务回调，只交付事实与数据，不构造插件协议 Event 或维护第二套规则流水线；每个实际 handler 独立登记 Request。
 - 入站先计算唤醒并检查原始取消命令，再尝试 waiting 续接和普通规则，完成后才进入命令／模型流程。改写不重新计算唤醒，改写后的取消命令仍须检查。
 - 同一 pipeline 按优先级及注册顺序串行运行；只读策略逐动作校验，llm.messages 只读，turn／request Hook 分别只改初始 user／新 pending，保存后才调用模型。
+- 每条规则只注册一次，普通动作与 Worker 共用角色判断；`roles`、`actor_roles`、`group_roles` 各数组内取 OR、数组间取 AND，空数组不限制。配置逐文件归一化与校验，合并后统一确定名称和动作来源。
 - 重载先验证候选再替换，异步进程失败交 runtime 恢复。关闭停止新接入，保留在途生产者需要的回调，等待进程、请求及媒体租约操作实际退出后清理。
 - runtime 的协议写权限等待、实际写入和响应等待共用请求 context；写入取消或失败关闭捕获的管道并终止对应进程树，完整发送后的普通响应等待取消保留 Persistent Worker。异步取消通知和插件响应使用受 rootCtx 约束的事件超时；shutdown 独立共用一次关闭预算。
 - waiting 使用一次性定时器主动回收；回调先取 Worker 路由锁，再取 Manager 锁核对定时器身份，不打断已开始的续接或误删新租约。撤销成功或回调完成恰好释放一次 workWG 计数；Done 等待所属任务实际退出。
@@ -230,6 +231,10 @@ Hook 根部负责外部接入与装配；pipeline 编排续接、规则及错误
 
 ```mermaid
 flowchart TD
+    Config["rules/config.go<br/>逐文件校验、合并命名与动作来源"] --> Rules["rules/rules.go<br/>每条规则注册一次、构造日志身份"]
+    Rules --> Rule["rules/rule.go<br/>角色判断、动作编排与只读校验"]
+    Rule --> Actions["rules/action.go、exec.go<br/>普通动作与短期进程执行"]
+    Rule --> Worker
     Routes["runtime/routes.go<br/>租约建立、续期、撤销、到期回收"] --> RouteLock["runtime/worker.go<br/>同 Worker 同路由串行"]
     RouteLock --> Identity["runtime/routes.go<br/>Manager 锁内核对定时器身份"]
     Identity --> Manager["runtime/manager.go<br/>关闭到期临时进程、登记并等待所属任务"]

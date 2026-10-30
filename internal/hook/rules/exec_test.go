@@ -71,11 +71,8 @@ func TestExecCommandUsesConfiguredProcessEnvironment(t *testing.T) {
 		Actions: []Action{{Type: "exec", Command: execHelperCommand("env", key)}},
 		source:  ruleSource{ProcessEnv: baseEnv.Overlay(map[string]string{key: "from-dotenv"})},
 	}
-	cfg := Config{Rules: []Rule{rule}}
-	if err := normalizeLoadedRules(&cfg, Options{Log: testLog, Notify: testNotify}); err != nil {
-		t.Fatal(err)
-	}
-	got, _, err := module.runRule(context.Background(), cfg.Rules[0], share.Event{}, false)
+	rule.Actions[0].source = rule.source
+	got, _, err := module.runRule(context.Background(), rule, share.Event{}, false)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}

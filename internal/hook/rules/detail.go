@@ -4,6 +4,7 @@ package rules
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"elbot/internal/hook/share"
@@ -18,10 +19,10 @@ func formatRuleDetail(rule Rule) string {
 	} else if len(rule.Match) > 0 {
 		sb.WriteString("\nmatch:")
 		for _, cond := range rule.Match {
-			sb.WriteString("\n  " + cond.Field + " " + cond.Op + " " + strconvQuote(cond.Value))
+			sb.WriteString("\n  " + cond.Field + " " + cond.Op + " " + strconv.Quote(cond.Value))
 		}
 	} else if strings.TrimSpace(rule.If) != "" {
-		sb.WriteString("\nmatch: " + rule.If + " " + rule.Op + " " + strconvQuote(rule.Value))
+		sb.WriteString("\nmatch: " + rule.If + " " + rule.Op + " " + strconv.Quote(rule.Value))
 	}
 
 	if len(rule.Roles) > 0 {
@@ -52,19 +53,19 @@ func formatRuleDetail(rule Rule) string {
 			sb.WriteString(" field=" + action.Field)
 		}
 		if action.Text != "" {
-			sb.WriteString(" text=" + strconvQuote(action.Text))
+			sb.WriteString(" text=" + strconv.Quote(action.Text))
 		}
-		if action.Match != "" {
-			sb.WriteString(" pattern=" + strconvQuote(action.Match))
+		if action.Pattern != "" {
+			sb.WriteString(" pattern=" + strconv.Quote(action.Pattern))
 		}
 		if action.Replace != "" {
-			sb.WriteString(" replace=" + strconvQuote(action.Replace))
+			sb.WriteString(" replace=" + strconv.Quote(action.Replace))
 		}
 		if action.Tool != "" {
 			sb.WriteString(" tool=" + action.Tool)
 		}
 		if action.Arguments != "" {
-			sb.WriteString(" args=" + strconvQuote(action.Arguments))
+			sb.WriteString(" args=" + strconv.Quote(action.Arguments))
 		}
 		if len(action.Command) > 0 {
 			sb.WriteString(fmt.Sprintf(" command=%q", action.Command))
@@ -124,11 +125,4 @@ func targetString(t Target) string {
 		parts = append(parts, "superadmins=true")
 	}
 	return strings.Join(parts, ",")
-}
-
-func strconvQuote(s string) string {
-	if s == "" {
-		return "\"\""
-	}
-	return fmt.Sprintf("%q", s)
 }

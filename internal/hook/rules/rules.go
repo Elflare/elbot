@@ -2,20 +2,20 @@
 
 package rules
 
-import "elbot/internal/tool"
-
 import (
 	"context"
-	"elbot/internal/processenv"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook/share"
 	hookoutput "elbot/internal/hook/share/output"
 	"elbot/internal/llm"
+	"elbot/internal/processenv"
+	"elbot/internal/tool"
 )
 
 const (
@@ -113,7 +113,6 @@ type Action struct {
 	Field          string        `toml:"field"`
 	Text           string        `toml:"text"`
 	Pattern        string        `toml:"pattern"`
-	Match          string        `toml:"-"`
 	Replace        string        `toml:"replace"`
 	Kind           string        `toml:"kind"`
 	URL            string        `toml:"url"`
@@ -172,19 +171,17 @@ func NewModule(opts Options) (Module, error) {
 			enabled++
 		}
 	}
-	{
-		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
-			Level:        slog.LevelInfo,
-			EventName:    "hook_rule_config_loaded",
-			Module:       "hook",
-			Type:         globalevents.ContentText,
-			Content:      fmt.Sprintf("%s\npath=%v\nrules=%v\nenabled=%v", "hook rule config loaded", path, len(module.Rules), enabled),
-			ContentLimit: 4096,
-			ResultStatus: globalevents.ResultSucceeded,
-		}
-		opts.Log(context.Background(), record)
+	record := globalevents.LogRecord{
+		Category:     globalevents.LogRuntime,
+		Level:        slog.LevelInfo,
+		EventName:    "hook_rule_config_loaded",
+		Module:       "hook",
+		Type:         globalevents.ContentText,
+		Content:      fmt.Sprintf("%s\npath=%v\nrules=%v\nenabled=%v", "hook rule config loaded", path, len(module.Rules), enabled),
+		ContentLimit: 4096,
+		ResultStatus: globalevents.ResultSucceeded,
 	}
+	opts.Log(context.Background(), record)
 
 	return module, nil
 }
@@ -200,52 +197,52 @@ func (m Module) RegisterHooks(registrar share.Registrar) {
 		}
 		name := rule.source.FinalName
 
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelInfo,
-				EventName:    "hook_rule_registered",
-				Module:       "hook",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("%s\nname=%v\npoint=%v\npriority=%v\nmatches=%v\nactions=%v\nconfig_path=%v", "hook rule registered", name, rule.On, priority, len(rule.Match), len(rule.Actions), rule.source.ConfigPath),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultSucceeded,
-			}
-			m.Opts.Log(context.Background(), record)
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelInfo,
+			EventName:    "hook_rule_registered",
+			Module:       "hook",
+			Type:         globalevents.ContentText,
+			Content:      fmt.Sprintf("%s\nname=%v\npoint=%v\npriority=%v\nmatches=%v\nactions=%v\nconfig_path=%v", "hook rule registered", name, rule.On, priority, len(rule.Match), len(rule.Actions), rule.source.ConfigPath),
+			ContentLimit: 4096,
+			ResultStatus: globalevents.ResultSucceeded,
 		}
+		m.Opts.Log(context.Background(), record)
 
-		rule := rule
-		registrations := ruleRegistrations(rule)
-		for roleIndex, match := range registrations {
-			regName := name
-			if len(registrations) > 1 {
-				regName = fmt.Sprintf("%s.role.%d", regName, roleIndex+1)
-			}
-			description := ruleDescription(rule)
-			detail := formatRuleDetail(rule)
-			if len(registrations) > 1 {
-				detail = fmt.Sprintf("%s\n\n(role partition %d/%d)", detail, roleIndex+1, len(registrations))
-			}
-			registrar.Register(share.Registration{
-				Point:       share.Point(rule.On),
-				Priority:    priority,
-				PluginID:    rule.source.PluginName,
-				Name:        regName,
-				Description: description,
-				Match:       match,
-				Block:       rule.source.Block,
-				Detail:      detail,
-				Wakeup:      rule.Wakeup,
-				Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, readOnlyCalls bool) (share.Event, globalevents.LogResult, error) {
-					if rule.source.RuntimeID != "" {
-						return m.Opts.Runtime.Handle(ctx, rule.source.RuntimeID, event, share.Control{
-							Consume:         rule.Consume,
-							StopPropagation: rule.StopPropagation,
-						})
-					}
-					return m.runRule(ctx, rule, event, readOnlyCalls)
-				}),
-			})
-		}
+		registrar.Register(share.Registration{
+			Point:       share.Point(rule.On),
+			Priority:    priority,
+			PluginID:    rule.source.PluginName,
+			Name:        name,
+			Description: ruleDescription(rule),
+			Detail:      formatRuleDetail(rule),
+			Match:       share.Match{Conditions: rule.Match},
+			Block:       rule.source.Block,
+			Wakeup:      rule.Wakeup,
+			Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, readOnlyCalls bool) (share.Event, globalevents.LogResult, error) {
+				return m.runRule(ctx, rule, event, readOnlyCalls)
+			}),
+		})
 	}
+}
+
+func logIdentity(ctx context.Context) globalevents.LogIdentity {
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	var identity globalevents.LogIdentity
+	if facts.SessionID != "" {
+		identity.SessionID = &facts.SessionID
+	}
+	if facts.RunID != "" {
+		identity.RunID = &facts.RunID
+	}
+	if facts.Attempt != "" {
+		identity.Attempt = &facts.Attempt
+	}
+	if facts.RequestID != "" {
+		identity.RequestID = &facts.RequestID
+	}
+	if facts.RootRequestID != "" {
+		identity.RootRequestID = &facts.RootRequestID
+	}
+	return identity
 }

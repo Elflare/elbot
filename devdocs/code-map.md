@@ -199,7 +199,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/hook/share/event.go`、`match.go`、`call_policy.go`、`registration.go`、`runtime.go`：分别定义事件、匹配、调用策略、注册与运行查询契约。
 - `internal/hook/share/runtime_config.go`、`control.go`：分别定义插件配置与组件协作契约。
 - `internal/hook/pipeline/manager.go`、`options.go`：分别负责 Hook 流水线与调用选项。
-- `internal/hook/rules/`：规则配置与执行；`rule.go` 编排动作及只读校验。
+- `internal/hook/rules/`：规则配置与执行；`config.go` 逐文件加载校验并统一确定名称与动作来源，`rules.go` 单次注册规则并提供日志身份构造，`rule.go` 归一化角色、统一角色判断并编排动作及只读校验；`toml_error.go` 包装解析器原生诊断。
 - `internal/hook/control/service.go`：插件查询、重载与进程管理。
 - `internal/hook/control/command.go`：Hook 管理命令与补全；`internal/hook/share/logging.go` 管日志摘要。
 - `internal/hook/runtime/`：插件进程、RPC 与续接；`runtime/routes.go` 管 waiting 路由、一次性到期定时器及撤销计数，并提供续接与工具审计共用的日志身份构造；`runtime/media.go` 管媒体租约、释放通知和有上限的清理退避。

@@ -43,7 +43,7 @@ func TestCleanupFunctionsPreserveResults(t *testing.T) {
 				}
 				cfg := &config.Config{Maintenance: config.MaintenanceConfig{
 					SessionCleanup:     config.MaintenanceCleanupConfig{Enabled: tc.enabled, RetentionDays: 7},
-					ChatHistoryCleanup: config.ChatHistoryCleanupConfig{Enabled: tc.enabled, RetentionDays: 7},
+					ChatHistoryCleanup: config.MaintenanceCleanupConfig{Enabled: tc.enabled, RetentionDays: 7},
 				}}
 				// Media 未注入：历史清理不再自行触发媒体清理或引用对账。
 				svc := NewServiceWithConfig(nil, cleanup, cfg, cleanup)
@@ -113,7 +113,7 @@ func TestSetupCronConfigurationAndFailure(t *testing.T) {
 		LogCleanup:         config.CronTaskConfig{Enabled: true, Schedule: "0 1 * * *"},
 		SessionCleanup:     config.MaintenanceCleanupConfig{Enabled: false, Schedule: "0 2 * * *"},
 		SandboxCleanup:     config.MaintenanceCleanupConfig{Enabled: false, Schedule: "0 3 * * *"},
-		ChatHistoryCleanup: config.ChatHistoryCleanupConfig{Enabled: true, Schedule: "0 4 * * *"},
+		ChatHistoryCleanup: config.MaintenanceCleanupConfig{Enabled: true, Schedule: "0 4 * * *"},
 	}}
 	want := []share.MaintenanceJob{
 		{Name: "system.maintenance.log_cleanup", Handler: "maintenance.log_cleanup", Schedule: "0 1 * * *", Enabled: true},

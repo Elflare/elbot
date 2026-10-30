@@ -5,9 +5,11 @@ package rules
 import (
 	"context"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/hook/pipeline"
 	"elbot/internal/hook/share"
 	"elbot/internal/llm"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,7 +60,7 @@ func TestRuleNormalizeAlwaysAndPattern(t *testing.T) {
 	if len(rule.Match) != 1 || rule.Match[0].Op != share.MatchAlways {
 		t.Fatalf("match = %#v", rule.Match)
 	}
-	if len(rule.Actions) != 1 || rule.Actions[0].Match != "cat" || !rule.Actions[0].All {
+	if len(rule.Actions) != 1 || rule.Actions[0].Pattern != "cat" || !rule.Actions[0].All {
 		t.Fatalf("actions = %#v", rule.Actions)
 	}
 }
@@ -80,7 +82,7 @@ func TestRuleNormalizeKeepsListFormat(t *testing.T) {
 	if len(rule.Match) != 2 {
 		t.Fatalf("match = %#v", rule.Match)
 	}
-	if len(rule.Actions) != 2 || rule.Actions[0].Match != "猫" || rule.Actions[1].Type != "append" {
+	if len(rule.Actions) != 2 || rule.Actions[0].Pattern != "猫" || rule.Actions[1].Type != "append" {
 		t.Fatalf("actions = %#v", rule.Actions)
 	}
 }
@@ -103,7 +105,7 @@ func TestRuleNormalizeRejectsActionWithActions(t *testing.T) {
 
 func TestValidateRuleRejectsUnknownHookPoint(t *testing.T) {
 	rule := Rule{Name: "bad", On: "agent.out.prepared", Match: []share.Condition{{Op: share.MatchAlways}}, Actions: []Action{{Type: "append", Field: "message.text", Text: "!"}}}
-	err := validateRule(rule)
+	err := validateRule(&rule)
 	if err == nil || !strings.Contains(err.Error(), "unknown hook point") {
 		t.Fatalf("err = %v", err)
 	}
@@ -111,7 +113,7 @@ func TestValidateRuleRejectsUnknownHookPoint(t *testing.T) {
 
 func TestValidateRuleRejectsUnsupportedTiming(t *testing.T) {
 	rule := Rule{Name: "bad_timing", On: string(share.PointLLMResponseReceived), Match: []share.Condition{{Op: share.MatchAlways}}, Actions: []Action{{Type: "send", Text: "x", Timing: "later"}}}
-	err := validateRule(rule)
+	err := validateRule(&rule)
 	if err == nil || !strings.Contains(err.Error(), `unsupported timing "later"`) {
 		t.Fatalf("err = %v", err)
 	}
@@ -119,7 +121,7 @@ func TestValidateRuleRejectsUnsupportedTiming(t *testing.T) {
 
 func TestValidateRuleRejectsUnsupportedWakeupPolicy(t *testing.T) {
 	rule := Rule{Name: "invalid", On: string(share.PointPlatformMessageReceived), Wakeup: "sometimes", Match: []share.Condition{{Op: share.MatchAlways}}, Actions: []Action{{Type: "send", Text: "ok"}}}
-	err := validateRule(rule)
+	err := validateRule(&rule)
 	if err == nil || !strings.Contains(err.Error(), `unsupported wakeup policy "sometimes"`) {
 		t.Fatalf("err = %v", err)
 	}
@@ -143,11 +145,8 @@ func TestRegisterHooksUsesRuleNamesAndDescriptions(t *testing.T) {
 			Actions: []Action{{Type: "send", Text: "ok"}},
 		},
 	}}
-	cfg := Config{Rules: module.Rules}
-	if err := normalizeLoadedRules(&cfg, Options{Log: testLog, Notify: testNotify}); err != nil {
-		t.Fatal(err)
-	}
-	module.Rules = cfg.Rules
+	module.Rules[0].source.FinalName = "greet"
+	module.Rules[1].source.FinalName = "gated"
 	module.RegisterHooks(manager)
 	infos := manager.List()
 	byName := map[string]share.Info{}
@@ -157,10 +156,8 @@ func TestRegisterHooksUsesRuleNamesAndDescriptions(t *testing.T) {
 	if got := byName["greet"]; got.Description != "send a greeting" || !strings.Contains(got.Detail, "on: platform.message.received") {
 		t.Fatalf("greet info = %#v", got)
 	}
-	for _, name := range []string{"gated.role.1", "gated.role.2"} {
-		if _, ok := byName[name]; !ok {
-			t.Fatalf("missing %s in %#v", name, infos)
-		}
+	if len(infos) != 2 || byName["gated"].Name != "gated" {
+		t.Fatalf("expected one entry per rule: %#v", infos)
 	}
 }
 
@@ -201,29 +198,6 @@ text = "ok"
 	}
 }
 
-func TestRuleRegistrationsExpandRoles(t *testing.T) {
-	rule := Rule{
-		Match:      []share.Condition{{Op: share.MatchAlways}},
-		Roles:      []string{"superadmin", "admin"},
-		ActorRoles: []string{"user"},
-		GroupRoles: []string{"owner"},
-	}
-	registrations := ruleRegistrations(rule)
-	if len(registrations) != 4 {
-		t.Fatalf("registrations = %#v", registrations)
-	}
-	fields := map[string]bool{}
-	for _, reg := range registrations {
-		last := reg.Conditions[len(reg.Conditions)-1]
-		fields[last.Field+"="+last.Value] = true
-	}
-	for _, want := range []string{"actor.role=superadmin", "actor.group_role=admin", "actor.role=user", "actor.group_role=owner"} {
-		if !fields[want] {
-			t.Fatalf("missing %s in %#v", want, fields)
-		}
-	}
-}
-
 func TestRuleRoleGatesAndControl(t *testing.T) {
 	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
 	event := share.Event{
@@ -255,5 +229,74 @@ func TestRuleRoleGatesAndControl(t *testing.T) {
 	}
 	if text := llm.SegmentsTextOnly(blocked.Message.Segments); text != "hello" {
 		t.Fatalf("blocked text = %q", text)
+	}
+}
+
+type roleTestRuntime struct {
+	share.RuntimeCaller
+	calls int
+}
+
+func (r *roleTestRuntime) Handle(_ context.Context, _ string, event share.Event, _ share.Control) (share.Event, events.LogResult, error) {
+	r.calls++
+	return event, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+}
+
+func TestRegisteredRoleGatesRunOnce(t *testing.T) {
+	for _, worker := range []bool{false, true} {
+		for _, tc := range []struct {
+			name                          string
+			roles, actorRoles, groupRoles []string
+			want                          int
+		}{
+			{name: "overlapping roles", roles: []string{"user", "admin"}, want: 1},
+			{name: "all groups match", roles: []string{"user", "admin"}, actorRoles: []string{"user"}, groupRoles: []string{"admin"}, want: 1},
+			{name: "actor group blocks", roles: []string{"user"}, actorRoles: []string{"superadmin"}, groupRoles: []string{"admin"}},
+			{name: "group role blocks", roles: []string{"user"}, actorRoles: []string{"user"}, groupRoles: []string{"owner"}},
+			{name: "unified roles block", roles: []string{"owner"}, actorRoles: []string{"user"}, groupRoles: []string{"admin"}},
+			{name: "aliases", roles: []string{" group_admin "}, actorRoles: []string{" user "}, groupRoles: []string{" administrator "}, want: 1},
+			{name: "unrestricted", want: 1},
+		} {
+			t.Run(fmt.Sprintf("worker=%t/%s", worker, tc.name), func(t *testing.T) {
+				runtime := &roleTestRuntime{}
+				rule := Rule{
+					Name: "gated", On: string(share.PointPlatformMessageReceived),
+					Match: []share.Condition{{Op: share.MatchAlways}},
+					Roles: tc.roles, ActorRoles: tc.actorRoles, GroupRoles: tc.groupRoles,
+					Actions: []Action{{Type: "append", Field: "message.text", Text: "!"}},
+				}
+				if worker {
+					rule.source.RuntimeID, rule.Actions = "worker", nil
+				}
+				cfg := Config{Rules: []Rule{rule}}
+				if err := normalizeLoadedRules(&cfg); err != nil {
+					t.Fatal(err)
+				}
+				if err := validateLoadedRules(cfg.Rules); err != nil {
+					t.Fatal(err)
+				}
+				manager := pipeline.NewManager(testLog, nil)
+				(Module{Rules: cfg.Rules, Opts: Options{Log: testLog, Runtime: runtime}}).RegisterHooks(manager)
+				event := share.Event{
+					Point:   share.PointPlatformMessageReceived,
+					Actor:   share.ActorContext{Role: "user", GroupRole: "admin"},
+					Message: share.MessagePayload{Segments: llm.TextSegments("hello")},
+				}
+				got, _, err := manager.Run(t.Context(), event, pipeline.CallOptions{Woken: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if worker {
+					if runtime.calls != tc.want {
+						t.Fatalf("worker calls = %d, want %d", runtime.calls, tc.want)
+					}
+				} else if text := llm.SegmentsTextOnly(got.Message.Segments); text != "hello"+strings.Repeat("!", tc.want) {
+					t.Fatalf("text = %q, want %d action executions", text, tc.want)
+				}
+				if infos := manager.List(); len(infos) != 1 {
+					t.Fatalf("registered %d entries, want one", len(infos))
+				}
+			})
+		}
 	}
 }

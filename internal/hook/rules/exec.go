@@ -147,8 +147,6 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 		logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "process exit: " + err.Error()}
 		if runCtx.Err() != nil {
 			logResult.Content += "\ncontext_error=" + runCtx.Err().Error()
-		}
-		if runCtx.Err() != nil {
 			select {
 			case cancelErr := <-cancelRequested:
 				if cancelErr != nil {
@@ -241,34 +239,17 @@ func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin 
 			}
 		case "event":
 			if frame.Method == "hook.log" {
-				{
-					record := globalevents.LogRecord{
-						Category:     globalevents.LogRuntime,
-						Level:        slog.LevelInfo,
-						EventName:    "hook_v2_plugin_event",
-						Module:       "hook",
-						Type:         globalevents.ContentText,
-						Content:      fmt.Sprintf("%s\nrule=%v", "hook.v2 plugin event"+": "+string(frame.Params), firstNonEmpty(action.source.FinalName, action.ActionName)),
-						ContentLimit: 4096,
-					}
-					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					if facts.SessionID != "" {
-						record.Identity.SessionID = &facts.SessionID
-					}
-					if facts.RunID != "" {
-						record.Identity.RunID = &facts.RunID
-					}
-					if facts.Attempt != "" {
-						record.Identity.Attempt = &facts.Attempt
-					}
-					if facts.RequestID != "" {
-						record.Identity.RequestID = &facts.RequestID
-					}
-					if facts.RootRequestID != "" {
-						record.Identity.RootRequestID = &facts.RootRequestID
-					}
-					m.Opts.Log(ctx, record)
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelInfo,
+					EventName:    "hook_v2_plugin_event",
+					Module:       "hook",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("%s\nrule=%v", "hook.v2 plugin event"+": "+string(frame.Params), firstNonEmpty(action.source.FinalName, action.ActionName)),
+					ContentLimit: 4096,
 				}
+				record.Identity = logIdentity(ctx)
+				m.Opts.Log(ctx, record)
 			}
 		default:
 			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("unsupported hook.v2 frame type %q", frame.Type)}, fmt.Errorf("unsupported hook.v2 frame type %q", frame.Type)
@@ -417,48 +398,31 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 				logResult.ResultStatus = globalevents.ResultCanceled
 			}
 		}
-		{
-			content := map[string]any{"platform": platformName, "api": api, "rule": firstNonEmpty(action.source.FinalName, action.ActionName), "result": string(resp)}
-			if err != nil {
-				content["error"] = err.Error()
-			}
-			for key, value := range content {
-				if value, ok := value.(string); ok && len([]rune(value)) > 2048 {
-					content[key] = string([]rune(value)[:2047]) + "…"
-				}
-			}
-			data, _ := json.Marshal(content)
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogAudit,
-				Level:        slog.LevelInfo,
-				EventName:    "hook.platform_call",
-				Module:       "hook",
-				Type:         globalevents.ContentJSON,
-				Content:      string(data),
-				ContentLimit: 4096,
-			}
-			record.ResultStatus = logResult.ResultStatus
-			if logResult.ResultStatus == globalevents.ResultFailed {
-				record.Level = slog.LevelError
-			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			m.Opts.Log(ctx, record)
+		content := map[string]any{"platform": platformName, "api": api, "rule": firstNonEmpty(action.source.FinalName, action.ActionName), "result": string(resp)}
+		if err != nil {
+			content["error"] = err.Error()
 		}
+		for key, value := range content {
+			if value, ok := value.(string); ok {
+				content[key] = share.TruncateLogContent(value, 2048)
+			}
+		}
+		data, _ := json.Marshal(content)
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogAudit,
+			Level:        slog.LevelInfo,
+			EventName:    "hook.platform_call",
+			Module:       "hook",
+			Type:         globalevents.ContentJSON,
+			Content:      string(data),
+			ContentLimit: 4096,
+		}
+		record.ResultStatus = logResult.ResultStatus
+		if logResult.ResultStatus == globalevents.ResultFailed {
+			record.Level = slog.LevelError
+		}
+		record.Identity = logIdentity(ctx)
+		m.Opts.Log(ctx, record)
 		if err != nil {
 			return nil, logResult, err
 		}
@@ -481,6 +445,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 			if logResult.ResultStatus == globalevents.ResultFailed {
 				record.Level = slog.LevelError
 			}
+			record.Identity = logIdentity(ctx)
 			if event.Session.ID != "" {
 				record.Identity.SessionID = &event.Session.ID
 				if event.Actor.ID != "" {
@@ -489,25 +454,9 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 			} else if actor, ok := contextinfo.ActorFromContext(ctx); ok && actor.ID != "" {
 				content["actor_id"] = actor.ID
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if record.Identity.SessionID == nil && facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
 			for key, value := range content {
-				if value, ok := value.(string); ok && len([]rune(value)) > 2048 {
-					content[key] = string([]rune(value)[:2047]) + "…"
+				if value, ok := value.(string); ok {
+					content[key] = share.TruncateLogContent(value, 2048)
 				}
 			}
 			data, _ := json.Marshal(content)
@@ -537,36 +486,17 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 	case "message.get":
 		return map[string]any{"available": false}, logResult, nil
 	case "hook.log":
-
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelInfo,
-				EventName:    "hook_plugin_log",
-				Module:       "hook",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("%s\nrule=%v", "hook plugin log"+": "+string(params), firstNonEmpty(action.source.FinalName, action.ActionName)),
-				ContentLimit: 4096,
-			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			m.Opts.Log(ctx, record)
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelInfo,
+			EventName:    "hook_plugin_log",
+			Module:       "hook",
+			Type:         globalevents.ContentText,
+			Content:      fmt.Sprintf("%s\nrule=%v", "hook plugin log"+": "+string(params), firstNonEmpty(action.source.FinalName, action.ActionName)),
+			ContentLimit: 4096,
 		}
-
+		record.Identity = logIdentity(ctx)
+		m.Opts.Log(ctx, record)
 		return map[string]any{"ok": true}, logResult, nil
 	default:
 		return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("unsupported hook protocol method %q", method)}, fmt.Errorf("unsupported hook protocol method %q", method)
@@ -760,34 +690,17 @@ func (w *execStderrLogger) emitLocked(line string) {
 	line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
 	w.tail.Add(line)
 	if line != "" {
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelInfo,
-				EventName:    "hook_exec_stderr",
-				Module:       "hook",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("%s\nrule=%v", "hook exec stderr"+": "+line, firstNonEmpty(w.action.source.FinalName, w.action.ActionName)),
-				ContentLimit: 4096,
-			}
-			facts, _ := contextinfo.ExecutionFromContext(w.ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
-			w.module.Opts.Log(w.ctx, record)
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelInfo,
+			EventName:    "hook_exec_stderr",
+			Module:       "hook",
+			Type:         globalevents.ContentText,
+			Content:      fmt.Sprintf("%s\nrule=%v", "hook exec stderr"+": "+line, firstNonEmpty(w.action.source.FinalName, w.action.ActionName)),
+			ContentLimit: 4096,
 		}
+		record.Identity = logIdentity(w.ctx)
+		w.module.Opts.Log(w.ctx, record)
 	}
 }
 

@@ -25,7 +25,7 @@ type Service struct {
 	cleanupSessions    func(context.Context, time.Time) (int, error) // 按截止时间清理会话，忙闲保护由提供方负责。
 	cleanupChatHistory func(context.Context, time.Time) (int, error) // 按截止时间清理平台历史，返回已删除条数。
 	sessionCleanup     config.MaintenanceCleanupConfig
-	chatHistoryCleanup config.ChatHistoryCleanupConfig
+	chatHistoryCleanup config.MaintenanceCleanupConfig
 	sandboxRoot        string
 	sandboxCleanup     config.MaintenanceCleanupConfig
 }

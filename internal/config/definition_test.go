@@ -68,7 +68,7 @@ func TestInspectionAndLoadShareDefaultsAndOverrides(t *testing.T) {
 	dir := t.TempDir()
 	main := filepath.Join(dir, "custom.toml")
 	files := map[string]string{
-		"custom.toml":  "[config_files]\nproviders='vendor.toml'\nstate='choices.toml'\n[session]\ndefault_mode='chat'\n[mode_models.work]\nprovider='custom'\nmodel='main'\n[mode_models.chat]\nprovider='custom'\nmodel='chat'\n",
+		"custom.toml":  "[config_files]\nproviders='vendor.toml'\nstate='choices.toml'\n[session]\ndefault_mode='chat'\n[naming_model]\nprovider='custom'\nmodel='title'\n[mode_models.work]\nprovider='custom'\nmodel='main'\n[mode_models.chat]\nprovider='custom'\nmodel='chat'\n",
 		"vendor.toml":  "[providers.custom]\nmodels=['main','state','chat']\n",
 		"choices.toml": "[mode_models.work]\nprovider='custom'\nmodel='state'\n",
 	}
@@ -98,6 +98,57 @@ func TestInspectionAndLoadShareDefaultsAndOverrides(t *testing.T) {
 	ctx := ValidationContext{Config: state.cfg, state: state}
 	if ctx.Source("mode_models", "work", "model") != filepath.Join(dir, "choices.toml") || ctx.Source("mode_models", "chat", "model") != main {
 		t.Fatal("wrong effective origins")
+	}
+	if loaded.Session.DefaultMode != "chat" || loaded.NamingModel != (ModelSelection{Provider: "custom", Model: "title"}) {
+		t.Fatal("omitted state fields replaced main configuration")
+	}
+	for _, tc := range []struct {
+		name, content string
+		selection     ModelSelection
+	}{
+		{"provider only", "provider='custom'\n", ModelSelection{Provider: "custom"}},
+		{"model only", "model='state'\n", ModelSelection{Model: "state"}},
+		{"empty selection", "", ModelSelection{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(dir, "choices.toml")
+			content := "[session]\ndefault_mode='work'\n[mode_models.work]\n" + tc.content + "[naming_model]\n" + tc.content + "[compact_model]\n" + tc.content
+			if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+				t.Fatal(err)
+			}
+			state := newConfiguration(main, nil)
+			if err := state.readCore(context.Background(), true); err != nil {
+				t.Fatal(err)
+			}
+			wantNaming, wantSource := tc.selection, path
+			if tc.selection == (ModelSelection{}) {
+				wantNaming, wantSource = loaded.NamingModel, main
+			}
+			cfg := state.cfg
+			if cfg.ModeModels["work"] != tc.selection || cfg.ModeModels["chat"] != loaded.ModeModels["chat"] || cfg.NamingModel != wantNaming || cfg.CompactModel != tc.selection || cfg.Session.DefaultMode != "work" {
+				t.Fatalf("unexpected state overrides: %+v", cfg)
+			}
+			ctx := ValidationContext{Config: cfg, state: state}
+			if ctx.Source("mode_models", "work", "model") != path || ctx.Source("mode_models", "chat", "model") != main || ctx.Source("session", "default_mode") != path || ctx.Source("naming_model", "model") != wantSource || ctx.Source("compact_model", "provider") != wantSource {
+				t.Fatal("origins disagree with state overrides")
+			}
+			inspection, err := NewInspector().Inspect(context.Background(), main)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, issue := range inspection.Issues {
+				if issue.Level == LevelError && strings.HasPrefix(keyPath(issue.Field), "mode_models.work.") {
+					found = true
+					if issue.Path != path {
+						t.Fatalf("partial model error attributed to wrong document: %+v", issue)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("partial model override did not produce a validation error")
+			}
+		})
 	}
 }
 

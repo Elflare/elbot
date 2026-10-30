@@ -85,13 +85,13 @@ func applyTextAction(event share.Event, action Action, state state) (share.Event
 	case "append":
 		return appendTextField(event, field, render(action.Text, event, state)), nil
 	case "replace":
-		pattern, err := regexp.Compile(render(action.Match, event, state))
+		pattern, err := regexp.Compile(render(action.Pattern, event, state))
 		if err != nil {
 			return event, err
 		}
 		return replaceTextField(event, field, pattern, render(action.Replace, event, state), action.All), nil
 	case "delete":
-		pattern, err := regexp.Compile(render(firstNonEmpty(action.Match, action.Text), event, state))
+		pattern, err := regexp.Compile(render(firstNonEmpty(action.Pattern, action.Text), event, state))
 		if err != nil {
 			return event, err
 		}
@@ -103,9 +103,7 @@ func applyTextAction(event share.Event, action Action, state state) (share.Event
 
 func prependTextField(event share.Event, field, value string) share.Event {
 	switch field {
-	case "message.text":
-		event.Message.Segments = llm.PrependSegmentText(event.Message.Segments, value)
-	case "llm.latest_user_text":
+	case "message.text", "llm.latest_user_text":
 		event.Message.Segments = llm.PrependSegmentText(event.Message.Segments, value)
 	case "llm.text":
 		event.LLM.Text = value + event.LLM.Text
@@ -120,9 +118,7 @@ func prependTextField(event share.Event, field, value string) share.Event {
 
 func appendTextField(event share.Event, field, value string) share.Event {
 	switch field {
-	case "message.text":
-		event.Message.Segments = llm.AppendSegmentText(event.Message.Segments, value)
-	case "llm.latest_user_text":
+	case "message.text", "llm.latest_user_text":
 		event.Message.Segments = llm.AppendSegmentText(event.Message.Segments, value)
 	case "llm.text":
 		event.LLM.Text += value
@@ -137,9 +133,7 @@ func appendTextField(event share.Event, field, value string) share.Event {
 
 func replaceTextField(event share.Event, field string, pattern *regexp.Regexp, replacement string, all bool) share.Event {
 	switch field {
-	case "message.text":
-		event.Message.Segments = llm.ReplaceSegmentText(event.Message.Segments, pattern, replacement, all)
-	case "llm.latest_user_text":
+	case "message.text", "llm.latest_user_text":
 		event.Message.Segments = llm.ReplaceSegmentText(event.Message.Segments, pattern, replacement, all)
 	case "llm.text":
 		event.LLM.Text = replaceString(event.LLM.Text, pattern, replacement, all)
@@ -202,10 +196,7 @@ func allowField(event share.Event, field string) error {
 }
 
 func makeOutputs(action Action, event share.Event, state state) ([]delivery.Output, error) {
-	target := hookoutput.Target{
-		Platform: render(action.Target.Platform, event, state), ScopeID: render(action.Target.ScopeID, event, state),
-		PrivateUserID: render(action.Target.PrivateUserID, event, state), GroupID: render(action.Target.GroupID, event, state), Superadmins: action.Target.Superadmins,
-	}
+	target := renderedActionTarget(action, event, state)
 	if strings.TrimSpace(target.Platform) == "" && event.Point == share.PointPlatformConnected {
 		target.Platform = event.Platform.Name
 	}
@@ -255,6 +246,7 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 		Source:     "rules",
 		ToolCallID: call.ID,
 	}
+	record.Identity = logIdentity(ctx)
 	if event.Session.ID != "" {
 		if event.Actor.ID != "" {
 			content.ActorID = share.TruncateLogContent(event.Actor.ID, 2048)
@@ -264,23 +256,6 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 		if actor, ok := contextinfo.ActorFromContext(ctx); ok && actor.ID != "" {
 			content.ActorID = share.TruncateLogContent(actor.ID, 2048)
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-	}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
 	}
 	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
 	var toolResult *tool.Result
@@ -338,6 +313,9 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 }
 
 func render(text string, event share.Event, state state) string {
+	if !strings.Contains(text, "{{") {
+		return text
+	}
 	replacements := share.TemplateValues(event)
 	for index, match := range share.EventMatchContext(event).Regex {
 		prefix := fmt.Sprintf("{{match.regex.%d", index)
@@ -387,9 +365,7 @@ func setTextField(event share.Event, field, value string) (share.Event, error) {
 		return event, err
 	}
 	switch field {
-	case "message.text":
-		event.Message.Segments = llm.SetSegmentText(event.Message.Segments, value)
-	case "llm.latest_user_text":
+	case "message.text", "llm.latest_user_text":
 		event.Message.Segments = llm.SetSegmentText(event.Message.Segments, value)
 	case "llm.text":
 		event.LLM.Text = value

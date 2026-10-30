@@ -295,3 +295,69 @@ func TestExecHostCancellationAfterResponse(t *testing.T) {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }
+
+func TestRuleLogsPreserveOptionalIdentityAndEventSession(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		facts        contextinfo.Execution
+		eventSession string
+		want         []string
+	}{
+		{name: "global", want: []string{"", "", "", "", ""}},
+		{name: "unbound input", facts: contextinfo.Execution{RequestID: "request", RootRequestID: "root"}, want: []string{"", "", "", "request", "root"}},
+		{name: "dialogue", facts: contextinfo.Execution{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}, want: []string{"session", "run", "attempt", "request", "root"}},
+		{name: "event session", facts: contextinfo.Execution{SessionID: "context-session", RequestID: "request"}, eventSession: "event-session", want: []string{"context-session", "", "", "request", ""}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := contextinfo.WithExecution(t.Context(), tc.facts)
+			var records []events.LogRecord
+			registry := tool.NewRegistry(security.DefaultPermission())
+			if err := registry.Register(&bodyTestTool{}); err != nil {
+				t.Fatal(err)
+			}
+			module := Module{Opts: Options{
+				Tools: testTools{registry},
+				Log:   func(_ context.Context, record events.LogRecord) { records = append(records, record) },
+				Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+					return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+				},
+				CallPlatformAPI: func(context.Context, string, string, map[string]any) (json.RawMessage, error) {
+					return json.RawMessage("{}"), nil
+				},
+			}}
+			event := share.Event{Session: share.SessionContext{ID: tc.eventSession}}
+			_, _, _ = module.callTool(ctx, event, Action{Tool: "body_test"}, state{})
+			for method, params := range map[string]string{
+				"platform.call": "{\"api\":\"get_status\"}",
+				"output.send":   "{\"outputs\":[{\"kind\":\"text\",\"text\":\"hello\"}]}",
+				"hook.log":      "{}",
+			} {
+				if _, _, err := module.handleProtocolRequest(ctx, event, Action{}, state{}, method, json.RawMessage(params)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			logger := newExecStderrLogger(ctx, module, Action{}, newExecStderrTail())
+			_, _ = logger.Write([]byte("diagnostic\n"))
+			reader := bufio.NewReader(strings.NewReader("{\"type\":\"event\",\"method\":\"hook.log\",\"params\":{}}\n{\"type\":\"response\",\"id\":\"host:event\",\"ok\":true,\"result\":{}}\n"))
+			if _, _, err := module.readV2Response(ctx, reader, io.Discard, event, Action{}, state{}, "host:event"); err != nil {
+				t.Fatal(err)
+			}
+			if len(records) != 7 {
+				t.Fatalf("records = %d, want 7", len(records))
+			}
+			for _, record := range records {
+				identity := record.Identity
+				got := []*string{identity.SessionID, identity.RunID, identity.Attempt, identity.RequestID, identity.RootRequestID}
+				for i, value := range got {
+					want := tc.want[i]
+					if i == 0 && tc.eventSession != "" && (record.EventName == "hook_tool_call_prepared" || record.EventName == "hook_tool_call_completed" || record.EventName == "hook_tool_log") {
+						want = tc.eventSession
+					}
+					if (want == "" && value != nil) || (want != "" && (value == nil || *value != want)) {
+						t.Fatalf("%s identity field %d = %v, want %q", record.EventName, i, value, want)
+					}
+				}
+			}
+		})
+	}
+}

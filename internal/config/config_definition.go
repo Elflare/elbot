@@ -32,7 +32,9 @@ func CoreDefinitions() []Definition {
 				{Path: []string{"model_metadata"}, Hint: fmt.Sprintf("可省略，默认上下文窗口为 %d。", DefaultContextWindow)},
 			},
 			Apply: func(c *Config, value any) [][]string {
-				c.mergeProviders(value.(*Config))
+				providerCfg := value.(*Config)
+				c.Providers = providerCfg.Providers
+				c.ModelMetadata = providerCfg.ModelMetadata
 				c.applyProviderDefaults()
 				return [][]string{{"providers"}, {"model_metadata"}}
 			},
@@ -70,22 +72,7 @@ func stateDefinition() Definition {
 		Asset: "state.toml", New: func() any { return &StateConfig{} },
 		Rules: []Rule{{Path: []string{"mode_models"}, Effective: true, Children: modelSlots()}},
 		Apply: func(c *Config, value any) [][]string {
-			state := value.(*StateConfig)
-			c.applyState(state)
-			var fields [][]string
-			for mode := range state.ModeModels {
-				fields = append(fields, []string{"mode_models", mode})
-			}
-			if state.Session.DefaultMode != "" {
-				fields = append(fields, []string{"session", "default_mode"})
-			}
-			if state.NamingModel.Provider != "" || state.NamingModel.Model != "" {
-				fields = append(fields, []string{"naming_model"})
-			}
-			if state.CompactModel.Provider != "" || state.CompactModel.Model != "" {
-				fields = append(fields, []string{"compact_model"})
-			}
-			return fields
+			return c.applyState(value.(*StateConfig))
 		},
 		BindPath: func(c *Config, path string) { c.StateConfigPath = path },
 		Validate: func(ctx ValidationContext) []Issue {

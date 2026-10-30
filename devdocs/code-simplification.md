@@ -45,7 +45,7 @@
 
 按包记录具体问题、精简建议、讨论结论与验证结果，确认方案后再实施。任务入口见 [任务清单](tasks.md)。
 
-当前进度：`internal/app`、`internal/delivery`、`internal/turn`、`internal/tool/builtin`、`internal/memory/resident` 已完成一轮审查与调整；`internal/hook/runtime` 已完成第三轮精简，其余包进度分别记录。
+当前进度：`internal/app`、`internal/delivery`、`internal/turn`、`internal/tool/builtin`、`internal/memory/resident`、`internal/hook/rules`、`internal/config` 已完成一轮审查与调整；`internal/hook/runtime` 已完成第三轮精简，其余包进度分别记录。
 
 ### delivery
 
@@ -79,6 +79,21 @@
 - 读取共用锁内缓存；修改先作用于单条记录副本，校验通过且需要落盘后只复制一次列表，保存成功后直接更新缓存。保留外部文件变化检测及原有写盘方式。
 - 修改回调直接返回目标部分的长度校验结果，core 与 normal 共用校验函数；内容清理不再重复处理同一输入。校验先于无变化判定，未修改部分超限不影响操作。
 
+### hook/rules
+
+- 每个配置文件先归一化再校验，保留错误顺序与插件隔离；合并后一次确定最终名称、记录重命名并向动作传递来源与环境。
+- 每条规则只注册一次，普通动作与 Worker 共用角色判断；角色别名在加载时归一化，各角色数组内取 OR、数组间取 AND，空数组不限制。
+- 运行日志共用 `logIdentity`，保留缺失身份为 nil、事件 SessionID 优先及 Actor 选择；配置加载日志直接记录全局事件。
+- 动作直接使用 `Pattern`，合并相同文本字段分支，复用输出目标与日志截断；不含模板起始标记的字符串直接返回。逐动作只读校验、命令校验与进程生命周期保持原有边界。
+- TOML 诊断保留解析器提供的位置、字段、片段与原始错误链，删除英文错误字符串匹配和源码扫描猜测。仍为原有 8 个生产文件。
+
+### config
+
+- `applyState` 在合并状态时返回实际覆盖的字段路径，配置合并与诊断来源共用同一组条件；模型槽整项覆盖，命名与压缩模型任一字段非空即覆盖。
+- `LoadEnvFile` 直接负责 dotenv 解析，`ConfigEnv` 通过 `LoadDotEnv` 查询；保留进程环境优先、首个重复键生效及缺失文件返回空集合的行为。
+- TOML 解析错误统一由 `wrapDecodeError` 包装；厂商配置在定义的 Apply 中直接赋值，维护任务共用 `MaintenanceCleanupConfig`。无消费者的 `ModelConfigs` 及冗余私有包装已删除。
+- 仍为原有 8 个生产文件；配置格式、默认值、默认资产与诊断机制保持现有契约。
+
 ## 已完成精简
 
 | 包 | 完成情况 | 非测试 Go 行数 |
@@ -89,6 +104,8 @@
 | `internal/hook/runtime` | 已完成第三轮；共享 RPC 按参数分组，收拢日志身份、调用前失败及 Worker 故障补充，删除重复触发者身份推导。 | 本轮 2,995 → 2,950，减少 45 行（约 1.5%），仍为 9 个生产文件；近两轮共减少 101 行，相对初始基线 2,836 行仍增加 114 行。 |
 | `internal/tool/builtin` | 统一日志截断、复用 Shell AST、合并分支收尾、清理无效状态并显式注入依赖。 | 7,311 → 6,988，减少 323 行（约 4.4%），仍为 21 个生产文件。 |
 | `internal/memory/resident` | 删除重复身份与路径检查，合并修改和长度校验，缓存仅在提交修改前复制列表。 | 345 → 315，减少 30 行（约 8.7%），仍为 1 个生产文件。 |
+| `internal/hook/rules` | 单次注册并统一角色判断，合并配置收尾与日志身份，删除动作冗余字段及 TOML 猜测诊断。 | 2,640 → 2,152，减少 488 行（约 18.5%），仍为 8 个生产文件。 |
+| `internal/config` | 状态覆盖与来源记录合一，收拢环境变量读取及 TOML 错误包装，清理无效包装和重复类型。 | 2,611 → 2,579，减少 32 行（约 1.2%），仍为 8 个生产文件。 |
 
 delivery 本轮连同 Hook 调用方共净减 70 行非测试 Go 代码，未拆分文件。回归覆盖表情名称、发送时机重设与复制隔离、目标选择与冲突、Hook 来源、媒体降级及日志与业务结果独立；已执行 `gofmt`，相关包测试与 `go test ./...` 通过。
 
@@ -105,3 +122,7 @@ tool/builtin 本轮连同 Tool 内部调用方共净减 332 行非测试 Go 代�
 Tool 竞态检查中除 execution 外的包均通过，无数据竞争报告。execution 的 `TestRunConcurrentFailuresKeepOriginalResultOrderAndFlushOnce` 存在调度顺序断言不稳定，使用改动前执行边界的 Go overlay 已复现；本轮未调整执行调度。初次竞态检查还出现取消完成断言失败，单独重复检查及最终整包检查未再次出现。
 
 memory/resident 保留原有行为覆盖，新增拒绝写入不污染缓存与其他用户、无变化不落盘及时间戳不变、空文件与外部编辑内容追加的回归。测试代码增加 121 行，本轮 Go 代码合计增加 91 行。已执行 `gofmt`；resident、Tool 根包及 Agent dialogue／execution 包测试，以及 `GORACE=atexit_sleep_ms=0 go test -race ./internal/memory/resident` 均通过。
+
+config 回归覆盖未覆盖字段保留、部分及空模型槽的整项覆盖、命名与压缩模型覆盖条件，以及诊断来源与最终配置一致。测试代码增加 51 行，本轮 Go 代码合计增加 19 行。已执行 `gofmt`，config、doctor 与 background/maintenance 包测试及 `go test ./...` 全仓测试通过。
+
+hook/rules 回归先复现并修复多角色命中时重复执行、Worker 角色条件绕过和角色别名未归一化；覆盖跨文件最终命名与动作环境、日志身份缺失和事件覆盖、普通文本与动作模板、TOML 原生诊断及错误链。测试代码净增 207 行，本轮 Go 代码合计净减 281 行。已执行 `gofmt`，`go test ./internal/hook/rules`、`go test -race ./internal/hook/rules` 与 `go test ./internal/hook/...` 均通过。

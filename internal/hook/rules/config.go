@@ -4,7 +4,6 @@ package rules
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -45,7 +44,7 @@ func loadConfig(opts Options) (Config, string, error) {
 		cfg.Rules[i].source = source
 	}
 
-	if err := normalizeLoadedRules(&cfg, opts); err != nil {
+	if err := normalizeLoadedRules(&cfg); err != nil {
 		return Config{}, path, fmt.Errorf("parse hook rule config %q: %w", path, err)
 	}
 	if err := validateLoadedRules(cfg.Rules); err != nil {
@@ -69,9 +68,6 @@ func loadConfig(opts Options) (Config, string, error) {
 			reportPluginConfigWarning(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, fmt.Sprintf("[plugin].name %q differs from [[plugins]].name %q; using the referenced plugin name", infoName, strings.TrimSpace(ref.Name)))
 		}
 		warnIgnoredPluginRuleBlocks(opts, strings.TrimSpace(ref.Name), pluginPath, pcfg.Rules)
-		for i := range pcfg.Rules {
-			pcfg.Rules[i].clearBlockConfig()
-		}
 		pluginDir := filepath.Dir(pluginPath)
 		pluginEnvPath := filepath.Join(pluginDir, ".env")
 		pluginValues, err := appconfig.LoadEnvFile(pluginEnvPath)
@@ -121,9 +117,10 @@ func loadConfig(opts Options) (Config, string, error) {
 		}
 		for i := range pcfg.Rules {
 			pcfg.Rules[i].source = source
+			pcfg.Rules[i].clearBlockConfig()
 		}
-		pluginRules := Config{Rules: append([]Rule(nil), pcfg.Rules...)}
-		if err := normalizeLoadedRules(&pluginRules, opts); err != nil {
+		pluginRules := Config{Rules: pcfg.Rules}
+		if err := normalizeLoadedRules(&pluginRules); err != nil {
 			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
 			continue
 		}
@@ -151,6 +148,16 @@ func loadConfig(opts Options) (Config, string, error) {
 		rule.source.FinalName = original
 		if count := seen[original]; count > 0 {
 			rule.source.FinalName = fmt.Sprintf("%s.%d", original, count)
+			opts.Log(context.Background(), globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelWarn,
+				EventName:    "duplicate_hook_rule_name_renamed",
+				Module:       "hook",
+				Type:         globalevents.ContentText,
+				ContentLimit: 4096,
+				Content:      fmt.Sprintf("duplicate hook rule name renamed\nname=%v\nfinal_name=%v\nconfig_path=%v", original, rule.source.FinalName, rule.source.ConfigPath),
+				ResultStatus: globalevents.ResultSucceeded,
+			})
 		}
 		seen[original]++
 		for j := range rule.Actions {
@@ -201,8 +208,7 @@ func pathWithin(base, path string) bool {
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
-func normalizeLoadedRules(cfg *Config, opts Options) error {
-	seen := map[string]int{}
+func normalizeLoadedRules(cfg *Config) error {
 	for i := range cfg.Rules {
 		rule := &cfg.Rules[i]
 		if err := rule.normalize(); err != nil {
@@ -214,37 +220,13 @@ func normalizeLoadedRules(cfg *Config, opts Options) error {
 			rule.Name = original
 		}
 		rule.source.OriginalName = original
-		final := original
-		if count := seen[original]; count > 0 {
-			final = fmt.Sprintf("%s.%d", original, count)
-
-			{
-				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
-					Level:        slog.LevelWarn,
-					EventName:    "duplicate_hook_rule_name_renamed",
-					Module:       "hook",
-					Type:         globalevents.ContentText,
-					Content:      fmt.Sprintf("%s\nname=%v\nfinal_name=%v\nconfig_path=%v", "duplicate hook rule name renamed", original, final, rule.source.ConfigPath),
-					ContentLimit: 4096,
-					ResultStatus: globalevents.ResultSucceeded,
-				}
-				opts.Log(context.Background(), record)
-			}
-
-		}
-		seen[original]++
-		rule.source.FinalName = final
-		for j := range rule.Actions {
-			rule.Actions[j].source = rule.source
-		}
 	}
 	return nil
 }
 
 func validateLoadedRules(rules []Rule) error {
-	for i, rule := range rules {
-		if err := validateRule(rule); err != nil {
+	for i := range rules {
+		if err := validateRule(&rules[i]); err != nil {
 			return fmt.Errorf("rule %d: %w", i+1, err)
 		}
 	}
@@ -252,123 +234,53 @@ func validateLoadedRules(rules []Rule) error {
 }
 
 func reportPluginConfigError(ctx context.Context, opts Options, name, path string, err error) {
-	{
-		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
-			Level:        slog.LevelError,
-			EventName:    "hook_plugin_skipped",
-			Module:       "hook",
-			Type:         globalevents.ContentText,
-			Content:      fmt.Sprintf("%s\nplugin=%v\npath=%v\nerror=%v", "hook plugin skipped", name, path, err),
-			ContentLimit: 4096,
-			ResultStatus: globalevents.ResultFailed,
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		opts.Log(ctx, record)
+	opts.Log(ctx, globalevents.LogRecord{
+		Category:     globalevents.LogRuntime,
+		Level:        slog.LevelError,
+		EventName:    "hook_plugin_skipped",
+		Module:       "hook",
+		Type:         globalevents.ContentText,
+		ContentLimit: 4096,
+		Content:      fmt.Sprintf("hook plugin skipped\nplugin=%v\npath=%v\nerror=%v", name, path, err),
+		ResultStatus: globalevents.ResultFailed,
+	})
+	label := firstNonEmpty(strings.TrimSpace(name), path)
+	text := fmt.Sprintf("Hook 插件 %s 已跳过：%v", label, err)
+	if opts.Notices != nil {
+		*opts.Notices = append(*opts.Notices, text)
 	}
-
-	{
-		label := strings.TrimSpace(name)
-		if label == "" {
-			label = path
-		}
-		text := fmt.Sprintf("Hook 插件 %s 已跳过：%v", label, err)
-		if opts.Notices != nil {
-			*opts.Notices = append(*opts.Notices, text)
-		}
-		_ = opts.Notify(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
-	}
+	_ = opts.Notify(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 }
 
 func reportPluginConfigWarning(ctx context.Context, opts Options, name, path, message string) {
-	{
-		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
-			Level:        slog.LevelWarn,
-			EventName:    "hook_plugin_warning",
-			Module:       "hook",
-			Type:         globalevents.ContentText,
-			Content:      fmt.Sprintf("%s\nplugin=%v\npath=%v\nwarning=%v", "hook plugin warning", name, path, message),
-			ContentLimit: 4096,
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		opts.Log(ctx, record)
+	opts.Log(ctx, globalevents.LogRecord{
+		Category:     globalevents.LogRuntime,
+		Level:        slog.LevelWarn,
+		EventName:    "hook_plugin_warning",
+		Module:       "hook",
+		Type:         globalevents.ContentText,
+		ContentLimit: 4096,
+		Content:      fmt.Sprintf("hook plugin warning\nplugin=%v\npath=%v\nwarning=%v", name, path, message),
+	})
+	label := firstNonEmpty(strings.TrimSpace(name), path)
+	text := fmt.Sprintf("Hook 插件 %s 警告：%s", label, message)
+	if opts.Notices != nil {
+		*opts.Notices = append(*opts.Notices, text)
 	}
-
-	{
-		label := strings.TrimSpace(name)
-		if label == "" {
-			label = path
-		}
-		text := fmt.Sprintf("Hook 插件 %s 警告：%s", label, message)
-		if opts.Notices != nil {
-			*opts.Notices = append(*opts.Notices, text)
-		}
-		_ = opts.Notify(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
-	}
+	_ = opts.Notify(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 }
 
 func reportConfigError(ctx context.Context, opts Options, path string, err error) {
-	{
-		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
-			Level:        slog.LevelError,
-			EventName:    "hook_rule_config_error",
-			Module:       "hook",
-			Type:         globalevents.ContentText,
-			Content:      fmt.Sprintf("%s\npath=%v\nerror=%v", "hook rule config error", path, err),
-			ContentLimit: 4096,
-			ResultStatus: globalevents.ResultFailed,
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.SessionID != "" {
-			record.Identity.SessionID = &facts.SessionID
-		}
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		opts.Log(ctx, record)
-	}
-
+	opts.Log(ctx, globalevents.LogRecord{
+		Category:     globalevents.LogRuntime,
+		Level:        slog.LevelError,
+		EventName:    "hook_rule_config_error",
+		Module:       "hook",
+		Type:         globalevents.ContentText,
+		ContentLimit: 4096,
+		Content:      fmt.Sprintf("hook rule config error\npath=%v\nerror=%v", path, err),
+		ResultStatus: globalevents.ResultFailed,
+	})
 	text := fmt.Sprintf("Hook rules 配置错误：%v", err)
 	if opts.Notices != nil {
 		*opts.Notices = append(*opts.Notices, text)
