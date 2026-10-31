@@ -50,14 +50,4 @@ jobs:
           TRANSLATE_LLM_API_KEY: ${{ secrets.TRANSLATE_LLM_API_KEY }}
           TRANSLATE_LLM_BASE_URL: ${{ secrets.TRANSLATE_LLM_BASE_URL }}
           TRANSLATE_LLM_MODEL: ${{ secrets.TRANSLATE_LLM_MODEL }}
-        run: >-
-          python scripts/translate_docs.py
-          --changed-only
-          --commit-each
-          --base-ref "${{ github.event.before }}"
-          --head-ref HEAD
-          --batch-size 1
-          --parallel-batches 2
-          --batch-delay 5
-          --retries 5
-          --timeout 240
+        run: python scripts/translate_docs.py
