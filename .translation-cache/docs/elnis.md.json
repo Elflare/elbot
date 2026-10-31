@@ -56,6 +56,14 @@
       "translation": "## What problem does it solve\n\nOrdinary chatbots usually only respond to user messages. Cron can respond to time, but it doesn't know what is happening in the outside world.\n\nElnis allows ElBot to respond to the external world.\n\nFor example:\n\n- When a server anomaly occurs, let the LLM analyze the logs and determine whether to send a notification.\n- When an RSS feed updates, automatically summarize the content and push it to the target platform.\n- When a game server generates an event, let ElBot record it, send a notification, or execute background tasks.\n- When a Webhook receives a business alert, pass it to ElBot first to determine the severity.\n- When a local script detects a state change, send the result to ElBot instead of sending messages haphazardly.\n\nSimply put, Elnis expands ElBot from a \"bot that waits for users to speak\" into an \"Agent hub capable of perceiving the external world.\"\n\n",
       "updated_at": 1781710746
     },
+    "docs/elnis.md:section:e113aa7812b158312562fc753627d27b91f73b07e19431b4076beb33bc833bd8": {
+      "kind": "section",
+      "source": "## 三个角色\n\n| 角色 | 是什么 | 职责 | 不做什么 |\n| --- | --- | --- | --- |\n| **Elnis** | ElBot 内部事件入口 runtime，与平台 runtime、Cron runtime 同级装配。 | 接收 Elvena 请求；校验 token 与协议字段；按 `elwisp.name + source + id` 持久化去重；记日志与审计；裁决可投递平台；按模式执行 `record` / `direct` / `llm`。 | 不是聊天平台，不实现 PlatformAdapter。外部事件不能绕过 Agent、Tool Runtime、Security Policy 和 Output Layer。 |\n| **Elwisp** | 外部子监听器：shell 脚本、常驻进程、RSS 轮询器、Webhook 转发器、游戏服务器插件、日志监听器、硬件采集器，或任何能把外部信号转成 HTTP JSON 的程序。 | 只负责看见并上报。 | 不直接控制 ElBot，不直接向聊天平台发消息，不决定是否调用 LLM 或工具。 |\n| **Elvena** | Elwisp 向 Elnis 投递事件的 JSON over HTTP 协议。 | 把“外面发生了什么”变成统一事件：来源、事件 ID、内容、期望处理方式、期望投递目标。 | — |\n\nElwisp 观察的范围不限定类型：操作系统事件、文件和日志变化、服务器状态、游戏或业务服务事件、RSS / 网页 / Webhook、数据库或队列消息、设备与传感器、本地脚本输出——任何计算机能接收、读取、监听或生成的内容。它们可以很多、很小、很分散，职责只有一个：把外部发生了什么告诉 Elnis。\n\nElvena endpoint：\n\n```text\nPOST /elvena/v3/events\nGET  /healthz\n```\n\n",
+      "source_file": "docs/elnis.md",
+      "source_hash": "da36735fe55f0a4c0f8fb1c420b8e8a01c569061a36fc243a7ecf84ae5f486b6",
+      "translation": "## Three Roles\n\n| Role | What it is | Responsibilities | What it does not do |\n| --- | --- | --- | --- |\n| **Elnis** | The internal event entry runtime of ElBot, assembled at the same level as the platform runtime and Cron runtime. | Receives Elvena requests; validates tokens and protocol fields; performs persistent deduplication based on `elwisp.name + source + id`; records logs and audit logs; determines the deliverable platform; executes `record` / `direct` / `llm` according to the mode. | It is not a chat platform and does not implement PlatformAdapter. External events cannot bypass the Agent, Tool Runtime, Security Policy, and Output Layer. |\n| **Elwisp** | External sub-listeners: shell scripts, resident processes, RSS pollers, Webhook forwarders, game server plugins, log listeners, hardware collectors, or any program capable of converting external signals into HTTP JSON. | Responsible only for observing and reporting. | Does not directly control ElBot, does not send messages directly to chat platforms, and does not decide whether to call the LLM or tools. |\n| **Elvena** | The JSON over HTTP protocol used by Elwisp to deliver events to Elnis. | Transforms \"what happened outside\" into a unified event: source, event ID, content, expected processing method, and expected delivery target. | — |\n\nThe scope of Elwisp's observation is not limited by type: operating system events, file and log changes, server status, game or business service events, RSS / web pages / Webhooks, database or queue messages, devices and sensors, local script output—anything a computer can receive, read, listen to, or generate. They can be numerous, small, and scattered, with only one responsibility: to tell Elnis what happened externally.\n\nElvena endpoint:\n\n```text\nPOST /elvena/v3/events\nGET  /healthz\n```\n\n",
+      "updated_at": 1793424178
+    },
     "docs/elnis.md:section:e8e1d11c7c26b434cc44a825f227b47af3ed07d1c763d24171ee56df7195f09d": {
       "kind": "section",
       "source": "## 创建 Elwisp 辅助工具\n\nwork 模式下超级管理员可让 ElBot 用内置工具 `elwisp_creator` 辅助创建 Elwisp：它返回创建指南、Elvena 事件模板、Elnis 配置片段、监听器脚手架、curl 测试命令和安全检查清单；真正写文件或运行命令仍由文件工具和 shell 工具处理。现成示例、协议文档和模板见 [Elwisp Showcase](https://github.com/Elfreese/elwisp-showcase)。\n\n启用 Elnis、配置 Elwisp 策略、发送 Elvena 请求，以及请求字段和投递边界，见 [Elnis 配置与使用](elnis-usage.md)。\n",
@@ -66,8 +74,8 @@
     }
   },
   "source": "docs/elnis.md",
-  "source_hash": "",
+  "source_hash": "d5dee971f197d9579780d1a59ed2c39926ef2ac855b358fa22abe09407733334",
   "target": "docs.en/elnis.md",
-  "updated_at": 1793423213,
+  "updated_at": 1793424179,
   "version": 3
 }
