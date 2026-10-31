@@ -2,9 +2,11 @@ package execution
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 
@@ -14,6 +16,22 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/signal"
 )
+
+type deliveryLogContent struct {
+	Operation          string            `json:"operation"`
+	Detail             string            `json:"detail"`
+	PlatformMessageIDs []string          `json:"platform_message_ids"`
+	SentMessages       []json.RawMessage `json:"sent_messages"`
+}
+
+func readDeliveryLog(t *testing.T, record events.LogRecord) deliveryLogContent {
+	t.Helper()
+	var content deliveryLogContent
+	if err := json.Unmarshal([]byte(record.Content), &content); err != nil {
+		t.Fatal(err)
+	}
+	return content
+}
 
 type outputSendFunc func([]delivery.Output) (delivery.Receipt, events.LogResult, error)
 
@@ -63,8 +81,8 @@ func TestReplyDeliveryRecordsOncePerSend(t *testing.T) {
 				if r.EventName != "reply_delivered" || r.Level != slog.LevelDebug || r.ResultStatus != events.ResultSucceeded || r.Identity.SessionID == nil || *r.Identity.SessionID != f.in.Session.ID || r.Identity.RequestID == nil || *r.Identity.RequestID != "delivery-request" {
 					t.Fatalf("delivery record=%+v", r)
 				}
-				want := []string{"platform_message_ids=[sent]", "platform_message_ids=[emoticon]"}[i]
-				if !strings.Contains(r.Content, want) {
+				want := []string{"sent", "emoticon"}[i]
+				if !slices.Contains(readDeliveryLog(t, r).PlatformMessageIDs, want) {
 					t.Fatalf("missing %q: %s", want, r.Content)
 				}
 			}
@@ -106,7 +124,7 @@ func TestIntermediateStreamDeliveryLogsOnce(t *testing.T) {
 			if (tc.replaceErr != nil && !errors.Is(err, tc.replaceErr)) || (tc.replaceErr == nil && !errors.Is(err, tc.finishErr)) {
 				t.Fatalf("business error changed: %v", err)
 			}
-			if len(records) != 1 || records[0].ResultStatus != tc.status || records[0].Level != tc.level || !strings.Contains(records[0].Content, "platform_message_ids=[sent]") {
+			if len(records) != 1 || records[0].ResultStatus != tc.status || records[0].Level != tc.level || !slices.Contains(readDeliveryLog(t, records[0]).PlatformMessageIDs, "sent") {
 				t.Fatalf("stream records=%+v", records)
 			}
 			wantCalls := "replace,finish"
@@ -150,7 +168,7 @@ func TestSendOutputsUsesSourceLogResult(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var records []events.LogRecord
 			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-				if record.EventName == "reply_delivered" && strings.HasPrefix(record.Content, "operation=send_outputs") {
+				if record.EventName == "reply_delivered" && readDeliveryLog(t, record).Operation == "send_outputs" {
 					records = append(records, record)
 				}
 				return nil
@@ -175,7 +193,7 @@ func TestSendOutputsUsesSourceLogResult(t *testing.T) {
 			if len(records) != 1 || records[0].ResultStatus != tc.status || records[0].Level != tc.level {
 				t.Fatalf("records=%#v", records)
 			}
-			if records[0].Content != "operation=send_outputs\nsource-specific diagnostic" {
+			if content := readDeliveryLog(t, records[0]); content.Operation != "send_outputs" || content.Detail != "source-specific diagnostic" {
 				t.Fatalf("source diagnostic changed: %s", records[0].Content)
 			}
 		})
@@ -189,7 +207,7 @@ func TestReplyCommitUsesSourceOutcomeWithoutChangingBusiness(t *testing.T) {
 			fixture.platform.outputsLogResult = &events.LogResult{ResultStatus: events.ResultFailed, Content: "one destination failed; another received the output"}
 			var records []events.LogRecord
 			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-				if record.EventName == "reply_delivered" && strings.HasPrefix(record.Content, "operation=send_outputs") {
+				if record.EventName == "reply_delivered" && readDeliveryLog(t, record).Operation == "send_outputs" {
 					records = append(records, record)
 				}
 				return nil
@@ -247,19 +265,19 @@ func TestReplyCommitLogSpacingComesFromSources(t *testing.T) {
 				if err != nil || !result.Persisted || len(result.Receipt.PlatformMessageIDs) != 1 || len(records) != 1 {
 					t.Fatalf("result=%+v err=%v records=%+v", result, err, records)
 				}
-				content := records[0].Content
-				if records[0].ResultStatus != status || records[0].Level != tc.level || !strings.HasPrefix(content, "operation=send_assistant_message\n") || !strings.Contains(content, "platform_message_ids=[sent]") {
+				content := readDeliveryLog(t, records[0])
+				if records[0].ResultStatus != status || records[0].Level != tc.level || content.Operation != "send_assistant_message" || !slices.Contains(content.PlatformMessageIDs, "sent") {
 					t.Fatalf("reply facts changed: %+v", records[0])
 				}
-				if strings.Contains(content, "\nfinish:") {
-					t.Fatalf("empty finish section: %s", content)
+				if strings.Contains(content.Detail, "\nfinish:") {
+					t.Fatalf("empty finish section: %+v", content)
 				}
 				if diagnostic == "" {
-					if strings.Contains(content, "\n\n") || strings.HasSuffix(content, "\n") || strings.Contains(content, "\nreplace:") {
-						t.Fatalf("source introduced blank lines or empty sections: %s", content)
+					if strings.Contains(content.Detail, "\n\n") || strings.HasSuffix(content.Detail, "\n") || strings.Contains(content.Detail, "\nreplace:") {
+						t.Fatalf("source introduced blank lines or empty sections: %+v", content)
 					}
-				} else if !strings.Contains(content, diagnostic) {
-					t.Fatalf("diagnostic paragraph break was changed: %s", content)
+				} else if !strings.Contains(content.Detail, diagnostic) {
+					t.Fatalf("diagnostic paragraph break was changed: %+v", content)
 				}
 			})
 		}
@@ -290,7 +308,7 @@ func TestReplyCommitKeepsFailureBeforeLaterCancellation(t *testing.T) {
 			if len(records) != 2 || records[0].ResultStatus != events.ResultFailed || records[0].Level != slog.LevelError || records[1].ResultStatus != events.ResultCanceled || records[1].Level != slog.LevelInfo {
 				t.Fatalf("later cancellation hid an independent failure: %#v", records)
 			}
-			if !strings.Contains(records[1].Content, "operation=send_outputs\nlater outputs canceled") {
+			if content := readDeliveryLog(t, records[1]); content.Operation != "send_outputs" || content.Detail != "later outputs canceled" {
 				t.Fatalf("outputs mislabeled: %s", records[1].Content)
 			}
 		})

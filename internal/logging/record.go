@@ -15,7 +15,9 @@ const (
 	truncatedMarker     = "…"
 )
 
-func limitRunes(text string, limit int) string {
+// TruncateContent bounds log-only text to a positive Unicode character limit,
+// including the ellipsis. Callers supply limit > 0.
+func TruncateContent(text string, limit int) string {
 	if utf8.RuneCountInString(text) <= limit {
 		return text
 	}
@@ -31,7 +33,7 @@ func formatRecord(record events.LogRecord, at time.Time) ([]byte, error) {
 		if limit == 0 {
 			limit = defaultContentLimit
 		}
-		value = limitRunes(record.Content, limit)
+		value = TruncateContent(record.Content, limit)
 	case events.ContentJSON:
 		// EmitLog already validates JSON. Preserve the source's field order and
 		// values instead of decoding and rebuilding its body.

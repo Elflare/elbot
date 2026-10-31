@@ -109,13 +109,6 @@ func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Outpu
 		return delivery.Receipt{}, logResult, err
 	}
 	receipt, logResult, sendErr := send(resolved)
-	if logResult.Content != "" {
-		logResult.Content += "\n"
-	}
-	logResult.Content += fmt.Sprintf("platform_message_ids=%v", receipt.PlatformMessageIDs)
-	for _, sent := range receipt.SentMessages {
-		logResult.Content += fmt.Sprintf("\nsent_message: platform=%s scope_id=%s platform_message_id=%s output_indexes=%v", sent.Platform, sent.ScopeID, sent.PlatformMessageID, sent.OutputIndexes)
-	}
 	if err := a.cacheMediaReceipt(ctx, prepared, receipt); err != nil {
 
 		{

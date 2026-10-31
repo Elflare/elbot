@@ -38,8 +38,8 @@ func TestResidentMemoryToolsUseActorScope(t *testing.T) {
 	if !strings.Contains(result.Content, "用户喜欢被称为娅娅。") || !strings.Contains(result.Content, "用户喜欢短回复。") {
 		t.Fatalf("content = %q", result.Content)
 	}
-	if !strings.Contains(logContent, "section=all") || strings.Contains(logContent, "用户喜欢") || len([]rune(logContent)) > 1024 {
-		t.Fatalf("memory read should log scope and size: %q", logContent)
+	if !strings.HasPrefix(logContent, "section=all core_bytes=") || result.LogContent(err) != toolshare.TruncateLogContent(result.Content, 1024) {
+		t.Fatalf("memory read should log returned content: %q", logContent)
 	}
 
 	otherCtx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "qqonebot:2", Platform: "qqonebot", PlatformUserID: "2", Role: contextinfo.RoleUser})

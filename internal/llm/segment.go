@@ -61,6 +61,12 @@ func SegmentsTextOnly(segments []MessageSegment) string {
 
 // SegmentsContentText returns readable plain text for storage, logs and summary.
 func SegmentsContentText(segments []MessageSegment) string {
+	return strings.TrimSpace(SegmentsRawContentText(segments))
+}
+
+// SegmentsRawContentText renders readable text and media references without
+// trimming text whitespace. Logging callers retain the original indentation.
+func SegmentsRawContentText(segments []MessageSegment) string {
 	var text strings.Builder
 	imageIndex := 0
 	for _, segment := range segments {
@@ -82,7 +88,7 @@ func SegmentsContentText(segments []MessageSegment) string {
 			writeSegmentLabel(&text, "文件", source, segment.Name, segment.Text, segment.MIMEType)
 		}
 	}
-	return strings.TrimSpace(text.String())
+	return text.String()
 }
 
 // ImageReferenceText returns the text label paired with one image in an LLM request.

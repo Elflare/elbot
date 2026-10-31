@@ -10,6 +10,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/storage"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 )
@@ -46,25 +47,26 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (
 		Level:        slog.LevelInfo,
 		EventName:    "user_message",
 		Module:       "agent",
-		Type:         events.ContentText,
-		ContentLimit: 4096,
+		Type:         events.ContentJSON,
 		Identity:     events.LogIdentity{SessionID: &in.Session.ID},
 		ResultStatus: events.ResultUnspecified,
 	}
 	conversation, _ := contextinfo.ConversationFromContext(ctx)
+	content := map[string]any{"text": agentshare.TruncateLogContent(message.Content, 4096)}
 	if conversation.Source.Platform != "" {
-		record.Content += "platform=" + conversation.Source.Platform + "\n"
+		content["platform"] = conversation.Source.Platform
 	}
 	if conversation.Identity.PlatformUserID != "" {
-		record.Content += "platform_user_id=" + conversation.Identity.PlatformUserID + "\n"
+		content["platform_user_id"] = conversation.Identity.PlatformUserID
 	}
 	if conversation.Source.ScopeID != "" {
-		record.Content += "scope_id=" + conversation.Source.ScopeID + "\n"
+		content["scope_id"] = conversation.Source.ScopeID
 	}
 	if conversation.PlatformMessageID != "" {
-		record.Content += "platform_message_id=" + conversation.PlatformMessageID + "\n"
+		content["platform_message_id"] = conversation.PlatformMessageID
 	}
-	record.Content += "text=" + message.Content
+	data, _ := json.Marshal(content)
+	record.Content = string(data)
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	if facts.RunID != "" {
 		record.Identity.RunID = &facts.RunID

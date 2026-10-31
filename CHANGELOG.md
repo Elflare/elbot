@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 人工逐包、逐文件、逐函数、逐字段指导AI重构App到业务层，再次收拢边界、分清职责、精简代码。
 - 精简用户提示信息和工具schema信息
+- 优化log、audit显示
 - Hook 原生表情输出统一使用必填的 `name`，`text` 不再参与表情构造或降级；纯文本展示统一为 `[表情: 名称]`。
 - Hook 事件输出快照的投递信息从 `Meta` 改为 `Delivery` 对象，包含 `Timing`、`HookPoint`、`HookName`、`HookMode`；移除派生字段 `AltText`。
 - `/status` 的 active requests 不再重复显示 Session 标题；直接使用 `/requests` 时仍保留该信息。

@@ -15,7 +15,7 @@ type PreparedCall struct {
 	assessment RiskAssessment
 	// preview 保存确认展示内容；自动确认只跳过展示，不跳过准备。
 	preview string
-	// run 使用准备好的业务数据执行，返回业务结果、独立日志正文和原始错误。
+	// run 使用准备好的业务数据执行，返回业务结果、未经截断的独立摘要和原始错误。
 	run func(context.Context) (*Result, string, error)
 }
 
@@ -33,11 +33,10 @@ func (p *PreparedCall) RiskAssessment() RiskAssessment {
 	return assessment
 }
 
-// Call 只执行准备好的操作；调用身份、取消和授权由执行入口检查。
-// 工具回调自行概括日志正文；此处统一限制为 1024 rune，业务结果和错误保持完整。
+// Call executes the prepared operation and preserves its result, untruncated
+// independent summary and original error. Audit result previews are separate.
 func (p *PreparedCall) Call(ctx context.Context) (*Result, string, error) {
-	result, logContent, err := p.run(ctx)
-	return result, TruncateLogContent(logContent, 1024), err
+	return p.run(ctx)
 }
 
 func (p *PreparedCall) Matches(req CallRequest) bool {

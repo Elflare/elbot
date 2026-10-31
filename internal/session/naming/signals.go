@@ -4,10 +4,10 @@ package naming
 
 import (
 	"context"
+	"elbot/internal/logging"
+	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"elbot/internal/events"
@@ -144,9 +144,10 @@ type namingLogProjection struct{}
 
 func (n namingLogProjection) scheduled(ctx context.Context, event NamingScheduledEvent) error {
 	// 日志投递拥有自己的诊断，不把它变成 Naming 观察回调的失败。
+	content, _ := json.Marshal(map[string]any{"message_count": event.MessageCount, "trigger_step": event.TriggerStep})
 	_ = events.EmitLog(ctx, events.LogRecord{
 		Category: events.LogRuntime, Level: slog.LevelInfo, EventName: "session_naming_scheduled", Module: "session", Identity: event.Identity,
-		Content: fmt.Sprintf("session naming scheduled: message_count=%d trigger_step=%d", event.MessageCount, event.TriggerStep),
+		Type: events.ContentJSON, Content: string(content),
 	})
 	return nil
 }
@@ -158,34 +159,47 @@ func (n namingLogProjection) completed(ctx context.Context, event NamingComplete
 	} else if event.GenerationResultStatus == events.ResultFailed || event.TitleValid != nil && !*event.TitleValid {
 		level = slog.LevelWarn
 	}
-	var summary strings.Builder
-	fmt.Fprintf(&summary, "session naming completed: result=%s provider=%s model=%s", event.ResultStatus, event.Provider, event.Model)
-	if event.PreparationResultStatus != events.ResultUnspecified {
-		fmt.Fprintf(&summary, "\npreparation %s: %s; error=%v", event.PreparationOperation, event.PreparationResultStatus, event.PreparationError)
+	content := map[string]any{
+		"provider": event.Provider, "model": event.Model,
+		"failure_count": event.FailureCount, "max_failures": event.MaxFailures,
 	}
-	if event.GenerationResultStatus != events.ResultUnspecified {
-		fmt.Fprintf(&summary, "\ngeneration: %s; error=%v", event.GenerationResultStatus, event.GenerationError)
+	for _, stage := range []struct {
+		name   string
+		status events.ResultStatus
+		err    error
+		extra  map[string]any
+	}{
+		{"preparation", event.PreparationResultStatus, event.PreparationError, map[string]any{"operation": event.PreparationOperation}},
+		{"generation", event.GenerationResultStatus, event.GenerationError, nil},
+		{"persistence", event.PersistenceResultStatus, event.PersistenceError, nil},
+		{"fallback", event.FallbackResultStatus, event.FallbackError, map[string]any{"title": logging.TruncateContent(event.FallbackTitle, 4096)}},
+	} {
+		if stage.status == events.ResultUnspecified {
+			continue
+		}
+		detail := map[string]any{"result_status": stage.status.String()}
+		for key, value := range stage.extra {
+			detail[key] = value
+		}
+		if stage.err != nil {
+			detail["error"] = logging.TruncateContent(stage.err.Error(), 4096)
+		}
+		content[stage.name] = detail
 	}
 	if event.TitleValid != nil && !*event.TitleValid {
-		fmt.Fprintf(&summary, "\ninvalid title: %s", event.InvalidReason)
-	}
-	if event.PersistenceResultStatus != events.ResultUnspecified {
-		fmt.Fprintf(&summary, "\npersistence: %s; error=%v", event.PersistenceResultStatus, event.PersistenceError)
-	}
-	if event.FallbackResultStatus != events.ResultUnspecified {
-		fmt.Fprintf(&summary, "\nfallback: %s title=%q; error=%v", event.FallbackResultStatus, event.FallbackTitle, event.FallbackError)
+		content["invalid_title"] = logging.TruncateContent(event.InvalidReason, 4096)
 	}
 	if event.CancellationError != nil {
-		fmt.Fprintf(&summary, "\ncancellation: %v", event.CancellationError)
+		content["cancellation"] = logging.TruncateContent(event.CancellationError.Error(), 4096)
 	}
 	if event.Title != nil {
-		fmt.Fprintf(&summary, "\nactual title=%q", *event.Title)
+		content["title"] = logging.TruncateContent(*event.Title, 4096)
 	}
 	if event.MessageCount != nil {
-		fmt.Fprintf(&summary, "\nmessage_count=%d", *event.MessageCount)
+		content["message_count"] = *event.MessageCount
 	}
-	fmt.Fprintf(&summary, " failures=%d/%d", event.FailureCount, event.MaxFailures)
-	record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: "session_naming_completed", Module: "session", Content: summary.String(), ContentLimit: 4096, Identity: event.Identity, ResultStatus: event.ResultStatus}
+	data, _ := json.Marshal(content)
+	record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: "session_naming_completed", Module: "session", Type: events.ContentJSON, Content: string(data), Identity: event.Identity, ResultStatus: event.ResultStatus}
 	_ = events.EmitLog(ctx, record)
 	if event.GenerationResultStatus == events.ResultFailed {
 		record.Category = events.LogAudit

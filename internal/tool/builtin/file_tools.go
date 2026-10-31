@@ -225,17 +225,10 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 					fmt.Fprintf(&b, "%*d | %s\n", width, i, lines[i-1])
 				}
 				result := &toolshare.Result{Content: b.String(), Warnings: warnings}
-				return result, fmt.Sprintf("file=%s mode=%s lines=%d-%d/%d truncated=%t\n%s", file.Path, mode, start, end, len(lines), truncated, strings.Join(lines[start-1:end], "\n")), nil
+				return result, fmt.Sprintf("file=%s mode=%s lines=%d-%d/%d truncated=%t", file.Path, mode, start, end, len(lines), truncated), nil
 			}
 		}
-		logContent := ""
-		if result != nil {
-			logContent = result.Content
-		}
-		if err != nil {
-			logContent = err.Error() + "\n" + logContent
-		}
-		return result, logContent, err
+		return result, fmt.Sprintf("file=%s mode=%s", path, mode), err
 	}), nil
 }
 
@@ -520,7 +513,7 @@ func fileToolEditOptions() fileops.EditFileOptions {
 	}
 }
 
-func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) (_ *toolshare.Result, logContent string, _ error) {
+func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) (*toolshare.Result, string, error) {
 	result, resolved, err := prepared.Commit(ctx)
 	if err != nil {
 		return nil, err.Error(), err
@@ -537,8 +530,7 @@ func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) 
 	if lease, _ := t.Rollback.EditSession(ctx); lease != nil && !result.RollbackAvailable {
 		warnings = append(warnings, "文件已编辑，但撤销备份因会话失效或容量限制未保留。")
 	}
-	logContent = fmt.Sprintf("edited=%s created=%t dry_run=%t rollback_available=%t\ndiff:\n%s", result.Path, result.Created, result.DryRun, result.RollbackAvailable, result.Diff)
-	return &toolshare.Result{Content: content, Warnings: warnings}, logContent, nil
+	return &toolshare.Result{Content: content, Warnings: warnings}, fmt.Sprintf("edited=%s created=%t dry_run=%t rollback_available=%t", result.Path, result.Created, result.DryRun, result.RollbackAvailable), nil
 }
 
 func editServiceRequest(args editFileArgs) fileops.EditRequest {

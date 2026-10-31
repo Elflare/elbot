@@ -38,8 +38,8 @@ func FormatTokens(usage *llm.Usage) string {
 	}
 	if usage.CacheHitTokens != nil && *usage.CacheHitTokens >= 0 {
 		cache = fmt.Sprint(*usage.CacheHitTokens)
-		if usage.PromptTokens != nil && *usage.PromptTokens > 0 {
-			cache += fmt.Sprintf(" (%.1f%%)", float64(*usage.CacheHitTokens)/float64(*usage.PromptTokens)*100)
+		if percent := usage.CacheHitPercent(); percent != nil {
+			cache += fmt.Sprintf(" (%.1f%%)", *percent)
 		}
 	}
 	return fmt.Sprintf("tokens=%s · cache=%s", tokens, cache)

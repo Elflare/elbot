@@ -46,7 +46,7 @@ func TestReplyLogPreservesCanceledSendAndIndependentSaveFailure(t *testing.T) {
 	if len(records) != 1 || records[0].ResultStatus != globalevents.ResultCanceled || records[0].Level != slog.LevelInfo {
 		t.Fatalf("records = %#v", records)
 	}
-	for _, fact := range []string{"context canceled", "platform_message_id=sent"} {
+	for _, fact := range []string{"context canceled", `"platform_message_id":"sent"`} {
 		if !strings.Contains(records[0].Content, fact) {
 			t.Errorf("missing %q: %s", fact, records[0].Content)
 		}

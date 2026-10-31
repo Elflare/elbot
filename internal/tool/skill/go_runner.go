@@ -65,7 +65,7 @@ func (r GoRunner) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*
 	}), nil
 }
 
-func (r GoRunner) call(ctx context.Context, args goRunnerArgs, record record, run func(context.Context, string, *exec.Cmd, toolshare.MediaCall) (*toolshare.Result, error)) (result *toolshare.Result, logContent string, callErr error) {
+func (r GoRunner) call(ctx context.Context, args goRunnerArgs, record record, run func(context.Context, string, *exec.Cmd, toolshare.MediaCall) (*toolshare.Result, error)) (*toolshare.Result, string, error) {
 
 	dotEnv, err := config.LoadEnvFile(filepath.Join(record.Root, ".env"))
 	if err != nil {
@@ -90,14 +90,7 @@ func (r GoRunner) call(ctx context.Context, args goRunnerArgs, record record, ru
 	cmd.Stdin = bytes.NewReader(payload)
 	{
 		result, callErr := run(runCtx, "go skill", cmd, mediaCall)
-		logContent = ""
-		if result != nil {
-			logContent = result.Content
-		}
-		if callErr != nil {
-			logContent = callErr.Error() + "\n" + logContent
-		}
-		return result, logContent, callErr
+		return result, "", callErr
 	}
 }
 

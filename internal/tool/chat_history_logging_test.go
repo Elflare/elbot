@@ -33,7 +33,7 @@ func TestHistoryQueryErrorLogPreservesBusinessError(t *testing.T) {
 	repository := failingHistoryLogRepository{err: callErr}
 	for _, value := range []toolshare.Tool{builtin.NewSearchChatHistoryTool(newHistoryTestManager(repository), nil), builtin.NewGetChatHistoryAroundTool(newHistoryTestManager(repository), nil)} {
 		result, logContent, err := callTool(ctx, value, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"1"}`)})
-		if result != nil || err != callErr || logContent != toolshare.TruncateLogContent(callErr.Error(), 1024) || utf8.RuneCountInString(logContent) != 1024 {
+		if result != nil || err != callErr || logContent != callErr.Error() || result.LogContent(err) != toolshare.TruncateLogContent(callErr.Error(), 1024) || utf8.RuneCountInString(result.LogContent(err)) != 1024 {
 			t.Fatalf("%s: result=%+v log=%q err=%v", value.Name(), result, logContent, err)
 		}
 	}
@@ -61,13 +61,12 @@ func TestHistoryQueryLogIncludesResult(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			summary, body, ok := strings.Cut(logContent, "\ncontent:\n")
-			want := strings.ReplaceAll(result.Content, "...[单条消息过长，已截断]", "…")
-			if !ok || summary != tc.summary || logContent != toolshare.TruncateLogContent(tc.summary+"\ncontent:\n"+want, 1024) {
+			preview := result.LogContent(err)
+			if !strings.HasPrefix(logContent, tc.summary) || preview != toolshare.TruncateLogContent(result.Content, 1024) {
 				t.Fatalf("log=%q result=%q", logContent, result.Content)
 			}
-			if !strings.HasPrefix(tc.name, "empty") && (utf8.RuneCountInString(result.Content) <= 1024 || utf8.RuneCountInString(logContent) != 1024 || !utf8.ValidString(body)) {
-				t.Fatalf("result/log budget: %q / %q", result.Content, body)
+			if !strings.HasPrefix(tc.name, "empty") && (utf8.RuneCountInString(result.Content) <= 1024 || utf8.RuneCountInString(preview) != 1024 || !utf8.ValidString(preview)) {
+				t.Fatalf("result/log budget: %q / %q", result.Content, logContent)
 			}
 		})
 	}

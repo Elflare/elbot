@@ -227,7 +227,7 @@ func TestDiscoverToolContentAndActivationMetadata(t *testing.T) {
 	if got := strings.Join(metadataToolNames(result.Metadata[share.MetadataActivateTools]), ","); got != "wrapper" {
 		t.Fatalf("activation = %q", got)
 	}
-	if !strings.Contains(log, "found=3 errors=1") {
+	if log != "found=3 errors=1\nabsent: not found or not allowed\nappend\noverride\nskill" {
 		t.Fatalf("log = %q", log)
 	}
 	if _, _, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"absent"}`)}); err == nil {

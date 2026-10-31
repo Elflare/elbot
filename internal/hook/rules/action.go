@@ -231,6 +231,7 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 		ActorID    string  `json:"actor_id,omitempty"`
 		Arguments  string  `json:"arguments,omitempty"`
 		Point      string  `json:"point"`
+		Summary    *string `json:"summary,omitempty"` // Source-owned summary, preserved without truncation.
 		Result     *string `json:"result,omitempty"`
 		ElapsedMS  *int64  `json:"elapsed_ms,omitempty"`
 		Source     string  `json:"source"`
@@ -294,7 +295,9 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 	if logResult.ResultStatus == globalevents.ResultFailed {
 		record.Level = slog.LevelError
 	}
-	content.Result = &logResult.Content
+	content.Summary = &logResult.Content
+	body := toolResult.LogContent(err)
+	content.Result = &body
 	content.Arguments = ""
 	data, _ := json.Marshal(content)
 	record.Content = string(data)

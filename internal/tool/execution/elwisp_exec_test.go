@@ -91,7 +91,8 @@ func TestELwispLogKeepsErrorAheadOfLongPartialResult(t *testing.T) {
 	if result.Error == nil || result.Result == nil || result.Result.Content != body || llm.SegmentsContentText(result.Message.Segments) != body {
 		t.Fatalf("partial business result changed: %+v", result)
 	}
-	if !strings.HasPrefix(result.LogResult.Content, "ELwisp tool error: second action failed\n") || len([]rune(result.LogResult.Content)) != 1024 || !strings.HasSuffix(result.LogResult.Content, "…") {
+	preview := result.Result.LogContent(result.Error)
+	if result.LogResult.Content != "" || !strings.HasPrefix(preview, "ELwisp tool error: second action failed\n") || strings.Count(preview, "ELwisp tool error:") != 1 || len([]rune(preview)) != 1024 || !strings.HasSuffix(preview, "…") {
 		t.Fatalf("log=%q", result.LogResult.Content)
 	}
 }

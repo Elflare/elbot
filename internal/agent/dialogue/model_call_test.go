@@ -3,6 +3,7 @@ package dialogue
 import (
 	"context"
 	agentshare "elbot/internal/agent/share"
+	"encoding/json"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -13,19 +14,17 @@ import (
 )
 
 func TestAssistantMessageLogSummary(t *testing.T) {
-	const header = "provider=p\nmodel=m\nelapsed_ms=0\ntext="
-	const footer = "\ntool_call_count=0"
-	boundary := strings.Repeat("文", 512-utf8.RuneCountInString(header+footer))
+	boundary := strings.Repeat("文", 512)
 	for _, tc := range []struct {
-		name, text, raw, want string
+		name, text, raw, want, wantRaw string
 	}{
-		{"equal", "回复", "回复", header + "回复" + footer},
-		{"different", "回复", "原始回复", header + "回复\nraw_text=原始回复" + footer},
-		{"empty", "", "", header + footer},
-		{"boundary", boundary, boundary, header + boundary + footer},
-		{"over_boundary", boundary + "文", boundary + "文", header + boundary + "文\ntool_call_count…"},
-		{"unicode", strings.Repeat("文😀", 300), strings.Repeat("文😀", 300), string([]rune(header + strings.Repeat("文😀", 300))[:511]) + "…"},
-		{"late_difference", "回复", "回复" + strings.Repeat("文", 512) + "异", string([]rune(header + "回复\nraw_text=回复" + strings.Repeat("文", 512))[:511]) + "…"},
+		{"equal", "回复", "回复", "回复", ""},
+		{"different", "回复", "原始回复", "回复", "原始回复"},
+		{"empty", "", "", "", ""},
+		{"boundary", boundary, boundary, boundary, ""},
+		{"over_boundary", boundary + "文", boundary + "文", strings.Repeat("文", 511) + "…", ""},
+		{"unicode", strings.Repeat("文😀", 300), strings.Repeat("文😀", 300), string([]rune(strings.Repeat("文😀", 300))[:511]) + "…", ""},
+		{"late_difference", "回复", "回复" + strings.Repeat("文", 512) + "异", "回复", string([]rune("回复" + strings.Repeat("文", 512))[:511]) + "…"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var records []events.LogRecord
@@ -58,11 +57,25 @@ func TestAssistantMessageLogSummary(t *testing.T) {
 			if len(records) != 1 {
 				t.Fatalf("assistant records=%d", len(records))
 			}
-			if got := records[0].Content; got != tc.want || utf8.RuneCountInString(got) > 512 || !utf8.ValidString(got) {
-				t.Fatalf("source log=%q, want=%q", got, tc.want)
+			var content struct {
+				Provider      string  `json:"provider"`
+				Model         string  `json:"model"`
+				Text          string  `json:"text"`
+				RawText       *string `json:"raw_text"`
+				ElapsedMS     int64   `json:"elapsed_ms"`
+				ToolCallCount int     `json:"tool_call_count"`
 			}
-			if records[0].ContentLimit != 4096 {
-				t.Fatalf("center limit changed: %d", records[0].ContentLimit)
+			if err := json.Unmarshal([]byte(records[0].Content), &content); err != nil {
+				t.Fatal(err)
+			}
+			if content.Text != tc.want || utf8.RuneCountInString(content.Text) > 512 || !utf8.ValidString(content.Text) {
+				t.Fatalf("source text=%q, want=%q", content.Text, tc.want)
+			}
+			if tc.raw == tc.text && content.RawText != nil || tc.raw != tc.text && (content.RawText == nil || *content.RawText != tc.wantRaw) {
+				t.Fatalf("source raw text=%v, want=%q", content.RawText, tc.wantRaw)
+			}
+			if records[0].Type != events.ContentJSON || content.Provider != "p" || content.Model != "m" || content.ElapsedMS != 0 || content.ToolCallCount != 0 {
+				t.Fatalf("source metadata changed: %s", records[0].Content)
 			}
 			if completed.Text != tc.text || completed.SourceText != tc.raw || observation.Event().Text != tc.text || observation.Event().SourceText != tc.raw {
 				t.Fatal("logging changed business text")

@@ -2,9 +2,9 @@ package share
 
 import (
 	"context"
+	"elbot/internal/logging"
 	"elbot/internal/session"
 	"log/slog"
-	"unicode/utf8"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
@@ -32,10 +32,7 @@ func EmitAgentLog(ctx context.Context, execution contextinfo.Execution, record e
 
 // TruncateLogContent 只截断日志文本；limit 是包含省略号的正字符数上限。
 func TruncateLogContent(text string, limit int) string {
-	if utf8.RuneCountInString(text) <= limit {
-		return text
-	}
-	return string([]rune(text)[:limit-1]) + "…"
+	return logging.TruncateContent(text, limit)
 }
 
 // ReportFailure reports a terminal business failure at its owning entrypoint.

@@ -140,9 +140,6 @@ func TestMediaReceiptCallbackPreservesPartialSendAndReleasesSources(t *testing.T
 			if err != wantErr || !reflect.DeepEqual(receipt, wantReceipt) || logResult.ResultStatus != events.ResultFailed || calls != 1 {
 				t.Fatalf("send changed: %#v %v %d", receipt, err, calls)
 			}
-			if !strings.Contains(logResult.Content, "sent_message: platform=primary scope_id=group:9 platform_message_id=sent output_indexes=[0]") {
-				t.Fatalf("partial-delivery facts missing: %s", logResult.Content)
-			}
 			if len(saved) != 1 || saved[0].Platform != "primary" || saved[0].ScopeID != "group:9" || saved[0].MessageID != "sent" || saved[0].SegmentIndex != 0 || !media.ValidID(saved[0].MediaID) {
 				t.Fatalf("actual receipt association lost: %#v", saved)
 			}

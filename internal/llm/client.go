@@ -44,6 +44,16 @@ type Usage struct {
 	CacheHitTokens *int64
 }
 
+// CacheHitPercent returns cached/input*100 without rounding. Nil means either
+// count is unknown/invalid or input is zero; aggregate overflow is invalid too.
+func (u *Usage) CacheHitPercent() *float64 {
+	if u == nil || u.PromptTokens == nil || u.CacheHitTokens == nil || *u.PromptTokens <= 0 || *u.CacheHitTokens < 0 {
+		return nil
+	}
+	percent := 100 * float64(*u.CacheHitTokens) / float64(*u.PromptTokens)
+	return &percent
+}
+
 type ModelMetadata struct {
 	ID            string
 	ContextWindow int

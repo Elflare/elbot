@@ -88,6 +88,7 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 		"completion_tokens": nil,
 		"total_tokens":      nil,
 		"cache_hit_tokens":  nil,
+		"cache_hit_percent": o.event.Usage.CacheHitPercent(),
 	}
 	if o.event.VisionFallback {
 		content["vision_fallback"] = true
@@ -121,14 +122,16 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 	}
 	if o.event.OutputReady {
 		record := o.logRecord
-		record.Category, record.Type, record.EventName = events.LogRuntime, events.ContentText, "assistant_message"
-		record.ContentLimit = 4096
-		record.Content = fmt.Sprintf("provider=%s\nmodel=%s\nelapsed_ms=%d\ntext=%s", o.event.Provider, o.event.Model, o.event.ElapsedMS, o.event.Text)
-		if o.event.Text != o.event.SourceText {
-			record.Content += "\nraw_text=" + o.event.SourceText
+		record.Category, record.Type, record.EventName = events.LogRuntime, events.ContentJSON, "assistant_message"
+		content := map[string]any{
+			"provider": o.event.Provider, "model": o.event.Model, "elapsed_ms": o.event.ElapsedMS,
+			"text": agentshare.TruncateLogContent(o.event.Text, 512), "tool_call_count": o.event.ToolCallCount,
 		}
-		record.Content += fmt.Sprintf("\ntool_call_count=%d", o.event.ToolCallCount)
-		record.Content = agentshare.TruncateLogContent(record.Content, 512)
+		if o.event.Text != o.event.SourceText {
+			content["raw_text"] = agentshare.TruncateLogContent(o.event.SourceText, 512)
+		}
+		data, _ := json.Marshal(content)
+		record.Content = string(data)
 		_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	}
 	agentshare.Emit(ctx, o.processor.Completed, o.event)

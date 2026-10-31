@@ -3,6 +3,7 @@ package output
 import (
 	"context"
 	agentshare "elbot/internal/agent/share"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -31,27 +32,37 @@ func (o *OutputSender) SendOutputs(ctx context.Context, outputs []delivery.Outpu
 	if contextinfo.BackgroundContext(ctx) {
 		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "background output is silent"}, nil
 	}
-	_, logResult, err := o.dispatcher.SendTo(ctx, delivery.Target{}, outputs)
+	receipt, logResult, err := o.dispatcher.SendTo(ctx, delivery.Target{}, outputs)
 	if len(outputs) > 0 || err != nil {
-		o.observeDelivery(ctx, "send_outputs", logResult)
+		o.observeDelivery(ctx, "send_outputs", receipt, logResult)
 	}
 	return logResult, err
 }
 
-func (o *OutputSender) observeDelivery(ctx context.Context, operation string, logResult globalevents.LogResult) {
+func (o *OutputSender) observeDelivery(ctx context.Context, operation string, receipt delivery.Receipt, logResult globalevents.LogResult) {
 	// This source records only the send operation, never the overall tool result.
+	sentMessages := make([]map[string]any, 0, len(receipt.SentMessages))
+	for _, sent := range receipt.SentMessages {
+		sentMessages = append(sentMessages, map[string]any{
+			"platform": sent.Platform, "scope_id": sent.ScopeID,
+			"platform_message_id": sent.PlatformMessageID, "output_indexes": sent.OutputIndexes,
+		})
+	}
+	content := map[string]any{
+		"operation": operation, "platform_message_ids": receipt.PlatformMessageIDs, "sent_messages": sentMessages,
+	}
+	if logResult.Content != "" {
+		content["detail"] = agentshare.TruncateLogContent(logResult.Content, 4096)
+	}
+	data, _ := json.Marshal(content)
 	record := globalevents.LogRecord{
 		Category:     globalevents.LogRuntime,
 		Level:        slog.LevelDebug,
 		EventName:    "reply_delivered",
 		Module:       "agent",
-		Type:         globalevents.ContentText,
-		ContentLimit: 4096,
-		Content:      "operation=" + operation,
+		Type:         globalevents.ContentJSON,
+		Content:      string(data),
 		ResultStatus: logResult.ResultStatus,
-	}
-	if logResult.Content != "" {
-		record.Content += "\n" + logResult.Content
 	}
 	if logResult.ResultStatus == globalevents.ResultFailed {
 		record.Level = slog.LevelError
@@ -105,7 +116,7 @@ func (o *OutputSender) SendAssistant(ctx context.Context, text string, actions .
 	if strings.TrimSpace(text) == "" && agentshare.BufferAssistantOutput(ctx) {
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "assistant output is buffered and empty"}, nil
 	}
-	defer func() { o.observeDelivery(ctx, "send_assistant_message", logResult) }()
+	defer func() { o.observeDelivery(ctx, "send_assistant_message", receipt, logResult) }()
 	preparedText, logResult, err := o.hooks.AgentOutputPrepared(ctx, text)
 	if err != nil {
 		return delivery.Receipt{}, logResult, err
@@ -212,14 +223,7 @@ func (o *OutputSender) FinishIntermediate(ctx context.Context, streamCtx context
 			return err
 		}
 		receipt, logResult, err := stream.Finish(streamCtx)
-		if logResult.Content != "" {
-			logResult.Content += "\n"
-		}
-		logResult.Content += fmt.Sprintf("platform_message_ids=%v", receipt.PlatformMessageIDs)
-		for _, sent := range receipt.SentMessages {
-			logResult.Content += fmt.Sprintf("\nsent_message: platform=%s scope_id=%s platform_message_id=%s output_indexes=%v", sent.Platform, sent.ScopeID, sent.PlatformMessageID, sent.OutputIndexes)
-		}
-		o.observeDelivery(ctx, "send_assistant_message", logResult)
+		o.observeDelivery(ctx, "send_assistant_message", receipt, logResult)
 		return err
 	}
 	if strings.TrimSpace(text) == "" {
@@ -232,16 +236,7 @@ func (o *OutputSender) FinishIntermediate(ctx context.Context, streamCtx context
 }
 
 func (o *OutputSender) ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (receipt delivery.Receipt, logResult globalevents.LogResult, err error) {
-	defer func() {
-		if logResult.Content != "" {
-			logResult.Content += "\n"
-		}
-		logResult.Content += fmt.Sprintf("platform_message_ids=%v", receipt.PlatformMessageIDs)
-		for _, sent := range receipt.SentMessages {
-			logResult.Content += fmt.Sprintf("\nsent_message: platform=%s scope_id=%s platform_message_id=%s output_indexes=%v", sent.Platform, sent.ScopeID, sent.PlatformMessageID, sent.OutputIndexes)
-		}
-		o.observeDelivery(ctx, "send_assistant_message", logResult)
-	}()
+	defer func() { o.observeDelivery(ctx, "send_assistant_message", receipt, logResult) }()
 	prepared, logResult, err := o.hooks.AgentOutputPrepared(ctx, text)
 	if err != nil {
 		return delivery.Receipt{}, logResult, err

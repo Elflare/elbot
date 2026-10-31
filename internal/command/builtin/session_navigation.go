@@ -75,7 +75,7 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 		Level:        slog.LevelInfo,
 		EventName:    "session_resume",
 		Module:       "command",
-		Content:      "session resumed: title=" + session.Title,
+		Content:      "title: " + session.Title,
 		Identity:     globalevents.LogIdentity{SessionID: &session.ID},
 		ResultStatus: globalevents.ResultSucceeded,
 	}
@@ -190,7 +190,7 @@ func NewFork(deps Deps) command.Handler {
 			Level:        slog.LevelInfo,
 			EventName:    "session_fork",
 			Module:       "command",
-			Content:      fmt.Sprintf("session forked: parent_session_id=%s from_message_id=%s", session.ParentSessionID, session.ForkFromMessageID),
+			Content:      fmt.Sprintf("parent: %s · message: %s", session.ParentSessionID, session.ForkFromMessageID),
 			Identity:     globalevents.LogIdentity{SessionID: &session.ID},
 			ResultStatus: globalevents.ResultSucceeded,
 		})

@@ -147,7 +147,7 @@ func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (
 		}
 	}
 	preview := fmt.Sprintf("命令：%s\n工作目录：%s\n超时：%s", cmdText, workDir, timeout)
-	return toolshare.NewPreparedCall(req, assessment, preview, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+	return toolshare.NewPreparedCall(req, assessment, preview, func(ctx context.Context) (*toolshare.Result, string, error) {
 		runCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		environment := t.ProcessEnv
@@ -180,15 +180,8 @@ func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (
 			return nil, callErr.Error(), callErr
 		}
 		data := shellData{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: exitCode}
-		logContent = fmt.Sprintf("exit_code=%d", exitCode)
-		if stderr := strings.TrimRight(data.Stderr, "\r\n"); stderr != "" {
-			logContent += "\nstderr:\n" + stderr
-		}
-		if stdout := strings.TrimRight(data.Stdout, "\r\n"); stdout != "" {
-			logContent += "\nstdout:\n" + stdout
-		}
 		result := &toolshare.Result{Content: formatShellContent(data), Warnings: advice.warnings}
-		return result, logContent, nil
+		return result, fmt.Sprintf("exit_code=%d", exitCode), nil
 	}), nil
 }
 

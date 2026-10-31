@@ -4,9 +4,9 @@ package share
 import (
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
+	"elbot/internal/logging"
 	"encoding/json"
 	"strings"
-	"unicode/utf8"
 )
 
 // AbsolutePathWorkspaceWarning 由工具在前台使用绝对路径时附加到结果。
@@ -16,10 +16,7 @@ const AbsolutePathWorkspaceWarning = "使用了绝对路径，不会改变 works
 // limit, including the ellipsis. Callers choose the content and limit; business
 // results and execution arguments must remain unchanged.
 func TruncateLogContent(text string, limit int) string {
-	if utf8.RuneCountInString(text) <= limit {
-		return text
-	}
-	return string([]rune(text)[:limit-1]) + "…"
+	return logging.TruncateContent(text, limit)
 }
 
 type CallRequest struct {
@@ -46,6 +43,27 @@ type Result struct {
 	Data     json.RawMessage
 	Metadata map[string]any
 	Outputs  []delivery.Output
+}
+
+// LogContent returns a log-only preview of the actual result and error, bounded
+// to 1024 Unicode characters including the ellipsis. Nil means no result; tool
+// warnings and the independent summary are not part of this preview.
+func (r *Result) LogContent(err error) string {
+	body := ""
+	if r != nil {
+		body = r.Content
+		if len(r.Segments) > 0 {
+			body = llm.SegmentsRawContentText(r.Segments)
+		}
+	}
+	if err != nil {
+		if body != "" {
+			body = err.Error() + "\n" + body
+		} else {
+			body = err.Error()
+		}
+	}
+	return TruncateLogContent(body, 1024)
 }
 
 func (r *Result) LLMSegments() []llm.MessageSegment {

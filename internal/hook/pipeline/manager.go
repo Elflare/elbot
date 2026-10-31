@@ -4,6 +4,7 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -422,31 +423,36 @@ func (m *Manager) logHook(ctx context.Context, mode string, reg registration, be
 	if logResult.ResultStatus == globalevents.ResultCanceled {
 		name = "hook_canceled"
 	}
-	record := globalevents.LogRecord{
-		Category:     globalevents.LogRuntime,
-		Level:        level,
-		EventName:    name,
-		Module:       "hook",
-		ResultStatus: logResult.ResultStatus,
-		Type:         globalevents.ContentText,
-		ContentLimit: 4096,
-		Content:      fmt.Sprintf("%s: point=%s hook=%s priority=%d order=%d mode=%s", logResult.Content, before.Point, reg.name, reg.priority, reg.order, mode),
+	beforeText := eventText(before)
+	content := map[string]any{
+		"point": before.Point, "hook": reg.name, "priority": reg.priority, "order": reg.order, "mode": mode,
+		"detail":      share.TruncateLogContent(logResult.Content, 1024),
+		"before_text": share.TruncateLogContent(beforeText, 1024),
+		"after_text":  share.TruncateLogContent(eventText(after), 1024),
 	}
 	if reg.pluginID != "" {
-		record.Content += " plugin=" + reg.pluginID
+		content["plugin"] = reg.pluginID
 	}
 	if after.LLM.Provider != "" {
-		record.Content += " provider=" + after.LLM.Provider
+		content["provider"] = after.LLM.Provider
 	}
 	if after.LLM.Model != "" {
-		record.Content += " model=" + after.LLM.Model
+		content["model"] = after.LLM.Model
 	}
 	if after.Tool.Name != "" {
-		record.Content += " tool=" + after.Tool.Name
+		content["tool"] = after.Tool.Name
 	}
-	record.Content += fmt.Sprintf("\nbefore_text=%s\nafter_text=%s", eventText(before), eventText(after))
 	if after.LLM.SourceText != "" {
-		record.Content += "\nsource_text=" + after.LLM.SourceText
+		if after.LLM.SourceText == beforeText {
+			content["source_text"] = "同before_text"
+		} else {
+			content["source_text"] = share.TruncateLogContent(after.LLM.SourceText, 1024)
+		}
+	}
+	data, _ := json.Marshal(content)
+	record := globalevents.LogRecord{
+		Category: globalevents.LogRuntime, Level: level, EventName: name, Module: "hook",
+		ResultStatus: logResult.ResultStatus, Type: globalevents.ContentJSON, Content: string(data),
 	}
 	if before.Session.ID != "" {
 		record.Identity.SessionID = &before.Session.ID
@@ -474,7 +480,7 @@ func eventText(event share.Event) string {
 	if event.LLM.Text != "" {
 		return event.LLM.Text
 	}
-	text := llm.SegmentsContentText(event.Message.Segments)
+	text := llm.SegmentsRawContentText(event.Message.Segments)
 	switch {
 	case text != "":
 		return text

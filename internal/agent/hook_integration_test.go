@@ -194,7 +194,11 @@ data: [DONE]
 	defer logMu.Unlock()
 	logged := false
 	for _, record := range triggered {
-		if strings.Contains(record.Content, "hook=integration_suffix") && strings.Contains(record.Content, "after_text=answer [reloaded]") {
+		var content map[string]any
+		if err := json.Unmarshal([]byte(record.Content), &content); err != nil {
+			t.Fatal(err)
+		}
+		if content["hook"] == "integration_suffix" && content["after_text"] == "answer [reloaded]" {
 			logged = true
 		}
 	}

@@ -34,15 +34,16 @@ func TestShellLogHasNoBlankLineBeforeRisk(t *testing.T) {
 		t.Fatalf("business output changed: %q", result.Content)
 	}
 	body, err := json.Marshal(struct {
-		Tool   string `json:"tool"`
-		Result string `json:"result"`
-		Risk   string `json:"risk"`
-	}{"shell", logContent, "low"})
+		Tool    string `json:"tool"`
+		Summary string `json:"summary"`
+		Result  string `json:"result"`
+		Risk    string `json:"risk"`
+	}{"shell", logContent, result.LogContent(err), "low"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	content := formatLogContent(logging.LogEntry{Type: events.ContentJSON, Content: string(body)})
-	want := "tool: shell\nresult: \n  exit_code=0\n  stdout:\n  Current directory: /home/test\nrisk: low"
+	content := formatLogEntries(events.LogAudit, false)([]logging.LogEntry{{Type: events.ContentJSON, Content: string(body)}})
+	want := "audit events:\nunk-time [shell] · exit_code=0\n[Current directory: /home/test]\nrisk: low"
 	if content != want {
 		t.Fatalf("content=%q want=%q", content, want)
 	}
@@ -87,7 +88,8 @@ func TestDamagedLogsAreReportedWithoutMatchedEntries(t *testing.T) {
 
 func TestLogQueriesPutToolBelowHeader(t *testing.T) {
 	for _, event := range []string{"tool_call_completed", "hook_tool_call_completed"} {
-		for _, title := range []string{"audit events", "runtime logs", "elwisp logs"} {
+		for _, category := range []events.LogCategory{events.LogAudit, events.LogRuntime, events.LogElnis} {
+			title := map[events.LogCategory]string{events.LogAudit: "audit events", events.LogRuntime: "runtime logs", events.LogElnis: "elwisp logs"}[category]
 			entry := logging.LogEntry{
 				Level:     "INFO",
 				EventName: event,
@@ -95,13 +97,14 @@ func TestLogQueriesPutToolBelowHeader(t *testing.T) {
 				Content:   `{"tool":"shell","result":"done","actor_id":"user","nested":{"tool":"nested","actor_id":"inner"}}`,
 				Raw:       "ORIGINAL_PHYSICAL_RECORD",
 			}
-			content := formatLogEntries(title, false)([]logging.LogEntry{entry})
-			_, body, found := strings.Cut(content, formatLogEntryTime(entry)+"  INFO  "+event+"\n")
-			want := "tool: shell\nresult: done\nactor_id: user\nnested: \n  tool: nested\n  actor_id: inner"
-			if !found || strings.TrimSpace(body) != want || !strings.HasPrefix(content, title+":\n") {
-				t.Fatalf("unexpected field order for %s: %s", event, content)
+			content := formatLogEntries(category, false)([]logging.LogEntry{entry})
+			if !strings.Contains(content, "[done]\n") || !strings.Contains(content, "actor: user") || !strings.Contains(content, "nested: {actor_id: inner · tool: nested}") || !strings.HasPrefix(content, title+":\n") {
+				t.Fatalf("unexpected fields for %s: %s", event, content)
 			}
-			raw := formatLogEntries(title, true)([]logging.LogEntry{entry})
+			if category == events.LogAudit && !strings.Contains(content, "[shell]") || category != events.LogAudit && !strings.Contains(content, "tool: shell") {
+				t.Fatalf("tool missing for %s: %s", event, content)
+			}
+			raw := formatLogEntries(category, true)([]logging.LogEntry{entry})
 			_, rawBody, found := strings.Cut(raw, "\n")
 			if !found || strings.TrimSpace(rawBody) != entry.Raw || !strings.HasPrefix(raw, title+":\n") {
 				t.Fatalf("raw record changed: %s", raw)
@@ -109,24 +112,28 @@ func TestLogQueriesPutToolBelowHeader(t *testing.T) {
 		}
 	}
 	entry := logging.LogEntry{Type: events.ContentJSON, Content: `{"result":"done","actor_id":"user"}`}
-	if content := formatLogContent(entry); content != "result: done\nactor_id: user" {
+	if content := formatLogEntries(events.LogRuntime, false)([]logging.LogEntry{entry}); content != "runtime logs:\nunk-time\n[done]\nactor: user" {
 		t.Fatalf("non-tool field order changed: %s", content)
 	}
 }
 
 func TestLogQueryResultHeaders(t *testing.T) {
-	for _, title := range []string{"audit events", "runtime logs", "elwisp logs"} {
+	for _, category := range []events.LogCategory{events.LogAudit, events.LogRuntime, events.LogElnis} {
 		for _, tc := range []struct {
 			status events.ResultStatus
 			suffix string
 		}{
-			{events.ResultUnspecified, ""}, {events.ResultSucceeded, "  成功"},
-			{events.ResultFailed, "  失败"}, {events.ResultCanceled, "  已取消"},
-			{events.ResultRejected, "  已拒绝"}, {events.ResultSkipped, "  已跳过"},
+			{events.ResultUnspecified, ""}, {events.ResultSucceeded, " ✓"},
+			{events.ResultFailed, " ✗"}, {events.ResultCanceled, " 已取消"},
+			{events.ResultRejected, " 已拒绝"}, {events.ResultSkipped, " 已跳过"},
 		} {
 			entry := logging.LogEntry{Level: "INFO", EventName: "event", ResultStatus: tc.status, Content: "body"}
-			got := formatLogEntries(title, false)([]logging.LogEntry{entry})
-			want := formatLogEntryTime(entry) + "  INFO  event" + tc.suffix + "\nbody"
+			got := formatLogEntries(category, false)([]logging.LogEntry{entry})
+			subject := "[event]"
+			if category == events.LogRuntime {
+				subject = "event"
+			}
+			want := formatLogEntryTime(entry) + " " + subject + tc.suffix + "\n[body]\nINFO"
 			if !strings.HasSuffix(got, want) {
 				t.Fatalf("got=%q want suffix=%q", got, want)
 			}
@@ -140,7 +147,12 @@ func TestAuditPreservesSourceOrderThroughStorageAndFiltering(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = center.Close(context.Background()) })
-	body := `{"tool":"shell","run_source":"foreground","risk":"low","result":"first\nsecond","actor_id":"user","nested":{"z":9007199254740993,"a":[]}}`
+	summary := strings.Repeat("摘要", 600) + "SUMMARY_TAIL\nsecond summary line"
+	summaryJSON, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"tool":"shell","summary":` + string(summaryJSON) + `,"run_source":"foreground","risk":"low","result":"first\nsecond","actor_id":"user","nested":{"z":9007199254740993,"a":[]}}`
 	if err := events.EmitLog(t.Context(), events.LogRecord{Category: events.LogAudit, EventName: "tool_call_completed", Module: "toolrun", Type: events.ContentJSON, Content: body, ResultStatus: events.ResultSucceeded}); err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +172,7 @@ func TestAuditPreservesSourceOrderThroughStorageAndFiltering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "\ntool: shell\nrun_source: foreground\nrisk: low\nresult: \n  first\n  second\nactor_id: user\nnested: \n  z: 9007199254740993\n  a: []"
+	want := " [shell] ✓ · " + summary + "\n[first\nsecond]\ntool_call_completed · actor: user · run_source: foreground\nINFO · risk: low\nnested: {a: [] · z: 9007199254740993}"
 	if !strings.HasSuffix(result.Content, want) {
 		t.Fatalf("display order changed: %s", result.Content)
 	}

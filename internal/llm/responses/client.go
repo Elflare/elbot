@@ -222,13 +222,17 @@ func (c *Client) StreamPrepared(ctx context.Context, prepared PreparedRequest) (
 	}
 
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	content, _ := json.Marshal(map[string]any{
+		"endpoint": c.baseURL + "/responses", "model": prepared.model,
+		"input_items": prepared.inputs, "allowed_tools": len(prepared.allowedTools), "request_bytes": len(prepared.body),
+	})
 	record := globalevents.LogRecord{
 		Category:  globalevents.LogRuntime,
 		Level:     slog.LevelDebug,
 		EventName: "responses_request",
 		Module:    "model",
-		Content: fmt.Sprintf("responses request: endpoint=%s model=%s input_items=%d allowed_tools=%d request_bytes=%d",
-			c.baseURL+"/responses", prepared.model, prepared.inputs, len(prepared.allowedTools), len(prepared.body)),
+		Type:      globalevents.ContentJSON,
+		Content:   string(content),
 	}
 	if facts.SessionID != "" {
 		record.Identity.SessionID = &facts.SessionID

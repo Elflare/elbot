@@ -69,7 +69,7 @@ func (t commandTool) PrepareCall(ctx context.Context, req toolshare.CallRequest)
 	}), nil
 }
 
-func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []string, run func(context.Context, string, *exec.Cmd, toolshare.MediaCall) (*toolshare.Result, error)) (result *toolshare.Result, logContent string, callErr error) {
+func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []string, run func(context.Context, string, *exec.Cmd, toolshare.MediaCall) (*toolshare.Result, error)) (*toolshare.Result, string, error) {
 
 	dotEnv, err := config.LoadEnvFile(filepath.Join(t.record.Root, ".env"))
 	if err != nil {
@@ -102,14 +102,7 @@ func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []strin
 	cmd.Dir = t.record.Root
 	{
 		result, callErr := run(runCtx, "AgentSkill command", cmd, mediaCall)
-		logContent = ""
-		if result != nil {
-			logContent = result.Content
-		}
-		if callErr != nil {
-			logContent = callErr.Error() + "\n" + logContent
-		}
-		return result, logContent, callErr
+		return result, "", callErr
 	}
 }
 

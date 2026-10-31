@@ -69,8 +69,8 @@ func TestWebSearchToolSendsDefaults(t *testing.T) {
 	if !strings.Contains(result.Content, "answer") || !strings.Contains(result.Content, "https://example.com") {
 		t.Fatalf("content = %q", result.Content)
 	}
-	if !strings.Contains(logContent, "results=1") || !strings.Contains(logContent, "Title https://example.com") || strings.Contains(logContent, "summary") || strings.Contains(logContent, "answer") || len([]rune(logContent)) > 1024 {
-		t.Fatalf("search log should retain sources without body: %q", logContent)
+	if logContent != "results=1\nTitle https://example.com" || result.LogContent(err) != toolshare.TruncateLogContent(result.Content, 1024) {
+		t.Fatalf("search log should retain returned content: %q", logContent)
 	}
 }
 
@@ -116,7 +116,8 @@ func TestWebExtractToolSlicesAndCaches(t *testing.T) {
 	if !strings.Contains(first.Content, "Source: jina") || !strings.Contains(first.Content, "Title: Example") || !strings.Contains(first.Content, "Next offset: 8000") || !strings.Contains(first.Content, "Cached: false") {
 		t.Fatalf("first content = %q", first.Content)
 	}
-	if len([]rune(logContent)) != 1024 || !strings.HasSuffix(logContent, "…") || !strings.Contains(logContent, "range=0-8000/10000 cached=false") {
+	preview := first.LogContent(err)
+	if !strings.Contains(logContent, strings.Repeat("a", 2000)) || preview != toolshare.TruncateLogContent(first.Content, 1024) || len([]rune(preview)) != 1024 || !strings.HasSuffix(preview, "…") {
 		t.Fatalf("extract log=%q", logContent)
 	}
 

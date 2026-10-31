@@ -10,8 +10,8 @@ import (
 
 func TestFormatUsage(t *testing.T) {
 	total, cache := int64(18240), int64(12100)
-	got := FormatUsage(&llm.Usage{TotalTokens: &total, CacheHitTokens: &cache})
-	want := "tokens 18,240 · cache 12,100"
+	got := FormatUsage(&llm.Usage{PromptTokens: &total, TotalTokens: &total, CacheHitTokens: &cache})
+	want := "tokens 18,240 · cache 12,100 (66.3%)"
 	if got != want {
 		t.Fatalf("usage = %q, want %q", got, want)
 	}

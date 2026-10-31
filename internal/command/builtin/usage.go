@@ -12,6 +12,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
+	"elbot/internal/llm"
 	"elbot/internal/logging"
 )
 
@@ -402,8 +403,9 @@ func formatUsageBucket(sb *strings.Builder, label string, b *usageBucket) {
 		formatThousands(b.completionTokens),
 		formatThousands(b.totalTokens)))
 	sb.WriteString(fmt.Sprintf("  cache: %s", formatThousands(b.cacheHitTokens)))
-	if b.cacheHitTokens != nil && *b.cacheHitTokens >= 0 && b.promptTokens != nil && *b.promptTokens > 0 {
-		sb.WriteString(fmt.Sprintf(" (%.1f%%)", float64(*b.cacheHitTokens)/float64(*b.promptTokens)*100))
+	usage := llm.Usage{PromptTokens: b.promptTokens, CacheHitTokens: b.cacheHitTokens}
+	if percent := usage.CacheHitPercent(); percent != nil {
+		sb.WriteString(fmt.Sprintf(" (%.1f%%)", *percent))
 	}
 	sb.WriteString(fmt.Sprintf(" | elapsed: %s\n", formatElapsed(b.elapsedMs)))
 }

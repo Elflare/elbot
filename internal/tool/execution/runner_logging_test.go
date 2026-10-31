@@ -209,7 +209,7 @@ func TestRunnerWritesOnlyAuditWithBoundedArgumentPreview(t *testing.T) {
 		if err := json.Unmarshal(prepared["arguments"], &arguments); err != nil {
 			t.Fatal(err)
 		}
-		if arguments != toolshare.TruncateLogContent(string(args), 512) || len([]rune(arguments)) != 512 || !strings.HasSuffix(arguments, "…") || strings.Contains(arguments, "ARGUMENT_TAIL") || body != "independent log body" {
+		if arguments != toolshare.TruncateLogContent(string(args), 512) || len([]rune(arguments)) != 512 || !strings.HasSuffix(arguments, "…") || strings.Contains(arguments, "ARGUMENT_TAIL") || body != "partial-result" {
 			t.Fatalf("audit body=%q arguments=%q", body, arguments)
 		}
 	}
@@ -236,7 +236,7 @@ func TestRunnerRecordsInvocationBeforeCancellationStopsLaterOperations(t *testin
 	t.Cleanup(connection.Disconnect)
 	deps := &runnerTestDeps{}
 	result := manager.Run(ctx, deps, toolshare.RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "cancel-during-call", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "logging_tool", Arguments: "{}"}}})
-	if !result.Stopped || deps.completed != 0 || len(calls) != 1 || calls[0].ResultStatus != events.ResultCanceled || calls[0].Level != slog.LevelInfo || !strings.Contains(calls[0].Content, "independent log body") {
+	if !result.Stopped || deps.completed != 0 || len(calls) != 1 || calls[0].ResultStatus != events.ResultCanceled || calls[0].Level != slog.LevelInfo || !strings.Contains(calls[0].Content, "partial-result") || !strings.Contains(calls[0].Content, "context canceled") {
 		t.Fatalf("result=%#v completed=%d invocation logs=%#v", result, deps.completed, calls)
 	}
 }
@@ -426,12 +426,12 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 				if err := json.Unmarshal([]byte(calls[0].Content), &content); err != nil {
 					t.Fatal(err)
 				}
-				want := "independent log body"
+				want := "partial-result"
 				if tc.callErr != nil {
-					want += "\n" + tc.callErr.Error()
+					want = tc.callErr.Error() + "\n" + want
 				}
 				if content["result"] != want {
-					t.Fatalf("source log body lost or replaced by business content: %s", calls[0].Content)
+					t.Fatalf("actual result or error lost from audit: %s", calls[0].Content)
 				}
 			}
 			if tc.saveErr != nil {

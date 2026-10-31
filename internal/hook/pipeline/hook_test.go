@@ -353,22 +353,27 @@ func TestNotifyRunsAllHandlersAndJoinsErrors(t *testing.T) {
 }
 
 func TestManagerLogsNamedHook(t *testing.T) {
-	var buf bytes.Buffer
 	manager := newTestManager()
-
-	captureLogs(t, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	var record globalevents.LogRecord
+	manager.Log = func(_ context.Context, r globalevents.LogRecord) { record = r }
 	manager.Register(share.Registration{Point: share.PointLLMResponseReceived, Priority: 5, PluginID: "test.plugin", Name: "test.logger", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, globalevents.LogResult, error) {
 		event.LLM.Text = "after"
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 	})})
 
-	if _, _, err := manager.Run(context.Background(), share.Event{Point: share.PointLLMResponseReceived, LLM: share.LLMPayload{Text: "before", SourceText: "raw", Provider: "test-provider", Model: "test-model"}}, CallOptions{Woken: true}); err != nil {
+	if _, _, err := manager.Run(context.Background(), share.Event{Point: share.PointLLMResponseReceived, LLM: share.LLMPayload{Text: strings.Repeat("雪", 1025), SourceText: strings.Repeat("雪", 1025), Provider: "test-provider", Model: "test-model"}}, CallOptions{Woken: true}); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	logs := buf.String()
-	for _, want := range []string{"test source completed", "test.logger", "plugin=test.plugin", "provider=test-provider", "model=test-model", "before_text=before", "after_text=after", "source_text=raw"} {
-		if !strings.Contains(logs, want) {
-			t.Fatalf("logs missing %q:\n%s", want, logs)
+	var content map[string]any
+	if err := json.Unmarshal([]byte(record.Content), &content); err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]string{
+		"detail": "test source completed", "hook": "test.logger", "plugin": "test.plugin",
+		"provider": "test-provider", "model": "test-model", "before_text": strings.Repeat("雪", 1023) + "…", "after_text": "after", "source_text": "同before_text",
+	} {
+		if content[key] != want {
+			t.Fatalf("field %s=%v want=%s", key, content[key], want)
 		}
 	}
 }
@@ -397,14 +402,17 @@ func TestManagerOmitsInapplicableLogFields(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatal(records)
 	}
-	content := records[0].Content
-	for _, field := range []string{"plugin=", "provider=", "model=", "tool=", "source_text="} {
-		if strings.Contains(content, field) {
-			t.Fatalf("inapplicable field %s: %s", field, content)
+	var content map[string]any
+	if err := json.Unmarshal([]byte(records[0].Content), &content); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"plugin", "provider", "model", "tool", "source_text"} {
+		if _, ok := content[field]; ok {
+			t.Fatalf("inapplicable field %s: %s", field, records[0].Content)
 		}
 	}
-	if !strings.HasSuffix(content, "\nbefore_text=before\nafter_text=") {
-		t.Fatalf("text deletion lost: %q", content)
+	if content["before_text"] != "before" || content["after_text"] != "" {
+		t.Fatalf("text deletion lost: %s", records[0].Content)
 	}
 }
 

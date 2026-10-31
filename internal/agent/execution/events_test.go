@@ -77,7 +77,7 @@ func TestReplyFactsPreservePartialSuccessAndReceiptSnapshot(t *testing.T) {
 	f.platform.receipt.PlatformMessageIDs[0] = "changed"
 	result.Receipt.SentMessages[0].OutputIndexes[0] = 99
 	for _, record := range records {
-		if !strings.Contains(record.Content, "platform_message_id=sent") || !strings.Contains(record.Content, "output_indexes=[0]") {
+		if !strings.Contains(record.Content, `"platform_message_id":"sent"`) || !strings.Contains(record.Content, `"output_indexes":[0]`) {
 			t.Fatalf("receipt log snapshot mutated: %+v", record)
 		}
 	}

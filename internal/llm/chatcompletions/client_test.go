@@ -144,13 +144,13 @@ func TestChatStream_DebugLogIncludesLatestMessageJSON(t *testing.T) {
 	}
 
 	logText := logs.String()
-	if !strings.Contains(logText, "latest message:") || !strings.Contains(logText, "https://example.com/a.png") {
+	if !strings.Contains(logText, `latest_message\":\"user`) || !strings.Contains(logText, "https://example.com/a.png") {
 		t.Fatalf("debug log did not include latest message json: %s", logText)
 	}
 	if strings.Contains(logText, "旧消息") || strings.Contains(logText, "旧回答") {
 		t.Fatalf("debug log should not include full request history by default: %s", logText)
 	}
-	if !strings.Contains(logText, "message_count=3") || !strings.Contains(logText, "message_roles=user,assistant,user") || !strings.Contains(logText, "latest_message=user") || !strings.Contains(logText, "body_hash=") {
+	if !strings.Contains(logText, `message_count\":3`) || !strings.Contains(logText, `latest_message\":\"user`) {
 		t.Fatalf("debug log did not include request summary fields: %s", logText)
 	}
 
@@ -233,8 +233,8 @@ func TestChatStreamLogsFirstSystemMessageOncePerSession(t *testing.T) {
 	if strings.Count(logText, "event=system_message") != 1 {
 		t.Fatalf("first system message should be logged once, got logs:\n%s", logText)
 	}
-	if !strings.Contains(logText, "session_id=session-1") || !strings.Contains(logText, "system_hash=") {
-		t.Fatalf("debug log missing session/hash summary: %s", logText)
+	if !strings.Contains(logText, "session_id=session-1") {
+		t.Fatalf("debug log missing session identity: %s", logText)
 	}
 }
 

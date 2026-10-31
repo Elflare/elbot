@@ -77,7 +77,7 @@ func (a *Client) Stream(ctx context.Context, req Request) (<-chan Chunk, error) 
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
-	a.logChatRequest(ctx, req, bodyBytes)
+	a.logChatRequest(ctx, req)
 	responseCtx, cancel := context.WithCancel(ctx)
 	resp, err := a.transport.Do(responseCtx, func(ctx context.Context) (*http.Request, error) {
 		r, err := http.NewRequestWithContext(ctx, http.MethodPost, a.endpoint(), bytes.NewReader(bodyBytes))

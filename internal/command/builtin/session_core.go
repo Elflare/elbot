@@ -21,7 +21,7 @@ func NewNew(deps Deps) command.Handler {
 		if err := deps.Sessions.ResetCurrent(ctx, deps.Scope(ctx)); err != nil {
 			return nil, err
 		}
-		return &command.Result{Content: "OK"}, nil
+		return &command.Result{Content: "New Session"}, nil
 	})
 }
 

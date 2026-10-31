@@ -44,8 +44,9 @@ func TestSkillTruncationSeparatesModelAndLog(t *testing.T) {
 			} else if err != nil || result == nil || !strings.HasSuffix(result.Content, "\n... output truncated ...\n") {
 				t.Fatalf("%s lost model truncation notice: %v", caller.Name(), err)
 			}
-			if strings.Contains(logContent, "output truncated") || !strings.HasSuffix(logContent, "…") || utf8.RuneCountInString(logContent) != 1024 || !utf8.ValidString(logContent) {
-				t.Fatalf("%s log = %q", caller.Name(), logContent)
+			preview := result.LogContent(err)
+			if logContent != "" || strings.Contains(preview, "output truncated") || !strings.HasSuffix(preview, "…") || utf8.RuneCountInString(preview) != 1024 || !utf8.ValidString(preview) {
+				t.Fatalf("%s summary=%q preview=%q", caller.Name(), logContent, preview)
 			}
 		}
 	}

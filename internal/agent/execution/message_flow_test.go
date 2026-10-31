@@ -98,7 +98,7 @@ func TestDynamicProviderClientPublishesRequestLog(t *testing.T) {
 	}
 
 	logText := logs.String()
-	if !strings.Contains(logText, "openai chat request") || !strings.Contains(logText, "动态 provider 请求") {
+	if !strings.Contains(logText, "event=openai_chat_request") || !strings.Contains(logText, "动态 provider 请求") {
 		t.Fatalf("dynamic provider request was not logged: %s", logText)
 	}
 	if len(capturedBody) == 0 {

@@ -104,7 +104,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/command/parse.go`：命令解析结果与最长前缀匹配；Router 复用解析，`internal/platform/wiring.go` 绑定配置并向 QQ 适配器、引用恢复组件注入 `ParseCommand`，子包不传递前缀列表。
 - `internal/command/builtin/`、`internal/agent/input/command_executor.go`：分别负责命令实现与执行协调。
 - `internal/command/completion.go`：补全 token、候选与替换范围。
-- `internal/command/builtin/log.go`、`usage.go`：分别负责日志查询与用量统计。
+- `internal/command/builtin/log.go`：日志命令入口、补全与查询调用；`log_query.go` 解析参数并构造查询条件，`log_format.go` 统一 Audit、Runtime、Elwisp 的字段渲染、摘要头部、正文排版与 raw，`audit_format.go` 管审计主体、阶段状态、用量和专用字段；`usage.go` 管用量统计。
 - `internal/command/builtin/request.go`：请求命令与请求树展示；收集原始请求详情，由 `/requests` 和 `/status` 的展示出口选择性组装。
 - `internal/completion/`：结构化补全；`tool.go` 定义工具查询契约，`internal/agent/wiring.go` 装配查询上下文。
 - `internal/agent/input/file_rollback.go`、`internal/agent/share/file_rollback.go`、`internal/command/builtin/rollback.go`：分别负责撤销准入、绑定契约与撤销命令。

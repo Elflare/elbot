@@ -59,12 +59,7 @@ func prepareELwispTool(call llm.ToolCallRequest, resolved resolvedTool) (*toolsh
 }
 
 // executeELwispTool 只发送已准备的请求，结果状态与开始边界由统一执行入口负责。
-func executeELwispTool(ctx context.Context, req *http.Request, timeout time.Duration) (result *toolshare.Result, logContent string, callErr error) {
-	defer func() {
-		if callErr != nil {
-			logContent = callErr.Error() + "\n" + logContent
-		}
-	}()
+func executeELwispTool(ctx context.Context, req *http.Request, timeout time.Duration) (*toolshare.Result, string, error) {
 	toolCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	resp, err := http.DefaultClient.Do(req.Clone(toolCtx))
@@ -85,13 +80,14 @@ func executeELwispTool(ctx context.Context, req *http.Request, timeout time.Dura
 		content = firstELwispResult(parsed.Content, parsed.Text, parsed.Result, content)
 		if strings.TrimSpace(parsed.Error) != "" {
 			content = firstELwispResult(parsed.Content, parsed.Text, parsed.Result)
+			var result *toolshare.Result
 			if content != "" {
 				result = &toolshare.Result{Content: content}
 			}
-			return result, content, fmt.Errorf("ELwisp tool error: %s", strings.TrimSpace(parsed.Error))
+			return result, "", fmt.Errorf("ELwisp tool error: %s", strings.TrimSpace(parsed.Error))
 		}
 	}
-	return &toolshare.Result{Content: content}, content, nil
+	return &toolshare.Result{Content: content}, "", nil
 }
 
 func firstELwispResult(values ...string) string {

@@ -221,3 +221,7 @@ type Result struct {
 }
 
 func (r *Result) LLMSegments() []llm.MessageSegment { return toInternalResult(r).LLMSegments() }
+
+// LogContent returns the actual result/error preview for audit, capped at 1024
+// Unicode characters. The separately returned tool summary remains untruncated.
+func (r *Result) LogContent(err error) string { return toInternalResult(r).LogContent(err) }

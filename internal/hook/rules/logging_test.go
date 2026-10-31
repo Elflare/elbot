@@ -135,7 +135,7 @@ func TestRulesToolRecordsUseIndependentBodyUniqueIDAndActor(t *testing.T) {
 		if err := json.Unmarshal([]byte(record.Content), &content); err != nil {
 			t.Fatal(err)
 		}
-		if content["tool_call_id"] != invoked.ids[i] || invoked.ids[i] == "" || record.ResultStatus != events.ResultFailed || record.Level != slog.LevelError || content["result"] != "日志正文：9007199254740993" || strings.Contains(record.Content, "business segments") {
+		if content["tool_call_id"] != invoked.ids[i] || invoked.ids[i] == "" || record.ResultStatus != events.ResultFailed || record.Level != slog.LevelError || content["result"] != "business result\nbusiness segments" {
 			t.Fatal(record)
 		}
 		if i > 0 && invoked.ids[i] == invoked.ids[i-1] {

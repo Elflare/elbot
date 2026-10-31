@@ -55,11 +55,11 @@ func TestShellLogOutputSeparators(t *testing.T) {
 		t.Skip("uses POSIX shell commands")
 	}
 	for _, tc := range []struct{ name, stdout, stderr, want string }{
-		{"lf", "Current directory: /home/test\n", "", "exit_code=0\nstdout:\nCurrent directory: /home/test"},
-		{"crlf", "line\r\n", "", "exit_code=0\nstdout:\nline"},
-		{"multiple", "line\n\n", "", "exit_code=0\nstdout:\nline"},
-		{"only_newlines", "\r\n\n", "\n", "exit_code=0"},
-		{"both", "first\n\n  second\n", "warning\r\n", "exit_code=0\nstderr:\nwarning\nstdout:\nfirst\n\n  second"},
+		{"lf", "Current directory: /home/test\n", "", "Current directory: /home/test\n"},
+		{"crlf", "line\r\n", "", "line\r\n"},
+		{"multiple", "line\n\n", "", "line\n\n"},
+		{"only_newlines", "\r\n\n", "\n", "\r\n\n\nstderr:\n\n"},
+		{"both", "first\n\n  second\n", "warning\r\n", "first\n\n  second\n\nstderr:\nwarning\r\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -73,7 +73,7 @@ func TestShellLogOutputSeparators(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if logContent != tc.want {
+			if logContent != "exit_code=0" || result.LogContent(err) != tc.want {
 				t.Fatalf("log=%q want=%q", logContent, tc.want)
 			}
 			wantBusiness := tc.stdout
@@ -143,8 +143,9 @@ func TestShellToolOutputLimit(t *testing.T) {
 			if result.Content != want {
 				t.Fatalf("output mismatch: got %d bytes, want %d; truncations=%d", len(result.Content), len(want), strings.Count(result.Content, notice))
 			}
-			if !strings.HasPrefix(logContent, "exit_code=7\nstderr:\ne") || len([]rune(logContent)) != 1024 || !strings.HasSuffix(logContent, "…") {
-				t.Fatalf("large stdout hid diagnostics: %q", logContent)
+			preview := result.LogContent(err)
+			if logContent != "exit_code=7" || preview != toolshare.TruncateLogContent(result.Content, 1024) || len([]rune(preview)) != 1024 || !strings.HasSuffix(preview, "…") {
+				t.Fatalf("actual output preview changed: %q", logContent)
 			}
 		})
 	}

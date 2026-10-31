@@ -80,11 +80,12 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		}
 		logResult := result.LogResult
 		logResult.ResultStatus = result.ResultStatus
-		// Declaration order is display order; tools own their result summaries.
+		// Keep the source-owned summary separate from the bounded actual result.
 		content := struct {
 			Tool       string `json:"tool"`
 			ActorID    string `json:"actor_id"`
 			ElapsedMS  int64  `json:"elapsed_ms"`
+			Summary    string `json:"summary,omitempty"` // Source-owned summary, preserved without truncation.
 			Result     string `json:"result"`
 			Risk       string `json:"risk"`
 			RunSource  string `json:"run_source"`
@@ -94,7 +95,8 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			Tool:       toolshare.TruncateLogContent(call.Name, 2048),
 			ActorID:    toolshare.TruncateLogContent(actor.ID, 2048),
 			ElapsedMS:  time.Since(startedAt).Milliseconds(),
-			Result:     logResult.Content,
+			Summary:    logResult.Content,
+			Result:     result.Result.LogContent(result.Error),
 			Risk:       toolshare.TruncateLogContent(risk, 2048),
 			RunSource:  toolshare.TruncateLogContent(runSource, 2048),
 			Source:     toolshare.TruncateLogContent(string(resolved.Source), 2048),

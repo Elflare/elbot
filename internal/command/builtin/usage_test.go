@@ -68,17 +68,17 @@ func TestUsageSummarySkipsUnknown(t *testing.T) {
 		{
 			name:   "known then unknown",
 			bodies: []string{`{"prompt_tokens":1000,"completion_tokens":20,"total_tokens":1020,"cache_hit_tokens":500,"elapsed_ms":100}`, `{}`},
-			want:   "prompt: 1,000 | completion: 20 | total: 1,020\n  cache: 500 | elapsed: 0.1s",
+			want:   "prompt: 1,000 | completion: 20 | total: 1,020\n  cache: 500 (50.0%) | elapsed: 0.1s",
 		},
 		{
 			name:   "unknown then known",
 			bodies: []string{`{"prompt_tokens":null,"completion_tokens":null,"total_tokens":null,"cache_hit_tokens":null,"elapsed_ms":null}`, `{"prompt_tokens":1000,"completion_tokens":20,"total_tokens":1020,"cache_hit_tokens":500,"elapsed_ms":100}`},
-			want:   "prompt: 1,000 | completion: 20 | total: 1,020\n  cache: 500 | elapsed: 0.1s",
+			want:   "prompt: 1,000 | completion: 20 | total: 1,020\n  cache: 500 (50.0%) | elapsed: 0.1s",
 		},
 		{
 			name:   "independent fields without inferred total",
 			bodies: []string{`{"prompt_tokens":1000,"cache_hit_tokens":0}`, `{"completion_tokens":20,"elapsed_ms":100}`},
-			want:   "prompt: 1,000 | completion: 20 | total: unk\n  cache: 0 | elapsed: 0.1s",
+			want:   "prompt: 1,000 | completion: 20 | total: unk\n  cache: 0 (0.0%) | elapsed: 0.1s",
 		},
 		{
 			name:   "all unknown",
@@ -119,7 +119,7 @@ func TestUsageKnownTotalsAcrossGroupsAndCallRange(t *testing.T) {
 	}
 	for _, group := range []usageGroupKey{groupByModel, groupByDay, groupBySession} {
 		got := formatUsageSummary(entries, logging.LogQuery{}, group)
-		want := "[total] calls: 3\n  prompt: 300 | completion: 50 | total: 350\n  cache: 10 | elapsed: 0.3s\n"
+		want := "[total] calls: 3\n  prompt: 300 | completion: 50 | total: 350\n  cache: 10 (3.3%) | elapsed: 0.3s\n"
 		if !strings.HasSuffix(got, want) || strings.Count(got, "calls: 1") != 3 || strings.Count(got, "prompt: unk") != 1 {
 			t.Fatalf("group=%s: %s", group, got)
 		}
@@ -128,7 +128,7 @@ func TestUsageKnownTotalsAcrossGroupsAndCallRange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(result.Content, "[total] calls: 2\n  prompt: 200 | completion: 30 | total: 230\n  cache: 10 | elapsed: 0.2s\n") {
+	if !strings.HasSuffix(result.Content, "[total] calls: 2\n  prompt: 200 | completion: 30 | total: 230\n  cache: 10 (5.0%) | elapsed: 0.2s\n") {
 		t.Fatal(result.Content)
 	}
 }
@@ -152,13 +152,13 @@ func TestUsageDefaultQueryByModel(t *testing.T) {
 		"by=model",
 		"[deepseek/deepseek-v4] calls: 2",
 		"prompt: 1,800 | completion: 300 | total: 2,100",
-		"cache: 500 | elapsed: 2.3s",
+		"cache: 500 (27.8%) | elapsed: 2.3s",
 		"[openai/gpt-4o] calls: 1",
 		"prompt: 500 | completion: 50 | total: 550",
-		"cache: 0 | elapsed: 0.3s",
+		"cache: 0 (0.0%) | elapsed: 0.3s",
 		"[total] calls: 3",
 		"prompt: 2,300 | completion: 350 | total: 2,650",
-		"cache: 500 | elapsed: 2.6s",
+		"cache: 500 (21.7%) | elapsed: 2.6s",
 	} {
 		if !strings.Contains(result.Content, want) {
 			t.Fatalf("content missing %q:\n%s", want, result.Content)
@@ -184,13 +184,13 @@ func TestUsageQueryByDay(t *testing.T) {
 		"by=day",
 		"[2026-06-30] calls: 1",
 		"prompt: 1,000 | completion: 200 | total: 1,200",
-		"cache: 0 | elapsed: 1.0s",
+		"cache: 0 (0.0%) | elapsed: 1.0s",
 		"[2026-07-01] calls: 2",
 		"prompt: 800 | completion: 150 | total: 950",
-		"cache: 0 | elapsed: 0.8s",
+		"cache: 0 (0.0%) | elapsed: 0.8s",
 		"[total] calls: 3",
 		"prompt: 1,800 | completion: 350 | total: 2,150",
-		"cache: 0 | elapsed: 1.8s",
+		"cache: 0 (0.0%) | elapsed: 1.8s",
 	} {
 		if !strings.Contains(result.Content, want) {
 			t.Fatalf("content missing %q:\n%s", want, result.Content)
@@ -213,13 +213,13 @@ func TestUsageQueryBySession(t *testing.T) {
 		"by=session",
 		"[sess-1] calls: 2",
 		"prompt: 1,500 | completion: 300 | total: 1,800",
-		"cache: 100 | elapsed: 1.5s",
+		"cache: 100 (6.7%) | elapsed: 1.5s",
 		"[sess-2] calls: 1",
 		"prompt: 300 | completion: 50 | total: 350",
-		"cache: 0 | elapsed: 0.3s",
+		"cache: 0 (0.0%) | elapsed: 0.3s",
 		"[total] calls: 3",
 		"prompt: 1,800 | completion: 350 | total: 2,150",
-		"cache: 100 | elapsed: 1.8s",
+		"cache: 100 (5.6%) | elapsed: 1.8s",
 	} {
 		if !strings.Contains(result.Content, want) {
 			t.Fatalf("content missing %q:\n%s", want, result.Content)
@@ -445,7 +445,7 @@ func TestUsageCallRangesWithLogReader(t *testing.T) {
 				}
 				return
 			}
-			total := fmt.Sprintf("[total] calls: %d\n  prompt: %d | completion: %d | total: %d\n  cache: 0 | elapsed: %.1fs\n",
+			total := fmt.Sprintf("[total] calls: %d\n  prompt: %d | completion: %d | total: %d\n  cache: 0 (0.0%%) | elapsed: %.1fs\n",
 				tc.calls, tc.prompt, tc.prompt/10, tc.prompt+tc.prompt/10, float64(tc.calls)/10)
 			if !strings.Contains(result.Content, total) {
 				t.Fatalf("missing total %q in:\n%s", total, result.Content)

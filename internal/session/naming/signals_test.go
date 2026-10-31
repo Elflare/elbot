@@ -264,8 +264,9 @@ func TestNamingFailureContentSurvivesRuntimeLevel(t *testing.T) {
 					t.Fatal(err)
 				}
 				var entry struct {
-					Time                                               time.Time
-					Level, Content, SessionID, RequestID, ResultStatus string
+					Time                                      time.Time
+					Level, SessionID, RequestID, ResultStatus string
+					Content                                   json.RawMessage
 				}
 				var raw map[string]json.RawMessage
 				if err := json.Unmarshal(data, &raw); err != nil {
@@ -279,7 +280,7 @@ func TestNamingFailureContentSurvivesRuntimeLevel(t *testing.T) {
 				if entry.Level != "ERROR" || !entry.Time.After(at) || entry.SessionID != sessionID || entry.RequestID != requestID || entry.ResultStatus != "failed" {
 					t.Fatalf("lost facts: %+v", entry)
 				}
-				if !strings.Contains(entry.Content, "wrapped: "+(namingDiagnosticError{}).Error()) {
+				if !strings.Contains(string(entry.Content), "wrapped: "+(namingDiagnosticError{}).Error()) {
 					t.Fatalf("source diagnostic changed: %s", data)
 				}
 			}

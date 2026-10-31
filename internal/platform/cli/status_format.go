@@ -61,6 +61,9 @@ func FormatUsage(usage *llm.Usage) string {
 	}
 	if usage.CacheHitTokens != nil && *usage.CacheHitTokens >= 0 {
 		text += " · cache " + formatInt(*usage.CacheHitTokens)
+		if percent := usage.CacheHitPercent(); percent != nil {
+			text += fmt.Sprintf(" (%.1f%%)", *percent)
+		}
 	} else {
 		text += " · cache unk"
 	}

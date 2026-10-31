@@ -258,7 +258,7 @@ func TestRuleToolAuditOutcome(t *testing.T) {
 			if err := json.Unmarshal([]byte(records[0].Content), &fields); err != nil {
 				t.Fatal(err)
 			}
-			if fields["source"] != "rules" || records[0].ResultStatus.String() != tc.status || !strings.HasPrefix(fields["result"].(string), "called") || (tc.err != nil && !strings.Contains(fields["result"].(string), tc.err.Error())) {
+			if fields["source"] != "rules" || records[0].ResultStatus.String() != tc.status || !strings.HasSuffix(fields["result"].(string), "called") || (tc.err != nil && !strings.Contains(fields["result"].(string), tc.err.Error())) {
 				t.Fatal(fields)
 			}
 		})

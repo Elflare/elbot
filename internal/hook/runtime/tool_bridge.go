@@ -77,6 +77,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		OutputCount        *int              `json:"output_count,omitempty"`
 		Platform           string            `json:"platform,omitempty"`
 		PlatformMessageIDs *[]string         `json:"platform_message_ids,omitempty"`
+		Summary            *string           `json:"summary,omitempty"` // Source-owned summary, preserved without truncation.
 		Result             *string           `json:"result,omitempty"`
 		SentMessages       *[]map[string]any `json:"sent_messages,omitempty"`
 		Source             string            `json:"source"`
@@ -187,10 +188,11 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	}
 	started := time.Now()
 	logHook("hook_tool_call_prepared", globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded})
-	result, logContent, err := w.manager.opts.Tools.CallTool(callCtx, call)
+	result, summary, err := w.manager.opts.Tools.CallTool(callCtx, call)
 	elapsedMS := time.Since(started).Milliseconds()
 	content.ElapsedMS = &elapsedMS
-	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: logContent}
+	content.Summary = &summary
+	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: result.LogContent(err)}
 	if err != nil {
 		logResult.ResultStatus = globalevents.ResultFailed
 		if errors.Is(err, context.Canceled) {
@@ -208,6 +210,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		return map[string]any{"content": result.Content, "segments": result.Segments, "warnings": result.Warnings, "receipts": []delivery.Receipt{}}, nil
 	}
 	content.Arguments = nil
+	content.Summary = nil
 	content.ElapsedMS = nil
 	if !params.Target.Empty() {
 		for i := range result.Outputs {

@@ -130,10 +130,11 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 				if err := json.Unmarshal([]byte(record.Content), &content); err != nil {
 					t.Fatal(err)
 				}
-				var id, actor, body string
+				var id, actor, body, summary string
 				json.Unmarshal(content["tool_call_id"], &id)
 				json.Unmarshal(content["actor_id"], &actor)
 				json.Unmarshal(content["result"], &body)
+				json.Unmarshal(content["summary"], &summary)
 				if id != callID || id == "" || actor != "trigger-actor" || record.Identity.SessionID == nil || *record.Identity.SessionID != "trigger-session" || record.Identity.RootRequestID == nil || *record.Identity.RootRequestID != "root" {
 					t.Fatalf("identity=%+v content=%s", record.Identity, record.Content)
 				}
@@ -141,12 +142,12 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 					if content["elapsed_ms"] == nil || content["sent_messages"] != nil || content["output_count"] != nil {
 						t.Fatalf("call fields changed: %s", record.Content)
 					}
-					if record.ResultStatus != events.ResultSucceeded || record.Level != slog.LevelInfo || body != "独立日志正文" || strings.Contains(record.Content, "business segments") {
+					if record.ResultStatus != events.ResultSucceeded || record.Level != slog.LevelInfo || body != "business segments" || summary != "独立日志正文" {
 						t.Fatal(record)
 					}
 				} else if record.EventName != "hook_tool_log" || record.ResultStatus != tc.send.ResultStatus || body != tc.send.Content || !strings.Contains(record.Content, "delivered") {
 					t.Fatal(record)
-				} else if content["arguments"] != nil || content["elapsed_ms"] != nil || string(content["output_count"]) != "1" {
+				} else if content["arguments"] != nil || content["summary"] != nil || content["elapsed_ms"] != nil || string(content["output_count"]) != "1" {
 					t.Fatalf("send fields changed: %s", record.Content)
 				}
 			}
@@ -191,7 +192,7 @@ func TestPluginToolArgumentPreviewDoesNotChangeInvocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	json.Unmarshal(content["result"], &result)
-	if len([]rune(arguments)) != 512 || !strings.HasSuffix(arguments, "…") || result != "source summary" {
+	if len([]rune(arguments)) != 512 || !strings.HasSuffix(arguments, "…") || result != "business result" {
 		t.Fatalf("arguments=%q result=%q", arguments, result)
 	}
 }

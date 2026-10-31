@@ -56,7 +56,8 @@ func TestChatHistoryFullParameter(t *testing.T) {
 					} else if !strings.Contains(result.Content, "...[单条消息过长，已截断]") || strings.Contains(result.Content, "MESSAGE_TAIL") {
 						t.Fatalf("missing default truncation: %q", result.Content)
 					}
-					if strings.Contains(logContent, "已截断") || strings.Contains(logContent, "MESSAGE_TAIL") || !strings.Contains(logContent, "…") || utf8.RuneCountInString(logContent) > 1024 || !utf8.ValidString(logContent) {
+					preview := result.LogContent(err)
+					if !strings.Contains(logContent, "returned=1") || preview != toolshare.TruncateLogContent(result.Content, 1024) || utf8.RuneCountInString(preview) > 1024 || !utf8.ValidString(preview) {
 						t.Fatalf("invalid log preview: %q", logContent)
 					}
 				})
@@ -83,7 +84,8 @@ func TestChatHistoryFullStillBoundsTotalResult(t *testing.T) {
 			if len(rows) > 1 && !strings.Contains(result.Content, rows[0].Text) {
 				t.Fatal("complete first message was lost")
 			}
-			if strings.Contains(logContent, "已截断") || utf8.RuneCountInString(logContent) > 1024 {
+			preview := result.LogContent(err)
+			if !strings.Contains(logContent, "returned=") || preview != toolshare.TruncateLogContent(result.Content, 1024) || utf8.RuneCountInString(preview) > 1024 {
 				t.Fatalf("invalid log preview: %q", logContent)
 			}
 		}
@@ -110,7 +112,7 @@ func TestChatHistoryReplySeparatesLogPreview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "...[单条消息过长，已截断]") || strings.Contains(logContent, "已截断") || !strings.Contains(logContent, "…") || len(result.Outputs) != 1 {
+	if !strings.Contains(result.Content, "...[单条消息过长，已截断]") || result.LogContent(err) != toolshare.TruncateLogContent(result.Content, 1024) || !strings.HasPrefix(logContent, "已引用回复") || len(result.Outputs) != 1 {
 		t.Fatalf("result=%+v log=%q", result, logContent)
 	}
 }
