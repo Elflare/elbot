@@ -1,9 +1,9 @@
-import argparse
 import io
 import json
 import os
 import subprocess
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -11,267 +11,56 @@ from unittest import mock
 import translate_docs as td
 
 
-class TranslationCacheTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp_dir.name)
-        names = (
-            "ROOT",
-            "SOURCE_DIR",
-            "TARGET_DIR",
-            "README_SOURCE",
-            "README_TARGET",
-            "CHANGELOG_SOURCE",
-            "CHANGELOG_TARGET",
-            "CACHE_DIR",
-            "LEGACY_CACHE_PATH",
-        )
-        self.originals = {name: getattr(td, name) for name in names}
-        td.ROOT = self.root
-        td.SOURCE_DIR = self.root / "docs"
-        td.TARGET_DIR = self.root / "docs.en"
-        td.README_SOURCE = self.root / "README.zh-CN.md"
-        td.README_TARGET = self.root / "README.md"
-        td.CHANGELOG_SOURCE = self.root / "CHANGELOG.md"
-        td.CHANGELOG_TARGET = self.root / "CHANGELOG.en.md"
-        td.CACHE_DIR = self.root / ".translation-cache"
-        td.LEGACY_CACHE_PATH = td.TARGET_DIR / ".translation-cache.json"
-        td.SOURCE_DIR.mkdir(parents=True)
-        td.TARGET_DIR.mkdir(parents=True)
-
-    def tearDown(self) -> None:
-        for name, value in self.originals.items():
-            setattr(td, name, value)
-        self.temp_dir.cleanup()
-
-    def make_doc(self, rel: str, target_rel: str, content: str = "测试。\n") -> td.SourceDoc:
-        source = self.root / Path(*rel.split("/"))
-        target = self.root / Path(*target_rel.split("/"))
-        source.parent.mkdir(parents=True, exist_ok=True)
-        source.write_text(content, encoding="utf-8")
-        return td.SourceDoc(source, target)
-
-    def test_cache_path_mirrors_source_path(self) -> None:
-        path = td.cache_path_for_source("docs/hooks.md")
-        self.assertEqual(path, td.CACHE_DIR / "docs" / "hooks.md.json")
-        self.assertEqual(td.source_for_cache_path(path), "docs/hooks.md")
-
-    def test_migration_copies_entries_without_retranslation(self) -> None:
-        doc = self.make_doc("docs/hooks.md", "docs.en/hooks.md")
-        stale_target = self.root / "docs.en" / "old.md"
-        stale_target.write_text("old", encoding="utf-8")
-        entry = {
-            "source_hash": "segment-hash",
-            "source": "原文",
-            "translation": "translation",
-            "kind": "paragraph",
-            "source_file": doc.source_rel,
-            "updated_at": 1,
+class TranslationTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        paths = {
+            "ROOT": self.root, "SOURCE_DIR": self.root / "docs",
+            "TARGET_DIR": self.root / "docs.en",
+            "README_SOURCE": self.root / "README.zh-CN.md", "README_TARGET": self.root / "README.md",
+            "CHANGELOG_SOURCE": self.root / "CHANGELOG.md", "CHANGELOG_TARGET": self.root / "CHANGELOG.en.md",
+            "CACHE_DIR": self.root / ".translation-cache",
         }
-        legacy = {
-            "version": 1,
-            "files": {
-                doc.source_rel: {"source_hash": "document-hash", "updated_at": 2},
-                "docs/old.md": {"source_hash": "old", "updated_at": 1},
-            },
-            "segments": {f"{doc.source_rel}:paragraph:segment-hash": entry},
-        }
-        td.write_json(td.LEGACY_CACHE_PATH, legacy)
+        for name, value in paths.items():
+            patch = mock.patch.object(td, name, value)
+            patch.start()
+            self.addCleanup(patch.stop)
+        td.SOURCE_DIR.mkdir()
+        td.TARGET_DIR.mkdir()
+        self.client = mock.Mock()
+        self.client.translate_batch.side_effect = self.translations
+        patch = mock.patch.dict(os.environ, {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
+        patch.start()
+        self.addCleanup(patch.stop)
 
-        changed = td.migrate_legacy_cache([doc])
+    def doc(self, name="test", text="## 标题\n\n中文内容。\n"):
+        source = td.SOURCE_DIR / f"{name}.md"
+        source.write_text(text, encoding="utf-8")
+        return td.SourceDoc(source, td.TARGET_DIR / source.name)
 
-        cache_path = td.cache_path_for_source(doc.source_rel)
-        migrated = json.loads(cache_path.read_text(encoding="utf-8"))
-        self.assertEqual(migrated["source_hash"], "document-hash")
-        self.assertEqual(list(migrated["segments"].values()), [entry])
-        self.assertFalse(td.LEGACY_CACHE_PATH.exists())
-        self.assertFalse(stale_target.exists())
-        self.assertIn(cache_path, changed)
+    def translations(self, batch, label):
+        return {item.segment.key: td.mask_markdown(item.segment.text)[0].replace("中文", "English") for item in batch}
 
-    def test_stale_hash_is_selected_even_when_git_diff_is_empty(self) -> None:
-        doc = self.make_doc("docs/hooks.md", "docs.en/hooks.md")
-        doc.target.write_text("translated", encoding="utf-8")
-        cache = td.empty_doc_cache(doc)
-        cache["source_hash"] = "outdated"
-        args = argparse.Namespace(changed_only=True, base_ref="base", head_ref="head")
-        completed = subprocess.CompletedProcess([], 0, stdout="", stderr="")
-
-        with mock.patch.object(td.subprocess, "run", return_value=completed):
-            changed = td.changed_source_names(args, [doc], {doc.source_rel: cache})
-
-        self.assertEqual(changed, {doc.source_rel})
-
-    def test_successful_render_drops_obsolete_segments(self) -> None:
-        doc = self.make_doc("docs/hooks.md", "docs.en/hooks.md")
-        first = td.MarkdownRenderer(cache={"segments": {}}).render_file(doc.source)
-        td.translate_pending(
-            first.text,
-            first.pending,
-            first.cache_entries,
-            None,
-            argparse.Namespace(dry_run=True),
-            doc.source_rel,
-        )
-        cache = {"segments": dict(first.cache_entries)}
-        cache["segments"]["obsolete"] = {
-            "source_hash": "old",
-            "translation": "old",
-            "source_file": doc.source_rel,
-        }
-
-        second = td.MarkdownRenderer(cache=cache).render_file(doc.source)
-
-        self.assertEqual(second.pending, [])
-        self.assertNotIn("obsolete", second.cache_entries)
-        self.assertEqual(len(second.cache_entries), len(first.cache_entries))
-
-    def test_readme_feature_numbering_is_stable(self) -> None:
-        rendered = "## Features\n\n### 1. Lightweight\n\n### II. Extensible\n\n## Quick Start\n"
-        rewritten = td.rewrite_readme_feature_numbering(rendered)
-        self.assertIn("### I. Lightweight", rewritten)
-        self.assertIn("### II. Extensible", rewritten)
-
-    def test_partial_translation_continues_and_resumes(self) -> None:
-        for workers in (1, 2):
-            for commit_each in (False, True):
-                for existing_target in (False, True):
-                    with self.subTest(workers=workers, commit_each=commit_each, existing_target=existing_target):
-                        name = f"partial-{workers}-{commit_each}-{existing_target}"
-                        doc = self.make_doc(f"docs/{name}.md", f"docs.en/{name}.md", "成功。\n\n失败。\n\n后续。\n")
-                        later = self.make_doc(f"docs/{name}-later.md", f"docs.en/{name}-later.md", "其他。\n")
-                        if existing_target:
-                            doc.target.write_text("old translation", encoding="utf-8")
-                        argv = ["--batch-size", "1", "--batch-delay", "0", "--parallel-batches", str(workers)]
-                        if commit_each:
-                            argv.append("--commit-each")
-                        args = td.parse_args(argv)
-                        client = mock.Mock()
-
-                        def translate(batch, label):
-                            if batch[0].segment.text.strip() == "失败。":
-                                raise RuntimeError(f"{label} translation failed: exhausted retries")
-                            return {item.segment.key: "Translated: " + item.segment.text for item in batch}
-
-                        client.translate_batch.side_effect = translate
-                        with (
-                            mock.patch.object(td, "all_source_docs", return_value=[doc, later]),
-                            mock.patch.object(td, "make_client", return_value=client),
-                            mock.patch.object(td, "prune_deleted_sources", return_value=[]),
-                            mock.patch.object(td, "commit_translation") as commit,
-                            mock.patch.object(td, "log") as log,
-                        ):
-                            self.assertEqual(td.run(args), 0)
-
-                        self.assertEqual(client.translate_batch.call_count, 4)
-                        self.assertIn("Translated:", later.target.read_text(encoding="utf-8"))
-                        if existing_target:
-                            self.assertEqual(doc.target.read_text(encoding="utf-8"), "old translation")
-                        else:
-                            self.assertFalse(doc.target.exists())
-                        cache_path = td.cache_path_for_source(doc.source_rel)
-                        partial_cache = td.read_doc_cache(doc)
-                        self.assertEqual(partial_cache["source_hash"], "")
-                        self.assertEqual(len(partial_cache["segments"]), 2)
-                        self.assertNotIn("失败。", {entry["source"].strip() for entry in partial_cache["segments"].values()})
-                        self.assertTrue(any("warning:" in call.args[0] and doc.source_rel in call.args[0]
-                                            and "batch 2/3" in call.args[0] for call in log.call_args_list))
-                        self.assertTrue(any("incomplete=1" in call.args[0] for call in log.call_args_list))
-                        if commit_each:
-                            self.assertEqual(commit.call_count, 2)
-                            self.assertEqual(commit.call_args_list[0].args[0], [cache_path])
-                            self.assertEqual(commit.call_args_list[1].args[0], [later.target, td.cache_path_for_source(later.source_rel)])
-                        else:
-                            commit.assert_not_called()
-
-                        args.changed_only = True
-                        args.base_ref = "base"
-                        args.head_ref = "head"
-                        client.translate_batch.reset_mock()
-                        client.translate_batch.side_effect = lambda batch, label: {
-                            item.segment.key: "Recovered.\n" for item in batch
-                        }
-                        with (
-                            mock.patch.object(td, "all_source_docs", return_value=[doc, later]),
-                            mock.patch.object(td, "make_client", return_value=client),
-                            mock.patch.object(td, "prune_deleted_sources", return_value=[]),
-                            mock.patch.object(td, "commit_translation") as commit,
-                            mock.patch.object(td.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, stdout="")),
-                            mock.patch.object(td, "log"),
-                        ):
-                            self.assertEqual(td.run(args), 0)
-
-                        client.translate_batch.assert_called_once()
-                        self.assertEqual(client.translate_batch.call_args.args[0][0].segment.text.strip(), "失败。")
-                        completed_cache = td.read_doc_cache(doc)
-                        self.assertEqual(completed_cache["source_hash"], td.sha256_text(doc.source.read_text(encoding="utf-8")))
-                        self.assertEqual(len(completed_cache["segments"]), 3)
-                        for key, entry in partial_cache["segments"].items():
-                            self.assertEqual(completed_cache["segments"][key], entry)
-                        rendered = doc.target.read_text(encoding="utf-8")
-                        self.assertIn("Recovered.", rendered)
-                        self.assertIn("Translated: 成功。", rendered)
-                        self.assertIn("Translated: 后续。", rendered)
-                        self.assertNotIn("ELBOT_SEGMENT_", rendered)
-                        if commit_each:
-                            commit.assert_called_once_with([doc.target, cache_path], f"docs: auto-translate {doc.source_rel}")
-
-    def test_exhausted_retries_leave_document_pending(self) -> None:
-        doc = self.make_doc("docs/failure.md", "docs.en/failure.md")
-        client = td.TranslationClient("test-key", "https://example.invalid", "test-model", retries=1)
+    def run_script(self, *argv):
         with (
-            mock.patch.object(td, "make_client", return_value=client),
-            mock.patch.object(td.urllib.request, "urlopen", side_effect=TimeoutError("timed out")) as request,
-            mock.patch.object(td.time, "sleep"),
+            mock.patch.object(td, "make_client", return_value=self.client),
             mock.patch.object(td, "log"),
+            mock.patch.object(td.sys, "stderr", new_callable=io.StringIO) as errors,
         ):
-            self.assertEqual(td.main([]), 0)
-        self.assertEqual(request.call_count, 2)
-        self.assertFalse(doc.target.exists())
-        cache = td.read_doc_cache(doc)
-        self.assertEqual(cache["source_hash"], "")
-        self.assertEqual(cache["segments"], {})
+            result = td.main(["--batch-delay", "0", "--parallel-batches", "1", *argv])
+        self.errors = errors.getvalue()
+        return result
 
-    def test_non_translation_errors_remain_fatal(self) -> None:
-        self.make_doc("docs/fatal.md", "docs.en/fatal.md")
-        client = mock.Mock()
-        client.translate_batch.side_effect = lambda batch, label: {
-            item.segment.key: "Translated.\n" for item in batch
-        }
-        for operation in ("make_client", "write_text_file", "write_json", "add", "commit", "push"):
-            with self.subTest(operation=operation):
-                def git(args):
-                    if args[0] == operation:
-                        raise subprocess.CalledProcessError(1, ["git", *args])
-                    return subprocess.CompletedProcess(args, 0, stdout="")
-
-                with (
-                    mock.patch.object(td, "make_client", return_value=client) as make_client,
-                    mock.patch.object(td, "write_text_file") as write_text,
-                    mock.patch.object(td, "write_json") as write_json,
-                    mock.patch.object(td, "run_git", side_effect=git),
-                    mock.patch.object(td, "has_staged_changes", return_value=True),
-                    mock.patch.object(td, "log"),
-                    mock.patch.object(td.sys, "stderr"),
-                ):
-                    if operation == "make_client":
-                        make_client.side_effect = ValueError("missing configuration")
-                    elif operation == "write_text_file":
-                        write_text.side_effect = OSError("write failed")
-                    elif operation == "write_json":
-                        write_json.side_effect = OSError("cache write failed")
-                    self.assertEqual(td.main(["--commit-each"]), 1)
-
-    def git(self, cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    def git(self, cwd, *args):
         return subprocess.run(["git", *args], cwd=cwd, check=True, text=True, capture_output=True)
 
-    def make_git_remote(self) -> Path:
-        environment = mock.patch.dict(os.environ, {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull})
-        environment.start()
-        self.addCleanup(environment.stop)
-        remote_dir = tempfile.TemporaryDirectory()
-        self.addCleanup(remote_dir.cleanup)
-        remote = Path(remote_dir.name) / "remote.git"
-        peer = Path(remote_dir.name) / "peer"
+    def remote(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        remote = Path(temp.name) / "remote.git"
+        peer = Path(temp.name) / "peer"
         self.git(self.root, "init", "--bare", "--initial-branch=main", str(remote))
         self.git(self.root, "init", "--initial-branch=main")
         self.git(self.root, "config", "user.name", "Translation Test")
@@ -285,106 +74,372 @@ class TranslationCacheTest(unittest.TestCase):
         self.git(peer, "config", "user.email", "writer@example.invalid")
         return peer
 
-    def test_remote_advance_repushes_without_retranslation(self) -> None:
-        doc = self.make_doc("docs/push.md", "docs.en/push.md")
-        peer = self.make_git_remote()
-        (peer / "remote.txt").write_text("remote change\n", encoding="utf-8")
-        self.git(peer, "add", "remote.txt")
-        self.git(peer, "commit", "-m", "remote advance")
+    def push_peer(self, peer, message="remote advance"):
+        self.git(peer, "add", ".")
+        self.git(peer, "commit", "-m", message)
         self.git(peer, "push")
-        remote_head = self.git(peer, "rev-parse", "HEAD").stdout.strip()
-        client = mock.Mock()
-        client.translate_batch.side_effect = lambda batch, label: {
-            item.segment.key: "Translated.\n" for item in batch
-        }
-        with (
-            mock.patch.object(td, "make_client", return_value=client),
-            mock.patch.object(td, "run_git", wraps=td.run_git) as git,
-            mock.patch.object(td, "log"),
-            mock.patch.object(td.sys, "stderr", new_callable=io.StringIO) as errors,
-        ):
-            self.assertEqual(td.main(["--commit-each"]), 0)
 
-        client.translate_batch.assert_called_once()
-        commands = [call.args[0] for call in git.call_args_list]
-        self.assertEqual(commands.count(["push", "--porcelain"]), 2)
-        self.assertEqual(sum(command[0] == "commit" for command in commands), 1)
-        self.assertIn("[rejected] (fetch first)", errors.getvalue())
-        self.git(peer, "pull", "--ff-only")
-        self.git(peer, "merge-base", "--is-ancestor", remote_head, "HEAD")
-        self.assertIn("Translated.", (peer / doc.target_rel).read_text(encoding="utf-8"))
-        self.assertEqual((self.root / "remote.txt").read_text(encoding="utf-8"), "remote change\n")
-        self.assertEqual(self.git(peer, "rev-list", "--count", f"{remote_head}..HEAD").stdout.strip(), "1")
-        self.assertEqual(self.git(self.root, "status", "--porcelain").stdout, "")
-
-    def test_rebase_conflict_aborts_and_preserves_translation_commit(self) -> None:
-        doc = self.make_doc("docs/conflict.md", "docs.en/conflict.md")
-        doc.target.write_text("old translation\n", encoding="utf-8")
-        peer = self.make_git_remote()
-        (peer / doc.target_rel).write_text("remote translation\n", encoding="utf-8")
-        self.git(peer, "add", doc.target_rel)
-        self.git(peer, "commit", "-m", "remote translation")
-        self.git(peer, "push")
-        doc.target.write_text("local translation\n", encoding="utf-8")
-        with (
-            mock.patch.object(td, "run_git", wraps=td.run_git) as git,
-            mock.patch.object(td, "log"),
-            mock.patch.object(td.sys, "stderr", new_callable=io.StringIO) as errors,
-        ):
-            with self.assertRaises(subprocess.CalledProcessError) as failure:
-                td.commit_translation([doc.target], "local translation")
-
-        self.assertEqual(failure.exception.cmd, ["git", "rebase", "@{upstream}"])
-        self.assertIn(mock.call(["rebase", "--abort"]), git.call_args_list)
-        self.assertIn("CONFLICT", errors.getvalue())
-        self.assertEqual(doc.target.read_text(encoding="utf-8"), "local translation\n")
-        self.assertEqual(self.git(self.root, "log", "-1", "--format=%s").stdout.strip(), "local translation")
-        self.assertEqual(self.git(self.root, "status", "--porcelain").stdout, "")
-        self.assertFalse((self.root / ".git/rebase-merge").exists())
-        self.assertFalse((self.root / ".git/rebase-apply").exists())
-        self.assertEqual((peer / doc.target_rel).read_text(encoding="utf-8"), "remote translation\n")
-
-    def test_push_recovery_is_bounded_and_only_for_remote_advance(self) -> None:
-        cases = (
-            ("[rejected] (fetch first)", "", 3),
-            ("[rejected] (non-fast-forward)", "", 3),
-            ("[remote rejected] (protected branch hook declined)", "protected branch", 1),
-            ("", "Permission denied", 1),
-            ("", "Could not resolve host", 1),
+    def test_sections_are_lossless_and_keep_markdown_blocks(self):
+        text = (
+            "开头\n# 文档\n\n## 一级小节\n引言\n\n### 子节\n"
+            "连续的两句。另一句。\n换行仍在同一节。\n\n"
+            "#### 详细说明\n- 列表\n\n| 表头 | 值 |\n| --- | --- |\n| 中文 | 内容 |\n"
+            "````md\n### 代码里的标题\n```\n````\n"
+            "<!--\n### 注释里的标题\n-->\n### 下节\n结尾\n## 第二章\n说明\n"
         )
-        for reason, stderr, expected_pushes in cases:
-            with self.subTest(reason=reason, stderr=stderr):
-                def git(args):
-                    if args[0] == "push":
-                        raise subprocess.CalledProcessError(
-                            1, ["git", *args], output=f"!\trefs/heads/main:refs/heads/main\t{reason}\n", stderr=stderr,
-                        )
-                    return subprocess.CompletedProcess(args, 0, stdout="")
+        sections = td.split_sections(text)
+        self.assertEqual("".join(raw for raw, _ in sections), text)
+        self.assertEqual(len(sections), 6)
+        self.assertEqual(sections[3][1], "文档 > 一级小节")
+        self.assertIn("#### 详细说明", sections[3][0])
+        self.assertIn("### 代码里的标题", sections[3][0])
+        self.assertEqual(sections[-1][1], "文档")
+        self.assertEqual(td.split_sections("没有标题。\n\n完整文档。"), [("没有标题。\n\n完整文档。", "")])
 
-                with (
-                    mock.patch.object(td, "run_git", side_effect=git) as run_git,
-                    mock.patch.object(td, "has_staged_changes", return_value=True),
-                    mock.patch.object(td, "log"),
-                ):
-                    with self.assertRaises(subprocess.CalledProcessError):
-                        td.commit_translation([td.README_TARGET], "translation")
-                commands = [call.args[0] for call in run_git.call_args_list]
-                self.assertEqual(commands.count(["push", "--porcelain"]), expected_pushes)
-                self.assertEqual(commands.count(["fetch"]), expected_pushes - 1)
-                self.assertEqual(commands.count(["rebase", "@{upstream}"]), expected_pushes - 1)
-                self.assertEqual(sum(command[0] == "commit" for command in commands), 1)
+    def test_parent_context_does_not_include_sibling_headings(self):
+        sections = td.split_sections("# 文档\n## 甲\n### 相同\n内容\n## 乙\n### 相同\n内容\n")
+        self.assertEqual(sections[2][1], "文档 > 甲")
+        self.assertEqual(sections[4][1], "文档 > 乙")
+        a = td.Segment("docs/test.md", 2, "section", sections[2][0], sections[2][1])
+        b = td.Segment("docs/test.md", 4, "section", sections[4][0], sections[4][1])
+        self.assertNotEqual(a.key, b.key)
 
-    def test_run_git_reports_stdout_and_stderr_without_wrapping_error(self) -> None:
-        failure = subprocess.CalledProcessError(1, ["git", "push"], output="push rejected\n", stderr="reason\n")
+    def test_cache_reuses_sections_after_insert_and_drops_obsolete_entries(self):
+        doc = self.doc(text="## 第一节\n中文一。\n\n## 第二节\n中文二。\n")
+        self.assertEqual(self.run_script(), 0)
+        old = td.read_doc_cache(doc)
+        self.client.reset_mock()
+        doc.source.write_text("## 新节\n中文新增。\n\n" + doc.source.read_text(encoding="utf-8"), encoding="utf-8")
+        old["segments"]["obsolete"] = {"translation": "unused"}
+        td.write_json(td.cache_path_for_source(doc.source_rel), old)
+        self.assertEqual(self.run_script(), 0)
+        self.client.translate_batch.assert_called_once()
+        self.assertEqual(len(td.read_doc_cache(doc)["segments"]), 3)
+        self.assertNotIn("obsolete", td.read_doc_cache(doc)["segments"])
+        self.assertEqual(td.read_doc_cache(doc)["version"], 3)
+
+    def test_code_destinations_and_spacing_survive_section_translation(self):
+        text = (
+            "## 中文\n\n[中文链接](https://example.invalid/a) 和 `中文原样`。\n"
+            "```yaml\nvalue: '中文值 # 不是注释' # 中文注释\n````\n"
+            "```python\nprint('中文原样')  # 中文原样\n```\n\n"
+        )
+        doc = self.doc(text=text)
+        result = td.MarkdownRenderer({"segments": {}}).render_file(doc.source)
+        item = result.pending[0]
+        payload = td.TranslationClient.batch_payload([item])
+        self.assertEqual(payload["items"][0]["source_markdown"], text)
+        masked = payload["items"][0]["text"]
+        self.assertNotIn("中文值", masked)
+        self.assertNotIn("中文原样", masked)
+        self.assertIn("中文注释", masked)
+        response = json.dumps([{"key": item.segment.key, "translation": masked.replace("中文", "English")}])
+        translated = td.TranslationClient.parse_batch_response(response, [item])[item.segment.key]
+        restored = td.unmask_inline_code(translated, item.masks)
+        self.assertIn("value: '中文值 # 不是注释' # English注释", restored)
+        self.assertIn("print('中文原样')  # 中文原样", restored)
+        self.assertIn("[English链接](https://example.invalid/a)", restored)
+        self.assertTrue(restored.endswith("\n\n"))
+        broken = json.dumps([{"key": item.segment.key, "translation": masked.replace(next(iter(item.masks)), "")}])
+        with self.assertRaisesRegex(ValueError, "protected Markdown token"):
+            td.TranslationClient.parse_batch_response(broken, [item])
+
+    def test_snapshot_hash_is_not_replaced_by_a_later_read(self):
+        doc = self.doc()
+        rendered = td.MarkdownRenderer({}).render_file(doc.source)
+        doc.source.write_text("新的原文。", encoding="utf-8")
+        cache = td.make_doc_cache(doc, {}, {}, rendered.source_hash)
+        self.assertEqual(cache["source_hash"], rendered.source_hash)
+        self.assertNotEqual(cache["source_hash"], td.sha256_text(doc.source.read_text(encoding="utf-8")))
+
+    def test_invalid_protected_token_response_is_retried(self):
+        doc = self.doc(text="## 中文\n\n运行 `elbot`。\n")
+        item = td.MarkdownRenderer({}).render_file(doc.source).pending[0]
+        good = json.dumps([{"key": item.segment.key, "translation": td.mask_markdown(item.segment.text)[0]}])
+        bad = json.dumps([{"key": item.segment.key, "translation": "missing protected code"}])
+        responses = [json.dumps({"choices": [{"message": {"content": text}}]}).encode() for text in [bad, good]]
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.side_effect = responses
+        client = td.TranslationClient("key", "https://example.invalid", "model", retries=1)
         with (
-            mock.patch.object(td.subprocess, "run", side_effect=failure),
-            mock.patch.object(td.sys, "stderr", new_callable=io.StringIO) as errors,
+            mock.patch.object(td.urllib.request, "urlopen", return_value=response) as request,
+            mock.patch.object(td.time, "sleep"),
+            mock.patch.object(td, "log"),
         ):
-            with self.assertRaises(subprocess.CalledProcessError) as caught:
-                td.run_git(["push"])
-        self.assertIs(caught.exception, failure)
-        self.assertIn("push rejected", errors.getvalue())
-        self.assertIn("reason", errors.getvalue())
+            self.assertIn(item.segment.key, client.translate_batch([item]))
+        self.assertEqual(request.call_count, 2)
+
+    def test_default_is_one_section_and_two_concurrent_requests(self):
+        args = td.parse_args([])
+        self.assertEqual((args.batch_size, args.parallel_batches), (1, 2))
+        self.doc(text="## 一\n中文一。\n## 二\n中文二。\n")
+        barrier = threading.Barrier(2)
+
+        def translate(batch, label):
+            self.assertEqual(len(batch), 1)
+            barrier.wait(timeout=5)
+            return self.translations(batch, label)
+
+        self.client.translate_batch.side_effect = translate
+        self.assertEqual(self.run_script("--parallel-batches", "2"), 0)
+        self.assertEqual(self.client.translate_batch.call_count, 2)
+
+    def test_partial_sections_resume_without_repeating_successes(self):
+        doc = self.doc(text="## 成功\n中文成功。\n## 失败\n中文失败。\n## 后续\n中文后续。\n")
+        doc.target.write_text("old target", encoding="utf-8")
+
+        def translate(batch, label):
+            if "失败" in batch[0].segment.text:
+                raise RuntimeError("exhausted retries")
+            return self.translations(batch, label)
+
+        self.client.translate_batch.side_effect = translate
+        self.assertEqual(self.run_script(), 0)
+        cache = td.read_doc_cache(doc)
+        self.assertEqual(cache["source_hash"], "")
+        self.assertEqual(len(cache["segments"]), 2)
+        self.assertEqual(doc.target.read_text(), "old target")
+        self.client.reset_mock()
+        self.client.translate_batch.side_effect = self.translations
+        self.assertEqual(self.run_script(), 0)
+        self.client.translate_batch.assert_called_once()
+        self.assertEqual(td.read_doc_cache(doc)["source_hash"], td.sha256_text(doc.source.read_text()))
+        self.assertNotIn("ELBOT_SEGMENT_", doc.target.read_text())
+
+    def test_unrelated_push_during_translation_does_not_retranslate(self):
+        doc = self.doc()
+        peer = self.remote()
+
+        def translate(batch, label):
+            (peer / "remote.txt").write_text("remote\n")
+            self.push_peer(peer)
+            return self.translations(batch, label)
+
+        self.client.translate_batch.side_effect = translate
+        with mock.patch.object(td, "run_git", wraps=td.run_git) as git:
+            self.assertEqual(self.run_script("--commit-each"), 0, self.errors)
+        self.client.translate_batch.assert_called_once()
+        commands = [call.args[0] for call in git.call_args_list]
+        self.assertFalse(any(command[0] in {"rebase", "reset"} for command in commands))
+        self.assertEqual((self.root / "remote.txt").read_text(), "remote\n")
+        self.assertIn("English", doc.target.read_text())
+        self.assertEqual(self.git(self.root, "status", "--porcelain").stdout, "")
+
+    def test_source_change_retranslates_only_changed_sections(self):
+        old = "## 保留\n中文稳定。\n## 修改\n中文旧版。\n"
+        new = old.replace("旧版", "新版")
+        doc = self.doc(text=old)
+        peer = self.remote()
+        seen = []
+
+        def translate(batch, label):
+            seen.append(batch[0].segment.text)
+            if len(seen) == 1:
+                (peer / doc.source_rel).write_text(new, encoding="utf-8")
+                self.push_peer(peer)
+            return self.translations(batch, label)
+
+        self.client.translate_batch.side_effect = translate
+        self.assertEqual(self.run_script("--commit-each"), 0, self.errors)
+        self.assertEqual(len(seen), 3)
+        self.assertEqual(sum("稳定" in text for text in seen), 1)
+        self.assertNotIn("旧版", doc.target.read_text())
+        self.assertIn("新版", doc.target.read_text())
+        self.assertEqual(td.read_doc_cache(doc)["source_hash"], td.sha256_text(new))
+
+    def test_remote_cache_wins_and_completes_locally_failed_sections(self):
+        doc = self.doc(text="## 甲\n中文甲。\n## 乙\n中文乙。\n")
+        doc.target.write_text("old target")
+        peer = self.remote()
+        result = td.MarkdownRenderer({}).render_file(doc.source)
+        remote_entries = {item.segment.key: td.cache_entry(item, item.segment.text.replace("中文", "REMOTE")) for item in result.pending}
+        remote_cache = td.make_doc_cache(doc, {}, remote_entries, "")
+
+        def translate(batch, label):
+            if "乙" in batch[0].segment.text:
+                raise RuntimeError("failed")
+            cache_path = peer / td.cache_path_for_source(doc.source_rel).relative_to(self.root)
+            cache_path.parent.mkdir(parents=True)
+            cache_path.write_text(json.dumps(remote_cache, ensure_ascii=False), encoding="utf-8")
+            self.push_peer(peer)
+            return self.translations(batch, label)
+
+        self.client.translate_batch.side_effect = translate
+        self.assertEqual(self.run_script("--commit-each"), 0, self.errors)
+        self.assertEqual(self.client.translate_batch.call_count, 2)
+        self.assertIn("REMOTE甲", doc.target.read_text())
+        self.assertIn("REMOTE乙", doc.target.read_text())
+        self.assertNotIn("English", doc.target.read_text())
+
+    def test_push_window_reconciles_cache_conflict_without_retranslation(self):
+        doc = self.doc()
+        peer = self.remote()
+        original_git = td.run_git
+        pushes = 0
+
+        def git(args):
+            nonlocal pushes
+            if args[0] == "push":
+                pushes += 1
+                if pushes == 1:
+                    result = td.MarkdownRenderer({}).render_file(doc.source)
+                    entries = {item.segment.key: td.cache_entry(item, "## Remote\n\nREMOTE translation.\n") for item in result.pending}
+                    cache_path = peer / td.cache_path_for_source(doc.source_rel).relative_to(self.root)
+                    cache_path.parent.mkdir(parents=True)
+                    cache_path.write_text(json.dumps(td.make_doc_cache(doc, {}, entries, "")))
+                    self.push_peer(peer)
+            return original_git(args)
+
+        with mock.patch.object(td, "run_git", side_effect=git):
+            self.assertEqual(self.run_script("--commit-each"), 0, self.errors)
+        self.assertEqual(pushes, 2)
+        self.client.translate_batch.assert_called_once()
+        self.assertIn("REMOTE translation", doc.target.read_text())
+        self.assertEqual(self.git(self.root, "status", "--porcelain").stdout, "")
+
+    def test_dynamic_queue_revisits_changes_and_handles_additions_and_deletions(self):
+        a = self.doc("a", "## A\n中文旧版。\n")
+        b = self.doc("b", "## B\n中文删除。\n")
+        b.target.write_text("old B")
+        td.write_json(td.cache_path_for_source(b.source_rel), td.empty_doc_cache(b))
+        peer = self.remote()
+        seen = []
+
+        def translate(batch, label):
+            item = batch[0]
+            seen.append(item.segment.text)
+            if item.segment.source_file == b.source_rel:
+                self.git(peer, "pull", "--ff-only")
+                (peer / a.source_rel).write_text("## A\n中文新版。\n", encoding="utf-8")
+                (peer / "docs/c.md").write_text("## C\n中文新增。\n", encoding="utf-8")
+                (peer / b.source_rel).unlink()
+                self.push_peer(peer)
+            return self.translations(batch, label)
+
+        self.client.translate_batch.side_effect = translate
+        self.assertEqual(self.run_script("--commit-each"), 0, self.errors)
+        self.assertEqual(len(seen), 4)
+        self.assertIn("新版", a.target.read_text())
+        self.assertTrue((td.TARGET_DIR / "c.md").exists())
+        self.assertFalse(b.target.exists())
+        self.assertFalse(td.cache_path_for_source(b.source_rel).exists())
+
+    def test_source_change_in_push_window_rechecks_before_republishing(self):
+        doc = self.doc(text="## 内容\n中文旧版。\n")
+        peer = self.remote()
+        original_git = td.run_git
+        pushes = 0
+
+        def git(args):
+            nonlocal pushes
+            if args[0] == "push":
+                pushes += 1
+                if pushes == 1:
+                    (peer / doc.source_rel).write_text("## 内容\n中文新版。\n", encoding="utf-8")
+                    self.push_peer(peer)
+            return original_git(args)
+
+        with mock.patch.object(td, "run_git", side_effect=git):
+            self.assertEqual(self.run_script("--commit-each"), 0, self.errors)
+        self.assertEqual(pushes, 2)
+        self.assertEqual(self.client.translate_batch.call_count, 2)
+        self.assertNotIn("旧版", doc.target.read_text())
+        self.assertIn("新版", doc.target.read_text())
+        self.assertEqual(td.read_doc_cache(doc)["source_hash"], td.sha256_text(doc.source.read_text()))
+
+    def test_deleted_artifact_cleanup_retries_against_latest_remote(self):
+        doc = self.doc()
+        doc.target.write_text("old target")
+        td.write_json(td.cache_path_for_source(doc.source_rel), td.empty_doc_cache(doc))
+        doc.source.unlink()
+        peer = self.remote()
+        original_git = td.run_git
+        pushes = 0
+
+        def git(args):
+            nonlocal pushes
+            if args[0] == "push":
+                pushes += 1
+                if pushes == 1:
+                    (peer / "unrelated.txt").write_text("keep")
+                    self.push_peer(peer)
+            return original_git(args)
+
+        with mock.patch.object(td, "run_git", side_effect=git):
+            self.assertEqual(self.run_script("--commit-each"), 0, self.errors)
+        self.assertEqual(pushes, 2)
+        self.assertFalse(doc.target.exists())
+        self.assertFalse(td.cache_path_for_source(doc.source_rel).exists())
+        self.assertEqual((self.root / "unrelated.txt").read_text(), "keep")
+        self.client.translate_batch.assert_not_called()
+
+    def test_failed_version_is_only_attempted_once_in_a_publishing_run(self):
+        self.doc("a")
+        self.doc("b")
+        self.remote()
+        self.client.translate_batch.side_effect = RuntimeError("failed")
+        self.assertEqual(self.run_script("--commit-each"), 0, self.errors)
+        self.assertEqual(self.client.translate_batch.call_count, 2)
+        self.assertEqual(self.git(self.root, "status", "--porcelain").stdout, "")
+
+    def test_repeated_push_races_are_bounded_and_retain_last_commit(self):
+        self.doc()
+        peer = self.remote()
+        original_git = td.run_git
+        pushes = 0
+
+        def git(args):
+            nonlocal pushes
+            if args[0] == "push":
+                pushes += 1
+                (peer / f"remote-{pushes}.txt").write_text("remote\n")
+                self.push_peer(peer)
+            return original_git(args)
+
+        with mock.patch.object(td, "run_git", side_effect=git):
+            self.assertEqual(self.run_script("--commit-each"), 1)
+        self.assertEqual(pushes, 3)
+        self.assertIn("generated commit retained", self.errors)
+        self.client.translate_batch.assert_called_once()
+        self.assertIn("docs: auto-translate", self.git(self.root, "log", "-1", "--format=%s").stdout)
+
+    def test_permission_failure_is_not_retried_or_reset(self):
+        self.doc()
+        self.remote()
+        original_git = td.run_git
+
+        def git(args):
+            if args[0] == "push":
+                raise subprocess.CalledProcessError(1, ["git", *args], output="", stderr="Permission denied")
+            return original_git(args)
+
+        with mock.patch.object(td, "run_git", side_effect=git) as calls:
+            self.assertEqual(self.run_script("--commit-each"), 1)
+        commands = [call.args[0] for call in calls.call_args_list]
+        self.assertEqual(sum(command[0] == "push" for command in commands), 1)
+        self.assertFalse(any(command[0] == "reset" for command in commands))
+
+    def test_publishing_rejects_dirty_or_unpublished_user_work(self):
+        doc = self.doc()
+        self.remote()
+        doc.source.write_text("用户改动\n", encoding="utf-8")
+        self.assertEqual(self.run_script("--commit-each"), 1)
+        self.assertIn("clean dedicated worktree", self.errors)
+        self.assertEqual(doc.source.read_text(), "用户改动\n")
+        self.git(self.root, "add", ".")
+        self.git(self.root, "commit", "-m", "user unpublished")
+        self.assertEqual(self.run_script("--commit-each"), 1)
+        self.assertIn("without unpublished commits", self.errors)
+        self.client.translate_batch.assert_not_called()
+
+    def test_readme_numbering_and_stale_detection(self):
+        rendered = td.rewrite_readme_feature_numbering("## Features\n\n### 1. Small\n\n### II. Fast\n\n## Usage\n")
+        self.assertIn("### I. Small", rendered)
+        doc = self.doc()
+        args = td.parse_args(["--changed-only", "--base-ref", "base", "--head-ref", "head"])
+        completed = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        with mock.patch.object(td.subprocess, "run", return_value=completed):
+            self.assertEqual(td.changed_source_names(args, [doc], {doc.source_rel: td.empty_doc_cache(doc)}), {doc.source_rel})
 
 
 if __name__ == "__main__":

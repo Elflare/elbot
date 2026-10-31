@@ -1,737 +1,177 @@
 {
   "segments": {
-    "docs/frontend-api.md:heading:148d195e21b05db59551b5f85b09fed0c9b3b4c7562654815396d4f98af53328": {
-      "kind": "heading",
-      "source": "配置",
+    "docs/frontend-api.md:section:059e0a981780ab5f274244e6d97c382e86dfe3060d36a65ff818f0d5f8ba9e14": {
+      "kind": "section",
+      "source": "## 补全 Item 字段\n\n| 字段 | 类型 | 说明 |\n|------|------|------|\n| text | string | 插入的文本 |\n| label | string | 展示标签 |\n| description | string | 补充描述 |\n| kind | string | 候选类型，如 `command`、`tool`、`fork` |\n| replace_start | int | 替换起始字节偏移 |\n| replace_end | int | 替换结束字节偏移 |\n\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "148d195e21b05db59551b5f85b09fed0c9b3b4c7562654815396d4f98af53328",
-      "translation": "Configuration",
+      "source_hash": "72f28a619ff66ac642f9471c252fcd5f78709fe7ad81d0c7245c37838ed6838e",
+      "translation": "## Completion Item Fields\n\n| Field | Type | Description |\n|------|------|------|\n| text | string | Inserted text |\n| label | string | Display label |\n| description | string | Additional description |\n| kind | string | Candidate type, such as `command`, `tool`, `fork` |\n| replace_start | int | Replacement start byte offset |\n| replace_end | int | Replacement end byte offset |\n\n",
       "updated_at": 1782901460
     },
-    "docs/frontend-api.md:heading:27c0a7528c87b8c93b15c4bff246e4dbed5004a7c6918c7b789389eac217b2e3": {
-      "kind": "heading",
-      "source": "客户端 → 服务端",
+    "docs/frontend-api.md:section:2584d10016957b6f6c0e23f6ae7ffe431b9ca12058da0b2aaa88f90586822897": {
+      "kind": "section",
+      "source": "## 连接\n\n```\nws://<host>:<port>/cli/v1/ws\n```\n\n默认地址 `ws://127.0.0.1:32172/cli/v1/ws`。地址和端口在 `[platform.cli]` 配置中修改。\n\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "27c0a7528c87b8c93b15c4bff246e4dbed5004a7c6918c7b789389eac217b2e3",
-      "translation": "Client → Server",
+      "source_hash": "ed75297f66c263758e1280a7adb6cf5c5d3fd7c408e339dd666265f088972c7a",
+      "translation": "## Connection\n\n```\nws://<host>:<port>/cli/v1/ws\n```\n\nDefault address `ws://127.0.0.1:32172/cli/v1/ws`. The address and port can be modified in the `[platform.cli]` configuration.\n\n",
       "updated_at": 1782901460
     },
-    "docs/frontend-api.md:heading:286a35283ce34db5d31dd76c81686dc62ac1e85ccfcd63587f053c7740d6b6a5": {
-      "kind": "heading",
-      "source": "status — 运行状态",
+    "docs/frontend-api.md:section:261d89a52c774e500006873ce97fae46c26f521237f60ec064b61e5b6c885701": {
+      "kind": "section",
+      "source": "# 前端 API\n\nElBot 前后端分离，CLI 远程协议是基于 WebSocket 的 JSON 消息协议。任何能连 WebSocket 的客户端都可以作为 ElBot 前端——TUI、Web、移动端、甚至另一台机器上的脚本。\n\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "286a35283ce34db5d31dd76c81686dc62ac1e85ccfcd63587f053c7740d6b6a5",
-      "translation": "status — Runtime Status",
+      "source_hash": "3b5e37c1e8921c31ca3baf27164a1a4516e64f77a3697e0bb1bfb3464f292f79",
+      "translation": "# Frontend API\n\nElBot uses a decoupled frontend and backend; the CLI remote protocol is a JSON messaging protocol based on WebSocket. Any client capable of connecting to a WebSocket can serve as an ElBot frontend—TUI, Web, mobile, or even a script on another machine.\n\n",
       "updated_at": 1782901460
     },
-    "docs/frontend-api.md:heading:48bf8b3f9e208d68180b17b5033cf89a17367f9c52c8e0f2f288a104f828f7f7": {
-      "kind": "heading",
-      "source": "服务端 → 客户端",
+    "docs/frontend-api.md:section:2eb802947d7a0abe1993e9d2a0afc8a2ff0042b35c3bedbc7fd819334b6a04be": {
+      "kind": "section",
+      "source": "### reasoning — 推理过程\n\n```json\n{\"type\": \"reasoning\", \"text\": \"用户在问天气，我需要调用搜索工具...\"}\n```\n\n支持推理输出的模型在生成过程中推送的推理文本。前端可选择展示或隐藏。CLI 在首个有效增量前加 `[thinking] `，在调用正常结束、失败或取消时关闭已开始的展示，发送 `[/thinking]` 和换行；没有增量时不发送空标记。展示固定原连接，不转移到同一用户的其他连接。后台任务接管后只展示新产生的推理增量，不重放之前的内容。\n\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "48bf8b3f9e208d68180b17b5033cf89a17367f9c52c8e0f2f288a104f828f7f7",
-      "translation": "Server → Client",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:heading:4b603209e84c63e90eb1fda18e24eec76e451087a599a351f15a867bf133cbc9": {
-      "kind": "heading",
-      "source": "最小客户端示例",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "4b603209e84c63e90eb1fda18e24eec76e451087a599a351f15a867bf133cbc9",
-      "translation": "Minimal Client Example",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:heading:52c32fff48060e97057e1051108a188d732fcfc4da29157403436780befa4a8a": {
-      "kind": "heading",
-      "source": "stream_finish — 流式结束",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "52c32fff48060e97057e1051108a188d732fcfc4da29157403436780befa4a8a",
-      "translation": "stream_finish — Streaming Finish",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:heading:79a1de1a5a445e71f3aaeb78d20e16c55e65eeb5811e3efdb7e61c284bd133b2": {
-      "kind": "heading",
-      "source": "complete — 请求补全",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "79a1de1a5a445e71f3aaeb78d20e16c55e65eeb5811e3efdb7e61c284bd133b2",
-      "translation": "complete — Request Completion",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:heading:903e405ec8650e984445c08e93942ccb83739533440c9bbfe65a29e925b31a84": {
-      "kind": "heading",
-      "source": "stream_replace — 流式替换",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "903e405ec8650e984445c08e93942ccb83739533440c9bbfe65a29e925b31a84",
-      "translation": "stream_replace — Streaming Replace",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:heading:97cb510b34b44c5ac714f76fd264d7c1a57de8b2bee23d097462727374ccd273": {
-      "kind": "heading",
-      "source": "reasoning — 推理过程",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "97cb510b34b44c5ac714f76fd264d7c1a57de8b2bee23d097462727374ccd273",
-      "translation": "reasoning — Reasoning Process",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:heading:a1fd2e9fbd76069407610bdd6441f3b642c1e41172d979725f7f91463ab46dd5": {
-      "kind": "heading",
-      "source": "notice — 通知",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "a1fd2e9fbd76069407610bdd6441f3b642c1e41172d979725f7f91463ab46dd5",
-      "translation": "notice — Notification",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:heading:a5574109f0208e899feb6b620feb3f1f686aded4ec939631420afc1bec51c400": {
-      "kind": "heading",
-      "source": "连接",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "a5574109f0208e899feb6b620feb3f1f686aded4ec939631420afc1bec51c400",
-      "translation": "Connection",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:heading:a986963831ad0432b14dbad47a54a669f89916482ec8606f72c6a5921c0ddd52": {
-      "kind": "heading",
-      "source": "前端 API",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "a986963831ad0432b14dbad47a54a669f89916482ec8606f72c6a5921c0ddd52",
-      "translation": "Frontend API",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:heading:ac6d119956140c54e20a66bd82b53e5d0cc212fd3a9f68986b70256c61d6ea6a": {
-      "kind": "heading",
-      "source": "消息格式",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "ac6d119956140c54e20a66bd82b53e5d0cc212fd3a9f68986b70256c61d6ea6a",
-      "translation": "Message Format",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:heading:b77145aff13d8b4aa85bd3be113cf07c8e32b8dc824447a74062e16def69e5da": {
-      "kind": "heading",
-      "source": "典型交互流程",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "b77145aff13d8b4aa85bd3be113cf07c8e32b8dc824447a74062e16def69e5da",
-      "translation": "Typical Interaction Flow",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:heading:c01716de8b78abd6fa3616d33af25381e6a0a213404c1e7b66d69079545db21a": {
-      "kind": "heading",
-      "source": "error — 错误",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "c01716de8b78abd6fa3616d33af25381e6a0a213404c1e7b66d69079545db21a",
-      "translation": "error — Error",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:heading:d0c57e79bfcc26cfa0201c0c224f4ceb8dc2891a62779ba6f34012af115f6825": {
-      "kind": "heading",
-      "source": "鉴权",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "d0c57e79bfcc26cfa0201c0c224f4ceb8dc2891a62779ba6f34012af115f6825",
-      "translation": "Authentication",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:heading:d8f4d0f98943e6ab07065c0d01705967107e5a57ddb774962500d6273093aabd": {
-      "kind": "heading",
-      "source": "complete_result — 补全结果",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "d8f4d0f98943e6ab07065c0d01705967107e5a57ddb774962500d6273093aabd",
-      "translation": "complete_result — Completion Result",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:heading:e63381f002fd4911de8f94439b597143ea45bac727d396c8ffb3efb37df9ee0a": {
-      "kind": "heading",
-      "source": "stream_append — 流式追加",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "e63381f002fd4911de8f94439b597143ea45bac727d396c8ffb3efb37df9ee0a",
-      "translation": "stream_append — Stream Append",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:heading:ef7c3fa7edcd260729560e47b94a4dac970a5ee0ebef6ef7dd9108115790fe27": {
-      "kind": "heading",
-      "source": "补全 Item 字段",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "ef7c3fa7edcd260729560e47b94a4dac970a5ee0ebef6ef7dd9108115790fe27",
-      "translation": "Completion Item Fields",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:heading:f21728c98dd9b7c95a4d1d972d157573f40e32a7c080f06dfa0bd02c9a34a896": {
-      "kind": "heading",
-      "source": "chat — 正式回复",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "f21728c98dd9b7c95a4d1d972d157573f40e32a7c080f06dfa0bd02c9a34a896",
-      "translation": "chat — Formal Response",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:heading:f5e8870fddedbfa0ed07fad9a4243b65ee83ffeb2631195c50f56ff16bb0427e": {
-      "kind": "heading",
-      "source": "input — 发送消息",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "f5e8870fddedbfa0ed07fad9a4243b65ee83ffeb2631195c50f56ff16bb0427e",
-      "translation": "input — Send Message",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:list:3f9987fd6d5763471a809790928e57f06d01a80598abab313dad9434565dcb35": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ — 鉴权失败，连接关闭",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "3f9987fd6d5763471a809790928e57f06d01a80598abab313dad9434565dcb35",
-      "translation": "__ELBOT_CODE_0__ — Authentication failed, connection closed",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:list:b0c6a317c8bff1f97521ff2e8643e9417924fd3e72ec2525d37052533e8277e3": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ — 鉴权通过，可以开始交互",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "b0c6a317c8bff1f97521ff2e8643e9417924fd3e72ec2525d37052533e8277e3",
-      "translation": "__ELBOT_CODE_0__ — Authentication successful, interaction can begin",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:paragraph:0634a5458c60d686abca661ff896bdfa52925dfba0ddc4731f472479284a4d99": {
-      "kind": "paragraph",
-      "source": "状态更新会合并，应用整体关闭不保证向已关闭的前端补发终态。",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "0634a5458c60d686abca661ff896bdfa52925dfba0ddc4731f472479284a4d99",
-      "translation": "Status updates will be merged; if the application is closed entirely, there is no guarantee that the final state will be re-sent to the closed frontend.",
+      "source_hash": "6d05484d4b981fdb39ceaf3bcf4344376e626cd2376e62f9edc0a20a14cbc134",
+      "translation": "### reasoning — Reasoning Process\n\n```json\n{\"type\": \"reasoning\", \"text\": \"用户在问天气，我需要调用搜索工具...\"}\n```\n\nReasoning text pushed by models that support reasoning output during the generation process. The frontend can choose to display or hide it. The CLI adds `[thinking] ` before the first valid increment, closes the active display when the call ends normally, fails, or is cancelled, and sends `[/thinking]` followed by a newline; Empty markers are not sent when there are no increments. The display is fixed to the original connection and is not transferred to other connections of the same user. After a background task takes over, only newly generated reasoning increments are displayed; previous content is not replayed.\n\n",
       "updated_at": 1791708756
     },
-    "docs/frontend-api.md:paragraph:07b5913353f1cfc85c936e91f62ef2c8f31d27746f18fd6f2f65d549eb9ce9f0": {
-      "kind": "paragraph",
-      "source": "LLM 流式输出的一段增量文本。前端应追加到当前正在生成的消息末尾。\n",
+    "docs/frontend-api.md:section:456f522b6171879960bc52dca48426b2c764abb47335f50e4fe13aeff528fd88": {
+      "kind": "section",
+      "source": "## 消息格式\n\n所有消息均为 JSON，共享同一个结构：\n\n| 字段 | 类型 | 说明 |\n|------|------|------|\n| type | string | 消息类型，见下表 |\n| id | string | 消息 ID，用于补全请求/响应配对 |\n| client_id | string | 客户端标识 |\n| token | string | 鉴权 token（仅 hello） |\n| text | string | 文本内容 |\n| level | string | 通知等级（仅 notice） |\n| cursor | int | 光标位置（仅补全请求） |\n| items | array | 补全候选列表（仅补全响应） |\n| snapshot | object | 运行状态快照（仅 status） |\n\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "07b5913353f1cfc85c936e91f62ef2c8f31d27746f18fd6f2f65d549eb9ce9f0",
-      "translation": "An incremental piece of text streamed from the LLM. The frontend should append it to the end of the message currently being generated.\n",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:paragraph:08d5a3fcb505c98f34ecf262f0eb651b41628e3f9e32169f9165e4a3750863be": {
-      "kind": "paragraph",
-      "source": "将文本作为用户输入交给 Agent 处理。服务端不回复确认，处理结果通过 chat/stream 等消息异步返回。\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "08d5a3fcb505c98f34ecf262f0eb651b41628e3f9e32169f9165e4a3750863be",
-      "translation": "Pass text as user input to the Agent for processing. The server does not send a confirmation response; processing results are returned asynchronously via messages such as chat/stream.\n",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:paragraph:0bdc1a60c897acb886618f6c49aed63731d852925f2dca2d08709c28afbac594": {
-      "kind": "paragraph",
-      "source": "处理过程中发生的错误。\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "0bdc1a60c897acb886618f6c49aed63731d852925f2dca2d08709c28afbac594",
-      "translation": "An error that occurred during processing.\n",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:paragraph:2487c63c3d674be8845588bd86cccfda483671d574d5fa94675fc444cd357ec8": {
-      "kind": "paragraph",
-      "source": "排队中的工具预览和重试提示随请求取消；",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "2487c63c3d674be8845588bd86cccfda483671d574d5fa94675fc444cd357ec8",
-      "translation": "Queued tool previews and retry prompts are cancelled along with the request;",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:paragraph:24d1f187060d7bbb212d469eb0cea866a6834764a86defbd102d879c19acff91": {
-      "kind": "paragraph",
-      "source": "通知不承载文件、媒体或后台报告。\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "24d1f187060d7bbb212d469eb0cea866a6834764a86defbd102d879c19acff91",
-      "translation": "Notifications do not carry files, media, or background reports.\n",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:paragraph:2e286a691b516cf7a4f664ce6a819ae7ddece62d6dc8f2cb561ee3ab85d979c1": {
-      "kind": "paragraph",
-      "source": "在 __ELBOT_CODE_0__ 的 __ELBOT_CODE_1__ 中配置：\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "2e286a691b516cf7a4f664ce6a819ae7ddece62d6dc8f2cb561ee3ab85d979c1",
-      "translation": "Configure in __ELBOT_CODE_1__ of __ELBOT_CODE_0__:\n",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:paragraph:2e6f7167554cb7aaa4cc674faf0cce19e632a0c2de21a867b2b654f8ca156666": {
-      "kind": "paragraph",
-      "source": "请求取消后仍发布已提交的终态；",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "2e6f7167554cb7aaa4cc674faf0cce19e632a0c2de21a867b2b654f8ca156666",
-      "translation": "The submitted final state is still published after the request is cancelled;",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:paragraph:2fc0902aa8673a668728cfd1db0c298a7d033d44a676a2e16043765275aeb295": {
-      "kind": "paragraph",
-      "source": "Token 在 __ELBOT_CODE_0__ 中按 client_id 映射到环境变量名，服务端从对应环境变量读取实际值。\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "2fc0902aa8673a668728cfd1db0c298a7d033d44a676a2e16043765275aeb295",
-      "translation": "Tokens are mapped to environment variable names by client_id in __ELBOT_CODE_0__, and the server reads the actual values from the corresponding environment variables.\n",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:paragraph:39185ec50341c0bcbb0365dbfdf63da5df5965e7d5c9ff22409ccb0e5244e8df": {
-      "kind": "paragraph",
-      "source": "纯文本通知，包括命令返回结果，以及重试、视觉回退、Hook 失败和配置告警等运行提示。",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "39185ec50341c0bcbb0365dbfdf63da5df5965e7d5c9ff22409ccb0e5244e8df",
-      "translation": "Plain text notifications, including command return results, as well as runtime prompts such as retries, visual fallbacks, Hook failures, and configuration warnings.",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:paragraph:3dca443f29bdee748af053d019fd57f759fb7b0401673261d850673661493415": {
-      "kind": "paragraph",
-      "source": "服务端校验 token 后回复：\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "3dca443f29bdee748af053d019fd57f759fb7b0401673261d850673661493415",
-      "translation": "The server will respond after validating the token:\n",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:paragraph:4e842da1ad9d6f0bbe875b1adb0c6fad1a7b86929891dd28bb6798bc67d0c36e": {
-      "kind": "paragraph",
-      "source": "ElBot 前后端分离，CLI 远程协议是基于 WebSocket 的 JSON 消息协议。",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "4e842da1ad9d6f0bbe875b1adb0c6fad1a7b86929891dd28bb6798bc67d0c36e",
-      "translation": "ElBot uses a decoupled frontend and backend; the CLI remote protocol is a JSON messaging protocol based on WebSocket.",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:paragraph:572fffec4f858bed148a3b3fdb6727a83ed9d23a61455b02061d2325f8b2bd00": {
-      "kind": "paragraph",
-      "source": "原远程连接的回复通知不会迁移到同一用户的新连接。",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "572fffec4f858bed148a3b3fdb6727a83ed9d23a61455b02061d2325f8b2bd00",
-      "translation": "Reply notifications from the original remote connection will not be migrated to a new connection for the same user.",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:paragraph:5886e14d9db0a91670b6053cde100bbfd831441478d1711cec40554004c0de6c": {
-      "kind": "paragraph",
-      "source": "前端可选择展示或隐藏。",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "5886e14d9db0a91670b6053cde100bbfd831441478d1711cec40554004c0de6c",
-      "translation": "The frontend can choose to display or hide it.",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:paragraph:5a6db705fd1ed0883cbccd006faa75c3bb039679fcf08f1c145582eba34308ee": {
-      "kind": "paragraph",
-      "source": "补全候选列表，__ELBOT_CODE_0__ 对应请求时的 __ELBOT_CODE_1__。__ELBOT_CODE_2__/__ELBOT_CODE_3__ 指示应替换原输入文本的字节区间。\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "5a6db705fd1ed0883cbccd006faa75c3bb039679fcf08f1c145582eba34308ee",
-      "translation": "Completion candidate list, where __ELBOT_CODE_0__ corresponds to __ELBOT_CODE_1__ at the time of the request. __ELBOT_CODE_2__/__ELBOT_CODE_3__ indicates the byte range of the original input text to be replaced.\n",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:paragraph:5ef8927fcc5d9ac94297051b2c239164249298fd75c4acb64ed10db7d30fe6d8": {
-      "kind": "paragraph",
-      "source": "服务端按顺序尝试从这些环境变量读取 token 值，与客户端发送的 token 比对。",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "5ef8927fcc5d9ac94297051b2c239164249298fd75c4acb64ed10db7d30fe6d8",
-      "translation": "The server attempts to read token values from these environment variables in order and compares them with the token sent by the client.",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:paragraph:6207569319205d9e1e4bc253dbd578cd7a489bcb074bc59ae11dc488cdeaca8e": {
-      "kind": "paragraph",
-      "source": "服务端回复 __ELBOT_CODE_0__。\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "6207569319205d9e1e4bc253dbd578cd7a489bcb074bc59ae11dc488cdeaca8e",
-      "translation": "The server responds with __ELBOT_CODE_0__.\n",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:paragraph:65871e3751ccda89ce7660fd203231fc57211d7a09301110b7304d272c4ca548": {
-      "kind": "paragraph",
-      "source": "默认地址 __ELBOT_CODE_0__。地址和端口在 __ELBOT_CODE_1__ 配置中修改。\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "65871e3751ccda89ce7660fd203231fc57211d7a09301110b7304d272c4ca548",
-      "translation": "Default address __ELBOT_CODE_0__. The address and port can be modified in the __ELBOT_CODE_1__ configuration.\n",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:paragraph:736da8373a7efea6e64341e22d8ab2951003a3c1aa3d7454db9382296b1ed6ca": {
-      "kind": "paragraph",
-      "source": "后台任务接管后只展示新产生的推理增量，不重放之前的内容。\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "736da8373a7efea6e64341e22d8ab2951003a3c1aa3d7454db9382296b1ed6ca",
-      "translation": "After a background task takes over, only newly generated reasoning increments are displayed; previous content is not replayed.\n",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:paragraph:774d2569ee8898637bed1bd5143666dd97aa6e85b1fc611d0fc62d8692b7053e": {
-      "kind": "paragraph",
-      "source": "__ELBOT_CODE_0__ 取值：\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "774d2569ee8898637bed1bd5143666dd97aa6e85b1fc611d0fc62d8692b7053e",
-      "translation": "__ELBOT_CODE_0__ values:\n",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:paragraph:7840d707a066682e666da94ac522cb40c9800975cc798bbf278f823de266d043": {
-      "kind": "paragraph",
-      "source": "已经发生的失败和超时提示由其来源决定保留。\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "7840d707a066682e666da94ac522cb40c9800975cc798bbf278f823de266d043",
-      "translation": "Failure and timeout prompts that have already occurred are retained based on their source.\n",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:paragraph:86dad3eedd0c87ac42f5d0560795a81b9f223bfb5fafda0abaf31f2a079f7924": {
-      "kind": "paragraph",
-      "source": "展示固定原连接，不转移到同一用户的其他连接。",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "86dad3eedd0c87ac42f5d0560795a81b9f223bfb5fafda0abaf31f2a079f7924",
-      "translation": "The display is fixed to the original connection and is not transferred to other connections of the same user.",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:paragraph:9bf8f282c46e817f78b83312c41591f6bb11e9d3cffb9be3e13b5da980bc0576": {
-      "kind": "paragraph",
-      "source": "命令结果使用 __ELBOT_CODE_0__，可以包含多行长文本。",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "9bf8f282c46e817f78b83312c41591f6bb11e9d3cffb9be3e13b5da980bc0576",
-      "translation": "Command results use __ELBOT_CODE_0__ and can contain multi-line long text.",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:paragraph:9c8eb32c21d9df0b438fd23ffb2e38cc9a5fab3b0de47fa559d3e88da34aee1f": {
-      "kind": "paragraph",
-      "source": "标记当前流式消息已结束，前端可以固定该消息。\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "9c8eb32c21d9df0b438fd23ffb2e38cc9a5fab3b0de47fa559d3e88da34aee1f",
-      "translation": "Marks that the current streaming message has ended; the frontend can now pin this message.\n",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:paragraph:abd4575f0641812a177b81b2e4ca99fc37813a1529f6439c52273c910f3f7dde": {
-      "kind": "paragraph",
-      "source": "运行状态快照，前端可用于状态栏展示。",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "abd4575f0641812a177b81b2e4ca99fc37813a1529f6439c52273c910f3f7dde",
-      "translation": "A runtime status snapshot, which the frontend can use for status bar display.",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:paragraph:b1f7ccef19b14d25655c688f77805c6235aaa90b330e5226dc0b10237d03a005": {
-      "kind": "paragraph",
-      "source": "完整对话输出，包括 Agent 回复、Hook 正文以及 Cron／Elnis 后台报告。后台报告也进入聊天区。\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "b1f7ccef19b14d25655c688f77805c6235aaa90b330e5226dc0b10237d03a005",
-      "translation": "Complete conversation output, including Agent replies, Hook body, and Cron/Elnis background reports. Background reports also enter the chat area.\n",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:paragraph:b7542dd30112fe47368c3cacd3c5a4fa7183802d7ae12b74b88db90ec565d80b": {
-      "kind": "paragraph",
-      "source": "队列满时记录告警，不自动重发；",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "b7542dd30112fe47368c3cacd3c5a4fa7183802d7ae12b74b88db90ec565d80b",
-      "translation": "A warning is logged when the queue is full; it is not automatically resent;",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:paragraph:bc2caee66469d4c76597601494b0f68703143fe2d92a9cf9db95a761e92a23c1": {
-      "kind": "paragraph",
-      "source": "后台任务没有前台展示目标，接管后只展示新状态。",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "bc2caee66469d4c76597601494b0f68703143fe2d92a9cf9db95a761e92a23c1",
-      "translation": "Background tasks have no frontend display target; only new states are displayed after takeover.",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:paragraph:beddd3b0cb61ba1e2276cc7b9e8194ab03806e92e68e795fe0a9123f9de9d06c": {
-      "kind": "paragraph",
-      "source": "连接建立后，客户端必须立即发送一条 __ELBOT_CODE_0__ 消息：\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "beddd3b0cb61ba1e2276cc7b9e8194ab03806e92e68e795fe0a9123f9de9d06c",
-      "translation": "After the connection is established, the client must immediately send a __ELBOT_CODE_0__ message:\n",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:paragraph:c31d724cc5b0294c910c845d47f320bbab8a3a819fc057924c15735f07ce3553": {
-      "kind": "paragraph",
-      "source": "__ELBOT_CODE_0__ 可取 __ELBOT_CODE_1__、__ELBOT_CODE_2__、__ELBOT_CODE_3__、__ELBOT_CODE_4__；",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "c31d724cc5b0294c910c845d47f320bbab8a3a819fc057924c15735f07ce3553",
-      "translation": "__ELBOT_CODE_0__ can be __ELBOT_CODE_1__, __ELBOT_CODE_2__, __ELBOT_CODE_3__, or __ELBOT_CODE_4__;",
+      "source_hash": "b70c548759a7bf74ad069245c17693ed09deaeba2a292cd5264b6e5cfefbbe47",
+      "translation": "## Message Format\n\nAll messages are in JSON and share the same structure:\n\n| Field | Type | Description |\n|------|------|------|\n| type | string | Message type, see the table below |\n| id | string | Message ID, used for matching completion requests/responses |\n| client_id | string | Client identifier |\n| token | string | Authentication token (hello only) |\n| text | string | Text content |\n| level | string | Notification level (notice only) |\n| cursor | int | Cursor position (completion requests only) |\n| items | array | Completion candidates list (completion responses only) |\n| snapshot | object | Runtime status snapshot (status only) |\n\n",
       "updated_at": 1785235280
     },
-    "docs/frontend-api.md:paragraph:c71e2b1eb4bf264794b30a41904ca0ec2f6dbd1afd0c54da94e7d270de1203b9": {
-      "kind": "paragraph",
-      "source": "支持推理输出的模型在生成过程中推送的推理文本。",
+    "docs/frontend-api.md:section:529e96db71fdd4cd77245204218bc7d540a26cc67456f42b10f458691de3dc8f": {
+      "kind": "section",
+      "source": "## 配置\n\n在 `app.toml` 的 `[platform.cli]` 中配置：\n\n```toml\n[platform.cli]\nenabled = true\n\n[platform.cli.server]\nenabled = true\nlisten = \"127.0.0.1:32172\"\n\n[platform.cli.server.tokens]\nmy-client = [\"ELBOT_CLI_TOKEN\"]\n```\n\n`tokens` 是 client_id 到环境变量名列表的映射。服务端按顺序尝试从这些环境变量读取 token 值，与客户端发送的 token 比对。环境变量可从系统环境或配置目录 `.env` 读取。\n\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "c71e2b1eb4bf264794b30a41904ca0ec2f6dbd1afd0c54da94e7d270de1203b9",
-      "translation": "Reasoning text pushed by models that support reasoning output during the generation process.",
+      "source_hash": "b30d33a26d70ffba272d63100174e4c296c0a4978061e7372bae237ed484cb55",
+      "translation": "## Configuration\n\nConfigure in `[platform.cli]` of `app.toml`:\n\n```toml\n[platform.cli]\nenabled = true\n\n[platform.cli.server]\nenabled = true\nlisten = \"127.0.0.1:32172\"\n\n[platform.cli.server.tokens]\nmy-client = [\"ELBOT_CLI_TOKEN\"]\n```\n\n`tokens` is a mapping from client_id to a list of environment variable names. The server attempts to read token values from these environment variables in order and compares them with the token sent by the client. Environment variables can be read from the system environment or the configuration directory `.env`.\n\n",
+      "updated_at": 1782901460
+    },
+    "docs/frontend-api.md:section:8389f2f1370c09e6820a95fd0881062606c76888bef886877e8c72ff59b0be2b": {
+      "kind": "section",
+      "source": "## 客户端 → 服务端\n\n",
+      "source_file": "docs/frontend-api.md",
+      "source_hash": "598315b931a0658e4cc216180bf65c23fe985356284cc19aaa450907fab35dc4",
+      "translation": "## Client → Server\n\n",
+      "updated_at": 1782901460
+    },
+    "docs/frontend-api.md:section:8f9da3406bd5ad32e70bbc93ac7aa071e30385afcba466221767bf7a66cfc430": {
+      "kind": "section",
+      "source": "## 鉴权\n\n连接建立后，客户端必须立即发送一条 `hello` 消息：\n\n```json\n{\n  \"type\": \"hello\",\n  \"client_id\": \"my-client\",\n  \"token\": \"your-token\"\n}\n```\n\n服务端校验 token 后回复：\n\n- `hello_ok` — 鉴权通过，可以开始交互\n- `error` — 鉴权失败，连接关闭\n\n```json\n{\"type\": \"hello_ok\", \"client_id\": \"my-client\"}\n```\n\nToken 在 `[platform.cli.server.tokens]` 中按 client_id 映射到环境变量名，服务端从对应环境变量读取实际值。\n\n",
+      "source_file": "docs/frontend-api.md",
+      "source_hash": "b38a767a9465277b9f58596074cd7a9d42e40115068b554bf798d14542d4f364",
+      "translation": "## Authentication\n\nAfter the connection is established, the client must immediately send a `hello` message:\n\n```json\n{\n  \"type\": \"hello\",\n  \"client_id\": \"my-client\",\n  \"token\": \"your-token\"\n}\n```\n\nThe server will respond after validating the token:\n\n- `hello_ok` — Authentication successful, interaction can begin\n- `error` — Authentication failed, connection closed\n\n```json\n{\"type\": \"hello_ok\", \"client_id\": \"my-client\"}\n```\n\nTokens are mapped to environment variable names by client_id in `[platform.cli.server.tokens]`, and the server reads the actual values from the corresponding environment variables.\n\n",
+      "updated_at": 1782901460
+    },
+    "docs/frontend-api.md:section:9060ba3808d6d1ae61f3362bd6ae5931b523c9dc4c924578b9a394b4e9d29e02": {
+      "kind": "section",
+      "source": "### input — 发送消息\n\n```json\n{\"type\": \"input\", \"text\": \"你好\"}\n```\n\n将文本作为用户输入交给 Agent 处理。服务端不回复确认，处理结果通过 chat/stream 等消息异步返回。\n\n",
+      "source_file": "docs/frontend-api.md",
+      "source_hash": "0740f4ea95e14708ce51a7e15209d3da6e4176897c53aeec79d5079ce7b8074e",
+      "translation": "### input — Send Message\n\n```json\n{\"type\": \"input\", \"text\": \"你好\"}\n```\n\nPass text as user input to the Agent for processing. The server does not send a confirmation response; processing results are returned asynchronously via messages such as chat/stream.\n\n",
+      "updated_at": 1782901460
+    },
+    "docs/frontend-api.md:section:90c5ade629a5e4902ebdc5d1d403d6795ea4a2823b74d89a4770b1256cad194c": {
+      "kind": "section",
+      "source": "### notice — 通知\n\n```json\n{\"type\": \"notice\", \"level\": \"WARN\", \"text\": \"模型调用失败，正在重试…\"}\n```\n\n纯文本通知，包括命令返回结果，以及重试、视觉回退、Hook 失败和配置告警等运行提示。命令结果使用 `INFO`，可以包含多行长文本。`level` 可取 `DEBUG`、`INFO`、`WARN`、`ERROR`；省略时按 `INFO` 处理。通知不承载文件、媒体或后台报告。\n\n通知按平台独立排队，同一目标按顺序发送。队列满时记录告警，不自动重发；通知默认最多等待 30 秒。原远程连接的回复通知不会迁移到同一用户的新连接。排队中的工具预览和重试提示随请求取消；已经发生的失败和超时提示由其来源决定保留。\n\n",
+      "source_file": "docs/frontend-api.md",
+      "source_hash": "af39b98e0b7ad5d5632772d77261ab07c28c738ac106ac02f77fa5d4bf9cb305",
+      "translation": "### notice — Notification\n\n```json\n{\"type\": \"notice\", \"level\": \"WARN\", \"text\": \"模型调用失败，正在重试…\"}\n```\n\nPlain text notifications, including command return results, as well as runtime prompts such as retries, visual fallbacks, Hook failures, and configuration warnings. Command results use `INFO` and can contain multi-line long text. `level` can be `DEBUG`, `INFO`, `WARN`, or `ERROR`; When omitted, it is handled as `INFO`. Notifications do not carry files, media, or background reports.\n\nNotifications are queued independently by platform and sent sequentially to the same target. A warning is logged when the queue is full; it is not automatically resent; Notifications wait for a maximum of 30 seconds by default. Reply notifications from the original remote connection will not be migrated to a new connection for the same user. Queued tool previews and retry prompts are cancelled along with the request; Failure and timeout prompts that have already occurred are retained based on their source.\n\n",
       "updated_at": 1791708756
     },
-    "docs/frontend-api.md:paragraph:c8861d11db55e8e2431a168019b157e859cf13ebee7ebcb34a2aef657aad39f1": {
-      "kind": "paragraph",
-      "source": "任何能连 WebSocket 的客户端都可以作为 ElBot 前端——TUI、Web、移动端、甚至另一台机器上的脚本。\n",
+    "docs/frontend-api.md:section:a5ab7c8fb0804f6cfc3278a2711dd1afc48e0bd5a9ce5df1b0bc376a1c93deba": {
+      "kind": "section",
+      "source": "### stream_finish — 流式结束\n\n```json\n{\"type\": \"stream_finish\"}\n```\n\n标记当前流式消息已结束，前端可以固定该消息。\n\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "c8861d11db55e8e2431a168019b157e859cf13ebee7ebcb34a2aef657aad39f1",
-      "translation": "Any client capable of connecting to a WebSocket can serve as an ElBot frontend—TUI, Web, mobile, or even a script on another machine.\n",
+      "source_hash": "26ba7ef63bade2aa3654958cc527b1bd7cfd4139998d2ca45a5129cfaef3da0f",
+      "translation": "### stream_finish — Streaming Finish\n\n```json\n{\"type\": \"stream_finish\"}\n```\n\nMarks that the current streaming message has ended; the frontend can now pin this message.\n\n",
       "updated_at": 1782901460
     },
-    "docs/frontend-api.md:paragraph:d1abaeddc044b99ba2fc6cb16a5f4a9de092704d243ed70e7fdf2ae42b7dcabd": {
-      "kind": "paragraph",
-      "source": "__ELBOT_CODE_0__ 是 client_id 到环境变量名列表的映射。",
+    "docs/frontend-api.md:section:a80fbd0b9edb72c2d4b176c3678ec2bb18b451b4346b8740aaeaaffa3faa5589": {
+      "kind": "section",
+      "source": "### status — 运行状态\n\n```json\n{\n  \"type\": \"status\",\n  \"snapshot\": {\n    \"session_id\": \"abc123\",\n    \"phase\": \"llm\",\n    \"provider\": \"openai\",\n    \"model\": \"gpt-4o\",\n    \"mode\": \"work\",\n    \"request_id\": \"req-1\",\n    \"kind\": \"turn\",\n    \"label\": \"\",\n    \"tool_name\": \"\",\n    \"turn_started_at\": \"2026-07-01T12:00:00Z\",\n    \"stage_started_at\": \"2026-07-01T12:00:01Z\",\n    \"finished_at\": \"0001-01-01T00:00:00Z\",\n    \"usage\": {\"prompt_tokens\": 500, \"completion_tokens\": 100, \"total_tokens\": 600, \"cache_hit_tokens\": 0},\n    \"error\": \"\"\n  }\n}\n```\n\n运行状态快照，前端可用于状态栏展示。请求取消后仍发布已提交的终态；后台任务没有前台展示目标，接管后只展示新状态。状态更新会合并，应用整体关闭不保证向已关闭的前端补发终态。`phase` 取值：\n\n| Phase | 说明 |\n|-------|------|\n| idle | 空闲 |\n| preparing | 准备中 |\n| llm | LLM 生成中 |\n| tool | 工具执行中 |\n| sending | 回复发送中 |\n| done | 完成 |\n| error | 错误 |\n\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "d1abaeddc044b99ba2fc6cb16a5f4a9de092704d243ed70e7fdf2ae42b7dcabd",
-      "translation": "__ELBOT_CODE_0__ is a mapping from client_id to a list of environment variable names.",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:paragraph:d49cedeb924838e552674bb9b1dcf7f81c505541846bef91ace96aa613baecca": {
-      "kind": "paragraph",
-      "source": "流式结束后，用最终完整文本替换之前累积的流式内容。可能和流式拼接的结果不同（Hook 可能修改了输出）。\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "d49cedeb924838e552674bb9b1dcf7f81c505541846bef91ace96aa613baecca",
-      "translation": "After streaming ends, replace the previously accumulated streaming content with the final complete text. This may differ from the result of streaming concatenation (Hooks may have modified the output).\n",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:paragraph:d9b13ca3fcdea1969da70856bb5eae5301703752508ed52b70944eee6a796b51": {
-      "kind": "paragraph",
-      "source": "没有增量时不发送空标记。",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "d9b13ca3fcdea1969da70856bb5eae5301703752508ed52b70944eee6a796b51",
-      "translation": "Empty markers are not sent when there are no increments.",
+      "source_hash": "816ae718797cd1b67eccaec5c040676190e81f40e9662ea0e0fdaab60106820a",
+      "translation": "### status — Runtime Status\n\n```json\n{\n  \"type\": \"status\",\n  \"snapshot\": {\n    \"session_id\": \"abc123\",\n    \"phase\": \"llm\",\n    \"provider\": \"openai\",\n    \"model\": \"gpt-4o\",\n    \"mode\": \"work\",\n    \"request_id\": \"req-1\",\n    \"kind\": \"turn\",\n    \"label\": \"\",\n    \"tool_name\": \"\",\n    \"turn_started_at\": \"2026-07-01T12:00:00Z\",\n    \"stage_started_at\": \"2026-07-01T12:00:01Z\",\n    \"finished_at\": \"0001-01-01T00:00:00Z\",\n    \"usage\": {\"prompt_tokens\": 500, \"completion_tokens\": 100, \"total_tokens\": 600, \"cache_hit_tokens\": 0},\n    \"error\": \"\"\n  }\n}\n```\n\nA runtime status snapshot, which the frontend can use for status bar display. The submitted final state is still published after the request is cancelled; Background tasks have no frontend display target; only new states are displayed after takeover. Status updates will be merged; if the application is closed entirely, there is no guarantee that the final state will be re-sent to the closed frontend. `phase` values:\n\n| Phase | Description |\n|-------|------|\n| idle | Idle |\n| preparing | Preparing |\n| llm | LLM generating |\n| tool | Tool executing |\n| sending | Reply sending |\n| done | Completed |\n| error | Error |\n\n",
       "updated_at": 1791708756
     },
-    "docs/frontend-api.md:paragraph:dbb957ac7fb963726c86504436f98c578e88df7ec4c1bfe8e0a7b0c00d82add9": {
-      "kind": "paragraph",
-      "source": "省略时按 __ELBOT_CODE_0__ 处理。",
+    "docs/frontend-api.md:section:ada0ff44d43b824df6eea2e21e23b160a7a34ebc713060a9986268d2fa21b18b": {
+      "kind": "section",
+      "source": "### chat — 正式回复\n\n```json\n{\"type\": \"chat\", \"text\": \"你好！有什么可以帮你的？\"}\n```\n\n完整对话输出，包括 Agent 回复、Hook 正文以及 Cron／Elnis 后台报告。后台报告也进入聊天区。\n\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "dbb957ac7fb963726c86504436f98c578e88df7ec4c1bfe8e0a7b0c00d82add9",
-      "translation": "When omitted, it is handled as __ELBOT_CODE_0__.",
+      "source_hash": "5767d1dd14ec7c59ad1af73ebaf3b7a3366dc5fe29da6f6aac455786e5fe37dc",
+      "translation": "### chat — Formal Response\n\n```json\n{\"type\": \"chat\", \"text\": \"你好！有什么可以帮你的？\"}\n```\n\nComplete conversation output, including Agent replies, Hook body, and Cron/Elnis background reports. Background reports also enter the chat area.\n\n",
       "updated_at": 1791708756
     },
-    "docs/frontend-api.md:paragraph:ee24b5b4eaff5b66dfdc166fbea541a991b17968e5d2735a59d7b7ee0e1387c6": {
-      "kind": "paragraph",
-      "source": "更多前端示例见 [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend)。\n",
+    "docs/frontend-api.md:section:b2d1b01a779aa5d0a79c43a419668c9ee9f37631311bad3437509a2bb780d746": {
+      "kind": "section",
+      "source": "## 典型交互流程\n\n```\n客户端                              服务端\n  │                                   │\n  │──── hello ──────────────────────▶│\n  │◀─── hello_ok ────────────────────│\n  │                                   │\n  │──── input(\"/model gpt-4o\") ─────▶│\n  │◀─── status(preparing) ───────────│\n  │◀─── status(llm) ─────────────────│\n  │◀─── stream_append(\"已切换\") ──────│\n  │◀─── stream_replace(\"已切换模型\") ─│\n  │◀─── stream_finish ────────────────│\n  │◀─── status(done) ────────────────│\n  │                                   │\n  │──── complete(\"/mod\", cursor=4) ──▶│\n  │◀─── complete_result ──────────────│\n  │                                   │\n```\n\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "ee24b5b4eaff5b66dfdc166fbea541a991b17968e5d2735a59d7b7ee0e1387c6",
-      "translation": "For more frontend examples, see [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend).\n",
+      "source_hash": "92b9308044d5912efdb441af84b7c5df53a4202d63381b0878ddeb75efdb6a32",
+      "translation": "## Typical Interaction Flow\n\n```\n客户端                              服务端\n  │                                   │\n  │──── hello ──────────────────────▶│\n  │◀─── hello_ok ────────────────────│\n  │                                   │\n  │──── input(\"/model gpt-4o\") ─────▶│\n  │◀─── status(preparing) ───────────│\n  │◀─── status(llm) ─────────────────│\n  │◀─── stream_append(\"已切换\") ──────│\n  │◀─── stream_replace(\"已切换模型\") ─│\n  │◀─── stream_finish ────────────────│\n  │◀─── status(done) ────────────────│\n  │                                   │\n  │──── complete(\"/mod\", cursor=4) ──▶│\n  │◀─── complete_result ──────────────│\n  │                                   │\n```\n\n",
       "updated_at": 1782901460
     },
-    "docs/frontend-api.md:paragraph:f0fbe537d9de04f98e2a383994b0501c35dd84f08080deb93e8b369f8ad0fa3f": {
-      "kind": "paragraph",
-      "source": "通知默认最多等待 30 秒。",
+    "docs/frontend-api.md:section:c4a86c590885ce17ad8c15f3909f5540180a34bc9453b6f31eba62b49b50b57a": {
+      "kind": "section",
+      "source": "### error — 错误\n\n```json\n{\"type\": \"error\", \"text\": \"context deadline exceeded\"}\n```\n\n处理过程中发生的错误。\n\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "f0fbe537d9de04f98e2a383994b0501c35dd84f08080deb93e8b369f8ad0fa3f",
-      "translation": "Notifications wait for a maximum of 30 seconds by default.",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:paragraph:f7d552f84dc6847f20234c55ba19a9e3dc9c0b561bb1babfeaa7f94905475c90": {
-      "kind": "paragraph",
-      "source": "CLI 在首个有效增量前加 __ELBOT_CODE_0__，在调用正常结束、失败或取消时关闭已开始的展示，发送 __ELBOT_CODE_1__ 和换行；",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "f7d552f84dc6847f20234c55ba19a9e3dc9c0b561bb1babfeaa7f94905475c90",
-      "translation": "The CLI adds __ELBOT_CODE_0__ before the first valid increment, closes the active display when the call ends normally, fails, or is cancelled, and sends __ELBOT_CODE_1__ followed by a newline;",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:paragraph:f8ef0da23137f3d5fa2083b4da97c426fab6d982a039be397799c18d82c3d519": {
-      "kind": "paragraph",
-      "source": "请求当前输入文本的命令补全候选。__ELBOT_CODE_0__ 用于匹配响应。__ELBOT_CODE_1__ 为光标在 __ELBOT_CODE_2__ 中的字节偏移，省略时取末尾。\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "f8ef0da23137f3d5fa2083b4da97c426fab6d982a039be397799c18d82c3d519",
-      "translation": "Request command completion candidates for the current input text. __ELBOT_CODE_0__ is used to match the response. __ELBOT_CODE_1__ is the byte offset of the cursor in __ELBOT_CODE_2__, defaulting to the end if omitted.\n",
+      "source_hash": "571825380d1243eed970f5d40e39b9feaa78fe8962612a8205b561e6dd8f08a9",
+      "translation": "### error — Error\n\n```json\n{\"type\": \"error\", \"text\": \"context deadline exceeded\"}\n```\n\nAn error that occurred during processing.\n\n",
       "updated_at": 1782901460
     },
-    "docs/frontend-api.md:paragraph:f91264031fb65d397387ea450cbf17cb02f56254b7b0fe0b70f38ea1985b11c0": {
-      "kind": "paragraph",
-      "source": "环境变量可从系统环境或配置目录 __ELBOT_CODE_0__ 读取。\n",
+    "docs/frontend-api.md:section:d645454c0e0055b25a2264481e0388f36e0bc97edd27287b8c01d9788fd9beaf": {
+      "kind": "section",
+      "source": "## 服务端 → 客户端\n\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "f91264031fb65d397387ea450cbf17cb02f56254b7b0fe0b70f38ea1985b11c0",
-      "translation": "Environment variables can be read from the system environment or the configuration directory __ELBOT_CODE_0__.\n",
+      "source_hash": "9a65f308ab6a200db9553e96cf4b415f2a39b6dfb5ca3ac39c7a06253e23d255",
+      "translation": "## Server → Client\n\n",
       "updated_at": 1782901460
     },
-    "docs/frontend-api.md:paragraph:f98e302254d6d3b6c50195bbf98f2f0801835dca84ec3d3889d88aedf42f626b": {
-      "kind": "paragraph",
-      "source": "所有消息均为 JSON，共享同一个结构：\n",
+    "docs/frontend-api.md:section:d9d0262fb88c37402682742b6cc9f9a79cc601f4c42d3880c7fd7cbd50753a4a": {
+      "kind": "section",
+      "source": "### stream_replace — 流式替换\n\n```json\n{\"type\": \"stream_replace\", \"text\": \"你好！有什么可以帮你的？\"}\n```\n\n流式结束后，用最终完整文本替换之前累积的流式内容。可能和流式拼接的结果不同（Hook 可能修改了输出）。\n\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "f98e302254d6d3b6c50195bbf98f2f0801835dca84ec3d3889d88aedf42f626b",
-      "translation": "All messages are in JSON and share the same structure:\n",
+      "source_hash": "3abd65f05ed6d215276b9056a1f7e42bf8ad1bb0e0b00ed0a72d923e681098f0",
+      "translation": "### stream_replace — Streaming Replace\n\n```json\n{\"type\": \"stream_replace\", \"text\": \"你好！有什么可以帮你的？\"}\n```\n\nAfter streaming ends, replace the previously accumulated streaming content with the final complete text. This may differ from the result of streaming concatenation (Hooks may have modified the output).\n\n",
       "updated_at": 1782901460
     },
-    "docs/frontend-api.md:paragraph:fb18d8c4b84522e82cd60973c60ce6a5651df782a333b5548d16a4aea6da4734": {
-      "kind": "paragraph",
-      "source": "通知按平台独立排队，同一目标按顺序发送。",
+    "docs/frontend-api.md:section:e30b78429dd4bac1f66c7d55bb11bf4ae5bf518b0f682cb771cddf65db25fb62": {
+      "kind": "section",
+      "source": "### complete — 请求补全\n\n```json\n{\"type\": \"complete\", \"id\": \"c-1\", \"text\": \"/mod\", \"cursor\": 4}\n```\n\n请求当前输入文本的命令补全候选。`id` 用于匹配响应。`cursor` 为光标在 `text` 中的字节偏移，省略时取末尾。\n\n服务端回复 `complete_result`。\n\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "fb18d8c4b84522e82cd60973c60ce6a5651df782a333b5548d16a4aea6da4734",
-      "translation": "Notifications are queued independently by platform and sent sequentially to the same target.",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:table:0931e83b854a0964b538c88bd199aaad9789107d994c4dade35010bae5fde737": {
-      "kind": "table",
-      "source": "回复发送中",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "0931e83b854a0964b538c88bd199aaad9789107d994c4dade35010bae5fde737",
-      "translation": "Reply sending",
-      "updated_at": 1791708756
-    },
-    "docs/frontend-api.md:table:0bc1fb72ae1be5c5f95031df7a72d2dd795c5405548e9098e81f90c64190f52d": {
-      "kind": "table",
-      "source": "错误",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "0bc1fb72ae1be5c5f95031df7a72d2dd795c5405548e9098e81f90c64190f52d",
-      "translation": "Error",
+      "source_hash": "2601d183fa7bb523db71a85eaa7d63f3b915469df592b241e6621940c312332e",
+      "translation": "### complete — Request Completion\n\n```json\n{\"type\": \"complete\", \"id\": \"c-1\", \"text\": \"/mod\", \"cursor\": 4}\n```\n\nRequest command completion candidates for the current input text. `id` is used to match the response. `cursor` is the byte offset of the cursor in `text`, defaulting to the end if omitted.\n\nThe server responds with `complete_result`.\n\n",
       "updated_at": 1782901460
     },
-    "docs/frontend-api.md:table:2d0670cc367b9d6701506d4dad36edb9e8bfba99aaad158512758df17d7c9aac": {
-      "kind": "table",
-      "source": "替换起始字节偏移",
+    "docs/frontend-api.md:section:f1baed8164619f7a9addd3131d4781b0b4e39b6ef26a4bdb5303de3efe886fc2": {
+      "kind": "section",
+      "source": "### complete_result — 补全结果\n\n```json\n{\n  \"type\": \"complete_result\",\n  \"id\": \"c-1\",\n  \"items\": [\n    {\n      \"text\": \"/model\",\n      \"label\": \"/model\",\n      \"description\": \"切换或查看模型\",\n      \"kind\": \"command\",\n      \"replace_start\": 0,\n      \"replace_end\": 4\n    }\n  ]\n}\n```\n\n补全候选列表，`id` 对应请求时的 `id`。`replace_start`/`replace_end` 指示应替换原输入文本的字节区间。\n\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "2d0670cc367b9d6701506d4dad36edb9e8bfba99aaad158512758df17d7c9aac",
-      "translation": "Replacement start byte offset",
+      "source_hash": "9de6a9519aae8f7ea87cfc6863bb8211d71c86ea789b990117669f4925a9d199",
+      "translation": "### complete_result — Completion Result\n\n```json\n{\n  \"type\": \"complete_result\",\n  \"id\": \"c-1\",\n  \"items\": [\n    {\n      \"text\": \"/model\",\n      \"label\": \"/model\",\n      \"description\": \"切换或查看模型\",\n      \"kind\": \"command\",\n      \"replace_start\": 0,\n      \"replace_end\": 4\n    }\n  ]\n}\n```\n\nCompletion candidate list, where `id` corresponds to `id` at the time of the request. `replace_start`/`replace_end` indicates the byte range of the original input text to be replaced.\n\n",
       "updated_at": 1782901460
     },
-    "docs/frontend-api.md:table:32d8d9046f58092776c0f70fc4a6235b7e1ed333e85e7738e68ac5b961d13988": {
-      "kind": "table",
-      "source": "客户端标识",
+    "docs/frontend-api.md:section:f28b89433af5692ac1c011584f64773956f24afb8714df6e50a2055a7cfe174f": {
+      "kind": "section",
+      "source": "## 最小客户端示例\n\n```javascript\nconst ws = new WebSocket(\"ws://127.0.0.1:32172/cli/v1/ws\");\n\nws.onopen = () => {\n  ws.send(JSON.stringify({\n    type: \"hello\",\n    client_id: \"web\",\n    token: \"your-token\",\n  }));\n};\n\nws.onmessage = (e) => {\n  const msg = JSON.parse(e.data);\n  switch (msg.type) {\n    case \"hello_ok\":\n      // 鉴权成功，发送一条消息\n      ws.send(JSON.stringify({ type: \"input\", text: \"你好\" }));\n      break;\n    case \"chat\":\n    case \"stream_append\":\n      console.log(msg.text);\n      break;\n    case \"stream_replace\":\n      console.log(\"\\n[最终] \" + msg.text);\n      break;\n    case \"stream_finish\":\n      console.log(\"\\n--- 完成 ---\");\n      break;\n    case \"error\":\n      console.error(\"error: \" + msg.text);\n      break;\n  }\n};\n```\n\n更多前端示例见 [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend)。\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "32d8d9046f58092776c0f70fc4a6235b7e1ed333e85e7738e68ac5b961d13988",
-      "translation": "Client identifier",
+      "source_hash": "d8bcb97c37cc8ccc3ddbf3cc64f6b0369bbc9eefc6746bf1c22dcde395581b49",
+      "translation": "## Minimal Client Example\n\n```javascript\nconst ws = new WebSocket(\"ws://127.0.0.1:32172/cli/v1/ws\");\n\nws.onopen = () => {\n  ws.send(JSON.stringify({\n    type: \"hello\",\n    client_id: \"web\",\n    token: \"your-token\",\n  }));\n};\n\nws.onmessage = (e) => {\n  const msg = JSON.parse(e.data);\n  switch (msg.type) {\n    case \"hello_ok\":\n      // 鉴权成功，发送一条消息\n      ws.send(JSON.stringify({ type: \"input\", text: \"你好\" }));\n      break;\n    case \"chat\":\n    case \"stream_append\":\n      console.log(msg.text);\n      break;\n    case \"stream_replace\":\n      console.log(\"\\n[最终] \" + msg.text);\n      break;\n    case \"stream_finish\":\n      console.log(\"\\n--- 完成 ---\");\n      break;\n    case \"error\":\n      console.error(\"error: \" + msg.text);\n      break;\n  }\n};\n```\n\nFor more frontend examples, see [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend).\n",
       "updated_at": 1782901460
     },
-    "docs/frontend-api.md:table:3d84265e14b64cd3b1634c28bc20dc4be5fd75b0bb34fae112749cc82fc56103": {
-      "kind": "table",
-      "source": "展示标签",
+    "docs/frontend-api.md:section:f4221c226a4e1a624a44f24dec88c27674ab061f77b5f395c309a0829a046393": {
+      "kind": "section",
+      "source": "### stream_append — 流式追加\n\n```json\n{\"type\": \"stream_append\", \"text\": \"你好\"}\n```\n\nLLM 流式输出的一段增量文本。前端应追加到当前正在生成的消息末尾。\n\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "3d84265e14b64cd3b1634c28bc20dc4be5fd75b0bb34fae112749cc82fc56103",
-      "translation": "Display label",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:4262c45dc797bb0cd5008331ef25b684413859f55b73c71fb4e2c01b645dbbb7": {
-      "kind": "table",
-      "source": "说明",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "4262c45dc797bb0cd5008331ef25b684413859f55b73c71fb4e2c01b645dbbb7",
-      "translation": "Description",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:479bac57975e01cfe586d8a88818040351452f22745371e43a1f2f3ccfad968e": {
-      "kind": "table",
-      "source": "文本内容",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "479bac57975e01cfe586d8a88818040351452f22745371e43a1f2f3ccfad968e",
-      "translation": "Text content",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:49ecd0e342d6d23bd00d67094e2ad0e9859dd17d7337b809300a7c912ccea764": {
-      "kind": "table",
-      "source": "字段",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "49ecd0e342d6d23bd00d67094e2ad0e9859dd17d7337b809300a7c912ccea764",
-      "translation": "Field",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:53e86ab7d5de37640bc5cc4e0ce3ddceaa94a2c3f94ad3dbc957e472bea84b19": {
-      "kind": "table",
-      "source": "光标位置（仅补全请求）",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "53e86ab7d5de37640bc5cc4e0ce3ddceaa94a2c3f94ad3dbc957e472bea84b19",
-      "translation": "Cursor position (completion requests only)",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:632c729cb4054930b5a56b3935f81457c532a2411954a9e1d1b73458f4b0d1fe": {
-      "kind": "table",
-      "source": "通知等级（仅 notice）",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "632c729cb4054930b5a56b3935f81457c532a2411954a9e1d1b73458f4b0d1fe",
-      "translation": "Notification level (notice only)",
-      "updated_at": 1785235280
-    },
-    "docs/frontend-api.md:table:6f4689bf96fbe0aa6fd219cd8f7b665ce59dec2d4ca8321efe37b7039eec7142": {
-      "kind": "table",
-      "source": "替换结束字节偏移",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "6f4689bf96fbe0aa6fd219cd8f7b665ce59dec2d4ca8321efe37b7039eec7142",
-      "translation": "Replacement end byte offset",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:75cd4b57a44dc87e6f4dd74ba1ac911ad80e3c36b0d8cfbb5bef9c1c36d712f6": {
-      "kind": "table",
-      "source": "鉴权 token（仅 hello）",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "75cd4b57a44dc87e6f4dd74ba1ac911ad80e3c36b0d8cfbb5bef9c1c36d712f6",
-      "translation": "Authentication token (hello only)",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:7a7e84c668e6ae8d23f4e7e732a4d941bf72530fc5819fdb9e70efa3c592159f": {
-      "kind": "table",
-      "source": "运行状态快照（仅 status）",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "7a7e84c668e6ae8d23f4e7e732a4d941bf72530fc5819fdb9e70efa3c592159f",
-      "translation": "Runtime status snapshot (status only)",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:7aa7c7527d3961097579b37c8dbb41851cece5e4b71e01f717e899ce0a57ad82": {
-      "kind": "table",
-      "source": "候选类型，如 __ELBOT_CODE_0__、__ELBOT_CODE_1__、__ELBOT_CODE_2__",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "7aa7c7527d3961097579b37c8dbb41851cece5e4b71e01f717e899ce0a57ad82",
-      "translation": "Candidate type, such as __ELBOT_CODE_0__, __ELBOT_CODE_1__, __ELBOT_CODE_2__",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:7db8320094484bc3188ddedcdbda2740279b49693d164ff742aae4a164aeb93c": {
-      "kind": "table",
-      "source": "消息类型，见下表",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "7db8320094484bc3188ddedcdbda2740279b49693d164ff742aae4a164aeb93c",
-      "translation": "Message type, see the table below",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:a93eaf57f863decaed730b3a0a05e61ad38f5326f228ac709fd841612773c1cc": {
-      "kind": "table",
-      "source": "插入的文本",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "a93eaf57f863decaed730b3a0a05e61ad38f5326f228ac709fd841612773c1cc",
-      "translation": "Inserted text",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:b53be09930f4e02dd3fdfb3639cdc73f6306cc638590660229b5f010690bd749": {
-      "kind": "table",
-      "source": "准备中",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "b53be09930f4e02dd3fdfb3639cdc73f6306cc638590660229b5f010690bd749",
-      "translation": "Preparing",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:b89cf6b7d9bb7f1ebed594fa69c40df43880097d7678b529e2b562b29d0f91db": {
-      "kind": "table",
-      "source": "LLM 生成中",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "b89cf6b7d9bb7f1ebed594fa69c40df43880097d7678b529e2b562b29d0f91db",
-      "translation": "LLM generating",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:ba40014ff496f64e755492a5c6243cc0222a5d3e4b795ecfea7c9bed809adaab": {
-      "kind": "table",
-      "source": "类型",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "ba40014ff496f64e755492a5c6243cc0222a5d3e4b795ecfea7c9bed809adaab",
-      "translation": "Type",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:c0b3fbff51ccc40b8bf1a81666e7ecced016187cbe2ac6f1d627e0d7a287e04d": {
-      "kind": "table",
-      "source": "完成",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "c0b3fbff51ccc40b8bf1a81666e7ecced016187cbe2ac6f1d627e0d7a287e04d",
-      "translation": "Completed",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:d261e4f389dc1b1e2d0c4d5e813bd1ba6bf6469c3b1bd9520d995747afe92915": {
-      "kind": "table",
-      "source": "补充描述",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "d261e4f389dc1b1e2d0c4d5e813bd1ba6bf6469c3b1bd9520d995747afe92915",
-      "translation": "Additional description",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:dae661d17c2dd8f0ac88e0cd5a51cafbac7e963fa28271b8ec3ad76bf4da329a": {
-      "kind": "table",
-      "source": "空闲",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "dae661d17c2dd8f0ac88e0cd5a51cafbac7e963fa28271b8ec3ad76bf4da329a",
-      "translation": "Idle",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:dd5e7d83df8611e610f68fad245e6386b3c3b7d326c7259d472163574470d2cb": {
-      "kind": "table",
-      "source": "消息 ID，用于补全请求/响应配对",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "dd5e7d83df8611e610f68fad245e6386b3c3b7d326c7259d472163574470d2cb",
-      "translation": "Message ID, used for matching completion requests/responses",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:e0004dbc4724d5c84a0fbcd1e7a139371c1f72a71cf49c4ce1fec8e2102238fb": {
-      "kind": "table",
-      "source": "工具执行中",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "e0004dbc4724d5c84a0fbcd1e7a139371c1f72a71cf49c4ce1fec8e2102238fb",
-      "translation": "Tool executing",
-      "updated_at": 1782901460
-    },
-    "docs/frontend-api.md:table:f4438acb6c3ce9e58e2d44513e6571abcd8f8a43cd152227190b7ef517745c89": {
-      "kind": "table",
-      "source": "补全候选列表（仅补全响应）",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "f4438acb6c3ce9e58e2d44513e6571abcd8f8a43cd152227190b7ef517745c89",
-      "translation": "Completion candidates list (completion responses only)",
+      "source_hash": "e77fc9dabddcf20707a62f3aaf16d8602426735cfa7226e5ba7595ce365e1a3c",
+      "translation": "### stream_append — Stream Append\n\n```json\n{\"type\": \"stream_append\", \"text\": \"你好\"}\n```\n\nAn incremental piece of text streamed from the LLM. The frontend should append it to the end of the message currently being generated.\n\n",
       "updated_at": 1782901460
     }
   },
   "source": "docs/frontend-api.md",
   "source_hash": "c59bb98ee7e772ccd5c4cc67529390f8e04f502dc548e6478761f767a3311b98",
   "target": "docs.en/frontend-api.md",
-  "updated_at": 1791708756,
-  "version": 2
+  "updated_at": 1793423213,
+  "version": 3
 }

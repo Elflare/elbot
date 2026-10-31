@@ -18,7 +18,7 @@ permissions:
 
 concurrency:
   group: docs-translate-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   translate:
@@ -30,6 +30,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -54,9 +55,9 @@ jobs:
           --changed-only
           --commit-each
           --base-ref "${{ github.event.before }}"
-          --head-ref "${{ github.sha }}"
-          --batch-size 8
-          --parallel-batches 1
+          --head-ref HEAD
+          --batch-size 1
+          --parallel-batches 2
           --batch-delay 5
           --retries 5
           --timeout 240

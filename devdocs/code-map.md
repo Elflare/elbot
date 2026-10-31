@@ -381,5 +381,6 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 文档
 
 - `docs/`：中文用户文档；`devdocs/`：当前内部架构、代码入口与未完成任务。
-- `CHANGELOG.md`：中文变更记录；`scripts/translate_docs.py`：翻译脚本。
+- `CHANGELOG.md`：中文变更记录；`scripts/translate_docs.py`：按一级至三级标题切分并缓存完整小节，自动发布时检查原文版本、合并小节缓存并动态补译；`--commit-each` 要求干净且没有未推送提交的专用工作区。
+- `.github/workflows/docs-translate.yml`：翻译任务按分支排队，检出最新分支；默认每个请求翻译一个小节，同时最多两个请求。
 - `docs.en/`、`README.md`、`CHANGELOG.en.md` 为英文镜像或自动翻译产物，不手动修改。

@@ -2,13 +2,13 @@
 """Incrementally translate user-facing Markdown docs from docs/ to docs.en/.
 
 Chinese docs in docs/ are the source of truth. This script generates an English
-mirror under docs.en/ and stores one per-segment translation cache file per
+mirror under docs.en/ and stores one per-section translation cache file per
 source document under the repository-local `.translation-cache/` directory.
 
-Only changed Markdown segments are sent to an OpenAI-compatible chat completions
-API. Code blocks are copied verbatim except selected documentation comments.
-Changed segments are translated in batches so the first run does not make one
-HTTP request per sentence.
+Only changed Markdown sections are sent to an OpenAI-compatible chat completions
+API. Sections end at headings through level three. Code is protected except
+selected documentation comments. Automatic publishing reconciles each document
+against the latest upstream source before committing generated files.
 """
 
 from __future__ import annotations
@@ -36,7 +36,6 @@ README_TARGET = ROOT / "README.md"
 CHANGELOG_SOURCE = ROOT / "CHANGELOG.md"
 CHANGELOG_TARGET = ROOT / "CHANGELOG.en.md"
 CACHE_DIR = ROOT / ".translation-cache"
-LEGACY_CACHE_PATH = TARGET_DIR / ".translation-cache.json"
 AUTO_HEADER_TEMPLATE = "<!-- This file is auto-translated from {source}. Do not edit manually. -->\n\n"
 PLACEHOLDER_TEMPLATE = "\ue000ELBOT_SEGMENT_{index}\ue000"
 
@@ -83,14 +82,8 @@ DEFAULT_GLOSSARY = {
     "艾露维丝": "Elwisp",
 }
 
-CODE_FENCE_RE = re.compile(r"^\s*(```|~~~)(.*)$")
 HEADING_RE = re.compile(r"^(\s{0,3}#{1,6}\s+)(.*?)(\s+#+\s*)?$")
-LIST_RE = re.compile(r"^(\s*(?:[-+*]|\d+[.)])\s+)(.*)$")
-QUOTE_RE = re.compile(r"^(\s*>\s?)(.*)$")
 HTML_COMMENT_RE = re.compile(r"^\s*<!--.*-->\s*$")
-TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$")
-INLINE_CODE_RE = re.compile(r"`[^`]+`")
-SENTENCE_SPLIT_RE = re.compile(r"(?<=[。！？；])")
 THINKING_BLOCK_RE = re.compile(r"<\s*(think|thought|thinking)\s*>.*?<\s*/\s*\1\s*>", re.IGNORECASE | re.DOTALL)
 
 
@@ -104,9 +97,9 @@ class Segment:
 
     @property
     def key(self) -> str:
-        # Keep keys independent from line number or segment order. If a sentence
-        # is inserted near the top, later unchanged segments still reuse cache.
-        return f"{self.source_file}:{self.kind}:{sha256_text(self.text)}"
+        # Parent headings distinguish identical sections in different contexts;
+        # positions are excluded so inserting a preceding section keeps cache hits.
+        return f"{self.source_file}:{self.kind}:{sha256_text(self.context + chr(0) + self.text)}"
 
     @property
     def hash(self) -> str:
@@ -141,6 +134,8 @@ class RenderResult:
     cache_entries: dict[str, dict]
     reused_count: int
     skipped_count: int
+    # Hash of the exact complete source text read for this rendering.
+    source_hash: str
 
 
 def log(message: str) -> None:
@@ -236,7 +231,7 @@ def source_for_cache_path(path: Path) -> str:
 
 def empty_doc_cache(doc: SourceDoc) -> dict:
     return {
-        "version": 2,
+        "version": 3,
         "source": doc.source_rel,
         "target": doc.target_rel,
         "source_hash": "",
@@ -247,67 +242,11 @@ def empty_doc_cache(doc: SourceDoc) -> dict:
 
 def read_doc_cache(doc: SourceDoc) -> dict:
     cache = read_json(cache_path_for_source(doc.source_rel), empty_doc_cache(doc))
-    if cache.get("version") != 2 or cache.get("source") != doc.source_rel:
+    if cache.get("version") != 3 or cache.get("source") != doc.source_rel:
         return empty_doc_cache(doc)
     if not isinstance(cache.get("segments"), dict):
         cache["segments"] = {}
     return cache
-
-
-def migrate_legacy_cache(docs: list[SourceDoc]) -> list[Path]:
-    if not LEGACY_CACHE_PATH.exists():
-        return []
-    legacy = read_json(LEGACY_CACHE_PATH, {"version": 1, "segments": {}, "files": {}})
-    files = legacy.get("files")
-    segments = legacy.get("segments")
-    if not isinstance(files, dict) or not isinstance(segments, dict):
-        log("warning: legacy translation cache is invalid; leaving it in place")
-        return []
-
-    log("migrating legacy translation cache to per-document files")
-    changed_paths: list[Path] = []
-    current_sources = {doc.source_rel for doc in docs}
-    segments_by_source: dict[str, dict[str, dict]] = {}
-    for key, entry in segments.items():
-        if not isinstance(entry, dict):
-            continue
-        source_file = entry.get("source_file")
-        if isinstance(source_file, str) and source_file in current_sources:
-            segments_by_source.setdefault(source_file, {})[key] = entry
-
-    for doc in docs:
-        cache_path = cache_path_for_source(doc.source_rel)
-        if cache_path.exists():
-            existing = read_json(cache_path)
-            if existing.get("version") == 2 and existing.get("source") == doc.source_rel:
-                continue
-        file_entry = files.get(doc.source_rel, {})
-        if not isinstance(file_entry, dict):
-            file_entry = {}
-        cache = {
-            "version": 2,
-            "source": doc.source_rel,
-            "target": doc.target_rel,
-            "source_hash": file_entry.get("source_hash", ""),
-            "updated_at": file_entry.get("updated_at", 0),
-            "segments": segments_by_source.get(doc.source_rel, {}),
-        }
-        write_json(cache_path, cache)
-        changed_paths.append(cache_path)
-
-    stale_sources = set(files) - current_sources
-    for rel in sorted(stale_sources):
-        target = target_for_deleted_source(rel)
-        if target is not None and target.exists() and target != README_TARGET:
-            ensure_generated_path(target)
-            target.unlink()
-            changed_paths.append(target)
-
-    if all(cache_path_for_source(doc.source_rel).exists() for doc in docs):
-        ensure_generated_path(LEGACY_CACHE_PATH)
-        LEGACY_CACHE_PATH.unlink()
-        changed_paths.append(LEGACY_CACHE_PATH)
-    return changed_paths
 
 
 def all_source_docs() -> list[SourceDoc]:
@@ -339,40 +278,44 @@ def should_translate_text(text: str) -> bool:
     return bool(re.search(r"[\u4e00-\u9fff]", stripped))
 
 
-def split_sentences(text: str) -> list[str]:
-    """Split Chinese prose into small chunks while preserving line breaks."""
-    if "\n" in text:
-        parts: list[str] = []
-        for line in text.splitlines(keepends=True):
-            line_body = line[:-1] if line.endswith("\n") else line
-            line_break = "\n" if line.endswith("\n") else ""
-            if line_body.strip():
-                line_parts = split_sentences(line_body)
-                if line_break:
-                    line_parts[-1] += line_break
-                parts.extend(line_parts)
-            else:
-                parts.append(line)
-        return parts
-
-    if len(text.strip()) <= 80:
-        return [text]
-
-    out: list[str] = []
-    start = 0
-    for match in SENTENCE_SPLIT_RE.finditer(text):
-        end = match.end()
-        out.append(text[start:end])
-        start = end
-    if start < len(text):
-        out.append(text[start:])
-    return [part for part in out if part != ""] or [text]
-
-
-def split_table_row(line: str) -> list[str]:
-    if "|" not in line:
-        return [line]
-    return line.split("|")
+def split_sections(text: str) -> list[tuple[str, str]]:
+    """Return lossless Markdown sections and their actual parent headings."""
+    sections: list[tuple[str, str]] = []
+    headings: list[tuple[int, str]] = []
+    lines: list[str] = []
+    context = ""
+    fence = ""
+    in_comment = False
+    for line in text.splitlines(keepends=True):
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line.rstrip("\n"))
+        if fence:
+            lines.append(line)
+            if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip():
+                fence = ""
+            continue
+        if in_comment:
+            lines.append(line)
+            in_comment = "-->" not in line
+            continue
+        if marker:
+            fence = marker[1]
+        elif "<!--" in line:
+            in_comment = "-->" not in line.partition("<!--")[2]
+        else:
+            heading = HEADING_RE.match(line.rstrip("\n"))
+            if heading:
+                level = len(heading[1].strip())
+                if level <= 3:
+                    if lines:
+                        sections.append(("".join(lines), context))
+                    lines = []
+                    headings = [(depth, title) for depth, title in headings if depth < level]
+                    context = " > ".join(title for _, title in headings)
+                    headings.append((level, heading[2].strip()))
+        lines.append(line)
+    if lines:
+        sections.append(("".join(lines), context))
+    return sections
 
 
 def code_language(info: str) -> str:
@@ -423,27 +366,53 @@ def split_code_comment(line: str) -> tuple[str, str, str, str] | None:
     return prefix, spacing, text, newline
 
 
-def mask_inline_code(text: str) -> tuple[str, dict[str, str]]:
-    masks: dict[str, str] = {}
-
-    def repl(match: re.Match[str]) -> str:
-        token = f"__ELBOT_CODE_{len(masks)}__"
-        masks[token] = match.group(0)
-        return token
-
-    return INLINE_CODE_RE.sub(repl, text), masks
-
-
 def unmask_inline_code(text: str, masks: dict[str, str]) -> str:
     for token, value in masks.items():
         text = text.replace(token, value)
     return text
 
 
-def append_translated_piece(parts: list[str], piece: str) -> None:
-    if parts and piece and not parts[-1].endswith((" ", "\n")) and not piece.startswith((" ", "\n")):
-        parts.append(" ")
-    parts.append(piece)
+def mask_markdown(text: str) -> tuple[str, dict[str, str]]:
+    """Protect executable code and Markdown destinations in a complete section."""
+    masks: dict[str, str] = {}
+
+    def protect(value: str) -> str:
+        token = f"__ELBOT_CODE_{len(masks)}__"
+        masks[token] = value
+        return token
+
+    text = re.sub(r"<!--.*?-->", lambda match: protect(match[0]), text, flags=re.DOTALL)
+    lines: list[str] = []
+    fence = ""
+    language = ""
+    for line in text.splitlines(keepends=True):
+        body = line.removesuffix("\n")
+        newline = "\n" if line.endswith("\n") else ""
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", body)
+        if marker and (not fence or (marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip())):
+            if fence:
+                fence = ""
+            else:
+                fence = marker[1]
+                language = code_language(marker[2])
+            lines.append(protect(body) + newline)
+            continue
+        if fence:
+            comment = split_code_comment(line) if supports_code_comment_translation(language) else None
+            if comment:
+                prefix, spacing, body, newline = comment
+                body = protect(prefix + "#" + spacing) + re.sub(
+                    r"(`+)(.*?)\1", lambda match: protect(match[0]), body,
+                )
+                lines.append(body + newline)
+            else:
+                lines.append((protect(body) if body else "") + newline)
+            continue
+        body = re.sub(r"(`+)(.*?)\1", lambda match: protect(match[0]), body)
+        body = re.sub(r"(?<=\]\()[^)\n]*(?=\))", lambda match: protect(match[0]), body)
+        body = re.sub(r"https?://[^\s<>)]+", lambda match: protect(match[0]), body)
+        lines.append(body + newline)
+    return "".join(lines), masks
 
 
 def chunked(items: list[PendingSegment], size: int) -> list[list[PendingSegment]]:
@@ -453,174 +422,33 @@ def chunked(items: list[PendingSegment], size: int) -> list[list[PendingSegment]
 class MarkdownRenderer:
     def __init__(self, cache: dict) -> None:
         self.cache = cache
-        self.segment_index = 0
-        self.placeholder_index = 0
-        self.current_headings: list[str] = []
-        self.pending: list[PendingSegment] = []
-        self.cache_entries: dict[str, dict] = {}
-        self.reused_count = 0
-        self.skipped_count = 0
 
     def render_file(self, source: Path) -> RenderResult:
         rel = source.relative_to(ROOT).as_posix()
-        lines = source.read_text(encoding="utf-8").splitlines(keepends=True)
+        source_text = source.read_text(encoding="utf-8")
         rendered: list[str] = [AUTO_HEADER_TEMPLATE.format(source=rel)]
-        in_code = False
-        code_fence = ""
-        code_lang = ""
-        paragraph: list[str] = []
-
-        def flush_paragraph() -> None:
-            if not paragraph:
-                return
-            rendered.append(self.render_plain_text(rel, "paragraph", "".join(paragraph)))
-            paragraph.clear()
-
-        for line in lines:
-            fence_match = CODE_FENCE_RE.match(line)
-            if fence_match:
-                flush_paragraph()
-                in_code, code_fence, code_lang = self.next_code_state(
-                    fence_match,
-                    in_code,
-                    code_fence,
-                    code_lang,
-                )
-                rendered.append(line)
+        pending: list[PendingSegment] = []
+        entries: dict[str, dict] = {}
+        reused = skipped = 0
+        for index, (text, context) in enumerate(split_sections(source_text)):
+            segment = Segment(rel, index, "section", text, context)
+            masked, masks = mask_markdown(text)
+            if not should_translate_text(masked):
+                skipped += 1
+                rendered.append(text)
                 continue
-
-            if in_code:
-                rendered.append(self.render_code_line(rel, code_lang, line))
+            cached = self.cache.get("segments", {}).get(segment.key)
+            if cached and cached.get("source_hash") == segment.hash:
+                reused += 1
+                entries[segment.key] = cached
+                rendered.append(cached["translation"])
                 continue
-
-            if not line.strip():
-                flush_paragraph()
-                rendered.append(line)
-                continue
-
-            if HTML_COMMENT_RE.match(line):
-                flush_paragraph()
-                rendered.append(line)
-                continue
-
-            stripped = line.rstrip("\n")
-            newline = "\n" if line.endswith("\n") else ""
-
-            heading = HEADING_RE.match(stripped)
-            if heading:
-                flush_paragraph()
-                prefix, body, suffix = heading.group(1), heading.group(2), heading.group(3) or ""
-                rendered.append(f"{prefix}{self.render_plain_text(rel, 'heading', body).strip()}{suffix}{newline}")
-                self.current_headings.append(body.strip())
-                continue
-
-            if TABLE_SEPARATOR_RE.match(stripped):
-                flush_paragraph()
-                rendered.append(line)
-                continue
-
-            if stripped.lstrip().startswith("|") or ("|" in stripped and stripped.rstrip().endswith("|")):
-                flush_paragraph()
-                rendered.append(self.render_table_line(rel, stripped) + newline)
-                continue
-
-            list_match = LIST_RE.match(stripped)
-            if list_match:
-                flush_paragraph()
-                prefix, body = list_match.group(1), list_match.group(2)
-                rendered.append(prefix + self.render_plain_text(rel, "list", body).strip() + newline)
-                continue
-
-            quote_match = QUOTE_RE.match(stripped)
-            if quote_match:
-                flush_paragraph()
-                prefix, body = quote_match.group(1), quote_match.group(2)
-                rendered.append(prefix + self.render_plain_text(rel, "quote", body).strip() + newline)
-                continue
-
-            paragraph.append(line)
-
-        flush_paragraph()
+            placeholder = PLACEHOLDER_TEMPLATE.format(index=index)
+            pending.append(PendingSegment(segment, masks, placeholder))
+            rendered.append(placeholder)
         return RenderResult(
-            text="".join(rendered),
-            pending=self.pending,
-            cache_entries=self.cache_entries,
-            reused_count=self.reused_count,
-            skipped_count=self.skipped_count,
+            "".join(rendered), pending, entries, reused, skipped, sha256_text(source_text),
         )
-
-    @staticmethod
-    def next_code_state(
-        fence_match: re.Match[str],
-        in_code: bool,
-        code_fence: str,
-        code_lang: str,
-    ) -> tuple[bool, str, str]:
-        fence = fence_match.group(1)
-        if not in_code:
-            return True, fence, code_language(fence_match.group(2))
-        if fence == code_fence:
-            return False, "", ""
-        return in_code, code_fence, code_lang
-
-    def render_code_line(self, rel: str, language: str, line: str) -> str:
-        if not supports_code_comment_translation(language):
-            return line
-        return self.render_code_comment_line(rel, language, line)
-
-    def render_table_line(self, rel: str, line: str) -> str:
-        out: list[str] = []
-        for cell in split_table_row(line):
-            if cell.strip():
-                leading = cell[: len(cell) - len(cell.lstrip())]
-                trailing = cell[len(cell.rstrip()) :]
-                body = cell.strip()
-                out.append(leading + self.render_plain_text(rel, "table", body).strip() + trailing)
-            else:
-                out.append(cell)
-        return "|".join(out)
-
-    def render_code_comment_line(self, rel: str, language: str, line: str) -> str:
-        parts = split_code_comment(line)
-        if parts is None:
-            return line
-        prefix, spacing, text, newline = parts
-        kind = f"code-comment:{language}"
-        return f"{prefix}#{spacing}{self.render_plain_text(rel, kind, text).strip()}{newline}"
-
-    def render_plain_text(self, rel: str, kind: str, text: str) -> str:
-        if not should_translate_text(text):
-            self.skipped_count += 1
-            return text
-
-        rendered: list[str] = []
-        for piece in split_sentences(text):
-            if not should_translate_text(piece):
-                rendered.append(piece)
-                continue
-            append_translated_piece(rendered, self.render_segment(rel, kind, piece))
-        return "".join(rendered)
-
-    def render_segment(self, rel: str, kind: str, text: str) -> str:
-        self.segment_index += 1
-        masked, masks = mask_inline_code(text)
-        segment = Segment(
-            source_file=rel,
-            index=self.segment_index,
-            kind=kind,
-            text=masked,
-            context=" > ".join(self.current_headings[-3:]),
-        )
-        cached = self.cache.get("segments", {}).get(segment.key)
-        if cached and cached.get("source_hash") == segment.hash:
-            self.reused_count += 1
-            self.cache_entries[segment.key] = cached
-            return unmask_inline_code(cached["translation"], masks)
-
-        placeholder = PLACEHOLDER_TEMPLATE.format(index=self.placeholder_index)
-        self.placeholder_index += 1
-        self.pending.append(PendingSegment(segment=segment, masks=masks, placeholder=placeholder))
-        return placeholder
 
 
 class TranslationClient:
@@ -691,14 +519,15 @@ class TranslationClient:
     @staticmethod
     def batch_payload(segments: list[PendingSegment]) -> dict:
         return {
-            "instruction": "Translate each item from Simplified Chinese to English. Return JSON only.",
+            "instruction": "Translate each complete Markdown section in text. source_markdown is read-only context. Return JSON only.",
             "items": [
                 {
                     "key": item.segment.key,
                     "source_file": item.segment.source_file,
                     "markdown_kind": item.segment.kind,
                     "heading_context": item.segment.context,
-                    "text": item.segment.text,
+                    "source_markdown": item.segment.text,
+                    "text": mask_markdown(item.segment.text)[0],
                 }
                 for item in segments
             ],
@@ -712,10 +541,12 @@ class TranslationClient:
             "You translate ElBot user documentation from Simplified Chinese to English.\n"
             "Return only a JSON array. Each item must be {\"key\": string, \"translation\": string}.\n"
             "Rules:\n"
-            "- Preserve Markdown syntax inside each segment.\n"
-            "- Preserve inline code placeholders like __ELBOT_CODE_0__ exactly.\n"
+            "- Translate each entire section coherently, including its headings, lists and tables.\n"
+            "- Use heading_context as the parent heading hierarchy.\n"
+            "- Translate text, using source_markdown only to understand the original code and context.\n"
+            "- Preserve Markdown structure and every placeholder like __ELBOT_CODE_0__ exactly once.\n"
             "- Preserve commands, paths, config keys, environment variable names, URLs, and product names.\n"
-            "- Do not translate fenced code blocks; they are not sent to you.\n"
+            "- Executable code is protected; translate only the exposed documentation comments.\n"
             "- Keep links and link targets unchanged unless only the visible Chinese label needs translation.\n"
             "- Do not add explanations or extra keys.\n"
             "- Keep terminology consistent with this glossary:\n"
@@ -733,7 +564,7 @@ class TranslationClient:
             raise ValueError(f"invalid JSON response: {exc}; preview={preview}") from exc
         if not isinstance(parsed, list):
             raise ValueError(f"model response is not a JSON array; preview={response_preview(original)}")
-        expected = {item.segment.key: item.segment.text for item in segments}
+        expected = {item.segment.key: item for item in segments}
         out: dict[str, str] = {}
         for item in parsed:
             if not isinstance(item, dict):
@@ -742,10 +573,14 @@ class TranslationClient:
             translation = str(item.get("translation", ""))
             if key not in expected:
                 raise ValueError(f"unexpected translation key: {key}")
-            source = expected[key]
-            translation = translation.strip("\n")
-            if source.endswith("\n"):
-                translation += "\n"
+            section = expected[key]
+            source = section.segment.text
+            for token in section.masks:
+                if translation.count(token) != 1:
+                    raise ValueError(f"protected Markdown token must occur exactly once: {token}")
+            prefix = source[: len(source) - len(source.lstrip("\n"))]
+            suffix = source[len(source.rstrip("\n")) :]
+            translation = prefix + translation.strip("\n") + suffix
             out[key] = translation
         missing = set(expected) - set(out)
         if missing:
@@ -878,7 +713,7 @@ def translate_pending(
     if args.dry_run:
         for item in pending:
             translation = item.segment.text
-            rendered = rendered.replace(item.placeholder, unmask_inline_code(translation, item.masks))
+            rendered = rendered.replace(item.placeholder, translation)
             cache_entries[item.segment.key] = cache_entry(item, translation)
         return rendered
 
@@ -904,8 +739,8 @@ def translate_pending(
         if item.segment.key not in translations:
             failed_count += 1
             continue
-        translation = translations[item.segment.key]
-        rendered = rendered.replace(item.placeholder, unmask_inline_code(translation, item.masks))
+        translation = unmask_inline_code(translations[item.segment.key], item.masks)
+        rendered = rendered.replace(item.placeholder, translation)
         cache_entries[item.segment.key] = cache_entry(item, translation)
     return None if failed_count else rendered
 
@@ -958,7 +793,6 @@ def is_allowed_generated_path(path: Path) -> bool:
     return (
         resolved == README_TARGET.resolve()
         or resolved == CHANGELOG_TARGET.resolve()
-        or resolved == LEGACY_CACHE_PATH.resolve()
         or resolved == CACHE_DIR.resolve()
         or CACHE_DIR.resolve() in resolved.parents
         or resolved == target_root
@@ -979,7 +813,12 @@ def write_text_file(path: Path, content: str) -> None:
         f.write(content)
 
 
-def commit_translation(paths: list[Path], message: str) -> None:
+def sync_upstream() -> None:
+    run_git(["fetch"])
+    run_git(["merge", "--ff-only", "@{upstream}"])
+
+
+def commit_translation(paths: list[Path], message: str) -> bool:
     for path in paths:
         ensure_generated_path(path)
     rel_paths = [path.relative_to(ROOT).as_posix() for path in paths]
@@ -987,29 +826,21 @@ def commit_translation(paths: list[Path], message: str) -> None:
     run_git(["add", *rel_paths])
     if not has_staged_changes(paths):
         log("  no git changes to commit")
-        return
+        return True
     log(f"  committing: {message}")
     run_git(["commit", "-m", message, "--", *rel_paths])
     log("  pushing translated output")
-    for attempt in range(3):
-        try:
-            run_git(["push", "--porcelain"])
-            break
-        except subprocess.CalledProcessError as exc:
-            if attempt == 2 or not re.search(
-                r"^!\t[^\n]*\t\[rejected\] \((?:fetch first|non-fast-forward)\)$",
-                exc.stdout or "",
-                re.MULTILINE,
-            ):
-                raise
-            log(f"  remote advanced; syncing before push retry {attempt + 1}/2")
-            run_git(["fetch"])
-            try:
-                run_git(["rebase", "@{upstream}"])
-            except subprocess.CalledProcessError:
-                run_git(["rebase", "--abort"])
-                raise
+    try:
+        run_git(["push", "--porcelain"])
+    except subprocess.CalledProcessError as exc:
+        if re.search(
+            r"^!\t[^\n]*\t\[rejected\] \((?:fetch first|non-fast-forward)\)$",
+            exc.stdout or "", re.MULTILINE,
+        ):
+            return False
+        raise
     log(f"  committed: {message}")
+    return True
 
 
 def rewrite_readme_language_switcher(rendered: str) -> str:
@@ -1053,17 +884,16 @@ def finalize_rendered(doc: SourceDoc, rendered: str) -> str:
     return rendered
 
 
-def make_doc_cache(doc: SourceDoc, previous: dict, segments: dict[str, dict]) -> dict:
-    source_hash = sha256_text(doc.source.read_text(encoding="utf-8"))
+def make_doc_cache(doc: SourceDoc, previous: dict, segments: dict[str, dict], source_hash: str) -> dict:
     unchanged = (
-        previous.get("version") == 2
+        previous.get("version") == 3
         and previous.get("source") == doc.source_rel
         and previous.get("target") == doc.target_rel
         and previous.get("source_hash") == source_hash
         and previous.get("segments") == segments
     )
     return {
-        "version": 2,
+        "version": 3,
         "source": doc.source_rel,
         "target": doc.target_rel,
         "source_hash": source_hash,
@@ -1072,77 +902,125 @@ def make_doc_cache(doc: SourceDoc, previous: dict, segments: dict[str, dict]) ->
     }
 
 
-def run(args: argparse.Namespace) -> int:
-    docs = all_source_docs()
-    migration_paths = migrate_legacy_cache(docs)
-    if migration_paths and args.commit_each and not args.dry_run:
-        commit_translation(migration_paths, "docs: migrate translation cache")
+def translate_document(
+    doc: SourceDoc,
+    args: argparse.Namespace,
+    client: TranslationClient | None,
+    attempted_versions: set[tuple[str, str]],
+) -> tuple[TranslationClient | None, int, int, bool]:
+    """Translate snapshots in memory; publish only against the matching upstream source."""
+    publishing = args.commit_each and not args.dry_run
+    segments: dict[str, dict] = {}
+    total_pending = total_reused = push_attempts = 0
+    while True:
+        if publishing:
+            sync_upstream()
+        if not doc.source.exists():
+            return client, total_pending, total_reused, False
+        cache = read_doc_cache(doc)
+        segments.update(cache["segments"])
+        result = MarkdownRenderer({"segments": segments}).render_file(doc.source)
+        version = (doc.source_rel, result.source_hash)
+        log(f"rendering {doc.source_rel}: sections reused={result.reused_count}, changed={len(result.pending)}")
+        if version not in attempted_versions:
+            attempted_versions.add(version)
+            total_pending += len(result.pending)
+            total_reused += result.reused_count
+            if result.pending and not args.dry_run and client is None:
+                client = make_client(args)
+            rendered = translate_pending(result.text, result.pending, result.cache_entries, client, args, doc.source_rel)
+            segments.update(result.cache_entries)
+        else:
+            rendered = None if result.pending else result.text
 
-    caches = {doc.source_rel: read_doc_cache(doc) for doc in docs}
-    sources, current_source_names, changed_names = select_source_docs(args, docs, caches)
-    deleted_paths = prune_deleted_sources(current_source_names)
-    if deleted_paths:
-        if args.commit_each and not args.dry_run:
-            commit_translation(deleted_paths, "docs: remove translated deleted sources")
+        if publishing:
+            sync_upstream()
+            if not doc.source.exists():
+                return client, total_pending, total_reused, False
+            if sha256_text(doc.source.read_text(encoding="utf-8")) != result.source_hash:
+                log(f"  source changed: {doc.source_rel}; reusing unchanged sections")
+                continue
+            cache = read_doc_cache(doc)
+            segments.update(cache["segments"])
+            result = MarkdownRenderer({"segments": segments}).render_file(doc.source)
+            rendered = None if result.pending else result.text
 
-    if changed_names is not None:
-        deleted = sorted(changed_names - current_source_names)
-        if deleted:
-            log(f"deleted source file(s): {', '.join(deleted)}")
-    log(f"found {len(sources)} source doc file(s) to process")
-    client: TranslationClient | None = None
-    staged_outputs: dict[Path, str] = {}
-    staged_caches: dict[Path, dict] = {}
-    total_pending = 0
-    total_reused = 0
-    failed_count = 0
-
-    for source_index, doc in enumerate(sources, start=1):
-        rel = doc.source_rel
-        log(f"[{source_index}/{len(sources)}] rendering {rel} -> {doc.target_rel}")
-        cache = caches[rel]
-        renderer = MarkdownRenderer(cache=cache)
-        result = renderer.render_file(doc.source)
-        total_pending += len(result.pending)
-        total_reused += result.reused_count
-        log(
-            f"  segments: reused={result.reused_count}, "
-            f"changed={len(result.pending)}, skipped={result.skipped_count}"
-        )
-
-        if result.pending and not args.dry_run and client is None:
-            client = make_client(args)
-        rendered = translate_pending(result.text, result.pending, result.cache_entries, client, args, rel)
-        cache_path = cache_path_for_source(rel)
-        new_cache = make_doc_cache(doc, cache, result.cache_entries)
-        staged_caches[cache_path] = new_cache
-        if rendered is None:
-            failed_count += 1
-            # An incomplete document must remain stale even after saving its successful segments.
+        new_cache = make_doc_cache(doc, cache, result.cache_entries, result.source_hash)
+        cache_path = cache_path_for_source(doc.source_rel)
+        paths = [cache_path]
+        incomplete = rendered is None
+        base = run_git(["rev-parse", "HEAD"]).stdout.strip() if publishing else ""
+        if incomplete:
             new_cache["source_hash"] = ""
-            log(f"warning: {rel}: translation incomplete; preserving target and saving successful segments")
-            if args.commit_each and not args.dry_run:
-                write_json(cache_path, new_cache)
-                commit_translation([cache_path], f"docs: cache partial translation for {rel}")
+            log(f"warning: {doc.source_rel}: incomplete; preserving target and saving complete sections")
+            message = f"docs: cache partial translation for {doc.source_rel}"
+        else:
+            write_text_file(doc.target, finalize_rendered(doc, rendered))
+            paths.insert(0, doc.target)
+            message = f"docs: auto-translate {doc.source_rel}"
+        write_json(cache_path, new_cache)
+        if not publishing or commit_translation(paths, message):
+            return client, total_pending, total_reused, incomplete
+        push_attempts += 1
+        if push_attempts == 3:
+            raise RuntimeError(f"remote kept advancing while publishing {doc.source_rel}; generated commit retained")
+        log(f"  remote advanced; reconciling before push retry {push_attempts}/2")
+        # Startup establishes an exclusive clean worktree. Only our unpublished
+        # generated commit exists above base; successful translations stay in memory.
+        run_git(["reset", "--hard", base])
+
+
+def run(args: argparse.Namespace) -> int:
+    publishing = args.commit_each and not args.dry_run
+    if publishing:
+        if run_git(["status", "--porcelain"]).stdout.strip():
+            raise ValueError("--commit-each requires a clean dedicated worktree")
+        sync_upstream()
+        if run_git(["rev-list", "@{upstream}..HEAD"]).stdout.strip():
+            raise ValueError("--commit-each requires a branch without unpublished commits")
+
+    client: TranslationClient | None = None
+    attempted_versions: set[tuple[str, str]] = set()
+    total_pending = total_reused = failed_count = translated = cleanup_attempts = 0
+    first_pass = True
+    while True:
+        if publishing:
+            sync_upstream()
+        elif not first_pass:
+            break
+        docs = all_source_docs()
+        base = run_git(["rev-parse", "HEAD"]).stdout.strip() if publishing else ""
+        deleted_paths = prune_deleted_sources({doc.source_rel for doc in docs})
+        if deleted_paths and publishing:
+            if commit_translation(deleted_paths, "docs: remove translated deleted sources"):
+                cleanup_attempts = 0
+                continue
+            cleanup_attempts += 1
+            if cleanup_attempts == 3:
+                raise RuntimeError("remote kept advancing while removing deleted sources; generated commit retained")
+            run_git(["reset", "--hard", base])
             continue
-        rendered = finalize_rendered(doc, rendered)
-        staged_outputs[doc.target] = rendered
-        if args.commit_each and not args.dry_run:
-            write_text_file(doc.target, rendered)
-            write_json(cache_path, new_cache)
-            commit_translation([doc.target, cache_path], f"docs: auto-translate {rel}")
-
-    if not args.commit_each or args.dry_run:
-        TARGET_DIR.mkdir(parents=True, exist_ok=True)
-        for target, rendered in staged_outputs.items():
-            write_text_file(target, rendered)
-        for cache_path, cache in staged_caches.items():
-            write_json(cache_path, cache)
-
-    if args.dry_run:
-        log("dry run completed; changed segments were copied from source text")
-    else:
-        log(f"translated {len(staged_outputs)} file(s)")
+        caches = {doc.source_rel: read_doc_cache(doc) for doc in docs}
+        if first_pass:
+            sources, _, _ = select_source_docs(args, docs, caches)
+            first_pass = False
+        else:
+            stale = stale_source_names(docs, caches)
+            sources = [doc for doc in docs if doc.source_rel in stale]
+        sources = [doc for doc in sources if (
+            doc.source_rel, sha256_text(doc.source.read_text(encoding="utf-8")),
+        ) not in attempted_versions]
+        if not sources:
+            break
+        for doc in sources:
+            client, pending, reused, incomplete = translate_document(doc, args, client, attempted_versions)
+            total_pending += pending
+            total_reused += reused
+            failed_count += incomplete
+            translated += not incomplete and doc.source.exists()
+            if publishing:
+                break  # Re-discover sources and caches after every publication.
+    log(f"translated {translated} file(s)")
     log(f"summary: reused={total_reused}, changed={total_pending}, incomplete={failed_count}, batch_size={args.batch_size}")
     return 0
 
@@ -1156,8 +1034,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--head-ref", default="", help="Head git ref for --changed-only.")
     parser.add_argument("--timeout", type=int, default=240, help="HTTP timeout in seconds.")
     parser.add_argument("--retries", type=int, default=5, help="Retry count per batch.")
-    parser.add_argument("--batch-size", type=int, default=8, help="Changed segment count per translation request.")
-    parser.add_argument("--parallel-batches", type=int, default=1, help="Concurrent translation batches per source document.")
+    parser.add_argument("--batch-size", type=int, default=1, help="Complete Markdown section count per translation request.")
+    parser.add_argument("--parallel-batches", type=int, default=2, help="Concurrent translation batches per source document.")
     parser.add_argument("--batch-delay", type=float, default=5.0, help="Delay between translation batches in seconds.")
     args = parser.parse_args(argv)
     if args.batch_size < 1:

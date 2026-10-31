@@ -1,137 +1,33 @@
 {
   "segments": {
-    "docs/README.md:heading:410b1989a3cec16d944f5f4c7e36db3a9c16aa063a8e2c990cad359495883498": {
-      "kind": "heading",
-      "source": "ElBot 文档",
+    "docs/README.md:section:218a44071097452de9a727845efb1227b5e45ca5e2a9bebf705d700ba9e5b04b": {
+      "kind": "section",
+      "source": "## 阅读顺序\n\n1. [快速开始](getting-started.md)：配置 API Key → 启动 CLI → 第一次对话。\n2. [配置说明](configuration.md)：配置文件布局、路径规则、Provider、运行数据、插件目录。\n3. [命令速查](commands.md)：slash 命令与会话管理。\n4. [核心概念](concepts.md)：Chat / Work 模式、工具发现、Session、Hook、Cron、Skill、安全策略。\n5. [Hook](hooks.md)：规则 Hook、action 类型、多段输出、exec 脚本。\n6. [Elnis 监听枢纽](elnis.md)：Elnis / Elwisp / Elvena 与外部事件接入。\n7. [Elnis 配置与使用](elnis-usage.md)：启用 Elnis、配置 Elwisp、投递事件。\n8. [ELyph 任务表示法](elyph.md)：Skill 和 Cron 任务条共用的任务语法。\n9. [前端 API](frontend-api.md)：WebSocket 协议、消息类型和补全接口。\n\n",
       "source_file": "docs/README.md",
-      "source_hash": "410b1989a3cec16d944f5f4c7e36db3a9c16aa063a8e2c990cad359495883498",
-      "translation": "ElBot Documentation",
-      "updated_at": 1781513067
-    },
-    "docs/README.md:heading:593f0f466b3ee2f8ce5efa893b015130ce4d53724462adddeaa8b7ca74dab2f7": {
-      "kind": "heading",
-      "source": "阅读顺序",
-      "source_file": "docs/README.md",
-      "source_hash": "593f0f466b3ee2f8ce5efa893b015130ce4d53724462adddeaa8b7ca74dab2f7",
-      "translation": "Reading Order",
+      "source_hash": "8477ad1f1e8843bd50c73c394b87eb9c38a32ec6975664699c7f4dc47a22f734",
+      "translation": "## Reading Order\n\n1. [Quick Start](getting-started.md): Configure API Key → Start CLI → First Conversation.\n2. [Configuration Guide](configuration.md): Configuration file layout, path rules, Provider, runtime data, plugin directory.\n3. [Command Cheat Sheet](commands.md): Slash commands and Session management.\n4. [Core Concepts](concepts.md): Chat / Work mode, tool discovery, Session, Hook, Cron, Skill, security policies.\n5. [Hook](hooks.md): Rule Hook, action types, multi-segment output, exec scripts.\n6. [Elnis Listening Hub](elnis.md): Elnis / Elwisp / Elvena and external event integration.\n7. [Elnis Configuration and Usage](elnis-usage.md): Enable Elnis, configure Elwisp, and deliver events.\n8. [ELyph Task Notation](elyph.md): The task syntax shared by Skills and Cron task entries.\n9. [Frontend API](frontend-api.md): WebSocket protocol, message types, and completion interfaces.\n\n",
       "updated_at": 1793349365
     },
-    "docs/README.md:heading:8dab8e91c39f2b7b93f309f9c2fc7b7484a1d15970a3790a1d2c80cf1a32c6c3": {
-      "kind": "heading",
-      "source": "文档维护",
+    "docs/README.md:section:873ae496e4bcaf2a69de3a7cb22c624a5f4cc56fb5ecc3f1093941b5328c0253": {
+      "kind": "section",
+      "source": "## 文档维护\n\n- 维护规则见 [`../AGENTS.md`](../AGENTS.md)，本目录只放用户使用文档，内部资料放 [`../devdocs/`](../devdocs/)。\n- `CHANGELOG.md` 为中文源文件，`CHANGELOG.en.md` 由 GitHub Actions 自动翻译，请勿手改。以版本（tag）为节点：平时改动写进 `## [Unreleased]`，发版时改为 `## [vX.Y.Z] - YYYY-MM-DD` 并新建空 Unreleased。\n\n",
       "source_file": "docs/README.md",
-      "source_hash": "8dab8e91c39f2b7b93f309f9c2fc7b7484a1d15970a3790a1d2c80cf1a32c6c3",
-      "translation": "Documentation Maintenance",
+      "source_hash": "2123bdd57deb7d2711c09ad6e0045ae6e7905a3bf3d3d009118508f84489c2e9",
+      "translation": "## Documentation Maintenance\n\n- Maintenance rules can be found in [`../AGENTS.md`](../AGENTS.md). This directory only contains user documentation; internal materials are placed in [`../devdocs/`](../devdocs/).\n- `CHANGELOG.md` is the Chinese source file, and `CHANGELOG.en.md` is automatically translated by GitHub Actions; please do not edit it manually. Using versions (tags) as nodes: write routine changes into `## [Unreleased]`, and when releasing, change it to `## [vX.Y.Z] - YYYY-MM-DD` and create a new empty Unreleased.\n\n",
       "updated_at": 1793349365
     },
-    "docs/README.md:list:1290d47af747ff8eb25d9801d0e8fb39e5c6a78503a7d957f4d90282f5d9ad79": {
-      "kind": "list",
-      "source": "[核心概念](concepts.md)：Chat / Work 模式、工具发现、Session、Hook、Cron、Skill、安全策略。",
+    "docs/README.md:section:addaf256f34165efd86b34dc5cd5dfc06c4b4ad39c46b253e76f117b700071d6": {
+      "kind": "section",
+      "source": "# ElBot 文档\n\n面向用户的文档。开发计划、架构和内部设计在 [`../devdocs/`](../devdocs/)。\n\n",
       "source_file": "docs/README.md",
-      "source_hash": "1290d47af747ff8eb25d9801d0e8fb39e5c6a78503a7d957f4d90282f5d9ad79",
-      "translation": "[Core Concepts](concepts.md): Chat / Work mode, tool discovery, Session, Hook, Cron, Skill, security policies.",
-      "updated_at": 1793349365
-    },
-    "docs/README.md:list:2debb6eeae6c9effd051e01dbb50ba4fddc859f859090c73d5cce5f93bda6943": {
-      "kind": "list",
-      "source": "[Elnis 监听枢纽](elnis.md)：Elnis / Elwisp / Elvena 与外部事件接入。",
-      "source_file": "docs/README.md",
-      "source_hash": "2debb6eeae6c9effd051e01dbb50ba4fddc859f859090c73d5cce5f93bda6943",
-      "translation": "[Elnis Listening Hub](elnis.md): Elnis / Elwisp / Elvena and external event integration.",
-      "updated_at": 1793349365
-    },
-    "docs/README.md:list:3651f630d9e8adfac0290b4072732d25bb3e970da15d1516d024e76a5dcdd813": {
-      "kind": "list",
-      "source": "以版本（tag）为节点：平时改动写进 __ELBOT_CODE_0__，发版时改为 __ELBOT_CODE_1__ 并新建空 Unreleased。",
-      "source_file": "docs/README.md",
-      "source_hash": "3651f630d9e8adfac0290b4072732d25bb3e970da15d1516d024e76a5dcdd813",
-      "translation": "Using versions (tags) as nodes: write routine changes into __ELBOT_CODE_0__, and when releasing, change it to __ELBOT_CODE_1__ and create a new empty Unreleased.",
-      "updated_at": 1793349365
-    },
-    "docs/README.md:list:3e93fe2e03087787d23fff623ad1d934a0c46951c7157266713d5bab1af47198": {
-      "kind": "list",
-      "source": "[前端 API](frontend-api.md)：WebSocket 协议、消息类型和补全接口。",
-      "source_file": "docs/README.md",
-      "source_hash": "3e93fe2e03087787d23fff623ad1d934a0c46951c7157266713d5bab1af47198",
-      "translation": "[Frontend API](frontend-api.md): WebSocket protocol, message types, and completion interfaces.",
-      "updated_at": 1793349365
-    },
-    "docs/README.md:list:8927a733f291d17a6a5c9d160acfab5a4ce9cc9b8fa0addddab615b6669705af": {
-      "kind": "list",
-      "source": "__ELBOT_CODE_0__ 为中文源文件，__ELBOT_CODE_1__ 由 GitHub Actions 自动翻译，请勿手改。",
-      "source_file": "docs/README.md",
-      "source_hash": "8927a733f291d17a6a5c9d160acfab5a4ce9cc9b8fa0addddab615b6669705af",
-      "translation": "__ELBOT_CODE_0__ is the Chinese source file, and __ELBOT_CODE_1__ is automatically translated by GitHub Actions; please do not edit it manually.",
-      "updated_at": 1793349365
-    },
-    "docs/README.md:list:914f6e599b39c58127ee8718e6ef501720f41b334840a082de0f60ff52265921": {
-      "kind": "list",
-      "source": "[Elnis 配置与使用](elnis-usage.md)：启用 Elnis、配置 Elwisp、投递事件。",
-      "source_file": "docs/README.md",
-      "source_hash": "914f6e599b39c58127ee8718e6ef501720f41b334840a082de0f60ff52265921",
-      "translation": "[Elnis Configuration and Usage](elnis-usage.md): Enable Elnis, configure Elwisp, and deliver events.",
-      "updated_at": 1793349365
-    },
-    "docs/README.md:list:975dc716757359d1c3510e2b84a8e8493892637371adb05095a88030f0593e14": {
-      "kind": "list",
-      "source": "[Hook](hooks.md)：规则 Hook、action 类型、多段输出、exec 脚本。",
-      "source_file": "docs/README.md",
-      "source_hash": "975dc716757359d1c3510e2b84a8e8493892637371adb05095a88030f0593e14",
-      "translation": "[Hook](hooks.md): Rule Hook, action types, multi-segment output, exec scripts.",
-      "updated_at": 1793349365
-    },
-    "docs/README.md:list:9ecfe37f5b466cda9f5b17c7fd621021d0574ba88fa3bef08dc5565d85ffa885": {
-      "kind": "list",
-      "source": "[配置说明](configuration.md)：配置文件布局、路径规则、Provider、运行数据、插件目录。",
-      "source_file": "docs/README.md",
-      "source_hash": "9ecfe37f5b466cda9f5b17c7fd621021d0574ba88fa3bef08dc5565d85ffa885",
-      "translation": "[Configuration Guide](configuration.md): Configuration file layout, path rules, Provider, runtime data, plugin directory.",
-      "updated_at": 1793349365
-    },
-    "docs/README.md:list:bc9736976e3936763780f147e28616e60e85d23b98da0643dc1dcd4449ef0b1c": {
-      "kind": "list",
-      "source": "[命令速查](commands.md)：slash 命令与会话管理。",
-      "source_file": "docs/README.md",
-      "source_hash": "bc9736976e3936763780f147e28616e60e85d23b98da0643dc1dcd4449ef0b1c",
-      "translation": "[Command Cheat Sheet](commands.md): Slash commands and Session management.",
-      "updated_at": 1793349365
-    },
-    "docs/README.md:list:c3f26514fb61b643b2652ab3fdb614b4fc45456fe97498080230d10fa7a98924": {
-      "kind": "list",
-      "source": "[快速开始](getting-started.md)：配置 API Key → 启动 CLI → 第一次对话。",
-      "source_file": "docs/README.md",
-      "source_hash": "c3f26514fb61b643b2652ab3fdb614b4fc45456fe97498080230d10fa7a98924",
-      "translation": "[Quick Start](getting-started.md): Configure API Key → Start CLI → First Conversation.",
-      "updated_at": 1793349365
-    },
-    "docs/README.md:list:dc5321b71282da410457c48d4f2dc0c18acfc060198653ec4cc3bd87393e91ab": {
-      "kind": "list",
-      "source": "[ELyph 任务表示法](elyph.md)：Skill 和 Cron 任务条共用的任务语法。",
-      "source_file": "docs/README.md",
-      "source_hash": "dc5321b71282da410457c48d4f2dc0c18acfc060198653ec4cc3bd87393e91ab",
-      "translation": "[ELyph Task Notation](elyph.md): The task syntax shared by Skills and Cron task entries.",
-      "updated_at": 1793349365
-    },
-    "docs/README.md:list:e6dcb2db3d8c19608795e21a97c9cc6a2a187815fb272600b1dafef9e9ee6264": {
-      "kind": "list",
-      "source": "维护规则见 [__ELBOT_CODE_0__](../AGENTS.md)，本目录只放用户使用文档，内部资料放 [__ELBOT_CODE_1__](../devdocs/)。",
-      "source_file": "docs/README.md",
-      "source_hash": "e6dcb2db3d8c19608795e21a97c9cc6a2a187815fb272600b1dafef9e9ee6264",
-      "translation": "Maintenance rules can be found in [__ELBOT_CODE_0__](../AGENTS.md). This directory only contains user documentation; internal materials are placed in [__ELBOT_CODE_1__](../devdocs/).",
-      "updated_at": 1793349365
-    },
-    "docs/README.md:paragraph:204b3395962e58ea99bc2a90a1ca2e1680eff25ac42008affd67478ccf4f5b6d": {
-      "kind": "paragraph",
-      "source": "面向用户的文档。开发计划、架构和内部设计在 [__ELBOT_CODE_0__](../devdocs/)。\n",
-      "source_file": "docs/README.md",
-      "source_hash": "204b3395962e58ea99bc2a90a1ca2e1680eff25ac42008affd67478ccf4f5b6d",
-      "translation": "User-facing documentation. Development plans, architecture, and internal design are in [__ELBOT_CODE_0__](../devdocs/).\n",
+      "source_hash": "babe199eb44ed2e79765ae9ffc8a37333863afab6f5fca664094ec982df78ab3",
+      "translation": "# ElBot Documentation\n\nUser-facing documentation. Development plans, architecture, and internal design are in [`../devdocs/`](../devdocs/).\n\n",
       "updated_at": 1793349365
     }
   },
   "source": "docs/README.md",
   "source_hash": "cb2251efc286294bf2be28a78fef1533f78b4dd7886569c879a983dff536a71a",
   "target": "docs.en/README.md",
-  "updated_at": 1793349365,
-  "version": 2
+  "updated_at": 1793423213,
+  "version": 3
 }
