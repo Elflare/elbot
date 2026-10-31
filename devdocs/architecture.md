@@ -70,7 +70,7 @@ Background 创建任务目录并注入范围，文件工具与 Shell 共用目�
 - 分发有界、同 key 串行，队满拒绝；取消或超时不提前释放仍在运行的执行槽。断开不撤销已取得的订阅快照，关闭等待已接纳回调真实退出。
 - 平台连接事件不缓存或重放，消费者自行排队、去重和管理生命周期。
 - 日志由来源确定身份、等级、结果与正文，业务错误与日志结果独立；日志失败不改变重试或业务判断，错误转交不重复记账。日志中心负责有界排队、落盘及查询，设施故障直接报告 stderr，关闭超时不释放仍在使用的资源。
-- 日志命令在 `command/builtin` 内分离入口、查询解析和格式化。Audit、Runtime、Elwisp 共用字段渲染、时间、状态、耗时、身份和 `---` 分隔；仅保留既定审计专用规则。审计的 summary 完整放在头部，多行自然续行；result 在下方独立展示。
+- 日志命令在 `command/builtin` 内分离入口、查询解析和格式化。Audit、Runtime、Elwisp 共用字段渲染、时间、状态、耗时和 `---` 分隔；普通展示的身份仅保留 session，run_id、attempt、request_id、root_request_id 保留在存储、查询及 raw 中；仅保留既定审计专用规则。审计的 summary 完整放在头部，多行自然续行；result 在下方独立展示。
 - 请求、消息、命名、Hook、发送日志由源头提供结构化事实，出口不解析日志句子、不按动作或事件猜测结构。Hook 的 detail、before/after/source 在源头各限 1024 字符，source 与完整 before 相同时记录“同before_text”；发送回执保留完整 ID 列表及映射。请求日志不计算 hash、不记录 roles 列表，保留 latest_message。
 - `logging.TruncateContent` 共用截断算法：需要限长的 JSON 正文在源头截断并带省略号，独立工具摘要不截断；text 保留日志中心的截断，展示层不追加省略号。`Result.LogContent` 统一生成 1024 字符的实际正文与错误预览，`llm.SegmentsRawContentText` 保留文本空白；展示仅清理尾部 CR/LF。
 - `llm.Usage.CacheHitPercent` 统一计算缓存命中百分比，来源写入审计，统计、上下文和 CLI 复用公式；token 始终保留 API 报告值。

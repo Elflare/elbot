@@ -131,20 +131,12 @@ func formatLogEntry(category events.LogCategory, entry logging.LogEntry) string 
 	if meta != "" {
 		lines = append(lines, meta)
 	}
-	for _, identity := range []struct {
-		label string
-		value *string
-	}{
-		{"session", entry.Identity.SessionID}, {"run_id", entry.Identity.RunID}, {"attempt", entry.Identity.Attempt},
-		{"request_id", entry.Identity.RequestID}, {"root_request_id", entry.Identity.RootRequestID},
-	} {
-		if identity.value != nil {
-			value := *identity.value
-			if value == "" {
-				value = `""`
-			}
-			lines = append(lines, identity.label+": "+value)
+	if entry.Identity.SessionID != nil {
+		value := *entry.Identity.SessionID
+		if value == "" {
+			value = `""`
 		}
+		lines = append(lines, "session: "+value)
 	}
 	if footer != "" {
 		lines = append(lines, footer)

@@ -183,6 +183,49 @@ func TestAuditPreservesSourceOrderThroughStorageAndFiltering(t *testing.T) {
 	}
 }
 
+func TestLogQueriesHideExecutionIdentity(t *testing.T) {
+	value := "execution-id"
+	empty := ""
+	session := "session-id"
+	for _, category := range []events.LogCategory{events.LogAudit, events.LogRuntime, events.LogElnis} {
+		for _, sessionID := range []*string{nil, &empty, &session} {
+			entry := logging.LogEntry{
+				Level:     "INFO",
+				EventName: "tool_call_completed",
+				Type:      events.ContentJSON,
+				Content:   `{"result":"run_id: business content","actor_id":"user","run_source":"foreground"}`,
+				Raw:       `{"run_id":"run","attempt":"attempt","request_id":"request","root_request_id":"root"}`,
+			}
+			want := formatLogEntries(category, false)([]logging.LogEntry{entry})
+			if sessionID != nil {
+				if *sessionID == "" {
+					want += "\nsession: \"\""
+				} else {
+					want += "\nsession: " + *sessionID
+				}
+			}
+			for _, id := range []*string{nil, &empty, &value} {
+				entry.Identity = events.LogIdentity{
+					SessionID:     sessionID,
+					RunID:         id,
+					Attempt:       id,
+					RequestID:     id,
+					RootRequestID: id,
+				}
+				got := formatLogEntries(category, false)([]logging.LogEntry{entry})
+				if got != want {
+					t.Fatalf("category=%v identity=%+v got=%q want=%q", category, entry.Identity, got, want)
+				}
+				raw := formatLogEntries(category, true)([]logging.LogEntry{entry})
+				_, body, found := strings.Cut(raw, "\n")
+				if !found || strings.TrimSpace(body) != entry.Raw {
+					t.Fatalf("raw record changed: %s", raw)
+				}
+			}
+		}
+	}
+}
+
 func TestLogQueriesRenderDecodedJSONStrings(t *testing.T) {
 	for _, factory := range []func(Deps) command.Handler{NewLog, NewAudit, NewElwisp} {
 		service := &fakeLogService{entries: []logging.LogEntry{{
