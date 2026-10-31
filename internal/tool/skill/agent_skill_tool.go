@@ -46,9 +46,9 @@ func (AgentSkillTool) Schema() llm.ToolSchema {
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"action": map[string]any{"type": "string", "enum": []string{"read", "write"}, "description": "read 或 write。"},
-				"name":   map[string]any{"type": "string", "description": "AgentSkill 名称。"},
-				"toml":   map[string]any{"type": "string", "description": "write 时写入的完整 " + AgentSkillConfigFile + " 内容。"},
+				"action": map[string]any{"type": "string", "enum": []string{"read", "write"}},
+				"name":   map[string]any{"type": "string", "description": "AgentSkill名称。"},
+				"toml":   map[string]any{"type": "string", "description": "write必填，完整" + AgentSkillConfigFile + "。"},
 			},
 			"required": []string{"action", "name"},
 		},

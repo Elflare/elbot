@@ -62,13 +62,13 @@ func (WorkspaceTool) DiscoveryContent(ctx context.Context) (string, bool, error)
 
 func workspaceBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("workspace").
-		Description("设置当前 Session 的共享工作目录。所有需要路径的工具会基于该目录解析相对路径。").
+		Description("当前Session工作目录，供文件工具和shell使用；{}→查询，reset=true→重置，否则path→设置。").
 		Risk(toolshare.RiskLow).
 		SuperadminOnly().
 		Tags("agent", "files").
 		ForegroundOnly().
-		String("path", "要设置为 workspace 的已有目录路径。支持~或者$HOME开头。").
-		Boolean("reset", "为 true 时重置为默认工作目录。")
+		String("path", "已有目录，支持~/或$HOME/开头。").
+		Boolean("reset", "true→重置默认目录并忽略path。")
 }
 
 func (t WorkspaceTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {

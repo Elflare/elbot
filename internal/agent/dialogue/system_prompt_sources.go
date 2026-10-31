@@ -46,7 +46,7 @@ func (ConversationMetaSystemPromptSource) Parts(ctx context.Context, req agentsh
 	}{
 		{name: "platform", value: info.Source.Platform},
 		{name: "conversation", value: conversation, id: conversationID},
-		{name: "display_name", value: displayName, id: userID, quote: true},
+		{name: "user", value: displayName, id: userID, quote: true},
 	} {
 		value := strings.TrimSpace(field.value)
 		id := strings.TrimSpace(field.id)

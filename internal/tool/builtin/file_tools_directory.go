@@ -7,12 +7,12 @@ import (
 	"bufio"
 	"container/heap"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -147,7 +147,7 @@ func readFileDirectorySearch(ctx context.Context, root, mode string, args readFi
 		if args.Index > 0 {
 			keep = args.Index
 		}
-		matches, total, grepWarnings, err = findDirectoryGrepMatches(ctx, root, query, keep)
+		matches, total, grepWarnings, err = findDirectoryGrepMatches(ctx, root, query, keep, args.Glob)
 		warnings = append(warnings, grepWarnings...)
 	case readFileModeAST, readFileModeASTFunction:
 		if cached, cachedWarnings, ok := astCache.load(root, mode, query); ok {
@@ -198,40 +198,35 @@ func (h *directoryMatchHeap) Pop() any {
 	return value
 }
 
-func findDirectoryGrepMatches(ctx context.Context, root, query string, keep int) ([]directorySearchMatch, int, []string, error) {
+func findDirectoryGrepMatches(ctx context.Context, root, query string, keep int, glob []string) ([]directorySearchMatch, int, []string, error) {
+	pattern, err := regexp.Compile(query)
+	if err != nil {
+		return nil, 0, nil, fmt.Errorf("invalid grep regex: %w", err)
+	}
 	rg, err := exec.LookPath("rg")
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("directory grep requires ripgrep (rg), but rg was not found in PATH. Ask the user to install ripgrep and make `rg` available in PATH")
 	}
-	files, warnings, err := directoryGrepFiles(ctx, rg, root)
+	files, warnings, err := directoryGrepFiles(ctx, rg, root, glob)
 	if err != nil {
 		return nil, 0, nil, err
 	}
 	matches := directoryMatchHeap{}
-	total := 0
-	for start := 0; start < len(files); {
-		end, size := start, 0
-		for end < len(files) && end-start < 128 {
-			next := len(files[end]) + 1
-			if end > start && size+next > 16*1024 {
-				break
-			}
-			size += next
-			end++
-		}
-		count, err := scanDirectoryGrepBatch(ctx, rg, root, query, files[start:end], keep, &matches)
-		if err != nil {
-			return nil, 0, nil, err
-		}
-		total += count
-		start = end
+	total, err := scanDirectoryGrepBatch(ctx, root, pattern, files, keep, &matches)
+	if err != nil {
+		return nil, 0, nil, err
 	}
 	return []directorySearchMatch(matches), total, warnings, nil
 }
 
 // directoryGrepFiles uses ripgrep's ignore rules for both search and warnings.
-func directoryGrepFiles(ctx context.Context, rg, root string) ([]string, []string, error) {
-	cmd := exec.CommandContext(ctx, rg, "--files", "--null", "--no-messages", "--glob", "!**/.git/**", "--glob", "!**/node_modules/**", "--glob", "!**/vendor/**", "--", root)
+func directoryGrepFiles(ctx context.Context, rg, root string, glob []string) ([]string, []string, error) {
+	args := []string{"--files", "--null", "--no-messages"}
+	for _, pattern := range glob {
+		args = append(args, "--glob", pattern)
+	}
+	args = append(args, "--glob", "!**/.git/**", "--glob", "!**/node_modules/**", "--glob", "!**/vendor/**", "--", root)
+	cmd := exec.CommandContext(ctx, rg, args...)
 	processenv.ConfigureCommand(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -309,78 +304,75 @@ func directoryGrepFiles(ctx context.Context, rg, root string) ([]string, []strin
 	return files, []string{fmt.Sprintf("grep skipped %d large files: %s%s", count, strings.Join(preview, ", "), extra)}, nil
 }
 
-func scanDirectoryGrepBatch(ctx context.Context, rg, root, query string, files []string, keep int, matches *directoryMatchHeap) (int, error) {
-	args := []string{"--json", "--fixed-strings", "--no-messages", "--max-filesize", fmt.Sprintf("%d", fileToolMaxBytes), "--", query}
-	cmd := exec.CommandContext(ctx, rg, append(args, files...)...)
-	processenv.ConfigureCommand(cmd)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return 0, err
-	}
-	defer stdout.Close()
-	if err := cmd.Start(); err != nil {
-		return 0, fmt.Errorf("run ripgrep: %w", err)
-	}
-	decoder := json.NewDecoder(stdout)
+func scanDirectoryGrepBatch(ctx context.Context, root string, query *regexp.Regexp, files []string, keep int, matches *directoryMatchHeap) (int, error) {
 	total := 0
-	var readErr error
-	for {
-		var event struct {
-			Type string `json:"type"`
-			Data struct {
-				Path struct {
-					Text  string `json:"text"`
-					Bytes []byte `json:"bytes"`
-				} `json:"path"`
-				LineNumber int `json:"line_number"`
-				Submatches []struct {
-					Start int `json:"start"`
-				} `json:"submatches"`
-			} `json:"data"`
+	for _, path := range files {
+		if err := ctx.Err(); err != nil {
+			return 0, err
 		}
-		if err := decoder.Decode(&event); err != nil {
-			if err != io.EOF {
-				readErr = err
-			}
-			break
-		}
-		if event.Type != "match" {
-			continue
-		}
-		path := event.Data.Path.Text
-		if path == "" {
-			path = string(event.Data.Path.Bytes)
-		}
-		path, err = filepath.Rel(root, path)
+		file, err := os.Open(path)
 		if err != nil {
-			readErr = err
-			break
+			return 0, fmt.Errorf("open grep file %s: %w", path, err)
 		}
-		column := 1
-		if len(event.Data.Submatches) > 0 {
-			column += event.Data.Submatches[0].Start
+		count, err := func() (int, error) {
+			defer file.Close()
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				return 0, err
+			}
+			rel = filepath.ToSlash(rel)
+			reader := bufio.NewReader(io.LimitReader(file, fileToolMaxBytes+1))
+			count, lineNumber, size := 0, 0, int64(0)
+			// Delay publishing candidates until the file is known to be text:
+			// a NUL anywhere discards even matches preceding it.
+			candidates := []directorySearchMatch{}
+			for {
+				if err := ctx.Err(); err != nil {
+					return 0, err
+				}
+				text, err := reader.ReadString('\n')
+				if err != nil && err != io.EOF {
+					return 0, fmt.Errorf("read grep file %s: %w", path, err)
+				}
+				if text == "" && err == io.EOF {
+					break
+				}
+				size += int64(len(text))
+				if size > fileToolMaxBytes {
+					return 0, fmt.Errorf("file too large: %s exceeds %d bytes", path, fileToolMaxBytes)
+				}
+				if strings.IndexByte(text, 0) >= 0 {
+					return 0, nil
+				}
+				if lineNumber == 0 {
+					text = strings.TrimPrefix(text, "\ufeff")
+				}
+				for _, line := range fileops.SplitLines(text) {
+					lineNumber++
+					location := query.FindStringIndex(line)
+					if location == nil {
+						continue
+					}
+					count++
+					if len(candidates) < keep {
+						candidates = append(candidates, directorySearchMatch{Path: rel, Line: lineNumber, Column: location[0] + 1, EndLine: lineNumber, Kind: "grep"})
+					}
+				}
+			}
+			for _, match := range candidates {
+				if matches.Len() < keep {
+					heap.Push(matches, match)
+				} else if match.Path < (*matches)[0].Path || (match.Path == (*matches)[0].Path && match.Line < (*matches)[0].Line) {
+					(*matches)[0] = match
+					heap.Fix(matches, 0)
+				}
+			}
+			return count, nil
+		}()
+		if err != nil {
+			return 0, err
 		}
-		match := directorySearchMatch{Path: filepath.ToSlash(path), Line: event.Data.LineNumber, Column: column, EndLine: event.Data.LineNumber, Kind: "grep"}
-		total++
-		if matches.Len() < keep {
-			heap.Push(matches, match)
-		} else if match.Path < (*matches)[0].Path || (match.Path == (*matches)[0].Path && match.Line < (*matches)[0].Line) {
-			(*matches)[0] = match
-			heap.Fix(matches, 0)
-		}
-	}
-	if readErr != nil {
-		_ = cmd.Process.Kill()
-	}
-	waitErr := cmd.Wait()
-	if ctx.Err() != nil {
-		return 0, ctx.Err()
-	}
-	if readErr != nil {
-		return 0, fmt.Errorf("read ripgrep output: %w", readErr)
-	}
-	if exitError, ok := waitErr.(*exec.ExitError); waitErr != nil && (!ok || exitError.ExitCode() != 1) {
-		return 0, fmt.Errorf("run ripgrep: %w", waitErr)
+		total += count
 	}
 	return total, nil
 }

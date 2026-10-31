@@ -254,7 +254,7 @@ func normalizeCronToolNames(names []string) []string {
 
 func (t CronTool) Name() string { return "cron" }
 func (t CronTool) Info() toolshare.Info {
-	return toolshare.NewBuilder(t.Name()).Description("管理系统 Cron 定时任务。本工具仅为入口").Risk(toolshare.RiskMedium).SuperadminOnly().DependsOn("cron_query", "cron_write").BuildInfo()
+	return toolshare.NewBuilder(t.Name()).Description("定时任务入口；查询→cron_query，修改→cron_write；调用本工具仅返回指引和当前时间。").Risk(toolshare.RiskMedium).SuperadminOnly().DependsOn("cron_query", "cron_write").BuildInfo()
 }
 func (t CronTool) Schema() llm.ToolSchema {
 	return cronBuilder(t.Name(), t.Info().Description).BuildSchema()
@@ -276,13 +276,13 @@ func (t CronTool) DiscoveryContent() (string, bool) {
 
 func (t CronQueryTool) Name() string { return "cron_query" }
 func (t CronQueryTool) Info() toolshare.Info {
-	return hiddenCronInfo(t.Name(), "查询单个 cron 或列出 cron。不传 name 时列出；传 name 时查询单个。", toolshare.RiskMedium)
+	return hiddenCronInfo(t.Name(), "查定时任务；name空→全列表，否则→单个。", toolshare.RiskMedium)
 }
 func (t CronQueryTool) Schema() llm.ToolSchema {
-	return cronBuilder(t.Name(), "查询单个 cron 或列出 cron。 ").
-		String("name", "任务短名。留空则列出 cron。").
-		Boolean("include_disabled", "列出 cron 时是否包含已停用 cron。默认 false。 ").
-		Boolean("include_completed", "列出 cron 时是否显示已完成的 cron。默认 false；想查看历史一次性任务时设为 true。 ").
+	return cronBuilder(t.Name(), t.Info().Description).
+		String("name", "任务短名。").
+		Boolean("include_disabled", "列表包含停用项，默认false。").
+		Boolean("include_completed", "列表包含已完成项，默认false。").
 		BuildSchema()
 }
 func (t CronQueryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
@@ -327,30 +327,30 @@ func (t CronQueryTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 
 func (t CronWriteTool) Name() string { return "cron_write" }
 func (t CronWriteTool) Info() toolshare.Info {
-	info := hiddenCronInfo(t.Name(), "创建、Patch 更新、停用或硬删除 cron。operation 为 create、update、disable 或 delete。", toolshare.RiskHigh)
+	info := hiddenCronInfo(t.Name(), "创建/更新/停用/永久删除定时任务。", toolshare.RiskHigh)
 	info.NeedsElyphRules = true
 	return info
 }
 func (t CronWriteTool) Schema() llm.ToolSchema {
 	return cronBuilder(t.Name(), cronWriteDescription()).
-		String("operation", "写操作：create、update、disable、delete。", toolshare.Required()).
-		String("name", "任务短名，只允许字母、数字、下划线、点和横线。", toolshare.Required()).
-		String("title", "create 需要；update 可选。cron session 标题。为空时使用 name。").
-		String("schedule_mode", "create 需要；update 可选。触发计划类型：once 或 cron。 ").
-		String("run_at", "一次性任务绝对时间，格式 YYYY-MM-DD HH:MM:SS。schedule_mode=once 且未使用 run_after_* 时填写。\n~ 任意 run_after_* 同时传").
-		String("cron_expr", "5 字段 cron 表达式。schedule_mode=cron 时填写。 ").
-		Integer("run_after_minutes", "一次性任务相对当前时间的分钟偏移。\n** 用户说几分钟后时优先使用\n~ run_at 同时传").
-		Integer("run_after_hours", "一次性任务相对当前时间的小时偏移。\n** 用户说几小时后时优先使用\n~ run_at 同时传").
-		Integer("run_after_days", "一次性任务相对当前时间的天数偏移。\n** 用户说几天后时优先使用\n~ run_at 同时传").
-		Integer("run_after_weeks", "一次性任务相对当前时间的周数偏移，1周按7天。\n** 用户说几周后时优先使用\n~ run_at 同时传").
-		Integer("run_after_months", "一次性任务相对当前时间的日历月偏移。\n** 用户说几个月后时优先使用\n~ run_at 同时传").
-		String("trigger_mode", "create 需要；update 可选。触发模式：direct 或 llm。direct 直接发消息；llm 后台运行 LLM 处理复杂任务。 ").
-		String("message", "create 需要；update 可选。trigger_mode=direct：使用普通自然语言通知文本。trigger_mode=llm：使用 ELyph #task <name> - 描述 任务文本。").
-		StringArray("tool_list_names", "trigger_mode=llm 时指定的工具、Skill 或标签名，填普通名字，无需 @ 前缀；按注册类型识别并预加载，任务只允许这些能力及必要依赖，不提供 discover_tool。工具附带使用说明，标签附带标签提示，Skill 附带文档与声明的运行工具，可执行 AgentSkill 同时提供自身调用接口。update 传空数组表示清空。 ").
-		String("model_provider", "任务专用模型 provider，与 model 成对设置；未指定时使用 work 模型。update 两者同时传空字符串恢复默认。").
-		String("model", "任务专用模型名称，与 model_provider 成对设置。").
-		Boolean("all_enabled_platforms", "是否发送/广播到所有 enabled 平台超级管理员。 ").
-		Boolean("enabled", "create：创建后是否启用，默认 true；update：是否启用。false 表示停用但保留记录。 ").
+		String("operation", "disable=停用保留；delete=永久删除；暂停用disable。", toolshare.Required(), toolshare.Enum("create", "update", "disable", "delete")).
+		String("name", "任务短名：字母/数字/下划线/点/横线。", toolshare.Required()).
+		String("title", "展示标题；create默认name。").
+		String("schedule_mode", "once⇒run_at或非零run_after_*；cron⇒cron_expr。", toolshare.Enum("once", "cron")).
+		String("run_at", "绝对时间YYYY-MM-DD HH:MM:SS。").
+		String("cron_expr", "5字段：分 时 日 月 周。").
+		Integer("run_after_minutes", "相对分钟数，按时长。").
+		Integer("run_after_hours", "相对小时数，按时长。").
+		Integer("run_after_days", "相对日历天数。").
+		Integer("run_after_weeks", "相对周数，1周=7日历天。").
+		Integer("run_after_months", "相对日历月数。").
+		String("trigger_mode", "direct=直接通知；llm=后台LLM任务。", toolshare.Enum("direct", "llm")).
+		String("message", "direct→通知正文；llm→ELyph #task <name> - 描述 任务文本。").
+		StringArray("tool_list_names", "llm允许的工具/Skill/标签名，无需@；仅所选能力+必要依赖，无discover_tool；update: []→清空。").
+		String("model_provider", "与model同传；create省略→work模型；update两者同为\"\"→默认模型。").
+		String("model", "模型名，与model_provider成对。").
+		Boolean("all_enabled_platforms", "true→广播到所有已启用平台的超级管理员；create默认false。").
+		Boolean("enabled", "create默认true；false→停用保留。").
 		BuildSchema()
 }
 func (t CronWriteTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
@@ -499,19 +499,12 @@ func resolveRunAtAt(runAt string, offset relativeOffset, now time.Time) (string,
 }
 
 func cronWriteDescription() string {
-	return "创建、Patch 更新、停用或硬删除 cron。\n\n" + `
-
-#task cron_write_desc - cron_write 总规则
-** operation=create 时创建一次性或周期 cron；title、schedule_mode、trigger_mode、message 通常需要填写
-** operation=update 时只修改传入字段
-** operation=disable 时停用 cron 但保留记录
-** operation=delete 时硬删除 cron，不保留调度记录；用户只想暂停时优先用 disable
-** trigger_mode=direct 时，message 使用普通自然语言通知文本
-** trigger_mode=llm 时，message 使用 ELyph #task <name> - 描述 任务文本
-** 用户说几分钟/几小时/几天/几周/几个月后时，优先使用对应 run_after_*
-** create 时 enabled 缺省为 true
-~ 自己计算用户相对时间对应的 run_at
-~ 同时传 run_at 和任意 run_after_*`
+	return `写定时任务。
+create⇒schedule_mode,trigger_mode,message必填。
+update：省略→保持原值；普通字符串""→保持原值(model_provider/model除外)；false有效。
+时间=服务器local，分钟级；run_at与非零run_after_*至多选一。
+run_after_*≥0，可组合；用户给相对时间→优先对应字段，不自行换算run_at。
+once且enabled：早于当前分钟→error；当前分钟→下一分钟。`
 }
 
 func stringPtrIfNotEmpty(value string) *string {

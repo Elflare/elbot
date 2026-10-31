@@ -141,7 +141,7 @@ func newLongMemoryStore(rootDir string) *longMemoryStore {
 
 func (LongMemoryTool) Name() string { return longMemoryToolName }
 func (t LongMemoryTool) Info() toolshare.Info {
-	return longMemoryBuilder(t.Name(), "Long Memory 长期记忆入口。用于检索、保存、更新、删除全局长期记忆").DependsOn(longMemorySearchToolName, longMemoryWriteToolName).BuildInfo()
+	return longMemoryBuilder(t.Name(), "全局长期记忆入口；检索→long_memory_search，写入→long_memory_write。").DependsOn(longMemorySearchToolName, longMemoryWriteToolName).BuildInfo()
 }
 func (t LongMemoryTool) Schema() llm.ToolSchema {
 	return longMemoryBuilder(t.Name(), t.Info().Description).BuildSchema()
@@ -155,15 +155,15 @@ func (t LongMemoryTool) PrepareCall(ctx context.Context, req toolshare.CallReque
 
 func (LongMemorySearchTool) Name() string { return longMemorySearchToolName }
 func (t LongMemorySearchTool) Info() toolshare.Info {
-	return hiddenLongMemoryInfo(t.Name(), "检索全局长期记忆；不传 keywords/category 时返回分类目录。默认只返回标题和摘要，需要详细内容时传 brief_only=false。", toolshare.RiskMedium)
+	return hiddenLongMemoryInfo(t.Name(), "检索全局长期记忆；keywords和category均空→分类目录。", toolshare.RiskMedium)
 }
 func (t LongMemorySearchTool) Schema() llm.ToolSchema {
 	return longMemoryBuilder(t.Name(), t.Info().Description).
-		String("keywords", "关键词。留空且 category 也为空时返回当前分类目录。").
-		String("category", "指定分类。留空且 keywords 也为空时返回当前分类目录。").
-		String("match_mode", "多关键词匹配模式：AND=必须全包含；OR=包含任一即可。默认 OR。").
-		Boolean("brief_only", "true=仅返回标题和摘要；false=包含完整内容。默认 true。需要详细内容时再传 false。").
-		Integer("limit", "最大结果数，默认 3，上限 10。").
+		String("keywords", "关键词，空白/逗号/换行分隔。").
+		String("category", "分类过滤。").
+		String("match_mode", "关键词组合，默认OR。", toolshare.Enum("AND", "OR")).
+		Boolean("brief_only", "默认true→标题+摘要；false→含全文。").
+		Integer("limit", "默认3，上限10。").
 		BuildSchema()
 }
 func (t LongMemorySearchTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
@@ -191,18 +191,18 @@ func (t LongMemorySearchTool) PrepareCall(ctx context.Context, req toolshare.Cal
 
 func (LongMemoryWriteTool) Name() string { return longMemoryWriteToolName }
 func (t LongMemoryWriteTool) Info() toolshare.Info {
-	return hiddenLongMemoryInfo(t.Name(), "保存、局部更新或永久删除全局长期记忆。operation 为 save、update 或 delete。保存前建议先用 long_memory_search 查看分类和避免重复。", toolshare.RiskHigh)
+	return hiddenLongMemoryInfo(t.Name(), "写全局长期记忆；先long_memory_search查重。save⇒category,title,summary,keywords,content必填；update/delete⇒id必填；update省略/\"\"→保持原值；delete=永久删除。", toolshare.RiskHigh)
 }
 func (t LongMemoryWriteTool) Schema() llm.ToolSchema {
 	return longMemoryBuilder(t.Name(), t.Info().Description).
-		String("operation", "写操作：save、update、delete。", toolshare.Required()).
-		Integer("id", "update/delete 需要的记忆 ID。").
-		String("category", "save 需要；update 时不填表示保持不变，填写表示修改分类。优先复用已有分类，避免创建语义重叠的新分类。").
-		String("title", "save 需要；update 时不填表示保持不变，填写表示修改标题。").
-		String("summary", "save 需要；update 时不填表示保持不变，填写表示修改摘要，建议 50 字以内。").
-		String("keywords", "save 需要；update 时不填表示保持不变，填写表示修改搜索关键词；用空格、逗号或换行分隔。").
-		String("content", "save 需要；update 时不填表示保持不变，填写表示整段替换正文；delete 会忽略。update 时不能和 content_edits 同时填写。").
-		ObjectArray("content_edits", "仅 update 有效；不能和 content 同时填写。使用与 edit_file 相同的精确文本、anchor、行号插入/删除协议。", fileops.EditOperationProperties(), []string{"operation"}).
+		String("operation", "写操作。", toolshare.Required(), toolshare.Enum("save", "update", "delete")).
+		Integer("id", "记忆ID。").
+		String("category", "分类，优先复用已有分类。").
+		String("title", "标题。").
+		String("summary", "摘要，建议≤50字。").
+		String("keywords", "搜索词，空白/逗号/换行分隔。").
+		String("content", "全文；update=整体替换，与content_edits至多传一个；delete忽略。").
+		ObjectArray("content_edits", "仅update；与content至多传一个；定位基于原文，修改范围不重叠，插入点不在其内部。", fileops.EditOperationProperties(), []string{"operation"}).
 		BuildSchema()
 }
 

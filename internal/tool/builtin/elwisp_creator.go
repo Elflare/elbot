@@ -43,7 +43,7 @@ func (ElwispCreatorTool) Name() string {
 func (ElwispCreatorTool) Info() toolshare.Info {
 	return toolshare.NewBuilder(ElwispCreatorName).
 		NeedsElyphRules().
-		Description("获取创建 Elwisp 监听器所需的精简 Elnis/Elvena/ELyph 说明，并附带当前 Elnis 配置摘要。").
+		Description("获取Elwisp监听器创建指引及当前Elnis配置摘要，不直接创建。").
 		Source(toolshare.SourceBuiltin).
 		Risk(toolshare.RiskLow).
 		SuperadminOnly().
@@ -51,9 +51,9 @@ func (ElwispCreatorTool) Info() toolshare.Info {
 		BuildInfo()
 }
 
-func (ElwispCreatorTool) Schema() llm.ToolSchema {
+func (t ElwispCreatorTool) Schema() llm.ToolSchema {
 	return toolshare.NewBuilder(ElwispCreatorName).
-		Description("无参数。调用后返回精简的 Elwisp 创建任务卡，包含当前 Elnis 配置摘要、Elvena 协议、ELyph 写法和安全注意事项。").
+		Description(t.Info().Description).
 		BuildSchema()
 }
 

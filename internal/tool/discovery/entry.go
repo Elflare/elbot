@@ -29,7 +29,7 @@ func (t discoverTool) Name() string { return "discover_tool" }
 
 func (t discoverTool) Info() share.Info {
 	return share.NewBuilder(t.Name()).
-		Description("发现可用工具和技能。未知工具schema时使用此工具获取，已知不再次使用。不传 name/names 时列出工具简介，传 name/names 时返回指定工具及 schema或者skill描述。").
+		Description("发现工具/Skill；name/names均空→简介列表，否则→schema或Skill内容。当前会话已有对应schema/内容则无需重复发现。").
 		Risk(share.RiskSafe).
 		BuildInfo()
 }
@@ -37,8 +37,8 @@ func (t discoverTool) Info() share.Info {
 func (t discoverTool) Schema() llm.ToolSchema {
 	return share.NewBuilder(t.Name()).
 		Description(t.Info().Description).
-		String("name", "可选，要查询详情的tool/skill名称。不传 name/names 则列出全部可见工具简介。").
-		StringArray("names", "可选，要批量查询详情的tool/skill名称列表。").
+		String("name", "单个工具/Skill名称；可与names合并查询。").
+		StringArray("names", "批量工具/Skill名称。").
 		BuildSchema()
 }
 

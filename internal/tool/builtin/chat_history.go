@@ -96,43 +96,43 @@ func (ReplyToChatHistoryMessageTool) Schema() llm.ToolSchema {
 
 func searchChatHistoryBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("search_chat_history").
-		Description("查询聊天历史，可按关键词、用户和时间过滤。前台只能查询当前聊天，禁止指定 platform、scope；后台必须同时指定非空的 platform、scope。").
+		Description("查聊天历史。前台→当前聊天，禁传platform/scope；后台→platform+scope非空必填。起始时间优先级：有效since > hours>0 > days>0。").
 		Risk(toolshare.RiskLow).
 		Tags("chat").
 		DependsOn("get_chat_history_around", "reply_to_chat_history_message", "get_media").
-		String("platform", "仅后台任务必填，指定目标平台，例如 qqofficial、qqonebot、telegram；前台禁止提供。").
-		String("scope", "仅后台任务必填，指定目标聊天范围，例如 QQ 官方私聊 c2c:用户openid、群聊 group:群ID；前台禁止提供。").
-		String("query", "按消息正文搜索的关键词；可传多个搜索词，用空格、逗号、中文逗号、竖线或换行分隔；留空表示不过滤。").
-		String("query_mode", "多个搜索词的匹配规则：or 或 and；默认 or。").
-		String("user", "按用户过滤：同时匹配平台用户 ID（精确相等）或昵称（包含文本）；留空不筛选。不解析 @ 前缀或“我”等特殊写法。").
-		String("since", "起始时间。支持 Unix 时间戳、YYYY-MM-DD、YYYY-MM-DD HH:MM、YYYY-MM-DD HH:MM:SS；留空表示不限制。").
-		String("until", "结束时间。格式同 since；留空表示不限制。").
-		Integer("hours", "查询最近多少小时。since 为空时生效；0 表示不限制。").
-		Integer("days", "查询最近多少天。since 和 hours 为空时生效；0 表示不限制。").
-		Integer("limit", "返回记录数量，默认 10，最大 50。").
-		Boolean("full", "是否完整显示单条消息及引用内容，默认 false，可省略；true 只解除单条 300 字限制，整份结果仍受 6000 字限制，过长的行可能被整体省略。")
+		String("platform", "目标平台，如qqofficial、qqonebot、telegram。").
+		String("scope", "目标聊天，如c2c:用户openid、group:群ID。").
+		String("query", "正文关键词，空白/逗号/中文逗号/|分隔；空→不过滤。").
+		String("query_mode", "关键词组合，默认or。", toolshare.Enum("or", "and")).
+		String("user", "用户ID精确匹配或昵称子串；空→不过滤；不解析@或“我”。").
+		String("since", "起始时间：Unix秒或本地YYYY-MM-DD[ HH:MM[:SS]]；无效/空→忽略。").
+		String("until", "结束时间，格式同since；无效/空→不限。").
+		Integer("hours", "最近小时数；≤0→忽略。").
+		Integer("days", "最近日历天数；≤0→忽略。").
+		Integer("limit", "默认10，上限50。").
+		Boolean("full", "默认false；true→取消单条300字符截断，总输出仍≤6000字符，超长行可省略。")
 }
 func aroundChatHistoryBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("get_chat_history_around").
-		Description("根据 search_chat_history 返回的 #message_id 查询当前聊天中该条消息附近的上下文。").
+		Description("查当前聊天中指定消息前后的上下文。").
 		Risk(toolshare.RiskLow).
 		Hidden().
 		Tags("chat").
 		DependsOn("search_chat_history", "reply_to_chat_history_message", "get_media").
-		String("message_id", "search_chat_history 返回结果中的平台消息 ID，可传 # 开头或纯 ID。", toolshare.Required()).
-		Integer("before", "向该消息之前查询多少条当前聊天记录，默认 10，最大 50。").
-		Integer("after", "向该消息之后查询多少条当前聊天记录，默认 10，最大 50。").
-		Boolean("full", "是否完整显示单条消息及引用内容，默认 false，可省略；true 只解除单条 300 字限制，整份结果仍受 6000 字限制，过长的行可能被整体省略。")
+		String("message_id", "平台消息ID，#可省。", toolshare.Required()).
+		Integer("before", "前文条数，默认10，上限50。").
+		Integer("after", "后文条数，默认10，上限50。").
+		Boolean("full", "默认false；true→取消单条300字符截断，总输出仍≤6000字符，超长行可省略。")
 }
 func replyChatHistoryBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("reply_to_chat_history_message").
-		Description("引用当前聊天历史中的某条平台消息，并发送回复到当前群聊或私聊。调用成功后不要重复发送相同内容。").
+		Description("引用历史消息并回复当前聊天；成功后勿重复发送。").
 		Hidden().
 		Risk(toolshare.RiskLow).
 		Tags("chat").
 		DependsOn("search_chat_history", "get_chat_history_around", "get_media").
-		String("message_id", "search_chat_history 或 get_chat_history_around 返回结果中的平台消息 ID，可传 # 开头或纯 ID。", toolshare.Required()).
-		String("message", "引用该历史消息时要发送到当前聊天的回复内容。", toolshare.Required())
+		String("message_id", "当前聊天的平台消息ID，#可省。", toolshare.Required()).
+		String("message", "回复正文。", toolshare.Required())
 }
 
 func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {

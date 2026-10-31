@@ -35,17 +35,17 @@ func (FinalizeElSkillTool) Name() string { return FinalizeElSkillName }
 
 func (FinalizeElSkillTool) Info() toolshare.Info {
 	return toolshare.NewBuilder(FinalizeElSkillName).
-		Description("完成 EL Skill 修改：校验 SKILL.elyph；如有 main.go，则 gofmt、校验 package main、go build；成功后 reload。错误会返回给 LLM 继续修。").
+		Description("校验SKILL.elyph；有main.go→gofmt+校验package main+build；成功→reload。").
 		Source(toolshare.SourceBuiltin).
 		Risk(toolshare.RiskMedium).
 		BuildInfo()
 }
 
-func (FinalizeElSkillTool) Schema() llm.ToolSchema {
+func (t FinalizeElSkillTool) Schema() llm.ToolSchema {
 	return toolshare.NewBuilder(FinalizeElSkillName).
-		Description("完成 EL Skill 修改并检查结果。会校验 SKILL.elyph；如果存在 main.go，会自动 gofmt 写回、校验 package main、go build；成功后 reload。gofmt/build/语法错误会作为结果内容返回，供继续修改。").
-		String("name", "skill 名称。", toolshare.Required()).
-		Integer("timeout_ms", "可选，Go 编译超时时间，默认 60000。").
+		Description(t.Info().Description).
+		String("name", "Skill名称。", toolshare.Required()).
+		Integer("timeout_ms", "编译超时，ms；≤0/省略→60000。").
 		BuildSchema()
 }
 

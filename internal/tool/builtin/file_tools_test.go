@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -567,10 +568,10 @@ func TestDirectoryGrepCancellationAndProcessFailures(t *testing.T) {
 			ctx, cancel = context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
 		}
 		cancel()
-		if _, _, err := directoryGrepFiles(ctx, rg, root); !errors.Is(err, reason) {
+		if _, _, err := directoryGrepFiles(ctx, rg, root, nil); !errors.Is(err, reason) {
 			t.Fatalf("enumeration: %v, want %v", err, reason)
 		}
-		if _, err := scanDirectoryGrepBatch(ctx, rg, root, "needle", []string{filepath.Join(root, "file")}, 1, &directoryMatchHeap{}); !errors.Is(err, reason) {
+		if _, err := scanDirectoryGrepBatch(ctx, root, regexp.MustCompile("needle"), []string{filepath.Join(root, "file")}, 1, &directoryMatchHeap{}); !errors.Is(err, reason) {
 			t.Fatalf("search: %v, want %v", err, reason)
 		}
 	}
@@ -578,8 +579,7 @@ func TestDirectoryGrepCancellationAndProcessFailures(t *testing.T) {
 		return
 	}
 	for _, tc := range []struct{ name, script, want string }{
-		{"malformed", "printf '{invalid'", "read ripgrep output"},
-		{"failed", "exit 2", "run ripgrep"},
+		{"failed", "exit 2", "enumerate ripgrep files"},
 		{"canceled", "while :; do sleep 30; done", "context canceled"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -596,7 +596,7 @@ func TestDirectoryGrepCancellationAndProcessFailures(t *testing.T) {
 			defer cancel()
 			done := make(chan error, 1)
 			go func() {
-				_, err := scanDirectoryGrepBatch(ctx, path, root, "needle", []string{"file"}, 1, &directoryMatchHeap{})
+				_, _, err := directoryGrepFiles(ctx, path, root, nil)
 				done <- err
 			}()
 			if tc.name == "canceled" {
@@ -1105,29 +1105,14 @@ func TestEditFileToolSchemaExposesEditProtocol(t *testing.T) {
 		t.Fatalf("edit_file operation schema missing: %#v", editProperties["operation"])
 	}
 	enum, ok := operation["enum"].([]string)
-	if !ok || !slices.Contains(enum, "replace") {
-		t.Fatalf("edit_file operation schema should expose replace: %#v", operation)
+	if !ok || !slices.Equal(enum, []string{"replace_text", "replace", "insert", "delete", "insert_before", "insert_after", "replace_line", "delete_line", "overwrite"}) {
+		t.Fatalf("edit_file operation enum = %#v", operation)
 	}
-	operationDescription, _ := operation["description"].(string)
-	for _, want := range []string{
-		"replace_text 通过 old_text 精确定位并替换，可跨行",
-		"replace 通过 line/end_line 替换指定行范围",
-		"若需保留换行必须手动传入 \\n",
-		"replace_line 通过 anchor 匹配并替换一整行",
-	} {
-		if !strings.Contains(operationDescription, want) {
-			t.Fatalf("edit_file operation description missing %q: %q", want, operationDescription)
-		}
+	if edits["minItems"] != 1 || !slices.Equal(items["required"].([]string), []string{"operation"}) {
+		t.Fatalf("edit batch constraints = %#v", edits)
 	}
-	newText, ok := editProperties["new_text"].(map[string]any)
-	if !ok {
-		t.Fatalf("edit_file new_text schema missing: %#v", editProperties["new_text"])
-	}
-	description, _ := newText["description"].(string)
-	for _, want := range []string{"若需换行，需手动添加", "缩进需手动，换行自动追加"} {
-		if !strings.Contains(description, want) {
-			t.Fatalf("edit_file new_text description missing %q: %q", want, description)
-		}
+	if editProperties["index"].(map[string]any)["minimum"] != 1 {
+		t.Fatalf("edit index must be 1-based: %#v", editProperties["index"])
 	}
 }
 

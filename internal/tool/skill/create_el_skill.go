@@ -45,26 +45,31 @@ func (CreateElSkillTool) Name() string { return CreateElSkillName }
 func (CreateElSkillTool) Info() toolshare.Info {
 	return toolshare.NewBuilder(CreateElSkillName).
 		NeedsElyphRules().
-		Description("创建 ElBot 原生 ELyph skill。只有可复用经验、固定流程或稳定能力才应创建 skill；一次性任务不要创建。可只写 SKILL.elyph，也可附带 Go 源码并通过 go_skill_run 调用。").
+		Description("创建可复用EL Skill，一次性任务不创建；有go_source→编译并用go_skill_run调用，否则→纯ELyph文档。").
 		Source(toolshare.SourceBuiltin).
 		Risk(toolshare.RiskHigh).
 		DependsOn(ReadElSkillName, ModifyElSkillName, FinalizeElSkillName).
 		BuildInfo()
 }
 
-func (CreateElSkillTool) Schema() llm.ToolSchema {
-	return toolshare.NewBuilder(CreateElSkillName).
-		Description("创建 ElBot 原生 ELyph Skill，可附带 go_source 并编译。Go Skill 通过 go_skill_run 调用，宿主处理 payload 后将其作为 JSON 写入进程 stdin。调用方用 payload.media_inputs 传入 [{\"media\":\"media:<sha256>\"}]；宿主补充 path、name、mime_type、size、可选 base64 和 media_workspace。无媒体输入但需要输出目录时传空 media_inputs。stdout 可返回 content 和 segments；image/file 使用稳定 media ID 或 Skill 目录内的相对 path，宿主导入 path 后返回稳定 ID。调用结束自动清理临时目录和引用。SKILL.elyph 必须写明 go_skill_run 的调用方式和业务 payload。").
-		String("name", "skill 名称，也是目录名和 binary 名；使用小写字母、数字、下划线或短横线。", toolshare.Required()).
-		String("description", "skill 的可复用能力简述。", toolshare.Required()).
-		String("risk", "风险等级：safe, low, medium, high, critical。", toolshare.Required()).
-		String("elyph", "完整 SKILL.elyph 内容。", toolshare.Required()).
+func (t CreateElSkillTool) Schema() llm.ToolSchema {
+	schema := toolshare.NewBuilder(CreateElSkillName).
+		Description(t.Info().Description).
+		String("name", "Skill名称。", toolshare.Required()).
+		String("description", "可复用能力简述。", toolshare.Required()).
+		String("risk", "执行风险。", toolshare.Required(), toolshare.Enum("safe", "low", "medium", "high", "critical")).
+		String("elyph", "完整SKILL.elyph；有go_source⇒写明go_skill_run用法和业务payload。", toolshare.Required()).
 		String(
 			"go_source",
-			"可选的 Go main 包源码。程序从 os.Stdin 读取 payload JSON，不使用 os.Args 或 ELBOT_MEDIA_N；媒体从 media_inputs.path 读取，输出写入 media_workspace，并通过 stdout segments 返回相对 path。不提供时创建纯 ELyph 文本 Skill。",
+			`Go package main；stdin=payload JSON，非argv/ELBOT_MEDIA_N。
+payload.media_inputs=[{media:"media:<sha256>"}]→每项补path,name,mime_type,size,base64?；[]→仅申请media_workspace。
+读media_inputs[*].path，输出写media_workspace；路径均相对Skill目录。
+stdout={content?,segments?}；text segment={type:"text",text}；image/file segment={type:"image"或"file",media或path}，path由宿主导入为media ID。`,
 		).
-		Integer("timeout_ms", "可选，编译超时时间，默认 60000。").
+		Integer("timeout_ms", "编译超时，ms；≤0/省略→60000。").
 		BuildSchema()
+	schema.Parameters["properties"].(map[string]any)["name"].(map[string]any)["pattern"] = skillNamePattern.String()
+	return schema
 }
 
 func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {

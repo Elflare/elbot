@@ -47,10 +47,10 @@ func NewViewImageTool(center interface {
 func (ViewImageTool) Name() string { return "view_image" }
 func viewImageBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("view_image").
-		Description("查看图片，已经看到的图片勿再次使用。source 与 message_id 二选一。").
+		Description("看图；source ⊻ message_id；source⇒禁传media_index。当前上下文已可见则无需重复调用。").
 		APITypes(llm.APITypeResponse).Risk(toolshare.RiskLow).Tags("chat", "files").
-		String("source", "媒体 ID、HTTP(S) URL 或本地路径。").
-		StringArray("message_id", "当前聊天的消息 ID 数组，可带 #。")
+		String("source", "media ID / HTTP(S) / 本地路径 / file URI。").
+		StringArray("message_id", "当前聊天的平台消息ID，#可省。")
 }
 func (ViewImageTool) Info() toolshare.Info { return viewImageBuilder().BuildInfo() }
 func (ViewImageTool) Schema() llm.ToolSchema {
@@ -59,7 +59,7 @@ func (ViewImageTool) Schema() llm.ToolSchema {
 	properties["message_id"].(map[string]any)["minItems"] = 1
 	properties["media_index"] = map[string]any{
 		"type": "array", "minItems": 1,
-		"description": "与 message_id 逐项对应的媒体序号数组，从 1 开始，只能选图片；省略时每条消息取首张图片。",
+		"description": "长度同message_id；第i项选消息i的图片媒体编号，沿用历史编号，1-based；省略→每消息首图。",
 		"items":       map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "integer", "minimum": 1}},
 	}
 	return schema

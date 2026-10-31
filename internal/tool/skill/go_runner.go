@@ -34,19 +34,19 @@ func (GoRunner) Name() string { return GoRunnerName }
 
 func (GoRunner) Info() toolshare.Info {
 	return toolshare.NewBuilder(GoRunnerName).
-		Description("运行指定 Go skill，并把 arguments JSON 写入 stdin。").
+		Description("运行Go Skill；stdin=payload JSON。").
 		Source(toolshare.SourceBuiltin).
 		Risk(toolshare.RiskLow).
 		Hidden().
 		BuildInfo()
 }
 
-func (GoRunner) Schema() llm.ToolSchema {
+func (r GoRunner) Schema() llm.ToolSchema {
 	return toolshare.NewBuilder(GoRunnerName).
-		Description("运行指定 Go skill；skill_name 选择 skill，payload 放业务参数，timeout_ms 设置超时。可在 payload.media_inputs 显式传 [{\"media\":\"media:<sha256>\"}]；宿主补充相对路径、元数据、小文件 base64 和 media_workspace。stdout 可返回 content、segments（text/image/file，媒体使用 media 或 Skill 目录内相对 path）。").
-		String("skill_name", "Go skill 名称。", toolshare.Required()).
-		Object("payload", "业务参数 JSON 对象；除显式媒体输入外原样写入 stdin。", toolshare.Required()).
-		Integer("timeout_ms", "可选，超时时间，默认 30000。").
+		Description(r.Info().Description).
+		String("skill_name", "Go Skill名称。", toolshare.Required()).
+		Object("payload", "业务参数；media_inputs=[{media:\"media:<sha256>\"}]→补可读path；[]→仅创建输出目录；其他字段原样传入。", toolshare.Required()).
+		Integer("timeout_ms", "超时，ms；≤0/省略→30000。").
 		BuildSchema()
 }
 

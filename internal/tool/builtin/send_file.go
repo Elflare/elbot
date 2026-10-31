@@ -47,11 +47,11 @@ func (t SendFileTool) Schema() llm.ToolSchema { return sendFileBuilder().BuildSc
 
 func sendFileBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("send_file").
-		Description("发送文件。").
+		Description("发送文件到当前会话对应目标。").
 		Risk(toolshare.RiskLow).
-		String("source", "要发送的文件来源。支持本地路径、file URI、HTTP(S) URL 或媒体 ID。").
-		String("name", "可选，发送时展示的文件名。").
-		String("mime_type", "可选，文件 MIME 类型；不填时按扩展名推断。")
+		String("source", "media ID / HTTP(S) / 本地路径 / file URI。", toolshare.Required()).
+		String("name", "展示文件名。").
+		String("mime_type", "MIME类型；省略时按扩展名推断。")
 }
 
 func (t SendFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {

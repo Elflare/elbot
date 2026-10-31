@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -42,6 +43,7 @@ type readFileArgs struct {
 	EndLine      fileops.LineNumber `json:"end_line"`
 	Mode         string             `json:"mode"`
 	Query        string             `json:"query"`
+	Glob         []string           `json:"glob"` // grep 目录搜索的 rg 路径过滤规则。
 	ContextLines int                `json:"context_lines"`
 	MaxMatches   int                `json:"max_matches"`
 	Index        int                `json:"index"`
@@ -110,20 +112,21 @@ func isSensitiveReadFile(path string) bool {
 
 func readFileBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("read_file").
-		Description("读取文本文件并返回行号和 revision；支持按行读取，以及在文件或目录中进行文本、AST 名称和函数名搜索。").
+		Description("读文本→行号+revision；搜索文件/目录→匹配位置，可按index查看。").
 		Risk(toolshare.RiskLow).
 		SuperadminOnly().
 		Tags("files", "agent").
 		DependsOn("workspace", "rollback_file").
-		String("path", "文件或目录路径；read 模式仅支持文件，搜索模式可递归搜索目录。", toolshare.Required()).
-		String("encoding", "文本编码，默认 auto。").
-		String("mode", "模式：read（默认，可不填）、grep、ast、ast_function；ast/ast_function 仅支持 Go 和 Shell。", toolshare.Enum("read", "grep", "ast", "ast_function")).
-		String("query", "grep/ast/ast_function 模式的搜索内容；ast 按名称精确匹配，ast_function 按函数名精确匹配。").
-		Integer("index", "可选，搜索结果序号，默认不填。grep/ast/ast_function返回内容有多个时，根据返回内容的编号再次搜索时填写。").
-		Integer("start_line", "read 模式起始行，1-based，默认 1。").
-		String("end_line", "read 模式结束行（含），可传 end；默认最多读取 200 行。").
-		Integer("context_lines", "grep/ast 模式上下文行数，默认 2，范围 0-20。").
-		Integer("max_matches", "grep/ast/ast_function 模式最大匹配数，默认 20，范围 1-100。")
+		String("path", "read仅文件；搜索可递归目录。", toolshare.Required()).
+		String("encoding", "文件编码，默认auto。").
+		String("mode", "默认read；ast/ast_function仅Go、Shell。", toolshare.Enum("read", "grep", "ast", "ast_function")).
+		String("query", "搜索必填，首尾空白忽略。grep=逐行Go regex；ast/ast_function=名称精确匹配。").
+		StringArray("glob", "仅grep目录搜索；语法同rg -g，如[\"*.go\",\"!**/*_test.go\"]；省略/[]=不过滤。").
+		Integer("index", "搜索结果编号，1-based；按返回编号重试查看该项。").
+		Integer("start_line", "read起始行，1-based，默认1。").
+		String("end_line", "read结束行(含)，数字字符串或\"end\"；默认/数字范围最多200行，end读至末尾。").
+		Integer("context_lines", "grep/ast上下文行数；0/省略→2，负数→0，上限20。").
+		Integer("max_matches", "搜索结果上限；≤0/省略→20，最大100。")
 }
 
 func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
@@ -136,6 +139,9 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	mode, err := normalizeReadFileMode(args.Mode)
 	if err != nil {
 		return nil, err
+	}
+	if len(args.Glob) > 0 && mode != readFileModeGrep {
+		return nil, fmt.Errorf("glob requires grep directory search")
 	}
 	resolved, err := workspace.ResolveWorkspacePath(ctx, args.Path, workspace.PathResolveOptions{AllowDirectory: mode != readFileModeRead})
 	if err != nil {
@@ -154,6 +160,10 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 		info, err := os.Stat(path)
 		if err != nil {
 			return nil, err.Error(), err
+		}
+		if len(args.Glob) > 0 && !info.IsDir() {
+			callErr := fmt.Errorf("glob requires grep directory search")
+			return nil, callErr.Error(), callErr
 		}
 		var result *toolshare.Result
 		if info.IsDir() {
@@ -184,7 +194,7 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 			}
 			switch mode {
 			case readFileModeGrep:
-				result, err = readFileGrepResult(file, lines, args.Query, args.ContextLines, args.MaxMatches, args.Index, warnings)
+				result, err = readFileGrepResult(ctx, file, lines, args.Query, args.ContextLines, args.MaxMatches, args.Index, warnings)
 			case readFileModeAST:
 				result, err = readFileASTResult(file, args.Query, args.ContextLines, args.MaxMatches, args.Index, warnings)
 			case readFileModeASTFunction:
@@ -229,16 +239,23 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	}), nil
 }
 
-func readFileGrepResult(file fileops.File, lines []string, grep string, contextLines, maxMatches, index int, warnings []string) (*toolshare.Result, error) {
+func readFileGrepResult(ctx context.Context, file fileops.File, lines []string, grep string, contextLines, maxMatches, index int, warnings []string) (*toolshare.Result, error) {
 	query := strings.TrimSpace(grep)
 	if query == "" {
 		return nil, fmt.Errorf("grep is required")
+	}
+	pattern, err := regexp.Compile(query)
+	if err != nil {
+		return nil, fmt.Errorf("invalid grep regex: %w", err)
 	}
 	contextLines = fileops.NormalizeGrepContextLines(contextLines)
 	maxMatches = fileops.NormalizeMaxMatches(maxMatches)
 	matches := make([]int, 0)
 	for i, line := range lines {
-		if strings.Contains(line, query) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if pattern.MatchString(line) {
 			matches = append(matches, i+1)
 			if len(matches) >= maxMatches {
 				break
@@ -308,22 +325,24 @@ func (t EditFileTool) Info() toolshare.Info {
 }
 
 func (t EditFileTool) Schema() llm.ToolSchema {
-	return editFileBuilder().BuildSchema()
+	schema := editFileBuilder().BuildSchema()
+	schema.Parameters["properties"].(map[string]any)["edits"].(map[string]any)["minItems"] = 1
+	return schema
 }
 
 func editFileBuilder() *toolshare.Builder {
 	editProperties := fileops.EditOperationProperties()
 	return toolshare.NewBuilder("edit_file").
-		Description("批量编辑文本文件；使用 edits 一次提交多个修改；成功后返回 unified diff。任一 edit 失败则不写文件。").
+		Description("批量编辑单个文本文件；成功→unified diff，任一操作失败→不写入。").
 		Risk(toolshare.RiskHigh).
 		DependsOn("workspace", "rollback_file").
 		Tags("files", "agent").
-		String("path", "要编辑的文件路径,基于当前 workspace 解析；也可传绝对路径。", toolshare.Required()).
-		String("encoding", "文本编码，默认 auto；非 UTF-8 文件应显式传入 gb18030、gbk、big5、shift_jis 等。").
-		String("expected_revision", "可选，编辑前读取到的revision；用于防止外部并发修改。").
-		Boolean("create", "为 true 时允许创建不存在的文本文件；提供 expected_revision 时仍要求文件已存在。").
-		Integer("context_lines", "diff 上下文行数，默认 3，范围 0-20。确认前自动预检和实际写入结果都会使用该上下文行数。").
-		ObjectArray("edits", "批量编辑列表；所有目标均基于编辑前原文解析。编辑已有文件时，应在本次调用的顶层传入 expected_revision，其值来自 read_file 返回的 revision; 创建新文件时不提供该字段。", editProperties, []string{"operation"}, toolshare.Required())
+		String("path", "相对workspace或绝对路径。", toolshare.Required()).
+		String("encoding", "默认auto；非UTF-8显式指定，如gb18030、big5、shift_jis。").
+		String("expected_revision", "已有文件∧含replace/insert/delete/overwrite⇒必填；取read_file的revision。其他操作可传以校验版本；新建时省略。").
+		Boolean("create", "true→允许新建；expected_revision非空→文件必须存在。").
+		Integer("context_lines", "diff上下文行数；0/省略→3，负数→0，上限20。").
+		ObjectArray("edits", "非空；定位基于编辑前原文。修改范围不重叠，插入点不在其内部；overwrite独占批次。", editProperties, []string{"operation"}, toolshare.Required())
 }
 
 func (t EditFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {

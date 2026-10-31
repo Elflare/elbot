@@ -19,14 +19,20 @@ type Edit struct {
 
 func EditOperationProperties() map[string]any {
 	return map[string]any{
-		"operation":   map[string]any{"type": "string", "enum": []string{"replace_text", "replace", "insert", "delete", "insert_before", "insert_after", "replace_line", "delete_line", "overwrite"}, "description": "编辑操作选择：replace_text 通过 old_text 精确定位并替换，可跨行；replace 通过 line/end_line 替换指定行范围，new_text 原样写入且不自动补换行，若需保留换行必须手动传入 \\n；replace_line 通过 anchor 匹配并替换一整行，缩进需手动，换行自动追加。所有目标都基于编辑前原文解析，不能重叠目标；overwrite 必须是批次中的唯一操作。"},
-		"line":        map[string]any{"type": "integer", "description": "replace/delete 的起始行或 insert 的行间位置，1-based。insert: 1=文件开头，N+1=文件末尾；空文件仅支持 1。"},
-		"end_line":    map[string]any{"type": "integer", "description": "replace/delete 的可选结束行，1-based 且包含该行；省略时只操作 line。"},
-		"new_text":    map[string]any{"type": "string", "description": "写入文本。replace_text/replace/overwrite 使用原样文本；replace 不自动补换行，若需换行，需手动添加。insert/insert_before/insert_after/replace_line 把内容作为完整行块，缩进需手动，换行自动追加。replace_text 和 replace 可传空字符串进行删除。"},
-		"old_text":    map[string]any{"type": "string", "description": "replace_text 的精确单行或多行匹配文本。"},
-		"anchor":      map[string]any{"type": "string", "description": "insert_before/insert_after/replace_line/delete_line 的单行前缀；匹配时忽略目标行的前导空格和 Tab。匹配多行但没传入index时，会返回index"},
-		"index":       map[string]any{"type": "integer", "description": "匹配到多处时选择第几处，1-based。与 all_matches 互斥。"},
-		"all_matches": map[string]any{"type": "boolean", "description": "对所有匹配执行操作。与 index 互斥；仅用于 old_text/anchor 操作。"},
+		"operation": map[string]any{"type": "string", "enum": []string{"replace_text", "replace", "insert", "delete", "insert_before", "insert_after", "replace_line", "delete_line", "overwrite"}, "description": `所需参数([ ]=可省)：
+replace_text(old_text,new_text)：精确文本替换，可跨行；
+replace(line,[end_line],new_text)/delete(line,[end_line])：替换/删除行范围；
+insert(line,new_text)：按行位置插入；
+insert_before/insert_after(anchor,new_text)：匹配行前/后插入；
+replace_line(anchor,new_text)/delete_line(anchor)：替换/删除匹配整行；
+overwrite(new_text)：替换全文，必须独占批次。`},
+		"line":        map[string]any{"type": "integer", "description": "1-based；replace/delete起始行；insert位置：1=开头，N+1=末尾，空文件仅1。"},
+		"end_line":    map[string]any{"type": "integer", "description": "replace/delete结束行(含)，默认line。"},
+		"new_text":    map[string]any{"type": "string", "description": "replace_text/replace/overwrite不补换行，允许\"\"；insert/insert_before/insert_after/replace_line按整行块处理，行分隔自动、缩进自带；replace_line保留原行终止符。"},
+		"old_text":    map[string]any{"type": "string", "description": "非空精确匹配文本，可跨行。"},
+		"anchor":      map[string]any{"type": "string", "description": "非空单行前缀，不带缩进；匹配目标行去除前导空格/Tab后的文本。"},
+		"index":       map[string]any{"type": "integer", "minimum": 1, "description": "old_text/anchor的第几个匹配，1-based；与all_matches=true互斥。"},
+		"all_matches": map[string]any{"type": "boolean", "description": "true→全部old_text/anchor匹配；默认false。多处匹配且未选index/true→报错并返回候选编号。"},
 	}
 }
 

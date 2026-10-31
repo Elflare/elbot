@@ -32,24 +32,24 @@ func NewReadElSkillTool(manager *Manager) ReadElSkillTool {
 
 func (ReadElSkillTool) Info() toolshare.Info {
 	return toolshare.NewBuilder(ReadElSkillName).
-		Description("按行读取 ElBot 原生 EL Skill 的 SKILL.elyph 或 main.go，返回 revision 和 1-based 行号，供修改前定位使用。").
+		Description("读EL Skill文件→1-based行号+revision；省略行范围→全文。").
 		DependsOn("modify_el_skill").
 		Source(toolshare.SourceBuiltin).
 		Risk(toolshare.RiskMedium).
 		BuildInfo()
 }
 
-func (ReadElSkillTool) Schema() llm.ToolSchema {
+func (t ReadElSkillTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{
 		Name:        ReadElSkillName,
-		Description: "按行读取 ElBot 原生 EL Skill 文件并返回 revision。target 可选：skill_elyph 读取 SKILL.elyph；code_source 读取 main.go。默认读取 SKILL.elyph。start_line/end_line 为 1-based，可省略以读取全文。",
+		Description: t.Info().Description,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"name":       map[string]any{"type": "string", "description": "skill 名称。"},
-				"target":     map[string]any{"type": "string", "enum": []string{elSkillTargetElyph, elSkillTargetCodeSource}, "description": "读取目标：skill_elyph 表示 SKILL.elyph；code_source 表示 main.go。默认 skill_elyph。"},
-				"start_line": map[string]any{"type": "integer", "description": "可选，1-based 起始行，默认 1。"},
-				"end_line":   map[string]any{"type": "integer", "description": "可选，1-based 结束行，默认文件末尾。"},
+				"name":       map[string]any{"type": "string", "description": "Skill名称。"},
+				"target":     map[string]any{"type": "string", "enum": []string{elSkillTargetElyph, elSkillTargetCodeSource}, "description": "skill_elyph→SKILL.elyph(默认)，code_source→main.go。"},
+				"start_line": map[string]any{"type": "integer", "description": "起始行，默认1。"},
+				"end_line":   map[string]any{"type": "integer", "description": "结束行(含)，默认末尾。"},
 			},
 			"required": []string{"name"},
 		},

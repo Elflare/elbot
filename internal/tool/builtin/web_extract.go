@@ -125,18 +125,18 @@ func (t *WebExtractTool) Schema() llm.ToolSchema {
 
 func webExtractBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("web_extract").
-		Description("提取网页正文；默认返回前 8000 字符，可用同一 URL 加 offset 继续读取后续内容。").
+		Description("提取网页正文；同URL+offset→续读。").
 		Risk(toolshare.RiskLow).
 		Tags("web").
 		DependsOn("web_search").
-		String("url", "要提取的网页 URL。", toolshare.Required()).
-		Integer("offset", "从第几个字符开始返回，默认 0；用于继续读取缓存中的后续内容。").
-		Integer("max_chars", "本次最多返回字符数，默认 8000，硬上限 16000。").
-		String("remove_selector", "可选，覆盖默认移除 CSS 选择器：header, .class, #id。").
-		Integer("timeout_ms", "可选，请求超时时间，默认 15000。").
-		String("proxy", "代理设置：不填则使用 WEB_EXTRACT_PROXY 或系统代理；填 disabled 禁用代理；填 URL 使用指定代理。").
-		Boolean("jina", "是否使用 Jina Reader 提取网页，默认 true；Jina 失败或效果不佳时可传 false 改用直接爬取。").
-		Boolean("force_refresh", "是否跳过缓存并重新获取网页，默认 false；刷新成功后会覆盖对应缓存。")
+		String("url", "网页URL。", toolshare.Required()).
+		Integer("offset", "Unicode字符偏移，0-based；默认0，越界截到正文边界。").
+		Integer("max_chars", "返回字符上限；≤0/省略→8000，最大16000。").
+		String("remove_selector", "仅Jina；覆盖默认移除项的CSS选择器，如header,.class,#id。").
+		Integer("timeout_ms", "请求超时，ms；≤0/省略→15000。").
+		String("proxy", "省略→配置/系统代理；disabled→直连；URL→指定代理。").
+		Boolean("jina", "默认true；true且已配置key→Jina，否则直抓；Jina失败可设false重试。").
+		Boolean("force_refresh", "true→绕过缓存重新获取；默认false。")
 }
 
 func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {

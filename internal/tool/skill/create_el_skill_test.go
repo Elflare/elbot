@@ -13,6 +13,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"slices"
 
 	"runtime"
 	"strings"
@@ -168,6 +170,22 @@ func TestCreateElSkillInfoAndSchema(t *testing.T) {
 	schema := creator.Schema()
 	if schema.Name != CreateElSkillName || schema.Parameters == nil {
 		t.Fatalf("schema = %#v", schema)
+	}
+	properties := schema.Parameters["properties"].(map[string]any)
+	pattern := regexp.MustCompile(properties["name"].(map[string]any)["pattern"].(string))
+	for _, tc := range []struct {
+		name  string
+		valid bool
+	}{
+		{"a", true}, {"my_skill-1", true}, {strings.Repeat("a", 64), true},
+		{"1skill", false}, {"Upper", false}, {"../evil", false}, {strings.Repeat("a", 65), false},
+	} {
+		if pattern.MatchString(tc.name) != tc.valid || (validateSkillName(tc.name) == nil) != tc.valid {
+			t.Fatalf("schema/runtime disagree on name %q", tc.name)
+		}
+	}
+	if !slices.Equal(properties["risk"].(map[string]any)["enum"].([]string), []string{"safe", "low", "medium", "high", "critical"}) {
+		t.Fatalf("risk enum = %#v", properties["risk"])
 	}
 }
 

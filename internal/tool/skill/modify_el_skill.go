@@ -52,27 +52,27 @@ func (ModifyElSkillTool) Name() string { return ModifyElSkillName }
 
 func (ModifyElSkillTool) Info() toolshare.Info {
 	return toolshare.NewBuilder(ModifyElSkillName).
-		Description("修改 ElBot 原生 EL Skill 的 SKILL.elyph 或 main.go；技能定义会校验 ELyph，写入后需 finalize_el_skill 重载，源码只写入文件，完成后用 finalize_el_skill 格式化和编译。").
+		Description("编辑EL Skill→diff；skill_elyph校验ELyph，code_source仅写源码；完成修改→finalize_el_skill检查并reload。").
 		DependsOn(FinalizeElSkillName, "read_el_skill").
 		Source(toolshare.SourceBuiltin).
 		Risk(toolshare.RiskHigh).
 		BuildInfo()
 }
 
-func (ModifyElSkillTool) Schema() llm.ToolSchema {
+func (t ModifyElSkillTool) Schema() llm.ToolSchema {
 	editProperties := fileops.EditOperationProperties()
 	return llm.ToolSchema{
 		Name:        ModifyElSkillName,
-		Description: "修改 ElBot 原生 EL Skill 文件。target 可选：skill_elyph 修改 SKILL.elyph；code_source 修改 main.go；默认 skill_elyph。使用与 edit_file 相同的精确文本、anchor、行号插入/删除协议；所有目标基于编辑前原文解析，确认前自动预检并生成 diff。code_source 只写源码并返回 diff，不会格式化、编译或 reload；完成后调用 finalize_el_skill 检查。skill_elyph 会校验 ELyph，写入后需 finalize_el_skill 重载。",
+		Description: t.Info().Description,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"name":              map[string]any{"type": "string", "description": "skill 名称。"},
-				"target":            map[string]any{"type": "string", "enum": []string{elSkillTargetElyph, elSkillTargetCodeSource}, "description": "修改目标：skill_elyph 表示 SKILL.elyph；code_source 表示 main.go。默认 skill_elyph。"},
-				"encoding":          map[string]any{"type": "string", "description": "文本编码，默认 auto；非 UTF-8 文件应显式传入 gb18030、gbk、big5、shift_jis 等。"},
-				"expected_revision": map[string]any{"type": "string", "description": "可选，编辑前读取到的 revision；用于防止外部并发修改。"},
-				"context_lines":     map[string]any{"type": "integer", "description": "diff 上下文行数，默认 3，范围 0-20。确认前自动预检和实际写入结果都会使用该上下文行数。"},
-				"edits":             map[string]any{"type": "array", "description": "批量编辑列表；所有目标均基于编辑前原文解析。已有文件的 replace/insert/delete/overwrite 必须提供 expected_revision。", "items": map[string]any{"type": "object", "properties": editProperties, "required": []string{"operation"}}},
+				"name":              map[string]any{"type": "string", "description": "Skill名称。"},
+				"target":            map[string]any{"type": "string", "enum": []string{elSkillTargetElyph, elSkillTargetCodeSource}, "description": "skill_elyph→SKILL.elyph(默认)，code_source→main.go。"},
+				"encoding":          map[string]any{"type": "string", "description": "默认auto；非UTF-8显式指定，如gb18030、big5、shift_jis。"},
+				"expected_revision": map[string]any{"type": "string", "description": "含replace/insert/delete/overwrite⇒必填；取read_el_skill的revision。其他操作可传以校验版本。"},
+				"context_lines":     map[string]any{"type": "integer", "description": "diff上下文行数；0/省略→3，负数→0，上限20。"},
+				"edits":             map[string]any{"type": "array", "minItems": 1, "description": "定位基于原文；修改范围不重叠，插入点不在其内部；overwrite独占批次。", "items": map[string]any{"type": "object", "properties": editProperties, "required": []string{"operation"}}},
 			},
 			"required": []string{"name", "edits"},
 		},

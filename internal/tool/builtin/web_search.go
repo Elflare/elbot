@@ -94,19 +94,19 @@ func (t WebSearchTool) Schema() llm.ToolSchema {
 
 func webSearchBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("web_search").
-		Description("执行网页搜索，返回简洁答案、来源链接和摘要；需要完整网页内容时继续调用 web_extract。").
+		Description("网页搜索→答案+来源链接+摘要；正文→web_extract。").
 		Risk(toolshare.RiskLow).
 		Tags("web").
 		DependsOn("web_extract").
-		String("query", "搜索查询。", toolshare.Required()).
-		Integer("max_results", "最大结果数，默认 5，范围 1 到 20。").
-		String("search_depth", "搜索深度，默认 basic；可选 basic、fast、ultra-fast、advanced。advanced 更贵但更精确。").
-		String("topic", "搜索类别，默认 general；可选 general、news、finance。").
-		String("time_range", "时间范围；可选 day、week、month、year、d、w、m、y。").
-		StringArray("include_domains", "只包含这些域名的结果。").
-		StringArray("exclude_domains", "排除这些域名的结果。").
-		String("country", "结果区域偏好，仅 topic=general 时有效，例如 china、united states。").
-		Boolean("exact_match", "是否只返回包含查询中引号短语的精确匹配结果。")
+		String("query", "搜索词。", toolshare.Required()).
+		Integer("max_results", "≤0/省略→5，上限20。").
+		String("search_depth", "搜索深度，默认basic。", toolshare.Enum("basic", "fast", "ultra-fast", "advanced")).
+		String("topic", "类别，默认general。", toolshare.Enum("general", "news", "finance")).
+		String("time_range", "最近时间范围；d/w/m/y为对应缩写。", toolshare.Enum("day", "week", "month", "year", "d", "w", "m", "y")).
+		StringArray("include_domains", "仅这些域名。").
+		StringArray("exclude_domains", "排除这些域名。").
+		String("country", "仅general；区域偏好，如china、united states。").
+		Boolean("exact_match", "true→精确匹配query中的引号短语。")
 }
 
 func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {

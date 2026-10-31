@@ -122,7 +122,7 @@ func TestResidentMemoryToolRisksAndSchema(t *testing.T) {
 		t.Fatalf("core risk not high")
 	}
 	schema := coreTool.Schema()
-	if !strings.Contains(schema.Description, "200 字数或单词") {
+	if !strings.Contains(schema.Description, "200") || !strings.Contains(schema.Description, "CJK") || !strings.Contains(schema.Description, "重要内容") || strings.Contains(schema.Description, "仅当用户明确要求") {
 		t.Fatalf("core description = %q", schema.Description)
 	}
 	for name, description := range map[string]string{
@@ -135,7 +135,7 @@ func TestResidentMemoryToolRisksAndSchema(t *testing.T) {
 			}
 		}
 	}
-	if !strings.Contains(normalTool.Schema().Description, "300 字数或单词") {
+	if !strings.Contains(normalTool.Schema().Description, "300") || !strings.Contains(normalTool.Schema().Description, "CJK") {
 		t.Fatalf("normal description = %q", normalTool.Schema().Description)
 	}
 }

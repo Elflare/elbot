@@ -118,6 +118,9 @@ func TestModifyElSkillSchemaUsesRevision(t *testing.T) {
 	if !ok {
 		t.Fatalf("modify_el_skill edits schema missing: %#v", properties["edits"])
 	}
+	if edits["minItems"] != 1 {
+		t.Fatalf("edit batch must be nonempty: %#v", edits)
+	}
 	items, ok := edits["items"].(map[string]any)
 	if !ok {
 		t.Fatalf("modify_el_skill edit item schema missing: %#v", edits)

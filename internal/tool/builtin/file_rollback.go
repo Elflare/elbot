@@ -34,14 +34,14 @@ func (RollbackFileTool) Schema() llm.ToolSchema {
 
 func rollbackFileBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("rollback_file").
-		Description("撤销指定文件在当前会话中最近一次成功的 edit_file 修改。已有文件恢复编辑前内容，新建文件删除。文件此后发生变化时拒绝撤销；成功后消耗备份，不支持连续撤销或重做。备份仅保存在内存中，切换会话、重启或容量淘汰后失效。不支持撤销 shell 或外部程序的修改。").
+		Description("撤销当前Session最近一次edit_file：已有→恢复，新建→删除；后续变化→拒绝；一次性，无redo；切换Session/重启/淘汰后失效；不含shell或外部修改。").
 		Hidden().
 		SuperadminOnly().
 		ForegroundOnly().
 		Risk(toolshare.RiskHigh).
 		Tags("files").
 		DependsOn("workspace").
-		String("path", "要撤销最近一次编辑的文件路径；相对路径基于当前 workspace，也支持绝对路径。", toolshare.Required())
+		String("path", "相对workspace或绝对文件路径。", toolshare.Required())
 }
 
 func decodeRollbackArgs(req toolshare.CallRequest) (rollbackFileArgs, error) {

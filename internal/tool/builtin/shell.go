@@ -88,13 +88,13 @@ func currentShellDesc() string {
 
 func shellBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("shell").
-		Description(fmt.Sprintf("执行 shell 命令。当前使用 %s，请使用相应语法。", currentShellDesc())).
+		Description(fmt.Sprintf("执行命令，语法=%s。", currentShellDesc())).
 		Risk(toolshare.RiskHigh).
 		DependsOn("workspace").
 		Tags("agent").
-		String("cmd", "要执行的 shell 命令。", toolshare.Required()).
-		Integer("timeout_ms", "可选，命令超时时间，默认 10000。").
-		ObjectArray("media_inputs", "可选，显式媒体输入；宿主导出并注入 ELBOT_MEDIA_1 等环境变量，命令需按当前 shell 语法引用变量。", map[string]any{"media": map[string]any{"type": "string", "pattern": "^media:[0-9a-f]{64}$"}}, []string{"media"})
+		String("cmd", "命令。", toolshare.Required()).
+		Integer("timeout_ms", "超时，ms；≤0/省略→10000。").
+		ObjectArray("media_inputs", "第i项媒体→路径环境变量ELBOT_MEDIA_i，i从1开始；按当前shell语法引用。", map[string]any{"media": map[string]any{"type": "string", "pattern": "^media:[0-9a-f]{64}$"}}, []string{"media"})
 }
 
 func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {

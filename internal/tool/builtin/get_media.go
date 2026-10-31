@@ -31,13 +31,14 @@ func NewGetMediaTool(history interface {
 }
 func (GetMediaTool) Name() string { return "get_media" }
 func getMediaBuilder() *toolshare.Builder {
-	return toolshare.NewBuilder("get_media").Description("仅在需要使用聊天记录中的媒体时调用。按当前聊天的平台消息 ID 和媒体序号获取媒体；已入库直接复用，未入库按需下载。仅返回媒体 ID，不返回媒体内容。省略 media_index 时获取每条消息第一个媒体；单次最多尝试下载 5 个媒体，失败也计入上限。").Risk(toolshare.RiskLow).Hidden().Tags("chat").DependsOn("search_chat_history", "get_chat_history_around", "reply_to_chat_history_message").StringArray("message_id", "当前聊天的平台消息 ID 数组，接受 #ID 或纯 ID。", toolshare.Required())
+	return toolshare.NewBuilder("get_media").Description("返回历史媒体ID而非内容；未缓存获取≤5次/调用，失败计次，缓存/重复不计。").Risk(toolshare.RiskLow).Hidden().Tags("chat").DependsOn("search_chat_history", "get_chat_history_around", "reply_to_chat_history_message").StringArray("message_id", "当前聊天的平台消息ID，#可省。", toolshare.Required())
 }
 func (GetMediaTool) Info() toolshare.Info { return getMediaBuilder().BuildInfo() }
 func (GetMediaTool) Schema() llm.ToolSchema {
 	schema := getMediaBuilder().BuildSchema()
 	properties := schema.Parameters["properties"].(map[string]any)
-	properties["media_index"] = map[string]any{"type": "array", "description": "与 message_id 一一对应的媒体序号数组。序号从1开始，只计算图片/文件等媒体，不计文字；每个内层数组非空。省略时每条消息默认 [1]。", "items": map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "integer", "minimum": 1}}}
+	properties["message_id"].(map[string]any)["minItems"] = 1
+	properties["media_index"] = map[string]any{"type": "array", "minItems": 1, "description": "长度同message_id；第i项选消息i的媒体编号(不计文字)，1-based；省略→每消息[1]。", "items": map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "integer", "minimum": 1}}}
 	return schema
 }
 

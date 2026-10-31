@@ -81,7 +81,7 @@ func NewResidentMemoryTools(service ResidentMemoryService) []toolshare.Tool {
 func (t ResidentMemoryTool) Name() string { return ResidentMemoryToolName }
 func (t ResidentMemoryTool) Info() toolshare.Info {
 	return toolshare.NewBuilder(t.Name()).
-		Description("管理当前用户在当前平台的常驻记忆。本工具仅为入口。").
+		Description("当前用户/平台的常驻记忆入口；读→resident_memory_read，普通写→resident_memory_normal，核心写→resident_memory_core。").
 		Risk(toolshare.RiskLow).
 		DependsOn(ResidentMemoryReadToolName, ResidentMemoryNormalToolName, ResidentMemoryCoreToolName).
 		BuildInfo()
@@ -98,11 +98,11 @@ func (t ResidentMemoryTool) PrepareCall(ctx context.Context, req toolshare.CallR
 
 func (t ResidentMemoryReadTool) Name() string { return ResidentMemoryReadToolName }
 func (t ResidentMemoryReadTool) Info() toolshare.Info {
-	return memoryBuilder(t.Name(), "读取当前用户在当前平台的常驻记忆。section 可为 all、core 或 normal，默认 all。", toolshare.RiskLow).Hidden().BuildInfo()
+	return memoryBuilder(t.Name(), "读当前用户/平台的常驻记忆。", toolshare.RiskLow).Hidden().BuildInfo()
 }
 func (t ResidentMemoryReadTool) Schema() llm.ToolSchema {
-	return memoryBuilder(t.Name(), "读取当前用户在当前平台的常驻记忆。section 可为 all、core 或 normal，默认 all。", toolshare.RiskLow).
-		String("section", "读取范围：all、core 或 normal。默认 all。").
+	return memoryBuilder(t.Name(), t.Info().Description, toolshare.RiskLow).
+		String("section", "读取范围，默认all。", toolshare.Enum("all", "core", "normal")).
 		BuildSchema()
 }
 func (t ResidentMemoryReadTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
@@ -144,8 +144,8 @@ func (t ResidentMemoryNormalTool) Info() toolshare.Info {
 }
 func (t ResidentMemoryNormalTool) Schema() llm.ToolSchema {
 	return memoryBuilder(t.Name(), normalDescription(t.service), toolshare.RiskLow).
-		String("action", "操作类型：append、write 或 delete。", toolshare.Required()).
-		String("content", "append/write 时使用。write 会覆盖完整 normal，使用前必须先调用 resident_memory_read 读取 normal 或 all。delete 不需要 content。").
+		String("action", "append=追加；write=整体覆盖；delete=清空normal。", toolshare.Required(), toolshare.Enum("append", "write", "delete")).
+		String("content", "append/write必填；write先用resident_memory_read读normal/all；delete忽略。").
 		BuildSchema()
 }
 func (t ResidentMemoryNormalTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
@@ -194,7 +194,7 @@ func (t ResidentMemoryCoreTool) Info() toolshare.Info {
 }
 func (t ResidentMemoryCoreTool) Schema() llm.ToolSchema {
 	return memoryBuilder(t.Name(), coreDescription(t.service), toolshare.RiskHigh).
-		String("content", "完整 core 内容。允许空字符串，表示清空 core。", toolshare.Required()).
+		String("content", "完整core；\"\"→清空。", toolshare.Required()).
 		BuildSchema()
 }
 func (t ResidentMemoryCoreTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
@@ -220,12 +220,12 @@ func memoryBuilder(name, description string, risk toolshare.RiskLevel) *toolshar
 
 func normalDescription(service ResidentMemoryService) string {
 	limits := service.LimitsOrDefault()
-	return fmt.Sprintf("修改当前用户在当前平台的普通常驻记忆。支持 append、write、delete。write 会覆盖完整 normal，使用前必须先调用 resident_memory_read。normal 上限 %d 字数或单词。%s", limits.Normal, residentMemoryWritingRule)
+	return fmt.Sprintf("写当前用户/平台的normal；上限%d单位(CJK字符各1，其余连续字母/数字各1)。%s", limits.Normal, residentMemoryWritingRule)
 }
 
 func coreDescription(service ResidentMemoryService) string {
 	limits := service.LimitsOrDefault()
-	return fmt.Sprintf("覆盖当前用户在当前平台的核心常驻记忆。仅当用户明确要求修改核心记忆时使用；必须先调用 resident_memory_read 读取完整 core，再写入完整 core。允许传空字符串清空 core。core 上限 %d 字数或单词。%s", limits.Core, residentMemoryWritingRule)
+	return fmt.Sprintf("重要内容可写入当前用户/平台的core；先resident_memory_read读完整core→整体覆盖。上限%d单位(CJK字符各1，其余连续字母/数字各1)。%s", limits.Core, residentMemoryWritingRule)
 }
 
 func decodeMemoryArgs(raw json.RawMessage, out any) error {
