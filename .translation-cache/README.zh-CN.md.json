@@ -24,14 +24,6 @@
       "translation": "## Features\n\n",
       "updated_at": 1781513003
     },
-    "README.zh-CN.md:section:4ae2abe2a97d1464bafc4b48739fe73f5e1bb5188b35035912a6635e41a30c3e": {
-      "kind": "section",
-      "source": "### 一、轻量高效\n\n**极致轻量的 Go 实现**：\n\n| 指标           | 数值                            |\n| -------------- | ------------------------------- |\n| 本地启动耗时   | ~10ms（N5105，SATA 固态上测试） |\n| 常驻内存       | ~50MB                           |\n| 二进制文件大小 | <20MB                           |\n\n**极致节省 Token 的工具发现**： 研究表明，许多普通用户仍主要将 LLM 类产品用作更高级的搜索引擎、写作助手和倾听对象，频繁工具调用并不是所有对话的常态。\n参考：Chatterji et al., _How People Use ChatGPT_, NBER, 2025；Yan et al., _ShareChat: A Dataset of Chatbot Conversations in the Wild_, arXiv:2512.17843, 2025。\n\nElBot 不会在每轮对话中默认注入所有工具的完整 schema，而是仅暴露 `discover_tool` 和当前可用工具名称。模型需要使用工具时，先按需发现工具详情，再由 Agent 注入对应 schema。极大程度减少无效上下文开销。\n\n**Chat / Work 双模式**：两种模式可独立配置模型，让低成本模型承担闲聊，让强模型专注处理复杂任务。\n\n**常驻记忆与长期记忆分层**： 常驻记忆只保存短小、稳定、真正需要每轮注入的信息，并在内部区分需确认修改的 core 与可整理的 normal；更长、更复杂的记忆由 LLM 按需通过 `long_memory` 查询。长期记忆使用 Markdown 源数据和 SQLite FTS，兼顾透明性和检索效率。\n\n| 模式   | 工具               | 适用场景                                 | 第一次请求 Token 消耗      |\n| ------ | ------------------ | ---------------------------------------- | -------------------------- |\n| `chat` | 不注入             | 闲聊、陪伴、轻量问答、低成本对话         | <500 （后续缓存命中95%+）  |\n| `work` | 启用工具发现与调用 | 搜索、文件、命令、Cron、Skill 等复杂任务 | <1000 （后续缓存命中90%+） |\n\n\n> 注：使用`Responses`协议后，发现工具不再破坏缓存，后续缓存命中会更高\n\n",
-      "source_file": "README.zh-CN.md",
-      "source_hash": "6c412c1bd326413e970caff1c2ff61af01f12a63541f8a884b0d48c92466ec01",
-      "translation": "### 1. Lightweight and Efficient\n\n**Ultra-lightweight Go implementation**:\n\n| Metric           | Value                            |\n| -------------- | ------------------------------- |\n| Local startup time   | ~10ms (tested on N5105, SATA SSD) |\n| Resident memory       | ~50MB                           |\n| Binary file size | <20MB                           |\n\n**Token-efficient tool discovery**: Research shows that many ordinary users still primarily use LLM-like products as advanced search engines, writing assistants, and listening objects; frequent tool calls are not the norm for all conversations.\nReference: Chatterji et al., _How People Use ChatGPT_, NBER, 2025;Yan et al., _ShareChat: A Dataset of Chatbot Conversations in the Wild_, arXiv:2512.17843, 2025。\n\nElBot does not inject the full schema of all tools by default in every round of conversation, but only exposes `discover_tool` and the names of currently available tools. When the model needs to use a tool, it first discovers the tool details on demand, and then the Agent injects the corresponding schema. Greatly reduces invalid context overhead.\n\n**Chat / Work dual mode**: Both modes can be configured with independent models, allowing low-cost models to handle casual chat and powerful models to focus on complex tasks.\n\n**Layering of resident memory and long-term memory**: Resident memory only saves short, stable information that truly needs to be injected into every round, and internally distinguishes between 'core' (requiring confirmation for modification) and 'normal' (organizable); Longer and more complex memories are queried by the LLM on demand via `long_memory`. Long-term memory uses Markdown source data and SQLite FTS, balancing transparency and retrieval efficiency.\n\n| Mode   | Tool               | Applicable Scenarios                                 | Token consumption for the first request      |\n| ------ | ------------------ | ---------------------------------------- | -------------------------- |\n| `chat` | No injection             | Small talk, companionship, lightweight Q&A, low-cost conversation         | <500 (subsequent cache hit 95%+)  |\n| `work` | Enable tool discovery and invocation | Complex tasks such as search, files, commands, Cron, Skills, etc. | <1000 (subsequent cache hit 90%+) |\n\n\n> Note: After using the `Responses` protocol, tool discovery no longer breaks the cache, and subsequent cache hits will be higher.\n\n",
-      "updated_at": 1793358080
-    },
     "README.zh-CN.md:section:5cfab8c96fc22b4e76e3a260bb7789f79a38b7ab9f42ff4246f190ed509a2c96": {
       "kind": "section",
       "source": "# ElBot\n\n中文 | [English](README.md)\n\nElBot 是一个使用 Go 编写的轻量级 Agent/Chatbot 框架，目标是在保留可扩展性的同时，尽量降低运行成本、上下文成本和维护复杂度。\n支持普通聊天、工具调用、Hook 扩展、长期任务调度、持久化会话与上下文压缩，适合个人助理、平台机器人和可编排自动化助手等场景。\n\n",
@@ -74,8 +66,8 @@
     }
   },
   "source": "README.zh-CN.md",
-  "source_hash": "b448945d89b615410e6ab7e687caaf1d62f21875dcce304151b4862f4968c75c",
+  "source_hash": "",
   "target": "README.md",
-  "updated_at": 1793423213,
+  "updated_at": 1793464726,
   "version": 3
 }
