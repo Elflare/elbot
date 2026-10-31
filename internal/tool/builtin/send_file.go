@@ -48,9 +48,8 @@ func (t SendFileTool) Schema() llm.ToolSchema { return sendFileBuilder().BuildSc
 func sendFileBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("send_file").
 		Description("发送文件。").
-		Risk(toolshare.RiskMedium).
-		SuperadminOnly().
-		String("source", "要发送的文件来源。支持本地路径、file URI、HTTP(S) URL 或 Media Center 媒体 ID。").
+		Risk(toolshare.RiskLow).
+		String("source", "要发送的文件来源。支持本地路径、file URI、HTTP(S) URL 或媒体 ID。").
 		String("name", "可选，发送时展示的文件名。").
 		String("mime_type", "可选，文件 MIME 类型；不填时按扩展名推断。")
 }
@@ -71,6 +70,10 @@ func (t SendFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 			return nil, fmt.Errorf("invalid media ID")
 		}
 	} else if !delivery.IsHTTPMediaSource(source) {
+		actor, ok := contextinfo.ActorFromContext(ctx)
+		if !ok || actor.Role != contextinfo.RoleSuperadmin {
+			return nil, fmt.Errorf("发送本地文件需要超级管理员权限")
+		}
 		localSource, err := localSourcePath(source)
 		if err != nil {
 			return nil, err
@@ -79,9 +82,7 @@ func (t SendFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 		if err != nil {
 			return nil, err
 		}
-		if resolved.WasAbs {
-			assessment = toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"发送外部文件需要确认"}}
-		}
+		assessment = toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"发送本地文件"}}
 		source = resolved.Path
 	}
 	return toolshare.NewPreparedCall(req, assessment, fmt.Sprintf("发送文件：%s", source), func(ctx context.Context) (*toolshare.Result, string, error) {
