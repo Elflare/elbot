@@ -99,6 +99,24 @@ func TestElwispCreatorToolCallReturnsGuide(t *testing.T) {
 	if !reflect.DeepEqual(payload.Calls[0], wantCall) {
 		t.Fatalf("native recall example = %#v, want %#v", payload.Calls[0], wantCall)
 	}
+	_, example, found = strings.Cut(result.Content, "// minimal_llm_payload: ")
+	if !found {
+		t.Fatal("guide missing llm example")
+	}
+	example, _, _ = strings.Cut(example, "\n")
+	var task struct {
+		Format  string `json:"format"`
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal([]byte(example), &task); err != nil {
+		t.Fatalf("invalid llm example JSON: %v", err)
+	}
+	if task.Format != elyph.Format {
+		t.Fatalf("llm example format = %q", task.Format)
+	}
+	if _, diagnostics, err := elyph.ValidateTask(task.Content, "review_event"); err != nil || len(diagnostics) != 0 {
+		t.Fatalf("invalid llm example task: %v, diagnostics=%+v", err, diagnostics)
+	}
 }
 
 func TestElwispCreatorDependencyDiscovery(t *testing.T) {

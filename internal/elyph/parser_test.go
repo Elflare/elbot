@@ -710,13 +710,28 @@ func TestParseRejectsStepSingleLineBadName(t *testing.T) {
 }
 
 func TestRuleCardExampleParses(t *testing.T) {
-	idx := strings.Index(RuleCard(), "例：\n")
-	if idx < 0 {
-		t.Fatal("RuleCard missing example marker")
+	_, example, ok := strings.Cut(RuleCard(), "\n例：\n")
+	if !ok || strings.Count(example, "#task ") != 1 {
+		t.Fatal("rule card must contain one example")
 	}
-	example := strings.TrimSpace(RuleCard()[idx+len("例：\n"):])
-	if _, err := ParseSkill(example, "weather"); err != nil {
-		t.Fatalf("RuleCard example should parse: %v", err)
+	doc, diagnostics, err := ValidateTask(example, "weather_batch")
+	if err != nil || len(diagnostics) != 0 {
+		t.Fatalf("invalid rule card example: %v, diagnostics=%+v", err, diagnostics)
+	}
+	if len(doc.Steps) != 2 {
+		t.Fatalf("example steps = %+v", doc.Steps)
+	}
+	for _, prefix := range []string{"//", "<-", "->", "$", "=>", "**", "~", "?if", "?else", "each", "step", "@tool", "@skill", ">", "}"} {
+		found := false
+		for _, line := range strings.Split(example, "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), prefix) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("example missing syntax %s", prefix)
+		}
 	}
 }
 

@@ -107,23 +107,23 @@ func buildElwispCreatorGuide(cfg ElwispCreatorConfig, err error) string {
 // model_slot: elwisp1 | elwisp2 | elwisp3；未配置时由 Elnis fallback。
 // minimal_direct_payload: {"version":"elvena.v3","elwisp":{"name":"example-elwisp","tags":["example"]},"source":"example-source","id":"stable-event-id","mode":"direct","title":"事件标题","content":"可直接通知给管理员的文本。","targets":[{"platform":"cli"}]}
 // minimal_direct_calls_payload: {"version":"elvena.v3","elwisp":{"name":"example-elwisp"},"source":"example-source","id":"stable-event-id","mode":"direct","targets":[{"platform":"qqonebot","type":"group","id":"987654321"}],"calls":[{"platform":"qqonebot","api":"delete_msg","params":{"message_id":1024}}]}
-// minimal_llm_payload: {"version":"elvena.v3","elwisp":{"name":"example-elwisp","tags":["example"]},"source":"example-source","id":"stable-event-id","mode":"llm","title":"需要分析的事件","format":"elyph","content":"#task review_event - 判断事件是否需要通知\n<- $event:object!\n-> $report:str\n** 基于事件内容、meta 和工具结果判断\n~ 编造日志、指标或结论\n> 如果需要通知，给出原因和建议；否则说明无需打扰。","tool_list_names":[],"targets":[{"platform":"cli"}],"meta":{}}
+// minimal_llm_payload: {"version":"elvena.v3","elwisp":{"name":"example-elwisp","tags":["example"]},"source":"example-source","id":"stable-event-id","mode":"llm","title":"需要分析的事件","format":"elyph","content":"#task review_event - 事件通知判断\n<- $event:object!\n-> $report:str\n** 判断依据=事件+meta+工具结果\n~ 编造日志/指标/结论\n=> $report:str = 事件需目标关注 ? 事件要点+原因+建议 : \"无需打扰\"\n> $report","tool_list_names":[],"targets":[{"platform":"cli"}],"meta":{}}
 `)
-	b.WriteString(`** 如果 current_elnis 有 warning，先提醒用户处理。
-** event id 在同一 source 内稳定且唯一。
-** Elwisp 只上报事件，由 Elnis/ElBot 决定记录、通知、分析或调用工具。
-** 真实文件修改使用 edit_file；本地检查、curl 或脚本测试使用 shell。
-** token 值由用户设置到系统环境变量或配置目录 .env；Elwisp 代码只读取环境变量。
-** targets 必须由事件明确声明；用户目标不明确时，先询问用户要推送到哪些平台或会话。
-** tool_list_names 请求 ElBot 内部工具或 Skill，最终可用性由 elnis.toml allowed_tools、ToolRun 和 Security Permission 裁决。
-** tools 是 Elwisp 随事件声明的外部工具，适合查询 Elwisp 所在环境的状态、日志或详情。
-** Elwisp 外部工具 endpoint 默认绑定 127.0.0.1，除非用户明确需要远程访问。
+	b.WriteString(`** current_elnis有warning⇒先提示修复。
+** (source,id)稳定且唯一。
+** Elwisp仅上报；记录/通知/分析/工具调用由Elnis/ElBot裁决。
+** 文件修改→edit_file；本地检查/curl/脚本测试→shell。
+** token由用户配置到环境变量/.env；Elwisp代码仅读环境变量。
+** targets由事件显式声明；目标不明⇒先问平台/会话。
+** tool_list_names=内部工具/Skill请求；允许范围由allowed_tools+ToolRun+Permission裁决。
+** tools=Elwisp外部工具，查询其环境的状态/日志/详情。
+** endpoint默认127.0.0.1；用户明确要求远程访问才调整。
 ~ 硬编码 token
 ~ 记录 token
 ~ 直接读取系统环境变量或配置目录 .env 中的 token/key 值
 ~ 编造 endpoint/token
 ~ 让 Elwisp 直接向聊天平台发消息
-> 创建或修改 Elwisp 后，简要说明设计、文件路径、配置项、环境变量、测试命令和安全注意事项。
+** 创建/修改后汇报：设计、文件路径、配置项、环境变量、测试命令、安全事项。
 `)
 	return b.String()
 }
