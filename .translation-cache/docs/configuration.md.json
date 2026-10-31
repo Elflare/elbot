@@ -1,5 +1,13 @@
 {
   "segments": {
+    "docs/configuration.md:section:01f8c5ebd4e9dc82da560edf0d377d607ff6c7d59c52ba7adde613f541a1ecd4": {
+      "kind": "section",
+      "source": "## 相对路径规则\n\n相对路径基于主配置文件所在目录解析，默认就是平台配置目录。例如 `app.toml` 写入：\n\n```toml\n[config_files]\nproviders = \"providers.toml\"\nstate = \"state.toml\"\nelnis = \"elnis.toml\"\n\n[soul]\npath = \"SOUL.md\"\n```\n\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "d06e430f161379adf8ffbaa5dad95e67e15ae7c8b2411efdb498946de6300c21",
+      "translation": "## Relative Path Rules\n\nRelative paths are resolved based on the directory where the main configuration file is located, which is the platform configuration directory by default. For example, writing into `app.toml`:\n\n```toml\n[config_files]\nproviders = \"providers.toml\"\nstate = \"state.toml\"\nelnis = \"elnis.toml\"\n\n[soul]\npath = \"SOUL.md\"\n```\n\n",
+      "updated_at": 1793423794
+    },
     "docs/configuration.md:section:026042ebb434cc7771017edcd3fb96f01f943e7d3ec00eececc49022f38e70df": {
       "kind": "section",
       "source": "## 平台配置\n\nCLI 默认启用：\n\n```toml\n[platform.cli]\nenabled = true\n```\n\nQQ 官方机器人、QQ OneBot 和 Telegram 在默认示例中是注释状态，启用时需补齐各自认证信息和触发关键词。媒体按 `[platform_files]` 限制下载。\n\n",
@@ -40,6 +48,14 @@
       "translation": "### Supplementary Notes for Responses\n\n```toml\n[providers.native_text]\napi_mode = \"response\"\nbase_url = \"https://api.openai.com/v1\"\napi_key_env = \"OPENAI_API_KEY\"\nextra_payload = { store = false, reasoning = { effort = \"medium\" } }\n```\n\n- `store`: Provider or model-level `extra_payload` can use `store = false` to disable server-side storage, after which the full native history will be sent. By default, server-side continuation is used; Automatically switch and log a WARN in the background when the upstream returns `store:false`.\n- Tool definitions follow the `additional_tools` of native input, current calling permissions are limited by `tool_choice.allowed_tools`, and `none` is sent when no tools are available. The upstream must support these two items; there is no top-level `tools` fallback. `extra_payload.tool_choice` can only further narrow permissions; setting `required` when forcing the call of unavailable tools or when no tools exist will result in an error.\n- Sessions use a versioned native input format. Old Sessions lacking format markers cannot continue conversations, be Forked, or be compressed, and must be newly created. Tool definitions within the same native history are fixed; if a schema with the same name changes, a new Session must also be created.\n- Compression: Responses Sessions use the native compression of the current conversation model, without using the `/model --compact` option. Naming and text summaries for Chat Sessions are available on both clients.\n\n",
       "updated_at": 1793371570
     },
+    "docs/configuration.md:section:32d3df53a39661e7db851225cb4ac8d75ee3230396bd98f0392496dfed1e43a5": {
+      "kind": "section",
+      "source": "## 主配置查找顺序\n\n1. 命令行 `--config`。\n2. 环境变量 `ELBOT_CONFIG_FILE`。\n3. 平台配置目录：Windows `%APPDATA%/ElBot/app.toml`；Linux 使用 XDG 配置目录。\n\n平台配置不存在时会自动生成默认配置（已存在的文件不覆盖），但自动生成只在没有显式 `--config` 和 `ELBOT_CONFIG_FILE` 时触发；显式指定的路径不存在则报错，避免掩盖路径拼写错误。\n\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "a20fce4da14763e557388b3a680cad123d813d8f03e156fd7fcb14aecd542f93",
+      "translation": "## Main Configuration Lookup Order\n\n1. Command line `--config`.\n2. Environment variable `ELBOT_CONFIG_FILE`.\n3. Platform configuration directory: Windows `%APPDATA%/ElBot/app.toml`; Linux uses the XDG configuration directory.\n\nIf the platform configuration does not exist, a default configuration will be automatically generated (existing files will not be overwritten). However, automatic generation is only triggered when there is no explicit `--config` or `ELBOT_CONFIG_FILE`; if an explicitly specified path does not exist, an error will be reported to avoid masking path spelling mistakes.\n\n",
+      "updated_at": 1793423794
+    },
     "docs/configuration.md:section:375db9f15c46008aa416208faa30842412bedae8d5dd0127310f250881329651": {
       "kind": "section",
       "source": "### 媒体交付\n\n`[file_delivery]` 控制**模型请求**中的媒体交付，统计本次完整请求的媒体原始字节总量（同一媒体出现多次累加，但读取、上传、签名按媒体 ID 复用）。\n\n`send_file` 不用此限制：它只检查本地路径、普通文件类型、文件名和 MIME。向聊天平台发送文件的方式由相应平台配置控制。\n\n| `backend` | 行为 |\n| --- | --- |\n| `base64` | 总量超过 `max_direct_base64_bytes` 时停止请求，报告实际总量和上限。 |\n| `hybrid` | 未超限全用 base64，超限全用 S3。 |\n| `s3` | 全用预签名下载链接；本地媒体按需上传并复用已记录的对象键。配置、上传或签名失败会明确报错，不回退成混合交付。 |\n\n- S3 使用 `s3_endpoint`、`s3_region`、`s3_bucket` 和 `s3_access_key_env`、`s3_secret_key_env` 指定的变量。\n- 模型服务通过有效期 1 小时的预签名 URL 下载，无需另给密钥。\n- Cloudflare R2 可保持 bucket 私有，无需开公共访问；下载方或中转服务必须能访问该链接。\n- 媒体中心在所有引用释放满 1 小时后，按 `[maintenance.sandbox_cleanup].schedule`（默认每天 04:00）清理对象，且独立启用、不受 sandbox 清理开关影响；删除失败保留记录待重试，仍被 Session 或聊天历史引用的不删。预签名 URL 到期只影响链接，不删对象。\n\n`[media]` 控制图片入库压缩：\n\n- `llm_image_compression_threshold_bytes`：触发压缩的原图字节数阈值，默认 4 MiB。\n- `llm_image_max_length`：压缩后的边长限制，默认 4096。\n- 原图超阈值或任一边长达到限制时等比例压缩。\n\n\n",
@@ -55,6 +71,22 @@
       "source_hash": "0135c450f1a2c7d07edffd5cebe07a424d8652aa0fa629d3609daf5feb27f082",
       "translation": "## LLM Request and Round Timeout\n\nThe `[llm_request]` of `app.toml` controls streaming requests, full-round processing, and retries:\n\n```toml\n[llm_request]\nfirst_chunk_timeout_seconds = 180\nstream_idle_timeout_seconds = 60\nresponse_timeout_seconds = 0\nmax_retries = 3\nretry_initial_delay_seconds = 2\n```\n\n| Field | Description |\n| --- | --- |\n| `first_chunk_timeout_seconds` | The maximum wait time from the start of the response to the first streaming event, default is 180; suitable for models with slower first-token generation. |\n| `stream_idle_timeout_seconds` | The maximum silence duration between two events during streaming, default is 60; the timer resets upon receiving each new event. |\n| `response_timeout_seconds` | The total duration of a full request round, from receiving input to the end of the final response, default is 0 (unlimited); if set to a positive number, the round will stop and notify the user upon timeout. A single LLM streaming request is not limited by this. |\n| `max_retries` / `retry_initial_delay_seconds` | The number of retries and the initial delay for connection or retryable HTTP failures; the delay increases according to exponential backoff. |\n\n",
       "updated_at": 1793371570
+    },
+    "docs/configuration.md:section:3cfc941a91a376add64e54ffef0bff0064ac6565c686b19c5a0ae590e36cad73": {
+      "kind": "section",
+      "source": "## 环境变量与进程环境继承\n\nElBot 的环境层：\n\n| 环境层 | 提供方 |\n| --- | --- |\n| ElBot 进程环境 | 终端、服务管理器或容器启动时提供 |\n| 配置根 `.env` | 本地密钥与普通变量 |\n| `plugins/.env` | 所有 Hook 共用的环境层 |\n| `plugins/<plugin-id>/.env` | 单个插件 exec 与 Worker |\n| `<skill>/.env` | 单个技能专属变量 |\n\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "97a431338f63d21c31b6e0ccb9751c5495e10b0c037fe4c68f5eb42da5537377",
+      "translation": "## Environment Variables and Process Environment Inheritance\n\nElBot's environment layers:\n\n| Environment Layer | Provider |\n| --- | --- |\n| ElBot process environment | Provided by the terminal, service manager, or container at startup |\n| Configuration root `.env` | Local keys and general variables |\n| `plugins/.env` | Environment layer shared by all Hooks |\n| `plugins/<plugin-id>/.env` | Single plugin exec and Worker |\n| `<skill>/.env` | Variables exclusive to a single skill |\n\n",
+      "updated_at": 1793423794
+    },
+    "docs/configuration.md:section:3e2b67e92c9050f02ac41528fa14f4ffd94569740fa16232284590004662f26a": {
+      "kind": "section",
+      "source": "### 配置变量与密钥\n\n`api_key_env`、`token_env`、`client_secret_env`、`access_token_env`、`bot_token_env`、`proxy_url_env` 等字段保存的是环境变量名。\n\n读取顺序：ElBot 进程环境 → 配置根 `.env`。\n\n真实密钥放在系统环境或配置根 `.env`，不要写进 TOML 或提交到仓库：\n\n```dotenv\nDEEPSEEK_API_KEY=your-api-key\nTELEGRAM_BOT_TOKEN=your-bot-token\nELNIS_HOME_TOKEN=your-elnis-token\n```\n\n注意：配置根 `.env` 的全部变量会补充给 LLM Shell。只在信任当前模型及 Shell 权限策略时才启用相关工具。\n\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "48d5d1734f5aae3e67c36a9adb556e5b1de1c35b7dff8e09d37ef0abcde99686",
+      "translation": "### Configuration Variables and Keys\n\nFields such as `api_key_env`, `token_env`, `client_secret_env`, `access_token_env`, `bot_token_env`, and `proxy_url_env` store environment variable names.\n\nRead order: ElBot process environment → configuration root `.env`.\n\nPlace actual keys in the system environment or the configuration root `.env`; do not write them into TOML or commit them to the repository:\n\n```dotenv\nDEEPSEEK_API_KEY=your-api-key\nTELEGRAM_BOT_TOKEN=your-bot-token\nELNIS_HOME_TOKEN=your-elnis-token\n```\n\nNote: All variables in the configuration root `.env` will be passed to the LLM Shell. Enable related tools only when you trust the current model and the Shell permission policy.\n\n",
+      "updated_at": 1793423794
     },
     "docs/configuration.md:section:4c7ad3b13dabc9d1ef82599af8d4d74b242d5dd0f2f736c15f9912cf3d651bcc": {
       "kind": "section",
@@ -250,8 +282,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "",
+  "source_hash": "90c40ab878e2885ee8b7caf8b3a712ed929461812f3cc8132da0649cceed09cb",
   "target": "docs.en/configuration.md",
-  "updated_at": 1793423213,
+  "updated_at": 1793423794,
   "version": 3
 }

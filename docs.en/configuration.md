@@ -2,47 +2,37 @@
 
 # Configuration Guide
 
-ElBot uses a main configuration entry to load application configuration, Provider configuration, and runtime state. Default configurations are generated from the program's built-in assets into the platform configuration directory; existing configuration files will not be overwritten.
+ElBot uses a main configuration entry to load application configurations, Provider configurations, and runtime states. Except for `.env`, all configuration files are automatically generated from built-in assets to the platform configuration directory upon the first run; existing files will not be overwritten.
 
 ## Configuration File Responsibilities
 
-All configuration files are automatically generated from the program's built-in assets to the platform configuration directory upon the first run; existing files will not be overwritten, and the `config/` directory is no longer retained in the source code.
-
 | File or Directory | Responsibility |
 | --- | --- |
-| `elnis.toml` | Elnis listening hub configuration, saving HTTP, token, delivery, allowed_tools, and Elwisp policies. |
-| `state.toml` | Runtime state, e.g., default Session mode, chat/work/compact/naming model selection. |
-| `tool_tags.toml` | Configuration file for adding tags and prompts to tools. |
-| `SOUL.md` | The System Prompt source file for the Agent. |
-| `.env` | Optional, local key file, not recommended for submission; the one automatically generated the first time is `.env.example`, and `.env` will not be generated directly. |
-| `plugins/.env` | Automatically generated Hook public environment file; by default, it contains only comments, but public variables and additional `PATH` can be added. |
-| `plugins/` | Hook and plugin configuration directory. |
-| `skills/` | User-side Skill directory, located in the configuration directory by default; The current subdirectories are `skills/agent/` and `skills/go/`. AgentSkill can place `ELBOT_SKILL.toml` in the root directory to configure visibility or register as a regular tool. |
-| `memories.toml` | Resident memory file, located in the configuration directory by default. |
-| `long_memory/` | Long-term memory Markdown source data directory, located in the configuration directory by default. |
+| `app.toml` | Main configuration: `config_files` references, storage, logs, maintenance tasks, platform, security policies, etc. |
+| `providers.toml` | Provider and model configurations. |
+| `state.toml` | Runtime state: default Session mode, chat/work/compact/naming model selection. |
+| `elnis.toml` | Elnis listening hub: HTTP, token, delivery, allowed_tools, and Elwisp policies. |
+| `tool_tags.toml` | Tool tags and prompts appended after tag activation. |
+| `SOUL.md` | Source of the Agent's System Prompt. |
+| `memories.toml` | Resident memory. |
+| `long_memory/` | Long-term memory Markdown source data. |
+| `plugins/` | Hook and plugin configuration directory (`hooks.toml`, `<plugin>/hook.toml`, `.env`, `_shared/`). |
+| `skills/` | User Skill directory, containing `skills/agent/` and `skills/go/`; AgentSkill can place `ELBOT_SKILL.toml` in the root directory to configure visibility or be registered as a normal tool. |
+| `.env` | Optional local key file, not recommended for submission; only `.env.example` is generated the first time, and `.env` will not be generated directly. |
 
-## Main configuration lookup order
+The above can all be placed in the platform configuration directory, or `--config` can be used to point to other locations.
 
-The main configuration is searched in the following order upon startup:
+## Main Configuration Lookup Order
 
 1. Command line `--config`.
 2. Environment variable `ELBOT_CONFIG_FILE`.
 3. Platform configuration directory: Windows `%APPDATA%/ElBot/app.toml`; Linux uses the XDG configuration directory.
-4. If the platform configuration does not exist, a default configuration file will be automatically generated in the platform configuration directory. Existing configurations will not be overwritten. Automatic generation is only triggered when there are no explicit `--config` and `ELBOT_CONFIG_FILE`. If the explicitly specified configuration path does not exist, ElBot will report an error instead of silently generating it, to avoid masking path spelling errors.
 
-During the development phase, you can use the platform configuration directory by running it directly:
-
-```bash
-go run ./cmd/elbot
-```
-
-If you need to use a temporary configuration file, you can also explicitly specify `--config`.
+If the platform configuration does not exist, a default configuration will be automatically generated (existing files will not be overwritten). However, automatic generation is only triggered when there is no explicit `--config` or `ELBOT_CONFIG_FILE`; if an explicitly specified path does not exist, an error will be reported to avoid masking path spelling mistakes.
 
 ## Relative Path Rules
 
-Relative paths are resolved based on the directory of the main configuration file by default.
-
-For example, writing `app.toml` under the platform configuration directory:
+Relative paths are resolved based on the directory where the main configuration file is located, which is the platform configuration directory by default. For example, writing into `app.toml`:
 
 ```toml
 [config_files]
@@ -54,98 +44,93 @@ elnis = "elnis.toml"
 path = "SOUL.md"
 ```
 
-These paths will all be resolved to the directory where the main configuration file is located; by default, this is the platform configuration directory.
-
 ## Environment Variables and Process Environment Inheritance
 
-ElBot uses the following environment sources:
+ElBot's environment layers:
 
-- ElBot process environment: provided by the terminal, service manager, or container at startup.
-- Each Skill's own root directory `.env`: used for variables exclusive to that Skill, read by AgentSkill TOML commands and Go Skills before each execution.
-- `plugins/.env`: an environment layer shared by all Hooks.
-- `plugins/<plugin-id>/.env`: an environment layer for individual plugin execs and Workers.
+| Environment Layer | Provider |
+| --- | --- |
+| ElBot process environment | Provided by the terminal, service manager, or container at startup |
+| Configuration root `.env` | Local keys and general variables |
+| `plugins/.env` | Environment layer shared by all Hooks |
+| `plugins/<plugin-id>/.env` | Single plugin exec and Worker |
+| `<skill>/.env` | Variables exclusive to a single skill |
 
 ### Configuration Variables and Keys
 
-Fields such as `api_key_env`, `token_env`, `client_secret_env`, `access_token_env`, `bot_token_env`, and `proxy_url_env` store environment variable names. When reading the corresponding values, the priority is unified as:
+Fields such as `api_key_env`, `token_env`, `client_secret_env`, `access_token_env`, `bot_token_env`, and `proxy_url_env` store environment variable names.
 
-1. ElBot process environment.
-2. Configuration root `.env`.
+Read order: ElBot process environment → configuration root `.env`.
 
-It is recommended to place actual secrets in the system environment or the configuration root `.env`, rather than writing them directly into TOML or committing them to the repository. For example:
+Place actual keys in the system environment or the configuration root `.env`; do not write them into TOML or commit them to the repository:
 
 ```dotenv
 DEEPSEEK_API_KEY=your-api-key
-OPENAI_API_KEY=your-api-key
-QQOFFICIAL_CLIENT_SECRET=your-client-secret
-QQONEBOT_ACCESS_TOKEN=your-access-token
 TELEGRAM_BOT_TOKEN=your-bot-token
-ELBOT_CLI_LOCAL_TOKEN=your-cli-token
 ELNIS_HOME_TOKEN=your-elnis-token
 ```
 
-All variables in the configuration root `.env` will also be supplemented to the LLM Shell; therefore, related tools should only be enabled when the current model and Shell permission policies are trusted.
+Note: All variables in the configuration root `.env` will be passed to the LLM Shell. Enable related tools only when you trust the current model and the Shell permission policy.
 
 ### Shell, Skill, and Hook Environments
 
 | Process Entry Point | Environment Source and Priority |
 | --- | --- |
-| Built-in tools (including LLM Shell) | Based on the ElBot process environment, the configuration root `.env` only supplements ordinary variables that do not yet exist. |
-| AgentSkill TOML commands and Go Skills | The priority for ordinary variables is Skill `.env` > ElBot process environment > configuration root `.env`. Null values in Skill `.env` will also override variables with the same name in the base environment. |
-| Root Hook Rules | Based on the ElBot process environment, `plugins/.env` overrides ordinary variables with the same name. |
-| Plugin exec and Worker | Based on the root Hook environment, the `.env` in the same directory as the plugin configuration file further overrides ordinary variables with the same name. |
+| Built-in tools (including LLM Shell) | The process environment serves as the base, and the config root `.env` only supplements ordinary variables that do not yet exist. |
+| AgentSkill TOML commands and Go Skills | Skill `.env` > process environment > config root `.env`; null values in Skill `.env` also override variables with the same name. |
+| Root Hook Rules | The process environment serves as the base, and `plugins/.env` overrides ordinary variables with the same name. |
+| Plugin exec and Worker | The root Hook environment serves as the base, and the plugin directory `.env` further overrides ordinary variables with the same name. |
 
-The working directory for Skill execution is each Skill's own root directory. ElBot will pass the merged results to the current subprocess. Scripts can be used directly without needing to load `.env` manually. The Go Skill compilation phase uses the basic environment and does not load the skill `.env`.
-
-When ElBot reads configuration files on its own, the configuration root `.env` will not inject Hooks. Proxies, tool paths, or variables shared by all Hooks should be placed in `plugins/.env`, while variables used only by a single plugin should be placed in that plugin's `.env`. One-time exec, Persistent Worker, and Transient Worker follow the same rules.
-
-When a proxy is required, standard variables can be set in the corresponding environment layer; whether the child process uses them still depends on the specific program:
-
-```dotenv
-HTTP_PROXY=http://127.0.0.1:7890
-HTTPS_PROXY=http://127.0.0.1:7890
-NO_PROXY=localhost,127.0.0.1,::1
-```
+- The Skill working directory is the Skill root directory; the merged result is passed to the child process by ElBot, so the script does not need to load `.env` on its own.
+- The base environment is used during the Go Skill compilation phase, and Skill `.env` is not loaded.
+- The config root `.env` is not injected into Hooks. Place shared variables in `plugins/.env` and single-plugin variables in the plugin directory `.env`; One-time exec, Persistent / Transient Worker follow the same rules.
+- When a proxy is required, set `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` in the corresponding environment layer; whether child processes use them depends on the specific program.
 
 ### PATH Rules and systemd
 
-When ElBot merges the above environment layers, `PATH` is not overridden like ordinary variables, but is instead appended sequentially by layer and deduplicated. The base PATH here is the process PATH that ElBot has already obtained upon startup; For subsequent `.env`, only fill in the absolute directories to be added:
+`PATH` does not participate in ordinary overriding, but is instead appended by layer and deduplicated:
 
-The PATH order during skill execution is the ElBot process PATH, the configuration root `.env` PATH, and the skill `.env` PATH. The AgentSkill command also uses the merged PATH to look for executable files.
+- The base value is the process PATH obtained when ElBot starts.
+- Only write the absolute directories to be added in `.env`.
+- Skill execution order: process PATH → configuration root `.env` → Skill `.env`; the AgentSkill command also uses it to find executable files.
 
 ```dotenv
 PATH=/home/elbot/.local/bin:/usr/local/go/bin
 ```
 
-Do not fill in `$PATH`, `%PATH%`, or `~`, as dotenv does not perform variable substitution or path expansion. `PATH` can be omitted if there are no additional directories.
+Do not write `$PATH`, `%PATH%`, or `~`—dotenv does not perform variable substitution or path expansion. Omit `PATH` when there are no additional directories.
 
-When a systemd user service does not explicitly set the PATH, ElBot uses the PATH provided by the service manager. `EnvironmentFile` itself does not affect the PATH, but once `PATH=` is included in the file, systemd will completely overwrite the original value before starting ElBot; ElBot can only continue to append to this result and cannot recover system directories that have already been lost. systemd's `EnvironmentFile` also does not expand `$PATH`.
+Two systemd pitfalls:
 
-When ElBot reads the configuration root `.env` on its own, the systemd unit does not need to load the file again; The PATH within it is handled according to the append rules mentioned above. If the unit uses `EnvironmentFile` to load the same file, the PATH within it must be written as a full value
-
-After loading via `EnvironmentFile`, all variables in the file belong to the ElBot process environment and will therefore be inherited by the Shell and Hook, losing the isolation effect of "configuration root `.env` is not injected into Hooks."
+- Use the PATH provided by the service manager when PATH is not explicitly set. `EnvironmentFile` itself does not affect PATH, but if the file contains `PATH=`, systemd will completely overwrite the original value before startup. ElBot can only append to this and cannot recover lost system directories; `EnvironmentFile` also does not expand `$PATH`.
+- When ElBot reads the configuration root `.env` itself, the unit does not need to load the file repeatedly (PATH follows the append rule). If the unit uses `EnvironmentFile` to load the same file, PATH must be written as a full value. All variables within it will become part of the process environment and be inherited by Shell and Hook, losing the isolation of "configuration root `.env` is not injected into Hook".
 
 ### Effective Timing
 
-The configuration root `.env` or systemd environment takes effect after restarting ElBot. `plugins/.env` and plugin `.env` are re-read during startup and `/hooks reload`; a reload will rebuild the Worker based on the new environment; If the file does not exist, it is treated as an empty configuration.
+- Configuration root `.env`, systemd environment: takes effect after restart.
+- `plugins/.env`, plugin `.env`: reread during startup and `/hooks reload`; reload rebuilds Workers based on the new environment.
+- If the file does not exist, it is treated as an empty configuration.
 
 ## Workspace Tools
 
-In work mode, the superadmin can allow the LLM to call the `workspace` tool to switch the shared working directory of the current Session. After switching, path-related tools such as `read_file`, `edit_file`, `rollback_file`, `send_file`, and the foreground `shell` will resolve relative paths based on this directory to avoid passing the full path every time.
+In work mode, the superadmin can allow the LLM to call the `workspace` tool to switch the shared working directory of the current Session. After switching, path-related tools such as `read_file`, `edit_file`, `rollback_file`, `send_file`, and the foreground `shell` will resolve relative paths based on this directory.
 
-When a `workspace` tool in a directory is first discovered or injected, or when switching to or resetting to that directory for the first time, if `AGENTS.md` or `AGENT.md` exists at the root of the directory, the system will automatically attach the file content to the LLM so that it can read the working conventions of the current directory. The main part of the filename must be uppercase `AGENTS` or `AGENT`, while the case of the `.md` suffix is unrestricted; `AGENTS.md` takes precedence over `AGENT.md`.
+- When no workspace is set, the process working directory is used.
+- When `AGENTS.md` or `AGENT.md` is present at the root of the target directory, the content will be automatically attached to the LLM upon first discovery, injection, or first switch to that directory. The main part of the filename must be uppercase `AGENTS` / `AGENT`, the case of the `.md` suffix is unrestricted, and `AGENTS.md` takes priority.
+- The attachment limit is 64 KiB. If the limit is exceeded, the content will not be read or marked as attached, and the tool result will prompt to shorten or split the content before switching again.
+- Edit undo backups are saved by the target absolute path: switching the workspace does not clear backups, but the same relative path will be resolved according to the new workspace; To undo files in the original directory, you can switch back or provide the absolute path. See [Undo File Edit](commands.md#文件编辑撤销).
 
-The maximum size for the automatically attached instruction file is 64 KiB. If the limit is exceeded, the content will not be read, nor will it be marked as attached; the tool result will indicate that the file needs to be shortened or split before switching the workspace.
+`read_file` tool description:
 
-Undo backups for file editing are saved according to the absolute path of the actual target; Switching the workspace does not clear backups, but the same relative path will be resolved according to the new workspace. When undoing files in the original directory, you can switch back to the original workspace or pass the absolute path. When no workspace is set, the process working directory is used. For usage, see [Undo File Editing](commands.md#文件编辑撤销).
+- `ast` / `ast_function` modes support single file and directory queries.
+- Dialect determination: `.go` follows Go, `.mksh` follows mksh; Others are determined by the first-line Shell shebang (including `env`, `env -S`, and `env --split-string` syntax).
+- `.sh`, `.bash`, and `.bats` default to Bash when no recognizable shebang is found.
 
-`read_file`'s `ast`/`ast_function` mode supports single-file and directory queries. `.go` is parsed according to Go, and `.mksh` is parsed according to mksh; Other files recognize a valid Shell shebang on the first line, including direct interpreter paths and `env`, `env -S`, and `env --split-string` notations. When `.sh`, `.bash`, and `.bats` have no recognizable Shell shebang, the Bash dialect is used; when mksh is declared, the mksh dialect is used.
-
-`edit_file` generates editing results and a diff preview before confirmation, and submits the same result after confirmation. If the file content or target changes while waiting for confirmation, the submission will be rejected, and the edit must be prepared again.
+`edit_file` generates the edit result and a diff preview before confirmation, and submits the same result after confirmation; if the file content or target changes during the waiting period, the submission will be rejected and must be prepared again.
 
 ## Resident Memory Configuration
 
-Resident memory data is saved by default in `memories.toml` of the configuration directory, and the file is generated when the program runs for the first time. The length limits for the two resident memory segments, core and normal, can be set in the main configuration:
+Resident memory is stored in `memories.toml` within the configuration directory (generated upon the first run). The length limit is specified in the main configuration:
 
 ```toml
 [resident_memory]
@@ -153,7 +138,13 @@ core_max_units = 200
 normal_max_units = 300
 ```
 
-The length unit `units` can be roughly understood as "Chinese by character count, English by word count": CJK characters are counted individually, and continuous segments of English/numbers are counted as one word. `core` is high-risk core memory; when ordinary users modify their own `core`, it must also be confirmed by the user themselves. `normal` is low-risk ordinary memory that can be organized directly and does not require confirmation; When injecting the Prompt, the two segments will be merged into a single piece of natural text.
+| Type | Meaning | Modification Confirmation |
+| --- | --- | --- |
+| `core` | high-risk core memory | Regular users also need personal confirmation when modifying their own core memory. |
+| `normal` | low-risk ordinary memory | No confirmation required. |
+
+- `units` is similar to "Chinese by character count, English by word count": CJK characters are counted as 1 each, and continuous segments of English/numbers are counted as 1.
+- When injecting the Prompt, the two segments are merged into a single piece of natural text.
 
 ## Provider Configuration
 
@@ -165,14 +156,13 @@ api_mode = "chat"                  # Optional: chat / response, defaults to chat
 base_url = "https://api.deepseek.com"
 api_key_env = "DEEPSEEK_API_KEY"
 proxy = ""                          # Optional, HTTP/SOCKS5 proxy address
-extra_payload = { provider_field = "xxx" }  # Optional, Provider-level extra payload
+extra_payload = { provider_field = "xxx" }  # Optional, Provider-level native parameters
 
 [providers.openai]
 base_url = "https://api.openai.com/v1"
 api_key_env = "OPENAI_API_KEY"
-models = ["gpt-4o-mini"]             # Manually supplemented model list (used when the API cannot retrieve them)
+models = ["gpt-4o-mini"]             # Manually supplement the model list (used when the API cannot retrieve it)
 
-# Optional: configure context_window or extra_payload for specific models
 # [providers.openai.model_configs."gpt-4o-mini"]
 # context_window = 128000
 # extra_payload = { }
@@ -181,19 +171,18 @@ models = ["gpt-4o-mini"]             # Manually supplemented model list (used wh
 default_context_window = 256000
 ```
 
-Note:
+| Field | Description |
+| --- | --- |
+| `api_mode` | `chat` (default) or `response`, corresponding to Chat Completions and Responses API, respectively. |
+| `base_url` | Provider API base address. |
+| `api_key_env` | Points to an environment variable name (recommended for saving keys). |
+| `proxy` | Supports `http://` and `socks5://`; Connects directly when omitted or left blank, and **does not inherit** the process's `HTTP_PROXY` / `HTTPS_PROXY`. Applies to both the model list and chat requests. |
+| `models` | A manually supplemented list of model names, used when the model list interface cannot retrieve them. |
+| `model_configs."<model>"` | Configure `context_window` and `extra_payload` for a single model; both are optional. |
+| `extra_payload` | Shared between Provider level and model level; fill in the native parameters supported by the API / model according to `api_mode`, which will eventually be merged into the LLM request JSON. |
+| `[model_metadata].default_context_window` | Global fallback value, defaults to `256000`; used when `model_configs` has no `context_window` configured. |
 
-- `api_mode` only accepts `chat` or `response`, defaults to `chat`; Calls the Chat Completions or Responses API respectively.
-- `base_url` uses the base address of the Provider's corresponding API.
-- `api_key_env` points to an environment variable name; this method is recommended for saving keys.
-- `proxy` is optional, supporting `http://` and `socks5://` proxy addresses; When omitted or left blank, it connects directly and does not inherit environment proxies such as `HTTP_PROXY` and `HTTPS_PROXY` from the ElBot process. This setting applies to both the model list and chat requests.
-- `models` is a manually supplemented list of model names, used when the Provider's model list interface cannot retrieve certain models.
-- `[providers.<name>.model_configs."<model>"]` configures `context_window` and `extra_payload` for specific models; both are optional.
-- The provider and model levels share `extra_payload`; fill in the native parameters supported by the API/model according to `api_mode`.
-- `extra_payload` will be merged into the LLM request JSON.
-- `default_context_window` of `[model_metadata]` is the global fallback value, defaulting to `256000`, and is used when `context_window` is not configured in `model_configs`.
-
-Configuration example for Responses:
+### Supplementary Notes for Responses
 
 ```toml
 [providers.native_text]
@@ -203,40 +192,35 @@ api_key_env = "OPENAI_API_KEY"
 extra_payload = { store = false, reasoning = { effort = "medium" } }
 ```
 
-The Provider or model-level `extra_payload` of Responses can use `store = false` to disable server-side storage, and subsequent full native history will be sent; Server-side continuation is used by default. If the upstream returns `store:false`, it will automatically switch and record a WARN in the background.
+- `store`: Provider or model-level `extra_payload` can use `store = false` to disable server-side storage, after which the full native history will be sent. By default, server-side continuation is used; Automatically switch and log a WARN in the background when the upstream returns `store:false`.
+- Tool definitions follow the `additional_tools` of native input, current calling permissions are limited by `tool_choice.allowed_tools`, and `none` is sent when no tools are available. The upstream must support these two items; there is no top-level `tools` fallback. `extra_payload.tool_choice` can only further narrow permissions; setting `required` when forcing the call of unavailable tools or when no tools exist will result in an error.
+- Sessions use a versioned native input format. Old Sessions lacking format markers cannot continue conversations, be Forked, or be compressed, and must be newly created. Tool definitions within the same native history are fixed; if a schema with the same name changes, a new Session must also be created.
+- Compression: Responses Sessions use the native compression of the current conversation model, without using the `/model --compact` option. Naming and text summaries for Chat Sessions are available on both clients.
 
-Responses tool definitions are sent via `additional_tools` in the native input, current invocation permissions are restricted via `tool_choice.allowed_tools`, and `none` is sent when no tools are available. Upstream must support these two capabilities; there is no top-level `tools` fallback. `extra_payload.tool_choice` can only further narrow the current permissions; Forcing the invocation of unavailable tools or setting `required` when no tools are available will result in an error.
+### Session Protocol Locking
 
-Responses Sessions use a versioned native input format; Old Sessions missing format markers cannot continue the conversation, be Forked, or be compressed; please create a new Session. Tool definitions within the same native history are fixed; changes to a schema with the same name also require creating a new Session.
+The protocol and provider of an existing Session are fixed during the first conversation. The provider refers to the node name of `[providers.<name>]`.
 
-Both Chat Completions and Responses clients can be used for naming and text summaries of Chat Sessions. Responses Sessions use the current conversation model for native compression, ignoring the selection of `/model --compact`.
+| Session Type | Switchable Range |
+| --- | --- |
+| Chat | Any Chat provider |
+| Responses | Responses models under the same node |
 
-The protocol and provider of an existing Session are fixed during the first conversation. The provider is the node name of `[providers.<name>]`: Chat Sessions can be switched to other Chat providers; Responses Sessions can only be switched to Responses models under the same node. A new Session must be created for cross-protocol or cross-Responses provider changes. When `base_url` of the same node changes, Responses rebuilds the chain using complete local native materials.
+A new Session must be created when crossing protocols or Responses providers. When the same node `base_url` changes, Responses rebuilds the chain using complete local native materials.
 
 ## Built-in Web Tool Configuration
 
-`web_search` uses `tavily`:
+| tool | Environment Variable | Behavior |
+| --- | --- | --- |
+| `web_search` | `TAVILY_API_KEY` | Required. |
+| `web_extract` | `JINA_API_KEY` | Uses Jina Reader when configured; otherwise, falls back to direct scraping. |
+| `web_extract` | `WEB_EXTRACT_PROXY` | Fixed proxy for all default `web_extract` calls, such as `http://127.0.0.1:7890`. |
 
-```env
-TAVILY_API_KEY=your_tavily_api_key
-```
-
-`web_extract` prioritizes Jina Reader by default. After configuring `JINA_API_KEY`, web pages will be extracted via Jina Reader; When not configured, it falls back to direct scraping:
-
-```env
-JINA_API_KEY=your_jina_api_key
-```
-
-The `proxy` parameter of `web_extract` is used to control the proxy for webpage extraction requests:
-If you want all default `web_extract` calls to go through a fixed proxy, you can set `WEB_EXTRACT_PROXY`:
-
-```env
-WEB_EXTRACT_PROXY=http://127.0.0.1:7890
-```
+The `proxy` parameter of `web_extract` is used to control the proxy for a single webpage extraction request.
 
 ## LLM Request and Round Timeout
 
-`app.toml`'s `[llm_request]` controls OpenAI-compatible streaming requests, round processing, and retries:
+The `[llm_request]` of `app.toml` controls streaming requests, full-round processing, and retries:
 
 ```toml
 [llm_request]
@@ -247,17 +231,16 @@ max_retries = 3
 retry_initial_delay_seconds = 2
 ```
 
-- `first_chunk_timeout_seconds`: The maximum wait time from the start of the response to the first streaming event, defaulting to 180 seconds, suitable for models with slower first-token generation.
-- `stream_idle_timeout_seconds`: The maximum silence duration between two events during streaming, defaulting to 60 seconds; the timer resets upon receiving each new event.
-- `response_timeout_seconds`: The maximum total duration for a round of user requests, from receiving user input to the end of the final response; a default of 0 indicates no time limit; When set to a positive number, processing for this round will stop when the time is reached, and the user will be notified. A single LLM streaming request is not limited by this field.
-- `max_retries` and `retry_initial_delay_seconds` are used for connection failures or retryable HTTP failures, with retry delays increasing via exponential backoff.
-
-The legacy `timeout_seconds` has been removed; existing configurations should be updated to the three new fields mentioned above.
-
+| Field | Description |
+| --- | --- |
+| `first_chunk_timeout_seconds` | The maximum wait time from the start of the response to the first streaming event, default is 180; suitable for models with slower first-token generation. |
+| `stream_idle_timeout_seconds` | The maximum silence duration between two events during streaming, default is 60; the timer resets upon receiving each new event. |
+| `response_timeout_seconds` | The total duration of a full request round, from receiving input to the end of the final response, default is 0 (unlimited); if set to a positive number, the round will stop and notify the user upon timeout. A single LLM streaming request is not limited by this. |
+| `max_retries` / `retry_initial_delay_seconds` | The number of retries and the initial delay for connection or retryable HTTP failures; the delay increases according to exponential backoff. |
 
 ## CLI Remote Configuration
 
-`[platform.cli]` saves both the CLI server configuration and the connection configuration used by the CLI client. `server` is the configuration read when the current ElBot runs as a server, and `clients` saves the various sets of connection configurations used by the CLI client when connecting to the server.
+`[platform.cli]` saves both server-side configuration and client connection configuration: `server` is the configuration read when the current ElBot acts as a server, and `clients` is a set of connection configurations used by the client to connect to the server.
 
 ```toml
 [platform.cli]
@@ -281,21 +264,28 @@ url = "ws://192.168.1.10:32172/cli/v1/ws"
 token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
 ```
 
-- When `server.enabled=true`, `elbot service run` will start the CLI WebSocket server.
-- `server.listen` is the server listening address.
-- `default_url` is the default client connection address; when connecting to other machines, enter the remote WebSocket address in `clients.<name>.url`.
-- `server.tokens` is the list of CLI client ID and token environment variables allowed to log in to the server.
-- `clients.<name>` is the connection configuration; `id` is optional and defaults to `<name>`; `url` is optional and defaults to using `default_url`.
-- `elbot cli -c <name>` uses the specified connection configuration; if not specified, `default_client` is used.
+- When `server.enabled=true`, `elbot service run` will start the CLI WebSocket server and listen on `server.listen`.
+- `server.tokens` is a list of environment variables for CLI client IDs and tokens allowed to log in.
+- `clients.<name>` is the connection configuration: `id` can be omitted (defaults to `<name>`), `url` can be omitted (defaults to `default_url`); Enter the remote WebSocket address when connecting to other machines.
+- `elbot client -c <name>` uses the specified connection configuration; if not specified, `default_client` is used.
 
 ## AgentSkill Tooling Configuration
 
-By default, AgentSkill is used only as documentation; If the script is executed according to the documentation, the risk is borne by the tools actually called, such as `shell`. To restrict the visibility of a documentation-type Skill, or to register `skills/agent/<skill>/` as a regular tool, add `ELBOT_SKILL.toml` to the root directory of that Skill. When `command`/`parameters`/`[args]` are not specified, it only serves as a visibility configuration and will not be registered as a regular tool; Once any toolization field is specified, the complete toolization configuration must be provided. The default generated `agent_skill_creator` Skill can be used to view instructions and assist in creating the file:
+AgentSkill is used as documentation by default; the risk of executing scripts according to the documentation is borne by the tools actually called, such as `shell`.
+
+To limit the visibility of documentation-type Skills, or to register `skills/agent/<skill>/` as a regular tool, add `ELBOT_SKILL.toml` to the root directory of the Skill:
+
+- If `command` / `parameters` / `[args]` are not specified: it only serves as a visibility configuration and is not registered as a tool.
+- If any tooling field is specified: the complete tooling configuration must be provided.
+
+Limit visibility only:
 
 ```toml
 risk = "high"
 superadmin_only = true
 ```
+
+Register as a regular tool:
 
 ```toml
 risk = "medium"
@@ -319,43 +309,38 @@ parameters = '''
 input = "--input"
 ```
 
-Field descriptions:
+| Field | Required | Description |
+| --- | --- | --- |
+| `risk` | Required when registering as a tool | `safe`, `low`, `medium`, `high`, `critical`; if not specified for document types, it is handled as `safe`. |
+| `superadmin_only` | No | When `true`, only the superadmin can discover, preload, or call it. |
+| `tags` | No | Tool category, used for `@tool:<tag>` preloading. |
+| `command` | Required for toolization | Command array, do not use shell strings. |
+| `parameters` | Required for toolization | JSON object schema, determines the parameters seen by the LLM. |
+| `[args]` | Required for toolization | Flat parameter mapping: `input = "--input"` translates parameter `input` to `--input <value>`. |
+| `timeout_seconds` | No | Command timeout. |
+| `expose_root` | No | Default is `false`; when `true`, the discovered Skill will expose its root path. |
 
-- `risk`: Optional, allows `safe`, `low`, `medium`, `high`, `critical`; Required when registering as a regular tool. When not specified for a documentation-type Skill, it is handled according to `safe`.
-- `superadmin_only`: Optional. `true` indicates that only the ElBot superadmin can discover, preload, or call this Skill.
-- `tags`: Optional, equivalent to categorizing the tool, which can be used for `@tool:<tag>` preloading.
-- `command`: Required for toolization; a command array, do not use shell strings.
-- `parameters`: Required for toolization; a JSON object schema that determines the tool parameters seen by the LLM.
-- `[args]`: Required for toolization; a flat parameter mapping. `input = "--input"` will translate tool parameter `input` into `--input <value>`.
-- `timeout_seconds`: Optional, command timeout.
-- `expose_root`: Optional, defaults to `false`; when set to `true`, the Skill root path will be exposed upon discovering the Skill.
-
-ElBot only reads `ELBOT_SKILL.toml` in the Skill root directory and does not scan recursively. The working directory during execution is fixed to the Skill root directory, and stdout will serve as the tool result; If stdout is `{"content":"..."}` JSON, the `content` field will be used.
-
-Media parameters can be declared as `{"type":"media"}` in `parameters.properties`, and flags are still mapped via `[args]`. The LLM sees the string schema and passes the full `media:<sha256>`; the host only exports this parameter as a temporary file path relative to the Skill root directory during execution. Strings not declared as media are not converted. stdout also supports returning media IDs or controlled relative file paths via `segments`; for specific formats and lifecycles, see [Skill Using Media](concepts.md#skill-使用媒体).
-
-When writing configuration via the `agent_skill` meta-tool, ElBot will only confirm the write after a complete reload is successful; If the reload fails, the original TOML will be restored; if the file did not exist previously, the newly created file will be deleted.
+- ElBot only reads `ELBOT_SKILL.toml` under the Skill root directory and does not scan recursively.
+- The working directory during execution is fixed to the Skill root directory, and stdout serves as the tool result; If stdout is `{"content":"..."}` JSON, the `content` field is used.
+- Media parameters are declared as `{"type":"media"}` in `parameters.properties`, and flags are still mapped via `[args]`; LLM passes `media:<sha256>`, which is exported as a temporary file path relative to the Skill root directory during host execution. Strings not declared as media are not converted. stdout also supports `segments`; see [Skill Media Usage](concepts.md#skill-使用媒体) for format and lifecycle.
+- When writing via the `agent_skill` meta-tool, it is only confirmed after a full reload succeeds; if reload fails, the original TOML will be restored, or the newly created file will be deleted if it did not exist previously.
 
 ## Go Skill Compiler Path
 
-After modifying the `code_source` of the Go Skill, ElBot will automatically execute `gofmt`, `go build`, and reload. The Go executable is located according to the following rules.
+After modifying the `code_source` of a Go skill, ElBot automatically executes `gofmt`, `go build`, and reloads. Executable search order:
 
-It is recommended to specify the Go executable in the configuration directory `.env`:
+1. System environment variable `ELBOT_GO_BINARY`
+2. `ELBOT_GO_BINARY` in the configuration directory `.env`
+3. `GOROOT/bin/go` (when the service environment is configured with `GOROOT`)
+4. `go` in process `PATH`
+
+It is recommended to specify it directly in the configuration directory `.env`:
 
 ```dotenv
 ELBOT_GO_BINARY=/usr/local/go/bin/go
 ```
 
-Lookup order:
-
-1. System environment variable `ELBOT_GO_BINARY`.
-2. `ELBOT_GO_BINARY` in the configuration directory `.env`.
-3. `GOROOT/bin/go`, if `GOROOT` is configured in the service environment.
-4. `go` in the ElBot process `PATH`.
-
-If using asdf, mise, Nix, Linuxbrew, Snap, or a custom installation path, it is recommended to write the actual `go` path directly into `ELBOT_GO_BINARY`, rather than relying on the initialization scripts of an interactive shell.
-
-For advanced deployments, this can also be specified in the systemd service:
+When using asdf, mise, Nix, Linuxbrew, Snap, or a custom installation path, write the actual `go` path into `ELBOT_GO_BINARY`, and do not rely on the initialization scripts of an interactive shell. It can also be specified in the systemd service:
 
 ```ini
 [Service]
@@ -374,22 +359,20 @@ private_user_ttl_minutes = 10
 private_superadmin_ttl_minutes = 0
 ```
 
-Field descriptions:
+| Field | Purpose |
+| --- | --- |
+| `group_user_ttl_minutes` | Group chat ordinary user |
+| `group_superadmin_ttl_minutes` | Group chat superadmin |
+| `private_user_ttl_minutes` | Private chat with ordinary users |
+| `private_superadmin_ttl_minutes` | Private chat with superadmin |
 
-- `group_user_ttl_minutes`: Idle expiration time of the current Session for ordinary users in group chats.
-- `group_superadmin_ttl_minutes`: Idle expiration time of the current Session for superadmins in group chats.
-- `private_user_ttl_minutes`: Idle expiration time of the current Session for ordinary users in private chats.
-- `private_superadmin_ttl_minutes`: Idle expiration time of the current Session for superadmins in private chats.
-- Setting any field to `0` disables idle expiration for the corresponding scenario.
-
-Under the default configuration, both regular users and superadmins in group chats will start a new Session after being idle for 10 minutes; In private chats, regular users will start a new Session after being idle for 10 minutes; In private chats, superadmins do not expire.
-
-Here, "superadmin" refers to the ElBot superadmin configured in `[security.superadmins]`. Platform group owners or group administrators who are not in the superadmin list will still be handled according to the regular user rules.
+- Unit: minutes; set to `0` to disable idle expiration for the corresponding scenario.
+- By default, both roles in group chats and private chats with ordinary users will start a new Session after 10 minutes of idleness; private chats with superadmins do not expire.
+- The "superadmin" here refers to the ElBot superadmin configured in `[security.superadmins]`; platform group owners or group administrators who are not in this list will still be treated as ordinary users.
 
 ## Model Status Configuration
 
-`state.toml` saves the runtime model selection:
-
+`state.toml` saves the runtime model selection (the three Elwisp slots have the same structure):
 
 ```toml
 [session]
@@ -416,12 +399,10 @@ provider = "deepseek"
 model = "deepseek-chat"
 ```
 
-- `default_mode` determines whether a new Session defaults to `chat` or `work`.
-- `work` mode enables tool discovery and tool calling.
-- `chat` mode does not inject tools, making it suitable for casual chatting and low-cost conversations.
-- `elwisp1`, `elwisp2`, and `elwisp3` are optional model slots for Elnis LLM events; Elvena requests can be specified via `model_slot`, falling back to `work` when not configured.
-- Switching the model using `/model` at runtime will also be saved to `state.toml`.
-- `state.toml` is read at startup. Manually modifying the file during runtime requires a restart to take effect.
+- `default_mode`: Whether a new Session enters `chat` or `work` by default. For the difference between the two modes, see [Chat / Work Dual Mode](concepts.md#chat--work-双模式).
+- `elwisp1/2/3`: Optional model slot for Elnis LLM events; Elvena requests are specified via `model_slot`, falling back to `work` when not configured.
+- Runtime `/model` switches will be synchronously saved to `state.toml`.
+- `state.toml` is only read at startup; manual modifications during runtime require a restart to take effect.
 
 ## Storage and Runtime Data
 
@@ -433,14 +414,9 @@ sessions_sqlite_path = ""
 chat_history_sqlite_path = ""
 ```
 
-When left blank, the platform's default data directory is used:
+When left blank, the platform's default data directory is used (Windows `%APPDATA%/ElBot/data`, Linux `$XDG_DATA_HOME/elbot` or `~/.local/share/elbot`); Runtime logs, SQLite, and sandbox are also stored according to the configuration or default directory.
 
-- Windows：`%APPDATA%/ElBot/data`
-- Linux: `$XDG_DATA_HOME/elbot` or `~/.local/share/elbot`
-
-Runtime logs, SQLite, sandbox, and other runtime data will also be stored according to the configuration or the default data directory.
-
-Platform inbound attachment download limits use `[platform_files]`:
+Platform inbound attachment download limits are controlled by `[platform_files]`:
 
 ```toml
 [platform_files]
@@ -448,31 +424,35 @@ max_receive_file_bytes = 104857600
 download_timeout_secs = 60
 ```
 
-- `max_receive_file_bytes`: Maximum media reception size, defaults to 100MB; a prompt indicating that the media is unavailable will be shown if the limit is exceeded or the media cannot be retrieved.
-- `download_timeout_secs`: Media download timeout, defaults to 60 seconds; Telegram uses the platform API timeout.
-- Platform media is only downloaded during actual processing and is not automatically saved to the sandbox upon receipt. Pure file messages are also handled according to the unified platform wake-up rules.
-
+- `max_receive_file_bytes`: Maximum media reception limit, default 100MB; a "media unavailable" prompt is shown if the limit is exceeded or the media cannot be retrieved.
+- `download_timeout_secs`: Media download timeout, default 60 seconds; Telegram uses the platform API timeout.
+- Platform media is downloaded only during actual processing and will not be stored directly in the sandbox. Pure file messages are also handled according to the unified wake-up rules.
 
 ### Media Delivery
 
-`app.toml`'s `[file_delivery]` controls media delivery in model requests. The total raw bytes of media are calculated based on the complete request actually sent; if the same media appears multiple times, it will be counted multiple times, but reading, uploading, and signing are reused based on the media ID.
+`[file_delivery]` controls media delivery in **model requests**, calculating the total raw bytes of media for the current complete request (the same media is accumulated if it appears multiple times, but reading, uploading, and signing are reused based on the media ID).
 
-`send_file` only checks local file paths, common file types, filenames, and MIME, and does not use `[file_delivery]` to restrict files sent to the chat platform. Delivery restrictions for model requests are handled by Media, and the sending method for the chat platform is controlled by the corresponding platform configuration.
+`send_file` does not use this restriction: it only checks local paths, common file types, filenames, and MIME. The method of sending files to the chat platform is controlled by the corresponding platform configuration.
 
-- `base64`: Stop the request when the total exceeds `max_direct_base64_bytes`, and explicitly report the actual total and the configured limit.
-- `hybrid`: Use base64 for all if the total is less than or equal to the limit; use S3 for all if it exceeds the limit.
-- `s3`: Use pre-signed download links for all. Existing local media will be uploaded when remote delivery is required, reusing the recorded object keys. S3 configuration, upload, or signing failures will result in explicit errors and will not fall back to hybrid delivery.
+| `backend` | Behavior |
+| --- | --- |
+| `base64` | Stop the request when the total exceeds `max_direct_base64_bytes`, reporting the actual total and the limit. |
+| `hybrid` | Use base64 for all if the limit is not exceeded; use S3 for all if it is. |
+| `s3` | Use presigned download links for all; local media is uploaded on demand and reuses recorded object keys. Configuration, upload, or signing failures will report explicit errors and will not fall back to hybrid delivery. |
 
-S3 delivery uses variables specified by `s3_endpoint`, `s3_region`, `s3_bucket`, as well as `s3_access_key_env` and `s3_secret_key_env`. The model service downloads objects via pre-signed URLs valid for 1 hour, and no additional keys are required. Cloudflare R2 can keep the bucket private without needing to enable public access; The model service or relay service that actually downloads the files must be able to access the link.
+- S3 uses variables specified by `s3_endpoint`, `s3_region`, `s3_bucket` and `s3_access_key_env`, `s3_secret_key_env`.
+- Model services are downloaded via pre-signed URLs valid for 1 hour, without the need for additional keys.
+- Cloudflare R2 allows buckets to remain private without enabling public access; the downloader or relay service must be able to access the link.
+- The Media Center cleans up objects according to `[maintenance.sandbox_cleanup].schedule` (default 04:00 daily) after all references have been released for 1 hour; this is enabled independently and is not affected by the sandbox cleanup switch; Records of failed deletions are kept for retry; objects still referenced by a Session or chat history will not be deleted. The expiration of a pre-signed URL only affects the link and does not delete the object.
 
-The Media Center cleans up objects according to `[maintenance.sandbox_cleanup].schedule` (default 04:00 daily) after all references have been released for 1 hour; Media cleanup is enabled independently and is not affected by the sandbox cleanup switch. Failed deletions will be recorded and retried in subsequent cleanups; Media still referenced by Sessions, chat history, etc., will not be deleted. The expiration of presigned URLs only affects link access and will not automatically delete objects.
+`[media]` controls image compression upon storage:
 
-`[media]` controls image compression upon storage: `llm_image_compression_threshold_bytes` is the original image byte size threshold that triggers compression (default 4 MiB), and `llm_image_max_length` is the side length limit (default 4096). Images are compressed proportionally when the original image byte size exceeds the threshold or any side length reaches the limit.
+- `llm_image_compression_threshold_bytes`: The original image byte size threshold that triggers compression, default 4 MiB.
+- `llm_image_max_length`: The side length limit after compression, default 4096.
+- Proportional compression is applied when the original image exceeds the threshold or any side length reaches the limit.
 
 
 ## Logs and Maintenance Tasks
-
-Runtime log configuration:
 
 ```toml
 [runtime]
@@ -480,41 +460,26 @@ log_level = "info"
 log_retention_days = 30
 ```
 
-`runtime.log_level` only controls the runtime log, supporting `debug`, `info`, `warn`, and `error`. Audit and Elnis logs are preserved independently; increasing the runtime level will not stop the recording of usage facts required by `/usage`. Log files are rotated daily, using prefixes `elbot-`, `audit-`, and `elnis-`; the number of days to retain is controlled by `log_retention_days`.
+- `runtime.log_level` only controls the runtime log, supporting `debug`, `info`, `warn`, and `error`.
+- Audit and Elnis logs are retained independently; usage facts required by `/usage` will continue to be recorded even if the runtime level is increased.
+- Log files are rotated daily with prefixes `elbot-`, `audit-`, and `elnis-`; the number of days to retain is controlled by `log_retention_days`.
+- Query level and recording level are independent: `/log -d` only displays existing records, without changing configurations or recovering unrecorded content. For filtering methods, see [Log and Audit Commands](commands.md#日志和审计).
+- Facility failures such as signal dispatch, background signal tasks, and log writing are reported directly to stderr (not filtered by log level); the system continues to run after reporting during runtime, but returns to the main program for handling if initialization fails.
 
-The query level of `/log -d` and the logging level of `runtime.log_level` are independent: queries only display existing records and do not change the configuration or backfill unrecorded content. For specific filtering methods, see [Log and Audit Commands](commands.md#日志和审计).
+Maintenance tasks use a Linux crontab-style 5-field Cron: `分钟 小时 日 月 星期`, scheduled by the internal Cron Runtime.
 
-Facility failures such as signal dispatch, background signal tasks, and log writing are reported directly to stderr, collected by the terminal or service manager, and are not filtered by the runtime log level. Continue running after reporting during runtime; Initialization failure returns to the main program for handling.
-
-Maintenance task examples:
-
-```toml
-[maintenance.log_cleanup]
-enabled = true
-schedule = "0 3 * * *"
-```
-
-Cron expressions are scheduled by the internal Cron Runtime, using the Linux crontab-style 5-field format: `分钟 小时 日 月 星期`. Default maintenance tasks include the cleanup of logs, Sessions, sandboxes, and chat history. For example, Session cleanup defaults to a 30-day retention period, sandbox content older than 7 days is cleaned up daily at 04:00 by default, and chat history cleanup is executed daily at 04:35 by default:
-
-```toml
-[maintenance.session_cleanup]
-enabled = false
-schedule = "15 3 * * *"
-retention_days = 30
-```
+| Task | Enabled by default | Scheduled by default | Default retention_days |
+| --- | --- | --- | --- |
+| `[maintenance.log_cleanup]` | `true` | `0 3 * * *` | — |
+| `[maintenance.session_cleanup]` | `false` | `15 3 * * *` | 30 |
+| `[maintenance.sandbox_cleanup]` | `true` | `0 4 * * *` | 7 |
+| `[maintenance.chat_history_cleanup]` | `true` | `35 4 * * *` | 180 |
 
 ```toml
 [maintenance.sandbox_cleanup]
 enabled = true
 schedule = "0 4 * * *"
 retention_days = 7
-```
-
-```toml
-[maintenance.chat_history_cleanup]
-enabled = true
-schedule = "35 4 * * *"
-retention_days = 180
 ```
 
 ## Context and Compaction
@@ -525,10 +490,9 @@ compact_enabled = true
 compact_trigger_ratio = 0.8
 ```
 
-- When enabled, compaction will be triggered when the Session context approaches the window limit.
-- You can also manually compress the current Session via `/compact`.
-- After successful compaction, it will switch to a new independent Session without modifying the history of the original Session.
-- Both protocols share the aforementioned switches, thresholds, and window configurations of the current model. Responses calls the `/responses/compact` of the current conversation model, retaining the entire native return window as the starting point for the new Session.
+- When enabled, context is automatically compacted when it approaches the window limit; it can also be manually triggered using `/compact`.
+- After successful compaction, it switches to a new independent Session without modifying the history of the original Session.
+- Both protocols share the aforementioned switches, thresholds, and window configurations of the current model. Responses call the `/responses/compact` of the current conversation model, using the entire native return window as the starting point for the new Session.
 
 The model window is configured in `model_configs` of `providers.toml`:
 
@@ -549,7 +513,7 @@ default_context_window = 256000
 prefixes = ["/"]
 ```
 
-`/` is used by default. If you want to support other command prefixes, you can add them here.
+Default is `/`; add other prefixes here if needed.
 
 ## Tools and Security
 
@@ -568,22 +532,14 @@ superadmin_confirm_risk = "high"
 cli = ["local"]
 ```
 
-- Ordinary users can only discover and call tools within the permitted risk range; after a tool passes permission verification, ``high``/``critical`` risk calls still require confirmation by the current user.
-- ``OwnerScoped`` tools can only access the caller's own data, so ordinary users can call them; among these, ``high``/``critical`` risk operations still require confirmation by the user themselves.
-- The confirmation threshold for the superadmin is configured by ``superadmin_confirm_risk``.
+- Regular users can only discover and call tools within the allowed risk range; after permission verification, risk calls via `high` / `critical` still require confirmation from the current user.
+- `OwnerScoped` tools can only access the caller's own data, so they can be called by ordinary users; however, `high` / `critical` operations still require confirmation from the user themselves.
+- The superadmin's confirmation threshold is configured by `superadmin_confirm_risk`.
 - The default local CLI user `local` is a superadmin.
-- `tool_tags.toml` is used to configure the tool groups that can be injected into `@tool:<tag>`, as well as the tool usage strategies appended to the system prompt after a tag is activated.
 
 ### `tool_tags.toml`
 
-`tool_tags.toml` is a standalone configuration file, with its path specified by `[config_files].tool_tags`. Relative paths are based on the directory where `app.toml` is located:
-
-```toml
-[config_files]
-tool_tags = "tool_tags.toml"
-```
-
-The file format uses tags as entry points:
+Independent configuration file, the path is specified by `[config_files].tool_tags`, relative to the directory where `app.toml` is located:
 
 ```toml
 [tags.agent]
@@ -599,83 +555,36 @@ MUST:
 """
 ```
 
-Field descriptions:
+| Field | Description |
+| --- | --- |
+| `[tags.<tag-name>]` | Define a tag, for example, `[tags.agent]` corresponds to `@tool:agent` / `@t:agent`. |
+| `tools` | The list of preloaded tool names for this tag; they must be registered tools that the current user has permission to access. |
+| `prompt` | The tool usage strategy appended to the system prompt after the tag is activated; it is shown directly to the model without automatically adding a tag title. |
 
-- `[tags.<tag-name>]`: Define a tag that can be used in chat, for example, `[tags.agent]` corresponds to `@tool:agent` or the shorthand `@t:agent`.
-- `tools`: A list of tool names that this tag will preload. Tool names must be registered tools that the current user has permission to access.
-- `prompt`: The tool usage strategy appended to the system prompt after this tag is successfully activated. The content will be presented directly to the model without automatically adding a tag name header.
+Usage: `@tool:agent 帮我检查这个项目的问题` (or `@t:agent`) will preload the tools under `agent` into the current Session; When `prompt` is not empty, it will be appended to the system prompt starting from this round.
 
-Usage:
-
-```text
-@tool:agent 帮我检查这个项目的问题
-@t:agent 帮我检查这个项目的问题
-```
-
-This will preload the tools configured under `agent` into the current Session. If `prompt` is not empty, it will also be appended to the system prompt starting from this round.
-
-Notes:
-
-- Configured tags will be appended to built-in tags, not overwrite them.
-- Only after `@tool:<tag>` or `@t:<tag>` successfully hits at least one tool will the current Session activate the prompt for that tag.
-- Directly using `@tool:<tool-name>` or `@t:<tool-name>` only preloads the specified tools and does not activate the tag prompt.
+- Configured tags are appended to the built-in tags, not overwritten.
+- The prompt for the tag is activated in this Session only after `@tool:<tag>` matches at least one tool.
+- Using `@tool:<tool-name>` directly only preloads the specified tools and does not activate the tag prompt.
 - Activated tags are written to the Session metadata and remain effective after `/resume`.
-- Prompt text is dynamically read from `tool_tags.toml`; changes to the file affect subsequent requests, behaving similarly to `SOUL.md`.
-- When preloading tools that already exist, they will not be added again, and the platform will prompt `已存在工具：<name>`.
-- It is recommended to write `prompt` as a specific tool usage strategy, rather than configuration mechanisms that the model does not need to know, such as "the current tag is xxx".
+- `prompt` is dynamically read from the file each time; changes will affect subsequent requests (similar to `SOUL.md`).
+- Preloading existing tools repeatedly will not add them again, and the platform will prompt `已存在工具：<name>`.
+- `prompt` should describe specific tool usage strategies; do not write configuration mechanisms that the model does not need to know, such as "the current tag is xxx".
 
 ## Elnis listening hub
 
-Elnis is disabled by default. Once enabled, ElBot will start a local HTTP ingress to receive events delivered by Elwisp according to the Elvena protocol. It is recommended to split the Elnis configuration into a separate `elnis.toml`, while `app.toml` only retains the entry path.
+Elnis is disabled by default; Once enabled, ElBot starts a local HTTP ingress to receive events delivered by Elwisp according to the Elvena protocol. It is recommended to split the configuration into a separate `elnis.toml`, and only keep the entry point in `app.toml`:
 
 ```toml
 [config_files]
 elnis = "elnis.toml"
-
-# elnis.toml
-enabled = true
-allowed_tools = ["shell", "web_search"]
-
-[http]
-addr = "127.0.0.1:32170"
-max_body_bytes = 1048576
-queue_size = 128
-workers = 2
-
-[tokens.home]
-token_env = ["ELNIS_HOME_TOKEN", "ELNIS_HOME_TOKEN_ALT"]
-
-[delivery_disabled]
-targets = [
-  # { platform = "telegram" },
-  # { platform = "telegram", type = "private", id = "123456789" },
-  # { platform = "qqonebot", type = "group", id = "987654321" },
-]
-
-[elwisps.server-watchdog]
-allowed_tokens = ["home"]
-allowed_tools = ["shell"]
-disabled_external_tools = ["danger_tool"]
-disabled_targets = [
-  # { platform = "qqonebot", type = "group", id = "987654321" },
-]
 ```
 
-Note:
+- Internal tool whitelists, external tool switches, delivery disabling, tokens, and Elwisp policies are all configured in `elnis.toml`.
+- Logs only record the token name and do not write the original token text.
+- Supports three modes: `record`, `direct`, and `llm`; `llm` can use `model_slot` to select `elwisp1/2/3`, and falls back to `work` when not configured.
 
-- `allowed_tools` is the Elnis internal tool whitelist; Elwisps without separate configurations inherit the global default.
-- If a single Elwisp configures `allowed_tools`, it will override the global default.
-- External tools are allowed by default; specified external tools are only disabled when a single Elwisp configures `disabled_external_tools`.
-- Elnis delivery is allowed by default; `[delivery_disabled].targets` and single Elwisp `disabled_targets` are used to explicitly prohibit platforms, private chats, or group chats; `platform-only` in the configuration indicates that all deliveries for the entire platform are disabled.
-- Elnis logs only record the token name, not the original token text.
-- `token_env` can be written as a list to try multiple environment variable names in order; this is suitable for temporarily switching tokens or achieving multi-environment compatibility.
-- Elwisp is enabled by default; the corresponding Elwisp will only be disabled if `enabled=false` is explicitly configured.
-- Currently, `record`, `direct`, and `llm` modes are supported; `llm` mode is executed using a background Session runner.
-- In `llm` mode, `model_slot` can be specified as `elwisp1`, `elwisp2`, or `elwisp3` in Elvena requests; If not specified or if the corresponding slot is not configured, it will fall back to the `work` model.
-- `direct` and `llm` reports only support sending to superadmins via the platform decided by Elnis, and do not support arbitrary user/group targets.
-- `tools` in Elvena requests enters the validation, persistence, and execution chain; external tool names are still controlled by the denylist of individual Elwisps.
-
-For more information, see [Elnis Configuration and Usage](elnis-usage.md).
+For complete fields, examples, and security boundaries, see [Elnis Configuration and Usage](elnis-usage.md).
 
 ## Platform Configuration
 
@@ -686,9 +595,9 @@ CLI enabled by default:
 enabled = true
 ```
 
-Configurations for QQ Official Bot, QQ OneBot, and Telegram are commented out by default in the examples. When enabled, the platform's own authentication information and trigger keywords must be provided. Media is downloaded according to the `[platform_files]` limit during actual processing.
+QQ Official Bot, QQ OneBot, and Telegram are commented out in the default examples; when enabling them, you must provide their respective authentication information and trigger keywords. Media downloads are restricted according to `[platform_files]`.
 
-Minimum configuration example for the official QQ bot:
+### QQ Official Bot
 
 ```toml
 [platform.qqofficial]
@@ -698,35 +607,34 @@ client_secret_env = "QQOFFICIAL_CLIENT_SECRET"
 trigger_keywords = ["bot"]
 ```
 
-The corresponding configuration directory `.env`:
-
 ```dotenv
 QQOFFICIAL_CLIENT_SECRET=your-client-secret
 ```
 
-`client_secret_env` points to the environment variable name that stores the Client Secret; You can also use `client_secret` to write configurations directly, but it is not recommended to commit actual Secrets.
+- `client_secret_env` points to the environment variable name where the Client Secret is stored; You can also write it directly using `client_secret`, but it is not recommended to commit the actual Secret.
+- Handles private chats, @ mentions in groups, and ordinary group messages actually delivered by the platform.
+- Group chats follow the unified wake-up rules: slash commands, `trigger_keywords`, @ mentioning the bot, or quoting the bot's historical replies will trigger a response; ordinary group messages that are not triggered are still written to the chat history.
+- Whether ordinary group messages are delivered depends on the group message capabilities enabled for the bot by the QQ Open Platform.
 
-The QQ official bot handles private chats, @ mentions in groups, and ordinary group messages actually delivered by the platform. Group chats follow the unified wake-up rules: slash commands, `trigger_keywords`, @ mentioning the bot, or quoting the bot's historical replies will trigger a response; Ordinary group messages that do not trigger a response will still be written to the chat history. Whether ordinary group messages are delivered depends on the group message capabilities enabled for the bot by the QQ Open Platform.
-
-Minimum configuration example for QQ OneBot:
+### QQ OneBot
 
 ```toml
 [platform.qqonebot]
 enabled = true
 ws_url = "ws://127.0.0.1:6700/"
 access_token_env = "QQONEBOT_ACCESS_TOKEN"
-api_timeout_seconds = 15 # Base timeout for OneBot write and response wait
+api_timeout_seconds = 15 # Base timeout for writing and response waiting
 trigger_keywords = ["bot"]
-send_file_mode = "base64" # Local images, files, and voice messages use base64 by default; for shared file systems, this can be changed to file_uri
+send_file_mode = "base64" # Local images/files/voice are base64 by default; file_uri can be used for shared file systems
 ```
 
-`access_token_env` points to the environment variable name that stores the Access Token; The original `access_token` remains compatible and takes priority over `access_token_env`. When OneBot does not require authentication, both items can be omitted.
+- `access_token_env` points to the environment variable name where the Access Token is stored; The original `access_token` remains compatible and takes priority. Both items can be omitted when authentication is not required.
+- `send_file_mode` simultaneously controls the sending of local images, files, and `record` voice messages: `base64` is suitable for deployments that do not share a file system, while `file_uri` is only applicable when both parties can access the same path.
+- `api_timeout_seconds` applies to frame writing and API response waiting, respectively. For large frames, 1 second is added for every full 1 MiB of encoded size, up to the base timeout itself; ElBot disconnects and reconnects after a write failure or timeout to prevent a single slow send from blocking subsequent messages. Sending still synchronously waits for the platform receipt.
 
-`send_file_mode` simultaneously controls the sending method for QQ OneBot local images, files, and `record` voice messages. `base64` is suitable for deployments where ElBot and OneBot do not share a file system; `file_uri` is only applicable in scenarios where both parties can access the same local path.
+### Telegram
 
-`api_timeout_seconds` serves as the base timeout for OneBot frame writing and API response waiting, respectively. For large frame writes, 1 second will be added for every full 1 MiB of encoded size, up to a maximum of the base timeout itself; After a write failure or timeout, ElBot will disconnect and reconnect to OneBot to prevent a slow send from blocking subsequent messages for a long time. Sending will still synchronously wait for the platform receipt.
-
-Telegram uses Bot API long polling. Minimum configuration example:
+Uses Bot API long polling.
 
 ```toml
 [security.superadmins]
@@ -742,48 +650,41 @@ format = "html" # html/plain/rich
 stream_edit_interval_milliseconds = 250
 ```
 
-Note:
+| `format` | Behavior |
+| --- | --- |
+| `html` (default) | Standard `sendMessage` + `parse_mode="HTML"`, lightweight conversion of common Markdown to HTML; Supports readable rendering of headings, quotes, horizontal rules, code blocks, and tables. |
+| `plain` | Disable formatting and send plain text only. |
+| `rich` | Experimental: Use `sendRichMessage` / Private Chat `sendRichMessageDraft`; some clients may not be able to see them. |
 
-- `bot_token_env` points to the environment variable name that stores the Bot Token; `bot_token` can also be used to write it directly into the configuration, but it is not recommended to commit actual tokens.
-- `proxy_url_env` points to the environment variable name that stores the proxy address; You can also use `proxy_url` to write the configuration directly. Proxy address examples: `http://127.0.0.1:7890`, `socks5://127.0.0.1:1080`.
-- `format="html"` is the default value: uses standard `sendMessage` + `parse_mode="HTML"`, and performs a lightweight conversion of common Markdown to Telegram HTML; Supports readable rendering of headings, quotes, horizontal rules, code blocks, and tables.
-- `format="plain"` disables formatting and sends only plain text.
-- `format="rich"` is an experimental mode: use `sendRichMessage` / private chat `sendRichMessageDraft`; Some clients may not be able to view Rich Messages.
-- `stream_edit_interval_milliseconds` controls the streaming refresh throttle interval, defaulting to 250ms, to avoid triggering platform rate limits.
-- After the connection is successfully established, ElBot will synchronize built-in slash commands to the Telegram bot command menu; only main command names are synchronized, not aliases.
-- In group chats/supergroups, command prefixes, trigger keywords, `@bot_username`, or replying to bot messages will all trigger processing. Private chats are processed by default.
-- Confirmation messages for high-risk tools will be accompanied by a Telegram inline keyboard; clicking buttons will convert them into existing confirmation commands such as `/confirm` and `/reject`.
-- Fill `security.superadmins.telegram` with a Telegram user ID or a private chat ID that can be sent to directly, used for superadmin permissions and notification delivery.
-
+- `bot_token_env` / `proxy_url_env` point to environment variable names; `bot_token` / `proxy_url` can also be used to write values directly (not recommended to commit actual values). Proxy examples: `http://127.0.0.1:7890`, `socks5://127.0.0.1:1080`.
+- `stream_edit_interval_milliseconds`: Throttling interval for streaming updates, defaults to 250ms, to avoid triggering platform rate limits.
+- After a successful connection, built-in slash commands will be synchronized to the bot command menu; only the main command names are synchronized, not the aliases.
+- In group chats/supergroups, command prefixes, trigger keywords, `@bot_username`, or replying to bot messages will trigger processing; private chats are processed by default.
+- Confirmation messages for high-risk tools include an inline keyboard; clicking them will convert to existing confirmation commands such as `/confirm` and `/reject`.
+- Fill in the Telegram user ID or a private chat ID that can be sent to directly in `security.superadmins.telegram`, used for superadmin permissions and notification delivery.
 
 ## Plugin and Hook Configuration
 
 Plugin configurations are fixed under `plugins/` in the configuration directory:
 
-- `plugins/hooks.toml`: Rule Hook configuration.
-- `plugins/<plugin-id>/hook.toml`: Plugin Hooks referenced by `hooks.toml`; Can contain `[plugin.runtime]` persistent runtime configuration.
-- `plugins/_shared/`: A cross-Hook file collaboration directory created by ElBot, not scanned as a plugin.
+| Path | Purpose |
+| --- | --- |
+| `plugins/hooks.toml` | Rule Hook configuration. |
+| `plugins/<plugin-id>/hook.toml` | Plugin Hooks referenced by `hooks.toml`, which may include `[plugin.runtime]` persistent runtime configuration. |
+| `plugins/_shared/` | A cross-Hook file collaboration directory created by ElBot, not used for plugin scanning. |
 
-Hooks should not send platform messages directly; they should return an output intent, which is then handed over to the Output Manager by the Agent for sending.
-
-For complete configuration instructions for rules and persistent Hooks, see [Hook](hooks.md).
+Hooks should not send platform messages directly; they should return an output intent, which the Agent will then pass to the Output Manager for sending. For full configuration, see [Hook](hooks.md).
 
 ## Configuration Diagnosis
 
-The superadmin can execute `/doctor` in the chat window. The command performs a read-only check of the main configuration currently used by the service and the separated configuration pointed to by `config_files`, supporting custom main configuration filenames, relative paths, and absolute paths; `SOUL.md` is located according to `soul.path`.
+The superadmin can execute `/doctor` in the chat window to perform a read-only check of the main configuration currently used by the service and the separated configuration pointed to by `config_files` (supporting custom main configuration file names and relative/absolute paths; `SOUL.md` is located by `soul.path`).
 
 Check scope:
 
-- Check for missing files in the default asset manifest.
-- Check the configuration TOML for format, duplicate definitions, and field types; the `ELBOT_SKILL.toml` of built-in Skills checks the TOML format.
-- `app.toml` will check unknown field settings
-- Built-in `SKILL.md` and accompanying `ELBOT_SKILL.toml` check for content differences; Skills added by the user are not included in the comparison.
+- Whether files in the default asset manifest are missing.
+- The format, duplicate definitions, and field types of the configuration TOML; `app.toml` additionally checks for unknown fields.
+- The TOML format of `ELBOT_SKILL.toml` for built-in Skills.
+- Content differences between the built-in `SKILL.md` and its accompanying `ELBOT_SKILL.toml`; Skills added by the user are not included in the comparison.
 - SOUL, memory, and environment files are only checked for existence.
 
-`/doctor` is only available in started chat services. If a configuration error prevents ElBot from starting, you must first correct the error based on the startup output.
-
-## Recommended Maintenance Method
-
-- User-editable configurations should be centralized in the platform configuration directory to avoid directly modifying source code examples.
-- Update this document synchronously when adding new configuration items.
-- Update [Quick Start](getting-started.md) and README synchronously when changing default paths or startup behavior.
+`/doctor` is only available in chat services that have been started. If a configuration error prevents startup, you must first correct it according to the startup output.
