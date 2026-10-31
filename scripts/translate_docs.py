@@ -25,7 +25,7 @@ CHANGELOG_TARGET = ROOT / "CHANGELOG.en.md"
 CACHE_DIR = ROOT / ".translation-cache"
 AUTO_HEADER_TEMPLATE = "<!-- This file is auto-translated from {source}. Do not edit manually. -->\n\n"
 WORKERS = 2
-RETRIES = 5
+RETRIES = 10
 REQUEST_TIMEOUT = 240
 HEADING_RE = re.compile(r"^( {0,3}#{1,6}\s+)(.*?)(\s+#+\s*)?$")
 CODE_FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
@@ -232,7 +232,7 @@ class TranslationClient:
                 error = exc
             if attempt < RETRIES:
                 print(f"  retry {attempt + 1}/{RETRIES}: {error}", flush=True)
-                time.sleep(min(2 ** attempt, 30))
+                time.sleep(min(2 ** attempt, 32))
         raise RuntimeError(f"section translation exhausted retries: {error}")
 
 

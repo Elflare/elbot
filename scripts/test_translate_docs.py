@@ -134,7 +134,7 @@ class TranslationTest(unittest.TestCase):
         with (
             mock.patch.dict(os.environ, {"TRANSLATE_LLM_API_KEY": "test", "TRANSLATE_LLM_BASE_URL": "https://example.invalid", "TRANSLATE_LLM_MODEL": "model"}),
             mock.patch.object(td.urllib.request, "urlopen", return_value=response) as request,
-            mock.patch.object(td.time, "sleep"), mock.patch("sys.stdout", new_callable=io.StringIO),
+            mock.patch.object(td.time, "sleep") as sleep, mock.patch("sys.stdout", new_callable=io.StringIO),
         ):
             client = td.TranslationClient()
             self.assertEqual(client.translate_section(section), section.text)
@@ -144,9 +144,16 @@ class TranslationTest(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError):
                 client.translate_section(section)
             request.assert_called_once()
+            request.reset_mock()
+            sleep.reset_mock()
+            request.side_effect = TimeoutError("timed out")
+            with self.assertRaisesRegex(RuntimeError, "exhausted retries"):
+                client.translate_section(section)
+            self.assertEqual(request.call_count, 11)
+            self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2, 4, 8, 16, 32, 32, 32, 32, 32])
 
     def test_two_requests_run_concurrently(self):
-        self.assertEqual((td.WORKERS, td.RETRIES, td.REQUEST_TIMEOUT), (2, 5, 240))
+        self.assertEqual((td.WORKERS, td.RETRIES, td.REQUEST_TIMEOUT), (2, 10, 240))
         self.doc(text="## 一\n中文一。\n## 二\n中文二。\n")
         self.remote()
         barrier = threading.Barrier(2)
