@@ -2,29 +2,19 @@ package responses
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 
 	api "elbot/internal/llm/responses"
 	"elbot/internal/storage"
 )
 
-// toolDefinitions is a disposable index of definitions in the native window and
+// toolDefinitions indexes tool names in the native window and
 // its durable pending inputs. Session tool availability remains owned by ToolRun.
-type toolDefinitions map[string]string
+type toolDefinitions map[string]bool
 
-func (d toolDefinitions) add(tools []api.FunctionTool) error {
+func (d toolDefinitions) add(tools []api.FunctionTool) {
 	for _, tool := range tools {
-		raw, err := json.Marshal(tool)
-		if err != nil {
-			return err
-		}
-		if previous, exists := d[tool.Name]; exists && previous != string(raw) {
-			return fmt.Errorf("Responses 工具 %q 的定义已变化，请新建会话", tool.Name)
-		}
-		d[tool.Name] = string(raw)
+		d[tool.Name] = true
 	}
-	return nil
 }
 
 func definitionsIn(items []api.Item) (toolDefinitions, error) {
@@ -37,17 +27,15 @@ func definitionsIn(items []api.Item) (toolDefinitions, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := definitions.add(tools); err != nil {
-			return nil, err
-		}
+		definitions.add(tools)
 	}
 	return definitions, nil
 }
 
 func (s *turnState) queueToolDefinitions(ctx context.Context, inputs []storage.NativeInput) ([]storage.NativeInput, error) {
 	known := toolDefinitions{}
-	for name, definition := range s.definitions {
-		known[name] = definition
+	for name := range s.definitions {
+		known[name] = true
 	}
 	for _, input := range inputs {
 		item, _, err := decodeQueuedInput(input)
@@ -59,18 +47,13 @@ func (s *turnState) queueToolDefinitions(ctx context.Context, inputs []storage.N
 			if err != nil {
 				return nil, err
 			}
-			if err := known.add(tools); err != nil {
-				return nil, err
-			}
+			known.add(tools)
 		}
 	}
 	var added []api.FunctionTool
 	for _, tool := range api.FunctionTools(s.tools) {
-		_, exists := known[tool.Name]
-		if err := known.add([]api.FunctionTool{tool}); err != nil {
-			return nil, err
-		}
-		if !exists {
+		if !known[tool.Name] {
+			known[tool.Name] = true
 			added = append(added, tool)
 		}
 	}
