@@ -223,6 +223,9 @@ func (t *WebExtractTool) fetchJina(ctx context.Context, apiKey, targetURL, selec
 	if err != nil {
 		return cachedExtract{}, fmt.Errorf("read Jina response: %w", err)
 	}
+	if resp.StatusCode == http.StatusPaymentRequired {
+		return cachedExtract{}, fmt.Errorf("Jina 账户余额不足，请告知用户需要充值；如需继续提取，可设置 jina=false 改用直接抓取。Jina HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return cachedExtract{}, fmt.Errorf("Jina HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))
 	}
