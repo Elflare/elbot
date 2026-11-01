@@ -177,6 +177,44 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 	})
 }
 
+func TestCronRiskConfirmationArgumentDetails(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args string
+		want string
+	}{
+		{
+			name: "create",
+			args: `{"operation":"create","name":"drink","schedule_mode":"once","run_after_minutes":10,"trigger_mode":"direct","message":"喝水\n起来活动一下"}`,
+			want: "cron_write [high]\nmessage: |\n  喝水\n  起来活动一下\nname: drink\noperation: create\nrun_after_minutes: 10\nschedule_mode: once\ntrigger_mode: direct",
+		},
+		{
+			name: "update",
+			args: `{"operation":"update","name":"drink","tool_list_names":[],"model_provider":"","model":"","enabled":false}`,
+			want: "cron_write [high]\nenabled: false\nmodel: \"\"\nmodel_provider: \"\"\nname: drink\noperation: update\ntool_list_names:\n  []",
+		},
+		{
+			name: "disable",
+			args: `{"operation":"disable","name":"drink"}`,
+			want: "cron_write [high]\nname: drink\noperation: disable",
+		},
+		{
+			name: "delete",
+			args: `{"operation":"delete","name":"drink"}`,
+			want: "cron_write [high]\nname: drink\noperation: delete",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := riskConfirmationDetailText(turn.RiskConfirmation{
+				ToolName: "cron_write", Risk: "high", Arguments: tc.args,
+			})
+			if got != tc.want {
+				t.Fatalf("detail:\n%s\nwant:\n%s", got, tc.want)
+			}
+		})
+	}
+}
+
 func testCommandText(name string, args ...string) string {
 	return commandpkg.Format("/", name, args...)
 }

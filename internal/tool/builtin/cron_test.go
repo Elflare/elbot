@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -61,6 +62,34 @@ func TestResolveUpdateRunAtReturnsPointerForRelativeOffset(t *testing.T) {
 	}
 	if got == nil || *got == "" {
 		t.Fatalf("run_at pointer = %#v", got)
+	}
+}
+
+func TestCronWritePreparationUsesArgumentDetails(t *testing.T) {
+	for _, args := range []string{
+		`{"operation":"create","name":"drink","schedule_mode":"once","run_after_minutes":10,"trigger_mode":"direct","message":"喝水\n起来活动一下"}`,
+		`{"operation":"update","name":"drink","tool_list_names":[],"model_provider":"","model":"","enabled":false}`,
+		`{"operation":"disable","name":"drink"}`,
+		`{"operation":"delete","name":"drink"}`,
+	} {
+		t.Run(args, func(t *testing.T) {
+			repo := &cronRepositoryStub{}
+			tool := cronTestTools(repo, nil)[2]
+			req := toolshare.CallRequest{ID: "call", Name: tool.Name(), Arguments: json.RawMessage(args)}
+			prepared, err := tool.PrepareCall(t.Context(), req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := prepared.Preview(); got != "" {
+				t.Errorf("custom detail hides arguments: %q", got)
+			}
+			if !prepared.Matches(req) || string(req.Arguments) != args {
+				t.Error("preparation changed call arguments")
+			}
+			if len(repo.saved) != 0 || repo.name != "" {
+				t.Fatal("preparation accessed the repository")
+			}
+		})
 	}
 }
 

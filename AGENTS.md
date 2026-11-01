@@ -65,6 +65,7 @@ rg -n "locator:agent-chat" AGENTS.md devdocs/*.md
 <!-- locator:docs -->
 ## 文档维护规则
 
+- 仅在有必要更新文档时才更新，小变化、不改变架构、code map等的变化没必要更。
 - 用户侧功能、命令、配置、行为变化：更新 `docs/*.md` 和 `CHANGELOG.md`。
 - 内部架构、代码地图、维护说明变化：更新 `devdocs/*.md`。
 - 新增、删除或明显调整重要 Go 文件职责：更新 `devdocs/code-map.md`；必要时在本文件的 locator 表里补入口。

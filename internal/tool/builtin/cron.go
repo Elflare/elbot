@@ -358,7 +358,7 @@ func (t CronWriteTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 	if err := decodeArgs(req.Arguments, &args); err != nil {
 		return nil, err
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("操作：%s\n任务：%s", args.Operation, args.Name), func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
 		var result *toolshare.Result
 		var callErr error
 		switch strings.ToLower(strings.TrimSpace(args.Operation)) {
