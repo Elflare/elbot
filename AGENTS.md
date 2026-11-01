@@ -56,7 +56,7 @@ rg -n "locator:agent-chat" AGENTS.md devdocs/*.md
 | 信号与订阅 | `locator:signal` | `devdocs/code-map.md`, `devdocs/architecture.md` |
 | Session/上下文 | `locator:session`, `locator:context` | `devdocs/architecture.md`, `devdocs/code-map.md` |
 | SQLite/存储 | `locator:storage` | `devdocs/code-map.md` |
-| Elnis/Elvena/Elwisp | `locator:elnis` | `docs/elnis.md`, `docs/elnis-usage.md`, `devdocs/elnis-elwisp.md` |
+| Elnis/Elvena/Elwisp | `locator:elnis` | `docs/elnis.md`, `docs/elnis-usage.md`, `devdocs/architecture.md` |
 | Cron/维护任务 | `locator:cron` | `devdocs/code-map.md` |
 | 文档维护 | `locator:docs` | 本文件、`docs/README.md` |
 | 测试验证 | `locator:testing` | 本文件 |
@@ -65,14 +65,15 @@ rg -n "locator:agent-chat" AGENTS.md devdocs/*.md
 <!-- locator:docs -->
 ## 文档维护规则
 
-- 仅在有必要更新文档时才更新，小变化、不改变架构、code map等的变化没必要更。
+- 文档只收录其职责范围内、读者完成任务需要的信息；代码变化不等于需要追加文档。更新时改写已有表述，删除失效或重复内容，不累积补丁说明。
+- `architecture.md`：模块职责、依赖边界、关键数据流与架构约束。仅在说明取舍、特殊情况或难以理解的设计时展开；不记录字段清单、函数步骤、展示格式或局部实现。
+- `code-map.md`：主题 → 主要目录／文件 → 简短定位用途。保留主要文件，不追求穷举；不解释行为、调用步骤或设计约束，普通测试文件不单列。
+- 收录前判断：是否属于本文职责？是否已有说明？能否从对应代码直接看懂？超出职责的不收，已有说明的引用，代码足以表达的细节省略；必要的取舍、特殊约束和跨模块关系保留。
+- 表达以准确、简短、无歧义为准。可混用中英、逻辑符号、伪代码和 Mermaid；符号含义须明确，图与正文不重复复述，不为缩短篇幅省略条件、主体或因果关系。
 - 用户侧功能、命令、配置、行为变化：更新 `docs/*.md` 和 `CHANGELOG.md`。
-- 内部架构、代码地图、维护说明变化：更新 `devdocs/*.md`。
-- 新增、删除或明显调整重要 Go 文件职责：更新 `devdocs/code-map.md`；必要时在本文件的 locator 表里补入口。
 - `docs.en/`、`README.md`、`CHANGELOG.en.md` 是英文镜像或自动翻译产物，不要手动修改。
 - `devdocs/` 只给维护者和 Agent 看，不参与自动翻译。
 - `AGENTS.md` 只保留操作规则；不要把架构详解、逐文件说明重新写回这里。
-- 在已知代码的情况下，发现 code-map 或者 architecture 和代码有冲突或者内容太多，以代码为准，同时修改或者精简这两个文档。
 - 只有changelog.md执行补丁式写作：描述从旧状态怎样变化到新状态；其他文档只描述现在正确的状态。
 
 <!-- locator:testing -->
