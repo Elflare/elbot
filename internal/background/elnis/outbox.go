@@ -100,10 +100,13 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult 
 		identity.RootRequestID = &facts.RootRequestID
 	}
 
-	logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "event_id=" + eventID}
+	logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed}
 	defer func() {
 		if err != nil {
-			logResult.Content += fmt.Sprintf("\nreport_error=%v", err)
+			if logResult.Content != "" {
+				logResult.Content += "\n"
+			}
+			logResult.Content += fmt.Sprintf("report_error=%v", err)
 		}
 	}()
 	repo := s.store
@@ -116,7 +119,7 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult 
 	}
 	if !claimed {
 		logResult.ResultStatus = globalevents.ResultSkipped
-		logResult.Content += "\nreport is not claimable"
+		logResult.Content = "report status=skipped reason=not_claimable"
 		return logResult, nil
 	}
 	event, err := repo.Get(ctx, eventID)
@@ -150,7 +153,10 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult 
 			} else if logResult.ResultStatus == globalevents.ResultSucceeded {
 				logResult.ResultStatus = globalevents.ResultSkipped
 			}
-			logResult.Content += "\nreport stopped after foreground takeover"
+			if logResult.Content != "" {
+				logResult.Content += "\n"
+			}
+			logResult.Content += "report status=skipped reason=foreground_takeover"
 			return logResult, err
 		}
 		item := deliveries[index]
@@ -193,7 +199,13 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult 
 		}
 		receipt, result, err := s.send(ctx, toDeliveryTarget(target), outputs)
 		mappings := background.MapReportReceipt(event.SessionID, batch[0].MessageID, receipt)
-		logResult.Content += "\nsend:\n" + result.Content
+		if logResult.Content != "" {
+			logResult.Content += "\n"
+		}
+		logResult.Content += fmt.Sprintf("send platform=%s kind=%s target=%s status=%s", target.Platform, target.Type, target.ID, result.ResultStatus)
+		if result.Content != "" {
+			logResult.Content += "\n" + result.Content
+		}
 		if result.ResultStatus == globalevents.ResultFailed ||
 			(result.ResultStatus == globalevents.ResultCanceled && logResult.ResultStatus != globalevents.ResultFailed) {
 			logResult.ResultStatus = result.ResultStatus
@@ -244,7 +256,10 @@ func (s *Service) failReportDelivery(ctx context.Context, eventID, deliveryID st
 	defer cancel()
 	receiptJSON, _ := json.Marshal(receipt)
 	if err := s.store.MarkReportDeliveryFailed(cleanupCtx, eventID, deliveryID, StatusResultReady, deliveryErr.Error(), string(receiptJSON), mappings); err != nil {
-		logResult.Content += fmt.Sprintf("\npersistence_error=%v", err)
+		if logResult.Content != "" {
+			logResult.Content += "\n"
+		}
+		logResult.Content += "persist status=failed"
 		if logResult.ResultStatus != globalevents.ResultFailed {
 			logResult.ResultStatus = globalevents.ResultFailed
 			if errors.Is(err, context.Canceled) {
@@ -260,7 +275,10 @@ func (s *Service) releaseReport(ctx context.Context, eventID string, logResult g
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	if err := s.store.ReleaseReport(cleanupCtx, eventID, StatusDelivering, StatusResultReady, deliveryErr.Error()); err != nil {
-		logResult.Content += fmt.Sprintf("\npersistence_error=%v", err)
+		if logResult.Content != "" {
+			logResult.Content += "\n"
+		}
+		logResult.Content += "persist status=failed"
 		if logResult.ResultStatus != globalevents.ResultFailed {
 			logResult.ResultStatus = globalevents.ResultFailed
 			if errors.Is(err, context.Canceled) {
@@ -289,9 +307,15 @@ func (s *Service) recoverReports(ctx context.Context) (globalevents.LogResult, e
 	}
 	var errs []error
 	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSkipped}
-	for _, eventID := range ids {
+	for i, eventID := range ids {
 		result, err := s.deliverReport(ctx, eventID)
-		logResult.Content += "\n" + result.Content
+		if i > 0 {
+			logResult.Content += "\n"
+		}
+		logResult.Content += "event_id=" + eventID
+		if result.Content != "" {
+			logResult.Content += "\n" + result.Content
+		}
 		if logResult.ResultStatus == globalevents.ResultSkipped || result.ResultStatus == globalevents.ResultFailed ||
 			(result.ResultStatus == globalevents.ResultCanceled && logResult.ResultStatus != globalevents.ResultFailed) {
 			logResult.ResultStatus = result.ResultStatus

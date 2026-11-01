@@ -347,7 +347,7 @@ func formatChatHistoryReference(row toolshare.Message) string {
 	}
 	text := "[" + header + "]"
 	if body := strings.TrimSpace(row.Text); body != "" {
-		text += "\n\n" + body
+		text += "\n" + body
 	}
 	return text
 }

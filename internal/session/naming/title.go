@@ -52,7 +52,7 @@ func generate(ctx context.Context, selection modelmgr.Selection, prompt string) 
 // messages 已在准备阶段过滤并截取，不在提示词层重复决定准入。
 func titlePrompt(messages []storage.Message) string {
 	var out strings.Builder
-	out.WriteString("请为下面这段会话生成一个不超过20个中文字符的标题。\n\n")
+	out.WriteString("请为下面这段会话生成一个不超过20个中文字符的标题。\n")
 	for _, message := range messages {
 		if message.Role == storage.RoleUser {
 			out.WriteString("用户：")
