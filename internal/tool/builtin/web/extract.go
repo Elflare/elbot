@@ -79,7 +79,7 @@ func webExtractBuilder() *toolshare.Builder {
 		String("remove_selector", "仅Jina；覆盖默认移除项的CSS选择器，如header,.class,#id。").
 		Integer("timeout_ms", "请求超时，ms；≤0/省略→15000。").
 		String("proxy", "省略→配置/系统代理；disabled→直连；URL→指定代理。").
-		String("method", "默认direct；direct：快速读取静态页；jina：清理杂项、提取正文；markdownnew：保留整页结构和链接。", toolshare.Enum("direct", "jina", "markdownnew")).
+		String("method", "默认jina；direct：快速读取静态页；jina：清理杂项、提取正文；markdownnew：保留整页结构和链接。", toolshare.Enum("direct", "jina", "markdownnew")).
 		Boolean("force_refresh", "true→绕过缓存重新获取；默认false。")
 }
 
@@ -101,7 +101,7 @@ func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 	cache := t.cache
 	method := strings.TrimSpace(args.Method)
 	if method == "" {
-		method = "direct"
+		method = "jina"
 	}
 	apiKey := ""
 	selector := ""

@@ -109,7 +109,7 @@ func TestWebExtractToolSlicesAndCaches(t *testing.T) {
 	extract := NewWebExtractTool(processenv.Environment{})
 	extract.client = server.Client()
 	extract.endpoint = server.URL
-	first, logContent, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"method":"jina","url":"https://example.com/page"}`)})
+	first, logContent, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"url":"https://example.com/page"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -505,7 +505,7 @@ func TestWebExtractRejectsInvalidProxyURL(t *testing.T) {
 	}
 }
 
-func TestWebExtractToolDefaultsToDirect(t *testing.T) {
+func TestWebExtractToolExtractsDirectHTML(t *testing.T) {
 	t.Setenv(jinaAPIKeyEnv, "")
 	oldWD, err := os.Getwd()
 	if err != nil {
@@ -523,7 +523,7 @@ func TestWebExtractToolDefaultsToDirect(t *testing.T) {
 	defer server.Close()
 
 	extract := NewWebExtractTool(processenv.Environment{})
-	result, _, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"url":"` + server.URL + `","proxy":"disabled"}`)})
+	result, _, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"url":"` + server.URL + `","method":"direct","proxy":"disabled"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
