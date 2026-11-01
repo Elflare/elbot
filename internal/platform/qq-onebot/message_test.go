@@ -395,7 +395,7 @@ func TestHandleEventPreservesReferenceDecision(t *testing.T) {
 	} {
 		adapter := newTestAdapter(t, Config{Superadmins: []string{"1"}}, nil, nil)
 		adapter.findByPlatformMessage = func(context.Context, string, string, string) (*storage.Message, error) {
-			return &storage.Message{Role: storage.RoleAssistant}, nil
+			return &storage.Message{ID: storage.NewID(),Role: storage.RoleAssistant}, nil
 		}
 		adapter.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 			if opts.Platform != "qqonebot" || opts.ScopeID != "group:9" || opts.ActorID != "qqonebot:1" || !opts.IsSuperadmin || opts.ReplyID != "42" || opts.Text != "继续" || opts.Fetch == nil || opts.Enrich == nil {
@@ -534,7 +534,7 @@ func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	assistant := &storage.Message{SessionID: session.ID, Role: storage.RoleAssistant, Content: "stored answer"}
+	assistant := &storage.Message{ID: storage.NewID(),SessionID: session.ID, Role: storage.RoleAssistant, Content: "stored answer"}
 	if err := store.Messages().Append(ctx, assistant); err != nil {
 		t.Fatalf("append assistant: %v", err)
 	}

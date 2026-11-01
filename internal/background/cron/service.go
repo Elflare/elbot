@@ -39,8 +39,9 @@ type Models interface {
 }
 
 type Service struct {
-	manager *Manager
-	store   JobRepository
+	newRunID func(context.Context) (string, error)
+	manager  *Manager
+	store    JobRepository
 
 	sendTarget       TargetSenderFunc
 	runner           background.Runner
@@ -58,8 +59,9 @@ type Service struct {
 }
 
 type Options struct {
-	Manager *Manager
-	Store   JobRepository
+	NewRunID func(context.Context) (string, error) // 根部提供运行批次身份。
+	Manager  *Manager
+	Store    JobRepository
 
 	SendTarget       TargetSenderFunc
 	Runner           background.Runner
@@ -73,6 +75,7 @@ type Options struct {
 
 func NewService(opts Options) *Service {
 	s := &Service{
+		newRunID:      opts.NewRunID,
 		manager:       opts.Manager,
 		store:         opts.Store,
 		sendTarget:    opts.SendTarget,

@@ -57,7 +57,7 @@ func TestSessionRetirementWaitsForStoppingRequestAndIgnoresObserverFailure(t *te
 			t.Fatal(err)
 		}
 		ctx, cancel := context.WithCancel(t.Context())
-		_, done := m.StartHookRequest(ctx, row.ID, "held handler")
+		_, done, _ := m.StartHookRequest(ctx, row.ID, "held handler")
 		time.Sleep(3 * time.Minute)
 		synctest.Wait()
 		if !binding.Valid() {

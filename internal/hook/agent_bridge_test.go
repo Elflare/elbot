@@ -62,9 +62,9 @@ func (a *bridgeTestAgent) RegisterHooks(points agenthooks.Points) (func(), error
 	a.points = points
 	return func() { a.disconnected++ }, nil
 }
-func (a *bridgeTestAgent) StartHookRequest(ctx context.Context, sessionID, name string) (context.Context, func()) {
+func (a *bridgeTestAgent) StartHookRequest(ctx context.Context, sessionID, name string) (context.Context, func(), error) {
 	a.requests = append(a.requests, sessionID+":"+name)
-	return ctx, func() { a.finished++ }
+	return ctx, func() { a.finished++ }, nil
 }
 
 func newBridgeTestSupervisor(t *testing.T) (*Supervisor, *bridgeTestRuntime) {
@@ -94,7 +94,7 @@ func TestAgentBridgePassesFactsAndLeavesHandlerTimingToExecutor(t *testing.T) {
 			t.Fatal("bridge registered a request before an executor selected a handler")
 		}
 		for _, name := range []string{"first", "second"} {
-			_, done := options.Observe(ctx, name)
+			_, done, _ := options.Observe(ctx, name)
 			done()
 		}
 		event.Tool.Arguments = `{"edited":true}`

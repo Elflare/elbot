@@ -12,8 +12,9 @@ import (
 )
 
 type ServiceDeps struct {
-	AllocateID func(context.Context, share.IDOrigin) (string, error) // 根部统一发号，先于目标准入。
-	Sessions   interface {
+	NewMessageID func(context.Context) (string, error)                 // 与 Agent 共用消息发号规则。
+	AllocateID   func(context.Context, share.IDOrigin) (string, error) // 根部统一发号，先于目标准入。
+	Sessions     interface {
 		Get(context.Context, string) (*storage.Session, error)
 		Create(context.Context, *storage.Session) error
 		CreateMaterial(context.Context, storage.SessionMaterialCreate) (events.LogResult, error)

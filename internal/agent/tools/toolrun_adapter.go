@@ -31,7 +31,7 @@ type toolRunDeps struct {
 	}
 	requests interface {
 		ListBySession(string) []request.Request
-		Start(context.Context, request.StartRequest) (request.Request, context.Context, func())
+		Start(context.Context, request.StartRequest) (request.Request, context.Context, func(), error)
 	}
 	turns interface {
 		Snapshot(string) turn.Snapshot
@@ -80,7 +80,10 @@ func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Sess
 }
 
 func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), events.LogResult, error) {
-	toolReq, toolCtx, done := d.requests.Start(ctx, request.StartRequest{ParentID: contextinfo.RootRequestIDFromContext(ctx), SessionID: sessionID, Kind: request.KindTool, Label: toolName})
+	toolReq, toolCtx, done, err := d.requests.Start(ctx, request.StartRequest{ParentID: contextinfo.RootRequestIDFromContext(ctx), SessionID: sessionID, Kind: request.KindTool, Label: toolName})
+	if err != nil {
+		return nil, time.Time{}, nil, events.LogResult{ResultStatus: events.ResultFailed, Content: "allocate tool request ID: " + err.Error()}, err
+	}
 	d.status.Record(ctx, runtimestatus.Snapshot{
 		SessionID:      sessionID,
 		Phase:          runtimestatus.PhaseTool,
@@ -180,7 +183,7 @@ type ToolRunDeps struct {
 	}
 	Requests interface {
 		ListBySession(string) []request.Request
-		Start(context.Context, request.StartRequest) (request.Request, context.Context, func())
+		Start(context.Context, request.StartRequest) (request.Request, context.Context, func(), error)
 	}
 	Turns interface {
 		Snapshot(string) turn.Snapshot

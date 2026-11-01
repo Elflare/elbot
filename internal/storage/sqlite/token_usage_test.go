@@ -27,7 +27,7 @@ func TestContextSummaryNullableTokens(t *testing.T) {
 			if err := store.Sessions().Create(ctx, session); err != nil {
 				t.Fatal(err)
 			}
-			message := &storage.Message{SessionID: session.ID, Role: storage.RoleUser, Content: "source"}
+			message := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleUser, Content: "source"}
 			if err := store.Messages().Append(ctx, message); err != nil {
 				t.Fatal(err)
 			}
@@ -74,7 +74,7 @@ func TestNullableTokenMigrationPreservesExistingDataAndConstraints(t *testing.T)
 	if err := sessions.Create(ctx, session); err != nil {
 		t.Fatal(err)
 	}
-	message := &storage.Message{SessionID: session.ID, Role: storage.RoleUser, Content: "original"}
+	message := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleUser, Content: "original"}
 	if err := messages.Append(ctx, message); err != nil {
 		t.Fatal(err)
 	}

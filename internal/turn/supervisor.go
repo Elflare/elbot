@@ -2,11 +2,26 @@
 package turn
 
 import (
+	"context"
+	"elbot/internal/storage"
 	"elbot/internal/turn/lifecycle"
 	"elbot/internal/turn/share"
 )
 
-type Supervisor struct{ lifecycle *lifecycle.Manager }
+type Supervisor struct {
+	lifecycle *lifecycle.Manager
+	next      storage.IDSequence // 唯一执行和 attempt 发号能力，不持有数据库。
+}
+
+func (m *Supervisor) NewExecution(ctx context.Context) (*Execution, error) {
+	id, err := m.next.ID(ctx, "run")
+	if err != nil {
+		return nil, err
+	}
+	return NewExecution(id), nil
+}
+
+func (m *Supervisor) AllocateAttempt(ctx context.Context) (string, error) { return m.next.ID(ctx, "a") }
 
 func (m *Supervisor) StartCompactRun(sessionID, runID string, execution *Execution) bool {
 	return m.lifecycle.StartCompactRun(sessionID, runID, executionContract(execution))

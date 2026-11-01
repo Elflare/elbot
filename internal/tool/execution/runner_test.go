@@ -105,11 +105,11 @@ func (d *runnerTestDeps) AddToolUse(sessionID, toolName string) {}
 
 func (d *runnerTestDeps) ToolResultMessage(sessionID string, message llm.LLMMessage) storage.Message {
 	raw, _ := json.Marshal(message.Segments)
-	return storage.Message{SessionID: sessionID, Role: storage.RoleTool, Content: llm.SegmentsContentText(message.Segments), Segments: string(raw), ToolCallID: message.ToolCallID}
+	return storage.Message{ID: storage.NewID(),SessionID: sessionID, Role: storage.RoleTool, Content: llm.SegmentsContentText(message.Segments), Segments: string(raw), ToolCallID: message.ToolCallID}
 }
 
 func (d *runnerTestDeps) ToolCallMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest) storage.Message {
-	return storage.Message{SessionID: sessionID, Role: storage.RoleAssistant, Content: content}
+	return storage.Message{ID: storage.NewID(),SessionID: sessionID, Role: storage.RoleAssistant, Content: content}
 }
 
 type runnerPreflightTool struct{}

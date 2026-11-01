@@ -82,7 +82,7 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 				}
 			}
 			if input.ID == "" {
-				input.ID = storage.NewID()
+				return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("native input requires a preallocated ID")
 			}
 			if input.CreatedAt.IsZero() {
 				input.CreatedAt = storage.Now()

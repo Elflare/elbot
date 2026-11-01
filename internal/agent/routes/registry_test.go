@@ -2,6 +2,7 @@ package routes_test
 
 import (
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/testutil"
 
 	"context"
 	"log/slog"
@@ -137,8 +138,8 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	}
 	registry := routes.New()
 	sessions := newSessionSupervisor(t, store)
-	turns := turn.NewSupervisor()
-	loop, compactor := &testLoop{t: t, messages: &dialogue.MessageStore{Dialogues: store.Dialogues(), Gate: &dialogue.CommitGate{Sessions: sessions, Turns: turns, View: dialogue.ExecutionView{Sessions: store.Sessions()}}}}, &testCompactor{}
+	turns := turn.NewSupervisor(testutil.IDSequence())
+	loop, compactor := &testLoop{t: t, messages: &dialogue.MessageStore{NewMessageID: testutil.IDSequence().MessageID, Dialogues: store.Dialogues(), Gate: &dialogue.CommitGate{Sessions: sessions, Turns: turns, View: dialogue.ExecutionView{Sessions: store.Sessions()}}}}, &testCompactor{}
 	origin := llm.Origin{Provider: "test-provider", APIType: testProtocol, BaseURL: "https://test.invalid"}
 	client := &testClient{}
 	registry.Register(routes.Binding{APIType: testProtocol, Loop: loop, Compactor: compactor})
@@ -149,10 +150,10 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	}
 	contexts := contextmgr.New(contextmgr.Options{Store: store, Compactors: registry})
 	out := &testOutput{t: t, messages: store.Messages()}
-	runner := &dialogue.Runner{Status: testStatus{}, Routes: registry, Preparer: &dialogue.Preparer{Contexts: contexts, Media: mediatest.New(t, media.MediaCenterDeps{Store: store}, t.TempDir())},
+	runner := &dialogue.Runner{Status: testStatus{}, Routes: registry, Preparer: &dialogue.Preparer{NewMessageID: testutil.IDSequence().MessageID, Contexts: contexts, Media: mediatest.New(t, media.MediaCenterDeps{Store: store}, t.TempDir())},
 		Messages: loop.messages,
-		Replies:  &dialogue.ReplyCommitter{Persistence: loop.messages.Committer("append_assistant_message"), Output: out},
-		Turns:    turn.NewSupervisor(), View: dialogue.ExecutionView{Sessions: store.Sessions()}}
+		Replies:  &dialogue.ReplyCommitter{NewMessageID: testutil.IDSequence().MessageID, Persistence: loop.messages.Committer("append_assistant_message"), Output: out},
+		Turns:    turn.NewSupervisor(testutil.IDSequence()), View: dialogue.ExecutionView{Sessions: store.Sessions()}}
 	in := agentshare.TurnInput{
 		Session:   row,
 		Text:      "incoming",
@@ -162,8 +163,8 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	requests := request.NewManager(0)
-	info, requestCtx, done := requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn})
+	requests := request.NewManager(0, testutil.IDSequence())
+	info, requestCtx, done, _ := requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn})
 	defer done()
 	in.RequestID = info.ID
 	result := runner.RunTurn(ctx, requestCtx, in, out)

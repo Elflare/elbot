@@ -13,7 +13,6 @@ import (
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/security"
-	"elbot/internal/storage"
 )
 
 func (s *Service) runTask(ctx context.Context, job Job, meta Metadata) (globalevents.LogResult, error) {
@@ -53,7 +52,11 @@ func (s *Service) prepareDelivery(ctx context.Context, job Job, meta Metadata) (
 		return job, CronDeliveryState{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: content + fmt.Sprintf("\nerror=%v", err)}, err
 	}
 	if meta.Schedule.Mode == ScheduleCron || strings.TrimSpace(job.DeliveryToken) == "" || strings.TrimSpace(state.RunID) == "" {
-		state = CronDeliveryState{RunID: storage.NewID()}
+		id, err := s.newRunID(ctx)
+		if err != nil {
+			return job, state, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: content + "\n" + err.Error()}, err
+		}
+		state = CronDeliveryState{RunID: id}
 		encoded, encodeErr := encodeDeliveryState(state)
 		if encodeErr != nil {
 			return job, CronDeliveryState{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: content + fmt.Sprintf("\nerror=%v", encodeErr)}, encodeErr

@@ -25,7 +25,7 @@ type Manager struct {
 	activeID int
 	handlers map[share.Point][]registration
 	// route is injected at construction; runtime owns continuation state and execution.
-	route  func(context.Context, share.Event, func(context.Context, string) (context.Context, func())) (share.Event, bool, globalevents.LogResult, error)
+	route  func(context.Context, share.Event, func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, globalevents.LogResult, error)
 	Log    func(context.Context, globalevents.LogRecord) // Publishes complete source-owned records.
 	active map[string]activeHook
 }
@@ -49,7 +49,7 @@ type registration struct {
 	wakeup      share.WakeupPolicy
 }
 
-func NewManager(Log func(context.Context, globalevents.LogRecord), route func(context.Context, share.Event, func(context.Context, string) (context.Context, func())) (share.Event, bool, globalevents.LogResult, error)) *Manager {
+func NewManager(Log func(context.Context, globalevents.LogRecord), route func(context.Context, share.Event, func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, globalevents.LogResult, error)) *Manager {
 	return &Manager{handlers: map[share.Point][]registration{}, active: map[string]activeHook{}, Log: Log, route: route}
 }
 
@@ -225,15 +225,22 @@ func (m *Manager) invoke(ctx context.Context, reg registration, event share.Even
 	defer cancel()
 	activeID := m.startActive(reg, cancel)
 	defer m.finishActive(activeID)
-	runCtx, done := m.observe(ctx, reg, options)
+	runCtx, done, err := m.observe(ctx, reg, options)
+	if err != nil {
+		status := globalevents.ResultFailed
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			status = globalevents.ResultCanceled
+		}
+		return runCtx, event, globalevents.LogResult{ResultStatus: status, Content: "start hook request: " + err.Error()}, err
+	}
 	defer done()
 	updated, result, err := reg.handler.HandleHook(runCtx, event, options.ReadOnlyCalls)
 	return runCtx, updated, result, err
 }
 
-func (m *Manager) observe(ctx context.Context, reg registration, options CallOptions) (context.Context, func()) {
+func (m *Manager) observe(ctx context.Context, reg registration, options CallOptions) (context.Context, func(), error) {
 	if options.Observe == nil {
-		return ctx, func() {}
+		return ctx, func() {}, nil
 	}
 	return options.Observe(ctx, reg.name)
 }

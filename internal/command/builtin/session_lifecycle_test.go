@@ -1,6 +1,7 @@
 package builtin
 
 import (
+ "elbot/internal/testutil"
 	"context"
 	"elbot/internal/command"
 	"elbot/internal/request"
@@ -30,8 +31,8 @@ func TestLifecycleCommandsArchiveAndArchives(t *testing.T) {
 	selections.set(scope, []storage.SessionSummary{{ID: first.ID}})
 	deps := Deps{CommandText: testCommandText,
 		Sessions:     svc,
-		Requests:     request.NewManager(0),
-		Turns:        turn.NewSupervisor(),
+		Requests:     request.NewManager(0, testutil.IDSequence()),
+		Turns:        turn.NewSupervisor(testutil.IDSequence()),
 		Store:        store,
 		Scope:        func(context.Context) session.Scope { return scope },
 		SessionState: selections,

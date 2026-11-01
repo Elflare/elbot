@@ -30,7 +30,7 @@ func newElnisBridgeFixture(t *testing.T) (elnisBridge, storage.Store) {
 	t.Helper()
 	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
-	return elnisBridge{repo: store.ElnisEvents(), media: mediatest.New(t, media.MediaCenterDeps{Store: store}, root)}, store
+	return elnisBridge{next: store.NextIDSequence, repo: store.ElnisEvents(), media: mediatest.New(t, media.MediaCenterDeps{Store: store}, root)}, store
 }
 func elnisBridgeRequest(mode string) elnis.Request {
 	return elnis.Request{Version: "elvena.v2", Elwisp: elnis.Elwisp{Name: "watcher"}, Source: "source", ID: "event", Mode: mode, Format: "text", Content: "hello", Targets: []elnis.Target{{Platform: "cli"}}}
@@ -139,7 +139,7 @@ func TestElnisBridgeRecordsAndTerminalReferences(t *testing.T) {
 type duplicateElnisReceiptRepo struct{ storage.ElnisEventRepository }
 
 func (r duplicateElnisReceiptRepo) MarkReportDeliveriesDelivered(ctx context.Context, ids []string, receipt string, mappings []storage.PlatformMessageMap) error {
-	mappings[0].ID = "duplicate-map"
+
 	mappings = append(mappings, mappings[0])
 	return r.ElnisEventRepository.MarkReportDeliveriesDelivered(ctx, ids, receipt, mappings)
 }
@@ -461,7 +461,7 @@ func TestRecoverInterruptedPreservesDurableReportsAndTerminalEvents(t *testing.T
 		if status == elnis.StatusAccepted || status == elnis.StatusQueued || status == elnis.StatusRunning {
 			mediaIDs = []string{mediaID}
 		}
-		row, err := repo.Create(ctx, storage.CreateElnisEventRequest{
+		row, err := repo.Create(ctx, storage.CreateElnisEventRequest{ID: storage.NewID(),
 			EventKey: status, ElwispName: "recovery", Source: "test", SourceID: status,
 			Status: status, Error: "existing error", Result: "existing result", MediaIDs: mediaIDs,
 		})
@@ -590,7 +590,7 @@ func TestRuntimeCloseCommitsInterruptedEventsAndPreservesOutbox(t *testing.T) {
 		if status == elnis.StatusAccepted || status == elnis.StatusQueued || status == elnis.StatusRunning {
 			mediaIDs = []string{mediaID}
 		}
-		row, err := store.ElnisEvents().Create(t.Context(), storage.CreateElnisEventRequest{
+		row, err := store.ElnisEvents().Create(t.Context(), storage.CreateElnisEventRequest{ID: storage.NewID(),
 			EventKey: status, ElwispName: "close", Source: "test", SourceID: status, Status: status, MediaIDs: mediaIDs,
 		})
 		if err != nil {

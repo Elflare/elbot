@@ -206,7 +206,7 @@ func TestSupervisorHookEntrypoints(t *testing.T) {
 			t.Errorf("wakeup %q=%v", tc.text, got)
 		}
 	}
-	tracked, done := m.StartHookRequest(t.Context(), "", "contract-hook")
+	tracked, done, _ := m.StartHookRequest(t.Context(), "", "contract-hook")
 	if facts, ok := contextinfo.ExecutionFromContext(tracked); !ok || facts.RequestID == "" {
 		t.Fatal("hook request not tracked")
 	}

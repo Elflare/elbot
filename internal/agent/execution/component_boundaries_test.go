@@ -3,6 +3,7 @@ package execution
 import (
 	"context"
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/testutil"
 	"errors"
 	"sync"
 	"testing"
@@ -31,7 +32,7 @@ func (p *statusReadingPlatform) SetRuntimeStatus(_ context.Context, sent runtime
 }
 
 func TestComponentStatusCommittedBeforeObserversAndCancellation(t *testing.T) {
-	turns := turn.NewSupervisor()
+	turns := turn.NewSupervisor(testutil.IDSequence())
 	contexts := map[string]context.Context{}
 	for _, id := range []string{"s1", "s2", "s3"} {
 		execution := turn.NewExecution(id)

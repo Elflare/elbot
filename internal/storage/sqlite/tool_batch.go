@@ -100,10 +100,9 @@ func commitToolResult(ctx context.Context, tx *sql.Tx, commit storage.DialogueCo
 		}
 	}
 	if record := update.Record; record != nil {
-		if record.ID == "" {
-			record.ID = storage.NewID()
-		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO tool_call_records(id,session_id,tool_call_id,tool_name,actor_id,risk_level,success,error,started_at,finished_at,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, record.ID, commit.SessionID, record.ToolCallID, record.ToolName, record.ActorID, record.RiskLevel, record.Success, nullString(record.Error), storage.FormatTime(record.StartedAt), storage.FormatTime(record.FinishedAt), storage.FormatTime(storage.Now())); err != nil {
+		row := *record
+		row.SessionID, row.CreatedAt = commit.SessionID, storage.Now()
+		if err := insertToolCallRecord(ctx, tx, &row); err != nil {
 			return events.LogResult{ResultStatus: events.ResultFailed}, err
 		}
 	}

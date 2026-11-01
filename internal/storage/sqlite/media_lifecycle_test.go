@@ -25,7 +25,7 @@ func TestSharedMediaSessionsForkAndCleanupClaim(t *testing.T) {
 		if err := store.Sessions().Create(ctx, &sessions[i]); err != nil {
 			t.Fatal(err)
 		}
-		msg := &storage.Message{SessionID: sessions[i].ID, Role: storage.RoleUser, Segments: fmt.Sprintf(`[{"type":"image","media":%q}]`, id)}
+		msg := &storage.Message{ID: storage.NewID(), SessionID: sessions[i].ID, Role: storage.RoleUser, Segments: fmt.Sprintf(`[{"type":"image","media":%q}]`, id)}
 		if err := store.Messages().Append(ctx, msg); err != nil {
 			t.Fatal(err)
 		}
@@ -181,7 +181,7 @@ func TestReferenceAuditAndRecovery(t *testing.T) {
 	if err := store.Sessions().Create(ctx, s); err != nil {
 		t.Fatal(err)
 	}
-	msg := &storage.Message{SessionID: s.ID, Role: storage.RoleUser, Segments: fmt.Sprintf(`[{"type":"image","media":%q}]`, id)}
+	msg := &storage.Message{ID: storage.NewID(), SessionID: s.ID, Role: storage.RoleUser, Segments: fmt.Sprintf(`[{"type":"image","media":%q}]`, id)}
 	if err := store.Messages().Append(ctx, msg); err != nil {
 		t.Fatal(err)
 	}

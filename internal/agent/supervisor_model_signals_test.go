@@ -102,7 +102,7 @@ data: [DONE]
 					result <- err
 					return
 				}
-				if err := deps.Store.Messages().Append(ctx, &storage.Message{SessionID: row.ID, Role: storage.RoleUser, Content: "hello"}); err != nil {
+				if err := deps.Store.Messages().Append(ctx, &storage.Message{ID: storage.NewID(), SessionID: row.ID, Role: storage.RoleUser, Content: "hello"}); err != nil {
 					result <- err
 					return
 				}

@@ -313,9 +313,11 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## Storage 与 SQLite
 
 - `internal/storage/storage.go`、`session_metadata.go`：分别定义存储领域契约与 Session 元数据。
+- `internal/storage/id.go`：注入用的序号函数、前缀格式化与消息预分配入口；保留内部材料使用的随机 ID。
 - `internal/storage/sqlite/`：SQLite 实现；`store.go` 的 openDB 共用主库与聊天历史库连接初始化，`db_init.go` 管新库结构，`migrations.go` 管升级。
 - `internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`：分别定义对话材料契约与实现提交事务。
-- `internal/storage/sqlite/session_repository.go`：Session 查询、字段合并更新及 `session_sequence` 持久化发号。
+- `internal/storage/sqlite/session_repository.go`：Session 查询、字段合并更新及单个序号领取。
+- `internal/storage/sqlite/id.go`：公共原子预留与非 Session 号段缓存，Store 持有缓存及互斥锁。
 - `internal/storage/sqlite/native_snapshot.go`、`native_material.go`：分别负责原生快照与窗口材料读取。
 - `internal/storage/sqlite/media_history.go`、`media_lifecycle.go`：分别负责历史媒体关联与媒体回收。
 - `internal/storage/sqlite/chat_history_repository.go`：聊天历史查询、清理与平台引用索引。

@@ -106,7 +106,7 @@ func TestCurrentModesManagementAndQueries(t *testing.T) {
 	if _, err := f.s.ActivateMode(ctx, scope, ActivateModeRequest{Mode: storage.SessionModeWork}); err != nil {
 		t.Fatal(err)
 	}
-	for _, message := range []storage.Message{{SessionID: row.ID, Role: storage.RoleUser, Content: "question"}, {SessionID: row.ID, Role: storage.RoleAssistant, Content: "answer"}} {
+	for _, message := range []storage.Message{{ID: "question", SessionID: row.ID, Role: storage.RoleUser, Content: "question"}, {ID: "answer", SessionID: row.ID, Role: storage.RoleAssistant, Content: "answer"}} {
 		if err := f.store.Messages().Append(ctx, &message); err != nil {
 			t.Fatal(err)
 		}

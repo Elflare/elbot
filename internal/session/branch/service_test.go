@@ -2,6 +2,7 @@ package branch_test
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -60,7 +61,7 @@ func newFixture(t *testing.T) *fixture {
 		ReleaseSession: func(id string) { f.mu.Lock(); defer f.mu.Unlock(); f.released = append(f.released, id) },
 		ReleaseBinding: func(b *share.Binding) { f.mu.Lock(); defer f.mu.Unlock(); f.bindings = append(f.bindings, b) },
 	})
-	f.deps = branch.ServiceDeps{Sessions: store.Sessions(), Messages: store.Messages(), Dialogues: store.Dialogues(),
+	f.deps = branch.ServiceDeps{NewMessageID: testutil.IDSequence().MessageID, Sessions: store.Sessions(), Messages: store.Messages(), Dialogues: store.Dialogues(),
 		AllocateID: func(ctx context.Context, _ share.IDOrigin) (string, error) { return storage.NewID(), ctx.Err() },
 		Bindings:   f.c, ActiveSessionIDs: active, MaterialFor: func(llm.Origin) (branch.MaterialPreparer, error) { return preparer{f}, nil }}
 	f.s = branch.NewService(f.deps)
@@ -118,7 +119,7 @@ func (f *fixture) source(t *testing.T, mode string) *storage.Session {
 
 func (f *fixture) message(t *testing.T, id, role string) *storage.Message {
 	t.Helper()
-	row := &storage.Message{SessionID: id, Role: role, Content: "message"}
+	row := &storage.Message{ID: storage.NewID(), SessionID: id, Role: role, Content: "message"}
 	if err := f.store.Messages().Append(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +142,7 @@ func (f *fixture) count(t *testing.T) int {
 }
 
 func seed() *storage.NativeSeed {
-	return &storage.NativeSeed{APIType: "response", Provider: "p", ItemsJSON: `[]`, MaterialsJSON: `[]`, ContinuationJSON: `[]`, CallsJSON: `[]`}
+	return &storage.NativeSeed{ID: storage.NewID(), APIType: "response", Provider: "p", ItemsJSON: `[]`, MaterialsJSON: `[]`, ContinuationJSON: `[]`, CallsJSON: `[]`}
 }
 
 var errSave = errors.New("save failed")

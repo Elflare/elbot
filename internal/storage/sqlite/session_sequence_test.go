@@ -94,7 +94,7 @@ func TestSessionSequenceMigrationPreservesUUID(t *testing.T) {
 	if err := store.Sessions().Create(t.Context(), &storage.Session{ID: legacyID}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.Exec(`DROP TABLE session_sequence; DELETE FROM schema_migrations WHERE version=28`); err != nil {
+	if _, err := store.db.Exec(`DROP TABLE id_sequences; DELETE FROM schema_migrations WHERE version>=28`); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
@@ -112,7 +112,7 @@ func TestSessionSequenceMigrationPreservesUUID(t *testing.T) {
 	if err != nil || n != 1 {
 		t.Fatalf("migrated sequence=%d error=%v", n, err)
 	}
-	if _, err := store.db.Exec(`UPDATE session_sequence SET value=? WHERE id=1`, int64(math.MaxInt64)); err != nil {
+	if _, err := store.db.Exec(`UPDATE id_sequences SET value=? WHERE name='session'`, int64(math.MaxInt64)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Sessions().NextSequence(t.Context()); err == nil {

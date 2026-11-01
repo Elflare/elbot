@@ -106,7 +106,7 @@ func TestIdleExpiryCombinesNamingAndExternalRelease(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := store.Messages().Append(t.Context(), &storage.Message{SessionID: row.ID, Role: storage.RoleUser, Content: "fallback"}); err != nil {
+		if err := store.Messages().Append(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: row.ID, Role: storage.RoleUser, Content: "fallback"}); err != nil {
 			t.Fatal(err)
 		}
 		s.MaybeScheduleNaming(t.Context(), row.ID)
@@ -197,7 +197,7 @@ func TestPublicBindingIdentityAndSynchronousRollbackRelease(t *testing.T) {
 					_, err = s.Resume(t.Context(), scope, next.ID)
 				}
 			case "fork":
-				message := &storage.Message{SessionID: row.ID, Role: storage.RoleAssistant, Content: "answer"}
+				message := &storage.Message{ID: storage.NewID(), SessionID: row.ID, Role: storage.RoleAssistant, Content: "answer"}
 				err = store.Messages().Append(t.Context(), message)
 				if err == nil {
 					_, err = s.Fork(t.Context(), scope, message.ID)
@@ -307,7 +307,7 @@ func TestCloseWaitsNamingBeforeClosingBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Messages().Append(t.Context(), &storage.Message{SessionID: row.ID, Role: storage.RoleUser, Content: "user"}); err != nil {
+	if err := store.Messages().Append(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: row.ID, Role: storage.RoleUser, Content: "user"}); err != nil {
 		t.Fatal(err)
 	}
 	s.MaybeScheduleNaming(t.Context(), row.ID)

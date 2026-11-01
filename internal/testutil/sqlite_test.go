@@ -34,7 +34,7 @@ func TestNewSQLiteStoreUsesIndependentMemoryDatabase(t *testing.T) {
 	if got, err := second.Sessions().Get(ctx, session.ID); err != nil || got.Title != "second" {
 		t.Fatalf("second store session after closing first = %+v, error = %v", got, err)
 	}
-	err := second.Messages().Append(ctx, &storage.Message{SessionID: "missing-session", Role: storage.RoleUser, Content: "orphan"})
+	err := second.Messages().Append(ctx, &storage.Message{ID: storage.NewID(),SessionID: "missing-session", Role: storage.RoleUser, Content: "orphan"})
 	if err == nil || !strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
 		t.Fatalf("missing session Append error = %v, want foreign key violation", err)
 	}

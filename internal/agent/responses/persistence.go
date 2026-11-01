@@ -4,6 +4,7 @@ import (
 	agentshare "elbot/internal/agent/share"
 
 	"context"
+	"errors"
 	"fmt"
 
 	"elbot/internal/events"
@@ -83,9 +84,6 @@ func (c replyCommitter) Commit(ctx context.Context, message *storage.Message, ma
 	var rows []*storage.Message
 	id := ""
 	if message != nil {
-		if message.ID == "" {
-			message.ID = storage.NewID()
-		}
 		id = message.ID
 		rows = []*storage.Message{message}
 	}
@@ -112,21 +110,28 @@ func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (event
 	for i, call := range s.calls {
 		message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool outcome is unknown: result has not been saved; do not assume success or retry automatically")}
 		stored := agentshare.ToolResultStorageMessage(s.session.ID, message)
-		stored.ID = storage.NewID()
+
 		fields, _ := storage.DecodeSessionMetadata(stored.Metadata)
 		_ = fields.Set("tool_result_status", "pending")
 		stored.Metadata, _ = fields.Encode()
 		c.results[i] = &stored
-		input, err := queuedInput(s.session.ID, stored.ID, s.exchange.ID, call.ID, message.Segments)
+
+	}
+	batch, err := agentshare.NewToolBatch(ctx, s.route.NewMessageID, head, s.calls, c.results)
+	if err != nil {
+		status := events.ResultFailed
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			status = events.ResultCanceled
+		}
+		return events.LogResult{ResultStatus: status, Content: err.Error()}, err
+	}
+	for i, call := range s.calls {
+		input, err := queuedInput(s.session.ID, c.results[i].ID, s.exchange.ID, call.ID, llm.TextSegments(c.results[i].Content))
 		if err != nil {
 			return events.LogResult{ResultStatus: events.ResultSkipped}, err
 		}
 		c.inputs[i] = input
 		c.calls = append(c.calls, storage.NativeCall{ExchangeID: s.exchange.ID, CallID: call.ID, Name: call.Name, Arguments: call.Arguments, Ordinal: i, Status: "pending", ResultInputID: input.ID})
-	}
-	batch, err := agentshare.NewToolBatch(head, s.calls, c.results)
-	if err != nil {
-		return events.LogResult{ResultStatus: events.ResultSkipped}, err
 	}
 	fields, _ := storage.DecodeSessionMetadata(head.Metadata)
 	_ = fields.Set("tool_batch_status", "pending")

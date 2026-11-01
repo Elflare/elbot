@@ -16,12 +16,8 @@ type SessionRepository struct {
 }
 
 func (r *SessionRepository) NextSequence(ctx context.Context) (int64, error) {
-	var sequence int64
-	err := r.db.QueryRowContext(ctx, `UPDATE session_sequence SET value=value+1 WHERE id=1 AND value<9223372036854775807 RETURNING value`).Scan(&sequence)
-	if err != nil {
-		return 0, fmt.Errorf("allocate session sequence: %w", err)
-	}
-	return sequence, nil
+	start, _, err := reserveSequence(ctx, r.db, "session", 1)
+	return start, err
 }
 
 func (r *SessionRepository) Create(ctx context.Context, session *storage.Session) error {

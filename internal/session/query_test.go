@@ -51,10 +51,10 @@ func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
 		t.Fatalf("resumed updated_at = %v, want after %v", current.UpdatedAt, aged)
 	}
 
-	if err := store.Messages().Append(ctx, &storage.Message{SessionID: first.ID, Role: storage.RoleUser, Content: "hello"}); err != nil {
+	if err := store.Messages().Append(ctx, &storage.Message{ID: storage.NewID(), SessionID: first.ID, Role: storage.RoleUser, Content: "hello"}); err != nil {
 		t.Fatalf("append user: %v", err)
 	}
-	if err := store.Messages().Append(ctx, &storage.Message{SessionID: first.ID, Role: storage.RoleAssistant, Content: "hi"}); err != nil {
+	if err := store.Messages().Append(ctx, &storage.Message{ID: storage.NewID(), SessionID: first.ID, Role: storage.RoleAssistant, Content: "hi"}); err != nil {
 		t.Fatalf("append assistant: %v", err)
 	}
 

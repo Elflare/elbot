@@ -32,6 +32,9 @@ func (r *ElnisEventRepository) FailInterrupted(ctx context.Context, fromStatuses
 }
 
 func (r *ElnisEventRepository) Create(ctx context.Context, req storage.CreateElnisEventRequest) (*storage.ElnisEvent, error) {
+	if req.ID == "" {
+		return nil, fmt.Errorf("elnis event requires a preallocated ID")
+	}
 	now := storage.Now()
 	receivedAt := req.ReceivedAt
 	if receivedAt.IsZero() {
@@ -42,7 +45,7 @@ func (r *ElnisEventRepository) Create(ctx context.Context, req storage.CreateEln
 		createdAt = receivedAt
 	}
 	event := &storage.ElnisEvent{
-		ID:               storage.NewID(),
+		ID:               req.ID,
 		EventKey:         req.EventKey,
 		TokenName:        req.TokenName,
 		ElwispName:       req.ElwispName,

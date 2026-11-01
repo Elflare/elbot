@@ -39,8 +39,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	ctx, cancel := context.WithCancel(ctx)
 	m := &Supervisor{ctx: ctx, cancel: cancel, signals: newSignals(), bindings: &signalBindings{}, done: make(chan struct{})}
 	m.routes = routes.New()
-	m.requests = request.NewManager(0)
-	m.turns = turn.NewSupervisor()
+	m.requests = request.NewManager(0, deps.Store.NextIDSequence)
+	m.turns = turn.NewSupervisor(deps.Store.NextIDSequence)
 	m.contexts = contextmgr.New(contextmgr.Options{Compactors: m.routes, Store: deps.Store, Models: deps.Models, Config: cfg.Context})
 	m.commands = command.NewRouter(cfg.Commands.Prefixes)
 	prefix := cfg.Commands.Prefixes[0]
@@ -121,6 +121,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		View:          view,
 	})
 	runner := dialogue.NewRunner(dialogue.RunnerDeps{
+		NewMessageID:         storage.IDSequence(deps.Store.NextIDSequence).MessageID,
 		Status:               status,
 		Routes:               m.routes,
 		Dialogues:            deps.Store.Dialogues(),
@@ -144,7 +145,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		View:                 view,
 	})
 	chat := chatroute.NewLoop(chatroute.LoopDeps{
-		Identity: identity,
+		NewMessageID: storage.IDSequence(deps.Store.NextIDSequence).MessageID,
+		Identity:     identity,
 		SelectionForTurn: func(ctx context.Context, row *storage.Session) modelmgr.Selection {
 			return modelmgr.SelectionForTurn(ctx, deps.Models, row)
 		},
@@ -165,9 +167,10 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		System:    runner.System,
 	})
 	response := responseroute.NewLoop(responseroute.LoopDeps{
-		Identity:    identity,
-		Gate:        runner.Messages.Gate,
-		SessionRows: deps.Store.Sessions(),
+		NewMessageID: storage.IDSequence(deps.Store.NextIDSequence).MessageID,
+		Identity:     identity,
+		Gate:         runner.Messages.Gate,
+		SessionRows:  deps.Store.Sessions(),
 		SelectionForTurn: func(ctx context.Context, row *storage.Session) modelmgr.Selection {
 			return modelmgr.SelectionForTurn(ctx, deps.Models, row)
 		},

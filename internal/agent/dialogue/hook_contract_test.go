@@ -4,6 +4,7 @@ import (
 	"context"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/events"
+	"elbot/internal/testutil"
 )
 
 type preparationOnlyHooks struct{}
@@ -33,7 +34,7 @@ type runnerOnlyHooks struct {
 // Compile-time contracts: each collaborator consumes its own subset; assembly
 // needs only their union, never the input, tool or output points.
 var (
-	_ = Preparer{Hooks: preparationOnlyHooks{}}
+	_ = Preparer{NewMessageID: testutil.IDSequence().MessageID, Hooks: preparationOnlyHooks{}}
 	_ = CallProcessor{Hooks: callOnlyHooks{}}
 	_ = RunnerDeps{Hooks: runnerOnlyHooks{}}
 )

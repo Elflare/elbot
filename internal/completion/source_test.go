@@ -2,6 +2,7 @@ package completion
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"path/filepath"
 	"testing"
 
@@ -20,7 +21,7 @@ func TestRiskConfirmationSourceCompletesOnlyDuringRiskPhase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	turns := turn.NewSupervisor()
+	turns := turn.NewSupervisor(testutil.IDSequence())
 	router := command.NewRouter([]string{"/"})
 	source := RiskConfirmationSource{
 		Router:       router,
@@ -54,7 +55,7 @@ func TestForkMessageSourceCompletesAssistantMessageIDs(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 	messages := []*storage.Message{
-		{SessionID: sess.ID, Role: storage.RoleUser, Content: "question"},
+		{ID: storage.NewID(), SessionID: sess.ID, Role: storage.RoleUser, Content: "question"},
 		{ID: "abcdef-message", SessionID: sess.ID, Role: storage.RoleAssistant, Content: "answer"},
 		{ID: "abc-empty", SessionID: sess.ID, Role: storage.RoleAssistant, Content: ""},
 	}

@@ -16,7 +16,8 @@ import (
 )
 
 type Preparer struct {
-	PublishUsageFinished func(context.Context, media.UsageID) // 根部注入的使用结束发布能力。
+	NewMessageID         func(context.Context) (string, error) // 消息首次建立引用前发号。
+	PublishUsageFinished func(context.Context, media.UsageID)  // 根部注入的使用结束发布能力。
 	Contexts             interface {
 		Load(context.Context, string) (*contextmgr.LoadedContext, error)
 	}
@@ -39,9 +40,12 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (
 		return agentshare.TurnMaterials{}, err
 	}
 	segments := archived[0].Segments
-	message := &storage.Message{ID: storage.NewID(), SessionID: in.Session.ID, Role: storage.RoleUser,
+	message := &storage.Message{SessionID: in.Session.ID, Role: storage.RoleUser,
 		Content: agentshare.MessageContent(segments), Segments: agentshare.StoredMessageSegments(segments), ReplyToPlatformMessageID: in.ReplyToPlatformMessageID}
 	input.Segments = segments
+	if err := storage.PrepareMessageID(ctx, p.NewMessageID, message); err != nil {
+		return agentshare.TurnMaterials{}, err
+	}
 	record := events.LogRecord{
 		Category:     events.LogRuntime,
 		Level:        slog.LevelInfo,

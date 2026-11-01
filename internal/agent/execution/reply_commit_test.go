@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"errors"
 	"reflect"
 	"strings"
@@ -178,8 +179,8 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 		Dispatcher: dispatch.New(dispatch.Options{Primary: f.platform}),
 		Hooks:      f.hooks,
 	})
-	messages := &dialogue.MessageStore{Dialogues: replyTestDialogues{DialogueRepository: store.Dialogues(), repo: f.repo}, Gate: &dialogue.CommitGate{Sessions: newSessionSupervisor(t, store), Turns: turn.NewSupervisor(), View: dialogue.ExecutionView{Sessions: store.Sessions()}}}
-	f.committer = &dialogue.ReplyCommitter{Persistence: messages.Committer("append_assistant_message"), Output: sender}
+	messages := &dialogue.MessageStore{NewMessageID: testutil.IDSequence().MessageID, Dialogues: replyTestDialogues{DialogueRepository: store.Dialogues(), repo: f.repo}, Gate: &dialogue.CommitGate{Sessions: newSessionSupervisor(t, store), Turns: turn.NewSupervisor(testutil.IDSequence()), View: dialogue.ExecutionView{Sessions: store.Sessions()}}}
+	f.committer = &dialogue.ReplyCommitter{NewMessageID: testutil.IDSequence().MessageID, Persistence: messages.Committer("append_assistant_message"), Output: sender}
 	f.out = foregroundTurnOutput{sender: sender}
 	f.in = agentshare.ReplyCommitInput{Session: row, Text: "history", RawText: "raw", PlatformText: "visible", Outputs: []delivery.Output{delivery.Text("later")}}
 	return f

@@ -81,7 +81,7 @@ func TestMediaJSONReferenceTransactions(t *testing.T) {
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatal(err)
 	}
-	msg := &storage.Message{SessionID: session.ID, Role: storage.RoleUser, Segments: segments(ids[0])}
+	msg := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleUser, Segments: segments(ids[0])}
 	if err := store.Messages().Append(ctx, msg); err != nil {
 		t.Fatal(err)
 	}

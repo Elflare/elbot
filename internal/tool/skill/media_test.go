@@ -157,7 +157,7 @@ func TestSkillMediaBridge(t *testing.T) {
 							t.Fatal(err)
 						}
 						segments, _ := json.Marshal(result.LLMSegments())
-						message := &storage.Message{SessionID: session.ID, Role: storage.RoleTool, Segments: string(segments)}
+						message := &storage.Message{ID: storage.NewID(),SessionID: session.ID, Role: storage.RoleTool, Segments: string(segments)}
 						if err := store.Messages().Append(ctx, message); err != nil {
 							t.Fatal(err)
 						}

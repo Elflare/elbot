@@ -109,6 +109,9 @@ func TestCronBridgeServicePersistsReportMappingAndCompletion(t *testing.T) {
 	}
 	m := elcron.NewManager(b)
 	s := elcron.NewService(elcron.Options{Store: b, Manager: m, Models: cronBridgeModels{}, Runner: cronBridgeRunner{}, SandboxRoot: t.TempDir(),
+		NewRunID: func(ctx context.Context) (string, error) {
+			return storage.IDSequence(store.NextIDSequence).ID(ctx, "run")
+		},
 		SessionTakenOver: func(context.Context, string) (bool, error) { return false, nil },
 		CopyBackground:   func(context.Context, agent.BackgroundCopyRequest) (string, error) { return "copy", nil },
 		EnabledPlatforms: []elcron.PlatformTarget{{Name: "telegram", SuperadminIDs: []string{"1"}}},

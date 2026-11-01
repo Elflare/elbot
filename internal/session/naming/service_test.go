@@ -32,7 +32,7 @@ func TestForgetDuringPreparationGenerationAndCompletion(t *testing.T) {
 				return llm.TextResult{Text: "generated"}, nil
 			})
 			t.Cleanup(unblock)
-			id := f.row(t, storage.Message{Role: storage.RoleUser, Content: "user"})
+			id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "user"})
 			if phase == "preparation" {
 				f.s.deps.Messages = messageFunc(func(ctx context.Context, id string) ([]storage.Message, error) {
 					close(started)
@@ -126,7 +126,7 @@ func TestPreparationReservationReleasedBelowThresholdAndAfterCancellation(t *tes
 			f := newFixture(t, 2, func(context.Context, llm.TextRequest) (llm.TextResult, error) {
 				return llm.TextResult{Text: "generated"}, nil
 			})
-			id := f.row(t, storage.Message{Role: storage.RoleUser, Content: "user"})
+			id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "user"})
 			started, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
 			f.s.deps.Messages = messageFunc(func(ctx context.Context, id string) ([]storage.Message, error) {
 				close(started)
@@ -150,7 +150,7 @@ func TestPreparationReservationReleasedBelowThresholdAndAfterCancellation(t *tes
 				}
 			}
 			f.s.deps.Messages = f.store.Messages()
-			if err := f.store.Messages().Append(t.Context(), &storage.Message{SessionID: id, Role: storage.RoleAssistant, Content: "answer"}); err != nil {
+			if err := f.store.Messages().Append(t.Context(), &storage.Message{ID: storage.NewID(), SessionID: id, Role: storage.RoleAssistant, Content: "answer"}); err != nil {
 				t.Fatal(err)
 			}
 			if e := f.attempt(t, id); e.ResultStatus != events.ResultSucceeded {
@@ -175,7 +175,7 @@ func TestTurnCancellationAndCloseWaitForIgnoringClient(t *testing.T) {
 				return llm.TextResult{Text: "late title"}, nil
 			})
 			t.Cleanup(unblock)
-			id := f.row(t, storage.Message{Role: storage.RoleUser, Content: "user"})
+			id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "user"})
 			turn, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			type privateKey struct{}
@@ -233,7 +233,7 @@ func TestCloseWaitsForPreparationAndRealTerminalCallback(t *testing.T) {
 			f := newFixture(t, 1, func(context.Context, llm.TextRequest) (llm.TextResult, error) {
 				return llm.TextResult{Text: "title"}, nil
 			})
-			id := f.row(t, storage.Message{Role: storage.RoleUser, Content: "user"})
+			id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "user"})
 			started, release, triggerDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
 			var once sync.Once
 			unblock := func() { once.Do(func() { close(release) }) }

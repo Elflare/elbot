@@ -3,13 +3,16 @@ package turn
 
 import (
 	"context"
+	"elbot/internal/storage"
 	"elbot/internal/turn/confirmation"
 	"elbot/internal/turn/lifecycle"
 	"elbot/internal/turn/share"
 	"time"
 )
 
-func NewSupervisor() *Supervisor { return &Supervisor{lifecycle: lifecycle.NewManager()} }
+func NewSupervisor(next storage.IDSequence) *Supervisor {
+	return &Supervisor{lifecycle: lifecycle.NewManager(), next: next}
+}
 func executionContract(e *Execution) lifecycle.Execution {
 	if e == nil {
 		return nil

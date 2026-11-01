@@ -60,6 +60,8 @@ type ExecutionCoordinatorDeps struct {
 		Get(context.Context, string) (*storage.Session, error)
 	}
 	Turns interface {
+		NewExecution(context.Context) (*turn.Execution, error)
+		AllocateAttempt(context.Context) (string, error)
 		AppendPendingInput(string, turn.Input) bool
 		BeginAppend(string, string, turn.Input) *turn.AppendWait
 		CanCompact(string, *turn.Execution) bool
@@ -78,7 +80,7 @@ type ExecutionCoordinatorDeps struct {
 	Requests interface {
 		CancelSession(string) int
 		ListBySession(string) []request.Request
-		Start(context.Context, request.StartRequest) (request.Request, context.Context, func())
+		Start(context.Context, request.StartRequest) (request.Request, context.Context, func(), error)
 	}
 	Contexts interface {
 		Compact(context.Context, *storage.Session, string, modelmgr.Selection) (*contextmgr.PreparedCompact, error)

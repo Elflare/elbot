@@ -321,12 +321,12 @@ func TestManagerRoutesWaitingConversation(t *testing.T) {
 	waitForStatus(t, manager, "demo", StatusReady)
 	event := share.Event{Platform: share.PlatformContext{Name: "test", ScopeID: "private:1"}, Actor: share.ActorContext{ID: "test:1", UserID: "1"}}
 	observed, finished := 0, 0
-	observe := func(ctx context.Context, name string) (context.Context, func()) {
+	observe := func(ctx context.Context, name string) (context.Context, func(), error) {
 		if name != "demo" {
 			t.Fatalf("observed worker = %q", name)
 		}
 		observed++
-		return ctx, func() { finished++ }
+		return ctx, func() { finished++ }, nil
 	}
 	if _, routed, _, err := manager.Route(context.Background(), event, observe); err != nil || routed || observed != 0 {
 		t.Fatalf("unmatched route registered a request: routed=%v observed=%d err=%v", routed, observed, err)

@@ -29,7 +29,7 @@ func (r *MessageRepository) Append(ctx context.Context, message *storage.Message
 
 func appendMessageTx(ctx context.Context, tx *sql.Tx, message *storage.Message) (events.LogResult, error) {
 	if message.ID == "" {
-		message.ID = storage.NewID()
+		return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("message requires a preallocated ID")
 	}
 	if message.CreatedAt.IsZero() {
 		message.CreatedAt = storage.Now()
@@ -173,18 +173,14 @@ func (r *MessageRepository) MapPlatformMessage(ctx context.Context, mapping stor
 }
 
 func mapPlatformMessage(ctx context.Context, writer sessionWriter, mapping storage.PlatformMessageMap) error {
-	if mapping.ID == "" {
-		mapping.ID = storage.NewID()
-	}
 	if mapping.CreatedAt.IsZero() {
 		mapping.CreatedAt = storage.Now()
 	}
 
 	_, err := writer.ExecContext(ctx, `
 INSERT INTO platform_message_map (
-    id, platform, platform_scope_id, platform_message_id, message_id, session_id, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		mapping.ID,
+    platform, platform_scope_id, platform_message_id, message_id, session_id, created_at
+) VALUES (?, ?, ?, ?, ?, ?)`,
 		mapping.Platform,
 		mapping.PlatformScopeID,
 		mapping.PlatformMessageID,

@@ -51,7 +51,7 @@ func TestContinuationOutcomeSurvivesOrdinaryRules(t *testing.T) {
 	for _, status := range []events.ResultStatus{events.ResultSucceeded, events.ResultFailed, events.ResultCanceled} {
 		for _, ordinary := range []bool{false, true} {
 			t.Run(status.String()+map[bool]string{false: "/no-match", true: "/ordinary"}[ordinary], func(t *testing.T) {
-				manager := NewManager(func(context.Context, events.LogRecord) {}, func(_ context.Context, event share.Event, _ func(context.Context, string) (context.Context, func())) (share.Event, bool, events.LogResult, error) {
+				manager := NewManager(func(context.Context, events.LogRecord) {}, func(_ context.Context, event share.Event, _ func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, events.LogResult, error) {
 					return event, true, events.LogResult{ResultStatus: status, Content: "continuation"}, nil
 				})
 				want := "continuation"
@@ -72,7 +72,7 @@ func TestContinuationOutcomeSurvivesOrdinaryRules(t *testing.T) {
 
 func TestContinuationAndOrdinaryFailureKeepBothOutcomes(t *testing.T) {
 	failure := errors.New("ordinary failed")
-	manager := NewManager(func(context.Context, events.LogRecord) {}, func(_ context.Context, event share.Event, _ func(context.Context, string) (context.Context, func())) (share.Event, bool, events.LogResult, error) {
+	manager := NewManager(func(context.Context, events.LogRecord) {}, func(_ context.Context, event share.Event, _ func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, events.LogResult, error) {
 		return event, true, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "continuation"}, nil
 	})
 	manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, events.LogResult, error) {

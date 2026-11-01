@@ -2,6 +2,7 @@ package turn
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -13,7 +14,7 @@ func TestRefreshWinsPendingExpiry(t *testing.T) {
 	for _, risk := range []bool{false, true} {
 		t.Run(map[bool]string{false: "append", true: "risk"}[risk], func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				s := NewSupervisor()
+				s := NewSupervisor(testutil.IDSequence())
 				s.StartAttempt("s", Input{}, NewExecution("run"), "a")
 				done := make(chan bool, 1)
 				if risk {
@@ -61,7 +62,7 @@ func TestRefreshWinsPendingExpiry(t *testing.T) {
 }
 
 func TestSupervisorAppendAndAttemptOwnership(t *testing.T) {
-	s := NewSupervisor()
+	s := NewSupervisor(testutil.IDSequence())
 	e := NewExecution("run")
 	if !s.StartAttempt("s", Input{Text: "first"}, e, "old") {
 		t.Fatal("start failed")
@@ -95,7 +96,7 @@ func TestSupervisorAppendAndAttemptOwnership(t *testing.T) {
 }
 
 func TestRiskCallbacksKeepReplacementAndRejectStoppedApproval(t *testing.T) {
-	s := NewSupervisor()
+	s := NewSupervisor(testutil.IDSequence())
 	s.StartAttempt("s", Input{}, NewExecution("run"), "a")
 	s.StartToolPhase("s", "a")
 	first := s.BeginRiskConfirmation("s", RiskConfirmation{ID: "first"}, "a")
@@ -122,7 +123,7 @@ func TestRiskCallbacksKeepReplacementAndRejectStoppedApproval(t *testing.T) {
 }
 
 func TestConfirmationCallbacksExpireAndIgnoreOldAppend(t *testing.T) {
-	s := NewSupervisor()
+	s := NewSupervisor(testutil.IDSequence())
 	e := NewExecution("run")
 	s.StartAttempt("s", Input{Text: "original"}, e, "a")
 	old := s.BeginAppend("s", "a", Input{Text: "more"})
@@ -152,7 +153,7 @@ func TestConfirmationCallbacksExpireAndIgnoreOldAppend(t *testing.T) {
 func TestSupervisorRiskDecisionAndTermination(t *testing.T) {
 	for _, action := range []RiskAction{RiskConfirm, RiskConfirmTool, RiskConfirmAll, RiskReject} {
 		t.Run(string(action), func(t *testing.T) {
-			s := NewSupervisor()
+			s := NewSupervisor(testutil.IDSequence())
 			s.StartAttempt("s", Input{}, NewExecution("run"), "a")
 			s.StartToolPhase("s", "a")
 			wait := s.BeginRiskConfirmation("s", RiskConfirmation{ID: "call"}, "a")

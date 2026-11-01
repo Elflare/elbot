@@ -2,6 +2,7 @@ package dialogue
 
 import (
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/testutil"
 
 	"context"
 	"errors"
@@ -29,7 +30,7 @@ func TestMaterialsKeepCanonicalOriginalAndMissingPlaceholder(t *testing.T) {
 	defer store.Close()
 	root := t.TempDir()
 	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
-	preparer := &Preparer{Media: center, PublishUsageFinished: func(ctx context.Context, id media.UsageID) {
+	preparer := &Preparer{NewMessageID: testutil.IDSequence().MessageID, Media: center, PublishUsageFinished: func(ctx context.Context, id media.UsageID) {
 		center.PublishUsageFinished(ctx, media.UsageFinishedEvent{UsageIDs: []media.UsageID{id}})
 	}}
 	info, err := center.ImportBytes(t.Context(), []byte("image"), media.Input{Name: "image.png", MIMEType: "image/png"}, media.ImportLimits{})
@@ -109,7 +110,7 @@ func TestMaterialsKeepCanonicalOriginalAndMissingPlaceholder(t *testing.T) {
 }
 
 func TestArchiveMaterialsRequiresUpstreamMediaID(t *testing.T) {
-	p := &Preparer{}
+	p := &Preparer{NewMessageID: testutil.IDSequence().MessageID}
 	for _, source := range []string{"HTTP://example.test/file?secret=token", "/tmp/image", "data:image/png;base64,aA=="} {
 		_, err := p.ArchiveMaterials(t.Context(), []llm.LLMMessage{{Segments: []llm.MessageSegment{{Type: llm.SegmentImage, URL: source}}}})
 		if err == nil || strings.Contains(err.Error(), source) {
@@ -128,7 +129,7 @@ func TestToolTranscriptMirrorMatchesFullDatabaseFacts(t *testing.T) {
 	if err := store.Sessions().Create(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
-	committer := &ToolTranscriptCommitter{Messages: &MessageStore{Dialogues: store.Dialogues(), Gate: &CommitGate{Sessions: newSessionSupervisor(t, store), Turns: turn.NewSupervisor(), View: ExecutionView{Sessions: store.Sessions()}}}}
+	committer := &ToolTranscriptCommitter{Messages: &MessageStore{NewMessageID: testutil.IDSequence().MessageID, Dialogues: store.Dialogues(), Gate: &CommitGate{Sessions: newSessionSupervisor(t, store), Turns: turn.NewSupervisor(testutil.IDSequence()), View: ExecutionView{Sessions: store.Sessions()}}}}
 	calls := []llm.ToolCallRequest{{ID: "one", Name: "discover_tool", Arguments: `{"names":["one","two"]}`}, {ID: "two", Name: "large", Arguments: `{"all":true}`}}
 	head := agentshare.ToolCallStorageMessage(row.ID, "calling", "calling", calls)
 	if _, err := committer.Begin(t.Context(), &head); err != nil {
@@ -208,7 +209,7 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	repository := &countedDialogueRepository{DialogueRepository: store.Dialogues()}
-	committer := &ToolTranscriptCommitter{Messages: &MessageStore{Dialogues: repository, Gate: &CommitGate{Sessions: newSessionSupervisor(t, store), Turns: turn.NewSupervisor()}}}
+	committer := &ToolTranscriptCommitter{Messages: &MessageStore{NewMessageID: testutil.IDSequence().MessageID, Dialogues: repository, Gate: &CommitGate{Sessions: newSessionSupervisor(t, store), Turns: turn.NewSupervisor(testutil.IDSequence())}}}
 	root := t.TempDir()
 	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	item, err := center.ImportBytes(ctx, []byte("tool input"), media.Input{Name: "input.bin"}, media.ImportLimits{})

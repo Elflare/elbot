@@ -662,6 +662,52 @@ CREATE TABLE session_sequence (
 INSERT INTO session_sequence(id, value) VALUES (1, 0);
 `,
 	},
+	{
+		version: 29,
+		name:    "shared_id_sequences",
+		sql: `CREATE TABLE id_sequences (
+ name TEXT PRIMARY KEY,
+ value INTEGER NOT NULL CHECK(typeof(value)='integer' AND value>=0),
+ reserved INTEGER NOT NULL DEFAULT 0
+);
+INSERT INTO id_sequences(name,value) SELECT 'session',value FROM session_sequence;
+INSERT INTO id_sequences(name,value) VALUES('general',0);
+DROP TABLE session_sequence;`,
+	},
+	{version: 30, name: "remove_unused_record_ids", sql: `
+ALTER TABLE platform_message_map RENAME TO old_platform_message_map;
+CREATE TABLE platform_message_map (
+    platform TEXT NOT NULL,
+    platform_scope_id TEXT NOT NULL,
+    platform_message_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+    PRIMARY KEY(platform, platform_scope_id, platform_message_id)
+);
+INSERT INTO platform_message_map SELECT platform,platform_scope_id,platform_message_id,message_id,session_id,created_at FROM old_platform_message_map;
+DROP TABLE old_platform_message_map;
+ALTER TABLE tool_call_records RENAME TO old_tool_call_records;
+CREATE TABLE tool_call_records (
+    session_id TEXT NOT NULL,
+    tool_call_id TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    actor_id TEXT NOT NULL,
+    risk_level TEXT NOT NULL,
+    success INTEGER NOT NULL,
+    error TEXT NULL,
+    started_at TEXT NOT NULL,
+    finished_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+INSERT INTO tool_call_records SELECT session_id,tool_call_id,tool_name,actor_id,risk_level,success,error,started_at,finished_at,created_at FROM old_tool_call_records;
+DROP TABLE old_tool_call_records;
+CREATE INDEX idx_tool_call_records_session_tool ON tool_call_records(session_id, tool_name);
+CREATE INDEX idx_tool_call_records_session_created_at ON tool_call_records(session_id, created_at);
+`},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

@@ -1,6 +1,7 @@
 package turn
 
 import (
+	"elbot/internal/testutil"
 	"strings"
 	"testing"
 
@@ -13,7 +14,7 @@ func TestMergedInputRetainsElyphRequirement(t *testing.T) {
 		{{Text: "plain"}, {Text: "task", NeedsElyphRules: true}},
 		{{Text: "task", NeedsElyphRules: true}, {Text: "plain"}},
 	} {
-		m := NewSupervisor()
+		m := NewSupervisor(testutil.IDSequence())
 		startTestExecution(t, m, "s", Input{})
 		m.StartToolPhase("s", "attempt")
 		for _, input := range inputs {
@@ -24,7 +25,7 @@ func TestMergedInputRetainsElyphRequirement(t *testing.T) {
 			t.Fatalf("lost queued requirement: %+v", merged)
 		}
 	}
-	m := NewSupervisor()
+	m := NewSupervisor(testutil.IDSequence())
 	startTestExecution(t, m, "s", Input{})
 	m.StartToolPhase("s", "attempt")
 	m.AppendPendingInput("s", Input{Text: "plain"})
@@ -34,7 +35,7 @@ func TestMergedInputRetainsElyphRequirement(t *testing.T) {
 }
 
 func TestDrainMergedInputPreservesMediaAndPlatformText(t *testing.T) {
-	m := NewSupervisor()
+	m := NewSupervisor(testutil.IDSequence())
 	startTestExecution(t, m, "s1", Input{Text: "start", PlatformText: "raw start", Segments: llm.TextSegments("start")})
 	if !m.StartToolPhase("s1", "attempt") {
 		t.Fatal("failed to start tool turn")
@@ -57,7 +58,7 @@ func TestDrainMergedInputPreservesMediaAndPlatformText(t *testing.T) {
 }
 
 func TestInterruptAndConfirmMergesOriginalInput(t *testing.T) {
-	m := NewSupervisor()
+	m := NewSupervisor(testutil.IDSequence())
 	e := startTestExecution(t, m, "s1", Input{Text: "zz"})
 	if m.BeginAppend("s1", "attempt", Input{Text: "等等！"}) == nil {
 		t.Fatal("InterruptLLMInput returned false")
@@ -93,7 +94,7 @@ func TestInterruptAndConfirmMergesOriginalInput(t *testing.T) {
 }
 
 func TestCancelAppendWaitsForAttempt(t *testing.T) {
-	m := NewSupervisor()
+	m := NewSupervisor(testutil.IDSequence())
 	startTestExecution(t, m, "s1", Input{Text: "zz"})
 	m.BeginAppend("s1", "attempt", Input{Text: "等等！"})
 
@@ -110,7 +111,7 @@ func TestCancelAppendWaitsForAttempt(t *testing.T) {
 }
 
 func TestToolPendingDrain(t *testing.T) {
-	m := NewSupervisor()
+	m := NewSupervisor(testutil.IDSequence())
 	startTestExecution(t, m, "s1", Input{})
 	m.StartToolPhase("s1", "attempt")
 	m.AddToolUse("s1", "web_search", "attempt")
@@ -141,7 +142,7 @@ func TestToolPendingDrain(t *testing.T) {
 }
 
 func TestCompleteLLMReturnsMergedPending(t *testing.T) {
-	m := NewSupervisor()
+	m := NewSupervisor(testutil.IDSequence())
 	e := startTestExecution(t, m, "s1", Input{Text: "先查"})
 	if !m.StartToolPhase("s1", "attempt") {
 		t.Fatal("StartToolPhase returned false")
@@ -163,7 +164,7 @@ func TestCompleteLLMReturnsMergedPending(t *testing.T) {
 }
 
 func TestStopAllWaitsForAttempts(t *testing.T) {
-	m := NewSupervisor()
+	m := NewSupervisor(testutil.IDSequence())
 	startTestExecution(t, m, "s1", Input{Text: "a"})
 	startTestExecution(t, m, "s2", Input{Text: "b"})
 	m.StopAll()
@@ -180,7 +181,7 @@ func TestStopAllWaitsForAttempts(t *testing.T) {
 }
 
 func TestFinishAttemptClearsToolPending(t *testing.T) {
-	m := NewSupervisor()
+	m := NewSupervisor(testutil.IDSequence())
 	startTestExecution(t, m, "s1", Input{Text: "zz"})
 	if !m.StartToolPhase("s1", "attempt") {
 		t.Fatal("StartToolPhase returned false")
@@ -196,7 +197,7 @@ func TestFinishAttemptClearsToolPending(t *testing.T) {
 }
 
 func TestFinishAttemptKeepsAppendConfirmation(t *testing.T) {
-	m := NewSupervisor()
+	m := NewSupervisor(testutil.IDSequence())
 	startTestExecution(t, m, "s1", Input{Text: "zz"})
 	m.BeginAppend("s1", "attempt", Input{Text: "等等！"})
 

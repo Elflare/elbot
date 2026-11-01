@@ -20,10 +20,9 @@ const cleanupConcurrency = 4
 // Cleanup preserves each deletion's source result before joining business errors.
 // A cancellation cannot replace an independently failed deletion in LogResult.
 func (m *Manager) Cleanup(ctx context.Context, history History) (logResult events.LogResult, err error) {
-	cleanupID := storage.NewID()
 	stage := "lock"
 	defer func() {
-		lines := []string{"cleanup_id=" + cleanupID}
+		var lines []string
 		if stage != "delete" {
 			lines = append(lines, "stage="+stage)
 		}

@@ -21,7 +21,8 @@ import (
 )
 
 type Loop struct {
-	Identity interface {
+	NewMessageID func(context.Context) (string, error) // 与普通对话共用消息身份规则。
+	Identity     interface {
 		Scope(context.Context) session.Scope
 	}
 	SelectionForTurn func(context.Context, *storage.Session) modelmgr.Selection
@@ -341,10 +342,12 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			s.tools = nil
 			out.SendPreview(s.ctx, fmt.Sprintf("max_rounds_per_turn=%d → 总结", s.route.Tools.MaxRoundsPerTurn()))
 			summaryInput := &storage.Message{
-				ID:        storage.NewID(),
 				SessionID: s.session.ID,
 				Role:      storage.RoleUser,
 				Content:   "已达到工具调用轮数上限，请根据已有结果总结当前进度，不再调用工具。",
+			}
+			if err := storage.PrepareMessageID(s.requestCtx, s.route.NewMessageID, summaryInput); err != nil {
+				return fail(err)
 			}
 			if _, err := (inputCommitter{state: s}).Commit(s.requestCtx, summaryInput, nil); err != nil {
 				return fail(err)
@@ -409,7 +412,10 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			return result
 		}
 		if execution.ConfirmationExtra != "" {
-			message := &storage.Message{ID: storage.NewID(), SessionID: s.session.ID, Role: storage.RoleUser, Content: "补充：" + execution.ConfirmationExtra}
+			message := &storage.Message{SessionID: s.session.ID, Role: storage.RoleUser, Content: "补充：" + execution.ConfirmationExtra}
+			if err := storage.PrepareMessageID(s.requestCtx, s.route.NewMessageID, message); err != nil {
+				return fail(err)
+			}
 			if _, err := (inputCommitter{state: s}).Commit(s.requestCtx, message, nil); err != nil {
 				return fail(err)
 			}
@@ -429,7 +435,8 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 func NewLoop(deps LoopDeps) *Loop {
 	nativeContext := &Context{Repository: deps.Repository, Preparer: deps.Preparer}
 	return &Loop{
-		Identity: deps.Identity, SelectionForTurn: deps.SelectionForTurn,
+		NewMessageID: deps.NewMessageID,
+		Identity:     deps.Identity, SelectionForTurn: deps.SelectionForTurn,
 		Gate: deps.Gate, SessionRows: deps.SessionRows,
 		Status:     deps.Status,
 		Repository: deps.Repository,

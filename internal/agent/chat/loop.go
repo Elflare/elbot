@@ -21,7 +21,8 @@ import (
 )
 
 type Loop struct {
-	Identity interface {
+	NewMessageID func(context.Context) (string, error) // 内部输入创建时分配身份。
+	Identity     interface {
 		Scope(context.Context) session.Scope
 	}
 	SelectionForTurn           func(context.Context, *storage.Session) modelmgr.Selection
@@ -94,7 +95,8 @@ type chatTurnState struct {
 
 // LoopDeps contains protocol collaborators, never another protocol implementation.
 type LoopDeps struct {
-	Identity interface {
+	NewMessageID func(context.Context) (string, error) // 根部注入的消息发号能力。
+	Identity     interface {
 		Scope(context.Context) session.Scope
 	}
 	SelectionForTurn           func(context.Context, *storage.Session) modelmgr.Selection
@@ -154,7 +156,7 @@ type LoopDeps struct {
 }
 
 func NewLoop(deps LoopDeps) *Loop {
-	return &Loop{
+	return &Loop{NewMessageID: deps.NewMessageID,
 		Identity: deps.Identity, SelectionForTurn: deps.SelectionForTurn,
 		NewToolTranscriptCommitter: deps.NewToolTranscriptCommitter,
 		Status:                     deps.Status,

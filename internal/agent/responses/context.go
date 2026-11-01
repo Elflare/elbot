@@ -474,6 +474,7 @@ func (w *nativeWindow) Seed(continuation []api.Item, calls []storage.NativeCall,
 		source = w.Checkpoint.ID
 	}
 	return &storage.NativeSeed{
+		ID:                 storage.NewID(),
 		APIType:            string(w.Origin.APIType),
 		Provider:           w.Origin.Provider,
 		BaseURL:            w.Origin.BaseURL,

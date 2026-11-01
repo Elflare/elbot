@@ -248,12 +248,12 @@ func TestManagerObserverWrapsMatchedHookContext(t *testing.T) {
 			return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 		}),
 	})
-	options := CallOptions{Woken: true, Observe: func(ctx context.Context, name string) (context.Context, func()) {
+	options := CallOptions{Woken: true, Observe: func(ctx context.Context, name string) (context.Context, func(), error) {
 		observed = true
 		if name != "observed" {
 			t.Fatalf("observer name = %q", name)
 		}
-		return context.WithValue(ctx, contextKey{}, "wrapped"), func() { done = true }
+		return context.WithValue(ctx, contextKey{}, "wrapped"), func() { done = true }, nil
 	}}
 
 	if _, _, err := manager.Run(context.Background(), share.Event{Point: share.PointAgentInputPrepared}, options); err != nil {
@@ -288,9 +288,9 @@ func TestManagerObserverSkipsUnmatchedAndWakeupSkippedHooks(t *testing.T) {
 			return event, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "test source completed"}, nil
 		}),
 	})
-	options := CallOptions{Woken: false, Observe: func(ctx context.Context, name string) (context.Context, func()) {
+	options := CallOptions{Woken: false, Observe: func(ctx context.Context, name string) (context.Context, func(), error) {
 		observed++
-		return ctx, func() {}
+		return ctx, func() {}, nil
 	}}
 
 	if _, _, err := manager.Run(context.Background(), share.Event{Point: share.PointLLMResponseReceived, LLM: share.LLMPayload{Text: "plain"}}, options); err != nil {

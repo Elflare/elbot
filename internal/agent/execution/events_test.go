@@ -3,6 +3,7 @@ package execution
 import (
 	"context"
 	"elbot/internal/agent/dialogue"
+	"elbot/internal/testutil"
 	"errors"
 	"strings"
 	"testing"
@@ -16,7 +17,7 @@ import (
 )
 
 func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
-	turns := turn.NewSupervisor()
+	turns := turn.NewSupervisor(testutil.IDSequence())
 	events := signal.New[StatusChangedEvent, signal.Empty]("status")
 	var observed []StatusChangedEvent
 	_, _ = events.Observe(func(_ context.Context, e StatusChangedEvent) error {

@@ -95,10 +95,10 @@ func (d *runnerTestDeps) AuditToolDenied(context.Context, string, llm.ToolCallRe
 }
 func (d *runnerTestDeps) AddToolUse(string, string) {}
 func (d *runnerTestDeps) ToolResultMessage(id string, message llm.LLMMessage) storage.Message {
-	return storage.Message{SessionID: id, Role: storage.RoleTool, Content: llm.SegmentsContentText(message.Segments)}
+	return storage.Message{ID: storage.NewID(),SessionID: id, Role: storage.RoleTool, Content: llm.SegmentsContentText(message.Segments)}
 }
 func (d *runnerTestDeps) ToolCallMessage(id, content, _ string, _ []llm.ToolCallRequest) storage.Message {
-	return storage.Message{SessionID: id, Role: storage.RoleAssistant, Content: content}
+	return storage.Message{ID: storage.NewID(),SessionID: id, Role: storage.RoleAssistant, Content: content}
 }
 
 type rollbackConfirmDeps struct {

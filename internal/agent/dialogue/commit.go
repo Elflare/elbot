@@ -4,6 +4,7 @@ import (
 	agentshare "elbot/internal/agent/share"
 
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -99,9 +100,13 @@ func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Messa
 		stored.Metadata, _ = fields.Encode()
 		c.results[i] = &stored
 	}
-	batch, err := agentshare.NewToolBatch(head, c.calls, c.results)
+	batch, err := agentshare.NewToolBatch(ctx, c.Messages.NewMessageID, head, c.calls, c.results)
 	if err != nil {
-		return events.LogResult{ResultStatus: events.ResultSkipped}, err
+		status := events.ResultFailed
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			status = events.ResultCanceled
+		}
+		return events.LogResult{ResultStatus: status, Content: err.Error()}, err
 	}
 	fields, _ := storage.DecodeSessionMetadata(head.Metadata)
 	_ = fields.Set("tool_batch_status", "pending")

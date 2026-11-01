@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"elbot/internal/storage"
 
@@ -13,6 +14,9 @@ import (
 )
 
 type Store struct {
+	idMu             sync.Mutex // Protects the shared non-Session range.
+	idNext           int64      // Next available number; zero means the range is exhausted.
+	idEnd            int64      // Last number durably reserved for this Store.
 	db               *sql.DB
 	sessions         *SessionRepository
 	messages         *MessageRepository

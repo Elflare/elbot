@@ -17,7 +17,8 @@ import (
 
 // LoopDeps contains protocol collaborators, never another protocol implementation.
 type LoopDeps struct {
-	Identity interface {
+	NewMessageID func(context.Context) (string, error) // 根部注入，建立原生材料引用前分配消息身份。
+	Identity     interface {
 		Scope(context.Context) session.Scope
 	}
 	SelectionForTurn func(context.Context, *storage.Session) modelmgr.Selection

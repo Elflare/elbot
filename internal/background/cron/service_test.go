@@ -700,6 +700,10 @@ func newTestCronService(t *testing.T, opts Options) *Service {
 	if opts.SandboxRoot == "" {
 		opts.SandboxRoot = t.TempDir()
 	}
+	if opts.NewRunID == nil {
+		next := testutil.IDSequence()
+		opts.NewRunID = func(ctx context.Context) (string, error) { return next.ID(ctx, "run") }
+	}
 	s := NewService(opts)
 	if err := opts.Manager.RegisterHandler(UserHandlerName, s.Handler); err != nil {
 		t.Fatal(err)

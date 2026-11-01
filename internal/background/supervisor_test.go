@@ -72,7 +72,7 @@ func backgroundDeps(t *testing.T) (*config.Config, SupervisorDeps) {
 
 func TestBackgroundLifecycleAndBorrowedResources(t *testing.T) {
 	cfg, deps := backgroundDeps(t)
-	row, err := deps.Store.ElnisEvents().Create(t.Context(), storage.CreateElnisEventRequest{EventKey: "interrupted", ElwispName: "test", Source: "test", SourceID: "one", Status: elnis.StatusQueued})
+	row, err := deps.Store.ElnisEvents().Create(t.Context(), storage.CreateElnisEventRequest{ID: storage.NewID(), EventKey: "interrupted", ElwispName: "test", Source: "test", SourceID: "one", Status: elnis.StatusQueued})
 	if err != nil {
 		t.Fatal(err)
 	}

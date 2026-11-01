@@ -78,6 +78,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	)
 	materials := deps.Materials
 	s.branches = branch.NewService(branch.ServiceDeps{
+		NewMessageID:     storage.IDSequence(deps.Store.NextIDSequence).MessageID,
 		AllocateID:       s.allocateID,
 		Sessions:         sessions,
 		Messages:         messages,

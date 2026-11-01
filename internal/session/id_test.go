@@ -113,7 +113,7 @@ func TestSessionIDForkCopyAndLegacySources(t *testing.T) {
 	if _, err := svc.Resume(t.Context(), scope, legacy.ID); err != nil {
 		t.Fatal(err)
 	}
-	message := &storage.Message{SessionID: legacy.ID, Role: storage.RoleAssistant, Content: "answer"}
+	message := &storage.Message{ID: storage.NewID(), SessionID: legacy.ID, Role: storage.RoleAssistant, Content: "answer"}
 	if err := store.Messages().Append(t.Context(), message); err != nil {
 		t.Fatal(err)
 	}

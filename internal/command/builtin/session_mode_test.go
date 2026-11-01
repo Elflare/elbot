@@ -55,7 +55,7 @@ func TestChatCommandDoesNotContinueWhenHistoryBlocksSwitch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := store.Messages().Append(ctx, &storage.Message{SessionID: work.ID, Role: storage.RoleUser, Content: "history"}); err != nil {
+	if err := store.Messages().Append(ctx, &storage.Message{ID: storage.NewID(),SessionID: work.ID, Role: storage.RoleUser, Content: "history"}); err != nil {
 		t.Fatalf("Append: %v", err)
 	}
 	result, err := NewChat(Deps{CommandText: testCommandText, Sessions: svc, Scope: func(context.Context) session.Scope { return scope }}).Handle(ctx, command.Request{Args: "do not send"})

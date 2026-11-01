@@ -208,7 +208,7 @@ func TestNamingLogFailureDoesNotChangeBusinessResult(t *testing.T) {
 	f := newFixture(t, 1, func(context.Context, llm.TextRequest) (llm.TextResult, error) {
 		return llm.TextResult{Text: "saved title"}, nil
 	})
-	id := f.row(t, storage.Message{Role: storage.RoleUser, Content: "user"})
+	id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "user"})
 	event := f.attempt(t, id)
 	if event.ResultStatus != events.ResultSucceeded || event.Title == nil || *event.Title != "saved title" {
 		t.Fatalf("log failure changed result: %+v", event)

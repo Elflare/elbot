@@ -24,7 +24,7 @@ func TestForkMediaReferencesRespectCheckpoint(t *testing.T) {
 		if err := store.Media().Upsert(ctx, &storage.Media{ID: id, Backend: "local", MIMEType: "image/png"}); err != nil {
 			t.Fatal(err)
 		}
-		msg := &storage.Message{SessionID: parent.ID, Role: storage.RoleAssistant, CreatedAt: at, Segments: fmt.Sprintf(`[{"type":"image","media":%q}]`, id)}
+		msg := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleAssistant, CreatedAt: at, Segments: fmt.Sprintf(`[{"type":"image","media":%q}]`, id)}
 		if err := store.Messages().Append(ctx, msg); err != nil {
 			t.Fatal(err)
 		}
@@ -47,7 +47,7 @@ func TestForkMediaReferencesRespectCheckpoint(t *testing.T) {
 		}
 	}
 	assertHistory(fork.ID)
-	checkpoint := &storage.Message{SessionID: fork.ID, Role: storage.RoleAssistant, Content: "checkpoint"}
+	checkpoint := &storage.Message{ID: storage.NewID(), SessionID: fork.ID, Role: storage.RoleAssistant, Content: "checkpoint"}
 	if err := store.Messages().Append(ctx, checkpoint); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestForkInheritsSessionToolMediaBeforeCheckpoint(t *testing.T) {
 		}
 	}
 	checkpointAt := time.Now().UTC()
-	checkpoint := &storage.Message{SessionID: parent.ID, Role: storage.RoleAssistant, Content: "checkpoint", CreatedAt: checkpointAt}
+	checkpoint := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleAssistant, Content: "checkpoint", CreatedAt: checkpointAt}
 	if err := store.Messages().Append(ctx, checkpoint); err != nil {
 		t.Fatal(err)
 	}

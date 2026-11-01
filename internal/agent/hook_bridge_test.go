@@ -10,13 +10,23 @@ import (
 	"elbot/internal/request"
 )
 
+func TestHookRequestAllocationFailure(t *testing.T) {
+	m := contractSupervisor(t, isolatedModuleDeps(t))
+	want := errors.New("reserve failed")
+	m.requests = request.NewManager(0, func(context.Context) (int64, error) { return 0, want })
+	_, done, err := m.StartHookRequest(t.Context(), "session", "handler")
+	if !errors.Is(err, want) || done != nil || len(m.requests.List()) != 0 {
+		t.Fatalf("cause=%v requests=%v", err, m.requests.List())
+	}
+}
+
 func TestHookRequestsKeepPerHandlerIdentityAndCancellation(t *testing.T) {
 	m := contractSupervisor(t, isolatedModuleDeps(t))
-	parent, parentCtx, parentDone := m.requests.Start(t.Context(), request.StartRequest{SessionID: "session", Kind: request.KindTurn})
+	parent, parentCtx, parentDone, _ := m.requests.Start(t.Context(), request.StartRequest{SessionID: "session", Kind: request.KindTurn})
 	defer parentDone()
 	_, err := m.RegisterHooks(Points{AgentOutputPrepared: func(ctx context.Context, _ Facts, text string) (string, events.LogResult, error) {
 		for _, name := range []string{"first", "second"} {
-			runCtx, done := m.StartHookRequest(ctx, "session", name)
+			runCtx, done, _ := m.StartHookRequest(ctx, "session", name)
 			facts, _ := contextinfo.ExecutionFromContext(runCtx)
 			active := m.requests.ListBySession("session")
 			found := false

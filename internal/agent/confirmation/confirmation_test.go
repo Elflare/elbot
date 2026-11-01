@@ -8,6 +8,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/security"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 	"errors"
 	"strings"
 
@@ -42,7 +43,7 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			turns := turn.NewSupervisor()
+			turns := turn.NewSupervisor(testutil.IDSequence())
 			defer turns.StopAll()
 			ctx := t.Context()
 			execution := turn.NewExecution("confirmation")
@@ -50,7 +51,7 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 			if !turns.StartAttempt(row.ID, turn.Input{Text: "hello"}, execution, "attempt") || !turns.StartToolPhase(row.ID, "attempt") {
 				t.Fatal("start tools")
 			}
-			coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: testCommandText, Sessions: sessions, Requests: request.NewManager(0), Turns: turns, Commands: commandpkg.NewRouter([]string{"/"}), Identity: identity, Output: confirmationOutput{}, Policy: NewConfirmationPolicy(ConfirmationPolicyDeps{Identity: identity, UserConfirmationTimeout: time.Second})})
+			coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: testCommandText, Sessions: sessions, Requests: request.NewManager(0, testutil.IDSequence()), Turns: turns, Commands: commandpkg.NewRouter([]string{"/"}), Identity: identity, Output: confirmationOutput{}, Policy: NewConfirmationPolicy(ConfirmationPolicyDeps{Identity: identity, UserConfirmationTimeout: time.Second})})
 
 			done := make(chan toolshare.ConfirmResult, 1)
 			go func() {
@@ -90,7 +91,7 @@ func TestConfirmationTerminationAndPromptFailure(t *testing.T) {
 	for _, mode := range []string{"expired", "canceled", "prompt_failed"} {
 		t.Run(mode, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				turns := turn.NewSupervisor()
+				turns := turn.NewSupervisor(testutil.IDSequence())
 				execution := turn.NewExecution("run")
 				turns.StartAttempt("s", turn.Input{}, execution, "a")
 				turns.StartToolPhase("s", "a")
@@ -143,7 +144,7 @@ func (o confirmationOutput) SendAssistant(_ context.Context, text string, action
 
 func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		turns := turn.NewSupervisor()
+		turns := turn.NewSupervisor(testutil.IDSequence())
 		execution := turn.NewExecution("run")
 		turns.StartAttempt("s", turn.Input{}, execution, "a")
 		turns.StartToolPhase("s", "a")

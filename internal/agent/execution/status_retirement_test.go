@@ -7,6 +7,7 @@ import (
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
+	"elbot/internal/testutil"
 	"elbot/internal/turn"
 	"encoding/json"
 	"sync"
@@ -14,7 +15,7 @@ import (
 )
 
 func TestStatusRetirementRejectsLatePublicationAndIdleCacheRecreation(t *testing.T) {
-	turns := turn.NewSupervisor()
+	turns := turn.NewSupervisor(testutil.IDSequence())
 	changed := signal.New[StatusChangedEvent, signal.Empty]("retirement")
 	defer changed.Close(context.Background())
 	r := NewStatusRecorder(StatusRecorderDeps{View: dialogue.ExecutionView{}, Turns: turns, Changed: changed})
@@ -64,7 +65,7 @@ func TestStatusRetirementRejectsLatePublicationAndIdleCacheRecreation(t *testing
 }
 
 func TestStatusRetirementDoesNotWaitForDisplayCallback(t *testing.T) {
-	turns := turn.NewSupervisor()
+	turns := turn.NewSupervisor(testutil.IDSequence())
 	changed := signal.New[StatusChangedEvent, signal.Empty]("retirement-blocked")
 	defer changed.Close(context.Background())
 	r := NewStatusRecorder(StatusRecorderDeps{View: dialogue.ExecutionView{}, Turns: turns, Changed: changed})

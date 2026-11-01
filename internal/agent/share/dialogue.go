@@ -132,7 +132,6 @@ func DrainPending(turns interface {
 		segments = llm.TextSegments(pending.Text)
 	}
 	message := storage.Message{
-		ID:        storage.NewID(),
 		SessionID: sessionID,
 		Role:      storage.RoleUser,
 		Content:   MessageContent(segments),
@@ -195,15 +194,15 @@ type MessageCommitter interface {
 }
 
 // NewToolBatch retains one assistant call array and ordered call/result links.
-func NewToolBatch(head *storage.Message, calls []llm.ToolCallRequest, results []*storage.Message) (*storage.ToolBatch, error) {
-	if head.ID == "" {
-		head.ID = storage.NewID()
+func NewToolBatch(ctx context.Context, allocate func(context.Context) (string, error), head *storage.Message, calls []llm.ToolCallRequest, results []*storage.Message) (*storage.ToolBatch, error) {
+	if err := storage.PrepareMessageID(ctx, allocate, head); err != nil {
+		return nil, err
 	}
 	head.CreatedAt = storage.Now()
 	ids := make([]string, len(results))
 	for i, result := range results {
-		if result.ID == "" {
-			result.ID = storage.NewID()
+		if err := storage.PrepareMessageID(ctx, allocate, result); err != nil {
+			return nil, err
 		}
 		ids[i] = result.ID
 		result.CreatedAt = head.CreatedAt

@@ -1,6 +1,7 @@
 package builtin
 
 import (
+ "elbot/internal/testutil"
 	"context"
 	"elbot/internal/command"
 	"elbot/internal/config"
@@ -66,11 +67,11 @@ func TestStatusSessionMarkers(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			requests := request.NewManager(0)
-			_, _, done := requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn, Label: "chat"})
+			requests := request.NewManager(0, testutil.IDSequence())
+			_, _, done, _ := requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn, Label: "chat"})
 			defer done()
 			handler := NewStatus(Deps{CommandText: testCommandText,
-				Sessions: svc, Models: models, Requests: requests, Turns: turn.NewSupervisor(),
+				Sessions: svc, Models: models, Requests: requests, Turns: turn.NewSupervisor(testutil.IDSequence()),
 				Store: store, Scope: func(context.Context) session.Scope { return scope },
 			})
 			result, err := handler.Handle(ctx, command.Request{})

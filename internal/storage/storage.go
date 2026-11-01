@@ -77,7 +77,6 @@ type ContextSummary struct {
 }
 
 type ToolCallRecord struct {
-	ID         string
 	SessionID  string
 	ToolCallID string
 	ToolName   string
@@ -325,6 +324,7 @@ type UpsertCronJobRequest struct {
 }
 
 type CreateElnisEventRequest struct {
+	ID               string // Background 预分配的事件 ID。
 	MediaIDs         []string
 	EventKey         string
 	TokenName        string
@@ -376,7 +376,6 @@ type ToolUsageSummary struct {
 }
 
 type PlatformMessageMap struct {
-	ID                string
 	Platform          string
 	PlatformScopeID   string
 	PlatformMessageID string
@@ -421,6 +420,7 @@ type SessionSummary struct {
 }
 
 type Store interface {
+	NextIDSequence(context.Context) (int64, error) // Shared non-Session sequence; allocated before business transactions.
 	Sessions() SessionRepository
 	Messages() MessageRepository
 	Dialogues() DialogueRepository

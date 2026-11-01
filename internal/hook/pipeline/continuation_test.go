@@ -18,9 +18,9 @@ func TestContinuationRunsBeforeRulesAndCanStopPropagation(t *testing.T) {
 		t.Run(map[bool]string{false: "continue", true: "stop"}[stop], func(t *testing.T) {
 			var order, observed []string
 			finished := 0
-			manager := NewManager(func(context.Context, events.LogRecord) {}, func(ctx context.Context, event share.Event, observe func(context.Context, string) (context.Context, func())) (share.Event, bool, events.LogResult, error) {
+			manager := NewManager(func(context.Context, events.LogRecord) {}, func(ctx context.Context, event share.Event, observe func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, events.LogResult, error) {
 				order = append(order, "route")
-				_, done := observe(ctx, "continuation")
+				_, done, _ := observe(ctx, "continuation")
 				defer done()
 				event.Message.Segments = llm.TextSegments("resumed")
 				event.Control.StopPropagation, event.Control.Consume = stop, true
@@ -33,9 +33,9 @@ func TestContinuationRunsBeforeRulesAndCanStopPropagation(t *testing.T) {
 				}
 				return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "ordinary"}, nil
 			})})
-			got, result, err := manager.Run(t.Context(), share.Event{Point: share.PointPlatformMessageReceived}, CallOptions{Woken: true, Observe: func(ctx context.Context, name string) (context.Context, func()) {
+			got, result, err := manager.Run(t.Context(), share.Event{Point: share.PointPlatformMessageReceived}, CallOptions{Woken: true, Observe: func(ctx context.Context, name string) (context.Context, func(), error) {
 				observed = append(observed, name)
-				return ctx, func() { finished++ }
+				return ctx, func() { finished++ }, nil
 			}})
 			wantOrder, wantObserved, wantResult := []string{"route", "rules"}, []string{"continuation", "ordinary"}, "continuation\nordinary"
 			if stop {
@@ -53,7 +53,7 @@ func TestPipelineFailureNotifiesOnceAndPreservesOriginalFailure(t *testing.T) {
 		t.Run(source, func(t *testing.T) {
 			original, secondary := errors.New("source failed"), errors.New("error hook failed")
 			notified, ordinary := 0, 0
-			manager := NewManager(func(context.Context, events.LogRecord) {}, func(_ context.Context, event share.Event, _ func(context.Context, string) (context.Context, func())) (share.Event, bool, events.LogResult, error) {
+			manager := NewManager(func(context.Context, events.LogRecord) {}, func(_ context.Context, event share.Event, _ func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, events.LogResult, error) {
 				if source != "route" {
 					return event, false, events.LogResult{ResultStatus: events.ResultSkipped}, nil
 				}

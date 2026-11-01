@@ -7,7 +7,7 @@ import (
 )
 
 // createLatestDBSQL contains the final schema and applied-version baseline through
-// migration 28. Update both together when refreshing this snapshot.
+// migration 30. Update both together when refreshing this snapshot.
 const createLatestDBSQL = `
 CREATE TABLE schema_migrations (
     version INTEGER PRIMARY KEY,
@@ -34,11 +34,12 @@ CREATE TABLE sessions (
 );
 
 -- 单行计数器保存最后已分配的 Session 序号，不随 sessions 删除或事务回滚而回退。
-CREATE TABLE session_sequence (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    value INTEGER NOT NULL CHECK (typeof(value) = 'integer' AND value >= 0)
+CREATE TABLE id_sequences (
+ name TEXT PRIMARY KEY,
+ value INTEGER NOT NULL CHECK(typeof(value)='integer' AND value>=0),
+ reserved INTEGER NOT NULL DEFAULT 0
 );
-INSERT INTO session_sequence(id, value) VALUES (1, 0);
+INSERT INTO id_sequences(name,value) VALUES ('session',0),('general',0);
 
 CREATE TABLE messages (
     id TEXT PRIMARY KEY,
@@ -58,7 +59,6 @@ CREATE TABLE messages (
 );
 
 CREATE TABLE platform_message_map (
-    id TEXT PRIMARY KEY,
     platform TEXT NOT NULL,
     platform_scope_id TEXT NOT NULL,
     platform_message_id TEXT NOT NULL,
@@ -67,11 +67,10 @@ CREATE TABLE platform_message_map (
     created_at TEXT NOT NULL,
     FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE,
     FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
-    UNIQUE(platform, platform_scope_id, platform_message_id)
+    PRIMARY KEY(platform, platform_scope_id, platform_message_id)
 );
 
 CREATE TABLE tool_call_records (
-    id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
     tool_call_id TEXT NOT NULL,
     tool_name TEXT NOT NULL,
@@ -441,7 +440,9 @@ FROM (VALUES
     (25, 'create_media_signed_urls'),
     (26, 'cron_report_sources'),
     (27, 'migrate_discovered_tool_snapshots'),
-    (28, 'session_sequence')
+    (28, 'session_sequence'),
+    (29, 'shared_id_sequences'),
+    (30, 'remove_unused_record_ids')
 );
 `
 

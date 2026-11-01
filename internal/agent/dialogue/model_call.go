@@ -179,6 +179,9 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	}
 	hookMessage := agentshare.Message{}
 	if pending != nil {
+		if err := storage.PrepareMessageID(ctx, c.Preparer.NewMessageID, &pending.Message); err != nil {
+			return agentshare.CallInput{}, err
+		}
 		hookMessage = agentshare.Message{
 			ID:           pending.Message.ID,
 			Role:         string(llm.RoleUser),

@@ -1,6 +1,7 @@
 package builtin
 
 import (
+ "elbot/internal/testutil"
 	"context"
 	"strings"
 	"testing"
@@ -21,15 +22,15 @@ func TestRequestsCommandFormatsTree(t *testing.T) {
 	if err := store.Sessions().Create(ctx, sessionRow); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	manager := request.NewManager(time.Minute)
-	turnReq, _, turnDone := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
+	manager := request.NewManager(time.Minute, testutil.IDSequence())
+	turnReq, _, turnDone, _ := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	defer turnDone()
-	_, _, toolDone := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
+	_, _, toolDone, _ := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
 	defer toolDone()
-	_, _, hookDone := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindHook, Label: "gpt_image_draw_fullwidth"})
+	_, _, hookDone, _ := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindHook, Label: "gpt_image_draw_fullwidth"})
 	defer hookDone()
 
-	cmd := NewRequests(Deps{CommandText: testCommandText, Requests: manager, Store: store, Turns: turn.NewSupervisor()})
+	cmd := NewRequests(Deps{CommandText: testCommandText, Requests: manager, Store: store, Turns: turn.NewSupervisor(testutil.IDSequence())})
 	result, err := cmd.Handle(ctx, command.Request{})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -57,15 +58,15 @@ func TestFormatActiveRequestsUsesTree(t *testing.T) {
 	if err := store.Sessions().Create(ctx, sessionRow); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	manager := request.NewManager(time.Minute)
-	turnReq, _, turnDone := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
+	manager := request.NewManager(time.Minute, testutil.IDSequence())
+	turnReq, _, turnDone, _ := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	defer turnDone()
-	_, _, toolDone := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
+	_, _, toolDone, _ := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
 	defer toolDone()
-	_, _, hookDone := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindHook, Label: "gpt_image_draw_fullwidth"})
+	_, _, hookDone, _ := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindHook, Label: "gpt_image_draw_fullwidth"})
 	defer hookDone()
 
-	got := formatActiveRequests(ctx, Deps{CommandText: testCommandText, Requests: manager, Store: store, Turns: turn.NewSupervisor()}, manager.ListBySession("s1"))
+	got := formatActiveRequests(ctx, Deps{CommandText: testCommandText, Requests: manager, Store: store, Turns: turn.NewSupervisor(testutil.IDSequence())}, manager.ListBySession("s1"))
 	for _, want := range []string{"[1] chat · turn", "[1.1]", "[1.2]", "shell · tool", "gpt_image_draw_fullwidth · hook", "mode: work", "tool: shell", "hook: gpt_image_draw_fullwidth"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("active requests output missing %q:\n%s", want, got)
@@ -78,7 +79,7 @@ func TestFormatActiveRequestsUsesTree(t *testing.T) {
 
 func TestRequestCommandsWithoutActiveRequests(t *testing.T) {
 	ctx := context.Background()
-	deps := Deps{CommandText: testCommandText, Requests: request.NewManager(0)}
+	deps := Deps{CommandText: testCommandText, Requests: request.NewManager(0, testutil.IDSequence())}
 	result, err := NewRequests(deps).Handle(ctx, command.Request{})
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +99,7 @@ func TestRequestFormatsPreserveDetails(t *testing.T) {
 	if err := store.Sessions().Create(ctx, row); err != nil {
 		t.Fatal(err)
 	}
-	turns := turn.NewSupervisor()
+	turns := turn.NewSupervisor(testutil.IDSequence())
 	if !turns.StartAttempt(row.ID, turn.Input{}, turn.NewExecution("run"), "attempt") {
 		t.Fatal("failed to start attempt")
 	}
@@ -109,8 +110,8 @@ func TestRequestFormatsPreserveDetails(t *testing.T) {
 	turns.StartToolPhase(row.ID, "attempt")
 	turns.AddToolUse(row.ID, "shell", "attempt")
 	turns.AddToolUse(row.ID, "shell", "attempt")
-	manager := request.NewManager(0)
-	_, _, done := manager.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn, Label: "chat"})
+	manager := request.NewManager(0, testutil.IDSequence())
+	_, _, done, _ := manager.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn, Label: "chat"})
 	defer done()
 	deps := Deps{CommandText: testCommandText, Store: store, Turns: turns, RuntimeStatus: func(sessionID string) runtimestatus.Snapshot {
 		if sessionID != row.ID {
@@ -138,12 +139,12 @@ func TestRequestFormatsPreserveDetails(t *testing.T) {
 
 func TestStopCommandCancelsNumberedHookRequest(t *testing.T) {
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	manager := request.NewManager(time.Minute)
-	turnReq, turnCtx, turnDone := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
+	manager := request.NewManager(time.Minute, testutil.IDSequence())
+	turnReq, turnCtx, turnDone, _ := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	defer turnDone()
-	_, hookCtx, _ := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindHook, Label: "gpt_image_draw_fullwidth"})
+	_, hookCtx, _, _ := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindHook, Label: "gpt_image_draw_fullwidth"})
 
-	cmd := NewStop(Deps{CommandText: testCommandText, Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager, Turns: turn.NewSupervisor()})
+	cmd := NewStop(Deps{CommandText: testCommandText, Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager, Turns: turn.NewSupervisor(testutil.IDSequence())})
 	if _, err := cmd.Handle(ctx, command.Request{Args: "1.1"}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -157,12 +158,12 @@ func TestStopCommandCancelsNumberedHookRequest(t *testing.T) {
 
 func TestStopCommandCancelsNumberedChildRequest(t *testing.T) {
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	manager := request.NewManager(time.Minute)
-	turnReq, turnCtx, turnDone := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
+	manager := request.NewManager(time.Minute, testutil.IDSequence())
+	turnReq, turnCtx, turnDone, _ := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	defer turnDone()
-	_, toolCtx, _ := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
+	_, toolCtx, _, _ := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
 
-	cmd := NewStop(Deps{CommandText: testCommandText, Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager, Turns: turn.NewSupervisor()})
+	cmd := NewStop(Deps{CommandText: testCommandText, Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager, Turns: turn.NewSupervisor(testutil.IDSequence())})
 	if _, err := cmd.Handle(ctx, command.Request{Args: "1.1"}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -176,13 +177,13 @@ func TestStopCommandCancelsNumberedChildRequest(t *testing.T) {
 
 func TestStopCommandCancelsNumberedTurnAndChildren(t *testing.T) {
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	manager := request.NewManager(time.Minute)
-	turnReq, turnCtx, turnDone := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
+	manager := request.NewManager(time.Minute, testutil.IDSequence())
+	turnReq, turnCtx, turnDone, _ := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	defer turnDone()
-	_, toolCtx, toolDone := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
+	_, toolCtx, toolDone, _ := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
 	defer toolDone()
 
-	cmd := NewStop(Deps{CommandText: testCommandText, Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager, Turns: turn.NewSupervisor()})
+	cmd := NewStop(Deps{CommandText: testCommandText, Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager, Turns: turn.NewSupervisor(testutil.IDSequence())})
 	if _, err := cmd.Handle(ctx, command.Request{Args: "1"}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -199,12 +200,12 @@ func TestStopCommandCancelsNumberedTurnAndChildren(t *testing.T) {
 }
 
 func TestStopCommandCompletesRequestIDs(t *testing.T) {
-	manager := request.NewManager(0)
-	started, _, done := manager.Start(context.Background(), request.StartRequest{SessionID: "s1", Kind: request.KindLLM, Label: "chat"})
+	manager := request.NewManager(0, testutil.IDSequence())
+	started, _, done, _ := manager.Start(context.Background(), request.StartRequest{SessionID: "s1", Kind: request.KindLLM, Label: "chat"})
 	defer done()
 
 	cmd := NewStop(Deps{CommandText: testCommandText, Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager}).(command.Completer)
-	prefix := started.ID[:8]
+	prefix := started.ID[:len(started.ID)-1]
 	got := cmd.Complete(contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin}), command.CompletionRequest{Raw: "/stop " + prefix, Prefix: "/", Name: "stop", Args: prefix, Cursor: len("/stop ") + len(prefix)})
 	if len(got) != 1 || got[0].Text != started.ID || got[0].Kind != "request_id" {
 		t.Fatalf("Complete = %#v", got)

@@ -193,6 +193,9 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			var summaryPending *agentshare.PendingUserMessage
 			s.messages, summaryPending = drainPendingUserInput(r.Turns, s.session.ID, s.messages, turn.AttemptFromContext(s.ctx))
 			summaryInput := &storage.Message{SessionID: s.session.ID, Role: storage.RoleUser, Content: "工具调用轮次已达到上限，可以询问用户是否继续或者基于已有工具结果和当前上下文总结当前进度。"}
+			if err := storage.PrepareMessageID(s.requestCtx, r.NewMessageID, summaryInput); err != nil {
+				return failedLoop(err)
+			}
 			if _, err := r.Messages.Append(s.requestCtx, summaryInput, "append_summary_input"); err != nil {
 				return failedLoop(err)
 			}
@@ -255,6 +258,9 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		}
 		if execution.ConfirmationExtra != "" {
 			message := &storage.Message{SessionID: s.session.ID, Role: storage.RoleUser, Content: "补充：" + execution.ConfirmationExtra}
+			if err := storage.PrepareMessageID(s.requestCtx, r.NewMessageID, message); err != nil {
+				return failedLoop(err)
+			}
 			if _, err := r.Messages.Append(s.requestCtx, message, "append_confirmation_input"); err != nil {
 				return failedLoop(err)
 			}

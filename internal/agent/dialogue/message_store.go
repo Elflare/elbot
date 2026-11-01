@@ -24,7 +24,8 @@ func AssistantRawTextMetadata(content, rawText string) string {
 
 // MessageStore is the single dialogue-message write boundary.
 type MessageStore struct {
-	Dialogues interface {
+	NewMessageID func(context.Context) (string, error) // 根部注入的消息发号能力。
+	Dialogues    interface {
 		Commit(context.Context, storage.DialogueCommit) (events.LogResult, error)
 	}
 	Gate     *CommitGate

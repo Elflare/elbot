@@ -82,7 +82,11 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 		}
 		return session, turn.Input{}, err
 	}
-	attempt := storage.NewID()
+	attempt, err := c.turns.AllocateAttempt(ctx)
+	if err != nil {
+		release()
+		return session, turn.Input{}, err
+	}
 	ctx = turn.WithAttempt(ctx, attempt)
 	execution := turn.ExecutionFromContext(ctx)
 	started := c.turns.StartAttempt(session.ID, agentshare.InboundTurnInput(ctx, text), execution, attempt)
@@ -101,7 +105,12 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 	}
 	// Keep the request registered through terminal status and Turn cleanup,
 	// including the interval after CompleteTurn removes the Turn.
-	reqInfo, reqCtx, done := c.requests.Start(ctx, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat", Timeout: c.responseTimeout})
+	reqInfo, reqCtx, done, err := c.requests.Start(ctx, request.StartRequest{SessionID: session.ID, Kind: request.KindTurn, Label: "chat", Timeout: c.responseTimeout})
+	if err != nil {
+		c.turns.FinishAttempt(session.ID, attempt)
+		release()
+		return session, turn.Input{}, err
+	}
 	release()
 	stopObserver := sync.OnceFunc(c.observeRequestStop(reqCtx, session.ID, attempt))
 	defer func() {

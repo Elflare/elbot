@@ -181,7 +181,6 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 	if err != nil {
 		return nil, err
 	}
-	seed.ID = storage.NewID()
 	state, err := contextmgr.DecodeState(row.Metadata)
 	if err != nil {
 		return nil, err

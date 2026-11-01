@@ -3,6 +3,7 @@ package dialogue
 import (
 	"context"
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/testutil"
 	"elbot/internal/tool"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 )
 
 type hookInputCommitter struct {
+	id    string
 	text  string
 	calls int
 }
@@ -21,6 +23,7 @@ type hookInputCommitter struct {
 func (c *hookInputCommitter) Commit(_ context.Context, m *storage.Message, _ []storage.PlatformMessageMap) (events.LogResult, error) {
 	c.calls++
 	c.text = m.Content
+	c.id = m.ID
 	return events.LogResult{}, nil
 }
 
@@ -29,11 +32,13 @@ func TestRequestPointOnlyBindsNewPendingAndKeepsHistoryDetached(t *testing.T) {
 		t.Run(map[bool]string{false: "without pending", true: "with pending"}[withPending], func(t *testing.T) {
 			bridge := hooks.NewHookBridge(hooks.HookBridgeDeps{})
 			defer bridge.Close(context.Background())
+			var hookID string
 			_, err := bridge.Register(hooks.Points{LLMRequestPrepared: func(_ context.Context, _ hooks.Facts, input agentshare.LLMInput) (agentshare.LLMInputResult, events.LogResult, error) {
 				if (input.Message.ID != "") != withPending {
 					t.Fatalf("bound message=%+v", input.Message)
 				}
 				// A provider cannot change stored history through the input snapshot.
+				hookID = input.Message.ID
 				input.Messages[0].Segments = llm.TextSegments("attempted history edit")
 				return agentshare.LLMInputResult{Segments: llm.TextSegments("edited pending"), Tools: input.Tools}, events.LogResult{}, nil
 			}})
@@ -44,10 +49,10 @@ func TestRequestPointOnlyBindsNewPendingAndKeepsHistoryDetached(t *testing.T) {
 			var pending *agentshare.PendingUserMessage
 			if withPending {
 				messages = append(messages, llm.LLMMessage{Role: llm.RoleUser, Segments: llm.TextSegments("pending")})
-				pending = &agentshare.PendingUserMessage{Message: storage.Message{ID: "pending", Content: "pending"}, MessageIndex: 1}
+				pending = &agentshare.PendingUserMessage{Message: storage.Message{Content: "pending"}, MessageIndex: 1}
 			}
 			commits := &hookInputCommitter{}
-			processor := &CallProcessor{Hooks: bridge, Preparer: &Preparer{}, Tools: &ToolExecutor{Manager: hookTools{}}}
+			processor := &CallProcessor{Hooks: bridge, Preparer: &Preparer{NewMessageID: testutil.IDSequence().MessageID}, Tools: &ToolExecutor{Manager: hookTools{}}}
 			got, err := processor.PrepareCall(t.Context(), &storage.Session{ID: "s", Mode: storage.SessionModeWork}, modelmgr.Selection{}, messages, nil, pending, commits, &events.LogRecord{})
 			if err != nil {
 				t.Fatal(err)
@@ -56,6 +61,9 @@ func TestRequestPointOnlyBindsNewPendingAndKeepsHistoryDetached(t *testing.T) {
 				t.Fatalf("history changed: %+v", got)
 			}
 			if withPending {
+				if commits.id != hookID || pending.Message.ID != hookID {
+					t.Fatal("pending identity changed after hook")
+				}
 				if commits.calls != 1 || commits.text != "edited pending" || llm.SegmentsTextOnly(got.RequestMessages[1].Segments) != "edited pending" {
 					t.Fatalf("pending=%+v commits=%+v", got, commits)
 				}

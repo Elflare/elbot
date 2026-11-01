@@ -23,7 +23,7 @@ func TestBackgroundCopyHistoryAndMetadata(t *testing.T) {
 			current := f.c.CurrentBinding(scope())
 			source := f.source(t, storage.SessionModeBackground)
 			parent := f.message(t, source.ID, storage.RoleUser)
-			answer := &storage.Message{SessionID: source.ID, Role: storage.RoleAssistant, Content: "answer", ParentMessageID: parent.ID, ReplyToMessageID: parent.ID, ReplyToPlatformMessageID: "platform"}
+			answer := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: storage.RoleAssistant, Content: "answer", ParentMessageID: parent.ID, ReplyToMessageID: parent.ID, ReplyToPlatformMessageID: "platform"}
 			if err := f.store.Messages().Append(t.Context(), answer); err != nil {
 				t.Fatal(err)
 			}
@@ -187,7 +187,7 @@ func TestCopyRejectsUnsealedAndMalformedHistory(t *testing.T) {
 			case "pending":
 				toolBatch(t, f, source.ID, "unfinished", true)
 			case "missing-result":
-				message := &storage.Message{SessionID: source.ID, Role: storage.RoleAssistant, Metadata: `{"tool_result_message_ids":["absent"]}`}
+				message := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: storage.RoleAssistant, Metadata: `{"tool_result_message_ids":["absent"]}`}
 				if err := f.store.Messages().Append(t.Context(), message); err != nil {
 					t.Fatal(err)
 				}

@@ -312,10 +312,10 @@ func TestSessionListExcerptsPreserveBlankMessages(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 	for i, message := range []storage.Message{
-		{SessionID: session.ID, Role: storage.RoleUser, Content: ""},
-		{SessionID: session.ID, Role: storage.RoleUser, Content: "hello"},
-		{SessionID: session.ID, Role: storage.RoleAssistant, Content: "  \n\t  "},
-		{SessionID: session.ID, Role: storage.RoleAssistant, Content: "hi"},
+		{ID: "blank-user", SessionID: session.ID, Role: storage.RoleUser, Content: ""},
+		{ID: "user", SessionID: session.ID, Role: storage.RoleUser, Content: "hello"},
+		{ID: "blank-assistant", SessionID: session.ID, Role: storage.RoleAssistant, Content: "  \n\t  "},
+		{ID: "assistant", SessionID: session.ID, Role: storage.RoleAssistant, Content: "hi"},
 	} {
 		if err := store.Messages().Append(ctx, &message); err != nil {
 			t.Fatalf("append message %d: %v", i, err)
@@ -575,9 +575,9 @@ func TestContextSummaryRepositoryAndListAfter(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 
-	first := &storage.Message{SessionID: session.ID, Role: storage.RoleUser, Content: "first"}
-	second := &storage.Message{SessionID: session.ID, Role: storage.RoleAssistant, Content: "second"}
-	third := &storage.Message{SessionID: session.ID, Role: storage.RoleUser, Content: "third"}
+	first := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleUser, Content: "first"}
+	second := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleAssistant, Content: "second"}
+	third := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleUser, Content: "third"}
 	for _, message := range []*storage.Message{first, second, third} {
 		if err := store.Messages().Append(ctx, message); err != nil {
 			t.Fatalf("append message: %v", err)
@@ -635,8 +635,8 @@ func TestMessageRepositoryAndPlatformMap(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 
-	user := &storage.Message{SessionID: session.ID, Role: storage.RoleUser, Content: "hello", Segments: `[{"type":"text","text":"hello"},{"type":"image","url":"https://example.com/a.png"}]`}
-	assistant := &storage.Message{SessionID: session.ID, Role: storage.RoleAssistant, Content: "hi"}
+	user := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleUser, Content: "hello", Segments: `[{"type":"text","text":"hello"},{"type":"image","url":"https://example.com/a.png"}]`}
+	assistant := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleAssistant, Content: "hi"}
 	if err := store.Messages().Append(ctx, user); err != nil {
 		t.Fatalf("append user: %v", err)
 	}
@@ -766,9 +766,9 @@ func TestForkFieldsPersistAndBoundedMessageQueries(t *testing.T) {
 	if err := store.Sessions().Create(ctx, parent); err != nil {
 		t.Fatalf("create parent: %v", err)
 	}
-	first := &storage.Message{SessionID: parent.ID, Role: storage.RoleUser, Content: "first"}
-	second := &storage.Message{SessionID: parent.ID, Role: storage.RoleAssistant, Content: "second"}
-	third := &storage.Message{SessionID: parent.ID, Role: storage.RoleUser, Content: "third"}
+	first := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleUser, Content: "first"}
+	second := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleAssistant, Content: "second"}
+	third := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleUser, Content: "third"}
 	for _, message := range []*storage.Message{first, second, third} {
 		if err := store.Messages().Append(ctx, message); err != nil {
 			t.Fatalf("append message: %v", err)

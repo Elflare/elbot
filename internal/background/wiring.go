@@ -30,6 +30,7 @@ type cronBridge struct {
 }
 
 type elnisBridge struct {
+	next  storage.IDSequence           // 事件入库前预分配身份。
 	repo  storage.ElnisEventRepository // 请求 Storage 持久化事件及报告，转换为内部记录。
 	media *media.MediaCenter           // 转换事件媒体处理的请求与结果。
 }
@@ -50,7 +51,12 @@ func elnisEvent(row *storage.ElnisEvent) *elnis.EventRecord {
 }
 
 func (b elnisBridge) Create(ctx context.Context, req elnis.CreateEventRequest) (*elnis.EventRecord, error) {
+	id, err := b.next.ID(ctx, "ev")
+	if err != nil {
+		return nil, err
+	}
 	row, err := b.repo.Create(ctx, storage.CreateElnisEventRequest{
+		ID:       id,
 		MediaIDs: req.MediaIDs, EventKey: req.EventKey, TokenName: req.TokenName, ElwispName: req.ElwispName,
 		Source: req.Source, SourceID: req.SourceID, Tags: req.Tags, Mode: req.Mode, ModelSlot: req.ModelSlot,
 		ContentHash: req.ContentHash, ToolDeclarations: req.ToolDeclarations, ToolHash: req.ToolHash,
@@ -190,6 +196,9 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	// Models 只暴露 ResolveMode 和 ValidateSelection，发送与复制使用独立函数。
 	m.cronManager = elcron.NewManager(cron)
 	m.cron = elcron.NewService(elcron.Options{
+		NewRunID: func(ctx context.Context) (string, error) {
+			return storage.IDSequence(deps.Store.NextIDSequence).ID(ctx, "run")
+		},
 		Manager: m.cronManager, Store: cron, Runner: m.runner,
 		SendTarget: deps.Platform.SendTo, Models: deps.Models, Media: deps.Media, CopyBackground: deps.Agent.CopyBackground, SessionTakenOver: deps.Agent.SessionTakenOver,
 		EnabledPlatforms: enabledCronPlatforms(cfg), SandboxRoot: cfg.Sandbox.Root,
@@ -217,7 +226,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	for _, target := range enabledCronPlatforms(cfg) {
 		platforms = append(platforms, target.Name)
 	}
-	elnisDeps := elnisBridge{repo: deps.Store.ElnisEvents(), media: deps.Media}
+	elnisDeps := elnisBridge{next: deps.Store.NextIDSequence, repo: deps.Store.ElnisEvents(), media: deps.Media}
 	// ToolPreloader 只声明 BackgroundSelections，使用 Tool 根包类型。
 	// 平台能力分别注入发送与按名称调用 API 的函数，模型解析只返回所需选择数据。
 	service, err := elnis.NewService(elnis.Options{

@@ -48,7 +48,7 @@ func (r *SessionRepository) CreateMaterial(ctx context.Context, req storage.Sess
 	if req.Seed != nil {
 		seed := req.Seed
 		if seed.ID == "" {
-			seed.ID = storage.NewID()
+			return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("native seed requires a preallocated ID")
 		}
 		seed.SessionID = req.Session.ID
 		fields, err := storage.DecodeSessionMetadata(req.Session.Metadata)

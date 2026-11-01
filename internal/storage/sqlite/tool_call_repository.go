@@ -15,9 +15,6 @@ type ToolCallRepository struct {
 }
 
 func (r *ToolCallRepository) Create(ctx context.Context, record *storage.ToolCallRecord) error {
-	if record.ID == "" {
-		record.ID = storage.NewID()
-	}
 	now := storage.Now()
 	if record.StartedAt.IsZero() {
 		record.StartedAt = now
@@ -29,12 +26,15 @@ func (r *ToolCallRepository) Create(ctx context.Context, record *storage.ToolCal
 		record.CreatedAt = record.FinishedAt
 	}
 
-	_, err := r.db.ExecContext(ctx, `
+	return insertToolCallRecord(ctx, r.db, record)
+}
+
+func insertToolCallRecord(ctx context.Context, writer sessionWriter, record *storage.ToolCallRecord) error {
+	_, err := writer.ExecContext(ctx, `
 INSERT INTO tool_call_records (
-    id, session_id, tool_call_id, tool_name, actor_id, risk_level, success, error,
+    session_id, tool_call_id, tool_name, actor_id, risk_level, success, error,
     started_at, finished_at, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		record.ID,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		record.SessionID,
 		record.ToolCallID,
 		record.ToolName,

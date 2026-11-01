@@ -18,7 +18,7 @@ import (
 // tracking only; Hook never obtains its request manager or recomputes wakeup.
 func (m *Supervisor) ConnectAgent(agent interface {
 	RegisterHooks(agenthooks.Points) (func(), error)
-	StartHookRequest(context.Context, string, string) (context.Context, func())
+	StartHookRequest(context.Context, string, string) (context.Context, func(), error)
 }) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -37,20 +37,20 @@ func (m *Supervisor) ConnectAgent(agent interface {
 }
 
 func (m *Supervisor) callOptions(facts agenthooks.Facts, agent interface {
-	StartHookRequest(context.Context, string, string) (context.Context, func())
+	StartHookRequest(context.Context, string, string) (context.Context, func(), error)
 }) pipeline.CallOptions {
 	sessionID := facts.Session.ID
 	return pipeline.CallOptions{
 		Woken:         facts.Woken,
 		ReadOnlyCalls: facts.ReadOnlyCalls,
-		Observe: func(ctx context.Context, name string) (context.Context, func()) {
+		Observe: func(ctx context.Context, name string) (context.Context, func(), error) {
 			return agent.StartHookRequest(ctx, sessionID, name)
 		},
 	}
 }
 
 func (m *Supervisor) agentPoints(agent interface {
-	StartHookRequest(context.Context, string, string) (context.Context, func())
+	StartHookRequest(context.Context, string, string) (context.Context, func(), error)
 }) agenthooks.Points {
 	eventFor := func(facts agenthooks.Facts, point share.Point) share.Event {
 		return share.Event{

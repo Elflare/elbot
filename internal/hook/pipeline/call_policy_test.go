@@ -25,8 +25,8 @@ func TestInvocationReleasesContext(t *testing.T) {
 				}
 				return event, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 			})})
-			options := CallOptions{Woken: true, Observe: func(ctx context.Context, _ string) (context.Context, func()) {
-				return ctx, func() { done++ }
+			options := CallOptions{Woken: true, Observe: func(ctx context.Context, _ string) (context.Context, func(), error) {
+				return ctx, func() { done++ }, nil
 			}}
 			event := share.Event{Point: share.PointToolCallPrepared}
 			var err error
@@ -58,7 +58,7 @@ func TestInvokeCleanupOnPanic(t *testing.T) {
 					t.Error("panic not propagated")
 				}
 			}()
-			manager.invoke(t.Context(), reg, share.Event{}, CallOptions{Observe: func(ctx context.Context, _ string) (context.Context, func()) {
+			manager.invoke(t.Context(), reg, share.Event{}, CallOptions{Observe: func(ctx context.Context, _ string) (context.Context, func(), error) {
 				captured = ctx
 				if stage == "observe" {
 					panic(stage)
@@ -67,7 +67,7 @@ func TestInvokeCleanupOnPanic(t *testing.T) {
 					if stage == "done" {
 						panic(stage)
 					}
-				}
+				}, nil
 			}})
 		}()
 		if captured.Err() != context.Canceled || len(manager.active) != 0 {

@@ -41,6 +41,7 @@ type StartRequest struct {
 }
 
 type Manager struct {
+	next           storage.IDSequence // 根部注入的持久化序号能力。
 	mu             sync.Mutex
 	defaultTimeout time.Duration
 	active         map[string]*activeRequest
@@ -53,8 +54,9 @@ type activeRequest struct {
 	ctx context.Context
 }
 
-func NewManager(defaultTimeout time.Duration) *Manager {
+func NewManager(defaultTimeout time.Duration, next storage.IDSequence) *Manager {
 	return &Manager{
+		next:           next,
 		defaultTimeout: defaultTimeout,
 		active:         map[string]*activeRequest{},
 	}
@@ -62,7 +64,11 @@ func NewManager(defaultTimeout time.Duration) *Manager {
 
 // Start registers execution until its owner calls done, including after context
 // cancellation. The owner must join its work and release resources before done.
-func (m *Manager) Start(parent context.Context, start StartRequest) (Request, context.Context, func()) {
+func (m *Manager) Start(parent context.Context, start StartRequest) (Request, context.Context, func(), error) {
+	id, err := m.next.ID(parent, "rq")
+	if err != nil {
+		return Request{}, nil, nil, err
+	}
 	timeout := start.Timeout
 	if timeout == 0 {
 		timeout = m.defaultTimeout
@@ -83,7 +89,7 @@ func (m *Manager) Start(parent context.Context, start StartRequest) (Request, co
 	}
 
 	req := Request{
-		ID:        storage.NewID(),
+		ID:        id,
 		ParentID:  start.ParentID,
 		SessionID: start.SessionID,
 		Kind:      start.Kind,
@@ -115,7 +121,7 @@ func (m *Manager) Start(parent context.Context, start StartRequest) (Request, co
 		cancel()
 	})
 
-	return req, ctx, done
+	return req, ctx, done, nil
 }
 
 func (m *Manager) List() []Request {

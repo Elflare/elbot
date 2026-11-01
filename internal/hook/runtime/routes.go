@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -45,7 +46,7 @@ func (m *Manager) RouteHookID(event share.Event) string {
 }
 
 // Route resumes a matching waiting invocation before pipeline runs ordinary rules.
-func (m *Manager) Route(ctx context.Context, event share.Event, observe func(context.Context, string) (context.Context, func())) (share.Event, bool, globalevents.LogResult, error) {
+func (m *Manager) Route(ctx context.Context, event share.Event, observe func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, globalevents.LogResult, error) {
 	if dispatched, _ := event.Metadata[dispatchedMetadataKey].(bool); dispatched {
 		return event, false, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no matching continuation"}, nil
 	}
@@ -61,12 +62,24 @@ func (m *Manager) Route(ctx context.Context, event share.Event, observe func(con
 		m.mu.Unlock()
 		return event, false, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no matching continuation"}, nil
 	}
+	var err error
 	if observe != nil {
 		var done func()
-		ctx, done = observe(ctx, worker.config.ID)
-		defer done()
+		ctx, done, err = observe(ctx, worker.config.ID)
+		if err == nil {
+			defer done()
+		}
 	}
-	updated, logResult, err := worker.handle(ctx, event, true, lease.ConversationID, lease.Control)
+	updated := event
+	logResult := globalevents.LogResult{}
+	if err == nil {
+		updated, logResult, err = worker.handle(ctx, event, true, lease.ConversationID, lease.Control)
+	} else {
+		logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "start hook request: " + err.Error()}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			logResult.ResultStatus = globalevents.ResultCanceled
+		}
+	}
 	// Runtime owns the continuation record; pipeline propagates this source outcome.
 	record := globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, EventName: "hook_triggered", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: fmt.Sprintf("continuation: hook=%s point=%s\n%s", worker.config.ID, event.Point, logResult.Content), ResultStatus: logResult.ResultStatus}
 	if logResult.ResultStatus == globalevents.ResultFailed {

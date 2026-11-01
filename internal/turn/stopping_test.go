@@ -1,11 +1,12 @@
 package turn
 
 import (
+	"elbot/internal/testutil"
 	"testing"
 )
 
 func TestStopKeepsAttemptUntilAcknowledged(t *testing.T) {
-	m := NewSupervisor()
+	m := NewSupervisor(testutil.IDSequence())
 	e := NewExecution("old")
 	m.StartAttempt("s", Input{Text: "original"}, e, "old-attempt")
 	done := m.Snapshot("s").AttemptDone
@@ -43,7 +44,7 @@ func TestStopKeepsAttemptUntilAcknowledged(t *testing.T) {
 }
 
 func TestAppendAttemptAcknowledgementKeepsConfirmation(t *testing.T) {
-	m := NewSupervisor()
+	m := NewSupervisor(testutil.IDSequence())
 	e := NewExecution("execution")
 	m.StartAttempt("s", Input{Text: "first"}, e, "attempt")
 	done := m.Snapshot("s").AttemptDone

@@ -55,7 +55,7 @@ func TestListCountsSameNameAndStopCancels(t *testing.T) {
 
 func TestManagerReplaceSwapsHandlersAndKeepsRuntimeIntegrations(t *testing.T) {
 	routed, logged, observed, runs := 0, 0, 0, 0
-	active := NewManager(func(context.Context, events.LogRecord) { logged++ }, func(_ context.Context, event share.Event, _ func(context.Context, string) (context.Context, func())) (share.Event, bool, events.LogResult, error) {
+	active := NewManager(func(context.Context, events.LogRecord) { logged++ }, func(_ context.Context, event share.Event, _ func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, events.LogResult, error) {
 		routed++
 		return event, false, events.LogResult{ResultStatus: events.ResultSkipped}, nil
 	})
@@ -65,9 +65,9 @@ func TestManagerReplaceSwapsHandlersAndKeepsRuntimeIntegrations(t *testing.T) {
 		return event, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	})})
 	active.Replace(candidate)
-	options := CallOptions{Woken: true, Observe: func(ctx context.Context, name string) (context.Context, func()) {
+	options := CallOptions{Woken: true, Observe: func(ctx context.Context, name string) (context.Context, func(), error) {
 		observed++
-		return ctx, func() {}
+		return ctx, func() {}, nil
 	}}
 	if _, _, err := active.Run(t.Context(), share.Event{Point: share.PointPlatformMessageReceived}, options); err != nil {
 		t.Fatal(err)

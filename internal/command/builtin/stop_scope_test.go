@@ -1,6 +1,7 @@
 package builtin
 
 import (
+ "elbot/internal/testutil"
 	"context"
 	"testing"
 
@@ -21,9 +22,9 @@ func TestStopUserScopeResolutionAndChildren(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			requests := request.NewManager(0)
+			requests := request.NewManager(0, testutil.IDSequence())
 			start := func(sessionID, parentID string, kind request.Kind) (request.Request, context.Context) {
-				r, run, done := requests.Start(ctx, request.StartRequest{SessionID: sessionID, ParentID: parentID, Kind: kind})
+				r, run, done, _ := requests.Start(ctx, request.StartRequest{SessionID: sessionID, ParentID: parentID, Kind: kind})
 				t.Cleanup(done)
 				return r, run
 			}
@@ -31,7 +32,7 @@ func TestStopUserScopeResolutionAndChildren(t *testing.T) {
 			root, rootCtx := start(row.ID, "", request.KindTurn)
 			_, toolCtx := start(row.ID, root.ID, request.KindTool)
 			hookReq, hookCtx := start(row.ID, root.ID, request.KindHook)
-			cmd := NewStop(Deps{CommandText: testCommandText, Sessions: sessions, Requests: requests, Turns: turn.NewSupervisor(), Scope: func(context.Context) session.Scope { return scope }})
+			cmd := NewStop(Deps{CommandText: testCommandText, Sessions: sessions, Requests: requests, Turns: turn.NewSupervisor(testutil.IDSequence()), Scope: func(context.Context) session.Scope { return scope }})
 			completer := cmd.(command.Completer)
 			completions := completer.Complete(ctx, command.CompletionRequest{Raw: "/stop ", Prefix: "/", Name: "stop", Cursor: 6})
 			if len(completions) != 3 {
@@ -94,8 +95,8 @@ func TestStopRejectsMissingOrExpiredCurrent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			requests := request.NewManager(0)
-			r, running, done := requests.Start(ctx, request.StartRequest{SessionID: source.ID, Kind: request.KindTurn})
+			requests := request.NewManager(0, testutil.IDSequence())
+			r, running, done, _ := requests.Start(ctx, request.StartRequest{SessionID: source.ID, Kind: request.KindTurn})
 			defer done()
 			if err := svc.ResetCurrent(ctx, scope); err != nil {
 				t.Fatal(err)
@@ -111,7 +112,7 @@ func TestStopRejectsMissingOrExpiredCurrent(t *testing.T) {
 				}
 				ctx = session.WithBinding(ctx, binding)
 			}
-			cmd := NewStop(Deps{CommandText: testCommandText, Sessions: svc, Requests: requests, Turns: turn.NewSupervisor(), Scope: func(context.Context) session.Scope { return scope }})
+			cmd := NewStop(Deps{CommandText: testCommandText, Sessions: svc, Requests: requests, Turns: turn.NewSupervisor(testutil.IDSequence()), Scope: func(context.Context) session.Scope { return scope }})
 			for _, arg := range []string{r.ID, "1", ""} {
 				result, err := cmd.Handle(ctx, command.Request{Args: arg})
 				if err != nil {

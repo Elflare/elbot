@@ -2,17 +2,18 @@ package request
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"testing"
 
 	"elbot/internal/contextinfo"
 )
 
 func TestRequestsPublishIndependentAssociations(t *testing.T) {
-	manager := NewManager(0)
+	manager := NewManager(0, testutil.IDSequence())
 	ctx := contextinfo.WithExecution(t.Context(), contextinfo.Execution{RunID: "run", Attempt: "attempt"})
-	main, mainCtx, finishMain := manager.Start(ctx, StartRequest{SessionID: "session", Kind: KindTurn})
+	main, mainCtx, finishMain, _ := manager.Start(ctx, StartRequest{SessionID: "session", Kind: KindTurn})
 	defer finishMain()
-	child, childCtx, finishChild := manager.Start(mainCtx, StartRequest{SessionID: "session", ParentID: main.ID, Kind: KindTool})
+	child, childCtx, finishChild, _ := manager.Start(mainCtx, StartRequest{SessionID: "session", ParentID: main.ID, Kind: KindTool})
 	defer finishChild()
 	facts, ok := contextinfo.ExecutionFromContext(childCtx)
 	if !ok || facts.RequestID != child.ID || facts.ParentRequestID != main.ID || facts.RootRequestID != main.ID || facts.SessionID != "session" || facts.RunID != "run" || facts.Attempt != "attempt" {

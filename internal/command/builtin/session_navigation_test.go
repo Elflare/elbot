@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"strings"
 	"testing"
 	"time"
@@ -78,8 +79,8 @@ func TestResumeAndForkTruncateHistoryWithoutChangingMessages(t *testing.T) {
 	}
 	original := strings.Repeat("中😀", 101)
 	messages := []*storage.Message{
-		{SessionID: parent.ID, Role: storage.RoleUser, Content: original},
-		{SessionID: parent.ID, Role: storage.RoleAssistant, Content: original},
+		{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleUser, Content: original},
+		{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleAssistant, Content: original},
 	}
 	for _, message := range messages {
 		if err := store.Messages().Append(ctx, message); err != nil {
@@ -91,8 +92,8 @@ func TestResumeAndForkTruncateHistoryWithoutChangingMessages(t *testing.T) {
 	}
 	deps := Deps{CommandText: testCommandText,
 		Sessions: svc,
-		Requests: request.NewManager(0),
-		Turns:    turn.NewSupervisor(),
+		Requests: request.NewManager(0, testutil.IDSequence()),
+		Turns:    turn.NewSupervisor(testutil.IDSequence()),
 		Store:    store,
 		Scope:    func(context.Context) session.Scope { return scope },
 	}
@@ -338,9 +339,9 @@ func TestForkMessagesUseForkContextAndForkShowsHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create parent: %v", err)
 	}
-	user := &storage.Message{SessionID: parent.ID, Role: storage.RoleUser, Content: "你好"}
-	assistant := &storage.Message{SessionID: parent.ID, Role: storage.RoleAssistant, Content: "这是可以 fork 的回复"}
-	ignored := &storage.Message{SessionID: parent.ID, Role: storage.RoleAssistant, Content: "fork 点之后不该出现"}
+	user := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleUser, Content: "你好"}
+	assistant := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleAssistant, Content: "这是可以 fork 的回复"}
+	ignored := &storage.Message{ID: storage.NewID(), SessionID: parent.ID, Role: storage.RoleAssistant, Content: "fork 点之后不该出现"}
 	for _, message := range []*storage.Message{user, assistant, ignored} {
 		if err := store.Messages().Append(ctx, message); err != nil {
 			t.Fatalf("append message: %v", err)
@@ -348,8 +349,8 @@ func TestForkMessagesUseForkContextAndForkShowsHistory(t *testing.T) {
 	}
 	deps := Deps{CommandText: testCommandText,
 		Sessions: svc,
-		Requests: request.NewManager(0),
-		Turns:    turn.NewSupervisor(),
+		Requests: request.NewManager(0, testutil.IDSequence()),
+		Turns:    turn.NewSupervisor(testutil.IDSequence()),
 		Store:    store,
 		Scope:    func(context.Context) session.Scope { return scope },
 	}

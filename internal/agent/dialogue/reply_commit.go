@@ -15,8 +15,9 @@ import (
 
 // ReplyCommitter owns the final reply's send/save order, not the turn lifecycle.
 type ReplyCommitter struct {
-	Persistence agentshare.MessageCommitter
-	Output      AssistantPreparer
+	NewMessageID func(context.Context) (string, error) // 发送前分配消息身份，避免发送后才取号失败。
+	Persistence  agentshare.MessageCommitter
+	Output       AssistantPreparer
 }
 
 // Commit requires contexts and Session refreshed through executionView by the
@@ -29,6 +30,12 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 	result.RawText = in.RawText
 	text := in.PlatformText
 	empty := strings.TrimSpace(text) == "" && strings.TrimSpace(in.Text) == "" && len(in.Outputs) == 0
+	message := &storage.Message{SessionID: in.Session.ID, Role: storage.RoleAssistant, Content: in.Text, Metadata: AssistantRawTextMetadata(in.Text, in.RawText)}
+	if !empty {
+		if err := storage.PrepareMessageID(ctx, c.NewMessageID, message); err != nil {
+			return result, err
+		}
+	}
 	if empty && !session.IsBackground(in.Session) {
 		text = "LLM: nil"
 	}
@@ -46,10 +53,6 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 		if result.SendErr != nil && !HasReplyReceipt(result.Receipt) {
 			return result, result.SendErr
 		}
-	}
-	message := &storage.Message{
-		ID: storage.NewID(), SessionID: in.Session.ID, Role: storage.RoleAssistant,
-		Content: in.Text, Metadata: AssistantRawTextMetadata(in.Text, in.RawText),
 	}
 	toSave := message
 	var mappings []storage.PlatformMessageMap

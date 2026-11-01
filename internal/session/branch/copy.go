@@ -119,7 +119,7 @@ func (s *Service) CopyBackground(ctx context.Context, target share.Scope, req Ba
 	}
 	row := &storage.Session{ID: nextID, OwnerID: target.ActorID, Platform: target.Platform, PlatformScopeID: target.PlatformScopeID,
 		Mode: storage.SessionModeBackground, Title: title, Status: storage.SessionStatusActive, Metadata: metadata}
-	copies, err := copyMessages(row.ID, messages)
+	copies, err := s.copyMessages(ctx, row.ID, messages)
 	if err != nil {
 		return nil, err
 	}
@@ -129,10 +129,14 @@ func (s *Service) CopyBackground(ctx context.Context, target share.Scope, req Ba
 	return row, nil
 }
 
-func copyMessages(sessionID string, messages []storage.Message) ([]*storage.Message, error) {
+func (s *Service) copyMessages(ctx context.Context, sessionID string, messages []storage.Message) ([]*storage.Message, error) {
 	ids := make(map[string]string, len(messages))
 	for _, message := range messages {
-		ids[message.ID] = storage.NewID()
+		id, err := s.deps.NewMessageID(ctx)
+		if err != nil {
+			return nil, err
+		}
+		ids[message.ID] = id
 	}
 	copies := make([]*storage.Message, 0, len(messages))
 	for _, original := range messages {

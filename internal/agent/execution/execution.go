@@ -49,6 +49,8 @@ type ExecutionCoordinator struct {
 		Get(context.Context, string) (*storage.Session, error)
 	}
 	turns interface {
+		NewExecution(context.Context) (*turn.Execution, error)
+		AllocateAttempt(context.Context) (string, error)
 		AppendPendingInput(string, turn.Input) bool
 		BeginAppend(string, string, turn.Input) *turn.AppendWait
 		CanCompact(string, *turn.Execution) bool
@@ -67,7 +69,7 @@ type ExecutionCoordinator struct {
 	requests interface {
 		CancelSession(string) int
 		ListBySession(string) []request.Request
-		Start(context.Context, request.StartRequest) (request.Request, context.Context, func())
+		Start(context.Context, request.StartRequest) (request.Request, context.Context, func(), error)
 	}
 	contexts interface {
 		Compact(context.Context, *storage.Session, string, modelmgr.Selection) (*contextmgr.PreparedCompact, error)
@@ -96,7 +98,11 @@ type ExecutionCoordinator struct {
 func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, text string, out agentshare.Output) (runErr error) {
 	execution := turn.ExecutionFromContext(ctx)
 	if execution == nil {
-		execution = turn.NewExecution(storage.NewID())
+		var err error
+		execution, err = c.turns.NewExecution(ctx)
+		if err != nil {
+			return err
+		}
 		ctx = turn.WithExecution(ctx, execution)
 	}
 	defer func() {
@@ -156,7 +162,10 @@ func (c *ExecutionCoordinator) sessionIdle(ctx context.Context, id string) {
 }
 
 func (c *ExecutionCoordinator) RunBackground(ctx context.Context, row *storage.Session, text string) turn.Result {
-	execution := turn.NewExecution(storage.NewID())
+	execution, err := c.turns.NewExecution(ctx)
+	if err != nil {
+		return turn.Result{SessionID: row.ID, Err: err, Outcome: "failed"}
+	}
 	execution.SetResult(row.ID, "", "")
 	ctx = turn.WithExecution(ctx, execution)
 	if err := c.Run(ctx, row, text, backgroundTurnOutput{}); err != nil {

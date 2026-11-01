@@ -18,7 +18,7 @@ FROM sqlite_master ORDER BY type, name)`
 		t.Fatal(err)
 	}
 	rows, err := sharedTestDB.Query(`SELECT name FROM sqlite_master
-WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('schema_migrations', 'session_sequence')`)
+WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('schema_migrations', 'id_sequences')`)
 	if err != nil {
 		t.Fatal(err)
 	}
