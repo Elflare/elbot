@@ -268,7 +268,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		PrepareFileContext: fileCommands.PrepareFileCommand,
 		SessionState:       sessionCommands,
 		Logs:               logging.Reader{Dir: deps.Logs.LogDir()},
-		RuntimeStatus:      status.Snapshot,
 		Usage:              status.Usage,
 	})
 	if err != nil {

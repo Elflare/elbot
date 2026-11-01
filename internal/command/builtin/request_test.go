@@ -1,8 +1,8 @@
 package builtin
 
 import (
- "elbot/internal/testutil"
 	"context"
+	"elbot/internal/testutil"
 	"strings"
 	"testing"
 	"time"
@@ -10,7 +10,6 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/request"
-	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -30,14 +29,22 @@ func TestRequestsCommandFormatsTree(t *testing.T) {
 	_, _, hookDone, _ := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindHook, Label: "gpt_image_draw_fullwidth"})
 	defer hookDone()
 
-	cmd := NewRequests(Deps{CommandText: testCommandText, Requests: manager, Store: store, Turns: turn.NewSupervisor(testutil.IDSequence())})
+	cmd := NewRequests(Deps{CommandText: testCommandText, Requests: manager, Store: store})
 	result, err := cmd.Handle(ctx, command.Request{})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	for _, want := range []string{"[1] chat · turn", "[1.1]", "[1.2]", "shell · tool", "gpt_image_draw_fullwidth · hook", "session: 测试会话", "tool: shell", "hook: gpt_image_draw_fullwidth"} {
+	for _, want := range []string{"[1] turn: chat · ", "[1.1] tool: shell · ", "[1.2] hook: gpt_image_draw_fullwidth · ", "session: 测试会话"} {
 		if !strings.Contains(result.Content, want) {
 			t.Fatalf("requests output missing %q:\n%s", want, result.Content)
+		}
+	}
+	if strings.Count(result.Content, "shell") != 1 || strings.Count(result.Content, "gpt_image_draw_fullwidth") != 1 {
+		t.Fatalf("requests repeats child names:\n%s", result.Content)
+	}
+	for _, unwanted := range []string{"phase:", "mode:", "tools:"} {
+		if strings.Contains(result.Content, unwanted) {
+			t.Fatalf("requests contains session details %q:\n%s", unwanted, result.Content)
 		}
 	}
 }
@@ -53,11 +60,6 @@ func assertCommandTestCanceled(t *testing.T, ctx context.Context) {
 
 func TestFormatActiveRequestsUsesTree(t *testing.T) {
 	ctx := context.Background()
-	store := newCommandTestStore(t)
-	sessionRow := &storage.Session{ID: "s1", Title: "状态会话", Mode: storage.SessionModeWork, OwnerID: "cli:local", Platform: "cli", PlatformScopeID: "local", CreatedAt: storage.Now(), UpdatedAt: storage.Now()}
-	if err := store.Sessions().Create(ctx, sessionRow); err != nil {
-		t.Fatalf("create session: %v", err)
-	}
 	manager := request.NewManager(time.Minute, testutil.IDSequence())
 	turnReq, _, turnDone, _ := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	defer turnDone()
@@ -66,14 +68,14 @@ func TestFormatActiveRequestsUsesTree(t *testing.T) {
 	_, _, hookDone, _ := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindHook, Label: "gpt_image_draw_fullwidth"})
 	defer hookDone()
 
-	got := formatActiveRequests(ctx, Deps{CommandText: testCommandText, Requests: manager, Store: store, Turns: turn.NewSupervisor(testutil.IDSequence())}, manager.ListBySession("s1"))
-	for _, want := range []string{"[1] chat · turn", "[1.1]", "[1.2]", "shell · tool", "gpt_image_draw_fullwidth · hook", "mode: work", "tool: shell", "hook: gpt_image_draw_fullwidth"} {
+	got := formatActiveRequests(manager.ListBySession("s1"))
+	for _, want := range []string{"[1] turn: chat · ", "[1.1] tool: shell · ", "[1.2] hook: gpt_image_draw_fullwidth · "} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("active requests output missing %q:\n%s", want, got)
 		}
 	}
-	if strings.Contains(got, "session:") || strings.Contains(got, sessionRow.Title) {
-		t.Fatalf("active requests repeats session information:\n%s", got)
+	if len(strings.Split(got, "\n")) != 4 {
+		t.Fatalf("active requests contains extra details:\n%s", got)
 	}
 }
 
@@ -87,50 +89,36 @@ func TestRequestCommandsWithoutActiveRequests(t *testing.T) {
 	if result.Content != "nil" {
 		t.Fatalf("requests = %q", result.Content)
 	}
-	if got := formatActiveRequests(ctx, deps, nil); got != "" {
+	if got := formatActiveRequests(nil); got != "" {
 		t.Fatalf("active requests = %q", got)
 	}
 }
 
-func TestRequestFormatsPreserveDetails(t *testing.T) {
-	ctx := context.Background()
-	store := newCommandTestStore(t)
-	row := &storage.Session{ID: "s1", Title: "运行会话", Mode: storage.SessionModeWork, CreatedAt: storage.Now(), UpdatedAt: storage.Now()}
-	if err := store.Sessions().Create(ctx, row); err != nil {
-		t.Fatal(err)
-	}
-	turns := turn.NewSupervisor(testutil.IDSequence())
-	if !turns.StartAttempt(row.ID, turn.Input{}, turn.NewExecution("run"), "attempt") {
-		t.Fatal("failed to start attempt")
-	}
-	t.Cleanup(func() {
-		turns.StopSession(row.ID)
-		turns.FinishAttempt(row.ID, "attempt")
-	})
-	turns.StartToolPhase(row.ID, "attempt")
-	turns.AddToolUse(row.ID, "shell", "attempt")
-	turns.AddToolUse(row.ID, "shell", "attempt")
-	manager := request.NewManager(0, testutil.IDSequence())
-	_, _, done, _ := manager.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn, Label: "chat"})
-	defer done()
-	deps := Deps{CommandText: testCommandText, Store: store, Turns: turns, RuntimeStatus: func(sessionID string) runtimestatus.Snapshot {
-		if sessionID != row.ID {
-			t.Fatalf("runtime session = %q, want %q", sessionID, row.ID)
-		}
-		return runtimestatus.Snapshot{Phase: runtimestatus.PhaseTool, ToolName: "shell", StageStartedAt: time.Now()}
-	}}
+func TestWriteRequestLineKindsAndStopping(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		format func(context.Context, Deps, []request.Request) string
+		name     string
+		kind     request.Kind
+		label    string
+		stopping bool
+		want     string
 	}{
-		{name: "requests", format: formatRequests},
-		{name: "status", format: formatActiveRequests},
+		{name: "turn", kind: request.KindTurn, label: "chat", want: "turn: chat"},
+		{name: "tool", kind: request.KindTool, label: "draw", want: "tool: draw"},
+		{name: "hook", kind: request.KindHook, label: "draw", want: "hook: draw"},
+		{name: "compress", kind: request.KindCompress, label: "compact", want: "compress: compact"},
+		{name: "stopping", kind: request.KindTool, label: "draw", stopping: true, want: "tool: draw stopping"},
+		{name: "unnamed turn", kind: request.KindTurn, want: "turn: chat"},
+		{name: "unnamed hook", kind: request.KindHook, want: "hook: request"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := tc.format(ctx, deps, manager.List())
-			for _, want := range []string{"phase: tool shell (", "mode: work", "tools: shell×2"} {
-				if !strings.Contains(got, want) {
-					t.Fatalf("output missing %q:\n%s", want, got)
+			for _, prefix := range []string{"", "└── "} {
+				var sb strings.Builder
+				writeRequestLine(&sb, "1", prefix, request.Request{
+					Kind: tc.kind, Label: tc.label, Stopping: tc.stopping, StartedAt: time.Now(),
+				})
+				got := sb.String()
+				if !strings.HasPrefix(got, "  "+prefix+"[1] "+tc.want+" · ") || strings.Count(got, "\n") != 1 {
+					t.Fatalf("request line = %q", got)
 				}
 			}
 		})

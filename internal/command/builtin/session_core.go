@@ -46,7 +46,7 @@ func NewStatus(deps Deps) command.Handler {
 				pinned += ", "
 			}
 		}
-		active := formatActiveRequests(ctx, deps, deps.Requests.ListBySession(s.ID))
+		active := formatActiveRequests(deps.Requests.ListBySession(s.ID))
 		turnSnapshot := deps.Turns.Snapshot(s.ID)
 		pendingInput := fmt.Sprintf("%d", turnSnapshot.PendingCount)
 		currentModel := deps.Models.CurrentModelForMode(s.Mode)

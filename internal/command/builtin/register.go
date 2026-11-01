@@ -12,7 +12,6 @@ import (
 	"elbot/internal/logging"
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
-	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 
@@ -98,9 +97,8 @@ type Deps struct {
 	PrepareFileContext func(context.Context, bool) (context.Context, error)
 	SessionState       *SessionCommandState
 
-	Logs          LogService
-	RuntimeStatus func(sessionID string) runtimestatus.Snapshot
-	Usage         func(*storage.Session) (*llm.Usage, error)
+	Logs  LogService
+	Usage func(*storage.Session) (*llm.Usage, error)
 }
 
 func RegisterFactories(registrar Registrar, deps Deps, factories ...HandlerFactory) error {

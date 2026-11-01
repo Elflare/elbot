@@ -11,18 +11,8 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/request"
-	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
-	"elbot/internal/storage"
-	"elbot/internal/turn"
 )
-
-type RequestInfo struct {
-	Request request.Request        // 原始请求及其执行身份。
-	Session *storage.Session       // 请求所属的原始会话记录；未查到时为 nil。
-	Runtime runtimestatus.Snapshot // 请求所属会话的运行状态快照。
-	Turn    turn.Snapshot          // 请求所属会话的单轮状态快照，包含工具统计。
-}
 
 type requestTree struct {
 	Roots    []requestNode
@@ -170,30 +160,29 @@ func NewStopAll(deps Deps) command.Handler {
 }
 
 func formatRequests(ctx context.Context, deps Deps, requests []request.Request) string {
-	return formatRequestTree(ctx, deps, requests, false, func(sb *strings.Builder, info RequestInfo) {
+	return formatRequestTree(requests, func(sb *strings.Builder, req request.Request) {
 		title := "unk"
-		if info.Session != nil && info.Session.Title != "" {
-			title = info.Session.Title
+		if row, err := deps.Store.Sessions().Get(ctx, req.SessionID); err == nil && row.Title != "" {
+			title = row.Title
 		}
 		sb.WriteString(fmt.Sprintf("      session: %s\n", title))
-		writeRequestDetails(sb, info)
 	})
 }
 
-func formatRequestTree(ctx context.Context, deps Deps, requests []request.Request, showNone bool, writeDetails func(*strings.Builder, RequestInfo)) string {
-	if len(requests) == 0 && showNone {
+func formatRequestTree(requests []request.Request, writeDetails func(*strings.Builder, request.Request)) string {
+	if len(requests) == 0 {
 		return ""
 	}
 	tree := buildRequestTree(requests)
 	var sb strings.Builder
 	sb.WriteString("requests:")
-	if len(requests) > 0 {
-		sb.WriteString("\n")
-	}
+	sb.WriteString("\n")
 	for i, root := range tree.Roots {
 		number := strconv.Itoa(i + 1)
 		writeRequestLine(&sb, number, "", root.Request)
-		writeDetails(&sb, collectRequestInfo(ctx, deps, root.Request))
+		if writeDetails != nil {
+			writeDetails(&sb, root.Request)
+		}
 		for j, child := range root.Children {
 			childNumber := fmt.Sprintf("%s.%d", number, j+1)
 			writeRequestLine(&sb, childNumber, "└── ", child)
@@ -203,58 +192,18 @@ func formatRequestTree(ctx context.Context, deps Deps, requests []request.Reques
 }
 
 func writeRequestLine(sb *strings.Builder, number, prefix string, req request.Request) {
-	kind := string(req.Kind)
 	label := strings.TrimSpace(req.Label)
 	if req.Kind == request.KindTurn {
 		if label == "" {
 			label = "chat"
 		}
-		kind = "turn"
 	} else if label == "" {
 		label = "request"
 	}
 	if req.Stopping {
 		label += " stopping"
 	}
-	sb.WriteString(fmt.Sprintf("  %s[%s] %s · %s · %s\n", prefix, number, label, kind, formatDuration(time.Since(req.StartedAt))))
-	if prefix == "" {
-		return
-	}
-	if req.Kind == request.KindTool {
-		sb.WriteString(fmt.Sprintf("      tool: %s\n", label))
-	}
-	if req.Kind == request.KindHook {
-		sb.WriteString(fmt.Sprintf("      hook: %s\n", label))
-	}
-}
-
-func collectRequestInfo(ctx context.Context, deps Deps, req request.Request) RequestInfo {
-	info := RequestInfo{Request: req}
-	info.Session, _ = deps.Store.Sessions().Get(ctx, req.SessionID)
-	if deps.RuntimeStatus != nil {
-		info.Runtime = deps.RuntimeStatus(req.SessionID)
-	}
-	info.Turn = deps.Turns.Snapshot(req.SessionID)
-	return info
-}
-
-func writeRequestDetails(sb *strings.Builder, info RequestInfo) {
-	snapshot := info.Runtime
-	if snapshot.Phase != "" && snapshot.Phase != runtimestatus.PhaseIdle && snapshot.Phase != runtimestatus.PhaseDone {
-		phaseText := string(snapshot.Phase)
-		if snapshot.Phase == runtimestatus.PhaseTool && snapshot.ToolName != "" {
-			phaseText += " " + snapshot.ToolName
-		}
-		sb.WriteString(fmt.Sprintf("      phase: %s (%s)\n", phaseText, formatDuration(snapshot.StageElapsed(time.Now()))))
-	}
-	mode := "unk"
-	if info.Session != nil {
-		mode = info.Session.Mode
-	}
-	sb.WriteString(fmt.Sprintf("      mode: %s\n", mode))
-	if tools := toolsString(info.Turn.Tools); tools != "" {
-		sb.WriteString(fmt.Sprintf("      tools: %s\n", tools))
-	}
+	sb.WriteString(fmt.Sprintf("  %s[%s] %s: %s · %s\n", prefix, number, req.Kind, label, formatDuration(time.Since(req.StartedAt))))
 }
 
 // Both argument resolution and completion use the caller's cancellation scope.
@@ -329,8 +278,8 @@ func requestLess(left, right request.Request) bool {
 	return left.ID < right.ID
 }
 
-func formatActiveRequests(ctx context.Context, deps Deps, requests []request.Request) string {
-	return formatRequestTree(ctx, deps, requests, true, writeRequestDetails)
+func formatActiveRequests(requests []request.Request) string {
+	return formatRequestTree(requests, nil)
 }
 
 func formatDuration(d time.Duration) string {

@@ -242,13 +242,12 @@ func formatEmptyStatus(ctx context.Context, deps Deps) string {
 	scope := deps.Scope(ctx)
 	modeModel := deps.Models.CurrentModelForMode(deps.Sessions.DefaultMode())
 	compactModel := deps.Models.CurrentCompactModel(deps.Sessions.DefaultMode())
-	active := formatActiveRequests(ctx, deps, nil)
 	return trimTrailingNewlines(fmt.Sprintf(`session=nil
 default=%s · model=%s/%s
 compact.model=%s/%s
 platform=%s/%s
-%sphase=idle · pending=0
-`, deps.Sessions.DefaultMode(), modeModel.Provider, modeModel.Model, compactModel.Provider, compactModel.Model, scope.Platform, scope.PlatformScopeID, indentStatusBlock(active)))
+phase=idle · pending=0
+`, deps.Sessions.DefaultMode(), modeModel.Provider, modeModel.Model, compactModel.Provider, compactModel.Model, scope.Platform, scope.PlatformScopeID))
 }
 
 func indentStatusBlock(text string) string {

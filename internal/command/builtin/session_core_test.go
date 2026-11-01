@@ -1,7 +1,6 @@
 package builtin
 
 import (
- "elbot/internal/testutil"
 	"context"
 	"elbot/internal/command"
 	"elbot/internal/config"
@@ -9,6 +8,7 @@ import (
 	"elbot/internal/request"
 	"elbot/internal/session"
 	"elbot/internal/storage"
+	"elbot/internal/testutil"
 	"elbot/internal/turn"
 	"strings"
 	"testing"
@@ -78,7 +78,7 @@ func TestStatusSessionMarkers(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, want := range []string{row.ID, "status test", "requests:", "[1] chat · turn", "user: nil", "bot: nil"} {
+			for _, want := range []string{row.ID, "status test", "requests:", "[1] turn: chat", "user: nil", "bot: nil"} {
 				if !strings.Contains(result.Content, want) {
 					t.Fatalf("status missing %q:\n%s", want, result.Content)
 				}
