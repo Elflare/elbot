@@ -30,7 +30,6 @@ type Scope struct {
 func (s Scope) Key() string { return share.Scope(s).Key() }
 
 type CreateRequest struct {
-	ID       string // 执行交接可预分配 ID，以便同时持有源和目标的准入。
 	Title    string // 新会话标题。
 	Mode     string // 新会话模式；默认值由 control 应用。
 	Metadata string // 会话元数据 JSON。
@@ -55,11 +54,12 @@ type Status struct {
 
 // BackgroundRequest 准备任务会话，不激活前台绑定，也不承载工具运行状态。
 type BackgroundRequest struct {
-	SessionID string            // 非空时复用指定的未接管后台会话。
-	Kind      string            // 后台来源种类。
-	Name      string            // 后台任务名称。
-	Title     string            // 新会话标题。
-	Metadata  map[string]string // 后台业务附加字段。
+	TargetPlatforms []string          // 创建时解析出的有效投递平台；ID 使用其去重快照。
+	SessionID       string            // 非空时复用指定的未接管后台会话。
+	Kind            string            // 后台来源种类。
+	Name            string            // 后台任务名称。
+	Title           string            // 新会话标题。
+	Metadata        map[string]string // 后台业务附加字段。
 }
 
 // BackgroundCopyRequest 复制已提交的后台历史，不继承执行和工具状态。

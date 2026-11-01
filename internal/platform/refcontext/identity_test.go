@@ -25,7 +25,7 @@ func TestReferenceBackgroundIdentityUsesMode(t *testing.T) {
 			if !tc.admin {
 				scope.PlatformScopeID = tc.sessionScope
 			}
-			row := &storage.Session{OwnerID: "u", Platform: "p", PlatformScopeID: tc.sessionScope, Mode: tc.mode, Metadata: tc.metadata}
+			row := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "p", PlatformScopeID: tc.sessionScope, Mode: tc.mode, Metadata: tc.metadata}
 			if err := store.Sessions().Create(t.Context(), row); err != nil {
 				t.Fatal(err)
 			}

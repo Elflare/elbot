@@ -36,7 +36,8 @@ func (r *BackgroundRunner) RunBackground(ctx context.Context, req background.Run
 	ctx = contextinfo.WithBackgroundKind(ctx, toolBackgroundKind(req.Kind))
 
 	result, err := r.execution.RunBackground(ctx, agent.BackgroundRequest{
-		Kind: string(req.Kind), Name: req.Name, Title: req.Title,
+		TargetPlatforms: req.TargetPlatforms,
+		Kind:            string(req.Kind), Name: req.Name, Title: req.Title,
 		Platform: req.Platform, Actor: req.Actor, ScopeID: req.ScopeID, SessionID: req.SessionID,
 		ModelProvider: req.ModelProvider, Model: req.Model,
 		Prompt: req.Prompt, PromptSegments: req.PromptSegments, NeedsElyphRules: req.NeedsElyphRules,

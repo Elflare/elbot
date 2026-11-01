@@ -169,6 +169,7 @@ type BindingChangedEvent struct {
 // BackgroundRequest 描述后台执行输入；调用方在 context 中提供已准备的非空工作目录范围与后台来源。
 // 工具声明仅初始化新会话，续跑沿用会话中已提交的状态。
 type BackgroundRequest struct {
+	TargetPlatforms  []string                     // Background 解析出的有效投递平台，用于新会话的身份快照。
 	Kind             string                       // 后台任务来源。
 	Name             string                       // 来源内的任务标识。
 	Title            string                       // 新会话标题。

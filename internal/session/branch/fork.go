@@ -69,7 +69,11 @@ func (s *Service) Fork(ctx context.Context, scope share.Scope, fromMessageID str
 	if err != nil {
 		return nil, err
 	}
-	nextID := storage.NewID()
+	idOrigin := share.ForegroundIDOrigin(scope)
+	nextID, err := s.deps.AllocateID(ctx, idOrigin)
+	if err != nil {
+		return nil, err
+	}
 	locked, release, err := s.deps.Bindings.EnterActivation(ctx, scope, sourceID, nextID)
 	if err != nil {
 		return nil, err
@@ -110,6 +114,9 @@ func (s *Service) Fork(ctx context.Context, scope share.Scope, fromMessageID str
 	}
 	fields := storage.SessionMetadata{}
 	if err := share.InheritOrigin(after, fields); err != nil {
+		return nil, err
+	}
+	if err := idOrigin.Save(fields); err != nil {
 		return nil, err
 	}
 	metadata, err := fields.Encode()

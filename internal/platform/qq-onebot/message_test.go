@@ -530,7 +530,7 @@ func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
 	}
 	defer store.Close()
 
-	session := &storage.Session{OwnerID: "qqonebot:1", Platform: "qqonebot", PlatformScopeID: "group:9", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "s"}
+	session := &storage.Session{ID: storage.NewID(), OwnerID: "qqonebot:1", Platform: "qqonebot", PlatformScopeID: "group:9", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "s"}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}

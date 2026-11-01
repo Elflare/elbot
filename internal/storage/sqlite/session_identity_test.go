@@ -14,7 +14,7 @@ func TestSessionListReleasesRowsOnInvalidTime(t *testing.T) {
 	store := newTestStore(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	session := &storage.Session{}
+	session := &storage.Session{ID: storage.NewID()}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatal(err)
 	}

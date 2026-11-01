@@ -217,6 +217,9 @@ func (s *Service) disableCompletedDelivery(ctx context.Context, jobName, deliver
 func (s *Service) resolveDeliveryTargets(meta Metadata) []resolvedCronTarget {
 	platforms := s.enabledPlatforms
 	if !meta.Target.AllEnabledPlatforms {
+		if !containsString(s.enabledPlatformNames(), meta.Target.SourcePlatform) {
+			return nil
+		}
 		platforms = []PlatformTarget{{Name: meta.Target.SourcePlatform}}
 		if id := strings.TrimSpace(meta.CreatedBy.PlatformUserID); id != "" {
 			platforms[0].SuperadminIDs = []string{id}

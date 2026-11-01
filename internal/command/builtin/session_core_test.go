@@ -119,7 +119,7 @@ func TestFormatToolUsageHidesEmptyLines(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newCommandTestStore(t)
-			row := &storage.Session{OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Title: "tools"}
+			row := &storage.Session{ID: storage.NewID(), OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Title: "tools"}
 			if err := store.Sessions().Create(t.Context(), row); err != nil {
 				t.Fatal(err)
 			}

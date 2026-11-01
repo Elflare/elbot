@@ -178,7 +178,7 @@ func TestPrivateForwardKeepsAssistantResumeAndFork(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	session := &storage.Session{OwnerID: "qqonebot:1", Platform: "qqonebot", PlatformScopeID: "private:1", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive}
+	session := &storage.Session{ID: storage.NewID(), OwnerID: "qqonebot:1", Platform: "qqonebot", PlatformScopeID: "private:1", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatal(err)
 	}

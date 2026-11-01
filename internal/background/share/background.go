@@ -22,6 +22,7 @@ type Runner interface {
 }
 
 type RunRequest struct {
+	TargetPlatforms []string // 创建时解析出的有效投递平台，供 Session 保存身份快照。
 	// NeedsElyphRules declares a requirement of the task prompt, not session state.
 	NeedsElyphRules bool
 	Kind            Kind

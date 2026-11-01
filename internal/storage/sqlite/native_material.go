@@ -50,9 +50,6 @@ func (r *SessionRepository) CreateMaterial(ctx context.Context, req storage.Sess
 		if seed.ID == "" {
 			seed.ID = storage.NewID()
 		}
-		if req.Session.ID == "" {
-			req.Session.ID = storage.NewID()
-		}
 		seed.SessionID = req.Session.ID
 		fields, err := storage.DecodeSessionMetadata(req.Session.Metadata)
 		if err != nil {

@@ -13,7 +13,7 @@ import (
 func TestForkMediaReferencesRespectCheckpoint(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
-	parent := &storage.Session{OwnerID: "u", Platform: "test", PlatformScopeID: "s"}
+	parent := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "test", PlatformScopeID: "s"}
 	if err := store.Sessions().Create(ctx, parent); err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestForkMediaReferencesRespectCheckpoint(t *testing.T) {
 		}
 		messages = append(messages, msg)
 	}
-	fork := &storage.Session{OwnerID: "u", Platform: "test", PlatformScopeID: "s", ParentSessionID: parent.ID, ForkFromMessageID: messages[1].ID}
+	fork := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "test", PlatformScopeID: "s", ParentSessionID: parent.ID, ForkFromMessageID: messages[1].ID}
 	if err := store.Sessions().Create(ctx, fork); err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestForkMediaReferencesRespectCheckpoint(t *testing.T) {
 	if err := store.Messages().Append(ctx, checkpoint); err != nil {
 		t.Fatal(err)
 	}
-	nested := &storage.Session{OwnerID: "u", Platform: "test", PlatformScopeID: "s", ParentSessionID: fork.ID, ForkFromMessageID: checkpoint.ID}
+	nested := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "test", PlatformScopeID: "s", ParentSessionID: fork.ID, ForkFromMessageID: checkpoint.ID}
 	if err := store.Sessions().Create(ctx, nested); err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func TestForkMediaReferencesRespectCheckpoint(t *testing.T) {
 func TestForkInheritsSessionToolMediaBeforeCheckpoint(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
-	parent := &storage.Session{OwnerID: "u", Platform: "test", PlatformScopeID: "s"}
+	parent := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "test", PlatformScopeID: "s"}
 	if err := store.Sessions().Create(ctx, parent); err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestForkInheritsSessionToolMediaBeforeCheckpoint(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	fork := &storage.Session{OwnerID: "u", Platform: "test", PlatformScopeID: "s", ParentSessionID: parent.ID, ForkFromMessageID: checkpoint.ID}
+	fork := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "test", PlatformScopeID: "s", ParentSessionID: parent.ID, ForkFromMessageID: checkpoint.ID}
 	if err := store.Sessions().Create(ctx, fork); err != nil {
 		t.Fatal(err)
 	}

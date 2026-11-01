@@ -17,7 +17,7 @@ func (s *Supervisor) GetOrCreateCurrent(ctx context.Context, scope Scope, firstM
 
 func (s *Supervisor) Create(ctx context.Context, scope Scope, req CreateRequest) (*storage.Session, error) {
 	return s.control.Create(ctx, share.Scope(scope), control.CreateRequest{
-		ID: req.ID, Title: req.Title, Mode: req.Mode, Metadata: req.Metadata,
+		Title: req.Title, Mode: req.Mode, Metadata: req.Metadata,
 	})
 }
 

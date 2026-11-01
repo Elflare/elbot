@@ -15,6 +15,15 @@ type SessionRepository struct {
 	db *sql.DB
 }
 
+func (r *SessionRepository) NextSequence(ctx context.Context) (int64, error) {
+	var sequence int64
+	err := r.db.QueryRowContext(ctx, `UPDATE session_sequence SET value=value+1 WHERE id=1 AND value<9223372036854775807 RETURNING value`).Scan(&sequence)
+	if err != nil {
+		return 0, fmt.Errorf("allocate session sequence: %w", err)
+	}
+	return sequence, nil
+}
+
 func (r *SessionRepository) Create(ctx context.Context, session *storage.Session) error {
 	return createSession(ctx, r.db, session)
 }
@@ -25,7 +34,7 @@ type sessionWriter interface {
 
 func createSession(ctx context.Context, writer sessionWriter, session *storage.Session) error {
 	if session.ID == "" {
-		session.ID = storage.NewID()
+		return fmt.Errorf("create session: preallocated ID is required")
 	}
 	now := storage.Now()
 	if session.CreatedAt.IsZero() {

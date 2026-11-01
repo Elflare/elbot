@@ -15,6 +15,7 @@ import (
 // BackgroundRequest is the input component's task preparation data.
 // Workspace scope and background source are supplied by the caller's context.
 type BackgroundRequest struct {
+	TargetPlatforms  []string                     // 创建时有效的投递平台，不替代任务归属平台。
 	Kind             string                       // 后台任务来源。
 	Name             string                       // 来源内的任务标识。
 	Title            string                       // 新会话标题。

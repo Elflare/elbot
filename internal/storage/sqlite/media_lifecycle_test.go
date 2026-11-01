@@ -21,7 +21,7 @@ func TestSharedMediaSessionsForkAndCleanupClaim(t *testing.T) {
 	var checkpoint string
 	sessions := make([]storage.Session, 2)
 	for i := range sessions {
-		sessions[i] = storage.Session{OwnerID: "u", Platform: "p", PlatformScopeID: "s"}
+		sessions[i] = storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "p", PlatformScopeID: "s"}
 		if err := store.Sessions().Create(ctx, &sessions[i]); err != nil {
 			t.Fatal(err)
 		}
@@ -33,7 +33,7 @@ func TestSharedMediaSessionsForkAndCleanupClaim(t *testing.T) {
 			checkpoint = msg.ID
 		}
 	}
-	fork := &storage.Session{OwnerID: "u", Platform: "p", PlatformScopeID: "s", ParentSessionID: sessions[0].ID, ForkFromMessageID: checkpoint}
+	fork := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "p", PlatformScopeID: "s", ParentSessionID: sessions[0].ID, ForkFromMessageID: checkpoint}
 	if err := store.Sessions().Create(ctx, fork); err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestReferenceAuditAndRecovery(t *testing.T) {
 	if len(refs) != 0 {
 		t.Fatal(refs)
 	}
-	s := &storage.Session{OwnerID: "u", Platform: "p", PlatformScopeID: "s"}
+	s := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "p", PlatformScopeID: "s"}
 	if err := store.Sessions().Create(ctx, s); err != nil {
 		t.Fatal(err)
 	}

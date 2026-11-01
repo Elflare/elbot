@@ -146,7 +146,7 @@ func TestResumeCommandCompletesSessionIDs(t *testing.T) {
 	if len(got) != 1 || got[0].Text != first.ID {
 		t.Fatalf("Complete empty = %#v", got)
 	}
-	prefix := first.ID[:8]
+	prefix := first.ID[:len(first.ID)-1]
 	got = cmd.Complete(ctx, command.CompletionRequest{Raw: "/resume " + prefix, Prefix: "/", Name: "resume", Args: prefix, Cursor: len("/resume ") + len(prefix)})
 	if len(got) != 1 || got[0].Text != first.ID || got[0].Kind != "session_id" || got[0].Description != "first" {
 		t.Fatalf("Complete prefix = %#v, first=%s second=%s", got, first.ID, second.ID)

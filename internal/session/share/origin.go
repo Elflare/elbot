@@ -21,6 +21,11 @@ func Origin(row *storage.Session) (llm.Origin, bool, error) {
 	if err != nil {
 		return llm.Origin{}, false, err
 	}
+	return OriginFromMetadata(fields)
+}
+
+// OriginFromMetadata 从已解码的元数据读取协议归属。
+func OriginFromMetadata(fields storage.SessionMetadata) (llm.Origin, bool, error) {
 	raw, ok := fields[originMetadataKey]
 	if !ok {
 		return llm.Origin{}, false, nil

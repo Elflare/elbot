@@ -26,7 +26,7 @@ func stateTestStore(t *testing.T, metadata string) (storage.Store, *storage.Sess
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	row := &storage.Session{OwnerID: "u", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeWork, Metadata: metadata}
+	row := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeWork, Metadata: metadata}
 	if err := store.Sessions().Create(context.Background(), row); err != nil {
 		t.Fatal(err)
 	}

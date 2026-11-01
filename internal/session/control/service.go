@@ -19,7 +19,8 @@ type Config struct {
 }
 
 type ServiceDeps struct {
-	Sessions interface {
+	AllocateID func(context.Context, share.IDOrigin) (string, error) // 根部提供的唯一 Session 发号入口。
+	Sessions   interface {
 		Create(context.Context, *storage.Session) error
 		Get(context.Context, string) (*storage.Session, error)
 		Mutate(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
@@ -45,7 +46,6 @@ type ServiceDeps struct {
 }
 
 type CreateRequest struct {
-	ID       string // 可预分配目标 ID，以便一次取得源、目标准入。
 	Title    string // 新会话标题。
 	Mode     string // 空值使用已配置的默认模式。
 	Metadata string // 初始元数据 JSON。
@@ -69,11 +69,12 @@ type Status struct {
 }
 
 type BackgroundRequest struct {
-	SessionID string            // 非空时复用未接管的后台会话。
-	Kind      string            // 后台来源种类。
-	Name      string            // 后台任务名称。
-	Title     string            // 新会话标题。
-	Metadata  map[string]string // 后台业务附加字段。
+	TargetPlatforms []string          // 创建时的有效投递平台；续跑保留已有来源快照。
+	SessionID       string            // 非空时复用未接管的后台会话。
+	Kind            string            // 后台来源种类。
+	Name            string            // 后台任务名称。
+	Title           string            // 新会话标题。
+	Metadata        map[string]string // 后台业务附加字段。
 }
 
 // Service 的业务修改经过 Binding 准入；mu 只保护计时索引和启停状态。

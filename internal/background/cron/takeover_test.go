@@ -48,7 +48,7 @@ func TestInjectedTakeoverQuerySuppressesRepairAndSurfacesFailure(t *testing.T) {
 		runner := &fakeCronRunner{text: "invalid JSON"}
 		queried := ""
 		svc := newTestCronService(t, Options{Runner: runner, SessionTakenOver: func(_ context.Context, id string) (bool, error) { queried = id; return lookupErr == nil, lookupErr }})
-		state, _, err := svc.runLLMReport(t.Context(), Job{Name: "job"}, Metadata{}, CronDeliveryState{RunID: "run"})
+		state, _, err := svc.runLLMReport(t.Context(), Job{Name: "job"}, Metadata{Target: CronTarget{SourcePlatform: "cli"}}, CronDeliveryState{RunID: "run"})
 		if runner.calls != 1 || queried != "cron-session" || state.Report != "" {
 			t.Fatalf("calls=%d query=%q report=%q", runner.calls, queried, state.Report)
 		}

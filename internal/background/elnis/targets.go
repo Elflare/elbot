@@ -5,6 +5,7 @@ package elnis
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"elbot/internal/config"
@@ -26,23 +27,33 @@ func toDeliveryTarget(t Target) delivery.Target {
 
 func (s *Service) resolveTargets(req Request) ([]Target, error) {
 	resolved := []Target{}
+	var rejected []string
 	for _, target := range req.Targets {
+		candidates := []Target{target}
 		if target.Platform == "all" {
-			for _, platformName := range s.enabledTargetPlatforms() {
-				candidate := Target{Platform: platformName}
-				if !s.targetDisabled(req.Elwisp.Name, candidate) {
-					resolved = append(resolved, candidate)
-				}
+			candidates = nil
+			if len(s.enabledTargetPlatforms()) == 0 {
+				rejected = append(rejected, "all: no enabled platforms")
 			}
-			continue
+			for _, platformName := range s.enabledTargetPlatforms() {
+				candidates = append(candidates, Target{Platform: platformName})
+			}
 		}
-		if !s.targetDisabled(req.Elwisp.Name, target) {
-			resolved = append(resolved, target)
+		for _, candidate := range candidates {
+			if !slices.Contains(s.enabledTargetPlatforms(), candidate.Platform) {
+				rejected = append(rejected, fmt.Sprintf("%s: platform is not enabled", candidate.Platform))
+				continue
+			}
+			if s.targetDisabled(req.Elwisp.Name, candidate) {
+				rejected = append(rejected, fmt.Sprintf("%s/%s/%s: target is disabled", candidate.Platform, candidate.Type, candidate.ID))
+				continue
+			}
+			resolved = append(resolved, candidate)
 		}
 	}
 	resolved = uniqueTargets(resolved)
-	if len(resolved) == 0 && req.Mode == ModeDirect {
-		return nil, fmt.Errorf("no allowed delivery targets")
+	if len(resolved) == 0 && (req.Mode == ModeDirect || req.Mode == ModeLLM) {
+		return nil, fmt.Errorf("no allowed delivery targets: %s", strings.Join(rejected, "; "))
 	}
 	return resolved, nil
 }

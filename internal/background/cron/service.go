@@ -260,10 +260,11 @@ func firstNonEmpty(values ...string) string {
 }
 
 func (s *Service) targetPlatformNames(meta Metadata) []string {
-	if meta.Target.AllEnabledPlatforms {
-		return s.enabledPlatformNames()
+	var platforms []string
+	for _, target := range s.resolveDeliveryTargets(meta) {
+		platforms = append(platforms, target.platform)
 	}
-	return uniqueStrings([]string{meta.Target.SourcePlatform})
+	return uniqueStrings(platforms)
 }
 
 func containsString(values []string, value string) bool {

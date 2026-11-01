@@ -159,7 +159,7 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 	t.Helper()
 	f := &replyTestFixture{}
 	store := newTestStore(t)
-	row := &storage.Session{OwnerID: "owner", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive}
+	row := &storage.Session{ID: storage.NewID(), OwnerID: "owner", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive}
 	if err := store.Sessions().Create(context.Background(), row); err != nil {
 		t.Fatal(err)
 	}

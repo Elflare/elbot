@@ -62,7 +62,8 @@ KEEP_BACKGROUND_GUIDANCE`), 0600); err != nil {
 func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 	m, deps, tools, ctx := newBackgroundAgent(t)
 	req := BackgroundRequest{
-		Kind: "cron", Name: "report", Prompt: "report",
+		TargetPlatforms: []string{"telegram", "qqonebot"},
+		Kind:            "cron", Name: "report", Prompt: "report",
 		Actor:         contextinfo.Actor{ID: "cli:local", Platform: "cli"},
 		ToolListNames: []string{"task_notes"},
 		ELwispTools:   []tool.ELwispToolDeclaration{{Name: "remote", CanonicalName: "event_remote", EventKey: "event", Endpoint: "https://example.invalid"}},
@@ -74,6 +75,9 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 	row, err := deps.Store.Sessions().Get(ctx, result.SessionID)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !strings.HasPrefix(row.ID, "crmx") {
+		t.Fatalf("effective targets did not reach Session: %q", row.ID)
 	}
 	before, err := tools.DecodeState(row.Metadata)
 	if err != nil {
@@ -239,11 +243,11 @@ func TestBackgroundCancellationDuringPreparation(t *testing.T) {
 
 func TestBackgroundCleanupSkipsBusySessions(t *testing.T) {
 	m, deps, _, ctx := newBackgroundAgent(t)
-	idle, err := m.sessions.PrepareBackground(ctx, session.Scope{}, session.BackgroundRequest{Kind: "cron", Name: "idle"})
+	idle, err := m.sessions.PrepareBackground(ctx, session.Scope{Platform: "cli"}, session.BackgroundRequest{Kind: "cron", Name: "idle"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	busy, err := m.sessions.PrepareBackground(ctx, session.Scope{}, session.BackgroundRequest{Kind: "cron", Name: "busy"})
+	busy, err := m.sessions.PrepareBackground(ctx, session.Scope{Platform: "cli"}, session.BackgroundRequest{Kind: "cron", Name: "busy"})
 	if err != nil {
 		t.Fatal(err)
 	}

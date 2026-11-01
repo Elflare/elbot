@@ -7,7 +7,7 @@ import (
 )
 
 // createLatestDBSQL contains the final schema and applied-version baseline through
-// migration 26. Update both together when refreshing this snapshot.
+// migration 28. Update both together when refreshing this snapshot.
 const createLatestDBSQL = `
 CREATE TABLE schema_migrations (
     version INTEGER PRIMARY KEY,
@@ -32,6 +32,13 @@ CREATE TABLE sessions (
     pinned_at TEXT NULL,
     FOREIGN KEY(parent_session_id) REFERENCES sessions(id) ON DELETE SET NULL
 );
+
+-- 单行计数器保存最后已分配的 Session 序号，不随 sessions 删除或事务回滚而回退。
+CREATE TABLE session_sequence (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    value INTEGER NOT NULL CHECK (typeof(value) = 'integer' AND value >= 0)
+);
+INSERT INTO session_sequence(id, value) VALUES (1, 0);
 
 CREATE TABLE messages (
     id TEXT PRIMARY KEY,
@@ -433,7 +440,8 @@ FROM (VALUES
     (24, 'remove_tool_result_preview'),
     (25, 'create_media_signed_urls'),
     (26, 'cron_report_sources'),
-    (27, 'migrate_discovered_tool_snapshots')
+    (27, 'migrate_discovered_tool_snapshots'),
+    (28, 'session_sequence')
 );
 `
 

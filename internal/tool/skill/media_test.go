@@ -152,7 +152,7 @@ func TestSkillMediaBridge(t *testing.T) {
 							t.Fatal("output refs leaked")
 
 						}
-						session := &storage.Session{OwnerID: "skill-test", Platform: "test", PlatformScopeID: "test"}
+						session := &storage.Session{ID: storage.NewID(), OwnerID: "skill-test", Platform: "test", PlatformScopeID: "test"}
 						if err := store.Sessions().Create(ctx, session); err != nil {
 							t.Fatal(err)
 						}

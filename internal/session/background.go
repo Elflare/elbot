@@ -13,7 +13,8 @@ import (
 
 func (s *Supervisor) PrepareBackground(ctx context.Context, scope Scope, req BackgroundRequest) (*storage.Session, error) {
 	return s.control.PrepareBackground(ctx, share.Scope(scope), control.BackgroundRequest{
-		SessionID: req.SessionID, Kind: req.Kind, Name: req.Name, Title: req.Title, Metadata: req.Metadata,
+		TargetPlatforms: req.TargetPlatforms,
+		SessionID:       req.SessionID, Kind: req.Kind, Name: req.Name, Title: req.Title, Metadata: req.Metadata,
 	})
 }
 

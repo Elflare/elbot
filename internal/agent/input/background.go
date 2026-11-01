@@ -61,7 +61,7 @@ func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundReq
 	}
 
 	sessionScope := session.Scope{ActorID: actor.ID, Platform: platformName, PlatformScopeID: scopeID, IsCLI: platformName == "cli"}
-	bgSession, err := r.Sessions.PrepareBackground(ctx, sessionScope, session.BackgroundRequest{SessionID: req.SessionID, Kind: string(req.Kind), Name: req.Name, Title: req.Title, Metadata: req.Metadata})
+	bgSession, err := r.Sessions.PrepareBackground(ctx, sessionScope, session.BackgroundRequest{TargetPlatforms: req.TargetPlatforms, SessionID: req.SessionID, Kind: string(req.Kind), Name: req.Name, Title: req.Title, Metadata: req.Metadata})
 	if err != nil {
 		if errors.Is(err, session.ErrForegroundSession) {
 			return turn.Result{SessionID: req.SessionID, TakenOver: true, Outcome: "taken_over"}

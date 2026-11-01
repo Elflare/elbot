@@ -97,7 +97,7 @@ func TestIdleExpiryCombinesNamingAndExternalRelease(t *testing.T) {
 				}}}}
 			})
 		})
-		scope := Scope{ActorID: "u", Platform: "test", PlatformScopeID: "private", ConversationKind: contextinfo.ConversationPrivate}
+		scope := Scope{ActorID: "u", Platform: "qqonebot", PlatformScopeID: "private", ConversationKind: contextinfo.ConversationPrivate}
 		row, err := s.Create(t.Context(), scope, CreateRequest{Title: "original"})
 		if err != nil {
 			t.Fatal(err)
@@ -191,7 +191,7 @@ func TestPublicBindingIdentityAndSynchronousRollbackRelease(t *testing.T) {
 			case "create":
 				_, err = s.Create(t.Context(), scope, CreateRequest{})
 			case "resume":
-				next := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID, Mode: storage.SessionModeWork}
+				next := &storage.Session{ID: storage.NewID(), OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID, Mode: storage.SessionModeWork}
 				err = store.Sessions().Create(t.Context(), next)
 				if err == nil {
 					_, err = s.Resume(t.Context(), scope, next.ID)
@@ -230,7 +230,7 @@ func TestPublicBindingIdentityAndSynchronousRollbackRelease(t *testing.T) {
 
 func TestPromotionObserverErrorPreservesResultAndBinding(t *testing.T) {
 	s, store := newTestService(t)
-	scope := Scope{ActorID: "u", IsCLI: true}
+	scope := Scope{ActorID: "u", Platform: "cli", IsCLI: true}
 	row, err := s.PrepareBackground(t.Context(), scope, BackgroundRequest{Kind: "cron"})
 	if err != nil {
 		t.Fatal(err)
@@ -302,7 +302,7 @@ func TestCloseWaitsNamingBeforeClosingBinding(t *testing.T) {
 		})
 	})
 	t.Cleanup(unblock)
-	scope := Scope{ActorID: "u", IsCLI: true}
+	scope := Scope{ActorID: "u", Platform: "cli", IsCLI: true}
 	row, err := s.Create(t.Context(), scope, CreateRequest{})
 	if err != nil {
 		t.Fatal(err)

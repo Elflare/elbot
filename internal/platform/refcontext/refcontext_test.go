@@ -82,7 +82,7 @@ func TestApplySuperadminBackgroundReferenceResumes(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
 	scope := referenceTestScope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
-	bg := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: "elnis:event-1", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive, Title: "elnis"}
+	bg := &storage.Session{ID: storage.NewID(), OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: "elnis:event-1", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive, Title: "elnis"}
 	if err := store.Sessions().Create(ctx, bg); err != nil {
 		t.Fatalf("create background session: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestApplyUserBackgroundReferenceFallsBack(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
 	scope := referenceTestScope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
-	bg := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive, Title: "cron"}
+	bg := &storage.Session{ID: storage.NewID(), OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive, Title: "cron"}
 	if err := store.Sessions().Create(ctx, bg); err != nil {
 		t.Fatalf("create background session: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestFormatReferenceTextUsesPlatformIdentifierLabels(t *testing.T) {
 
 func createAssistantMessages(t *testing.T, ctx context.Context, store storage.Store, scope referenceTestScope) (*storage.Message, *storage.Message) {
 	t.Helper()
-	s := &storage.Session{OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID, Mode: storage.SessionModeWork, Title: "source"}
+	s := &storage.Session{ID: storage.NewID(), OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID, Mode: storage.SessionModeWork, Title: "source"}
 	if err := store.Sessions().Create(ctx, s); err != nil {
 		t.Fatalf("create session: %v", err)
 	}

@@ -369,10 +369,10 @@ func TestRunLLMEventMapsReportNoticeToBackgroundMessage(t *testing.T) {
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"处理完成"}`}
 	var service *Service
 	service, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-		if target.Platform != "qq-onebot" || target.PrivateUserID != "1001" {
+		if target.Platform != "qqonebot" || target.PrivateUserID != "1001" {
 			t.Fatalf("target = %#v", target)
 		}
-		return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}, SentMessages: []delivery.SentMessage{{Platform: "qq-onebot", ScopeID: "private:1001", PlatformMessageID: "notice-1"}}}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+		return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ScopeID: "private:1001", PlatformMessageID: "notice-1"}}}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	})
 	defer cleanup()
 	var queued QueuedLLMEvent
@@ -382,14 +382,14 @@ func TestRunLLMEventMapsReportNoticeToBackgroundMessage(t *testing.T) {
 	})
 
 	req := testRequest(ModeLLM)
-	req.Targets = []Target{{Platform: "qq-onebot", Type: "private", ID: "1001"}}
+	req.Targets = []Target{{Platform: "qqonebot", Type: "private", ID: "1001"}}
 	if _, err := service.Handle(context.Background(), "secret", req); err != nil {
 		t.Fatalf("Handle llm: %v", err)
 	}
 	if err := service.RunLLMEvent(context.Background(), queued.Event, queued.EventID); err != nil {
 		t.Fatalf("RunLLMEvent: %v", err)
 	}
-	assertReportMapping(t, service, "qq-onebot", "private:1001", "notice-1")
+	assertReportMapping(t, service, "qqonebot", "private:1001", "notice-1")
 }
 
 func TestRunLLMEventCompletesAndReports(t *testing.T) {
@@ -870,6 +870,7 @@ func TestHandleRejectsInvalidAllTarget(t *testing.T) {
 func TestResolveTargetsDisabledPlatformBlocksAllTargetTypes(t *testing.T) {
 	service, cleanup := newTestService(t, nil)
 	defer cleanup()
+	service.enabledPlatforms = append(service.enabledPlatforms, "telegram")
 	service.cfg.DeliveryDisabled.Targets = []config.ElnisTargetConfig{{Platform: "telegram"}}
 
 	req := testRequest(ModeLLM)
@@ -886,6 +887,7 @@ func TestResolveTargetsDisabledPlatformBlocksAllTargetTypes(t *testing.T) {
 func TestResolveTargetsDisabledElwispPrivateChat(t *testing.T) {
 	service, cleanup := newTestService(t, nil)
 	defer cleanup()
+	service.enabledPlatforms = append(service.enabledPlatforms, "telegram")
 	policy := service.cfg.Elwisps["watcher"]
 	policy.DisabledTargets = []config.ElnisTargetConfig{{Platform: "telegram", Type: "private", ID: "1"}}
 	service.cfg.Elwisps["watcher"] = policy
@@ -918,6 +920,7 @@ func TestHandleDirectSendsToPrivateAndGroupTargets(t *testing.T) {
 	req.Title = "警告"
 	req.Content = "服务器异常"
 	req.Targets = []Target{{Platform: "telegram", Type: "private", ID: "123"}, {Platform: "qqonebot", Type: "group", ID: "456"}}
+	service.enabledPlatforms = append(service.enabledPlatforms, "telegram")
 	resp, err := service.Handle(context.Background(), "secret", req)
 	if err != nil {
 		t.Fatalf("Handle direct: %v", err)
@@ -948,6 +951,7 @@ func TestHandleDirectSendsToResolvedSuperadminTargets(t *testing.T) {
 	req.Title = "警告"
 	req.Content = "服务器异常"
 	req.Targets = []Target{{Platform: "cli"}, {Platform: "qqofficial"}}
+	service.enabledPlatforms = append(service.enabledPlatforms, "qqofficial")
 	resp, err := service.Handle(context.Background(), "secret", req)
 	if err != nil {
 		t.Fatalf("Handle direct: %v", err)

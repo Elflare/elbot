@@ -12,7 +12,7 @@ import (
 
 func TestTextReportMapsPartialReceipt(t *testing.T) {
 	repo := newFakeCronRepo()
-	svc := newTestCronService(t, Options{Store: repo, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	svc := newTestCronService(t, Options{Store: repo, EnabledPlatforms: []PlatformTarget{{Name: "telegram"}}, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		if target.Platform != "telegram" || !target.Superadmins {
 			t.Fatalf("target=%#v", target)
 		}

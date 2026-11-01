@@ -13,7 +13,7 @@ import (
 func TestPartialSendMapsSuccessAndReturnsFailure(t *testing.T) {
 	store := newFakeCronRepo()
 	wantErr := errors.New("later page failed")
-	s := newTestCronService(t, Options{Store: store, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	s := newTestCronService(t, Options{Store: store, EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}}, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		{
 			logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
 			if wantErr != nil {

@@ -23,7 +23,7 @@ func TestContextSummaryNullableTokens(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newTestStore(t)
 			ctx := context.Background()
-			session := &storage.Session{OwnerID: "u", Platform: "cli", PlatformScopeID: "local"}
+			session := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local"}
 			if err := store.Sessions().Create(ctx, session); err != nil {
 				t.Fatal(err)
 			}
@@ -70,7 +70,7 @@ func TestNullableTokenMigrationPreservesExistingDataAndConstraints(t *testing.T)
 	sessions := &SessionRepository{db: db}
 	messages := &MessageRepository{db: db}
 	summaries := &ContextSummaryRepository{db: db}
-	session := &storage.Session{OwnerID: "u", Platform: "cli", PlatformScopeID: "local"}
+	session := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local"}
 	if err := sessions.Create(ctx, session); err != nil {
 		t.Fatal(err)
 	}

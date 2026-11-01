@@ -54,13 +54,15 @@ func newFixture(t *testing.T) *fixture {
 	}
 	active := func() []string { f.mu.Lock(); defer f.mu.Unlock(); return append([]string(nil), f.busy...) }
 	f.c = control.NewService(control.Config{DefaultMode: storage.SessionModeWork, IdleExpiration: control.IdleExpirationConfig{PrivateUserTTLMinutes: 1}}, control.ServiceDeps{
-		Sessions: store.Sessions(), Messages: store.Messages(), Bindings: f.b, ActiveSessionIDs: active,
+		AllocateID: func(ctx context.Context, _ share.IDOrigin) (string, error) { return storage.NewID(), ctx.Err() },
+		Sessions:   store.Sessions(), Messages: store.Messages(), Bindings: f.b, ActiveSessionIDs: active,
 		CheckForeground: func(context.Context, *storage.Session) error { return nil }, IsSuperadmin: func(share.Scope) bool { return false },
 		ReleaseSession: func(id string) { f.mu.Lock(); defer f.mu.Unlock(); f.released = append(f.released, id) },
 		ReleaseBinding: func(b *share.Binding) { f.mu.Lock(); defer f.mu.Unlock(); f.bindings = append(f.bindings, b) },
 	})
 	f.deps = branch.ServiceDeps{Sessions: store.Sessions(), Messages: store.Messages(), Dialogues: store.Dialogues(),
-		Bindings: f.c, ActiveSessionIDs: active, MaterialFor: func(llm.Origin) (branch.MaterialPreparer, error) { return preparer{f}, nil }}
+		AllocateID: func(ctx context.Context, _ share.IDOrigin) (string, error) { return storage.NewID(), ctx.Err() },
+		Bindings:   f.c, ActiveSessionIDs: active, MaterialFor: func(llm.Origin) (branch.MaterialPreparer, error) { return preparer{f}, nil }}
 	f.s = branch.NewService(f.deps)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)

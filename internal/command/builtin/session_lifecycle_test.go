@@ -150,7 +150,7 @@ func TestSessionTargetCommandsCompleteSessionIDsAndConfirm(t *testing.T) {
 	deps := Deps{CommandText: testCommandText, Sessions: svc, Scope: func(context.Context) session.Scope { return scope }, SessionState: NewSessionCommandState(10, 30)}
 
 	deleteCmd := NewDelete(deps).(command.Completer)
-	prefix := first.ID[:8]
+	prefix := first.ID[:len(first.ID)-1]
 	got := deleteCmd.Complete(ctx, command.CompletionRequest{Raw: "/delete " + prefix, Prefix: "/", Name: "delete", Args: prefix, Cursor: len("/delete ") + len(prefix)})
 	if len(got) != 1 || got[0].Text != first.ID || got[0].Kind != "session_id" {
 		t.Fatalf("delete session Complete = %#v", got)
@@ -161,7 +161,8 @@ func TestSessionTargetCommandsCompleteSessionIDsAndConfirm(t *testing.T) {
 	}
 
 	unarchiveCmd := NewUnarchive(deps).(command.Completer)
-	got = unarchiveCmd.Complete(ctx, command.CompletionRequest{Raw: "/unarchive " + archived.ID[:8], Prefix: "/", Name: "unarchive", Args: archived.ID[:8], Cursor: len("/unarchive ") + 8})
+	archivedPrefix := archived.ID[:len(archived.ID)-1]
+	got = unarchiveCmd.Complete(ctx, command.CompletionRequest{Raw: "/unarchive " + archivedPrefix, Prefix: "/", Name: "unarchive", Args: archivedPrefix, Cursor: len("/unarchive ") + len(archivedPrefix)})
 	if len(got) != 1 || got[0].Text != archived.ID {
 		t.Fatalf("unarchive Complete = %#v", got)
 	}

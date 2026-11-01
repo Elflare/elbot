@@ -57,10 +57,12 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	}()
 
 	sessions, messages := deps.Store.Sessions(), deps.Store.Messages()
+	s.nextSequence = sessions.NextSequence
 	s.bindings = binding.NewManager()
 	s.control = control.NewService(
 		control.Config{DefaultMode: cfg.Session.DefaultMode, IdleExpiration: control.IdleExpirationConfig(cfg.Session.IdleExpiration)},
 		control.ServiceDeps{
+			AllocateID:       s.allocateID,
 			Sessions:         sessions,
 			Messages:         messages,
 			Bindings:         s.bindings,
@@ -76,6 +78,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	)
 	materials := deps.Materials
 	s.branches = branch.NewService(branch.ServiceDeps{
+		AllocateID:       s.allocateID,
 		Sessions:         sessions,
 		Messages:         messages,
 		Dialogues:        deps.Store.Dialogues(),

@@ -66,7 +66,10 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 	if err != nil {
 		return nil, err
 	}
-	nextID := storage.NewID()
+	nextID, err := c.sessions.AllocateID(reqCtx, scope, current)
+	if err != nil {
+		return nil, err
+	}
 	locked, scope, release, err = c.enterCompact(reqCtx, current, scope, nextID)
 	if err != nil {
 		return nil, err

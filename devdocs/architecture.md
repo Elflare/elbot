@@ -295,6 +295,16 @@ Platform 负责输入归一化、历史落库、引用恢复及实际发送，�
 
 Session 唯一管理 current 与 Binding：control 管会话业务及过期，binding 管准入，branch 管 Fork／压缩／后台复制，naming 管命名。
 
+Session 根部统一分配短 ID，Storage 只提供数据库全局递增序号。普通会话使用 `ob/qq/tg/cl`，群聊和频道使用大写平台码；后台使用 `cr/ew` 加有效目标平台码，跨平台为 `mx`。创建来源保存在 metadata 的 `id_origin`，压缩继承快照，Fork 按新入口、后台复制按副本目标生成；接管不改号。旧 UUID 保留，`/new` 只解绑，真正创建时才发号。
+
+```mermaid
+flowchart LR
+    Entry["现有创建与派生入口<br/>提供创建来源事实"] --> ID["session/id.go<br/>统一分配、组合 Session ID"]
+    ID --> Sequence["storage/sqlite/session_repository.go<br/>NextSequence 原子持久化发号"]
+    Entry --> Facts["session/share/id.go<br/>前缀规则、来源快照与继承"]
+    ID --> Facts
+```
+
 无当前会话由 Session 返回 `ErrNoCurrentSession`；失效的当前记录在清理绑定后返回同一错误，与指定记录缺失的 `storage.ErrNotFound` 区分。命令执行出口将此状态展示为普通提示“还未开始对话”；自动创建、模式激活及状态查询按各自语义处理。
 
 - 切离使旧 binding 永久失效，切回建立新 binding；删除使相关绑定全部失效。准入锁顺序为 Scope → 排序 SessionID → 状态锁，模型、工具、Hook、发送及一般信号在锁外。
@@ -331,6 +341,7 @@ contextmgr 管历史、用量、阈值和压缩分派；协议 Compactor 准备�
 Storage 定义领域模型和仓储契约，SQLite 实现消息、Session、工具、后台任务及原生状态事务。
 
 - 主库使用单连接，工具状态随 Session metadata 合并更新，以保持事务和状态合并简单可靠；实测出现连接等待或编码瓶颈后再调整。
+- `session_sequence` 保存最后已分配的 Session 序号。发号在目标准入和会话事务前独立提交，创建取消、事务回滚、删除及重启均不回收号码；序号允许跳号，存储创建不补 UUID。
 - 新库直接创建最新结构，已有库通过迁移升级。Mutate 在短事务中读最新行、只改负责字段，不做外部 I/O 或嵌套仓储操作；metadata 保留未知字段与数值精度，损坏数据拒绝读写。
 - segments 是结构来源，content 是文本投影；工具调用与结果保持稳定关联，复制时重映射 ID。
 - 原生材料独立保存，关键提交比较 checkpoint，原子合并消息、seed 消费和媒体引用。查询保留平台及派生范围隔离。
@@ -350,6 +361,7 @@ Background 管调度、执行入口、报告投递及维护。execution 准备�
 - Tool 写任务定义并发出变更事实，Cron 串行重读最新记录刷新调度，启动期间变更不能丢失。执行记账只更新本次任务 ID 的运行事实，不覆盖配置或记入同名重建任务。
 - 启动先恢复与加载调度，再开放平台恢复消费；同平台通知串行。致命运行故障及时交 App，单次任务或投递失败不升级为整线故障；关闭等待执行、投递和收尾真实退出，不关闭借用资源。
 - 每次调度新建后台 Session，同轮修正复用会话、首轮工具与模型；前台接管后等待真实 Execution 结果，停止后台修正、自动报告及未开始补投递。后台沙箱非 critical Shell 可自动确认，critical 拒绝。
+- 投递目标统一过滤未启用平台，Elnis 同时应用禁投规则。无有效目标时，Elnis 的 direct/llm 在入队前拒绝，Cron 在写入投递状态前取消；沿用现有拒绝／任务结束日志记录平台及原因，不创建 Session、不调用模型。有效目标平台作为独立事实交给 Session，不以任务归属平台代替；暂时断线不改变目标快照。
 - 任务执行与报告投递分开：已有报告恢复时直接复用，不重跑模型；报告状态与实际回执原子提交，迟到回执保留消息映射但不覆盖新状态。一次性任务在待投递内容完成后才禁用。
 - NeedReport 仅控制正文，附件仍投递；禁止正文时，附件失败不降级为文字。附件通过任务目录内的受限打开导入 Media，下游只接收 MediaID。
 - 报告落库前可能重新执行，发送成功但回执未落库时可能重复投递；不承诺恰好一次。

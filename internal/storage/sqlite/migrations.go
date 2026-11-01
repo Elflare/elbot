@@ -650,6 +650,18 @@ END
 WHERE metadata IS NOT NULL AND trim(metadata,char(9)||char(10)||char(13)||' ')<>'';
 `,
 	},
+	{
+		version: 28,
+		name:    "session_sequence",
+		sql: `
+-- 单行计数器保存最后已分配的 Session 序号，独立于会话记录的生命周期。
+CREATE TABLE session_sequence (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    value INTEGER NOT NULL CHECK (typeof(value) = 'integer' AND value >= 0)
+);
+INSERT INTO session_sequence(id, value) VALUES (1, 0);
+`,
+	},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

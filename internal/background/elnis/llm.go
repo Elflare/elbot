@@ -15,6 +15,7 @@ import (
 	globalevents "elbot/internal/events"
 )
 
+// RunLLMEvent 执行已通过 prepareEvent 的入队事件；有效投递目标已在入口保证非空。
 func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) error {
 	// Fix associations for this Elnis event; individual records may supply
 	// their actual report SessionID separately.
@@ -78,12 +79,21 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		return err
 	}
 	model := s.modelForEvent(event)
+	targets, err := decodeResolvedTargets(event.ResolvedTargets)
+	if err != nil {
+		return err
+	}
+	platforms := make([]string, 0, len(targets))
+	for _, target := range targets {
+		platforms = append(platforms, target.Platform)
+	}
 	runRequest := background.RunRequest{
+		TargetPlatforms: platforms,
 		NeedsElyphRules: strings.TrimSpace(event.Request.Format) == elyph.Format,
 		Kind:            background.KindElnis,
 		Name:            event.EventKey,
 		Title:           firstNonEmpty(event.Request.Title, "Elnis: "+event.Request.Source),
-		Platform:        firstPlatform(event.ResolvedTargets),
+		Platform:        targets[0].Platform,
 		Actor:           elnisActor(event),
 		ScopeID:         "elnis:" + event.EventKey,
 		ModelProvider:   model.Provider,

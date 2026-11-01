@@ -16,7 +16,7 @@ func TestLoaderUsesLatestSummary(t *testing.T) {
 	}
 	defer store.Close()
 
-	session := &storage.Session{OwnerID: "u", Platform: "cli", PlatformScopeID: "local"}
+	session := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local"}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestLoaderRawMessagesIgnoresSummary(t *testing.T) {
 	}
 	defer store.Close()
 
-	session := &storage.Session{OwnerID: "u", Platform: "cli", PlatformScopeID: "local"}
+	session := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local"}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestLoaderIncludesForkParentContext(t *testing.T) {
 	}
 	defer store.Close()
 
-	parent := &storage.Session{OwnerID: "u", Platform: "cli", PlatformScopeID: "local"}
+	parent := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local"}
 	if err := store.Sessions().Create(ctx, parent); err != nil {
 		t.Fatalf("create parent: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestLoaderIncludesForkParentContext(t *testing.T) {
 			t.Fatalf("append parent: %v", err)
 		}
 	}
-	fork := &storage.Session{OwnerID: "u", Platform: "cli", PlatformScopeID: "local", ParentSessionID: parent.ID, ForkFromMessageID: forkPoint.ID}
+	fork := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local", ParentSessionID: parent.ID, ForkFromMessageID: forkPoint.ID}
 	if err := store.Sessions().Create(ctx, fork); err != nil {
 		t.Fatalf("create fork: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestLoaderUsesForkParentSummary(t *testing.T) {
 	}
 	defer store.Close()
 
-	parent := &storage.Session{OwnerID: "u", Platform: "cli", PlatformScopeID: "local"}
+	parent := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local"}
 	if err := store.Sessions().Create(ctx, parent); err != nil {
 		t.Fatalf("create parent: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestLoaderUsesForkParentSummary(t *testing.T) {
 	if err := store.ContextSummaries().Create(ctx, &storage.ContextSummary{SessionID: parent.ID, ToMessageID: second.ID, Summary: "summary", Provider: "p", Model: "m", TriggerReason: "manual"}); err != nil {
 		t.Fatalf("create summary: %v", err)
 	}
-	fork := &storage.Session{OwnerID: "u", Platform: "cli", PlatformScopeID: "local", ParentSessionID: parent.ID, ForkFromMessageID: third.ID}
+	fork := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local", ParentSessionID: parent.ID, ForkFromMessageID: third.ID}
 	if err := store.Sessions().Create(ctx, fork); err != nil {
 		t.Fatalf("create fork: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestLoaderIncludesMultiLevelForkContext(t *testing.T) {
 	}
 	defer store.Close()
 
-	root := &storage.Session{OwnerID: "u", Platform: "cli", PlatformScopeID: "local"}
+	root := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local"}
 	if err := store.Sessions().Create(ctx, root); err != nil {
 		t.Fatalf("create root: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestLoaderIncludesMultiLevelForkContext(t *testing.T) {
 	if err := store.Messages().Append(ctx, rootAssistant); err != nil {
 		t.Fatalf("append root: %v", err)
 	}
-	firstFork := &storage.Session{OwnerID: "u", Platform: "cli", PlatformScopeID: "local", ParentSessionID: root.ID, ForkFromMessageID: rootAssistant.ID}
+	firstFork := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local", ParentSessionID: root.ID, ForkFromMessageID: rootAssistant.ID}
 	if err := store.Sessions().Create(ctx, firstFork); err != nil {
 		t.Fatalf("create first fork: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestLoaderIncludesMultiLevelForkContext(t *testing.T) {
 	if err := store.Messages().Append(ctx, firstAssistant); err != nil {
 		t.Fatalf("append first fork: %v", err)
 	}
-	secondFork := &storage.Session{OwnerID: "u", Platform: "cli", PlatformScopeID: "local", ParentSessionID: firstFork.ID, ForkFromMessageID: firstAssistant.ID}
+	secondFork := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local", ParentSessionID: firstFork.ID, ForkFromMessageID: firstAssistant.ID}
 	if err := store.Sessions().Create(ctx, secondFork); err != nil {
 		t.Fatalf("create second fork: %v", err)
 	}

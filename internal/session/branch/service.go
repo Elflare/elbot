@@ -12,7 +12,8 @@ import (
 )
 
 type ServiceDeps struct {
-	Sessions interface {
+	AllocateID func(context.Context, share.IDOrigin) (string, error) // 根部统一发号，先于目标准入。
+	Sessions   interface {
 		Get(context.Context, string) (*storage.Session, error)
 		Create(context.Context, *storage.Session) error
 		CreateMaterial(context.Context, storage.SessionMaterialCreate) (events.LogResult, error)

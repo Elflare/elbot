@@ -33,7 +33,8 @@ func newFixture(t *testing.T, ttl IdleExpirationConfig) *fixture {
 	}
 	f := &fixture{store: store, bindings: binding.NewManager()}
 	f.s = NewService(Config{DefaultMode: storage.SessionModeWork, IdleExpiration: ttl}, ServiceDeps{
-		Sessions: store.Sessions(), Messages: store.Messages(), Bindings: f.bindings,
+		AllocateID: func(ctx context.Context, _ share.IDOrigin) (string, error) { return storage.NewID(), ctx.Err() },
+		Sessions:   store.Sessions(), Messages: store.Messages(), Bindings: f.bindings,
 		ActiveSessionIDs: func() []string { f.mu.Lock(); defer f.mu.Unlock(); return append([]string(nil), f.busy...) },
 		CheckForeground:  func(context.Context, *storage.Session) error { return nil },
 		IsSuperadmin:     func(scope share.Scope) bool { return scope.ActorID == "admin" },
@@ -66,7 +67,10 @@ func privateScope() share.Scope {
 
 func (f *fixture) create(t *testing.T, scope share.Scope, id string) *storage.Session {
 	t.Helper()
-	row, err := f.s.Create(context.Background(), scope, CreateRequest{ID: id, Title: "test", Metadata: `{"keep":{"number":7}}`})
+	allocate := f.s.deps.AllocateID
+	f.s.deps.AllocateID = func(ctx context.Context, _ share.IDOrigin) (string, error) { return id, ctx.Err() }
+	defer func() { f.s.deps.AllocateID = allocate }()
+	row, err := f.s.Create(context.Background(), scope, CreateRequest{Title: "test", Metadata: `{"keep":{"number":7}}`})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +171,7 @@ func TestCurrentModesManagementAndQueries(t *testing.T) {
 	}
 }
 
-func TestAccessAndCreateUnderPreallocatedAdmission(t *testing.T) {
+func TestAccessAndCreateUnderScopeAdmission(t *testing.T) {
 	f := newFixture(t, IdleExpirationConfig{})
 	ctx, scope := context.Background(), privateScope()
 	row := f.create(t, scope, "z-source")
@@ -182,17 +186,17 @@ func TestAccessAndCreateUnderPreallocatedAdmission(t *testing.T) {
 	if err := f.s.Delete(ctx, other, row.ID); err == nil {
 		t.Fatal("cross-user delete allowed")
 	}
-	locked, release, err := f.s.EnterActivation(ctx, scope, "a-target")
+	locked, release, err := f.bindings.EnterScope(ctx, scope)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = f.s.Create(locked, scope, CreateRequest{ID: "a-target"})
+	next, err := f.s.Create(locked, scope, CreateRequest{})
 	release()
 	if err != nil {
-		t.Fatalf("preallocated create: %v", err)
+		t.Fatalf("create under scope admission: %v", err)
 	}
 	// 当前记录被外部删除时，读操作移除悬挂绑定，下一次输入创建新记录。
-	if err := f.store.Sessions().Delete(ctx, "a-target"); err != nil {
+	if err := f.store.Sessions().Delete(ctx, next.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.s.Current(ctx, scope); !errors.Is(err, ErrNoCurrentSession) {
@@ -287,7 +291,7 @@ func TestStorageFailureDoesNotRetireBinding(t *testing.T) {
 	b := f.s.CurrentBinding(scope)
 	failure := errors.New("storage failed")
 	f.s.deps.Sessions = failingSessions{SessionRepository: f.store.Sessions(), createErr: failure, deleteErr: failure}
-	if _, err := f.s.Create(ctx, scope, CreateRequest{ID: "new"}); !errors.Is(err, failure) {
+	if _, err := f.s.Create(ctx, scope, CreateRequest{}); !errors.Is(err, failure) {
 		t.Fatal(err)
 	}
 	if err := f.s.Delete(ctx, scope, row.ID); !errors.Is(err, failure) {

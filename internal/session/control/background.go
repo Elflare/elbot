@@ -26,7 +26,7 @@ func (s *Service) PrepareBackground(ctx context.Context, scope share.Scope, req 
 			if !share.IsBackground(row) {
 				return fmt.Errorf("session is not a background session")
 			}
-			metadata, err := backgroundMetadata(row.Metadata, req)
+			metadata, err := backgroundMetadata(row.Metadata, req, nil)
 			if err != nil {
 				return err
 			}
@@ -34,13 +34,17 @@ func (s *Service) PrepareBackground(ctx context.Context, scope share.Scope, req 
 			return nil
 		})
 	}
-	id := storage.NewID()
+	origin := share.BackgroundIDOrigin(scope, req.Kind, req.TargetPlatforms)
+	id, err := s.deps.AllocateID(ctx, origin)
+	if err != nil {
+		return nil, err
+	}
 	ctx, release, err := s.EnterSessions(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	defer release()
-	metadata, err := backgroundMetadata("", req)
+	metadata, err := backgroundMetadata("", req, &origin)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +74,7 @@ func (s *Service) SessionTakenOver(ctx context.Context, id string) (bool, error)
 	return share.WasPromoted(row), nil
 }
 
-func backgroundMetadata(raw string, req BackgroundRequest) (string, error) {
+func backgroundMetadata(raw string, req BackgroundRequest, origin *share.IDOrigin) (string, error) {
 	fields, err := storage.DecodeSessionMetadata(raw)
 	if err != nil {
 		return "", err
@@ -84,6 +88,11 @@ func backgroundMetadata(raw string, req BackgroundRequest) (string, error) {
 	}
 	if err := share.BackgroundMetadata(fields, req.Kind, req.Name); err != nil {
 		return "", err
+	}
+	if origin != nil {
+		if err := origin.Save(fields); err != nil {
+			return "", err
+		}
 	}
 	return fields.Encode()
 }

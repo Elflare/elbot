@@ -124,7 +124,7 @@ func TestToolTranscriptMirrorMatchesFullDatabaseFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	row := &storage.Session{OwnerID: "test", Platform: "cli", Mode: storage.SessionModeWork}
+	row := &storage.Session{ID: storage.NewID(), OwnerID: "test", Platform: "cli", Mode: storage.SessionModeWork}
 	if err := store.Sessions().Create(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	row := &storage.Session{OwnerID: "test", Platform: "cli", Mode: storage.SessionModeWork}
+	row := &storage.Session{ID: storage.NewID(), OwnerID: "test", Platform: "cli", Mode: storage.SessionModeWork}
 	if err := store.Sessions().Create(ctx, row); err != nil {
 		t.Fatal(err)
 	}

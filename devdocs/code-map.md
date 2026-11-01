@@ -274,12 +274,12 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 | 位置 | 文件职责 |
 |---|---|
-| 根部 | `supervisor.go` 总管；`deps.go` 消费契约；`wiring.go` 装配；`lifecycle.go` 启停；`contracts.go` 公开契约；`operations.go` 会话操作；`background.go` 后台准备；`branch.go` 派生；`binding.go` 绑定；`origin.go` 归属；`workspace.go` 工作目录；`naming.go` 命名；`signals.go` 事件 |
+| 根部 | `supervisor.go` 总管；`deps.go` 消费契约；`wiring.go` 装配；`lifecycle.go` 启停；`contracts.go` 公开契约；`id.go` 统一短 ID 发号；`operations.go` 会话操作；`background.go` 后台准备；`branch.go` 派生；`binding.go` 绑定；`origin.go` 归属；`workspace.go` 工作目录；`naming.go` 命名；`signals.go` 事件 |
 | `binding/` | `manager.go` 绑定管理；`coordination.go` 执行准入；`signals.go` 绑定事件 |
 | `control/` | `service.go` 组件与启停；`current.go` 当前会话；`promotion.go` 恢复与接管；`background.go` 后台准备；`query.go` 查询；`management.go` 管理；`expiration.go` 过期与清理；`origin.go` 归属；`workspace.go` 工作目录 |
 | `branch/` | `service.go` 材料准备；`fork.go` 前台分支；`copy.go` 后台副本；`compact.go` 压缩派生 |
 | `naming/` | `service.go` 任务管理；`naming.go` 命名流程；`title.go` 标题生成；`signals.go` 命名事件 |
-| `share/` | `session.go` 会话事实与访问规则；`binding.go` 绑定契约；`origin.go` 归属规则 |
+| `share/` | `session.go` 会话事实与访问规则；`binding.go` 绑定契约；`origin.go` 模型归属规则；`id.go` ID 前缀规则、创建来源快照与继承 |
 
 - `internal/storage/sqlite/session_repository.go`：会话存储；`internal/platform/refcontext/refcontext.go`：引用回复恢复。
 
@@ -315,7 +315,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/storage/storage.go`、`session_metadata.go`：分别定义存储领域契约与 Session 元数据。
 - `internal/storage/sqlite/`：SQLite 实现；`store.go` 的 openDB 共用主库与聊天历史库连接初始化，`db_init.go` 管新库结构，`migrations.go` 管升级。
 - `internal/storage/dialogue.go`、`internal/storage/sqlite/dialogue_repository.go`：分别定义对话材料契约与实现提交事务。
-- `internal/storage/sqlite/session_repository.go`：Session 查询与字段合并更新。
+- `internal/storage/sqlite/session_repository.go`：Session 查询、字段合并更新及 `session_sequence` 持久化发号。
 - `internal/storage/sqlite/native_snapshot.go`、`native_material.go`：分别负责原生快照与窗口材料读取。
 - `internal/storage/sqlite/media_history.go`、`media_lifecycle.go`：分别负责历史媒体关联与媒体回收。
 - `internal/storage/sqlite/chat_history_repository.go`：聊天历史查询、清理与平台引用索引。

@@ -14,10 +14,11 @@ import (
 
 // Supervisor 由 Agent 持有，统一装配 Session 的业务能力及自有生命周期。
 type Supervisor struct {
-	bindings *binding.Manager // 唯一持有 current、绑定版本及准入状态。
-	control  *control.Service // 会话管理及前台接管事件源。
-	branches *branch.Service  // 分支与副本操作；没有独立后台任务或关闭阶段。
-	naming   *naming.Service  // 自动命名任务、事件源及日志订阅。
+	nextSequence func(context.Context) (int64, error) // 借用仓库的持久化发号能力。
+	bindings     *binding.Manager                     // 唯一持有 current、绑定版本及准入状态。
+	control      *control.Service                     // 会话管理及前台接管事件源。
+	branches     *branch.Service                      // 分支与副本操作；没有独立后台任务或关闭阶段。
+	naming       *naming.Service                      // 自动命名任务、事件源及日志订阅。
 
 	ctx    context.Context    // 跟随 Agent 的运行生命周期，不承接单次 Turn 取消。
 	cancel context.CancelFunc // 停止总管运行上下文，不关闭借用资源。

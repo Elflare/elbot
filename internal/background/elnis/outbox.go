@@ -26,9 +26,6 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 	if err != nil {
 		return false, err
 	}
-	if len(resolved) == 0 {
-		return false, s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, sessionID, resultJSON, "")
-	}
 	dir, err := workspace.SandboxDir(s.sandboxRoot, elnisSandboxSubdir(event.Request.Elwisp.Name))
 	if err != nil {
 		return false, err

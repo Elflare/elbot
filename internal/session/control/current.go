@@ -48,10 +48,12 @@ func (s *Service) Create(ctx context.Context, scope share.Scope, req CreateReque
 
 // createCurrent 接收入口已确定并校验的模式，负责创建及绑定提交。
 func (s *Service) createCurrent(ctx context.Context, scope share.Scope, req CreateRequest) (*storage.Session, error) {
-	if req.ID == "" {
-		req.ID = storage.NewID()
+	origin := share.ForegroundIDOrigin(scope)
+	id, err := s.deps.AllocateID(ctx, origin)
+	if err != nil {
+		return nil, err
 	}
-	ctx, release, err := s.EnterActivation(ctx, scope, req.ID)
+	ctx, release, err := s.EnterActivation(ctx, scope, id)
 	if err != nil {
 		return nil, err
 	}
@@ -62,9 +64,20 @@ func (s *Service) createCurrent(ctx context.Context, scope share.Scope, req Crea
 	if strings.TrimSpace(req.Title) == "" {
 		req.Title = "New session"
 	}
-	row := &storage.Session{ID: req.ID, OwnerID: scope.ActorID, Platform: scope.Platform,
+	fields, err := storage.DecodeSessionMetadata(req.Metadata)
+	if err != nil {
+		return nil, err
+	}
+	if err := origin.Save(fields); err != nil {
+		return nil, err
+	}
+	metadata, err := fields.Encode()
+	if err != nil {
+		return nil, err
+	}
+	row := &storage.Session{ID: id, OwnerID: scope.ActorID, Platform: scope.Platform,
 		PlatformScopeID: scope.PlatformScopeID, Mode: req.Mode, Status: storage.SessionStatusActive,
-		Title: req.Title, Metadata: req.Metadata}
+		Title: req.Title, Metadata: metadata}
 	if err := s.deps.Sessions.Create(ctx, row); err != nil {
 		return nil, err
 	}

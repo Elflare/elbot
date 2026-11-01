@@ -19,7 +19,7 @@ import (
 func TestCompactMessagesFiltersToolResultsAndFailedCalls(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
-	session := &storage.Session{OwnerID: "u", Platform: "cli", PlatformScopeID: "local", Title: "compact"}
+	session := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local", Title: "compact"}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}

@@ -57,7 +57,11 @@ func (s *Service) CopyBackground(ctx context.Context, target share.Scope, req Ba
 	if err != nil {
 		return nil, err
 	}
-	nextID := storage.NewID()
+	idOrigin := share.BackgroundIDOrigin(target, req.Kind, []string{target.Platform})
+	nextID, err := s.deps.AllocateID(ctx, idOrigin)
+	if err != nil {
+		return nil, err
+	}
 	locked, release, err := s.deps.Bindings.EnterSessions(ctx, source.ID, nextID)
 	if err != nil {
 		return nil, err
@@ -100,6 +104,9 @@ func (s *Service) CopyBackground(ctx context.Context, target share.Scope, req Ba
 		return nil, err
 	}
 	if err := share.InheritOrigin(after, fields); err != nil {
+		return nil, err
+	}
+	if err := idOrigin.Save(fields); err != nil {
 		return nil, err
 	}
 	metadata, err := fields.Encode()

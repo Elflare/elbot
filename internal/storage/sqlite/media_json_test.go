@@ -77,7 +77,7 @@ func TestMediaJSONReferenceTransactions(t *testing.T) {
 		}
 	}
 
-	session := &storage.Session{OwnerID: "u", Platform: "test", PlatformScopeID: "s"}
+	session := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "test", PlatformScopeID: "s"}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestNativePublicMaterialsRetainMediaAndAuditMissingReferences(t *testing.T)
 	if err := store.Media().Upsert(ctx, &storage.Media{ID: id, MIMEType: "image/png", Backend: "local"}); err != nil {
 		t.Fatal(err)
 	}
-	row := &storage.Session{OwnerID: "u", Platform: "test"}
+	row := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "test"}
 	if err := store.Sessions().Create(ctx, row); err != nil {
 		t.Fatal(err)
 	}

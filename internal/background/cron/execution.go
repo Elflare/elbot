@@ -44,6 +44,10 @@ func (s *Service) runTask(ctx context.Context, job Job, meta Metadata) (globalev
 func (s *Service) prepareDelivery(ctx context.Context, job Job, meta Metadata) (Job, CronDeliveryState, globalevents.LogResult, error) {
 	var logResult globalevents.LogResult
 	content := "operation=prepareDelivery"
+	if len(s.targetPlatformNames(meta)) == 0 {
+		err := fmt.Errorf("no allowed delivery targets: source_platform=%q all_enabled_platforms=%t enabled_platforms=%v; target platform is not enabled", meta.Target.SourcePlatform, meta.Target.AllEnabledPlatforms, s.enabledPlatformNames())
+		return job, CronDeliveryState{}, globalevents.LogResult{ResultStatus: globalevents.ResultCanceled, Content: content + "\n" + err.Error()}, err
+	}
 	state, err := decodeDeliveryState(job.DeliveryState)
 	if err != nil {
 		return job, CronDeliveryState{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: content + fmt.Sprintf("\nerror=%v", err)}, err
@@ -115,6 +119,7 @@ func (s *Service) prepareDelivery(ctx context.Context, job Job, meta Metadata) (
 func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, state CronDeliveryState) (CronDeliveryState, globalevents.LogResult, error) {
 	var logResult globalevents.LogResult
 	content := "operation=runLLMReport"
+	platforms := s.targetPlatformNames(meta)
 
 	model, err := s.modelForTask(meta.LLM)
 	if err != nil {
@@ -126,6 +131,7 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 	}
 	actor := contextinfo.Actor{ID: security.ActorID(meta.CreatedBy.Platform, meta.CreatedBy.PlatformUserID), Platform: meta.CreatedBy.Platform, PlatformUserID: meta.CreatedBy.PlatformUserID, DisplayName: meta.CreatedBy.DisplayName, Role: contextinfo.RoleSuperadmin}
 	runRequest := background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), Prompt: cronPrompt(meta.Trigger.Message), SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}}
+	runRequest.TargetPlatforms = platforms
 	runRequest.NeedsElyphRules = true
 	runRequest.ToolListNames = meta.LLM.ToolListNames
 	runRequest.ModelProvider, runRequest.Model = model.Provider, model.Model

@@ -61,7 +61,11 @@ func (s *Service) CreateCompacted(ctx context.Context, scope share.Scope, source
 			return nil, fmt.Errorf("session binding expired")
 		}
 	}
-	origin, _, err := share.Origin(source)
+	sourceFields, err := storage.DecodeSessionMetadata(source.Metadata)
+	if err != nil {
+		return nil, err
+	}
+	origin, _, err := share.OriginFromMetadata(sourceFields)
 	if err != nil {
 		return nil, err
 	}
@@ -70,6 +74,13 @@ func (s *Service) CreateCompacted(ctx context.Context, scope share.Scope, source
 		return nil, err
 	}
 	if err := share.InheritOrigin(origin, fields); err != nil {
+		return nil, err
+	}
+	idOrigin, err := share.IDOriginFromMetadata(sourceFields, source.Platform, scope)
+	if err != nil {
+		return nil, err
+	}
+	if err := idOrigin.Save(fields); err != nil {
 		return nil, err
 	}
 	if err := fields.Set("title_renamed", true); err != nil {

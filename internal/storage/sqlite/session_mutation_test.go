@@ -14,7 +14,7 @@ import (
 func TestSessionMutateReadsLatestAndRollsBack(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
-	row := &storage.Session{OwnerID: "u", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeWork, Title: "original", Metadata: `{"unknown":9007199254740993,"count":0}`}
+	row := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeWork, Title: "original", Metadata: `{"unknown":9007199254740993,"count":0}`}
 	if err := store.Sessions().Create(ctx, row); err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestSessionMutatePreservesAndChangesStoredValues(t *testing.T) {
 			store := newTestStore(t)
 			at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 			archived, pinned := at, at
-			row := &storage.Session{Title: "kept", Metadata: `{"unknown":9007199254740993}`, CreatedAt: at, UpdatedAt: at, ArchivedAt: &archived, PinnedAt: &pinned}
+			row := &storage.Session{ID: storage.NewID(), Title: "kept", Metadata: `{"unknown":9007199254740993}`, CreatedAt: at, UpdatedAt: at, ArchivedAt: &archived, PinnedAt: &pinned}
 			if err := store.Sessions().Create(t.Context(), row); err != nil {
 				t.Fatal(err)
 			}
@@ -133,7 +133,7 @@ func TestSessionMutatePreservesAndChangesStoredValues(t *testing.T) {
 
 func TestSessionMutateCancellationDoesNotReportSuccess(t *testing.T) {
 	store := newTestStore(t)
-	row := &storage.Session{Title: "kept"}
+	row := &storage.Session{ID: storage.NewID(), Title: "kept"}
 	if err := store.Sessions().Create(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}

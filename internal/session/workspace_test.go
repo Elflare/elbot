@@ -27,7 +27,7 @@ func TestMissingWorkspaceFallbackPersistsAfterPromotion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	row := &storage.Session{OwnerID: "owner", Platform: "cli", PlatformScopeID: "cron:test", Mode: storage.SessionModeBackground, Metadata: string(metadata)}
+	row := &storage.Session{ID: storage.NewID(), OwnerID: "owner", Platform: "cli", PlatformScopeID: "cron:test", Mode: storage.SessionModeBackground, Metadata: string(metadata)}
 	if err := store.Sessions().Create(ctx, row); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestMissingWorkspaceFallbackPersistsAfterPromotion(t *testing.T) {
 func TestConditionalWorkspaceClearPreservesNewSelection(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
-	row, err := svc.Create(ctx, Scope{ActorID: "owner", IsCLI: true}, CreateRequest{})
+	row, err := svc.Create(ctx, Scope{ActorID: "owner", Platform: "cli", IsCLI: true}, CreateRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestWorkspaceRejectsMalformedMetadataAndExpiredBinding(t *testing.T) {
 		t.Run(raw, func(t *testing.T) {
 			svc, store := newTestService(t)
 			ctx := context.Background()
-			row := &storage.Session{OwnerID: "owner", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Metadata: raw}
+			row := &storage.Session{ID: storage.NewID(), OwnerID: "owner", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Metadata: raw}
 			if err := store.Sessions().Create(ctx, row); err != nil {
 				t.Fatal(err)
 			}

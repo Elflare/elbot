@@ -17,7 +17,7 @@ import (
 
 func newWorkspaceTestSession(t *testing.T, ctx context.Context, store storage.Store, metadata string) *storage.Session {
 	t.Helper()
-	session := &storage.Session{
+	session := &storage.Session{ID: storage.NewID(),
 		OwnerID:         "cli:local",
 		Platform:        "cli",
 		PlatformScopeID: "local",
