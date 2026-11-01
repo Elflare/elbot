@@ -1,5 +1,5 @@
 // 实现网页搜索工具，组织搜索请求和结果。
-package builtin
+package web
 
 import toolshare "elbot/internal/tool/share"
 
@@ -62,18 +62,14 @@ type tavilyRequest struct {
 }
 
 type tavilyResponse struct {
-	Query        string         `json:"query"`
-	Answer       string         `json:"answer"`
-	Results      []tavilyResult `json:"results"`
-	ResponseTime float64        `json:"response_time"`
-	RequestID    string         `json:"request_id"`
+	Answer  string         `json:"answer"`
+	Results []tavilyResult `json:"results"`
 }
 
 type tavilyResult struct {
-	Title   string  `json:"title"`
-	URL     string  `json:"url"`
-	Content string  `json:"content"`
-	Score   float64 `json:"score"`
+	Title   string `json:"title"`
+	URL     string `json:"url"`
+	Content string `json:"content"`
 }
 
 func NewWebSearchTool(environment processenv.Environment) WebSearchTool {
@@ -125,13 +121,11 @@ func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 		return nil, fmt.Errorf("%s is required; set it in environment or config .env", tavilyAPIKeyEnv)
 	}
 	payload := normalizeTavilyRequest(args, query)
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("marshal Tavily request: %w", err)
-	}
+	// 请求结构仅包含字符串、整数、布尔和字符串切片。
+	body, _ := json.Marshal(payload)
 
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("搜索：%s", query), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
-		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, t.searchEndpoint(), bytes.NewReader(body))
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, t.endpoint, bytes.NewReader(body))
 		if err != nil {
 			callErr := fmt.Errorf("create Tavily request: %w", err)
 			return nil, callErr.Error(), callErr
@@ -139,8 +133,7 @@ func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 		httpReq.Header.Set("Content-Type", "application/json")
 
-		client := t.httpClient()
-		resp, err := client.Do(httpReq)
+		resp, err := t.client.Do(httpReq)
 		if err != nil {
 			callErr := fmt.Errorf("Tavily request: %w", err)
 			return nil, callErr.Error(), callErr
@@ -223,20 +216,6 @@ func formatTavilyContent(data tavilyResponse) string {
 	return strings.TrimSpace(out.String())
 }
 
-func (t WebSearchTool) httpClient() *http.Client {
-	if t.client != nil {
-		return t.client
-	}
-	return &http.Client{Timeout: 15 * time.Second}
-}
-
-func (t WebSearchTool) searchEndpoint() string {
-	if strings.TrimSpace(t.endpoint) != "" {
-		return t.endpoint
-	}
-	return defaultSearchEndpoint
-}
-
 func trimStringList(values []string) []string {
 	out := make([]string, 0, len(values))
 	for _, value := range values {
@@ -246,13 +225,4 @@ func trimStringList(values []string) []string {
 		}
 	}
 	return out
-}
-
-func truncateHTTPBody(body []byte) string {
-	const max = 2048
-	text := string(body)
-	if len(text) <= max {
-		return text
-	}
-	return text[:max] + "..."
 }

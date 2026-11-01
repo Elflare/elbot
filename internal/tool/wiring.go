@@ -15,6 +15,7 @@ import (
 	"elbot/internal/processenv"
 	"elbot/internal/signal"
 	"elbot/internal/tool/builtin"
+	"elbot/internal/tool/builtin/web"
 	"elbot/internal/tool/chat_history"
 	"elbot/internal/tool/discovery"
 	"elbot/internal/tool/execution"
@@ -146,10 +147,10 @@ func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
 	if err := registry.Register(builtin.NewReplyToChatHistoryMessageTool(opts.chatHistory)); err != nil {
 		return err
 	}
-	if err := registry.Register(builtin.NewWebSearchTool(opts.processEnv)); err != nil {
+	if err := registry.Register(web.NewWebSearchTool(opts.processEnv)); err != nil {
 		return err
 	}
-	if err := registry.Register(builtin.NewWebExtractTool(opts.processEnv)); err != nil {
+	if err := registry.Register(web.NewWebExtractTool(opts.processEnv)); err != nil {
 		return err
 	}
 	fileGuard := builtin.NewFileGuard(
