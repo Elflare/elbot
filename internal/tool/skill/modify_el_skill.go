@@ -173,5 +173,5 @@ func (t ModifyElSkillTool) call(ctx context.Context, preview modifyElSkillPrevie
 		message = "SKILL.elyph 已写入但尚未 reload；完成修改后调用 finalize_el_skill。"
 	}
 	content := fmt.Sprintf("modified EL skill %s target %s\nrevision_after: %s\ndiff:\n%s\n\n%s", preview.Name, preview.Target, result.RevisionAfter, result.Diff, message)
-	return &toolshare.Result{Content: content, NeedsElyphRules: preview.Target == elSkillTargetElyph}, fmt.Sprintf("modified=%s target=%s\ndiff:\n%s", preview.Name, preview.Target, result.Diff), nil
+	return &toolshare.Result{Content: content, NeedsElyphRules: preview.Target == elSkillTargetElyph}, fmt.Sprintf("modified=%s target=%s revision_after=%s", preview.Name, preview.Target, result.RevisionAfter), nil
 }

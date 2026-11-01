@@ -52,7 +52,7 @@ func TestHistoryQueryLogIncludesResult(t *testing.T) {
 		args, summary string
 	}{
 		{"search", builtin.NewSearchChatHistoryTool(mediaTool.manager, nil), `{}`, "returned=4"},
-		{"around", builtin.NewGetChatHistoryAroundTool(mediaTool.manager, nil), `{"message_id":"long"}`, "message_id=long returned=4"},
+		{"around", builtin.NewGetChatHistoryAroundTool(mediaTool.manager, nil), `{"message_id":"long"}`, "returned=4"},
 		{"empty", builtin.NewSearchChatHistoryTool(mediaTool.manager, nil), `{"query":"no-match"}`, "returned=0"},
 		{"empty_around", builtin.NewGetChatHistoryAroundTool(mediaTool.manager, nil), `{"message_id":"missing"}`, "message_id=missing returned=0"},
 	} {
@@ -62,7 +62,7 @@ func TestHistoryQueryLogIncludesResult(t *testing.T) {
 				t.Fatal(err)
 			}
 			preview := result.LogContent(err)
-			if !strings.HasPrefix(logContent, tc.summary) || preview != toolshare.TruncateLogContent(result.Content, 1024) {
+			if !strings.Contains(logContent, tc.summary) || preview != toolshare.TruncateLogContent(result.Content, 1024) {
 				t.Fatalf("log=%q result=%q", logContent, result.Content)
 			}
 			if !strings.HasPrefix(tc.name, "empty") && (utf8.RuneCountInString(result.Content) <= 1024 || utf8.RuneCountInString(preview) != 1024 || !utf8.ValidString(preview)) {
@@ -72,7 +72,7 @@ func TestHistoryQueryLogIncludesResult(t *testing.T) {
 	}
 }
 
-func TestGetMediaLogIncludesAllResults(t *testing.T) {
+func TestGetMediaLogSummarizesResults(t *testing.T) {
 	for _, args := range []string{`{"message_id":["1"]}`, `{"message_id":["missing"]}`, `{"message_id":["1","missing"]}`, `{"message_id":["1"],"media_index":[[1,2,3,4,5,6,7]]}`} {
 		t.Run(args, func(t *testing.T) {
 			ctx, value, _ := newHistoryMediaToolTest(t)
@@ -80,7 +80,7 @@ func TestGetMediaLogIncludesAllResults(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if logContent != toolshare.TruncateLogContent(result.Content, 1024) {
+			if !strings.HasPrefix(logContent, "requested_messages=") || strings.Contains(logContent, "\n") || result.LogContent(err) != toolshare.TruncateLogContent(result.Content, 1024) {
 				t.Fatalf("log=%q result=%q", logContent, result.Content)
 			}
 		})

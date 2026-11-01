@@ -6,8 +6,10 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -162,6 +164,7 @@ func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 				return nil, err.Error(), err
 			}
 		}
+		summary := fmt.Sprintf("skill=%s build=skipped", name)
 		if strings.TrimSpace(args.GoSource) != "" {
 			binary := name
 			if runtime.GOOS == "windows" {
@@ -182,18 +185,24 @@ func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 			if err := cmd.Run(); err != nil {
 				{
 					callErr := fmt.Errorf("go build failed: %w\nstdout:\n%s\nstderr:\n%s", err, truncateOutput(stdout.String()), truncateOutput(stderr.String()))
-					return nil, callErr.Error(), callErr
+					summary := fmt.Sprintf("skill=%s build=failed", name)
+					var exitErr *exec.ExitError
+					if errors.As(err, &exitErr) && exitErr.ExitCode() >= 0 {
+						summary += fmt.Sprintf(" exit_code=%d", exitErr.ExitCode())
+					}
+					return nil, summary, callErr
 				}
 			}
+			summary = fmt.Sprintf("skill=%s build=ok exit_code=0", name)
 		}
 		err := t.manager.reloadLocked(ctx)
 		t.manager.setReloadResult(err)
 		if err != nil {
 			callErr := fmt.Errorf("ELyph skill written but reload failed: %w", err)
-			return nil, callErr.Error(), callErr
+			return nil, summary + " reload=failed", callErr
 		}
 		result := &toolshare.Result{Content: appendElyphWarnings(fmt.Sprintf("created ELyph skill %s", name), diagnostics)}
-		return result, result.Content, nil
+		return result, summary + " reload=ok", nil
 	}), nil
 }
 

@@ -85,7 +85,7 @@ func (t AgentSkillTool) call(ctx context.Context, preview agentSkillPreview) (*t
 		}
 		{
 			result := &toolshare.Result{Content: readAgentSkillConfig(record, preview.Path)}
-			return result, result.Content, nil
+			return result, fmt.Sprintf("action=read skill=%s path=%s", preview.Name, preview.Path), nil
 		}
 	}
 	if err := t.manager.commitAgentSkillConfig(ctx, preview.Name, preview.Path, preview.File); err != nil {

@@ -125,10 +125,11 @@ func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 	body, _ := json.Marshal(payload)
 
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("搜索：%s", query), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+		logContent = fmt.Sprintf("source=tavily query=%q status=failed", query)
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, t.endpoint, bytes.NewReader(body))
 		if err != nil {
 			callErr := fmt.Errorf("create Tavily request: %w", err)
-			return nil, callErr.Error(), callErr
+			return nil, logContent, callErr
 		}
 		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 		httpReq.Header.Set("Content-Type", "application/json")
@@ -136,28 +137,25 @@ func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 		resp, err := t.client.Do(httpReq)
 		if err != nil {
 			callErr := fmt.Errorf("Tavily request: %w", err)
-			return nil, callErr.Error(), callErr
+			return nil, logContent, callErr
 		}
 		defer resp.Body.Close()
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
 			callErr := fmt.Errorf("read Tavily response: %w", err)
-			return nil, callErr.Error(), callErr
+			return nil, logContent, callErr
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			callErr := fmt.Errorf("Tavily HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))
-			return nil, callErr.Error(), callErr
+			return nil, fmt.Sprintf("%s http_status=%d", logContent, resp.StatusCode), callErr
 		}
 		var data tavilyResponse
 		if err := json.Unmarshal(respBody, &data); err != nil {
 			callErr := fmt.Errorf("parse Tavily response: %w", err)
-			return nil, callErr.Error(), callErr
+			return nil, logContent, callErr
 		}
 		result := &toolshare.Result{Content: formatTavilyContent(data)}
-		logContent = fmt.Sprintf("results=%d", len(data.Results))
-		for _, item := range data.Results {
-			logContent += fmt.Sprintf("\n%s %s", item.Title, item.URL)
-		}
+		logContent = fmt.Sprintf("query=%q results=%d", query, len(data.Results))
 		return result, logContent, nil
 	}), nil
 }

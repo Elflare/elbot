@@ -69,7 +69,7 @@ func (t GetMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 			}
 		}
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("获取消息媒体：%s", strings.Join(args.MessageIDs, ", ")), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("获取消息媒体：%s", strings.Join(args.MessageIDs, ", ")), func(ctx context.Context) (*toolshare.Result, string, error) {
 		results, err := t.history.GetMedia(ctx, toolshare.MediaRequest{MessageIDs: args.MessageIDs, MediaIndex: args.MediaIndex})
 		if errors.Is(err, toolshare.ErrNoChatContext) {
 			return &toolshare.Result{Content: err.Error()}, err.Error(), nil
@@ -78,7 +78,11 @@ func (t GetMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 			return nil, err.Error(), err
 		}
 		var lines []string
+		failed := 0
 		for _, result := range results {
+			if result.Err != nil {
+				failed++
+			}
 			if errors.Is(result.Err, toolshare.ErrNotFound) {
 				lines = append(lines, fmt.Sprintf("[#%s] 当前聊天没有该消息。", result.MessageID))
 				continue
@@ -90,15 +94,14 @@ func (t GetMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 			case errors.Is(result.Err, toolshare.ErrFetchLimit):
 				text = fmt.Sprintf("[媒体未下载：达到本次 %d 个下载尝试上限]", toolshare.MaxFetchAttempts)
 			case result.Err != nil:
-				text = "[媒体获取失败：来源不可用、超限或关联保存失败]"
-				logContent += fmt.Sprintf("\n[#%s] %d: %v", result.MessageID, result.Index, result.Err)
+				text = fmt.Sprintf("[媒体获取失败：%v]", result.Err)
 			default:
 				text = historyMediaLabel(result.IsImage, result.Media.ID)
 			}
 			lines = append(lines, fmt.Sprintf("[#%s] %d. %s", result.MessageID, result.Index, text))
 		}
 		result := &toolshare.Result{Content: strings.Join(lines, "\n")}
-		return result, result.Content + logContent, nil
+		return result, fmt.Sprintf("requested_messages=%d returned_items=%d failed_items=%d", len(args.MessageIDs), len(results), failed), nil
 	}), nil
 }
 

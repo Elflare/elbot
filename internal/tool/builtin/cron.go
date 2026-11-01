@@ -316,7 +316,6 @@ func (t CronQueryTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 			if result != nil && view.TriggerMode == "llm" {
 				result.NeedsElyphRules = true
 			}
-			logContent += fmt.Sprintf("\nname=%s enabled=%t completed=%t", view.Name, view.Enabled, view.Completed)
 		}
 		if callErr != nil {
 			logContent = callErr.Error()
@@ -379,17 +378,11 @@ func (t CronWriteTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 		default:
 			callErr = fmt.Errorf("operation must be create, update, disable, or delete")
 		}
-		logContent := ""
-		if result != nil {
-			logContent = result.Content
-		}
+		status := "ok"
 		if callErr != nil {
-			if logContent != "" {
-				logContent += "\n"
-			}
-			logContent += callErr.Error()
+			status = "failed"
 		}
-		return result, logContent, callErr
+		return result, fmt.Sprintf("operation=%s name=%s status=%s", args.Operation, args.Name, status), callErr
 	}), nil
 }
 

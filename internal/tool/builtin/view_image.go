@@ -173,12 +173,13 @@ func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 	}), nil
 }
 
-func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (_ *toolshare.Result, logContent string, _ error) {
+func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (*toolshare.Result, string, error) {
 	results, err := t.history.GetImages(ctx, toolshare.MediaRequest{MessageIDs: args.MessageIDs, MediaIndex: args.MediaIndex})
 	if err != nil {
 		return nil, err.Error(), err
 	}
 	var segments []llm.MessageSegment
+	failed := 0
 	for _, result := range results {
 		if err := ctx.Err(); err != nil {
 			return nil, err.Error(), err
@@ -188,21 +189,20 @@ func (t ViewImageTool) viewMessages(ctx context.Context, args viewImageArgs) (_ 
 		case errors.Is(result.Err, toolshare.ErrFetchLimit):
 			label += fmt.Sprintf(" 达到本次 %d 个下载尝试上限", toolshare.MaxFetchAttempts)
 		case result.Err != nil:
-			label += " 图片获取失败"
-			logContent += fmt.Sprintf("\n%s %v", label, result.Err)
+			label += fmt.Sprintf(" 图片获取失败：%v", result.Err)
 		default:
 			item, err := t.center.ValidateImage(ctx, result.Media.ID)
 			if err != nil {
-				label += " 媒体不是有效或支持的图片"
-				logContent += fmt.Sprintf("\n%s %v", label, err)
+				label += fmt.Sprintf(" 媒体不是有效或支持的图片：%v", err)
 			} else {
 				segments = append(segments, llm.MessageSegment{Type: llm.SegmentText, Text: label}, imageResultSegment(item))
 				continue
 			}
 		}
+		failed++
 		segments = append(segments, llm.MessageSegment{Type: llm.SegmentText, Text: label})
 	}
-	return &toolshare.Result{Segments: segments}, fmt.Sprintf("view_image message_id=%v media_index=%v", args.MessageIDs, args.MediaIndex) + logContent, ctx.Err()
+	return &toolshare.Result{Segments: segments}, fmt.Sprintf("requested_messages=%d returned_items=%d failed_items=%d", len(args.MessageIDs), len(results), failed), ctx.Err()
 }
 
 func imageResultSegment(item toolshare.MediaInfo) llm.MessageSegment {

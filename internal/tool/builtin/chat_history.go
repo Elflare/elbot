@@ -173,25 +173,21 @@ func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.Ca
 		}
 		if len(rows) == 0 {
 			result := &toolshare.Result{Content: "没有查到符合条件的" + label + "记录。"}
-			return result, "returned=0\ncontent:\n" + result.Content, nil
+			return result, fmt.Sprintf("scope=%q query=%q returned=0", label, args.Query), nil
 		}
 		lines := []string{fmt.Sprintf("%s查询结果：返回 %d 条。", label, len(rows))}
-		logLines := []string{lines[0]}
 		for _, row := range rows {
-			line, preview := formatChatHistoryMedia(row, "", args.Full)
+			line := formatChatHistoryMedia(row, "", args.Full)
 			lines = append(lines, line)
-			logLines = append(logLines, preview)
 		}
 		if !contextinfo.BackgroundContext(ctx) {
 			lines = append(lines, "仅在需要媒体时调用 get_media(message_id=[\"...\"], media_index=[[1]]) 获取媒体 ID；可用 get_chat_history_around(message_id=\"...\") 查看附近上下文；可用 reply_to_chat_history_message(message_id=\"...\", message=\"...\") 引用回复。")
-			logLines = append(logLines, lines[len(lines)-1])
 			if hint := viewImageHistoryHint(ctx, t.viewImageAvailable); hint != "" {
 				lines = append(lines, hint)
-				logLines = append(logLines, hint)
 			}
 		}
 		result := &toolshare.Result{Content: chatHistoryResultLines(lines, "...[查询结果过长，已截断]")}
-		return result, fmt.Sprintf("returned=%d\ncontent:\n%s", len(rows), chatHistoryResultLines(logLines, "…")), nil
+		return result, fmt.Sprintf("scope=%q query=%q returned=%d", label, args.Query, len(rows)), nil
 	}), nil
 }
 
@@ -215,24 +211,21 @@ func (t GetChatHistoryAroundTool) PrepareCall(ctx context.Context, req toolshare
 		}
 		if errors.Is(err, toolshare.ErrNotFound) {
 			result := &toolshare.Result{Content: fmt.Sprintf("没有在当前聊天找到 message_id 为 %s 的历史记录。", messageID)}
-			return result, fmt.Sprintf("message_id=%s returned=0\ncontent:\n%s", messageID, result.Content), nil
+			return result, fmt.Sprintf("message_id=%s returned=0", messageID), nil
 		}
 		if err != nil {
 			return nil, err.Error(), err
 		}
 		lines := []string{fmt.Sprintf("当前聊天消息 #%s 附近上下文：返回 %d 条。", messageID, len(rows))}
-		logLines := []string{lines[0]}
 		for _, row := range rows {
-			line, preview := formatChatHistoryMedia(row, messageID, args.Full)
+			line := formatChatHistoryMedia(row, messageID, args.Full)
 			lines = append(lines, line)
-			logLines = append(logLines, preview)
 		}
 		if hint := viewImageHistoryHint(ctx, t.viewImageAvailable); hint != "" {
 			lines = append(lines, hint)
-			logLines = append(logLines, hint)
 		}
 		result := &toolshare.Result{Content: chatHistoryResultLines(lines, "...[查询结果过长，已截断]")}
-		return result, fmt.Sprintf("message_id=%s returned=%d\ncontent:\n%s", messageID, len(rows), chatHistoryResultLines(logLines, "…")), nil
+		return result, fmt.Sprintf("message_id=%s before=%d after=%d returned=%d", messageID, args.Before, args.After, len(rows)), nil
 	}), nil
 }
 
@@ -286,15 +279,13 @@ func parseChatHistoryMessageID(value string) string {
 	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(value), "#"))
 }
 
-func formatChatHistoryMedia(row toolshare.Message, targetID string, full bool) (string, string) {
+func formatChatHistoryMedia(row toolshare.Message, targetID string, full bool) string {
 	line := formatChatHistoryLine(row, targetID, full, "...[单条消息过长，已截断]")
-	logContent := formatChatHistoryLine(row, targetID, false, "…")
 	for i, item := range row.Media {
 		label := fmt.Sprintf("\n  %d. %s", i+1, historyMediaLabel(item.IsImage, item.MediaID))
 		line += label
-		logContent += label
 	}
-	return line, logContent
+	return line
 }
 
 // Truncate only at line boundaries, never in the middle of a media ID.

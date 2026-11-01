@@ -46,7 +46,6 @@ type webExtractData struct {
 	TotalChars    int
 	Offset        int
 	ReturnedChars int
-	NextOffset    *int
 	Cached        bool
 	Content       string
 }
@@ -138,11 +137,11 @@ func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 			}
 		})
 		if err != nil {
-			return nil, err.Error(), err
+			return nil, fmt.Sprintf("url=%s source=%s status=failed", url, method), err
 		}
 		data := sliceExtract(entry, args.Offset, args.MaxChars, cached)
-		result := &toolshare.Result{Content: formatExtractContent(data)}
-		return result, fmt.Sprintf("url=%s range=%d-%d/%d cached=%t source=%s", data.URL, data.Offset, data.Offset+data.ReturnedChars, data.TotalChars, data.Cached, data.Source), nil
+		summary := fmt.Sprintf("url=%s range=%d-%d/%d cached=%t source=%s title=%s", data.URL, data.Offset, data.Offset+data.ReturnedChars, data.TotalChars, data.Cached, data.Source, strings.Join(strings.Fields(data.Title), " "))
+		return &toolshare.Result{Summary: summary, Content: data.Content}, summary, nil
 	}), nil
 }
 
@@ -167,11 +166,6 @@ func sliceExtract(entry cachedExtract, offset, maxChars int, cached bool) webExt
 	}
 	content := string(contentRunes[offset:end])
 	returned := end - offset
-	var next *int
-	if end < total {
-		value := end
-		next = &value
-	}
 	return webExtractData{
 		URL:           entry.url,
 		Title:         entry.title,
@@ -179,29 +173,7 @@ func sliceExtract(entry cachedExtract, offset, maxChars int, cached bool) webExt
 		TotalChars:    total,
 		Offset:        offset,
 		ReturnedChars: returned,
-		NextOffset:    next,
 		Cached:        cached,
 		Content:       content,
 	}
-}
-
-func formatExtractContent(data webExtractData) string {
-	var out strings.Builder
-	out.WriteString("URL: ")
-	out.WriteString(data.URL)
-	if data.Source != "" {
-		out.WriteString("\nSource: ")
-		out.WriteString(data.Source)
-	}
-	if data.Title != "" {
-		out.WriteString("\nTitle: ")
-		out.WriteString(data.Title)
-	}
-	out.WriteString(fmt.Sprintf("\nRange: %d-%d / %d", data.Offset, data.Offset+data.ReturnedChars, data.TotalChars))
-	if data.NextOffset != nil {
-		out.WriteString(fmt.Sprintf("\nNext offset: %d", *data.NextOffset))
-	}
-	out.WriteString(fmt.Sprintf("\nCached: %t\n\n", data.Cached))
-	out.WriteString(data.Content)
-	return strings.TrimSpace(out.String())
 }

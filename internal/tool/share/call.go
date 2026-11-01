@@ -26,6 +26,8 @@ type CallRequest struct {
 }
 
 type Result struct {
+	// Summary is prepended to the LLM result only; audit uses its independent summary.
+	Summary string
 	// NeedsElyphRules declares a language requirement of this result's content.
 	NeedsElyphRules bool
 	// DiscoveryText retains the insertion boundary between summary and details.
@@ -66,14 +68,19 @@ func (r *Result) LogContent(err error) string {
 	return TruncateLogContent(body, 1024)
 }
 
-func (r *Result) LLMSegments() []llm.MessageSegment {
+func (r *Result) LLMSegments() (segments []llm.MessageSegment) {
 	if r == nil {
 		return nil
 	}
 	if len(r.Segments) > 0 {
-		return llm.AppendSegmentText(r.Segments, warningsSuffix(r.Warnings))
+		segments = llm.AppendSegmentText(r.Segments, warningsSuffix(r.Warnings))
+	} else {
+		segments = llm.TextSegments(AppendWarnings(r.Content, r.Warnings))
 	}
-	return llm.TextSegments(AppendWarnings(r.Content, r.Warnings))
+	if r.Summary != "" {
+		segments = append(llm.TextSegments(r.Summary+"\n\n"), segments...)
+	}
+	return segments
 }
 
 func AppendWarnings(content string, warnings []string) string {

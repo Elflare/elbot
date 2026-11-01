@@ -178,14 +178,14 @@ func (t LongMemorySearchTool) PrepareCall(ctx context.Context, req toolshare.Cal
 				return nil, err.Error(), err
 			}
 			result := textResult(content)
-			return result, result.Content, nil
+			return result, "operation=categories", nil
 		}
 		content, err := t.store.search(ctx, args)
 		if err != nil {
 			return nil, err.Error(), err
 		}
 		result := textResult(content)
-		return result, result.Content, nil
+		return result, fmt.Sprintf("keywords=%q category=%q", args.Keywords, args.Category), nil
 	}), nil
 }
 

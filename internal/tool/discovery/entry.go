@@ -96,12 +96,6 @@ func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest) (*
 		}
 		// schema 通过 Data 交给工具状态流程，正文只保留发现说明。
 		logContent = fmt.Sprintf("found=%d errors=%d", len(result.Tools), len(result.Errors))
-		for _, failure := range result.Errors {
-			logContent += fmt.Sprintf("\n%s: %s", failure.Name, failure.Reason)
-		}
-		for _, discovered := range result.Tools {
-			logContent += "\n" + discovered.Info.Name
-		}
 		return &share.Result{
 			Content:       strings.TrimSpace(details.Summary + "\n\n" + details.Details),
 			DiscoveryText: &details, NeedsElyphRules: needsElyphRules, Data: data, Metadata: metadata,

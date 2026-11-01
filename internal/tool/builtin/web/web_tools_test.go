@@ -20,6 +20,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"elbot/internal/llm"
 	"elbot/internal/processenv"
 )
 
@@ -69,8 +70,8 @@ func TestWebSearchToolSendsDefaults(t *testing.T) {
 	if !strings.Contains(result.Content, "answer") || !strings.Contains(result.Content, "https://example.com") {
 		t.Fatalf("content = %q", result.Content)
 	}
-	if logContent != "results=1\nTitle https://example.com" || result.LogContent(err) != toolshare.TruncateLogContent(result.Content, 1024) {
-		t.Fatalf("search log should retain returned content: %q", logContent)
+	if logContent != "query=\"elbot\" results=1" || result.LogContent(err) != toolshare.TruncateLogContent(result.Content, 1024) {
+		t.Fatalf("search log = %q", logContent)
 	}
 }
 
@@ -113,19 +114,19 @@ func TestWebExtractToolSlicesAndCaches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(first.Content, "Source: jina") || !strings.Contains(first.Content, "Title: Example") || !strings.Contains(first.Content, "Next offset: 8000") || !strings.Contains(first.Content, "Cached: false") {
+	if first.Content != content[:defaultExtractChars] || first.Summary != logContent || llm.SegmentsRawContentText(first.LLMSegments()) != logContent+"\n\n"+first.Content {
 		t.Fatalf("first content = %q", first.Content)
 	}
 	preview := first.LogContent(err)
-	if logContent != "url=https://example.com/page range=0-8000/10000 cached=false source=jina" || preview != toolshare.TruncateLogContent(first.Content, 1024) || len([]rune(preview)) != 1024 || !strings.HasSuffix(preview, "…") {
+	if logContent != "url=https://example.com/page range=0-8000/10000 cached=false source=jina title=Example" || preview != toolshare.TruncateLogContent(first.Content, 1024) || len([]rune(preview)) != 1024 || !strings.HasSuffix(preview, "…") {
 		t.Fatalf("extract log=%q", logContent)
 	}
 
-	second, _, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"method":"jina","url":"https://example.com/page","offset":8000}`)})
+	second, logContent, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"method":"jina","url":"https://example.com/page","offset":8000}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(second.Content, "Range: 8000-10000 / 10000") || !strings.Contains(second.Content, "Cached: true") || !strings.Contains(second.Content, strings.Repeat("b", 20)) {
+	if second.Content != content[defaultExtractChars:] || !strings.Contains(logContent, "range=8000-10000/10000 cached=true") {
 		t.Fatalf("second content = %q", second.Content)
 	}
 }
@@ -145,28 +146,28 @@ func TestWebExtractToolForceRefreshReplacesCache(t *testing.T) {
 	extract := NewWebExtractTool(processenv.Environment{})
 	extract.client = server.Client()
 	extract.endpoint = server.URL
-	first, _, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"method":"jina","url":"https://example.com/page"}`)})
+	first, logContent, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"method":"jina","url":"https://example.com/page"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(first.Content, "first version") || !strings.Contains(first.Content, "Cached: false") {
+	if first.Content != "first version" || !strings.Contains(logContent, "cached=false") {
 		t.Fatalf("first content = %q", first.Content)
 	}
 
 	refreshed.Store(true)
-	result, _, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"method":"jina","url":"https://example.com/page","force_refresh":true}`)})
+	result, logContent, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"method":"jina","url":"https://example.com/page","force_refresh":true}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "second version") || !strings.Contains(result.Content, "Cached: false") {
+	if result.Content != "second version" || !strings.Contains(logContent, "cached=false") {
 		t.Fatalf("refreshed content = %q", result.Content)
 	}
 
-	cached, _, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"method":"jina","url":"https://example.com/page"}`)})
+	cached, logContent, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"method":"jina","url":"https://example.com/page"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(cached.Content, "second version") || !strings.Contains(cached.Content, "Cached: true") {
+	if cached.Content != "second version" || !strings.Contains(logContent, "cached=true") {
 		t.Fatalf("cached content = %q", cached.Content)
 	}
 }
@@ -194,11 +195,11 @@ func TestWebExtractToolFailedForceRefreshPreservesCache(t *testing.T) {
 		t.Fatal("expected force refresh error")
 	}
 
-	cached, _, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"method":"jina","url":"https://example.com/page"}`)})
+	cached, logContent, err := callTool(context.Background(), extract, toolshare.CallRequest{Arguments: []byte(`{"method":"jina","url":"https://example.com/page"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(cached.Content, "cached version") || !strings.Contains(cached.Content, "Cached: true") {
+	if cached.Content != "cached version" || !strings.Contains(logContent, "cached=true") {
 		t.Fatalf("cached content = %q", cached.Content)
 	}
 }
@@ -351,11 +352,11 @@ func TestWebExtractConcurrentPaginationAndCancellation(t *testing.T) {
 						continue
 					}
 					result := read(out)
-					want := "Range: 0-3 / 14"
+					want := "Exa"
 					if i == 1 {
-						want = "Range: 3-6 / 14"
+						want = "mpl"
 					}
-					if result.err != nil || !strings.Contains(result.result.Content, want) || !strings.Contains(result.result.Content, "Cached: false") {
+					if result.err != nil || result.result.Content != want {
 						t.Fatalf("caller %d = %#v, %v", i, result.result, result.err)
 					}
 				}
@@ -527,7 +528,7 @@ func TestWebExtractToolExtractsDirectHTML(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "Source: direct") || !strings.Contains(result.Content, "Title: 测试页") {
+	if result.Content != "测试页 标题 甲 & 乙" {
 		t.Fatalf("content = %q", result.Content)
 	}
 	if strings.Contains(result.Content, "alert") || strings.Contains(result.Content, "hidden") || !strings.Contains(result.Content, "甲 & 乙") {
@@ -557,7 +558,7 @@ func TestWebExtractToolCanSelectDirect(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("server calls = %d", calls)
 	}
-	if !strings.Contains(result.Content, "Source: direct") || !strings.Contains(result.Content, "Title: Direct") || !strings.Contains(result.Content, "直接提取") {
+	if result.Content != "Direct 直接提取" {
 		t.Fatalf("content = %q", result.Content)
 	}
 }
@@ -573,7 +574,7 @@ func mustParseURL(t *testing.T, raw string) *url.URL {
 
 func TestWebExtractToolCapsMaxChars(t *testing.T) {
 	data := sliceExtract(cachedExtract{url: "u", content: strings.Repeat("x", maxExtractChars+100)}, 0, maxExtractChars+999, true)
-	if data.ReturnedChars != maxExtractChars || data.NextOffset == nil {
+	if data.ReturnedChars != maxExtractChars || data.TotalChars != maxExtractChars+100 {
 		t.Fatalf("data = %#v", data)
 	}
 }

@@ -6,8 +6,10 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -167,10 +169,11 @@ func (t FinalizeElSkillTool) PrepareCall(ctx context.Context, req toolshare.Call
 			}
 		}
 		if validationErr != nil {
-			return &toolshare.Result{Content: content}, content, nil
+			return &toolshare.Result{Content: content}, fmt.Sprintf("skill=%s validation=failed build=skipped reload=skipped", name), nil
 		}
 		var b strings.Builder
 		b.WriteString(content)
+		summary := fmt.Sprintf("skill=%s validation=ok build=skipped", name)
 		if textOnly {
 			if _, err := os.Stat(sourcePath); !os.IsNotExist(err) {
 				if err == nil {
@@ -181,24 +184,30 @@ func (t FinalizeElSkillTool) PrepareCall(ctx context.Context, req toolshare.Call
 		} else {
 			build, err := runGoBuild(ctx, root, name, args.TimeoutMS, t.manager.processEnv)
 			if err != nil {
-				return nil, err.Error(), err
+				return nil, fmt.Sprintf("skill=%s validation=ok build=failed reload=skipped", name), err
 			}
 			if build.Err != nil {
 				fmt.Fprintf(&b, "go build: failed\n%v\n", build.Err)
 				appendCommandOutput(&b, build.Stdout, build.Stderr)
-				return &toolshare.Result{Content: b.String()}, fmt.Sprintf("go build: failed\n%v\nstderr:\n%s\nstdout:\n%s", build.Err, build.Stderr, build.Stdout), nil
+				summary := fmt.Sprintf("skill=%s validation=ok build=failed", name)
+				var exitErr *exec.ExitError
+				if errors.As(build.Err, &exitErr) && exitErr.ExitCode() >= 0 {
+					summary += fmt.Sprintf(" exit_code=%d", exitErr.ExitCode())
+				}
+				return &toolshare.Result{Content: b.String()}, summary + " reload=skipped", nil
 			}
 			b.WriteString("go build: ok\n")
 			appendCommandOutput(&b, build.Stdout, build.Stderr)
+			summary = fmt.Sprintf("skill=%s validation=ok build=ok exit_code=0", name)
 		}
 		err := t.manager.reloadLocked(ctx)
 		t.manager.setReloadResult(err)
 		if err != nil {
 			callErr := fmt.Errorf("EL skill finalized but reload failed: %w", err)
-			return nil, callErr.Error(), callErr
+			return nil, summary + " reload=failed", callErr
 		}
 		b.WriteString("reload: ok\n")
-		return &toolshare.Result{Content: b.String()}, b.String(), nil
+		return &toolshare.Result{Content: b.String()}, summary + " reload=ok", nil
 	}), nil
 }
 

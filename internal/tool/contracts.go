@@ -210,6 +210,7 @@ type DiscoveryText struct {
 }
 
 type Result struct {
+	Summary         string               // 仅在 LLM 出口前置的摘要，不计入 audit 正文。
 	NeedsElyphRules bool                 // 展示结果时需要 ELyph 规则。
 	DiscoveryText   *DiscoveryText       // 发现摘要与详情的展示边界。
 	Content         string               // 文本结果。
