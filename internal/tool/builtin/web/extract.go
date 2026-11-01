@@ -142,7 +142,7 @@ func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 		}
 		data := sliceExtract(entry, args.Offset, args.MaxChars, cached)
 		result := &toolshare.Result{Content: formatExtractContent(data)}
-		return result, fmt.Sprintf("url=%s range=%d-%d/%d cached=%t source=%s\n%s\n%s", data.URL, data.Offset, data.Offset+data.ReturnedChars, data.TotalChars, data.Cached, data.Source, data.Title, data.Content), nil
+		return result, fmt.Sprintf("url=%s range=%d-%d/%d cached=%t source=%s", data.URL, data.Offset, data.Offset+data.ReturnedChars, data.TotalChars, data.Cached, data.Source), nil
 	}), nil
 }
 

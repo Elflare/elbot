@@ -139,6 +139,7 @@ func (t *WebExtractTool) fetchMarkdownNew(ctx context.Context, targetURL string,
 		return cachedExtract{}, fmt.Errorf("create markdown.new request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("User-Agent", "ElBot-WebExtract/1.0")
 	httpReq.Header.Set("Accept", "application/json")
 	resp, err := t.httpClient(proxy).Do(httpReq)
 	if err != nil {

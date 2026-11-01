@@ -117,7 +117,7 @@ func TestWebExtractToolSlicesAndCaches(t *testing.T) {
 		t.Fatalf("first content = %q", first.Content)
 	}
 	preview := first.LogContent(err)
-	if !strings.Contains(logContent, strings.Repeat("a", 2000)) || preview != toolshare.TruncateLogContent(first.Content, 1024) || len([]rune(preview)) != 1024 || !strings.HasSuffix(preview, "…") {
+	if logContent != "url=https://example.com/page range=0-8000/10000 cached=false source=jina" || preview != toolshare.TruncateLogContent(first.Content, 1024) || len([]rune(preview)) != 1024 || !strings.HasSuffix(preview, "…") {
 		t.Fatalf("extract log=%q", logContent)
 	}
 
