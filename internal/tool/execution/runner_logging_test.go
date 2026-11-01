@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
@@ -25,9 +26,10 @@ import (
 
 type loggingTool struct {
 	runnerHighRiskTool
-	err    error
-	cancel context.CancelFunc
-	args   *string
+	err        error
+	prepareErr error
+	cancel     context.CancelFunc
+	args       *string
 }
 
 type originLoggingDeps struct {
@@ -133,6 +135,9 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 }
 
 func (t loggingTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	if t.prepareErr != nil {
+		return nil, t.prepareErr
+	}
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
 		if t.args != nil {
 			*t.args = string(req.Arguments)
@@ -256,7 +261,7 @@ func TestRunnerRecordsUnenteredCallFailure(t *testing.T) {
 	t.Cleanup(connection.Disconnect)
 	deps := &runnerTestDeps{}
 	manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "missing", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "missing", Arguments: "{}"}}})
-	if len(calls) != 1 || calls[0].ResultStatus != events.ResultFailed || calls[0].Level != slog.LevelError || !strings.Contains(calls[0].Content, "missing") || deps.completed != 0 {
+	if len(calls) != 1 || calls[0].ResultStatus != events.ResultFailed || calls[0].Level != slog.LevelInfo || !strings.Contains(calls[0].Content, "missing") || deps.completed != 0 {
 		t.Fatalf("invocation logs=%#v completed=%d", calls, deps.completed)
 	}
 }
@@ -264,6 +269,14 @@ func TestRunnerRecordsUnenteredCallFailure(t *testing.T) {
 type loggingDeps struct {
 	runnerTestDeps
 	confirmErr error
+	startErr   error
+}
+
+func (d *loggingDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), events.LogResult, error) {
+	if d.startErr != nil {
+		return ctx, time.Time{}, nil, events.LogResult{ResultStatus: events.ResultFailed, Content: d.startErr.Error()}, d.startErr
+	}
+	return d.runnerTestDeps.StartToolRequest(ctx, sessionID, toolName)
 }
 
 func (d *loggingDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment toolshare.RiskAssessment, detail string) (toolshare.ConfirmResult, error) {
@@ -303,7 +316,7 @@ func TestRunnerBatchFailureDoesNotInventToolCompletions(t *testing.T) {
 	}
 	defer connection.Disconnect()
 	result := manager.Run(context.Background(), &runnerTestDeps{}, toolshare.RunRequest{Committer: committer, Session: &storage.Session{ID: "batch-session", Mode: storage.SessionModeWork}, Calls: []llm.ToolCallRequest{{ID: "one", Name: "one"}, {ID: "two", Name: "two"}}})
-	if !errors.Is(result.Err, committer.beginErr) || len(records) != 1 || records[0].EventName != "tool_batch_prepare_failed" || records[0].ResultStatus != events.ResultFailed {
+	if !errors.Is(result.Err, committer.beginErr) || len(records) != 1 || records[0].EventName != "tool_batch_prepare_failed" || records[0].Category != events.LogRuntime || records[0].ResultStatus != events.ResultFailed || records[0].Level != slog.LevelError {
 		t.Fatalf("result = %+v, logs = %#v", result, records)
 	}
 }
@@ -364,12 +377,17 @@ func TestRunnerUsesSourceSaveResult(t *testing.T) {
 
 func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 	for _, tc := range []struct {
-		name                         string
-		callErr, saveErr, confirmErr error
-		reject                       bool
+		name                                               string
+		callErr, prepareErr, saveErr, confirmErr, startErr error
+		reject                                             bool
 	}{
 		{name: "success"},
 		{name: "tool business failure", callErr: errors.New("execution failed")},
+		{name: "tool and save failure", callErr: errors.New("execution failed"), saveErr: errors.New("transcript failed")},
+		{name: "tool preparation failure", prepareErr: errors.New("parse tool arguments: invalid JSON")},
+		{name: "tool preparation cancellation", prepareErr: fmt.Errorf("prepare: %w", context.Canceled)},
+		{name: "tool preparation timeout", prepareErr: context.DeadlineExceeded},
+		{name: "tool preparation and save failure", prepareErr: errors.New("invalid arguments"), saveErr: errors.New("transcript failed")},
 		{name: "tool business cancellation", callErr: context.Canceled},
 		{name: "wrapped tool cancellation", callErr: fmt.Errorf("tool: %w", context.Canceled)},
 		{name: "tool timeout", callErr: context.DeadlineExceeded},
@@ -377,15 +395,16 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 		{name: "rejected", reject: true},
 		{name: "rejected and save failure", reject: true, saveErr: errors.New("transcript failed")},
 		{name: "confirmation timeout", confirmErr: context.DeadlineExceeded},
+		{name: "request creation failure", startErr: errors.New("allocate tool request ID failed")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			registry := toolregistry.NewRegistry(security.DefaultPermission())
-			if err := registry.Register(loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}, err: tc.callErr}); err != nil {
+			if err := registry.Register(loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}, err: tc.callErr, prepareErr: tc.prepareErr}); err != nil {
 				t.Fatal(err)
 			}
 			manager := newTestManager(registry, security.NewPermission("high", "high", nil))
 			committer := &loggingCommitter{err: tc.saveErr}
-			deps := &loggingDeps{runnerTestDeps: runnerTestDeps{reject: tc.reject}, confirmErr: tc.confirmErr}
+			deps := &loggingDeps{runnerTestDeps: runnerTestDeps{reject: tc.reject}, confirmErr: tc.confirmErr, startErr: tc.startErr}
 			var calls []events.LogRecord
 			operations := map[string]events.LogRecord{}
 			connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
@@ -406,20 +425,24 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer connection.Disconnect()
-			manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: committer, Session: &storage.Session{ID: "session-log", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Calls: []llm.ToolCallRequest{{ID: "call-log", Name: "logging_tool", Arguments: "{}"}}})
-			if tc.reject || tc.confirmErr != nil {
+			result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: committer, Session: &storage.Session{ID: "session-log", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Calls: []llm.ToolCallRequest{{ID: "call-log", Name: "logging_tool", Arguments: "{}"}}})
+			if tc.reject || tc.confirmErr != nil || tc.startErr != nil {
 				if len(calls) != 0 {
 					t.Fatalf("tool never entered, invocation logs = %#v", calls)
 				}
 			} else {
-				status, level := events.ResultSucceeded, slog.LevelInfo
-				if tc.callErr != nil {
-					status, level = events.ResultFailed, slog.LevelError
-					if errors.Is(tc.callErr, context.Canceled) {
-						status, level = events.ResultCanceled, slog.LevelInfo
+				callErr := tc.callErr
+				if tc.prepareErr != nil {
+					callErr = tc.prepareErr
+				}
+				status := events.ResultSucceeded
+				if callErr != nil {
+					status = events.ResultFailed
+					if errors.Is(callErr, context.Canceled) {
+						status = events.ResultCanceled
 					}
 				}
-				if len(calls) != 1 || calls[0].ResultStatus != status || calls[0].Level != level {
+				if len(calls) != 1 || calls[0].ResultStatus != status || calls[0].Level != slog.LevelInfo {
 					t.Fatalf("invocation logs = %#v", calls)
 				}
 				var content map[string]any
@@ -430,8 +453,28 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 				if tc.callErr != nil {
 					want = tc.callErr.Error() + "\n" + want
 				}
+				if tc.prepareErr != nil {
+					want = tc.prepareErr.Error()
+					if len(result.Messages) != 1 || !strings.Contains(llm.SegmentsContentText(result.Messages[0].Segments), want) || deps.completed != 0 {
+						t.Fatalf("preparation failure changed: result=%+v completed=%d", result, deps.completed)
+					}
+				}
 				if content["result"] != want {
 					t.Fatalf("actual result or error lost from audit: %s", calls[0].Content)
+				}
+			}
+			if tc.startErr != nil {
+				r, ok := operations["tool_prepare"]
+				if !ok || r.Category != events.LogRuntime || r.Level != slog.LevelError || !strings.Contains(r.Content, tc.startErr.Error()) {
+					t.Fatalf("request creation failure lost: %#v", r)
+				}
+			}
+			for _, r := range operations {
+				if r.Category == events.LogRuntime && r.Level >= slog.LevelError && tc.saveErr == nil && tc.startErr == nil {
+					t.Fatalf("ordinary tool failure logged as runtime error: %#v", r)
+				}
+				if tc.prepareErr != nil && r.EventName == "tool_prepare" {
+					t.Fatalf("tool preparation duplicated outside invocation audit: %#v", r)
 				}
 			}
 			if tc.saveErr != nil {

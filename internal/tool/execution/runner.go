@@ -104,7 +104,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		}
 		data, _ := json.Marshal(content)
 		record := newRecord(ctx, "tool_call_completed", logResult)
-		record.Category, record.Type, record.ContentLimit, record.Content = events.LogAudit, events.ContentJSON, 0, string(data)
+		record.Category, record.Level, record.Type, record.ContentLimit, record.Content = events.LogAudit, slog.LevelInfo, events.ContentJSON, 0, string(data)
 		m.Log(ctx, record)
 	}
 	ctx, cancel := context.WithCancel(ctx)
@@ -310,8 +310,10 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			if errors.Is(err, context.Canceled) {
 				resultStatus = events.ResultCanceled
 			}
-			record(ctx, call, "tool_prepare", events.LogResult{ResultStatus: resultStatus, Content: fmt.Sprintf("prepare_error=%v", err)})
-			fail(call, err, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
+			task.result = executionError(call, toolMessage(call.Name, call.ID, ""), err, resultStatus)
+			recordCall(ctx, call, resolved, actor, "", runSource, task.startedAt, &task.result)
+			task.finishedAt = storage.Now()
+			ready <- index
 			continue
 		}
 		assessment := prepared.RiskAssessment()
