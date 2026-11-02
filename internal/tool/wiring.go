@@ -15,6 +15,7 @@ import (
 	"elbot/internal/processenv"
 	"elbot/internal/signal"
 	"elbot/internal/tool/builtin"
+	"elbot/internal/tool/builtin/long_memory"
 	"elbot/internal/tool/builtin/web"
 	"elbot/internal/tool/chat_history"
 	"elbot/internal/tool/discovery"
@@ -118,7 +119,7 @@ func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
 			return err
 		}
 	}
-	for _, memoryTool := range builtin.NewLongMemoryTools(opts.longMemoryDir) {
+	for _, memoryTool := range long_memory.NewLongMemoryTools(opts.longMemoryDir) {
 		if err := registry.Register(memoryTool); err != nil {
 			return err
 		}

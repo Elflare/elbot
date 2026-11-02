@@ -1,4 +1,4 @@
-package builtin
+package long_memory
 
 import toolshare "elbot/internal/tool/share"
 
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -573,5 +574,14 @@ func TestLongMemoryUpdateRejectsContentAndContentEditsTogether(t *testing.T) {
 	_, err = writeTool.PrepareCall(ctx, toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "content and content_edits cannot be used together") {
 		t.Fatalf("expected conflict error, got %v", err)
+	}
+}
+
+func TestLongMemoryOperationEnum(t *testing.T) {
+	schema := (LongMemoryWriteTool{}).Schema()
+	properties := schema.Parameters["properties"].(map[string]any)
+	got := properties["operation"].(map[string]any)["enum"].([]string)
+	if !slices.Equal(got, []string{"save", "update", "delete"}) {
+		t.Fatalf("operation = %v", got)
 	}
 }

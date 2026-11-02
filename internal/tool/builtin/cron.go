@@ -262,7 +262,7 @@ func (t CronTool) Schema() llm.ToolSchema {
 func (t CronTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (*toolshare.Result, string, error) {
 		now := t.now().Format("2006-01-02 15:04:05")
-		result := textResult("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_query 或 cron_write。cron_query 不传 name 时列出 cron，传 name 时查询单个 cron。")
+		result := &toolshare.Result{Content: strings.TrimSpace("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_query 或 cron_write。cron_query 不传 name 时列出 cron，传 name 时查询单个 cron。")}
 		return result, "cron guide returned; current_time=" + now, nil
 	}), nil
 }
@@ -545,9 +545,4 @@ func formatCronInfo(job CronInfo) string {
 		content += "\nnext_run_at:" + job.NextRunAt.Format(time.RFC3339Nano)
 	}
 	return content + "\nmessage:\n" + job.Message
-}
-
-func textResult(text string) *toolshare.Result {
-	text = strings.TrimSpace(text)
-	return &toolshare.Result{Content: text}
 }

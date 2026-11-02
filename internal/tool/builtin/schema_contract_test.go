@@ -45,7 +45,6 @@ func TestToolOperationEnums(t *testing.T) {
 		{(CronWriteTool{}).Schema(), "schedule_mode", []string{"once", "cron"}},
 		{(CronWriteTool{}).Schema(), "trigger_mode", []string{"direct", "llm"}},
 		{(ResidentMemoryReadTool{}).Schema(), "section", []string{"all", "core", "normal"}},
-		{(LongMemoryWriteTool{}).Schema(), "operation", []string{"save", "update", "delete"}},
 	} {
 		properties := tc.schema.Parameters["properties"].(map[string]any)
 		if got := properties[tc.field].(map[string]any)["enum"].([]string); !slices.Equal(got, tc.want) {

@@ -100,7 +100,8 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `tool/registry/`、`tool/execution/`、`tool/builtin/`：工具目录、执行核心、内置工具。
 - `tool/share/`：`definition.go` 定义；`risk.go` 风险；`prepared.go` 准备结果；`media.go` 媒体契约。
 - `tool/builtin/`：`shell.go` Shell；`shell_warnings.go` 文件警告；`shell_risk.go` 风险；`shell_sandbox.go` 路径限制。
-- `tool/builtin/`：`file_tools_ast.go` AST 查询；`file_tools_directory.go` 目录搜索；`long_memory.go` 长期记忆。
+- `tool/builtin/`：`file_tools_ast.go` AST 查询；`file_tools_directory.go` 目录搜索。
+- `tool/builtin/long_memory/`：`tools.go` 工具入口；`store.go` 记忆写入；`index.go` 索引同步；`files.go` 文件格式；`search.go` 检索与展示。
 - `tool/builtin/web/`：`extract.go` 网页提取入口；`extract_fetch.go` 提取请求与响应；`extract_html.go` 直抓文本与链接；`extract_cache.go` 提取缓存；`search.go` 网页搜索。
 - `tool/builtin/`：`chat_history.go` 历史；`get_media.go` 媒体获取；`view_image.go` 看图；`send_file.go` 文件发送。
 - `tool/builtin/`：`cron.go` 任务；`resident_memory.go` 常驻记忆；`elwisp_creator.go` Elwisp 创建指引。
