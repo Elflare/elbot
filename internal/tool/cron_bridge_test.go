@@ -69,7 +69,7 @@ func TestCronBridgeStorageAndNotifications(t *testing.T) {
 		t.Fatalf("read = %+v %v", info, err)
 	}
 	result, _, err := callTool(ctx, tools[1], share.CallRequest{})
-	if err != nil || result.Content != "[]" {
+	if err != nil || result.Content != "没有符合条件的定时任务。" {
 		t.Fatalf("filtered = %+v %v", result, err)
 	}
 	result, _, err = callTool(ctx, tools[1], share.CallRequest{Arguments: json.RawMessage(`{"include_completed":true}`)})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -114,32 +115,35 @@ func TestCronValidationRejectsBeforeBridgeWrite(t *testing.T) {
 }
 
 func TestCronQueryConsumesManagementResult(t *testing.T) {
-	info := CronInfo{Name: "done", TriggerMode: "llm", Message: "task", Completed: true, Enabled: true}
+	info := CronInfo{Name: "done", TriggerMode: "llm", Message: "task\n第二行：\"提醒\" <内容>", Completed: true, Enabled: true}
 	repo := &cronRepositoryStub{info: info, items: []CronInfo{info}}
 	tools := cronTestTools(repo, nil)
 	result, _, err := callTool(t.Context(), tools[1], share.CallRequest{Arguments: json.RawMessage(`{"name":"done"}`)})
 	if err != nil || !result.NeedsElyphRules || repo.name != "done" {
 		t.Fatalf("query = %+v %v", result, err)
 	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(result.Content), &fields); err != nil {
-		t.Fatal(err)
-	}
-	if string(fields["completed"]) != "true" {
-		t.Fatal(result.Content)
+	for _, text := range []string{"name:done", "trigger_mode:llm", "completed:true", "enabled:true", "message:\n" + info.Message} {
+		if !strings.Contains(result.Content, text) {
+			t.Fatalf("missing %q: %s", text, result.Content)
+		}
 	}
 	for _, key := range []string{"job", "execution", "delivery", "delivery_state", "metadata"} {
-		if _, ok := fields[key]; ok {
+		if strings.Contains(result.Content, "\n"+key+":") {
 			t.Fatalf("internal field leaked: %s", key)
 		}
 	}
 	result, _, err = callTool(t.Context(), tools[1], share.CallRequest{})
-	if err != nil || result.Content != "[]" {
+	if err != nil || result.Content != "没有符合条件的定时任务。" {
 		t.Fatalf("completed filter = %+v %v", result, err)
 	}
 	result, _, err = callTool(t.Context(), tools[1], share.CallRequest{Arguments: json.RawMessage(`{"include_completed":true,"include_disabled":true}`)})
 	if err != nil || !repo.includeDisabled || !result.NeedsElyphRules {
 		t.Fatalf("include completed = %+v %v", result, err)
+	}
+	repo.items = append(repo.items, CronInfo{Name: "second", TriggerMode: "direct", Message: "other task", Enabled: true})
+	result, _, err = callTool(t.Context(), tools[1], share.CallRequest{Arguments: json.RawMessage(`{"include_completed":true}`)})
+	if err != nil || !result.NeedsElyphRules || !strings.Contains(result.Content, info.Message+"\n\nname:second\n") || !strings.HasSuffix(result.Content, "message:\nother task") {
+		t.Fatalf("multiple tasks = %+v %v", result, err)
 	}
 	repo.err = errors.New("bridge unavailable")
 	if _, _, err := callTool(t.Context(), tools[1], share.CallRequest{}); !errors.Is(err, repo.err) {
@@ -188,19 +192,16 @@ func TestCronWriteResultsAndErrors(t *testing.T) {
 				if err != nil || result == nil {
 					t.Fatalf("result=%+v error=%v", result, err)
 				}
-				var response struct {
-					OK  bool      `json:"ok"`
-					Job *CronInfo `json:"job"`
-				}
-				if err := json.Unmarshal([]byte(result.Content), &response); err != nil || !response.OK {
-					t.Fatalf("result=%+v decode error=%v", result, err)
+				want := map[string]string{"create": "已创建", "update": "已更新", "disable": "已停用", "delete": "已删除"}[operation] + "定时任务：reminder"
+				if !strings.HasPrefix(result.Content, want) {
+					t.Fatalf("result=%+v want prefix=%q", result, want)
 				}
 				if operation == "create" || operation == "update" {
-					if response.Job == nil || response.Job.Name != "reminder" || len(repo.saved) != 1 {
-						t.Fatalf("job=%+v saved=%+v", response.Job, repo.saved)
+					if !strings.Contains(result.Content, "\nname:reminder\n") || !strings.Contains(result.Content, "cron_expr:* * * * *") || !strings.HasSuffix(result.Content, "message:\nhello") || len(repo.saved) != 1 {
+						t.Fatalf("result=%+v saved=%+v", result, repo.saved)
 					}
-				} else if response.Job != nil || repo.name != "reminder" {
-					t.Fatalf("job=%+v target=%q", response.Job, repo.name)
+				} else if result.Content != want || repo.name != "reminder" {
+					t.Fatalf("result=%+v target=%q", result, repo.name)
 				}
 			})
 		}

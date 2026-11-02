@@ -296,31 +296,27 @@ func (t CronQueryTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 			if err != nil {
 				return nil, err.Error(), err
 			}
-			result, callErr := jsonResult(view)
-			if result != nil {
-				result.NeedsElyphRules = view.TriggerMode == "llm"
-			}
+			result := &toolshare.Result{Content: formatCronInfo(view), NeedsElyphRules: view.TriggerMode == "llm"}
 			logContent := fmt.Sprintf("name=%s enabled=%t completed=%t", view.Name, view.Enabled, view.Completed)
-			if callErr != nil {
-				logContent = callErr.Error()
-			}
-			return result, logContent, callErr
+			return result, logContent, nil
 		}
 		views, err := t.service.ListCrons(ctx, args.IncludeDisabled, args.IncludeCompleted, actorFromContext(ctx))
 		if err != nil {
 			return nil, err.Error(), err
 		}
-		result, callErr := jsonResult(views)
+		result := &toolshare.Result{Content: "没有符合条件的定时任务。"}
 		logContent := fmt.Sprintf("returned=%d", len(views))
+		var content []string
 		for _, view := range views {
-			if result != nil && view.TriggerMode == "llm" {
+			content = append(content, formatCronInfo(view))
+			if view.TriggerMode == "llm" {
 				result.NeedsElyphRules = true
 			}
 		}
-		if callErr != nil {
-			logContent = callErr.Error()
+		if len(content) > 0 {
+			result.Content = strings.Join(content, "\n\n")
 		}
-		return result, logContent, callErr
+		return result, logContent, nil
 	}), nil
 }
 
@@ -369,12 +365,12 @@ func (t CronWriteTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 			if err := t.service.DisableCron(ctx, args.Name, actorFromContext(ctx)); err != nil {
 				return nil, err.Error(), err
 			}
-			result, callErr = jsonResult(map[string]any{"ok": true})
+			result = &toolshare.Result{Content: fmt.Sprintf("已停用定时任务：%s", args.Name)}
 		case "delete":
 			if err := t.service.DeleteCron(ctx, args.Name, actorFromContext(ctx)); err != nil {
 				return nil, err.Error(), err
 			}
-			result, callErr = jsonResult(map[string]any{"ok": true})
+			result = &toolshare.Result{Content: fmt.Sprintf("已删除定时任务：%s", args.Name)}
 		default:
 			callErr = fmt.Errorf("operation must be create, update, disable, or delete")
 		}
@@ -411,7 +407,7 @@ func (t CronWriteTool) create(ctx context.Context, args cronWriteArgs) (*toolsha
 	if err != nil {
 		return nil, err
 	}
-	return jsonResult(map[string]any{"ok": true, "job": job})
+	return &toolshare.Result{Content: "已创建定时任务：" + job.Name + "\n" + formatCronInfo(job)}, nil
 }
 
 func (t CronWriteTool) update(ctx context.Context, args cronWriteArgs) (*toolshare.Result, error) {
@@ -435,7 +431,7 @@ func (t CronWriteTool) update(ctx context.Context, args cronWriteArgs) (*toolsha
 	if err != nil {
 		return nil, err
 	}
-	return jsonResult(map[string]any{"ok": true, "job": job})
+	return &toolshare.Result{Content: "已更新定时任务：" + job.Name + "\n" + formatCronInfo(job)}, nil
 }
 
 func resolveUpdateRunAt(runAt *string, offset relativeOffset) (*string, error) {
@@ -533,12 +529,22 @@ func actorFromContext(ctx context.Context) contextinfo.Actor {
 	return actor
 }
 
-func jsonResult(value any) (*toolshare.Result, error) {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
+func formatCronInfo(job CronInfo) string {
+	content := fmt.Sprintf(
+		"name:%s\ntitle:%s\nschedule_mode:%s\nrun_at:%s\ncron_expr:%s\ntrigger_mode:%s\ntool_list_names:%s\nmodel_provider:%s\nmodel:%s\nall_enabled_platforms:%t\nsource_platform:%s\ncreated_by:%+v\nenabled:%t\ncompleted:%t\nrun_count:%d\ncreated_at:%s\nupdated_at:%s",
+		job.Name, job.Title, job.ScheduleMode, job.RunAt, job.CronExpr, job.TriggerMode,
+		strings.Join(job.ToolListNames, ", "), job.ModelProvider, job.Model,
+		job.AllEnabledPlatforms, job.SourcePlatform, job.CreatedBy,
+		job.Enabled, job.Completed, job.RunCount,
+		job.CreatedAt.Format(time.RFC3339Nano), job.UpdatedAt.Format(time.RFC3339Nano),
+	)
+	if job.LastRunAt != nil {
+		content += "\nlast_run_at:" + job.LastRunAt.Format(time.RFC3339Nano)
 	}
-	return &toolshare.Result{Content: string(data)}, nil
+	if job.NextRunAt != nil {
+		content += "\nnext_run_at:" + job.NextRunAt.Format(time.RFC3339Nano)
+	}
+	return content + "\nmessage:\n" + job.Message
 }
 
 func textResult(text string) *toolshare.Result {

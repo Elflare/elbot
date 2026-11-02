@@ -67,13 +67,6 @@ type memoryCoreArgs struct {
 	Content *string `json:"content"`
 }
 
-type memoryReadResult struct {
-	Core   string               `json:"core,omitempty"`
-	Normal string               `json:"normal,omitempty"`
-	Limits ResidentMemoryLimits `json:"limits"`
-	Status string               `json:"status"`
-}
-
 func NewResidentMemoryTools(service ResidentMemoryService) []toolshare.Tool {
 	return []toolshare.Tool{ResidentMemoryTool{}, ResidentMemoryReadTool{service: service}, ResidentMemoryNormalTool{service: service}, ResidentMemoryCoreTool{service: service}}
 }
@@ -122,19 +115,22 @@ func (t ResidentMemoryReadTool) PrepareCall(ctx context.Context, req toolshare.C
 		if err != nil {
 			return nil, err.Error(), err
 		}
-		data := memoryReadResult{Limits: t.service.LimitsOrDefault(), Status: "ok"}
-		if section == "all" || section == "core" {
-			data.Core = memory.Core
+		limits := t.service.LimitsOrDefault()
+		var content string
+		switch section {
+		case "core":
+			content = fmt.Sprintf("core(limits:%d)：%s", limits.Core, memory.Core)
+		case "normal":
+			content = fmt.Sprintf("normal(limits:%d)：%s", limits.Normal, memory.Normal)
+		case "all":
+			content = fmt.Sprintf(
+				"core(limits:%d)：%s\nnormal(limits:%d)：%s",
+				limits.Core, memory.Core,
+				limits.Normal, memory.Normal,
+			)
 		}
-		if section == "all" || section == "normal" {
-			data.Normal = memory.Normal
-		}
-		logContent = fmt.Sprintf("section=%s core_bytes=%d normal_bytes=%d", section, len(data.Core), len(data.Normal))
-		result, callErr := memoryJSONResult(data)
-		if callErr != nil {
-			logContent = callErr.Error()
-		}
-		return result, logContent, callErr
+		logContent = fmt.Sprintf("section=%s core_bytes=%d normal_bytes=%d", section, len(memory.Core), len(memory.Normal))
+		return &toolshare.Result{Content: content}, logContent, nil
 	}), nil
 }
 
