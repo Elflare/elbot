@@ -51,10 +51,10 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 			handedOff := false
 			row := &storage.Session{ID: "origin-session", Mode: storage.SessionModeWork}
 			registry := toolregistry.NewRegistry(security.DefaultPermission())
-			if err := registry.Register(loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}, cancel: func() {
+			if err := registerTestTools(registry, (loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}, cancel: func() {
 				handedOff = true
 				row.Metadata = `{"background_kind":"forged-later-value"}`
-			}}); err != nil {
+			}}).Definition()); err != nil {
 				t.Fatal(err)
 			}
 			manager := newTestManager(registry, security.NewPermission("high", "high", nil))
@@ -161,7 +161,7 @@ func TestRunnerWritesOnlyAuditWithBoundedArgumentPreview(t *testing.T) {
 	t.Cleanup(func() { _ = center.Close(context.Background()) })
 	var actualArgs string
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}, args: &actualArgs}); err != nil {
+	if err := registerTestTools(registry, (loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}, args: &actualArgs}).Definition()); err != nil {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"note": strings.Repeat("雪🔥", 400) + "ARGUMENT_TAIL"})
@@ -224,7 +224,7 @@ func TestRunnerRecordsInvocationBeforeCancellationStopsLaterOperations(t *testin
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}, cancel: cancel, err: context.Canceled}); err != nil {
+	if err := registerTestTools(registry, (loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}, cancel: cancel, err: context.Canceled}).Definition()); err != nil {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, security.NewPermission("high", "high", nil))
@@ -344,7 +344,7 @@ func TestRunnerUsesSourceSaveResult(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			registry := toolregistry.NewRegistry(security.DefaultPermission())
-			if err := registry.Register(loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}}); err != nil {
+			if err := registerTestTools(registry, (loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}}).Definition()); err != nil {
 				t.Fatal(err)
 			}
 			manager := newTestManager(registry, security.NewPermission("high", "high", nil))
@@ -399,7 +399,7 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			registry := toolregistry.NewRegistry(security.DefaultPermission())
-			if err := registry.Register(loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}, err: tc.callErr, prepareErr: tc.prepareErr}); err != nil {
+			if err := registerTestTools(registry, (loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}, err: tc.callErr, prepareErr: tc.prepareErr}).Definition()); err != nil {
 				t.Fatal(err)
 			}
 			manager := newTestManager(registry, security.NewPermission("high", "high", nil))

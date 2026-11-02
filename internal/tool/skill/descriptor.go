@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/llm"
 )
 
 const (
@@ -22,30 +21,14 @@ type descriptor struct {
 	record record // 扫描时确定的技能声明；详情正文按需读取。
 }
 
-func newDescriptor(record record) descriptor {
-	return descriptor{record: record}
-}
-
-func (d descriptor) Name() string { return d.record.Name }
-
-func (d descriptor) Info() toolshare.Info {
-	return toolshare.Info{
-		Name:           d.record.Name,
-		Description:    d.record.Description,
-		Source:         SourceForKind(d.record.Kind),
-		Risk:           d.record.Risk,
-		SuperadminOnly: d.record.SuperadminOnly,
-		Tags:           d.record.Tags,
-	}
-}
-
-func (d descriptor) Schema() llm.ToolSchema {
-	// Skill 本体是说明文档，不是可直接调用的 function schema。
-	return llm.ToolSchema{}
-}
-
-func (d descriptor) PrepareCall(context.Context, toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return nil, fmt.Errorf("skill %q is a document skill; query it with discover_tool", d.record.Name)
+func (t descriptor) Definition() toolshare.ToolDefinition {
+	return toolshare.ToolDefinition{Metadata: toolshare.Info{
+		Name:           t.record.Name,
+		Description:    t.record.Description,
+		Risk:           t.record.Risk,
+		SuperadminOnly: t.record.SuperadminOnly,
+		Tags:           t.record.Tags,
+	}, LoadDetail: t.LoadDetail, ActivateTools: t.ActivateTools()}
 }
 
 func (d descriptor) LoadDetail(ctx context.Context) (toolshare.DetailBlock, error) {
@@ -54,7 +37,7 @@ func (d descriptor) LoadDetail(ctx context.Context) (toolshare.DetailBlock, erro
 		return toolshare.DetailBlock{}, err
 	}
 	if d.record.Kind == KindAgent {
-		block.Content = strings.TrimSpace(block.Content + "\n\n" + agentSkillNotice(ctx, d.record))
+		block.Content = strings.TrimSpace(block.Content + "\n\n" + agentSkillNotice(ctx))
 	}
 	return block, nil
 }
@@ -73,18 +56,11 @@ func (d descriptor) ActivateTools() []string {
 	}
 }
 
-func agentSkillNotice(ctx context.Context, record record) string {
-	var lines []string
+func agentSkillNotice(ctx context.Context) string {
 	if actor, ok := contextinfo.ActorFromContext(ctx); ok && actor.Role == contextinfo.RoleSuperadmin {
-		lines = append(lines, "- 如该文档有脚本，请发现 agent_skill_creator，参考其说明是否把他注册成普通工具。")
+		return "ElBot AgentSkill 使用提示：\n\n- 如该文档有脚本，请发现 agent_skill_creator，参考其说明是否把他注册成普通工具。"
 	}
-	if record.ManifestFound && record.ManifestError != "" {
-		lines = append(lines, "- 当前 "+AgentSkillConfigFile+" 无效："+record.ManifestError)
-	}
-	if len(lines) == 0 {
-		return ""
-	}
-	return "ElBot AgentSkill 使用提示：\n\n" + strings.Join(lines, "\n")
+	return ""
 }
 
 func loadRecordDetail(record record) (toolshare.DetailBlock, error) {

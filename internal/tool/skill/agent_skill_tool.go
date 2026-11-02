@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"elbot/internal/fileops"
-	"elbot/internal/llm"
 )
 
 type AgentSkillTool struct {
@@ -24,42 +23,30 @@ type agentSkillArgs struct {
 	Toml   string `json:"toml"`
 }
 
-func NewAgentSkillTool(manager *Manager) AgentSkillTool {
-	return AgentSkillTool{manager: manager}
-}
-
-func (AgentSkillTool) Name() string { return AgentSkillManagerName }
-
-func (AgentSkillTool) Info() toolshare.Info {
-	return toolshare.NewBuilder(AgentSkillManagerName).
+func (t AgentSkillTool) Definition() toolshare.ToolDefinition {
+	builder := toolshare.NewBuilder(AgentSkillManagerName).
 		Description(agentSkillToolDescription()).
-		Source(toolshare.SourceBuiltin).
 		Risk(toolshare.RiskHigh).
-		Hidden().
-		BuildInfo()
-}
+		Hidden()
 
-func (AgentSkillTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{
-		Name:        AgentSkillManagerName,
-		Description: agentSkillToolDescription(),
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"action": map[string]any{"type": "string", "enum": []string{"read", "write"}},
-				"name":   map[string]any{"type": "string", "description": "AgentSkill名称。"},
-				"toml":   map[string]any{"type": "string", "description": "write必填，完整" + AgentSkillConfigFile + "。"},
-			},
-			"required": []string{"action", "name"},
+	definition := builder.Build(t.PrepareCall)
+	definition.Parameters = map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"action": map[string]any{"type": "string", "enum": []string{"read", "write"}},
+			"name":   map[string]any{"type": "string", "description": "AgentSkill名称。"},
+			"toml":   map[string]any{"type": "string", "description": "write必填，完整" + AgentSkillConfigFile + "。"},
 		},
+		"required": []string{"action", "name"},
 	}
+	return definition
 }
 
 func agentSkillToolDescription() string {
 	return "读或写 AgentSkill 的 ELBOT_SKILL.toml。"
 }
 
-func (t AgentSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t AgentSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	preview, err := t.preview(ctx, req)
 	if err != nil {
 		return nil, err
@@ -68,7 +55,7 @@ func (t AgentSkillTool) PrepareCall(ctx context.Context, req toolshare.CallReque
 	if preview.Action == "write" {
 		detail = fmt.Sprintf("写入 AgentSkill %s 的 %s\n文件：%s\ndiff:\n%s", preview.Name, AgentSkillConfigFile, preview.Path, preview.File.Preview().Diff)
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, preview)
 	}), nil
 }
@@ -151,12 +138,10 @@ func readAgentSkillConfig(record record, path string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "AgentSkill: %s\n", record.Name)
 	fmt.Fprintf(&b, "Config file: %s\n", AgentSkillConfigFile)
-	if record.ManifestFound && record.ManifestError == "" && record.Manifest.Callable {
+	if record.Manifest.Callable {
 		b.WriteString("Status: callable\n")
-	} else if record.ManifestFound && record.ManifestError == "" {
-		b.WriteString("Status: document-only\nPolicy: configured\n")
 	} else if record.ManifestFound {
-		fmt.Fprintf(&b, "Status: invalid\nError: %s\n", record.ManifestError)
+		b.WriteString("Status: document-only\nPolicy: configured\n")
 	} else {
 		b.WriteString("Status: document-only\n")
 	}

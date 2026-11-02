@@ -7,8 +7,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"elbot/internal/llm"
 )
 
 const ElwispCreatorName = "elwisp_creator"
@@ -32,33 +30,18 @@ type ElwispCreatorConfig struct {
 	AllowedTools    []string // Elnis 允许请求的工具名单。
 }
 
-func NewElwispCreatorTool(config ElwispCreatorConfigProvider) ElwispCreatorTool {
-	return ElwispCreatorTool{config: config}
-}
-
-func (ElwispCreatorTool) Name() string {
-	return ElwispCreatorName
-}
-
-func (ElwispCreatorTool) Info() toolshare.Info {
-	return toolshare.NewBuilder(ElwispCreatorName).
+func (t ElwispCreatorTool) Definition() toolshare.ToolDefinition {
+	builder := toolshare.NewBuilder(ElwispCreatorName).
 		NeedsElyphRules().
 		Description("获取Elwisp监听器创建指引及当前Elnis配置摘要，不直接创建。").
-		Source(toolshare.SourceBuiltin).
 		Risk(toolshare.RiskLow).
 		SuperadminOnly().
-		DependsOn("read_file", "edit_file", "shell").
-		BuildInfo()
+		DependsOn("read_file", "edit_file", "shell")
+	return builder.Build(t.PrepareCall)
 }
 
-func (t ElwispCreatorTool) Schema() llm.ToolSchema {
-	return toolshare.NewBuilder(ElwispCreatorName).
-		Description(t.Info().Description).
-		BuildSchema()
-}
-
-func (t ElwispCreatorTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (*toolshare.Result, string, error) {
+func (t ElwispCreatorTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (*toolshare.Result, string, error) {
 		result := &toolshare.Result{Content: buildElwispCreatorGuide(t.config.ElwispCreatorConfig()), NeedsElyphRules: true}
 		return result, "elwisp_creator guide returned", nil
 	}), nil

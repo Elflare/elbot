@@ -23,7 +23,7 @@ mode = "--mode"
 	if manifest.Risk != "medium" || !manifest.SuperadminOnly || len(manifest.Command) != 2 || !manifest.ExposeRoot || manifest.Args["input"] != "--input" || !manifest.Callable {
 		t.Fatalf("manifest = %#v", manifest)
 	}
-	if len(manifest.Tags) != 2 || manifest.Tags[0] != "doc" || manifest.Tags[1] != "convert" {
+	if len(manifest.Tags) != 3 || manifest.Tags[0] != "doc" || manifest.Tags[2] != "convert" {
 		t.Fatalf("tags = %#v", manifest.Tags)
 	}
 }
@@ -55,14 +55,14 @@ func TestParseAgentSkillManifestAllowsSuperadminOnlyWithoutRisk(t *testing.T) {
 	}
 }
 
-func TestParseAgentSkillManifestRequiresRisk(t *testing.T) {
-	_, err := ParseAgentSkillManifest([]byte(`command = ["python", "foo.py"]
+func TestParseAgentSkillManifestLeavesRiskForRegistration(t *testing.T) {
+	manifest, err := ParseAgentSkillManifest([]byte(`command = ["python", "foo.py"]
 parameters = '''{"type":"object","properties":{"input":{"type":"string"}}}'''
 [args]
 input = "--input"
 `))
-	if err == nil {
-		t.Fatal("expected missing risk error")
+	if err != nil || manifest.Risk != "" || manifest.TimeoutSeconds != 30 {
+		t.Fatalf("manifest=%+v err=%v", manifest, err)
 	}
 }
 

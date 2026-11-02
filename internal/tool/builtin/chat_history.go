@@ -5,7 +5,6 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/llm"
 	toolshare "elbot/internal/tool/share"
 	"encoding/json"
 	"errors"
@@ -62,36 +61,14 @@ type replyChatHistoryArgs struct {
 	Message   string `json:"message"`
 }
 
-func NewSearchChatHistoryTool(history interface {
-	Search(context.Context, toolshare.SearchRequest) ([]toolshare.Message, error)
-}, viewImageAvailable func(context.Context) bool) SearchChatHistoryTool {
-	return SearchChatHistoryTool{viewImageAvailable: viewImageAvailable, history: history}
+func (t SearchChatHistoryTool) Definition() toolshare.ToolDefinition {
+	return searchChatHistoryBuilder().Build(t.PrepareCall)
 }
-func NewGetChatHistoryAroundTool(history interface {
-	Around(context.Context, toolshare.AroundRequest) ([]toolshare.Message, error)
-}, viewImageAvailable func(context.Context) bool) GetChatHistoryAroundTool {
-	return GetChatHistoryAroundTool{viewImageAvailable: viewImageAvailable, history: history}
+func (t GetChatHistoryAroundTool) Definition() toolshare.ToolDefinition {
+	return aroundChatHistoryBuilder().Build(t.PrepareCall)
 }
-func NewReplyToChatHistoryMessageTool(history interface {
-	GetMessage(context.Context, string) (toolshare.Message, error)
-}) ReplyToChatHistoryMessageTool {
-	return ReplyToChatHistoryMessageTool{history: history}
-}
-
-func (SearchChatHistoryTool) Name() string            { return "search_chat_history" }
-func (GetChatHistoryAroundTool) Name() string         { return "get_chat_history_around" }
-func (ReplyToChatHistoryMessageTool) Name() string    { return "reply_to_chat_history_message" }
-func (SearchChatHistoryTool) Info() toolshare.Info    { return searchChatHistoryBuilder().BuildInfo() }
-func (SearchChatHistoryTool) Schema() llm.ToolSchema  { return searchChatHistoryBuilder().BuildSchema() }
-func (GetChatHistoryAroundTool) Info() toolshare.Info { return aroundChatHistoryBuilder().BuildInfo() }
-func (GetChatHistoryAroundTool) Schema() llm.ToolSchema {
-	return aroundChatHistoryBuilder().BuildSchema()
-}
-func (ReplyToChatHistoryMessageTool) Info() toolshare.Info {
-	return replyChatHistoryBuilder().BuildInfo()
-}
-func (ReplyToChatHistoryMessageTool) Schema() llm.ToolSchema {
-	return replyChatHistoryBuilder().BuildSchema()
+func (t ReplyToChatHistoryMessageTool) Definition() toolshare.ToolDefinition {
+	return replyChatHistoryBuilder().Build(t.PrepareCall)
 }
 
 func searchChatHistoryBuilder() *toolshare.Builder {
@@ -135,7 +112,7 @@ func replyChatHistoryBuilder() *toolshare.Builder {
 		String("message", "回复正文。", toolshare.Required())
 }
 
-func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	var args searchChatHistoryArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
@@ -159,7 +136,7 @@ func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.Ca
 			return nil, fmt.Errorf("parse scope: %w", err)
 		}
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (*toolshare.Result, string, error) {
 		rows, err := t.history.Search(ctx, request)
 		if errors.Is(err, toolshare.ErrNoChatContext) {
 			return &toolshare.Result{Content: err.Error()}, err.Error(), nil
@@ -191,7 +168,7 @@ func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.Ca
 	}), nil
 }
 
-func (t GetChatHistoryAroundTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t GetChatHistoryAroundTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	var args aroundChatHistoryArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
@@ -199,7 +176,7 @@ func (t GetChatHistoryAroundTool) PrepareCall(ctx context.Context, req toolshare
 			return nil, err
 		}
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (*toolshare.Result, string, error) {
 		messageID := parseChatHistoryMessageID(args.MessageID)
 		if messageID == "" {
 			result := &toolshare.Result{Content: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}
@@ -236,7 +213,7 @@ func viewImageHistoryHint(ctx context.Context, viewImageAvailable func(context.C
 	return ""
 }
 
-func (t ReplyToChatHistoryMessageTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t ReplyToChatHistoryMessageTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	var args replyChatHistoryArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
@@ -244,7 +221,7 @@ func (t ReplyToChatHistoryMessageTool) PrepareCall(ctx context.Context, req tool
 			return nil, err
 		}
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("引用消息：%s\n回复：%s", args.MessageID, args.Message), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, fmt.Sprintf("引用消息：%s\n回复：%s", args.MessageID, args.Message), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
 		messageID := parseChatHistoryMessageID(args.MessageID)
 		if messageID == "" {
 			result := &toolshare.Result{Content: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}

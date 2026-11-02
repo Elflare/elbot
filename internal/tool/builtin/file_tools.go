@@ -17,7 +17,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
-	"elbot/internal/llm"
 	"elbot/internal/workspace"
 )
 
@@ -86,16 +85,8 @@ func NewReadFileTool(fileGuard *FileGuard) ReadFileTool {
 	return ReadFileTool{FileGuard: fileGuard, astCache: newDirectoryASTCache()}
 }
 
-func (ReadFileTool) Name() string {
-	return "read_file"
-}
-
-func (t ReadFileTool) Info() toolshare.Info {
-	return readFileBuilder().BuildInfo()
-}
-
-func (t ReadFileTool) Schema() llm.ToolSchema {
-	return readFileBuilder().BuildSchema()
+func (t ReadFileTool) Definition() toolshare.ToolDefinition {
+	return readFileBuilder().Build(t.PrepareCall)
 }
 
 func isSensitiveReadFile(path string) bool {
@@ -129,7 +120,7 @@ func readFileBuilder() *toolshare.Builder {
 		Integer("max_matches", "搜索结果上限；≤0/省略→20，最大100。")
 }
 
-func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	var args readFileArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
@@ -305,22 +296,15 @@ func readFileGrepResult(ctx context.Context, file fileops.File, lines []string, 
 	return &toolshare.Result{Content: b.String(), Warnings: warnings}, nil
 }
 
-func NewEditFileTool(service *fileops.Service) EditFileTool {
-	return EditFileTool{Rollback: service}
-}
+func (t EditFileTool) Definition() toolshare.ToolDefinition {
+	builder := editFileBuilder()
 
-func (EditFileTool) Name() string {
-	return "edit_file"
-}
-
-func (t EditFileTool) Info() toolshare.Info {
-	return editFileBuilder().BuildInfo()
-}
-
-func (t EditFileTool) Schema() llm.ToolSchema {
-	schema := editFileBuilder().BuildSchema()
+	schema := builder.BuildSchema()
 	schema.Parameters["properties"].(map[string]any)["edits"].(map[string]any)["minItems"] = 1
-	return schema
+	definition := builder.Build(t.PrepareCall)
+	definition.Parameters = schema.Parameters
+
+	return definition
 }
 
 func editFileBuilder() *toolshare.Builder {
@@ -338,7 +322,7 @@ func editFileBuilder() *toolshare.Builder {
 		ObjectArray("edits", "非空；定位基于编辑前原文。修改范围不重叠，插入点不在其内部；overwrite独占批次。", editProperties, []string{"operation"}, toolshare.Required())
 }
 
-func (t EditFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t EditFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
 		if err := decodeStrictFileArgs(req.Arguments, &args); err != nil {

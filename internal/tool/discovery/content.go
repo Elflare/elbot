@@ -10,19 +10,15 @@ import (
 )
 
 // LoadDiscoveryContent 优先使用带 context 的动态说明提供者。
-func LoadDiscoveryContent(ctx context.Context, target share.Tool) (content string, override bool, supported bool, err error) {
-	if provider, ok := target.(share.ContextDiscoveryContentProvider); ok {
-		content, override, err = provider.DiscoveryContent(ctx)
+func LoadDiscoveryContent(ctx context.Context, target share.ToolDefinition) (content string, override bool, supported bool, err error) {
+	if provider := target.DiscoveryContent; provider != nil {
+		content, override, err = provider(ctx)
 		return content, override, true, err
-	}
-	if provider, ok := target.(share.DiscoveryContentProvider); ok {
-		content, override = provider.DiscoveryContent()
-		return content, override, true, nil
 	}
 	return "", false, false, nil
 }
 
-func discoveryContent(ctx context.Context, targets map[string]share.Tool, result *share.DiscoveryResult) (share.DiscoveryText, error) {
+func discoveryContent(ctx context.Context, targets map[string]share.ToolDefinition, result *share.DiscoveryResult) (share.DiscoveryText, error) {
 	parts := []string{}
 	foundTools := []string{}
 	appendedExtras := []string{}

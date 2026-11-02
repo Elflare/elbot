@@ -42,9 +42,9 @@ func TestPreloadAuditIdentityAndResult(t *testing.T) {
 					r := registry.NewRegistry(security.DefaultPermission())
 					skill := &preloadSkill{availabilityTestTool: availabilityTestTool{name: "guide"}, err: tc.err}
 					if tc.name == "wrapper" {
-						skill.activate = []string{" missing ", "", "discover_tool", "missing"}
+						skill.activate = []string{" missing ", "discover_tool", "missing"}
 					}
-					if err := r.Register(skill); err != nil {
+					if _, err := r.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, []share.ToolDefinition{skill.Definition()}); err != nil {
 						t.Fatal(err)
 					}
 					var records []globalevents.LogRecord

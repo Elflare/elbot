@@ -24,7 +24,7 @@ type availabilityTestTool struct {
 
 func (t availabilityTestTool) Name() string { return t.name }
 func (t availabilityTestTool) Info() toolshare.Info {
-	return toolshare.NewBuilder(t.name).APITypes(t.types...).Tags("pictures").BuildInfo()
+	return toolshare.NewBuilder(t.name).Risk(toolshare.RiskLow).APITypes(t.types...).Tags("pictures").BuildInfo()
 }
 func (t availabilityTestTool) Schema() llm.ToolSchema {
 	return toolshare.NewBuilder(t.name).BuildSchema()
@@ -45,10 +45,10 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	calls := 0
 	image := availabilityTestTool{name: "image", types: []llm.APIType{llm.APITypeResponse}, calls: &calls}
-	if err := registry.Register(image); err != nil {
+	if err := registerTestTools(registry, image.Definition()); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry))); err != nil {
+	if err := registerTestTools(registry, discovery.NewDiscoverTool(discovery.NewResolver(registry))); err != nil {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, security.DefaultPermission())

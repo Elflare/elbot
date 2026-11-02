@@ -12,6 +12,7 @@ import (
 )
 
 type ELwispToolDeclaration struct {
+	Risk RiskLevel `json:"-"` // 接线方固定提供 low，不接受远端协议输入。
 	// CanonicalName 是适配方生成的模型侧唯一名称，不属于外部声明协议字段。
 	CanonicalName string `json:"-"`
 	// EventKey 是远程调用需传回的事件关联标识，不参与预载授权判断。

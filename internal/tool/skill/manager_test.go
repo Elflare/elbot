@@ -3,7 +3,6 @@ package skill
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,7 +61,6 @@ func TestManagerRegistersSkillForms(t *testing.T) {
 	}{
 		{name: "document", risk: toolshare.RiskSafe},
 		{name: "policy", manifest: "risk = \"high\"\n", risk: toolshare.RiskHigh},
-		{name: "invalid", manifest: "risk = \"invalid\"\n", risk: toolshare.RiskSafe},
 		{
 			name: "callable", callable: true, risk: toolshare.RiskMedium,
 			manifest: `risk = "medium"
@@ -86,15 +84,11 @@ input = "--input"
 				t.Fatal(err)
 			}
 			target, ok := registry.Get("docs")
-			if !ok || target.Info().Risk != tc.risk {
+			if !ok || target.Metadata.Risk != tc.risk {
 				t.Fatalf("registered skill = %#v, want risk %s", target, tc.risk)
 			}
-			if tc.callable {
-				if _, ok := target.(commandTool); !ok {
-					t.Fatalf("registered type = %T, want CommandTool", target)
-				}
-			} else if _, ok := target.(descriptor); !ok {
-				t.Fatalf("registered type = %T, want Descriptor", target)
+			if target.Callable() != tc.callable || target.LoadDetail == nil {
+				t.Fatalf("wrong capabilities: %+v", target)
 			}
 		})
 	}
@@ -113,12 +107,8 @@ func TestManagerLoadsMarkdownDetailOnDemand(t *testing.T) {
 	if !ok {
 		t.Fatal("docx should be registered")
 	}
-	descriptor, ok := candidate.(descriptor)
-	if !ok {
-		t.Fatalf("tool type = %T, want Descriptor", candidate)
-	}
-	if descriptor.record.Detail != "" || descriptor.record.DetailPath != filepath.Join(dir, "SKILL.md") {
-		t.Fatalf("record detail should not be cached: %#v", descriptor.record)
+	if candidate.Callable() || candidate.LoadDetail == nil {
+		t.Fatal("document should only provide details")
 	}
 
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Updated DOCX")
@@ -151,12 +141,8 @@ input = "--input"
 	if !ok {
 		t.Fatal("docx should be registered")
 	}
-	command, ok := candidate.(commandTool)
-	if !ok {
-		t.Fatalf("tool type = %T, want CommandTool", candidate)
-	}
-	if command.record.Detail != "" || command.record.DetailPath == "" {
-		t.Fatalf("callable skill detail should not be cached: %#v", command.record)
+	if !candidate.Callable() || candidate.LoadDetail == nil {
+		t.Fatal("command should provide execution and details")
 	}
 
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Updated callable DOCX")
@@ -255,12 +241,12 @@ func TestManagerScansGoTextSkillWithoutBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	target, ok := registry.Get("notes")
-	if !ok || target.Info().Source != toolshare.SourceSkillGo || target.Info().Risk != toolshare.RiskLow {
+	if !ok || target.Metadata.Source != toolshare.SourceSkill || target.Metadata.Risk != toolshare.RiskLow {
 		t.Fatalf("text skill = %#v", target)
 	}
-	detailer := target.(toolshare.DetailProvider)
-	if len(detailer.ActivateTools()) != 0 {
-		t.Fatalf("pure ELyph go skill should not activate runner: %#v", detailer.ActivateTools())
+	detailer := target
+	if len(detailer.ActivateTools) != 0 {
+		t.Fatalf("pure ELyph go skill should not activate runner: %#v", detailer.ActivateTools)
 	}
 }
 
@@ -293,7 +279,7 @@ func TestManagerReloadConflictKeepsRegistryAndCatalog(t *testing.T) {
 	writeSkill(t, oldDir, "---\nname: old\ndescription: Old skill\n---\n\n# Old")
 	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	manager := NewManager(root, registry, nil, processenv.Environment{})
-	if err := registry.Register(NewAgentSkillTool(nil)); err != nil {
+	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, NewTools(nil)); err != nil {
 		t.Fatal(err)
 	}
 	if err := manager.Reload(context.Background()); err != nil {
@@ -305,7 +291,7 @@ func TestManagerReloadConflictKeepsRegistryAndCatalog(t *testing.T) {
 	writeSkill(t, filepath.Join(root, "agent", AgentSkillManagerName), "---\nname: agent_skill\ndescription: Conflict\n---\n\n# Conflict")
 
 	err := manager.Reload(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "conflicts with existing source") {
+	if err == nil || !strings.Contains(err.Error(), "already registered") {
 		t.Fatalf("Reload error = %v, want builtin conflict", err)
 	}
 	if _, ok := registry.Get("old"); !ok {
@@ -321,15 +307,19 @@ func TestManagerReloadConflictKeepsRegistryAndCatalog(t *testing.T) {
 
 func TestManagerReloadRejectsDuplicateSkillNames(t *testing.T) {
 	root := t.TempDir()
-	writeSkill(t, filepath.Join(root, "agent", "shared"), "---\nname: shared\ndescription: Agent copy\n---\n\n# Shared")
-	writeElyphSkill(t, filepath.Join(root, "go", "shared"), "#skill shared - Go copy\n")
+	writeSkill(t, filepath.Join(root, "agent", "old"), "---\nname: old\ndescription: Existing skill\n---\n\n# Old")
 	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
 	manager := NewManager(root, registry, nil, processenv.Environment{})
+	if err := manager.Reload(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	writeSkill(t, filepath.Join(root, "agent", "shared"), "---\nname: shared\ndescription: Agent copy\n---\n\n# Shared")
+	writeElyphSkill(t, filepath.Join(root, "go", "shared"), "#skill shared - Go copy\n")
 	err := manager.Reload(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "duplicate skill names") {
+	if err == nil || !strings.Contains(err.Error(), `tool "shared" already registered`) {
 		t.Fatalf("Reload error = %v, want duplicate name error", err)
 	}
-	if len(registry.List()) != 0 || len(manager.catalog.List()) != 0 {
+	if infos, records := registry.List(), manager.catalog.List(); len(infos) != 1 || infos[0].Name != "old" || len(records) != 1 || records[0].Name != "old" {
 		t.Fatalf("failed reload changed state: registry=%#v catalog=%#v", registry.List(), manager.catalog.List())
 	}
 }
@@ -355,7 +345,7 @@ func TestManagerRemoveDeletesDirectoryAndReloads(t *testing.T) {
 }
 
 func TestAgentDescriptorDetailWithoutActor(t *testing.T) {
-	d := newDescriptor(record{Name: "docx", Detail: "# DOCX", Kind: KindAgent})
+	d := descriptor{record: record{Name: "docx", Detail: "# DOCX", Kind: KindAgent}}
 	block, err := d.LoadDetail(t.Context())
 	if err != nil || block.Content != "# DOCX" || len(d.ActivateTools()) != 1 || d.ActivateTools()[0] != AgentSkillManagerName {
 		t.Fatalf("detail=%+v activate=%#v err=%v", block, d.ActivateTools(), err)
@@ -363,49 +353,40 @@ func TestAgentDescriptorDetailWithoutActor(t *testing.T) {
 }
 
 func TestAgentSkillCreatorNoticeDiscovery(t *testing.T) {
-	for _, invalidManifest := range []bool{false, true} {
-		registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
-		record := record{Name: "docx", Detail: "# DOCX", Kind: KindAgent, Risk: toolshare.RiskSafe}
-		if invalidManifest {
-			record.ManifestFound = true
-			record.ManifestError = "invalid manifest"
-		}
-		if err := registry.Register(newDescriptor(record)); err != nil {
-			t.Fatal(err)
-		}
-		discover := discovery.NewDiscoverTool(discovery.NewResolver(registry))
-		for _, role := range []contextinfo.Role{contextinfo.RoleUser, contextinfo.RoleSuperadmin, ""} {
-			t.Run(fmt.Sprintf("invalid=%t/role=%s", invalidManifest, role), func(t *testing.T) {
-				ctx := context.Background()
-				if role != "" {
-					ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: role})
+	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
+	record := record{Name: "docx", Detail: "# DOCX", Kind: KindAgent, Risk: toolshare.RiskSafe}
+	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceSkill, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{(descriptor{record: record}).Definition()}); err != nil {
+		t.Fatal(err)
+	}
+	discover := discovery.NewDiscoverTool(discovery.NewResolver(registry))
+	for _, role := range []contextinfo.Role{contextinfo.RoleUser, contextinfo.RoleSuperadmin, ""} {
+		t.Run(string(role), func(t *testing.T) {
+			ctx := context.Background()
+			if role != "" {
+				ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: role})
+			}
+			result, _, err := callTool(ctx, discover, toolshare.CallRequest{Arguments: json.RawMessage(`{"name":"docx"}`)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var discovery toolshare.DiscoveryResult
+			if err := json.Unmarshal(result.Data, &discovery); err != nil {
+				t.Fatal(err)
+			}
+			if len(discovery.Tools) != 1 || discovery.Tools[0].Schema != nil {
+				t.Fatalf("discovered tools = %#v", discovery.Tools)
+			}
+			for _, content := range []string{result.Content, discovery.Tools[0].Detail} {
+				if !strings.Contains(content, "# DOCX") {
+					t.Fatalf("missing skill body: %q", content)
 				}
-				result, _, err := callTool(ctx, discover, toolshare.CallRequest{Arguments: json.RawMessage(`{"name":"docx"}`)})
-				if err != nil {
-					t.Fatal(err)
+				if got := strings.Contains(content, "agent_skill_creator"); got != (role == contextinfo.RoleSuperadmin) {
+					t.Fatalf("creator notice for %q: %q", role, content)
 				}
-				var discovery toolshare.DiscoveryResult
-				if err := json.Unmarshal(result.Data, &discovery); err != nil {
-					t.Fatal(err)
+				if got := strings.Contains(content, "ElBot AgentSkill 使用提示："); got != (role == contextinfo.RoleSuperadmin) {
+					t.Fatalf("notice heading: %q", content)
 				}
-				if len(discovery.Tools) != 1 {
-					t.Fatalf("discovered tools = %#v", discovery.Tools)
-				}
-				for _, content := range []string{result.Content, discovery.Tools[0].Detail} {
-					if !strings.Contains(content, "# DOCX") {
-						t.Fatalf("missing skill body: %q", content)
-					}
-					if got := strings.Contains(content, "agent_skill_creator"); got != (role == contextinfo.RoleSuperadmin) {
-						t.Fatalf("creator notice for %q: %q", role, content)
-					}
-					if got := strings.Contains(content, "invalid manifest"); got != invalidManifest {
-						t.Fatalf("manifest diagnostic: %q", content)
-					}
-					if got := strings.Contains(content, "ElBot AgentSkill 使用提示："); got != (invalidManifest || role == contextinfo.RoleSuperadmin) {
-						t.Fatalf("notice heading: %q", content)
-					}
-				}
-			})
-		}
+			}
+		})
 	}
 }

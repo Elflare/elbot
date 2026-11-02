@@ -74,7 +74,7 @@ func TestRunConcurrentFailuresKeepOriginalResultOrderAndFlushOnce(t *testing.T) 
 	releases := map[string]chan struct{}{"A": make(chan struct{}), "B": make(chan struct{}), "C": make(chan struct{})}
 	var completed atomic.Int32
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(concurrentTool{run: func(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
+	if err := registerTestTools(registry, (concurrentTool{run: func(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
 		started <- req.ID
 		select {
 		case <-releases[req.ID]:
@@ -87,7 +87,7 @@ func TestRunConcurrentFailuresKeepOriginalResultOrderAndFlushOnce(t *testing.T) 
 			return nil, "A failed", errors.New("A failed")
 		}
 		return &toolshare.Result{Content: req.ID + " succeeded"}, req.ID, nil
-	}}); err != nil {
+	}}).Definition()); err != nil {
 		t.Fatal(err)
 	}
 	committer := &concurrentCommitter{completed: &completed}
@@ -132,12 +132,12 @@ func TestRunCancellationJoinsEveryWorkerWithoutFlushingPartialBatch(t *testing.T
 	started := make(chan string, 3)
 	var completed atomic.Int32
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	_ = registry.Register(concurrentTool{run: func(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
+	_ = registerTestTools(registry, (concurrentTool{run: func(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
 		started <- req.ID
 		<-ctx.Done()
 		completed.Add(1)
 		return nil, "canceled", ctx.Err()
-	}})
+	}}).Definition())
 	committer := &concurrentCommitter{completed: &completed}
 	done := make(chan toolshare.RunResult, 1)
 	go func() {
@@ -171,14 +171,14 @@ func (d *timeoutToolDeps) StartToolRequest(ctx context.Context, _, _ string) (co
 func TestRunSingleToolTimeoutDoesNotCancelSiblingTools(t *testing.T) {
 	started := make(chan string, 3)
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	_ = registry.Register(concurrentTool{run: func(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
+	_ = registerTestTools(registry, (concurrentTool{run: func(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
 		started <- req.ID
 		if req.ID == "A" {
 			<-ctx.Done()
 			return nil, "timed out", ctx.Err()
 		}
 		return &toolshare.Result{Content: req.ID}, req.ID, nil
-	}})
+	}}).Definition())
 	deps := &timeoutToolDeps{}
 	committer := &testToolCommitter{}
 	result := newTestManager(registry, nil).Run(t.Context(), deps, concurrentRunRequest(committer))
@@ -221,7 +221,7 @@ func TestCompletedToolPersistsWhileLaterPreparationWaits(t *testing.T) {
 	defer cancel()
 	deps := &blockedPreparationDeps{waiting: make(chan struct{}), release: make(chan struct{})}
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	_ = registry.Register(concurrentTool{run: func(ctx context.Context, call toolshare.CallRequest) (*toolshare.Result, string, error) {
+	_ = registerTestTools(registry, (concurrentTool{run: func(ctx context.Context, call toolshare.CallRequest) (*toolshare.Result, string, error) {
 		if call.ID == "A" {
 			select {
 			case <-deps.waiting:
@@ -230,7 +230,7 @@ func TestCompletedToolPersistsWhileLaterPreparationWaits(t *testing.T) {
 			}
 		}
 		return &toolshare.Result{Content: call.ID}, call.ID, nil
-	}})
+	}}).Definition())
 	committer := &notifyingCommitter{saved: make(chan string, 3)}
 	done := make(chan toolshare.RunResult, 1)
 	go func() { done <- newTestManager(registry, nil).Run(ctx, deps, concurrentRunRequest(committer)) }()

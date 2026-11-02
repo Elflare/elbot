@@ -45,10 +45,10 @@ func TestSkillMediaBridge(t *testing.T) {
 	environment := processenv.Environment{}.Overlay(map[string]string{"ELBOT_SKILL_TEST_HELPER": "media"})
 	catalog := newCatalog()
 	catalog.Replace([]record{{Name: "media", Kind: KindGo, Root: dir, BinaryPath: binary}})
-	runner := NewGoRunner(&Manager{catalog: catalog, processEnv: environment, media: mediaRuntime})
-	manifest := AgentSkillManifest{Command: []string{binary}, Args: map[string]string{"input": "--input", "inputs": "--inputs", "mode": "--mode"}, Parameters: map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "media"}, "inputs": map[string]any{"type": "array", "items": map[string]any{"type": "media"}, "maxItems": 10}, "mode": map[string]any{"type": "string"}}}}
-	command := newCommandTool(record{Name: "command", Kind: KindAgent, Root: dir, Manifest: manifest}, mediaRuntime, environment)
-	schema := manifest.Schema("command", "")
+	runner := GoRunner{manager: &Manager{catalog: catalog, processEnv: environment, media: mediaRuntime}}
+	manifest := AgentSkillManifest{TimeoutSeconds: 30, Command: []string{binary}, Args: map[string]string{"input": "--input", "inputs": "--inputs", "mode": "--mode"}, Parameters: map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "media"}, "inputs": map[string]any{"type": "array", "items": map[string]any{"type": "media"}, "maxItems": 10}, "mode": map[string]any{"type": "string"}}}}
+	command := commandTool{record: record{Name: "command", Kind: KindAgent, Root: dir}, manifest: manifest, media: mediaRuntime, processEnv: environment}
+	schema := command.Definition().Schema()
 	props := schema.Parameters["properties"].(map[string]any)
 	projectedInput := props["input"].(map[string]any)
 	projectedItems := props["inputs"].(map[string]any)["items"].(map[string]any)
@@ -157,7 +157,7 @@ func TestSkillMediaBridge(t *testing.T) {
 							t.Fatal(err)
 						}
 						segments, _ := json.Marshal(result.LLMSegments())
-						message := &storage.Message{ID: storage.NewID(),SessionID: session.ID, Role: storage.RoleTool, Segments: string(segments)}
+						message := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleTool, Segments: string(segments)}
 						if err := store.Messages().Append(ctx, message); err != nil {
 							t.Fatal(err)
 						}
@@ -193,15 +193,15 @@ func TestSkillMediaBridge(t *testing.T) {
 			go func() {
 				defer close(exited)
 				if kind == "go" {
-					current := NewGoRunner(&Manager{catalog: catalog, processEnv: environment, media: mediaRuntime})
+					current := GoRunner{manager: &Manager{catalog: catalog, processEnv: environment, media: mediaRuntime}}
 					raw, _ := json.Marshal(map[string]any{"skill_name": "media", "payload": map[string]any{"mode": "wait", "media_inputs": []toolshare.MediaInput{{MediaID: item.ID}}}})
-					_, _, err := callTool(runCtx, current, toolshare.CallRequest{Arguments: raw})
+					_, _, err := callTool(runCtx, current.Definition(), toolshare.CallRequest{Arguments: raw})
 					done <- err
 				} else {
 					current := command
 					current.processEnv = environment
 					raw, _ := json.Marshal(map[string]any{"input": item.ID, "mode": "wait"})
-					_, _, err := callTool(runCtx, current, toolshare.CallRequest{Arguments: raw})
+					_, _, err := callTool(runCtx, current.Definition(), toolshare.CallRequest{Arguments: raw})
 					done <- err
 				}
 			}()

@@ -27,13 +27,42 @@ type ToolQuery struct {
 	IncludeDiscover bool     // 包含普通查询默认省略的 discover_tool。
 }
 
-type Source string
+type Source uint8
 
 const (
-	SourceBuiltin    Source = "builtin"
-	SourceSkillAgent Source = "skill_agent"
-	SourceSkillGo    Source = "skill_go"
+	SourceBuiltin Source = iota + 1
+	SourceSkill
+	SourceELwisp
 )
+
+// ToolRegistrationScope 仅描述远端定义的会话和事件归属；来源由注册参数统一指定。
+type ToolRegistrationScope struct {
+	SessionID string // 会话标识；本地注册不填写。
+	EventKey  string // 远端事件标识；本地注册不填写。
+}
+
+// ToolDefinition 由提供方声明，注册入口统一确定来源与默认值。
+type ToolDefinition struct {
+	Metadata         Info                                                      // 名称、说明、风险及可见性；Source 由注册入口赋值。
+	Parameters       map[string]any                                            // 可调用项的参数 schema。
+	Prepare          func(context.Context, CallRequest) (*PreparedCall, error) // 本地工具的准备能力。
+	LoadDetail       func(context.Context) (DetailBlock, error)                // 可选的文档加载能力。
+	ActivateTools    []string                                                  // 展示文档后激活的工具。
+	DiscoveryContent func(context.Context) (string, bool, error)               // 动态发现说明及是否替换普通说明。
+	Remote           *ELwispToolDeclaration                                    // 远端声明，与本地 Prepare 互斥。
+}
+
+type DetailBlock struct {
+	Content string // 文档正文。
+	Format  string // markdown 或 elyph。
+}
+
+// PreparedCall 是外部实现准备好的操作；根部将其封装为固定参数的内部调用。
+type PreparedCall struct {
+	Risk    RiskAssessment                                 // 本次操作风险。
+	Preview string                                         // 确认预览。
+	Run     func(context.Context) (*Result, string, error) // 确认后执行的操作。
+}
 
 // Info 是公开目录元数据，不携带可执行工具对象。
 type Info struct {
@@ -60,15 +89,16 @@ const (
 
 // DiscoveredTool 是会话已提交的完整声明，恢复时不按名称重建 schema。
 type DiscoveredTool struct {
-	Name           string         // 原生名称或远端调用名称。
-	CanonicalName  string         // 模型侧名称，为空时使用 Name。
-	Source         SourceKind     // 原生或远端来源。
-	Description    string         // 模型可见说明。
-	Schema         llm.ToolSchema // 已提交的调用定义。
-	EventKey       string         // 远端调用的事件关联标识。
-	Endpoint       string         // 远端调用地址。
-	TimeoutSeconds int            // 远端调用超时秒数。
-	ForegroundOnly bool           // 禁止在后台使用此声明。
+	Risk           security.RiskLevel // 远端接线时确定的风险，不从协议输入。
+	Name           string             // 原生名称或远端调用名称。
+	CanonicalName  string             // 模型侧名称，为空时使用 Name。
+	Source         SourceKind         // 原生或远端来源。
+	Description    string             // 模型可见说明。
+	Schema         llm.ToolSchema     // 已提交的调用定义。
+	EventKey       string             // 远端调用的事件关联标识。
+	Endpoint       string             // 远端调用地址。
+	TimeoutSeconds int                // 远端调用超时秒数。
+	ForegroundOnly bool               // 禁止在后台使用此声明。
 }
 
 type State struct {
@@ -78,8 +108,9 @@ type State struct {
 }
 
 type StateUpdate struct {
-	Tools []DiscoveredTool // 待合并声明，同名覆盖已有声明。
-	Tags  []string         // 待合并标签。
+	ReplaceGroups []ToolRegistrationScope // 随会话事务替换的远端事件组。
+	Tools         []DiscoveredTool        // 待合并声明，同名覆盖已有声明。
+	Tags          []string                // 待合并标签。
 }
 
 type StateCommit struct {
@@ -108,14 +139,15 @@ type SkillPreload struct {
 
 // ELwispToolDeclaration 是已授权的远端工具声明；不携带事件业务对象。
 type ELwispToolDeclaration struct {
-	CanonicalName  string         `json:"-"`                         // 调用方分配的模型侧唯一名称，不参与外部声明 JSON。
-	EventKey       string         `json:"-"`                         // 调用方提供的事件关联标识，不参与外部声明 JSON。
-	Name           string         `json:"name"`                      // 远端工具原名。
-	Description    string         `json:"description,omitempty"`     // 工具说明。
-	Schema         map[string]any `json:"schema,omitempty"`          // 参数 schema。
-	TimeoutSeconds int            `json:"timeout_seconds,omitempty"` // 调用超时秒数。
-	Endpoint       string         `json:"endpoint,omitempty"`        // 远端调用地址。
-	ForegroundOnly bool           `json:"foreground_only,omitempty"` // 禁止后台使用。
+	Risk           security.RiskLevel `json:"-"`                         // 接线方固定提供 low。
+	CanonicalName  string             `json:"-"`                         // 调用方分配的模型侧唯一名称，不参与外部声明 JSON。
+	EventKey       string             `json:"-"`                         // 调用方提供的事件关联标识，不参与外部声明 JSON。
+	Name           string             `json:"name"`                      // 远端工具原名。
+	Description    string             `json:"description,omitempty"`     // 工具说明。
+	Schema         map[string]any     `json:"schema,omitempty"`          // 参数 schema。
+	TimeoutSeconds int                `json:"timeout_seconds,omitempty"` // 调用超时秒数。
+	Endpoint       string             `json:"endpoint,omitempty"`        // 远端调用地址。
+	ForegroundOnly bool               `json:"foreground_only,omitempty"` // 禁止后台使用。
 }
 
 type BackgroundPreloadRequest struct {

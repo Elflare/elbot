@@ -19,7 +19,7 @@ import (
 
 func TestExecutorExecutesTool(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(fakeTool{name: "ok", source: toolshare.SourceBuiltin}); err != nil {
+	if err := registerTestTools(registry, (fakeTool{name: "ok", source: toolshare.SourceBuiltin}).Definition()); err != nil {
 		t.Fatal(err)
 	}
 	result := executeTestCall(registry, llm.ToolCallRequest{ID: "call_1", Name: "ok", Arguments: `{}`})
@@ -50,7 +50,7 @@ func TestExecutorMissingToolReturnsToolMessageError(t *testing.T) {
 
 func TestExecutorUsesResultSegments(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(segmentTool{}); err != nil {
+	if err := registerTestTools(registry, (segmentTool{}).Definition()); err != nil {
 		t.Fatal(err)
 	}
 	result := executeTestCall(registry, llm.ToolCallRequest{ID: "call_1", Name: "segments", Arguments: `{}`})
@@ -117,7 +117,7 @@ func TestExecutorRetainsPartialResultAndOriginalError(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			registry := toolregistry.NewRegistry(security.DefaultPermission())
-			if err := registry.Register(partialResultTool{err: tc.err}); err != nil {
+			if err := registerTestTools(registry, (partialResultTool{err: tc.err}).Definition()); err != nil {
 				t.Fatal(err)
 			}
 			result := executeTestCall(registry, llm.ToolCallRequest{ID: "partial", Name: "segments", Arguments: `{}`})
@@ -139,7 +139,7 @@ func TestRunRejectsUnauthorizedTools(t *testing.T) {
 		t.Run(candidate.name, func(t *testing.T) {
 			permission := security.DefaultPermission()
 			catalog := toolregistry.NewRegistry(permission)
-			if err := catalog.Register(candidate); err != nil {
+			if err := registerTestTools(catalog, candidate.Definition()); err != nil {
 				t.Fatal(err)
 			}
 			deps := &runnerTestDeps{}

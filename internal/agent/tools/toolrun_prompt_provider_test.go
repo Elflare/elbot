@@ -42,7 +42,7 @@ func TestPromptNamesUseQueriedGroups(t *testing.T) {
 			kinds = append(kinds, query.Kind)
 			// Source must not override the classification returned by the query.
 			if query.Kind == "tool" {
-				return []toolshare.Info{{Name: "command", Source: toolshare.SourceSkillGo}}, nil
+				return []toolshare.Info{{Name: "command", Source: toolshare.SourceSkill}}, nil
 			}
 			return []toolshare.Info{{Name: "guide", Source: toolshare.SourceBuiltin}}, nil
 		}),

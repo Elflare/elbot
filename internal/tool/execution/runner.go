@@ -71,7 +71,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		// runSource was fixed before entry; source separately identifies the
 		// native/Elwisp implementation. Neither is inferred from diagnostics.
 		if result.Result != nil && result.ExecutionStarted && resolved.Native != nil {
-			result.Result.NeedsElyphRules = result.Result.NeedsElyphRules || resolved.Native.Info().NeedsElyphRules
+			result.Result.NeedsElyphRules = result.Result.NeedsElyphRules || resolved.Native.Metadata.NeedsElyphRules
 		}
 		if result.Result != nil && result.Result.DiscoveryText != nil {
 			// The hook processes business details; the summary and common rules
@@ -431,7 +431,7 @@ func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor 
 	if resolved.Source == toolshare.SourceKindELwisp {
 		return toolshare.ConfirmResult{Allowed: true}, nil
 	}
-	info := resolved.Native.Info()
+	info := resolved.Native.Metadata
 	kind, _ := contextinfo.BackgroundKindFromContext(ctx)
 	backgroundKind := string(kind)
 	permission := m.Permission.CheckTool(actor, call.Name, assessment.Level, info.OwnerScoped, info.SuperadminOnly, backgroundKind)

@@ -31,7 +31,6 @@ type record struct {
 	BinaryPath     string              // Go 技能可执行文件路径；纯文档技能为空。
 	Manifest       AgentSkillManifest  // 已解析的 ELBOT_SKILL.toml。
 	ManifestFound  bool                // 是否存在 ELBOT_SKILL.toml。
-	ManifestError  string              // 清单读取或解析错误，供发现时展示。
 }
 
 type catalog struct {
@@ -48,9 +47,6 @@ func (c *catalog) Replace(records []record) {
 	defer c.mu.Unlock()
 	c.records = map[string]record{}
 	for _, record := range records {
-		if record.Name == "" {
-			continue
-		}
 		if abs, err := filepath.Abs(record.Root); err == nil {
 			record.Root = abs
 		} else {
@@ -83,11 +79,4 @@ func (c *catalog) List() []record {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
-}
-
-func SourceForKind(kind Kind) toolshare.Source {
-	if kind == KindGo {
-		return toolshare.SourceSkillGo
-	}
-	return toolshare.SourceSkillAgent
 }

@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"elbot/internal/config"
-	"elbot/internal/llm"
 	"elbot/internal/processenv"
 )
 
@@ -27,18 +26,9 @@ type commandTool struct {
 	processEnv processenv.Environment
 }
 
-func newCommandTool(record record, media interface{ NewCall() toolshare.MediaCall }, environment processenv.Environment) commandTool {
-	return commandTool{record: record, manifest: record.Manifest, media: media, processEnv: environment}
-}
-
-func (t commandTool) Name() string { return t.record.Name }
-
-func (t commandTool) Info() toolshare.Info {
-	return toolshare.Info{Name: t.record.Name, Description: t.record.Description, Source: SourceForKind(t.record.Kind), Risk: t.manifest.Risk, SuperadminOnly: t.manifest.SuperadminOnly, Tags: t.manifest.Tags}
-}
-
-func (t commandTool) Schema() llm.ToolSchema {
-	return t.manifest.Schema(t.record.Name, t.record.Description)
+func (t commandTool) Definition() toolshare.ToolDefinition {
+	parameters := projectMediaSchema(t.manifest.Parameters).(map[string]any)
+	return toolshare.ToolDefinition{Metadata: toolshare.Info{Name: t.record.Name, Description: t.record.Description, Risk: t.manifest.Risk, SuperadminOnly: t.manifest.SuperadminOnly, Tags: t.manifest.Tags}, Parameters: parameters, Prepare: t.PrepareCall, LoadDetail: t.LoadDetail, ActivateTools: t.ActivateTools()}
 }
 
 func (t commandTool) LoadDetail(ctx context.Context) (toolshare.DetailBlock, error) {
@@ -64,7 +54,7 @@ func (t commandTool) PrepareCall(ctx context.Context, req toolshare.CallRequest)
 		return nil, err
 	}
 	preview := fmt.Sprintf("命令：%v\n参数：%v\n工作目录：%s", t.manifest.Command, args, t.record.Root)
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, preview, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.manifest.Risk}, preview, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, raw, args, runMediaCommand)
 	}), nil
 }
@@ -78,10 +68,7 @@ func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []strin
 	}
 	environment := t.processEnv.Overlay(dotEnv)
 
-	timeout := defaultRunnerTimeout
-	if t.manifest.TimeoutSeconds > 0 {
-		timeout = time.Duration(t.manifest.TimeoutSeconds) * time.Second
-	}
+	timeout := time.Duration(t.manifest.TimeoutSeconds) * time.Second
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	mediaCall := t.media.NewCall()

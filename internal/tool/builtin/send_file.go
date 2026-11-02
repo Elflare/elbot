@@ -16,7 +16,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/workspace"
 )
@@ -33,17 +32,9 @@ type sendFileArgs struct {
 	MIMEType string `json:"mime_type"`
 }
 
-func NewSendFileTool(media interface {
-	Metadata(context.Context, string) (toolshare.MediaInfo, error)
-}) SendFileTool {
-	return SendFileTool{media: media}
+func (t SendFileTool) Definition() toolshare.ToolDefinition {
+	return sendFileBuilder().Build(t.PrepareCall)
 }
-
-func (t SendFileTool) Name() string { return "send_file" }
-
-func (t SendFileTool) Info() toolshare.Info { return sendFileBuilder().BuildInfo() }
-
-func (t SendFileTool) Schema() llm.ToolSchema { return sendFileBuilder().BuildSchema() }
 
 func sendFileBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("send_file").
@@ -54,7 +45,7 @@ func sendFileBuilder() *toolshare.Builder {
 		String("mime_type", "MIME类型；省略时按扩展名推断。")
 }
 
-func (t SendFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t SendFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	args, err := parseSendFileArgs(req)
 	if err != nil {
 		return nil, err
@@ -63,7 +54,7 @@ func (t SendFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	if source == "" {
 		return nil, fmt.Errorf("source is required")
 	}
-	assessment := toolshare.RiskAssessment{Level: t.Info().Risk}
+	assessment := toolshare.RiskAssessment{Level: info.Risk}
 	var resolved workspace.ResolvedPath
 	if strings.HasPrefix(source, media.IDPrefix) {
 		if !media.ValidID(source) {

@@ -46,7 +46,7 @@ func TestAuditShowsStartBeforeToolReturns(t *testing.T) {
 	t.Cleanup(func() { _ = center.Close(context.Background()) })
 	probe := blockingAuditTool{entered: make(chan struct{}), release: make(chan struct{})}
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(probe); err != nil {
+	if err := registerTestTools(registry, probe.Definition()); err != nil {
 		t.Fatal(err)
 	}
 	deps := &runnerTestDeps{}

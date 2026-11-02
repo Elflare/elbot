@@ -22,7 +22,10 @@ type testTool struct {
 func (t testTool) Name() string     { return t.info.Name }
 func (t testTool) Info() share.Info { return t.info }
 func (t testTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Name: t.info.Name, Description: t.info.Description, Parameters: map[string]any{"type": "object"}}
+	return llm.ToolSchema{Name: t.info.Name, Description: t.info.Description, Parameters: map[string]any{"type": "object", "properties": map[string]any{}}}
+}
+func (t testTool) Definition() share.ToolDefinition {
+	return share.ToolDefinition{Metadata: t.info, Parameters: t.Schema().Parameters, Prepare: t.PrepareCall}
 }
 func (value testTool) PrepareCall(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
 	return share.NewPreparedCall(req, share.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*share.Result, string, error) {
@@ -38,6 +41,9 @@ type testSkill struct {
 
 func (t testSkill) LoadDetail(context.Context) (share.DetailBlock, error) { return t.block, nil }
 func (t testSkill) ActivateTools() []string                               { return t.activate }
+func (t testSkill) Definition() share.ToolDefinition {
+	return share.ToolDefinition{Metadata: t.info, LoadDetail: t.LoadDetail, ActivateTools: t.activate}
+}
 
 type testLazySkill struct {
 	testSkill
@@ -45,6 +51,11 @@ type testLazySkill struct {
 }
 
 func (t testLazySkill) LoadDetail(ctx context.Context) (share.DetailBlock, error) { return t.load(ctx) }
+func (t testLazySkill) Definition() share.ToolDefinition {
+	d := t.testSkill.Definition()
+	d.LoadDetail = t.LoadDetail
+	return d
+}
 
 type testDynamicTool struct {
 	testTool
@@ -56,6 +67,11 @@ type testDynamicTool struct {
 func (t testDynamicTool) DiscoveryContent(context.Context) (string, bool, error) {
 	return t.content, t.override, t.err
 }
+func (t testDynamicTool) Definition() share.ToolDefinition {
+	d := t.testTool.Definition()
+	d.DiscoveryContent = t.DiscoveryContent
+	return d
+}
 
 func plainTool(name string) testTool {
 	return testTool{info: share.Info{Name: name, Description: "description " + name, Risk: share.RiskLow, Source: share.SourceBuiltin}}
@@ -65,33 +81,30 @@ func TestResolvePreservesSelectedRootsAndDependencies(t *testing.T) {
 	first, second := plainTool("first"), plainTool("second")
 	first.info.DependsOn = []string{"second"}
 	second.info.DependsOn = []string{"first"}
-	first.info.Source, second.info.Source = "test", "test"
-	resolver, r := newTestResolver(t, first, second)
+	resolver, r := newTestResolver(t, first.Definition(), second.Definition())
 	selected, err := r.QueryTools(t.Context(), share.ToolQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	replacement := second
 	replacement.info.Description = "replacement"
-	if err := r.ReplaceSources([]share.Source{"test"}, []share.Tool{replacement}); err != nil {
+	if _, err := r.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, []share.ToolDefinition{replacement.Definition()}); err != nil {
 		t.Fatal(err)
 	}
 	result, targets, err := resolver.Resolve(t.Context(), selected)
 	if err != nil || discoveredNames(result) != "first,second" || len(targets) != 2 {
 		t.Fatalf("result=%+v targets=%v err=%v", result, targets, err)
 	}
-	if result.Tools[1].Info.Description != second.info.Description || targets["second"].Info().Description != second.info.Description {
+	if result.Tools[1].Info.Description != second.info.Description || targets["second"].Metadata.Description != second.info.Description {
 		t.Fatal("selected dependency was looked up again")
 	}
 }
 
-func newTestResolver(t *testing.T, tools ...share.Tool) (*Resolver, *registry.Registry) {
+func newTestResolver(t *testing.T, tools ...share.ToolDefinition) (*Resolver, *registry.Registry) {
 	t.Helper()
 	r := registry.NewRegistry(security.DefaultPermission())
-	for _, tool := range tools {
-		if err := r.Register(tool); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := r.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, tools); err != nil {
+		t.Fatal(err)
 	}
 	return NewResolver(r), r
 }
@@ -114,9 +127,9 @@ func TestDiscoverListUsesRegistryQualification(t *testing.T) {
 	foreground := plainTool("foreground")
 	foreground.info.ForegroundOnly = true
 	api := plainTool("api")
-	api.info.APITypes = []llm.APIType{"responses"}
-	resolver, r := newTestResolver(t, plainTool("plain"), hidden, admin, high, foreground, api)
-	if err := r.Register(NewDiscoverTool(resolver)); err != nil {
+	api.info.APITypes = []llm.APIType{llm.APITypeResponse}
+	resolver, r := newTestResolver(t, (plainTool("plain")).Definition(), hidden.Definition(), admin.Definition(), high.Definition(), foreground.Definition(), api.Definition())
+	if _, err := r.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, []share.ToolDefinition{NewDiscoverTool(resolver)}); err != nil {
 		t.Fatal(err)
 	}
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser})
@@ -139,7 +152,7 @@ func TestDiscoverListUsesRegistryQualification(t *testing.T) {
 	if err != nil || len(empty.Tools) != 0 || len(empty.Errors) != 0 {
 		t.Fatalf("empty details = %+v, %v", empty, err)
 	}
-	ctx = contextinfo.WithModel(ctx, contextinfo.Model{APIType: "responses"})
+	ctx = contextinfo.WithModel(ctx, contextinfo.Model{APIType: string(llm.APITypeResponse)})
 	result, err = resolver.DiscoverDetails(ctx, []string{"api"})
 	if err != nil || discoveredNames(result) != "api" {
 		t.Fatalf("model details = %+v, %v", result, err)
@@ -154,7 +167,7 @@ func TestDiscoverDependenciesAndPartialFailure(t *testing.T) {
 	hidden.info.DependsOn = []string{"main"}
 	blocked := plainTool("blocked")
 	blocked.info.SuperadminOnly = true
-	resolver, _ := newTestResolver(t, main, hidden, blocked)
+	resolver, _ := newTestResolver(t, main.Definition(), hidden.Definition(), blocked.Definition())
 	result, err := resolver.DiscoverDetails(context.Background(), []string{" main ", "main", "absent"})
 	if err != nil {
 		t.Fatal(err)
@@ -184,7 +197,7 @@ func TestDiscoverSkillDetailsFailuresAndCancellation(t *testing.T) {
 	canceled := testLazySkill{testSkill: testSkill{testTool: plainTool("canceled")}, load: func(context.Context) (share.DetailBlock, error) {
 		return share.DetailBlock{}, context.Canceled
 	}}
-	resolver, _ := newTestResolver(t, skill, failed, canceled)
+	resolver, _ := newTestResolver(t, skill.Definition(), failed.Definition(), canceled.Definition())
 	result, err := resolver.DiscoverDetails(context.Background(), []string{"failed", "skill"})
 	if err != nil {
 		t.Fatal(err)
@@ -209,8 +222,8 @@ func TestDiscoverSkillDetailsFailuresAndCancellation(t *testing.T) {
 func TestDiscoverToolContentAndActivationMetadata(t *testing.T) {
 	skill := testSkill{testTool: plainTool("skill"), block: share.DetailBlock{Content: "#skill demo\n<- $text:string!", Format: "elyph"}, activate: []string{"wrapper", "wrapper"}}
 	resolver, _ := newTestResolver(t,
-		testDynamicTool{testTool: plainTool("append"), content: "追加说明"},
-		testDynamicTool{testTool: plainTool("override"), content: "独立说明", override: true}, skill,
+		(testDynamicTool{testTool: plainTool("append"), content: "追加说明"}).Definition(),
+		(testDynamicTool{testTool: plainTool("override"), content: "独立说明", override: true}).Definition(), skill.Definition(),
 	)
 	result, log, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"names":["append","override","skill","absent"]}`)})
 	if err != nil {
@@ -237,7 +250,7 @@ func TestDiscoverToolContentAndActivationMetadata(t *testing.T) {
 
 func TestDiscoverDynamicContentFailure(t *testing.T) {
 	want := errors.New("dynamic content failed")
-	resolver, _ := newTestResolver(t, testDynamicTool{testTool: plainTool("dynamic"), err: want})
+	resolver, _ := newTestResolver(t, (testDynamicTool{testTool: plainTool("dynamic"), err: want}).Definition())
 	if _, _, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"dynamic"}`)}); !errors.Is(err, want) {
 		t.Fatalf("content error = %v", err)
 	}
@@ -253,8 +266,8 @@ func TestDiscoveryStateUpdateFiltersActivation(t *testing.T) {
 	high := plainTool("high")
 	high.info.Risk = share.RiskHigh
 	api := plainTool("api")
-	api.info.APITypes = []llm.APIType{"responses"}
-	resolver, _ := newTestResolver(t, hidden, admin, foreground, high, api)
+	api.info.APITypes = []llm.APIType{llm.APITypeResponse}
+	resolver, _ := newTestResolver(t, hidden.Definition(), admin.Definition(), foreground.Definition(), high.Definition(), api.Definition())
 	ctx := contextinfo.WithBackgroundKind(context.Background(), "")
 	result := &share.Result{
 		Data:     json.RawMessage(`{"tools":[{"info":{"name":"base"},"schema":{"name":"base","parameters":{"type":"object"}}}]}`),
@@ -298,70 +311,39 @@ func TestNativeDiscoveredToolsDetachSchema(t *testing.T) {
 	}
 }
 
-// 在确定的调用位置替换目录，避免用 sleep 猜测并发交错。
-type testReplacingTool struct {
-	testDynamicTool
-	onInfo   func()
-	onSchema func()
-}
-
-func (t *testReplacingTool) Info() share.Info {
-	if replace := t.onInfo; replace != nil {
-		t.onInfo = nil
-		replace()
-	}
-	return t.testDynamicTool.Info()
-}
-
-func (t *testReplacingTool) Schema() llm.ToolSchema {
-	if replace := t.onSchema; replace != nil {
-		t.onSchema = nil
-		replace()
-	}
-	return t.testDynamicTool.Schema()
-}
-
 func TestDiscoveryKeepsQueriedObjectAcrossReplacement(t *testing.T) {
-	for _, phase := range []string{"qualification", "schema"} {
-		t.Run(phase, func(t *testing.T) {
-			original := &testReplacingTool{testDynamicTool: testDynamicTool{
-				testTool: plainTool("versioned"), content: "original content",
-			}}
-			original.info.Source = share.SourceSkillGo
-			original.info.Description = "original description"
-			resolver, r := newTestResolver(t, original)
-			replacement := testDynamicTool{testTool: plainTool("versioned"), content: "replacement content"}
-			replacement.info.Source = share.SourceSkillGo
-			replacement.info.SuperadminOnly = true
-			replace := func() {
-				if err := r.ReplaceSources([]share.Source{share.SourceSkillGo}, []share.Tool{replacement}); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if phase == "qualification" {
-				original.onInfo = replace
-			} else {
-				original.onSchema = replace
-			}
-			result, _, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"versioned"}`)})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !strings.Contains(result.Content, "original content") || strings.Contains(result.Content, "replacement content") {
-				t.Fatalf("used replacement content: %q", result.Content)
-			}
-			var discovered share.DiscoveryResult
-			if err := json.Unmarshal(result.Data, &discovered); err != nil {
-				t.Fatal(err)
-			}
-			if len(discovered.Tools) != 1 || discovered.Tools[0].Schema == nil || discovered.Tools[0].Schema.Description != "original description" {
-				t.Fatalf("used replacement schema: %+v", discovered)
-			}
-			current, ok := r.ToolInfo("versioned")
-			if !ok || !current.SuperadminOnly {
-				t.Fatal("test did not replace the registry entry")
-			}
-		})
+	original := testDynamicTool{testTool: plainTool("versioned"), content: "original content"}
+	original.info.Description = "original description"
+	resolver, r := newTestResolver(t, original.Definition())
+	replacement := testDynamicTool{testTool: plainTool("versioned"), content: "replacement content"}
+	replacement.info.SuperadminOnly = true
+	definition := original.Definition()
+	definition.DiscoveryContent = func(ctx context.Context) (string, bool, error) {
+		if _, err := r.RegisterTools(ctx, share.SourceSkill, share.ToolRegistrationScope{}, []share.ToolDefinition{replacement.Definition()}); err != nil {
+			t.Fatal(err)
+		}
+		return original.DiscoveryContent(ctx)
+	}
+	if _, err := r.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, []share.ToolDefinition{definition}); err != nil {
+		t.Fatal(err)
+	}
+	result, _, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"versioned"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "original content") || strings.Contains(result.Content, "replacement content") {
+		t.Fatalf("used replacement content: %q", result.Content)
+	}
+	var discovered share.DiscoveryResult
+	if err := json.Unmarshal(result.Data, &discovered); err != nil {
+		t.Fatal(err)
+	}
+	if len(discovered.Tools) != 1 || discovered.Tools[0].Schema == nil || discovered.Tools[0].Schema.Description != "original description" {
+		t.Fatalf("used replacement schema: %+v", discovered)
+	}
+	current, ok := r.ToolInfo("versioned")
+	if !ok || !current.SuperadminOnly {
+		t.Fatal("test did not replace the registry entry")
 	}
 }
 
@@ -370,16 +352,14 @@ func TestDiscoveryKeepsSkillActivationDeclaration(t *testing.T) {
 	original := testLazySkill{testSkill: testSkill{
 		testTool: plainTool("skill"), activate: []string{"original_wrapper"},
 	}}
-	original.info.Source = share.SourceSkillAgent
 	replacement := testSkill{testTool: plainTool("skill"), activate: []string{"replacement_wrapper"}}
-	replacement.info.Source = share.SourceSkillAgent
 	original.load = func(context.Context) (share.DetailBlock, error) {
-		if err := r.ReplaceSources([]share.Source{share.SourceSkillAgent}, []share.Tool{replacement}); err != nil {
+		if _, err := r.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, []share.ToolDefinition{replacement.Definition()}); err != nil {
 			return share.DetailBlock{}, err
 		}
 		return share.DetailBlock{Content: "original detail"}, nil
 	}
-	if err := r.Register(original); err != nil {
+	if _, err := r.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, []share.ToolDefinition{original.Definition()}); err != nil {
 		t.Fatal(err)
 	}
 	result, _, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"skill"}`)})

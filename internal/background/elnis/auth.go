@@ -5,12 +5,12 @@ import "elbot/internal/tool"
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"regexp"
 	"strings"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/elvena"
+	"elbot/internal/security"
 )
 
 func (s *Service) authenticate(token string) (string, bool) {
@@ -79,37 +79,10 @@ func (s *Service) authorizeExternalTools(event Event) error {
 	if policy, ok := s.cfg.Elwisps[event.Request.Elwisp.Name]; ok {
 		disabled = setFromStrings(policy.DisabledExternalTools)
 	}
-	seen := map[string]bool{}
 	for _, declared := range event.Request.Tools {
 		name := strings.TrimSpace(declared.Name)
-		if name == "" {
-			return fmt.Errorf("external tool name is required")
-		}
-		if seen[name] {
-			return fmt.Errorf("external tool %q is duplicated", name)
-		}
-		seen[name] = true
 		if disabled[name] {
 			return fmt.Errorf("external tool %q is disabled for elwisp %q", name, event.Request.Elwisp.Name)
-		}
-		if strings.ContainsAny(name, ". /\\") {
-			return fmt.Errorf("external tool %q has invalid name", name)
-		}
-		if strings.TrimSpace(declared.Endpoint) == "" {
-			return fmt.Errorf("external tool %q endpoint is required", name)
-		}
-		parsed, err := url.Parse(strings.TrimSpace(declared.Endpoint))
-		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-			return fmt.Errorf("external tool %q endpoint must be http or https URL", name)
-		}
-		if declared.TimeoutSeconds < 0 || declared.TimeoutSeconds > 60 {
-			return fmt.Errorf("external tool %q timeout_seconds must be between 0 and 60", name)
-		}
-		if len(declared.Schema) == 0 {
-			return fmt.Errorf("external tool %q schema is required", name)
-		}
-		if schemaType, _ := declared.Schema["type"].(string); schemaType != "object" {
-			return fmt.Errorf("external tool %q schema.type must be object", name)
 		}
 	}
 	return nil
@@ -120,6 +93,7 @@ var elwispToolNameReplacer = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
 func (s *Service) elwispTools(event Event) []tool.ELwispToolDeclaration {
 	tools := append([]tool.ELwispToolDeclaration(nil), event.Request.Tools...)
 	for i := range tools {
+		tools[i].Risk = security.RiskLow
 		tools[i].Name = strings.TrimSpace(tools[i].Name)
 		tools[i].Endpoint = strings.TrimSpace(tools[i].Endpoint)
 		tools[i].CanonicalName = elwispToolName(event.Request.Elwisp.Name, tools[i].Name)

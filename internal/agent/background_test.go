@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/security"
 	"encoding/json"
 	"errors"
 	"os"
@@ -66,7 +67,7 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 		Kind:            "cron", Name: "report", Prompt: "report",
 		Actor:         contextinfo.Actor{ID: "cli:local", Platform: "cli"},
 		ToolListNames: []string{"task_notes"},
-		ELwispTools:   []tool.ELwispToolDeclaration{{Name: "remote", CanonicalName: "event_remote", EventKey: "event", Endpoint: "https://example.invalid"}},
+		ELwispTools:   []tool.ELwispToolDeclaration{{Name: "remote", CanonicalName: "event_remote", Description: "Remote", Risk: security.RiskLow, Schema: map[string]any{"type": "object", "properties": map[string]any{}}, EventKey: "event", Endpoint: "https://example.invalid"}},
 	}
 	result, err := m.RunBackground(ctx, req)
 	if err != nil || result.SessionID == "" || result.RunID == "" || result.MessageID == "" || result.Text != "isolated answer" || result.Outcome != "completed" {

@@ -49,7 +49,7 @@ func ParseSkillMarkdown(raw []byte, fallbackName string) (Definition, error) {
 func parseRisk(value string) (toolshare.RiskLevel, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return toolshare.RiskHigh, nil
+		return "", fmt.Errorf("risk is required")
 	}
 	switch toolshare.RiskLevel(value) {
 	case toolshare.RiskSafe, toolshare.RiskLow, toolshare.RiskMedium, toolshare.RiskHigh, toolshare.RiskCritical:

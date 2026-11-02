@@ -11,8 +11,6 @@ import (
 	"sort"
 	"strings"
 
-	"elbot/internal/llm"
-
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -87,21 +85,15 @@ func ParseAgentSkillManifest(data []byte) (AgentSkillManifest, error) {
 
 func validateAgentSkillManifest(file agentSkillManifestFile) (AgentSkillManifest, error) {
 	callable := agentSkillManifestCallable(file)
-	risk := toolshare.RiskSafe
-	if strings.TrimSpace(file.Risk) != "" {
-		parsed, err := parseRisk(file.Risk)
-		if err != nil {
-			return AgentSkillManifest{}, err
-		}
-		risk = parsed
-	} else if callable {
-		return AgentSkillManifest{}, fmt.Errorf("risk is required")
-	}
+	risk := toolshare.RiskLevel(strings.TrimSpace(file.Risk))
 	if !callable {
+		if risk == "" {
+			risk = toolshare.RiskSafe
+		}
 		if file.TimeoutSeconds < 0 {
 			return AgentSkillManifest{}, fmt.Errorf("timeout_seconds must be >= 0")
 		}
-		return AgentSkillManifest{Risk: risk, SuperadminOnly: file.SuperadminOnly, Tags: normalizeManifestTags(file.Tags), TimeoutSeconds: file.TimeoutSeconds, ExposeRoot: file.ExposeRoot}, nil
+		return AgentSkillManifest{Risk: risk, SuperadminOnly: file.SuperadminOnly, Tags: file.Tags, TimeoutSeconds: file.TimeoutSeconds, ExposeRoot: file.ExposeRoot}, nil
 	}
 	if len(file.Command) == 0 {
 		return AgentSkillManifest{}, fmt.Errorf("command is required")
@@ -118,14 +110,11 @@ func validateAgentSkillManifest(file agentSkillManifestFile) (AgentSkillManifest
 	if err := json.Unmarshal([]byte(file.Parameters), &parameters); err != nil {
 		return AgentSkillManifest{}, fmt.Errorf("parameters must be JSON object schema: %w", err)
 	}
-	if typ, _ := parameters["type"].(string); typ != "object" {
-		return AgentSkillManifest{}, fmt.Errorf("parameters.type must be object")
-	}
 	properties, ok := parameters["properties"].(map[string]any)
-	if !ok || len(properties) == 0 {
+	if !ok {
 		return AgentSkillManifest{}, fmt.Errorf("parameters.properties is required")
 	}
-	if len(file.Args) == 0 {
+	if len(properties) > 0 && len(file.Args) == 0 {
 		return AgentSkillManifest{}, fmt.Errorf("[args] is required")
 	}
 	for name, flag := range file.Args {
@@ -148,7 +137,10 @@ func validateAgentSkillManifest(file agentSkillManifestFile) (AgentSkillManifest
 	if file.TimeoutSeconds < 0 {
 		return AgentSkillManifest{}, fmt.Errorf("timeout_seconds must be >= 0")
 	}
-	return AgentSkillManifest{Risk: risk, SuperadminOnly: file.SuperadminOnly, Tags: normalizeManifestTags(file.Tags), Command: append([]string(nil), file.Command...), TimeoutSeconds: file.TimeoutSeconds, ExposeRoot: file.ExposeRoot, Parameters: parameters, Args: copyStringMap(file.Args), Callable: true}, nil
+	if file.TimeoutSeconds == 0 {
+		file.TimeoutSeconds = int(defaultRunnerTimeout.Seconds())
+	}
+	return AgentSkillManifest{Risk: risk, SuperadminOnly: file.SuperadminOnly, Tags: file.Tags, Command: append([]string(nil), file.Command...), TimeoutSeconds: file.TimeoutSeconds, ExposeRoot: file.ExposeRoot, Parameters: parameters, Args: copyStringMap(file.Args), Callable: true}, nil
 }
 
 func agentSkillManifestCallable(file agentSkillManifestFile) bool {
@@ -180,25 +172,6 @@ func copyStringMap(in map[string]string) map[string]string {
 		out[key] = value
 	}
 	return out
-}
-
-func normalizeManifestTags(tags []string) []string {
-	seen := map[string]bool{}
-	out := []string{}
-	for _, tag := range tags {
-		tag = strings.TrimSpace(tag)
-		if tag == "" || seen[tag] {
-			continue
-		}
-		seen[tag] = true
-		out = append(out, tag)
-	}
-	return out
-}
-
-func (m AgentSkillManifest) Schema(name, description string) llm.ToolSchema {
-	parameters, _ := projectMediaSchema(m.Parameters).(map[string]any)
-	return llm.ToolSchema{Name: name, Description: description, Parameters: parameters}
 }
 
 func projectMediaSchema(value any) any {

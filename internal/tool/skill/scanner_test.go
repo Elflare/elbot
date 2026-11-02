@@ -15,7 +15,7 @@ import (
 func TestFilesystemScannerScansAgentSkill(t *testing.T) {
 	root := t.TempDir()
 	writeSkill(t, filepath.Join(root, "agent", "docx"), "---\nname: docx\ndescription: DOCX skill\nrisk: low\n---\n\n# DOCX\n\nUse scripts.")
-	scanner := newFilesystemScanner(root)
+	scanner := (filesystemScanner{root: root})
 	records, err := scanner.scanRecords(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +35,7 @@ parameters = '''{"type":"object","required":["input"],"properties":{"input":{"ty
 [args]
 input = "--input"
 `)
-	scanner := newFilesystemScanner(root)
+	scanner := (filesystemScanner{root: root})
 	records, err := scanner.scanRecords(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -43,7 +43,7 @@ input = "--input"
 	if len(records) != 1 || records[0].Name != "docx" || records[0].Risk != toolshare.RiskMedium {
 		t.Fatalf("records = %#v", records)
 	}
-	if !records[0].ManifestFound || !records[0].Manifest.Callable || records[0].ManifestError != "" {
+	if !records[0].ManifestFound || !records[0].Manifest.Callable {
 		t.Fatalf("callable manifest = %#v", records[0])
 	}
 }
@@ -56,7 +56,7 @@ func TestFilesystemScannerKeepsPolicyOnlyManifestAsDocumentSkill(t *testing.T) {
 superadmin_only = true
 tags = ["private"]
 `)
-	scanner := newFilesystemScanner(root)
+	scanner := (filesystemScanner{root: root})
 	records, err := scanner.scanRecords(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +72,7 @@ tags = ["private"]
 	}
 }
 
-func TestFilesystemScannerKeepsInvalidManifestAsDocumentSkill(t *testing.T) {
+func TestFilesystemScannerLeavesRiskForRegistration(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "agent", "docx")
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\nrisk: low\n---\n\n# DOCX")
@@ -82,15 +82,15 @@ parameters = '''{"type":"object","properties":{"input":{"type":"string"}}}'''
 [args]
 input = "--input"
 `)
-	scanner := newFilesystemScanner(root)
+	scanner := (filesystemScanner{root: root})
 	records, err := scanner.scanRecords(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(records) != 1 || records[0].Name != "docx" || records[0].Risk != toolshare.RiskSafe {
+	if len(records) != 1 || records[0].Name != "docx" || records[0].Risk != "nope" {
 		t.Fatalf("records = %#v", records)
 	}
-	if !records[0].ManifestFound || records[0].ManifestError == "" || records[0].Manifest.Callable {
+	if !records[0].ManifestFound || !records[0].Manifest.Callable {
 		t.Fatalf("document manifest = %#v", records[0])
 	}
 }
@@ -98,7 +98,7 @@ input = "--input"
 func TestFilesystemScannerScansGoSkillWithBinary(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "go", "foo")
-	writeElyphSkill(t, dir, "#skill foo - Foo skill\n")
+	writeElyphSkill(t, dir, "#skill foo - Foo skill\n** risk low\n")
 	binary := filepath.Join(dir, "foo")
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
@@ -106,7 +106,7 @@ func TestFilesystemScannerScansGoSkillWithBinary(t *testing.T) {
 	if err := os.WriteFile(binary, []byte("fake"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	scanner := newFilesystemScanner(root)
+	scanner := (filesystemScanner{root: root})
 	records, err := scanner.scanRecords(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +122,7 @@ func TestFilesystemScannerRejectsBrokenElyph(t *testing.T) {
 	goodDir := filepath.Join(root, "go", "good")
 	writeElyphSkill(t, brokenDir, "missing header\n> do\n")
 	writeElyphSkill(t, goodDir, "#skill good - Good skill\n** risk low\n")
-	scanner := newFilesystemScanner(root)
+	scanner := (filesystemScanner{root: root})
 	_, err := scanner.scanRecords(context.Background())
 	if err == nil || !strings.Contains(err.Error(), brokenDir) {
 		t.Fatalf("Scan error = %v", err)
@@ -132,7 +132,7 @@ func TestFilesystemScannerRejectsBrokenElyph(t *testing.T) {
 func TestFilesystemScannerCanceledEmptyDirectory(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := newFilesystemScanner(t.TempDir()).scanRecords(ctx)
+	_, err := (filesystemScanner{root: t.TempDir()}).scanRecords(ctx)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("scanRecords = %v, want canceled", err)
 	}

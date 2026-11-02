@@ -22,7 +22,7 @@ func TestShellLogHasNoBlankLineBeforeRisk(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("uses POSIX shell commands")
 	}
-	prepared, err := toolbuiltin.NewShellTool(processenv.Environment{}, nil).PrepareCall(t.Context(), toolshare.CallRequest{Arguments: json.RawMessage(`{"cmd":"printf 'Current directory: /home/test\\n'"}`)})
+	prepared, err := (toolbuiltin.ShellTool{ProcessEnv: processenv.Environment{}}).Definition().PrepareCall(t.Context(), toolshare.CallRequest{Arguments: json.RawMessage(`{"cmd":"printf 'Current directory: /home/test\\n'"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}

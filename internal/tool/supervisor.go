@@ -3,6 +3,7 @@ package tool
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"elbot/internal/events"
@@ -13,6 +14,7 @@ import (
 	"elbot/internal/signal"
 	"elbot/internal/tool/execution"
 	"elbot/internal/tool/preload"
+	"elbot/internal/tool/share"
 	toolstate "elbot/internal/tool/state"
 )
 
@@ -29,6 +31,43 @@ type Supervisor struct {
 	closed      bool                                           // 标记已进入关闭阶段。
 	done        chan struct{}                                  // 生命周期退出通知。
 	cronChanged *signal.Signal[CronChangedEvent, signal.Empty] // 本实例任务定义变更通知。
+}
+
+// RegisterTools 完整提交一个来源的定义；远端返回会话事务待提交的补丁。
+func (m *Supervisor) RegisterTools(ctx context.Context, source Source, scope ToolRegistrationScope, definitions []ToolDefinition) (StateUpdate, error) {
+	internal := make([]share.ToolDefinition, 0, len(definitions))
+	for _, definition := range definitions {
+		info := definition.Metadata
+		value := share.ToolDefinition{Metadata: share.Info{Name: info.Name, Description: info.Description, Risk: info.Risk, NeedsElyphRules: info.NeedsElyphRules, APITypes: info.APITypes, SuperadminOnly: info.SuperadminOnly, Hidden: info.Hidden, OwnerScoped: info.OwnerScoped, ForegroundOnly: info.ForegroundOnly, Tags: info.Tags, DependsOn: info.DependsOn}, Parameters: definition.Parameters, ActivateTools: definition.ActivateTools, DiscoveryContent: definition.DiscoveryContent}
+		if definition.Remote != nil {
+			remote := share.ELwispToolDeclaration(*definition.Remote)
+			value.Remote = &remote
+		}
+		if definition.LoadDetail != nil {
+			value.LoadDetail = func(ctx context.Context) (share.DetailBlock, error) {
+				block, err := definition.LoadDetail(ctx)
+				return share.DetailBlock(block), err
+			}
+		}
+		if definition.Prepare != nil {
+			value.Prepare = func(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
+				prepared, err := definition.Prepare(ctx, CallRequest(req))
+				if err != nil {
+					return nil, err
+				}
+				if prepared == nil || prepared.Run == nil {
+					return nil, fmt.Errorf("tool %q returned no prepared operation", req.Name)
+				}
+				return share.NewPreparedCall(req, share.RiskAssessment(prepared.Risk), prepared.Preview, func(ctx context.Context) (*share.Result, string, error) {
+					result, logContent, err := prepared.Run(ctx)
+					return toInternalResult(result), logContent, err
+				}), nil
+			}
+		}
+		internal = append(internal, value)
+	}
+	update, err := m.catalog.registry.RegisterTools(ctx, share.Source(source), share.ToolRegistrationScope(scope), internal)
+	return toPublicStateUpdate(update), err
 }
 
 func (m *Supervisor) QueryTools(ctx context.Context, query ToolQuery) ([]Info, error) {

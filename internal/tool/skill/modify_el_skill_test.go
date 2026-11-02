@@ -22,9 +22,9 @@ func TestReadElSkillReadsLineRanges(t *testing.T) {
 	root := t.TempDir()
 	content := "#skill reader - Reader.\n** risk low\n<- $text:str!\n-> $result:str\n"
 	writeTestSkill(t, root, "reader", content)
-	reader := NewReadElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
+	reader := ReadElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 
-	result, _, err := callTool(context.Background(), reader, toolshare.CallRequest{Arguments: []byte(`{"name":"reader","start_line":2,"end_line":3}`)})
+	result, _, err := callTool(context.Background(), reader.Definition(), toolshare.CallRequest{Arguments: []byte(`{"name":"reader","start_line":2,"end_line":3}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,9 +38,9 @@ func TestReadElSkillReadsCodeSource(t *testing.T) {
 	root := t.TempDir()
 	content := "package main\n\nfunc main() {}\n"
 	writeTestGoSkill(t, root, "reader_code", content)
-	reader := NewReadElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
+	reader := ReadElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 
-	result, _, err := callTool(context.Background(), reader, toolshare.CallRequest{Arguments: []byte(`{"name":"reader_code","target":"code_source","start_line":1,"end_line":3}`)})
+	result, _, err := callTool(context.Background(), reader.Definition(), toolshare.CallRequest{Arguments: []byte(`{"name":"reader_code","target":"code_source","start_line":1,"end_line":3}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestModifyElSkillWritesFullContent(t *testing.T) {
 	original := "#skill writer - Old.\n** risk low\n<- $text:str!\n-> $result:str\n"
 	writeTestSkill(t, root, "writer", original)
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	modifier := NewModifyElSkillTool(NewManager(root, registry, nil, processenv.Environment{}))
+	modifier := ModifyElSkillTool{manager: NewManager(root, registry, nil, processenv.Environment{})}
 	args, _ := json.Marshal(map[string]any{
 		"name":              "writer",
 		"expected_revision": fileops.ContentRevision([]byte(original)),
@@ -66,7 +66,7 @@ func TestModifyElSkillWritesFullContent(t *testing.T) {
 		}},
 	})
 
-	result, _, err := callTool(context.Background(), modifier, toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), modifier.Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestModifyElSkillRejectsStaleRevision(t *testing.T) {
 	writeTestSkill(t, root, "guarded_revision", original)
 	staleRevision := fileops.ContentRevision([]byte(original))
 	writeTestSkill(t, root, "guarded_revision", current)
-	modifier := NewModifyElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
+	modifier := ModifyElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 	args, _ := json.Marshal(map[string]any{
 		"name":              "guarded_revision",
 		"expected_revision": staleRevision,
@@ -96,7 +96,7 @@ func TestModifyElSkillRejectsStaleRevision(t *testing.T) {
 			"new_text":  "#skill guarded_revision - New.",
 		}},
 	})
-	_, _, err := callTool(context.Background(), modifier, toolshare.CallRequest{Arguments: args})
+	_, _, err := callTool(context.Background(), modifier.Definition(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "file revision mismatch: current "+fileops.ContentRevision([]byte(current))) {
 		t.Fatalf("expected stale revision error, got %v", err)
 	}
@@ -106,7 +106,7 @@ func TestModifyElSkillRejectsStaleRevision(t *testing.T) {
 }
 
 func TestModifyElSkillSchemaUsesRevision(t *testing.T) {
-	schema := NewModifyElSkillTool(nil).Schema()
+	schema := (ModifyElSkillTool{}).Definition().Schema()
 	properties, ok := schema.Parameters["properties"].(map[string]any)
 	if !ok {
 		t.Fatalf("schema properties missing: %#v", schema.Parameters)
@@ -137,8 +137,8 @@ func TestModifyElSkillSchemaUsesRevision(t *testing.T) {
 }
 
 func TestModifyElSkillRejectsUnknownFields(t *testing.T) {
-	modifier := NewModifyElSkillTool(NewManager(t.TempDir(), toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
-	_, _, err := callTool(context.Background(), modifier, toolshare.CallRequest{Arguments: []byte(`{"name":"missing","unknown_field":true,"edits":[{"operation":"overwrite","new_text":"x"}]}`)})
+	modifier := ModifyElSkillTool{manager: NewManager(t.TempDir(), toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
+	_, _, err := callTool(context.Background(), modifier.Definition(), toolshare.CallRequest{Arguments: []byte(`{"name":"missing","unknown_field":true,"edits":[{"operation":"overwrite","new_text":"x"}]}`)})
 	if err == nil || !strings.Contains(err.Error(), "unknown field \"unknown_field\"") {
 		t.Fatalf("expected unknown field rejection, got %v", err)
 	}
@@ -147,7 +147,7 @@ func TestModifyElSkillRejectsUnknownFields(t *testing.T) {
 func TestModifyElSkillAcceptsElyphWarnings(t *testing.T) {
 	root := t.TempDir()
 	writeTestSkill(t, root, "warn_patch", "#skill warn_patch - Old.\n** risk low\n")
-	modifier := NewModifyElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
+	modifier := ModifyElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 	args, _ := json.Marshal(map[string]any{
 		"name": "warn_patch",
 		"edits": []map[string]any{{
@@ -157,7 +157,7 @@ func TestModifyElSkillAcceptsElyphWarnings(t *testing.T) {
 		}},
 	})
 
-	result, _, err := callTool(context.Background(), modifier, toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), modifier.Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestModifyElSkillEditsLines(t *testing.T) {
 	root := t.TempDir()
 	original := "#skill patcher - Old.\n** risk low\n<- $text:str!\n-> $result:str\n"
 	writeTestSkill(t, root, "patcher", original)
-	modifier := NewModifyElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
+	modifier := ModifyElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 	args, _ := json.Marshal(map[string]any{
 		"name": "patcher",
 		"edits": []map[string]any{
@@ -179,7 +179,7 @@ func TestModifyElSkillEditsLines(t *testing.T) {
 		},
 	})
 
-	if _, _, err := callTool(context.Background(), modifier, toolshare.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := callTool(context.Background(), modifier.Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	want := "#skill patcher - New.\n** risk low\n<- $input:str!\n-> $result:str\n"
@@ -191,7 +191,7 @@ func TestModifyElSkillEditsLines(t *testing.T) {
 func TestModifyElSkillEditsCodeSource(t *testing.T) {
 	root := t.TempDir()
 	writeTestGoSkill(t, root, "patcher_code", "package main\n\nfunc main() {}\n")
-	modifier := NewModifyElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
+	modifier := ModifyElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 	args, _ := json.Marshal(map[string]any{
 		"name":   "patcher_code",
 		"target": "code_source",
@@ -202,7 +202,7 @@ func TestModifyElSkillEditsCodeSource(t *testing.T) {
 		}},
 	})
 
-	result, _, err := callTool(context.Background(), modifier, toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), modifier.Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestModifyElSkillEditsCodeSource(t *testing.T) {
 func TestModifyElSkillWritesInvalidCodeSourceWithoutBuild(t *testing.T) {
 	root := t.TempDir()
 	writeTestGoSkill(t, root, "broken", "package main\n\nfunc main() {}\n")
-	modifier := NewModifyElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
+	modifier := ModifyElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 	args, _ := json.Marshal(map[string]any{
 		"name":   "broken",
 		"target": "code_source",
@@ -229,7 +229,7 @@ func TestModifyElSkillWritesInvalidCodeSourceWithoutBuild(t *testing.T) {
 		}},
 	})
 
-	if _, _, err := callTool(context.Background(), modifier, toolshare.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := callTool(context.Background(), modifier.Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	if got := readTestGoSource(t, root, "broken"); !strings.Contains(got, "missing()") {
@@ -240,7 +240,7 @@ func TestModifyElSkillWritesInvalidCodeSourceWithoutBuild(t *testing.T) {
 func TestModifyElSkillDeletesLines(t *testing.T) {
 	root := t.TempDir()
 	writeTestSkill(t, root, "delete_line", "#skill delete_line - Delete.\n** risk low\n// remove me\n<- $text:str!\n-> $result:str\n")
-	modifier := NewModifyElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
+	modifier := ModifyElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 	args, _ := json.Marshal(map[string]any{
 		"name":              "delete_line",
 		"expected_revision": fileops.ContentRevision([]byte(readTestSkill(t, root, "delete_line"))),
@@ -251,7 +251,7 @@ func TestModifyElSkillDeletesLines(t *testing.T) {
 		}},
 	})
 
-	if _, _, err := callTool(context.Background(), modifier, toolshare.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := callTool(context.Background(), modifier.Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	if got := readTestSkill(t, root, "delete_line"); strings.Contains(got, "remove me") {
@@ -263,8 +263,8 @@ func TestModifyElSkillPreflightRejectsInvalidPatchWithoutWriting(t *testing.T) {
 	root := t.TempDir()
 	original := "#skill guarded_preflight - Guarded.\n** risk low\n<- $text:str!\n-> $result:str\n"
 	writeTestSkill(t, root, "guarded_preflight", original)
-	modifier := NewModifyElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
-	_, err := modifier.PrepareCall(context.Background(), toolshare.CallRequest{Arguments: []byte(`{"name":"guarded_preflight","edits":[{"operation":"replace_text","old_text":"not found","new_text":"// x"}]}`)})
+	modifier := ModifyElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
+	_, err := modifier.Definition().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: []byte(`{"name":"guarded_preflight","edits":[{"operation":"replace_text","old_text":"not found","new_text":"// x"}]}`)})
 	if err == nil {
 		t.Fatal("expected preflight error")
 	}
@@ -277,7 +277,7 @@ func TestModifyElSkillPreflightRejectsInvalidElyphWithoutWriting(t *testing.T) {
 	root := t.TempDir()
 	original := "#skill guarded_elyph - Guarded.\n** risk low\n<- $text:str!\n-> $result:str\n"
 	writeTestSkill(t, root, "guarded_elyph", original)
-	modifier := NewModifyElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
+	modifier := ModifyElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 	args, _ := json.Marshal(map[string]any{
 		"name": "guarded_elyph",
 		"edits": []map[string]any{{
@@ -286,7 +286,7 @@ func TestModifyElSkillPreflightRejectsInvalidElyphWithoutWriting(t *testing.T) {
 			"new_text":  "not a skill\n",
 		}},
 	})
-	_, err := modifier.PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args})
+	_, err := modifier.Definition().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err == nil {
 		t.Fatal("expected invalid ELyph preflight error")
 	}
@@ -299,7 +299,7 @@ func TestModifyElSkillRiskDetailIncludesDiff(t *testing.T) {
 	root := t.TempDir()
 	original := "#skill detailer - Old.\n** risk low\n<- $text:str!\n-> $result:str\n"
 	writeTestSkill(t, root, "detailer", original)
-	modifier := NewModifyElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
+	modifier := ModifyElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 	args, _ := json.Marshal(map[string]any{
 		"name":              "detailer",
 		"expected_revision": fileops.ContentRevision([]byte(original)),
@@ -309,7 +309,7 @@ func TestModifyElSkillRiskDetailIncludesDiff(t *testing.T) {
 			"new_text":  "#skill detailer - New.\n",
 		}},
 	})
-	prepared, err := modifier.PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args})
+	prepared, err := modifier.Definition().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +338,7 @@ func TestPreparedSkillModificationPreservesConfirmation(t *testing.T) {
 					}
 				}
 				raw, _ := json.Marshal(map[string]any{"name": "guarded", "target": target, "edits": []map[string]any{{"operation": "replace_text", "old_text": "Old.", "new_text": "New."}}})
-				prepared, err := NewModifyElSkillTool(manager).PrepareCall(t.Context(), toolshare.CallRequest{Arguments: raw})
+				prepared, err := (ModifyElSkillTool{manager: manager}).Definition().PrepareCall(t.Context(), toolshare.CallRequest{Arguments: raw})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -382,7 +382,7 @@ func TestModifyElSkillPreflightRejectsNoop(t *testing.T) {
 	root := t.TempDir()
 	original := "#skill noop - Noop.\n** risk low\n<- $text:str!\n-> $result:str\n"
 	writeTestSkill(t, root, "noop", original)
-	modifier := NewModifyElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
+	modifier := ModifyElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 	args, _ := json.Marshal(map[string]any{
 		"name": "noop",
 		"edits": []map[string]any{{
@@ -391,7 +391,7 @@ func TestModifyElSkillPreflightRejectsNoop(t *testing.T) {
 			"new_text":  original,
 		}},
 	})
-	_, err := modifier.PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args})
+	_, err := modifier.Definition().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "edit produced no changes") {
 		t.Fatalf("expected no-op preflight error, got %v", err)
 	}
@@ -401,7 +401,7 @@ func TestModifyElSkillRejectsInvalidEditsWithoutWriting(t *testing.T) {
 	root := t.TempDir()
 	original := "#skill guarded - Guarded.\n** risk low\n<- $text:str!\n-> $result:str\n"
 	writeTestSkill(t, root, "guarded", original)
-	modifier := NewModifyElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
+	modifier := ModifyElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 	cases := []string{
 		`{"name":"guarded","edits":[{"operation":"replace_text","old_text":"not found","new_text":"// x"}]}`,
 		`{"name":"guarded","edits":[{"operation":"replace_text","old_text":"#skill guarded - Guarded.","new_text":"missing header"}]}`,
@@ -409,7 +409,7 @@ func TestModifyElSkillRejectsInvalidEditsWithoutWriting(t *testing.T) {
 		`{"name":"guarded"}`,
 	}
 	for _, raw := range cases {
-		if _, _, err := callTool(context.Background(), modifier, toolshare.CallRequest{Arguments: []byte(raw)}); err == nil {
+		if _, _, err := callTool(context.Background(), modifier.Definition(), toolshare.CallRequest{Arguments: []byte(raw)}); err == nil {
 			t.Fatalf("expected error for %s", raw)
 		}
 		if got := readTestSkill(t, root, "guarded"); got != original {
@@ -419,8 +419,8 @@ func TestModifyElSkillRejectsInvalidEditsWithoutWriting(t *testing.T) {
 }
 
 func TestModifyElSkillRejectsMissingSkill(t *testing.T) {
-	modifier := NewModifyElSkillTool(NewManager(t.TempDir(), toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
-	_, _, err := callTool(context.Background(), modifier, toolshare.CallRequest{Arguments: []byte(`{"name":"missing","edits":[{"operation":"overwrite","new_text":"#skill missing"}]}`)})
+	modifier := ModifyElSkillTool{manager: NewManager(t.TempDir(), toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
+	_, _, err := callTool(context.Background(), modifier.Definition(), toolshare.CallRequest{Arguments: []byte(`{"name":"missing","edits":[{"operation":"overwrite","new_text":"#skill missing"}]}`)})
 	if err == nil {
 		t.Fatal("expected missing skill error")
 	}

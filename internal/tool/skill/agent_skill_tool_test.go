@@ -25,8 +25,8 @@ func TestPreparedAgentSkillReadUsesExecutionContent(t *testing.T) {
 	if err := manager.Reload(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	reader := NewAgentSkillTool(manager)
-	prepared, err := reader.PrepareCall(t.Context(), toolshare.CallRequest{Arguments: []byte(`{"action":"read","name":"docx"}`)})
+	reader := AgentSkillTool{manager: manager}
+	prepared, err := reader.Definition().PrepareCall(t.Context(), toolshare.CallRequest{Arguments: []byte(`{"action":"read","name":"docx"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestAgentSkillWriteRollsBackConfigWhenReloadFails(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, _, err = callTool(context.Background(), NewAgentSkillTool(manager), toolshare.CallRequest{Arguments: args})
+			_, _, err = callTool(context.Background(), (AgentSkillTool{manager: manager}).Definition(), toolshare.CallRequest{Arguments: args})
 			if err == nil || !strings.Contains(err.Error(), "restored previous") {
 				t.Fatalf("Call error = %v, want rollback error", err)
 			}
@@ -91,7 +91,7 @@ func TestAgentSkillWriteRollsBackConfigWhenReloadFails(t *testing.T) {
 				t.Fatalf("config after rollback = %q, %v; want %q", data, readErr, tc.oldContent)
 			}
 			registered, ok := registry.Get("docx")
-			if !ok || registered.Info().Risk != tc.oldRisk {
+			if !ok || registered.Metadata.Risk != tc.oldRisk {
 				t.Fatalf("registry risk = %#v, %v; want %s", registered, ok, tc.oldRisk)
 			}
 			record, ok := manager.catalog.Get("docx")
@@ -116,7 +116,7 @@ func TestAgentSkillWriteCommitsConfigAndReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := callTool(context.Background(), NewAgentSkillTool(manager), toolshare.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := callTool(context.Background(), (AgentSkillTool{manager: manager}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(AgentSkillConfigPath(dir))
@@ -124,7 +124,7 @@ func TestAgentSkillWriteCommitsConfigAndReload(t *testing.T) {
 		t.Fatalf("written config = %q, %v; want %q", data, err, content)
 	}
 	registered, ok := registry.Get("docx")
-	if !ok || registered.Info().Risk != toolshare.RiskHigh || !registered.Info().SuperadminOnly {
+	if !ok || registered.Metadata.Risk != toolshare.RiskHigh || !registered.Metadata.SuperadminOnly {
 		t.Fatalf("registry tool = %#v, %v", registered, ok)
 	}
 	record, ok := manager.catalog.Get("docx")

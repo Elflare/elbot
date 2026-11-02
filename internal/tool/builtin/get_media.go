@@ -9,8 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"elbot/internal/llm"
 )
 
 type GetMediaTool struct {
@@ -24,25 +22,23 @@ type getMediaArgs struct {
 	MediaIndex [][]int  `json:"media_index"`
 }
 
-func NewGetMediaTool(history interface {
-	GetMedia(context.Context, toolshare.MediaRequest) ([]toolshare.MediaResult, error)
-}) GetMediaTool {
-	return GetMediaTool{history: history}
-}
-func (GetMediaTool) Name() string { return "get_media" }
-func getMediaBuilder() *toolshare.Builder {
-	return toolshare.NewBuilder("get_media").Description("返回历史媒体ID而非内容；未缓存获取≤5次/调用，失败计次，缓存/重复不计。").Risk(toolshare.RiskLow).Hidden().Tags("chat").DependsOn("search_chat_history", "get_chat_history_around", "reply_to_chat_history_message").StringArray("message_id", "当前聊天的平台消息ID，#可省。", toolshare.Required())
-}
-func (GetMediaTool) Info() toolshare.Info { return getMediaBuilder().BuildInfo() }
-func (GetMediaTool) Schema() llm.ToolSchema {
-	schema := getMediaBuilder().BuildSchema()
+func (t GetMediaTool) Definition() toolshare.ToolDefinition {
+	builder := getMediaBuilder()
+
+	schema := builder.BuildSchema()
 	properties := schema.Parameters["properties"].(map[string]any)
 	properties["message_id"].(map[string]any)["minItems"] = 1
 	properties["media_index"] = map[string]any{"type": "array", "minItems": 1, "description": "长度同message_id；第i项选消息i的媒体编号(不计文字)，1-based；省略→每消息[1]。", "items": map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "integer", "minimum": 1}}}
-	return schema
+	definition := builder.Build(t.PrepareCall)
+	definition.Parameters = schema.Parameters
+
+	return definition
+}
+func getMediaBuilder() *toolshare.Builder {
+	return toolshare.NewBuilder("get_media").Description("返回历史媒体ID而非内容；未缓存获取≤5次/调用，失败计次，缓存/重复不计。").Risk(toolshare.RiskLow).Hidden().Tags("chat").DependsOn("search_chat_history", "get_chat_history_around", "reply_to_chat_history_message").StringArray("message_id", "当前聊天的平台消息ID，#可省。", toolshare.Required())
 }
 
-func (t GetMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t GetMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	var args getMediaArgs
 	if err := json.Unmarshal(req.Arguments, &args); err != nil {
 		return nil, fmt.Errorf("parse get_media arguments: %w", err)
@@ -69,7 +65,7 @@ func (t GetMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 			}
 		}
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("获取消息媒体：%s", strings.Join(args.MessageIDs, ", ")), func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, fmt.Sprintf("获取消息媒体：%s", strings.Join(args.MessageIDs, ", ")), func(ctx context.Context) (*toolshare.Result, string, error) {
 		results, err := t.history.GetMedia(ctx, toolshare.MediaRequest{MessageIDs: args.MessageIDs, MediaIndex: args.MediaIndex})
 		if errors.Is(err, toolshare.ErrNoChatContext) {
 			return &toolshare.Result{Content: err.Error()}, err.Error(), nil

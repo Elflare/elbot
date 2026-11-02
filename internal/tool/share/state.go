@@ -13,6 +13,7 @@ const (
 )
 
 type DiscoveredTool struct {
+	Risk           RiskLevel      `json:"risk,omitempty"`            // 远端接线时确定的执行风险。
 	Name           string         `json:"name"`                      // 原生工具名或远端调用使用的原始名称。
 	CanonicalName  string         `json:"canonical_name,omitempty"`  // 外部工具的模型侧唯一名称；原生工具使用 Name。
 	Source         SourceKind     `json:"source"`                    // 声明对应的原生或远端执行来源。
@@ -34,8 +35,9 @@ type State struct {
 }
 
 type StateUpdate struct {
-	Tools []DiscoveredTool // 待合并的完整声明；同一模型侧名称覆盖已有声明。
-	Tags  []string         // 待并入会话的工具标签。
+	ReplaceGroups []ToolRegistrationScope // 待原子替换的远端事件组；空工具列表也能清空该组。
+	Tools         []DiscoveredTool        // 待合并的完整声明；同一模型侧名称覆盖已有声明。
+	Tags          []string                // 待并入会话的工具标签。
 }
 
 type StateCommit struct {

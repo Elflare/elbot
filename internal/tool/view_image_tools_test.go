@@ -53,7 +53,7 @@ func TestViewImageMessageSelectionAndPrevalidation(t *testing.T) {
 	if err := get.history.Append(ctx, &row); err != nil {
 		t.Fatal(err)
 	}
-	viewer := builtin.NewViewImageTool(get.center, get.manager)
+	viewer := builtinTestTool(t, "view_image", builtin.Deps{Media: get.center, ChatHistory: get.manager})
 	call := func(raw string) (*toolshare.Result, error) {
 		result, _, err := callTool(ctx, viewer, toolshare.CallRequest{Arguments: json.RawMessage(raw)})
 		return result, err
@@ -86,7 +86,7 @@ func TestViewImageMessageSelectionAndPrevalidation(t *testing.T) {
 
 func TestViewImageSourcesAndPermissions(t *testing.T) {
 	ctx, get, _ := newHistoryMediaToolTest(t)
-	viewer := builtin.NewViewImageTool(get.center, get.manager)
+	viewer := builtinTestTool(t, "view_image", builtin.Deps{Media: get.center, ChatHistory: get.manager})
 	data := viewImagePNG(t)
 	item, err := get.mediaCenter.ImportBytes(ctx, data, media.Input{Name: "image.png"}, media.ImportLimits{})
 	if err != nil {
@@ -163,7 +163,7 @@ func TestViewImageSourcesAndPermissions(t *testing.T) {
 func TestViewImagePartialFailuresKeepCachedImages(t *testing.T) {
 	ctx, get, resolver := newHistoryMediaToolTest(t)
 	resolver.data = viewImagePNG(t)
-	viewer := builtin.NewViewImageTool(get.center, get.manager)
+	viewer := builtinTestTool(t, "view_image", builtin.Deps{Media: get.center, ChatHistory: get.manager})
 	if _, _, err := callTool(ctx, viewer, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)}); err != nil {
 		t.Fatal(err)
 	}

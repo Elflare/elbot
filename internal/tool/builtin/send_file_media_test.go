@@ -28,9 +28,9 @@ func TestSendFileMediaIDBuildsLocalOutput(t *testing.T) {
 		t.Fatalf("import media: %v", err)
 	}
 
-	toolValue := NewSendFileTool(toolmedia.NewMediaRuntime(center, root, mediatest.Publisher(center)))
+	toolValue := (SendFileTool{media: toolmedia.NewMediaRuntime(center, root, mediatest.Publisher(center))})
 	arguments, _ := json.Marshal(map[string]string{"source": resource.ID})
-	result, _, err := callTool(ctx, toolValue, toolshare.CallRequest{Arguments: arguments})
+	result, _, err := callTool(ctx, toolValue.Definition(), toolshare.CallRequest{Arguments: arguments})
 	if err != nil {
 		t.Fatalf("call send_file: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestSendFileMediaIDBuildsLocalOutput(t *testing.T) {
 }
 
 func TestSendFileSchemaExposesSource(t *testing.T) {
-	schema := NewSendFileTool(nil).Schema()
+	schema := (SendFileTool{}).Definition().Schema()
 	properties, ok := schema.Parameters["properties"].(map[string]any)
 	if !ok {
 		t.Fatalf("schema properties missing: %#v", schema.Parameters)

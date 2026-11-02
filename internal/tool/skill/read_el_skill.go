@@ -4,7 +4,6 @@ package skill
 import (
 	"context"
 	"elbot/internal/fileops"
-	"elbot/internal/llm"
 	toolshare "elbot/internal/tool/share"
 	"encoding/json"
 	"fmt"
@@ -24,39 +23,27 @@ type readElSkillArgs struct {
 	EndLine   int    `json:"end_line"`
 }
 
-func (ReadElSkillTool) Name() string { return ReadElSkillName }
-
-func NewReadElSkillTool(manager *Manager) ReadElSkillTool {
-	return ReadElSkillTool{manager: manager}
-}
-
-func (ReadElSkillTool) Info() toolshare.Info {
-	return toolshare.NewBuilder(ReadElSkillName).
+func (t ReadElSkillTool) Definition() toolshare.ToolDefinition {
+	builder := toolshare.NewBuilder(ReadElSkillName).
 		Description("读EL Skill文件→1-based行号+revision；省略行范围→全文。").
 		DependsOn("modify_el_skill").
-		Source(toolshare.SourceBuiltin).
-		Risk(toolshare.RiskMedium).
-		BuildInfo()
-}
+		Risk(toolshare.RiskMedium)
 
-func (t ReadElSkillTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{
-		Name:        ReadElSkillName,
-		Description: t.Info().Description,
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"name":       map[string]any{"type": "string", "description": "Skill名称。"},
-				"target":     map[string]any{"type": "string", "enum": []string{elSkillTargetElyph, elSkillTargetCodeSource}, "description": "skill_elyph→SKILL.elyph(默认)，code_source→main.go。"},
-				"start_line": map[string]any{"type": "integer", "description": "起始行，默认1。"},
-				"end_line":   map[string]any{"type": "integer", "description": "结束行(含)，默认末尾。"},
-			},
-			"required": []string{"name"},
+	definition := builder.Build(t.PrepareCall)
+	definition.Parameters = map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"name":       map[string]any{"type": "string", "description": "Skill名称。"},
+			"target":     map[string]any{"type": "string", "enum": []string{elSkillTargetElyph, elSkillTargetCodeSource}, "description": "skill_elyph→SKILL.elyph(默认)，code_source→main.go。"},
+			"start_line": map[string]any{"type": "integer", "description": "起始行，默认1。"},
+			"end_line":   map[string]any{"type": "integer", "description": "结束行(含)，默认末尾。"},
 		},
+		"required": []string{"name"},
 	}
+	return definition
 }
 
-func (t ReadElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t ReadElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	var args readElSkillArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
@@ -70,7 +57,7 @@ func (t ReadElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 	if err != nil {
 		return nil, err
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("读取 Skill：%s\n文件：%s", args.Name, path), func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, fmt.Sprintf("读取 Skill：%s\n文件：%s", args.Name, path), func(ctx context.Context) (*toolshare.Result, string, error) {
 		file, err := fileops.ReadFile(path, "")
 		if err != nil {
 			return nil, err.Error(), err

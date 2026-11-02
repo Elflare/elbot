@@ -20,12 +20,9 @@ import (
 )
 
 func TestElwispCreatorToolInfo(t *testing.T) {
-	info := NewElwispCreatorTool(nil).Info()
+	info := (ElwispCreatorTool{}).Definition().Metadata
 	if info.Name != ElwispCreatorName {
 		t.Fatalf("name = %q", info.Name)
-	}
-	if info.Source != toolshare.SourceBuiltin {
-		t.Fatalf("source = %q", info.Source)
 	}
 	if info.Risk != toolshare.RiskLow {
 		t.Fatalf("risk = %q", info.Risk)
@@ -40,7 +37,7 @@ func TestElwispCreatorToolInfo(t *testing.T) {
 }
 
 func TestElwispCreatorToolSchemaHasNoParameters(t *testing.T) {
-	schema := NewElwispCreatorTool(nil).Schema()
+	schema := (ElwispCreatorTool{}).Definition().Schema()
 	if schema.Name != ElwispCreatorName {
 		t.Fatalf("schema name = %q", schema.Name)
 	}
@@ -57,7 +54,7 @@ func TestElwispCreatorToolSchemaHasNoParameters(t *testing.T) {
 }
 
 func TestElwispCreatorToolCallReturnsGuide(t *testing.T) {
-	result, _, err := callTool(context.Background(), NewElwispCreatorTool(elwispCreatorConfigStub{}), toolshare.CallRequest{})
+	result, _, err := callTool(context.Background(), (ElwispCreatorTool{config: elwispCreatorConfigStub{}}).Definition(), toolshare.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,16 +118,15 @@ func TestElwispCreatorToolCallReturnsGuide(t *testing.T) {
 
 func TestElwispCreatorDependencyDiscovery(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.NewPermission("critical", "critical", nil))
-	for _, item := range []toolshare.Tool{NewElwispCreatorTool(nil), NewReadFileTool(nil), NewEditFileTool(fileops.NewService(nil)), NewShellTool(processenv.Environment{}, nil), NewRollbackFileTool(nil), NewWorkspaceTool()} {
-		if err := registry.Register(item); err != nil {
-			t.Fatal(err)
-		}
+	definitions := []toolshare.ToolDefinition{(ElwispCreatorTool{}).Definition(), NewReadFileTool(nil).Definition(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), (ShellTool{ProcessEnv: processenv.Environment{}}).Definition(), (RollbackFileTool{}).Definition(), (WorkspaceTool{}).Definition()}
+	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, definitions); err != nil {
+		t.Fatal(err)
 	}
 	registered, ok := registry.Get(ElwispCreatorName)
 	if !ok {
 		t.Fatal("elwisp_creator not registered")
 	}
-	if got := strings.Join(registered.Info().DependsOn, ","); got != "read_file,edit_file,shell" {
+	if got := strings.Join(registered.Metadata.DependsOn, ","); got != "read_file,edit_file,shell" {
 		t.Fatalf("depends_on = %q", got)
 	}
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
@@ -170,8 +166,8 @@ func TestElwispCreatorConfigWarningsBelongToGuide(t *testing.T) {
 		{name: "read-error", err: errors.New("cannot load config"), warnings: []string{"读取 ElBot 配置失败：cannot load config。请提示用户修复配置后再创建 Elwisp。"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			tool := NewElwispCreatorTool(elwispCreatorConfigStub{config: tc.config, err: tc.err})
-			result, _, err := callTool(t.Context(), tool, toolshare.CallRequest{})
+			tool := (ElwispCreatorTool{config: elwispCreatorConfigStub{config: tc.config, err: tc.err}})
+			result, _, err := callTool(t.Context(), tool.Definition(), toolshare.CallRequest{})
 			if err != nil {
 				t.Fatal(err)
 			}

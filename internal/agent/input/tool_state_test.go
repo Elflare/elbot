@@ -31,9 +31,14 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 
 	permission := security.NewPermission("low", "critical", map[string][]string{"cli": {"local"}})
 	registry := toolregistry.NewRegistry(permission)
-	_ = registry.Register(agentWrapperTool{name: "alpha"})
-	_ = registry.Register(agentWrapperTool{name: "wrapper", hidden: true})
-	_ = registry.Register(agentDetailTool{name: "doc", source: toolshare.SourceSkillAgent, detail: "#skill doc", format: "elyph", activate: []string{"wrapper"}})
+	_, err := registry.RegisterTools(ctx, toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{
+		toolshare.NewBuilder("alpha").Description("alpha").Risk(toolshare.RiskLow).Build((agentWrapperTool{name: "alpha"}).PrepareCall),
+		toolshare.NewBuilder("wrapper").Description("wrapper").Risk(toolshare.RiskLow).Hidden().Build((agentWrapperTool{name: "wrapper"}).PrepareCall),
+		{Metadata: toolshare.Info{Name: "doc"}, LoadDetail: (agentDetailTool{name: "doc", detail: "#skill doc", format: "elyph"}).LoadDetail, ActivateTools: []string{"wrapper"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: permission})
 	sessions := newSessionSupervisor(t, store)
@@ -159,7 +164,7 @@ func (t agentWrapperTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}
 }
 
-func (t agentWrapperTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t agentWrapperTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
 		{
 			result := &toolshare.Result{Content: "ok"}

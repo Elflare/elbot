@@ -15,14 +15,16 @@ import (
 
 func TestTagExpansionAndEmptyQueries(t *testing.T) {
 	r := registry.NewRegistry(security.DefaultPermission())
+	var definitions []share.ToolDefinition
 	for _, name := range []string{"built_in", "configured", "unrelated"} {
 		info := share.Info{}
 		if name == "built_in" {
 			info.Tags = []string{"group"}
 		}
-		if err := r.Register(availabilityTestTool{name: name, info: info}); err != nil {
-			t.Fatal(err)
-		}
+		definitions = append(definitions, (availabilityTestTool{name: name, info: info}).Definition())
+	}
+	if _, err := r.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, definitions); err != nil {
+		t.Fatal(err)
 	}
 	s := newTestPreloader(PreloadOptions{Registry: r, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
 		"group": {Tools: []string{" configured ", "built_in", "configured"}, Prompt: "  instructions  "},

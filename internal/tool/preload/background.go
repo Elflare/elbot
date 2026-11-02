@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	globalevents "elbot/internal/events"
-	"elbot/internal/llm"
 	"elbot/internal/tool/share"
 )
 
@@ -81,14 +80,24 @@ func (s *PreloadService) PrepareBackground(ctx context.Context, req share.Backgr
 		NeedsElyphRules: preparedTools.NeedsElyphRules || preparedSkills.NeedsElyphRules,
 	}
 	result.Update.Tools = append(preparedTools.Update.Tools, preparedSkills.Update.Tools...)
+	groups := map[string][]share.ToolDefinition{}
+	var events []string
 	for _, declaration := range req.ELwispTools {
-		result.Update.Tools = append(result.Update.Tools, share.DiscoveredTool{
-			Name: declaration.Name, CanonicalName: declaration.CanonicalName,
-			Source: share.SourceKindELwisp, Description: declaration.Description,
-			Schema:   share.CloneSchema(llm.ToolSchema{Name: declaration.CanonicalName, Description: declaration.Description, Parameters: declaration.Schema}),
-			EventKey: declaration.EventKey, Endpoint: declaration.Endpoint,
-			TimeoutSeconds: declaration.TimeoutSeconds, ForegroundOnly: declaration.ForegroundOnly,
+		if _, exists := groups[declaration.EventKey]; !exists {
+			events = append(events, declaration.EventKey)
+		}
+		groups[declaration.EventKey] = append(groups[declaration.EventKey], share.ToolDefinition{
+			Metadata:   share.Info{Name: declaration.CanonicalName, Description: declaration.Description, Risk: declaration.Risk, ForegroundOnly: declaration.ForegroundOnly},
+			Parameters: declaration.Schema, Remote: &declaration,
 		})
+	}
+	for _, event := range events {
+		update, err := s.RegisterTools(ctx, share.SourceELwisp, share.ToolRegistrationScope{SessionID: req.SessionID, EventKey: event}, groups[event])
+		if err != nil {
+			return share.BackgroundPreload{}, err
+		}
+		result.Update.Tools = append(result.Update.Tools, update.Tools...)
+		result.Update.ReplaceGroups = append(result.Update.ReplaceGroups, update.ReplaceGroups...)
 	}
 	result.Update.Tools = s.BackgroundDiscoveredTools(result.Update.Tools)
 	for i, name := range names {

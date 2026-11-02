@@ -15,7 +15,6 @@ import (
 
 	"elbot/internal/elyph"
 	"elbot/internal/fileops"
-	"elbot/internal/llm"
 )
 
 const FinalizeElSkillName = "finalize_el_skill"
@@ -29,29 +28,17 @@ type finalizeElSkillArgs struct {
 	TimeoutMS int    `json:"timeout_ms"`
 }
 
-func NewFinalizeElSkillTool(manager *Manager) FinalizeElSkillTool {
-	return FinalizeElSkillTool{manager: manager}
-}
-
-func (FinalizeElSkillTool) Name() string { return FinalizeElSkillName }
-
-func (FinalizeElSkillTool) Info() toolshare.Info {
-	return toolshare.NewBuilder(FinalizeElSkillName).
+func (t FinalizeElSkillTool) Definition() toolshare.ToolDefinition {
+	builder := toolshare.NewBuilder(FinalizeElSkillName).
 		Description("校验SKILL.elyph；有main.go→gofmt+校验package main+build；成功→reload。").
-		Source(toolshare.SourceBuiltin).
-		Risk(toolshare.RiskMedium).
-		BuildInfo()
-}
+		Risk(toolshare.RiskMedium)
 
-func (t FinalizeElSkillTool) Schema() llm.ToolSchema {
-	return toolshare.NewBuilder(FinalizeElSkillName).
-		Description(t.Info().Description).
+	return builder.
 		String("name", "Skill名称。", toolshare.Required()).
-		Integer("timeout_ms", "编译超时，ms；≤0/省略→60000。").
-		BuildSchema()
+		Integer("timeout_ms", "编译超时，ms；≤0/省略→60000。").Build(t.PrepareCall)
 }
 
-func (t FinalizeElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t FinalizeElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	var args finalizeElSkillArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
@@ -136,7 +123,7 @@ func (t FinalizeElSkillTool) PrepareCall(ctx context.Context, req toolshare.Call
 		preview += "\ndiff:\n" + prepared.Preview().Diff
 	}
 	content := report.String()
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, preview, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, preview, func(ctx context.Context) (*toolshare.Result, string, error) {
 		t.manager.writeMu.Lock()
 		defer t.manager.writeMu.Unlock()
 		checkSource := func(path, target, revision string) error {

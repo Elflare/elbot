@@ -29,9 +29,9 @@ func TestPreparedGoRunnerKeepsSelectedRecordAndArguments(t *testing.T) {
 	}
 	catalog := newCatalog()
 	catalog.Replace([]record{{Name: "frozen", Kind: KindGo, Root: t.TempDir(), BinaryPath: binary, Risk: toolshare.RiskHigh}})
-	runner := NewGoRunner(&Manager{media: newTestMediaRuntime(t), catalog: catalog, processEnv: processenv.New([]string{"ELBOT_SKILL_TEST_HELPER=payload"})})
+	runner := GoRunner{manager: &Manager{media: newTestMediaRuntime(t), catalog: catalog, processEnv: processenv.New([]string{"ELBOT_SKILL_TEST_HELPER=payload"})}}
 	raw := []byte(`{"skill_name":"frozen","payload":{"input":"approved"}}`)
-	prepared, err := runner.PrepareCall(t.Context(), toolshare.CallRequest{Arguments: raw})
+	prepared, err := runner.Definition().PrepareCall(t.Context(), toolshare.CallRequest{Arguments: raw})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,11 +184,11 @@ func TestSkillDeadlineSelection(t *testing.T) {
 					if kind == "go" {
 						catalog := newCatalog()
 						catalog.Replace([]record{{Name: "deadline", Kind: KindGo, Root: dir, BinaryPath: binary}})
-						runner := NewGoRunner(&Manager{media: newTestMediaRuntime(t), catalog: catalog})
+						runner := GoRunner{manager: &Manager{media: newTestMediaRuntime(t), catalog: catalog}}
 						record, _ := catalog.Get("deadline")
 						_, _, err = runner.call(ctx, goRunnerArgs{SkillName: "deadline", TimeoutMS: tc.value * 1000, Payload: json.RawMessage(`{}`)}, record, execute)
 					} else {
-						command := newCommandTool(record{Root: dir, Manifest: AgentSkillManifest{Command: []string{binary}, TimeoutSeconds: tc.value}}, newTestMediaRuntime(t), processenv.Environment{})
+						command := commandTool{record: record{Root: dir}, manifest: AgentSkillManifest{Command: []string{binary}, TimeoutSeconds: int(tc.want.Seconds())}, media: newTestMediaRuntime(t)}
 						_, _, err = command.call(ctx, nil, nil, execute)
 					}
 					if calls != 1 || !errors.Is(err, context.DeadlineExceeded) {
@@ -210,7 +210,7 @@ func TestGoRunnerPassesPayloadJSONToBinary(t *testing.T) {
 	catalog.Replace([]record{{Name: "echo", Kind: KindGo, Root: dir, BinaryPath: binary}})
 	args := []byte(`{"skill_name":"echo","payload":{"input":"hello"}}`)
 	environment := processenv.Environment{}.Overlay(map[string]string{"ELBOT_SKILL_TEST_HELPER": "payload"})
-	result, _, err := callTool(context.Background(), NewGoRunner(&Manager{media: newTestMediaRuntime(t), catalog: catalog, processEnv: environment}), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), (GoRunner{manager: &Manager{media: newTestMediaRuntime(t), catalog: catalog, processEnv: environment}}).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,8 +227,8 @@ func TestGoRunnerUsesSharedProcessEnvironment(t *testing.T) {
 	}
 	catalog := newCatalog()
 	catalog.Replace([]record{{Name: "environment", Kind: KindGo, Root: dir, BinaryPath: binary}})
-	runner := NewGoRunner(&Manager{media: newTestMediaRuntime(t), catalog: catalog, processEnv: processenv.New([]string{"ELBOT_GO_SKILL_ENV_TEST=from-shared", "ELBOT_SKILL_TEST_HELPER=shared-env"})})
-	result, _, err := callTool(context.Background(), runner, toolshare.CallRequest{Arguments: []byte(`{"skill_name":"environment","payload":{}}`)})
+	runner := GoRunner{manager: &Manager{media: newTestMediaRuntime(t), catalog: catalog, processEnv: processenv.New([]string{"ELBOT_GO_SKILL_ENV_TEST=from-shared", "ELBOT_SKILL_TEST_HELPER=shared-env"})}}
+	result, _, err := callTool(context.Background(), runner.Definition(), toolshare.CallRequest{Arguments: []byte(`{"skill_name":"environment","payload":{}}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,12 +289,12 @@ func TestSkillExecutionEnvironment(t *testing.T) {
 				t.Fatal(err)
 			}
 			environment := processenv.New([]string{"ELBOT_SKILL_TEST_HELPER=environment", "ELBOT_SKILL_ENV_TEST=process", "ELBOT_SKILL_PROCESS_ONLY=process", "ELBOT_SKILL_EMPTY_TEST=process", "PATH=" + processPath}).Fill(dotEnv)
-			newCaller := func(root string) (toolshare.Tool, toolshare.CallRequest) {
+			newCaller := func(root string) (toolshare.ToolDefinition, toolshare.CallRequest) {
 				t.Helper()
 				if kind == "go" {
 					catalog := newCatalog()
 					catalog.Replace([]record{{Name: "environment", Kind: KindGo, Root: root, BinaryPath: binary}})
-					return NewGoRunner(&Manager{media: newTestMediaRuntime(t), catalog: catalog, processEnv: environment}), toolshare.CallRequest{Arguments: []byte(`{"skill_name":"environment","payload":{}}`)}
+					return (GoRunner{manager: &Manager{media: newTestMediaRuntime(t), catalog: catalog, processEnv: environment}}).Definition(), toolshare.CallRequest{Arguments: []byte(`{"skill_name":"environment","payload":{}}`)}
 				}
 				writeSkill(t, root, "---\nname: environment\ndescription: Environment test\n---\n")
 				command, err := json.Marshal([]string{binary})
@@ -319,7 +319,7 @@ func TestSkillExecutionEnvironment(t *testing.T) {
 				t.Fatal(err)
 			}
 			caller, req := newCaller(root)
-			check := func(caller toolshare.Tool, req toolshare.CallRequest, root, common, local, empty, path string) {
+			check := func(caller toolshare.ToolDefinition, req toolshare.CallRequest, root, common, local, empty, path string) {
 				t.Helper()
 				result, _, err := callTool(context.Background(), caller, req)
 				if err != nil {
@@ -383,9 +383,9 @@ func TestSkillExecutionEnvironment(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(root, ".env"), []byte("PATH="+filepath.Dir(binary)+"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		caller := newCommandTool(record{Name: "environment", Root: root, Manifest: AgentSkillManifest{Command: []string{filepath.Base(binary)}}}, newTestMediaRuntime(t), processenv.Environment{})
+		caller := commandTool{record: record{Name: "environment", Root: root}, manifest: AgentSkillManifest{Command: []string{filepath.Base(binary)}, TimeoutSeconds: 30}, media: newTestMediaRuntime(t)}
 		caller.processEnv = processenv.Environment{}.Overlay(map[string]string{"ELBOT_SKILL_TEST_HELPER": "environment"})
-		if _, _, err := callTool(context.Background(), caller, toolshare.CallRequest{}); err != nil {
+		if _, _, err := callTool(context.Background(), caller.Definition(), toolshare.CallRequest{}); err != nil {
 			t.Fatalf("resolve command through skill PATH: %v", err)
 		}
 	})

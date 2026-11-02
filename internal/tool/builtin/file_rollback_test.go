@@ -38,8 +38,8 @@ func newRollbackFixture(t *testing.T) *rollbackFixture {
 	binding := newRollbackTestBinding()
 	workspace := &testWorkspaceStore{dir: t.TempDir()}
 	base := workspacepath.WithWorkspaceStore(contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin}), workspace)
-	edit := NewEditFileTool(service)
-	return &rollbackFixture{binding: binding, service: service, edit: edit, rollback: NewRollbackFileTool(service), workspace: workspace, base: base}
+	edit := (EditFileTool{Rollback: service})
+	return &rollbackFixture{binding: binding, service: service, edit: edit, rollback: (RollbackFileTool{Service: service}), workspace: workspace, base: base}
 }
 
 func (f *rollbackFixture) ctx() context.Context {
@@ -57,7 +57,7 @@ func (f *rollbackFixture) write(t *testing.T, path, text string) {
 		args["expected_revision"] = fileops.ContentRevision(data)
 	}
 	raw, _ := json.Marshal(args)
-	result, _, err := callTool(f.ctx(), f.edit, toolshare.CallRequest{Arguments: raw})
+	result, _, err := callTool(f.ctx(), (f.edit).Definition(), toolshare.CallRequest{Arguments: raw})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,21 +76,21 @@ func TestRollbackToolPathOnlyAndWorkspace(t *testing.T) {
 	firstDir := f.workspace.dir
 	f.write(t, "file", "original")
 	f.write(t, "file", "edited")
-	params := f.rollback.Schema().Parameters
+	params := f.rollback.Definition().Schema().Parameters
 	props := params["properties"].(map[string]any)
 	if len(props) != 1 || props["path"] == nil || params["additionalProperties"] != false {
 		t.Fatalf("schema: %#v", params)
 	}
 	for _, raw := range []string{`{}`, `{"path":"file","id":1}`, `{"path":"file","action":"rollback"}`} {
-		if _, _, err := callTool(f.ctx(), f.rollback, toolshare.CallRequest{Arguments: json.RawMessage(raw)}); err == nil {
+		if _, _, err := callTool(f.ctx(), (f.rollback).Definition(), toolshare.CallRequest{Arguments: json.RawMessage(raw)}); err == nil {
 			t.Fatalf("accepted %s", raw)
 		}
 	}
 	f.workspace.dir = t.TempDir()
-	if _, _, err := callTool(f.ctx(), f.rollback, rollbackRequest("file")); err == nil {
+	if _, _, err := callTool(f.ctx(), (f.rollback).Definition(), rollbackRequest("file")); err == nil {
 		t.Fatal("relative path ignored current workspace")
 	}
-	result, _, err := callTool(f.ctx(), f.rollback, rollbackRequest(filepath.Join(firstDir, "file")))
+	result, _, err := callTool(f.ctx(), (f.rollback).Definition(), rollbackRequest(filepath.Join(firstDir, "file")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestRollbackToolPreflightPinsRecordAndWorkspace(t *testing.T) {
 	f.write(t, "file", "one")
 	ctx := f.ctx()
 	req := rollbackRequest("file")
-	prepared, err := f.rollback.PrepareCall(ctx, req)
+	prepared, err := f.rollback.Definition().PrepareCall(ctx, req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestRollbackToolPreflightPinsRecordAndWorkspace(t *testing.T) {
 		t.Fatalf("data: %q", data)
 	}
 	ctx = f.ctx()
-	prepared, err = f.rollback.PrepareCall(ctx, req)
+	prepared, err = f.rollback.Definition().PrepareCall(ctx, req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,11 +142,11 @@ func TestRollbackToolPermissionsAndSessionExpiry(t *testing.T) {
 	f.write(t, "file", "new")
 	ctx := f.ctx()
 	userCtx := contextinfo.WithActor(ctx, contextinfo.Actor{ID: "user", Role: contextinfo.RoleUser})
-	if _, _, err := callTool(userCtx, f.rollback, rollbackRequest("file")); err == nil || !strings.Contains(err.Error(), "superadmin") {
+	if _, _, err := callTool(userCtx, (f.rollback).Definition(), rollbackRequest("file")); err == nil || !strings.Contains(err.Error(), "superadmin") {
 		t.Fatalf("user: %v", err)
 	}
 	background := workspacepath.WithPathScope(contextinfo.WithBackgroundKind(ctx, ""), workspacepath.PathScope{Dir: f.workspace.dir, Restricted: true})
-	if _, _, err := callTool(background, f.rollback, rollbackRequest("file")); err == nil {
+	if _, _, err := callTool(background, (f.rollback).Definition(), rollbackRequest("file")); err == nil {
 		t.Fatal("background rollback allowed")
 	}
 	if session, err := f.service.EditSession(background); err != nil || session != nil {
@@ -154,10 +154,10 @@ func TestRollbackToolPermissionsAndSessionExpiry(t *testing.T) {
 	}
 	f.binding.valid.Store(false)
 	f.binding = newRollbackTestBinding()
-	if _, _, err := callTool(f.service.WithBinding(ctx, f.binding), f.rollback, rollbackRequest("file")); !errors.Is(err, fileops.ErrRollbackExpired) {
+	if _, _, err := callTool(f.service.WithBinding(ctx, f.binding), (f.rollback).Definition(), rollbackRequest("file")); !errors.Is(err, fileops.ErrRollbackExpired) {
 		t.Fatalf("lease revived: %v", err)
 	}
-	if _, _, err := callTool(f.ctx(), f.rollback, rollbackRequest("file")); !errors.Is(err, fileops.ErrRollbackNotFound) {
+	if _, _, err := callTool(f.ctx(), (f.rollback).Definition(), rollbackRequest("file")); !errors.Is(err, fileops.ErrRollbackNotFound) {
 		t.Fatalf("record revived: %v", err)
 	}
 }
@@ -176,11 +176,11 @@ func TestRollbackToolFileGuardChecksActualTarget(t *testing.T) {
 	}
 	guard := NewFileGuard(FileGuardRule{ExactPath: target, WriteError: "protected target"})
 	f.service.CheckWrite = guard.CheckWrite
-	if _, _, err := callTool(f.ctx(), f.rollback, rollbackRequest(link)); err == nil || !strings.Contains(err.Error(), "protected target") {
+	if _, _, err := callTool(f.ctx(), (f.rollback).Definition(), rollbackRequest(link)); err == nil || !strings.Contains(err.Error(), "protected target") {
 		t.Fatalf("guard: %v", err)
 	}
 	raw, _ := json.Marshal(map[string]any{"path": link, "expected_revision": fileops.ContentRevision([]byte("two")), "edits": []map[string]any{{"operation": "overwrite", "new_text": "three"}}})
-	if _, _, err := callTool(f.ctx(), f.edit, toolshare.CallRequest{Arguments: raw}); err == nil || !strings.Contains(err.Error(), "protected target") {
+	if _, _, err := callTool(f.ctx(), (f.edit).Definition(), toolshare.CallRequest{Arguments: raw}); err == nil || !strings.Contains(err.Error(), "protected target") {
 		t.Fatalf("edit guard: %v", err)
 	}
 	records, _ := f.service.List(f.ctx())
@@ -191,16 +191,15 @@ func TestRollbackToolFileGuardChecksActualTarget(t *testing.T) {
 
 func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.NewPermission("critical", "critical", nil))
-	for _, item := range []toolshare.Tool{NewWorkspaceTool(), NewReadFileTool(nil), NewEditFileTool(fileops.NewService(nil)), NewRollbackFileTool(fileops.NewService(nil))} {
-		if err := registry.Register(item); err != nil {
-			t.Fatal(err)
-		}
+	definitions := []toolshare.ToolDefinition{(WorkspaceTool{}).Definition(), NewReadFileTool(nil).Definition(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), (RollbackFileTool{Service: fileops.NewService(nil)}).Definition()}
+	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, definitions); err != nil {
+		t.Fatal(err)
 	}
 	rollback, ok := registry.Get("rollback_file")
 	if !ok {
 		t.Fatal("missing rollback tool")
 	}
-	info := rollback.Info()
+	info := rollback.Metadata
 	if !info.Hidden || !info.SuperadminOnly || !info.ForegroundOnly || info.Risk != toolshare.RiskHigh || !slices.Equal(info.Tags, []string{"files"}) {
 		t.Fatalf("info: %+v", info)
 	}

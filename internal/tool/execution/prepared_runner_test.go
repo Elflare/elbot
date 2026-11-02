@@ -30,15 +30,15 @@ func TestRunKeepsSelectedObjectAcrossCatalogChanges(t *testing.T) {
 			catalog := registry.NewRegistry(permission)
 			original := &snapshotTool{}
 			replacement := &snapshotTool{}
-			if err := catalog.Register(original); err != nil {
+			if err := registerTestTools(catalog, original.Definition()); err != nil {
 				t.Fatal(err)
 			}
 			deps := &snapshotConfirmDeps{change: func() {
 				var err error
 				if action == "replace" {
-					err = catalog.ReplaceSources([]share.Source{share.SourceSkillGo}, []share.Tool{replacement})
+					_, err = catalog.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, []share.ToolDefinition{replacement.Definition()})
 				} else {
-					err = catalog.ReplaceSources([]share.Source{share.SourceSkillGo}, nil)
+					_, err = catalog.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, nil)
 				}
 				if err != nil {
 					t.Fatal(err)

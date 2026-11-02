@@ -34,7 +34,11 @@ func (t fakeTool) Info() toolshare.Info {
 }
 
 func (t fakeTool) Schema() llm.ToolSchema {
-	return llm.ToolSchema{Name: t.name, Description: t.Info().Description, Parameters: map[string]any{"type": "object"}}
+	return llm.ToolSchema{Name: t.name, Description: t.Info().Description, Parameters: map[string]any{"type": "object", "properties": map[string]any{}}}
+}
+
+func (t fakeTool) Definition() toolshare.ToolDefinition {
+	return toolshare.ToolDefinition{Metadata: t.Info(), Parameters: t.Schema().Parameters, Prepare: t.PrepareCall}
 }
 
 func (t fakeTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
@@ -46,13 +50,13 @@ func (t fakeTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*
 
 func TestRegistryRegisterList(t *testing.T) {
 	registry := NewRegistry(security.DefaultPermission())
-	if err := registry.Register(fakeTool{name: "b", source: toolshare.SourceSkillAgent}); err != nil {
+	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceSkill, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{(fakeTool{name: "b"}).Definition()}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(fakeTool{name: "a", source: toolshare.SourceBuiltin}); err != nil {
+	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{(fakeTool{name: "a"}).Definition()}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(fakeTool{name: "a", source: toolshare.SourceSkillGo}); err == nil {
+	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceSkill, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{(fakeTool{name: "a"}).Definition()}); err == nil {
 		t.Fatal("expected duplicate registration error")
 	}
 
@@ -65,9 +69,14 @@ func TestRegistryRegisterList(t *testing.T) {
 
 func TestRegistryTagsAndNamesByTag(t *testing.T) {
 	registry := NewRegistry(security.DefaultPermission())
-	_ = registry.Register(fakeTool{name: "web_extract", tags: []string{"web"}})
-	_ = registry.Register(fakeTool{name: "web_search", tags: []string{"web"}})
-	_ = registry.Register(fakeTool{name: "chat", tags: []string{"chat"}})
+	_, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{
+		(fakeTool{name: "web_extract", tags: []string{" WEB ", "web"}}).Definition(),
+		(fakeTool{name: "web_search", tags: []string{"web"}}).Definition(),
+		(fakeTool{name: "chat", tags: []string{"chat"}}).Definition(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got := strings.Join(registry.Tags(), ","); got != "chat,web" {
 		t.Fatalf("tags = %q", got)
 	}
@@ -76,22 +85,19 @@ func TestRegistryTagsAndNamesByTag(t *testing.T) {
 	}
 }
 
-func TestRegistryReplaceSourcesReplacesCompleteSnapshot(t *testing.T) {
+func TestRegistryReplacesCompleteGroup(t *testing.T) {
 	registry := NewRegistry(security.DefaultPermission())
-	for _, item := range []toolshare.Tool{
-		fakeTool{name: "builtin", source: toolshare.SourceBuiltin},
-		fakeTool{name: "old_agent", source: toolshare.SourceSkillAgent},
-		fakeTool{name: "old_go", source: toolshare.SourceSkillGo},
-	} {
-		if err := registry.Register(item); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{(fakeTool{name: "builtin"}).Definition()}); err != nil {
+		t.Fatal(err)
 	}
-	replacements := []toolshare.Tool{
-		fakeTool{name: "new_agent", source: toolshare.SourceSkillAgent},
-		fakeTool{name: "new_go", source: toolshare.SourceSkillGo},
+	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceSkill, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{(fakeTool{name: "old_agent"}).Definition(), (fakeTool{name: "old_go"}).Definition()}); err != nil {
+		t.Fatal(err)
 	}
-	if err := registry.ReplaceSources([]toolshare.Source{toolshare.SourceSkillAgent, toolshare.SourceSkillGo}, replacements); err != nil {
+	replacements := []toolshare.ToolDefinition{
+		(fakeTool{name: "new_agent"}).Definition(),
+		(fakeTool{name: "new_go"}).Definition(),
+	}
+	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceSkill, toolshare.ToolRegistrationScope{}, replacements); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"builtin", "new_agent", "new_go"} {
@@ -106,22 +112,22 @@ func TestRegistryReplaceSourcesReplacesCompleteSnapshot(t *testing.T) {
 	}
 }
 
-func TestRegistryReplaceSourcesConflictKeepsOldSnapshot(t *testing.T) {
+func TestRegistryConflictKeepsOldSnapshot(t *testing.T) {
 	registry := NewRegistry(security.DefaultPermission())
-	builtin := fakeTool{name: "conflict", source: toolshare.SourceBuiltin}
-	old := fakeTool{name: "old", source: toolshare.SourceSkillAgent}
-	if err := registry.Register(builtin); err != nil {
+	builtin := (fakeTool{name: "conflict"}).Definition()
+	old := (fakeTool{name: "old"}).Definition()
+	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{builtin}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(old); err != nil {
+	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceSkill, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{old}); err != nil {
 		t.Fatal(err)
 	}
-	err := registry.ReplaceSources([]toolshare.Source{toolshare.SourceSkillAgent, toolshare.SourceSkillGo}, []toolshare.Tool{
-		fakeTool{name: "fresh", source: toolshare.SourceSkillAgent},
-		fakeTool{name: "conflict", source: toolshare.SourceSkillGo},
+	_, err := registry.RegisterTools(t.Context(), toolshare.SourceSkill, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{
+		(fakeTool{name: "fresh"}).Definition(),
+		(fakeTool{name: "conflict"}).Definition(),
 	})
-	if err == nil || !strings.Contains(err.Error(), "conflicts with existing source") {
-		t.Fatalf("ReplaceSources error = %v, want source conflict", err)
+	if err == nil {
+		t.Fatal("expected source conflict")
 	}
 	if _, ok := registry.Get("old"); !ok {
 		t.Fatal("old skill should remain after failed replacement")
@@ -130,36 +136,35 @@ func TestRegistryReplaceSourcesConflictKeepsOldSnapshot(t *testing.T) {
 		t.Fatal("fresh skill should not be visible after failed replacement")
 	}
 	got, ok := registry.Get("conflict")
-	if !ok || got.Info().Source != toolshare.SourceBuiltin {
+	if !ok || got.Metadata.Source != toolshare.SourceBuiltin {
 		t.Fatalf("conflicting builtin changed: %#v, %v", got, ok)
 	}
 }
 
-func TestRegistryReplaceSourcesAggregatesCandidateErrors(t *testing.T) {
+func TestRegistryDuplicateBatchIsAtomic(t *testing.T) {
 	registry := NewRegistry(security.DefaultPermission())
-	err := registry.ReplaceSources([]toolshare.Source{toolshare.SourceSkillAgent}, []toolshare.Tool{
-		fakeTool{name: "dup", source: toolshare.SourceSkillAgent},
-		fakeTool{name: "dup", source: toolshare.SourceSkillAgent},
-		fakeTool{name: "wrong", source: toolshare.SourceBuiltin},
+	_, err := registry.RegisterTools(t.Context(), toolshare.SourceSkill, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{
+		(fakeTool{name: "dup"}).Definition(),
+		(fakeTool{name: "dup"}).Definition(),
 	})
-	if err == nil || !strings.Contains(err.Error(), "appears more than once") || !strings.Contains(err.Error(), "outside replacement set") {
-		t.Fatalf("ReplaceSources error = %v, want aggregated validation errors", err)
+	if err == nil {
+		t.Fatal("expected duplicate error")
 	}
 	if len(registry.List()) != 0 {
 		t.Fatalf("registry changed after failed replacement: %#v", registry.List())
 	}
 }
 
-func TestRegistryReplaceSourcesRejectsBuiltinSource(t *testing.T) {
+func TestRegistryEmptyBatchClearsGroup(t *testing.T) {
 	registry := NewRegistry(security.DefaultPermission())
-	if err := registry.Register(fakeTool{name: "builtin", source: toolshare.SourceBuiltin}); err != nil {
+	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{(fakeTool{name: "builtin"}).Definition()}); err != nil {
 		t.Fatal(err)
 	}
-	err := registry.ReplaceSources([]toolshare.Source{toolshare.SourceBuiltin}, nil)
-	if err == nil || !strings.Contains(err.Error(), "builtin tools cannot be replaced") {
-		t.Fatalf("ReplaceSources error = %v, want builtin protection", err)
+	_, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := registry.Get("builtin"); !ok {
-		t.Fatal("builtin tool should remain registered")
+	if _, ok := registry.Get("builtin"); ok {
+		t.Fatal("group was not cleared")
 	}
 }

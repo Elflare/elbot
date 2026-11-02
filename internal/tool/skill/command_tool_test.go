@@ -58,8 +58,8 @@ func TestCommandToolRunsCommandAndReturnsText(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "echo.sh"), []byte("#!/bin/sh\necho input=$2\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cmd := commandTool{media: newTestMediaRuntime(t), record: record{Name: "echo_skill", Description: "echo", Kind: KindAgent, Root: root}, manifest: AgentSkillManifest{Risk: toolshare.RiskLow, Command: []string{"sh", "echo.sh"}, Args: map[string]string{"input": "--input"}, Parameters: map[string]any{"type": "object", "required": []any{"input"}, "properties": map[string]any{"input": map[string]any{"type": "string"}}}}}
-	result, _, err := callTool(context.Background(), cmd, toolshare.CallRequest{Name: "echo_skill", Arguments: json.RawMessage(`{"input":"hello"}`)})
+	cmd := commandTool{media: newTestMediaRuntime(t), record: record{Name: "echo_skill", Description: "echo", Kind: KindAgent, Root: root}, manifest: AgentSkillManifest{TimeoutSeconds: 30, Risk: toolshare.RiskLow, Command: []string{"sh", "echo.sh"}, Args: map[string]string{"input": "--input"}, Parameters: map[string]any{"type": "object", "required": []any{"input"}, "properties": map[string]any{"input": map[string]any{"type": "string"}}}}}
+	result, _, err := callTool(context.Background(), cmd.Definition(), toolshare.CallRequest{Name: "echo_skill", Arguments: json.RawMessage(`{"input":"hello"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,8 +76,8 @@ func TestCommandToolRunsCommandAndParsesJSONContent(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "json.sh"), []byte("#!/bin/sh\nprintf '{\"content\":\"ok\"}'\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cmd := commandTool{media: newTestMediaRuntime(t), record: record{Name: "json_skill", Description: "json", Kind: KindAgent, Root: root}, manifest: AgentSkillManifest{Risk: toolshare.RiskLow, Command: []string{"sh", "json.sh"}, Args: map[string]string{"input": "--input"}, Parameters: map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "string"}}}}}
-	result, _, err := callTool(context.Background(), cmd, toolshare.CallRequest{Name: "json_skill", Arguments: json.RawMessage(`{"input":"hello"}`)})
+	cmd := commandTool{media: newTestMediaRuntime(t), record: record{Name: "json_skill", Description: "json", Kind: KindAgent, Root: root}, manifest: AgentSkillManifest{TimeoutSeconds: 30, Risk: toolshare.RiskLow, Command: []string{"sh", "json.sh"}, Args: map[string]string{"input": "--input"}, Parameters: map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "string"}}}}}
+	result, _, err := callTool(context.Background(), cmd.Definition(), toolshare.CallRequest{Name: "json_skill", Arguments: json.RawMessage(`{"input":"hello"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}

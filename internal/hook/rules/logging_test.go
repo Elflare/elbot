@@ -31,8 +31,10 @@ type bodyTestTool struct {
 	onCall func()
 }
 
-func (*bodyTestTool) Name() string           { return "body_test" }
-func (*bodyTestTool) Info() toolshare.Info   { return toolshare.Info{Name: "body_test"} }
+func (*bodyTestTool) Name() string { return "body_test" }
+func (*bodyTestTool) Info() toolshare.Info {
+	return toolshare.Info{Name: "body_test", Risk: toolshare.RiskLow}
+}
 func (*bodyTestTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "body_test"} }
 func (t *bodyTestTool) PrepareCall(ctx context.Context, call toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	return toolshare.NewPreparedCall(call, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
@@ -52,7 +54,7 @@ func TestRuleToolStartPrecedesBodyAndEndHasElapsed(t *testing.T) {
 			t.Fatalf("start=%+v", *records)
 		}
 	}}
-	_ = registry.Register(invoked)
+	_ = registerHookTestTool(registry, invoked)
 	_, _, _ = (Module{Opts: Options{Log: testLog, Notify: testNotify, Tools: testTools{registry}}}).callTool(t.Context(), share.Event{}, Action{Tool: invoked.Name()}, state{})
 	if len(*records) != 2 || (*records)[1].EventName != "hook_tool_call_completed" || !strings.Contains((*records)[1].Content, `"elapsed_ms"`) {
 		t.Fatalf("end=%+v", *records)
@@ -112,7 +114,7 @@ func collectRecords(t *testing.T, includeStarts ...bool) *[]events.LogRecord {
 func TestRulesToolRecordsUseIndependentBodyUniqueIDAndActor(t *testing.T) {
 	registry := tool.NewRegistry(security.DefaultPermission())
 	invoked := &bodyTestTool{}
-	if err := registry.Register(invoked); err != nil {
+	if err := registerHookTestTool(registry, invoked); err != nil {
 		t.Fatal(err)
 	}
 	module := Module{Opts: Options{Log: testLog, Notify: testNotify, Tools: testTools{registry}}}
@@ -188,8 +190,10 @@ func TestRulesOutputPreparationFailureDoesNotInvokeSender(t *testing.T) {
 
 type argumentLoggingTool struct{ got, body string }
 
-func (*argumentLoggingTool) Name() string           { return "argument_log" }
-func (*argumentLoggingTool) Info() toolshare.Info   { return toolshare.Info{Name: "argument_log"} }
+func (*argumentLoggingTool) Name() string { return "argument_log" }
+func (*argumentLoggingTool) Info() toolshare.Info {
+	return toolshare.Info{Name: "argument_log", Risk: toolshare.RiskLow}
+}
 func (*argumentLoggingTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "argument_log"} }
 func (t *argumentLoggingTool) PrepareCall(ctx context.Context, call toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	return toolshare.NewPreparedCall(call, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
@@ -204,7 +208,7 @@ func TestRulesJSONTruncationPreservesUnicodeMarkerAndBusinessData(t *testing.T) 
 			body := strings.Repeat("雪", length)
 			registry := tool.NewRegistry(security.DefaultPermission())
 			invoked := &argumentLoggingTool{body: body}
-			if err := registry.Register(invoked); err != nil {
+			if err := registerHookTestTool(registry, invoked); err != nil {
 				t.Fatal(err)
 			}
 			module := Module{Opts: Options{Log: testLog, Notify: testNotify, Tools: testTools{registry}}}
@@ -312,7 +316,7 @@ func TestRuleLogsPreserveOptionalIdentityAndEventSession(t *testing.T) {
 			ctx := contextinfo.WithExecution(t.Context(), tc.facts)
 			var records []events.LogRecord
 			registry := tool.NewRegistry(security.DefaultPermission())
-			if err := registry.Register(&bodyTestTool{}); err != nil {
+			if err := registerHookTestTool(registry, &bodyTestTool{}); err != nil {
 				t.Fatal(err)
 			}
 			module := Module{Opts: Options{

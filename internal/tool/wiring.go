@@ -15,8 +15,6 @@ import (
 	"elbot/internal/processenv"
 	"elbot/internal/signal"
 	"elbot/internal/tool/builtin"
-	"elbot/internal/tool/builtin/long_memory"
-	"elbot/internal/tool/builtin/web"
 	"elbot/internal/tool/chat_history"
 	"elbot/internal/tool/discovery"
 	"elbot/internal/tool/execution"
@@ -61,143 +59,33 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		skillManager:        skillManager,
 		fileRollback:        fileops.NewService(nil),
 	}
-	if err := registerAll(registry, registerOptions{
-		media:               mediaRuntime,
-		residentMemory:      residentMemoryBridge{store: residentStore},
-		residentMemoryPath:  residentStore.Path,
-		elwispCreatorConfig: configBridge{configPath: cfg.ConfigPath},
-		skillManager:        skillManager,
-		skillRoot:           skillRoot,
-		chatHistory:         chatHistory,
-		longMemoryDir:       filepath.Join(configDir, "long_memory"),
-		fileRollback:        m.catalog.fileRollback,
-		processEnv:          environment,
-	}); err != nil {
+	cron := cronBridge{repo: deps.Store.CronJobs(), models: deps.Models, changed: m.cronChanged}
+	definitions := builtin.NewTools(builtin.Deps{
+		Media: mediaRuntime, ResidentMemory: residentMemoryBridge{store: residentStore},
+		ResidentMemoryPath: residentStore.Path, ElwispCreatorConfig: configBridge{configPath: cfg.ConfigPath},
+		SkillRoot: skillRoot, ChatHistory: chatHistory, LongMemoryDir: filepath.Join(configDir, "long_memory"),
+		FileRollback: m.catalog.fileRollback, ProcessEnv: environment,
+		Cron: cron, ValidateModel: cron.ValidateSelection, Now: time.Now,
+		ViewImageAvailable: func(ctx context.Context) bool {
+			tools, err := registry.QueryTools(ctx, share.ToolQuery{Names: []string{"view_image"}})
+			return err == nil && len(tools) > 0
+		},
+	})
+	definitions = append(definitions, skill.NewTools(skillManager)...)
+	definitions = append(definitions, discovery.NewDiscoverTool(discovery.NewResolver(registry)))
+	if _, err := registry.RegisterTools(ctx, share.SourceBuiltin, share.ToolRegistrationScope{}, definitions); err != nil {
 		return m, fmt.Errorf("register tools: %w", err)
 	}
 	m.engine = execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: deps.Permission, Media: mediaRuntime, Log: logTool, InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: toolstate.DecodeState, PrepareUpdate: toolstate.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate})
 	m.preloader = preload.NewPreloadService(preload.PreloadOptions{
-		Resolver: discovery.NewResolver(registry), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, LoadDiscoveryContent: discovery.LoadDiscoveryContent, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools,
+		RegisterTools: registry.RegisterTools,
+		Resolver:      discovery.NewResolver(registry), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, LoadDiscoveryContent: discovery.LoadDiscoveryContent, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools,
 		Registry: registry,
 		TagsPath: cfg.ToolTagsConfigPath,
 		Tags:     cfg.ToolTags,
 	})
 	m.state = toolstate.NewStateService(deps.Store.Sessions(), toolregistry.BackgroundDiscoveredTools)
-	cron := cronBridge{repo: deps.Store.CronJobs(), models: deps.Models, changed: m.cronChanged}
-	for _, cronTool := range builtin.NewCronTools(cron, cron.ValidateSelection, time.Now) {
-		if err := registry.Register(cronTool); err != nil {
-			return m, fmt.Errorf("register cron tools: %w", err)
-		}
-	}
 	return m, nil
-}
-
-// registerOptions 只传递注册内置工具所需的已构造组件与配置。
-type registerOptions struct {
-	residentMemory      builtin.ResidentMemoryService
-	residentMemoryPath  string
-	elwispCreatorConfig builtin.ElwispCreatorConfigProvider
-	skillManager        *skill.Manager
-	skillRoot           string                // 根部确定的技能资产目录，供文件保护规则使用。
-	chatHistory         *chat_history.Manager // 已适配外部能力的聊天历史组件。
-	longMemoryDir       string
-	media               *toolmedia.MediaRuntime
-	fileRollback        *fileops.Service
-	processEnv          processenv.Environment
-}
-
-func registerAll(registry *toolregistry.Registry, opts registerOptions) error {
-	mediaRuntime := opts.media
-	if err := registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry))); err != nil {
-		return err
-	}
-	if err := registry.Register(builtin.NewWorkspaceTool()); err != nil {
-		return err
-	}
-	for _, memoryTool := range builtin.NewResidentMemoryTools(opts.residentMemory) {
-		if err := registry.Register(memoryTool); err != nil {
-			return err
-		}
-	}
-	for _, memoryTool := range long_memory.NewLongMemoryTools(opts.longMemoryDir) {
-		if err := registry.Register(memoryTool); err != nil {
-			return err
-		}
-	}
-	if err := registry.Register(builtin.NewViewImageTool(opts.media, opts.chatHistory)); err != nil {
-		return err
-	}
-	if err := registry.Register(builtin.NewSendFileTool(opts.media)); err != nil {
-		return err
-	}
-	viewImageAvailable := func(ctx context.Context) bool {
-		tools, err := registry.QueryTools(ctx, share.ToolQuery{Names: []string{"view_image"}})
-		return err == nil && len(tools) > 0
-	}
-	search := builtin.NewSearchChatHistoryTool(opts.chatHistory, viewImageAvailable)
-	around := builtin.NewGetChatHistoryAroundTool(opts.chatHistory, viewImageAvailable)
-	if err := registry.Register(builtin.NewGetMediaTool(opts.chatHistory)); err != nil {
-		return err
-	}
-	if err := registry.Register(search); err != nil {
-		return err
-	}
-	if err := registry.Register(around); err != nil {
-		return err
-	}
-	if err := registry.Register(builtin.NewReplyToChatHistoryMessageTool(opts.chatHistory)); err != nil {
-		return err
-	}
-	if err := registry.Register(web.NewWebSearchTool(opts.processEnv)); err != nil {
-		return err
-	}
-	if err := registry.Register(web.NewWebExtractTool(opts.processEnv)); err != nil {
-		return err
-	}
-	fileGuard := builtin.NewFileGuard(
-		builtin.NewElSkillFileGuardRule(opts.skillRoot),
-		builtin.NewResidentMemoryFileGuardRule(opts.residentMemoryPath),
-		builtin.NewLongMemoryFileGuardRule(opts.longMemoryDir),
-	)
-	opts.fileRollback.CheckWrite = fileGuard.CheckWrite
-	editFile := builtin.NewEditFileTool(opts.fileRollback)
-	if err := registry.Register(builtin.NewReadFileTool(fileGuard)); err != nil {
-		return err
-	}
-	if err := registry.Register(editFile); err != nil {
-		return err
-	}
-	if err := registry.Register(builtin.NewRollbackFileTool(opts.fileRollback)); err != nil {
-		return err
-	}
-	shell := builtin.NewShellTool(opts.processEnv, fileGuard)
-	shell.Media = mediaRuntime
-	if err := registry.Register(shell); err != nil {
-		return err
-	}
-	if err := registry.Register(builtin.NewElwispCreatorTool(opts.elwispCreatorConfig)); err != nil {
-		return err
-	}
-	if err := registry.Register(skill.NewAgentSkillTool(opts.skillManager)); err != nil {
-		return err
-	}
-	goRunner := skill.NewGoRunner(opts.skillManager)
-	if err := registry.Register(goRunner); err != nil {
-		return err
-	}
-	if err := registry.Register(skill.NewCreateElSkillTool(opts.skillManager)); err != nil {
-		return err
-	}
-	if err := registry.Register(skill.NewReadElSkillTool(opts.skillManager)); err != nil {
-		return err
-	}
-	if err := registry.Register(skill.NewModifyElSkillTool(opts.skillManager)); err != nil {
-		return err
-	}
-	if err := registry.Register(skill.NewFinalizeElSkillTool(opts.skillManager)); err != nil {
-		return err
-	}
-	return nil
 }
 
 // executionBridge 将本次调用借用的公开回调转换成执行器的内部契约。
@@ -234,7 +122,7 @@ func toPublicDiscoveredTools(items []share.DiscoveredTool) []DiscoveredTool {
 	}
 	out := make([]DiscoveredTool, len(items))
 	for i, item := range items {
-		out[i] = DiscoveredTool{Name: item.Name, CanonicalName: item.CanonicalName,
+		out[i] = DiscoveredTool{Name: item.Name, CanonicalName: item.CanonicalName, Risk: item.Risk,
 			Source: SourceKind(item.Source), Description: item.Description, Schema: item.Schema,
 			EventKey: item.EventKey, Endpoint: item.Endpoint, TimeoutSeconds: item.TimeoutSeconds,
 			ForegroundOnly: item.ForegroundOnly}
@@ -248,7 +136,7 @@ func toInternalDiscoveredTools(items []DiscoveredTool) []share.DiscoveredTool {
 	}
 	out := make([]share.DiscoveredTool, len(items))
 	for i, item := range items {
-		out[i] = share.DiscoveredTool{Name: item.Name, CanonicalName: item.CanonicalName,
+		out[i] = share.DiscoveredTool{Name: item.Name, CanonicalName: item.CanonicalName, Risk: item.Risk,
 			Source: share.SourceKind(item.Source), Description: item.Description, Schema: item.Schema,
 			EventKey: item.EventKey, Endpoint: item.Endpoint, TimeoutSeconds: item.TimeoutSeconds,
 			ForegroundOnly: item.ForegroundOnly}
@@ -263,11 +151,19 @@ func toPublicState(state share.State) State {
 func toInternalContext(view Context) share.Context { return share.Context(view) }
 
 func toInternalStateUpdate(update StateUpdate) share.StateUpdate {
-	return share.StateUpdate{Tools: toInternalDiscoveredTools(update.Tools), Tags: update.Tags}
+	groups := make([]share.ToolRegistrationScope, len(update.ReplaceGroups))
+	for i, group := range update.ReplaceGroups {
+		groups[i] = share.ToolRegistrationScope(group)
+	}
+	return share.StateUpdate{Tools: toInternalDiscoveredTools(update.Tools), Tags: update.Tags, ReplaceGroups: groups}
 }
 
 func toPublicStateUpdate(update share.StateUpdate) StateUpdate {
-	return StateUpdate{Tools: toPublicDiscoveredTools(update.Tools), Tags: update.Tags}
+	groups := make([]ToolRegistrationScope, len(update.ReplaceGroups))
+	for i, group := range update.ReplaceGroups {
+		groups[i] = ToolRegistrationScope(group)
+	}
+	return StateUpdate{Tools: toPublicDiscoveredTools(update.Tools), Tags: update.Tags, ReplaceGroups: groups}
 }
 
 func toPublicStateCommit(committed share.StateCommit) StateCommit {

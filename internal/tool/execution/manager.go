@@ -17,9 +17,9 @@ import (
 // ManagerDeps 由根部一次交付执行所需能力，不持有兄弟组件。
 type ManagerDeps struct {
 	Registry interface {
-		Get(string) (toolshare.Tool, bool)
+		Get(string) (toolshare.ToolDefinition, bool)
 		ToolInfo(string) (toolshare.Info, bool)
-		QueryTools(context.Context, toolshare.ToolQuery) ([]toolshare.Tool, error)
+		QueryTools(context.Context, toolshare.ToolQuery) ([]toolshare.ToolDefinition, error)
 	} // 工具解析与目录查询。
 	Permission interface {
 		CheckTool(contextinfo.Actor, string, security.RiskLevel, bool, bool, string) security.ToolPermissionResult
@@ -42,7 +42,7 @@ type resolvedTool struct {
 	// Source identifies the selected provider; empty means no provider was found.
 	Source toolshare.SourceKind
 	// Native is the selected native implementation, nil for remote or unavailable tools.
-	Native toolshare.Tool
+	Native *toolshare.ToolDefinition
 	// Discovered 是本次选中的已发现工具声明；直接解析的前台工具没有此声明。
 	Discovered *toolshare.DiscoveredTool
 	// ResultStatus is declared by resolve: succeeded, rejected by context, or failed lookup/configuration.
@@ -81,10 +81,10 @@ func (m *Manager) resolve(ctx context.Context, name string, discovered []toolsha
 			return resolvedTool{Source: source, Discovered: &discoveredCopy, ResultStatus: events.ResultSucceeded}
 		}
 		if nativeTool, ok := m.Registry.Get(discoveredCopy.Name); ok {
-			if reason := m.UnavailableReason(ctx, nativeTool.Info()); reason != "" {
-				return resolvedTool{Source: toolshare.SourceKindNative, Native: nativeTool, Discovered: &discoveredCopy, ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError(reason)}
+			if reason := m.UnavailableReason(ctx, nativeTool.Metadata); reason != "" {
+				return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Discovered: &discoveredCopy, ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError(reason)}
 			}
-			return resolvedTool{Source: toolshare.SourceKindNative, Native: nativeTool, Discovered: &discoveredCopy, ResultStatus: events.ResultSucceeded}
+			return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Discovered: &discoveredCopy, ResultStatus: events.ResultSucceeded}
 		}
 		return resolvedTool{Source: toolshare.SourceKindNative, Discovered: &discoveredCopy, ResultStatus: events.ResultFailed, Error: fmt.Errorf("native tool is no longer available")}
 	}
@@ -92,10 +92,10 @@ func (m *Manager) resolve(ctx context.Context, name string, discovered []toolsha
 		return resolvedTool{ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError("tool is not allowed in this background task")}
 	}
 	if nativeTool, ok := m.Registry.Get(name); ok {
-		if reason := m.UnavailableReason(ctx, nativeTool.Info()); reason != "" {
-			return resolvedTool{Source: toolshare.SourceKindNative, Native: nativeTool, ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError(reason)}
+		if reason := m.UnavailableReason(ctx, nativeTool.Metadata); reason != "" {
+			return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError(reason)}
 		}
-		return resolvedTool{Source: toolshare.SourceKindNative, Native: nativeTool, ResultStatus: events.ResultSucceeded}
+		return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, ResultStatus: events.ResultSucceeded}
 	}
 	return resolvedTool{ResultStatus: events.ResultFailed, Error: fmt.Errorf("tool %q not found", name)}
 }

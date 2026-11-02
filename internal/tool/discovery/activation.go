@@ -44,18 +44,18 @@ func (r *Resolver) activatedTools(ctx context.Context, metadata map[string]any) 
 	if err != nil {
 		return nil, err
 	}
-	allowed := make(map[string]share.Tool, len(tools))
+	allowed := make(map[string]share.ToolDefinition, len(tools))
 	for _, tool := range tools {
-		allowed[tool.Name()] = tool
+		allowed[tool.Metadata.Name] = tool
 	}
 	discovery := &share.DiscoveryResult{}
 	for _, name := range names {
 		target, ok := allowed[name]
-		if !ok {
+		if !ok || !target.Callable() {
 			continue
 		}
 		schema := target.Schema()
-		discovery.Tools = append(discovery.Tools, share.DiscoveryItem{Info: publicInfo(target.Info()), Schema: &schema})
+		discovery.Tools = append(discovery.Tools, share.DiscoveryItem{Info: publicInfo(target.Metadata), Schema: &schema})
 	}
 	return NativeDiscoveredToolsFromDiscovery(discovery), nil
 }

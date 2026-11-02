@@ -30,8 +30,10 @@ type loggingTool struct {
 	run func(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error)
 }
 
-func (loggingTool) Name() string           { return "logging_tool" }
-func (loggingTool) Info() toolshare.Info   { return toolshare.Info{Name: "logging_tool"} }
+func (loggingTool) Name() string { return "logging_tool" }
+func (loggingTool) Info() toolshare.Info {
+	return toolshare.Info{Name: "logging_tool", Risk: toolshare.RiskLow}
+}
 func (loggingTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "logging_tool"} }
 func (t loggingTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
@@ -62,7 +64,7 @@ func captureHookRecords(t *testing.T, includeStarts ...bool) *[]events.LogRecord
 func TestPluginToolStartPrecedesBodyAndEndHasElapsed(t *testing.T) {
 	records := captureHookRecords(t, true)
 	registry := tool.NewRegistry(security.DefaultPermission())
-	_ = registry.Register(loggingTool{run: func(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
+	_ = registerHookTestTool(registry, loggingTool{run: func(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
 		if len(*records) != 1 || (*records)[0].EventName != "hook_tool_call_prepared" || strings.Contains((*records)[0].Content, `"result"`) {
 			t.Fatalf("start=%+v", *records)
 		}
@@ -98,7 +100,7 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 			records := captureHookRecords(t)
 			registry := tool.NewRegistry(security.DefaultPermission())
 			var callID string
-			if err := registry.Register(loggingTool{run: func(_ context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
+			if err := registerHookTestTool(registry, loggingTool{run: func(_ context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
 				callID = req.ID
 				return &toolshare.Result{Content: "business body", Segments: llm.TextSegments("business segments"), Outputs: []delivery.Output{delivery.Text("output")}}, "独立日志正文", nil
 			}}); err != nil {
@@ -159,7 +161,7 @@ func TestPluginToolArgumentPreviewDoesNotChangeInvocation(t *testing.T) {
 	records := captureHookRecords(t, true)
 	args, _ := json.Marshal(map[string]string{"value": strings.Repeat("雪🔥", 400)})
 	registry := tool.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(loggingTool{run: func(_ context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
+	if err := registerHookTestTool(registry, loggingTool{run: func(_ context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
 		if string(req.Arguments) != string(args) {
 			t.Error("execution arguments were truncated")
 		}
@@ -209,7 +211,7 @@ func TestToolAuditUsesTriggerActorAndKeepsEnteredCancellation(t *testing.T) {
 			ctx, cancel := context.WithCancel(contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "context"}))
 			ctx = contextinfo.WithExecution(ctx, contextinfo.Execution{SessionID: tc.contextSession})
 			registry := tool.NewRegistry(security.DefaultPermission())
-			if err := registry.Register(loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
+			if err := registerHookTestTool(registry, loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
 				actor, _ := contextinfo.ActorFromContext(ctx)
 				if actor.ID != tc.sessionActor {
 					t.Fatalf("permission actor changed: %+v", actor)
@@ -316,7 +318,7 @@ func TestWorkerRequestKeepsKnownFaultWhenCanceled(t *testing.T) {
 func TestToolWithoutOutputsDoesNotInvokeSenderOrLogSend(t *testing.T) {
 	records := captureHookRecords(t)
 	registry := tool.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(loggingTool{run: func(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
+	if err := registerHookTestTool(registry, loggingTool{run: func(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
 		return &toolshare.Result{Content: "business only"}, "tool body", nil
 	}}); err != nil {
 		t.Fatal(err)

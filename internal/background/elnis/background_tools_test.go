@@ -22,8 +22,13 @@ func TestBackgroundTagAuthorizationAndToolDeclarations(t *testing.T) {
 		service, cleanup := newTestServiceWithRunner(t, runner, nil)
 		defer cleanup()
 		registry := registry.NewRegistry(security.DefaultPermission())
-		_ = registry.Register(backgroundDeclarationTool{name: "web_search"})
-		_ = registry.Register(backgroundDeclarationTool{name: "web_extract"})
+		_, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{
+			toolshare.NewBuilder("web_search").Description("Search").Risk(toolshare.RiskLow).Build((backgroundDeclarationTool{name: "web_search"}).PrepareCall),
+			toolshare.NewBuilder("web_extract").Description("Extract").Risk(toolshare.RiskLow).Build((backgroundDeclarationTool{name: "web_extract"}).PrepareCall),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 		members := []string{"web_search"}
 		if denied {
 			members = append(members, "web_extract")
@@ -35,7 +40,7 @@ func TestBackgroundTagAuthorizationAndToolDeclarations(t *testing.T) {
 		req.Elwisp.Name = "configured"
 		req.ToolListNames = []string{"research"}
 		req.Tools = []tool.ELwispToolDeclaration{testExternalTool("external")}
-		_, err := service.Handle(context.Background(), "secret", req)
+		_, err = service.Handle(context.Background(), "secret", req)
 		if denied {
 			if err == nil || !strings.Contains(err.Error(), "web_extract") {
 				t.Fatalf("unauthorized tag member: %v", err)
@@ -56,7 +61,7 @@ func TestBackgroundTagAuthorizationAndToolDeclarations(t *testing.T) {
 			t.Fatalf("tools=%+v", got)
 		}
 		declaration := got.ELwispTools[0]
-		if declaration.Name != "external" || declaration.CanonicalName != "elwisp_configured_external" || declaration.EventKey != queued.Event.EventKey {
+		if declaration.Name != "external" || declaration.CanonicalName != "elwisp_configured_external" || declaration.EventKey != queued.Event.EventKey || declaration.Risk != security.RiskLow {
 			t.Fatalf("external declaration=%+v", declaration)
 		}
 		if got.ModelProvider != "provider-work" || got.Model != "model-work" {
@@ -72,7 +77,7 @@ func (t backgroundDeclarationTool) Info() toolshare.Info {
 	return toolshare.Info{Name: t.name, Risk: toolshare.RiskLow}
 }
 func (t backgroundDeclarationTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: t.name} }
-func (value backgroundDeclarationTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (value backgroundDeclarationTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
 		return &toolshare.Result{}, "", nil
 	}), nil

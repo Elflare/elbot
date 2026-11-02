@@ -22,11 +22,11 @@ type blockedSkillRegistry struct {
 	calls   atomic.Int32
 }
 
-func (r *blockedSkillRegistry) ReplaceSources(sources []share.Source, tools []share.Tool) error {
+func (r *blockedSkillRegistry) RegisterTools(ctx context.Context, source share.Source, scope share.ToolRegistrationScope, tools []share.ToolDefinition) (share.StateUpdate, error) {
 	r.calls.Add(1)
 	close(r.entered)
 	<-r.release
-	return r.Registry.ReplaceSources(sources, tools)
+	return r.Registry.RegisterTools(ctx, source, scope, tools)
 }
 
 func TestAsyncLoadingSharesScanAndSeparatesWaiterCancellation(t *testing.T) {

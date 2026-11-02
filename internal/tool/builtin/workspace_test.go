@@ -21,9 +21,9 @@ import (
 func TestWorkspaceToolQuerySetAndReset(t *testing.T) {
 	store := &testWorkspaceStore{}
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
-	workspace := NewWorkspaceTool()
+	workspace := (WorkspaceTool{})
 
-	result, _, err := callTool(ctx, workspace, toolshare.CallRequest{})
+	result, _, err := callTool(ctx, workspace.Definition(), toolshare.CallRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestWorkspaceToolQuerySetAndReset(t *testing.T) {
 
 	dir := t.TempDir()
 	args, _ := json.Marshal(map[string]any{"path": dir})
-	result, _, err = callTool(ctx, workspace, toolshare.CallRequest{Arguments: args})
+	result, _, err = callTool(ctx, workspace.Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestWorkspaceToolQuerySetAndReset(t *testing.T) {
 	}
 
 	args, _ = json.Marshal(map[string]any{"reset": true})
-	result, _, err = callTool(ctx, workspace, toolshare.CallRequest{Arguments: args})
+	result, _, err = callTool(ctx, workspace.Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestWorkspaceToolAcceptsHomeShortcut(t *testing.T) {
 
 	for _, path := range []string{"~", "$HOME"} {
 		args, _ := json.Marshal(map[string]any{"path": path})
-		result, _, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
+		result, _, err := callTool(ctx, (WorkspaceTool{}).Definition(), toolshare.CallRequest{Arguments: args})
 		if err != nil {
 			t.Fatalf("path %q: %v", path, err)
 		}
@@ -83,7 +83,7 @@ func TestWorkspaceToolAcceptsHomeSubpath(t *testing.T) {
 
 	for _, path := range []string{"$HOME/workspace", `$HOME\workspace`} {
 		args, _ := json.Marshal(map[string]any{"path": path})
-		_, _, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
+		_, _, err := callTool(ctx, (WorkspaceTool{}).Definition(), toolshare.CallRequest{Arguments: args})
 		if err != nil {
 			t.Fatalf("path %q: %v", path, err)
 		}
@@ -101,7 +101,7 @@ func TestWorkspaceToolDoesNotExpandHomePrefixWithoutBoundary(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 
 	args, _ := json.Marshal(map[string]any{"path": "$HOMEfoo"})
-	_, _, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
+	_, _, err := callTool(ctx, (WorkspaceTool{}).Definition(), toolshare.CallRequest{Arguments: args})
 	if err == nil {
 		t.Fatal("expected literal $HOMEfoo path to be rejected")
 	}
@@ -111,14 +111,14 @@ func TestWorkspaceToolRejectsMissingDirectory(t *testing.T) {
 	store := &testWorkspaceStore{}
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"path": filepath.Join(t.TempDir(), "missing")})
-	_, _, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
+	_, _, err := callTool(ctx, (WorkspaceTool{}).Definition(), toolshare.CallRequest{Arguments: args})
 	if err == nil {
 		t.Fatal("expected missing workspace error")
 	}
 }
 
 func TestWorkspaceToolIsForegroundOnly(t *testing.T) {
-	if !NewWorkspaceTool().Info().ForegroundOnly {
+	if !(WorkspaceTool{}).Definition().Metadata.ForegroundOnly {
 		t.Fatal("workspace tool must be foreground-only")
 	}
 }
@@ -132,7 +132,7 @@ func TestWorkspaceToolLoadsAgentInstructionsOnce(t *testing.T) {
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"path": dir})
 
-	result, logContent, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
+	result, logContent, err := callTool(ctx, (WorkspaceTool{}).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestWorkspaceToolLoadsAgentInstructionsOnce(t *testing.T) {
 		t.Fatalf("notice dirs = %#v", store.noticeDirs)
 	}
 
-	result, _, err = callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
+	result, _, err = callTool(ctx, (WorkspaceTool{}).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestWorkspaceToolLoadsAgentInstructionsOnce(t *testing.T) {
 
 	resumedStore := &testWorkspaceStore{noticeDirs: append([]string(nil), store.noticeDirs...)}
 	resumedCtx := workspace.WithWorkspaceStore(context.Background(), resumedStore)
-	result, _, err = callTool(resumedCtx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
+	result, _, err = callTool(resumedCtx, (WorkspaceTool{}).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestWorkspaceToolDiscoveryLoadsAgentInstructionsOnceAcrossEntryPoints(t *te
 	}
 	store := &testWorkspaceStore{dir: dir}
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
-	workspace := NewWorkspaceTool()
+	workspace := (WorkspaceTool{})
 
 	content, override, err := workspace.DiscoveryContent(ctx)
 	if err != nil {
@@ -194,7 +194,7 @@ func TestWorkspaceToolDiscoveryLoadsAgentInstructionsOnceAcrossEntryPoints(t *te
 	}
 
 	args, _ := json.Marshal(map[string]any{"path": dir})
-	result, _, err := callTool(ctx, workspace, toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(ctx, workspace.Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestDiscoverWorkspaceLoadsCurrentAgentInstructions(t *testing.T) {
 	ctx = security.WithPermission(ctx, security.NewPermission("low", "critical", map[string][]string{"cli": {"admin"}}))
 	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{ID: "cli:admin", Platform: "cli", PlatformUserID: "admin", Role: contextinfo.RoleSuperadmin})
 	registry := toolregistry.NewRegistry(security.NewPermission("critical", "critical", nil))
-	if err := registry.Register(NewWorkspaceTool()); err != nil {
+	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{(WorkspaceTool{}).Definition()}); err != nil {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "workspace"})
@@ -246,7 +246,7 @@ func TestWorkspaceToolAgentInstructionNameRules(t *testing.T) {
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"path": dir})
 
-	result, _, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(ctx, (WorkspaceTool{}).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestWorkspaceToolIgnoresLowercaseAgentNameUntilValidFileExists(t *testing.T
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"path": dir})
 
-	result, _, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(ctx, (WorkspaceTool{}).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +275,7 @@ func TestWorkspaceToolIgnoresLowercaseAgentNameUntilValidFileExists(t *testing.T
 	if err := os.WriteFile(filepath.Join(dir, "AGENT.md"), []byte("valid"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	result, _, err = callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
+	result, _, err = callTool(ctx, (WorkspaceTool{}).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func TestWorkspaceToolSkipsLargeAgentInstructions(t *testing.T) {
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"path": dir})
 
-	result, _, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(ctx, (WorkspaceTool{}).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,7 +324,7 @@ func TestWorkspaceToolResetLoadsAgentInstructionsOnce(t *testing.T) {
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
 	args, _ := json.Marshal(map[string]any{"reset": true})
 
-	result, _, err := callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(ctx, (WorkspaceTool{}).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +335,7 @@ func TestWorkspaceToolResetLoadsAgentInstructionsOnce(t *testing.T) {
 		t.Fatalf("notice dirs = %#v", store.noticeDirs)
 	}
 
-	result, _, err = callTool(ctx, NewWorkspaceTool(), toolshare.CallRequest{Arguments: args})
+	result, _, err = callTool(ctx, (WorkspaceTool{}).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,10 +356,9 @@ func TestDiscoverToolsResetsMissingWorkspace(t *testing.T) {
 			ctx := workspace.WithWorkspaceStore(context.Background(), store)
 			ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 			registry := toolregistry.NewRegistry(security.NewPermission("critical", "critical", nil))
-			for _, item := range []toolshare.Tool{NewWorkspaceTool(), NewShellTool(processenv.Environment{}, nil), NewReadFileTool(nil), NewRollbackFileTool(nil)} {
-				if err := registry.Register(item); err != nil {
-					t.Fatal(err)
-				}
+			definitions := []toolshare.ToolDefinition{(WorkspaceTool{}).Definition(), (ShellTool{ProcessEnv: processenv.Environment{}}).Definition(), NewReadFileTool(nil).Definition(), (RollbackFileTool{}).Definition()}
+			if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, definitions); err != nil {
+				t.Fatal(err)
 			}
 			args, _ := json.Marshal(map[string]string{"name": name})
 			result, _, err := callTool(ctx, discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})

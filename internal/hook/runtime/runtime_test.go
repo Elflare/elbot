@@ -29,8 +29,20 @@ import (
 
 type auditTestTool struct{ err error }
 
-func (auditTestTool) Name() string           { return "audit_test" }
-func (auditTestTool) Info() toolshare.Info   { return toolshare.Info{Name: "audit_test"} }
+func registerHookTestTool(registry *tool.Registry, candidate interface {
+	Info() toolshare.Info
+	PrepareCall(context.Context, toolshare.CallRequest) (*toolshare.PreparedCall, error)
+}) error {
+	info := candidate.Info()
+	info.Description = info.Name
+	_, err := registry.RegisterTools(context.Background(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{{Metadata: info, Parameters: map[string]any{"type": "object", "properties": map[string]any{}}, Prepare: candidate.PrepareCall}})
+	return err
+}
+
+func (auditTestTool) Name() string { return "audit_test" }
+func (auditTestTool) Info() toolshare.Info {
+	return toolshare.Info{Name: "audit_test", Risk: toolshare.RiskLow}
+}
 func (auditTestTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "audit_test"} }
 func (a auditTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: a.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
@@ -64,7 +76,7 @@ func TestPluginToolAuditOutcome(t *testing.T) {
 			}
 			defer connection.Disconnect()
 			registry := tool.NewRegistry(security.DefaultPermission())
-			if err := registry.Register(auditTestTool{err: tc.err}); err != nil {
+			if err := registerHookTestTool(registry, auditTestTool{err: tc.err}); err != nil {
 				t.Fatal(err)
 			}
 			worker := &worker{manager: &Manager{rootCtx: context.Background(), opts: Options{Log: testLog, Notify: testNotify, Tools: testTools{registry}}}, config: share.RuntimeConfig{ID: "plugin", EventTimeoutSeconds: 10, Tools: share.RuntimeToolsConfig{BackgroundAllow: []string{"audit_test"}}}}

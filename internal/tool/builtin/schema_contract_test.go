@@ -8,14 +8,14 @@ import (
 )
 
 func TestSendFileSchemaRequiresSource(t *testing.T) {
-	schema := (SendFileTool{}).Schema()
+	schema := (SendFileTool{}).Definition().Schema()
 	if !slices.Contains(schema.Parameters["required"].([]string), "source") {
 		t.Fatalf("required = %#v", schema.Parameters["required"])
 	}
 }
 
 func TestReadFileGlobSchema(t *testing.T) {
-	properties := (ReadFileTool{}).Schema().Parameters["properties"].(map[string]any)
+	properties := (ReadFileTool{}).Definition().Schema().Parameters["properties"].(map[string]any)
 	glob := properties["glob"].(map[string]any)
 	if glob["type"] != "array" || glob["items"].(map[string]any)["type"] != "string" {
 		t.Fatalf("glob = %#v", glob)
@@ -23,7 +23,7 @@ func TestReadFileGlobSchema(t *testing.T) {
 }
 
 func TestMediaSelectionSchema(t *testing.T) {
-	for _, schema := range []llm.ToolSchema{(GetMediaTool{}).Schema(), (ViewImageTool{}).Schema()} {
+	for _, schema := range []llm.ToolSchema{(GetMediaTool{}).Definition().Schema(), (ViewImageTool{}).Definition().Schema()} {
 		properties := schema.Parameters["properties"].(map[string]any)
 		messages := properties["message_id"].(map[string]any)
 		outer := properties["media_index"].(map[string]any)
@@ -41,10 +41,10 @@ func TestToolOperationEnums(t *testing.T) {
 		field  string
 		want   []string
 	}{
-		{(CronWriteTool{}).Schema(), "operation", []string{"create", "update", "disable", "delete"}},
-		{(CronWriteTool{}).Schema(), "schedule_mode", []string{"once", "cron"}},
-		{(CronWriteTool{}).Schema(), "trigger_mode", []string{"direct", "llm"}},
-		{(ResidentMemoryReadTool{}).Schema(), "section", []string{"all", "core", "normal"}},
+		{(CronWriteTool{}).Definition().Schema(), "operation", []string{"create", "update", "disable", "delete"}},
+		{(CronWriteTool{}).Definition().Schema(), "schedule_mode", []string{"once", "cron"}},
+		{(CronWriteTool{}).Definition().Schema(), "trigger_mode", []string{"direct", "llm"}},
+		{(ResidentMemoryReadTool{}).Definition().Schema(), "section", []string{"all", "core", "normal"}},
 	} {
 		properties := tc.schema.Parameters["properties"].(map[string]any)
 		if got := properties[tc.field].(map[string]any)["enum"].([]string); !slices.Equal(got, tc.want) {

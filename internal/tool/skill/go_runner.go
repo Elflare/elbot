@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"elbot/internal/config"
-	"elbot/internal/llm"
 )
 
 type GoRunner struct {
@@ -26,31 +25,20 @@ type goRunnerArgs struct {
 	Payload   json.RawMessage `json:"-"`
 }
 
-func NewGoRunner(manager *Manager) GoRunner {
-	return GoRunner{manager: manager}
-}
-
-func (GoRunner) Name() string { return GoRunnerName }
-
-func (GoRunner) Info() toolshare.Info {
-	return toolshare.NewBuilder(GoRunnerName).
+func (t GoRunner) Definition() toolshare.ToolDefinition {
+	builder := toolshare.NewBuilder(GoRunnerName).
 		Description("运行Go Skill；stdin=payload JSON。").
-		Source(toolshare.SourceBuiltin).
 		Risk(toolshare.RiskLow).
-		Hidden().
-		BuildInfo()
-}
+		Hidden()
 
-func (r GoRunner) Schema() llm.ToolSchema {
-	return toolshare.NewBuilder(GoRunnerName).
-		Description(r.Info().Description).
+	definition := builder.
 		String("skill_name", "Go Skill名称。", toolshare.Required()).
 		Object("payload", "业务参数；media_inputs=[{media:\"media:<sha256>\"}]→补可读path；[]→仅创建输出目录；其他字段原样传入。", toolshare.Required()).
-		Integer("timeout_ms", "超时，ms；≤0/省略→30000。").
-		BuildSchema()
+		Integer("timeout_ms", "超时，ms；≤0/省略→30000。").Build(t.PrepareCall)
+	return definition
 }
 
-func (r GoRunner) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (r GoRunner) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	args, err := parseGoRunnerArgs(req.Arguments)
 	if err != nil {
 		return nil, fmt.Errorf("parse go_skill_run arguments: %w", err)

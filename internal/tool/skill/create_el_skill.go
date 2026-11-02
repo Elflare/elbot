@@ -18,7 +18,6 @@ import (
 
 	"elbot/internal/elyph"
 	"elbot/internal/fileops"
-	"elbot/internal/llm"
 )
 
 const CreateElSkillName = "create_el_skill"
@@ -38,25 +37,14 @@ type createElSkillArgs struct {
 	TimeoutMS   int    `json:"timeout_ms"`
 }
 
-func NewCreateElSkillTool(manager *Manager) CreateElSkillTool {
-	return CreateElSkillTool{manager: manager}
-}
-
-func (CreateElSkillTool) Name() string { return CreateElSkillName }
-
-func (CreateElSkillTool) Info() toolshare.Info {
-	return toolshare.NewBuilder(CreateElSkillName).
+func (t CreateElSkillTool) Definition() toolshare.ToolDefinition {
+	builder := toolshare.NewBuilder(CreateElSkillName).
 		NeedsElyphRules().
 		Description("创建可复用EL Skill，一次性任务不创建；有go_source→编译并用go_skill_run调用，否则→纯ELyph文档。").
-		Source(toolshare.SourceBuiltin).
 		Risk(toolshare.RiskHigh).
-		DependsOn(ReadElSkillName, ModifyElSkillName, FinalizeElSkillName).
-		BuildInfo()
-}
+		DependsOn(ReadElSkillName, ModifyElSkillName, FinalizeElSkillName)
 
-func (t CreateElSkillTool) Schema() llm.ToolSchema {
-	schema := toolshare.NewBuilder(CreateElSkillName).
-		Description(t.Info().Description).
+	schema := builder.
 		String("name", "Skill名称。", toolshare.Required()).
 		String("description", "可复用能力简述。", toolshare.Required()).
 		String("risk", "执行风险。", toolshare.Required(), toolshare.Enum("safe", "low", "medium", "high", "critical")).
@@ -71,10 +59,13 @@ stdout={content?,segments?}；text segment={type:"text",text}；image/file segme
 		Integer("timeout_ms", "编译超时，ms；≤0/省略→60000。").
 		BuildSchema()
 	schema.Parameters["properties"].(map[string]any)["name"].(map[string]any)["pattern"] = skillNamePattern.String()
-	return schema
+	definition := builder.Build(t.PrepareCall)
+	definition.Parameters = schema.Parameters
+
+	return definition
 }
 
-func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	var args createElSkillArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
@@ -146,7 +137,7 @@ func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 		files = append(files, file)
 		preview.WriteString(file.Preview().Diff)
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, preview.String(), func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, preview.String(), func(ctx context.Context) (*toolshare.Result, string, error) {
 		t.manager.writeMu.Lock()
 		defer t.manager.writeMu.Unlock()
 		if _, exists := t.manager.registry.Get(name); exists {

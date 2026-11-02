@@ -2,7 +2,6 @@
 package share
 
 import (
-	"context"
 	"elbot/internal/llm"
 	"strings"
 )
@@ -20,7 +19,7 @@ type DiscoveryError struct {
 type PublicInfo struct {
 	Name           string `json:"name"`
 	Description    string `json:"description"`
-	Source         string `json:"source"`
+	Source         Source `json:"source"`
 	ForegroundOnly bool   `json:"foreground_only,omitempty"`
 }
 
@@ -42,27 +41,6 @@ type DetailBlock struct {
 type DiscoveryText struct {
 	Summary string
 	Details string
-}
-
-// DetailProvider 提供按调用上下文加载的技能详情和需要激活的工具名称。
-type DetailProvider interface {
-	LoadDetail(context.Context) (DetailBlock, error)
-	ActivateTools() []string
-}
-
-// DiscoveryContentProvider lets a tool customize the text shown when it is discovered
-// via discover_tool. The schema injection (Data) is unaffected.
-// override=true: custom content is rendered as a standalone details block.
-// override=false: custom content is
-// appended after that line as a standalone block.
-type DiscoveryContentProvider interface {
-	DiscoveryContent() (content string, override bool)
-}
-
-// ContextDiscoveryContentProvider provides discovery text that depends on the
-// current tool execution context, such as the active workspace.
-type ContextDiscoveryContentProvider interface {
-	DiscoveryContent(context.Context) (content string, override bool, err error)
 }
 
 const (

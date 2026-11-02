@@ -38,7 +38,11 @@ type fakeTool struct {
 
 func (t fakeTool) Name() string { return t.name }
 func (t fakeTool) Info() share.Info {
-	return share.Info{Name: t.name, Source: t.source, Risk: t.risk, SuperadminOnly: t.superadminOnly}
+	risk := t.risk
+	if risk == "" {
+		risk = share.RiskLow
+	}
+	return share.Info{Name: t.name, Description: t.name, Source: t.source, Risk: risk, SuperadminOnly: t.superadminOnly}
 }
 func (t fakeTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: t.name} }
 func (t fakeTool) PrepareCall(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
@@ -60,4 +64,50 @@ func executeTestCall(catalog *registry.Registry, call llm.ToolCallRequest) execu
 		}
 	}
 	return m.executePrepared(ctx, call, resolved, prepared, nil)
+}
+
+// 测试夹具使用空参数对象，只保留各场景的执行与权限行为。
+func executionTestDefinition(candidate interface {
+	Info() share.Info
+	PrepareCall(context.Context, share.CallRequest) (*share.PreparedCall, error)
+}) share.ToolDefinition {
+	info := candidate.Info()
+	info.Description = info.Name
+	return share.ToolDefinition{Metadata: info, Parameters: map[string]any{"type": "object", "properties": map[string]any{}}, Prepare: candidate.PrepareCall}
+}
+
+func (t fakeTool) Definition() share.ToolDefinition               { return executionTestDefinition(t) }
+func (t foregroundOnlyTestTool) Definition() share.ToolDefinition { return executionTestDefinition(t) }
+func (t runnerPreflightTool) Definition() share.ToolDefinition    { return executionTestDefinition(t) }
+func (t runnerContextPreflightTool) Definition() share.ToolDefinition {
+	return executionTestDefinition(t)
+}
+func (t runnerImageTool) Definition() share.ToolDefinition        { return executionTestDefinition(t) }
+func (t runnerHighRiskTool) Definition() share.ToolDefinition     { return executionTestDefinition(t) }
+func (t loggingTool) Definition() share.ToolDefinition            { return executionTestDefinition(t) }
+func (t partialResultTool) Definition() share.ToolDefinition      { return executionTestDefinition(t) }
+func (t segmentTool) Definition() share.ToolDefinition            { return executionTestDefinition(t) }
+func (t countingCommitTool) Definition() share.ToolDefinition     { return executionTestDefinition(t) }
+func (t *mediaArgumentRecorder) Definition() share.ToolDefinition { return executionTestDefinition(t) }
+func (t failingMediaTool) Definition() share.ToolDefinition       { return executionTestDefinition(t) }
+func (t *snapshotTool) Definition() share.ToolDefinition          { return executionTestDefinition(t) }
+func (t concurrentTool) Definition() share.ToolDefinition         { return executionTestDefinition(t) }
+func (t availabilityTestTool) Definition() share.ToolDefinition   { return executionTestDefinition(t) }
+func (t blockingAuditTool) Definition() share.ToolDefinition      { return executionTestDefinition(t) }
+func (t ruleDetailTool) Definition() share.ToolDefinition {
+	d := executionTestDefinition(t)
+	d.LoadDetail = t.LoadDetail
+	return d
+}
+
+// 多步测试装配仍提交完整组，避免测试构造依赖逐项注册的旧接口。
+func registerTestTools(catalog *registry.Registry, candidates ...share.ToolDefinition) error {
+	var definitions []share.ToolDefinition
+	for _, info := range catalog.List() {
+		candidate, _ := catalog.Get(info.Name)
+		definitions = append(definitions, candidate)
+	}
+	definitions = append(definitions, candidates...)
+	_, err := catalog.RegisterTools(context.Background(), share.SourceSkill, share.ToolRegistrationScope{}, definitions)
+	return err
 }

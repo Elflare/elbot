@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"elbot/internal/fileops"
-	"elbot/internal/llm"
 )
 
 type RollbackFileTool struct {
@@ -20,16 +19,15 @@ type rollbackFileArgs struct {
 	Path string `json:"path"`
 }
 
-func NewRollbackFileTool(service *fileops.Service) RollbackFileTool {
-	return RollbackFileTool{Service: service}
-}
+func (t RollbackFileTool) Definition() toolshare.ToolDefinition {
+	builder := rollbackFileBuilder()
 
-func (RollbackFileTool) Name() string         { return "rollback_file" }
-func (RollbackFileTool) Info() toolshare.Info { return rollbackFileBuilder().BuildInfo() }
-func (RollbackFileTool) Schema() llm.ToolSchema {
-	schema := rollbackFileBuilder().BuildSchema()
+	schema := builder.BuildSchema()
 	schema.Parameters["additionalProperties"] = false
-	return schema
+	definition := builder.Build(t.PrepareCall)
+	definition.Parameters = schema.Parameters
+
+	return definition
 }
 
 func rollbackFileBuilder() *toolshare.Builder {
@@ -55,7 +53,7 @@ func decodeRollbackArgs(req toolshare.CallRequest) (rollbackFileArgs, error) {
 	return args, nil
 }
 
-func (t RollbackFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t RollbackFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	args, err := decodeRollbackArgs(req)
 	if err != nil {
 		return nil, err
@@ -70,7 +68,7 @@ func (t RollbackFileTool) PrepareCall(ctx context.Context, req toolshare.CallReq
 		action = "删除本次新建文件（保留父目录）"
 	}
 	detail := fmt.Sprintf("文件：%s\n操作：%s\n预检 diff:\n%s", preview.Path, action, preview.Diff)
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, prepared)
 	}), nil
 }

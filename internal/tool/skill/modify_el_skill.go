@@ -14,7 +14,6 @@ import (
 
 	"elbot/internal/elyph"
 	"elbot/internal/fileops"
-	"elbot/internal/llm"
 )
 
 const (
@@ -44,42 +43,31 @@ type modifyElSkillPreview struct {
 	File   *fileops.PreparedFile // 公共文件层固定内容、目标和 revision。
 }
 
-func NewModifyElSkillTool(manager *Manager) ModifyElSkillTool {
-	return ModifyElSkillTool{manager: manager}
-}
-
-func (ModifyElSkillTool) Name() string { return ModifyElSkillName }
-
-func (ModifyElSkillTool) Info() toolshare.Info {
-	return toolshare.NewBuilder(ModifyElSkillName).
+func (t ModifyElSkillTool) Definition() toolshare.ToolDefinition {
+	builder := toolshare.NewBuilder(ModifyElSkillName).
 		Description("编辑EL Skill→diff；skill_elyph校验ELyph，code_source仅写源码；完成修改→finalize_el_skill检查并reload。").
 		DependsOn(FinalizeElSkillName, "read_el_skill").
-		Source(toolshare.SourceBuiltin).
-		Risk(toolshare.RiskHigh).
-		BuildInfo()
-}
+		Risk(toolshare.RiskHigh)
 
-func (t ModifyElSkillTool) Schema() llm.ToolSchema {
 	editProperties := fileops.EditOperationProperties()
-	return llm.ToolSchema{
-		Name:        ModifyElSkillName,
-		Description: t.Info().Description,
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"name":              map[string]any{"type": "string", "description": "Skill名称。"},
-				"target":            map[string]any{"type": "string", "enum": []string{elSkillTargetElyph, elSkillTargetCodeSource}, "description": "skill_elyph→SKILL.elyph(默认)，code_source→main.go。"},
-				"encoding":          map[string]any{"type": "string", "description": "默认auto；非UTF-8显式指定，如gb18030、big5、shift_jis。"},
-				"expected_revision": map[string]any{"type": "string", "description": "含replace/insert/delete/overwrite⇒必填；取read_el_skill的revision。其他操作可传以校验版本。"},
-				"context_lines":     map[string]any{"type": "integer", "description": "diff上下文行数；0/省略→3，负数→0，上限20。"},
-				"edits":             map[string]any{"type": "array", "minItems": 1, "description": "定位基于原文；修改范围不重叠，插入点不在其内部；overwrite独占批次。", "items": map[string]any{"type": "object", "properties": editProperties, "required": []string{"operation"}}},
-			},
-			"required": []string{"name", "edits"},
+
+	definition := builder.Build(t.PrepareCall)
+	definition.Parameters = map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"name":              map[string]any{"type": "string", "description": "Skill名称。"},
+			"target":            map[string]any{"type": "string", "enum": []string{elSkillTargetElyph, elSkillTargetCodeSource}, "description": "skill_elyph→SKILL.elyph(默认)，code_source→main.go。"},
+			"encoding":          map[string]any{"type": "string", "description": "默认auto；非UTF-8显式指定，如gb18030、big5、shift_jis。"},
+			"expected_revision": map[string]any{"type": "string", "description": "含replace/insert/delete/overwrite⇒必填；取read_el_skill的revision。其他操作可传以校验版本。"},
+			"context_lines":     map[string]any{"type": "integer", "description": "diff上下文行数；0/省略→3，负数→0，上限20。"},
+			"edits":             map[string]any{"type": "array", "minItems": 1, "description": "定位基于原文；修改范围不重叠，插入点不在其内部；overwrite独占批次。", "items": map[string]any{"type": "object", "properties": editProperties, "required": []string{"operation"}}},
 		},
+		"required": []string{"name", "edits"},
 	}
+	return definition
 }
 
-func (t ModifyElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t ModifyElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	preview, err := t.preview(ctx, req)
 	if err != nil {
 		return nil, err
@@ -94,7 +82,7 @@ func (t ModifyElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 	if !strings.HasSuffix(preview.File.Preview().Diff, "\n") {
 		b.WriteString("\n")
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, strings.TrimRight(b.String(), "\n"), func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, strings.TrimRight(b.String(), "\n"), func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, preview)
 	}), nil
 }

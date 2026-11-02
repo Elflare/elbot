@@ -16,7 +16,6 @@ import (
 
 	"mvdan.cc/sh/v3/syntax"
 
-	"elbot/internal/llm"
 	"elbot/internal/processenv"
 	"elbot/internal/workspace"
 )
@@ -47,24 +46,17 @@ type shellData struct {
 	ExitCode int    `json:"exit_code"`
 }
 
-func NewShellTool(environment processenv.Environment, fileGuard *FileGuard) ShellTool {
-	return ShellTool{FileGuard: fileGuard, ProcessEnv: environment}
-}
+func (t ShellTool) Definition() toolshare.ToolDefinition {
+	builder := shellBuilder()
 
-func (ShellTool) Name() string {
-	return "shell"
-}
-
-func (t ShellTool) Info() toolshare.Info {
-	return shellBuilder().BuildInfo()
-}
-
-func (t ShellTool) Schema() llm.ToolSchema {
-	schema := shellBuilder().BuildSchema()
+	schema := builder.BuildSchema()
 	properties := schema.Parameters["properties"].(map[string]any)
 	inputs := properties["media_inputs"].(map[string]any)
 	inputs["items"].(map[string]any)["additionalProperties"] = false
-	return schema
+	definition := builder.Build(t.PrepareCall)
+	definition.Parameters = schema.Parameters
+
+	return definition
 }
 
 func currentShellDesc() string {
@@ -97,7 +89,7 @@ func shellBuilder() *toolshare.Builder {
 		ObjectArray("media_inputs", "第i项媒体→路径环境变量ELBOT_MEDIA_i，i从1开始；按当前shell语法引用。", map[string]any{"media": map[string]any{"type": "string", "pattern": "^media:[0-9a-f]{64}$"}}, []string{"media"})
 }
 
-func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 
 	args, cmdText, err := decodeShellArgs(req)
 	if err != nil {

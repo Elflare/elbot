@@ -95,10 +95,10 @@ func (d *runnerTestDeps) AuditToolDenied(context.Context, string, llm.ToolCallRe
 }
 func (d *runnerTestDeps) AddToolUse(string, string) {}
 func (d *runnerTestDeps) ToolResultMessage(id string, message llm.LLMMessage) storage.Message {
-	return storage.Message{ID: storage.NewID(),SessionID: id, Role: storage.RoleTool, Content: llm.SegmentsContentText(message.Segments)}
+	return storage.Message{ID: storage.NewID(), SessionID: id, Role: storage.RoleTool, Content: llm.SegmentsContentText(message.Segments)}
 }
 func (d *runnerTestDeps) ToolCallMessage(id, content, _ string, _ []llm.ToolCallRequest) storage.Message {
-	return storage.Message{ID: storage.NewID(),SessionID: id, Role: storage.RoleAssistant, Content: content}
+	return storage.Message{ID: storage.NewID(), SessionID: id, Role: storage.RoleAssistant, Content: content}
 }
 
 type rollbackConfirmDeps struct {
@@ -136,7 +136,7 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 			}
 			edit("before", "after")
 			registry := toolregistry.NewRegistry(security.DefaultPermission())
-			if err := registry.Register(NewRollbackFileTool(service)); err != nil {
+			if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{(RollbackFileTool{Service: service}).Definition()}); err != nil {
 				t.Fatal(err)
 			}
 			manager := execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: security.NewPermission("low", "high", nil), InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {
@@ -189,9 +189,9 @@ func TestRunEditPreservesConfirmationSnapshot(t *testing.T) {
 			if err := os.WriteFile(path, []byte("before"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			editor := NewEditFileTool(service)
+			editor := (EditFileTool{Rollback: service})
 			registry := toolregistry.NewRegistry(security.DefaultPermission())
-			if err := registry.Register(editor); err != nil {
+			if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{editor.Definition()}); err != nil {
 				t.Fatal(err)
 			}
 			manager := execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: security.NewPermission("low", "high", nil), InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {

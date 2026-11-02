@@ -105,11 +105,11 @@ func (d *runnerTestDeps) AddToolUse(sessionID, toolName string) {}
 
 func (d *runnerTestDeps) ToolResultMessage(sessionID string, message llm.LLMMessage) storage.Message {
 	raw, _ := json.Marshal(message.Segments)
-	return storage.Message{ID: storage.NewID(),SessionID: sessionID, Role: storage.RoleTool, Content: llm.SegmentsContentText(message.Segments), Segments: string(raw), ToolCallID: message.ToolCallID}
+	return storage.Message{ID: storage.NewID(), SessionID: sessionID, Role: storage.RoleTool, Content: llm.SegmentsContentText(message.Segments), Segments: string(raw), ToolCallID: message.ToolCallID}
 }
 
 func (d *runnerTestDeps) ToolCallMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest) storage.Message {
-	return storage.Message{ID: storage.NewID(),SessionID: sessionID, Role: storage.RoleAssistant, Content: content}
+	return storage.Message{ID: storage.NewID(), SessionID: sessionID, Role: storage.RoleAssistant, Content: content}
 }
 
 type runnerPreflightTool struct{}
@@ -222,7 +222,7 @@ func TestRunConfirmsOnlyAuthorizedHighRiskToolsForRegularUsers(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			registry := toolregistry.NewRegistry(security.DefaultPermission())
 			toolName := "high_risk_" + strings.ReplaceAll(tt.name, " ", "_")
-			if err := registry.Register(runnerHighRiskTool{name: toolName, ownerScoped: tt.ownerScoped}); err != nil {
+			if err := registerTestTools(registry, (runnerHighRiskTool{name: toolName, ownerScoped: tt.ownerScoped}).Definition()); err != nil {
 				t.Fatal(err)
 			}
 			manager := newTestManager(registry, security.NewPermission(tt.userMaxRisk, "high", nil))
@@ -244,7 +244,7 @@ func TestRunConfirmsOnlyAuthorizedHighRiskToolsForRegularUsers(t *testing.T) {
 }
 func TestRunPreservesMultimodalToolSegments(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(runnerImageTool{}); err != nil {
+	if err := registerTestTools(registry, (runnerImageTool{}).Definition()); err != nil {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
@@ -260,7 +260,7 @@ func TestRunPreservesMultimodalToolSegments(t *testing.T) {
 
 func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(runnerPreflightTool{}); err != nil {
+	if err := registerTestTools(registry, (runnerPreflightTool{}).Definition()); err != nil {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
@@ -295,7 +295,7 @@ func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {
 
 func TestRunPreparesToolContextBeforePreflightAndExecution(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(runnerContextPreflightTool{}); err != nil {
+	if err := registerTestTools(registry, (runnerContextPreflightTool{}).Definition()); err != nil {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
@@ -323,7 +323,7 @@ func TestRunPreservesPolicyDenialFact(t *testing.T) {
 	for _, reject := range []bool{false, true} {
 		t.Run(fmt.Sprint(reject), func(t *testing.T) {
 			registry := toolregistry.NewRegistry(security.DefaultPermission())
-			if err := registry.Register(runnerHighRiskTool{name: "risky"}); err != nil {
+			if err := registerTestTools(registry, (runnerHighRiskTool{name: "risky"}).Definition()); err != nil {
 				t.Fatal(err)
 			}
 			manager := newTestManager(registry, security.NewPermission("low", "high", nil))

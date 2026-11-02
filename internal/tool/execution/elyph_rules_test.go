@@ -68,8 +68,8 @@ func TestRuleCardFollowsCompletionOrderAndSurvivesLaterCommitFailure(t *testing.
 	defer cancel()
 	secondFinished := make(chan struct{})
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	for _, candidate := range []toolshare.Tool{discovery.NewDiscoverTool(discovery.NewResolver(registry)), ruleDetailTool{name: "alpha", wait: secondFinished}, ruleDetailTool{name: "beta"}} {
-		if err := registry.Register(candidate); err != nil {
+	for _, candidate := range []toolshare.ToolDefinition{discovery.NewDiscoverTool(discovery.NewResolver(registry)), (ruleDetailTool{name: "alpha", wait: secondFinished}).Definition(), (ruleDetailTool{name: "beta"}).Definition()} {
+		if err := registerTestTools(registry, candidate); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -104,8 +104,8 @@ func TestRuleCardFollowsCompletionOrderAndSurvivesLaterCommitFailure(t *testing.
 
 func TestDiscoveryListAndFailuresDoNotConsumeRules(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	_ = registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry)))
-	_ = registry.Register(ruleDetailTool{name: "alpha"})
+	_ = registerTestTools(registry, discovery.NewDiscoverTool(discovery.NewResolver(registry)))
+	_ = registerTestTools(registry, (ruleDetailTool{name: "alpha"}).Definition())
 	runner := newTestManager(registry, security.DefaultPermission())
 	row := &storage.Session{ID: "s", Mode: storage.SessionModeWork}
 	for _, args := range []string{`{}`, `{"name":"missing"}`} {

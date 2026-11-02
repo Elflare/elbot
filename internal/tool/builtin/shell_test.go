@@ -20,28 +20,28 @@ import (
 )
 
 func TestShellToolMissingCmdHintsExpectedArgument(t *testing.T) {
-	shell := NewShellTool(processenv.Environment{}, nil)
+	shell := (ShellTool{ProcessEnv: processenv.Environment{}})
 	args, _ := json.Marshal(map[string]any{"Command": "ls"})
-	_, err := preparedRisk(context.Background(), shell, toolshare.CallRequest{Arguments: args})
+	_, err := preparedRisk(context.Background(), shell.Definition(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), `use {"cmd":"..."}`) {
 		t.Fatalf("AssessRisk error = %v", err)
 	}
-	_, _, err = callTool(context.Background(), shell, toolshare.CallRequest{Arguments: args})
+	_, _, err = callTool(context.Background(), shell.Definition(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), `use {"cmd":"..."}`) {
 		t.Fatalf("Call error = %v", err)
 	}
 }
 
 func TestShellToolHasAgentTag(t *testing.T) {
-	if got := strings.Join(NewShellTool(processenv.Environment{}, nil).Info().Tags, ","); got != "agent" {
+	if got := strings.Join((ShellTool{ProcessEnv: processenv.Environment{}}).Definition().Metadata.Tags, ","); got != "agent" {
 		t.Fatalf("shell tags = %q", got)
 	}
 }
 
 func TestShellToolRunsArbitraryCommand(t *testing.T) {
-	shell := NewShellTool(processenv.Environment{}, nil)
+	shell := (ShellTool{ProcessEnv: processenv.Environment{}})
 	args, _ := json.Marshal(map[string]any{"cmd": "echo elbot-shell-test"})
-	result, _, err := callTool(context.Background(), shell, toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), shell.Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestShellLogOutputSeparators(t *testing.T) {
 				}
 			}
 			ctx := workspacepath.WithWorkspaceStore(t.Context(), &testWorkspaceStore{dir: dir})
-			result, logContent, err := callTool(ctx, NewShellTool(processenv.Environment{}, nil), toolshare.CallRequest{Arguments: json.RawMessage(`{"cmd":"cat stdout.txt; cat stderr.txt >&2"}`)})
+			result, logContent, err := callTool(ctx, (ShellTool{ProcessEnv: processenv.Environment{}}).Definition(), toolshare.CallRequest{Arguments: json.RawMessage(`{"cmd":"cat stdout.txt; cat stderr.txt >&2"}`)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -132,7 +132,7 @@ func TestShellToolOutputLimit(t *testing.T) {
 			}
 			ctx := workspacepath.WithWorkspaceStore(t.Context(), &testWorkspaceStore{dir: dir})
 			args, _ := json.Marshal(map[string]any{"cmd": "cat stdout.txt & cat stderr.txt >&2 & wait; exit 7"})
-			result, logContent, err := callTool(ctx, NewShellTool(processenv.Environment{}, nil), toolshare.CallRequest{Arguments: args})
+			result, logContent, err := callTool(ctx, (ShellTool{ProcessEnv: processenv.Environment{}}).Definition(), toolshare.CallRequest{Arguments: args})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -288,9 +288,9 @@ func TestShellToolUsesWorkspaceDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
-	shell := NewShellTool(processenv.Environment{}, nil)
+	shell := (ShellTool{ProcessEnv: processenv.Environment{}})
 	args, _ := json.Marshal(map[string]any{"cmd": "echo workspace > workspace.txt"})
-	if _, _, err := callTool(ctx, shell, toolshare.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := callTool(ctx, shell.Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(workspace, "workspace.txt")); err != nil {
@@ -322,10 +322,10 @@ func TestShellToolUsesSandboxDir(t *testing.T) {
 	if err := os.MkdirAll(sandboxDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	shell := NewShellTool(processenv.Environment{}, nil)
+	shell := (ShellTool{ProcessEnv: processenv.Environment{}})
 	args, _ := json.Marshal(map[string]any{"cmd": "pwd > cwd.txt"})
 	ctx := workspacepath.WithPathScope(contextinfo.WithBackgroundKind(context.Background(), contextinfo.BackgroundKindCron), workspacepath.PathScope{Dir: sandboxDir, Restricted: true})
-	if _, _, err := callTool(ctx, shell, toolshare.CallRequest{Arguments: args}); err != nil {
+	if _, _, err := callTool(ctx, shell.Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(filepath.Join(sandboxDir, "cwd.txt"))
@@ -339,14 +339,14 @@ func TestShellToolUsesSandboxDir(t *testing.T) {
 
 func TestShellToolCancelStopsCommand(t *testing.T) {
 	workspace := t.TempDir()
-	shell := NewShellTool(processenv.Environment{}, nil)
+	shell := (ShellTool{ProcessEnv: processenv.Environment{}})
 	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	args, _ := json.Marshal(map[string]any{"cmd": "echo started > started.txt; while :; do sleep 60; done", "timeout_ms": 10000})
 	done := make(chan error, 1)
 	go func() {
-		_, _, err := callTool(ctx, shell, toolshare.CallRequest{Arguments: args})
+		_, _, err := callTool(ctx, shell.Definition(), toolshare.CallRequest{Arguments: args})
 		done <- err
 	}()
 
@@ -381,9 +381,9 @@ func TestShellToolCancelStopsCommand(t *testing.T) {
 
 func TestShellToolRunsLS(t *testing.T) {
 
-	shell := NewShellTool(processenv.Environment{}, nil)
+	shell := (ShellTool{ProcessEnv: processenv.Environment{}})
 	args, _ := json.Marshal(map[string]any{"cmd": "ls", "timeout_ms": 5000})
-	result, _, err := callTool(context.Background(), shell, toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), shell.Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,13 +394,13 @@ func TestShellToolRunsLS(t *testing.T) {
 
 func TestShellToolUsesConfiguredEnvironment(t *testing.T) {
 	environment := processenv.New(os.Environ()).Overlay(map[string]string{"ELBOT_SHELL_ENV_TEST": "from-config"})
-	shell := NewShellTool(environment, nil)
+	shell := (ShellTool{ProcessEnv: environment})
 	cmdText := `printf %s "$ELBOT_SHELL_ENV_TEST"`
 	if runtime.GOOS == "windows" {
 		cmdText = `Write-Output $env:ELBOT_SHELL_ENV_TEST`
 	}
 	args, _ := json.Marshal(map[string]any{"cmd": cmdText})
-	result, _, err := callTool(context.Background(), shell, toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), shell.Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatalf("Call: %v", err)
 	}

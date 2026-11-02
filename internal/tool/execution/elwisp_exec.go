@@ -32,9 +32,6 @@ type elwispToolResponse struct {
 func prepareELwispTool(call llm.ToolCallRequest, resolved resolvedTool) (*toolshare.PreparedCall, error) {
 	discovered := resolved.Discovered
 	timeout := time.Duration(discovered.TimeoutSeconds) * time.Second
-	if timeout <= 0 {
-		timeout = 10 * time.Second
-	}
 	arguments := json.RawMessage(strings.TrimSpace(call.Arguments))
 	if len(arguments) == 0 {
 		arguments = json.RawMessage(`{}`)
@@ -50,7 +47,7 @@ func prepareELwispTool(call llm.ToolCallRequest, resolved resolvedTool) (*toolsh
 	req.Header.Set("Content-Type", "application/json")
 	return toolshare.NewPreparedCall(
 		toolshare.CallRequest{ID: call.ID, Name: call.Name, Arguments: json.RawMessage(call.Arguments)},
-		toolshare.RiskAssessment{Level: toolshare.RiskLow},
+		toolshare.RiskAssessment{Level: discovered.Risk},
 		"",
 		func(ctx context.Context) (*toolshare.Result, string, error) {
 			return executeELwispTool(ctx, req, timeout)

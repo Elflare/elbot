@@ -18,10 +18,6 @@ type filesystemScanner struct {
 	root string // 管理器传入的技能资产目录，包含 agent 与 go 子目录。
 }
 
-func newFilesystemScanner(root string) filesystemScanner {
-	return filesystemScanner{root: root}
-}
-
 func (s filesystemScanner) scanRecords(ctx context.Context) ([]record, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -37,26 +33,8 @@ func (s filesystemScanner) scanRecords(ctx context.Context) ([]record, error) {
 		return nil, err
 	}
 	records = append(records, goRecords...)
-	seen := map[string]record{}
-	out := make([]record, 0, len(records))
-	duplicates := []string{}
-	for _, record := range records {
-		if record.Name == "" {
-			continue
-		}
-		if previous, ok := seen[record.Name]; ok {
-			duplicates = append(duplicates, fmt.Sprintf("%q (%s, %s)", record.Name, previous.Root, record.Root))
-			continue
-		}
-		seen[record.Name] = record
-		out = append(out, record)
-	}
-	if len(duplicates) > 0 {
-		sort.Strings(duplicates)
-		return nil, fmt.Errorf("duplicate skill names: %s", strings.Join(duplicates, "; "))
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out, nil
+	sort.Slice(records, func(i, j int) bool { return records[i].Name < records[j].Name })
+	return records, nil
 }
 
 func (s filesystemScanner) scanKind(ctx context.Context, kind Kind) ([]record, error) {
@@ -113,6 +91,9 @@ func (s filesystemScanner) readGoRecord(root, dirName string) (record, bool, err
 	}
 	detail := strings.TrimSpace(string(data))
 	record := record{Name: header.Name, Description: header.Description, Detail: detail, Format: elyph.Format, Risk: elyphRisk(detail), Kind: KindGo, Root: root, BinaryPath: binary}
+	if binary != "" && record.Risk == "" {
+		return record, false, fmt.Errorf("Go skill %q requires an explicit risk", header.Name)
+	}
 	return record, true, nil
 }
 
@@ -124,7 +105,7 @@ func (s filesystemScanner) readAgentRecord(root, dirName string) (record, bool, 
 		}
 		detail := strings.TrimSpace(string(data))
 		record := record{Name: header.Name, Description: header.Description, Detail: detail, Format: elyph.Format, Risk: toolshare.RiskSafe, Kind: KindAgent, Root: root}
-		return s.withAgentManifest(record), true, nil
+		return s.withAgentManifest(record)
 	} else if !os.IsNotExist(err) {
 		return record{}, false, fmt.Errorf("read %s in %q: %w", elyph.SkillFileName, root, err)
 	}
@@ -141,15 +122,14 @@ func (s filesystemScanner) readAgentRecord(root, dirName string) (record, bool, 
 		return record{}, false, fmt.Errorf("parse SKILL.md in %q: %w", root, err)
 	}
 	record := record{Name: strings.Clone(def.Name), Description: strings.Clone(def.Description), DetailPath: detailPath, Format: def.Format, Risk: toolshare.RiskSafe, Kind: KindAgent, Root: root}
-	return s.withAgentManifest(record), true, nil
+	return s.withAgentManifest(record)
 }
 
-func (s filesystemScanner) withAgentManifest(record record) record {
+func (s filesystemScanner) withAgentManifest(record record) (record, bool, error) {
 	manifest, found, err := LoadAgentSkillManifest(record.Root)
 	record.ManifestFound = found
 	if err != nil {
-		record.ManifestError = err.Error()
-		return record
+		return record, false, fmt.Errorf("skill %q: %w", record.Name, err)
 	}
 	if found {
 		record.Manifest = manifest
@@ -157,19 +137,17 @@ func (s filesystemScanner) withAgentManifest(record record) record {
 		record.SuperadminOnly = manifest.SuperadminOnly
 		record.Tags = manifest.Tags
 	}
-	return record
+	return record, true, nil
 }
 
 func elyphRisk(text string) toolshare.RiskLevel {
 	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "** risk ") {
-			if risk, err := parseRisk(strings.TrimSpace(strings.TrimPrefix(trimmed, "** risk "))); err == nil {
-				return risk
-			}
+			return toolshare.RiskLevel(strings.TrimSpace(strings.TrimPrefix(trimmed, "** risk ")))
 		}
 	}
-	return toolshare.RiskHigh
+	return ""
 }
 
 func dirNameForKind(kind Kind) string {

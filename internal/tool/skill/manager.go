@@ -18,8 +18,8 @@ type Manager struct {
 	catalog  *catalog          // 当前已成功注册的技能记录。
 	scanner  filesystemScanner // 只读取技能文件并生成候选记录。
 	registry interface {
-		ReplaceSources([]toolshare.Source, []toolshare.Tool) error
-		Get(string) (toolshare.Tool, bool)
+		RegisterTools(context.Context, toolshare.Source, toolshare.ToolRegistrationScope, []toolshare.ToolDefinition) (toolshare.StateUpdate, error)
+		Get(string) (toolshare.ToolDefinition, bool)
 	} // 借用 Tool 注册目录，仅替换 Skill 来源的工具。
 	media      interface{ NewCall() toolshare.MediaCall } // 借用 Tool 媒体入口，交给可执行技能使用。
 	processEnv processenv.Environment                     // 启动时的基础环境，技能执行时再叠加自身 .env。
@@ -33,13 +33,13 @@ type Manager struct {
 
 // NewManager 接收根部已确定的目录与完整依赖，不自行选择默认配置目录或启动加载。
 func NewManager(root string, registry interface {
-	ReplaceSources([]toolshare.Source, []toolshare.Tool) error
-	Get(string) (toolshare.Tool, bool)
+	RegisterTools(context.Context, toolshare.Source, toolshare.ToolRegistrationScope, []toolshare.ToolDefinition) (toolshare.StateUpdate, error)
+	Get(string) (toolshare.ToolDefinition, bool)
 }, media interface{ NewCall() toolshare.MediaCall }, environment processenv.Environment) *Manager {
 	return &Manager{
 		root:       root,
 		catalog:    newCatalog(),
-		scanner:    newFilesystemScanner(root),
+		scanner:    filesystemScanner{root: root},
 		registry:   registry,
 		media:      media,
 		processEnv: environment,
@@ -60,22 +60,30 @@ func (m *Manager) reloadLocked(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	replacements := make([]toolshare.Tool, 0, len(records))
+	replacements := make([]toolshare.ToolDefinition, 0, len(records))
 	for _, record := range records {
-		replacements = append(replacements, m.toolForRecord(record))
+		if record.Kind == KindAgent && record.Manifest.Callable {
+			replacements = append(replacements, (commandTool{record: record, manifest: record.Manifest, media: m.media, processEnv: m.processEnv}).Definition())
+		} else {
+			replacements = append(replacements, (descriptor{record: record}).Definition())
+		}
 	}
-	if err := m.registry.ReplaceSources([]toolshare.Source{toolshare.SourceSkillAgent, toolshare.SourceSkillGo}, replacements); err != nil {
+	if _, err := m.registry.RegisterTools(ctx, toolshare.SourceSkill, toolshare.ToolRegistrationScope{}, replacements); err != nil {
 		return err
 	}
 	m.catalog.Replace(records)
 	return nil
 }
 
-func (m *Manager) toolForRecord(record record) toolshare.Tool {
-	if record.Kind == KindAgent && record.ManifestFound && record.ManifestError == "" && record.Manifest.Callable {
-		return newCommandTool(record, m.media, m.processEnv)
+func NewTools(manager *Manager) []toolshare.ToolDefinition {
+	return []toolshare.ToolDefinition{
+		(AgentSkillTool{manager: manager}).Definition(),
+		(GoRunner{manager: manager}).Definition(),
+		(CreateElSkillTool{manager: manager}).Definition(),
+		(ReadElSkillTool{manager: manager}).Definition(),
+		(ModifyElSkillTool{manager: manager}).Definition(),
+		(FinalizeElSkillTool{manager: manager}).Definition(),
 	}
-	return newDescriptor(record)
 }
 
 func (m *Manager) setReloadResult(err error) {

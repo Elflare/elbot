@@ -34,27 +34,10 @@ type viewImageArgs struct {
 	MediaIndex [][]int  `json:"media_index"`
 }
 
-func NewViewImageTool(center interface {
-	ValidateImage(context.Context, string) (toolshare.MediaInfo, error)
-	ImportURL(context.Context, string, toolshare.MediaImportOptions) (toolshare.MediaInfo, error)
-	ImportFile(context.Context, string, toolshare.MediaImportOptions) (toolshare.MediaInfo, error)
-}, history interface {
-	GetImages(context.Context, toolshare.MediaRequest) ([]toolshare.MediaResult, error)
-}) ViewImageTool {
-	return ViewImageTool{center: center, history: history}
-}
+func (t ViewImageTool) Definition() toolshare.ToolDefinition {
+	builder := viewImageBuilder()
 
-func (ViewImageTool) Name() string { return "view_image" }
-func viewImageBuilder() *toolshare.Builder {
-	return toolshare.NewBuilder("view_image").
-		Description("看图；source ⊻ message_id；source⇒禁传media_index。当前上下文已可见则无需重复调用。").
-		APITypes(llm.APITypeResponse).Risk(toolshare.RiskLow).Tags("chat", "files").
-		String("source", "media ID / HTTP(S) / 本地路径 / file URI。").
-		StringArray("message_id", "当前聊天的平台消息ID，#可省。")
-}
-func (ViewImageTool) Info() toolshare.Info { return viewImageBuilder().BuildInfo() }
-func (ViewImageTool) Schema() llm.ToolSchema {
-	schema := viewImageBuilder().BuildSchema()
+	schema := builder.BuildSchema()
 	properties := schema.Parameters["properties"].(map[string]any)
 	properties["message_id"].(map[string]any)["minItems"] = 1
 	properties["media_index"] = map[string]any{
@@ -62,7 +45,17 @@ func (ViewImageTool) Schema() llm.ToolSchema {
 		"description": "长度同message_id；第i项选消息i的图片媒体编号，沿用历史编号，1-based；省略→每消息首图。",
 		"items":       map[string]any{"type": "array", "minItems": 1, "items": map[string]any{"type": "integer", "minimum": 1}},
 	}
-	return schema
+	definition := builder.Build(t.PrepareCall)
+	definition.Parameters = schema.Parameters
+
+	return definition
+}
+func viewImageBuilder() *toolshare.Builder {
+	return toolshare.NewBuilder("view_image").
+		Description("看图；source ⊻ message_id；source⇒禁传media_index。当前上下文已可见则无需重复调用。").
+		APITypes(llm.APITypeResponse).Risk(toolshare.RiskLow).Tags("chat", "files").
+		String("source", "media ID / HTTP(S) / 本地路径 / file URI。").
+		StringArray("message_id", "当前聊天的平台消息ID，#可省。")
 }
 
 func parseViewImageArgs(req toolshare.CallRequest) (viewImageArgs, error) {
@@ -125,7 +118,7 @@ func (t ViewImageTool) sourcePath(ctx context.Context, source string) (workspace
 	return workspace.ResolveWorkspacePath(ctx, path, workspace.PathResolveOptions{})
 }
 
-func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	args, err := parseViewImageArgs(req)
 	if err != nil {
 		return nil, err
@@ -134,7 +127,7 @@ func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 	if err != nil {
 		return nil, err
 	}
-	assessment := toolshare.RiskAssessment{Level: t.Info().Risk}
+	assessment := toolshare.RiskAssessment{Level: info.Risk}
 	if path.Path != "" && isSensitiveReadFile(path.Path) {
 		assessment = toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"读取可能包含凭据的敏感文件，需要用户确认"}}
 	}

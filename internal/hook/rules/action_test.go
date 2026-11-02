@@ -193,6 +193,16 @@ type hookActionTestTool struct {
 
 func (*hookActionTestTool) Name() string { return "hook_test_critical" }
 
+func registerHookTestTool(registry *tool.Registry, candidate interface {
+	Info() toolshare.Info
+	PrepareCall(context.Context, toolshare.CallRequest) (*toolshare.PreparedCall, error)
+}) error {
+	info := candidate.Info()
+	info.Description = info.Name
+	_, err := registry.RegisterTools(context.Background(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{{Metadata: info, Parameters: map[string]any{"type": "object", "properties": map[string]any{}}, Prepare: candidate.PrepareCall}})
+	return err
+}
+
 func (*hookActionTestTool) Info() toolshare.Info {
 	return toolshare.Info{Name: "hook_test_critical", Description: "test hook tool", Risk: toolshare.RiskCritical}
 }
@@ -244,7 +254,7 @@ func TestRuleToolAuditOutcome(t *testing.T) {
 			}
 			defer connection.Disconnect()
 			registry := tool.NewRegistry(security.DefaultPermission())
-			if err := registry.Register(&hookActionTestTool{err: tc.err}); err != nil {
+			if err := registerHookTestTool(registry, &hookActionTestTool{err: tc.err}); err != nil {
 				t.Fatal(err)
 			}
 			_, _, err = (Module{Opts: Options{Log: testLog, Notify: testNotify, Tools: testTools{registry}}}).callTool(context.Background(), share.Event{}, Action{Tool: "hook_test_critical", Arguments: `{}`}, state{})
@@ -268,7 +278,7 @@ func TestRuleToolAuditOutcome(t *testing.T) {
 func TestRuleToolActionLeavesRiskAndAuthorizationToHook(t *testing.T) {
 	registry := tool.NewRegistry(security.DefaultPermission())
 	testTool := &hookActionTestTool{}
-	if err := registry.Register(testTool); err != nil {
+	if err := registerHookTestTool(registry, testTool); err != nil {
 		t.Fatalf("register tool: %v", err)
 	}
 

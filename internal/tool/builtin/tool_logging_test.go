@@ -19,7 +19,7 @@ func TestFileLogs(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path})
-	result, logContent, err := callTool(t.Context(), NewReadFileTool(nil), toolshare.CallRequest{Arguments: args})
+	result, logContent, err := callTool(t.Context(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestFileLogs(t *testing.T) {
 		t.Fatalf("read log=%q business bytes=%d", logContent, len(result.Content))
 	}
 	args, _ = json.Marshal(map[string]any{"path": path, "expected_revision": fileops.ContentRevision([]byte(body)), "edits": []map[string]any{{"operation": "overwrite", "new_text": body + "EDIT_TAIL"}}})
-	result, logContent, err = callTool(t.Context(), NewEditFileTool(fileops.NewService(nil)), toolshare.CallRequest{Arguments: args})
+	result, logContent, err = callTool(t.Context(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}

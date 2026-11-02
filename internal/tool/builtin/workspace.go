@@ -11,8 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"elbot/internal/llm"
-
 	"elbot/internal/workspace"
 )
 
@@ -25,15 +23,12 @@ type workspaceArgs struct {
 	Reset bool   `json:"reset"`
 }
 
-func NewWorkspaceTool() WorkspaceTool {
-	return WorkspaceTool{}
+func (t WorkspaceTool) Definition() toolshare.ToolDefinition {
+	builder := workspaceBuilder()
+	definition := builder.Build(t.PrepareCall)
+	definition.DiscoveryContent = t.DiscoveryContent
+	return definition
 }
-
-func (WorkspaceTool) Name() string { return "workspace" }
-
-func (WorkspaceTool) Info() toolshare.Info { return workspaceBuilder().BuildInfo() }
-
-func (WorkspaceTool) Schema() llm.ToolSchema { return workspaceBuilder().BuildSchema() }
 
 func (WorkspaceTool) DiscoveryContent(ctx context.Context) (string, bool, error) {
 	store, ok := workspace.WorkspaceStoreFromContext(ctx)
@@ -71,14 +66,14 @@ func workspaceBuilder() *toolshare.Builder {
 		Boolean("reset", "true→重置默认目录并忽略path。")
 }
 
-func (t WorkspaceTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t WorkspaceTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	var args workspaceArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
 			return nil, fmt.Errorf("parse workspace arguments: %w", err)
 		}
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("工作目录：%s\n重置：%t", args.Path, args.Reset), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, fmt.Sprintf("工作目录：%s\n重置：%t", args.Path, args.Reset), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
 		store, hasStore := workspace.WorkspaceStoreFromContext(ctx)
 		if args.Reset {
 			dir, err := defaultWorkspaceDir()

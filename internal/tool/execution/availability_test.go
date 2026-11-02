@@ -40,10 +40,10 @@ func (value foregroundOnlyTestTool) PrepareCall(ctx context.Context, req toolsha
 
 func TestForegroundOnlyToolHiddenInBackgroundSchemas(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry))); err != nil {
+	if err := registerTestTools(registry, discovery.NewDiscoverTool(discovery.NewResolver(registry))); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(foregroundOnlyTestTool{}); err != nil {
+	if err := registerTestTools(registry, (foregroundOnlyTestTool{}).Definition()); err != nil {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, security.DefaultPermission())
@@ -62,7 +62,7 @@ func TestForegroundOnlyToolHiddenInBackgroundSchemas(t *testing.T) {
 
 func TestSchemasKeepStableOrderAcrossBatchAndIncrementalDiscovery(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(discovery.NewDiscoverTool(discovery.NewResolver(registry))); err != nil {
+	if err := registerTestTools(registry, discovery.NewDiscoverTool(discovery.NewResolver(registry))); err != nil {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, security.DefaultPermission())
@@ -141,7 +141,7 @@ func TestPathSchemasStayStableAcrossBackgroundTakeover(t *testing.T) {
 }
 func TestForegroundOnlyToolResolveRejectedInBackground(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(foregroundOnlyTestTool{}); err != nil {
+	if err := registerTestTools(registry, (foregroundOnlyTestTool{}).Definition()); err != nil {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, security.DefaultPermission())

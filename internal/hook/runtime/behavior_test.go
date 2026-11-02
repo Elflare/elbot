@@ -561,7 +561,7 @@ func TestStandaloneToolKeepsIndependentTimeout(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		registry := tool.NewRegistry(security.DefaultPermission())
 		entered := make(chan context.Context, 1)
-		if err := registry.Register(loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
+		if err := registerHookTestTool(registry, loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
 			entered <- ctx
 			<-ctx.Done()
 			return nil, "", ctx.Err()

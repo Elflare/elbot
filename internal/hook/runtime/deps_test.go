@@ -41,7 +41,7 @@ func (t testTools) ToolInfo(ctx context.Context, name string) (tool.Info, bool, 
 	if !ok {
 		return tool.Info{}, false, nil
 	}
-	info := value.Info()
+	info := value.Metadata
 	return tool.Info{Name: info.Name, Description: info.Description, Risk: info.Risk, Source: tool.Source(info.Source), Hidden: info.Hidden, SuperadminOnly: info.SuperadminOnly, APITypes: info.APITypes, ForegroundOnly: info.ForegroundOnly, OwnerScoped: info.OwnerScoped, Tags: info.Tags, DependsOn: info.DependsOn, NeedsElyphRules: info.NeedsElyphRules}, true, nil
 }
 

@@ -106,19 +106,19 @@ func TestResidentMemoryCoreAllowsEmptyString(t *testing.T) {
 func TestResidentMemoryToolRisksAndSchema(t *testing.T) {
 	store := resident.NewStoreWithLimits("unused.toml", resident.Limits{Core: 200, Normal: 300})
 	entry := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[0]
-	if entry.Info().Risk != toolshare.RiskLow || len(entry.Info().DependsOn) != 3 {
-		t.Fatalf("entry info = %#v", entry.Info())
+	if entry.Metadata.Risk != toolshare.RiskLow || len(entry.Metadata.DependsOn) != 3 {
+		t.Fatalf("entry info = %#v", entry.Metadata)
 	}
 	readTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[1]
 	normalTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[2]
 	coreTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[3]
-	if readTool.Info().Risk != toolshare.RiskLow {
+	if readTool.Metadata.Risk != toolshare.RiskLow {
 		t.Fatalf("read risk not low")
 	}
-	if normalTool.Info().Risk != toolshare.RiskLow {
+	if normalTool.Metadata.Risk != toolshare.RiskLow {
 		t.Fatalf("normal risk not low")
 	}
-	if coreTool.Info().Risk != toolshare.RiskHigh {
+	if coreTool.Metadata.Risk != toolshare.RiskHigh {
 		t.Fatalf("core risk not high")
 	}
 	schema := coreTool.Schema()
@@ -155,7 +155,13 @@ func TestResidentMemoryValidation(t *testing.T) {
 	if _, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"append"}`)}); err == nil {
 		t.Fatalf("expected missing content error")
 	}
-	if _, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"unknown"}`)}); err == nil {
-		t.Fatalf("expected invalid action error")
+	for _, action := range []string{"unknown", "add", "set", "update", "clear"} {
+		arguments, err := json.Marshal(map[string]string{"action": action, "content": "旧别名不能写入"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: arguments}); err == nil {
+			t.Fatalf("expected invalid action error for %q", action)
+		}
 	}
 }

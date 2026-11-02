@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 
-	"elbot/internal/llm"
 	"elbot/internal/tool/share"
 )
 
@@ -21,28 +20,18 @@ type discoverArgs struct {
 	Names []string `json:"names"`
 }
 
-func NewDiscoverTool(resolver *Resolver) share.Tool {
-	return discoverTool{resolver: resolver}
-}
-
-func (t discoverTool) Name() string { return "discover_tool" }
-
-func (t discoverTool) Info() share.Info {
-	return share.NewBuilder(t.Name()).
+func NewDiscoverTool(resolver *Resolver) share.ToolDefinition {
+	t := discoverTool{resolver: resolver}
+	builder := share.NewBuilder("discover_tool").
 		Description("发现工具/Skill；name/names均空→简介列表，否则→schema或Skill内容。当前会话已有对应schema/内容则无需重复发现。").
-		Risk(share.RiskSafe).
-		BuildInfo()
-}
+		Risk(share.RiskSafe)
 
-func (t discoverTool) Schema() llm.ToolSchema {
-	return share.NewBuilder(t.Name()).
-		Description(t.Info().Description).
+	return builder.
 		String("name", "单个工具/Skill名称；可与names合并查询。").
-		StringArray("names", "批量工具/Skill名称。").
-		BuildSchema()
+		StringArray("names", "批量工具/Skill名称。").Build(t.PrepareCall)
 }
 
-func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
+func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest, info share.Info) (*share.PreparedCall, error) {
 	var args discoverArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
@@ -54,7 +43,7 @@ func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest) (*
 	if args.Name != "" {
 		names = append([]string{args.Name}, names...)
 	}
-	return share.NewPreparedCall(req, share.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (_ *share.Result, logContent string, _ error) {
+	return share.NewPreparedCall(req, share.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (_ *share.Result, logContent string, _ error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err.Error(), err
 		}
@@ -72,9 +61,7 @@ func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest) (*
 			if discovered.Detail == "" {
 				continue
 			}
-			if detailer, ok := targets[discovered.Info.Name].(share.DetailProvider); ok {
-				activateTools = append(activateTools, detailer.ActivateTools()...)
-			}
+			activateTools = append(activateTools, targets[discovered.Info.Name].ActivateTools...)
 		}
 		data, err := marshalJSONNoEscape(result)
 		if err != nil {

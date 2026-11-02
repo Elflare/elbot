@@ -75,7 +75,7 @@ func TestToolCommitFailureStopsOnlyOnPersistenceError(t *testing.T) {
 				deps, waiting = blocked, blocked.waiting
 			}
 			registry := toolregistry.NewRegistry(security.DefaultPermission())
-			if err := registry.Register(countingCommitTool{count: &count, wait: waiting}); err != nil {
+			if err := registerTestTools(registry, (countingCommitTool{count: &count, wait: waiting}).Definition()); err != nil {
 				t.Fatal(err)
 			}
 			manager := newTestManager(registry, security.NewPermission("low", "critical", nil))

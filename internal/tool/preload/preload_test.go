@@ -36,6 +36,9 @@ func (t availabilityTestTool) Name() string { return t.name }
 func (t availabilityTestTool) Info() share.Info {
 	info := t.info
 	info.Name = t.name
+	if info.Description == "" {
+		info.Description = "test " + t.name
+	}
 	info.Risk = share.RiskLow
 	return info
 }
@@ -43,7 +46,10 @@ func (t availabilityTestTool) Schema() llm.ToolSchema {
 	if t.onSchema != nil {
 		t.onSchema()
 	}
-	return llm.ToolSchema{Name: t.name, Description: t.info.Description, Parameters: map[string]any{"type": "object"}}
+	return llm.ToolSchema{Name: t.name, Description: t.info.Description, Parameters: map[string]any{"type": "object", "properties": map[string]any{}}}
+}
+func (t availabilityTestTool) Definition() share.ToolDefinition {
+	return share.ToolDefinition{Metadata: t.Info(), Parameters: t.Schema().Parameters, Prepare: t.PrepareCall}
 }
 func (value availabilityTestTool) PrepareCall(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
 	return share.NewPreparedCall(req, share.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*share.Result, string, error) {
@@ -59,6 +65,9 @@ type preloadSkill struct {
 }
 
 func (s *preloadSkill) ActivateTools() []string { return s.activate }
+func (s *preloadSkill) Definition() share.ToolDefinition {
+	return share.ToolDefinition{Metadata: s.Info(), LoadDetail: s.LoadDetail, ActivateTools: s.activate}
+}
 func (s *preloadSkill) LoadDetail(context.Context) (share.DetailBlock, error) {
 	s.calls++
 	return share.DetailBlock{Content: "skill instructions"}, s.err
@@ -71,11 +80,16 @@ func (t *preloadContentTool) DiscoveryContent(context.Context) (string, bool, er
 	}
 	return "Use the tool with its task instructions.", false, t.err
 }
+func (t *preloadContentTool) Definition() share.ToolDefinition {
+	d := t.availabilityTestTool.Definition()
+	d.DiscoveryContent = t.DiscoveryContent
+	return d
+}
 
 func TestBackgroundPreloadIncludesToolContent(t *testing.T) {
 	registry := registry.NewRegistry(security.DefaultPermission())
 	candidate := &preloadContentTool{availabilityTestTool: availabilityTestTool{name: "task_tool"}}
-	if err := registry.Register(candidate); err != nil {
+	if _, err := registry.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, []share.ToolDefinition{candidate.Definition()}); err != nil {
 		t.Fatal(err)
 	}
 	preloader := newTestPreloader(PreloadOptions{Registry: registry, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"tasks": {Tools: []string{"task_tool"}}}}})
@@ -101,7 +115,7 @@ func TestBackgroundPreloadIncludesToolContent(t *testing.T) {
 		t.Fatalf("failed preload=%+v err=%v", prepared, err)
 	}
 	candidate.err = nil
-	if err := registry.Register(&preloadSkill{availabilityTestTool: availabilityTestTool{name: "broken"}, err: errors.New("detail failed")}); err != nil {
+	if _, err := registry.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, []share.ToolDefinition{(&preloadSkill{availabilityTestTool: availabilityTestTool{name: "broken"}, err: errors.New("detail failed")}).Definition()}); err != nil {
 		t.Fatal(err)
 	}
 	prepared, err = preloader.PrepareBackground(ctx, share.BackgroundPreloadRequest{SessionID: "session", Names: []string{"tasks", "broken"}})
@@ -152,17 +166,15 @@ func TestBackgroundPreloadLocalAndELwisp(t *testing.T) {
 	r := registry.NewRegistry(security.DefaultPermission())
 	wrapper := availabilityTestTool{name: "wrapper"}
 	skill := &preloadSkill{availabilityTestTool: availabilityTestTool{name: "guide"}, activate: []string{"wrapper", "wrapper"}}
-	for _, tool := range []share.Tool{wrapper, skill} {
-		if err := r.Register(tool); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := r.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, []share.ToolDefinition{wrapper.Definition(), skill.Definition()}); err != nil {
+		t.Fatal(err)
 	}
 	s := newTestPreloader(PreloadOptions{Registry: r})
 	ctx := contextinfo.WithBackgroundKind(t.Context(), "")
 	schema := map[string]any{"type": "object", "properties": map[string]any{"x": map[string]any{"type": "string"}}}
-	req := share.BackgroundPreloadRequest{Names: []string{"guide", "guide"}, ELwispTools: []share.ELwispToolDeclaration{
-		{Name: "remote", CanonicalName: "source_remote", EventKey: "event", Endpoint: "https://example.invalid", TimeoutSeconds: 9, Schema: schema},
-		{Name: "front", CanonicalName: "source_front", ForegroundOnly: true},
+	req := share.BackgroundPreloadRequest{SessionID: "session", Names: []string{"guide", "guide"}, ELwispTools: []share.ELwispToolDeclaration{
+		{Name: "remote", CanonicalName: "source_remote", Description: "remote", Risk: share.RiskLow, EventKey: "event", Endpoint: "https://example.invalid", TimeoutSeconds: 9, Schema: schema},
+		{Name: "front", CanonicalName: "source_front", Description: "front", Risk: share.RiskLow, EventKey: "event", Endpoint: "https://example.invalid", Schema: schema, ForegroundOnly: true},
 	}}
 	got, err := s.PrepareBackground(ctx, req)
 	if err != nil {
@@ -194,16 +206,18 @@ func TestBackgroundPreloadLocalAndELwisp(t *testing.T) {
 
 func TestSelectionsExpandBeforeRuntimeQualification(t *testing.T) {
 	r := registry.NewRegistry(security.DefaultPermission())
-	for _, tool := range []share.Tool{
-		availabilityTestTool{name: "normal"},
-		availabilityTestTool{name: "admin", info: share.Info{SuperadminOnly: true}},
-		availabilityTestTool{name: "hidden", info: share.Info{Hidden: true}},
-		availabilityTestTool{name: "api", info: share.Info{APITypes: []llm.APIType{"restricted"}}},
-		&preloadSkill{availabilityTestTool: availabilityTestTool{name: "guide"}},
+	var definitions []share.ToolDefinition
+	for _, tool := range []share.ToolDefinition{
+		(availabilityTestTool{name: "normal"}).Definition(),
+		(availabilityTestTool{name: "admin", info: share.Info{SuperadminOnly: true}}).Definition(),
+		(availabilityTestTool{name: "hidden", info: share.Info{Hidden: true}}).Definition(),
+		(availabilityTestTool{name: "api", info: share.Info{APITypes: []llm.APIType{llm.APITypeResponse}}}).Definition(),
+		(&preloadSkill{availabilityTestTool: availabilityTestTool{name: "guide"}}).Definition(),
 	} {
-		if err := r.Register(tool); err != nil {
-			t.Fatal(err)
-		}
+		definitions = append(definitions, tool)
+	}
+	if _, err := r.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, definitions); err != nil {
+		t.Fatal(err)
 	}
 	s := newTestPreloader(PreloadOptions{Registry: r, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
 		"group": {Tools: []string{"normal", "admin", "hidden", "api", "guide"}},
@@ -230,14 +244,14 @@ func TestSelectionsExpandBeforeRuntimeQualification(t *testing.T) {
 
 func TestPreloadKeepsSelectedObjectAfterReplacement(t *testing.T) {
 	r := registry.NewRegistry(security.DefaultPermission())
-	replacement := &preloadContentTool{availabilityTestTool: availabilityTestTool{name: "dynamic", info: share.Info{Source: share.Source("test"), Description: "new"}}}
-	original := &preloadContentTool{availabilityTestTool: availabilityTestTool{name: "dynamic", info: share.Info{Source: share.Source("test"), Description: "old"}}}
-	original.onSchema = func() {
-		if err := r.ReplaceSources([]share.Source{"test"}, []share.Tool{replacement}); err != nil {
+	replacement := &preloadContentTool{availabilityTestTool: availabilityTestTool{name: "dynamic", info: share.Info{Description: "new"}}}
+	original := &preloadContentTool{availabilityTestTool: availabilityTestTool{name: "dynamic", info: share.Info{Description: "old"}}}
+	original.onContent = func() {
+		if _, err := r.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, []share.ToolDefinition{replacement.Definition()}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := r.Register(original); err != nil {
+	if _, err := r.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, []share.ToolDefinition{original.Definition()}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := newTestPreloader(PreloadOptions{Registry: r}).PrepareTools(t.Context(), []string{"dynamic"})
@@ -251,7 +265,7 @@ func TestPrepareToolsCancellationDuringContent(t *testing.T) {
 	defer cancel()
 	candidate := &preloadContentTool{availabilityTestTool: availabilityTestTool{name: "cancel"}, onContent: cancel}
 	r := registry.NewRegistry(security.DefaultPermission())
-	if err := r.Register(candidate); err != nil {
+	if _, err := r.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, []share.ToolDefinition{candidate.Definition()}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := newTestPreloader(PreloadOptions{Registry: r}).PrepareTools(ctx, []string{"cancel"})
@@ -265,5 +279,6 @@ func newTestPreloader(opts PreloadOptions) *PreloadService {
 	opts.NativeDiscoveredToolsFromDiscovery = discovery.NativeDiscoveredToolsFromDiscovery
 	opts.LoadDiscoveryContent = discovery.LoadDiscoveryContent
 	opts.BackgroundDiscoveredTools = registry.BackgroundDiscoveredTools
+	opts.RegisterTools = opts.Registry.(*registry.Registry).RegisterTools
 	return NewPreloadService(opts)
 }

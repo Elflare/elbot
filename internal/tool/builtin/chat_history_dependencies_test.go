@@ -12,30 +12,28 @@ import (
 )
 
 func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
-	tools := []toolshare.Tool{
-		NewSearchChatHistoryTool(nil, nil),
-		NewGetChatHistoryAroundTool(nil, nil),
-		NewReplyToChatHistoryMessageTool(nil),
-		NewGetMediaTool(nil),
+	tools := []toolshare.ToolDefinition{
+		(SearchChatHistoryTool{}).Definition(),
+		(GetChatHistoryAroundTool{}).Definition(),
+		(ReplyToChatHistoryMessageTool{}).Definition(),
+		(GetMediaTool{}).Definition(),
 	}
 	registry := toolregistry.NewRegistry(security.NewPermission("low", "high", nil))
-	for _, value := range tools {
-		if err := registry.Register(value); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, tools); err != nil {
+		t.Fatal(err)
 	}
 	for _, value := range tools {
-		t.Run(value.Name(), func(t *testing.T) {
-			info := value.Info()
+		t.Run(value.Metadata.Name, func(t *testing.T) {
+			info := value.Metadata
 			if !slices.Contains(info.Tags, "chat") || len(info.DependsOn) != len(tools)-1 {
 				t.Fatalf("chat group/dependencies = %#v", info)
 			}
 			for _, other := range tools {
-				if slices.Contains(info.DependsOn, other.Name()) != (other.Name() != value.Name()) {
-					t.Fatalf("unexpected dependency on %s: %#v", other.Name(), info.DependsOn)
+				if slices.Contains(info.DependsOn, other.Metadata.Name) != (other.Metadata.Name != value.Metadata.Name) {
+					t.Fatalf("unexpected dependency on %s: %#v", other.Metadata.Name, info.DependsOn)
 				}
 			}
-			details, err := discovery.NewResolver(registry).DiscoverDetails(context.Background(), []string{value.Name()})
+			details, err := discovery.NewResolver(registry).DiscoverDetails(context.Background(), []string{value.Metadata.Name})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -46,7 +44,7 @@ func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
 			} else if len(details.Errors) != 0 || len(details.Tools) != len(tools) {
 				t.Fatalf("discovery = %#v", details)
 			}
-			if info.Hidden != (value.Name() != "search_chat_history") {
+			if info.Hidden != (value.Metadata.Name != "search_chat_history") {
 				t.Fatalf("hidden setting changed: %#v", info)
 			}
 		})

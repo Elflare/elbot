@@ -167,7 +167,7 @@ func (s *PreloadService) ToolNamesByTag(ctx context.Context, tag string, query s
 	}
 	result := make([]string, 0, len(infos))
 	for _, info := range infos {
-		result = append(result, info.Name())
+		result = append(result, info.Metadata.Name)
 	}
 	return result, nil
 }

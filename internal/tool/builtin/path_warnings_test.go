@@ -16,14 +16,14 @@ func TestSendFileAbsoluteWarningBelongsToForeground(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"source": path})
-	tool := NewSendFileTool(nil)
+	tool := (SendFileTool{})
 	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	result, _, err := callTool(ctx, tool, share.CallRequest{Arguments: args})
+	result, _, err := callTool(ctx, tool.Definition(), share.CallRequest{Arguments: args})
 	if err != nil || len(result.Warnings) != 1 || result.Warnings[0] != share.AbsolutePathWorkspaceWarning {
 		t.Fatalf("foreground=%+v err=%v", result, err)
 	}
 	ctx = contextinfo.WithBackgroundKind(ctx, contextinfo.BackgroundKindElnis)
-	result, _, err = callTool(ctx, tool, share.CallRequest{Arguments: args})
+	result, _, err = callTool(ctx, tool.Definition(), share.CallRequest{Arguments: args})
 	if err != nil || len(result.Warnings) != 0 {
 		t.Fatalf("background=%+v err=%v", result, err)
 	}

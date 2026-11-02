@@ -4,9 +4,11 @@ package share
 import (
 	"context"
 	"elbot/internal/llm"
+	"fmt"
+	"slices"
 )
 
-type Source string
+type Source uint8
 
 // ToolQuery selects catalog entries; identity, model and background facts come from context.
 type ToolQuery struct {
@@ -21,9 +23,9 @@ type ToolQuery struct {
 }
 
 const (
-	SourceBuiltin    Source = "builtin"
-	SourceSkillAgent Source = "skill_agent"
-	SourceSkillGo    Source = "skill_go"
+	SourceBuiltin Source = iota + 1
+	SourceSkill
+	SourceELwisp
 )
 
 type Info struct {
@@ -50,11 +52,54 @@ type Info struct {
 	DependsOn []string
 }
 
-type Tool interface {
-	Name() string
-	Info() Info
-	Schema() llm.ToolSchema
-	// PrepareCall 固定本次调用的风险、预览与执行数据，不执行业务写入。
-	// 成功时必须返回非 nil 的准备结果；自动确认也使用同一准备入口。
-	PrepareCall(ctx context.Context, req CallRequest) (*PreparedCall, error)
+// Snapshot 只复制元数据中的可变切片。
+func (i Info) Snapshot() Info {
+	i.APITypes = slices.Clone(i.APITypes)
+	i.Tags = slices.Clone(i.Tags)
+	i.DependsOn = slices.Clone(i.DependsOn)
+	return i
+}
+
+// ToolDefinition 是目录唯一的定义来源；文档条目只提供 LoadDetail，不伪造调用入口。
+type ToolDefinition struct {
+	Metadata         Info                                                      // 工具或文档的目录元数据。
+	Parameters       map[string]any                                            // 可调用工具的参数对象 schema；文档条目为 nil。
+	Prepare          func(context.Context, CallRequest) (*PreparedCall, error) // 本地实现的准备入口。
+	LoadDetail       func(context.Context) (DetailBlock, error)                // 可选的技能正文加载能力。
+	ActivateTools    []string                                                  // 加载正文时激活的工具名称。
+	DiscoveryContent func(context.Context) (string, bool, error)               // 可选的动态发现说明。
+	Remote           *ELwispToolDeclaration                                    // 远端执行所需的可序列化声明；不与 Prepare 同时提供。
+}
+
+// ToolRegistrationScope 标识一次完整替换的工具组；远端组仅属于指定会话和事件。
+type ToolRegistrationScope struct {
+	SessionID string // elwisp 组对应的会话。
+	EventKey  string // elwisp 组对应的事件。
+}
+
+func (d ToolDefinition) Callable() bool { return d.Prepare != nil || d.Remote != nil }
+func (d ToolDefinition) Schema() llm.ToolSchema {
+	if !d.Callable() {
+		return llm.ToolSchema{}
+	}
+	return llm.ToolSchema{Name: d.Metadata.Name, Description: d.Metadata.Description, Parameters: d.Parameters}
+}
+func (d ToolDefinition) PrepareCall(ctx context.Context, req CallRequest) (*PreparedCall, error) {
+	if d.Prepare == nil {
+		return nil, fmt.Errorf("tool %q has no local execution entry", d.Metadata.Name)
+	}
+	return d.Prepare(ctx, req)
+}
+
+// Snapshot 隔离注册和查询两端的可变声明，执行闭包仍指向同一已选定实现。
+func (d ToolDefinition) Snapshot() ToolDefinition {
+	d.Metadata = d.Metadata.Snapshot()
+	d.ActivateTools = slices.Clone(d.ActivateTools)
+	d.Parameters = CloneSchema(llm.ToolSchema{Parameters: d.Parameters}).Parameters
+	if d.Remote != nil {
+		remote := *d.Remote
+		remote.Schema = CloneSchema(llm.ToolSchema{Parameters: remote.Schema}).Parameters
+		d.Remote = &remote
+	}
+	return d
 }

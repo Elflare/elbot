@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"elbot/internal/llm"
 	"elbot/internal/processenv"
 )
 
@@ -54,16 +53,8 @@ func NewWebExtractTool(environment processenv.Environment) *WebExtractTool {
 	return &WebExtractTool{endpoint: defaultExtractEndpoint, cache: newExtractCache(), processEnv: environment}
 }
 
-func (*WebExtractTool) Name() string {
-	return "web_extract"
-}
-
-func (t *WebExtractTool) Info() toolshare.Info {
-	return webExtractBuilder().BuildInfo()
-}
-
-func (t *WebExtractTool) Schema() llm.ToolSchema {
-	return webExtractBuilder().BuildSchema()
+func (t *WebExtractTool) Definition() toolshare.ToolDefinition {
+	return webExtractBuilder().Build(t.PrepareCall)
 }
 
 func webExtractBuilder() *toolshare.Builder {
@@ -82,7 +73,7 @@ func webExtractBuilder() *toolshare.Builder {
 		Boolean("force_refresh", "true→绕过缓存重新获取；默认false。")
 }
 
-func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	var args webExtractArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
@@ -123,7 +114,7 @@ func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 	if args.TimeoutMS > 0 {
 		timeout = time.Duration(args.TimeoutMS) * time.Millisecond
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("提取网页：%s", url), func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, fmt.Sprintf("提取网页：%s", url), func(ctx context.Context) (*toolshare.Result, string, error) {
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		entry, cached, err := cache.getOrFetch(ctx, key, args.ForceRefresh, func(fetchCtx context.Context) (cachedExtract, error) {

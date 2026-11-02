@@ -35,35 +35,44 @@ func CanAccessTool(actor contextinfo.Actor, permission interface {
 	if info.SuperadminOnly && actor.Role != contextinfo.RoleSuperadmin {
 		return false
 	}
-	risk := info.Risk
-	if risk == "" {
-		risk = share.RiskHigh
-	}
-	return permission.CanUseTool(actor, risk, info.OwnerScoped)
+	// 没有风险声明的条目只能是纯文档；仍遵守上面的可见性限制。
+	return info.Risk == "" || permission.CanUseTool(actor, info.Risk, info.OwnerScoped)
 }
 
-// QueryTools 返回本次通过资格筛选的原始对象；后续使用不再按名称查询目录。
-func (r *Registry) QueryTools(ctx context.Context, query share.ToolQuery) ([]share.Tool, error) {
+// QueryTools 只复制本次通过资格筛选的定义，后续不再按名称查询目录。
+func (r *Registry) QueryTools(ctx context.Context, query share.ToolQuery) ([]share.ToolDefinition, error) {
+	tools, err := r.queryTools(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	for i := range tools {
+		tools[i] = tools[i].Snapshot()
+	}
+	return tools, nil
+}
+
+// queryTools 只在目录内部使用已发布的只读定义，出口按所需范围复制。
+func (r *Registry) queryTools(ctx context.Context, query share.ToolQuery) ([]share.ToolDefinition, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	r.mu.RLock()
-	candidates := make([]share.Tool, 0, len(r.tools))
+	candidates := make([]share.ToolDefinition, 0, len(r.tools))
 	for _, candidate := range r.tools {
 		candidates = append(candidates, candidate)
 	}
 	r.mu.RUnlock()
-	var tools []share.Tool
+	var tools []share.ToolDefinition
 	for _, candidate := range candidates {
-		info := candidate.Info()
+		info := candidate.Metadata
 		if query.Names != nil && !slices.Contains(query.Names, info.Name) {
 			continue
 		}
 		if (!query.IncludeHidden && info.Hidden) || (!query.IncludeDiscover && info.Name == "discover_tool") {
 			continue
 		}
-		_, skill := candidate.(share.DetailProvider)
+		skill := candidate.LoadDetail != nil
 		if (query.Kind == "tool" && skill) || (query.Kind == "skill" && !skill) {
 			continue
 		}
@@ -72,22 +81,19 @@ func (r *Registry) QueryTools(ctx context.Context, query share.ToolQuery) ([]sha
 		}
 		tools = append(tools, candidate)
 	}
-	sort.Slice(tools, func(i, j int) bool { return tools[i].Name() < tools[j].Name() })
+	sort.Slice(tools, func(i, j int) bool { return tools[i].Metadata.Name < tools[j].Metadata.Name })
 	return tools, nil
 }
 
 // QueryToolInfos 将同一次查询的对象转换为对外元数据，不再查询目录。
 func (r *Registry) QueryToolInfos(ctx context.Context, query share.ToolQuery) ([]share.Info, error) {
-	tools, err := r.QueryTools(ctx, query)
+	tools, err := r.queryTools(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 	var infos []share.Info
 	for _, tool := range tools {
-		info := tool.Info()
-		info.APITypes = slices.Clone(info.APITypes)
-		info.Tags = slices.Clone(info.Tags)
-		info.DependsOn = slices.Clone(info.DependsOn)
+		info := tool.Metadata.Snapshot()
 		infos = append(infos, info)
 	}
 	return infos, nil

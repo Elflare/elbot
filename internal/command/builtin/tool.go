@@ -94,7 +94,7 @@ func formatTools(ctx context.Context, deps Deps) (string, error) {
 		if len(info.Tags) > 0 {
 			tags = " tags=" + strings.Join(info.Tags, ",")
 		}
-		sb.WriteString(fmt.Sprintf("  %s [%s]%s %s\n", info.Name, info.Source, tags, info.Description))
+		sb.WriteString(fmt.Sprintf("  %s [%s]%s %s\n", info.Name, [...]string{tool.SourceBuiltin: "builtin", tool.SourceSkill: "skill", tool.SourceELwisp: "elwisp"}[info.Source], tags, info.Description))
 	}
 	return trimTrailingNewlines(sb.String()), nil
 }

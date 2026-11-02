@@ -14,7 +14,7 @@ import (
 func TestCallToolPreservesDirectCallResult(t *testing.T) {
 	catalog := registry.NewRegistry(security.DefaultPermission())
 	failure := errors.New("partial failure")
-	if err := catalog.Register(partialResultTool{err: failure}); err != nil {
+	if err := registerTestTools(catalog, (partialResultTool{err: failure}).Definition()); err != nil {
 		t.Fatal(err)
 	}
 	m := newTestManager(catalog, nil)

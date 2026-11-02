@@ -47,8 +47,8 @@ func TestSearchToolScopeParameters(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			backend := &historyScopeBackend{}
-			tool := NewSearchChatHistoryTool(chat_history.NewManager(backend, time.Now), func(context.Context) bool { return true })
-			call, err := tool.PrepareCall(tc.ctx, share.CallRequest{Arguments: json.RawMessage(tc.args)})
+			tool := (SearchChatHistoryTool{history: chat_history.NewManager(backend, time.Now), viewImageAvailable: func(context.Context) bool { return true }})
+			call, err := tool.Definition().PrepareCall(tc.ctx, share.CallRequest{Arguments: json.RawMessage(tc.args)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -82,9 +82,9 @@ func TestSearchToolScopeParameters(t *testing.T) {
 }
 
 func TestSearchToolRejectsNonStringScopeArguments(t *testing.T) {
-	tool := NewSearchChatHistoryTool(nil, nil)
+	tool := (SearchChatHistoryTool{})
 	for _, args := range []string{`{"platform":123}`, `{"scope":true}`, `{"scope":{}}`} {
-		if _, err := tool.PrepareCall(t.Context(), share.CallRequest{Arguments: json.RawMessage(args)}); err == nil {
+		if _, err := tool.Definition().PrepareCall(t.Context(), share.CallRequest{Arguments: json.RawMessage(args)}); err == nil {
 			t.Fatalf("accepted %s", args)
 		}
 	}

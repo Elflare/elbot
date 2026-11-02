@@ -5,7 +5,6 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/elyph"
-	"elbot/internal/llm"
 	toolshare "elbot/internal/tool/share"
 	"encoding/json"
 	"fmt"
@@ -53,9 +52,9 @@ type cronWriteArgs struct {
 	Enabled             *bool    `json:"enabled"`
 }
 
-func NewCronTools(repo CronRepository, validateModel func(provider, model string) error, now func() time.Time) []toolshare.Tool {
+func NewCronTools(repo CronRepository, validateModel func(provider, model string) error, now func() time.Time) []toolshare.ToolDefinition {
 	service := &cronService{repo: repo, validateModel: validateModel, now: now}
-	return []toolshare.Tool{CronTool{now: now}, CronQueryTool{service: service}, CronWriteTool{service: service, now: now}}
+	return []toolshare.ToolDefinition{(CronTool{now: now}).Definition(), (CronQueryTool{service: service}).Definition(), (CronWriteTool{service: service, now: now}).Definition()}
 }
 
 // cronService 只处理任务规则；读写和模型校验均通过根部注入的能力完成。
@@ -252,15 +251,17 @@ func normalizeCronToolNames(names []string) []string {
 	return result
 }
 
-func (t CronTool) Name() string { return "cron" }
-func (t CronTool) Info() toolshare.Info {
-	return toolshare.NewBuilder(t.Name()).Description("定时任务入口；查询→cron_query，修改→cron_write；调用本工具仅返回指引和当前时间。").Risk(toolshare.RiskMedium).SuperadminOnly().DependsOn("cron_query", "cron_write").BuildInfo()
+func (t CronTool) Definition() toolshare.ToolDefinition {
+	builder := toolshare.NewBuilder("cron").Description("定时任务入口；查询→cron_query，修改→cron_write；调用本工具仅返回指引和当前时间。").Risk(toolshare.RiskMedium).SuperadminOnly().DependsOn("cron_query", "cron_write")
+	definition := builder.Build(t.PrepareCall)
+	definition.DiscoveryContent = func(context.Context) (string, bool, error) {
+		content, override := t.DiscoveryContent()
+		return content, override, nil
+	}
+	return definition
 }
-func (t CronTool) Schema() llm.ToolSchema {
-	return cronBuilder(t.Name(), t.Info().Description).BuildSchema()
-}
-func (t CronTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (*toolshare.Result, string, error) {
+func (t CronTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (*toolshare.Result, string, error) {
 		now := t.now().Format("2006-01-02 15:04:05")
 		result := &toolshare.Result{Content: strings.TrimSpace("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_query 或 cron_write。cron_query 不传 name 时列出 cron，传 name 时查询单个 cron。")}
 		return result, "cron guide returned; current_time=" + now, nil
@@ -274,23 +275,20 @@ func (t CronTool) DiscoveryContent() (string, bool) {
 	return "当前本地时间：" + t.now().Format("2006-01-02 15:04:05"), false
 }
 
-func (t CronQueryTool) Name() string { return "cron_query" }
-func (t CronQueryTool) Info() toolshare.Info {
-	return hiddenCronInfo(t.Name(), "查定时任务；name空→全列表，否则→单个。", toolshare.RiskMedium)
-}
-func (t CronQueryTool) Schema() llm.ToolSchema {
-	return cronBuilder(t.Name(), t.Info().Description).
+func (t CronQueryTool) Definition() toolshare.ToolDefinition {
+	builder := cronBuilder("cron_query", "查定时任务；name空→全列表，否则→单个。").Hidden()
+
+	return builder.
 		String("name", "任务短名。").
 		Boolean("include_disabled", "列表包含停用项，默认false。").
-		Boolean("include_completed", "列表包含已完成项，默认false。").
-		BuildSchema()
+		Boolean("include_completed", "列表包含已完成项，默认false。").Build(t.PrepareCall)
 }
-func (t CronQueryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t CronQueryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	var args cronQueryArgs
 	if err := decodeArgs(req.Arguments, &args); err != nil {
 		return nil, err
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (*toolshare.Result, string, error) {
 		if strings.TrimSpace(args.Name) != "" {
 			view, err := t.service.GetCron(ctx, args.Name, actorFromContext(ctx))
 			if err != nil {
@@ -320,14 +318,10 @@ func (t CronQueryTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 	}), nil
 }
 
-func (t CronWriteTool) Name() string { return "cron_write" }
-func (t CronWriteTool) Info() toolshare.Info {
-	info := hiddenCronInfo(t.Name(), "创建/更新/停用/永久删除定时任务。", toolshare.RiskHigh)
-	info.NeedsElyphRules = true
-	return info
-}
-func (t CronWriteTool) Schema() llm.ToolSchema {
-	return cronBuilder(t.Name(), cronWriteDescription()).
+func (t CronWriteTool) Definition() toolshare.ToolDefinition {
+	builder := cronBuilder("cron_write", cronWriteDescription()).Risk(toolshare.RiskHigh).Hidden().NeedsElyphRules()
+
+	return builder.
 		String("operation", "disable=停用保留；delete=永久删除；暂停用disable。", toolshare.Required(), toolshare.Enum("create", "update", "disable", "delete")).
 		String("name", "任务短名：字母/数字/下划线/点/横线。", toolshare.Required()).
 		String("title", "展示标题；create默认name。").
@@ -345,15 +339,14 @@ func (t CronWriteTool) Schema() llm.ToolSchema {
 		String("model_provider", "与model同传；create省略→work模型；update两者同为\"\"→默认模型。").
 		String("model", "模型名，与model_provider成对。").
 		Boolean("all_enabled_platforms", "true→广播到所有已启用平台的超级管理员；create默认false。").
-		Boolean("enabled", "create默认true；false→停用保留。").
-		BuildSchema()
+		Boolean("enabled", "create默认true；false→停用保留。").Build(t.PrepareCall)
 }
-func (t CronWriteTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t CronWriteTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	var args cronWriteArgs
 	if err := decodeArgs(req.Arguments, &args); err != nil {
 		return nil, err
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
 		var result *toolshare.Result
 		var callErr error
 		switch strings.ToLower(strings.TrimSpace(args.Operation)) {
@@ -501,10 +494,6 @@ func stringPtrIfNotEmpty(value string) *string {
 		return nil
 	}
 	return &value
-}
-
-func hiddenCronInfo(name, description string, risk toolshare.RiskLevel) toolshare.Info {
-	return cronBuilder(name, description).Risk(risk).Hidden().SuperadminOnly().BuildInfo()
 }
 
 func cronBuilder(name, description string) *toolshare.Builder {

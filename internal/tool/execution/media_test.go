@@ -71,27 +71,27 @@ func TestRunValidatesExactMediaArguments(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	run := func(t *testing.T, tl toolshare.Tool, arguments string) toolshare.RunResult {
+	run := func(t *testing.T, tl toolshare.ToolDefinition, arguments string) toolshare.RunResult {
 		t.Helper()
 		registry := toolregistry.NewRegistry(security.DefaultPermission())
-		if err := registry.Register(tl); err != nil {
+		if err := registerTestTools(registry, tl); err != nil {
 			t.Fatal(err)
 		}
 		manager := newTestManager(registry, nil, center)
 		return manager.Run(ctx, &runnerTestDeps{}, toolshare.RunRequest{Committer: &testToolCommitter{},
 			Session: &storage.Session{ID: "session", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
-			Calls: []llm.ToolCallRequest{{ID: "call-1", Name: tl.Name(), Arguments: arguments}},
+			Calls: []llm.ToolCallRequest{{ID: "call-1", Name: tl.Metadata.Name, Arguments: arguments}},
 		})
 	}
 
 	recorder := &mediaArgumentRecorder{}
 	arguments := `{"nested":{"media":"` + item.ID + `"},"text":"prefix ` + item.ID + `"}`
-	run(t, recorder, arguments)
+	run(t, recorder.Definition(), arguments)
 	if recorder.received != arguments {
 		t.Fatalf("tool arguments = %q", recorder.received)
 	}
 
-	result := run(t, failingMediaTool{}, `{"media":"`+item.ID+`"}`)
+	result := run(t, (failingMediaTool{}).Definition(), `{"media":"`+item.ID+`"}`)
 	if len(result.Messages) != 1 || !strings.Contains(llm.SegmentsContentText(result.Messages[0].Segments), "tool failed") {
 		t.Fatalf("failed tool result = %#v", result.Messages)
 	}
@@ -108,7 +108,7 @@ func TestRunRejectsMissingMediaBeforeExecution(t *testing.T) {
 	missingSession := &storage.Session{ID: "missing-session", Mode: storage.SessionModeWork}
 	recorder := &mediaArgumentRecorder{}
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(recorder); err != nil {
+	if err := registerTestTools(registry, recorder.Definition()); err != nil {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, nil, center)
@@ -125,7 +125,7 @@ func TestRunRejectsMissingMediaBeforeExecution(t *testing.T) {
 func TestMediaArgumentsRemainExplicit(t *testing.T) {
 	target := &mediaArgumentRecorder{}
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if err := registry.Register(target); err != nil {
+	if err := registerTestTools(registry, target.Definition()); err != nil {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, nil)
@@ -134,7 +134,8 @@ func TestMediaArgumentsRemainExplicit(t *testing.T) {
 		t.Fatal("bad fixture")
 	}
 	call := llm.ToolCallRequest{Name: target.Name(), Arguments: arguments}
-	resolved := resolvedTool{ResultStatus: events.ResultSucceeded, Native: target}
+	definition := target.Definition()
+	resolved := resolvedTool{ResultStatus: events.ResultSucceeded, Native: &definition}
 	prepared, err := manager.prepareCall(context.Background(), resolved, call)
 	if err != nil {
 		t.Fatal(err)

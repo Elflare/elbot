@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"elbot/internal/llm"
 	"elbot/internal/processenv"
 )
 
@@ -76,16 +75,8 @@ func NewWebSearchTool(environment processenv.Environment) WebSearchTool {
 	return WebSearchTool{client: &http.Client{Timeout: 15 * time.Second}, endpoint: defaultSearchEndpoint, processEnv: environment}
 }
 
-func (WebSearchTool) Name() string {
-	return "web_search"
-}
-
-func (t WebSearchTool) Info() toolshare.Info {
-	return webSearchBuilder().BuildInfo()
-}
-
-func (t WebSearchTool) Schema() llm.ToolSchema {
-	return webSearchBuilder().BuildSchema()
+func (t WebSearchTool) Definition() toolshare.ToolDefinition {
+	return webSearchBuilder().Build(t.PrepareCall)
 }
 
 func webSearchBuilder() *toolshare.Builder {
@@ -105,7 +96,7 @@ func webSearchBuilder() *toolshare.Builder {
 		Boolean("exact_match", "true→精确匹配query中的引号短语。")
 }
 
-func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	var args webSearchArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
@@ -124,7 +115,7 @@ func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 	// 请求结构仅包含字符串、整数、布尔和字符串切片。
 	body, _ := json.Marshal(payload)
 
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, fmt.Sprintf("搜索：%s", query), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, fmt.Sprintf("搜索：%s", query), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
 		logContent = fmt.Sprintf("source=tavily query=%q status=failed", query)
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, t.endpoint, bytes.NewReader(body))
 		if err != nil {

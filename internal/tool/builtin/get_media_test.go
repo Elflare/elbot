@@ -6,7 +6,7 @@ import (
 )
 
 func TestGetMediaSchemaAndHistoryIDTruncation(t *testing.T) {
-	schema := (GetMediaTool{}).Schema()
+	schema := (GetMediaTool{}).Definition().Schema()
 	properties := schema.Parameters["properties"].(map[string]any)
 	outer := properties["media_index"].(map[string]any)
 	inner := outer["items"].(map[string]any)

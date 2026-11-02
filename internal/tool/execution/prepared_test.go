@@ -57,7 +57,7 @@ type snapshotTool struct {
 
 func (*snapshotTool) Name() string { return "snapshot" }
 func (*snapshotTool) Info() share.Info {
-	return share.Info{Name: "snapshot", Source: share.SourceSkillGo, Risk: share.RiskHigh}
+	return share.Info{Name: "snapshot", Source: share.SourceSkill, Risk: share.RiskHigh}
 }
 func (*snapshotTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "snapshot"} }
 func (s *snapshotTool) PrepareCall(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
@@ -96,7 +96,7 @@ func TestCallToolAlwaysPreparesAndChecksBeforeExecution(t *testing.T) {
 				}
 			}
 			catalog := registry.NewRegistry(security.DefaultPermission())
-			if err := catalog.Register(tool); err != nil {
+			if err := registerTestTools(catalog, tool.Definition()); err != nil {
 				t.Fatal(err)
 			}
 			if scenario == "canceled_before" {

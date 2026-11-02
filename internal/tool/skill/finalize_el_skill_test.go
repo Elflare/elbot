@@ -20,16 +20,16 @@ func TestFinalizeElSkillTextOnlyReloads(t *testing.T) {
 	root := t.TempDir()
 	writeTestSkill(t, root, "textonly", "#skill textonly - Text.\n** risk low\n<- $text:str!\n-> $result:str\n")
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	finalizer := NewFinalizeElSkillTool(NewManager(root, registry, nil, processenv.Environment{}))
+	finalizer := FinalizeElSkillTool{manager: NewManager(root, registry, nil, processenv.Environment{})}
 
-	result, _, err := callTool(context.Background(), finalizer, toolshare.CallRequest{Arguments: []byte(`{"name":"textonly"}`)})
+	result, _, err := callTool(context.Background(), finalizer.Definition(), toolshare.CallRequest{Arguments: []byte(`{"name":"textonly"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(result.Content, "Go source: not found") || !strings.Contains(result.Content, "reload: ok") {
 		t.Fatalf("result = %q", result.Content)
 	}
-	if registered, ok := registry.Get("textonly"); !ok || registered.Info().Risk != toolshare.RiskLow {
+	if registered, ok := registry.Get("textonly"); !ok || registered.Metadata.Risk != toolshare.RiskLow {
 		t.Fatalf("registered=%#v ok=%v", registered, ok)
 	}
 }
@@ -37,9 +37,9 @@ func TestFinalizeElSkillTextOnlyReloads(t *testing.T) {
 func TestFinalizeElSkillReturnsElyphWarnings(t *testing.T) {
 	root := t.TempDir()
 	writeTestSkill(t, root, "warn_finalize", "#skill warn_finalize - Text.\n** 清单：\n")
-	finalizer := NewFinalizeElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
+	finalizer := FinalizeElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 
-	result, _, err := callTool(context.Background(), finalizer, toolshare.CallRequest{Arguments: []byte(`{"name":"warn_finalize"}`)})
+	result, _, err := callTool(context.Background(), finalizer.Definition(), toolshare.CallRequest{Arguments: []byte(`{"name":"warn_finalize"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,9 +53,9 @@ func TestFinalizeElSkillFormatsBuildsAndReloads(t *testing.T) {
 	root := t.TempDir()
 	writeTestGoSkill(t, root, "finalize", "package main\nfunc main(){println(\"ok\")}\n")
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	finalizer := NewFinalizeElSkillTool(NewManager(root, registry, nil, processenv.Environment{}))
+	finalizer := FinalizeElSkillTool{manager: NewManager(root, registry, nil, processenv.Environment{})}
 
-	result, _, err := callTool(context.Background(), finalizer, toolshare.CallRequest{Arguments: []byte(`{"name":"finalize"}`)})
+	result, _, err := callTool(context.Background(), finalizer.Definition(), toolshare.CallRequest{Arguments: []byte(`{"name":"finalize"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestFinalizeElSkillFormatsBuildsAndReloads(t *testing.T) {
 	if _, err := os.Stat(binary); err != nil {
 		t.Fatalf("binary missing: %v", err)
 	}
-	if registered, ok := registry.Get("finalize"); !ok || registered.Info().Source != toolshare.SourceSkillGo {
+	if registered, ok := registry.Get("finalize"); !ok || registered.Metadata.Source != toolshare.SourceSkill {
 		t.Fatalf("registered=%#v ok=%v", registered, ok)
 	}
 }
@@ -81,9 +81,9 @@ func TestFinalizeElSkillReturnsBuildFailure(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	writeTestGoSkill(t, root, "broken", "package main\n\nfunc main() { missing() }\n")
-	finalizer := NewFinalizeElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
+	finalizer := FinalizeElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 
-	result, _, err := callTool(context.Background(), finalizer, toolshare.CallRequest{Arguments: []byte(`{"name":"broken"}`)})
+	result, _, err := callTool(context.Background(), finalizer.Definition(), toolshare.CallRequest{Arguments: []byte(`{"name":"broken"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,9 +95,9 @@ func TestFinalizeElSkillReturnsBuildFailure(t *testing.T) {
 func TestFinalizeElSkillReturnsGofmtFailure(t *testing.T) {
 	root := t.TempDir()
 	writeTestGoSkill(t, root, "badfmt", "package main\n\nfunc main( {\n")
-	finalizer := NewFinalizeElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
+	finalizer := FinalizeElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 
-	result, _, err := callTool(context.Background(), finalizer, toolshare.CallRequest{Arguments: []byte(`{"name":"badfmt"}`)})
+	result, _, err := callTool(context.Background(), finalizer.Definition(), toolshare.CallRequest{Arguments: []byte(`{"name":"badfmt"}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,10 +115,10 @@ func TestFinalizeElSkillReturnsElyphFailure(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.elyph"), []byte("missing header\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	finalizer := NewFinalizeElSkillTool(NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{}))
+	finalizer := FinalizeElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 	args, _ := json.Marshal(map[string]string{"name": "badelyph"})
 
-	result, _, err := callTool(context.Background(), finalizer, toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), finalizer.Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,8 +138,8 @@ func TestPreparedFinalizeRejectsChangedSourcesBeforeBuild(t *testing.T) {
 				writeTestGoSkill(t, root, name, "package main\nfunc main(){println(\"approved\")}\n")
 			}
 			registry := toolregistry.NewRegistry(security.DefaultPermission())
-			finalizer := NewFinalizeElSkillTool(NewManager(root, registry, nil, processenv.Environment{}))
-			prepared, err := finalizer.PrepareCall(t.Context(), toolshare.CallRequest{Arguments: []byte(`{"name":"snapshot"}`)})
+			finalizer := FinalizeElSkillTool{manager: NewManager(root, registry, nil, processenv.Environment{})}
+			prepared, err := finalizer.Definition().PrepareCall(t.Context(), toolshare.CallRequest{Arguments: []byte(`{"name":"snapshot"}`)})
 			if err != nil {
 				t.Fatal(err)
 			}

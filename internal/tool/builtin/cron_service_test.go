@@ -42,7 +42,7 @@ func (s *cronRepositoryStub) DeleteByName(_ context.Context, name string) error 
 	return s.err
 }
 
-func cronTestTools(repo *cronRepositoryStub, validate func(string, string) error) []share.Tool {
+func cronTestTools(repo *cronRepositoryStub, validate func(string, string) error) []share.ToolDefinition {
 	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.Local)
 	return NewCronTools(repo, validate, func() time.Time { return now })
 }

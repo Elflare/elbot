@@ -61,10 +61,32 @@ func PrepareUpdate(raw string, update toolshare.StateUpdate) (storage.SessionMet
 
 // prepareUpdate 合并声明与标签，并编码工具拥有的非空字段。
 func prepareUpdate(state *toolshare.State, update toolshare.StateUpdate) (storage.SessionMetadata, error) {
+	for _, group := range update.ReplaceGroups {
+		retained := make([]toolshare.DiscoveredTool, 0, len(state.DiscoveredTools))
+		for _, existing := range state.DiscoveredTools {
+			if existing.Source == toolshare.SourceKindELwisp && existing.EventKey == group.EventKey {
+				continue
+			}
+			retained = append(retained, existing)
+		}
+		state.DiscoveredTools = retained
+	}
+	if len(update.ReplaceGroups) > 0 {
+		byName := make(map[string]toolshare.DiscoveredTool, len(state.DiscoveredTools)+len(update.Tools))
+		for _, existing := range state.DiscoveredTools {
+			byName[existing.Schema.Name] = existing
+		}
+		for _, incoming := range update.Tools {
+			if existing, ok := byName[incoming.Schema.Name]; ok && (existing.Source != incoming.Source || existing.EventKey != incoming.EventKey) {
+				return nil, fmt.Errorf("tool %q conflicts with another session tool group", incoming.Schema.Name)
+			}
+			byName[incoming.Schema.Name] = incoming
+		}
+	}
 	state.DiscoveredTools = mergeDiscoveredTools(state.DiscoveredTools, update.Tools)
 	state.ToolTags = uniqueNames(append(state.ToolTags, update.Tags...))
 	fields := storage.SessionMetadata{}
-	if len(state.DiscoveredTools) > 0 {
+	if len(state.DiscoveredTools) > 0 || len(update.ReplaceGroups) > 0 {
 		if err := fields.Set("discovered_tools", state.DiscoveredTools); err != nil {
 			return nil, err
 		}
@@ -78,6 +100,11 @@ func prepareUpdate(state *toolshare.State, update toolshare.StateUpdate) (storag
 }
 
 func (s *StateService) Commit(ctx context.Context, id string, update toolshare.StateUpdate) (toolshare.StateCommit, events.LogResult, error) {
+	for _, group := range update.ReplaceGroups {
+		if group.SessionID != id {
+			return toolshare.StateCommit{}, events.LogResult{}, fmt.Errorf("tool registration belongs to session %q, not %q", group.SessionID, id)
+		}
+	}
 	var result toolshare.StateCommit
 	var callbackErr error
 	row, err := s.store.Mutate(ctx, id, func(row *storage.Session) (err error) {

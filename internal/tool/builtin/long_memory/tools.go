@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"elbot/internal/fileops"
-	"elbot/internal/llm"
 	toolshare "elbot/internal/tool/share"
 	"encoding/json"
 	"errors"
@@ -44,48 +43,41 @@ type longMemoryWriteArgs struct {
 	ContentEdits []fileops.Edit `json:"content_edits"`
 }
 
-func NewLongMemoryTools(rootDir string) []toolshare.Tool {
+func NewLongMemoryTools(rootDir string) []toolshare.ToolDefinition {
 	store := newLongMemoryStore(rootDir)
-	return []toolshare.Tool{
-		LongMemoryTool{},
-		LongMemorySearchTool{store: store},
-		LongMemoryWriteTool{store: store},
+	return []toolshare.ToolDefinition{
+		(LongMemoryTool{}).Definition(),
+		(LongMemorySearchTool{store: store}).Definition(),
+		(LongMemoryWriteTool{store: store}).Definition(),
 	}
 }
 
-func (LongMemoryTool) Name() string { return longMemoryToolName }
-func (t LongMemoryTool) Info() toolshare.Info {
-	return longMemoryBuilder(t.Name(), "全局长期记忆入口；检索→long_memory_search，写入→long_memory_write。").DependsOn(longMemorySearchToolName, longMemoryWriteToolName).BuildInfo()
+func (t LongMemoryTool) Definition() toolshare.ToolDefinition {
+	return longMemoryBuilder(longMemoryToolName, "全局长期记忆入口；检索→long_memory_search，写入→long_memory_write。").DependsOn(longMemorySearchToolName, longMemoryWriteToolName).Build(t.PrepareCall)
 }
-func (t LongMemoryTool) Schema() llm.ToolSchema {
-	return longMemoryBuilder(t.Name(), t.Info().Description).BuildSchema()
-}
-func (t LongMemoryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (*toolshare.Result, string, error) {
+func (t LongMemoryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (*toolshare.Result, string, error) {
 		result := &toolshare.Result{Content: strings.TrimSpace("long_memory 是长期记忆入口。请按需调用 long_memory_search 或 long_memory_write。long_memory_search 不传 keywords/category 时会返回分类目录。")}
 		return result, "long_memory guide returned", nil
 	}), nil
 }
 
-func (LongMemorySearchTool) Name() string { return longMemorySearchToolName }
-func (t LongMemorySearchTool) Info() toolshare.Info {
-	return hiddenLongMemoryInfo(t.Name(), "检索全局长期记忆；keywords和category均空→分类目录。", toolshare.RiskMedium)
-}
-func (t LongMemorySearchTool) Schema() llm.ToolSchema {
-	return longMemoryBuilder(t.Name(), t.Info().Description).
+func (t LongMemorySearchTool) Definition() toolshare.ToolDefinition {
+	builder := longMemoryBuilder(longMemorySearchToolName, "检索全局长期记忆；keywords和category均空→分类目录。").Risk(toolshare.RiskMedium).Hidden()
+
+	return builder.
 		String("keywords", "关键词，空白/逗号/换行分隔。").
 		String("category", "分类过滤。").
 		String("match_mode", "关键词组合，默认OR。", toolshare.Enum("AND", "OR")).
 		Boolean("brief_only", "默认true→标题+摘要；false→含全文。").
-		Integer("limit", "默认3，上限10。").
-		BuildSchema()
+		Integer("limit", "默认3，上限10。").Build(t.PrepareCall)
 }
-func (t LongMemorySearchTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t LongMemorySearchTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	var args longMemorySearchArgs
-	if err := lmDecodeArgs(req.Arguments, &args, t.Name()); err != nil {
+	if err := lmDecodeArgs(req.Arguments, &args, info.Name); err != nil {
 		return nil, err
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, t.Info().Description, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (*toolshare.Result, string, error) {
 		if strings.TrimSpace(args.Keywords) == "" && strings.TrimSpace(args.Category) == "" {
 			content, err := t.store.categories(ctx)
 			if err != nil {
@@ -103,12 +95,10 @@ func (t LongMemorySearchTool) PrepareCall(ctx context.Context, req toolshare.Cal
 	}), nil
 }
 
-func (LongMemoryWriteTool) Name() string { return longMemoryWriteToolName }
-func (t LongMemoryWriteTool) Info() toolshare.Info {
-	return hiddenLongMemoryInfo(t.Name(), "写全局长期记忆；先long_memory_search查重。save⇒category,title,summary,keywords,content必填；update/delete⇒id必填；update省略/\"\"→保持原值；delete=永久删除。", toolshare.RiskHigh)
-}
-func (t LongMemoryWriteTool) Schema() llm.ToolSchema {
-	return longMemoryBuilder(t.Name(), t.Info().Description).
+func (t LongMemoryWriteTool) Definition() toolshare.ToolDefinition {
+	builder := longMemoryBuilder(longMemoryWriteToolName, "写全局长期记忆；先long_memory_search查重。save⇒category,title,summary,keywords,content必填；update/delete⇒id必填；update省略/\"\"→保持原值；delete=永久删除。").Risk(toolshare.RiskHigh).Hidden()
+
+	return builder.
 		String("operation", "写操作。", toolshare.Required(), toolshare.Enum("save", "update", "delete")).
 		Integer("id", "记忆ID。").
 		String("category", "分类，优先复用已有分类。").
@@ -116,16 +106,15 @@ func (t LongMemoryWriteTool) Schema() llm.ToolSchema {
 		String("summary", "摘要，建议≤50字。").
 		String("keywords", "搜索词，空白/逗号/换行分隔。").
 		String("content", "全文；update=整体替换，与content_edits至多传一个；delete忽略。").
-		ObjectArray("content_edits", "仅update；与content至多传一个；定位基于原文，修改范围不重叠，插入点不在其内部。", fileops.EditOperationProperties(), []string{"operation"}).
-		BuildSchema()
+		ObjectArray("content_edits", "仅update；与content至多传一个；定位基于原文，修改范围不重叠，插入点不在其内部。", fileops.EditOperationProperties(), []string{"operation"}).Build(t.PrepareCall)
 }
 
-func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
 	var args longMemoryWriteArgs
-	if err := lmDecodeArgs(req.Arguments, &args, t.Name()); err != nil {
+	if err := lmDecodeArgs(req.Arguments, &args, info.Name); err != nil {
 		return nil, err
 	}
-	assessment := toolshare.RiskAssessment{Level: t.Info().Risk}
+	assessment := toolshare.RiskAssessment{Level: info.Risk}
 	switch strings.ToLower(strings.TrimSpace(args.Operation)) {
 	case "save":
 		record := longMemoryRecord{Category: cleanLongMemoryText(args.Category), Title: cleanLongMemoryText(args.Title), Summary: cleanLongMemoryText(args.Summary), Keywords: strings.Join(splitLongMemoryKeywords(args.Keywords), " "), Content: strings.TrimSpace(args.Content)}
@@ -246,10 +235,6 @@ func longMemoryUpdateArgsFromWrite(args longMemoryWriteArgs) longMemoryUpdateArg
 
 func longMemoryBuilder(name, description string) *toolshare.Builder {
 	return toolshare.NewBuilder(name).Description(description).Risk(toolshare.RiskMedium).Tags("agent").SuperadminOnly()
-}
-
-func hiddenLongMemoryInfo(name, description string, risk toolshare.RiskLevel) toolshare.Info {
-	return longMemoryBuilder(name, description).Risk(risk).Hidden().SuperadminOnly().BuildInfo()
 }
 
 func lmDecodeArgs(raw []byte, out any, name string) error {

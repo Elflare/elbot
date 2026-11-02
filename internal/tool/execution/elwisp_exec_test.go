@@ -42,7 +42,7 @@ func TestExecuteELwispToolPostsArguments(t *testing.T) {
 	defer server.Close()
 
 	call := llm.ToolCallRequest{ID: "call-1", Name: "elwisp_watcher_server_status", Arguments: `{"detail":true}`}
-	result := executePreparedELwispTestCall(t, call, resolvedTool{Discovered: &toolshare.DiscoveredTool{Name: "server_status", CanonicalName: call.Name, Source: toolshare.SourceKindELwisp, EventKey: "watcher/source/id", Endpoint: server.URL}})
+	result := executePreparedELwispTestCall(t, call, resolvedTool{Discovered: &toolshare.DiscoveredTool{Name: "server_status", CanonicalName: call.Name, Source: toolshare.SourceKindELwisp, EventKey: "watcher/source/id", Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}})
 	if result.Error != nil {
 		t.Fatalf("executeELwispTool: %v", result.Error)
 	}
@@ -61,7 +61,7 @@ func TestExecuteELwispToolReturnsHTTPError(t *testing.T) {
 	defer server.Close()
 
 	call := llm.ToolCallRequest{ID: "call-1", Name: "elwisp_watcher_server_status", Arguments: `{}`}
-	result := executePreparedELwispTestCall(t, call, resolvedTool{Discovered: &toolshare.DiscoveredTool{Name: "server_status", CanonicalName: call.Name, Source: toolshare.SourceKindELwisp, Endpoint: server.URL}})
+	result := executePreparedELwispTestCall(t, call, resolvedTool{Discovered: &toolshare.DiscoveredTool{Name: "server_status", CanonicalName: call.Name, Source: toolshare.SourceKindELwisp, Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}})
 	if result.Error == nil {
 		t.Fatal("expected HTTP error")
 	}
@@ -75,7 +75,7 @@ func TestExecuteELwispToolKeepsPartialResult(t *testing.T) {
 		_, _ = w.Write([]byte(`{"content":"first action saved","error":"second action failed"}`))
 	}))
 	defer server.Close()
-	result := executePreparedELwispTestCall(t, llm.ToolCallRequest{Name: "remote", Arguments: `{}`}, resolvedTool{Discovered: &toolshare.DiscoveredTool{Endpoint: server.URL}})
+	result := executePreparedELwispTestCall(t, llm.ToolCallRequest{Name: "remote", Arguments: `{}`}, resolvedTool{Discovered: &toolshare.DiscoveredTool{Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}})
 	if result.Error == nil || !result.ExecutionStarted || result.ResultStatus != events.ResultFailed || result.Result == nil || result.Result.Content != "first action saved" {
 		t.Fatalf("partial facts = %#v", result)
 	}
@@ -87,7 +87,7 @@ func TestELwispLogKeepsErrorAheadOfLongPartialResult(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(elwispToolResponse{Content: body, Error: "second action failed"})
 	}))
 	defer server.Close()
-	result := executePreparedELwispTestCall(t, llm.ToolCallRequest{Name: "remote", Arguments: `{}`}, resolvedTool{Discovered: &toolshare.DiscoveredTool{Endpoint: server.URL}})
+	result := executePreparedELwispTestCall(t, llm.ToolCallRequest{Name: "remote", Arguments: `{}`}, resolvedTool{Discovered: &toolshare.DiscoveredTool{Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}})
 	if result.Error == nil || result.Result == nil || result.Result.Content != body || llm.SegmentsContentText(result.Message.Segments) != body {
 		t.Fatalf("partial business result changed: %+v", result)
 	}
@@ -111,7 +111,7 @@ func TestPrepareELwispToolFixesRequestWithoutSending(t *testing.T) {
 	}))
 	defer server.Close()
 	call := llm.ToolCallRequest{ID: "one", Name: "remote", Arguments: `{"value":1}`}
-	resolved := resolvedTool{Source: toolshare.SourceKindELwisp, ResultStatus: events.ResultSucceeded, Discovered: &toolshare.DiscoveredTool{Name: "original", EventKey: "original/event", Endpoint: server.URL, TimeoutSeconds: 10}}
+	resolved := resolvedTool{Source: toolshare.SourceKindELwisp, ResultStatus: events.ResultSucceeded, Discovered: &toolshare.DiscoveredTool{Name: "original", EventKey: "original/event", Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}}
 	manager := &Manager{}
 	prepared, err := manager.prepareCall(t.Context(), resolved, call)
 	if err != nil {
@@ -144,7 +144,7 @@ func TestPrepareELwispToolRejectsInvalidRequestBeforeSending(t *testing.T) {
 	for _, scenario := range []string{"arguments", "endpoint"} {
 		t.Run(scenario, func(t *testing.T) {
 			call := llm.ToolCallRequest{Name: "remote", Arguments: `{}`}
-			resolved := resolvedTool{Discovered: &toolshare.DiscoveredTool{Endpoint: server.URL}}
+			resolved := resolvedTool{Discovered: &toolshare.DiscoveredTool{Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}}
 			if scenario == "arguments" {
 				call.Arguments = `{invalid`
 			} else {
@@ -165,7 +165,7 @@ func TestPreparedELwispCallChecksRequestAndCancellationBeforeSending(t *testing.
 	for _, scenario := range []string{"arguments", "canceled"} {
 		t.Run(scenario, func(t *testing.T) {
 			call := llm.ToolCallRequest{ID: "one", Name: "remote", Arguments: `{}`}
-			resolved := resolvedTool{Source: toolshare.SourceKindELwisp, ResultStatus: events.ResultSucceeded, Discovered: &toolshare.DiscoveredTool{Endpoint: server.URL}}
+			resolved := resolvedTool{Source: toolshare.SourceKindELwisp, ResultStatus: events.ResultSucceeded, Discovered: &toolshare.DiscoveredTool{Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}}
 			prepared, err := prepareELwispTool(call, resolved)
 			if err != nil {
 				t.Fatal(err)
