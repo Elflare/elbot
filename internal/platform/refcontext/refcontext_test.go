@@ -31,7 +31,7 @@ func TestApplyFallsBackToReferencedText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "[引用#notice-1：通知(qq:123456):已保存附件：attachment-1]\n\n说：收到"
+	want := "[引用#notice-1：通知(id:123456):已保存附件：attachment-1]\n\n说：收到"
 	if result.Text != want {
 		t.Fatalf("text = %q, want %q", result.Text, want)
 	}
@@ -200,26 +200,6 @@ func TestApplyForkCommandUsesReferencedAssistantID(t *testing.T) {
 				t.Fatalf("text = %q, want %q", result.Text, want)
 			}
 		})
-	}
-}
-
-func TestFormatReferenceTextUsesPlatformIdentifierLabels(t *testing.T) {
-	reply := share.ReplyContext{MessageID: "42", SenderID: "1001", SenderName: "小娅", Text: "原消息"}
-	tests := map[string]string{
-		"qqonebot": `[引用#42：小娅(qq:1001):原消息]
-
-新消息`,
-		"telegram": `[引用#42：小娅(tg:1001):原消息]
-
-新消息`,
-		"qqofficial": `[引用#42：小娅(openid:1001):原消息]
-
-新消息`,
-	}
-	for platformName, want := range tests {
-		if got := share.FormatReferenceText(platformName, reply, "新消息"); got != want {
-			t.Errorf("%s text = %q, want %q", platformName, got, want)
-		}
 	}
 }
 

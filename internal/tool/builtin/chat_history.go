@@ -321,22 +321,10 @@ func formatChatHistoryReference(row toolshare.Message) string {
 	header := "引用#" + reply.MessageID
 	name, id := strings.TrimSpace(reply.SenderName), strings.TrimSpace(reply.SenderID)
 	if id != "" {
-		kind := strings.TrimSpace(row.Key.Platform)
-		if kind == "" {
-			kind = "id"
-		}
-		switch kind {
-		case "qqonebot":
-			kind = "qq"
-		case "telegram":
-			kind = "tg"
-		case "qqofficial":
-			kind = "openid"
-		}
 		if name != "" {
-			name += "(" + kind + ":" + id + ")"
+			name += "(id:" + id + ")"
 		} else {
-			name = kind + ":" + id
+			name = "id:" + id
 		}
 	}
 	if name != "" {

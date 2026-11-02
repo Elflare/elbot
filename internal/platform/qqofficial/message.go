@@ -191,7 +191,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 	if replyID == "" && len(referenced.Segments) > 0 && !a.parseCommand(text).OK {
 		ref.Reply = share.ReplyContext{Text: referenced.Text, Segments: referenced.Segments}
 		ref.ReferenceSegments = referenced.Segments
-		ref.Text = share.FormatReferenceText(a.Name(), ref.Reply, text)
+		ref.Text = share.FormatReferenceText(ref.Reply, text)
 	}
 	if replyID != "" || len(ref.ReferenceSegments) > 0 {
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID

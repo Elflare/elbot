@@ -22,7 +22,7 @@ func resolveFetchedReferenceForTest(ctx context.Context, opts share.ReferenceOpt
 	}
 	text := opts.Text
 	if len(display) == 0 {
-		text = share.FormatReferenceText(opts.Platform, reply, opts.Text)
+		text = share.FormatReferenceText(reply, opts.Text)
 	}
 	return share.ReferenceResult{
 		Text: text, Reply: reply, ReferenceSegments: ref.Segments, DisplaySegments: display,

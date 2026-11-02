@@ -395,7 +395,7 @@ func TestHandleEventPreservesReferenceDecision(t *testing.T) {
 	} {
 		adapter := newTestAdapter(t, Config{Superadmins: []string{"1"}}, nil, nil)
 		adapter.findByPlatformMessage = func(context.Context, string, string, string) (*storage.Message, error) {
-			return &storage.Message{ID: storage.NewID(),Role: storage.RoleAssistant}, nil
+			return &storage.Message{ID: storage.NewID(), Role: storage.RoleAssistant}, nil
 		}
 		adapter.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 			if opts.Platform != "qqonebot" || opts.ScopeID != "group:9" || opts.ActorID != "qqonebot:1" || !opts.IsSuperadmin || opts.ReplyID != "42" || opts.Text != "继续" || opts.Fetch == nil || opts.Enrich == nil {
@@ -469,7 +469,7 @@ func TestHandleEventStoresReferenceSnapshot(t *testing.T) {
 			t.Fatalf("reply ID = %q", opts.ReplyID)
 		}
 		reply := share.ReplyContext{MessageID: "42", SenderID: "1001", SenderName: "被引用者", Text: "被引用内容"}
-		return share.ReferenceResult{Text: share.FormatReferenceText("qqonebot", reply, opts.Text), Reply: reply}, nil
+		return share.ReferenceResult{Text: share.FormatReferenceText(reply, opts.Text), Reply: reply}, nil
 	}
 	handler := &captureHandler{}
 	adapter.handleEvent(ctx, handler.HandleMessage, Event{
@@ -481,7 +481,7 @@ func TestHandleEventStoresReferenceSnapshot(t *testing.T) {
 	if !ok {
 		t.Fatal("missing message context")
 	}
-	wantText := `[引用#42：被引用者(qq:1001):被引用内容]
+	wantText := `[引用#42：被引用者(id:1001):被引用内容]
 
 本次发送的内容`
 	if msgCtx.ContextText != wantText {
@@ -534,7 +534,7 @@ func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	assistant := &storage.Message{ID: storage.NewID(),SessionID: session.ID, Role: storage.RoleAssistant, Content: "stored answer"}
+	assistant := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleAssistant, Content: "stored answer"}
 	if err := store.Messages().Append(ctx, assistant); err != nil {
 		t.Fatalf("append assistant: %v", err)
 	}

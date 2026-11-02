@@ -187,7 +187,7 @@ func fallbackReferenceText(ctx context.Context, deps Options, opts share.Referen
 	if content == "" {
 		return opts.Text, segments, reply, nil, nil
 	}
-	return share.FormatReferenceText(opts.Platform, reply, opts.Text), segments, reply, nil, nil
+	return share.FormatReferenceText(reply, opts.Text), segments, reply, nil, nil
 }
 
 func referenceSenderName(label string) string {

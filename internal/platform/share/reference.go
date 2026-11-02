@@ -37,7 +37,7 @@ type ReferenceResult struct {
 	Reply             ReplyContext     // 原始引用事实。
 }
 
-func FormatReferenceText(platformName string, reply ReplyContext, currentText string) string {
+func FormatReferenceText(reply ReplyContext, currentText string) string {
 	header := "引用"
 	if id := strings.TrimSpace(reply.MessageID); id != "" {
 		header += "#" + id
@@ -45,11 +45,10 @@ func FormatReferenceText(platformName string, reply ReplyContext, currentText st
 	name := strings.TrimSpace(reply.SenderName)
 	id := strings.TrimSpace(reply.SenderID)
 	if id != "" {
-		kind := referenceIDKind(platformName)
 		if name != "" {
-			name += "(" + kind + ":" + id + ")"
+			name += "(id:" + id + ")"
 		} else {
-			name = kind + ":" + id
+			name = "id:" + id
 		}
 	}
 	if name != "" {
@@ -63,20 +62,4 @@ func FormatReferenceText(platformName string, reply ReplyContext, currentText st
 		formatted += "\n\n" + currentText
 	}
 	return formatted
-}
-
-func referenceIDKind(platformName string) string {
-	switch strings.TrimSpace(platformName) {
-	case "qqonebot":
-		return "qq"
-	case "telegram":
-		return "tg"
-	case "qqofficial":
-		return "openid"
-	default:
-		if platformName = strings.TrimSpace(platformName); platformName != "" {
-			return platformName
-		}
-		return "id"
-	}
 }
