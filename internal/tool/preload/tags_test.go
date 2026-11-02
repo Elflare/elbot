@@ -26,6 +26,10 @@ func TestTagExpansionAndEmptyQueries(t *testing.T) {
 	if _, err := r.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, definitions); err != nil {
 		t.Fatal(err)
 	}
+	definitions, err := r.Query(t.Context(), share.ToolQuery{Scope: share.QueryCatalog})
+	if err != nil {
+		t.Fatal(err)
+	}
 	s := newTestPreloader(PreloadOptions{Registry: r, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
 		"group": {Tools: []string{" configured ", "built_in", "configured"}, Prompt: "  instructions  "},
 	}}})
@@ -34,7 +38,7 @@ func TestTagExpansionAndEmptyQueries(t *testing.T) {
 		if tag == " GROUP " {
 			want = "built_in,configured"
 		}
-		names, err := s.ToolNamesByTag(t.Context(), tag, share.ToolQuery{})
+		names, err := s.NamesByTag(t.Context(), tag, definitions)
 		if err != nil || strings.Join(names, ",") != want {
 			t.Fatalf("tag=%q names=%v err=%v", tag, names, err)
 		}
@@ -48,7 +52,7 @@ func TestTagExpansionAndEmptyQueries(t *testing.T) {
 		t.Fatalf("prompts=%+v err=%v", prompts, err)
 	}
 	before := append([]string(nil), s.tags.cache.config.Tags["group"].Tools...)
-	names, err := s.namesByTag(t.Context(), "group")
+	names, err := s.NamesByTag(t.Context(), "group", definitions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,11 +62,47 @@ func TestTagExpansionAndEmptyQueries(t *testing.T) {
 	}
 	// 无效标签无需读取配置；合法标签仍暴露配置错误。
 	s = newTestPreloader(PreloadOptions{Registry: r, TagsPath: t.TempDir()})
-	if names, err := s.ToolNamesByTag(t.Context(), "bad/tag", share.ToolQuery{}); err != nil || len(names) != 0 {
+	if names, err := s.NamesByTag(t.Context(), "bad/tag", definitions); err != nil || len(names) != 0 {
 		t.Fatalf("invalid tag queried configuration or all tools: %v, %v", names, err)
 	}
-	if _, err := s.ToolNamesByTag(t.Context(), "group", share.ToolQuery{}); err == nil {
+	if _, err := s.NamesByTag(t.Context(), "group", definitions); err == nil {
 		t.Fatal("configuration read failure was hidden")
+	}
+}
+
+func TestTagExpansionUsesSelectedDefinitionsAcrossReload(t *testing.T) {
+	r := registry.NewRegistry(security.DefaultPermission())
+	register := func(tag string) {
+		t.Helper()
+		d := (availabilityTestTool{name: "versioned", info: share.Info{Tags: []string{tag}}}).Definition()
+		d.Definition.Description = tag
+		if _, err := r.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, []share.ToolDefinition{d}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	register("old")
+	selected, err := r.Query(t.Context(), share.ToolQuery{Scope: share.QueryCatalog})
+	if err != nil {
+		t.Fatal(err)
+	}
+	register("new")
+	current, err := r.Query(t.Context(), share.ToolQuery{Scope: share.QueryCatalog})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newTestPreloader(PreloadOptions{Registry: r})
+	for _, tc := range []struct {
+		definitions []share.ToolDefinition
+		tag         string
+		want        string
+	}{{selected, "old", "versioned"}, {selected, "new", ""}, {current, "old", ""}, {current, "new", "versioned"}} {
+		names, err := s.NamesByTag(t.Context(), tc.tag, tc.definitions)
+		if err != nil || strings.Join(names, ",") != tc.want {
+			t.Fatalf("tag=%q names=%v err=%v", tc.tag, names, err)
+		}
+		if len(names) > 0 && tc.definitions[0].Definition.Description != tc.tag {
+			t.Fatal("tag and definition came from different registrations")
+		}
 	}
 }
 

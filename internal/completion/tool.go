@@ -15,9 +15,8 @@ const KindSkillDirective = "skill_directive"
 
 // ToolCapabilities is the catalog view needed by directive completion.
 type ToolCapabilities interface {
-	QueryTools(context.Context, tool.ToolQuery) ([]tool.Info, error)
+	QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
 	ToolTags(context.Context) ([]string, error)
-	ToolNamesByTag(context.Context, string, tool.ToolQuery) ([]string, error)
 }
 
 type ToolDirectiveSource struct {
@@ -64,11 +63,11 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item,
 		out = append(out, Item{Text: text, Label: tag + " <tag>", Description: description, Kind: KindToolTagDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
 	}
 	for _, info := range infos {
-		text := token.Prefix + info.Name
+		text := token.Prefix + info.Definition.Name
 		if seenText[text] {
 			continue
 		}
-		out = append(out, Item{Text: text, Label: info.Name, Description: info.Description, Kind: KindToolDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
+		out = append(out, Item{Text: text, Label: info.Definition.Name, Description: info.Definition.Description, Kind: KindToolDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
 	}
 	return out, nil
 
@@ -84,7 +83,7 @@ func (s ToolDirectiveSource) completeSkills(ctx context.Context, token directive
 	}
 	out := make([]Item, 0, len(infos))
 	for _, info := range infos {
-		out = append(out, Item{Text: token.Prefix + info.Name, Label: info.Name, Description: info.Description, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
+		out = append(out, Item{Text: token.Prefix + info.Definition.Name, Label: info.Definition.Name, Description: info.Definition.Description, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
 	}
 	return out, nil
 }
@@ -94,28 +93,28 @@ func (s ToolDirectiveSource) matchingTags(ctx context.Context, query string) ([]
 	return matchStrings(candidates, query), err
 }
 
-func (s ToolDirectiveSource) matchingTools(ctx context.Context, query string) ([]tool.Info, error) {
+func (s ToolDirectiveSource) matchingTools(ctx context.Context, query string) ([]tool.ToolInfo, error) {
 	infos, err := s.Tools.QueryTools(ctx, tool.ToolQuery{Kind: "tool"})
 	return matchInfos(infos, query), err
 }
 
-func (s ToolDirectiveSource) matchingSkills(ctx context.Context, query string) ([]tool.Info, error) {
+func (s ToolDirectiveSource) matchingSkills(ctx context.Context, query string) ([]tool.ToolInfo, error) {
 	infos, err := s.Tools.QueryTools(ctx, tool.ToolQuery{Kind: "skill"})
 	return matchInfos(infos, query), err
 }
 
-func matchInfos(candidates []tool.Info, query string) []tool.Info {
+func matchInfos(candidates []tool.ToolInfo, query string) []tool.ToolInfo {
 	if query == "" {
 		return candidates
 	}
-	prefix := []tool.Info{}
-	fuzzy := []tool.Info{}
+	prefix := []tool.ToolInfo{}
+	fuzzy := []tool.ToolInfo{}
 	for _, info := range candidates {
-		if strings.HasPrefix(info.Name, query) {
+		if strings.HasPrefix(info.Definition.Name, query) {
 			prefix = append(prefix, info)
 			continue
 		}
-		if fuzzyMatch(info.Name, query) {
+		if fuzzyMatch(info.Definition.Name, query) {
 			fuzzy = append(fuzzy, info)
 		}
 	}
@@ -126,7 +125,7 @@ func matchInfos(candidates []tool.Info, query string) []tool.Info {
 }
 
 func (s ToolDirectiveSource) tagDescription(ctx context.Context, tag string) (string, error) {
-	names, err := s.Tools.ToolNamesByTag(ctx, tag, tool.ToolQuery{Kind: "tool"})
+	names, err := s.Tools.QueryTools(ctx, tool.ToolQuery{Tag: tag, Kind: "tool"})
 	if err != nil {
 		return "", err
 	}

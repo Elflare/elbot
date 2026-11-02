@@ -15,7 +15,6 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/llm"
 )
 
 type Status string
@@ -33,8 +32,7 @@ const (
 type Options struct {
 	Media mediaAPI // Borrowed media center; runtime owns only its own leases.
 	Tools interface {
-		ToolInfo(context.Context, string) (tool.Info, bool, error)
-		ToolSchema(context.Context, string) (llm.ToolSchema, bool, error)
+		QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
 		CallTool(context.Context, tool.CallRequest) (*tool.Result, string, error)
 	} // Metadata, schema and invocation without exposing Tool objects.
 

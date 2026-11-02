@@ -38,7 +38,7 @@ func builtinTestTool(t *testing.T, name string, deps builtin.Deps) share.ToolDef
 	deps.LongMemoryDir = t.TempDir()
 	deps.Now = time.Now
 	for _, definition := range builtin.NewTools(deps) {
-		if definition.Metadata.Name == name {
+		if definition.Definition.Name == name {
 			return definition
 		}
 	}

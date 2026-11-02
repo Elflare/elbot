@@ -10,6 +10,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/storage"
+	"elbot/internal/tool"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -110,15 +111,17 @@ func (p *Preparer) PrepareInput(ctx context.Context, in agentshare.LoopInput, us
 	}
 	// A new session may inherit tool schemas after compaction. Their language
 	// requirements still apply even without a fresh discovery call.
-	if p.Tools != nil && p.Tools.Manager != nil {
+	if len(tools) > 0 {
+		names := make([]string, 0, len(tools))
 		for _, schema := range tools {
-			info, ok, err := p.Tools.Manager.ToolInfo(ctx, schema.Name)
-			if err != nil {
-				return nil, nil, err
-			}
-			if ok {
-				needsElyphRules = needsElyphRules || info.NeedsElyphRules
-			}
+			names = append(names, schema.Name)
+		}
+		infos, err := p.Tools.Manager.QueryTools(ctx, tool.ToolQuery{Scope: tool.QueryCatalog, Names: names, IncludeHidden: true, IncludeDiscover: true})
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, info := range infos {
+			needsElyphRules = needsElyphRules || info.Definition.NeedsElyphRules
 		}
 	}
 	state, err := p.Tools.Manager.DecodeState(in.Session.Metadata)

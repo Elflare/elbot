@@ -15,11 +15,11 @@ func TestPublicRegistrationAdaptsExecutionAndDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	if _, err := m.List(ctx); err != nil {
+	if _, err := m.QueryTools(ctx, ToolQuery{Scope: QueryCatalog}); err != nil {
 		t.Fatal(err)
 	}
 	definition := ToolDefinition{
-		Metadata:   Info{Name: "external", Description: "External", Risk: security.RiskLow},
+		Definition: Info{Name: "external", Description: "External", Risk: security.RiskLow},
 		Parameters: map[string]any{"type": "object", "properties": map[string]any{}},
 		Prepare: func(_ context.Context, req CallRequest) (*PreparedCall, error) {
 			return &PreparedCall{Risk: RiskAssessment{Level: security.RiskLow}, Preview: "approved", Run: func(context.Context) (*Result, string, error) {
@@ -28,7 +28,7 @@ func TestPublicRegistrationAdaptsExecutionAndDocument(t *testing.T) {
 		},
 		DiscoveryContent: func(context.Context) (string, bool, error) { return "custom instructions", false, nil },
 	}
-	doc := ToolDefinition{Metadata: Info{Name: "guide"}, LoadDetail: func(context.Context) (DetailBlock, error) {
+	doc := ToolDefinition{Definition: Info{Name: "guide"}, LoadDetail: func(context.Context) (DetailBlock, error) {
 		return DetailBlock{Content: "# Plain guide", Format: "markdown"}, nil
 	}, ActivateTools: []string{"external"}}
 	update, err := m.RegisterTools(ctx, SourceSkill, ToolRegistrationScope{}, []ToolDefinition{definition, doc})
@@ -48,10 +48,10 @@ func TestPublicRegistrationAdaptsExecutionAndDocument(t *testing.T) {
 		t.Fatal(tools, err)
 	}
 	infos, err := m.QueryTools(ctx, ToolQuery{Names: []string{"external"}})
-	if err != nil || len(infos) != 1 || infos[0].Source != SourceSkill {
+	if err != nil || len(infos) != 1 || infos[0].Definition.Source != SourceSkill {
 		t.Fatal(infos, err)
 	}
-	definition.Metadata.Risk = ""
+	definition.Definition.Risk = ""
 	if _, err := m.RegisterTools(ctx, SourceSkill, ToolRegistrationScope{}, []ToolDefinition{definition}); err == nil {
 		t.Fatal("missing risk accepted")
 	}

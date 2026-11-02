@@ -11,7 +11,7 @@ import (
 func TestViewImageHistoryHintUsesAPIType(t *testing.T) {
 	ctx := context.Background()
 	available := func(ctx context.Context) bool {
-		return registry.InfoAvailableInContext(ctx, (ViewImageTool{}).Definition().Metadata)
+		return registry.InfoAvailableInContext(ctx, (ViewImageTool{}).Definition().Definition)
 	}
 	for _, apiType := range []string{"", "chat", "response"} {
 		ctx := contextinfo.WithModel(ctx, contextinfo.Model{APIType: apiType})

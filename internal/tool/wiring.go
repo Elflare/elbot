@@ -67,7 +67,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		FileRollback: m.catalog.fileRollback, ProcessEnv: environment,
 		Cron: cron, ValidateModel: cron.ValidateSelection, Now: time.Now,
 		ViewImageAvailable: func(ctx context.Context) bool {
-			tools, err := registry.QueryTools(ctx, share.ToolQuery{Names: []string{"view_image"}})
+			tools, err := registry.Query(ctx, share.ToolQuery{Names: []string{"view_image"}})
 			return err == nil && len(tools) > 0
 		},
 	})
@@ -96,24 +96,15 @@ func (b executionBridge) ConfirmToolCall(ctx context.Context, id string, call ll
 	return share.ConfirmResult(result), err
 }
 
-func toInternalToolQuery(query ToolQuery) share.ToolQuery { return share.ToolQuery(query) }
+func toInternalToolQuery(query ToolQuery) share.ToolQuery {
+	return share.ToolQuery{Scope: share.QueryScope(query.Scope), Kind: query.Kind, Names: query.Names, IncludeHidden: query.IncludeHidden, IncludeDiscover: query.IncludeDiscover}
+}
 
 func toPublicInfo(info share.Info) Info {
 	return Info{NeedsElyphRules: info.NeedsElyphRules, APITypes: info.APITypes, Name: info.Name,
 		Description: info.Description, Source: Source(info.Source), Risk: info.Risk,
 		SuperadminOnly: info.SuperadminOnly, Hidden: info.Hidden, OwnerScoped: info.OwnerScoped,
 		ForegroundOnly: info.ForegroundOnly, Tags: info.Tags, DependsOn: info.DependsOn}
-}
-
-func toPublicInfos(infos []share.Info) []Info {
-	if infos == nil {
-		return nil
-	}
-	out := make([]Info, len(infos))
-	for i, info := range infos {
-		out[i] = toPublicInfo(info)
-	}
-	return out
 }
 
 func toPublicDiscoveredTools(items []share.DiscoveredTool) []DiscoveredTool {

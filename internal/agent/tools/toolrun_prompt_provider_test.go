@@ -14,9 +14,9 @@ import (
 	toolshare "elbot/internal/tool"
 )
 
-type promptQueryFunc func(context.Context, toolshare.ToolQuery) ([]toolshare.Info, error)
+type promptQueryFunc func(context.Context, toolshare.ToolQuery) ([]toolshare.ToolInfo, error)
 
-func (f promptQueryFunc) QueryTools(ctx context.Context, query toolshare.ToolQuery) ([]toolshare.Info, error) {
+func (f promptQueryFunc) QueryTools(ctx context.Context, query toolshare.ToolQuery) ([]toolshare.ToolInfo, error) {
 	return f(ctx, query)
 }
 
@@ -31,7 +31,7 @@ func TestPromptNamesUseQueriedGroups(t *testing.T) {
 	var kinds []string
 	provider := toolRunPromptProvider{
 		identity: promptIdentity{actor: actor},
-		tools: promptQueryFunc(func(ctx context.Context, query toolshare.ToolQuery) ([]toolshare.Info, error) {
+		tools: promptQueryFunc(func(ctx context.Context, query toolshare.ToolQuery) ([]toolshare.ToolInfo, error) {
 			got, _ := contextinfo.ActorFromContext(ctx)
 			if got != actor {
 				t.Fatalf("query actor = %#v, want %#v", got, actor)
@@ -42,9 +42,9 @@ func TestPromptNamesUseQueriedGroups(t *testing.T) {
 			kinds = append(kinds, query.Kind)
 			// Source must not override the classification returned by the query.
 			if query.Kind == "tool" {
-				return []toolshare.Info{{Name: "command", Source: toolshare.SourceSkill}}, nil
+				return []toolshare.ToolInfo{{Definition: toolshare.Info{Name: "command", Source: toolshare.SourceSkill}}}, nil
 			}
-			return []toolshare.Info{{Name: "guide", Source: toolshare.SourceBuiltin}}, nil
+			return []toolshare.ToolInfo{{Definition: toolshare.Info{Name: "guide", Source: toolshare.SourceBuiltin}}}, nil
 		}),
 	}
 	got, err := provider.ToolNames(context.Background(), storage.SessionModeWork, &storage.Session{}, session.Scope{})
@@ -60,11 +60,11 @@ func TestPromptNamesQueryErrorsAndModes(t *testing.T) {
 		t.Run(failedKind, func(t *testing.T) {
 			provider := toolRunPromptProvider{
 				identity: promptIdentity{},
-				tools: promptQueryFunc(func(_ context.Context, query toolshare.ToolQuery) ([]toolshare.Info, error) {
+				tools: promptQueryFunc(func(_ context.Context, query toolshare.ToolQuery) ([]toolshare.ToolInfo, error) {
 					if query.Kind == failedKind {
 						return nil, failure
 					}
-					return []toolshare.Info{{Name: "partial"}}, nil
+					return []toolshare.ToolInfo{{Definition: toolshare.Info{Name: "partial"}}}, nil
 				}),
 			}
 			got, err := provider.ToolNames(context.Background(), storage.SessionModeWork, &storage.Session{}, session.Scope{})

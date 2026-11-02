@@ -23,17 +23,17 @@ func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, value := range tools {
-		t.Run(value.Metadata.Name, func(t *testing.T) {
-			info := value.Metadata
+		t.Run(value.Definition.Name, func(t *testing.T) {
+			info := value.Definition
 			if !slices.Contains(info.Tags, "chat") || len(info.DependsOn) != len(tools)-1 {
 				t.Fatalf("chat group/dependencies = %#v", info)
 			}
 			for _, other := range tools {
-				if slices.Contains(info.DependsOn, other.Metadata.Name) != (other.Metadata.Name != value.Metadata.Name) {
-					t.Fatalf("unexpected dependency on %s: %#v", other.Metadata.Name, info.DependsOn)
+				if slices.Contains(info.DependsOn, other.Definition.Name) != (other.Definition.Name != value.Definition.Name) {
+					t.Fatalf("unexpected dependency on %s: %#v", other.Definition.Name, info.DependsOn)
 				}
 			}
-			details, err := discovery.NewResolver(registry).DiscoverDetails(context.Background(), []string{value.Metadata.Name})
+			details, err := discovery.NewResolver(registry).DiscoverDetails(context.Background(), []string{value.Definition.Name})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -44,7 +44,7 @@ func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
 			} else if len(details.Errors) != 0 || len(details.Tools) != len(tools) {
 				t.Fatalf("discovery = %#v", details)
 			}
-			if info.Hidden != (value.Metadata.Name != "search_chat_history") {
+			if info.Hidden != (value.Definition.Name != "search_chat_history") {
 				t.Fatalf("hidden setting changed: %#v", info)
 			}
 		})

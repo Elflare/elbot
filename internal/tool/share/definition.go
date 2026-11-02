@@ -6,12 +6,14 @@ import (
 	"elbot/internal/llm"
 	"fmt"
 	"slices"
+	"strings"
 )
 
 type Source uint8
 
 // ToolQuery selects catalog entries; identity, model and background facts come from context.
 type ToolQuery struct {
+	Scope QueryScope // QueryAvailable 筛选运行资格，QueryCatalog 只读取目录。
 	// Kind is "tool" for plain tools, "skill" for detail providers, or empty for both.
 	Kind string
 	// Names restricts exact names; nil selects the full catalog and an empty slice selects none.
@@ -21,6 +23,14 @@ type ToolQuery struct {
 	// IncludeDiscover includes discover_tool, which ordinary completion and preloading omit.
 	IncludeDiscover bool
 }
+
+// QueryScope 是统一目录筛选的范围。
+type QueryScope uint8
+
+const (
+	QueryAvailable QueryScope = iota
+	QueryCatalog
+)
 
 const (
 	SourceBuiltin Source = iota + 1
@@ -52,17 +62,9 @@ type Info struct {
 	DependsOn []string
 }
 
-// Snapshot 只复制元数据中的可变切片。
-func (i Info) Snapshot() Info {
-	i.APITypes = slices.Clone(i.APITypes)
-	i.Tags = slices.Clone(i.Tags)
-	i.DependsOn = slices.Clone(i.DependsOn)
-	return i
-}
-
 // ToolDefinition 是目录唯一的定义来源；文档条目只提供 LoadDetail，不伪造调用入口。
 type ToolDefinition struct {
-	Metadata         Info                                                      // 工具或文档的目录元数据。
+	Definition       Info                                                      // 工具或文档的目录元数据。
 	Parameters       map[string]any                                            // 可调用工具的参数对象 schema；文档条目为 nil。
 	Prepare          func(context.Context, CallRequest) (*PreparedCall, error) // 本地实现的准备入口。
 	LoadDetail       func(context.Context) (DetailBlock, error)                // 可选的技能正文加载能力。
@@ -82,24 +84,38 @@ func (d ToolDefinition) Schema() llm.ToolSchema {
 	if !d.Callable() {
 		return llm.ToolSchema{}
 	}
-	return llm.ToolSchema{Name: d.Metadata.Name, Description: d.Metadata.Description, Parameters: d.Parameters}
+	return llm.ToolSchema{Name: d.Definition.Name, Description: d.Definition.Description, Parameters: d.Parameters}
 }
 func (d ToolDefinition) PrepareCall(ctx context.Context, req CallRequest) (*PreparedCall, error) {
 	if d.Prepare == nil {
-		return nil, fmt.Errorf("tool %q has no local execution entry", d.Metadata.Name)
+		return nil, fmt.Errorf("tool %q has no local execution entry", d.Definition.Name)
 	}
 	return d.Prepare(ctx, req)
 }
 
-// Snapshot 隔离注册和查询两端的可变声明，执行闭包仍指向同一已选定实现。
+// Snapshot 在注册时隔离输入；发布后的 map、slice 只读共享，重载替换整个定义。
 func (d ToolDefinition) Snapshot() ToolDefinition {
-	d.Metadata = d.Metadata.Snapshot()
+	d.Definition.APITypes = slices.Clone(d.Definition.APITypes)
+	d.Definition.Tags = slices.Clone(d.Definition.Tags)
+	d.Definition.DependsOn = slices.Clone(d.Definition.DependsOn)
 	d.ActivateTools = slices.Clone(d.ActivateTools)
 	d.Parameters = CloneSchema(llm.ToolSchema{Parameters: d.Parameters}).Parameters
 	if d.Remote != nil {
 		remote := *d.Remote
-		remote.Schema = CloneSchema(llm.ToolSchema{Parameters: remote.Schema}).Parameters
+		remote.Schema = d.Parameters
 		d.Remote = &remote
 	}
 	return d
+}
+
+// NormalizeToolTag 规范化标签；空值或包含非法字符时返回空字符串。
+func NormalizeToolTag(tag string) string {
+	tag = strings.ToLower(strings.TrimSpace(tag))
+	for i := 0; i < len(tag); i++ {
+		c := tag[i]
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '.') {
+			return ""
+		}
+	}
+	return tag
 }

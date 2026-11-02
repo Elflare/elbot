@@ -151,14 +151,14 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	if !allowed {
 		return failCall(globalevents.ResultRejected, fmt.Errorf("tool %q is not allowed for hook %q", name, w.config.ID))
 	}
-	info, ok, err := w.manager.opts.Tools.ToolInfo(callCtx, name)
-	if err == nil && !ok {
+	infos, err := w.manager.opts.Tools.QueryTools(callCtx, tool.ToolQuery{Scope: tool.QueryCatalog, Names: []string{name}, IncludeHidden: true, IncludeDiscover: true})
+	if err == nil && len(infos) == 0 {
 		err = fmt.Errorf("tool %q not found", name)
 	}
 	if err != nil {
 		return failCall(globalevents.ResultFailed, err)
 	}
-	if info.ForegroundOnly && params.Background {
+	if infos[0].Definition.ForegroundOnly && params.Background {
 		return failCall(globalevents.ResultRejected, fmt.Errorf("tool %q is foreground-only", name))
 	}
 	// Authorization may use the synthetic Hook principal; audit never does.
@@ -234,16 +234,25 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 }
 
 func (w *worker) schemas(ctx context.Context) ([]llm.ToolSchema, error) {
-	out := make([]llm.ToolSchema, 0, len(w.config.Tools.Allow))
-	for _, name := range w.config.Tools.Allow {
-		schema, ok, err := w.manager.opts.Tools.ToolSchema(ctx, name)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
+	names := w.config.Tools.Allow
+	if len(names) == 0 {
+		return []llm.ToolSchema{}, nil
+	}
+	infos, err := w.manager.opts.Tools.QueryTools(ctx, tool.ToolQuery{Scope: tool.QueryCatalog, Names: names, IncludeHidden: true, IncludeDiscover: true})
+	if err != nil {
+		return nil, err
+	}
+	byName := make(map[string]tool.ToolInfo, len(infos))
+	for _, info := range infos {
+		byName[info.Definition.Name] = info
+	}
+	out := make([]llm.ToolSchema, 0, len(names))
+	for _, name := range names {
+		info, ok := byName[name]
+		if !ok || info.Parameters == nil {
 			return nil, fmt.Errorf("tool %q no longer exists", name)
 		}
-		out = append(out, schema)
+		out = append(out, llm.ToolSchema{Name: info.Definition.Name, Description: info.Definition.Description, Parameters: info.Parameters})
 	}
 	return out, nil
 }

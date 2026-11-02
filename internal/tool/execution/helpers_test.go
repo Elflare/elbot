@@ -73,7 +73,7 @@ func executionTestDefinition(candidate interface {
 }) share.ToolDefinition {
 	info := candidate.Info()
 	info.Description = info.Name
-	return share.ToolDefinition{Metadata: info, Parameters: map[string]any{"type": "object", "properties": map[string]any{}}, Prepare: candidate.PrepareCall}
+	return share.ToolDefinition{Definition: info, Parameters: map[string]any{"type": "object", "properties": map[string]any{}}, Prepare: candidate.PrepareCall}
 }
 
 func (t fakeTool) Definition() share.ToolDefinition               { return executionTestDefinition(t) }
@@ -102,12 +102,11 @@ func (t ruleDetailTool) Definition() share.ToolDefinition {
 
 // 多步测试装配仍提交完整组，避免测试构造依赖逐项注册的旧接口。
 func registerTestTools(catalog *registry.Registry, candidates ...share.ToolDefinition) error {
-	var definitions []share.ToolDefinition
-	for _, info := range catalog.List() {
-		candidate, _ := catalog.Get(info.Name)
-		definitions = append(definitions, candidate)
+	definitions, err := catalog.Query(context.Background(), share.ToolQuery{Scope: share.QueryCatalog, IncludeHidden: true, IncludeDiscover: true})
+	if err != nil {
+		return err
 	}
 	definitions = append(definitions, candidates...)
-	_, err := catalog.RegisterTools(context.Background(), share.SourceSkill, share.ToolRegistrationScope{}, definitions)
+	_, err = catalog.RegisterTools(context.Background(), share.SourceSkill, share.ToolRegistrationScope{}, definitions)
 	return err
 }

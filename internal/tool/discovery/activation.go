@@ -38,7 +38,7 @@ func (r *Resolver) activatedTools(ctx context.Context, metadata map[string]any) 
 	if len(names) == 0 {
 		return nil, nil
 	}
-	tools, err := r.registry.QueryTools(ctx, share.ToolQuery{
+	tools, err := r.registry.Query(ctx, share.ToolQuery{
 		Names: names, IncludeHidden: true, IncludeDiscover: true,
 	})
 	if err != nil {
@@ -46,7 +46,7 @@ func (r *Resolver) activatedTools(ctx context.Context, metadata map[string]any) 
 	}
 	allowed := make(map[string]share.ToolDefinition, len(tools))
 	for _, tool := range tools {
-		allowed[tool.Metadata.Name] = tool
+		allowed[tool.Definition.Name] = tool
 	}
 	discovery := &share.DiscoveryResult{}
 	for _, name := range names {
@@ -55,7 +55,7 @@ func (r *Resolver) activatedTools(ctx context.Context, metadata map[string]any) 
 			continue
 		}
 		schema := target.Schema()
-		discovery.Tools = append(discovery.Tools, share.DiscoveryItem{Info: publicInfo(target.Metadata), Schema: &schema})
+		discovery.Tools = append(discovery.Tools, share.DiscoveryItem{Info: publicInfo(target.Definition), Schema: &schema})
 	}
 	return NativeDiscoveredToolsFromDiscovery(discovery), nil
 }

@@ -26,8 +26,12 @@ func (s *PreloadService) BackgroundSelections(ctx context.Context, selectors []s
 			selections = append(selections, share.BackgroundSelection{Names: []string{name}})
 			continue
 		}
-		tag := normalizeToolTag(name)
-		roots, err := s.namesByTag(ctx, tag)
+		tag := share.NormalizeToolTag(name)
+		definitions, err := s.Registry.Query(ctx, share.ToolQuery{Scope: share.QueryCatalog, IncludeHidden: true, IncludeDiscover: true})
+		if err != nil {
+			return nil, err
+		}
+		roots, err := s.NamesByTag(ctx, tag, definitions)
 		if err != nil {
 			return nil, err
 		}
@@ -87,7 +91,7 @@ func (s *PreloadService) PrepareBackground(ctx context.Context, req share.Backgr
 			events = append(events, declaration.EventKey)
 		}
 		groups[declaration.EventKey] = append(groups[declaration.EventKey], share.ToolDefinition{
-			Metadata:   share.Info{Name: declaration.CanonicalName, Description: declaration.Description, Risk: declaration.Risk, ForegroundOnly: declaration.ForegroundOnly},
+			Definition: share.Info{Name: declaration.CanonicalName, Description: declaration.Description, Risk: declaration.Risk, ForegroundOnly: declaration.ForegroundOnly},
 			Parameters: declaration.Schema, Remote: &declaration,
 		})
 	}

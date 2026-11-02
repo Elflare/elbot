@@ -38,21 +38,9 @@ func newToolTagConfigSource(path string, initial config.ToolTagsConfig) *toolTag
 	return &toolTagConfigSource{path: strings.TrimSpace(path), cache: toolTagConfigCache{loaded: path == "", config: normalizeToolTagsConfig(initial)}}
 }
 
-func (s *toolTagConfigSource) configuredTags(ctx context.Context) ([]string, error) {
-	cfg, err := s.load(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]string, 0, len(cfg.Tags))
-	for tag := range cfg.Tags {
-		out = append(out, tag)
-	}
-	sort.Strings(out)
-	return out, nil
-}
-
-func (s *PreloadService) namesByTag(ctx context.Context, tag string) ([]string, error) {
-	tag = normalizeToolTag(tag)
+// NamesByTag 基于传入定义展开声明和配置标签，不重新读取目录。
+func (s *PreloadService) NamesByTag(ctx context.Context, tag string, definitions []share.ToolDefinition) ([]string, error) {
+	tag = share.NormalizeToolTag(tag)
 	if tag == "" {
 		return []string{}, nil
 	}
@@ -60,7 +48,13 @@ func (s *PreloadService) namesByTag(ctx context.Context, tag string) ([]string, 
 	if err != nil {
 		return nil, err
 	}
-	return uniqueNames(append(s.Registry.NamesByTag(tag), cfg.Tags[tag].Tools...)), nil
+	names := append([]string(nil), cfg.Tags[tag].Tools...)
+	for _, definition := range definitions {
+		if slices.Contains(definition.Definition.Tags, tag) {
+			names = append(names, definition.Definition.Name)
+		}
+	}
+	return uniqueNames(names), nil
 }
 
 func (s *toolTagConfigSource) load(ctx context.Context) (config.ToolTagsConfig, error) {
@@ -107,7 +101,7 @@ func currentToolTagFileState(path string) (toolTagFileState, error) {
 func normalizeToolTagsConfig(cfg config.ToolTagsConfig) config.ToolTagsConfig {
 	out := config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{}}
 	for tag, entry := range cfg.Tags {
-		tag = normalizeToolTag(tag)
+		tag = share.NormalizeToolTag(tag)
 		if tag == "" {
 			continue
 		}
@@ -123,17 +117,6 @@ func normalizeToolTagsConfig(cfg config.ToolTagsConfig) config.ToolTagsConfig {
 	return out
 }
 
-func normalizeToolTag(tag string) string {
-	tag = strings.ToLower(strings.TrimSpace(tag))
-	for i := 0; i < len(tag); i++ {
-		c := tag[i]
-		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '.') {
-			return ""
-		}
-	}
-	return tag
-}
-
 func (s *PreloadService) TagPrompts(ctx context.Context, tags []string) ([]share.TagPrompt, error) {
 	if len(tags) == 0 {
 		return nil, nil
@@ -144,51 +127,32 @@ func (s *PreloadService) TagPrompts(ctx context.Context, tags []string) ([]share
 	}
 	var result []share.TagPrompt
 	for _, tag := range tags {
-		if entry := cfg.Tags[normalizeToolTag(tag)]; entry.Prompt != "" {
+		if entry := cfg.Tags[share.NormalizeToolTag(tag)]; entry.Prompt != "" {
 			result = append(result, share.TagPrompt{Tag: tag, Prompt: entry.Prompt})
 		}
 	}
 	return result, nil
 }
 
-// ToolNamesByTag uses the same configured and built-in tags for discovery and completion.
-func (s *PreloadService) ToolNamesByTag(ctx context.Context, tag string, query share.ToolQuery) ([]string, error) {
-	names, err := s.namesByTag(ctx, tag)
-	if err != nil {
-		return nil, err
-	}
-	if query.Names != nil {
-		names = slices.DeleteFunc(names, func(name string) bool { return !slices.Contains(query.Names, name) })
-	}
-	query.Names = names
-	infos, err := s.Registry.QueryTools(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]string, 0, len(infos))
-	for _, info := range infos {
-		result = append(result, info.Metadata.Name)
-	}
-	return result, nil
-}
-
 func (s *PreloadService) Tags(ctx context.Context) ([]string, error) {
-	configured, err := s.tags.configuredTags(ctx)
+	cfg, err := s.tags.load(ctx)
 	if err != nil {
 		return nil, err
 	}
-	tags := append(s.Registry.Tags(), configured...)
-	var result []string
-	for _, tag := range uniqueNames(tags) {
-		names, err := s.ToolNamesByTag(ctx, tag, share.ToolQuery{Kind: "tool"})
-		if err != nil {
-			return nil, err
-		}
-		if len(names) > 0 {
-			result = append(result, tag)
+	definitions, err := s.Registry.Query(ctx, share.ToolQuery{Kind: "tool"})
+	if err != nil {
+		return nil, err
+	}
+	tags := []string{}
+	for _, definition := range definitions {
+		tags = append(tags, definition.Definition.Tags...)
+		for tag, entry := range cfg.Tags {
+			if slices.Contains(entry.Tools, definition.Definition.Name) {
+				tags = append(tags, tag)
+			}
 		}
 	}
-	return result, nil
+	return uniqueNames(tags), nil
 }
 
 func uniqueNames(names []string) []string {

@@ -130,7 +130,7 @@ func (b *Builder) BuildInfo() Info {
 
 func (b *Builder) Build(prepare func(context.Context, CallRequest, Info) (*PreparedCall, error)) ToolDefinition {
 	info := b.BuildInfo()
-	return ToolDefinition{Metadata: info, Parameters: b.BuildSchema().Parameters, Prepare: func(ctx context.Context, req CallRequest) (*PreparedCall, error) {
+	return ToolDefinition{Definition: info, Parameters: b.BuildSchema().Parameters, Prepare: func(ctx context.Context, req CallRequest) (*PreparedCall, error) {
 		return prepare(ctx, req, info)
 	}}
 }

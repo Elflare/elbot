@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/url"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 
@@ -52,7 +51,7 @@ func (r *Registry) RegisterTools(ctx context.Context, source toolshare.Source, s
 	defer r.mu.Unlock()
 	next := make(map[string]toolshare.ToolDefinition, len(r.tools)+len(definitions))
 	for name, definition := range r.tools {
-		if source == toolshare.SourceELwisp || definition.Metadata.Source != source {
+		if source == toolshare.SourceELwisp || definition.Definition.Source != source {
 			next[name] = definition
 		}
 	}
@@ -62,14 +61,14 @@ func (r *Registry) RegisterTools(ctx context.Context, source toolshare.Source, s
 	}
 	for _, definition := range definitions {
 		if (source == toolshare.SourceELwisp) != (definition.Remote != nil) {
-			return toolshare.StateUpdate{}, fmt.Errorf("tool %q execution does not match source %d", definition.Metadata.Name, source)
+			return toolshare.StateUpdate{}, fmt.Errorf("tool %q execution does not match source %d", definition.Definition.Name, source)
 		}
 		definition, err := validateDefinition(definition)
 		if err != nil {
 			return toolshare.StateUpdate{}, err
 		}
-		definition.Metadata.Source = source
-		info := definition.Metadata
+		definition.Definition.Source = source
+		info := definition.Definition
 		if _, exists := next[info.Name]; exists {
 			return toolshare.StateUpdate{}, fmt.Errorf("tool %q already registered in this batch or another group", info.Name)
 		}
@@ -89,7 +88,7 @@ func (r *Registry) RegisterTools(ctx context.Context, source toolshare.Source, s
 }
 
 func validateDefinition(definition toolshare.ToolDefinition) (toolshare.ToolDefinition, error) {
-	info := &definition.Metadata
+	info := &definition.Definition
 	info.Name = strings.TrimSpace(info.Name)
 	info.Description = strings.TrimSpace(info.Description)
 	if info.Name == "" {
@@ -146,7 +145,6 @@ func validateDefinition(definition toolshare.ToolDefinition) (toolshare.ToolDefi
 		if remote.TimeoutSeconds == 0 {
 			remote.TimeoutSeconds = 10
 		}
-		remote.Schema = definition.Parameters
 		definition.Remote = &remote
 	}
 	return definition.Snapshot(), nil
@@ -157,7 +155,7 @@ func normalizeRegisteredNames(names []string, tags bool) ([]string, error) {
 	for _, name := range names {
 		name = strings.TrimSpace(name)
 		if tags {
-			name = normalizeTag(name)
+			name = toolshare.NormalizeToolTag(name)
 		}
 		if name == "" {
 			return nil, fmt.Errorf("empty or invalid value")
@@ -204,104 +202,10 @@ func validateParameters(parameters map[string]any) error {
 	return nil
 }
 
+// Get 返回只读定义；查询结果中的 map、slice 不得原地修改。
 func (r *Registry) Get(name string) (toolshare.ToolDefinition, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	tool, ok := r.tools[strings.TrimSpace(name)]
-	if !ok {
-		return toolshare.ToolDefinition{}, false
-	}
-	return tool.Snapshot(), true
-}
-
-// ToolInfo 返回目录元数据；不执行上下文资格筛选。
-func (r *Registry) ToolInfo(name string) (toolshare.Info, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	tool, ok := r.tools[strings.TrimSpace(name)]
-	return tool.Metadata.Snapshot(), ok
-}
-
-// ToolSchema 读取指定工具的 schema，不决定模型可见的 schema 集合。
-func (r *Registry) ToolSchema(name string) (llm.ToolSchema, bool) {
-	tool, ok := r.Get(name)
-	if !ok {
-		return llm.ToolSchema{}, false
-	}
-	if !tool.Callable() {
-		return llm.ToolSchema{}, false
-	}
-	return tool.Schema(), true
-}
-
-func (r *Registry) List() []toolshare.Info {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	infos := make([]toolshare.Info, 0, len(r.tools))
-	for _, tool := range r.tools {
-		infos = append(infos, tool.Metadata.Snapshot())
-	}
-	sort.Slice(infos, func(i, j int) bool { return infos[i].Name < infos[j].Name })
-	return infos
-}
-
-// ToolNames 返回完整目录名称；可见性与权限筛选使用 QueryTools。
-func (r *Registry) ToolNames() []string {
-	infos := r.List()
-	names := make([]string, 0, len(infos))
-	for _, info := range infos {
-		names = append(names, info.Name)
-	}
-	return names
-}
-
-func (r *Registry) Tags() []string {
-	seen := map[string]bool{}
-	for _, info := range r.List() {
-		for _, tag := range info.Tags {
-			seen[tag] = true
-		}
-	}
-	out := make([]string, 0, len(seen))
-	for tag := range seen {
-		out = append(out, tag)
-	}
-	sort.Strings(out)
-	return out
-}
-
-// NamesByTag 只匹配目录标签；调用方通过 QueryTools 统一筛选资格。
-func (r *Registry) NamesByTag(tag string) []string {
-	tag = normalizeTag(tag)
-	if tag == "" {
-		return nil
-	}
-	names := []string{}
-	for _, info := range r.List() {
-		if !hasTag(info.Tags, tag) {
-			continue
-		}
-		names = append(names, info.Name)
-	}
-	return names
-}
-
-func normalizeTag(tag string) string {
-	tag = strings.ToLower(strings.TrimSpace(tag))
-	for i := 0; i < len(tag); i++ {
-		c := tag[i]
-		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '.') {
-			return ""
-		}
-	}
-	return tag
-}
-
-func hasTag(tags []string, want string) bool {
-	for _, tag := range tags {
-		if tag == want {
-			return true
-		}
-	}
-	return false
+	return tool, ok
 }

@@ -8,6 +8,7 @@ import (
 	"elbot/internal/tool/registry"
 	"elbot/internal/tool/share"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -111,6 +112,9 @@ func TestCallToolAlwaysPreparesAndChecksBeforeExecution(t *testing.T) {
 			}
 			if err == nil || result != nil || tool.calls != 0 {
 				t.Fatalf("invalid call executed: tool=%+v result=%+v error=%v", tool, result, err)
+			}
+			if !strings.HasPrefix(logContent, "Tool execution not entered: ") || !strings.Contains(logContent, err.Error()) {
+				t.Fatalf("missing source diagnostic: log=%q error=%v", logContent, err)
 			}
 			if scenario == "prepare_error" && !errors.Is(err, prepareErr) {
 				t.Fatalf("prepare error lost: %v", err)

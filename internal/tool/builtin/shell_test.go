@@ -33,7 +33,7 @@ func TestShellToolMissingCmdHintsExpectedArgument(t *testing.T) {
 }
 
 func TestShellToolHasAgentTag(t *testing.T) {
-	if got := strings.Join((ShellTool{ProcessEnv: processenv.Environment{}}).Definition().Metadata.Tags, ","); got != "agent" {
+	if got := strings.Join((ShellTool{ProcessEnv: processenv.Environment{}}).Definition().Definition.Tags, ","); got != "agent" {
 		t.Fatalf("shell tags = %q", got)
 	}
 }

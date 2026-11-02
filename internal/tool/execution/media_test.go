@@ -80,7 +80,7 @@ func TestRunValidatesExactMediaArguments(t *testing.T) {
 		manager := newTestManager(registry, nil, center)
 		return manager.Run(ctx, &runnerTestDeps{}, toolshare.RunRequest{Committer: &testToolCommitter{},
 			Session: &storage.Session{ID: "session", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
-			Calls: []llm.ToolCallRequest{{ID: "call-1", Name: tl.Metadata.Name, Arguments: arguments}},
+			Calls: []llm.ToolCallRequest{{ID: "call-1", Name: tl.Definition.Name, Arguments: arguments}},
 		})
 	}
 

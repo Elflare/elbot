@@ -12,7 +12,7 @@ import (
 
 type toolRunPromptProvider struct {
 	tools interface {
-		QueryTools(context.Context, tool.ToolQuery) ([]tool.Info, error)
+		QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
 	}
 	identity interface {
 		Actor(context.Context) contextinfo.Actor
@@ -37,10 +37,10 @@ func (p toolRunPromptProvider) ToolNames(ctx context.Context, mode string, sessi
 	}
 	names := agentshare.PromptToolNames{}
 	for _, info := range tools {
-		names.Tools = append(names.Tools, info.Name)
+		names.Tools = append(names.Tools, info.Definition.Name)
 	}
 	for _, info := range skills {
-		names.Skills = append(names.Skills, info.Name)
+		names.Skills = append(names.Skills, info.Definition.Name)
 	}
 	return names, nil
 }

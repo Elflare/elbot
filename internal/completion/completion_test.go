@@ -168,33 +168,42 @@ func TestTextsDropsEmptyItems(t *testing.T) {
 type completionCatalog struct {
 	tools, skills    []tool.Info
 	tags, names      []string
-	query            func(context.Context, tool.ToolQuery) ([]tool.Info, error)
+	query            func(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
 	tagErr, namesErr error
 }
 
-func (c completionCatalog) QueryTools(ctx context.Context, q tool.ToolQuery) ([]tool.Info, error) {
+func (c completionCatalog) QueryTools(ctx context.Context, q tool.ToolQuery) ([]tool.ToolInfo, error) {
 	if c.query != nil {
 		return c.query(ctx, q)
 	}
-	if q.Kind == "skill" {
-		return c.skills, nil
+	if q.Tag != "" {
+		if q.Kind != "tool" {
+			return nil, errors.New("tag query must select tools")
+		}
+		var infos []tool.ToolInfo
+		for _, name := range c.names {
+			infos = append(infos, tool.ToolInfo{Definition: tool.Info{Name: name}})
+		}
+		return infos, c.namesErr
 	}
-	return c.tools, nil
+	values := c.tools
+	if q.Kind == "skill" {
+		values = c.skills
+	}
+	var infos []tool.ToolInfo
+	for _, info := range values {
+		infos = append(infos, tool.ToolInfo{Definition: info})
+	}
+	return infos, nil
 }
 func (c completionCatalog) ToolTags(context.Context) ([]string, error) { return c.tags, c.tagErr }
-func (c completionCatalog) ToolNamesByTag(_ context.Context, _ string, q tool.ToolQuery) ([]string, error) {
-	if q.Kind != "tool" {
-		return nil, errors.New("tag query must select tools")
-	}
-	return c.names, c.namesErr
-}
 func TestToolCompletionPreservesPreparedContextAndReplacementRange(t *testing.T) {
 	ctx := contextinfo.WithModel(t.Context(), contextinfo.Model{APIType: "chat"})
 	source := ToolDirectiveSource{
 		Context: func(ctx context.Context) (context.Context, error) {
 			return contextinfo.WithActor(ctx, contextinfo.Actor{ID: "user", Role: contextinfo.RoleUser}), nil
 		},
-		Tools: completionCatalog{query: func(ctx context.Context, q tool.ToolQuery) ([]tool.Info, error) {
+		Tools: completionCatalog{query: func(ctx context.Context, q tool.ToolQuery) ([]tool.ToolInfo, error) {
 			actor, _ := contextinfo.ActorFromContext(ctx)
 			model, _ := contextinfo.ModelFromContext(ctx)
 			if actor.ID != "user" || model.APIType != "chat" || q.Kind != "tool" {
@@ -203,7 +212,7 @@ func TestToolCompletionPreservesPreparedContextAndReplacementRange(t *testing.T)
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			return []tool.Info{{Name: "visible"}}, nil
+			return []tool.ToolInfo{{Definition: tool.Info{Name: "visible"}}}, nil
 		}},
 	}
 	cursor := len("中文 @tool:")
@@ -227,7 +236,7 @@ func TestToolCompletionPropagatesPreparationAndQueryErrors(t *testing.T) {
 			case "context":
 				source.Context = func(context.Context) (context.Context, error) { return nil, failure }
 			case "tools":
-				catalog.query = func(context.Context, tool.ToolQuery) ([]tool.Info, error) { return nil, failure }
+				catalog.query = func(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error) { return nil, failure }
 			case "tags":
 				catalog.tagErr = failure
 			case "names":

@@ -39,36 +39,36 @@ func CanAccessTool(actor contextinfo.Actor, permission interface {
 	return info.Risk == "" || permission.CanUseTool(actor, info.Risk, info.OwnerScoped)
 }
 
-// QueryTools 只复制本次通过资格筛选的定义，后续不再按名称查询目录。
-func (r *Registry) QueryTools(ctx context.Context, query share.ToolQuery) ([]share.ToolDefinition, error) {
-	tools, err := r.queryTools(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	for i := range tools {
-		tools[i] = tools[i].Snapshot()
-	}
-	return tools, nil
-}
-
-// queryTools 只在目录内部使用已发布的只读定义，出口按所需范围复制。
-func (r *Registry) queryTools(ctx context.Context, query share.ToolQuery) ([]share.ToolDefinition, error) {
+// Query 统一筛选目录；只分配结果容器，定义中的 map、slice 只读共享。
+func (r *Registry) Query(ctx context.Context, query share.ToolQuery) ([]share.ToolDefinition, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	r.mu.RLock()
-	candidates := make([]share.ToolDefinition, 0, len(r.tools))
-	for _, candidate := range r.tools {
-		candidates = append(candidates, candidate)
+	var candidates []share.ToolDefinition
+	if query.Names == nil {
+		candidates = make([]share.ToolDefinition, 0, len(r.tools))
+		for _, candidate := range r.tools {
+			candidates = append(candidates, candidate)
+		}
+	} else {
+		candidates = make([]share.ToolDefinition, 0, len(query.Names))
+		seen := make(map[string]bool, len(query.Names))
+		for _, name := range query.Names {
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			if candidate, ok := r.tools[name]; ok {
+				candidates = append(candidates, candidate)
+			}
+		}
 	}
 	r.mu.RUnlock()
-	var tools []share.ToolDefinition
+	tools := candidates[:0]
 	for _, candidate := range candidates {
-		info := candidate.Metadata
-		if query.Names != nil && !slices.Contains(query.Names, info.Name) {
-			continue
-		}
+		info := candidate.Definition
 		if (!query.IncludeHidden && info.Hidden) || (!query.IncludeDiscover && info.Name == "discover_tool") {
 			continue
 		}
@@ -76,27 +76,14 @@ func (r *Registry) queryTools(ctx context.Context, query share.ToolQuery) ([]sha
 		if (query.Kind == "tool" && skill) || (query.Kind == "skill" && !skill) {
 			continue
 		}
-		if !InfoAvailableInContext(ctx, info) || !CanAccessTool(actor, r.permission, info) {
+		if query.Scope == share.QueryAvailable && (!InfoAvailableInContext(ctx, info) || !CanAccessTool(actor, r.permission, info)) {
 			continue
 		}
 		tools = append(tools, candidate)
 	}
-	sort.Slice(tools, func(i, j int) bool { return tools[i].Metadata.Name < tools[j].Metadata.Name })
+	clear(candidates[len(tools):])
+	sort.Slice(tools, func(i, j int) bool { return tools[i].Definition.Name < tools[j].Definition.Name })
 	return tools, nil
-}
-
-// QueryToolInfos 将同一次查询的对象转换为对外元数据，不再查询目录。
-func (r *Registry) QueryToolInfos(ctx context.Context, query share.ToolQuery) ([]share.Info, error) {
-	tools, err := r.queryTools(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	var infos []share.Info
-	for _, tool := range tools {
-		info := tool.Metadata.Snapshot()
-		infos = append(infos, info)
-	}
-	return infos, nil
 }
 
 // BackgroundDiscoveredTools applies background restrictions to executable discovery metadata.

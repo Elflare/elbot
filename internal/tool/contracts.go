@@ -21,10 +21,26 @@ type BackgroundSelection struct {
 
 // ToolQuery 描述目录查询；身份、模型和前后台事实由上下文提供。
 type ToolQuery struct {
-	Kind            string   // tool、skill 或空值（两者）。
-	Names           []string // nil 查询全部，空切片不匹配任何名称。
-	IncludeHidden   bool     // 允许查询隐藏项。
-	IncludeDiscover bool     // 包含普通查询默认省略的 discover_tool。
+	Scope           QueryScope // 默认筛选当前可用项；QueryCatalog 只查询目录。
+	Tag             string     // 展开声明及配置标签，与 Names 取交集；空值不限。
+	Kind            string     // tool、skill 或空值（两者）。
+	Names           []string   // nil 查询全部，空切片不匹配任何名称。
+	IncludeHidden   bool       // 允许查询隐藏项。
+	IncludeDiscover bool       // 包含普通查询默认省略的 discover_tool。
+}
+
+// QueryScope 区分目录读取与当前上下文可用性，不授予执行权限。
+type QueryScope uint8
+
+const (
+	QueryAvailable QueryScope = iota
+	QueryCatalog
+)
+
+// ToolInfo 是只读查询结果；map、slice 与已注册定义共享，不包含执行入口。
+type ToolInfo struct {
+	Definition Info           // 名称、简介、风险、标签及可用性声明。
+	Parameters map[string]any // 参数 schema；纯文档条目为 nil。
 }
 
 type Source uint8
@@ -43,7 +59,7 @@ type ToolRegistrationScope struct {
 
 // ToolDefinition 由提供方声明，注册入口统一确定来源与默认值。
 type ToolDefinition struct {
-	Metadata         Info                                                      // 名称、说明、风险及可见性；Source 由注册入口赋值。
+	Definition       Info                                                      // 名称、说明、风险及可见性；Source 由注册入口赋值。
 	Parameters       map[string]any                                            // 可调用项的参数 schema。
 	Prepare          func(context.Context, CallRequest) (*PreparedCall, error) // 本地工具的准备能力。
 	LoadDetail       func(context.Context) (DetailBlock, error)                // 可选的文档加载能力。

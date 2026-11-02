@@ -262,34 +262,21 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 		err = fmt.Errorf("tool is required")
 		logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()}
 	default:
-		var ok bool
-		_, ok, err = m.Opts.Tools.ToolInfo(ctx, name)
-		if err == nil && !ok {
-			err = fmt.Errorf("tool %q not found", name)
-		}
+		started := time.Now()
+		data, _ := json.Marshal(content)
+		start := record
+		// 此记录表示开始调用 Tool 服务，不代表工具已准备或执行成功。
+		start.EventName, start.Content, start.ResultStatus = "hook_tool_call_prepared", string(data), globalevents.ResultSucceeded
+		m.Opts.Log(ctx, start)
+		toolResult, logResult.Content, err = m.Opts.Tools.CallTool(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
 		if err != nil {
-			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()}
-		} else if err = ctx.Err(); err != nil {
-			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()}
-			if err == context.Canceled {
+			logResult.ResultStatus = globalevents.ResultFailed
+			if errors.Is(err, context.Canceled) {
 				logResult.ResultStatus = globalevents.ResultCanceled
 			}
-		} else {
-			started := time.Now()
-			data, _ := json.Marshal(content)
-			start := record
-			start.EventName, start.Content, start.ResultStatus = "hook_tool_call_prepared", string(data), globalevents.ResultSucceeded
-			m.Opts.Log(ctx, start)
-			toolResult, logResult.Content, err = m.Opts.Tools.CallTool(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
-			if err != nil {
-				logResult.ResultStatus = globalevents.ResultFailed
-				if errors.Is(err, context.Canceled) {
-					logResult.ResultStatus = globalevents.ResultCanceled
-				}
-			}
-			elapsed := time.Since(started).Milliseconds()
-			content.ElapsedMS = &elapsed
 		}
+		elapsed := time.Since(started).Milliseconds()
+		content.ElapsedMS = &elapsed
 	}
 	record.ResultStatus = logResult.ResultStatus
 	if logResult.ResultStatus == globalevents.ResultFailed {

@@ -18,7 +18,7 @@ import (
 	"elbot/internal/storage/sqlite"
 )
 
-func newLifecycleTool(t *testing.T, root string) (*Supervisor, storage.Store) {
+func newLifecycleTool(t *testing.T, root string, tags ...config.ToolTagsConfig) (*Supervisor, storage.Store) {
 	t.Helper()
 	store, err := sqlite.New(t.Context(), ":memory:")
 	if err != nil {
@@ -26,6 +26,9 @@ func newLifecycleTool(t *testing.T, root string) (*Supervisor, storage.Store) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	cfg := config.Default()
+	if len(tags) > 0 {
+		cfg.ToolTags = tags[0]
+	}
 	cfg.ConfigPath = filepath.Join(root, "app.toml")
 	cfg.Sandbox.Root = root
 	m, err := NewSupervisor(t.Context(), cfg, SupervisorDeps{Store: store, Permission: security.DefaultPermission()})
@@ -88,8 +91,8 @@ func TestSupervisorInitialSkillPreloadUsesRealStartup(t *testing.T) {
 			if _, err := os.Stat(filepath.Join(root, "skills", "agent", "startup_skill")); !errors.Is(err, os.ErrNotExist) {
 				t.Fatal(err)
 			}
-			if _, ok, err := m.ToolInfo(ctx, "startup_skill"); err != nil || ok {
-				t.Fatalf("removed skill: ok=%v err=%v", ok, err)
+			if infos, err := m.QueryTools(ctx, ToolQuery{Scope: QueryCatalog, Names: []string{"startup_skill"}}); err != nil || len(infos) != 0 {
+				t.Fatalf("removed skill: infos=%v err=%v", infos, err)
 			}
 		})
 	}
@@ -104,29 +107,26 @@ func TestSupervisorLoadingErrorRequiresExplicitReload(t *testing.T) {
 	if err := m.Start(); err != nil {
 		t.Fatal(err)
 	}
-	_, failure := m.List(t.Context())
+	_, failure := m.QueryTools(t.Context(), ToolQuery{Scope: QueryCatalog})
 	if failure == nil {
 		t.Fatal("invalid skill directory was accepted")
 	}
-	if _, _, err := m.ToolInfo(t.Context(), "startup_skill"); !errors.Is(err, failure) {
-		t.Fatalf("ToolInfo error=%v", err)
-	}
-	if _, _, err := m.ToolSchema(t.Context(), "startup_skill"); !errors.Is(err, failure) {
-		t.Fatalf("ToolSchema error=%v", err)
+	if _, err := m.QueryTools(t.Context(), ToolQuery{Names: []string{"startup_skill"}}); !errors.Is(err, failure) {
+		t.Fatalf("QueryTools error=%v", err)
 	}
 	if err := os.Remove(filepath.Join(root, "skills")); err != nil {
 		t.Fatal(err)
 	}
 	writeLifecycleSkill(t, root)
-	if _, err := m.List(t.Context()); !errors.Is(err, failure) {
+	if _, err := m.QueryTools(t.Context(), ToolQuery{Scope: QueryCatalog}); !errors.Is(err, failure) {
 		t.Fatalf("query retried failed scan: %v", err)
 	}
 	if err := m.Reload(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	info, ok, err := m.ToolInfo(t.Context(), "startup_skill")
-	if err != nil || !ok || info.Name != "startup_skill" {
-		t.Fatalf("reload result=%+v ok=%v err=%v", info, ok, err)
+	infos, err := m.QueryTools(t.Context(), ToolQuery{Scope: QueryCatalog, Names: []string{"startup_skill"}})
+	if err != nil || len(infos) != 1 || infos[0].Definition.Name != "startup_skill" {
+		t.Fatalf("reload result=%+v err=%v", infos, err)
 	}
 }
 
@@ -154,7 +154,7 @@ func TestSupervisorCloseWaitsForCronNotificationAndBorrowsStore(t *testing.T) {
 	}()
 	<-entered
 	m.BeginClose()
-	if _, err := m.List(t.Context()); err != nil {
+	if _, err := m.QueryTools(t.Context(), ToolQuery{Scope: QueryCatalog}); err != nil {
 		t.Fatalf("BeginClose removed capabilities: %v", err)
 	}
 	canceled, cancel := context.WithCancel(context.Background())
@@ -182,7 +182,7 @@ func TestSupervisorCloseWaitsForCronNotificationAndBorrowsStore(t *testing.T) {
 
 func TestSupervisorCloseBeforeStart(t *testing.T) {
 	m, _ := newLifecycleTool(t, t.TempDir())
-	if _, err := m.List(t.Context()); err == nil {
+	if _, err := m.QueryTools(t.Context(), ToolQuery{Scope: QueryCatalog}); err == nil {
 		t.Fatal("unstarted catalog reported ready")
 	}
 	if err := m.Close(t.Context()); err != nil {

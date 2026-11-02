@@ -46,7 +46,7 @@ func TestSendFileSourcePermissionsAndConfirmation(t *testing.T) {
 		t.Fatal(err)
 	}
 	userCtx := contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleUser})
-	available, err := registry.QueryTools(userCtx, share.ToolQuery{Names: []string{"send_file"}})
+	available, err := registry.Query(userCtx, share.ToolQuery{Names: []string{"send_file"}})
 	if err != nil || len(available) != 1 {
 		t.Fatalf("regular user discovery = %v, err = %v", available, err)
 	}

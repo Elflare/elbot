@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/tool"
 	"strings"
 
 	"elbot/internal/command"
@@ -52,16 +53,16 @@ func completeToolNames(ctx context.Context, deps Deps, query string, start, end 
 	if deps.Tools == nil {
 		return nil
 	}
-	infos, err := deps.Tools.List(ctx)
+	infos, err := deps.Tools.QueryTools(ctx, tool.ToolQuery{Scope: tool.QueryCatalog, IncludeHidden: true, IncludeDiscover: true})
 	if err != nil {
 		return nil
 	}
 	out := []command.Completion{}
 	for _, info := range infos {
-		if query != "" && !strings.HasPrefix(info.Name, query) {
+		if query != "" && !strings.HasPrefix(info.Definition.Name, query) {
 			continue
 		}
-		out = append(out, command.Completion{Text: info.Name, Label: info.Name, Description: info.Description, Kind: "tool_name", ReplaceStart: start, ReplaceEnd: end})
+		out = append(out, command.Completion{Text: info.Definition.Name, Label: info.Definition.Name, Description: info.Definition.Description, Kind: "tool_name", ReplaceStart: start, ReplaceEnd: end})
 	}
 	return out
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"elbot/internal/config"
@@ -25,9 +26,7 @@ type PreloadOptions struct {
 	BackgroundDiscoveredTools          func([]share.DiscoveredTool) []share.DiscoveredTool                     // 后台资格筛选。
 	Registry                           interface {
 		Get(string) (share.ToolDefinition, bool)
-		QueryTools(context.Context, share.ToolQuery) ([]share.ToolDefinition, error)
-		NamesByTag(string) []string
-		Tags() []string
+		Query(context.Context, share.ToolQuery) ([]share.ToolDefinition, error)
 	} // 已配置统一权限策略的工具目录。
 	TagsPath string                // 标签配置文件路径；为空时使用 Tags。
 	Tags     config.ToolTagsConfig // 不使用配置文件时的标签配置。
@@ -81,13 +80,13 @@ func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (shar
 }
 
 func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, names []string) (share.SkillPreload, error) {
-	candidates, err := s.Registry.QueryTools(ctx, share.ToolQuery{Names: uniqueNames(names), Kind: "skill"})
+	candidates, err := s.Registry.Query(ctx, share.ToolQuery{Names: uniqueNames(names), Kind: "skill"})
 	if err != nil {
 		return share.SkillPreload{}, err
 	}
 	targets := make(map[string]share.ToolDefinition, len(candidates))
 	for _, candidate := range candidates {
-		targets[candidate.Metadata.Name] = candidate
+		targets[candidate.Definition.Name] = candidate
 	}
 	record := preloadLogRecord(ctx, sessionID)
 
@@ -138,18 +137,23 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 
 func (s *PreloadService) discoverDirective(ctx context.Context, name string) (*share.DiscoveryResult, map[string]share.ToolDefinition, string, error) {
 	name = strings.TrimSpace(name)
-	names, tag := []string{name}, ""
+	query, tag := share.ToolQuery{Names: []string{name}, Kind: "tool"}, ""
 	if _, exists := s.Registry.Get(name); !exists {
-		tag = normalizeToolTag(name)
-		var err error
-		names, err = s.namesByTag(ctx, tag)
+		tag = share.NormalizeToolTag(name)
+		query.Names = nil
+	}
+	candidates, err := s.Registry.Query(ctx, query)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	if query.Names == nil {
+		names, err := s.NamesByTag(ctx, tag, candidates)
 		if err != nil {
 			return nil, nil, "", err
 		}
-	}
-	candidates, err := s.Registry.QueryTools(ctx, share.ToolQuery{Names: names, Kind: "tool"})
-	if err != nil {
-		return nil, nil, "", err
+		candidates = slices.DeleteFunc(candidates, func(definition share.ToolDefinition) bool {
+			return !slices.Contains(names, definition.Definition.Name)
+		})
 	}
 	result, targets, err := s.discoverNames(ctx, candidates)
 	return result, targets, tag, err
@@ -212,7 +216,7 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 		record.Content = fmt.Sprintf("%s: %s=%s reason=%s", eventName, key, name, reason)
 		_ = globalevents.EmitLog(ctx, record)
 	}
-	candidates, err := s.Registry.QueryTools(ctx, share.ToolQuery{Names: []string{name}, IncludeHidden: true})
+	candidates, err := s.Registry.Query(ctx, share.ToolQuery{Names: []string{name}, IncludeHidden: true})
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +225,7 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 		return nil, nil
 	}
 	candidate := candidates[0]
-	info := candidate.Metadata
+	info := candidate.Definition
 	// 可执行 Skill 的文档和自身 schema 分开提供，激活时直接读取所选对象的 schema。
 	skill := candidate.LoadDetail != nil
 	if background && !info.Hidden && !skill {

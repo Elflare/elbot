@@ -6,6 +6,7 @@ import (
 	"context"
 	"elbot/internal/events"
 	"elbot/internal/tool"
+	"elbot/internal/tool/execution"
 	"elbot/internal/tool/registry"
 )
 
@@ -20,22 +21,9 @@ func testNotify(ctx context.Context, notice events.Notification) error {
 
 type testTools struct{ *registry.Registry }
 
-func (t testTools) ToolInfo(ctx context.Context, name string) (tool.Info, bool, error) {
-	value, ok := t.Get(name)
-	if !ok {
-		return tool.Info{}, false, nil
-	}
-	info := value.Metadata
-	return tool.Info{Name: info.Name, Description: info.Description, Risk: info.Risk, Source: tool.Source(info.Source), Hidden: info.Hidden, SuperadminOnly: info.SuperadminOnly, APITypes: info.APITypes, ForegroundOnly: info.ForegroundOnly, OwnerScoped: info.OwnerScoped, Tags: info.Tags, DependsOn: info.DependsOn, NeedsElyphRules: info.NeedsElyphRules}, true, nil
-}
-
 func (t testTools) CallTool(ctx context.Context, call tool.CallRequest) (*tool.Result, string, error) {
-	value, _ := t.Get(call.Name)
-	prepared, err := value.PrepareCall(ctx, toolshare.CallRequest{ID: call.ID, Name: call.Name, Arguments: call.Arguments})
-	if err != nil {
-		return nil, "", err
-	}
-	result, log, err := prepared.Call(ctx)
+	m := execution.Manager{ManagerDeps: execution.ManagerDeps{Registry: t.Registry}}
+	result, log, err := m.CallTool(ctx, toolshare.CallRequest{ID: call.ID, Name: call.Name, Arguments: call.Arguments})
 	if result == nil {
 		return nil, log, err
 	}

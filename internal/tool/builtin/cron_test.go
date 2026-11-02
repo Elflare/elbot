@@ -75,7 +75,7 @@ func TestCronWritePreparationUsesArgumentDetails(t *testing.T) {
 		t.Run(args, func(t *testing.T) {
 			repo := &cronRepositoryStub{}
 			tool := cronTestTools(repo, nil)[2]
-			req := toolshare.CallRequest{ID: "call", Name: tool.Metadata.Name, Arguments: json.RawMessage(args)}
+			req := toolshare.CallRequest{ID: "call", Name: tool.Definition.Name, Arguments: json.RawMessage(args)}
 			prepared, err := tool.PrepareCall(t.Context(), req)
 			if err != nil {
 				t.Fatal(err)
@@ -100,7 +100,7 @@ func TestCronToolsRiskAndVisibility(t *testing.T) {
 	}
 	infos := map[string]toolshare.Info{}
 	for _, cronTool := range tools {
-		infos[cronTool.Metadata.Name] = cronTool.Metadata
+		infos[cronTool.Definition.Name] = cronTool.Definition
 	}
 	if !infos["cron"].SuperadminOnly || infos["cron"].Hidden || infos["cron"].Risk != toolshare.RiskMedium {
 		t.Fatalf("cron info = %#v", infos["cron"])

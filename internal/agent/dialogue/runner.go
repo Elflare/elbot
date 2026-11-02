@@ -209,7 +209,7 @@ type RunnerDeps struct {
 	}
 	Output      AssistantPreparer
 	ToolManager interface {
-		ToolInfo(context.Context, string) (tool.Info, bool, error)
+		QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
 		FilterSchemas(context.Context, []llm.ToolSchema) ([]llm.ToolSchema, error)
 		Run(context.Context, tool.RunnerDeps, tool.RunRequest) tool.RunResult
 		Schemas(context.Context, tool.Context, []tool.DiscoveredTool) ([]llm.ToolSchema, error)

@@ -25,7 +25,7 @@ func (t testTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.info.Name, Description: t.info.Description, Parameters: map[string]any{"type": "object", "properties": map[string]any{}}}
 }
 func (t testTool) Definition() share.ToolDefinition {
-	return share.ToolDefinition{Metadata: t.info, Parameters: t.Schema().Parameters, Prepare: t.PrepareCall}
+	return share.ToolDefinition{Definition: t.info, Parameters: t.Schema().Parameters, Prepare: t.PrepareCall}
 }
 func (value testTool) PrepareCall(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
 	return share.NewPreparedCall(req, share.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*share.Result, string, error) {
@@ -42,7 +42,7 @@ type testSkill struct {
 func (t testSkill) LoadDetail(context.Context) (share.DetailBlock, error) { return t.block, nil }
 func (t testSkill) ActivateTools() []string                               { return t.activate }
 func (t testSkill) Definition() share.ToolDefinition {
-	return share.ToolDefinition{Metadata: t.info, LoadDetail: t.LoadDetail, ActivateTools: t.activate}
+	return share.ToolDefinition{Definition: t.info, LoadDetail: t.LoadDetail, ActivateTools: t.activate}
 }
 
 type testLazySkill struct {
@@ -82,7 +82,7 @@ func TestResolvePreservesSelectedRootsAndDependencies(t *testing.T) {
 	first.info.DependsOn = []string{"second"}
 	second.info.DependsOn = []string{"first"}
 	resolver, r := newTestResolver(t, first.Definition(), second.Definition())
-	selected, err := r.QueryTools(t.Context(), share.ToolQuery{})
+	selected, err := r.Query(t.Context(), share.ToolQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestResolvePreservesSelectedRootsAndDependencies(t *testing.T) {
 	if err != nil || discoveredNames(result) != "first,second" || len(targets) != 2 {
 		t.Fatalf("result=%+v targets=%v err=%v", result, targets, err)
 	}
-	if result.Tools[1].Info.Description != second.info.Description || targets["second"].Metadata.Description != second.info.Description {
+	if result.Tools[1].Info.Description != second.info.Description || targets["second"].Definition.Description != second.info.Description {
 		t.Fatal("selected dependency was looked up again")
 	}
 }
@@ -341,8 +341,8 @@ func TestDiscoveryKeepsQueriedObjectAcrossReplacement(t *testing.T) {
 	if len(discovered.Tools) != 1 || discovered.Tools[0].Schema == nil || discovered.Tools[0].Schema.Description != "original description" {
 		t.Fatalf("used replacement schema: %+v", discovered)
 	}
-	current, ok := r.ToolInfo("versioned")
-	if !ok || !current.SuperadminOnly {
+	current, ok := r.Get("versioned")
+	if !ok || !current.Definition.SuperadminOnly {
 		t.Fatal("test did not replace the registry entry")
 	}
 }

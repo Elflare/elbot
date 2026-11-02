@@ -34,7 +34,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	_, err := registry.RegisterTools(ctx, toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{
 		toolshare.NewBuilder("alpha").Description("alpha").Risk(toolshare.RiskLow).Build((agentWrapperTool{name: "alpha"}).PrepareCall),
 		toolshare.NewBuilder("wrapper").Description("wrapper").Risk(toolshare.RiskLow).Hidden().Build((agentWrapperTool{name: "wrapper"}).PrepareCall),
-		{Metadata: toolshare.Info{Name: "doc"}, LoadDetail: (agentDetailTool{name: "doc", detail: "#skill doc", format: "elyph"}).LoadDetail, ActivateTools: []string{"wrapper"}},
+		{Definition: toolshare.Info{Name: "doc"}, LoadDetail: (agentDetailTool{name: "doc", detail: "#skill doc", format: "elyph"}).LoadDetail, ActivateTools: []string{"wrapper"}},
 	})
 	if err != nil {
 		t.Fatal(err)

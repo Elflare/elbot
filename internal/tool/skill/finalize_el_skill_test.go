@@ -29,7 +29,7 @@ func TestFinalizeElSkillTextOnlyReloads(t *testing.T) {
 	if !strings.Contains(result.Content, "Go source: not found") || !strings.Contains(result.Content, "reload: ok") {
 		t.Fatalf("result = %q", result.Content)
 	}
-	if registered, ok := registry.Get("textonly"); !ok || registered.Metadata.Risk != toolshare.RiskLow {
+	if registered, ok := registry.Get("textonly"); !ok || registered.Definition.Risk != toolshare.RiskLow {
 		t.Fatalf("registered=%#v ok=%v", registered, ok)
 	}
 }
@@ -72,7 +72,7 @@ func TestFinalizeElSkillFormatsBuildsAndReloads(t *testing.T) {
 	if _, err := os.Stat(binary); err != nil {
 		t.Fatalf("binary missing: %v", err)
 	}
-	if registered, ok := registry.Get("finalize"); !ok || registered.Metadata.Source != toolshare.SourceSkill {
+	if registered, ok := registry.Get("finalize"); !ok || registered.Definition.Source != toolshare.SourceSkill {
 		t.Fatalf("registered=%#v ok=%v", registered, ok)
 	}
 }

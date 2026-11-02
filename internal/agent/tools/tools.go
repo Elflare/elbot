@@ -23,7 +23,7 @@ type ToolRuntimeStateDeps struct {
 		Actor(context.Context) contextinfo.Actor
 	}
 	Manager interface {
-		QueryTools(context.Context, tool.ToolQuery) ([]tool.Info, error)
+		QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
 	}
 	FileRollback interface {
 		WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context

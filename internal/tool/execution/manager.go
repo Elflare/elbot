@@ -18,8 +18,7 @@ import (
 type ManagerDeps struct {
 	Registry interface {
 		Get(string) (toolshare.ToolDefinition, bool)
-		ToolInfo(string) (toolshare.Info, bool)
-		QueryTools(context.Context, toolshare.ToolQuery) ([]toolshare.ToolDefinition, error)
+		Query(context.Context, toolshare.ToolQuery) ([]toolshare.ToolDefinition, error)
 	} // 工具解析与目录查询。
 	Permission interface {
 		CheckTool(contextinfo.Actor, string, security.RiskLevel, bool, bool, string) security.ToolPermissionResult
@@ -81,7 +80,7 @@ func (m *Manager) resolve(ctx context.Context, name string, discovered []toolsha
 			return resolvedTool{Source: source, Discovered: &discoveredCopy, ResultStatus: events.ResultSucceeded}
 		}
 		if nativeTool, ok := m.Registry.Get(discoveredCopy.Name); ok {
-			if reason := m.UnavailableReason(ctx, nativeTool.Metadata); reason != "" {
+			if reason := m.UnavailableReason(ctx, nativeTool.Definition); reason != "" {
 				return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Discovered: &discoveredCopy, ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError(reason)}
 			}
 			return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Discovered: &discoveredCopy, ResultStatus: events.ResultSucceeded}
@@ -92,7 +91,7 @@ func (m *Manager) resolve(ctx context.Context, name string, discovered []toolsha
 		return resolvedTool{ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError("tool is not allowed in this background task")}
 	}
 	if nativeTool, ok := m.Registry.Get(name); ok {
-		if reason := m.UnavailableReason(ctx, nativeTool.Metadata); reason != "" {
+		if reason := m.UnavailableReason(ctx, nativeTool.Definition); reason != "" {
 			return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError(reason)}
 		}
 		return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, ResultStatus: events.ResultSucceeded}
@@ -104,21 +103,23 @@ func (m *Manager) resolve(ctx context.Context, name string, discovered []toolsha
 // 此入口不进入模型批次或交互确认。
 func (m *Manager) CallTool(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, "", err
+		return nil, "Tool execution not entered: " + err.Error(), err
 	}
 	candidate, ok := m.Registry.Get(req.Name)
 	if !ok {
-		return nil, "", fmt.Errorf("tool %q not found", req.Name)
+		err := fmt.Errorf("tool %q not found", req.Name)
+		return nil, "Tool execution not entered: " + err.Error(), err
 	}
 	prepared, err := candidate.PrepareCall(ctx, req)
 	if err != nil {
-		return nil, "", err
+		return nil, "Tool execution not entered: " + err.Error(), err
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, "", err
+		return nil, "Tool execution not entered: " + err.Error(), err
 	}
 	if !prepared.Matches(req) {
-		return nil, "", fmt.Errorf("tool call changed after preparation")
+		err := fmt.Errorf("tool call changed after preparation")
+		return nil, "Tool execution not entered: " + err.Error(), err
 	}
 	return prepared.Call(ctx)
 }

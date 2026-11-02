@@ -6,7 +6,6 @@ import (
 	"context"
 	"elbot/internal/events"
 	"elbot/internal/hook/share"
-	"elbot/internal/llm"
 	"elbot/internal/tool"
 	"elbot/internal/tool/registry"
 	"testing"
@@ -36,21 +35,17 @@ func testNotify(ctx context.Context, notice events.Notification) error {
 
 type testTools struct{ *registry.Registry }
 
-func (t testTools) ToolInfo(ctx context.Context, name string) (tool.Info, bool, error) {
-	value, ok := t.Get(name)
-	if !ok {
-		return tool.Info{}, false, nil
+func (t testTools) QueryTools(ctx context.Context, query tool.ToolQuery) ([]tool.ToolInfo, error) {
+	definitions, err := t.Query(ctx, toolshare.ToolQuery{Scope: toolshare.QueryScope(query.Scope), Names: query.Names, Kind: query.Kind, IncludeHidden: query.IncludeHidden, IncludeDiscover: query.IncludeDiscover})
+	if err != nil {
+		return nil, err
 	}
-	info := value.Metadata
-	return tool.Info{Name: info.Name, Description: info.Description, Risk: info.Risk, Source: tool.Source(info.Source), Hidden: info.Hidden, SuperadminOnly: info.SuperadminOnly, APITypes: info.APITypes, ForegroundOnly: info.ForegroundOnly, OwnerScoped: info.OwnerScoped, Tags: info.Tags, DependsOn: info.DependsOn, NeedsElyphRules: info.NeedsElyphRules}, true, nil
-}
-
-func (t testTools) ToolSchema(ctx context.Context, name string) (llm.ToolSchema, bool, error) {
-	value, ok := t.Get(name)
-	if !ok {
-		return llm.ToolSchema{}, false, nil
+	infos := make([]tool.ToolInfo, len(definitions))
+	for i, value := range definitions {
+		info := value.Definition
+		infos[i] = tool.ToolInfo{Definition: tool.Info{Name: info.Name, Description: info.Description, Risk: info.Risk, Source: tool.Source(info.Source), Hidden: info.Hidden, SuperadminOnly: info.SuperadminOnly, APITypes: info.APITypes, ForegroundOnly: info.ForegroundOnly, OwnerScoped: info.OwnerScoped, Tags: info.Tags, DependsOn: info.DependsOn, NeedsElyphRules: info.NeedsElyphRules}, Parameters: value.Parameters}
 	}
-	return value.Schema(), true, nil
+	return infos, nil
 }
 
 func (t testTools) CallTool(ctx context.Context, call tool.CallRequest) (*tool.Result, string, error) {

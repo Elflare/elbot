@@ -35,7 +35,7 @@ func registerHookTestTool(registry *tool.Registry, candidate interface {
 }) error {
 	info := candidate.Info()
 	info.Description = info.Name
-	_, err := registry.RegisterTools(context.Background(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{{Metadata: info, Parameters: map[string]any{"type": "object", "properties": map[string]any{}}, Prepare: candidate.PrepareCall}})
+	_, err := registry.RegisterTools(context.Background(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{{Definition: info, Parameters: map[string]any{"type": "object", "properties": map[string]any{}}, Prepare: candidate.PrepareCall}})
 	return err
 }
 

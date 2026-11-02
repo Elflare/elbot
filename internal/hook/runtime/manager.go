@@ -16,6 +16,7 @@ import (
 
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook/share"
+	"elbot/internal/tool"
 )
 
 type Manager struct {
@@ -183,12 +184,20 @@ func (m *Manager) Apply(configs []share.RuntimeConfig, commit func(string)) erro
 }
 
 func (m *Manager) validateConfig(config share.RuntimeConfig) error {
-	for _, name := range config.Tools.Allow {
-		_, ok, err := m.opts.Tools.ToolInfo(m.rootCtx, name)
-		if err != nil {
-			return err
-		}
-		if !ok {
+	names := config.Tools.Allow
+	if len(names) == 0 {
+		return nil
+	}
+	infos, err := m.opts.Tools.QueryTools(m.rootCtx, tool.ToolQuery{Scope: tool.QueryCatalog, Names: names, IncludeHidden: true, IncludeDiscover: true})
+	if err != nil {
+		return err
+	}
+	known := make(map[string]bool, len(infos))
+	for _, info := range infos {
+		known[info.Definition.Name] = true
+	}
+	for _, name := range names {
+		if !known[name] {
 			return fmt.Errorf("runtime tools.allow references unknown tool %q", name)
 		}
 	}

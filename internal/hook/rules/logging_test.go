@@ -111,6 +111,65 @@ func collectRecords(t *testing.T, includeStarts ...bool) *[]events.LogRecord {
 	return &records
 }
 
+func TestRulesToolPreExecutionFailuresUseSourceSummary(t *testing.T) {
+	for _, scenario := range []string{"missing", "prepare_error", "canceled"} {
+		t.Run(scenario, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			registry := tool.NewRegistry(security.DefaultPermission())
+			prepared, executed := false, false
+			prepareErr := errors.New("cannot prepare")
+			d := toolshare.ToolDefinition{
+				Definition: toolshare.Info{Name: "registered", Description: "registered", Risk: toolshare.RiskLow},
+				Parameters: map[string]any{"type": "object", "properties": map[string]any{}},
+				Prepare: func(_ context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+					prepared = true
+					if scenario == "prepare_error" {
+						return nil, prepareErr
+					}
+					return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskLow}, "", func(context.Context) (*toolshare.Result, string, error) {
+						executed = true
+						return nil, "executed", nil
+					}), nil
+				},
+			}
+			if _, err := registry.RegisterTools(ctx, toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{d}); err != nil {
+				t.Fatal(err)
+			}
+			name := "registered"
+			if scenario == "missing" {
+				name = "missing"
+			}
+			if scenario == "canceled" {
+				cancel()
+			}
+			var records []events.LogRecord
+			module := Module{Opts: Options{Tools: testTools{registry}, Log: func(_ context.Context, record events.LogRecord) { records = append(records, record) }}}
+			_, outcome, err := module.callTool(ctx, share.Event{}, Action{Tool: name, Arguments: `{}`}, state{})
+			if err == nil || executed || prepared != (scenario == "prepare_error") {
+				t.Fatalf("prepared=%v executed=%v err=%v", prepared, executed, err)
+			}
+			if scenario == "prepare_error" && !errors.Is(err, prepareErr) || scenario == "canceled" && !errors.Is(err, context.Canceled) {
+				t.Fatalf("original error lost: %v", err)
+			}
+			wantStatus := events.ResultFailed
+			if scenario == "canceled" {
+				wantStatus = events.ResultCanceled
+			}
+			if len(records) != 2 || records[0].EventName != "hook_tool_call_prepared" || records[1].EventName != "hook_tool_call_completed" || records[1].ResultStatus != wantStatus {
+				t.Fatalf("records=%+v", records)
+			}
+			var content struct{ Summary string }
+			if err := json.Unmarshal([]byte(records[1].Content), &content); err != nil {
+				t.Fatal(err)
+			}
+			if outcome.Content != "Tool execution not entered: "+err.Error() || content.Summary != outcome.Content {
+				t.Fatalf("summary=%q outcome=%+v", content.Summary, outcome)
+			}
+		})
+	}
+}
+
 func TestRulesToolRecordsUseIndependentBodyUniqueIDAndActor(t *testing.T) {
 	registry := tool.NewRegistry(security.DefaultPermission())
 	invoked := &bodyTestTool{}

@@ -44,7 +44,7 @@ func TestChatHistoryFullParameter(t *testing.T) {
 		repo := historyResultRepository{rows: []storage.ChatMessage{row}}
 		for _, caller := range []toolshare.ToolDefinition{builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: newHistoryTestManager(repo)}), builtinTestTool(t, "get_chat_history_around", builtin.Deps{ChatHistory: newHistoryTestManager(repo)})} {
 			for _, full := range []string{"", `,"full":false`, `,"full":true`} {
-				t.Run(caller.Metadata.Name+"/"+full+"/reference="+row.ReplyToPlatformMessageID, func(t *testing.T) {
+				t.Run(caller.Definition.Name+"/"+full+"/reference="+row.ReplyToPlatformMessageID, func(t *testing.T) {
 					result, logContent, err := callTool(ctx, caller, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"42"` + full + `}`)})
 					if err != nil {
 						t.Fatal(err)
@@ -99,7 +99,7 @@ func TestChatHistoryPreservesLiteralTruncationText(t *testing.T) {
 	for _, caller := range []toolshare.ToolDefinition{builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: newHistoryTestManager(repo)}), builtinTestTool(t, "get_chat_history_around", builtin.Deps{ChatHistory: newHistoryTestManager(repo)}), builtinTestTool(t, "reply_to_chat_history_message", builtin.Deps{ChatHistory: newHistoryTestManager(repo)})} {
 		result, _, err := callTool(ctx, caller, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"42","message":"回复"}`)})
 		if err != nil || !strings.Contains(result.Content, body) {
-			t.Fatalf("%s changed original message: result=%+v err=%v", caller.Metadata.Name, result, err)
+			t.Fatalf("%s changed original message: result=%+v err=%v", caller.Definition.Name, result, err)
 		}
 	}
 }
@@ -124,7 +124,7 @@ func TestChatHistoryFullSchema(t *testing.T) {
 		full := properties["full"].(map[string]any)
 		required, _ := schema.Parameters["required"].([]string)
 		if full["type"] != "boolean" || slices.Contains(required, "full") {
-			t.Fatalf("%s full schema: %#v", caller.Metadata.Name, schema)
+			t.Fatalf("%s full schema: %#v", caller.Definition.Name, schema)
 		}
 	}
 }

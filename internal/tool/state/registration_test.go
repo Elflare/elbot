@@ -15,7 +15,7 @@ func TestRemoteRegistrationCommitsOnlyItsSessionAndEvent(t *testing.T) {
 		t.Helper()
 		var definitions []share.ToolDefinition
 		if name != "" {
-			definitions = []share.ToolDefinition{{Metadata: share.Info{Name: name, Description: "remote", Risk: share.RiskLow}, Parameters: map[string]any{"type": "object", "properties": map[string]any{}}, Remote: &share.ELwispToolDeclaration{Name: name, CanonicalName: name, EventKey: event, Endpoint: "https://example.invalid"}}}
+			definitions = []share.ToolDefinition{{Definition: share.Info{Name: name, Description: "remote", Risk: share.RiskLow}, Parameters: map[string]any{"type": "object", "properties": map[string]any{}}, Remote: &share.ELwispToolDeclaration{Name: name, CanonicalName: name, EventKey: event, Endpoint: "https://example.invalid"}}}
 		}
 		update, err := catalog.RegisterTools(t.Context(), share.SourceELwisp, share.ToolRegistrationScope{SessionID: row.ID, EventKey: event}, definitions)
 		if err != nil {
@@ -25,7 +25,8 @@ func TestRemoteRegistrationCommitsOnlyItsSessionAndEvent(t *testing.T) {
 	}
 	first := register("first", "old")
 	unchanged, _ := store.Sessions().Get(t.Context(), row.ID)
-	if unchanged.Metadata != row.Metadata || len(catalog.List()) != 0 {
+	definitions, err := catalog.Query(t.Context(), share.ToolQuery{Scope: share.QueryCatalog})
+	if err != nil || unchanged.Metadata != row.Metadata || len(definitions) != 0 {
 		t.Fatal("registration published before commit")
 	}
 	if _, _, err := service.Commit(t.Context(), "another", first); err == nil {

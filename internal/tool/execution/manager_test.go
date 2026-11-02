@@ -22,8 +22,8 @@ func TestCallToolPreservesDirectCallResult(t *testing.T) {
 	if err != failure || result == nil || string(result.Data) != `{"partial":true}` || log == "" {
 		t.Fatalf("result=%+v log=%q err=%v", result, log, err)
 	}
-	if _, _, err := m.CallTool(t.Context(), share.CallRequest{Name: "missing"}); err == nil {
-		t.Fatal("missing tool accepted")
+	if result, log, err := m.CallTool(t.Context(), share.CallRequest{Name: "missing"}); err == nil || result != nil || log != `Tool execution not entered: tool "missing" not found` {
+		t.Fatalf("missing tool: result=%+v log=%q err=%v", result, log, err)
 	}
 }
 

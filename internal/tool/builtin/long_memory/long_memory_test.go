@@ -398,8 +398,8 @@ func TestPreparedLongMemoryUpdatePreservesConfirmation(t *testing.T) {
 
 func TestLongMemoryToolsHaveAgentTag(t *testing.T) {
 	for _, memoryTool := range NewLongMemoryTools(t.TempDir()) {
-		if got := strings.Join(memoryTool.Metadata.Tags, ","); got != "agent" {
-			t.Fatalf("%s tags = %q", memoryTool.Metadata.Name, got)
+		if got := strings.Join(memoryTool.Definition.Tags, ","); got != "agent" {
+			t.Fatalf("%s tags = %q", memoryTool.Definition.Name, got)
 		}
 	}
 }
@@ -411,12 +411,12 @@ func TestLongMemoryToolSetIsCompact(t *testing.T) {
 	}
 	got := []string{}
 	for _, memoryTool := range tools {
-		got = append(got, memoryTool.Metadata.Name)
+		got = append(got, memoryTool.Definition.Name)
 	}
 	if strings.Join(got, ",") != "long_memory,long_memory_search,long_memory_write" {
 		t.Fatalf("tools = %q", strings.Join(got, ","))
 	}
-	if deps := strings.Join(tools[0].Metadata.DependsOn, ","); deps != "long_memory_search,long_memory_write" {
+	if deps := strings.Join(tools[0].Definition.DependsOn, ","); deps != "long_memory_search,long_memory_write" {
 		t.Fatalf("dependencies = %q", deps)
 	}
 }

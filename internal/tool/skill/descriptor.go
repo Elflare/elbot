@@ -22,7 +22,7 @@ type descriptor struct {
 }
 
 func (t descriptor) Definition() toolshare.ToolDefinition {
-	return toolshare.ToolDefinition{Metadata: toolshare.Info{
+	return toolshare.ToolDefinition{Definition: toolshare.Info{
 		Name:           t.record.Name,
 		Description:    t.record.Description,
 		Risk:           t.record.Risk,

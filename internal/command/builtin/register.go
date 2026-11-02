@@ -61,8 +61,7 @@ type CompactService interface {
 }
 
 type ToolService interface {
-	List(context.Context) ([]tool.Info, error)
-	QueryTools(context.Context, tool.ToolQuery) ([]tool.Info, error)
+	QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
 }
 
 type SkillService interface {

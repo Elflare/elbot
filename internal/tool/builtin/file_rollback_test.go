@@ -199,7 +199,7 @@ func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 	if !ok {
 		t.Fatal("missing rollback tool")
 	}
-	info := rollback.Metadata
+	info := rollback.Definition
 	if !info.Hidden || !info.SuperadminOnly || !info.ForegroundOnly || info.Risk != toolshare.RiskHigh || !slices.Equal(info.Tags, []string{"files"}) {
 		t.Fatalf("info: %+v", info)
 	}

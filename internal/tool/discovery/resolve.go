@@ -13,12 +13,12 @@ import (
 // Resolver 使用已注册的目录解析发现请求；不触发 Skill 加载或提交会话状态。
 type Resolver struct {
 	registry interface {
-		QueryTools(context.Context, share.ToolQuery) ([]share.ToolDefinition, error)
+		Query(context.Context, share.ToolQuery) ([]share.ToolDefinition, error)
 	} // 提供工具目录与统一资格筛选。
 }
 
 func NewResolver(registry interface {
-	QueryTools(context.Context, share.ToolQuery) ([]share.ToolDefinition, error)
+	Query(context.Context, share.ToolQuery) ([]share.ToolDefinition, error)
 }) *Resolver {
 	return &Resolver{registry: registry}
 }
@@ -35,13 +35,13 @@ func (r *Resolver) discover(ctx context.Context, names []string) (*share.Discove
 	if len(names) > 0 {
 		return r.resolve(ctx, names)
 	}
-	tools, err := r.registry.QueryTools(ctx, share.ToolQuery{IncludeDiscover: true})
+	tools, err := r.registry.Query(ctx, share.ToolQuery{IncludeDiscover: true})
 	if err != nil {
 		return nil, nil, err
 	}
 	result := &share.DiscoveryResult{}
 	for _, tool := range tools {
-		result.Tools = append(result.Tools, share.DiscoveryItem{Info: publicInfo(tool.Metadata)})
+		result.Tools = append(result.Tools, share.DiscoveryItem{Info: publicInfo(tool.Definition)})
 	}
 	return result, nil, nil
 }
@@ -62,7 +62,7 @@ func (r *Resolver) Resolve(ctx context.Context, tools []share.ToolDefinition) (*
 	targets := map[string]share.ToolDefinition{}
 	seen := map[string]bool{}
 	for _, target := range tools {
-		targets[target.Metadata.Name] = target
+		targets[target.Definition.Name] = target
 	}
 	for _, target := range tools {
 		if err := r.addDiscoveryDetail(ctx, target, targets, seen, result); err != nil {
@@ -83,7 +83,7 @@ func (r *Resolver) resolve(ctx context.Context, names []string) (*share.Discover
 		if seen[name] {
 			continue
 		}
-		tools, err := r.registry.QueryTools(ctx, share.ToolQuery{Names: []string{name}, IncludeDiscover: true})
+		tools, err := r.registry.Query(ctx, share.ToolQuery{Names: []string{name}, IncludeDiscover: true})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -99,14 +99,14 @@ func (r *Resolver) resolve(ctx context.Context, names []string) (*share.Discover
 }
 
 func (r *Resolver) addDiscoveryDetail(ctx context.Context, target share.ToolDefinition, targets map[string]share.ToolDefinition, seen map[string]bool, result *share.DiscoveryResult) error {
-	name := target.Metadata.Name
+	name := target.Definition.Name
 	if seen[name] {
 		return nil
 	}
 	// 保留原对象，同时使循环关联只解析一次。
 	targets[name] = target
 	seen[name] = true
-	info := target.Metadata
+	info := target.Definition
 	discovered := share.DiscoveryItem{Info: publicInfo(info), NeedsElyphRules: info.NeedsElyphRules}
 	if loader := target.LoadDetail; loader != nil {
 		block, err := loader(ctx)
@@ -134,7 +134,7 @@ func (r *Resolver) addDiscoveryDetail(ctx context.Context, target share.ToolDefi
 	for _, dependency := range info.DependsOn {
 		candidate, ok := targets[dependency]
 		if !ok {
-			tools, err := r.registry.QueryTools(ctx, share.ToolQuery{
+			tools, err := r.registry.Query(ctx, share.ToolQuery{
 				Names: []string{dependency}, IncludeHidden: true, IncludeDiscover: true,
 			})
 			if err != nil {

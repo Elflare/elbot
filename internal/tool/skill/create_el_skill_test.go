@@ -65,7 +65,7 @@ func TestCreateElSkillCreatesBuildsAndReloads(t *testing.T) {
 	}
 
 	registered, ok := registry.Get("hello_skill")
-	if !ok || registered.Metadata.Source != toolshare.SourceSkill || registered.Metadata.Risk != toolshare.RiskLow {
+	if !ok || registered.Definition.Source != toolshare.SourceSkill || registered.Definition.Risk != toolshare.RiskLow {
 		t.Fatalf("registered = %#v ok=%v", registered, ok)
 	}
 }
@@ -127,7 +127,7 @@ func TestCreateElSkillCanCreateTextOnlySkill(t *testing.T) {
 		t.Fatalf("main.go should not exist for text-only skill, err=%v", err)
 	}
 	registered, ok := registry.Get("workflow")
-	if !ok || registered.Metadata.Source != toolshare.SourceSkill {
+	if !ok || registered.Definition.Source != toolshare.SourceSkill {
 		t.Fatalf("registered=%#v ok=%v", registered, ok)
 	}
 }
@@ -163,7 +163,7 @@ func TestCreateElSkillDoesNotOverwriteExistingDirectory(t *testing.T) {
 
 func TestCreateElSkillInfoAndSchema(t *testing.T) {
 	creator := CreateElSkillTool{manager: NewManager(t.TempDir(), toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
-	info := creator.Definition().Metadata
+	info := creator.Definition().Definition
 	if info.Risk != toolshare.RiskHigh || !strings.Contains(info.Description, "可复用") {
 		t.Fatalf("info = %#v", info)
 	}

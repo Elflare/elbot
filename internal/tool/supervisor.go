@@ -4,6 +4,7 @@ package tool
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 
 	"elbot/internal/events"
@@ -37,8 +38,8 @@ type Supervisor struct {
 func (m *Supervisor) RegisterTools(ctx context.Context, source Source, scope ToolRegistrationScope, definitions []ToolDefinition) (StateUpdate, error) {
 	internal := make([]share.ToolDefinition, 0, len(definitions))
 	for _, definition := range definitions {
-		info := definition.Metadata
-		value := share.ToolDefinition{Metadata: share.Info{Name: info.Name, Description: info.Description, Risk: info.Risk, NeedsElyphRules: info.NeedsElyphRules, APITypes: info.APITypes, SuperadminOnly: info.SuperadminOnly, Hidden: info.Hidden, OwnerScoped: info.OwnerScoped, ForegroundOnly: info.ForegroundOnly, Tags: info.Tags, DependsOn: info.DependsOn}, Parameters: definition.Parameters, ActivateTools: definition.ActivateTools, DiscoveryContent: definition.DiscoveryContent}
+		info := definition.Definition
+		value := share.ToolDefinition{Definition: share.Info{Name: info.Name, Description: info.Description, Risk: info.Risk, NeedsElyphRules: info.NeedsElyphRules, APITypes: info.APITypes, SuperadminOnly: info.SuperadminOnly, Hidden: info.Hidden, OwnerScoped: info.OwnerScoped, ForegroundOnly: info.ForegroundOnly, Tags: info.Tags, DependsOn: info.DependsOn}, Parameters: definition.Parameters, ActivateTools: definition.ActivateTools, DiscoveryContent: definition.DiscoveryContent}
 		if definition.Remote != nil {
 			remote := share.ELwispToolDeclaration(*definition.Remote)
 			value.Remote = &remote
@@ -70,12 +71,29 @@ func (m *Supervisor) RegisterTools(ctx context.Context, source Source, scope Too
 	return toPublicStateUpdate(update), err
 }
 
-func (m *Supervisor) QueryTools(ctx context.Context, query ToolQuery) ([]Info, error) {
+// QueryTools 返回只读工具描述；修改 Parameters 或 Definition 中的切片前须自行复制。
+func (m *Supervisor) QueryTools(ctx context.Context, query ToolQuery) ([]ToolInfo, error) {
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
 		return nil, err
 	}
-	infos, err := m.catalog.registry.QueryToolInfos(ctx, toInternalToolQuery(query))
-	return toPublicInfos(infos), err
+	definitions, err := m.catalog.registry.Query(ctx, toInternalToolQuery(query))
+	if err != nil {
+		return nil, err
+	}
+	if query.Tag != "" {
+		names, err := m.preloader.NamesByTag(ctx, query.Tag, definitions)
+		if err != nil {
+			return nil, err
+		}
+		definitions = slices.DeleteFunc(definitions, func(definition share.ToolDefinition) bool {
+			return !slices.Contains(names, definition.Definition.Name)
+		})
+	}
+	infos := make([]ToolInfo, len(definitions))
+	for i, definition := range definitions {
+		infos[i] = ToolInfo{Definition: toPublicInfo(definition.Definition), Parameters: definition.Parameters}
+	}
+	return infos, nil
 }
 
 func (m *Supervisor) ToolTags(ctx context.Context) ([]string, error) {
@@ -83,13 +101,6 @@ func (m *Supervisor) ToolTags(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return m.preloader.Tags(ctx)
-}
-
-func (m *Supervisor) ToolNamesByTag(ctx context.Context, tag string, query ToolQuery) ([]string, error) {
-	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
-		return nil, err
-	}
-	return m.preloader.ToolNamesByTag(ctx, tag, toInternalToolQuery(query))
 }
 
 func (m *Supervisor) DiscoveredToolsForSession(ctx context.Context, id string, background bool) ([]DiscoveredTool, events.LogResult, error) {
@@ -160,12 +171,6 @@ func (m *Supervisor) TagPrompts(ctx context.Context, tags []string) ([]TagPrompt
 	prompts, err := m.preloader.TagPrompts(ctx, tags)
 	return toPublicTagPrompts(prompts), err
 }
-func (m *Supervisor) List(ctx context.Context) ([]Info, error) {
-	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
-		return nil, err
-	}
-	return toPublicInfos(m.catalog.registry.List()), nil
-}
 func (m *Supervisor) Remove(ctx context.Context, name string) error {
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
 		return err
@@ -187,23 +192,9 @@ func (m *Supervisor) RollbackByID(ctx context.Context, id uint64) (fileops.Rollb
 	return m.catalog.fileRollback.RollbackByID(ctx, id)
 }
 
-func (m *Supervisor) ToolInfo(ctx context.Context, name string) (Info, bool, error) {
-	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
-		return Info{}, false, err
-	}
-	info, ok := m.catalog.registry.ToolInfo(name)
-	return toPublicInfo(info), ok, nil
-}
-func (m *Supervisor) ToolSchema(ctx context.Context, name string) (llm.ToolSchema, bool, error) {
-	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
-		return llm.ToolSchema{}, false, err
-	}
-	schema, ok := m.catalog.registry.ToolSchema(name)
-	return schema, ok, nil
-}
 func (m *Supervisor) CallTool(ctx context.Context, req CallRequest) (*Result, string, error) {
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
-		return nil, "", err
+		return nil, "Tool execution not entered: " + err.Error(), err
 	}
 	result, logContent, err := m.engine.CallTool(ctx, toInternalCallRequest(req))
 	return toPublicResult(result), logContent, err

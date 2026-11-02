@@ -20,7 +20,7 @@ import (
 )
 
 func TestElwispCreatorToolInfo(t *testing.T) {
-	info := (ElwispCreatorTool{}).Definition().Metadata
+	info := (ElwispCreatorTool{}).Definition().Definition
 	if info.Name != ElwispCreatorName {
 		t.Fatalf("name = %q", info.Name)
 	}
@@ -126,7 +126,7 @@ func TestElwispCreatorDependencyDiscovery(t *testing.T) {
 	if !ok {
 		t.Fatal("elwisp_creator not registered")
 	}
-	if got := strings.Join(registered.Metadata.DependsOn, ","); got != "read_file,edit_file,shell" {
+	if got := strings.Join(registered.Definition.DependsOn, ","); got != "read_file,edit_file,shell" {
 		t.Fatalf("depends_on = %q", got)
 	}
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})

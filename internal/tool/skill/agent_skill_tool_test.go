@@ -91,7 +91,7 @@ func TestAgentSkillWriteRollsBackConfigWhenReloadFails(t *testing.T) {
 				t.Fatalf("config after rollback = %q, %v; want %q", data, readErr, tc.oldContent)
 			}
 			registered, ok := registry.Get("docx")
-			if !ok || registered.Metadata.Risk != tc.oldRisk {
+			if !ok || registered.Definition.Risk != tc.oldRisk {
 				t.Fatalf("registry risk = %#v, %v; want %s", registered, ok, tc.oldRisk)
 			}
 			record, ok := manager.catalog.Get("docx")
@@ -124,7 +124,7 @@ func TestAgentSkillWriteCommitsConfigAndReload(t *testing.T) {
 		t.Fatalf("written config = %q, %v; want %q", data, err, content)
 	}
 	registered, ok := registry.Get("docx")
-	if !ok || registered.Metadata.Risk != toolshare.RiskHigh || !registered.Metadata.SuperadminOnly {
+	if !ok || registered.Definition.Risk != toolshare.RiskHigh || !registered.Definition.SuperadminOnly {
 		t.Fatalf("registry tool = %#v, %v", registered, ok)
 	}
 	record, ok := manager.catalog.Get("docx")

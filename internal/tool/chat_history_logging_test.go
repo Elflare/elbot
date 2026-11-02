@@ -34,7 +34,7 @@ func TestHistoryQueryErrorLogPreservesBusinessError(t *testing.T) {
 	for _, value := range []toolshare.ToolDefinition{builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: newHistoryTestManager(repository)}), builtinTestTool(t, "get_chat_history_around", builtin.Deps{ChatHistory: newHistoryTestManager(repository)})} {
 		result, logContent, err := callTool(ctx, value, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"1"}`)})
 		if result != nil || err != callErr || logContent != callErr.Error() || result.LogContent(err) != toolshare.TruncateLogContent(callErr.Error(), 1024) || utf8.RuneCountInString(result.LogContent(err)) != 1024 {
-			t.Fatalf("%s: result=%+v log=%q err=%v", value.Metadata.Name, result, logContent, err)
+			t.Fatalf("%s: result=%+v log=%q err=%v", value.Definition.Name, result, logContent, err)
 		}
 	}
 }

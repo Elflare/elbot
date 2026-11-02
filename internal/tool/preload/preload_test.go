@@ -49,7 +49,7 @@ func (t availabilityTestTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.name, Description: t.info.Description, Parameters: map[string]any{"type": "object", "properties": map[string]any{}}}
 }
 func (t availabilityTestTool) Definition() share.ToolDefinition {
-	return share.ToolDefinition{Metadata: t.Info(), Parameters: t.Schema().Parameters, Prepare: t.PrepareCall}
+	return share.ToolDefinition{Definition: t.Info(), Parameters: t.Schema().Parameters, Prepare: t.PrepareCall}
 }
 func (value availabilityTestTool) PrepareCall(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
 	return share.NewPreparedCall(req, share.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*share.Result, string, error) {
@@ -66,7 +66,7 @@ type preloadSkill struct {
 
 func (s *preloadSkill) ActivateTools() []string { return s.activate }
 func (s *preloadSkill) Definition() share.ToolDefinition {
-	return share.ToolDefinition{Metadata: s.Info(), LoadDetail: s.LoadDetail, ActivateTools: s.activate}
+	return share.ToolDefinition{Definition: s.Info(), LoadDetail: s.LoadDetail, ActivateTools: s.activate}
 }
 func (s *preloadSkill) LoadDetail(context.Context) (share.DetailBlock, error) {
 	s.calls++
@@ -226,19 +226,9 @@ func TestSelectionsExpandBeforeRuntimeQualification(t *testing.T) {
 	if err != nil || len(selections) != 1 || strings.Join(selections[0].Names, ",") != "admin,api,guide,hidden,normal" {
 		t.Fatalf("selections=%+v err=%v", selections, err)
 	}
-	for _, tc := range []struct {
-		query share.ToolQuery
-		want  string
-	}{
-		{share.ToolQuery{Kind: "tool"}, "normal"},
-		{share.ToolQuery{Kind: "skill"}, "guide"},
-		{share.ToolQuery{Names: []string{}}, ""},
-		{share.ToolQuery{Names: []string{"normal", "guide"}}, "guide,normal"},
-	} {
-		got, err := s.ToolNamesByTag(t.Context(), "group", tc.query)
-		if err != nil || strings.Join(got, ",") != tc.want {
-			t.Fatalf("query=%+v got=%v err=%v", tc.query, got, err)
-		}
+	prepared, err := s.PrepareTools(t.Context(), []string{"group"})
+	if err != nil || len(prepared.Update.Tools) != 1 || prepared.Update.Tools[0].Name != "normal" {
+		t.Fatalf("runtime qualification: %+v err=%v", prepared, err)
 	}
 }
 

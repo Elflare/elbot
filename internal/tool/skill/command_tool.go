@@ -28,7 +28,7 @@ type commandTool struct {
 
 func (t commandTool) Definition() toolshare.ToolDefinition {
 	parameters := projectMediaSchema(t.manifest.Parameters).(map[string]any)
-	return toolshare.ToolDefinition{Metadata: toolshare.Info{Name: t.record.Name, Description: t.record.Description, Risk: t.manifest.Risk, SuperadminOnly: t.manifest.SuperadminOnly, Tags: t.manifest.Tags}, Parameters: parameters, Prepare: t.PrepareCall, LoadDetail: t.LoadDetail, ActivateTools: t.ActivateTools()}
+	return toolshare.ToolDefinition{Definition: toolshare.Info{Name: t.record.Name, Description: t.record.Description, Risk: t.manifest.Risk, SuperadminOnly: t.manifest.SuperadminOnly, Tags: t.manifest.Tags}, Parameters: parameters, Prepare: t.PrepareCall, LoadDetail: t.LoadDetail, ActivateTools: t.ActivateTools()}
 }
 
 func (t commandTool) LoadDetail(ctx context.Context) (toolshare.DetailBlock, error) {

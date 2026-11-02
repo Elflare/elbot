@@ -2,7 +2,6 @@ package registry
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"elbot/internal/llm"
@@ -38,7 +37,7 @@ func (t fakeTool) Schema() llm.ToolSchema {
 }
 
 func (t fakeTool) Definition() toolshare.ToolDefinition {
-	return toolshare.ToolDefinition{Metadata: t.Info(), Parameters: t.Schema().Parameters, Prepare: t.PrepareCall}
+	return toolshare.ToolDefinition{Definition: t.Info(), Parameters: t.Schema().Parameters, Prepare: t.PrepareCall}
 }
 
 func (t fakeTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
@@ -60,29 +59,14 @@ func TestRegistryRegisterList(t *testing.T) {
 		t.Fatal("expected duplicate registration error")
 	}
 
-	infos := registry.List()
-	if len(infos) != 2 || infos[0].Name != "a" || infos[1].Name != "b" {
-		t.Fatalf("unexpected sorted infos: %#v", infos)
-	}
-
-}
-
-func TestRegistryTagsAndNamesByTag(t *testing.T) {
-	registry := NewRegistry(security.DefaultPermission())
-	_, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{
-		(fakeTool{name: "web_extract", tags: []string{" WEB ", "web"}}).Definition(),
-		(fakeTool{name: "web_search", tags: []string{"web"}}).Definition(),
-		(fakeTool{name: "chat", tags: []string{"chat"}}).Definition(),
-	})
+	infos, err := registry.Query(t.Context(), toolshare.ToolQuery{Scope: toolshare.QueryCatalog})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(registry.Tags(), ","); got != "chat,web" {
-		t.Fatalf("tags = %q", got)
+	if len(infos) != 2 || infos[0].Definition.Name != "a" || infos[1].Definition.Name != "b" {
+		t.Fatalf("unexpected sorted infos: %#v", infos)
 	}
-	if got := strings.Join(registry.NamesByTag("WEB"), ","); got != "web_extract,web_search" {
-		t.Fatalf("NamesByTag = %q", got)
-	}
+
 }
 
 func TestRegistryReplacesCompleteGroup(t *testing.T) {
@@ -136,7 +120,7 @@ func TestRegistryConflictKeepsOldSnapshot(t *testing.T) {
 		t.Fatal("fresh skill should not be visible after failed replacement")
 	}
 	got, ok := registry.Get("conflict")
-	if !ok || got.Metadata.Source != toolshare.SourceBuiltin {
+	if !ok || got.Definition.Source != toolshare.SourceBuiltin {
 		t.Fatalf("conflicting builtin changed: %#v, %v", got, ok)
 	}
 }
@@ -150,8 +134,8 @@ func TestRegistryDuplicateBatchIsAtomic(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected duplicate error")
 	}
-	if len(registry.List()) != 0 {
-		t.Fatalf("registry changed after failed replacement: %#v", registry.List())
+	if definitions, err := registry.Query(t.Context(), toolshare.ToolQuery{Scope: toolshare.QueryCatalog}); err != nil || len(definitions) != 0 {
+		t.Fatalf("registry changed after failed replacement: %#v, %v", definitions, err)
 	}
 }
 

@@ -91,10 +91,10 @@ func formatTools(ctx context.Context, deps Deps) (string, error) {
 	sb.WriteString("tools:\n")
 	for _, info := range infos {
 		tags := ""
-		if len(info.Tags) > 0 {
-			tags = " tags=" + strings.Join(info.Tags, ",")
+		if len(info.Definition.Tags) > 0 {
+			tags = " tags=" + strings.Join(info.Definition.Tags, ",")
 		}
-		sb.WriteString(fmt.Sprintf("  %s [%s]%s %s\n", info.Name, [...]string{tool.SourceBuiltin: "builtin", tool.SourceSkill: "skill", tool.SourceELwisp: "elwisp"}[info.Source], tags, info.Description))
+		sb.WriteString(fmt.Sprintf("  %s [%s]%s %s\n", info.Definition.Name, [...]string{tool.SourceBuiltin: "builtin", tool.SourceSkill: "skill", tool.SourceELwisp: "elwisp"}[info.Definition.Source], tags, info.Definition.Description))
 	}
 	return trimTrailingNewlines(sb.String()), nil
 }

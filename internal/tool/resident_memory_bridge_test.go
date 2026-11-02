@@ -106,19 +106,19 @@ func TestResidentMemoryCoreAllowsEmptyString(t *testing.T) {
 func TestResidentMemoryToolRisksAndSchema(t *testing.T) {
 	store := resident.NewStoreWithLimits("unused.toml", resident.Limits{Core: 200, Normal: 300})
 	entry := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[0]
-	if entry.Metadata.Risk != toolshare.RiskLow || len(entry.Metadata.DependsOn) != 3 {
-		t.Fatalf("entry info = %#v", entry.Metadata)
+	if entry.Definition.Risk != toolshare.RiskLow || len(entry.Definition.DependsOn) != 3 {
+		t.Fatalf("entry info = %#v", entry.Definition)
 	}
 	readTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[1]
 	normalTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[2]
 	coreTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[3]
-	if readTool.Metadata.Risk != toolshare.RiskLow {
+	if readTool.Definition.Risk != toolshare.RiskLow {
 		t.Fatalf("read risk not low")
 	}
-	if normalTool.Metadata.Risk != toolshare.RiskLow {
+	if normalTool.Definition.Risk != toolshare.RiskLow {
 		t.Fatalf("normal risk not low")
 	}
-	if coreTool.Metadata.Risk != toolshare.RiskHigh {
+	if coreTool.Definition.Risk != toolshare.RiskHigh {
 		t.Fatalf("core risk not high")
 	}
 	schema := coreTool.Schema()

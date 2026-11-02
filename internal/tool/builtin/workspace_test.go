@@ -118,7 +118,7 @@ func TestWorkspaceToolRejectsMissingDirectory(t *testing.T) {
 }
 
 func TestWorkspaceToolIsForegroundOnly(t *testing.T) {
-	if !(WorkspaceTool{}).Definition().Metadata.ForegroundOnly {
+	if !(WorkspaceTool{}).Definition().Definition.ForegroundOnly {
 		t.Fatal("workspace tool must be foreground-only")
 	}
 }

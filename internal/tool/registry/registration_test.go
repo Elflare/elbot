@@ -14,12 +14,12 @@ func TestRegistrationValidatesBeforePublishing(t *testing.T) {
 		name   string
 		change func(*share.ToolDefinition)
 	}{
-		{"name", func(d *share.ToolDefinition) { d.Metadata.Name = " " }},
-		{"description", func(d *share.ToolDefinition) { d.Metadata.Description = "" }},
-		{"risk missing", func(d *share.ToolDefinition) { d.Metadata.Risk = "" }},
-		{"risk invalid", func(d *share.ToolDefinition) { d.Metadata.Risk = "typo" }},
-		{"tag", func(d *share.ToolDefinition) { d.Metadata.Tags = []string{"bad/tag"} }},
-		{"dependency", func(d *share.ToolDefinition) { d.Metadata.DependsOn = []string{" "} }},
+		{"name", func(d *share.ToolDefinition) { d.Definition.Name = " " }},
+		{"description", func(d *share.ToolDefinition) { d.Definition.Description = "" }},
+		{"risk missing", func(d *share.ToolDefinition) { d.Definition.Risk = "" }},
+		{"risk invalid", func(d *share.ToolDefinition) { d.Definition.Risk = "typo" }},
+		{"tag", func(d *share.ToolDefinition) { d.Definition.Tags = []string{"bad/tag"} }},
+		{"dependency", func(d *share.ToolDefinition) { d.Definition.DependsOn = []string{" "} }},
 		{"execution", func(d *share.ToolDefinition) { d.Prepare = nil }},
 		{"schema", func(d *share.ToolDefinition) { d.Parameters = nil }},
 		{"root type", func(d *share.ToolDefinition) { d.Parameters["type"] = "array" }},
@@ -40,7 +40,7 @@ func TestRegistrationValidatesBeforePublishing(t *testing.T) {
 			if _, err := r.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, []share.ToolDefinition{(fakeTool{name: "first"}).Definition(), invalid}); err == nil {
 				t.Fatal("invalid batch accepted")
 			}
-			if !reflect.DeepEqual(r.ToolNames(), []string{"old"}) {
+			if definitions, err := r.Query(t.Context(), share.ToolQuery{Scope: share.QueryCatalog}); err != nil || len(definitions) != 1 || definitions[0].Definition.Name != "old" {
 				t.Fatal("failed registration changed the directory")
 			}
 		})
@@ -50,76 +50,106 @@ func TestRegistrationValidatesBeforePublishing(t *testing.T) {
 func TestRegistrationSnapshotsAndDefaults(t *testing.T) {
 	r := NewRegistry(security.DefaultPermission())
 	d := (fakeTool{name: "tool"}).Definition()
-	d.Metadata.Tags = []string{" Web ", "web"}
-	d.Metadata.DependsOn = []string{" dep ", "dep"}
+	d.Definition.Tags = []string{" Web ", "web"}
+	d.Definition.DependsOn = []string{" dep ", "dep"}
 	d.Parameters["properties"] = map[string]any{"x": map[string]any{"type": "string"}}
 	d.Parameters["required"] = []string{"x"}
 	if _, err := r.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, []share.ToolDefinition{d}); err != nil {
 		t.Fatal(err)
 	}
-	d.Metadata.Tags[0] = "changed"
+	d.Definition.Tags[0] = "changed"
 	d.Parameters["properties"].(map[string]any)["x"].(map[string]any)["type"] = "number"
 	d.Parameters["required"].([]string)[0] = "changed"
 	got, _ := r.Get("tool")
-	info := got.Metadata
+	info := got.Definition
 	if info.Source != share.SourceBuiltin || info.NeedsElyphRules || info.Hidden || info.SuperadminOnly || len(info.APITypes) != 0 || !reflect.DeepEqual(info.Tags, []string{"web"}) || !reflect.DeepEqual(info.DependsOn, []string{"dep"}) {
 		t.Fatalf("metadata=%+v", info)
 	}
 	if got.Schema().Parameters["properties"].(map[string]any)["x"].(map[string]any)["type"] != "string" || got.Schema().Parameters["required"].([]string)[0] != "x" {
 		t.Fatal("input changed registered schema")
 	}
-	got.Metadata.Tags[0] = "changed"
-	got.Schema().Parameters["type"] = "array"
-	again, _ := r.Get("tool")
-	if again.Metadata.Tags[0] != "web" || again.Schema().Parameters["type"] != "object" {
-		t.Fatal("query leaked mutable directory data")
-	}
-	infos, err := r.QueryToolInfos(t.Context(), share.ToolQuery{Names: []string{"tool"}})
-	if err != nil || len(infos) != 1 {
-		t.Fatal(infos, err)
-	}
-	listed := r.List()
-	detail, _ := r.ToolInfo("tool")
-	for _, info := range []share.Info{infos[0], listed[0], detail} {
-		info.Tags[0] = "changed"
-		info.DependsOn[0] = "changed"
-	}
-	unchanged, _ := r.ToolInfo("tool")
-	if unchanged.Tags[0] != "web" || unchanged.DependsOn[0] != "dep" {
-		t.Fatal("metadata query leaked mutable directory data")
-	}
-	selected, err := r.QueryTools(t.Context(), share.ToolQuery{Names: []string{"tool"}})
-	if err != nil || len(selected) != 1 {
-		t.Fatal(selected, err)
-	}
-	selected[0].Parameters["properties"].(map[string]any)["x"].(map[string]any)["type"] = "number"
-	schema, _ := r.ToolSchema("tool")
-	if schema.Parameters["properties"].(map[string]any)["x"].(map[string]any)["type"] != "string" {
-		t.Fatal("selected definition leaked mutable schema")
-	}
 
-	doc := share.ToolDefinition{Metadata: share.Info{Name: "guide"}, LoadDetail: func(context.Context) (share.DetailBlock, error) { return share.DetailBlock{Content: "plain text"}, nil }}
+	doc := share.ToolDefinition{Definition: share.Info{Name: "guide"}, LoadDetail: func(context.Context) (share.DetailBlock, error) { return share.DetailBlock{Content: "plain text"}, nil }}
 	if _, err := r.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, []share.ToolDefinition{doc}); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := r.ToolSchema("guide"); ok {
+	if guide, ok := r.Get("guide"); !ok || guide.Callable() || guide.Parameters != nil {
 		t.Fatal("document was exposed as a callable tool")
+	}
+}
+
+func TestQueryRetainsDefinitionAcrossRegistration(t *testing.T) {
+	r := NewRegistry(security.DefaultPermission())
+	register := func(version string) {
+		t.Helper()
+		d := (fakeTool{name: "versioned", tags: []string{version}}).Definition()
+		d.Definition.Description = version
+		d.Parameters["properties"] = map[string]any{version: map[string]any{"type": "string"}}
+		d.Prepare = func(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
+			return share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskLow}, version, func(context.Context) (*share.Result, string, error) {
+				return &share.Result{Content: version}, version, nil
+			}), nil
+		}
+		if _, err := r.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, []share.ToolDefinition{d}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	register("old")
+	selected, err := r.Query(t.Context(), share.ToolQuery{Scope: share.QueryCatalog})
+	if err != nil || len(selected) != 1 {
+		t.Fatal(selected, err)
+	}
+	original, ok := r.Get("versioned")
+	if !ok {
+		t.Fatal("missing original definition")
+	}
+	register("new")
+	current, ok := r.Get("versioned")
+	if !ok {
+		t.Fatal("missing current definition")
+	}
+	queried, err := r.Query(t.Context(), share.ToolQuery{Names: []string{"versioned"}})
+	if err != nil || len(queried) != 1 {
+		t.Fatal(queried, err)
+	}
+	for _, tc := range []struct {
+		definition share.ToolDefinition
+		version    string
+	}{{selected[0], "old"}, {original, "old"}, {current, "new"}, {queried[0], "new"}} {
+		info := tc.definition.Definition
+		properties := tc.definition.Parameters["properties"].(map[string]any)
+		if info.Description != tc.version || info.Tags[0] != tc.version || properties[tc.version] == nil {
+			t.Fatalf("changed selected definition: %+v, schema=%v", info, properties)
+		}
+		prepared, err := tc.definition.PrepareCall(t.Context(), share.CallRequest{Name: "versioned"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, _, err := prepared.Call(t.Context())
+		if err != nil || result.Content != tc.version {
+			t.Fatalf("changed selected execution: %+v, %v", result, err)
+		}
 	}
 }
 
 func TestRemoteRegistrationOnlyPreparesScopedPatch(t *testing.T) {
 	r := NewRegistry(security.DefaultPermission())
 	scope := share.ToolRegistrationScope{SessionID: "session", EventKey: "event"}
-	d := share.ToolDefinition{Metadata: share.Info{Name: "event_remote", Description: "Remote", Risk: share.RiskLow}, Parameters: map[string]any{"type": "object", "properties": map[string]any{}}, Remote: &share.ELwispToolDeclaration{Name: "remote", CanonicalName: "event_remote", EventKey: "event", Endpoint: "https://example.invalid"}}
+	d := share.ToolDefinition{Definition: share.Info{Name: "event_remote", Description: "Remote", Risk: share.RiskLow}, Parameters: map[string]any{"type": "object", "properties": map[string]any{}}, Remote: &share.ELwispToolDeclaration{Name: "remote", CanonicalName: "event_remote", EventKey: "event", Endpoint: "https://example.invalid"}}
 	update, err := r.RegisterTools(t.Context(), share.SourceELwisp, scope, []share.ToolDefinition{d})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.List()) != 0 || len(update.Tools) != 1 || update.Tools[0].TimeoutSeconds != 10 || update.Tools[0].Risk != share.RiskLow || !reflect.DeepEqual(update.ReplaceGroups, []share.ToolRegistrationScope{scope}) {
+	definitions, queryErr := r.Query(t.Context(), share.ToolQuery{Scope: share.QueryCatalog})
+	if queryErr != nil || len(definitions) != 0 || len(update.Tools) != 1 || update.Tools[0].TimeoutSeconds != 10 || update.Tools[0].Risk != share.RiskLow || !reflect.DeepEqual(update.ReplaceGroups, []share.ToolRegistrationScope{scope}) {
 		t.Fatalf("update=%+v", update)
 	}
-	if d.Remote.TimeoutSeconds != 0 {
+	if d.Remote.TimeoutSeconds != 0 || d.Remote.Schema != nil {
 		t.Fatal("registration modified caller input")
+	}
+	d.Parameters["properties"].(map[string]any)["changed"] = map[string]any{"type": "string"}
+	if properties := update.Tools[0].Schema.Parameters["properties"].(map[string]any); len(properties) != 0 {
+		t.Fatal("caller input changed remote state patch schema")
 	}
 	for _, tc := range []struct {
 		source share.Source

@@ -98,7 +98,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 路径相对 `internal/`：
 
 - `tool/registry/`、`tool/execution/`、`tool/builtin/`：工具目录、执行核心、内置工具。
-- `tool/contracts.go`、`tool/supervisor.go`：公开工具定义与批量注册入口；`tool/wiring.go`、`tool/builtin/wiring.go`：公共组件与 Builtin 内部接线。
+- `tool/contracts.go`、`tool/supervisor.go`：公开工具定义、批量注册与统一查询入口；`tool/wiring.go`、`tool/builtin/wiring.go`：公共组件与 Builtin 内部接线。
 - `tool/share/`：`definition.go` 定义；`risk.go` 风险；`prepared.go` 准备结果；`media.go` 媒体契约。
 - `tool/builtin/`：`shell.go` Shell；`shell_warnings.go` 文件警告；`shell_risk.go` 风险；`shell_sandbox.go` 路径限制。
 - `tool/builtin/`：`file_tools_ast.go` AST 查询；`file_tools_directory.go` 目录搜索。

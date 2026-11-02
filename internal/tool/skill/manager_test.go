@@ -44,7 +44,7 @@ func TestManagerSerializesConcurrentReloads(t *testing.T) {
 			t.Fatalf("concurrent Reload: %v", err)
 		}
 	}
-	if got := registry.List(); len(got) != 2 {
+	if got, err := registry.Query(t.Context(), toolshare.ToolQuery{Scope: toolshare.QueryCatalog}); err != nil || len(got) != 2 {
 		t.Fatalf("registry = %#v, want two skills", got)
 	}
 	if got := manager.catalog.List(); len(got) != 2 {
@@ -84,7 +84,7 @@ input = "--input"
 				t.Fatal(err)
 			}
 			target, ok := registry.Get("docs")
-			if !ok || target.Metadata.Risk != tc.risk {
+			if !ok || target.Definition.Risk != tc.risk {
 				t.Fatalf("registered skill = %#v, want risk %s", target, tc.risk)
 			}
 			if target.Callable() != tc.callable || target.LoadDetail == nil {
@@ -241,7 +241,7 @@ func TestManagerScansGoTextSkillWithoutBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	target, ok := registry.Get("notes")
-	if !ok || target.Metadata.Source != toolshare.SourceSkill || target.Metadata.Risk != toolshare.RiskLow {
+	if !ok || target.Definition.Source != toolshare.SourceSkill || target.Definition.Risk != toolshare.RiskLow {
 		t.Fatalf("text skill = %#v", target)
 	}
 	detailer := target
@@ -319,8 +319,9 @@ func TestManagerReloadRejectsDuplicateSkillNames(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), `tool "shared" already registered`) {
 		t.Fatalf("Reload error = %v, want duplicate name error", err)
 	}
-	if infos, records := registry.List(), manager.catalog.List(); len(infos) != 1 || infos[0].Name != "old" || len(records) != 1 || records[0].Name != "old" {
-		t.Fatalf("failed reload changed state: registry=%#v catalog=%#v", registry.List(), manager.catalog.List())
+	infos, err := registry.Query(t.Context(), toolshare.ToolQuery{Scope: toolshare.QueryCatalog})
+	if records := manager.catalog.List(); err != nil || len(infos) != 1 || infos[0].Definition.Name != "old" || len(records) != 1 || records[0].Name != "old" {
+		t.Fatalf("failed reload changed state: registry=%#v catalog=%#v err=%v", infos, records, err)
 	}
 }
 

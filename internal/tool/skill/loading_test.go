@@ -112,8 +112,8 @@ func TestReloadFailurePreservesLoadedCatalog(t *testing.T) {
 	if err := manager.EnsureLoaded(t.Context()); err != nil {
 		t.Fatalf("last successful catalog became unavailable: %v", err)
 	}
-	info, ok := catalog.ToolInfo("docs")
-	if !ok || info.Description != "Original" {
+	info, ok := catalog.Get("docs")
+	if !ok || info.Definition.Description != "Original" {
 		t.Fatalf("catalog changed after failed reload: %+v", info)
 	}
 }

@@ -20,7 +20,7 @@ func (optionalTool) LoadDetail(context.Context) (share.DetailBlock, error) {
 func (optionalTool) ActivateTools() []string { return nil }
 
 func (t optionalTool) Definition() share.ToolDefinition {
-	return share.ToolDefinition{Metadata: t.Info(), LoadDetail: t.LoadDetail}
+	return share.ToolDefinition{Definition: t.Info(), LoadDetail: t.LoadDetail}
 }
 
 func TestRegistryPreservesSkillCapabilities(t *testing.T) {
@@ -30,7 +30,7 @@ func TestRegistryPreservesSkillCapabilities(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, ok := r.Get("skill")
-	if !ok || got.Metadata.Source != share.SourceSkill {
+	if !ok || got.Definition.Source != share.SourceSkill {
 		t.Fatalf("Get = %T, %v", got, ok)
 	}
 	detail := got
@@ -38,37 +38,27 @@ func TestRegistryPreservesSkillCapabilities(t *testing.T) {
 	if err != nil || block.Content != "skill detail" {
 		t.Fatal(block, err)
 	}
-	tools, err := r.QueryTools(context.Background(), share.ToolQuery{Kind: "skill"})
+	tools, err := r.Query(context.Background(), share.ToolQuery{Kind: "skill"})
 	if err != nil || len(tools) != 1 || tools[0].LoadDetail == nil {
 		t.Fatalf("skill query = %v, %v", tools, err)
 	}
-	tools, err = r.QueryTools(context.Background(), share.ToolQuery{Kind: "tool"})
+	tools, err = r.Query(context.Background(), share.ToolQuery{Kind: "tool"})
 	if err != nil || len(tools) != 0 {
 		t.Fatalf("plain query = %v, %v", tools, err)
 	}
 }
 
-func TestRegistryMetadataLookup(t *testing.T) {
+func TestRegistryGet(t *testing.T) {
 	r := NewRegistry(security.DefaultPermission())
-	if _, err := r.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, []share.ToolDefinition{(fakeTool{name: "tool", hidden: true}).Definition(), (fakeTool{name: "discover_tool"}).Definition()}); err != nil {
+	if _, err := r.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, []share.ToolDefinition{(fakeTool{name: "tool", hidden: true}).Definition()}); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(r.ToolNames(), ","); got != "discover_tool,tool" {
-		t.Fatalf("directory names = %q", got)
+	definition, ok := r.Get(" tool ")
+	if !ok || definition.Definition.Name != "tool" || definition.Schema().Name != "tool" {
+		t.Fatalf("Get = %+v, %v", definition, ok)
 	}
-	info, ok := r.ToolInfo(" tool ")
-	if !ok || info.Name != "tool" {
-		t.Fatalf("ToolInfo = %+v, %v", info, ok)
-	}
-	schema, ok := r.ToolSchema(" tool ")
-	if !ok || schema.Name != "tool" {
-		t.Fatalf("ToolSchema = %+v, %v", schema, ok)
-	}
-	if _, ok := r.ToolInfo("missing"); ok {
-		t.Fatal("unexpected metadata")
-	}
-	if _, ok := r.ToolSchema("missing"); ok {
-		t.Fatal("unexpected schema")
+	if _, ok := r.Get("missing"); ok {
+		t.Fatal("unexpected definition")
 	}
 }
 
@@ -105,6 +95,10 @@ func TestQueryToolsQualification(t *testing.T) {
 		want  string
 	}{
 		{"default", ctx, share.ToolQuery{}, "foreground,medium,owner,plain,skill"},
+		{"catalog", background, share.ToolQuery{Scope: share.QueryCatalog}, "admin,api,foreground,high,medium,owner,plain,skill"},
+		{"full catalog", background, share.ToolQuery{Scope: share.QueryCatalog, IncludeHidden: true, IncludeDiscover: true}, "admin,api,discover_tool,foreground,hidden,high,medium,owner,plain,skill"},
+		{"catalog names and kind", background, share.ToolQuery{Scope: share.QueryCatalog, Names: []string{"api", "skill"}, Kind: "tool"}, "api"},
+		{"empty catalog names", ctx, share.ToolQuery{Scope: share.QueryCatalog, Names: []string{}}, ""},
 		{"empty names", ctx, share.ToolQuery{Names: []string{}}, ""},
 		{"exact names", ctx, share.ToolQuery{Names: []string{"plain", "missing", "plain"}}, "plain"},
 		{"hidden and discover", ctx, share.ToolQuery{Names: []string{"hidden", "discover_tool"}, IncludeHidden: true, IncludeDiscover: true}, "discover_tool,hidden"},
@@ -115,13 +109,13 @@ func TestQueryToolsQualification(t *testing.T) {
 		{"admin", admin, share.ToolQuery{Names: []string{"admin", "high"}}, "admin,high"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			tools, err := r.QueryTools(tc.ctx, tc.query)
+			tools, err := r.Query(tc.ctx, tc.query)
 			if err != nil {
 				t.Fatal(err)
 			}
 			names := make([]string, 0, len(tools))
 			for _, tool := range tools {
-				names = append(names, tool.Metadata.Name)
+				names = append(names, tool.Definition.Name)
 			}
 			if got := strings.Join(names, ","); got != tc.want {
 				t.Fatalf("got %q, want %q", got, tc.want)
@@ -130,7 +124,7 @@ func TestQueryToolsQualification(t *testing.T) {
 	}
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := r.QueryTools(canceled, share.ToolQuery{}); !errors.Is(err, context.Canceled) {
+	if _, err := r.Query(canceled, share.ToolQuery{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled query = %v", err)
 	}
 }

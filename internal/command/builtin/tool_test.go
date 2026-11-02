@@ -14,11 +14,10 @@ import (
 type fakeToolService struct {
 	infos   []toolshare.Info
 	removed []string
-	query   func(context.Context, toolshare.ToolQuery) ([]toolshare.Info, error)
+	query   func(context.Context, toolshare.ToolQuery) ([]toolshare.ToolInfo, error)
 }
 
-func (s *fakeToolService) List(context.Context) ([]toolshare.Info, error) { return s.infos, nil }
-func (s *fakeToolService) Reload(context.Context) error                   { return nil }
+func (s *fakeToolService) Reload(context.Context) error { return nil }
 func (s *fakeToolService) Remove(_ context.Context, name string) error {
 	s.removed = append(s.removed, name)
 	return nil
@@ -68,25 +67,29 @@ func TestToolsCommandCompletesActionsNamesAndConfirm(t *testing.T) {
 	}
 }
 
-func (s *fakeToolService) QueryTools(ctx context.Context, query toolshare.ToolQuery) ([]toolshare.Info, error) {
+func (s *fakeToolService) QueryTools(ctx context.Context, query toolshare.ToolQuery) ([]toolshare.ToolInfo, error) {
 	if s.query != nil {
 		return s.query(ctx, query)
 	}
-	return s.infos, nil
+	infos := make([]toolshare.ToolInfo, len(s.infos))
+	for i, info := range s.infos {
+		infos[i] = toolshare.ToolInfo{Definition: info}
+	}
+	return infos, nil
 }
 
 func TestToolsListUsesQualifiedQueryAndReturnsQueryFailure(t *testing.T) {
 	failure := errors.New("catalog unavailable")
 	for _, fail := range []bool{false, true} {
 		service := &fakeToolService{infos: []toolshare.Info{{Name: "unqualified"}}}
-		service.query = func(ctx context.Context, query toolshare.ToolQuery) ([]toolshare.Info, error) {
+		service.query = func(ctx context.Context, query toolshare.ToolQuery) ([]toolshare.ToolInfo, error) {
 			if !query.IncludeHidden || !query.IncludeDiscover || query.Kind != "" || query.Names != nil {
 				t.Fatalf("query=%+v", query)
 			}
 			if fail {
 				return nil, failure
 			}
-			return []toolshare.Info{{Name: "qualified", Hidden: true}}, nil
+			return []toolshare.ToolInfo{{Definition: toolshare.Info{Name: "qualified", Hidden: true}}}, nil
 		}
 		result, err := NewTools(Deps{CommandText: testCommandText, Tools: service}).Handle(t.Context(), command.Request{})
 		if fail {
