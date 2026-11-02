@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -60,6 +61,16 @@ func newTestSupervisor(t *testing.T, store storage.Store, configure func(*config
 	t.Helper()
 	cfg := &config.Config{Session: config.SessionConfig{DefaultMode: storage.SessionModeWork, Naming: config.SessionNamingConfig{TriggerStep: 1}}}
 	deps := SupervisorDeps{Store: store, Models: testModels(func(context.Context) modelmgr.NamingSelection { return modelmgr.NamingSelection{} }), ActiveSessionIDs: func() []string { return nil }, CheckForeground: func(context.Context, *storage.Session) error { return nil }, Materials: testMaterials{}, IsSuperadmin: func(Scope) bool { return false }, ReleaseSession: func(string) {}, ReleaseBinding: func(*Binding) {}}
+	deps.SessionIDCode = func(name string, kind contextinfo.ConversationKind) (string, error) {
+		codes, ok := map[string][2]string{"cli": {"cl", "cl"}, "qqonebot": {"ob", "OB"}, "qqofficial": {"qq", "QQ"}, "telegram": {"tg", "TG"}}[name]
+		if !ok {
+			return "", fmt.Errorf("unknown test platform %q", name)
+		}
+		if kind == contextinfo.ConversationGroup || kind == contextinfo.ConversationChannel {
+			return codes[1], nil
+		}
+		return codes[0], nil
+	}
 	if configure != nil {
 		configure(cfg, &deps)
 	}

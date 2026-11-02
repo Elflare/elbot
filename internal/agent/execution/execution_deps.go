@@ -41,7 +41,7 @@ type ExecutionSender interface {
 // ExecutionCoordinatorDeps declares only the capabilities consumed by ExecutionCoordinator.
 type ExecutionCoordinatorDeps struct {
 	Sessions interface {
-		AllocateID(context.Context, session.Scope, *storage.Session) (string, error)
+		AllocateID(context.Context, *storage.Session) (string, error)
 		CreateCompacted(context.Context, session.Scope, string, session.CompactedRequest) (*storage.Session, error)
 		Current(context.Context, session.Scope) (*storage.Session, error)
 		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)

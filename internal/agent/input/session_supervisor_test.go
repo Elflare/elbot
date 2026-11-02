@@ -3,6 +3,7 @@ package input
 import (
 	"context"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/session"
@@ -28,6 +29,7 @@ func newSessionSupervisor(t *testing.T, store storage.Store, configure ...func(*
 	t.Helper()
 	cfg := &config.Config{Session: config.SessionConfig{DefaultMode: storage.SessionModeWork, Naming: config.SessionNamingConfig{TriggerStep: 100000}}}
 	deps := session.SupervisorDeps{Store: store, Models: sessionTestModels{}, Materials: sessionTestMaterials{},
+		SessionIDCode:    func(name string, _ contextinfo.ConversationKind) (string, error) { return name, nil },
 		ActiveSessionIDs: func() []string { return nil }, CheckForeground: func(context.Context, *storage.Session) error { return nil },
 		IsSuperadmin: func(session.Scope) bool { return false }, ReleaseSession: func(string) {}, ReleaseBinding: func(*session.Binding) {}}
 	for _, configure := range configure {

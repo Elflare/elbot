@@ -12,6 +12,7 @@ import (
 	"elbot/internal/agent"
 	"elbot/internal/completion"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/hook"
@@ -30,6 +31,10 @@ import (
 type integrationPlatform struct {
 	mu      sync.Mutex
 	outputs []string
+}
+
+func (*integrationPlatform) SessionIDCode(name string, _ contextinfo.ConversationKind) (string, error) {
+	return name, nil
 }
 
 func (*integrationPlatform) PrimaryName() string                                          { return "cli" }

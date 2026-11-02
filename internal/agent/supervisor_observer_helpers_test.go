@@ -28,7 +28,7 @@ func connectTestNotifications(t *testing.T, router *dispatch.Router) *notificati
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = m.Close(context.Background()) })
-	s, err := m.AddPlatform("cli")
+	s, err := m.AddPlatform("cli", func(events.NotificationTarget) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}

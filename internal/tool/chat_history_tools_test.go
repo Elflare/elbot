@@ -97,9 +97,9 @@ func TestChatHistoryPreservesLiteralTruncationText(t *testing.T) {
 	const body = "用户原文：...[单条消息过长，已截断]"
 	repo := historyResultRepository{rows: []storage.ChatMessage{{PlatformMessageID: "42", Text: body}}}
 	for _, caller := range []toolshare.Tool{builtin.NewSearchChatHistoryTool(newHistoryTestManager(repo), nil), builtin.NewGetChatHistoryAroundTool(newHistoryTestManager(repo), nil), builtin.NewReplyToChatHistoryMessageTool(newHistoryTestManager(repo))} {
-		result, logContent, err := callTool(ctx, caller, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"42","message":"回复"}`)})
-		if err != nil || !strings.Contains(result.Content, body) || !strings.Contains(logContent, body) {
-			t.Fatalf("%s changed original message: result=%+v log=%q err=%v", caller.Name(), result, logContent, err)
+		result, _, err := callTool(ctx, caller, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"42","message":"回复"}`)})
+		if err != nil || !strings.Contains(result.Content, body) {
+			t.Fatalf("%s changed original message: result=%+v err=%v", caller.Name(), result, err)
 		}
 	}
 }

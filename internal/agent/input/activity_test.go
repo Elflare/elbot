@@ -10,6 +10,7 @@ import (
 
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/security"
@@ -59,7 +60,8 @@ func TestSuccessfulPureDirectivesRenewOriginalBinding(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				cfg := &config.Config{Session: config.SessionConfig{DefaultMode: storage.SessionModeWork, Naming: config.SessionNamingConfig{TriggerStep: 100000}, IdleExpiration: config.SessionIdleExpirationConfig{PrivateUserTTLMinutes: 1, PrivateSuperadminTTLMinutes: 1}}}
 				sessions, err := session.NewSupervisor(t.Context(), cfg, session.SupervisorDeps{
-					Store: store, Models: sessionTestModels{}, Materials: sessionTestMaterials{},
+					SessionIDCode: func(name string, _ contextinfo.ConversationKind) (string, error) { return name, nil },
+					Store:         store, Models: sessionTestModels{}, Materials: sessionTestMaterials{},
 					ActiveSessionIDs: func() []string { return nil }, CheckForeground: func(context.Context, *storage.Session) error { return nil },
 					IsSuperadmin: func(session.Scope) bool { return false }, ReleaseSession: func(string) {}, ReleaseBinding: func(*session.Binding) {},
 				})

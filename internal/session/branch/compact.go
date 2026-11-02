@@ -76,7 +76,7 @@ func (s *Service) CreateCompacted(ctx context.Context, scope share.Scope, source
 	if err := share.InheritOrigin(origin, fields); err != nil {
 		return nil, err
 	}
-	idOrigin, err := share.IDOriginFromMetadata(sourceFields, source.Platform, scope)
+	idOrigin, err := share.IDOriginFromMetadata(sourceFields)
 	if err != nil {
 		return nil, err
 	}

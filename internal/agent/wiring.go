@@ -59,7 +59,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	var confirmations *agentconfirmation.ConfirmationCoordinator
 	var err error
 	m.sessions, err = session.NewSupervisor(ctx, cfg, session.SupervisorDeps{
-		Store: deps.Store, Models: deps.Models, Materials: m.routes,
+		SessionIDCode: deps.Platform.SessionIDCode,
+		Store:         deps.Store, Models: deps.Models, Materials: m.routes,
 		ActiveSessionIDs: func() []string {
 			active := make(map[string]struct{})
 			for _, snapshot := range m.turns.SnapshotAll() {

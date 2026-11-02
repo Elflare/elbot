@@ -15,7 +15,7 @@ func (h *MessageHandler) messageWakeup(ctx context.Context, text string) bool {
 		return true
 	}
 	info, _ := contextinfo.ConversationFromContext(ctx)
-	if info.Source.ConversationKind == "" || info.Source.ConversationKind == contextinfo.ConversationUnknown || info.Source.ConversationKind == contextinfo.ConversationPrivate {
+	if info.Source.ConversationKind != contextinfo.ConversationGroup && info.Source.ConversationKind != contextinfo.ConversationChannel {
 		return true
 	}
 	if h.commands != nil && h.commands.IsCommand(text) {

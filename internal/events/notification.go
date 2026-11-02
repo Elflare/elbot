@@ -17,7 +17,7 @@ type Notification struct {
 }
 type NotificationTarget struct {
 	Platform string                       // Runtime platform name, e.g. cli or telegram.
-	Kind     contextinfo.ConversationKind // Private, group or channel destination.
+	Kind     contextinfo.ConversationKind // CLI, private, group or channel destination.
 	ID       string                       // Platform user, group or channel ID, according to Kind.
 	ScopeID  string                       // Platform-specific scope needed to address the conversation.
 }

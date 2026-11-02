@@ -8,6 +8,7 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
@@ -32,6 +33,9 @@ func (isolatedPlatformCapabilities) RestoreMessageContext(ctx, _ context.Context
 }
 
 func (isolatedPlatformCapabilities) PrimaryName() string { return "cli" }
+func (isolatedPlatformCapabilities) SessionIDCode(name string, _ contextinfo.ConversationKind) (string, error) {
+	return name, nil
+}
 func (isolatedPlatformCapabilities) StartReasoning(context.Context) delivery.ReasoningStream {
 	return nil
 }

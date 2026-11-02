@@ -46,7 +46,7 @@ func connectFixtureNotifications(t *testing.T, name string, router *dispatch.Rou
 	if exists {
 		return
 	}
-	s, err := hub.manager.AddPlatform(name)
+	s, err := hub.manager.AddPlatform(name, func(events.NotificationTarget) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -11,6 +11,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	"elbot/internal/platform/share"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/signal"
 	"github.com/coder/websocket"
@@ -39,6 +40,15 @@ func TestRemoteServerTargetClients(t *testing.T) {
 	}
 	if len(clients) != 1 || clients[0].id != "guest" {
 		t.Fatalf("private clients = %#v", clients)
+	}
+	info, ok := contextinfo.ConversationFromContext(s.messageContext(t.Context(), guest))
+	if !ok || info.Source.ConversationKind != contextinfo.ConversationCLI || info.Source.ConversationID != guest.id {
+		t.Fatalf("remote CLI source = %+v", info.Source)
+	}
+	target := share.NotificationTarget(events.Notification{Target: events.NotificationTarget{Platform: "cli", Kind: info.Source.ConversationKind, ID: info.Source.ConversationID}})
+	clients, err = s.targetClients(t.Context(), target)
+	if err != nil || len(clients) != 1 || clients[0] != guest {
+		t.Fatalf("CLI notification clients = %v, error = %v", clients, err)
 	}
 }
 
@@ -89,6 +99,7 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 	}
 	for _, level := range []slog.Level{slog.LevelDebug, slog.LevelInfo, slog.LevelWarn, slog.LevelError} {
 		n := events.NewNotification(firstCtx, level, "original-notice")
+		n.Target = events.NotificationTarget{Platform: "cli", Kind: contextinfo.ConversationCLI, ID: first.id, ScopeID: first.id}
 		if _, err := notices.Emit(firstCtx, n); err != nil {
 			t.Fatal(err)
 		}

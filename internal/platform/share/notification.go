@@ -3,7 +3,7 @@
 package share
 
 import (
-	"strings"
+	"errors"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -16,28 +16,33 @@ type NotificationReceiver interface {
 	ConnectNotifications(*signal.Signal[events.Notification, events.NotificationReceipt]) (*signal.Connection, error)
 }
 
+// ValidateNotificationTarget 是网络平台共用的显式聊天目标规则。
+func ValidateNotificationTarget(target events.NotificationTarget) error {
+	if target.ID == "" {
+		return errors.New("notification target ID is empty")
+	}
+	switch target.Kind {
+	case contextinfo.ConversationPrivate, contextinfo.ConversationGroup, contextinfo.ConversationChannel:
+		return nil
+	default:
+		return errors.New("notification conversation kind is invalid")
+	}
+}
+
 // NotificationTarget 在目标匹配来源时保留原生回复路由，否则转换为显式目标。
 func NotificationTarget(n events.Notification) delivery.Target {
 	if n.Origin != nil {
 		origin := n.Origin.Source
 		kind, id := origin.ConversationKind, origin.ConversationID
-		if k, v, ok := strings.Cut(origin.ScopeID, ":"); ok {
-			if kind == "" || kind == contextinfo.ConversationUnknown {
-				kind = contextinfo.ConversationKind(k)
-			}
-			if id == "" {
-				id = v
-			}
-		}
 		if n.Target.Platform == origin.Platform && n.Target.ID == id && n.Target.Kind == kind && (n.Target.ScopeID == "" || n.Target.ScopeID == origin.ScopeID) {
 			return delivery.Target{}
 		}
 	}
 	t := delivery.Target{Platform: n.Target.Platform, ScopeID: n.Target.ScopeID}
-	if n.Target.Kind == contextinfo.ConversationPrivate {
-		t.PrivateUserID = n.Target.ID
-	} else {
+	if n.Target.Kind == contextinfo.ConversationGroup || n.Target.Kind == contextinfo.ConversationChannel {
 		t.GroupID = n.Target.ID
+	} else {
+		t.PrivateUserID = n.Target.ID
 	}
 	return t
 }

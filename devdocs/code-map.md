@@ -168,14 +168,15 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 路径相对 `internal/platform/`：
 
 - `contracts.go`、`agent.go`、`send.go`、`public_api.go`、`client.go`、`config.go`：公开契约、Agent 转接、发送、原生 API／媒体、客户端、配置。
-- `share/`：平台内部契约。
+- `registration.go`、各适配器 `definition.go`：根部登记与构造入口、各平台静态声明。
+- `share/`：平台内部契约；`definition.go` 静态声明类型，`notification.go` 通知接入与目标转换。
 - `refcontext/refcontext.go`：引用恢复。
 - `cli/`：`cli.go` 本地入口；`lifecycle.go` 本地启停；`remote_lifecycle.go` 远程启停；`remote_server.go` 远程服务。
 - `cli/`：`client.go` 连接选择；`remote_client.go` 远程通信；`tui.go` 终端交互；`ui.go` 订阅；`status.go` 状态；`reasoning.go` 思考流。
 - `qq-onebot/`：`adapter.go` 入口；`lifecycle.go` 启停；`message.go` 入站；`send.go` 发送；`transport.go` WebSocket；`capability_api.go` 原生 API；`forward.go` 合并转发。
 - `qqofficial/`：`adapter.go` 入口；`lifecycle.go` 启停；`gateway.go` 网关；`message.go` 入站；`send.go` 发送；`client.go` HTTP；`token.go` 鉴权；`reference.go` 引用。
 - `telegram/`：`adapter.go` 入口；`lifecycle.go` 启停；`message.go` 入站；`send.go` 发送；`stream.go` 流；`commands.go` 命令同步；`capability_api.go` 原生 API。
-- `headless/headless.go`：无界面平台。
+- `headless/`：`headless.go` 宿主占位；`notifications.go` 宿主通知写日志。
 - `internal/storage/chat_history.go`：历史契约与编解码。
 
 <!-- locator:session -->

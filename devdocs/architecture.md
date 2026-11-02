@@ -188,14 +188,27 @@ Platform dispatch 统一路由正文、媒体、Hook 输出与后台报告；Sen
 
 Platform 管输入归一化、历史落库、引用恢复和实际发送；适配器保留协议私有路由，根部公开最小发送、原生 API 与媒体能力。
 
-原始 segments 先写历史，需要唤醒或续接时再物化媒体；引用从输出关联、历史和平台能力恢复，最新同身份／平台／scope 的助手回复触发 Resume，较早回复触发 Fork。停止接入与关闭发送分开，先等接入退出，再最终释放资源。
+适配器提供静态声明，根部唯一清单关联声明与构造闭包，一次校验后按登记顺序构造及启动；未启用平台仍保留声明。根部裁剪依赖、登记 Agent 接线与自有资源，不通过实例类型猜测接线能力。声明与装配流如下：
+
+```mermaid
+flowchart LR
+    Definition["各适配器 definition.go<br/>提供静态声明"] --> Registration["platform/registration.go<br/>校验登记、构造闭包"]
+    Registration --> Config["platform/config.go<br/>提取配置定义"]
+    Registration --> Wiring["platform/wiring.go<br/>构造实例、连接能力"]
+    Wiring --> Agent["platform/agent.go<br/>执行已登记的 Agent 接线"]
+    Wiring --> Lifecycle["platform/lifecycle.go<br/>启停与资源释放"]
+```
+
+通知统一按目的地排队，提供方的目标规则在入队前执行一次，binding 有效性在执行前复核；通知管理器不枚举平台名称，不从 ScopeID 反推会话类型或目标 ID。CLI 使用明确的会话类型，唤醒与显式通知目标转换共用私聊路径。headless 是宿主占位，不声明 Session 短码，通过相同队列将宿主通知转交日志信号。
+
+原始 segments 先写历史，需要唤醒或续接时再物化媒体；引用从输出关联、历史和平台能力恢复，最新同身份／平台／scope 的助手回复触发 Resume，较早回复触发 Fork。停止接入与关闭通知、发送分开，先等接入退出，再最终释放资源。
 
 Chat History 由 App 持有、Tool 直接查询；Platform 不包装查询服务，Agent 通过输入中的延迟解析能力取得媒体。
 
 <!-- locator:session -->
 ## Session 生命周期
 
-Session 唯一管理 current 与 Binding：control 管会话业务及过期，binding 管准入，branch 管派生，naming 管命名；根部决定 ID 与创建来源，Storage 提供全局序号。
+Session 唯一管理 current 与 Binding：control 管会话业务及过期，binding 管准入，branch 管派生，naming 管命名；根部组合创建来源前缀与 Storage 全局序号。平台分别声明私聊与群聊短码，由 Agent 注入 Platform 根部按会话类型查询的能力；Session 原样使用，不转换大小写，不维护平台名单或缺失短码的默认值。创建时保存来源快照，压缩派生沿用快照；缺失时直接报错，不使用当前入口补齐。
 
 - 切离使旧 binding 永久失效，切回建立新 binding。锁顺序：Scope → 排序 SessionID → 状态锁；外部 I/O 在锁外。
 - ForegroundActivated 是例外：接管提交后、释放准入前同步更新执行内存，不做 I/O 或再次准入；观察用 BindingChanged 在锁外发布。

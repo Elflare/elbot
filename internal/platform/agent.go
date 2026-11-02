@@ -8,8 +8,6 @@ import (
 	"slices"
 
 	"elbot/internal/agent"
-	"elbot/internal/command"
-	"elbot/internal/completion"
 	"elbot/internal/delivery"
 	"elbot/internal/media"
 	"elbot/internal/platform/cli"
@@ -32,23 +30,10 @@ func (m *Supervisor) ConnectAgent(source AgentCapabilities) error {
 	}
 	m.agentConnected, m.agent = true, source
 	defer m.configureCloseSteps()
-	var needsUI bool
-	for _, adapter := range m.adapters {
-		if target, ok := adapter.(interface {
-			SetCompleter(func(context.Context, completion.Request) ([]completion.Item, error))
-		}); ok {
-			target.SetCompleter(source.Complete)
+	for _, connect := range m.agentWiring {
+		if m.agentErr = connect(source); m.agentErr != nil {
+			break
 		}
-		if target, ok := adapter.(interface{ SetCommandCatalog([]command.Info) }); ok {
-			target.SetCommandCatalog(source.Commands())
-		}
-		switch adapter.(type) {
-		case *cli.Adapter, *cli.RemoteServer:
-			needsUI = true
-		}
-	}
-	if needsUI {
-		m.ui, m.agentErr = cli.ConnectUI(agentEvents{source})
 	}
 	return m.agentErr
 }

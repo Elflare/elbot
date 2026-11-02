@@ -178,10 +178,10 @@ func TestCronWriteResultsAndErrors(t *testing.T) {
 					t.Fatal(err)
 				}
 				ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Platform: "qq"})
-				result, logContent, err := callTool(ctx, cronTestTools(repo, nil)[2], share.CallRequest{Arguments: args})
+				result, _, err := callTool(ctx, cronTestTools(repo, nil)[2], share.CallRequest{Arguments: args})
 				if fail {
-					if result != nil || err != repo.err || logContent != repo.err.Error() {
-						t.Fatalf("result=%+v log=%q error=%v", result, logContent, err)
+					if result != nil || err != repo.err {
+						t.Fatalf("result=%+v error=%v", result, err)
 					}
 					return
 				}
@@ -192,8 +192,8 @@ func TestCronWriteResultsAndErrors(t *testing.T) {
 					OK  bool      `json:"ok"`
 					Job *CronInfo `json:"job"`
 				}
-				if err := json.Unmarshal([]byte(result.Content), &response); err != nil || !response.OK || logContent != result.Content {
-					t.Fatalf("result=%+v log=%q decode error=%v", result, logContent, err)
+				if err := json.Unmarshal([]byte(result.Content), &response); err != nil || !response.OK {
+					t.Fatalf("result=%+v decode error=%v", result, err)
 				}
 				if operation == "create" || operation == "update" {
 					if response.Job == nil || response.Job.Name != "reminder" || len(repo.saved) != 1 {

@@ -13,6 +13,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
+	"elbot/internal/platform/share"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage/sqlite"
@@ -108,7 +109,7 @@ func TestManagerCloseWaitsForSenderAndCanRetry(t *testing.T) {
 		if !errors.Is(sendContext.Err(), context.Canceled) {
 			t.Fatalf("sender was not canceled: %v", sendContext.Err())
 		}
-		if _, err := m.AddPlatform("late"); !errors.Is(err, signal.ErrClosed) {
+		if _, err := m.AddPlatform("late", func(events.NotificationTarget) error { return nil }); !errors.Is(err, signal.ErrClosed) {
 			t.Fatalf("registration after close: %v", err)
 		}
 		m.NotifyPlatformFailure(context.Background(), "failed", errors.New("late"), targets)
@@ -154,7 +155,7 @@ func testManager(t *testing.T, primary string) *Manager {
 }
 func addTestPlatform(t *testing.T, m *Manager, name string, h signal.Handler[events.Notification, events.NotificationReceipt]) *signal.Signal[events.Notification, events.NotificationReceipt] {
 	t.Helper()
-	s, err := m.AddPlatform(name)
+	s, err := m.AddPlatform(name, func(events.NotificationTarget) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +330,7 @@ func TestManagerOwnershipAndMissingPlatform(t *testing.T) {
 	if _, err := events.NotificationRequested.Emit(context.Background(), events.Notification{Text: "missing"}); err == nil {
 		t.Fatal("missing platform succeeded")
 	}
-	s, err := m.AddPlatform("cli")
+	s, err := m.AddPlatform("cli", func(events.NotificationTarget) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,5 +341,60 @@ func TestManagerOwnershipAndMissingPlatform(t *testing.T) {
 		return events.NotificationReceipt{}, nil
 	}, signal.ConnectOptions{}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRegisteredValidatorRunsOnceBeforeAdmission(t *testing.T) {
+	m := testManager(t, "cli")
+	var validations, deliveries atomic.Int32
+	rejected := errors.New("target rejected")
+	s, err := m.AddPlatform("cli", func(target events.NotificationTarget) error {
+		validations.Add(1)
+		if target.ID != "allowed" {
+			return rejected
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Connect(func(context.Context, events.Notification) (events.NotificationReceipt, error) {
+		deliveries.Add(1)
+		return events.NotificationReceipt{}, nil
+	}, signal.ConnectOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	results, err := events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "rejected"})
+	if !errors.Is(err, rejected) || len(results) != 1 || results[0].Started || deliveries.Load() != 0 || validations.Load() != 1 {
+		t.Fatalf("invalid admission: results=%v error=%v validations=%d deliveries=%d", results, err, validations.Load(), deliveries.Load())
+	}
+	results, err = events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "accepted", Target: events.NotificationTarget{Platform: "cli", ID: "allowed"}})
+	if err != nil || len(results) != 1 || !results[0].Started || validations.Load() != 2 || deliveries.Load() != 1 {
+		t.Fatalf("valid admission: results=%v error=%v validations=%d deliveries=%d", results, err, validations.Load(), deliveries.Load())
+	}
+}
+
+func TestNotificationDoesNotInferTargetFromScope(t *testing.T) {
+	m := testManager(t, "network")
+	s, err := m.AddPlatform("network", share.ValidateNotificationTarget)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var deliveries atomic.Int32
+	if _, err := s.Connect(func(context.Context, events.Notification) (events.NotificationReceipt, error) {
+		deliveries.Add(1)
+		return events.NotificationReceipt{}, nil
+	}, signal.ConnectOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []events.NotificationTarget{
+		{Platform: "network", ScopeID: "group:chat"},
+		{Platform: "network", ScopeID: "group:chat", Kind: contextinfo.ConversationGroup},
+		{Platform: "network", ScopeID: "group:chat", ID: "chat"},
+	} {
+		results, err := events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "notice", Target: target})
+		if err == nil || len(results) != 1 || results[0].Started || deliveries.Load() != 0 {
+			t.Fatalf("incomplete target was admitted: target=%+v results=%v error=%v", target, results, err)
+		}
 	}
 }

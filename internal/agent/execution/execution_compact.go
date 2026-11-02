@@ -70,7 +70,7 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 	if err != nil {
 		return nil, err
 	}
-	nextID, err := c.sessions.AllocateID(reqCtx, scope, current)
+	nextID, err := c.sessions.AllocateID(reqCtx, current)
 	if err != nil {
 		return nil, err
 	}

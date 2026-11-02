@@ -13,6 +13,8 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
+	"elbot/internal/platform/headless"
+	"elbot/internal/platform/share"
 	"elbot/internal/signal"
 	"elbot/internal/testutil"
 )
@@ -54,7 +56,7 @@ func TestFailureNotificationWiringSurvivesIngressStop(t *testing.T) {
 			runtime, _ := testRuntime(name, false, nil)
 			runtime.running = name != "stopped"
 			m.runtimes = append(m.runtimes, runtime)
-			queue, err := m.notifications.AddPlatform(name)
+			queue, err := m.notifications.AddPlatform(name, share.ValidateNotificationTarget)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -106,4 +108,56 @@ func TestFailureNotificationWiringSurvivesIngressStop(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestServiceNotificationsUseHeadlessQueueAndPropagateLogResults(t *testing.T) {
+	m, err := NewSupervisor(t.Context(), &config.Config{}, SupervisorDeps{Mode: "service", Store: testutil.NewSQLiteStore(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := m.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	if len(m.connections) != 1 {
+		t.Fatalf("headless notification connections=%d", len(m.connections))
+	}
+	var records []events.LogRecord
+	fault := errors.New("logger rejected notice")
+	c, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+		if record.EventName == "runtime_notification" {
+			records = append(records, record)
+			return fault
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close(context.Background())
+	results, err := events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "host notice", Level: slog.LevelWarn})
+	if !errors.Is(err, fault) || len(results) != 1 || !results[0].Started {
+		t.Fatalf("log completion lost: %v %v", results, err)
+	}
+	if len(records) != 1 || records[0].Content != "host notice" || records[0].Level != slog.LevelWarn {
+		t.Fatalf("records=%+v", records)
+	}
+	if err := headless.ValidateNotificationTarget(events.NotificationTarget{ID: "chat"}); err == nil {
+		t.Fatal("headless accepted a conversation destination")
+	}
+	results, err = events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "invalid", Target: events.NotificationTarget{Platform: "service", Kind: contextinfo.ConversationPrivate, ID: "chat"}})
+	if err == nil || len(results) != 1 || results[0].Started || len(records) != 1 {
+		t.Fatalf("invalid host destination: %v %v", results, err)
+	}
+	if err := m.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, connection := range m.connections {
+		select {
+		case <-connection.Done():
+		default:
+			t.Fatal("headless receiver not closed")
+		}
+	}
 }

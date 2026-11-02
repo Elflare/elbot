@@ -27,7 +27,7 @@ func (ConversationMetaSystemPromptSource) Parts(ctx context.Context, req agentsh
 	switch conversation {
 	case "group":
 		displayName = firstNonEmpty(info.Identity.GroupCard, info.Identity.Nickname)
-	case "private", "channel":
+	case "private", "channel", "cli":
 		displayName = info.Identity.Nickname
 	default:
 		conversation = ""

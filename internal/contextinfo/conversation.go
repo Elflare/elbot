@@ -5,6 +5,7 @@ package contextinfo
 type ConversationKind string
 
 const (
+	ConversationCLI     ConversationKind = "cli" // 本地终端或远程 CLI 客户端的直接会话。
 	ConversationUnknown ConversationKind = "unknown"
 	ConversationPrivate ConversationKind = "private"
 	ConversationGroup   ConversationKind = "group"

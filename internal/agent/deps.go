@@ -5,6 +5,7 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/doctor"
 	"elbot/internal/events"
@@ -87,6 +88,7 @@ type HookCapabilities interface{ Commands() []command.Handler }
 
 // PlatformCapabilities supplies platform identity and delivery for Agent output.
 type PlatformCapabilities interface {
+	SessionIDCode(string, contextinfo.ConversationKind) (string, error)
 	RestoreMessageContext(context.Context, context.Context) context.Context
 	PrimaryName() string
 	SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)

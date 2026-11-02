@@ -5,6 +5,7 @@ package session
 import (
 	"context"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/storage"
@@ -12,14 +13,15 @@ import (
 
 // SupervisorDeps 由 Agent 提供；所有资源均为借用，Session 不负责关闭。
 type SupervisorDeps struct {
-	Store            storage.Store                                 // 根部提取仓库能力，不向子包交付整个 Store。
-	Models           ModelCapabilities                             // 仅提供命名选择，不交付模型管理操作。
-	ActiveSessionIDs func() []string                               // 查询活跃会话事实，状态仍归 Agent 的执行组件。
-	CheckForeground  func(context.Context, *storage.Session) error // 接管准入内的兼容性检查，不得执行 I/O 或再次获取准入。
-	Materials        MaterialResolver                              // 构造时只接入，业务启动前由 Agent 完成协议路线注册。
-	IsSuperadmin     func(Scope) bool                              // 根据绑定的范围身份查询权限。
-	ReleaseSession   func(string)                                  // 同步释放 Agent 自有闲置会话状态；不得 I/O、等待或重新准入。
-	ReleaseBinding   func(*Binding)                                // 同步释放原绑定的撤销等状态；释放操作均须幂等。
+	SessionIDCode    func(string, contextinfo.ConversationKind) (string, error) // Platform 根部按平台与会话类型查询已登记的短码。
+	Store            storage.Store                                              // 根部提取仓库能力，不向子包交付整个 Store。
+	Models           ModelCapabilities                                          // 仅提供命名选择，不交付模型管理操作。
+	ActiveSessionIDs func() []string                                            // 查询活跃会话事实，状态仍归 Agent 的执行组件。
+	CheckForeground  func(context.Context, *storage.Session) error              // 接管准入内的兼容性检查，不得执行 I/O 或再次获取准入。
+	Materials        MaterialResolver                                           // 构造时只接入，业务启动前由 Agent 完成协议路线注册。
+	IsSuperadmin     func(Scope) bool                                           // 根据绑定的范围身份查询权限。
+	ReleaseSession   func(string)                                               // 同步释放 Agent 自有闲置会话状态；不得 I/O、等待或重新准入。
+	ReleaseBinding   func(*Binding)                                             // 同步释放原绑定的撤销等状态；释放操作均须幂等。
 }
 
 // ModelCapabilities 固定命名任务所需的模型选择能力。

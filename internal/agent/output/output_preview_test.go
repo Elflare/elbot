@@ -151,7 +151,7 @@ func TestPreviewGroupsToolNoticesBeforeHook(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer manager.Close(context.Background())
-			platformSignal, err := manager.AddPlatform("cli")
+			platformSignal, err := manager.AddPlatform("cli", func(events.NotificationTarget) error { return nil })
 			if err != nil {
 				t.Fatal(err)
 			}

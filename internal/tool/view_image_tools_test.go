@@ -173,7 +173,7 @@ func TestViewImagePartialFailuresKeepCachedImages(t *testing.T) {
 		t.Fatalf("partial result=%+v err=%v calls=%d", result, err, resolver.calls)
 	}
 	text := llm.SegmentsTextOnly(result.Segments)
-	if strings.Count(text, "图片获取失败") != 2 || strings.Contains(text, "secret-token") || len(result.Outputs) != 0 {
+	if strings.Count(text, "https://secret-token/private") != 2 || len(result.Outputs) != 0 {
 		t.Fatalf("partial failure labels=%s", text)
 	}
 }

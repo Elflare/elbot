@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
@@ -26,7 +27,9 @@ func TestSessionIDFormatsShareOneSequence(t *testing.T) {
 		{"qqofficial", contextinfo.ConversationGroup, "", nil, "QQ"},
 		{"telegram", contextinfo.ConversationPrivate, "", nil, "tg"},
 		{"telegram", contextinfo.ConversationChannel, "", nil, "TG"},
+		{"cli", contextinfo.ConversationCLI, "", nil, "cl"},
 		{"cli", contextinfo.ConversationGroup, "", nil, "cl"},
+		{"qqonebot", contextinfo.ConversationGroup, "cron", nil, "crob"},
 		{"cli", "", "cron", []string{"qqonebot"}, "crob"},
 		{"cli", "", "elnis", []string{"telegram", "telegram"}, "ewtg"},
 		{"cli", "", "cron", []string{"telegram", "qqonebot"}, "crmx"},
@@ -48,11 +51,11 @@ func TestSessionIDFormatsShareOneSequence(t *testing.T) {
 			if want := fmt.Sprintf("%s%d", tc.prefix, i+1); row.ID != want {
 				t.Fatalf("ID=%q want %q", row.ID, want)
 			}
-			origin, err := share.SessionIDOrigin(row, share.Scope{})
+			origin, err := share.SessionIDOrigin(row)
 			if err != nil {
 				t.Fatal(err)
 			}
-			prefix, err := origin.Prefix()
+			prefix, err := origin.Prefix(svc.sessionIDCode)
 			if err != nil || prefix != tc.prefix {
 				t.Fatalf("saved origin=%+v, prefix=%q error=%v", origin, prefix, err)
 			}
@@ -75,7 +78,7 @@ func TestSessionIDResetReservationAndCompaction(t *testing.T) {
 	if row.ID != "TG1" {
 		t.Fatalf("/new consumed numbers: %q", row.ID)
 	}
-	reserved, err := svc.AllocateID(t.Context(), scope, row)
+	reserved, err := svc.AllocateID(t.Context(), row)
 	if err != nil || reserved != "TG2" {
 		t.Fatalf("reserved=%q err=%v", reserved, err)
 	}
@@ -87,7 +90,7 @@ func TestSessionIDResetReservationAndCompaction(t *testing.T) {
 	if _, err := store.Sessions().Get(t.Context(), reserved); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("unused reservation was saved: %v", err)
 	}
-	nextID, err := svc.AllocateID(t.Context(), scope, row)
+	nextID, err := svc.AllocateID(t.Context(), row)
 	if err != nil || nextID != "TG3" {
 		t.Fatalf("reservation reused: %q %v", nextID, err)
 	}
@@ -98,54 +101,87 @@ func TestSessionIDResetReservationAndCompaction(t *testing.T) {
 	if next.ID != "TG3" {
 		t.Fatal(next.ID)
 	}
-	if _, err := share.SessionIDOrigin(next, share.Scope{}); err != nil {
+	if _, err := share.SessionIDOrigin(next); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestSessionIDForkCopyAndLegacySources(t *testing.T) {
+func TestSessionIDForkCopyAndPromotion(t *testing.T) {
 	svc, store := newTestService(t)
 	scope := Scope{ActorID: "owner", Platform: "qqonebot", PlatformScopeID: "private", ConversationKind: contextinfo.ConversationPrivate}
-	legacy := &storage.Session{ID: storage.NewID(), OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID}
-	if err := store.Sessions().Create(t.Context(), legacy); err != nil {
+	source, err := svc.Create(t.Context(), scope, CreateRequest{})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Resume(t.Context(), scope, legacy.ID); err != nil {
-		t.Fatal(err)
-	}
-	message := &storage.Message{ID: storage.NewID(), SessionID: legacy.ID, Role: storage.RoleAssistant, Content: "answer"}
+	message := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: storage.RoleAssistant, Content: "answer"}
 	if err := store.Messages().Append(t.Context(), message); err != nil {
 		t.Fatal(err)
 	}
 	fork, err := svc.Fork(t.Context(), scope, message.ID)
-	if err != nil || fork.ID != "ob1" {
+	if err != nil || fork.ID != "ob2" {
 		t.Fatalf("fork=%+v err=%v", fork, err)
 	}
-	if _, err := store.Sessions().Get(t.Context(), legacy.ID); err != nil {
+	if _, err := store.Sessions().Get(t.Context(), source.ID); err != nil {
 		t.Fatal(err)
 	}
 	background, err := svc.PrepareBackground(t.Context(), scope, BackgroundRequest{Kind: "cron", Name: "task", TargetPlatforms: []string{"telegram", "qqonebot"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if background.ID != "crmx2" {
+	if background.ID != "crmx3" {
 		t.Fatal(background.ID)
 	}
-	reserved, err := svc.AllocateID(t.Context(), scope, background)
-	if err != nil || reserved != "crmx3" {
+	reserved, err := svc.AllocateID(t.Context(), background)
+	if err != nil || reserved != "crmx4" {
 		t.Fatalf("background reserve=%q err=%v", reserved, err)
 	}
 	copyScope := Scope{ActorID: "owner", Platform: "telegram", PlatformScopeID: "cron:task"}
 	copy, err := svc.CopyBackground(t.Context(), copyScope, BackgroundCopyRequest{SourceSessionID: background.ID, Kind: "cron", Name: "task"})
-	if err != nil || copy.ID != "crtg4" {
+	if err != nil || copy.ID != "crtg5" {
 		t.Fatalf("copy=%+v err=%v", copy, err)
 	}
 	promoted, err := svc.Resume(t.Context(), scope, background.ID)
 	if err != nil || promoted.ID != background.ID || promoted.Mode != storage.SessionModeWork {
 		t.Fatalf("promotion changed ID: %+v %v", promoted, err)
 	}
-	reserved, err = svc.AllocateID(t.Context(), scope, promoted)
-	if err != nil || reserved != "crmx5" {
+	reserved, err = svc.AllocateID(t.Context(), promoted)
+	if err != nil || reserved != "crmx6" {
 		t.Fatalf("promotion changed creation origin: %q %v", reserved, err)
+	}
+}
+
+func TestSessionIDQueryFailureDoesNotConsumeSequence(t *testing.T) {
+	store := newTestStore(t)
+	fault := errors.New("platform is not registered")
+	svc := newTestSupervisor(t, store, func(_ *config.Config, deps *SupervisorDeps) {
+		deps.SessionIDCode = func(name string, _ contextinfo.ConversationKind) (string, error) {
+			if name != "future" {
+				return "", fault
+			}
+			return "fx", nil
+		}
+	})
+	scope := Scope{ActorID: "owner", Platform: "unknown", PlatformScopeID: "private"}
+	if _, err := svc.Create(t.Context(), scope, CreateRequest{}); !errors.Is(err, fault) {
+		t.Fatalf("unknown platform=%v", err)
+	}
+	scope.Platform = "future"
+	row, err := svc.Create(t.Context(), scope, CreateRequest{})
+	if err != nil || row.ID != "fx1" {
+		t.Fatalf("sequence consumed or code changed: row=%+v error=%v", row, err)
+	}
+}
+
+func TestSessionIDMissingOriginDoesNotConsumeSequence(t *testing.T) {
+	svc, _ := newTestService(t)
+	for _, metadata := range []string{"", `{}`, `{"background_kind":"cron"}`, `{"id_origin":null}`, `{"id_origin":{}}`, `{"id_origin":"invalid"}`} {
+		source := &storage.Session{Platform: "cli", Metadata: metadata}
+		if _, err := svc.AllocateID(t.Context(), source); err == nil {
+			t.Fatalf("accepted invalid origin: %s", metadata)
+		}
+	}
+	row, err := svc.Create(t.Context(), Scope{ActorID: "owner", Platform: "cli", PlatformScopeID: "local", ConversationKind: contextinfo.ConversationCLI}, CreateRequest{})
+	if err != nil || row.ID != "cl1" {
+		t.Fatalf("failed reservations consumed sequence: row=%+v error=%v", row, err)
 	}
 }

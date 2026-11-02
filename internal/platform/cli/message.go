@@ -19,7 +19,7 @@ type localMessageHandler struct {
 func (h localMessageHandler) HandleMessage(ctx context.Context, text string) error {
 	info := contextinfo.Conversation{
 		PlatformData: messageData{adapter: h.adapter},
-		Source:       contextinfo.Source{Platform: "cli", ScopeID: "local", ConversationKind: contextinfo.ConversationUnknown, ConversationID: "local"},
+		Source:       contextinfo.Source{Platform: "cli", ScopeID: "local", ConversationKind: contextinfo.ConversationCLI, ConversationID: "local"},
 		Identity:     contextinfo.Identity{ActorID: "cli:local", PlatformUserID: "local"},
 	}
 	return h.next(contextinfo.WithConversation(ctx, info), text, share.MessageContext{Conversation: info, RawText: text, Sender: h.adapter})

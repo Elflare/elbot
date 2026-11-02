@@ -19,7 +19,7 @@ func TestQueuedPreviewRespectsCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.Close(context.Background())
-	s, err := m.AddPlatform("cli")
+	s, err := m.AddPlatform("cli", func(events.NotificationTarget) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}

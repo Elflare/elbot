@@ -7,54 +7,39 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"slices"
 	"strings"
 
 	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	"elbot/internal/delivery"
 	"elbot/internal/events"
-	"elbot/internal/platform/cli"
 	"elbot/internal/platform/dispatch"
 	"elbot/internal/platform/headless"
 	"elbot/internal/platform/notification"
-	qqonebot "elbot/internal/platform/qq-onebot"
-	"elbot/internal/platform/qqofficial"
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/platform/share"
-	"elbot/internal/platform/telegram"
 )
 
-func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
+func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps, entries []registration) error {
 	m.prepare = func() error {
 		if !m.agentConnected {
 			return errors.New("platform Agent is not connected")
 		}
 		return m.agentErr
 	}
-	var err error
-	if deps.Mode == "tui" {
-		adapter := cli.New()
-		m.primary = adapter
-		m.ownRuntime(adapter, true, adapter.WaitExit)
-	} else {
-		m.primary = headless.New()
-		m.ownRuntime(m.primary, false, nil)
-		cliConfig, err := cli.NewConfigFromPlatformConfig(cfg.Platform["cli"])
-		if err != nil {
+	for _, entry := range entries {
+		if err := m.registerPlatform(entry); err != nil {
 			return err
 		}
-		if cliConfig.Enabled && cliConfig.Server.Enabled {
-			adapter, err := cli.NewRemoteServer(cli.RemoteServerOptions{Config: cliConfig, ConfigDir: filepath.Dir(cfg.ConfigPath), Superadmins: cfg.Security.Superadmins["cli"]})
-			if adapter != nil {
-				m.ownRuntime(adapter, err == nil, nil)
-			}
-			if err != nil {
-				return err
-			}
-		}
+	}
+	if deps.Mode != "tui" {
+		adapter := headless.New()
+		m.primary = adapter
+		m.ownRuntime(adapter, false, nil, headless.ValidateNotificationTarget)
+		m.outputWiring = append(m.outputWiring, func() error {
+			return m.connectNotifications(adapter, headless.ValidateNotificationTarget)
+		})
 	}
 	// 引用恢复只在根部连接；适配器不导入 refcontext 兄弟包。
 	prefixes := cfg.Commands.Prefixes
@@ -69,89 +54,20 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 		FindOutputs:           deps.Store.Media().FindOutputs,
 		ChatHistory:           deps.ChatHistory,
 	}
-	if raw, ok := cfg.Platform["qqofficial"]; ok {
-		adapter, err := qqofficial.NewFromPlatformConfig(raw, qqofficial.Deps{
-			CommonConfig: share.CommonConfig{Superadmins: cfg.Security.Superadmins["qqofficial"], ConfigDir: filepath.Dir(cfg.ConfigPath)},
-			ParseCommand: parseCommand,
-			ChatHistory:  deps.ChatHistory,
-			ReferenceResolver: func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
-				return refcontext.Apply(ctx, referenceDeps, opts)
-			},
-		})
-		if adapter != nil {
-			m.ownRuntime(adapter, err == nil && adapter.Enabled(), nil)
-		}
-		if err != nil {
-			return err
-		}
-	}
-	if raw, ok := cfg.Platform["qqonebot"]; ok {
-		adapter, err := qqonebot.NewFromPlatformConfig(raw, qqonebot.Deps{
-			ParseCommand: parseCommand,
-			CommonConfig: share.CommonConfig{
-				Superadmins: cfg.Security.Superadmins["qqonebot"],
-				ConfigDir:   filepath.Dir(cfg.ConfigPath), AttachmentDir: filepath.Join(cfg.Sandbox.Root, "platform", "qqonebot"),
-				MaxReceiveFileBytes: cfg.PlatformFiles.MaxReceiveFileBytes, DownloadTimeoutSecs: cfg.PlatformFiles.DownloadTimeoutSecs,
-			},
-			ChatHistory: deps.ChatHistory,
-			ReferenceResolver: func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
-				return refcontext.Apply(ctx, referenceDeps, opts)
-			},
-			FindByPlatformMessage: deps.Store.Messages().FindByPlatformMessage,
-			FindOutputs:           deps.Store.Media().FindOutputs,
-		})
-		if adapter != nil {
-			m.ownRuntime(adapter, err == nil && adapter.Enabled(), nil)
-		}
-		if err != nil {
-			return err
-		}
-	}
-	if raw, ok := cfg.Platform["telegram"]; ok {
-		adapter, err := telegram.NewFromPlatformConfig(raw, telegram.Deps{
-			CommonConfig: share.CommonConfig{Superadmins: cfg.Security.Superadmins["telegram"], ConfigDir: filepath.Dir(cfg.ConfigPath)},
-			ChatHistory:  deps.ChatHistory,
-			ReferenceResolver: func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
-				return refcontext.Apply(ctx, referenceDeps, opts)
-			},
-		})
-		if adapter != nil {
-			m.ownRuntime(adapter, err == nil && adapter.Enabled(), nil)
-		}
-		if err != nil {
+	for _, entry := range m.registered {
+		if err := entry.build(m, cfg, deps, referenceDeps); err != nil {
 			return err
 		}
 	}
 	m.dispatcher = dispatch.New(dispatch.Options{Primary: m.primary, SaveMediaOutput: deps.Store.Media().SaveOutput, Media: deps.Media, PublishUsageFinished: publishMediaUsageFinished(deps.Media), MediaRetentionDays: cfg.Maintenance.SandboxCleanup.RetentionDays})
+	var err error
 	m.notifications, err = notification.New(m.primary.Name())
 	if err != nil {
 		return err
 	}
-	for _, runtime := range m.runtimes {
-		for _, adapter := range m.adapters {
-			if adapter.Name() != runtime.name {
-				continue
-			}
-			var sender interface {
-				Name() string
-				delivery.MessageSender
-			} = adapter
-			m.dispatcher.RegisterPlatform(sender)
-			receiver, ok := adapter.(share.NotificationReceiver)
-			if !ok {
-				return fmt.Errorf("platform %q has no notification receiver", adapter.Name())
-			}
-			queue, err := m.notifications.AddPlatform(adapter.Name())
-			if err != nil {
-				return err
-			}
-			connection, err := receiver.ConnectNotifications(queue)
-			if connection != nil {
-				m.connections = append(m.connections, connection)
-			}
-			if err != nil {
-				return err
-			}
+	for _, connect := range m.outputWiring {
+		if err := connect(); err != nil {
+			return err
 		}
 	}
 	// 配置只在构造时读取，运行期故障观察不持有可变配置。
@@ -184,7 +100,10 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps) error {
 	return nil
 }
 
-func (m *Supervisor) ownRuntime(adapter share.Runtime, active bool, waitExit func(context.Context) error) {
+func (m *Supervisor) ownRuntime(adapter interface {
+	share.Runtime
+	share.NotificationReceiver
+}, active bool, waitExit func(context.Context) error, validate func(events.NotificationTarget) error) {
 	m.adapters = append(m.adapters, adapter)
 	if !active {
 		return
@@ -194,14 +113,30 @@ func (m *Supervisor) ownRuntime(adapter share.Runtime, active bool, waitExit fun
 		start:      func(ctx context.Context) error { return adapter.Start(ctx, m.handleMessage) },
 		beginClose: adapter.BeginClose, wait: adapter.Wait,
 	})
+	m.outputWiring = append(m.outputWiring, func() error {
+		m.dispatcher.RegisterPlatform(adapter)
+		return m.connectNotifications(adapter, validate)
+	})
+}
+
+func (m *Supervisor) connectNotifications(adapter interface {
+	Name() string
+	share.NotificationReceiver
+}, validate func(events.NotificationTarget) error) error {
+	queue, err := m.notifications.AddPlatform(adapter.Name(), validate)
+	if err != nil {
+		return err
+	}
+	connection, err := adapter.ConnectNotifications(queue)
+	if connection != nil {
+		m.connections = append(m.connections, connection)
+	}
+	return err
 }
 
 // configureCloseSteps 在构造及 ConnectAgent 后调用，启动后不再改变资源列表。
 func (m *Supervisor) configureCloseSteps() {
-	m.closeSteps = nil
-	if m.ui != nil {
-		m.closeSteps = append(m.closeSteps, closeStep{"ui", m.ui.Close})
-	}
+	m.closeSteps = append([]closeStep(nil), m.agentCloseSteps...)
 	if m.notifications != nil {
 		m.closeSteps = append(m.closeSteps, closeStep{"notifications", m.notifications.Close})
 	}

@@ -4,17 +4,12 @@ package platform
 
 import (
 	"elbot/internal/config"
-	"elbot/internal/platform/cli"
-	qqonebot "elbot/internal/platform/qq-onebot"
-	"elbot/internal/platform/qqofficial"
-	"elbot/internal/platform/telegram"
 )
 
 func ConfigDefinitions() []config.Definition {
-	return []config.Definition{
-		cli.ConfigDefinition(),
-		qqonebot.ConfigDefinition(),
-		qqofficial.ConfigDefinition(),
-		telegram.ConfigDefinition(),
+	var definitions []config.Definition
+	for _, entry := range registrations() {
+		definitions = append(definitions, entry.definition.ConfigDefinition)
 	}
+	return definitions
 }

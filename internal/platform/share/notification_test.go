@@ -21,8 +21,10 @@ func TestNotificationTarget(t *testing.T) {
 		{name: "matching origin", source: &origin, target: target},
 		{name: "matching origin without explicit scope", source: &origin,
 			target: events.NotificationTarget{Platform: "telegram", Kind: contextinfo.ConversationGroup, ID: "chat"}},
-		{name: "missing source fields from scope", source: &contextinfo.Source{Platform: "telegram", ScopeID: "group:chat"}, target: target},
-		{name: "unknown source kind from scope", source: &contextinfo.Source{Platform: "telegram", ScopeID: "group:chat", ConversationKind: contextinfo.ConversationUnknown}, target: target},
+		{name: "missing source fields do not recover from scope", source: &contextinfo.Source{Platform: "telegram", ScopeID: "group:chat"}, target: target,
+			want: delivery.Target{Platform: "telegram", GroupID: "chat", ScopeID: "group:chat"}},
+		{name: "unknown source kind does not recover from scope", source: &contextinfo.Source{Platform: "telegram", ScopeID: "group:chat", ConversationKind: contextinfo.ConversationUnknown}, target: target,
+			want: delivery.Target{Platform: "telegram", GroupID: "chat", ScopeID: "group:chat"}},
 		{name: "existing source fields take precedence", source: &contextinfo.Source{Platform: "telegram", ScopeID: "private:other", ConversationKind: contextinfo.ConversationGroup, ConversationID: "chat"},
 			target: events.NotificationTarget{Platform: "telegram", Kind: contextinfo.ConversationGroup, ID: "chat"}},
 		{name: "different platform", source: &origin,
@@ -39,6 +41,8 @@ func TestNotificationTarget(t *testing.T) {
 			want:   delivery.Target{Platform: "telegram", GroupID: "chat", ScopeID: "group:other"}},
 		{name: "no origin private", target: events.NotificationTarget{Platform: "telegram", Kind: contextinfo.ConversationPrivate, ID: "user", ScopeID: "private:user"},
 			want: delivery.Target{Platform: "telegram", PrivateUserID: "user", ScopeID: "private:user"}},
+		{name: "no origin CLI", target: events.NotificationTarget{Platform: "cli", Kind: contextinfo.ConversationCLI, ID: "client", ScopeID: "client"},
+			want: delivery.Target{Platform: "cli", PrivateUserID: "client", ScopeID: "client"}},
 		{name: "no origin group", target: target,
 			want: delivery.Target{Platform: "telegram", GroupID: "chat", ScopeID: "group:chat"}},
 		{name: "no origin channel", target: events.NotificationTarget{Platform: "telegram", Kind: contextinfo.ConversationChannel, ID: "channel"},
@@ -62,5 +66,18 @@ func TestNotificationTarget(t *testing.T) {
 				t.Fatal("notification or origin changed")
 			}
 		})
+	}
+}
+
+func TestValidateNotificationTarget(t *testing.T) {
+	for _, kind := range []contextinfo.ConversationKind{contextinfo.ConversationPrivate, contextinfo.ConversationGroup, contextinfo.ConversationChannel} {
+		if err := ValidateNotificationTarget(events.NotificationTarget{ID: "target", Kind: kind}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, target := range []events.NotificationTarget{{}, {Kind: contextinfo.ConversationPrivate}, {ID: "target"}, {ID: "target", Kind: contextinfo.ConversationUnknown}} {
+		if err := ValidateNotificationTarget(target); err == nil {
+			t.Fatalf("accepted invalid target: %+v", target)
+		}
 	}
 }

@@ -261,7 +261,7 @@ func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientC
 			Source: contextinfo.Source{
 				Platform:         s.Name(),
 				ScopeID:          client.id,
-				ConversationKind: contextinfo.ConversationUnknown,
+				ConversationKind: contextinfo.ConversationCLI,
 				ConversationID:   client.id,
 			},
 			PlatformData: messageData{client: client},

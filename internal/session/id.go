@@ -11,8 +11,8 @@ import (
 
 // AllocateID 为源会话的压缩派生预分配 ID，保留其创建来源事实。
 // 发号先于业务提交，取消或提交失败时允许跳号，号码不回收。
-func (s *Supervisor) AllocateID(ctx context.Context, scope Scope, source *storage.Session) (string, error) {
-	origin, err := share.SessionIDOrigin(source, share.Scope(scope))
+func (s *Supervisor) AllocateID(ctx context.Context, source *storage.Session) (string, error) {
+	origin, err := share.SessionIDOrigin(source)
 	if err != nil {
 		return "", err
 	}
@@ -20,7 +20,7 @@ func (s *Supervisor) AllocateID(ctx context.Context, scope Scope, source *storag
 }
 
 func (s *Supervisor) allocateID(ctx context.Context, origin share.IDOrigin) (string, error) {
-	prefix, err := origin.Prefix()
+	prefix, err := origin.Prefix(s.sessionIDCode)
 	if err != nil {
 		return "", err
 	}

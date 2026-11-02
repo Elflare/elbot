@@ -5,7 +5,6 @@ import (
 	"elbot/internal/security"
 	"testing"
 
-	"elbot/internal/agent/dialogue"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 )
@@ -23,10 +22,6 @@ func TestPublicChatInfoConsumersAndSecurityPrecedence(t *testing.T) {
 	scope := identity.Scope(ctx)
 	if scope.Platform != "qqonebot" || scope.PlatformScopeID != "group:9" || scope.ActorID != actor.ID || scope.IsCLI {
 		t.Fatalf("scope = %+v", scope)
-	}
-	parts, err := (dialogue.ConversationMetaSystemPromptSource{}).Parts(ctx, agentshare.SystemPromptRequest{Scope: scope})
-	if err != nil || len(parts) != 1 || parts[0].Content != `meta: platform=qqonebot, conversation=group(id:9), display_name="名片"(id:123).` {
-		t.Fatalf("prompt meta = %+v, %v", parts, err)
 	}
 	trusted := contextinfo.Actor{ID: "trusted", PlatformUserID: "456", Role: contextinfo.RoleSuperadmin}
 	if got := identity.Actor(contextinfo.WithActor(ctx, trusted)); got != trusted {

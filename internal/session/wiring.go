@@ -28,6 +28,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		return nil, fmt.Errorf("session config is required")
 	case deps.Store == nil:
 		return nil, fmt.Errorf("session store is required")
+	case deps.SessionIDCode == nil:
+		return nil, fmt.Errorf("session platform ID codes are required")
 	case deps.Models == nil:
 		return nil, fmt.Errorf("session naming models are required")
 	case deps.ActiveSessionIDs == nil:
@@ -58,6 +60,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 
 	sessions, messages := deps.Store.Sessions(), deps.Store.Messages()
 	s.nextSequence = sessions.NextSequence
+	s.sessionIDCode = deps.SessionIDCode
 	s.bindings = binding.NewManager()
 	s.control = control.NewService(
 		control.Config{DefaultMode: cfg.Session.DefaultMode, IdleExpiration: control.IdleExpirationConfig(cfg.Session.IdleExpiration)},
