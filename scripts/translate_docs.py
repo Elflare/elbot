@@ -220,9 +220,18 @@ class TranslationClient:
                     content = json.load(response)["choices"][0]["message"]["content"]
                 prefix = section.text[:len(section.text) - len(section.text.lstrip("\n"))]
                 suffix = section.text[len(section.text.rstrip("\n")):]
-                content = prefix + content.strip("\n") + suffix
-                validate_translation(section.text, content)
-                return content
+                try:
+                    validate_translation(section.text, prefix + content.strip("\n") + suffix)
+                except ValueError as exc:
+                    print(
+                        f"validation failed: {section.source_file} | {section.context} | "
+                        f"{section.text.strip().splitlines()[0]} | "
+                        f"attempt {attempt + 1}/{RETRIES + 1}: {exc}\n"
+                        f"--- LLM response ---\n{content}\n--- end LLM response ---",
+                        flush=True,
+                    )
+                    raise
+                return prefix + content.strip("\n") + suffix
             except urllib.error.HTTPError as exc:
                 exc.close()
                 if exc.code != 429 and not 500 <= exc.code < 600:

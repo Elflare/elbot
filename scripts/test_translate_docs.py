@@ -118,8 +118,10 @@ class TranslationTest(unittest.TestCase):
             mock.patch.dict(os.environ, {"TRANSLATE_LLM_API_KEY": "test", "TRANSLATE_LLM_BASE_URL": "https://example.invalid", "TRANSLATE_LLM_MODEL": "model"}),
             mock.patch.object(td.urllib.request, "urlopen", return_value=response) as request,
             mock.patch.object(td, "validate_translation", wraps=td.validate_translation) as validate,
+            mock.patch("sys.stdout", new_callable=io.StringIO) as output,
         ):
             self.assertEqual(td.TranslationClient().translate_section(section), translated)
+        self.assertEqual(output.getvalue(), "")
         validate.assert_called_once_with(section.text, translated)
         payload = json.loads(request.call_args.args[0].data)
         self.assertEqual(payload["messages"][-1]["content"].count(section.text), 1)
@@ -134,7 +136,7 @@ class TranslationTest(unittest.TestCase):
         with (
             mock.patch.dict(os.environ, {"TRANSLATE_LLM_API_KEY": "test", "TRANSLATE_LLM_BASE_URL": "https://example.invalid", "TRANSLATE_LLM_MODEL": "model"}),
             mock.patch.object(td.urllib.request, "urlopen", return_value=response) as request,
-            mock.patch.object(td.time, "sleep") as sleep, mock.patch("sys.stdout", new_callable=io.StringIO),
+            mock.patch.object(td.time, "sleep") as sleep, mock.patch("sys.stdout", new_callable=io.StringIO) as output,
         ):
             client = td.TranslationClient()
             self.assertEqual(client.translate_section(section), section.text)
@@ -151,6 +153,59 @@ class TranslationTest(unittest.TestCase):
                 client.translate_section(section)
             self.assertEqual(request.call_count, 11)
             self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2, 4, 8, 16, 32, 32, 32, 32, 32])
+            self.assertEqual(output.getvalue().count("--- LLM response ---"), 1)
+
+    def test_validation_failure_logs_raw_content_before_success(self):
+        section = td.Segment("docs/test.md", "## 中文\n`elbot`\n", "文档")
+        bad = "\n\n## Failed translation\nMissing protected code.\n\n\n"
+        good = "## English\n`elbot`\n"
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.side_effect = [
+            json.dumps({"choices": [{"message": {"content": content}}]}).encode()
+            for content in [bad, good]
+        ]
+        with (
+            mock.patch.dict(os.environ, {"TRANSLATE_LLM_API_KEY": "test", "TRANSLATE_LLM_BASE_URL": "https://example.invalid", "TRANSLATE_LLM_MODEL": "model"}),
+            mock.patch.object(td.urllib.request, "urlopen", return_value=response) as request,
+            mock.patch.object(td.time, "sleep"),
+            mock.patch("sys.stdout", new_callable=io.StringIO) as output,
+        ):
+            self.assertEqual(td.TranslationClient().translate_section(section), good)
+        log = output.getvalue()
+        self.assertIn("--- LLM response ---\n" + bad + "\n--- end LLM response ---", log)
+        self.assertIn(section.source_file, log)
+        self.assertIn(section.context, log)
+        self.assertIn("## 中文", log)
+        self.assertIn("attempt 1/11", log)
+        self.assertIn("protected Markdown structure changed", log)
+        self.assertNotIn(good, log)
+        self.assertEqual(log.count("--- LLM response ---"), 1)
+        self.assertEqual(request.call_count, 2)
+
+    def test_validation_failure_logs_final_response(self):
+        section = td.Segment("docs/test.md", "## 中文\n`elbot`\n", "")
+        responses = ["\nFirst invalid response\n", "\nSecond invalid response\n", "\n\n"]
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.side_effect = [
+            json.dumps({"choices": [{"message": {"content": content}}]}).encode()
+            for content in responses
+        ]
+        with (
+            mock.patch.dict(os.environ, {"TRANSLATE_LLM_API_KEY": "test", "TRANSLATE_LLM_BASE_URL": "https://example.invalid", "TRANSLATE_LLM_MODEL": "model"}),
+            mock.patch.object(td.urllib.request, "urlopen", return_value=response) as request,
+            mock.patch.object(td, "RETRIES", 2),
+            mock.patch.object(td.time, "sleep") as sleep,
+            mock.patch("sys.stdout", new_callable=io.StringIO) as output,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "exhausted retries: empty section translation"):
+                td.TranslationClient().translate_section(section)
+        log = output.getvalue()
+        for attempt, content in enumerate(responses, 1):
+            self.assertIn(f"attempt {attempt}/3", log)
+            self.assertIn("--- LLM response ---\n" + content + "\n--- end LLM response ---", log)
+        self.assertEqual(log.count("--- LLM response ---"), 3)
+        self.assertEqual(request.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
 
     def test_two_requests_run_concurrently(self):
         self.assertEqual((td.WORKERS, td.RETRIES, td.REQUEST_TIMEOUT), (2, 10, 240))
