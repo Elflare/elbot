@@ -55,7 +55,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
-        run: go build -ldflags "-X main.version=${GITHUB_REF_NAME}" -o "elbot${{ matrix.ext }}" ./cmd/elbot
+        run: go build -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o "elbot${{ matrix.ext }}" ./cmd/elbot
 
       - name: Archive
         run: |
