@@ -94,11 +94,11 @@ func TestModelMatchingAndCatalogMarks(t *testing.T) {
 	for _, option := range result.Options {
 		switch option.Provider + "/" + option.Model {
 		case "p/a":
-			if strings.Join(option.ModeMarks, ",") != "work,elwisp1,elwisp3" || !option.WorkCurrent || !option.Current {
+			if strings.Join(option.ModeMarks, ",") != "work,elwisp1,elwisp3" {
 				t.Fatalf("work markers = %#v", option)
 			}
 		case "q/z":
-			if strings.Join(option.ModeMarks, ",") != "chat,elwisp2" || !option.ChatCurrent {
+			if strings.Join(option.ModeMarks, ",") != "chat,elwisp2" {
 				t.Fatalf("slot markers = %#v", option)
 			}
 		case "p/b":

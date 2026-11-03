@@ -105,8 +105,3 @@ func AttemptFromContext(ctx context.Context) string {
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	return facts.Attempt
 }
-
-// ResumeAppend keeps the logical execution but removes the old attempt before
-// the caller admits a new request under the session admission gate.
-
-// ExecutionAttempt reads both owners under the same lock for status validation.

@@ -10,15 +10,12 @@ import (
 )
 
 type ModelOption struct {
-	Index       int
-	Provider    string
-	Model       string
-	Current     bool
-	ChatCurrent bool
-	WorkCurrent bool
-	ModeMarks   []string
-	Compact     bool
-	Naming      bool
+	Index     int
+	Provider  string
+	Model     string
+	ModeMarks []string
+	Compact   bool
+	Naming    bool
 }
 
 type ModelProviderError struct {
@@ -59,10 +56,9 @@ func (s *ModelManager) ModelList(query string, opts ModelListOptions) ModelListR
 	}
 	wg.Wait()
 	state := s.snapshot()
-	chat, work := state.mode("chat"), state.mode("work")
 	compact := state.compact
 	if compact.Provider == "" || compact.Model == "" {
-		compact = work
+		compact = state.mode("work")
 	}
 	result := ModelListResult{}
 	index := 1
@@ -70,10 +66,8 @@ func (s *ModelManager) ModelList(query string, opts ModelListOptions) ModelListR
 		for _, model := range models[i] {
 			option := ModelOption{
 				Index: index, Provider: name, Model: model,
-				ChatCurrent: name == chat.Provider && model == chat.Model,
-				WorkCurrent: name == work.Provider && model == work.Model,
-				Compact:     name == compact.Provider && model == compact.Model,
-				Naming:      name == state.naming.Provider && model == state.naming.Model,
+				Compact: name == compact.Provider && model == compact.Model,
+				Naming:  name == state.naming.Provider && model == state.naming.Model,
 			}
 			for _, mode := range []string{"chat", "work", "elwisp1", "elwisp2", "elwisp3"} {
 				selected := state.mode(mode)
@@ -81,7 +75,6 @@ func (s *ModelManager) ModelList(query string, opts ModelListOptions) ModelListR
 					option.ModeMarks = append(option.ModeMarks, mode)
 				}
 			}
-			option.Current = len(option.ModeMarks) > 0
 			index++
 			if query != "" && !strings.Contains(strings.ToLower(name), query) && !strings.Contains(strings.ToLower(model), query) {
 				continue
@@ -102,7 +95,7 @@ func (s *ModelManager) providerModels(snapshot *providerSet, name string, fresh 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !fresh && p.loaded {
-		return append([]string(nil), p.models...), p.err
+		return p.models, p.err
 	}
 	s.mu.RLock()
 	currentProvider := s.state.listProvider
@@ -131,5 +124,5 @@ func (s *ModelManager) providerModels(snapshot *providerSet, name string, fresh 
 	}
 	sort.Strings(models)
 	p.loaded, p.models, p.err = true, models, fetchErr
-	return append([]string(nil), models...), fetchErr
+	return models, fetchErr
 }

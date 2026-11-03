@@ -116,9 +116,6 @@ func (s *ModelManager) CommitModelForMode(mode string, selected ModelOption) (Mo
 	if err != nil {
 		return ModelOption{}, err
 	}
-	selected.Current = true
-	selected.ChatCurrent = mode == "chat"
-	selected.WorkCurrent = mode == "work"
 	return selected, nil
 }
 

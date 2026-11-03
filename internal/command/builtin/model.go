@@ -216,7 +216,7 @@ func NewCheckModel(deps Deps) command.Handler {
 				sb.WriteString(fmt.Sprintf("%s:\n", currentProvider))
 			}
 			marker := " "
-			if m.Current || m.ChatCurrent || m.WorkCurrent || m.Compact || m.Naming {
+			if len(m.ModeMarks) > 0 || m.Compact || m.Naming {
 				marker = "*"
 			}
 			suffix := modelSuffix(m)
@@ -246,14 +246,6 @@ func appendModelProviderErrors(sb *strings.Builder, errors []modelmgr.ModelProvi
 
 func modelSuffix(m modelmgr.ModelOption) string {
 	marks := append([]string{}, m.ModeMarks...)
-	if len(marks) == 0 {
-		if m.ChatCurrent {
-			marks = append(marks, "chat")
-		}
-		if m.WorkCurrent {
-			marks = append(marks, "work")
-		}
-	}
 	if m.Compact {
 		marks = append(marks, "compact")
 	}

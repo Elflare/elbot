@@ -20,7 +20,6 @@ const (
 	KindTool     Kind = "tool"
 	KindHook     Kind = "hook"
 	KindCompress Kind = "compress"
-	KindSubAgent Kind = "sub_agent"
 )
 
 type Request struct {

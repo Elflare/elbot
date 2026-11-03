@@ -8,9 +8,6 @@ import (
 )
 
 func CloneMessages(messages []LLMMessage) []LLMMessage {
-	if messages == nil {
-		return nil
-	}
 	out := append([]LLMMessage(nil), messages...)
 	for i := range out {
 		out[i].Segments = append([]MessageSegment(nil), messages[i].Segments...)
