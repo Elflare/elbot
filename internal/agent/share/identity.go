@@ -2,7 +2,6 @@ package share
 
 import (
 	"context"
-	"strings"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/session"
@@ -31,15 +30,6 @@ func (r *IdentityResolver) Scope(ctx context.Context) session.Scope {
 		ChatID:   info.Source.ChatID,
 		IsCLI:    info.Source.Platform == r.cliPlatformName && actor.Role == contextinfo.RoleSuperadmin,
 	}
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value = strings.TrimSpace(value); value != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func (r *IdentityResolver) Actor(ctx context.Context) contextinfo.Actor {
