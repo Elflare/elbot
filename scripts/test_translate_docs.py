@@ -128,6 +128,50 @@ class TranslationTest(unittest.TestCase):
         self.assertNotIn("__ELBOT_CODE_", payload["messages"][-1]["content"])
         self.assertEqual(request.call_args.kwargs["timeout"], 240)
 
+    def test_api_strips_leading_thoughts_and_preserves_markdown(self):
+        section = td.Segment("docs/test.md", "\n\n## 中文\n运行 `elbot` 和 `<thought>`。\n```text\n<thought>example</thought>\n```\n\n", "文档")
+        translated = section.text.replace("中文", "Title").replace("运行", "Run").replace(" 和 ", " and ")
+        for content in [
+            translated,
+            "<thought>Reasoning with `extra code`.\nMore reasoning.</thought>" + translated,
+            "<thought>Reasoning.</thought>" + translated.lstrip("\n"),
+            " \n<thought>First.</thought>\n\t<thought>Second.</thought>\n" + translated,
+        ]:
+            with self.subTest(content=content):
+                response = mock.MagicMock()
+                response.__enter__.return_value.read.return_value = json.dumps({"choices": [{"message": {"content": content}}]}).encode()
+                with (
+                    mock.patch.dict(os.environ, {"TRANSLATE_LLM_API_KEY": "test", "TRANSLATE_LLM_BASE_URL": "https://example.invalid", "TRANSLATE_LLM_MODEL": "model"}),
+                    mock.patch.object(td.urllib.request, "urlopen", return_value=response) as request,
+                    mock.patch.object(td, "validate_translation", wraps=td.validate_translation) as validate,
+                    mock.patch.object(td, "RETRIES", 0),
+                    mock.patch("sys.stdout", new_callable=io.StringIO) as output,
+                ):
+                    self.assertEqual(td.TranslationClient().translate_section(section), translated)
+                request.assert_called_once()
+                validate.assert_called_once_with(section.text, translated)
+                self.assertEqual(output.getvalue(), "")
+
+    def test_incomplete_thought_or_empty_body_retries(self):
+        section = td.Segment("docs/test.md", "中文正文。\n", "")
+        good = "English body.\n"
+        for bad in ["<thought>unfinished", "<thought>done</thought>\n \t", "<thought>done</thought><thought>unfinished"]:
+            with self.subTest(bad=bad):
+                response = mock.MagicMock()
+                response.__enter__.return_value.read.side_effect = [
+                    json.dumps({"choices": [{"message": {"content": content}}]}).encode()
+                    for content in [bad, good]
+                ]
+                with (
+                    mock.patch.dict(os.environ, {"TRANSLATE_LLM_API_KEY": "test", "TRANSLATE_LLM_BASE_URL": "https://example.invalid", "TRANSLATE_LLM_MODEL": "model"}),
+                    mock.patch.object(td.urllib.request, "urlopen", return_value=response) as request,
+                    mock.patch.object(td.time, "sleep") as sleep,
+                    mock.patch("sys.stdout", new_callable=io.StringIO),
+                ):
+                    self.assertEqual(td.TranslationClient().translate_section(section), good)
+                self.assertEqual(request.call_count, 2)
+                sleep.assert_called_once_with(1)
+
     def test_bad_translation_retries_but_permissions_do_not(self):
         section = td.Segment("docs/test.md", "## 中文\n`elbot`\n", "")
         response = mock.MagicMock()

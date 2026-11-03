@@ -221,6 +221,10 @@ class TranslationClient:
                 prefix = section.text[:len(section.text) - len(section.text.lstrip("\n"))]
                 suffix = section.text[len(section.text.rstrip("\n")):]
                 try:
+                    while content.lstrip().startswith("<thought>"):
+                        if "</thought>" not in content:
+                            raise ValueError("unclosed thought block")
+                        content = content.split("</thought>", 1)[1]
                     validate_translation(section.text, prefix + content.strip("\n") + suffix)
                 except ValueError as exc:
                     print(
