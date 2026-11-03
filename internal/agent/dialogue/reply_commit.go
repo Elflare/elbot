@@ -41,14 +41,14 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 	}
 	if strings.TrimSpace(text) != "" {
 		var err error
-		text, _, err = c.Output.PrepareAssistant(ctx, text)
+		text, err = c.Output.PrepareAssistant(ctx, text)
 		if err != nil {
 			return result, fmt.Errorf("turn output hook: %w", err)
 		}
 		if in.Stream != nil {
-			result.Receipt, _, result.SendErr = out.ReplaceAndFinishStream(ctx, streamCtx, in.Stream, text)
+			result.Receipt, result.SendErr = out.ReplaceAndFinishStream(ctx, streamCtx, in.Stream, text)
 		} else {
-			result.Receipt, _, result.SendErr = out.SendAssistant(ctx, text)
+			result.Receipt, result.SendErr = out.SendAssistant(ctx, text)
 		}
 		if result.SendErr != nil && !HasReplyReceipt(result.Receipt) {
 			return result, result.SendErr
@@ -66,7 +66,7 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 			})
 		}
 	}
-	_, result.PersistErr = persistence.Commit(ctx, toSave, mappings)
+	result.PersistErr = persistence.Commit(ctx, toSave, mappings)
 	if result.PersistErr != nil {
 		return result, errors.Join(result.SendErr, result.PersistErr)
 	}
@@ -76,7 +76,7 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 	if result.SendErr != nil {
 		return result, result.SendErr
 	}
-	_, result.SendErr = out.SendOutputs(ctx, in.Outputs)
+	result.SendErr = out.SendOutputs(ctx, in.Outputs)
 	return result, result.SendErr
 }
 

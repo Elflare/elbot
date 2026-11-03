@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/platform/share"
 )
 
@@ -60,19 +59,19 @@ func TestStatelessLifecycle(t *testing.T) {
 func TestSendingRequiresTargetPlatform(t *testing.T) {
 	a := New("service")
 	outputs := []delivery.Output{delivery.Text("hello")}
-	for name, send := range map[string]func() (delivery.Receipt, events.LogResult, error){
-		"chat": func() (delivery.Receipt, events.LogResult, error) {
+	for name, send := range map[string]func() (delivery.Receipt, error){
+		"chat": func() (delivery.Receipt, error) {
 			return a.SendTo(t.Context(), delivery.Target{}, outputs)
 		},
-		"target": func() (delivery.Receipt, events.LogResult, error) {
+		"target": func() (delivery.Receipt, error) {
 			return a.SendTo(t.Context(), delivery.Target{Platform: "telegram", ChatType: "private", ChatID: "user"}, outputs)
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			receipt, result, err := send()
+			receipt, err := send()
 			const want = "service platform cannot send chat output without a target platform"
-			if err == nil || err.Error() != want || result.ResultStatus != events.ResultFailed || result.Content != want {
-				t.Fatalf("result = %+v, error = %v", result, err)
+			if err == nil || err.Error() != want {
+				t.Fatal("result = , error = ", err)
 			}
 			if !reflect.DeepEqual(receipt, delivery.Receipt{}) {
 				t.Fatalf("unexpected receipt: %+v", receipt)

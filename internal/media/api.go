@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/media/object"
 	"elbot/internal/media/share"
@@ -183,9 +182,9 @@ func (m *MediaCenter) GetHistoryMediaBatch(ctx context.Context, requests []Histo
 }
 
 // Cleanup 将借用的历史查询传给对象管理，协调对账、过期与孤立对象回收。
-func (m *MediaCenter) Cleanup(ctx context.Context) (events.LogResult, error) {
+func (m *MediaCenter) Cleanup(ctx context.Context) error {
 	if err := m.transfer.CleanupUsages(ctx, nil); err != nil {
-		return events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
+		return err
 	}
 	return m.objects.Cleanup(ctx, m.chatHistory)
 }

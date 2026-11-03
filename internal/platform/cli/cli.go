@@ -99,39 +99,39 @@ func (s cliMessageStream) Append(ctx context.Context, text string) error {
 	return s.adapter.sendTUIMessage(tuiOutputMsg(text), text)
 }
 
-func (s cliMessageStream) Replace(ctx context.Context, text string) (delivery.Receipt, globalevents.LogResult, error) {
+func (s cliMessageStream) Replace(ctx context.Context, text string) (delivery.Receipt, error) {
 	if err := s.adapter.sendTUIMessage(tuiReplaceAssistantMsg(text), text); err != nil {
-		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		return delivery.Receipt{}, err
 	}
-	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+	return delivery.Receipt{}, nil
 }
 
-func (s cliMessageStream) Finish(ctx context.Context) (delivery.Receipt, globalevents.LogResult, error) {
+func (s cliMessageStream) Finish(ctx context.Context) (delivery.Receipt, error) {
 	if err := s.adapter.sendTUIMessage(tuiFinishAssistantMsg{}, "\n"); err != nil {
-		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		return delivery.Receipt{}, err
 	}
-	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+	return delivery.Receipt{}, nil
 }
 
 func outputsText(outputs []delivery.Output) string {
 	return delivery.FallbackOutput(outputs).Text
 }
 
-func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	if platformName := strings.TrimSpace(target.Platform); platformName != "" && platformName != a.Name() {
 		{
 			err := fmt.Errorf("cli cannot send to platform %q", platformName)
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-			return delivery.Receipt{}, logResult, err
+
+			return delivery.Receipt{}, err
 		}
 	}
 	text := outputsText(outputs)
 	if text != "" {
 		if err := a.sendTUIMessage(tuiOutputMsg(text), text); err != nil {
-			return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+			return delivery.Receipt{}, err
 		}
 	}
-	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+	return delivery.Receipt{}, nil
 }
 
 func (a *Adapter) sendTUIMessage(msg tea.Msg, fallback string) error {

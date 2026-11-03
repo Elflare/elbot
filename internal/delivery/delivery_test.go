@@ -5,8 +5,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-
-	"elbot/internal/events"
 )
 
 type fakeSender struct {
@@ -15,33 +13,29 @@ type fakeSender struct {
 	err      error
 }
 
-func (s *fakeSender) SendTo(_ context.Context, noticeTarget Target, noticeOutputs []Output) (Receipt, events.LogResult, error) {
+func (s *fakeSender) SendTo(_ context.Context, noticeTarget Target, noticeOutputs []Output) (Receipt, error) {
 	if s.err != nil {
-		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: s.err.Error()}
-		if s.err == context.Canceled {
-			logResult.ResultStatus = events.ResultCanceled
-		}
-		return Receipt{}, logResult, s.err
+		return Receipt{}, s.err
 	}
 	s.targets = append(s.targets, noticeTarget)
 	s.targeted = append(s.targeted, noticeOutputs)
-	return Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+	return Receipt{}, nil
 }
 
 func TestSendToEmptyOutputsAreSilent(t *testing.T) {
 	backend := &fakeSender{}
-	_, logResult, err := NewManager(backend).SendTo(t.Context(), Target{}, nil)
-	if err != nil || logResult.ResultStatus != events.ResultSkipped || logResult.Content != "" {
-		t.Fatalf("empty outputs: result=%+v err=%v", logResult, err)
+	_, err := NewManager(backend).SendTo(t.Context(), Target{}, nil)
+	if err != nil {
+		t.Fatal("empty outputs: result= err=", err)
 	}
 	if len(backend.targeted) != 0 {
 		t.Fatal("empty outputs reached sender")
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	_, logResult, err = NewManager(backend).SendTo(ctx, Target{}, nil)
-	if !errors.Is(err, context.Canceled) || logResult.ResultStatus != events.ResultCanceled || logResult.Content == "" {
-		t.Fatalf("cancellation lost: result=%+v err=%v", logResult, err)
+	_, err = NewManager(backend).SendTo(ctx, Target{}, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatal("cancellation lost: result= err=", err)
 	}
 }
 
@@ -115,7 +109,7 @@ func TestManagerSendsChat(t *testing.T) {
 	sender := &fakeSender{}
 	manager := NewManager(sender)
 	out := Output{Kind: KindText, Text: "hello"}
-	if _, _, err := manager.SendTo(context.Background(), Target{}, []Output{out}); err != nil {
+	if _, err := manager.SendTo(context.Background(), Target{}, []Output{out}); err != nil {
 		t.Fatalf("SendToCurrentConversation: %v", err)
 	}
 	if len(sender.targeted) != 1 || len(sender.targeted[0]) != 1 || sender.targeted[0][0].Text != "hello" {
@@ -128,7 +122,7 @@ func TestManagerSendsTargetedChat(t *testing.T) {
 	manager := NewManager(sender)
 	image := ImagePath("pic.png")
 	image.Name = "pic"
-	if _, _, err := manager.SendTo(context.Background(), Target{}, []Output{{Kind: KindText, Text: "hello"}, image}); err != nil {
+	if _, err := manager.SendTo(context.Background(), Target{}, []Output{{Kind: KindText, Text: "hello"}, image}); err != nil {
 		t.Fatalf("SendTo: %v", err)
 	}
 	if len(sender.targeted) != 1 || len(sender.targeted[0]) != 2 || sender.targeted[0][0].Text != "hello" || sender.targeted[0][1].Name != "pic" {
@@ -150,7 +144,7 @@ func TestManagerSelectsChatTarget(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sender := &fakeSender{}
 			outputs := []Output{Text("first"), {Kind: KindText, Text: "second", Target: batchTarget}}
-			if _, _, err := NewManager(sender).SendTo(t.Context(), tc.target, outputs); err != nil {
+			if _, err := NewManager(sender).SendTo(t.Context(), tc.target, outputs); err != nil {
 				t.Fatalf("SendTo: %v", err)
 			}
 			if len(sender.targeted) != 1 || sender.targets[0] != tc.want {
@@ -173,7 +167,7 @@ func TestManagerWrapsChatOutputErrorWithHookName(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			manager := NewManager(&fakeSender{err: boom})
-			_, _, err := manager.SendTo(t.Context(), Target{Platform: "qqonebot", ChatType: "private", ChatID: "123"}, []Output{{Kind: KindText, Text: "hello", Delivery: tc.info}})
+			_, err := manager.SendTo(t.Context(), Target{Platform: "qqonebot", ChatType: "private", ChatID: "123"}, []Output{{Kind: KindText, Text: "hello", Delivery: tc.info}})
 			if !errors.Is(err, boom) || err.Error() != tc.want {
 				t.Fatalf("SendTo error = %v, want %q wrapping boom", err, tc.want)
 			}
@@ -194,17 +188,17 @@ func TestManagerRejectsInvalidOutputsBeforeSending(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sender := &fakeSender{}
 			manager := NewManager(sender)
-			for _, send := range []func(context.Context, []Output) (Receipt, events.LogResult, error){
-				func(ctx context.Context, outputs []Output) (Receipt, events.LogResult, error) {
+			for _, send := range []func(context.Context, []Output) (Receipt, error){
+				func(ctx context.Context, outputs []Output) (Receipt, error) {
 					return manager.SendTo(ctx, Target{}, outputs)
 				},
-				func(ctx context.Context, outputs []Output) (Receipt, events.LogResult, error) {
+				func(ctx context.Context, outputs []Output) (Receipt, error) {
 					return manager.SendTo(ctx, Target{ChatType: "private", ChatID: "explicit"}, outputs)
 				},
 			} {
-				_, logResult, err := send(t.Context(), tc.outputs)
-				if err == nil || !strings.Contains(err.Error(), tc.want) || logResult.ResultStatus != events.ResultFailed {
-					t.Fatalf("result=%+v err=%v, want %q", logResult, err, tc.want)
+				_, err := send(t.Context(), tc.outputs)
+				if err == nil || !strings.Contains(err.Error(), tc.want) {
+					t.Fatal("result= err=, want ", err, tc.want)
 				}
 			}
 			if len(sender.targeted) != 0 {
@@ -251,29 +245,26 @@ func TestFallbackTextForMedia(t *testing.T) {
 
 type independentChatSender struct {
 	fakeSender
-	logResult events.LogResult
 }
 
-func (s independentChatSender) SendTo(context.Context, Target, []Output) (Receipt, events.LogResult, error) {
-	return Receipt{PlatformMessageIDs: []string{"sent"}}, s.logResult, s.err
+func (s independentChatSender) SendTo(context.Context, Target, []Output) (Receipt, error) {
+	return Receipt{PlatformMessageIDs: []string{"sent"}}, s.err
 }
 
-func TestManagerKeepsBusinessErrorIndependentOfLogResult(t *testing.T) {
+func TestManagerPreservesReceiptAndBusinessError(t *testing.T) {
 	boom := errors.New("business error")
 	for _, tc := range []struct {
-		name   string
-		status events.ResultStatus
-		err    error
+		name string
+		err  error
 	}{
-		{"source_success_with_business_error", events.ResultSucceeded, boom},
-		{"source_failure_without_business_error", events.ResultFailed, nil},
+		{"partial_failure", boom},
+		{"success", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			source := events.LogResult{ResultStatus: tc.status, Content: "source declared body"}
-			manager := NewManager(&independentChatSender{fakeSender: fakeSender{err: tc.err}, logResult: source})
-			receipt, logResult, err := manager.SendTo(context.Background(), Target{}, []Output{Text("hello")})
-			if err != tc.err || logResult != source || len(receipt.PlatformMessageIDs) != 1 {
-				t.Fatalf("receipt=%#v log result=%#v error=%v", receipt, logResult, err)
+			manager := NewManager(&independentChatSender{fakeSender: fakeSender{err: tc.err}})
+			receipt, err := manager.SendTo(context.Background(), Target{}, []Output{Text("hello")})
+			if err != tc.err || len(receipt.PlatformMessageIDs) != 1 {
+				t.Fatal("receipt and error:", receipt, err)
 			}
 		})
 	}

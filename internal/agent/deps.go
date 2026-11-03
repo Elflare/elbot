@@ -8,7 +8,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/doctor"
-	"elbot/internal/events"
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
@@ -66,9 +65,9 @@ type ToolCapabilities interface {
 	ToolTags(context.Context) ([]string, error)
 	Schemas(context.Context, tool.Context, []tool.DiscoveredTool) ([]llm.ToolSchema, error)
 	Run(context.Context, tool.RunnerDeps, tool.RunRequest) tool.RunResult
-	DiscoveredToolsForSession(context.Context, string, bool) ([]tool.DiscoveredTool, events.LogResult, error)
+	DiscoveredToolsForSession(context.Context, string, bool) ([]tool.DiscoveredTool, error)
 	DecodeState(string) (tool.State, error)
-	Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, events.LogResult, error)
+	Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, error)
 	PrepareBackground(context.Context, tool.BackgroundPreloadRequest) (tool.BackgroundPreload, error)
 	PrepareTools(context.Context, []string) (tool.ToolPreload, error)
 	PrepareSkills(context.Context, string, []string) (tool.SkillPreload, error)
@@ -87,7 +86,7 @@ type HookCapabilities interface{ Commands() []command.Handler }
 type PlatformCapabilities interface {
 	SessionIDCode(string, contextinfo.ChatType) (string, error)
 	RestoreMessageContext(context.Context, context.Context) context.Context
-	SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
+	SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 	StartStream(context.Context) (delivery.MessageStream, error)
 	StartReasoning(context.Context) delivery.ReasoningStream
 }

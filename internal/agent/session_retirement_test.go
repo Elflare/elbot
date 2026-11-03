@@ -9,7 +9,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"elbot/internal/events"
 	"elbot/internal/fileops"
 	"elbot/internal/session"
 	"elbot/internal/signal"
@@ -110,10 +109,10 @@ func TestSessionTimerRestartsAfterCanceledExecutionActuallyExits(t *testing.T) {
 			t.Fatal(err)
 		}
 		started, release := make(chan struct{}), make(chan struct{})
-		_, err = m.RegisterHooks(Points{LLMRequestPrepared: func(ctx context.Context, _ Facts, _ LLMInput) (LLMInputResult, events.LogResult, error) {
+		_, err = m.RegisterHooks(Points{LLMRequestPrepared: func(ctx context.Context, _ Facts, _ LLMInput) (LLMInputResult, error) {
 			close(started)
 			<-release
-			return LLMInputResult{}, events.LogResult{}, ctx.Err()
+			return LLMInputResult{}, ctx.Err()
 		}})
 		if err != nil {
 			t.Fatal(err)
@@ -167,10 +166,10 @@ func TestAppendConfirmationExpiryRestartsSessionTimer(t *testing.T) {
 			t.Fatal(err)
 		}
 		started, release := make(chan struct{}), make(chan struct{})
-		_, err = m.RegisterHooks(Points{LLMRequestPrepared: func(ctx context.Context, _ Facts, _ LLMInput) (LLMInputResult, events.LogResult, error) {
+		_, err = m.RegisterHooks(Points{LLMRequestPrepared: func(ctx context.Context, _ Facts, _ LLMInput) (LLMInputResult, error) {
 			close(started)
 			<-release
-			return LLMInputResult{}, events.LogResult{}, ctx.Err()
+			return LLMInputResult{}, ctx.Err()
 		}})
 		if err != nil {
 			t.Fatal(err)

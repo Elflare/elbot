@@ -4,10 +4,8 @@ package dispatch
 
 import (
 	"context"
-	"elbot/internal/events"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"testing"
 
@@ -17,37 +15,29 @@ import (
 )
 
 type testSender struct {
-	send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
+	send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 }
 
 func (s testSender) Name() string { return "primary" }
-func (s testSender) SendTo(ctx context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+func (s testSender) SendTo(ctx context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, error) {
 	return s.send(ctx, noticeTarget, noticeOutputs)
 }
 
 func TestRouterPreservesConcurrentSourceSnapshots(t *testing.T) {
 	var mu sync.Mutex
 	seen := map[string]contextinfo.Conversation{}
-	sender := testSender{send: func(ctx context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	sender := testSender{send: func(ctx context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, error) {
 		info, ok := contextinfo.ConversationFromContext(ctx)
 		if !ok {
 			{
 				err := errors.New("missing source")
-				logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
-				if err != nil {
-					logResult.ResultStatus = events.ResultFailed
-					logResult.Content = err.Error()
-					if err == context.Canceled {
-						logResult.ResultStatus = events.ResultCanceled
-					}
-				}
-				return delivery.Receipt{}, logResult, err
+				return delivery.Receipt{}, err
 			}
 		}
 		mu.Lock()
 		seen[noticeOutputs[0].Text] = info
 		mu.Unlock()
-		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		return delivery.Receipt{}, nil
 	}}
 	router := New(Options{Primary: sender})
 	var wg sync.WaitGroup
@@ -58,7 +48,7 @@ func TestRouterPreservesConcurrentSourceSnapshots(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			ctx := contextinfo.WithConversation(context.Background(), info)
-			if _, _, err := router.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(id)}); err != nil {
+			if _, err := router.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(id)}); err != nil {
 				t.Error(err)
 			}
 		}()
@@ -77,42 +67,32 @@ func TestRouterPreservesConcurrentSourceSnapshots(t *testing.T) {
 func TestRouterExplicitTargetOverridesSenderAndKeepsPartialReceipt(t *testing.T) {
 	wantErr := errors.New("second output failed")
 	primaryCalls, overrideCalls := 0, 0
-	primary := testSender{send: func(_ context.Context, nTarget delivery.Target, nOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	primary := testSender{send: func(_ context.Context, nTarget delivery.Target, nOutputs []delivery.Output) (delivery.Receipt, error) {
 		primaryCalls++
 		if nTarget.ChatID != "other" {
 			t.Fatalf("target lost: %#v", nTarget)
 		}
-		{
-			logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
-			if wantErr != nil {
-				logResult.ResultStatus = events.ResultFailed
-				logResult.Content = wantErr.Error()
-				if wantErr == context.Canceled {
-					logResult.ResultStatus = events.ResultCanceled
-				}
-			}
-			return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, logResult, wantErr
-		}
+		return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, wantErr
 	}}
-	override := testSender{send: func(_ context.Context, nTarget delivery.Target, nOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	override := testSender{send: func(_ context.Context, nTarget delivery.Target, nOutputs []delivery.Output) (delivery.Receipt, error) {
 		overrideCalls++
 		if !nTarget.Empty() {
 			t.Fatal("default target became explicit")
 		}
-		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		return delivery.Receipt{}, nil
 	}}
 	router := New(Options{Primary: primary})
 	ctx := share.WithMessageContext(context.Background(), share.MessageContext{Sender: override})
-	if _, _, err := router.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("reply")}); err != nil {
+	if _, err := router.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("reply")}); err != nil {
 		t.Fatal(err)
 	}
-	got, logResult, err := router.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "other"}, []delivery.Output{delivery.Text("explicit")})
-	if !errors.Is(err, wantErr) || logResult.ResultStatus != events.ResultFailed || !strings.Contains(logResult.Content, wantErr.Error()) || len(got.PlatformMessageIDs) != 1 || primaryCalls != 1 || overrideCalls != 1 {
+	got, err := router.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "other"}, []delivery.Output{delivery.Text("explicit")})
+	if !errors.Is(err, wantErr) || len(got.PlatformMessageIDs) != 1 || primaryCalls != 1 || overrideCalls != 1 {
 		t.Fatalf("receipt=%#v error=%v calls=%d/%d", got, err, primaryCalls, overrideCalls)
 	}
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, _, err := router.SendTo(cancelled, delivery.Target{}, []delivery.Output{delivery.Text("cancelled")}); !errors.Is(err, context.Canceled) {
+	if _, err := router.SendTo(cancelled, delivery.Target{}, []delivery.Output{delivery.Text("cancelled")}); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	if overrideCalls != 1 {

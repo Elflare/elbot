@@ -20,11 +20,11 @@ type hookInputCommitter struct {
 	calls int
 }
 
-func (c *hookInputCommitter) Commit(_ context.Context, m *storage.Message, _ []storage.PlatformMessageMap) (events.LogResult, error) {
+func (c *hookInputCommitter) Commit(_ context.Context, m *storage.Message, _ []storage.PlatformMessageMap) error {
 	c.calls++
 	c.text = m.Content
 	c.id = m.ID
-	return events.LogResult{}, nil
+	return nil
 }
 
 func TestRequestPointOnlyBindsNewPendingAndKeepsHistoryDetached(t *testing.T) {
@@ -33,14 +33,14 @@ func TestRequestPointOnlyBindsNewPendingAndKeepsHistoryDetached(t *testing.T) {
 			bridge := hooks.NewHookBridge(hooks.HookBridgeDeps{})
 			defer bridge.Close(context.Background())
 			var hookID string
-			_, err := bridge.Register(hooks.Points{LLMRequestPrepared: func(_ context.Context, _ hooks.Facts, input agentshare.LLMInput) (agentshare.LLMInputResult, events.LogResult, error) {
+			_, err := bridge.Register(hooks.Points{LLMRequestPrepared: func(_ context.Context, _ hooks.Facts, input agentshare.LLMInput) (agentshare.LLMInputResult, error) {
 				if (input.Message.ID != "") != withPending {
 					t.Fatalf("bound message=%+v", input.Message)
 				}
 				// A provider cannot change stored history through the input snapshot.
 				hookID = input.Message.ID
 				input.Messages[0].Segments = llm.TextSegments("attempted history edit")
-				return agentshare.LLMInputResult{Segments: llm.TextSegments("edited pending"), Tools: input.Tools}, events.LogResult{}, nil
+				return agentshare.LLMInputResult{Segments: llm.TextSegments("edited pending"), Tools: input.Tools}, nil
 			}})
 			if err != nil {
 				t.Fatal(err)

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -325,7 +326,7 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 	return result, nil
 }
 
-func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool, log func(events.LogResult)) error {
+func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool, log func(events.LogRecord)) error {
 	// Only shutdown visits the entire collection. Snapshot keys so a failed
 	// lease is attempted once per Close, without occupying the whole batch.
 	var keys []string
@@ -368,8 +369,7 @@ func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool, l
 		}
 		lease.busy = make(chan struct{})
 		b.mu.Unlock()
-		result, err := b.pruneLease(ctx, id, lease, closeAll)
-		log(result)
+		err := b.pruneLease(ctx, id, lease, closeAll, log)
 		if err != nil {
 			failures = append(failures, err)
 		}
@@ -378,27 +378,27 @@ func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool, l
 }
 
 // pruneLease holds this lease's busy slot throughout I/O and final state changes.
-func (b *mediaBridge) pruneLease(ctx context.Context, id string, lease *mediaLease, closeAll bool) (events.LogResult, error) {
+func (b *mediaBridge) pruneLease(ctx context.Context, id string, lease *mediaLease, closeAll bool, log func(events.LogRecord)) error {
 	var failures []error
-	logResult := events.LogResult{ResultStatus: events.ResultSucceeded, Content: "Hook media lease release\nmedia_id=" + id}
+	record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelInfo, EventName: "prune_hook_media", Module: "hook", ContentLimit: 4096, ResultStatus: events.ResultSucceeded, Content: "Hook media lease release\nmedia_id=" + id}
 	if lease.retained {
 		if err := b.api.RemoveReference(ctx, lease.reference); err != nil {
 			failures = append(failures, err)
-			logResult.ResultStatus = events.ResultFailed
+			record.Level, record.ResultStatus = slog.LevelError, events.ResultFailed
 			if errors.Is(err, context.Canceled) && ctx.Err() != nil {
-				logResult.ResultStatus = events.ResultCanceled
+				record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
 			}
-			logResult.Content += fmt.Sprintf("\nreference_release_error=%v", err)
+			record.Content += fmt.Sprintf("\nreference_release_error=%v", err)
 		} else {
 			lease.retained = false
-			logResult.Content += "\nreference_released"
+			record.Content += "\nreference_released"
 		}
 	}
 	if lease.dir != "" {
 		if err := os.RemoveAll(lease.dir); err != nil {
 			failures = append(failures, err)
-			logResult.ResultStatus = events.ResultFailed
-			logResult.Content += fmt.Sprintf("\ndirectory_release_error=%v", err)
+			record.Level, record.ResultStatus = slog.LevelError, events.ResultFailed
+			record.Content += fmt.Sprintf("\ndirectory_release_error=%v", err)
 		} else {
 			lease.dir, lease.path = "", ""
 		}
@@ -406,24 +406,25 @@ func (b *mediaBridge) pruneLease(ctx context.Context, id string, lease *mediaLea
 	b.mu.Lock()
 	if !lease.retained && lease.dir == "" {
 		delete(b.leases, id)
-		logResult.Content += "\nreleased"
+		record.Content += "\nreleased"
 	} else if closeAll {
-		logResult.Content += "\ncleanup_mode=shutdown"
+		record.Content += "\ncleanup_mode=shutdown"
 	} else if ctx.Err() == nil {
 		lease.cleanupFailures++
-		logResult.Content += fmt.Sprintf("\nattempt=%d retry_limit=%d", lease.cleanupFailures, mediaCleanupRetries)
+		record.Content += fmt.Sprintf("\nattempt=%d retry_limit=%d", lease.cleanupFailures, mediaCleanupRetries)
 		if lease.cleanupFailures <= mediaCleanupRetries {
 			next := time.Now().Add(time.Minute << (lease.cleanupFailures - 1))
 			b.scheduleExpiryLocked(id, next)
-			logResult.Content += "\nnext_retry_at=" + next.Format(time.RFC3339Nano)
+			record.Content += "\nnext_retry_at=" + next.Format(time.RFC3339Nano)
 		} else {
-			logResult.Content += "\nretry_exhausted=true"
+			record.Content += "\nretry_exhausted=true"
 		}
 	} else {
-		logResult.Content += "\nretry_stopped=runtime_canceled"
+		record.Content += "\nretry_stopped=runtime_canceled"
 	}
 	close(lease.busy)
 	lease.busy = nil
 	b.mu.Unlock()
-	return logResult, errors.Join(failures...)
+	log(record)
+	return errors.Join(failures...)
 }

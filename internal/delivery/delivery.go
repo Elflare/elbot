@@ -179,12 +179,11 @@ type StreamingMessageSender interface {
 
 // MessageStream represents one assistant message that can be appended while streaming
 // and replaced with the final post-hook content.
-// Replace and Finish return business receipts and independent source log results;
-// neither result replaces the original business error or controls retry policy.
+// Replace and Finish preserve partial receipts alongside the original business error.
 type MessageStream interface {
 	Append(ctx context.Context, text string) error
-	Replace(ctx context.Context, text string) (Receipt, globalevents.LogResult, error)
-	Finish(ctx context.Context) (Receipt, globalevents.LogResult, error)
+	Replace(ctx context.Context, text string) (Receipt, error)
+	Finish(ctx context.Context) (Receipt, error)
 }
 
 // ReasoningStream consumes raw model deltas in order for one call. Presentation
@@ -196,11 +195,10 @@ type ReasoningStream interface {
 }
 
 // MessageSender sends one logical message, represented by ordered output segments.
-// Receipt preserves actual delivery facts for business consumers. LogResult
-// declares the operation's logging outcome and body before any caller wraps error.
+// Receipt preserves actual delivery facts, including partial completion on error.
 // SendTo uses only its target argument: an empty target selects the current conversation.
 type MessageSender interface {
-	SendTo(ctx context.Context, target Target, outputs []Output) (Receipt, globalevents.LogResult, error)
+	SendTo(ctx context.Context, target Target, outputs []Output) (Receipt, error)
 }
 
 type Manager struct {
@@ -211,41 +209,39 @@ func NewManager(sender MessageSender) Manager {
 	return Manager{Sender: sender}
 }
 
-func (m Manager) SendTo(ctx context.Context, target Target, outputs []Output) (Receipt, globalevents.LogResult, error) {
+func (m Manager) SendTo(ctx context.Context, target Target, outputs []Output) (Receipt, error) {
 	if err := ctx.Err(); err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if err == context.Canceled {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
-		return Receipt{}, logResult, err
+		return Receipt{}, err
 	}
 	if len(outputs) == 0 {
-		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped}, nil
+		return Receipt{}, nil
 	}
 	if err := ValidateOutputs(outputs); err != nil {
-		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		LogSendResult(ctx, target, outputs[0], err)
+		return Receipt{}, err
 	}
-	receipt, logResult, err := m.Sender.SendTo(ctx, target, outputs)
-	LogSendResult(ctx, target, outputs[0], logResult)
-	return receipt, logResult, wrapOutputSourceError(outputs[0], err)
+	receipt, err := m.Sender.SendTo(ctx, target, outputs)
+	LogSendResult(ctx, target, outputs[0], err)
+	return receipt, wrapOutputSourceError(outputs[0], err)
 }
 
 // LogSendResult publishes the sending source's result. Native notification
 // senders use this boundary when their protocol cannot use ordinary chat output.
-func LogSendResult(ctx context.Context, target Target, out Output, logResult globalevents.LogResult) {
-	if logResult.ResultStatus != globalevents.ResultFailed && logResult.ResultStatus != globalevents.ResultCanceled {
+func LogSendResult(ctx context.Context, target Target, out Output, err error) {
+	if err == nil {
 		return
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record := globalevents.LogRecord{
-		Category: globalevents.LogRuntime, Level: slog.LevelError,
-		EventName: "chat_output_failed", Module: "delivery", ResultStatus: logResult.ResultStatus,
-		Content: fmt.Sprintf("chat output failed: platform=%s hook=%q hook_point=%q hook_mode=%q\n%s", target.Platform, strings.TrimSpace(out.Delivery.HookName), strings.TrimSpace(out.Delivery.HookPoint), strings.TrimSpace(out.Delivery.HookMode), logResult.Content),
+		Category: globalevents.LogRuntime, Level: slog.LevelWarn,
+		EventName: "chat_output_failed", Module: "delivery", ResultStatus: globalevents.ResultFailed,
+		Content:  fmt.Sprintf("chat output failed: platform=%s hook=%q hook_point=%q hook_mode=%q\n%s", target.Platform, strings.TrimSpace(out.Delivery.HookName), strings.TrimSpace(out.Delivery.HookPoint), strings.TrimSpace(out.Delivery.HookMode), err),
+		Identity: globalevents.LogIdentityFromExecution(facts),
 	}
-	if logResult.ResultStatus == globalevents.ResultCanceled {
-		record.Level = slog.LevelInfo
+	// Cancellation is quiet only when no independent failure is present.
+	if globalevents.LogStatus(err) == globalevents.ResultCanceled {
+		record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
 	}
-	record.Identity = globalevents.LogIdentityFromExecution(facts)
 	_ = globalevents.EmitLog(ctx, record)
 }
 

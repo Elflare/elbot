@@ -132,7 +132,7 @@ func TestBlockedProtocolRequestCancellation(t *testing.T) {
 			defer cancel()
 			done := make(chan error, 1)
 			go func() {
-				_, _, err := m.Handle(ctx, w.config.ID, share.Event{Metadata: map[string]any{"payload": strings.Repeat("x", 2<<20)}}, share.Control{})
+				_, err := m.Handle(ctx, w.config.ID, share.Event{Metadata: map[string]any{"payload": strings.Repeat("x", 2<<20)}}, share.Control{})
 				done <- err
 			}()
 			<-entered
@@ -164,7 +164,7 @@ func TestShutdownUsesSingleBudget(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			_, w := behaviorWorker(t, mode, 100*time.Millisecond)
 			start := time.Now()
-			_, err := w.stop(t.Context())
+			err := w.stop(t.Context())
 			elapsed := time.Since(start)
 			if err == nil {
 				t.Fatal("unresponsive worker shutdown succeeded")
@@ -235,7 +235,7 @@ func TestContinuationCancellationUsesLeaseID(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { _, _, _, err := m.Route(ctx, event, nil); done <- err }()
+	go func() { _, _, err := m.Route(ctx, event, nil); done <- err }()
 	<-entered
 	cancel()
 	if err := <-done; !errors.Is(err, context.Canceled) {
@@ -298,7 +298,7 @@ func TestBlockedCancelNotificationDoesNotDelayInvocation(t *testing.T) {
 			done := make(chan error, 1)
 			go func() {
 				// Exceed pipe capacity without spending the short budget encoding a multi-MiB frame.
-				_, _, err := m.Handle(ctx, w.config.ID, share.Event{Chat: share.ChatContext{ID: strings.Repeat("x", 256<<10)}}, share.Control{})
+				_, err := m.Handle(ctx, w.config.ID, share.Event{Chat: share.ChatContext{ID: strings.Repeat("x", 256<<10)}}, share.Control{})
 				done <- err
 			}()
 			select {
@@ -429,7 +429,7 @@ func TestWaitingTimerLifecycle(t *testing.T) {
 					case "cancel":
 						m.Cancel(event)
 					case "stop":
-						if _, err := w.stop(t.Context()); err != nil {
+						if err := w.stop(t.Context()); err != nil {
 							t.Fatal(err)
 						}
 					case "close":
@@ -479,7 +479,7 @@ func TestTransientWaitingExpiresAndExitsWithoutLookup(t *testing.T) {
 		t.Fatal(err)
 	}
 	event := share.Event{Actor: share.ActorContext{Platform: "cli", ID: "actor"}}
-	if _, _, err := m.Handle(t.Context(), config.ID, event, share.Control{}); err != nil {
+	if _, err := m.Handle(t.Context(), config.ID, event, share.Control{}); err != nil {
 		t.Fatal(err)
 	}
 	m.mu.RLock()
@@ -537,7 +537,7 @@ func TestWaitingExpiryDoesNotCancelActiveContinuation(t *testing.T) {
 		}
 		finished := make(chan error, 1)
 		go func() {
-			updated, _, _, err := m.Route(t.Context(), event, nil)
+			updated, _, err := m.Route(t.Context(), event, nil)
 			if updated.Chat.ID != "platform-id" {
 				err = fmt.Errorf("original event context changed")
 			}

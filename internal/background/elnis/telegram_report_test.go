@@ -2,7 +2,6 @@ package elnis
 
 import (
 	"context"
-	"elbot/internal/events"
 	"testing"
 
 	"elbot/internal/delivery"
@@ -11,14 +10,14 @@ import (
 func TestLLMTextReportMapsAdminReceipts(t *testing.T) {
 	ctx := context.Background()
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"done"}`}
-	s, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	s, cleanup := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 		if target.Platform != "telegram" || !target.Superadmins {
 			t.Fatalf("target=%#v", target)
 		}
 		return delivery.Receipt{PlatformMessageIDs: []string{"77", "77"}, SentMessages: []delivery.SentMessage{
 			{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "77"},
 			{Platform: "telegram", ChatType: "private", ChatID: "2", PlatformMessageID: "77"},
-		}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		}}, nil
 	})
 	defer cleanup()
 	s.enabledPlatforms = append(s.enabledPlatforms, "telegram")

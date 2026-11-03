@@ -4,7 +4,6 @@ import (
 	"context"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"fmt"
 	"sync"
@@ -123,10 +122,10 @@ func (h *HookBridge) Close(ctx context.Context) error {
 	}
 }
 
-func invoke[T, R any](h *HookBridge, ctx context.Context, facts Facts, value T, fallback R, selectPoint func(*Points) func(context.Context, Facts, T) (R, events.LogResult, error)) (R, events.LogResult, error) {
+func invoke[T, R any](h *HookBridge, ctx context.Context, facts Facts, value T, fallback R, selectPoint func(*Points) func(context.Context, Facts, T) (R, error)) (R, error) {
 	points, done, err := h.acquire()
 	if err != nil {
-		return fallback, events.LogResult{ResultStatus: events.ResultCanceled}, err
+		return fallback, err
 	}
 	if points != nil {
 		defer done()
@@ -134,7 +133,7 @@ func invoke[T, R any](h *HookBridge, ctx context.Context, facts Facts, value T, 
 			return fn(ctx, h.facts(ctx, facts), value)
 		}
 	}
-	return fallback, events.LogResult{ResultStatus: events.ResultSkipped}, nil
+	return fallback, nil
 }
 
 func (h *HookBridge) HasRoute(ctx context.Context, message agentshare.Message) bool {
@@ -155,60 +154,60 @@ func (h *HookBridge) CancelRoute(ctx context.Context, message agentshare.Message
 	return points.CancelRoute != nil && points.CancelRoute(ctx, h.facts(ctx, Facts{}), prepareMessage(ctx, message))
 }
 
-func (h *HookBridge) PlatformMessageReceived(ctx context.Context, value agentshare.Message) (agentshare.PlatformMessageReceivedResult, events.LogResult, error) {
+func (h *HookBridge) PlatformMessageReceived(ctx context.Context, value agentshare.Message) (agentshare.PlatformMessageReceivedResult, error) {
 	value = prepareMessage(ctx, value)
-	return invoke(h, ctx, Facts{}, value, agentshare.PlatformMessageReceivedResult{Segments: value.Segments}, func(p *Points) func(context.Context, Facts, agentshare.Message) (agentshare.PlatformMessageReceivedResult, events.LogResult, error) {
+	return invoke(h, ctx, Facts{}, value, agentshare.PlatformMessageReceivedResult{Segments: value.Segments}, func(p *Points) func(context.Context, Facts, agentshare.Message) (agentshare.PlatformMessageReceivedResult, error) {
 		return p.PlatformMessageReceived
 	})
 }
 
-func (h *HookBridge) AgentInputPrepared(ctx context.Context, session agentshare.Session, value agentshare.Message) ([]llm.MessageSegment, events.LogResult, error) {
+func (h *HookBridge) AgentInputPrepared(ctx context.Context, session agentshare.Session, value agentshare.Message) ([]llm.MessageSegment, error) {
 	value = prepareMessage(ctx, value)
-	return invoke(h, ctx, Facts{Session: session}, value, value.Segments, func(p *Points) func(context.Context, Facts, agentshare.Message) ([]llm.MessageSegment, events.LogResult, error) {
+	return invoke(h, ctx, Facts{Session: session}, value, value.Segments, func(p *Points) func(context.Context, Facts, agentshare.Message) ([]llm.MessageSegment, error) {
 		return p.AgentInputPrepared
 	})
 }
 
-func (h *HookBridge) LLMTurnPrepared(ctx context.Context, session agentshare.Session, value agentshare.LLMInput) (agentshare.LLMInputResult, events.LogResult, error) {
+func (h *HookBridge) LLMTurnPrepared(ctx context.Context, session agentshare.Session, value agentshare.LLMInput) (agentshare.LLMInputResult, error) {
 	value.Message = prepareMessage(ctx, value.Message)
-	return invoke(h, ctx, Facts{Session: session}, value, agentshare.LLMInputResult{Segments: value.Message.Segments, Tools: value.Tools}, func(p *Points) func(context.Context, Facts, agentshare.LLMInput) (agentshare.LLMInputResult, events.LogResult, error) {
+	return invoke(h, ctx, Facts{Session: session}, value, agentshare.LLMInputResult{Segments: value.Message.Segments, Tools: value.Tools}, func(p *Points) func(context.Context, Facts, agentshare.LLMInput) (agentshare.LLMInputResult, error) {
 		return p.LLMTurnPrepared
 	})
 }
 
-func (h *HookBridge) LLMRequestPrepared(ctx context.Context, session agentshare.Session, value agentshare.LLMInput) (agentshare.LLMInputResult, events.LogResult, error) {
+func (h *HookBridge) LLMRequestPrepared(ctx context.Context, session agentshare.Session, value agentshare.LLMInput) (agentshare.LLMInputResult, error) {
 	value.Message = prepareMessage(ctx, value.Message)
-	return invoke(h, ctx, Facts{Session: session}, value, agentshare.LLMInputResult{Segments: value.Message.Segments, Tools: value.Tools}, func(p *Points) func(context.Context, Facts, agentshare.LLMInput) (agentshare.LLMInputResult, events.LogResult, error) {
+	return invoke(h, ctx, Facts{Session: session}, value, agentshare.LLMInputResult{Segments: value.Message.Segments, Tools: value.Tools}, func(p *Points) func(context.Context, Facts, agentshare.LLMInput) (agentshare.LLMInputResult, error) {
 		return p.LLMRequestPrepared
 	})
 }
 
-func (h *HookBridge) LLMResponseReceived(ctx context.Context, session agentshare.Session, value agentshare.LLMResponse) (agentshare.LLMResponseResult, events.LogResult, error) {
-	return invoke(h, ctx, Facts{Session: session}, value, agentshare.LLMResponseResult{Text: value.Text, SourceText: value.SourceText, Usage: value.Usage, ToolCalls: value.ToolCalls}, func(p *Points) func(context.Context, Facts, agentshare.LLMResponse) (agentshare.LLMResponseResult, events.LogResult, error) {
+func (h *HookBridge) LLMResponseReceived(ctx context.Context, session agentshare.Session, value agentshare.LLMResponse) (agentshare.LLMResponseResult, error) {
+	return invoke(h, ctx, Facts{Session: session}, value, agentshare.LLMResponseResult{Text: value.Text, SourceText: value.SourceText, Usage: value.Usage, ToolCalls: value.ToolCalls}, func(p *Points) func(context.Context, Facts, agentshare.LLMResponse) (agentshare.LLMResponseResult, error) {
 		return p.LLMResponseReceived
 	})
 }
 
-func (h *HookBridge) ToolCallPrepared(ctx context.Context, session agentshare.Session, value llm.ToolCallRequest) (string, events.LogResult, error) {
-	return invoke(h, ctx, Facts{Session: session}, value, value.Arguments, func(p *Points) func(context.Context, Facts, llm.ToolCallRequest) (string, events.LogResult, error) {
+func (h *HookBridge) ToolCallPrepared(ctx context.Context, session agentshare.Session, value llm.ToolCallRequest) (string, error) {
+	return invoke(h, ctx, Facts{Session: session}, value, value.Arguments, func(p *Points) func(context.Context, Facts, llm.ToolCallRequest) (string, error) {
 		return p.ToolCallPrepared
 	})
 }
 
-func (h *HookBridge) ToolCallCompleted(ctx context.Context, session agentshare.Session, value agentshare.ToolResult) ([]llm.MessageSegment, events.LogResult, error) {
-	return invoke(h, ctx, Facts{Session: session}, value, value.Segments, func(p *Points) func(context.Context, Facts, agentshare.ToolResult) ([]llm.MessageSegment, events.LogResult, error) {
+func (h *HookBridge) ToolCallCompleted(ctx context.Context, session agentshare.Session, value agentshare.ToolResult) ([]llm.MessageSegment, error) {
+	return invoke(h, ctx, Facts{Session: session}, value, value.Segments, func(p *Points) func(context.Context, Facts, agentshare.ToolResult) ([]llm.MessageSegment, error) {
 		return p.ToolCallCompleted
 	})
 }
 
-func (h *HookBridge) AgentOutputPrepared(ctx context.Context, value string) (string, events.LogResult, error) {
-	return invoke(h, ctx, Facts{}, value, value, func(p *Points) func(context.Context, Facts, string) (string, events.LogResult, error) {
+func (h *HookBridge) AgentOutputPrepared(ctx context.Context, value string) (string, error) {
+	return invoke(h, ctx, Facts{}, value, value, func(p *Points) func(context.Context, Facts, string) (string, error) {
 		return p.AgentOutputPrepared
 	})
 }
 
-func (h *HookBridge) AgentTurnOutputPrepared(ctx context.Context, value string) (string, events.LogResult, error) {
-	return invoke(h, ctx, Facts{}, value, value, func(p *Points) func(context.Context, Facts, string) (string, events.LogResult, error) {
+func (h *HookBridge) AgentTurnOutputPrepared(ctx context.Context, value string) (string, error) {
+	return invoke(h, ctx, Facts{}, value, value, func(p *Points) func(context.Context, Facts, string) (string, error) {
 		return p.AgentTurnOutputPrepared
 	})
 }

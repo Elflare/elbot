@@ -5,7 +5,6 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
-	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
@@ -124,7 +123,7 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 		err = requestCtx.Err()
 	}
 	if err == nil {
-		_, err = prepared.InputCommitter().Commit(requestCtx, user, nil)
+		err = prepared.InputCommitter().Commit(requestCtx, user, nil)
 	}
 	if err != nil {
 		result.Outcome, result.Err = agentshare.Failed, err
@@ -181,7 +180,7 @@ type RunnerDeps struct {
 	}
 	Routes    agentshare.LoopResolver
 	Dialogues interface {
-		Commit(context.Context, storage.DialogueCommit) (globalevents.LogResult, error)
+		Commit(context.Context, storage.DialogueCommit) error
 	}
 	Sessions interface {
 		EnterBinding(context.Context, *session.Binding) (context.Context, func(), error)
@@ -202,9 +201,9 @@ type RunnerDeps struct {
 		IsCLI(context.Context) bool
 	}
 	Hooks interface {
-		LLMTurnPrepared(context.Context, agentshare.Session, agentshare.LLMInput) (agentshare.LLMInputResult, globalevents.LogResult, error)
-		LLMRequestPrepared(context.Context, agentshare.Session, agentshare.LLMInput) (agentshare.LLMInputResult, globalevents.LogResult, error)
-		LLMResponseReceived(context.Context, agentshare.Session, agentshare.LLMResponse) (agentshare.LLMResponseResult, globalevents.LogResult, error)
+		LLMTurnPrepared(context.Context, agentshare.Session, agentshare.LLMInput) (agentshare.LLMInputResult, error)
+		LLMRequestPrepared(context.Context, agentshare.Session, agentshare.LLMInput) (agentshare.LLMInputResult, error)
+		LLMResponseReceived(context.Context, agentshare.Session, agentshare.LLMResponse) (agentshare.LLMResponseResult, error)
 		ErrorOccurred(context.Context, agentshare.Session, agentshare.LLMResponse, error)
 	}
 	Output      AssistantPreparer
@@ -213,7 +212,7 @@ type RunnerDeps struct {
 		FilterSchemas(context.Context, []llm.ToolSchema) ([]llm.ToolSchema, error)
 		Run(context.Context, tool.RunnerDeps, tool.RunRequest) tool.RunResult
 		Schemas(context.Context, tool.Context, []tool.DiscoveredTool) ([]llm.ToolSchema, error)
-		DiscoveredToolsForSession(context.Context, string, bool) ([]tool.DiscoveredTool, globalevents.LogResult, error)
+		DiscoveredToolsForSession(context.Context, string, bool) ([]tool.DiscoveredTool, error)
 		DecodeState(string) (tool.State, error)
 	}
 	ToolDeps     agentshare.ToolDepsFactory

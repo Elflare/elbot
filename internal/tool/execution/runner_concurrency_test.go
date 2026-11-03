@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -42,7 +41,7 @@ type concurrentCommitter struct {
 	completedAtFlush int32
 }
 
-func (c *concurrentCommitter) Flush(ctx context.Context) (events.LogResult, error) {
+func (c *concurrentCommitter) Flush(ctx context.Context) error {
 	c.flushes++
 	c.completedAtFlush = c.completed.Load()
 	return c.testToolCommitter.Flush(ctx)
@@ -160,12 +159,12 @@ type timeoutToolDeps struct{ runnerTestDeps }
 func (d *timeoutToolDeps) PrepareToolContext(ctx context.Context, _ *storage.Session, call llm.ToolCallRequest) context.Context {
 	return context.WithValue(ctx, runnerContextKey{}, call.ID)
 }
-func (d *timeoutToolDeps) StartToolRequest(ctx context.Context, _, _ string) (context.Context, time.Time, func(), events.LogResult, error) {
+func (d *timeoutToolDeps) StartToolRequest(ctx context.Context, _, _ string) (context.Context, time.Time, func(), error) {
 	if ctx.Value(runnerContextKey{}) == "A" {
 		ctx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
-		return ctx, time.Now(), cancel, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		return ctx, time.Now(), cancel, nil
 	}
-	return ctx, time.Now(), func() {}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+	return ctx, time.Now(), func() {}, nil
 }
 
 func TestRunSingleToolTimeoutDoesNotCancelSiblingTools(t *testing.T) {
@@ -193,16 +192,16 @@ type blockedPreparationDeps struct {
 	release chan struct{}
 }
 
-func (d *blockedPreparationDeps) PrepareToolCall(ctx context.Context, _ *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, events.LogResult, error) {
+func (d *blockedPreparationDeps) PrepareToolCall(ctx context.Context, _ *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error) {
 	if call.ID == "B" {
 		close(d.waiting)
 		select {
 		case <-d.release:
 		case <-ctx.Done():
-			return call, events.LogResult{}, ctx.Err()
+			return call, ctx.Err()
 		}
 	}
-	return call, events.LogResult{}, nil
+	return call, nil
 }
 
 type notifyingCommitter struct {
@@ -210,10 +209,10 @@ type notifyingCommitter struct {
 	saved chan string
 }
 
-func (c *notifyingCommitter) Result(ctx context.Context, index int, call llm.ToolCallRequest, message llm.LLMMessage, result *storage.ToolResultCommit) (events.LogResult, error) {
-	log, err := c.testToolCommitter.Result(ctx, index, call, message, result)
+func (c *notifyingCommitter) Result(ctx context.Context, index int, call llm.ToolCallRequest, message llm.LLMMessage, result *storage.ToolResultCommit) error {
+	err := c.testToolCommitter.Result(ctx, index, call, message, result)
 	c.saved <- call.ID
-	return log, err
+	return err
 }
 
 func TestCompletedToolPersistsWhileLaterPreparationWaits(t *testing.T) {

@@ -40,13 +40,13 @@ func (r *fakeRuntime) ValidatePlugin(config share.RuntimeConfig) error {
 	return nil
 }
 
-func (r *fakeRuntime) ReplacePlugin(id string, config *share.RuntimeConfig, commit func()) (events.LogResult, error) {
+func (r *fakeRuntime) ReplacePlugin(id string, config *share.RuntimeConfig, commit func()) error {
 	if r.applyErr != nil {
-		return events.LogResult{ResultStatus: events.ResultFailed, Content: r.applyErr.Error()}, r.applyErr
+		return r.applyErr
 	}
 	r.replaced = id
 	commit()
-	return events.LogResult{ResultStatus: events.ResultSucceeded, Content: "replacement completed"}, nil
+	return nil
 }
 
 func (r *fakeRuntime) List() []share.RuntimeInfo { return r.infos }
@@ -138,8 +138,8 @@ func registerTestHook(t *testing.T, registrar share.Registrar, name string) {
 		Point: share.PointAgentInputPrepared,
 		Name:  name,
 		Match: share.Always(),
-		Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, events.LogResult, error) {
-			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
+		Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
+			return event, nil
 		}),
 	})
 }
@@ -172,7 +172,7 @@ func TestPreparePluginReloadReplacesOnlyRequestedPlugin(t *testing.T) {
 		t.Fatalf("PreparePluginReload: %v", err)
 	}
 	assertHookNames(t, active.List(), "old", "other")
-	if _, err := commit(); err != nil {
+	if err := commit(); err != nil {
 		t.Fatalf("commit: %v", err)
 	}
 	if runtime.replaced != "demo" {
@@ -195,8 +195,8 @@ func registerPluginTestHook(t *testing.T, registrar share.Registrar, pluginID, n
 		PluginID: pluginID,
 		Name:     name,
 		Match:    share.Always(),
-		Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, events.LogResult, error) {
-			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
+		Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
+			return event, nil
 		}),
 	})
 }
@@ -236,11 +236,11 @@ func TestPreparedReloadRetainsItsCandidateAcrossAnotherLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertHookNames(t, active.List(), "old")
-	if _, err := first(); err != nil {
+	if err := first(); err != nil {
 		t.Fatal(err)
 	}
 	assertHookNames(t, active.List(), "first")
-	if _, err := second(); err != nil {
+	if err := second(); err != nil {
 		t.Fatal(err)
 	}
 	assertHookNames(t, active.List(), "second")

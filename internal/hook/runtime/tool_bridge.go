@@ -9,7 +9,6 @@ import (
 	"context"
 	"elbot/internal/hook/share"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -103,8 +102,8 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		actor = contextinfo.Actor{ActorIdentity: contextValue.Event.Actor.Identity(), Name: contextValue.Event.Actor.Name, Nickname: contextValue.Event.Actor.Nickname, GroupCard: contextValue.Event.Actor.GroupCard, Role: contextinfo.Role(contextValue.Event.Actor.Role), GroupRole: contextinfo.GroupRole(contextValue.Event.Actor.GroupRole)}
 	}
 	content.Actor = actor
-	logHook := func(eventName string, logResult globalevents.LogResult) {
-		content.Result = &logResult.Content
+	logHook := func(eventName string, status globalevents.ResultStatus, body string) {
+		content.Result = &body
 		if eventName == "hook_tool_call_prepared" {
 			content.Result = nil
 		}
@@ -112,22 +111,22 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 			content.Arguments = nil
 		}
 		if eventName != "hook_tool_call_completed" {
-			logResult.Content = share.TruncateLogContent(logResult.Content, 2048)
+			body = share.TruncateLogContent(body, 2048)
 		}
 		data, _ := json.Marshal(content)
-		record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: eventName, Module: "hook", Type: globalevents.ContentJSON, Content: string(data), ContentLimit: 0, ResultStatus: logResult.ResultStatus}
-		if logResult.ResultStatus == globalevents.ResultFailed {
-			record.Level = slog.LevelError
+		record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: eventName, Module: "hook", Type: globalevents.ContentJSON, Content: string(data), ContentLimit: 0, ResultStatus: status}
+		if status == globalevents.ResultFailed {
+			record.Level = slog.LevelWarn
 		}
 		record.Identity = logIdentity(callCtx, sessionID)
 		w.manager.opts.Log(callCtx, record)
 	}
 	failCall := func(status globalevents.ResultStatus, err error) (any, error) {
-		logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: status, Content: "Tool.Call not entered: " + err.Error()})
+		logHook("hook_tool_call_completed", status, "Tool.Call not entered: "+err.Error())
 		return nil, err
 	}
 	if err != nil {
-		logHook("hook_tool_call_completed", globalevents.LogResult{ResultStatus: globalevents.ResultRejected, Content: "Tool.Call not entered; invalid parameters: " + err.Error()})
+		logHook("hook_tool_call_completed", globalevents.ResultRejected, "Tool.Call not entered; invalid parameters: "+err.Error())
 		return nil, err
 	}
 	if name == "" {
@@ -167,25 +166,25 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	}
 	if err := callCtx.Err(); err != nil {
 		status := globalevents.ResultFailed
-		if err == context.Canceled {
+		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
 			status = globalevents.ResultCanceled
 		}
 		return failCall(status, err)
 	}
 	started := time.Now()
-	logHook("hook_tool_call_prepared", globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded})
+	logHook("hook_tool_call_prepared", globalevents.ResultSucceeded, "")
 	result, summary, err := w.manager.opts.Tools.CallTool(callCtx, call)
 	elapsedMS := time.Since(started).Milliseconds()
 	content.ElapsedMS = &elapsedMS
 	content.Summary = &summary
-	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: result.LogContent(err)}
+	status := globalevents.ResultSucceeded
 	if err != nil {
-		logResult.ResultStatus = globalevents.ResultFailed
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = globalevents.ResultCanceled
+		status = globalevents.ResultFailed
+		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
+			status = globalevents.ResultCanceled
 		}
 	}
-	logHook("hook_tool_call_completed", logResult)
+	logHook("hook_tool_call_completed", status, result.LogContent(err))
 	if err != nil {
 		return nil, err
 	}
@@ -203,10 +202,8 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		target, err = delivery.ValidateOutputsTarget(result.Outputs)
 	}
 	var receipt delivery.Receipt
-	if err != nil {
-		logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-	} else {
-		receipt, logResult, err = w.manager.opts.Send(callCtx, target, result.Outputs)
+	if err == nil {
+		receipt, err = w.manager.opts.Send(callCtx, target, result.Outputs)
 	}
 	content.PlatformMessageIDs = &receipt.PlatformMessageIDs
 	sentMessages := []map[string]any{}
@@ -216,7 +213,14 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	content.SentMessages = &sentMessages
 	outputCount := len(result.Outputs)
 	content.OutputCount = &outputCount
-	logHook("hook_tool_log", logResult)
+	status, body := globalevents.ResultSucceeded, ""
+	if err != nil {
+		status, body = globalevents.ResultFailed, err.Error()
+		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
+			status = globalevents.ResultCanceled
+		}
+	}
+	logHook("hook_tool_log", status, body)
 	if err != nil {
 		return nil, err
 	}

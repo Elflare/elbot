@@ -26,8 +26,8 @@ import (
 type toolRunDeps struct {
 	status agentshare.ExecutionStatus
 	hooks  interface {
-		ToolCallPrepared(context.Context, agentshare.Session, llm.ToolCallRequest) (string, events.LogResult, error)
-		ToolCallCompleted(context.Context, agentshare.Session, agentshare.ToolResult) ([]llm.MessageSegment, events.LogResult, error)
+		ToolCallPrepared(context.Context, agentshare.Session, llm.ToolCallRequest) (string, error)
+		ToolCallCompleted(context.Context, agentshare.Session, agentshare.ToolResult) ([]llm.MessageSegment, error)
 	}
 	requests interface {
 		ListBySession(string) []request.Request
@@ -58,31 +58,31 @@ func (d toolRunDeps) ForTurn(out agentshare.Output, attempt string) tool.RunnerD
 	return d
 }
 
-func (d toolRunDeps) PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, events.LogResult, error) {
-	arguments, logResult, err := d.hooks.ToolCallPrepared(ctx,
+func (d toolRunDeps) PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error) {
+	arguments, err := d.hooks.ToolCallPrepared(ctx,
 		agentshare.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status}, call)
 	if err != nil {
-		return call, logResult, err
+		return call, err
 	}
 	call.Arguments = arguments
-	return call, logResult, nil
+	return call, nil
 }
 
-func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, events.LogResult, error) {
+func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error) {
 	original := append([]llm.MessageSegment(nil), segments...)
-	updated, logResult, err := d.hooks.ToolCallCompleted(ctx,
+	updated, err := d.hooks.ToolCallCompleted(ctx,
 		agentshare.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status},
 		agentshare.ToolResult{Call: call, Risk: risk, Segments: original, Err: callErr})
 	if err != nil {
-		return nil, logResult, err
+		return nil, err
 	}
-	return updated, logResult, nil
+	return updated, nil
 }
 
-func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), events.LogResult, error) {
+func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error) {
 	toolReq, toolCtx, done, err := d.requests.Start(ctx, request.StartRequest{ParentID: contextinfo.RootRequestIDFromContext(ctx), SessionID: sessionID, Kind: request.KindTool, Label: toolName})
 	if err != nil {
-		return nil, time.Time{}, nil, events.LogResult{ResultStatus: events.ResultFailed, Content: "allocate tool request ID: " + err.Error()}, err
+		return nil, time.Time{}, nil, err
 	}
 	d.status.Record(ctx, runtimestatus.Snapshot{
 		SessionID:      sessionID,
@@ -93,7 +93,7 @@ func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName s
 		ToolName:       toolName,
 		StageStartedAt: toolReq.StartedAt,
 	})
-	return toolCtx, toolReq.StartedAt, done, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool request started"}, nil
+	return toolCtx, toolReq.StartedAt, done, nil
 }
 
 func (d toolRunDeps) PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
@@ -119,7 +119,7 @@ func (d toolRunDeps) SendPreview(ctx context.Context, text ...string) {
 	d.output.SendPreview(ctx, text...)
 }
 
-func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) (events.LogResult, error) {
+func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
 	return d.output.SendOutputs(ctx, outputs)
 }
 
@@ -179,8 +179,8 @@ type ToolConfirmations interface {
 type ToolRunDeps struct {
 	Status agentshare.ExecutionStatus
 	Hooks  interface {
-		ToolCallPrepared(context.Context, agentshare.Session, llm.ToolCallRequest) (string, events.LogResult, error)
-		ToolCallCompleted(context.Context, agentshare.Session, agentshare.ToolResult) ([]llm.MessageSegment, events.LogResult, error)
+		ToolCallPrepared(context.Context, agentshare.Session, llm.ToolCallRequest) (string, error)
+		ToolCallCompleted(context.Context, agentshare.Session, agentshare.ToolResult) ([]llm.MessageSegment, error)
 	}
 	Requests interface {
 		ListBySession(string) []request.Request

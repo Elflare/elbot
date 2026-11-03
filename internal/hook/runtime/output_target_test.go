@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/hook/share"
 	"elbot/internal/security"
 	"elbot/internal/tool/registry"
@@ -37,12 +36,12 @@ func TestToolOutputResolvesTargetBeforeSending(t *testing.T) {
 				t.Fatal(err)
 			}
 			calls := 0
-			manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Tools: testTools{reg}, Send: func(_ context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+			manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Tools: testTools{reg}, Send: func(_ context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 				calls++
 				if target != tc.want || !reflect.DeepEqual(outputs, tc.outputs) {
 					t.Fatalf("target=%+v outputs=%+v", target, outputs)
 				}
-				return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+				return delivery.Receipt{}, nil
 			}})
 			if err != nil {
 				t.Fatal(err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -17,83 +18,64 @@ const OrphanGrace = time.Hour
 
 const cleanupConcurrency = 4
 
-// Cleanup preserves each deletion's source result before joining business errors.
-// A cancellation cannot replace an independently failed deletion in LogResult.
-func (m *Manager) Cleanup(ctx context.Context, history History) (logResult events.LogResult, err error) {
+// Cleanup joins business errors after workers finish; each deletion logs its own outcome.
+func (m *Manager) Cleanup(ctx context.Context, history History) (err error) {
 	stage := "lock"
+	var lines []string
 	defer func() {
-		var lines []string
+		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelInfo, Module: "media", EventName: "media_cleanup", ResultStatus: events.ResultSucceeded, ContentLimit: 8192}
 		if stage != "delete" {
-			lines = append(lines, "stage="+stage)
+			lines = append([]string{"stage=" + stage}, lines...)
 		}
-		lines = append(lines, strings.Split(logResult.Content, "\n")...)
+		if err != nil {
+			record.Level, record.ResultStatus = slog.LevelError, events.ResultFailed
+			if stage == "delete" {
+				record.Level = slog.LevelWarn
+			}
+			if events.LogStatus(err) == events.ResultCanceled {
+				record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
+			}
+			lines = append(lines, fmt.Sprintf("error=%q", err.Error()))
+		}
 		if len(lines) > 50 {
-			omitted := len(lines) - 49
-			lines = append(lines[:49], fmt.Sprintf("truncated=true omitted_details=%d", omitted))
+			lines = append(lines[:49], fmt.Sprintf("truncated=true omitted_details=%d", len(lines)-49))
 		}
-		logResult.Content = strings.Join(lines, "\n")
+		record.Content = strings.Join(lines, "\n")
+		_ = events.EmitLog(ctx, record)
 	}()
-	// Only cleanup rounds serialize here; media operations use per-ID locks.
 	unlock, err := m.cleanupMu.acquire(ctx, "cleanup")
 	if err != nil {
-		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("error=%q", err.Error())}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = events.ResultCanceled
-		}
-		return logResult, err
+		return err
 	}
 	defer unlock()
 	stage = "release_owned"
 	if err := m.retryReleases(ctx); err != nil {
-		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("error=%q", err.Error())}
-		// 单纯取消与同时发生的独立释放故障分开记录。
-		if err == context.Canceled {
-			logResult.ResultStatus = events.ResultCanceled
-		}
-		return logResult, err
+		return err
 	}
 	stage = "history_reconcile"
 	if err := m.ReconcileHistory(ctx, history); err != nil {
-		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("error=%q", err.Error())}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = events.ResultCanceled
-		}
-		return logResult, err
+		return err
 	}
 	stage = "expire_outputs"
 	if err := m.media.ExpireOutputs(ctx, m.options.Now()); err != nil {
-		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("error=%q", err.Error())}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = events.ResultCanceled
-		}
-		return logResult, err
+		return err
 	}
 	stage = "reference_check"
 	issues, err := m.media.CheckReferences(ctx)
 	if err != nil {
-		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("error=%q", err.Error())}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = events.ResultCanceled
-		}
-		return logResult, err
+		return err
 	}
 	if len(issues) > 0 {
-		err := fmt.Errorf("media reference inconsistencies prevent cleanup: %v", issues)
-		return events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("issues=%d\n", len(issues)) + strings.Join(issues, "\n")}, err
+		return fmt.Errorf("media reference inconsistencies prevent cleanup: %v", issues)
 	}
 	stage = "claim"
 	items, err := m.media.ClaimOrphans(ctx, m.options.Now().Add(-OrphanGrace))
 	if err != nil {
-		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("error=%q", err.Error())}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = events.ResultCanceled
-		}
-		return logResult, err
+		return err
 	}
 	stage = "delete"
-	// Each worker owns a distinct result slot; errors are joined after all exit.
 	failures := make([]error, len(items))
-	results := make([]events.LogResult, len(items))
+	deleted, started := make([]bool, len(items)), make([]bool, len(items))
 	jobs := make(chan int)
 	var workers sync.WaitGroup
 	for range min(cleanupConcurrency, len(items)) {
@@ -104,7 +86,8 @@ func (m *Manager) Cleanup(ctx context.Context, history History) (logResult event
 				if ctx.Err() != nil {
 					return
 				}
-				results[i], failures[i] = m.deleteObject(ctx, items[i].ID)
+				started[i] = true
+				deleted[i], failures[i] = m.deleteObject(ctx, items[i].ID)
 			}
 		}()
 	}
@@ -121,100 +104,85 @@ dispatch:
 	}
 	close(jobs)
 	workers.Wait()
-	resultStatus := events.ResultSucceeded
-	counts := map[events.ResultStatus]int{}
-	for _, result := range results {
-		counts[result.ResultStatus]++
-		if result.ResultStatus == events.ResultFailed || (result.ResultStatus == events.ResultCanceled && resultStatus != events.ResultFailed) {
-			resultStatus = result.ResultStatus
+	var removed, skipped, failed, canceled, pending int
+	for i := range items {
+		switch {
+		case !started[i]:
+			pending++
+		case events.LogStatus(failures[i]) == events.ResultCanceled:
+			canceled++
+		case failures[i] != nil:
+			failed++
+		case deleted[i]:
+			removed++
+		default:
+			skipped++
 		}
 	}
-	lines := []string{fmt.Sprintf("claimed=%d deleted=%d skipped=%d failed=%d canceled=%d not_started=%d",
-		len(items), counts[events.ResultSucceeded], counts[events.ResultSkipped], counts[events.ResultFailed], counts[events.ResultCanceled], counts[events.ResultUnspecified])}
-	if err := ctx.Err(); err != nil {
-		if resultStatus != events.ResultFailed {
-			resultStatus = events.ResultFailed
-			if err == context.Canceled {
-				resultStatus = events.ResultCanceled
-			}
-		}
-		lines = append(lines, fmt.Sprintf("cleanup_error=%q", err.Error()))
-	}
-	for _, status := range []events.ResultStatus{events.ResultFailed, events.ResultCanceled, events.ResultUnspecified, events.ResultSkipped, events.ResultSucceeded} {
-		for i, result := range results {
-			if result.ResultStatus != status {
-				continue
-			}
-			if status == events.ResultUnspecified {
-				lines = append(lines, fmt.Sprintf("media_id=%s result=not_started backend=%s", items[i].ID, items[i].Backend))
-			} else {
-				lines = append(lines, result.Content)
-			}
-		}
-	}
-	return events.LogResult{ResultStatus: resultStatus, Content: strings.Join(lines, "\n")}, errors.Join(append(failures, ctx.Err())...)
+	lines = append(lines, fmt.Sprintf("claimed=%d deleted=%d skipped=%d failed=%d canceled=%d not_started=%d", len(items), removed, skipped, failed, canceled, pending))
+	return errors.Join(append(failures, ctx.Err())...)
 }
 
-func (m *Manager) deleteObject(ctx context.Context, id string) (logResult events.LogResult, err error) {
+func (m *Manager) deleteObject(ctx context.Context, id string) (deleted bool, err error) {
 	stage, backend := "lock", ""
+	level := slog.LevelError
 	defer func() {
-		if err != nil {
-			logResult.ResultStatus = events.ResultFailed
-			if errors.Is(err, context.Canceled) {
-				logResult.ResultStatus = events.ResultCanceled
-			}
-		}
-		result := logResult.ResultStatus.String()
-		if logResult.ResultStatus == events.ResultSucceeded {
+		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelDebug, Module: "media", EventName: "media_cleanup", ResultStatus: events.ResultSkipped}
+		result := "skipped"
+		if deleted {
+			record.ResultStatus = events.ResultSucceeded
 			result = "deleted"
 		}
-		content := fmt.Sprintf("media_id=%s result=%s", id, result)
-		if backend != "" {
-			content += " backend=" + backend
-		}
 		if err != nil {
-			content += fmt.Sprintf(" stage=%s error=%q", stage, err.Error())
-		} else if logResult.Content != "" {
-			content += " " + logResult.Content
+			record.Level, record.ResultStatus = level, events.ResultFailed
+			result = "failed"
+			if events.LogStatus(err) == events.ResultCanceled {
+				record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
+				result = "canceled"
+			}
 		}
-		logResult.Content = content
+		record.Content = fmt.Sprintf("media_id=%s result=%s backend=%s stage=%s", id, result, backend, stage)
+		if err != nil {
+			record.Content += fmt.Sprintf(" error=%q", err.Error())
+		}
+		_ = events.EmitLog(ctx, record)
 	}()
 	unlock, err := m.objects.acquire(ctx, id)
 	if err != nil {
-		return logResult, err
+		return false, err
 	}
 	defer unlock()
-	// Read under the object lock rather than deleting from an old snapshot.
 	stage = "read"
 	item, err := m.media.Get(ctx, id)
 	if errors.Is(err, storage.ErrNotFound) {
-		return events.LogResult{ResultStatus: events.ResultSkipped, Content: "reason=unavailable"}, nil
+		return false, nil
 	}
 	if err != nil {
-		return logResult, err
+		return false, err
 	}
 	backend = item.Backend
 	if !item.Deleting {
-		return events.LogResult{ResultStatus: events.ResultSkipped, Content: "reason=unclaimed"}, nil
+		return false, nil
 	}
 	if item.ObjectKey != "" {
 		stage = "remote_delete"
 		if m.remote == nil {
-			return logResult, fmt.Errorf("remote media backend is unavailable")
+			return false, fmt.Errorf("remote media backend is unavailable")
 		}
 		if err := m.remote.Remove(ctx, item.ObjectKey); err != nil {
-			return logResult, fmt.Errorf("delete remote media %q: %w", id, err)
+			level = slog.LevelWarn
+			return false, fmt.Errorf("delete remote media %q: %w", id, err)
 		}
 	}
 	if item.LocalPath != "" {
 		stage = "local_delete"
 		if err := m.local.Remove(ctx, item.LocalPath); err != nil {
-			return logResult, fmt.Errorf("delete local media %q: %w", id, err)
+			return false, fmt.Errorf("delete local media %q: %w", id, err)
 		}
 	}
 	stage = "finish_delete"
 	if err := m.media.FinishDelete(ctx, id); err != nil {
-		return logResult, fmt.Errorf("finish deleting media %q: %w", id, err)
+		return false, fmt.Errorf("finish deleting media %q: %w", id, err)
 	}
-	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+	return true, nil
 }

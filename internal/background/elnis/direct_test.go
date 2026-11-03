@@ -7,8 +7,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"elbot/internal/events"
 )
 
 func TestPlatformCallFunctionReceivesResolvedPlatformAndContext(t *testing.T) {
@@ -30,9 +28,9 @@ func TestPlatformCallFunctionReceivesResolvedPlatformAndContext(t *testing.T) {
 				}
 				return json.RawMessage(`{}`), nil
 			}
-			result, err := svc.executeCalls(t.Context(), targets, []Call{{Platform: platform, API: " custom_api ", Params: params}})
-			if err != nil || calls != 1 || result.ResultStatus != events.ResultSucceeded {
-				t.Fatal(result, err, calls)
+			err := svc.executeCalls(t.Context(), targets, []Call{{Platform: platform, API: " custom_api ", Params: params}})
+			if err != nil || calls != 1 {
+				t.Fatal(err, calls)
 			}
 		})
 	}
@@ -42,13 +40,9 @@ func TestPlatformCallFunctionPreservesFailureAndCancellation(t *testing.T) {
 	defer close()
 	for _, failure := range []error{errors.New("unsupported platform"), context.Canceled} {
 		svc.callPlatformAPI = func(context.Context, string, string, map[string]any) (json.RawMessage, error) { return nil, failure }
-		result, err := svc.executeCalls(t.Context(), nil, []Call{{Platform: "missing", API: "call"}})
-		want := events.ResultFailed
-		if errors.Is(failure, context.Canceled) {
-			want = events.ResultCanceled
-		}
-		if !errors.Is(err, failure) || result.ResultStatus != want {
-			t.Fatal(result, err)
+		err := svc.executeCalls(t.Context(), nil, []Call{{Platform: "missing", API: "call"}})
+		if !errors.Is(err, failure) {
+			t.Fatal(err)
 		}
 	}
 }

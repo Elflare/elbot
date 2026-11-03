@@ -133,7 +133,7 @@ func (r *BackgroundHandler) preloadBackgroundResources(ctx context.Context, row 
 	if err != nil {
 		return backgroundPreloadResult{Err: err}
 	}
-	committed, _, err := agentshare.CommitToolState(ctx, r.ToolState, row, prepared.Update)
+	committed, err := agentshare.CommitToolState(ctx, r.ToolState, row, prepared.Update)
 	if err != nil {
 		return backgroundPreloadResult{Err: err}
 	}

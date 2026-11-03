@@ -154,9 +154,9 @@ func (n namingLogProjection) scheduled(ctx context.Context, event NamingSchedule
 
 func (n namingLogProjection) completed(ctx context.Context, event NamingCompletedEvent) error {
 	level := slog.LevelInfo
-	if event.ResultStatus == events.ResultFailed {
+	if event.PreparationResultStatus == events.ResultFailed || event.PersistenceResultStatus == events.ResultFailed || event.FallbackResultStatus == events.ResultFailed {
 		level = slog.LevelError
-	} else if event.GenerationResultStatus == events.ResultFailed || event.TitleValid != nil && !*event.TitleValid {
+	} else if event.ResultStatus == events.ResultFailed || event.GenerationResultStatus == events.ResultFailed || event.TitleValid != nil && !*event.TitleValid {
 		level = slog.LevelWarn
 	}
 	content := map[string]any{

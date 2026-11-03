@@ -15,9 +15,9 @@ func TestCronEmptyTargetsCancelBeforeModelAndRunner(t *testing.T) {
 	models := &taskModels{current: config.ModelSelection{Provider: "provider", Model: "model"}}
 	svc := newTestCronService(t, Options{Runner: runner, Models: models})
 	svc.enabledPlatforms = nil
-	_, state, result, err := svc.prepareDelivery(t.Context(), Job{Name: "empty"}, Metadata{Target: CronTarget{AllEnabledPlatforms: true}})
-	if err == nil || result.ResultStatus != events.ResultCanceled || runner.calls != 0 || models.resolutions != 0 || state.ReportSessionID != "" {
-		t.Fatalf("state=%+v result=%+v err=%v calls=%d resolutions=%d", state, result, err, runner.calls, models.resolutions)
+	_, state, err := svc.prepareDelivery(t.Context(), Job{Name: "empty"}, Metadata{Target: CronTarget{AllEnabledPlatforms: true}})
+	if err == nil || runner.calls != 0 || models.resolutions != 0 || state.ReportSessionID != "" {
+		t.Fatal("state= result= err= calls= resolutions=", state, err, runner.calls, models.resolutions)
 	}
 }
 
@@ -40,11 +40,11 @@ func TestCronUnconfiguredTargetCancelsAndLogsBeforeDeliveryState(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer connection.Disconnect()
-			result, err := svc.Handler(t.Context(), *job)
-			if err == nil || result.ResultStatus != events.ResultCanceled || runner.calls != 0 || models.resolutions != 0 {
-				t.Fatalf("result=%+v err=%v calls=%d resolutions=%d", result, err, runner.calls, models.resolutions)
+			err = svc.Handler(t.Context(), *job)
+			if err == nil || runner.calls != 0 || models.resolutions != 0 {
+				t.Fatal("result= err= calls= resolutions=", err, runner.calls, models.resolutions)
 			}
-			if len(records) != 1 || records[0].ResultStatus != events.ResultCanceled || !strings.Contains(records[0].Content, "not enabled") || !strings.Contains(records[0].Content, "telegram") {
+			if len(records) != 1 || records[0].ResultStatus != events.ResultFailed || !strings.Contains(records[0].Content, "not enabled") || !strings.Contains(records[0].Content, "telegram") {
 				t.Fatalf("logs=%+v", records)
 			}
 			if got := repo.jobs[job.Name]; got.DeliveryState != job.DeliveryState || got.DeliveryToken != job.DeliveryToken {

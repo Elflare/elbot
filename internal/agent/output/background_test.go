@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 )
 
 type backgroundDeliveryProbe struct {
@@ -17,11 +16,11 @@ type backgroundDeliveryProbe struct {
 	outputs []delivery.Output
 }
 
-func (p *backgroundDeliveryProbe) SendTo(_ context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+func (p *backgroundDeliveryProbe) SendTo(_ context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	p.calls++
 	p.target = target
 	p.outputs = outputs
-	return delivery.Receipt{}, events.LogResult{}, nil
+	return delivery.Receipt{}, nil
 }
 
 func TestAssistantActionsSurviveTextHook(t *testing.T) {
@@ -29,13 +28,13 @@ func TestAssistantActionsSurviveTextHook(t *testing.T) {
 	hooks := &previewTestHooks{rewrite: true, output: "正文完全改写"}
 	out := NewOutputSender(OutputSenderDeps{Dispatcher: probe, Hooks: hooks})
 	actions := []delivery.Action{{ID: "confirm", Label: "确认", Command: "/confirm"}}
-	if _, _, err := out.SendAssistant(t.Context(), "original", actions...); err != nil {
+	if _, err := out.SendAssistant(t.Context(), "original", actions...); err != nil {
 		t.Fatal(err)
 	}
 	if probe.calls != 1 || len(probe.outputs) != 1 || probe.outputs[0].Text != hooks.output || !reflect.DeepEqual(probe.outputs[0].Actions, actions) {
 		t.Fatalf("output lost text or actions: %#v", probe.outputs)
 	}
-	if _, _, err := out.SendAssistant(t.Context(), "高风险工具调用等待确认 /confirm"); err != nil {
+	if _, err := out.SendAssistant(t.Context(), "高风险工具调用等待确认 /confirm"); err != nil {
 		t.Fatal(err)
 	}
 	if len(probe.outputs[0].Actions) != 0 {
@@ -52,10 +51,10 @@ func TestBackgroundOutputIsSilentExceptExplicitDelivery(t *testing.T) {
 	hooks := &previewTestHooks{}
 	out := NewOutputSender(OutputSenderDeps{Dispatcher: probe, Hooks: hooks, Reasoning: func(context.Context) delivery.ReasoningStream { probe.calls++; return nil }})
 	ctx := testutil.TaskContext(t.Context(), "cron")
-	if _, err := out.SendOutputs(ctx, []delivery.Output{delivery.Text("ordinary")}); err != nil {
+	if err := out.SendOutputs(ctx, []delivery.Output{delivery.Text("ordinary")}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := out.SendAssistant(ctx, "assistant"); err != nil {
+	if _, err := out.SendAssistant(ctx, "assistant"); err != nil {
 		t.Fatal(err)
 	}
 	if err := out.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("default")}); err != nil {

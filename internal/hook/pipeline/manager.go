@@ -25,7 +25,7 @@ type Manager struct {
 	activeID int
 	handlers map[share.Point][]registration
 	// route is injected at construction; runtime owns continuation state and execution.
-	route  func(context.Context, share.Event, func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, globalevents.LogResult, error)
+	route  func(context.Context, share.Event, func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, error)
 	Log    func(context.Context, globalevents.LogRecord) // Publishes complete source-owned records.
 	active map[string]activeHook
 }
@@ -49,7 +49,7 @@ type registration struct {
 	wakeup      share.WakeupPolicy
 }
 
-func NewManager(Log func(context.Context, globalevents.LogRecord), route func(context.Context, share.Event, func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, globalevents.LogResult, error)) *Manager {
+func NewManager(Log func(context.Context, globalevents.LogRecord), route func(context.Context, share.Event, func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, error)) *Manager {
 	return &Manager{handlers: map[share.Point][]registration{}, active: map[string]activeHook{}, Log: Log, route: route}
 }
 
@@ -70,38 +70,33 @@ func (m *Manager) Register(reg share.Registration) {
 
 // Run first tries an inbound continuation, then runs ordinary rules unless stopped.
 // On failure it returns the entry snapshot and notifies error hooks once.
-func (m *Manager) Run(ctx context.Context, event share.Event, options CallOptions) (share.Event, globalevents.LogResult, error) {
+func (m *Manager) Run(ctx context.Context, event share.Event, options CallOptions) (share.Event, error) {
 	before := share.SnapshotCalls(event)
-	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no matching Hook"}
 	if event.Point == share.PointPlatformMessageReceived && m.route != nil {
-		updated, routed, result, err := m.route(ctx, event, options.Observe)
+		updated, routed, err := m.route(ctx, event, options.Observe)
 		if err != nil {
 			m.notifyError(ctx, before, options, err)
-			return before, result, err
+			return before, err
 		}
 		event = updated
-		if routed {
-			logResult = mergeLogResult(logResult, result)
-		}
 		if routed && event.Control.StopPropagation {
-			return event, result, nil
+			return event, nil
 		}
 	}
-	updated, result, err := m.run(ctx, event, options)
-	result = mergeLogResult(logResult, result)
+	updated, err := m.run(ctx, event, options)
 	if err != nil {
 		m.notifyError(ctx, before, options, err)
-		return before, result, err
+		return before, err
 	}
-	return updated, result, nil
+	return updated, nil
 }
 
-func (m *Manager) Notify(ctx context.Context, event share.Event, options CallOptions) (globalevents.LogResult, error) {
-	result, err := m.notify(ctx, event, options)
+func (m *Manager) Notify(ctx context.Context, event share.Event, options CallOptions) error {
+	err := m.notify(ctx, event, options)
 	if err != nil {
 		m.notifyError(ctx, event, options, err)
 	}
-	return result, err
+	return err
 }
 
 func (m *Manager) notifyError(ctx context.Context, event share.Event, options CallOptions, err error) {
@@ -110,12 +105,11 @@ func (m *Manager) notifyError(ctx context.Context, event share.Event, options Ca
 	}
 	event.Point, event.Error, event.ErrorInfo = share.PointErrorOccurred, err, nil
 	// Do not recurse into error reporting or replace the original failure.
-	_, _ = m.notify(ctx, event, options)
+	_ = m.notify(ctx, event, options)
 }
 
-func (m *Manager) run(ctx context.Context, event share.Event, options CallOptions) (share.Event, globalevents.LogResult, error) {
+func (m *Manager) run(ctx context.Context, event share.Event, options CallOptions) (share.Event, error) {
 	event = share.PrepareEvent(event)
-	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no matching Hook"}
 	for _, reg := range m.handlersFor(event.Point) {
 		if reg.block.Blocks(event) {
 			continue
@@ -129,28 +123,26 @@ func (m *Manager) run(ctx context.Context, event share.Event, options CallOption
 		}
 		event.Metadata["match"] = matchResult.Context
 		before := share.SnapshotCalls(event)
-		runCtx, updated, handlerResult, err := m.invoke(ctx, reg, event, options)
+		runCtx, updated, err := m.invoke(ctx, reg, event, options)
 		delete(event.Metadata, "match")
 
-		logResult = mergeLogResult(logResult, handlerResult)
 		if err != nil {
-			m.logHook(runCtx, "run", reg, before, before, handlerResult)
-			return before, logResult, wrapHookError(reg, err)
+			m.logHook(runCtx, "run", reg, before, before, err)
+			return before, wrapHookError(reg, err)
 		}
 		markHookOutputs(updated, len(before.Outputs), reg, "run")
 		event = share.PrepareEvent(updated)
-		m.logHook(runCtx, "run", reg, before, event, handlerResult)
+		m.logHook(runCtx, "run", reg, before, event, err)
 
 		if event.Control.StopPropagation {
 			break
 		}
 	}
-	return event, logResult, nil
+	return event, nil
 }
 
-func (m *Manager) notify(ctx context.Context, event share.Event, options CallOptions) (globalevents.LogResult, error) {
+func (m *Manager) notify(ctx context.Context, event share.Event, options CallOptions) error {
 	event = share.PrepareEvent(event)
-	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no matching Hook"}
 	var joined error
 	for _, reg := range m.handlersFor(event.Point) {
 		if reg.block.Blocks(event) {
@@ -165,39 +157,20 @@ func (m *Manager) notify(ctx context.Context, event share.Event, options CallOpt
 		}
 		event.Metadata["match"] = matchResult.Context
 		before := event
-		runCtx, updated, handlerResult, err := m.invoke(ctx, reg, event, options)
+		runCtx, updated, err := m.invoke(ctx, reg, event, options)
 		delete(event.Metadata, "match")
-		logResult = mergeLogResult(logResult, handlerResult)
 		if err != nil {
-			m.logHook(runCtx, "notify", reg, before, before, handlerResult)
+			m.logHook(runCtx, "notify", reg, before, before, err)
 			joined = errors.Join(joined, wrapHookError(reg, err))
 			continue
 		}
 		markHookOutputs(updated, len(before.Outputs), reg, "notify")
-		m.logHook(runCtx, "notify", reg, before, before, handlerResult)
+		m.logHook(runCtx, "notify", reg, before, before, err)
 		if updated.Control.StopPropagation {
 			break
 		}
 	}
-	return logResult, joined
-}
-
-// mergeLogResult keeps failures and cancellations visible across executed Hooks.
-func mergeLogResult(current, incoming globalevents.LogResult) globalevents.LogResult {
-	if incoming.ResultStatus == globalevents.ResultSkipped {
-		return current
-	}
-	if current.ResultStatus == globalevents.ResultSkipped {
-		return incoming
-	}
-	result := globalevents.LogResult{ResultStatus: incoming.ResultStatus, Content: current.Content + "\n" + incoming.Content}
-	switch {
-	case current.ResultStatus == globalevents.ResultFailed || incoming.ResultStatus == globalevents.ResultFailed:
-		result.ResultStatus = globalevents.ResultFailed
-	case current.ResultStatus == globalevents.ResultCanceled || incoming.ResultStatus == globalevents.ResultCanceled:
-		result.ResultStatus = globalevents.ResultCanceled
-	}
-	return result
+	return joined
 }
 
 func (m *Manager) handlersFor(point share.Point) []registration {
@@ -220,22 +193,18 @@ func (m *Manager) skipForWakeup(woken bool, reg registration) bool {
 	}
 }
 
-func (m *Manager) invoke(ctx context.Context, reg registration, event share.Event, options CallOptions) (context.Context, share.Event, globalevents.LogResult, error) {
+func (m *Manager) invoke(ctx context.Context, reg registration, event share.Event, options CallOptions) (context.Context, share.Event, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	activeID := m.startActive(reg, cancel)
 	defer m.finishActive(activeID)
 	runCtx, done, err := m.observe(ctx, reg, options)
 	if err != nil {
-		status := globalevents.ResultFailed
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			status = globalevents.ResultCanceled
-		}
-		return runCtx, event, globalevents.LogResult{ResultStatus: status, Content: "start hook request: " + err.Error()}, err
+		return runCtx, event, err
 	}
 	defer done()
-	updated, result, err := reg.handler.HandleHook(runCtx, event, options.ReadOnlyCalls)
-	return runCtx, updated, result, err
+	updated, err := reg.handler.HandleHook(runCtx, event, options.ReadOnlyCalls)
+	return runCtx, updated, err
 }
 
 func (m *Manager) observe(ctx context.Context, reg registration, options CallOptions) (context.Context, func(), error) {
@@ -422,18 +391,18 @@ func markHookOutputs(event share.Event, start int, reg registration, mode string
 	}
 }
 
-func (m *Manager) logHook(ctx context.Context, mode string, reg registration, before, after share.Event, logResult globalevents.LogResult) {
-	level, name := slog.LevelInfo, "hook_triggered"
-	if logResult.ResultStatus == globalevents.ResultFailed {
-		level, name = slog.LevelError, "hook_error"
-	}
-	if logResult.ResultStatus == globalevents.ResultCanceled {
-		name = "hook_canceled"
+func (m *Manager) logHook(ctx context.Context, mode string, reg registration, before, after share.Event, err error) {
+	level, name, status, detail := slog.LevelInfo, "hook_triggered", globalevents.ResultSucceeded, ""
+	if err != nil {
+		level, name, status, detail = slog.LevelWarn, "hook_error", globalevents.ResultFailed, err.Error()
+		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
+			level, name, status = slog.LevelInfo, "hook_canceled", globalevents.ResultCanceled
+		}
 	}
 	beforeText := eventText(before)
 	content := map[string]any{
 		"point": before.Point, "hook": reg.name, "priority": reg.priority, "order": reg.order, "mode": mode,
-		"detail":      share.TruncateLogContent(logResult.Content, 1024),
+		"detail":      share.TruncateLogContent(detail, 1024),
 		"before_text": share.TruncateLogContent(beforeText, 1024),
 		"after_text":  share.TruncateLogContent(eventText(after), 1024),
 	}
@@ -459,7 +428,7 @@ func (m *Manager) logHook(ctx context.Context, mode string, reg registration, be
 	data, _ := json.Marshal(content)
 	record := globalevents.LogRecord{
 		Category: globalevents.LogRuntime, Level: level, EventName: name, Module: "hook",
-		ResultStatus: logResult.ResultStatus, Type: globalevents.ContentJSON, Content: string(data),
+		ResultStatus: status, Type: globalevents.ContentJSON, Content: string(data),
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record.Identity = globalevents.LogIdentityFromExecution(facts)

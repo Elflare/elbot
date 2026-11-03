@@ -27,7 +27,7 @@ func uiTarget(ctx context.Context) messageData {
 
 func (d messageData) setRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
 	if d.client != nil {
-		_, err := d.client.write(ctx, remoteMessage{Type: remoteMsgStatus, Snapshot: snapshot})
+		err := d.client.write(ctx, remoteMessage{Type: remoteMsgStatus, Snapshot: snapshot})
 		return err
 	}
 	return d.adapter.sendTUIMessage(tuiStatusMsg(snapshot), FormatCompact(snapshot, time.Now(), 0))

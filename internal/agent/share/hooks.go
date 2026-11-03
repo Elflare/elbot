@@ -4,7 +4,6 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 )
 
@@ -18,15 +17,15 @@ type Points struct {
 	CancelRoute func(context.Context, Facts, Message) bool
 	// Includes continuation routing and ordinary rules. Their stop-propagation
 	// remains internal to the provider.
-	PlatformMessageReceived func(context.Context, Facts, Message) (PlatformMessageReceivedResult, events.LogResult, error)
-	AgentInputPrepared      func(context.Context, Facts, Message) ([]llm.MessageSegment, events.LogResult, error)
-	LLMTurnPrepared         func(context.Context, Facts, LLMInput) (LLMInputResult, events.LogResult, error)
-	LLMRequestPrepared      func(context.Context, Facts, LLMInput) (LLMInputResult, events.LogResult, error)
-	LLMResponseReceived     func(context.Context, Facts, LLMResponse) (LLMResponseResult, events.LogResult, error)
-	ToolCallPrepared        func(context.Context, Facts, llm.ToolCallRequest) (string, events.LogResult, error)
-	ToolCallCompleted       func(context.Context, Facts, ToolResult) ([]llm.MessageSegment, events.LogResult, error)
-	AgentOutputPrepared     func(context.Context, Facts, string) (string, events.LogResult, error)
-	AgentTurnOutputPrepared func(context.Context, Facts, string) (string, events.LogResult, error)
+	PlatformMessageReceived func(context.Context, Facts, Message) (PlatformMessageReceivedResult, error)
+	AgentInputPrepared      func(context.Context, Facts, Message) ([]llm.MessageSegment, error)
+	LLMTurnPrepared         func(context.Context, Facts, LLMInput) (LLMInputResult, error)
+	LLMRequestPrepared      func(context.Context, Facts, LLMInput) (LLMInputResult, error)
+	LLMResponseReceived     func(context.Context, Facts, LLMResponse) (LLMResponseResult, error)
+	ToolCallPrepared        func(context.Context, Facts, llm.ToolCallRequest) (string, error)
+	ToolCallCompleted       func(context.Context, Facts, ToolResult) ([]llm.MessageSegment, error)
+	AgentOutputPrepared     func(context.Context, Facts, string) (string, error)
+	AgentTurnOutputPrepared func(context.Context, Facts, string) (string, error)
 	PlatformMessageSent     func(context.Context, Facts, string)
 	ErrorOccurred           func(context.Context, Facts, LLMResponse, error)
 }

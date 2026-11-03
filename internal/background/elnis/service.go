@@ -16,7 +16,7 @@ import (
 	"elbot/internal/tool"
 )
 
-type SenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
+type SenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error)
 
 type QueuedLLMEvent struct {
 	Event   Event
@@ -286,50 +286,16 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 		}
 		return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusCompleted}, nil
 	case ModeDirect:
-		logResult, err := s.runDirect(ctx, event, record.ID)
+		err := s.runDirect(ctx, event, record.ID)
 		if err != nil {
 			persistenceErr := s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusFailed, "", err.Error())
-			{
-				content := map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID, "error": fmt.Sprintf("%.2048s", err.Error()), "result": fmt.Sprintf("%.2048s", logResult.Content)}
-				if persistenceErr != nil {
-					content["persistence_error"] = fmt.Sprintf("%.2048s", persistenceErr.Error())
-				}
-				data, _ := json.Marshal(content)
-				record := globalevents.LogRecord{
-					Category:     globalevents.LogAudit,
-					Level:        slog.LevelError,
-					EventName:    "elnis.direct_failed",
-					Module:       "elnis",
-					Type:         globalevents.ContentJSON,
-					Content:      string(data),
-					ResultStatus: logResult.ResultStatus,
-				}
-				if logResult.ResultStatus != globalevents.ResultFailed {
-					record.Level = slog.LevelInfo
-				}
-				record.Identity = identity
-				if persistenceErr != nil {
-					if record.ResultStatus != globalevents.ResultFailed {
-						record.ResultStatus = globalevents.ResultFailed
-						if errors.Is(persistenceErr, context.Canceled) {
-							record.ResultStatus = globalevents.ResultCanceled
-						}
-					}
-					if record.ResultStatus == globalevents.ResultFailed {
-						record.Level = slog.LevelError
-					}
-				}
-				background.LogBackground(ctx, record)
-				record.Category, record.EventName = globalevents.LogElnis, "elnis_direct_failed"
-				background.LogBackground(ctx, record)
-			}
 			if persistenceErr != nil {
 				err = errors.Join(err, persistenceErr)
 			}
 			return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
 		}
 		{
-			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID, "result": fmt.Sprintf("%.2048s", logResult.Content)})
+			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID, "result": fmt.Sprintf("%.2048v", err)})
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogAudit,
 				Level:        slog.LevelInfo,
@@ -337,10 +303,7 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 				Module:       "elnis",
 				Type:         globalevents.ContentJSON,
 				Content:      string(content),
-				ResultStatus: logResult.ResultStatus,
-			}
-			if logResult.ResultStatus == globalevents.ResultFailed {
-				record.Level = slog.LevelError
+				ResultStatus: globalevents.ResultSucceeded,
 			}
 			record.Identity = identity
 			background.LogBackground(ctx, record)
@@ -366,9 +329,6 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 			persistenceErr := s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusFailed, "", err.Error())
 			{
 				content := map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID, "error": fmt.Sprintf("%.2048s", err.Error())}
-				if persistenceErr != nil {
-					content["persistence_error"] = fmt.Sprintf("%.2048s", persistenceErr.Error())
-				}
 				data, _ := json.Marshal(content)
 				record := globalevents.LogRecord{
 					Category:     globalevents.LogElnis,
@@ -379,15 +339,11 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 					Content:      string(data),
 					ResultStatus: globalevents.ResultFailed,
 				}
-				if errors.Is(err, context.Canceled) {
+				if globalevents.LogStatus(err) == globalevents.ResultCanceled {
 					record.ResultStatus = globalevents.ResultCanceled
 					record.Level = slog.LevelInfo
 				}
 				record.Identity = identity
-				if persistenceErr != nil {
-					record.ResultStatus = globalevents.ResultFailed
-					record.Level = slog.LevelError
-				}
 				background.LogBackground(ctx, record)
 			}
 			if persistenceErr != nil {

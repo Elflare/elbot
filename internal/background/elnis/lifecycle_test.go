@@ -17,7 +17,6 @@ import (
 	background "elbot/internal/background/share"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 )
 
 func startTestRuntime(t *testing.T, cfg config.ElnisHTTPConfig, service *Service) *Runtime {
@@ -347,12 +346,12 @@ func TestRuntimeFaultPrecedesWorkerExitAndBulkCleanup(t *testing.T) {
 
 func TestRuntimeDoneWaitsForCanceledHTTPHandler(t *testing.T) {
 	entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	s, cleanup := newTestService(t, func(ctx context.Context, _ delivery.Target, _ []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	s, cleanup := newTestService(t, func(ctx context.Context, _ delivery.Target, _ []delivery.Output) (delivery.Receipt, error) {
 		close(entered)
 		<-ctx.Done()
 		close(canceled)
 		<-release
-		return delivery.Receipt{}, events.LogResult{}, ctx.Err()
+		return delivery.Receipt{}, ctx.Err()
 	})
 	defer cleanup()
 	r := startTestRuntime(t, config.Default().Elnis.HTTP, s)

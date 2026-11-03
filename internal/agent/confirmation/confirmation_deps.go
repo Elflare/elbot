@@ -9,7 +9,6 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -22,7 +21,7 @@ type ConfirmationIdentity interface {
 }
 
 type ConfirmationOutput interface {
-	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, events.LogResult, error)
+	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, error)
 }
 
 // ConfirmationCoordinatorDeps declares only the capabilities consumed by ConfirmationCoordinator.

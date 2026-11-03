@@ -123,7 +123,7 @@ func (s *Service) CopyBackground(ctx context.Context, target share.Scope, req Ba
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.deps.Sessions.CreateMaterial(locked, materialCreate(row, source.ID, prepared, copies)); err != nil {
+	if err := s.deps.Sessions.CreateMaterial(locked, materialCreate(row, source.ID, prepared, copies)); err != nil {
 		return nil, err
 	}
 	return row, nil

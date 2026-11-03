@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 )
 
 func TestSuperadminsOwnsPlatformList(t *testing.T) {
@@ -31,7 +30,7 @@ func TestSuperadminsSendPreservesTargetsContextAndPartialReceipts(t *testing.T) 
 			ctx := delivery.WithTemporaryConnection(t.Context())
 			outputs := []delivery.Output{delivery.Text("notice")}
 			var targets []delivery.Target
-			receipt, result, err := admins.SendTo(ctx, outputs, func(gotCtx context.Context, target delivery.Target, gotOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+			receipt, err := admins.SendTo(ctx, outputs, func(gotCtx context.Context, target delivery.Target, gotOutputs []delivery.Output) (delivery.Receipt, error) {
 				if gotCtx != ctx || !delivery.UseTemporaryConnection(gotCtx) || !reflect.DeepEqual(outputs, gotOutputs) {
 					t.Fatal("send context or outputs changed")
 				}
@@ -41,18 +40,18 @@ func TestSuperadminsSendPreservesTargetsContextAndPartialReceipts(t *testing.T) 
 					SentMessages:       []delivery.SentMessage{{Platform: target.Platform, PlatformMessageID: target.ChatID}},
 				}
 				if fail && target.ChatID == "second" {
-					return sent, events.LogResult{ResultStatus: events.ResultFailed, Content: "second failed"}, fault
+					return sent, fault
 				}
-				return sent, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+				return sent, nil
 			})
 			wantIDs := []string{"first", "second", "third"}
 			if fail {
 				wantIDs = wantIDs[:2]
-				if !errors.Is(err, fault) || result.ResultStatus != events.ResultFailed || result.Content != "second failed" {
-					t.Fatalf("failure result=%+v err=%v", result, err)
+				if !errors.Is(err, fault) {
+					t.Fatal("failure result= err=", err)
 				}
-			} else if err != nil || result.ResultStatus != events.ResultSucceeded {
-				t.Fatalf("success result=%+v err=%v", result, err)
+			} else if err != nil {
+				t.Fatal("success result= err=", err)
 			}
 			if !reflect.DeepEqual(receipt.PlatformMessageIDs, wantIDs) || len(receipt.SentMessages) != len(wantIDs) || len(targets) != len(wantIDs) {
 				t.Fatalf("targets=%+v receipt=%+v", targets, receipt)
@@ -67,23 +66,23 @@ func TestSuperadminsSendPreservesTargetsContextAndPartialReceipts(t *testing.T) 
 }
 
 func TestSuperadminsSendEmptyListAndCancellation(t *testing.T) {
-	_, result, err := NewSuperadmins("injected-platform", nil).SendTo(t.Context(), nil,
-		func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	_, err := NewSuperadmins("injected-platform", nil).SendTo(t.Context(), nil,
+		func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
 			t.Fatal("empty list invoked sender")
-			return delivery.Receipt{}, events.LogResult{}, nil
+			return delivery.Receipt{}, nil
 		})
-	if err == nil || err.Error() != "injected-platform superadmins are not configured" || result.ResultStatus != events.ResultFailed {
-		t.Fatalf("empty list result=%+v err=%v", result, err)
+	if err == nil || err.Error() != "injected-platform superadmins are not configured" {
+		t.Fatal("empty list result= err=", err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	calls := 0
-	_, result, err = NewSuperadmins("injected-platform", []string{"one", "two"}).SendTo(ctx, nil,
-		func(ctx context.Context, _ delivery.Target, _ []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	_, err = NewSuperadmins("injected-platform", []string{"one", "two"}).SendTo(ctx, nil,
+		func(ctx context.Context, _ delivery.Target, _ []delivery.Output) (delivery.Receipt, error) {
 			calls++
-			return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultCanceled}, ctx.Err()
+			return delivery.Receipt{}, ctx.Err()
 		})
-	if !errors.Is(err, context.Canceled) || result.ResultStatus != events.ResultCanceled || calls != 1 {
-		t.Fatalf("cancellation result=%+v err=%v calls=%d", result, err, calls)
+	if !errors.Is(err, context.Canceled) || calls != 1 {
+		t.Fatal("cancellation result= err= calls=", err, calls)
 	}
 }

@@ -33,7 +33,7 @@ func connectTestNotifications(t *testing.T, router *dispatch.Router) *notificati
 		t.Fatal(err)
 	}
 	_, err = s.Connect(func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
-		r, _, err := router.SendTo(ctx, delivery.Target{Platform: n.Target.Platform, ChatID: n.Target.ID, ChatType: n.Target.ChatType}, []delivery.Output{delivery.Text(n.Text)})
+		r, err := router.SendTo(ctx, delivery.Target{Platform: n.Target.Platform, ChatID: n.Target.ID, ChatType: n.Target.ChatType}, []delivery.Output{delivery.Text(n.Text)})
 		return events.NotificationReceipt{PlatformMessageIDs: r.PlatformMessageIDs}, err
 	}, signal.ConnectOptions{})
 	if err != nil {
@@ -44,11 +44,11 @@ func connectTestNotifications(t *testing.T, router *dispatch.Router) *notificati
 
 func (*assemblyPlatform) Name() string { return "cli" }
 
-func (p *assemblyPlatform) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+func (p *assemblyPlatform) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.outputs = append(p.outputs, delivery.FallbackOutput(outputs).Text)
-	return delivery.Receipt{PlatformMessageIDs: []string{fmt.Sprint(len(p.outputs))}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+	return delivery.Receipt{PlatformMessageIDs: []string{fmt.Sprint(len(p.outputs))}}, nil
 }
 
 func (p *assemblyPlatform) text() string {

@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	agentshare "elbot/internal/agent/share"
 	"errors"
 	"log/slog"
 	"reflect"
@@ -110,7 +111,7 @@ func TestFailureNotificationWiringSurvivesIngressStop(t *testing.T) {
 	})
 }
 
-func TestServiceNotificationsUseHeadlessQueueAndPropagateLogResults(t *testing.T) {
+func TestServiceNotificationBusinessIgnoresLogFailure(t *testing.T) {
 	m, err := NewSupervisor(t.Context(), &config.Config{}, SupervisorDeps{Mode: "service", Store: testutil.NewSQLiteStore(t)})
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +138,7 @@ func TestServiceNotificationsUseHeadlessQueueAndPropagateLogResults(t *testing.T
 	}
 	defer c.Close(context.Background())
 	results, err := events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "host notice", Level: slog.LevelWarn})
-	if !errors.Is(err, fault) || len(results) != 1 || !results[0].Started {
+	if err != nil || len(results) != 1 || !results[0].Started {
 		t.Fatalf("log completion lost: %v %v", results, err)
 	}
 	if len(records) != 1 || records[0].Content != "host notice" || records[0].Level != slog.LevelWarn {
@@ -149,6 +150,12 @@ func TestServiceNotificationsUseHeadlessQueueAndPropagateLogResults(t *testing.T
 	results, err = events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "invalid", Target: events.NotificationTarget{Platform: "service", ChatType: contextinfo.ChatPrivate, ID: "chat"}})
 	if err == nil || len(results) != 1 || results[0].Started || len(records) != 1 {
 		t.Fatalf("invalid host destination: %v %v", results, err)
+	}
+	agentshare.ReportFailure(t.Context(), "session", errors.New("ordinary model failure"), func(ctx context.Context, level slog.Level, text string) {
+		_, _ = events.NotificationRequested.Emit(ctx, events.Notification{Text: text, Level: level})
+	})
+	if len(records) != 2 || records[1].Level != slog.LevelWarn || records[1].Content != "对话处理失败：ordinary model failure" {
+		t.Fatalf("headless reclassified an ordinary failure: %+v", records)
 	}
 	if err := m.Close(context.Background()); err != nil {
 		t.Fatal(err)

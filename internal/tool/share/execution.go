@@ -5,7 +5,6 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
 	"time"
@@ -26,7 +25,7 @@ type ELwispToolDeclaration struct {
 }
 
 // PolicyDeniedError identifies an expected authorization or confirmation refusal.
-// Its text remains the user-facing reason; observers use the explicit source result.
+// Its text remains the user-facing reason; logging does not affect authorization.
 type PolicyDeniedError string
 
 func (e PolicyDeniedError) Error() string { return string(e) }
@@ -40,21 +39,19 @@ type Context struct {
 type RunnerDeps interface {
 	RefreshExecution(context.Context, *storage.Session) (context.Context, error)
 	// Hook sources publish their own records; Runner consumes only the business return.
-	PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, events.LogResult, error)
+	PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error)
 	ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool
 	ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment RiskAssessment, detail string) (ConfirmResult, error)
-	// StartToolRequest returns its source registration result independently of
-	// the business context, start time, cleanup function and original error.
-	StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), events.LogResult, error)
+	// StartToolRequest registers the request and returns its context, start time and cleanup.
+	StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error)
 	PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context
-	// CompleteToolCall also exposes the declared Hook outcome separately from segments.
-	CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, events.LogResult, error)
+	// CompleteToolCall applies the Hook to the result segments.
+	CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error)
 	// SendPreview takes one complete notice per tool call, including multiline
 	// bodies. Pass batch notices separately so each receives one display prefix.
 	SendPreview(ctx context.Context, text ...string)
-	// SendOutputs returns the source logging result and body, including partial
-	// delivery facts, separately from its original business error.
-	SendOutputs(ctx context.Context, outputs []delivery.Output) (events.LogResult, error)
+	// SendOutputs delivers tool outputs and returns the original delivery error.
+	SendOutputs(ctx context.Context, outputs []delivery.Output) error
 	AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk RiskLevel, reason string)
 	AddToolUse(sessionID, toolName string)
 	ToolResultMessage(sessionID string, message llm.LLMMessage) storage.Message
@@ -70,13 +67,13 @@ type ConfirmResult struct {
 
 // ToolCommitter is synchronous persistence owned by the consuming dialogue.
 // Begin reserves slots; Result persists one outcome; Flush publishes the projection.
-// Each operation returns its source log result separately from the business error;
-// phases without an actual write declare skipped instead of inventing a save.
+// Each operation returns its original business error;
+// phases without an actual write return nil.
 type ToolCommitter interface {
-	Begin(context.Context, *storage.Message) (events.LogResult, error)
-	Prepared(context.Context, int, llm.ToolCallRequest) (events.LogResult, error)
-	Result(context.Context, int, llm.ToolCallRequest, llm.LLMMessage, *storage.ToolResultCommit) (events.LogResult, error)
-	Flush(context.Context) (events.LogResult, error)
+	Begin(context.Context, *storage.Message) error
+	Prepared(context.Context, int, llm.ToolCallRequest) error
+	Result(context.Context, int, llm.ToolCallRequest, llm.LLMMessage, *storage.ToolResultCommit) error
+	Flush(context.Context) error
 }
 
 type RunRequest struct {

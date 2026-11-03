@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/session/binding"
 	"elbot/internal/session/branch"
@@ -150,8 +149,8 @@ var errSave = errors.New("save failed")
 type failingSessions struct{ storage.SessionRepository }
 
 func (f failingSessions) Create(context.Context, *storage.Session) error { return errSave }
-func (f failingSessions) CreateMaterial(context.Context, storage.SessionMaterialCreate) (events.LogResult, error) {
-	return events.LogResult{}, errSave
+func (f failingSessions) CreateMaterial(context.Context, storage.SessionMaterialCreate) error {
+	return errSave
 }
 
 func (f *fixture) failSave() {
@@ -183,7 +182,7 @@ func toolBatch(t *testing.T, f *fixture, sessionID, suffix string, pending bool)
 		{ID: suffix + "-r1", SessionID: sessionID, Role: storage.RoleTool, ToolCallID: suffix + "-one", Content: "one"},
 		{ID: suffix + "-r2", SessionID: sessionID, Role: storage.RoleTool, ToolCallID: suffix + "-two", Content: "two"},
 	}}
-	if _, err := f.store.Dialogues().Commit(t.Context(), storage.DialogueCommit{SessionID: sessionID, ToolBatch: batch}); err != nil {
+	if err := f.store.Dialogues().Commit(t.Context(), storage.DialogueCommit{SessionID: sessionID, ToolBatch: batch}); err != nil {
 		t.Fatal(err)
 	}
 	return batch
@@ -194,7 +193,7 @@ type recordingSessions struct {
 	req storage.SessionMaterialCreate
 }
 
-func (r *recordingSessions) CreateMaterial(ctx context.Context, req storage.SessionMaterialCreate) (events.LogResult, error) {
+func (r *recordingSessions) CreateMaterial(ctx context.Context, req storage.SessionMaterialCreate) error {
 	r.req = req
 	return r.SessionRepository.CreateMaterial(ctx, req)
 }

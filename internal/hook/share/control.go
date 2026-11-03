@@ -4,8 +4,6 @@ package share
 import (
 	"context"
 	"encoding/json"
-
-	"elbot/internal/events"
 )
 
 // PipelineControl 供 control 查询和停止活动规则，不暴露执行器或注册表。
@@ -19,7 +17,7 @@ type PipelineControl interface {
 type RuntimeControl interface {
 	Apply([]RuntimeConfig, func(string)) error
 	ValidatePlugin(RuntimeConfig) error
-	ReplacePlugin(string, *RuntimeConfig, func()) (events.LogResult, error)
+	ReplacePlugin(string, *RuntimeConfig, func()) error
 	List() []RuntimeInfo
 	Start(string) error
 	Stop(context.Context, string) (bool, error)
@@ -28,7 +26,7 @@ type RuntimeControl interface {
 
 // RuntimeCaller 供 rules 发起插件处理、媒体请求和共享状态请求。
 type RuntimeCaller interface {
-	Handle(context.Context, string, Event, Control) (Event, events.LogResult, error)
+	Handle(context.Context, string, Event, Control) (Event, error)
 	MediaRequest(context.Context, string, string, json.RawMessage) (any, error)
 	SharedRequest(string, json.RawMessage) (any, error)
 }

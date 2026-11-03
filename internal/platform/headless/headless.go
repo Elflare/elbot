@@ -4,7 +4,6 @@ package headless
 
 import (
 	"context"
-	"elbot/internal/events"
 	"fmt"
 
 	"elbot/internal/delivery"
@@ -35,7 +34,7 @@ func (a *Adapter) Wait(context.Context) error { return nil }
 // Close 没有自有资源需要释放，未启动时也已完成。
 func (a *Adapter) Close(context.Context) error { return nil }
 
-func (a *Adapter) SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+func (a *Adapter) SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
 	err := fmt.Errorf("service platform cannot send chat output without a target platform")
-	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
+	return delivery.Receipt{}, err
 }

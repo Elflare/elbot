@@ -169,7 +169,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 			return result, errors.Join(err, ctx.Err())
 		}
 		observation.Event().ProviderError, observation.Event().Err = true, err
-		observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultFailed, slog.LevelError
+		observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultFailed, slog.LevelWarn
 		publish()
 		return result, err
 	}
@@ -201,7 +201,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 				return result, errors.Join(event.Error, ctx.Err())
 			}
 			observation.Event().ProviderError, observation.Event().Err = true, event.Error
-			observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultFailed, slog.LevelError
+			observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultFailed, slog.LevelWarn
 			return result, event.Error
 		}
 		switch event.Type {
@@ -327,7 +327,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 	if status != "completed" || result.Response == nil || result.Response.Status != "completed" || result.Response.ID == "" {
 		err = fmt.Errorf("response stream closed before response.completed: %w", io.ErrUnexpectedEOF)
 		observation.Event().ProviderError, observation.Event().Err = true, err
-		observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultFailed, slog.LevelError
+		observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultFailed, slog.LevelWarn
 		return result, err
 	}
 	observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultSucceeded, slog.LevelInfo

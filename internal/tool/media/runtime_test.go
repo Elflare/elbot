@@ -52,7 +52,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := center.Cleanup(ctx); err != nil {
+	if err := center.Cleanup(ctx); err != nil {
 		t.Fatal(err)
 	}
 	call := runtime.NewCall()
@@ -68,7 +68,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	call.Close()
-	if _, err := center.Cleanup(ctx); err != nil {
+	if err := center.Cleanup(ctx); err != nil {
 		t.Fatal(err)
 	}
 	call = runtime.NewCall()
@@ -86,7 +86,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 		t.Fatalf("refs %v %v", refs, err)
 	}
 	call.Close()
-	if _, err := center.Cleanup(ctx); err != nil {
+	if err := center.Cleanup(ctx); err != nil {
 		t.Fatal(err)
 	}
 	refs, err = store.MediaReferences().ListMediaIDs(ctx, item.ID)
@@ -122,7 +122,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 		t.Fatalf("output is not held by the invocation: %v %v", refs, err)
 	}
 	private.Close()
-	if _, err := center.Cleanup(ctx); err != nil {
+	if err := center.Cleanup(ctx); err != nil {
 		t.Fatal(err)
 	}
 	refs, err = store.MediaReferences().ListMediaIDs(ctx, imported.ID)
@@ -205,7 +205,7 @@ func TestMediaExportFailureCanBeRetriedAndCanceled(t *testing.T) {
 				t.Fatalf("prepared export ignored cancellation: %v", err)
 			}
 			call.Close()
-			if _, err := center.Cleanup(ctx); err != nil {
+			if err := center.Cleanup(ctx); err != nil {
 				t.Fatal(err)
 			}
 			refs, err := store.MediaReferences().ListMediaIDs(ctx, item.ID)

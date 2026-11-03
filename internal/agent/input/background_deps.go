@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -49,7 +48,7 @@ type BackgroundHandlerDeps struct {
 		PrepareBackground(context.Context, tool.BackgroundPreloadRequest) (tool.BackgroundPreload, error)
 	} // Prepares declarations and Skill content for a new task session.
 	ToolState interface {
-		Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, events.LogResult, error)
+		Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, error)
 	} // Commits the prepared declarations to the owning session.
 	EnsureWorkspaceDir func(context.Context, string, string) error // Initializes the session directory without replacing a concurrent foreground choice.
 }

@@ -5,12 +5,11 @@ import (
 	"errors"
 
 	"elbot/internal/background/share"
-	"elbot/internal/events"
 )
 
 // RegisterMaintenanceHandler 将无需任务记录的维护回调接入 Cron。
-func (m *Manager) RegisterMaintenanceHandler(name string, handler func(context.Context) (events.LogResult, error)) error {
-	return m.RegisterHandler(name, func(ctx context.Context, _ Job) (events.LogResult, error) {
+func (m *Manager) RegisterMaintenanceHandler(name string, handler func(context.Context) error) error {
+	return m.RegisterHandler(name, func(ctx context.Context, _ Job) error {
 		return handler(ctx)
 	})
 }

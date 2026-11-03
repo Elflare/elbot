@@ -11,7 +11,6 @@ import (
 
 	agenthooks "elbot/internal/agent/hooks"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
@@ -63,12 +62,12 @@ func (b *safeStringBuilder) Reset() {
 
 func (p *fakePlatform) Name() string { return "cli" }
 
-func (p *fakePlatform) SendTo(_ context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+func (p *fakePlatform) SendTo(_ context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, error) {
 	outputs := noticeOutputs
 	text := delivery.FallbackOutput(outputs).Text
 	p.out.WriteString(text)
 	p.preview.WriteString(text)
-	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+	return delivery.Receipt{}, nil
 }
 
 func (p *fakePlatform) SetRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {

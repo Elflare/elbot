@@ -4,7 +4,6 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/events"
 	"elbot/internal/testutil"
 	"elbot/internal/tool"
 	"elbot/internal/tool/discovery"
@@ -68,7 +67,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	if row.Metadata != before || latest.Metadata != before || tools.Text != input || skills.Text != input || len(tools.Injected) > 0 || len(skills.Skills) > 0 {
 		t.Fatalf("failed commit leaked state: tools=%+v skills=%+v row=%s", tools, skills, row.Metadata)
 	}
-	discovered, _, err := stateService.DiscoveredToolsForSession(ctx, row.ID, false)
+	discovered, err := stateService.DiscoveredToolsForSession(ctx, row.ID, false)
 	if err != nil || len(discovered) != 0 {
 		t.Fatalf("failed declaration published: %+v %v", discovered, err)
 	}
@@ -194,13 +193,13 @@ func (directiveExecution) ModelContext(ctx context.Context, row *storage.Session
 
 type directiveState struct{ *toolstate.StateService }
 
-func (s directiveState) Commit(ctx context.Context, id string, update tool.StateUpdate) (tool.StateCommit, events.LogResult, error) {
+func (s directiveState) Commit(ctx context.Context, id string, update tool.StateUpdate) (tool.StateCommit, error) {
 	internal := toolshare.StateUpdate{Tags: update.Tags}
 	for _, v := range update.Tools {
 		internal.Tools = append(internal.Tools, toolshare.DiscoveredTool{Name: v.Name, CanonicalName: v.CanonicalName, Source: toolshare.SourceKind(v.Source), Description: v.Description, Schema: v.Schema, EventKey: v.EventKey, Endpoint: v.Endpoint, TimeoutSeconds: v.TimeoutSeconds, ForegroundOnly: v.ForegroundOnly})
 	}
-	value, result, err := s.StateService.Commit(ctx, id, internal)
-	return tool.StateCommit{Metadata: value.Metadata, Injected: value.Injected, Existing: value.Existing}, result, err
+	value, err := s.StateService.Commit(ctx, id, internal)
+	return tool.StateCommit{Metadata: value.Metadata, Injected: value.Injected, Existing: value.Existing}, err
 }
 
 type directivePreloader struct{ *preload.PreloadService }

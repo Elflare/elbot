@@ -25,7 +25,7 @@ type retryNoticePlatform struct {
 	retryNotices chan string
 }
 
-func (p *retryNoticePlatform) SendTo(ctx context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+func (p *retryNoticePlatform) SendTo(ctx context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, error) {
 	text := delivery.FallbackOutput(noticeOutputs).Text
 	if strings.Contains(text, "LLM retry") {
 		info, _ := contextinfo.ConversationFromContext(ctx)

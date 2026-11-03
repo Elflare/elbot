@@ -15,7 +15,6 @@ import (
 	agentshare "elbot/internal/agent/share"
 
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/platform/dispatch"
 
 	"elbot/internal/security"
@@ -39,53 +38,42 @@ func (r *replyTestRepository) Append(ctx context.Context, msg *storage.Message) 
 
 type replyTestPlatform struct {
 	fakePlatform
-	events                          *[]string
-	receipt                         delivery.Receipt
-	outputsReceipt                  delivery.Receipt
-	expectedOutputs                 []delivery.Output
-	sendErr, outputsErr             error
-	sendLogResult, outputsLogResult *events.LogResult
-	text                            string
-	texts                           []string
+	events              *[]string
+	receipt             delivery.Receipt
+	outputsReceipt      delivery.Receipt
+	expectedOutputs     []delivery.Output
+	sendErr, outputsErr error
+
+	text  string
+	texts []string
 }
 
-func (p *replyTestPlatform) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	receipt, err, source := p.receipt, p.sendErr, p.sendLogResult
+func (p *replyTestPlatform) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	receipt, err := p.receipt, p.sendErr
 	if reflect.DeepEqual(outputs, p.expectedOutputs) {
 		*p.events = append(*p.events, "outputs")
-		receipt, err, source = p.outputsReceipt, p.outputsErr, p.outputsLogResult
+		receipt, err = p.outputsReceipt, p.outputsErr
 	} else {
 		*p.events = append(*p.events, "send")
 		p.text = delivery.FallbackOutput(outputs).Text
 		p.texts = append(p.texts, p.text)
 	}
-	logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
-	if err != nil {
-		logResult.ResultStatus = events.ResultFailed
-		logResult.Content = err.Error()
-		if err == context.Canceled {
-			logResult.ResultStatus = events.ResultCanceled
-		}
-	}
-	if source != nil {
-		logResult = *source
-	}
-	return receipt, logResult, err
+	return receipt, err
 }
 
 type replyTestStream struct {
-	events                            *[]string
-	replaceReceipt, finishReceipt     delivery.Receipt
-	replaceErr, finishErr             error
-	replaceLogResult, finishLogResult *events.LogResult
-	text                              string
-	wantCtx                           context.Context
-	t                                 *testing.T
+	events                        *[]string
+	replaceReceipt, finishReceipt delivery.Receipt
+	replaceErr, finishErr         error
+
+	text    string
+	wantCtx context.Context
+	t       *testing.T
 }
 
 func (s *replyTestStream) Append(context.Context, string) error { return nil }
 
-func (s *replyTestStream) Replace(ctx context.Context, text string) (delivery.Receipt, events.LogResult, error) {
+func (s *replyTestStream) Replace(ctx context.Context, text string) (delivery.Receipt, error) {
 	if ctx != s.wantCtx {
 		s.t.Fatal("stream lost request context")
 	}
@@ -93,40 +81,18 @@ func (s *replyTestStream) Replace(ctx context.Context, text string) (delivery.Re
 	s.text = text
 	{
 		err := s.replaceErr
-		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
-		if err != nil {
-			logResult.ResultStatus = events.ResultFailed
-			logResult.Content = err.Error()
-			if err == context.Canceled {
-				logResult.ResultStatus = events.ResultCanceled
-			}
-		}
-		if s.replaceLogResult != nil {
-			logResult = *s.replaceLogResult
-		}
-		return s.replaceReceipt, logResult, err
+		return s.replaceReceipt, err
 	}
 }
 
-func (s *replyTestStream) Finish(ctx context.Context) (delivery.Receipt, events.LogResult, error) {
+func (s *replyTestStream) Finish(ctx context.Context) (delivery.Receipt, error) {
 	if ctx != s.wantCtx {
 		s.t.Fatal("stream lost request context")
 	}
 	*s.events = append(*s.events, "finish")
 	{
 		err := s.finishErr
-		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
-		if err != nil {
-			logResult.ResultStatus = events.ResultFailed
-			logResult.Content = err.Error()
-			if err == context.Canceled {
-				logResult.ResultStatus = events.ResultCanceled
-			}
-		}
-		if s.finishLogResult != nil {
-			logResult = *s.finishLogResult
-		}
-		return s.finishReceipt, logResult, err
+		return s.finishReceipt, err
 	}
 }
 
@@ -182,10 +148,10 @@ func (f *replyTestFixture) register(t *testing.T, points agenthooks.Points) {
 
 func (f *replyTestFixture) captureHooks(t *testing.T) {
 	t.Helper()
-	appendText := func(suffix string) func(context.Context, agenthooks.Facts, string) (string, events.LogResult, error) {
-		return func(_ context.Context, _ agenthooks.Facts, text string) (string, events.LogResult, error) {
+	appendText := func(suffix string) func(context.Context, agenthooks.Facts, string) (string, error) {
+		return func(_ context.Context, _ agenthooks.Facts, text string) (string, error) {
 			f.events = append(f.events, suffix)
-			return text + suffix, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+			return text + suffix, nil
 		}
 	}
 	f.register(t, agenthooks.Points{AgentTurnOutputPrepared: appendText("/turn"), AgentOutputPrepared: appendText("/send")})
@@ -400,8 +366,8 @@ func TestReplyCommitFinalHookFailureDoesNotSaveOrSend(t *testing.T) {
 	for _, buffered := range []bool{false, true} {
 		t.Run(map[bool]string{false: "direct", true: "buffered"}[buffered], func(t *testing.T) {
 			f := newReplyTestFixture(t, buffered)
-			f.register(t, agenthooks.Points{AgentTurnOutputPrepared: func(_ context.Context, _ agenthooks.Facts, text string) (string, events.LogResult, error) {
-				return text, events.LogResult{ResultStatus: events.ResultCanceled}, context.Canceled
+			f.register(t, agenthooks.Points{AgentTurnOutputPrepared: func(_ context.Context, _ agenthooks.Facts, text string) (string, error) {
+				return text, context.Canceled
 			}})
 			got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
 			if !errors.Is(err, context.Canceled) || got.Persisted || dialogue.HasReplyReceipt(got.Receipt) || len(f.events) != 0 {
@@ -415,10 +381,10 @@ func TestReplyCommitHookSuppressesDisplayWithoutChangingHistory(t *testing.T) {
 	for _, buffered := range []bool{false, true} {
 		t.Run(map[bool]string{false: "direct", true: "buffered"}[buffered], func(t *testing.T) {
 			f := newReplyTestFixture(t, buffered)
-			suppress := func(point string) func(context.Context, agenthooks.Facts, string) (string, events.LogResult, error) {
-				return func(_ context.Context, _ agenthooks.Facts, _ string) (string, events.LogResult, error) {
+			suppress := func(point string) func(context.Context, agenthooks.Facts, string) (string, error) {
+				return func(_ context.Context, _ agenthooks.Facts, _ string) (string, error) {
 					f.events = append(f.events, point)
-					return "", events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+					return "", nil
 				}
 			}
 			f.register(t, agenthooks.Points{AgentTurnOutputPrepared: suppress("turn"), AgentOutputPrepared: suppress("send_hook")})
@@ -452,11 +418,11 @@ type replyTestDialogues struct {
 	repo *replyTestRepository
 }
 
-func (r replyTestDialogues) Commit(ctx context.Context, commit storage.DialogueCommit) (events.LogResult, error) {
+func (r replyTestDialogues) Commit(ctx context.Context, commit storage.DialogueCommit) error {
 	for _, msg := range commit.Messages {
 		*r.repo.events = append(*r.repo.events, "save")
 		if msg.Role == storage.RoleAssistant && r.repo.appendErr != nil {
-			return events.LogResult{ResultStatus: events.ResultFailed}, r.repo.appendErr
+			return r.repo.appendErr
 		}
 	}
 	for range commit.PlatformMessageMaps {
@@ -465,9 +431,9 @@ func (r replyTestDialogues) Commit(ctx context.Context, commit storage.DialogueC
 	if r.repo.mapErr != nil && len(commit.PlatformMessageMaps) > 0 {
 		commit.PlatformMessageMaps = append(commit.PlatformMessageMaps, commit.PlatformMessageMaps[0])
 	}
-	logResult, err := r.DialogueRepository.Commit(ctx, commit)
+	err := r.DialogueRepository.Commit(ctx, commit)
 	if err != nil && r.repo.mapErr != nil {
 		err = errors.Join(err, r.repo.mapErr)
 	}
-	return logResult, err
+	return err
 }

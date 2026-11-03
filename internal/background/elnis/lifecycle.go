@@ -2,18 +2,12 @@ package elnis
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"sync"
 	"time"
-
-	background "elbot/internal/background/share"
-	"elbot/internal/contextinfo"
-	globalevents "elbot/internal/events"
 )
 
 // Runtime owns HTTP ingress and event/report workers, but no borrowed services.
@@ -243,26 +237,8 @@ func (r *Runtime) worker(ctx context.Context) {
 }
 
 func (r *Runtime) reportWorker(ctx context.Context) {
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	identity := globalevents.LogIdentityFromExecution(facts)
-	// Both attempts use the same recovery path and differ only in their log event.
-	recover := func(name string) {
-		result, _ := r.service.recoverReports(ctx)
-		if result.ResultStatus != globalevents.ResultFailed && result.ResultStatus != globalevents.ResultCanceled {
-			return
-		}
-		content, _ := json.Marshal(map[string]any{"result": fmt.Sprintf("%.2048s", result.Content)})
-		record := globalevents.LogRecord{
-			Category: globalevents.LogElnis, Level: slog.LevelWarn, EventName: name,
-			Module: "elnis", Type: globalevents.ContentJSON, Content: string(content),
-			ResultStatus: result.ResultStatus, Identity: identity,
-		}
-		if result.ResultStatus == globalevents.ResultCanceled {
-			record.Level = slog.LevelInfo
-		}
-		background.LogBackground(ctx, record)
-	}
-	recover("initial_elnis_report_recovery_failed")
+	// Recovery and delivery own their operation diagnostics.
+	_ = r.service.recoverReports(ctx)
 	ticker := time.NewTicker(reportRecoveryInterval)
 	defer ticker.Stop()
 	for {
@@ -270,7 +246,7 @@ func (r *Runtime) reportWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			recover("elnis_report_retry_failed")
+			_ = r.service.recoverReports(ctx)
 		}
 	}
 }

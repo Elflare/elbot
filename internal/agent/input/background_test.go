@@ -11,7 +11,6 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/security"
@@ -52,9 +51,9 @@ func (p backgroundPreloaderStub) PrepareBackground(ctx context.Context, req tool
 	p.h.preloads++
 	return p.h.preload, p.h.preloadErr
 }
-func (h *backgroundHarness) Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, events.LogResult, error) {
+func (h *backgroundHarness) Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, error) {
 	h.commits++
-	return tool.StateCommit{Injected: []string{"tool"}, Metadata: "{}"}, events.LogResult{}, h.commitErr
+	return tool.StateCommit{Injected: []string{"tool"}, Metadata: "{}"}, h.commitErr
 }
 func (h *backgroundHarness) ModelContext(ctx context.Context, row *storage.Session) (context.Context, error) {
 	return ctx, nil

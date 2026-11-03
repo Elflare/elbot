@@ -97,7 +97,7 @@ func TestLifecycleWaitsForWorkAndPreservesSending(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The response follows the rejected event on the same socket.
-	receipt, _, err := a.SendTo(t.Context(), delivery.Target{ChatType: "private", ChatID: "1"}, []delivery.Output{delivery.Text("finishing")})
+	receipt, err := a.SendTo(t.Context(), delivery.Target{ChatType: "private", ChatID: "1"}, []delivery.Output{delivery.Text("finishing")})
 	if err != nil || len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "88" {
 		t.Fatalf("send during shutdown = %#v/%v", receipt, err)
 	}
@@ -249,7 +249,7 @@ func TestTemporarySendStopsNewDialsButKeepsEstablishedConnection(t *testing.T) {
 	ctx := delivery.WithTemporaryConnection(t.Context())
 	sent := make(chan error, 1)
 	go func() {
-		receipt, _, err := a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "1"}, []delivery.Output{delivery.Text("first")})
+		receipt, err := a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "1"}, []delivery.Output{delivery.Text("first")})
 		if err == nil && (len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "42") {
 			err = errors.New("temporary receipt is missing")
 		}
@@ -264,7 +264,7 @@ func TestTemporarySendStopsNewDialsButKeepsEstablishedConnection(t *testing.T) {
 	if err := a.Wait(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "1"}, []delivery.Output{delivery.Text("new")}); !errors.Is(err, signal.ErrClosed) {
+	if _, err := a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "1"}, []delivery.Output{delivery.Text("new")}); !errors.Is(err, signal.ErrClosed) {
 		t.Fatalf("new temporary send = %v", err)
 	}
 	if connections.Load() != 1 {
@@ -289,7 +289,7 @@ func TestTemporaryDialIsCanceledByBeginClose(t *testing.T) {
 	a := newTestAdapter(t, Config{URL: "ws" + strings.TrimPrefix(server.URL, "http")}, nil, nil)
 	sent := make(chan error, 1)
 	go func() {
-		_, _, err := a.SendTo(delivery.WithTemporaryConnection(t.Context()), delivery.Target{ChatType: "private", ChatID: "1"}, []delivery.Output{delivery.Text("pending")})
+		_, err := a.SendTo(delivery.WithTemporaryConnection(t.Context()), delivery.Target{ChatType: "private", ChatID: "1"}, []delivery.Output{delivery.Text("pending")})
 		sent <- err
 	}()
 	select {
@@ -330,7 +330,7 @@ func TestFinalCloseReleasesPendingTemporaryRequest(t *testing.T) {
 	a := newTestAdapter(t, Config{URL: "ws" + strings.TrimPrefix(server.URL, "http")}, nil, nil)
 	sent := make(chan error, 1)
 	go func() {
-		_, _, err := a.SendTo(delivery.WithTemporaryConnection(t.Context()), delivery.Target{ChatType: "private", ChatID: "1"}, []delivery.Output{delivery.Text("pending")})
+		_, err := a.SendTo(delivery.WithTemporaryConnection(t.Context()), delivery.Target{ChatType: "private", ChatID: "1"}, []delivery.Output{delivery.Text("pending")})
 		sent <- err
 	}()
 	select {

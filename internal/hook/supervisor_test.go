@@ -41,9 +41,9 @@ func TestSupervisorConcurrentStartWaitsForPlatformSubscription(t *testing.T) {
 		return share.ReloadReport{}, nil
 	}}
 	connected := make(chan struct{}, 1)
-	m.manager = bridgeTestPipeline{run: func(_ context.Context, event share.Event, _ pipeline.CallOptions) (share.Event, events.LogResult, error) {
+	m.manager = bridgeTestPipeline{run: func(_ context.Context, event share.Event, _ pipeline.CallOptions) (share.Event, error) {
 		connected <- struct{}{}
-		return event, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		return event, nil
 	}}
 	first, second := make(chan error, 1), make(chan error, 1)
 	go func() { first <- m.Start() }()
@@ -83,10 +83,10 @@ func TestSupervisorBeginClosePreservesAgentAndCloseWaitsForActualExit(t *testing
 				close(release)
 			}
 		}()
-		m.manager = bridgeTestPipeline{run: func(ctx context.Context, event share.Event, _ pipeline.CallOptions) (share.Event, events.LogResult, error) {
+		m.manager = bridgeTestPipeline{run: func(ctx context.Context, event share.Event, _ pipeline.CallOptions) (share.Event, error) {
 			entered <- ctx
 			<-release // Deliberately retain work after cancellation to test actual exit.
-			return event, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+			return event, nil
 		}}
 		agent := &bridgeTestAgent{}
 		if err := m.ConnectAgent(agent); err != nil {
@@ -101,7 +101,7 @@ func TestSupervisorBeginClosePreservesAgentAndCloseWaitsForActualExit(t *testing
 		}
 		callbackDone := make(chan struct{})
 		go func() {
-			_, _, _ = agent.points.AgentInputPrepared(context.Background(), agenthooks.Facts{}, agenthooks.Message{})
+			_, _ = agent.points.AgentInputPrepared(context.Background(), agenthooks.Facts{}, agenthooks.Message{})
 			close(callbackDone)
 		}()
 		runCtx := <-entered
@@ -137,13 +137,13 @@ func TestSupervisorPlatformQueuesAreIndependentAndHaveNoAgentObserver(t *testing
 	synctest.Test(t, func(t *testing.T) {
 		m, _ := newBridgeTestSupervisor(t)
 		entered := make(chan string, 3)
-		m.manager = bridgeTestPipeline{run: func(ctx context.Context, event share.Event, options pipeline.CallOptions) (share.Event, events.LogResult, error) {
+		m.manager = bridgeTestPipeline{run: func(ctx context.Context, event share.Event, options pipeline.CallOptions) (share.Event, error) {
 			if options.Observe != nil || !options.Woken {
 				t.Error("global platform event acquired Agent request tracking")
 			}
 			entered <- event.Chat.Platform
 			<-ctx.Done()
-			return event, events.LogResult{ResultStatus: events.ResultCanceled}, ctx.Err()
+			return event, ctx.Err()
 		}}
 		if err := m.ConnectAgent(&bridgeTestAgent{}); err != nil {
 			t.Fatal(err)

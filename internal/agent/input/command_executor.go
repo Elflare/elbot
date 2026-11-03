@@ -70,7 +70,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		return true, err
 	}
 	if sessionErr == nil && hasInfo && e.execution.CompactActive(sessionRow.ID) && blocksDuringCompact(info.SessionEffect) {
-		_, _, err := e.output.SendAssistant(ctx, compactCommandBlockedText(text, e.commandText))
+		_, err := e.output.SendAssistant(ctx, compactCommandBlockedText(text, e.commandText))
 		return true, err
 	}
 
@@ -92,7 +92,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 			record.Identity = globalevents.LogIdentityFromExecution(facts)
 			_ = globalevents.EmitLog(ctx, record)
 		}
-		_, _, err := e.output.SendAssistant(ctx, fmt.Sprintf("%s%s: superadmin required", parsed.Prefix, parsed.Name))
+		_, err := e.output.SendAssistant(ctx, fmt.Sprintf("%s%s: superadmin required", parsed.Prefix, parsed.Name))
 		return true, err
 	}
 
@@ -146,7 +146,7 @@ type CommandExecution interface {
 }
 
 type CommandOutput interface {
-	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, globalevents.LogResult, error)
+	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, error)
 }
 
 type CommandConfirmations interface {

@@ -14,7 +14,6 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 )
 
 func TestNativeCallsHTTPExecutionAndTerminalState(t *testing.T) {
@@ -30,12 +29,12 @@ func TestNativeCallsHTTPExecutionAndTerminalState(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var operations []string
-			service, cleanup := newTestService(t, func(_ context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+			service, cleanup := newTestService(t, func(_ context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 				operations = append(operations, "send")
 				if target.Platform != "qqonebot" || target.ChatID != "admin" || target.Superadmins || len(outputs) != 1 || outputs[0].Text != "title\nbody" {
 					t.Fatalf("direct output: target=%+v outputs=%+v", target, outputs)
 				}
-				return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+				return delivery.Receipt{}, nil
 			})
 			defer cleanup()
 			params := map[string]any{"values": []any{float64(42), true, nil}, "nested": map[string]any{"id": "007"}}

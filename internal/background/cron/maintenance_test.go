@@ -3,13 +3,11 @@ package cron
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 
 	"elbot/internal/background/maintenance"
 	"elbot/internal/background/share"
 	"elbot/internal/config"
-	"elbot/internal/events"
 )
 
 func TestMaintenanceHandlerPreservesContextAndResult(t *testing.T) {
@@ -17,19 +15,18 @@ func TestMaintenanceHandlerPreservesContextAndResult(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	boom := errors.New("cleanup failed")
-	want := events.LogResult{ResultStatus: events.ResultFailed, Content: "deleted=2"}
-	err := m.RegisterMaintenanceHandler("cleanup", func(got context.Context) (events.LogResult, error) {
+	err := m.RegisterMaintenanceHandler("cleanup", func(got context.Context) error {
 		if got != ctx {
 			t.Fatal("context was replaced")
 		}
-		return want, boom
+		return boom
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := m.handlers["cleanup"](ctx, Job{})
-	if !reflect.DeepEqual(got, want) || err != boom {
-		t.Fatalf("result=%#v err=%v", got, err)
+	err = m.handlers["cleanup"](ctx, Job{})
+	if err != boom {
+		t.Fatal(err)
 	}
 }
 

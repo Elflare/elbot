@@ -60,8 +60,8 @@ func TestPluginToolAuditOutcome(t *testing.T) {
 		level  slog.Level
 		status string
 	}{
-		{"success", nil, slog.LevelInfo, "succeeded"}, {"failure", errors.New("failed"), slog.LevelError, "failed"},
-		{"canceled", fmt.Errorf("wrapped: %w", context.Canceled), slog.LevelInfo, "canceled"}, {"timeout", context.DeadlineExceeded, slog.LevelError, "failed"},
+		{"success", nil, slog.LevelInfo, "succeeded"}, {"failure", errors.New("failed"), slog.LevelWarn, "failed"},
+		{"canceled", fmt.Errorf("wrapped: %w", context.Canceled), slog.LevelInfo, "canceled"}, {"timeout", context.DeadlineExceeded, slog.LevelWarn, "failed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var records []events.LogRecord
@@ -207,7 +207,7 @@ func TestManagerBuildsCanonicalRuntimeOutputs(t *testing.T) {
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, "demo", StatusReady)
 	event := share.Event{Actor: share.ActorContext{Platform: "test", ID: "output"}}
-	got, _, err := manager.Handle(context.Background(), "demo", event, share.Control{})
+	got, err := manager.Handle(context.Background(), "demo", event, share.Control{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +230,7 @@ func TestManagerBuildsCanonicalRuntimeMessageSegments(t *testing.T) {
 		Message: share.MessagePayload{Role: "tool"},
 		Tool:    share.ToolPayload{Name: "screenshot"},
 	}
-	got, _, err := manager.Handle(context.Background(), "demo", event, share.Control{})
+	got, err := manager.Handle(context.Background(), "demo", event, share.Control{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +271,7 @@ func TestManagerWorkersUseConfiguredProcessEnvironment(t *testing.T) {
 				return
 			}
 			event := share.Event{Chat: share.ChatContext{Platform: "test", ChatType: "private", ID: "env"}, Actor: share.ActorContext{ID: "env"}}
-			if _, _, err := manager.Handle(context.Background(), "env", event, share.Control{}); err != nil {
+			if _, err := manager.Handle(context.Background(), "env", event, share.Control{}); err != nil {
 				t.Fatalf("Handle: %v", err)
 			}
 		})
@@ -341,23 +341,23 @@ func TestManagerRoutesWaitingConversation(t *testing.T) {
 		observed++
 		return ctx, func() { finished++ }, nil
 	}
-	if _, routed, _, err := manager.Route(context.Background(), event, observe); err != nil || routed || observed != 0 {
+	if _, routed, err := manager.Route(context.Background(), event, observe); err != nil || routed || observed != 0 {
 		t.Fatalf("unmatched route registered a request: routed=%v observed=%d err=%v", routed, observed, err)
 	}
-	if _, _, err := manager.Handle(context.Background(), "demo", event, share.Control{Consume: true, StopPropagation: true}); err != nil {
+	if _, err := manager.Handle(context.Background(), "demo", event, share.Control{Consume: true, StopPropagation: true}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	updated, handled, outcome, err := manager.Route(context.Background(), event, observe)
+	updated, handled, err := manager.Route(context.Background(), event, observe)
 	if err != nil {
 		t.Fatalf("Route: %v", err)
 	}
-	if observed != 1 || finished != 1 || outcome.ResultStatus != events.ResultSucceeded {
-		t.Fatalf("continuation lifetime=%d/%d outcome=%+v", observed, finished, outcome)
+	if observed != 1 || finished != 1 {
+		t.Fatal("continuation lifetime=/ outcome=", observed, finished)
 	}
 	if !handled || len(updated.Outputs) != 0 || updated.Control.Consume || updated.Control.StopPropagation {
 		t.Fatalf("Route = handled=%v event=%#v", handled, updated)
 	}
-	updated, handled, _, err = manager.Route(context.Background(), event, observe)
+	updated, handled, err = manager.Route(context.Background(), event, observe)
 	if err != nil {
 		t.Fatalf("Route after completion: %v", err)
 	}
@@ -391,7 +391,7 @@ func TestManagerReclaimsTransientWorkerAfterPassThrough(t *testing.T) {
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	event := share.Event{Chat: share.ChatContext{Platform: "test", ChatType: "private", ID: "transient"}, Actor: share.ActorContext{ID: "transient"}}
-	if _, _, err := manager.Handle(context.Background(), "demo", event, share.Control{Consume: true, StopPropagation: true}); err != nil {
+	if _, err := manager.Handle(context.Background(), "demo", event, share.Control{Consume: true, StopPropagation: true}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
 	manager.mu.RLock()
@@ -400,7 +400,7 @@ func TestManagerReclaimsTransientWorkerAfterPassThrough(t *testing.T) {
 	if active != 1 || !manager.hasLease(event) {
 		t.Fatalf("transient worker = %d leased=%v, want one leased worker", active, manager.hasLease(event))
 	}
-	updated, routed, _, err := manager.Route(context.Background(), event, nil)
+	updated, routed, err := manager.Route(context.Background(), event, nil)
 	if err != nil {
 		t.Fatalf("Route: %v", err)
 	}
@@ -437,7 +437,7 @@ func TestManagerStopReclaimsTransientWorkers(t *testing.T) {
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	event := share.Event{Chat: share.ChatContext{Platform: "test", ChatType: "private", ID: "stop"}, Actor: share.ActorContext{ID: "stop"}}
-	if _, _, err := manager.Handle(context.Background(), "demo", event, share.Control{}); err != nil {
+	if _, err := manager.Handle(context.Background(), "demo", event, share.Control{}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
 	if _, err := manager.Stop(context.Background(), "demo"); err != nil {
@@ -475,10 +475,10 @@ func TestManagerRouteUsesConfiguredDefaults(t *testing.T) {
 	waitForStatus(t, manager, "demo", StatusReady)
 	event := share.Event{Chat: share.ChatContext{Platform: "test", ChatType: "private", ID: "defaults"}, Actor: share.ActorContext{Platform: "test", ID: "defaults"}}
 	defaults := share.Control{Consume: true, StopPropagation: false}
-	if _, _, err := manager.Handle(context.Background(), "demo", event, defaults); err != nil {
+	if _, err := manager.Handle(context.Background(), "demo", event, defaults); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	updated, routed, _, err := manager.Route(context.Background(), event, nil)
+	updated, routed, err := manager.Route(context.Background(), event, nil)
 	if err != nil {
 		t.Fatalf("Route: %v", err)
 	}
@@ -493,7 +493,7 @@ func TestManagerHandleSkipsReleasedWaitingOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	event := share.Event{Metadata: map[string]any{skipHookIDMetadataKey: "demo"}}
-	updated, _, err := manager.Handle(context.Background(), "demo", event, share.Control{})
+	updated, err := manager.Handle(context.Background(), "demo", event, share.Control{})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -530,18 +530,18 @@ func TestManagerBlockedWaitingConversationFallsThrough(t *testing.T) {
 		t.Fatalf("NewBlockPolicy: %v", err)
 	}
 	manager.worker("demo").config.Block = policy
-	if _, _, err := manager.Handle(context.Background(), "demo", event, share.Control{}); err != nil {
+	if _, err := manager.Handle(context.Background(), "demo", event, share.Control{}); err != nil {
 		t.Fatalf("blocked Handle: %v", err)
 	}
 	if manager.hasLease(event) {
 		t.Fatal("blocked Handle created a waiting lease")
 	}
 	manager.worker("demo").config.Block = share.BlockPolicy{}
-	if _, _, err := manager.Handle(context.Background(), "demo", event, share.Control{}); err != nil {
+	if _, err := manager.Handle(context.Background(), "demo", event, share.Control{}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
 	manager.worker("demo").config.Block = policy
-	updated, handled, _, err := manager.Route(context.Background(), event, nil)
+	updated, handled, err := manager.Route(context.Background(), event, nil)
 	if err != nil {
 		t.Fatalf("Route: %v", err)
 	}
@@ -566,7 +566,7 @@ func TestWorkerRequestCancellationSendsEventCancelAndKeepsWorkerReady(t *testing
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		_, _, err := manager.Handle(ctx, config.ID, share.Event{Chat: share.ChatContext{ID: "cancel-me"}, Actor: share.ActorContext{Platform: "test", ID: "cancel"}}, share.Control{})
+		_, err := manager.Handle(ctx, config.ID, share.Event{Chat: share.ChatContext{ID: "cancel-me"}, Actor: share.ActorContext{Platform: "test", ID: "cancel"}}, share.Control{})
 		errCh <- err
 	}()
 	time.Sleep(50 * time.Millisecond)
@@ -580,7 +580,7 @@ func TestWorkerRequestCancellationSendsEventCancelAndKeepsWorkerReady(t *testing
 		t.Fatal("Worker invocation did not cancel")
 	}
 	waitForStatus(t, manager, config.ID, StatusReady)
-	if _, _, err := manager.Handle(context.Background(), config.ID, share.Event{Actor: share.ActorContext{Platform: "test", ID: "defaults"}}, share.Control{}); err != nil {
+	if _, err := manager.Handle(context.Background(), config.ID, share.Event{Actor: share.ActorContext{Platform: "test", ID: "defaults"}}, share.Control{}); err != nil {
 		t.Fatalf("Worker was not reusable after cancellation: %v", err)
 	}
 }
@@ -609,13 +609,13 @@ func TestHookReloadRequestWaitsForActiveHandle(t *testing.T) {
 		t.Fatal(err)
 	}
 	committed := make(chan struct{})
-	manager.SetPluginReloadPreparer(func(id string) (func() (events.LogResult, error), error) {
+	manager.SetPluginReloadPreparer(func(id string) (func() error, error) {
 		if id != "demo" {
 			t.Fatalf("reload id = %q, want demo", id)
 		}
-		return func() (events.LogResult, error) {
+		return func() error {
 			close(committed)
-			return events.LogResult{ResultStatus: events.ResultSucceeded, Content: "reload completed"}, nil
+			return nil
 		}, nil
 	})
 	worker := newWorker(manager, share.RuntimeConfig{ID: "demo"})
@@ -676,7 +676,7 @@ func TestManagerReplacePluginKeepsOtherWorker(t *testing.T) {
 	if err := manager.ValidatePlugin(moved); err == nil {
 		t.Fatal("expected self reload to reject a plugin path change")
 	}
-	if _, err := manager.ReplacePlugin(demo.ID, &demo, func() {}); err != nil {
+	if err := manager.ReplacePlugin(demo.ID, &demo, func() {}); err != nil {
 		t.Fatalf("ReplacePlugin: %v", err)
 	}
 	if manager.worker("demo") == oldDemo {

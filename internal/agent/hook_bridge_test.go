@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/request"
 )
 
@@ -24,7 +23,7 @@ func TestHookRequestsKeepPerHandlerIdentityAndCancellation(t *testing.T) {
 	m := contractSupervisor(t, isolatedModuleDeps(t))
 	parent, parentCtx, parentDone, _ := m.requests.Start(t.Context(), request.StartRequest{SessionID: "session", Kind: request.KindTurn})
 	defer parentDone()
-	_, err := m.RegisterHooks(Points{AgentOutputPrepared: func(ctx context.Context, _ Facts, text string) (string, events.LogResult, error) {
+	_, err := m.RegisterHooks(Points{AgentOutputPrepared: func(ctx context.Context, _ Facts, text string) (string, error) {
 		for _, name := range []string{"first", "second"} {
 			runCtx, done, _ := m.StartHookRequest(ctx, "session", name)
 			facts, _ := contextinfo.ExecutionFromContext(runCtx)
@@ -49,12 +48,12 @@ func TestHookRequestsKeepPerHandlerIdentityAndCancellation(t *testing.T) {
 			}
 			done()
 		}
-		return text, events.LogResult{}, nil
+		return text, nil
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := m.bridge.AgentOutputPrepared(parentCtx, "text"); err != nil {
+	if _, err := m.bridge.AgentOutputPrepared(parentCtx, "text"); err != nil {
 		t.Fatal(err)
 	}
 	if active := m.requests.ListBySession("session"); len(active) != 1 {
@@ -65,9 +64,9 @@ func TestHookRequestsKeepPerHandlerIdentityAndCancellation(t *testing.T) {
 func TestBeginCloseRetainsCallbacksForDrainingProducers(t *testing.T) {
 	m := contractSupervisor(t, isolatedModuleDeps(t))
 	called := false
-	_, err := m.RegisterHooks(Points{AgentOutputPrepared: func(_ context.Context, _ Facts, text string) (string, events.LogResult, error) {
+	_, err := m.RegisterHooks(Points{AgentOutputPrepared: func(_ context.Context, _ Facts, text string) (string, error) {
 		called = true
-		return text, events.LogResult{}, nil
+		return text, nil
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -76,13 +75,13 @@ func TestBeginCloseRetainsCallbacksForDrainingProducers(t *testing.T) {
 	if _, err := m.RegisterHooks(Points{}); err == nil {
 		t.Fatal("registration accepted after BeginClose")
 	}
-	if _, _, err := m.bridge.AgentOutputPrepared(t.Context(), "final output"); err != nil || !called {
+	if _, err := m.bridge.AgentOutputPrepared(t.Context(), "final output"); err != nil || !called {
 		t.Fatal("draining callback unavailable", err)
 	}
 	if err := m.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := m.bridge.AgentOutputPrepared(t.Context(), "too late"); err == nil {
+	if _, err := m.bridge.AgentOutputPrepared(t.Context(), "too late"); err == nil {
 		t.Fatal("callback accepted after Close")
 	}
 }

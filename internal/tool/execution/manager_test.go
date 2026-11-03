@@ -4,7 +4,6 @@ import (
 	"errors"
 	"testing"
 
-	"elbot/internal/events"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/tool/registry"
@@ -35,12 +34,12 @@ func TestRemoteResolutionUsesModelName(t *testing.T) {
 	}
 	for _, item := range items {
 		got := m.resolve(t.Context(), item.CanonicalName, items, storage.SessionModeBackground)
-		if got.ResultStatus != events.ResultSucceeded || got.Discovered.Endpoint != item.Endpoint || got.Discovered.EventKey != item.EventKey {
+		if got.Error != nil || got.Discovered.Endpoint != item.Endpoint || got.Discovered.EventKey != item.EventKey {
 			t.Fatalf("resolved=%+v", got)
 		}
 	}
 	got := m.resolve(t.Context(), "status", items, storage.SessionModeBackground)
-	if got.ResultStatus != events.ResultRejected {
+	if got.Error == nil {
 		t.Fatalf("ambiguous original name accepted: %+v", got)
 	}
 }

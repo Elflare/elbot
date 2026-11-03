@@ -9,7 +9,6 @@ import (
 	"elbot/internal/agent"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/logging"
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
@@ -57,6 +56,6 @@ type ToolCapabilities interface {
 // PlatformCapabilities 按平台公开能力接入。
 // App 注入 Platform 总管，Background 根部向内部组件交付所需的发送与原生 API 函数。
 type PlatformCapabilities interface {
-	SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
+	SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 	CallPlatformAPI(ctx context.Context, platform, api string, params map[string]any) (json.RawMessage, error)
 }

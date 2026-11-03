@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -40,8 +39,7 @@ func TestExecutorPreparesHookInputWithoutLogging(t *testing.T) {
 			prepared := share.NewPreparedCall(share.CallRequest{ID: call.ID, Name: call.Name, Arguments: []byte(call.Arguments)}, share.RiskAssessment{}, "", func(context.Context) (*share.Result, string, error) {
 				return body, "audit summary", tc.err
 			})
-			resolved := resolvedTool{Source: share.SourceKindNative, ResultStatus: events.ResultSucceeded,
-				Native: &share.ToolDefinition{Definition: share.Info{NeedsElyphRules: tc.definitionRules}}}
+			resolved := resolvedTool{Source: share.SourceKindNative, Native: &share.ToolDefinition{Definition: share.Info{NeedsElyphRules: tc.definitionRules}}}
 			if tc.remote {
 				resolved.Source, resolved.Native = share.SourceKindELwisp, nil
 			}
@@ -55,7 +53,7 @@ func TestExecutorPreparesHookInputWithoutLogging(t *testing.T) {
 			if text := llm.SegmentsContentText(result.Message.Segments); text != "business details" {
 				t.Fatalf("hook input = %q", text)
 			}
-			if result.LogResult.Content != "audit summary" || body.Content != "full result" || body.DiscoveryText.Summary != "discovery summary" {
+			if result.Summary != "audit summary" || body.Content != "full result" || body.DiscoveryText.Summary != "discovery summary" {
 				t.Fatalf("source material changed: %+v", result)
 			}
 		})
@@ -67,9 +65,9 @@ type discoveryHookDeps struct {
 	input string
 }
 
-func (d *discoveryHookDeps) CompleteToolCall(_ context.Context, _ *storage.Session, _ llm.ToolCallRequest, _ string, segments []llm.MessageSegment, _ error) ([]llm.MessageSegment, events.LogResult, error) {
+func (d *discoveryHookDeps) CompleteToolCall(_ context.Context, _ *storage.Session, _ llm.ToolCallRequest, _ string, segments []llm.MessageSegment, _ error) ([]llm.MessageSegment, error) {
 	d.input = llm.SegmentsContentText(segments)
-	return llm.TextSegments("hooked details"), events.LogResult{}, nil
+	return llm.TextSegments("hooked details"), nil
 }
 
 func TestRunnerAddsDiscoverySummaryAndRulesAfterHook(t *testing.T) {

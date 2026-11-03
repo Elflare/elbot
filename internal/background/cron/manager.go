@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
@@ -17,7 +16,7 @@ import (
 
 // Handler supplies the execution result and independent diagnostic body. The
 // scheduler consumes these source facts without classifying the original error.
-type Handler func(ctx context.Context, job Job) (logResult globalevents.LogResult, err error)
+type Handler func(ctx context.Context, job Job) (err error)
 
 type Manager struct {
 	repo JobRepository
@@ -397,8 +396,14 @@ func (m *Manager) runJob(name string) {
 		record.Identity = identity
 		background.LogBackground(ctx, record)
 	}
-	logResult, _ := handler(ctx, *job)
-	resultStatus := logResult.ResultStatus
+	runErr := handler(ctx, *job)
+	resultStatus := globalevents.ResultSucceeded
+	if runErr != nil {
+		resultStatus = globalevents.ResultFailed
+		if globalevents.LogStatus(runErr) == globalevents.ResultCanceled {
+			resultStatus = globalevents.ResultCanceled
+		}
+	}
 	duration := time.Since(startedAt)
 	// Deadline expiry is a failure; only explicit cancellation is canceled in logs.
 	record := globalevents.LogRecord{
@@ -407,13 +412,12 @@ func (m *Manager) runJob(name string) {
 		Content:      fmt.Sprintf("cron job finished\njob=%s\nhandler=%s\nduration=%s", job.Name, job.Handler, duration),
 		ContentLimit: 4096, ResultStatus: resultStatus,
 	}
-	for _, line := range strings.Split(logResult.Content, "\n") {
-		if strings.TrimSpace(line) != "" {
-			record.Content += "\n" + line
-		}
+	if runErr != nil {
+		record.Content += "\n" + runErr.Error()
 	}
+
 	if resultStatus == globalevents.ResultFailed {
-		record.Level = slog.LevelError
+		record.Level = slog.LevelWarn
 	}
 	record.Identity = identity
 	defer func() {

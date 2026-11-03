@@ -5,13 +5,11 @@ package telegram
 import (
 	"context"
 	"elbot/internal/contextinfo"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"elbot/internal/delivery"
-	globalevents "elbot/internal/events"
 )
 
 type messageStream struct {
@@ -84,54 +82,42 @@ func (s *messageStream) Append(ctx context.Context, text string) error {
 	return nil
 }
 
-func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Receipt, globalevents.LogResult, error) {
+func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Receipt, error) {
 	ctx, finish, err := s.beginOperation(ctx)
 	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
-		return delivery.Receipt{}, logResult, err
+		return delivery.Receipt{}, err
 	}
 	defer finish()
 	if s.finished {
-		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+		return delivery.Receipt{}, nil
 	}
 	text = strings.TrimSpace(text)
 	if text == "" {
 		text = strings.TrimSpace(s.text)
 	}
 	if text == "" {
-		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+		return delivery.Receipt{}, nil
 	}
 	if s.adapter.cfg.richMessageEnabled() {
 		if s.message != 0 {
 			_, _ = s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.NativeChatID, MessageID: s.message, Text: "done"})
 		}
-		receipt, logResult, err := s.adapter.sendRichText(ctx, s.target, text, 0, nil)
+		receipt, err := s.adapter.sendRichText(ctx, s.target, text, 0, nil)
 		s.finished = true
-		return s.adapter.telegramReceipt(receipt, s.target), logResult, err
+		return s.adapter.telegramReceipt(receipt, s.target), err
 	}
 	pages := telegramTextPages(text)
 	if s.message == 0 {
 		pageText, pageParseMode := s.adapter.streamPreviewPayload(pages[0])
 		sent, err := s.adapter.client.sendMessage(ctx, sendMessageRequest{ChatID: s.target.NativeChatID, Text: pageText, ParseMode: pageParseMode})
 		if err != nil {
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-			if errors.Is(err, context.Canceled) {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			}
-			return delivery.Receipt{}, logResult, err
+			return delivery.Receipt{}, err
 		}
 		s.message = sent.MessageID
 	} else {
 		pageText, pageParseMode := s.adapter.streamPreviewPayload(pages[0])
 		if _, err := s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.NativeChatID, MessageID: s.message, Text: pageText, ParseMode: pageParseMode}); err != nil {
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-			if errors.Is(err, context.Canceled) {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			}
-			return delivery.Receipt{}, logResult, err
+			return delivery.Receipt{}, err
 		}
 	}
 	receipt := delivery.Receipt{PlatformMessageIDs: []string{formatMessageID(s.message)}}
@@ -140,35 +126,27 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 		sent, err := s.adapter.client.sendMessage(ctx, sendMessageRequest{ChatID: s.target.NativeChatID, Text: pageText, ParseMode: pageParseMode})
 		if err != nil {
 			s.finished = true
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-			if errors.Is(err, context.Canceled) {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			}
-			return s.adapter.telegramReceipt(receipt, s.target), logResult, err
+			return s.adapter.telegramReceipt(receipt, s.target), err
 		}
 		if sent.MessageID != 0 {
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, formatMessageID(sent.MessageID))
 		}
 	}
 	s.finished = true
-	return s.adapter.telegramReceipt(receipt, s.target), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+	return s.adapter.telegramReceipt(receipt, s.target), nil
 }
 
-func (s *messageStream) Finish(ctx context.Context) (delivery.Receipt, globalevents.LogResult, error) {
+func (s *messageStream) Finish(ctx context.Context) (delivery.Receipt, error) {
 	ctx, finish, err := s.beginOperation(ctx)
 	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
-		return delivery.Receipt{}, logResult, err
+		return delivery.Receipt{}, err
 	}
 	defer finish()
 	s.finished = true
 	if s.message == 0 {
-		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+		return delivery.Receipt{}, nil
 	}
-	return s.adapter.telegramReceipt(delivery.Receipt{PlatformMessageIDs: []string{formatMessageID(s.message)}}, s.target), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+	return s.adapter.telegramReceipt(delivery.Receipt{PlatformMessageIDs: []string{formatMessageID(s.message)}}, s.target), nil
 }
 
 func (a *Adapter) streamPreviewPayload(text string) (string, string) {

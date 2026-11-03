@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -51,16 +50,16 @@ type ruleCommitter struct {
 	saved   chan struct{}
 }
 
-func (c *ruleCommitter) Result(ctx context.Context, index int, call llm.ToolCallRequest, message llm.LLMMessage, update *storage.ToolResultCommit) (events.LogResult, error) {
+func (c *ruleCommitter) Result(ctx context.Context, index int, call llm.ToolCallRequest, message llm.LLMMessage, update *storage.ToolResultCommit) error {
 	if c.failure != nil && call.ID == "a" {
-		return events.LogResult{ResultStatus: events.ResultFailed}, c.failure
+		return c.failure
 	}
-	logResult, err := c.testToolCommitter.Result(ctx, index, call, message, update)
+	err := c.testToolCommitter.Result(ctx, index, call, message, update)
 	if c.saved != nil {
 		close(c.saved)
 		c.saved = nil
 	}
-	return logResult, err
+	return err
 }
 
 func TestRuleCardFollowsCompletionOrderAndSurvivesLaterCommitFailure(t *testing.T) {

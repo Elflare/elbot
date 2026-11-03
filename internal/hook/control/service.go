@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 
-	"elbot/internal/events"
 	"elbot/internal/hook/share"
 )
 
@@ -69,8 +68,8 @@ func (s *Service) HookReload() (share.ReloadReport, error) {
 
 // PreparePluginReload validates a complete candidate snapshot immediately and
 // returns a commit that replaces only the requesting persistent plugin.
-// The commit keeps its source log outcome separate from the business error.
-func (s *Service) PreparePluginReload(id string) (func() (events.LogResult, error), error) {
+// The commit returns the original reload error.
+func (s *Service) PreparePluginReload(id string) (func() error, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return nil, fmt.Errorf("hook plugin id is required")
@@ -99,11 +98,11 @@ func (s *Service) PreparePluginReload(id string) (func() (events.LogResult, erro
 	if err := s.runtime.ValidatePlugin(*config); err != nil {
 		return nil, err
 	}
-	return func() (events.LogResult, error) {
+	return func() error {
 		s.reloadMu.Lock()
 		defer s.reloadMu.Unlock()
 		if err := s.runtime.ValidatePlugin(*config); err != nil {
-			return events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
+			return err
 		}
 		return s.runtime.ReplacePlugin(id, config, func() { candidate.Commit(id) })
 	}, nil

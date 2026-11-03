@@ -4,11 +4,13 @@ import (
 	agentshare "elbot/internal/agent/share"
 
 	"context"
+	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/storage"
@@ -26,24 +28,38 @@ func AssistantRawTextMetadata(content, rawText string) string {
 type MessageStore struct {
 	NewMessageID func(context.Context) (string, error) // 根部注入的消息发号能力。
 	Dialogues    interface {
-		Commit(context.Context, storage.DialogueCommit) (events.LogResult, error)
+		Commit(context.Context, storage.DialogueCommit) error
 	}
 	Gate     *CommitGate
 	Preparer *Preparer
 }
 
-func (s *MessageStore) Append(ctx context.Context, message *storage.Message, operation string) (events.LogResult, error) {
+func (s *MessageStore) Append(ctx context.Context, message *storage.Message, operation string) error {
 	if message == nil {
-		return events.LogResult{ResultStatus: events.ResultSkipped}, nil
+		return nil
 	}
 	return s.Commit(ctx, storage.DialogueCommit{SessionID: message.SessionID, Messages: []*storage.Message{message}}, operation)
 }
 
-func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit, operation string) (events.LogResult, error) {
+func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit, operation string) (err error) {
+	level := slog.LevelError
+	persisting := false
+	defer func() {
+		if err == nil || persisting {
+			return
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: "dialogue_commit_failed", Module: "agent", Content: fmt.Sprintf("operation=%s error=%v", operation, err), Identity: events.LogIdentityFromExecution(facts), ResultStatus: events.ResultFailed}
+		record.Identity.SessionID = &commit.SessionID
+		if events.LogStatus(err) == events.ResultCanceled {
+			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
+		}
+		_ = events.EmitLog(ctx, record)
+	}()
 	if commit.ToolBatch != nil {
 		metadata, err := agentshare.AssistantMessageMetadata(commit.ToolBatch.Call.Metadata)
 		if err != nil {
-			return events.LogResult{ResultStatus: events.ResultSkipped}, err
+			return err
 		}
 		seen := map[string]bool{}
 		for _, call := range metadata.ToolCalls {
@@ -64,12 +80,12 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 		if message != nil {
 			fields, err := storage.DecodeSessionMetadata(message.Metadata)
 			if err != nil {
-				return events.LogResult{ResultStatus: events.ResultSkipped}, err
+				return err
 			}
 			var elyphRulesShown bool
 			if raw, ok := fields["elyph_rules_shown"]; ok {
 				if err := json.Unmarshal(raw, &elyphRulesShown); err != nil {
-					return events.LogResult{ResultStatus: events.ResultSkipped}, err
+					return err
 				}
 			}
 			commit.ElyphRulesShown = commit.ElyphRulesShown || elyphRulesShown
@@ -77,34 +93,31 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 		if message != nil && message.Segments != "" && !(commit.ToolResult != nil && commit.Native != nil) {
 			projected, err := agentshare.MessageFromStorage(*message)
 			if err != nil {
-				return events.LogResult{ResultStatus: events.ResultSkipped}, err
+				return err
 			}
+			level = slog.LevelWarn
 			archived, err := s.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{projected})
 			if err != nil {
-				return events.LogResult{ResultStatus: events.ResultSkipped}, err
+				return err
 			}
+			level = slog.LevelError
 			segments := archived[0].Segments
 			message.Segments = agentshare.StoredMessageSegments(segments)
 			message.Content = agentshare.MessageContent(segments)
 		}
 	}
-	logResult := events.LogResult{ResultStatus: events.ResultSucceeded, Content: fmt.Sprintf("operation=%s session_id=%s", operation, commit.SessionID)}
 	locked, release, err := s.Gate.Enter(ctx, commit.SessionID)
 	if err != nil {
-		return events.LogResult{ResultStatus: events.ResultSkipped}, err
+		return err
 	}
 	defer release()
-	result, err := s.Dialogues.Commit(locked, commit)
-	if err != nil && result.ResultStatus != events.ResultFailed {
-		return events.LogResult{ResultStatus: events.ResultSkipped}, err
-	}
+	persisting = true
+	err = s.Dialogues.Commit(locked, commit)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return events.LogResult{ResultStatus: events.ResultCanceled, Content: err.Error()}, err
+			return err
 		}
-		logResult.ResultStatus = events.ResultFailed
-		logResult.Content += fmt.Sprintf("\npersistence_error=%v", err)
-		return logResult, fmt.Errorf("%s: %w", operation, err)
+		return fmt.Errorf("%s: %w", operation, err)
 	}
-	return logResult, nil
+	return nil
 }

@@ -10,7 +10,6 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	"elbot/internal/session"
@@ -27,9 +26,9 @@ type ExecutionDialogue interface {
 type ExecutionSender interface {
 	StartStream(context.Context) (delivery.MessageStream, error)
 	FinishIntermediate(context.Context, context.Context, delivery.MessageStream, string, bool) error
-	ReplaceAndFinishStream(context.Context, context.Context, delivery.MessageStream, string) (delivery.Receipt, events.LogResult, error)
-	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, events.LogResult, error)
-	SendOutputs(context.Context, []delivery.Output) (events.LogResult, error)
+	ReplaceAndFinishStream(context.Context, context.Context, delivery.MessageStream, string) (delivery.Receipt, error)
+	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, error)
+	SendOutputs(context.Context, []delivery.Output) error
 	Notify(context.Context, slog.Level, string)
 	// Preview takes one complete notice per tool call; multiline bodies stay in
 	// one argument. General workflow notices also occupy one argument.

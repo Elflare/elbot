@@ -19,7 +19,6 @@ import (
 	"elbot/internal/background/share"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/storage"
 	"elbot/internal/testutil"
@@ -48,8 +47,8 @@ func newElnisBridgeService(t *testing.T, b elnisBridge, opts elnis.Options) *eln
 	opts.ToolPreloader = emptyElnisSelections{}
 	opts.ResolveModel = func(string) config.ModelSelection { return config.ModelSelection{Provider: "provider", Model: "model"} }
 	if opts.Send == nil {
-		opts.Send = func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-			return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		opts.Send = func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+			return delivery.Receipt{}, nil
 		}
 	}
 	svc, err := elnis.NewService(opts)
@@ -291,8 +290,8 @@ func TestElnisBridgeReportMediaSurvivesWorkspaceRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 	sendErr := errors.New("offline")
-	svc := newElnisBridgeService(t, b, elnis.Options{SandboxRoot: root, Runner: elnisBridgeRunner{result: `{"completed":true,"need_report":true,"report":"result","report_segments":[{"type":"image","url":"chart.png"}]}`}, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultFailed}, sendErr
+	svc := newElnisBridgeService(t, b, elnis.Options{SandboxRoot: root, Runner: elnisBridgeRunner{result: `{"completed":true,"need_report":true,"report":"result","report_segments":[{"type":"image","url":"chart.png"}]}`}, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+		return delivery.Receipt{}, sendErr
 	}})
 	var queued elnis.QueuedLLMEvent
 	svc.SetLLMEnqueuer(func(_ context.Context, e elnis.QueuedLLMEvent) error { queued = e; return nil })
@@ -395,10 +394,10 @@ func TestElnisBridgeDirectCancellationReleasesImportedMedia(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	var id string
-	svc := newElnisBridgeService(t, b, elnis.Options{Send: func(ctx context.Context, _ delivery.Target, out []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	svc := newElnisBridgeService(t, b, elnis.Options{Send: func(ctx context.Context, _ delivery.Target, out []delivery.Output) (delivery.Receipt, error) {
 		id = out[0].Source.MediaID
 		cancel()
-		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultCanceled}, ctx.Err()
+		return delivery.Receipt{}, ctx.Err()
 	}})
 	req := elnisBridgeRequest(elnis.ModeDirect)
 	req.Segments = []elnis.Segment{{Kind: elnis.SegmentKindFile, URL: "data:text/plain;base64,aGVsbG8=", Name: "input.txt"}}
@@ -418,9 +417,9 @@ func TestElnisBridgeServiceDeduplicatesAndPersistsReportMappings(t *testing.T) {
 	b, store := newElnisBridgeFixture(t)
 	seedElnisReportMessage(t, store)
 	sends := 0
-	svc := newElnisBridgeService(t, b, elnis.Options{SandboxRoot: t.TempDir(), Runner: elnisBridgeRunner{result: `{"completed":true,"need_report":true,"report":"done"}`}, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	svc := newElnisBridgeService(t, b, elnis.Options{SandboxRoot: t.TempDir(), Runner: elnisBridgeRunner{result: `{"completed":true,"need_report":true,"report":"done"}`}, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
 		sends++
-		return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "77"}, {Platform: "telegram", ChatType: "private", ChatID: "2", PlatformMessageID: "77"}}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "77"}, {Platform: "telegram", ChatType: "private", ChatID: "2", PlatformMessageID: "77"}}}, nil
 	}})
 	var queued elnis.QueuedLLMEvent
 	enqueues := 0

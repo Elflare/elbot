@@ -5,27 +5,24 @@ package control
 import (
 	"testing"
 
-	"elbot/internal/events"
 	"elbot/internal/hook/pipeline"
 	"elbot/internal/hook/share"
 )
 
 type declaredReloadRuntime struct {
 	fakeRuntime
-	result events.LogResult
 }
 
-func (r *declaredReloadRuntime) ReplacePlugin(id string, config *share.RuntimeConfig, commit func()) (events.LogResult, error) {
+func (r *declaredReloadRuntime) ReplacePlugin(id string, config *share.RuntimeConfig, commit func()) error {
 	r.replaced = id
 	commit()
-	return r.result, nil
+	return nil
 }
 
-func TestPluginReloadCommitKeepsFailedResultSeparateFromBusiness(t *testing.T) {
+func TestPluginReloadCommitsBusinessState(t *testing.T) {
 	active := pipeline.NewManager(testLog, nil)
 	registerPluginTestHook(t, active, "demo", "old")
-	declared := events.LogResult{ResultStatus: events.ResultFailed, Content: "source reload facts"}
-	runtime := &declaredReloadRuntime{result: declared}
+	runtime := &declaredReloadRuntime{}
 	service := New(active, runtime, testLoader(active, func(candidate share.Registrar) (share.ReloadReport, []share.RuntimeConfig, error) {
 		registerPluginTestHook(t, candidate, "demo", "new")
 		return share.ReloadReport{}, []share.RuntimeConfig{{ID: "demo"}}, nil
@@ -34,9 +31,9 @@ func TestPluginReloadCommitKeepsFailedResultSeparateFromBusiness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := commit()
-	if err != nil || result != declared || runtime.replaced != "demo" {
-		t.Fatalf("result=%+v err=%v runtime=%+v", result, err, runtime)
+	err = commit()
+	if err != nil || runtime.replaced != "demo" {
+		t.Fatal("result= err= runtime=", err, runtime)
 	}
 	assertHookNames(t, active.List(), "new")
 }

@@ -6,7 +6,6 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
@@ -188,9 +187,9 @@ func TestSupervisorHookEntrypoints(t *testing.T) {
 	m := contractSupervisor(t, isolatedModuleDeps(t))
 	var woken bool
 	_, err := m.RegisterHooks(Points{
-		PlatformMessageReceived: func(_ context.Context, facts Facts, message Message) (PlatformMessageReceivedResult, events.LogResult, error) {
+		PlatformMessageReceived: func(_ context.Context, facts Facts, message Message) (PlatformMessageReceivedResult, error) {
 			woken = facts.Woken
-			return PlatformMessageReceivedResult{Segments: message.Segments, Consume: true}, events.LogResult{}, nil
+			return PlatformMessageReceivedResult{Segments: message.Segments, Consume: true}, nil
 		},
 	})
 	if err != nil {

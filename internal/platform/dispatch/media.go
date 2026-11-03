@@ -33,7 +33,7 @@ func (r *Router) ResolveMedia(ctx context.Context, name string, input share.Mess
 	return resolver.ResolveMedia(ctx, input, maxBytes)
 }
 
-func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, globalevents.LogResult, error) {
+func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, error) {
 	// The owning delivery.Manager validates outputs before entering rawSender.
 	prepared := append([]delivery.Output(nil), outputs...)
 	for i, out := range prepared {
@@ -55,11 +55,7 @@ func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Out
 			item, err = a.media.ImportBytes(ctx, out.Source.Data, input, media.ImportLimits{})
 		}
 		if err != nil {
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("prepare output media %d: %v", i, err)}
-			if errors.Is(err, context.Canceled) {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			}
-			return nil, logResult, fmt.Errorf("prepare output media %d: %w", i, err)
+			return nil, fmt.Errorf("prepare output media %d: %w", i, err)
 		}
 		prepared[i].Source = delivery.Source{MediaID: item.ID, MIMEType: item.MIMEType}
 		if prepared[i].Name == "" {
@@ -68,11 +64,11 @@ func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Out
 			prepared[i].Name = media.SanitizeName(prepared[i].Name)
 		}
 	}
-	return prepared, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+	return prepared, nil
 }
 
 // Resolve only the send copy; Hook events and queued outputs keep media IDs.
-func (a *Router) resolveMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, []media.UsageID, globalevents.LogResult, error) {
+func (a *Router) resolveMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, []media.UsageID, error) {
 	resolved := append([]delivery.Output(nil), outputs...)
 	var usages []media.UsageID
 	for i, out := range resolved {
@@ -84,30 +80,26 @@ func (a *Router) resolveMediaOutputs(ctx context.Context, outputs []delivery.Out
 			usages = append(usages, usageID)
 		}
 		if err != nil {
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("resolve output media %d: %v", i, err)}
-			if errors.Is(err, context.Canceled) {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			}
-			return nil, usages, logResult, err
+			return nil, usages, err
 		}
 		resolved[i].Source = source
 	}
-	return resolved, usages, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+	return resolved, usages, nil
 }
 
-func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Output, send func([]delivery.Output) (delivery.Receipt, globalevents.LogResult, error)) (receipt delivery.Receipt, logResult globalevents.LogResult, err error) {
-	prepared, logResult, err := a.prepareMediaOutputs(ctx, outputs)
+func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Output, send func([]delivery.Output) (delivery.Receipt, error)) (receipt delivery.Receipt, err error) {
+	prepared, err := a.prepareMediaOutputs(ctx, outputs)
 	if err != nil {
-		return delivery.Receipt{}, logResult, err
+		return delivery.Receipt{}, err
 	}
-	resolved, usages, logResult, err := a.resolveMediaOutputs(ctx, prepared)
+	resolved, usages, err := a.resolveMediaOutputs(ctx, prepared)
 	if len(usages) != 0 {
 		defer a.publishUsageFinished(ctx, usages)
 	}
 	if err != nil {
-		return delivery.Receipt{}, logResult, err
+		return delivery.Receipt{}, err
 	}
-	receipt, logResult, sendErr := send(resolved)
+	receipt, sendErr := send(resolved)
 	if err := a.cacheMediaReceipt(ctx, prepared, receipt); err != nil {
 
 		{
@@ -127,7 +119,7 @@ func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Outpu
 		}
 
 	}
-	return receipt, logResult, sendErr
+	return receipt, sendErr
 }
 
 func (a *Router) cacheMediaReceipt(ctx context.Context, outputs []delivery.Output, receipt delivery.Receipt) error {

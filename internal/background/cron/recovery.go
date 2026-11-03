@@ -143,15 +143,21 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 			record.Identity = identity
 			background.LogBackground(ctx, record)
 		}
-		logResult, deliverErr := s.deliverMissedOnce(ctx, *latest, latestMeta, platformName)
-		resultStatus := logResult.ResultStatus
+		deliverErr := s.deliverMissedOnce(ctx, *latest, latestMeta, platformName)
+		resultStatus := globalevents.ResultSucceeded
+		if deliverErr != nil {
+			resultStatus = globalevents.ResultFailed
+			if globalevents.LogStatus(deliverErr) == globalevents.ResultCanceled {
+				resultStatus = globalevents.ResultCanceled
+			}
+		}
 		unlock()
 		if deliverErr != nil {
 			{
 				content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": latestMeta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(latestMeta), ","), "target_all_enabled_platforms": latestMeta.Target.AllEnabledPlatforms, "platform": platformName, "error": deliverErr.Error()})
 				record := globalevents.LogRecord{
 					Category:     globalevents.LogAudit,
-					Level:        slog.LevelError,
+					Level:        slog.LevelWarn,
 					EventName:    "cron.missed_delivery_failed",
 					Module:       "cron",
 					Type:         globalevents.ContentJSON,
@@ -170,7 +176,7 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 			{
 				record := globalevents.LogRecord{
 					Category:     globalevents.LogRuntime,
-					Level:        slog.LevelError,
+					Level:        slog.LevelWarn,
 					EventName:    "missed_cron_run_failed",
 					Module:       "cron",
 					Type:         globalevents.ContentText,
@@ -179,11 +185,8 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 					ResultStatus: globalevents.ResultFailed,
 				}
 				record.ResultStatus = resultStatus
-				for _, line := range strings.Split(logResult.Content, "\n") {
-					if strings.TrimSpace(line) != "" {
-						record.Content += "\n" + line
-					}
-				}
+				record.Content += "\nerror=" + deliverErr.Error()
+
 				if resultStatus == globalevents.ResultCanceled {
 					record.Level = slog.LevelInfo
 				}
@@ -222,44 +225,34 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 				ContentLimit: 4096,
 				ResultStatus: resultStatus,
 			}
-			for _, line := range strings.Split(logResult.Content, "\n") {
-				if strings.TrimSpace(line) != "" {
-					record.Content += "\n" + line
-				}
-			}
-			if resultStatus == globalevents.ResultFailed {
-				record.Level = slog.LevelError
-				record.EventName = "missed_cron_run_failed"
-			}
+
 			record.Identity = identity
 			background.LogBackground(ctx, record)
 		}
 	}
 }
 
-func (s *Service) deliverMissedOnce(ctx context.Context, job Job, meta Metadata, platformName string) (logResult globalevents.LogResult, err error) {
-	content := "operation=deliverMissedOnce"
-	job, state, logResult, prepareErr := s.prepareDelivery(ctx, job, meta)
+func (s *Service) deliverMissedOnce(ctx context.Context, job Job, meta Metadata, platformName string) (err error) {
+
+	job, state, prepareErr := s.prepareDelivery(ctx, job, meta)
 	defer func() {
 		if err != nil && ctx.Err() == nil && (!state.ReportReady || state.NeedReport) {
 			// 正文关闭时只保留失败日志；发送方记录通知自身的投递结果。
-			_, _ = s.sendToPlatforms(ctx, job.Name, []string{s.cliPlatformName}, fmt.Sprintf("cron 补跑失败：%s\n错误：%v", job.Name, err))
+			_ = s.sendToPlatforms(ctx, job.Name, []string{s.cliPlatformName}, fmt.Sprintf("cron 补跑失败：%s\n错误：%v", job.Name, err))
 		}
 	}()
-	resultStatus := logResult.ResultStatus
-	content += "\n" + logResult.Content
+
 	if !state.ReportReady {
-		return globalevents.LogResult{ResultStatus: resultStatus, Content: content}, prepareErr
+		return prepareErr
 	}
-	logResult, deliverErr := s.deliverPrepared(ctx, job, meta, state, platformName, true)
-	status := logResult.ResultStatus
-	content += "\n" + logResult.Content
-	if resultStatus == globalevents.ResultFailed || status == globalevents.ResultFailed {
-		status = globalevents.ResultFailed
-	} else if resultStatus == globalevents.ResultCanceled || status == globalevents.ResultCanceled {
-		status = globalevents.ResultCanceled
+	deliverErr := s.deliverPrepared(ctx, job, meta, state, platformName, true)
+	if prepareErr == nil {
+		return deliverErr
 	}
-	return globalevents.LogResult{ResultStatus: status, Content: content}, errors.Join(prepareErr, deliverErr)
+	if deliverErr == nil {
+		return prepareErr
+	}
+	return errors.Join(prepareErr, deliverErr)
 }
 
 func missedOnceReportText(title, report string) string {

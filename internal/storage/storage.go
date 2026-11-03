@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"errors"
 	"time"
 )
@@ -450,7 +449,7 @@ type SessionRepository interface {
 	// NextSequence 原子领取全局 Session 序号；独立于会话事务，已领取的号码不回收。
 	NextSequence(context.Context) (int64, error)
 	Create(ctx context.Context, session *Session) error
-	CreateMaterial(context.Context, SessionMaterialCreate) (events.LogResult, error)
+	CreateMaterial(context.Context, SessionMaterialCreate) error
 	Get(ctx context.Context, id string) (*Session, error)
 	Mutate(ctx context.Context, id string, update func(*Session) error) (*Session, error)
 	List(ctx context.Context, req ListSessionsRequest) ([]SessionSummary, error)

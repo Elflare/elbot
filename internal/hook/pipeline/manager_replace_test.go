@@ -55,25 +55,25 @@ func TestListCountsSameNameAndStopCancels(t *testing.T) {
 
 func TestManagerReplaceSwapsHandlersAndKeepsRuntimeIntegrations(t *testing.T) {
 	routed, logged, observed, runs := 0, 0, 0, 0
-	active := NewManager(func(context.Context, events.LogRecord) { logged++ }, func(_ context.Context, event share.Event, _ func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, events.LogResult, error) {
+	active := NewManager(func(context.Context, events.LogRecord) { logged++ }, func(_ context.Context, event share.Event, _ func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, error) {
 		routed++
-		return event, false, events.LogResult{ResultStatus: events.ResultSkipped}, nil
+		return event, false, nil
 	})
 	candidate := newTestManager()
-	candidate.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "replacement", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, events.LogResult, error) {
+	candidate.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "replacement", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 		runs++
-		return event, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		return event, nil
 	})})
 	active.Replace(candidate)
 	options := CallOptions{Woken: true, Observe: func(ctx context.Context, name string) (context.Context, func(), error) {
 		observed++
 		return ctx, func() {}, nil
 	}}
-	if _, _, err := active.Run(t.Context(), share.Event{Point: share.PointPlatformMessageReceived}, options); err != nil {
+	if _, err := active.Run(t.Context(), share.Event{Point: share.PointPlatformMessageReceived}, options); err != nil {
 		t.Fatal(err)
 	}
 	options.Woken = false
-	if _, _, err := active.Run(t.Context(), share.Event{Point: share.PointPlatformMessageReceived}, options); err != nil {
+	if _, err := active.Run(t.Context(), share.Event{Point: share.PointPlatformMessageReceived}, options); err != nil {
 		t.Fatal(err)
 	}
 	if routed != 2 || logged != 1 || observed != 1 || runs != 1 {
@@ -91,26 +91,26 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 		Point: share.PointAgentInputPrepared,
 		Name:  "old.blocking",
 		Match: share.Always(),
-		Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, events.LogResult, error) {
+		Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 			close(entered)
 			<-release
 			runs <- "old.blocking"
-			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
+			return event, nil
 		}),
 	})
 	active.Register(share.Registration{
 		Point: share.PointAgentInputPrepared,
 		Name:  "old.second",
 		Match: share.Always(),
-		Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, events.LogResult, error) {
+		Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 			runs <- "old.second"
-			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
+			return event, nil
 		}),
 	})
 
 	done := make(chan error, 1)
 	go func() {
-		_, _, err := active.Run(context.Background(), share.Event{Point: share.PointAgentInputPrepared}, CallOptions{Woken: true})
+		_, err := active.Run(context.Background(), share.Event{Point: share.PointAgentInputPrepared}, CallOptions{Woken: true})
 		done <- err
 	}()
 	<-entered
@@ -121,9 +121,9 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 		Point: share.PointAgentInputPrepared,
 		Name:  "new",
 		Match: share.Always(),
-		Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, events.LogResult, error) {
+		Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 			runs <- "new"
-			return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
+			return event, nil
 		}),
 	})
 	active.Replace(candidate)
@@ -135,7 +135,7 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 		t.Fatalf("in-flight handlers = %q, %q", first, second)
 	}
 
-	if _, _, err := active.Run(context.Background(), share.Event{Point: share.PointAgentInputPrepared}, CallOptions{Woken: true}); err != nil {
+	if _, err := active.Run(context.Background(), share.Event{Point: share.PointAgentInputPrepared}, CallOptions{Woken: true}); err != nil {
 		t.Fatalf("new Run: %v", err)
 	}
 	if got := <-runs; got != "new" {
@@ -156,9 +156,9 @@ func TestManagerReplacePluginLeavesOtherRegistrationsUntouched(t *testing.T) {
 			PluginID: pluginID,
 			Name:     name,
 			Match:    share.Always(),
-			Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, events.LogResult, error) {
+			Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 				runs = append(runs, name)
-				return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
+				return event, nil
 			}),
 		})
 	}
@@ -168,7 +168,7 @@ func TestManagerReplacePluginLeavesOtherRegistrationsUntouched(t *testing.T) {
 	register(candidate, "unrelated", "unrelated")
 
 	active.ReplacePlugin("demo", candidate)
-	if _, _, err := active.Run(context.Background(), share.Event{Point: share.PointAgentInputPrepared}, CallOptions{Woken: true}); err != nil {
+	if _, err := active.Run(context.Background(), share.Event{Point: share.PointAgentInputPrepared}, CallOptions{Woken: true}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if len(runs) != 2 || runs[0] != "new" || runs[1] != "other" {

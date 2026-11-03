@@ -8,7 +8,6 @@ import (
 	"reflect"
 
 	agenthooks "elbot/internal/agent"
-	"elbot/internal/events"
 	"elbot/internal/hook/pipeline"
 	"elbot/internal/hook/share"
 	"elbot/internal/llm"
@@ -76,23 +75,23 @@ func (m *Supervisor) agentPoints(agent interface {
 			ToolCalls: value.ToolCalls, ElapsedMS: value.ElapsedMS,
 		}
 	}
-	input := func(point share.Point) func(context.Context, agenthooks.Facts, agenthooks.LLMInput) (agenthooks.LLMInputResult, events.LogResult, error) {
-		return func(ctx context.Context, facts agenthooks.Facts, value agenthooks.LLMInput) (agenthooks.LLMInputResult, events.LogResult, error) {
+	input := func(point share.Point) func(context.Context, agenthooks.Facts, agenthooks.LLMInput) (agenthooks.LLMInputResult, error) {
+		return func(ctx context.Context, facts agenthooks.Facts, value agenthooks.LLMInput) (agenthooks.LLMInputResult, error) {
 			event := eventFor(facts, point)
 			event.Message = message(value.Message)
 			// Agent already supplies detached messages. Their read-only view is
 			// never copied back into Agent; only this point's result fields return.
 			event.LLM = share.LLMPayload{Provider: value.Provider, Model: value.Model, Messages: value.Messages, Tools: value.Tools}
-			updated, result, err := m.run(ctx, event, m.callOptions(facts, agent))
-			return agenthooks.LLMInputResult{Segments: updated.Message.Segments, Tools: updated.LLM.Tools}, result, err
+			updated, err := m.run(ctx, event, m.callOptions(facts, agent))
+			return agenthooks.LLMInputResult{Segments: updated.Message.Segments, Tools: updated.LLM.Tools}, err
 		}
 	}
-	output := func(point share.Point) func(context.Context, agenthooks.Facts, string) (string, events.LogResult, error) {
-		return func(ctx context.Context, facts agenthooks.Facts, text string) (string, events.LogResult, error) {
+	output := func(point share.Point) func(context.Context, agenthooks.Facts, string) (string, error) {
+		return func(ctx context.Context, facts agenthooks.Facts, text string) (string, error) {
 			event := eventFor(facts, point)
 			event.Message = share.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments(text)}
-			updated, result, err := m.run(ctx, event, m.callOptions(facts, agent))
-			return llm.SegmentsTextOnly(updated.Message.Segments), result, err
+			updated, err := m.run(ctx, event, m.callOptions(facts, agent))
+			return llm.SegmentsTextOnly(updated.Message.Segments), err
 		}
 	}
 	return agenthooks.Points{
@@ -116,52 +115,52 @@ func (m *Supervisor) agentPoints(agent interface {
 			event.Message = message(value)
 			return m.runtime.Cancel(fillEventFromContext(ctx, event))
 		},
-		PlatformMessageReceived: func(ctx context.Context, facts agenthooks.Facts, value agenthooks.Message) (agenthooks.PlatformMessageReceivedResult, events.LogResult, error) {
+		PlatformMessageReceived: func(ctx context.Context, facts agenthooks.Facts, value agenthooks.Message) (agenthooks.PlatformMessageReceivedResult, error) {
 			event := eventFor(facts, share.PointPlatformMessageReceived)
 			event.Message = message(value)
-			updated, result, err := m.run(ctx, event, m.callOptions(facts, agent))
-			return agenthooks.PlatformMessageReceivedResult{Segments: updated.Message.Segments, Consume: updated.Control.Consume, Outputs: updated.Outputs}, result, err
+			updated, err := m.run(ctx, event, m.callOptions(facts, agent))
+			return agenthooks.PlatformMessageReceivedResult{Segments: updated.Message.Segments, Consume: updated.Control.Consume, Outputs: updated.Outputs}, err
 		},
-		AgentInputPrepared: func(ctx context.Context, facts agenthooks.Facts, value agenthooks.Message) ([]llm.MessageSegment, events.LogResult, error) {
+		AgentInputPrepared: func(ctx context.Context, facts agenthooks.Facts, value agenthooks.Message) ([]llm.MessageSegment, error) {
 			event := eventFor(facts, share.PointAgentInputPrepared)
 			event.Message = message(value)
-			updated, result, err := m.run(ctx, event, m.callOptions(facts, agent))
-			return updated.Message.Segments, result, err
+			updated, err := m.run(ctx, event, m.callOptions(facts, agent))
+			return updated.Message.Segments, err
 		},
 		LLMTurnPrepared:    input(share.PointLLMTurnPrepared),
 		LLMRequestPrepared: input(share.PointLLMRequestPrepared),
-		LLMResponseReceived: func(ctx context.Context, facts agenthooks.Facts, value agenthooks.LLMResponse) (agenthooks.LLMResponseResult, events.LogResult, error) {
+		LLMResponseReceived: func(ctx context.Context, facts agenthooks.Facts, value agenthooks.LLMResponse) (agenthooks.LLMResponseResult, error) {
 			event := eventFor(facts, share.PointLLMResponseReceived)
 			event.LLM = response(value)
-			updated, result, err := m.run(ctx, event, m.callOptions(facts, agent))
+			updated, err := m.run(ctx, event, m.callOptions(facts, agent))
 			return agenthooks.LLMResponseResult{
 				Text: updated.LLM.Text, SourceText: updated.LLM.SourceText,
 				Usage: updated.LLM.Usage, ToolCalls: updated.LLM.ToolCalls, Outputs: updated.Outputs,
-			}, result, err
+			}, err
 		},
-		ToolCallPrepared: func(ctx context.Context, facts agenthooks.Facts, value llm.ToolCallRequest) (string, events.LogResult, error) {
+		ToolCallPrepared: func(ctx context.Context, facts agenthooks.Facts, value llm.ToolCallRequest) (string, error) {
 			event := eventFor(facts, share.PointToolCallPrepared)
 			event.Tool = share.ToolPayload{ID: value.ID, Name: value.Name, Arguments: value.Arguments}
-			updated, result, err := m.run(ctx, event, m.callOptions(facts, agent))
-			return updated.Tool.Arguments, result, err
+			updated, err := m.run(ctx, event, m.callOptions(facts, agent))
+			return updated.Tool.Arguments, err
 		},
-		ToolCallCompleted: func(ctx context.Context, facts agenthooks.Facts, value agenthooks.ToolResult) ([]llm.MessageSegment, events.LogResult, error) {
+		ToolCallCompleted: func(ctx context.Context, facts agenthooks.Facts, value agenthooks.ToolResult) ([]llm.MessageSegment, error) {
 			event := eventFor(facts, share.PointToolCallCompleted)
 			original := append([]llm.MessageSegment(nil), value.Segments...)
 			text := llm.SegmentsTextOnly(original)
 			event.Message = share.MessagePayload{Role: string(llm.RoleTool), Segments: append([]llm.MessageSegment(nil), original...)}
 			event.Tool = share.ToolPayload{ID: value.Call.ID, Name: value.Call.Name, Arguments: value.Call.Arguments, Risk: value.Risk, Result: text, Error: value.Err}
-			updated, result, err := m.run(ctx, event, m.callOptions(facts, agent))
+			updated, err := m.run(ctx, event, m.callOptions(facts, agent))
 			if err != nil {
-				return nil, result, err
+				return nil, err
 			}
 			if !reflect.DeepEqual(updated.Message.Segments, original) {
-				return updated.Message.Segments, result, nil
+				return updated.Message.Segments, nil
 			}
 			if updated.Tool.Result != text {
-				return llm.SetSegmentText(original, updated.Tool.Result), result, nil
+				return llm.SetSegmentText(original, updated.Tool.Result), nil
 			}
-			return original, result, nil
+			return original, nil
 		},
 		AgentOutputPrepared:     output(share.PointAgentOutputPrepared),
 		AgentTurnOutputPrepared: output(share.PointAgentTurnOutputPrepared),

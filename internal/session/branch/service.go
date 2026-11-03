@@ -4,8 +4,6 @@ package branch
 
 import (
 	"context"
-
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
@@ -17,7 +15,7 @@ type ServiceDeps struct {
 	Sessions     interface {
 		Get(context.Context, string) (*storage.Session, error)
 		Create(context.Context, *storage.Session) error
-		CreateMaterial(context.Context, storage.SessionMaterialCreate) (events.LogResult, error)
+		CreateMaterial(context.Context, storage.SessionMaterialCreate) error
 	}
 	Messages interface {
 		Get(context.Context, string) (*storage.Message, error)

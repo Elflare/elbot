@@ -26,7 +26,7 @@ const (
 	timeLayout      = "2006-01-02 15:04:05"
 )
 
-type TargetSenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
+type TargetSenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error)
 
 type PlatformTarget struct {
 	Name          string
@@ -95,38 +95,27 @@ func NewService(opts Options) *Service {
 	return s
 }
 
-func (s *Service) Handler(ctx context.Context, job Job) (logResult globalevents.LogResult, err error) {
+func (s *Service) Handler(ctx context.Context, job Job) (err error) {
 	identity := cronLogIdentity(ctx)
 
-	logResult.ResultStatus = globalevents.ResultFailed
-	logResult.Content = "stage=lock"
 	unlock, err := s.lockDeliveryJob(ctx, job.Name)
 	if err != nil {
-		if err == context.Canceled {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
-		return globalevents.LogResult{ResultStatus: logResult.ResultStatus, Content: logResult.Content + fmt.Sprintf("\nerror=%q", err.Error())}, err
+		return err
 	}
 	defer unlock()
-	logResult.Content = "stage=load"
+
 	latest, err := s.store.GetByName(ctx, job.Name)
 	if err != nil {
-		if err == context.Canceled {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
-		return globalevents.LogResult{ResultStatus: logResult.ResultStatus, Content: logResult.Content + fmt.Sprintf("\nerror=%q", err.Error())}, err
+		return err
 	}
 	if !latest.Enabled {
-		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "reason=disabled"}, nil
+		return nil
 	}
 	job = *latest
-	logResult.Content = "stage=metadata"
+
 	meta, err := decodeMetadata(job.Metadata)
 	if err != nil {
-		if err == context.Canceled {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
-		return globalevents.LogResult{ResultStatus: logResult.ResultStatus, Content: logResult.Content + fmt.Sprintf("\nerror=%q", err.Error())}, err
+		return err
 	}
 	{
 		content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms, "trigger_mode": meta.Trigger.Mode, "schedule_mode": meta.Schedule.Mode})
@@ -142,20 +131,18 @@ func (s *Service) Handler(ctx context.Context, job Job) (logResult globalevents.
 		record.Identity = identity
 		background.LogBackground(ctx, record)
 	}
-	logResult.Content = fmt.Sprintf("source_platform=%s target_platforms=%s target_all_enabled_platforms=%t trigger_mode=%s schedule_mode=%s", meta.Target.SourcePlatform, strings.Join(s.targetPlatformNames(meta), ","), meta.Target.AllEnabledPlatforms, meta.Trigger.Mode, meta.Schedule.Mode)
-	content := logResult.Content
-	logResult.Content = ""
+
 	var runErr error
 	switch meta.Trigger.Mode {
 	case TriggerDirect, TriggerLLM:
-		logResult, runErr = s.runTask(ctx, job, meta)
+		runErr = s.runTask(ctx, job, meta)
 	default:
 		runErr = fmt.Errorf("unsupported trigger mode %q", meta.Trigger.Mode)
-		logResult.Content = runErr.Error()
+
 	}
-	logResult.Content = content + "\n" + logResult.Content
+
 	{
-		content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms, "result": fmt.Sprintf("%.2048s", logResult.Content)})
+		content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms, "result": fmt.Sprintf("%.2048v", runErr)})
 		record := globalevents.LogRecord{
 			Category:     globalevents.LogAudit,
 			Level:        slog.LevelInfo,
@@ -164,18 +151,22 @@ func (s *Service) Handler(ctx context.Context, job Job) (logResult globalevents.
 			Type:         globalevents.ContentJSON,
 			Content:      string(content),
 			ContentLimit: 4096,
-			ResultStatus: logResult.ResultStatus,
+			ResultStatus: globalevents.ResultSucceeded,
 			Identity:     identity,
 		}
-		if logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
+		if runErr != nil {
 			record.EventName = "cron.trigger_failed"
+			record.ResultStatus = globalevents.ResultFailed
 		}
-		if logResult.ResultStatus == globalevents.ResultFailed {
-			record.Level = slog.LevelError
+		if runErr != nil {
+			record.Level = slog.LevelWarn
+			if globalevents.LogStatus(runErr) == globalevents.ResultCanceled {
+				record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
+			}
 		}
 		background.LogBackground(ctx, record)
 	}
-	return logResult, runErr
+	return runErr
 }
 
 func cronLogIdentity(ctx context.Context) globalevents.LogIdentity {

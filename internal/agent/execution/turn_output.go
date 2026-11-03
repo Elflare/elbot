@@ -5,7 +5,6 @@ import (
 	"log/slog"
 
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/session"
 )
 
@@ -23,15 +22,15 @@ func (o foregroundTurnOutput) FinishIntermediate(ctx context.Context, streamCtx 
 	return o.sender.FinishIntermediate(ctx, streamCtx, stream, text, streaming)
 }
 
-func (o foregroundTurnOutput) ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, events.LogResult, error) {
+func (o foregroundTurnOutput) ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, error) {
 	return o.sender.ReplaceAndFinishStream(ctx, streamCtx, stream, text)
 }
 
-func (o foregroundTurnOutput) SendAssistant(ctx context.Context, text string) (delivery.Receipt, events.LogResult, error) {
+func (o foregroundTurnOutput) SendAssistant(ctx context.Context, text string) (delivery.Receipt, error) {
 	return o.sender.SendAssistant(ctx, text)
 }
 
-func (o foregroundTurnOutput) SendOutputs(ctx context.Context, outputs []delivery.Output) (events.LogResult, error) {
+func (o foregroundTurnOutput) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
 	return o.sender.SendOutputs(ctx, outputs)
 }
 
@@ -57,16 +56,16 @@ func (o backgroundTurnOutput) FinishIntermediate(ctx context.Context, streamCtx 
 	return nil
 }
 
-func (o backgroundTurnOutput) ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, events.LogResult, error) {
-	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSkipped, Content: "background output is buffered"}, nil
+func (o backgroundTurnOutput) ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, error) {
+	return delivery.Receipt{}, nil
 }
 
-func (o backgroundTurnOutput) SendAssistant(ctx context.Context, text string) (delivery.Receipt, events.LogResult, error) {
-	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSkipped, Content: "background output is buffered"}, nil
+func (o backgroundTurnOutput) SendAssistant(ctx context.Context, text string) (delivery.Receipt, error) {
+	return delivery.Receipt{}, nil
 }
 
-func (o backgroundTurnOutput) SendOutputs(ctx context.Context, outputs []delivery.Output) (events.LogResult, error) {
-	return events.LogResult{ResultStatus: events.ResultSkipped, Content: "background output is buffered"}, nil
+func (o backgroundTurnOutput) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
+	return nil
 }
 
 func (o backgroundTurnOutput) Notify(ctx context.Context, level slog.Level, text string) {}

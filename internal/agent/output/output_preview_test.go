@@ -70,8 +70,8 @@ type previewTestHooks struct {
 	err     error
 }
 
-func (*previewTestHooks) AgentTurnOutputPrepared(_ context.Context, text string) (string, events.LogResult, error) {
-	return text, events.LogResult{}, nil
+func (*previewTestHooks) AgentTurnOutputPrepared(_ context.Context, text string) (string, error) {
+	return text, nil
 }
 
 func (*previewTestHooks) PlatformMessageSent(context.Context, string) {}
@@ -82,13 +82,13 @@ var (
 	_ = OutputSender{hooks: &previewTestHooks{}}
 )
 
-func (h *previewTestHooks) AgentOutputPrepared(_ context.Context, text string) (string, events.LogResult, error) {
+func (h *previewTestHooks) AgentOutputPrepared(_ context.Context, text string) (string, error) {
 	h.calls++
 	h.input = text
 	if h.rewrite {
 		text = h.output
 	}
-	return text, events.LogResult{ResultStatus: events.ResultSkipped}, h.err
+	return text, h.err
 }
 
 func TestPreviewGroupsToolNoticesBeforeHook(t *testing.T) {

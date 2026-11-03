@@ -3,8 +3,11 @@ package elnis
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"mime"
 	"net/url"
 	"strings"
@@ -82,7 +85,20 @@ func validateMediaSegment(seg Segment, maxBytes int64) (delivery.Output, error) 
 	return out, nil
 }
 
-func (s *Service) materializeSegments(ctx context.Context, segments []delivery.Output, eventID string) ([]llm.MessageSegment, error) {
+func (s *Service) materializeSegments(ctx context.Context, segments []delivery.Output, eventID string) (_ []llm.MessageSegment, err error) {
+	step, level := "import", slog.LevelWarn
+	defer func() {
+		if err == nil {
+			return
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		record := events.LogRecord{Category: events.LogElnis, Level: level, Module: "elnis", EventName: "elnis_media_prepare_failed", ResultStatus: events.LogStatus(err), Identity: events.LogIdentityFromExecution(facts), Content: fmt.Sprintf("event_id=%s purpose=input operation=%s error=%v", eventID, step, err)}
+		if record.ResultStatus == events.ResultCanceled {
+			record.Level = slog.LevelInfo
+		}
+		_ = events.EmitLog(ctx, record)
+	}()
+
 	out := make([]llm.MessageSegment, 0, len(segments))
 	limits := media.ImportLimits{MaxImportBytes: s.cfg.Segment.MaxFileBytes, DownloadTimeout: time.Duration(s.cfg.Segment.DownloadTimeoutSecs) * time.Second}
 	for i, seg := range segments {
@@ -92,7 +108,7 @@ func (s *Service) materializeSegments(ctx context.Context, segments []delivery.O
 		}
 		input := media.Input{Name: seg.Name, MIMEType: seg.Source.MIMEType}
 		var info media.MediaInfo
-		var err error
+		step, level = "import", slog.LevelWarn
 		switch {
 		case seg.Source.MediaID != "":
 			info, err = s.media.Info(ctx, seg.Source.MediaID)
@@ -104,6 +120,7 @@ func (s *Service) materializeSegments(ctx context.Context, segments []delivery.O
 		if err != nil {
 			return nil, fmt.Errorf("segment %d: %w", i, err)
 		}
+		step, level = "save_reference", slog.LevelError
 		if err := s.media.AddEventReference(ctx, info.ID, eventID, "input"); err != nil {
 			return nil, err
 		}
@@ -140,11 +157,24 @@ func (s *Service) directMediaOutputs(ctx context.Context, event Event, eventID s
 	return outputs, nil
 }
 
-func (s *Service) importReportSegments(ctx context.Context, segments []delivery.Output, eventID string, dir string) ([]delivery.Output, error) {
+func (s *Service) importReportSegments(ctx context.Context, segments []delivery.Output, eventID string, dir string) (_ []delivery.Output, err error) {
+	step, level := "import", slog.LevelWarn
+	defer func() {
+		if err == nil {
+			return
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		record := events.LogRecord{Category: events.LogElnis, Level: level, Module: "elnis", EventName: "elnis_media_prepare_failed", ResultStatus: events.LogStatus(err), Identity: events.LogIdentityFromExecution(facts), Content: fmt.Sprintf("event_id=%s purpose=report operation=%s error=%v", eventID, step, err)}
+		if record.ResultStatus == events.ResultCanceled {
+			record.Level = slog.LevelInfo
+		}
+		_ = events.EmitLog(ctx, record)
+	}()
+
 	out := append([]delivery.Output(nil), segments...)
 	limits := media.ImportLimits{MaxImportBytes: s.cfg.Segment.MaxFileBytes, DownloadTimeout: time.Duration(s.cfg.Segment.DownloadTimeoutSecs) * time.Second}
 	for i, seg := range out {
-		var err error
+		step, level = "import", slog.LevelWarn
 		if seg.Source.Path != "" {
 			out[i], err = background.BuildReportSegmentOutput(ctx, seg, workspace.PathScope{Dir: dir, Restricted: true}, s.media, limits)
 		} else {
@@ -160,6 +190,7 @@ func (s *Service) importReportSegments(ctx context.Context, segments []delivery.
 		if err != nil {
 			return nil, err
 		}
+		step, level = "save_reference", slog.LevelError
 		if err := s.media.AddEventReference(ctx, out[i].Source.MediaID, eventID, "report"); err != nil {
 			return nil, err
 		}

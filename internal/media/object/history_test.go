@@ -71,7 +71,7 @@ func TestReconcileHistoryPaginatesAndStopsOnQueryFailure(t *testing.T) {
 	failure := errors.New("history unavailable")
 	unavailable := testHistory(func(context.Context, string, string, string) (*storage.ChatMessage, error) { return nil, failure })
 	m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
-	if _, err := m.Cleanup(t.Context(), unavailable); !errors.Is(err, failure) {
+	if err := m.Cleanup(t.Context(), unavailable); !errors.Is(err, failure) {
 		t.Fatalf("query failure = %v", err)
 	}
 	records, err := store.Media().FindHistory(t.Context(), "test", "", "scope", "message")

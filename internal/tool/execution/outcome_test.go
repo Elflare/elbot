@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -17,31 +16,14 @@ import (
 	toolshare "elbot/internal/tool/share"
 )
 
-func TestExecutionErrorPreservesOutcome(t *testing.T) {
+func TestExecutionErrorPreservesOriginalCause(t *testing.T) {
 	call := llm.ToolCallRequest{ID: "call", Name: "shell"}
-	for _, tc := range []struct {
-		name   string
-		status events.ResultStatus
-	}{
-		{name: "rejection", status: events.ResultRejected},
-		{name: "cancellation", status: events.ResultCanceled},
-		{name: "failure", status: events.ResultFailed},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			err := errors.New("source reason")
-			message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
-			result := executionError(call, message, err, tc.status)
-			wantSummary := fmt.Sprintf("tool call shell %s: source reason", tc.status)
-			if got := llm.SegmentsContentText(result.Message.Segments); got != wantSummary {
-				t.Errorf("model result = %q, want %q", got, wantSummary)
-			}
-			if result.Error != err || result.ResultStatus != tc.status || result.LogResult.ResultStatus != tc.status || result.LogResult.Content != wantSummary || result.ExecutionStarted {
-				t.Errorf("outcome = %+v", result)
-			}
-			if result.Message.Role != llm.RoleTool || result.Message.ToolCallID != call.ID || result.Message.Name != call.Name {
-				t.Errorf("message identity lost: %+v", result.Message)
-			}
-		})
+	for _, err := range []error{toolshare.PolicyDeniedError("denied"), context.Canceled, errors.New("execution failed")} {
+		message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
+		result := executionError(call, message, err)
+		if result.Error != err || result.ExecutionStarted || result.Message.ToolCallID != call.ID || !strings.Contains(result.Summary, err.Error()) {
+			t.Fatalf("result=%+v", result)
+		}
 	}
 }
 

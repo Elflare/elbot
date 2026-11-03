@@ -51,7 +51,7 @@ func TestSessionSequenceSurvivesRollbackDeletionAndReopen(t *testing.T) {
 		t.Fatalf("first=%d err=%v", n, err)
 	}
 	id := fmt.Sprintf("cl%d", n)
-	_, err = store.Sessions().CreateMaterial(t.Context(), storage.SessionMaterialCreate{
+	err = store.Sessions().CreateMaterial(t.Context(), storage.SessionMaterialCreate{
 		Session: &storage.Session{ID: id}, Messages: []*storage.Message{{ID: "bad", SessionID: "other"}},
 	})
 	if err == nil {
@@ -126,7 +126,7 @@ func TestSessionCreationRequiresPreallocatedID(t *testing.T) {
 	if err := store.Sessions().Create(t.Context(), row); err == nil || row.ID != "" {
 		t.Fatalf("storage allocated an ID: %+v %v", row, err)
 	}
-	if _, err := store.Sessions().CreateMaterial(t.Context(), storage.SessionMaterialCreate{Session: row}); err == nil || row.ID != "" {
+	if err := store.Sessions().CreateMaterial(t.Context(), storage.SessionMaterialCreate{Session: row}); err == nil || row.ID != "" {
 		t.Fatalf("material storage allocated an ID: %+v %v", row, err)
 	}
 }

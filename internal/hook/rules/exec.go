@@ -34,13 +34,13 @@ const (
 // runExec executes the one-shot variant of hook.v2. The process performs a
 // request/response handshake, receives one event.handle request, and returns a
 // completed result before exiting. Stateful hooks use internal/hook/runtime.
-func (m Module) runExec(ctx context.Context, event share.Event, action Action, state state) (share.Event, actionResult, globalevents.LogResult, error) {
+func (m Module) runExec(ctx context.Context, event share.Event, action Action, state state) (share.Event, actionResult, error) {
 	argv := make([]string, len(action.Command))
 	for i, arg := range action.Command {
 		argv[i] = render(arg, event, state)
 	}
 	if strings.TrimSpace(argv[0]) == "" {
-		return event, actionResult{Error: "command is required"}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "command is required; process not started"}, fmt.Errorf("command is required")
+		return event, actionResult{Error: "command is required"}, fmt.Errorf("command is required")
 	}
 	runCtx := ctx
 	cancel := func() {}
@@ -50,7 +50,7 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 	defer cancel()
 	cwd, err := m.execCwd(action, event, state)
 	if err != nil {
-		return event, actionResult{Error: err.Error()}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		return event, actionResult{Error: err.Error()}, err
 	}
 	processEnv := action.source.ProcessEnv
 	cmd := processEnv.CommandContext(runCtx, argv[0], argv[1:]...)
@@ -66,21 +66,17 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 	cmd.Dir = cwd
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return event, actionResult{Error: err.Error()}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		return event, actionResult{Error: err.Error()}, err
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return event, actionResult{Error: err.Error()}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		return event, actionResult{Error: err.Error()}, err
 	}
 	stderrTail := newExecStderrTail()
 	stderrLogger := newExecStderrLogger(ctx, m, action, stderrTail)
 	cmd.Stderr = stderrLogger
 	if err := cmd.Start(); err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if err == context.Canceled {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
-		return event, actionResult{Error: err.Error()}, logResult, err
+		return event, actionResult{Error: err.Error()}, err
 	}
 	defer stdin.Close()
 	waitExec := func() error {
@@ -88,19 +84,13 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 		stderrLogger.Flush()
 		return err
 	}
-	fail := func(result actionResult, logResult globalevents.LogResult, source error) (share.Event, actionResult, globalevents.LogResult, error) {
+	fail := func(result actionResult, source error) (share.Event, actionResult, error) {
 		source = errors.Join(source, killProcessTree())
 		_ = waitExec()
-		if contextErr := execContextError(runCtx, action); contextErr != nil {
-			logResult.Content += "\ncontext_error=" + contextErr.Error()
-		}
 		stderr := stderrTail.String()
 		source = withExecStderr(source, stderr)
 		result.Error = source.Error()
-		if stderr != "" {
-			logResult.Content += "\nstderr=" + stderr
-		}
-		return event, result, logResult, source
+		return event, result, source
 	}
 
 	reader := bufio.NewReader(stdout)
@@ -113,10 +103,10 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 	}
 	initID := "host:init"
 	if err := writeV2Request(stdin, initID, "system.init", map[string]any{"version": hookProtocolVersion, "runtime": runtime}); err != nil {
-		return fail(actionResult{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "write system.init: " + err.Error()}, pluginStdinWriteError("system.init", err))
+		return fail(actionResult{}, pluginStdinWriteError("system.init", err))
 	}
-	if _, logResult, err := m.readV2Response(runCtx, reader, stdin, event, action, state, initID); err != nil {
-		return fail(actionResult{}, logResult, err)
+	if _, err := m.readV2Response(runCtx, reader, stdin, event, action, state, initID); err != nil {
+		return fail(actionResult{}, err)
 	}
 	eventID := "host:event"
 	params := struct {
@@ -127,26 +117,26 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 		Runtime:           runtime,
 	}
 	if err := writeV2Request(stdin, eventID, "event.handle", params); err != nil {
-		return fail(actionResult{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "write event.handle: " + err.Error()}, pluginStdinWriteError("event.handle", err))
+		return fail(actionResult{}, pluginStdinWriteError("event.handle", err))
 	}
-	rawResult, logResult, err := m.readV2Response(runCtx, reader, stdin, event, action, state, eventID)
+	rawResult, err := m.readV2Response(runCtx, reader, stdin, event, action, state, eventID)
 	if err != nil {
-		return fail(actionResult{}, logResult, err)
+		return fail(actionResult{}, err)
 	}
 	result, updated, err := m.v2EventResult(runCtx, event, action, state, rawResult)
 	if err != nil {
-		return fail(result, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err)
+		return fail(result, err)
 	}
 	event = updated
 	if err := waitExec(); err != nil {
-		logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "process exit: " + err.Error()}
+
 		if runCtx.Err() != nil {
-			logResult.Content += "\ncontext_error=" + runCtx.Err().Error()
+
 			select {
 			case cancelErr := <-cancelRequested:
 				if cancelErr != nil {
 					err = errors.Join(err, cancelErr)
-					logResult.Content += "\nterminate_error=" + cancelErr.Error()
+
 				} else if processenv.ExitCanceled(cmd, true) {
 					err = execContextError(runCtx, action)
 				}
@@ -156,14 +146,11 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 				}
 			}
 		}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
 		err = fmt.Errorf("hook plugin exec failed: %w", err)
 		err = withExecStderr(err, stderrTail.String())
-		return event, actionResult{Error: err.Error()}, logResult, err
+		return event, actionResult{Error: err.Error()}, err
 	}
-	return event, result, logResult, nil
+	return event, result, nil
 }
 
 func writeV2Request(w io.Writer, id, method string, params any) error {
@@ -184,21 +171,17 @@ func writeV2Response(w io.Writer, id string, result any, sourceErr error) error 
 	return writeProtocolFrame(w, response)
 }
 
-func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin io.Writer, event share.Event, action Action, state state, wantedID string) (json.RawMessage, globalevents.LogResult, error) {
+func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin io.Writer, event share.Event, action Action, state state, wantedID string) (json.RawMessage, error) {
 	for {
 		line, err := readProtocolLine(reader)
 		if err != nil {
 			if ctx.Err() != nil && errors.Is(err, io.EOF) {
-				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: ctx.Err().Error()}
-				if ctx.Err() == context.Canceled {
-					logResult.ResultStatus = globalevents.ResultCanceled
-				}
-				return nil, logResult, execContextError(ctx, action)
+				return nil, execContextError(ctx, action)
 			}
 			if errors.Is(err, io.EOF) {
 				err = fmt.Errorf("hook.v2 plugin closed stdout while waiting for response %q", wantedID)
 			}
-			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+			return nil, err
 		}
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -207,35 +190,35 @@ func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin 
 		frame, err := hookprotocol.DecodeFrame([]byte(line))
 		if err != nil {
 			err = fmt.Errorf("parse hook.v2 stdout frame: %w; line=%s", err, shortProtocolLine(line))
-			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+			return nil, err
 		}
 		switch frame.Type {
 		case "response":
 			if err := hookprotocol.ValidateID(frame.ID, "host:"); err != nil {
 				err = fmt.Errorf("hook.v2 response: %w", err)
-				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+				return nil, err
 			}
 			if frame.ID != wantedID {
 				err := fmt.Errorf("unexpected hook.v2 response id %q while waiting for %q", frame.ID, wantedID)
-				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+				return nil, err
 			}
 			if frame.OK == nil || !*frame.OK {
 				err := fmt.Errorf("hook.v2 request %q failed: %s", wantedID, firstNonEmpty(frame.Error, "plugin returned ok=false"))
-				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+				return nil, err
 			}
-			return frame.Result, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: wantedID + " completed"}, nil
+			return frame.Result, nil
 		case "request":
 			if err := hookprotocol.ValidateID(frame.ID, "plugin:"); err != nil {
 				err = fmt.Errorf("hook.v2 request: %w", err)
-				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+				return nil, err
 			}
-			result, logResult, requestErr := m.handleProtocolRequest(ctx, event, action, state, frame.Method, frame.Params)
+			result, requestErr := m.handleProtocolRequest(ctx, event, action, state, frame.Method, frame.Params)
 			if err := writeV2Response(stdin, frame.ID, result, requestErr); err != nil {
-				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "response_write_error=" + err.Error() + "\nplugin_request=" + logResult.Content}, pluginStdinWriteError("response", err)
+				return nil, pluginStdinWriteError("response", err)
 			}
 			if requestErr != nil {
-				logResult.Content = "plugin request " + frame.Method + " aborted: " + logResult.Content
-				return nil, logResult, requestErr
+
+				return nil, requestErr
 			}
 		case "event":
 			if frame.Method == "hook.log" {
@@ -253,7 +236,7 @@ func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin 
 			}
 		default:
 			err := fmt.Errorf("unsupported hook.v2 frame type %q", frame.Type)
-			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+			return nil, err
 		}
 	}
 }
@@ -347,59 +330,44 @@ func shortProtocolLine(line string) string {
 	return string(runes[:max]) + "..."
 }
 
-func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, action Action, state state, method string, params json.RawMessage) (any, globalevents.LogResult, error) {
-	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "protocol request " + method + " handled"}
+func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, action Action, state state, method string, params json.RawMessage) (any, error) {
+
 	if strings.HasPrefix(method, "media.") {
 		result, err := m.Opts.Runtime.MediaRequest(ctx, action.sourceBaseDir(), method, params)
-		if err != nil {
-			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-			if errors.Is(err, context.Canceled) {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			}
-		}
-		return result, logResult, err
+		return result, err
 	}
 	if strings.HasPrefix(method, "shared.") {
 		result, err := m.Opts.Runtime.SharedRequest(method, params)
-		if err != nil {
-			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		}
-		return result, logResult, err
+		return result, err
 	}
 	switch method {
 	case "platform.call":
 		paramsMap, err := rawObject(params)
 		if err != nil {
-			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+			return nil, err
 		}
 		platformName, err := rawString(paramsMap["platform"])
 		if err != nil {
-			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+			return nil, err
 		}
 		if platformName == "" {
 			platformName = event.Chat.Platform
 		}
 		if event.Chat.Platform != "" && platformName != event.Chat.Platform {
 			err := fmt.Errorf("platform.call can only call current platform %q", event.Chat.Platform)
-			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+			return nil, err
 		}
 		api, err := rawString(paramsMap["api"])
 		if err != nil {
-			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+			return nil, err
 		}
 		callParams := map[string]any{}
 		if raw := paramsMap["params"]; len(raw) > 0 {
 			if err := json.Unmarshal(raw, &callParams); err != nil {
-				return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+				return nil, err
 			}
 		}
 		resp, err := m.Opts.CallPlatformAPI(ctx, platformName, api, callParams)
-		if err != nil {
-			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-			if errors.Is(err, context.Canceled) {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			}
-		}
 		content := map[string]any{"platform": platformName, "api": api, "rule": firstNonEmpty(action.source.FinalName, action.ActionName), "result": string(resp)}
 		if err != nil {
 			content["error"] = err.Error()
@@ -419,23 +387,26 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 			Content:      string(data),
 			ContentLimit: 4096,
 		}
-		record.ResultStatus = logResult.ResultStatus
-		if logResult.ResultStatus == globalevents.ResultFailed {
-			record.Level = slog.LevelError
+		record.ResultStatus = globalevents.ResultSucceeded
+		if err != nil {
+			record.Level, record.ResultStatus = slog.LevelWarn, globalevents.ResultFailed
+			if globalevents.LogStatus(err) == globalevents.ResultCanceled {
+				record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
+			}
 		}
 		record.Identity = logIdentity(ctx)
 		m.Opts.Log(ctx, record)
 		if err != nil {
-			return nil, logResult, err
+			return nil, err
 		}
 		var decoded any
 		if len(resp) > 0 && json.Unmarshal(resp, &decoded) == nil {
-			return decoded, logResult, nil
+			return decoded, nil
 		}
-		return string(resp), logResult, nil
+		return string(resp), nil
 	case "output.send":
-		logHook := func(outputs []delivery.Output, receipt delivery.Receipt, logResult globalevents.LogResult) {
-			content := map[string]any{"source": "rules", "rule": firstNonEmpty(action.source.FinalName, action.ActionName), "point": string(event.Point), "tool": event.Tool.Name, "output_count": len(outputs), "platform_message_ids": receipt.PlatformMessageIDs, "result": logResult.Content}
+		logHook := func(outputs []delivery.Output, receipt delivery.Receipt, err error) {
+			content := map[string]any{"source": "rules", "rule": firstNonEmpty(action.source.FinalName, action.ActionName), "point": string(event.Point), "tool": event.Tool.Name, "output_count": len(outputs), "platform_message_ids": receipt.PlatformMessageIDs, "result": ""}
 			content["sent_messages"] = []map[string]any{}
 			for _, sent := range receipt.SentMessages {
 				content["sent_messages"] = append(content["sent_messages"].([]map[string]any), map[string]any{"platform": sent.Platform, "chat_type": sent.ChatType, "chat_id": sent.ChatID, "platform_message_id": sent.PlatformMessageID, "output_indexes": sent.OutputIndexes})
@@ -443,9 +414,13 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 			if event.Tool.ID != "" {
 				content["tool_call_id"] = event.Tool.ID
 			}
-			record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_log", Module: "hook", Type: globalevents.ContentJSON, ContentLimit: 0, ResultStatus: logResult.ResultStatus}
-			if logResult.ResultStatus == globalevents.ResultFailed {
-				record.Level = slog.LevelError
+			record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_log", Module: "hook", Type: globalevents.ContentJSON, ContentLimit: 0, ResultStatus: globalevents.ResultSucceeded}
+			if err != nil {
+				content["result"] = err.Error()
+				record.Level, record.ResultStatus = slog.LevelWarn, globalevents.ResultFailed
+				if globalevents.LogStatus(err) == globalevents.ResultCanceled {
+					record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
+				}
 			}
 			record.Identity = logIdentity(ctx)
 			content["actor"] = event.Actor
@@ -463,32 +438,32 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 		}
 		paramsMap, err := rawObject(params)
 		if err != nil {
-			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "send not entered; invalid output params: " + err.Error()}
-			logHook(nil, delivery.Receipt{}, logResult)
-			return nil, logResult, err
+
+			logHook(nil, delivery.Receipt{}, err)
+			return nil, err
 		}
 		outputs, err := protocolOutputsFromMap(paramsMap, action, renderedActionTarget(action, event, state), render(action.Timing, event, state), "params.outputs")
 		if err != nil {
-			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "send not entered; output preparation: " + err.Error()}
-			logHook(nil, delivery.Receipt{}, logResult)
-			return nil, logResult, err
+
+			logHook(nil, delivery.Receipt{}, err)
+			return nil, err
 		}
 		target, err := delivery.ValidateOutputsTarget(outputs)
 		if err != nil {
-			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-			logHook(outputs, delivery.Receipt{}, logResult)
-			return nil, logResult, err
+
+			logHook(outputs, delivery.Receipt{}, err)
+			return nil, err
 		}
-		receipt, logResult, err := m.Opts.Send(ctx, target, outputs)
-		logHook(outputs, receipt, logResult)
+		receipt, err := m.Opts.Send(ctx, target, outputs)
+		logHook(outputs, receipt, err)
 		if err != nil {
-			return nil, logResult, err
+			return nil, err
 		}
-		return map[string]any{"sent": len(outputs), "receipts": []delivery.Receipt{receipt}}, logResult, nil
+		return map[string]any{"sent": len(outputs), "receipts": []delivery.Receipt{receipt}}, nil
 	case "message.get_reply":
-		return map[string]any{"message_id": event.Chat.ReplyToMessageID, "available": event.Chat.ReplyToMessageID != ""}, logResult, nil
+		return map[string]any{"message_id": event.Chat.ReplyToMessageID, "available": event.Chat.ReplyToMessageID != ""}, nil
 	case "message.get":
-		return map[string]any{"available": false}, logResult, nil
+		return map[string]any{"available": false}, nil
 	case "hook.log":
 		record := globalevents.LogRecord{
 			Category:     globalevents.LogRuntime,
@@ -501,10 +476,10 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 		}
 		record.Identity = logIdentity(ctx)
 		m.Opts.Log(ctx, record)
-		return map[string]any{"ok": true}, logResult, nil
+		return map[string]any{"ok": true}, nil
 	default:
 		err := fmt.Errorf("unsupported hook protocol method %q", method)
-		return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		return nil, err
 	}
 }
 

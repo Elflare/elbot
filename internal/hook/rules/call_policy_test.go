@@ -18,7 +18,7 @@ func TestReadOnlyRuleFailureRestoresPipelineInputAndStopsFollowingRule(t *testin
 	}}
 	module.RegisterHooks(manager)
 	event := share.Event{Point: share.PointToolCallPrepared, Tool: share.ToolPayload{ID: "call", Name: "tool", Arguments: "{}"}}
-	got, _, err := manager.Run(context.Background(), event, pipeline.CallOptions{Woken: true, ReadOnlyCalls: true})
+	got, err := manager.Run(context.Background(), event, pipeline.CallOptions{Woken: true, ReadOnlyCalls: true})
 	if err == nil || !strings.Contains(err.Error(), "read-only") || got.Tool.Arguments != "{}" || len(got.Outputs) != 0 {
 		t.Fatalf("read-only failure escaped rule boundary: event=%+v err=%v", got, err)
 	}
@@ -27,11 +27,11 @@ func TestReadOnlyRuleFailureRestoresPipelineInputAndStopsFollowingRule(t *testin
 func TestReadOnlyArgumentsStopsRuleBeforeFollowingExecAction(t *testing.T) {
 	rule := Rule{Actions: []Action{{Type: "append", Field: "tool.arguments", Text: "changed"}, {Type: "exec", Command: execHelperCommand("print", "should not run")}}}
 	event := share.Event{Point: share.PointToolCallPrepared, Tool: share.ToolPayload{ID: "call", Name: "tool", Arguments: "{}"}}
-	got, _, err := (Module{Opts: Options{Log: testLog, Notify: testNotify}}).runRule(t.Context(), rule, event, true)
+	got, err := (Module{Opts: Options{Log: testLog, Notify: testNotify}}).runRule(t.Context(), rule, event, true)
 	if err == nil || !strings.Contains(err.Error(), "read-only") || len(got.Outputs) != 0 {
 		t.Fatalf("rule continued after rewrite: %+v %v", got, err)
 	}
-	got, _, err = (Module{Opts: Options{Log: testLog, Notify: testNotify}}).runRule(t.Context(), rule, event, false)
+	got, err = (Module{Opts: Options{Log: testLog, Notify: testNotify}}).runRule(t.Context(), rule, event, false)
 	if err != nil || len(got.Outputs) != 1 || got.Tool.Arguments != "{}changed" {
 		t.Fatalf("ordinary rewrite failed: %+v %v", got, err)
 	}
@@ -44,7 +44,7 @@ func TestReadOnlyCallsAllowsExecDisplayAndToolResults(t *testing.T) {
 		if point == share.PointLLMResponseReceived {
 			field = "llm.text"
 		}
-		got, _, err := (Module{Opts: Options{Log: testLog, Notify: testNotify}}).runRule(t.Context(), Rule{Actions: []Action{{Type: "exec", Field: field, Command: execHelperCommand("done-message")}}}, event, true)
+		got, err := (Module{Opts: Options{Log: testLog, Notify: testNotify}}).runRule(t.Context(), Rule{Actions: []Action{{Type: "exec", Field: field, Command: execHelperCommand("done-message")}}}, event, true)
 		if err != nil || validateCalls(true, event, got) != nil {
 			t.Fatalf("exec policy=%+v %v", got, err)
 		}

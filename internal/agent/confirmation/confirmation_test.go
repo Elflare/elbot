@@ -17,8 +17,6 @@ import (
 
 	agentshare "elbot/internal/agent/share"
 
-	"elbot/internal/events"
-
 	"elbot/internal/llm"
 
 	"elbot/internal/request"
@@ -127,7 +125,7 @@ type confirmationOutput struct {
 	texts chan string
 }
 
-func (o confirmationOutput) SendAssistant(_ context.Context, text string, actions ...delivery.Action) (delivery.Receipt, events.LogResult, error) {
+func (o confirmationOutput) SendAssistant(_ context.Context, text string, actions ...delivery.Action) (delivery.Receipt, error) {
 	if o.texts != nil {
 		o.texts <- text
 	}
@@ -135,9 +133,9 @@ func (o confirmationOutput) SendAssistant(_ context.Context, text string, action
 		o.sent <- actions
 	}
 	if o.err != nil {
-		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultFailed}, o.err
+		return delivery.Receipt{}, o.err
 	}
-	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+	return delivery.Receipt{}, nil
 }
 
 func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {

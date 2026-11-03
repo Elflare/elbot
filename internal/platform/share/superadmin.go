@@ -7,7 +7,6 @@ import (
 	"slices"
 
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 )
 
 // Superadmins 由根部按平台构造；名单为已整理的原生用户 ID，构造后只读。
@@ -25,20 +24,20 @@ func (s *Superadmins) IsSuperadmin(senderID string) bool {
 }
 
 // SendTo 逐个发送私聊，遇错停止并保留已取得的回执；发送回调负责协议与连接。
-func (s *Superadmins) SendTo(ctx context.Context, outputs []delivery.Output, send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)) (delivery.Receipt, events.LogResult, error) {
+func (s *Superadmins) SendTo(ctx context.Context, outputs []delivery.Output, send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)) (delivery.Receipt, error) {
 	if len(s.ids) == 0 {
 		err := fmt.Errorf("%s superadmins are not configured", s.platformName)
-		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
+		return delivery.Receipt{}, err
 	}
 	var receipt delivery.Receipt
 	for _, id := range s.ids {
 		target := delivery.Target{Platform: s.platformName, ChatType: "private", ChatID: id}
-		sent, result, err := send(ctx, target, outputs)
+		sent, err := send(ctx, target, outputs)
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 		if err != nil {
-			return receipt, result, err
+			return receipt, err
 		}
 	}
-	return receipt, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+	return receipt, nil
 }

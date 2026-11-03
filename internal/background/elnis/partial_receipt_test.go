@@ -2,7 +2,6 @@ package elnis
 
 import (
 	"context"
-	"elbot/internal/events"
 	"errors"
 	"testing"
 
@@ -14,22 +13,12 @@ func TestPartialReportMapsSuccessAndRemainsRetryable(t *testing.T) {
 	wantErr := errors.New("later page failed")
 	calls := 0
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"done"}`}
-	s, cleanup := newTestServiceWithRunner(t, runner, func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	s, cleanup := newTestServiceWithRunner(t, runner, func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
 		calls++
 		if calls == 1 {
-			{
-				logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
-				if wantErr != nil {
-					logResult.ResultStatus = events.ResultFailed
-					logResult.Content = wantErr.Error()
-					if wantErr == context.Canceled {
-						logResult.ResultStatus = events.ResultCanceled
-					}
-				}
-				return delivery.Receipt{PlatformMessageIDs: []string{"partial"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ChatType: "private", ChatID: "1001", PlatformMessageID: "partial"}}}, logResult, wantErr
-			}
+			return delivery.Receipt{PlatformMessageIDs: []string{"partial"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ChatType: "private", ChatID: "1001", PlatformMessageID: "partial"}}}, wantErr
 		}
-		return delivery.Receipt{PlatformMessageIDs: []string{"retry"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ChatType: "private", ChatID: "1001", PlatformMessageID: "retry"}}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		return delivery.Receipt{PlatformMessageIDs: []string{"retry"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ChatType: "private", ChatID: "1001", PlatformMessageID: "retry"}}}, nil
 	})
 	defer cleanup()
 	var queued QueuedLLMEvent
@@ -47,7 +36,7 @@ func TestPartialReportMapsSuccessAndRemainsRetryable(t *testing.T) {
 	if err != nil || event.Status != StatusResultReady {
 		t.Fatalf("event=%#v/%v", event, err)
 	}
-	if _, err := s.recoverReports(ctx); err != nil {
+	if err := s.recoverReports(ctx); err != nil {
 		t.Fatal(err)
 	}
 	event, err = testRepo(s).snapshot(ctx, queued.EventID)

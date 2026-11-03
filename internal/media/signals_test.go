@@ -95,7 +95,7 @@ func TestUsageFailureRemainsOwnedAfterCanceledConsumerReturns(t *testing.T) {
 		t.Fatal("consumer completion retried cleanup")
 	}
 	refs.fail.Store(false)
-	if _, err := m.Cleanup(t.Context()); err != nil {
+	if err := m.Cleanup(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	remaining, err := store.MediaReferences().ListMediaIDs(t.Context(), item.ID)
@@ -208,7 +208,7 @@ func TestOutputFailureAndWorkspaceCleanupRemainInMedia(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "output"), []byte("body"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Cleanup(t.Context()); err != nil {
+	if err := m.Cleanup(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(dir); err != nil {

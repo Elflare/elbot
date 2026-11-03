@@ -7,7 +7,6 @@ import (
 	"slices"
 	"testing"
 
-	"elbot/internal/events"
 	toolshare "elbot/internal/tool/share"
 )
 
@@ -36,12 +35,12 @@ func TestStatePersistsCompleteDeclarationsByCanonicalName(t *testing.T) {
 	left.Schema.Name, right.Schema.Name = left.CanonicalName, right.CanonicalName
 	left.Endpoint, right.Endpoint = "https://left.invalid", "https://right.invalid"
 	left.EventKey, right.EventKey = "left-event", "right-event"
-	first, _, err := service.Commit(t.Context(), row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{right, left}})
+	first, err := service.Commit(t.Context(), row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{right, left}})
 	if err != nil || !slices.Equal(first.Injected, []string{"left_remote", "right_remote"}) {
 		t.Fatalf("first=%+v err=%v", first, err)
 	}
 	left.Endpoint = "https://updated.invalid"
-	next, _, err := service.Commit(t.Context(), row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{left}})
+	next, err := service.Commit(t.Context(), row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{left}})
 	if err != nil || len(next.Injected) != 0 || !slices.Equal(next.Existing, []string{"left_remote"}) {
 		t.Fatalf("next=%+v err=%v", next, err)
 	}
@@ -59,9 +58,9 @@ func TestStatePersistsCompleteDeclarationsByCanonicalName(t *testing.T) {
 	if len(stored) != 2 || stored[0].Endpoint != left.Endpoint || stored[1].Endpoint != right.Endpoint || stored[0].EventKey != left.EventKey {
 		t.Fatalf("stored=%+v", stored)
 	}
-	restored, logResult, err := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools).DiscoveredToolsForSession(t.Context(), row.ID, false)
-	if err != nil || logResult.ResultStatus != events.ResultSucceeded || !reflect.DeepEqual(restored, stored) {
-		t.Fatalf("restored=%+v log=%+v err=%v", restored, logResult, err)
+	restored, err := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools).DiscoveredToolsForSession(t.Context(), row.ID, false)
+	if err != nil || !reflect.DeepEqual(restored, stored) {
+		t.Fatal("restored= log= err=", restored, err)
 	}
 }
 
@@ -71,19 +70,19 @@ func TestStateReadUsesPersistedDeclarationsAndBackgroundRules(t *testing.T) {
 	regular, front, workspace := stateTestTool("unregistered"), stateTestTool("front"), stateTestTool("workspace")
 	regular.Schema.Description = "persisted definition"
 	front.ForegroundOnly = true
-	if _, _, err := service.Commit(t.Context(), row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{regular, front, workspace}}); err != nil {
+	if _, err := service.Commit(t.Context(), row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{regular, front, workspace}}); err != nil {
 		t.Fatal(err)
 	}
-	all, _, err := service.DiscoveredToolsForSession(t.Context(), row.ID, false)
+	all, err := service.DiscoveredToolsForSession(t.Context(), row.ID, false)
 	if err != nil || len(all) != 3 {
 		t.Fatalf("all=%+v err=%v", all, err)
 	}
-	background, _, err := service.DiscoveredToolsForSession(t.Context(), row.ID, true)
+	background, err := service.DiscoveredToolsForSession(t.Context(), row.ID, true)
 	if err != nil || len(background) != 1 || background[0].Name != regular.Name || background[0].Schema.Description != "persisted definition" {
 		t.Fatalf("background=%+v err=%v", background, err)
 	}
 	background[0].Schema.Parameters["changed"] = true
-	again, _, err := service.DiscoveredToolsForSession(t.Context(), row.ID, true)
+	again, err := service.DiscoveredToolsForSession(t.Context(), row.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +108,7 @@ func TestPrepareUpdateOwnsOnlyToolFieldsAndMatchesCommit(t *testing.T) {
 	if err != nil || unchanged.Metadata != raw {
 		t.Fatalf("prepare wrote storage: row=%+v err=%v", unchanged, err)
 	}
-	committed, _, err := service.Commit(t.Context(), row.ID, update)
+	committed, err := service.Commit(t.Context(), row.ID, update)
 	if err != nil {
 		t.Fatal(err)
 	}

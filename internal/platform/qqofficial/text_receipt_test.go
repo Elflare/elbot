@@ -20,7 +20,7 @@ func TestTextReceiptsKeepActualTarget(t *testing.T) {
 	for _, target := range []delivery.Target{{ChatType: "private", ChatID: "user"}, {ChatType: "group", ChatID: "group"}} {
 		want := target.ChatID
 		for _, output := range []delivery.Output{delivery.Text("report"), delivery.Reply("old", "reply"), {Kind: delivery.KindRecord, Text: "voice fallback", Source: delivery.Source{URL: "https://example.com/voice.mp3"}}} {
-			receipt, _, err := a.SendTo(context.Background(), target, []delivery.Output{output})
+			receipt, err := a.SendTo(context.Background(), target, []delivery.Output{output})
 			if err != nil || len(receipt.SentMessages) != 1 {
 				t.Fatalf("receipt=%#v err=%v", receipt, err)
 			}

@@ -67,7 +67,7 @@ func TestHoldProtectsUntilLastRelease(t *testing.T) {
 		t.Fatalf("Open added references: %#v", refs)
 	}
 	m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
-	if _, err := m.Cleanup(t.Context(), nil); err != nil {
+	if err := m.Cleanup(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := m.Info(t.Context(), item.ID); err != nil {
@@ -77,14 +77,14 @@ func TestHoldProtectsUntilLastRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.options.Now = func() time.Time { return time.Now().Add(30 * time.Minute) }
-	if _, err := m.Cleanup(t.Context(), nil); err != nil {
+	if err := m.Cleanup(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := m.Info(t.Context(), item.ID); err != nil {
 		t.Fatal("grace period ignored", err)
 	}
 	m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
-	if _, err := m.Cleanup(t.Context(), nil); err != nil {
+	if err := m.Cleanup(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := m.Info(t.Context(), item.ID); !errors.Is(err, storage.ErrNotFound) {

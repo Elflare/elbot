@@ -26,7 +26,7 @@ func TestExecutorExecutesTool(t *testing.T) {
 	if result.Error != nil {
 		t.Fatal(result.Error)
 	}
-	if result.ResultStatus != events.ResultSucceeded || !result.ExecutionStarted {
+	if result.Error != nil || !result.ExecutionStarted {
 		t.Fatalf("execution facts = %#v", result)
 	}
 	if result.Message.Role != llm.RoleTool || result.Message.ToolCallID != "call_1" || result.Message.Name != "ok" || llm.SegmentsContentText(result.Message.Segments) != "ok" {
@@ -40,7 +40,7 @@ func TestExecutorMissingToolReturnsToolMessageError(t *testing.T) {
 	if result.Error == nil {
 		t.Fatal("expected error")
 	}
-	if result.ResultStatus != events.ResultFailed || result.ExecutionStarted {
+	if result.Error == nil || result.ExecutionStarted {
 		t.Fatalf("lookup facts = %#v", result)
 	}
 	if result.Message.Role != llm.RoleTool || result.Message.ToolCallID != "call_1" || !strings.Contains(llm.SegmentsContentText(result.Message.Segments), "not found") {
@@ -121,7 +121,7 @@ func TestExecutorRetainsPartialResultAndOriginalError(t *testing.T) {
 				t.Fatal(err)
 			}
 			result := executeTestCall(registry, llm.ToolCallRequest{ID: "partial", Name: "segments", Arguments: `{}`})
-			if result.Error != tc.err || result.ResultStatus != tc.status || !result.ExecutionStarted {
+			if result.Error != tc.err || !result.ExecutionStarted {
 				t.Fatalf("execution facts = %#v", result)
 			}
 			if result.Result == nil || string(result.Result.Data) != `{"partial":true}` || llm.SegmentsContentText(result.Message.Segments) != "completed first action" {

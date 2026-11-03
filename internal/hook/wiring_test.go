@@ -19,8 +19,8 @@ import (
 
 type wiringTestPlatform struct{}
 
-func (wiringTestPlatform) SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+func (wiringTestPlatform) SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+	return delivery.Receipt{}, nil
 }
 
 func (wiringTestPlatform) CallPlatformAPI(context.Context, string, string, map[string]any) (json.RawMessage, error) {

@@ -3,7 +3,6 @@ package dispatch
 import (
 	"context"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/media"
 	"errors"
 	"testing"
@@ -32,19 +31,19 @@ func TestSendPublishesUsageAfterSendWithoutChangingReceipt(t *testing.T) {
 				}
 				finished++
 			}})
-			receipt, result, err := router.sendPreparedMedia(ctx, []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{MediaID: "media:test"}}}, func(outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+			receipt, err := router.sendPreparedMedia(ctx, []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{MediaID: "media:test"}}}, func(outputs []delivery.Output) (delivery.Receipt, error) {
 				sent++
 				if finished != 0 || outputs[0].Source.Path != "prepared" {
 					t.Fatal("finished during send")
 				}
 				if canceled {
 					cancel()
-					return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, events.LogResult{ResultStatus: events.ResultCanceled}, ctx.Err()
+					return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, ctx.Err()
 				}
-				return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+				return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, nil
 			})
-			if finished != 1 || len(receipt.PlatformMessageIDs) != 1 || canceled && !errors.Is(err, context.Canceled) || !canceled && (err != nil || result.ResultStatus != events.ResultSucceeded) {
-				t.Fatal(receipt, result, err, finished)
+			if finished != 1 || len(receipt.PlatformMessageIDs) != 1 || canceled && !errors.Is(err, context.Canceled) || !canceled && err != nil {
+				t.Fatal(receipt, err, finished)
 			}
 		})
 	}

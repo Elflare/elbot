@@ -4,7 +4,6 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
-	"elbot/internal/events"
 	"elbot/internal/security"
 	"encoding/json"
 	"errors"
@@ -135,7 +134,7 @@ func TestMediaArgumentsRemainExplicit(t *testing.T) {
 	}
 	call := llm.ToolCallRequest{Name: target.Name(), Arguments: arguments}
 	definition := target.Definition()
-	resolved := resolvedTool{ResultStatus: events.ResultSucceeded, Native: &definition}
+	resolved := resolvedTool{Native: &definition}
 	prepared, err := manager.prepareCall(context.Background(), resolved, call)
 	if err != nil {
 		t.Fatal(err)

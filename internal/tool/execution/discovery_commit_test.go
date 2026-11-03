@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -26,7 +25,7 @@ type discoveryCommitter struct {
 	patch   storage.SessionMetadata
 }
 
-func (c *discoveryCommitter) Result(ctx context.Context, index int, call llm.ToolCallRequest, message llm.LLMMessage, commit *storage.ToolResultCommit) (events.LogResult, error) {
+func (c *discoveryCommitter) Result(ctx context.Context, index int, call llm.ToolCallRequest, message llm.LLMMessage, commit *storage.ToolResultCommit) error {
 	c.t.Helper()
 	if c.session.Metadata != c.before {
 		c.t.Fatal("session state changed before result commit")
@@ -36,7 +35,7 @@ func (c *discoveryCommitter) Result(ctx context.Context, index int, call llm.Too
 	}
 	c.patch = commit.Metadata
 	if c.failure != nil {
-		return events.LogResult{ResultStatus: events.ResultFailed}, c.failure
+		return c.failure
 	}
 	return c.testToolCommitter.Result(ctx, index, call, message, commit)
 }

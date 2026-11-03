@@ -6,13 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"elbot/internal/events"
 	"elbot/internal/storage"
 )
 
 // A snapshot freezes the current exchange at a completed tool batch. It is
 // deliberately off the live cursor path and consumes neither inputs nor seeds.
-func appendNativeSnapshot(ctx context.Context, tx *sql.Tx, commit storage.DialogueCommit) (events.LogResult, error) {
+func appendNativeSnapshot(ctx context.Context, tx *sql.Tx, commit storage.DialogueCommit) error {
 	native, batch := commit.Native, commit.ToolBatch
 	snapshot := native.Snapshot
 	var head *storage.Message
@@ -23,36 +22,36 @@ func appendNativeSnapshot(ctx context.Context, tx *sql.Tx, commit storage.Dialog
 		head = commit.ToolResult.Call
 	}
 	if native.Checkpoint.ID != "" || len(native.ConsumedInputs) != 0 || native.ConsumeSeedID != "" || head == nil || snapshot.ID == "" || snapshot.SessionID != commit.SessionID || snapshot.MessageID != head.ID {
-		return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("invalid native message snapshot")
+		return fmt.Errorf("invalid native message snapshot")
 	}
 	var parent, exchange, response, seed, owner string
 	if err := tx.QueryRowContext(ctx, `SELECT session_id,parent_id,exchange_id,response_id,seed_id FROM native_checkpoints WHERE id=?`, native.ExpectedCheckpointID).Scan(&owner, &parent, &exchange, &response, &seed); err != nil {
-		return events.LogResult{ResultStatus: events.ResultFailed}, err
+		return err
 	}
 	if owner != commit.SessionID || snapshot.ParentID != parent || snapshot.ExchangeID != exchange || snapshot.ResponseID != response || snapshot.SeedID != seed {
-		return events.LogResult{ResultStatus: events.ResultSkipped}, fmt.Errorf("native snapshot does not match current checkpoint")
+		return fmt.Errorf("native snapshot does not match current checkpoint")
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT exchange_id,call_id,ordinal,name,arguments,status,result_input_id FROM native_calls WHERE exchange_id=? ORDER BY ordinal`, exchange)
 	if err != nil {
-		return events.LogResult{ResultStatus: events.ResultFailed}, err
+		return err
 	}
 	var calls []storage.NativeCall
 	for rows.Next() {
 		var call storage.NativeCall
 		if err := rows.Scan(&call.ExchangeID, &call.CallID, &call.Ordinal, &call.Name, &call.Arguments, &call.Status, &call.ResultInputID); err != nil {
 			rows.Close()
-			return events.LogResult{ResultStatus: events.ResultFailed}, err
+			return err
 		}
 		calls = append(calls, call)
 	}
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
-		return events.LogResult{ResultStatus: events.ResultFailed}, err
+		return err
 	}
 	raw, err := json.Marshal(calls)
 	if err != nil {
-		return events.LogResult{ResultStatus: events.ResultSkipped}, err
+		return err
 	}
 	snapshot.CallsJSON = string(raw)
 	if snapshot.CreatedAt.IsZero() {
@@ -60,7 +59,7 @@ func appendNativeSnapshot(ctx context.Context, tx *sql.Tx, commit storage.Dialog
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO native_checkpoints(id,session_id,parent_id,exchange_id,response_id,message_id,seed_id,calls_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, snapshot.ID, snapshot.SessionID, snapshot.ParentID, snapshot.ExchangeID, snapshot.ResponseID, snapshot.MessageID, snapshot.SeedID, snapshot.CallsJSON, storage.FormatTime(snapshot.CreatedAt))
 	if err != nil {
-		return events.LogResult{ResultStatus: events.ResultFailed}, err
+		return err
 	}
-	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+	return nil
 }

@@ -144,7 +144,7 @@ path = "assets/pic.png"
 	if len(cfg.Rules) != 1 || cfg.Rules[0].source.PluginName != "demo" || cfg.Rules[0].source.BaseDir != pluginDir {
 		t.Fatalf("rules = %#v", cfg.Rules)
 	}
-	got, _, err := Module{Opts: Options{Log: testLog, Notify: testNotify}}.runRule(context.Background(), cfg.Rules[0], share.Event{Point: share.PointLLMResponseReceived}, false)
+	got, err := Module{Opts: Options{Log: testLog, Notify: testNotify}}.runRule(context.Background(), cfg.Rules[0], share.Event{Point: share.PointLLMResponseReceived}, false)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
@@ -378,7 +378,7 @@ text = "continued"
 	}
 	manager := pipeline.NewManager(testLog, nil)
 	module.RegisterHooks(manager)
-	event, _, err := manager.Run(context.Background(), share.Event{
+	event, err := manager.Run(context.Background(), share.Event{
 		Point: share.PointPlatformMessageReceived,
 		Chat:  share.ChatContext{Platform: "qqonebot", ChatType: "group", ID: "123"},
 	}, pipeline.CallOptions{Woken: true})
@@ -460,7 +460,7 @@ text = "user rule"
 	}
 	manager := pipeline.NewManager(testLog, nil)
 	(Module{Opts: Options{Log: testLog, Notify: testNotify}, Rules: cfg.Rules}).RegisterHooks(manager)
-	allowed, _, err := manager.Run(context.Background(), share.Event{
+	allowed, err := manager.Run(context.Background(), share.Event{
 		Point: share.PointPlatformMessageReceived,
 		Chat:  share.ChatContext{Platform: "qqonebot", ChatType: "group", ID: "999"},
 		Actor: share.ActorContext{Platform: "qqonebot", ID: "42"},
@@ -471,7 +471,7 @@ text = "user rule"
 	if len(allowed.Outputs) != 2 {
 		t.Fatalf("allowed outputs = %#v", allowed.Outputs)
 	}
-	blocked, _, err := manager.Run(context.Background(), share.Event{
+	blocked, err := manager.Run(context.Background(), share.Event{
 		Point: share.PointPlatformMessageReceived,
 		Chat:  share.ChatContext{Platform: "qqonebot", ChatType: "group", ID: "123"},
 	}, pipeline.CallOptions{Woken: true})

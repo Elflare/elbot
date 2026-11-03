@@ -228,7 +228,7 @@ func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session 
 	c.status.Record(ctx, doneStatus)
 	nextSelection := c.SelectionForTurn(ctx, session)
 	if c.shouldCompact(ctx, session, nextSelection) {
-		_, _, _ = out.SendAssistant(ctx, "compact → next request")
+		_, _ = out.SendAssistant(ctx, "compact → next request")
 	}
 	pending, completed := c.turns.CompleteTurn(session.ID, turn.AttemptFromContext(ctx))
 	if !completed {
@@ -254,7 +254,7 @@ func (c *ExecutionCoordinator) handleTurnContextDone(ctx context.Context, sessio
 		facts.SessionID = sessionID
 		record := events.LogRecord{
 			Category:     events.LogRuntime,
-			Level:        slog.LevelError,
+			Level:        slog.LevelWarn,
 			EventName:    "turn_response_timeout",
 			Module:       "agent",
 			Type:         events.ContentText,

@@ -63,7 +63,7 @@ type LoopDeps struct {
 		ExecuteWithCommitter(context.Context, *storage.Session, []llm.ToolCallRequest, string, string, agentshare.Output, tool.ToolCommitter) tool.RunResult
 	}
 	Messages interface {
-		Commit(context.Context, storage.DialogueCommit, string) (events.LogResult, error)
+		Commit(context.Context, storage.DialogueCommit, string) error
 	}
 	Calls interface {
 		Begin(string, modelmgr.Selection) agentshare.CallObservation

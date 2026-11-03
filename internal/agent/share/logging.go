@@ -21,19 +21,19 @@ func TruncateLogContent(text string, limit int) string {
 	return logging.TruncateContent(text, limit)
 }
 
-// ReportFailure reports a terminal business failure at its owning entrypoint.
+// ReportFailure records termination, without repeating the owning operation diagnostic.
 // Callers settle cancellation, recovery and execution replacement before calling.
 // notify preserves foreground/background delivery policy without coupling steps
 // to notification transport or adding an "already reported" error marker.
 func ReportFailure(ctx context.Context, sessionID string, err error, notify func(context.Context, slog.Level, string)) {
 	record := events.LogRecord{
-		Category: events.LogRuntime, Level: slog.LevelError,
+		Category: events.LogRuntime, Level: slog.LevelWarn,
 		EventName: "dialogue_failed", Module: "dialogue", Type: events.ContentText,
-		Content: err.Error(), ContentLimit: 8192, ResultStatus: events.ResultFailed,
+		Content: "dialogue terminated", ResultStatus: events.ResultFailed,
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record.Identity = events.LogIdentityFromExecution(facts)
 	record.Identity.SessionID = &sessionID
 	_ = events.EmitLog(context.WithoutCancel(ctx), record)
-	notify(session.WithBinding(context.WithoutCancel(ctx), nil), slog.LevelError, "对话处理失败："+err.Error())
+	notify(session.WithBinding(context.WithoutCancel(ctx), nil), slog.LevelWarn, "对话处理失败："+err.Error())
 }

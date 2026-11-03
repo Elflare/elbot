@@ -5,8 +5,10 @@ import (
 	"elbot/internal/testutil"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"elbot/internal/config"
@@ -80,6 +82,9 @@ func TestModelErrorReachesNotificationWithoutIntermediatePrefixes(t *testing.T) 
 			var notices []string
 			connection, err := events.NotificationRequested.Connect(func(_ context.Context, notice events.Notification) (events.NotificationReceipt, error) {
 				if notice.Text != "barrier" {
+					if notice.Level != slog.LevelWarn {
+						t.Errorf("ordinary failure notification level=%s", notice.Level)
+					}
 					notices = append(notices, notice.Text)
 				}
 				return events.NotificationReceipt{}, nil
@@ -88,12 +93,35 @@ func TestModelErrorReachesNotificationWithoutIntermediatePrefixes(t *testing.T) 
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = connection.Close(context.Background()) })
+			var records []events.LogRecord
+			logConnection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+				if record.EventName == "llm_usage" || record.EventName == "dialogue_failed" {
+					records = append(records, record)
+					return errors.New("logger rejected record")
+				}
+				return nil
+			}, signal.ConnectOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(logConnection.Disconnect)
 			err = m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "hello"})
 			if err == nil || err.Error() != tc.want {
 				t.Fatalf("error=%v want=%q", err, tc.want)
 			}
 			if tc.cause != nil && !errors.Is(err, tc.cause) {
 				t.Fatalf("error cause lost: %v", err)
+			}
+			if len(records) != 2 {
+				t.Fatalf("model and dialogue completion logs=%+v", records)
+			}
+			for _, record := range records {
+				if record.EventName == "dialogue_failed" && strings.Contains(record.Content, tc.want) {
+					t.Fatalf("termination repeated provider diagnostic: %+v", record)
+				}
+				if record.Level != slog.LevelWarn || record.ResultStatus != events.ResultFailed {
+					t.Fatalf("ordinary model failure was reclassified: %+v", record)
+				}
 			}
 			if _, err := events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "barrier"}); err != nil {
 				t.Fatal(err)

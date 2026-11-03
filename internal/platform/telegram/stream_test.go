@@ -41,7 +41,7 @@ func TestMessageStreamSendEditReplace(t *testing.T) {
 	if err := stream.Append(context.Background(), " world"); err != nil {
 		t.Fatal(err)
 	}
-	receipt, _, err := stream.Replace(context.Background(), "final")
+	receipt, err := stream.Replace(context.Background(), "final")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestPrivateMessageStreamUsesRichDraft(t *testing.T) {
 	if err := stream.Append(context.Background(), "# hi"); err != nil {
 		t.Fatal(err)
 	}
-	receipt, _, err := stream.Replace(context.Background(), "# final")
+	receipt, err := stream.Replace(context.Background(), "# final")
 	if err != nil {
 		t.Fatal(err)
 	}

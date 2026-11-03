@@ -5,7 +5,6 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -22,7 +21,7 @@ type InputIdentity interface {
 }
 
 type InputOutput interface {
-	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, events.LogResult, error)
+	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, error)
 	Notify(context.Context, slog.Level, string)
 }
 
@@ -55,7 +54,7 @@ type InputCoordinatorDeps struct {
 	Turns    interface{ Snapshot(string) turn.Snapshot }
 	Identity InputIdentity
 	Hooks    interface {
-		AgentInputPrepared(context.Context, agentshare.Session, agentshare.Message) ([]llm.MessageSegment, events.LogResult, error)
+		AgentInputPrepared(context.Context, agentshare.Session, agentshare.Message) ([]llm.MessageSegment, error)
 	}
 	Output        InputOutput
 	Execution     InputExecution
@@ -65,6 +64,6 @@ type InputCoordinatorDeps struct {
 		PrepareSkills(context.Context, string, []string) (tool.SkillPreload, error)
 	}
 	ToolState interface {
-		Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, events.LogResult, error)
+		Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, error)
 	}
 }

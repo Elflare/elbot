@@ -3,7 +3,6 @@ package cron
 import (
 	"context"
 	background "elbot/internal/background/share"
-	"elbot/internal/events"
 	"fmt"
 	"testing"
 
@@ -12,13 +11,13 @@ import (
 
 func TestTextReportMapsPartialReceipt(t *testing.T) {
 	repo := newFakeCronRepo()
-	svc := newTestCronService(t, Options{Store: repo, EnabledPlatforms: []PlatformTarget{{Name: "telegram"}}, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	svc := newTestCronService(t, Options{Store: repo, EnabledPlatforms: []PlatformTarget{{Name: "telegram"}}, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 		if target.Platform != "telegram" || !target.Superadmins {
 			t.Fatalf("target=%#v", target)
 		}
-		return delivery.Receipt{PlatformMessageIDs: []string{"77"}, SentMessages: []delivery.SentMessage{{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "77"}}}, events.LogResult{ResultStatus: events.ResultFailed}, fmt.Errorf("second target failed")
+		return delivery.Receipt{PlatformMessageIDs: []string{"77"}, SentMessages: []delivery.SentMessage{{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "77"}}}, fmt.Errorf("second target failed")
 	}})
-	_, err := deliverTestReport(t, svc, "telegram", "task", "report")
+	err := deliverTestReport(t, svc, "telegram", "task", "report")
 	if err == nil {
 		t.Fatal("expected second target failure")
 	}

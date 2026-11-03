@@ -12,7 +12,7 @@ func TestToolResultStatisticsFailureRollsBackSlots(t *testing.T) {
 	ctx := t.Context()
 	head := &storage.Message{ID: "head", SessionID: "s", Role: storage.RoleAssistant, Metadata: `{"tool_calls":[{"ID":"one"}],"tool_result_message_ids":["result"],"tool_batch_status":"pending"}`}
 	result := &storage.Message{ID: "result", SessionID: "s", Role: storage.RoleTool, ToolCallID: "one", Content: "unknown", Metadata: `{"tool_result_status":"pending"}`}
-	if _, err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", ToolBatch: &storage.ToolBatch{Call: head, Results: []*storage.Message{result}}}); err != nil {
+	if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", ToolBatch: &storage.ToolBatch{Call: head, Results: []*storage.Message{result}}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.db.ExecContext(ctx, `CREATE TRIGGER reject_tool_statistics BEFORE INSERT ON tool_call_records BEGIN SELECT RAISE(ABORT,'statistics failed'); END`); err != nil {
@@ -21,7 +21,7 @@ func TestToolResultStatisticsFailureRollsBackSlots(t *testing.T) {
 	head.Metadata = strings.ReplaceAll(head.Metadata, "pending", "completed")
 	result.Content, result.Metadata = "done", `{"tool_result_status":"completed"}`
 	commit := storage.DialogueCommit{SessionID: "s", ToolResult: &storage.ToolResultCommit{Call: head, Result: result, Record: &storage.ToolCallRecord{ToolCallID: "one", ToolName: "tool", Success: true, StartedAt: storage.Now(), FinishedAt: storage.Now()}}}
-	if _, err := store.Dialogues().Commit(ctx, commit); err == nil {
+	if err := store.Dialogues().Commit(ctx, commit); err == nil {
 		t.Fatal("expected statistics failure")
 	}
 	rows, err := store.Messages().ListBySession(ctx, "s")
@@ -31,7 +31,7 @@ func TestToolResultStatisticsFailureRollsBackSlots(t *testing.T) {
 	if _, err := store.db.ExecContext(ctx, `DROP TRIGGER reject_tool_statistics`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Dialogues().Commit(ctx, commit); err != nil {
+	if err := store.Dialogues().Commit(ctx, commit); err != nil {
 		t.Fatal(err)
 	}
 	usage, err := store.ToolCalls().UsageBySession(ctx, "s")
@@ -49,7 +49,7 @@ func TestNativeMessageSnapshotCommitsWithPairWithoutAdvancingCursor(t *testing.T
 			initial.Messages = nil
 			initial.Native.Checkpoint.MessageID = ""
 			initial.Native.Calls = []storage.NativeCall{{ExchangeID: "exchange", CallID: "one", Name: "tool", Arguments: "{}", Status: "started"}, {ExchangeID: "exchange", CallID: "two", Name: "tool", Arguments: "{}", Status: "pending", Ordinal: 1}}
-			if _, err := store.Dialogues().Commit(ctx, initial); err != nil {
+			if err := store.Dialogues().Commit(ctx, initial); err != nil {
 				t.Fatal(err)
 			}
 			if fail {
@@ -65,7 +65,7 @@ func TestNativeMessageSnapshotCommitsWithPairWithoutAdvancingCursor(t *testing.T
 			call.Status, call.ResultInputID = "completed", "output"
 			input := storage.NativeInput{ID: "output", SessionID: "s", MessageID: "result", ExchangeID: "exchange", CallID: "one", ItemJSON: `{"type":"function_call_output","call_id":"one","output":"done"}`, MediaJSON: `[]`}
 			commit := storage.DialogueCommit{SessionID: "s", ToolBatch: pair, Native: &storage.NativeCommit{ExpectedCheckpointID: "live", Calls: []storage.NativeCall{call}, Inputs: []storage.NativeInput{input}, Snapshot: &storage.NativeCheckpoint{ID: "snapshot", SessionID: "s", ExchangeID: "exchange", ResponseID: "r", MessageID: "head"}}}
-			_, err := store.Dialogues().Commit(ctx, commit)
+			err := store.Dialogues().Commit(ctx, commit)
 			if (err != nil) != fail {
 				t.Fatalf("snapshot error=%v", err)
 			}
@@ -99,7 +99,7 @@ func TestNativeMessageSnapshotCommitsWithPairWithoutAdvancingCursor(t *testing.T
 				t.Fatalf("snapshot=%+v %v", cp, err)
 			}
 			calls[1].Status = "started"
-			if _, err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", Native: &storage.NativeCommit{ExpectedCheckpointID: "live", Calls: []storage.NativeCall{calls[1]}}}); err != nil {
+			if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", Native: &storage.NativeCommit{ExpectedCheckpointID: "live", Calls: []storage.NativeCall{calls[1]}}}); err != nil {
 				t.Fatal(err)
 			}
 			frozen, err := store.Dialogues().GetCheckpoint(ctx, cp.ID)

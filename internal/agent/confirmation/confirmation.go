@@ -119,7 +119,7 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 	if !c.commands.IsCommand(text) {
 		observed = confirmationAction(ctx, sessionID, "invalid_text", confirmation, "")
 		release()
-		_, _, err := c.output.SendAssistant(ctx, riskConfirmationWaitingText(c.commandText))
+		_, err := c.output.SendAssistant(ctx, riskConfirmationWaitingText(c.commandText))
 		return err
 	}
 
@@ -139,7 +139,7 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 		}
 		observed = confirmationAction(ctx, sessionID, "detail", confirmation, "")
 		release()
-		_, _, err := c.output.SendAssistant(ctx, riskConfirmationDetailText(confirmation))
+		_, err := c.output.SendAssistant(ctx, riskConfirmationDetailText(confirmation))
 		return err
 	case "confirm", "c":
 		observed = confirmationAction(ctx, sessionID, "confirm", confirmation, parsed.Args)
@@ -159,12 +159,12 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 		c.turns.StopSession(sessionID)
 		c.requests.CancelSession(sessionID)
 		release()
-		_, _, err := c.output.SendAssistant(context.WithoutCancel(ctx), "stopping")
+		_, err := c.output.SendAssistant(context.WithoutCancel(ctx), "stopping")
 		return err
 	default:
 		observed = confirmationAction(ctx, sessionID, "invalid_command", confirmation, parsed.Name)
 		release()
-		_, _, err := c.output.SendAssistant(ctx, riskConfirmationWaitingText(c.commandText))
+		_, err := c.output.SendAssistant(ctx, riskConfirmationWaitingText(c.commandText))
 		return err
 
 	}
@@ -294,12 +294,13 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 		for _, cmd := range riskConfirmationCommands() {
 			actions = append(actions, delivery.Action{ID: cmd.Name, Label: cmd.Description, Command: c.commandText(cmd.Name)})
 		}
-		if _, logResult, err := c.output.SendAssistant(ctx, fmt.Sprintf("%s [%s]: confirm\n%s%s\n\n%s", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout, c.commandText)), actions...); err != nil {
-			resultStatus, level := logResult.ResultStatus, slog.LevelError
-			if resultStatus == events.ResultCanceled {
+		if _, err := c.output.SendAssistant(ctx, fmt.Sprintf("%s [%s]: confirm\n%s%s\n\n%s", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout, c.commandText)), actions...); err != nil {
+			resultStatus, level := events.ResultFailed, slog.LevelWarn
+			if events.LogStatus(err) == events.ResultCanceled {
+				resultStatus = events.ResultCanceled
 				level = slog.LevelInfo
 			}
-			c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "prompt_failed", "", "send risk confirmation:\n"+logResult.Content, resultStatus, level)
+			c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "prompt_failed", "", "send risk confirmation:\n"+err.Error(), resultStatus, level)
 			return tool.ConfirmResult{Stopped: true}, fmt.Errorf("send risk confirmation: %w", err)
 		}
 	}
@@ -307,7 +308,7 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	resp := result.Decision
 	if result.Outcome == turn.RiskExpired {
 		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "expire", resp.Extra, "confirmation wait expired", events.ResultFailed, slog.LevelInfo)
-		_, _, err := c.output.SendAssistant(context.WithoutCancel(ctx), "confirm timeout → stopped")
+		_, err := c.output.SendAssistant(context.WithoutCancel(ctx), "confirm timeout → stopped")
 		return tool.ConfirmResult{
 			Allowed: false,
 			Extra:   resp.Extra,
@@ -343,13 +344,13 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	}
 	if resp.Action == turn.RiskConfirmTool {
 		c.setToolAutoConfirmed(sessionID, call.Name)
-		if _, _, err := c.output.SendAssistant(ctx, fmt.Sprintf("本会话 %s 免确认", call.Name)); err != nil {
+		if _, err := c.output.SendAssistant(ctx, fmt.Sprintf("本会话 %s 免确认", call.Name)); err != nil {
 			return tool.ConfirmResult{Allowed: true, Extra: resp.Extra}, err
 		}
 	}
 	if resp.Action == turn.RiskConfirmAll {
 		c.setSessionAutoConfirmed(sessionID)
-		if _, _, err := c.output.SendAssistant(ctx, "本会话全部工具免确认"); err != nil {
+		if _, err := c.output.SendAssistant(ctx, "本会话全部工具免确认"); err != nil {
 			return tool.ConfirmResult{Allowed: true, Extra: resp.Extra}, err
 		}
 	}

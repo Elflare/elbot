@@ -69,7 +69,7 @@ func (s *reasoningStream) closeTarget() {
 
 func (d messageData) sendReasoning(ctx context.Context, text string) error {
 	if d.client != nil {
-		_, err := d.client.write(ctx, remoteMessage{Type: remoteMsgReasoning, Text: text})
+		err := d.client.write(ctx, remoteMessage{Type: remoteMsgReasoning, Text: text})
 		return err
 	}
 	return d.adapter.sendTUIMessage(tuiReasoningMsg(text), text)

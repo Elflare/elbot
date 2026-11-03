@@ -11,7 +11,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	globalevents "elbot/internal/events"
 	"elbot/internal/hook/share"
 )
 
@@ -160,9 +159,9 @@ func (r *Rule) normalizeRoles() error {
 	return nil
 }
 
-func (m Module) runRule(ctx context.Context, rule Rule, event share.Event, readOnlyCalls bool) (share.Event, globalevents.LogResult, error) {
+func (m Module) runRule(ctx context.Context, rule Rule, event share.Event, readOnlyCalls bool) (share.Event, error) {
 	if !rule.matchRoles(event) {
-		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "role did not match"}, nil
+		return event, nil
 	}
 	if rule.source.RuntimeID != "" {
 		return m.Opts.Runtime.Handle(ctx, rule.source.RuntimeID, event, share.Control{
@@ -173,21 +172,18 @@ func (m Module) runRule(ctx context.Context, rule Rule, event share.Event, readO
 	state := state{Actions: map[string]actionResult{}}
 	var passThrough *bool
 	var err error
-	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no action executed"}
+
 	for index, action := range rule.Actions {
 		var result actionResult
-		event, result, logResult, err = m.runAction(ctx, event, action, state)
+		event, result, err = m.runAction(ctx, event, action, state)
 		if err == nil {
 			err = validateCalls(readOnlyCalls, before, event)
-			if err != nil {
-				logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-			}
 		}
 		if err != nil {
-			return event, logResult, fmt.Errorf("rule %q action %d %s: %w", rule.Name, index+1, action.Type, err)
+			return event, fmt.Errorf("rule %q action %d %s: %w", rule.Name, index+1, action.Type, err)
 		}
 		if result.Matched != nil && !*result.Matched {
-			return before, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "plugin did not match"}, nil
+			return before, nil
 		}
 		if result.PassThrough != nil {
 			value := *result.PassThrough
@@ -209,7 +205,7 @@ func (m Module) runRule(ctx context.Context, rule Rule, event share.Event, readO
 			event.Control.StopPropagation = true
 		}
 	}
-	return event, logResult, nil
+	return event, nil
 }
 
 func (r Rule) matchRoles(event share.Event) bool {

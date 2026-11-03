@@ -4,7 +4,6 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
-	"elbot/internal/events"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -27,7 +26,7 @@ func TestExternalElwispForwardsArguments(t *testing.T) {
 	manager := newTestManager(nil, nil)
 	args, _ := json.Marshal(map[string]any{"source": mediaID, "media_inputs": []map[string]string{{"media": mediaID}}})
 	call := llm.ToolCallRequest{ID: "call", Name: "external", Arguments: string(args)}
-	resolved := resolvedTool{ResultStatus: events.ResultSucceeded, Source: toolshare.SourceKindELwisp, Discovered: &toolshare.DiscoveredTool{Name: "external", Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}}
+	resolved := resolvedTool{Source: toolshare.SourceKindELwisp, Discovered: &toolshare.DiscoveredTool{Name: "external", Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}}
 	prepared, err := manager.prepareCall(ctx, resolved, call)
 	if err != nil {
 		t.Fatal(err)

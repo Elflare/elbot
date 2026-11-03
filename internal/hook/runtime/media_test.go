@@ -177,7 +177,7 @@ func TestWorkerMediaProtocolRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForStatus(t, m, "media", StatusReady)
-	event, _, err := m.Handle(context.Background(), "media", share.Event{Actor: share.ActorContext{Platform: "test", ID: "media"}}, share.Control{})
+	event, err := m.Handle(context.Background(), "media", share.Event{Actor: share.ActorContext{Platform: "test", ID: "media"}}, share.Control{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -106,7 +106,7 @@ func TestRecordAndNoTargetDoNotMaterialize(t *testing.T) {
 	if _, err := s.Handle(t.Context(), "secret", req); err != nil {
 		t.Fatal(err)
 	}
-	_, _ = s.runDirect(t.Context(), Event{Request: Request{Segments: req.Segments}, ResolvedTargets: "[]"}, "synthetic")
+	_ = s.runDirect(t.Context(), Event{Request: Request{Segments: req.Segments}, ResolvedTargets: "[]"}, "synthetic")
 	req.Mode = ModeLLM
 	req.ID = "queued"
 	if _, err := s.Handle(t.Context(), "secret", req); err != nil {

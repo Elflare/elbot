@@ -18,31 +18,31 @@ func TestContinuationRunsBeforeRulesAndCanStopPropagation(t *testing.T) {
 		t.Run(map[bool]string{false: "continue", true: "stop"}[stop], func(t *testing.T) {
 			var order, observed []string
 			finished := 0
-			manager := NewManager(func(context.Context, events.LogRecord) {}, func(ctx context.Context, event share.Event, observe func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, events.LogResult, error) {
+			manager := NewManager(func(context.Context, events.LogRecord) {}, func(ctx context.Context, event share.Event, observe func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, error) {
 				order = append(order, "route")
 				_, done, _ := observe(ctx, "continuation")
 				defer done()
 				event.Message.Segments = llm.TextSegments("resumed")
 				event.Control.StopPropagation, event.Control.Consume = stop, true
-				return event, true, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "continuation"}, nil
+				return event, true, nil
 			})
-			manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "ordinary", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, events.LogResult, error) {
+			manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "ordinary", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 				order = append(order, "rules")
 				if llm.SegmentsTextOnly(event.Message.Segments) != "resumed" {
 					t.Fatal("ordinary rules lost continuation changes")
 				}
-				return event, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "ordinary"}, nil
+				return event, nil
 			})})
-			got, result, err := manager.Run(t.Context(), share.Event{Point: share.PointPlatformMessageReceived}, CallOptions{Woken: true, Observe: func(ctx context.Context, name string) (context.Context, func(), error) {
+			got, err := manager.Run(t.Context(), share.Event{Point: share.PointPlatformMessageReceived}, CallOptions{Woken: true, Observe: func(ctx context.Context, name string) (context.Context, func(), error) {
 				observed = append(observed, name)
 				return ctx, func() { finished++ }, nil
 			}})
-			wantOrder, wantObserved, wantResult := []string{"route", "rules"}, []string{"continuation", "ordinary"}, "continuation\nordinary"
+			wantOrder, wantObserved := []string{"route", "rules"}, []string{"continuation", "ordinary"}
 			if stop {
-				wantOrder, wantObserved, wantResult = []string{"route"}, []string{"continuation"}, "continuation"
+				wantOrder, wantObserved = []string{"route"}, []string{"continuation"}
 			}
-			if err != nil || !got.Control.Consume || !reflect.DeepEqual(order, wantOrder) || !reflect.DeepEqual(observed, wantObserved) || finished != len(wantObserved) || result.Content != wantResult {
-				t.Fatalf("order=%v observed=%v finished=%d event=%+v result=%+v err=%v", order, observed, finished, got, result, err)
+			if err != nil || !got.Control.Consume || !reflect.DeepEqual(order, wantOrder) || !reflect.DeepEqual(observed, wantObserved) || finished != len(wantObserved) {
+				t.Fatal("order= observed= finished= event= result= err=", order, observed, finished, got, err)
 			}
 		})
 	}
@@ -53,24 +53,24 @@ func TestPipelineFailureNotifiesOnceAndPreservesOriginalFailure(t *testing.T) {
 		t.Run(source, func(t *testing.T) {
 			original, secondary := errors.New("source failed"), errors.New("error hook failed")
 			notified, ordinary := 0, 0
-			manager := NewManager(func(context.Context, events.LogRecord) {}, func(_ context.Context, event share.Event, _ func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, events.LogResult, error) {
+			manager := NewManager(func(context.Context, events.LogRecord) {}, func(_ context.Context, event share.Event, _ func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, error) {
 				if source != "route" {
-					return event, false, events.LogResult{ResultStatus: events.ResultSkipped}, nil
+					return event, false, nil
 				}
 				event.Message.Segments = llm.TextSegments("failed route edit")
-				return event, true, events.LogResult{ResultStatus: events.ResultFailed, Content: "source outcome"}, original
+				return event, true, original
 			})
-			manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "failure", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, events.LogResult, error) {
+			manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "failure", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 				ordinary++
 				event.Message.Segments = llm.TextSegments("failed rule edit")
-				return event, events.LogResult{ResultStatus: events.ResultFailed, Content: "source outcome"}, original
+				return event, original
 			})})
-			manager.Register(share.Registration{Point: share.PointErrorOccurred, Name: "error", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, events.LogResult, error) {
+			manager.Register(share.Registration{Point: share.PointErrorOccurred, Name: "error", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 				notified++
 				if !errors.Is(event.Error, original) {
 					t.Errorf("lost source error: %v", event.Error)
 				}
-				return event, events.LogResult{ResultStatus: events.ResultFailed}, secondary
+				return event, secondary
 			})})
 			event := share.Event{Point: share.PointPlatformMessageReceived, Message: share.MessagePayload{Segments: llm.TextSegments("original")}}
 			ctx, cancel := context.WithCancel(t.Context())
@@ -78,19 +78,18 @@ func TestPipelineFailureNotifiesOnceAndPreservesOriginalFailure(t *testing.T) {
 			if source == "canceled" {
 				cancel()
 			}
-			var result events.LogResult
 			var err error
 			wantError, wantNotified := original, 1
 			switch source {
 			case "error-hook":
 				event.Point, event.Error = share.PointErrorOccurred, original
-				result, err = manager.Notify(ctx, event, CallOptions{Woken: true})
+				err = manager.Notify(ctx, event, CallOptions{Woken: true})
 				wantError = secondary
 			case "notify":
-				result, err = manager.Notify(ctx, event, CallOptions{Woken: true})
+				err = manager.Notify(ctx, event, CallOptions{Woken: true})
 			default:
 				var got share.Event
-				got, result, err = manager.Run(ctx, event, CallOptions{Woken: true})
+				got, err = manager.Run(ctx, event, CallOptions{Woken: true})
 				if llm.SegmentsTextOnly(got.Message.Segments) != "original" {
 					t.Fatal("failed changes escaped")
 				}
@@ -101,11 +100,11 @@ func TestPipelineFailureNotifiesOnceAndPreservesOriginalFailure(t *testing.T) {
 			if !errors.Is(err, wantError) || notified != wantNotified {
 				t.Fatalf("notified=%d err=%v", notified, err)
 			}
-			if source != "error-hook" && (errors.Is(err, secondary) || result.ResultStatus != events.ResultFailed) {
-				t.Fatalf("source failure replaced: %+v %v", result, err)
+			if source != "error-hook" && (errors.Is(err, secondary)) {
+				t.Fatalf("source failure replaced: %v", err)
 			}
-			if source == "route" && (ordinary != 0 || result.Content != "source outcome") {
-				t.Fatalf("ordinary=%d result=%+v", ordinary, result)
+			if source == "route" && (ordinary != 0) {
+				t.Fatalf("ordinary=%d", ordinary)
 			}
 		})
 	}

@@ -100,7 +100,7 @@ func (s *Service) CreateCompacted(ctx context.Context, scope share.Scope, source
 	if req.Seed == nil {
 		err = s.deps.Sessions.Create(ctx, row)
 	} else {
-		_, err = s.deps.Sessions.CreateMaterial(ctx, storage.SessionMaterialCreate{Session: row, Seed: req.Seed,
+		err = s.deps.Sessions.CreateMaterial(ctx, storage.SessionMaterialCreate{Session: row, Seed: req.Seed,
 			SourceSessionID: sourceID, ExpectedCheckpointID: req.ExpectedCheckpointID})
 	}
 	if err != nil {

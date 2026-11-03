@@ -124,7 +124,7 @@ func TestRemoteStopRetainsSendingAndCloseRetries(t *testing.T) {
 	if err := s.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err)
 	}
-	if _, _, err := s.SendTo(context.WithoutCancel(origin), delivery.Target{}, []delivery.Output{delivery.Text("draining")}); err != nil {
+	if _, err := s.SendTo(context.WithoutCancel(origin), delivery.Target{}, []delivery.Output{delivery.Text("draining")}); err != nil {
 		t.Fatal(err)
 	}
 	if msg := readTestRemote(t, conn); msg.Text != "draining" {
@@ -137,7 +137,7 @@ func TestRemoteStopRetainsSendingAndCloseRetries(t *testing.T) {
 	if err := s.Wait(waitCtx); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.SendTo(context.WithoutCancel(origin), delivery.Target{}, []delivery.Output{delivery.Text("after wait")}); err != nil {
+	if _, err := s.SendTo(context.WithoutCancel(origin), delivery.Target{}, []delivery.Output{delivery.Text("after wait")}); err != nil {
 		t.Fatal(err)
 	}
 	if msg := readTestRemote(t, conn); msg.Text != "after wait" {

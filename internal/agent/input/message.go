@@ -11,7 +11,6 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/storage"
@@ -48,7 +47,7 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	message := agentshare.Message{Role: string(llm.RoleUser), Segments: segments}
 	if strings.TrimSpace(llm.SegmentsTextOnly(segments)) == "/cancel" {
 		if h.hooks.CancelRoute(ctx, message) {
-			_, _, err := h.output.SendAssistant(ctx, "Hook canceled")
+			_, err := h.output.SendAssistant(ctx, "Hook canceled")
 			return err
 		}
 	}
@@ -64,7 +63,7 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 		segments = agentshare.InboundSegments(ctx, text)
 		message.Segments = segments
 	}
-	result, _, err := h.hooks.PlatformMessageReceived(ctx, message)
+	result, err := h.hooks.PlatformMessageReceived(ctx, message)
 	if err != nil {
 		if ctx.Err() == nil {
 			agentshare.ReportFailure(ctx, "", fmt.Errorf("入站 Hook: %w", err), h.output.Notify)
@@ -72,7 +71,7 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 		return err
 	}
 	if len(result.Outputs) > 0 {
-		if _, err := h.output.SendOutputs(ctx, result.Outputs); err != nil {
+		if err := h.output.SendOutputs(ctx, result.Outputs); err != nil {
 			if ctx.Err() == nil {
 				agentshare.ReportFailure(ctx, "", fmt.Errorf("发送入站 Hook 输出: %w", err), h.output.Notify)
 			}
@@ -92,7 +91,7 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	text = llm.SegmentsTextOnly(segments)
 	message.Segments = result.Segments
 	if strings.TrimSpace(text) == "/cancel" && h.hooks.CancelRoute(ctx, message) {
-		_, _, err := h.output.SendAssistant(ctx, "Hook canceled")
+		_, err := h.output.SendAssistant(ctx, "Hook canceled")
 		return err
 	}
 	if !woken {
@@ -114,12 +113,12 @@ type MessageIdentity interface {
 type MessageHooks interface {
 	CancelRoute(context.Context, agentshare.Message) bool
 	HasRoute(context.Context, agentshare.Message) bool
-	PlatformMessageReceived(context.Context, agentshare.Message) (agentshare.PlatformMessageReceivedResult, events.LogResult, error)
+	PlatformMessageReceived(context.Context, agentshare.Message) (agentshare.PlatformMessageReceivedResult, error)
 }
 
 type MessageOutput interface {
-	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, events.LogResult, error)
-	SendOutputs(context.Context, []delivery.Output) (events.LogResult, error)
+	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, error)
+	SendOutputs(context.Context, []delivery.Output) error
 	Notify(context.Context, slog.Level, string)
 }
 

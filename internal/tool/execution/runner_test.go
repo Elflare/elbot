@@ -4,7 +4,6 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
-	"elbot/internal/events"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -27,14 +26,14 @@ type testToolCommitter struct {
 	records map[string]storage.ToolCallRecord
 }
 
-func (c *testToolCommitter) Begin(_ context.Context, head *storage.Message) (events.LogResult, error) {
+func (c *testToolCommitter) Begin(_ context.Context, head *storage.Message) error {
 	c.head = head
-	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+	return nil
 }
-func (*testToolCommitter) Prepared(context.Context, int, llm.ToolCallRequest) (events.LogResult, error) {
-	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
+func (*testToolCommitter) Prepared(context.Context, int, llm.ToolCallRequest) error {
+	return nil
 }
-func (c *testToolCommitter) Result(_ context.Context, _ int, _ llm.ToolCallRequest, _ llm.LLMMessage, row *storage.ToolResultCommit) (events.LogResult, error) {
+func (c *testToolCommitter) Result(_ context.Context, _ int, _ llm.ToolCallRequest, _ llm.LLMMessage, row *storage.ToolResultCommit) error {
 	c.results = append(c.results, *row.Result)
 	if row.Record != nil {
 		if c.records == nil {
@@ -42,11 +41,11 @@ func (c *testToolCommitter) Result(_ context.Context, _ int, _ llm.ToolCallReque
 		}
 		c.records[row.Record.ToolCallID] = *row.Record
 	}
-	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
+	return nil
 }
 
-func (*testToolCommitter) Flush(context.Context) (events.LogResult, error) {
-	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
+func (*testToolCommitter) Flush(context.Context) error {
+	return nil
 }
 
 type runnerTestDeps struct {
@@ -60,8 +59,8 @@ func (d *runnerTestDeps) RefreshExecution(ctx context.Context, _ *storage.Sessio
 	return ctx, nil
 }
 
-func (d *runnerTestDeps) PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, events.LogResult, error) {
-	return call, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
+func (d *runnerTestDeps) PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error) {
+	return call, nil
 }
 
 func (d *runnerTestDeps) ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool {
@@ -76,8 +75,8 @@ func (d *runnerTestDeps) ConfirmToolCall(ctx context.Context, sessionID string, 
 	return toolshare.ConfirmResult{Allowed: true}, nil
 }
 
-func (d *runnerTestDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), events.LogResult, error) {
-	return ctx, time.Now(), func() {}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+func (d *runnerTestDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error) {
+	return ctx, time.Now(), func() {}, nil
 }
 
 func (d *runnerTestDeps) PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
@@ -87,15 +86,15 @@ func (d *runnerTestDeps) PrepareToolContext(ctx context.Context, session *storag
 	return ctx
 }
 
-func (d *runnerTestDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, events.LogResult, error) {
+func (d *runnerTestDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error) {
 	d.completed++
-	return segments, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "test source completed"}, nil
+	return segments, nil
 }
 
 func (d *runnerTestDeps) SendPreview(ctx context.Context, text ...string) {}
 
-func (d *runnerTestDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) (events.LogResult, error) {
-	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+func (d *runnerTestDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
+	return nil
 }
 
 func (d *runnerTestDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk toolshare.RiskLevel, reason string) {

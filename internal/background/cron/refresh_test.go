@@ -6,8 +6,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"elbot/internal/events"
 )
 
 type refreshRepo struct {
@@ -32,8 +30,8 @@ func (r refreshRepo) ListEnabled(ctx context.Context) ([]Job, error) {
 
 func registerRefreshHandler(t *testing.T, m *Manager) {
 	t.Helper()
-	if err := m.RegisterHandler("handler", func(context.Context, Job) (events.LogResult, error) {
-		return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+	if err := m.RegisterHandler("handler", func(context.Context, Job) error {
+		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -255,10 +253,10 @@ func TestFinishingOldRunDoesNotCountIntoRecreatedJob(t *testing.T) {
 	old := seedRefreshJob(t, base, "job")
 	started, release := make(chan struct{}), make(chan struct{})
 	m := NewManager(base)
-	if err := m.RegisterHandler("handler", func(context.Context, Job) (events.LogResult, error) {
+	if err := m.RegisterHandler("handler", func(context.Context, Job) error {
 		close(started)
 		<-release
-		return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -65,7 +65,7 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 			if string(raw) != original {
 				t.Fatal("arguments changed")
 			}
-			if _, err := center.Cleanup(ctx); err != nil {
+			if err := center.Cleanup(ctx); err != nil {
 				t.Fatal(err)
 			}
 			refs, refErr := store.MediaReferences().ListMediaIDs(ctx, item.ID)
@@ -84,7 +84,7 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 		if _, err := os.Stat(marker); !os.IsNotExist(err) {
 			t.Fatalf("command ran: %v", err)
 		}
-		if _, err := center.Cleanup(ctx); err != nil {
+		if err := center.Cleanup(ctx); err != nil {
 			t.Fatal(err)
 		}
 		refs, _ := store.MediaReferences().ListMediaIDs(ctx, item.ID)

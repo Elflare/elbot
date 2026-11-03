@@ -109,7 +109,7 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 			}
 			m.PublishUsageFinished(t.Context(), UsageFinishedEvent{UsageIDs: []UsageID{usageID}})
 			usageID = ""
-			if _, err := m.Cleanup(t.Context()); err != nil {
+			if err := m.Cleanup(t.Context()); err != nil {
 				t.Fatal(err)
 			}
 			source, usageID, err := m.ResolveForOutput(t.Context(), id)
@@ -126,7 +126,7 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 			}
 			m.PublishUsageFinished(t.Context(), UsageFinishedEvent{UsageIDs: []UsageID{usageID}})
 			usageID = ""
-			if _, err := m.Cleanup(t.Context()); err != nil {
+			if err := m.Cleanup(t.Context()); err != nil {
 				t.Fatal(err)
 			}
 			refs, err = store.MediaReferences().ListMediaIDs(t.Context(), id)

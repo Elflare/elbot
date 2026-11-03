@@ -19,7 +19,7 @@ func TestNativeSeedEmptyMediaIsAnArrayAndPassesAudit(t *testing.T) {
 		seed := materialSeed("empty-root")
 		seed.MediaIDs = ids
 		row := &storage.Session{ID: "empty-child", Metadata: `{"llm_origin":{"protocol":"response","provider":"p"}}`}
-		if _, err := store.Sessions().CreateMaterial(t.Context(), storage.SessionMaterialCreate{Session: row, Seed: seed}); err != nil {
+		if err := store.Sessions().CreateMaterial(t.Context(), storage.SessionMaterialCreate{Session: row, Seed: seed}); err != nil {
 			t.Fatal(err)
 		}
 		var raw string
@@ -48,7 +48,7 @@ func TestNativeSeedMediaMigrationRepairsNullAndPreservesReferences(t *testing.T)
 			seed.MediaIDs = []string{id}
 		}
 		row := &storage.Session{ID: name, Metadata: `{"llm_origin":{"protocol":"response","provider":"p"}}`}
-		if _, err := store.Sessions().CreateMaterial(ctx, storage.SessionMaterialCreate{Session: row, Seed: seed}); err != nil {
+		if err := store.Sessions().CreateMaterial(ctx, storage.SessionMaterialCreate{Session: row, Seed: seed}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -93,7 +93,7 @@ func TestNativeSessionMaterialCreateRollsBackSessionMessagesAndMedia(t *testing.
 	seed := materialSeed("root")
 	seed.MediaIDs = []string{id}
 	req := storage.SessionMaterialCreate{Session: &storage.Session{ID: "child", Metadata: `{"llm_origin":{"protocol":"response","provider":"p"}}`}, SourceSessionID: "s", Seed: seed, Messages: []*storage.Message{{ID: "copy", SessionID: "child", Role: storage.RoleAssistant, Segments: `[{"type":"image","media":"` + id + `"}]`}}}
-	if _, err := store.Sessions().CreateMaterial(ctx, req); err == nil {
+	if err := store.Sessions().CreateMaterial(ctx, req); err == nil {
 		t.Fatal("seed failure committed")
 	}
 	if _, err := store.Sessions().Get(ctx, "child"); !errors.Is(err, storage.ErrNotFound) {
@@ -115,7 +115,7 @@ func TestNativeSeedConsumptionIsAtomicWithFirstCheckpoint(t *testing.T) {
 	ctx := t.Context()
 	seed := materialSeed("root")
 	row := &storage.Session{ID: "child", Metadata: `{"llm_origin":{"protocol":"response","provider":"p"},"unknown":9007199254740993,"context_compact":{"pending":true,"seed_id":"root","keep":true}}`}
-	if _, err := store.Sessions().CreateMaterial(ctx, storage.SessionMaterialCreate{Session: row, Seed: seed}); err != nil {
+	if err := store.Sessions().CreateMaterial(ctx, storage.SessionMaterialCreate{Session: row, Seed: seed}); err != nil {
 		t.Fatal(err)
 	}
 	exchange := &storage.NativeExchange{ID: "child-exchange", SessionID: row.ID, APIType: "response", Provider: "p", RequestJSON: `{"input":[]}`, InputIDsJSON: `[]`}
@@ -129,7 +129,7 @@ func TestNativeSeedConsumptionIsAtomicWithFirstCheckpoint(t *testing.T) {
 	if _, err := store.db.ExecContext(ctx, `CREATE TRIGGER reject_seed_consumption BEFORE UPDATE OF consumed ON native_seeds BEGIN SELECT RAISE(ABORT,'consume failed'); END`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Dialogues().Commit(ctx, commit); err == nil {
+	if err := store.Dialogues().Commit(ctx, commit); err == nil {
 		t.Fatal("consumption failure committed")
 	}
 	if checkpoint, err := store.Dialogues().CurrentCheckpoint(ctx, row.ID); err != nil || checkpoint != nil {
@@ -145,7 +145,7 @@ func TestNativeSeedConsumptionIsAtomicWithFirstCheckpoint(t *testing.T) {
 	if _, err := store.db.ExecContext(ctx, `DROP TRIGGER reject_seed_consumption`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Dialogues().Commit(ctx, commit); err != nil {
+	if err := store.Dialogues().Commit(ctx, commit); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.db.QueryRowContext(ctx, `SELECT consumed FROM native_seeds WHERE id=? AND session_id=?`, seed.ID, row.ID).Scan(&consumed); err != nil || !consumed {
@@ -163,11 +163,11 @@ func TestNativeHistoricalCallSnapshotDoesNotFollowExecutionUpdates(t *testing.T)
 	commit := nativeStorageCommit("head", "")
 	call := storage.NativeCall{ExchangeID: "exchange", CallID: "call", Name: "once", Arguments: `{}`, Status: "pending"}
 	commit.Native.Calls = []storage.NativeCall{call}
-	if _, err := store.Dialogues().Commit(ctx, commit); err != nil {
+	if err := store.Dialogues().Commit(ctx, commit); err != nil {
 		t.Fatal(err)
 	}
 	call.Status, call.ResultInputID = "completed", "result"
-	if _, err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", Native: &storage.NativeCommit{ExpectedCheckpointID: "head", Calls: []storage.NativeCall{call}, Inputs: []storage.NativeInput{{ID: "result", SessionID: "s", ExchangeID: "exchange", CallID: "call", ItemJSON: `{"type":"function_call_output","call_id":"call","output":"later result"}`, MediaJSON: `[]`}}}}); err != nil {
+	if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", Native: &storage.NativeCommit{ExpectedCheckpointID: "head", Calls: []storage.NativeCall{call}, Inputs: []storage.NativeInput{{ID: "result", SessionID: "s", ExchangeID: "exchange", CallID: "call", ItemJSON: `{"type":"function_call_output","call_id":"call","output":"later result"}`, MediaJSON: `[]`}}}}); err != nil {
 		t.Fatal(err)
 	}
 	cp, err := store.Dialogues().CheckpointForMessage(ctx, "s", "message-head")
@@ -183,14 +183,14 @@ func TestNativeHistoricalCallSnapshotDoesNotFollowExecutionUpdates(t *testing.T)
 func TestNativeMaterialCreateRechecksSourceCheckpoint(t *testing.T) {
 	store, _ := nativeStorageFixture(t)
 	ctx := context.Background()
-	if _, err := store.Dialogues().Commit(ctx, nativeStorageCommit("old", "")); err != nil {
+	if err := store.Dialogues().Commit(ctx, nativeStorageCommit("old", "")); err != nil {
 		t.Fatal(err)
 	}
 	req := storage.SessionMaterialCreate{Session: &storage.Session{ID: "child"}, Seed: materialSeed("root"), SourceSessionID: "s", ExpectedCheckpointID: "old"}
-	if _, err := store.Dialogues().Commit(ctx, nativeStorageCommit("new", "old")); err != nil {
+	if err := store.Dialogues().Commit(ctx, nativeStorageCommit("new", "old")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Sessions().CreateMaterial(ctx, req); err == nil {
+	if err := store.Sessions().CreateMaterial(ctx, req); err == nil {
 		t.Fatal("late material replaced a newer source snapshot")
 	}
 	if _, err := store.Sessions().Get(ctx, "child"); !errors.Is(err, storage.ErrNotFound) {
@@ -208,11 +208,11 @@ func TestLoadNativeWindowKeepsTargetAncestryAndSnapshotResults(t *testing.T) {
 		{ID: "consumed", SessionID: "s", ItemJSON: `{"type":"message","role":"user","content":[]}`, MediaJSON: `[]`, ConsumedBy: "exchange"},
 		{ID: call.ResultInputID, SessionID: "s", ExchangeID: "exchange", CallID: call.CallID, ItemJSON: `{"type":"function_call_output","call_id":"call","output":"original"}`, MediaJSON: `[]`},
 	}
-	if _, err := store.Dialogues().Commit(ctx, root); err != nil {
+	if err := store.Dialogues().Commit(ctx, root); err != nil {
 		t.Fatal(err)
 	}
 	call.ResultInputID = "later-result"
-	if _, err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", Native: &storage.NativeCommit{ExpectedCheckpointID: "root", Calls: []storage.NativeCall{call}, Inputs: []storage.NativeInput{{ID: call.ResultInputID, SessionID: "s", ExchangeID: "exchange", CallID: call.CallID, ItemJSON: `{"type":"function_call_output","call_id":"call","output":"later"}`, MediaJSON: `[]`}}}}); err != nil {
+	if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", Native: &storage.NativeCommit{ExpectedCheckpointID: "root", Calls: []storage.NativeCall{call}, Inputs: []storage.NativeInput{{ID: call.ResultInputID, SessionID: "s", ExchangeID: "exchange", CallID: call.CallID, ItemJSON: `{"type":"function_call_output","call_id":"call","output":"later"}`, MediaJSON: `[]`}}}}); err != nil {
 		t.Fatal(err)
 	}
 	nextExchange := &storage.NativeExchange{ID: "next-exchange", SessionID: "s", APIType: "response", Provider: "p", RequestJSON: `{}`, InputIDsJSON: `[]`, PreviousCheckpointID: "root"}
@@ -224,7 +224,7 @@ func TestLoadNativeWindowKeepsTargetAncestryAndSnapshotResults(t *testing.T) {
 	}
 	next := nativeStorageCommit("next", "root")
 	next.Native.Checkpoint.ExchangeID, next.Native.Checkpoint.ResponseID = nextExchange.ID, "next-response"
-	if _, err := store.Dialogues().Commit(ctx, next); err != nil {
+	if err := store.Dialogues().Commit(ctx, next); err != nil {
 		t.Fatal(err)
 	}
 	row, err := store.Sessions().Get(ctx, "s")

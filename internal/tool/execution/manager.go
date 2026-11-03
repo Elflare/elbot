@@ -44,8 +44,6 @@ type resolvedTool struct {
 	Native *toolshare.ToolDefinition
 	// Discovered 是本次选中的已发现工具声明；直接解析的前台工具没有此声明。
 	Discovered *toolshare.DiscoveredTool
-	// ResultStatus is declared by resolve: succeeded, rejected by context, or failed lookup/configuration.
-	ResultStatus events.ResultStatus
 	// Error retains the resolution error, including typed permission denial; nil does not declare success.
 	Error error
 }
@@ -55,7 +53,7 @@ func NewManager(deps ManagerDeps) *Manager { return &Manager{ManagerDeps: deps} 
 func (m *Manager) resolve(ctx context.Context, name string, discovered []toolshare.DiscoveredTool, mode string) resolvedTool {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return resolvedTool{ResultStatus: events.ResultFailed, Error: fmt.Errorf("tool name is empty")}
+		return resolvedTool{Error: fmt.Errorf("tool name is empty")}
 	}
 	for _, discoveredTool := range discovered {
 		modelName := discoveredTool.CanonicalName
@@ -70,33 +68,33 @@ func (m *Manager) resolve(ctx context.Context, name string, discovered []toolsha
 		}
 		discoveredCopy := discoveredTool
 		if mode != storage.SessionModeBackground && !m.InfoAvailableInContext(ctx, toolshare.Info{ForegroundOnly: discoveredCopy.ForegroundOnly}) {
-			return resolvedTool{Source: discoveredCopy.Source, Discovered: &discoveredCopy, ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError("tool is unavailable in this context")}
+			return resolvedTool{Source: discoveredCopy.Source, Discovered: &discoveredCopy, Error: toolshare.PolicyDeniedError("tool is unavailable in this context")}
 		}
 		source := discoveredCopy.Source
 		if source == toolshare.SourceKindELwisp {
 			if discoveredCopy.Endpoint == "" {
-				return resolvedTool{Source: source, Discovered: &discoveredCopy, ResultStatus: events.ResultFailed, Error: fmt.Errorf("ELwisp tool endpoint is missing")}
+				return resolvedTool{Source: source, Discovered: &discoveredCopy, Error: fmt.Errorf("ELwisp tool endpoint is missing")}
 			}
-			return resolvedTool{Source: source, Discovered: &discoveredCopy, ResultStatus: events.ResultSucceeded}
+			return resolvedTool{Source: source, Discovered: &discoveredCopy}
 		}
 		if nativeTool, ok := m.Registry.Get(discoveredCopy.Name); ok {
 			if reason := m.UnavailableReason(ctx, nativeTool.Definition); reason != "" {
-				return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Discovered: &discoveredCopy, ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError(reason)}
+				return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Discovered: &discoveredCopy, Error: toolshare.PolicyDeniedError(reason)}
 			}
-			return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Discovered: &discoveredCopy, ResultStatus: events.ResultSucceeded}
+			return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Discovered: &discoveredCopy}
 		}
-		return resolvedTool{Source: toolshare.SourceKindNative, Discovered: &discoveredCopy, ResultStatus: events.ResultFailed, Error: fmt.Errorf("native tool is no longer available")}
+		return resolvedTool{Source: toolshare.SourceKindNative, Discovered: &discoveredCopy, Error: fmt.Errorf("native tool is no longer available")}
 	}
 	if mode == storage.SessionModeBackground {
-		return resolvedTool{ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError("tool is not allowed in this background task")}
+		return resolvedTool{Error: toolshare.PolicyDeniedError("tool is not allowed in this background task")}
 	}
 	if nativeTool, ok := m.Registry.Get(name); ok {
 		if reason := m.UnavailableReason(ctx, nativeTool.Definition); reason != "" {
-			return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, ResultStatus: events.ResultRejected, Error: toolshare.PolicyDeniedError(reason)}
+			return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Error: toolshare.PolicyDeniedError(reason)}
 		}
-		return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, ResultStatus: events.ResultSucceeded}
+		return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool}
 	}
-	return resolvedTool{ResultStatus: events.ResultFailed, Error: fmt.Errorf("tool %q not found", name)}
+	return resolvedTool{Error: fmt.Errorf("tool %q not found", name)}
 }
 
 // CallTool 供已由调用方授权的原生调用使用；仍先准备，再执行同一结果。

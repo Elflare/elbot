@@ -4,11 +4,12 @@ import (
 	agentshare "elbot/internal/agent/share"
 
 	"context"
-	"errors"
+	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"fmt"
+	"log/slog"
 	"slices"
 
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/session"
@@ -66,9 +67,9 @@ func (s *MessageStore) Committer(operation string) agentshare.MessageCommitter {
 	return messageCommitter{store: s, operation: operation}
 }
 
-func (c messageCommitter) Commit(ctx context.Context, message *storage.Message, mappings []storage.PlatformMessageMap) (events.LogResult, error) {
+func (c messageCommitter) Commit(ctx context.Context, message *storage.Message, mappings []storage.PlatformMessageMap) error {
 	if message == nil {
-		return events.LogResult{ResultStatus: events.ResultSkipped}, nil
+		return nil
 	}
 	return c.store.Commit(ctx, storage.DialogueCommit{SessionID: message.SessionID, Messages: []*storage.Message{message}, PlatformMessageMaps: mappings}, c.operation)
 }
@@ -84,11 +85,26 @@ type ToolTranscriptCommitter struct {
 	remaining int
 }
 
-func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Message) (events.LogResult, error) {
+func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Message) (err error) {
+	step := "prepare_tool_transcript"
+	defer func() {
+		// The commit boundary owns failures after preparation is complete.
+		if err == nil || step == "commit" {
+			return
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		facts.SessionID = head.SessionID
+		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, Module: "agent", EventName: "tool_batch_prepare_failed", ResultStatus: events.LogStatus(err), Content: fmt.Sprintf("operation=%s error=%v", step, err)}
+		if record.ResultStatus == events.ResultCanceled {
+			record.Level = slog.LevelInfo
+		}
+		agentshare.EmitAgentLog(ctx, facts, record)
+	}()
+
 	c.SessionID, c.head = head.SessionID, head
 	metadata, err := agentshare.AssistantMessageMetadata(head.Metadata)
 	if err != nil {
-		return events.LogResult{ResultStatus: events.ResultSkipped}, err
+		return err
 	}
 	c.calls = append([]llm.ToolCallRequest(nil), metadata.ToolCalls...)
 	c.results = make([]*storage.Message, len(c.calls))
@@ -102,21 +118,18 @@ func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Messa
 	}
 	batch, err := agentshare.NewToolBatch(ctx, c.Messages.NewMessageID, head, c.calls, c.results)
 	if err != nil {
-		status := events.ResultFailed
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			status = events.ResultCanceled
-		}
-		return events.LogResult{ResultStatus: status, Content: err.Error()}, err
+		return err
 	}
 	fields, _ := storage.DecodeSessionMetadata(head.Metadata)
 	_ = fields.Set("tool_batch_status", "pending")
 	head.Metadata, _ = fields.Encode()
+	step = "commit"
 	return c.Messages.Commit(ctx, storage.DialogueCommit{SessionID: c.SessionID, ToolBatch: batch}, "begin_tool_transcript")
 }
-func (c *ToolTranscriptCommitter) Prepared(context.Context, int, llm.ToolCallRequest) (events.LogResult, error) {
-	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
+func (c *ToolTranscriptCommitter) Prepared(context.Context, int, llm.ToolCallRequest) error {
+	return nil
 }
-func (c *ToolTranscriptCommitter) Result(ctx context.Context, index int, call llm.ToolCallRequest, _ llm.LLMMessage, update *storage.ToolResultCommit) (events.LogResult, error) {
+func (c *ToolTranscriptCommitter) Result(ctx context.Context, index int, call llm.ToolCallRequest, _ llm.LLMMessage, update *storage.ToolResultCommit) error {
 	commit := storage.DialogueCommit{SessionID: c.SessionID, ToolResult: update}
 	if call.Arguments != c.calls[index].Arguments {
 		previous := media.ArgumentMediaIDs(c.calls[index].Arguments)
@@ -139,25 +152,37 @@ func (c *ToolTranscriptCommitter) Result(ctx context.Context, index int, call ll
 	}
 	c.head.Metadata, _ = fields.Encode()
 	update.Call = c.head
-	result, err := c.Messages.Commit(context.WithoutCancel(ctx), commit, "save_tool_result")
+	err := c.Messages.Commit(context.WithoutCancel(ctx), commit, "save_tool_result")
 	if err == nil {
 		c.remaining--
 	}
-	return result, err
+	return err
 }
-func (c *ToolTranscriptCommitter) Flush(ctx context.Context) (events.LogResult, error) {
-	result := events.LogResult{ResultStatus: events.ResultSkipped}
+func (c *ToolTranscriptCommitter) Flush(ctx context.Context) (err error) {
+	defer func() {
+		if err == nil {
+			return
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		facts.SessionID = c.SessionID
+		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, Module: "agent", EventName: "tool_transcript_projection_failed", ResultStatus: events.LogStatus(err), Content: err.Error()}
+		if record.ResultStatus == events.ResultCanceled {
+			record.Level = slog.LevelInfo
+		}
+		agentshare.EmitAgentLog(ctx, facts, record)
+	}()
+
 	if c.remaining != 0 {
-		return result, fmt.Errorf("tool batch has unfinished results")
+		return fmt.Errorf("tool batch has unfinished results")
 	}
 	for _, stored := range append([]*storage.Message{c.head}, c.results...) {
 		message, err := agentshare.MessageFromStorage(*stored)
 		if err != nil {
-			return result, err
+			return err
 		}
 		c.committed = append(c.committed, message)
 	}
-	return result, nil
+	return nil
 }
 
 func (c *ToolTranscriptCommitter) Committed() []llm.LLMMessage { return c.committed }

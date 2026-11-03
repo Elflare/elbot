@@ -43,7 +43,7 @@ func TestWorkerInvocationReleasesToolContext(t *testing.T) {
 		w.deliverResponse(frame{ID: request.ID, OK: &ok, Result: json.RawMessage(`{"status":"completed"}`)})
 		return nil
 	}}
-	if _, _, err := w.handle(t.Context(), share.Event{}, false, "", share.Control{}); err != nil {
+	if _, err := w.handle(t.Context(), share.Event{}, false, "", share.Control{}); err != nil {
 		t.Fatal(err)
 	}
 	if len(m.tokens) != 0 {
@@ -81,7 +81,7 @@ func TestWorkerMessagePatchPreservesToolResult(t *testing.T) {
 					Message: share.MessagePayload{Segments: []llm.MessageSegment{{Type: llm.SegmentText, Text: "before"}}},
 					Tool:    share.ToolPayload{Result: "original"},
 				}
-				got, _, err := w.handle(t.Context(), event, false, "", share.Control{})
+				got, err := w.handle(t.Context(), event, false, "", share.Control{})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -183,7 +183,7 @@ func TestManagerCancelAllWorkersOnRoute(t *testing.T) {
 			return nil
 		}}
 		go func() {
-			_, _, err := w.handle(ctx, event, false, "", share.Control{})
+			_, err := w.handle(ctx, event, false, "", share.Control{})
 			finished <- err
 		}()
 	}
@@ -220,11 +220,11 @@ func TestTransientWorkersAreIsolatedByPlugin(t *testing.T) {
 		t.Fatal(err)
 	}
 	key := routeKey{Actor: contextinfo.ActorIdentity{Platform: "cli", ID: "actor"}}
-	firstWorker, _, err := m.startTransient(t.Context(), config, key)
+	firstWorker, err := m.startTransient(t.Context(), config, key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondWorker, _, err := m.startTransient(t.Context(), second, key)
+	secondWorker, err := m.startTransient(t.Context(), second, key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestWorkerInvalidResultDoesNotPublishWaiting(t *testing.T) {
 		return nil
 	}}
 	event := share.Event{Actor: share.ActorContext{Platform: "cli", ID: "actor"}}
-	if _, _, err := w.handle(t.Context(), event, false, "", share.Control{}); err == nil {
+	if _, err := w.handle(t.Context(), event, false, "", share.Control{}); err == nil {
 		t.Fatal("invalid output was accepted")
 	}
 	if m.hasLease(event) {
@@ -346,7 +346,7 @@ func TestWorkerStaysRunningUntilLastInvocationEnds(t *testing.T) {
 	}}
 	for _, id := range []string{"first", "second"} {
 		go func() {
-			_, _, err := w.handle(ctx, share.Event{Actor: share.ActorContext{Platform: "cli", ID: id}}, false, "", share.Control{})
+			_, err := w.handle(ctx, share.Event{Actor: share.ActorContext{Platform: "cli", ID: id}}, false, "", share.Control{})
 			finished <- err
 		}()
 	}
@@ -427,7 +427,7 @@ func TestRuntimeCloseWaitsForInvocationCleanup(t *testing.T) {
 	}}
 	finished := make(chan error, 1)
 	go func() {
-		_, _, err := w.handle(t.Context(), share.Event{}, false, "", share.Control{})
+		_, err := w.handle(t.Context(), share.Event{}, false, "", share.Control{})
 		finished <- err
 	}()
 	value := <-request

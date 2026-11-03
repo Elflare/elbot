@@ -18,19 +18,8 @@ func ValidateNotificationTarget(target events.NotificationTarget) error {
 }
 
 func (a *Adapter) ConnectNotifications(source *signal.Signal[events.Notification, events.NotificationReceipt]) (*signal.Connection, error) {
-	return source.ConnectForward(func(ctx context.Context, n events.Notification) *signal.Emission[events.NotificationReceipt] {
-		logged, err := events.EmitLogAsync(ctx, events.LogRecord{Category: events.LogRuntime, Level: n.Level, EventName: "runtime_notification", Module: "notification", Type: events.ContentText, Content: n.Text, ContentLimit: 4096})
-		if logged == nil {
-			return signal.Resolved(signal.Result[events.NotificationReceipt]{Err: err})
-		}
-		return signal.MapResults(logged, func(results []signal.Result[signal.Empty]) signal.Result[events.NotificationReceipt] {
-			var errs []error
-			var started bool
-			for _, result := range results {
-				errs = append(errs, result.Err)
-				started = started || result.Started
-			}
-			return signal.Result[events.NotificationReceipt]{Started: started, Err: errors.Join(errs...)}
-		})
+	return source.Connect(func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
+		_ = events.EmitLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: n.Level, EventName: "runtime_notification", Module: "notification", Content: n.Text, ContentLimit: 4096})
+		return events.NotificationReceipt{}, nil
 	}, signal.ConnectOptions{})
 }

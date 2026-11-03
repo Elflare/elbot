@@ -4,32 +4,48 @@ import (
 	agentshare "elbot/internal/agent/share"
 
 	"context"
-	"errors"
-	"fmt"
-
+	"elbot/internal/contextinfo"
 	"elbot/internal/events"
+	"fmt"
+	"log/slog"
+
 	"elbot/internal/llm"
 	"elbot/internal/storage"
 )
 
 type inputCommitter struct{ state *turnState }
 
-func (c inputCommitter) Commit(ctx context.Context, message *storage.Message, mappings []storage.PlatformMessageMap) (events.LogResult, error) {
+func (c inputCommitter) Commit(ctx context.Context, message *storage.Message, mappings []storage.PlatformMessageMap) (err error) {
+	step := "prepare"
+	defer func() {
+		if err == nil || step == "commit" {
+			return
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		facts.SessionID = c.state.session.ID
+		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, Module: "agent", EventName: "native_input_prepare_failed", ResultStatus: events.LogStatus(err), Content: err.Error()}
+		if record.ResultStatus == events.ResultCanceled {
+			record.Level = slog.LevelInfo
+		}
+		agentshare.EmitAgentLog(ctx, facts, record)
+	}()
+
 	if message == nil {
 		err := fmt.Errorf("native input message is required")
-		return events.LogResult{ResultStatus: events.ResultSkipped}, err
+		return err
 	}
 	segments, err := agentshare.MessageSegmentsFromStorage(message.Segments)
 	if err != nil {
-		return events.LogResult{ResultStatus: events.ResultSkipped}, err
+		return err
 	}
 	if len(segments) == 0 {
 		segments = llm.TextSegments(message.Content)
 	}
 	input, err := queuedInput(message.SessionID, message.ID, "", "", segments)
 	if err != nil {
-		return events.LogResult{ResultStatus: events.ResultSkipped}, err
+		return err
 	}
+	step = "commit"
 	return c.state.commit(ctx, storage.DialogueCommit{
 		SessionID:           message.SessionID,
 		Messages:            []*storage.Message{message},
@@ -45,10 +61,10 @@ func (s *turnState) checkpointID() string {
 	return s.checkpoint.ID
 }
 
-func (s *turnState) commit(ctx context.Context, commit storage.DialogueCommit, operation string) (events.LogResult, error) {
-	logResult, err := s.route.Messages.Commit(ctx, commit, operation)
+func (s *turnState) commit(ctx context.Context, commit storage.DialogueCommit, operation string) error {
+	err := s.route.Messages.Commit(ctx, commit, operation)
 	if err != nil {
-		return logResult, err
+		return err
 	}
 	if commit.Native != nil && commit.Native.Checkpoint.ID != "" {
 		next := commit.Native.Checkpoint
@@ -58,7 +74,7 @@ func (s *turnState) commit(ctx context.Context, commit storage.DialogueCommit, o
 			s.seed.Consumed = true
 		}
 	}
-	return logResult, nil
+	return nil
 }
 
 func (s *turnState) advance(messageID string) storage.NativeCommit {
@@ -79,7 +95,7 @@ func (s *turnState) advance(messageID string) storage.NativeCommit {
 
 type replyCommitter struct{ state *turnState }
 
-func (c replyCommitter) Commit(ctx context.Context, message *storage.Message, mappings []storage.PlatformMessageMap) (events.LogResult, error) {
+func (c replyCommitter) Commit(ctx context.Context, message *storage.Message, mappings []storage.PlatformMessageMap) error {
 	s := c.state
 	var rows []*storage.Message
 	id := ""
@@ -100,7 +116,21 @@ type toolCommitter struct {
 	remaining int
 }
 
-func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (events.LogResult, error) {
+func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (err error) {
+	step := "prepare"
+	defer func() {
+		if err == nil || step == "commit" {
+			return
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		facts.SessionID = c.state.session.ID
+		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, Module: "agent", EventName: "tool_batch_prepare_failed", ResultStatus: events.LogStatus(err), Content: err.Error()}
+		if record.ResultStatus == events.ResultCanceled {
+			record.Level = slog.LevelInfo
+		}
+		agentshare.EmitAgentLog(ctx, facts, record)
+	}()
+
 	s := c.state
 	c.head = head
 	c.results = make([]*storage.Message, len(s.calls))
@@ -119,16 +149,12 @@ func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (event
 	}
 	batch, err := agentshare.NewToolBatch(ctx, s.route.NewMessageID, head, s.calls, c.results)
 	if err != nil {
-		status := events.ResultFailed
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			status = events.ResultCanceled
-		}
-		return events.LogResult{ResultStatus: status, Content: err.Error()}, err
+		return err
 	}
 	for i, call := range s.calls {
 		input, err := queuedInput(s.session.ID, c.results[i].ID, s.exchange.ID, call.ID, llm.TextSegments(c.results[i].Content))
 		if err != nil {
-			return events.LogResult{ResultStatus: events.ResultSkipped}, err
+			return err
 		}
 		c.inputs[i] = input
 		c.calls = append(c.calls, storage.NativeCall{ExchangeID: s.exchange.ID, CallID: call.ID, Name: call.Name, Arguments: call.Arguments, Ordinal: i, Status: "pending", ResultInputID: input.ID})
@@ -142,33 +168,51 @@ func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (event
 	native.Inputs = c.inputs
 	native.Checkpoint.MessageID = head.ID
 	native.Calls = append([]storage.NativeCall(nil), c.calls...)
-	logResult, err := s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, ToolBatch: batch, Native: &native}, "begin_tool_transcript")
+	step = "commit"
+	err = s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, ToolBatch: batch, Native: &native}, "begin_tool_transcript")
 	if err != nil {
-		return logResult, err
+		return err
 	}
 	s.consumed = nil
-	return logResult, nil
+	return nil
 }
-func (c *toolCommitter) Prepared(ctx context.Context, index int, call llm.ToolCallRequest) (events.LogResult, error) {
+func (c *toolCommitter) Prepared(ctx context.Context, index int, call llm.ToolCallRequest) error {
 	if index < 0 || index >= len(c.calls) || call.ID != c.calls[index].CallID || call.Name != c.calls[index].Name || call.Arguments != c.calls[index].Arguments {
 		err := fmt.Errorf("native tool calls are read-only")
-		return events.LogResult{ResultStatus: events.ResultSkipped}, err
+		return err
 	}
-	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
+	return nil
 }
-func (c *toolCommitter) Result(ctx context.Context, index int, _ llm.ToolCallRequest, message llm.LLMMessage, update *storage.ToolResultCommit) (events.LogResult, error) {
+func (c *toolCommitter) Result(ctx context.Context, index int, _ llm.ToolCallRequest, message llm.LLMMessage, update *storage.ToolResultCommit) (err error) {
+	step := "prepare"
+	level := slog.LevelError
+	defer func() {
+		if err == nil || step == "commit" {
+			return
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		facts.SessionID = c.state.session.ID
+		record := events.LogRecord{Category: events.LogRuntime, Level: level, Module: "agent", EventName: "tool_result_prepare_failed", ResultStatus: events.LogStatus(err), Content: err.Error()}
+		if record.ResultStatus == events.ResultCanceled {
+			record.Level = slog.LevelInfo
+		}
+		agentshare.EmitAgentLog(ctx, facts, record)
+	}()
+
 	s := c.state
 	stored := update.Result
 	stored.ID, stored.CreatedAt = c.results[index].ID, c.results[index].CreatedAt
+	level = slog.LevelWarn
 	archived, err := s.route.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{message})
 	if err != nil {
-		return events.LogResult{ResultStatus: events.ResultSkipped}, err
+		return err
 	}
+	level = slog.LevelError
 	segments := archived[0].Segments
 	stored.Content, stored.Segments = agentshare.MessageContent(segments), agentshare.StoredMessageSegments(segments)
 	input, err := queuedInput(s.session.ID, stored.ID, s.exchange.ID, c.calls[index].CallID, segments)
 	if err != nil {
-		return events.LogResult{ResultStatus: events.ResultSkipped}, err
+		return err
 	}
 	call := c.calls[index]
 	call.Status = "completed"
@@ -187,27 +231,41 @@ func (c *toolCommitter) Result(ctx context.Context, index int, _ llm.ToolCallReq
 		native.Snapshot = &snapshot
 	}
 	update.Call = c.head
-	logResult, err := s.commit(context.WithoutCancel(ctx), storage.DialogueCommit{SessionID: s.session.ID, ToolResult: update, Native: &native}, "save_tool_result")
+	step = "commit"
+	err = s.commit(context.WithoutCancel(ctx), storage.DialogueCommit{SessionID: s.session.ID, ToolResult: update, Native: &native}, "save_tool_result")
 	if err == nil {
 		c.remaining--
 	}
-	return logResult, err
+	return err
 }
 
-func (c *toolCommitter) Flush(ctx context.Context) (events.LogResult, error) {
+func (c *toolCommitter) Flush(ctx context.Context) (err error) {
+	defer func() {
+		if err == nil {
+			return
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		facts.SessionID = c.state.session.ID
+		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, Module: "agent", EventName: "tool_transcript_projection_failed", ResultStatus: events.LogStatus(err), Content: err.Error()}
+		if record.ResultStatus == events.ResultCanceled {
+			record.Level = slog.LevelInfo
+		}
+		agentshare.EmitAgentLog(ctx, facts, record)
+	}()
+
 	s := c.state
-	logResult := events.LogResult{ResultStatus: events.ResultSkipped}
+
 	if c.remaining != 0 {
-		return logResult, fmt.Errorf("tool batch has unfinished results")
+		return fmt.Errorf("tool batch has unfinished results")
 	}
 	for _, stored := range append([]*storage.Message{c.head}, c.results...) {
 		projected, err := agentshare.MessageFromStorage(*stored)
 		if err != nil {
-			return logResult, err
+			return err
 		}
 		s.projection = append(s.projection, projected)
 	}
-	return logResult, nil
+	return nil
 }
 
 // Close interrupted local tool rounds without executing historical calls.
@@ -243,7 +301,7 @@ func (s *turnState) closeInterruptedCalls(ctx context.Context, messages []storag
 		snapshot := *s.checkpoint
 		snapshot.ID, snapshot.CreatedAt = storage.NewID(), storage.Now()
 		native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Calls: pending, Snapshot: &snapshot}
-		_, err = s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, ToolResult: &storage.ToolResultCommit{Call: head}, Native: &native}, "close_interrupted_native_tool")
+		err = s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, ToolResult: &storage.ToolResultCommit{Call: head}, Native: &native}, "close_interrupted_native_tool")
 		return err
 	}
 	return fmt.Errorf("interrupted tool batch header is missing")

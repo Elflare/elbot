@@ -14,10 +14,10 @@ import (
 
 type notificationSender struct {
 	delivery.MessageSender
-	send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
+	send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 }
 
-func (s notificationSender) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+func (s notificationSender) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	return s.send(ctx, target, outputs)
 }
 
@@ -44,16 +44,12 @@ func TestConnectNotifications(t *testing.T) {
 			source := signal.New[events.Notification, events.NotificationReceipt](t.Name())
 			defer source.Close(context.Background())
 			calls := 0
-			sender := notificationSender{send: func(_ context.Context, got delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+			sender := notificationSender{send: func(_ context.Context, got delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 				calls++
 				if got != tt.target || !reflect.DeepEqual(outputs, []delivery.Output{delivery.Text("notice")}) {
 					t.Errorf("send target = %+v, outputs = %+v", got, outputs)
 				}
-				result := events.LogResult{ResultStatus: events.ResultSucceeded}
-				if tt.err != nil {
-					result = events.LogResult{ResultStatus: events.ResultFailed, Content: tt.err.Error()}
-				}
-				return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, result, tt.err
+				return delivery.Receipt{PlatformMessageIDs: []string{"sent"}}, tt.err
 			}}
 			connection, err := ConnectNotifications(source, sender)
 			if err != nil {

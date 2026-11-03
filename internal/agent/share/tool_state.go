@@ -5,20 +5,19 @@ import (
 	"context"
 	"elbot/internal/tool"
 
-	"elbot/internal/events"
 	"elbot/internal/storage"
 )
 
 func CommitToolState(ctx context.Context, state interface {
-	Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, events.LogResult, error)
-}, row *storage.Session, update tool.StateUpdate) (tool.StateCommit, events.LogResult, error) {
+	Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, error)
+}, row *storage.Session, update tool.StateUpdate) (tool.StateCommit, error) {
 	if len(update.Tools) == 0 && len(update.Tags) == 0 {
-		return tool.StateCommit{}, events.LogResult{ResultStatus: events.ResultSkipped}, nil
+		return tool.StateCommit{}, nil
 	}
-	result, logResult, err := state.Commit(ctx, row.ID, update)
+	result, err := state.Commit(ctx, row.ID, update)
 	if err != nil {
-		return tool.StateCommit{}, logResult, err
+		return tool.StateCommit{}, err
 	}
 	row.Metadata = result.Metadata
-	return result, logResult, nil
+	return result, nil
 }

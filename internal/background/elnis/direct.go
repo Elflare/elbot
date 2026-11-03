@@ -6,107 +6,66 @@ package elnis
 
 import (
 	"context"
-	"errors"
+	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"elbot/internal/delivery"
-	globalevents "elbot/internal/events"
 )
 
-// runDirect declares this event's result before its caller saves failure state.
-// Sending and event completion retain their business errors independently.
-func (s *Service) runDirect(ctx context.Context, event Event, eventID string) (logResult globalevents.LogResult, err error) {
+// runDirect coordinates direct execution; each operation owns its diagnostics.
+func (s *Service) runDirect(ctx context.Context, event Event, eventID string) error {
 	req := event.Request
 	resolved, err := decodeResolvedTargets(event.ResolvedTargets)
 	if err != nil {
-		return globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		_ = events.EmitLog(ctx, events.LogRecord{Category: events.LogElnis, Level: slog.LevelError, Module: "elnis", EventName: "elnis_direct_failed", ResultStatus: events.ResultFailed, Identity: events.LogIdentityFromExecution(facts), Content: fmt.Sprintf("event_id=%s error=%v", eventID, err)})
+		return err
 	}
-	logResult, err = s.executeCalls(ctx, resolved, req.Calls)
+	err = s.executeCalls(ctx, resolved, req.Calls)
 	if err != nil {
-		return logResult, err
+		return err
 	}
-	var lines []string
-	if logResult.Content != "" {
-		lines = append(lines, logResult.Content)
-	}
-	defer func() { logResult.Content = strings.Join(lines, "\n") }()
 	if len(resolved) > 0 && (strings.TrimSpace(req.Content) != "" || len(req.Segments) > 0) {
 		outputs, err := s.directMediaOutputs(ctx, event, eventID)
 		if err != nil {
-			logResult.ResultStatus = globalevents.ResultFailed
-			lines = append(lines, "media status=failed")
-			if errors.Is(err, context.Canceled) {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			}
-			return logResult, err
+			return err
 		}
-		result, err := s.sendOutputsToTargets(ctx, resolved, outputs)
-		lines = append(lines, result.Content)
-		logResult.ResultStatus = result.ResultStatus
-		if err != nil {
-			return logResult, err
+		if err := s.sendOutputsToTargets(ctx, resolved, outputs); err != nil {
+			return err
 		}
 	}
-	if err := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusCompleted, "", ""); err != nil {
-		lines = append(lines, "persist status=failed")
-		if logResult.ResultStatus != globalevents.ResultFailed {
-			logResult.ResultStatus = globalevents.ResultFailed
-			if errors.Is(err, context.Canceled) {
-				logResult.ResultStatus = globalevents.ResultCanceled
-			}
-		}
-		return logResult, err
-	}
-	if logResult.ResultStatus == globalevents.ResultSkipped {
-		logResult.ResultStatus = globalevents.ResultSucceeded
-	}
-	return logResult, nil
+	return s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusCompleted, "", "")
 }
 
-func (s *Service) executeCalls(ctx context.Context, targets []Target, calls []Call) (logResult globalevents.LogResult, err error) {
-	if len(calls) == 0 {
-		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped}, nil
-	}
-	logResult = globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-	var lines []string
-	defer func() { logResult.Content = strings.Join(lines, "\n") }()
+func (s *Service) executeCalls(ctx context.Context, targets []Target, calls []Call) error {
 	for _, call := range calls {
 		platform := strings.TrimSpace(call.Platform)
 		if platform == "" && len(targets) > 0 {
 			platform = targets[0].Platform
 		}
 		if _, err := s.callPlatformAPI(ctx, platform, call.API, call.Params); err != nil {
-			logResult.ResultStatus = globalevents.ResultFailed
-			if errors.Is(err, context.Canceled) {
-				logResult.ResultStatus = globalevents.ResultCanceled
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			record := events.LogRecord{Category: events.LogElnis, Level: slog.LevelWarn, Module: "elnis", EventName: "elnis_platform_call_failed", ResultStatus: events.LogStatus(err), Identity: events.LogIdentityFromExecution(facts), Content: fmt.Sprintf("platform=%s api=%s error=%v", platform, call.API, err)}
+			if record.ResultStatus == events.ResultCanceled {
+				record.Level = slog.LevelInfo
 			}
-			lines = append(lines, fmt.Sprintf("call platform=%s api=%s status=%s", platform, call.API, logResult.ResultStatus))
-			return logResult, err
+			_ = events.EmitLog(ctx, record)
+			return err
 		}
-		lines = append(lines, fmt.Sprintf("call platform=%s api=%s status=succeeded", platform, call.API))
 	}
-	return logResult, nil
+	return nil
 }
 
-func (s *Service) sendOutputsToTargets(ctx context.Context, targets []Target, outputs []delivery.Output) (logResult globalevents.LogResult, err error) {
+func (s *Service) sendOutputsToTargets(ctx context.Context, targets []Target, outputs []delivery.Output) error {
 	ctx = delivery.WithTemporaryConnection(ctx)
-	logResult = globalevents.LogResult{ResultStatus: globalevents.ResultSkipped}
-	var lines []string
-	defer func() { logResult.Content = strings.Join(lines, "\n") }()
 	for _, target := range targets {
-		_, result, err := s.send(ctx, toDeliveryTarget(target), outputs)
-		lines = append(lines, fmt.Sprintf("send platform=%s kind=%s target=%s status=%s", target.Platform, target.Type, target.ID, result.ResultStatus))
-		if result.Content != "" {
-			lines = append(lines, result.Content)
-		}
-		if logResult.ResultStatus == globalevents.ResultSkipped || result.ResultStatus == globalevents.ResultFailed ||
-			(result.ResultStatus == globalevents.ResultCanceled && logResult.ResultStatus != globalevents.ResultFailed) {
-			logResult.ResultStatus = result.ResultStatus
-		}
+		_, err := s.send(ctx, toDeliveryTarget(target), outputs)
 		if err != nil {
-			return logResult, err
+			return err
 		}
 	}
-	return logResult, nil
+	return nil
 }

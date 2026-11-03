@@ -6,10 +6,9 @@ import (
 	"context"
 
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 )
 
-func (m *Supervisor) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+func (m *Supervisor) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	return m.dispatcher.SendTo(ctx, target, outputs)
 }
 

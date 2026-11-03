@@ -41,8 +41,8 @@ func (*backgroundExecutionStub) SessionTakenOver(context.Context, string) (bool,
 
 type backgroundPlatformStub struct{}
 
-func (backgroundPlatformStub) SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	return delivery.Receipt{}, events.LogResult{}, nil
+func (backgroundPlatformStub) SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+	return delivery.Receipt{}, nil
 }
 func (backgroundPlatformStub) CallPlatformAPI(context.Context, string, string, map[string]any) (json.RawMessage, error) {
 	return nil, nil

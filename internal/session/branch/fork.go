@@ -133,7 +133,7 @@ func (s *Service) Fork(ctx context.Context, scope share.Scope, fromMessageID str
 	if prepared == nil {
 		err = s.deps.Sessions.Create(locked, row)
 	} else {
-		_, err = s.deps.Sessions.CreateMaterial(locked, materialCreate(row, sourceID, prepared, nil))
+		err = s.deps.Sessions.CreateMaterial(locked, materialCreate(row, sourceID, prepared, nil))
 	}
 	if err != nil {
 		return nil, err

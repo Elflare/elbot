@@ -30,7 +30,7 @@ func TestExecMediaProtocolRoundTrip(t *testing.T) {
 	}
 	defer runtime.Close(ctx)
 	module := Module{Opts: Options{Log: testLog, Notify: testNotify, Runtime: runtime, BuildMessageSegments: runtime.BuildMessageSegments}}
-	got, _, err := module.runRule(ctx, Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("media")}}}, share.Event{Point: share.PointAgentInputPrepared}, false)
+	got, err := module.runRule(ctx, Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("media")}}}, share.Event{Point: share.PointAgentInputPrepared}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestRuleSendMediaID(t *testing.T) {
 		{Type: "send", Kind: "image", URL: id},
 		{Type: "send", Outputs: []SegmentSpec{{Kind: "image", URL: id}}},
 	} {
-		got, _, err := (Module{Opts: Options{Log: testLog, Notify: testNotify}}).runRule(context.Background(), Rule{Actions: []Action{action}}, share.Event{}, false)
+		got, err := (Module{Opts: Options{Log: testLog, Notify: testNotify}}).runRule(context.Background(), Rule{Actions: []Action{action}}, share.Event{}, false)
 		if err != nil || len(got.Outputs) != 1 || got.Outputs[0].Source.MediaID != id {
 			t.Fatalf("got=%#v err=%v", got, err)
 		}

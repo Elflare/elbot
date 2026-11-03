@@ -129,15 +129,15 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 			t.Fatalf("got %q, want %q", msg.Text, want)
 		}
 	}
-	if _, _, err := s.SendTo(firstCtx, delivery.Target{}, []delivery.Output{delivery.Text("first-only")}); err != nil {
+	if _, err := s.SendTo(firstCtx, delivery.Target{}, []delivery.Output{delivery.Text("first-only")}); err != nil {
 		t.Fatal(err)
 	}
 	read(one, "first-only")
-	if _, _, err := s.SendTo(secondCtx, delivery.Target{}, []delivery.Output{delivery.Text("second-only")}); err != nil {
+	if _, err := s.SendTo(secondCtx, delivery.Target{}, []delivery.Output{delivery.Text("second-only")}); err != nil {
 		t.Fatal(err)
 	}
 	read(two, "second-only")
-	if _, _, err := s.SendTo(firstCtx, delivery.Target{Platform: "cli", ChatType: "private", ChatID: "same-user"}, []delivery.Output{delivery.Text("both")}); err != nil {
+	if _, err := s.SendTo(firstCtx, delivery.Target{Platform: "cli", ChatType: "private", ChatID: "same-user"}, []delivery.Output{delivery.Text("both")}); err != nil {
 		t.Fatal(err)
 	}
 	read(one, "both")
@@ -160,7 +160,7 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 	if terminal.Type != remoteMsgStatus || terminal.Snapshot.Phase != runtimestatus.PhaseDone {
 		t.Fatal(terminal)
 	}
-	if _, _, err := s.SendTo(secondCtx, delivery.Target{}, []delivery.Output{delivery.Text("second-barrier")}); err != nil {
+	if _, err := s.SendTo(secondCtx, delivery.Target{}, []delivery.Output{delivery.Text("second-barrier")}); err != nil {
 		t.Fatal(err)
 	}
 	read(two, "second-barrier") // Neither reasoning nor status leaked to the same user's other connection.
@@ -169,17 +169,36 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 		t.Fatal("notification partial failure reported success")
 	}
 	read(two, "partial-notice")
-	logResult, err := s.writeClients(ctx, []*remoteClientConn{first, second}, remoteMessage{Type: remoteMsgNotice, Text: "partial-fanout"})
-	if err != nil || logResult.ResultStatus != events.ResultFailed || !strings.Contains(logResult.Content, "sent=1 targets=2") || !strings.Contains(logResult.Content, "write_error=") {
-		t.Fatalf("partial fanout changed business success or hid logging failure: %#v / %v", logResult, err)
+	logs := make(chan events.LogRecord, 4)
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
+		if r.Module == "cli" && r.EventName == "chat_output_failed" {
+			logs <- r
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
+	err = s.writeClients(ctx, []*remoteClientConn{first, second}, remoteMessage{Type: remoteMsgNotice, Text: "partial-fanout"})
+	if err != nil {
+		t.Fatal("partial fanout changed business success or hid logging failure:  / ", err)
 	}
 	read(two, "partial-fanout")
+	select {
+	case r := <-logs:
+		if r.Level != slog.LevelWarn || r.ResultStatus != events.ResultFailed || !strings.Contains(r.Content, first.id) {
+			t.Fatalf("partial fanout log=%+v", r)
+		}
+	default:
+		t.Fatal("failed client write was not logged")
+	}
 	s.removeClient(first)
 	first.conn.CloseNow()
-	if _, _, err := s.SendTo(firstCtx, delivery.Target{}, []delivery.Output{delivery.Text("must-not-move")}); err == nil {
+	if _, err := s.SendTo(firstCtx, delivery.Target{}, []delivery.Output{delivery.Text("must-not-move")}); err == nil {
 		t.Fatal("disconnected original reply succeeded")
 	}
-	if _, _, err := s.SendTo(secondCtx, delivery.Target{}, []delivery.Output{delivery.Text("survivor")}); err != nil {
+	if _, err := s.SendTo(secondCtx, delivery.Target{}, []delivery.Output{delivery.Text("survivor")}); err != nil {
 		t.Fatal(err)
 	}
 	read(two, "survivor")

@@ -2,7 +2,10 @@ package cli
 
 import (
 	"context"
+	"elbot/internal/events"
+	"elbot/internal/signal"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -62,5 +65,54 @@ func TestRemoteWriteWaitingOnAnotherWriterRespectsContext(t *testing.T) {
 		_ = conn.CloseNow()
 		<-secondDone
 		t.Fatal("second write did not respect its context while another write was blocked")
+	}
+}
+
+func TestRemoteFanoutPreservesCancellationCause(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.CloseNow()
+		conn.CloseRead(r.Context())
+		<-release
+	}))
+	defer server.Close()
+	defer close(release)
+	conn, _, err := websocket.Dial(t.Context(), "ws"+strings.TrimPrefix(server.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+	writer, err := conn.Writer(t.Context(), websocket.MessageText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	s := &RemoteServer{name: testPlatformName, clients: map[string]map[*remoteClientConn]struct{}{}}
+	client := &remoteClientConn{id: "canceled-client", server: s, conn: conn}
+	s.addClient(client)
+	var records []events.LogRecord
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+		if record.Module == "cli" {
+			records = append(records, record)
+		}
+		return errors.New("logger unavailable")
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	err = s.writeClients(ctx, []*remoteClientConn{client}, remoteMessage{Type: remoteMsgChat, Text: "canceled"})
+	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), client.id) {
+		t.Fatalf("fanout lost cause or client: %v", err)
+	}
+	if len(records) != 1 || records[0].ResultStatus != events.ResultCanceled || records[0].Level != slog.LevelInfo {
+		t.Fatalf("write diagnostic: %+v", records)
 	}
 }

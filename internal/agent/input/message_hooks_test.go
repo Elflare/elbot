@@ -10,7 +10,6 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/security"
@@ -32,13 +31,13 @@ func (p *entryProbe) Handle(_ context.Context, text string) (bool, error) {
 	return false, nil
 }
 func (p *entryProbe) IsCommand(string) bool { return false }
-func (p *entryProbe) SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, events.LogResult, error) {
+func (p *entryProbe) SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, error) {
 	p.order = append(p.order, "chat")
-	return delivery.Receipt{}, events.LogResult{}, nil
+	return delivery.Receipt{}, nil
 }
-func (p *entryProbe) SendOutputs(context.Context, []delivery.Output) (events.LogResult, error) {
+func (p *entryProbe) SendOutputs(context.Context, []delivery.Output) error {
 	p.order = append(p.order, "outputs")
-	return events.LogResult{}, nil
+	return nil
 }
 func (p *entryProbe) Notify(context.Context, slog.Level, string) {
 	p.order = append(p.order, "failure")
@@ -64,12 +63,12 @@ func TestInboundCallbackOutputPrecedesConsumeAndDispatch(t *testing.T) {
 					p.order = append(p.order, "route?")
 					return false
 				},
-				PlatformMessageReceived: func(_ context.Context, facts hooks.Facts, message agentshare.Message) (agentshare.PlatformMessageReceivedResult, events.LogResult, error) {
+				PlatformMessageReceived: func(_ context.Context, facts hooks.Facts, message agentshare.Message) (agentshare.PlatformMessageReceivedResult, error) {
 					p.order = append(p.order, "received")
 					if !facts.Woken {
 						t.Fatal("source-free input should be awake")
 					}
-					return agentshare.PlatformMessageReceivedResult{Segments: llm.TextSegments("edited"), Consume: consume, Outputs: []delivery.Output{delivery.Text("extra")}}, events.LogResult{}, nil
+					return agentshare.PlatformMessageReceivedResult{Segments: llm.TextSegments("edited"), Consume: consume, Outputs: []delivery.Output{delivery.Text("extra")}}, nil
 				},
 			})
 			if err := h.HandleMessage(t.Context(), "original"); err != nil {
@@ -99,11 +98,11 @@ func TestWaitingInputPreparesMediaWithoutRecomputingWakeup(t *testing.T) {
 			}
 			return true
 		},
-		PlatformMessageReceived: func(_ context.Context, facts hooks.Facts, message agentshare.Message) (agentshare.PlatformMessageReceivedResult, events.LogResult, error) {
+		PlatformMessageReceived: func(_ context.Context, facts hooks.Facts, message agentshare.Message) (agentshare.PlatformMessageReceivedResult, error) {
 			if facts.Woken || resolver.calls != 1 || len(message.Segments) != 1 || !media.ValidID(message.Segments[0].MediaID) {
 				t.Fatalf("facts=%+v message=%+v calls=%d", facts, message, resolver.calls)
 			}
-			return agentshare.PlatformMessageReceivedResult{Segments: llm.TextSegments("wake edited")}, events.LogResult{}, nil
+			return agentshare.PlatformMessageReceivedResult{Segments: llm.TextSegments("wake edited")}, nil
 		},
 	})
 	store := newTestStore(t)
@@ -134,9 +133,9 @@ func TestCancelRouteBeforeAndAfterMessageRewrite(t *testing.T) {
 					}
 					return true
 				},
-				PlatformMessageReceived: func(_ context.Context, _ hooks.Facts, _ agentshare.Message) (agentshare.PlatformMessageReceivedResult, events.LogResult, error) {
+				PlatformMessageReceived: func(_ context.Context, _ hooks.Facts, _ agentshare.Message) (agentshare.PlatformMessageReceivedResult, error) {
 					p.order = append(p.order, "received")
-					return agentshare.PlatformMessageReceivedResult{Segments: llm.TextSegments("/cancel")}, events.LogResult{}, nil
+					return agentshare.PlatformMessageReceivedResult{Segments: llm.TextSegments("/cancel")}, nil
 				},
 			})
 			text := "original"

@@ -5,7 +5,6 @@ package rules
 import (
 	"context"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/hook/pipeline"
 	"elbot/internal/hook/share"
 	"elbot/internal/llm"
@@ -205,7 +204,7 @@ func TestRuleRoleGatesAndControl(t *testing.T) {
 		Actor:   share.ActorContext{Role: "user", GroupRole: "admin"},
 		Message: share.MessagePayload{Segments: llm.TextSegments("hello")},
 	}
-	got, _, err := module.runRule(context.Background(), Rule{
+	got, err := module.runRule(context.Background(), Rule{
 		Roles:           []string{"admin"},
 		ActorRoles:      []string{"user"},
 		GroupRoles:      []string{"admin"},
@@ -223,7 +222,7 @@ func TestRuleRoleGatesAndControl(t *testing.T) {
 		t.Fatalf("control = %#v", got.Control)
 	}
 
-	blocked, _, err := module.runRule(context.Background(), Rule{GroupRoles: []string{"owner"}, Actions: []Action{{Type: "append", Field: "message.text", Text: "?"}}}, event, false)
+	blocked, err := module.runRule(context.Background(), Rule{GroupRoles: []string{"owner"}, Actions: []Action{{Type: "append", Field: "message.text", Text: "?"}}}, event, false)
 	if err != nil {
 		t.Fatalf("blocked runRule: %v", err)
 	}
@@ -237,9 +236,9 @@ type roleTestRuntime struct {
 	calls int
 }
 
-func (r *roleTestRuntime) Handle(_ context.Context, _ string, event share.Event, _ share.Control) (share.Event, events.LogResult, error) {
+func (r *roleTestRuntime) Handle(_ context.Context, _ string, event share.Event, _ share.Control) (share.Event, error) {
 	r.calls++
-	return event, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+	return event, nil
 }
 
 func TestNormalizeRolesAcceptsCanonicalValues(t *testing.T) {
@@ -312,7 +311,7 @@ func TestRegisteredRoleGatesRunOnce(t *testing.T) {
 					Actor:   share.ActorContext{Role: "user", GroupRole: "admin"},
 					Message: share.MessagePayload{Segments: llm.TextSegments("hello")},
 				}
-				got, _, err := manager.Run(t.Context(), event, pipeline.CallOptions{Woken: true})
+				got, err := manager.Run(t.Context(), event, pipeline.CallOptions{Woken: true})
 				if err != nil {
 					t.Fatal(err)
 				}

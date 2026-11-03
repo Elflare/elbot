@@ -26,7 +26,7 @@ type Preparer struct {
 		AcquireForLLM(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error)
 	}
 	Hooks interface {
-		LLMTurnPrepared(context.Context, agentshare.Session, agentshare.LLMInput) (agentshare.LLMInputResult, events.LogResult, error)
+		LLMTurnPrepared(context.Context, agentshare.Session, agentshare.LLMInput) (agentshare.LLMInputResult, error)
 	}
 	Tools *ToolExecutor
 }
@@ -75,7 +75,7 @@ func (p *Preparer) PrepareInput(ctx context.Context, in agentshare.LoopInput, us
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	result, _, err := p.Hooks.LLMTurnPrepared(ctx, agentshare.Session{ID: in.Session.ID}, agentshare.LLMInput{
+	result, err := p.Hooks.LLMTurnPrepared(ctx, agentshare.Session{ID: in.Session.ID}, agentshare.LLMInput{
 		Message:  agentshare.Message{ID: user.ID, Role: string(llm.RoleUser), PlatformText: platformText, Segments: append([]llm.MessageSegment(nil), segments...)},
 		Provider: in.Selection.Provider, Model: in.Selection.Model, Messages: llm.CloneMessages(messages), Tools: tools})
 	if err != nil {

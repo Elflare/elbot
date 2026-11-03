@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/events"
 	"elbot/internal/storage"
 )
 
@@ -132,7 +131,7 @@ func TestExplicitHoldsAreNotReleasedByCleanup(t *testing.T) {
 	}
 	m.references = store.MediaReferences()
 	m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
-	if _, err := m.Cleanup(t.Context(), nil); err != nil {
+	if err := m.Cleanup(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}
 	refs, err := store.MediaReferences().ListMediaIDs(t.Context(), item.ID)
@@ -155,9 +154,9 @@ func TestOwnedReleaseRetryFailureStopsCleanup(t *testing.T) {
 	}
 	m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
 	for range 2 {
-		result, err := m.Cleanup(t.Context(), nil)
-		if !errors.Is(err, failure) || result.ResultStatus != events.ResultFailed || !strings.Contains(result.Content, "stage=release_owned") {
-			t.Fatalf("cleanup = %#v %v", result, err)
+		err := m.Cleanup(t.Context(), nil)
+		if !errors.Is(err, failure) {
+			t.Fatal("cleanup =  ", err)
 		}
 		record, err := store.Media().Get(t.Context(), orphan.ID)
 		if err != nil || record.Deleting {
@@ -170,14 +169,14 @@ func TestOwnedReleaseRetryFailureStopsCleanup(t *testing.T) {
 	m.references = store.MediaReferences()
 	// 释放完成后的正常时间内仍保留宽限期。
 	m.options.Now = storage.Now
-	if _, err := m.Cleanup(t.Context(), nil); err != nil {
+	if err := m.Cleanup(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := m.Info(t.Context(), item.ID); err != nil {
 		t.Fatalf("released object ignored grace period: %v", err)
 	}
 	m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
-	if _, err := m.Cleanup(t.Context(), nil); err != nil {
+	if err := m.Cleanup(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := m.Info(t.Context(), item.ID); !errors.Is(err, storage.ErrNotFound) {
@@ -222,11 +221,10 @@ func TestOwnedReleaseCancellationPreservesPendingAndNewItems(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			type outcome struct {
-				result events.LogResult
-				err    error
+				err error
 			}
 			done := make(chan outcome, 1)
-			go func() { result, err := m.Cleanup(ctx, nil); done <- outcome{result, err} }()
+			go func() { err := m.Cleanup(ctx, nil); done <- outcome{err} }()
 			awaitTest(t, entered)
 			// 当前批次正在重试时，另一个便捷调用登记新的失败释放。
 			if _, _, err := m.Read(t.Context(), third.ID); !errors.Is(err, failure) {
@@ -240,18 +238,15 @@ func TestOwnedReleaseCancellationPreservesPendingAndNewItems(t *testing.T) {
 			}
 			close(release)
 			got := awaitTest(t, done)
-			wantStatus, wantPending := events.ResultCanceled, 3
-			if failCurrent {
-				wantStatus, wantPending = events.ResultFailed, 3
-			}
-			if !errors.Is(got.err, context.Canceled) || errors.Is(got.err, failure) != failCurrent || got.result.ResultStatus != wantStatus {
-				t.Fatalf("cleanup = %#v %v", got.result, got.err)
+			wantPending := 3
+			if !errors.Is(got.err, context.Canceled) || errors.Is(got.err, failure) != failCurrent {
+				t.Fatal(got.err)
 			}
 			if secondCalls.Load() != 0 || len(m.pendingReleases) != wantPending {
 				t.Fatalf("remaining=%d unstarted calls=%d", len(m.pendingReleases), secondCalls.Load())
 			}
 			m.references = store.MediaReferences()
-			if _, err := m.Cleanup(t.Context(), nil); err != nil {
+			if err := m.Cleanup(t.Context(), nil); err != nil {
 				t.Fatal(err)
 			}
 			for _, id := range []string{first.ID, second.ID, third.ID} {
@@ -290,7 +285,7 @@ func TestOwnedReleaseFailureRecoveredByCleanup(t *testing.T) {
 				t.Fatalf("release failure lost: %v", err)
 			}
 			m.references = store.MediaReferences()
-			if _, err := m.Cleanup(t.Context(), nil); err != nil {
+			if err := m.Cleanup(t.Context(), nil); err != nil {
 				t.Fatal(err)
 			}
 			refs, err := store.MediaReferences().ListMediaIDs(t.Context(), item.ID)

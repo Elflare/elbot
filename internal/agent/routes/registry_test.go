@@ -15,7 +15,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
@@ -96,26 +95,26 @@ type testOutput struct {
 	sent     []string
 }
 
-func (o *testOutput) PrepareAssistant(_ context.Context, text string) (string, events.LogResult, error) {
-	return text, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+func (o *testOutput) PrepareAssistant(_ context.Context, text string) (string, error) {
+	return text, nil
 }
 func (*testOutput) StartStream(context.Context) (delivery.MessageStream, error) { return nil, nil }
 func (*testOutput) FinishIntermediate(context.Context, context.Context, delivery.MessageStream, string, bool) error {
 	return nil
 }
-func (*testOutput) ReplaceAndFinishStream(context.Context, context.Context, delivery.MessageStream, string) (delivery.Receipt, events.LogResult, error) {
-	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+func (*testOutput) ReplaceAndFinishStream(context.Context, context.Context, delivery.MessageStream, string) (delivery.Receipt, error) {
+	return delivery.Receipt{}, nil
 }
-func (o *testOutput) SendAssistant(ctx context.Context, text string) (delivery.Receipt, events.LogResult, error) {
+func (o *testOutput) SendAssistant(ctx context.Context, text string) (delivery.Receipt, error) {
 	rows, err := o.messages.ListBySession(ctx, "session")
 	if err != nil || len(rows) != 1 || rows[0].Content != "canonical input" {
 		o.t.Fatalf("route bypassed common input persistence: rows=%+v err=%v", rows, err)
 	}
 	o.sent = append(o.sent, text)
-	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+	return delivery.Receipt{}, nil
 }
-func (*testOutput) SendOutputs(context.Context, []delivery.Output) (events.LogResult, error) {
-	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+func (*testOutput) SendOutputs(context.Context, []delivery.Output) error {
+	return nil
 }
 func (*testOutput) Notify(context.Context, slog.Level, string)              {}
 func (*testOutput) SendPreview(context.Context, ...string)                  {}

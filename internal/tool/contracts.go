@@ -5,7 +5,6 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -194,14 +193,14 @@ type ConfirmResult struct {
 // RunnerDeps 是批次执行期间向调用方请求的能力；只在该次 Run 中借用。
 type RunnerDeps interface {
 	RefreshExecution(context.Context, *storage.Session) (context.Context, error)
-	PrepareToolCall(context.Context, *storage.Session, llm.ToolCallRequest) (llm.ToolCallRequest, events.LogResult, error)
+	PrepareToolCall(context.Context, *storage.Session, llm.ToolCallRequest) (llm.ToolCallRequest, error)
 	ShouldSendPreview(context.Context, *storage.Session, llm.ToolCallRequest, string) bool
 	ConfirmToolCall(context.Context, string, llm.ToolCallRequest, RiskAssessment, string) (ConfirmResult, error)
-	StartToolRequest(context.Context, string, string) (context.Context, time.Time, func(), events.LogResult, error)
+	StartToolRequest(context.Context, string, string) (context.Context, time.Time, func(), error)
 	PrepareToolContext(context.Context, *storage.Session, llm.ToolCallRequest) context.Context
-	CompleteToolCall(context.Context, *storage.Session, llm.ToolCallRequest, string, []llm.MessageSegment, error) ([]llm.MessageSegment, events.LogResult, error)
+	CompleteToolCall(context.Context, *storage.Session, llm.ToolCallRequest, string, []llm.MessageSegment, error) ([]llm.MessageSegment, error)
 	SendPreview(context.Context, ...string)
-	SendOutputs(context.Context, []delivery.Output) (events.LogResult, error)
+	SendOutputs(context.Context, []delivery.Output) error
 	AuditToolDenied(context.Context, string, llm.ToolCallRequest, security.RiskLevel, string)
 	AddToolUse(string, string)
 	ToolResultMessage(string, llm.LLMMessage) storage.Message
@@ -210,10 +209,10 @@ type RunnerDeps interface {
 
 // ToolCommitter 由调用方实现，同步提交工具结果及其状态补丁，保持对话事务原子性。
 type ToolCommitter interface {
-	Begin(context.Context, *storage.Message) (events.LogResult, error)
-	Prepared(context.Context, int, llm.ToolCallRequest) (events.LogResult, error)
-	Result(context.Context, int, llm.ToolCallRequest, llm.LLMMessage, *storage.ToolResultCommit) (events.LogResult, error)
-	Flush(context.Context) (events.LogResult, error)
+	Begin(context.Context, *storage.Message) error
+	Prepared(context.Context, int, llm.ToolCallRequest) error
+	Result(context.Context, int, llm.ToolCallRequest, llm.LLMMessage, *storage.ToolResultCommit) error
+	Flush(context.Context) error
 }
 
 type RunRequest struct {

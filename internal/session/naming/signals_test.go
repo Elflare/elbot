@@ -256,7 +256,19 @@ func TestNamingFailureContentSurvivesRuntimeLevel(t *testing.T) {
 			}
 			for _, prefix := range []string{"audit", "elbot"} {
 				paths, err := filepath.Glob(filepath.Join(center.LogDir(), prefix+"-*.log"))
-				if err != nil || len(paths) != 1 {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if prefix == "elbot" && level == "error" {
+					for _, path := range paths {
+						data, err := os.ReadFile(path)
+						if err != nil || len(strings.TrimSpace(string(data))) != 0 {
+							t.Fatalf("WARN passed ERROR filter: %s %v", data, err)
+						}
+					}
+					continue
+				}
+				if len(paths) != 1 {
 					t.Fatalf("paths=%v err=%v", paths, err)
 				}
 				data, err := os.ReadFile(paths[0])
@@ -277,7 +289,7 @@ func TestNamingFailureContentSurvivesRuntimeLevel(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				if entry.Level != "ERROR" || !entry.Time.After(at) || entry.SessionID != sessionID || entry.RequestID != requestID || entry.ResultStatus != "failed" {
+				if entry.Level != "WARN" || !entry.Time.After(at) || entry.SessionID != sessionID || entry.RequestID != requestID || entry.ResultStatus != "failed" {
 					t.Fatalf("lost facts: %+v", entry)
 				}
 				if !strings.Contains(string(entry.Content), "wrapped: "+(namingDiagnosticError{}).Error()) {

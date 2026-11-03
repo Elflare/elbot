@@ -27,8 +27,8 @@ type CallProcessor struct {
 	Messages *MessageStore
 	Preparer *Preparer
 	Hooks    interface {
-		LLMRequestPrepared(context.Context, agentshare.Session, agentshare.LLMInput) (agentshare.LLMInputResult, events.LogResult, error)
-		LLMResponseReceived(context.Context, agentshare.Session, agentshare.LLMResponse) (agentshare.LLMResponseResult, events.LogResult, error)
+		LLMRequestPrepared(context.Context, agentshare.Session, agentshare.LLMInput) (agentshare.LLMInputResult, error)
+		LLMResponseReceived(context.Context, agentshare.Session, agentshare.LLMResponse) (agentshare.LLMResponseResult, error)
 		ErrorOccurred(context.Context, agentshare.Session, agentshare.LLMResponse, error)
 	}
 	Identity  interface{ IsCLI(context.Context) bool }
@@ -150,7 +150,7 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	}
 	var allowedTools map[string]bool
 	if session.Mode == storage.SessionModeBackground {
-		discovered, _, err := c.Tools.Manager.DiscoveredToolsForSession(ctx, session.ID, true)
+		discovered, err := c.Tools.Manager.DiscoveredToolsForSession(ctx, session.ID, true)
 		if err != nil {
 			return agentshare.CallInput{}, err
 		}
@@ -178,7 +178,7 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 			Segments:     append([]llm.MessageSegment(nil), baseMessages[pending.MessageIndex].Segments...),
 		}
 	}
-	result, logResult, err := c.Hooks.LLMRequestPrepared(ctx, agentshare.Session{ID: sessionID}, agentshare.LLMInput{
+	result, err := c.Hooks.LLMRequestPrepared(ctx, agentshare.Session{ID: sessionID}, agentshare.LLMInput{
 		Message:  hookMessage,
 		Provider: selection.Provider,
 		Model:    selection.Model,
@@ -186,14 +186,14 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 		Tools:    tools,
 	})
 	if err != nil {
-		record.Content += "\nrequest_hook:\n" + logResult.Content
-		record.ResultStatus, record.Level = logResult.ResultStatus, slog.LevelInfo
-		if logResult.ResultStatus == events.ResultFailed {
-			record.Level = slog.LevelError
+		record.Content += "\nrequest_hook:\n" + err.Error()
+		record.ResultStatus, record.Level = events.ResultFailed, slog.LevelWarn
+		if events.LogStatus(err) == events.ResultCanceled {
+			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
 		}
 		if pending != nil {
-			if logResult, persistErr := persistence.Commit(ctx, &pending.Message, nil); persistErr != nil {
-				record.Content += "\npersistence:\n" + logResult.Content
+			if persistErr := persistence.Commit(ctx, &pending.Message, nil); persistErr != nil {
+				record.Content += "\npersistence:\n" + persistErr.Error()
 				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
 				err = errors.Join(err, persistErr)
 			}
@@ -245,7 +245,7 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 		requestMessages[pending.MessageIndex].Segments = segments
 		pending.Message.Content = agentshare.MessageContent(segments)
 		pending.Message.Segments = agentshare.StoredMessageSegments(segments)
-		if _, err := persistence.Commit(ctx, &pending.Message, nil); err != nil {
+		if err := persistence.Commit(ctx, &pending.Message, nil); err != nil {
 			return agentshare.CallInput{}, err
 		}
 		if ruleCard != "" {
@@ -260,7 +260,7 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 func (c *CallProcessor) CompleteCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, content string, usage *llm.Usage, toolCalls []llm.ToolCallRequest, elapsedMs int64) (agentshare.CallOutput, error) {
 	sessionID := session.ID
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
-	result, _, err := c.Hooks.LLMResponseReceived(ctx, agentshare.Session{ID: sessionID}, agentshare.LLMResponse{
+	result, err := c.Hooks.LLMResponseReceived(ctx, agentshare.Session{ID: sessionID}, agentshare.LLMResponse{
 		Provider:   selection.Provider,
 		Model:      selection.Model,
 		Usage:      usage,

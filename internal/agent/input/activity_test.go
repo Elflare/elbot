@@ -12,7 +12,6 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/session"
@@ -26,14 +25,14 @@ import (
 
 type activityTestHooks struct{}
 
-func (activityTestHooks) AgentInputPrepared(_ context.Context, _ agentshare.Session, message agentshare.Message) ([]llm.MessageSegment, events.LogResult, error) {
-	return message.Segments, events.LogResult{}, nil
+func (activityTestHooks) AgentInputPrepared(_ context.Context, _ agentshare.Session, message agentshare.Message) ([]llm.MessageSegment, error) {
+	return message.Segments, nil
 }
 
 type activityTestOutput struct{}
 
-func (activityTestOutput) SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, events.LogResult, error) {
-	return delivery.Receipt{}, events.LogResult{}, nil
+func (activityTestOutput) SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, error) {
+	return delivery.Receipt{}, nil
 }
 func (activityTestOutput) Notify(context.Context, slog.Level, string) {}
 

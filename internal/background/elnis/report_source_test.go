@@ -2,7 +2,6 @@ package elnis
 
 import (
 	"context"
-	"elbot/internal/events"
 	"testing"
 
 	"elbot/internal/delivery"
@@ -11,14 +10,14 @@ import (
 func TestDefaultAdminReportUsesActualReceiptSources(t *testing.T) {
 	ctx := context.Background()
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"done"}`}
-	s, cleanup := newTestServiceWithRunner(t, runner, func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	s, cleanup := newTestServiceWithRunner(t, runner, func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
 		return delivery.Receipt{
 			PlatformMessageIDs: []string{"admin-1", "admin-2"},
 			SentMessages: []delivery.SentMessage{
 				{Platform: "qqonebot", ChatType: "private", ChatID: "1001", PlatformMessageID: "admin-1", OutputIndexes: []int{0}},
 				{Platform: "qqonebot", ChatType: "private", ChatID: "1002", PlatformMessageID: "admin-2", OutputIndexes: []int{0}},
 			},
-		}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		}, nil
 	})
 	defer cleanup()
 	var queued QueuedLLMEvent

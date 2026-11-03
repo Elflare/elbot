@@ -31,7 +31,7 @@ func TestNoticeKeepsPartiallySuccessfulMediaReceipt(t *testing.T) {
 	defer server.Close()
 	a := newQQOfficialSendTestAdapter(t, server)
 	out := delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/image.png"}}
-	receipt, _, err := a.SendTo(context.Background(), delivery.Target{Platform: config.PlatformQQOfficial, ChatType: "group", ChatID: "9"}, []delivery.Output{out, out})
+	receipt, err := a.SendTo(context.Background(), delivery.Target{Platform: config.PlatformQQOfficial, ChatType: "group", ChatID: "9"}, []delivery.Output{out, out})
 	if err == nil || len(receipt.SentMessages) != 1 || len(receipt.PlatformMessageIDs) != 1 || (receipt.SentMessages[0].ChatType != "group" || receipt.SentMessages[0].ChatID != "9") || receipt.SentMessages[0].OutputIndexes[0] != 0 {
 		t.Fatalf("partial receipt = %#v %v", receipt, err)
 	}

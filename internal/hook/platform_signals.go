@@ -81,7 +81,7 @@ func (m *Supervisor) enqueuePlatformConnected(ctx context.Context, event events.
 func (m *Supervisor) handlePlatformConnected(ctx context.Context, platformName string) {
 	// Global platform work is independent of Agent registration and never creates
 	// an Agent Request, even when this Hook supervisor is connected to an Agent.
-	event, _, err := m.run(ctx, share.Event{
+	event, err := m.run(ctx, share.Event{
 		Point: share.PointPlatformConnected,
 		Chat:  share.ChatContext{Platform: platformName},
 	}, pipeline.CallOptions{Woken: true})
@@ -89,27 +89,18 @@ func (m *Supervisor) handlePlatformConnected(ctx context.Context, platformName s
 		return
 	}
 	target, err := delivery.ValidateOutputsTarget(event.Outputs)
-	var result events.LogResult
+	if err == nil {
+		_, err = m.send(ctx, target, event.Outputs)
+	}
+	record := events.LogRecord{Category: events.LogRuntime, Module: "hook", EventName: "hook_output", Level: slog.LevelInfo, ContentLimit: 4096, Content: fmt.Sprintf("platform=%s", platformName), ResultStatus: events.ResultSucceeded}
 	if err != nil {
-		result = events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
-	} else {
-		_, result, err = m.send(ctx, target, event.Outputs)
+		record.Level, record.ResultStatus = slog.LevelWarn, events.ResultFailed
+		record.Content += "\n" + err.Error()
+		if events.LogStatus(err) == events.ResultCanceled {
+			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
+		}
 	}
-	// This boundary owns delivery of the global Hook's outputs. Preserve the
-	// sender's declared outcome independently of its business error.
-	level := slog.LevelInfo
-	if result.ResultStatus == events.ResultFailed {
-		level = slog.LevelError
-	}
-	content := fmt.Sprintf("platform=%s\n%s", platformName, result.Content)
-	if err != nil {
-		content += "\nbusiness_error=" + err.Error()
-	}
-	LogHook(ctx, events.LogRecord{
-		Category: events.LogRuntime, Module: "hook", EventName: "hook_output",
-		Level: level, Type: events.ContentText, ContentLimit: 4096,
-		Content: content, ResultStatus: result.ResultStatus,
-	})
+	LogHook(ctx, record)
 }
 
 func (m *Supervisor) beginClosePlatformEvents() {

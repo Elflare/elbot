@@ -51,20 +51,20 @@ func TestMediaImportKeepsPipelinePriorityAndResultDependency(t *testing.T) {
 	p := pipeline.NewManager(log, nil)
 	var order []string
 	register := func(name string, priority int, download bool) {
-		p.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: name, Priority: priority, Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, events.LogResult, error) {
+		p.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: name, Priority: priority, Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, error) {
 			if event.ID == "other" {
-				return event, events.LogResult{}, nil
+				return event, nil
 			}
 			order = append(order, name)
 			if download {
 				segments, err := run.BuildMessageSegments(ctx, []hookoutput.MessageSegment{{Type: "image", URL: server.URL}}, "")
 				event.Message.Segments = segments
-				return event, events.LogResult{}, err
+				return event, err
 			}
 			if len(event.Message.Segments) != 1 || event.Message.Segments[0].MediaID == "" {
-				return event, events.LogResult{}, fmt.Errorf("%s ran without prior media", name)
+				return event, fmt.Errorf("%s ran without prior media", name)
 			}
-			return event, events.LogResult{}, nil
+			return event, nil
 		})})
 	}
 	register("B", 20, false)
@@ -72,7 +72,7 @@ func TestMediaImportKeepsPipelinePriorityAndResultDependency(t *testing.T) {
 	register("C", 20, false)
 	done := make(chan error, 1)
 	go func() {
-		_, _, err := p.Run(t.Context(), share.Event{ID: "main", Point: share.PointPlatformMessageReceived}, pipeline.CallOptions{Woken: true})
+		_, err := p.Run(t.Context(), share.Event{ID: "main", Point: share.PointPlatformMessageReceived}, pipeline.CallOptions{Woken: true})
 		done <- err
 	}()
 	select {
@@ -87,7 +87,7 @@ func TestMediaImportKeepsPipelinePriorityAndResultDependency(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
-	if _, _, err := p.Run(ctx, share.Event{ID: "other", Point: share.PointPlatformMessageReceived}, pipeline.CallOptions{Woken: true}); err != nil {
+	if _, err := p.Run(ctx, share.Event{ID: "other", Point: share.PointPlatformMessageReceived}, pipeline.CallOptions{Woken: true}); err != nil {
 		t.Fatal("unrelated chain blocked", err)
 	}
 	close(unblock)

@@ -7,7 +7,6 @@ import (
 	"log/slog"
 
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 
 	"elbot/internal/turn"
 )
@@ -40,17 +39,17 @@ func (o executionTurnOutput) FinishIntermediate(ctx, streamCtx context.Context, 
 	return out.FinishIntermediate(ctx, o.view.Context(streamCtx), s, text, streaming)
 }
 
-func (o executionTurnOutput) ReplaceAndFinishStream(ctx, streamCtx context.Context, s delivery.MessageStream, text string) (delivery.Receipt, events.LogResult, error) {
+func (o executionTurnOutput) ReplaceAndFinishStream(ctx, streamCtx context.Context, s delivery.MessageStream, text string) (delivery.Receipt, error) {
 	ctx, out := o.target(ctx)
 	return out.ReplaceAndFinishStream(ctx, o.view.Context(streamCtx), s, text)
 }
 
-func (o executionTurnOutput) SendAssistant(ctx context.Context, text string) (delivery.Receipt, events.LogResult, error) {
+func (o executionTurnOutput) SendAssistant(ctx context.Context, text string) (delivery.Receipt, error) {
 	ctx, out := o.target(ctx)
 	return out.SendAssistant(ctx, text)
 }
 
-func (o executionTurnOutput) SendOutputs(ctx context.Context, v []delivery.Output) (events.LogResult, error) {
+func (o executionTurnOutput) SendOutputs(ctx context.Context, v []delivery.Output) error {
 	ctx, out := o.target(ctx)
 	return out.SendOutputs(ctx, v)
 }

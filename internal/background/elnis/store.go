@@ -7,6 +7,7 @@ import (
 	"elbot/internal/contextinfo"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -69,7 +70,19 @@ func (s *Service) completeEvent(ctx context.Context, id, resolvedTargets, status
 	return s.completeEventWithSession(ctx, id, resolvedTargets, status, "", result, eventErr)
 }
 
-func (s *Service) completeEventWithSession(ctx context.Context, id, resolvedTargets, status, sessionID, result, eventErr string) error {
+func (s *Service) completeEventWithSession(ctx context.Context, id, resolvedTargets, status, sessionID, result, eventErr string) (err error) {
+	defer func() {
+		if err == nil {
+			return
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		record := globalevents.LogRecord{Category: globalevents.LogElnis, Level: slog.LevelError, Module: "elnis", EventName: "elnis_event_save_failed", ResultStatus: globalevents.ResultFailed, Identity: globalevents.LogIdentityFromExecution(facts), Content: fmt.Sprintf("event_id=%s status=%s error=%v", id, status, err)}
+		record.Identity.SessionID = &sessionID
+		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
+			record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
+		}
+		background.LogBackground(ctx, record)
+	}()
 	if status == StatusFailed || status == StatusCompleted || status == StatusTakenOver {
 		// Persist terminal state and release event references even after cancellation.
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)

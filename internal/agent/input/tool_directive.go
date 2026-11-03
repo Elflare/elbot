@@ -136,7 +136,7 @@ func (c *InputCoordinator) notifyToolDirectiveResult(ctx context.Context, result
 	if len(parts) == 0 {
 		return nil
 	}
-	_, _, err := c.output.SendAssistant(ctx, strings.Join(parts, "\n"))
+	_, err := c.output.SendAssistant(ctx, strings.Join(parts, "\n"))
 	return err
 }
 
@@ -157,7 +157,7 @@ func (c *InputCoordinator) notifySkillDirectiveResult(ctx context.Context, resul
 	if len(parts) == 0 {
 		return nil
 	}
-	_, _, err := c.output.SendAssistant(ctx, strings.Join(parts, "\n"))
+	_, err := c.output.SendAssistant(ctx, strings.Join(parts, "\n"))
 	return err
 }
 
@@ -202,7 +202,7 @@ func (c *InputCoordinator) applyInputDirectives(ctx context.Context, row *storag
 	if err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err
 	}
-	committed, _, err := agentshare.CommitToolState(locked, c.toolState, row, update)
+	committed, err := agentshare.CommitToolState(locked, c.toolState, row, update)
 	release()
 	if err != nil {
 		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err

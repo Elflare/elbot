@@ -243,7 +243,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		result.Usage = final.Usage
 		immediate, later := delivery.SplitByDeliveryTiming(final.Outputs)
 		if len(s.calls) == 0 {
-			if _, err := out.SendOutputs(s.ctx, immediate); err != nil {
+			if err := out.SendOutputs(s.ctx, immediate); err != nil {
 				return fail(err)
 			}
 			result.Outcome = agentshare.Completed
@@ -261,23 +261,23 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		if err := out.FinishIntermediate(s.ctx, s.requestCtx, stream, final.Text, stream != nil); err != nil {
 			return fail(err)
 		}
-		if _, err := out.SendOutputs(s.ctx, append(immediate, later...)); err != nil {
+		if err := out.SendOutputs(s.ctx, append(immediate, later...)); err != nil {
 			return fail(err)
 		}
 		committer := &toolCommitter{state: s}
 		if rounds >= s.route.Tools.MaxRoundsPerTurn() {
 			head := agentshare.ToolCallStorageMessage(s.session.ID, s.sourceText, s.sourceText, s.calls)
-			if _, err := committer.Begin(s.requestCtx, &head); err != nil {
+			if err := committer.Begin(s.requestCtx, &head); err != nil {
 				return fail(err)
 			}
 			for i, call := range s.calls {
 				message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool call was not executed: max_rounds_per_turn reached")}
 				row := agentshare.ToolResultStorageMessage(s.session.ID, message)
-				if _, err := committer.Result(s.requestCtx, i, call, message, &storage.ToolResultCommit{Result: &row}); err != nil {
+				if err := committer.Result(s.requestCtx, i, call, message, &storage.ToolResultCommit{Result: &row}); err != nil {
 					return fail(err)
 				}
 			}
-			if _, err := committer.Flush(s.requestCtx); err != nil {
+			if err := committer.Flush(s.requestCtx); err != nil {
 				return fail(err)
 			}
 			s.tools = nil
@@ -290,7 +290,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			if err := storage.PrepareMessageID(s.requestCtx, s.route.NewMessageID, summaryInput); err != nil {
 				return fail(err)
 			}
-			if _, err := (inputCommitter{state: s}).Commit(s.requestCtx, summaryInput, nil); err != nil {
+			if err := (inputCommitter{state: s}).Commit(s.requestCtx, summaryInput, nil); err != nil {
 				return fail(err)
 			}
 			projected, err := agentshare.MessageFromStorage(*summaryInput)
@@ -318,7 +318,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 			result.Usage = summary.Usage
 			immediate, later = delivery.SplitByDeliveryTiming(summary.Outputs)
-			if _, err := out.SendOutputs(s.ctx, immediate); err != nil {
+			if err := out.SendOutputs(s.ctx, immediate); err != nil {
 				return fail(err)
 			}
 			result.Outcome = agentshare.Completed
@@ -357,7 +357,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			if err := storage.PrepareMessageID(s.requestCtx, s.route.NewMessageID, message); err != nil {
 				return fail(err)
 			}
-			if _, err := (inputCommitter{state: s}).Commit(s.requestCtx, message, nil); err != nil {
+			if err := (inputCommitter{state: s}).Commit(s.requestCtx, message, nil); err != nil {
 				return fail(err)
 			}
 			projected, err := agentshare.MessageFromStorage(*message)

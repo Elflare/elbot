@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"testing"
 
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
 	"elbot/internal/storage"
@@ -15,9 +14,9 @@ type toolInputCommitter struct {
 	commits []storage.DialogueCommit
 }
 
-func (c *toolInputCommitter) Commit(_ context.Context, commit storage.DialogueCommit, _ string) (events.LogResult, error) {
+func (c *toolInputCommitter) Commit(_ context.Context, commit storage.DialogueCommit, _ string) error {
 	c.commits = append(c.commits, commit)
-	return events.LogResult{}, nil
+	return nil
 }
 
 func TestQueueToolDefinitionsKeepsHistoricalDefinitions(t *testing.T) {

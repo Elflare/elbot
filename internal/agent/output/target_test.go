@@ -38,10 +38,10 @@ func TestSendOutputsResolvesTargetBeforeDispatch(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer connection.Disconnect()
-			result, err := sender.SendOutputs(t.Context(), tc.outputs)
+			err = sender.SendOutputs(t.Context(), tc.outputs)
 			if tc.conflict {
-				if err == nil || result.ResultStatus != events.ResultFailed || probe.calls != 0 || len(records) != 1 || records[0].ResultStatus != events.ResultFailed {
-					t.Fatalf("conflict: result=%+v err=%v calls=%d logs=%+v", result, err, probe.calls, records)
+				if err == nil || probe.calls != 0 || len(records) != 1 || records[0].ResultStatus != events.ResultFailed {
+					t.Fatal("conflict: result= err= calls= logs=", err, probe.calls, records)
 				}
 				return
 			}

@@ -35,9 +35,9 @@ func TestPreparedExecutionBindsRequest(t *testing.T) {
 			case "canceled":
 				cancel()
 			}
-			result := (&Manager{}).executePrepared(ctx, call, resolvedTool{Source: share.SourceKindNative, ResultStatus: events.ResultSucceeded}, prepared, nil)
+			result := (&Manager{ManagerDeps: ManagerDeps{Log: func(context.Context, events.LogRecord) {}}}).executePrepared(ctx, call, resolvedTool{Source: share.SourceKindNative}, prepared, nil)
 			if scenario == "success" {
-				if result.Error != nil || !called || !result.ExecutionStarted || result.Result.Content != "approved result" || result.LogResult.Content != "approved log" {
+				if result.Error != nil || !called || !result.ExecutionStarted || result.Result.Content != "approved result" || result.Summary != "approved log" {
 					t.Fatalf("result=%+v called=%v", result, called)
 				}
 			} else if result.Error == nil || called || result.ExecutionStarted {

@@ -9,7 +9,6 @@ import (
 	"slices"
 	"sync"
 
-	"elbot/internal/events"
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/memory/resident"
@@ -110,9 +109,9 @@ func (m *Supervisor) ToolTags(ctx context.Context) ([]string, error) {
 	return m.preloader.Tags(ctx)
 }
 
-func (m *Supervisor) DiscoveredToolsForSession(ctx context.Context, id string, background bool) ([]DiscoveredTool, events.LogResult, error) {
-	items, result, err := m.state.DiscoveredToolsForSession(ctx, id, background)
-	return toPublicDiscoveredTools(items), result, err
+func (m *Supervisor) DiscoveredToolsForSession(ctx context.Context, id string, background bool) ([]DiscoveredTool, error) {
+	items, err := m.state.DiscoveredToolsForSession(ctx, id, background)
+	return toPublicDiscoveredTools(items), err
 }
 
 // DecodeState 解码调用方持有的会话快照，不另行读取持久化状态。
@@ -145,9 +144,9 @@ func (m *Supervisor) Run(ctx context.Context, deps RunnerDeps, req RunRequest) R
 	}
 	return toPublicRunResult(m.engine.Run(ctx, executionBridge{RunnerDeps: deps}, toInternalRunRequest(req)))
 }
-func (m *Supervisor) Commit(ctx context.Context, id string, update StateUpdate) (StateCommit, events.LogResult, error) {
-	committed, result, err := m.state.Commit(ctx, id, toInternalStateUpdate(update))
-	return toPublicStateCommit(committed), result, err
+func (m *Supervisor) Commit(ctx context.Context, id string, update StateUpdate) (StateCommit, error) {
+	committed, err := m.state.Commit(ctx, id, toInternalStateUpdate(update))
+	return toPublicStateCommit(committed), err
 }
 func (m *Supervisor) PrepareTools(ctx context.Context, names []string) (ToolPreload, error) {
 	ctx = toolPolicyContext(ctx)

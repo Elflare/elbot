@@ -99,7 +99,7 @@ func TestCopyRechecksAfterUnlockedPreparation(t *testing.T) {
 				if err := f.store.Dialogues().CreateExchange(t.Context(), &storage.NativeExchange{ID: "exchange", SessionID: source.ID, APIType: "response", Provider: "p", RequestJSON: `{}`}); err != nil {
 					t.Fatal(err)
 				}
-				_, err := f.store.Dialogues().Commit(t.Context(), storage.DialogueCommit{SessionID: source.ID, Native: &storage.NativeCommit{Inputs: []storage.NativeInput{input}, Calls: []storage.NativeCall{{ExchangeID: "exchange", CallID: "call", Name: "tool", Arguments: `{}`, Status: "pending", ResultInputID: input.ID}}}})
+				err := f.store.Dialogues().Commit(t.Context(), storage.DialogueCommit{SessionID: source.ID, Native: &storage.NativeCommit{Inputs: []storage.NativeInput{input}, Calls: []storage.NativeCall{{ExchangeID: "exchange", CallID: "call", Name: "tool", Arguments: `{}`, Status: "pending", ResultInputID: input.ID}}}})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -133,7 +133,7 @@ func TestCopyRechecksAfterUnlockedPreparation(t *testing.T) {
 					})
 				case "pending-add", "pending-content":
 					input.ItemJSON = `{"output":"completed"}`
-					_, err = f.store.Dialogues().Commit(locked, storage.DialogueCommit{SessionID: source.ID, Native: &storage.NativeCommit{Inputs: []storage.NativeInput{input}}})
+					err = f.store.Dialogues().Commit(locked, storage.DialogueCommit{SessionID: source.ID, Native: &storage.NativeCommit{Inputs: []storage.NativeInput{input}}})
 				case "cancel":
 					cancel()
 				}

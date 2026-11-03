@@ -2,15 +2,17 @@ package object
 
 import (
 	"context"
+	"elbot/internal/events"
+	"elbot/internal/signal"
 	"errors"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"elbot/internal/events"
 	"elbot/internal/storage"
 )
 
@@ -46,9 +48,28 @@ func TestCleanupDeletesRemoteThenLocalAndRetries(t *testing.T) {
 	remote.remove = func(context.Context, string) error { calls = append(calls, "remote"); return failure }
 	local.remove = func(context.Context, string) error { calls = append(calls, "local"); return nil }
 	m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
-	result, err := m.Cleanup(t.Context(), nil)
-	if !errors.Is(err, failure) || result.ResultStatus != events.ResultFailed || !reflect.DeepEqual(calls, []string{"remote"}) {
-		t.Fatalf("first cleanup: %#v %v %v", result, err, calls)
+	logs := make(chan events.LogRecord, 8)
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
+		if r.Module == "media" && strings.Contains(r.Content, item.ID) {
+			logs <- r
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
+	err = m.Cleanup(t.Context(), nil)
+	if !errors.Is(err, failure) || !reflect.DeepEqual(calls, []string{"remote"}) {
+		t.Fatal("first cleanup:   ", err, calls)
+	}
+	select {
+	case r := <-logs:
+		if r.Level != slog.LevelWarn || r.ResultStatus != events.ResultFailed || !strings.Contains(r.Content, failure.Error()) {
+			t.Fatalf("remote deletion log=%+v", r)
+		}
+	default:
+		t.Fatal("remote deletion failure missing")
 	}
 	record, err := store.Media().Get(t.Context(), item.ID)
 	if err != nil || !record.Deleting {
@@ -61,9 +82,9 @@ func TestCleanupDeletesRemoteThenLocalAndRetries(t *testing.T) {
 		t.Fatal("reference added after claim")
 	}
 	remote.remove = func(context.Context, string) error { calls = append(calls, "remote"); return nil }
-	result, err = m.Cleanup(t.Context(), nil)
-	if err != nil || result.ResultStatus != events.ResultSucceeded || !reflect.DeepEqual(calls, []string{"remote", "remote", "local"}) {
-		t.Fatalf("retry: %#v %v %v", result, err, calls)
+	err = m.Cleanup(t.Context(), nil)
+	if err != nil || !reflect.DeepEqual(calls, []string{"remote", "remote", "local"}) {
+		t.Fatal("retry:   ", err, calls)
 	}
 	if _, err := store.Media().Get(t.Context(), item.ID); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("record survived: %v", err)
@@ -94,11 +115,10 @@ func TestCleanupConcurrencyCancellationAndFailure(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	type outcome struct {
-		result events.LogResult
-		err    error
+		err error
 	}
 	done := make(chan outcome, 1)
-	go func() { result, err := m.Cleanup(ctx, nil); done <- outcome{result, err} }()
+	go func() { err := m.Cleanup(ctx, nil); done <- outcome{err} }()
 	for range cleanupConcurrency {
 		awaitTest(t, entered)
 	}
@@ -108,25 +128,23 @@ func TestCleanupConcurrencyCancellationAndFailure(t *testing.T) {
 	// 等待同一轮清理的调用可取消，不阻塞正在执行的工作。
 	canceled, stop := context.WithCancel(t.Context())
 	stop()
-	if _, err := m.Cleanup(canceled, nil); !errors.Is(err, context.Canceled) {
+	if err := m.Cleanup(canceled, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("waiting cancellation = %v", err)
 	}
 	cancel()
 	got := awaitTest(t, done)
-	if !errors.Is(got.err, failure) || !errors.Is(got.err, context.Canceled) || got.result.ResultStatus != events.ResultFailed {
-		t.Fatalf("cleanup = %#v %v", got.result, got.err)
+	if !errors.Is(got.err, failure) || !errors.Is(got.err, context.Canceled) {
+		t.Fatal(got.err)
 	}
-	if !strings.Contains(got.result.Content, "not_started=4") {
-		t.Fatalf("summary = %s", got.result.Content)
-	}
+
 	pending, err := store.Media().ClaimOrphans(t.Context(), time.Now().Add(2*OrphanGrace))
 	if err != nil || len(pending) != 8 {
 		t.Fatalf("pending = %d %v", len(pending), err)
 	}
 	backend.remove = nil
-	result, err := m.Cleanup(t.Context(), nil)
-	if err != nil || !strings.Contains(result.Content, "deleted=8") {
-		t.Fatalf("retry = %#v %v", result, err)
+	err = m.Cleanup(t.Context(), nil)
+	if err != nil {
+		t.Fatal("retry =  ", err)
 	}
 }
 
@@ -163,4 +181,45 @@ func TestObjectLocksCancellationAndReuse(t *testing.T) {
 		t.Fatal(err)
 	}
 	unlock()
+}
+
+func TestCleanupPreservesCancellationDetailsAndIndependentFailures(t *testing.T) {
+	failure := errors.New("local filesystem failed")
+	for _, tc := range []struct {
+		name   string
+		cause  error
+		status events.ResultStatus
+		level  slog.Level
+	}{
+		{"canceled", fmt.Errorf("remove interrupted: %w", context.Canceled), events.ResultCanceled, slog.LevelInfo},
+		{"mixed", errors.Join(context.Canceled, failure), events.ResultFailed, slog.LevelWarn},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, _, backend := newTestManager(t)
+			importTestMedia(t, m, "cancel-detail")
+			m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			backend.remove = func(context.Context, string) error { cancel(); return tc.cause }
+			logs := make(chan events.LogRecord, 4)
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+				if record.Module == "media" && strings.HasPrefix(record.Content, "claimed=") {
+					logs <- record
+				}
+				return nil
+			}, signal.ConnectOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer connection.Disconnect()
+			err = m.Cleanup(ctx, nil)
+			if !errors.Is(err, tc.cause) || !strings.Contains(err.Error(), tc.cause.Error()) {
+				t.Fatalf("cleanup lost original cause: %v", err)
+			}
+			record := awaitTest(t, logs)
+			if record.Level != tc.level || record.ResultStatus != tc.status {
+				t.Fatalf("cleanup summary: %+v", record)
+			}
+		})
+	}
 }

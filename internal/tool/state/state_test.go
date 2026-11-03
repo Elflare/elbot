@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"elbot/internal/contextmgr"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -55,14 +54,14 @@ func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 	item.CanonicalName = "wisp/external"
 	item.Endpoint = "http://example.invalid/tool"
 	item.TimeoutSeconds = 7
-	committed, _, err := service.Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{item}, Tags: []string{"tag"}})
+	committed, err := service.Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{item}, Tags: []string{"tag"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(committed.Injected, ",") != "wisp/external" {
 		t.Fatalf("commit=%+v", committed)
 	}
-	repeated, _, err := service.Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{item}, Tags: []string{"tag"}})
+	repeated, err := service.Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{item}, Tags: []string{"tag"}})
 	if err != nil || len(repeated.Injected) != 0 || strings.Join(repeated.Existing, ",") != "wisp/external" || !reflect.DeepEqual(repeated.State, committed.State) {
 		t.Fatalf("repeated commit=%+v err=%v", repeated, err)
 	}
@@ -72,7 +71,7 @@ func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	discovered, _, err := service.DiscoveredToolsForSession(ctx, row.ID, false)
+	discovered, err := service.DiscoveredToolsForSession(ctx, row.ID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +94,7 @@ func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 			t.Fatalf("missing %s in %s", want, latest.Metadata)
 		}
 	}
-	repeat, _, err := service.Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{stateTestTool("external")}})
+	repeat, err := service.Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{stateTestTool("external")}})
 	if err != nil || strings.Join(repeat.Injected, ",") != "external" || len(repeat.Existing) != 0 || len(repeat.State.DiscoveredTools) != 2 {
 		t.Fatalf("repeat=%+v err=%v", repeat, err)
 	}
@@ -108,13 +107,11 @@ func TestStateCommitFailureKeepsAllFields(t *testing.T) {
 			store, row := stateTestStore(t, metadata)
 			invalid := stateTestTool("new")
 			invalid.Schema.Parameters["invalid"] = make(chan int)
-			result, logResult, err := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools).Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{invalid}, Tags: []string{"new"}})
+			result, err := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools).Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{invalid}, Tags: []string{"new"}})
 			if err == nil || result.Metadata != "" || len(result.Injected) != 0 {
 				t.Fatalf("failure published state: %+v %v", result, err)
 			}
-			if logResult.ResultStatus != events.ResultSkipped {
-				t.Fatalf("internal error reported as IO: %+v", logResult)
-			}
+
 			latest, _ := store.Sessions().Get(ctx, row.ID)
 			if latest.Metadata != metadata {
 				t.Fatalf("failed transaction changed metadata: %s", latest.Metadata)
@@ -124,7 +121,7 @@ func TestStateCommitFailureKeepsAllFields(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	store, row := stateTestStore(t, "")
-	_, _, err := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools).Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{stateTestTool("canceled")}})
+	_, err := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools).Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{stateTestTool("canceled")}})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancel error=%v", err)
 	}
@@ -148,7 +145,7 @@ func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			_, _, err := service.Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{stateTestTool(fmt.Sprintf("t%d", i))}, Tags: []string{fmt.Sprintf("tag%d", i)}})
+			_, err := service.Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{stateTestTool(fmt.Sprintf("t%d", i))}, Tags: []string{fmt.Sprintf("tag%d", i)}})
 			errs <- err
 		}(i)
 		go func(i int) {

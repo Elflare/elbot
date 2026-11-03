@@ -70,7 +70,7 @@ func TestSkillMediaBridge(t *testing.T) {
 	}
 	assertCleanup := func(t *testing.T) {
 		t.Helper()
-		if _, err := center.Cleanup(ctx); err != nil {
+		if err := center.Cleanup(ctx); err != nil {
 			t.Fatal(err)
 		}
 		refs, err := store.MediaReferences().ListMediaIDs(ctx, item.ID)
@@ -145,7 +145,7 @@ func TestSkillMediaBridge(t *testing.T) {
 						if readErr != nil || string(data) != "output" || segment.URL != "" {
 							t.Fatalf("result media %#v %q %v", segment, data, readErr)
 						}
-						if _, err := center.Cleanup(ctx); err != nil {
+						if err := center.Cleanup(ctx); err != nil {
 							t.Fatal(err)
 						}
 						refs, _ := store.MediaReferences().ListMediaIDs(ctx, segment.MediaID)

@@ -219,7 +219,7 @@ func TestSendRegistersReferenceIndexWithoutChangingDelivery(t *testing.T) {
 					target = sendTarget{Kind: targetGroup, OpenID: "group"}
 				}
 				for _, out := range []delivery.Output{delivery.Text("hello"), {Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/image.png"}}} {
-					receipt, _, err := a.sendOutputs(t.Context(), target, []delivery.Output{out})
+					receipt, err := a.sendOutputs(t.Context(), target, []delivery.Output{out})
 					if err != nil || len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != fmt.Sprintf("sent-%d", calls) {
 						t.Fatalf("receipt=%+v err=%v", receipt, err)
 					}

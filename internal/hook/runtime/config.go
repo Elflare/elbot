@@ -36,8 +36,8 @@ type Options struct {
 		CallTool(context.Context, tool.CallRequest) (*tool.Result, string, error)
 	} // Metadata, schema and invocation without exposing Tool objects.
 
-	// Send keeps delivery receipts separate from the source-owned log outcome.
-	Send      func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
+	// Send returns delivered receipts, including partial delivery on error.
+	Send      func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 	SharedDir string
 	Log       func(context.Context, events.LogRecord)          // Publishes the source-owned record.
 	Notify    func(context.Context, events.Notification) error // Publishes the source-owned notice.

@@ -6,10 +6,8 @@ import (
 	"context"
 	"elbot/internal/tool"
 	"fmt"
-	"log/slog"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
@@ -24,7 +22,7 @@ type ToolExecutor struct {
 		FilterSchemas(context.Context, []llm.ToolSchema) ([]llm.ToolSchema, error)
 		Run(context.Context, tool.RunnerDeps, tool.RunRequest) tool.RunResult
 		Schemas(context.Context, tool.Context, []tool.DiscoveredTool) ([]llm.ToolSchema, error)
-		DiscoveredToolsForSession(context.Context, string, bool) ([]tool.DiscoveredTool, events.LogResult, error)
+		DiscoveredToolsForSession(context.Context, string, bool) ([]tool.DiscoveredTool, error)
 		DecodeState(string) (tool.State, error)
 	}
 	Identity interface {
@@ -43,66 +41,9 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 	if session == nil || (session.Mode != storage.SessionModeWork && session.Mode != storage.SessionModeBackground) {
 		return tool.RunResult{}
 	}
-	discovered, logResult, err := r.Manager.DiscoveredToolsForSession(ctx, session.ID, sessionpkg.IsBackground(session))
+	discovered, err := r.Manager.DiscoveredToolsForSession(ctx, session.ID, sessionpkg.IsBackground(session))
 	if err != nil {
-		if logResult.ResultStatus == events.ResultSkipped || ctx.Err() != nil {
-			return tool.RunResult{Err: err}
-		}
-		record := events.LogRecord{
-			Category:     events.LogRuntime,
-			Level:        slog.LevelError,
-			EventName:    "tool_batch_prepare_failed",
-			Module:       "agent",
-			Type:         events.ContentText,
-			Content:      logResult.Content,
-			ContentLimit: 4096,
-			ResultStatus: logResult.ResultStatus,
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		record.Identity = events.LogIdentityFromExecution(facts)
-		record.Identity.SessionID = &session.ID
-		if logResult.ResultStatus == events.ResultCanceled {
-			record.Level = slog.LevelInfo
-		}
-		defer func() { _ = events.EmitLog(context.WithoutCancel(ctx), record) }()
-		messages := make([]llm.LLMMessage, 0, len(calls))
-		head := agentshare.ToolCallStorageMessage(session.ID, assistantText, assistantRawText, calls)
-		{
-			logResult, err := committer.Begin(ctx, &head)
-			record.Content += "\npersistence:\n" + logResult.Content
-			if logResult.ResultStatus == events.ResultFailed {
-				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-			} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
-				record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
-			}
-			if err != nil {
-				return tool.RunResult{Err: err}
-			}
-		}
-		for _, call := range calls {
-			message := llm.LLMMessage{
-				Role:       llm.RoleTool,
-				Name:       call.Name,
-				ToolCallID: call.ID,
-				Segments:   llm.TextSegments(fmt.Sprintf("tool call %s failed: load tool state: %v", call.Name, err)),
-			}
-			messages = append(messages, message)
-		}
-		for i := range messages {
-			stored := agentshare.ToolResultStorageMessage(session.ID, messages[i])
-			logResult, err := committer.Result(ctx, i, calls[i], messages[i], &storage.ToolResultCommit{Result: &stored})
-			record.Content += "\npersistence:\n" + logResult.Content
-			if logResult.ResultStatus == events.ResultFailed {
-				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-			} else if logResult.ResultStatus == events.ResultCanceled && record.ResultStatus != events.ResultFailed {
-				record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
-			}
-			if err != nil {
-				return tool.RunResult{Err: err}
-			}
-		}
-		_, err = committer.Flush(ctx)
-		return tool.RunResult{Messages: messages, PreparedCalls: calls, Err: err}
+		return tool.RunResult{Err: err}
 	}
 	return r.Manager.Run(ctx, r.Deps.ForTurn(out, turn.AttemptFromContext(ctx)), tool.RunRequest{
 		Session:          session,
@@ -119,7 +60,7 @@ func (r *ToolExecutor) Schemas(ctx context.Context, session *storage.Session) ([
 	if session == nil || (session.Mode != storage.SessionModeWork && session.Mode != storage.SessionModeBackground) {
 		return nil, nil
 	}
-	discovered, _, err := r.Manager.DiscoveredToolsForSession(ctx, session.ID, sessionpkg.IsBackground(session))
+	discovered, err := r.Manager.DiscoveredToolsForSession(ctx, session.ID, sessionpkg.IsBackground(session))
 	if err != nil {
 		return nil, fmt.Errorf("准备工具: %w", err)
 	}

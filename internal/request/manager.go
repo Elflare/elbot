@@ -2,6 +2,9 @@ package request
 
 import (
 	"context"
+	"log/slog"
+
+	"elbot/internal/events"
 	"sync"
 	"time"
 
@@ -67,6 +70,13 @@ func NewManager(defaultTimeout time.Duration, next storage.IDSequence) *Manager 
 func (m *Manager) Start(parent context.Context, start StartRequest) (Request, context.Context, func(), error) {
 	id, err := m.next.ID(parent, "rq")
 	if err != nil {
+		facts, _ := contextinfo.ExecutionFromContext(parent)
+		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, Module: "request", EventName: "request_start_failed", ResultStatus: events.ResultFailed, Content: err.Error(), Identity: events.LogIdentityFromExecution(facts)}
+		record.Identity.SessionID = &start.SessionID
+		if events.LogStatus(err) == events.ResultCanceled {
+			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
+		}
+		_ = events.EmitLog(parent, record)
 		return Request{}, nil, nil, err
 	}
 	timeout := start.Timeout

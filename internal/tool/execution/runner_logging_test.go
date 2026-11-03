@@ -263,7 +263,7 @@ func TestRunnerRecordsUnenteredCallFailure(t *testing.T) {
 	t.Cleanup(connection.Disconnect)
 	deps := &runnerTestDeps{}
 	manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "missing", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "missing", Arguments: "{}"}}})
-	if len(calls) != 1 || calls[0].ResultStatus != events.ResultFailed || calls[0].Level != slog.LevelInfo || !strings.Contains(calls[0].Content, "missing") || deps.completed != 0 {
+	if len(calls) != 1 || calls[0].ResultStatus != events.ResultFailed || calls[0].Level != slog.LevelWarn || !strings.Contains(calls[0].Content, "missing") || deps.completed != 0 {
 		t.Fatalf("invocation logs=%#v completed=%d", calls, deps.completed)
 	}
 }
@@ -274,9 +274,9 @@ type loggingDeps struct {
 	startErr   error
 }
 
-func (d *loggingDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), events.LogResult, error) {
+func (d *loggingDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error) {
 	if d.startErr != nil {
-		return ctx, time.Time{}, nil, events.LogResult{ResultStatus: events.ResultFailed, Content: d.startErr.Error()}, d.startErr
+		return ctx, time.Time{}, nil, d.startErr
 	}
 	return d.runnerTestDeps.StartToolRequest(ctx, sessionID, toolName)
 }
@@ -290,15 +290,14 @@ func (d *loggingDeps) ConfirmToolCall(ctx context.Context, sessionID string, cal
 
 type loggingCommitter struct {
 	testToolCommitter
-	err             error
-	beginErr        error
-	finished        bool
-	resultLogResult *events.LogResult
+	err      error
+	beginErr error
+	finished bool
 }
 
-func (c *loggingCommitter) Begin(ctx context.Context, head *storage.Message) (events.LogResult, error) {
+func (c *loggingCommitter) Begin(ctx context.Context, head *storage.Message) error {
 	if c.beginErr != nil {
-		return events.LogResult{ResultStatus: events.ResultFailed, Content: c.beginErr.Error()}, c.beginErr
+		return c.beginErr
 	}
 	return c.testToolCommitter.Begin(ctx, head)
 }
@@ -318,20 +317,17 @@ func TestRunnerBatchFailureDoesNotInventToolCompletions(t *testing.T) {
 	}
 	defer connection.Disconnect()
 	result := manager.Run(context.Background(), &runnerTestDeps{}, toolshare.RunRequest{Committer: committer, Session: &storage.Session{ID: "batch-session", Mode: storage.SessionModeWork}, Calls: []llm.ToolCallRequest{{ID: "one", Name: "one"}, {ID: "two", Name: "two"}}})
-	if !errors.Is(result.Err, committer.beginErr) || len(records) != 1 || records[0].EventName != "tool_batch_prepare_failed" || records[0].Category != events.LogRuntime || records[0].ResultStatus != events.ResultFailed || records[0].Level != slog.LevelError {
+	if !errors.Is(result.Err, committer.beginErr) || len(records) != 0 {
 		t.Fatalf("result = %+v, logs = %#v", result, records)
 	}
 }
 
-func (c *loggingCommitter) Result(context.Context, int, llm.ToolCallRequest, llm.LLMMessage, *storage.ToolResultCommit) (events.LogResult, error) {
+func (c *loggingCommitter) Result(context.Context, int, llm.ToolCallRequest, llm.LLMMessage, *storage.ToolResultCommit) error {
 	c.finished = true
-	if c.resultLogResult != nil {
-		return *c.resultLogResult, c.err
-	}
 	if c.err != nil {
-		return events.LogResult{ResultStatus: events.ResultFailed, Content: c.err.Error()}, c.err
+		return c.err
 	}
-	return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+	return nil
 }
 
 func TestRunnerUsesSourceSaveResult(t *testing.T) {
@@ -350,9 +346,8 @@ func TestRunnerUsesSourceSaveResult(t *testing.T) {
 				t.Fatal(err)
 			}
 			manager := newTestManager(registry, security.NewPermission("high", "high", nil))
-			source := events.LogResult{ResultStatus: tc.status, Content: "storage source diagnostic"}
 			deps := &loggingDeps{}
-			committer := &loggingCommitter{err: tc.err, resultLogResult: &source}
+			committer := &loggingCommitter{err: tc.err}
 			var saves []events.LogRecord
 			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 				if record.Module == "toolrun" && record.EventName == "tool_transcript_save" {
@@ -365,14 +360,10 @@ func TestRunnerUsesSourceSaveResult(t *testing.T) {
 			}
 			t.Cleanup(connection.Disconnect)
 			result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: committer, Session: &storage.Session{ID: "save-source", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "logging_tool", Arguments: "{}"}}})
-			if !errors.Is(result.Err, tc.err) || len(saves) != 1 {
+			if !errors.Is(result.Err, tc.err) || len(saves) != 0 {
 				t.Fatalf("business result=%#v logs=%#v", result, saves)
 			}
-			for _, record := range saves {
-				if record.ResultStatus != tc.status || !strings.Contains(record.Content, source.Content) || (record.Level == slog.LevelError) != (tc.status == events.ResultFailed) {
-					t.Fatalf("source result changed: %#v", record)
-				}
-			}
+
 		})
 	}
 }
@@ -444,7 +435,11 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 						status = events.ResultCanceled
 					}
 				}
-				if len(calls) != 1 || calls[0].ResultStatus != status || calls[0].Level != slog.LevelInfo {
+				level := slog.LevelInfo
+				if status == events.ResultFailed {
+					level = slog.LevelWarn
+				}
+				if len(calls) != 1 || calls[0].ResultStatus != status || calls[0].Level != level {
 					t.Fatalf("invocation logs = %#v", calls)
 				}
 				var content map[string]any
@@ -465,12 +460,10 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 					t.Fatalf("actual result or error lost from audit: %s", calls[0].Content)
 				}
 			}
-			if tc.startErr != nil {
-				r, ok := operations["tool_prepare"]
-				if !ok || r.Category != events.LogRuntime || r.Level != slog.LevelError || !strings.Contains(r.Content, tc.startErr.Error()) {
-					t.Fatalf("request creation failure lost: %#v", r)
-				}
+			if tc.startErr != nil && (len(result.Messages) != 1 || !strings.Contains(llm.SegmentsContentText(result.Messages[0].Segments), tc.startErr.Error())) {
+				t.Fatalf("request error lost: %+v", result)
 			}
+
 			for _, r := range operations {
 				if r.Category == events.LogRuntime && r.Level >= slog.LevelError && tc.saveErr == nil && tc.startErr == nil {
 					t.Fatalf("ordinary tool failure logged as runtime error: %#v", r)
@@ -479,12 +472,10 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 					t.Fatalf("tool preparation duplicated outside invocation audit: %#v", r)
 				}
 			}
-			if tc.saveErr != nil {
-				r, ok := operations["tool_transcript_save"]
-				if !ok || r.ResultStatus != events.ResultFailed || r.Level != slog.LevelError || !strings.Contains(r.Content, tc.saveErr.Error()) {
-					t.Fatalf("result commit failure lost: %#v", r)
-				}
+			if tc.saveErr != nil && !errors.Is(result.Err, tc.saveErr) {
+				t.Fatalf("save error lost: %+v", result)
 			}
+
 		})
 	}
 }

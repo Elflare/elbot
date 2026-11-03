@@ -5,9 +5,7 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	globalevents "elbot/internal/events"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -43,12 +41,12 @@ func qqTextPages(text string) []string {
 	return pages
 }
 
-func (a *Adapter) sendTemporary(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+func (a *Adapter) sendTemporary(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	transport := newTransport(a.Name(), a.cfg.URL, a.cfg.AccessToken, time.Duration(a.cfg.APITimeoutSeconds)*time.Second)
 	dialCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if err := a.registerTemporary(transport, cancel); err != nil {
-		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		return delivery.Receipt{}, err
 	}
 	var readDone chan struct{}
 	defer func() {
@@ -59,8 +57,7 @@ func (a *Adapter) sendTemporary(ctx context.Context, target delivery.Target, out
 		a.unregisterTemporary(transport)
 	}()
 	if err := transport.Connect(dialCtx); err != nil {
-		logResult := sendLogResult(err)
-		return delivery.Receipt{}, logResult, err
+		return delivery.Receipt{}, err
 	}
 	cancel()
 	readDone = make(chan struct{})
@@ -73,22 +70,20 @@ func (a *Adapter) sendTemporary(ctx context.Context, target delivery.Target, out
 		t, err = a.contextTarget(ctx)
 	}
 	if err != nil {
-		logResult := sendLogResult(err)
-		return delivery.Receipt{}, logResult, err
+		return delivery.Receipt{}, err
 	}
 	if text, ok := textOutputs(outputs); ok {
 		return sendText(ctx, transport, t, text)
 	}
 	segments, err := outputSegments(a.cfg.SendFileMode, outputs...)
 	if err != nil {
-		logResult := sendLogResult(err)
-		return delivery.Receipt{}, logResult, err
+		return delivery.Receipt{}, err
 	}
-	receipt, logResult, err := sendSegments(ctx, transport, t, segments)
-	return oneBotReceipt(a.Name(), receipt, t, outputs), logResult, err
+	receipt, err := sendSegments(ctx, transport, t, segments)
+	return oneBotReceipt(a.Name(), receipt, t, outputs), err
 }
 
-func (a *Adapter) SendTo(ctx context.Context, outTarget delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+func (a *Adapter) SendTo(ctx context.Context, outTarget delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	if outTarget.Superadmins {
 		return a.superadmins.SendTo(ctx, outputs, a.SendTo)
 	}
@@ -97,7 +92,7 @@ func (a *Adapter) SendTo(ctx context.Context, outTarget delivery.Target, outputs
 	}
 	text, ok := textOutputs(outputs)
 	if outTarget.Empty() && ok && strings.TrimSpace(text) == "" {
-		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+		return delivery.Receipt{}, nil
 	}
 	var t target
 	var err error
@@ -107,19 +102,17 @@ func (a *Adapter) SendTo(ctx context.Context, outTarget delivery.Target, outputs
 		t, err = targetToQQ(outTarget)
 	}
 	if err != nil {
-		logResult := sendLogResult(err)
-		return delivery.Receipt{}, logResult, err
+		return delivery.Receipt{}, err
 	}
 	if ok {
 		return sendText(ctx, a.transport, t, text)
 	}
 	segments, err := outputSegments(a.cfg.SendFileMode, outputs...)
 	if err != nil {
-		logResult := sendLogResult(err)
-		return delivery.Receipt{}, logResult, err
+		return delivery.Receipt{}, err
 	}
-	receipt, logResult, err := sendSegments(ctx, a.transport, t, segments)
-	return oneBotReceipt(a.Name(), receipt, t, outputs), logResult, err
+	receipt, err := sendSegments(ctx, a.transport, t, segments)
+	return oneBotReceipt(a.Name(), receipt, t, outputs), err
 }
 
 func textOutputs(outputs []delivery.Output) (string, bool) {
@@ -133,9 +126,9 @@ func textOutputs(outputs []delivery.Output) (string, bool) {
 	return text.String(), true
 }
 
-func sendText(ctx context.Context, transport *Transport, t target, text string) (delivery.Receipt, globalevents.LogResult, error) {
+func sendText(ctx context.Context, transport *Transport, t target, text string) (delivery.Receipt, error) {
 	if strings.TrimSpace(text) == "" {
-		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+		return delivery.Receipt{}, nil
 	}
 	pages := qqTextPages(text)
 	var nodes []Segment
@@ -164,11 +157,10 @@ func sendText(ctx context.Context, transport *Transport, t target, text string) 
 	default:
 		err = fmt.Errorf("unsupported message target %q", t.MessageType)
 	}
-	logResult := sendLogResult(err)
-	return oneBotReceipt(transport.platformName, receiptWithMessageID(id), t, nil), logResult, err
+	return oneBotReceipt(transport.platformName, receiptWithMessageID(id), t, nil), err
 }
 
-func sendSegments(ctx context.Context, transport *Transport, t target, segments []Segment) (delivery.Receipt, globalevents.LogResult, error) {
+func sendSegments(ctx context.Context, transport *Transport, t target, segments []Segment) (delivery.Receipt, error) {
 	var id string
 	var err error
 	switch t.MessageType {
@@ -179,7 +171,7 @@ func sendSegments(ctx context.Context, transport *Transport, t target, segments 
 	default:
 		err = fmt.Errorf("unsupported message target %q", t.MessageType)
 	}
-	return receiptWithMessageID(id), sendLogResult(err), err
+	return receiptWithMessageID(id), err
 }
 
 func receiptWithMessageID(id string) delivery.Receipt {
@@ -309,16 +301,4 @@ func localPathFileURI(path, label string) (string, error) {
 		slashPath = "/" + slashPath
 	}
 	return (&url.URL{Scheme: "file", Path: slashPath}).String(), nil
-}
-
-func sendLogResult(err error) globalevents.LogResult {
-	result := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
-	if err != nil {
-		result.ResultStatus = globalevents.ResultFailed
-		result.Content = err.Error()
-		if errors.Is(err, context.Canceled) {
-			result.ResultStatus = globalevents.ResultCanceled
-		}
-	}
-	return result
 }

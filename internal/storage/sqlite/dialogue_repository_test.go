@@ -1,11 +1,15 @@
 package sqlite
 
 import (
+	"context"
+	"elbot/internal/events"
+	"elbot/internal/signal"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 
-	"elbot/internal/events"
 	"elbot/internal/storage"
 )
 
@@ -15,10 +19,10 @@ func TestNativeInputMediaValidation(t *testing.T) {
 			store, _ := nativeStorageFixture(t)
 			commit := nativeStorageCommit("media", "")
 			commit.Native.Inputs = []storage.NativeInput{{ID: "input", SessionID: "s", ItemJSON: `{}`, MediaJSON: raw}}
-			result, err := store.Dialogues().Commit(t.Context(), commit)
+			err := store.Dialogues().Commit(t.Context(), commit)
 			valid := raw == "" || raw == "[]"
-			if valid && err != nil || !valid && (err == nil || result.ResultStatus != events.ResultSkipped) {
-				t.Fatalf("result=%+v err=%v", result, err)
+			if valid && err != nil || !valid && err == nil {
+				t.Fatal("result= err=", err)
 			}
 			for _, table := range []string{"messages", "native_inputs"} {
 				var count int
@@ -36,9 +40,9 @@ func TestNativeInputMediaValidation(t *testing.T) {
 func TestNativeInputConsumptionRequiresCheckpoint(t *testing.T) {
 	store, _ := nativeStorageFixture(t)
 	commit := storage.DialogueCommit{SessionID: "s", Native: &storage.NativeCommit{ConsumedInputs: []string{"one", "two"}}}
-	result, err := store.Dialogues().Commit(t.Context(), commit)
-	if err == nil || err.Error() != "input consumption requires a checkpoint" || result.ResultStatus != events.ResultSkipped {
-		t.Fatalf("result=%+v err=%v", result, err)
+	err := store.Dialogues().Commit(t.Context(), commit)
+	if err == nil || err.Error() != "input consumption requires a checkpoint" {
+		t.Fatal("result= err=", err)
 	}
 }
 
@@ -109,7 +113,7 @@ func TestElyphRulesCommitWithMessageAndNativeState(t *testing.T) {
 			if _, err := store.db.ExecContext(ctx, `CREATE TRIGGER reject_rules BEFORE UPDATE ON sessions BEGIN SELECT RAISE(ABORT,'reject rules state'); END`); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := store.Dialogues().Commit(ctx, commit); err == nil {
+			if err := store.Dialogues().Commit(ctx, commit); err == nil {
 				t.Fatal("expected rejected transaction")
 			}
 			row, err := store.Sessions().Get(ctx, "s")
@@ -123,7 +127,7 @@ func TestElyphRulesCommitWithMessageAndNativeState(t *testing.T) {
 			if _, err := store.db.ExecContext(ctx, `DROP TRIGGER reject_rules`); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := store.Dialogues().Commit(ctx, commit); err != nil {
+			if err := store.Dialogues().Commit(ctx, commit); err != nil {
 				t.Fatal(err)
 			}
 			row, err = store.Sessions().Get(ctx, "s")
@@ -153,8 +157,8 @@ func TestNativeCheckpointCommitRollsBackMessageAndInputOnFailure(t *testing.T) {
 	}
 	commit.Messages[0].Segments = `[{"type":"image","media":"` + mediaID + `"}]`
 	commit.Native.Inputs = []storage.NativeInput{{ID: "input", SessionID: "s", ItemJSON: `{"type":"message","role":"user","content":[]}`, MediaJSON: `[]`}}
-	if result, err := store.Dialogues().Commit(t.Context(), commit); err == nil || result.ResultStatus != events.ResultFailed {
-		t.Fatalf("checkpoint IO failure: result=%+v err=%v", result, err)
+	if err := store.Dialogues().Commit(t.Context(), commit); err == nil {
+		t.Fatal("checkpoint IO failure: result= err=", err)
 	}
 	if rows, err := store.Messages().ListBySession(t.Context(), "s"); err != nil || len(rows) != 0 {
 		t.Fatalf("partial messages=%+v %v", rows, err)
@@ -194,7 +198,7 @@ func TestToolBatchLastResultFailureRollsBackEveryMessageAndMediaReference(t *tes
 				batch.Results = append(batch.Results, &storage.Message{ID: "result-" + id, SessionID: "s", Role: storage.RoleTool, ToolCallID: id, Content: id,
 					Segments: `[{"type":"image","media":"` + mediaID + `"}]`})
 			}
-			_, err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", ToolBatch: batch})
+			err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", ToolBatch: batch})
 			if (err != nil) != fail {
 				t.Fatalf("commit error=%v", err)
 			}
@@ -228,17 +232,17 @@ func TestCommitSeparatesInternalValidationFromIOFailure(t *testing.T) {
 		{SessionID: "s", Messages: []*storage.Message{{SessionID: "s", Segments: "["}}},
 		nativeStorageCommit("changed", "obsolete"),
 	} {
-		result, err := store.Dialogues().Commit(t.Context(), commit)
-		if err == nil || result.ResultStatus != events.ResultSkipped {
-			t.Fatalf("validation: result=%+v err=%v", result, err)
+		err := store.Dialogues().Commit(t.Context(), commit)
+		if err == nil {
+			t.Fatal("validation: result= err=", err)
 		}
 	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	result, err := store.Dialogues().Commit(t.Context(), storage.DialogueCommit{SessionID: "s"})
-	if err == nil || result.ResultStatus != events.ResultFailed {
-		t.Fatalf("IO: result=%+v err=%v", result, err)
+	err := store.Dialogues().Commit(t.Context(), storage.DialogueCommit{SessionID: "s"})
+	if err == nil {
+		t.Fatal("IO: result= err=", err)
 	}
 }
 
@@ -246,15 +250,15 @@ func TestNativeCheckpointCompareAndSwapPreservesMetadataAndConsumesInput(t *test
 	store, _ := nativeStorageFixture(t)
 	ctx := t.Context()
 	input := storage.NativeInput{ID: "input", SessionID: "s", ItemJSON: `{"type":"message","role":"user","content":[]}`, MediaJSON: `[]`}
-	if _, err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", Native: &storage.NativeCommit{Inputs: []storage.NativeInput{input}}}); err != nil {
+	if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", Native: &storage.NativeCommit{Inputs: []storage.NativeInput{input}}}); err != nil {
 		t.Fatal(err)
 	}
 	commit := nativeStorageCommit("c1", "")
 	commit.Native.ConsumedInputs = []string{input.ID}
-	if _, err := store.Dialogues().Commit(ctx, commit); err != nil {
+	if err := store.Dialogues().Commit(ctx, commit); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Dialogues().Commit(ctx, nativeStorageCommit("late", "")); err == nil {
+	if err := store.Dialogues().Commit(ctx, nativeStorageCommit("late", "")); err == nil {
 		t.Fatal("late cursor replaced a newer commit")
 	}
 	if rows, err := store.Messages().ListBySession(ctx, "s"); err != nil || len(rows) != 1 || rows[0].ID != "message-c1" {
@@ -293,7 +297,7 @@ func TestNativeFailedExchangeCannotBecomeCheckpointAndTerminalIsImmutable(t *tes
 	}
 	commit := nativeStorageCommit("c", "")
 	commit.Native.Checkpoint.ExchangeID = "failed"
-	if _, err := store.Dialogues().Commit(ctx, commit); err == nil {
+	if err := store.Dialogues().Commit(ctx, commit); err == nil {
 		t.Fatal("incomplete response became checkpoint")
 	}
 	if rows, err := store.Messages().ListBySession(ctx, "s"); err != nil || len(rows) != 0 {
@@ -320,7 +324,7 @@ func TestDialogueToolPairIsAtomic(t *testing.T) {
 			}
 			pair.Call.Segments = `[{"type":"image","media":"` + mediaID + `"}]`
 			pair.Results[0].Segments = pair.Call.Segments
-			_, err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", ToolBatch: pair})
+			err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", ToolBatch: pair})
 			if (err != nil) != fail {
 				t.Fatalf("commit error=%v", err)
 			}
@@ -343,5 +347,29 @@ func TestDialogueToolPairIsAtomic(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDialogueStorageFaultLoggingCannotReplaceBusinessError(t *testing.T) {
+	store, _ := nativeStorageFixture(t)
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	fault := errors.New("log rejected")
+	var records []events.LogRecord
+	c, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
+		if r.Module == "storage" {
+			records = append(records, r)
+			return fault
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Disconnect()
+	err = store.Dialogues().Commit(t.Context(), nativeStorageCommit("fault", ""))
+	if err == nil || errors.Is(err, fault) || len(records) != 1 || records[0].Level != slog.LevelError || records[0].ResultStatus != events.ResultFailed || records[0].Content != err.Error() {
+		t.Fatalf("err=%v records=%+v", err, records)
 	}
 }

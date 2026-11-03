@@ -58,7 +58,7 @@ func connectFixtureNotifications(t *testing.T, name string, router *dispatch.Rou
 			hub.mu.Unlock()
 		}
 		target := delivery.Target{Platform: n.Target.Platform, ChatID: n.Target.ID, ChatType: n.Target.ChatType}
-		r, _, err := route.SendTo(ctx, target, []delivery.Output{delivery.Text(n.Text)})
+		r, err := route.SendTo(ctx, target, []delivery.Output{delivery.Text(n.Text)})
 		return events.NotificationReceipt{PlatformMessageIDs: r.PlatformMessageIDs}, err
 	}, signal.ConnectOptions{})
 	if err != nil {

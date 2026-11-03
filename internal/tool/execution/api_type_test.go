@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -76,7 +75,7 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 				if err != nil || len(schemas) != boolInt(want) {
 					t.Fatalf("%s schemas=%v err=%v", mode, schemas, err)
 				}
-				if got := manager.resolve(ctx, "image", cache, mode); (got.ResultStatus == events.ResultSucceeded) != want {
+				if got := manager.resolve(ctx, "image", cache, mode); (got.Error == nil) != want {
 					t.Fatalf("resolved=%+v", got)
 				}
 			}

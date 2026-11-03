@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 )
 
 // SupervisorDeps contains borrowed capabilities. Hook neither owns their
@@ -21,7 +20,7 @@ type SupervisorDeps struct {
 		CallTool(context.Context, tool.CallRequest) (*tool.Result, string, error)
 	} // Tool metadata, schema and invocation, without exposing callable Tool objects.
 	Platform interface {
-		SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
+		SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 		CallPlatformAPI(context.Context, string, string, map[string]any) (json.RawMessage, error)
 	} // Delivery and named-platform API calls; platform adapters stay private.
 }

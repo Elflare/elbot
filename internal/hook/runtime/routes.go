@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -46,13 +45,13 @@ func (m *Manager) RouteHookID(event share.Event) string {
 }
 
 // Route resumes a matching waiting invocation before pipeline runs ordinary rules.
-func (m *Manager) Route(ctx context.Context, event share.Event, observe func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, globalevents.LogResult, error) {
+func (m *Manager) Route(ctx context.Context, event share.Event, observe func(context.Context, string) (context.Context, func(), error)) (share.Event, bool, error) {
 	if dispatched, _ := event.Metadata[dispatchedMetadataKey].(bool); dispatched {
-		return event, false, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no matching continuation"}, nil
+		return event, false, nil
 	}
 	lease, ok := m.lookupLease(event)
 	if !ok {
-		return event, false, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no matching continuation"}, nil
+		return event, false, nil
 	}
 	worker := lease.Worker
 	if worker.config.Block.Blocks(event) {
@@ -60,7 +59,7 @@ func (m *Manager) Route(ctx context.Context, event share.Event, observe func(con
 		m.mu.Lock()
 		m.stopTransient(routeKeyFor(event), worker)
 		m.mu.Unlock()
-		return event, false, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "no matching continuation"}, nil
+		return event, false, nil
 	}
 	var err error
 	if observe != nil {
@@ -71,22 +70,16 @@ func (m *Manager) Route(ctx context.Context, event share.Event, observe func(con
 		}
 	}
 	updated := event
-	logResult := globalevents.LogResult{}
 	if err == nil {
-		updated, logResult, err = worker.handle(ctx, event, true, lease.ConversationID, lease.Control)
-	} else {
-		logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "start hook request: " + err.Error()}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			logResult.ResultStatus = globalevents.ResultCanceled
+		updated, err = worker.handle(ctx, event, true, lease.ConversationID, lease.Control)
+	}
+	record := globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, EventName: "hook_triggered", Module: "hook", ContentLimit: 4096, Content: fmt.Sprintf("continuation: hook=%s point=%s", worker.config.ID, event.Point), ResultStatus: globalevents.ResultSucceeded}
+	if err != nil {
+		record.Level, record.EventName, record.ResultStatus = slog.LevelWarn, "hook_error", globalevents.ResultFailed
+		record.Content += "\n" + err.Error()
+		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
+			record.Level, record.EventName, record.ResultStatus = slog.LevelInfo, "hook_canceled", globalevents.ResultCanceled
 		}
-	}
-	// Runtime owns the continuation record; pipeline propagates this source outcome.
-	record := globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, EventName: "hook_triggered", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: fmt.Sprintf("continuation: hook=%s point=%s\n%s", worker.config.ID, event.Point, logResult.Content), ResultStatus: logResult.ResultStatus}
-	if logResult.ResultStatus == globalevents.ResultFailed {
-		record.Level, record.EventName = slog.LevelError, "hook_error"
-	}
-	if logResult.ResultStatus == globalevents.ResultCanceled {
-		record.EventName = "hook_canceled"
 	}
 	record.Identity = logIdentity(ctx, event.Session.ID)
 	m.opts.Log(ctx, record)
@@ -96,7 +89,7 @@ func (m *Manager) Route(ctx context.Context, event share.Event, observe func(con
 		}
 		updated.Metadata[skipHookIDMetadataKey] = worker.config.ID
 	}
-	return updated, true, logResult, err
+	return updated, true, err
 }
 
 // logIdentity 使用事件 session，其余身份来自 context；缺失事实原样保留空值。

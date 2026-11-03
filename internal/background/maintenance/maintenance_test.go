@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -94,15 +93,15 @@ func TestCleanupUsesInjectedLiveSessionService(t *testing.T) {
 	}
 	busy = row.ID
 	svc := NewServiceWithConfig(nil, nil, &config.Config{Maintenance: config.MaintenanceConfig{SessionCleanup: config.MaintenanceCleanupConfig{Enabled: true, RetentionDays: 1}}}, live.CleanupExpired)
-	if logResult, err := svc.RunSessionCleanup(ctx); err != nil || logResult.ResultStatus != events.ResultSucceeded || !strings.Contains(logResult.Content, "deleted=0") {
-		t.Fatalf("cleanup=%#v error=%v", logResult, err)
+	if err := svc.RunSessionCleanup(ctx); err != nil {
+		t.Fatal("cleanup= error=", err)
 	}
 	if !binding.Valid() {
 		t.Fatal("busy current was deleted")
 	}
 	busy = ""
-	if logResult, err := svc.RunSessionCleanup(ctx); err != nil || logResult.ResultStatus != events.ResultSucceeded || !strings.Contains(logResult.Content, "deleted=1") {
-		t.Fatalf("cleanup=%#v error=%v", logResult, err)
+	if err := svc.RunSessionCleanup(ctx); err != nil {
+		t.Fatal("cleanup= error=", err)
 	}
 	if binding.Valid() {
 		t.Fatal("idle cleanup did not invalidate live binding")
@@ -130,9 +129,9 @@ func TestSandboxCleanupReturnsSourceResult(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := &Service{sandboxRoot: root, sandboxCleanup: config.MaintenanceCleanupConfig{RetentionDays: tc.retention}}
-			logResult, err := svc.RunSandboxCleanup(tc.ctx)
-			if logResult.ResultStatus != tc.want || !errors.Is(err, tc.err) || logResult.Content == "" {
-				t.Fatalf("source result=%#v error=%v", logResult, err)
+			err := svc.RunSandboxCleanup(tc.ctx)
+			if !errors.Is(err, tc.err) {
+				t.Fatal("source result= error=", err)
 			}
 		})
 	}

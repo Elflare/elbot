@@ -2,7 +2,6 @@ package elnis
 
 import (
 	"context"
-	"elbot/internal/events"
 	"errors"
 	"strings"
 	"testing"
@@ -34,9 +33,9 @@ func TestTakeoverSuppressesRepairAndReport(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			runner := &takeoverRunner{err: runErr}
 			sent := 0
-			svc, cleanup := newTestServiceWithRunner(t, runner, func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+			svc, cleanup := newTestServiceWithRunner(t, runner, func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
 				sent++
-				return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+				return delivery.Receipt{}, nil
 			})
 			defer cleanup()
 			var queued QueuedLLMEvent
@@ -57,7 +56,7 @@ func TestTakeoverSuppressesRepairAndReport(t *testing.T) {
 			if runner.calls != 1 || sent != 0 {
 				t.Fatalf("calls=%d sent=%d", runner.calls, sent)
 			}
-			if _, err := svc.deliverReport(context.Background(), queued.EventID); err != nil {
+			if err := svc.deliverReport(context.Background(), queued.EventID); err != nil {
 				t.Fatal(err)
 			}
 			if sent != 0 {

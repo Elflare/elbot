@@ -152,7 +152,7 @@ func BenchmarkMediaMaintenance(b *testing.B) {
 					bridge.scheduleExpiryLocked(id, lease.expires)
 				}
 				if mode == "busy-waiting-release" {
-					_ = bridge.prune(b.Context(), now, false, func(events.LogResult) {})
+					_ = bridge.prune(b.Context(), now, false, func(events.LogRecord) {})
 				}
 				// A single failed lease among live leases: simulate reference-release
 				// failure without filesystem/network cost, preserving it for retry.
@@ -172,7 +172,7 @@ func BenchmarkMediaMaintenance(b *testing.B) {
 						bridge.leases["media-0"].cleanupFailures = 0
 						bridge.scheduleExpiryLocked("media-0", now)
 					}
-					_ = bridge.prune(b.Context(), now, false, func(events.LogResult) {})
+					_ = bridge.prune(b.Context(), now, false, func(events.LogRecord) {})
 				}
 			})
 		}

@@ -60,7 +60,7 @@ func TestPartialTextSendKeepsReceiptWithoutRestartingFallback(t *testing.T) {
 			defer server.Close()
 			adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: format}, nil)
 			ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ChatType: contextinfo.ChatGroup, ChatID: "-19"}})
-			receipt, _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(strings.Repeat("a", telegramRichTextRunes+1))})
+			receipt, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(strings.Repeat("a", telegramRichTextRunes+1))})
 			if err == nil || len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "71" || calls != 2 {
 				t.Fatalf("receipt=%#v error=%v calls=%d", receipt, err, calls)
 			}
@@ -226,7 +226,7 @@ func TestSendActionsIndependentOfTextAndOnlyOnFirstPage(t *testing.T) {
 					out.Text = "正文完全改写\n" + strings.Repeat("a", telegramRichTextRunes+1)
 					out.Actions = actions
 				}
-				if _, _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{out}); err != nil {
+				if _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{out}); err != nil {
 					t.Fatal(err)
 				}
 				if len(bodies) < 2 {
@@ -260,7 +260,7 @@ func TestSendTextUsesHTMLByDefault(t *testing.T) {
 	}))
 	defer server.Close()
 	adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL}, nil)
-	receipt, _, err := adapter.sendText(context.Background(), target{NativeChatID: 1}, "# 标题\n\n| A | B |\n|---|---|", 0, nil)
+	receipt, err := adapter.sendText(context.Background(), target{NativeChatID: 1}, "# 标题\n\n| A | B |\n|---|---|", 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +287,7 @@ func TestSendTextRichFailure(t *testing.T) {
 	}))
 	defer server.Close()
 	adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: "rich"}, nil)
-	receipt, _, err := adapter.sendText(context.Background(), target{NativeChatID: 1}, "# bad", 0, nil)
+	receipt, err := adapter.sendText(context.Background(), target{NativeChatID: 1}, "# bad", 0, nil)
 	if err == nil || len(receipt.PlatformMessageIDs) != 0 {
 		t.Fatalf("receipt=%#v err=%v", receipt, err)
 	}

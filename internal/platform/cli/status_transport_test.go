@@ -95,7 +95,7 @@ func TestStatusInFlightWriteKeepsRemoteConnection(t *testing.T) {
 			if err := d.Close(ctx); err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err := s.SendTo(ctx, delivery.Target{Platform: "cli", ChatType: "private", ChatID: "user"}, []delivery.Output{delivery.Text("still connected")}); err != nil {
+			if _, err := s.SendTo(ctx, delivery.Target{Platform: "cli", ChatType: "private", ChatID: "user"}, []delivery.Output{delivery.Text("still connected")}); err != nil {
 				t.Fatal(err)
 			}
 			var message remoteMessage

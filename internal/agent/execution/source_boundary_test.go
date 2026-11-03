@@ -5,7 +5,6 @@ import (
 	agenthooks "elbot/internal/agent/hooks"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/security"
 	"testing"
 )
@@ -26,18 +25,18 @@ func TestHookCallbackReceivesPublicFactsWithoutInventingSource(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			bridge := agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{Identity: identity})
 			called := false
-			_, err := bridge.Register(agenthooks.Points{AgentOutputPrepared: func(ctx context.Context, facts agenthooks.Facts, text string) (string, events.LogResult, error) {
+			_, err := bridge.Register(agenthooks.Points{AgentOutputPrepared: func(ctx context.Context, facts agenthooks.Facts, text string) (string, error) {
 				called = true
 				conversation, _ := contextinfo.ConversationFromContext(ctx)
 				if facts.Actor.ID != tc.wantActor || conversation.Source != tc.wantSource {
 					t.Fatalf("facts=%+v conversation=%+v", facts, conversation)
 				}
-				return text, events.LogResult{}, nil
+				return text, nil
 			}})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err := bridge.AgentOutputPrepared(tc.ctx, "text"); err != nil {
+			if _, err := bridge.AgentOutputPrepared(tc.ctx, "text"); err != nil {
 				t.Fatal(err)
 			}
 			if !called {

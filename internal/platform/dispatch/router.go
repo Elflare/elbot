@@ -5,7 +5,6 @@ package dispatch
 
 import (
 	"context"
-	"elbot/internal/events"
 	"fmt"
 	"strings"
 	"sync"
@@ -95,18 +94,18 @@ func (r *Router) sender(ctx context.Context, target delivery.Target) (delivery.M
 	return sender, nil
 }
 
-func (r *Router) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+func (r *Router) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	return delivery.NewManager(rawSender{r}).SendTo(ctx, target, outputs)
 }
 
 type rawSender struct{ router *Router }
 
-func (s rawSender) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+func (s rawSender) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	sender, err := s.router.sender(ctx, target)
 	if err != nil {
-		return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}, err
+		return delivery.Receipt{}, err
 	}
-	return s.router.sendPreparedMedia(ctx, outputs, func(resolved []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	return s.router.sendPreparedMedia(ctx, outputs, func(resolved []delivery.Output) (delivery.Receipt, error) {
 		return sender.SendTo(ctx, target, resolved)
 	})
 }

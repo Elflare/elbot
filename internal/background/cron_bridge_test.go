@@ -115,16 +115,16 @@ func TestCronBridgeServicePersistsReportMappingAndCompletion(t *testing.T) {
 		SessionTakenOver: func(context.Context, string) (bool, error) { return false, nil },
 		CopyBackground:   func(context.Context, agent.BackgroundCopyRequest) (string, error) { return "copy", nil },
 		EnabledPlatforms: []elcron.PlatformTarget{{Name: "telegram", SuperadminIDs: []string{"1"}}},
-		SendTarget: func(_ context.Context, target delivery.Target, _ []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-			result := events.LogResult{ResultStatus: events.ResultSucceeded}
+		SendTarget: func(_ context.Context, target delivery.Target, _ []delivery.Output) (delivery.Receipt, error) {
+
 			if target.Platform == "cli" {
-				return delivery.Receipt{}, result, nil
+				return delivery.Receipt{}, nil
 			}
-			return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "notice"}}}, result, nil
+			return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "notice"}}}, nil
 		},
 	})
 	t.Cleanup(func() { _ = s.Close(context.Background()); <-m.Stop().Done() })
-	if _, err := s.Handler(ctx, *cronJob(row)); err != nil {
+	if err := s.Handler(ctx, *cronJob(row)); err != nil {
 		t.Fatal(err)
 	}
 	message, err := store.Messages().FindByPlatformMessage(ctx, "telegram", "private", "1", "notice")
@@ -159,8 +159,8 @@ func TestToolNotificationRefreshesCronThroughRealStorage(t *testing.T) {
 	}
 	b := cronBridge{repo: store.CronJobs()}
 	m := elcron.NewManager(b)
-	if err := m.RegisterHandler(elcron.UserHandlerName, func(context.Context, elcron.Job) (events.LogResult, error) {
-		return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+	if err := m.RegisterHandler(elcron.UserHandlerName, func(context.Context, elcron.Job) error {
+		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}

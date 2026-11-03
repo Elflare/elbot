@@ -64,20 +64,20 @@ func TestOperationAdmissionResult(t *testing.T) {
 				}
 				wantErr, wantStatus = signal.ErrClosed, events.ResultFailed
 			}
-			operations := map[string]func() (delivery.Receipt, events.LogResult, error){
-				"SendToCurrentConversation": func() (delivery.Receipt, events.LogResult, error) {
+			operations := map[string]func() (delivery.Receipt, error){
+				"SendToCurrentConversation": func() (delivery.Receipt, error) {
 					return a.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("hello")})
 				},
-				"SendTo": func() (delivery.Receipt, events.LogResult, error) {
+				"SendTo": func() (delivery.Receipt, error) {
 					return a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "9"}, []delivery.Output{delivery.Text("hello")})
 				},
-				"Replace": func() (delivery.Receipt, events.LogResult, error) { return s.Replace(ctx, "hello") },
-				"Finish":  func() (delivery.Receipt, events.LogResult, error) { return s.Finish(ctx) },
+				"Replace": func() (delivery.Receipt, error) { return s.Replace(ctx, "hello") },
+				"Finish":  func() (delivery.Receipt, error) { return s.Finish(ctx) },
 			}
 			for name, operation := range operations {
-				_, result, err := operation()
-				if !errors.Is(err, wantErr) || result.ResultStatus != wantStatus {
-					t.Errorf("%s: error=%v status=%v, want %v/%v", name, err, result.ResultStatus, wantErr, wantStatus)
+				_, err := operation()
+				if !errors.Is(err, wantErr) {
+					t.Error(": error= status=, want /", name, err, wantErr, wantStatus)
 				}
 			}
 		})
@@ -97,15 +97,14 @@ func TestStreamQueuedCancellationResult(t *testing.T) {
 				done := make(chan struct{})
 				go func() {
 					defer close(done)
-					var result events.LogResult
 					var err error
 					if operation == "Replace" {
-						_, result, err = s.Replace(ctx, "replacement")
+						_, err = s.Replace(ctx, "replacement")
 					} else {
-						_, result, err = s.Finish(ctx)
+						_, err = s.Finish(ctx)
 					}
-					if !errors.Is(err, context.Canceled) || result.ResultStatus != events.ResultCanceled {
-						t.Errorf("error=%v status=%v, want canceled", err, result.ResultStatus)
+					if !errors.Is(err, context.Canceled) {
+						t.Errorf("error=%v, want canceled", err)
 					}
 				}()
 				synctest.Wait()
@@ -179,7 +178,7 @@ func TestRuntimeStopsIngressAndWaitsForAcceptedWork(t *testing.T) {
 	if err := a.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Close while handler alive=%v", err)
 	}
-	if _, _, err := a.SendTo(telegramTestContext(), delivery.Target{}, []delivery.Output{delivery.Text("cleanup")}); err != nil {
+	if _, err := a.SendTo(telegramTestContext(), delivery.Target{}, []delivery.Output{delivery.Text("cleanup")}); err != nil {
 		t.Fatalf("cleanup send=%v", err)
 	}
 	once.Do(func() { close(release) })
@@ -256,11 +255,11 @@ func TestOperationsRemainAvailableUntilFinalClose(t *testing.T) {
 	ctx := telegramTestContext()
 	operations := map[string]func() error{
 		"SendToCurrentConversation": func() error {
-			_, _, err := a.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("hello")})
+			_, err := a.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("hello")})
 			return err
 		},
 		"SendTo": func() error {
-			_, _, err := a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "9"}, []delivery.Output{delivery.Text("hello")})
+			_, err := a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "9"}, []delivery.Output{delivery.Text("hello")})
 			return err
 		},
 		"API": func() error { _, err := a.CallPlatformAPI(ctx, "getChat", nil); return err },
@@ -270,8 +269,8 @@ func TestOperationsRemainAvailableUntilFinalClose(t *testing.T) {
 		},
 		"StartStream": func() error { _, err := a.StartStream(ctx); return err },
 		"Append":      func() error { return idle.Append(ctx, "hello") },
-		"Replace":     func() error { _, _, err := idle.Replace(ctx, "final"); return err },
-		"Finish":      func() error { _, _, err := idle.Finish(ctx); return err },
+		"Replace":     func() error { _, err := idle.Replace(ctx, "final"); return err },
+		"Finish":      func() error { _, err := idle.Finish(ctx); return err },
 	}
 	// Stream methods use a deterministic order; other operations have no ordering dependency.
 	for _, name := range []string{"SendToCurrentConversation", "SendTo", "API", "media", "StartStream", "Append", "Replace", "Finish"} {
@@ -351,7 +350,7 @@ func TestStreamWaitCancellationDoesNotCancelOwner(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	waiter := make(chan error, 1)
-	go func() { _, _, err := s.Replace(ctx, "canceled replacement"); waiter <- err }()
+	go func() { _, err := s.Replace(ctx, "canceled replacement"); waiter <- err }()
 	if err := awaitTelegram(t, waiter); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("waiter=%v", err)
 	}
@@ -367,7 +366,7 @@ func TestStreamWaitCancellationDoesNotCancelOwner(t *testing.T) {
 	if calls.Load() != 1 {
 		t.Fatalf("calls=%d", calls.Load())
 	}
-	if _, _, err := s.Finish(context.Background()); err != nil {
+	if _, err := s.Finish(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -427,15 +426,15 @@ func TestFinalCloseCancelsEveryHTTPBackedOperation(t *testing.T) {
 				var err error
 				switch name {
 				case "SendToCurrentConversation":
-					_, _, err = a.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("hello")})
+					_, err = a.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("hello")})
 				case "SendTo":
-					_, _, err = a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "9"}, []delivery.Output{delivery.Text("hello")})
+					_, err = a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "9"}, []delivery.Output{delivery.Text("hello")})
 				case "media":
 					_, err = a.ResolveMedia(ctx, share.MessageSegment{PlatformFileID: "file"}, 10)
 				case "Append":
 					err = s.Append(ctx, "hello")
 				case "Replace":
-					_, _, err = s.Replace(ctx, "hello")
+					_, err = s.Replace(ctx, "hello")
 				}
 				result <- err
 			}()
@@ -469,7 +468,7 @@ func TestFinalCloseReleasesOwnedIdleConnection(t *testing.T) {
 	server.Start()
 	t.Cleanup(server.Close)
 	a := newTestAdapter(t, Config{APIBaseURL: server.URL}, nil)
-	if _, _, err := a.SendTo(telegramTestContext(), delivery.Target{}, []delivery.Output{delivery.Text("hello")}); err != nil {
+	if _, err := a.SendTo(telegramTestContext(), delivery.Target{}, []delivery.Output{delivery.Text("hello")}); err != nil {
 		t.Fatal(err)
 	}
 	awaitTelegram(t, idle)

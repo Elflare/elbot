@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 )
 
@@ -159,15 +158,15 @@ type ToolPayload struct {
 	Error     error  `json:"error,omitempty"`
 }
 
-// Handler returns business changes, the source-declared log outcome and the original error.
+// Handler returns business changes and the original operation error.
 // readOnlyCalls is enforced by rules after each action that may change call data.
 type Handler interface {
-	HandleHook(ctx context.Context, event Event, readOnlyCalls bool) (Event, events.LogResult, error)
+	HandleHook(ctx context.Context, event Event, readOnlyCalls bool) (Event, error)
 }
 
-type HandlerFunc func(ctx context.Context, event Event, readOnlyCalls bool) (Event, events.LogResult, error)
+type HandlerFunc func(ctx context.Context, event Event, readOnlyCalls bool) (Event, error)
 
-func (fn HandlerFunc) HandleHook(ctx context.Context, event Event, readOnlyCalls bool) (Event, events.LogResult, error) {
+func (fn HandlerFunc) HandleHook(ctx context.Context, event Event, readOnlyCalls bool) (Event, error) {
 	return fn(ctx, event, readOnlyCalls)
 }
 

@@ -34,17 +34,17 @@ func TestForwardTextSendingPaths(t *testing.T) {
 					var err error
 					switch mode {
 					case "chat":
-						receipt, _, err = a.SendTo(ctx, delivery.Target{}, outputs)
+						receipt, err = a.SendTo(ctx, delivery.Target{}, outputs)
 					case "context notice":
-						receipt, _, err = a.SendTo(ctx, delivery.Target{}, outputs)
+						receipt, err = a.SendTo(ctx, delivery.Target{}, outputs)
 					case "explicit notice":
 						// The explicit target must win over a different source conversation.
 						ctx = testTargetContext(qqTargetForTest("private", 777))
-						receipt, _, err = a.SendTo(ctx, delivery.Target{ChatType: contextinfo.ChatType(target.MessageType), ChatID: oneBotTargetScope(target)}, outputs)
+						receipt, err = a.SendTo(ctx, delivery.Target{ChatType: contextinfo.ChatType(target.MessageType), ChatID: oneBotTargetScope(target)}, outputs)
 					case "temporary notice":
-						receipt, _, err = a.SendTo(delivery.WithTemporaryConnection(context.Background()), delivery.Target{ChatType: contextinfo.ChatType(target.MessageType), ChatID: oneBotTargetScope(target)}, outputs)
+						receipt, err = a.SendTo(delivery.WithTemporaryConnection(context.Background()), delivery.Target{ChatType: contextinfo.ChatType(target.MessageType), ChatID: oneBotTargetScope(target)}, outputs)
 					case "temporary context":
-						receipt, _, err = a.SendTo(delivery.WithTemporaryConnection(ctx), delivery.Target{}, outputs)
+						receipt, err = a.SendTo(delivery.WithTemporaryConnection(ctx), delivery.Target{}, outputs)
 					}
 					if err != nil {
 						t.Fatal(err)
@@ -139,7 +139,7 @@ func TestForwardSendFailureDoesNotFallBack(t *testing.T) {
 			})
 			a := newTestAdapter(t, Config{URL: transport.URL}, nil, nil)
 			a.transport = transport
-			receipt, _, err := a.SendTo(testTargetContext(target{MessageType: "group", GroupID: 9}), delivery.Target{}, []delivery.Output{delivery.Text(strings.Repeat("a", 3001))})
+			receipt, err := a.SendTo(testTargetContext(target{MessageType: "group", GroupID: 9}), delivery.Target{}, []delivery.Output{delivery.Text(strings.Repeat("a", 3001))})
 			if err == nil || calls.Load() != 1 || len(receipt.PlatformMessageIDs) != 0 || len(receipt.SentMessages) != 0 {
 				t.Fatalf("receipt=%#v error=%v calls=%d", receipt, err, calls.Load())
 			}
@@ -167,7 +167,7 @@ func TestForwardAdminNoticesKeepPartialReceipts(t *testing.T) {
 			if temporary {
 				ctx = delivery.WithTemporaryConnection(ctx)
 			}
-			receipt, _, err := a.SendTo(ctx, delivery.Target{Superadmins: true}, []delivery.Output{delivery.Text(strings.Repeat("a", 3001))})
+			receipt, err := a.SendTo(ctx, delivery.Target{Superadmins: true}, []delivery.Output{delivery.Text(strings.Repeat("a", 3001))})
 			if err == nil || calls.Load() != 2 || len(receipt.PlatformMessageIDs) != 1 || len(receipt.SentMessages) != 1 || (receipt.SentMessages[0].ChatType != "private" || receipt.SentMessages[0].ChatID != "1") {
 				t.Fatalf("receipt=%#v error=%v calls=%d", receipt, err, calls.Load())
 			}
@@ -183,7 +183,7 @@ func TestLongMixedOutputKeepsNormalMessageAPI(t *testing.T) {
 	})
 	a := newTestAdapter(t, Config{URL: transport.URL}, nil, nil)
 	a.transport = transport
-	_, _, err := a.SendTo(testTargetContext(target{MessageType: "group", GroupID: 9}), delivery.Target{}, []delivery.Output{delivery.Text(strings.Repeat("a", 3001)), delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/image.png"}}})
+	_, err := a.SendTo(testTargetContext(target{MessageType: "group", GroupID: 9}), delivery.Target{}, []delivery.Output{delivery.Text(strings.Repeat("a", 3001)), delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/image.png"}}})
 	if err != nil {
 		t.Fatal(err)
 	}

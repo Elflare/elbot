@@ -20,7 +20,7 @@ type NotificationReceiver interface {
 // ConnectNotifications 将通知交给发送端，连接由根部持有和释放。
 func ConnectNotifications(s *signal.Signal[events.Notification, events.NotificationReceipt], sender delivery.MessageSender) (*signal.Connection, error) {
 	return s.Connect(func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
-		r, _, err := delivery.NewManager(sender).SendTo(ctx, NotificationTarget(n), []delivery.Output{delivery.Text(n.Text)})
+		r, err := delivery.NewManager(sender).SendTo(ctx, NotificationTarget(n), []delivery.Output{delivery.Text(n.Text)})
 		return events.NotificationReceipt{PlatformMessageIDs: r.PlatformMessageIDs}, err
 	}, signal.ConnectOptions{})
 }

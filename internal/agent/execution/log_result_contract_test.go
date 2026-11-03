@@ -33,9 +33,9 @@ func readDeliveryLog(t *testing.T, record events.LogRecord) deliveryLogContent {
 	return content
 }
 
-type outputSendFunc func([]delivery.Output) (delivery.Receipt, events.LogResult, error)
+type outputSendFunc func([]delivery.Output) (delivery.Receipt, error)
 
-func (f outputSendFunc) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+func (f outputSendFunc) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	return f(outputs)
 }
 
@@ -66,7 +66,7 @@ func TestReplyDeliveryRecordsOncePerSend(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(connection.Disconnect)
-			if _, err := f.out.SendOutputs(f.ctx, nil); err != nil || len(records) != 0 {
+			if err := f.out.SendOutputs(f.ctx, nil); err != nil || len(records) != 0 {
 				t.Fatalf("empty outputs logged: err=%v records=%+v", err, records)
 			}
 			result, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
@@ -110,9 +110,9 @@ func TestAssistantSendFailureUsesUnifiedDeliveryLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
-	receipt, result, err := f.out.SendAssistant(f.ctx, "message")
-	if !errors.Is(err, want) || result.ResultStatus != events.ResultFailed || len(receipt.PlatformMessageIDs) != 1 || counts["delivery"] != 1 || counts["agent"] != 1 {
-		t.Fatalf("receipt=%+v result=%+v err=%v logs=%v", receipt, result, err, counts)
+	receipt, err := f.out.SendAssistant(f.ctx, "message")
+	if !errors.Is(err, want) || len(receipt.PlatformMessageIDs) != 1 || counts["delivery"] != 1 || counts["agent"] != 1 {
+		t.Fatal("receipt= result= err= logs=", receipt, err, counts)
 	}
 }
 
@@ -125,9 +125,9 @@ func TestIntermediateStreamDeliveryLogsOnce(t *testing.T) {
 	}{
 		{"text", "visible", nil, nil, events.ResultSucceeded, slog.LevelDebug},
 		{"empty", "", nil, nil, events.ResultSucceeded, slog.LevelDebug},
-		{"replace_failure", "visible", errors.New("replace failed"), nil, events.ResultFailed, slog.LevelError},
+		{"replace_failure", "visible", errors.New("replace failed"), nil, events.ResultFailed, slog.LevelWarn},
 		{"finish_canceled", "visible", nil, context.Canceled, events.ResultCanceled, slog.LevelInfo},
-		{"empty_finish_failure", "", nil, errors.New("finish failed"), events.ResultFailed, slog.LevelError},
+		{"empty_finish_failure", "", nil, errors.New("finish failed"), events.ResultFailed, slog.LevelWarn},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newReplyTestFixture(t, false)
@@ -179,7 +179,7 @@ func TestBufferedSendFailureKeepsReceipt(t *testing.T) {
 	}
 }
 
-func TestSendOutputsUsesSourceLogResult(t *testing.T) {
+func TestSendOutputsLogsBusinessFailure(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		status events.ResultStatus
@@ -188,8 +188,7 @@ func TestSendOutputsUsesSourceLogResult(t *testing.T) {
 	}{
 		{"success", events.ResultSucceeded, nil, slog.LevelDebug},
 		{"wrapped_cancellation", events.ResultCanceled, fmt.Errorf("transport: %w", context.Canceled), slog.LevelInfo},
-		{"partial_fanout_failure_without_business_error", events.ResultFailed, nil, slog.LevelError},
-		{"mixed_failure", events.ResultFailed, errors.Join(context.Canceled, errors.New("independent send failure")), slog.LevelError},
+		{"mixed_failure", events.ResultFailed, errors.Join(context.Canceled, errors.New("independent send failure")), slog.LevelWarn},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var records []events.LogRecord
@@ -207,47 +206,20 @@ func TestSendOutputsUsesSourceLogResult(t *testing.T) {
 				PlatformMessageIDs: []string{"sent"},
 				SentMessages:       []delivery.SentMessage{{Platform: "test", ChatType: "group", ChatID: "1", PlatformMessageID: "sent", OutputIndexes: []int{0}}},
 			}
-			backend := outputSendFunc(func([]delivery.Output) (delivery.Receipt, events.LogResult, error) {
-				return businessReceipt, events.LogResult{ResultStatus: tc.status, Content: "source-specific diagnostic"}, tc.err
+			backend := outputSendFunc(func([]delivery.Output) (delivery.Receipt, error) {
+				return businessReceipt, tc.err
 			})
 			ctx := context.Background()
 			sender := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Dispatcher: backend})
-			logResult, err := sender.SendOutputs(ctx, []delivery.Output{delivery.Text("business text")})
-			if err != tc.err || logResult.ResultStatus != tc.status || !strings.Contains(logResult.Content, "source-specific diagnostic") {
-				t.Fatalf("log result=%#v error=%v", logResult, err)
+			err = sender.SendOutputs(ctx, []delivery.Output{delivery.Text("business text")})
+			if err != tc.err {
+				t.Fatal("error:", err)
 			}
 			if len(records) != 1 || records[0].ResultStatus != tc.status || records[0].Level != tc.level {
 				t.Fatalf("records=%#v", records)
 			}
-			if content := readDeliveryLog(t, records[0]); content.Operation != "send_outputs" || content.Detail != "source-specific diagnostic" {
+			if content := readDeliveryLog(t, records[0]); content.Operation != "send_outputs" || (tc.err == nil && content.Detail != "" || tc.err != nil && content.Detail != tc.err.Error()) {
 				t.Fatalf("source diagnostic changed: %s", records[0].Content)
-			}
-		})
-	}
-}
-
-func TestReplyCommitUsesSourceOutcomeWithoutChangingBusiness(t *testing.T) {
-	for _, buffered := range []bool{false, true} {
-		t.Run(fmt.Sprintf("buffered=%t", buffered), func(t *testing.T) {
-			fixture := newReplyTestFixture(t, buffered)
-			fixture.platform.outputsLogResult = &events.LogResult{ResultStatus: events.ResultFailed, Content: "one destination failed; another received the output"}
-			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-				if record.EventName == "reply_delivered" && readDeliveryLog(t, record).Operation == "send_outputs" {
-					records = append(records, record)
-				}
-				return nil
-			}, signal.ConnectOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(connection.Disconnect)
-			result, err := fixture.committer.Commit(fixture.ctx, fixture.requestCtx, fixture.in, fixture.out)
-			if err != nil || !result.Persisted || len(result.Receipt.PlatformMessageIDs) != 1 {
-				t.Fatalf("business result=%#v error=%v", result, err)
-			}
-			if len(records) != 1 || records[0].ResultStatus != events.ResultFailed || records[0].Level != slog.LevelError || !strings.Contains(records[0].Content, "one destination failed") {
-				t.Fatalf("records=%#v", records)
 			}
 		})
 	}
@@ -261,19 +233,26 @@ func TestReplyCommitLogSpacingComesFromSources(t *testing.T) {
 			diagnostic string
 		}{
 			{events.ResultSucceeded, slog.LevelDebug, ""},
-			{events.ResultFailed, slog.LevelError, "first paragraph\n\nsecond paragraph"},
+			{events.ResultFailed, slog.LevelWarn, "first paragraph\n\nsecond paragraph"},
 			{events.ResultCanceled, slog.LevelInfo, "send canceled"},
 		} {
 			t.Run(mode+"/"+tc.status.String(), func(t *testing.T) {
 				fixture := newReplyTestFixture(t, mode == "buffered")
 				fixture.in.Outputs = nil
 				status, diagnostic := tc.status, tc.diagnostic
-				source := &events.LogResult{ResultStatus: status, Content: diagnostic}
-				fixture.platform.sendLogResult = source
+				var sendErr error
+				if status == events.ResultFailed {
+					sendErr = errors.New(diagnostic)
+				}
+				if status == events.ResultCanceled {
+					sendErr = context.Canceled
+					diagnostic = sendErr.Error()
+				}
+				fixture.platform.sendErr = sendErr
 				if mode == "stream" {
 					fixture.in.Stream = &replyTestStream{
 						events: &fixture.events, wantCtx: fixture.requestCtx, t: t,
-						replaceReceipt: fixture.platform.receipt, replaceLogResult: source,
+						replaceReceipt: fixture.platform.receipt, replaceErr: sendErr,
 					}
 				}
 				var records []events.LogRecord
@@ -288,7 +267,7 @@ func TestReplyCommitLogSpacingComesFromSources(t *testing.T) {
 				}
 				t.Cleanup(connection.Disconnect)
 				result, err := fixture.committer.Commit(fixture.ctx, fixture.requestCtx, fixture.in, fixture.out)
-				if err != nil || !result.Persisted || len(result.Receipt.PlatformMessageIDs) != 1 || len(records) != 1 {
+				if !errors.Is(err, sendErr) || len(result.Receipt.PlatformMessageIDs) != 1 || len(records) != 1 {
 					t.Fatalf("result=%+v err=%v records=%+v", result, err, records)
 				}
 				content := readDeliveryLog(t, records[0])
@@ -310,51 +289,18 @@ func TestReplyCommitLogSpacingComesFromSources(t *testing.T) {
 	}
 }
 
-func TestReplyCommitKeepsFailureBeforeLaterCancellation(t *testing.T) {
-	for _, buffered := range []bool{false, true} {
-		t.Run(fmt.Sprintf("buffered=%t", buffered), func(t *testing.T) {
-			fixture := newReplyTestFixture(t, buffered)
-			fixture.platform.sendLogResult = &events.LogResult{ResultStatus: events.ResultFailed, Content: "one assistant destination failed"}
-			fixture.platform.outputsLogResult = &events.LogResult{ResultStatus: events.ResultCanceled, Content: "later outputs canceled"}
-			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-				if record.EventName == "reply_delivered" {
-					records = append(records, record)
-				}
-				return nil
-			}, signal.ConnectOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(connection.Disconnect)
-			result, err := fixture.committer.Commit(fixture.ctx, fixture.requestCtx, fixture.in, fixture.out)
-			if err != nil || !result.Persisted || len(result.Receipt.PlatformMessageIDs) != 1 {
-				t.Fatalf("business result=%#v error=%v", result, err)
-			}
-			if len(records) != 2 || records[0].ResultStatus != events.ResultFailed || records[0].Level != slog.LevelError || records[1].ResultStatus != events.ResultCanceled || records[1].Level != slog.LevelInfo {
-				t.Fatalf("later cancellation hid an independent failure: %#v", records)
-			}
-			if content := readDeliveryLog(t, records[1]); content.Operation != "send_outputs" || content.Detail != "later outputs canceled" {
-				t.Fatalf("outputs mislabeled: %s", records[1].Content)
-			}
-		})
-	}
-}
-
-func TestStreamKeepsSourceFailureBeforeFinishCancellation(t *testing.T) {
+func TestStreamPreservesReplaceReceiptWhenFinishCanceled(t *testing.T) {
 	fixture := newReplyTestFixture(t, false)
 	stream := &replyTestStream{
 		events: &fixture.events, wantCtx: fixture.requestCtx, t: t,
-		replaceReceipt:   delivery.Receipt{PlatformMessageIDs: []string{"partial"}},
-		finishReceipt:    delivery.Receipt{PlatformMessageIDs: []string{"final"}},
-		replaceLogResult: &events.LogResult{ResultStatus: events.ResultFailed, Content: "replace destination failed"},
-		finishLogResult:  &events.LogResult{ResultStatus: events.ResultCanceled, Content: "finish canceled"},
+		replaceReceipt: delivery.Receipt{PlatformMessageIDs: []string{"partial"}},
+		finishReceipt:  delivery.Receipt{PlatformMessageIDs: []string{"final"}},
+
+		finishErr: context.Canceled,
 	}
-	receipt, logResult, err := fixture.out.ReplaceAndFinishStream(fixture.ctx, fixture.requestCtx, stream, "visible")
-	if err != nil || len(receipt.PlatformMessageIDs) != 2 || logResult.ResultStatus != events.ResultFailed {
-		t.Fatalf("receipt=%#v log result=%#v error=%v", receipt, logResult, err)
+	receipt, err := fixture.out.ReplaceAndFinishStream(fixture.ctx, fixture.requestCtx, stream, "visible")
+	if !errors.Is(err, context.Canceled) || len(receipt.PlatformMessageIDs) != 2 {
+		t.Fatal("receipt and error:", receipt, err)
 	}
-	if !strings.Contains(logResult.Content, "replace destination failed") || !strings.Contains(logResult.Content, "finish canceled") {
-		t.Fatalf("source body missing: %s", logResult.Content)
-	}
+
 }

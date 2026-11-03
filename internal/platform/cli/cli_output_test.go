@@ -15,14 +15,14 @@ import (
 
 func TestSendToAcceptsCLITarget(t *testing.T) {
 	adapter := New(testPlatformName)
-	if _, _, err := adapter.SendTo(context.Background(), delivery.Target{Platform: "cli", Superadmins: true}, []delivery.Output{delivery.ImagePath("pic.png")}); err != nil {
+	if _, err := adapter.SendTo(context.Background(), delivery.Target{Platform: "cli", Superadmins: true}, []delivery.Output{delivery.ImagePath("pic.png")}); err != nil {
 		t.Fatalf("SendTo: %v", err)
 	}
 }
 
 func TestSendToRejectsOtherPlatform(t *testing.T) {
 	adapter := New(testPlatformName)
-	if _, _, err := adapter.SendTo(context.Background(), delivery.Target{Platform: "qqonebot"}, []delivery.Output{delivery.Text("hello")}); err == nil {
+	if _, err := adapter.SendTo(context.Background(), delivery.Target{Platform: "qqonebot"}, []delivery.Output{delivery.Text("hello")}); err == nil {
 		t.Fatal("expected platform mismatch error")
 	}
 }

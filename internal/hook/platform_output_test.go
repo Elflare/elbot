@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/hook/pipeline"
 	"elbot/internal/hook/share"
 )
@@ -20,17 +19,17 @@ func TestPlatformConnectedResolvesOutputTarget(t *testing.T) {
 			if conflict {
 				outputs = append(outputs, delivery.Output{Kind: delivery.KindText, Target: delivery.Target{Platform: "cli", ChatType: "private", ChatID: "other"}})
 			}
-			m.manager = bridgeTestPipeline{run: func(_ context.Context, event share.Event, _ pipeline.CallOptions) (share.Event, events.LogResult, error) {
+			m.manager = bridgeTestPipeline{run: func(_ context.Context, event share.Event, _ pipeline.CallOptions) (share.Event, error) {
 				event.Outputs = outputs
-				return event, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+				return event, nil
 			}}
 			calls := 0
-			m.send = func(_ context.Context, target delivery.Target, sent []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+			m.send = func(_ context.Context, target delivery.Target, sent []delivery.Output) (delivery.Receipt, error) {
 				calls++
 				if target != admins || !reflect.DeepEqual(sent, outputs) {
 					t.Fatalf("target=%+v outputs=%+v", target, sent)
 				}
-				return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+				return delivery.Receipt{}, nil
 			}
 			m.handlePlatformConnected(t.Context(), "telegram")
 			want := 1

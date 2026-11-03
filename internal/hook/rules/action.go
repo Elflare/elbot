@@ -7,7 +7,6 @@ import "elbot/internal/tool"
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -33,43 +32,36 @@ type actionResult struct {
 	PassThrough *bool
 }
 
-func (m Module) runAction(ctx context.Context, event share.Event, action Action, state state) (share.Event, actionResult, globalevents.LogResult, error) {
-	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "action=" + action.Type}
+func (m Module) runAction(ctx context.Context, event share.Event, action Action, state state) (share.Event, actionResult, error) {
+
 	switch strings.TrimSpace(action.Type) {
 	case "prepend", "append", "replace", "delete":
 		updated, err := applyTextAction(event, action, state)
-		if err != nil {
-			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		}
-		return updated, actionResult{}, logResult, err
+		return updated, actionResult{}, err
 	case "send":
 		outputs, err := makeOutputs(action, event, state)
 		if err != nil {
-			return event, actionResult{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "output preparation failed; send not entered: " + err.Error()}, err
+			return event, actionResult{}, err
 		}
 		event.Outputs = append(event.Outputs, outputs...)
-		logResult.Content = "outputs prepared for business delivery"
-		return event, actionResult{}, logResult, nil
+
+		return event, actionResult{}, nil
 	case "exec":
-		updated, result, logResult, err := m.runExec(ctx, event, action, state)
+		updated, result, err := m.runExec(ctx, event, action, state)
 		key := firstNonEmpty(strings.TrimSpace(action.ActionName), "exec")
 		state.Actions[key] = result
-		return updated, result, logResult, err
+		return updated, result, err
 	case "tool":
-		result, logResult, err := m.callTool(ctx, event, action, state)
+		result, err := m.callTool(ctx, event, action, state)
 		// The invocation has its own audit record; the rule reports only its action stage.
-		logResult.Content = "tool action: " + action.Tool + " status=" + logResult.ResultStatus.String()
-		if err != nil {
-			logResult.Content += "; business_error=" + err.Error()
-		}
 		key := firstNonEmpty(strings.TrimSpace(action.ActionName), strings.TrimSpace(action.Tool))
 		if key != "" {
 			state.Actions[key] = result
 		}
-		return event, result, logResult, err
+		return event, result, err
 	default:
 		err := fmt.Errorf("unsupported action type %q", action.Type)
-		return event, actionResult{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		return event, actionResult{}, err
 	}
 }
 
@@ -220,7 +212,7 @@ func makeOutputs(action Action, event share.Event, state state) ([]delivery.Outp
 
 // callTool invokes a registered tool without Agent risk or confirmation gates.
 // Hook authors own authorization and risk decisions for Hook-triggered calls.
-func (m Module) callTool(ctx context.Context, event share.Event, action Action, state state) (actionResult, globalevents.LogResult, error) {
+func (m Module) callTool(ctx context.Context, event share.Event, action Action, state state) (actionResult, error) {
 	name := strings.TrimSpace(action.Tool)
 	arguments := render(action.Arguments, event, state)
 	call := llm.ToolCallRequest{ID: storage.NewID(), Name: name, Arguments: arguments}
@@ -247,13 +239,15 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 	if event.Session.ID != "" {
 		record.Identity.SessionID = &event.Session.ID
 	}
-	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
+	summary := ""
+	record.ResultStatus = globalevents.ResultSucceeded
 	var toolResult *tool.Result
 	var err error
 	switch {
 	case name == "":
 		err = fmt.Errorf("tool is required")
-		logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: "Tool.Call not entered: " + err.Error()}
+		summary = "Tool.Call not entered: " + err.Error()
+		record.Level, record.ResultStatus = slog.LevelWarn, globalevents.ResultFailed
 	default:
 		started := time.Now()
 		data, _ := json.Marshal(content)
@@ -261,21 +255,20 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 		// 此记录表示开始调用 Tool 服务，不代表工具已准备或执行成功。
 		start.EventName, start.Content, start.ResultStatus = "hook_tool_call_prepared", string(data), globalevents.ResultSucceeded
 		m.Opts.Log(ctx, start)
-		toolResult, logResult.Content, err = m.Opts.Tools.CallTool(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
+		toolResult, summary, err = m.Opts.Tools.CallTool(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
 		if err != nil {
-			logResult.ResultStatus = globalevents.ResultFailed
-			if errors.Is(err, context.Canceled) {
-				logResult.ResultStatus = globalevents.ResultCanceled
+			record.ResultStatus = globalevents.ResultFailed
+			if globalevents.LogStatus(err) == globalevents.ResultCanceled {
+				record.ResultStatus = globalevents.ResultCanceled
 			}
 		}
 		elapsed := time.Since(started).Milliseconds()
 		content.ElapsedMS = &elapsed
 	}
-	record.ResultStatus = logResult.ResultStatus
-	if logResult.ResultStatus == globalevents.ResultFailed {
-		record.Level = slog.LevelError
+	if record.ResultStatus == globalevents.ResultFailed {
+		record.Level = slog.LevelWarn
 	}
-	content.Summary = &logResult.Content
+	content.Summary = &summary
 	body := toolResult.LogContent(err)
 	content.Result = &body
 	content.Arguments = ""
@@ -283,12 +276,12 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 	record.Content = string(data)
 	m.Opts.Log(ctx, record)
 	if err != nil {
-		return actionResult{Error: err.Error()}, logResult, err
+		return actionResult{Error: err.Error()}, err
 	}
 	if toolResult != nil {
-		return actionResult{Result: llm.SegmentsContentText(toolResult.LLMSegments())}, logResult, nil
+		return actionResult{Result: llm.SegmentsContentText(toolResult.LLMSegments())}, nil
 	}
-	return actionResult{}, logResult, nil
+	return actionResult{}, nil
 }
 
 func render(text string, event share.Event, state state) string {

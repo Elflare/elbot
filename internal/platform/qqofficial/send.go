@@ -4,13 +4,11 @@ package qqofficial
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	globalevents "elbot/internal/events"
 )
 
 const (
@@ -30,19 +28,18 @@ func receiptWithMessageID(id string) delivery.Receipt {
 	return delivery.Receipt{PlatformMessageIDs: []string{id}}
 }
 
-func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
 	t, err := a.contextTarget(ctx)
 	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		return delivery.Receipt{}, logResult, err
+		return delivery.Receipt{}, err
 	}
 	return a.sendOutputs(ctx, t, outputs)
 }
 
-func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []delivery.Output) (delivery.Receipt, error) {
 	var receipt delivery.Receipt
 	for i, out := range outputs {
-		sent, logResult, err := a.sendOutput(ctx, t, out)
+		sent, err := a.sendOutput(ctx, t, out)
 		var mediaIndexes []int
 		if out.Kind == delivery.KindImage || out.Kind == delivery.KindFile {
 			mediaIndexes = []int{i}
@@ -51,10 +48,10 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 		if err != nil {
-			return receipt, logResult, err
+			return receipt, err
 		}
 	}
-	return receipt, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+	return receipt, nil
 }
 
 func (a *Adapter) qqOfficialReceipt(receipt delivery.Receipt, target sendTarget, mediaIndexes ...int) delivery.Receipt {
@@ -73,7 +70,7 @@ func qqOfficialChatType(target sendTarget) contextinfo.ChatType {
 	return contextinfo.ChatPrivate
 }
 
-func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Output) (delivery.Receipt, error) {
 	switch out.Kind {
 	case delivery.KindText:
 		return a.sendText(ctx, t, out.Text, out.Actions...)
@@ -109,14 +106,14 @@ func (a *Adapter) contextTarget(ctx context.Context) (sendTarget, error) {
 	return t, nil
 }
 
-func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string, actions ...delivery.Action) (delivery.Receipt, globalevents.LogResult, error) {
+func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string, actions ...delivery.Action) (delivery.Receipt, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+		return delivery.Receipt{}, nil
 	}
 	if target.Proactive && !a.cfg.allowProactive() {
 		err := fmt.Errorf("qqofficial proactive messages are disabled")
-		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		return delivery.Receipt{}, err
 	}
 	msg := a.baseMessage(target)
 	if a.cfg.markdownByDefault() {
@@ -131,53 +128,36 @@ func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string, 
 	}
 	resp, err := a.client.sendMessage(ctx, target, msg)
 	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
-		return delivery.Receipt{}, logResult, err
+		return delivery.Receipt{}, err
 	}
 	a.recordMessageAlias(ctx, qqOfficialChatType(target), target.OpenID, resp.ExtInfo.RefIdx, resp.ID)
-	return receiptWithMessageID(resp.ID), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+	return receiptWithMessageID(resp.ID), nil
 }
 
-func (a *Adapter) sendMedia(ctx context.Context, target sendTarget, out delivery.Output, fileType int) (delivery.Receipt, globalevents.LogResult, error) {
+func (a *Adapter) sendMedia(ctx context.Context, target sendTarget, out delivery.Output, fileType int) (delivery.Receipt, error) {
 	if target.Proactive && !a.cfg.allowProactive() {
 		{
 			err := fmt.Errorf("qqofficial proactive messages are disabled")
-			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-			return delivery.Receipt{}, logResult, err
+			return delivery.Receipt{}, err
 		}
 	}
 	source, err := prepareSource(out.Source.URL, out.Source.Path, out.Source.Data)
 	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
-		return delivery.Receipt{}, logResult, err
+		return delivery.Receipt{}, err
 	}
 	uploaded, err := a.client.uploadFile(ctx, target, fileType, source)
 	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
-		return delivery.Receipt{}, logResult, err
+		return delivery.Receipt{}, err
 	}
 	msg := a.baseMessage(target)
 	msg.MsgType = msgTypeMedia
 	msg.Media = &messageMedia{FileInfo: uploaded.FileInfo}
 	resp, err := a.client.sendMessage(ctx, target, msg)
 	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
-		return delivery.Receipt{}, logResult, err
+		return delivery.Receipt{}, err
 	}
 	a.recordMessageAlias(ctx, qqOfficialChatType(target), target.OpenID, resp.ExtInfo.RefIdx, resp.ID)
-	return receiptWithMessageID(resp.ID), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+	return receiptWithMessageID(resp.ID), nil
 }
 
 func (a *Adapter) baseMessage(target sendTarget) messageToCreate {
@@ -191,10 +171,10 @@ func (a *Adapter) baseMessage(target sendTarget) messageToCreate {
 	return msg
 }
 
-func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	ctx, finish, err := a.beginSend(ctx)
 	if err != nil {
-		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+		return delivery.Receipt{}, err
 	}
 	defer finish()
 	if target.Empty() {
@@ -203,18 +183,17 @@ func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []
 	if target.Superadmins {
 		if name := strings.TrimSpace(target.Platform); name != "" && name != a.Name() {
 			err := fmt.Errorf("qqofficial cannot send to platform %q", name)
-			return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
+			return delivery.Receipt{}, err
 		}
 		return a.superadmins.SendTo(ctx, outputs, a.sendTarget)
 	}
 	return a.sendTarget(ctx, target, outputs)
 }
 
-func (a *Adapter) sendTarget(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+func (a *Adapter) sendTarget(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	t, err := a.targetFromDelivery(target)
 	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		return delivery.Receipt{}, logResult, err
+		return delivery.Receipt{}, err
 	}
 	t.Proactive = true
 	return a.sendOutputs(ctx, t, outputs)

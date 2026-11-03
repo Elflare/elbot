@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -51,9 +50,9 @@ func TestCleanupFunctionsPreserveResults(t *testing.T) {
 				if kind == "history" {
 					run = svc.RunChatHistoryCleanup
 				}
-				result, err := run(ctx)
-				if !errors.Is(err, tc.err) || result.ResultStatus != tc.status {
-					t.Fatalf("result=%#v err=%v", result, err)
+				err := run(ctx)
+				if !errors.Is(err, tc.err) {
+					t.Fatal("result= err=", err)
 				}
 				if !tc.enabled {
 					if calls != 0 {
@@ -64,32 +63,30 @@ func TestCleanupFunctionsPreserveResults(t *testing.T) {
 				if calls != 1 || cutoff.Before(before) || cutoff.After(time.Now().AddDate(0, 0, -7)) {
 					t.Fatalf("calls=%d cutoff=%v", calls, cutoff)
 				}
-				if !strings.Contains(result.Content, "deleted=3\nretention_days=7") {
-					t.Fatalf("missing partial count: %q", result.Content)
-				}
+
 			})
 		}
 	}
 }
 
-type cleanupMediaFunc func(context.Context) (events.LogResult, error)
+type cleanupMediaFunc func(context.Context) error
 
-func (f cleanupMediaFunc) Cleanup(ctx context.Context) (events.LogResult, error) { return f(ctx) }
+func (f cleanupMediaFunc) Cleanup(ctx context.Context) error { return f(ctx) }
 
 func TestMaintenanceRegistrationAndFailure(t *testing.T) {
 	want := []string{"maintenance.log_cleanup", "maintenance.session_cleanup", "maintenance.sandbox_cleanup", "maintenance.media_cleanup", "maintenance.chat_history_cleanup"}
 	boom := errors.New("registration failed")
 	for failAt := 0; failAt <= len(want); failAt++ {
-		svc := &Service{Media: cleanupMediaFunc(func(context.Context) (events.LogResult, error) {
-			return events.LogResult{ResultStatus: events.ResultFailed, Content: "media partial result"}, boom
+		svc := &Service{Media: cleanupMediaFunc(func(context.Context) error {
+			return boom
 		})}
 		var names []string
-		err := svc.RegisterCronHandlers(func(name string, handler func(context.Context) (events.LogResult, error)) error {
+		err := svc.RegisterCronHandlers(func(name string, handler func(context.Context) error) error {
 			names = append(names, name)
 			if name == "maintenance.media_cleanup" {
-				result, err := handler(context.Background())
-				if result.ResultStatus != events.ResultFailed || result.Content != "media partial result" || err != boom {
-					t.Fatalf("media result=%#v err=%v", result, err)
+				err := handler(context.Background())
+				if err != boom {
+					t.Fatal("media result= err=", err)
 				}
 			}
 			if len(names) == failAt {

@@ -29,11 +29,11 @@ func TestRemoteRegistrationCommitsOnlyItsSessionAndEvent(t *testing.T) {
 	if err != nil || unchanged.Metadata != row.Metadata || len(definitions) != 0 {
 		t.Fatal("registration published before commit")
 	}
-	if _, _, err := service.Commit(t.Context(), "another", first); err == nil {
+	if _, err := service.Commit(t.Context(), "another", first); err == nil {
 		t.Fatal("wrong session accepted")
 	}
 	for _, update := range []share.StateUpdate{first, register("second", "keep"), register("first", "new")} {
-		if _, _, err := service.Commit(t.Context(), row.ID, update); err != nil {
+		if _, err := service.Commit(t.Context(), row.ID, update); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -42,7 +42,7 @@ func TestRemoteRegistrationCommitsOnlyItsSessionAndEvent(t *testing.T) {
 		t.Fatalf("restored=%+v err=%v", loaded, err)
 	}
 	before, _ := store.Sessions().Get(t.Context(), row.ID)
-	if _, _, err := service.Commit(t.Context(), row.ID, register("first", "keep")); err == nil {
+	if _, err := service.Commit(t.Context(), row.ID, register("first", "keep")); err == nil {
 		t.Fatal("cross-event collision accepted")
 	}
 	after, _ := store.Sessions().Get(t.Context(), row.ID)
@@ -50,7 +50,7 @@ func TestRemoteRegistrationCommitsOnlyItsSessionAndEvent(t *testing.T) {
 		t.Fatal("rejected patch changed persisted state")
 	}
 	for _, event := range []string{"first", "second"} {
-		if _, _, err := service.Commit(t.Context(), row.ID, register(event, "")); err != nil {
+		if _, err := service.Commit(t.Context(), row.ID, register(event, "")); err != nil {
 			t.Fatal(err)
 		}
 	}

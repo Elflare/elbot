@@ -54,7 +54,7 @@ func TestMaterialsKeepCanonicalOriginalAndMissingPlaceholder(t *testing.T) {
 		t.Fatal(err)
 	}
 	preparer.FinishMaterials(t.Context(), release)
-	if _, err := center.Cleanup(t.Context()); err != nil {
+	if err := center.Cleanup(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if prepared[0].Segments[0].URL != "data:image/png;base64,aW1hZ2U=" || !reflect.DeepEqual(canonical, original) {
@@ -91,7 +91,7 @@ func TestMaterialsKeepCanonicalOriginalAndMissingPlaceholder(t *testing.T) {
 		t.Fatal(err)
 	}
 	preparer.FinishMaterials(t.Context(), release)
-	if _, err := center.Cleanup(t.Context()); err != nil {
+	if err := center.Cleanup(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if logs != 1 || prepared[0].Segments[0].Type != llm.SegmentText || !reflect.DeepEqual(canonical, original) {
@@ -133,18 +133,18 @@ func TestToolTranscriptMirrorMatchesFullDatabaseFacts(t *testing.T) {
 	committer := &ToolTranscriptCommitter{Messages: &MessageStore{NewMessageID: testutil.IDSequence().MessageID, Dialogues: store.Dialogues(), Gate: &CommitGate{Sessions: newSessionSupervisor(t, store), Turns: turn.NewSupervisor(testutil.IDSequence()), View: ExecutionView{Sessions: store.Sessions()}}}}
 	calls := []llm.ToolCallRequest{{ID: "one", Name: "discover_tool", Arguments: `{"names":["one","two"]}`}, {ID: "two", Name: "large", Arguments: `{"all":true}`}}
 	head := agentshare.ToolCallStorageMessage(row.ID, "calling", "calling", calls)
-	if _, err := committer.Begin(t.Context(), &head); err != nil {
+	if err := committer.Begin(t.Context(), &head); err != nil {
 		t.Fatal(err)
 	}
 	full := strings.Repeat("完整工具说明与结果\n", 4096)
 	for i, call := range calls {
 		message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(full)}
 		stored := agentshare.ToolResultStorageMessage(row.ID, message)
-		if _, err := committer.Result(t.Context(), i, call, message, &storage.ToolResultCommit{Result: &stored}); err != nil {
+		if err := committer.Result(t.Context(), i, call, message, &storage.ToolResultCommit{Result: &stored}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := committer.Flush(t.Context()); err != nil {
+	if err := committer.Flush(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := store.Messages().ListBySession(t.Context(), row.ID)
@@ -167,7 +167,7 @@ func TestToolTranscriptMirrorMatchesFullDatabaseFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	stored := agentshare.ToolResultStorageMessage(row.ID, llm.LLMMessage{Role: llm.RoleTool, Segments: llm.TextSegments("unsaved")})
-	if _, err := committer.Result(t.Context(), 0, calls[0], llm.LLMMessage{}, &storage.ToolResultCommit{Result: &stored}); err == nil || len(committer.Committed()) != before {
+	if err := committer.Result(t.Context(), 0, calls[0], llm.LLMMessage{}, &storage.ToolResultCommit{Result: &stored}); err == nil || len(committer.Committed()) != before {
 		t.Fatal("failed result entered active context")
 	}
 }
@@ -192,7 +192,7 @@ type countedDialogueRepository struct {
 	mediaReferences [][]storage.MediaReference
 }
 
-func (r *countedDialogueRepository) Commit(ctx context.Context, commit storage.DialogueCommit) (events.LogResult, error) {
+func (r *countedDialogueRepository) Commit(ctx context.Context, commit storage.DialogueCommit) error {
 	r.commits++
 	r.mediaReferences = append(r.mediaReferences, append([]storage.MediaReference(nil), commit.MediaReferences...))
 	return r.DialogueRepository.Commit(ctx, commit)
@@ -222,7 +222,7 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 	calls[1].Arguments = calls[0].Arguments
 	calls[2].Arguments = calls[0].Arguments
 	head := agentshare.ToolCallStorageMessage(row.ID, "", "", calls)
-	if _, err := committer.Begin(ctx, &head); err != nil {
+	if err := committer.Begin(ctx, &head); err != nil {
 		t.Fatal(err)
 	}
 	initial, err := store.Messages().ListBySession(ctx, row.ID)
@@ -238,7 +238,7 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls[1].Arguments = `{"media":"` + item.ID + `","previous":` + calls[0].Arguments + `}`
-	if _, err := committer.Prepared(ctx, 1, calls[1]); err != nil {
+	if err := committer.Prepared(ctx, 1, calls[1]); err != nil {
 		t.Fatal(err)
 	}
 	completed := map[int]bool{}
@@ -247,7 +247,7 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 		message := llm.LLMMessage{Role: llm.RoleTool, ToolCallID: call.ID, Name: call.Name, Segments: llm.TextSegments("final " + call.ID)}
 		stored := agentshare.ToolResultStorageMessage(row.ID, message)
 		record := &storage.ToolCallRecord{ToolCallID: call.ID, ToolName: call.Name, Success: true, StartedAt: storage.Now(), FinishedAt: storage.Now()}
-		if _, err := committer.Result(ctx, index, call, message, &storage.ToolResultCommit{Result: &stored, Record: record}); err != nil {
+		if err := committer.Result(ctx, index, call, message, &storage.ToolResultCommit{Result: &stored, Record: record}); err != nil {
 			t.Fatal(err)
 		}
 		completed[index] = true
@@ -269,7 +269,7 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 			t.Fatalf("statistics not atomic: %+v %v", usage, err)
 		}
 	}
-	if _, err := committer.Flush(ctx); err != nil {
+	if err := committer.Flush(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if repository.commits != 4 {

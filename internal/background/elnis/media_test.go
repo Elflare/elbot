@@ -3,7 +3,6 @@ package elnis
 import (
 	"context"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"errors"
 	"os"
 	"path/filepath"
@@ -16,23 +15,15 @@ func TestReportMediaSurvivesWorkspaceRemovalAndRetry(t *testing.T) {
 	runner := &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"result","report_segments":[{"type":"image","url":"chart.png"}]}`}
 	fail := true
 	var sent []delivery.Output
-	s, close := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	s, close := newTestServiceWithRunner(t, runner, func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 		if fail {
 			{
 				err := errors.New("offline")
-				logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
-				if err != nil {
-					logResult.ResultStatus = events.ResultFailed
-					logResult.Content = err.Error()
-					if err == context.Canceled {
-						logResult.ResultStatus = events.ResultCanceled
-					}
-				}
-				return delivery.Receipt{}, logResult, err
+				return delivery.Receipt{}, err
 			}
 		}
 		sent = outputs
-		return delivery.Receipt{PlatformMessageIDs: []string{"report-1"}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		return delivery.Receipt{PlatformMessageIDs: []string{"report-1"}}, nil
 	})
 	defer close()
 	enableMedia(t, s)
@@ -65,7 +56,7 @@ func TestReportMediaSurvivesWorkspaceRemovalAndRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	fail = false
-	if _, err := s.recoverReports(ctx); err != nil {
+	if err := s.recoverReports(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if len(sent) != 2 {

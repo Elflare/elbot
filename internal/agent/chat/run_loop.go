@@ -30,7 +30,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		}
 		_ = fields.Set("tool_batch_status", "interrupted")
 		head.Metadata, _ = fields.Encode()
-		if _, err := r.Messages.Commit(s.requestCtx, storage.DialogueCommit{SessionID: s.session.ID, ToolResult: &storage.ToolResultCommit{Call: head}}, "close_interrupted_tools"); err != nil {
+		if err := r.Messages.Commit(s.requestCtx, storage.DialogueCommit{SessionID: s.session.ID, ToolResult: &storage.ToolResultCommit{Call: head}}, "close_interrupted_tools"); err != nil {
 			return failedLoop(err)
 		}
 	}
@@ -150,7 +150,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		if len(result.ToolCalls) == 0 {
 			deferredOutputs = append(deferredOutputs, laterOutputs...)
 		}
-		if _, err := s.output.SendOutputs(s.ctx, immediateOutputs); err != nil {
+		if err := s.output.SendOutputs(s.ctx, immediateOutputs); err != nil {
 			return failedLoop(err)
 		}
 		if len(result.ToolCalls) == 0 {
@@ -162,7 +162,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		if err := s.output.FinishIntermediate(s.ctx, s.requestCtx, result.Stream, assistantText, streaming); err != nil {
 			return failedLoop(err)
 		}
-		if _, err := s.output.SendOutputs(s.ctx, laterOutputs); err != nil {
+		if err := s.output.SendOutputs(s.ctx, laterOutputs); err != nil {
 			return failedLoop(err)
 		}
 		if !inToolPhase {
@@ -176,16 +176,16 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			skipped := skippedToolMessages(result.ToolCalls, r.Tools.MaxRoundsPerTurn())
 			committer := r.NewToolTranscriptCommitter()
 			head := agentshare.ToolCallStorageMessage(s.session.ID, assistantRawText, assistantRawText, result.ToolCalls)
-			if _, err := committer.Begin(s.requestCtx, &head); err != nil {
+			if err := committer.Begin(s.requestCtx, &head); err != nil {
 				return failedLoop(err)
 			}
 			for i, message := range skipped {
 				stored := agentshare.ToolResultStorageMessage(s.session.ID, message)
-				if _, err := committer.Result(s.requestCtx, i, result.ToolCalls[i], message, &storage.ToolResultCommit{Result: &stored}); err != nil {
+				if err := committer.Result(s.requestCtx, i, result.ToolCalls[i], message, &storage.ToolResultCommit{Result: &stored}); err != nil {
 					return failedLoop(err)
 				}
 			}
-			if _, err := committer.Flush(s.requestCtx); err != nil {
+			if err := committer.Flush(s.requestCtx); err != nil {
 				return failedLoop(err)
 			}
 			s.messages = append(s.messages, committer.Committed()...)
@@ -195,7 +195,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			if err := storage.PrepareMessageID(s.requestCtx, r.NewMessageID, summaryInput); err != nil {
 				return failedLoop(err)
 			}
-			if _, err := r.Messages.Append(s.requestCtx, summaryInput, "append_summary_input"); err != nil {
+			if err := r.Messages.Append(s.requestCtx, summaryInput, "append_summary_input"); err != nil {
 				return failedLoop(err)
 			}
 			projected, err := agentshare.MessageFromStorage(*summaryInput)
@@ -218,7 +218,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 			immediateOutputs, laterOutputs := delivery.SplitByDeliveryTiming(summary.Outputs)
 			deferredOutputs = append(deferredOutputs, laterOutputs...)
-			if _, err := s.output.SendOutputs(s.ctx, immediateOutputs); err != nil {
+			if err := s.output.SendOutputs(s.ctx, immediateOutputs); err != nil {
 				return failedLoop(err)
 			}
 			summaryText := summary.Text
@@ -259,7 +259,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			if err := storage.PrepareMessageID(s.requestCtx, r.NewMessageID, message); err != nil {
 				return failedLoop(err)
 			}
-			if _, err := r.Messages.Append(s.requestCtx, message, "append_confirmation_input"); err != nil {
+			if err := r.Messages.Append(s.requestCtx, message, "append_confirmation_input"); err != nil {
 				return failedLoop(err)
 			}
 			projected, err := agentshare.MessageFromStorage(*message)

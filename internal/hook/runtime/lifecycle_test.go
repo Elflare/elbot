@@ -134,10 +134,10 @@ func TestRuntimeCloseJoinsReload(t *testing.T) {
 	unblock := sync.OnceFunc(func() { close(release) })
 	closeRuntimeAfterRelease(t, manager, unblock)
 	w := newWorker(manager, share.RuntimeConfig{ID: "test"})
-	w.runReload(func() (events.LogResult, error) {
+	w.runReload(func() error {
 		close(entered)
 		<-release
-		return events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		return nil
 	})
 	select {
 	case <-entered:
@@ -197,10 +197,10 @@ func TestWorkerSelfReloadCanStopItsOwnProcess(t *testing.T) {
 	waitForStatus(t, manager, config.ID, StatusReady)
 	old := manager.worker(config.ID)
 	reloaded := make(chan error, 1)
-	old.runReload(func() (events.LogResult, error) {
-		result, err := manager.ReplacePlugin(config.ID, &config, func() {})
+	old.runReload(func() error {
+		err := manager.ReplacePlugin(config.ID, &config, func() {})
 		reloaded <- err
-		return result, err
+		return err
 	})
 	select {
 	case err := <-reloaded:

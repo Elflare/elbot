@@ -91,11 +91,11 @@ type Output interface {
 	StartReasoning(context.Context) delivery.ReasoningStream
 	StartStream(ctx context.Context) (delivery.MessageStream, error)
 	FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string, streaming bool) error
-	ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, events.LogResult, error)
-	SendAssistant(ctx context.Context, text string) (delivery.Receipt, events.LogResult, error)
-	// SendOutputs returns the source log result and original business error;
+	ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, error)
+	SendAssistant(ctx context.Context, text string) (delivery.Receipt, error)
+	// SendOutputs returns the original delivery error;
 	// partial delivery facts belong to the source log body, not a returned receipt.
-	SendOutputs(ctx context.Context, outputs []delivery.Output) (events.LogResult, error)
+	SendOutputs(ctx context.Context, outputs []delivery.Output) error
 	// Notify publishes a business fact to its captured conversation; callers
 	// choose its lifetime. SendPreview remains tied to the active operation.
 	Notify(ctx context.Context, level slog.Level, text string)
@@ -190,7 +190,7 @@ type ToolDepsFactory interface {
 // MessageCommitter commits a prepared business message, or a cursor-only reply.
 // Protocol-private implementations can atomically attach their native state.
 type MessageCommitter interface {
-	Commit(context.Context, *storage.Message, []storage.PlatformMessageMap) (events.LogResult, error)
+	Commit(context.Context, *storage.Message, []storage.PlatformMessageMap) error
 }
 
 // NewToolBatch retains one assistant call array and ordered call/result links.

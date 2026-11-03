@@ -8,7 +8,6 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"elbot/internal/hook/pipeline"
 	"elbot/internal/hook/share"
 )
@@ -17,8 +16,8 @@ import (
 // the borrowed Tool, Platform and media services. Component handles stay private.
 type Supervisor struct {
 	manager interface {
-		Run(context.Context, share.Event, pipeline.CallOptions) (share.Event, events.LogResult, error)
-		Notify(context.Context, share.Event, pipeline.CallOptions) (events.LogResult, error)
+		Run(context.Context, share.Event, pipeline.CallOptions) (share.Event, error)
+		Notify(context.Context, share.Event, pipeline.CallOptions) error
 	}
 	runtime interface {
 		RouteHookID(share.Event) string
@@ -30,7 +29,7 @@ type Supervisor struct {
 		HookReload() (share.ReloadReport, error)
 	}
 	commands []command.Handler // 已装配的管理命令能力；外部仅取得标准 Handler。
-	send     func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
+	send     func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 
 	parent         context.Context // Construction context, used for startup and platform subscription ownership.
 	ctx            context.Context // Hook-owned cancellation for admitted boundary calls; canceled only by Close.
@@ -54,10 +53,10 @@ func (m *Supervisor) Commands() []command.Handler {
 }
 
 // run admits an external call and supplies its facts; pipeline owns execution.
-func (m *Supervisor) run(ctx context.Context, event share.Event, options pipeline.CallOptions) (share.Event, events.LogResult, error) {
+func (m *Supervisor) run(ctx context.Context, event share.Event, options pipeline.CallOptions) (share.Event, error) {
 	ctx, done, err := m.beginCall(ctx)
 	if err != nil {
-		return event, events.LogResult{ResultStatus: events.ResultCanceled}, err
+		return event, err
 	}
 	defer done()
 	return m.manager.Run(ctx, fillEventFromContext(ctx, event), options)
@@ -69,5 +68,5 @@ func (m *Supervisor) notify(ctx context.Context, event share.Event, options pipe
 		return
 	}
 	defer done()
-	_, _ = m.manager.Notify(ctx, fillEventFromContext(ctx, event), options)
+	_ = m.manager.Notify(ctx, fillEventFromContext(ctx, event), options)
 }

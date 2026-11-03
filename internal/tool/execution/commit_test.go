@@ -5,7 +5,6 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -22,15 +21,15 @@ type failingToolCommitter struct {
 	phase   string
 }
 
-func (c *failingToolCommitter) Prepared(_ context.Context, index int, _ llm.ToolCallRequest) (events.LogResult, error) {
+func (c *failingToolCommitter) Prepared(_ context.Context, index int, _ llm.ToolCallRequest) error {
 	if c.phase == "prepared" && index == 0 {
-		return events.LogResult{ResultStatus: events.ResultFailed, Content: c.failure.Error()}, c.failure
+		return c.failure
 	}
-	return events.LogResult{ResultStatus: events.ResultSkipped}, nil
+	return nil
 }
-func (c *failingToolCommitter) Result(ctx context.Context, i int, call llm.ToolCallRequest, message llm.LLMMessage, row *storage.ToolResultCommit) (events.LogResult, error) {
+func (c *failingToolCommitter) Result(ctx context.Context, i int, call llm.ToolCallRequest, message llm.LLMMessage, row *storage.ToolResultCommit) error {
 	if c.phase == "result" {
-		return events.LogResult{ResultStatus: events.ResultFailed, Content: c.failure.Error()}, c.failure
+		return c.failure
 	}
 	return c.testToolCommitter.Result(ctx, i, call, message, row)
 }

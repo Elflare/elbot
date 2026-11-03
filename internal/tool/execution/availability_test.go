@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -147,11 +146,11 @@ func TestForegroundOnlyToolResolveRejectedInBackground(t *testing.T) {
 	manager := newTestManager(registry, security.DefaultPermission())
 	ctx := workspace.WithPathScope(toolshare.WithCallPolicy(context.Background(), toolshare.CallPolicy{DisableForegroundTools: true}), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
 	resolved := manager.resolve(ctx, "foreground_only", nil, storage.SessionModeBackground)
-	if resolved.ResultStatus != events.ResultRejected || resolved.Error == nil {
+	if resolved.Error == nil {
 		t.Fatalf("resolved = %#v", resolved)
 	}
 	discovered := manager.resolve(ctx, "cached_foreground", []toolshare.DiscoveredTool{{Name: "cached_foreground", Source: toolshare.SourceKindELwisp, Endpoint: "http://127.0.0.1", ForegroundOnly: true}}, storage.SessionModeBackground)
-	if discovered.ResultStatus != events.ResultRejected || discovered.Error == nil {
+	if discovered.Error == nil {
 		t.Fatalf("discovered resolved = %#v", discovered)
 	}
 	var denied toolshare.PolicyDeniedError
@@ -172,11 +171,11 @@ func TestResolveDistinguishesMissingToolFromMissingRemoteConfiguration(t *testin
 		t.Run(tc.name, func(t *testing.T) {
 			resolved := manager.resolve(t.Context(), tc.name, tc.discovered, storage.SessionModeWork)
 			var denied toolshare.PolicyDeniedError
-			if resolved.ResultStatus != events.ResultFailed || resolved.Error == nil || errors.As(resolved.Error, &denied) {
+			if resolved.Error == nil || errors.As(resolved.Error, &denied) {
 				t.Fatalf("resolution facts = %#v", resolved)
 			}
 			result := manager.executePrepared(t.Context(), llm.ToolCallRequest{Name: tc.name}, resolved, nil, nil)
-			if result.ResultStatus != resolved.ResultStatus || result.Error != resolved.Error || result.ExecutionStarted {
+			if result.Error != resolved.Error || result.ExecutionStarted {
 				t.Fatalf("execution lost resolution facts: %#v", result)
 			}
 		})

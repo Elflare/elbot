@@ -88,15 +88,33 @@ func (value ResultStatus) String() string {
 	return ""
 }
 
-// LogResult carries an operation's source-declared logging result separately
-// from its business return values. It is not a log submission contract.
-type LogResult struct {
-	// ResultStatus is declared at the operation boundary; zero is unspecified,
-	// never implicit success. It does not classify the business error.
-	ResultStatus ResultStatus
-	// Content is the independent source log body, including partial completion
-	// and error explanations. Empty content does not declare an outcome.
-	Content string
+// LogStatus projects an error into a log result only; business control flow must
+// use the original error. Cancellation requires every cause to be canceled.
+// Severity and known outcomes such as rejection or skipping remain source-owned.
+func LogStatus(err error) ResultStatus {
+	if err == nil {
+		return ResultSucceeded
+	}
+	if err == context.Canceled {
+		return ResultCanceled
+	}
+	switch wrapped := err.(type) {
+	case interface{ Unwrap() []error }:
+		causes := wrapped.Unwrap()
+		for _, cause := range causes {
+			if LogStatus(cause) != ResultCanceled {
+				return ResultFailed
+			}
+		}
+		if len(causes) > 0 {
+			return ResultCanceled
+		}
+	case interface{ Unwrap() error }:
+		if cause := wrapped.Unwrap(); cause != nil {
+			return LogStatus(cause)
+		}
+	}
+	return ResultFailed
 }
 
 // LogIdentity contains fixed associations supplied by the business source.

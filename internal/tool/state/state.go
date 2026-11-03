@@ -3,11 +3,14 @@ package state
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 
-	"elbot/internal/events"
 	"elbot/internal/storage"
 	toolshare "elbot/internal/tool/share"
 )
@@ -99,16 +102,31 @@ func prepareUpdate(state *toolshare.State, update toolshare.StateUpdate) (storag
 	return fields, nil
 }
 
-func (s *StateService) Commit(ctx context.Context, id string, update toolshare.StateUpdate) (toolshare.StateCommit, events.LogResult, error) {
+func (s *StateService) Commit(ctx context.Context, id string, update toolshare.StateUpdate) (result toolshare.StateCommit, err error) {
+	level := slog.LevelError
+	defer func() {
+		if err == nil {
+			return
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: "tool_state_error", Module: "tool", Content: err.Error(), ResultStatus: events.ResultFailed, Identity: events.LogIdentityFromExecution(facts)}
+		record.Identity.SessionID = &id
+		if errors.Is(err, storage.ErrNotFound) {
+			record.Level = slog.LevelWarn
+		}
+		if events.LogStatus(err) == events.ResultCanceled {
+			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
+		}
+		_ = events.EmitLog(ctx, record)
+	}()
+
 	for _, group := range update.ReplaceGroups {
 		if group.SessionID != id {
-			return toolshare.StateCommit{}, events.LogResult{}, fmt.Errorf("tool registration belongs to session %q, not %q", group.SessionID, id)
+			level = slog.LevelWarn
+			return toolshare.StateCommit{}, fmt.Errorf("tool registration belongs to session %q, not %q", group.SessionID, id)
 		}
 	}
-	var result toolshare.StateCommit
-	var callbackErr error
 	row, err := s.store.Mutate(ctx, id, func(row *storage.Session) (err error) {
-		defer func() { callbackErr = err }()
 		state, err := DecodeState(row.Metadata)
 		if err != nil {
 			return err
@@ -128,6 +146,7 @@ func (s *StateService) Commit(ctx context.Context, id string, update toolshare.S
 		}
 		patch, err := prepareUpdate(&state, update)
 		if err != nil {
+			level = slog.LevelWarn
 			return err
 		}
 		fields, err := storage.DecodeSessionMetadata(row.Metadata)
@@ -155,13 +174,10 @@ func (s *StateService) Commit(ctx context.Context, id string, update toolshare.S
 		return err
 	})
 	if err != nil {
-		if callbackErr != nil || ctx.Err() != nil {
-			return toolshare.StateCommit{}, events.LogResult{ResultStatus: events.ResultSkipped}, err
-		}
-		return toolshare.StateCommit{}, events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("save tool state: %v", err)}, err
+		return toolshare.StateCommit{}, err
 	}
 	result.Metadata = row.Metadata
-	return result, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool discovery state saved"}, nil
+	return result, nil
 }
 
 func uniqueNames(values []string) []string {
@@ -177,22 +193,35 @@ func uniqueNames(values []string) []string {
 	return out
 }
 
-func (s *StateService) DiscoveredToolsForSession(ctx context.Context, id string, background bool) ([]toolshare.DiscoveredTool, events.LogResult, error) {
+func (s *StateService) DiscoveredToolsForSession(ctx context.Context, id string, background bool) (items []toolshare.DiscoveredTool, err error) {
+	level := slog.LevelError
+	defer func() {
+		if err == nil {
+			return
+		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: "tool_state_error", Module: "tool", Content: err.Error(), ResultStatus: events.ResultFailed, Identity: events.LogIdentityFromExecution(facts)}
+		record.Identity.SessionID = &id
+		if errors.Is(err, storage.ErrNotFound) {
+			record.Level = slog.LevelWarn
+		}
+		if events.LogStatus(err) == events.ResultCanceled {
+			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
+		}
+		_ = events.EmitLog(ctx, record)
+	}()
+
 	row, err := s.store.Get(ctx, id)
 	if err != nil {
-		result := events.LogResult{ResultStatus: events.ResultFailed, Content: fmt.Sprintf("tool_state_error=%v", err)}
-		if ctx.Err() != nil {
-			result.ResultStatus = events.ResultCanceled
-		}
-		return nil, result, err
+		return nil, err
 	}
 	state, err := DecodeState(row.Metadata)
 	if err != nil {
-		return nil, events.LogResult{ResultStatus: events.ResultSkipped}, err
+		return nil, err
 	}
-	items := state.DiscoveredTools
+	items = state.DiscoveredTools
 	if background {
 		items = s.backgroundDiscoveredTools(items)
 	}
-	return items, events.LogResult{ResultStatus: events.ResultSucceeded, Content: "tool state loaded"}, nil
+	return items, nil
 }

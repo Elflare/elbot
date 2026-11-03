@@ -2,7 +2,6 @@ package cron
 
 import (
 	"context"
-	globalevents "elbot/internal/events"
 	"errors"
 	"testing"
 	"time"
@@ -21,12 +20,12 @@ func TestManagerCancellationAndRepeatedStopWaitForHandlerExit(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
 	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	if err := manager.RegisterHandler("wait", func(ctx context.Context, _ Job) (globalevents.LogResult, error) {
+	if err := manager.RegisterHandler("wait", func(ctx context.Context, _ Job) error {
 		close(started)
 		<-ctx.Done()
 		close(canceled)
 		<-release
-		return globalevents.LogResult{ResultStatus: globalevents.ResultCanceled, Content: ctx.Err().Error()}, ctx.Err()
+		return ctx.Err()
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -92,9 +91,9 @@ func TestManagerStopWaitsForStartupAndPreventsLateScheduling(t *testing.T) {
 		<-release
 		return []Job{{Name: "late", Handler: "late", Enabled: true, Schedule: "@every 1s"}}, nil
 	}})
-	if err := manager.RegisterHandler("late", func(context.Context, Job) (globalevents.LogResult, error) {
+	if err := manager.RegisterHandler("late", func(context.Context, Job) error {
 		t.Error("late handler ran")
-		return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "finished"}, nil
+		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -151,8 +150,8 @@ func TestManagerStopWaitsForRunBookkeeping(t *testing.T) {
 		<-release
 		return base.UpdateRunState(ctx, id, state)
 	}})
-	if err := manager.RegisterHandler("test", func(context.Context, Job) (globalevents.LogResult, error) {
-		return globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded, Content: "finished"}, nil
+	if err := manager.RegisterHandler("test", func(context.Context, Job) error {
+		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}

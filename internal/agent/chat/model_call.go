@@ -84,21 +84,23 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	if err != nil {
 		completed.Err = err
 		observation.LogRecord().Content = fmt.Sprintf("call_error=%v", err)
-		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
-			observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultCanceled, slog.LevelInfo
+		observation.LogRecord().ResultStatus = events.LogStatus(err)
+		observation.LogRecord().Level = slog.LevelWarn
+		if observation.LogRecord().ResultStatus == events.ResultCanceled {
+			observation.LogRecord().Level = slog.LevelInfo
 		}
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			return llmCallResult{Messages: baseMessages, Stream: stream}, nil
 		}
 		if shouldFallbackVision(requestMessages, err) {
-			observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultFailed, slog.LevelError
+			observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultFailed, slog.LevelWarn
 			completed.Err, completed.VisionFallback = err, true
 			publishCompleted()
 			c.Calls.RecordVisionFallback(ctx, session)
 			return c.Call(ctx, session, selection, fallbackVisionMessages(baseMessages), tools, nil, stream, out)
 		}
 		completed.ProviderError, completed.Err = true, err
-		observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultFailed, slog.LevelError
+		observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultFailed, slog.LevelWarn
 		completed.ElapsedMS = elapsedMillis(startedAt)
 		publishCompleted()
 		c.Calls.NotifyError(ctx, sessionID, agentshare.LLMResponse{Provider: selection.Provider, Model: selection.Model, ElapsedMS: elapsedMillis(startedAt)}, err)
@@ -117,15 +119,17 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 			completed.Text, completed.SourceText, completed.Usage, completed.ToolCallCount = assistant.String(), assistant.String(), usage, len(toolCalls)
 			completed.OutputReady = assistant.Len() > 0 || len(toolCalls) > 0
 			observation.LogRecord().Content = fmt.Sprintf("call_error=%v", chunk.Error)
-			if ctx.Err() != nil && errors.Is(chunk.Error, ctx.Err()) {
-				observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultCanceled, slog.LevelInfo
+			observation.LogRecord().ResultStatus = events.LogStatus(chunk.Error)
+			observation.LogRecord().Level = slog.LevelWarn
+			if observation.LogRecord().ResultStatus == events.ResultCanceled {
+				observation.LogRecord().Level = slog.LevelInfo
 			}
 			if ctx.Err() != nil && errors.Is(chunk.Error, ctx.Err()) {
 				content := assistant.String()
 				return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls, Messages: baseMessages, Stream: stream}, nil
 			}
 			if shouldFallbackVision(requestMessages, chunk.Error) {
-				observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultFailed, slog.LevelError
+				observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultFailed, slog.LevelWarn
 				if reasoning != nil {
 					reasoning.Finish(ctx)
 				}
@@ -135,7 +139,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 				return c.Call(ctx, session, selection, fallbackVisionMessages(baseMessages), tools, nil, stream, out)
 			}
 			completed.ProviderError, completed.Err = true, chunk.Error
-			observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultFailed, slog.LevelError
+			observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultFailed, slog.LevelWarn
 			completed.ElapsedMS = elapsedMillis(startedAt)
 			publishCompleted()
 			c.Calls.NotifyError(ctx, sessionID, agentshare.LLMResponse{

@@ -89,13 +89,12 @@ func TestPluginToolStartPrecedesBodyAndEndHasElapsed(t *testing.T) {
 
 func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		send events.LogResult
-		err  error
+		name   string
+		status events.ResultStatus
+		err    error
 	}{
-		{"partial_failure", events.LogResult{ResultStatus: events.ResultFailed, Content: "one message delivered; second failed"}, errors.New("send failure")},
-		{"failed_without_error", events.LogResult{ResultStatus: events.ResultFailed, Content: "source declared failure"}, nil},
-		{"canceled", events.LogResult{ResultStatus: events.ResultCanceled, Content: "send canceled"}, context.Canceled},
+		{"partial_failure", events.ResultFailed, errors.New("send failure")},
+		{"canceled", events.ResultCanceled, context.Canceled},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			records := captureHookRecords(t)
@@ -107,11 +106,11 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 			}}); err != nil {
 				t.Fatal(err)
 			}
-			manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Tools: testTools{registry}, Send: func(_ context.Context, _ delivery.Target, _ []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+			manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Tools: testTools{registry}, Send: func(_ context.Context, _ delivery.Target, _ []delivery.Output) (delivery.Receipt, error) {
 				if len(*records) != 1 || (*records)[0].EventName != "hook_tool_call_completed" {
 					t.Fatalf("call record was delayed until send: %+v", *records)
 				}
-				return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "cli", PlatformMessageID: "delivered"}}}, tc.send, tc.err
+				return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "cli", PlatformMessageID: "delivered"}}}, tc.err
 			}})
 			if err != nil {
 				t.Fatal(err)
@@ -149,7 +148,7 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 					if record.ResultStatus != events.ResultSucceeded || record.Level != slog.LevelInfo || body != "business segments" || summary != "独立日志正文" {
 						t.Fatal(record)
 					}
-				} else if record.EventName != "hook_tool_log" || record.ResultStatus != tc.send.ResultStatus || body != tc.send.Content || !strings.Contains(record.Content, "delivered") {
+				} else if record.EventName != "hook_tool_log" || record.ResultStatus != tc.status || body != tc.err.Error() || !strings.Contains(record.Content, "delivered") {
 					t.Fatal(record)
 				} else if content["arguments"] != nil || content["summary"] != nil || content["elapsed_ms"] != nil || string(content["output_count"]) != "1" {
 					t.Fatalf("send fields changed: %s", record.Content)
@@ -299,9 +298,9 @@ func TestWorkerRequestKeepsExplicitProtocolFailure(t *testing.T) {
 		worker.deliverResponse(frame{ID: request.ID, OK: &ok, Error: "plugin declared failure"})
 		return nil
 	}}
-	_, result, err := worker.request(t.Context(), "event.handle", map[string]any{})
-	if err == nil || err.Error() != "plugin declared failure" || result.ResultStatus != events.ResultFailed || result.Content != "plugin declared failure" {
-		t.Fatalf("result=%+v err=%v", result, err)
+	_, err := worker.request(t.Context(), "event.handle", map[string]any{})
+	if err == nil || err.Error() != "plugin declared failure" {
+		t.Fatal("result= err=", err)
 	}
 }
 
@@ -311,9 +310,9 @@ func TestWorkerRequestKeepsKnownFaultWhenCanceled(t *testing.T) {
 	worker := newWorker(nil, share.RuntimeConfig{})
 	worker.status, worker.detail = StatusDegraded, "independent protocol fault"
 	worker.stdin = protocolTestWriter{write: func([]byte) error { return nil }}
-	_, result, err := worker.request(ctx, "event.handle", map[string]any{})
-	if !errors.Is(err, context.Canceled) || result.ResultStatus != events.ResultFailed || !strings.Contains(result.Content, "independent protocol fault") || !strings.Contains(result.Content, "context canceled") {
-		t.Fatalf("result=%+v err=%v", result, err)
+	_, err := worker.request(ctx, "event.handle", map[string]any{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatal("result= err=", err)
 	}
 }
 
@@ -334,9 +333,9 @@ func TestToolWithoutOutputsDoesNotInvokeSenderOrLogSend(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Tools: testTools{registry}, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Tools: testTools{registry}, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
 		t.Fatal("unneeded send entered")
-		return delivery.Receipt{}, events.LogResult{}, nil
+		return delivery.Receipt{}, nil
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -352,7 +351,7 @@ func TestToolWithoutOutputsDoesNotInvokeSenderOrLogSend(t *testing.T) {
 	}
 }
 
-func TestWorkerReloadUsesDeclaredResultWithNilError(t *testing.T) {
+func TestWorkerReloadLogsOriginalFailure(t *testing.T) {
 	for _, status := range []events.ResultStatus{events.ResultFailed, events.ResultCanceled} {
 		received := make(chan events.LogRecord, 1)
 		connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
@@ -365,12 +364,15 @@ func TestWorkerReloadUsesDeclaredResultWithNilError(t *testing.T) {
 			t.Fatal(err)
 		}
 		worker := &worker{manager: &Manager{opts: Options{Log: testLog}}, config: share.RuntimeConfig{ID: "test"}}
-		worker.runReload(func() (events.LogResult, error) {
-			return events.LogResult{ResultStatus: status, Content: "explicit reload facts"}, nil
+		worker.runReload(func() error {
+			if status == events.ResultCanceled {
+				return context.Canceled
+			}
+			return errors.New("explicit reload facts")
 		})
 		select {
 		case record := <-received:
-			if record.ResultStatus != status || !strings.Contains(record.Content, "explicit reload facts") || (status == events.ResultFailed && record.Level != slog.LevelError) || (status == events.ResultCanceled && record.Level != slog.LevelInfo) {
+			if record.ResultStatus != status || (status == events.ResultFailed && !strings.Contains(record.Content, "explicit reload facts")) || (status == events.ResultFailed && record.Level != slog.LevelWarn) || (status == events.ResultCanceled && record.Level != slog.LevelInfo) {
 				t.Fatal(record)
 			}
 		case <-time.After(time.Second):
@@ -385,9 +387,9 @@ func TestInvalidToolParametersAreInfoCallRecords(t *testing.T) {
 	for _, raw := range []string{"{", `{"name":42}`, `{"name":"  "}`} {
 		t.Run(raw, func(t *testing.T) {
 			records := captureHookRecords(t)
-			manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+			manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
 				t.Fatal("invalid call entered sender")
-				return delivery.Receipt{}, events.LogResult{}, nil
+				return delivery.Receipt{}, nil
 			}})
 			if err != nil {
 				t.Fatal(err)
@@ -441,6 +443,8 @@ func TestWorkerExitFactsPrecedeCanceledWaiters(t *testing.T) {
 			worker := newWorker(manager, share.RuntimeConfig{ID: "exit"})
 			worker.cmd, worker.done, worker.status = cmd, make(chan struct{}), StatusRunning
 			wantFault := "exit status 17"
+			var faultRecords []events.LogRecord
+			manager.opts.Log = func(_ context.Context, r events.LogRecord) { faultRecords = append(faultRecords, r) }
 			if priorFault {
 				worker.status, worker.detail = StatusDegraded, "independent protocol fault"
 				wantFault = worker.detail
@@ -452,10 +456,13 @@ func TestWorkerExitFactsPrecedeCanceledWaiters(t *testing.T) {
 				cancel()
 				return nil
 			}}
-			_, result, err := worker.request(ctx, "event.handle", map[string]any{})
+			_, err = worker.request(ctx, "event.handle", map[string]any{})
 			<-waitDone
-			if err == nil || result.ResultStatus != events.ResultFailed || !strings.Contains(result.Content, wantFault) || !strings.Contains(result.Content, "context canceled") {
-				t.Fatalf("result=%+v err=%v", result, err)
+			if len(faultRecords) == 0 || !strings.Contains(faultRecords[len(faultRecords)-1].Content, wantFault) || faultRecords[len(faultRecords)-1].ResultStatus != events.ResultFailed {
+				t.Fatalf("fault records=%+v", faultRecords)
+			}
+			if err == nil {
+				t.Fatal("result= err=", err)
 			}
 		})
 	}

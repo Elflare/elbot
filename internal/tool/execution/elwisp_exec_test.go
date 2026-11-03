@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/events"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,14 +12,12 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"elbot/internal/events"
 	"elbot/internal/llm"
 )
 
 func executePreparedELwispTestCall(t *testing.T, call llm.ToolCallRequest, resolved resolvedTool) executionResult {
 	t.Helper()
 	resolved.Source = toolshare.SourceKindELwisp
-	resolved.ResultStatus = events.ResultSucceeded
 	manager := &Manager{}
 	prepared, err := manager.prepareCall(t.Context(), resolved, call)
 	if err != nil {
@@ -65,7 +64,7 @@ func TestExecuteELwispToolReturnsHTTPError(t *testing.T) {
 	if result.Error == nil {
 		t.Fatal("expected HTTP error")
 	}
-	if !result.ExecutionStarted || result.ResultStatus != events.ResultFailed {
+	if !result.ExecutionStarted || result.Error == nil {
 		t.Fatalf("send facts = %#v", result)
 	}
 }
@@ -76,7 +75,7 @@ func TestExecuteELwispToolKeepsPartialResult(t *testing.T) {
 	}))
 	defer server.Close()
 	result := executePreparedELwispTestCall(t, llm.ToolCallRequest{Name: "remote", Arguments: `{}`}, resolvedTool{Discovered: &toolshare.DiscoveredTool{Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}})
-	if result.Error == nil || !result.ExecutionStarted || result.ResultStatus != events.ResultFailed || result.Result == nil || result.Result.Content != "first action saved" {
+	if result.Error == nil || !result.ExecutionStarted || result.Result == nil || result.Result.Content != "first action saved" {
 		t.Fatalf("partial facts = %#v", result)
 	}
 }
@@ -92,8 +91,8 @@ func TestELwispLogKeepsErrorAheadOfLongPartialResult(t *testing.T) {
 		t.Fatalf("partial business result changed: %+v", result)
 	}
 	preview := result.Result.LogContent(result.Error)
-	if result.LogResult.Content != "" || !strings.HasPrefix(preview, "ELwisp tool error: second action failed\n") || strings.Count(preview, "ELwisp tool error:") != 1 || len([]rune(preview)) != 1024 || !strings.HasSuffix(preview, "…") {
-		t.Fatalf("log=%q", result.LogResult.Content)
+	if result.Summary != "" || !strings.HasPrefix(preview, "ELwisp tool error: second action failed\n") || strings.Count(preview, "ELwisp tool error:") != 1 || len([]rune(preview)) != 1024 || !strings.HasSuffix(preview, "…") {
+		t.Fatalf("log=%q", result.Summary)
 	}
 }
 
@@ -111,7 +110,7 @@ func TestPrepareELwispToolFixesRequestWithoutSending(t *testing.T) {
 	}))
 	defer server.Close()
 	call := llm.ToolCallRequest{ID: "one", Name: "remote", Arguments: `{"value":1}`}
-	resolved := resolvedTool{Source: toolshare.SourceKindELwisp, ResultStatus: events.ResultSucceeded, Discovered: &toolshare.DiscoveredTool{Name: "original", EventKey: "original/event", Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}}
+	resolved := resolvedTool{Source: toolshare.SourceKindELwisp, Discovered: &toolshare.DiscoveredTool{Name: "original", EventKey: "original/event", Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}}
 	manager := &Manager{}
 	prepared, err := manager.prepareCall(t.Context(), resolved, call)
 	if err != nil {
@@ -165,7 +164,7 @@ func TestPreparedELwispCallChecksRequestAndCancellationBeforeSending(t *testing.
 	for _, scenario := range []string{"arguments", "canceled"} {
 		t.Run(scenario, func(t *testing.T) {
 			call := llm.ToolCallRequest{ID: "one", Name: "remote", Arguments: `{}`}
-			resolved := resolvedTool{Source: toolshare.SourceKindELwisp, ResultStatus: events.ResultSucceeded, Discovered: &toolshare.DiscoveredTool{Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}}
+			resolved := resolvedTool{Source: toolshare.SourceKindELwisp, Discovered: &toolshare.DiscoveredTool{Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}}
 			prepared, err := prepareELwispTool(call, resolved)
 			if err != nil {
 				t.Fatal(err)
@@ -177,7 +176,7 @@ func TestPreparedELwispCallChecksRequestAndCancellationBeforeSending(t *testing.
 			} else {
 				cancel()
 			}
-			result := (&Manager{}).executePrepared(ctx, call, resolved, prepared, nil)
+			result := (&Manager{ManagerDeps: ManagerDeps{Log: func(context.Context, events.LogRecord) {}}}).executePrepared(ctx, call, resolved, prepared, nil)
 			if result.Error == nil || result.ExecutionStarted || calls.Load() != 0 {
 				t.Fatalf("result=%+v calls=%d", result, calls.Load())
 			}

@@ -56,8 +56,8 @@ type Loop struct {
 		ExecuteWithCommitter(context.Context, *storage.Session, []llm.ToolCallRequest, string, string, agentshare.Output, tool.ToolCommitter) tool.RunResult
 	}
 	Messages interface {
-		Commit(context.Context, storage.DialogueCommit, string) (events.LogResult, error)
-		Append(context.Context, *storage.Message, string) (events.LogResult, error)
+		Commit(context.Context, storage.DialogueCommit, string) error
+		Append(context.Context, *storage.Message, string) error
 		Committer(string) agentshare.MessageCommitter
 	}
 	Caller        *Caller
@@ -139,8 +139,8 @@ type LoopDeps struct {
 		ExecuteWithCommitter(context.Context, *storage.Session, []llm.ToolCallRequest, string, string, agentshare.Output, tool.ToolCommitter) tool.RunResult
 	}
 	Messages interface {
-		Commit(context.Context, storage.DialogueCommit, string) (events.LogResult, error)
-		Append(context.Context, *storage.Message, string) (events.LogResult, error)
+		Commit(context.Context, storage.DialogueCommit, string) error
+		Append(context.Context, *storage.Message, string) error
 		Committer(string) agentshare.MessageCommitter
 	}
 	Calls interface {

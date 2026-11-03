@@ -39,7 +39,7 @@ type InputCoordinator struct {
 	turns    interface{ Snapshot(string) turn.Snapshot }
 	identity InputIdentity
 	hooks    interface {
-		AgentInputPrepared(context.Context, agentshare.Session, agentshare.Message) ([]llm.MessageSegment, globalevents.LogResult, error)
+		AgentInputPrepared(context.Context, agentshare.Session, agentshare.Message) ([]llm.MessageSegment, error)
 	}
 	output        InputOutput
 	execution     InputExecution
@@ -49,7 +49,7 @@ type InputCoordinator struct {
 		PrepareSkills(context.Context, string, []string) (tool.SkillPreload, error)
 	}
 	toolState interface {
-		Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, globalevents.LogResult, error)
+		Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, error)
 	}
 }
 
@@ -99,11 +99,11 @@ func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuatio
 func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *storage.Session, text string) error {
 	locked, release, err := c.execution.EnterInput(ctx, session)
 	if errors.Is(err, agentshare.ErrInputCompacting) {
-		_, _, err := c.output.SendAssistant(ctx, fmt.Sprintf("%v · 等待或 %s", err, c.commandText("stop")))
+		_, err := c.output.SendAssistant(ctx, fmt.Sprintf("%v · 等待或 %s", err, c.commandText("stop")))
 		return err
 	}
 	if errors.Is(err, agentshare.ErrInputArchived) {
-		_, _, err := c.output.SendAssistant(ctx, fmt.Sprintf("%v · %s 后可继续", err, c.commandText("unarchive")))
+		_, err := c.output.SendAssistant(ctx, fmt.Sprintf("%v · %s 后可继续", err, c.commandText("unarchive")))
 		return err
 	}
 	if err != nil {
@@ -117,7 +117,7 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 	facts.Mode = session.Mode
 	ctx = contextinfo.WithExecution(ctx, facts)
 	release()
-	segments, _, err := c.hooks.AgentInputPrepared(ctx,
+	segments, err := c.hooks.AgentInputPrepared(ctx,
 		agentshare.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status},
 		agentshare.Message{Role: string(llm.RoleUser), Segments: agentshare.InboundSegments(ctx, text)})
 	if err != nil {
