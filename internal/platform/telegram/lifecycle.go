@@ -184,11 +184,7 @@ func (a *Adapter) runPolling(handler share.MessageHandler) {
 						record.Level = slog.LevelInfo
 					}
 					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					record.Identity.SessionID = &facts.SessionID
-					record.Identity.RunID = &facts.RunID
-					record.Identity.Attempt = &facts.Attempt
-					record.Identity.RequestID = &facts.RequestID
-					record.Identity.RootRequestID = &facts.RootRequestID
+					record.Identity = globalevents.LogIdentityFromExecution(facts)
 					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 				}
 			}
@@ -216,11 +212,7 @@ func (a *Adapter) runPolling(handler share.MessageHandler) {
 					record.Level = slog.LevelInfo
 				}
 				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				record.Identity.SessionID = &facts.SessionID
-				record.Identity.RunID = &facts.RunID
-				record.Identity.Attempt = &facts.Attempt
-				record.Identity.RequestID = &facts.RequestID
-				record.Identity.RootRequestID = &facts.RootRequestID
+				record.Identity = globalevents.LogIdentityFromExecution(facts)
 				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 			}
 		}
@@ -236,11 +228,7 @@ func (a *Adapter) runPolling(handler share.MessageHandler) {
 				ResultStatus: globalevents.ResultSucceeded,
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity.SessionID = &facts.SessionID
-			record.Identity.RunID = &facts.RunID
-			record.Identity.Attempt = &facts.Attempt
-			record.Identity.RequestID = &facts.RequestID
-			record.Identity.RootRequestID = &facts.RootRequestID
+			record.Identity = globalevents.LogIdentityFromExecution(facts)
 			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 		}
 		a.notifyConnected(ctx)
@@ -262,11 +250,7 @@ func (a *Adapter) runPolling(handler share.MessageHandler) {
 						ResultStatus: globalevents.ResultFailed,
 					}
 					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					record.Identity.SessionID = &facts.SessionID
-					record.Identity.RunID = &facts.RunID
-					record.Identity.Attempt = &facts.Attempt
-					record.Identity.RequestID = &facts.RequestID
-					record.Identity.RootRequestID = &facts.RootRequestID
+					record.Identity = globalevents.LogIdentityFromExecution(facts)
 					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 				}
 				break

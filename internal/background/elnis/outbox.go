@@ -82,13 +82,8 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 
 // deliverReport owns this report's send/save outcome, independent of retry state.
 func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult globalevents.LogResult, err error) {
-	identity := globalevents.LogIdentity{}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	identity.SessionID = &facts.SessionID
-	identity.RunID = &facts.RunID
-	identity.Attempt = &facts.Attempt
-	identity.RequestID = &facts.RequestID
-	identity.RootRequestID = &facts.RootRequestID
+	identity := globalevents.LogIdentityFromExecution(facts)
 
 	logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed}
 	defer func() {
@@ -318,11 +313,7 @@ func (s *Service) recoverReports(ctx context.Context) (globalevents.LogResult, e
 				record.Level = slog.LevelInfo
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity.SessionID = &facts.SessionID
-			record.Identity.RunID = &facts.RunID
-			record.Identity.Attempt = &facts.Attempt
-			record.Identity.RequestID = &facts.RequestID
-			record.Identity.RootRequestID = &facts.RootRequestID
+			record.Identity = globalevents.LogIdentityFromExecution(facts)
 			background.LogBackground(ctx, record)
 		}
 	}

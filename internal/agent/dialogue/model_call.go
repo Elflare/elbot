@@ -104,19 +104,8 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 	}
 	data, _ := json.Marshal(content)
 	o.logRecord.Content = string(data)
+	o.logRecord.Identity = events.LogIdentityFromExecution(o.event.Execution)
 	o.logRecord.Identity.SessionID = &o.sessionID
-	if o.event.Execution.RunID != "" {
-		o.logRecord.Identity.RunID = &o.event.Execution.RunID
-	}
-	if o.event.Execution.Attempt != "" {
-		o.logRecord.Identity.Attempt = &o.event.Execution.Attempt
-	}
-	if o.event.Execution.RequestID != "" {
-		o.logRecord.Identity.RequestID = &o.event.Execution.RequestID
-	}
-	if o.event.Execution.RootRequestID != "" {
-		o.logRecord.Identity.RootRequestID = &o.event.Execution.RootRequestID
-	}
 	if o.logRecord.EventName != "" {
 		_ = events.EmitLog(context.WithoutCancel(ctx), o.logRecord)
 	}

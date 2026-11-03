@@ -87,11 +87,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 				ResultStatus: globalevents.ResultRejected,
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity.SessionID = &facts.SessionID
-			record.Identity.RunID = &facts.RunID
-			record.Identity.Attempt = &facts.Attempt
-			record.Identity.RequestID = &facts.RequestID
-			record.Identity.RootRequestID = &facts.RootRequestID
+			record.Identity = globalevents.LogIdentityFromExecution(facts)
 			_ = globalevents.EmitLog(ctx, record)
 		}
 		return true, e.output.SendChat(ctx, fmt.Sprintf("%s%s: superadmin required", parsed.Prefix, parsed.Name))

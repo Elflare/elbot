@@ -179,14 +179,8 @@ func (s *Service) Handler(ctx context.Context, job Job) (logResult globalevents.
 }
 
 func cronLogIdentity(ctx context.Context) globalevents.LogIdentity {
-	identity := globalevents.LogIdentity{}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	identity.SessionID = &facts.SessionID
-	identity.RunID = &facts.RunID
-	identity.Attempt = &facts.Attempt
-	identity.RequestID = &facts.RequestID
-	identity.RootRequestID = &facts.RootRequestID
-	return identity
+	return globalevents.LogIdentityFromExecution(facts)
 }
 
 func normalizePlatformTargets(cliPlatformName string, targets []PlatformTarget) []PlatformTarget {

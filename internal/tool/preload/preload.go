@@ -244,11 +244,9 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 }
 
 func preloadLogRecord(ctx context.Context, sessionID string) globalevents.LogRecord {
-	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool", Identity: globalevents.LogIdentity{SessionID: &sessionID}}
+	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool"}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	record.Identity.RunID = &facts.RunID
-	record.Identity.Attempt = &facts.Attempt
-	record.Identity.RequestID = &facts.RequestID
-	record.Identity.RootRequestID = &facts.RootRequestID
+	record.Identity = globalevents.LogIdentityFromExecution(facts)
+	record.Identity.SessionID = &sessionID
 	return record
 }

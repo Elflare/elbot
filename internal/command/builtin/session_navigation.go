@@ -76,14 +76,11 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 		EventName:    "session_resume",
 		Module:       "command",
 		Content:      "title: " + session.Title,
-		Identity:     globalevents.LogIdentity{SessionID: &session.ID},
 		ResultStatus: globalevents.ResultSucceeded,
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	record.Identity.RunID = &facts.RunID
-	record.Identity.Attempt = &facts.Attempt
-	record.Identity.RequestID = &facts.RequestID
-	record.Identity.RootRequestID = &facts.RootRequestID
+	record.Identity = globalevents.LogIdentityFromExecution(facts)
+	record.Identity.SessionID = &session.ID
 	_ = globalevents.EmitLog(ctx, record)
 	return &command.Result{Content: formatResumeResult(ctx, deps, session)}, nil
 }

@@ -53,7 +53,6 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (
 		EventName:    "user_message",
 		Module:       "agent",
 		Type:         events.ContentJSON,
-		Identity:     events.LogIdentity{SessionID: &in.Session.ID},
 		ResultStatus: events.ResultUnspecified,
 	}
 	conversation, _ := contextinfo.ConversationFromContext(ctx)
@@ -62,10 +61,8 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (
 	data, _ := json.Marshal(content)
 	record.Content = string(data)
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	record.Identity.RunID = &facts.RunID
-	record.Identity.Attempt = &facts.Attempt
-	record.Identity.RequestID = &facts.RequestID
-	record.Identity.RootRequestID = &facts.RootRequestID
+	record.Identity = events.LogIdentityFromExecution(facts)
+	record.Identity.SessionID = &in.Session.ID
 	_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	loaded, err := p.Contexts.Load(ctx, in.Session.ID)
 	if err != nil {

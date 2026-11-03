@@ -7,6 +7,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/llm"
 )
 
@@ -78,11 +79,7 @@ func (s *ModelManager) bindRetryNotifier(provider string, client llm.Client) {
 		notifier.SetRetryNotifier(func(ctx context.Context, event llm.RetryEvent) {
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
 			record := ModelRetryingEvent{Provider: provider, Retry: event, CallContext: ctx}
-			record.Identity.SessionID = &facts.SessionID
-			record.Identity.RunID = &facts.RunID
-			record.Identity.Attempt = &facts.Attempt
-			record.Identity.RequestID = &facts.RequestID
-			record.Identity.RootRequestID = &facts.RootRequestID
+			record.Identity = events.LogIdentityFromExecution(facts)
 			_, _ = s.retrying.Emit(context.WithoutCancel(ctx), record)
 		})
 	}

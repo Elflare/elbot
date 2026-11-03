@@ -461,17 +461,11 @@ func (m *Manager) logHook(ctx context.Context, mode string, reg registration, be
 		Category: globalevents.LogRuntime, Level: level, EventName: name, Module: "hook",
 		ResultStatus: logResult.ResultStatus, Type: globalevents.ContentJSON, Content: string(data),
 	}
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	record.Identity = globalevents.LogIdentityFromExecution(facts)
 	if before.Session.ID != "" {
 		record.Identity.SessionID = &before.Session.ID
 	}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if before.Session.ID == "" && facts.SessionID != "" {
-		record.Identity.SessionID = &facts.SessionID
-	}
-	record.Identity.RunID = &facts.RunID
-	record.Identity.Attempt = &facts.Attempt
-	record.Identity.RequestID = &facts.RequestID
-	record.Identity.RootRequestID = &facts.RootRequestID
 	m.Log(ctx, record)
 }
 

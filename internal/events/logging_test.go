@@ -33,6 +33,52 @@ func TestLogEnums(t *testing.T) {
 	}
 }
 
+func TestLogIdentityFromExecutionPreservesSnapshot(t *testing.T) {
+	empty := ""
+	for _, tc := range []struct {
+		name      string
+		execution contextinfo.Execution
+		sessionID *string
+	}{
+		{name: "complete", execution: contextinfo.Execution{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}},
+		{name: "empty"},
+		{name: "explicit_empty_session", execution: contextinfo.Execution{SessionID: "source-session", RunID: "run"}, sessionID: &empty},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := tc.execution
+			record := LogRecord{Category: LogRuntime, Identity: LogIdentityFromExecution(source)}
+			want := LogIdentity{SessionID: &tc.execution.SessionID, RunID: &tc.execution.RunID, Attempt: &tc.execution.Attempt, RequestID: &tc.execution.RequestID, RootRequestID: &tc.execution.RootRequestID}
+			if tc.sessionID != nil {
+				record.Identity.SessionID = tc.sessionID
+				want.SessionID = tc.sessionID
+			}
+			// Delayed publication must retain the selected snapshot, not the
+			// later source value or the execution attached to the publishing context.
+			source = contextinfo.Execution{SessionID: "later", RunID: "later", Attempt: "later", RequestID: "later", RootRequestID: "later"}
+			ctx, cancel := context.WithCancel(contextinfo.WithExecution(t.Context(), source))
+			cancel()
+			var received []LogRecord
+			connection, err := LogSubmitted.Observe(func(ctx context.Context, record LogRecord) error {
+				if ctx.Err() != nil {
+					t.Error("publication retained cancellation")
+				}
+				received = append(received, record)
+				return nil
+			}, signal.ConnectOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer connection.Disconnect()
+			if err := EmitLog(ctx, record); err != nil {
+				t.Fatal(err)
+			}
+			if len(received) != 1 || !reflect.DeepEqual(received[0].Identity, want) {
+				t.Fatalf("selected identity changed: got %+v, want %+v", received, want)
+			}
+		})
+	}
+}
+
 func TestEmitLogCopiesSourceIdentity(t *testing.T) {
 	var received []LogRecord
 	connection, err := LogSubmitted.Observe(func(_ context.Context, record LogRecord) error {

@@ -227,11 +227,5 @@ func (m Module) RegisterHooks(registrar share.Registrar) {
 
 func logIdentity(ctx context.Context) globalevents.LogIdentity {
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	var identity globalevents.LogIdentity
-	identity.SessionID = &facts.SessionID
-	identity.RunID = &facts.RunID
-	identity.Attempt = &facts.Attempt
-	identity.RequestID = &facts.RequestID
-	identity.RootRequestID = &facts.RootRequestID
-	return identity
+	return globalevents.LogIdentityFromExecution(facts)
 }

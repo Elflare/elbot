@@ -99,15 +99,11 @@ func (m *Manager) Route(ctx context.Context, event share.Event, observe func(con
 	return updated, true, logResult, err
 }
 
-// logIdentity 优先使用事件 session，其余身份来自 context；缺失事实原样保留空值。
+// logIdentity 使用事件 session，其余身份来自 context；缺失事实原样保留空值。
 func logIdentity(ctx context.Context, sessionID string) globalevents.LogIdentity {
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	record := globalevents.LogIdentity{}
+	record := globalevents.LogIdentityFromExecution(facts)
 	record.SessionID = &sessionID
-	record.RunID = &facts.RunID
-	record.Attempt = &facts.Attempt
-	record.RequestID = &facts.RequestID
-	record.RootRequestID = &facts.RootRequestID
 	return record
 }
 

@@ -19,14 +19,12 @@ func newRunRecord(ctx context.Context, sessionID, eventName string, logResult ev
 	if logResult.ResultStatus == events.ResultFailed {
 		level = slog.LevelError
 	}
-	record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: eventName, Module: "toolrun", Type: events.ContentText, Content: logResult.Content, ContentLimit: 4096, Identity: events.LogIdentity{SessionID: &sessionID}, ResultStatus: logResult.ResultStatus}
+	record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: eventName, Module: "toolrun", Type: events.ContentText, Content: logResult.Content, ContentLimit: 4096, ResultStatus: logResult.ResultStatus}
 	// Read the current operation's execution facts after any foreground handoff.
 	// SessionID belongs to the supplied Session, including an explicit empty ID.
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	record.Identity.RunID = &facts.RunID
-	record.Identity.Attempt = &facts.Attempt
-	record.Identity.RequestID = &facts.RequestID
-	record.Identity.RootRequestID = &facts.RootRequestID
+	record.Identity = events.LogIdentityFromExecution(facts)
+	record.Identity.SessionID = &sessionID
 	return record
 }
 

@@ -38,13 +38,8 @@ func (a *Client) logChatRequest(ctx context.Context, req Request) {
 		Type:      globalevents.ContentJSON,
 		Content:   string(content),
 	}
-	if req.SessionID != "" {
-		record.Identity.SessionID = &req.SessionID
-	}
-	record.Identity.RunID = &facts.RunID
-	record.Identity.Attempt = &facts.Attempt
-	record.Identity.RequestID = &facts.RequestID
-	record.Identity.RootRequestID = &facts.RootRequestID
+	record.Identity = globalevents.LogIdentityFromExecution(facts)
+	record.Identity.SessionID = &req.SessionID
 	_ = globalevents.EmitLog(ctx, record)
 }
 
@@ -67,12 +62,9 @@ func (a *Client) logFirstSystemMessage(ctx context.Context, req Request) {
 		EventName: "system_message",
 		Module:    "model",
 		Content:   "system prompt: " + firstSystemText(req.Messages) + "\nmodel=" + req.Model,
-		Identity:  globalevents.LogIdentity{SessionID: &req.SessionID},
 	}
-	record.Identity.RunID = &facts.RunID
-	record.Identity.Attempt = &facts.Attempt
-	record.Identity.RequestID = &facts.RequestID
-	record.Identity.RootRequestID = &facts.RootRequestID
+	record.Identity = globalevents.LogIdentityFromExecution(facts)
+	record.Identity.SessionID = &req.SessionID
 	_ = globalevents.EmitLog(ctx, record)
 }
 

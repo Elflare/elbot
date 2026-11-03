@@ -12,11 +12,7 @@ import (
 
 // EmitAgentLog copies only the source's explicit execution identity.
 func EmitAgentLog(ctx context.Context, execution contextinfo.Execution, record events.LogRecord) {
-	record.Identity.SessionID = &execution.SessionID
-	record.Identity.RunID = &execution.RunID
-	record.Identity.Attempt = &execution.Attempt
-	record.Identity.RequestID = &execution.RequestID
-	record.Identity.RootRequestID = &execution.RootRequestID
+	record.Identity = events.LogIdentityFromExecution(execution)
 	_ = events.EmitLog(context.WithoutCancel(ctx), record)
 }
 
@@ -36,11 +32,8 @@ func ReportFailure(ctx context.Context, sessionID string, err error, notify func
 		Content: err.Error(), ContentLimit: 8192, ResultStatus: events.ResultFailed,
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	record.Identity = events.LogIdentityFromExecution(facts)
 	record.Identity.SessionID = &sessionID
-	record.Identity.RunID = &facts.RunID
-	record.Identity.Attempt = &facts.Attempt
-	record.Identity.RequestID = &facts.RequestID
-	record.Identity.RootRequestID = &facts.RootRequestID
 	_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	notify(session.WithBinding(context.WithoutCancel(ctx), nil), slog.LevelError, "对话处理失败："+err.Error())
 }

@@ -15,13 +15,8 @@ import (
 )
 
 func (s *Service) handleDuplicate(ctx context.Context, event Event, existing *EventRecord) {
-	identity := globalevents.LogIdentity{}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	identity.SessionID = &facts.SessionID
-	identity.RunID = &facts.RunID
-	identity.Attempt = &facts.Attempt
-	identity.RequestID = &facts.RequestID
-	identity.RootRequestID = &facts.RootRequestID
+	identity := globalevents.LogIdentityFromExecution(facts)
 
 	if existing.ContentHash != event.ContentHash {
 		{

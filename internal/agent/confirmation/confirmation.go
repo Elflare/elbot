@@ -185,14 +185,11 @@ func confirmationAction(ctx context.Context, sessionID, action string, confirmat
 		Type:         events.ContentJSON,
 		Content:      string(data),
 		ContentLimit: 0,
-		Identity:     events.LogIdentity{SessionID: &sessionID},
 		ResultStatus: events.ResultUnspecified,
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	record.Identity.RunID = &facts.RunID
-	record.Identity.Attempt = &facts.Attempt
-	record.Identity.RequestID = &facts.RequestID
-	record.Identity.RootRequestID = &facts.RootRequestID
+	record.Identity = events.LogIdentityFromExecution(facts)
+	record.Identity.SessionID = &sessionID
 	return record
 }
 

@@ -243,13 +243,8 @@ func (r *Runtime) worker(ctx context.Context) {
 }
 
 func (r *Runtime) reportWorker(ctx context.Context) {
-	identity := globalevents.LogIdentity{}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	identity.SessionID = &facts.SessionID
-	identity.RunID = &facts.RunID
-	identity.Attempt = &facts.Attempt
-	identity.RequestID = &facts.RequestID
-	identity.RootRequestID = &facts.RootRequestID
+	identity := globalevents.LogIdentityFromExecution(facts)
 	// Both attempts use the same recovery path and differ only in their log event.
 	recover := func(name string) {
 		result, _ := r.service.recoverReports(ctx)

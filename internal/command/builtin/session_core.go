@@ -73,14 +73,11 @@ func formatContextStatus(ctx context.Context, deps Deps, row *storage.Session, m
 			EventName:    "load_usage_failed",
 			Module:       "command",
 			Content:      "load usage failed: " + err.Error(),
-			Identity:     globalevents.LogIdentity{SessionID: &row.ID},
 			ResultStatus: globalevents.ResultFailed,
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		record.Identity.RunID = &facts.RunID
-		record.Identity.Attempt = &facts.Attempt
-		record.Identity.RequestID = &facts.RequestID
-		record.Identity.RootRequestID = &facts.RootRequestID
+		record.Identity = globalevents.LogIdentityFromExecution(facts)
+		record.Identity.SessionID = &row.ID
 		_ = globalevents.EmitLog(ctx, record)
 	}
 	return deps.Contexts.Status(ctx, usage, config.ModelSelection{Provider: model.Provider, Model: model.Model})

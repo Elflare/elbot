@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/signal"
 )
 
@@ -112,6 +113,18 @@ type LogIdentity struct {
 	RequestID *string
 	// RootRequestID is the source's root dialogue request ID; nil is absent, non-nil empty is explicit empty.
 	RootRequestID *string
+}
+
+// LogIdentityFromExecution copies the source-selected execution snapshot.
+// All five fields are supplied, including explicit empty values.
+func LogIdentityFromExecution(e contextinfo.Execution) LogIdentity {
+	return LogIdentity{
+		SessionID:     &e.SessionID,
+		RunID:         &e.RunID,
+		Attempt:       &e.Attempt,
+		RequestID:     &e.RequestID,
+		RootRequestID: &e.RootRequestID,
+	}
 }
 
 // LogRecord is the only public log submission contract. The source supplies

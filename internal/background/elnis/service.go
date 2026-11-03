@@ -110,11 +110,7 @@ func (s *Service) Handle(ctx context.Context, token string, req Request) (Respon
 				ResultStatus: globalevents.ResultRejected,
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity.SessionID = &facts.SessionID
-			record.Identity.RunID = &facts.RunID
-			record.Identity.Attempt = &facts.Attempt
-			record.Identity.RequestID = &facts.RequestID
-			record.Identity.RootRequestID = &facts.RootRequestID
+			record.Identity = globalevents.LogIdentityFromExecution(facts)
 			background.LogBackground(ctx, record)
 		}
 		return Response{Accepted: false, Status: StatusFailed, Error: "unauthorized"}, fmt.Errorf("unauthorized")
@@ -140,11 +136,7 @@ func (s *Service) DispatchElvena(ctx context.Context, origin elvena.Origin, req 
 				ResultStatus: globalevents.ResultRejected,
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity.SessionID = &facts.SessionID
-			record.Identity.RunID = &facts.RunID
-			record.Identity.Attempt = &facts.Attempt
-			record.Identity.RequestID = &facts.RequestID
-			record.Identity.RootRequestID = &facts.RootRequestID
+			record.Identity = globalevents.LogIdentityFromExecution(facts)
 			background.LogBackground(ctx, record)
 		}
 		return Response{Accepted: false, Status: StatusFailed, Error: err.Error()}, err
@@ -153,13 +145,8 @@ func (s *Service) DispatchElvena(ctx context.Context, origin elvena.Origin, req 
 }
 
 func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Response, error) {
-	identity := globalevents.LogIdentity{}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	identity.SessionID = &facts.SessionID
-	identity.RunID = &facts.RunID
-	identity.Attempt = &facts.Attempt
-	identity.RequestID = &facts.RequestID
-	identity.RootRequestID = &facts.RootRequestID
+	identity := globalevents.LogIdentityFromExecution(facts)
 
 	req := event.Request
 

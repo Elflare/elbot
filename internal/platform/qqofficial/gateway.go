@@ -112,11 +112,7 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler share.MessageHandl
 						record.Level = slog.LevelInfo
 					}
 					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					record.Identity.SessionID = &facts.SessionID
-					record.Identity.RunID = &facts.RunID
-					record.Identity.Attempt = &facts.Attempt
-					record.Identity.RequestID = &facts.RequestID
-					record.Identity.RootRequestID = &facts.RootRequestID
+					record.Identity = globalevents.LogIdentityFromExecution(facts)
 					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 				}
 			}
@@ -144,11 +140,7 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler share.MessageHandl
 					ResultStatus: globalevents.ResultSkipped,
 				}
 				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				record.Identity.SessionID = &facts.SessionID
-				record.Identity.RunID = &facts.RunID
-				record.Identity.Attempt = &facts.Attempt
-				record.Identity.RequestID = &facts.RequestID
-				record.Identity.RootRequestID = &facts.RootRequestID
+				record.Identity = globalevents.LogIdentityFromExecution(facts)
 				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 			}
 		}
@@ -207,11 +199,7 @@ func (a *Adapter) heartbeatLoop(ctx context.Context, conn *websocket.Conn, state
 						record.Level = slog.LevelInfo
 					}
 					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					record.Identity.SessionID = &facts.SessionID
-					record.Identity.RunID = &facts.RunID
-					record.Identity.Attempt = &facts.Attempt
-					record.Identity.RequestID = &facts.RequestID
-					record.Identity.RootRequestID = &facts.RootRequestID
+					record.Identity = globalevents.LogIdentityFromExecution(facts)
 					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 				}
 				_ = conn.CloseNow()
@@ -242,11 +230,7 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler share.MessageHandl
 				ResultStatus: globalevents.ResultSucceeded,
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity.SessionID = &facts.SessionID
-			record.Identity.RunID = &facts.RunID
-			record.Identity.Attempt = &facts.Attempt
-			record.Identity.RequestID = &facts.RequestID
-			record.Identity.RootRequestID = &facts.RootRequestID
+			record.Identity = globalevents.LogIdentityFromExecution(facts)
 			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 		}
 		a.notifyConnected(ctx)
@@ -279,11 +263,7 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler share.MessageHandl
 					ResultStatus: globalevents.ResultSucceeded,
 				}
 				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				record.Identity.SessionID = &facts.SessionID
-				record.Identity.RunID = &facts.RunID
-				record.Identity.Attempt = &facts.Attempt
-				record.Identity.RequestID = &facts.RequestID
-				record.Identity.RootRequestID = &facts.RootRequestID
+				record.Identity = globalevents.LogIdentityFromExecution(facts)
 				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 			}
 		}

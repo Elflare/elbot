@@ -263,11 +263,7 @@ func LogSendResult(ctx context.Context, target Target, out Output, logResult glo
 	if logResult.ResultStatus == globalevents.ResultCanceled {
 		record.Level = slog.LevelInfo
 	}
-	record.Identity.SessionID = &facts.SessionID
-	record.Identity.RunID = &facts.RunID
-	record.Identity.Attempt = &facts.Attempt
-	record.Identity.RequestID = &facts.RequestID
-	record.Identity.RootRequestID = &facts.RootRequestID
+	record.Identity = globalevents.LogIdentityFromExecution(facts)
 	_ = globalevents.EmitLog(ctx, record)
 }
 

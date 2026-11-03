@@ -82,7 +82,7 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 			sessionID = binding.SessionID()
 		}
 		content := map[string]any{"actor": actor, "path": result.Path, "deleted": result.Deleted}
-		record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "command", Level: slog.LevelInfo, EventName: "file_rollback", Type: globalevents.ContentJSON, Identity: globalevents.LogIdentity{SessionID: &sessionID}, ResultStatus: globalevents.ResultSucceeded}
+		record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "command", Level: slog.LevelInfo, EventName: "file_rollback", Type: globalevents.ContentJSON, ResultStatus: globalevents.ResultSucceeded}
 		if err != nil {
 			content["error"] = err.Error()
 			record.EventName = "file_rollback_failed"
@@ -94,10 +94,8 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 			}
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		record.Identity.RunID = &facts.RunID
-		record.Identity.Attempt = &facts.Attempt
-		record.Identity.RequestID = &facts.RequestID
-		record.Identity.RootRequestID = &facts.RootRequestID
+		record.Identity = globalevents.LogIdentityFromExecution(facts)
+		record.Identity.SessionID = &sessionID
 		data, _ := json.Marshal(content)
 		record.Content = string(data)
 		_ = globalevents.EmitLog(ctx, record)

@@ -19,13 +19,8 @@ import (
 func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) error {
 	// Fix associations for this Elnis event; individual records may supply
 	// their actual report SessionID separately.
-	identity := globalevents.LogIdentity{}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	identity.SessionID = &facts.SessionID
-	identity.RunID = &facts.RunID
-	identity.Attempt = &facts.Attempt
-	identity.RequestID = &facts.RequestID
-	identity.RootRequestID = &facts.RootRequestID
+	identity := globalevents.LogIdentityFromExecution(facts)
 
 	if err := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusRunning, "", ""); err != nil {
 		content, _ := json.Marshal(map[string]string{"event_id": eventID, "persistence_error": err.Error()})

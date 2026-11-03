@@ -131,11 +131,5 @@ func (a *Adapter) Enabled() bool { return a.cfg.Enabled }
 
 func logIdentity(ctx context.Context) events.LogIdentity {
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	var identity events.LogIdentity
-	identity.SessionID = &facts.SessionID
-	identity.RunID = &facts.RunID
-	identity.Attempt = &facts.Attempt
-	identity.RequestID = &facts.RequestID
-	identity.RootRequestID = &facts.RootRequestID
-	return identity
+	return events.LogIdentityFromExecution(facts)
 }

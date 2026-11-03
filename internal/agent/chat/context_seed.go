@@ -31,11 +31,7 @@ func (r *Loop) consumeContextCompactSeed(ctx context.Context, session *storage.S
 				record.Level = slog.LevelInfo
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity.SessionID = &facts.SessionID
-			record.Identity.RunID = &facts.RunID
-			record.Identity.Attempt = &facts.Attempt
-			record.Identity.RequestID = &facts.RequestID
-			record.Identity.RootRequestID = &facts.RootRequestID
+			record.Identity = globalevents.LogIdentityFromExecution(facts)
 			record.Identity.SessionID = &session.ID
 			_ = globalevents.EmitLog(ctx, record)
 		}

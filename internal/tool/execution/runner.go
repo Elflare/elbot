@@ -367,11 +367,9 @@ func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor 
 		if !permission.Allowed {
 			resultStatus = events.ResultRejected
 		}
-		record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: permission.Reason, Module: "tool", Type: events.ContentJSON, Content: string(data), Identity: events.LogIdentity{SessionID: &sessionID}, ResultStatus: resultStatus}
-		record.Identity.RunID = &facts.RunID
-		record.Identity.Attempt = &facts.Attempt
-		record.Identity.RequestID = &facts.RequestID
-		record.Identity.RootRequestID = &facts.RootRequestID
+		record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: permission.Reason, Module: "tool", Type: events.ContentJSON, Content: string(data), ResultStatus: resultStatus}
+		record.Identity = events.LogIdentityFromExecution(facts)
+		record.Identity.SessionID = &sessionID
 		m.Log(ctx, record)
 	}
 	if !permission.Allowed {

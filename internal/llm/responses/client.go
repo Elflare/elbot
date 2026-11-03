@@ -234,11 +234,7 @@ func (c *Client) StreamPrepared(ctx context.Context, prepared PreparedRequest) (
 		Type:      globalevents.ContentJSON,
 		Content:   string(content),
 	}
-	record.Identity.SessionID = &facts.SessionID
-	record.Identity.RunID = &facts.RunID
-	record.Identity.Attempt = &facts.Attempt
-	record.Identity.RequestID = &facts.RequestID
-	record.Identity.RootRequestID = &facts.RootRequestID
+	record.Identity = globalevents.LogIdentityFromExecution(facts)
 	_ = globalevents.EmitLog(ctx, record)
 
 	callCtx, cancel := context.WithCancel(ctx)
