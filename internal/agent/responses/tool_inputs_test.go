@@ -37,7 +37,7 @@ func TestQueueToolDefinitionsKeepsHistoricalDefinitions(t *testing.T) {
 				}
 				original := string(item.Raw)
 				committer := &toolInputCommitter{}
-				s := &turnState{route: &Loop{Messages: committer}, tools: []llm.ToolSchema{current}}
+				s := &turnState{route: &Loop{LoopDeps: LoopDeps{Messages: committer}}, tools: []llm.ToolSchema{current}}
 				var inputs []storage.NativeInput
 				if source == "history" {
 					s.definitions, err = definitionsIn([]api.Item{item})
@@ -65,7 +65,7 @@ func TestQueueToolDefinitionsKeepsHistoricalDefinitions(t *testing.T) {
 func TestQueueToolDefinitionsAddsNewNamesOnce(t *testing.T) {
 	committer := &toolInputCommitter{}
 	s := &turnState{
-		route:   &Loop{Messages: committer},
+		route:   &Loop{LoopDeps: LoopDeps{Messages: committer}},
 		session: &storage.Session{ID: "session"},
 		tools:   []llm.ToolSchema{{Name: "first"}, {Name: "first", Description: "duplicate"}, {Name: "second"}},
 	}

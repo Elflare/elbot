@@ -278,21 +278,26 @@ func needsMatchValue(op string) bool {
 	}
 }
 
+var templateFields = [...]string{
+	"chat.platform", "chat.chat_type", "chat.name", "chat.id", "chat.message_id", "chat.reply_to_message_id",
+	"actor.platform", "actor.id", "actor.role", "actor.group_role", "actor.name", "actor.nickname", "actor.group_card",
+	"session.id", "session.mode", "session.title", "session.status",
+	"request.id", "request.kind", "request.session_id", "request.phase",
+	"message.id", "message.text", "message.display_text", "message.platform_text", "message.intent_text", "message.role",
+	"message.reply.message_id", "message.reply.sender_id", "message.reply.text", "message.reply.display_text",
+	"llm.text", "llm.source_text", "llm.latest_user_text", "llm.latest_user_display_text", "llm.provider", "llm.model",
+	"tool.name", "tool.arguments", "tool.result", "tool.risk",
+	"error.message",
+}
+
 func KnownField(field string) bool {
-	switch strings.TrimSpace(field) {
-	case "chat.platform", "chat.chat_type", "chat.name", "chat.id", "chat.message_id", "chat.reply_to_message_id",
-		"message.id", "message.text", "message.display_text", "message.platform_text", "message.intent_text", "message.role",
-		"message.reply.message_id", "message.reply.sender_id", "message.reply.text", "message.reply.display_text",
-		"llm.text", "llm.source_text", "llm.latest_user_text", "llm.latest_user_display_text", "llm.provider", "llm.model",
-		"tool.name", "tool.arguments", "tool.result", "tool.risk",
-		"actor.platform", "actor.id", "actor.role", "actor.group_role", "actor.name", "actor.nickname", "actor.group_card",
-		"session.id", "session.mode", "session.title", "session.status",
-		"request.id", "request.kind", "request.session_id", "request.phase",
-		"error.message":
-		return true
-	default:
-		return false
+	field = strings.TrimSpace(field)
+	for _, knownField := range templateFields {
+		if field == knownField {
+			return true
+		}
 	}
+	return false
 }
 
 func FieldValue(event Event, field string) string {
@@ -400,17 +405,7 @@ func FieldValue(event Event, field string) string {
 
 func TemplateValues(event Event) map[string]string {
 	values := map[string]string{}
-	for _, field := range []string{
-		"chat.platform", "chat.chat_type", "chat.name", "chat.id", "chat.message_id", "chat.reply_to_message_id",
-		"actor.platform", "actor.id", "actor.role", "actor.group_role", "actor.name", "actor.nickname", "actor.group_card",
-		"session.id", "session.mode", "session.title", "session.status",
-		"request.id", "request.kind", "request.session_id", "request.phase",
-		"message.id", "message.text", "message.display_text", "message.platform_text", "message.intent_text", "message.role",
-		"message.reply.message_id", "message.reply.sender_id", "message.reply.text", "message.reply.display_text",
-		"llm.text", "llm.source_text", "llm.latest_user_text", "llm.latest_user_display_text", "llm.provider", "llm.model",
-		"tool.name", "tool.arguments", "tool.result", "tool.risk",
-		"error.message",
-	} {
+	for _, field := range templateFields {
 		values["{{"+field+"}}"] = FieldValue(event, field)
 	}
 	return values
