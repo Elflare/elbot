@@ -29,7 +29,7 @@ func connect[T, R any](t *testing.T, s *Signal[T, R], h Handler[T, R], o Connect
 	}
 	return c
 }
-func TestResultsAndConcurrentOnce(t *testing.T) {
+func TestResults(t *testing.T) {
 	s := testSignal[int, int](t, Options[int]{})
 	connect(t, s, func(_ context.Context, n int) (int, error) { return n + 1, nil }, ConnectOptions{})
 	want := errors.New("failed")
@@ -37,21 +37,6 @@ func TestResultsAndConcurrentOnce(t *testing.T) {
 	results, err := s.Emit(context.Background(), 4)
 	if !errors.Is(err, want) || len(results) != 2 || results[0].Value != 5 || results[1].Value != 6 {
 		t.Fatalf("results=%v err=%v", results, err)
-	}
-	once := testSignal[int, Empty](t, Options[int]{})
-	var calls atomic.Int32
-	connect(t, once, func(context.Context, int) (Empty, error) { calls.Add(1); return Empty{}, nil }, ConnectOptions{Once: true})
-	var wg sync.WaitGroup
-	for range 32 {
-		wg.Go(func() {
-			if _, err := once.Emit(context.Background(), 0); err != nil {
-				t.Error(err)
-			}
-		})
-	}
-	wg.Wait()
-	if calls.Load() != 1 {
-		t.Fatal(calls.Load())
 	}
 }
 func TestTimeoutRetainsSlotAndOtherSignalsProgress(t *testing.T) {

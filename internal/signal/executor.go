@@ -20,5 +20,4 @@ type Options[T any] struct {
 }
 type ConnectOptions struct {
 	Shutdown ShutdownPolicy // CancelPending or Drain when the signal closes.
-	Once     bool           // Claim once, including a rejected admission.
 }

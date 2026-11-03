@@ -71,7 +71,7 @@ func TestBusinessLinesKeepsRegistrationOrderForTies(t *testing.T) {
 	var started []componentKind
 	var lines businessLines
 	for _, kind := range []componentKind{componentHook, componentTool, componentAgent} {
-		lines.register(businessLine{kind: kind, startOrder: 1, supervisor: &testLifecycle{
+		lines = append(lines, businessLine{kind: kind, startOrder: 1, supervisor: &testLifecycle{
 			start: func() error { started = append(started, kind); return nil },
 		}})
 	}
@@ -143,7 +143,7 @@ func TestStartupFailurePreservesPartialOwnershipForShutdown(t *testing.T) {
 	err := runStartupSteps(t.Context(), []startupStep{
 		{phase: phaseEnvironment, run: func() error { return nil }},
 		{phase: phaseWiring, run: func() error {
-			lines.register(businessLine{kind: componentAgent, supervisor: &testLifecycle{close: func(context.Context) error { closed = true; return nil }}})
+			lines = append(lines, businessLine{kind: componentAgent, supervisor: &testLifecycle{close: func(context.Context) error { closed = true; return nil }}})
 			return failure
 		}},
 		{phase: phaseStart, run: func() error { later = true; return nil }},
@@ -188,7 +188,7 @@ func TestStartBusinessLinesSkipsMissingOwners(t *testing.T) {
 			lines := businessLines{}
 			started := false
 			if partial {
-				lines.register(businessLine{kind: componentHook, supervisor: &testLifecycle{start: func() error { started = true; return nil }}})
+				lines = append(lines, businessLine{kind: componentHook, supervisor: &testLifecycle{start: func() error { started = true; return nil }}})
 			}
 			if err := startBusinessLines(t.Context(), lines); err != nil || started != partial {
 				t.Fatalf("started=%v error=%v", started, err)
@@ -248,7 +248,7 @@ func TestWaitBusinessLinesDiscoversAvailableWaiters(t *testing.T) {
 			lines := businessLines{}
 			kinds := []componentKind{componentTool, componentAgent, componentHook, componentPlatform, componentBackground}
 			if count < len(kinds) {
-				lines.register(businessLine{kind: kinds[count], supervisor: &testLifecycle{}})
+				lines = append(lines, businessLine{kind: kinds[count], supervisor: &testLifecycle{}})
 			}
 			entered := make(chan struct{}, count)
 			release := make(chan struct{})
@@ -264,7 +264,7 @@ func TestWaitBusinessLinesDiscoversAvailableWaiters(t *testing.T) {
 					<-ctx.Done()
 					return fmt.Errorf("wait canceled: %w", ctx.Err())
 				}}
-				lines.register(businessLine{kind: kinds[i], supervisor: line})
+				lines = append(lines, businessLine{kind: kinds[i], supervisor: line})
 			}
 			result := make(chan error, 1)
 			go func() { result <- waitBusinessLines(t.Context(), lines) }()
@@ -314,7 +314,7 @@ func TestWaitBusinessLinesExternalCancellationWithOrWithoutWaiters(t *testing.T)
 			synctest.Test(t, func(t *testing.T) {
 				lines := businessLines{{kind: componentTool, supervisor: &testLifecycle{}}}
 				if hasWaiter {
-					lines.register(businessLine{kind: componentBackground, supervisor: &testWaitingLine{wait: func(ctx context.Context) error {
+					lines = append(lines, businessLine{kind: componentBackground, supervisor: &testWaitingLine{wait: func(ctx context.Context) error {
 						<-ctx.Done()
 						return ctx.Err()
 					}}})

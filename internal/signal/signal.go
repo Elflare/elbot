@@ -19,7 +19,6 @@ type slot[T, R any] struct {
 	handler    Handler[T, R]
 	forward    func(context.Context, T) *Emission[R]
 	options    ConnectOptions
-	claimed    atomic.Bool
 	connection *Connection
 }
 type snapshot[T, R any] struct{ slots []*slot[T, R] }
@@ -158,13 +157,6 @@ func (s *Signal[T, R]) EmitAsync(ctx context.Context, event T) (*Emission[R], er
 	e := newEmission[R](cancel, len(entries))
 	var errs []error
 	for i, entry := range entries {
-		if entry.options.Once {
-			if !entry.claimed.CompareAndSwap(false, true) {
-				e.finish(i, Result[R]{})
-				continue
-			}
-			s.remove(entry)
-		}
 		var value R
 		forwarded := false
 		taskCtx, taskCancel := context.WithCancel(ctx)

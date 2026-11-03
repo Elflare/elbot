@@ -3,7 +3,6 @@ package signal
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 )
@@ -90,20 +89,6 @@ func (e *Emission[R]) onComplete(fn func([]Result[R])) {
 }
 func (e *Emission[R]) Done() <-chan struct{} { return e.done }
 
-// MapResults adopts completion without holding an execution worker. The mapper
-// must be short and nonblocking; it runs once when the source has completed.
-func MapResults[A, B any](source *Emission[A], mapResult func([]Result[A]) Result[B]) *Emission[B] {
-	e := newEmission[B](func() {}, 1)
-	source.onComplete(func(results []Result[A]) {
-		defer func() {
-			if p := recover(); p != nil {
-				e.finish(0, Result[B]{Err: fmt.Errorf("signal result mapper panic: %v", p)})
-			}
-		}()
-		e.finish(0, mapResult(results))
-	})
-	return e
-}
 func (e *Emission[R]) Wait(ctx context.Context) ([]Result[R], error) {
 	select {
 	case <-e.done:

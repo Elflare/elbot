@@ -29,7 +29,7 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 		Mode: string(mode), Store: resources.store, Media: resources.media, ChatHistory: history,
 	})
 	if platformSupervisor != nil {
-		lines.register(businessLine{
+		lines = append(lines, businessLine{
 			kind: componentPlatform, supervisor: platformSupervisor,
 			startOrder: 4, beginOrder: 1, closeOrder: 5, waitIngress: platformSupervisor.WaitIngress,
 		})
@@ -42,7 +42,7 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 		Platform: platformSupervisor, ChatHistory: history,
 	})
 	if toolSupervisor != nil {
-		lines.register(businessLine{
+		lines = append(lines, businessLine{
 			kind: componentTool, supervisor: toolSupervisor, startOrder: 1, beginOrder: 5, closeOrder: 4,
 		})
 	}
@@ -53,7 +53,7 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 		Media: resources.media, Tools: toolSupervisor, Platform: platformSupervisor,
 	})
 	if hookSupervisor != nil {
-		lines.register(businessLine{
+		lines = append(lines, businessLine{
 			kind: componentHook, supervisor: hookSupervisor, startOrder: 3, beginOrder: 4, closeOrder: 3,
 		})
 	}
@@ -68,7 +68,7 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 		Tools: toolSupervisor, Hooks: hookSupervisor, Platform: platformSupervisor, ChatHistory: history,
 	})
 	if agentSupervisor != nil {
-		lines.register(businessLine{
+		lines = append(lines, businessLine{
 			kind: componentAgent, supervisor: agentSupervisor, startOrder: 2, beginOrder: 3, closeOrder: 2,
 		})
 	}
@@ -83,7 +83,7 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 		Agent: agentSupervisor, Tools: toolSupervisor, Platform: platformSupervisor, ChatHistory: history,
 	})
 	if backgroundSupervisor != nil {
-		lines.register(businessLine{
+		lines = append(lines, businessLine{
 			kind: componentBackground, supervisor: backgroundSupervisor, startOrder: 5, beginOrder: 2, closeOrder: 1,
 		})
 	}
@@ -100,9 +100,4 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 	}
 	// App 只交付总管，不取得内部 Registry、Manager、Session 或执行协调器。
 	return lines, nil
-}
-
-// register 保存已取得的总管及执行次序；装配方在具体指针非 nil 时登记，再处理构造错误。
-func (lines *businessLines) register(line businessLine) {
-	*lines = append(*lines, line)
 }
