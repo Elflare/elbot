@@ -14,14 +14,14 @@ import (
 
 // NotificationReceiver 连接通知发送端；调度归 Signal，连接由根部持有和释放。
 type NotificationReceiver interface {
-	ConnectNotifications(*signal.Signal[events.Notification, events.NotificationReceipt]) (*signal.Connection, error)
+	ConnectNotifications(*signal.Signal[events.Notification, signal.Empty]) (*signal.Connection, error)
 }
 
 // ConnectNotifications 将通知交给发送端，连接由根部持有和释放。
-func ConnectNotifications(s *signal.Signal[events.Notification, events.NotificationReceipt], sender delivery.MessageSender) (*signal.Connection, error) {
-	return s.Connect(func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
-		r, err := delivery.NewManager(sender).SendTo(ctx, NotificationTarget(n), []delivery.Output{delivery.Text(n.Text)})
-		return events.NotificationReceipt{PlatformMessageIDs: r.PlatformMessageIDs}, err
+func ConnectNotifications(s *signal.Signal[events.Notification, signal.Empty], sender delivery.MessageSender) (*signal.Connection, error) {
+	return s.Observe(func(ctx context.Context, n events.Notification) error {
+		_, err := delivery.NewManager(sender).SendTo(ctx, NotificationTarget(n), []delivery.Output{delivery.Text(n.Text)})
+		return err
 	}, signal.ConnectOptions{})
 }
 

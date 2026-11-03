@@ -146,7 +146,7 @@ func TestNotificationDeliversExplicitGroupToolText(t *testing.T) {
 
 	adapter := newQQOfficialSendTestAdapter(t, server)
 	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformQQOfficial, ChatType: contextinfo.ChatGroup, ChatID: "group-1"}})
-	s := signal.New[events.Notification, events.NotificationReceipt]("qqofficial-test")
+	s := signal.New[events.Notification, signal.Empty]("qqofficial-test")
 	connection, err := adapter.ConnectNotifications(s)
 	if err != nil {
 		t.Fatal(err)
@@ -158,8 +158,8 @@ func TestNotificationDeliversExplicitGroupToolText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r[0].Value.PlatformMessageIDs) != 1 || calls.Load() != 1 {
-		t.Fatalf("receipt/calls = %#v/%d", r, calls.Load())
+	if len(r) != 1 || !r[0].Started || calls.Load() != 1 {
+		t.Fatalf("results/calls = %#v/%d", r, calls.Load())
 	}
 }
 

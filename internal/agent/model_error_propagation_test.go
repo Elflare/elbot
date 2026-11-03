@@ -80,14 +80,14 @@ func TestModelErrorReachesNotificationWithoutIntermediatePrefixes(t *testing.T) 
 				t.Fatal(err)
 			}
 			var notices []string
-			connection, err := events.NotificationRequested.Connect(func(_ context.Context, notice events.Notification) (events.NotificationReceipt, error) {
+			connection, err := events.NotificationRequested.Observe(func(_ context.Context, notice events.Notification) error {
 				if notice.Text != "barrier" {
 					if notice.Level != slog.LevelWarn {
 						t.Errorf("ordinary failure notification level=%s", notice.Level)
 					}
 					notices = append(notices, notice.Text)
 				}
-				return events.NotificationReceipt{}, nil
+				return nil
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)

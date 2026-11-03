@@ -37,7 +37,7 @@ func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Out
 	// The owning delivery.Manager validates outputs before entering rawSender.
 	prepared := append([]delivery.Output(nil), outputs...)
 	for i, out := range prepared {
-		if out.Kind != delivery.KindImage && out.Kind != delivery.KindFile && out.Kind != delivery.KindRecord {
+		if !isMediaOutputKind(out.Kind) {
 			continue
 		}
 		input := media.Input{Name: out.Name, MIMEType: out.Source.MIMEType}
@@ -101,23 +101,19 @@ func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Outpu
 	}
 	receipt, sendErr := send(resolved)
 	if err := a.cacheMediaReceipt(ctx, prepared, receipt); err != nil {
-
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelWarn,
-				EventName:    "cache_sent_media_receipt_failed",
-				Module:       "delivery",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("cache sent media receipt failed\nerror=%v", err),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
-			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity = globalevents.LogIdentityFromExecution(facts)
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogRuntime,
+			Level:        slog.LevelWarn,
+			EventName:    "cache_sent_media_receipt_failed",
+			Module:       "delivery",
+			Type:         globalevents.ContentText,
+			Content:      fmt.Sprintf("cache sent media receipt failed\nerror=%v", err),
+			ContentLimit: 4096,
+			ResultStatus: globalevents.ResultFailed,
 		}
-
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		record.Identity = globalevents.LogIdentityFromExecution(facts)
+		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 	}
 	return receipt, sendErr
 }
@@ -126,20 +122,16 @@ func (a *Router) cacheMediaReceipt(ctx context.Context, outputs []delivery.Outpu
 	if a.mediaRetentionDays <= 0 {
 		return nil
 	}
-	sent := receipt.SentMessages
 	expiresAt := time.Now().AddDate(0, 0, a.mediaRetentionDays)
 	var errs []error
-	for _, message := range sent {
-		platformName := message.Platform
-		scopeID := message.ChatID
-		messageID := message.PlatformMessageID
+	for _, message := range receipt.SentMessages {
 		segmentIndex := 0
 		for _, outputIndex := range message.OutputIndexes {
 			out := outputs[outputIndex]
 			if out.Source.MediaID == "" || !isMediaOutputKind(out.Kind) {
 				continue
 			}
-			if err := a.saveMediaOutput(ctx, storage.MediaOutput{Platform: platformName, ChatType: message.ChatType, ChatID: scopeID, MessageID: messageID, SegmentIndex: segmentIndex, Kind: string(out.Kind), MediaID: out.Source.MediaID, ExpiresAt: expiresAt}); err != nil {
+			if err := a.saveMediaOutput(ctx, storage.MediaOutput{Platform: message.Platform, ChatType: message.ChatType, ChatID: message.ChatID, MessageID: message.PlatformMessageID, SegmentIndex: segmentIndex, Kind: string(out.Kind), MediaID: out.Source.MediaID, ExpiresAt: expiresAt}); err != nil {
 				errs = append(errs, err)
 			}
 			segmentIndex++

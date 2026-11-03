@@ -20,13 +20,10 @@ type NotificationTarget struct {
 	ChatType contextinfo.ChatType // Private, group or channel destination.
 	ID       string               // Platform user, group or channel ID, according to ChatType.
 }
-type NotificationReceipt struct {
-	PlatformMessageIDs []string // Actually sent messages; may be partial on failure.
-}
 
 // Routing is a short ordered handoff. Actual sending runs concurrently on each
 // platform signal; preserving admission order here prevents routing reordering.
-var NotificationRequested = signal.New[Notification, NotificationReceipt]("notification.requested", signal.Options[Notification]{Required: true, Single: true, Concurrency: 1})
+var NotificationRequested = signal.New[Notification, signal.Empty]("notification.requested", signal.Options[Notification]{Required: true, Single: true, Concurrency: 1})
 
 // NewNotification freezes public origin facts; platform-owned extensions already
 // follow contextinfo's immutable snapshot convention. It performs no sending.

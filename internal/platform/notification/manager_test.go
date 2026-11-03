@@ -27,9 +27,9 @@ func TestPlatformFailureDeliveryIsAsyncAndIsolated(t *testing.T) {
 	started := make(chan string, 8)
 	var slowCalls, fastCalls atomic.Int32
 	for _, name := range []string{"slow", "fast"} {
-		addTestPlatform(t, m, name, func(_ context.Context, n events.Notification) (events.NotificationReceipt, error) {
+		addTestPlatform(t, m, name, func(_ context.Context, n events.Notification) error {
 			if n.Text == "barrier" {
-				return events.NotificationReceipt{}, nil
+				return nil
 			}
 			if n.Level != slog.LevelError || n.Text != "平台 failed 异常退出：offline" || n.Target.Platform != name || n.Target.ID != "admin" || n.Target.ChatType != contextinfo.ChatPrivate || n.Origin != nil {
 				t.Errorf("unexpected failure notification: %+v", n)
@@ -38,11 +38,11 @@ func TestPlatformFailureDeliveryIsAsyncAndIsolated(t *testing.T) {
 				slowCalls.Add(1)
 				started <- name
 				<-release
-				return events.NotificationReceipt{}, errors.New("send failed")
+				return errors.New("send failed")
 			}
 			fastCalls.Add(1)
 			started <- name
-			return events.NotificationReceipt{}, nil
+			return nil
 		})
 	}
 	targets := []events.NotificationTarget{
@@ -91,11 +91,11 @@ func TestManagerCloseWaitsForSenderAndCanRetry(t *testing.T) {
 		defer close(release)
 		var calls atomic.Int32
 		var sendContext context.Context
-		s := addTestPlatform(t, m, "remote", func(ctx context.Context, _ events.Notification) (events.NotificationReceipt, error) {
+		s := addTestPlatform(t, m, "remote", func(ctx context.Context, _ events.Notification) error {
 			calls.Add(1)
 			sendContext = ctx
 			<-release
-			return events.NotificationReceipt{}, nil
+			return nil
 		})
 		targets := []events.NotificationTarget{{Platform: "remote", ChatType: contextinfo.ChatPrivate, ID: "admin"}}
 		m.NotifyPlatformFailure(context.Background(), "failed", errors.New("offline"), targets)
@@ -154,13 +154,13 @@ func testManager(t *testing.T, primary string) *Manager {
 	})
 	return m
 }
-func addTestPlatform(t *testing.T, m *Manager, name string, h signal.Handler[events.Notification, events.NotificationReceipt]) *signal.Signal[events.Notification, events.NotificationReceipt] {
+func addTestPlatform(t *testing.T, m *Manager, name string, h func(context.Context, events.Notification) error) *signal.Signal[events.Notification, signal.Empty] {
 	t.Helper()
 	s, err := m.AddPlatform(name, func(events.NotificationTarget) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.Connect(h, signal.ConnectOptions{}); err != nil {
+	if _, err = s.Observe(h, signal.ConnectOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	return s
@@ -169,17 +169,17 @@ func TestOriginalSourceAndPartialFailure(t *testing.T) {
 	m := testManager(t, "test")
 	wantErr := errors.New("partially sent")
 	origin := contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ChatType: contextinfo.ChatPrivate, ChatID: "one"}, PlatformMessageID: "original", PlatformData: "first-connection"}
-	addTestPlatform(t, m, "test", func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
+	addTestPlatform(t, m, "test", func(ctx context.Context, n events.Notification) error {
 		info, _ := contextinfo.ConversationFromContext(ctx)
 		if info != origin || n.Level != slog.LevelWarn {
 			t.Error("lost captured origin or severity", info, n)
 		}
-		return events.NotificationReceipt{PlatformMessageIDs: []string{"sent"}}, wantErr
+		return wantErr
 	})
 	n := events.NewNotification(contextinfo.WithConversation(context.Background(), origin), slog.LevelWarn, "warning")
 	worker := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: origin.Source, PlatformData: "other-connection"})
 	r, err := events.NotificationRequested.Emit(worker, n)
-	if !errors.Is(err, wantErr) || len(r) != 1 || len(r[0].Value.PlatformMessageIDs) != 1 || !r[0].Started {
+	if !errors.Is(err, wantErr) || len(r) != 1 || !errors.Is(r[0].Err, wantErr) || !r[0].Started {
 		t.Fatal(r, err)
 	}
 }
@@ -187,9 +187,9 @@ func TestOriginalSourceAndPartialFailure(t *testing.T) {
 func TestNotificationRoutingDoesNotInterpretExecutionMode(t *testing.T) {
 	m := testManager(t, "cli")
 	calls := 0
-	addTestPlatform(t, m, "cli", func(_ context.Context, n events.Notification) (events.NotificationReceipt, error) {
+	addTestPlatform(t, m, "cli", func(_ context.Context, n events.Notification) error {
 		calls++
-		return events.NotificationReceipt{}, nil
+		return nil
 	})
 	ctx := testutil.TaskContext(t.Context(), "cron")
 	ctx = contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ChatID: "old-origin", ChatType: "private"}})
@@ -211,16 +211,18 @@ func TestPlatformFullWarnsAndOtherPlatformStillSends(t *testing.T) {
 	started := make(chan struct{}, 8)
 	release := make(chan struct{})
 	defer close(release)
-	slow := addTestPlatform(t, m, "slow", func(context.Context, events.Notification) (events.NotificationReceipt, error) {
+	slow := addTestPlatform(t, m, "slow", func(context.Context, events.Notification) error {
 		select {
 		case started <- struct{}{}:
 		default:
 		}
 		<-release
-		return events.NotificationReceipt{}, nil
+		return nil
 	})
-	addTestPlatform(t, m, "fast", func(context.Context, events.Notification) (events.NotificationReceipt, error) {
-		return events.NotificationReceipt{PlatformMessageIDs: []string{"fast"}}, nil
+	var fastCalls atomic.Int32
+	addTestPlatform(t, m, "fast", func(context.Context, events.Notification) error {
+		fastCalls.Add(1)
+		return nil
 	})
 	for i := range 8 {
 		if _, err := slow.EmitAsync(context.Background(), events.Notification{Target: events.NotificationTarget{ID: string(rune('a' + i))}, Text: "busy"}); err != nil {
@@ -261,7 +263,7 @@ func TestPlatformFullWarnsAndOtherPlatformStillSends(t *testing.T) {
 	n.Target.Platform = "fast"
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if r, err := events.NotificationRequested.Emit(ctx, n); err != nil || r[0].Value.PlatformMessageIDs[0] != "fast" {
+	if r, err := events.NotificationRequested.Emit(ctx, n); err != nil || len(r) != 1 || !r[0].Started || fastCalls.Load() != 1 {
 		t.Fatal(r, err)
 	}
 }
@@ -276,13 +278,13 @@ func TestQueuedNotificationRejectsExpiredBinding(t *testing.T) {
 		}
 	}()
 	var calls atomic.Int32
-	s := addTestPlatform(t, m, "cli", func(_ context.Context, n events.Notification) (events.NotificationReceipt, error) {
+	s := addTestPlatform(t, m, "cli", func(_ context.Context, n events.Notification) error {
 		calls.Add(1)
 		if n.Text == "block" {
 			close(started)
 			<-release
 		}
-		return events.NotificationReceipt{}, nil
+		return nil
 	})
 	store, err := sqlite.New(context.Background(), ":memory:")
 	if err != nil {
@@ -335,8 +337,8 @@ func TestManagerOwnershipAndMissingPlatform(t *testing.T) {
 	if _, err := events.NotificationRequested.Emit(context.Background(), events.Notification{Text: "no receiver"}); !errors.Is(err, signal.ErrNoReceiver) {
 		t.Fatal(err)
 	}
-	if _, err := s.Connect(func(context.Context, events.Notification) (events.NotificationReceipt, error) {
-		return events.NotificationReceipt{}, nil
+	if _, err := s.Observe(func(context.Context, events.Notification) error {
+		return nil
 	}, signal.ConnectOptions{}); err != nil {
 		t.Fatal(err)
 	}
@@ -356,9 +358,9 @@ func TestRegisteredValidatorRunsOnceBeforeAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Connect(func(context.Context, events.Notification) (events.NotificationReceipt, error) {
+	if _, err := s.Observe(func(context.Context, events.Notification) error {
 		deliveries.Add(1)
-		return events.NotificationReceipt{}, nil
+		return nil
 	}, signal.ConnectOptions{}); err != nil {
 		t.Fatal(err)
 	}
@@ -379,9 +381,9 @@ func TestNotificationDoesNotInferTargetFromScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	var deliveries atomic.Int32
-	if _, err := s.Connect(func(context.Context, events.Notification) (events.NotificationReceipt, error) {
+	if _, err := s.Observe(func(context.Context, events.Notification) error {
 		deliveries.Add(1)
-		return events.NotificationReceipt{}, nil
+		return nil
 	}, signal.ConnectOptions{}); err != nil {
 		t.Fatal(err)
 	}

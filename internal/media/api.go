@@ -3,10 +3,8 @@ package media
 import (
 	"context"
 	"elbot/internal/signal"
-	"errors"
 	"io"
 	"sync/atomic"
-	"time"
 
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
@@ -60,26 +58,6 @@ func (m *MediaCenter) ImportFile(ctx context.Context, path string, input Input, 
 func (m *MediaCenter) ImportReader(ctx context.Context, input io.Reader, size int64, spec Input, limits ImportLimits) (MediaInfo, error) {
 	info, err := m.objects.ImportReader(ctx, input, size, share.Input{Name: spec.Name, MIMEType: spec.MIMEType, Source: share.Source(spec.Source)}, share.ImportLimits(limits))
 	return MediaInfo(info), err
-}
-
-// Open 返回实际读取器和本次使用 ID；关闭读取器后发布使用结束。
-func (m *MediaCenter) Open(ctx context.Context, id string) (io.ReadCloser, MediaInfo, UsageID, error) {
-	if m.closed.Load() {
-		return nil, MediaInfo{}, "", signal.ErrClosed
-	}
-	held, usageID, err := m.transfer.Hold(ctx, id)
-	if err != nil {
-		return nil, MediaInfo{}, "", err
-	}
-	reader, err := held.Open(ctx)
-	if err != nil {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-		ids := []string{usageID}
-		m.transfer.FinishUsages(ids)
-		return nil, MediaInfo{}, "", errors.Join(err, m.transfer.CleanupUsages(ctx, ids))
-	}
-	return reader, MediaInfo(held.Info()), UsageID(usageID), nil
 }
 
 // Read 读取完整内容并结束本次读取持有，保留读取和清理错误。

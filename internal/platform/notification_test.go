@@ -61,14 +61,14 @@ func TestFailureNotificationWiringSurvivesIngressStop(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			connection, err := queue.Connect(func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
+			connection, err := queue.Observe(func(ctx context.Context, n events.Notification) error {
 				if ctx.Err() != nil || n.Target.ChatType != contextinfo.ChatPrivate || n.Level != slog.LevelError || n.Text != "平台 failed 异常退出：offline" {
 					t.Errorf("unexpected notification: %+v, context error: %v", n, ctx.Err())
 				}
 				mu.Lock()
 				destinations = append(destinations, n.Target.Platform+":"+n.Target.ID)
 				mu.Unlock()
-				return events.NotificationReceipt{PlatformMessageIDs: []string{"sent"}}, nil
+				return nil
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)

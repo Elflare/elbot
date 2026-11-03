@@ -12,22 +12,22 @@ import (
 	"fmt"
 )
 
-func (a *Adapter) ConnectNotifications(s *signal.Signal[events.Notification, events.NotificationReceipt]) (*signal.Connection, error) {
-	return s.Connect(func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
+func (a *Adapter) ConnectNotifications(s *signal.Signal[events.Notification, signal.Empty]) (*signal.Connection, error) {
+	return s.Observe(func(ctx context.Context, n events.Notification) error {
 		err := a.sendTUIMessage(tuiNoticeMsg{Text: n.Text, Level: n.Level}, "[notice] "+n.Text)
 		if err != nil {
 			delivery.LogSendResult(ctx, share.NotificationTarget(n), delivery.Text(n.Text), err)
 		}
-		return events.NotificationReceipt{}, err
+		return err
 	}, signal.ConnectOptions{})
 }
-func (s *RemoteServer) ConnectNotifications(source *signal.Signal[events.Notification, events.NotificationReceipt]) (*signal.Connection, error) {
-	return source.Connect(func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
+func (s *RemoteServer) ConnectNotifications(source *signal.Signal[events.Notification, signal.Empty]) (*signal.Connection, error) {
+	return source.Observe(func(ctx context.Context, n events.Notification) error {
 		target := share.NotificationTarget(n)
 		clients, err := s.targetClients(ctx, target)
 		if err != nil {
 			delivery.LogSendResult(ctx, target, delivery.Text(n.Text), err)
-			return events.NotificationReceipt{}, err
+			return err
 		}
 		var errs []error
 		for _, client := range clients {
@@ -38,6 +38,6 @@ func (s *RemoteServer) ConnectNotifications(source *signal.Signal[events.Notific
 				_ = client.conn.CloseNow()
 			}
 		}
-		return events.NotificationReceipt{}, errors.Join(errs...)
+		return errors.Join(errs...)
 	}, signal.ConnectOptions{})
 }

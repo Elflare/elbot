@@ -41,7 +41,7 @@ func TestConnectNotifications(t *testing.T) {
 		{name: "canceled before send", canceled: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			source := signal.New[events.Notification, events.NotificationReceipt](t.Name())
+			source := signal.New[events.Notification, signal.Empty](t.Name())
 			defer source.Close(context.Background())
 			calls := 0
 			sender := notificationSender{send: func(_ context.Context, got delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
@@ -68,11 +68,8 @@ func TestConnectNotifications(t *testing.T) {
 				}
 				return
 			}
-			if !errors.Is(err, tt.err) || calls != 1 || len(results) != 1 {
+			if !errors.Is(err, tt.err) || calls != 1 || len(results) != 1 || !results[0].Started {
 				t.Fatalf("calls = %d, results = %+v, err = %v", calls, results, err)
-			}
-			if !reflect.DeepEqual(results[0].Value.PlatformMessageIDs, []string{"sent"}) {
-				t.Fatalf("receipt = %+v", results[0].Value)
 			}
 		})
 	}

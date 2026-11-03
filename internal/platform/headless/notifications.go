@@ -17,9 +17,9 @@ func ValidateNotificationTarget(target events.NotificationTarget) error {
 	return nil
 }
 
-func (a *Adapter) ConnectNotifications(source *signal.Signal[events.Notification, events.NotificationReceipt]) (*signal.Connection, error) {
-	return source.Connect(func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
+func (a *Adapter) ConnectNotifications(source *signal.Signal[events.Notification, signal.Empty]) (*signal.Connection, error) {
+	return source.Observe(func(ctx context.Context, n events.Notification) error {
 		_ = events.EmitLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: n.Level, EventName: "runtime_notification", Module: "notification", Content: n.Text, ContentLimit: 4096})
-		return events.NotificationReceipt{}, nil
+		return nil
 	}, signal.ConnectOptions{})
 }

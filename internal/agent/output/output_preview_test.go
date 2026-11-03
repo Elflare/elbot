@@ -156,11 +156,11 @@ func TestPreviewGroupsToolNoticesBeforeHook(t *testing.T) {
 				t.Fatal(err)
 			}
 			var seen []string
-			_, err = platformSignal.Connect(func(_ context.Context, n events.Notification) (events.NotificationReceipt, error) {
+			_, err = platformSignal.Observe(func(_ context.Context, n events.Notification) error {
 				if n.Text != "preview test barrier" {
 					seen = append(seen, n.Text)
 				}
-				return events.NotificationReceipt{}, nil
+				return nil
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)

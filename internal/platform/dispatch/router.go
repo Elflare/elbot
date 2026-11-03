@@ -36,14 +36,11 @@ type Options struct {
 
 type Router struct {
 	publishUsageFinished func(context.Context, []media.UsageID) // 实际发送结束后的事实通知。
-	primary              interface {
-		Name() string
-		delivery.MessageSender
-	}
-	mu              sync.RWMutex
-	senders         map[string]delivery.MessageSender
-	saveMediaOutput func(context.Context, storage.MediaOutput) error
-	media           interface {
+	primary              string
+	mu                   sync.RWMutex
+	senders              map[string]delivery.MessageSender
+	saveMediaOutput      func(context.Context, storage.MediaOutput) error
+	media                interface {
 		Info(context.Context, string) (media.MediaInfo, error)
 		ImportURL(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
 		ImportFile(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
@@ -54,7 +51,7 @@ type Router struct {
 }
 
 func New(opts Options) *Router {
-	r := &Router{primary: opts.Primary, senders: make(map[string]delivery.MessageSender), saveMediaOutput: opts.SaveMediaOutput, media: opts.Media, mediaRetentionDays: opts.MediaRetentionDays}
+	r := &Router{primary: opts.Primary.Name(), senders: make(map[string]delivery.MessageSender), saveMediaOutput: opts.SaveMediaOutput, media: opts.Media, mediaRetentionDays: opts.MediaRetentionDays}
 	r.publishUsageFinished = opts.PublishUsageFinished
 	r.RegisterPlatform(opts.Primary)
 	return r
@@ -83,7 +80,7 @@ func (r *Router) sender(ctx context.Context, target delivery.Target) (delivery.M
 		}
 	}
 	if name == "" {
-		name = r.primary.Name()
+		name = r.primary
 	}
 	r.mu.RLock()
 	sender := r.senders[name]

@@ -8,6 +8,6 @@ import (
 	"elbot/internal/signal"
 )
 
-func (a *Adapter) ConnectNotifications(s *signal.Signal[events.Notification, events.NotificationReceipt]) (*signal.Connection, error) {
+func (a *Adapter) ConnectNotifications(s *signal.Signal[events.Notification, signal.Empty]) (*signal.Connection, error) {
 	return share.ConnectNotifications(s, a)
 }

@@ -6,8 +6,6 @@ import (
 	"context"
 	"io"
 
-	"elbot/internal/delivery"
-	"elbot/internal/llm"
 	"elbot/internal/media"
 )
 
@@ -18,13 +16,9 @@ type MediaAPI interface {
 	ImportFile(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
 	ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (media.MediaInfo, error)
 	ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (media.MediaInfo, error)
-	Open(context.Context, string) (io.ReadCloser, media.MediaInfo, media.UsageID, error)
 	Read(context.Context, string) ([]byte, media.MediaInfo, error)
 	Export(context.Context, string, string) (media.MediaInfo, error)
 	Info(context.Context, string) (media.MediaInfo, error)
-	AcquireForLLM(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error)
-	ResolveForOutput(context.Context, string) (delivery.Source, media.UsageID, error)
-	PublishUsageFinished(context.Context, media.UsageFinishedEvent)
 	AddReference(context.Context, media.Reference) error
 	RemoveReference(context.Context, media.Reference) error
 }

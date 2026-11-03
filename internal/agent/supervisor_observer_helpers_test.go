@@ -32,9 +32,9 @@ func connectTestNotifications(t *testing.T, router *dispatch.Router) *notificati
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.Connect(func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
-		r, err := router.SendTo(ctx, delivery.Target{Platform: n.Target.Platform, ChatID: n.Target.ID, ChatType: n.Target.ChatType}, []delivery.Output{delivery.Text(n.Text)})
-		return events.NotificationReceipt{PlatformMessageIDs: r.PlatformMessageIDs}, err
+	_, err = s.Observe(func(ctx context.Context, n events.Notification) error {
+		_, err := router.SendTo(ctx, delivery.Target{Platform: n.Target.Platform, ChatID: n.Target.ID, ChatType: n.Target.ChatType}, []delivery.Output{delivery.Text(n.Text)})
+		return err
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

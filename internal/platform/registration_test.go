@@ -146,10 +146,10 @@ type registeredTestRuntime struct {
 
 func (r *registeredTestRuntime) Name() string                { return r.name }
 func (r *registeredTestRuntime) Close(context.Context) error { r.closed = true; return nil }
-func (r *registeredTestRuntime) ConnectNotifications(s *signal.Signal[events.Notification, events.NotificationReceipt]) (*signal.Connection, error) {
-	return s.Connect(func(_ context.Context, n events.Notification) (events.NotificationReceipt, error) {
+func (r *registeredTestRuntime) ConnectNotifications(s *signal.Signal[events.Notification, signal.Empty]) (*signal.Connection, error) {
+	return s.Observe(func(_ context.Context, n events.Notification) error {
 		r.received <- n.Text
-		return events.NotificationReceipt{}, nil
+		return nil
 	}, signal.ConnectOptions{})
 }
 

@@ -25,14 +25,14 @@ func TestQueuedPreviewRespectsCancellation(t *testing.T) {
 	}
 	entered, release := make(chan struct{}), make(chan struct{})
 	seen := make(chan string, 8)
-	_, err = s.Connect(func(_ context.Context, n events.Notification) (events.NotificationReceipt, error) {
+	_, err = s.Observe(func(_ context.Context, n events.Notification) error {
 		if n.Text == "block" {
 			close(entered)
 			<-release
 		} else {
 			seen <- n.Text
 		}
-		return events.NotificationReceipt{}, nil
+		return nil
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

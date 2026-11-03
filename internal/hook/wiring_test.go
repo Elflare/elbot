@@ -38,9 +38,9 @@ func TestSupervisorLoadsRulesAtStartAndKeepsConfigFailureNonFatal(t *testing.T) 
 		t.Fatal(err)
 	}
 	notices := make(chan string, 2)
-	connection, err := events.NotificationRequested.Connect(func(_ context.Context, notice events.Notification) (events.NotificationReceipt, error) {
+	connection, err := events.NotificationRequested.Observe(func(_ context.Context, notice events.Notification) error {
 		notices <- notice.Text
-		return events.NotificationReceipt{}, nil
+		return nil
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

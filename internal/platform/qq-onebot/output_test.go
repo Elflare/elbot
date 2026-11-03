@@ -37,12 +37,8 @@ func TestNotificationDeliversExplicitGroupToolText(t *testing.T) {
 	adapter.transport = transport
 	ctx := testTargetContext(target{MessageType: "group", GroupID: 9})
 
-	receipt, err := emitTestNotification(t, adapter, ctx, "[tool] 正在调用 shell：{}")
-	if err != nil {
+	if err := emitTestNotification(t, adapter, ctx, "[tool] 正在调用 shell：{}"); err != nil {
 		t.Fatalf("notification: %v", err)
-	}
-	if len(receipt.PlatformMessageIDs) != 1 {
-		t.Fatalf("receipt = %#v", receipt)
 	}
 	if got := calls.Load(); got != 1 {
 		t.Fatalf("transport calls = %d", got)
@@ -59,31 +55,24 @@ func TestNotificationKeepsPrivateToolPreview(t *testing.T) {
 	adapter.transport = transport
 	ctx := testTargetContext(target{MessageType: "private", UserID: 1})
 
-	receipt, err := emitTestNotification(t, adapter, ctx, "[tool] 正在调用 shell：{}")
-	if err != nil {
+	if err := emitTestNotification(t, adapter, ctx, "[tool] 正在调用 shell：{}"); err != nil {
 		t.Fatalf("notification: %v", err)
-	}
-	if len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "88" {
-		t.Fatalf("receipt = %#v", receipt)
 	}
 	if action != "send_private_msg" {
 		t.Fatalf("action = %q", action)
 	}
 }
-func emitTestNotification(t *testing.T, adapter *Adapter, ctx context.Context, text string) (events.NotificationReceipt, error) {
+func emitTestNotification(t *testing.T, adapter *Adapter, ctx context.Context, text string) error {
 	t.Helper()
-	s := signal.New[events.Notification, events.NotificationReceipt]("onebot-test-notification")
+	s := signal.New[events.Notification, signal.Empty]("onebot-test-notification")
 	defer s.Close(context.Background())
 	connection, err := adapter.ConnectNotifications(s)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer connection.Close(context.Background())
-	r, err := s.Emit(ctx, events.NewNotification(ctx, slog.LevelDebug, text))
-	if len(r) == 0 {
-		return events.NotificationReceipt{}, err
-	}
-	return r[0].Value, err
+	_, err = s.Emit(ctx, events.NewNotification(ctx, slog.LevelDebug, text))
+	return err
 }
 
 func TestOutputSegmentsFileUsesBase64ForPlainPath(t *testing.T) {

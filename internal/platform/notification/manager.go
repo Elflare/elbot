@@ -26,8 +26,8 @@ type Manager struct {
 }
 
 type platformRoute struct {
-	queue    *signal.Signal[events.Notification, events.NotificationReceipt] // 目的地独立调度及关闭资源。
-	validate func(events.NotificationTarget) error                           // 提供方的入队前校验，不在接收方重复执行。
+	queue    *signal.Signal[events.Notification, signal.Empty] // 目的地独立调度及关闭资源。
+	validate func(events.NotificationTarget) error             // 提供方的入队前校验，不在接收方重复执行。
 }
 
 func New(primary string) (*Manager, error) {
@@ -52,7 +52,7 @@ func (m *Manager) NotifyPlatformFailure(ctx context.Context, name string, failur
 
 // AddPlatform creates the platform's independent scheduling resources. The
 // adapter connects its sender; it does not own another notification queue.
-func (m *Manager) AddPlatform(name string, validate func(events.NotificationTarget) error) (*signal.Signal[events.Notification, events.NotificationReceipt], error) {
+func (m *Manager) AddPlatform(name string, validate func(events.NotificationTarget) error) (*signal.Signal[events.Notification, signal.Empty], error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
@@ -61,7 +61,7 @@ func (m *Manager) AddPlatform(name string, validate func(events.NotificationTarg
 	if _, ok := m.platforms[name]; ok {
 		return nil, fmt.Errorf("notification platform %q already registered", name)
 	}
-	s := signal.New[events.Notification, events.NotificationReceipt]("notification."+name, signal.Options[events.Notification]{Required: true, Single: true, Key: func(n events.Notification) any { return n.Target }, Before: func(ctx context.Context, _ events.Notification) error {
+	s := signal.New[events.Notification, signal.Empty]("notification."+name, signal.Options[events.Notification]{Required: true, Single: true, Key: func(n events.Notification) any { return n.Target }, Before: func(ctx context.Context, _ events.Notification) error {
 		if binding, ok := session.BindingFromContext(ctx); ok && !binding.Valid() {
 			return context.Canceled
 		}
@@ -70,9 +70,9 @@ func (m *Manager) AddPlatform(name string, validate func(events.NotificationTarg
 	m.platforms[name] = platformRoute{queue: s, validate: validate}
 	return s, nil
 }
-func (m *Manager) route(ctx context.Context, n events.Notification) *signal.Emission[events.NotificationReceipt] {
+func (m *Manager) route(ctx context.Context, n events.Notification) *signal.Emission[signal.Empty] {
 	if strings.TrimSpace(n.Text) == "" {
-		return signal.Resolved(signal.Result[events.NotificationReceipt]{Err: errors.New("notification text is empty")})
+		return signal.Resolved(signal.Result[signal.Empty]{Err: errors.New("notification text is empty")})
 	}
 	if n.Origin != nil {
 		ctx = contextinfo.WithConversation(ctx, *n.Origin)
@@ -88,13 +88,13 @@ func (m *Manager) route(ctx context.Context, n events.Notification) *signal.Emis
 	closed := m.closed
 	m.mu.Unlock()
 	if closed {
-		return signal.Resolved(signal.Result[events.NotificationReceipt]{Err: signal.ErrClosed})
+		return signal.Resolved(signal.Result[signal.Empty]{Err: signal.ErrClosed})
 	}
 	if !ok {
-		return signal.Resolved(signal.Result[events.NotificationReceipt]{Err: fmt.Errorf("notification platform %q is not configured", n.Target.Platform)})
+		return signal.Resolved(signal.Result[signal.Empty]{Err: fmt.Errorf("notification platform %q is not configured", n.Target.Platform)})
 	}
 	if err := route.validate(n.Target); err != nil {
-		return signal.Resolved(signal.Result[events.NotificationReceipt]{Err: err})
+		return signal.Resolved(signal.Result[signal.Empty]{Err: err})
 	}
 	e, err := route.queue.EmitAsync(ctx, n)
 	if errors.Is(err, signal.ErrQueueFull) {
@@ -103,7 +103,7 @@ func (m *Manager) route(ctx context.Context, n events.Notification) *signal.Emis
 		_, _ = events.EmitLogAsync(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_queue_full", Module: "notification", Type: events.ContentText, Content: fmt.Sprintf("notification queue full: platform=%s chat_type=%s id=%s", n.Target.Platform, n.Target.ChatType, n.Target.ID), ContentLimit: 4096, ResultStatus: events.ResultFailed})
 	}
 	if e == nil {
-		return signal.Resolved(signal.Result[events.NotificationReceipt]{Err: err})
+		return signal.Resolved(signal.Result[signal.Empty]{Err: err})
 	}
 	return e
 }

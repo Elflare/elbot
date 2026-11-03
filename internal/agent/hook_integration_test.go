@@ -100,9 +100,9 @@ data: [DONE]
 	}
 	t.Cleanup(func() { _ = tools.Close(context.Background()) })
 	platform := &integrationPlatform{}
-	notifications, err := events.NotificationRequested.Connect(func(ctx context.Context, notice events.Notification) (events.NotificationReceipt, error) {
+	notifications, err := events.NotificationRequested.Observe(func(ctx context.Context, notice events.Notification) error {
 		_, err := platform.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(notice.Text)})
-		return events.NotificationReceipt{}, err
+		return err
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

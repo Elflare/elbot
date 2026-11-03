@@ -13,9 +13,9 @@ import (
 
 func TestNotificationFactsUseGlobalSignalAndVisionDedup(t *testing.T) {
 	var notices []events.Notification
-	connection, err := events.NotificationRequested.Connect(func(_ context.Context, n events.Notification) (events.NotificationReceipt, error) {
+	connection, err := events.NotificationRequested.Observe(func(_ context.Context, n events.Notification) error {
 		notices = append(notices, n)
-		return events.NotificationReceipt{}, nil
+		return nil
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

@@ -95,7 +95,7 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 		return contextinfo.WithConversation(ctx, info)
 	}
 	firstCtx, secondCtx := snapshot(first), snapshot(second)
-	notices := signal.New[events.Notification, events.NotificationReceipt]("test.cli.notice")
+	notices := signal.New[events.Notification, signal.Empty]("test.cli.notice")
 	defer notices.Close(context.Background())
 	if connection, err := s.ConnectNotifications(notices); err != nil {
 		t.Fatal(err)
