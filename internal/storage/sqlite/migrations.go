@@ -854,7 +854,11 @@ ALTER TABLE elnis_events ADD COLUMN origin_name TEXT NOT NULL DEFAULT '';`); err
 	}
 	if err := migrateRows(ctx, tx, "elnis_events", func(row map[string]any) error {
 		kind, name, ok := strings.Cut(row["token_name"].(string), ":")
-		if !ok || name == "" || (kind != "http_token" && kind != "hook" && kind != "internal") {
+		if !ok {
+			// 引入来源标签前，Elnis 只接收 HTTP 请求，直接保存 token 名称。
+			kind, name = "http_token", kind
+		}
+		if name == "" || (kind != "http_token" && kind != "hook" && kind != "internal") {
 			return fmt.Errorf("ambiguous Elnis origin %q", row["token_name"])
 		}
 		_, err := tx.ExecContext(ctx, "UPDATE elnis_events SET origin_kind=?, origin_name=? WHERE rowid=?", kind, name, row["_rowid"])

@@ -31,6 +31,83 @@ func legacyIdentityDB(t *testing.T) *sql.DB {
 	return db
 }
 
+func TestStructuredIdentityMigrationElnisOrigins(t *testing.T) {
+	db := legacyIdentityDB(t)
+	now := storage.FormatTime(storage.Now())
+	cases := []struct {
+		token string
+		kind  string
+		name  string
+	}{
+		{"home", "http_token", "home"},
+		{"http_token:home", "http_token", "home"},
+		{"http_token:home:room", "http_token", "home:room"},
+		{"hook:daily:check", "hook", "daily:check"},
+		{"internal:worker:one", "internal", "worker:one"},
+	}
+	for _, tc := range cases {
+		if _, err := db.Exec(`INSERT INTO elnis_events(id,event_key,token_name,elwisp_name,source,source_id,mode,content_hash,status,received_at,created_at,updated_at)
+VALUES(?,?,?,'watch','source',?,'record','hash','completed',?,?,?)`, tc.token, tc.token, tc.token, tc.token, now, now, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for range 2 {
+		if err := runMigrations(t.Context(), db); err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range cases {
+			var kind, name, sourceID, status string
+			if err := db.QueryRow("SELECT origin_kind,origin_name,source_id,status FROM elnis_events WHERE id=?", tc.token).Scan(&kind, &name, &sourceID, &status); err != nil {
+				t.Fatal(err)
+			}
+			if kind != tc.kind || name != tc.name || sourceID != tc.token || status != "completed" {
+				t.Fatalf("%q migrated to %q/%q, source=%q status=%q", tc.token, kind, name, sourceID, status)
+			}
+		}
+	}
+}
+
+func TestStructuredIdentityMigrationRejectsInvalidElnisOrigins(t *testing.T) {
+	for _, token := range []string{"", "http_token:", "hook:", "internal:", "unknown:home"} {
+		t.Run(token, func(t *testing.T) {
+			db := legacyIdentityDB(t)
+			now := storage.FormatTime(storage.Now())
+			for _, item := range []struct{ id, token string }{
+				{"valid", "http_token:home"},
+				{"invalid", token},
+			} {
+				if _, err := db.Exec(`INSERT INTO elnis_events(id,event_key,token_name,elwisp_name,source,source_id,mode,content_hash,status,received_at,created_at,updated_at)
+VALUES(?,?,?,'watch','source',?,'record','hash','completed',?,?,?)`, item.id, item.id, item.token, item.id, now, now, now); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := runMigrations(t.Context(), db); err == nil || !strings.Contains(err.Error(), "ambiguous Elnis origin") {
+				t.Fatalf("invalid origin error = %v", err)
+			}
+			var version, count int
+			if err := db.QueryRow("SELECT max(version) FROM schema_migrations").Scan(&version); err != nil || version != 30 {
+				t.Fatalf("failed migration version=%d, err=%v", version, err)
+			}
+			if err := db.QueryRow("SELECT count(*) FROM elnis_events").Scan(&count); err != nil || count != 2 {
+				t.Fatalf("rollback lost events: count=%d, err=%v", count, err)
+			}
+			var retained string
+			if err := db.QueryRow("SELECT token_name FROM elnis_events WHERE id='invalid'").Scan(&retained); err != nil || retained != token {
+				t.Fatalf("rollback token=%q, err=%v", retained, err)
+			}
+			if err := db.QueryRow("SELECT count(*) FROM pragma_table_info('elnis_events') WHERE name IN ('origin_kind','origin_name')").Scan(&count); err != nil || count != 0 {
+				t.Fatalf("rollback retained new columns: count=%d, err=%v", count, err)
+			}
+			if _, err := db.Exec("UPDATE elnis_events SET token_name='home' WHERE id='invalid'"); err != nil {
+				t.Fatal(err)
+			}
+			if err := runMigrations(t.Context(), db); err != nil {
+				t.Fatalf("retry after correcting old origin: %v", err)
+			}
+		})
+	}
+}
+
 func TestStructuredIdentityMigrationPreservesAddressesAndReferences(t *testing.T) {
 	db := legacyIdentityDB(t)
 	now := storage.FormatTime(storage.Now())
