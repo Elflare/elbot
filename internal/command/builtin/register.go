@@ -28,18 +28,6 @@ type Module interface {
 
 type HandlerFactory func(Deps) command.Handler
 
-type CommandGroup struct {
-	Factories []HandlerFactory
-}
-
-func NewCommandGroup(factories ...HandlerFactory) CommandGroup {
-	return CommandGroup{Factories: factories}
-}
-
-func (g CommandGroup) RegisterCommands(registrar Registrar, deps Deps) error {
-	return RegisterFactories(registrar, deps, g.Factories...)
-}
-
 type ModelService interface {
 	Resolve(config.ModelSelection) modelmgr.Selection
 	ReloadProviders(context.Context) error

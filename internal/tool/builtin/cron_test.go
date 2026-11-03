@@ -21,7 +21,8 @@ func TestCronToolCallReturnsCurrentTimeHint(t *testing.T) {
 }
 
 func TestResolveRunAtUsesRelativeOffsets(t *testing.T) {
-	got, err := resolveRunAt("", relativeOffset{Minutes: 10})
+	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.Local)
+	got, err := resolveRunAtAt("", relativeOffset{Minutes: 10}, now)
 	if err != nil {
 		t.Fatalf("resolveRunAt: %v", err)
 	}
@@ -29,13 +30,14 @@ func TestResolveRunAtUsesRelativeOffsets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse resolved run_at: %v", err)
 	}
-	if d := time.Until(parsed); d < 9*time.Minute || d > 11*time.Minute {
+	if d := parsed.Sub(now); d != 10*time.Minute {
 		t.Fatalf("resolved duration = %s, run_at=%s", d, got)
 	}
 }
 
 func TestResolveRunAtUsesWeeksAndMonths(t *testing.T) {
-	got, err := resolveRunAt("", relativeOffset{Weeks: 1, Months: 1})
+	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.Local)
+	got, err := resolveRunAtAt("", relativeOffset{Weeks: 1, Months: 1}, now)
 	if err != nil {
 		t.Fatalf("resolveRunAt: %v", err)
 	}
@@ -43,24 +45,24 @@ func TestResolveRunAtUsesWeeksAndMonths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse resolved run_at: %v", err)
 	}
-	if !parsed.After(time.Now().AddDate(0, 0, 6)) {
-		t.Fatalf("resolved run_at too early: %s", got)
+	if want := time.Date(2026, 2, 9, 3, 4, 5, 0, time.Local); !parsed.Equal(want) {
+		t.Fatalf("resolved run_at = %s, want %s", got, want)
 	}
 }
 
 func TestResolveRunAtRejectsAbsoluteAndRelativeTogether(t *testing.T) {
-	_, err := resolveRunAt("2026-01-02 03:04:05", relativeOffset{Minutes: 1})
+	_, err := resolveRunAtAt("2026-01-02 03:04:05", relativeOffset{Minutes: 1}, time.Date(2026, 1, 2, 3, 4, 5, 0, time.Local))
 	if err == nil || !strings.Contains(err.Error(), "不能和 run_after_*") {
 		t.Fatalf("error = %v", err)
 	}
 }
 
 func TestResolveUpdateRunAtReturnsPointerForRelativeOffset(t *testing.T) {
-	got, err := resolveUpdateRunAt(nil, relativeOffset{Hours: 1})
+	got, err := resolveUpdateRunAtAt(nil, relativeOffset{Hours: 1}, time.Date(2026, 1, 2, 3, 4, 5, 0, time.Local))
 	if err != nil {
 		t.Fatalf("resolveUpdateRunAt: %v", err)
 	}
-	if got == nil || *got == "" {
+	if got == nil || *got != "2026-01-02 04:04:05" {
 		t.Fatalf("run_at pointer = %#v", got)
 	}
 }

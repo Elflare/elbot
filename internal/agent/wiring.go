@@ -29,7 +29,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/request"
-	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
@@ -207,9 +206,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	m.execution = execution
 	m.background = agentinput.NewBackgroundHandler(agentinput.BackgroundHandlerDeps{
 		Sessions: m.sessions, Identity: identity, Execution: execution, Preloader: deps.Tools, ToolState: deps.Tools,
-		WithPermission: func(ctx context.Context) context.Context {
-			return security.WithPermission(ctx, deps.Permission)
-		},
 		EnsureWorkspaceDir: func(ctx context.Context, id, dir string) error {
 			return m.sessions.WorkspaceStore(id).EnsureWorkspaceDir(ctx, dir)
 		},
@@ -293,7 +289,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		completion.ForkMessageSource{Router: m.commands, Sessions: m.sessions, Store: deps.Store, Scope: identity.Scope},
 		completion.ToolDirectiveSource{
 			Context: func(ctx context.Context) (context.Context, error) {
-				ctx = contextinfo.WithActor(security.WithPermission(ctx, deps.Permission), identity.Actor(ctx))
+				ctx = contextinfo.WithActor(ctx, identity.Actor(ctx))
 				row, err := m.sessions.Current(ctx, identity.Scope(ctx))
 				if err != nil && !errors.Is(err, session.ErrNoCurrentSession) {
 					return ctx, err

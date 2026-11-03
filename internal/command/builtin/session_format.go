@@ -199,10 +199,6 @@ func truncateRunes(text string, maxRunes int) string {
 	return string(runes[:maxRunes]) + "..."
 }
 
-func formatSessions(sessions []storage.SessionSummary, currentID string) string {
-	return formatSessionsWithOffset(sessions, currentID, 0)
-}
-
 func formatSessionsWithOffset(sessions []storage.SessionSummary, currentID string, numberOffset int) string {
 	var sb strings.Builder
 	for i, s := range sessions {

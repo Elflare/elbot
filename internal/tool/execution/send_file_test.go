@@ -92,8 +92,9 @@ func TestSendFileSourcePermissionsAndConfirmation(t *testing.T) {
 				t.Fatal(err)
 			}
 			deps := &runnerTestDeps{reject: tc.reject}
+			committer := &testToolCommitter{}
 			result := manager.Run(callCtx, deps, share.RunRequest{
-				Committer: &testToolCommitter{},
+				Committer: committer,
 				Session:   &storage.Session{ID: "send-file", Mode: storage.SessionModeWork},
 				Actor:     actor,
 				Calls:     []llm.ToolCallRequest{{ID: "send-file-call", Name: "send_file", Arguments: string(args)}},
@@ -104,10 +105,10 @@ func TestSendFileSourcePermissionsAndConfirmation(t *testing.T) {
 			if deps.confirmed != tc.wantConfirm {
 				t.Fatalf("confirmed = %v, want %v", deps.confirmed, tc.wantConfirm)
 			}
-			if len(result.Messages) != 1 {
-				t.Fatalf("messages = %#v", result.Messages)
+			if len(committer.messages) != 1 {
+				t.Fatalf("messages = %#v", committer.messages)
 			}
-			content := llm.SegmentsContentText(result.Messages[0].Segments)
+			content := llm.SegmentsContentText(committer.messages[0].Segments)
 			if tc.wantError != "" {
 				if deps.completed != 0 || !strings.Contains(content, tc.wantError) {
 					t.Fatalf("completed = %d, content = %q, want error %q", deps.completed, content, tc.wantError)

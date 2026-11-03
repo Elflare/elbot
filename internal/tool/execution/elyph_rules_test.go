@@ -52,6 +52,7 @@ type ruleCommitter struct {
 
 func (c *ruleCommitter) Result(ctx context.Context, index int, call llm.ToolCallRequest, message llm.LLMMessage, update *storage.ToolResultCommit) error {
 	if c.failure != nil && call.ID == "a" {
+		c.messages[index] = message
 		return c.failure
 	}
 	err := c.testToolCommitter.Result(ctx, index, call, message, update)
@@ -78,11 +79,11 @@ func TestRuleCardFollowsCompletionOrderAndSurvivesLaterCommitFailure(t *testing.
 	committer := &ruleCommitter{failure: failure, saved: secondFinished}
 	result := runner.Run(ctx, &runnerTestDeps{}, toolshare.RunRequest{Session: row, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Committer: committer,
 		Calls: []llm.ToolCallRequest{{ID: "a", Name: "discover_tool", Arguments: `{"name":"alpha"}`}, {ID: "b", Name: "discover_tool", Arguments: `{"name":"beta"}`}}})
-	if !errors.Is(result.Err, failure) || len(result.Messages) != 2 {
+	if !errors.Is(result.Err, failure) || len(committer.messages) != 2 {
 		t.Fatalf("result=%+v", result)
 	}
-	first := llm.SegmentsContentText(result.Messages[0].Segments)
-	second := llm.SegmentsContentText(result.Messages[1].Segments)
+	first := llm.SegmentsContentText(committer.messages[0].Segments)
+	second := llm.SegmentsContentText(committer.messages[1].Segments)
 	if !strings.HasPrefix(first, "已发现：alpha。") || strings.Contains(first, "ELyph 规则：") || strings.Count(second, "ELyph 规则：") != 1 || strings.Index(second, "ELyph 规则：") > strings.Index(second, "#skill beta") {
 		t.Fatalf("wrong ordered presentation:\n%s\n%s", first, second)
 	}
@@ -92,11 +93,12 @@ func TestRuleCardFollowsCompletionOrderAndSurvivesLaterCommitFailure(t *testing.
 	if !strings.Contains(committer.results[0].Metadata, `"elyph_rules_shown":true`) {
 		t.Fatal("rules must travel with the stored message")
 	}
-	result = runner.Run(ctx, &runnerTestDeps{}, toolshare.RunRequest{Session: row, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Committer: &ruleCommitter{}, Calls: []llm.ToolCallRequest{{ID: "retry", Name: "alpha", Arguments: `{}`}}})
-	if result.Err != nil || len(result.Messages) != 1 {
+	committer = &ruleCommitter{}
+	result = runner.Run(ctx, &runnerTestDeps{}, toolshare.RunRequest{Session: row, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Committer: committer, Calls: []llm.ToolCallRequest{{ID: "retry", Name: "alpha", Arguments: `{}`}}})
+	if result.Err != nil || len(committer.messages) != 1 {
 		t.Fatalf("retry: %+v", result)
 	}
-	if text := llm.SegmentsContentText(result.Messages[0].Segments); strings.Contains(text, "ELyph 规则：") {
+	if text := llm.SegmentsContentText(committer.messages[0].Segments); strings.Contains(text, "ELyph 规则：") {
 		t.Fatalf("committed rule card repeated: %s", text)
 	}
 }

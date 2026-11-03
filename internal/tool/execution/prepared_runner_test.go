@@ -50,7 +50,8 @@ func TestRunKeepsSelectedObjectAcrossCatalogChanges(t *testing.T) {
 			if result.Err != nil || !deps.confirmed || original.calls != 1 || original.assessments != 1 || replacement.calls != 0 {
 				t.Fatalf("result=%+v old=%+v new=%+v", result, original, replacement)
 			}
-			req.Committer = &testToolCommitter{}
+			committer := &testToolCommitter{}
+			req.Committer = committer
 			result = manager.Run(t.Context(), &runnerTestDeps{}, req)
 			if result.Err != nil || original.calls != 1 || original.assessments != 1 {
 				t.Fatalf("old object reused: %+v", original)
@@ -58,7 +59,7 @@ func TestRunKeepsSelectedObjectAcrossCatalogChanges(t *testing.T) {
 			if action == "replace" && (replacement.calls != 1 || replacement.assessments != 1) {
 				t.Fatalf("new object not selected: %+v", replacement)
 			}
-			if action == "remove" && (len(result.Messages) != 1 || llm.SegmentsContentText(result.Messages[0].Segments) == "original") {
+			if action == "remove" && (len(committer.messages) != 1 || llm.SegmentsContentText(committer.messages[0].Segments) == "original") {
 				t.Fatalf("removed object still callable: %+v", result)
 			}
 		})

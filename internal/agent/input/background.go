@@ -34,7 +34,7 @@ func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundReq
 	ctx = contextinfo.WithoutConversation(ctx)
 	previous, _ := agentshare.MessageContextFrom(ctx)
 	ctx = agentshare.WithMessageContext(ctx, agentshare.MessageContext{RawText: req.Prompt, Segments: backgroundPromptSegments(req.PromptSegments), RestoreMessageContext: previous.RestoreMessageContext})
-	ctx = r.WithPermission(contextinfo.WithActor(ctx, actor))
+	ctx = contextinfo.WithActor(ctx, actor)
 
 	scope, _ := workspace.PathScopeFromContext(ctx)
 

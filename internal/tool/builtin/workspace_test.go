@@ -210,7 +210,6 @@ func TestDiscoverWorkspaceLoadsCurrentAgentInstructions(t *testing.T) {
 	}
 	store := &testWorkspaceStore{dir: dir}
 	ctx := workspace.WithWorkspaceStore(context.Background(), store)
-	ctx = security.WithPermission(ctx, security.NewPermission("low", "critical", map[string][]string{"cli": {"admin"}}))
 	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}, Role: contextinfo.RoleSuperadmin})
 	registry := toolregistry.NewRegistry(security.NewPermission("critical", "critical", nil))
 	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{(WorkspaceTool{}).Definition()}); err != nil {

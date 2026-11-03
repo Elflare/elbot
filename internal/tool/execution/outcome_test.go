@@ -89,22 +89,22 @@ func TestRunnerReturnsOutcomesWithoutFailureNotices(t *testing.T) {
 				Actor: contextinfo.Actor{Role: contextinfo.RoleUser},
 				Calls: []llm.ToolCallRequest{{ID: "shell-call", Name: "shell", Arguments: "{}"}, {ID: "other-call", Name: "other", Arguments: "{}"}},
 			})
-			if result.Err != nil || result.Stopped || len(result.Messages) != 2 {
+			if result.Err != nil || result.Stopped || len(committer.messages) != 2 {
 				t.Fatalf("run result = %+v", result)
 			}
 			if called != tc.wantCalled {
 				t.Errorf("shell executed = %v, want %v", called, tc.wantCalled)
 			}
-			if got := llm.SegmentsContentText(result.Messages[0].Segments); got != tc.wantText {
+			if got := llm.SegmentsContentText(committer.messages[0].Segments); got != tc.wantText {
 				t.Errorf("model result = %q, want %q", got, tc.wantText)
 			}
-			if result.Messages[0].Role != llm.RoleTool || result.Messages[0].ToolCallID != "shell-call" || result.Messages[0].Name != "shell" {
-				t.Errorf("message identity lost: %+v", result.Messages[0])
+			if committer.messages[0].Role != llm.RoleTool || committer.messages[0].ToolCallID != "shell-call" || committer.messages[0].Name != "shell" {
+				t.Errorf("message identity lost: %+v", committer.messages[0])
 			}
 			if len(committer.results) != 2 || committer.records["shell-call"].Error == "" || committer.records["shell-call"].Success || !committer.records["other-call"].Success {
 				t.Errorf("outcomes not saved: %+v", committer)
 			}
-			if got := llm.SegmentsContentText(result.Messages[1].Segments); strings.TrimSpace(got) != "other" {
+			if got := llm.SegmentsContentText(committer.messages[1].Segments); strings.TrimSpace(got) != "other" {
 				t.Errorf("remaining tool result = %q", got)
 			}
 			wantNotices := [][]string{{"正在调用 shell：{}", "正在调用 other：{}"}}

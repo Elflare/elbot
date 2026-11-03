@@ -14,8 +14,6 @@ import (
 )
 
 type executionResult struct {
-	// Call is the request supplied to this execution entry point.
-	Call llm.ToolCallRequest
 	// Message is the model-facing result; partial tool segments survive failures.
 	Message llm.LLMMessage
 	// Result is the original tool result, including partial results on error; nil means none.
@@ -68,7 +66,7 @@ func (m *Manager) executePrepared(ctx context.Context, call llm.ToolCallRequest,
 			message.Segments = result.LLMSegments()
 		}
 	}
-	return executionResult{Call: call, Message: message, Result: result, Summary: logContent, Error: err, ExecutionStarted: true}
+	return executionResult{Message: message, Result: result, Summary: logContent, Error: err, ExecutionStarted: true}
 }
 
 func executionError(call llm.ToolCallRequest, message llm.LLMMessage, err error) executionResult {
@@ -85,5 +83,5 @@ func executionError(call llm.ToolCallRequest, message llm.LLMMessage, err error)
 	}
 	content := fmt.Sprintf("tool call %s %s: %v", call.Name, reason, err)
 	message.Segments = llm.TextSegments(content)
-	return executionResult{Call: call, Message: message, Error: err, Summary: content}
+	return executionResult{Message: message, Error: err, Summary: content}
 }

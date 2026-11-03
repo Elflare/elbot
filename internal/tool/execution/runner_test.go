@@ -21,19 +21,22 @@ import (
 type runnerContextKey struct{}
 
 type testToolCommitter struct {
-	head    *storage.Message
-	results []storage.Message
-	records map[string]storage.ToolCallRecord
+	head     *storage.Message
+	messages map[int]llm.LLMMessage
+	results  []storage.Message
+	records  map[string]storage.ToolCallRecord
 }
 
 func (c *testToolCommitter) Begin(_ context.Context, head *storage.Message) error {
 	c.head = head
+	c.messages = make(map[int]llm.LLMMessage)
 	return nil
 }
 func (*testToolCommitter) Prepared(context.Context, int, llm.ToolCallRequest) error {
 	return nil
 }
-func (c *testToolCommitter) Result(_ context.Context, _ int, _ llm.ToolCallRequest, _ llm.LLMMessage, row *storage.ToolResultCommit) error {
+func (c *testToolCommitter) Result(_ context.Context, index int, _ llm.ToolCallRequest, message llm.LLMMessage, row *storage.ToolResultCommit) error {
+	c.messages[index] = message
 	c.results = append(c.results, *row.Result)
 	if row.Record != nil {
 		if c.records == nil {
@@ -226,7 +229,8 @@ func TestRunConfirmsOnlyAuthorizedHighRiskToolsForRegularUsers(t *testing.T) {
 			}
 			manager := newTestManager(registry, security.NewPermission(tt.userMaxRisk, "high", nil))
 			deps := &runnerTestDeps{}
-			result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: &testToolCommitter{},
+			committer := &testToolCommitter{}
+			result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: committer,
 				Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 				Actor:   contextinfo.Actor{Role: contextinfo.RoleUser},
 				Calls:   []llm.ToolCallRequest{{ID: "call-1", Name: toolName, Arguments: "{}"}},
@@ -234,9 +238,12 @@ func TestRunConfirmsOnlyAuthorizedHighRiskToolsForRegularUsers(t *testing.T) {
 			if deps.confirmed != tt.wantConfirm {
 				t.Fatalf("confirmed = %v, want %v", deps.confirmed, tt.wantConfirm)
 			}
-			gotCalled := len(result.Messages) == 1 && llm.SegmentsContentText(result.Messages[0].Segments) == "called"
+			if result.Err != nil {
+				t.Fatal(result.Err)
+			}
+			gotCalled := len(committer.messages) == 1 && llm.SegmentsContentText(committer.messages[0].Segments) == "called"
 			if gotCalled != tt.wantCalled {
-				t.Fatalf("called = %v, want %v; messages = %#v", gotCalled, tt.wantCalled, result.Messages)
+				t.Fatalf("called = %v, want %v; messages = %#v", gotCalled, tt.wantCalled, committer.messages)
 			}
 		})
 	}
@@ -247,13 +254,14 @@ func TestRunPreservesMultimodalToolSegments(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
-	result := manager.Run(context.Background(), &runnerTestDeps{}, toolshare.RunRequest{Committer: &testToolCommitter{},
+	committer := &testToolCommitter{}
+	result := manager.Run(context.Background(), &runnerTestDeps{}, toolshare.RunRequest{Committer: committer,
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls:   []llm.ToolCallRequest{{ID: "call-1", Name: "image_tool", Arguments: `{}`}},
 	})
-	if len(result.Messages) != 1 || len(result.Messages[0].Segments) != 2 || result.Messages[0].Segments[1].Type != llm.SegmentImage {
-		t.Fatalf("messages = %#v", result.Messages)
+	if result.Err != nil || len(committer.messages) != 1 || len(committer.messages[0].Segments) != 2 || committer.messages[0].Segments[1].Type != llm.SegmentImage {
+		t.Fatalf("result = %+v, messages = %#v", result, committer.messages)
 	}
 }
 
@@ -280,10 +288,10 @@ func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {
 	if deps.completed != 0 {
 		t.Fatalf("completed hook calls = %d, want 0", deps.completed)
 	}
-	if len(result.Messages) != 1 {
-		t.Fatalf("messages = %d", len(result.Messages))
+	if result.Err != nil || len(committer.messages) != 1 {
+		t.Fatalf("result = %+v, messages = %d", result, len(committer.messages))
 	}
-	text := llm.SegmentsContentText(result.Messages[0].Segments)
+	text := llm.SegmentsContentText(committer.messages[0].Segments)
 	if !strings.Contains(text, "tool call preflight_tool failed") || !strings.Contains(text, "preflight rejected") {
 		t.Fatalf("unexpected tool message: %s", text)
 	}
@@ -301,7 +309,8 @@ func TestRunPreparesToolContextBeforePreflightAndExecution(t *testing.T) {
 	deps := &runnerTestDeps{prepareContext: func(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
 		return context.WithValue(ctx, runnerContextKey{}, "prepared")
 	}}
-	result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: &testToolCommitter{},
+	committer := &testToolCommitter{}
+	result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: committer,
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor:   contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{
@@ -310,10 +319,10 @@ func TestRunPreparesToolContextBeforePreflightAndExecution(t *testing.T) {
 			Arguments: `{}`,
 		}},
 	})
-	if len(result.Messages) != 1 {
-		t.Fatalf("messages = %d", len(result.Messages))
+	if result.Err != nil || len(committer.messages) != 1 {
+		t.Fatalf("result = %+v, messages = %d", result, len(committer.messages))
 	}
-	if got := llm.SegmentsContentText(result.Messages[0].Segments); got != "called" {
+	if got := llm.SegmentsContentText(committer.messages[0].Segments); got != "called" {
 		t.Fatalf("tool result = %q", got)
 	}
 }

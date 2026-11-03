@@ -63,7 +63,6 @@ func TestRegistryGet(t *testing.T) {
 }
 
 func TestQueryToolsQualification(t *testing.T) {
-	// 与 context 中的 low 策略相反，构造注入的 medium 策略应生效。
 	r := NewRegistry(security.NewPermission("medium", "high", nil))
 	var definitions []share.ToolDefinition
 	for _, tool := range []share.ToolDefinition{
@@ -84,7 +83,6 @@ func TestQueryToolsQualification(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser})
-	ctx = security.WithPermission(ctx, security.NewPermission("low", "high", nil))
 	background := share.WithCallPolicy(ctx, share.CallPolicy{DisableForegroundTools: true})
 	model := contextinfo.WithModel(ctx, contextinfo.Model{APIType: "response"})
 	admin := contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})

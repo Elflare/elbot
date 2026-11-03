@@ -70,17 +70,22 @@ func TestRunValidatesExactMediaArguments(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	run := func(t *testing.T, tl toolshare.ToolDefinition, arguments string) toolshare.RunResult {
+	run := func(t *testing.T, tl toolshare.ToolDefinition, arguments string) *testToolCommitter {
 		t.Helper()
 		registry := toolregistry.NewRegistry(security.DefaultPermission())
 		if err := registerTestTools(registry, tl); err != nil {
 			t.Fatal(err)
 		}
 		manager := newTestManager(registry, nil, center)
-		return manager.Run(ctx, &runnerTestDeps{}, toolshare.RunRequest{Committer: &testToolCommitter{},
+		committer := &testToolCommitter{}
+		result := manager.Run(ctx, &runnerTestDeps{}, toolshare.RunRequest{Committer: committer,
 			Session: &storage.Session{ID: "session", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 			Calls: []llm.ToolCallRequest{{ID: "call-1", Name: tl.Definition.Name, Arguments: arguments}},
 		})
+		if result.Err != nil {
+			t.Fatal(result.Err)
+		}
+		return committer
 	}
 
 	recorder := &mediaArgumentRecorder{}
@@ -90,9 +95,9 @@ func TestRunValidatesExactMediaArguments(t *testing.T) {
 		t.Fatalf("tool arguments = %q", recorder.received)
 	}
 
-	result := run(t, (failingMediaTool{}).Definition(), `{"media":"`+item.ID+`"}`)
-	if len(result.Messages) != 1 || !strings.Contains(llm.SegmentsContentText(result.Messages[0].Segments), "tool failed") {
-		t.Fatalf("failed tool result = %#v", result.Messages)
+	committer := run(t, (failingMediaTool{}).Definition(), `{"media":"`+item.ID+`"}`)
+	if len(committer.messages) != 1 || !strings.Contains(llm.SegmentsContentText(committer.messages[0].Segments), "tool failed") {
+		t.Fatalf("failed tool result = %#v", committer.messages)
 	}
 }
 
@@ -112,12 +117,13 @@ func TestRunRejectsMissingMediaBeforeExecution(t *testing.T) {
 	}
 	manager := newTestManager(registry, nil, center)
 	missingID := media.IDPrefix + strings.Repeat("f", 64)
-	result := manager.Run(ctx, &runnerTestDeps{}, toolshare.RunRequest{Committer: &testToolCommitter{},
+	committer := &testToolCommitter{}
+	result := manager.Run(ctx, &runnerTestDeps{}, toolshare.RunRequest{Committer: committer,
 		Session: missingSession, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{ID: "call-2", Name: recorder.Name(), Arguments: `{"media":"` + missingID + `"}`}},
 	})
-	if recorder.received != "" || len(result.Messages) != 1 || !strings.Contains(llm.SegmentsContentText(result.Messages[0].Segments), "retain media arguments") {
-		t.Fatalf("missing media execution = %q, %#v", recorder.received, result.Messages)
+	if result.Err != nil || recorder.received != "" || len(committer.messages) != 1 || !strings.Contains(llm.SegmentsContentText(committer.messages[0].Segments), "retain media arguments") {
+		t.Fatalf("missing media execution = %q, result = %+v, messages = %#v", recorder.received, result, committer.messages)
 	}
 }
 
@@ -143,7 +149,7 @@ func TestMediaArgumentsRemainExplicit(t *testing.T) {
 	if result.Error != nil {
 		t.Fatal(result.Error)
 	}
-	if target.received != arguments || result.Call.Arguments != arguments {
-		t.Fatalf("rewritten call: %#v, %s", result.Call, target.received)
+	if target.received != arguments {
+		t.Fatalf("rewritten arguments: %s", target.received)
 	}
 }

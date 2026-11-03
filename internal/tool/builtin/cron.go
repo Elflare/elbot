@@ -427,10 +427,6 @@ func (t CronWriteTool) update(ctx context.Context, args cronWriteArgs) (*toolsha
 	return &toolshare.Result{Content: "已更新定时任务：" + job.Name + "\n" + formatCronInfo(job)}, nil
 }
 
-func resolveUpdateRunAt(runAt *string, offset relativeOffset) (*string, error) {
-	return resolveUpdateRunAtAt(runAt, offset, time.Now())
-}
-
 func resolveUpdateRunAtAt(runAt *string, offset relativeOffset, now time.Time) (*string, error) {
 	if !offset.hasAny() {
 		return runAt, nil
@@ -458,10 +454,6 @@ func (o relativeOffset) hasAny() bool {
 	return o.Minutes != 0 || o.Hours != 0 || o.Days != 0 || o.Weeks != 0 || o.Months != 0
 }
 
-func resolveRunAt(runAt string, offset relativeOffset) (string, error) {
-	return resolveRunAtAt(runAt, offset, time.Now())
-}
-
 func resolveRunAtAt(runAt string, offset relativeOffset, now time.Time) (string, error) {
 	runAt = strings.TrimSpace(runAt)
 	if !offset.hasAny() {
@@ -472,9 +464,6 @@ func resolveRunAtAt(runAt string, offset relativeOffset, now time.Time) (string,
 	}
 	if offset.Minutes < 0 || offset.Hours < 0 || offset.Days < 0 || offset.Weeks < 0 || offset.Months < 0 {
 		return "", fmt.Errorf("run_after_* 必须是正数；当前本地时间：%s", now.Format("2006-01-02 15:04:05"))
-	}
-	if offset.Months == 0 && offset.Weeks == 0 && offset.Days == 0 && offset.Hours == 0 && offset.Minutes == 0 {
-		return "", fmt.Errorf("run_after_* 至少需要一个正数；当前本地时间：%s", now.Format("2006-01-02 15:04:05"))
 	}
 	run := now.AddDate(0, offset.Months, offset.Weeks*7+offset.Days).Add(time.Duration(offset.Hours)*time.Hour + time.Duration(offset.Minutes)*time.Minute)
 	return run.Format("2006-01-02 15:04:05"), nil

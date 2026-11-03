@@ -13,7 +13,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
-	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -22,7 +21,6 @@ import (
 )
 
 type backgroundHarness struct {
-	permission                        *security.Permission
 	scope                             session.Scope
 	prepareErr, preloadErr, commitErr error
 	preloads, commits, executions     int
@@ -66,11 +64,10 @@ func (h *backgroundHarness) RunBackground(ctx context.Context, row *storage.Sess
 }
 func newBackgroundHarness(t *testing.T) (*backgroundHarness, *BackgroundHandler, context.Context) {
 	t.Helper()
-	h := &backgroundHarness{permission: security.DefaultPermission(), result: turn.Result{SessionID: "session", RunID: "run", Text: "answer", Outcome: "completed"}}
+	h := &backgroundHarness{result: turn.Result{SessionID: "session", RunID: "run", Text: "answer", Outcome: "completed"}}
 	h.ensure = func(context.Context, string, string) error { return nil }
 	handler := NewBackgroundHandler(BackgroundHandlerDeps{
 		Sessions: h, Identity: h, Execution: h, Preloader: backgroundPreloaderStub{h}, ToolState: h,
-		WithPermission:     func(ctx context.Context) context.Context { return security.WithPermission(ctx, h.permission) },
 		EnsureWorkspaceDir: func(ctx context.Context, id, dir string) error { return h.ensure(ctx, id, dir) },
 	})
 	ctx := workspace.WithPathScope(t.Context(), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
@@ -98,7 +95,6 @@ func TestBackgroundPreparationKeepsContextAndMultimodalSkillMaterial(t *testing.
 		t.Fatal(h.scope)
 	}
 	actor, _ := contextinfo.ActorFromContext(h.runContext)
-	permission, _ := security.PermissionFromContext(h.runContext)
 	models, err := modelmgr.NewModelManager(t.Context(), &config.Config{Providers: map[string]config.ProviderConfig{"provider": {}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "provider", Model: "default"}}})
 	if err != nil {
 		t.Fatal(err)
@@ -109,8 +105,8 @@ func TestBackgroundPreparationKeepsContextAndMultimodalSkillMaterial(t *testing.
 		}
 	})
 	selected := modelmgr.SelectionForTurn(h.runContext, models, nil).ModelSelection
-	if actor != req.Actor || permission != h.permission || selected != (config.ModelSelection{Provider: "provider", Model: "model"}) {
-		t.Fatalf("actor=%+v permission=%p selection=%+v", actor, permission, selected)
+	if actor != req.Actor || selected != (config.ModelSelection{Provider: "provider", Model: "model"}) {
+		t.Fatalf("actor=%+v selection=%+v", actor, selected)
 	}
 	beforePath, _ := workspace.PathScopeFromContext(ctx)
 	afterPath, _ := workspace.PathScopeFromContext(h.runContext)

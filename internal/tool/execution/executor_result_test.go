@@ -78,17 +78,18 @@ func TestRunnerAddsDiscoverySummaryAndRulesAfterHook(t *testing.T) {
 		}
 	}
 	deps := &discoveryHookDeps{}
+	committer := &testToolCommitter{}
 	result := newTestManager(catalog, security.DefaultPermission()).Run(t.Context(), deps, share.RunRequest{
 		Session: &storage.Session{ID: "s", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
-		Committer: &testToolCommitter{}, Calls: []llm.ToolCallRequest{{ID: "discover", Name: "discover_tool", Arguments: `{"name":"alpha"}`}},
+		Committer: committer, Calls: []llm.ToolCallRequest{{ID: "discover", Name: "discover_tool", Arguments: `{"name":"alpha"}`}},
 	})
-	if result.Err != nil || len(result.Messages) != 1 {
+	if result.Err != nil || len(committer.messages) != 1 {
 		t.Fatalf("run result = %+v", result)
 	}
 	if !strings.Contains(deps.input, "#skill alpha") || strings.Contains(deps.input, "已发现：") || strings.Contains(deps.input, "ELyph 规则：") {
 		t.Fatalf("hook received presentation material: %q", deps.input)
 	}
-	text := llm.SegmentsContentText(result.Messages[0].Segments)
+	text := llm.SegmentsContentText(committer.messages[0].Segments)
 	if !strings.HasPrefix(text, "已发现：alpha。") || strings.Count(text, "ELyph 规则：") != 1 || !strings.HasSuffix(text, "hooked details") || strings.Contains(text, "#skill alpha") {
 		t.Fatalf("hook result or presentation order changed: %q", text)
 	}

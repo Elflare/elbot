@@ -133,8 +133,6 @@ func TestDiscoverListUsesRegistryQualification(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser})
-	// Context 中更宽松的策略不能替换 registry 持有的策略。
-	ctx = security.WithPermission(ctx, security.NewPermission("critical", "high", nil))
 	ctx = share.WithCallPolicy(ctx, share.CallPolicy{DisableForegroundTools: true})
 	result, err := resolver.Discover(ctx, []string{" "})
 	if err != nil {

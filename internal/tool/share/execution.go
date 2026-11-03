@@ -88,8 +88,6 @@ type RunRequest struct {
 
 type RunResult struct {
 	Err               error
-	Messages          []llm.LLMMessage
-	PreparedCalls     []llm.ToolCallRequest
 	ConfirmationExtra string
 	Stopped           bool
 }

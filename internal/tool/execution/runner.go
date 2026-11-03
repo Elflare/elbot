@@ -34,7 +34,6 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		return toolshare.RunResult{Err: err}
 	}
 	elyphRulesShown := state.ElyphRulesShown
-	messages := make([]llm.LLMMessage, len(req.Calls))
 	preparedCalls := append([]llm.ToolCallRequest(nil), req.Calls...)
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
@@ -116,7 +115,6 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 				return err
 			}
 		}
-		messages[index] = result.Message
 		stored := deps.ToolResultMessage(sessionID, result.Message)
 		if ruleCard != "" {
 			fields, err := storage.DecodeSessionMetadata(stored.Metadata)
@@ -185,7 +183,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		task.startedAt = storage.Now()
 		task.actor = actor
 		fail := func(call llm.ToolCallRequest, err error, content string) {
-			task.result = executionResult{Call: call, Message: toolMessage(call.Name, call.ID, content), Error: err}
+			task.result = executionResult{Message: toolMessage(call.Name, call.ID, content), Error: err}
 			task.finishedAt = storage.Now()
 			ready <- index
 		}
@@ -310,11 +308,11 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		}
 	}
 	if resultErr != nil {
-		return toolshare.RunResult{Messages: messages, PreparedCalls: preparedCalls, ConfirmationExtra: confirmationExtra, Err: resultErr}
+		return toolshare.RunResult{ConfirmationExtra: confirmationExtra, Err: resultErr}
 	}
 	err = req.Committer.Flush(ctx)
 
-	return toolshare.RunResult{Messages: messages, PreparedCalls: preparedCalls, ConfirmationExtra: confirmationExtra, Err: err}
+	return toolshare.RunResult{ConfirmationExtra: confirmationExtra, Err: err}
 }
 
 func sendBatchToolPreview(ctx context.Context, deps toolshare.RunnerDeps, req toolshare.RunRequest) bool {

@@ -168,12 +168,13 @@ func TestRunnerWritesOnlyAuditWithBoundedArgumentPreview(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]string{"note": strings.Repeat("雪🔥", 400) + "ARGUMENT_TAIL"})
 	manager := newTestManager(registry, security.NewPermission("high", "high", nil))
+	committer := &testToolCommitter{}
 	result := manager.Run(t.Context(), &runnerTestDeps{}, toolshare.RunRequest{
-		Committer: &testToolCommitter{}, Session: &storage.Session{ID: "bounded-audit", Mode: storage.SessionModeWork},
+		Committer: committer, Session: &storage.Session{ID: "bounded-audit", Mode: storage.SessionModeWork},
 		Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{ID: "call", Name: "logging_tool", Arguments: string(args)}},
 	})
-	if result.Err != nil || actualArgs != string(args) || len(result.Messages) != 1 || llm.SegmentsContentText(result.Messages[0].Segments) != "partial-result" {
+	if result.Err != nil || actualArgs != string(args) || len(committer.messages) != 1 || llm.SegmentsContentText(committer.messages[0].Segments) != "partial-result" {
 		t.Fatalf("execution changed: result=%+v args=%q", result, actualArgs)
 	}
 	if err := center.Close(t.Context()); err != nil {
@@ -322,12 +323,13 @@ func TestRunnerBatchFailureDoesNotInventToolCompletions(t *testing.T) {
 	}
 }
 
-func (c *loggingCommitter) Result(context.Context, int, llm.ToolCallRequest, llm.LLMMessage, *storage.ToolResultCommit) error {
+func (c *loggingCommitter) Result(ctx context.Context, index int, call llm.ToolCallRequest, message llm.LLMMessage, row *storage.ToolResultCommit) error {
 	c.finished = true
 	if c.err != nil {
+		c.messages[index] = message
 		return c.err
 	}
-	return nil
+	return c.testToolCommitter.Result(ctx, index, call, message, row)
 }
 
 func TestRunnerUsesSourceSaveResult(t *testing.T) {
@@ -452,7 +454,7 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 				}
 				if tc.prepareErr != nil {
 					want = tc.prepareErr.Error()
-					if len(result.Messages) != 1 || !strings.Contains(llm.SegmentsContentText(result.Messages[0].Segments), want) || deps.completed != 0 {
+					if len(committer.messages) != 1 || !strings.Contains(llm.SegmentsContentText(committer.messages[0].Segments), want) || deps.completed != 0 {
 						t.Fatalf("preparation failure changed: result=%+v completed=%d", result, deps.completed)
 					}
 				}
@@ -460,7 +462,7 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 					t.Fatalf("actual result or error lost from audit: %s", calls[0].Content)
 				}
 			}
-			if tc.startErr != nil && (len(result.Messages) != 1 || !strings.Contains(llm.SegmentsContentText(result.Messages[0].Segments), tc.startErr.Error())) {
+			if tc.startErr != nil && (len(committer.messages) != 1 || !strings.Contains(llm.SegmentsContentText(committer.messages[0].Segments), tc.startErr.Error())) {
 				t.Fatalf("request error lost: %+v", result)
 			}
 

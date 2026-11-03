@@ -886,24 +886,6 @@ func (m *tuiModel) finishAssistantContent() {
 	m.refreshContent()
 }
 
-func (m *tuiModel) appendContent(text string) {
-	if text == "" {
-		return
-	}
-	if m.reasoningOpen {
-		if !strings.HasSuffix(m.content, "\n") {
-			m.content += "\n"
-		}
-		m.reasoningOpen = false
-	}
-	m.content += text
-	m.refreshContent()
-}
-
-func (m *tuiModel) appendNotice(text string) {
-	m.appendNoticeLevel(text, slog.LevelInfo)
-}
-
 func (m *tuiModel) appendNoticeLevel(text string, level slog.Level) {
 	text = strings.TrimSpace(text)
 	if text == "" {

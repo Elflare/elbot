@@ -235,7 +235,6 @@ type RunnerDeps struct {
 func NewRunner(deps RunnerDeps) *Runner {
 	tools := &ToolExecutor{Manager: deps.ToolManager, Identity: deps.Identity, Deps: deps.ToolDeps, MaxRounds: deps.MaxRounds}
 	messages := &MessageStore{NewMessageID: deps.NewMessageID, Dialogues: deps.Dialogues, Gate: &CommitGate{Sessions: deps.Sessions, Turns: deps.Turns, View: deps.View}}
-	tools.Messages = messages
 	replies := &ReplyCommitter{NewMessageID: deps.NewMessageID, Output: deps.Output, Persistence: messages.Committer("append_assistant_message")}
 	preparer := &Preparer{NewMessageID: deps.NewMessageID, Contexts: deps.Contexts, Media: deps.Media, PublishUsageFinished: deps.PublishUsageFinished, Hooks: deps.Hooks, Tools: tools}
 	messages.Preparer = preparer

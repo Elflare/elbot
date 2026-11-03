@@ -109,16 +109,16 @@ func TestRunConcurrentFailuresKeepOriginalResultOrderAndFlushOnce(t *testing.T) 
 	}
 	select {
 	case result := <-done:
-		if result.Err != nil || result.Stopped || len(result.Messages) != 3 || committer.flushes != 1 || committer.completedAtFlush != 3 {
+		if result.Err != nil || result.Stopped || len(committer.messages) != 3 || committer.flushes != 1 || committer.completedAtFlush != 3 {
 			t.Fatalf("result=%+v committer=%+v", result, committer)
 		}
 		for i, id := range []string{"A", "B", "C"} {
-			if result.Messages[i].ToolCallID != id || committer.results[i].ToolCallID != []string{"C", "B", "A"}[i] {
-				t.Fatalf("result order=%+v saved=%+v", result.Messages, committer.results)
+			if committer.messages[i].ToolCallID != id || committer.results[i].ToolCallID != []string{"C", "B", "A"}[i] {
+				t.Fatalf("result slots=%+v saved=%+v", committer.messages, committer.results)
 			}
 		}
-		if !strings.Contains(llm.SegmentsContentText(result.Messages[0].Segments), "A failed") || llm.SegmentsContentText(result.Messages[1].Segments) != "B succeeded" || llm.SegmentsContentText(result.Messages[2].Segments) != "C succeeded" || committer.records["A"].Success || !committer.records["B"].Success || !committer.records["C"].Success {
-			t.Fatalf("independent outcomes=%+v records=%+v", result.Messages, committer.records)
+		if !strings.Contains(llm.SegmentsContentText(committer.messages[0].Segments), "A failed") || llm.SegmentsContentText(committer.messages[1].Segments) != "B succeeded" || llm.SegmentsContentText(committer.messages[2].Segments) != "C succeeded" || committer.records["A"].Success || !committer.records["B"].Success || !committer.records["C"].Success {
+			t.Fatalf("independent outcomes=%+v records=%+v", committer.messages, committer.records)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("batch did not finish")
@@ -181,7 +181,7 @@ func TestRunSingleToolTimeoutDoesNotCancelSiblingTools(t *testing.T) {
 	deps := &timeoutToolDeps{}
 	committer := &testToolCommitter{}
 	result := newTestManager(registry, nil).Run(t.Context(), deps, concurrentRunRequest(committer))
-	if result.Err != nil || result.Stopped || len(result.Messages) != 3 || !strings.Contains(committer.records["A"].Error, context.DeadlineExceeded.Error()) || !committer.records["B"].Success || !committer.records["C"].Success {
+	if result.Err != nil || result.Stopped || len(committer.messages) != 3 || !strings.Contains(committer.records["A"].Error, context.DeadlineExceeded.Error()) || !committer.records["B"].Success || !committer.records["C"].Success {
 		t.Fatalf("result=%+v records=%+v", result, committer.records)
 	}
 }

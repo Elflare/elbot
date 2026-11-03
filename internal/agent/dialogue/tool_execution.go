@@ -16,8 +16,7 @@ import (
 )
 
 type ToolExecutor struct {
-	Messages *MessageStore
-	Manager  interface {
+	Manager interface {
 		QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
 		FilterSchemas(context.Context, []llm.ToolSchema) ([]llm.ToolSchema, error)
 		Run(context.Context, tool.RunnerDeps, tool.RunRequest) tool.RunResult
@@ -33,10 +32,6 @@ type ToolExecutor struct {
 }
 
 func (r *ToolExecutor) MaxRoundsPerTurn() int { return r.MaxRounds }
-func (r *ToolExecutor) Execute(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string, out agentshare.Output) tool.RunResult {
-	return r.ExecuteWithCommitter(ctx, session, calls, assistantText, assistantRawText, out, &ToolTranscriptCommitter{Messages: r.Messages})
-}
-
 func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string, out agentshare.Output, committer tool.ToolCommitter) tool.RunResult {
 	if session == nil || (session.Mode != storage.SessionModeWork && session.Mode != storage.SessionModeBackground) {
 		return tool.RunResult{}

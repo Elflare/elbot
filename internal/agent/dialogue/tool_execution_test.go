@@ -33,7 +33,7 @@ func TestToolStateFailureStopsBeforeTranscript(t *testing.T) {
 	want := errors.New("tool state unavailable")
 	executor := &ToolExecutor{Manager: failingToolState{err: want}}
 	result := executor.ExecuteWithCommitter(t.Context(), &storage.Session{ID: "session", Mode: storage.SessionModeWork}, []llm.ToolCallRequest{{ID: "call", Name: "tool"}}, "", "", nil, unenteredToolCommitter{t: t})
-	if result.Err != want || len(result.Messages) != 0 || len(result.PreparedCalls) != 0 {
+	if result.Err != want {
 		t.Fatalf("preparation failure changed: %+v", result)
 	}
 }

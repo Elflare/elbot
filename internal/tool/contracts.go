@@ -226,11 +226,9 @@ type RunRequest struct {
 }
 
 type RunResult struct {
-	Err               error                 // 批次执行或提交错误。
-	Messages          []llm.LLMMessage      // 已生成的工具结果消息。
-	PreparedCalls     []llm.ToolCallRequest // Hook 准备后的实际调用。
-	ConfirmationExtra string                // 风险确认时的补充输入。
-	Stopped           bool                  // 批次是否已停止。
+	Err               error  // 批次执行或提交错误。
+	ConfirmationExtra string // 风险确认时的补充输入。
+	Stopped           bool   // 批次是否已停止。
 }
 
 type CallRequest struct {

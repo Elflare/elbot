@@ -366,7 +366,7 @@ func TestCancelKeyClearsCompletionOrInputBeforeQuit(t *testing.T) {
 func TestAppendNoticeContentUsesSeparator(t *testing.T) {
 	m := tuiModel{width: 80}
 	m.appendUserContent("hello")
-	m.appendNotice("notice one")
+	m.appendNoticeLevel("notice one", slog.LevelInfo)
 
 	if !strings.Contains(m.content, "\n"+m.separatorLine()+"\n[notice] notice one") {
 		t.Fatalf("notice content not separated:\n%s", m.content)
@@ -769,7 +769,7 @@ func TestReasoningRenderKeepsContentAcrossBlankLines(t *testing.T) {
 func TestReasoningSurvivesNoticeFallbackAndAssistantReplace(t *testing.T) {
 	m := &tuiModel{assistantName: "assistant"}
 	m.appendReasoningContent("[thinking] 先想\n\n再想")
-	m.appendContent("[notice] [tool] 正在调用 web_search\n")
+	m.appendNoticeLevel("[tool] 正在调用 web_search", slog.LevelInfo)
 	m.appendAssistantContent("raw")
 	m.replaceAssistantContent("final text")
 

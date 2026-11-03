@@ -39,8 +39,7 @@ type BackgroundHandlerDeps struct {
 	Identity interface {
 		IsCLI(context.Context) bool
 	} // 根据当前请求来源识别 CLI 平台。
-	WithPermission func(context.Context) context.Context // Attaches the permission policy supplied by the Agent root.
-	Execution      interface {
+	Execution interface {
 		ModelContext(context.Context, *storage.Session) (context.Context, error)
 		RunBackground(context.Context, *storage.Session, string) turn.Result
 	} // Resolves model context and executes through the existing coordinator.
