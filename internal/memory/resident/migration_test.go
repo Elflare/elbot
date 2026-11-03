@@ -1,6 +1,6 @@
 package resident
 
-// 临时迁移测试：从引入新格式的版本起，次版本号再递增两次时随迁移代码删除本文件。
+// v0.6.0 迁移测试：从引入新格式的版本起，次版本号再递增两次时随迁移代码删除本文件。
 // 补丁版本不计，例如 0.7.0 引入，则在 0.9.0 删除。
 
 import (
@@ -19,80 +19,69 @@ import (
 )
 
 func TestResidentMigrationPreservesRecordsAndWritesOnce(t *testing.T) {
-	for _, version := range []string{"legacy", "version2"} {
-		t.Run(version, func(t *testing.T) {
-			old := "# original comment\n"
-			if version == "version2" {
-				old += "version=2\n"
-			}
-			want := tomlFile{
-				"telegram": {
-					"user:42.娅": {Core: " keep memory ", Normal: "first\nsecond", CreatedAt: "created", UpdatedAt: "updated"},
-					"other":     {Normal: "other user"},
-				},
-				"cli": {"user:42.娅": {Normal: "other platform"}},
-			}
-			for platform, memories := range want {
-				for id, memory := range memories {
-					old += "[[resident_memories]]\n"
-					if version == "version2" {
-						old += "owner={platform='" + platform + "',id='" + id + "'}\n"
-					} else {
-						old += "platform='" + platform + "'\nactor_id='" + platform + ":" + id + "'\n"
-					}
-					data, err := toml.Marshal(memory)
-					if err != nil {
-						t.Fatal(err)
-					}
-					old += string(data) + "\n"
-				}
-			}
-			path := filepath.Join(t.TempDir(), "memories.toml")
-			if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "telegram", ID: "user:42.娅"}}
-			store := NewStore(path)
-			got, err := store.Read(t.Context(), scope)
-			if err != nil || got != (Memory{Core: "keep memory", Normal: "first\nsecond"}) {
-				t.Fatalf("Read migrated = %+v, %v", got, err)
-			}
-			backup, err := os.ReadFile(path + ".bak")
-			if err != nil || string(backup) != old {
-				t.Fatalf("backup = %q, %v", backup, err)
-			}
-			data, err := os.ReadFile(path)
+	old := "# original comment\n"
+	want := tomlFile{
+		"telegram": {
+			"user:42.娅": {Core: " keep memory ", Normal: "first\nsecond", CreatedAt: "created", UpdatedAt: "updated"},
+			"other":     {Normal: "other user"},
+		},
+		"cli": {"user:42.娅": {Normal: "other platform"}},
+	}
+	for platform, memories := range want {
+		for id, memory := range memories {
+			old += "[[resident_memories]]\n"
+			old += "platform='" + platform + "'\nactor_id='" + platform + ":" + id + "'\n"
+			data, err := toml.Marshal(memory)
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, removed := range []string{"resident_memories", "version =", "owner =", "actor_id"} {
-				if strings.Contains(string(data), removed) {
-					t.Fatalf("migrated file retains %q: %s", removed, data)
-				}
-			}
-			var file tomlFile
-			if err := toml.Unmarshal(data, &file); err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(file, want) || !reflect.DeepEqual(store.cache.file, want) {
-				t.Fatalf("migrated records = %#v; cached = %#v", file, store.cache.file)
-			}
-			oldTime := time.Unix(946684800, 0)
-			if err := os.Chtimes(path, oldTime, oldTime); err != nil {
-				t.Fatal(err)
-			}
-			if _, err = NewStore(path).Read(t.Context(), scope); err != nil {
-				t.Fatal(err)
-			}
-			after, err := os.Stat(path)
-			if err != nil || !after.ModTime().Equal(oldTime) {
-				t.Fatalf("reopening rewrote migrated file: %v", err)
-			}
-			backup, err = os.ReadFile(path + ".bak")
-			if err != nil || string(backup) != old {
-				t.Fatalf("reopening changed backup: %v", err)
-			}
-		})
+			old += string(data) + "\n"
+		}
+	}
+	path := filepath.Join(t.TempDir(), "memories.toml")
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "telegram", ID: "user:42.娅"}}
+	store := NewStore(path)
+	got, err := store.Read(t.Context(), scope)
+	if err != nil || got != (Memory{Core: "keep memory", Normal: "first\nsecond"}) {
+		t.Fatalf("Read migrated = %+v, %v", got, err)
+	}
+	backup, err := os.ReadFile(path + ".bak")
+	if err != nil || string(backup) != old {
+		t.Fatalf("backup = %q, %v", backup, err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, removed := range []string{"resident_memories", "actor_id"} {
+		if strings.Contains(string(data), removed) {
+			t.Fatalf("migrated file retains %q: %s", removed, data)
+		}
+	}
+	var file tomlFile
+	if err := toml.Unmarshal(data, &file); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(file, want) || !reflect.DeepEqual(store.cache.file, want) {
+		t.Fatalf("migrated records = %#v; cached = %#v", file, store.cache.file)
+	}
+	oldTime := time.Unix(946684800, 0)
+	if err := os.Chtimes(path, oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = NewStore(path).Read(t.Context(), scope); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(path)
+	if err != nil || !after.ModTime().Equal(oldTime) {
+		t.Fatalf("reopening rewrote migrated file: %v", err)
+	}
+	backup, err = os.ReadFile(path + ".bak")
+	if err != nil || string(backup) != old {
+		t.Fatalf("reopening changed backup: %v", err)
 	}
 }
 
@@ -104,15 +93,9 @@ func TestResidentMigrationRejectsInvalidFiles(t *testing.T) {
 	}{
 		{"ambiguous", "[[resident_memories]]\nplatform='telegram'\nactor_id='untyped'\ncore='keep'\n", "ambiguous"},
 		{"duplicate legacy", strings.Repeat("[[resident_memories]]\nplatform='telegram'\nactor_id='telegram:1'\ncore='keep'\n", 2), "duplicate"},
-		{"duplicate version2", "version=2\n" + strings.Repeat("[[resident_memories]]\nowner={platform='telegram',id='1'}\ncore='keep'\n", 2), "duplicate"},
 		{"hook", "[[resident_memories]]\nplatform=''\nactor_id='hook:watch:daily'\ncore='keep'\n", "no recoverable"},
 		{"elnis", "[[resident_memories]]\nplatform='elnis'\nactor_id='elnis:old'\n", "no recoverable"},
 		{"mismatched platform", "[[resident_memories]]\nplatform='telegram'\nactor_id='cli:1'\n", "ambiguous"},
-		{"missing owner", "version=2\n[[resident_memories]]\ncore='keep'\n", "incomplete"},
-		{"missing id", "version=2\n[[resident_memories]]\nowner={platform='cli'}\n", "incomplete"},
-		{"mixed identity", "version=2\n[[resident_memories]]\nowner={platform='cli',id='local'}\nactor_id='cli:other'\n", "ambiguous"},
-		{"unknown version", "version=3\nresident_memories=[]\n", "unsupported"},
-		{"mixed formats", "version=2\n[cli.local]\ncore='keep'\n", "missing"},
 		{"unknown field", "[[resident_memories]]\nplatform='cli'\nactor_id='cli:local'\nunknown='keep'\n", "missing"},
 		{"invalid structure", "resident_memories='invalid'\n", "toml"},
 	} {
@@ -140,7 +123,7 @@ func TestResidentMigrationPreservesExistingBackup(t *testing.T) {
 	for _, directory := range []bool{false, true} {
 		t.Run(map[bool]string{false: "file", true: "directory"}[directory], func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "memories.toml")
-			old := "version=2\n[[resident_memories]]\nowner={platform='cli',id='local'}\ncore='keep'\n"
+			old := "[[resident_memories]]\nplatform='cli'\nactor_id='cli:local'\ncore='keep'\n"
 			if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
 				t.Fatal(err)
 			}
@@ -170,17 +153,16 @@ func TestResidentMigrationPreservesExistingBackup(t *testing.T) {
 }
 
 func TestResidentMigrationEmptyLegacyFiles(t *testing.T) {
-	for _, data := range []string{"version=2\n", "resident_memories=[]\n"} {
-		path := filepath.Join(t.TempDir(), "memories.toml")
-		if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := NewStore(path).Read(t.Context(), session.Scope{}); !errors.Is(err, ErrNotFound) {
-			t.Fatalf("Read empty legacy = %v", err)
-		}
-		backup, err := os.ReadFile(path + ".bak")
-		if err != nil || string(backup) != data {
-			t.Fatalf("empty legacy backup = %q, %v", backup, err)
-		}
+	data := "resident_memories=[]\n"
+	path := filepath.Join(t.TempDir(), "memories.toml")
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewStore(path).Read(t.Context(), session.Scope{}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Read empty legacy = %v", err)
+	}
+	backup, err := os.ReadFile(path + ".bak")
+	if err != nil || string(backup) != data {
+		t.Fatalf("empty legacy backup = %q, %v", backup, err)
 	}
 }

@@ -255,7 +255,7 @@ func (s *Store) loadLocked() (tomlFile, error) {
 	}
 	file := tomlFile{}
 	if err := toml.NewDecoder(bytes.NewReader(data)).DisallowUnknownFields().Decode(&file); err != nil {
-		// 临时兼容：从引入新格式的版本起，次版本号再递增两次时删除此分支、
+		// 兼容 v0.6.0：从引入新格式的版本起，次版本号再递增两次时删除此处迁移逻辑、
 		// migrateResidentMemory 及 migration_test.go；补丁版本不计（如 0.7.0 → 0.9.0）。
 		file, err = migrateResidentMemory(data)
 		if err != nil {
@@ -357,42 +357,33 @@ func normalizeLimits(limits Limits) Limits {
 	return limits
 }
 
+// migrateResidentMemory 仅将 v0.6.0 的常驻记忆列表迁到当前格式。
 // 临时兼容：从引入新格式的版本起，次版本号再递增两次时删除本函数、调用分支及迁移测试。
 // 补丁版本不计，例如 0.7.0 引入，则在 0.9.0 删除。
 func migrateResidentMemory(data []byte) (tomlFile, error) {
 	var old struct {
-		Version  int `toml:"version"` // 旧格式版本：0 为 platform/actor_id，2 为结构化 owner。
 		Memories []struct {
-			Owner     contextinfo.ActorIdentity `toml:"owner"`    // version=2 的结构化所有者。
-			Platform  string                    `toml:"platform"` // 无版本格式的平台。
-			ActorID   string                    `toml:"actor_id"` // 无版本格式带平台前缀的用户 ID。
-			Core      string                    `toml:"core"`
-			Normal    string                    `toml:"normal"`
-			CreatedAt string                    `toml:"created_at"`
-			UpdatedAt string                    `toml:"updated_at"`
+			Platform  string `toml:"platform"` // v0.6.0 记录所属的平台。
+			ActorID   string `toml:"actor_id"` // v0.6.0 带平台前缀的用户 ID。
+			Core      string `toml:"core"`
+			Normal    string `toml:"normal"`
+			CreatedAt string `toml:"created_at"`
+			UpdatedAt string `toml:"updated_at"`
 		} `toml:"resident_memories"`
 	}
 	if err := toml.NewDecoder(bytes.NewReader(data)).DisallowUnknownFields().Decode(&old); err != nil {
 		return tomlFile{}, err
 	}
-	if old.Version != 0 && old.Version != 2 {
-		return tomlFile{}, fmt.Errorf("unsupported resident memory version %d", old.Version)
-	}
 	file := tomlFile{}
 	for _, item := range old.Memories {
-		owner := item.Owner
-		if old.Version == 0 {
-			platform, id, ok := strings.Cut(item.ActorID, ":")
-			if !ok || (platform != item.Platform && !(platform == "hook" && item.Platform == "")) || owner != (contextinfo.ActorIdentity{}) {
-				return tomlFile{}, fmt.Errorf("ambiguous resident owner platform=%q actor=%q", item.Platform, item.ActorID)
-			}
-			if platform == "hook" || platform == "elnis" {
-				return tomlFile{}, fmt.Errorf("resident owner %q has no recoverable user or Elwisp identity", item.ActorID)
-			}
-			owner = contextinfo.ActorIdentity{Platform: platform, ID: id}
-		} else if item.Platform != "" || item.ActorID != "" {
-			return tomlFile{}, fmt.Errorf("ambiguous resident owner %+v with legacy platform/actor_id", owner)
+		platform, id, ok := strings.Cut(item.ActorID, ":")
+		if !ok || (platform != item.Platform && !(platform == "hook" && item.Platform == "")) {
+			return tomlFile{}, fmt.Errorf("ambiguous resident owner platform=%q actor=%q", item.Platform, item.ActorID)
 		}
+		if platform == "hook" || platform == "elnis" {
+			return tomlFile{}, fmt.Errorf("resident owner %q has no recoverable user or Elwisp identity", item.ActorID)
+		}
+		owner := contextinfo.ActorIdentity{Platform: platform, ID: id}
 		if owner.Platform == "" || owner.ID == "" {
 			return tomlFile{}, fmt.Errorf("incomplete resident owner %+v", owner)
 		}
