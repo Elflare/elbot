@@ -271,11 +271,19 @@
       "source_hash": "bb031c21c2400ae33bd27868bde9a2aa686b3f860c5c4ca251763ef38b811dc4",
       "translation": "## Built-in Web Tool Configuration\n\n| tool | Environment Variable | Behavior |\n| --- | --- | --- |\n| `web_search` | `TAVILY_API_KEY` | Required. |\n| `web_extract` | `JINA_API_KEY` | Uses Jina Reader when configured; otherwise, falls back to direct scraping. |\n| `web_extract` | `WEB_EXTRACT_PROXY` | Fixed proxy for all default `web_extract` calls, such as `http://127.0.0.1:7890`. |\n\nThe `proxy` parameter of `web_extract` is used to control the proxy for a single webpage extraction request.\n\n",
       "updated_at": 1793371570
+    },
+    "docs/configuration.md:section:fe82f2fb21f4c41549c3464788b7532a39f4a69d45ae310424ccf62e3bf728cf": {
+      "kind": "section",
+      "source": "## 常驻记忆配置\n\n常驻记忆存放在配置目录的 `memories.toml`，按平台和原生用户 ID 分层。\n\n长度上限写在主配置：\n\n```toml\n[resident_memory]\ncore_max_units = 200\nnormal_max_units = 300\n```\n\n| 类型 | 含义 | 修改确认 |\n| --- | --- | --- |\n| `core` | 高风险核心记忆 | 普通用户改自己的 core 也需本人确认。 |\n| `normal` | 低风险普通记忆 | 无需确认。 |\n\n- `units` 近似“中文按字数、英文按单词”：中日韩字符单字计 1，英文/数字连续片段计 1。\n- 注入 Prompt 时两段合并为一段自然文本。\n\n",
+      "source_file": "docs/configuration.md",
+      "source_hash": "dec725c7225c7024870548c7d338718c1f1b8daf89bea66ca1c5ca5163cde23b",
+      "translation": "## Resident Memory Configuration\n\nResident memory is stored in `memories.toml` in the configuration directory, layered by platform and native user ID.\n\nThe length limits are specified in the main configuration:\n\n```toml\n[resident_memory]\ncore_max_units = 200\nnormal_max_units = 300\n```\n\n| Type | Meaning | Modification Confirmation |\n| --- | --- | --- |\n| `core` | high-risk core memory | Even when ordinary users modify their own core memory, confirmation from the user is required. |\n| `normal` | low-risk normal memory | No confirmation required. |\n\n- `units` are approximately \"character count for Chinese, word count for English\": each CJK character counts as 1, and each continuous segment of English/numbers counts as 1.\n- When injecting into the Prompt, the two segments are merged into a single piece of natural text.\n\n",
+      "updated_at": 1793707675
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "",
+  "source_hash": "9cfd0f97e5894c633d1bcbd61fa2bf56320dd611b73eddbe0f8d87aa6c5c0ab4",
   "target": "docs.en/configuration.md",
-  "updated_at": 1793692095,
+  "updated_at": 1793707675,
   "version": 3
 }

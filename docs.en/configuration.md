@@ -130,7 +130,9 @@ In work mode, the superadmin can allow the LLM to call the `workspace` tool to s
 
 ## Resident Memory Configuration
 
-Resident memory is stored in `memories.toml` within the configuration directory (generated upon the first run). The length limit is specified in the main configuration:
+Resident memory is stored in `memories.toml` in the configuration directory, layered by platform and native user ID.
+
+The length limits are specified in the main configuration:
 
 ```toml
 [resident_memory]
@@ -140,11 +142,11 @@ normal_max_units = 300
 
 | Type | Meaning | Modification Confirmation |
 | --- | --- | --- |
-| `core` | high-risk core memory | Regular users also need personal confirmation when modifying their own core memory. |
-| `normal` | low-risk ordinary memory | No confirmation required. |
+| `core` | high-risk core memory | Even when ordinary users modify their own core memory, confirmation from the user is required. |
+| `normal` | low-risk normal memory | No confirmation required. |
 
-- `units` is similar to "Chinese by character count, English by word count": CJK characters are counted as 1 each, and continuous segments of English/numbers are counted as 1.
-- When injecting the Prompt, the two segments are merged into a single piece of natural text.
+- `units` are approximately "character count for Chinese, word count for English": each CJK character counts as 1, and each continuous segment of English/numbers counts as 1.
+- When injecting into the Prompt, the two segments are merged into a single piece of natural text.
 
 ## Provider Configuration
 
