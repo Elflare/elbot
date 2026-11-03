@@ -88,7 +88,13 @@ func (m *Supervisor) handlePlatformConnected(ctx context.Context, platformName s
 	if err != nil || len(event.Outputs) == 0 {
 		return
 	}
-	_, result, err := m.send(ctx, delivery.Target{}, event.Outputs)
+	target, err := delivery.ValidateOutputsTarget(event.Outputs)
+	var result events.LogResult
+	if err != nil {
+		result = events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
+	} else {
+		_, result, err = m.send(ctx, target, event.Outputs)
+	}
 	// This boundary owns delivery of the global Hook's outputs. Preserve the
 	// sender's declared outcome independently of its business error.
 	level := slog.LevelInfo

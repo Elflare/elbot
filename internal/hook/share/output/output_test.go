@@ -70,7 +70,7 @@ func TestBuildGroupNativeEmoticon(t *testing.T) {
 			if out.Kind != delivery.KindEmoticon || out.EmoticonID != "14" || out.Name != strings.TrimSpace(name) || out.Text != "" || out.Source.Path != "" || out.Source.URL != "" || len(out.Source.Data) != 0 {
 				t.Fatalf("output = %#v", out)
 			}
-			_, err = delivery.ValidateOutputs(outputs)
+			err = delivery.ValidateOutputs(outputs)
 			if strings.TrimSpace(name) == "" {
 				if err == nil || !strings.Contains(err.Error(), "requires a name") {
 					t.Fatalf("missing name: %v", err)

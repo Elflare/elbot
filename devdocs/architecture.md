@@ -181,7 +181,7 @@ Hook 根部负责外部接入与装配；pipeline 编排，rules 执行动作，
 <a id="output"></a>
 ## 输出与发送
 
-Platform dispatch 统一路由正文、媒体、Hook 输出与后台报告；SendChat 回复原会话，SendTo 使用明确目标，返回实际回执。
+Platform dispatch 统一路由正文、媒体、Hook 输出与后台报告；SendTo 只使用传入目标，空目标表示当前会话，返回实际回执。Agent 与 Hook 在消费输出时解析共同目标并检查冲突，发送层不再从输出片段推断目标。
 
 回复顺序：展示 Hook → 发送正文 → 保存模型原文及成功回执关联 → 附加输出。部分失败保留已成功回执，不重发成功内容。错误由负责入口或 Dialogue 统一报告，转交不重复通知；通知保留原会话，不依赖已失效 binding 或请求取消链。
 

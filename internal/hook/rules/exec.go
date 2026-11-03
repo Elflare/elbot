@@ -473,7 +473,13 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 			logHook(nil, delivery.Receipt{}, logResult)
 			return nil, logResult, err
 		}
-		receipt, logResult, err := m.Opts.Send(ctx, delivery.Target{}, outputs)
+		target, err := delivery.ValidateOutputsTarget(outputs)
+		if err != nil {
+			logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+			logHook(outputs, delivery.Receipt{}, logResult)
+			return nil, logResult, err
+		}
+		receipt, logResult, err := m.Opts.Send(ctx, target, outputs)
 		logHook(outputs, receipt, logResult)
 		if err != nil {
 			return nil, logResult, err

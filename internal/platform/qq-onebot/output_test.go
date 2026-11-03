@@ -240,9 +240,9 @@ func TestSendRecordUsesPrivateAndGroupMessageAPIs(t *testing.T) {
 			adapter.transport = transport
 			ctx := testTargetContext(tc.target)
 			out := delivery.Output{Kind: delivery.KindRecord, Source: delivery.Source{URL: "https://example.com/voice.mp3"}}
-			receipt, _, err := adapter.SendChat(ctx, []delivery.Output{out})
+			receipt, _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{out})
 			if err != nil {
-				t.Fatalf("SendChat: %v", err)
+				t.Fatalf("SendToCurrentConversation: %v", err)
 			}
 			if gotAction != tc.wantAction || gotID != tc.wantID {
 				t.Fatalf("request = action %q, id %q", gotAction, gotID)
@@ -278,9 +278,9 @@ func TestSendContextOutputReturnsSendFailureWithoutFallbackMessage(t *testing.T)
 	adapter.transport = transport
 	ctx := testTargetContext(target{MessageType: "private", UserID: 1})
 
-	_, _, err := adapter.SendChat(ctx, []delivery.Output{delivery.Emoticon("14", "开心")})
+	_, _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Emoticon("14", "开心")})
 	if err == nil {
-		t.Fatal("SendChat error is nil")
+		t.Fatal("SendToCurrentConversation error is nil")
 	}
 	if len(messages) != 1 {
 		t.Fatalf("transport messages = %#v", messages)

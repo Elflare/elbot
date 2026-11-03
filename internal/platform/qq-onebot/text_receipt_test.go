@@ -25,7 +25,7 @@ func TestTextReceiptsKeepActualTarget(t *testing.T) {
 			if explicit {
 				receipt, _, err = a.SendTo(context.Background(), delivery.Target{ChatType: contextinfo.ChatType(target.MessageType), ChatID: oneBotTargetScope(target)}, []delivery.Output{delivery.Reply("old", "report")})
 			} else {
-				receipt, _, err = a.SendChat(ctx, []delivery.Output{delivery.Text("report")})
+				receipt, _, err = a.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("report")})
 			}
 			if err != nil || len(receipt.SentMessages) != 1 {
 				t.Fatalf("explicit=%v receipt=%#v err=%v", explicit, receipt, err)
@@ -51,7 +51,7 @@ func TestTextPagesReturnOneForwardReceipt(t *testing.T) {
 	})
 	a := newTestAdapter(t, Config{Enabled: true, URL: transport.URL}, nil, nil)
 	a.transport = transport
-	receipt, _, err := a.SendChat(testTargetContext(target{MessageType: "group", GroupID: 9}), []delivery.Output{delivery.Text(strings.Repeat("a", 30000))})
+	receipt, _, err := a.SendTo(testTargetContext(target{MessageType: "group", GroupID: 9}), delivery.Target{}, []delivery.Output{delivery.Text(strings.Repeat("a", 30000))})
 	if err != nil || calls != 1 || len(receipt.PlatformMessageIDs) != 1 || len(receipt.SentMessages) != 1 {
 		t.Fatalf("receipt=%#v err=%v", receipt, err)
 	}

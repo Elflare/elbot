@@ -44,15 +44,11 @@ func connectTestNotifications(t *testing.T, router *dispatch.Router) *notificati
 
 func (*assemblyPlatform) Name() string { return "cli" }
 
-func (p *assemblyPlatform) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+func (p *assemblyPlatform) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.outputs = append(p.outputs, delivery.FallbackOutput(outputs).Text)
 	return delivery.Receipt{PlatformMessageIDs: []string{fmt.Sprint(len(p.outputs))}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
-}
-
-func (p *assemblyPlatform) SendTo(ctx context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	return p.SendChat(ctx, noticeOutputs)
 }
 
 func (p *assemblyPlatform) text() string {

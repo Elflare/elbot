@@ -4,6 +4,7 @@ import (
 	"context"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/session"
@@ -21,7 +22,7 @@ type InputIdentity interface {
 }
 
 type InputOutput interface {
-	SendChat(context.Context, string) error
+	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, events.LogResult, error)
 	Notify(context.Context, slog.Level, string)
 }
 

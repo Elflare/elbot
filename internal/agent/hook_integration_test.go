@@ -39,14 +39,11 @@ func (*integrationPlatform) SessionIDCode(name string, _ contextinfo.ChatType) (
 }
 
 func (*integrationPlatform) RestoreMessageContext(ctx, _ context.Context) context.Context { return ctx }
-func (p *integrationPlatform) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+func (p *integrationPlatform) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.outputs = append(p.outputs, delivery.FallbackOutput(outputs).Text)
 	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
-}
-func (p *integrationPlatform) SendTo(ctx context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	return p.SendChat(ctx, outputs)
 }
 func (*integrationPlatform) StartStream(context.Context) (delivery.MessageStream, error) {
 	return nil, nil
@@ -104,7 +101,7 @@ data: [DONE]
 	t.Cleanup(func() { _ = tools.Close(context.Background()) })
 	platform := &integrationPlatform{}
 	notifications, err := events.NotificationRequested.Connect(func(ctx context.Context, notice events.Notification) (events.NotificationReceipt, error) {
-		_, _, err := platform.SendChat(ctx, []delivery.Output{delivery.Text(notice.Text)})
+		_, _, err := platform.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(notice.Text)})
 		return events.NotificationReceipt{}, err
 	}, signal.ConnectOptions{})
 	if err != nil {

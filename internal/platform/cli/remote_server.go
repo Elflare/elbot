@@ -193,20 +193,6 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler share.Me
 	}()
 }
 
-func (s *RemoteServer) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	if client, ok := s.originalClient(ctx); ok {
-		{
-			logResult, err := client.write(ctx, outputMessage(remoteMsgChat, delivery.FallbackOutput(outputs)))
-			return delivery.Receipt{}, logResult, err
-		}
-	}
-	{
-		err := fmt.Errorf("cli chat target missing")
-		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: err.Error()}
-		return delivery.Receipt{}, logResult, err
-	}
-}
-
 func (s *RemoteServer) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	clients, err := s.targetClients(ctx, target)
 	if err != nil {

@@ -55,7 +55,8 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Se
 		case agentshare.IsAppendCancel(text):
 			c.turns.CancelAppend(row.ID)
 			release()
-			return c.output.SendChat(ctx, "append canceled · stopping")
+			_, _, err := c.output.SendAssistant(ctx, "append canceled · stopping")
+			return err
 		default:
 			c.turns.AppendPendingInput(row.ID, agentshare.InboundTurnInput(ctx, text))
 			release()
@@ -127,19 +128,20 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 			c.requests.CancelSession(session.ID)
 			release()
 			timeout := c.waitPolicy.WaitTimeout(ctx)
-			err := c.output.SendChat(ctx, appendConfirmPromptText(timeout))
+			_, _, err := c.output.SendAssistant(ctx, appendConfirmPromptText(timeout))
 			go func() {
 				defer finishWait()
 				defer c.sessionIdle(waitCtx, session.ID)
 				if wait.Wait(waitCtx, timeout) {
-					_ = c.output.SendChat(waitCtx, "append timeout → dropped · stopped")
+					_, _, _ = c.output.SendAssistant(waitCtx, "append timeout → dropped · stopped")
 				}
 			}()
 			return agentshare.InputHandled, err
 		case turn.PhaseTool:
 			c.turns.AppendPendingInput(session.ID, agentshare.InboundTurnInput(ctx, text))
 			release()
-			return agentshare.InputHandled, c.output.SendChat(ctx, "queued → next LLM call")
+			_, _, err := c.output.SendAssistant(ctx, "queued → next LLM call")
+			return agentshare.InputHandled, err
 		default:
 			release()
 			err = c.Run(ctx, session, text, foregroundTurnOutput{sender: c.output})

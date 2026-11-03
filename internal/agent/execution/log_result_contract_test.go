@@ -35,10 +35,6 @@ func readDeliveryLog(t *testing.T, record events.LogRecord) deliveryLogContent {
 
 type outputSendFunc func([]delivery.Output) (delivery.Receipt, events.LogResult, error)
 
-func (f outputSendFunc) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	return f(outputs)
-}
-
 func (f outputSendFunc) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	return f(outputs)
 }
@@ -87,6 +83,36 @@ func TestReplyDeliveryRecordsOncePerSend(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestAssistantSendFailureUsesUnifiedDeliveryLog(t *testing.T) {
+	f := newReplyTestFixture(t, false)
+	want := errors.New("send failed")
+	f.platform.sendErr = want
+	counts := map[string]int{}
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+		if record.Module == "delivery" {
+			counts["delivery"]++
+			if record.ResultStatus != events.ResultFailed {
+				t.Errorf("failure status=%v", record.ResultStatus)
+			}
+		}
+		if record.Module == "agent" {
+			counts["agent"]++
+			if record.EventName != "reply_delivered" {
+				t.Errorf("duplicate failure log: %s", record.EventName)
+			}
+		}
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
+	receipt, result, err := f.out.SendAssistant(f.ctx, "message")
+	if !errors.Is(err, want) || result.ResultStatus != events.ResultFailed || len(receipt.PlatformMessageIDs) != 1 || counts["delivery"] != 1 || counts["agent"] != 1 {
+		t.Fatalf("receipt=%+v result=%+v err=%v logs=%v", receipt, result, err, counts)
 	}
 }
 

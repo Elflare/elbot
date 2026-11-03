@@ -19,7 +19,7 @@ import (
 	"log/slog"
 )
 
-func TestSendChatUsesGroupMessageAPI(t *testing.T) {
+func TestSendToCurrentConversationUsesGroupMessageAPI(t *testing.T) {
 	var body messageToCreate
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v2/groups/group-1/messages" {
@@ -34,9 +34,9 @@ func TestSendChatUsesGroupMessageAPI(t *testing.T) {
 
 	adapter := newQQOfficialSendTestAdapter(t, server)
 	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformQQOfficial, ChatType: contextinfo.ChatGroup, ChatID: "group-1"}, PlatformMessageID: "incoming-1"})
-	receipt, _, err := adapter.SendChat(ctx, []delivery.Output{delivery.Text("hello")})
+	receipt, _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("hello")})
 	if err != nil {
-		t.Fatalf("SendChat: %v", err)
+		t.Fatalf("SendToCurrentConversation: %v", err)
 	}
 	if len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "sent-1" {
 		t.Fatalf("receipt = %#v", receipt)
@@ -78,7 +78,7 @@ func TestKeyboardUsesOnlyStructuredActions(t *testing.T) {
 			adapter.cfg.MarkdownByDefault = &test.markdown
 			adapter.cfg.EnableKeyboard = &test.enabled
 			ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformQQOfficial, ChatType: "group", ChatID: "1"}, PlatformMessageID: "incoming"})
-			if _, _, err := adapter.SendChat(ctx, []delivery.Output{{Kind: delivery.KindText, Text: test.text, Actions: test.actions}}); err != nil {
+			if _, _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: test.text, Actions: test.actions}}); err != nil {
 				t.Fatal(err)
 			}
 			if (body.Keyboard != nil) != test.want {

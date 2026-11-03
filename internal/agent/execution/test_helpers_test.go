@@ -63,11 +63,6 @@ func (b *safeStringBuilder) Reset() {
 
 func (p *fakePlatform) Name() string { return "cli" }
 
-func (p *fakePlatform) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	p.out.WriteString(delivery.FallbackOutput(outputs).Text)
-	return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
-}
-
 func (p *fakePlatform) SendTo(_ context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	outputs := noticeOutputs
 	text := delivery.FallbackOutput(outputs).Text

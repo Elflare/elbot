@@ -2,6 +2,7 @@ package input
 
 import (
 	"context"
+	"elbot/internal/delivery"
 	"elbot/internal/testutil"
 	"log/slog"
 	"testing"
@@ -31,7 +32,9 @@ func (activityTestHooks) AgentInputPrepared(_ context.Context, _ agentshare.Sess
 
 type activityTestOutput struct{}
 
-func (activityTestOutput) SendChat(context.Context, string) error     { return nil }
+func (activityTestOutput) SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, events.LogResult, error) {
+	return delivery.Receipt{}, events.LogResult{}, nil
+}
 func (activityTestOutput) Notify(context.Context, slog.Level, string) {}
 
 type activityTestPreloader struct{}

@@ -43,24 +43,6 @@ func qqTextPages(text string) []string {
 	return pages
 }
 
-func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-	if text, ok := textOutputs(outputs); ok {
-		return a.sendContextText(ctx, text)
-	}
-	t, err := a.contextTarget(ctx)
-	if err != nil {
-		logResult := sendLogResult(err)
-		return delivery.Receipt{}, logResult, err
-	}
-	segments, err := outputSegments(a.cfg.SendFileMode, outputs...)
-	if err != nil {
-		logResult := sendLogResult(err)
-		return delivery.Receipt{}, logResult, err
-	}
-	receipt, logResult, err := sendSegments(ctx, a.transport, t, segments)
-	return oneBotReceipt(a.Name(), receipt, t, outputs), logResult, err
-}
-
 func (a *Adapter) sendTemporary(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	transport := newTransport(a.Name(), a.cfg.URL, a.cfg.AccessToken, time.Duration(a.cfg.APITimeoutSeconds)*time.Second)
 	dialCtx, cancel := context.WithCancel(ctx)
@@ -106,23 +88,29 @@ func (a *Adapter) sendTemporary(ctx context.Context, target delivery.Target, out
 	return oneBotReceipt(a.Name(), receipt, t, outputs), logResult, err
 }
 
-func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-	outTarget := target
+func (a *Adapter) SendTo(ctx context.Context, outTarget delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	if outTarget.Superadmins {
 		return a.superadmins.SendTo(ctx, outputs, a.SendTo)
 	}
 	if delivery.UseTemporaryConnection(ctx) {
-		return a.sendTemporary(ctx, target, outputs)
+		return a.sendTemporary(ctx, outTarget, outputs)
 	}
+	text, ok := textOutputs(outputs)
+	if outTarget.Empty() && ok && strings.TrimSpace(text) == "" {
+		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+	}
+	var t target
+	var err error
 	if outTarget.Empty() {
-		return a.SendChat(ctx, outputs)
+		t, err = a.contextTarget(ctx)
+	} else {
+		t, err = targetToQQ(outTarget)
 	}
-	t, err := targetToQQ(outTarget)
 	if err != nil {
 		logResult := sendLogResult(err)
 		return delivery.Receipt{}, logResult, err
 	}
-	if text, ok := textOutputs(outputs); ok {
+	if ok {
 		return sendText(ctx, a.transport, t, text)
 	}
 	segments, err := outputSegments(a.cfg.SendFileMode, outputs...)
@@ -143,18 +131,6 @@ func textOutputs(outputs []delivery.Output) (string, bool) {
 		text.WriteString(out.Text)
 	}
 	return text.String(), true
-}
-
-func (a *Adapter) sendContextText(ctx context.Context, text string) (delivery.Receipt, globalevents.LogResult, error) {
-	if strings.TrimSpace(text) == "" {
-		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
-	}
-	t, err := a.contextTarget(ctx)
-	if err != nil {
-		logResult := sendLogResult(err)
-		return delivery.Receipt{}, logResult, err
-	}
-	return sendText(ctx, a.transport, t, text)
 }
 
 func sendText(ctx context.Context, transport *Transport, t target, text string) (delivery.Receipt, globalevents.LogResult, error) {

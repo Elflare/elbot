@@ -11,7 +11,6 @@ import (
 type OutputSenderDeps struct {
 	Dispatcher interface {
 		SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
-		SendChat(context.Context, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
 		StartStream(context.Context) (delivery.MessageStream, error)
 	}
 	Hooks interface {

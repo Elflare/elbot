@@ -88,7 +88,6 @@ type PlatformCapabilities interface {
 	SessionIDCode(string, contextinfo.ChatType) (string, error)
 	RestoreMessageContext(context.Context, context.Context) context.Context
 	SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
-	SendChat(context.Context, []delivery.Output) (delivery.Receipt, events.LogResult, error)
 	StartStream(context.Context) (delivery.MessageStream, error)
 	StartReasoning(context.Context) delivery.ReasoningStream
 }

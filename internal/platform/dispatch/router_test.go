@@ -21,9 +21,6 @@ type testSender struct {
 }
 
 func (s testSender) Name() string { return "primary" }
-func (s testSender) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	return s.send(ctx, delivery.Target{}, outputs)
-}
 func (s testSender) SendTo(ctx context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	return s.send(ctx, noticeTarget, noticeOutputs)
 }
@@ -115,7 +112,7 @@ func TestRouterExplicitTargetOverridesSenderAndKeepsPartialReceipt(t *testing.T)
 	}
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, _, err := router.SendChat(cancelled, []delivery.Output{delivery.Text("cancelled")}); !errors.Is(err, context.Canceled) {
+	if _, _, err := router.SendTo(cancelled, delivery.Target{}, []delivery.Output{delivery.Text("cancelled")}); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	if overrideCalls != 1 {

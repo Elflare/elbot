@@ -41,7 +41,7 @@ func TestLocalTerminalLifecycle(t *testing.T) {
 		if program == nil {
 			t.Fatal("terminal released before Close")
 		}
-		if _, _, err := a.SendChat(context.Background(), []delivery.Output{delivery.Text("draining")}); err != nil {
+		if _, _, err := a.SendTo(context.Background(), delivery.Target{}, []delivery.Output{delivery.Text("draining")}); err != nil {
 			t.Fatal(err)
 		}
 		if err := a.Close(deadline); err != nil {
@@ -53,7 +53,7 @@ func TestLocalTerminalLifecycle(t *testing.T) {
 		if program != nil {
 			t.Fatal("terminal still running after Close")
 		}
-		if _, _, err := a.SendChat(context.Background(), []delivery.Output{delivery.Text("closed")}); err == nil {
+		if _, _, err := a.SendTo(context.Background(), delivery.Target{}, []delivery.Output{delivery.Text("closed")}); err == nil {
 			t.Fatal("send succeeded after Close")
 		}
 		fmt.Println("CLI_TERMINAL_CLOSED")

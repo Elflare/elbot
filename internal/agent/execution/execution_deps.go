@@ -25,7 +25,6 @@ type ExecutionDialogue interface {
 }
 
 type ExecutionSender interface {
-	SendChat(context.Context, string) error
 	StartStream(context.Context) (delivery.MessageStream, error)
 	FinishIntermediate(context.Context, context.Context, delivery.MessageStream, string, bool) error
 	ReplaceAndFinishStream(context.Context, context.Context, delivery.MessageStream, string) (delivery.Receipt, events.LogResult, error)

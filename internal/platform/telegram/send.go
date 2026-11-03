@@ -19,7 +19,7 @@ type target struct {
 	ChatID       string               // 回执记录使用的平台会话范围。
 }
 
-func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+func (a *Adapter) SendTo(ctx context.Context, outTarget delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	ctx, finish, err := a.beginOperation(ctx)
 	if err != nil {
 		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
@@ -29,23 +29,9 @@ func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (deli
 		return delivery.Receipt{}, logResult, err
 	}
 	defer finish()
-	return a.sendContextOutput(ctx, outputs)
-}
-
-func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-	outTarget := target
 	if outTarget.Empty() {
-		return a.SendChat(ctx, outputs)
+		return a.sendContextOutput(ctx, outputs)
 	}
-	ctx, finish, err := a.beginOperation(ctx)
-	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if errors.Is(err, context.Canceled) {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
-		return delivery.Receipt{}, logResult, err
-	}
-	defer finish()
 	return a.sendTarget(ctx, outTarget, outputs)
 }
 

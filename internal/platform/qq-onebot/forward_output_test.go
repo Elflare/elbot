@@ -34,7 +34,7 @@ func TestForwardTextSendingPaths(t *testing.T) {
 					var err error
 					switch mode {
 					case "chat":
-						receipt, _, err = a.SendChat(ctx, outputs)
+						receipt, _, err = a.SendTo(ctx, delivery.Target{}, outputs)
 					case "context notice":
 						receipt, _, err = a.SendTo(ctx, delivery.Target{}, outputs)
 					case "explicit notice":
@@ -139,7 +139,7 @@ func TestForwardSendFailureDoesNotFallBack(t *testing.T) {
 			})
 			a := newTestAdapter(t, Config{URL: transport.URL}, nil, nil)
 			a.transport = transport
-			receipt, _, err := a.SendChat(testTargetContext(target{MessageType: "group", GroupID: 9}), []delivery.Output{delivery.Text(strings.Repeat("a", 3001))})
+			receipt, _, err := a.SendTo(testTargetContext(target{MessageType: "group", GroupID: 9}), delivery.Target{}, []delivery.Output{delivery.Text(strings.Repeat("a", 3001))})
 			if err == nil || calls.Load() != 1 || len(receipt.PlatformMessageIDs) != 0 || len(receipt.SentMessages) != 0 {
 				t.Fatalf("receipt=%#v error=%v calls=%d", receipt, err, calls.Load())
 			}
@@ -183,7 +183,7 @@ func TestLongMixedOutputKeepsNormalMessageAPI(t *testing.T) {
 	})
 	a := newTestAdapter(t, Config{URL: transport.URL}, nil, nil)
 	a.transport = transport
-	_, _, err := a.SendChat(testTargetContext(target{MessageType: "group", GroupID: 9}), []delivery.Output{delivery.Text(strings.Repeat("a", 3001)), delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/image.png"}}})
+	_, _, err := a.SendTo(testTargetContext(target{MessageType: "group", GroupID: 9}), delivery.Target{}, []delivery.Output{delivery.Text(strings.Repeat("a", 3001)), delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/image.png"}}})
 	if err != nil {
 		t.Fatal(err)
 	}

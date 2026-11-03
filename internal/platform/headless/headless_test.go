@@ -62,7 +62,7 @@ func TestSendingRequiresTargetPlatform(t *testing.T) {
 	outputs := []delivery.Output{delivery.Text("hello")}
 	for name, send := range map[string]func() (delivery.Receipt, events.LogResult, error){
 		"chat": func() (delivery.Receipt, events.LogResult, error) {
-			return a.SendChat(t.Context(), outputs)
+			return a.SendTo(t.Context(), delivery.Target{}, outputs)
 		},
 		"target": func() (delivery.Receipt, events.LogResult, error) {
 			return a.SendTo(t.Context(), delivery.Target{Platform: "telegram", ChatType: "private", ChatID: "user"}, outputs)

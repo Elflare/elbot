@@ -32,9 +32,9 @@ func (p *entryProbe) Handle(_ context.Context, text string) (bool, error) {
 	return false, nil
 }
 func (p *entryProbe) IsCommand(string) bool { return false }
-func (p *entryProbe) SendChat(context.Context, string) error {
+func (p *entryProbe) SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, events.LogResult, error) {
 	p.order = append(p.order, "chat")
-	return nil
+	return delivery.Receipt{}, events.LogResult{}, nil
 }
 func (p *entryProbe) SendOutputs(context.Context, []delivery.Output) (events.LogResult, error) {
 	p.order = append(p.order, "outputs")

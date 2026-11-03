@@ -17,7 +17,6 @@ import (
 type OutputSender struct {
 	dispatcher interface {
 		SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
-		SendChat(context.Context, []delivery.Output) (delivery.Receipt, globalevents.LogResult, error)
 		StartStream(context.Context) (delivery.MessageStream, error)
 	}
 	hooks interface {
@@ -32,7 +31,14 @@ func (o *OutputSender) SendOutputs(ctx context.Context, outputs []delivery.Outpu
 	if agentshare.ExecutionMode(ctx) == "background" {
 		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "background output is silent"}, nil
 	}
-	receipt, logResult, err := o.dispatcher.SendTo(ctx, delivery.Target{}, outputs)
+	target, err := delivery.ValidateOutputsTarget(outputs)
+	var receipt delivery.Receipt
+	var logResult globalevents.LogResult
+	if err != nil {
+		logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+	} else {
+		receipt, logResult, err = o.dispatcher.SendTo(ctx, target, outputs)
+	}
 	if len(outputs) > 0 || err != nil {
 		o.observeDelivery(ctx, "send_outputs", receipt, logResult)
 	}
@@ -74,11 +80,6 @@ func (o *OutputSender) observeDelivery(ctx context.Context, operation string, re
 	_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 }
 
-func (o *OutputSender) SendChat(ctx context.Context, text string) error {
-	_, _, err := o.SendAssistant(ctx, text)
-	return err
-}
-
 func (o *OutputSender) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) error {
 	if target.Empty() && (agentshare.ExecutionMode(ctx) == "background") {
 		return nil
@@ -108,29 +109,7 @@ func (o *OutputSender) SendAssistant(ctx context.Context, text string, actions .
 		return delivery.Receipt{}, logResult, err
 	}
 	// Hook 只改正文，操作由业务源提供，与展示文本独立。
-	receipt, logResult, err = o.dispatcher.SendChat(ctx, []delivery.Output{{Kind: delivery.KindText, Text: preparedText, Actions: slices.Clone(actions)}})
-	if logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
-
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelError,
-				EventName:    "chat_send_failed",
-				Module:       "agent",
-				Type:         globalevents.ContentText,
-				Content:      logResult.Content,
-				ContentLimit: 4096,
-				ResultStatus: logResult.ResultStatus,
-			}
-			if logResult.ResultStatus == globalevents.ResultCanceled {
-				record.Level = slog.LevelInfo
-			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity = globalevents.LogIdentityFromExecution(facts)
-			_ = globalevents.EmitLog(ctx, record)
-		}
-
-	}
+	receipt, logResult, err = o.dispatcher.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: preparedText, Actions: slices.Clone(actions)}})
 	if err != nil {
 		return receipt, logResult, err
 	}

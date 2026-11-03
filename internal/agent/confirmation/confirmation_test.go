@@ -127,7 +127,6 @@ type confirmationOutput struct {
 	texts chan string
 }
 
-func (confirmationOutput) SendChat(context.Context, string) error { return nil }
 func (o confirmationOutput) SendAssistant(_ context.Context, text string, actions ...delivery.Action) (delivery.Receipt, events.LogResult, error) {
 	if o.texts != nil {
 		o.texts <- text
@@ -148,7 +147,7 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 		turns.StartAttempt("s", turn.Input{}, execution, "a")
 		turns.StartToolPhase("s", "a")
 		ctx := turn.WithAttempt(turn.WithExecution(t.Context(), execution), "a")
-		output := confirmationOutput{sent: make(chan []delivery.Action, 1), texts: make(chan string, 1)}
+		output := confirmationOutput{sent: make(chan []delivery.Action, 2), texts: make(chan string, 2)}
 		commandText := func(name string, args ...string) string { return commandpkg.Format("!", name, args...) }
 		coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: commandText, Turns: turns, Output: output, Policy: fixedWaitPolicy(time.Second)})
 		result, err := coordinator.AwaitToolConfirmation(ctx, "s", llm.ToolCallRequest{ID: "call", Name: "shell", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, "detail")
@@ -156,6 +155,16 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 			t.Fatalf("result=%+v err=%v", result, err)
 		}
 		actions := <-output.sent
+		if len(output.texts) != 2 || len(output.sent) != 1 {
+			t.Fatal("confirmation prompt or timeout notice missing")
+		}
+		<-output.texts
+		if got := <-output.texts; got != "confirm timeout → stopped" {
+			t.Fatalf("timeout notice=%q", got)
+		}
+		if got := <-output.sent; len(got) != 0 {
+			t.Fatalf("timeout notice acquired actions: %+v", got)
+		}
 		want := []string{"detail", "confirm", "confirmtool", "confirmall", "reject", "stop"}
 		if len(actions) != len(want) {
 			t.Fatalf("actions=%#v", actions)

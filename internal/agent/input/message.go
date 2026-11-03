@@ -48,7 +48,8 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	message := agentshare.Message{Role: string(llm.RoleUser), Segments: segments}
 	if strings.TrimSpace(llm.SegmentsTextOnly(segments)) == "/cancel" {
 		if h.hooks.CancelRoute(ctx, message) {
-			return h.output.SendChat(ctx, "Hook canceled")
+			_, _, err := h.output.SendAssistant(ctx, "Hook canceled")
+			return err
 		}
 	}
 	waiting := h.hooks.HasRoute(ctx, message)
@@ -91,7 +92,8 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	text = llm.SegmentsTextOnly(segments)
 	message.Segments = result.Segments
 	if strings.TrimSpace(text) == "/cancel" && h.hooks.CancelRoute(ctx, message) {
-		return h.output.SendChat(ctx, "Hook canceled")
+		_, _, err := h.output.SendAssistant(ctx, "Hook canceled")
+		return err
 	}
 	if !woken {
 		return nil
@@ -116,7 +118,7 @@ type MessageHooks interface {
 }
 
 type MessageOutput interface {
-	SendChat(context.Context, string) error
+	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, events.LogResult, error)
 	SendOutputs(context.Context, []delivery.Output) (events.LogResult, error)
 	Notify(context.Context, slog.Level, string)
 }

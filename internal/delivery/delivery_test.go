@@ -10,21 +10,9 @@ import (
 )
 
 type fakeSender struct {
-	chats    [][]Output
+	targets  []Target
 	targeted [][]Output
 	err      error
-}
-
-func (s *fakeSender) SendChat(_ context.Context, outputs []Output) (Receipt, events.LogResult, error) {
-	if s.err != nil {
-		logResult := events.LogResult{ResultStatus: events.ResultFailed, Content: s.err.Error()}
-		if s.err == context.Canceled {
-			logResult.ResultStatus = events.ResultCanceled
-		}
-		return Receipt{}, logResult, s.err
-	}
-	s.chats = append(s.chats, outputs)
-	return Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
 func (s *fakeSender) SendTo(_ context.Context, noticeTarget Target, noticeOutputs []Output) (Receipt, events.LogResult, error) {
@@ -35,12 +23,7 @@ func (s *fakeSender) SendTo(_ context.Context, noticeTarget Target, noticeOutput
 		}
 		return Receipt{}, logResult, s.err
 	}
-	if !noticeTarget.Empty() {
-		noticeOutputs = append([]Output(nil), noticeOutputs...)
-		for i := range noticeOutputs {
-			noticeOutputs[i].Target = noticeTarget
-		}
-	}
+	s.targets = append(s.targets, noticeTarget)
 	s.targeted = append(s.targeted, noticeOutputs)
 	return Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
@@ -108,14 +91,14 @@ func TestRecordOutputValidationAndFallback(t *testing.T) {
 		{Kind: KindRecord, Source: Source{URL: "https://example.com/voice.mp3"}},
 		{Kind: KindRecord, Source: Source{Data: []byte("voice")}},
 	} {
-		if _, err := ValidateOutputs([]Output{out}); err != nil {
+		if err := ValidateOutputs([]Output{out}); err != nil {
 			t.Fatalf("ValidateOutputs(%#v): %v", out, err)
 		}
 	}
-	if _, err := ValidateOutputs([]Output{{Kind: KindRecord}}); err == nil {
+	if err := ValidateOutputs([]Output{{Kind: KindRecord}}); err == nil {
 		t.Fatal("ValidateOutputs accepted record without a source")
 	}
-	if _, err := ValidateOutputs([]Output{{Kind: KindRecord, Source: Source{Path: "voice.mp3", URL: "https://example.com/voice.mp3"}}}); err == nil {
+	if err := ValidateOutputs([]Output{{Kind: KindRecord, Source: Source{Path: "voice.mp3", URL: "https://example.com/voice.mp3"}}}); err == nil {
 		t.Fatal("ValidateOutputs accepted record with multiple sources")
 	}
 	out := RecordPath("voice.mp3")
@@ -132,11 +115,11 @@ func TestManagerSendsChat(t *testing.T) {
 	sender := &fakeSender{}
 	manager := NewManager(sender)
 	out := Output{Kind: KindText, Text: "hello"}
-	if _, _, err := manager.SendChat(context.Background(), []Output{out}); err != nil {
-		t.Fatalf("SendChat: %v", err)
+	if _, _, err := manager.SendTo(context.Background(), Target{}, []Output{out}); err != nil {
+		t.Fatalf("SendToCurrentConversation: %v", err)
 	}
-	if len(sender.chats) != 1 || len(sender.chats[0]) != 1 || sender.chats[0][0].Text != "hello" {
-		t.Fatalf("chats = %#v", sender.chats)
+	if len(sender.targeted) != 1 || len(sender.targeted[0]) != 1 || sender.targeted[0][0].Text != "hello" {
+		t.Fatalf("chats = %#v", sender.targeted)
 	}
 }
 
@@ -161,7 +144,7 @@ func TestManagerSelectsChatTarget(t *testing.T) {
 		target Target
 		want   Target
 	}{
-		{"batch target", Target{}, batchTarget},
+		{"current conversation ignores output target", Target{}, Target{}},
 		{"explicit target", explicitTarget, explicitTarget},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -170,7 +153,7 @@ func TestManagerSelectsChatTarget(t *testing.T) {
 			if _, _, err := NewManager(sender).SendTo(t.Context(), tc.target, outputs); err != nil {
 				t.Fatalf("SendTo: %v", err)
 			}
-			if len(sender.targeted) != 1 || sender.targeted[0][0].Target != tc.want {
+			if len(sender.targeted) != 1 || sender.targets[0] != tc.want {
 				t.Fatalf("targeted = %#v, want target %#v", sender.targeted, tc.want)
 			}
 		})
@@ -207,16 +190,14 @@ func TestManagerRejectsInvalidOutputsBeforeSending(t *testing.T) {
 		{"missing emoticon name", []Output{{Kind: KindEmoticon, EmoticonID: "14", Text: "微笑"}}, "requires a name"},
 		{"blank emoticon name", []Output{Emoticon("14", " \t ")}, "requires a name"},
 		{"invalid timing", []Output{WithDeliveryTiming(Text("hello"), "invalid")}, "unsupported timing"},
-		{"conflicting targets", []Output{
-			{Kind: KindText, Target: Target{ChatType: "private", ChatID: "one"}},
-			{Kind: KindText, Target: Target{ChatType: "private", ChatID: "two"}},
-		}, "same target"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sender := &fakeSender{}
 			manager := NewManager(sender)
 			for _, send := range []func(context.Context, []Output) (Receipt, events.LogResult, error){
-				manager.SendChat,
+				func(ctx context.Context, outputs []Output) (Receipt, events.LogResult, error) {
+					return manager.SendTo(ctx, Target{}, outputs)
+				},
 				func(ctx context.Context, outputs []Output) (Receipt, events.LogResult, error) {
 					return manager.SendTo(ctx, Target{ChatType: "private", ChatID: "explicit"}, outputs)
 				},
@@ -226,17 +207,17 @@ func TestManagerRejectsInvalidOutputsBeforeSending(t *testing.T) {
 					t.Fatalf("result=%+v err=%v, want %q", logResult, err, tc.want)
 				}
 			}
-			if len(sender.chats) != 0 || len(sender.targeted) != 0 {
+			if len(sender.targeted) != 0 {
 				t.Fatal("invalid outputs reached sender")
 			}
 		})
 	}
 }
 
-func TestValidateOutputsReturnsBatchTarget(t *testing.T) {
+func TestValidateOutputsTargetReturnsBatchTarget(t *testing.T) {
 	target := Target{Platform: "cli", ChatType: "private", ChatID: "one"}
 	outputs := []Output{Text("first"), {Kind: KindText, Target: target}, {Kind: KindText, Target: target}}
-	got, err := ValidateOutputs(outputs)
+	got, err := ValidateOutputsTarget(outputs)
 	if err != nil || got != target {
 		t.Fatalf("target=%#v err=%v, want %#v", got, err, target)
 	}

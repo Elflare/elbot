@@ -86,7 +86,7 @@ type Output struct {
 	EmoticonID               string
 	ReplyToPlatformMessageID string
 	Source                   Source
-	Target                   Target
+	Target                   Target       // 输出意图目标，由消费层解析后显式传给 SendTo；发送层不读取此字段。
 	Delivery                 DeliveryInfo // 发送时机与产生该输出的 Hook 来源。
 	Actions                  []Action     // 与本段正文绑定的操作；不支持按钮的平台保留正文。
 }
@@ -198,8 +198,8 @@ type ReasoningStream interface {
 // MessageSender sends one logical message, represented by ordered output segments.
 // Receipt preserves actual delivery facts for business consumers. LogResult
 // declares the operation's logging outcome and body before any caller wraps error.
+// SendTo uses only its target argument: an empty target selects the current conversation.
 type MessageSender interface {
-	SendChat(ctx context.Context, outputs []Output) (Receipt, globalevents.LogResult, error)
 	SendTo(ctx context.Context, target Target, outputs []Output) (Receipt, globalevents.LogResult, error)
 }
 
@@ -209,20 +209,6 @@ type Manager struct {
 
 func NewManager(sender MessageSender) Manager {
 	return Manager{Sender: sender}
-}
-
-func (m Manager) SendChat(ctx context.Context, outputs []Output) (Receipt, globalevents.LogResult, error) {
-	if err := ctx.Err(); err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if err == context.Canceled {
-			logResult.ResultStatus = globalevents.ResultCanceled
-		}
-		return Receipt{}, logResult, err
-	}
-	if _, err := ValidateOutputs(outputs); err != nil {
-		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
-	}
-	return m.Sender.SendChat(ctx, outputs)
 }
 
 func (m Manager) SendTo(ctx context.Context, target Target, outputs []Output) (Receipt, globalevents.LogResult, error) {
@@ -236,12 +222,8 @@ func (m Manager) SendTo(ctx context.Context, target Target, outputs []Output) (R
 	if len(outputs) == 0 {
 		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped}, nil
 	}
-	outputTarget, err := ValidateOutputs(outputs)
-	if err != nil {
+	if err := ValidateOutputs(outputs); err != nil {
 		return Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
-	}
-	if target.Empty() {
-		target = outputTarget
 	}
 	receipt, logResult, err := m.Sender.SendTo(ctx, target, outputs)
 	LogSendResult(ctx, target, outputs[0], logResult)
@@ -287,6 +269,8 @@ func FallbackOutput(outputs []Output) Output {
 	return Text(strings.Join(parts, "\n"))
 }
 
+// ValidateOutputsTarget resolves a batch's target at its consuming boundary.
+// Empty targets inherit the batch target; distinct nonempty targets are invalid.
 func ValidateOutputsTarget(outputs []Output) (Target, error) {
 	var target Target
 	for _, out := range outputs {
@@ -304,10 +288,10 @@ func ValidateOutputsTarget(outputs []Output) (Target, error) {
 	return target, nil
 }
 
-func ValidateOutputs(outputs []Output) (Target, error) {
+func ValidateOutputs(outputs []Output) error {
 	for i, out := range outputs {
 		if err := ValidateDeliveryTiming(DeliveryTiming(out)); err != nil {
-			return Target{}, fmt.Errorf("outputs[%d]: %w", i, err)
+			return fmt.Errorf("outputs[%d]: %w", i, err)
 		}
 		sourceCount := 0
 		if strings.TrimSpace(out.Source.Path) != "" {
@@ -325,44 +309,44 @@ func ValidateOutputs(outputs []Output) (Target, error) {
 		switch out.Kind {
 		case KindText:
 			if sourceCount != 0 {
-				return Target{}, fmt.Errorf("outputs[%d]: text output cannot have a media source", i)
+				return fmt.Errorf("outputs[%d]: text output cannot have a media source", i)
 			}
 		case KindImage, KindFile, KindRecord:
 			if sourceCount != 1 {
-				return Target{}, fmt.Errorf("outputs[%d]: image/file/record output must have exactly one media source", i)
+				return fmt.Errorf("outputs[%d]: image/file/record output must have exactly one media source", i)
 			}
 			if path := strings.TrimSpace(out.Source.Path); strings.Contains(path, "://") {
-				return Target{}, fmt.Errorf("outputs[%d]: media path must be a filesystem path, not a URI", i)
+				return fmt.Errorf("outputs[%d]: media path must be a filesystem path, not a URI", i)
 			}
 			if value := strings.TrimSpace(out.Source.URL); value != "" {
 				u, err := url.Parse(value)
 				if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-					return Target{}, fmt.Errorf("outputs[%d]: media URL must be an absolute HTTP(S) URL", i)
+					return fmt.Errorf("outputs[%d]: media URL must be an absolute HTTP(S) URL", i)
 				}
 			}
 		case KindEmoticon:
 			if sourceCount != 0 {
-				return Target{}, fmt.Errorf("outputs[%d]: emoticon output cannot have a media source", i)
+				return fmt.Errorf("outputs[%d]: emoticon output cannot have a media source", i)
 			}
 			if strings.TrimSpace(out.EmoticonID) == "" {
-				return Target{}, fmt.Errorf("outputs[%d]: emoticon output requires an emoticon ID", i)
+				return fmt.Errorf("outputs[%d]: emoticon output requires an emoticon ID", i)
 			}
 			if strings.TrimSpace(out.Name) == "" {
-				return Target{}, fmt.Errorf("outputs[%d]: emoticon output requires a name", i)
+				return fmt.Errorf("outputs[%d]: emoticon output requires a name", i)
 			}
 		case KindAt:
 			if strings.TrimSpace(out.Name) == "" {
-				return Target{}, fmt.Errorf("outputs[%d]: at output requires a user ID", i)
+				return fmt.Errorf("outputs[%d]: at output requires a user ID", i)
 			}
 		case KindReply:
 			if strings.TrimSpace(out.ReplyToPlatformMessageID) == "" {
-				return Target{}, fmt.Errorf("outputs[%d]: reply output requires a message ID", i)
+				return fmt.Errorf("outputs[%d]: reply output requires a message ID", i)
 			}
 		default:
-			return Target{}, fmt.Errorf("outputs[%d]: unsupported output kind %q", i, out.Kind)
+			return fmt.Errorf("outputs[%d]: unsupported output kind %q", i, out.Kind)
 		}
 	}
-	return ValidateOutputsTarget(outputs)
+	return nil
 }
 
 func FallbackText(out Output) string {

@@ -42,50 +42,35 @@ type replyTestPlatform struct {
 	events                          *[]string
 	receipt                         delivery.Receipt
 	outputsReceipt                  delivery.Receipt
+	expectedOutputs                 []delivery.Output
 	sendErr, outputsErr             error
 	sendLogResult, outputsLogResult *events.LogResult
 	text                            string
 	texts                           []string
 }
 
-func (p *replyTestPlatform) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	*p.events = append(*p.events, "send")
-	p.text = delivery.FallbackOutput(outputs).Text
-	p.texts = append(p.texts, p.text)
-	{
-		err := p.sendErr
-		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
-		if err != nil {
-			logResult.ResultStatus = events.ResultFailed
-			logResult.Content = err.Error()
-			if err == context.Canceled {
-				logResult.ResultStatus = events.ResultCanceled
-			}
-		}
-		if p.sendLogResult != nil {
-			logResult = *p.sendLogResult
-		}
-		return p.receipt, logResult, err
+func (p *replyTestPlatform) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
+	receipt, err, source := p.receipt, p.sendErr, p.sendLogResult
+	if reflect.DeepEqual(outputs, p.expectedOutputs) {
+		*p.events = append(*p.events, "outputs")
+		receipt, err, source = p.outputsReceipt, p.outputsErr, p.outputsLogResult
+	} else {
+		*p.events = append(*p.events, "send")
+		p.text = delivery.FallbackOutput(outputs).Text
+		p.texts = append(p.texts, p.text)
 	}
-}
-
-func (p *replyTestPlatform) SendTo(_ context.Context, noticeTarget delivery.Target, noticeOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	*p.events = append(*p.events, "outputs")
-	{
-		err := p.outputsErr
-		logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
-		if err != nil {
-			logResult.ResultStatus = events.ResultFailed
-			logResult.Content = err.Error()
-			if err == context.Canceled {
-				logResult.ResultStatus = events.ResultCanceled
-			}
+	logResult := events.LogResult{ResultStatus: events.ResultSucceeded}
+	if err != nil {
+		logResult.ResultStatus = events.ResultFailed
+		logResult.Content = err.Error()
+		if err == context.Canceled {
+			logResult.ResultStatus = events.ResultCanceled
 		}
-		if p.outputsLogResult != nil {
-			logResult = *p.outputsLogResult
-		}
-		return p.outputsReceipt, logResult, err
 	}
+	if source != nil {
+		logResult = *source
+	}
+	return receipt, logResult, err
 }
 
 type replyTestStream struct {
@@ -184,6 +169,7 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 	f.committer = &dialogue.ReplyCommitter{NewMessageID: testutil.IDSequence().MessageID, Persistence: messages.Committer("append_assistant_message"), Output: sender}
 	f.out = foregroundTurnOutput{sender: sender}
 	f.in = agentshare.ReplyCommitInput{Session: row, Text: "history", RawText: "raw", PlatformText: "visible", Outputs: []delivery.Output{delivery.Text("later")}}
+	f.platform.expectedOutputs = f.in.Outputs
 	return f
 }
 
@@ -393,6 +379,7 @@ func TestReplyCommitEmptyAndBackground(t *testing.T) {
 				}
 				if mode == "outputs_only" {
 					f.in.Outputs = []delivery.Output{delivery.Text("attachment")}
+					f.platform.expectedOutputs = f.in.Outputs
 				}
 				got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
 				if err != nil || got.Persisted != (mode == "outputs_only" || mode == "background_reply") {

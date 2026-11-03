@@ -198,12 +198,16 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	content.Arguments = nil
 	content.Summary = nil
 	content.ElapsedMS = nil
-	if !params.Target.Empty() {
-		for i := range result.Outputs {
-			result.Outputs[i].Target = params.Target
-		}
+	target := params.Target
+	if target.Empty() {
+		target, err = delivery.ValidateOutputsTarget(result.Outputs)
 	}
-	receipt, logResult, err := w.manager.opts.Send(callCtx, params.Target, result.Outputs)
+	var receipt delivery.Receipt
+	if err != nil {
+		logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+	} else {
+		receipt, logResult, err = w.manager.opts.Send(callCtx, target, result.Outputs)
+	}
 	content.PlatformMessageIDs = &receipt.PlatformMessageIDs
 	sentMessages := []map[string]any{}
 	for _, sent := range receipt.SentMessages {

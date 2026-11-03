@@ -65,8 +65,8 @@ func TestOperationAdmissionResult(t *testing.T) {
 				wantErr, wantStatus = signal.ErrClosed, events.ResultFailed
 			}
 			operations := map[string]func() (delivery.Receipt, events.LogResult, error){
-				"SendChat": func() (delivery.Receipt, events.LogResult, error) {
-					return a.SendChat(ctx, []delivery.Output{delivery.Text("hello")})
+				"SendToCurrentConversation": func() (delivery.Receipt, events.LogResult, error) {
+					return a.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("hello")})
 				},
 				"SendTo": func() (delivery.Receipt, events.LogResult, error) {
 					return a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "9"}, []delivery.Output{delivery.Text("hello")})
@@ -179,7 +179,7 @@ func TestRuntimeStopsIngressAndWaitsForAcceptedWork(t *testing.T) {
 	if err := a.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Close while handler alive=%v", err)
 	}
-	if _, _, err := a.SendChat(telegramTestContext(), []delivery.Output{delivery.Text("cleanup")}); err != nil {
+	if _, _, err := a.SendTo(telegramTestContext(), delivery.Target{}, []delivery.Output{delivery.Text("cleanup")}); err != nil {
 		t.Fatalf("cleanup send=%v", err)
 	}
 	once.Do(func() { close(release) })
@@ -255,7 +255,10 @@ func TestOperationsRemainAvailableUntilFinalClose(t *testing.T) {
 	}
 	ctx := telegramTestContext()
 	operations := map[string]func() error{
-		"SendChat": func() error { _, _, err := a.SendChat(ctx, []delivery.Output{delivery.Text("hello")}); return err },
+		"SendToCurrentConversation": func() error {
+			_, _, err := a.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("hello")})
+			return err
+		},
 		"SendTo": func() error {
 			_, _, err := a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "9"}, []delivery.Output{delivery.Text("hello")})
 			return err
@@ -271,7 +274,7 @@ func TestOperationsRemainAvailableUntilFinalClose(t *testing.T) {
 		"Finish":      func() error { _, _, err := idle.Finish(ctx); return err },
 	}
 	// Stream methods use a deterministic order; other operations have no ordering dependency.
-	for _, name := range []string{"SendChat", "SendTo", "API", "media", "StartStream", "Append", "Replace", "Finish"} {
+	for _, name := range []string{"SendToCurrentConversation", "SendTo", "API", "media", "StartStream", "Append", "Replace", "Finish"} {
 		if err := operations[name](); err != nil {
 			t.Fatalf("%s after BeginClose: %v", name, err)
 		}
@@ -408,7 +411,7 @@ func TestConcurrentLifecycleAndCanceledStart(t *testing.T) {
 }
 
 func TestFinalCloseCancelsEveryHTTPBackedOperation(t *testing.T) {
-	for _, name := range []string{"SendChat", "SendTo", "media", "Append", "Replace"} {
+	for _, name := range []string{"SendToCurrentConversation", "SendTo", "media", "Append", "Replace"} {
 		t.Run(name, func(t *testing.T) {
 			a := newTestAdapter(t, Config{}, nil)
 			s := newTestStream(t, a, "private", "9")
@@ -423,8 +426,8 @@ func TestFinalCloseCancelsEveryHTTPBackedOperation(t *testing.T) {
 				ctx := telegramTestContext()
 				var err error
 				switch name {
-				case "SendChat":
-					_, _, err = a.SendChat(ctx, []delivery.Output{delivery.Text("hello")})
+				case "SendToCurrentConversation":
+					_, _, err = a.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("hello")})
 				case "SendTo":
 					_, _, err = a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "9"}, []delivery.Output{delivery.Text("hello")})
 				case "media":
@@ -466,7 +469,7 @@ func TestFinalCloseReleasesOwnedIdleConnection(t *testing.T) {
 	server.Start()
 	t.Cleanup(server.Close)
 	a := newTestAdapter(t, Config{APIBaseURL: server.URL}, nil)
-	if _, _, err := a.SendChat(telegramTestContext(), []delivery.Output{delivery.Text("hello")}); err != nil {
+	if _, _, err := a.SendTo(telegramTestContext(), delivery.Target{}, []delivery.Output{delivery.Text("hello")}); err != nil {
 		t.Fatal(err)
 	}
 	awaitTelegram(t, idle)

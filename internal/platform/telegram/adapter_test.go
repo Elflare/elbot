@@ -226,7 +226,7 @@ func TestSendActionsIndependentOfTextAndOnlyOnFirstPage(t *testing.T) {
 					out.Text = "正文完全改写\n" + strings.Repeat("a", telegramRichTextRunes+1)
 					out.Actions = actions
 				}
-				if _, _, err := adapter.SendChat(ctx, []delivery.Output{out}); err != nil {
+				if _, _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{out}); err != nil {
 					t.Fatal(err)
 				}
 				if len(bodies) < 2 {

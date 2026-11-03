@@ -99,10 +99,12 @@ func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuatio
 func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *storage.Session, text string) error {
 	locked, release, err := c.execution.EnterInput(ctx, session)
 	if errors.Is(err, agentshare.ErrInputCompacting) {
-		return c.output.SendChat(ctx, fmt.Sprintf("%v · 等待或 %s", err, c.commandText("stop")))
+		_, _, err := c.output.SendAssistant(ctx, fmt.Sprintf("%v · 等待或 %s", err, c.commandText("stop")))
+		return err
 	}
 	if errors.Is(err, agentshare.ErrInputArchived) {
-		return c.output.SendChat(ctx, fmt.Sprintf("%v · %s 后可继续", err, c.commandText("unarchive")))
+		_, _, err := c.output.SendAssistant(ctx, fmt.Sprintf("%v · %s 后可继续", err, c.commandText("unarchive")))
+		return err
 	}
 	if err != nil {
 		if ctx.Err() == nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) {

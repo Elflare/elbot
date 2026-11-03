@@ -13,10 +13,6 @@ func (m *Supervisor) SendTo(ctx context.Context, target delivery.Target, outputs
 	return m.dispatcher.SendTo(ctx, target, outputs)
 }
 
-func (m *Supervisor) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	return m.dispatcher.SendChat(ctx, outputs)
-}
-
 func (m *Supervisor) StartStream(ctx context.Context) (delivery.MessageStream, error) {
 	return m.dispatcher.StartStream(ctx)
 }

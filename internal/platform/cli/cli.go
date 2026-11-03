@@ -113,16 +113,6 @@ func (s cliMessageStream) Finish(ctx context.Context) (delivery.Receipt, globale
 	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
-func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-	text := outputsText(outputs)
-	if text != "" {
-		if err := a.sendTUIMessage(tuiOutputMsg(text), text); err != nil {
-			return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
-		}
-	}
-	return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
-}
-
 func outputsText(outputs []delivery.Output) string {
 	return delivery.FallbackOutput(outputs).Text
 }

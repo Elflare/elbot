@@ -41,7 +41,9 @@ type constructorOutput struct{}
 
 func (constructorOutput) Notify(context.Context, slog.Level, string) {}
 
-func (constructorOutput) SendChat(context.Context, string) error { return nil }
+func (constructorOutput) SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, events.LogResult, error) {
+	return delivery.Receipt{}, events.LogResult{}, nil
+}
 
 func (constructorOutput) SendOutputs(context.Context, []delivery.Output) (events.LogResult, error) {
 	return events.LogResult{ResultStatus: events.ResultSkipped}, nil

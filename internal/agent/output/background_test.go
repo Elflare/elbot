@@ -42,9 +42,6 @@ func TestAssistantActionsSurviveTextHook(t *testing.T) {
 		t.Fatal("plain text acquired actions")
 	}
 }
-func (p *backgroundDeliveryProbe) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	return p.SendTo(ctx, delivery.Target{}, outputs)
-}
 func (p *backgroundDeliveryProbe) StartStream(context.Context) (delivery.MessageStream, error) {
 	p.calls++
 	return nil, nil

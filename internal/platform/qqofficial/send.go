@@ -191,25 +191,15 @@ func (a *Adapter) baseMessage(target sendTarget) messageToCreate {
 	return msg
 }
 
-func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-	ctx, finish, err := a.beginSend(ctx)
-	if err != nil {
-		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
-	}
-	defer finish()
-	return a.sendContextOutput(ctx, outputs)
-}
-
 func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-	if target.Empty() {
-		return a.SendChat(ctx, outputs)
-	}
-
 	ctx, finish, err := a.beginSend(ctx)
 	if err != nil {
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
 	defer finish()
+	if target.Empty() {
+		return a.sendContextOutput(ctx, outputs)
+	}
 	if target.Superadmins {
 		if name := strings.TrimSpace(target.Platform); name != "" && name != a.Name() {
 			err := fmt.Errorf("qqofficial cannot send to platform %q", name)

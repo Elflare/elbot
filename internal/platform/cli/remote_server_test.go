@@ -133,7 +133,7 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	read(one, "first-only")
-	if _, _, err := s.SendChat(secondCtx, []delivery.Output{delivery.Text("second-only")}); err != nil {
+	if _, _, err := s.SendTo(secondCtx, delivery.Target{}, []delivery.Output{delivery.Text("second-only")}); err != nil {
 		t.Fatal(err)
 	}
 	read(two, "second-only")
@@ -160,7 +160,7 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 	if terminal.Type != remoteMsgStatus || terminal.Snapshot.Phase != runtimestatus.PhaseDone {
 		t.Fatal(terminal)
 	}
-	if _, _, err := s.SendChat(secondCtx, []delivery.Output{delivery.Text("second-barrier")}); err != nil {
+	if _, _, err := s.SendTo(secondCtx, delivery.Target{}, []delivery.Output{delivery.Text("second-barrier")}); err != nil {
 		t.Fatal(err)
 	}
 	read(two, "second-barrier") // Neither reasoning nor status leaked to the same user's other connection.
@@ -176,10 +176,10 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 	read(two, "partial-fanout")
 	s.removeClient(first)
 	first.conn.CloseNow()
-	if _, _, err := s.SendChat(firstCtx, []delivery.Output{delivery.Text("must-not-move")}); err == nil {
+	if _, _, err := s.SendTo(firstCtx, delivery.Target{}, []delivery.Output{delivery.Text("must-not-move")}); err == nil {
 		t.Fatal("disconnected original reply succeeded")
 	}
-	if _, _, err := s.SendChat(secondCtx, []delivery.Output{delivery.Text("survivor")}); err != nil {
+	if _, _, err := s.SendTo(secondCtx, delivery.Target{}, []delivery.Output{delivery.Text("survivor")}); err != nil {
 		t.Fatal(err)
 	}
 	read(two, "survivor")
