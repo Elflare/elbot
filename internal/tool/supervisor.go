@@ -38,8 +38,12 @@ type Supervisor struct {
 func (m *Supervisor) RegisterTools(ctx context.Context, source Source, scope ToolRegistrationScope, definitions []ToolDefinition) (StateUpdate, error) {
 	internal := make([]share.ToolDefinition, 0, len(definitions))
 	for _, definition := range definitions {
-		info := definition.Definition
-		value := share.ToolDefinition{Definition: share.Info{Name: info.Name, Description: info.Description, Risk: info.Risk, NeedsElyphRules: info.NeedsElyphRules, APITypes: info.APITypes, SuperadminOnly: info.SuperadminOnly, Hidden: info.Hidden, OwnerScoped: info.OwnerScoped, ForegroundOnly: info.ForegroundOnly, Tags: info.Tags, DependsOn: info.DependsOn}, Parameters: definition.Parameters, ActivateTools: definition.ActivateTools, DiscoveryContent: definition.DiscoveryContent}
+		value := share.ToolDefinition{
+			Definition:       definition.Definition,
+			Parameters:       definition.Parameters,
+			ActivateTools:    definition.ActivateTools,
+			DiscoveryContent: definition.DiscoveryContent,
+		}
 		if definition.Remote != nil {
 			remote := share.ELwispToolDeclaration(*definition.Remote)
 			value.Remote = &remote
@@ -67,7 +71,7 @@ func (m *Supervisor) RegisterTools(ctx context.Context, source Source, scope Too
 		}
 		internal = append(internal, value)
 	}
-	update, err := m.catalog.registry.RegisterTools(ctx, share.Source(source), share.ToolRegistrationScope(scope), internal)
+	update, err := m.catalog.registry.RegisterTools(ctx, source, share.ToolRegistrationScope(scope), internal)
 	return toPublicStateUpdate(update), err
 }
 
@@ -91,7 +95,7 @@ func (m *Supervisor) QueryTools(ctx context.Context, query ToolQuery) ([]ToolInf
 	}
 	infos := make([]ToolInfo, len(definitions))
 	for i, definition := range definitions {
-		infos[i] = ToolInfo{Definition: toPublicInfo(definition.Definition), Parameters: definition.Parameters}
+		infos[i] = ToolInfo{Definition: definition.Definition, Parameters: definition.Parameters}
 	}
 	return infos, nil
 }

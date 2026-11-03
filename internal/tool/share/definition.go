@@ -38,28 +38,23 @@ const (
 	SourceELwisp
 )
 
+// Info 是工具目录元数据，不携带可执行工具对象。
 type Info struct {
-	// NeedsElyphRules requests the shared rules when this tool is discovered.
-	NeedsElyphRules bool
-	// APITypes restricts model API availability; empty permits every API type.
-	APITypes       []llm.APIType
-	Name           string
-	Description    string
-	Source         Source
-	Risk           RiskLevel
-	SuperadminOnly bool
-	// Hidden controls prompt/list exposure only. It is not a security boundary.
-	Hidden bool
-	// OwnerScoped marks tools that only read/write the calling actor's own data.
-	// When true, Permission.CanUseTool allows regular users regardless of risk level.
-	// The tool handler is responsible for scoping access by actor.
-	OwnerScoped bool
-	// ForegroundOnly marks tools that are only available in foreground sessions.
-	ForegroundOnly bool
-	// Tags are user-facing grouping labels for completion and manual preloading.
-	// They are not a security boundary and are not exposed through discover_tool.
+	NeedsElyphRules bool          // 发现该工具时需要 ELyph 通用规则。
+	APITypes        []llm.APIType // 限定可用协议，空值不限。
+	Name            string        // 工具名称。
+	Description     string        // 面向使用方的说明。
+	Source          Source        // 注册来源，由注册入口的来源参数统一赋值。
+	Risk            RiskLevel     // 静态风险提示，最终风险在准备调用时确定。
+	SuperadminOnly  bool          // 仅超级管理员可用。
+	Hidden          bool          // 默认隐藏于目录和提示材料，不构成权限边界。
+	// OwnerScoped 由工具实现保证只访问调用者的数据；
+	// Permission.CanUseTool 据此允许普通用户使用，不受静态风险等级限制。
+	OwnerScoped    bool
+	ForegroundOnly bool // 仅可在前台使用。
+	// Tags 用于补全和手动预载分组，不构成权限边界，也不通过 discover_tool 展示。
 	Tags      []string
-	DependsOn []string
+	DependsOn []string // 发现时需同时提供的依赖名称。
 }
 
 // ToolDefinition 是目录唯一的定义来源；文档条目只提供 LoadDetail，不伪造调用入口。

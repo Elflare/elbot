@@ -100,13 +100,6 @@ func toInternalToolQuery(query ToolQuery) share.ToolQuery {
 	return share.ToolQuery{Scope: share.QueryScope(query.Scope), Kind: query.Kind, Names: query.Names, IncludeHidden: query.IncludeHidden, IncludeDiscover: query.IncludeDiscover}
 }
 
-func toPublicInfo(info share.Info) Info {
-	return Info{NeedsElyphRules: info.NeedsElyphRules, APITypes: info.APITypes, Name: info.Name,
-		Description: info.Description, Source: Source(info.Source), Risk: info.Risk,
-		SuperadminOnly: info.SuperadminOnly, Hidden: info.Hidden, OwnerScoped: info.OwnerScoped,
-		ForegroundOnly: info.ForegroundOnly, Tags: info.Tags, DependsOn: info.DependsOn}
-}
-
 func toPublicDiscoveredTools(items []share.DiscoveredTool) []DiscoveredTool {
 	if items == nil {
 		return nil

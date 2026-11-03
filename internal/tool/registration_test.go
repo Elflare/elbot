@@ -19,7 +19,8 @@ func TestPublicRegistrationAdaptsExecutionAndDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 	definition := ToolDefinition{
-		Definition: Info{Name: "external", Description: "External", Risk: security.RiskLow},
+		// 来源故意与注册参数不同，最终必须以 RegisterTools 的 SourceSkill 为准。
+		Definition: Info{Name: "external", Description: "External", Risk: security.RiskLow, Source: SourceBuiltin},
 		Parameters: map[string]any{"type": "object", "properties": map[string]any{}},
 		Prepare: func(_ context.Context, req CallRequest) (*PreparedCall, error) {
 			return &PreparedCall{Risk: RiskAssessment{Level: security.RiskLow}, Preview: "approved", Run: func(context.Context) (*Result, string, error) {

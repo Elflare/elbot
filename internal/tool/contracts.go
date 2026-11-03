@@ -9,6 +9,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
+	"elbot/internal/tool/share"
 	"encoding/json"
 	"time"
 )
@@ -43,12 +44,12 @@ type ToolInfo struct {
 	Parameters map[string]any // 参数 schema；纯文档条目为 nil。
 }
 
-type Source uint8
+type Source = share.Source
 
 const (
-	SourceBuiltin Source = iota + 1
-	SourceSkill
-	SourceELwisp
+	SourceBuiltin = share.SourceBuiltin
+	SourceSkill   = share.SourceSkill
+	SourceELwisp  = share.SourceELwisp
 )
 
 // ToolRegistrationScope 仅描述远端定义的会话和事件归属；来源由注册参数统一指定。
@@ -81,20 +82,7 @@ type PreparedCall struct {
 }
 
 // Info 是公开目录元数据，不携带可执行工具对象。
-type Info struct {
-	NeedsElyphRules bool               // 展示该工具时需要 ELyph 通用规则。
-	APITypes        []llm.APIType      // 限定可用协议，空值不限。
-	Name            string             // 工具名称。
-	Description     string             // 面向使用方的说明。
-	Source          Source             // 注册来源。
-	Risk            security.RiskLevel // 静态风险提示，最终风险在准备调用时确定。
-	SuperadminOnly  bool               // 仅超级管理员可用。
-	Hidden          bool               // 默认隐藏于目录和提示材料。
-	OwnerScoped     bool               // 工具实现保证只访问调用者的数据。
-	ForegroundOnly  bool               // 仅可在前台使用。
-	Tags            []string           // 查询和展示分组。
-	DependsOn       []string           // 发现时需同时提供的依赖名称。
-}
+type Info = share.Info
 
 type SourceKind string
 
