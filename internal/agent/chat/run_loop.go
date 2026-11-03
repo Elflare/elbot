@@ -5,6 +5,7 @@ import (
 
 	"context"
 	"fmt"
+	"strings"
 
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
@@ -41,7 +42,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 	defer func() {
 		result.Usage, result.Selection = s.usage, s.selection
 	}()
-	var finalText string
 	var finalRawText string
 	var platformFinalText string
 	var finalStream delivery.MessageStream
@@ -154,9 +154,8 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			return failedLoop(err)
 		}
 		if len(result.ToolCalls) == 0 {
-			finalText = joinAssistantText(finalText, assistantRawText)
-			finalRawText = joinAssistantText(finalRawText, assistantRawText)
-			platformFinalText = joinAssistantText(platformFinalText, assistantText)
+			finalRawText = strings.TrimSpace(assistantRawText)
+			platformFinalText = strings.TrimSpace(assistantText)
 			finalStream = result.Stream
 			break
 		}
@@ -233,9 +232,8 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			if summary.Usage != nil {
 				s.usage = summary.Usage
 			}
-			finalText = joinAssistantText(finalText, summaryRawText)
-			finalRawText = joinAssistantText(finalRawText, summaryRawText)
-			platformFinalText = joinAssistantText(platformFinalText, summaryText)
+			finalRawText = strings.TrimSpace(summaryRawText)
+			platformFinalText = strings.TrimSpace(summaryText)
 			finalStream = summary.Stream
 			break
 		}
@@ -280,7 +278,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		Commit: agentshare.ReplyCommitInput{
 			Persistence:  r.Messages.Committer("append_assistant_message"),
 			Session:      s.session,
-			Text:         finalText,
+			Text:         finalRawText,
 			RawText:      finalRawText,
 			PlatformText: platformFinalText,
 			Stream:       finalStream,

@@ -4,7 +4,6 @@ import (
 	agentshare "elbot/internal/agent/share"
 
 	"fmt"
-	"strings"
 
 	"elbot/internal/llm"
 	"elbot/internal/turn"
@@ -31,17 +30,4 @@ func skippedToolMessages(calls []llm.ToolCallRequest, maxRounds int) []llm.LLMMe
 		})
 	}
 	return messages
-}
-
-func joinAssistantText(first, second string) string {
-	first = strings.TrimSpace(first)
-	second = strings.TrimSpace(second)
-	switch {
-	case first == "":
-		return second
-	case second == "":
-		return first
-	default:
-		return first + "\n\n" + second
-	}
 }
