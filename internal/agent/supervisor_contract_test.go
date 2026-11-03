@@ -83,7 +83,7 @@ func TestSupervisorToolPreloadExecutionAndPersistence(t *testing.T) {
 	contractModels(t, &deps, client)
 	m := contractSupervisor(t, deps)
 	items, err := m.Complete(testutil.WithCLIConversation(t.Context()), completion.Request{Text: "@tool:read_file"})
-	if err != nil || !slices.Contains(completion.Texts(items), "@tool:read_file") {
+	if err != nil || !slices.ContainsFunc(items, func(item completion.Item) bool { return item.Text == "@tool:read_file" }) {
 		t.Fatalf("completion: %v %v", items, err)
 	}
 	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "@tool:read_file hello"}); err != nil {

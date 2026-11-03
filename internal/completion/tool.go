@@ -27,7 +27,8 @@ type ToolDirectiveSource struct {
 func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item, error) {
 	cursor := req.CursorOrEnd()
 	token := directive.ParseToolCompletionToken(req.Text, cursor)
-	if !directive.ParseSkillCompletionToken(req.Text, cursor).OK && !token.OK {
+	skillToken := directive.ParseSkillCompletionToken(req.Text, cursor)
+	if !skillToken.OK && !token.OK {
 		return nil, nil
 	}
 	if s.Context != nil {
@@ -37,8 +38,8 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item,
 			return nil, err
 		}
 	}
-	if token := directive.ParseSkillCompletionToken(req.Text, cursor); token.OK {
-		return s.completeSkills(ctx, token, cursor)
+	if skillToken.OK {
+		return s.completeSkills(ctx, skillToken, cursor)
 	}
 	if token.PrefixOnly {
 		return []Item{{Text: token.Prefix, Label: token.Prefix, Kind: KindToolDirective, ReplaceStart: token.Start, ReplaceEnd: cursor}}, nil
@@ -158,9 +159,6 @@ func matchStrings(candidates []string, query string) []string {
 }
 
 func fuzzyMatch(value, query string) bool {
-	if query == "" {
-		return true
-	}
 	value = strings.ToLower(value)
 	query = strings.ToLower(query)
 	j := 0

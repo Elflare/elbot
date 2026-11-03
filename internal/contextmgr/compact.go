@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -26,15 +25,11 @@ func (s *Service) Compact(ctx context.Context, current *storage.Session, reason 
 	if !known {
 		return nil, fmt.Errorf("source session origin is missing")
 	}
-	compactor, err := s.resolveCompactor(origin)
+	compactor, err := s.compactors.CompactorFor(origin)
 	if err != nil {
 		return nil, err
 	}
 	return compactor.Prepare(ctx, current, reason, fallback)
-}
-
-func (s *Service) resolveCompactor(origin llm.Origin) (Compactor, error) {
-	return s.compactors.CompactorFor(origin)
 }
 
 func NextCompactedTitle(source *storage.Session, previous *CompactState) (title string, generation int, baseTitle string) {

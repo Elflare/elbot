@@ -156,14 +156,6 @@ func (commandArgCompleter) Complete(ctx context.Context, req command.CompletionR
 	return []command.Completion{{Text: "model", Label: "model", Kind: "command_arg", ReplaceStart: len("/help "), ReplaceEnd: req.Cursor}}
 }
 
-func TestTextsDropsEmptyItems(t *testing.T) {
-
-	got := Texts([]Item{{Text: "/a"}, {}, {Text: "/b"}})
-	if len(got) != 2 || got[0] != "/a" || got[1] != "/b" {
-		t.Fatalf("Texts = %#v", got)
-	}
-}
-
 // completionCatalog supplies query results; filtering policy belongs to Tool.
 type completionCatalog struct {
 	tools, skills    []tool.Info

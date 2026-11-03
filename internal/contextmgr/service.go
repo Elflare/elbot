@@ -30,21 +30,12 @@ type Service struct {
 	store        storage.Store
 	models       ModelCapabilities
 	loader       Loader
-	mu           sync.Mutex
 	usageWriteMu sync.Mutex
 	config       config.ContextConfig
 }
 
 func New(opts Options) *Service {
-	s := &Service{compactors: opts.Compactors, store: opts.Store, models: opts.Models, loader: Loader{Store: opts.Store}}
-	s.Configure(opts.Config)
-	return s
-}
-
-func (s *Service) Configure(cfg config.ContextConfig) {
-	s.mu.Lock()
-	s.config = cfg
-	s.mu.Unlock()
+	return &Service{compactors: opts.Compactors, store: opts.Store, models: opts.Models, loader: Loader{Store: opts.Store}, config: opts.Config}
 }
 
 func (s *Service) Load(ctx context.Context, id string) (*LoadedContext, error) {
@@ -106,9 +97,7 @@ func (s *Service) RecordTurn(ctx context.Context, id string, usage *llm.Usage) e
 }
 
 func (r *Service) Status(ctx context.Context, usage *llm.Usage, selection config.ModelSelection) string {
-	r.mu.Lock()
 	ctxCfg := r.config
-	r.mu.Unlock()
 
 	window := r.models.Resolve(selection).ContextWindow(ctx)
 	threshold := ctxCfg.CompactTriggerRatio
@@ -139,9 +128,7 @@ func (r *Service) Status(ctx context.Context, usage *llm.Usage, selection config
 }
 
 func (r *Service) ReachedCompactThreshold(ctx context.Context, usage *llm.Usage, selection modelmgr.Selection) bool {
-	r.mu.Lock()
 	ctxCfg := r.config
-	r.mu.Unlock()
 	if !ctxCfg.CompactEnabled || usage == nil || usage.TotalTokens == nil || *usage.TotalTokens < 0 {
 		return false
 	}

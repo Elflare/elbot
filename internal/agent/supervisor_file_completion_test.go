@@ -121,7 +121,7 @@ func TestSupervisorCompletionUsesPermissionsTagsAndSkills(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if slices.Contains(completion.Texts(items), tc.want) != tc.present {
+		if slices.ContainsFunc(items, func(item completion.Item) bool { return item.Text == tc.want }) != tc.present {
 			t.Errorf("%s completions=%v", tc.input, items)
 		}
 	}

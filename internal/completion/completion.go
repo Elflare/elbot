@@ -55,13 +55,3 @@ func (s *Service) Complete(ctx context.Context, req Request) ([]Item, error) {
 	}
 	return nil, nil
 }
-
-func Texts(items []Item) []string {
-	out := make([]string, 0, len(items))
-	for _, item := range items {
-		if item.Text != "" {
-			out = append(out, item.Text)
-		}
-	}
-	return out
-}

@@ -7,10 +7,9 @@ import (
 )
 
 type UsageState struct {
-	Usage          *llm.Usage
-	ContextWindow  int
-	TriggerRatio   float64
-	PendingCompact bool
+	Usage         *llm.Usage
+	ContextWindow int
+	TriggerRatio  float64
 }
 
 func (s UsageState) TokensKnown() bool {

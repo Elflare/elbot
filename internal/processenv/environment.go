@@ -61,7 +61,6 @@ func (e Environment) merge(values map[string]string, replace bool) Environment {
 	} else {
 		e.environ = append([]string(nil), e.environ...)
 	}
-	e.configured = true
 
 	indexes := make(map[string]int, len(e.environ))
 	current := make(map[string]string, len(e.environ))
@@ -86,23 +85,13 @@ func (e Environment) merge(values map[string]string, replace bool) Environment {
 		}
 		key := environmentKey(name)
 		value := values[name]
+		index, exists := indexes[key]
 		if key == environmentKey("PATH") {
 			value = mergePathLists(current[key], value)
-			if index, exists := indexes[key]; exists {
-				originalName, _, _ := strings.Cut(e.environ[index], "=")
-				e.environ[index] = originalName + "=" + value
-			} else {
-				indexes[key] = len(e.environ)
-				e.environ = append(e.environ, name+"="+value)
-			}
-			current[key] = value
-			e.setCachedValue(key, value)
+		} else if exists && !replace {
 			continue
 		}
-		if index, exists := indexes[key]; exists {
-			if !replace {
-				continue
-			}
+		if exists {
 			originalName, _, _ := strings.Cut(e.environ[index], "=")
 			e.environ[index] = originalName + "=" + value
 		} else {
@@ -113,11 +102,6 @@ func (e Environment) merge(values map[string]string, replace bool) Environment {
 		e.setCachedValue(key, value)
 	}
 	return e
-}
-
-// Configured reports whether the environment is an explicit snapshot.
-func (e Environment) Configured() bool {
-	return e.configured
 }
 
 // Environ returns a copy of the effective environment.
