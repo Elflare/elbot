@@ -108,14 +108,3 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 	}
 	return logResult, nil
 }
-
-func JoinNames(names []string) string {
-	if len(names) == 0 {
-		return "none"
-	}
-	out := names[0]
-	for _, name := range names[1:] {
-		out += ", " + name
-	}
-	return out
-}

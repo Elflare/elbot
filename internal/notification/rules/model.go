@@ -8,7 +8,6 @@ import (
 
 const VisionFallback = "vision → text fallback"
 
-func ModelInterrupted(err error) string { return fmt.Sprintf("LLM interrupted: %v", err) }
 func ModelRetry(provider string, event llm.RetryEvent) string {
 	if event.Err == nil {
 		return ""

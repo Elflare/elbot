@@ -151,17 +151,6 @@ func writeGuideField(b *strings.Builder, key, value string) {
 	b.WriteByte('\n')
 }
 
-func writeGuideCommentBlock(b *strings.Builder, title, text string) {
-	b.WriteString("// ")
-	b.WriteString(title)
-	b.WriteByte('\n')
-	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
-		b.WriteString("// ")
-		b.WriteString(line)
-		b.WriteByte('\n')
-	}
-}
-
 func writeGuideList(b *strings.Builder, key string, values []string) {
 	b.WriteString("// ")
 	b.WriteString(key)

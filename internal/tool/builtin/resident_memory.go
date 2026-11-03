@@ -209,11 +209,3 @@ func decodeMemoryArgs(raw json.RawMessage, out any) error {
 	}
 	return nil
 }
-
-func memoryJSONResult(value any) (*toolshare.Result, error) {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
-	return &toolshare.Result{Content: string(data)}, nil
-}

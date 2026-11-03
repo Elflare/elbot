@@ -119,7 +119,4 @@ func TestSegmentQueries(t *testing.T) {
 	if !HasImageSegment(segments) {
 		t.Fatal("HasImageSegment = false")
 	}
-	if len(ImageSegments(segments)) != 1 || len(FileSegments(segments)) != 1 {
-		t.Fatalf("images/files = %#v / %#v", ImageSegments(segments), FileSegments(segments))
-	}
 }

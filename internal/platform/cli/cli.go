@@ -169,13 +169,3 @@ func (a *Adapter) sendTUIMessage(msg tea.Msg, fallback string) error {
 	}
 	return nil
 }
-
-func printLine(text string) {
-	if text == "" {
-		return
-	}
-	fmt.Print(text)
-	if !strings.HasSuffix(text, "\n") {
-		fmt.Println()
-	}
-}

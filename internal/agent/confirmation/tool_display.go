@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"strings"
-
-	"elbot/internal/llm"
 )
 
 func riskReasonsText(reasons []string) string {
@@ -22,16 +20,6 @@ func riskReasonsText(reasons []string) string {
 		}
 	}
 	return sb.String()
-}
-
-func joinToolNames(calls []llm.ToolCallRequest) string {
-	names := make([]string, 0, len(calls))
-	for _, call := range calls {
-		if call.Name != "" {
-			names = append(names, call.Name)
-		}
-	}
-	return strings.Join(names, ", ")
 }
 
 func compactArguments(args string) string {

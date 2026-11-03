@@ -176,21 +176,3 @@ func editFileWithResult(path, requestedEncoding, expectedRevision string, create
 	}
 	return result, nil
 }
-
-func WriteTextFile(path string, base File, text string) ([]byte, error) {
-	outputText := RestoreLineEndings(text, base.LineEnding)
-	newBytes, err := EncodeText(outputText, base.Encoding, base.BOM)
-	if err != nil {
-		return nil, err
-	}
-	mode := os.FileMode(0644)
-	if info, err := os.Stat(path); err == nil {
-		mode = info.Mode()
-	} else {
-		return nil, fmt.Errorf("stat file: %w", err)
-	}
-	if err := AtomicWriteFile(path, newBytes, mode); err != nil {
-		return nil, fmt.Errorf("write file: %w", err)
-	}
-	return newBytes, nil
-}

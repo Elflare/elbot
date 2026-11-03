@@ -2,8 +2,6 @@
 
 package telegram
 
-import "encoding/json"
-
 type apiResponse[T any] struct {
 	OK          bool   `json:"ok"`
 	Result      T      `json:"result"`
@@ -163,9 +161,4 @@ type replyMarkup struct {
 type inlineKeyboardButton struct {
 	Text         string `json:"text"`
 	CallbackData string `json:"callback_data"`
-}
-
-func mustRawJSON(value any) json.RawMessage {
-	data, _ := json.Marshal(value)
-	return data
 }

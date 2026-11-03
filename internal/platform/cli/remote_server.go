@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -425,15 +424,4 @@ func outputMessage(kind string, out delivery.Output) remoteMessage {
 		text = delivery.FallbackText(out)
 	}
 	return remoteMessage{Type: kind, Text: text}
-}
-
-func (s *RemoteServer) ConnectedClientIDs() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	ids := make([]string, 0, len(s.clients))
-	for id := range s.clients {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	return ids
 }
