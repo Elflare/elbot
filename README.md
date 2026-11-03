@@ -11,30 +11,30 @@ It supports general chat, tool calling, Hook extensions, long-term task scheduli
 
 ### I. Lightweight and Efficient
 
-**Ultra-lightweight Go implementation**:
+**Extremely lightweight Go implementation**:
 
 | Metric           | Value                            |
 | -------------- | ------------------------------- |
-| Local startup time   | ~10ms (tested on N5105, SATA SSD) |
+| Local startup time   | ~10ms (Tested on N5105, SATA SSD) |
 | Resident memory       | ~50MB                           |
-| Binary file size | <20MB                           |
+| Binary size | <30MB                           |
 
-**Token-efficient tool discovery**: Research shows that many ordinary users still primarily use LLM-like products as advanced search engines, writing assistants, and listening objects; frequent tool calls are not the norm for all conversations.
-Reference: Chatterji et al., _How People Use ChatGPT_, NBER, 2025;Yan et al., _ShareChat: A Dataset of Chatbot Conversations in the Wild_, arXiv:2512.17843, 2025。
+**Extremely token-efficient tool discovery**: Research shows that many ordinary users still primarily use LLM-like products as advanced search engines, writing assistants, and listening objects; frequent tool calls are not the norm for all conversations.
+Reference: Chatterji et al., _How People Use ChatGPT_, NBER, 2025; Yan et al., _ShareChat: A Dataset of Chatbot Conversations in the Wild_, arXiv:2512.17843, 2025.
 
-ElBot does not inject the full schema of all tools by default in every round of conversation, but only exposes `discover_tool` and the names of currently available tools. When the model needs to use a tool, it first discovers the tool details on demand, and then the Agent injects the corresponding schema. Greatly reduces invalid context overhead.
+ElBot does not inject the full schema of all tools by default in every round of conversation, but only exposes `discover_tool` and the names of currently available tools. When the model needs to use a tool, it first discovers the tool details on demand, and then the Agent injects the corresponding schema. This greatly reduces invalid context overhead.
 
-**Chat / Work dual mode**: Both modes can be configured with independent models, allowing low-cost models to handle casual chat and powerful models to focus on complex tasks.
+**Chat / Work dual mode**: The two modes can configure models independently, allowing low-cost models to handle small talk and powerful models to focus on complex tasks.
 
-**Layering of resident memory and long-term memory**: Resident memory only saves short, stable information that truly needs to be injected into every round, and internally distinguishes between 'core' (requiring confirmation for modification) and 'normal' (organizable); Longer and more complex memories are queried by the LLM on demand via `long_memory`. Long-term memory uses Markdown source data and SQLite FTS, balancing transparency and retrieval efficiency.
+**Layered resident memory and long-term memory**: Resident memory only saves short, stable information that truly needs to be injected in every round, and internally distinguishes between "core" (requiring confirmation for modification) and "normal" (organizable); longer and more complex memories are queried by the LLM on demand via `long_memory`. Long-term memory uses Markdown source data and SQLite FTS, balancing transparency and retrieval efficiency.
 
-| Mode   | Tool               | Applicable Scenarios                                 | Token consumption for the first request      |
+| Mode   | Tool               | Applicable scenarios                                 | First request token consumption      |
 | ------ | ------------------ | ---------------------------------------- | -------------------------- |
-| `chat` | No injection             | Small talk, companionship, lightweight Q&A, low-cost conversation         | <500 (subsequent cache hit 95%+)  |
-| `work` | Enable tool discovery and invocation | Complex tasks such as search, files, commands, Cron, Skills, etc. | <1000 (subsequent cache hit 90%+) |
+| `chat` | No injection             | Small talk, companionship, lightweight Q&A, low-cost conversation         | <500 (Subsequent cache hit 98%+)  |
+| `work` | Enable tool discovery and invocation | Complex tasks such as search, files, commands, Cron, Skills, etc. | <1000 (Subsequent cache hit 95%+) |
 
 
-> Note: After using the `Responses` protocol, tool discovery no longer breaks the cache, and subsequent cache hits will be higher.
+> Note: After using the `Responses` protocol, using `additional_tools` for tool discovery no longer breaks the cache, leading to higher subsequent cache hits.
 
 ### II. Powerful and Extensible
 
