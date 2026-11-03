@@ -12,6 +12,7 @@ import (
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/media"
+	"elbot/internal/memory/resident"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -134,6 +135,6 @@ func TestSendFileDirectCallRejectsLocalForRegularUser(t *testing.T) {
 
 type sendFileMemory struct{ builtin.ResidentMemoryService }
 
-func (sendFileMemory) LimitsOrDefault() builtin.ResidentMemoryLimits {
-	return builtin.ResidentMemoryLimits{Core: 300, Normal: 1000}
+func (sendFileMemory) LimitsOrDefault() resident.Limits {
+	return resident.Limits{Core: 300, Normal: 1000}
 }

@@ -27,13 +27,13 @@ const (
 var ErrNotFound = errors.New("resident memory not found")
 
 type Limits struct {
-	Core   int
-	Normal int
+	Core   int // 核心记忆允许的最大字数或单词数。
+	Normal int // 普通记忆允许的最大字数或单词数。
 }
 
 type Memory struct {
-	Core   string `json:"core"`
-	Normal string `json:"normal"`
+	Core   string `json:"core"`   // 核心记忆；未保存时为空。
+	Normal string `json:"normal"` // 普通记忆；未保存时为空。
 }
 
 func (m Memory) Empty() bool {

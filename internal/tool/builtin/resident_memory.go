@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/memory/resident"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -20,22 +21,12 @@ const (
 
 // ResidentMemoryService 只操作当前调用者的常驻记忆，身份与存储范围由根部适配。
 type ResidentMemoryService interface {
-	Read(context.Context) (ResidentMemory, error)
+	Read(context.Context) (resident.Memory, error)
 	AppendNormal(context.Context, string) error
 	WriteNormal(context.Context, string) error
 	DeleteNormal(context.Context) error
 	WriteCore(context.Context, string) error
-	LimitsOrDefault() ResidentMemoryLimits
-}
-
-type ResidentMemory struct {
-	Core   string // 核心记忆；未保存时为空。
-	Normal string // 普通记忆；未保存时为空。
-}
-
-type ResidentMemoryLimits struct {
-	Core   int // 核心记忆允许的最大字数或单词数。
-	Normal int // 普通记忆允许的最大字数或单词数。
+	LimitsOrDefault() resident.Limits
 }
 
 type ResidentMemoryTool struct{}

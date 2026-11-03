@@ -1,5 +1,5 @@
 // 对接外部常驻记忆 Store，适配 Builtin 声明的记忆操作能力。
-// 负责调用身份到存储范围的转换，以及外部数据和错误的转换。
+// 负责调用身份到存储范围的转换，以及外部错误的转换。
 package tool
 
 import (
@@ -10,31 +10,29 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/memory/resident"
 	"elbot/internal/session"
-	"elbot/internal/tool/builtin"
 )
 
 type residentMemoryBridge struct {
 	store *resident.Store // 根部构造的常驻记忆存储，与总管的读取能力共用。
 }
 
-func (b residentMemoryBridge) LimitsOrDefault() builtin.ResidentMemoryLimits {
-	limits := b.store.LimitsOrDefault()
-	return builtin.ResidentMemoryLimits{Core: limits.Core, Normal: limits.Normal}
+func (b residentMemoryBridge) LimitsOrDefault() resident.Limits {
+	return b.store.LimitsOrDefault()
 }
 
-func (b residentMemoryBridge) Read(ctx context.Context) (builtin.ResidentMemory, error) {
+func (b residentMemoryBridge) Read(ctx context.Context) (resident.Memory, error) {
 	scope, err := memoryScope(ctx)
 	if err != nil {
-		return builtin.ResidentMemory{}, err
+		return resident.Memory{}, err
 	}
 	memory, err := b.store.Read(ctx, scope)
 	if errors.Is(err, resident.ErrNotFound) {
-		return builtin.ResidentMemory{}, nil
+		return resident.Memory{}, nil
 	}
 	if err != nil {
-		return builtin.ResidentMemory{}, err
+		return resident.Memory{}, err
 	}
-	return builtin.ResidentMemory{Core: memory.Core, Normal: memory.Normal}, nil
+	return memory, nil
 }
 
 func (b residentMemoryBridge) AppendNormal(ctx context.Context, content string) error {
