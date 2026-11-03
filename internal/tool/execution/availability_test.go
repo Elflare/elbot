@@ -126,7 +126,7 @@ func TestPathSchemasStayStableAcrossBackgroundTakeover(t *testing.T) {
 		discovered = append(discovered, toolshare.DiscoveredTool{Name: name, Source: toolshare.SourceKindNative, Schema: llm.ToolSchema{Name: name, Description: "stable definition", Parameters: map[string]any{"type": "object"}}})
 	}
 	ctx := workspace.WithPathScope(toolshare.WithCallPolicy(t.Context(), toolshare.CallPolicy{DisableForegroundTools: true}), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
-	background, err := manager.Schemas(ctx, toolshare.Context{Mode: storage.SessionModeBackground, DisableBaseTools: true}, discovered)
+	background, err := manager.Schemas(ctx, toolshare.Context{Mode: storage.SessionModeBackground}, discovered)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,12 +185,12 @@ func TestResolveDistinguishesMissingToolFromMissingRemoteConfiguration(t *testin
 func TestSchemasAreDetachedForPreparedHook(t *testing.T) {
 	item := toolshare.DiscoveredTool{Name: "tool", Source: toolshare.SourceKindNative, Schema: llm.ToolSchema{Name: "tool", Parameters: map[string]any{"properties": map[string]any{"path": map[string]any{"type": "string"}}}}}
 	manager := newTestManager(toolregistry.NewRegistry(security.DefaultPermission()), security.DefaultPermission())
-	schemas, err := manager.Schemas(context.Background(), toolshare.Context{Mode: storage.SessionModeWork, DisableBaseTools: true}, []toolshare.DiscoveredTool{item})
+	schemas, err := manager.Schemas(context.Background(), toolshare.Context{Mode: storage.SessionModeWork}, []toolshare.DiscoveredTool{item})
 	if err != nil {
 		t.Fatal(err)
 	}
 	schemas[0].Parameters["properties"].(map[string]any)["path"].(map[string]any)["type"] = "number"
-	next, err := manager.Schemas(context.Background(), toolshare.Context{Mode: storage.SessionModeWork, DisableBaseTools: true}, []toolshare.DiscoveredTool{item})
+	next, err := manager.Schemas(context.Background(), toolshare.Context{Mode: storage.SessionModeWork}, []toolshare.DiscoveredTool{item})
 	if err != nil {
 		t.Fatal(err)
 	}

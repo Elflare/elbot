@@ -9,15 +9,6 @@ import (
 	"elbot/internal/tool/share"
 )
 
-// LoadDiscoveryContent 优先使用带 context 的动态说明提供者。
-func LoadDiscoveryContent(ctx context.Context, target share.ToolDefinition) (content string, override bool, supported bool, err error) {
-	if provider := target.DiscoveryContent; provider != nil {
-		content, override, err = provider(ctx)
-		return content, override, true, err
-	}
-	return "", false, false, nil
-}
-
 func discoveryContent(ctx context.Context, targets map[string]share.ToolDefinition, result *share.DiscoveryResult) (share.DiscoveryText, error) {
 	parts := []string{}
 	foundTools := []string{}
@@ -36,12 +27,12 @@ func discoveryContent(ctx context.Context, targets map[string]share.ToolDefiniti
 		}
 		if discovered.Schema != nil && name != "" {
 			foundTools = append(foundTools, name)
-			if target, ok := targets[name]; ok {
-				content, override, supported, err := LoadDiscoveryContent(ctx, target)
+			if target := targets[name]; target.DiscoveryContent != nil {
+				content, override, err := target.DiscoveryContent(ctx)
 				if err != nil {
 					return share.DiscoveryText{}, fmt.Errorf("load discovery content for %s: %w", name, err)
 				}
-				if supported && strings.TrimSpace(content) != "" {
+				if strings.TrimSpace(content) != "" {
 					if override {
 						parts = append(parts, content)
 					} else {

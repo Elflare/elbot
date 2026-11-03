@@ -28,7 +28,7 @@ func (m *Manager) Schemas(ctx context.Context, view share.Context, discovered []
 		seen[schema.Name] = true
 		out = append(out, share.CloneSchema(schema))
 	}
-	if view.Mode == storage.SessionModeWork && !view.DisableBaseTools {
+	if view.Mode == storage.SessionModeWork {
 		tools, err := m.Registry.Query(ctx, share.ToolQuery{Names: []string{"discover_tool"}, IncludeDiscover: true})
 		if err != nil {
 			return nil, err

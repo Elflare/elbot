@@ -48,7 +48,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 		NewWorkspaceStore: func(id string) workspace.WorkspaceStore {
 			return sessions.WorkspaceStore(id)
 		},
-		Preloader: directivePreloader{preload.NewPreloadService(preload.PreloadOptions{Registry: registry, Resolver: discovery.NewResolver(registry), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, LoadDiscoveryContent: discovery.LoadDiscoveryContent, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"worker": {Tools: []string{"alpha"}, Prompt: "TAG"}}}})}})
+		Preloader: directivePreloader{preload.NewPreloadService(preload.PreloadOptions{Registry: registry, Resolver: discovery.NewResolver(registry), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"worker": {Tools: []string{"alpha"}, Prompt: "TAG"}}}})}})
 
 	row, err := sessions.Create(ctx, identity.Scope(ctx), session.CreateRequest{Title: "state", Metadata: `{"unknown":9007199254740993}`})
 	if err != nil {

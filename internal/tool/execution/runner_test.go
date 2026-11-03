@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -78,8 +77,8 @@ func (d *runnerTestDeps) ConfirmToolCall(ctx context.Context, sessionID string, 
 	return toolshare.ConfirmResult{Allowed: true}, nil
 }
 
-func (d *runnerTestDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error) {
-	return ctx, time.Now(), func() {}, nil
+func (d *runnerTestDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, func(), error) {
+	return ctx, func() {}, nil
 }
 
 func (d *runnerTestDeps) PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {

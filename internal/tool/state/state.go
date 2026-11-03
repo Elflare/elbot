@@ -168,10 +168,8 @@ func (s *StateService) Commit(ctx context.Context, id string, update toolshare.S
 			row.Metadata = metadata
 			row.UpdatedAt = storage.Now()
 		}
-		// Decode the encoded form, so neither the input nor output aliases schemas.
-		result.State, err = DecodeState(row.Metadata)
 		result.Injected, result.Existing = uniqueNames(injected), uniqueNames(existing)
-		return err
+		return nil
 	})
 	if err != nil {
 		return toolshare.StateCommit{}, err

@@ -21,9 +21,8 @@ type PreloadOptions struct {
 	Resolver      interface {
 		Resolve(context.Context, []share.ToolDefinition) (*share.DiscoveryResult, map[string]share.ToolDefinition, error)
 	} // 根部注入的发现解析。
-	NativeDiscoveredToolsFromDiscovery func(*share.DiscoveryResult) []share.DiscoveredTool                     // 已解析结果转换。
-	LoadDiscoveryContent               func(context.Context, share.ToolDefinition) (string, bool, bool, error) // 动态发现说明。
-	BackgroundDiscoveredTools          func([]share.DiscoveredTool) []share.DiscoveredTool                     // 后台资格筛选。
+	NativeDiscoveredToolsFromDiscovery func(*share.DiscoveryResult) []share.DiscoveredTool // 已解析结果转换。
+	BackgroundDiscoveredTools          func([]share.DiscoveredTool) []share.DiscoveredTool // 后台资格筛选。
 	Registry                           interface {
 		Get(string) (share.ToolDefinition, bool)
 		Query(context.Context, share.ToolQuery) ([]share.ToolDefinition, error)
@@ -185,7 +184,7 @@ func (s *PreloadService) discoveryContent(ctx context.Context, details *share.Di
 			continue
 		}
 		seen[name] = true
-		content, _, _, err := s.LoadDiscoveryContent(ctx, candidate)
+		content, _, err := candidate.DiscoveryContent(ctx)
 		if err == nil {
 			err = ctx.Err()
 		}

@@ -268,7 +268,6 @@ func TestPrepareToolsCancellationDuringContent(t *testing.T) {
 func newTestPreloader(opts PreloadOptions) *PreloadService {
 	opts.Resolver = discovery.NewResolver(opts.Registry)
 	opts.NativeDiscoveredToolsFromDiscovery = discovery.NativeDiscoveredToolsFromDiscovery
-	opts.LoadDiscoveryContent = discovery.LoadDiscoveryContent
 	opts.BackgroundDiscoveredTools = registry.BackgroundDiscoveredTools
 	opts.RegisterTools = opts.Registry.(*registry.Registry).RegisterTools
 	return NewPreloadService(opts)

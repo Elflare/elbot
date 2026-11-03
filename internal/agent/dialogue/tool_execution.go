@@ -59,5 +59,5 @@ func (r *ToolExecutor) Schemas(ctx context.Context, session *storage.Session) ([
 	if err != nil {
 		return nil, fmt.Errorf("准备工具: %w", err)
 	}
-	return r.Manager.Schemas(ctx, tool.Context{Mode: session.Mode, Actor: r.Identity.Actor(ctx), DisableBaseTools: sessionpkg.IsBackground(session)}, discovered)
+	return r.Manager.Schemas(ctx, tool.Context{Mode: session.Mode, Actor: r.Identity.Actor(ctx)}, discovered)
 }

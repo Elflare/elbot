@@ -256,7 +256,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			ready <- index
 			continue
 		}
-		runToolCtx, _, done, err := deps.StartToolRequest(toolCtx, sessionID, call.Name)
+		runToolCtx, done, err := deps.StartToolRequest(toolCtx, sessionID, call.Name)
 
 		if err != nil {
 			fail(call, err, fmt.Sprintf("tool call %s failed: %v", call.Name, err))

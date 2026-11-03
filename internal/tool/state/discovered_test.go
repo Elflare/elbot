@@ -14,7 +14,11 @@ func TestDiscoveredToolsMergeOrderAndReplacement(t *testing.T) {
 	alpha, beta := stateTestTool("alpha"), stateTestTool("beta")
 	updated := alpha
 	updated.Description = "updated"
-	batch := normalizeDiscoveredTools([]toolshare.DiscoveredTool{beta, alpha, beta})
+	original := []toolshare.DiscoveredTool{beta, alpha, beta}
+	batch := normalizeDiscoveredTools(original)
+	if !reflect.DeepEqual(original, []toolshare.DiscoveredTool{beta, alpha, beta}) {
+		t.Fatal("normalization reordered the input")
+	}
 	incremental := mergeDiscoveredTools(mergeDiscoveredTools(nil, []toolshare.DiscoveredTool{beta}), []toolshare.DiscoveredTool{alpha})
 	reverse := mergeDiscoveredTools(mergeDiscoveredTools(nil, []toolshare.DiscoveredTool{alpha}), []toolshare.DiscoveredTool{beta})
 	if !reflect.DeepEqual(batch, incremental) || !reflect.DeepEqual(batch, reverse) {
@@ -23,6 +27,18 @@ func TestDiscoveredToolsMergeOrderAndReplacement(t *testing.T) {
 	merged := mergeDiscoveredTools(batch, []toolshare.DiscoveredTool{updated})
 	if len(merged) != 2 || merged[0].Name != "alpha" || merged[0].Description != "updated" || batch[0].Description != "" {
 		t.Fatalf("replacement=%+v original=%+v", merged, batch)
+	}
+}
+
+func TestEmptyDiscoveredToolsRemainNil(t *testing.T) {
+	for _, tools := range [][]toolshare.DiscoveredTool{
+		normalizeDiscoveredTools(nil),
+		normalizeDiscoveredTools([]toolshare.DiscoveredTool{{}}),
+		mergeDiscoveredTools(nil, nil),
+	} {
+		if tools != nil {
+			t.Fatalf("empty declarations = %#v, want nil", tools)
+		}
 	}
 }
 
@@ -133,7 +149,7 @@ func TestPrepareUpdateOwnsOnlyToolFieldsAndMatchesCommit(t *testing.T) {
 	if _, ok := prepared.DiscoveredTools[0].Schema.Parameters["changed"]; ok {
 		t.Fatal("input mutated prepared patch")
 	}
-	if !committed.State.ElyphRulesShown || string(fields["unknown"]) != "9007199254740993" {
+	if string(fields["elyph_rules_shown"]) != "true" || string(fields["unknown"]) != "9007199254740993" {
 		t.Fatalf("commit changed another owner's fields: %s", committed.Metadata)
 	}
 }

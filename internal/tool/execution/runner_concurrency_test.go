@@ -159,12 +159,12 @@ type timeoutToolDeps struct{ runnerTestDeps }
 func (d *timeoutToolDeps) PrepareToolContext(ctx context.Context, _ *storage.Session, call llm.ToolCallRequest) context.Context {
 	return context.WithValue(ctx, runnerContextKey{}, call.ID)
 }
-func (d *timeoutToolDeps) StartToolRequest(ctx context.Context, _, _ string) (context.Context, time.Time, func(), error) {
+func (d *timeoutToolDeps) StartToolRequest(ctx context.Context, _, _ string) (context.Context, func(), error) {
 	if ctx.Value(runnerContextKey{}) == "A" {
 		ctx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
-		return ctx, time.Now(), cancel, nil
+		return ctx, cancel, nil
 	}
-	return ctx, time.Now(), func() {}, nil
+	return ctx, func() {}, nil
 }
 
 func TestRunSingleToolTimeoutDoesNotCancelSiblingTools(t *testing.T) {

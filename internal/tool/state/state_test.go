@@ -8,7 +8,6 @@ import (
 	toolregistry "elbot/internal/tool/registry"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -62,11 +61,10 @@ func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 		t.Fatalf("commit=%+v", committed)
 	}
 	repeated, err := service.Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{item}, Tags: []string{"tag"}})
-	if err != nil || len(repeated.Injected) != 0 || strings.Join(repeated.Existing, ",") != "wisp/external" || !reflect.DeepEqual(repeated.State, committed.State) {
+	if err != nil || len(repeated.Injected) != 0 || strings.Join(repeated.Existing, ",") != "wisp/external" || repeated.Metadata != committed.Metadata {
 		t.Fatalf("repeated commit=%+v err=%v", repeated, err)
 	}
 	item.Schema.Parameters["properties"].(map[string]any)["bad"] = true
-	committed.State.DiscoveredTools[0].Schema.Parameters["bad"] = true
 	restored, err := stateTestSnapshot(ctx, store, row.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -95,8 +93,12 @@ func TestStateCommitRestoresAndDetachesSchemas(t *testing.T) {
 		}
 	}
 	repeat, err := service.Commit(ctx, row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{stateTestTool("external")}})
-	if err != nil || strings.Join(repeat.Injected, ",") != "external" || len(repeat.Existing) != 0 || len(repeat.State.DiscoveredTools) != 2 {
+	if err != nil || strings.Join(repeat.Injected, ",") != "external" || len(repeat.Existing) != 0 {
 		t.Fatalf("repeat=%+v err=%v", repeat, err)
+	}
+	restored, err = stateTestSnapshot(ctx, store, row.ID)
+	if err != nil || len(restored.DiscoveredTools) != 2 {
+		t.Fatalf("restored=%+v err=%v", restored, err)
 	}
 }
 

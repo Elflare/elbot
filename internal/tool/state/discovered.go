@@ -66,16 +66,18 @@ func mergeDiscoveredTools(existing, incoming []toolshare.DiscoveredTool) []tools
 }
 
 func sortDiscoveredTools(tools []toolshare.DiscoveredTool) []toolshare.DiscoveredTool {
-	out := append([]toolshare.DiscoveredTool(nil), tools...)
-	sort.Slice(out, func(i, j int) bool {
-		left, right := out[i].CanonicalName, out[j].CanonicalName
+	if len(tools) == 0 {
+		return nil
+	}
+	sort.Slice(tools, func(i, j int) bool {
+		left, right := tools[i].CanonicalName, tools[j].CanonicalName
 		if left == "" {
-			left = out[i].Name
+			left = tools[i].Name
 		}
 		if right == "" {
-			right = out[j].Name
+			right = tools[j].Name
 		}
 		return left < right
 	})
-	return out
+	return tools
 }

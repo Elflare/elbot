@@ -41,7 +41,6 @@ type StateUpdate struct {
 }
 
 type StateCommit struct {
-	State    State    // 提交后的工具状态，与输入声明隔离。
 	Metadata string   // 提交后的完整 Session 元数据，保留其他模块的字段。
 	Injected []string // 本次新增声明的模型侧名称。
 	Existing []string // 本次覆盖已有声明的模型侧名称。

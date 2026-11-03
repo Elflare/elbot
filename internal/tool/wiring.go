@@ -80,7 +80,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	m.engine = execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: deps.Permission, Media: mediaRuntime, Log: logTool, InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: toolstate.DecodeState, PrepareUpdate: toolstate.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate})
 	m.preloader = preload.NewPreloadService(preload.PreloadOptions{
 		RegisterTools: registry.RegisterTools,
-		Resolver:      discovery.NewResolver(registry), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, LoadDiscoveryContent: discovery.LoadDiscoveryContent, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools,
+		Resolver:      discovery.NewResolver(registry), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools,
 		Registry: registry,
 		TagsPath: cfg.ToolTagsConfigPath,
 		Tags:     cfg.ToolTags,
@@ -157,7 +157,7 @@ func toPublicStateUpdate(update share.StateUpdate) StateUpdate {
 }
 
 func toPublicStateCommit(committed share.StateCommit) StateCommit {
-	return StateCommit{State: toPublicState(committed.State), Metadata: committed.Metadata, Injected: committed.Injected, Existing: committed.Existing}
+	return StateCommit{Metadata: committed.Metadata, Injected: committed.Injected, Existing: committed.Existing}
 }
 
 func toPublicToolPreload(prepared share.ToolPreload) ToolPreload {

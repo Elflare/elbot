@@ -10,7 +10,6 @@ import (
 	"elbot/internal/storage"
 	"elbot/internal/tool/share"
 	"encoding/json"
-	"time"
 )
 
 // BackgroundSelection 是授权前展开的工具名单，公开类型不依赖内部 share。
@@ -117,7 +116,6 @@ type StateUpdate struct {
 }
 
 type StateCommit struct {
-	State    State    // 提交后的工具状态。
 	Metadata string   // 保留其他业务字段的完整会话元数据，用于同步调用方快照。
 	Injected []string // 本次新增的模型侧名称。
 	Existing []string // 本次更新的已有模型侧名称。
@@ -173,9 +171,8 @@ type TagPrompt struct {
 }
 
 type Context struct {
-	Mode             string            // 会话运行模式。
-	Actor            contextinfo.Actor // 本次调用者事实。
-	DisableBaseTools bool              // 只使用已发现声明，不注入基础工具。
+	Mode  string            // 会话运行模式。
+	Actor contextinfo.Actor // 本次调用者事实。
 }
 
 type RiskAssessment struct {
@@ -196,7 +193,7 @@ type RunnerDeps interface {
 	PrepareToolCall(context.Context, *storage.Session, llm.ToolCallRequest) (llm.ToolCallRequest, error)
 	ShouldSendPreview(context.Context, *storage.Session, llm.ToolCallRequest, string) bool
 	ConfirmToolCall(context.Context, string, llm.ToolCallRequest, RiskAssessment, string) (ConfirmResult, error)
-	StartToolRequest(context.Context, string, string) (context.Context, time.Time, func(), error)
+	StartToolRequest(context.Context, string, string) (context.Context, func(), error)
 	PrepareToolContext(context.Context, *storage.Session, llm.ToolCallRequest) context.Context
 	CompleteToolCall(context.Context, *storage.Session, llm.ToolCallRequest, string, []llm.MessageSegment, error) ([]llm.MessageSegment, error)
 	SendPreview(context.Context, ...string)

@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
@@ -275,9 +274,9 @@ type loggingDeps struct {
 	startErr   error
 }
 
-func (d *loggingDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error) {
+func (d *loggingDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, func(), error) {
 	if d.startErr != nil {
-		return ctx, time.Time{}, nil, d.startErr
+		return ctx, nil, d.startErr
 	}
 	return d.runnerTestDeps.StartToolRequest(ctx, sessionID, toolName)
 }

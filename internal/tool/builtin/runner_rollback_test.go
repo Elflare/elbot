@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -78,8 +77,8 @@ func (d *runnerTestDeps) PrepareToolCall(_ context.Context, _ *storage.Session, 
 func (d *runnerTestDeps) ShouldSendPreview(context.Context, *storage.Session, llm.ToolCallRequest, string) bool {
 	return false
 }
-func (d *runnerTestDeps) StartToolRequest(ctx context.Context, _, _ string) (context.Context, time.Time, func(), error) {
-	return ctx, time.Now(), func() {}, nil
+func (d *runnerTestDeps) StartToolRequest(ctx context.Context, _, _ string) (context.Context, func(), error) {
+	return ctx, func() {}, nil
 }
 func (d *runnerTestDeps) PrepareToolContext(ctx context.Context, s *storage.Session, c llm.ToolCallRequest) context.Context {
 	return d.prepareContext(ctx, s, c)

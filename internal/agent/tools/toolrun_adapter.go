@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"strings"
-	"time"
 
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
@@ -79,10 +78,10 @@ func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Sess
 	return updated, nil
 }
 
-func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error) {
+func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, func(), error) {
 	toolReq, toolCtx, done, err := d.requests.Start(ctx, request.StartRequest{ParentID: contextinfo.RootRequestIDFromContext(ctx), SessionID: sessionID, Kind: request.KindTool, Label: toolName})
 	if err != nil {
-		return nil, time.Time{}, nil, err
+		return nil, nil, err
 	}
 	d.status.Record(ctx, runtimestatus.Snapshot{
 		SessionID:      sessionID,
@@ -93,7 +92,7 @@ func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName s
 		ToolName:       toolName,
 		StageStartedAt: toolReq.StartedAt,
 	})
-	return toolCtx, toolReq.StartedAt, done, nil
+	return toolCtx, done, nil
 }
 
 func (d toolRunDeps) PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {

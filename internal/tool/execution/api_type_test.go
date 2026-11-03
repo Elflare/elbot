@@ -52,7 +52,7 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, security.DefaultPermission())
-	preloader := preload.NewPreloadService(preload.PreloadOptions{Registry: registry, Resolver: discovery.NewResolver(registry), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, LoadDiscoveryContent: discovery.LoadDiscoveryContent, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools})
+	preloader := preload.NewPreloadService(preload.PreloadOptions{Registry: registry, Resolver: discovery.NewResolver(registry), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools})
 	actor := contextinfo.Actor{Role: contextinfo.RoleSuperadmin}
 	for _, apiType := range []string{"", "chat", "response", "other"} {
 		t.Run(apiType, func(t *testing.T) {
@@ -71,8 +71,8 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 			}
 			cache := prepared.Update.Tools
 			for _, mode := range []string{storage.SessionModeWork, storage.SessionModeBackground} {
-				schemas, err := manager.Schemas(ctx, toolshare.Context{Mode: mode, DisableBaseTools: true}, cache)
-				if err != nil || len(schemas) != boolInt(want) {
+				schemas, err := manager.Schemas(ctx, toolshare.Context{Mode: mode}, cache)
+				if err != nil || len(schemas) != boolInt(want)+boolInt(mode == storage.SessionModeWork) {
 					t.Fatalf("%s schemas=%v err=%v", mode, schemas, err)
 				}
 				if got := manager.resolve(ctx, "image", cache, mode); (got.Error == nil) != want {

@@ -7,7 +7,6 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/storage"
-	"time"
 )
 
 type ELwispToolDeclaration struct {
@@ -31,9 +30,8 @@ type PolicyDeniedError string
 func (e PolicyDeniedError) Error() string { return string(e) }
 
 type Context struct {
-	Mode             string
-	Actor            contextinfo.Actor
-	DisableBaseTools bool
+	Mode  string
+	Actor contextinfo.Actor
 }
 
 type RunnerDeps interface {
@@ -42,8 +40,8 @@ type RunnerDeps interface {
 	PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error)
 	ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool
 	ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment RiskAssessment, detail string) (ConfirmResult, error)
-	// StartToolRequest registers the request and returns its context, start time and cleanup.
-	StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, time.Time, func(), error)
+	// StartToolRequest registers the request and returns its context and cleanup.
+	StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, func(), error)
 	PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context
 	// CompleteToolCall applies the Hook to the result segments.
 	CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error)
