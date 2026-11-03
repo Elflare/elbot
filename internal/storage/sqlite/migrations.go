@@ -1158,9 +1158,17 @@ func migrateIdentityJSON(raw any, document string) (any, error) {
 				return nil
 			}
 			if path == "cron_jobs.metadata.created_by" {
-				v["id"], v["name"] = v["platform_user_id"], v["display_name"]
-				delete(v, "platform_user_id")
-				delete(v, "display_name")
+				// 旧 Cron 按 platform/platform_user_id 执行，actor_id 只是冗余快照。
+				if id, ok := v["platform_user_id"]; ok {
+					v["id"] = id
+					delete(v, "platform_user_id")
+				}
+				if name, ok := v["display_name"]; ok {
+					v["name"] = name
+					delete(v, "display_name")
+				}
+				delete(v, "actor_id")
+				return nil
 			}
 			if children != nil {
 				for _, key := range children {
