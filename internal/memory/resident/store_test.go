@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pelletier/go-toml/v2"
+
 	"elbot/internal/session"
 )
 
@@ -65,7 +67,7 @@ func TestStoreWriteReadAndDeleteNormal(t *testing.T) {
 
 func TestStoreClearsExistingEmptyRecord(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "memories.toml")
-	data := []byte("[[resident_memories]]\nplatform = \"cli\"\nactor_id = \"cli:empty\"\ncore = \" \"\nnormal = \" \"\n\n[[resident_memories]]\nplatform = \"cli\"\nactor_id = \"cli:other\"\nnormal = \"keep\"\n")
+	data := []byte("[cli.empty]\ncore = \" \"\nnormal = \" \"\n\n[cli.other]\nnormal = \"keep\"\n")
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +154,7 @@ func TestStoreMaxUnits(t *testing.T) {
 
 func TestStoreNormalWriteIgnoresExistingOverLimitCore(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "memories.toml")
-	data := []byte("[[resident_memories]]\nplatform = \"cli\"\nactor_id = \"cli:local\"\ncore = \"四个汉字\"\nnormal = \"旧\"\ncreated_at = \"t1\"\nupdated_at = \"t1\"\n")
+	data := []byte("[cli.local]\ncore = \"四个汉字\"\nnormal = \"旧\"\ncreated_at = \"t1\"\nupdated_at = \"t1\"\n")
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatalf("seed memory: %v", err)
 	}
@@ -184,7 +186,7 @@ func TestStoreReloadsExternalFileChanges(t *testing.T) {
 		t.Fatalf("Read cached = %#v, %v", memory, err)
 	}
 
-	data := []byte("[[resident_memories]]\nplatform = \"cli\"\nactor_id = \"cli:local\"\ncore = \"核心\"\nnormal = \"外部更新\"\ncreated_at = \"t1\"\nupdated_at = \"t2\"\n")
+	data := []byte("[cli.local]\ncore = \"核心\"\nnormal = \"外部更新\"\ncreated_at = \"t1\"\nupdated_at = \"t2\"\n")
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatalf("external write: %v", err)
 	}
@@ -275,7 +277,7 @@ func TestStoreRejectedWritePreservesRecords(t *testing.T) {
 
 func TestStoreUnchangedWritePreservesFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "memories.toml")
-	data := "version = 2\n[[resident_memories]]\nowner = {platform = \"cli\", id = \"local\"}\ncore = \"core\"\nnormal = \"normal\"\ncreated_at = \"t1\"\nupdated_at = \"t2\"\n"
+	data := "[cli.local]\ncore = \"core\"\nnormal = \"normal\"\ncreated_at = \"t1\"\nupdated_at = \"t2\"\n"
 	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +323,7 @@ func TestStoreAppendNormalFromExternalFile(t *testing.T) {
 		{name: "empty", want: Memory{Normal: "new"}},
 		{name: "whitespace", data: " \t\n", want: Memory{Normal: "new"}},
 		{name: "comment", data: "# empty memory\n", want: Memory{Normal: "new"}},
-		{name: "existing", data: "[[resident_memories]]\nplatform = \"cli\"\nactor_id = \"cli:local\"\ncore = \" core \"\nnormal = \" old \"\n", want: Memory{Core: "core", Normal: "old new"}},
+		{name: "existing", data: "[cli.local]\ncore = \" core \"\nnormal = \" old \"\n", want: Memory{Core: "core", Normal: "old new"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "memories.toml")
@@ -340,6 +342,150 @@ func TestStoreAppendNormalFromExternalFile(t *testing.T) {
 				memory, err := reader.Read(context.Background(), scope)
 				if err != nil || memory != tc.want {
 					t.Fatalf("appended memory = %#v, %v; want %#v", memory, err, tc.want)
+				}
+			}
+		})
+	}
+}
+
+func TestStorePlatformTablesRoundTripAndCleanup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "memories.toml")
+	store := NewStore(path)
+	owners := []contextinfo.ActorIdentity{
+		{Platform: "telegram", ID: "user:42.娅\"\\\n"},
+		{Platform: "telegram", ID: "other"},
+		{Platform: "cli", ID: "user:42.娅\"\\\n"},
+	}
+	for _, owner := range owners {
+		// Scope.Platform 是会话平台；常驻记忆必须使用 Owner.Platform。
+		scope := session.Scope{Platform: "different", Owner: owner}
+		if err := store.WriteNormal(t.Context(), scope, owner.Platform+"/"+owner.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file tomlFile
+	if err := toml.Unmarshal(data, &file); err != nil {
+		t.Fatal(err)
+	}
+	if len(file) != 2 || len(file["telegram"]) != 2 || len(file["cli"]) != 1 {
+		t.Fatalf("unexpected platform tables: %#v", file)
+	}
+	reloaded := NewStore(path)
+	for _, owner := range owners {
+		memory, err := reloaded.Read(t.Context(), session.Scope{Owner: owner})
+		if err != nil || memory.Normal != strings.TrimSpace(owner.Platform+"/"+owner.ID) {
+			t.Fatalf("Read %+v = %#v, %v", owner, memory, err)
+		}
+		record := file[owner.Platform][owner.ID]
+		if record.CreatedAt == "" || record.UpdatedAt == "" {
+			t.Fatalf("missing timestamps for %+v: %#v", owner, record)
+		}
+	}
+	for i, owner := range owners {
+		if err := store.DeleteNormal(t.Context(), session.Scope{Owner: owner}); err != nil {
+			t.Fatal(err)
+		}
+		remaining, err := NewStore(path).loadLocked()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 && len(remaining["telegram"]) != 1 {
+			t.Fatalf("deleting one user removed siblings: %#v", remaining)
+		}
+		if i == 1 && (len(remaining) != 1 || len(remaining["cli"]) != 1) {
+			t.Fatalf("empty platform not removed or other platform lost: %#v", remaining)
+		}
+		if i == 2 && len(remaining) != 0 {
+			t.Fatalf("cleared file retains tables: %#v", remaining)
+		}
+	}
+}
+
+func TestStoreReadPreservesNewFiles(t *testing.T) {
+	for _, data := range []string{"", " \t\n", "# empty memory\n", "[cli.local]\ncore='keep'\n"} {
+		path := filepath.Join(t.TempDir(), "memories.toml")
+		if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		oldTime := time.Unix(946684800, 0)
+		if err := os.Chtimes(path, oldTime, oldTime); err != nil {
+			t.Fatal(err)
+		}
+		store := NewStore(path)
+		if _, err := store.loadLocked(); err != nil {
+			t.Fatal(err)
+		}
+		after, err := os.Stat(path)
+		if err != nil || !after.ModTime().Equal(oldTime) {
+			t.Fatalf("Read rewrote file: %v", err)
+		}
+		content, err := os.ReadFile(path)
+		if err != nil || string(content) != data {
+			t.Fatalf("Read changed file content: %v", err)
+		}
+		if _, err := os.Stat(path + ".bak"); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("Read created migration backup: %v", err)
+		}
+	}
+}
+
+func TestStoreFailedSavePreservesCache(t *testing.T) {
+	for _, operation := range []string{"update", "delete", "insert"} {
+		t.Run(operation, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "memories.toml")
+			store := NewStore(path)
+			owners := []contextinfo.ActorIdentity{
+				{Platform: "cli", ID: "local"},
+				{Platform: "cli", ID: "other"},
+				{Platform: "telegram", ID: "local"},
+			}
+			for _, owner := range owners {
+				if err := store.WriteNormal(t.Context(), session.Scope{Owner: owner}, "keep"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			target := owners[0]
+			if operation == "insert" {
+				target.ID = "new"
+			}
+			err := store.update(t.Context(), session.Scope{Owner: target}, func(memory *ResidentMemory) error {
+				memory.Normal = "changed"
+				if operation == "delete" {
+					memory.Normal = ""
+				}
+				// 加载完成后用目录占据目标路径，使保存阶段的原子重命名失败。
+				if err := os.Rename(path, path+".original"); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Mkdir(path, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				return nil
+			})
+			if err == nil {
+				t.Fatal("save to directory succeeded")
+			}
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Rename(path+".original", path); err != nil {
+				t.Fatal(err)
+			}
+			for _, reader := range []*Store{store, NewStore(path)} {
+				for _, owner := range owners {
+					memory, err := reader.Read(t.Context(), session.Scope{Owner: owner})
+					if err != nil || memory != (Memory{Normal: "keep"}) {
+						t.Fatalf("failed save changed %+v: %#v, %v", owner, memory, err)
+					}
+				}
+				if operation == "insert" {
+					if _, err := reader.Read(t.Context(), session.Scope{Owner: target}); !errors.Is(err, ErrNotFound) {
+						t.Fatalf("failed save inserted record: %v", err)
+					}
 				}
 			}
 		})

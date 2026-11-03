@@ -1,12 +1,13 @@
 package resident
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -52,17 +53,14 @@ func (m Memory) Text() string {
 }
 
 type ResidentMemory struct {
-	Owner     contextinfo.ActorIdentity `toml:"owner"` // 平台与参与者 ID，不包含展示名。
-	Core      string                    `toml:"core"`
-	Normal    string                    `toml:"normal"`
-	CreatedAt string                    `toml:"created_at"`
-	UpdatedAt string                    `toml:"updated_at"`
+	Core      string `toml:"core"`
+	Normal    string `toml:"normal"`
+	CreatedAt string `toml:"created_at"`
+	UpdatedAt string `toml:"updated_at"`
 }
 
-type tomlFile struct {
-	Version          int              `toml:"version"` // 持久化格式版本；2 使用结构化所有者。
-	ResidentMemories []ResidentMemory `toml:"resident_memories"`
-}
+// tomlFile 按平台、原生用户 ID 两层索引记忆，与 TOML 表结构一致。
+type tomlFile map[string]map[string]ResidentMemory
 
 type Store struct {
 	Path   string
@@ -73,7 +71,7 @@ type Store struct {
 
 type storeCache struct {
 	loaded bool
-	file   tomlFile // 锁内共享；修改列表前复制，保存成功后替换。
+	file   tomlFile // 锁内共享；修改前复制外层和当前平台的 map，保存成功后替换。
 	state  fileState
 }
 
@@ -105,11 +103,10 @@ func (s *Store) Read(ctx context.Context, scope session.Scope) (Memory, error) {
 	if err != nil {
 		return Memory{}, err
 	}
-	idx := findMemory(file.ResidentMemories, scope)
-	if idx < 0 {
+	memory, exists := file[scope.Owner.Platform][scope.Owner.ID]
+	if !exists {
 		return Memory{}, ErrNotFound
 	}
-	memory := file.ResidentMemories[idx]
 	return Memory{Core: strings.TrimSpace(memory.Core), Normal: strings.TrimSpace(memory.Normal)}, nil
 }
 
@@ -161,12 +158,7 @@ func (s *Store) update(ctx context.Context, scope session.Scope, update func(*Re
 		return err
 	}
 	now := storage.FormatTime(storage.Now())
-	idx := findMemory(file.ResidentMemories, scope)
-	exists := idx >= 0
-	memory := ResidentMemory{Owner: scope.Owner}
-	if exists {
-		memory = file.ResidentMemories[idx]
-	}
+	memory, exists := file[scope.Owner.Platform][scope.Owner.ID]
 	before := memory
 	memory.Core = strings.TrimSpace(memory.Core)
 	memory.Normal = strings.TrimSpace(memory.Normal)
@@ -177,7 +169,6 @@ func (s *Store) update(ctx context.Context, scope session.Scope, update func(*Re
 		if !exists {
 			return nil
 		}
-		file.ResidentMemories = slices.Delete(slices.Clone(file.ResidentMemories), idx, idx+1)
 	} else {
 		if memory.CreatedAt == "" {
 			memory.CreatedAt = now
@@ -186,12 +177,21 @@ func (s *Store) update(ctx context.Context, scope session.Scope, update func(*Re
 			return nil
 		}
 		memory.UpdatedAt = now
-		file.ResidentMemories = slices.Clone(file.ResidentMemories)
-		if exists {
-			file.ResidentMemories[idx] = memory
-		} else {
-			file.ResidentMemories = append(file.ResidentMemories, memory)
+	}
+	file = maps.Clone(file)
+	memories := maps.Clone(file[scope.Owner.Platform])
+	if memory.Core == "" && memory.Normal == "" {
+		delete(memories, scope.Owner.ID)
+	} else {
+		if memories == nil {
+			memories = make(map[string]ResidentMemory)
 		}
+		memories[scope.Owner.ID] = memory
+	}
+	if len(memories) == 0 {
+		delete(file, scope.Owner.Platform)
+	} else {
+		file[scope.Owner.Platform] = memories
 	}
 	return s.saveLocked(file)
 }
@@ -244,7 +244,7 @@ func (s *Store) loadLocked() (tomlFile, error) {
 		return s.cache.file, nil
 	}
 	if !state.exists {
-		file := tomlFile{Version: 2}
+		file := tomlFile{}
 		s.cache = storeCache{loaded: true, file: file, state: state}
 		return file, nil
 	}
@@ -252,22 +252,32 @@ func (s *Store) loadLocked() (tomlFile, error) {
 	if err != nil {
 		return tomlFile{}, fmt.Errorf("read resident memory %q: %w", path, err)
 	}
-	var file tomlFile
-	if err := toml.Unmarshal(data, &file); err != nil {
-		return tomlFile{}, fmt.Errorf("parse resident memory %q: %w", path, err)
-	}
-	if file.Version == 0 {
+	file := tomlFile{}
+	if err := toml.NewDecoder(bytes.NewReader(data)).DisallowUnknownFields().Decode(&file); err != nil {
+		// 临时兼容：从引入新格式的版本起，次版本号再递增两次时删除此分支、
+		// migrateResidentMemory 及 migration_test.go；补丁版本不计（如 0.7.0 → 0.9.0）。
 		file, err = migrateResidentMemory(data)
 		if err != nil {
 			return tomlFile{}, fmt.Errorf("migrate resident memory %q: %w", path, err)
+		}
+		backup, err := os.OpenFile(path+".bak", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err != nil {
+			return tomlFile{}, fmt.Errorf("create resident memory backup %q (move any existing backup before retrying): %w", path+".bak", err)
+		}
+		if _, err = backup.Write(data); err == nil {
+			err = backup.Sync()
+		}
+		if closeErr := backup.Close(); err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			os.Remove(path + ".bak")
+			return tomlFile{}, fmt.Errorf("write resident memory backup %q: %w", path+".bak", err)
 		}
 		if err = s.saveLocked(file); err != nil {
 			return tomlFile{}, err
 		}
 		return file, nil
-	}
-	if file.Version != 2 {
-		return tomlFile{}, fmt.Errorf("unsupported resident memory version %d", file.Version)
 	}
 	s.cache = storeCache{loaded: true, file: file, state: state}
 	return file, nil
@@ -324,15 +334,6 @@ func sameFileState(left, right fileState) bool {
 	return left.exists == right.exists && left.size == right.size && left.modTime.Equal(right.modTime)
 }
 
-func findMemory(memories []ResidentMemory, scope session.Scope) int {
-	for i, memory := range memories {
-		if memory.Owner == scope.Owner {
-			return i
-		}
-	}
-	return -1
-}
-
 func normalizeLimits(limits Limits) Limits {
 	if limits.Core <= 0 {
 		limits.Core = DefaultCoreMaxUnits
@@ -343,36 +344,52 @@ func normalizeLimits(limits Limits) Limits {
 	return limits
 }
 
+// 临时兼容：从引入新格式的版本起，次版本号再递增两次时删除本函数、调用分支及迁移测试。
+// 补丁版本不计，例如 0.7.0 引入，则在 0.9.0 删除。
 func migrateResidentMemory(data []byte) (tomlFile, error) {
 	var old struct {
+		Version  int `toml:"version"` // 旧格式版本：0 为 platform/actor_id，2 为结构化 owner。
 		Memories []struct {
-			Platform  string `toml:"platform"`
-			ActorID   string `toml:"actor_id"`
-			Core      string `toml:"core"`
-			Normal    string `toml:"normal"`
-			CreatedAt string `toml:"created_at"`
-			UpdatedAt string `toml:"updated_at"`
+			Owner     contextinfo.ActorIdentity `toml:"owner"`    // version=2 的结构化所有者。
+			Platform  string                    `toml:"platform"` // 无版本格式的平台。
+			ActorID   string                    `toml:"actor_id"` // 无版本格式带平台前缀的用户 ID。
+			Core      string                    `toml:"core"`
+			Normal    string                    `toml:"normal"`
+			CreatedAt string                    `toml:"created_at"`
+			UpdatedAt string                    `toml:"updated_at"`
 		} `toml:"resident_memories"`
 	}
-	if err := toml.Unmarshal(data, &old); err != nil {
+	if err := toml.NewDecoder(bytes.NewReader(data)).DisallowUnknownFields().Decode(&old); err != nil {
 		return tomlFile{}, err
 	}
-	file := tomlFile{Version: 2}
-	seen := map[contextinfo.ActorIdentity]bool{}
+	if old.Version != 0 && old.Version != 2 {
+		return tomlFile{}, fmt.Errorf("unsupported resident memory version %d", old.Version)
+	}
+	file := tomlFile{}
 	for _, item := range old.Memories {
-		platform, id, ok := strings.Cut(item.ActorID, ":")
-		if !ok || id == "" || (platform != item.Platform && !(platform == "hook" && item.Platform == "")) {
-			return tomlFile{}, fmt.Errorf("ambiguous resident owner platform=%q actor=%q", item.Platform, item.ActorID)
+		owner := item.Owner
+		if old.Version == 0 {
+			platform, id, ok := strings.Cut(item.ActorID, ":")
+			if !ok || (platform != item.Platform && !(platform == "hook" && item.Platform == "")) || owner != (contextinfo.ActorIdentity{}) {
+				return tomlFile{}, fmt.Errorf("ambiguous resident owner platform=%q actor=%q", item.Platform, item.ActorID)
+			}
+			if platform == "hook" || platform == "elnis" {
+				return tomlFile{}, fmt.Errorf("resident owner %q has no recoverable user or Elwisp identity", item.ActorID)
+			}
+			owner = contextinfo.ActorIdentity{Platform: platform, ID: id}
+		} else if item.Platform != "" || item.ActorID != "" {
+			return tomlFile{}, fmt.Errorf("ambiguous resident owner %+v with legacy platform/actor_id", owner)
 		}
-		owner := contextinfo.ActorIdentity{Platform: platform, ID: id}
-		if platform == "hook" || platform == "elnis" {
-			return tomlFile{}, fmt.Errorf("resident owner %q has no recoverable user or Elwisp identity", item.ActorID)
+		if owner.Platform == "" || owner.ID == "" {
+			return tomlFile{}, fmt.Errorf("incomplete resident owner %+v", owner)
 		}
-		if seen[owner] {
+		if _, exists := file[owner.Platform][owner.ID]; exists {
 			return tomlFile{}, fmt.Errorf("duplicate resident owner %+v", owner)
 		}
-		seen[owner] = true
-		file.ResidentMemories = append(file.ResidentMemories, ResidentMemory{Owner: owner, Core: item.Core, Normal: item.Normal, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt})
+		if file[owner.Platform] == nil {
+			file[owner.Platform] = make(map[string]ResidentMemory)
+		}
+		file[owner.Platform][owner.ID] = ResidentMemory{Core: item.Core, Normal: item.Normal, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt}
 	}
 	return file, nil
 }

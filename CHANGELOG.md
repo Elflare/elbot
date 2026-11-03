@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Break Changes：更改了hook协议
+- 破坏性更新：常驻记忆改为按平台和用户 ID 分层的 TOML 表，旧文件首次读取时自动备份并迁移，迁移兼容代码将在引入版本之后次版本号递增两次时移除。
+- 破坏性更新：更改了hook协议
 - 人工逐包、逐文件、逐函数、逐字段指导AI重构App到业务层，再次收拢边界、分清职责、精简代码。
 - 精简用户提示信息和工具schema信息
 - 优化log、audit显示

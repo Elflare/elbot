@@ -128,7 +128,9 @@ work 模式下，超级管理员可让 LLM 调用 `workspace` 工具切换当前
 
 ## 常驻记忆配置
 
-常驻记忆存放在配置目录的 `memories.toml`（首次运行时生成）。长度上限写在主配置：
+常驻记忆存放在配置目录的 `memories.toml`，按平台和原生用户 ID 分层。
+
+长度上限写在主配置：
 
 ```toml
 [resident_memory]
