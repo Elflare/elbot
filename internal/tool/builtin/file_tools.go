@@ -15,7 +15,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
 	"elbot/internal/workspace"
 )
@@ -145,7 +144,7 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	}
 	return toolshare.NewPreparedCall(req, assessment, fmt.Sprintf("读取：%s\n模式：%s", path, mode), func(ctx context.Context) (*toolshare.Result, string, error) {
 		var warnings []string
-		if resolved.WasAbs && !contextinfo.BackgroundContext(ctx) {
+		if resolved.WasAbs {
 			warnings = append(warnings, toolshare.AbsolutePathWorkspaceWarning)
 		}
 		info, err := os.Stat(path)
@@ -505,7 +504,7 @@ func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) 
 	content := fmt.Sprintf("dry_run: %t\nedited: %s\ncreated: %t\nencoding: %s\nrevision_before: %s\nrevision_after: %s\ndiff:\n%s", result.DryRun, result.Path, result.Created, result.Encoding, result.RevisionBefore, result.RevisionAfter, result.Diff)
 	content += fmt.Sprintf("\nrollback_available: %t", result.RollbackAvailable)
 	var warnings []string
-	if resolved.WasAbs && !contextinfo.BackgroundContext(ctx) {
+	if resolved.WasAbs {
 		warnings = append(warnings, toolshare.AbsolutePathWorkspaceWarning)
 	}
 	if result.RollbackEvicted > 0 {

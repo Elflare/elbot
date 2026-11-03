@@ -163,7 +163,7 @@ func TestPrepareResourcesReconcilesMediaBeforeBusinessWiring(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := seed.AssociateHistory(t.Context(), media.HistoryMessage{
-		ID: "deleted", Platform: "test", ScopeID: "scope", MessageID: "message",
+		ID: "deleted", Platform: "test", ChatID: "scope", MessageID: "message",
 	}, 1, "file", item.ID); err != nil {
 		t.Fatal(err)
 	}

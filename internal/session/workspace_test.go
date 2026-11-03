@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -16,7 +17,7 @@ import (
 func TestMissingWorkspaceFallbackPersistsAfterPromotion(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
-	scope := Scope{ActorID: "owner", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	missing := filepath.Join(t.TempDir(), "cron", "missing")
 	metadata, err := json.Marshal(map[string]any{
 		"background_kind":             "cron",
@@ -27,7 +28,7 @@ func TestMissingWorkspaceFallbackPersistsAfterPromotion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	row := &storage.Session{ID: storage.NewID(), OwnerID: "owner", Platform: "cli", PlatformScopeID: "cron:test", Mode: storage.SessionModeBackground, Metadata: string(metadata)}
+	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatType: "cron", ChatID: "test", Mode: storage.SessionModeBackground, Metadata: string(metadata)}
 	if err := store.Sessions().Create(ctx, row); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +67,7 @@ func TestMissingWorkspaceFallbackPersistsAfterPromotion(t *testing.T) {
 func TestConditionalWorkspaceClearPreservesNewSelection(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
-	row, err := svc.Create(ctx, Scope{ActorID: "owner", Platform: "cli", IsCLI: true}, CreateRequest{})
+	row, err := svc.Create(ctx, Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", IsCLI: true}, CreateRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +93,7 @@ func TestConditionalWorkspaceClearPreservesNewSelection(t *testing.T) {
 func TestWorkspaceMutationsPreserveConcurrentFields(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
-	scope := Scope{ActorID: "owner", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	row, err := svc.Create(ctx, scope, CreateRequest{Metadata: `{"unknown":9007199254740993,"workspace_dir":"/initial","updates":0}`})
 	if err != nil {
 		t.Fatal(err)
@@ -169,7 +170,7 @@ func TestWorkspaceRejectsMalformedMetadataAndExpiredBinding(t *testing.T) {
 		t.Run(raw, func(t *testing.T) {
 			svc, store := newTestService(t)
 			ctx := context.Background()
-			row := &storage.Session{ID: storage.NewID(), OwnerID: "owner", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Metadata: raw}
+			row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Metadata: raw, ChatType: "private"}
 			if err := store.Sessions().Create(ctx, row); err != nil {
 				t.Fatal(err)
 			}
@@ -188,7 +189,7 @@ func TestWorkspaceRejectsMalformedMetadataAndExpiredBinding(t *testing.T) {
 	}
 	svc, _ := newTestService(t)
 	ctx := context.Background()
-	scope := Scope{ActorID: "owner", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	row, err := svc.Create(ctx, scope, CreateRequest{})
 	if err != nil {
 		t.Fatal(err)

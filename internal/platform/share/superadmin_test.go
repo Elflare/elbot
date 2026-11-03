@@ -37,10 +37,10 @@ func TestSuperadminsSendPreservesTargetsContextAndPartialReceipts(t *testing.T) 
 				}
 				targets = append(targets, target)
 				sent := delivery.Receipt{
-					PlatformMessageIDs: []string{target.PrivateUserID},
-					SentMessages:       []delivery.SentMessage{{Platform: target.Platform, PlatformMessageID: target.PrivateUserID}},
+					PlatformMessageIDs: []string{target.ChatID},
+					SentMessages:       []delivery.SentMessage{{Platform: target.Platform, PlatformMessageID: target.ChatID}},
 				}
-				if fail && target.PrivateUserID == "second" {
+				if fail && target.ChatID == "second" {
 					return sent, events.LogResult{ResultStatus: events.ResultFailed, Content: "second failed"}, fault
 				}
 				return sent, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
@@ -58,7 +58,7 @@ func TestSuperadminsSendPreservesTargetsContextAndPartialReceipts(t *testing.T) 
 				t.Fatalf("targets=%+v receipt=%+v", targets, receipt)
 			}
 			for i, id := range wantIDs {
-				if targets[i] != (delivery.Target{Platform: "injected-platform", PrivateUserID: id}) {
+				if targets[i] != (delivery.Target{Platform: "injected-platform", ChatType: "private", ChatID: id}) {
 					t.Fatalf("target contains inherited routing fields: %+v", targets[i])
 				}
 			}

@@ -16,8 +16,8 @@ const (
 )
 
 type Origin struct {
-	Kind OriginKind
-	Name string
+	Kind OriginKind `json:"kind"` // 已认证入口类型。
+	Name string     `json:"name"` // Token、Hook 或内部入口名称，不作为行为者身份。
 }
 
 func (o Origin) Validate() error {
@@ -30,11 +30,4 @@ func (o Origin) Validate() error {
 		return fmt.Errorf("elvena origin name is required")
 	}
 	return nil
-}
-
-func (o Origin) Label() string {
-	if strings.TrimSpace(o.Name) == "" {
-		return string(o.Kind)
-	}
-	return string(o.Kind) + ":" + strings.TrimSpace(o.Name)
 }

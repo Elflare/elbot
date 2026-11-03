@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"encoding/json"
 	"net/url"
 	"os"
@@ -50,7 +51,7 @@ func TestSendFileAssessRiskBackgroundAbsolutePath(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "sandbox")
 	sendFile := (SendFileTool{})
 	args, _ := json.Marshal(map[string]any{"source": filepath.Join(t.TempDir(), "report.txt")})
-	ctx := workspacepath.WithPathScope(contextinfo.WithBackgroundKind(context.Background(), contextinfo.BackgroundKindCron), workspacepath.PathScope{Dir: filepath.Join(root, "cron"), Restricted: true})
+	ctx := workspacepath.WithPathScope(testutil.TaskContext(context.Background(), "cron"), workspacepath.PathScope{Dir: filepath.Join(root, "cron"), Restricted: true})
 	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	_, err := preparedRisk(ctx, sendFile.Definition(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "restricted path must be relative") {
@@ -71,7 +72,8 @@ func TestSendFileSendsSandboxFile(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{"source": "report.txt"})
 	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot"}})
 	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	ctx = workspacepath.WithPathScope(contextinfo.WithBackgroundKind(ctx, contextinfo.BackgroundKindCron), workspacepath.PathScope{Dir: cronDir, Restricted: true})
+	ctx = workspacepath.WithPathScope(ctx, workspacepath.PathScope{Dir: cronDir, Restricted: true})
+	ctx = toolshare.WithCallPolicy(ctx, toolshare.CallPolicy{OutputTarget: delivery.Target{Platform: "qqonebot", Superadmins: true}})
 	result, _, err := callTool(ctx, sendFile.Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
@@ -264,7 +266,7 @@ func TestSendFileBackgroundRejectsAbsolutePath(t *testing.T) {
 	}
 	sendFile := (SendFileTool{})
 	args, _ := json.Marshal(map[string]any{"source": file})
-	ctx := workspacepath.WithPathScope(contextinfo.WithBackgroundKind(context.Background(), contextinfo.BackgroundKindCron), workspacepath.PathScope{Dir: filepath.Join(root, "cron"), Restricted: true})
+	ctx := workspacepath.WithPathScope(testutil.TaskContext(context.Background(), "cron"), workspacepath.PathScope{Dir: filepath.Join(root, "cron"), Restricted: true})
 	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	_, _, err := callTool(ctx, sendFile.Definition(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "restricted path must be relative") {

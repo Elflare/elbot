@@ -8,14 +8,14 @@ import (
 
 func TestMapReportReceiptUsesOnlyActualSentMessages(t *testing.T) {
 	receipt := delivery.Receipt{PlatformMessageIDs: []string{"unattributed"}, SentMessages: []delivery.SentMessage{
-		{Platform: "telegram", ScopeID: "private:1", PlatformMessageID: "77"},
-		{Platform: "telegram", ScopeID: "private:2", PlatformMessageID: "77"},
-		{Platform: "qqonebot", ScopeID: "private:1", PlatformMessageID: "77"},
+		{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "77"},
+		{Platform: "telegram", ChatType: "private", ChatID: "2", PlatformMessageID: "77"},
+		{Platform: "qqonebot", ChatType: "private", ChatID: "1", PlatformMessageID: "77"},
 	}}
 	want := []ReportMessageMap{
-		{Platform: "telegram", PlatformScopeID: "private:1", PlatformMessageID: "77", SessionID: "session", MessageID: "message"},
-		{Platform: "telegram", PlatformScopeID: "private:2", PlatformMessageID: "77", SessionID: "session", MessageID: "message"},
-		{Platform: "qqonebot", PlatformScopeID: "private:1", PlatformMessageID: "77", SessionID: "session", MessageID: "message"},
+		{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "77", SessionID: "session", MessageID: "message"},
+		{Platform: "telegram", ChatType: "private", ChatID: "2", PlatformMessageID: "77", SessionID: "session", MessageID: "message"},
+		{Platform: "qqonebot", ChatType: "private", ChatID: "1", PlatformMessageID: "77", SessionID: "session", MessageID: "message"},
 	}
 	if got := MapReportReceipt("session", "message", receipt); !reflect.DeepEqual(got, want) {
 		t.Fatal(got)

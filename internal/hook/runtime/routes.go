@@ -99,28 +99,15 @@ func (m *Manager) Route(ctx context.Context, event share.Event, observe func(con
 	return updated, true, logResult, err
 }
 
-// logIdentity 优先使用事件 session，其余身份来自 context；空字段保持缺失。
+// logIdentity 优先使用事件 session，其余身份来自 context；缺失事实原样保留空值。
 func logIdentity(ctx context.Context, sessionID string) globalevents.LogIdentity {
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if sessionID == "" {
-		sessionID = facts.SessionID
-	}
 	record := globalevents.LogIdentity{}
-	if sessionID != "" {
-		record.SessionID = &sessionID
-	}
-	if facts.RunID != "" {
-		record.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.RootRequestID = &facts.RootRequestID
-	}
+	record.SessionID = &sessionID
+	record.RunID = &facts.RunID
+	record.Attempt = &facts.Attempt
+	record.RequestID = &facts.RequestID
+	record.RootRequestID = &facts.RootRequestID
 	return record
 }
 
@@ -150,9 +137,10 @@ func (m *Manager) Cancel(event share.Event) bool {
 }
 
 type routeKey struct {
-	Platform string // 路由所属平台。
-	ScopeID  string // 平台会话范围。
-	ActorID  string // 触发者身份；同 Worker 的同一路由串行。
+	Platform string                    // 路由所属平台。
+	ChatType contextinfo.ChatType      // 会话类型，与原生 ID 共同标识会话。
+	ChatID   string                    // 平台会话范围。
+	Actor    contextinfo.ActorIdentity // 触发者身份；同 Worker 的同一路由串行。
 }
 
 type workerRoute struct {
@@ -161,7 +149,7 @@ type workerRoute struct {
 }
 
 func routeKeyFor(event share.Event) routeKey {
-	return routeKey{Platform: event.Platform.Name, ScopeID: event.Platform.ScopeID, ActorID: event.Actor.ID}
+	return routeKey{Platform: event.Chat.Platform, ChatID: event.Chat.ID, Actor: event.Actor.Identity(), ChatType: event.Chat.ChatType}
 }
 
 type lease struct {

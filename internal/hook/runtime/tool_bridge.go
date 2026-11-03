@@ -63,26 +63,23 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	call := tool.CallRequest{Name: name, Arguments: params.Arguments}
 	callCtx := w.manager.rootCtx
 	actor, _ := contextinfo.ActorFromContext(callCtx)
-	// Keep the trigger actor separate from the permission principal below.
 	arguments := share.TruncateLogContent(string(params.Arguments), 512)
 	// Pointer fields distinguish absent operation facts from explicit empty or
 	// zero values. Declaration order fixes the log body's display order.
 	content := struct {
 		Tool               string            `json:"tool,omitempty"`
-		ActorID            string            `json:"actor_id,omitempty"`
+		Actor              contextinfo.Actor `json:"actor"`
 		Arguments          *string           `json:"arguments,omitempty"`
 		ElapsedMS          *int64            `json:"elapsed_ms,omitempty"`
 		Hook               string            `json:"hook"`
 		Invocation         string            `json:"invocation"`
 		OutputCount        *int              `json:"output_count,omitempty"`
-		Platform           string            `json:"platform,omitempty"`
 		PlatformMessageIDs *[]string         `json:"platform_message_ids,omitempty"`
 		Summary            *string           `json:"summary,omitempty"` // Source-owned summary, preserved without truncation.
 		Result             *string           `json:"result,omitempty"`
 		SentMessages       *[]map[string]any `json:"sent_messages,omitempty"`
 		Source             string            `json:"source"`
 		ToolCallID         string            `json:"tool_call_id,omitempty"`
-		UserID             string            `json:"user_id,omitempty"`
 	}{
 		Tool:      share.TruncateLogContent(name, 2048),
 		Arguments: &arguments,
@@ -103,15 +100,9 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	if ok && contextValue.Worker == w {
 		callCtx = contextValue.Context
 		sessionID = contextValue.Event.Session.ID
-		if sessionID != "" {
-			actor = contextinfo.Actor{ID: contextValue.Event.Actor.ID, Platform: contextValue.Event.Platform.Name, PlatformUserID: contextValue.Event.Actor.UserID}
-		} else {
-			actor, _ = contextinfo.ActorFromContext(callCtx)
-		}
+		actor = contextinfo.Actor{ActorIdentity: contextValue.Event.Actor.Identity(), Name: contextValue.Event.Actor.Name, Nickname: contextValue.Event.Actor.Nickname, GroupCard: contextValue.Event.Actor.GroupCard, Role: contextinfo.Role(contextValue.Event.Actor.Role), GroupRole: contextinfo.GroupRole(contextValue.Event.Actor.GroupRole)}
 	}
-	content.ActorID = share.TruncateLogContent(actor.ID, 2048)
-	content.Platform = share.TruncateLogContent(actor.Platform, 2048)
-	content.UserID = share.TruncateLogContent(actor.PlatformUserID, 2048)
+	content.Actor = actor
 	logHook := func(eventName string, logResult globalevents.LogResult) {
 		content.Result = &logResult.Content
 		if eventName == "hook_tool_call_prepared" {
@@ -161,24 +152,19 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	if infos[0].Definition.ForegroundOnly && params.Background {
 		return failCall(globalevents.ResultRejected, fmt.Errorf("tool %q is foreground-only", name))
 	}
-	// Authorization may use the synthetic Hook principal; audit never does.
-	permissionActor := contextinfo.Actor{ID: "hook:" + w.config.ID, Role: contextinfo.RoleSuperadmin}
 	if !params.Background || strings.TrimSpace(params.Origin) != "" {
 		contextValue, ok := w.manager.takeToolContext(invocation, w)
 		if !ok {
 			return failCall(globalevents.ResultRejected, fmt.Errorf("invalid, expired or exhausted hook context"))
 		}
 		callCtx = contextValue.Context
-		permissionActor = contextinfo.Actor{ID: contextValue.Event.Actor.ID, Platform: contextValue.Event.Platform.Name, PlatformUserID: contextValue.Event.Actor.UserID, Nickname: contextValue.Event.Actor.Nickname, GroupCard: contextValue.Event.Actor.GroupCard, Role: contextinfo.Role(contextValue.Event.Actor.Role), GroupRole: contextinfo.GroupRole(contextValue.Event.Actor.GroupRole), DisplayName: contextValue.Event.Actor.DisplayName}
-	} else if params.Target.Empty() {
-		return failCall(globalevents.ResultRejected, fmt.Errorf("background tool output requires an explicit target"))
+		callCtx = contextinfo.WithActor(callCtx, actor)
 	} else {
 		// Standalone background execution retains its independent timeout.
 		var cancel context.CancelFunc
 		callCtx, cancel = context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
 		defer cancel()
 	}
-	callCtx = contextinfo.WithActor(callCtx, permissionActor)
 	if err := callCtx.Err(); err != nil {
 		status := globalevents.ResultFailed
 		if err == context.Canceled {
@@ -221,7 +207,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	content.PlatformMessageIDs = &receipt.PlatformMessageIDs
 	sentMessages := []map[string]any{}
 	for _, sent := range receipt.SentMessages {
-		sentMessages = append(sentMessages, map[string]any{"platform": sent.Platform, "scope_id": sent.ScopeID, "platform_message_id": sent.PlatformMessageID, "output_indexes": sent.OutputIndexes})
+		sentMessages = append(sentMessages, map[string]any{"platform": sent.Platform, "chat_type": sent.ChatType, "chat_id": sent.ChatID, "platform_message_id": sent.PlatformMessageID, "output_indexes": sent.OutputIndexes})
 	}
 	content.SentMessages = &sentMessages
 	outputCount := len(result.Outputs)

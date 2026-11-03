@@ -6,7 +6,6 @@ import "elbot/internal/tool"
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -198,7 +197,7 @@ func allowField(event share.Event, field string) error {
 func makeOutputs(action Action, event share.Event, state state) ([]delivery.Output, error) {
 	target := renderedActionTarget(action, event, state)
 	if strings.TrimSpace(target.Platform) == "" && event.Point == share.PointPlatformConnected {
-		target.Platform = event.Platform.Name
+		target.Platform = event.Chat.Platform
 	}
 	quick := SegmentSpec{Kind: action.Kind, Text: action.Text, URL: action.URL, Path: action.Path, Base64: action.Base64, Name: action.Name, MIMEType: action.MIMEType, UserID: action.UserID, MessageID: action.MessageID, EmoticonID: action.EmoticonID}
 	if len(action.Outputs) > 0 && quick != (SegmentSpec{}) {
@@ -227,17 +226,18 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 	call := llm.ToolCallRequest{ID: storage.NewID(), Name: name, Arguments: arguments}
 	record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_call_completed", Module: "hook", Type: globalevents.ContentJSON, ContentLimit: 0}
 	content := struct {
-		Tool       string  `json:"tool"`
-		ActorID    string  `json:"actor_id,omitempty"`
-		Arguments  string  `json:"arguments,omitempty"`
-		Point      string  `json:"point"`
-		Summary    *string `json:"summary,omitempty"` // Source-owned summary, preserved without truncation.
-		Result     *string `json:"result,omitempty"`
-		ElapsedMS  *int64  `json:"elapsed_ms,omitempty"`
-		Source     string  `json:"source"`
-		ToolCallID string  `json:"tool_call_id"`
+		Tool       string             `json:"tool"`
+		Actor      share.ActorContext `json:"actor"`
+		Arguments  string             `json:"arguments,omitempty"`
+		Point      string             `json:"point"`
+		Summary    *string            `json:"summary,omitempty"` // Source-owned summary, preserved without truncation.
+		Result     *string            `json:"result,omitempty"`
+		ElapsedMS  *int64             `json:"elapsed_ms,omitempty"`
+		Source     string             `json:"source"`
+		ToolCallID string             `json:"tool_call_id"`
 	}{
 		Tool:       share.TruncateLogContent(name, 2048),
+		Actor:      event.Actor,
 		Arguments:  share.TruncateLogContent(arguments, 512),
 		Point:      share.TruncateLogContent(string(event.Point), 2048),
 		Source:     "rules",
@@ -245,14 +245,7 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 	}
 	record.Identity = logIdentity(ctx)
 	if event.Session.ID != "" {
-		if event.Actor.ID != "" {
-			content.ActorID = share.TruncateLogContent(event.Actor.ID, 2048)
-		}
 		record.Identity.SessionID = &event.Session.ID
-	} else {
-		if actor, ok := contextinfo.ActorFromContext(ctx); ok && actor.ID != "" {
-			content.ActorID = share.TruncateLogContent(actor.ID, 2048)
-		}
 	}
 	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
 	var toolResult *tool.Result

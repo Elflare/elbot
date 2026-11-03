@@ -203,14 +203,14 @@ func TestShutdownOwnsHistoryUntilUsersClose(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = history.Close() })
-			row := &storage.ChatMessage{Platform: "test", PlatformScopeID: "scope", PlatformMessageID: "message"}
+			row := &storage.ChatMessage{Platform: "test", ChatID: "scope", PlatformMessageID: "message"}
 			if err := history.Repository().Append(t.Context(), row); err != nil {
 				t.Fatal(err)
 			}
 			closed := false
 			cause := errors.New("partial owner close failed")
 			user := &testLifecycle{close: func(ctx context.Context) error {
-				if _, err := history.Repository().GetByPlatformMessage(ctx, "test", "scope", "message"); err != nil {
+				if _, err := history.Repository().GetByPlatformMessage(ctx, "test", "", "scope", "message"); err != nil {
 					t.Error("history closed before user", err)
 				}
 				closed = true
@@ -223,7 +223,7 @@ func TestShutdownOwnsHistoryUntilUsersClose(t *testing.T) {
 			if !closed || (partial && !errors.Is(err, cause)) || (!partial && err != nil) {
 				t.Fatal(closed, err)
 			}
-			if _, err := history.Repository().GetByPlatformMessage(t.Context(), "test", "scope", "message"); err == nil {
+			if _, err := history.Repository().GetByPlatformMessage(t.Context(), "test", "", "scope", "message"); err == nil {
 				t.Fatal("App did not close history")
 			}
 		})
@@ -240,7 +240,7 @@ func TestShutdownTimeoutRetainsHistoryForUnfinishedUser(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer history.Close()
-	row := &storage.ChatMessage{Platform: "test", PlatformScopeID: "scope", PlatformMessageID: "message"}
+	row := &storage.ChatMessage{Platform: "test", ChatID: "scope", PlatformMessageID: "message"}
 	if err := history.Repository().Append(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestShutdownTimeoutRetainsHistoryForUnfinishedUser(t *testing.T) {
 				if lock.closed {
 					t.Fatal("timeout released config lock")
 				}
-				if _, err := history.Repository().GetByPlatformMessage(t.Context(), "test", "scope", "message"); err != nil {
+				if _, err := history.Repository().GetByPlatformMessage(t.Context(), "test", "", "scope", "message"); err != nil {
 					t.Fatal("timeout released dependency", err)
 				}
 			})

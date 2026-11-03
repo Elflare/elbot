@@ -3,6 +3,8 @@ package tool
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
 	"fmt"
 	"slices"
 	"sync"
@@ -77,6 +79,7 @@ func (m *Supervisor) RegisterTools(ctx context.Context, source Source, scope Too
 
 // QueryTools 返回只读工具描述；修改 Parameters 或 Definition 中的切片前须自行复制。
 func (m *Supervisor) QueryTools(ctx context.Context, query ToolQuery) ([]ToolInfo, error) {
+	ctx = toolPolicyContext(ctx)
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
 		return nil, err
 	}
@@ -119,6 +122,7 @@ func (m *Supervisor) DecodeState(raw string) (State, error) {
 }
 
 func (m *Supervisor) Schemas(ctx context.Context, view Context, discovered []DiscoveredTool) ([]llm.ToolSchema, error) {
+	ctx = toolPolicyContext(ctx)
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
 		return nil, err
 	}
@@ -127,6 +131,7 @@ func (m *Supervisor) Schemas(ctx context.Context, view Context, discovered []Dis
 
 // FilterSchemas 复核 Hook 修改后的模型声明，只筛除已注册且不适用于当前上下文的工具。
 func (m *Supervisor) FilterSchemas(ctx context.Context, schemas []llm.ToolSchema) ([]llm.ToolSchema, error) {
+	ctx = toolPolicyContext(ctx)
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
 		return nil, err
 	}
@@ -134,6 +139,7 @@ func (m *Supervisor) FilterSchemas(ctx context.Context, schemas []llm.ToolSchema
 }
 
 func (m *Supervisor) Run(ctx context.Context, deps RunnerDeps, req RunRequest) RunResult {
+	ctx = toolPolicyContext(ctx)
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
 		return RunResult{Err: err}
 	}
@@ -144,6 +150,7 @@ func (m *Supervisor) Commit(ctx context.Context, id string, update StateUpdate) 
 	return toPublicStateCommit(committed), result, err
 }
 func (m *Supervisor) PrepareTools(ctx context.Context, names []string) (ToolPreload, error) {
+	ctx = toolPolicyContext(ctx)
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
 		return ToolPreload{}, err
 	}
@@ -151,6 +158,7 @@ func (m *Supervisor) PrepareTools(ctx context.Context, names []string) (ToolPrel
 	return toPublicToolPreload(prepared), err
 }
 func (m *Supervisor) PrepareSkills(ctx context.Context, prefix string, names []string) (SkillPreload, error) {
+	ctx = toolPolicyContext(ctx)
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
 		return SkillPreload{}, err
 	}
@@ -158,6 +166,7 @@ func (m *Supervisor) PrepareSkills(ctx context.Context, prefix string, names []s
 	return toPublicSkillPreload(prepared), err
 }
 func (m *Supervisor) PrepareBackground(ctx context.Context, req BackgroundPreloadRequest) (BackgroundPreload, error) {
+	ctx = toolPolicyContext(ctx)
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
 		return BackgroundPreload{}, err
 	}
@@ -197,9 +206,26 @@ func (m *Supervisor) RollbackByID(ctx context.Context, id uint64) (fileops.Rollb
 }
 
 func (m *Supervisor) CallTool(ctx context.Context, req CallRequest) (*Result, string, error) {
+	ctx = toolPolicyContext(ctx)
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
 		return nil, "Tool execution not entered: " + err.Error(), err
 	}
 	result, logContent, err := m.engine.CallTool(ctx, toInternalCallRequest(req))
 	return toPublicResult(result), logContent, err
+}
+
+// toolPolicyContext 在 Tool 边界解释执行事实，内部只接收所需策略。
+func toolPolicyContext(ctx context.Context) context.Context {
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	_, hasChat := contextinfo.ConversationFromContext(ctx)
+	policy := share.CallPolicy{
+		DisableForegroundTools: facts.Mode == "background",
+		ExplicitChat:           !hasChat,
+		AutoConfirmShell:       facts.Mode == "background" && (facts.TaskType == "cron" || facts.TaskType == "elnis"),
+	}
+	if facts.Mode == "background" && facts.TaskType == "cron" {
+		actor, _ := contextinfo.ActorFromContext(ctx)
+		policy.OutputTarget = delivery.Target{Platform: actor.Platform, Superadmins: true}
+	}
+	return share.WithCallPolicy(ctx, policy)
 }

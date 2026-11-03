@@ -521,7 +521,7 @@ func (m *Manager) Handle(ctx context.Context, id string, event share.Event, defa
 	if worker.config.Block.Blocks(event) {
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "worker not dispatched"}, nil
 	}
-	updated, logResult, err := worker.handle(ctx, event, false, event.Platform.ConversationID, defaults)
+	updated, logResult, err := worker.handle(ctx, event, false, event.Chat.ID, defaults)
 	if err == nil {
 		if updated.Metadata == nil {
 			updated.Metadata = map[string]any{}

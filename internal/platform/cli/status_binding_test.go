@@ -14,7 +14,7 @@ import (
 func TestStatusBindingChangeFinishesOldSendAndRejectsLateEvents(t *testing.T) {
 	d := newStatusDisplay(testPlatformName)
 	defer d.Close(context.Background())
-	scope := session.Scope{ActorID: "user", Platform: "cli", PlatformScopeID: "local"}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "user"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	old := &BindingSnapshot{Scope: scope, SessionID: "same", Version: 1}
 	next := &BindingSnapshot{Scope: scope, SessionID: "same", Version: 2}
 	entered, release := make(chan struct{}), make(chan struct{})

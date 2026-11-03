@@ -37,7 +37,7 @@ func (m *Manager) recordOperation(ctx context.Context, sessionID string, call ll
 }
 
 func (m *Manager) recordCallStarted(ctx context.Context, sessionID string, call llm.ToolCallRequest, source toolshare.SourceKind, actor contextinfo.Actor, risk, runSource string) {
-	content, _ := json.Marshal(map[string]string{"tool": call.Name, "tool_call_id": call.ID, "actor_id": actor.ID, "arguments": toolshare.TruncateLogContent(call.Arguments, 512), "risk": risk, "run_source": runSource, "source": string(source)})
+	content, _ := json.Marshal(map[string]any{"tool": call.Name, "tool_call_id": call.ID, "actor": actor, "arguments": toolshare.TruncateLogContent(call.Arguments, 512), "risk": risk, "run_source": runSource, "source": string(source)})
 	record := newRunRecord(ctx, sessionID, "tool_call_prepared", events.LogResult{ResultStatus: events.ResultSucceeded})
 	record.Category, record.Type, record.ContentLimit, record.Content = events.LogAudit, events.ContentJSON, 0, string(content)
 	m.Log(ctx, record)
@@ -51,18 +51,18 @@ func (m *Manager) recordCallCompleted(ctx context.Context, sessionID string, cal
 	logResult.ResultStatus = result.ResultStatus
 	// Keep the source-owned summary separate from the bounded actual result.
 	content := struct {
-		Tool       string `json:"tool"`
-		ActorID    string `json:"actor_id"`
-		ElapsedMS  int64  `json:"elapsed_ms"`
-		Summary    string `json:"summary,omitempty"` // Source-owned summary, preserved without truncation.
-		Result     string `json:"result"`
-		Risk       string `json:"risk"`
-		RunSource  string `json:"run_source"`
-		Source     string `json:"source"`
-		ToolCallID string `json:"tool_call_id"`
+		Tool       string            `json:"tool"`
+		Actor      contextinfo.Actor `json:"actor"`
+		ElapsedMS  int64             `json:"elapsed_ms"`
+		Summary    string            `json:"summary,omitempty"` // Source-owned summary, preserved without truncation.
+		Result     string            `json:"result"`
+		Risk       string            `json:"risk"`
+		RunSource  string            `json:"run_source"`
+		Source     string            `json:"source"`
+		ToolCallID string            `json:"tool_call_id"`
 	}{
 		Tool:       toolshare.TruncateLogContent(call.Name, 2048),
-		ActorID:    toolshare.TruncateLogContent(actor.ID, 2048),
+		Actor:      actor,
 		ElapsedMS:  time.Since(startedAt).Milliseconds(),
 		Summary:    logResult.Content,
 		Result:     result.Result.LogContent(result.Error),

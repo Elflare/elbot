@@ -21,7 +21,7 @@ func TestFormatToolPreviewPreservesMultilineBody(t *testing.T) {
 
 func TestPreviewConversationPolicyPrecedesHookAndSignal(t *testing.T) {
 	for _, platform := range []string{"qqonebot", "qqofficial", "telegram", "cli"} {
-		for _, kind := range []contextinfo.ConversationKind{contextinfo.ConversationPrivate, contextinfo.ConversationGroup, contextinfo.ConversationChannel, contextinfo.ConversationUnknown} {
+		for _, kind := range []contextinfo.ChatType{contextinfo.ChatPrivate, contextinfo.ChatGroup, contextinfo.ChatChannel, contextinfo.ChatUnknown} {
 			for _, batch := range []bool{false, true} {
 				t.Run(platform+"/"+string(kind)+"/"+map[bool]string{false: "single", true: "batch"}[batch], func(t *testing.T) {
 					var seen []string
@@ -37,7 +37,7 @@ func TestPreviewConversationPolicyPrecedesHookAndSignal(t *testing.T) {
 					defer connection.Disconnect()
 					hooks := &previewTestHooks{rewrite: true, output: "rewritten without tool prefix"}
 					out := &OutputSender{hooks: hooks}
-					ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platform, ConversationKind: kind}})
+					ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platform, ChatType: kind}})
 					text := []string{"正在调用 first"}
 					if batch {
 						text = append(text, "正在调用 second")
@@ -47,7 +47,7 @@ func TestPreviewConversationPolicyPrecedesHookAndSignal(t *testing.T) {
 						t.Fatal(err)
 					}
 					want := 1
-					if kind == contextinfo.ConversationGroup {
+					if kind == contextinfo.ChatGroup {
 						want = 0
 					}
 					if hooks.calls != want || len(seen) != want {

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -17,22 +16,17 @@ import (
 )
 
 func makeUsageEntry(t time.Time, provider, model, sessionID string, prompt, completion, total, cache int, elapsedMs int64) logging.LogEntry {
+	content, _ := json.Marshal(map[string]any{
+		"provider": provider, "model": model,
+		"prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": total,
+		"cache_hit_tokens": cache, "elapsed_ms": elapsedMs,
+	})
 	return logging.LogEntry{
-		Time:     t,
-		Identity: events.LogIdentity{SessionID: &sessionID},
-		Level:    "INFO",
-		Content:  "audit event",
-		LegacyFields: map[string]string{
-			"event":             "llm_usage",
-			"session_id":        sessionID,
-			"provider":          provider,
-			"model":             model,
-			"prompt_tokens":     strconv.Itoa(prompt),
-			"completion_tokens": strconv.Itoa(completion),
-			"total_tokens":      strconv.Itoa(total),
-			"cache_hit_tokens":  strconv.Itoa(cache),
-			"elapsed_ms":        strconv.FormatInt(elapsedMs, 10),
-		},
+		Time:      t,
+		Identity:  events.LogIdentity{SessionID: &sessionID},
+		Level:     "INFO",
+		EventName: "llm_usage", Type: events.ContentJSON,
+		Content: string(content),
 	}
 }
 

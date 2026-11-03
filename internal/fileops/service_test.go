@@ -34,10 +34,10 @@ type fileFixture struct {
 
 func newFileFixture(t *testing.T) *fileFixture {
 	t.Helper()
-	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin})
+	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}})
 	store := testutil.NewSQLiteStore(t)
 	sessions := newSessionSupervisor(t, store)
-	scope := session.Scope{ActorID: "admin", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	row, err := sessions.Create(ctx, scope, session.CreateRequest{Title: "files"})
 	if err != nil {
 		t.Fatal(err)
@@ -94,6 +94,22 @@ func waitError(t *testing.T, ch <-chan error) error {
 		t.Fatal("operation timed out")
 		return nil
 	}
+}
+
+func TestEditRejectsBindingExpiredBeforeCaptureAtCommit(t *testing.T) {
+	f := newFileFixture(t)
+	if _, err := f.sessions.Create(f.ctx, f.scope, session.CreateRequest{Title: "next"}); err != nil {
+		t.Fatal(err)
+	}
+	entered := false
+	ctx := f.call(workspace.WithPathScope(f.ctx, workspace.PathScope{Dir: f.dir, Restricted: true}), func(ctx context.Context) (context.Context, func(), error) {
+		entered = true
+		return f.sessions.EnterBinding(ctx, f.binding)
+	})
+	if _, _, err := f.files.Edit(ctx, editRequest("file", "before", "after")); err == nil || !entered {
+		t.Fatalf("expired binding: err=%v entered=%t", err, entered)
+	}
+	readContent(t, f.path, "before")
 }
 
 func TestEditConfirmationPinsState(t *testing.T) {
@@ -421,7 +437,7 @@ func TestBackgroundEditUsesSharedTargetLockAndCancellation(t *testing.T) {
 	first := make(chan error, 1)
 	go func() { _, _, err := f.files.Edit(ctx, editRequest("file", "before", "after")); first <- err }()
 	waitSignal(t, reached)
-	bg, cancel := context.WithCancel(workspace.WithPathScope(contextinfo.WithBackgroundKind(f.ctx, ""), workspace.PathScope{Dir: f.dir, Restricted: true}))
+	bg, cancel := context.WithCancel(workspace.WithPathScope(testutil.TaskContext(f.ctx, ""), workspace.PathScope{Dir: f.dir, Restricted: true}))
 	bg = f.files.WithBinding(bg, nil)
 	waiting := make(chan error, 1)
 	go func() { _, _, err := f.files.Edit(bg, editRequest("file", "before", "other")); waiting <- err }()
@@ -434,7 +450,7 @@ func TestBackgroundEditUsesSharedTargetLockAndCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	readContent(t, f.path, "after")
-	bg = workspace.WithPathScope(contextinfo.WithBackgroundKind(f.ctx, ""), workspace.PathScope{Dir: f.dir, Restricted: true})
+	bg = workspace.WithPathScope(testutil.TaskContext(f.ctx, ""), workspace.PathScope{Dir: f.dir, Restricted: true})
 	result, _, err := f.files.Edit(f.files.WithBinding(bg, nil), editRequest("file", "after", "background"))
 	if err != nil || result.RollbackAvailable {
 		t.Fatalf("background result=%+v err=%v", result, err)

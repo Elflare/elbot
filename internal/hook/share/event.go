@@ -5,6 +5,7 @@ package share
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"strings"
 	"time"
@@ -64,7 +65,7 @@ type Event struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 	Control  Control        `json:"control"`
 
-	Platform  PlatformContext   `json:"platform"`
+	Chat      ChatContext       `json:"chat"`
 	Actor     ActorContext      `json:"actor"`
 	Session   SessionContext    `json:"session"`
 	Request   RequestContext    `json:"request"`
@@ -85,23 +86,23 @@ type ErrorPayload struct {
 	Message string `json:"message"`
 }
 
-type PlatformContext struct {
-	Name              string `json:"name"`
-	ScopeID           string `json:"scope_id"`
-	UserID            string `json:"user_id"`
-	ConversationID    string `json:"conversation_id"`
-	PlatformMessageID string `json:"message_id"`
-	ReplyToMessageID  string `json:"reply_to_message_id"`
+type ChatContext struct {
+	Platform          string               `json:"platform"`  // 聊天所属平台。
+	ChatType          contextinfo.ChatType `json:"chat_type"` // 私聊、群聊或频道。
+	ID                string               `json:"id"`        // 平台内原生聊天 ID。
+	Name              string               `json:"name"`      // 展示名，不参与路由与权限判断。
+	PlatformMessageID string               `json:"message_id"`
+	ReplyToMessageID  string               `json:"reply_to_message_id"`
 }
 
 type ActorContext struct {
-	ID          string `json:"id"`
-	Role        string `json:"role"`
-	GroupRole   string `json:"group_role"`
-	UserID      string `json:"user_id"`
-	Nickname    string `json:"nickname"`
-	GroupCard   string `json:"group_card"`
-	DisplayName string `json:"display_name"`
+	Platform  string `json:"platform,omitempty"` // 行为者所属平台。
+	Role      string `json:"role"`
+	GroupRole string `json:"group_role"`
+	ID        string `json:"id"`
+	Nickname  string `json:"nickname"`
+	GroupCard string `json:"group_card"`
+	Name      string `json:"name"`
 }
 
 type SessionContext struct {
@@ -199,4 +200,9 @@ func MessageIntentText(event Event) string {
 		return strings.TrimSpace(event.Message.IntentText)
 	}
 	return llm.SegmentsTextOnly(event.Message.Segments)
+}
+
+// Identity 返回事件携带的身份事实，不从会话或字符串恢复身份。
+func (a ActorContext) Identity() contextinfo.ActorIdentity {
+	return contextinfo.ActorIdentity{Platform: a.Platform, ID: a.ID}
 }

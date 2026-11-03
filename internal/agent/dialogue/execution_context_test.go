@@ -45,7 +45,7 @@ func TestForegroundRefreshClearsAbsentSourceAndActor(t *testing.T) {
 
 		BufferAssistantOutput: true,
 	})
-	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{ID: "old", Role: contextinfo.RoleSuperadmin})
+	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "old"}})
 	ctx = contextinfo.WithModel(ctx, contextinfo.Model{Provider: "fixed", Model: "m", APIType: "chat"})
 	e := turn.NewExecution("run")
 	e.Adopt(context.Background(), storage.Session{})

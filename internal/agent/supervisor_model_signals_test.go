@@ -29,7 +29,7 @@ func (p *retryNoticePlatform) SendTo(ctx context.Context, noticeTarget delivery.
 	text := delivery.FallbackOutput(noticeOutputs).Text
 	if strings.Contains(text, "LLM retry") {
 		info, _ := contextinfo.ConversationFromContext(ctx)
-		p.retryNotices <- info.Source.ScopeID
+		p.retryNotices <- info.Source.ChatID
 	}
 	return p.assemblyPlatform.SendTo(ctx, noticeTarget, noticeOutputs)
 }
@@ -74,7 +74,7 @@ data: [DONE]
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "local"}, Identity: contextinfo.Identity{PlatformUserID: "local"}})
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ChatID: "local", ChatType: "private"}, Identity: contextinfo.Identity{ID: "local"}})
 	ctx = contextinfo.WithModel(ctx, contextinfo.Model{Provider: "p", Model: "m", APIType: "chat"})
 	namingDone := make(chan struct{}, 1)
 	logs, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
@@ -97,7 +97,7 @@ data: [DONE]
 				err := runtime.HandleMessage(ctx, MessageRequest{Text: "/compact"})
 				result <- err
 			case "naming":
-				row := &storage.Session{ID: storage.NewID(), OwnerID: "cli:local", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeWork, Title: "New session", Status: storage.SessionStatusActive}
+				row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", Mode: storage.SessionModeWork, Title: "New session", Status: storage.SessionStatusActive, ChatType: "private"}
 				if err := deps.Store.Sessions().Create(ctx, row); err != nil {
 					result <- err
 					return

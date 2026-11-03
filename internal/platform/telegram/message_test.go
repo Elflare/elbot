@@ -26,9 +26,9 @@ func TestNormalizeDocument(t *testing.T) {
 	}
 }
 
-func newTestStream(t *testing.T, a *Adapter, scope string) delivery.MessageStream {
+func newTestStream(t *testing.T, a *Adapter, kind contextinfo.ChatType, id string) delivery.MessageStream {
 	t.Helper()
-	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ScopeID: scope}})
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ChatType: kind, ChatID: id}})
 	s, err := a.StartStream(ctx)
 	if err != nil {
 		t.Fatal(err)

@@ -22,30 +22,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	// 必需依赖只在根部检查；配置默认值及有效性由配置层负责。
-	switch {
-	case cfg == nil:
-		return nil, fmt.Errorf("session config is required")
-	case deps.Store == nil:
-		return nil, fmt.Errorf("session store is required")
-	case deps.SessionIDCode == nil:
-		return nil, fmt.Errorf("session platform ID codes are required")
-	case deps.Models == nil:
-		return nil, fmt.Errorf("session naming models are required")
-	case deps.ActiveSessionIDs == nil:
-		return nil, fmt.Errorf("session activity source is required")
-	case deps.CheckForeground == nil:
-		return nil, fmt.Errorf("session foreground check is required")
-	case deps.Materials == nil:
-		return nil, fmt.Errorf("session materials are required")
-	case deps.IsSuperadmin == nil:
-		return nil, fmt.Errorf("session permission query is required")
-	case deps.ReleaseSession == nil:
-		return nil, fmt.Errorf("session release is required")
-	case deps.ReleaseBinding == nil:
-		return nil, fmt.Errorf("binding release is required")
-	}
-
 	runCtx, cancel := context.WithCancel(ctx)
 	s = &Supervisor{ctx: runCtx, cancel: cancel, done: make(chan struct{})}
 	defer func() {

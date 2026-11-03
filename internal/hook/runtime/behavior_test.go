@@ -186,7 +186,7 @@ func TestWaitingExpiresWithoutLookup(t *testing.T) {
 		}
 		defer m.Close(context.Background())
 		w := newWorker(m, share.RuntimeConfig{ID: "waiting", MaxWaitSeconds: 60})
-		event := share.Event{Actor: share.ActorContext{ID: "actor"}}
+		event := share.Event{Actor: share.ActorContext{Platform: "cli", ID: "actor"}}
 		if err := m.setLease(w, t.Context(), event, eventResult{ConversationID: "plugin-id", ExpiresAt: time.Now().Add(time.Second)}, share.Control{}); err != nil {
 			t.Fatal(err)
 		}
@@ -225,7 +225,7 @@ func TestContinuationCancellationUsesLeaseID(t *testing.T) {
 		}
 		return nil
 	}}
-	event := share.Event{Platform: share.PlatformContext{ConversationID: "platform-id"}}
+	event := share.Event{Chat: share.ChatContext{ID: "platform-id"}}
 	if err := m.setLease(w, t.Context(), event, eventResult{ConversationID: "plugin-id", ExpiresAt: time.Now().Add(time.Minute)}, share.Control{}); err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestContinuationCancellationUsesLeaseID(t *testing.T) {
 	select {
 	case id := <-notified:
 		if id != "plugin-id" {
-			t.Fatalf("cancel conversation_id = %q", id)
+			t.Fatalf("cancel chat_id = %q", id)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("missing cancel notification")
@@ -294,7 +294,7 @@ func TestBlockedCancelNotificationDoesNotDelayInvocation(t *testing.T) {
 			defer cancel()
 			done := make(chan error, 1)
 			go func() {
-				_, _, err := m.Handle(ctx, w.config.ID, share.Event{Platform: share.PlatformContext{ConversationID: strings.Repeat("x", 2<<20)}}, share.Control{})
+				_, _, err := m.Handle(ctx, w.config.ID, share.Event{Chat: share.ChatContext{ID: strings.Repeat("x", 2<<20)}}, share.Control{})
 				done <- err
 			}()
 			<-entered
@@ -385,7 +385,7 @@ func TestWaitingTimerLifecycle(t *testing.T) {
 					}
 					defer m.Close(context.Background())
 					w := newWorker(m, share.RuntimeConfig{ID: "old", EventTimeoutSeconds: 1, MaxWaitSeconds: 60})
-					event := share.Event{Actor: share.ActorContext{ID: "actor"}}
+					event := share.Event{Actor: share.ActorContext{Platform: "cli", ID: "actor"}}
 					key := routeKeyFor(event)
 					if err := m.setLease(w, t.Context(), event, eventResult{ConversationID: "old", ExpiresAt: time.Now().Add(time.Second)}, share.Control{}); err != nil {
 						t.Fatal(err)
@@ -470,7 +470,7 @@ func TestTransientWaitingExpiresAndExitsWithoutLookup(t *testing.T) {
 	if err := m.Apply([]share.RuntimeConfig{config}, func(string) {}); err != nil {
 		t.Fatal(err)
 	}
-	event := share.Event{Actor: share.ActorContext{ID: "actor"}}
+	event := share.Event{Actor: share.ActorContext{Platform: "cli", ID: "actor"}}
 	if _, _, err := m.Handle(t.Context(), config.ID, event, share.Control{}); err != nil {
 		t.Fatal(err)
 	}
@@ -523,14 +523,14 @@ func TestWaitingExpiryDoesNotCancelActiveContinuation(t *testing.T) {
 			requests <- value
 			return nil
 		}}
-		event := share.Event{Platform: share.PlatformContext{ConversationID: "platform-id"}}
+		event := share.Event{Chat: share.ChatContext{ID: "platform-id"}}
 		if err := m.setLease(w, t.Context(), event, eventResult{ConversationID: "plugin-id", ExpiresAt: time.Now().Add(time.Second)}, share.Control{}); err != nil {
 			t.Fatal(err)
 		}
 		finished := make(chan error, 1)
 		go func() {
 			updated, _, _, err := m.Route(t.Context(), event, nil)
-			if updated.Platform.ConversationID != "platform-id" {
+			if updated.Chat.ID != "platform-id" {
 				err = fmt.Errorf("original event context changed")
 			}
 			finished <- err

@@ -66,7 +66,9 @@ func foregroundContext(ctx, foreground context.Context) context.Context {
 		ctx = session.WithBinding(ctx, nil)
 	}
 	ctx = workspace.WithoutPathScope(ctx)
-	ctx = contextinfo.WithoutBackgroundKind(ctx)
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	facts.Mode, facts.TaskType, facts.TaskID = storage.SessionModeWork, "", ""
+	ctx = contextinfo.WithExecution(ctx, facts)
 	ctx = modelmgr.WithSelectionOverride(ctx, config.ModelSelection{})
 	return ctx
 }
@@ -95,12 +97,12 @@ func (v ExecutionView) RefreshExecution(ctx context.Context, row *storage.Sessio
 		return ctx, err
 	}
 	fields["foreground_origin"] = promoted["foreground_origin"]
-	delete(fields, "background_kind")
 	metadata, err := fields.Encode()
 	if err != nil {
 		return ctx, err
 	}
-	row.OwnerID, row.Platform, row.PlatformScopeID = latest.OwnerID, latest.Platform, latest.PlatformScopeID
+	row.Owner, row.Platform, row.ChatType, row.ChatID = latest.Owner, latest.Platform, latest.ChatType, latest.ChatID
+	row.TaskType, row.TaskID, row.TaskName = latest.TaskType, latest.TaskID, latest.TaskName
 	row.Mode, row.Metadata = latest.Mode, metadata
 	return ctx, nil
 }
@@ -113,7 +115,7 @@ func (v ExecutionView) RefreshSession(ctx context.Context, row *storage.Session)
 	}
 	*row = *latest
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	facts.SessionID = row.ID
+	facts.SessionID, facts.Mode, facts.TaskType, facts.TaskID = row.ID, row.Mode, row.TaskType, row.TaskID
 	ctx = contextinfo.WithExecution(ctx, facts)
 	return ctx, nil
 }

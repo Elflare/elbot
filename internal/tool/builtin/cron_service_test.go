@@ -50,7 +50,7 @@ func cronTestTools(repo *cronRepositoryStub, validate func(string, string) error
 func TestCronCreateAndPatchUseOnlyInternalRequests(t *testing.T) {
 	repo := &cronRepositoryStub{}
 	tools := cronTestTools(repo, nil)
-	owner := contextinfo.Actor{ID: "owner", Platform: "qq", Role: contextinfo.RoleSuperadmin}
+	owner := contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qq", ID: "owner"}, Role: contextinfo.RoleSuperadmin}
 	ctx := contextinfo.WithActor(t.Context(), owner)
 	_, _, err := callTool(ctx, tools[2], share.CallRequest{Arguments: json.RawMessage(`{"operation":"create","name":"reminder","schedule_mode":"once","run_after_minutes":10,"trigger_mode":"direct","message":"hello","tool_list_names":["a","a"]}`)})
 	if err != nil {
@@ -62,7 +62,7 @@ func TestCronCreateAndPatchUseOnlyInternalRequests(t *testing.T) {
 	}
 	repo.info = CronInfo{Name: "reminder", CreatedBy: owner, SourcePlatform: "qq", Enabled: true, ScheduleMode: "cron", CronExpr: "* * * * *", TriggerMode: "direct", Message: "hello", ToolListNames: []string{"a"}}
 	// 修改者不覆盖原创建者；空字段清空，省略字段保留。
-	ctx = contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "another-admin", Platform: "qq", Role: contextinfo.RoleSuperadmin})
+	ctx = contextinfo.WithActor(t.Context(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qq", ID: "another-admin"}, Role: contextinfo.RoleSuperadmin})
 	_, _, err = callTool(ctx, tools[2], share.CallRequest{Arguments: json.RawMessage(`{"operation":"update","name":"reminder","tool_list_names":[],"model_provider":"","model":"","enabled":false}`)})
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestCronValidationRejectsBeforeBridgeWrite(t *testing.T) {
 	modelErr := errors.New("unknown model")
 	var provider, model string
 	tools := cronTestTools(repo, func(p, m string) error { provider, model = p, m; return modelErr })
-	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Platform: "qq"})
+	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qq"}})
 	for _, args := range []string{
 		`{"operation":"create","name":"bad","schedule_mode":"once","run_at":"2026-10-25 11:59:00","trigger_mode":"direct","message":"hello"}`,
 		`{"operation":"create","name":"bad","schedule_mode":"cron","cron_expr":"bad expr","trigger_mode":"direct","message":"hello"}`,
@@ -181,7 +181,7 @@ func TestCronWriteResultsAndErrors(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Platform: "qq"})
+				ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qq"}})
 				result, _, err := callTool(ctx, cronTestTools(repo, nil)[2], share.CallRequest{Arguments: args})
 				if fail {
 					if result != nil || err != repo.err {

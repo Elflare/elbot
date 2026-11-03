@@ -21,21 +21,11 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	// their actual report SessionID separately.
 	identity := globalevents.LogIdentity{}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.SessionID != "" {
-		identity.SessionID = &facts.SessionID
-	}
-	if facts.RunID != "" {
-		identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		identity.RootRequestID = &facts.RootRequestID
-	}
+	identity.SessionID = &facts.SessionID
+	identity.RunID = &facts.RunID
+	identity.Attempt = &facts.Attempt
+	identity.RequestID = &facts.RequestID
+	identity.RootRequestID = &facts.RootRequestID
 
 	if err := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusRunning, "", ""); err != nil {
 		content, _ := json.Marshal(map[string]string{"event_id": eventID, "persistence_error": err.Error()})
@@ -43,7 +33,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		return err
 	}
 	{
-		content, _ := json.Marshal(map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID})
+		content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID})
 		record := globalevents.LogRecord{
 			Category:  globalevents.LogAudit,
 			Level:     slog.LevelInfo,
@@ -60,7 +50,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	segments, err := s.materializeSegments(ctx, event.Segments, eventID)
 	if err != nil {
 		persistenceErr := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
-		content := map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "error": fmt.Sprintf("%.2048s", err.Error())}
+		content := map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "error": fmt.Sprintf("%.2048s", err.Error())}
 		if persistenceErr != nil {
 			content["persistence_error"] = fmt.Sprintf("%.2048s", persistenceErr.Error())
 		}
@@ -90,12 +80,10 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	runRequest := background.RunRequest{
 		TargetPlatforms: platforms,
 		NeedsElyphRules: strings.TrimSpace(event.Request.Format) == elyph.Format,
-		Kind:            background.KindElnis,
-		Name:            event.EventKey,
-		Title:           firstNonEmpty(event.Request.Title, "Elnis: "+event.Request.Source),
-		Platform:        targets[0].Platform,
+		TaskType:        background.KindElnis,
+		TaskID:          event.EventKey,
+		Name:            firstNonEmpty(event.Request.Title, "Elnis: "+event.Request.Source),
 		Actor:           elnisActor(event),
-		ScopeID:         "elnis:" + event.EventKey,
 		ModelProvider:   model.Provider,
 		Model:           model.Model,
 		PromptSegments:  segments,
@@ -132,7 +120,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		// publish their own outcomes; their business error is diagnostic only.
 		persistenceErr := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
 		{
-			content := map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "error": fmt.Sprintf("%.2048s", err.Error())}
+			content := map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "error": fmt.Sprintf("%.2048s", err.Error())}
 			if persistenceErr != nil {
 				content["persistence_error"] = fmt.Sprintf("%.2048s", persistenceErr.Error())
 			}
@@ -167,7 +155,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		message := fmt.Sprintf("Elnis 事件 %s 解析格式失败，请查看后台 session。\nsession: %s\n错误：%v", event.EventKey, result.SessionID, parseErr)
 		persistenceErr := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, message, parseErr.Error())
 		{
-			content := map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "error": fmt.Sprintf("%.2048s", parseErr.Error())}
+			content := map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "error": fmt.Sprintf("%.2048s", parseErr.Error())}
 			if persistenceErr != nil {
 				content["persistence_error"] = fmt.Sprintf("%.2048s", persistenceErr.Error())
 			}
@@ -198,7 +186,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		if err != nil {
 			persistenceErr := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, string(resultJSON), err.Error())
 			{
-				content := map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "error": fmt.Sprintf("%.2048s", err.Error())}
+				content := map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "error": fmt.Sprintf("%.2048s", err.Error())}
 				if persistenceErr != nil {
 					content["persistence_error"] = fmt.Sprintf("%.2048s", persistenceErr.Error())
 				}
@@ -225,7 +213,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 			logResult, err := s.deliverReport(ctx, eventID)
 			if logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled {
 				{
-					content, _ := json.Marshal(map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "result": fmt.Sprintf("%.2048s", logResult.Content)})
+					content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "result": fmt.Sprintf("%.2048s", logResult.Content)})
 					record := globalevents.LogRecord{
 						Category:     globalevents.LogElnis,
 						Level:        slog.LevelWarn,
@@ -246,7 +234,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 			return err
 		}
 	} else if err := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, result.SessionID, string(resultJSON), ""); err != nil {
-		content, _ := json.Marshal(map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "persistence_error": fmt.Sprintf("%.2048s", err.Error()), "result": parsed})
+		content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID, "persistence_error": fmt.Sprintf("%.2048s", err.Error()), "result": parsed})
 		record := globalevents.LogRecord{Category: globalevents.LogElnis, Level: slog.LevelError, EventName: "elnis_llm_failed", Module: "elnis", Type: globalevents.ContentJSON, Content: string(content), ResultStatus: globalevents.ResultFailed}
 		record.Identity = identity
 		record.Identity.SessionID = &result.SessionID
@@ -256,7 +244,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		return err
 	}
 	{
-		content, _ := json.Marshal(map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID})
+		content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID})
 		record := globalevents.LogRecord{
 			Category:     globalevents.LogAudit,
 			Level:        slog.LevelInfo,
@@ -280,12 +268,10 @@ func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, session
 		return background.RunResult{SessionID: sessionID, TakenOver: taken, Outcome: "taken_over"}, background.JSONResult{}, err
 	}
 	result, err := s.runner.RunBackground(ctx, background.RunRequest{
-		Kind:          background.KindElnis,
-		Name:          event.EventKey,
-		Title:         firstNonEmpty(event.Request.Title, "Elnis: "+event.Request.Source),
-		Platform:      firstPlatform(event.ResolvedTargets),
+		TaskType:      background.KindElnis,
+		TaskID:        event.EventKey,
+		Name:          firstNonEmpty(event.Request.Title, "Elnis: "+event.Request.Source),
 		Actor:         elnisActor(event),
-		ScopeID:       "elnis:" + event.EventKey,
 		SessionID:     sessionID,
 		ModelProvider: model.Provider,
 		Model:         model.Model,

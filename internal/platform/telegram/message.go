@@ -5,7 +5,6 @@ package telegram
 import (
 	"context"
 	"elbot/internal/contextinfo"
-	"elbot/internal/security"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -70,16 +69,16 @@ func largestPhoto(photos []photoSize) photoSize {
 	return best
 }
 
-func telegramConversationKind(c chat) contextinfo.ConversationKind {
+func telegramChatType(c chat) contextinfo.ChatType {
 	switch c.Type {
 	case "private":
-		return contextinfo.ConversationPrivate
+		return contextinfo.ChatPrivate
 	case "group", "supergroup":
-		return contextinfo.ConversationGroup
+		return contextinfo.ChatGroup
 	case "channel":
-		return contextinfo.ConversationChannel
+		return contextinfo.ChatChannel
 	default:
-		return contextinfo.ConversationUnknown
+		return contextinfo.ChatUnknown
 	}
 }
 
@@ -128,8 +127,8 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 	}
 	chatMessage := &storage.ChatMessage{
 		Platform:                 a.Name(),
-		PlatformScopeID:          scopeID(msg.Chat),
-		ScopeType:                msg.Chat.Type,
+		ChatID:                   scopeID(msg.Chat),
+		ChatType:                 telegramChatType(msg.Chat),
 		PlatformMessageID:        formatMessageID(msg.MessageID),
 		SenderID:                 senderID,
 		SenderName:               displayNamePtr(msg.From, ""),
@@ -157,36 +156,17 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 				record.Level = slog.LevelInfo
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
+			record.Identity.SessionID = &facts.SessionID
+			record.Identity.RunID = &facts.RunID
+			record.Identity.Attempt = &facts.Attempt
+			record.Identity.RequestID = &facts.RequestID
+			record.Identity.RootRequestID = &facts.RootRequestID
 			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 		}
 	}
 }
 
-func scopeID(c chat) string {
-	switch c.Type {
-	case "group":
-		return fmt.Sprintf("group:%d", c.ID)
-	case "supergroup":
-		return fmt.Sprintf("supergroup:%d", c.ID)
-	default:
-		return fmt.Sprintf("private:%d", c.ID)
-	}
-}
+func scopeID(c chat) string { return strconv.FormatInt(c.ID, 10) }
 
 func userIDString(u *user) string {
 	if u == nil {
@@ -290,21 +270,11 @@ func (a *Adapter) messageGroupRole(ctx context.Context, msg message) contextinfo
 				record.Level = slog.LevelInfo
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
+			record.Identity.SessionID = &facts.SessionID
+			record.Identity.RunID = &facts.RunID
+			record.Identity.Attempt = &facts.Attempt
+			record.Identity.RequestID = &facts.RequestID
+			record.Identity.RootRequestID = &facts.RootRequestID
 			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 		}
 		return contextinfo.GroupRoleUnknown
@@ -340,21 +310,11 @@ func (a *Adapter) handleCallbackQuery(ctx context.Context, handler share.Message
 					record.Level = slog.LevelInfo
 				}
 				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				if facts.SessionID != "" {
-					record.Identity.SessionID = &facts.SessionID
-				}
-				if facts.RunID != "" {
-					record.Identity.RunID = &facts.RunID
-				}
-				if facts.Attempt != "" {
-					record.Identity.Attempt = &facts.Attempt
-				}
-				if facts.RequestID != "" {
-					record.Identity.RequestID = &facts.RequestID
-				}
-				if facts.RootRequestID != "" {
-					record.Identity.RootRequestID = &facts.RootRequestID
-				}
+				record.Identity.SessionID = &facts.SessionID
+				record.Identity.RunID = &facts.RunID
+				record.Identity.Attempt = &facts.Attempt
+				record.Identity.RequestID = &facts.RequestID
+				record.Identity.RootRequestID = &facts.RootRequestID
 				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 			}
 		}
@@ -377,19 +337,23 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 	text := normalized.Text
 	platformUserID := userIDString(msg.From)
 	groupRole := a.messageGroupRole(ctx, msg)
+	chatName := msg.Chat.Title
+	if msg.Chat.Type == "private" {
+		chatName = strings.TrimSpace(msg.Chat.FirstName + " " + msg.Chat.LastName)
+	}
 	messageCtx := share.MessageContext{
 		Conversation: contextinfo.Conversation{
 			Source: contextinfo.Source{
-				Platform:         a.Name(),
-				ScopeID:          scopeID(msg.Chat),
-				ConversationKind: telegramConversationKind(msg.Chat),
-				ConversationID:   formatMessageID(msg.Chat.ID),
+				Platform: a.Name(),
+
+				ChatType: telegramChatType(msg.Chat),
+				ChatID:   formatMessageID(msg.Chat.ID), Name: chatName,
 			},
 			Identity: contextinfo.Identity{
-				ActorID:        security.ActorID(a.Name(), platformUserID),
-				PlatformUserID: platformUserID,
-				Nickname:       displayNamePtr(msg.From, ""),
-				DisplayName:    displayNamePtr(msg.From, ""),
+
+				ID:       platformUserID,
+				Nickname: displayNamePtr(msg.From, ""),
+				Name:     displayNamePtr(msg.From, ""),
 			},
 			PlatformMessageID: formatMessageID(msg.MessageID),
 			ReplyToMessageID:  normalized.ReplyID,
@@ -414,13 +378,13 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 	var referenceSegments []share.MessageSegment
 	if normalized.ReplyID != "" {
 		ref, err := a.referenceResolver(msgCtx, share.ReferenceOptions{
-			Platform:     a.Name(),
-			ScopeID:      messageCtx.Conversation.Source.ScopeID,
-			ActorID:      messageCtx.Conversation.Identity.ActorID,
-			IsSuperadmin: a.superadmins.IsSuperadmin(userIDString(msg.From)),
-			ReplyID:      normalized.ReplyID,
-			Text:         text,
-			Fetch:        a.referenceFetcher(msg, normalized),
+			Platform: a.Name(),
+			ChatID:   messageCtx.Conversation.Source.ChatID,
+			ChatType: messageCtx.Conversation.Source.ChatType,
+			Owner:    contextinfo.ActorIdentity{Platform: a.Name(), ID: platformUserID},
+			ReplyID:  normalized.ReplyID,
+			Text:     text,
+			Fetch:    a.referenceFetcher(msg, normalized),
 		})
 		if err != nil {
 			record := globalevents.LogRecord{

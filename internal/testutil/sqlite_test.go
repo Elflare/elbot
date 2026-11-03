@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"strings"
 	"testing"
@@ -13,7 +14,7 @@ func TestNewSQLiteStoreUsesIndependentMemoryDatabase(t *testing.T) {
 	ctx := context.Background()
 	first := NewSQLiteStore(t)
 	second := NewSQLiteStore(t)
-	session := &storage.Session{ID: "same-session", OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "first"}
+	session := &storage.Session{ID: "same-session", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "first", ChatType: "private"}
 	if err := first.Sessions().Create(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -34,7 +35,7 @@ func TestNewSQLiteStoreUsesIndependentMemoryDatabase(t *testing.T) {
 	if got, err := second.Sessions().Get(ctx, session.ID); err != nil || got.Title != "second" {
 		t.Fatalf("second store session after closing first = %+v, error = %v", got, err)
 	}
-	err := second.Messages().Append(ctx, &storage.Message{ID: storage.NewID(),SessionID: "missing-session", Role: storage.RoleUser, Content: "orphan"})
+	err := second.Messages().Append(ctx, &storage.Message{ID: storage.NewID(), SessionID: "missing-session", Role: storage.RoleUser, Content: "orphan"})
 	if err == nil || !strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
 		t.Fatalf("missing session Append error = %v, want foreign key violation", err)
 	}

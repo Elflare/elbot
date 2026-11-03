@@ -22,7 +22,7 @@ func (ConversationMetaSystemPromptSource) Parts(ctx context.Context, req agentsh
 	if !ok {
 		info.Source.Platform = req.Scope.Platform
 	}
-	conversation := strings.TrimSpace(string(info.Source.ConversationKind))
+	conversation := strings.TrimSpace(string(info.Source.ChatType))
 	displayName := ""
 	switch conversation {
 	case "group":
@@ -32,10 +32,10 @@ func (ConversationMetaSystemPromptSource) Parts(ctx context.Context, req agentsh
 	default:
 		conversation = ""
 	}
-	userID := info.Identity.PlatformUserID
+	userID := info.Identity.ID
 	conversationID := ""
 	if conversation == "group" || conversation == "channel" {
-		conversationID = info.Source.ConversationID
+		conversationID = info.Source.ChatID
 	}
 	fields := make([]string, 0, 4)
 	for _, field := range []struct {
@@ -129,7 +129,7 @@ func (s ToolNamesSystemPromptSource) Parts(ctx context.Context, req agentshare.S
 	if req.Session == nil {
 		return nil, nil
 	}
-	if contextinfo.BackgroundContext(ctx) {
+	if req.Mode == "background" {
 		return nil, nil
 	}
 	names, err := s.Tools.ToolNames(ctx, req.Mode, req.Session, req.Scope)

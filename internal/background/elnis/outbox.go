@@ -84,21 +84,11 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 func (s *Service) deliverReport(ctx context.Context, eventID string) (logResult globalevents.LogResult, err error) {
 	identity := globalevents.LogIdentity{}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.SessionID != "" {
-		identity.SessionID = &facts.SessionID
-	}
-	if facts.RunID != "" {
-		identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		identity.RootRequestID = &facts.RootRequestID
-	}
+	identity.SessionID = &facts.SessionID
+	identity.RunID = &facts.RunID
+	identity.Attempt = &facts.Attempt
+	identity.RequestID = &facts.RequestID
+	identity.RootRequestID = &facts.RootRequestID
 
 	logResult = globalevents.LogResult{ResultStatus: globalevents.ResultFailed}
 	defer func() {
@@ -328,21 +318,11 @@ func (s *Service) recoverReports(ctx context.Context) (globalevents.LogResult, e
 				record.Level = slog.LevelInfo
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
+			record.Identity.SessionID = &facts.SessionID
+			record.Identity.RunID = &facts.RunID
+			record.Identity.Attempt = &facts.Attempt
+			record.Identity.RequestID = &facts.RequestID
+			record.Identity.RootRequestID = &facts.RootRequestID
 			background.LogBackground(ctx, record)
 		}
 	}

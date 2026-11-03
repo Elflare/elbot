@@ -15,8 +15,8 @@ func TestDefaultAdminReportUsesActualReceiptSources(t *testing.T) {
 		return delivery.Receipt{
 			PlatformMessageIDs: []string{"admin-1", "admin-2"},
 			SentMessages: []delivery.SentMessage{
-				{Platform: "qqonebot", ScopeID: "private:1001", PlatformMessageID: "admin-1", OutputIndexes: []int{0}},
-				{Platform: "qqonebot", ScopeID: "private:1002", PlatformMessageID: "admin-2", OutputIndexes: []int{0}},
+				{Platform: "qqonebot", ChatType: "private", ChatID: "1001", PlatformMessageID: "admin-1", OutputIndexes: []int{0}},
+				{Platform: "qqonebot", ChatType: "private", ChatID: "1002", PlatformMessageID: "admin-2", OutputIndexes: []int{0}},
 			},
 		}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	})
@@ -31,7 +31,7 @@ func TestDefaultAdminReportUsesActualReceiptSources(t *testing.T) {
 	if err := s.RunLLMEvent(ctx, queued.Event, queued.EventID); err != nil {
 		t.Fatal(err)
 	}
-	for _, sent := range []struct{ scope, id string }{{"private:1001", "admin-1"}, {"private:1002", "admin-2"}} {
-		assertReportMapping(t, s, "qqonebot", sent.scope, sent.id)
+	for _, sent := range []struct{ scope, id string }{{"1001", "admin-1"}, {"1002", "admin-2"}} {
+		assertReportMapping(t, s, "qqonebot", "private", sent.scope, sent.id)
 	}
 }

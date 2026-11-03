@@ -2,6 +2,7 @@ package transfer
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"fmt"
 	"strings"
@@ -23,11 +24,12 @@ type PlatformMedia struct {
 
 // HistoryMessage 包含批量获取所需的历史身份及有序来源。
 type HistoryMessage struct {
-	ID        string          // 历史记录身份。
-	Platform  string          // 所属平台。
-	ScopeID   string          // 聊天范围。
-	MessageID string          // 平台消息标识。
-	Media     []PlatformMedia // 有序媒体来源，下标加一为媒体序号。
+	ID        string               // 历史记录身份。
+	Platform  string               // 所属平台。
+	ChatType  contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID    string               // 聊天范围。
+	MessageID string               // 平台消息标识。
+	Media     []PlatformMedia      // 有序媒体来源，下标加一为媒体序号。
 }
 
 // HistoryMediaRequest 选择一个历史媒体位置。
@@ -109,7 +111,7 @@ func (m *Manager) GetHistoryMediaBatch(ctx context.Context, requests []HistoryMe
 			return nil, err
 		}
 		row, index := request.Message, request.Index
-		key := share.HistoryKey{ID: row.ID, Platform: row.Platform, ScopeID: row.ScopeID, MessageID: row.MessageID}
+		key := share.HistoryKey{ID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.MessageID, ChatType: row.ChatType}
 		pos := position{key, index}
 		if result, ok := seen[pos]; ok {
 			results = append(results, result)

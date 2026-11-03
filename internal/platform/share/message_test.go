@@ -9,7 +9,7 @@ import (
 )
 
 func TestRestoreMessageContextPreservesTargetFactsAndCancellation(t *testing.T) {
-	facts := contextinfo.Conversation{Source: contextinfo.Source{Platform: "target", ScopeID: "target-scope"}}
+	facts := contextinfo.Conversation{Source: contextinfo.Source{Platform: "target", ChatID: "target-scope"}}
 	target, cancel := context.WithCancel(contextinfo.WithConversation(t.Context(), facts))
 	defer cancel()
 	source, cancelSource := context.WithCancel(context.Background())

@@ -16,20 +16,20 @@ func TestSessionIDFormatsShareOneSequence(t *testing.T) {
 	svc, _ := newTestService(t)
 	cases := []struct {
 		platform   string
-		kind       contextinfo.ConversationKind
+		kind       contextinfo.ChatType
 		background string
 		targets    []string
 		prefix     string
 	}{
-		{"qqonebot", contextinfo.ConversationPrivate, "", nil, "ob"},
-		{"qqonebot", contextinfo.ConversationGroup, "", nil, "OB"},
-		{"qqofficial", contextinfo.ConversationPrivate, "", nil, "qq"},
-		{"qqofficial", contextinfo.ConversationGroup, "", nil, "QQ"},
-		{"telegram", contextinfo.ConversationPrivate, "", nil, "tg"},
-		{"telegram", contextinfo.ConversationChannel, "", nil, "TG"},
-		{"cli", contextinfo.ConversationCLI, "", nil, "cl"},
-		{"cli", contextinfo.ConversationGroup, "", nil, "cl"},
-		{"qqonebot", contextinfo.ConversationGroup, "cron", nil, "crob"},
+		{"qqonebot", contextinfo.ChatPrivate, "", nil, "ob"},
+		{"qqonebot", contextinfo.ChatGroup, "", nil, "OB"},
+		{"qqofficial", contextinfo.ChatPrivate, "", nil, "qq"},
+		{"qqofficial", contextinfo.ChatGroup, "", nil, "QQ"},
+		{"telegram", contextinfo.ChatPrivate, "", nil, "tg"},
+		{"telegram", contextinfo.ChatChannel, "", nil, "TG"},
+		{"cli", contextinfo.ChatPrivate, "", nil, "cl"},
+		{"cli", contextinfo.ChatGroup, "", nil, "cl"},
+		{"qqonebot", contextinfo.ChatGroup, "cron", nil, "crob"},
 		{"cli", "", "cron", []string{"qqonebot"}, "crob"},
 		{"cli", "", "elnis", []string{"telegram", "telegram"}, "ewtg"},
 		{"cli", "", "cron", []string{"telegram", "qqonebot"}, "crmx"},
@@ -37,13 +37,13 @@ func TestSessionIDFormatsShareOneSequence(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(tc.prefix, func(t *testing.T) {
-			scope := Scope{ActorID: "owner", Platform: tc.platform, PlatformScopeID: fmt.Sprint(i), ConversationKind: tc.kind}
+			scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "owner"}, Platform: tc.platform, ChatID: fmt.Sprint(i), ChatType: tc.kind}
 			var row *storage.Session
 			var err error
 			if tc.background == "" {
 				row, err = svc.Create(t.Context(), scope, CreateRequest{})
 			} else {
-				row, err = svc.PrepareBackground(t.Context(), scope, BackgroundRequest{Kind: tc.background, Name: "task", TargetPlatforms: tc.targets})
+				row, err = svc.PrepareBackground(t.Context(), scope, BackgroundRequest{TaskType: tc.background, TaskID: "task", TargetPlatforms: tc.targets})
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -65,7 +65,7 @@ func TestSessionIDFormatsShareOneSequence(t *testing.T) {
 
 func TestSessionIDResetReservationAndCompaction(t *testing.T) {
 	svc, store := newTestService(t)
-	scope := Scope{ActorID: "owner", Platform: "telegram", PlatformScopeID: "group", ConversationKind: contextinfo.ConversationGroup}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "telegram", ID: "owner"}, Platform: "telegram", ChatID: "group", ChatType: contextinfo.ChatGroup}
 	for range 3 {
 		if err := svc.ResetCurrent(t.Context(), scope); err != nil {
 			t.Fatal(err)
@@ -108,7 +108,7 @@ func TestSessionIDResetReservationAndCompaction(t *testing.T) {
 
 func TestSessionIDForkCopyAndPromotion(t *testing.T) {
 	svc, store := newTestService(t)
-	scope := Scope{ActorID: "owner", Platform: "qqonebot", PlatformScopeID: "private", ConversationKind: contextinfo.ConversationPrivate}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "owner"}, Platform: "qqonebot", ChatID: "private", ChatType: contextinfo.ChatPrivate}
 	source, err := svc.Create(t.Context(), scope, CreateRequest{})
 	if err != nil {
 		t.Fatal(err)
@@ -124,7 +124,7 @@ func TestSessionIDForkCopyAndPromotion(t *testing.T) {
 	if _, err := store.Sessions().Get(t.Context(), source.ID); err != nil {
 		t.Fatal(err)
 	}
-	background, err := svc.PrepareBackground(t.Context(), scope, BackgroundRequest{Kind: "cron", Name: "task", TargetPlatforms: []string{"telegram", "qqonebot"}})
+	background, err := svc.PrepareBackground(t.Context(), scope, BackgroundRequest{TaskType: "cron", TaskID: "task", TargetPlatforms: []string{"telegram", "qqonebot"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,8 +135,8 @@ func TestSessionIDForkCopyAndPromotion(t *testing.T) {
 	if err != nil || reserved != "crmx4" {
 		t.Fatalf("background reserve=%q err=%v", reserved, err)
 	}
-	copyScope := Scope{ActorID: "owner", Platform: "telegram", PlatformScopeID: "cron:task"}
-	copy, err := svc.CopyBackground(t.Context(), copyScope, BackgroundCopyRequest{SourceSessionID: background.ID, Kind: "cron", Name: "task"})
+	copyScope := Scope{Owner: contextinfo.ActorIdentity{Platform: "telegram", ID: "owner"}, Platform: "telegram", ChatType: "cron", ChatID: "task"}
+	copy, err := svc.CopyBackground(t.Context(), copyScope, BackgroundCopyRequest{SourceSessionID: background.ID, TaskType: "cron", TaskID: "task"})
 	if err != nil || copy.ID != "crtg5" {
 		t.Fatalf("copy=%+v err=%v", copy, err)
 	}
@@ -154,14 +154,14 @@ func TestSessionIDQueryFailureDoesNotConsumeSequence(t *testing.T) {
 	store := newTestStore(t)
 	fault := errors.New("platform is not registered")
 	svc := newTestSupervisor(t, store, func(_ *config.Config, deps *SupervisorDeps) {
-		deps.SessionIDCode = func(name string, _ contextinfo.ConversationKind) (string, error) {
+		deps.SessionIDCode = func(name string, _ contextinfo.ChatType) (string, error) {
 			if name != "future" {
 				return "", fault
 			}
 			return "fx", nil
 		}
 	})
-	scope := Scope{ActorID: "owner", Platform: "unknown", PlatformScopeID: "private"}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "unknown", ID: "owner"}, Platform: "unknown", ChatID: "private"}
 	if _, err := svc.Create(t.Context(), scope, CreateRequest{}); !errors.Is(err, fault) {
 		t.Fatalf("unknown platform=%v", err)
 	}
@@ -180,7 +180,7 @@ func TestSessionIDMissingOriginDoesNotConsumeSequence(t *testing.T) {
 			t.Fatalf("accepted invalid origin: %s", metadata)
 		}
 	}
-	row, err := svc.Create(t.Context(), Scope{ActorID: "owner", Platform: "cli", PlatformScopeID: "local", ConversationKind: contextinfo.ConversationCLI}, CreateRequest{})
+	row, err := svc.Create(t.Context(), Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", ChatType: contextinfo.ChatPrivate}, CreateRequest{})
 	if err != nil || row.ID != "cl1" {
 		t.Fatalf("failed reservations consumed sequence: row=%+v error=%v", row, err)
 	}

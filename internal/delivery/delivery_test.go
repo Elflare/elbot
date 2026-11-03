@@ -154,8 +154,8 @@ func TestManagerSendsTargetedChat(t *testing.T) {
 }
 
 func TestManagerSelectsChatTarget(t *testing.T) {
-	batchTarget := Target{Platform: "cli", PrivateUserID: "batch"}
-	explicitTarget := Target{Platform: "cli", PrivateUserID: "explicit"}
+	batchTarget := Target{Platform: "cli", ChatType: "private", ChatID: "batch"}
+	explicitTarget := Target{Platform: "cli", ChatType: "private", ChatID: "explicit"}
 	for _, tc := range []struct {
 		name   string
 		target Target
@@ -190,7 +190,7 @@ func TestManagerWrapsChatOutputErrorWithHookName(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			manager := NewManager(&fakeSender{err: boom})
-			_, _, err := manager.SendTo(t.Context(), Target{Platform: "qqonebot", PrivateUserID: "123"}, []Output{{Kind: KindText, Text: "hello", Delivery: tc.info}})
+			_, _, err := manager.SendTo(t.Context(), Target{Platform: "qqonebot", ChatType: "private", ChatID: "123"}, []Output{{Kind: KindText, Text: "hello", Delivery: tc.info}})
 			if !errors.Is(err, boom) || err.Error() != tc.want {
 				t.Fatalf("SendTo error = %v, want %q wrapping boom", err, tc.want)
 			}
@@ -208,8 +208,8 @@ func TestManagerRejectsInvalidOutputsBeforeSending(t *testing.T) {
 		{"blank emoticon name", []Output{Emoticon("14", " \t ")}, "requires a name"},
 		{"invalid timing", []Output{WithDeliveryTiming(Text("hello"), "invalid")}, "unsupported timing"},
 		{"conflicting targets", []Output{
-			{Kind: KindText, Target: Target{PrivateUserID: "one"}},
-			{Kind: KindText, Target: Target{PrivateUserID: "two"}},
+			{Kind: KindText, Target: Target{ChatType: "private", ChatID: "one"}},
+			{Kind: KindText, Target: Target{ChatType: "private", ChatID: "two"}},
 		}, "same target"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -218,7 +218,7 @@ func TestManagerRejectsInvalidOutputsBeforeSending(t *testing.T) {
 			for _, send := range []func(context.Context, []Output) (Receipt, events.LogResult, error){
 				manager.SendChat,
 				func(ctx context.Context, outputs []Output) (Receipt, events.LogResult, error) {
-					return manager.SendTo(ctx, Target{PrivateUserID: "explicit"}, outputs)
+					return manager.SendTo(ctx, Target{ChatType: "private", ChatID: "explicit"}, outputs)
 				},
 			} {
 				_, logResult, err := send(t.Context(), tc.outputs)
@@ -234,7 +234,7 @@ func TestManagerRejectsInvalidOutputsBeforeSending(t *testing.T) {
 }
 
 func TestValidateOutputsReturnsBatchTarget(t *testing.T) {
-	target := Target{Platform: "cli", PrivateUserID: "one"}
+	target := Target{Platform: "cli", ChatType: "private", ChatID: "one"}
 	outputs := []Output{Text("first"), {Kind: KindText, Target: target}, {Kind: KindText, Target: target}}
 	got, err := ValidateOutputs(outputs)
 	if err != nil || got != target {

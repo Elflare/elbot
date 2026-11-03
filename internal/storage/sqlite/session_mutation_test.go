@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"sync"
@@ -14,7 +15,7 @@ import (
 func TestSessionMutateReadsLatestAndRollsBack(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
-	row := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeWork, Title: "original", Metadata: `{"unknown":9007199254740993,"count":0}`}
+	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", Mode: storage.SessionModeWork, Title: "original", Metadata: `{"unknown":9007199254740993,"count":0}`, ChatType: "private"}
 	if err := store.Sessions().Create(ctx, row); err != nil {
 		t.Fatal(err)
 	}

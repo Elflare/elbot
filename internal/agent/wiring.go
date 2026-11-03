@@ -83,7 +83,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 			return view.CheckSelection(source, deps.Models.ResolveMode(storage.SessionModeWork))
 		},
 		IsSuperadmin: func(scope session.Scope) bool {
-			return deps.Permission.IsSuperadmin(scope.Platform, scope.PlatformUserID)
+			return deps.Permission.IsSuperadmin(scope.Owner.Platform, scope.Owner.ID)
 		},
 		ReleaseSession: func(id string) {
 			status.ForgetSession(id)

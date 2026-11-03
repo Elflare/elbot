@@ -38,7 +38,7 @@ func (m *Manager) LoadHistoryMedia(ctx context.Context, key share.HistoryKey) (m
 		mediaByID[id] = item
 		return item, nil
 	}
-	associations, err := m.media.FindHistory(ctx, key.Platform, key.ScopeID, key.MessageID)
+	associations, err := m.media.FindHistory(ctx, key.Platform, key.ChatType, key.ChatID, key.MessageID)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +54,7 @@ func (m *Manager) LoadHistoryMedia(ctx context.Context, key share.HistoryKey) (m
 			entries[association.MediaIndex] = share.HistoryEntry{Media: item, Associated: true, Kind: association.Kind}
 		}
 	}
-	outputs, err := m.media.FindOutputs(ctx, key.Platform, key.ScopeID, key.MessageID, m.options.Now())
+	outputs, err := m.media.FindOutputs(ctx, key.Platform, key.ChatType, key.ChatID, key.MessageID, m.options.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func (m *Manager) AssociateHistory(ctx context.Context, key share.HistoryKey, in
 	if !share.ValidID(id) {
 		return fmt.Errorf("invalid media ID")
 	}
-	return m.media.SaveHistory(ctx, storage.HistoryMedia{HistoryID: key.ID, Platform: key.Platform, ScopeID: key.ScopeID, MessageID: key.MessageID, MediaIndex: index, Kind: kind, MediaID: id})
+	return m.media.SaveHistory(ctx, storage.HistoryMedia{HistoryID: key.ID, Platform: key.Platform, ChatID: key.ChatID, MessageID: key.MessageID, MediaIndex: index, Kind: kind, MediaID: id, ChatType: key.ChatType})
 }
 
 // ReconcileHistory 分页核对历史所有者，仅释放确认失效的关联。
@@ -100,10 +100,10 @@ func (m *Manager) ReconcileHistory(ctx context.Context, history History) error {
 			return err
 		}
 		for _, item := range items {
-			key := [3]string{item.Platform, item.ScopeID, item.MessageID}
+			key := [3]string{item.Platform, item.ChatID, item.MessageID}
 			owner, known := owners[key]
 			if !known {
-				row, err := history.GetByPlatformMessage(ctx, item.Platform, item.ScopeID, item.MessageID)
+				row, err := history.GetByPlatformMessage(ctx, item.Platform, item.ChatType, item.ChatID, item.MessageID)
 				if err != nil && !errors.Is(err, storage.ErrNotFound) {
 					return fmt.Errorf("check history media owner: %w", err)
 				}

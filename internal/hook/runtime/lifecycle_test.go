@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"fmt"
 	"strings"
@@ -111,7 +112,7 @@ func TestRuntimeCloseJoinsRemovedTransient(t *testing.T) {
 	w.stopping, w.done = true, make(chan struct{})
 	unblock := sync.OnceFunc(func() { close(w.done) })
 	closeRuntimeAfterRelease(t, manager, unblock)
-	key := routeKey{ActorID: "test"}
+	key := routeKey{Actor: contextinfo.ActorIdentity{Platform: "cli", ID: "test"}}
 	route := workerRoute{HookID: w.config.ID, Route: key}
 	manager.transient[route] = w
 	manager.mu.Lock()

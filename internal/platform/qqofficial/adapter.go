@@ -4,6 +4,7 @@ package qqofficial
 import (
 	"context"
 	"elbot/internal/command"
+	"elbot/internal/contextinfo"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"sync"
@@ -17,7 +18,7 @@ type Deps struct {
 	ChatHistory interface {
 		share.ChatHistoryWriter
 		MapPlatformMessageAlias(context.Context, storage.PlatformMessageAlias) error
-		ResolvePlatformMessageAlias(context.Context, string, string, string) (string, error)
+		ResolvePlatformMessageAlias(context.Context, string, contextinfo.ChatType, string, string) (string, error)
 	}
 	ReferenceResolver func(context.Context, share.ReferenceOptions) (share.ReferenceResult, error) // 引用恢复能力。
 }
@@ -31,7 +32,7 @@ type Adapter struct {
 	chatHistory       interface {
 		share.ChatHistoryWriter
 		MapPlatformMessageAlias(context.Context, storage.PlatformMessageAlias) error
-		ResolvePlatformMessageAlias(context.Context, string, string, string) (string, error)
+		ResolvePlatformMessageAlias(context.Context, string, contextinfo.ChatType, string, string) (string, error)
 	}
 	client    *apiClient // 自有 HTTP 客户端与连接池，保留到最终关闭。
 	seqMu     sync.Mutex

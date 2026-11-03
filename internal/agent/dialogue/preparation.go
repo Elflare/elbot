@@ -57,34 +57,15 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (
 		ResultStatus: events.ResultUnspecified,
 	}
 	conversation, _ := contextinfo.ConversationFromContext(ctx)
-	content := map[string]any{"text": agentshare.TruncateLogContent(message.Content, 4096)}
-	if conversation.Source.Platform != "" {
-		content["platform"] = conversation.Source.Platform
-	}
-	if conversation.Identity.PlatformUserID != "" {
-		content["platform_user_id"] = conversation.Identity.PlatformUserID
-	}
-	if conversation.Source.ScopeID != "" {
-		content["scope_id"] = conversation.Source.ScopeID
-	}
-	if conversation.PlatformMessageID != "" {
-		content["platform_message_id"] = conversation.PlatformMessageID
-	}
+	actor, _ := contextinfo.ActorFromContext(ctx)
+	content := map[string]any{"text": agentshare.TruncateLogContent(message.Content, 4096), "actor": actor, "chat": conversation.Source, "platform_message_id": conversation.PlatformMessageID}
 	data, _ := json.Marshal(content)
 	record.Content = string(data)
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
+	record.Identity.RunID = &facts.RunID
+	record.Identity.Attempt = &facts.Attempt
+	record.Identity.RequestID = &facts.RequestID
+	record.Identity.RootRequestID = &facts.RootRequestID
 	_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	loaded, err := p.Contexts.Load(ctx, in.Session.ID)
 	if err != nil {

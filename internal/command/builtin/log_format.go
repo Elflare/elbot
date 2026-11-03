@@ -45,10 +45,6 @@ func formatLogEntry(category events.LogCategory, entry logging.LogEntry) string 
 		} else {
 			body = formatLogValue(value)
 		}
-	} else {
-		for key, value := range entry.LegacyFields {
-			fields[key] = value
-		}
 	}
 	subject, status := entry.EventName, formatLogStatus(entry.ResultStatus)
 	var details []string
@@ -112,7 +108,7 @@ func formatLogEntry(category events.LogCategory, entry logging.LogEntry) string 
 	if category != events.LogRuntime && subject != entry.EventName {
 		meta = entry.EventName
 	}
-	if text := groupLogFields(fields, "actor_id", "run_source"); text != "" {
+	if text := groupLogFields(fields, "actor", "run_source"); text != "" {
 		if meta != "" {
 			meta += " · "
 		}
@@ -178,9 +174,6 @@ func groupLogFields(fields map[string]any, keys ...string) string {
 			continue
 		}
 		label := key
-		if key == "actor_id" {
-			label = "actor"
-		}
 		value := takeLogField(fields, key)
 		if value == "" {
 			value = `""`

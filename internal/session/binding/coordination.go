@@ -3,6 +3,7 @@
 package binding
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -20,25 +21,41 @@ type scopeGate struct {
 type scopeLease struct {
 	mu      sync.Mutex
 	manager *Manager              // 活跃租约所属组件；释放后清除，避免 context 长期持有组件。
-	keys    []string              // 本层实际取得的锁；重入不重复登记。
+	keys    []admissionKey        // 本层实际取得的锁；重入不重复登记。
 	parent  *scopeLease           // 保留外层租约链，内层释放后仍可沿原 context 使用外层准入。
 	events  []BindingChangedEvent // 最外层租约暂存的已提交变化，释放后清空。
+}
+
+// admissionKey 区分范围锁与 Session 锁，不将类型编码进名称。
+type admissionKey struct {
+	Kind  int // 0 为范围锁，1 为 Session 锁；此顺序也是准入顺序。
+	Scope share.ScopeKey
+	Name  string
+}
+
+func compareAdmissionKey(a, b admissionKey) int {
+	if n := cmp.Compare(a.Kind, b.Kind); n != 0 {
+		return n
+	}
+	left := []string{a.Scope.Owner.Platform, a.Scope.Owner.ID, a.Scope.Platform, string(a.Scope.ChatType), a.Scope.ChatID, a.Scope.TaskType, a.Scope.TaskID, a.Name}
+	right := []string{b.Scope.Owner.Platform, b.Scope.Owner.ID, b.Scope.Platform, string(b.Scope.ChatType), b.Scope.ChatID, b.Scope.TaskType, b.Scope.TaskID, b.Name}
+	return slices.Compare(left, right)
 }
 
 type scopeLeaseKey struct{}
 
 func (m *Manager) EnterScope(ctx context.Context, scope share.Scope) (context.Context, func(), error) {
-	return m.enterKeys(ctx, []string{"scope:" + scope.Key()})
+	return m.enterKeys(ctx, []admissionKey{{Scope: scope.Key()}})
 }
 
 func (m *Manager) EnterSessions(ctx context.Context, ids ...string) (context.Context, func(), error) {
-	keys := make([]string, 0, len(ids))
+	keys := make([]admissionKey, 0, len(ids))
 	for _, id := range ids {
 		if id != "" {
-			keys = append(keys, "session:"+id)
+			keys = append(keys, admissionKey{Kind: 1, Name: id})
 		}
 	}
-	slices.Sort(keys)
+	slices.SortFunc(keys, compareAdmissionKey)
 	return m.enterKeys(ctx, slices.Compact(keys))
 }
 
@@ -87,12 +104,12 @@ func (m *Manager) EnterBinding(ctx context.Context, binding *share.Binding) (con
 
 // enterKeys 按 Scope、Session 的顺序取得准入；同类新增 key 也须递增。
 // 同一租约的调用方必须先结束嵌套操作，再释放外层准入。
-func (m *Manager) enterKeys(ctx context.Context, keys []string) (context.Context, func(), error) {
+func (m *Manager) enterKeys(ctx context.Context, keys []admissionKey) (context.Context, func(), error) {
 	if err := ctx.Err(); err != nil {
 		return ctx, nil, err
 	}
 	parent, _ := ctx.Value(scopeLeaseKey{}).(*scopeLease)
-	held := make(map[string]bool)
+	held := make(map[admissionKey]bool)
 	for lease := parent; lease != nil; lease = lease.parent {
 		lease.mu.Lock()
 		if lease.manager == m {
@@ -102,14 +119,14 @@ func (m *Manager) enterKeys(ctx context.Context, keys []string) (context.Context
 		}
 		lease.mu.Unlock()
 	}
-	var wanted []string
+	var wanted []admissionKey
 	for _, key := range keys {
 		if held[key] {
 			continue
 		}
 		for old := range held {
-			if key < old {
-				return ctx, nil, fmt.Errorf("session admission lock order: %s after %s", key, old)
+			if compareAdmissionKey(key, old) < 0 {
+				return ctx, nil, fmt.Errorf("session admission lock order: %+v after %+v", key, old)
 			}
 		}
 		held[key] = true
@@ -181,7 +198,7 @@ func (m *Manager) enterKeys(ctx context.Context, keys []string) (context.Context
 	}), nil
 }
 
-func (m *Manager) releaseGate(key string, gate *scopeGate, acquired bool) {
+func (m *Manager) releaseGate(key admissionKey, gate *scopeGate, acquired bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if acquired {

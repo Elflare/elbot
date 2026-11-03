@@ -158,7 +158,7 @@ func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 			return nil, err.Error(), err
 		}
 		var warnings []string
-		if path.WasAbs && !contextinfo.BackgroundContext(ctx) {
+		if path.WasAbs {
 			warnings = append(warnings, toolshare.AbsolutePathWorkspaceWarning)
 		}
 		result := &toolshare.Result{Segments: []llm.MessageSegment{imageResultSegment(item)}, Warnings: warnings}

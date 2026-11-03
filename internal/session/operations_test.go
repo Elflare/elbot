@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"elbot/internal/storage"
 	"errors"
 	"testing"
@@ -10,7 +11,7 @@ import (
 func TestServiceLifecycleOperations(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
-	scope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 
 	session, err := svc.Create(ctx, scope, CreateRequest{Title: "lifecycle"})
 	if err != nil {

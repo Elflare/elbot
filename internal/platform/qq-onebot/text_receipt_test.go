@@ -4,6 +4,7 @@ package qqonebot
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"strings"
 	"testing"
 
@@ -22,14 +23,14 @@ func TestTextReceiptsKeepActualTarget(t *testing.T) {
 			var receipt delivery.Receipt
 			var err error
 			if explicit {
-				receipt, _, err = a.SendTo(context.Background(), delivery.Target{ScopeID: oneBotTargetScope(target)}, []delivery.Output{delivery.Reply("old", "report")})
+				receipt, _, err = a.SendTo(context.Background(), delivery.Target{ChatType: contextinfo.ChatType(target.MessageType), ChatID: oneBotTargetScope(target)}, []delivery.Output{delivery.Reply("old", "report")})
 			} else {
 				receipt, _, err = a.SendChat(ctx, []delivery.Output{delivery.Text("report")})
 			}
 			if err != nil || len(receipt.SentMessages) != 1 {
 				t.Fatalf("explicit=%v receipt=%#v err=%v", explicit, receipt, err)
 			}
-			if sent := receipt.SentMessages[0]; sent.Platform != "qqonebot" || sent.ScopeID != oneBotTargetScope(target) || sent.PlatformMessageID != "88" {
+			if sent := receipt.SentMessages[0]; sent.Platform != "qqonebot" || sent.ChatID != oneBotTargetScope(target) || sent.PlatformMessageID != "88" {
 				t.Fatalf("source=%#v", sent)
 			}
 		}
@@ -54,7 +55,7 @@ func TestTextPagesReturnOneForwardReceipt(t *testing.T) {
 	if err != nil || calls != 1 || len(receipt.PlatformMessageIDs) != 1 || len(receipt.SentMessages) != 1 {
 		t.Fatalf("receipt=%#v err=%v", receipt, err)
 	}
-	if sent := receipt.SentMessages[0]; sent.Platform != "qqonebot" || sent.ScopeID != "group:9" || sent.PlatformMessageID != "88" {
+	if sent := receipt.SentMessages[0]; sent.Platform != "qqonebot" || (sent.ChatType != "group" || sent.ChatID != "9") || sent.PlatformMessageID != "88" {
 		t.Fatalf("source=%#v", sent)
 	}
 }

@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"testing"
 
@@ -11,8 +12,8 @@ import (
 func TestSessionTakenOverFactsAndMissing(t *testing.T) {
 	s, store := newTestService(t)
 	for _, row := range []*storage.Session{
-		{ID: "ordinary", OwnerID: "owner", Platform: "cli", PlatformScopeID: "cli", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive},
-		{ID: "promoted", OwnerID: "owner", Platform: "cli", PlatformScopeID: "cli", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Metadata: `{"foreground_origin":{"kind":"cron"}}`},
+		{ID: "ordinary", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "cli", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, ChatType: "private"},
+		{ID: "promoted", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "cli", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Metadata: `{"foreground_origin":{"kind":"cron"}}`, ChatType: "private"},
 	} {
 		if err := store.Sessions().Create(t.Context(), row); err != nil {
 			t.Fatal(err)

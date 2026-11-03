@@ -12,21 +12,11 @@ import (
 
 // EmitAgentLog copies only the source's explicit execution identity.
 func EmitAgentLog(ctx context.Context, execution contextinfo.Execution, record events.LogRecord) {
-	if execution.SessionID != "" {
-		record.Identity.SessionID = &execution.SessionID
-	}
-	if execution.RunID != "" {
-		record.Identity.RunID = &execution.RunID
-	}
-	if execution.Attempt != "" {
-		record.Identity.Attempt = &execution.Attempt
-	}
-	if execution.RequestID != "" {
-		record.Identity.RequestID = &execution.RequestID
-	}
-	if execution.RootRequestID != "" {
-		record.Identity.RootRequestID = &execution.RootRequestID
-	}
+	record.Identity.SessionID = &execution.SessionID
+	record.Identity.RunID = &execution.RunID
+	record.Identity.Attempt = &execution.Attempt
+	record.Identity.RequestID = &execution.RequestID
+	record.Identity.RootRequestID = &execution.RootRequestID
 	_ = events.EmitLog(context.WithoutCancel(ctx), record)
 }
 
@@ -46,21 +36,11 @@ func ReportFailure(ctx context.Context, sessionID string, err error, notify func
 		Content: err.Error(), ContentLimit: 8192, ResultStatus: events.ResultFailed,
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if sessionID != "" {
-		record.Identity.SessionID = &sessionID
-	}
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
+	record.Identity.SessionID = &sessionID
+	record.Identity.RunID = &facts.RunID
+	record.Identity.Attempt = &facts.Attempt
+	record.Identity.RequestID = &facts.RequestID
+	record.Identity.RootRequestID = &facts.RootRequestID
 	_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	notify(session.WithBinding(context.WithoutCancel(ctx), nil), slog.LevelError, "对话处理失败："+err.Error())
 }

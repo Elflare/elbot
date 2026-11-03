@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 
 	"elbot/internal/storage"
 )
@@ -20,5 +21,5 @@ type Store interface {
 
 // History 只查询历史身份，不授予写入或关闭能力。
 type History interface {
-	GetByPlatformMessage(ctx context.Context, platform, scopeID, messageID string) (*storage.ChatMessage, error)
+	GetByPlatformMessage(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, messageID string) (*storage.ChatMessage, error)
 }

@@ -18,6 +18,8 @@ import (
 	"elbot/internal/platform/notification"
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/platform/share"
+	"elbot/internal/session"
+	"elbot/internal/storage"
 )
 
 func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps, entries []registration) error {
@@ -42,12 +44,13 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps, entries []reg
 	referenceDeps := refcontext.Options{
 		ParseCommand:          parseCommand,
 		FindByPlatformMessage: deps.Store.Messages().FindByPlatformMessage,
-		GetSession:            deps.Store.Sessions().Get,
-		ListBySession:         deps.Store.Messages().ListBySession,
-		FindHistory:           deps.Store.Media().FindHistory,
-		GetMedia:              deps.Store.Media().Get,
-		FindOutputs:           deps.Store.Media().FindOutputs,
-		ChatHistory:           deps.ChatHistory,
+		ResolveContinuation: func(ctx context.Context, opts share.ReferenceOptions, message storage.Message) (string, string, bool, error) {
+			return m.agent.ResolveReference(ctx, session.Scope{Owner: opts.Owner, Platform: opts.Platform, ChatType: opts.ChatType, ChatID: opts.ChatID}, message)
+		},
+		FindHistory: deps.Store.Media().FindHistory,
+		GetMedia:    deps.Store.Media().Get,
+		FindOutputs: deps.Store.Media().FindOutputs,
+		ChatHistory: deps.ChatHistory,
 	}
 	for _, entry := range m.registered {
 		common := share.CommonConfig{
@@ -90,7 +93,7 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps, entries []reg
 					continue
 				}
 				seen[id] = true
-				targets = append(targets, events.NotificationTarget{Platform: runtime.name, Kind: contextinfo.ConversationPrivate, ID: id})
+				targets = append(targets, events.NotificationTarget{Platform: runtime.name, ChatType: contextinfo.ChatPrivate, ID: id})
 			}
 		}
 		m.mu.Unlock()

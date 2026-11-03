@@ -24,11 +24,10 @@ const (
 )
 
 type Target struct {
-	Platform      string `json:"platform,omitempty"`
-	ScopeID       string `json:"scope_id,omitempty"`
-	PrivateUserID string `json:"private_user_id,omitempty"`
-	GroupID       string `json:"group_id,omitempty"`
-	Superadmins   bool   `json:"superadmins,omitempty"`
+	Platform    string               `json:"platform,omitempty"`
+	ChatType    contextinfo.ChatType `json:"chat_type,omitempty" toml:"chat_type"` // 会话类型。
+	ChatID      string               `json:"id,omitempty"`
+	Superadmins bool                 `json:"superadmins,omitempty"`
 }
 
 const (
@@ -48,7 +47,7 @@ func UseTemporaryConnection(ctx context.Context) bool {
 }
 
 func (t Target) Empty() bool {
-	return strings.TrimSpace(t.Platform) == "" && strings.TrimSpace(t.ScopeID) == "" && strings.TrimSpace(t.PrivateUserID) == "" && strings.TrimSpace(t.GroupID) == "" && !t.Superadmins
+	return t == (Target{})
 }
 
 type Source struct {
@@ -162,7 +161,8 @@ func Reply(platformMessageID, text string) Output {
 type SentMessage struct {
 	PlatformMessageID string
 	Platform          string
-	ScopeID           string
+	ChatType          contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID            string
 	OutputIndexes     []int
 }
 
@@ -263,21 +263,11 @@ func LogSendResult(ctx context.Context, target Target, out Output, logResult glo
 	if logResult.ResultStatus == globalevents.ResultCanceled {
 		record.Level = slog.LevelInfo
 	}
-	if facts.SessionID != "" {
-		record.Identity.SessionID = &facts.SessionID
-	}
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
+	record.Identity.SessionID = &facts.SessionID
+	record.Identity.RunID = &facts.RunID
+	record.Identity.Attempt = &facts.Attempt
+	record.Identity.RequestID = &facts.RequestID
+	record.Identity.RootRequestID = &facts.RootRequestID
 	_ = globalevents.EmitLog(ctx, record)
 }
 

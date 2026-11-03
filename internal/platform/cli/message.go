@@ -7,7 +7,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/platform/share"
-	"elbot/internal/security"
 )
 
 // Both scanner and TUI enter through this handler. The public snapshot is per
@@ -20,8 +19,8 @@ type localMessageHandler struct {
 func (h localMessageHandler) HandleMessage(ctx context.Context, text string) error {
 	info := contextinfo.Conversation{
 		PlatformData: messageData{adapter: h.adapter},
-		Source:       contextinfo.Source{Platform: h.adapter.Name(), ScopeID: "local", ConversationKind: contextinfo.ConversationCLI, ConversationID: "local"},
-		Identity:     contextinfo.Identity{ActorID: security.ActorID(h.adapter.Name(), "local"), PlatformUserID: "local"},
+		Source:       contextinfo.Source{Platform: h.adapter.Name(), ChatType: contextinfo.ChatPrivate, ChatID: "local", Name: h.adapter.userName},
+		Identity:     contextinfo.Identity{ID: "local", Name: h.adapter.userName},
 	}
 	return h.next(contextinfo.WithConversation(ctx, info), text, share.MessageContext{Conversation: info, GroupRole: contextinfo.GroupRoleUnknown, RawText: text, Sender: h.adapter})
 }

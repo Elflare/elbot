@@ -31,7 +31,7 @@ func TestCronLastErrorRemovalKeepsScheduleAndDeliveryState(t *testing.T) {
 	}
 	now := storage.Now()
 	next := now.Add(time.Hour)
-	state := `{"run_id":"run","report_ready":true,"report":"keep report","targets":[{"key":"cli","outputs":[{"key":"text","status":"delivered"}]}]}`
+	state := `{"run_id":"run","report_ready":true,"report":"keep report","targets":[{"key":"cli|superadmins","outputs":[{"id":"text","status":"delivered"}]}]}`
 	if _, err := db.Exec(`INSERT INTO cron_jobs(id,name,handler,schedule,enabled,metadata,last_run_at,next_run_at,run_count,last_error,created_at,updated_at,delivery_state,delivery_token) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, "job-id", "job", "handler", "0 8 * * *", 1, `{"keep":true}`, storage.FormatTime(now), storage.FormatTime(next), 7, "obsolete error", storage.FormatTime(now), storage.FormatTime(now), state, "token"); err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,8 @@ func TestCronLastErrorRemovalKeepsScheduleAndDeliveryState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.ID != "job-id" || !job.Enabled || job.Schedule != "0 8 * * *" || job.RunCount != 7 || job.Metadata != `{"keep":true}` || job.DeliveryState != state || job.DeliveryToken != "token" || job.LastRunAt == nil || job.NextRunAt == nil || !job.LastRunAt.Equal(now) || !job.NextRunAt.Equal(next) {
+	wantState := `{"report":"keep report","report_ready":true,"run_id":"run","targets":[{"outputs":[{"id":"text","status":"delivered"}],"target":{"platform":"cli","superadmins":true}}]}`
+	if job.ID != "job-id" || !job.Enabled || job.Schedule != "0 8 * * *" || job.RunCount != 7 || job.Metadata != `{"keep":true}` || job.DeliveryState != wantState || job.DeliveryToken != "token" || job.LastRunAt == nil || job.NextRunAt == nil || !job.LastRunAt.Equal(now) || !job.NextRunAt.Equal(next) {
 		t.Fatalf("migration changed remaining state: %+v", job)
 	}
 }

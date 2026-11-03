@@ -47,7 +47,7 @@ func TestForegroundOnlyToolHiddenInBackgroundSchemas(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, security.DefaultPermission())
-	ctx := workspace.WithPathScope(contextinfo.WithBackgroundKind(context.Background(), contextinfo.BackgroundKindCron), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
+	ctx := workspace.WithPathScope(toolshare.WithCallPolicy(context.Background(), toolshare.CallPolicy{DisableForegroundTools: true}), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
 	view := toolshare.Context{Mode: storage.SessionModeWork, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}}
 	schemas, err := manager.Schemas(ctx, view, []toolshare.DiscoveredTool{{Name: "cached_foreground", Source: toolshare.SourceKindELwisp, ForegroundOnly: true, Schema: llm.ToolSchema{Name: "cached_foreground"}}})
 	if err != nil {
@@ -126,7 +126,7 @@ func TestPathSchemasStayStableAcrossBackgroundTakeover(t *testing.T) {
 	for _, name := range []string{"shell", "read_file", "edit_file", "send_file"} {
 		discovered = append(discovered, toolshare.DiscoveredTool{Name: name, Source: toolshare.SourceKindNative, Schema: llm.ToolSchema{Name: name, Description: "stable definition", Parameters: map[string]any{"type": "object"}}})
 	}
-	ctx := workspace.WithPathScope(contextinfo.WithBackgroundKind(t.Context(), ""), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
+	ctx := workspace.WithPathScope(toolshare.WithCallPolicy(t.Context(), toolshare.CallPolicy{DisableForegroundTools: true}), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
 	background, err := manager.Schemas(ctx, toolshare.Context{Mode: storage.SessionModeBackground, DisableBaseTools: true}, discovered)
 	if err != nil {
 		t.Fatal(err)
@@ -145,7 +145,7 @@ func TestForegroundOnlyToolResolveRejectedInBackground(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := newTestManager(registry, security.DefaultPermission())
-	ctx := workspace.WithPathScope(contextinfo.WithBackgroundKind(context.Background(), contextinfo.BackgroundKindCron), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
+	ctx := workspace.WithPathScope(toolshare.WithCallPolicy(context.Background(), toolshare.CallPolicy{DisableForegroundTools: true}), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
 	resolved := manager.resolve(ctx, "foreground_only", nil, storage.SessionModeBackground)
 	if resolved.ResultStatus != events.ResultRejected || resolved.Error == nil {
 		t.Fatalf("resolved = %#v", resolved)

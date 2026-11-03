@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,7 +20,6 @@ import (
 
 	"mvdan.cc/sh/v3/syntax"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
 	workspacepath "elbot/internal/workspace"
 )
@@ -1206,7 +1206,7 @@ func TestEditFileToolCronRiskAndSandbox(t *testing.T) {
 	if err := os.WriteFile(path, original, 0644); err != nil {
 		t.Fatal(err)
 	}
-	ctx := workspacepath.WithPathScope(contextinfo.WithBackgroundKind(context.Background(), contextinfo.BackgroundKindCron), workspacepath.PathScope{Dir: sandbox, Restricted: true})
+	ctx := workspacepath.WithPathScope(testutil.TaskContext(context.Background(), "cron"), workspacepath.PathScope{Dir: sandbox, Restricted: true})
 	args, _ := json.Marshal(map[string]any{
 		"path":              "sample.txt",
 		"expected_revision": fileops.ContentRevision(original),

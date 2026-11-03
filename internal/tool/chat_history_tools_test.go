@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"slices"
 	"strings"
@@ -27,7 +28,7 @@ func (r historyResultRepository) Around(context.Context, storage.ChatHistoryArou
 	return r.rows, nil
 }
 
-func (r historyResultRepository) GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error) {
+func (r historyResultRepository) GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error) {
 	return &r.rows[0], nil
 }
 

@@ -20,8 +20,12 @@ func parseAuditQuery(args string) (logging.LogQuery, error) {
 			query.Events = nil
 		case "risk":
 			query.ContentFields["risk"] = value
-		case "actor":
-			query.ContentFields["actor_id"] = value
+		case "platform":
+			query.ContentFields["actor.platform"] = value
+		case "actor-id":
+			query.ContentFields["actor.id"] = value
+		case "actor-name":
+			query.ContentFields["actor.name"] = value
 		case "session":
 			fields["session_id"] = value
 		case "run_source":
@@ -81,7 +85,8 @@ func parseElwispLogQuery(args string) (logging.LogQuery, error) {
 		case "event-id":
 			query.ContentFields["event_id"] = value
 		case "token":
-			query.ContentFields["token_name"] = value
+			query.ContentFields["origin.kind"] = "http_token"
+			query.ContentFields["origin.name"] = value
 		case "tag":
 			query.ContentFieldContains["tags"] = append(query.ContentFieldContains["tags"], value)
 		default:

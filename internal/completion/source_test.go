@@ -2,6 +2,7 @@ package completion
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"elbot/internal/testutil"
 	"path/filepath"
 	"testing"
@@ -87,5 +88,5 @@ func newCompletionTestStore(t *testing.T) storage.Store {
 }
 
 func testScope() session.Scope {
-	return session.Scope{ActorID: "cli:local", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	return session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 }

@@ -23,7 +23,7 @@ type QueueOptions struct {
 	AdmissionTimeout time.Duration // Does not become the admitted task's deadline.
 }
 type lane struct {
-	key    string
+	key    any
 	jobs   list.List
 	ready  *list.Element
 	active int
@@ -43,7 +43,7 @@ type Queue struct {
 	mu                    sync.Mutex
 	space                 *sync.Cond
 	ready                 list.List
-	lanes                 map[string]*lane
+	lanes                 map[any]*lane
 	active                map[*job]struct{}
 	pending, workers      int
 	finishing             int
@@ -66,7 +66,7 @@ func NewQueue(o QueueOptions) (*Queue, error) {
 	if o.Concurrency == 0 {
 		o.Concurrency = 1
 	}
-	q := &Queue{capacity: o.Capacity, concurrency: o.Concurrency, name: o.Name, done: make(chan struct{}), lanes: make(map[string]*lane), active: make(map[*job]struct{}), waitForCapacity: o.WaitForCapacity, admissionTimeout: o.AdmissionTimeout}
+	q := &Queue{capacity: o.Capacity, concurrency: o.Concurrency, name: o.Name, done: make(chan struct{}), lanes: make(map[any]*lane), active: make(map[*job]struct{}), waitForCapacity: o.WaitForCapacity, admissionTimeout: o.AdmissionTimeout}
 	q.space = sync.NewCond(&q.mu)
 	return q, nil
 }
@@ -123,10 +123,10 @@ func (q *Queue) Submit(ctx context.Context, task Task) error {
 	return nil
 }
 func (q *Queue) makeReady(l *lane) {
-	if l.jobs.Len() > 0 && l.ready == nil && (l.key == "" || l.active == 0) {
+	if l.jobs.Len() > 0 && l.ready == nil && (l.key == nil || l.active == 0) {
 		l.ready = q.ready.PushBack(l)
 	}
-	if l.key != "" && l.jobs.Len() == 0 && l.active == 0 {
+	if l.key != nil && l.jobs.Len() == 0 && l.active == 0 {
 		delete(q.lanes, l.key)
 	}
 }
@@ -139,7 +139,7 @@ func (q *Queue) startWorkers() {
 	n := len(q.active) - q.workers
 	for e := q.ready.Front(); e != nil && n < q.concurrency-q.workers; e = e.Next() {
 		l := e.Value.(*lane)
-		if l.key == "" {
+		if l.key == nil {
 			n += l.jobs.Len()
 		} else {
 			n++

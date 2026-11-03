@@ -4,6 +4,7 @@ package qqonebot
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -39,9 +40,9 @@ func TestForwardTextSendingPaths(t *testing.T) {
 					case "explicit notice":
 						// The explicit target must win over a different source conversation.
 						ctx = testTargetContext(qqTargetForTest("private", 777))
-						receipt, _, err = a.SendTo(ctx, delivery.Target{ScopeID: oneBotTargetScope(target)}, outputs)
+						receipt, _, err = a.SendTo(ctx, delivery.Target{ChatType: contextinfo.ChatType(target.MessageType), ChatID: oneBotTargetScope(target)}, outputs)
 					case "temporary notice":
-						receipt, _, err = a.SendTo(delivery.WithTemporaryConnection(context.Background()), delivery.Target{ScopeID: oneBotTargetScope(target)}, outputs)
+						receipt, _, err = a.SendTo(delivery.WithTemporaryConnection(context.Background()), delivery.Target{ChatType: contextinfo.ChatType(target.MessageType), ChatID: oneBotTargetScope(target)}, outputs)
 					case "temporary context":
 						receipt, _, err = a.SendTo(delivery.WithTemporaryConnection(ctx), delivery.Target{}, outputs)
 					}
@@ -105,7 +106,7 @@ func TestForwardTextSendingPaths(t *testing.T) {
 					if len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "88" || len(receipt.SentMessages) != 1 {
 						t.Fatalf("receipt = %#v", receipt)
 					}
-					if sent := receipt.SentMessages[0]; sent.PlatformMessageID != "88" || sent.Platform != "qqonebot" || sent.ScopeID != oneBotTargetScope(target) || len(sent.OutputIndexes) != 0 {
+					if sent := receipt.SentMessages[0]; sent.PlatformMessageID != "88" || sent.Platform != "qqonebot" || sent.ChatID != oneBotTargetScope(target) || len(sent.OutputIndexes) != 0 {
 						t.Fatalf("sent message = %#v", sent)
 					}
 				})
@@ -167,7 +168,7 @@ func TestForwardAdminNoticesKeepPartialReceipts(t *testing.T) {
 				ctx = delivery.WithTemporaryConnection(ctx)
 			}
 			receipt, _, err := a.SendTo(ctx, delivery.Target{Superadmins: true}, []delivery.Output{delivery.Text(strings.Repeat("a", 3001))})
-			if err == nil || calls.Load() != 2 || len(receipt.PlatformMessageIDs) != 1 || len(receipt.SentMessages) != 1 || receipt.SentMessages[0].ScopeID != "private:1" {
+			if err == nil || calls.Load() != 2 || len(receipt.PlatformMessageIDs) != 1 || len(receipt.SentMessages) != 1 || (receipt.SentMessages[0].ChatType != "private" || receipt.SentMessages[0].ChatID != "1") {
 				t.Fatalf("receipt=%#v error=%v calls=%d", receipt, err, calls.Load())
 			}
 		})

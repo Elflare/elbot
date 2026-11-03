@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -98,7 +99,7 @@ func TestWorkerMessagePatchPreservesToolResult(t *testing.T) {
 
 func TestWorkerRouteLockReclaimsCanceledWaiter(t *testing.T) {
 	w := newWorker(nil, share.RuntimeConfig{})
-	key := routeKey{ActorID: "actor"}
+	key := routeKey{Actor: contextinfo.ActorIdentity{Platform: "cli", ID: "actor"}}
 	unlock, err := w.lockRoute(t.Context(), key)
 	if err != nil {
 		t.Fatal(err)
@@ -165,7 +166,7 @@ func TestManagerCancelAllWorkersOnRoute(t *testing.T) {
 	m := simplificationManager(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
-	event := share.Event{Actor: share.ActorContext{ID: "actor"}}
+	event := share.Event{Actor: share.ActorContext{Platform: "cli", ID: "actor"}}
 	entered := make(chan struct{}, 2)
 	finished := make(chan error, 2)
 	for _, id := range []string{"first", "second"} {
@@ -218,7 +219,7 @@ func TestTransientWorkersAreIsolatedByPlugin(t *testing.T) {
 	if err := m.Apply([]share.RuntimeConfig{config, second}, func(string) {}); err != nil {
 		t.Fatal(err)
 	}
-	key := routeKey{ActorID: "actor"}
+	key := routeKey{Actor: contextinfo.ActorIdentity{Platform: "cli", ID: "actor"}}
 	firstWorker, _, err := m.startTransient(t.Context(), config, key)
 	if err != nil {
 		t.Fatal(err)
@@ -248,7 +249,7 @@ func TestWorkerInvalidResultDoesNotPublishWaiting(t *testing.T) {
 		w.deliverResponse(frame{ID: request.ID, OK: &ok, Result: result})
 		return nil
 	}}
-	event := share.Event{Actor: share.ActorContext{ID: "actor"}}
+	event := share.Event{Actor: share.ActorContext{Platform: "cli", ID: "actor"}}
 	if _, _, err := w.handle(t.Context(), event, false, "", share.Control{}); err == nil {
 		t.Fatal("invalid output was accepted")
 	}
@@ -261,7 +262,7 @@ func TestToolAuthorizationKeepsInvocationCancelable(t *testing.T) {
 	m := simplificationManager(t)
 	w := newWorker(m, share.RuntimeConfig{ID: "demo"})
 	other := newWorker(m, w.config)
-	event := share.Event{Actor: share.ActorContext{ID: "actor"}}
+	event := share.Event{Actor: share.ActorContext{Platform: "cli", ID: "actor"}}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	token, err := m.beginInvocation(w, ctx, event, cancel)
@@ -288,7 +289,7 @@ func TestToolAuthorizationKeepsInvocationCancelable(t *testing.T) {
 func TestWaitingOwnershipReclaimsOnlyItsTransientWorker(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		m := simplificationManager(t)
-		event := share.Event{Actor: share.ActorContext{ID: "actor"}}
+		event := share.Event{Actor: share.ActorContext{Platform: "cli", ID: "actor"}}
 		key := routeKeyFor(event)
 		first := newWorker(m, share.RuntimeConfig{ID: "first", Mode: share.RuntimeModeTransient, MaxWaitSeconds: 30})
 		second := newWorker(m, share.RuntimeConfig{ID: "second", Mode: share.RuntimeModeTransient, MaxWaitSeconds: 30})
@@ -345,7 +346,7 @@ func TestWorkerStaysRunningUntilLastInvocationEnds(t *testing.T) {
 	}}
 	for _, id := range []string{"first", "second"} {
 		go func() {
-			_, _, err := w.handle(ctx, share.Event{Actor: share.ActorContext{ID: id}}, false, "", share.Control{})
+			_, _, err := w.handle(ctx, share.Event{Actor: share.ActorContext{Platform: "cli", ID: id}}, false, "", share.Control{})
 			finished <- err
 		}()
 	}

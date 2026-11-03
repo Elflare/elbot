@@ -29,11 +29,11 @@ func TestTextReceiptsIncludeEverySuccessfulPage(t *testing.T) {
 			}))
 			defer server.Close()
 			a := newTestAdapter(t, Config{BotToken: "token", APIBaseURL: server.URL, Format: format}, nil)
-			receipt, _, err := a.SendTo(context.Background(), delivery.Target{ScopeID: "supergroup:-19"}, []delivery.Output{delivery.Text(strings.Repeat("a", telegramRichTextRunes*2+20))})
+			receipt, _, err := a.SendTo(context.Background(), delivery.Target{ChatType: "group", ChatID: "-19"}, []delivery.Output{delivery.Text(strings.Repeat("a", telegramRichTextRunes*2+20))})
 			if err == nil || calls != 2 || len(receipt.SentMessages) != 1 {
 				t.Fatalf("receipt=%#v err=%v calls=%d", receipt, err, calls)
 			}
-			if sent := receipt.SentMessages[0]; sent.Platform != config.PlatformTelegram || sent.ScopeID != "supergroup:-19" || sent.PlatformMessageID != "77" {
+			if sent := receipt.SentMessages[0]; sent.Platform != config.PlatformTelegram || (sent.ChatType != "group" || sent.ChatID != "-19") || sent.PlatformMessageID != "77" {
 				t.Fatalf("source=%#v", sent)
 			}
 		})
@@ -50,7 +50,7 @@ func TestStreamSuccessAndFinishKeepSource(t *testing.T) {
 			}))
 			defer server.Close()
 			a := newTestAdapter(t, Config{BotToken: "token", APIBaseURL: server.URL, Format: format}, nil)
-			ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ScopeID: "supergroup:-19"}})
+			ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ChatType: "group", ChatID: "-19"}})
 			s, err := a.StartStream(ctx)
 			if err != nil {
 				t.Fatal(err)
@@ -60,7 +60,7 @@ func TestStreamSuccessAndFinishKeepSource(t *testing.T) {
 				t.Fatalf("receipt=%#v err=%v", receipt, err)
 			}
 			for _, sent := range receipt.SentMessages {
-				if sent.Platform != config.PlatformTelegram || sent.ScopeID != "supergroup:-19" || sent.PlatformMessageID == "" || len(sent.OutputIndexes) != 0 {
+				if sent.Platform != config.PlatformTelegram || (sent.ChatType != "group" || sent.ChatID != "-19") || sent.PlatformMessageID == "" || len(sent.OutputIndexes) != 0 {
 					t.Fatalf("source=%#v", sent)
 				}
 			}
@@ -69,7 +69,7 @@ func TestStreamSuccessAndFinishKeepSource(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, sent := range finished.SentMessages {
-				if sent.Platform != config.PlatformTelegram || sent.ScopeID != "supergroup:-19" {
+				if sent.Platform != config.PlatformTelegram || (sent.ChatType != "group" || sent.ChatID != "-19") {
 					t.Fatalf("finish source=%#v", sent)
 				}
 			}
@@ -83,11 +83,11 @@ func TestRecordFallbackHasSourceWithoutMediaAssociation(t *testing.T) {
 	}))
 	defer server.Close()
 	a := newTestAdapter(t, Config{BotToken: "token", APIBaseURL: server.URL, Format: "plain"}, nil)
-	receipt, _, err := a.SendTo(context.Background(), delivery.Target{PrivateUserID: "1"}, []delivery.Output{{Kind: delivery.KindRecord, Source: delivery.Source{URL: "https://example.com/voice.mp3"}}})
+	receipt, _, err := a.SendTo(context.Background(), delivery.Target{ChatType: "private", ChatID: "1"}, []delivery.Output{{Kind: delivery.KindRecord, Source: delivery.Source{URL: "https://example.com/voice.mp3"}}})
 	if err != nil || len(receipt.SentMessages) != 1 {
 		t.Fatalf("receipt=%#v err=%v", receipt, err)
 	}
-	if sent := receipt.SentMessages[0]; sent.ScopeID != "private:1" || len(sent.OutputIndexes) != 0 {
+	if sent := receipt.SentMessages[0]; sent.ChatType != "private" || sent.ChatID != "1" || len(sent.OutputIndexes) != 0 {
 		t.Fatalf("fallback source=%#v", sent)
 	}
 }
@@ -106,12 +106,12 @@ func TestStreamPartialReceiptDoesNotResendSuccessfulPages(t *testing.T) {
 			}))
 			defer server.Close()
 			a := newTestAdapter(t, Config{BotToken: "token", APIBaseURL: server.URL, Format: format}, nil)
-			s := newTestStream(t, a, "supergroup:-19")
+			s := newTestStream(t, a, "group", "-19")
 			receipt, _, err := s.Replace(context.Background(), strings.Repeat("a", telegramRichTextRunes*2+20))
 			if err == nil || calls != 2 || len(receipt.SentMessages) != 1 {
 				t.Fatalf("receipt=%#v err=%v calls=%d", receipt, err, calls)
 			}
-			if sent := receipt.SentMessages[0]; sent.Platform != config.PlatformTelegram || sent.ScopeID != "supergroup:-19" || sent.PlatformMessageID != "77" {
+			if sent := receipt.SentMessages[0]; sent.Platform != config.PlatformTelegram || (sent.ChatType != "group" || sent.ChatID != "-19") || sent.PlatformMessageID != "77" {
 				t.Fatalf("source=%#v", sent)
 			}
 		})

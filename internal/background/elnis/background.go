@@ -1,13 +1,11 @@
 package elnis
 
 import (
-	"encoding/json"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/security"
 )
 
 func isElnisModelSlot(slot string) bool {
@@ -20,21 +18,7 @@ func isElnisModelSlot(slot string) bool {
 }
 
 func elnisActor(event Event) contextinfo.Actor {
-	id := security.ActorID("elnis", event.Origin.Label())
-	return contextinfo.Actor{ID: id, Platform: "elnis", PlatformUserID: event.Origin.Label(), DisplayName: event.Request.Elwisp.Name, Role: contextinfo.RoleSuperadmin}
-}
-
-func firstPlatform(rawTargets string) string {
-	var targets []Target
-	if err := json.Unmarshal([]byte(rawTargets), &targets); err != nil {
-		return ""
-	}
-	for _, target := range targets {
-		if strings.TrimSpace(target.Platform) != "" {
-			return target.Platform
-		}
-	}
-	return ""
+	return contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{ID: event.Request.Elwisp.Name}, Name: event.Request.Elwisp.Name, Role: contextinfo.RoleSuperadmin}
 }
 
 func firstNonEmpty(values ...string) string {

@@ -11,9 +11,9 @@ import (
 func TestReportMappingUsesReceiptSourcesWithoutGuessing(t *testing.T) {
 	store := newFakeCronRepo()
 	sent := []delivery.SentMessage{
-		{Platform: "qqofficial", ScopeID: "c2c:user", PlatformMessageID: "same"},
-		{Platform: "telegram", ScopeID: "supergroup:-100", PlatformMessageID: "same"},
-		{Platform: "telegram", ScopeID: "private:2", PlatformMessageID: "same"},
+		{Platform: "qqofficial", ChatType: "private", ChatID: "user", PlatformMessageID: "same"},
+		{Platform: "telegram", ChatType: "group", ChatID: "-100", PlatformMessageID: "same"},
+		{Platform: "telegram", ChatType: "private", ChatID: "2", PlatformMessageID: "same"},
 	}
 	receipt := delivery.Receipt{PlatformMessageIDs: []string{"same"}, SentMessages: sent}
 	svc := newTestCronService(t, Options{Store: store, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
@@ -27,7 +27,7 @@ func TestReportMappingUsesReceiptSourcesWithoutGuessing(t *testing.T) {
 	}
 	for i, message := range sent {
 		got := store.mappings[i]
-		if got.Platform != message.Platform || got.PlatformScopeID != message.ScopeID || got.PlatformMessageID != message.PlatformMessageID || got.SessionID != "task" || got.MessageID != "report" {
+		if got.Platform != message.Platform || got.ChatID != message.ChatID || got.PlatformMessageID != message.PlatformMessageID || got.SessionID != "task" || got.MessageID != "report" {
 			t.Fatalf("mapping=%#v", got)
 		}
 	}

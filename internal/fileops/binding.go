@@ -32,16 +32,14 @@ func (s *Service) WithBinding(ctx context.Context, binding Binding, admission ..
 	return context.WithValue(ctx, fileBindingContextKey{}, &fileBinding{service: s, session: lease, admission: enter})
 }
 
-// EditSession returns nil for unrecorded edits and rejects invalid foreground leases.
+// EditSession returns the captured rollback lease, or nil for unrecorded edits.
+// Writes validate the lease and enter the caller's commit admission before committing.
 func (s *Service) EditSession(ctx context.Context) (*RollbackSession, error) {
-	if contextinfo.BackgroundContext(ctx) {
-		return nil, nil
-	}
 	binding, ok := ctx.Value(fileBindingContextKey{}).(*fileBinding)
 	if !ok {
 		return nil, nil
 	}
-	if binding.service != s || binding.session == nil {
+	if binding.service != s {
 		return nil, ErrRollbackExpired
 	}
 	return binding.session, nil
@@ -52,9 +50,6 @@ func (s *Service) editBinding(ctx context.Context) (*fileBinding, *RollbackSessi
 		return nil, nil, err
 	}
 	binding, _ := ctx.Value(fileBindingContextKey{}).(*fileBinding)
-	if binding != nil && binding.service != s {
-		return nil, nil, ErrRollbackExpired
-	}
 	lease, err := s.EditSession(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -68,9 +63,6 @@ func (s *Service) editBinding(ctx context.Context) (*fileBinding, *RollbackSessi
 }
 
 func (s *Service) rollbackBinding(ctx context.Context) (*fileBinding, error) {
-	if contextinfo.BackgroundContext(ctx) {
-		return nil, fmt.Errorf("rollback is only available in foreground sessions")
-	}
 	actor, ok := contextinfo.ActorFromContext(ctx)
 	if !ok || actor.Role != contextinfo.RoleSuperadmin {
 		return nil, fmt.Errorf("rollback requires superadmin role")

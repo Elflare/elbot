@@ -125,10 +125,10 @@ func registrations() []registration {
 }
 
 // SessionIDCode 查询已登记的平台声明，与平台是否启用或连接无关。
-func (m *Supervisor) SessionIDCode(name string, kind contextinfo.ConversationKind) (string, error) {
+func (m *Supervisor) SessionIDCode(name string, kind contextinfo.ChatType) (string, error) {
 	for _, entry := range m.registered {
 		if entry.name == name {
-			if kind == contextinfo.ConversationGroup || kind == contextinfo.ConversationChannel {
+			if kind == contextinfo.ChatGroup || kind == contextinfo.ChatChannel {
 				return entry.definition.GroupSessionIDCode, nil
 			}
 			return entry.definition.PrivateSessionIDCode, nil

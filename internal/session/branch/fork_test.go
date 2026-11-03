@@ -26,19 +26,19 @@ func TestForkModesAndOwnership(t *testing.T) {
 				allowed := entry == "owner" || entry == "cli-owner"
 				switch entry {
 				case "other-user":
-					target.ActorID = "other"
+					target.Owner.ID = "other"
 				case "other-platform":
 					target.Platform = "other"
 				case "other-scope":
-					target.PlatformScopeID = "private:second"
+					target.ChatID = "private:second"
 					allowed = mode == storage.SessionModeBackground
 				case "cli-owner":
-					target.IsCLI, target.Platform, target.PlatformScopeID = true, "cli", "local"
+					target.IsCLI, target.Platform, target.ChatID = true, "cli", "local"
 				case "cli-other":
-					target.IsCLI, target.ActorID = true, "other"
+					target.IsCLI, target.Owner.ID = true, "other"
 				case "group":
-					target.ConversationKind = contextinfo.ConversationGroup
-					allowed = mode != storage.SessionModeBackground
+					target.ChatType = contextinfo.ChatGroup
+					allowed = false
 				}
 				calls := 0
 				f.material = func(context.Context, *storage.Session, *storage.Message) (*branch.PreparedMaterial, error) {
@@ -59,7 +59,7 @@ func TestForkModesAndOwnership(t *testing.T) {
 				if mode == storage.SessionModeBackground {
 					wantMode = storage.SessionModeWork
 				}
-				if row.Mode != wantMode || row.OwnerID != target.ActorID || row.Platform != target.Platform || row.PlatformScopeID != target.PlatformScopeID || row.ParentSessionID != source.ID || row.ForkFromMessageID != message.ID {
+				if row.Mode != wantMode || row.Owner != target.Owner || row.Platform != target.Platform || row.ChatID != target.ChatID || row.ParentSessionID != source.ID || row.ForkFromMessageID != message.ID {
 					t.Fatalf("fork: %+v", row)
 				}
 				if got := f.c.CurrentBinding(target); got == nil || got.SessionID() != row.ID {
@@ -140,7 +140,7 @@ func TestForkRechecksAfterUnlockedPreparation(t *testing.T) {
 					_, err = f.store.Sessions().Mutate(locked, source.ID, func(row *storage.Session) error {
 						switch change {
 						case "owner":
-							row.OwnerID = "other"
+							row.Owner.ID = "other"
 						case "origin":
 							row.Metadata = `{"llm_origin":{"protocol":"response","provider":"changed"}}`
 						case "checkpoint":

@@ -146,11 +146,11 @@ func TestMediaAPIHistoryBatchPreservesOrderAndErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stored := storage.ChatMessage{Platform: "test", PlatformScopeID: "chat", PlatformMessageID: "message", Segments: `[{"type":"file","platform_file_id":"file"}]`}
+	stored := storage.ChatMessage{Platform: "test", ChatID: "chat", PlatformMessageID: "message", Segments: `[{"type":"file","platform_file_id":"file"}]`}
 	if err := history.Repository().Append(t.Context(), &stored); err != nil {
 		t.Fatal(err)
 	}
-	row := media.HistoryMessage{ID: stored.ID, Platform: "test", ScopeID: "chat", MessageID: "message", Media: []media.PlatformMedia{{Type: "file", PlatformFileID: "file"}}}
+	row := media.HistoryMessage{ID: stored.ID, Platform: "test", ChatID: "chat", MessageID: "message", Media: []media.PlatformMedia{{Type: "file", PlatformFileID: "file"}}}
 	if err := center.AssociateHistory(t.Context(), row, 1, "file", record.ID); err != nil {
 		t.Fatal(err)
 	}

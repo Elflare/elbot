@@ -141,7 +141,7 @@ func TestSupervisorPlatformQueuesAreIndependentAndHaveNoAgentObserver(t *testing
 			if options.Observe != nil || !options.Woken {
 				t.Error("global platform event acquired Agent request tracking")
 			}
-			entered <- event.Platform.Name
+			entered <- event.Chat.Platform
 			<-ctx.Done()
 			return event, events.LogResult{ResultStatus: events.ResultCanceled}, ctx.Err()
 		}}

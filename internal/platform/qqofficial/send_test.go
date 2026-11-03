@@ -33,7 +33,7 @@ func TestSendChatUsesGroupMessageAPI(t *testing.T) {
 	defer server.Close()
 
 	adapter := newQQOfficialSendTestAdapter(t, server)
-	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformQQOfficial, ConversationKind: contextinfo.ConversationGroup, ConversationID: "group-1"}, PlatformMessageID: "incoming-1"})
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformQQOfficial, ChatType: contextinfo.ChatGroup, ChatID: "group-1"}, PlatformMessageID: "incoming-1"})
 	receipt, _, err := adapter.SendChat(ctx, []delivery.Output{delivery.Text("hello")})
 	if err != nil {
 		t.Fatalf("SendChat: %v", err)
@@ -77,7 +77,7 @@ func TestKeyboardUsesOnlyStructuredActions(t *testing.T) {
 			adapter := newQQOfficialSendTestAdapter(t, server)
 			adapter.cfg.MarkdownByDefault = &test.markdown
 			adapter.cfg.EnableKeyboard = &test.enabled
-			ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformQQOfficial, ScopeID: "group:1"}, PlatformMessageID: "incoming"})
+			ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformQQOfficial, ChatType: "group", ChatID: "1"}, PlatformMessageID: "incoming"})
 			if _, _, err := adapter.SendChat(ctx, []delivery.Output{{Kind: delivery.KindText, Text: test.text, Actions: test.actions}}); err != nil {
 				t.Fatal(err)
 			}
@@ -119,7 +119,7 @@ func TestSendToUploadsGroupMediaToGroupAPI(t *testing.T) {
 	adapter := newQQOfficialSendTestAdapter(t, server)
 	out := delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/image.png"}}
 	receipt, _, err := adapter.SendTo(context.Background(),
-		delivery.Target{Platform: config.PlatformQQOfficial, GroupID: "group-1"},
+		delivery.Target{Platform: config.PlatformQQOfficial, ChatType: "group", ChatID: "group-1"},
 		[]delivery.Output{out},
 	)
 	if err != nil {
@@ -128,7 +128,7 @@ func TestSendToUploadsGroupMediaToGroupAPI(t *testing.T) {
 	if len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "sent-media" {
 		t.Fatalf("receipt = %#v", receipt)
 	}
-	if len(receipt.SentMessages) != 1 || receipt.SentMessages[0].ScopeID != "group:group-1" || len(receipt.SentMessages[0].OutputIndexes) != 1 || receipt.SentMessages[0].OutputIndexes[0] != 0 {
+	if len(receipt.SentMessages) != 1 || (receipt.SentMessages[0].ChatType != "group" || receipt.SentMessages[0].ChatID != "group-1") || len(receipt.SentMessages[0].OutputIndexes) != 1 || receipt.SentMessages[0].OutputIndexes[0] != 0 {
 		t.Fatalf("structured receipt = %#v", receipt.SentMessages)
 	}
 	if len(paths) != 2 || paths[0] != "/v2/groups/group-1/files" || paths[1] != "/v2/groups/group-1/messages" {
@@ -145,7 +145,7 @@ func TestNotificationDeliversExplicitGroupToolText(t *testing.T) {
 	defer server.Close()
 
 	adapter := newQQOfficialSendTestAdapter(t, server)
-	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformQQOfficial, ConversationKind: contextinfo.ConversationGroup, ConversationID: "group-1"}})
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformQQOfficial, ChatType: contextinfo.ChatGroup, ChatID: "group-1"}})
 	s := signal.New[events.Notification, events.NotificationReceipt]("qqofficial-test")
 	connection, err := adapter.ConnectNotifications(s)
 	if err != nil {
@@ -153,7 +153,7 @@ func TestNotificationDeliversExplicitGroupToolText(t *testing.T) {
 	}
 	defer connection.Close(context.Background())
 	n := events.NewNotification(ctx, slog.LevelDebug, "[tool] 正在调用 shell：{}")
-	n.Target = events.NotificationTarget{Platform: config.PlatformQQOfficial, Kind: contextinfo.ConversationGroup, ID: "group-1"}
+	n.Target = events.NotificationTarget{Platform: config.PlatformQQOfficial, ChatType: contextinfo.ChatGroup, ID: "group-1"}
 	r, err := s.Emit(ctx, n)
 	if err != nil {
 		t.Fatal(err)
@@ -205,12 +205,12 @@ func TestExplicitNoticeDoesNotReuseReplySnapshot(t *testing.T) {
 	}))
 	defer server.Close()
 	adapter := newQQOfficialSendTestAdapter(t, server)
-	info := contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformQQOfficial, ScopeID: "group:original"}, PlatformMessageID: "original-message", PlatformData: messageData{EventID: "event"}}
+	info := contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformQQOfficial, ChatType: "group", ChatID: "original"}, PlatformMessageID: "original-message", PlatformData: messageData{EventID: "event"}}
 	ctx := contextinfo.WithConversation(context.Background(), info)
 	if _, _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("reply")}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := adapter.SendTo(ctx, delivery.Target{GroupID: "other"}, []delivery.Output{delivery.Text("proactive")}); err != nil {
+	if _, _, err := adapter.SendTo(ctx, delivery.Target{ChatType: "group", ChatID: "other"}, []delivery.Output{delivery.Text("proactive")}); err != nil {
 		t.Fatal(err)
 	}
 	if len(bodies) != 2 || bodies[0].MsgID != "original-message" || bodies[0].EventID != "" || bodies[1].MsgID != "" || bodies[1].EventID != "" {

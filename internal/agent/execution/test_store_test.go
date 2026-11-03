@@ -66,24 +66,24 @@ WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('schema_migrati
 			}
 			// Reuse the same IDs after cleanup, including child rows and media owners.
 			_, err := sharedTestDB.Exec(`
-INSERT INTO sessions(id,owner_id,platform,platform_scope_id,mode,status,created_at,updated_at)
-VALUES('reset-session','owner','cli','local','work','active','now','now');
+INSERT INTO sessions(id,owner_platform,owner_id,platform,chat_type,chat_id,mode,status,created_at,updated_at)
+VALUES('reset-session','cli','owner','cli','private','local','work','active','now','now');
 INSERT INTO messages(id,session_id,role,content,created_at)
 VALUES('reset-message','reset-session','user','hello','now');
 INSERT INTO native_inputs(id,session_id,message_id,exchange_id,call_id,item_json,media_json,created_at)
 VALUES('reset-input','reset-session','reset-message','','','{}','[]','now');
 INSERT INTO cron_jobs(id,name,handler,schedule,enabled,run_count,created_at,updated_at)
 VALUES('reset-cron','reset-cron','test','* * * * *',1,0,'now','now');
-INSERT INTO elnis_events(id,event_key,token_name,elwisp_name,source,source_id,mode,content_hash,status,received_at,created_at,updated_at)
-VALUES('reset-event','test','test','test','test','test','work','hash','pending','now','now','now');
+INSERT INTO elnis_events(id,event_key,origin_kind,origin_name,elwisp_name,source,source_id,mode,content_hash,status,received_at,created_at,updated_at)
+VALUES('reset-event','test','internal','test','test','test','test','work','hash','pending','now','now','now');
 INSERT INTO elnis_report_deliveries(id,event_id,ordinal,target,output,status,created_at,updated_at)
 VALUES('reset-delivery','reset-event',1,'{}','{}','pending','now','now');
 INSERT INTO media(id,mime_type,size,backend,created_at,last_accessed_at)
 VALUES('reset-media','image/png',1,'local','now','now');
-INSERT INTO media_outputs(platform,scope_id,message_id,segment_index,kind,media_id,owner_id,expires_at)
-VALUES('cli','local','sent',0,'image','reset-media','reset-output','later');
-INSERT INTO media_history(history_id,platform,scope_id,message_id,media_index,kind,media_id,owner_id)
-VALUES('history','cli','local','incoming',1,'image','reset-media','reset-history');
+INSERT INTO media_outputs(platform,chat_type,chat_id,message_id,segment_index,kind,media_id,owner_id,expires_at)
+VALUES('cli','private','local','sent',0,'image','reset-media','reset-output','later');
+INSERT INTO media_history(history_id,platform,chat_type,chat_id,message_id,media_index,kind,media_id,owner_id)
+VALUES('history','cli','private','local','incoming',1,'image','reset-media','reset-history');
 INSERT INTO media_signed_urls(media_id,url,expires_at) VALUES('reset-media','https://example.test/image','later');`)
 			if err != nil {
 				t.Fatal(err)

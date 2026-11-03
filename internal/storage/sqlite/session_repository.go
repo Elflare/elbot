@@ -48,15 +48,15 @@ func createSession(ctx context.Context, writer sessionWriter, session *storage.S
 
 	_, err := writer.ExecContext(ctx, `
 INSERT INTO sessions (
-    id, parent_session_id, fork_from_message_id, owner_id, platform, platform_scope_id,
+    id, parent_session_id, fork_from_message_id, owner_platform, owner_id, platform, chat_type, chat_id, task_type, task_id, task_name,
     mode, title, status, metadata, created_at, updated_at, archived_at, pinned_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		session.ID,
 		nullString(session.ParentSessionID),
 		nullString(session.ForkFromMessageID),
-		session.OwnerID,
+		session.Owner.Platform, session.Owner.ID,
 		session.Platform,
-		session.PlatformScopeID,
+		session.ChatType, session.ChatID, session.TaskType, session.TaskID, session.TaskName,
 		session.Mode,
 		nullString(session.Title),
 		session.Status,
@@ -74,7 +74,7 @@ INSERT INTO sessions (
 
 func (r *SessionRepository) Get(ctx context.Context, id string) (*storage.Session, error) {
 	row := r.db.QueryRowContext(ctx, `
-SELECT id, parent_session_id, fork_from_message_id, owner_id, platform, platform_scope_id,
+SELECT id, parent_session_id, fork_from_message_id, owner_platform, owner_id, platform, chat_type, chat_id, task_type, task_id, task_name,
        mode, title, status, metadata, created_at, updated_at, archived_at, pinned_at
 FROM sessions
 WHERE id = ?`, id)
@@ -99,7 +99,7 @@ func (r *SessionRepository) Mutate(ctx context.Context, id string, update func(*
 	}
 	defer tx.Rollback()
 	session, err := scanSession(tx.QueryRowContext(ctx, `
-SELECT id, parent_session_id, fork_from_message_id, owner_id, platform, platform_scope_id,
+SELECT id, parent_session_id, fork_from_message_id, owner_platform, owner_id, platform, chat_type, chat_id, task_type, task_id, task_name,
        mode, title, status, metadata, created_at, updated_at, archived_at, pinned_at
 FROM sessions WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -129,14 +129,14 @@ FROM sessions WHERE id = ?`, id))
 	if !sessionValuesEqual(&before, session) {
 		res, err := tx.ExecContext(ctx, `
 UPDATE sessions
-SET parent_session_id = ?, fork_from_message_id = ?, owner_id = ?, platform = ?, platform_scope_id = ?,
+SET parent_session_id = ?, fork_from_message_id = ?, owner_platform = ?, owner_id = ?, platform = ?, chat_type = ?, chat_id = ?, task_type = ?, task_id = ?, task_name = ?,
     mode = ?, title = ?, status = ?, metadata = ?, created_at = ?, updated_at = ?, archived_at = ?, pinned_at = ?
 WHERE id = ?`,
 			nullString(session.ParentSessionID),
 			nullString(session.ForkFromMessageID),
-			session.OwnerID,
+			session.Owner.Platform, session.Owner.ID,
 			session.Platform,
-			session.PlatformScopeID,
+			session.ChatType, session.ChatID, session.TaskType, session.TaskID, session.TaskName,
 			session.Mode,
 			nullString(session.Title),
 			session.Status,
@@ -163,10 +163,10 @@ WHERE id = ?`,
 // sessionValuesEqual compares persisted values, including nullable timestamps.
 func sessionValuesEqual(a, b *storage.Session) bool {
 	return a.ID == b.ID && a.ParentSessionID == b.ParentSessionID &&
-		a.ForkFromMessageID == b.ForkFromMessageID && a.OwnerID == b.OwnerID &&
-		a.Platform == b.Platform && a.PlatformScopeID == b.PlatformScopeID &&
+		a.ForkFromMessageID == b.ForkFromMessageID && a.Owner == b.Owner &&
+		a.Platform == b.Platform && a.ChatType == b.ChatType && a.ChatID == b.ChatID &&
 		a.Mode == b.Mode && a.Title == b.Title && a.Status == b.Status &&
-		a.Metadata == b.Metadata && a.CreatedAt.Equal(b.CreatedAt) &&
+		a.TaskType == b.TaskType && a.TaskID == b.TaskID && a.TaskName == b.TaskName && a.Metadata == b.Metadata && a.CreatedAt.Equal(b.CreatedAt) &&
 		a.UpdatedAt.Equal(b.UpdatedAt) && optionalTimeEqual(a.ArchivedAt, b.ArchivedAt) &&
 		optionalTimeEqual(a.PinnedAt, b.PinnedAt)
 }
@@ -180,15 +180,15 @@ func (r *SessionRepository) List(ctx context.Context, req storage.ListSessionsRe
 	where := []string{}
 	args := []any{}
 	if !req.IncludeAllPlatforms {
-		where = append(where, "owner_id = ?", "platform = ?")
-		args = append(args, req.ActorID, req.Platform)
+		where = append(where, "owner_platform = ? AND owner_id = ?", "platform = ?")
+		args = append(args, req.Owner.Platform, req.Owner.ID, req.Platform)
 		// Current identity is determined only by mode, as in Session's access rule.
 		if req.IncludeSamePlatformBackground {
-			where = append(where, "(platform_scope_id = ? OR s.mode = ?)")
-			args = append(args, req.PlatformScopeID, storage.SessionModeBackground)
+			where = append(where, "((chat_type = ? AND chat_id = ?) OR s.mode = ?)")
+			args = append(args, req.ChatType, req.ChatID, storage.SessionModeBackground)
 		} else {
-			where = append(where, "platform_scope_id = ?", "s.mode <> ?")
-			args = append(args, req.PlatformScopeID, storage.SessionModeBackground)
+			where = append(where, "chat_type = ? AND chat_id = ?", "s.mode <> ?")
+			args = append(args, req.ChatType, req.ChatID, storage.SessionModeBackground)
 		}
 	}
 	if req.ArchivedOnly {
@@ -210,7 +210,7 @@ func (r *SessionRepository) List(ctx context.Context, req storage.ListSessionsRe
 	args = append(args, limit, max(0, req.Offset))
 
 	query := fmt.Sprintf(`
-SELECT s.id, s.owner_id, s.platform, s.platform_scope_id, s.title, s.mode, s.status,
+SELECT s.id, s.owner_platform, s.owner_id, s.platform, s.chat_type, s.chat_id, s.title, s.mode, s.status,
        s.created_at, s.updated_at, s.archived_at, s.pinned_at,
        COUNT(m.id) AS message_count,
        COALESCE((SELECT content FROM messages WHERE session_id = s.id AND role = 'user' ORDER BY created_at DESC, rowid DESC LIMIT 1), '') AS last_user_content,
@@ -236,9 +236,9 @@ LIMIT ? OFFSET ?`, strings.Join(where, " AND "))
 		var archivedAt, pinnedAt sql.NullString
 		if err := rows.Scan(
 			&summary.ID,
-			&summary.OwnerID,
+			&summary.Owner.Platform, &summary.Owner.ID,
 			&summary.Platform,
-			&summary.PlatformScopeID,
+			&summary.ChatType, &summary.ChatID,
 			&title,
 			&summary.Mode,
 			&summary.Status,
@@ -355,9 +355,9 @@ func scanSession(row interface{ Scan(dest ...any) error }) (*storage.Session, er
 		&session.ID,
 		&parentSessionID,
 		&forkFromMessageID,
-		&session.OwnerID,
+		&session.Owner.Platform, &session.Owner.ID,
 		&session.Platform,
-		&session.PlatformScopeID,
+		&session.ChatType, &session.ChatID, &session.TaskType, &session.TaskID, &session.TaskName,
 		&session.Mode,
 		&title,
 		&session.Status,

@@ -38,10 +38,9 @@ const (
 )
 
 type CronActor struct {
-	ActorID        string `json:"actor_id"`               // 项目内身份标识。
-	Platform       string `json:"platform"`               // 创建者所属平台。
-	PlatformUserID string `json:"platform_user_id"`       // 平台用户标识。
-	DisplayName    string `json:"display_name,omitempty"` // 创建时的展示名称。
+	Platform string `json:"platform"`       // 创建者所属平台。
+	ID       string `json:"id"`             // 平台用户标识。
+	Name     string `json:"name,omitempty"` // 创建时的展示名称。
 }
 
 type CronSchedule struct {
@@ -93,7 +92,7 @@ type CronDeliveryState struct {
 }
 
 type CronDeliveryTargetState struct {
-	Key     string                    `json:"key"`
+	Target  delivery.Target           `json:"target"` // 平台和会话共同标识投递目标。
 	Outputs []CronDeliveryOutputState `json:"outputs,omitempty"`
 }
 
@@ -148,5 +147,3 @@ func cronSandboxSubdir(jobName string) string {
 	}
 	return filepath.ToSlash(filepath.Join("cron", name))
 }
-
-func cronScopeID(jobName string) string { return "cron:" + normalizeJobName(jobName) }

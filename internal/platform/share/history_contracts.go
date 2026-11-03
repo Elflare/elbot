@@ -3,6 +3,7 @@ package share
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"elbot/internal/storage"
 )
 
@@ -13,5 +14,5 @@ type ChatHistoryWriter interface {
 
 // ChatHistoryReader 只按平台消息身份查询单条历史。
 type ChatHistoryReader interface {
-	GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error)
+	GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
 }

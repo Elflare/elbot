@@ -256,14 +256,9 @@ func formatUsageSummary(entries []logging.LogEntry, query logging.LogQuery, grou
 	grand := &usageBucket{}
 
 	for _, entry := range entries {
-		fields := entry.LegacyFields
 		var content map[string]json.RawMessage
 		if entry.Type == events.ContentJSON {
 			_ = json.Unmarshal([]byte(entry.Content), &content)
-			fields = map[string]string{}
-			for key, value := range content {
-				fields[key] = string(value)
-			}
 		}
 		key := usageGroupKeyFor(entry, groupBy, content)
 		b := buckets[key]
@@ -272,11 +267,11 @@ func formatUsageSummary(entries []logging.LogEntry, query logging.LogQuery, grou
 			buckets[key] = b
 			order = append(order, key)
 		}
-		prompt := atoiSafe(fields["prompt_tokens"])
-		completion := atoiSafe(fields["completion_tokens"])
-		total := atoiSafe(fields["total_tokens"])
-		cache := atoiSafe(fields["cache_hit_tokens"])
-		elapsed := atoiSafe(fields["elapsed_ms"])
+		prompt := atoiSafe(string(content["prompt_tokens"]))
+		completion := atoiSafe(string(content["completion_tokens"]))
+		total := atoiSafe(string(content["total_tokens"]))
+		cache := atoiSafe(string(content["cache_hit_tokens"]))
+		elapsed := atoiSafe(string(content["elapsed_ms"]))
 		for _, b := range []*usageBucket{b, grand} {
 			b.calls++
 			for total, value := range map[**int64]int64{&b.promptTokens: prompt, &b.completionTokens: completion, &b.totalTokens: total, &b.cacheHitTokens: cache, &b.elapsedMs: elapsed} {
@@ -327,8 +322,6 @@ func usageGroupKeyFor(entry logging.LogEntry, groupBy usageGroupKey, content map
 		if entry.Type == events.ContentJSON {
 			_ = json.Unmarshal(content["provider"], &provider)
 			_ = json.Unmarshal(content["model"], &model)
-		} else {
-			provider, model = entry.LegacyFields["provider"], entry.LegacyFields["model"]
 		}
 		provider = strings.TrimSpace(provider)
 		model = strings.TrimSpace(model)

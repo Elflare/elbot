@@ -2,6 +2,7 @@ package resident
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"os"
 	"path/filepath"
@@ -14,7 +15,7 @@ import (
 
 func TestStoreWriteReadAndDeleteNormal(t *testing.T) {
 	store := NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	scope := session.Scope{Platform: "qqonebot", ActorID: "qqonebot:1"}
+	scope := session.Scope{Platform: "qqonebot", Owner: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "1"}}
 
 	if _, err := store.Read(context.Background(), scope); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Read empty error = %v", err)
@@ -64,12 +65,12 @@ func TestStoreWriteReadAndDeleteNormal(t *testing.T) {
 
 func TestStoreClearsExistingEmptyRecord(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "memories.toml")
-	data := []byte("[[resident_memories]]\nplatform = \"cli\"\nactor_id = \"empty\"\ncore = \" \"\nnormal = \" \"\n\n[[resident_memories]]\nplatform = \"cli\"\nactor_id = \"other\"\nnormal = \"keep\"\n")
+	data := []byte("[[resident_memories]]\nplatform = \"cli\"\nactor_id = \"cli:empty\"\ncore = \" \"\nnormal = \" \"\n\n[[resident_memories]]\nplatform = \"cli\"\nactor_id = \"cli:other\"\nnormal = \"keep\"\n")
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := NewStore(path)
-	scope := session.Scope{Platform: "cli", ActorID: "empty"}
+	scope := session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "empty"}}
 	if err := store.DeleteNormal(context.Background(), scope); err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +78,7 @@ func TestStoreClearsExistingEmptyRecord(t *testing.T) {
 	if _, err := reloaded.Read(context.Background(), scope); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("cleared empty record error = %v", err)
 	}
-	other, err := reloaded.Read(context.Background(), session.Scope{Platform: "cli", ActorID: "other"})
+	other, err := reloaded.Read(context.Background(), session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "other"}})
 	if err != nil || other.Normal != "keep" {
 		t.Fatalf("other memory = %#v, %v", other, err)
 	}
@@ -87,7 +88,7 @@ func TestStoreValidatesExistingContent(t *testing.T) {
 	for _, part := range []string{"core", "normal"} {
 		t.Run(part, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "memories.toml")
-			scope := session.Scope{Platform: "cli", ActorID: "local"}
+			scope := session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}}
 			store := NewStore(path)
 			write := store.WriteCore
 			if part == "normal" {
@@ -114,9 +115,9 @@ func TestStoreValidatesExistingContent(t *testing.T) {
 
 func TestStoreIsolatesPlatformAndActor(t *testing.T) {
 	store := NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	qq := session.Scope{Platform: "qqonebot", ActorID: "qqonebot:1"}
-	cli := session.Scope{Platform: "cli", ActorID: "cli:1"}
-	other := session.Scope{Platform: "qqonebot", ActorID: "qqonebot:2"}
+	qq := session.Scope{Platform: "qqonebot", Owner: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "1"}}
+	cli := session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "1"}}
+	other := session.Scope{Platform: "qqonebot", Owner: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "2"}}
 	if err := store.WriteNormal(context.Background(), qq, "qq memory"); err != nil {
 		t.Fatalf("Write qq: %v", err)
 	}
@@ -138,10 +139,10 @@ func TestStoreIsolatesPlatformAndActor(t *testing.T) {
 
 func TestStoreMaxUnits(t *testing.T) {
 	store := NewStoreWithLimits(filepath.Join(t.TempDir(), "memories.toml"), Limits{Core: 3, Normal: 2})
-	if err := store.WriteCore(context.Background(), session.Scope{Platform: "cli", ActorID: "cli:local"}, "四个汉字"); err == nil || !strings.Contains(err.Error(), "too long") {
+	if err := store.WriteCore(context.Background(), session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}}, "四个汉字"); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatalf("WriteCore long error = %v", err)
 	}
-	if err := store.WriteNormal(context.Background(), session.Scope{Platform: "cli", ActorID: "cli:local"}, "one two three"); err == nil || !strings.Contains(err.Error(), "too long") {
+	if err := store.WriteNormal(context.Background(), session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}}, "one two three"); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatalf("WriteNormal long error = %v", err)
 	}
 	if CountUnits("用户 likes short replies") != 5 {
@@ -156,7 +157,7 @@ func TestStoreNormalWriteIgnoresExistingOverLimitCore(t *testing.T) {
 		t.Fatalf("seed memory: %v", err)
 	}
 	store := NewStoreWithLimits(path, Limits{Core: 3, Normal: 5})
-	scope := session.Scope{Platform: "cli", ActorID: "cli:local"}
+	scope := session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}}
 	if err := store.WriteNormal(context.Background(), scope, "新 normal"); err != nil {
 		t.Fatalf("WriteNormal with over-limit core: %v", err)
 	}
@@ -175,7 +176,7 @@ func TestStoreNormalWriteIgnoresExistingOverLimitCore(t *testing.T) {
 func TestStoreReloadsExternalFileChanges(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "memories.toml")
 	store := NewStore(path)
-	scope := session.Scope{Platform: "cli", ActorID: "cli:local"}
+	scope := session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}}
 	if err := store.WriteNormal(context.Background(), scope, "旧记忆"); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
@@ -202,7 +203,7 @@ func TestStoreReloadsExternalFileChanges(t *testing.T) {
 
 func TestStoreWriteAndDeleteRefreshCache(t *testing.T) {
 	store := NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	scope := session.Scope{Platform: "cli", ActorID: "cli:local"}
+	scope := session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}}
 	if err := store.WriteNormal(context.Background(), scope, "第一版"); err != nil {
 		t.Fatalf("Write first: %v", err)
 	}
@@ -226,9 +227,9 @@ func TestStoreWriteAndDeleteRefreshCache(t *testing.T) {
 
 func TestStoreRejectedWritePreservesRecords(t *testing.T) {
 	ctx := context.Background()
-	scope := session.Scope{Platform: "cli", ActorID: "cli:local"}
-	other := session.Scope{Platform: "cli", ActorID: "cli:other"}
-	missing := session.Scope{Platform: "cli", ActorID: "cli:missing"}
+	scope := session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}}
+	other := session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "other"}}
+	missing := session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "missing"}}
 	for _, operation := range []string{"core", "normal", "append", "new"} {
 		t.Run(operation, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "memories.toml")
@@ -258,7 +259,7 @@ func TestStoreRejectedWritePreservesRecords(t *testing.T) {
 			for _, target := range []session.Scope{scope, other} {
 				memory, err := store.Read(ctx, target)
 				if err != nil || memory != (Memory{Normal: "keep"}) {
-					t.Fatalf("Read %s after rejected write = %#v, %v", target.ActorID, memory, err)
+					t.Fatalf("Read %s after rejected write = %#v, %v", target.Owner, memory, err)
 				}
 			}
 			if _, err := store.Read(ctx, missing); !errors.Is(err, ErrNotFound) {
@@ -274,7 +275,7 @@ func TestStoreRejectedWritePreservesRecords(t *testing.T) {
 
 func TestStoreUnchangedWritePreservesFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "memories.toml")
-	data := "[[resident_memories]]\nplatform = \"cli\"\nactor_id = \"cli:local\"\ncore = \"core\"\nnormal = \"normal\"\ncreated_at = \"t1\"\nupdated_at = \"t2\"\n"
+	data := "version = 2\n[[resident_memories]]\nowner = {platform = \"cli\", id = \"local\"}\ncore = \"core\"\nnormal = \"normal\"\ncreated_at = \"t1\"\nupdated_at = \"t2\"\n"
 	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +288,7 @@ func TestStoreUnchangedWritePreservesFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := NewStore(path)
-	scope := session.Scope{Platform: "cli", ActorID: "cli:local"}
+	scope := session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}}
 	for _, operation := range []string{"core", "normal", "delete missing"} {
 		switch operation {
 		case "core":
@@ -295,7 +296,7 @@ func TestStoreUnchangedWritePreservesFile(t *testing.T) {
 		case "normal":
 			err = store.WriteNormal(context.Background(), scope, " normal ")
 		case "delete missing":
-			err = store.DeleteNormal(context.Background(), session.Scope{Platform: "cli", ActorID: "cli:missing"})
+			err = store.DeleteNormal(context.Background(), session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "missing"}})
 		}
 		if err != nil {
 			t.Fatalf("%s: %v", operation, err)
@@ -328,7 +329,7 @@ func TestStoreAppendNormalFromExternalFile(t *testing.T) {
 				t.Fatal(err)
 			}
 			store := NewStore(path)
-			scope := session.Scope{Platform: "cli", ActorID: "cli:local"}
+			scope := session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}}
 			if err := store.AppendNormal(context.Background(), scope, " \t "); err == nil {
 				t.Fatal("AppendNormal accepted empty content")
 			}

@@ -196,7 +196,7 @@ func TestSupervisorHookEntrypoints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{ConversationKind: contextinfo.ConversationGroup}})
+	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{ChatType: contextinfo.ChatGroup}})
 	for _, tc := range []struct {
 		text string
 		want bool

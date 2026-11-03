@@ -264,7 +264,7 @@ func TestIngressStopsWhileOutgoingTokenRefreshContinues(t *testing.T) {
 		adapter.client.http.Transport = transport
 		sendDone := make(chan error, 1)
 		go func() {
-			_, _, err := adapter.SendTo(t.Context(), delivery.Target{PrivateUserID: "u"}, []delivery.Output{delivery.Text("finish")})
+			_, _, err := adapter.SendTo(t.Context(), delivery.Target{ChatType: "private", ChatID: "u"}, []delivery.Output{delivery.Text("finish")})
 			sendDone <- err
 		}()
 		<-entered

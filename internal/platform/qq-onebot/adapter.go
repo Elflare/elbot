@@ -34,9 +34,9 @@ type Deps struct {
 		share.ChatHistoryWriter
 		share.ChatHistoryReader
 	}
-	ReferenceResolver     func(context.Context, share.ReferenceOptions) (share.ReferenceResult, error)            // 引用恢复能力。
-	FindByPlatformMessage func(context.Context, string, string, string) (*storage.Message, error)                 // 查询消息输出关联。
-	FindOutputs           func(context.Context, string, string, string, time.Time) ([]storage.MediaOutput, error) // 查询未过期的媒体输出关联。
+	ReferenceResolver     func(context.Context, share.ReferenceOptions) (share.ReferenceResult, error)                                  // 引用恢复能力。
+	FindByPlatformMessage func(context.Context, string, contextinfo.ChatType, string, string) (*storage.Message, error)                 // 查询消息输出关联。
+	FindOutputs           func(context.Context, string, contextinfo.ChatType, string, string, time.Time) ([]storage.MediaOutput, error) // 查询未过期的媒体输出关联。
 }
 
 type Adapter struct {
@@ -49,10 +49,10 @@ type Adapter struct {
 		share.ChatHistoryWriter
 		share.ChatHistoryReader
 	}
-	findByPlatformMessage func(context.Context, string, string, string) (*storage.Message, error)                 // 借用的消息关联查询。
-	findOutputs           func(context.Context, string, string, string, time.Time) ([]storage.MediaOutput, error) // 借用的媒体输出关联查询。
-	transport             *Transport                                                                              // 常驻连接，保留到最终关闭。
-	lastMessageID         int64                                                                                   // 上一条非零入站 ID，断线重连时保留。
+	findByPlatformMessage func(context.Context, string, contextinfo.ChatType, string, string) (*storage.Message, error)                 // 借用的消息关联查询。
+	findOutputs           func(context.Context, string, contextinfo.ChatType, string, string, time.Time) ([]storage.MediaOutput, error) // 借用的媒体输出关联查询。
+	transport             *Transport                                                                                                    // 常驻连接，保留到最终关闭。
+	lastMessageID         int64                                                                                                         // 上一条非零入站 ID，断线重连时保留。
 
 	mu               sync.Mutex
 	started          bool            // 已尝试启动，重复 Start 不替换上下文或 handler。
@@ -132,20 +132,10 @@ func (a *Adapter) Enabled() bool { return a.cfg.Enabled }
 func logIdentity(ctx context.Context) events.LogIdentity {
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	var identity events.LogIdentity
-	if facts.SessionID != "" {
-		identity.SessionID = &facts.SessionID
-	}
-	if facts.RunID != "" {
-		identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		identity.RootRequestID = &facts.RootRequestID
-	}
+	identity.SessionID = &facts.SessionID
+	identity.RunID = &facts.RunID
+	identity.Attempt = &facts.Attempt
+	identity.RequestID = &facts.RequestID
+	identity.RootRequestID = &facts.RootRequestID
 	return identity
 }

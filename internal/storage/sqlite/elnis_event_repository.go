@@ -45,9 +45,9 @@ func (r *ElnisEventRepository) Create(ctx context.Context, req storage.CreateEln
 		createdAt = receivedAt
 	}
 	event := &storage.ElnisEvent{
-		ID:               req.ID,
-		EventKey:         req.EventKey,
-		TokenName:        req.TokenName,
+		ID:         req.ID,
+		EventKey:   req.EventKey,
+		OriginKind: req.OriginKind, OriginName: req.OriginName,
 		ElwispName:       req.ElwispName,
 		Source:           req.Source,
 		SourceID:         req.SourceID,
@@ -73,13 +73,13 @@ func (r *ElnisEventRepository) Create(ctx context.Context, req storage.CreateEln
 	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO elnis_events (
-    id, event_key, token_name, elwisp_name, source, source_id, tags, mode,
+    id, event_key, origin_kind, origin_name, elwisp_name, source, source_id, tags, mode,
     model_slot, content_hash, tool_declarations, tool_hash, requested_targets, resolved_targets, status,
     session_id, result, error, received_at, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		event.ID,
 		event.EventKey,
-		event.TokenName,
+		event.OriginKind, event.OriginName,
 		event.ElwispName,
 		event.Source,
 		event.SourceID,
@@ -115,7 +115,7 @@ INSERT INTO elnis_events (
 
 func (r *ElnisEventRepository) Get(ctx context.Context, id string) (*storage.ElnisEvent, error) {
 	row := r.db.QueryRowContext(ctx, `
-SELECT id, event_key, token_name, elwisp_name, source, source_id, tags, mode,
+SELECT id, event_key, origin_kind, origin_name, elwisp_name, source, source_id, tags, mode,
        model_slot, content_hash, tool_declarations, tool_hash, requested_targets, resolved_targets, status,
        session_id, result, error, received_at, created_at, updated_at
 FROM elnis_events
@@ -132,7 +132,7 @@ WHERE id = ?`, id)
 
 func (r *ElnisEventRepository) GetByKey(ctx context.Context, elwispName, source, sourceID string) (*storage.ElnisEvent, error) {
 	row := r.db.QueryRowContext(ctx, `
-SELECT id, event_key, token_name, elwisp_name, source, source_id, tags, mode,
+SELECT id, event_key, origin_kind, origin_name, elwisp_name, source, source_id, tags, mode,
        model_slot, content_hash, tool_declarations, tool_hash, requested_targets, resolved_targets, status,
        session_id, result, error, received_at, created_at, updated_at
 FROM elnis_events
@@ -520,7 +520,7 @@ func scanElnisEvent(row interface{ Scan(dest ...any) error }) (*storage.ElnisEve
 	if err := row.Scan(
 		&event.ID,
 		&event.EventKey,
-		&event.TokenName,
+		&event.OriginKind, &event.OriginName,
 		&event.ElwispName,
 		&event.Source,
 		&event.SourceID,

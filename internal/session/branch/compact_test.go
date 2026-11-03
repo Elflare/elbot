@@ -8,7 +8,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/session/branch"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
@@ -17,20 +16,20 @@ import (
 func TestBackgroundCompactedRequiresExecutionOwnership(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
-		kind     contextinfo.ConversationKind
+		taskType string
 		cli      bool
 		mismatch string
 	}{
-		{name: "background entry"},
-		{name: "unknown entry", kind: contextinfo.ConversationUnknown},
-		{name: "group entry", kind: contextinfo.ConversationGroup},
-		{name: "CLI execution", cli: true},
-		{name: "other owner", kind: contextinfo.ConversationPrivate, mismatch: "owner"},
-		{name: "other platform", kind: contextinfo.ConversationPrivate, mismatch: "platform"},
-		{name: "other task", kind: contextinfo.ConversationPrivate, mismatch: "scope"},
-		{name: "CLI other owner", cli: true, mismatch: "owner"},
-		{name: "CLI other platform", cli: true, mismatch: "platform"},
-		{name: "CLI other task", cli: true, mismatch: "scope"},
+		{name: "background entry", taskType: "cron"},
+		{name: "unknown entry", taskType: "", mismatch: "kind"},
+		{name: "group entry", taskType: "other", mismatch: "kind"},
+		{name: "CLI execution", taskType: "cron", cli: true},
+		{name: "other owner", taskType: "cron", mismatch: "owner"},
+		{name: "other platform", taskType: "cron", mismatch: "platform"},
+		{name: "other task", taskType: "cron", mismatch: "scope"},
+		{name: "CLI other owner", taskType: "cron", cli: true, mismatch: "owner"},
+		{name: "CLI other platform", taskType: "cron", cli: true, mismatch: "platform"},
+		{name: "CLI other task", taskType: "cron", cli: true, mismatch: "scope"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)
@@ -39,21 +38,22 @@ func TestBackgroundCompactedRequiresExecutionOwnership(t *testing.T) {
 			current := f.c.CurrentBinding(scope())
 			f.setBusy(source.ID)
 			target := scope()
-			target.ConversationKind, target.IsCLI = tc.kind, tc.cli
+			target.ChatType, target.ChatID = "", ""
+			target.TaskType, target.TaskID, target.IsCLI = tc.taskType, source.TaskID, tc.cli
 			switch tc.mismatch {
 			case "owner":
-				target.ActorID = "other"
+				target.Owner.ID = "other"
 			case "platform":
 				target.Platform = "other"
 			case "scope":
-				target.PlatformScopeID = "other-task"
+				target.TaskID = "other-task"
 			}
 			row, err := f.s.CreateCompacted(t.Context(), target, source.ID, branch.CompactedRequest{ID: "reserved"})
 			if tc.mismatch != "" {
 				if err == nil || f.count(t) != 2 {
 					t.Fatalf("foreign execution accepted: %+v, %v", row, err)
 				}
-			} else if err != nil || row.Mode != storage.SessionModeBackground || row.OwnerID != source.OwnerID || row.Platform != source.Platform || row.PlatformScopeID != source.PlatformScopeID || f.count(t) != 3 {
+			} else if err != nil || row.Mode != storage.SessionModeBackground || row.Owner != source.Owner || row.Platform != source.Platform || row.ChatID != source.ChatID || f.count(t) != 3 {
 				t.Fatalf("background handoff: %+v, %v", row, err)
 			}
 			if f.c.CurrentBinding(scope()) != current || !current.Valid() {
@@ -80,11 +80,16 @@ func TestCompactedInheritanceAndActivation(t *testing.T) {
 				if native {
 					req.Seed = seed()
 				}
-				row, err := f.s.CreateCompacted(ctx, scope(), source.ID, req)
+				target := scope()
+				if mode == storage.SessionModeBackground {
+					target.ChatType, target.ChatID = "", ""
+					target.TaskType, target.TaskID = source.TaskType, source.TaskID
+				}
+				row, err := f.s.CreateCompacted(ctx, target, source.ID, req)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if row.ID != req.ID || row.Mode != mode || row.OwnerID != source.OwnerID || row.Platform != source.Platform || row.PlatformScopeID != source.PlatformScopeID {
+				if row.ID != req.ID || row.Mode != mode || row.Owner != source.Owner || row.Platform != source.Platform || row.ChatID != source.ChatID {
 					t.Fatalf("inheritance: %+v", row)
 				}
 				for _, want := range []string{`"unknown":9007199254740993`, `"nested":{"keep":true}`, `"title_source":"compact"`, `"title_renamed":true`, `"protocol":"response"`} {
@@ -151,7 +156,7 @@ func TestCompactedFailuresPreserveCurrent(t *testing.T) {
 			case "missing":
 				sourceID = "missing"
 			case "foreign":
-				target.ActorID = "other"
+				target.Owner.ID = "other"
 			case "cancel":
 				var cancel context.CancelFunc
 				ctx, cancel = context.WithCancel(ctx)

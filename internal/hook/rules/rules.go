@@ -57,8 +57,8 @@ type PluginInfo struct {
 	Name             string               `toml:"name"`
 	Description      string               `toml:"description"`
 	BlockedPlatforms []string             `toml:"blocked_platform"`
-	BlockedGroups    []string             `toml:"blocked_group"`
-	BlockedIDs       []string             `toml:"blocked_id"`
+	BlockedGroups    map[string][]string  `toml:"blocked_group"`
+	BlockedIDs       map[string][]string  `toml:"blocked_id"`
 	Runtime          *share.RuntimeConfig `toml:"runtime"`
 }
 
@@ -68,41 +68,41 @@ type pluginConfig struct {
 }
 
 type Rule struct {
-	Name             string             `toml:"name"`
-	Description      string             `toml:"description"`
-	On               string             `toml:"on"`
-	Priority         int                `toml:"priority"`
-	Enabled          *bool              `toml:"enabled"`
-	Wakeup           share.WakeupPolicy `toml:"wakeup"`
-	BlockedPlatforms []string           `toml:"blocked_platform"`
-	BlockedGroups    []string           `toml:"blocked_group"`
-	BlockedIDs       []string           `toml:"blocked_id"`
-	If               string             `toml:"if"`
-	Op               string             `toml:"op"`
-	Value            string             `toml:"value"`
-	Always           bool               `toml:"always"`
-	Match            []share.Condition  `toml:"match"`
-	Roles            []string           `toml:"roles"`
-	ActorRoles       []string           `toml:"actor_roles"`
-	GroupRoles       []string           `toml:"group_roles"`
-	Action           string             `toml:"action"`
-	Actions          []Action           `toml:"actions"`
-	Field            string             `toml:"field"`
-	Text             string             `toml:"text"`
-	Pattern          string             `toml:"pattern"`
-	Replace          string             `toml:"replace"`
-	Kind             string             `toml:"kind"`
-	Path             string             `toml:"path"`
-	Timing           string             `toml:"timing"`
-	Tool             string             `toml:"tool"`
-	Args             string             `toml:"arguments"`
-	Command          []string           `toml:"command"`
-	Cwd              string             `toml:"cwd"`
-	TimeoutSeconds   int                `toml:"timeout_seconds"`
-	All              bool               `toml:"all"`
-	Target           Target             `toml:"target"`
-	Consume          bool               `toml:"consume"`
-	StopPropagation  bool               `toml:"stop_propagation"`
+	Name             string              `toml:"name"`
+	Description      string              `toml:"description"`
+	On               string              `toml:"on"`
+	Priority         int                 `toml:"priority"`
+	Enabled          *bool               `toml:"enabled"`
+	Wakeup           share.WakeupPolicy  `toml:"wakeup"`
+	BlockedPlatforms []string            `toml:"blocked_platform"`
+	BlockedGroups    map[string][]string `toml:"blocked_group"`
+	BlockedIDs       map[string][]string `toml:"blocked_id"`
+	If               string              `toml:"if"`
+	Op               string              `toml:"op"`
+	Value            string              `toml:"value"`
+	Always           bool                `toml:"always"`
+	Match            []share.Condition   `toml:"match"`
+	Roles            []string            `toml:"roles"`
+	ActorRoles       []string            `toml:"actor_roles"`
+	GroupRoles       []string            `toml:"group_roles"`
+	Action           string              `toml:"action"`
+	Actions          []Action            `toml:"actions"`
+	Field            string              `toml:"field"`
+	Text             string              `toml:"text"`
+	Pattern          string              `toml:"pattern"`
+	Replace          string              `toml:"replace"`
+	Kind             string              `toml:"kind"`
+	Path             string              `toml:"path"`
+	Timing           string              `toml:"timing"`
+	Tool             string              `toml:"tool"`
+	Args             string              `toml:"arguments"`
+	Command          []string            `toml:"command"`
+	Cwd              string              `toml:"cwd"`
+	TimeoutSeconds   int                 `toml:"timeout_seconds"`
+	All              bool                `toml:"all"`
+	Target           Target              `toml:"target"`
+	Consume          bool                `toml:"consume"`
+	StopPropagation  bool                `toml:"stop_propagation"`
 	source           ruleSource
 }
 
@@ -228,20 +228,10 @@ func (m Module) RegisterHooks(registrar share.Registrar) {
 func logIdentity(ctx context.Context) globalevents.LogIdentity {
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	var identity globalevents.LogIdentity
-	if facts.SessionID != "" {
-		identity.SessionID = &facts.SessionID
-	}
-	if facts.RunID != "" {
-		identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		identity.RootRequestID = &facts.RootRequestID
-	}
+	identity.SessionID = &facts.SessionID
+	identity.RunID = &facts.RunID
+	identity.Attempt = &facts.Attempt
+	identity.RequestID = &facts.RequestID
+	identity.RootRequestID = &facts.RootRequestID
 	return identity
 }

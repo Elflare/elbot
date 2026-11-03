@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -179,10 +180,11 @@ func mapPlatformMessage(ctx context.Context, writer sessionWriter, mapping stora
 
 	_, err := writer.ExecContext(ctx, `
 INSERT INTO platform_message_map (
-    platform, platform_scope_id, platform_message_id, message_id, session_id, created_at
-) VALUES (?, ?, ?, ?, ?, ?)`,
+    platform, chat_type, chat_id, platform_message_id, message_id, session_id, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		mapping.Platform,
-		mapping.PlatformScopeID,
+		mapping.ChatType,
+		mapping.ChatID,
 		mapping.PlatformMessageID,
 		mapping.MessageID,
 		mapping.SessionID,
@@ -194,13 +196,13 @@ INSERT INTO platform_message_map (
 	return nil
 }
 
-func (r *MessageRepository) FindByPlatformMessage(ctx context.Context, platform, scopeID, platformMessageID string) (*storage.Message, error) {
+func (r *MessageRepository) FindByPlatformMessage(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, platformMessageID string) (*storage.Message, error) {
 	row := r.db.QueryRowContext(ctx, `
 SELECT m.id, m.session_id, m.role, m.content, m.parent_message_id, m.reply_to_platform_message_id,
        m.reply_to_message_id, m.tool_call_id, m.segments, m.metadata, m.created_at
 FROM platform_message_map p
 JOIN messages m ON m.id = p.message_id
-WHERE p.platform = ? AND p.platform_scope_id = ? AND p.platform_message_id = ?`, platform, scopeID, platformMessageID)
+WHERE p.platform = ? AND p.chat_type = ? AND p.chat_id = ? AND p.platform_message_id = ?`, platform, conversationKind, scopeID, platformMessageID)
 
 	message, err := scanMessage(row)
 	if errors.Is(err, sql.ErrNoRows) {

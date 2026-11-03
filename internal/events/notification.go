@@ -16,10 +16,9 @@ type Notification struct {
 	Origin *contextinfo.Conversation // Immutable original reply/connection facts.
 }
 type NotificationTarget struct {
-	Platform string                       // Runtime platform name, e.g. cli or telegram.
-	Kind     contextinfo.ConversationKind // CLI, private, group or channel destination.
-	ID       string                       // Platform user, group or channel ID, according to Kind.
-	ScopeID  string                       // Platform-specific scope needed to address the conversation.
+	Platform string               // Runtime platform name, e.g. cli or telegram.
+	ChatType contextinfo.ChatType // Private, group or channel destination.
+	ID       string               // Platform user, group or channel ID, according to ChatType.
 }
 type NotificationReceipt struct {
 	PlatformMessageIDs []string // Actually sent messages; may be partial on failure.

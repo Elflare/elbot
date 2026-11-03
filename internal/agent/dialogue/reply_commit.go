@@ -61,8 +61,8 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 	} else {
 		for _, sent := range result.Receipt.SentMessages {
 			mappings = append(mappings, storage.PlatformMessageMap{
-				Platform: sent.Platform, PlatformScopeID: sent.ScopeID, PlatformMessageID: sent.PlatformMessageID,
-				MessageID: message.ID, SessionID: in.Session.ID,
+				Platform: sent.Platform, ChatID: sent.ChatID, PlatformMessageID: sent.PlatformMessageID,
+				MessageID: message.ID, SessionID: in.Session.ID, ChatType: sent.ChatType,
 			})
 		}
 	}

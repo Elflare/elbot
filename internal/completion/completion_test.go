@@ -201,7 +201,7 @@ func TestToolCompletionPreservesPreparedContextAndReplacementRange(t *testing.T)
 	ctx := contextinfo.WithModel(t.Context(), contextinfo.Model{APIType: "chat"})
 	source := ToolDirectiveSource{
 		Context: func(ctx context.Context) (context.Context, error) {
-			return contextinfo.WithActor(ctx, contextinfo.Actor{ID: "user", Role: contextinfo.RoleUser}), nil
+			return contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleUser, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "user"}}), nil
 		},
 		Tools: completionCatalog{query: func(ctx context.Context, q tool.ToolQuery) ([]tool.ToolInfo, error) {
 			actor, _ := contextinfo.ActorFromContext(ctx)

@@ -33,7 +33,7 @@ func (isolatedPlatformCapabilities) RestoreMessageContext(ctx, _ context.Context
 	return ctx
 }
 
-func (isolatedPlatformCapabilities) SessionIDCode(name string, _ contextinfo.ConversationKind) (string, error) {
+func (isolatedPlatformCapabilities) SessionIDCode(name string, _ contextinfo.ChatType) (string, error) {
 	return name, nil
 }
 func (isolatedPlatformCapabilities) StartReasoning(context.Context) delivery.ReasoningStream {

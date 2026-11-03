@@ -10,7 +10,7 @@ import (
 )
 
 func TestBindingIdentityAndPermanentInvalidation(t *testing.T) {
-	scope := share.Scope{ActorID: "u", Platform: "p", PlatformScopeID: "s"}
+	scope := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "p", ID: "u"}, Platform: "p", ChatID: "s"}
 	b := share.NewBinding(scope, "session", 42)
 	// Session 根部使用独立定义类型和指针转换，不复制原子字段。
 	type publicBinding share.Binding

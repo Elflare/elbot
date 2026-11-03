@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"os"
 	"path/filepath"
@@ -129,7 +130,7 @@ func TestNewMediaCenterEarlyFailure(t *testing.T) {
 
 type unavailableHistory struct{ cause error }
 
-func (h unavailableHistory) GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error) {
+func (h unavailableHistory) GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error) {
 	return nil, h.cause
 }
 
@@ -142,7 +143,7 @@ func TestNewMediaCenterReconcilesHistoryAndRetainsBorrowedStores(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = history.Close() })
-			row := &storage.ChatMessage{ID: "missing-history", Platform: "test", PlatformScopeID: "scope", PlatformMessageID: "message"}
+			row := &storage.ChatMessage{ID: "missing-history", Platform: "test", ChatID: "scope", PlatformMessageID: "message"}
 			if state != "missing" && state != "without history" {
 				if err := history.Repository().Append(t.Context(), row); err != nil {
 					t.Fatal(err)
@@ -160,7 +161,7 @@ func TestNewMediaCenterReconcilesHistoryAndRetainsBorrowedStores(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			key := HistoryMessage{ID: row.ID, Platform: row.Platform, ScopeID: row.PlatformScopeID, MessageID: row.PlatformMessageID}
+			key := HistoryMessage{ID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, ChatType: row.ChatType}
 			if state == "replaced" {
 				key.ID = "previous-history"
 			}
@@ -191,7 +192,7 @@ func TestNewMediaCenterReconcilesHistoryAndRetainsBorrowedStores(t *testing.T) {
 			} else if err != nil {
 				t.Fatal(err)
 			}
-			items, err := store.Media().FindHistory(t.Context(), key.Platform, key.ScopeID, key.MessageID)
+			items, err := store.Media().FindHistory(t.Context(), key.Platform, key.ChatType, key.ChatID, key.MessageID)
 			want := 1
 			if state == "missing" || state == "replaced" {
 				want = 0
@@ -205,7 +206,7 @@ func TestNewMediaCenterReconcilesHistoryAndRetainsBorrowedStores(t *testing.T) {
 			if _, err := store.Media().Get(t.Context(), item.ID); err != nil {
 				t.Fatal("Media closed borrowed media store", err)
 			}
-			_, err = history.Repository().GetByPlatformMessage(t.Context(), key.Platform, key.ScopeID, key.MessageID)
+			_, err = history.Repository().GetByPlatformMessage(t.Context(), key.Platform, key.ChatType, key.ChatID, key.MessageID)
 			if state == "missing" || state == "without history" {
 				if !errors.Is(err, storage.ErrNotFound) {
 					t.Fatalf("history lookup = %v", err)

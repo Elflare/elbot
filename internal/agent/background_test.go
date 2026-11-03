@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"elbot/internal/security"
+	"elbot/internal/testutil"
 	"encoding/json"
 	"errors"
 	"os"
@@ -56,7 +57,7 @@ KEEP_BACKGROUND_GUIDANCE`), 0600); err != nil {
 		}
 	})
 	ctx := workspace.WithPathScope(t.Context(), workspace.PathScope{Dir: root, Restricted: true})
-	ctx = contextinfo.WithBackgroundKind(ctx, contextinfo.BackgroundKindCron)
+	ctx = testutil.TaskContext(ctx, "cron")
 	return m, deps, tools, ctx
 }
 
@@ -64,8 +65,8 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 	m, deps, tools, ctx := newBackgroundAgent(t)
 	req := BackgroundRequest{
 		TargetPlatforms: []string{"telegram", "qqonebot"},
-		Kind:            "cron", Name: "report", Prompt: "report",
-		Actor:         contextinfo.Actor{ID: "cli:local", Platform: "cli"},
+		TaskType:        "cron", TaskID: "report", Prompt: "report",
+		Actor:         contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}},
 		ToolListNames: []string{"task_notes"},
 		ELwispTools:   []tool.ELwispToolDeclaration{{Name: "remote", CanonicalName: "event_remote", Description: "Remote", Risk: security.RiskLow, Schema: map[string]any{"type": "object", "properties": map[string]any{}}, EventKey: "event", Endpoint: "https://example.invalid"}},
 	}
@@ -120,7 +121,7 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 		t.Fatalf("changed declarations: before=%+v after=%+v err=%v", before, after, err)
 	}
 
-	foregroundScope := session.Scope{ActorID: "cli:local", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	foregroundScope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	foreground, err := m.sessions.Create(ctx, foregroundScope, session.CreateRequest{})
 	if err != nil {
 		t.Fatal(err)
@@ -131,7 +132,7 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 		"nested":              json.RawMessage(`{"keep":true}`),
 	}
 	copyID, err := m.CopyBackground(ctx, BackgroundCopyRequest{
-		SourceSessionID: row.ID, Scope: foregroundScope, Kind: "cron", Name: "copy", Metadata: metadata,
+		SourceSessionID: row.ID, Scope: foregroundScope, TaskType: "cron", TaskID: "copy", Metadata: metadata,
 	})
 	if err != nil || copyID == row.ID {
 		t.Fatalf("copy=%q err=%v", copyID, err)
@@ -194,7 +195,7 @@ func TestBackgroundCancellationDuringPreparation(t *testing.T) {
 			defer cancel()
 			results := make(chan error, 1)
 			go func() {
-				result, err := m.RunBackground(ctx, BackgroundRequest{Kind: "cron", Name: "cancel", Prompt: "run"})
+				result, err := m.RunBackground(ctx, BackgroundRequest{TaskType: "cron", TaskID: "cancel", Prompt: "run"})
 				if result.SessionID == "" {
 					results <- errors.New("lost prepared session ID")
 					return
@@ -244,11 +245,11 @@ func TestBackgroundCancellationDuringPreparation(t *testing.T) {
 
 func TestBackgroundCleanupSkipsBusySessions(t *testing.T) {
 	m, deps, _, ctx := newBackgroundAgent(t)
-	idle, err := m.sessions.PrepareBackground(ctx, session.Scope{Platform: "cli"}, session.BackgroundRequest{Kind: "cron", Name: "idle"})
+	idle, err := m.sessions.PrepareBackground(ctx, session.Scope{Platform: "cli"}, session.BackgroundRequest{TaskType: "cron", TaskID: "idle"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	busy, err := m.sessions.PrepareBackground(ctx, session.Scope{Platform: "cli"}, session.BackgroundRequest{Kind: "cron", Name: "busy"})
+	busy, err := m.sessions.PrepareBackground(ctx, session.Scope{Platform: "cli"}, session.BackgroundRequest{TaskType: "cron", TaskID: "busy"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +305,7 @@ func TestBackgroundCancellationDuringExecution(t *testing.T) {
 			results := make(chan BackgroundResult, 1)
 			errors := make(chan error, 1)
 			go func() {
-				result, err := m.RunBackground(ctx, BackgroundRequest{Kind: "cron", Name: "cancel", Prompt: "run"})
+				result, err := m.RunBackground(ctx, BackgroundRequest{TaskType: "cron", TaskID: "cancel", Prompt: "run"})
 				results <- result
 				errors <- err
 			}()

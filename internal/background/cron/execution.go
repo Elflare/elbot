@@ -12,7 +12,6 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
-	"elbot/internal/security"
 )
 
 func (s *Service) runTask(ctx context.Context, job Job, meta Metadata) (globalevents.LogResult, error) {
@@ -132,8 +131,8 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 		}
 		return state, globalevents.LogResult{ResultStatus: resultStatus, Content: content + fmt.Sprintf("\nerror=%v", err)}, err
 	}
-	actor := contextinfo.Actor{ID: security.ActorID(meta.CreatedBy.Platform, meta.CreatedBy.PlatformUserID), Platform: meta.CreatedBy.Platform, PlatformUserID: meta.CreatedBy.PlatformUserID, DisplayName: meta.CreatedBy.DisplayName, Role: contextinfo.RoleSuperadmin}
-	runRequest := background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), Prompt: cronPrompt(meta.Trigger.Message), SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}}
+	actor := contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: meta.CreatedBy.Platform, ID: meta.CreatedBy.ID}, Name: meta.CreatedBy.Name, Role: contextinfo.RoleSuperadmin}
+	runRequest := background.RunRequest{TaskType: background.KindCron, TaskID: job.Name, Name: meta.Title, Actor: actor, Prompt: cronPrompt(meta.Trigger.Message), SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}}
 	runRequest.TargetPlatforms = platforms
 	runRequest.NeedsElyphRules = true
 	runRequest.ToolListNames = meta.LLM.ToolListNames
@@ -238,7 +237,7 @@ func (s *Service) retryLLMResultFormat(ctx context.Context, job Job, meta Metada
 		}
 		return background.RunResult{SessionID: sessionID, TakenOver: taken, Outcome: "taken_over"}, CronLLMResult{}, globalevents.LogResult{ResultStatus: resultStatus, Content: content}, err
 	}
-	runRequest := background.RunRequest{Kind: background.KindCron, Name: job.Name, Title: meta.Title, Platform: meta.Target.SourcePlatform, Actor: actor, ScopeID: cronScopeID(job.Name), SessionID: sessionID, Prompt: cronFormatRetryPrompt(), SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}}
+	runRequest := background.RunRequest{TaskType: background.KindCron, TaskID: job.Name, Name: meta.Title, Actor: actor, SessionID: sessionID, Prompt: cronFormatRetryPrompt(), SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}}
 	runRequest.ModelProvider, runRequest.Model = model.Provider, model.Model
 	result, err := s.runner.RunBackground(ctx, runRequest)
 	if err != nil {

@@ -19,13 +19,17 @@ type IdentityResolver struct {
 func (r *IdentityResolver) Scope(ctx context.Context) session.Scope {
 	actor := r.Actor(ctx)
 	info, _ := contextinfo.ConversationFromContext(ctx)
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	if facts.Mode == "background" {
+		return session.Scope{Owner: actor.ActorIdentity, Platform: actor.Platform, TaskType: facts.TaskType, TaskID: facts.TaskID}
+	}
 	return session.Scope{
-		ConversationKind: info.Source.ConversationKind,
-		ActorID:          actor.ID,
-		PlatformUserID:   actor.PlatformUserID,
-		Platform:         info.Source.Platform,
-		PlatformScopeID:  info.Source.ScopeID,
-		IsCLI:            info.Source.Platform == r.cliPlatformName && actor.Role == contextinfo.RoleSuperadmin,
+		ChatType: info.Source.ChatType,
+		Owner:    actor.ActorIdentity,
+
+		Platform: info.Source.Platform,
+		ChatID:   info.Source.ChatID,
+		IsCLI:    info.Source.Platform == r.cliPlatformName && actor.Role == contextinfo.RoleSuperadmin,
 	}
 }
 
@@ -43,10 +47,10 @@ func (r *IdentityResolver) Actor(ctx context.Context) contextinfo.Actor {
 		return actor
 	}
 	info, ok := contextinfo.ConversationFromContext(ctx)
-	if !ok || info.Identity.PlatformUserID == "" {
+	if !ok {
 		return contextinfo.Actor{}
 	}
-	actor := r.permission.Actor(info.Source.Platform, info.Identity.PlatformUserID, info.Identity.DisplayName)
+	actor := r.permission.Actor(info.Source.Platform, info.Identity.ID, info.Identity.Name)
 	actor.Nickname, actor.GroupCard = info.Identity.Nickname, info.Identity.GroupCard
 	if msg, ok := MessageContextFrom(ctx); ok {
 		actor.GroupRole = msg.GroupRole
@@ -73,4 +77,10 @@ func NewIdentityResolver(deps IdentityResolverDeps) *IdentityResolver {
 		cliPlatformName: deps.CLIPlatformName,
 		permission:      deps.Permission,
 	}
+}
+
+// ExecutionMode 只供 Agent 内部编排消费已建立的执行模式。
+func ExecutionMode(ctx context.Context) string {
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	return facts.Mode
 }

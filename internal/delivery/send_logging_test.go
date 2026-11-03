@@ -61,7 +61,7 @@ func TestSendLoggingKeepsSourceResultAndPartialReceipt(t *testing.T) {
 		t.Fatal("cancellation log missing")
 	}
 	record = <-logs
-	if record.Level != slog.LevelInfo || record.ResultStatus != events.ResultCanceled || record.Identity != (events.LogIdentity{}) {
+	if record.Level != slog.LevelInfo || record.ResultStatus != events.ResultCanceled || record.Identity.SessionID == nil || *record.Identity.SessionID != "" {
 		t.Fatalf("cancellation record = %#v", record)
 	}
 	LogSendResult(t.Context(), Target{}, Text("notice"), events.LogResult{ResultStatus: events.ResultSucceeded})

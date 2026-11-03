@@ -33,12 +33,12 @@ import (
 
 func TestExecActionDefaultStdinIncludesEvent(t *testing.T) {
 	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
-	event := share.Event{Point: share.PointAgentInputPrepared, Actor: share.ActorContext{UserID: "alice"}, Message: share.MessagePayload{PlatformMessage: []byte(`[{"type":"json"}]`)}}
+	event := share.Event{Point: share.PointAgentInputPrepared, Actor: share.ActorContext{ID: "alice"}, Message: share.MessagePayload{PlatformMessage: []byte(`[{"type":"json"}]`)}}
 	got, _, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("stdin")}}}, event, false)
 	if err != nil {
 		t.Fatalf("runRule: %v", err)
 	}
-	if len(got.Outputs) != 1 || !strings.Contains(got.Outputs[0].Text, `"type":"request"`) || !strings.Contains(got.Outputs[0].Text, `"method":"event.handle"`) || !strings.Contains(got.Outputs[0].Text, `"user_id":"alice"`) || !strings.Contains(got.Outputs[0].Text, `"platform_message":[{"type":"json"}]`) {
+	if len(got.Outputs) != 1 || !strings.Contains(got.Outputs[0].Text, `"type":"request"`) || !strings.Contains(got.Outputs[0].Text, `"method":"event.handle"`) || !strings.Contains(got.Outputs[0].Text, `"id":"alice"`) || !strings.Contains(got.Outputs[0].Text, `"platform_message":[{"type":"json"}]`) {
 		t.Fatalf("outputs = %#v", got.Outputs)
 	}
 }

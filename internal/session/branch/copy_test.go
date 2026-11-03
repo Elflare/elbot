@@ -40,13 +40,13 @@ func TestBackgroundCopyHistoryAndMetadata(t *testing.T) {
 				}
 			}
 			target := scope()
-			target.ActorID, target.Platform, target.PlatformScopeID = "recipient", "other", "cron:copy"
+			target.Owner.ID, target.Platform, target.ChatID = "recipient", "other", "cron:copy"
 			metadata := storage.SessionMetadata{"unknown": json.RawMessage(`9007199254740993`), "nested": json.RawMessage(`{"keep":true}`), "title_source": json.RawMessage(`"wrong"`)}
-			row, err := f.s.CopyBackground(t.Context(), target, branch.BackgroundCopyRequest{SourceSessionID: source.ID, Kind: "cron", Name: "copy", Metadata: metadata})
+			row, err := f.s.CopyBackground(t.Context(), target, branch.BackgroundCopyRequest{SourceSessionID: source.ID, TaskType: "cron", TaskID: "copy", Metadata: metadata})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if row.Mode != storage.SessionModeBackground || row.OwnerID != target.ActorID || row.Platform != target.Platform || row.Title != "Cron: copy" {
+			if row.Mode != storage.SessionModeBackground || row.Owner != target.Owner || row.Platform != target.Platform || row.Title != "Cron: copy" {
 				t.Fatalf("copy: %+v", row)
 			}
 			for _, want := range []string{`"unknown":9007199254740993`, `"nested":{"keep":true}`, `"title_source":"cron"`, `"llm_origin"`} {
@@ -156,7 +156,7 @@ func TestCopyRechecksAfterUnlockedPreparation(t *testing.T) {
 				}
 				return prepared, nil
 			}
-			if _, err := f.s.CopyBackground(ctx, scope(), branch.BackgroundCopyRequest{SourceSessionID: source.ID, Kind: "cron"}); err == nil {
+			if _, err := f.s.CopyBackground(ctx, scope(), branch.BackgroundCopyRequest{SourceSessionID: source.ID, TaskType: "cron"}); err == nil {
 				t.Fatal("invalid copy committed")
 			}
 			if f.count(t) != wantCount {
@@ -182,7 +182,7 @@ func TestCopyRejectsUnsealedAndMalformedHistory(t *testing.T) {
 				mode = storage.SessionModeWork
 			}
 			source := f.source(t, mode)
-			req := branch.BackgroundCopyRequest{SourceSessionID: source.ID, Kind: "cron"}
+			req := branch.BackgroundCopyRequest{SourceSessionID: source.ID, TaskType: "cron"}
 			switch failure {
 			case "pending":
 				toolBatch(t, f, source.ID, "unfinished", true)

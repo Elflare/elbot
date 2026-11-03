@@ -2,6 +2,7 @@ package execution
 
 import (
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/contextinfo"
 
 	"context"
 
@@ -19,13 +20,13 @@ import (
 func TestCompactMessagesFiltersToolResultsAndFailedCalls(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
-	session := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local", Title: "compact"}
+	session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", Title: "compact", ChatType: "private"}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 	for _, record := range []*storage.ToolCallRecord{
-		{SessionID: session.ID, ToolCallID: "ok", ToolName: "shell", ActorID: "u", RiskLevel: "low", Success: true},
-		{SessionID: session.ID, ToolCallID: "failed", ToolName: "web", ActorID: "u", RiskLevel: "low", Success: false, Error: "boom"},
+		{SessionID: session.ID, ToolCallID: "ok", ToolName: "shell", Actor: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, RiskLevel: "low", Success: true},
+		{SessionID: session.ID, ToolCallID: "failed", ToolName: "web", Actor: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, RiskLevel: "low", Success: false, Error: "boom"},
 	} {
 		if err := store.ToolCalls().Create(ctx, record); err != nil {
 			t.Fatalf("create tool call: %v", err)

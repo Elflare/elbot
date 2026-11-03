@@ -107,7 +107,7 @@ func TestAgentBridgePassesFactsAndLeavesHandlerTimingToExecutor(t *testing.T) {
 		t.Fatal("duplicate connection accepted")
 	}
 	got, _, err := agent.points.ToolCallPrepared(t.Context(), agenthooks.Facts{
-		Session: agenthooks.Session{ID: "session"}, Actor: contextinfo.Actor{ID: "source"}, ReadOnlyCalls: true,
+		Session: agenthooks.Session{ID: "session"}, Actor: contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "source"}}, ReadOnlyCalls: true,
 	}, llm.ToolCallRequest{ID: "call", Name: "tool", Arguments: `{}`})
 	if err != nil || got != `{"edited":true}` || !reflect.DeepEqual(agent.requests, []string{"session:first", "session:second"}) || agent.finished != 2 {
 		t.Fatalf("got=%s requests=%v finished=%d err=%v", got, agent.requests, agent.finished, err)
@@ -200,7 +200,7 @@ func TestHookContextProjectsReplyWithoutChangingOriginalPlatformData(t *testing.
 		t.Fatalf("message=%+v", event.Message)
 	}
 	event.Message.PlatformMessage[0] = '!'
-	if raw[0] != '{' || event.Actor.ID != "" {
+	if raw[0] != '{' || event.Actor.Identity() != (contextinfo.ActorIdentity{}) {
 		t.Fatal("shared platform payload mutated or local identity invented")
 	}
 }

@@ -26,10 +26,10 @@ func TestPartialReportMapsSuccessAndRemainsRetryable(t *testing.T) {
 						logResult.ResultStatus = events.ResultCanceled
 					}
 				}
-				return delivery.Receipt{PlatformMessageIDs: []string{"partial"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ScopeID: "private:1001", PlatformMessageID: "partial"}}}, logResult, wantErr
+				return delivery.Receipt{PlatformMessageIDs: []string{"partial"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ChatType: "private", ChatID: "1001", PlatformMessageID: "partial"}}}, logResult, wantErr
 			}
 		}
-		return delivery.Receipt{PlatformMessageIDs: []string{"retry"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ScopeID: "private:1001", PlatformMessageID: "retry"}}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		return delivery.Receipt{PlatformMessageIDs: []string{"retry"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ChatType: "private", ChatID: "1001", PlatformMessageID: "retry"}}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	})
 	defer cleanup()
 	var queued QueuedLLMEvent
@@ -42,7 +42,7 @@ func TestPartialReportMapsSuccessAndRemainsRetryable(t *testing.T) {
 	if err := s.RunLLMEvent(ctx, queued.Event, queued.EventID); !errors.Is(err, wantErr) {
 		t.Fatalf("send error=%v", err)
 	}
-	assertReportMapping(t, s, "qqonebot", "private:1001", "partial")
+	assertReportMapping(t, s, "qqonebot", "private", "1001", "partial")
 	event, err := testRepo(s).snapshot(ctx, queued.EventID)
 	if err != nil || event.Status != StatusResultReady {
 		t.Fatalf("event=%#v/%v", event, err)

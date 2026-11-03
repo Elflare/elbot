@@ -27,7 +27,7 @@ type promptIdentity struct {
 func (i promptIdentity) Actor(context.Context) contextinfo.Actor { return i.actor }
 
 func TestPromptNamesUseQueriedGroups(t *testing.T) {
-	actor := contextinfo.Actor{ID: "test", Role: contextinfo.RoleUser}
+	actor := contextinfo.Actor{Role: contextinfo.RoleUser, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "test"}}
 	var kinds []string
 	provider := toolRunPromptProvider{
 		identity: promptIdentity{actor: actor},

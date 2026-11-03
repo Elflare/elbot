@@ -83,15 +83,15 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 	requestCtx, cancelRequest := context.WithCancel(context.Background())
 	defer cancelRequest()
 	ctx := turn.WithAttempt(turn.WithExecution(requestCtx, execution), "attempt")
-	ctx = agentshare.WithMessageContext(contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq", ScopeID: "cron:1"}}), agentshare.MessageContext{
+	ctx = agentshare.WithMessageContext(contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "qq", ChatType: "cron", ChatID: "1"}}), agentshare.MessageContext{
 
 		BufferAssistantOutput: true,
 	})
 	ctx = workspace.WithPathScope(ctx, workspace.PathScope{Dir: "/background/task", Restricted: true})
-	ctx = contextinfo.WithBackgroundKind(ctx, contextinfo.BackgroundKindCron)
+	ctx = testutil.TaskContext(ctx, "cron")
 	ctx = modelmgr.WithSelectionOverride(ctx, config.ModelSelection{Provider: "task", Model: "task"})
-	foreground, cancelForeground := context.WithCancel(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "remote:original"}}))
-	actor := contextinfo.Actor{ID: "cli:owner", Role: contextinfo.RoleSuperadmin}
+	foreground, cancelForeground := context.WithCancel(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ChatID: "remote:original", ChatType: "private"}}))
+	actor := contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}}
 	execution.Adopt(contextinfo.WithActor(foreground, actor), storage.Session{})
 	cancelForeground()
 	view := dialogue.ExecutionView{}
@@ -100,13 +100,13 @@ func TestExecutionViewKeepsRequestCancellationAndClearsBackgroundOverrides(t *te
 	if ok || msg.BufferAssistantOutput {
 		t.Fatalf("retained background routing: %+v", msg)
 	}
-	if info, ok := contextinfo.ConversationFromContext(refreshed); !ok || info.Source.ScopeID != "remote:original" {
+	if info, ok := contextinfo.ConversationFromContext(refreshed); !ok || info.Source.ChatID != "remote:original" {
 		t.Fatalf("foreground public facts = %+v, %v", info, ok)
 	}
 	if scope, ok := workspace.PathScopeFromContext(refreshed); ok {
 		t.Fatalf("retained path scope: %+v", scope)
 	}
-	if contextinfo.BackgroundContext(refreshed) {
+	if testutil.ExecutionMode(refreshed) == "background" {
 		t.Fatal("retained background identity")
 	}
 	models := newTestModels(t, testModelOptions{Providers: map[string]config.ProviderConfig{"p": {}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}})

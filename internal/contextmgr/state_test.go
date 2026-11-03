@@ -2,6 +2,7 @@ package contextmgr
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"strings"
 	"testing"
@@ -29,7 +30,7 @@ func TestUsageSnapshotsRestoreAndSaveFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	row := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local", Metadata: `{"tool_tags":["keep"],"last_usage":{"TotalTokens":3}}`}
+	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", Metadata: `{"tool_tags":["keep"],"last_usage":{"TotalTokens":3}}`, ChatType: "private"}
 	if err := store.Sessions().Create(ctx, row); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +81,7 @@ func TestRecordTurnWithoutUsagePreservesStoredAndObservedUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	row := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local", Metadata: `{"unknown":9007199254740993,"last_usage":{"TotalTokens":3}}`, UpdatedAt: time.Now().Add(-time.Hour)}
+	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", Metadata: `{"unknown":9007199254740993,"last_usage":{"TotalTokens":3}}`, UpdatedAt: time.Now().Add(-time.Hour), ChatType: "private"}
 	if err := store.Sessions().Create(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +124,7 @@ func TestRecordTurnInvalidContextRollsBackActivityAndUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	row := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local", Metadata: `{"context_compact":"invalid","last_usage":{"TotalTokens":3}}`, UpdatedAt: time.Now().Add(-time.Hour)}
+	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", Metadata: `{"context_compact":"invalid","last_usage":{"TotalTokens":3}}`, UpdatedAt: time.Now().Add(-time.Hour), ChatType: "private"}
 	if err := store.Sessions().Create(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +147,7 @@ func TestSeedMutationOwnsOnlyContextFields(t *testing.T) {
 	}
 	defer store.Close()
 	original := `{"context_compact":{"pending":true,"summary":"seed"},"last_usage":{"TotalTokens":40},"tool_tags":["t"],"unknown":9007199254740993,"title_source":"manual","workspace":{"dir":"work"}}`
-	row := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local", Metadata: original}
+	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", Metadata: original, ChatType: "private"}
 	if err := store.Sessions().Create(ctx, row); err != nil {
 		t.Fatal(err)
 	}

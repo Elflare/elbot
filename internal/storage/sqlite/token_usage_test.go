@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"elbot/internal/contextinfo"
 	"path/filepath"
 	"testing"
 
@@ -23,7 +24,7 @@ func TestContextSummaryNullableTokens(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newTestStore(t)
 			ctx := context.Background()
-			session := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local"}
+			session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 			if err := store.Sessions().Create(ctx, session); err != nil {
 				t.Fatal(err)
 			}
@@ -70,8 +71,8 @@ func TestNullableTokenMigrationPreservesExistingDataAndConstraints(t *testing.T)
 	sessions := &SessionRepository{db: db}
 	messages := &MessageRepository{db: db}
 	summaries := &ContextSummaryRepository{db: db}
-	session := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local"}
-	if err := sessions.Create(ctx, session); err != nil {
+	session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private"}
+	if _, err := db.Exec(`INSERT INTO sessions(id,owner_id,platform,platform_scope_id,mode,status,created_at,updated_at) VALUES(?,'cli:u','cli','local','work','active',?,?)`, session.ID, storage.FormatTime(storage.Now()), storage.FormatTime(storage.Now())); err != nil {
 		t.Fatal(err)
 	}
 	message := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleUser, Content: "original"}

@@ -33,7 +33,8 @@ type ReportDelivery struct {
 type CreateEventRequest struct {
 	MediaIDs         []string  // 创建事件时原子关联的输入媒体。
 	EventKey         string    // 事件来源的稳定业务标识。
-	TokenName        string    // 已认证来源标签。
+	OriginKind       string    // 已认证来源类型。
+	OriginName       string    // 已认证来源名称。
 	ElwispName       string    // 事件所属 Elwisp。
 	Source           string    // Elwisp 内的来源名称。
 	SourceID         string    // 来源内的事件标识，与 Elwisp、来源组成去重键。

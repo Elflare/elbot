@@ -37,7 +37,7 @@ func newRollbackFixture(t *testing.T) *rollbackFixture {
 	service := fileops.NewService(guard.CheckWrite)
 	binding := newRollbackTestBinding()
 	workspace := &testWorkspaceStore{dir: t.TempDir()}
-	base := workspacepath.WithWorkspaceStore(contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin}), workspace)
+	base := workspacepath.WithWorkspaceStore(contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}}), workspace)
 	edit := (EditFileTool{Rollback: service})
 	return &rollbackFixture{binding: binding, service: service, edit: edit, rollback: (RollbackFileTool{Service: service}), workspace: workspace, base: base}
 }
@@ -141,11 +141,11 @@ func TestRollbackToolPermissionsAndSessionExpiry(t *testing.T) {
 	f := newRollbackFixture(t)
 	f.write(t, "file", "new")
 	ctx := f.ctx()
-	userCtx := contextinfo.WithActor(ctx, contextinfo.Actor{ID: "user", Role: contextinfo.RoleUser})
+	userCtx := contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleUser, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "user"}})
 	if _, _, err := callTool(userCtx, (f.rollback).Definition(), rollbackRequest("file")); err == nil || !strings.Contains(err.Error(), "superadmin") {
 		t.Fatalf("user: %v", err)
 	}
-	background := workspacepath.WithPathScope(contextinfo.WithBackgroundKind(ctx, ""), workspacepath.PathScope{Dir: f.workspace.dir, Restricted: true})
+	background := workspacepath.WithPathScope(contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin}), workspacepath.PathScope{Dir: f.workspace.dir, Restricted: true})
 	if _, _, err := callTool(background, (f.rollback).Definition(), rollbackRequest("file")); err == nil {
 		t.Fatal("background rollback allowed")
 	}
@@ -203,7 +203,7 @@ func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 	if !info.Hidden || !info.SuperadminOnly || !info.ForegroundOnly || info.Risk != toolshare.RiskHigh || !slices.Equal(info.Tags, []string{"files"}) {
 		t.Fatalf("info: %+v", info)
 	}
-	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin})
+	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}})
 	resolver := discovery.NewResolver(registry)
 	list, err := resolver.Discover(ctx, nil)
 	if err != nil {
@@ -246,7 +246,7 @@ func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("duplicate dependencies: %d", count)
 	}
-	userCtx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "user", Role: contextinfo.RoleUser})
+	userCtx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "user"}})
 	details, err = resolver.DiscoverDetails(userCtx, []string{"edit_file"})
 	if err != nil {
 		t.Fatal(err)

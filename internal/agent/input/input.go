@@ -11,6 +11,7 @@ import (
 
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/command"
+	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 	sessionpkg "elbot/internal/session"
@@ -110,6 +111,9 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 		return err
 	}
 	ctx = locked
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	facts.Mode = session.Mode
+	ctx = contextinfo.WithExecution(ctx, facts)
 	release()
 	segments, _, err := c.hooks.AgentInputPrepared(ctx,
 		agentshare.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status},

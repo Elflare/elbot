@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -77,7 +78,7 @@ func TestMediaJSONReferenceTransactions(t *testing.T) {
 		}
 	}
 
-	session := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "test", PlatformScopeID: "s"}
+	session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "test", ID: "u"}, Platform: "test", ChatID: "s"}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatal(err)
 	}
@@ -119,10 +120,10 @@ func TestMediaJSONReferenceTransactions(t *testing.T) {
 		t.Fatalf("replace delivery: %v %v", ok, err)
 	}
 	assertOwner("cron", job.ID, ids[1])
-	if _, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "second", "bad", state("media:missing"), []storage.PlatformMessageMap{{Platform: "test", PlatformScopeID: "s", PlatformMessageID: "report", SessionID: session.ID, MessageID: msg.ID}}); err == nil {
+	if _, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, "second", "bad", state("media:missing"), []storage.PlatformMessageMap{{Platform: "test", ChatID: "s", PlatformMessageID: "report", SessionID: session.ID, MessageID: msg.ID}}); err == nil {
 		t.Fatal("accepted missing cron media")
 	}
-	if _, err := store.Messages().FindByPlatformMessage(ctx, "test", "s", "report"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := store.Messages().FindByPlatformMessage(ctx, "test", "", "s", "report"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("report mapping did not roll back: %v", err)
 	}
 	assertOwner("cron", job.ID, ids[1])
@@ -139,7 +140,7 @@ func TestNativePublicMaterialsRetainMediaAndAuditMissingReferences(t *testing.T)
 	if err := store.Media().Upsert(ctx, &storage.Media{ID: id, MIMEType: "image/png", Backend: "local"}); err != nil {
 		t.Fatal(err)
 	}
-	row := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "test"}
+	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "test", ID: "u"}, Platform: "test"}
 	if err := store.Sessions().Create(ctx, row); err != nil {
 		t.Fatal(err)
 	}

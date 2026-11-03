@@ -85,7 +85,7 @@ func TestQueryToolsQualification(t *testing.T) {
 	}
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser})
 	ctx = security.WithPermission(ctx, security.NewPermission("low", "high", nil))
-	background := contextinfo.WithBackgroundKind(ctx, "")
+	background := share.WithCallPolicy(ctx, share.CallPolicy{DisableForegroundTools: true})
 	model := contextinfo.WithModel(ctx, contextinfo.Model{APIType: "response"})
 	admin := contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	for _, tc := range []struct {

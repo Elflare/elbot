@@ -122,7 +122,7 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 			blocks = append(blocks, block)
 			result.NeedsElyphRules = result.NeedsElyphRules || (block.Format == elyph.Format && strings.TrimSpace(block.Content) != "")
 			for _, wrapper := range candidate.ActivateTools {
-				tools, err := s.preloadWrapper(ctx, sessionID, wrapper, contextinfo.BackgroundContext(ctx))
+				tools, err := s.preloadWrapper(ctx, sessionID, wrapper, share.PolicyFromContext(ctx).DisableForegroundTools)
 				if err != nil {
 					return share.SkillPreload{}, err
 				}
@@ -246,17 +246,9 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 func preloadLogRecord(ctx context.Context, sessionID string) globalevents.LogRecord {
 	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool", Identity: globalevents.LogIdentity{SessionID: &sessionID}}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
+	record.Identity.RunID = &facts.RunID
+	record.Identity.Attempt = &facts.Attempt
+	record.Identity.RequestID = &facts.RequestID
+	record.Identity.RootRequestID = &facts.RootRequestID
 	return record
 }

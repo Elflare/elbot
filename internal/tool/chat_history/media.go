@@ -46,7 +46,7 @@ func (m *Manager) getMedia(ctx context.Context, req share.MediaRequest, imagesOn
 		}
 		entry, ok := known[id]
 		if !ok {
-			key := share.MessageKey{Platform: chat.Platform, ScopeID: chat.ScopeID, MessageID: id}
+			key := share.MessageKey{Platform: chat.Platform, ChatID: chat.ChatID, MessageID: id, ChatType: chat.ChatType}
 			entry.message, entry.err = m.backend.GetMessage(ctx, key)
 			known[id] = entry
 		}

@@ -105,3 +105,8 @@ func (s *Supervisor) RecordActivity(ctx context.Context, binding *Binding) error
 func (s *Supervisor) SessionIdle(ctx context.Context, sessionID string) error {
 	return s.control.SessionIdle(ctx, sessionID)
 }
+
+// ResolveReference 提供引用消息的续接判定，不暴露 Session 模式给 Platform。
+func (s *Supervisor) ResolveReference(ctx context.Context, scope Scope, message storage.Message) (resumeID, forkID string, omitReference bool, err error) {
+	return s.control.ResolveReference(ctx, share.Scope(scope), message)
+}

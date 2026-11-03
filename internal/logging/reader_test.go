@@ -2,22 +2,36 @@ package logging
 
 import (
 	"context"
+	"elbot/internal/events"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
 
+func testLogLine(t *testing.T, fields map[string]any) string {
+	t.Helper()
+	record := map[string]any{"time": "2026-06-03T15:00:00Z", "category": "audit", "level": "INFO", "event": "tool_call_completed", "module": "tool", "type": "json", "content": map[string]any{}}
+	for key, value := range fields {
+		record[key] = value
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data) + "\n"
+}
+
 func TestReaderStopsBeforeOlderOversizedLine(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "elbot-"+time.Now().Format("2006-01-02")+".log")
-	content := strings.Repeat("x", maxLogLineBytes+1) + "\nlevel=INFO msg=latest\n"
+	content := strings.Repeat("x", maxLogLineBytes+1) + "\n" + testLogLine(t, map[string]any{"type": "text", "content": "latest"})
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -30,10 +44,10 @@ func TestReaderStopsBeforeOlderOversizedLine(t *testing.T) {
 func TestReaderEventSetFiltersBeforeLimit(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit-"+time.Now().Format("2006-01-02")+".log")
-	content := "level=INFO event=tool_call_prepared msg=start\n" +
-		"level=INFO event=hook_tool_call_completed msg=hook\n" +
-		"level=INFO event=TOOL_CALL_COMPLETED msg=end\n" +
-		"level=INFO event=tool_call_completed_extra msg=unrelated\n"
+	content := testLogLine(t, map[string]any{"event": "tool_call_prepared", "type": "text", "content": "start"}) +
+		testLogLine(t, map[string]any{"event": "hook_tool_call_completed", "type": "text", "content": "hook"}) +
+		testLogLine(t, map[string]any{"event": "TOOL_CALL_COMPLETED", "type": "text", "content": "end"}) +
+		testLogLine(t, map[string]any{"event": "tool_call_completed_extra", "type": "text", "content": "unrelated"})
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -52,18 +66,19 @@ func TestReaderEventSetFiltersBeforeLimit(t *testing.T) {
 	}
 }
 
-func TestReaderParsesAndFiltersTextLogs(t *testing.T) {
+func TestReaderParsesAndFiltersJSONLogs(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "audit-"+time.Now().Format("2006-01-02")+".log")
-	content := "time=\"2026-06-03 15:00:00\" level=INFO msg=\"audit event\" event=tool_call risk=high tool=shell error=\"bad thing\"\n" +
-		"time=\"2026-06-03 15:01:00\" level=INFO msg=\"audit event\" event=llm_usage model=foo total_tokens=42\n"
+	wanted := `{"risk":"high","tool":"shell","error":"bad thing"}`
+	content := testLogLine(t, map[string]any{"content": json.RawMessage(wanted)}) +
+		testLogLine(t, map[string]any{"event": "llm_usage", "content": map[string]any{"model": "foo", "total_tokens": 42}})
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write log: %v", err)
 	}
 
 	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{
 		Prefix: "audit",
-		Fields: map[string]string{"event": "tool_call"}, ContentFields: map[string]string{"risk": "high"},
+		Fields: map[string]string{"event": "tool_call_completed"}, ContentFields: map[string]string{"risk": "high"},
 	})
 	if err != nil {
 		t.Fatalf("Query: %v", err)
@@ -72,7 +87,7 @@ func TestReaderParsesAndFiltersTextLogs(t *testing.T) {
 		t.Fatalf("entries = %#v", entries)
 	}
 	entry := entries.Entries[0]
-	if entry.Content != "audit event" || entry.LegacyFields["tool"] != "shell" || entry.LegacyFields["error"] != "bad thing" {
+	if entry.Content != wanted || entry.Type != events.ContentJSON {
 		t.Fatalf("entry = %#v", entry)
 	}
 }
@@ -80,9 +95,9 @@ func TestReaderParsesAndFiltersTextLogs(t *testing.T) {
 func TestReaderContainsMatchesStructuredFieldsAndRaw(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "elbot-"+time.Now().Format("2006-01-02")+".log")
-	content := "time=\"2026-06-03 15:00:00\" level=INFO msg=\"user input\" event=user_message text=\"hello world\"\n" +
-		"time=\"2026-06-03 15:01:00\" level=INFO msg=\"tool call\" event=tool_call arguments=\"{\\\"path\\\":\\\"a.txt\\\"}\" result=\"file content\"\n" +
-		"time=\"2026-06-03 15:02:00\" level=INFO msg=other custom_field=needle\n"
+	content := testLogLine(t, map[string]any{"event": "user_message", "content": map[string]any{"text": "hello world"}}) +
+		testLogLine(t, map[string]any{"content": map[string]any{"arguments": `{"path":"a.txt"}`, "result": "file content"}}) +
+		testLogLine(t, map[string]any{"module": "needle", "type": "text", "content": "other"})
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write log: %v", err)
 	}
@@ -91,7 +106,7 @@ func TestReaderContainsMatchesStructuredFieldsAndRaw(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
-	if len(entries.Entries) != 1 || entries.Entries[0].LegacyFields["event"] != "tool_call" {
+	if len(entries.Entries) != 1 || entries.Entries[0].EventName != "tool_call_completed" {
 		t.Fatalf("entries = %#v", entries)
 	}
 
@@ -107,8 +122,9 @@ func TestReaderContainsMatchesStructuredFieldsAndRaw(t *testing.T) {
 func TestReaderFieldContainsMatchesOnlyRequestedField(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "elnis-"+time.Now().Format("2006-01-02")+".log")
-	content := "time=\"2026-06-03 15:00:00\" level=INFO msg=\"elnis event accepted\" tags=\"[\\\"windows\\\",\\\"onedrive\\\"]\" raw_text=watchdog\n" +
-		"time=\"2026-06-03 15:01:00\" level=INFO msg=\"elnis event accepted\" tags=\"[\\\"watchdog\\\"]\" raw_text=onedrive\n"
+	wanted := `{"tags":["windows","onedrive"],"raw_text":"watchdog"}`
+	content := testLogLine(t, map[string]any{"content": json.RawMessage(wanted)}) +
+		testLogLine(t, map[string]any{"content": map[string]any{"tags": []string{"watchdog"}, "raw_text": "onedrive"}})
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write log: %v", err)
 	}
@@ -117,7 +133,7 @@ func TestReaderFieldContainsMatchesOnlyRequestedField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
-	if len(entries.Entries) != 1 || entries.Entries[0].LegacyFields["tags"] != "[\"windows\",\"onedrive\"]" {
+	if len(entries.Entries) != 1 || entries.Entries[0].Content != wanted {
 		t.Fatalf("entries = %#v", entries)
 	}
 
@@ -125,7 +141,7 @@ func TestReaderFieldContainsMatchesOnlyRequestedField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Query both tags: %v", err)
 	}
-	if len(entries.Entries) != 1 || entries.Entries[0].LegacyFields["tags"] != "[\"windows\",\"onedrive\"]" {
+	if len(entries.Entries) != 1 || entries.Entries[0].Content != wanted {
 		t.Fatalf("entries = %#v", entries)
 	}
 }
@@ -133,9 +149,9 @@ func TestReaderFieldContainsMatchesOnlyRequestedField(t *testing.T) {
 func TestReaderAppliesMinLevelAndLimit(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "elbot-"+time.Now().Format("2006-01-02")+".log")
-	content := "time=\"2026-06-03 15:00:00\" level=DEBUG msg=debug\n" +
-		"time=\"2026-06-03 15:01:00\" level=INFO msg=info\n" +
-		"time=\"2026-06-03 15:02:00\" level=ERROR msg=error\n"
+	content := testLogLine(t, map[string]any{"level": "DEBUG", "type": "text", "content": "debug"}) +
+		testLogLine(t, map[string]any{"type": "text", "content": "info"}) +
+		testLogLine(t, map[string]any{"level": "ERROR", "type": "text", "content": "error"})
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write log: %v", err)
 	}
@@ -343,7 +359,11 @@ func TestReaderCrossDayFiltersAndPhysicalOrder(t *testing.T) {
 	paths := logPaths(dir, "audit", 3)
 	// Event timestamps need not be monotonic within a file. Keep write order.
 	line := func(hour, module, detail string) string {
-		return fmt.Sprintf("time=%q level=WARN msg=%q event=hook_tool_call_completed module=%s detail=%q tags=%q\n", "2026-06-03 "+hour+":00:00", "摘要\n匹配", module, detail, `["tag"]`)
+		stamp, err := time.ParseInLocation("2006-01-02 15:04:05", "2026-06-03 "+hour+":00:00", time.Local)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return testLogLine(t, map[string]any{"time": stamp.Format(time.RFC3339), "level": "WARN", "event": "hook_tool_call_completed", "module": module, "content": map[string]any{"summary": "摘要\n匹配", "detail": detail, "tags": []string{"tag"}}})
 	}
 	if err := os.WriteFile(paths[0], []byte(line("12", "hook", "详情\n目标")+line("11", "hook", "详情\n目标")+line("13", "agent", "详情\n目标")), 0o600); err != nil {
 		t.Fatal(err)
@@ -358,7 +378,7 @@ func TestReaderCrossDayFiltersAndPhysicalOrder(t *testing.T) {
 		Prefix: "audit", Days: 3, Limit: 3, MinLevel: "warn", Since: &since, Until: &until,
 		Fields:               map[string]string{"module": "hook", "event": "hook_tool_call_completed"},
 		ContentFieldContains: map[string][]string{"tags": {"tag"}},
-		Contains:             "详情\n目标", ContentContains: "摘要\n匹配",
+		Contains:             `详情\n目标`, ContentContains: `摘要\n匹配`,
 	})
 	if err != nil || len(entries.Entries) != 3 {
 		t.Fatalf("entries=%v err=%v", entries, err)
@@ -368,7 +388,7 @@ func TestReaderCrossDayFiltersAndPhysicalOrder(t *testing.T) {
 			t.Fatalf("order: %v", entries)
 		}
 	}
-	entries, err = (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "audit", Contains: "摘要\n匹配"})
+	entries, err = (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "audit", Contains: `摘要\n匹配`})
 	if err != nil || len(entries.Entries) != 3 {
 		t.Fatalf("decoded summary: count=%d err=%v", len(entries.Entries), err)
 	}
@@ -377,7 +397,7 @@ func TestReaderCrossDayFiltersAndPhysicalOrder(t *testing.T) {
 func TestReaderLimitSkipsOlderFilesAndPropagatesReadErrors(t *testing.T) {
 	dir := t.TempDir()
 	paths := logPaths(dir, "elbot", 2)
-	if err := os.WriteFile(paths[0], []byte("level=INFO msg=latest\n"), 0o600); err != nil {
+	if err := os.WriteFile(paths[0], []byte(testLogLine(t, map[string]any{"type": "text", "content": "latest"})), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Mkdir(paths[1], 0o700); err != nil {
@@ -394,11 +414,26 @@ func TestReaderLimitSkipsOlderFilesAndPropagatesReadErrors(t *testing.T) {
 	}
 }
 
-func TestReaderContainsDecodedDetailAndRaw(t *testing.T) {
-	entry := parseLogLine("msg=" + strconv.Quote("摘要\n下一行") + " detail=" + strconv.Quote("详情\n下一行") + " custom=value")
-	for _, needle := range []string{"摘要\n下一行", "详情\n下一行", "custom=value"} {
+func TestReaderContainsDecodedTextAndRaw(t *testing.T) {
+	entry := LogEntry{Content: "摘要\n下一行", Raw: testLogLine(t, map[string]any{"module": "custom", "type": "text", "content": "摘要\n下一行"})}
+	for _, needle := range []string{"摘要\n下一行", `"module":"custom"`} {
 		if !matchLogEntry(entry, LogQuery{Contains: needle}) {
 			t.Fatalf("not matched: %q", needle)
+		}
+	}
+}
+
+func TestActorFiltersMatchEachExactField(t *testing.T) {
+	entry := LogEntry{Type: events.ContentJSON, Content: `{"actor":{"platform":"qqonebot","id":"user:42","name":"Alice"},"chat":{"platform":"telegram","chat_type":"group","id":"42","name":"Alice"},"summary":"Alice"}`}
+	for _, tc := range []struct {
+		field, value string
+		want         bool
+	}{
+		{"actor.platform", "qqonebot", true}, {"actor.id", "user:42", true}, {"actor.name", "Alice", true},
+		{"actor.platform", "telegram", false}, {"actor.id", "42", false}, {"actor.name", "alice", false},
+	} {
+		if got := matchLogEntry(entry, LogQuery{ContentFields: map[string]string{tc.field: tc.value}}); got != tc.want {
+			t.Fatalf("%s=%q: %t", tc.field, tc.value, got)
 		}
 	}
 }

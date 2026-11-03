@@ -34,7 +34,7 @@ func TestGroupForwardHistoryKeepsPlaceholderWithoutFetching(t *testing.T) {
 	if handler.text != "前[forward]后" {
 		t.Fatalf("text=%q", handler.text)
 	}
-	row, err := history.Repository().GetByPlatformMessage(ctx, "qqonebot", "group:9", "123")
+	row, err := history.Repository().GetByPlatformMessage(ctx, "qqonebot", "group", "9", "123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestForwardReferenceExpandsOneLayerInOrder(t *testing.T) {
 					t.Fatalf("original reference positions changed: %q", got)
 				}
 				if repo != nil {
-					row, err := repo.GetByPlatformMessage(ctx, "qqonebot", scopeID(original), "987654321")
+					row, err := repo.GetByPlatformMessage(ctx, "qqonebot", oneBotChatType(original), scopeID(original), "987654321")
 					if err != nil {
 						t.Fatal(err)
 					}

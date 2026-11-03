@@ -43,7 +43,7 @@ func TestStatusInFlightWriteKeepsRemoteConnection(t *testing.T) {
 				finished <- err
 				return err
 			}
-			scope := session.Scope{ActorID: "cli:user", Platform: "cli", PlatformScopeID: "user"}
+			scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "user"}, Platform: "cli", ChatID: "user", ChatType: "private"}
 			old := &BindingSnapshot{Scope: scope, SessionID: "old", Version: 1}
 			next := &BindingSnapshot{Scope: scope, SessionID: "new", Version: 2}
 			// 大载荷加暂停读取制造真实 TCP 背压，确保取消发生在写入期间。
@@ -95,7 +95,7 @@ func TestStatusInFlightWriteKeepsRemoteConnection(t *testing.T) {
 			if err := d.Close(ctx); err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err := s.SendTo(ctx, delivery.Target{Platform: "cli", PrivateUserID: "user"}, []delivery.Output{delivery.Text("still connected")}); err != nil {
+			if _, _, err := s.SendTo(ctx, delivery.Target{Platform: "cli", ChatType: "private", ChatID: "user"}, []delivery.Output{delivery.Text("still connected")}); err != nil {
 				t.Fatal(err)
 			}
 			var message remoteMessage

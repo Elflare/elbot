@@ -13,13 +13,13 @@ import (
 // Manager 独占绑定与准入状态；业务资格、持久化和闲置策略归调用方。
 type Manager struct {
 	mu             sync.Mutex
-	current        map[string]*share.Binding // Scope.Key 到当前激活；解绑即删除。
-	gates          map[string]*scopeGate     // 仅保留仍被持有或等待的准入锁。
-	bindingVersion uint64                    // 所有绑定变化共用的版本，解绑也递增。
-	active         int                       // 已接纳的准入调用，包含等待和锁外事件交付。
-	closed         bool                      // 已停止接纳新准入及订阅。
-	stop           chan struct{}             // 唤醒正在等待准入的调用。
-	idle           chan struct{}             // 停止接纳后，所有准入调用已释放。
+	current        map[share.ScopeKey]*share.Binding // Scope.Key 到当前激活；解绑即删除。
+	gates          map[admissionKey]*scopeGate       // 仅保留仍被持有或等待的准入锁。
+	bindingVersion uint64                            // 所有绑定变化共用的版本，解绑也递增。
+	active         int                               // 已接纳的准入调用，包含等待和锁外事件交付。
+	closed         bool                              // 已停止接纳新准入及订阅。
+	stop           chan struct{}                     // 唤醒正在等待准入的调用。
+	idle           chan struct{}                     // 停止接纳后，所有准入调用已释放。
 	closeOnce      sync.Once
 	done           chan struct{} // 准入、事件回调及自有状态全部退出。
 	changed        *signal.Signal[BindingChangedEvent, signal.Empty]
@@ -29,7 +29,7 @@ var _ share.BindingCoordinator = (*Manager)(nil)
 
 func NewManager() *Manager {
 	return &Manager{
-		current: make(map[string]*share.Binding), gates: make(map[string]*scopeGate),
+		current: make(map[share.ScopeKey]*share.Binding), gates: make(map[admissionKey]*scopeGate),
 		stop: make(chan struct{}), idle: make(chan struct{}), done: make(chan struct{}),
 		changed: signal.New[BindingChangedEvent, signal.Empty]("session.binding_changed"),
 	}

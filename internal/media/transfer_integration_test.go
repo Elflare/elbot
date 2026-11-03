@@ -164,7 +164,7 @@ func TestMediaCenterHistoryAndBoundedImport(t *testing.T) {
 	if _, err := m.ImportReader(t.Context(), strings.NewReader("body"), -1, Input{}, ImportLimits{MaxImportBytes: 3}); err == nil {
 		t.Fatal("ignored decoded byte limit")
 	}
-	row := HistoryMessage{ID: "history", Platform: "p", ScopeID: "s", MessageID: "m", Media: []PlatformMedia{{Type: "file", PlatformFileID: "native"}}}
+	row := HistoryMessage{ID: "history", Platform: "p", ChatID: "s", MessageID: "m", Media: []PlatformMedia{{Type: "file", PlatformFileID: "native"}}}
 	calls := 0
 	resolver := func(context.Context, string, PlatformMedia, int64) (delivery.Source, error) {
 		calls++

@@ -142,7 +142,7 @@ func TestHistoryBatchBudgetDuplicatesAndAssociations(t *testing.T) {
 		},
 	}
 	m := NewManager(objects, Options{MaxImportBytes: 100})
-	row := HistoryMessage{ID: "history", Platform: "p", ScopeID: "s", MessageID: "m", Media: []PlatformMedia{{Type: "file", PlatformFileID: "fail"}, {Type: "file", PlatformFileID: "two"}, {Type: "file"}, {Type: "file"}, {Type: "file"}}}
+	row := HistoryMessage{ID: "history", Platform: "p", ChatID: "s", MessageID: "m", Media: []PlatformMedia{{Type: "file", PlatformFileID: "fail"}, {Type: "file", PlatformFileID: "two"}, {Type: "file"}, {Type: "file"}, {Type: "file"}}}
 	var requests []HistoryMediaRequest
 	for _, index := range []int{1, 1, 2, 2, 5, 3, 4, 0, 9} {
 		requests = append(requests, HistoryMediaRequest{Message: row, Index: index})
@@ -189,7 +189,7 @@ func TestHistoryBatchExistingIDAndIdentityIsolation(t *testing.T) {
 	m := NewManager(objects, Options{})
 	var requests []HistoryMediaRequest
 	for _, p := range []string{"a", "b"} {
-		requests = append(requests, HistoryMediaRequest{Message: HistoryMessage{ID: "history", Platform: p, ScopeID: "s", MessageID: "m", Media: []PlatformMedia{{Type: "file", MediaID: p}}}, Index: 1})
+		requests = append(requests, HistoryMediaRequest{Message: HistoryMessage{ID: "history", Platform: p, ChatID: "s", MessageID: "m", Media: []PlatformMedia{{Type: "file", MediaID: p}}}, Index: 1})
 	}
 	results, err := m.GetHistoryMediaBatch(t.Context(), requests, nil, HistoryFetchOptions{MaxFetchAttempts: 1})
 	if err != nil || results[0].Media.ID != "a" || !errors.Is(results[1].Err, ErrHistoryFetchLimit) || len(keys) != 2 || keys[0] == keys[1] || !reflect.DeepEqual(ids, []string{"a"}) || saves != 1 {

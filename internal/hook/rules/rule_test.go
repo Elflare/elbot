@@ -18,7 +18,7 @@ import (
 
 func TestRuleNormalizeFlatConditionAndAction(t *testing.T) {
 	rule := Rule{
-		If:     "platform.name",
+		If:     "chat.platform",
 		Op:     share.MatchFull,
 		Value:  "qqonebot",
 		Action: "send",
@@ -29,7 +29,7 @@ func TestRuleNormalizeFlatConditionAndAction(t *testing.T) {
 	if err := rule.normalize(); err != nil {
 		t.Fatalf("normalize: %v", err)
 	}
-	if len(rule.Match) != 1 || rule.Match[0].Field != "platform.name" || rule.Match[0].Op != share.MatchFull {
+	if len(rule.Match) != 1 || rule.Match[0].Field != "chat.platform" || rule.Match[0].Op != share.MatchFull {
 		t.Fatalf("match = %#v", rule.Match)
 	}
 	if len(rule.Actions) != 1 || rule.Actions[0].Type != "send" || rule.Actions[0].Text != "connected" || rule.Actions[0].Timing != delivery.DeliveryAfterAssistant {
@@ -68,7 +68,7 @@ func TestRuleNormalizeAlwaysAndPattern(t *testing.T) {
 func TestRuleNormalizeKeepsListFormat(t *testing.T) {
 	rule := Rule{
 		Match: []share.Condition{
-			{Field: "platform.name", Op: share.MatchFull, Value: "qqonebot"},
+			{Field: "chat.platform", Op: share.MatchFull, Value: "qqonebot"},
 			{Field: "message.text", Op: share.MatchContains, Value: "猫"},
 		},
 		Actions: []Action{

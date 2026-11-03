@@ -61,12 +61,7 @@ func (m *Manager) AddPlatform(name string, validate func(events.NotificationTarg
 	if _, ok := m.platforms[name]; ok {
 		return nil, fmt.Errorf("notification platform %q already registered", name)
 	}
-	s := signal.New[events.Notification, events.NotificationReceipt]("notification."+name, signal.Options[events.Notification]{Required: true, Single: true, Key: func(n events.Notification) string {
-		if n.Target.ID != "" {
-			return string(n.Target.Kind) + "\x00" + n.Target.ID
-		}
-		return "scope\x00" + n.Target.ScopeID
-	}, Before: func(ctx context.Context, _ events.Notification) error {
+	s := signal.New[events.Notification, events.NotificationReceipt]("notification."+name, signal.Options[events.Notification]{Required: true, Single: true, Key: func(n events.Notification) any { return n.Target }, Before: func(ctx context.Context, _ events.Notification) error {
 		if binding, ok := session.BindingFromContext(ctx); ok && !binding.Valid() {
 			return context.Canceled
 		}
@@ -79,13 +74,10 @@ func (m *Manager) route(ctx context.Context, n events.Notification) *signal.Emis
 	if strings.TrimSpace(n.Text) == "" {
 		return signal.Resolved(signal.Result[events.NotificationReceipt]{Err: errors.New("notification text is empty")})
 	}
-	if contextinfo.BackgroundContext(ctx) && n.Target == (events.NotificationTarget{}) {
-		return signal.Resolved(signal.Result[events.NotificationReceipt]{})
-	}
 	if n.Origin != nil {
 		ctx = contextinfo.WithConversation(ctx, *n.Origin)
 		if n.Target == (events.NotificationTarget{}) {
-			n.Target = events.NotificationTarget{Platform: n.Origin.Source.Platform, Kind: n.Origin.Source.ConversationKind, ID: n.Origin.Source.ConversationID, ScopeID: n.Origin.Source.ScopeID}
+			n.Target = events.NotificationTarget{Platform: n.Origin.Source.Platform, ChatType: n.Origin.Source.ChatType, ID: n.Origin.Source.ChatID}
 		}
 	}
 	if n.Target.Platform == "" {
@@ -108,7 +100,7 @@ func (m *Manager) route(ctx context.Context, n events.Notification) *signal.Emis
 	if errors.Is(err, signal.ErrQueueFull) {
 		// Logging has its own bounded signal and category queues. Do not wait for
 		// the logger here: a congested platform must not monopolize routing.
-		_, _ = events.EmitLogAsync(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_queue_full", Module: "notification", Type: events.ContentText, Content: fmt.Sprintf("notification queue full: platform=%s kind=%s target=%s", n.Target.Platform, n.Target.Kind, n.Target.ID), ContentLimit: 4096, ResultStatus: events.ResultFailed})
+		_, _ = events.EmitLogAsync(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_queue_full", Module: "notification", Type: events.ContentText, Content: fmt.Sprintf("notification queue full: platform=%s chat_type=%s id=%s", n.Target.Platform, n.Target.ChatType, n.Target.ID), ContentLimit: 4096, ResultStatus: events.ResultFailed})
 	}
 	if e == nil {
 		return signal.Resolved(signal.Result[events.NotificationReceipt]{Err: err})

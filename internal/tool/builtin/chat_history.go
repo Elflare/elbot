@@ -36,8 +36,9 @@ type ReplyToChatHistoryMessageTool struct {
 }
 
 type searchChatHistoryArgs struct {
-	Platform json.RawMessage `json:"platform"` // 保留字段是否提供，显式 null 也交查询层按空值处理。
-	Scope    json.RawMessage `json:"scope"`    // 聊天范围的显式输入，仅后台允许。
+	Platform json.RawMessage `json:"platform"`  // 保留字段是否提供，显式 null 也交查询层按空值处理。
+	ChatType json.RawMessage `json:"chat_type"` // 会话类型的显式输入，仅后台允许。
+	ChatID   json.RawMessage `json:"chat_id"`   // 原生会话 ID 的显式输入，仅后台允许。
 	// Full 只解除单条消息限长，查询结果总量仍受限制。
 	Full      bool   `json:"full"`
 	Limit     int    `json:"limit"`
@@ -73,12 +74,13 @@ func (t ReplyToChatHistoryMessageTool) Definition() toolshare.ToolDefinition {
 
 func searchChatHistoryBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("search_chat_history").
-		Description("查聊天历史。前台→当前聊天，禁传platform/scope；后台→platform+scope非空必填。起始时间优先级：有效since > hours>0 > days>0。").
+		Description("查聊天历史。前台→当前聊天，禁传platform/chat_type/chat_id；后台→platform+chat_type+chat_id非空必填。起始时间优先级：有效since > hours>0 > days>0。").
 		Risk(toolshare.RiskLow).
 		Tags("chat").
 		DependsOn("get_chat_history_around", "reply_to_chat_history_message", "get_media").
 		String("platform", "目标平台，如qqofficial、qqonebot、telegram。").
-		String("scope", "目标聊天，如c2c:用户openid、group:群ID。").
+		String("chat_type", "目标会话类型：private、group、channel、cli。").
+		String("chat_id", "目标会话的原生 ID。").
 		String("query", "正文关键词，空白/逗号/中文逗号/|分隔；空→不过滤。").
 		String("query_mode", "关键词组合，默认or。", toolshare.Enum("or", "and")).
 		String("user", "用户ID精确匹配或昵称子串；空→不过滤；不解析@或“我”。").
@@ -130,10 +132,16 @@ func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.Ca
 			return nil, fmt.Errorf("parse platform: %w", err)
 		}
 	}
-	if len(args.Scope) > 0 {
-		request.Scope = new(string)
-		if err := json.Unmarshal(args.Scope, request.Scope); err != nil {
-			return nil, fmt.Errorf("parse scope: %w", err)
+	if len(args.ChatType) > 0 {
+		request.ChatType = new(contextinfo.ChatType)
+		if err := json.Unmarshal(args.ChatType, request.ChatType); err != nil {
+			return nil, fmt.Errorf("parse chat_type: %w", err)
+		}
+	}
+	if len(args.ChatID) > 0 {
+		request.ChatID = new(string)
+		if err := json.Unmarshal(args.ChatID, request.ChatID); err != nil {
+			return nil, fmt.Errorf("parse chat_id: %w", err)
 		}
 	}
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (*toolshare.Result, string, error) {
@@ -145,8 +153,8 @@ func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.Ca
 			return nil, err.Error(), err
 		}
 		label := "当前聊天历史"
-		if contextinfo.BackgroundContext(ctx) {
-			label = fmt.Sprintf("聊天历史（platform=%s，scope=%s）", strings.TrimSpace(*request.Platform), strings.TrimSpace(*request.Scope))
+		if request.Platform != nil {
+			label = fmt.Sprintf("聊天历史（platform=%s，chat_type=%s，chat_id=%s）", strings.TrimSpace(*request.Platform), *request.ChatType, strings.TrimSpace(*request.ChatID))
 		}
 		if len(rows) == 0 {
 			result := &toolshare.Result{Content: "没有查到符合条件的" + label + "记录。"}
@@ -157,7 +165,7 @@ func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.Ca
 			line := formatChatHistoryMedia(row, "", args.Full)
 			lines = append(lines, line)
 		}
-		if !contextinfo.BackgroundContext(ctx) {
+		if request.Platform == nil {
 			lines = append(lines, "仅在需要媒体时调用 get_media(message_id=[\"...\"], media_index=[[1]]) 获取媒体 ID；可用 get_chat_history_around(message_id=\"...\") 查看附近上下文；可用 reply_to_chat_history_message(message_id=\"...\", message=\"...\") 引用回复。")
 			if hint := viewImageHistoryHint(ctx, t.viewImageAvailable); hint != "" {
 				lines = append(lines, hint)

@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 func TestPrepareBackgroundKeepsCurrentAndPreservesOtherFields(t *testing.T) {
 	s, store := newTestService(t)
 	ctx := context.Background()
-	scope := Scope{ActorID: "u", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	current, err := s.Create(ctx, scope, CreateRequest{})
 	if err != nil {
 		t.Fatal(err)
@@ -20,7 +21,7 @@ func TestPrepareBackgroundKeepsCurrentAndPreservesOtherFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	row, err := s.PrepareBackground(ctx, scope, BackgroundRequest{Kind: "cron", Name: "task"})
+	row, err := s.PrepareBackground(ctx, scope, BackgroundRequest{TaskType: "cron", TaskID: "task"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +41,7 @@ func TestPrepareBackgroundKeepsCurrentAndPreservesOtherFields(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	reused, err := s.PrepareBackground(ctx, scope, BackgroundRequest{SessionID: row.ID, Kind: "cron", Name: "task", Metadata: map[string]string{"cron_job_name": "task"}})
+	reused, err := s.PrepareBackground(ctx, scope, BackgroundRequest{SessionID: row.ID, TaskType: "cron", TaskID: "task", Metadata: map[string]string{"cron_job_name": "task"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +60,7 @@ func TestPrepareBackgroundKeepsCurrentAndPreservesOtherFields(t *testing.T) {
 	if err != nil || promoted.Mode != storage.SessionModeWork || IsBackground(promoted) {
 		t.Fatalf("promotion did not switch mode: %+v err=%v", promoted, err)
 	}
-	if _, err := s.PrepareBackground(ctx, scope, BackgroundRequest{SessionID: row.ID, Kind: "cron", Name: "task"}); !errors.Is(err, ErrForegroundSession) {
+	if _, err := s.PrepareBackground(ctx, scope, BackgroundRequest{SessionID: row.ID, TaskType: "cron", TaskID: "task"}); !errors.Is(err, ErrForegroundSession) {
 		t.Fatalf("promoted session reused by background: %v", err)
 	}
 }

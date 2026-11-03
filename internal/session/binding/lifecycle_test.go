@@ -2,6 +2,7 @@ package binding
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"sync"
 	"testing"
@@ -15,7 +16,7 @@ import (
 func TestCloseWaitsForLeaseAndPreservesCommittedEvent(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		m := newTestManager(t)
-		scope := share.Scope{ActorID: "u"}
+		scope := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "u"}}
 		var event BindingChangedEvent
 		_, err := m.ObserveBindingChanged(func(_ context.Context, e BindingChangedEvent) error {
 			event = e
@@ -84,7 +85,7 @@ func TestCloseWaitsForActualObserverExit(t *testing.T) {
 		}
 		published := make(chan struct{})
 		go func() {
-			setCurrent(t, m, share.Scope{ActorID: "u"}, "one")
+			setCurrent(t, m, share.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "u"}}, "one")
 			close(published)
 		}()
 		<-started

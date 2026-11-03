@@ -47,8 +47,8 @@ name = "weather"
 name = "hello_reply"
 on = "platform.message.received"
 blocked_platform = ["telegram"]
-blocked_group = ["qqonebot:123456"]
-blocked_id = ["qqonebot:10001"]
+blocked_group.qqonebot = ["123456"]
+blocked_id.qqonebot = ["10001"]
 if = "message.intent_text"
 op = "fullmatch"
 value = "你好"
@@ -68,14 +68,14 @@ text = "你好呀"
 | `enabled` | 否 | 是否加载，默认 `true`。 |
 | `wakeup` | 否 | 唤起策略：`required` 仅处理已唤起消息（默认），`any` 无论是否唤起都处理，`forbidden` 仅处理未唤起消息。主要用于 `platform.message.received`。 |
 | `blocked_platform` | 否 | 仅根 `hooks.toml` 的直接规则使用；跳过指定平台。 |
-| `blocked_group` | 否 | 仅根 `hooks.toml` 的直接规则使用；跳过指定群，格式 `<platform>:<平台原始群 ID>`。 |
-| `blocked_id` | 否 | 仅根 `hooks.toml` 的直接规则使用；跳过指定用户，格式 `<platform>:<平台原始用户 ID>`。 |
+| `blocked_group` | 否 | 仅根 `hooks.toml` 的直接规则使用；跳过指定群，按平台分组，例如 `blocked_group.qqonebot = ["123456"]`。 |
+| `blocked_id` | 否 | 仅根 `hooks.toml` 的直接规则使用；跳过指定用户，按平台分组，例如 `blocked_id.qqonebot = ["10001"]`。 |
 | `consume` | 否 | 在 `platform.message.received` 中为 `true` 时，发送当前 outputs 后不再进入命令或主 LLM。 |
 | `stop_propagation` | 否 | 为 `true` 时停止当前 Hook 点之后的规则；不停止 Agent 主流程。 |
 
 - `wakeup = "any"` / `"forbidden"` 可以让 Hook 观察未唤起消息，但不会让主 LLM 自动处理它们；`forbidden` 遇到已唤起消息直接跳过，不影响后续插件、命令或主 LLM。
 - 根规则的阻断检查在普通匹配和 action 执行之前，命中后不会启动 exec 进程，也不影响其他规则。
-- 三项阻断都是精确匹配、不支持通配符；`blocked_group` 同时识别 `group` 和 `supergroup` scope。
+- 三项阻断都是精确匹配、不支持通配符；`blocked_group` 匹配 `chat_type = "group"`（Telegram supergroup 也归为 group），ID 按原始字符串匹配。
 
 ### Hook 点
 
@@ -244,7 +244,8 @@ kind = "reply"
 message_id = "{{platform.reply_to_message_id}}"
 text = "已收到。"
 timing = "immediate"
-target.group_id = "123456"
+target.chat_type = "group"
+target.id = "123456"
 ```
 
 多 segment 用 `outputs` 数组：
@@ -270,7 +271,7 @@ outputs = [
 ```json
 {
   "outputs": [{"kind":"reply","message_id":"456","text":"引用回复"}],
-  "target": {"platform":"qqonebot","scope_id":"group:123"},
+  "target": {"platform":"qqonebot","chat_type":"group","id":"123"},
   "timing": "immediate"
 }
 ```
@@ -295,12 +296,11 @@ TOML 与 JSON 的 target 都用 snake_case，省略时沿用当前事件：
 
 ```toml
 target.platform = "qqonebot"
-target.scope_id = "group:123456"
-target.private_user_id = "10001"
-target.group_id = "123456"
-target.superadmins = true
+target.chat_type = "group"
+target.id = "123456"
 ```
 
+- `chat_type` 可用 `private`、`group`、`channel`，`id` 填平台原生 ID；CLI 使用 `private`；具体可用类型由目标平台决定。向超管发送时使用 `target.platform` 和 `target.superadmins = true`，省略会话字段。
 - `timing`：`immediate`（默认）或 `after_assistant`，实际生效范围见 Hook 点表。
 - 媒体相对路径按声明规则的插件目录解析；根 `plugins/hooks.toml` 的规则相对 `plugins/`。
 - 大媒体应写入插件目录或 `_shared/` 后返回 `path` 或 `url`；单个 `hook.v2` JSON Lines 帧最大 16 MiB，不要内联大数据。
@@ -336,7 +336,7 @@ Hook 从 stdout 返回成功 response：
 Hook 返回处理结果：
 
 ```jsonl
-{"type":"response","id":"host:event","ok":true,"result":{"status":"completed","matched":true,"result":"weather accepted","message":{"text":"查询上海天气"},"outputs":[{"kind":"text","text":"正在查询……"}],"target":{"platform":"qqonebot","scope_id":"group:123456"},"timing":"immediate","pass_through":false}}
+{"type":"response","id":"host:event","ok":true,"result":{"status":"completed","matched":true,"result":"weather accepted","message":{"text":"查询上海天气"},"outputs":[{"kind":"text","text":"正在查询……"}],"target":{"platform":"qqonebot","chat_type":"group","id":"123456"},"timing":"immediate","pass_through":false}}
 ```
 
 工具完成 Hook 可直接返回文本和图片：
@@ -479,8 +479,8 @@ Worker Hook 由插件自己的 `hook.toml` 声明。Persistent Worker 在 ElBot 
 name = "weather"
 description = "有状态天气助手"
 blocked_platform = []
-blocked_group = ["qqonebot:123456"]
-blocked_id = ["qqonebot:10001"]
+blocked_group.qqonebot = ["123456"]
+blocked_id.qqonebot = ["10001"]
 
 [plugin.runtime]
 mode = "persistent"
@@ -522,10 +522,10 @@ stop_propagation = true
 | `name` | 自述名称；建议与根 `[[plugins]].name` 一致。不一致时以根 ID 为准并记录警告。 |
 | `description` | `/hooks`、`system.init` 与状态列表使用的简介。 |
 | `blocked_platform` | 完全不分发指定平台的事件，例如 `telegram`。 |
-| `blocked_group` | 完全不分发指定群的事件，格式 `<platform>:<平台原始群 ID>`。 |
-| `blocked_id` | 完全不分发指定用户事件，格式 `<platform>:<平台原始用户 ID>`。 |
+| `blocked_group` | 完全不分发指定群的事件，按平台分组，例如 `blocked_group.qqonebot = ["123456"]`。 |
+| `blocked_id` | 完全不分发指定用户事件，按平台分组，例如 `blocked_id.qqonebot = ["10001"]`。 |
 
-- 阻断三项任一命中即不调用该插件规则或 `event.handle`；其他插件不受影响。匹配精确、不支持通配符；`blocked_group` 同时识别 `group` 和 `supergroup` scope。
+- 阻断三项任一命中即不调用该插件规则或 `event.handle`；其他插件不受影响。匹配精确、不支持通配符；`blocked_group` 匹配 `chat_type = "group"`（Telegram supergroup 也归为 group），ID 按原始字符串匹配。
 - 插件内所有规则（包括 exec action）、Worker trigger 和 waiting 路由统一用 `[plugin]` 的阻断配置。若在插件的 `[[rules]]` 误写这三个字段，加载和 reload 会返回 warning 并忽略规则级字段，不会阻止插件运行。
 
 `[plugin.runtime]` 在 `mode = "persistent"` 或 `mode = "transient"` 时需要以下字段；`mode` 只能是 `once`、`persistent` 或 `transient`，省略时为 `once`。`once` 不创建 worker，也不要求其余 runtime 字段。
@@ -565,7 +565,7 @@ stop_propagation = true
 
 - 需要继续收集输入时返回 `status = "waiting"`、`conversation_id` 和 `expires_at`：`expires_at` 必须晚于当前时间，剩余时间不超过 `max_wait_seconds`。
 - 完成时返回 `completed` 或省略 status。
-- 同一 `platform + scope_id + actor.id` 在同一 worker 内串行，不同路由可并行。waiting 租约也以该三元组为 key。
+- 同一平台、会话类型、原生会话 ID 和参与者身份在同一 worker 内串行，不同路由可并行。waiting 租约使用同样的结构化字段匹配；参与者身份由 `actor.platform` 与 `actor.id` 共同确定，`actor.name` 不参与路由匹配。
 - 正常串行分发中，首个返回 `waiting` 的 worker 持有该路由，后续 worker trigger rule 不会再分发该路由。实现每条路由只存一份租约；若并发事件使多个 worker 同时竞争，最后写入者覆盖此前租约。因此多个 worker Hook 可能匹配同一路由时，应使用 `priority`、更严格条件或 `stop_propagation` 明确归属。
 - waiting 存在时优先处理续接，续接放行后执行普通 `platform.message.received` 规则；对应 worker trigger rule 不会再次触发。
 - Host 先将后续消息以 `continuation = true` 路由给持有租约的 Hook；插件返回 `pass_through = true` 时，再从后续规则继续传播，最后可进入命令或主 LLM。
@@ -594,7 +594,7 @@ Worker Hook 自行维护 LLM loop、业务状态和工具使用决策。Host 对
 
 `arguments` 为 JSON 值，无参数时可为 `{}`。单次 `event.handle` 的 `tool_context` 最多调用 32 次，且在 `event_timeout_seconds` 到期、取消或 worker 重载后失效。
 
-后台调用必须位于 `background_allow`：有 Host 签发上下文时放进 `origin`；没有有效 `origin` 时必须给显式 `target`。后台无 origin 时调用主体为 `hook:<id>`，插件应特别谨慎处理授权。
+独立调用使用 `background = true`，工具必须位于 `background_allow`。需要继承事件时，将 Host 签发的上下文放进 `origin`；省略时不补造 Actor、聊天、Session 或 Agent 执行信息。工具直接运行，结果通过 RPC response 返回插件，不触发 Agent。只有工具产生待发送 outputs 时才需要可用的发送目标；纯查询不要求 `target`。带事件上下文的调用沿用事件的真实 Actor，包括角色、昵称和群名片。
 
 成功 response 的 `result`：
 
@@ -624,10 +624,10 @@ Host 会先完整读取并校验候选配置。失败时返回 `ok=false`，旧�
 
 ## Event 与模板字段
 
-- `event` 顶层包含 `id`、`point`、`time`、`metadata`、`control`、`platform`、`actor`、`session`、`request`、`message`、`llm`、`tool`；可能还有 `outputs`、`error`。
+- `event` 顶层包含 `id`、`point`、`time`、`metadata`、`control`、`chat`、`actor`、`session`、`request`、`message`、`llm`、`tool`；可能还有 `outputs`、`error`。
 - 与当前 Hook 点无关的字段会是零值、空对象或被省略，插件必须按可空值处理。
 - `segments` 保留平台归一化后的原始内容；处理文本指令时优先读已去除唤醒前缀的 `intent_text`，为空再拼接 text segments。
-- trigger rule 已匹配的首次调用通常无需重复校验同一指令；waiting continuation 只捕获同一 platform、scope 和 actor。业务参数、授权和插件权限仍由插件校验。
+- trigger rule 已匹配的首次调用通常无需重复校验同一指令；waiting continuation 只捕获同一平台、会话类型、会话 ID 和参与者身份。业务参数、授权和插件权限仍由插件校验。
 - `llm` 包含 `provider`、`model`、`messages`、`tools`、`usage`、`source_text`、`text`、`tool_calls`、`elapsed_ms`。其中嵌套 `messages`、`tool_calls`、`usage` 沿用 Go 导出的 JSON 名：`Role/Segments/Name/ToolCallID/ToolCalls`、`ID/Name/Arguments`、`PromptTokens/CompletionTokens/TotalTokens/CacheHitTokens`。
 - `tool` 包含 `id`、`name`、`arguments`（JSON 字符串）、`risk`、`result`、`error`。prepared 阶段主要提供 `id/name/arguments`；completed 阶段还提供 `risk/result/error`，对应工具消息的完整内容位于 `message.segments`。
 - `event.outputs` 是事件已累积的输出快照，数组项用 Go 导出的 JSON 字段名，例如 `Kind`、`Text`、`Name`、`EmoticonID`、`Delivery`。`Delivery` 含 `Timing`、`HookPoint`、`HookName`、`HookMode`；空 `Timing` 表示立即发送，非 Hook 输出的来源字段为空。插件新增输出时仍用“统一输出”章节的小写 segment 字段及组级 `target`、`timing`。
@@ -635,11 +635,13 @@ Host 会先完整读取并校验候选配置。失败时返回 `ok=false`，旧�
 | 对象 | 字段 |
 | --- | --- |
 | `control` | `consume`、`stop_propagation`。 |
-| `platform` | `name`、`scope_id`、`user_id`、`conversation_id`、`message_id`、`reply_to_message_id`。 |
-| `actor` | `id`（`<platform>:<id>`）、`user_id`、`role`、`group_role`、`nickname`、`group_card`、`display_name`。`display_name` 是纯展示名；群聊通常优先群名片，否则使用昵称。 |
+| `chat` | `platform`、`chat_type`、`id`、`name`、`message_id`、`reply_to_message_id`。`id` 是平台原生聊天 ID，`name` 是聊天展示名。 |
+| `actor` | `platform`、`id`、`name`、`role`、`group_role`、`nickname`、`group_card`。`id` 是原生用户 ID，`name` 是纯展示名；群聊通常优先群名片，否则使用昵称。 |
 | `session` | `id`、`mode`、`title`、`status`；部分 Hook 点只提供 `id`。 |
 | `request` | `id`、`kind`、`session_id`、`phase`；当前可能都为空。 |
 | `error` | `message`；仅错误事件可靠。 |
+
+参与者身份使用 `actor.platform` 和 `actor.id`，ID 中的冒号原样保留，`name` 不参与身份比较。Elnis 调用的 Actor 使用 Elwisp 名称作为 `id` 和 `name`，`platform` 为空；认证 token 与事件 ID 不充当参与者。聊天和后台任务分开：没有实际聊天时 `chat` 为空。
 
 `message`：
 
@@ -673,8 +675,8 @@ def message_text(event):
 可用于 `if`、`match.field` 和模板的文本字段：
 
 ```text
-platform.name / platform.scope_id / platform.user_id / platform.conversation_id / platform.message_id / platform.reply_to_message_id
-actor.id / actor.user_id / actor.role / actor.group_role / actor.nickname / actor.group_card / actor.display_name
+chat.platform / chat.chat_type / chat.id / chat.name / chat.message_id / chat.reply_to_message_id
+actor.platform / actor.id / actor.name / actor.role / actor.group_role / actor.nickname / actor.group_card
 session.id / session.mode / session.title / session.status
 request.id / request.kind / request.session_id / request.phase
 message.id / message.text / message.display_text / message.platform_text / message.intent_text / message.role
@@ -686,7 +688,7 @@ error.message
 
 其中 `message.text`、`message.display_text`、`llm.latest_user_text`、`llm.latest_user_display_text` 是匹配/模板时计算的虚拟文本字段，不直接存在于 event JSON；当前消息内容从 `message.segments` 读取，`llm.messages` 仅用于观察完整请求上下文。
 
-模板写法为 `{{...}}`，例如 `{{platform.name}}`、`{{message.text}}`、`{{llm.text}}`。regex 捕获可使用：
+模板写法为 `{{...}}`，例如 `{{chat.platform}}`、`{{message.text}}`、`{{llm.text}}`。regex 捕获可使用：
 
 ```text
 {{match.regex.<regex条件序号>.group.<分组序号>}}

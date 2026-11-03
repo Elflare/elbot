@@ -133,6 +133,8 @@ work 模式下 LLM 可用 `discover_tool` 按需发现；聊天中也可用 `@to
 | `/elwisp [name] [options]` | Elnis/Elwisp 事件日志。 |
 | `/usage [options]` | 汇总审计日志的 token 消耗（仅超级管理员）。 |
 
+日志查询和用量统计读取当前 JSONL 记录，正文可为文本或 JSON。无法解析的记录计入损坏记录数；`--raw` 可查看限量原始样本。
+
 选项（“适用”列省略即三者通用）：
 
 | 选项 | 适用 | 作用 |
@@ -148,16 +150,17 @@ work 模式下 LLM 可用 `discover_tool` 按需发现；聊天中也可用 `@to
 | `-u` / `-a` | log | 筛选用户 / 助手事件。 |
 | `-s, --system` | log | 筛选并显示 `system prompt` 日志。 |
 | `--hook` | log/audit | 筛选 `module=hook` 的记录。 |
-| `-t` | audit | 筛选 `event=tool_call` 的工具审计。 |
+| `-t` | audit | 筛选 `tool_call_prepared`、`tool_call_completed` 工具审计。 |
 | `--run_source <来源>` | audit | `foreground`、`cron`、`elnis`；可与 `-t` 及其他条件组合。 |
-| `--event <name>` | audit | 例如 `tool_call`、`llm_usage`、`permission_denied`。 |
+| `--event <name>` | audit | 例如 `tool_call_completed`、`llm_usage`、`permission_denied`。 |
 | `--risk <level>` | audit | 风险等级。 |
-| `--actor <id>` / `--session <id>` / `--tool <name>` | audit | 按 actor、Session、工具名过滤。 |
+| `--platform <name>` / `--actor-id <id>` / `--actor-name <name>` | audit | 精确匹配参与者的平台、原生 ID、展示名；可组合使用。 |
+| `--session <id>` / `--tool <name>` | audit | 按 Session、工具名过滤。 |
 | `[name]`、`--name`、`--elwisp <name>` | elwisp | 按 Elwisp 名过滤，三种写法等价。 |
 | `--source` / `--id`（= `--source-id`） | elwisp | 按事件来源 / 外部事件 ID。 |
 | `--mode <record\|direct\|llm>` | elwisp | 事件模式。 |
 | `--event-key <key>` / `--event-id <id>` | elwisp | Elnis event key / 内部 event ID。 |
-| `--token <name>` | elwisp | token name（不含原文）。 |
+| `--token <name>` | elwisp | HTTP 认证 token 的配置名，不包含 token 原文。 |
 | `--tag <tag>` | elwisp | 包含指定标签，可重复，要求全部匹配。 |
 | `-d, --days <n>` | usage | 汇总最近 n 天，默认 1。 |
 | `-n <x[-y]>` | usage | 汇总倒数第 x 到第 y 次模型调用（含两端），序号 1–100000；省略 y 只取第 x 次。 |
@@ -166,7 +169,7 @@ work 模式下 LLM 可用 `discover_tool` 按需发现；聊天中也可用 `@to
 | `--by <key>` | usage | `model`（默认）、`day`、`session`。 |
 | `--since <time>` / `--until <time>` | usage | 时间范围。 |
 
-示例：`/log -w -n 10` · `/log --system` · `/audit --event tool_call --risk high` · `/audit -t --run_source cron` · `/elwisp server-watchdog --mode llm --since 2h` · `/usage --by day -d 30` · `/usage -n 2-4 -m gpt-4o`。
+示例：`/log -w -n 10` · `/log --system` · `/audit --event tool_call_completed --risk high` · `/audit -t --run_source cron` · `/elwisp server-watchdog --mode llm --since 2h` · `/usage --by day -d 30` · `/usage -n 2-4 -m gpt-4o`。
 
 - `/usage` 从审计日志的 `llm_usage` 事件聚合，按模型/天/会话分组统计 prompt、completion、total、cache 和耗时；未知、非法或溢出的值显示 `null` 并传递到受影响的分组和总计项，明确的零正常统计，用量未知的调用仍计入次数，扫描遇到损坏记录时提示统计可能不完整。
 - 工具参数日志最多 512 rune，工具返回的日志摘要最多 1024 rune，截断省略号计入上限（汉字按 1 rune）；实际调用参数和返回给模型的结果不受日志限长影响。

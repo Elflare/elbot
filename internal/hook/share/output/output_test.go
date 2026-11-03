@@ -109,11 +109,11 @@ func TestBuildGroupRejectsInvalidSources(t *testing.T) {
 }
 
 func TestBuildGroupTargetAndTiming(t *testing.T) {
-	outputs, err := BuildGroup(Group{Outputs: []Segment{{Kind: "text", Text: "hi"}}, Target: Target{Platform: "qqonebot", GroupID: "1"}, Timing: delivery.DeliveryAfterAssistant}, BuildOptions{})
+	outputs, err := BuildGroup(Group{Outputs: []Segment{{Kind: "text", Text: "hi"}}, Target: Target{Platform: "qqonebot", ChatType: "group", ChatID: "1"}, Timing: delivery.DeliveryAfterAssistant}, BuildOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if outputs[0].Target.Platform != "qqonebot" || outputs[0].Target.GroupID != "1" || delivery.DeliveryTiming(outputs[0]) != delivery.DeliveryAfterAssistant {
+	if outputs[0].Target.Platform != "qqonebot" || outputs[0].Target.ChatType != "group" || outputs[0].Target.ChatID != "1" || delivery.DeliveryTiming(outputs[0]) != delivery.DeliveryAfterAssistant {
 		t.Fatalf("output = %#v", outputs[0])
 	}
 }

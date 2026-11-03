@@ -82,7 +82,7 @@ func newFixture(t *testing.T) *fixture {
 }
 
 func scope() share.Scope {
-	return share.Scope{ActorID: "owner", Platform: "test", PlatformScopeID: "private:owner", ConversationKind: contextinfo.ConversationPrivate}
+	return share.Scope{Owner: contextinfo.ActorIdentity{Platform: "test", ID: "owner"}, Platform: "test", ChatID: "owner", ChatType: contextinfo.ChatPrivate}
 }
 
 func (f *fixture) source(t *testing.T, mode string) *storage.Session {
@@ -90,7 +90,7 @@ func (f *fixture) source(t *testing.T, mode string) *storage.Session {
 	var row *storage.Session
 	var err error
 	if mode == storage.SessionModeBackground {
-		row, err = f.c.PrepareBackground(t.Context(), scope(), control.BackgroundRequest{Kind: "cron", Name: "job"})
+		row, err = f.c.PrepareBackground(t.Context(), scope(), control.BackgroundRequest{TaskType: "cron", TaskID: "job"})
 	} else {
 		row, err = f.c.Create(t.Context(), scope(), control.CreateRequest{Mode: mode, Title: "source"})
 	}
@@ -232,7 +232,7 @@ func TestNativeMaterialAtomicCommit(t *testing.T) {
 				case "fork":
 					row, err = f.s.Fork(t.Context(), scope(), message.ID)
 				case "copy":
-					row, err = f.s.CopyBackground(t.Context(), scope(), branch.BackgroundCopyRequest{SourceSessionID: source.ID, Kind: "cron"})
+					row, err = f.s.CopyBackground(t.Context(), scope(), branch.BackgroundCopyRequest{SourceSessionID: source.ID, TaskType: "cron"})
 				case "compact":
 					row, err = f.s.CreateCompacted(t.Context(), scope(), source.ID, branch.CompactedRequest{ID: "reserved", Seed: material})
 				}

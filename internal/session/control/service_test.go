@@ -37,7 +37,7 @@ func newFixture(t *testing.T, ttl IdleExpirationConfig) *fixture {
 		Sessions:   store.Sessions(), Messages: store.Messages(), Bindings: f.bindings,
 		ActiveSessionIDs: func() []string { f.mu.Lock(); defer f.mu.Unlock(); return append([]string(nil), f.busy...) },
 		CheckForeground:  func(context.Context, *storage.Session) error { return nil },
-		IsSuperadmin:     func(scope share.Scope) bool { return scope.ActorID == "admin" },
+		IsSuperadmin:     func(scope share.Scope) bool { return scope.Owner.ID == "admin" },
 		ReleaseSession:   func(id string) { f.mu.Lock(); defer f.mu.Unlock(); f.releasedSessions = append(f.releasedSessions, id) },
 		ReleaseBinding: func(b *share.Binding) {
 			f.mu.Lock()
@@ -62,7 +62,7 @@ func newFixture(t *testing.T, ttl IdleExpirationConfig) *fixture {
 }
 
 func privateScope() share.Scope {
-	return share.Scope{ActorID: "u", Platform: "test", PlatformScopeID: "private:u", ConversationKind: contextinfo.ConversationPrivate}
+	return share.Scope{Owner: contextinfo.ActorIdentity{Platform: "test", ID: "u"}, Platform: "test", ChatID: "u", ChatType: contextinfo.ChatPrivate}
 }
 
 func (f *fixture) create(t *testing.T, scope share.Scope, id string) *storage.Session {
@@ -176,7 +176,7 @@ func TestAccessAndCreateUnderScopeAdmission(t *testing.T) {
 	ctx, scope := context.Background(), privateScope()
 	row := f.create(t, scope, "z-source")
 	other := scope
-	other.ActorID = "other"
+	other.Owner.ID = "other"
 	if _, err := f.s.Resume(ctx, other, row.ID); err == nil {
 		t.Fatal("cross-user resume allowed")
 	}

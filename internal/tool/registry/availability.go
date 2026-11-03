@@ -17,7 +17,7 @@ func InfoAvailableInContext(ctx context.Context, info share.Info) bool {
 }
 
 func UnavailableReason(ctx context.Context, info share.Info) string {
-	if info.ForegroundOnly && contextinfo.BackgroundContext(ctx) {
+	if info.ForegroundOnly && share.PolicyFromContext(ctx).DisableForegroundTools {
 		return "tool is only available in foreground sessions"
 	}
 	if len(info.APITypes) > 0 {

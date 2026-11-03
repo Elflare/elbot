@@ -46,7 +46,7 @@ func (b cronBridge) Upsert(ctx context.Context, req builtin.CronSaveRequest) (bu
 	}
 	meta := storage.CronMetadata{
 		Kind: storage.CronMetadataKind, Version: 2, Title: definition.Title,
-		CreatedBy: storage.CronActor{ActorID: definition.Actor.ID, Platform: definition.Actor.Platform, PlatformUserID: definition.Actor.PlatformUserID, DisplayName: definition.Actor.DisplayName},
+		CreatedBy: storage.CronActor{Platform: definition.Actor.Platform, ID: definition.Actor.ID, Name: definition.Actor.Name},
 		Schedule:  storage.CronSchedule{Mode: storage.CronScheduleMode(definition.ScheduleMode), RunAt: definition.RunAt, CronExpr: definition.CronExpr},
 		Trigger:   storage.CronTrigger{Mode: storage.CronTriggerMode(definition.TriggerMode), Message: definition.Message},
 		Target:    storage.CronTarget{AllEnabledPlatforms: definition.AllEnabledPlatforms, SourcePlatform: definition.SourcePlatform},
@@ -145,7 +145,7 @@ func cronInfo(job storage.CronJob) (builtin.CronInfo, error) {
 		Name: job.Name, Title: meta.Title, ScheduleMode: string(meta.Schedule.Mode), RunAt: meta.Schedule.RunAt, CronExpr: meta.Schedule.CronExpr,
 		TriggerMode: string(meta.Trigger.Mode), Message: meta.Trigger.Message, ToolListNames: meta.LLM.ToolListNames, ModelProvider: meta.LLM.ModelProvider, Model: meta.LLM.Model,
 		AllEnabledPlatforms: meta.Target.AllEnabledPlatforms, SourcePlatform: meta.Target.SourcePlatform,
-		CreatedBy: contextinfo.Actor{ID: meta.CreatedBy.ActorID, Platform: meta.CreatedBy.Platform, PlatformUserID: meta.CreatedBy.PlatformUserID, DisplayName: meta.CreatedBy.DisplayName},
+		CreatedBy: contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: meta.CreatedBy.Platform, ID: meta.CreatedBy.ID}, Name: meta.CreatedBy.Name},
 		Enabled:   job.Enabled, Completed: meta.Schedule.Mode == storage.CronScheduleOnce && (!job.Enabled || status.DeliveryComplete),
 		RunCount: job.RunCount, LastRunAt: job.LastRunAt, NextRunAt: job.NextRunAt, CreatedAt: job.CreatedAt, UpdatedAt: job.UpdatedAt,
 	}, nil

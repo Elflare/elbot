@@ -27,13 +27,13 @@ func TestInboundMediaAssociatesHistoryPositions(t *testing.T) {
 	a := &MessageHandler{media: center, History: history.Repository()}
 	resolver := &inboundMediaResolver{}
 	segments := []agentshare.MessageSegment{{Type: "image", Media: media.PlatformMedia{Type: "image", PlatformFileID: "bad", Size: config.Default().PlatformFiles.MaxReceiveFileBytes + 1}}, {Type: "text", Text: "hello"}, {Type: "image", Media: media.PlatformMedia{Type: "image", PlatformFileID: "good"}}}
-	row := &storage.ChatMessage{Platform: "p", PlatformScopeID: "s", PlatformMessageID: "1", SenderID: "u", Segments: storage.MarshalChatSegments([]storage.ChatSegment{
+	row := &storage.ChatMessage{Platform: "p", ChatID: "s", PlatformMessageID: "1", SenderID: "u", Segments: storage.MarshalChatSegments([]storage.ChatSegment{
 		{Type: "image", PlatformFileID: "bad", Size: config.Default().PlatformFiles.MaxReceiveFileBytes + 1}, {Type: "text", Text: "hello"}, {Type: "image", PlatformFileID: "good"},
 	})}
 	if err := history.Repository().Append(ctx, row); err != nil {
 		t.Fatal(err)
 	}
-	ctx = agentshare.WithMessageContext(contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ScopeID: "s"}, PlatformMessageID: "1"}), agentshare.MessageContext{
+	ctx = agentshare.WithMessageContext(contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ChatID: "s"}, PlatformMessageID: "1"}), agentshare.MessageContext{
 
 		Segments:     segments,
 		ResolveMedia: resolver.ResolveMedia,
@@ -43,7 +43,7 @@ func TestInboundMediaAssociatesHistoryPositions(t *testing.T) {
 		t.Fatal(err)
 	}
 	resolved, _ := agentshare.MessageContextFrom(prepared)
-	historyMessage := media.HistoryMessage{ID: row.ID, Platform: "p", ScopeID: "s", MessageID: "1", Media: []media.PlatformMedia{segments[0].Media, segments[2].Media}}
+	historyMessage := media.HistoryMessage{ID: row.ID, Platform: "p", ChatID: "s", MessageID: "1", Media: []media.PlatformMedia{segments[0].Media, segments[2].Media}}
 	ids, err := center.HistoryIDs(ctx, historyMessage)
 	if err != nil || len(ids) != 1 || ids[2] != resolved.Segments[2].Media.MediaID {
 		t.Fatalf("position association = %#v %v", ids, err)
@@ -54,7 +54,7 @@ func TestInboundMediaAssociatesHistoryPositions(t *testing.T) {
 	if err != nil || len(items) != 1 || items[0].Err != nil || items[0].Media.ID != ids[2] || resolver.calls != 1 {
 		t.Fatalf("reimport = %#v %v calls %d", items, err, resolver.calls)
 	}
-	original, err := history.Repository().GetByPlatformMessage(ctx, "p", "s", "1")
+	original, err := history.Repository().GetByPlatformMessage(ctx, "p", "", "s", "1")
 	if err != nil || original.Segments != row.Segments {
 		t.Fatalf("raw history mutated: %#v %v", original, err)
 	}

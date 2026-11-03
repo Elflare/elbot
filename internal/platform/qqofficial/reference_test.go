@@ -4,6 +4,7 @@ package qqofficial
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,10 +19,10 @@ import (
 	"elbot/internal/storage"
 )
 
-func mapTestReference(t *testing.T, a *Adapter, scopeID, alias, id string) {
+func mapTestReference(t *testing.T, a *Adapter, kind contextinfo.ChatType, scopeID, alias, id string) {
 	t.Helper()
 	if err := a.chatHistory.MapPlatformMessageAlias(t.Context(), storage.PlatformMessageAlias{
-		Platform: config.PlatformQQOfficial, PlatformScopeID: scopeID, Alias: alias, PlatformMessageID: id,
+		Platform: config.PlatformQQOfficial, ChatType: kind, ChatID: scopeID, Alias: alias, PlatformMessageID: id,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +53,7 @@ func TestInboundReferenceIndexes(t *testing.T) {
 func TestReferenceAliasKeepsScope(t *testing.T) {
 	a := newTestAdapter(t, Config{}, nil)
 	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
-		if opts.ScopeID != "group:group" || opts.ReplyID != "original" {
+		if opts.ChatType != "group" || opts.ChatID != "group" || opts.ReplyID != "original" {
 			t.Fatalf("options = %+v", opts)
 		}
 		return share.ReferenceResult{Reply: share.ReplyContext{MessageID: "original", Text: "meeting at three"}, Text: "[引用:meeting at three]\n\nremember"}, nil
@@ -131,14 +132,14 @@ type failingAliasHistory struct{ interfaceHistory }
 type interfaceHistory interface {
 	share.ChatHistoryWriter
 	MapPlatformMessageAlias(context.Context, storage.PlatformMessageAlias) error
-	ResolvePlatformMessageAlias(context.Context, string, string, string) (string, error)
+	ResolvePlatformMessageAlias(context.Context, string, contextinfo.ChatType, string, string) (string, error)
 }
 
 func TestMappedReferenceConsumesResolverMediaAndSuppliesEventFallback(t *testing.T) {
 	for _, fromHistory := range []bool{false, true} {
 		t.Run(fmt.Sprintf("history=%v", fromHistory), func(t *testing.T) {
 			a := newTestAdapter(t, Config{}, nil)
-			mapTestReference(t, a, "c2c:user", "REFIDX_original", "original")
+			mapTestReference(t, a, "private", "user", "REFIDX_original", "original")
 			image := messageAttachment{URL: "https://example.com/quote.png", ContentType: "image/png", Filename: "quote.png"}
 			if fromHistory {
 				a.handleC2CMessage(t.Context(), (&captureHandler{}).HandleMessage, payload{}, inboundMessage{
@@ -147,7 +148,7 @@ func TestMappedReferenceConsumesResolverMediaAndSuppliesEventFallback(t *testing
 			}
 			for _, text := range []string{"describe", "/help"} {
 				a.referenceResolver = func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
-					if opts.ReplyID != "original" || opts.ScopeID != "c2c:user" {
+					if opts.ReplyID != "original" || (opts.ChatType != "private" || opts.ChatID != "user") {
 						t.Fatalf("options = %+v", opts)
 					}
 					if !fromHistory {
@@ -222,7 +223,7 @@ func TestSendRegistersReferenceIndexWithoutChangingDelivery(t *testing.T) {
 					if err != nil || len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != fmt.Sprintf("sent-%d", calls) {
 						t.Fatalf("receipt=%+v err=%v", receipt, err)
 					}
-					id, err := a.chatHistory.ResolvePlatformMessageAlias(t.Context(), config.PlatformQQOfficial, qqOfficialTargetScope(target), fmt.Sprintf("REFIDX_%d", calls))
+					id, err := a.chatHistory.ResolvePlatformMessageAlias(t.Context(), config.PlatformQQOfficial, qqOfficialChatType(target), target.OpenID, fmt.Sprintf("REFIDX_%d", calls))
 					if fail {
 						if !errors.Is(err, storage.ErrNotFound) {
 							t.Fatalf("failed write: %v", err)

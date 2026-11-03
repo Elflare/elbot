@@ -29,8 +29,8 @@ func TestMultiTargetKeepsPartiallySuccessfulTargetReceipt(t *testing.T) {
 	if err == nil || len(receipt.SentMessages) != 3 || len(receipt.PlatformMessageIDs) != 3 {
 		t.Fatalf("partial receipt = %#v %v", receipt, err)
 	}
-	for i, want := range []string{"private:1", "private:1", "private:2"} {
-		if receipt.SentMessages[i].ScopeID != want || receipt.SentMessages[i].OutputIndexes[0] != i%2 {
+	for i, want := range []string{"1", "1", "2"} {
+		if receipt.SentMessages[i].ChatType != "private" || receipt.SentMessages[i].ChatID != want || receipt.SentMessages[i].OutputIndexes[0] != i%2 {
 			t.Fatalf("message %d = %#v", i, receipt.SentMessages[i])
 		}
 	}

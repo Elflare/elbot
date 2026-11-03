@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"reflect"
 	"slices"
 	"testing"
@@ -67,8 +68,8 @@ func TestQueryToolsScopesTagsAndDescriptions(t *testing.T) {
 		{"empty tag intersection", ctx, ToolQuery{Tag: "group", Names: []string{}}, nil},
 		{"unknown tag", ctx, ToolQuery{Tag: "unknown"}, nil},
 		{"catalog tag", ctx, ToolQuery{Scope: QueryCatalog, Tag: "group", IncludeHidden: true}, []string{"admin", "alpha", "guide", "hidden", "zulu"}},
-		{"background", contextinfo.WithBackgroundKind(ctx, ""), ToolQuery{Names: []string{"foreground"}}, nil},
-		{"background catalog", contextinfo.WithBackgroundKind(ctx, ""), ToolQuery{Scope: QueryCatalog, Names: []string{"foreground"}}, []string{"foreground"}},
+		{"background", testutil.TaskContext(ctx, ""), ToolQuery{Names: []string{"foreground"}}, nil},
+		{"background catalog", testutil.TaskContext(ctx, ""), ToolQuery{Scope: QueryCatalog, Names: []string{"foreground"}}, []string{"foreground"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			infos, err := m.QueryTools(tc.ctx, tc.query)

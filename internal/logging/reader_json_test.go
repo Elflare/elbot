@@ -44,7 +44,7 @@ func TestReaderJSONBusinessPredicatesBeforeLimit(t *testing.T) {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	entry := result.Entries[0]
-	if entry.Raw != wanted || entry.LegacyFields != nil || entry.Identity.SessionID == nil || *entry.Identity.SessionID != "" || entry.ResultStatus != events.ResultFailed || entry.Category != events.LogAudit {
+	if entry.Raw != wanted || entry.Identity.SessionID == nil || *entry.Identity.SessionID != "" || entry.ResultStatus != events.ResultFailed || entry.Category != events.LogAudit {
 		t.Fatalf("entry=%+v", entry)
 	}
 	query.Fields["event"] = "forged"
@@ -59,17 +59,17 @@ func TestReaderJSONBusinessPredicatesBeforeLimit(t *testing.T) {
 	}
 }
 
-func TestReaderMixedFormatsAndUnknownResults(t *testing.T) {
+func TestReaderRejectsLegacyFormatAndPreservesTextContent(t *testing.T) {
 	r := writeMixedLog(t, `level=INFO msg="old body" event=tool_call tool=shell`, `{"time":"2026-10-08T00:00:00Z","category":"audit","level":"INFO","event":"tool_call","module":"tool","type":"text","content":"正文\n下一行"}`)
-	result, err := r.Query(t.Context(), LogQuery{Prefix: "audit", Limit: 10})
-	if err != nil || len(result.Entries) != 2 {
+	result, err := r.Query(t.Context(), LogQuery{Prefix: "audit", Limit: 10, Raw: true})
+	if err != nil || len(result.Entries) != 1 || result.DamagedCount != 1 || len(result.DamagedLines) != 1 || result.DamagedLines[0] != `level=INFO msg="old body" event=tool_call tool=shell` {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
-	if result.Entries[0].Content != "正文\n下一行" || result.Entries[0].ResultStatus != events.ResultUnspecified || result.Entries[0].Identity.SessionID != nil || result.Entries[1].LegacyFields["tool"] != "shell" {
+	if result.Entries[0].Content != "正文\n下一行" || result.Entries[0].ResultStatus != events.ResultUnspecified || result.Entries[0].Identity.SessionID != nil {
 		t.Fatalf("entries=%+v", result.Entries)
 	}
 	result, err = r.Query(t.Context(), LogQuery{Prefix: "audit", ContentFields: map[string]string{"tool": "shell"}})
-	if err != nil || len(result.Entries) != 1 || result.Entries[0].Content != "old body" {
+	if err != nil || len(result.Entries) != 0 || result.DamagedCount != 1 {
 		t.Fatalf("legacy predicate: %+v %v", result, err)
 	}
 }
@@ -99,7 +99,7 @@ func TestReaderDamagedSamplesBoundedWithoutTruncation(t *testing.T) {
 func TestReaderMalformedJSONContractAndMissingLevel(t *testing.T) {
 	r := writeMixedLog(t, `msg=unknown`, `null`, `[]`, `{}`, `{"time":4}`, `{broken`)
 	result, err := r.Query(t.Context(), LogQuery{Prefix: "audit", Limit: 10, MinLevel: "INFO"})
-	if err != nil || result.DamagedCount != 5 || len(result.Entries) != 0 {
+	if err != nil || result.DamagedCount != 6 || len(result.Entries) != 0 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }
@@ -115,17 +115,18 @@ func TestReaderMatchesDeclaredRunSourceBeforeLimit(t *testing.T) {
 				}
 				return string(data)
 			}
-			wanted := "run_source=" + source + " tool=shell\noriginal source body"
+			wanted := `{"tool":"shell","run_source":"` + source + `"}`
 			r := writeMixedLog(t,
-				line("toolrun", "tool_call", "text", "INFO", wanted),
-				line("toolrun", "tool_call", "text", "DEBUG", wanted),
+				line("toolrun", "tool_call_completed", "json", "INFO", json.RawMessage(wanted)),
+				line("toolrun", "tool_call_completed", "json", "DEBUG", json.RawMessage(wanted)),
+				line("toolrun", "tool_call", "text", "INFO", "run_source="+source+" tool=shell"),
 				line("toolrun", "tool_call", "text", "INFO", "tool=shell\nrun_source="+source),
 				line("toolrun", "tool_call", "text", "INFO", "run_source=other tool=shell\nrun_source="+source),
 				line("other", "tool_call", "text", "INFO", wanted),
 				line("toolrun", "other", "text", "INFO", wanted),
 				line("toolrun", "tool_call", "text", "INFO", "tool=shell"),
 			)
-			query := LogQuery{Prefix: "audit", Limit: 1, MinLevel: "info", Fields: map[string]string{"event": "tool_call"}, ContentFields: map[string]string{"run_source": source}}
+			query := LogQuery{Prefix: "audit", Limit: 1, MinLevel: "info", ContentFields: map[string]string{"run_source": source}}
 			for _, raw := range []bool{false, true} {
 				query.Raw = raw
 				result, err := r.Query(t.Context(), query)

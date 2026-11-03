@@ -78,21 +78,11 @@ func (s *ModelManager) bindRetryNotifier(provider string, client llm.Client) {
 		notifier.SetRetryNotifier(func(ctx context.Context, event llm.RetryEvent) {
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
 			record := ModelRetryingEvent{Provider: provider, Retry: event, CallContext: ctx}
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
+			record.Identity.SessionID = &facts.SessionID
+			record.Identity.RunID = &facts.RunID
+			record.Identity.Attempt = &facts.Attempt
+			record.Identity.RequestID = &facts.RequestID
+			record.Identity.RootRequestID = &facts.RootRequestID
 			_, _ = s.retrying.Emit(context.WithoutCancel(ctx), record)
 		})
 	}

@@ -24,8 +24,8 @@ import (
 func TestBlockPolicyMatchesPlatformGroupAndUser(t *testing.T) {
 	policy, err := share.NewBlockPolicy(
 		[]string{"telegram"},
-		[]string{"qqonebot:123", "telegram:-100456"},
-		[]string{"qqonebot:42"},
+		map[string][]string{"qqonebot": {"123"}, "telegram": {"-100456"}},
+		map[string][]string{"qqonebot": {"42"}},
 	)
 	if err != nil {
 		t.Fatalf("NewBlockPolicy: %v", err)
@@ -35,14 +35,14 @@ func TestBlockPolicyMatchesPlatformGroupAndUser(t *testing.T) {
 		event share.Event
 		want  bool
 	}{
-		{name: "platform", event: share.Event{Platform: share.PlatformContext{Name: "telegram"}}, want: true},
-		{name: "group", event: share.Event{Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:123"}}, want: true},
-		{name: "supergroup", event: share.Event{Platform: share.PlatformContext{Name: "telegram", ScopeID: "supergroup:-100456"}}, want: true},
-		{name: "user", event: share.Event{Platform: share.PlatformContext{Name: "qqonebot"}, Actor: share.ActorContext{UserID: "42"}}, want: true},
-		{name: "association does not supply user", event: share.Event{Platform: share.PlatformContext{Name: "qqonebot"}, Actor: share.ActorContext{ID: "qqonebot:42"}}},
-		{name: "native user keeps prefix", event: share.Event{Platform: share.PlatformContext{Name: "qqonebot"}, Actor: share.ActorContext{UserID: "qqonebot:42"}}},
-		{name: "private scope is not group", event: share.Event{Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "private:123"}}},
-		{name: "other", event: share.Event{Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:999"}, Actor: share.ActorContext{UserID: "7"}}},
+		{name: "platform", event: share.Event{Chat: share.ChatContext{Platform: "telegram"}}, want: true},
+		{name: "group", event: share.Event{Chat: share.ChatContext{Platform: "qqonebot", ChatType: "group", ID: "123"}}, want: true},
+		{name: "supergroup", event: share.Event{Chat: share.ChatContext{Platform: "telegram", ChatType: "group", ID: "-100456"}}, want: true},
+		{name: "user", event: share.Event{Chat: share.ChatContext{Platform: "qqonebot"}, Actor: share.ActorContext{Platform: "qqonebot", ID: "42"}}, want: true},
+		{name: "origin is not platform user", event: share.Event{Chat: share.ChatContext{Platform: "qqonebot"}, Actor: share.ActorContext{ID: "42"}}},
+		{name: "native user keeps prefix", event: share.Event{Chat: share.ChatContext{Platform: "qqonebot"}, Actor: share.ActorContext{Platform: "qqonebot", ID: "qqonebot:42"}}},
+		{name: "private scope is not group", event: share.Event{Chat: share.ChatContext{Platform: "qqonebot", ChatType: "private", ID: "123"}}},
+		{name: "other", event: share.Event{Chat: share.ChatContext{Platform: "qqonebot", ChatType: "group", ID: "999"}, Actor: share.ActorContext{Platform: "qqonebot", ID: "7"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -51,7 +51,7 @@ func TestBlockPolicyMatchesPlatformGroupAndUser(t *testing.T) {
 			}
 		})
 	}
-	if _, err := share.NewBlockPolicy(nil, []string{"missing-platform"}, nil); err == nil {
+	if _, err := share.NewBlockPolicy(nil, map[string][]string{"": {"123"}}, nil); err == nil {
 		t.Fatal("expected malformed blocked_group to fail")
 	}
 }
@@ -59,7 +59,7 @@ func TestBlockPolicyMatchesPlatformGroupAndUser(t *testing.T) {
 func TestManagerSkipsBlockedPluginAndContinues(t *testing.T) {
 	manager := newTestManager()
 
-	policy, err := share.NewBlockPolicy(nil, []string{"qqonebot:123"}, nil)
+	policy, err := share.NewBlockPolicy(nil, map[string][]string{"qqonebot": {"123"}}, nil)
 	if err != nil {
 		t.Fatalf("NewBlockPolicy: %v", err)
 	}
@@ -77,13 +77,13 @@ func TestManagerSkipsBlockedPluginAndContinues(t *testing.T) {
 		})
 		manager.Register(reg)
 	}
-	if _, _, err := manager.Run(context.Background(), share.Event{Point: share.PointPlatformMessageReceived, Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:123"}}, CallOptions{Woken: true}); err != nil {
+	if _, _, err := manager.Run(context.Background(), share.Event{Point: share.PointPlatformMessageReceived, Chat: share.ChatContext{Platform: "qqonebot", ChatType: "group", ID: "123"}}, CallOptions{Woken: true}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	if len(runs) != 1 || runs[0] != "other" {
 		t.Fatalf("runs = %#v, want other only", runs)
 	}
-	if _, err := manager.Notify(context.Background(), share.Event{Point: share.PointPlatformMessageReceived, Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:123"}}, CallOptions{Woken: true}); err != nil {
+	if _, err := manager.Notify(context.Background(), share.Event{Point: share.PointPlatformMessageReceived, Chat: share.ChatContext{Platform: "qqonebot", ChatType: "group", ID: "123"}}, CallOptions{Woken: true}); err != nil {
 		t.Fatalf("Notify: %v", err)
 	}
 	if len(runs) != 2 || runs[1] != "other" {

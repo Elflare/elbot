@@ -77,16 +77,11 @@ func (t SendFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 		source = resolved.Path
 	}
 	return toolshare.NewPreparedCall(req, assessment, fmt.Sprintf("发送文件：%s", source), func(ctx context.Context) (*toolshare.Result, string, error) {
-		backgroundKind, _ := contextinfo.BackgroundKindFromContext(ctx)
 		out, warnings, label, err := t.buildOutput(ctx, args, source, resolved)
 		if err != nil {
 			return nil, err.Error(), err
 		}
-		if backgroundKind == contextinfo.BackgroundKindCron {
-			if info, ok := contextinfo.ConversationFromContext(ctx); ok && strings.TrimSpace(info.Source.Platform) != "" {
-				out.Target = delivery.Target{Platform: info.Source.Platform, Superadmins: true}
-			}
-		}
+		out.Target = toolshare.PolicyFromContext(ctx).OutputTarget
 		result := &toolshare.Result{Content: fmt.Sprintf("已发送文件：%s", label), Warnings: warnings, Outputs: []delivery.Output{out}}
 		return result, fmt.Sprintf("file output prepared: %s", label), nil
 	}), nil
@@ -120,7 +115,7 @@ func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source
 	out.Name = name
 	out.Source.MIMEType = mimeType
 	var warnings []string
-	if resolved.WasAbs && !contextinfo.BackgroundContext(ctx) {
+	if resolved.WasAbs {
 		warnings = append(warnings, toolshare.AbsolutePathWorkspaceWarning)
 	}
 	return out, warnings, name, nil

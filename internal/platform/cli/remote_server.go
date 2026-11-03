@@ -21,7 +21,6 @@ import (
 	"elbot/internal/completion"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
-	"elbot/internal/security"
 )
 
 type RemoteServerOptions struct {
@@ -261,17 +260,18 @@ func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientC
 	msg := share.MessageContext{
 		Conversation: contextinfo.Conversation{
 			Source: contextinfo.Source{
-				Platform:         s.Name(),
-				ScopeID:          client.id,
-				ConversationKind: contextinfo.ConversationCLI,
-				ConversationID:   client.id,
+				Platform: s.Name(),
+
+				ChatType: contextinfo.ChatPrivate,
+				ChatID:   client.id,
+				Name:     client.id,
 			},
 			PlatformData: messageData{client: client},
 			Identity: contextinfo.Identity{
-				ActorID:        security.ActorID(s.Name(), client.id),
-				PlatformUserID: client.id,
-				Nickname:       client.id,
-				DisplayName:    client.id,
+
+				ID:       client.id,
+				Nickname: client.id,
+				Name:     client.id,
 			},
 		},
 		GroupRole: contextinfo.GroupRoleUnknown,
@@ -281,7 +281,7 @@ func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientC
 }
 
 func (s *RemoteServer) targetClients(ctx context.Context, target delivery.Target) ([]*remoteClientConn, error) {
-	if platformName := strings.TrimSpace(target.Platform); platformName != "" && platformName != s.Name() {
+	if platformName := target.Platform; platformName != "" && platformName != s.Name() {
 		return nil, fmt.Errorf("cli cannot send to platform %q", platformName)
 	}
 	if target.Empty() {
@@ -293,10 +293,10 @@ func (s *RemoteServer) targetClients(ctx context.Context, target delivery.Target
 	if target.Superadmins {
 		return s.onlineClients(s.superadmins.IsSuperadmin)
 	}
-	if id := strings.TrimSpace(target.PrivateUserID); id != "" {
+	if id := target.ChatID; id != "" {
 		return s.onlineClients(func(clientID string) bool { return clientID == id })
 	}
-	return nil, fmt.Errorf("cli target missing private_user_id or superadmins")
+	return nil, fmt.Errorf("cli target missing chat_id or superadmins")
 }
 
 func (s *RemoteServer) onlineClients(match func(string) bool) ([]*remoteClientConn, error) {

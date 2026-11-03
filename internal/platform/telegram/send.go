@@ -14,8 +14,9 @@ import (
 )
 
 type target struct {
-	ChatID  int64  // Telegram 原生聊天标识，群组允许负数。
-	ScopeID string // 回执记录使用的平台会话范围。
+	NativeChatID int64                // Telegram 原生聊天标识，群组允许负数。
+	ChatType     contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID       string               // 回执记录使用的平台会话范围。
 }
 
 func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
@@ -62,22 +63,7 @@ func (a *Adapter) contextTarget(ctx context.Context) (target, error) {
 	if !ok || info.Source.Platform != a.Name() {
 		return target{}, fmt.Errorf("telegram send target missing")
 	}
-	t, err := targetFromDelivery(delivery.Target{ScopeID: info.Source.ScopeID})
-	if info.Source.ConversationID != "" {
-		id, parseErr := strconv.ParseInt(info.Source.ConversationID, 10, 64)
-		if parseErr != nil || id == 0 {
-			return target{}, fmt.Errorf("telegram invalid conversation ID %q", info.Source.ConversationID)
-		}
-		t = target{ChatID: id, ScopeID: info.Source.ScopeID}
-		if t.ScopeID == "" {
-			switch info.Source.ConversationKind {
-			case contextinfo.ConversationPrivate, contextinfo.ConversationGroup, contextinfo.ConversationChannel:
-				t.ScopeID = string(info.Source.ConversationKind) + ":" + strconv.FormatInt(id, 10)
-			}
-		}
-		err = nil
-	}
-	return t, err
+	return targetFromDelivery(delivery.Target{ChatType: info.Source.ChatType, ChatID: info.Source.ChatID})
 }
 
 func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
@@ -112,10 +98,10 @@ func (a *Adapter) sendOutputs(ctx context.Context, t target, outputs []delivery.
 
 // Every sent message has a source; only actual media outputs have media indexes.
 func (a *Adapter) telegramReceipt(receipt delivery.Receipt, target target, mediaIndexes ...int) delivery.Receipt {
-	scope := strings.TrimSpace(target.ScopeID)
+	scope := target.ChatID
 	for _, id := range receipt.PlatformMessageIDs {
 		if id = strings.TrimSpace(id); id != "" {
-			receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: a.Name(), ScopeID: scope, OutputIndexes: append([]int(nil), mediaIndexes...)})
+			receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: a.Name(), ChatType: target.ChatType, ChatID: scope, OutputIndexes: append([]int(nil), mediaIndexes...)})
 		}
 	}
 	return receipt
@@ -160,7 +146,7 @@ func (a *Adapter) sendRichText(ctx context.Context, t target, text string, reply
 	pages := telegramRichTextPages(text)
 	var receipt delivery.Receipt
 	for i, page := range pages {
-		req := sendRichMessageRequest{ChatID: t.ChatID, RichMessage: inputRichMessage{Markdown: page}}
+		req := sendRichMessageRequest{ChatID: t.NativeChatID, RichMessage: inputRichMessage{Markdown: page}}
 		if i == 0 {
 			if replyTo != 0 {
 				req.ReplyParameters = &replyParameters{MessageID: replyTo}
@@ -196,7 +182,7 @@ func (a *Adapter) sendFormattedText(ctx context.Context, t target, text, parseMo
 	pages := telegramTextPages(text)
 	var receipt delivery.Receipt
 	for i, page := range pages {
-		req := sendMessageRequest{ChatID: t.ChatID, Text: page, ParseMode: parseMode}
+		req := sendMessageRequest{ChatID: t.NativeChatID, Text: page, ParseMode: parseMode}
 		if i == 0 {
 			req.ReplyToMessageID = replyTo
 			if len(actions) > 0 {
@@ -219,7 +205,7 @@ func (a *Adapter) sendFormattedText(ctx context.Context, t target, text, parseMo
 }
 
 func (a *Adapter) sendPhoto(ctx context.Context, t target, out delivery.Output, replyTo int64) (delivery.Receipt, globalevents.LogResult, error) {
-	msg, err := a.client.sendPhoto(ctx, t.ChatID, sourceFromOutput(out), replyTo)
+	msg, err := a.client.sendPhoto(ctx, t.NativeChatID, sourceFromOutput(out), replyTo)
 	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
 	if err != nil {
 		logResult.ResultStatus = globalevents.ResultFailed
@@ -229,7 +215,7 @@ func (a *Adapter) sendPhoto(ctx context.Context, t target, out delivery.Output, 
 }
 
 func (a *Adapter) sendDocument(ctx context.Context, t target, out delivery.Output, replyTo int64) (delivery.Receipt, globalevents.LogResult, error) {
-	msg, err := a.client.sendDocument(ctx, t.ChatID, sourceFromOutput(out), replyTo)
+	msg, err := a.client.sendDocument(ctx, t.NativeChatID, sourceFromOutput(out), replyTo)
 	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
 	if err != nil {
 		logResult.ResultStatus = globalevents.ResultFailed
@@ -242,7 +228,7 @@ func (a *Adapter) sendDocument(ctx context.Context, t target, out delivery.Outpu
 }
 
 func (a *Adapter) sendSticker(ctx context.Context, t target, out delivery.Output, replyTo int64) (delivery.Receipt, globalevents.LogResult, error) {
-	msg, err := a.client.sendSticker(ctx, t.ChatID, out.EmoticonID, replyTo)
+	msg, err := a.client.sendSticker(ctx, t.NativeChatID, out.EmoticonID, replyTo)
 	logResult := globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}
 	if err != nil {
 		logResult.ResultStatus = globalevents.ResultFailed
@@ -255,36 +241,16 @@ func (a *Adapter) sendSticker(ctx context.Context, t target, out delivery.Output
 }
 
 func targetFromDelivery(outTarget delivery.Target) (target, error) {
-	if strings.TrimSpace(outTarget.PrivateUserID) == "" && strings.TrimSpace(outTarget.GroupID) == "" {
-		scope := strings.TrimSpace(outTarget.ScopeID)
-		for _, prefix := range []string{"private:", "group:", "supergroup:"} {
-			if strings.HasPrefix(scope, prefix) {
-				if prefix == "private:" {
-					outTarget.PrivateUserID = strings.TrimPrefix(scope, prefix)
-				} else {
-					outTarget.GroupID = strings.TrimPrefix(scope, prefix)
-				}
-				break
-			}
-		}
+	switch outTarget.ChatType {
+	case contextinfo.ChatPrivate, contextinfo.ChatGroup, contextinfo.ChatChannel:
+	default:
+		return target{}, fmt.Errorf("telegram invalid conversation kind %q", outTarget.ChatType)
 	}
-	idText := firstNonEmpty(outTarget.PrivateUserID, outTarget.GroupID)
-	if strings.TrimSpace(idText) == "" {
-		return target{}, fmt.Errorf("telegram target missing private_user_id, group_id or scope_id")
-	}
-	id, err := strconv.ParseInt(strings.TrimSpace(idText), 10, 64)
+	id, err := strconv.ParseInt(outTarget.ChatID, 10, 64)
 	if err != nil {
 		return target{}, fmt.Errorf("parse telegram chat id: %w", err)
 	}
-	scope := strings.TrimSpace(outTarget.ScopeID)
-	if scope == "" {
-		if strings.TrimSpace(outTarget.PrivateUserID) != "" {
-			scope = "private:" + strconv.FormatInt(id, 10)
-		} else {
-			scope = "group:" + strconv.FormatInt(id, 10)
-		}
-	}
-	return target{ChatID: id, ScopeID: scope}, nil
+	return target{NativeChatID: id, ChatType: outTarget.ChatType, ChatID: outTarget.ChatID}, nil
 }
 
 func sourceFromOutput(out delivery.Output) mediaSource {

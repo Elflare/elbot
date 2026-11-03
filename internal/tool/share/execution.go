@@ -96,3 +96,20 @@ type RunResult struct {
 	ConfirmationExtra string
 	Stopped           bool
 }
+
+// CallPolicy 是根部从执行事实裁剪的工具策略，子包不解释任务种类。
+type CallPolicy struct {
+	DisableForegroundTools bool            // 当前调用不开放仅前台使用的工具。
+	ExplicitChat           bool            // 历史查询使用显式聊天地址。
+	AutoConfirmShell       bool            // 受限任务 Shell 自动确认，仍拒绝最高风险。
+	OutputTarget           delivery.Target // 提供方预先确定的工具输出目标。
+}
+type callPolicyKey struct{}
+
+func WithCallPolicy(ctx context.Context, policy CallPolicy) context.Context {
+	return context.WithValue(ctx, callPolicyKey{}, policy)
+}
+func PolicyFromContext(ctx context.Context) CallPolicy {
+	policy, _ := ctx.Value(callPolicyKey{}).(CallPolicy)
+	return policy
+}

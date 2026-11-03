@@ -49,7 +49,7 @@ App 持有配置、共享资源及业务总管，负责装配和启停；业务�
 <!-- locator:contextinfo -->
 ## 公共上下文事实
 
-`contextinfo` 传递 Conversation、Actor、Execution、Model、BackgroundKind 快照，不携带凭据、服务或原生载荷；缺失事实不补全局默认值。平台会话 ≠ ElBot Session，事实快照不能替代权限、binding 或 attempt 校验。
+`contextinfo` 传递 Conversation、Actor、Execution、Model 快照，不携带凭据、服务或原生载荷；缺失事实不补全局默认值。平台会话 ≠ ElBot Session，事实快照不能替代权限、binding 或 attempt 校验。
 
 接管刷新来源、身份、模型和输入，保留取消链及 Session 工作目录，清除后台来源与调用级路径限制；平台私有上下文由 Platform 恢复。
 
@@ -190,7 +190,7 @@ Platform dispatch 统一路由正文、媒体、Hook 输出与后台报告；Sen
 <!-- locator:platform -->
 ## 平台适配
 
-Platform 管输入归一化、历史落库、引用恢复和实际发送；适配器保留协议私有路由，根部公开最小发送、原生 API 与媒体能力。
+Platform 管输入归一化、历史落库、引用内容恢复和实际发送；引用消息的会话续接、派生与后台接管由 Session 裁决。适配器保留协议私有路由，根部公开最小发送、原生 API 与媒体能力。
 
 适配器提供静态声明，根部唯一清单关联 Config 定义的平台名、声明与构造闭包，按登记顺序构造及启动；清单完整性与唯一性由测试检查，未启用平台仍保留声明。根部裁剪依赖、登记 Agent 接线与自有资源，不通过实例类型猜测接线能力。声明与装配流如下：
 
@@ -212,14 +212,16 @@ Chat History 由 App 持有、Tool 直接查询；Platform 不包装查询服务
 <!-- locator:session -->
 ## Session 生命周期
 
-Session 唯一管理 current 与 Binding：control 管会话业务及过期，binding 管准入，branch 管派生，naming 管命名；根部组合创建来源前缀与 Storage 全局序号。平台分别声明私聊与群聊短码，由 Agent 注入 Platform 根部按会话类型查询的能力；Session 原样使用，不转换大小写，不维护平台名单或缺失短码的默认值。创建时保存来源快照，压缩派生沿用快照；缺失时直接报错，不使用当前入口补齐。会话范围保留平台与原生用户身份，权限检查直接使用这些事实；ActorID 仅作关联标识，不用于反向解析身份。
+Session 唯一管理 current 与 Binding：control 管会话业务及过期，binding 管准入，branch 管派生，naming 管命名；根部组合创建来源前缀与 Storage 全局序号。平台分别声明私聊与群聊短码，由 Agent 注入 Platform 根部按会话类型查询的能力；Session 原样使用，不转换大小写，不维护平台名单或缺失短码的默认值。创建时保存来源快照，压缩派生沿用快照；缺失时直接报错，不使用当前入口补齐。会话所有者使用平台与参与者 ID，展示名不参与身份比较；聊天地址使用平台、聊天类型与原生 ID，后台任务独立保存类型、ID 与展示名。绑定、准入、权限和持久化直接使用这些结构化事实，不拼接或拆解身份字符串。
 
 - 切离使旧 binding 永久失效，切回建立新 binding。锁顺序：Scope → 排序 SessionID → 状态锁；外部 I/O 在锁外。
 - ForegroundActivated 是例外：接管提交后、释放准入前同步更新执行内存，不做 I/O 或再次准入；观察用 BindingChanged 在锁外发布。
 - 后台身份由 Mode 决定，后台准备不激活 current；接管转为前台 work，保留历史与 workspace，停止后台自动报告。
 - 首次主对话准入固定协议及厂商归属，派生继承；派生锁外准备，提交复核 binding／状态／checkpoint，原子保存 Session、消息、seed 与媒体引用，不复制运行状态或重跑工具。
-- 管理访问中 CLI 可跨用户／平台；其他入口须同用户／平台，后台限私聊、前台限同 scope。Fork 与后台压缩始终检查归属。
+- 管理访问中 CLI 可跨用户／平台；其他入口（超管除外）须同用户／平台，后台限私聊、前台限同 scope。Fork 与后台压缩始终检查归属。
 - 过期只解绑、保留历史；真实活动与执行收尾驱动计时，忙碌项等待退出。命名属于应用生命周期，不刷新会话闲置期限。
+
+设计取舍：后台任务的 Session 被接管后永久转为前台 work
 
 <!-- locator:llm -->
 ## 模型服务与客户端

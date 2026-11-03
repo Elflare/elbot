@@ -31,7 +31,7 @@ func TestLocalInputProvidesIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i, info := range h.infos {
-		if info.Source.Platform != "cli" || info.Source.ScopeID != "local" || info.Source.ConversationKind != contextinfo.ConversationCLI || info.Source.ConversationID != "local" || info.Identity.ActorID != "cli:local" || info.Identity.PlatformUserID != "local" {
+		if info.Source.Platform != "cli" || info.Source.ChatID != "local" || info.Source.ChatType != contextinfo.ChatPrivate || info.Identity.ID != "local" {
 			t.Fatal(info)
 		}
 		if h.roles[i] != contextinfo.GroupRoleUnknown {

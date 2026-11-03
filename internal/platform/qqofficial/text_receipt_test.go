@@ -17,17 +17,14 @@ func TestTextReceiptsKeepActualTarget(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"id":"sent"}`) }))
 	defer server.Close()
 	a := newQQOfficialSendTestAdapter(t, server)
-	for _, target := range []delivery.Target{{PrivateUserID: "user"}, {GroupID: "group"}} {
-		want := "c2c:user"
-		if target.GroupID != "" {
-			want = "group:group"
-		}
+	for _, target := range []delivery.Target{{ChatType: "private", ChatID: "user"}, {ChatType: "group", ChatID: "group"}} {
+		want := target.ChatID
 		for _, output := range []delivery.Output{delivery.Text("report"), delivery.Reply("old", "reply"), {Kind: delivery.KindRecord, Text: "voice fallback", Source: delivery.Source{URL: "https://example.com/voice.mp3"}}} {
 			receipt, _, err := a.SendTo(context.Background(), target, []delivery.Output{output})
 			if err != nil || len(receipt.SentMessages) != 1 {
 				t.Fatalf("receipt=%#v err=%v", receipt, err)
 			}
-			if sent := receipt.SentMessages[0]; sent.Platform != config.PlatformQQOfficial || sent.ScopeID != want || sent.PlatformMessageID != "sent" || (output.Kind == delivery.KindRecord && len(sent.OutputIndexes) != 0) {
+			if sent := receipt.SentMessages[0]; sent.Platform != config.PlatformQQOfficial || sent.ChatType != target.ChatType || sent.ChatID != want || sent.PlatformMessageID != "sent" || (output.Kind == delivery.KindRecord && len(sent.OutputIndexes) != 0) {
 				t.Fatalf("source=%#v", sent)
 			}
 		}

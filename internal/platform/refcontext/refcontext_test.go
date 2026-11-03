@@ -2,17 +2,22 @@ package refcontext
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"path/filepath"
 	"testing"
 
 	"elbot/internal/command"
 	"elbot/internal/platform/share"
+	"elbot/internal/session/control"
+	sessionshare "elbot/internal/session/share"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
 
 type referenceTestScope struct {
-	ActorID, Platform, PlatformScopeID string
+	Owner            contextinfo.ActorIdentity
+	Platform, ChatID string
+	ChatType         contextinfo.ChatType
 }
 
 // Fixture encoding uses the storage format; refcontext consumes platform facts after decoding.
@@ -43,11 +48,11 @@ func TestApplyFallsBackToReferencedText(t *testing.T) {
 func TestApplyForksOwnOlderAssistantReference(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	scope := referenceTestScope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	scope := referenceTestScope{Owner: contextinfo.ActorIdentity{Platform: "qqofficial", ID: "user-1"}, Platform: "qqofficial", ChatType: "private", ChatID: "user-1"}
 	first, _ := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "p-old", first)
 
-	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-old", Text: "继续"})
+	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: "qqofficial", ChatID: scope.ChatID, Owner: scope.Owner, ReplyID: "p-old", Text: "继续", ChatType: scope.ChatType})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,11 +67,11 @@ func TestApplyForksOwnOlderAssistantReference(t *testing.T) {
 func TestApplyLatestOwnAssistantReferenceResumes(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	scope := referenceTestScope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	scope := referenceTestScope{Owner: contextinfo.ActorIdentity{Platform: "qqofficial", ID: "user-1"}, Platform: "qqofficial", ChatType: "private", ChatID: "user-1"}
 	_, latest := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "p-latest", latest)
 
-	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: "qqofficial", ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-latest", Text: "继续"})
+	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: "qqofficial", ChatID: scope.ChatID, Owner: scope.Owner, ReplyID: "p-latest", Text: "继续", ChatType: scope.ChatType})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,8 +86,8 @@ func TestApplyLatestOwnAssistantReferenceResumes(t *testing.T) {
 func TestApplySuperadminBackgroundReferenceResumes(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	scope := referenceTestScope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
-	bg := &storage.Session{ID: storage.NewID(), OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: "elnis:event-1", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive, Title: "elnis"}
+	scope := referenceTestScope{Owner: contextinfo.ActorIdentity{Platform: "qqofficial", ID: "user-1"}, Platform: "qqofficial", ChatType: "private", ChatID: "user-1"}
+	bg := &storage.Session{ID: storage.NewID(), Owner: scope.Owner, Platform: scope.Platform, ChatType: "elnis", ChatID: "event-1", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive, Title: "elnis"}
 	if err := store.Sessions().Create(ctx, bg); err != nil {
 		t.Fatalf("create background session: %v", err)
 	}
@@ -92,7 +97,7 @@ func TestApplySuperadminBackgroundReferenceResumes(t *testing.T) {
 	}
 	mapPlatformMessage(t, ctx, store, scope, "p-bg", msg)
 
-	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, IsSuperadmin: true, ReplyID: "p-bg", Text: "继续"})
+	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: scope.Platform, ChatID: scope.ChatID, Owner: contextinfo.ActorIdentity{Platform: scope.Platform, ID: "admin"}, ReplyID: "p-bg", Text: "继续", ChatType: scope.ChatType})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,8 +112,8 @@ func TestApplySuperadminBackgroundReferenceResumes(t *testing.T) {
 func TestApplyUserBackgroundReferenceFallsBack(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	scope := referenceTestScope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
-	bg := &storage.Session{ID: storage.NewID(), OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: "cron:user.cron.test", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive, Title: "cron"}
+	scope := referenceTestScope{Owner: contextinfo.ActorIdentity{Platform: "qqofficial", ID: "user-1"}, Platform: "qqofficial", ChatType: "private", ChatID: "user-1"}
+	bg := &storage.Session{ID: storage.NewID(), Owner: scope.Owner, Platform: scope.Platform, ChatType: "cron", ChatID: "user.cron.test", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive, Title: "cron"}
 	if err := store.Sessions().Create(ctx, bg); err != nil {
 		t.Fatalf("create background session: %v", err)
 	}
@@ -118,7 +123,7 @@ func TestApplyUserBackgroundReferenceFallsBack(t *testing.T) {
 	}
 	mapPlatformMessage(t, ctx, store, scope, "p-bg-user", msg)
 
-	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-bg-user", Text: "继续"})
+	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: scope.Platform, ChatID: scope.ChatID, Owner: scope.Owner, ReplyID: "p-bg-user", Text: "继续", ChatType: scope.ChatType})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,11 +139,11 @@ func TestApplyUserBackgroundReferenceFallsBack(t *testing.T) {
 func TestApplyOtherSessionAssistantReferenceFallsBack(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	otherScope := referenceTestScope{ActorID: "qqofficial:user-2", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	otherScope := referenceTestScope{Owner: contextinfo.ActorIdentity{Platform: "qqofficial", ID: "user-2"}, Platform: "qqofficial", ChatType: "private", ChatID: "user-1"}
 	msg, _ := createAssistantMessages(t, ctx, store, otherScope)
 	mapPlatformMessage(t, ctx, store, otherScope, "p-other", msg)
 
-	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: "qqofficial", ScopeID: otherScope.PlatformScopeID, ActorID: "qqofficial:user-1", ReplyID: "p-other", Text: "继续"})
+	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: "qqofficial", ChatID: otherScope.ChatID, Owner: contextinfo.ActorIdentity{Platform: "qqofficial", ID: "user-1"}, ReplyID: "p-other", Text: "继续", ChatType: otherScope.ChatType})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,13 +159,13 @@ func TestApplyOtherSessionAssistantReferenceFallsBack(t *testing.T) {
 func TestApplyOtherScopeAssistantReferenceFallsBack(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	currentScope := referenceTestScope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	currentScope := referenceTestScope{Owner: contextinfo.ActorIdentity{Platform: "qqofficial", ID: "user-1"}, Platform: "qqofficial", ChatType: "private", ChatID: "user-1"}
 	otherScope := currentScope
-	otherScope.PlatformScopeID = "c2c:user-2"
+	otherScope.ChatID = "c2c:user-2"
 	msg, _ := createAssistantMessages(t, ctx, store, otherScope)
 	mapPlatformMessage(t, ctx, store, currentScope, "p-other-scope", msg)
 
-	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: currentScope.Platform, ScopeID: currentScope.PlatformScopeID, ActorID: currentScope.ActorID, ReplyID: "p-other-scope", Text: "继续"})
+	result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: currentScope.Platform, ChatID: currentScope.ChatID, Owner: currentScope.Owner, ReplyID: "p-other-scope", Text: "继续", ChatType: currentScope.ChatType})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +178,7 @@ func TestApplyOtherScopeAssistantReferenceFallsBack(t *testing.T) {
 func TestApplyForkCommandUsesReferencedAssistantID(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	scope := referenceTestScope{ActorID: "qqofficial:user-1", Platform: "qqofficial", PlatformScopeID: "c2c:user-1"}
+	scope := referenceTestScope{Owner: contextinfo.ActorIdentity{Platform: "qqofficial", ID: "user-1"}, Platform: "qqofficial", ChatType: "private", ChatID: "user-1"}
 	msg, _ := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "p-old", msg)
 
@@ -191,7 +196,7 @@ func TestApplyForkCommandUsesReferencedAssistantID(t *testing.T) {
 	} {
 		t.Run(tc.text+tc.prefixes[0], func(t *testing.T) {
 			deps.ParseCommand = func(text string) command.Parsed { return command.Parse(text, tc.prefixes) }
-			result, err := Apply(ctx, deps, share.ReferenceOptions{Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: scope.ActorID, ReplyID: "p-old", Text: tc.text})
+			result, err := Apply(ctx, deps, share.ReferenceOptions{Platform: scope.Platform, ChatID: scope.ChatID, Owner: scope.Owner, ReplyID: "p-old", Text: tc.text, ChatType: scope.ChatType})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -205,7 +210,7 @@ func TestApplyForkCommandUsesReferencedAssistantID(t *testing.T) {
 
 func createAssistantMessages(t *testing.T, ctx context.Context, store storage.Store, scope referenceTestScope) (*storage.Message, *storage.Message) {
 	t.Helper()
-	s := &storage.Session{ID: storage.NewID(), OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID, Mode: storage.SessionModeWork, Title: "source"}
+	s := &storage.Session{ID: storage.NewID(), Owner: scope.Owner, Platform: scope.Platform, ChatID: scope.ChatID, Mode: storage.SessionModeWork, Title: "source", ChatType: scope.ChatType}
 	if err := store.Sessions().Create(ctx, s); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -222,21 +227,23 @@ func createAssistantMessages(t *testing.T, ctx context.Context, store storage.St
 
 func mapPlatformMessage(t *testing.T, ctx context.Context, store storage.Store, scope referenceTestScope, platformMessageID string, msg *storage.Message) {
 	t.Helper()
-	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID, PlatformMessageID: platformMessageID, MessageID: msg.ID, SessionID: msg.SessionID}); err != nil {
+	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: scope.Platform, ChatID: scope.ChatID, PlatformMessageID: platformMessageID, MessageID: msg.ID, SessionID: msg.SessionID, ChatType: scope.ChatType}); err != nil {
 		t.Fatalf("map message: %v", err)
 	}
 }
 
 func newRefTestOptions(store storage.Store, history storage.ChatHistoryRepository) Options {
+	service := control.NewService(control.Config{}, control.ServiceDeps{Sessions: store.Sessions(), Messages: store.Messages(), IsSuperadmin: func(scope sessionshare.Scope) bool { return scope.Owner.ID == "admin" }})
 	return Options{
 		ParseCommand:          func(text string) command.Parsed { return command.Parse(text, []string{"/"}) },
 		FindByPlatformMessage: store.Messages().FindByPlatformMessage,
-		GetSession:            store.Sessions().Get,
-		ListBySession:         store.Messages().ListBySession,
-		FindHistory:           store.Media().FindHistory,
-		GetMedia:              store.Media().Get,
-		FindOutputs:           store.Media().FindOutputs,
-		ChatHistory:           history,
+		ResolveContinuation: func(ctx context.Context, opts share.ReferenceOptions, message storage.Message) (string, string, bool, error) {
+			return service.ResolveReference(ctx, sessionshare.Scope{Owner: opts.Owner, Platform: opts.Platform, ChatType: opts.ChatType, ChatID: opts.ChatID}, message)
+		},
+		FindHistory: store.Media().FindHistory,
+		GetMedia:    store.Media().Get,
+		FindOutputs: store.Media().FindOutputs,
+		ChatHistory: history,
 	}
 }
 

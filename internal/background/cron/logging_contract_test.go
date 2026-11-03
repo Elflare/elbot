@@ -100,7 +100,7 @@ func TestTaskAuditIdentityAndOperation(t *testing.T) {
 		for _, withIdentity := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/identity=%t", mode, withIdentity), func(t *testing.T) {
 				ctx := t.Context()
-				want := globalevents.LogIdentity{}
+				want := globalevents.LogIdentity{SessionID: new(string), RunID: new(string), Attempt: new(string), RequestID: new(string), RootRequestID: new(string)}
 				if withIdentity {
 					facts := contextinfo.Execution{SessionID: "source-session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}
 					ctx = contextinfo.WithExecution(ctx, facts)
@@ -132,8 +132,11 @@ func TestTaskAuditIdentityAndOperation(t *testing.T) {
 				}
 				for i, name := range []string{"cron.trigger_started", "cron.send_started", "cron.send_completed", "cron.trigger_completed"} {
 					identity := want
-					if mode == TriggerLLM && strings.HasPrefix(name, "cron.send_") {
-						sessionID := "cron-session"
+					if strings.HasPrefix(name, "cron.send_") {
+						sessionID := ""
+						if mode == TriggerLLM {
+							sessionID = "cron-session"
+						}
 						identity.SessionID = &sessionID
 					}
 					if records[i].EventName != name || !reflect.DeepEqual(records[i].Identity, identity) {

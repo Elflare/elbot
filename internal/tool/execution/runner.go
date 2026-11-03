@@ -73,7 +73,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		ctx = updated
 		call := preparedCalls[index]
 		actor := task.actor
-		rawRecord := &storage.ToolCallRecord{SessionID: sessionID, ToolCallID: call.ID, ToolName: call.Name, ActorID: actor.ID, RiskLevel: task.risk, StartedAt: task.startedAt, FinishedAt: task.finishedAt, Success: result.Error == nil}
+		rawRecord := &storage.ToolCallRecord{SessionID: sessionID, ToolCallID: call.ID, ToolName: call.Name, Actor: actor.ActorIdentity, RiskLevel: task.risk, StartedAt: task.startedAt, FinishedAt: task.finishedAt, Success: result.Error == nil}
 		if result.Error != nil {
 			rawRecord.Error = result.Error.Error()
 		}
@@ -216,12 +216,8 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		}
 		resolved := m.resolve(ctx, call.Name, req.DiscoveredTools, snapshot.Mode)
 		runSource := "foreground"
-		if backgroundKind, ok := contextinfo.BackgroundKindFromContext(ctx); ok {
-			runSource = ""
-			switch backgroundKind {
-			case contextinfo.BackgroundKindCron, contextinfo.BackgroundKindElnis:
-				runSource = string(backgroundKind)
-			}
+		if snapshot.Mode == storage.SessionModeBackground {
+			runSource = snapshot.TaskType
 		}
 		if resolved.ResultStatus != events.ResultSucceeded {
 			startedAt := time.Now()
@@ -358,12 +354,11 @@ func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor 
 		return toolshare.ConfirmResult{Allowed: true}, nil
 	}
 	info := resolved.Native.Definition
-	kind, _ := contextinfo.BackgroundKindFromContext(ctx)
-	backgroundKind := string(kind)
-	permission := m.Permission.CheckTool(actor, call.Name, assessment.Level, info.OwnerScoped, info.SuperadminOnly, backgroundKind)
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	permission := m.Permission.CheckTool(actor, call.Name, assessment.Level, info.OwnerScoped, info.SuperadminOnly, toolshare.PolicyFromContext(ctx).AutoConfirmShell)
 	if permission.Reason == "background_shell_auto_confirmed" || permission.Reason == "background_shell_rejected" {
 		scope, _ := workspace.PathScopeFromContext(ctx)
-		content := map[string]string{"kind": backgroundKind, "tool": call.Name, "risk": string(assessment.Level), "sandbox_dir": scope.Dir, "arguments": call.Arguments}
+		content := map[string]string{"task_type": facts.TaskType, "tool": call.Name, "risk": string(assessment.Level), "sandbox_dir": scope.Dir, "arguments": call.Arguments}
 		for key, value := range content {
 			content[key] = toolshare.TruncateLogContent(value, 2048)
 		}
@@ -373,19 +368,10 @@ func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor 
 			resultStatus = events.ResultRejected
 		}
 		record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: permission.Reason, Module: "tool", Type: events.ContentJSON, Content: string(data), Identity: events.LogIdentity{SessionID: &sessionID}, ResultStatus: resultStatus}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
+		record.Identity.RunID = &facts.RunID
+		record.Identity.Attempt = &facts.Attempt
+		record.Identity.RequestID = &facts.RequestID
+		record.Identity.RootRequestID = &facts.RootRequestID
 		m.Log(ctx, record)
 	}
 	if !permission.Allowed {

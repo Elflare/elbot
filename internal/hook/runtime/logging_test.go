@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -117,8 +118,8 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 			}
 			defer manager.Close(context.Background())
 			worker := newWorker(manager, share.RuntimeConfig{ID: "test", EventTimeoutSeconds: 10, Tools: share.RuntimeToolsConfig{Allow: []string{"logging_tool"}}})
-			ctx := contextinfo.WithActor(contextinfo.WithExecution(t.Context(), contextinfo.Execution{SessionID: "context-session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}), contextinfo.Actor{ID: "context-actor"})
-			token := testToolContext(t, worker, ctx, share.Event{Session: share.SessionContext{ID: "trigger-session"}, Actor: share.ActorContext{ID: "trigger-actor"}})
+			ctx := contextinfo.WithActor(contextinfo.WithExecution(t.Context(), contextinfo.Execution{SessionID: "context-session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "context-actor"}})
+			token := testToolContext(t, worker, ctx, share.Event{Session: share.SessionContext{ID: "trigger-session"}, Actor: share.ActorContext{Platform: "cli", ID: "trigger-actor"}})
 			raw, _ := json.Marshal(map[string]any{"name": "logging_tool", "tool_context": token})
 			_, err = worker.callTool(raw)
 			if !errors.Is(err, tc.err) || len(*records) != 2 {
@@ -132,12 +133,13 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 				if err := json.Unmarshal([]byte(record.Content), &content); err != nil {
 					t.Fatal(err)
 				}
-				var id, actor, body, summary string
+				var id, body, summary string
+				var actor contextinfo.ActorIdentity
 				json.Unmarshal(content["tool_call_id"], &id)
-				json.Unmarshal(content["actor_id"], &actor)
+				json.Unmarshal(content["actor"], &actor)
 				json.Unmarshal(content["result"], &body)
 				json.Unmarshal(content["summary"], &summary)
-				if id != callID || id == "" || actor != "trigger-actor" || record.Identity.SessionID == nil || *record.Identity.SessionID != "trigger-session" || record.Identity.RootRequestID == nil || *record.Identity.RootRequestID != "root" {
+				if id != callID || id == "" || actor != (contextinfo.ActorIdentity{Platform: "cli", ID: "trigger-actor"}) || record.Identity.SessionID == nil || *record.Identity.SessionID != "trigger-session" || record.Identity.RootRequestID == nil || *record.Identity.RootRequestID != "root" {
 					t.Fatalf("identity=%+v content=%s", record.Identity, record.Content)
 				}
 				if i == 0 {
@@ -203,12 +205,12 @@ func TestToolAuditUsesTriggerActorAndKeepsEnteredCancellation(t *testing.T) {
 	for _, tc := range []struct{ name, sessionActor, sessionID, expected, contextSession, expectedSession string }{
 		{"session", "trigger", "session", "trigger", "context-session", "session"},
 		{"missing_session_actor", "", "session", "", "context-session", "session"},
-		{"without_session", "permission-only", "", "context", "context-session", "context-session"},
-		{"missing_session_identity", "permission-only", "", "context", "", ""},
+		{"without_session", "permission-only", "", "permission-only", "context-session", ""},
+		{"missing_session_identity", "permission-only", "", "permission-only", "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			records := captureHookRecords(t)
-			ctx, cancel := context.WithCancel(contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "context"}))
+			ctx, cancel := context.WithCancel(contextinfo.WithActor(t.Context(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "context"}}))
 			ctx = contextinfo.WithExecution(ctx, contextinfo.Execution{SessionID: tc.contextSession})
 			registry := tool.NewRegistry(security.DefaultPermission())
 			if err := registerHookTestTool(registry, loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
@@ -227,7 +229,7 @@ func TestToolAuditUsesTriggerActorAndKeepsEnteredCancellation(t *testing.T) {
 			}
 			defer manager.Close(context.Background())
 			worker := newWorker(manager, share.RuntimeConfig{ID: "test", EventTimeoutSeconds: 10, Tools: share.RuntimeToolsConfig{Allow: []string{"logging_tool"}}})
-			token := testToolContext(t, worker, ctx, share.Event{Session: share.SessionContext{ID: tc.sessionID}, Actor: share.ActorContext{ID: tc.sessionActor}})
+			token := testToolContext(t, worker, ctx, share.Event{Session: share.SessionContext{ID: tc.sessionID}, Actor: share.ActorContext{Platform: "cli", ID: tc.sessionActor}})
 			raw, _ := json.Marshal(map[string]any{"name": "logging_tool", "tool_context": token})
 			_, err = worker.callTool(raw)
 			if !errors.Is(err, context.Canceled) || len(*records) != 1 || (*records)[0].ResultStatus != events.ResultCanceled || (*records)[0].Level != slog.LevelInfo {
@@ -236,15 +238,15 @@ func TestToolAuditUsesTriggerActorAndKeepsEnteredCancellation(t *testing.T) {
 			var content map[string]any
 			json.Unmarshal([]byte((*records)[0].Content), &content)
 			if tc.expected == "" {
-				if _, exists := content["actor_id"]; exists {
+				if !reflect.DeepEqual(content["actor"], map[string]any{"platform": "cli", "name": ""}) {
 					t.Fatal(content)
 				}
-			} else if content["actor_id"] != tc.expected {
+			} else if !reflect.DeepEqual(content["actor"], map[string]any{"platform": "cli", "id": tc.expected, "name": ""}) {
 				t.Fatal(content)
 			}
 			identity := (*records)[0].Identity
 			if tc.expectedSession == "" {
-				if identity.SessionID != nil {
+				if identity.SessionID == nil || *identity.SessionID != "" {
 					t.Fatalf("absent session became explicit: %+v", identity)
 				}
 			} else if identity.SessionID == nil || *identity.SessionID != tc.expectedSession {
@@ -318,7 +320,16 @@ func TestWorkerRequestKeepsKnownFaultWhenCanceled(t *testing.T) {
 func TestToolWithoutOutputsDoesNotInvokeSenderOrLogSend(t *testing.T) {
 	records := captureHookRecords(t)
 	registry := tool.NewRegistry(security.DefaultPermission())
-	if err := registerHookTestTool(registry, loggingTool{run: func(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
+	if err := registerHookTestTool(registry, loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
+		if actor, _ := contextinfo.ActorFromContext(ctx); actor != (contextinfo.Actor{}) {
+			t.Fatalf("fabricated actor: %+v", actor)
+		}
+		if facts, _ := contextinfo.ExecutionFromContext(ctx); facts != (contextinfo.Execution{}) {
+			t.Fatalf("fabricated execution: %+v", facts)
+		}
+		if _, ok := contextinfo.ConversationFromContext(ctx); ok {
+			t.Fatal("fabricated chat")
+		}
 		return &toolshare.Result{Content: "business only"}, "tool body", nil
 	}}); err != nil {
 		t.Fatal(err)
@@ -332,9 +343,12 @@ func TestToolWithoutOutputsDoesNotInvokeSenderOrLogSend(t *testing.T) {
 	}
 	defer manager.Close(context.Background())
 	worker := newWorker(manager, share.RuntimeConfig{ID: "test", EventTimeoutSeconds: 10, Tools: share.RuntimeToolsConfig{BackgroundAllow: []string{"logging_tool"}}})
-	result, err := worker.callTool(json.RawMessage(`{"name":"logging_tool","background":true,"target":{"platform":"cli"}}`))
+	result, err := worker.callTool(json.RawMessage(`{"name":"logging_tool","background":true}`))
 	if err != nil || result == nil || len(*records) != 1 || (*records)[0].EventName != "hook_tool_call_completed" {
 		t.Fatalf("result=%v err=%v records=%+v", result, err, *records)
+	}
+	if result.(map[string]any)["content"] != "business only" {
+		t.Fatalf("RPC lost result: %v", result)
 	}
 }
 

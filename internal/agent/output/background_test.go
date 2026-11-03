@@ -2,11 +2,11 @@ package output
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"log/slog"
 	"reflect"
 	"testing"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 )
@@ -54,7 +54,7 @@ func TestBackgroundOutputIsSilentExceptExplicitDelivery(t *testing.T) {
 	probe := &backgroundDeliveryProbe{}
 	hooks := &previewTestHooks{}
 	out := NewOutputSender(OutputSenderDeps{Dispatcher: probe, Hooks: hooks, Reasoning: func(context.Context) delivery.ReasoningStream { probe.calls++; return nil }})
-	ctx := contextinfo.WithBackgroundKind(t.Context(), contextinfo.BackgroundKindCron)
+	ctx := testutil.TaskContext(t.Context(), "cron")
 	if _, err := out.SendOutputs(ctx, []delivery.Output{delivery.Text("ordinary")}); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestBackgroundOutputIsSilentExceptExplicitDelivery(t *testing.T) {
 	if probe.calls != 0 || hooks.calls != 0 {
 		t.Fatal("background output escaped", probe.calls, hooks.calls)
 	}
-	target := delivery.Target{Platform: "test", GroupID: "destination"}
+	target := delivery.Target{Platform: "test", ChatType: "group", ChatID: "destination"}
 	if err := out.SendTo(ctx, target, []delivery.Output{delivery.Text("explicit")}); err != nil {
 		t.Fatal(err)
 	}

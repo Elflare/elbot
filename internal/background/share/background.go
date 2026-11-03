@@ -25,12 +25,10 @@ type RunRequest struct {
 	TargetPlatforms []string // 创建时解析出的有效投递平台，供 Session 保存身份快照。
 	// NeedsElyphRules declares a requirement of the task prompt, not session state.
 	NeedsElyphRules bool
-	Kind            Kind
+	TaskType        Kind
+	TaskID          string
 	Name            string
-	Title           string
-	Platform        string
 	Actor           contextinfo.Actor
-	ScopeID         string
 	SessionID       string
 	ModelProvider   string
 	Model           string

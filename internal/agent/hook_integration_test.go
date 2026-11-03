@@ -34,7 +34,7 @@ type integrationPlatform struct {
 	outputs []string
 }
 
-func (*integrationPlatform) SessionIDCode(name string, _ contextinfo.ConversationKind) (string, error) {
+func (*integrationPlatform) SessionIDCode(name string, _ contextinfo.ChatType) (string, error) {
 	return name, nil
 }
 

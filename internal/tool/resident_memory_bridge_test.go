@@ -23,7 +23,7 @@ func TestResidentMemoryToolsUseActorScope(t *testing.T) {
 	coreTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[3]
 	normalTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[2]
 	readTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[1]
-	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "qqonebot:1", Platform: "qqonebot", PlatformUserID: "1", Role: contextinfo.RoleUser})
+	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "1"}, Role: contextinfo.RoleUser})
 
 	if _, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{"content":"用户喜欢被称为娅娅。"}`)}); err != nil {
 		t.Fatalf("write core: %v", err)
@@ -42,7 +42,7 @@ func TestResidentMemoryToolsUseActorScope(t *testing.T) {
 		t.Fatalf("memory read should log returned content: %q", logContent)
 	}
 
-	otherCtx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "qqonebot:2", Platform: "qqonebot", PlatformUserID: "2", Role: contextinfo.RoleUser})
+	otherCtx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "2"}, Role: contextinfo.RoleUser})
 	result, _, err = callTool(otherCtx, readTool, toolshare.CallRequest{Arguments: raw(`{"section":"all"}`)})
 	if err != nil {
 		t.Fatalf("read other: %v", err)
@@ -55,7 +55,7 @@ func TestResidentMemoryToolsUseActorScope(t *testing.T) {
 func TestResidentMemoryNormalAppendWriteDelete(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
 	normalTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[2]
-	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin})
+	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})
 
 	result, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"append","content":"第一条"}`)})
 	if err != nil {
@@ -64,7 +64,7 @@ func TestResidentMemoryNormalAppendWriteDelete(t *testing.T) {
 	if result.Content != "已追加普通常驻记忆。" {
 		t.Fatalf("append empty content = %q", result.Content)
 	}
-	memory, err := store.Read(ctx, resident.ActorScope(contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}))
+	memory, err := store.Read(ctx, resident.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin}))
 	if err != nil || memory.Normal != "第一条" {
 		t.Fatalf("memory = %#v err=%v", memory, err)
 	}
@@ -72,14 +72,14 @@ func TestResidentMemoryNormalAppendWriteDelete(t *testing.T) {
 	if _, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"append","content":"第二条"}`)}); err != nil {
 		t.Fatalf("append existing: %v", err)
 	}
-	memory, err = store.Read(ctx, resident.ActorScope(contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}))
+	memory, err = store.Read(ctx, resident.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin}))
 	if err != nil || memory.Normal != "第一条 第二条" {
 		t.Fatalf("memory = %#v err=%v", memory, err)
 	}
 	if _, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"delete"}`)}); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	if _, err := store.Read(ctx, resident.ActorScope(contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin})); err != resident.ErrNotFound {
+	if _, err := store.Read(ctx, resident.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})); err != resident.ErrNotFound {
 		t.Fatalf("expected empty after delete, err=%v", err)
 	}
 }
@@ -87,7 +87,7 @@ func TestResidentMemoryNormalAppendWriteDelete(t *testing.T) {
 func TestResidentMemoryCoreAllowsEmptyString(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
 	coreTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[3]
-	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin})
+	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})
 
 	if _, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{"content":"核心"}`)}); err != nil {
 		t.Fatalf("write core: %v", err)
@@ -95,7 +95,7 @@ func TestResidentMemoryCoreAllowsEmptyString(t *testing.T) {
 	if _, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{"content":""}`)}); err != nil {
 		t.Fatalf("clear core: %v", err)
 	}
-	if _, err := store.Read(ctx, resident.ActorScope(contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin})); err != resident.ErrNotFound {
+	if _, err := store.Read(ctx, resident.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})); err != resident.ErrNotFound {
 		t.Fatalf("expected empty after clear, err=%v", err)
 	}
 	if _, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{}`)}); err == nil {
@@ -144,7 +144,7 @@ func TestResidentMemoryValidation(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
 	readTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[1]
 	normalTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[2]
-	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin})
+	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})
 
 	if _, _, err := callTool(context.Background(), readTool, toolshare.CallRequest{Arguments: raw(`{"section":"all"}`)}); err == nil {
 		t.Fatalf("expected missing actor error")

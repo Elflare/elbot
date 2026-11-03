@@ -94,7 +94,7 @@ func TestBackgroundLifecycleAndBorrowedResources(t *testing.T) {
 	if err != nil || recovered.Status != elnis.StatusFailed {
 		t.Fatalf("recovery=%#v, %v", recovered, err)
 	}
-	result, err := m.runner.RunBackground(t.Context(), share.RunRequest{Kind: share.KindCron, Name: "borrowed", Prompt: "run"})
+	result, err := m.runner.RunBackground(t.Context(), share.RunRequest{TaskType: share.KindCron, TaskID: "borrowed", SandboxSubdir: "borrowed", Prompt: "run"})
 	if err != nil || result.Text != "borrowed execution" {
 		t.Fatal(result, err)
 	}

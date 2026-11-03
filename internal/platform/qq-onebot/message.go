@@ -7,7 +7,6 @@ import (
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/platform/share"
-	"elbot/internal/security"
 	"elbot/internal/storage"
 	"encoding/json"
 	"errors"
@@ -127,20 +126,24 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 	if event.MessageType == "group" {
 		conversationID = strconv.FormatInt(event.GroupID, 10)
 	}
+	chatName := ""
+	if event.MessageType == "private" {
+		chatName = senderName(event.Sender)
+	}
 	messageCtx := share.MessageContext{
 		Conversation: contextinfo.Conversation{
 			Source: contextinfo.Source{
-				Platform:         a.Name(),
-				ScopeID:          scopeID(event),
-				ConversationKind: oneBotConversationKind(event),
-				ConversationID:   conversationID,
+				Platform: a.Name(),
+
+				ChatType: oneBotChatType(event),
+				ChatID:   conversationID, Name: chatName,
 			},
 			Identity: contextinfo.Identity{
-				ActorID:        security.ActorID(a.Name(), strconv.FormatInt(event.UserID, 10)),
-				PlatformUserID: strconv.FormatInt(event.UserID, 10),
-				Nickname:       strings.TrimSpace(event.Sender.Nickname),
-				GroupCard:      strings.TrimSpace(event.Sender.Card),
-				DisplayName:    senderName(event.Sender),
+
+				ID:        strconv.FormatInt(event.UserID, 10),
+				Nickname:  strings.TrimSpace(event.Sender.Nickname),
+				GroupCard: strings.TrimSpace(event.Sender.Card),
+				Name:      senderName(event.Sender),
 			},
 			PlatformMessageID: strconv.FormatInt(event.MessageID, 10),
 			ReplyToMessageID:  normalized.ReplyID,
@@ -185,14 +188,14 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 	var referenceSegments []share.MessageSegment
 	if normalized.ReplyID != "" {
 		ref, err := a.referenceResolver(msgCtx, share.ReferenceOptions{
-			Platform:     a.Name(),
-			ScopeID:      messageCtx.Conversation.Source.ScopeID,
-			ActorID:      security.ActorID(a.Name(), strconv.FormatInt(event.UserID, 10)),
-			IsSuperadmin: a.superadmins.IsSuperadmin(strconv.FormatInt(event.UserID, 10)),
-			ReplyID:      normalized.ReplyID,
-			Text:         referenceInputText,
-			Fetch:        a.referenceFetcher(event),
-			Enrich:       a.expandForwardReference(event),
+			Platform: a.Name(),
+			ChatID:   messageCtx.Conversation.Source.ChatID,
+			ChatType: messageCtx.Conversation.Source.ChatType,
+			Owner:    contextinfo.ActorIdentity{Platform: a.Name(), ID: strconv.FormatInt(event.UserID, 10)},
+			ReplyID:  normalized.ReplyID,
+			Text:     referenceInputText,
+			Fetch:    a.referenceFetcher(event),
+			Enrich:   a.expandForwardReference(event),
 		})
 		if err != nil {
 			a.logContextFailure(msgCtx, err)
@@ -298,14 +301,14 @@ func oneBotGroupRole(event Event) contextinfo.GroupRole {
 	}
 }
 
-func oneBotConversationKind(event Event) contextinfo.ConversationKind {
+func oneBotChatType(event Event) contextinfo.ChatType {
 	switch event.MessageType {
 	case "private":
-		return contextinfo.ConversationPrivate
+		return contextinfo.ChatPrivate
 	case "group":
-		return contextinfo.ConversationGroup
+		return contextinfo.ChatGroup
 	default:
-		return contextinfo.ConversationUnknown
+		return contextinfo.ChatUnknown
 	}
 }
 
@@ -314,21 +317,21 @@ func (a *Adapter) replyToSenderID(ctx context.Context, event Event, replyID stri
 	if replyID == "" {
 		return "", nil
 	}
-	msg, err := a.findByPlatformMessage(ctx, a.Name(), scopeID(event), replyID)
+	msg, err := a.findByPlatformMessage(ctx, a.Name(), oneBotChatType(event), scopeID(event), replyID)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return "", err
 	}
 	if err == nil && msg.Role == storage.RoleAssistant {
 		return strconv.FormatInt(event.SelfID, 10), nil
 	}
-	outputs, err := a.findOutputs(ctx, a.Name(), scopeID(event), replyID, time.Now())
+	outputs, err := a.findOutputs(ctx, a.Name(), oneBotChatType(event), scopeID(event), replyID, time.Now())
 	if err != nil {
 		return "", err
 	}
 	if len(outputs) > 0 {
 		return strconv.FormatInt(event.SelfID, 10), nil
 	}
-	history, err := a.chatHistory.GetByPlatformMessage(ctx, a.Name(), scopeID(event), replyID)
+	history, err := a.chatHistory.GetByPlatformMessage(ctx, a.Name(), oneBotChatType(event), scopeID(event), replyID)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return "", err
 	}
@@ -375,8 +378,8 @@ func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized
 	}
 	message := &storage.ChatMessage{
 		Platform:                 a.Name(),
-		PlatformScopeID:          scopeID(event),
-		ScopeType:                event.MessageType,
+		ChatID:                   scopeID(event),
+		ChatType:                 oneBotChatType(event),
 		PlatformMessageID:        strconv.FormatInt(event.MessageID, 10),
 		SenderID:                 strconv.FormatInt(event.UserID, 10),
 		SenderName:               senderName(event.Sender),
@@ -415,9 +418,9 @@ func (a *Adapter) isMessageEvent(event Event) bool {
 
 func scopeID(event Event) string {
 	if event.MessageType == "group" {
-		return fmt.Sprintf("group:%d", event.GroupID)
+		return strconv.FormatInt(event.GroupID, 10)
 	}
-	return fmt.Sprintf("private:%d", event.UserID)
+	return strconv.FormatInt(event.UserID, 10)
 }
 
 func (a *Adapter) logContextFailure(ctx context.Context, err error) {

@@ -20,8 +20,8 @@ func TestHookCallbackReceivesPublicFactsWithoutInventingSource(t *testing.T) {
 	}{
 		{"absent", t.Context(), "", contextinfo.Source{}},
 		{"platform only", contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram"}}), "", contextinfo.Source{Platform: "telegram"}},
-		{"association only", contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli"}, Identity: contextinfo.Identity{ActorID: "cli:local"}}), "", contextinfo.Source{Platform: "cli"}},
-		{"explicit actor", contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "trusted"}), "trusted", contextinfo.Source{}},
+		{"association only", contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli"}, Identity: contextinfo.Identity{}}), "", contextinfo.Source{Platform: "cli"}},
+		{"explicit actor", contextinfo.WithActor(t.Context(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "trusted"}}), "trusted", contextinfo.Source{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			bridge := agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{Identity: identity})

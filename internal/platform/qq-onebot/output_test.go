@@ -24,7 +24,7 @@ func testTargetContext(t target) context.Context {
 	if t.MessageType == "group" {
 		id = t.GroupID
 	}
-	return contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ScopeID: oneBotTargetScope(t), ConversationKind: contextinfo.ConversationKind(t.MessageType), ConversationID: fmt.Sprint(id)}})
+	return contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ChatType: contextinfo.ChatType(t.MessageType), ChatID: fmt.Sprint(id)}})
 }
 
 func TestNotificationDeliversExplicitGroupToolText(t *testing.T) {
@@ -253,7 +253,7 @@ func TestSendRecordUsesPrivateAndGroupMessageAPIs(t *testing.T) {
 			if len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "88" {
 				t.Fatalf("receipt = %#v", receipt)
 			}
-			if len(receipt.SentMessages) != 1 || receipt.SentMessages[0].ScopeID != oneBotTargetScope(tc.target) || len(receipt.SentMessages[0].OutputIndexes) != 1 || receipt.SentMessages[0].OutputIndexes[0] != 0 {
+			if len(receipt.SentMessages) != 1 || receipt.SentMessages[0].ChatID != oneBotTargetScope(tc.target) || len(receipt.SentMessages[0].OutputIndexes) != 1 || receipt.SentMessages[0].OutputIndexes[0] != 0 {
 				t.Fatalf("structured receipt = %#v", receipt.SentMessages)
 			}
 		})

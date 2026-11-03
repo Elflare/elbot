@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"elbot/internal/tool"
 	"os"
 	"path/filepath"
@@ -26,7 +27,7 @@ import (
 
 func TestResidentMemorySystemPromptSource(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	scope := session.Scope{Platform: "qqonebot", ActorID: "qqonebot:1"}
+	scope := session.Scope{Platform: "qqonebot", Owner: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "1"}}
 	if err := store.WriteCore(context.Background(), scope, "用户喜欢被称为娅娅。"); err != nil {
 		t.Fatalf("WriteCore: %v", err)
 	}
@@ -44,7 +45,7 @@ func TestResidentMemorySystemPromptSource(t *testing.T) {
 
 func TestBackgroundPathsAreSystemPromptOnlyUntilTakeover(t *testing.T) {
 	manager := dialogue.NewSystemPromptManager(dialogue.BackgroundPathsSystemPromptSource{})
-	ctx := workspace.WithPathScope(contextinfo.WithBackgroundKind(t.Context(), ""), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
+	ctx := workspace.WithPathScope(testutil.TaskContext(t.Context(), ""), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
 	background, err := manager.Build(ctx, agentshare.SystemPromptRequest{Mode: storage.SessionModeBackground})
 	if err != nil {
 		t.Fatal(err)
@@ -52,7 +53,7 @@ func TestBackgroundPathsAreSystemPromptOnlyUntilTakeover(t *testing.T) {
 	if strings.Count(background, "路径必须为相对路径") != 1 {
 		t.Fatalf("missing or duplicate background path rules: %s", background)
 	}
-	foreground, err := manager.Build(workspace.WithoutPathScope(contextinfo.WithoutBackgroundKind(ctx)), agentshare.SystemPromptRequest{Mode: storage.SessionModeWork})
+	foreground, err := manager.Build(workspace.WithoutPathScope(testutil.ForegroundContext(ctx)), agentshare.SystemPromptRequest{Mode: storage.SessionModeWork})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +64,7 @@ func TestBackgroundPathsAreSystemPromptOnlyUntilTakeover(t *testing.T) {
 
 func TestResidentMemorySystemPromptSourceOmitsEmptyMemory(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	parts, err := (dialogue.ResidentMemorySystemPromptSource{Store: store}).Parts(context.Background(), agentshare.SystemPromptRequest{Scope: session.Scope{Platform: "cli", ActorID: "cli:local", IsCLI: true}})
+	parts, err := (dialogue.ResidentMemorySystemPromptSource{Store: store}).Parts(context.Background(), agentshare.SystemPromptRequest{Scope: session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, IsCLI: true}})
 	if err != nil {
 		t.Fatalf("Parts: %v", err)
 	}
@@ -82,71 +83,71 @@ func TestConversationMetaFromPublicContext(t *testing.T) {
 		{
 			name: "group card",
 			msg: contextinfo.Conversation{
-				Source:   contextinfo.Source{Platform: "qqonebot", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"},
-				Identity: contextinfo.Identity{PlatformUserID: "1001", Nickname: "昵称", GroupCard: "群名片"},
+				Source:   contextinfo.Source{Platform: "qqonebot", ChatType: contextinfo.ChatGroup, ChatID: "9"},
+				Identity: contextinfo.Identity{ID: "1001", Nickname: "昵称", GroupCard: "群名片"},
 			},
-			scope: session.Scope{Platform: "qqonebot", PlatformScopeID: "group:9"},
+			scope: session.Scope{Platform: "qqonebot", ChatType: "group", ChatID: "9"},
 			want: contextinfo.Conversation{
-				Source:   contextinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"},
-				Identity: contextinfo.Identity{PlatformUserID: "1001", Nickname: "群名片"},
+				Source:   contextinfo.Source{Platform: "qqonebot", ChatType: "group", ChatID: "9"},
+				Identity: contextinfo.Identity{ID: "1001", Nickname: "群名片"},
 			},
 		},
 		{
 			name: "group nickname fallback",
 			msg: contextinfo.Conversation{
-				Source:   contextinfo.Source{Platform: "telegram", ConversationKind: contextinfo.ConversationGroup, ConversationID: "-1009"},
-				Identity: contextinfo.Identity{PlatformUserID: "1001", Nickname: "昵称"},
+				Source:   contextinfo.Source{Platform: "telegram", ChatType: contextinfo.ChatGroup, ChatID: "-1009"},
+				Identity: contextinfo.Identity{ID: "1001", Nickname: "昵称"},
 			},
-			scope: session.Scope{Platform: "telegram", PlatformScopeID: "supergroup:-1009"},
+			scope: session.Scope{Platform: "telegram", ChatType: "group", ChatID: "-1009"},
 			want: contextinfo.Conversation{
-				Source:   contextinfo.Source{Platform: "telegram", ConversationKind: "group", ConversationID: "-1009"},
-				Identity: contextinfo.Identity{PlatformUserID: "1001", Nickname: "昵称"},
+				Source:   contextinfo.Source{Platform: "telegram", ChatType: "group", ChatID: "-1009"},
+				Identity: contextinfo.Identity{ID: "1001", Nickname: "昵称"},
 			},
 		},
 		{
 			name: "private ignores group card",
 			msg: contextinfo.Conversation{
-				Source:   contextinfo.Source{Platform: "qqofficial", ScopeID: "c2c:openid-1", ConversationKind: contextinfo.ConversationPrivate, ConversationID: "openid-1"},
-				Identity: contextinfo.Identity{PlatformUserID: "openid-1", Nickname: "昵称", GroupCard: "不应使用"},
+				Source:   contextinfo.Source{Platform: "qqofficial", ChatType: contextinfo.ChatPrivate, ChatID: "openid-1"},
+				Identity: contextinfo.Identity{ID: "openid-1", Nickname: "昵称", GroupCard: "不应使用"},
 			},
-			scope: session.Scope{Platform: "qqofficial", PlatformScopeID: "c2c:openid-1"},
+			scope: session.Scope{Platform: "qqofficial", ChatType: "private", ChatID: "openid-1"},
 			want: contextinfo.Conversation{
-				Source:   contextinfo.Source{Platform: "qqofficial", ConversationKind: "private", ConversationID: "openid-1"},
-				Identity: contextinfo.Identity{PlatformUserID: "openid-1", Nickname: "昵称"},
+				Source:   contextinfo.Source{Platform: "qqofficial", ChatType: "private", ChatID: "openid-1"},
+				Identity: contextinfo.Identity{ID: "openid-1", Nickname: "昵称"},
 			},
 		},
 		{
 			name: "channel",
 			msg: contextinfo.Conversation{
-				Source:   contextinfo.Source{Platform: "qqofficial", ConversationKind: contextinfo.ConversationChannel, ConversationID: "channel-1"},
-				Identity: contextinfo.Identity{PlatformUserID: "user-1", Nickname: "昵称"},
+				Source:   contextinfo.Source{Platform: "qqofficial", ChatType: contextinfo.ChatChannel, ChatID: "channel-1"},
+				Identity: contextinfo.Identity{ID: "user-1", Nickname: "昵称"},
 			},
-			scope: session.Scope{Platform: "qqofficial", PlatformScopeID: "channel:channel-1"},
+			scope: session.Scope{Platform: "qqofficial", ChatID: "channel-1", ChatType: "channel"},
 			want: contextinfo.Conversation{
-				Source:   contextinfo.Source{Platform: "qqofficial", ConversationKind: "channel", ConversationID: "channel-1"},
-				Identity: contextinfo.Identity{PlatformUserID: "user-1", Nickname: "昵称"},
+				Source:   contextinfo.Source{Platform: "qqofficial", ChatType: "channel", ChatID: "channel-1"},
+				Identity: contextinfo.Identity{ID: "user-1", Nickname: "昵称"},
 			},
 		},
 		{
 			name: "group missing nickname",
 			msg: contextinfo.Conversation{
-				Source:   contextinfo.Source{Platform: "qqonebot", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"},
-				Identity: contextinfo.Identity{PlatformUserID: " 1001 "},
+				Source:   contextinfo.Source{Platform: "qqonebot", ChatType: contextinfo.ChatGroup, ChatID: "9"},
+				Identity: contextinfo.Identity{ID: " 1001 "},
 			},
-			scope: session.Scope{Platform: "qqonebot", PlatformScopeID: "group:9"},
+			scope: session.Scope{Platform: "qqonebot", ChatType: "group", ChatID: "9"},
 			want: contextinfo.Conversation{
-				Source:   contextinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"},
-				Identity: contextinfo.Identity{PlatformUserID: "1001"},
+				Source:   contextinfo.Source{Platform: "qqonebot", ChatType: "group", ChatID: "9"},
+				Identity: contextinfo.Identity{ID: "1001"},
 			},
 		},
 		{
 			name: "group missing user ID",
 			msg: contextinfo.Conversation{
-				Source:   contextinfo.Source{Platform: "qqonebot", ConversationKind: contextinfo.ConversationGroup, ConversationID: "9"},
+				Source:   contextinfo.Source{Platform: "qqonebot", ChatType: contextinfo.ChatGroup, ChatID: "9"},
 				Identity: contextinfo.Identity{Nickname: "昵称"},
 			},
-			scope: session.Scope{Platform: "qqonebot", PlatformScopeID: "group:9"},
-			want:  contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ConversationKind: "group", ConversationID: "9"}, Identity: contextinfo.Identity{Nickname: "昵称"}},
+			scope: session.Scope{Platform: "qqonebot", ChatType: "group", ChatID: "9"},
+			want:  contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ChatType: "group", ChatID: "9"}, Identity: contextinfo.Identity{Nickname: "昵称"}},
 		},
 	}
 	for _, tt := range tests {
@@ -178,7 +179,7 @@ func (s tagPromptTestService) TagPrompts(ctx context.Context, tags []string) ([]
 
 func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
 	ctx := context.Background()
-	scope := session.Scope{Platform: "cli", ActorID: "cli:local", IsCLI: true}
+	scope := session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, IsCLI: true}
 	memoryStore := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
 	if err := memoryStore.WriteCore(ctx, scope, "RESIDENT_ORDER"); err != nil {
 		t.Fatalf("WriteCore: %v", err)

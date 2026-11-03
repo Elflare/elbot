@@ -498,8 +498,8 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # name = "demo" # optional metadata; [[plugins]].name is the reference name
 # description = "demo plugin"
 # blocked_platform = [] # applies to every rule and Worker in this plugin
-# blocked_group = ["qqonebot:123456"]
-# blocked_id = ["qqonebot:10001"]
+# blocked_group.qqonebot = ["123456"]
+# blocked_id.qqonebot = ["10001"]
 #
 # Rule shape:
 # [[rules]]
@@ -512,8 +512,8 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # Direct rules in this root hooks.toml may set blocked_platform, blocked_group,
 # and blocked_id independently. Plugin rules use [plugin] instead.
 # blocked_platform = []
-# blocked_group = ["qqonebot:123456"]
-# blocked_id = ["qqonebot:10001"]
+# blocked_group.qqonebot = ["123456"]
+# blocked_id.qqonebot = ["10001"]
 #
 # Single condition:
 # if = "message.text"
@@ -525,7 +525,7 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 #
 # Multiple conditions are AND:
 # match = [
-#   { field = "platform.name", op = "fullmatch", value = "qqonebot" },
+#   { field = "chat.platform", op = "fullmatch", value = "qqonebot" },
 #   { field = "message.text", op = "contains", value = "猫" },
 # ]
 #
@@ -542,7 +542,7 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # ]
 #
 # send action with outputs (kind/text/url/path/base64/name/mime_type/user_id/message_id/emoticon_id):
-# target.platform/target.scope_id/target.private_user_id/target.group_id/target.superadmins
+# target.platform/target.chat_type/target.id/target.superadmins
 # can redirect send outputs; omit target to send to the current context.
 # actions = [
 #   { type = "send", timing = "after_assistant", outputs = [
@@ -580,8 +580,8 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 #
 # Match ops: always, exists, contains, fullmatch, startswith, endswith, regex.
 # Common fields:
-# platform.name/scope_id/user_id/conversation_id/message_id/reply_to_message_id
-# actor.id/user_id/role/group_role/display_name
+# chat.platform/chat_type/id/name/message_id/reply_to_message_id
+# actor.platform/id/name/role/group_role/nickname/group_card
 # session.id/mode/title/status
 # request.id/kind/session_id/phase (kind: turn,llm,tool,compress,sub_agent; phase: idle,llm,tool,awaiting_risk_confirm,awaiting_append_confirm,compact)
 # message.id/text/display_text/platform_text/intent_text/role
@@ -605,8 +605,8 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 # agent.output.prepared / agent.turn.output.prepared / platform.message.sent: message.text
 #
 # Template variables include:
-# {{platform.name}}, {{platform.scope_id}}, {{platform.user_id}}, {{platform.message_id}}, {{platform.reply_to_message_id}}
-# {{actor.id}}, {{actor.user_id}}, {{actor.role}}, {{actor.group_role}}
+# {{chat.platform}}, {{chat.chat_type}}, {{chat.id}}, {{chat.name}}, {{chat.message_id}}, {{chat.reply_to_message_id}}
+# {{actor.platform}}, {{actor.id}}, {{actor.name}}, {{actor.role}}, {{actor.group_role}}
 # {{message.text}}, {{message.display_text}}, {{message.platform_text}}, {{message.intent_text}}
 # {{message.reply.message_id}}, {{message.reply.sender_id}}, {{message.reply.text}}, {{message.reply.display_text}}
 # {{llm.text}}, {{llm.source_text}}, {{llm.latest_user_text}}, {{llm.latest_user_display_text}}
@@ -620,7 +620,7 @@ const defaultHooksTOML = `# Declarative Hook rules. Loaded at ElBot startup.
 name = "notify_qqonebot_connected"
 on = "platform.connected"
 priority = 1000
-if = "platform.name"
+if = "chat.platform"
 op = "fullmatch"
 value = "qqonebot"
 action = "send"
@@ -655,7 +655,7 @@ target.superadmins = true
 # name = "cat_to_dog"
 # on = "agent.input.prepared"
 # match = [
-#   { field = "platform.name", op = "fullmatch", value = "qqonebot" },
+#   { field = "chat.platform", op = "fullmatch", value = "qqonebot" },
 #   { field = "message.text", op = "contains", value = "猫" },
 # ]
 # action = "replace"

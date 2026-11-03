@@ -126,7 +126,7 @@ func TestCallbackUsesInjectedReferenceAndWritesHistory(t *testing.T) {
 	t.Cleanup(server.Close)
 	a := newTestAdapter(t, Config{APIBaseURL: server.URL}, nil, "5")
 	a.referenceResolver = func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
-		if opts.Platform != config.PlatformTelegram || opts.ScopeID != "private:9" || opts.ReplyID != "6" || opts.Text != "/confirm" || !opts.IsSuperadmin {
+		if opts.Platform != config.PlatformTelegram || (opts.ChatType != "private" || opts.ChatID != "9") || opts.ReplyID != "6" || opts.Text != "/confirm" {
 			t.Errorf("reference options=%#v", opts)
 		}
 		ref, ok, err := opts.Fetch(ctx, "6")
@@ -146,7 +146,7 @@ func TestCallbackUsesInjectedReferenceAndWritesHistory(t *testing.T) {
 	if answers.Load() != 1 || got.ForkFromMessageID != "fork" || got.ResumeSessionID != "resume" || got.ContextText != "context" || got.Reply.MessageID != "6" || got.Bot.UserID != "123" {
 		t.Fatalf("message=%#v answers=%d", got, answers.Load())
 	}
-	row, err := a.chatHistory.(share.ChatHistoryReader).GetByPlatformMessage(context.Background(), config.PlatformTelegram, "private:9", "7")
+	row, err := a.chatHistory.(share.ChatHistoryReader).GetByPlatformMessage(context.Background(), config.PlatformTelegram, "private", "9", "7")
 	if err != nil || row.Text != "/confirm" || row.SenderID != "5" {
 		t.Fatalf("row=%#v err=%v", row, err)
 	}

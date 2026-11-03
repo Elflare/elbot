@@ -16,12 +16,10 @@ import (
 // Workspace scope and background source are supplied by the caller's context.
 type BackgroundRequest struct {
 	TargetPlatforms  []string                     // 创建时有效的投递平台，不替代任务归属平台。
-	Kind             string                       // 后台任务来源。
-	Name             string                       // 来源内的任务标识。
-	Title            string                       // 新会话标题。
-	Platform         string                       // 任务所属平台。
+	TaskType         string                       // 后台任务来源。
+	TaskID           string                       // 来源内的任务标识。
+	Name             string                       // 新会话标题。
 	Actor            contextinfo.Actor            // 执行身份。
-	ScopeID          string                       // 任务作用域。
 	SessionID        string                       // 续跑会话；空值创建新会话。
 	ModelProvider    string                       // 本次模型提供方覆盖。
 	Model            string                       // 本次模型名称覆盖。

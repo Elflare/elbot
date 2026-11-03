@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"elbot/internal/delivery"
@@ -123,21 +122,11 @@ func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Outpu
 				ResultStatus: globalevents.ResultFailed,
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
+			record.Identity.SessionID = &facts.SessionID
+			record.Identity.RunID = &facts.RunID
+			record.Identity.Attempt = &facts.Attempt
+			record.Identity.RequestID = &facts.RequestID
+			record.Identity.RootRequestID = &facts.RootRequestID
 			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 		}
 
@@ -153,16 +142,16 @@ func (a *Router) cacheMediaReceipt(ctx context.Context, outputs []delivery.Outpu
 	expiresAt := time.Now().AddDate(0, 0, a.mediaRetentionDays)
 	var errs []error
 	for _, message := range sent {
-		platformName := strings.TrimSpace(message.Platform)
-		scopeID := strings.TrimSpace(message.ScopeID)
-		messageID := strings.TrimSpace(message.PlatformMessageID)
+		platformName := message.Platform
+		scopeID := message.ChatID
+		messageID := message.PlatformMessageID
 		segmentIndex := 0
 		for _, outputIndex := range message.OutputIndexes {
 			out := outputs[outputIndex]
 			if out.Source.MediaID == "" || !isMediaOutputKind(out.Kind) {
 				continue
 			}
-			if err := a.saveMediaOutput(ctx, storage.MediaOutput{Platform: platformName, ScopeID: scopeID, MessageID: messageID, SegmentIndex: segmentIndex, Kind: string(out.Kind), MediaID: out.Source.MediaID, ExpiresAt: expiresAt}); err != nil {
+			if err := a.saveMediaOutput(ctx, storage.MediaOutput{Platform: platformName, ChatType: message.ChatType, ChatID: scopeID, MessageID: messageID, SegmentIndex: segmentIndex, Kind: string(out.Kind), MediaID: out.Source.MediaID, ExpiresAt: expiresAt}); err != nil {
 				errs = append(errs, err)
 			}
 			segmentIndex++

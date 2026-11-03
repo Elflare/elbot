@@ -70,7 +70,7 @@ func (p *ConfirmationPolicy) WaitTimeout(ctx context.Context) time.Duration {
 		ttlMinutes = cfg.PrivateSuperadminTTLMinutes
 	}
 	scope := p.identity.Scope(ctx)
-	if scope.ConversationKind == "group" || scope.ConversationKind == "channel" {
+	if scope.ChatType == "group" || scope.ChatType == "channel" {
 		ttlMinutes = cfg.GroupUserTTLMinutes
 		if isSuperadmin {
 			ttlMinutes = cfg.GroupSuperadminTTLMinutes
@@ -189,18 +189,10 @@ func confirmationAction(ctx context.Context, sessionID, action string, confirmat
 		ResultStatus: events.ResultUnspecified,
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
+	record.Identity.RunID = &facts.RunID
+	record.Identity.Attempt = &facts.Attempt
+	record.Identity.RequestID = &facts.RequestID
+	record.Identity.RootRequestID = &facts.RootRequestID
 	return record
 }
 

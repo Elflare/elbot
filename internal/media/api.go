@@ -139,12 +139,12 @@ func (m *MediaCenter) ImportPlatform(ctx context.Context, platformName string, r
 
 // HistoryIDs 只查询有效历史关联和输出缓存，不下载媒体。
 func (m *MediaCenter) HistoryIDs(ctx context.Context, row HistoryMessage) (map[int]string, error) {
-	return m.objects.HistoryIDs(ctx, share.HistoryKey{ID: row.ID, Platform: row.Platform, ScopeID: row.ScopeID, MessageID: row.MessageID})
+	return m.objects.HistoryIDs(ctx, share.HistoryKey{ID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.MessageID, ChatType: row.ChatType})
 }
 
 // AssociateHistory 关联已归档的媒体与历史位置。
 func (m *MediaCenter) AssociateHistory(ctx context.Context, row HistoryMessage, index int, kind, id string) error {
-	return m.objects.AssociateHistory(ctx, share.HistoryKey{ID: row.ID, Platform: row.Platform, ScopeID: row.ScopeID, MessageID: row.MessageID}, index, kind, id)
+	return m.objects.AssociateHistory(ctx, share.HistoryKey{ID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.MessageID, ChatType: row.ChatType}, index, kind, id)
 }
 
 // GetHistoryMediaBatch 保留输入顺序、重复位置、逐项错误及未缓存获取额度。
@@ -156,7 +156,7 @@ func (m *MediaCenter) GetHistoryMediaBatch(ctx context.Context, requests []Histo
 	}
 	for i, request := range requests {
 		row := request.Message
-		message := transfer.HistoryMessage{ID: row.ID, Platform: row.Platform, ScopeID: row.ScopeID, MessageID: row.MessageID}
+		message := transfer.HistoryMessage{ID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.MessageID, ChatType: row.ChatType}
 		if row.Media != nil {
 			message.Media = make([]transfer.PlatformMedia, len(row.Media))
 		}

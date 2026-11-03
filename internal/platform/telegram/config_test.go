@@ -24,7 +24,7 @@ func TestDisabledConfigSkipsCredentialsAndOwnsNoHTTPClient(t *testing.T) {
 	if err := a.Wait(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := a.SendTo(context.Background(), delivery.Target{PrivateUserID: "1"}, nil); err == nil {
+	if _, _, err := a.SendTo(context.Background(), delivery.Target{ChatType: "private", ChatID: "1"}, nil); err == nil {
 		t.Fatal("disabled send accepted")
 	}
 	if err := a.Close(context.Background()); err != nil {

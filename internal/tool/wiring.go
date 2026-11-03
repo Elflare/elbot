@@ -14,6 +14,7 @@ import (
 	"elbot/internal/memory/resident"
 	"elbot/internal/processenv"
 	"elbot/internal/signal"
+	"elbot/internal/storage"
 	"elbot/internal/tool/builtin"
 	"elbot/internal/tool/chat_history"
 	"elbot/internal/tool/discovery"
@@ -52,7 +53,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	mediaRuntime := toolmedia.NewMediaRuntime(deps.Media, cfg.Sandbox.Root, publishMediaUsageFinished(deps.Media))
 	skillRoot := filepath.Join(configDir, "skills")
 	skillManager := skill.NewManager(skillRoot, registry, mediaRuntime, environment)
-	chatHistory := chat_history.NewManager(&chatHistoryBridge{history: deps.ChatHistory, platform: deps.Platform, media: mediaRuntime}, time.Now)
+	chatHistory := chat_history.NewManager(&chatHistoryBridge{history: deps.ChatHistory, platform: deps.Platform, media: mediaRuntime}, time.Now, resolveHistoryChat)
 	m.catalog = &runtime{
 		registry:            registry,
 		residentMemoryStore: residentStore,
@@ -90,6 +91,11 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 
 // executionBridge 将本次调用借用的公开回调转换成执行器的内部契约。
 type executionBridge struct{ RunnerDeps }
+
+func (b executionBridge) RefreshExecution(ctx context.Context, row *storage.Session) (context.Context, error) {
+	ctx, err := b.RunnerDeps.RefreshExecution(ctx, row)
+	return toolPolicyContext(ctx), err
+}
 
 func (b executionBridge) ConfirmToolCall(ctx context.Context, id string, call llm.ToolCallRequest, assessment share.RiskAssessment, detail string) (share.ConfirmResult, error) {
 	result, err := b.RunnerDeps.ConfirmToolCall(ctx, id, call, RiskAssessment(assessment), detail)

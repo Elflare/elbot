@@ -41,18 +41,10 @@ func (a *Client) logChatRequest(ctx context.Context, req Request) {
 	if req.SessionID != "" {
 		record.Identity.SessionID = &req.SessionID
 	}
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
+	record.Identity.RunID = &facts.RunID
+	record.Identity.Attempt = &facts.Attempt
+	record.Identity.RequestID = &facts.RequestID
+	record.Identity.RootRequestID = &facts.RootRequestID
 	_ = globalevents.EmitLog(ctx, record)
 }
 
@@ -77,18 +69,10 @@ func (a *Client) logFirstSystemMessage(ctx context.Context, req Request) {
 		Content:   "system prompt: " + firstSystemText(req.Messages) + "\nmodel=" + req.Model,
 		Identity:  globalevents.LogIdentity{SessionID: &req.SessionID},
 	}
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
+	record.Identity.RunID = &facts.RunID
+	record.Identity.Attempt = &facts.Attempt
+	record.Identity.RequestID = &facts.RequestID
+	record.Identity.RootRequestID = &facts.RootRequestID
 	_ = globalevents.EmitLog(ctx, record)
 }
 

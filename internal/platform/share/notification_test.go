@@ -23,11 +23,11 @@ func (s notificationSender) SendTo(ctx context.Context, target delivery.Target, 
 
 func TestConnectNotifications(t *testing.T) {
 	sendErr := errors.New("partial send failed")
-	target := events.NotificationTarget{Platform: "telegram", Kind: contextinfo.ConversationGroup, ID: "chat", ScopeID: "group:chat"}
+	target := events.NotificationTarget{Platform: "telegram", ChatType: contextinfo.ChatGroup, ID: "chat"}
 	origin := &contextinfo.Conversation{Source: contextinfo.Source{
-		Platform: target.Platform, ConversationKind: target.Kind, ConversationID: target.ID, ScopeID: target.ScopeID,
+		Platform: target.Platform, ChatType: target.ChatType, ChatID: target.ID,
 	}}
-	explicit := delivery.Target{Platform: target.Platform, GroupID: target.ID, ScopeID: target.ScopeID}
+	explicit := delivery.Target{Platform: target.Platform, ChatType: "group", ChatID: target.ID}
 	for _, tt := range []struct {
 		name     string
 		origin   *contextinfo.Conversation
@@ -83,8 +83,8 @@ func TestConnectNotifications(t *testing.T) {
 }
 
 func TestNotificationTarget(t *testing.T) {
-	origin := contextinfo.Source{Platform: "telegram", ScopeID: "group:chat", ConversationKind: contextinfo.ConversationGroup, ConversationID: "chat"}
-	target := events.NotificationTarget{Platform: "telegram", Kind: contextinfo.ConversationGroup, ID: "chat", ScopeID: "group:chat"}
+	origin := contextinfo.Source{Platform: "telegram", ChatType: contextinfo.ChatGroup, ChatID: "chat"}
+	target := events.NotificationTarget{Platform: "telegram", ChatType: contextinfo.ChatGroup, ID: "chat"}
 	tests := []struct {
 		name   string
 		source *contextinfo.Source
@@ -92,34 +92,29 @@ func TestNotificationTarget(t *testing.T) {
 		want   delivery.Target
 	}{
 		{name: "matching origin", source: &origin, target: target},
-		{name: "matching origin without explicit scope", source: &origin,
-			target: events.NotificationTarget{Platform: "telegram", Kind: contextinfo.ConversationGroup, ID: "chat"}},
-		{name: "missing source fields do not recover from scope", source: &contextinfo.Source{Platform: "telegram", ScopeID: "group:chat"}, target: target,
-			want: delivery.Target{Platform: "telegram", GroupID: "chat", ScopeID: "group:chat"}},
-		{name: "unknown source kind does not recover from scope", source: &contextinfo.Source{Platform: "telegram", ScopeID: "group:chat", ConversationKind: contextinfo.ConversationUnknown}, target: target,
-			want: delivery.Target{Platform: "telegram", GroupID: "chat", ScopeID: "group:chat"}},
-		{name: "existing source fields take precedence", source: &contextinfo.Source{Platform: "telegram", ScopeID: "private:other", ConversationKind: contextinfo.ConversationGroup, ConversationID: "chat"},
-			target: events.NotificationTarget{Platform: "telegram", Kind: contextinfo.ConversationGroup, ID: "chat"}},
+		{name: "missing source ID", source: &contextinfo.Source{Platform: "telegram", ChatType: "group"}, target: target,
+			want: delivery.Target{Platform: "telegram", ChatType: "group", ChatID: "chat"}},
+		{name: "unknown source kind does not recover from scope", source: &contextinfo.Source{Platform: "telegram", ChatID: "chat", ChatType: contextinfo.ChatUnknown}, target: target,
+			want: delivery.Target{Platform: "telegram", ChatType: "group", ChatID: "chat"}},
+		{name: "existing source fields take precedence", source: &contextinfo.Source{Platform: "telegram", ChatType: contextinfo.ChatGroup, ChatID: "chat"},
+			target: events.NotificationTarget{Platform: "telegram", ChatType: contextinfo.ChatGroup, ID: "chat"}},
 		{name: "different platform", source: &origin,
-			target: events.NotificationTarget{Platform: "qqonebot", Kind: contextinfo.ConversationGroup, ID: "chat"},
-			want:   delivery.Target{Platform: "qqonebot", GroupID: "chat"}},
+			target: events.NotificationTarget{Platform: "qqonebot", ChatType: contextinfo.ChatGroup, ID: "chat"},
+			want:   delivery.Target{Platform: "qqonebot", ChatType: "group", ChatID: "chat"}},
 		{name: "different conversation", source: &origin,
-			target: events.NotificationTarget{Platform: "telegram", Kind: contextinfo.ConversationGroup, ID: "other"},
-			want:   delivery.Target{Platform: "telegram", GroupID: "other"}},
+			target: events.NotificationTarget{Platform: "telegram", ChatType: contextinfo.ChatGroup, ID: "other"},
+			want:   delivery.Target{Platform: "telegram", ChatType: "group", ChatID: "other"}},
 		{name: "different kind", source: &origin,
-			target: events.NotificationTarget{Platform: "telegram", Kind: contextinfo.ConversationPrivate, ID: "chat"},
-			want:   delivery.Target{Platform: "telegram", PrivateUserID: "chat"}},
-		{name: "different scope", source: &origin,
-			target: events.NotificationTarget{Platform: "telegram", Kind: contextinfo.ConversationGroup, ID: "chat", ScopeID: "group:other"},
-			want:   delivery.Target{Platform: "telegram", GroupID: "chat", ScopeID: "group:other"}},
-		{name: "no origin private", target: events.NotificationTarget{Platform: "telegram", Kind: contextinfo.ConversationPrivate, ID: "user", ScopeID: "private:user"},
-			want: delivery.Target{Platform: "telegram", PrivateUserID: "user", ScopeID: "private:user"}},
-		{name: "no origin CLI", target: events.NotificationTarget{Platform: "cli", Kind: contextinfo.ConversationCLI, ID: "client", ScopeID: "client"},
-			want: delivery.Target{Platform: "cli", PrivateUserID: "client", ScopeID: "client"}},
+			target: events.NotificationTarget{Platform: "telegram", ChatType: contextinfo.ChatPrivate, ID: "chat"},
+			want:   delivery.Target{Platform: "telegram", ChatType: "private", ChatID: "chat"}},
+		{name: "no origin private", target: events.NotificationTarget{Platform: "telegram", ChatType: contextinfo.ChatPrivate, ID: "user"},
+			want: delivery.Target{Platform: "telegram", ChatType: "private", ChatID: "user"}},
+		{name: "no origin CLI", target: events.NotificationTarget{Platform: "cli", ChatType: contextinfo.ChatPrivate, ID: "client"},
+			want: delivery.Target{Platform: "cli", ChatType: "private", ChatID: "client"}},
 		{name: "no origin group", target: target,
-			want: delivery.Target{Platform: "telegram", GroupID: "chat", ScopeID: "group:chat"}},
-		{name: "no origin channel", target: events.NotificationTarget{Platform: "telegram", Kind: contextinfo.ConversationChannel, ID: "channel"},
-			want: delivery.Target{Platform: "telegram", GroupID: "channel"}},
+			want: delivery.Target{Platform: "telegram", ChatType: "group", ChatID: "chat"}},
+		{name: "no origin channel", target: events.NotificationTarget{Platform: "telegram", ChatType: contextinfo.ChatChannel, ID: "channel"},
+			want: delivery.Target{Platform: "telegram", ChatType: "channel", ChatID: "channel"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -143,12 +138,12 @@ func TestNotificationTarget(t *testing.T) {
 }
 
 func TestValidateNotificationTarget(t *testing.T) {
-	for _, kind := range []contextinfo.ConversationKind{contextinfo.ConversationPrivate, contextinfo.ConversationGroup, contextinfo.ConversationChannel} {
-		if err := ValidateNotificationTarget(events.NotificationTarget{ID: "target", Kind: kind}); err != nil {
+	for _, kind := range []contextinfo.ChatType{contextinfo.ChatPrivate, contextinfo.ChatGroup, contextinfo.ChatChannel} {
+		if err := ValidateNotificationTarget(events.NotificationTarget{ID: "target", ChatType: kind}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, target := range []events.NotificationTarget{{}, {Kind: contextinfo.ConversationPrivate}, {ID: "target"}, {ID: "target", Kind: contextinfo.ConversationUnknown}} {
+	for _, target := range []events.NotificationTarget{{}, {ChatType: contextinfo.ChatPrivate}, {ID: "target"}, {ID: "target", ChatType: contextinfo.ChatUnknown}} {
 		if err := ValidateNotificationTarget(target); err == nil {
 			t.Fatalf("accepted invalid target: %+v", target)
 		}

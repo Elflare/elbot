@@ -4,6 +4,7 @@ package chat_history
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 
 	"elbot/internal/tool/share"
 	"time"
@@ -20,10 +21,11 @@ type Backend interface {
 
 // Manager 持有只读依赖；查询范围、选择状态及消息复用均限定在单次调用内。
 type Manager struct {
-	backend Backend          // 根部适配后的历史查询及媒体获取能力。
-	now     func() time.Time // 查询相对时间使用的时钟。
+	backend     Backend                                                                // 根部适配后的历史查询及媒体获取能力。
+	resolveChat func(context.Context, share.SearchRequest) (contextinfo.Source, error) // 根部裁决查询范围。
+	now         func() time.Time                                                       // 查询相对时间使用的时钟。
 }
 
-func NewManager(backend Backend, now func() time.Time) *Manager {
-	return &Manager{backend: backend, now: now}
+func NewManager(backend Backend, now func() time.Time, resolveChat func(context.Context, share.SearchRequest) (contextinfo.Source, error)) *Manager {
+	return &Manager{backend: backend, now: now, resolveChat: resolveChat}
 }

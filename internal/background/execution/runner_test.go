@@ -26,13 +26,11 @@ func TestRunnerPreparesWorkspaceAndSource(t *testing.T) {
 	for _, tc := range []struct {
 		name, subdir, wantDir string
 		kind                  background.Kind
-		wantKind              contextinfo.BackgroundKind
 	}{
-		{name: "explicit", subdir: " tasks/report ", wantDir: "tasks/report", kind: background.KindCron, wantKind: contextinfo.BackgroundKindCron},
-		{name: "cron", wantDir: "cron", kind: background.KindCron, wantKind: contextinfo.BackgroundKindCron},
-		{name: "elnis", wantDir: "elnis", kind: background.KindElnis, wantKind: contextinfo.BackgroundKindElnis},
-		{name: "custom", wantDir: "custom", kind: " custom ", wantKind: "custom"},
-		{name: "default", subdir: " ", wantDir: "background"},
+		{name: "explicit", subdir: " tasks/report ", wantDir: "tasks/report", kind: background.KindCron},
+		{name: "cron", subdir: "cron", wantDir: "cron", kind: background.KindCron},
+		{name: "elnis", subdir: "elnis", wantDir: "elnis", kind: background.KindElnis},
+		{name: "custom", subdir: "custom", wantDir: "custom", kind: " custom "},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
@@ -47,13 +45,13 @@ func TestRunnerPreparesWorkspaceAndSource(t *testing.T) {
 				if err != nil || !info.IsDir() {
 					t.Fatalf("task directory not prepared: %v", err)
 				}
-				if kind, _ := contextinfo.BackgroundKindFromContext(ctx); kind != tc.wantKind {
-					t.Fatalf("kind=%q want=%q", kind, tc.wantKind)
+				if req.TaskType != string(tc.kind) {
+					t.Fatalf("task type=%q", req.TaskType)
 				}
 				return agent.BackgroundResult{}, nil
 			})})
 			ctx := workspace.WithPathScope(t.Context(), workspace.PathScope{Dir: t.TempDir()})
-			_, err := runner.RunBackground(ctx, background.RunRequest{Kind: tc.kind, SandboxSubdir: tc.subdir})
+			_, err := runner.RunBackground(ctx, background.RunRequest{TaskType: tc.kind, SandboxSubdir: tc.subdir})
 			if err != nil || calls != 1 {
 				t.Fatalf("calls=%d err=%v", calls, err)
 			}
@@ -75,9 +73,9 @@ func TestRunnerForwardsTaskAndPreservesExecutionResult(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			req := background.RunRequest{
-				TargetPlatforms: []string{"telegram", "qqonebot"},
-				Kind:            background.KindElnis, Name: "task", Title: "title", Platform: "qq", ScopeID: "scope", SessionID: tc.sessionID,
-				Actor:         contextinfo.Actor{ID: "actor", Platform: "qq", Role: contextinfo.RoleUser},
+				TargetPlatforms: []string{"telegram", "qqonebot"}, SandboxSubdir: "task",
+				TaskType: background.KindElnis, TaskID: "task", Name: "title", SessionID: tc.sessionID,
+				Actor:         contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qq", ID: "actor"}, Role: contextinfo.RoleUser},
 				ModelProvider: "provider", Model: "model", Prompt: "before after", NeedsElyphRules: true,
 				PromptSegments: []llm.MessageSegment{{Type: llm.SegmentText, Text: "before "}, {Type: llm.SegmentImage, MediaID: "image"}, {Type: llm.SegmentText, Text: "after"}},
 				ToolListNames:  []string{"skill"}, AllowedToolNames: tc.allowed,
@@ -86,7 +84,7 @@ func TestRunnerForwardsTaskAndPreservesExecutionResult(t *testing.T) {
 			}
 			want := agent.BackgroundRequest{
 				TargetPlatforms: req.TargetPlatforms,
-				Kind:            "elnis", Name: "task", Title: "title", Platform: "qq", ScopeID: "scope", SessionID: tc.sessionID,
+				TaskType:        "elnis", TaskID: "task", Name: "title", SessionID: tc.sessionID,
 				Actor: req.Actor, ModelProvider: "provider", Model: "model", Prompt: "before after", NeedsElyphRules: true,
 				PromptSegments: req.PromptSegments, ToolListNames: req.ToolListNames, AllowedToolNames: tc.allowed,
 				ELwispTools: req.ELwispTools, Metadata: req.Metadata,
@@ -122,7 +120,7 @@ func TestRunnerPreservesCallerCancellationAndValues(t *testing.T) {
 		}
 		return agent.BackgroundResult{SessionID: "prepared"}, ctx.Err()
 	})})
-	result, err := runner.RunBackground(ctx, background.RunRequest{})
+	result, err := runner.RunBackground(ctx, background.RunRequest{SandboxSubdir: "task"})
 	if !errors.Is(err, context.Canceled) || result.SessionID != "prepared" {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}

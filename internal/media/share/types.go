@@ -1,6 +1,8 @@
 // Package share 定义 Media 子包之间的协作契约，不作为跨业务包公开 API。
 package share
 
+import "elbot/internal/contextinfo"
+
 import "time"
 
 // IDPrefix 是内部内容寻址媒体标识的前缀。
@@ -42,10 +44,11 @@ type ImportLimits struct {
 
 // HistoryKey 标识一条历史记录，不携带平台媒体来源。
 type HistoryKey struct {
-	ID        string // 历史记录身份。
-	Platform  string // 所属平台。
-	ScopeID   string // 聊天范围。
-	MessageID string // 平台消息标识。
+	ID        string               // 历史记录身份。
+	Platform  string               // 所属平台。
+	ChatType  contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID    string               // 聊天范围。
+	MessageID string               // 平台消息标识。
 }
 
 // HistoryEntry 描述可用缓存与匹配的持久关联。

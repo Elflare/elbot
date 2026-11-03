@@ -473,7 +473,7 @@ func TestSetTextFieldLatestUserText(t *testing.T) {
 }
 
 func TestRenderPlainTextAndActionResults(t *testing.T) {
-	event := share.Event{Actor: share.ActorContext{ID: "actor"}}
+	event := share.Event{Actor: share.ActorContext{Platform: "cli", ID: "actor"}}
 	state := state{Actions: map[string]actionResult{"previous": {Result: "done", Error: "failed"}}}
 	for _, tc := range []struct{ text, want string }{
 		{"", ""},

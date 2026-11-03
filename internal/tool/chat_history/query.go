@@ -5,7 +5,6 @@ package chat_history
 import (
 	"context"
 	"elbot/internal/tool/share"
-	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -19,14 +18,15 @@ const (
 )
 
 type SearchQuery struct {
-	Platform    string     // 本次查询的平台。
-	ScopeID     string     // 本次查询的聊天范围。
-	QueryTerms  []string   // 已拆分并去除空项的关键词。
-	QueryMode   string     // 关键词组合方式，由查询提供方执行。
-	SenderQuery string     // 用户 ID 精确匹配或昵称包含匹配，空值不筛选。
-	Since       *time.Time // 可选开始时间。
-	Until       *time.Time // 可选结束时间。
-	Limit       int        // 已应用默认值和上限的数量。
+	Platform    string               // 本次查询的平台。
+	ChatType    contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID      string               // 本次查询的聊天范围。
+	QueryTerms  []string             // 已拆分并去除空项的关键词。
+	QueryMode   string               // 关键词组合方式，由查询提供方执行。
+	SenderQuery string               // 用户 ID 精确匹配或昵称包含匹配，空值不筛选。
+	Since       *time.Time           // 可选开始时间。
+	Until       *time.Time           // 可选结束时间。
+	Limit       int                  // 已应用默认值和上限的数量。
 }
 
 type AroundQuery struct {
@@ -36,31 +36,16 @@ type AroundQuery struct {
 }
 
 func (m *Manager) Search(ctx context.Context, req share.SearchRequest) ([]share.Message, error) {
-	var chat chatHistoryContext
-	if contextinfo.BackgroundContext(ctx) {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		if req.Platform == nil || req.Scope == nil || strings.TrimSpace(*req.Platform) == "" || strings.TrimSpace(*req.Scope) == "" {
-			return nil, fmt.Errorf("后台查询聊天历史必须指定非空的 platform 和 scope。")
-		}
-		chat = chatHistoryContext{Platform: strings.TrimSpace(*req.Platform), ScopeID: strings.TrimSpace(*req.Scope)}
-	} else {
-		if req.Platform != nil || req.Scope != nil {
-			return nil, fmt.Errorf("前台查询聊天历史不能指定 platform 或 scope，请使用当前聊天。")
-		}
-		var err error
-		chat, err = currentChatHistoryContext(ctx)
-		if err != nil {
-			return nil, err
-		}
+	chat, err := m.resolveChat(ctx, req)
+	if err != nil {
+		return nil, err
 	}
 	since, until := chatHistoryTimeRangeAt(req.Since, req.Until, req.Hours, req.Days, m.now())
 	return m.backend.Search(ctx, SearchQuery{
-		Platform: chat.Platform, ScopeID: chat.ScopeID,
+		Platform: chat.Platform, ChatID: chat.ChatID,
 		QueryTerms: splitChatHistoryTerms(req.Query), QueryMode: req.QueryMode,
 		SenderQuery: strings.TrimSpace(req.User),
-		Since:       since, Until: until, Limit: clampChatHistoryLimit(req.Limit),
+		Since:       since, Until: until, Limit: clampChatHistoryLimit(req.Limit), ChatType: chat.ChatType,
 	})
 }
 
@@ -70,7 +55,7 @@ func (m *Manager) Around(ctx context.Context, req share.AroundRequest) ([]share.
 		return nil, err
 	}
 	return m.backend.Around(ctx, AroundQuery{
-		Key:    share.MessageKey{Platform: chat.Platform, ScopeID: chat.ScopeID, MessageID: req.MessageID},
+		Key:    share.MessageKey{Platform: chat.Platform, ChatID: chat.ChatID, MessageID: req.MessageID, ChatType: chat.ChatType},
 		Before: clampChatHistoryWindow(req.Before), After: clampChatHistoryWindow(req.After),
 	})
 }
@@ -81,12 +66,13 @@ func (m *Manager) GetMessage(ctx context.Context, messageID string) (share.Messa
 	if err != nil {
 		return share.Message{}, err
 	}
-	return m.backend.GetMessage(ctx, share.MessageKey{Platform: chat.Platform, ScopeID: chat.ScopeID, MessageID: messageID})
+	return m.backend.GetMessage(ctx, share.MessageKey{Platform: chat.Platform, ChatID: chat.ChatID, MessageID: messageID, ChatType: chat.ChatType})
 }
 
 type chatHistoryContext struct {
 	Platform string
-	ScopeID  string
+	ChatType contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID   string
 }
 
 func currentChatHistoryContext(ctx context.Context) (chatHistoryContext, error) {
@@ -94,10 +80,10 @@ func currentChatHistoryContext(ctx context.Context) (chatHistoryContext, error) 
 		return chatHistoryContext{}, err
 	}
 	info, ok := contextinfo.ConversationFromContext(ctx)
-	if !ok || strings.TrimSpace(info.Source.Platform) == "" || strings.TrimSpace(info.Source.ScopeID) == "" {
+	if !ok || info.Source.Platform == "" || info.Source.ChatID == "" {
 		return chatHistoryContext{}, share.ErrNoChatContext
 	}
-	return chatHistoryContext{Platform: info.Source.Platform, ScopeID: info.Source.ScopeID}, nil
+	return chatHistoryContext{Platform: info.Source.Platform, ChatID: info.Source.ChatID, ChatType: info.Source.ChatType}, nil
 }
 
 func chatHistoryTimeRangeAt(sinceRaw, untilRaw string, hours, days int, now time.Time) (*time.Time, *time.Time) {

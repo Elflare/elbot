@@ -38,14 +38,14 @@ func awaitTelegram[T any](t *testing.T, ch <-chan T) T {
 }
 
 func telegramTestContext() context.Context {
-	return contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ScopeID: "private:9"}})
+	return contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ChatType: "private", ChatID: "9"}})
 }
 
 func TestOperationAdmissionResult(t *testing.T) {
 	for _, state := range []string{"canceled", "deadline", "closed"} {
 		t.Run(state, func(t *testing.T) {
 			a := newTestAdapter(t, Config{}, nil)
-			s := newTestStream(t, a, "private:9")
+			s := newTestStream(t, a, "private", "9")
 			ctx := telegramTestContext()
 			wantErr, wantStatus := error(context.Canceled), events.ResultCanceled
 			switch state {
@@ -69,7 +69,7 @@ func TestOperationAdmissionResult(t *testing.T) {
 					return a.SendChat(ctx, []delivery.Output{delivery.Text("hello")})
 				},
 				"SendTo": func() (delivery.Receipt, events.LogResult, error) {
-					return a.SendTo(ctx, delivery.Target{PrivateUserID: "9"}, []delivery.Output{delivery.Text("hello")})
+					return a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "9"}, []delivery.Output{delivery.Text("hello")})
 				},
 				"Replace": func() (delivery.Receipt, events.LogResult, error) { return s.Replace(ctx, "hello") },
 				"Finish":  func() (delivery.Receipt, events.LogResult, error) { return s.Finish(ctx) },
@@ -89,7 +89,7 @@ func TestStreamQueuedCancellationResult(t *testing.T) {
 		t.Run(operation, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				a := newTestAdapter(t, Config{}, nil)
-				s := newTestStream(t, a, "private:9").(*messageStream)
+				s := newTestStream(t, a, "private", "9").(*messageStream)
 				s.gate <- struct{}{}
 				s.text = "original"
 				ctx, cancel := context.WithCancel(context.Background())
@@ -192,7 +192,7 @@ func TestRuntimeStopsIngressAndWaitsForAcceptedWork(t *testing.T) {
 	if handled.Load() != 1 {
 		t.Fatalf("handled=%d", handled.Load())
 	}
-	if err := a.chatHistory.Append(context.Background(), &storage.ChatMessage{Platform: config.PlatformTelegram, PlatformScopeID: "private:9", PlatformMessageID: "after-close", Text: "still open"}); err != nil {
+	if err := a.chatHistory.Append(context.Background(), &storage.ChatMessage{Platform: config.PlatformTelegram, ChatType: "private", ChatID: "9", PlatformMessageID: "after-close", Text: "still open"}); err != nil {
 		t.Fatalf("borrowed history closed: %v", err)
 	}
 	if err := a.Wait(observer); err != nil {
@@ -248,7 +248,7 @@ func TestOperationsRemainAvailableUntilFinalClose(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	a := newTestAdapter(t, Config{APIBaseURL: server.URL, FileBaseURL: server.URL}, nil)
-	idle := newTestStream(t, a, "private:9")
+	idle := newTestStream(t, a, "private", "9")
 	a.BeginClose()
 	if err := a.Wait(context.Background()); err != nil {
 		t.Fatal(err)
@@ -257,7 +257,7 @@ func TestOperationsRemainAvailableUntilFinalClose(t *testing.T) {
 	operations := map[string]func() error{
 		"SendChat": func() error { _, _, err := a.SendChat(ctx, []delivery.Output{delivery.Text("hello")}); return err },
 		"SendTo": func() error {
-			_, _, err := a.SendTo(ctx, delivery.Target{PrivateUserID: "9"}, []delivery.Output{delivery.Text("hello")})
+			_, _, err := a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "9"}, []delivery.Output{delivery.Text("hello")})
 			return err
 		},
 		"API": func() error { _, err := a.CallPlatformAPI(ctx, "getChat", nil); return err },
@@ -341,7 +341,7 @@ func TestStreamWaitCancellationDoesNotCancelOwner(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":{"message_id":77}}`)), Header: make(http.Header)}, nil
 	})
-	s := newTestStream(t, a, "private:9")
+	s := newTestStream(t, a, "private", "9")
 	owner := make(chan error, 1)
 	go func() { owner <- s.Append(context.Background(), "hello") }()
 	awaitTelegram(t, entered)
@@ -411,7 +411,7 @@ func TestFinalCloseCancelsEveryHTTPBackedOperation(t *testing.T) {
 	for _, name := range []string{"SendChat", "SendTo", "media", "Append", "Replace"} {
 		t.Run(name, func(t *testing.T) {
 			a := newTestAdapter(t, Config{}, nil)
-			s := newTestStream(t, a, "private:9")
+			s := newTestStream(t, a, "private", "9")
 			entered := make(chan struct{})
 			a.client.http.Transport = telegramRoundTripper(func(r *http.Request) (*http.Response, error) {
 				close(entered)
@@ -426,7 +426,7 @@ func TestFinalCloseCancelsEveryHTTPBackedOperation(t *testing.T) {
 				case "SendChat":
 					_, _, err = a.SendChat(ctx, []delivery.Output{delivery.Text("hello")})
 				case "SendTo":
-					_, _, err = a.SendTo(ctx, delivery.Target{PrivateUserID: "9"}, []delivery.Output{delivery.Text("hello")})
+					_, _, err = a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "9"}, []delivery.Output{delivery.Text("hello")})
 				case "media":
 					_, err = a.ResolveMedia(ctx, share.MessageSegment{PlatformFileID: "file"}, 10)
 				case "Append":

@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	toolregistry "elbot/internal/tool/registry"
 	"errors"
 	"fmt"
@@ -26,7 +27,7 @@ func stateTestStore(t *testing.T, metadata string) (storage.Store, *storage.Sess
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	row := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeWork, Metadata: metadata}
+	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", Mode: storage.SessionModeWork, Metadata: metadata, ChatType: "private"}
 	if err := store.Sessions().Create(context.Background(), row); err != nil {
 		t.Fatal(err)
 	}

@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 )
 
@@ -54,71 +55,59 @@ type Condition struct {
 // normal match conditions or handler are evaluated.
 type BlockPolicy struct {
 	platforms map[string]struct{}
-	groups    map[string]struct{}
-	users     map[string]struct{}
+	groups    map[string]map[string]struct{}
+	users     map[string]map[string]struct{}
 }
 
-func NewBlockPolicy(blockedPlatforms, blockedGroups, blockedUsers []string) (BlockPolicy, error) {
-	policy := BlockPolicy{
-		platforms: make(map[string]struct{}, len(blockedPlatforms)),
-		groups:    make(map[string]struct{}, len(blockedGroups)),
-		users:     make(map[string]struct{}, len(blockedUsers)),
-	}
-	for _, value := range blockedPlatforms {
-		value = strings.TrimSpace(value)
-		if value == "" {
+func NewBlockPolicy(blockedPlatforms []string, blockedGroups, blockedUsers map[string][]string) (BlockPolicy, error) {
+	policy := BlockPolicy{platforms: make(map[string]struct{}), groups: make(map[string]map[string]struct{}), users: make(map[string]map[string]struct{})}
+	for _, platform := range blockedPlatforms {
+		platform = strings.TrimSpace(platform)
+		if platform == "" {
 			return BlockPolicy{}, fmt.Errorf("blocked_platform contains an empty platform")
 		}
-		policy.platforms[value] = struct{}{}
+		policy.platforms[platform] = struct{}{}
 	}
 	for _, item := range []struct {
 		name   string
-		values []string
-		target map[string]struct{}
+		values map[string][]string
+		target map[string]map[string]struct{}
 	}{
-		{name: "blocked_group", values: blockedGroups, target: policy.groups},
-		{name: "blocked_id", values: blockedUsers, target: policy.users},
+		{"blocked_group", blockedGroups, policy.groups}, {"blocked_id", blockedUsers, policy.users},
 	} {
-		for _, value := range item.values {
-			platform, id, ok := splitBlockedID(value)
-			if !ok {
-				return BlockPolicy{}, fmt.Errorf("%s entry %q must use <platform>:<id>", item.name, value)
+		for platform, ids := range item.values {
+			platform = strings.TrimSpace(platform)
+			if platform == "" {
+				return BlockPolicy{}, fmt.Errorf("%s contains an empty platform", item.name)
 			}
-			item.target[platform+":"+id] = struct{}{}
+			set := item.target[platform]
+			if set == nil {
+				set = make(map[string]struct{})
+				item.target[platform] = set
+			}
+			for _, id := range ids {
+				id = strings.TrimSpace(id)
+				if id == "" {
+					return BlockPolicy{}, fmt.Errorf("%s.%s contains an empty ID", item.name, platform)
+				}
+				set[id] = struct{}{}
+			}
 		}
 	}
 	return policy, nil
 }
 
 func (p BlockPolicy) Blocks(event Event) bool {
-	platform := strings.TrimSpace(event.Platform.Name)
-	if platform == "" {
-		return false
-	}
-	if _, ok := p.platforms[platform]; ok {
+	if _, blocked := p.platforms[event.Chat.Platform]; blocked {
 		return true
 	}
-	if groupID, ok := eventGroupID(event.Platform.ScopeID); ok {
-		if _, blocked := p.groups[platform+":"+groupID]; blocked {
+	if event.Chat.ChatType == contextinfo.ChatGroup {
+		if _, blocked := p.groups[event.Chat.Platform][event.Chat.ID]; blocked {
 			return true
 		}
 	}
-	userID := event.Actor.UserID
-	_, blocked := p.users[platform+":"+userID]
-	return userID != "" && blocked
-}
-
-func splitBlockedID(value string) (string, string, bool) {
-	platform, id, ok := strings.Cut(strings.TrimSpace(value), ":")
-	platform = strings.TrimSpace(platform)
-	id = strings.TrimSpace(id)
-	return platform, id, ok && platform != "" && id != ""
-}
-
-func eventGroupID(scopeID string) (string, bool) {
-	kind, id, ok := strings.Cut(strings.TrimSpace(scopeID), ":")
-	id = strings.TrimSpace(id)
-	return id, ok && id != "" && (kind == "group" || kind == "supergroup")
+	_, blocked := p.users[event.Actor.Platform][event.Actor.ID]
+	return blocked
 }
 
 func Always() Match {
@@ -291,12 +280,12 @@ func needsMatchValue(op string) bool {
 
 func KnownField(field string) bool {
 	switch strings.TrimSpace(field) {
-	case "platform.name", "platform.scope_id", "platform.user_id", "platform.conversation_id", "platform.message_id", "platform.reply_to_message_id",
+	case "chat.platform", "chat.chat_type", "chat.name", "chat.id", "chat.message_id", "chat.reply_to_message_id",
 		"message.id", "message.text", "message.display_text", "message.platform_text", "message.intent_text", "message.role",
 		"message.reply.message_id", "message.reply.sender_id", "message.reply.text", "message.reply.display_text",
 		"llm.text", "llm.source_text", "llm.latest_user_text", "llm.latest_user_display_text", "llm.provider", "llm.model",
 		"tool.name", "tool.arguments", "tool.result", "tool.risk",
-		"actor.id", "actor.user_id", "actor.role", "actor.group_role", "actor.display_name",
+		"actor.platform", "actor.id", "actor.role", "actor.group_role", "actor.name", "actor.nickname", "actor.group_card",
 		"session.id", "session.mode", "session.title", "session.status",
 		"request.id", "request.kind", "request.session_id", "request.phase",
 		"error.message":
@@ -308,18 +297,18 @@ func KnownField(field string) bool {
 
 func FieldValue(event Event, field string) string {
 	switch strings.TrimSpace(field) {
-	case "platform.name":
-		return event.Platform.Name
-	case "platform.scope_id":
-		return event.Platform.ScopeID
-	case "platform.user_id":
-		return event.Platform.UserID
-	case "platform.conversation_id":
-		return event.Platform.ConversationID
-	case "platform.message_id":
-		return event.Platform.PlatformMessageID
-	case "platform.reply_to_message_id":
-		return event.Platform.ReplyToMessageID
+	case "chat.platform":
+		return event.Chat.Platform
+	case "chat.chat_type":
+		return string(event.Chat.ChatType)
+	case "chat.name":
+		return event.Chat.Name
+	case "chat.id":
+		return event.Chat.ID
+	case "chat.message_id":
+		return event.Chat.PlatformMessageID
+	case "chat.reply_to_message_id":
+		return event.Chat.ReplyToMessageID
 	case "message.id":
 		return event.Message.ID
 	case "message.text":
@@ -372,16 +361,16 @@ func FieldValue(event Event, field string) string {
 		return event.Tool.Result
 	case "tool.risk":
 		return event.Tool.Risk
+	case "actor.platform":
+		return event.Actor.Platform
 	case "actor.id":
 		return event.Actor.ID
-	case "actor.user_id":
-		return event.Actor.UserID
 	case "actor.role":
 		return event.Actor.Role
 	case "actor.group_role":
 		return event.Actor.GroupRole
-	case "actor.display_name":
-		return event.Actor.DisplayName
+	case "actor.name":
+		return event.Actor.Name
 	case "actor.nickname":
 		return event.Actor.Nickname
 	case "actor.group_card":
@@ -412,8 +401,8 @@ func FieldValue(event Event, field string) string {
 func TemplateValues(event Event) map[string]string {
 	values := map[string]string{}
 	for _, field := range []string{
-		"platform.name", "platform.scope_id", "platform.user_id", "platform.conversation_id", "platform.message_id", "platform.reply_to_message_id",
-		"actor.id", "actor.user_id", "actor.role", "actor.group_role", "actor.display_name",
+		"chat.platform", "chat.chat_type", "chat.name", "chat.id", "chat.message_id", "chat.reply_to_message_id",
+		"actor.platform", "actor.id", "actor.role", "actor.group_role", "actor.name", "actor.nickname", "actor.group_card",
 		"session.id", "session.mode", "session.title", "session.status",
 		"request.id", "request.kind", "request.session_id", "request.phase",
 		"message.id", "message.text", "message.display_text", "message.platform_text", "message.intent_text", "message.role",

@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"testing"
 
 	"elbot/internal/contextinfo"
@@ -65,7 +66,7 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 			if err != nil || len(prepared.Update.Tools) != boolInt(want) {
 				t.Fatalf("preload=%+v err=%v", prepared, err)
 			}
-			background, err := preloader.PrepareBackground(contextinfo.WithBackgroundKind(ctx, ""), toolshare.BackgroundPreloadRequest{SessionID: "session", Names: []string{"image"}, AllowedToolNames: []string{"image"}})
+			background, err := preloader.PrepareBackground(testutil.TaskContext(ctx, ""), toolshare.BackgroundPreloadRequest{SessionID: "session", Names: []string{"image"}, AllowedToolNames: []string{"image"}})
 			if err != nil || len(background.Update.Tools) != boolInt(want) {
 				t.Fatalf("background preload=%+v err=%v", background, err)
 			}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"elbot/internal/command"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	"elbot/internal/session"
@@ -42,7 +43,7 @@ func TestStatusSessionMarkers(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newCommandTestStore(t)
 			svc := newSessionSupervisor(t, store)
-			scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+			scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 			empty, err := NewStatus(Deps{Sessions: svc, Models: models, Scope: func(context.Context) session.Scope { return scope }}).Handle(ctx, command.Request{})
 			if err != nil {
 				t.Fatal(err)
@@ -120,7 +121,7 @@ func TestFormatToolUsageHidesEmptyLines(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newCommandTestStore(t)
-			row := &storage.Session{ID: storage.NewID(), OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Title: "tools"}
+			row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", Title: "tools", ChatType: "private"}
 			if err := store.Sessions().Create(t.Context(), row); err != nil {
 				t.Fatal(err)
 			}

@@ -101,12 +101,10 @@ type BindingChangedEvent struct {
 // 工具声明仅初始化新会话，续跑沿用会话中已提交的状态。
 type BackgroundRequest struct {
 	TargetPlatforms  []string                     // Background 解析出的有效投递平台，用于新会话的身份快照。
-	Kind             string                       // 后台任务来源。
-	Name             string                       // 来源内的任务标识。
-	Title            string                       // 新会话标题。
-	Platform         string                       // 任务所属平台。
+	TaskType         string                       // 后台任务来源。
+	TaskID           string                       // 来源内的任务标识。
+	Name             string                       // 新会话标题。
 	Actor            contextinfo.Actor            // 执行身份。
-	ScopeID          string                       // 任务作用域。
 	SessionID        string                       // 续跑会话；空值创建新会话。
 	ModelProvider    string                       // 本次模型提供方覆盖。
 	Model            string                       // 本次模型名称覆盖。
@@ -133,9 +131,9 @@ type BackgroundResult struct {
 type BackgroundCopyRequest struct {
 	SourceSessionID string                     // 被复制的后台会话。
 	Scope           session.Scope              // 目标会话作用域。
-	Kind            string                     // 目标后台来源。
-	Name            string                     // 来源内的任务标识。
-	Title           string                     // 目标标题。
+	TaskType        string                     // 目标后台来源。
+	TaskID          string                     // 来源内的任务标识。
+	Name            string                     // 目标标题。
 	Metadata        map[string]json.RawMessage // 目标来源元数据，保留各字段的 JSON 值类型。
 }
 

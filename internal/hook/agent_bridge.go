@@ -57,11 +57,10 @@ func (m *Supervisor) agentPoints(agent interface {
 			Point:   point,
 			Session: share.SessionContext{ID: facts.Session.ID, Mode: facts.Session.Mode, Title: facts.Session.Title, Status: facts.Session.Status},
 			Actor: share.ActorContext{
-				ID: facts.Actor.ID, Role: string(facts.Actor.Role), GroupRole: string(facts.Actor.GroupRole),
-				UserID: facts.Actor.PlatformUserID, Nickname: facts.Actor.Nickname,
-				GroupCard: facts.Actor.GroupCard, DisplayName: facts.Actor.DisplayName,
+				Platform: facts.Actor.Platform, Role: string(facts.Actor.Role), GroupRole: string(facts.Actor.GroupRole),
+				ID: facts.Actor.ID, Nickname: facts.Actor.Nickname,
+				GroupCard: facts.Actor.GroupCard, Name: facts.Actor.Name,
 			},
-			Platform: share.PlatformContext{UserID: facts.Actor.PlatformUserID},
 		}
 	}
 	message := func(value agenthooks.Message) share.MessagePayload {

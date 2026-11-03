@@ -113,9 +113,9 @@ func TestDisabledPlatformsRetainCodesAndConfigDefinitions(t *testing.T) {
 		t.Fatal("disabled platform registered ingress")
 	}
 	for name, codes := range map[string][2]string{"cli": {"cl", "cl"}, "qqofficial": {"qq", "QQ"}, "qqonebot": {"ob", "OB"}, "telegram": {"tg", "TG"}} {
-		for _, kind := range []contextinfo.ConversationKind{contextinfo.ConversationCLI, contextinfo.ConversationPrivate, contextinfo.ConversationGroup, contextinfo.ConversationChannel} {
+		for _, kind := range []contextinfo.ChatType{contextinfo.ChatPrivate, contextinfo.ChatPrivate, contextinfo.ChatGroup, contextinfo.ChatChannel} {
 			want := codes[0]
-			if kind == contextinfo.ConversationGroup || kind == contextinfo.ConversationChannel {
+			if kind == contextinfo.ChatGroup || kind == contextinfo.ChatChannel {
 				want = codes[1]
 			}
 			if code, err := m.SessionIDCode(name, kind); err != nil || code != want {
@@ -124,7 +124,7 @@ func TestDisabledPlatformsRetainCodesAndConfigDefinitions(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"unknown", "service", ""} {
-		if code, err := m.SessionIDCode(name, contextinfo.ConversationPrivate); err == nil || code != "" {
+		if code, err := m.SessionIDCode(name, contextinfo.ChatPrivate); err == nil || code != "" {
 			t.Fatalf("unknown %q code=%q error=%v", name, code, err)
 		}
 	}
@@ -206,7 +206,7 @@ func TestNewPlatformFlowsThroughConstructionAgentNotificationsAndSession(t *test
 			t.Error(err)
 		}
 	})
-	scope := session.Scope{ActorID: "owner", Platform: runtime.Name(), PlatformScopeID: "group", ConversationKind: contextinfo.ConversationGroup}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "owner"}, Platform: runtime.Name(), ChatID: "group", ChatType: contextinfo.ChatGroup}
 	row, err := sessions.Create(t.Context(), scope, session.CreateRequest{})
 	if err != nil || row.ID != "room1" {
 		t.Fatalf("session=%+v error=%v", row, err)
@@ -215,21 +215,21 @@ func TestNewPlatformFlowsThroughConstructionAgentNotificationsAndSession(t *test
 	if err != nil || reserved != "room2" {
 		t.Fatalf("derived ID=%q error=%v", reserved, err)
 	}
-	scope.ConversationKind = contextinfo.ConversationChannel
+	scope.ChatType = contextinfo.ChatChannel
 	channel, err := sessions.Create(t.Context(), scope, session.CreateRequest{})
 	if err != nil || channel.ID != "room3" {
 		t.Fatalf("channel=%+v error=%v", channel, err)
 	}
-	scope.ConversationKind = contextinfo.ConversationPrivate
+	scope.ChatType = contextinfo.ChatPrivate
 	private, err := sessions.Create(t.Context(), scope, session.CreateRequest{})
 	if err != nil || private.ID != "fx4" {
 		t.Fatalf("private=%+v error=%v", private, err)
 	}
-	background, err := sessions.PrepareBackground(t.Context(), scope, session.BackgroundRequest{Kind: "cron", Name: "task", TargetPlatforms: []string{"future"}})
+	background, err := sessions.PrepareBackground(t.Context(), scope, session.BackgroundRequest{TaskType: "cron", TaskID: "task", TargetPlatforms: []string{"future"}})
 	if err != nil || background.ID != "crfx5" {
 		t.Fatalf("background=%+v error=%v", background, err)
 	}
-	if _, err := events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "future notice", Target: events.NotificationTarget{Platform: runtime.Name(), ID: "group", Kind: contextinfo.ConversationGroup}}); err != nil {
+	if _, err := events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "future notice", Target: events.NotificationTarget{Platform: runtime.Name(), ID: "group", ChatType: contextinfo.ChatGroup}}); err != nil {
 		t.Fatal(err)
 	}
 	if got := <-runtime.received; got != "future notice" {

@@ -19,7 +19,7 @@ import (
 
 type MessageHandler struct {
 	History interface {
-		GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error)
+		GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
 	}
 	identity MessageIdentity
 	hooks    MessageHooks
@@ -31,10 +31,10 @@ type MessageHandler struct {
 		AssociateHistory(context.Context, media.HistoryMessage, int, string, string) error
 	}
 	messages interface {
-		FindByPlatformMessage(context.Context, string, string, string) (*storage.Message, error)
+		FindByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.Message, error)
 	}
 	mediaRows interface {
-		FindOutputs(context.Context, string, string, string, time.Time) ([]storage.MediaOutput, error)
+		FindOutputs(context.Context, string, contextinfo.ChatType, string, string, time.Time) ([]storage.MediaOutput, error)
 	}
 }
 
@@ -133,7 +133,7 @@ type MessageInput interface {
 // MessageHandlerDeps declares only the capabilities consumed by MessageHandler.
 type MessageHandlerDeps struct {
 	History interface {
-		GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error)
+		GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
 	}
 	Identity MessageIdentity
 	Hooks    MessageHooks
@@ -145,10 +145,10 @@ type MessageHandlerDeps struct {
 		AssociateHistory(context.Context, media.HistoryMessage, int, string, string) error
 	}
 	Messages interface {
-		FindByPlatformMessage(context.Context, string, string, string) (*storage.Message, error)
+		FindByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.Message, error)
 	}
 	MediaRows interface {
-		FindOutputs(context.Context, string, string, string, time.Time) ([]storage.MediaOutput, error)
+		FindOutputs(context.Context, string, contextinfo.ChatType, string, string, time.Time) ([]storage.MediaOutput, error)
 	}
 }
 

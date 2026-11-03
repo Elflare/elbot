@@ -142,7 +142,7 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 			manager := execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: security.NewPermission("low", "high", nil), InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {
 				_ = events.EmitLog(context.WithoutCancel(ctx), record)
 			}})
-			actor := contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin}
+			actor := contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}}
 			base := contextinfo.WithActor(context.Background(), actor)
 			deps := &rollbackConfirmDeps{}
 			deps.prepareContext = func(ctx context.Context, _ *storage.Session, _ llm.ToolCallRequest) context.Context {
@@ -197,7 +197,7 @@ func TestRunEditPreservesConfirmationSnapshot(t *testing.T) {
 			manager := execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: security.NewPermission("low", "high", nil), InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {
 				_ = events.EmitLog(context.WithoutCancel(ctx), record)
 			}})
-			actor := contextinfo.Actor{ID: "admin", Role: contextinfo.RoleSuperadmin}
+			actor := contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}}
 			deps := &rollbackConfirmDeps{}
 			deps.prepareContext = func(ctx context.Context, _ *storage.Session, _ llm.ToolCallRequest) context.Context {
 				ctx = workspace.WithWorkspaceStore(ctx, &rollbackWorkspace{dir: dir})

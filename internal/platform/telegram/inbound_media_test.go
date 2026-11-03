@@ -47,10 +47,10 @@ func TestInboundMediaHistoryAndDeferredResolver(t *testing.T) {
 	if calls != 0 || handled != 1 || captured.MediaResolver != a {
 		t.Fatalf("eager calls/handler = %d/%#v", calls, captured)
 	}
-	if captured.Conversation.Source.ConversationID != "9" || captured.Conversation.Source.ScopeID != "group:9" {
+	if captured.Conversation.Source.ChatID != "9" || captured.Conversation.Source.ChatType != "group" {
 		t.Fatalf("conversation source = %+v", captured.Conversation.Source)
 	}
-	row, err := history.Repository().GetByPlatformMessage(ctx, config.PlatformTelegram, "group:9", "1")
+	row, err := history.Repository().GetByPlatformMessage(ctx, config.PlatformTelegram, "group", "9", "1")
 	if err != nil {
 		t.Fatal(err)
 	}

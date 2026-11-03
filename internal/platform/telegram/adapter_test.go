@@ -59,7 +59,7 @@ func TestPartialTextSendKeepsReceiptWithoutRestartingFallback(t *testing.T) {
 			}))
 			defer server.Close()
 			adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: format}, nil)
-			ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ConversationKind: contextinfo.ConversationGroup, ConversationID: "-19", ScopeID: "group:-19"}})
+			ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ChatType: contextinfo.ChatGroup, ChatID: "-19"}})
 			receipt, _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(strings.Repeat("a", telegramRichTextRunes+1))})
 			if err == nil || len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "71" || calls != 2 {
 				t.Fatalf("receipt=%#v error=%v calls=%d", receipt, err, calls)
@@ -68,22 +68,19 @@ func TestPartialTextSendKeepsReceiptWithoutRestartingFallback(t *testing.T) {
 	}
 }
 
-func TestContextTargetUsesPublicConversationAndScope(t *testing.T) {
+func TestContextTargetUsesPublicConversation(t *testing.T) {
 	for _, tc := range []struct {
-		kind      contextinfo.ConversationKind
-		id, scope string
-		wantID    int64
-		wantScope string
+		kind   contextinfo.ChatType
+		id     string
+		wantID int64
 	}{
-		{contextinfo.ConversationPrivate, "19", "", 19, "private:19"},
-		{contextinfo.ConversationGroup, "-19", "", -19, "group:-19"},
-		{contextinfo.ConversationChannel, "-20", "", -20, "channel:-20"},
-		{contextinfo.ConversationGroup, "-21", "supergroup:-21", -21, "supergroup:-21"},
-		{contextinfo.ConversationUnknown, "", "private:22", 22, "private:22"},
+		{contextinfo.ChatPrivate, "19", 19},
+		{contextinfo.ChatGroup, "-19", -19},
+		{contextinfo.ChatChannel, "-20", -20},
 	} {
-		ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ConversationKind: tc.kind, ConversationID: tc.id, ScopeID: tc.scope}})
+		ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ChatType: tc.kind, ChatID: tc.id}})
 		got, err := (&Adapter{name: testPlatformName}).contextTarget(ctx)
-		if err != nil || got.ChatID != tc.wantID || got.ScopeID != tc.wantScope {
+		if err != nil || got.NativeChatID != tc.wantID || got.ChatType != tc.kind || got.ChatID != tc.id {
 			t.Fatalf("source=%#v target=%#v error=%v", tc, got, err)
 		}
 	}
@@ -179,12 +176,12 @@ func TestRedactTelegramErrorHidesTokenAndPreservesUnwrap(t *testing.T) {
 }
 
 func TestTargetFromDeliveryScope(t *testing.T) {
-	target, err := targetFromDelivery(delivery.Target{ScopeID: "supergroup:-100123"})
+	target, err := targetFromDelivery(delivery.Target{ChatType: "group", ChatID: "-100123"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if target.ChatID != -100123 {
-		t.Fatalf("chat id = %d", target.ChatID)
+	if target.NativeChatID != -100123 {
+		t.Fatalf("chat id = %d", target.NativeChatID)
 	}
 }
 
@@ -223,7 +220,7 @@ func TestSendActionsIndependentOfTextAndOnlyOnFirstPage(t *testing.T) {
 				}))
 				defer server.Close()
 				adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: format}, nil)
-				ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ConversationKind: contextinfo.ConversationPrivate, ConversationID: "1"}})
+				ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ChatType: contextinfo.ChatPrivate, ChatID: "1"}})
 				out := delivery.Text("高风险工具调用等待确认 /confirm\n" + strings.Repeat("a", telegramRichTextRunes+1))
 				if hasActions {
 					out.Text = "正文完全改写\n" + strings.Repeat("a", telegramRichTextRunes+1)
@@ -263,7 +260,7 @@ func TestSendTextUsesHTMLByDefault(t *testing.T) {
 	}))
 	defer server.Close()
 	adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL}, nil)
-	receipt, _, err := adapter.sendText(context.Background(), target{ChatID: 1}, "# 标题\n\n| A | B |\n|---|---|", 0, nil)
+	receipt, _, err := adapter.sendText(context.Background(), target{NativeChatID: 1}, "# 标题\n\n| A | B |\n|---|---|", 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +287,7 @@ func TestSendTextRichFailure(t *testing.T) {
 	}))
 	defer server.Close()
 	adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: "rich"}, nil)
-	receipt, _, err := adapter.sendText(context.Background(), target{ChatID: 1}, "# bad", 0, nil)
+	receipt, _, err := adapter.sendText(context.Background(), target{NativeChatID: 1}, "# bad", 0, nil)
 	if err == nil || len(receipt.PlatformMessageIDs) != 0 {
 		t.Fatalf("receipt=%#v err=%v", receipt, err)
 	}
@@ -387,15 +384,15 @@ func TestSendStickerUsesNativeEmoticonID(t *testing.T) {
 }
 
 func TestTelegramMediaReceiptAndTargetScope(t *testing.T) {
-	target, err := targetFromDelivery(delivery.Target{GroupID: "-100123"})
+	target, err := targetFromDelivery(delivery.Target{ChatType: "group", ChatID: "-100123"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if target.ScopeID != "group:-100123" {
-		t.Fatalf("scope = %q", target.ScopeID)
+	if target.ChatType != "group" || target.ChatID != "-100123" {
+		t.Fatalf("scope = %q", target.ChatID)
 	}
 	receipt := (&Adapter{name: testPlatformName}).telegramReceipt(delivery.Receipt{PlatformMessageIDs: []string{"10"}}, target, 2)
-	if len(receipt.SentMessages) != 1 || receipt.SentMessages[0].ScopeID != target.ScopeID || receipt.SentMessages[0].OutputIndexes[0] != 2 {
+	if len(receipt.SentMessages) != 1 || receipt.SentMessages[0].ChatID != target.ChatID || receipt.SentMessages[0].OutputIndexes[0] != 2 {
 		t.Fatalf("receipt = %#v", receipt)
 	}
 	fallback := (&Adapter{name: testPlatformName}).telegramReceipt(delivery.Receipt{PlatformMessageIDs: []string{"11"}}, target)

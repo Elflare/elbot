@@ -2,13 +2,14 @@ package sqlite
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"fmt"
 
 	"elbot/internal/storage"
 )
 
 func (r *MediaRepository) SaveHistory(ctx context.Context, item storage.HistoryMedia) error {
-	if item.HistoryID == "" || item.Platform == "" || item.ScopeID == "" || item.MessageID == "" || item.MediaIndex < 1 || item.MediaID == "" {
+	if item.HistoryID == "" || item.Platform == "" || item.ChatID == "" || item.MessageID == "" || item.MediaIndex < 1 || item.MediaID == "" {
 		return fmt.Errorf("history media requires message identity, positive media index and media ID")
 	}
 	if item.Kind != "image" && item.Kind != "file" && item.Kind != "record" {
@@ -21,17 +22,17 @@ func (r *MediaRepository) SaveHistory(ctx context.Context, item storage.HistoryM
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `DELETE FROM media_history WHERE platform=? AND scope_id=? AND message_id=? AND media_index=?`, item.Platform, item.ScopeID, item.MessageID, item.MediaIndex); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM media_history WHERE platform=? AND chat_type=? AND chat_id=? AND message_id=? AND media_index=?`, item.Platform, item.ChatType, item.ChatID, item.MessageID, item.MediaIndex); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO media_history(history_id,platform,scope_id,message_id,media_index,kind,media_id,owner_id) VALUES(?,?,?,?,?,?,?,?)`, item.HistoryID, item.Platform, item.ScopeID, item.MessageID, item.MediaIndex, item.Kind, item.MediaID, item.OwnerID); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO media_history(history_id,platform,chat_type,chat_id,message_id,media_index,kind,media_id,owner_id) VALUES(?,?,?,?,?,?,?,?,?)`, item.HistoryID, item.Platform, item.ChatType, item.ChatID, item.MessageID, item.MediaIndex, item.Kind, item.MediaID, item.OwnerID); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-func (r *MediaRepository) FindHistory(ctx context.Context, platform, scopeID, messageID string) ([]storage.HistoryMedia, error) {
-	return r.queryHistory(ctx, `WHERE platform=? AND scope_id=? AND message_id=? ORDER BY media_index`, platform, scopeID, messageID)
+func (r *MediaRepository) FindHistory(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, messageID string) ([]storage.HistoryMedia, error) {
+	return r.queryHistory(ctx, `WHERE platform=? AND chat_type=? AND chat_id=? AND message_id=? ORDER BY media_index`, platform, conversationKind, scopeID, messageID)
 }
 
 func (r *MediaRepository) ListHistory(ctx context.Context, afterOwnerID string, limit int) ([]storage.HistoryMedia, error) {
@@ -44,7 +45,7 @@ func (r *MediaRepository) DeleteHistory(ctx context.Context, ownerID string) err
 }
 
 func (r *MediaRepository) queryHistory(ctx context.Context, suffix string, args ...any) ([]storage.HistoryMedia, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT history_id,platform,scope_id,message_id,media_index,kind,media_id,owner_id FROM media_history `+suffix, args...)
+	rows, err := r.db.QueryContext(ctx, `SELECT history_id,platform,chat_type,chat_id,message_id,media_index,kind,media_id,owner_id FROM media_history `+suffix, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +53,7 @@ func (r *MediaRepository) queryHistory(ctx context.Context, suffix string, args 
 	var items []storage.HistoryMedia
 	for rows.Next() {
 		var item storage.HistoryMedia
-		if err := rows.Scan(&item.HistoryID, &item.Platform, &item.ScopeID, &item.MessageID, &item.MediaIndex, &item.Kind, &item.MediaID, &item.OwnerID); err != nil {
+		if err := rows.Scan(&item.HistoryID, &item.Platform, &item.ChatType, &item.ChatID, &item.MessageID, &item.MediaIndex, &item.Kind, &item.MediaID, &item.OwnerID); err != nil {
 			return nil, err
 		}
 		items = append(items, item)

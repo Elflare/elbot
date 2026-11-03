@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"elbot/internal/contextinfo"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -100,7 +101,7 @@ func TestNewCanRunTwice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first New: %v", err)
 	}
-	session := &storage.Session{ID: "fresh", OwnerID: "qq:u1", Platform: "qq", PlatformScopeID: "group:1", Title: "keep title", Metadata: `{"keep":true}`}
+	session := &storage.Session{ID: "fresh", Owner: contextinfo.ActorIdentity{Platform: "qq", ID: "u1"}, Platform: "qq", ChatType: "group", ChatID: "1", Title: "keep title", Metadata: `{"keep":true}`}
 	if err := first.Sessions().Create(t.Context(), session); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +118,7 @@ func TestNewCanRunTwice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.OwnerID != session.OwnerID || got.Platform != session.Platform || got.Title != session.Title || got.Metadata != session.Metadata {
+	if got.Owner != session.Owner || got.Platform != session.Platform || got.Title != session.Title || got.Metadata != session.Metadata {
 		t.Fatalf("reopening changed stored session or replayed historical conversions: %+v", got)
 	}
 }
@@ -126,9 +127,9 @@ func TestSessionRepositoryCRUDAndScope(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	s1 := &storage.Session{ID: storage.NewID(), OwnerID: "u1", Platform: "qq", PlatformScopeID: "group:1", Title: "qq session"}
-	s2 := &storage.Session{ID: storage.NewID(), OwnerID: "u1", Platform: "tg", PlatformScopeID: "chat:1", Title: "tg session"}
-	s3 := &storage.Session{ID: storage.NewID(), OwnerID: "u2", Platform: "qq", PlatformScopeID: "group:2", Title: "other owner session"}
+	s1 := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "qq", ID: "u1"}, Platform: "qq", ChatType: "group", ChatID: "1", Title: "qq session"}
+	s2 := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "tg", ID: "u1"}, Platform: "tg", ChatID: "chat:1", Title: "tg session"}
+	s3 := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "qq", ID: "u2"}, Platform: "qq", ChatType: "group", ChatID: "2", Title: "other owner session"}
 	if err := store.Sessions().Create(ctx, s1); err != nil {
 		t.Fatalf("create s1: %v", err)
 	}
@@ -159,7 +160,7 @@ func TestSessionRepositoryCRUDAndScope(t *testing.T) {
 		t.Fatalf("Title = %q", got.Title)
 	}
 
-	scoped, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "qq", PlatformScopeID: "group:1"})
+	scoped, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "qq", ID: "u1"}, Platform: "qq", ChatType: "group", ChatID: "1"})
 	if err != nil {
 		t.Fatalf("list scoped: %v", err)
 	}
@@ -167,7 +168,7 @@ func TestSessionRepositoryCRUDAndScope(t *testing.T) {
 		t.Fatalf("scoped list = %#v", scoped)
 	}
 
-	all, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", IncludeAllPlatforms: true})
+	all, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "", ID: "u1"}, IncludeAllPlatforms: true})
 	if err != nil {
 		t.Fatalf("list all: %v", err)
 	}
@@ -197,7 +198,8 @@ func TestSessionRepositoryPinnedOrderAcrossPages(t *testing.T) {
 		{ID: "normal-z", UpdatedAt: now},
 		{ID: "normal-old", UpdatedAt: oldUpdate.Add(-time.Hour)},
 	} {
-		row.OwnerID, row.Platform, row.PlatformScopeID = "u1", "cli", "local"
+		row.ChatType = "private"
+		row.Owner, row.Platform, row.ChatID = contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, "cli", "local"
 		if err := store.Sessions().Create(ctx, &row); err != nil {
 			t.Fatal(err)
 		}
@@ -207,7 +209,7 @@ func TestSessionRepositoryPinnedOrderAcrossPages(t *testing.T) {
 		for _, limit := range []int{1, 2, 20} {
 			var ids []string
 			for offset := 0; ; offset += limit {
-				rows, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", ExcludeSessionID: exclude, Limit: limit, Offset: offset})
+				rows, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ExcludeSessionID: exclude, Limit: limit, Offset: offset, ChatType: "private"})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -240,23 +242,23 @@ func TestSessionRepositoryArchivePinAndCleanup(t *testing.T) {
 	old := storage.Now().AddDate(0, 0, -40)
 	now := storage.Now()
 
-	normal := &storage.Session{ID: storage.NewID(), OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Title: "normal", UpdatedAt: old}
-	archived := &storage.Session{ID: storage.NewID(), OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Title: "archived", UpdatedAt: old, ArchivedAt: &now}
-	pinned := &storage.Session{ID: storage.NewID(), OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Title: "pinned", UpdatedAt: old.Add(-time.Hour), PinnedAt: &now}
+	normal := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", Title: "normal", UpdatedAt: old, ChatType: "private"}
+	archived := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", Title: "archived", UpdatedAt: old, ArchivedAt: &now, ChatType: "private"}
+	pinned := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", Title: "pinned", UpdatedAt: old.Add(-time.Hour), PinnedAt: &now, ChatType: "private"}
 	for _, session := range []*storage.Session{normal, archived, pinned} {
 		if err := store.Sessions().Create(ctx, session); err != nil {
 			t.Fatalf("create %s: %v", session.Title, err)
 		}
 	}
 
-	listed, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", MessageLimit: 5})
+	listed, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", MessageLimit: 5, ChatType: "private"})
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
 	if len(listed) != 2 || listed[0].ID != pinned.ID || listed[1].ID != normal.ID {
 		t.Fatalf("active list = %#v", listed)
 	}
-	excluded, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", ExcludeSessionID: normal.ID})
+	excluded, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ExcludeSessionID: normal.ID, ChatType: "private"})
 	if err != nil {
 		t.Fatalf("list excluding current: %v", err)
 	}
@@ -264,7 +266,7 @@ func TestSessionRepositoryArchivePinAndCleanup(t *testing.T) {
 		t.Fatalf("excluded list = %#v", excluded)
 	}
 
-	archives, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", ArchivedOnly: true})
+	archives, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ArchivedOnly: true, ChatType: "private"})
 	if err != nil {
 		t.Fatalf("list archives: %v", err)
 	}
@@ -307,7 +309,7 @@ func TestSessionListExcerptsPreserveBlankMessages(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	session := &storage.Session{ID: storage.NewID(), OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Title: "test"}
+	session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", Title: "test", ChatType: "private"}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -322,7 +324,7 @@ func TestSessionListExcerptsPreserveBlankMessages(t *testing.T) {
 		}
 	}
 
-	sessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", MessageLimit: 5})
+	sessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", MessageLimit: 5, ChatType: "private"})
 	if err != nil {
 		t.Fatalf("list sessions: %v", err)
 	}
@@ -338,7 +340,7 @@ func TestSessionListExcerptsUsesInsertionOrderForEqualTimestamps(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	session := &storage.Session{ID: storage.NewID(), OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Title: "test"}
+	session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", Title: "test", ChatType: "private"}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -355,7 +357,7 @@ func TestSessionListExcerptsUsesInsertionOrderForEqualTimestamps(t *testing.T) {
 		}
 	}
 
-	sessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{ActorID: "u1", Platform: "cli", PlatformScopeID: "local"})
+	sessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ChatType: "private"})
 	if err != nil {
 		t.Fatalf("list sessions: %v", err)
 	}
@@ -535,14 +537,14 @@ func TestToolCallRepositoryUsageBySession(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	session := &storage.Session{ID: storage.NewID(), OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Title: "tools"}
+	session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", Title: "tools", ChatType: "private"}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 	for _, record := range []*storage.ToolCallRecord{
-		{SessionID: session.ID, ToolCallID: "call_1", ToolName: "shell", ActorID: "u1", RiskLevel: "low", Success: true},
-		{SessionID: session.ID, ToolCallID: "call_2", ToolName: "shell", ActorID: "u1", RiskLevel: "low", Success: false, Error: "boom"},
-		{SessionID: session.ID, ToolCallID: "call_3", ToolName: "web_search", ActorID: "u1", RiskLevel: "low", Success: true},
+		{SessionID: session.ID, ToolCallID: "call_1", ToolName: "shell", Actor: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, RiskLevel: "low", Success: true},
+		{SessionID: session.ID, ToolCallID: "call_2", ToolName: "shell", Actor: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, RiskLevel: "low", Success: false, Error: "boom"},
+		{SessionID: session.ID, ToolCallID: "call_3", ToolName: "web_search", Actor: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, RiskLevel: "low", Success: true},
 	} {
 		if err := store.ToolCalls().Create(ctx, record); err != nil {
 			t.Fatalf("create tool call: %v", err)
@@ -570,7 +572,7 @@ func TestContextSummaryRepositoryAndListAfter(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	session := &storage.Session{ID: storage.NewID(), OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Title: "test"}
+	session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", Title: "test", ChatType: "private"}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -630,7 +632,7 @@ func TestMessageRepositoryAndPlatformMap(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	session := &storage.Session{ID: storage.NewID(), OwnerID: "u1", Platform: "qq", PlatformScopeID: "group:1", Title: "test"}
+	session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "qq", ID: "u1"}, Platform: "qq", ChatType: "group", ChatID: "1", Title: "test"}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -661,15 +663,15 @@ func TestMessageRepositoryAndPlatformMap(t *testing.T) {
 	}
 
 	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{
-		Platform:          "qq",
-		PlatformScopeID:   "group:1",
+		Platform: "qq",
+		ChatType: "group", ChatID: "1",
 		PlatformMessageID: "p1",
 		MessageID:         user.ID,
 		SessionID:         session.ID,
 	}); err != nil {
 		t.Fatalf("map platform message: %v", err)
 	}
-	mapped, err := store.Messages().FindByPlatformMessage(ctx, "qq", "group:1", "p1")
+	mapped, err := store.Messages().FindByPlatformMessage(ctx, "qq", "group", "1", "p1")
 	if err != nil {
 		t.Fatalf("find platform message: %v", err)
 	}
@@ -762,7 +764,7 @@ func TestForkFieldsPersistAndBoundedMessageQueries(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 
-	parent := &storage.Session{ID: storage.NewID(), OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", Title: "parent"}
+	parent := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", Title: "parent", ChatType: "private"}
 	if err := store.Sessions().Create(ctx, parent); err != nil {
 		t.Fatalf("create parent: %v", err)
 	}
@@ -775,7 +777,7 @@ func TestForkFieldsPersistAndBoundedMessageQueries(t *testing.T) {
 		}
 	}
 
-	fork := &storage.Session{ID: storage.NewID(), OwnerID: "u1", Platform: "cli", PlatformScopeID: "local", ParentSessionID: parent.ID, ForkFromMessageID: second.ID}
+	fork := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ParentSessionID: parent.ID, ForkFromMessageID: second.ID, ChatType: "private"}
 	if err := store.Sessions().Create(ctx, fork); err != nil {
 		t.Fatalf("create fork: %v", err)
 	}

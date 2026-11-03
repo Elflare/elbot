@@ -188,7 +188,7 @@ func TestPolicyOnlyAgentSkillHiddenFromNormalUserDiscovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	actor := contextinfo.Actor{ID: "cli:guest", Platform: "cli", PlatformUserID: "guest", Role: contextinfo.RoleUser}
+	actor := contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "guest"}, Role: contextinfo.RoleUser}
 	ctx := contextinfo.WithActor(context.Background(), actor)
 	discover := discovery.NewDiscoverTool(discovery.NewResolver(registry))
 	result, _, err := callTool(ctx, discover, toolshare.CallRequest{})
@@ -218,7 +218,7 @@ superadmin_only = true
 	if err != nil {
 		t.Fatal(err)
 	}
-	superadmin := contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin}
+	superadmin := contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin}
 	ctx := contextinfo.WithActor(context.Background(), superadmin)
 	args, _ := json.Marshal(map[string]string{"name": "private_doc"})
 	result, _, err := callTool(ctx, discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})

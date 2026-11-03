@@ -30,14 +30,14 @@ import (
 func TestHistoryBridgeProjectsStoredReplyAndOrderedMedia(t *testing.T) {
 	ctx, fixture, resolver := newHistoryMediaToolTest(t)
 	reply := storage.ChatReply{MessageID: "reply:opaque-id", SenderID: "sender", SenderName: "名字", Text: "quoted"}
-	row := storage.ChatMessage{Platform: "p", PlatformScopeID: "s", PlatformMessageID: "opaque/id", SenderID: "author", SenderName: "nickname", Text: "mixed", ReplyToPlatformMessageID: reply.MessageID, Metadata: storage.MarshalChatMetadata(reply), Segments: storage.MarshalChatSegments([]storage.ChatSegment{
+	row := storage.ChatMessage{Platform: "p", ChatID: "s", PlatformMessageID: "opaque/id", SenderID: "author", SenderName: "nickname", Text: "mixed", ReplyToPlatformMessageID: reply.MessageID, Metadata: storage.MarshalChatMetadata(reply), Segments: storage.MarshalChatSegments([]storage.ChatSegment{
 		{Type: "text", Text: "before"}, {Type: "file", PlatformFileID: "file"}, {Type: "image", PlatformFileID: "first"}, {Type: "text", Text: "between"}, {Type: "image", PlatformFileID: "second"},
 	})}
 	if err := fixture.history.Append(ctx, &row); err != nil {
 		t.Fatal(err)
 	}
 	bridge := &chatHistoryBridge{history: fixture.history, platform: resolver, media: fixture.center}
-	key := toolshare.MessageKey{Platform: "p", ScopeID: "s", MessageID: row.PlatformMessageID}
+	key := toolshare.MessageKey{Platform: "p", ChatID: "s", MessageID: row.PlatformMessageID}
 	got, err := bridge.GetMessage(ctx, key)
 	if err != nil || got.Key != key || got.SenderID != row.SenderID || got.SenderName != row.SenderName || got.Text != row.Text || got.Reply != (toolshare.ReplyContext{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text}) {
 		t.Fatalf("projection=%+v err=%v", got, err)
@@ -45,7 +45,7 @@ func TestHistoryBridgeProjectsStoredReplyAndOrderedMedia(t *testing.T) {
 	if len(got.Media) != 3 || got.Media[0].IsImage || !got.Media[1].IsImage || !got.Media[2].IsImage || resolver.calls != 0 {
 		t.Fatal("media order/download changed", got.Media, resolver.calls)
 	}
-	key.ScopeID = "other"
+	key.ChatID = "other"
 	if _, err := bridge.GetMessage(ctx, key); !errors.Is(err, toolshare.ErrNotFound) {
 		t.Fatal("scope/not-found conversion", err)
 	}
@@ -114,14 +114,14 @@ func newHistoryMediaToolTest(t *testing.T, configure ...func(*config.Config)) (c
 		t.Fatal(err)
 	}
 	for _, id := range []string{"1", "2"} {
-		if err := history.Repository().Append(ctx, &storage.ChatMessage{Platform: "p", PlatformScopeID: "s", PlatformMessageID: id, SenderID: "u", Text: "pictures", Segments: string(encoded)}); err != nil {
+		if err := history.Repository().Append(ctx, &storage.ChatMessage{Platform: "p", ChatID: "s", PlatformMessageID: id, SenderID: "u", Text: "pictures", Segments: string(encoded)}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	resolver := &getMediaResolver{}
-	ctx = contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ScopeID: "s"}})
+	ctx = contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ChatID: "s"}})
 	mediaRuntime := toolmedia.NewMediaRuntime(center, root, mediatest.Publisher(center))
-	manager := chat_history.NewManager(&chatHistoryBridge{history: history.Repository(), platform: resolver, media: mediaRuntime}, time.Now)
+	manager := chat_history.NewManager(&chatHistoryBridge{history: history.Repository(), platform: resolver, media: mediaRuntime}, time.Now, resolveHistoryChat)
 	return ctx, historyMediaToolFixture{ToolDefinition: builtinTestTool(t, "get_media", builtin.Deps{ChatHistory: manager}), manager: manager, history: history.Repository(), center: mediaRuntime, mediaCenter: center}, resolver
 }
 
@@ -156,7 +156,7 @@ func TestGetMediaValidationAndFailureBudget(t *testing.T) {
 	if err != nil || resolver.calls != 5 || !strings.Contains(result.Content, "https://secret-token/private") || !strings.Contains(result.Content, "序号越界") || !strings.Contains(result.Content, "达到本次") {
 		t.Fatalf("failure result = %#v %v calls=%d", result, err, resolver.calls)
 	}
-	other := contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ScopeID: "other"}})
+	other := contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ChatID: "other"}})
 	result, _, err = callTool(other, (tools).ToolDefinition, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)})
 	if err != nil || resolver.calls != 5 || !strings.Contains(result.Content, "没有该消息") {
 		t.Fatalf("scope leaked: %#v %v", result, err)
@@ -179,7 +179,7 @@ func TestHistoryQueriesShowMediaWithoutDownload(t *testing.T) {
 	if _, _, err := callTool(ctx, (tools).ToolDefinition, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)}); err != nil {
 		t.Fatal(err)
 	}
-	row, err := tools.history.GetByPlatformMessage(ctx, "p", "s", "1")
+	row, err := tools.history.GetByPlatformMessage(ctx, "p", "", "s", "1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +205,7 @@ func TestGetMediaReturnsCompressedHistoryID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	row, err := tools.history.GetByPlatformMessage(ctx, "p", "s", "1")
+	row, err := tools.history.GetByPlatformMessage(ctx, "p", "", "s", "1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,5 +228,5 @@ func TestGetMediaReturnsCompressedHistoryID(t *testing.T) {
 }
 
 func newHistoryTestManager(repository storage.ChatHistoryRepository) *chat_history.Manager {
-	return chat_history.NewManager(&chatHistoryBridge{history: repository}, time.Now)
+	return chat_history.NewManager(&chatHistoryBridge{history: repository}, time.Now, resolveHistoryChat)
 }

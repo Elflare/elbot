@@ -2,6 +2,7 @@ package share
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"fmt"
 	"io"
@@ -19,11 +20,12 @@ type ReportMedia interface {
 }
 
 type ReportMessageMap struct {
-	Platform          string // 实际发送平台。
-	PlatformScopeID   string // 实际发送会话。
-	PlatformMessageID string // 平台返回的消息标识。
-	SessionID         string // 报告所属会话。
-	MessageID         string // 报告对应的持久化消息。
+	Platform          string               // 实际发送平台。
+	ChatType          contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID            string               // 实际发送会话。
+	PlatformMessageID string               // 平台返回的消息标识。
+	SessionID         string               // 报告所属会话。
+	MessageID         string               // 报告对应的持久化消息。
 }
 
 // MapReportReceipt 只映射发送方明确返回的消息归属，不推测平台或会话。
@@ -33,7 +35,7 @@ func MapReportReceipt(sessionID, messageID string, receipt delivery.Receipt) []R
 	}
 	mappings := make([]ReportMessageMap, 0, len(receipt.SentMessages))
 	for _, sent := range receipt.SentMessages {
-		mappings = append(mappings, ReportMessageMap{Platform: sent.Platform, PlatformScopeID: sent.ScopeID, PlatformMessageID: sent.PlatformMessageID, SessionID: sessionID, MessageID: messageID})
+		mappings = append(mappings, ReportMessageMap{Platform: sent.Platform, ChatID: sent.ChatID, PlatformMessageID: sent.PlatformMessageID, SessionID: sessionID, MessageID: messageID, ChatType: sent.ChatType})
 	}
 	return mappings
 }

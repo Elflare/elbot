@@ -47,7 +47,7 @@ func TestCronBridgeOpaqueRecordsErrorsAndDeliveryTransaction(t *testing.T) {
 	if _, err := b.GetByName(canceled, row.Name); !errors.Is(err, context.Canceled) {
 		t.Fatalf("read error=%v", err)
 	}
-	if err := store.Sessions().Create(ctx, &storage.Session{ID: "session", OwnerID: "owner", Platform: "cli", PlatformScopeID: "cron:job", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}); err != nil {
+	if err := store.Sessions().Create(ctx, &storage.Session{ID: "session", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatType: "cron", ChatID: "job", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Messages().Append(ctx, &storage.Message{ID: "message", SessionID: "session", Role: storage.RoleAssistant, Content: "report"}); err != nil {
@@ -56,11 +56,11 @@ func TestCronBridgeOpaqueRecordsErrorsAndDeliveryTransaction(t *testing.T) {
 	if ok, err := b.CompareAndSwapDelivery(ctx, row.ID, "", "current", `{"delivery_complete":true}`, nil); err != nil || !ok {
 		t.Fatal(ok, err)
 	}
-	mappings := []share.ReportMessageMap{{Platform: "telegram", PlatformScopeID: "private:1", PlatformMessageID: "sent", SessionID: "session", MessageID: "message"}}
+	mappings := []share.ReportMessageMap{{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "sent", SessionID: "session", MessageID: "message"}}
 	if ok, err := b.CompareAndSwapDelivery(ctx, row.ID, "stale", "obsolete", `{}`, mappings); err != nil || ok {
 		t.Fatalf("stale commit=%v,%v", ok, err)
 	}
-	mapped, err := store.Messages().FindByPlatformMessage(ctx, "telegram", "private:1", "sent")
+	mapped, err := store.Messages().FindByPlatformMessage(ctx, "telegram", "private", "1", "sent")
 	if err != nil || mapped.ID != "message" {
 		t.Fatalf("actual send mapping=%#v,%v", mapped, err)
 	}
@@ -93,7 +93,7 @@ func TestCronBridgeServicePersistsReportMappingAndCompletion(t *testing.T) {
 	store := testutil.NewSQLiteStore(t)
 	b := cronBridge{repo: store.CronJobs()}
 	ctx := t.Context()
-	if err := store.Sessions().Create(ctx, &storage.Session{ID: "session", OwnerID: "owner", Platform: "cli", PlatformScopeID: "cron:job", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}); err != nil {
+	if err := store.Sessions().Create(ctx, &storage.Session{ID: "session", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatType: "cron", ChatID: "job", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Messages().Append(ctx, &storage.Message{ID: "message", SessionID: "session", Role: storage.RoleAssistant, Content: "report"}); err != nil {
@@ -120,14 +120,14 @@ func TestCronBridgeServicePersistsReportMappingAndCompletion(t *testing.T) {
 			if target.Platform == "cli" {
 				return delivery.Receipt{}, result, nil
 			}
-			return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "telegram", ScopeID: "private:1", PlatformMessageID: "notice"}}}, result, nil
+			return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "notice"}}}, result, nil
 		},
 	})
 	t.Cleanup(func() { _ = s.Close(context.Background()); <-m.Stop().Done() })
 	if _, err := s.Handler(ctx, *cronJob(row)); err != nil {
 		t.Fatal(err)
 	}
-	message, err := store.Messages().FindByPlatformMessage(ctx, "telegram", "private:1", "notice")
+	message, err := store.Messages().FindByPlatformMessage(ctx, "telegram", "private", "1", "notice")
 	if err != nil || message.ID != "message" || message.SessionID != "session" {
 		t.Fatalf("report mapping=%#v,%v", message, err)
 	}
@@ -180,7 +180,7 @@ func TestToolNotificationRefreshesCronThroughRealStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { logs.Disconnect() })
-	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "cli:local", Platform: "cli", PlatformUserID: "local", Role: contextinfo.RoleSuperadmin})
+	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})
 	write := func(raw string) {
 		t.Helper()
 		if _, _, err := tools.CallTool(ctx, tool.CallRequest{Name: "cron_write", Arguments: json.RawMessage(raw)}); err != nil {

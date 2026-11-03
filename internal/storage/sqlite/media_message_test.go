@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"elbot/internal/storage"
 	"errors"
 	"strings"
@@ -11,7 +12,7 @@ import (
 func TestMessageMediaTransactionAndOwnerDeletion(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
-	session := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "test", PlatformScopeID: "p"}
+	session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "test", ID: "u"}, Platform: "test", ChatID: "p"}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatal(err)
 	}

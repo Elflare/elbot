@@ -12,16 +12,16 @@ import (
 func TestRefreshExecutionUsesHandoffMemoryAndPreservesNewToolState(t *testing.T) {
 	view := ExecutionView{}
 	e := turn.NewExecution("run")
-	ctx := turn.WithExecution(contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "background"}), e)
+	ctx := turn.WithExecution(contextinfo.WithActor(t.Context(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "background"}}), e)
 	row := storage.Session{ID: "session", Mode: storage.SessionModeBackground, Metadata: `{"background_kind":"cron","tool_state":"old"}`}
 	for range 3 {
 		if _, err := view.RefreshExecution(ctx, &row); err != nil {
 			t.Fatal(err)
 		}
 	}
-	e.Adopt(contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "foreground"}), storage.Session{
-		ID: row.ID, Mode: storage.SessionModeWork, OwnerID: "foreground", Platform: "cli", PlatformScopeID: "local",
-		Metadata: `{"foreground_origin":{"kind":"cron"},"tool_state":"old"}`,
+	e.Adopt(contextinfo.WithActor(t.Context(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "foreground"}}), storage.Session{
+		ID: row.ID, Mode: storage.SessionModeWork, Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "foreground"}, Platform: "cli", ChatID: "local",
+		Metadata: `{"foreground_origin":{"kind":"cron"},"tool_state":"old"}`, ChatType: "private",
 	})
 	row.Metadata = `{"background_kind":"cron","tool_state":"new"}`
 	updated, err := view.RefreshExecution(ctx, &row)
@@ -29,7 +29,7 @@ func TestRefreshExecutionUsesHandoffMemoryAndPreservesNewToolState(t *testing.T)
 		t.Fatal(err)
 	}
 	actor, _ := contextinfo.ActorFromContext(updated)
-	if actor.ID != "foreground" || session.IsBackground(&row) || row.OwnerID != "foreground" {
+	if actor.ID != "foreground" || session.IsBackground(&row) || row.Owner.ID != "foreground" {
 		t.Fatal(actor, row)
 	}
 	fields, err := storage.DecodeSessionMetadata(row.Metadata)
@@ -43,11 +43,11 @@ func TestRefreshExecutionUsesHandoffMemoryAndPreservesNewToolState(t *testing.T)
 	}
 	// A tool state commit can bring back promoted metadata before the next call
 	// has updated the caller's session mode and ownership.
-	row.Mode, row.OwnerID = storage.SessionModeBackground, "background"
+	row.Mode, row.Owner.ID = storage.SessionModeBackground, "background"
 	if _, err := view.RefreshExecution(updated, &row); err != nil {
 		t.Fatal(err)
 	}
-	if row.Mode != storage.SessionModeWork || row.OwnerID != "foreground" {
+	if row.Mode != storage.SessionModeWork || row.Owner.ID != "foreground" {
 		t.Fatal("promoted metadata prevented updating call permissions", row)
 	}
 	oldActor, _ := contextinfo.ActorFromContext(ctx)

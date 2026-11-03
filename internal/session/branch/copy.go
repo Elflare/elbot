@@ -16,9 +16,9 @@ import (
 
 type BackgroundCopyRequest struct {
 	SourceSessionID string                  // 要复制的未接管后台会话。
-	Kind            string                  // 副本后台来源种类。
-	Name            string                  // 副本所属任务名称。
-	Title           string                  // 副本标题；空值按种类和名称生成。
+	TaskType        string                  // 副本后台来源种类。
+	TaskID          string                  // 副本所属任务名称。
+	Name            string                  // 副本标题；空值按种类和名称生成。
 	Metadata        storage.SessionMetadata // 调用方的业务字段，不由本方法原地修改。
 }
 
@@ -57,7 +57,7 @@ func (s *Service) CopyBackground(ctx context.Context, target share.Scope, req Ba
 	if err != nil {
 		return nil, err
 	}
-	idOrigin := share.BackgroundIDOrigin(target, req.Kind, []string{target.Platform})
+	idOrigin := share.BackgroundIDOrigin(target, req.TaskType, []string{target.Platform})
 	nextID, err := s.deps.AllocateID(ctx, idOrigin)
 	if err != nil {
 		return nil, err
@@ -100,7 +100,7 @@ func (s *Service) CopyBackground(ctx context.Context, target share.Scope, req Ba
 	for key, value := range req.Metadata {
 		fields[key] = value
 	}
-	if err := share.BackgroundMetadata(fields, req.Kind, req.Name); err != nil {
+	if err := share.BackgroundMetadata(fields, req.TaskType); err != nil {
 		return nil, err
 	}
 	if err := share.InheritOrigin(after, fields); err != nil {
@@ -113,11 +113,11 @@ func (s *Service) CopyBackground(ctx context.Context, target share.Scope, req Ba
 	if err != nil {
 		return nil, err
 	}
-	title := strings.TrimSpace(req.Title)
+	title := strings.TrimSpace(req.Name)
 	if title == "" {
-		title = share.BackgroundTitle(req.Kind, req.Name)
+		title = share.BackgroundTitle(req.TaskType, req.TaskID)
 	}
-	row := &storage.Session{ID: nextID, OwnerID: target.ActorID, Platform: target.Platform, PlatformScopeID: target.PlatformScopeID,
+	row := &storage.Session{ID: nextID, Owner: target.Owner, Platform: target.Platform, TaskType: req.TaskType, TaskID: req.TaskID, TaskName: req.Name,
 		Mode: storage.SessionModeBackground, Title: title, Status: storage.SessionStatusActive, Metadata: metadata}
 	copies, err := s.copyMessages(ctx, row.ID, messages)
 	if err != nil {

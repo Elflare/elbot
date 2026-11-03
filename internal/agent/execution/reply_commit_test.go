@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"elbot/internal/testutil"
 	"errors"
 	"reflect"
@@ -160,13 +161,13 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 	t.Helper()
 	f := &replyTestFixture{}
 	store := newTestStore(t)
-	row := &storage.Session{ID: storage.NewID(), OwnerID: "owner", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive}
+	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, ChatType: "private"}
 	if err := store.Sessions().Create(context.Background(), row); err != nil {
 		t.Fatal(err)
 	}
 	f.repo = &replyTestRepository{MessageRepository: store.Messages(), events: &f.events}
 	f.platform = &replyTestPlatform{events: &f.events, receipt: delivery.Receipt{
-		PlatformMessageIDs: []string{"sent"}, SentMessages: []delivery.SentMessage{{Platform: "telegram", ScopeID: "private:actual", PlatformMessageID: "sent"}},
+		PlatformMessageIDs: []string{"sent"}, SentMessages: []delivery.SentMessage{{Platform: "telegram", ChatType: "private", ChatID: "actual", PlatformMessageID: "sent"}},
 	}}
 	f.ctx = agentshare.WithMessageContext(context.Background(), agentshare.MessageContext{BufferAssistantOutput: buffered})
 	var cancel context.CancelFunc
@@ -234,7 +235,7 @@ func TestReplyCommitOrderAndTextSeparation(t *testing.T) {
 			if err != nil || message.Content != "history" || message.Metadata != dialogue.AssistantRawTextMetadata("history", "raw") {
 				t.Fatalf("history=%+v err=%v", message, err)
 			}
-			mapped, err := f.repo.FindByPlatformMessage(f.ctx, "telegram", "private:actual", "sent")
+			mapped, err := f.repo.FindByPlatformMessage(f.ctx, "telegram", "private", "actual", "sent")
 			if err != nil || mapped.ID != got.MessageID {
 				t.Fatalf("mapping=%+v err=%v", mapped, err)
 			}
@@ -294,7 +295,7 @@ func TestReplyCommitFailureKeepsFactsAndDoesNotRetry(t *testing.T) {
 					if err != nil || len(rows) != 0 {
 						t.Fatalf("failed transaction retained history: %+v %v", rows, err)
 					}
-					if _, err := f.repo.FindByPlatformMessage(f.ctx, "telegram", "private:actual", "sent"); !errors.Is(err, storage.ErrNotFound) {
+					if _, err := f.repo.FindByPlatformMessage(f.ctx, "telegram", "private", "actual", "sent"); !errors.Is(err, storage.ErrNotFound) {
 						t.Fatalf("failed transaction retained mapping: %v", err)
 					}
 				}
@@ -312,7 +313,7 @@ func TestReplyCommitFailureKeepsFactsAndDoesNotRetry(t *testing.T) {
 					t.Fatalf("unexpected retry/association: %v", f.events)
 				}
 				if wantPersisted && wantReceipt && failure != "map" {
-					mapped, err := f.repo.FindByPlatformMessage(f.ctx, "telegram", "private:actual", "sent")
+					mapped, err := f.repo.FindByPlatformMessage(f.ctx, "telegram", "private", "actual", "sent")
 					if err != nil || mapped.ID != got.MessageID {
 						t.Fatalf("lost successful receipt mapping: %+v %v", mapped, err)
 					}
@@ -358,11 +359,11 @@ func TestReplyCommitMergesReplaceAndFinishReceipts(t *testing.T) {
 	s := &replyTestStream{events: &f.events, wantCtx: f.requestCtx, t: t,
 		replaceReceipt: delivery.Receipt{
 			PlatformMessageIDs: []string{"first"},
-			SentMessages:       []delivery.SentMessage{{Platform: "telegram", ScopeID: "scope", PlatformMessageID: "first", OutputIndexes: []int{0}}},
+			SentMessages:       []delivery.SentMessage{{Platform: "telegram", ChatID: "scope", PlatformMessageID: "first", OutputIndexes: []int{0}}},
 		},
 		finishReceipt: delivery.Receipt{
 			PlatformMessageIDs: []string{"first", "second"},
-			SentMessages:       []delivery.SentMessage{{Platform: "telegram", ScopeID: "scope", PlatformMessageID: "first", OutputIndexes: []int{0, 1}}, {Platform: "telegram", ScopeID: "scope", PlatformMessageID: "second", OutputIndexes: []int{2}}},
+			SentMessages:       []delivery.SentMessage{{Platform: "telegram", ChatID: "scope", PlatformMessageID: "first", OutputIndexes: []int{0, 1}}, {Platform: "telegram", ChatID: "scope", PlatformMessageID: "second", OutputIndexes: []int{2}}},
 		},
 		finishErr: errors.New("finish partially failed"),
 	}

@@ -2,6 +2,7 @@ package refcontext
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -19,7 +20,7 @@ func TestEnrichHistoryReferencePreservesOriginalMediaPositions(t *testing.T) {
 	}
 	defer history.Close()
 	original := []share.MessageSegment{{Type: share.SegmentText, Text: "[forward]"}, {Type: share.SegmentImage, PlatformFileID: "outside-image"}}
-	row := &storage.ChatMessage{Platform: "qqonebot", PlatformScopeID: "group:9", PlatformMessageID: "123", SenderID: "1", SenderName: "小明", Text: "[forward]", Segments: encodeReferenceSegments(original), CreatedAt: storage.Now()}
+	row := &storage.ChatMessage{Platform: "qqonebot", ChatType: "group", ChatID: "9", PlatformMessageID: "123", SenderID: "1", SenderName: "小明", Text: "[forward]", Segments: encodeReferenceSegments(original), CreatedAt: storage.Now()}
 	if err := history.Repository().Append(ctx, row); err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +31,7 @@ func TestEnrichHistoryReferencePreservesOriginalMediaPositions(t *testing.T) {
 		original[1],
 	}
 	calls := 0
-	result, err := Apply(ctx, newRefTestOptions(newRefTestStore(t), history.Repository()), share.ReferenceOptions{Platform: "qqonebot", ScopeID: "group:9", ReplyID: "123", Text: "问题", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+	result, err := Apply(ctx, newRefTestOptions(newRefTestStore(t), history.Repository()), share.ReferenceOptions{Platform: "qqonebot", ChatType: "group", ChatID: "9", ReplyID: "123", Text: "问题", Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
 		t.Fatal("history unexpectedly bypassed")
 		return share.ReferencedMessage{}, false, nil
 	}, Enrich: func(_ context.Context, id string, ref share.ReferencedMessage) ([]share.MessageSegment, error) {
@@ -57,22 +58,23 @@ func TestEnrichHistoryReferencePreservesOriginalMediaPositions(t *testing.T) {
 func TestEnrichCanonicalAssistantKeepsReferenceDecisions(t *testing.T) {
 	ctx := context.Background()
 	store := newRefTestStore(t)
-	scope := referenceTestScope{ActorID: "qqonebot:1", Platform: "qqonebot", PlatformScopeID: "group:9"}
+	scope := referenceTestScope{Owner: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "1"}, Platform: "qqonebot", ChatType: "group", ChatID: "9"}
 	first, latest := createAssistantMessages(t, ctx, store, scope)
 	mapPlatformMessage(t, ctx, store, scope, "old-forward", first)
 	mapPlatformMessage(t, ctx, store, scope, "latest-forward", latest)
 	for _, tc := range []struct {
-		name, actor, reply, text string
-		enrich                   bool
+		name, reply, text string
+		actor             contextinfo.ActorIdentity
+		enrich            bool
 	}{
-		{name: "resume", actor: scope.ActorID, reply: "latest-forward", text: "继续"},
-		{name: "fork", actor: scope.ActorID, reply: "old-forward", text: "继续", enrich: true},
-		{name: "fork command", actor: scope.ActorID, reply: "old-forward", text: "/fork"},
-		{name: "other actor", actor: "qqonebot:2", reply: "old-forward", text: "问题", enrich: true},
+		{name: "resume", actor: scope.Owner, reply: "latest-forward", text: "继续"},
+		{name: "fork", actor: scope.Owner, reply: "old-forward", text: "继续", enrich: true},
+		{name: "fork command", actor: scope.Owner, reply: "old-forward", text: "/fork"},
+		{name: "other actor", actor: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "2"}, reply: "old-forward", text: "问题", enrich: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
-			result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: scope.Platform, ScopeID: scope.PlatformScopeID, ActorID: tc.actor, ReplyID: tc.reply, Text: tc.text, Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
+			result, err := Apply(ctx, newRefTestOptions(store, newRefTestHistory(t)), share.ReferenceOptions{Platform: scope.Platform, ChatID: scope.ChatID, Owner: tc.actor, ReplyID: tc.reply, Text: tc.text, Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
 				return share.ReferencedMessage{Text: "[forward]", Segments: []share.MessageSegment{{Type: share.SegmentText, Text: "[forward]"}}}, true, nil
 			}, Enrich: func(_ context.Context, _ string, ref share.ReferencedMessage) ([]share.MessageSegment, error) {
 				calls++
@@ -80,7 +82,8 @@ func TestEnrichCanonicalAssistantKeepsReferenceDecisions(t *testing.T) {
 					t.Fatalf("missing canonical answer: %#v", ref)
 				}
 				return []share.MessageSegment{{Type: share.SegmentText, Text: "<forward_message>\n" + ref.Text + "\n</forward_message>"}}, nil
-			}})
+			}, ChatType: scope.ChatType,
+			})
 			if err != nil {
 				t.Fatal(err)
 			}

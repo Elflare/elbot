@@ -31,16 +31,16 @@ type ToolPermissionResult struct {
 	Reason            string // 拒绝或自动确认的策略原因，供调用方组织提示与审计。
 }
 
-// CheckTool 统一判断工具权限与确认要求；backgroundKind 仅在后台沙盒中填写。
+// CheckTool 统一判断工具权限与确认要求；autoConfirmShell 是调用方裁定的沙盒自动确认策略。
 // 场景和风险由调用方提供，本方法不读取业务组件、不交互也不发布日志。
-func (p *Permission) CheckTool(actor contextinfo.Actor, name string, risk RiskLevel, ownerScoped, superadminOnly bool, backgroundKind string) ToolPermissionResult {
+func (p *Permission) CheckTool(actor contextinfo.Actor, name string, risk RiskLevel, ownerScoped, superadminOnly bool, autoConfirmShell bool) ToolPermissionResult {
 	if superadminOnly && actor.Role != contextinfo.RoleSuperadmin {
 		return ToolPermissionResult{Reason: "tool_requires_superadmin"}
 	}
 	if !p.CanUseTool(actor, risk, ownerScoped) {
 		return ToolPermissionResult{Reason: "tool_risk_above_allowed_level"}
 	}
-	if name == "shell" && (backgroundKind == "cron" || backgroundKind == "elnis") {
+	if name == "shell" && autoConfirmShell {
 		if risk == RiskCritical {
 			return ToolPermissionResult{Reason: "background_shell_rejected"}
 		}
@@ -83,18 +83,10 @@ func (p *Permission) Actor(platform, platformUserID, displayName string) context
 	if p.IsSuperadmin(platform, platformUserID) {
 		role = contextinfo.RoleSuperadmin
 	}
-	return contextinfo.Actor{ID: ActorID(platform, platformUserID), Platform: platform, PlatformUserID: platformUserID, DisplayName: displayName, Role: role, GroupRole: contextinfo.GroupRoleUnknown}
-}
-
-// ActorID 生成存储关联标识；消费者不得拆解它来恢复平台或用户身份。
-func ActorID(platform, platformUserID string) string {
-	return platform + ":" + platformUserID
+	return contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: platform, ID: platformUserID}, Name: displayName, Role: role, GroupRole: contextinfo.GroupRoleUnknown}
 }
 
 func (p *Permission) IsSuperadmin(platform, platformUserID string) bool {
-	if p == nil {
-		return false
-	}
 	return p.Superadmins[platform][platformUserID]
 }
 
@@ -105,16 +97,12 @@ func (p *Permission) CanUseTool(actor contextinfo.Actor, risk RiskLevel, ownerSc
 	if ownerScoped {
 		return true
 	}
-	maxRisk := RiskLow
-	if p != nil {
-		maxRisk = p.UserMaxToolRisk
-	}
-	return CompareRisk(risk, maxRisk) <= 0
+	return CompareRisk(risk, p.UserMaxToolRisk) <= 0
 }
 
 func (p *Permission) NeedsToolConfirmation(actor contextinfo.Actor, risk RiskLevel) bool {
 	threshold := RiskHigh
-	if actor.Role == contextinfo.RoleSuperadmin && p != nil {
+	if actor.Role == contextinfo.RoleSuperadmin {
 		threshold = p.SuperadminConfirmRisk
 	}
 	return CompareRisk(risk, threshold) >= 0

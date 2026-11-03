@@ -61,7 +61,7 @@ func TestFailureNotificationWiringSurvivesIngressStop(t *testing.T) {
 				t.Fatal(err)
 			}
 			connection, err := queue.Connect(func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
-				if ctx.Err() != nil || n.Target.Kind != contextinfo.ConversationPrivate || n.Level != slog.LevelError || n.Text != "平台 failed 异常退出：offline" {
+				if ctx.Err() != nil || n.Target.ChatType != contextinfo.ChatPrivate || n.Level != slog.LevelError || n.Text != "平台 failed 异常退出：offline" {
 					t.Errorf("unexpected notification: %+v, context error: %v", n, ctx.Err())
 				}
 				mu.Lock()
@@ -146,7 +146,7 @@ func TestServiceNotificationsUseHeadlessQueueAndPropagateLogResults(t *testing.T
 	if err := headless.ValidateNotificationTarget(events.NotificationTarget{ID: "chat"}); err == nil {
 		t.Fatal("headless accepted a conversation destination")
 	}
-	results, err = events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "invalid", Target: events.NotificationTarget{Platform: "service", Kind: contextinfo.ConversationPrivate, ID: "chat"}})
+	results, err = events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "invalid", Target: events.NotificationTarget{Platform: "service", ChatType: contextinfo.ChatPrivate, ID: "chat"}})
 	if err == nil || len(results) != 1 || results[0].Started || len(records) != 1 {
 		t.Fatalf("invalid host destination: %v %v", results, err)
 	}

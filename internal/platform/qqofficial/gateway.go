@@ -112,21 +112,11 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler share.MessageHandl
 						record.Level = slog.LevelInfo
 					}
 					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					if facts.SessionID != "" {
-						record.Identity.SessionID = &facts.SessionID
-					}
-					if facts.RunID != "" {
-						record.Identity.RunID = &facts.RunID
-					}
-					if facts.Attempt != "" {
-						record.Identity.Attempt = &facts.Attempt
-					}
-					if facts.RequestID != "" {
-						record.Identity.RequestID = &facts.RequestID
-					}
-					if facts.RootRequestID != "" {
-						record.Identity.RootRequestID = &facts.RootRequestID
-					}
+					record.Identity.SessionID = &facts.SessionID
+					record.Identity.RunID = &facts.RunID
+					record.Identity.Attempt = &facts.Attempt
+					record.Identity.RequestID = &facts.RequestID
+					record.Identity.RootRequestID = &facts.RootRequestID
 					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 				}
 			}
@@ -154,21 +144,11 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler share.MessageHandl
 					ResultStatus: globalevents.ResultSkipped,
 				}
 				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				if facts.SessionID != "" {
-					record.Identity.SessionID = &facts.SessionID
-				}
-				if facts.RunID != "" {
-					record.Identity.RunID = &facts.RunID
-				}
-				if facts.Attempt != "" {
-					record.Identity.Attempt = &facts.Attempt
-				}
-				if facts.RequestID != "" {
-					record.Identity.RequestID = &facts.RequestID
-				}
-				if facts.RootRequestID != "" {
-					record.Identity.RootRequestID = &facts.RootRequestID
-				}
+				record.Identity.SessionID = &facts.SessionID
+				record.Identity.RunID = &facts.RunID
+				record.Identity.Attempt = &facts.Attempt
+				record.Identity.RequestID = &facts.RequestID
+				record.Identity.RootRequestID = &facts.RootRequestID
 				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 			}
 		}
@@ -227,21 +207,11 @@ func (a *Adapter) heartbeatLoop(ctx context.Context, conn *websocket.Conn, state
 						record.Level = slog.LevelInfo
 					}
 					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					if facts.SessionID != "" {
-						record.Identity.SessionID = &facts.SessionID
-					}
-					if facts.RunID != "" {
-						record.Identity.RunID = &facts.RunID
-					}
-					if facts.Attempt != "" {
-						record.Identity.Attempt = &facts.Attempt
-					}
-					if facts.RequestID != "" {
-						record.Identity.RequestID = &facts.RequestID
-					}
-					if facts.RootRequestID != "" {
-						record.Identity.RootRequestID = &facts.RootRequestID
-					}
+					record.Identity.SessionID = &facts.SessionID
+					record.Identity.RunID = &facts.RunID
+					record.Identity.Attempt = &facts.Attempt
+					record.Identity.RequestID = &facts.RequestID
+					record.Identity.RootRequestID = &facts.RootRequestID
 					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 				}
 				_ = conn.CloseNow()
@@ -272,21 +242,11 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler share.MessageHandl
 				ResultStatus: globalevents.ResultSucceeded,
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
+			record.Identity.SessionID = &facts.SessionID
+			record.Identity.RunID = &facts.RunID
+			record.Identity.Attempt = &facts.Attempt
+			record.Identity.RequestID = &facts.RequestID
+			record.Identity.RootRequestID = &facts.RootRequestID
 			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 		}
 		a.notifyConnected(ctx)
@@ -319,21 +279,11 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler share.MessageHandl
 					ResultStatus: globalevents.ResultSucceeded,
 				}
 				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				if facts.SessionID != "" {
-					record.Identity.SessionID = &facts.SessionID
-				}
-				if facts.RunID != "" {
-					record.Identity.RunID = &facts.RunID
-				}
-				if facts.Attempt != "" {
-					record.Identity.Attempt = &facts.Attempt
-				}
-				if facts.RequestID != "" {
-					record.Identity.RequestID = &facts.RequestID
-				}
-				if facts.RootRequestID != "" {
-					record.Identity.RootRequestID = &facts.RootRequestID
-				}
+				record.Identity.SessionID = &facts.SessionID
+				record.Identity.RunID = &facts.RunID
+				record.Identity.Attempt = &facts.Attempt
+				record.Identity.RequestID = &facts.RequestID
+				record.Identity.RootRequestID = &facts.RootRequestID
 				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 			}
 		}

@@ -14,14 +14,14 @@ import (
 func (s *Supervisor) PrepareBackground(ctx context.Context, scope Scope, req BackgroundRequest) (*storage.Session, error) {
 	return s.control.PrepareBackground(ctx, share.Scope(scope), control.BackgroundRequest{
 		TargetPlatforms: req.TargetPlatforms,
-		SessionID:       req.SessionID, Kind: req.Kind, Name: req.Name, Title: req.Title, Metadata: req.Metadata,
+		SessionID:       req.SessionID, TaskType: req.TaskType, TaskID: req.TaskID, Name: req.Name, Metadata: req.Metadata,
 	})
 }
 
 func (s *Supervisor) CopyBackground(ctx context.Context, target Scope, req BackgroundCopyRequest) (*storage.Session, error) {
 	return s.branches.CopyBackground(ctx, share.Scope(target), branch.BackgroundCopyRequest{
-		SourceSessionID: req.SourceSessionID, Kind: req.Kind, Name: req.Name,
-		Title: req.Title, Metadata: req.Metadata,
+		SourceSessionID: req.SourceSessionID, TaskType: req.TaskType, TaskID: req.TaskID,
+		Name: req.Name, Metadata: req.Metadata,
 	})
 }
 

@@ -4,6 +4,7 @@ package notification
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"errors"
 	"log/slog"
 	"sync/atomic"
@@ -30,7 +31,7 @@ func TestPlatformFailureDeliveryIsAsyncAndIsolated(t *testing.T) {
 			if n.Text == "barrier" {
 				return events.NotificationReceipt{}, nil
 			}
-			if n.Level != slog.LevelError || n.Text != "平台 failed 异常退出：offline" || n.Target.Platform != name || n.Target.ID != "admin" || n.Target.Kind != contextinfo.ConversationPrivate || n.Origin != nil {
+			if n.Level != slog.LevelError || n.Text != "平台 failed 异常退出：offline" || n.Target.Platform != name || n.Target.ID != "admin" || n.Target.ChatType != contextinfo.ChatPrivate || n.Origin != nil {
 				t.Errorf("unexpected failure notification: %+v", n)
 			}
 			if name == "slow" {
@@ -45,12 +46,12 @@ func TestPlatformFailureDeliveryIsAsyncAndIsolated(t *testing.T) {
 		})
 	}
 	targets := []events.NotificationTarget{
-		{Platform: "slow", Kind: contextinfo.ConversationPrivate, ID: "admin"},
-		{Platform: "fast", Kind: contextinfo.ConversationPrivate, ID: "admin"},
+		{Platform: "slow", ChatType: contextinfo.ChatPrivate, ID: "admin"},
+		{Platform: "fast", ChatType: contextinfo.ChatPrivate, ID: "admin"},
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	ctx = contextinfo.WithBackgroundKind(ctx, contextinfo.BackgroundKindCron)
+	ctx = testutil.TaskContext(ctx, "cron")
 	returned := make(chan struct{})
 	go func() {
 		m.NotifyPlatformFailure(ctx, "failed", errors.New("offline"), targets)
@@ -96,7 +97,7 @@ func TestManagerCloseWaitsForSenderAndCanRetry(t *testing.T) {
 			<-release
 			return events.NotificationReceipt{}, nil
 		})
-		targets := []events.NotificationTarget{{Platform: "remote", Kind: contextinfo.ConversationPrivate, ID: "admin"}}
+		targets := []events.NotificationTarget{{Platform: "remote", ChatType: contextinfo.ChatPrivate, ID: "admin"}}
 		m.NotifyPlatformFailure(context.Background(), "failed", errors.New("offline"), targets)
 		synctest.Wait()
 		if calls.Load() != 1 {
@@ -167,7 +168,7 @@ func addTestPlatform(t *testing.T, m *Manager, name string, h signal.Handler[eve
 func TestOriginalSourceAndPartialFailure(t *testing.T) {
 	m := testManager(t, "test")
 	wantErr := errors.New("partially sent")
-	origin := contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ConversationKind: contextinfo.ConversationPrivate, ConversationID: "one", ScopeID: "private:one"}, PlatformMessageID: "original", PlatformData: "first-connection"}
+	origin := contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ChatType: contextinfo.ChatPrivate, ChatID: "one"}, PlatformMessageID: "original", PlatformData: "first-connection"}
 	addTestPlatform(t, m, "test", func(ctx context.Context, n events.Notification) (events.NotificationReceipt, error) {
 		info, _ := contextinfo.ConversationFromContext(ctx)
 		if info != origin || n.Level != slog.LevelWarn {
@@ -183,29 +184,26 @@ func TestOriginalSourceAndPartialFailure(t *testing.T) {
 	}
 }
 
-func TestBackgroundDefaultNotificationIsSilentAndExplicitTargetDelivers(t *testing.T) {
+func TestNotificationRoutingDoesNotInterpretExecutionMode(t *testing.T) {
 	m := testManager(t, "cli")
 	calls := 0
 	addTestPlatform(t, m, "cli", func(_ context.Context, n events.Notification) (events.NotificationReceipt, error) {
 		calls++
-		if n.Text != "explicit" {
-			t.Error("default background notice escaped", n)
-		}
 		return events.NotificationReceipt{}, nil
 	})
-	ctx := contextinfo.WithBackgroundKind(t.Context(), contextinfo.BackgroundKindCron)
-	ctx = contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "old-origin"}})
+	ctx := testutil.TaskContext(t.Context(), "cron")
+	ctx = contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ChatID: "old-origin", ChatType: "private"}})
 	if _, err := events.NotificationRequested.Emit(ctx, events.NewNotification(ctx, slog.LevelInfo, "silent")); err != nil {
 		t.Fatal(err)
 	}
-	if calls != 0 {
-		t.Fatal("background notification sent")
+	if calls != 1 {
+		t.Fatal("routed notification was suppressed")
 	}
-	if _, err := events.NotificationRequested.Emit(ctx, events.Notification{Text: "explicit", Target: events.NotificationTarget{Platform: "cli", ScopeID: "target"}}); err != nil {
+	if _, err := events.NotificationRequested.Emit(ctx, events.Notification{Text: "explicit", Target: events.NotificationTarget{Platform: "cli", ID: "target"}}); err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 {
-		t.Fatal("explicit background notification suppressed")
+	if calls != 2 {
+		t.Fatal("explicit notification suppressed")
 	}
 }
 func TestPlatformFullWarnsAndOtherPlatformStillSends(t *testing.T) {
@@ -248,7 +246,7 @@ func TestPlatformFullWarnsAndOtherPlatformStillSends(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close(context.Background())
-	n := events.Notification{Target: events.NotificationTarget{Platform: "slow", Kind: contextinfo.ConversationPrivate, ID: "one"}, Text: "overflow"}
+	n := events.Notification{Target: events.NotificationTarget{Platform: "slow", ChatType: contextinfo.ChatPrivate, ID: "one"}, Text: "overflow"}
 	if _, err := events.NotificationRequested.Emit(context.Background(), n); !errors.Is(err, signal.ErrQueueFull) {
 		t.Fatal(err)
 	}
@@ -292,7 +290,7 @@ func TestQueuedNotificationRejectsExpiredBinding(t *testing.T) {
 	}
 	defer store.Close()
 	sessions := newSessionSupervisor(t, store)
-	scope := session.Scope{ActorID: "cli:one", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "one"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	if _, err := sessions.Create(context.Background(), scope, session.CreateRequest{}); err != nil {
 		t.Fatal(err)
 	}
@@ -388,9 +386,9 @@ func TestNotificationDoesNotInferTargetFromScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, target := range []events.NotificationTarget{
-		{Platform: "network", ScopeID: "group:chat"},
-		{Platform: "network", ScopeID: "group:chat", Kind: contextinfo.ConversationGroup},
-		{Platform: "network", ScopeID: "group:chat", ID: "chat"},
+		{Platform: "network"},
+		{Platform: "network", ChatType: contextinfo.ChatGroup},
+		{Platform: "network", ID: "chat"},
 	} {
 		results, err := events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "notice", Target: target})
 		if err == nil || len(results) != 1 || results[0].Started || deliveries.Load() != 0 {

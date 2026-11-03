@@ -75,7 +75,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	if hasInfo && !command.CanAccess(info, actor) {
 		{
-			content, _ := json.Marshal(map[string]any{"actor_id": actor.ID, "command": text, "reason": "slash_command_requires_superadmin"})
+			content, _ := json.Marshal(map[string]any{"actor": actor, "command": text, "reason": "slash_command_requires_superadmin"})
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogAudit,
 				Level:        slog.LevelWarn,
@@ -87,21 +87,11 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 				ResultStatus: globalevents.ResultRejected,
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
+			record.Identity.SessionID = &facts.SessionID
+			record.Identity.RunID = &facts.RunID
+			record.Identity.Attempt = &facts.Attempt
+			record.Identity.RequestID = &facts.RequestID
+			record.Identity.RootRequestID = &facts.RootRequestID
 			_ = globalevents.EmitLog(ctx, record)
 		}
 		return true, e.output.SendChat(ctx, fmt.Sprintf("%s%s: superadmin required", parsed.Prefix, parsed.Name))

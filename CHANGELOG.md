@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Break Changes：更改了hook协议
 - 人工逐包、逐文件、逐函数、逐字段指导AI重构App到业务层，再次收拢边界、分清职责、精简代码。
 - 精简用户提示信息和工具schema信息
 - 优化log、audit显示

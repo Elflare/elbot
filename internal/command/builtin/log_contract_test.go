@@ -94,11 +94,11 @@ func TestLogQueriesPutToolBelowHeader(t *testing.T) {
 				Level:     "INFO",
 				EventName: event,
 				Type:      events.ContentJSON,
-				Content:   `{"tool":"shell","result":"done","actor_id":"user","nested":{"tool":"nested","actor_id":"inner"}}`,
+				Content:   `{"tool":"shell","result":"done","actor":{"platform":"telegram","id":"user"},"nested":{"tool":"nested","actor_id":"inner"}}`,
 				Raw:       "ORIGINAL_PHYSICAL_RECORD",
 			}
 			content := formatLogEntries(category, false)([]logging.LogEntry{entry})
-			if !strings.Contains(content, "[done]\n") || !strings.Contains(content, "actor: user") || !strings.Contains(content, "nested: {actor_id: inner · tool: nested}") || !strings.HasPrefix(content, title+":\n") {
+			if !strings.Contains(content, "[done]\n") || !strings.Contains(content, "actor: {id: user · platform: telegram}") || !strings.Contains(content, "nested: {actor_id: inner · tool: nested}") || !strings.HasPrefix(content, title+":\n") {
 				t.Fatalf("unexpected fields for %s: %s", event, content)
 			}
 			if category == events.LogAudit && !strings.Contains(content, "[shell]") || category != events.LogAudit && !strings.Contains(content, "tool: shell") {
@@ -111,8 +111,8 @@ func TestLogQueriesPutToolBelowHeader(t *testing.T) {
 			}
 		}
 	}
-	entry := logging.LogEntry{Type: events.ContentJSON, Content: `{"result":"done","actor_id":"user"}`}
-	if content := formatLogEntries(events.LogRuntime, false)([]logging.LogEntry{entry}); content != "runtime logs:\nunk-time\n[done]\nactor: user" {
+	entry := logging.LogEntry{Type: events.ContentJSON, Content: `{"result":"done","actor":{"platform":"telegram","id":"user"}}`}
+	if content := formatLogEntries(events.LogRuntime, false)([]logging.LogEntry{entry}); content != "runtime logs:\nunk-time\n[done]\nactor: {id: user · platform: telegram}" {
 		t.Fatalf("non-tool field order changed: %s", content)
 	}
 }
@@ -152,7 +152,7 @@ func TestAuditPreservesSourceOrderThroughStorageAndFiltering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := `{"tool":"shell","summary":` + string(summaryJSON) + `,"run_source":"foreground","risk":"low","result":"first\nsecond","actor_id":"user","nested":{"z":9007199254740993,"a":[]}}`
+	body := `{"tool":"shell","summary":` + string(summaryJSON) + `,"run_source":"foreground","risk":"low","result":"first\nsecond","actor":{"platform":"telegram","id":"user"},"nested":{"z":9007199254740993,"a":[]}}`
 	if err := events.EmitLog(t.Context(), events.LogRecord{Category: events.LogAudit, EventName: "tool_call_completed", Module: "toolrun", Type: events.ContentJSON, Content: body, ResultStatus: events.ResultSucceeded}); err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestAuditPreservesSourceOrderThroughStorageAndFiltering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := " [shell] ✓ · " + summary + "\n[first\nsecond]\ntool_call_completed · actor: user · run_source: foreground\nINFO · risk: low\nnested: {a: [] · z: 9007199254740993}"
+	want := " [shell] ✓ · " + summary + "\n[first\nsecond]\ntool_call_completed · actor: {id: user · platform: telegram} · run_source: foreground\nINFO · risk: low\nnested: {a: [] · z: 9007199254740993}"
 	if !strings.HasSuffix(result.Content, want) {
 		t.Fatalf("display order changed: %s", result.Content)
 	}
@@ -193,7 +193,7 @@ func TestLogQueriesHideExecutionIdentity(t *testing.T) {
 				Level:     "INFO",
 				EventName: "tool_call_completed",
 				Type:      events.ContentJSON,
-				Content:   `{"result":"run_id: business content","actor_id":"user","run_source":"foreground"}`,
+				Content:   `{"result":"run_id: business content","actor":{"platform":"telegram","id":"user"},"run_source":"foreground"}`,
 				Raw:       `{"run_id":"run","attempt":"attempt","request_id":"request","root_request_id":"root"}`,
 			}
 			want := formatLogEntries(category, false)([]logging.LogEntry{entry})

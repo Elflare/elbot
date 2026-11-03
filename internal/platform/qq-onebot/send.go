@@ -222,17 +222,17 @@ func oneBotReceipt(platformName string, receipt delivery.Receipt, target target,
 		}
 	}
 	for _, id := range receipt.PlatformMessageIDs {
-		receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: platformName, ScopeID: oneBotTargetScope(target), OutputIndexes: append([]int(nil), indexes...)})
+		receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: platformName, ChatType: contextinfo.ChatType(target.MessageType), ChatID: oneBotTargetScope(target), OutputIndexes: append([]int(nil), indexes...)})
 	}
 	return receipt
 }
 
 func oneBotTargetScope(target target) string {
 	if target.MessageType == "group" {
-		return "group:" + strconv.FormatInt(target.GroupID, 10)
+		return strconv.FormatInt(target.GroupID, 10)
 	}
 	if target.MessageType == "private" {
-		return "private:" + strconv.FormatInt(target.UserID, 10)
+		return strconv.FormatInt(target.UserID, 10)
 	}
 	return ""
 }
@@ -242,42 +242,22 @@ func (a *Adapter) contextTarget(ctx context.Context) (target, error) {
 	if !ok || info.Source.Platform != a.Name() {
 		return target{}, fmt.Errorf("qq send target missing")
 	}
-	out := delivery.Target{ScopeID: info.Source.ScopeID}
-	if info.Source.ConversationID != "" {
-		switch info.Source.ConversationKind {
-		case contextinfo.ConversationGroup:
-			out.GroupID = info.Source.ConversationID
-		case contextinfo.ConversationPrivate:
-			out.PrivateUserID = info.Source.ConversationID
-		}
-	}
-	return targetToQQ(out)
+	return targetToQQ(delivery.Target{ChatType: info.Source.ChatType, ChatID: info.Source.ChatID})
 }
 
 func targetToQQ(outTarget delivery.Target) (target, error) {
-	if strings.TrimSpace(outTarget.PrivateUserID) == "" && strings.TrimSpace(outTarget.GroupID) == "" {
-		scope := strings.TrimSpace(outTarget.ScopeID)
-		if strings.HasPrefix(scope, "private:") {
-			outTarget.PrivateUserID = strings.TrimPrefix(scope, "private:")
-		} else if strings.HasPrefix(scope, "group:") {
-			outTarget.GroupID = strings.TrimPrefix(scope, "group:")
-		}
+	id, err := strconv.ParseInt(outTarget.ChatID, 10, 64)
+	if err != nil {
+		return target{}, fmt.Errorf("parse qqonebot conversation id: %w", err)
 	}
-	if userID := strings.TrimSpace(outTarget.PrivateUserID); userID != "" {
-		id, err := strconv.ParseInt(userID, 10, 64)
-		if err != nil {
-			return target{}, fmt.Errorf("parse qqonebot private user id: %w", err)
-		}
+	switch outTarget.ChatType {
+	case contextinfo.ChatPrivate:
 		return target{MessageType: "private", UserID: id}, nil
-	}
-	if groupID := strings.TrimSpace(outTarget.GroupID); groupID != "" {
-		id, err := strconv.ParseInt(groupID, 10, 64)
-		if err != nil {
-			return target{}, fmt.Errorf("parse qqonebot group id: %w", err)
-		}
+	case contextinfo.ChatGroup:
 		return target{MessageType: "group", GroupID: id}, nil
+	default:
+		return target{}, fmt.Errorf("qqonebot invalid conversation kind %q", outTarget.ChatType)
 	}
-	return target{}, fmt.Errorf("qqonebot target missing private_user_id, group_id or scope_id")
 }
 
 func outputSegments(sendFileMode string, outputs ...delivery.Output) ([]Segment, error) {

@@ -15,7 +15,7 @@ type Options[T any] struct {
 	Timeout     time.Duration                  // Admission and execution budget; defaults to 30 seconds.
 	Required    bool                           // Emitting without a receiver is an error.
 	Single      bool                           // At most one receiver, for request/notification routing.
-	Key         func(T) string                 // Equal nonempty keys execute in admission order.
+	Key         func(T) any                    // Keys must be comparable; equal non-nil keys execute in admission order.
 	Before      func(context.Context, T) error // Owner's execution-time guard, after waiting and before the receiver.
 }
 type ConnectOptions struct {

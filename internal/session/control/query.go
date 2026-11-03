@@ -4,6 +4,7 @@ package control
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -14,8 +15,8 @@ import (
 
 func (s *Service) ListPage(ctx context.Context, scope share.Scope, query string, limit, offset int, archivedOnly bool) ([]storage.SessionSummary, error) {
 	return s.deps.Sessions.List(ctx, storage.ListSessionsRequest{
-		ActorID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID,
-		IncludeAllPlatforms: scope.IsCLI, IncludeSamePlatformBackground: !scope.IsCLI && scope.ConversationKind == contextinfo.ConversationPrivate,
+		Owner: scope.Owner, Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID,
+		IncludeAllPlatforms: scope.IsCLI, IncludeSamePlatformBackground: !scope.IsCLI && scope.ChatType == contextinfo.ChatPrivate,
 		ArchivedOnly: archivedOnly, Query: query, Limit: limit, Offset: offset, MessageLimit: 5,
 	})
 }
@@ -26,8 +27,8 @@ func (s *Service) ListResumablePage(ctx context.Context, scope share.Scope, limi
 		currentID = binding.SessionID()
 	}
 	return s.deps.Sessions.List(ctx, storage.ListSessionsRequest{
-		ActorID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID,
-		IncludeAllPlatforms: scope.IsCLI, IncludeSamePlatformBackground: !scope.IsCLI && scope.ConversationKind == contextinfo.ConversationPrivate,
+		Owner: scope.Owner, Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID,
+		IncludeAllPlatforms: scope.IsCLI, IncludeSamePlatformBackground: !scope.IsCLI && scope.ChatType == contextinfo.ChatPrivate,
 		ExcludeSessionID: currentID, Limit: limit, Offset: offset, MessageLimit: 5,
 	})
 }
@@ -95,4 +96,37 @@ func checkAccess(scope share.Scope, row *storage.Session) error {
 		return fmt.Errorf("session %s is not in current platform scope", row.ID)
 	}
 	return nil
+}
+
+// ResolveReference 决定引用助手消息后的续接方式；准入时仍复核访问权限。
+func (s *Service) ResolveReference(ctx context.Context, scope share.Scope, message storage.Message) (resumeID, forkID string, omitReference bool, err error) {
+	row, err := s.deps.Sessions.Get(ctx, message.SessionID)
+	if errors.Is(err, storage.ErrNotFound) {
+		return "", "", false, nil
+	}
+	if err != nil {
+		return "", "", false, err
+	}
+	if share.IsBackground(row) {
+		if s.deps.IsSuperadmin(scope) {
+			return row.ID, "", false, nil
+		}
+		return "", "", false, nil
+	}
+	if row.Owner != scope.Owner || row.Platform != scope.Platform || row.ChatType != scope.ChatType || row.ChatID != scope.ChatID {
+		return "", "", false, nil
+	}
+	messages, err := s.deps.Messages.ListBySession(ctx, row.ID)
+	if err != nil {
+		return "", "", false, err
+	}
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == storage.RoleAssistant {
+			if messages[i].ID == message.ID {
+				return row.ID, "", true, nil
+			}
+			break
+		}
+	}
+	return "", message.ID, false, nil
 }

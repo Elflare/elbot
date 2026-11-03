@@ -2,6 +2,7 @@ package background
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"io"
@@ -67,7 +68,7 @@ func (emptyElnisSelections) BackgroundSelections(context.Context, []string) ([]t
 func seedElnisReportMessage(t *testing.T, store storage.Store) {
 	t.Helper()
 	ctx := t.Context()
-	if err := store.Sessions().Create(ctx, &storage.Session{ID: "session", OwnerID: "owner", Platform: "cli", PlatformScopeID: "elnis:test", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}); err != nil {
+	if err := store.Sessions().Create(ctx, &storage.Session{ID: "session", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatType: "elnis", ChatID: "test", Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Messages().Append(ctx, &storage.Message{ID: "message", SessionID: "session", Role: storage.RoleAssistant, Content: "report"}); err != nil {
@@ -83,7 +84,7 @@ func TestElnisBridgeRecordsAndTerminalReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC().Truncate(time.Second)
-	req := elnis.CreateEventRequest{MediaIDs: []string{id}, EventKey: "key", TokenName: "token", ElwispName: "watcher", Source: "source", SourceID: "one", Tags: `["tag"]`, Mode: elnis.ModeLLM, ModelSlot: "slot", ContentHash: "hash", ToolDeclarations: "{opaque tools", ToolHash: "toolhash", RequestedTargets: "{opaque requested", ResolvedTargets: "{opaque resolved", Status: elnis.StatusQueued, ReceivedAt: now, CreatedAt: now.Add(-time.Second)}
+	req := elnis.CreateEventRequest{MediaIDs: []string{id}, EventKey: "key", OriginKind: "http_token", OriginName: "token", ElwispName: "watcher", Source: "source", SourceID: "one", Tags: `["tag"]`, Mode: elnis.ModeLLM, ModelSlot: "slot", ContentHash: "hash", ToolDeclarations: "{opaque tools", ToolHash: "toolhash", RequestedTargets: "{opaque requested", ResolvedTargets: "{opaque resolved", Status: elnis.StatusQueued, ReceivedAt: now, CreatedAt: now.Add(-time.Second)}
 	row, err := b.Create(ctx, req)
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +93,7 @@ func TestElnisBridgeRecordsAndTerminalReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.TokenName != req.TokenName || saved.ElwispName != req.ElwispName || saved.Source != req.Source || saved.SourceID != req.SourceID || saved.Tags != req.Tags || saved.Mode != req.Mode || saved.ModelSlot != req.ModelSlot || saved.ToolDeclarations != req.ToolDeclarations || saved.ToolHash != req.ToolHash || saved.RequestedTargets != req.RequestedTargets || saved.ResolvedTargets != req.ResolvedTargets || saved.Status != req.Status || !saved.ReceivedAt.Equal(req.ReceivedAt) || !saved.CreatedAt.Equal(req.CreatedAt) {
+	if saved.OriginKind != req.OriginKind || saved.OriginName != req.OriginName || saved.ElwispName != req.ElwispName || saved.Source != req.Source || saved.SourceID != req.SourceID || saved.Tags != req.Tags || saved.Mode != req.Mode || saved.ModelSlot != req.ModelSlot || saved.ToolDeclarations != req.ToolDeclarations || saved.ToolHash != req.ToolHash || saved.RequestedTargets != req.RequestedTargets || saved.ResolvedTargets != req.ResolvedTargets || saved.Status != req.Status || !saved.ReceivedAt.Equal(req.ReceivedAt) || !saved.CreatedAt.Equal(req.CreatedAt) {
 		t.Fatalf("lost create fields: %#v", saved)
 	}
 	got, err := b.GetByKey(ctx, "watcher", "source", "one")
@@ -179,13 +180,13 @@ func TestElnisBridgeReportTransactionsAndRecovery(t *testing.T) {
 	if err := b.StartReportDelivery(ctx, items[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	mappings := []share.ReportMessageMap{{Platform: "telegram", PlatformScopeID: "private:1", PlatformMessageID: "77", SessionID: "session", MessageID: "message"}}
+	mappings := []share.ReportMessageMap{{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "77", SessionID: "session", MessageID: "message"}}
 	broken := b
 	broken.repo = duplicateElnisReceiptRepo{b.repo}
 	if err := broken.MarkReportDeliveriesDelivered(ctx, []string{items[0].ID}, "receipt", mappings); err == nil {
 		t.Fatal("expected transaction failure")
 	}
-	if _, err := store.Messages().FindByPlatformMessage(ctx, "telegram", "private:1", "77"); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := store.Messages().FindByPlatformMessage(ctx, "telegram", "private", "1", "77"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("mapping survived rollback: %v", err)
 	}
 	pending, err := store.ElnisEvents().ListReportDeliveries(ctx, row.ID)
@@ -195,7 +196,7 @@ func TestElnisBridgeReportTransactionsAndRecovery(t *testing.T) {
 	if err := b.MarkReportDeliveryFailed(ctx, row.ID, items[0].ID, elnis.StatusResultReady, "partial failure", "partial receipt", mappings); err != nil {
 		t.Fatal(err)
 	}
-	mapped, err := store.Messages().FindByPlatformMessage(ctx, "telegram", "private:1", "77")
+	mapped, err := store.Messages().FindByPlatformMessage(ctx, "telegram", "private", "1", "77")
 	if err != nil || mapped.ID != "message" {
 		t.Fatal(mapped, err)
 	}
@@ -224,12 +225,12 @@ func TestElnisBridgeReportTransactionsAndRecovery(t *testing.T) {
 		}
 	}
 	mappings[0].PlatformMessageID = "78"
-	mappings = append(mappings, share.ReportMessageMap{Platform: "telegram", PlatformScopeID: "private:2", PlatformMessageID: "78", SessionID: "session", MessageID: "message"})
+	mappings = append(mappings, share.ReportMessageMap{Platform: "telegram", ChatType: "private", ChatID: "2", PlatformMessageID: "78", SessionID: "session", MessageID: "message"})
 	if err := b.MarkReportDeliveriesDelivered(ctx, []string{items[0].ID, items[1].ID}, "complete receipt", mappings); err != nil {
 		t.Fatal(err)
 	}
-	for _, scope := range []string{"private:1", "private:2"} {
-		msg, err := store.Messages().FindByPlatformMessage(ctx, "telegram", scope, "78")
+	for _, scope := range []string{"1", "2"} {
+		msg, err := store.Messages().FindByPlatformMessage(ctx, "telegram", "private", scope, "78")
 		if err != nil || msg.ID != "message" {
 			t.Fatal(msg, err)
 		}
@@ -419,7 +420,7 @@ func TestElnisBridgeServiceDeduplicatesAndPersistsReportMappings(t *testing.T) {
 	sends := 0
 	svc := newElnisBridgeService(t, b, elnis.Options{SandboxRoot: t.TempDir(), Runner: elnisBridgeRunner{result: `{"completed":true,"need_report":true,"report":"done"}`}, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		sends++
-		return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "telegram", ScopeID: "private:1", PlatformMessageID: "77"}, {Platform: "telegram", ScopeID: "private:2", PlatformMessageID: "77"}}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
+		return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "77"}, {Platform: "telegram", ChatType: "private", ChatID: "2", PlatformMessageID: "77"}}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	}})
 	var queued elnis.QueuedLLMEvent
 	enqueues := 0
@@ -435,8 +436,8 @@ func TestElnisBridgeServiceDeduplicatesAndPersistsReportMappings(t *testing.T) {
 	if err := svc.RunLLMEvent(t.Context(), queued.Event, queued.EventID); err != nil {
 		t.Fatal(err)
 	}
-	for _, scope := range []string{"private:1", "private:2"} {
-		row, err := store.Messages().FindByPlatformMessage(t.Context(), "telegram", scope, "77")
+	for _, scope := range []string{"1", "2"} {
+		row, err := store.Messages().FindByPlatformMessage(t.Context(), "telegram", "private", scope, "77")
 		if err != nil || row.ID != "message" {
 			t.Fatal(row, err)
 		}

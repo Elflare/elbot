@@ -18,16 +18,27 @@ var (
 
 // Scope 标识 current 绑定的归属及调用入口的访问范围。
 type Scope struct {
-	ConversationKind contextinfo.ConversationKind // 私聊、群聊等入口语义，不参与绑定身份。
-	ActorID          string                       // 会话所属用户。
-	PlatformUserID   string                       // 原生用户 ID，用于按平台查询权限，不从 ActorID 反解。
-	Platform         string                       // 平台标识。
-	PlatformScopeID  string                       // 平台内的会话范围。
-	IsCLI            bool                         // 本地管理入口，可跨用户、平台和范围访问会话。
+	TaskType string                    // 后台任务类型；前台聊天为空。
+	TaskID   string                    // 类型内的原生任务 ID。
+	ChatType contextinfo.ChatType      // 入口类型，与原生会话 ID 一起参与绑定身份。
+	Owner    contextinfo.ActorIdentity // 会话所有者，独立于会话投递平台。
+	Platform string                    // 平台标识。
+	ChatID   string                    // 平台内的会话范围。
+	IsCLI    bool                      // 本地管理入口，可跨用户、平台和范围访问会话。
 }
 
-func (s Scope) Key() string {
-	return s.ActorID + "\x00" + s.Platform + "\x00" + s.PlatformScopeID
+// ScopeKey 仅包含稳定的归属和会话地址，不包含管理权限。
+type ScopeKey struct {
+	TaskType string // 后台任务类型；前台聊天为空。
+	TaskID   string // 类型内的原生任务 ID。
+	Owner    contextinfo.ActorIdentity
+	Platform string
+	ChatType contextinfo.ChatType
+	ChatID   string
+}
+
+func (s Scope) Key() ScopeKey {
+	return ScopeKey{TaskType: s.TaskType, TaskID: s.TaskID, Owner: s.Owner, Platform: s.Platform, ChatType: s.ChatType, ChatID: s.ChatID}
 }
 
 // IsBackground 只读取当前模式；来源、范围名称和接管历史不决定当前身份。
@@ -49,18 +60,18 @@ func CanAccess(scope Scope, row *storage.Session) bool {
 	if scope.IsCLI {
 		return true
 	}
-	if row.OwnerID != scope.ActorID || row.Platform != scope.Platform {
+	if row.Owner != scope.Owner || row.Platform != scope.Platform {
 		return false
 	}
 	if IsBackground(row) {
-		return scope.ConversationKind == contextinfo.ConversationPrivate
+		return scope.ChatType == contextinfo.ChatPrivate
 	}
-	return row.PlatformScopeID == scope.PlatformScopeID
+	return row.ChatType == scope.ChatType && row.ChatID == scope.ChatID
 }
 
-// BackgroundMetadata 在调用方自有集合中设置后台身份及标题事实，覆盖同名业务字段。
-func BackgroundMetadata(fields storage.SessionMetadata, kind, name string) error {
-	for key, value := range map[string]any{"title_renamed": true, "title_source": kind, "background_kind": kind, "background_name": name} {
+// BackgroundMetadata 设置后台标题的来源，任务身份保存在 Session 独立字段中。
+func BackgroundMetadata(fields storage.SessionMetadata, taskType string) error {
+	for key, value := range map[string]any{"title_renamed": true, "title_source": taskType} {
 		if err := fields.Set(key, value); err != nil {
 			return err
 		}

@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"bytes"
 	"context"
+	"elbot/internal/testutil"
 	"encoding/json"
 	"image"
 	"image/png"
@@ -47,7 +48,7 @@ func imageCount(result *toolshare.Result) int {
 func TestViewImageMessageSelectionAndPrevalidation(t *testing.T) {
 	ctx, get, resolver := newHistoryMediaToolTest(t)
 	resolver.data = viewImagePNG(t)
-	row := storage.ChatMessage{Platform: "p", PlatformScopeID: "s", PlatformMessageID: "mixed", Segments: storage.MarshalChatSegments([]storage.ChatSegment{
+	row := storage.ChatMessage{Platform: "p", ChatID: "s", PlatformMessageID: "mixed", Segments: storage.MarshalChatSegments([]storage.ChatSegment{
 		{Type: "file", PlatformFileID: "file"}, {Type: "image", PlatformFileID: "a"}, {Type: "image", PlatformFileID: "b"},
 	})}
 	if err := get.history.Append(ctx, &row); err != nil {
@@ -74,7 +75,7 @@ func TestViewImageMessageSelectionAndPrevalidation(t *testing.T) {
 	if err != nil || imageCount(result) != 2 || resolver.calls != 2 || !strings.HasPrefix(llm.SegmentsTextOnly(result.Segments), "[#mixed] 3.") {
 		t.Fatalf("selection=%+v err=%v calls=%d", result, err, resolver.calls)
 	}
-	other := contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ScopeID: "other"}})
+	other := contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ChatID: "other"}})
 	if _, _, err := callTool(other, viewer, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["mixed"]}`)}); err == nil {
 		t.Fatal("cross-chat lookup allowed")
 	}
@@ -122,7 +123,7 @@ func TestViewImageSourcesAndPermissions(t *testing.T) {
 			t.Fatalf("local=%+v %v", result, err)
 		}
 	}
-	background := workspace.WithPathScope(contextinfo.WithBackgroundKind(admin, ""), workspace.PathScope{Dir: dir, Restricted: true})
+	background := workspace.WithPathScope(testutil.TaskContext(admin, ""), workspace.PathScope{Dir: dir, Restricted: true})
 	if result, err := call(background, "image.png"); err != nil || imageCount(result) != 1 {
 		t.Fatalf("sandbox=%+v %v", result, err)
 	}

@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"testing"
 
@@ -18,13 +19,13 @@ import (
 func newWorkspaceTestSession(t *testing.T, ctx context.Context, store storage.Store, metadata string) *storage.Session {
 	t.Helper()
 	session := &storage.Session{ID: storage.NewID(),
-		OwnerID:         "cli:local",
-		Platform:        "cli",
-		PlatformScopeID: "local",
-		Mode:            storage.SessionModeWork,
-		Status:          storage.SessionStatusActive,
-		Title:           "test",
-		Metadata:        metadata,
+		Owner:    contextinfo.ActorIdentity{Platform: "cli", ID: "local"},
+		Platform: "cli",
+		ChatID:   "local",
+		Mode:     storage.SessionModeWork,
+		Status:   storage.SessionStatusActive,
+		Title:    "test",
+		Metadata: metadata, ChatType: "private",
 	}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatal(err)

@@ -4,6 +4,7 @@ package refcontext
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"strings"
 	"time"
@@ -14,16 +15,15 @@ import (
 )
 
 type Options struct {
-	ParseCommand          func(string) command.Parsed                                                             // 根部绑定配置前缀的命令解析能力。
-	FindByPlatformMessage func(context.Context, string, string, string) (*storage.Message, error)                 // 平台消息对应的会话消息。
-	GetSession            func(context.Context, string) (*storage.Session, error)                                 // 引用会话的身份与模式。
-	ListBySession         func(context.Context, string) ([]storage.Message, error)                                // 判断引用是否为最新助手消息。
-	FindHistory           func(context.Context, string, string, string) ([]storage.HistoryMedia, error)           // 历史消息的媒体关联。
-	GetMedia              func(context.Context, string) (*storage.Media, error)                                   // 关联媒体的有效状态。
-	FindOutputs           func(context.Context, string, string, string, time.Time) ([]storage.MediaOutput, error) // 尚未过期的发送媒体。
+	ParseCommand          func(string) command.Parsed                                                                                   // 根部绑定配置前缀的命令解析能力。
+	FindByPlatformMessage func(context.Context, string, contextinfo.ChatType, string, string) (*storage.Message, error)                 // 平台消息对应的会话消息。
+	ResolveContinuation   func(context.Context, share.ReferenceOptions, storage.Message) (string, string, bool, error)                  // 根部接入 Agent 的续接判定。
+	FindHistory           func(context.Context, string, contextinfo.ChatType, string, string) ([]storage.HistoryMedia, error)           // 历史消息的媒体关联。
+	GetMedia              func(context.Context, string) (*storage.Media, error)                                                         // 关联媒体的有效状态。
+	FindOutputs           func(context.Context, string, contextinfo.ChatType, string, string, time.Time) ([]storage.MediaOutput, error) // 尚未过期的发送媒体。
 	// ChatHistory 只用于按平台消息身份恢复引用事实。
 	ChatHistory interface {
-		GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error)
+		GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
 	}
 }
 
@@ -53,26 +53,16 @@ func Apply(ctx context.Context, deps Options, opts share.ReferenceOptions) (shar
 	}
 
 	if hasStored && stored.Role == storage.RoleAssistant {
-		session, ok, err := referencedSession(ctx, deps, stored)
+		var omitReference bool
+		result.ResumeSessionID, result.ForkFromMessageID, omitReference, err = deps.ResolveContinuation(ctx, opts, *stored)
 		if err != nil {
 			return share.ReferenceResult{}, err
 		}
-		if ok && opts.IsSuperadmin && isBackgroundSession(session) {
-			result.ResumeSessionID = session.ID
-			_, result.ReferenceSegments, result.Reply, _, err = fallbackReferenceText(ctx, deps, opts, replyID, stored, hasStored)
-			return result, err
+		if omitReference {
+			result.Reply = share.ReplyContext{MessageID: replyID}
+			return result, nil
 		}
-		if ok && isOwnPlatformSession(opts, session) {
-			latest, err := isLatestAssistant(ctx, deps, stored)
-			if err != nil {
-				return share.ReferenceResult{}, err
-			}
-			if latest {
-				result.ResumeSessionID = session.ID
-				result.Reply = share.ReplyContext{MessageID: replyID}
-				return result, nil
-			}
-			result.ForkFromMessageID = stored.ID
+		if result.ResumeSessionID != "" || result.ForkFromMessageID != "" {
 			_, result.ReferenceSegments, result.Reply, _, err = fallbackReferenceText(ctx, deps, opts, replyID, stored, hasStored)
 			return result, err
 		}
@@ -82,43 +72,11 @@ func Apply(ctx context.Context, deps Options, opts share.ReferenceOptions) (shar
 }
 
 func referencedMessage(ctx context.Context, deps Options, opts share.ReferenceOptions, replyID string) (*storage.Message, bool, error) {
-	msg, err := deps.FindByPlatformMessage(ctx, strings.TrimSpace(opts.Platform), strings.TrimSpace(opts.ScopeID), replyID)
+	msg, err := deps.FindByPlatformMessage(ctx, opts.Platform, opts.ChatType, opts.ChatID, replyID)
 	if errors.Is(err, storage.ErrNotFound) {
 		return nil, false, nil
 	}
 	return msg, err == nil, err
-}
-
-func isOwnPlatformSession(opts share.ReferenceOptions, session *storage.Session) bool {
-	if isBackgroundSession(session) {
-		return false
-	}
-	return session.OwnerID == strings.TrimSpace(opts.ActorID) && session.Platform == strings.TrimSpace(opts.Platform) && session.PlatformScopeID == strings.TrimSpace(opts.ScopeID)
-}
-
-func referencedSession(ctx context.Context, deps Options, msg *storage.Message) (*storage.Session, bool, error) {
-	session, err := deps.GetSession(ctx, msg.SessionID)
-	if errors.Is(err, storage.ErrNotFound) {
-		return nil, false, nil
-	}
-	return session, err == nil, err
-}
-
-func isBackgroundSession(session *storage.Session) bool {
-	return session.Mode == storage.SessionModeBackground
-}
-
-func isLatestAssistant(ctx context.Context, deps Options, msg *storage.Message) (bool, error) {
-	messages, err := deps.ListBySession(ctx, msg.SessionID)
-	if err != nil {
-		return false, err
-	}
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role == storage.RoleAssistant {
-			return messages[i].ID == msg.ID, nil
-		}
-	}
-	return false, nil
 }
 
 func fallbackReferenceText(ctx context.Context, deps Options, opts share.ReferenceOptions, replyID string, stored *storage.Message, hasStored bool) (string, []share.MessageSegment, share.ReplyContext, []share.MessageSegment, error) {
@@ -200,7 +158,7 @@ func referenceSenderName(label string) string {
 
 func restoreHistoryMedia(ctx context.Context, deps Options, row storage.ChatMessage, segments []share.MessageSegment) ([]share.MessageSegment, error) {
 	out := append([]share.MessageSegment(nil), segments...)
-	associations, err := deps.FindHistory(ctx, row.Platform, row.PlatformScopeID, row.PlatformMessageID)
+	associations, err := deps.FindHistory(ctx, row.Platform, row.ChatType, row.ChatID, row.PlatformMessageID)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +195,7 @@ func restoreHistoryMedia(ctx context.Context, deps Options, row storage.ChatMess
 }
 
 func referenceSource(ctx context.Context, deps Options, opts share.ReferenceOptions, replyID string) (share.ReferencedMessage, bool, error) {
-	outputs, err := deps.FindOutputs(ctx, opts.Platform, opts.ScopeID, replyID, time.Now())
+	outputs, err := deps.FindOutputs(ctx, opts.Platform, opts.ChatType, opts.ChatID, replyID, time.Now())
 	if err != nil {
 		return share.ReferencedMessage{}, false, err
 	}
@@ -252,7 +210,7 @@ func referenceSource(ctx context.Context, deps Options, opts share.ReferenceOpti
 		}
 		return ref, true, nil
 	}
-	row, err := deps.ChatHistory.GetByPlatformMessage(ctx, opts.Platform, opts.ScopeID, replyID)
+	row, err := deps.ChatHistory.GetByPlatformMessage(ctx, opts.Platform, opts.ChatType, opts.ChatID, replyID)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return share.ReferencedMessage{}, false, err
 	}

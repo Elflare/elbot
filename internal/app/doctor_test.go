@@ -85,7 +85,9 @@ func TestDoctorThroughProductionWiring(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := doctorConfigSnapshot(t, root)
-	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "cli:local", Role: contextinfo.RoleSuperadmin})
+	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.
+		ActorIdentity{Platform: "cli", ID: "local"},
+	})
 	for _, text := range []string{"-doctor", "/doctor"} {
 		t.Run(text, func(t *testing.T) {
 			output, err := os.CreateTemp(t.TempDir(), "output")

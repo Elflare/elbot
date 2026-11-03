@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"errors"
 	"time"
@@ -25,12 +26,16 @@ const (
 )
 
 type Session struct {
+	TaskType          string // 后台任务类型，与 TaskID 组成任务身份。
+	TaskID            string // 原生任务 ID，独立于聊天地址。
+	TaskName          string // 任务展示名，不参与身份比较。
 	ID                string
 	ParentSessionID   string
 	ForkFromMessageID string
-	OwnerID           string
+	Owner             contextinfo.ActorIdentity
 	Platform          string
-	PlatformScopeID   string
+	ChatType          contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID            string
 	Mode              string
 	Title             string
 	Status            string
@@ -80,7 +85,7 @@ type ToolCallRecord struct {
 	SessionID  string
 	ToolCallID string
 	ToolName   string
-	ActorID    string
+	Actor      contextinfo.ActorIdentity
 	RiskLevel  string
 	Success    bool
 	Error      string
@@ -139,10 +144,9 @@ const (
 )
 
 type CronActor struct {
-	ActorID        string `json:"actor_id"`               // 项目内身份标识。
-	Platform       string `json:"platform"`               // 创建者所属平台。
-	PlatformUserID string `json:"platform_user_id"`       // 平台用户标识。
-	DisplayName    string `json:"display_name,omitempty"` // 创建时的展示名称。
+	Platform string `json:"platform"`       // 创建者所属平台。
+	ID       string `json:"id"`             // 平台用户标识。
+	Name     string `json:"name,omitempty"` // 创建时的展示名称。
 }
 
 type CronSchedule struct {
@@ -176,7 +180,8 @@ type CronTaskStatus struct {
 type ElnisEvent struct {
 	ID               string
 	EventKey         string
-	TokenName        string
+	OriginKind       string // 已认证来源类型。
+	OriginName       string // 已认证来源名称。
 	ElwispName       string
 	Source           string
 	SourceID         string
@@ -220,19 +225,20 @@ const (
 
 // PlatformMessageAlias associates a platform reference index with its message ID.
 type PlatformMessageAlias struct {
-	Platform          string    // Platform owning the reference index.
-	PlatformScopeID   string    // Conversation in which the index is valid.
-	Alias             string    // Platform reference index, not a message ID.
-	PlatformMessageID string    // Actual message ID used by history and output mappings.
-	CreatedAt         time.Time // Registration time used by chat history retention.
+	Platform          string               // Platform owning the reference index.
+	ChatType          contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID            string               // Conversation in which the index is valid.
+	Alias             string               // Platform reference index, not a message ID.
+	PlatformMessageID string               // Actual message ID used by history and output mappings.
+	CreatedAt         time.Time            // Registration time used by chat history retention.
 }
 
 type ChatMessage struct {
 	Seq                      int64
 	ID                       string
 	Platform                 string
-	PlatformScopeID          string
-	ScopeType                string
+	ChatID                   string
+	ChatType                 contextinfo.ChatType
 	PlatformMessageID        string
 	SenderID                 string
 	SenderName               string
@@ -273,7 +279,8 @@ type Media struct {
 type HistoryMedia struct {
 	HistoryID  string
 	Platform   string
-	ScopeID    string
+	ChatType   contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID     string
 	MessageID  string
 	MediaIndex int
 	Kind       string
@@ -290,19 +297,21 @@ type MediaReference struct {
 }
 
 type ChatHistorySearchRequest struct {
-	Platform        string
-	PlatformScopeID string
-	QueryTerms      []string
-	QueryMode       string
-	SenderQuery     string // 用户 ID 精确相等或昵称包含此文本；空值不筛选。
-	Since           *time.Time
-	Until           *time.Time
-	Limit           int
+	Platform    string
+	ChatType    contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID      string
+	QueryTerms  []string
+	QueryMode   string
+	SenderQuery string // 用户 ID 精确相等或昵称包含此文本；空值不筛选。
+	Since       *time.Time
+	Until       *time.Time
+	Limit       int
 }
 
 type ChatHistoryAroundRequest struct {
 	Platform          string
-	PlatformScopeID   string
+	ChatType          contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID            string
 	PlatformMessageID string
 	Before            int
 	After             int
@@ -327,7 +336,8 @@ type CreateElnisEventRequest struct {
 	ID               string // Background 预分配的事件 ID。
 	MediaIDs         []string
 	EventKey         string
-	TokenName        string
+	OriginKind       string // 已认证来源类型。
+	OriginName       string // 已认证来源名称。
 	ElwispName       string
 	Source           string
 	SourceID         string
@@ -377,7 +387,8 @@ type ToolUsageSummary struct {
 
 type PlatformMessageMap struct {
 	Platform          string
-	PlatformScopeID   string
+	ChatType          contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID            string
 	PlatformMessageID string
 	MessageID         string
 	SessionID         string
@@ -385,9 +396,10 @@ type PlatformMessageMap struct {
 }
 
 type ListSessionsRequest struct {
-	ActorID                       string
+	Owner                         contextinfo.ActorIdentity
 	Platform                      string
-	PlatformScopeID               string
+	ChatType                      contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID                        string
 	IncludeAllPlatforms           bool
 	IncludeSamePlatformBackground bool
 	IncludeArchived               bool
@@ -402,9 +414,10 @@ type ListSessionsRequest struct {
 
 type SessionSummary struct {
 	ID                   string
-	OwnerID              string
+	Owner                contextinfo.ActorIdentity
 	Platform             string
-	PlatformScopeID      string
+	ChatType             contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID               string
 	Title                string
 	Mode                 string
 	Status               string
@@ -454,12 +467,13 @@ type MessageRepository interface {
 	ListBySessionAfter(ctx context.Context, sessionID, afterMessageID string) ([]Message, error)
 	ListBySessionAfterUpTo(ctx context.Context, sessionID, afterMessageID, toMessageID string) ([]Message, error)
 	MapPlatformMessage(ctx context.Context, mapping PlatformMessageMap) error
-	FindByPlatformMessage(ctx context.Context, platform, scopeID, platformMessageID string) (*Message, error)
+	FindByPlatformMessage(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, platformMessageID string) (*Message, error)
 }
 
 type MediaOutput struct {
 	Platform     string
-	ScopeID      string
+	ChatType     contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID       string
 	MessageID    string
 	SegmentIndex int
 	Kind         string
@@ -470,7 +484,7 @@ type MediaOutput struct {
 
 type MediaRepository interface {
 	SaveHistory(ctx context.Context, item HistoryMedia) error
-	FindHistory(ctx context.Context, platform, scopeID, messageID string) ([]HistoryMedia, error)
+	FindHistory(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, messageID string) ([]HistoryMedia, error)
 	ListHistory(ctx context.Context, afterOwnerID string, limit int) ([]HistoryMedia, error)
 	DeleteHistory(ctx context.Context, ownerID string) error
 	Get(ctx context.Context, id string) (*Media, error)
@@ -481,7 +495,7 @@ type MediaRepository interface {
 	FinishDelete(ctx context.Context, id string) error
 	Touch(ctx context.Context, id string, now time.Time) error
 	SaveOutput(ctx context.Context, output MediaOutput) error
-	FindOutputs(ctx context.Context, platform, scopeID, messageID string, now time.Time) ([]MediaOutput, error)
+	FindOutputs(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, messageID string, now time.Time) ([]MediaOutput, error)
 	ExpireOutputs(ctx context.Context, now time.Time) error
 	CheckReferences(ctx context.Context) ([]string, error)
 	RecoverInterrupted(ctx context.Context) error
@@ -540,8 +554,8 @@ type ElnisEventRepository interface {
 type ChatHistoryRepository interface {
 	Append(ctx context.Context, message *ChatMessage) error
 	MapPlatformMessageAlias(ctx context.Context, mapping PlatformMessageAlias) error
-	ResolvePlatformMessageAlias(ctx context.Context, platform, scopeID, alias string) (string, error)
-	GetByPlatformMessage(ctx context.Context, platform, scopeID, platformMessageID string) (*ChatMessage, error)
+	ResolvePlatformMessageAlias(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, alias string) (string, error)
+	GetByPlatformMessage(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, platformMessageID string) (*ChatMessage, error)
 	Search(ctx context.Context, req ChatHistorySearchRequest) ([]ChatMessage, error)
 	Around(ctx context.Context, req ChatHistoryAroundRequest) ([]ChatMessage, error)
 	DeleteBefore(ctx context.Context, cutoff time.Time) (int, error)

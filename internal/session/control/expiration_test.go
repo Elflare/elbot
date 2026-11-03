@@ -17,16 +17,16 @@ import (
 
 func TestTTLUsesConversationKind(t *testing.T) {
 	cfg := IdleExpirationConfig{1, 2, 3, 4}
-	for _, kind := range []contextinfo.ConversationKind{contextinfo.ConversationGroup, contextinfo.ConversationChannel, contextinfo.ConversationPrivate, contextinfo.ConversationUnknown} {
+	for _, kind := range []contextinfo.ChatType{contextinfo.ChatGroup, contextinfo.ChatChannel, contextinfo.ChatPrivate, contextinfo.ChatUnknown} {
 		for _, admin := range []bool{false, true} {
 			want := 3
-			if kind == contextinfo.ConversationGroup || kind == contextinfo.ConversationChannel {
+			if kind == contextinfo.ChatGroup || kind == contextinfo.ChatChannel {
 				want = 1
 			}
 			if admin {
 				want++
 			}
-			if got := cfg.TTLMinutes(share.Scope{ConversationKind: kind, PlatformScopeID: "group:misleading"}, admin); got != want {
+			if got := cfg.TTLMinutes(share.Scope{ChatType: kind, ChatID: "misleading"}, admin); got != want {
 				t.Fatalf("%s admin=%v: %d, want %d", kind, admin, got, want)
 			}
 		}
@@ -226,8 +226,8 @@ func TestSessionIdleRenewsAllBindings(t *testing.T) {
 		ctx, scope := context.Background(), privateScope()
 		row := f.create(t, scope, "shared")
 		second, admin := scope, scope
-		second.PlatformScopeID, second.IsCLI = "cli:second", true
-		admin.ActorID, admin.IsCLI = "admin", true
+		second.ChatID, second.IsCLI = "cli:second", true
+		admin.Owner.ID, admin.IsCLI = "admin", true
 		for _, target := range []share.Scope{second, admin} {
 			if _, err := f.s.Resume(ctx, target, row.ID); err != nil {
 				t.Fatal(err)
@@ -304,7 +304,7 @@ func TestMultipleBindingsAndDisabledTTL(t *testing.T) {
 		ctx, scope := context.Background(), privateScope()
 		row := f.create(t, scope, "shared")
 		admin := scope
-		admin.ActorID, admin.IsCLI = "admin", true
+		admin.Owner.ID, admin.IsCLI = "admin", true
 		if _, err := f.s.Resume(ctx, admin, row.ID); err != nil {
 			t.Fatal(err)
 		}

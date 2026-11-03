@@ -110,21 +110,11 @@ func (s *Service) Handle(ctx context.Context, token string, req Request) (Respon
 				ResultStatus: globalevents.ResultRejected,
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
+			record.Identity.SessionID = &facts.SessionID
+			record.Identity.RunID = &facts.RunID
+			record.Identity.Attempt = &facts.Attempt
+			record.Identity.RequestID = &facts.RequestID
+			record.Identity.RootRequestID = &facts.RootRequestID
 			background.LogBackground(ctx, record)
 		}
 		return Response{Accepted: false, Status: StatusFailed, Error: "unauthorized"}, fmt.Errorf("unauthorized")
@@ -139,7 +129,7 @@ func (s *Service) DispatchElvena(ctx context.Context, origin elvena.Origin, req 
 	event, err := s.prepareEvent(origin, req)
 	if err != nil {
 		{
-			content, _ := json.Marshal(map[string]any{"origin": origin.Label(), "error": fmt.Sprintf("%.2048s", err.Error())})
+			content, _ := json.Marshal(map[string]any{"origin": origin, "error": fmt.Sprintf("%.2048s", err.Error())})
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogAudit,
 				Level:        slog.LevelWarn,
@@ -150,21 +140,11 @@ func (s *Service) DispatchElvena(ctx context.Context, origin elvena.Origin, req 
 				ResultStatus: globalevents.ResultRejected,
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
+			record.Identity.SessionID = &facts.SessionID
+			record.Identity.RunID = &facts.RunID
+			record.Identity.Attempt = &facts.Attempt
+			record.Identity.RequestID = &facts.RequestID
+			record.Identity.RootRequestID = &facts.RootRequestID
 			background.LogBackground(ctx, record)
 		}
 		return Response{Accepted: false, Status: StatusFailed, Error: err.Error()}, err
@@ -175,27 +155,17 @@ func (s *Service) DispatchElvena(ctx context.Context, origin elvena.Origin, req 
 func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Response, error) {
 	identity := globalevents.LogIdentity{}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.SessionID != "" {
-		identity.SessionID = &facts.SessionID
-	}
-	if facts.RunID != "" {
-		identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		identity.RootRequestID = &facts.RootRequestID
-	}
+	identity.SessionID = &facts.SessionID
+	identity.RunID = &facts.RunID
+	identity.Attempt = &facts.Attempt
+	identity.RequestID = &facts.RequestID
+	identity.RootRequestID = &facts.RootRequestID
 
 	req := event.Request
 
 	if err := s.authorizeElwisp(event); err != nil {
 		{
-			content, _ := json.Marshal(map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "error": fmt.Sprintf("%.2048s", err.Error())})
+			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "error": fmt.Sprintf("%.2048s", err.Error())})
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogAudit,
 				Level:        slog.LevelWarn,
@@ -214,7 +184,7 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 	}
 	if err := s.authorizeInternalTools(ctx, event); err != nil {
 		{
-			content, _ := json.Marshal(map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "error": fmt.Sprintf("%.2048s", err.Error())})
+			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "error": fmt.Sprintf("%.2048s", err.Error())})
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogAudit,
 				Level:        slog.LevelWarn,
@@ -233,7 +203,7 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 	}
 	if err := s.authorizeExternalTools(event); err != nil {
 		{
-			content, _ := json.Marshal(map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "error": fmt.Sprintf("%.2048s", err.Error())})
+			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "error": fmt.Sprintf("%.2048s", err.Error())})
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogAudit,
 				Level:        slog.LevelWarn,
@@ -270,9 +240,9 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 		}
 	}
 	record, err := s.store.Create(ctx, CreateEventRequest{
-		MediaIDs:         mediaIDs,
-		EventKey:         event.EventKey,
-		TokenName:        event.Origin.Label(),
+		MediaIDs:   mediaIDs,
+		EventKey:   event.EventKey,
+		OriginKind: string(event.Origin.Kind), OriginName: event.Origin.Name,
 		ElwispName:       req.Elwisp.Name,
 		Source:           req.Source,
 		SourceID:         req.ID,
@@ -293,7 +263,7 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 	}
 
 	{
-		content, _ := json.Marshal(map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID})
+		content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID})
 		record := globalevents.LogRecord{
 			Category:  globalevents.LogAudit,
 			Level:     slog.LevelInfo,
@@ -314,7 +284,7 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 			return Response{}, err
 		}
 		{
-			content, _ := json.Marshal(map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID})
+			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID})
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogAudit,
 				Level:        slog.LevelInfo,
@@ -333,7 +303,7 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 		if err != nil {
 			persistenceErr := s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusFailed, "", err.Error())
 			{
-				content := map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID, "error": fmt.Sprintf("%.2048s", err.Error()), "result": fmt.Sprintf("%.2048s", logResult.Content)}
+				content := map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID, "error": fmt.Sprintf("%.2048s", err.Error()), "result": fmt.Sprintf("%.2048s", logResult.Content)}
 				if persistenceErr != nil {
 					content["persistence_error"] = fmt.Sprintf("%.2048s", persistenceErr.Error())
 				}
@@ -372,7 +342,7 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 			return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
 		}
 		{
-			content, _ := json.Marshal(map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID, "result": fmt.Sprintf("%.2048s", logResult.Content)})
+			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID, "result": fmt.Sprintf("%.2048s", logResult.Content)})
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogAudit,
 				Level:        slog.LevelInfo,
@@ -391,7 +361,7 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 		return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusCompleted}, nil
 	case ModeLLM:
 		{
-			content, _ := json.Marshal(map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID})
+			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID})
 			record := globalevents.LogRecord{
 				Category:  globalevents.LogAudit,
 				Level:     slog.LevelInfo,
@@ -408,7 +378,7 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 		if err := s.enqueueLLM(ctx, QueuedLLMEvent{Event: event, EventID: record.ID}); err != nil {
 			persistenceErr := s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusFailed, "", err.Error())
 			{
-				content := map[string]any{"origin": event.Origin.Label(), "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID, "error": fmt.Sprintf("%.2048s", err.Error())}
+				content := map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID, "error": fmt.Sprintf("%.2048s", err.Error())}
 				if persistenceErr != nil {
 					content["persistence_error"] = fmt.Sprintf("%.2048s", persistenceErr.Error())
 				}

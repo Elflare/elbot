@@ -92,7 +92,7 @@ func TestTimeoutRetainsSlotAndOtherSignalsProgress(t *testing.T) {
 	}
 }
 func TestKeyOrderingDoesNotOccupyWorkers(t *testing.T) {
-	s := testSignal[int, int](t, Options[int]{Concurrency: 2, Key: func(n int) string {
+	s := testSignal[int, int](t, Options[int]{Concurrency: 2, Key: func(n int) any {
 		if n < 3 {
 			return "same"
 		}

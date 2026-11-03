@@ -21,7 +21,7 @@ type IdleExpirationConfig struct {
 }
 
 func (c IdleExpirationConfig) TTLMinutes(scope share.Scope, superadmin bool) int {
-	if scope.ConversationKind == contextinfo.ConversationGroup || scope.ConversationKind == contextinfo.ConversationChannel {
+	if scope.ChatType == contextinfo.ChatGroup || scope.ChatType == contextinfo.ChatChannel {
 		if superadmin {
 			return c.GroupSuperadminTTLMinutes
 		}

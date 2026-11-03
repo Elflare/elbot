@@ -2,31 +2,29 @@
 // on business services, permissions, delivery or concrete platform adapters.
 package contextinfo
 
-type ConversationKind string
+type ChatType string
 
 const (
-	ConversationCLI     ConversationKind = "cli" // 本地终端或远程 CLI 客户端的直接会话。
-	ConversationUnknown ConversationKind = "unknown"
-	ConversationPrivate ConversationKind = "private"
-	ConversationGroup   ConversationKind = "group"
-	ConversationChannel ConversationKind = "channel"
+	ChatUnknown ChatType = ""
+	ChatPrivate ChatType = "private"
+	ChatGroup   ChatType = "group"
+	ChatChannel ChatType = "channel"
 )
 
 type Source struct {
-	Platform         string
-	ScopeID          string
-	ConversationKind ConversationKind
-	ConversationID   string
+	Platform string   `json:"platform"`  // 聊天所属平台。
+	ChatType ChatType `json:"chat_type"` // 私聊、群聊或频道。
+	ChatID   string   `json:"id"`        // 平台内原生聊天 ID，不包含类型前缀。
+	Name     string   `json:"name"`      // 聊天展示名称，不参与身份判断。
 }
 
 // Identity describes the platform sender before ElBot authorization resolves
-// an Actor. ActorID is an association supplied by the source, not permission.
+// an Actor. Permission is resolved from the platform and its native user ID.
 type Identity struct {
-	ActorID        string
-	PlatformUserID string
-	Nickname       string
-	GroupCard      string
-	DisplayName    string
+	ID        string // 平台原生用户 ID。
+	Nickname  string // 平台昵称。
+	GroupCard string // 群名片。
+	Name      string // 平台选择的展示名，不参与身份比较。
 }
 
 type Conversation struct {

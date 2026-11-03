@@ -163,14 +163,13 @@ func normalizeTargets(targets []Target) ([]Target, error) {
 }
 
 func uniqueTargets(targets []Target) []Target {
-	seen := map[string]bool{}
+	seen := map[Target]bool{}
 	out := []Target{}
 	for _, target := range targets {
-		key := target.Platform + "\x00" + target.Type + "\x00" + target.ID
-		if seen[key] {
+		if seen[target] {
 			continue
 		}
-		seen[key] = true
+		seen[target] = true
 		out = append(out, target)
 	}
 	sort.Slice(out, func(i, j int) bool {

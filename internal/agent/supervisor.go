@@ -13,6 +13,7 @@ import (
 	"elbot/internal/request"
 	"elbot/internal/session"
 	"elbot/internal/signal"
+	"elbot/internal/storage"
 	"elbot/internal/turn"
 	"sync"
 )
@@ -119,4 +120,8 @@ func (m *Supervisor) ObserveBindingChanged(handler func(BindingChangedEvent) err
 		}
 		return handler(snapshot)
 	}, options)
+}
+
+func (m *Supervisor) ResolveReference(ctx context.Context, scope session.Scope, message storage.Message) (resumeID, forkID string, omitReference bool, err error) {
+	return m.sessions.ResolveReference(ctx, scope, message)
 }

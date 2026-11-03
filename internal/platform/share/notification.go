@@ -30,8 +30,8 @@ func ValidateNotificationTarget(target events.NotificationTarget) error {
 	if target.ID == "" {
 		return errors.New("notification target ID is empty")
 	}
-	switch target.Kind {
-	case contextinfo.ConversationPrivate, contextinfo.ConversationGroup, contextinfo.ConversationChannel:
+	switch target.ChatType {
+	case contextinfo.ChatPrivate, contextinfo.ChatGroup, contextinfo.ChatChannel:
 		return nil
 	default:
 		return errors.New("notification conversation kind is invalid")
@@ -42,16 +42,10 @@ func ValidateNotificationTarget(target events.NotificationTarget) error {
 func NotificationTarget(n events.Notification) delivery.Target {
 	if n.Origin != nil {
 		origin := n.Origin.Source
-		kind, id := origin.ConversationKind, origin.ConversationID
-		if n.Target.Platform == origin.Platform && n.Target.ID == id && n.Target.Kind == kind && (n.Target.ScopeID == "" || n.Target.ScopeID == origin.ScopeID) {
+		kind, id := origin.ChatType, origin.ChatID
+		if n.Target.Platform == origin.Platform && n.Target.ID == id && n.Target.ChatType == kind {
 			return delivery.Target{}
 		}
 	}
-	t := delivery.Target{Platform: n.Target.Platform, ScopeID: n.Target.ScopeID}
-	if n.Target.Kind == contextinfo.ConversationGroup || n.Target.Kind == contextinfo.ConversationChannel {
-		t.GroupID = n.Target.ID
-	} else {
-		t.PrivateUserID = n.Target.ID
-	}
-	return t
+	return delivery.Target{Platform: n.Target.Platform, ChatType: n.Target.ChatType, ChatID: n.Target.ID}
 }

@@ -2,6 +2,7 @@ package maintenance
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"os"
 	"path/filepath"
@@ -78,7 +79,7 @@ func TestCleanupUsesInjectedLiveSessionService(t *testing.T) {
 			return nil
 		}
 	})
-	scope := session.Scope{ActorID: "u", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	row, err := live.Create(ctx, scope, session.CreateRequest{})
 	if err != nil {
 		t.Fatal(err)

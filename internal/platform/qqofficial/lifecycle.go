@@ -177,21 +177,11 @@ func (a *Adapter) runGateway(handler share.MessageHandler) {
 						ResultStatus: globalevents.ResultFailed,
 					}
 					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					if facts.SessionID != "" {
-						record.Identity.SessionID = &facts.SessionID
-					}
-					if facts.RunID != "" {
-						record.Identity.RunID = &facts.RunID
-					}
-					if facts.Attempt != "" {
-						record.Identity.Attempt = &facts.Attempt
-					}
-					if facts.RequestID != "" {
-						record.Identity.RequestID = &facts.RequestID
-					}
-					if facts.RootRequestID != "" {
-						record.Identity.RootRequestID = &facts.RootRequestID
-					}
+					record.Identity.SessionID = &facts.SessionID
+					record.Identity.RunID = &facts.RunID
+					record.Identity.Attempt = &facts.Attempt
+					record.Identity.RequestID = &facts.RequestID
+					record.Identity.RootRequestID = &facts.RootRequestID
 					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 				}
 			}

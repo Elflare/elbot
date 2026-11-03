@@ -15,32 +15,18 @@ import (
 // fillEventFromContext only projects established public facts into the Hook envelope.
 // It does not resolve identities, recompute intent/wakeup, or load Agent state.
 func fillEventFromContext(ctx context.Context, event share.Event) share.Event {
-	if info, ok := contextinfo.ConversationFromContext(ctx); ok {
-		if event.Platform.Name == "" {
-			event.Platform.Name = info.Source.Platform
-		}
-		if event.Platform.ScopeID == "" {
-			event.Platform.ScopeID = info.Source.ScopeID
-		}
-		if event.Platform.ConversationID == "" {
-			event.Platform.ConversationID = info.Source.ConversationID
-		}
-		if event.Platform.PlatformMessageID == "" {
-			event.Platform.PlatformMessageID = info.PlatformMessageID
-		}
-		if event.Platform.ReplyToMessageID == "" {
-			event.Platform.ReplyToMessageID = info.ReplyToMessageID
+	info, _ := contextinfo.ConversationFromContext(ctx)
+	if event.Point != share.PointPlatformConnected {
+		event.Chat = share.ChatContext{
+			Platform: info.Source.Platform, ChatType: info.Source.ChatType, ID: info.Source.ChatID, Name: info.Source.Name,
+			PlatformMessageID: info.PlatformMessageID, ReplyToMessageID: info.ReplyToMessageID,
 		}
 	}
-	actor, _ := contextinfo.ActorFromContext(ctx)
-	if event.Actor.ID == "" && actor.ID != "" {
+	if actor, ok := contextinfo.ActorFromContext(ctx); ok {
 		event.Actor = share.ActorContext{
-			ID: actor.ID, Role: string(actor.Role), GroupRole: string(actor.GroupRole),
-			UserID: actor.PlatformUserID, Nickname: actor.Nickname, GroupCard: actor.GroupCard, DisplayName: actor.DisplayName,
+			Platform: actor.Platform, ID: actor.ID, Name: actor.Name,
+			Role: string(actor.Role), GroupRole: string(actor.GroupRole), Nickname: actor.Nickname, GroupCard: actor.GroupCard,
 		}
-	}
-	if event.Platform.UserID == "" {
-		event.Platform.UserID = event.Actor.UserID
 	}
 	if msg, ok := platform.MessageContextFrom(ctx); ok {
 		if event.Message.PlatformText == "" {

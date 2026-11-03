@@ -60,21 +60,19 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 func (a *Adapter) qqOfficialReceipt(receipt delivery.Receipt, target sendTarget, mediaIndexes ...int) delivery.Receipt {
 	for _, id := range receipt.PlatformMessageIDs {
 		if id = strings.TrimSpace(id); id != "" {
-			receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: a.Name(), ScopeID: qqOfficialTargetScope(target), OutputIndexes: append([]int(nil), mediaIndexes...)})
+			receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: a.Name(), ChatType: qqOfficialChatType(target), ChatID: target.OpenID, OutputIndexes: append([]int(nil), mediaIndexes...)})
 		}
 	}
 	return receipt
 }
 
-func qqOfficialTargetScope(target sendTarget) string {
+func qqOfficialChatType(target sendTarget) contextinfo.ChatType {
 	if target.Kind == targetGroup {
-		return "group:" + target.OpenID
+		return contextinfo.ChatGroup
 	}
-	if target.Kind == targetC2C {
-		return "c2c:" + target.OpenID
-	}
-	return ""
+	return contextinfo.ChatPrivate
 }
+
 func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	switch out.Kind {
 	case delivery.KindText:
@@ -98,15 +96,7 @@ func (a *Adapter) contextTarget(ctx context.Context) (sendTarget, error) {
 	if !ok || info.Source.Platform != a.Name() {
 		return sendTarget{}, fmt.Errorf("qqofficial send target missing")
 	}
-	out := delivery.Target{ScopeID: info.Source.ScopeID}
-	if id := strings.TrimSpace(info.Source.ConversationID); id != "" {
-		switch info.Source.ConversationKind {
-		case contextinfo.ConversationGroup:
-			out.GroupID = id
-		case contextinfo.ConversationPrivate:
-			out.PrivateUserID = id
-		}
-	}
+	out := delivery.Target{ChatType: info.Source.ChatType, ChatID: info.Source.ChatID}
 	t, err := a.targetFromDelivery(out)
 	if err != nil {
 		return sendTarget{}, err
@@ -147,7 +137,7 @@ func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string, 
 		}
 		return delivery.Receipt{}, logResult, err
 	}
-	a.recordMessageAlias(ctx, qqOfficialTargetScope(target), resp.ExtInfo.RefIdx, resp.ID)
+	a.recordMessageAlias(ctx, qqOfficialChatType(target), target.OpenID, resp.ExtInfo.RefIdx, resp.ID)
 	return receiptWithMessageID(resp.ID), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
@@ -186,7 +176,7 @@ func (a *Adapter) sendMedia(ctx context.Context, target sendTarget, out delivery
 		}
 		return delivery.Receipt{}, logResult, err
 	}
-	a.recordMessageAlias(ctx, qqOfficialTargetScope(target), resp.ExtInfo.RefIdx, resp.ID)
+	a.recordMessageAlias(ctx, qqOfficialChatType(target), target.OpenID, resp.ExtInfo.RefIdx, resp.ID)
 	return receiptWithMessageID(resp.ID), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
@@ -245,20 +235,15 @@ func (a *Adapter) targetFromDelivery(target delivery.Target) (sendTarget, error)
 		return sendTarget{}, fmt.Errorf("qqofficial cannot send to platform %q", platformName)
 	}
 
-	if id := strings.TrimSpace(target.PrivateUserID); id != "" {
-		return sendTarget{Kind: targetC2C, OpenID: id}, nil
+	switch target.ChatType {
+	case contextinfo.ChatPrivate:
+		return sendTarget{Kind: targetC2C, OpenID: target.ChatID}, nil
+	case contextinfo.ChatGroup:
+		return sendTarget{Kind: targetGroup, OpenID: target.ChatID}, nil
+	default:
+		return sendTarget{}, fmt.Errorf("qqofficial invalid conversation kind %q", target.ChatType)
 	}
-	if id := strings.TrimSpace(target.GroupID); id != "" {
-		return sendTarget{Kind: targetGroup, OpenID: id}, nil
-	}
-	scope := strings.TrimSpace(target.ScopeID)
-	if strings.HasPrefix(scope, "c2c:") {
-		return sendTarget{Kind: targetC2C, OpenID: strings.TrimPrefix(scope, "c2c:")}, nil
-	}
-	if strings.HasPrefix(scope, "group:") {
-		return sendTarget{Kind: targetGroup, OpenID: strings.TrimPrefix(scope, "group:")}, nil
-	}
-	return sendTarget{}, fmt.Errorf("qqofficial target missing private_user_id, group_id or scope_id")
+
 }
 
 func (a *Adapter) nextMsgSeq(msgID string) int {

@@ -51,18 +51,14 @@ type fakeLogService struct {
 func (s *fakeLogService) Query(ctx context.Context, query logging.LogQuery) (logging.LogQueryResult, error) {
 	s.query = query
 	entries := append([]logging.LogEntry(nil), s.entries...)
-	for i := range entries {
-		if entries[i].EventName == "" {
-			entries[i].EventName = entries[i].LegacyFields["event"]
-		}
-	}
 	return logging.LogQueryResult{Entries: entries, DamagedCount: s.damagedCount, DamagedLines: s.damagedLines}, nil
 }
 
 func TestAuditCommandParsesFilters(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{
-		Time:         time.Date(2026, 6, 3, 15, 0, 0, 0, time.Local),
-		LegacyFields: map[string]string{"event": "tool_call_completed", "risk": "high", "tool": "shell"},
+		Time:      time.Date(2026, 6, 3, 15, 0, 0, 0, time.Local),
+		EventName: "tool_call_completed", Type: events.ContentJSON,
+		Content: `{"risk":"high","tool":"shell"}`,
 	}}}
 	result, err := NewAudit(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: "--event tool_call_completed --risk high --tool shell -n 3 --days 2"})
 	if err != nil {
@@ -81,10 +77,9 @@ func TestAuditCommandParsesFilters(t *testing.T) {
 
 func TestLogCommandDefaultsToDebugAndFiveEntries(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{
-		Time:         time.Date(2026, 6, 3, 15, 0, 0, 0, time.Local),
-		Level:        "INFO",
-		Content:      "started",
-		LegacyFields: map[string]string{},
+		Time:    time.Date(2026, 6, 3, 15, 0, 0, 0, time.Local),
+		Level:   "INFO",
+		Content: "started",
 	}}}
 	result, err := NewLog(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{})
 	if err != nil {
@@ -143,10 +138,10 @@ func TestAuditCommandRunSourceFilterAndCompletion(t *testing.T) {
 
 func TestElwispCommandDefaultsToElnisDebugAndFiveEntries(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{
-		Time:         time.Date(2026, 6, 18, 12, 0, 0, 0, time.Local),
-		Level:        "INFO",
-		Content:      "elnis event accepted",
-		LegacyFields: map[string]string{"elwisp_name": "server-watchdog", "source": "minecraft-main", "source_id": "cpu-alert-001", "mode": "llm"},
+		Time:    time.Date(2026, 6, 18, 12, 0, 0, 0, time.Local),
+		Level:   "INFO",
+		Type:    events.ContentJSON,
+		Content: `{"summary":"elnis event accepted","elwisp_name":"server-watchdog","source":"minecraft-main","source_id":"cpu-alert-001","mode":"llm"}`,
 	}}}
 	result, err := NewElwisp(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{})
 	if err != nil {
@@ -166,17 +161,8 @@ func TestLogCommandShowsStructuredRuntimeFields(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{
 		Time:    time.Date(2026, 6, 6, 19, 19, 1, 0, time.Local),
 		Level:   "INFO",
-		Content: "hook triggered",
-		LegacyFields: map[string]string{
-			"point":          "platform.connected",
-			"hook":           "notify_qqonebot_connected",
-			"priority":       "1000",
-			"order":          "1",
-			"mode":           "run",
-			"before_content": "secret before",
-			"after_content":  "secret after",
-			"raw_content":    "secret raw",
-		},
+		Type:    events.ContentJSON,
+		Content: `{"summary":"hook triggered","point":"platform.connected","hook":"notify_qqonebot_connected","priority":1000,"order":1,"mode":"run","before_content":"secret before","after_content":"secret after","raw_content":"secret raw"}`,
 	}}}
 	result, err := NewLog(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{})
 	if err != nil {
@@ -189,13 +175,13 @@ func TestLogCommandShowsStructuredRuntimeFields(t *testing.T) {
 	}
 	for _, hidden := range []string{"secret before", "secret after", "secret raw", "before_content", "after_content", "raw_content"} {
 		if !strings.Contains(result.Content, hidden) {
-			t.Fatalf("content missing legacy value %q:\n%s", hidden, result.Content)
+			t.Fatalf("content missing declared value %q:\n%s", hidden, result.Content)
 		}
 	}
 }
 
 func TestElwispCommandParsesFiltersAndPositionalName(t *testing.T) {
-	service := &fakeLogService{entries: []logging.LogEntry{{Content: "elnis llm completed", LegacyFields: map[string]string{"elwisp_name": "server-watchdog"}}}}
+	service := &fakeLogService{entries: []logging.LogEntry{{Type: events.ContentJSON, Content: `{"summary":"elnis llm completed","elwisp_name":"server-watchdog"}`}}}
 	_, err := NewElwisp(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: `server-watchdog --source minecraft-main --id cpu-alert-001 --mode llm --event-key server-watchdog/minecraft-main/cpu-alert-001 --event-id evt-1 --token home -n 3 --since 2h`})
 	if err != nil {
 		t.Fatalf("elwisp handle: %v", err)
@@ -203,7 +189,7 @@ func TestElwispCommandParsesFiltersAndPositionalName(t *testing.T) {
 	if service.query.ContentFields["elwisp_name"] != "server-watchdog" || service.query.ContentFields["source"] != "minecraft-main" || service.query.ContentFields["source_id"] != "cpu-alert-001" || service.query.ContentFields["mode"] != "llm" {
 		t.Fatalf("fields = %#v", service.query.Fields)
 	}
-	if service.query.ContentFields["event_key"] != "server-watchdog/minecraft-main/cpu-alert-001" || service.query.ContentFields["event_id"] != "evt-1" || service.query.ContentFields["token_name"] != "home" {
+	if service.query.ContentFields["event_key"] != "server-watchdog/minecraft-main/cpu-alert-001" || service.query.ContentFields["event_id"] != "evt-1" || service.query.ContentFields["origin.name"] != "home" || service.query.ContentFields["origin.kind"] != "http_token" {
 		t.Fatalf("fields = %#v", service.query.Fields)
 	}
 	if service.query.Limit != 3 || service.query.Since == nil {
@@ -218,10 +204,10 @@ func TestElwispCommandParsesFiltersAndPositionalName(t *testing.T) {
 
 func TestElwispCommandParsesTagFilters(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{
-		Time:         time.Date(2026, 6, 18, 12, 0, 0, 0, time.Local),
-		Level:        "INFO",
-		Content:      "elnis event accepted",
-		LegacyFields: map[string]string{"elwisp_name": "watcher", "tags": "[\"windows\",\"onedrive\",\"watchdog\"]"},
+		Time:    time.Date(2026, 6, 18, 12, 0, 0, 0, time.Local),
+		Level:   "INFO",
+		Type:    events.ContentJSON,
+		Content: `{"summary":"elnis event accepted","elwisp_name":"watcher","tags":["windows","onedrive","watchdog"]}`,
 	}}}
 	result, err := NewElwisp(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: `--tag onedrive --tag watchdog`})
 	if err != nil {
@@ -231,13 +217,13 @@ func TestElwispCommandParsesTagFilters(t *testing.T) {
 	if len(wants) != 2 || wants[0] != "onedrive" || wants[1] != "watchdog" || service.query.Contains != "" {
 		t.Fatalf("query = %#v", service.query)
 	}
-	if !strings.Contains(result.Content, `tags: ["windows","onedrive","watchdog"]`) {
+	if !strings.Contains(result.Content, `tags: [windows, onedrive, watchdog]`) {
 		t.Fatalf("content = %q", result.Content)
 	}
 }
 
 func TestLogCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
-	service := &fakeLogService{entries: []logging.LogEntry{{Content: "user input", LegacyFields: map[string]string{"event": "user_message", "text": "hello world"}}}}
+	service := &fakeLogService{entries: []logging.LogEntry{{EventName: "user_message", Type: events.ContentJSON, Content: `{"text":"hello world"}`}}}
 	_, err := NewLog(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: `-u --contains "hello world"`})
 	if err != nil {
 		t.Fatalf("log handle: %v", err)
@@ -255,8 +241,8 @@ func TestLogCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 	}
 
 	service.entries = []logging.LogEntry{{
-		Content:      "system prompt",
-		LegacyFields: map[string]string{"event": "system_message", "first_system_message_json": `{"role":"system","content":"You are ElBot."}`},
+		EventName: "system_message", Type: events.ContentJSON,
+		Content: `{"summary":"system prompt","first_system_message_json":{"role":"system","content":"You are ElBot."}}`,
 	}}
 	for _, arg := range []string{"-s", "--system"} {
 		result, err := NewLog(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: arg})
@@ -287,7 +273,7 @@ func TestLogCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 }
 
 func TestAuditCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
-	service := &fakeLogService{entries: []logging.LogEntry{{Content: "audit event", LegacyFields: map[string]string{"event": "tool_call_completed", "arguments": "hello world"}}}}
+	service := &fakeLogService{entries: []logging.LogEntry{{EventName: "tool_call_completed", Type: events.ContentJSON, Content: `{"arguments":"hello world"}`}}}
 	_, err := NewAudit(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: `-t --contains "hello world"`})
 	if err != nil {
 		t.Fatalf("audit handle: %v", err)
@@ -306,7 +292,7 @@ func TestAuditCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 }
 
 func TestAuditCommandPreservesLiteralEventNames(t *testing.T) {
-	service := &fakeLogService{entries: []logging.LogEntry{{Content: "audit event", LegacyFields: map[string]string{"event": "user_message"}}}}
+	service := &fakeLogService{entries: []logging.LogEntry{{EventName: "user_message", Content: "audit event"}}}
 	_, err := NewAudit(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: `--event user_input`})
 	if err != nil {
 		t.Fatalf("audit handle user_input: %v", err)
@@ -513,5 +499,17 @@ func TestLogUnspecifiedResultAndHelp(t *testing.T) {
 	result, err = handler.Handle(t.Context(), command.Request{Args: "-h"})
 	if err != nil || !strings.Contains(result.Content, "--raw") || !strings.Contains(result.Content, "-s, --system") {
 		t.Fatalf("help=%+v err=%v", result, err)
+	}
+}
+
+func TestAuditActorFiltersUseStructuredIdentity(t *testing.T) {
+	query, err := parseAuditQuery("--platform qqonebot --actor-id user:42 --actor-name 艾露芙蕾娅")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range map[string]string{"actor.platform": "qqonebot", "actor.id": "user:42", "actor.name": "艾露芙蕾娅"} {
+		if query.ContentFields[key] != value {
+			t.Fatalf("%s = %q", key, query.ContentFields[key])
+		}
 	}
 }

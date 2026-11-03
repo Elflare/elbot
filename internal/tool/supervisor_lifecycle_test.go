@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"encoding/json"
 	"errors"
 	"os"
@@ -65,11 +66,11 @@ func TestSupervisorInitialSkillPreloadUsesRealStartup(t *testing.T) {
 			if err := m.Start(); err != nil {
 				t.Fatal(err)
 			}
-			ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "owner", Role: contextinfo.RoleSuperadmin})
+			ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}})
 			var names []string
 			var content string
 			if background {
-				ctx = contextinfo.WithBackgroundKind(ctx, "cron")
+				ctx = testutil.TaskContext(ctx, "cron")
 				prepared, err := m.PrepareBackground(ctx, BackgroundPreloadRequest{SessionID: "startup", Names: []string{"startup_skill"}})
 				if err != nil {
 					t.Fatal(err)
@@ -146,7 +147,7 @@ func TestSupervisorCloseWaitsForCronNotificationAndBorrowsStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = connection.Close(context.Background()) })
-	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "owner", Platform: "cli", Role: contextinfo.RoleSuperadmin})
+	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Role: contextinfo.RoleSuperadmin})
 	written := make(chan error, 1)
 	go func() {
 		_, _, err := m.CallTool(ctx, CallRequest{Name: "cron_write", Arguments: json.RawMessage(`{"operation":"create","name":"startup","schedule_mode":"cron","cron_expr":"* * * * *","trigger_mode":"direct","message":"hello"}`)})

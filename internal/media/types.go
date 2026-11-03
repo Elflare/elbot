@@ -2,6 +2,7 @@
 package media
 
 import (
+	"elbot/internal/contextinfo"
 	"time"
 
 	"elbot/internal/media/share"
@@ -60,11 +61,12 @@ type PlatformMedia struct {
 
 // HistoryMessage 是历史身份与有序媒体来源。
 type HistoryMessage struct {
-	ID        string          // 历史记录身份，用于验证关联所有者。
-	Platform  string          // 消息所属平台。
-	ScopeID   string          // 平台聊天范围。
-	MessageID string          // 平台消息标识。
-	Media     []PlatformMedia // 有序媒体位置，下标加一为媒体序号。
+	ID        string               // 历史记录身份，用于验证关联所有者。
+	Platform  string               // 消息所属平台。
+	ChatType  contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID    string               // 平台聊天范围。
+	MessageID string               // 平台消息标识。
+	Media     []PlatformMedia      // 有序媒体位置，下标加一为媒体序号。
 }
 
 // HistoryMediaRequest 选取一条历史消息中的一个媒体位置。

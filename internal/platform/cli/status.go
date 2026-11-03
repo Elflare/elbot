@@ -16,9 +16,10 @@ import (
 )
 
 type statusTarget struct {
-	SessionID, Platform, ScopeID, ConversationID string
-	Display                                      messageData
-	Binding                                      BindingSnapshot // 值身份隔离同一会话的不同激活。
+	SessionID, Platform, ChatID string
+	ChatType                    contextinfo.ChatType // 平台会话类型。
+	Display                     messageData
+	Binding                     BindingSnapshot // 值身份隔离同一会话的不同激活。
 }
 type statusProjection struct {
 	event StatusChangedEvent
@@ -78,7 +79,7 @@ func (d *statusDisplay) receive(event StatusChangedEvent) error {
 		return nil
 	}
 	source := event.Conversation.Source
-	key := statusTarget{SessionID: event.Snapshot.SessionID, Platform: source.Platform, ScopeID: source.ScopeID, ConversationID: source.ConversationID, Display: display}
+	key := statusTarget{SessionID: event.Snapshot.SessionID, Platform: source.Platform, ChatID: source.ChatID, Display: display, ChatType: source.ChatType}
 	if event.Binding != nil {
 		key.Binding = *event.Binding
 	}

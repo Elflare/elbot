@@ -128,7 +128,7 @@ func (s *Service) Fork(ctx context.Context, scope share.Scope, fromMessageID str
 		mode = storage.SessionModeWork
 	}
 	row := &storage.Session{ID: nextID, ParentSessionID: sourceID, ForkFromMessageID: boundary,
-		OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID,
+		Owner: scope.Owner, Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID,
 		Mode: mode, Status: storage.SessionStatusActive, Title: forkTitle(latest.Title), Metadata: metadata}
 	if prepared == nil {
 		err = s.deps.Sessions.Create(locked, row)
@@ -145,7 +145,7 @@ func (s *Service) Fork(ctx context.Context, scope share.Scope, fromMessageID str
 func checkForkAccess(scope share.Scope, row *storage.Session) error {
 	allowed := false
 	if scope.IsCLI {
-		allowed = row.OwnerID == scope.ActorID
+		allowed = row.Owner == scope.Owner
 	} else {
 		allowed = share.CanAccess(scope, row)
 	}

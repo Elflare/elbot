@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"fmt"
 	"time"
 
@@ -47,7 +48,7 @@ func (r *MediaRepository) FinishDelete(ctx context.Context, id string) error {
 	return err
 }
 func (r *MediaRepository) SaveOutput(ctx context.Context, out storage.MediaOutput) error {
-	if out.Platform == "" || out.ScopeID == "" || out.MessageID == "" || out.SegmentIndex < 0 || out.Kind == "" || out.MediaID == "" {
+	if out.Platform == "" || out.ChatID == "" || out.MessageID == "" || out.SegmentIndex < 0 || out.Kind == "" || out.MediaID == "" {
 		return fmt.Errorf("output media requires platform, scope, message ID, segment index, kind and media ID")
 	}
 	if out.OwnerID == "" {
@@ -58,23 +59,23 @@ func (r *MediaRepository) SaveOutput(ctx context.Context, out storage.MediaOutpu
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `DELETE FROM media_outputs WHERE platform=? AND scope_id=? AND message_id=? AND segment_index=?`, out.Platform, out.ScopeID, out.MessageID, out.SegmentIndex); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM media_outputs WHERE platform=? AND chat_type=? AND chat_id=? AND message_id=? AND segment_index=?`, out.Platform, out.ChatType, out.ChatID, out.MessageID, out.SegmentIndex); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO media_outputs(platform,scope_id,message_id,segment_index,kind,media_id,owner_id,expires_at) VALUES(?,?,?,?,?,?,?,?)`, out.Platform, out.ScopeID, out.MessageID, out.SegmentIndex, out.Kind, out.MediaID, out.OwnerID, storage.FormatTime(out.ExpiresAt)); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO media_outputs(platform,chat_type,chat_id,message_id,segment_index,kind,media_id,owner_id,expires_at) VALUES(?,?,?,?,?,?,?,?,?)`, out.Platform, out.ChatType, out.ChatID, out.MessageID, out.SegmentIndex, out.Kind, out.MediaID, out.OwnerID, storage.FormatTime(out.ExpiresAt)); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
-func (r *MediaRepository) FindOutputs(ctx context.Context, platform, scopeID, messageID string, now time.Time) ([]storage.MediaOutput, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT segment_index,kind,media_id,owner_id,expires_at FROM media_outputs WHERE platform=? AND scope_id=? AND message_id=? AND julianday(expires_at)>julianday(?) ORDER BY segment_index`, platform, scopeID, messageID, storage.FormatTime(now))
+func (r *MediaRepository) FindOutputs(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, messageID string, now time.Time) ([]storage.MediaOutput, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT segment_index,kind,media_id,owner_id,expires_at FROM media_outputs WHERE platform=? AND chat_type=? AND chat_id=? AND message_id=? AND julianday(expires_at)>julianday(?) ORDER BY segment_index`, platform, conversationKind, scopeID, messageID, storage.FormatTime(now))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var outputs []storage.MediaOutput
 	for rows.Next() {
-		out := storage.MediaOutput{Platform: platform, ScopeID: scopeID, MessageID: messageID}
+		out := storage.MediaOutput{Platform: platform, ChatType: conversationKind, ChatID: scopeID, MessageID: messageID}
 		var expiresAt string
 		if err := rows.Scan(&out.SegmentIndex, &out.Kind, &out.MediaID, &out.OwnerID, &expiresAt); err != nil {
 			return nil, err

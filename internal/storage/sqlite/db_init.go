@@ -7,7 +7,7 @@ import (
 )
 
 // createLatestDBSQL contains the final schema and applied-version baseline through
-// migration 30. Update both together when refreshing this snapshot.
+// migration 31. Update both together when refreshing this snapshot.
 const createLatestDBSQL = `
 CREATE TABLE schema_migrations (
     version INTEGER PRIMARY KEY,
@@ -19,9 +19,7 @@ CREATE TABLE sessions (
     id TEXT PRIMARY KEY,
     parent_session_id TEXT NULL,
     fork_from_message_id TEXT NULL,
-    owner_id TEXT NOT NULL,
     platform TEXT NOT NULL,
-    platform_scope_id TEXT NOT NULL,
     mode TEXT NOT NULL,
     title TEXT NULL,
     status TEXT NOT NULL,
@@ -30,6 +28,13 @@ CREATE TABLE sessions (
     updated_at TEXT NOT NULL,
     archived_at TEXT NULL,
     pinned_at TEXT NULL,
+    owner_platform TEXT NOT NULL DEFAULT '',
+    owner_id TEXT NOT NULL DEFAULT '',
+    chat_type TEXT NOT NULL DEFAULT '',
+    chat_id TEXT NOT NULL DEFAULT '',
+    task_type TEXT NOT NULL DEFAULT '',
+    task_id TEXT NOT NULL DEFAULT '',
+    task_name TEXT NOT NULL DEFAULT '',
     FOREIGN KEY(parent_session_id) REFERENCES sessions(id) ON DELETE SET NULL
 );
 
@@ -60,27 +65,29 @@ CREATE TABLE messages (
 
 CREATE TABLE platform_message_map (
     platform TEXT NOT NULL,
-    platform_scope_id TEXT NOT NULL,
+    chat_type TEXT NOT NULL,
+    chat_id TEXT NOT NULL,
     platform_message_id TEXT NOT NULL,
     message_id TEXT NOT NULL,
     session_id TEXT NOT NULL,
     created_at TEXT NOT NULL,
     FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE,
     FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
-    PRIMARY KEY(platform, platform_scope_id, platform_message_id)
+    PRIMARY KEY(platform, chat_type, chat_id, platform_message_id)
 );
 
 CREATE TABLE tool_call_records (
     session_id TEXT NOT NULL,
     tool_call_id TEXT NOT NULL,
     tool_name TEXT NOT NULL,
-    actor_id TEXT NOT NULL,
     risk_level TEXT NOT NULL,
     success INTEGER NOT NULL,
     error TEXT NULL,
     started_at TEXT NOT NULL,
     finished_at TEXT NOT NULL,
     created_at TEXT NOT NULL,
+    actor_platform TEXT NOT NULL DEFAULT '',
+    actor_id TEXT NOT NULL DEFAULT '',
     FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
@@ -103,7 +110,6 @@ CREATE TABLE cron_jobs (
 CREATE TABLE elnis_events (
     id TEXT PRIMARY KEY,
     event_key TEXT NOT NULL,
-    token_name TEXT NOT NULL,
     elwisp_name TEXT NOT NULL,
     source TEXT NOT NULL,
     source_id TEXT NOT NULL,
@@ -122,6 +128,8 @@ CREATE TABLE elnis_events (
     updated_at TEXT NOT NULL,
     tool_declarations TEXT NULL,
     tool_hash TEXT NULL,
+    origin_kind TEXT NOT NULL DEFAULT '',
+    origin_name TEXT NOT NULL DEFAULT '',
     UNIQUE(elwisp_name, source, source_id)
 );
 
@@ -172,18 +180,18 @@ CREATE TABLE media_references (
 );
 
 CREATE TABLE media_outputs (
- platform TEXT NOT NULL, scope_id TEXT NOT NULL, message_id TEXT NOT NULL,
+ platform TEXT NOT NULL, chat_type TEXT NOT NULL, chat_id TEXT NOT NULL, message_id TEXT NOT NULL,
  segment_index INTEGER NOT NULL, kind TEXT NOT NULL,
  media_id TEXT NOT NULL REFERENCES media(id), owner_id TEXT NOT NULL,
  expires_at TEXT NOT NULL,
- PRIMARY KEY(platform,scope_id,message_id,segment_index)
+ PRIMARY KEY(platform,chat_type,chat_id,message_id,segment_index)
 );
 
 CREATE TABLE media_history (
- history_id TEXT NOT NULL, platform TEXT NOT NULL, scope_id TEXT NOT NULL, message_id TEXT NOT NULL,
+ history_id TEXT NOT NULL, platform TEXT NOT NULL, chat_type TEXT NOT NULL, chat_id TEXT NOT NULL, message_id TEXT NOT NULL,
  media_index INTEGER NOT NULL CHECK(media_index>0), kind TEXT NOT NULL CHECK(kind IN ('image','file','record')),
  media_id TEXT NOT NULL REFERENCES media(id), owner_id TEXT NOT NULL UNIQUE,
- PRIMARY KEY(platform,scope_id,message_id,media_index)
+ PRIMARY KEY(platform,chat_type,chat_id,message_id,media_index)
 );
 
 CREATE TABLE native_exchanges (
@@ -251,7 +259,7 @@ CREATE TABLE media_signed_urls (
 );
 
 CREATE INDEX idx_sessions_scope_updated_at
-ON sessions(owner_id, platform, platform_scope_id, updated_at);
+ON sessions(owner_platform,owner_id,platform,chat_type,chat_id,updated_at);
 
 CREATE INDEX idx_sessions_parent
 ON sessions(parent_session_id);
@@ -442,7 +450,8 @@ FROM (VALUES
     (27, 'migrate_discovered_tool_snapshots'),
     (28, 'session_sequence'),
     (29, 'shared_id_sequences'),
-    (30, 'remove_unused_record_ids')
+    (30, 'remove_unused_record_ids'),
+    (31, 'structured_identity')
 );
 `
 

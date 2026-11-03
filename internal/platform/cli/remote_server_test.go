@@ -34,7 +34,7 @@ func TestRemoteServerTargetClients(t *testing.T) {
 		t.Fatalf("superadmin clients = %#v", clients)
 	}
 
-	clients, err = s.targetClients(context.Background(), delivery.Target{Platform: "cli", PrivateUserID: "guest"})
+	clients, err = s.targetClients(context.Background(), delivery.Target{Platform: "cli", ChatType: "private", ChatID: "guest"})
 	if err != nil {
 		t.Fatalf("private target: %v", err)
 	}
@@ -47,10 +47,10 @@ func TestRemoteServerTargetClients(t *testing.T) {
 		t.Fatalf("group role = %q, want unknown", msg.GroupRole)
 	}
 	info, ok := contextinfo.ConversationFromContext(ctx)
-	if !ok || info.Source.ConversationKind != contextinfo.ConversationCLI || info.Source.ConversationID != guest.id {
+	if !ok || info.Source.ChatType != contextinfo.ChatPrivate || info.Source.ChatID != guest.id {
 		t.Fatalf("remote CLI source = %+v", info.Source)
 	}
-	target := share.NotificationTarget(events.Notification{Target: events.NotificationTarget{Platform: "cli", Kind: info.Source.ConversationKind, ID: info.Source.ConversationID}})
+	target := share.NotificationTarget(events.Notification{Target: events.NotificationTarget{Platform: "cli", ChatType: info.Source.ChatType, ID: info.Source.ChatID}})
 	clients, err = s.targetClients(t.Context(), target)
 	if err != nil || len(clients) != 1 || clients[0] != guest {
 		t.Fatalf("CLI notification clients = %v, error = %v", clients, err)
@@ -104,7 +104,7 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 	}
 	for _, level := range []slog.Level{slog.LevelDebug, slog.LevelInfo, slog.LevelWarn, slog.LevelError} {
 		n := events.NewNotification(firstCtx, level, "original-notice")
-		n.Target = events.NotificationTarget{Platform: "cli", Kind: contextinfo.ConversationCLI, ID: first.id, ScopeID: first.id}
+		n.Target = events.NotificationTarget{Platform: "cli", ChatType: contextinfo.ChatPrivate, ID: first.id}
 		if _, err := notices.Emit(firstCtx, n); err != nil {
 			t.Fatal(err)
 		}
@@ -137,7 +137,7 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	read(two, "second-only")
-	if _, _, err := s.SendTo(firstCtx, delivery.Target{Platform: "cli", PrivateUserID: "same-user"}, []delivery.Output{delivery.Text("both")}); err != nil {
+	if _, _, err := s.SendTo(firstCtx, delivery.Target{Platform: "cli", ChatType: "private", ChatID: "same-user"}, []delivery.Output{delivery.Text("both")}); err != nil {
 		t.Fatal(err)
 	}
 	read(one, "both")
@@ -165,7 +165,7 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 	}
 	read(two, "second-barrier") // Neither reasoning nor status leaked to the same user's other connection.
 	first.conn.CloseNow()
-	if _, err := notices.Emit(ctx, events.Notification{Target: events.NotificationTarget{Platform: "cli", Kind: contextinfo.ConversationPrivate, ID: "same-user"}, Text: "partial-notice"}); err == nil {
+	if _, err := notices.Emit(ctx, events.Notification{Target: events.NotificationTarget{Platform: "cli", ChatType: contextinfo.ChatPrivate, ID: "same-user"}, Text: "partial-notice"}); err == nil {
 		t.Fatal("notification partial failure reported success")
 	}
 	read(two, "partial-notice")

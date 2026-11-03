@@ -331,7 +331,7 @@ func TestHandleEventDeliversPlainGroupMessage(t *testing.T) {
 	if !ok {
 		t.Fatal("missing message context")
 	}
-	if msgCtx.Conversation.Source.ConversationKind != contextinfo.ConversationGroup || msgCtx.Conversation.Source.ConversationID != "9" || msgCtx.RawText != "hello" {
+	if msgCtx.Conversation.Source.ChatType != contextinfo.ChatGroup || msgCtx.Conversation.Source.ChatID != "9" || msgCtx.RawText != "hello" {
 		t.Fatalf("message context = %#v", msgCtx)
 	}
 }
@@ -424,11 +424,11 @@ func TestHandleEventPreservesReferenceDecision(t *testing.T) {
 		{Text: "foreign answer context", Reply: share.ReplyContext{MessageID: "42", Text: "foreign answer"}},
 	} {
 		adapter := newTestAdapter(t, Config{}, nil, nil, "1")
-		adapter.findByPlatformMessage = func(context.Context, string, string, string) (*storage.Message, error) {
+		adapter.findByPlatformMessage = func(context.Context, string, contextinfo.ChatType, string, string) (*storage.Message, error) {
 			return &storage.Message{ID: storage.NewID(), Role: storage.RoleAssistant}, nil
 		}
 		adapter.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
-			if opts.Platform != "qqonebot" || opts.ScopeID != "group:9" || opts.ActorID != "qqonebot:1" || !opts.IsSuperadmin || opts.ReplyID != "42" || opts.Text != "继续" || opts.Fetch == nil || opts.Enrich == nil {
+			if opts.Platform != "qqonebot" || (opts.ChatType != "group" || opts.ChatID != "9") || opts.Owner != (contextinfo.ActorIdentity{Platform: "qqonebot", ID: "1"}) || opts.ReplyID != "42" || opts.Text != "继续" || opts.Fetch == nil || opts.Enrich == nil {
 				t.Fatalf("reference options = %#v", opts)
 			}
 			return decision, nil
@@ -488,7 +488,7 @@ func TestHandleEventStoresReferenceSnapshot(t *testing.T) {
 	defer history.Close()
 	repo := history.Repository()
 	if err := repo.Append(ctx, &storage.ChatMessage{
-		Platform: "qqonebot", PlatformScopeID: "group:9", ScopeType: "group", PlatformMessageID: "42",
+		Platform: "qqonebot", ChatID: "9", ChatType: "group", PlatformMessageID: "42",
 		SenderID: "1001", SenderName: "被引用者", Text: "被引用内容",
 	}); err != nil {
 		t.Fatal(err)
@@ -517,7 +517,7 @@ func TestHandleEventStoresReferenceSnapshot(t *testing.T) {
 	if msgCtx.ContextText != wantText {
 		t.Fatalf("context text = %q, want %q", msgCtx.ContextText, wantText)
 	}
-	row, err := repo.GetByPlatformMessage(ctx, "qqonebot", "group:9", "84")
+	row, err := repo.GetByPlatformMessage(ctx, "qqonebot", "group", "9", "84")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -560,7 +560,7 @@ func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
 	}
 	defer store.Close()
 
-	session := &storage.Session{ID: storage.NewID(), OwnerID: "qqonebot:1", Platform: "qqonebot", PlatformScopeID: "group:9", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "s"}
+	session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "1"}, Platform: "qqonebot", ChatType: "group", ChatID: "9", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Title: "s"}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -568,7 +568,7 @@ func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
 	if err := store.Messages().Append(ctx, assistant); err != nil {
 		t.Fatalf("append assistant: %v", err)
 	}
-	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: "qqonebot", PlatformScopeID: "group:9", PlatformMessageID: "77", MessageID: assistant.ID, SessionID: session.ID}); err != nil {
+	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: "qqonebot", ChatType: "group", ChatID: "9", PlatformMessageID: "77", MessageID: assistant.ID, SessionID: session.ID}); err != nil {
 		t.Fatalf("map platform message: %v", err)
 	}
 

@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"fmt"
 	"strings"
 	"testing"
@@ -21,7 +22,7 @@ func TestSharedMediaSessionsForkAndCleanupClaim(t *testing.T) {
 	var checkpoint string
 	sessions := make([]storage.Session, 2)
 	for i := range sessions {
-		sessions[i] = storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "p", PlatformScopeID: "s"}
+		sessions[i] = storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "p", ID: "u"}, Platform: "p", ChatID: "s"}
 		if err := store.Sessions().Create(ctx, &sessions[i]); err != nil {
 			t.Fatal(err)
 		}
@@ -33,7 +34,7 @@ func TestSharedMediaSessionsForkAndCleanupClaim(t *testing.T) {
 			checkpoint = msg.ID
 		}
 	}
-	fork := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "p", PlatformScopeID: "s", ParentSessionID: sessions[0].ID, ForkFromMessageID: checkpoint}
+	fork := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "p", ID: "u"}, Platform: "p", ChatID: "s", ParentSessionID: sessions[0].ID, ForkFromMessageID: checkpoint}
 	if err := store.Sessions().Create(ctx, fork); err != nil {
 		t.Fatal(err)
 	}
@@ -81,28 +82,31 @@ func TestOutputMediaOrderScopeReplacementAndExpiry(t *testing.T) {
 		}
 	}
 	for _, out := range []storage.MediaOutput{
-		{Platform: "p", ScopeID: "group:1", MessageID: "m", SegmentIndex: 2, Kind: "image", MediaID: ids[0], ExpiresAt: now.Add(time.Hour)},
-		{Platform: "p", ScopeID: "group:1", MessageID: "m", SegmentIndex: 0, Kind: "file", MediaID: ids[1], ExpiresAt: now.Add(time.Hour)},
-		{Platform: "p", ScopeID: "group:1", MessageID: "m", SegmentIndex: 1, Kind: "image", MediaID: ids[0], ExpiresAt: now.Add(time.Hour)},
+		{Platform: "p", ChatType: "group", ChatID: "1", MessageID: "m", SegmentIndex: 2, Kind: "image", MediaID: ids[0], ExpiresAt: now.Add(time.Hour)},
+		{Platform: "p", ChatType: "group", ChatID: "1", MessageID: "m", SegmentIndex: 0, Kind: "file", MediaID: ids[1], ExpiresAt: now.Add(time.Hour)},
+		{Platform: "p", ChatType: "group", ChatID: "1", MessageID: "m", SegmentIndex: 1, Kind: "image", MediaID: ids[0], ExpiresAt: now.Add(time.Hour)},
 	} {
 		if err := store.Media().SaveOutput(ctx, out); err != nil {
 			t.Fatal(err)
 		}
 	}
-	got, err := store.Media().FindOutputs(ctx, "p", "group:1", "m", now)
+	got, err := store.Media().FindOutputs(ctx, "p", "group", "1", "m", now)
 	if err != nil || len(got) != 3 {
 		t.Fatalf("outputs %v %v", got, err)
 	}
 	if got[0].SegmentIndex != 0 || got[0].Kind != "file" || got[0].MediaID != ids[1] || got[1].MediaID != ids[0] || got[2].MediaID != ids[0] {
 		t.Fatalf("ordered outputs = %#v", got)
 	}
-	for _, scope := range []string{"group:2", "private:1"} {
-		got, err := store.Media().FindOutputs(ctx, "p", scope, "m", now)
+	for _, scope := range []struct {
+		kind contextinfo.ChatType
+		id   string
+	}{{"group", "2"}, {"private", "1"}} {
+		got, err := store.Media().FindOutputs(ctx, "p", scope.kind, scope.id, "m", now)
 		if err != nil || len(got) != 0 {
 			t.Fatalf("scope leak %v %v", got, err)
 		}
 	}
-	if err := store.Media().SaveOutput(ctx, storage.MediaOutput{Platform: "p", ScopeID: "group:1", MessageID: "m", SegmentIndex: 0, Kind: "image", MediaID: ids[2], ExpiresAt: now.Add(time.Hour)}); err != nil {
+	if err := store.Media().SaveOutput(ctx, storage.MediaOutput{Platform: "p", ChatType: "group", ChatID: "1", MessageID: "m", SegmentIndex: 0, Kind: "image", MediaID: ids[2], ExpiresAt: now.Add(time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
 	refs, _ := store.MediaReferences().ListMediaIDs(ctx, ids[1])
@@ -177,7 +181,7 @@ func TestReferenceAuditAndRecovery(t *testing.T) {
 	if len(refs) != 0 {
 		t.Fatal(refs)
 	}
-	s := &storage.Session{ID: storage.NewID(), OwnerID: "u", Platform: "p", PlatformScopeID: "s"}
+	s := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "p", ID: "u"}, Platform: "p", ChatID: "s"}
 	if err := store.Sessions().Create(ctx, s); err != nil {
 		t.Fatal(err)
 	}

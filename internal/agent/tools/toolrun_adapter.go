@@ -124,12 +124,13 @@ func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output)
 }
 
 func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk security.RiskLevel, reason string) {
-	content := map[string]string{"actor_id": d.identity.Actor(ctx).ID, "tool": call.Name, "risk": string(risk), "reason": reason}
-	for key, value := range content {
+	content := map[string]any{"actor": d.identity.Actor(ctx)}
+	for key, value := range map[string]string{"tool": call.Name, "risk": string(risk), "reason": reason} {
 		runes := []rune(value)
 		if len(runes) > 2048 {
-			content[key] = string(runes[:2047]) + "…"
+			value = string(runes[:2047]) + "…"
 		}
+		content[key] = value
 	}
 	data, _ := json.Marshal(content)
 	facts, _ := contextinfo.ExecutionFromContext(ctx)

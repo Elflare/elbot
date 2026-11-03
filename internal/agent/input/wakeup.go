@@ -15,7 +15,7 @@ func (h *MessageHandler) messageWakeup(ctx context.Context, text string) bool {
 		return true
 	}
 	info, _ := contextinfo.ConversationFromContext(ctx)
-	if info.Source.ConversationKind != contextinfo.ConversationGroup && info.Source.ConversationKind != contextinfo.ConversationChannel {
+	if info.Source.ChatType != contextinfo.ChatGroup && info.Source.ChatType != contextinfo.ChatChannel {
 		return true
 	}
 	if h.commands != nil && h.commands.IsCommand(text) {
@@ -31,10 +31,10 @@ func (h *MessageHandler) messageWakeup(ctx context.Context, text string) bool {
 }
 
 func mentionsBot(msg agentshare.MessageContext) bool {
-	botUserID := strings.TrimSpace(msg.Bot.UserID)
+	botUserID := msg.Bot.UserID
 	botUsername := strings.TrimPrefix(strings.TrimSpace(msg.Bot.Username), "@")
 	for _, mention := range msg.Mentions {
-		if botUserID != "" && strings.TrimSpace(mention.UserID) == botUserID {
+		if botUserID != "" && mention.UserID == botUserID {
 			return true
 		}
 		if botUsername != "" && strings.EqualFold(strings.TrimPrefix(strings.TrimSpace(mention.Username), "@"), botUsername) {
@@ -46,19 +46,19 @@ func mentionsBot(msg agentshare.MessageContext) bool {
 
 func (h *MessageHandler) isReplyToBot(ctx context.Context, msg agentshare.MessageContext) bool {
 	info, _ := contextinfo.ConversationFromContext(ctx)
-	if strings.TrimSpace(info.ReplyToSenderID) != "" && strings.TrimSpace(info.ReplyToSenderID) == strings.TrimSpace(msg.Bot.UserID) {
+	if info.ReplyToSenderID != "" && info.ReplyToSenderID == strings.TrimSpace(msg.Bot.UserID) {
 		return true
 	}
-	replyID := strings.TrimSpace(info.ReplyToMessageID)
+	replyID := info.ReplyToMessageID
 	if replyID == "" || h.messages == nil {
 		return false
 	}
-	mapped, err := h.messages.FindByPlatformMessage(ctx, info.Source.Platform, info.Source.ScopeID, replyID)
+	mapped, err := h.messages.FindByPlatformMessage(ctx, info.Source.Platform, info.Source.ChatType, info.Source.ChatID, replyID)
 	if err == nil && mapped.Role == storage.RoleAssistant {
 		return true
 	}
 	if h.mediaRows != nil {
-		outputs, err := h.mediaRows.FindOutputs(ctx, info.Source.Platform, info.Source.ScopeID, replyID, storage.Now())
+		outputs, err := h.mediaRows.FindOutputs(ctx, info.Source.Platform, info.Source.ChatType, info.Source.ChatID, replyID, storage.Now())
 		return err == nil && len(outputs) > 0
 	}
 	return false

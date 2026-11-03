@@ -178,14 +178,20 @@ func TestRulesToolRecordsUseIndependentBodyUniqueIDAndActor(t *testing.T) {
 	}
 	module := Module{Opts: Options{Log: testLog, Notify: testNotify, Tools: testTools{registry}}}
 	records := collectRecords(t)
-	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "context"})
-	for _, event := range []share.Event{{Session: share.SessionContext{ID: "session"}, Actor: share.ActorContext{ID: "trigger"}}, {Session: share.SessionContext{ID: "session"}}, {Actor: share.ActorContext{ID: "permission"}}} {
+	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "context"}})
+	eventsToCall := []share.Event{
+		{Session: share.SessionContext{ID: "session"}, Actor: share.ActorContext{Platform: "cli", ID: "trigger", Name: "Trigger"}},
+		{Session: share.SessionContext{ID: "session"}},
+		{Actor: share.ActorContext{Platform: "qqonebot", ID: "permission", Name: "名片", Nickname: "昵称", GroupCard: "名片", Role: "superadmin", GroupRole: "admin"}},
+		{},
+	}
+	for _, event := range eventsToCall {
 		_, outcome, err := module.callTool(ctx, event, Action{Tool: "body_test"}, state{})
 		if err == nil || outcome.ResultStatus != events.ResultFailed {
 			t.Fatalf("outcome=%+v err=%v", outcome, err)
 		}
 	}
-	if len(invoked.ids) != 3 || len(*records) != 3 {
+	if len(invoked.ids) != len(eventsToCall) || len(*records) != len(eventsToCall) {
 		t.Fatal(*records)
 	}
 	for i, record := range *records {
@@ -202,9 +208,9 @@ func TestRulesToolRecordsUseIndependentBodyUniqueIDAndActor(t *testing.T) {
 		if i > 0 && invoked.ids[i] == invoked.ids[i-1] {
 			t.Fatal("reused call ID")
 		}
-		wantActor := []string{"trigger", "", "context"}[i]
-		if content["actor_id"] != wantActor && !(wantActor == "" && content["actor_id"] == nil) {
-			t.Fatal(content)
+		var actor struct{ Actor share.ActorContext }
+		if err := json.Unmarshal([]byte(record.Content), &actor); err != nil || actor.Actor != eventsToCall[i].Actor {
+			t.Fatalf("actor=%+v want=%+v err=%v", actor.Actor, eventsToCall[i].Actor, err)
 		}
 	}
 }
@@ -215,7 +221,12 @@ func TestRulesOutputSendUsesDeclaredResultAndPartialReceipt(t *testing.T) {
 		module := Module{Opts: Options{Log: testLog, Notify: testNotify, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 			return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "cli", PlatformMessageID: "partial"}}}, events.LogResult{ResultStatus: events.ResultFailed, Content: "declared failure with nil error"}, nil
 		}}}
-		result, _, err := module.handleProtocolRequest(t.Context(), share.Event{Tool: share.ToolPayload{ID: callID, Name: "shell"}}, Action{}, state{}, "output.send", json.RawMessage(`{"outputs":[{"kind":"text","text":"hello"}]}`))
+		actor := share.ActorContext{}
+		if callID != "" {
+			actor = share.ActorContext{Platform: "telegram", ID: "42", Name: "Alice"}
+		}
+		ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "context"}, Name: "Context"})
+		result, _, err := module.handleProtocolRequest(ctx, share.Event{Actor: actor, Tool: share.ToolPayload{ID: callID, Name: "shell"}}, Action{}, state{}, "output.send", json.RawMessage(`{"outputs":[{"kind":"text","text":"hello"}]}`))
 		if err != nil || result == nil || len(*records) != 1 {
 			t.Fatalf("result=%v err=%v records=%+v", result, err, *records)
 		}
@@ -225,6 +236,10 @@ func TestRulesOutputSendUsesDeclaredResultAndPartialReceipt(t *testing.T) {
 		}
 		var fields map[string]json.RawMessage
 		json.Unmarshal([]byte(record.Content), &fields)
+		var recordedActor share.ActorContext
+		if err := json.Unmarshal(fields["actor"], &recordedActor); err != nil || recordedActor != actor {
+			t.Fatalf("actor=%+v want=%+v err=%v", recordedActor, actor, err)
+		}
 		if callID == "" {
 			if _, exists := fields["tool_call_id"]; exists {
 				t.Fatal("invented tool ID")
@@ -416,7 +431,7 @@ func TestRuleLogsPreserveOptionalIdentityAndEventSession(t *testing.T) {
 					if i == 0 && tc.eventSession != "" && (record.EventName == "hook_tool_call_prepared" || record.EventName == "hook_tool_call_completed" || record.EventName == "hook_tool_log") {
 						want = tc.eventSession
 					}
-					if (want == "" && value != nil) || (want != "" && (value == nil || *value != want)) {
+					if value == nil || *value != want {
 						t.Fatalf("%s identity field %d = %v, want %q", record.EventName, i, value, want)
 					}
 				}

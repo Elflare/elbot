@@ -104,7 +104,7 @@ func TestRemoteStopRetainsSendingAndCloseRetries(t *testing.T) {
 	var once sync.Once
 	defer once.Do(func() { close(release) })
 	if err := s.Start(t.Context(), func(ctx context.Context, text string, msg share.MessageContext) error {
-		if text != "hello" || msg.RawText != " hello " || msg.Sender != s || msg.Conversation.Identity.PlatformUserID != "user" {
+		if text != "hello" || msg.RawText != " hello " || msg.Sender != s || msg.Conversation.Identity.ID != "user" {
 			t.Error(text, msg)
 		}
 		entered <- ctx

@@ -32,7 +32,7 @@ func TestNativeCallsHTTPExecutionAndTerminalState(t *testing.T) {
 			var operations []string
 			service, cleanup := newTestService(t, func(_ context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 				operations = append(operations, "send")
-				if target.Platform != "qqonebot" || target.PrivateUserID != "admin" || target.Superadmins || len(outputs) != 1 || outputs[0].Text != "title\nbody" {
+				if target.Platform != "qqonebot" || target.ChatID != "admin" || target.Superadmins || len(outputs) != 1 || outputs[0].Text != "title\nbody" {
 					t.Fatalf("direct output: target=%+v outputs=%+v", target, outputs)
 				}
 				return delivery.Receipt{}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil

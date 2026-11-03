@@ -12,7 +12,7 @@ func TestMessageContextSnapshotsDoNotShareInputSlices(t *testing.T) {
 		Reply:           ReplyContext{Segments: []MessageSegment{{Text: "reply"}}},
 		Mentions:        []Mention{{UserID: "user"}}, TriggerKeywords: []string{"wake"},
 	}
-	facts := contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ScopeID: "scope"}}
+	facts := contextinfo.Conversation{Source: contextinfo.Source{Platform: "test", ChatID: "scope"}}
 	ctx := WithMessageContext(contextinfo.WithConversation(t.Context(), facts), msg)
 	mutate := func(m MessageContext) {
 		m.Segments[0].Text = "changed"

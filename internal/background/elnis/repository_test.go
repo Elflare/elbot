@@ -2,6 +2,7 @@ package elnis
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"fmt"
 	"sync"
 	"testing"
@@ -249,12 +250,12 @@ func (r *fakeEventRepository) FailInterrupted(ctx context.Context, statuses []st
 	}
 	return nil
 }
-func assertReportMapping(t *testing.T, s *Service, platform, scope, id string) {
+func assertReportMapping(t *testing.T, s *Service, platform string, kind contextinfo.ChatType, scope, id string) {
 	t.Helper()
 	repo := testRepo(s)
 	repo.mu.Lock()
 	defer repo.mu.Unlock()
-	want := background.ReportMessageMap{Platform: platform, PlatformScopeID: scope, PlatformMessageID: id, SessionID: "bg-session", MessageID: "bg-message"}
+	want := background.ReportMessageMap{Platform: platform, ChatType: kind, ChatID: scope, PlatformMessageID: id, SessionID: "bg-session", MessageID: "bg-message"}
 	for _, got := range repo.mappings {
 		if got == want {
 			return

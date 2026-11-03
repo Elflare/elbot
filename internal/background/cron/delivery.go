@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,12 +19,6 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/workspace"
 )
-
-type resolvedCronTarget struct {
-	key      string
-	platform string
-	target   delivery.Target
-}
 
 type deliveryGate struct {
 	token chan struct{} // 单个任务的互斥令牌。
@@ -61,10 +56,10 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 		return logResult, nil
 	}
 	for _, resolved := range s.resolveDeliveryTargets(meta) {
-		if platformFilter != "" && resolved.platform != platformFilter {
+		if platformFilter != "" && resolved.Platform != platformFilter {
 			continue
 		}
-		targetState := ensureDeliveryTargetState(&state, resolved.key)
+		targetState := ensureDeliveryTargetState(&state, resolved)
 		for index, outputID := range deliveryOutputIDs(state) {
 			taken, err := s.sessionTakenOver(ctx, state.ReportSessionID)
 			if err != nil {
@@ -176,8 +171,8 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 	return logResult, nil
 }
 
-func (s *Service) sendDeliveryOutput(ctx context.Context, jobName string, resolved resolvedCronTarget, out delivery.Output, state CronDeliveryState) (delivery.Receipt, globalevents.LogResult, error) {
-	return s.sendOutputsToPlatformTarget(ctx, jobName, resolved.platform, resolved.target, []delivery.Output{out}, state.ReportSessionID)
+func (s *Service) sendDeliveryOutput(ctx context.Context, jobName string, resolved delivery.Target, out delivery.Output, state CronDeliveryState) (delivery.Receipt, globalevents.LogResult, error) {
+	return s.sendOutputsToPlatformTarget(ctx, jobName, resolved.Platform, resolved, []delivery.Output{out}, state.ReportSessionID)
 }
 
 func (s *Service) persistDeliveryState(ctx context.Context, job *Job, state CronDeliveryState, mappings []background.ReportMessageMap) (bool, error) {
@@ -214,27 +209,27 @@ func (s *Service) disableCompletedDelivery(ctx context.Context, jobName, deliver
 	return logResult, err
 }
 
-func (s *Service) resolveDeliveryTargets(meta Metadata) []resolvedCronTarget {
+func (s *Service) resolveDeliveryTargets(meta Metadata) []delivery.Target {
 	platforms := s.enabledPlatforms
 	if !meta.Target.AllEnabledPlatforms {
 		if !containsString(s.enabledPlatformNames(), meta.Target.SourcePlatform) {
 			return nil
 		}
 		platforms = []PlatformTarget{{Name: meta.Target.SourcePlatform}}
-		if id := strings.TrimSpace(meta.CreatedBy.PlatformUserID); id != "" {
+		if id := strings.TrimSpace(meta.CreatedBy.ID); id != "" {
 			platforms[0].SuperadminIDs = []string{id}
 		}
 	}
-	resolved := []resolvedCronTarget{}
+	resolved := []delivery.Target{}
 	for _, platform := range platforms {
 		platformName := platform.Name
 		ids := uniqueStrings(platform.SuperadminIDs)
 		if len(ids) == 0 {
-			resolved = append(resolved, resolvedCronTarget{key: platformName + "|superadmins", platform: platformName, target: delivery.Target{Platform: platformName, Superadmins: true}})
+			resolved = append(resolved, delivery.Target{Platform: platformName, Superadmins: true})
 			continue
 		}
 		for _, id := range ids {
-			resolved = append(resolved, resolvedCronTarget{key: platformName + "|private|" + id, platform: platformName, target: delivery.Target{Platform: platformName, PrivateUserID: id}})
+			resolved = append(resolved, delivery.Target{Platform: platformName, ChatType: "private", ChatID: id})
 		}
 	}
 	return resolved
@@ -249,7 +244,7 @@ func (s *Service) deliveryComplete(meta Metadata, state CronDeliveryState) bool 
 	}
 	outputIDs := deliveryOutputIDs(state)
 	for _, target := range s.resolveDeliveryTargets(meta) {
-		targetState := findDeliveryTargetState(state, target.key)
+		targetState := findDeliveryTargetState(state, target)
 		for _, outputID := range outputIDs {
 			if targetState == nil || !deliveryStatusDone(findDeliveryOutputStatus(*targetState, outputID)) {
 				return false
@@ -270,13 +265,13 @@ func deliveryOutputIDs(state CronDeliveryState) []string {
 	return ids
 }
 
-func ensureDeliveryTargetState(state *CronDeliveryState, key string) *CronDeliveryTargetState {
+func ensureDeliveryTargetState(state *CronDeliveryState, target delivery.Target) *CronDeliveryTargetState {
 	for index := range state.Targets {
-		if state.Targets[index].Key == key {
+		if state.Targets[index].Target == target {
 			return &state.Targets[index]
 		}
 	}
-	state.Targets = append(state.Targets, CronDeliveryTargetState{Key: key})
+	state.Targets = append(state.Targets, CronDeliveryTargetState{Target: target})
 	return &state.Targets[len(state.Targets)-1]
 }
 
@@ -290,9 +285,9 @@ func ensureDeliveryOutputState(state *CronDeliveryTargetState, id string) *CronD
 	return &state.Outputs[len(state.Outputs)-1]
 }
 
-func findDeliveryTargetState(state CronDeliveryState, key string) *CronDeliveryTargetState {
+func findDeliveryTargetState(state CronDeliveryState, target delivery.Target) *CronDeliveryTargetState {
 	for index := range state.Targets {
-		if state.Targets[index].Key == key {
+		if state.Targets[index].Target == target {
 			return &state.Targets[index]
 		}
 	}
@@ -425,9 +420,7 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 				ContentLimit: 4096,
 			}
 			record.Identity = identity
-			if sessionID != "" {
-				record.Identity.SessionID = &sessionID
-			}
+			record.Identity.SessionID = &sessionID
 			background.LogBackground(ctx, record)
 		}
 		sent, logResult, err := s.sendTarget(ctx, target, []delivery.Output{out})
@@ -463,9 +456,7 @@ func (s *Service) sendOutputsToPlatformTarget(ctx context.Context, jobName, plat
 			if logResult.ResultStatus == globalevents.ResultFailed {
 				record.Level = slog.LevelError
 			}
-			if sessionID != "" {
-				record.Identity.SessionID = &sessionID
-			}
+			record.Identity.SessionID = &sessionID
 			background.LogBackground(ctx, record)
 		}
 		if (logResult.ResultStatus == globalevents.ResultFailed || logResult.ResultStatus == globalevents.ResultCanceled) && err != nil && ctx.Err() != nil {
@@ -501,13 +492,7 @@ func cronTargetLabel(target delivery.Target) string {
 	if target.Superadmins {
 		return "superadmins"
 	}
-	if target.PrivateUserID != "" {
-		return "private"
-	}
-	if target.GroupID != "" {
-		return "group"
-	}
-	return "unknown"
+	return string(target.ChatType)
 }
 
 func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessionID string, meta Metadata, jobName string) error {
@@ -515,8 +500,7 @@ func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessi
 		if target.Name == meta.Target.SourcePlatform {
 			continue
 		}
-		owner := targetOwnerID(target)
-		if owner == "" {
+		if len(target.SuperadminIDs) == 0 {
 			continue
 		}
 		metadata := map[string]json.RawMessage{}
@@ -527,7 +511,7 @@ func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessi
 			}
 			metadata[key] = encoded
 		}
-		copySession, err := s.copyBackground(ctx, agent.BackgroundCopyRequest{Scope: session.Scope{ActorID: owner, PlatformUserID: target.SuperadminIDs[0], Platform: target.Name, PlatformScopeID: cronScopeID(jobName)}, SourceSessionID: sourceSessionID, Kind: "cron", Name: jobName, Title: meta.Title, Metadata: metadata})
+		copySession, err := s.copyBackground(ctx, agent.BackgroundCopyRequest{Scope: session.Scope{Owner: contextinfo.ActorIdentity{Platform: target.Name, ID: target.SuperadminIDs[0]}, Platform: target.Name, TaskType: "cron", TaskID: jobName}, SourceSessionID: sourceSessionID, TaskType: "cron", TaskID: jobName, Name: meta.Title, Metadata: metadata})
 		if err != nil {
 			return err
 		}

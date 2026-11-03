@@ -2,6 +2,7 @@ package dialogue
 
 import (
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/contextinfo"
 	"elbot/internal/testutil"
 
 	"context"
@@ -125,7 +126,7 @@ func TestToolTranscriptMirrorMatchesFullDatabaseFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	row := &storage.Session{ID: storage.NewID(), OwnerID: "test", Platform: "cli", Mode: storage.SessionModeWork}
+	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "test"}, Platform: "cli", Mode: storage.SessionModeWork}
 	if err := store.Sessions().Create(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +205,7 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	row := &storage.Session{ID: storage.NewID(), OwnerID: "test", Platform: "cli", Mode: storage.SessionModeWork}
+	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "test"}, Platform: "cli", Mode: storage.SessionModeWork}
 	if err := store.Sessions().Create(ctx, row); err != nil {
 		t.Fatal(err)
 	}

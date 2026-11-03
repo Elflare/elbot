@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"sync"
 	"testing"
 
@@ -21,8 +22,8 @@ func TestModeCommandsReturnBoundContinuation(t *testing.T) {
 		handler func(Deps) command.Handler
 		mode    string
 	}{
-		{name: "work", scope: session.Scope{ActorID: "work", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, handler: NewWork, mode: storage.SessionModeWork},
-		{name: "chat", scope: session.Scope{ActorID: "chat", Platform: "cli", PlatformScopeID: "local", IsCLI: true}, handler: NewChat, mode: storage.SessionModeChat},
+		{name: "work", scope: session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "work"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}, handler: NewWork, mode: storage.SessionModeWork},
+		{name: "chat", scope: session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "chat"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}, handler: NewChat, mode: storage.SessionModeChat},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,12 +51,12 @@ func TestChatCommandDoesNotContinueWhenHistoryBlocksSwitch(t *testing.T) {
 	store := newCommandTestStore(t)
 
 	svc := newSessionSupervisor(t, store)
-	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	work, err := svc.Create(ctx, scope, session.CreateRequest{Title: "work"})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := store.Messages().Append(ctx, &storage.Message{ID: storage.NewID(),SessionID: work.ID, Role: storage.RoleUser, Content: "history"}); err != nil {
+	if err := store.Messages().Append(ctx, &storage.Message{ID: storage.NewID(), SessionID: work.ID, Role: storage.RoleUser, Content: "history"}); err != nil {
 		t.Fatalf("Append: %v", err)
 	}
 	result, err := NewChat(Deps{CommandText: testCommandText, Sessions: svc, Scope: func(context.Context) session.Scope { return scope }}).Handle(ctx, command.Request{Args: "do not send"})
@@ -69,8 +70,8 @@ func TestChatCommandDoesNotContinueWhenHistoryBlocksSwitch(t *testing.T) {
 
 func TestSessionCommandStateIsScopedAndConcurrent(t *testing.T) {
 	state := NewSessionCommandState(10, 30)
-	one := session.Scope{ActorID: "one", Platform: "cli", PlatformScopeID: "local"}
-	two := session.Scope{ActorID: "two", Platform: "cli", PlatformScopeID: "local"}
+	one := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "one"}, Platform: "cli", ChatID: "local", ChatType: "private"}
+	two := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "two"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {

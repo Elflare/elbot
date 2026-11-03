@@ -81,7 +81,7 @@ func (h *MessageHandler) associateInboundHistory(ctx context.Context, msg agents
 		return nil
 	}
 	info, _ := contextinfo.ConversationFromContext(ctx)
-	row, err := h.History.GetByPlatformMessage(ctx, info.Source.Platform, info.Source.ScopeID, messageID)
+	row, err := h.History.GetByPlatformMessage(ctx, info.Source.Platform, info.Source.ChatType, info.Source.ChatID, messageID)
 	if errors.Is(err, storage.ErrNotFound) {
 		return nil
 	}
@@ -98,7 +98,7 @@ func (h *MessageHandler) associateInboundHistory(ctx context.Context, msg agents
 		if resolved[i].Media.MediaID == "" {
 			continue
 		}
-		if err := h.media.AssociateHistory(ctx, media.HistoryMessage{ID: row.ID, Platform: row.Platform, ScopeID: row.PlatformScopeID, MessageID: row.PlatformMessageID}, index, raw.Type, resolved[i].Media.MediaID); err != nil {
+		if err := h.media.AssociateHistory(ctx, media.HistoryMessage{ID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, ChatType: row.ChatType}, index, raw.Type, resolved[i].Media.MediaID); err != nil {
 			failures = append(failures, err)
 			{
 				record := globalevents.LogRecord{
@@ -116,21 +116,11 @@ func (h *MessageHandler) associateInboundHistory(ctx context.Context, msg agents
 					record.Level = slog.LevelInfo
 				}
 				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				if facts.SessionID != "" {
-					record.Identity.SessionID = &facts.SessionID
-				}
-				if facts.RunID != "" {
-					record.Identity.RunID = &facts.RunID
-				}
-				if facts.Attempt != "" {
-					record.Identity.Attempt = &facts.Attempt
-				}
-				if facts.RequestID != "" {
-					record.Identity.RequestID = &facts.RequestID
-				}
-				if facts.RootRequestID != "" {
-					record.Identity.RootRequestID = &facts.RootRequestID
-				}
+				record.Identity.SessionID = &facts.SessionID
+				record.Identity.RunID = &facts.RunID
+				record.Identity.Attempt = &facts.Attempt
+				record.Identity.RequestID = &facts.RequestID
+				record.Identity.RootRequestID = &facts.RootRequestID
 				_ = globalevents.EmitLog(ctx, record)
 			}
 		}

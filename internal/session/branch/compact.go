@@ -46,7 +46,7 @@ func (s *Service) CreateCompacted(ctx context.Context, scope share.Scope, source
 	}
 	if background {
 		// 后台压缩是原执行的交接，只匹配归属，不使用前台入口的访问豁免。
-		if scope.ActorID != source.OwnerID || scope.Platform != source.Platform || scope.PlatformScopeID != source.PlatformScopeID {
+		if scope.Owner != source.Owner || scope.Platform != source.Platform || scope.ChatType != source.ChatType || scope.ChatID != source.ChatID || scope.TaskType != source.TaskType || scope.TaskID != source.TaskID {
 			return nil, fmt.Errorf("session %s does not belong to current background execution", sourceID)
 		}
 	} else {
@@ -93,9 +93,10 @@ func (s *Service) CreateCompacted(ctx context.Context, scope share.Scope, source
 	if err != nil {
 		return nil, err
 	}
-	row := &storage.Session{ID: req.ID, OwnerID: source.OwnerID, Platform: source.Platform,
-		PlatformScopeID: source.PlatformScopeID, Title: req.Title, Mode: source.Mode,
-		Status: storage.SessionStatusActive, Metadata: metadata}
+	row := &storage.Session{ID: req.ID, Owner: source.Owner, Platform: source.Platform,
+		ChatID: source.ChatID, TaskType: source.TaskType, TaskID: source.TaskID, TaskName: source.TaskName, Title: req.Title, Mode: source.Mode,
+		Status: storage.SessionStatusActive, Metadata: metadata, ChatType: source.ChatType,
+	}
 	if req.Seed == nil {
 		err = s.deps.Sessions.Create(ctx, row)
 	} else {

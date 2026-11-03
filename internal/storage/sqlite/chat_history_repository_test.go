@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,21 +15,18 @@ import (
 
 func TestChatHistoryAddsMissingSegmentsAndPreservesMessages(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "history.db")
-	old, err := NewChatHistory(t.Context(), path)
+	old, err := openDB(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	message := &storage.ChatMessage{Platform: "cli", PlatformScopeID: "local", PlatformMessageID: "old", SenderID: "user", Text: "keep text"}
-	if err := old.Repository().Append(t.Context(), message); err != nil {
-		_ = old.Close()
+	if _, err = old.Exec(strings.Replace(legacyChatHistorySQL, "    segments TEXT NULL,", "", 1)); err != nil {
 		t.Fatal(err)
 	}
-	// This column was absent in the original chat history database.
-	if _, err := old.db.Exec(`ALTER TABLE chat_messages DROP COLUMN segments`); err != nil {
-		_ = old.Close()
+	message := storage.ChatMessage{ID: "old-id", Text: "keep text"}
+	if _, err = old.Exec(`INSERT INTO chat_messages(id,platform,platform_scope_id,scope_type,platform_message_id,sender_id,text,created_at) VALUES('old-id','cli','local','cli','old','user','keep text',?)`, storage.FormatTime(storage.Now())); err != nil {
 		t.Fatal(err)
 	}
-	if err := old.Close(); err != nil {
+	if err = old.Close(); err != nil {
 		t.Fatal(err)
 	}
 	for range 2 {
@@ -38,11 +36,11 @@ func TestChatHistoryAddsMissingSegmentsAndPreservesMessages(t *testing.T) {
 		}
 		func() {
 			defer store.Close()
-			got, err := store.Repository().GetByPlatformMessage(t.Context(), "cli", "local", "old")
+			got, err := store.Repository().GetByPlatformMessage(t.Context(), "cli", "private", "local", "old")
 			if err != nil || got.Text != message.Text || got.ID != message.ID {
 				t.Fatalf("existing message changed: %+v, %v", got, err)
 			}
-			media := &storage.ChatMessage{Platform: "cli", PlatformScopeID: "local", PlatformMessageID: "media", SenderID: "user", Segments: `[{"type":"image","name":"image.png"}]`}
+			media := &storage.ChatMessage{Platform: "cli", ChatID: "local", PlatformMessageID: "media", SenderID: "user", Segments: `[{"type":"image","name":"image.png"}]`, ChatType: "private"}
 			if err := store.Repository().Append(t.Context(), media); err != nil {
 				t.Fatal(err)
 			}
@@ -64,9 +62,9 @@ func TestChatHistoryQueriesIncludeMediaOnlyMessages(t *testing.T) {
 	repo := store.Repository()
 
 	messages := []*storage.ChatMessage{
-		{Platform: "qqonebot", PlatformScopeID: "group:1", PlatformMessageID: "text", SenderID: "user", Text: "hello"},
-		{Platform: "qqonebot", PlatformScopeID: "group:1", PlatformMessageID: "media", SenderID: "user", Segments: `[{"type":"image","name":"sticker.jpg"}]`},
-		{Platform: "qqonebot", PlatformScopeID: "group:1", PlatformMessageID: "empty", SenderID: "user"},
+		{Platform: "qqonebot", ChatType: "group", ChatID: "1", PlatformMessageID: "text", SenderID: "user", Text: "hello"},
+		{Platform: "qqonebot", ChatType: "group", ChatID: "1", PlatformMessageID: "media", SenderID: "user", Segments: `[{"type":"image","name":"sticker.jpg"}]`},
+		{Platform: "qqonebot", ChatType: "group", ChatID: "1", PlatformMessageID: "empty", SenderID: "user"},
 	}
 	for _, message := range messages {
 		if err := repo.Append(ctx, message); err != nil {
@@ -74,7 +72,7 @@ func TestChatHistoryQueriesIncludeMediaOnlyMessages(t *testing.T) {
 		}
 	}
 
-	got, err := repo.Search(ctx, storage.ChatHistorySearchRequest{Platform: "qqonebot", PlatformScopeID: "group:1", Limit: 10})
+	got, err := repo.Search(ctx, storage.ChatHistorySearchRequest{Platform: "qqonebot", ChatType: "group", ChatID: "1", Limit: 10})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -82,7 +80,7 @@ func TestChatHistoryQueriesIncludeMediaOnlyMessages(t *testing.T) {
 		t.Fatalf("Search messages = %#v", got)
 	}
 
-	got, err = repo.Around(ctx, storage.ChatHistoryAroundRequest{Platform: "qqonebot", PlatformScopeID: "group:1", PlatformMessageID: "text", After: 10})
+	got, err = repo.Around(ctx, storage.ChatHistoryAroundRequest{Platform: "qqonebot", ChatType: "group", ChatID: "1", PlatformMessageID: "text", After: 10})
 	if err != nil {
 		t.Fatalf("Around: %v", err)
 	}
@@ -119,7 +117,7 @@ func TestChatHistorySearchMatchesIDOrNameWithinScope(t *testing.T) {
 		{PlatformMessageID: "slash-name", SenderID: "slash", SenderName: `prefix a\b suffix`},
 	}
 	for i := range rows {
-		rows[i].Platform, rows[i].PlatformScopeID, rows[i].ScopeType = "qqofficial", "c2c:AB12_OPENID", "private"
+		rows[i].Platform, rows[i].ChatID, rows[i].ChatType = "qqofficial", "AB12_OPENID", "private"
 		rows[i].Text, rows[i].CreatedAt = "needle", now
 		if err := repo.Append(ctx, &rows[i]); err != nil {
 			t.Fatal(err)
@@ -127,10 +125,10 @@ func TestChatHistorySearchMatchesIDOrNameWithinScope(t *testing.T) {
 	}
 	// 同名发送者在其他平台、聊天、时间与正文中均不得通过 OR 分支混入。
 	for i, other := range []storage.ChatMessage{
-		{Platform: "telegram", PlatformScopeID: "c2c:AB12_OPENID", Text: "needle", CreatedAt: now},
-		{Platform: "qqofficial", PlatformScopeID: "group:other", Text: "needle", CreatedAt: now},
-		{Platform: "qqofficial", PlatformScopeID: "c2c:AB12_OPENID", Text: "unrelated", CreatedAt: now},
-		{Platform: "qqofficial", PlatformScopeID: "c2c:AB12_OPENID", Text: "needle", CreatedAt: now.Add(-24 * time.Hour)},
+		{Platform: "telegram", ChatType: "private", ChatID: "AB12_OPENID", Text: "needle", CreatedAt: now},
+		{Platform: "qqofficial", ChatType: "group", ChatID: "other", Text: "needle", CreatedAt: now},
+		{Platform: "qqofficial", ChatType: "private", ChatID: "AB12_OPENID", Text: "unrelated", CreatedAt: now},
+		{Platform: "qqofficial", ChatType: "private", ChatID: "AB12_OPENID", Text: "needle", CreatedAt: now.Add(-24 * time.Hour)},
 	} {
 		other.PlatformMessageID = string(rune('a' + i))
 		other.SenderID, other.SenderName = "AB12_OPENID", "AB12_OPENID"
@@ -138,7 +136,7 @@ func TestChatHistorySearchMatchesIDOrNameWithinScope(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	stored, err := repo.GetByPlatformMessage(ctx, "qqofficial", "c2c:AB12_OPENID", "openid")
+	stored, err := repo.GetByPlatformMessage(ctx, "qqofficial", "private", "AB12_OPENID", "openid")
 	if err != nil || stored.SenderID != "AB12_OPENID" || stored.SenderName != "" {
 		t.Fatalf("stored C2C row=%+v error=%v", stored, err)
 	}
@@ -159,7 +157,7 @@ func TestChatHistorySearchMatchesIDOrNameWithinScope(t *testing.T) {
 		{`a\b`, []string{"slash-name"}},
 	} {
 		t.Run(tc.user, func(t *testing.T) {
-			got, err := repo.Search(ctx, storage.ChatHistorySearchRequest{Platform: "qqofficial", PlatformScopeID: "c2c:AB12_OPENID", SenderQuery: tc.user, QueryTerms: []string{"needle"}, Since: &since, Limit: 50})
+			got, err := repo.Search(ctx, storage.ChatHistorySearchRequest{Platform: "qqofficial", ChatType: "private", ChatID: "AB12_OPENID", SenderQuery: tc.user, QueryTerms: []string{"needle"}, Since: &since, Limit: 50})
 			if err != nil {
 				t.Fatal(err)
 			}

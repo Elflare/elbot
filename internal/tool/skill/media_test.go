@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"errors"
@@ -152,7 +153,7 @@ func TestSkillMediaBridge(t *testing.T) {
 							t.Fatal("output refs leaked")
 
 						}
-						session := &storage.Session{ID: storage.NewID(), OwnerID: "skill-test", Platform: "test", PlatformScopeID: "test"}
+						session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "test", ID: "skill-test"}, Platform: "test", ChatID: "test"}
 						if err := store.Sessions().Create(ctx, session); err != nil {
 							t.Fatal(err)
 						}

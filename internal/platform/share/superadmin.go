@@ -32,7 +32,7 @@ func (s *Superadmins) SendTo(ctx context.Context, outputs []delivery.Output, sen
 	}
 	var receipt delivery.Receipt
 	for _, id := range s.ids {
-		target := delivery.Target{Platform: s.platformName, PrivateUserID: id}
+		target := delivery.Target{Platform: s.platformName, ChatType: "private", ChatID: id}
 		sent, result, err := send(ctx, target, outputs)
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)

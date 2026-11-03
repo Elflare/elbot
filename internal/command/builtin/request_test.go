@@ -17,7 +17,7 @@ import (
 func TestRequestsCommandFormatsTree(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)
-	sessionRow := &storage.Session{ID: "s1", Title: "测试会话", Mode: storage.SessionModeWork, OwnerID: "cli:local", Platform: "cli", PlatformScopeID: "local", CreatedAt: storage.Now(), UpdatedAt: storage.Now()}
+	sessionRow := &storage.Session{ID: "s1", Title: "测试会话", Mode: storage.SessionModeWork, Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", CreatedAt: storage.Now(), UpdatedAt: storage.Now(), ChatType: "private"}
 	if err := store.Sessions().Create(ctx, sessionRow); err != nil {
 		t.Fatalf("create session: %v", err)
 	}

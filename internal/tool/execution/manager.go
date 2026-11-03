@@ -21,7 +21,7 @@ type ManagerDeps struct {
 		Query(context.Context, toolshare.ToolQuery) ([]toolshare.ToolDefinition, error)
 	} // 工具解析与目录查询。
 	Permission interface {
-		CheckTool(contextinfo.Actor, string, security.RiskLevel, bool, bool, string) security.ToolPermissionResult
+		CheckTool(contextinfo.Actor, string, security.RiskLevel, bool, bool, bool) security.ToolPermissionResult
 	} // 当前调用的授权与确认判定。
 	Media interface {
 		Metadata(context.Context, string) (toolshare.MediaInfo, error)

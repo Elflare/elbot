@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"elbot/internal/storage"
 	"testing"
 	"time"
@@ -10,7 +11,7 @@ import (
 func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
-	scope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 
 	first, err := svc.GetOrCreateCurrent(ctx, scope, "hello session")
 	if err != nil {
@@ -79,7 +80,7 @@ func TestServiceGetOrCreateCurrentCreatesNewWhenNoInMemoryCurrent(t *testing.T) 
 	ctx := context.Background()
 	store := newTestStore(t)
 
-	scope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	firstSvc := newTestSupervisor(t, store, nil)
 	first, err := firstSvc.Create(ctx, scope, CreateRequest{Title: "old session"})
 	if err != nil {
@@ -102,7 +103,7 @@ func TestServiceGetOrCreateCurrentCreatesNewWhenNoInMemoryCurrent(t *testing.T) 
 func TestServiceListResumablePageUsesPinnedNonCurrentOrder(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
-	scope := Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	now := storage.Now()
 
 	older, err := svc.Create(ctx, scope, CreateRequest{Title: "older pinned"})

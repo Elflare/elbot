@@ -4,6 +4,7 @@ package rules
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -38,10 +39,10 @@ func formatRuleDetail(rule Rule) string {
 		sb.WriteString("\nblocked_platform: " + strings.Join(rule.BlockedPlatforms, ", "))
 	}
 	if len(rule.BlockedGroups) > 0 {
-		sb.WriteString("\nblocked_group: " + strings.Join(rule.BlockedGroups, ", "))
+		writeBlockedDetail(&sb, "blocked_group", rule.BlockedGroups)
 	}
 	if len(rule.BlockedIDs) > 0 {
-		sb.WriteString("\nblocked_id: " + strings.Join(rule.BlockedIDs, ", "))
+		writeBlockedDetail(&sb, "blocked_id", rule.BlockedIDs)
 	}
 
 	for i, action := range rule.Actions {
@@ -73,7 +74,7 @@ func formatRuleDetail(rule Rule) string {
 		if action.Timing != "" {
 			sb.WriteString(" timing=" + action.Timing)
 		}
-		if action.Target.Platform != "" || action.Target.ScopeID != "" || action.Target.PrivateUserID != "" || action.Target.GroupID != "" {
+		if action.Target.Platform != "" || action.Target.ChatID != "" {
 			sb.WriteString(" target=" + targetString(action.Target))
 		}
 		if action.All {
@@ -112,17 +113,22 @@ func targetString(t Target) string {
 	if t.Platform != "" {
 		parts = append(parts, "platform="+t.Platform)
 	}
-	if t.ScopeID != "" {
-		parts = append(parts, "scope_id="+t.ScopeID)
-	}
-	if t.PrivateUserID != "" {
-		parts = append(parts, "private_user_id="+t.PrivateUserID)
-	}
-	if t.GroupID != "" {
-		parts = append(parts, "group_id="+t.GroupID)
+	if t.ChatID != "" {
+		parts = append(parts, "chat_id="+t.ChatID)
 	}
 	if t.Superadmins {
 		parts = append(parts, "superadmins=true")
 	}
 	return strings.Join(parts, ",")
+}
+
+func writeBlockedDetail(sb *strings.Builder, name string, groups map[string][]string) {
+	platforms := make([]string, 0, len(groups))
+	for platform := range groups {
+		platforms = append(platforms, platform)
+	}
+	sort.Strings(platforms)
+	for _, platform := range platforms {
+		fmt.Fprintf(sb, "\n%s.%s: %s", name, platform, strings.Join(groups[platform], ", "))
+	}
 }

@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"elbot/internal/contextinfo"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -81,7 +82,7 @@ func TestOriginMigrationPreservesFactsAndRunsOnlyOnce(t *testing.T) {
 			}
 		}
 	}
-	fresh := &storage.Session{ID: "new", OwnerID: "cli:local", Platform: "cli", PlatformScopeID: "local", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive}
+	fresh := &storage.Session{ID: "new", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, ChatType: "private"}
 	if err := store.Sessions().Create(t.Context(), fresh); err != nil {
 		t.Fatal(err)
 	}

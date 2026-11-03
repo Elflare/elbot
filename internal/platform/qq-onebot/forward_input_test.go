@@ -4,6 +4,7 @@ package qqonebot
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -78,7 +79,7 @@ func TestPrivateForwardExpandsWithoutReference(t *testing.T) {
 	if got := forwardSegmentsForTest(msg.Segments); got != "[forward]" {
 		t.Fatalf("source segments=%q", got)
 	}
-	row, err := history.Repository().GetByPlatformMessage(ctx, "qqonebot", "private:1", "123")
+	row, err := history.Repository().GetByPlatformMessage(ctx, "qqonebot", "private", "1", "123")
 	if err != nil || row.Text != "[forward]" || strings.Contains(row.Segments, "第一条") {
 		t.Fatalf("history=%#v err=%v", row, err)
 	}
@@ -178,7 +179,7 @@ func TestPrivateForwardKeepsAssistantResumeAndFork(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	session := &storage.Session{ID: storage.NewID(), OwnerID: "qqonebot:1", Platform: "qqonebot", PlatformScopeID: "private:1", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive}
+	session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "1"}, Platform: "qqonebot", ChatType: "private", ChatID: "1", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive}
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatal(err)
 	}
@@ -189,13 +190,13 @@ func TestPrivateForwardKeepsAssistantResumeAndFork(t *testing.T) {
 			t.Fatal(err)
 		}
 		id := []string{"41", "42"}[i]
-		if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: "qqonebot", PlatformScopeID: "private:1", PlatformMessageID: id, MessageID: message.ID, SessionID: session.ID}); err != nil {
+		if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: "qqonebot", ChatType: "private", ChatID: "1", PlatformMessageID: id, MessageID: message.ID, SessionID: session.ID}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	a := newTestAdapter(t, Config{}, store, nil)
 	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
-		if opts.Text != "" || opts.ScopeID != "private:1" {
+		if opts.Text != "" || (opts.ChatType != "private" || opts.ChatID != "1") {
 			t.Fatalf("reference options = %#v", opts)
 		}
 		if opts.ReplyID == "41" {

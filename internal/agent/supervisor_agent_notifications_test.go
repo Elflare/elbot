@@ -31,9 +31,11 @@ func TestNotificationFactsUseGlobalSignalAndVisionDedup(t *testing.T) {
 		_ = facts.StatusChanged.Close(context.Background())
 		_ = facts.VisionFallbackUsed.Close(context.Background())
 	})
-	conversation := contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ScopeID: "original"}}
+	conversation := contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ChatID: "original", ChatType:
 	// The event origin deliberately differs from the ambient context.
-	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "other", ScopeID: "wrong"}})
+	"cli"}}
+
+	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "other", ChatID: "wrong"}})
 	for range 2 {
 		if _, err := facts.VisionFallbackUsed.Emit(ctx, dialogue.VisionFallbackUsedEvent{SessionID: "one", Conversation: &conversation, Visible: true}); err != nil {
 			t.Fatal(err)

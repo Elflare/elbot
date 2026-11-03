@@ -56,7 +56,7 @@ func TestRouterPreservesConcurrentSourceSnapshots(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := range 24 {
 		id := fmt.Sprint(i)
-		info := contextinfo.Conversation{Source: contextinfo.Source{Platform: sender.Name(), ScopeID: id}, PlatformMessageID: "message-" + id, PlatformData: id}
+		info := contextinfo.Conversation{Source: contextinfo.Source{Platform: sender.Name(), ChatID: id}, PlatformMessageID: "message-" + id, PlatformData: id}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -71,7 +71,7 @@ func TestRouterPreservesConcurrentSourceSnapshots(t *testing.T) {
 		t.Fatalf("received %d snapshots", len(seen))
 	}
 	for id, info := range seen {
-		if info.Source.ScopeID != id || info.PlatformMessageID != "message-"+id || info.PlatformData != id {
+		if info.Source.ChatID != id || info.PlatformMessageID != "message-"+id || info.PlatformData != id {
 			t.Fatalf("mixed source: %#v", info)
 		}
 	}
@@ -82,7 +82,7 @@ func TestRouterExplicitTargetOverridesSenderAndKeepsPartialReceipt(t *testing.T)
 	primaryCalls, overrideCalls := 0, 0
 	primary := testSender{send: func(_ context.Context, nTarget delivery.Target, nOutputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 		primaryCalls++
-		if nTarget.PrivateUserID != "other" {
+		if nTarget.ChatID != "other" {
 			t.Fatalf("target lost: %#v", nTarget)
 		}
 		{
@@ -109,7 +109,7 @@ func TestRouterExplicitTargetOverridesSenderAndKeepsPartialReceipt(t *testing.T)
 	if _, _, err := router.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("reply")}); err != nil {
 		t.Fatal(err)
 	}
-	got, logResult, err := router.SendTo(ctx, delivery.Target{PrivateUserID: "other"}, []delivery.Output{delivery.Text("explicit")})
+	got, logResult, err := router.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "other"}, []delivery.Output{delivery.Text("explicit")})
 	if !errors.Is(err, wantErr) || logResult.ResultStatus != events.ResultFailed || !strings.Contains(logResult.Content, wantErr.Error()) || len(got.PlatformMessageIDs) != 1 || primaryCalls != 1 || overrideCalls != 1 {
 		t.Fatalf("receipt=%#v error=%v calls=%d/%d", got, err, primaryCalls, overrideCalls)
 	}

@@ -153,7 +153,7 @@ func TestElnisDeliveryPreservesSourceLogResultAndBusinessState(t *testing.T) {
 		} {
 			t.Run(mode+"/"+tc.name, func(t *testing.T) {
 				send := func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-					return delivery.Receipt{PlatformMessageIDs: []string{"partial"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ScopeID: "private:1001", PlatformMessageID: "partial", OutputIndexes: []int{0}}}}, events.LogResult{ResultStatus: tc.status, Content: "source diagnostic; one destination received output"}, tc.err
+					return delivery.Receipt{PlatformMessageIDs: []string{"partial"}, SentMessages: []delivery.SentMessage{{Platform: "qqonebot", ChatType: "private", ChatID: "1001", PlatformMessageID: "partial", OutputIndexes: []int{0}}}}, events.LogResult{ResultStatus: tc.status, Content: "source diagnostic; one destination received output"}, tc.err
 				}
 				var service *Service
 				var queued QueuedLLMEvent

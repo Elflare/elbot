@@ -2,6 +2,7 @@
 package share
 
 import (
+	"elbot/internal/contextinfo"
 	"errors"
 	"time"
 )
@@ -17,9 +18,10 @@ var (
 const MaxFetchAttempts = 5
 
 type MessageKey struct {
-	Platform  string // 消息所属平台。
-	ScopeID   string // 平台内的群聊或私聊范围。
-	MessageID string // 平台消息 ID，不含展示用的 # 前缀。
+	Platform  string               // 消息所属平台。
+	ChatType  contextinfo.ChatType // 会话类型，与原生 ID 共同标识会话。
+	ChatID    string               // 平台内的群聊或私聊范围。
+	MessageID string               // 平台消息 ID，不含展示用的 # 前缀。
 }
 
 type Message struct {
@@ -40,16 +42,17 @@ type ReplyContext struct {
 }
 
 type SearchRequest struct {
-	Platform  *string // 显式指定的平台；nil 表示未提供，仅后台允许且必填。
-	Scope     *string // 显式指定的聊天范围；nil 表示未提供，仅后台允许且必填。
-	Query     string  // 工具输入的关键词文本。
-	QueryMode string  // 关键词组合方式。
-	User      string  // 同时用于用户 ID 精确匹配或昵称包含匹配，不解析特殊写法。
-	Since     string  // 用户输入的开始时间。
-	Until     string  // 用户输入的结束时间。
-	Hours     int     // 无有效 Since 时使用的最近小时数。
-	Days      int     // 无有效 Since 和 Hours 时使用的最近天数。
-	Limit     int     // 用户请求的数量，组件统一应用默认值和上限。
+	Platform  *string               // 显式指定的平台；nil 表示未提供，仅后台允许且必填。
+	ChatType  *contextinfo.ChatType // 显式指定的会话类型；仅后台允许且必填。
+	ChatID    *string               // 原生会话 ID；仅后台允许且必填。
+	Query     string                // 工具输入的关键词文本。
+	QueryMode string                // 关键词组合方式。
+	User      string                // 同时用于用户 ID 精确匹配或昵称包含匹配，不解析特殊写法。
+	Since     string                // 用户输入的开始时间。
+	Until     string                // 用户输入的结束时间。
+	Hours     int                   // 无有效 Since 时使用的最近小时数。
+	Days      int                   // 无有效 Since 和 Hours 时使用的最近天数。
+	Limit     int                   // 用户请求的数量，组件统一应用默认值和上限。
 }
 
 type AroundRequest struct {

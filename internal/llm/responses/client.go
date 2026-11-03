@@ -234,21 +234,11 @@ func (c *Client) StreamPrepared(ctx context.Context, prepared PreparedRequest) (
 		Type:      globalevents.ContentJSON,
 		Content:   string(content),
 	}
-	if facts.SessionID != "" {
-		record.Identity.SessionID = &facts.SessionID
-	}
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
+	record.Identity.SessionID = &facts.SessionID
+	record.Identity.RunID = &facts.RunID
+	record.Identity.Attempt = &facts.Attempt
+	record.Identity.RequestID = &facts.RequestID
+	record.Identity.RootRequestID = &facts.RootRequestID
 	_ = globalevents.EmitLog(ctx, record)
 
 	callCtx, cancel := context.WithCancel(ctx)

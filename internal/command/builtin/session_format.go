@@ -213,7 +213,7 @@ func formatSessionsWithOffset(sessions []storage.SessionSummary, currentID strin
 		if i > 0 {
 			sb.WriteString("\n")
 		}
-		sb.WriteString(fmt.Sprintf("[%d] %s%s\n%s · %s/%s · %s · msgs=%d\n", numberOffset+i+1, title, sessionMarkers(s, currentID), s.ID, s.Platform, s.PlatformScopeID, formatTime(s.UpdatedAt), s.MessageCount))
+		sb.WriteString(fmt.Sprintf("[%d] %s%s\n%s · %s/%s · %s · msgs=%d\n", numberOffset+i+1, title, sessionMarkers(s, currentID), s.ID, s.Platform, s.ChatID, formatTime(s.UpdatedAt), s.MessageCount))
 		if preview := sessionMessagePreview(s.Messages); preview != "" {
 			sb.WriteString(preview + "\n")
 		}
@@ -247,7 +247,7 @@ default=%s · model=%s/%s
 compact.model=%s/%s
 platform=%s/%s
 phase=idle · pending=0
-`, deps.Sessions.DefaultMode(), modeModel.Provider, modeModel.Model, compactModel.Provider, compactModel.Model, scope.Platform, scope.PlatformScopeID))
+`, deps.Sessions.DefaultMode(), modeModel.Provider, modeModel.Model, compactModel.Provider, compactModel.Model, scope.Platform, scope.ChatID))
 }
 
 func indentStatusBlock(text string) string {

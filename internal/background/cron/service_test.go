@@ -155,8 +155,8 @@ func TestRunLLMMapsReportNoticeToBackgroundMessage(t *testing.T) {
 		Runner:           runner,
 		EnabledPlatforms: []PlatformTarget{{Name: "qq-onebot", SuperadminIDs: []string{"1001"}}},
 		SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-			if target.Platform == "qq-onebot" && target.PrivateUserID == "1001" {
-				return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}, SentMessages: []delivery.SentMessage{{Platform: "qq-onebot", ScopeID: "private:1001", PlatformMessageID: "notice-1"}}}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+			if target.Platform == "qq-onebot" && target.ChatID == "1001" {
+				return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}, SentMessages: []delivery.SentMessage{{Platform: "qq-onebot", ChatType: "private", ChatID: "1001", PlatformMessageID: "notice-1"}}}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 			}
 			return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 		},
@@ -166,7 +166,7 @@ func TestRunLLMMapsReportNoticeToBackgroundMessage(t *testing.T) {
 	if _, err := svc.runTask(ctx, *job, meta); err != nil {
 		t.Fatalf("runTask: %v", err)
 	}
-	if len(store.mappings) != 1 || store.mappings[0] != (background.ReportMessageMap{Platform: "qq-onebot", PlatformScopeID: "private:1001", PlatformMessageID: "notice-1", SessionID: "cron-session", MessageID: "cron-message"}) {
+	if len(store.mappings) != 1 || store.mappings[0] != (background.ReportMessageMap{Platform: "qq-onebot", ChatType: "private", ChatID: "1001", PlatformMessageID: "notice-1", SessionID: "cron-session", MessageID: "cron-message"}) {
 		t.Fatalf("mappings = %#v", store.mappings)
 	}
 }
@@ -185,10 +185,10 @@ func TestCopyCronSessionUsesTaskSourceAndPreservesMetadata(t *testing.T) {
 		t.Fatalf("copies=%#v", copies)
 	}
 	for _, req := range copies {
-		if want := map[string]string{"qq-onebot": "1", "telegram": "2"}[req.Scope.Platform]; req.Scope.PlatformUserID != want {
+		if want := map[string]string{"qq-onebot": "1", "telegram": "2"}[req.Scope.Platform]; req.Scope.Owner.ID != want {
 			t.Fatalf("copy lost native user ID: %+v", req.Scope)
 		}
-		if req.SourceSessionID != "source" || req.Scope.Platform == "cli" || req.Scope.PlatformScopeID != "cron:user.cron.test" || string(req.Metadata["cron_broadcast_copy"]) != "true" || string(req.Metadata["cron_source_session_id"]) != `"source"` || string(req.Metadata["cron_job_name"]) != `"user.cron.test"` {
+		if req.SourceSessionID != "source" || req.Scope.Platform == "cli" || (req.Scope.TaskType != "cron" || req.Scope.TaskID != "user.cron.test") || string(req.Metadata["cron_broadcast_copy"]) != "true" || string(req.Metadata["cron_source_session_id"]) != `"source"` || string(req.Metadata["cron_job_name"]) != `"user.cron.test"` {
 			t.Fatalf("copy=%#v", req)
 		}
 	}
@@ -247,7 +247,7 @@ func TestMissedOnceFallsBackToTextWhenSandboxAttachmentIsMissing(t *testing.T) {
 		t.Fatal("job should be disabled after fallback text is delivered")
 	}
 	got := mustDecodeTestDelivery(t, repo.jobs[job.Name].DeliveryState)
-	if status := findDeliveryOutputStatus(*findDeliveryTargetState(got, "cli|superadmins"), "segment:0"); status != DeliveryFallbackDelivered {
+	if status := findDeliveryOutputStatus(*findDeliveryTargetState(got, delivery.Target{Platform: "cli", Superadmins: true}), "segment:0"); status != DeliveryFallbackDelivered {
 		t.Fatalf("segment status = %q", status)
 	}
 }
@@ -416,7 +416,7 @@ func TestDisableDuringMissedDeliveryDoesNotReenableJob(t *testing.T) {
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
-	meta := Metadata{Kind: metadataKind, Version: 2, Title: "提醒", CreatedBy: CronActor{Platform: "cli", PlatformUserID: "local"}, Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "正文"}, Target: CronTarget{SourcePlatform: "cli"}}
+	meta := Metadata{Kind: metadataKind, Version: 2, Title: "提醒", CreatedBy: CronActor{Platform: "cli", ID: "local"}, Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "正文"}, Target: CronTarget{SourcePlatform: "cli"}}
 	job := upsertTestCronJob(t, store, meta)
 
 	done := make(chan struct{})
@@ -634,7 +634,7 @@ func TestPlatformConnectedSkipsAlreadyDeliveredPlatform(t *testing.T) {
 	})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "提醒", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "该测试啦"}, Target: CronTarget{SourcePlatform: "cli"}})
-	state := CronDeliveryState{RunID: "run", ReportReady: true, NeedReport: true, TaskCompleted: true, Report: "该测试啦", Targets: []CronDeliveryTargetState{{Key: "cli|superadmins", Outputs: []CronDeliveryOutputState{{ID: "text", Status: DeliveryDelivered}}}}}
+	state := CronDeliveryState{RunID: "run", ReportReady: true, NeedReport: true, TaskCompleted: true, Report: "该测试啦", Targets: []CronDeliveryTargetState{{Target: delivery.Target{Platform: "cli", Superadmins: true}, Outputs: []CronDeliveryOutputState{{ID: "text", Status: DeliveryDelivered}}}}}
 	repo.jobs[job.Name].DeliveryState = mustMarshalTestDelivery(t, state)
 	repo.jobs[job.Name].DeliveryToken = "run"
 
@@ -794,10 +794,9 @@ func mustMarshalTestDelivery(t *testing.T, state CronDeliveryState) string {
 }
 
 func deliveryPlatformDone(state CronDeliveryState, platformName string) bool {
-	prefix := platformName + "|"
 	found := false
 	for _, target := range state.Targets {
-		if !strings.HasPrefix(target.Key, prefix) {
+		if target.Target.Platform != platformName {
 			continue
 		}
 		found = true

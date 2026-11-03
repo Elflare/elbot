@@ -54,7 +54,7 @@ func TestReplyDeliveryRecordsOncePerSend(t *testing.T) {
 			f.ctx = contextinfo.WithExecution(f.ctx, contextinfo.Execution{SessionID: f.in.Session.ID, RequestID: "delivery-request"})
 			f.platform.outputsReceipt = delivery.Receipt{
 				PlatformMessageIDs: []string{"emoticon"},
-				SentMessages:       []delivery.SentMessage{{Platform: "telegram", ScopeID: "private:actual", PlatformMessageID: "emoticon", OutputIndexes: []int{0}}},
+				SentMessages:       []delivery.SentMessage{{Platform: "telegram", ChatType: "private", ChatID: "actual", PlatformMessageID: "emoticon", OutputIndexes: []int{0}}},
 			}
 			if mode == "stream" {
 				f.in.Stream = &replyTestStream{events: &f.events, wantCtx: f.requestCtx, t: t, replaceReceipt: f.platform.receipt}
@@ -179,7 +179,7 @@ func TestSendOutputsUsesSourceLogResult(t *testing.T) {
 			t.Cleanup(connection.Disconnect)
 			businessReceipt := delivery.Receipt{
 				PlatformMessageIDs: []string{"sent"},
-				SentMessages:       []delivery.SentMessage{{Platform: "test", ScopeID: "group:1", PlatformMessageID: "sent", OutputIndexes: []int{0}}},
+				SentMessages:       []delivery.SentMessage{{Platform: "test", ChatType: "group", ChatID: "1", PlatformMessageID: "sent", OutputIndexes: []int{0}}},
 			}
 			backend := outputSendFunc(func([]delivery.Output) (delivery.Receipt, events.LogResult, error) {
 				return businessReceipt, events.LogResult{ResultStatus: tc.status, Content: "source-specific diagnostic"}, tc.err

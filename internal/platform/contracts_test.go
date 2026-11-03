@@ -9,7 +9,7 @@ import (
 )
 
 func TestMessageAndConversationFactsAreIndependent(t *testing.T) {
-	origin := contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram", ScopeID: "private:7"}, PlatformMessageID: "source"}
+	origin := contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram", ChatType: "private", ChatID: "7"}, PlatformMessageID: "source"}
 	parent := contextinfo.WithConversation(context.Background(), origin)
 	msg := MessageContext{RawText: "message", Reply: ReplyContext{MessageID: "reply"}}
 	ctx := WithMessageContext(parent, msg)

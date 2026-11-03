@@ -97,7 +97,7 @@ func BenchmarkSignalQueueFull(b *testing.B) {
 
 func BenchmarkSignalKeyed(b *testing.B) {
 	keys := [...]string{"a", "b", "c", "d", "e", "f", "g", "h"}
-	s := New[int, int]("keyed", Options[int]{Capacity: 4096, Key: func(n int) string { return keys[n%len(keys)] }})
+	s := New[int, int]("keyed", Options[int]{Capacity: 4096, Key: func(n int) any { return keys[n%len(keys)] }})
 	defer s.Close(context.Background())
 	_, _ = s.Connect(func(_ context.Context, n int) (int, error) { return n, nil }, ConnectOptions{})
 	b.ReportAllocs()

@@ -28,7 +28,9 @@ func auditInfo() command.Info {
 --since/--until <time>  时间范围，如 2h、2026-06-03
 --event <name>        事件
 --risk <level>        风险
---actor <id>          用户
+--platform <name>     参与者平台
+--actor-id <id>       原生用户 ID
+--actor-name <name>   参与者展示名
 --session <id>        会话
 --msg <text>          正文过滤
 --contains <text>     正文及原始记录搜索`),
@@ -56,7 +58,7 @@ func elwispInfo() command.Info {
 --mode <mode>        record|direct|llm
 --event-key <key>    事件 key
 --event-id <id>      内部事件 ID
---token <name>       token 名
+--token <name>       HTTP 认证 token 名
 --tag <tag>          标签，可重复
 --msg <text>         正文过滤
 --contains <text>    正文及原始记录搜索`),
@@ -186,7 +188,9 @@ func logCompletionOptions(audit, elwisp bool) []command.CompletionOption {
 			command.CompletionOption{Text: "--run_source", Description: "来源: foreground/cron/elnis"},
 			command.CompletionOption{Text: "--event", Description: "事件过滤"},
 			command.CompletionOption{Text: "--risk", Description: "风险过滤"},
-			command.CompletionOption{Text: "--actor", Description: "用户 ID"},
+			command.CompletionOption{Text: "--platform", Description: "参与者平台"},
+			command.CompletionOption{Text: "--actor-id", Description: "原生用户 ID"},
+			command.CompletionOption{Text: "--actor-name", Description: "参与者展示名"},
 			command.CompletionOption{Text: "--session", Description: "会话 ID"},
 			command.CompletionOption{Text: "--tool", Description: "工具名称"},
 		)
@@ -221,9 +225,6 @@ func previousLogToken(raw string, tokenStart int) string {
 }
 
 func queryLogs(ctx context.Context, deps Deps, query logging.LogQuery, formatter func([]logging.LogEntry) string) (*command.Result, error) {
-	if deps.Logs == nil {
-		return &command.Result{Content: "logs: not configured"}, nil
-	}
 	entries, err := deps.Logs.Query(ctx, query)
 	if err != nil {
 		return nil, err

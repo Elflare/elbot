@@ -4,6 +4,7 @@ package qqofficial
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"elbot/internal/platform/share"
 	"errors"
 	"fmt"
@@ -39,11 +40,11 @@ func inboundReferenceIndexes(msg inboundMessage) (msgIndex, refIndex string) {
 	return msgIndex, refIndex
 }
 
-func (a *Adapter) resolveInboundReplyID(ctx context.Context, scopeID, refIndex string) (string, error) {
+func (a *Adapter) resolveInboundReplyID(ctx context.Context, conversationKind contextinfo.ChatType, scopeID, refIndex string) (string, error) {
 	if refIndex == "" {
 		return "", nil
 	}
-	id, err := a.chatHistory.ResolvePlatformMessageAlias(ctx, a.Name(), scopeID, refIndex)
+	id, err := a.chatHistory.ResolvePlatformMessageAlias(ctx, a.Name(), conversationKind, scopeID, refIndex)
 	if errors.Is(err, storage.ErrNotFound) {
 		return "", nil
 	}
@@ -63,13 +64,13 @@ func inboundReferencedMessage(msg inboundMessage, refIndex string) share.Referen
 	return share.ReferencedMessage{Text: text, Segments: segments}
 }
 
-func (a *Adapter) recordMessageAlias(ctx context.Context, scopeID, alias, messageID string) {
+func (a *Adapter) recordMessageAlias(ctx context.Context, conversationKind contextinfo.ChatType, scopeID, alias, messageID string) {
 	alias, messageID = strings.TrimSpace(alias), strings.TrimSpace(messageID)
 	if alias == "" || messageID == "" {
 		return
 	}
 	if err := a.chatHistory.MapPlatformMessageAlias(ctx, storage.PlatformMessageAlias{
-		Platform: a.Name(), PlatformScopeID: scopeID, Alias: alias, PlatformMessageID: messageID,
+		Platform: a.Name(), ChatType: conversationKind, ChatID: scopeID, Alias: alias, PlatformMessageID: messageID,
 	}); err != nil {
 		_ = globalevents.EmitLog(context.WithoutCancel(ctx), globalevents.LogRecord{
 			Category: globalevents.LogRuntime, Level: slog.LevelWarn,

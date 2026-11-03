@@ -29,7 +29,7 @@ type OutputSender struct {
 }
 
 func (o *OutputSender) SendOutputs(ctx context.Context, outputs []delivery.Output) (globalevents.LogResult, error) {
-	if contextinfo.BackgroundContext(ctx) {
+	if agentshare.ExecutionMode(ctx) == "background" {
 		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "background output is silent"}, nil
 	}
 	receipt, logResult, err := o.dispatcher.SendTo(ctx, delivery.Target{}, outputs)
@@ -44,7 +44,7 @@ func (o *OutputSender) observeDelivery(ctx context.Context, operation string, re
 	sentMessages := make([]map[string]any, 0, len(receipt.SentMessages))
 	for _, sent := range receipt.SentMessages {
 		sentMessages = append(sentMessages, map[string]any{
-			"platform": sent.Platform, "scope_id": sent.ScopeID,
+			"platform": sent.Platform, "chat_type": sent.ChatType, "chat_id": sent.ChatID,
 			"platform_message_id": sent.PlatformMessageID, "output_indexes": sent.OutputIndexes,
 		})
 	}
@@ -70,21 +70,11 @@ func (o *OutputSender) observeDelivery(ctx context.Context, operation string, re
 		record.Level = slog.LevelInfo
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if facts.SessionID != "" {
-		record.Identity.SessionID = &facts.SessionID
-	}
-	if facts.RunID != "" {
-		record.Identity.RunID = &facts.RunID
-	}
-	if facts.Attempt != "" {
-		record.Identity.Attempt = &facts.Attempt
-	}
-	if facts.RequestID != "" {
-		record.Identity.RequestID = &facts.RequestID
-	}
-	if facts.RootRequestID != "" {
-		record.Identity.RootRequestID = &facts.RootRequestID
-	}
+	record.Identity.SessionID = &facts.SessionID
+	record.Identity.RunID = &facts.RunID
+	record.Identity.Attempt = &facts.Attempt
+	record.Identity.RequestID = &facts.RequestID
+	record.Identity.RootRequestID = &facts.RootRequestID
 	_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 }
 
@@ -94,7 +84,7 @@ func (o *OutputSender) SendChat(ctx context.Context, text string) error {
 }
 
 func (o *OutputSender) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) error {
-	if target.Empty() && contextinfo.BackgroundContext(ctx) {
+	if target.Empty() && (agentshare.ExecutionMode(ctx) == "background") {
 		return nil
 	}
 	_, _, err := o.dispatcher.SendTo(ctx, target, outputs)
@@ -110,7 +100,7 @@ func (o *OutputSender) PrepareAssistant(ctx context.Context, text string) (strin
 }
 
 func (o *OutputSender) SendAssistant(ctx context.Context, text string, actions ...delivery.Action) (receipt delivery.Receipt, logResult globalevents.LogResult, err error) {
-	if contextinfo.BackgroundContext(ctx) {
+	if agentshare.ExecutionMode(ctx) == "background" {
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "background output is silent"}, nil
 	}
 	if strings.TrimSpace(text) == "" && agentshare.BufferAssistantOutput(ctx) {
@@ -140,21 +130,11 @@ func (o *OutputSender) SendAssistant(ctx context.Context, text string, actions .
 				record.Level = slog.LevelInfo
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
+			record.Identity.SessionID = &facts.SessionID
+			record.Identity.RunID = &facts.RunID
+			record.Identity.Attempt = &facts.Attempt
+			record.Identity.RequestID = &facts.RequestID
+			record.Identity.RootRequestID = &facts.RootRequestID
 			_ = globalevents.EmitLog(ctx, record)
 		}
 
@@ -168,7 +148,7 @@ func (o *OutputSender) SendAssistant(ctx context.Context, text string, actions .
 }
 
 func (o *OutputSender) Notify(ctx context.Context, level slog.Level, text string) {
-	if contextinfo.BackgroundContext(ctx) || strings.TrimSpace(text) == "" {
+	if (agentshare.ExecutionMode(ctx) == "background") || strings.TrimSpace(text) == "" {
 		return
 	}
 	_, _ = globalevents.NotificationRequested.EmitAsync(ctx, globalevents.NewNotification(ctx, level, text))
@@ -178,11 +158,11 @@ func (o *OutputSender) Notify(ctx context.Context, level slog.Level, text string
 // any multiline body. General workflow notices also occupy one argument.
 // It prefixes each nonblank notice once, joins them, and runs the output Hook once.
 func (o *OutputSender) Preview(ctx context.Context, text ...string) {
-	if contextinfo.BackgroundContext(ctx) {
+	if agentshare.ExecutionMode(ctx) == "background" {
 		return
 	}
 	info, _ := contextinfo.ConversationFromContext(ctx)
-	if info.Source.ConversationKind == contextinfo.ConversationGroup {
+	if info.Source.ChatType == contextinfo.ChatGroup {
 		return
 	}
 	lines := make([]string, 0, len(text))
@@ -271,7 +251,7 @@ func (o *OutputSender) ReplaceAndFinishStream(ctx context.Context, streamCtx con
 	}
 	for _, sent := range finishReceipt.SentMessages {
 		i := slices.IndexFunc(receipt.SentMessages, func(message delivery.SentMessage) bool {
-			return message.Platform == sent.Platform && message.ScopeID == sent.ScopeID && message.PlatformMessageID == sent.PlatformMessageID
+			return message.Platform == sent.Platform && message.ChatType == sent.ChatType && message.ChatID == sent.ChatID && message.PlatformMessageID == sent.PlatformMessageID
 		})
 		if i < 0 {
 			sent.OutputIndexes = append([]int(nil), sent.OutputIndexes...)
@@ -288,14 +268,14 @@ func (o *OutputSender) ReplaceAndFinishStream(ctx context.Context, streamCtx con
 }
 
 func (o *OutputSender) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	if contextinfo.BackgroundContext(ctx) || agentshare.BufferAssistantOutput(ctx) {
+	if (agentshare.ExecutionMode(ctx) == "background") || agentshare.BufferAssistantOutput(ctx) {
 		return nil, nil
 	}
 	return o.dispatcher.StartStream(ctx)
 }
 
 func (o *OutputSender) StartReasoning(ctx context.Context) delivery.ReasoningStream {
-	if contextinfo.BackgroundContext(ctx) || o.reasoning == nil {
+	if (agentshare.ExecutionMode(ctx) == "background") || o.reasoning == nil {
 		return nil
 	}
 	return o.reasoning(ctx)

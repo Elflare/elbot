@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 
@@ -29,33 +28,22 @@ type BackgroundHandler struct {
 
 func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundRequest) turn.Result {
 	actor := req.Actor
-	platformName := req.Platform
-	if platformName == "" {
-		platformName = actor.Platform
-	}
-	scopeID := req.ScopeID
-	if scopeID == "" {
-		scopeID = backgroundScopeID(req.Kind, req.Name)
-	}
-	ctx = contextinfo.WithConversation(ctx, contextinfo.Conversation{
-		Source:   contextinfo.Source{Platform: platformName, ScopeID: scopeID},
-		Identity: contextinfo.Identity{ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, Nickname: actor.Nickname, GroupCard: actor.GroupCard, DisplayName: actor.DisplayName},
-	})
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	facts.Mode, facts.TaskType, facts.TaskID = storage.SessionModeBackground, req.TaskType, req.TaskID
+	ctx = contextinfo.WithExecution(ctx, facts)
+	ctx = contextinfo.WithoutConversation(ctx)
 	previous, _ := agentshare.MessageContextFrom(ctx)
 	ctx = agentshare.WithMessageContext(ctx, agentshare.MessageContext{RawText: req.Prompt, Segments: backgroundPromptSegments(req.PromptSegments), RestoreMessageContext: previous.RestoreMessageContext})
 	ctx = r.WithPermission(contextinfo.WithActor(ctx, actor))
 
-	scope, ok := workspace.PathScopeFromContext(ctx)
-	if !ok || strings.TrimSpace(scope.Dir) == "" {
-		return turn.Result{Err: fmt.Errorf("background workspace scope is required")}
-	}
+	scope, _ := workspace.PathScopeFromContext(ctx)
 
 	if req.ModelProvider != "" || req.Model != "" {
 		ctx = modelmgr.WithSelectionOverride(ctx, config.ModelSelection{Provider: req.ModelProvider, Model: req.Model})
 	}
 
-	sessionScope := session.Scope{ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, Platform: platformName, PlatformScopeID: scopeID, IsCLI: r.Identity.IsCLI(ctx)}
-	bgSession, err := r.Sessions.PrepareBackground(ctx, sessionScope, session.BackgroundRequest{TargetPlatforms: req.TargetPlatforms, SessionID: req.SessionID, Kind: string(req.Kind), Name: req.Name, Title: req.Title, Metadata: req.Metadata})
+	sessionScope := session.Scope{Owner: actor.ActorIdentity, Platform: actor.Platform, TaskType: req.TaskType, TaskID: req.TaskID}
+	bgSession, err := r.Sessions.PrepareBackground(ctx, sessionScope, session.BackgroundRequest{TargetPlatforms: req.TargetPlatforms, SessionID: req.SessionID, TaskType: string(req.TaskType), TaskID: req.TaskID, Name: req.Name, Metadata: req.Metadata})
 	if err != nil {
 		if errors.Is(err, session.ErrForegroundSession) {
 			return turn.Result{SessionID: req.SessionID, TakenOver: true, Outcome: "taken_over"}
@@ -84,23 +72,23 @@ func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundReq
 		ContentLimit: 4096,
 		ResultStatus: globalevents.ResultSucceeded,
 	}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	facts, _ = contextinfo.ExecutionFromContext(ctx)
 	facts.SessionID = bgSession.ID
 	if len(preloaded.Tools) > 0 {
 		content, _ := json.Marshal(struct {
-			Kind  string   `json:"kind"`
-			Name  string   `json:"name"`
-			Tools []string `json:"tools"`
-		}{req.Kind, req.Name, preloaded.Tools})
+			TaskType string   `json:"task_type"`
+			TaskID   string   `json:"task_id"`
+			Tools    []string `json:"tools"`
+		}{req.TaskType, req.TaskID, preloaded.Tools})
 		record.EventName, record.Content = "background_tool_preloaded", string(content)
 		agentshare.EmitAgentLog(ctx, facts, record)
 	}
 	if len(preloaded.Skills) > 0 {
 		content, _ := json.Marshal(struct {
-			Kind   string   `json:"kind"`
-			Name   string   `json:"name"`
-			Skills []string `json:"skills"`
-		}{req.Kind, req.Name, preloaded.Skills})
+			TaskType string   `json:"task_type"`
+			TaskID   string   `json:"task_id"`
+			Skills   []string `json:"skills"`
+		}{req.TaskType, req.TaskID, preloaded.Skills})
 		record.EventName, record.Content = "background_skill_preloaded", string(content)
 		agentshare.EmitAgentLog(ctx, facts, record)
 	}
@@ -128,18 +116,6 @@ func backgroundPromptSegments(segments []llm.MessageSegment) []agentshare.Messag
 		}
 	}
 	return out
-}
-
-func backgroundScopeID(kind string, name string) string {
-	kindText := strings.TrimSpace(string(kind))
-	name = strings.TrimSpace(name)
-	if kindText == "" {
-		kindText = "background"
-	}
-	if name == "" {
-		return kindText + ":default"
-	}
-	return kindText + ":" + name
 }
 
 type backgroundPreloadResult struct {

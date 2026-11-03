@@ -77,18 +77,10 @@ func formatContextStatus(ctx context.Context, deps Deps, row *storage.Session, m
 			ResultStatus: globalevents.ResultFailed,
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
+		record.Identity.RunID = &facts.RunID
+		record.Identity.Attempt = &facts.Attempt
+		record.Identity.RequestID = &facts.RequestID
+		record.Identity.RootRequestID = &facts.RootRequestID
 		_ = globalevents.EmitLog(ctx, record)
 	}
 	return deps.Contexts.Status(ctx, usage, config.ModelSelection{Provider: model.Provider, Model: model.Model})

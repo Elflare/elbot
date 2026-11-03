@@ -102,7 +102,7 @@ func TestLocalCloseTimeoutKeepsWorkAndCanRetry(t *testing.T) {
 	entered, release := make(chan struct{}), make(chan struct{})
 	defer close(release)
 	if err := a.Start(t.Context(), func(ctx context.Context, text string, msg share.MessageContext) error {
-		if text != "hello" || msg.RawText != text || msg.Sender != a || msg.Conversation.Identity.ActorID != "cli:local" {
+		if text != "hello" || msg.RawText != text || msg.Sender != a || msg.Conversation.Identity.ID != "local" {
 			t.Error(text, msg)
 		}
 		close(entered)

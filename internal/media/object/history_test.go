@@ -2,6 +2,7 @@ package object
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"fmt"
 	"testing"
@@ -13,7 +14,7 @@ import (
 
 type testHistory func(context.Context, string, string, string) (*storage.ChatMessage, error)
 
-func (h testHistory) GetByPlatformMessage(ctx context.Context, p, s, id string) (*storage.ChatMessage, error) {
+func (h testHistory) GetByPlatformMessage(ctx context.Context, p string, conversationKind contextinfo.ChatType, s string, id string) (*storage.ChatMessage, error) {
 	return h(ctx, p, s, id)
 }
 
@@ -21,16 +22,16 @@ func TestHistoryMergesMatchingAssociationsAndOutputs(t *testing.T) {
 	m, store, _ := newTestManager(t)
 	first := importTestMedia(t, m, "first")
 	second := importTestMedia(t, m, "second")
-	key := share.HistoryKey{ID: "history", Platform: "test", ScopeID: "scope", MessageID: "message"}
+	key := share.HistoryKey{ID: "history", Platform: "test", ChatID: "scope", MessageID: "message"}
 	for _, index := range []int{1, 2, 3} {
 		if err := m.AssociateHistory(t.Context(), key, index, "image", first.ID); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for _, output := range []storage.MediaOutput{
-		{Platform: "test", ScopeID: "scope", MessageID: "message", SegmentIndex: 0, Kind: "image", MediaID: first.ID, ExpiresAt: time.Now().Add(time.Hour)},
-		{Platform: "test", ScopeID: "scope", MessageID: "message", SegmentIndex: 1, Kind: "file", MediaID: second.ID, ExpiresAt: time.Now().Add(time.Hour)},
-		{Platform: "test", ScopeID: "scope", MessageID: "message", SegmentIndex: 2, Kind: "file", MediaID: second.ID, ExpiresAt: time.Now().Add(-time.Hour)},
+		{Platform: "test", ChatID: "scope", MessageID: "message", SegmentIndex: 0, Kind: "image", MediaID: first.ID, ExpiresAt: time.Now().Add(time.Hour)},
+		{Platform: "test", ChatID: "scope", MessageID: "message", SegmentIndex: 1, Kind: "file", MediaID: second.ID, ExpiresAt: time.Now().Add(time.Hour)},
+		{Platform: "test", ChatID: "scope", MessageID: "message", SegmentIndex: 2, Kind: "file", MediaID: second.ID, ExpiresAt: time.Now().Add(-time.Hour)},
 	} {
 		if err := store.Media().SaveOutput(t.Context(), output); err != nil {
 			t.Fatal(err)
@@ -61,7 +62,7 @@ func TestHistoryMergesMatchingAssociationsAndOutputs(t *testing.T) {
 func TestReconcileHistoryPaginatesAndStopsOnQueryFailure(t *testing.T) {
 	m, store, _ := newTestManager(t)
 	item := importTestMedia(t, m, "history")
-	key := share.HistoryKey{ID: "old-history", Platform: "test", ScopeID: "scope", MessageID: "message"}
+	key := share.HistoryKey{ID: "old-history", Platform: "test", ChatID: "scope", MessageID: "message"}
 	for index := 1; index <= 105; index++ {
 		if err := m.AssociateHistory(t.Context(), key, index, "file", item.ID); err != nil {
 			t.Fatal(err)
@@ -73,7 +74,7 @@ func TestReconcileHistoryPaginatesAndStopsOnQueryFailure(t *testing.T) {
 	if _, err := m.Cleanup(t.Context(), unavailable); !errors.Is(err, failure) {
 		t.Fatalf("query failure = %v", err)
 	}
-	records, err := store.Media().FindHistory(t.Context(), "test", "scope", "message")
+	records, err := store.Media().FindHistory(t.Context(), "test", "", "scope", "message")
 	if err != nil || len(records) != 105 {
 		t.Fatalf("failure removed associations: %d %v", len(records), err)
 	}
@@ -89,7 +90,7 @@ func TestReconcileHistoryPaginatesAndStopsOnQueryFailure(t *testing.T) {
 	if err := m.ReconcileHistory(t.Context(), replaced); err != nil {
 		t.Fatal(err)
 	}
-	records, err = store.Media().FindHistory(t.Context(), "test", "scope", "message")
+	records, err = store.Media().FindHistory(t.Context(), "test", "", "scope", "message")
 	if err != nil || len(records) != 0 || calls != 1 {
 		t.Fatalf("pagination = %d queries=%d %v", len(records), calls, err)
 	}
@@ -102,7 +103,7 @@ func TestReconcileKeepsExistingAndDeletesConfirmedMissing(t *testing.T) {
 	m, store, _ := newTestManager(t)
 	item := importTestMedia(t, m, "history owners")
 	for i := range 2 {
-		key := share.HistoryKey{ID: fmt.Sprint(i), Platform: "test", ScopeID: "scope", MessageID: fmt.Sprint(i)}
+		key := share.HistoryKey{ID: fmt.Sprint(i), Platform: "test", ChatID: "scope", MessageID: fmt.Sprint(i)}
 		if err := m.AssociateHistory(t.Context(), key, 1, "file", item.ID); err != nil {
 			t.Fatal(err)
 		}

@@ -50,14 +50,14 @@ func TestHandleGroupAtMessageBuildsGroupContext(t *testing.T) {
 	if !ok {
 		t.Fatal("missing message context")
 	}
-	if msgCtx.Conversation.Identity.ActorID != "qqofficial:member-1" || msgCtx.Conversation.Identity.PlatformUserID != "member-1" {
-		t.Fatalf("actor/user = %q/%q", msgCtx.Conversation.Identity.ActorID, msgCtx.Conversation.Identity.PlatformUserID)
+	if msgCtx.Conversation.Identity.ID != "member-1" {
+		t.Fatalf("actor/user = %q/%q", msgCtx.Conversation.Identity.ID, msgCtx.Conversation.Identity.ID)
 	}
 	if msgCtx.GroupRole != contextinfo.GroupRoleUnknown {
 		t.Fatalf("group role = %q, want unknown", msgCtx.GroupRole)
 	}
-	if msgCtx.Conversation.Source.ScopeID != "group:group-1" || msgCtx.Conversation.Source.ConversationKind != contextinfo.ConversationGroup || msgCtx.Conversation.Source.ConversationID != "group-1" {
-		t.Fatalf("scope/conversation = %q/%q", msgCtx.Conversation.Source.ScopeID, msgCtx.Conversation.Source.ConversationKind)
+	if msgCtx.Conversation.Source.ChatType != contextinfo.ChatGroup || msgCtx.Conversation.Source.ChatID != "group-1" {
+		t.Fatalf("scope/conversation = %q/%q", msgCtx.Conversation.Source.ChatID, msgCtx.Conversation.Source.ChatType)
 	}
 	if msgCtx.Bot.UserID != "bot-app" || len(msgCtx.Mentions) != 1 || msgCtx.Mentions[0].UserID != "bot-app" {
 		t.Fatalf("bot/mentions = %#v/%#v", msgCtx.Bot, msgCtx.Mentions)
@@ -105,7 +105,7 @@ func TestHandleGroupMessageRecordsChatHistoryBeforeWakeup(t *testing.T) {
 	defer historyStore.Close()
 	history := historyStore.Repository()
 	adapter := newTestAdapter(t, Config{}, history)
-	mapTestReference(t, adapter, "group:group-1", "REFIDX_reply-1", "reply-1")
+	mapTestReference(t, adapter, "group", "group-1", "REFIDX_reply-1", "reply-1")
 	adapter.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 		if opts.ReplyID != "reply-1" {
 			t.Fatalf("reply = %q", opts.ReplyID)
@@ -122,11 +122,11 @@ func TestHandleGroupMessageRecordsChatHistoryBeforeWakeup(t *testing.T) {
 		MessageScene: messageScene{Ext: []string{"ref_msg_idx=REFIDX_reply-1"}},
 	})
 
-	row, err := history.GetByPlatformMessage(ctx, config.PlatformQQOfficial, "group:group-1", "msg-1")
+	row, err := history.GetByPlatformMessage(ctx, config.PlatformQQOfficial, "group", "group-1", "msg-1")
 	if err != nil {
 		t.Fatalf("get chat history: %v", err)
 	}
-	if row.ScopeType != "group" || row.SenderID != "member-1" || row.Text != "普通消息" {
+	if row.ChatType != "group" || row.SenderID != "member-1" || row.Text != "普通消息" {
 		t.Fatalf("chat history = %#v", row)
 	}
 	if row.Raw != "普通消息" || row.ReplyToPlatformMessageID != "reply-1" {
@@ -140,11 +140,11 @@ func TestHandleGroupMessageRecordsChatHistoryBeforeWakeup(t *testing.T) {
 
 func TestHandleGroupMessageAppliesAssistantReference(t *testing.T) {
 	a := newTestAdapter(t, Config{}, nil)
-	mapTestReference(t, a, "group:group-1", "REFIDX_assistant-1", "assistant-1")
+	mapTestReference(t, a, "group", "group-1", "REFIDX_assistant-1", "assistant-1")
 	called := false
 	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 		called = true
-		if opts.Platform != config.PlatformQQOfficial || opts.ScopeID != "group:group-1" || opts.ReplyID != "assistant-1" || opts.Text != "继续" {
+		if opts.Platform != config.PlatformQQOfficial || (opts.ChatType != "group" || opts.ChatID != "group-1") || opts.ReplyID != "assistant-1" || opts.Text != "继续" {
 			t.Fatalf("options = %+v", opts)
 		}
 		return share.ReferenceResult{ForkFromMessageID: "fork-message", Reply: share.ReplyContext{MessageID: opts.ReplyID}, Text: "resolved"}, nil
@@ -175,15 +175,15 @@ func TestHandleDispatchRoutesOrdinaryGroupMessage(t *testing.T) {
 	}
 	select {
 	case msg := <-handler.result:
-		if msg.Conversation.Source.ScopeID != "group:group-1" {
-			t.Fatalf("scope = %q", msg.Conversation.Source.ScopeID)
+		if msg.Conversation.Source.ChatType != "group" || msg.Conversation.Source.ChatID != "group-1" {
+			t.Fatalf("scope = %q", msg.Conversation.Source.ChatID)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for group dispatch")
 	}
 }
 
-func TestHandleC2CMessageUsesCanonicalActorID(t *testing.T) {
+func TestHandleC2CMessageUsesNativeIdentity(t *testing.T) {
 	adapter := newTestAdapter(t, Config{}, nil)
 	handler := &captureHandler{}
 	adapter.handleC2CMessage(context.Background(), handler.HandleMessage, payload{ID: "event-1", Type: eventC2CMessageCreate}, inboundMessage{
@@ -195,14 +195,14 @@ func TestHandleC2CMessageUsesCanonicalActorID(t *testing.T) {
 	if !ok {
 		t.Fatal("missing message context")
 	}
-	if msgCtx.Conversation.Identity.ActorID != "qqofficial:user-1" {
-		t.Fatalf("actor id = %q, want qqofficial:user-1", msgCtx.Conversation.Identity.ActorID)
+	if msgCtx.Conversation.Identity.ID != "user-1" {
+		t.Fatalf("actor id = %q, want user-1", msgCtx.Conversation.Identity.ID)
 	}
 	if msgCtx.GroupRole != contextinfo.GroupRoleUnknown {
 		t.Fatalf("group role = %q, want unknown", msgCtx.GroupRole)
 	}
-	if msgCtx.Conversation.Identity.PlatformUserID != "user-1" {
-		t.Fatalf("platform user id = %q, want user-1", msgCtx.Conversation.Identity.PlatformUserID)
+	if msgCtx.Conversation.Identity.ID != "user-1" {
+		t.Fatalf("platform user id = %q, want user-1", msgCtx.Conversation.Identity.ID)
 	}
 }
 
@@ -235,11 +235,11 @@ func TestHandleC2CMessageAddsFallbackReferenceText(t *testing.T) {
 
 func TestHandleC2CMessageForksOwnOlderAssistantReference(t *testing.T) {
 	a := newTestAdapter(t, Config{}, nil)
-	mapTestReference(t, a, "c2c:user-1", "REFIDX_old", "platform-old")
+	mapTestReference(t, a, "private", "user-1", "REFIDX_old", "platform-old")
 	called := false
 	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 		called = true
-		if opts.Platform != config.PlatformQQOfficial || opts.ScopeID != "c2c:user-1" || opts.ReplyID != "platform-old" || opts.Text != "继续" {
+		if opts.Platform != config.PlatformQQOfficial || (opts.ChatType != "private" || opts.ChatID != "user-1") || opts.ReplyID != "platform-old" || opts.Text != "继续" {
 			t.Fatalf("options = %+v", opts)
 		}
 		return share.ReferenceResult{ForkFromMessageID: "fork-message", Reply: share.ReplyContext{MessageID: opts.ReplyID}, Text: "resolved"}, nil
@@ -386,11 +386,11 @@ func TestPrepareSourceUsesStructuredSources(t *testing.T) {
 
 func TestHandleC2CMessageResumesLatestAssistantReference(t *testing.T) {
 	a := newTestAdapter(t, Config{}, nil)
-	mapTestReference(t, a, "c2c:user-1", "REFIDX_latest", "platform-latest")
+	mapTestReference(t, a, "private", "user-1", "REFIDX_latest", "platform-latest")
 	called := false
 	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 		called = true
-		if opts.Platform != config.PlatformQQOfficial || opts.ScopeID != "c2c:user-1" || opts.ReplyID != "platform-latest" || opts.Text != "继续" {
+		if opts.Platform != config.PlatformQQOfficial || (opts.ChatType != "private" || opts.ChatID != "user-1") || opts.ReplyID != "platform-latest" || opts.Text != "继续" {
 			t.Fatalf("options = %+v", opts)
 		}
 		return share.ReferenceResult{ResumeSessionID: "resume-session", Reply: share.ReplyContext{MessageID: opts.ReplyID}, Text: "resolved"}, nil

@@ -82,8 +82,8 @@ func (m *Supervisor) handlePlatformConnected(ctx context.Context, platformName s
 	// Global platform work is independent of Agent registration and never creates
 	// an Agent Request, even when this Hook supervisor is connected to an Agent.
 	event, _, err := m.run(ctx, share.Event{
-		Point:    share.PointPlatformConnected,
-		Platform: share.PlatformContext{Name: platformName},
+		Point: share.PointPlatformConnected,
+		Chat:  share.ChatContext{Platform: platformName},
 	}, pipeline.CallOptions{Woken: true})
 	if err != nil || len(event.Outputs) == 0 {
 		return

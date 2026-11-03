@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"elbot/internal/testutil"
 	"strings"
 	"testing"
@@ -72,7 +73,7 @@ func TestResumeAndForkTruncateHistoryWithoutChangingMessages(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)
 	svc := newSessionSupervisor(t, store)
-	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	parent, err := svc.Create(ctx, scope, session.CreateRequest{Title: "parent"})
 	if err != nil {
 		t.Fatalf("create parent: %v", err)
@@ -132,7 +133,7 @@ func TestResumeCommandCompletesSessionIDs(t *testing.T) {
 	store := newCommandTestStore(t)
 
 	svc := newSessionSupervisor(t, store)
-	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	first, err := svc.Create(ctx, scope, session.CreateRequest{Title: "first"})
 	if err != nil {
 		t.Fatalf("create first: %v", err)
@@ -159,7 +160,7 @@ func TestResumeCommandEmitsAudit(t *testing.T) {
 	store := newCommandTestStore(t)
 
 	svc := newSessionSupervisor(t, store)
-	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	created, err := svc.Create(ctx, scope, session.CreateRequest{Title: "audited"})
 	if err != nil {
 		t.Fatalf("create session: %v", err)
@@ -199,7 +200,7 @@ func TestResumeCommandUsesPinnedNonCurrentGlobalIndex(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)
 	svc := newSessionSupervisor(t, store)
-	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	now := storage.Now()
 
 	older, err := svc.Create(ctx, scope, session.CreateRequest{Title: "older pinned"})
@@ -274,12 +275,12 @@ func TestSessionsCommandCLIListsAllPlatformOwners(t *testing.T) {
 	store := newCommandTestStore(t)
 
 	svc := newSessionSupervisor(t, store)
-	qqScope := session.Scope{ActorID: "qqonebot:42", Platform: "qqonebot", PlatformScopeID: "group:9"}
+	qqScope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "42"}, Platform: "qqonebot", ChatType: "group", ChatID: "9"}
 	qqSession, err := svc.Create(ctx, qqScope, session.CreateRequest{Title: "qq visible"})
 	if err != nil {
 		t.Fatalf("create qq session: %v", err)
 	}
-	cliScope := session.Scope{ActorID: "cli:local", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	cliScope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	deps := Deps{CommandText: testCommandText,
 		Sessions:     svc,
 		Scope:        func(context.Context) session.Scope { return cliScope },
@@ -334,7 +335,7 @@ func TestForkMessagesUseForkContextAndForkShowsHistory(t *testing.T) {
 	store := newCommandTestStore(t)
 
 	svc := newSessionSupervisor(t, store)
-	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	parent, err := svc.Create(ctx, scope, session.CreateRequest{Title: "parent"})
 	if err != nil {
 		t.Fatalf("create parent: %v", err)

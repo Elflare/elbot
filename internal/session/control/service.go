@@ -71,9 +71,9 @@ type Status struct {
 type BackgroundRequest struct {
 	TargetPlatforms []string          // 创建时的有效投递平台；续跑保留已有来源快照。
 	SessionID       string            // 非空时复用未接管的后台会话。
-	Kind            string            // 后台来源种类。
-	Name            string            // 后台任务名称。
-	Title           string            // 新会话标题。
+	TaskType        string            // 后台来源种类。
+	TaskID          string            // 后台任务名称。
+	Name            string            // 新会话标题。
 	Metadata        map[string]string // 后台业务附加字段。
 }
 

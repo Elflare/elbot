@@ -260,8 +260,8 @@ func TestLoadConfigLoadsStatefulHookRuntimeAndTriggerRules(t *testing.T) {
 name = "weather"
 description = "weather hook"
 blocked_platform = ["telegram"]
-blocked_group = ["qqonebot:123"]
-blocked_id = ["qqonebot:42"]
+blocked_group.qqonebot = ["123"]
+blocked_id.qqonebot = ["42"]
 
 [plugin.runtime]
 mode = "persistent"
@@ -292,7 +292,7 @@ always = true
 	if len(cfg.Runtimes) != 1 || cfg.Runtimes[0].ID != "weather" || len(cfg.Rules) != 1 || cfg.Rules[0].source.RuntimeID != "weather" {
 		t.Fatalf("config = %#v", cfg)
 	}
-	blockedEvent := share.Event{Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:123"}, Actor: share.ActorContext{UserID: "7"}}
+	blockedEvent := share.Event{Chat: share.ChatContext{Platform: "qqonebot", ChatType: "group", ID: "123"}, Actor: share.ActorContext{Platform: "qqonebot", ID: "7"}}
 	if !cfg.Runtimes[0].Block.Blocks(blockedEvent) || !cfg.Rules[0].source.Block.Blocks(blockedEvent) {
 		t.Fatalf("plugin block policy was not propagated: %#v", cfg)
 	}
@@ -319,7 +319,7 @@ text = "platform"
 name = "block_group"
 on = "platform.message.received"
 always = true
-blocked_group = ["qqonebot:123"]
+blocked_group.qqonebot = ["123"]
 action = "send"
 text = "group"
 
@@ -327,7 +327,7 @@ text = "group"
 name = "block_user"
 on = "platform.message.received"
 always = true
-blocked_id = ["qqonebot:42"]
+blocked_id.qqonebot = ["42"]
 action = "send"
 text = "user"
 `
@@ -341,13 +341,13 @@ text = "user"
 	if len(cfg.Rules) != 3 {
 		t.Fatalf("rules = %#v", cfg.Rules)
 	}
-	if !cfg.Rules[0].source.Block.Blocks(share.Event{Platform: share.PlatformContext{Name: "telegram"}}) {
+	if !cfg.Rules[0].source.Block.Blocks(share.Event{Chat: share.ChatContext{Platform: "telegram"}}) {
 		t.Fatal("platform block was not applied")
 	}
-	if !cfg.Rules[1].source.Block.Blocks(share.Event{Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:123"}}) {
+	if !cfg.Rules[1].source.Block.Blocks(share.Event{Chat: share.ChatContext{Platform: "qqonebot", ChatType: "group", ID: "123"}}) {
 		t.Fatal("group block was not applied")
 	}
-	if !cfg.Rules[2].source.Block.Blocks(share.Event{Platform: share.PlatformContext{Name: "qqonebot"}, Actor: share.ActorContext{UserID: "42"}}) {
+	if !cfg.Rules[2].source.Block.Blocks(share.Event{Chat: share.ChatContext{Platform: "qqonebot"}, Actor: share.ActorContext{Platform: "qqonebot", ID: "42"}}) {
 		t.Fatal("user block was not applied")
 	}
 }
@@ -358,7 +358,7 @@ func TestRootRuleBlockSkipsExecAndContinues(t *testing.T) {
 name = "blocked_exec"
 on = "platform.message.received"
 always = true
-blocked_group = ["qqonebot:123"]
+blocked_group.qqonebot = ["123"]
 action = "exec"
 command = ["program-that-must-not-run"]
 
@@ -379,8 +379,8 @@ text = "continued"
 	manager := pipeline.NewManager(testLog, nil)
 	module.RegisterHooks(manager)
 	event, _, err := manager.Run(context.Background(), share.Event{
-		Point:    share.PointPlatformMessageReceived,
-		Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:123"},
+		Point: share.PointPlatformMessageReceived,
+		Chat:  share.ChatContext{Platform: "qqonebot", ChatType: "group", ID: "123"},
 	}, pipeline.CallOptions{Woken: true})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -396,7 +396,7 @@ func TestLoadConfigRejectsInvalidRootRuleBlock(t *testing.T) {
 name = "bad_block"
 on = "platform.message.received"
 always = true
-blocked_group = ["missing-platform"]
+blocked_group."" = ["123"]
 action = "send"
 text = "bad"
 `
@@ -420,13 +420,13 @@ func TestPluginRuleBlockFieldsWarnAndUsePluginPolicy(t *testing.T) {
 	}
 	plugin := `[plugin]
 name = "demo"
-blocked_group = ["qqonebot:123"]
+blocked_group.qqonebot = ["123"]
 
 [[rules]]
 name = "rule_group"
 on = "platform.message.received"
 always = true
-blocked_group = ["qqonebot:999"]
+blocked_group.qqonebot = ["999"]
 action = "send"
 text = "group rule"
 
@@ -435,7 +435,7 @@ name = "rule_user"
 on = "platform.message.received"
 always = true
 blocked_platform = []
-blocked_id = ["qqonebot:42"]
+blocked_id.qqonebot = ["42"]
 action = "send"
 text = "user rule"
 `
@@ -461,9 +461,9 @@ text = "user rule"
 	manager := pipeline.NewManager(testLog, nil)
 	(Module{Opts: Options{Log: testLog, Notify: testNotify}, Rules: cfg.Rules}).RegisterHooks(manager)
 	allowed, _, err := manager.Run(context.Background(), share.Event{
-		Point:    share.PointPlatformMessageReceived,
-		Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:999"},
-		Actor:    share.ActorContext{UserID: "42"},
+		Point: share.PointPlatformMessageReceived,
+		Chat:  share.ChatContext{Platform: "qqonebot", ChatType: "group", ID: "999"},
+		Actor: share.ActorContext{Platform: "qqonebot", ID: "42"},
 	}, pipeline.CallOptions{Woken: true})
 	if err != nil {
 		t.Fatalf("allowed Run: %v", err)
@@ -472,8 +472,8 @@ text = "user rule"
 		t.Fatalf("allowed outputs = %#v", allowed.Outputs)
 	}
 	blocked, _, err := manager.Run(context.Background(), share.Event{
-		Point:    share.PointPlatformMessageReceived,
-		Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:123"},
+		Point: share.PointPlatformMessageReceived,
+		Chat:  share.ChatContext{Platform: "qqonebot", ChatType: "group", ID: "123"},
 	}, pipeline.CallOptions{Woken: true})
 	if err != nil {
 		t.Fatalf("blocked Run: %v", err)

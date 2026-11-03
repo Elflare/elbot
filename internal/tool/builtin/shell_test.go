@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -14,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/processenv"
 	workspacepath "elbot/internal/workspace"
 )
@@ -324,7 +324,7 @@ func TestShellToolUsesSandboxDir(t *testing.T) {
 	}
 	shell := (ShellTool{ProcessEnv: processenv.Environment{}})
 	args, _ := json.Marshal(map[string]any{"cmd": "pwd > cwd.txt"})
-	ctx := workspacepath.WithPathScope(contextinfo.WithBackgroundKind(context.Background(), contextinfo.BackgroundKindCron), workspacepath.PathScope{Dir: sandboxDir, Restricted: true})
+	ctx := workspacepath.WithPathScope(testutil.TaskContext(context.Background(), "cron"), workspacepath.PathScope{Dir: sandboxDir, Restricted: true})
 	if _, _, err := callTool(ctx, shell.Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
 	}

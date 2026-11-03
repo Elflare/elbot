@@ -2,6 +2,8 @@ package control
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -19,8 +21,9 @@ func TestBackgroundPromotionCommitAndFailure(t *testing.T) {
 	ctx, scope := context.Background(), privateScope()
 	old := f.create(t, scope, "old")
 	bgScope := scope
-	bgScope.PlatformScopeID = "cron:task"
-	row, err := f.s.PrepareBackground(ctx, bgScope, BackgroundRequest{Kind: "cron", Name: "task", Metadata: map[string]string{"custom": "value", "background_kind": "spoof"}})
+	bgScope.ChatType, bgScope.ChatID = "", ""
+	bgScope.TaskType, bgScope.TaskID = "cron", "task"
+	row, err := f.s.PrepareBackground(ctx, bgScope, BackgroundRequest{TaskType: "cron", TaskID: "task", Metadata: map[string]string{"custom": "value"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,10 +31,10 @@ func TestBackgroundPromotionCommitAndFailure(t *testing.T) {
 		t.Fatal("background preparation changed foreground")
 	}
 	fields, err := storage.DecodeSessionMetadata(row.Metadata)
-	if err != nil || string(fields["background_kind"]) != `"cron"` || string(fields["custom"]) != `"value"` {
+	if err != nil || row.TaskType != "cron" || row.TaskID != "task" || string(fields["custom"]) != `"value"` {
 		t.Fatalf("background metadata: %s %v", row.Metadata, err)
 	}
-	if _, err := f.s.PrepareBackground(ctx, bgScope, BackgroundRequest{SessionID: row.ID, Kind: "cron"}); err != nil {
+	if _, err := f.s.PrepareBackground(ctx, bgScope, BackgroundRequest{SessionID: row.ID, TaskType: "cron"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.s.PrepareBackground(ctx, scope, BackgroundRequest{SessionID: old.ID}); err == nil {
@@ -54,7 +57,7 @@ func TestBackgroundPromotionCommitAndFailure(t *testing.T) {
 	want := errors.New("observer failed")
 	_, err = f.s.ObserveForegroundActivated(func(_ context.Context, event ForegroundActivatedEvent) error {
 		calls++
-		if event.Session.Mode != storage.SessionModeWork || event.Session.PlatformScopeID != scope.PlatformScopeID || event.Binding != f.s.CurrentBinding(scope) {
+		if event.Session.Mode != storage.SessionModeWork || event.Session.ChatID != scope.ChatID || event.Binding != f.s.CurrentBinding(scope) {
 			t.Error("incomplete committed event")
 		}
 		return want
@@ -81,7 +84,7 @@ func TestPromotionCloseWaitsForActualObserver(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t, IdleExpirationConfig{})
 		ctx, scope := context.Background(), privateScope()
-		row, err := f.s.PrepareBackground(ctx, scope, BackgroundRequest{Kind: "cron"})
+		row, err := f.s.PrepareBackground(ctx, scope, BackgroundRequest{TaskType: "cron"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -136,5 +139,46 @@ func TestBindingNotificationFailureDoesNotPreventRelease(t *testing.T) {
 	}
 	if _, err := f.store.Sessions().Get(ctx, row.ID); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestReferencePromotesElwispTaskForSuperadmin(t *testing.T) {
+	f := newFixture(t, IdleExpirationConfig{})
+	taskScope := share.Scope{Owner: contextinfo.ActorIdentity{ID: "watch:server"}, TaskType: "elnis", TaskID: "event:42"}
+	row, err := f.s.PrepareBackground(t.Context(), taskScope, BackgroundRequest{TaskType: taskScope.TaskType, TaskID: taskScope.TaskID, Name: "Server health"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	message := storage.Message{SessionID: row.ID, Role: storage.RoleAssistant}
+	viewer := privateScope()
+	resume, _, _, err := f.s.ResolveReference(t.Context(), viewer, message)
+	if err != nil || resume != "" {
+		t.Fatalf("user continuation: %q %v", resume, err)
+	}
+	if _, err := f.s.Resume(t.Context(), viewer, row.ID); err == nil {
+		t.Fatal("unrelated user took over task")
+	}
+	viewer.Owner.ID = "admin"
+	resume, _, _, err = f.s.ResolveReference(t.Context(), viewer, message)
+	if err != nil || resume != row.ID {
+		t.Fatalf("admin continuation: %q %v", resume, err)
+	}
+	promoted, err := f.s.Resume(t.Context(), viewer, resume)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if promoted.Owner != viewer.Owner || promoted.Platform != viewer.Platform || promoted.ChatType != viewer.ChatType || promoted.ChatID != viewer.ChatID || promoted.TaskType != "" || promoted.TaskID != "" || promoted.TaskName != "" {
+		t.Fatalf("promotion facts: %+v", promoted)
+	}
+	fields, err := storage.DecodeSessionMetadata(promoted.Metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var origin ForegroundOrigin
+	if err := json.Unmarshal(fields["foreground_origin"], &origin); err != nil {
+		t.Fatal(err)
+	}
+	if origin.TaskType != taskScope.TaskType || origin.TaskID != taskScope.TaskID || origin.Owner != taskScope.Owner || origin.Name != "Server health" {
+		t.Fatalf("lost task origin: %+v", origin)
 	}
 }

@@ -57,7 +57,7 @@ func (b elnisBridge) Create(ctx context.Context, req elnis.CreateEventRequest) (
 	}
 	row, err := b.repo.Create(ctx, storage.CreateElnisEventRequest{
 		ID:       id,
-		MediaIDs: req.MediaIDs, EventKey: req.EventKey, TokenName: req.TokenName, ElwispName: req.ElwispName,
+		MediaIDs: req.MediaIDs, EventKey: req.EventKey, OriginKind: req.OriginKind, OriginName: req.OriginName, ElwispName: req.ElwispName,
 		Source: req.Source, SourceID: req.SourceID, Tags: req.Tags, Mode: req.Mode, ModelSlot: req.ModelSlot,
 		ContentHash: req.ContentHash, ToolDeclarations: req.ToolDeclarations, ToolHash: req.ToolHash,
 		RequestedTargets: req.RequestedTargets, ResolvedTargets: req.ResolvedTargets, Status: req.Status,
@@ -153,8 +153,9 @@ func (b elnisBridge) CompleteReport(ctx context.Context, id, delivering, complet
 func reportMessageMaps(mappings []share.ReportMessageMap) []storage.PlatformMessageMap {
 	rows := make([]storage.PlatformMessageMap, 0, len(mappings))
 	for _, mapping := range mappings {
-		rows = append(rows, storage.PlatformMessageMap{Platform: mapping.Platform, PlatformScopeID: mapping.PlatformScopeID,
-			PlatformMessageID: mapping.PlatformMessageID, SessionID: mapping.SessionID, MessageID: mapping.MessageID})
+		rows = append(rows, storage.PlatformMessageMap{Platform: mapping.Platform, ChatID: mapping.ChatID,
+			PlatformMessageID: mapping.PlatformMessageID, SessionID: mapping.SessionID, MessageID: mapping.MessageID, ChatType: mapping.ChatType,
+		})
 	}
 	return rows
 }

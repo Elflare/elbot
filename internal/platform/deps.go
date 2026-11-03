@@ -4,11 +4,13 @@ package platform
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 
 	"elbot/internal/agent"
 	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/media"
+	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
@@ -21,8 +23,8 @@ type SupervisorDeps struct {
 	ChatHistory interface {
 		Append(context.Context, *storage.ChatMessage) error
 		MapPlatformMessageAlias(context.Context, storage.PlatformMessageAlias) error
-		ResolvePlatformMessageAlias(context.Context, string, string, string) (string, error)
-		GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error)
+		ResolvePlatformMessageAlias(context.Context, string, contextinfo.ChatType, string, string) (string, error)
+		GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
 	}
 	Media *media.MediaCenter // 发送媒体准备所需能力，由 dispatch 的消费接口裁剪。
 }
@@ -30,6 +32,7 @@ type SupervisorDeps struct {
 // AgentCapabilities 按目标 Agent 公开契约接线，不向子包交付完整总管。
 // MessageRequest 由 Agent 根部定义，平台内部状态在根部转换。
 type AgentCapabilities interface {
+	ResolveReference(context.Context, session.Scope, storage.Message) (string, string, bool, error)
 	HandleMessage(context.Context, agent.MessageRequest) error
 	Complete(context.Context, completion.Request) ([]completion.Item, error)
 	Commands() []command.Info

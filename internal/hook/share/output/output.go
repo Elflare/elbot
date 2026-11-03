@@ -4,6 +4,7 @@ package output
 
 import (
 	"bytes"
+	"elbot/internal/contextinfo"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -32,11 +33,10 @@ type Segment struct {
 }
 
 type Target struct {
-	Platform      string `toml:"platform" json:"platform,omitempty"`
-	ScopeID       string `toml:"scope_id" json:"scope_id,omitempty"`
-	PrivateUserID string `toml:"private_user_id" json:"private_user_id,omitempty"`
-	GroupID       string `toml:"group_id" json:"group_id,omitempty"`
-	Superadmins   bool   `toml:"superadmins" json:"superadmins,omitempty"`
+	Platform    string               `toml:"platform" json:"platform,omitempty"`
+	ChatType    contextinfo.ChatType `json:"chat_type,omitempty" toml:"chat_type"` // 会话类型。
+	ChatID      string               `toml:"id" json:"id,omitempty"`
+	Superadmins bool                 `toml:"superadmins" json:"superadmins,omitempty"`
 }
 
 type Group struct {
@@ -91,11 +91,11 @@ func BuildGroup(group Group, opts BuildOptions) ([]delivery.Output, error) {
 }
 
 func (t Target) Empty() bool {
-	return strings.TrimSpace(t.Platform) == "" && strings.TrimSpace(t.ScopeID) == "" && strings.TrimSpace(t.PrivateUserID) == "" && strings.TrimSpace(t.GroupID) == "" && !t.Superadmins
+	return t == (Target{})
 }
 
 func (t Target) Delivery() delivery.Target {
-	return delivery.Target{Platform: strings.TrimSpace(t.Platform), ScopeID: strings.TrimSpace(t.ScopeID), PrivateUserID: strings.TrimSpace(t.PrivateUserID), GroupID: strings.TrimSpace(t.GroupID), Superadmins: t.Superadmins}
+	return delivery.Target{Platform: t.Platform, ChatType: t.ChatType, ChatID: t.ChatID, Superadmins: t.Superadmins}
 }
 
 func buildSegment(spec Segment, baseDir string, target delivery.Target, timing string) (delivery.Output, error) {
@@ -208,7 +208,6 @@ func trimSegment(spec Segment) Segment {
 	spec.Base64 = strings.TrimSpace(spec.Base64)
 	spec.Name = strings.TrimSpace(spec.Name)
 	spec.MIMEType = strings.TrimSpace(spec.MIMEType)
-	spec.UserID = strings.TrimSpace(spec.UserID)
 	spec.MessageID = strings.TrimSpace(spec.MessageID)
 	spec.EmoticonID = strings.TrimSpace(spec.EmoticonID)
 	return spec

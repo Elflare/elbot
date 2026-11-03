@@ -2,12 +2,11 @@ package workspace
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
-
-	"elbot/internal/contextinfo"
 )
 
 func TestResolveWorkspacePathUsesScopeAndKeepsSessionSelection(t *testing.T) {
@@ -25,7 +24,7 @@ func TestResolveWorkspacePathUsesScopeAndKeepsSessionSelection(t *testing.T) {
 	if err != nil || result.Path != filepath.Join(taskDir, "file.txt") || result.BaseDir != taskDir || result.WasAbs {
 		t.Fatalf("scoped result=%+v err=%v", result, err)
 	}
-	if contextinfo.BackgroundContext(scoped) || store.dir != sessionDir {
+	if (testutil.ExecutionMode(scoped) == "background") || store.dir != sessionDir {
 		t.Fatal("path scope changed execution identity or session selection")
 	}
 	result, err = ResolveWorkspacePath(WithoutPathScope(scoped), "file.txt", PathResolveOptions{})
@@ -33,7 +32,7 @@ func TestResolveWorkspacePathUsesScopeAndKeepsSessionSelection(t *testing.T) {
 		t.Fatalf("restored result=%+v err=%v", result, err)
 	}
 	// Source identity alone must not install a path restriction.
-	result, err = ResolveWorkspacePath(contextinfo.WithBackgroundKind(ctx, contextinfo.BackgroundKindCron), filepath.Join(taskDir, "file.txt"), PathResolveOptions{})
+	result, err = ResolveWorkspacePath(testutil.TaskContext(ctx, "cron"), filepath.Join(taskDir, "file.txt"), PathResolveOptions{})
 	if err != nil || !result.WasAbs {
 		t.Fatalf("absolute result=%+v err=%v", result, err)
 	}

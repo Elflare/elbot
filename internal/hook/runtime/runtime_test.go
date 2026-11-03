@@ -143,11 +143,11 @@ func TestHookRuntimeHelperProcess(t *testing.T) {
 				fmt.Fprintln(os.Stdout, `{"type":"event","method":"hook.log","params":{"message":"hold reader"}}`)
 			}
 		case "event.handle":
-			if helperActorID(frame) == "test:cancel" {
+			if helperActor(frame) == (share.ActorContext{Platform: "test", ID: "cancel"}) {
 				continue
 			}
 			eventCount++
-			if helperActorID(frame) == "test:media" {
+			if helperActor(frame) == (share.ActorContext{Platform: "test", ID: "media"}) {
 				fmt.Fprintln(os.Stdout, `{"type":"request","id":"plugin:media","method":"media.import","params":{"base64":"aGVsbG8=","name":"hello.png","mime_type":"image/png"}}`)
 				line, err := reader.ReadString('\n')
 				var response struct {
@@ -162,16 +162,16 @@ func TestHookRuntimeHelperProcess(t *testing.T) {
 				writeHelperResponse(id, map[string]any{"status": "completed", "message": map[string]any{"segments": []map[string]any{{"type": "image", "base64": response.Result.MediaID}}}, "outputs": []map[string]any{{"kind": "image", "url": response.Result.MediaID}}})
 				continue
 			}
-			if helperActorID(frame) == "test:output" {
-				writeHelperResponse(id, map[string]any{"status": "completed", "outputs": []map[string]any{{"kind": "image", "base64": "aGVsbG8=", "name": "hello.png"}}, "target": map[string]any{"platform": "qqonebot", "group_id": "42"}, "timing": "after_assistant"})
-			} else if helperActorID(frame) == "test:message" {
+			if helperActor(frame) == (share.ActorContext{Platform: "test", ID: "output"}) {
+				writeHelperResponse(id, map[string]any{"status": "completed", "outputs": []map[string]any{{"kind": "image", "base64": "aGVsbG8=", "name": "hello.png"}}, "target": map[string]any{"platform": "qqonebot", "chat_type": "group", "id": "42"}, "timing": "after_assistant"})
+			} else if helperActor(frame) == (share.ActorContext{Platform: "test", ID: "message"}) {
 				writeHelperResponse(id, map[string]any{"status": "completed", "message": map[string]any{"segments": []map[string]any{
 					{"type": "text", "text": "截图完成"},
 					{"type": "image", "base64": "aGVsbG8=", "mime_type": "image/png"},
 				}}})
 			} else if eventCount == 1 {
 				writeHelperResponse(id, map[string]any{"status": "waiting", "conversation_id": "demo", "expires_at": time.Now().Add(10 * time.Second).UTC().Format(time.RFC3339Nano)})
-			} else if helperActorID(frame) == "test:defaults" {
+			} else if helperActor(frame) == (share.ActorContext{Platform: "test", ID: "defaults"}) {
 				writeHelperResponse(id, map[string]any{"status": "completed"})
 			} else {
 				writeHelperResponse(id, map[string]any{"status": "completed", "pass_through": true})
@@ -206,12 +206,12 @@ func TestManagerBuildsCanonicalRuntimeOutputs(t *testing.T) {
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, "demo", StatusReady)
-	event := share.Event{Actor: share.ActorContext{ID: "test:output"}}
+	event := share.Event{Actor: share.ActorContext{Platform: "test", ID: "output"}}
 	got, _, err := manager.Handle(context.Background(), "demo", event, share.Control{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Outputs) != 1 || string(got.Outputs[0].Source.Data) != "hello" || got.Outputs[0].Target.GroupID != "42" || got.Outputs[0].Target.Platform != "qqonebot" || delivery.DeliveryTiming(got.Outputs[0]) != delivery.DeliveryAfterAssistant {
+	if len(got.Outputs) != 1 || string(got.Outputs[0].Source.Data) != "hello" || got.Outputs[0].Target.ChatType != "group" || got.Outputs[0].Target.ChatID != "42" || got.Outputs[0].Target.Platform != "qqonebot" || delivery.DeliveryTiming(got.Outputs[0]) != delivery.DeliveryAfterAssistant {
 		t.Fatalf("outputs = %#v", got.Outputs)
 	}
 }
@@ -226,7 +226,7 @@ func TestManagerBuildsCanonicalRuntimeMessageSegments(t *testing.T) {
 	waitForStatus(t, manager, "demo", StatusReady)
 	event := share.Event{
 		Point:   share.PointToolCallCompleted,
-		Actor:   share.ActorContext{ID: "test:message"},
+		Actor:   share.ActorContext{Platform: "test", ID: "message"},
 		Message: share.MessagePayload{Role: "tool"},
 		Tool:    share.ToolPayload{Name: "screenshot"},
 	}
@@ -270,7 +270,7 @@ func TestManagerWorkersUseConfiguredProcessEnvironment(t *testing.T) {
 				waitForStatus(t, manager, "env", StatusReady)
 				return
 			}
-			event := share.Event{Platform: share.PlatformContext{Name: "test", ScopeID: "private:env"}, Actor: share.ActorContext{ID: "test:env", UserID: "env"}}
+			event := share.Event{Chat: share.ChatContext{Platform: "test", ChatType: "private", ID: "env"}, Actor: share.ActorContext{ID: "env"}}
 			if _, _, err := manager.Handle(context.Background(), "env", event, share.Control{}); err != nil {
 				t.Fatalf("Handle: %v", err)
 			}
@@ -291,12 +291,13 @@ func TestWorkerRejectsOversizedInputFrame(t *testing.T) {
 	}
 }
 
-func helperActorID(value map[string]any) string {
+func helperActor(value map[string]any) share.ActorContext {
 	params, _ := value["params"].(map[string]any)
 	event, _ := params["event"].(map[string]any)
 	actor, _ := event["actor"].(map[string]any)
+	platform, _ := actor["platform"].(string)
 	id, _ := actor["id"].(string)
-	return id
+	return share.ActorContext{Platform: platform, ID: id}
 }
 
 func writeHelperResponse(id string, result any) {
@@ -331,7 +332,7 @@ func TestManagerRoutesWaitingConversation(t *testing.T) {
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, "demo", StatusReady)
-	event := share.Event{Platform: share.PlatformContext{Name: "test", ScopeID: "private:1"}, Actor: share.ActorContext{ID: "test:1", UserID: "1"}}
+	event := share.Event{Chat: share.ChatContext{Platform: "test", ChatType: "private", ID: "1"}, Actor: share.ActorContext{ID: "1"}}
 	observed, finished := 0, 0
 	observe := func(ctx context.Context, name string) (context.Context, func(), error) {
 		if name != "demo" {
@@ -389,7 +390,7 @@ func TestManagerReclaimsTransientWorkerAfterPassThrough(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
-	event := share.Event{Platform: share.PlatformContext{Name: "test", ScopeID: "private:transient"}, Actor: share.ActorContext{ID: "test:transient", UserID: "transient"}}
+	event := share.Event{Chat: share.ChatContext{Platform: "test", ChatType: "private", ID: "transient"}, Actor: share.ActorContext{ID: "transient"}}
 	if _, _, err := manager.Handle(context.Background(), "demo", event, share.Control{Consume: true, StopPropagation: true}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -435,7 +436,7 @@ func TestManagerStopReclaimsTransientWorkers(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
-	event := share.Event{Platform: share.PlatformContext{Name: "test", ScopeID: "private:stop"}, Actor: share.ActorContext{ID: "test:stop", UserID: "stop"}}
+	event := share.Event{Chat: share.ChatContext{Platform: "test", ChatType: "private", ID: "stop"}, Actor: share.ActorContext{ID: "stop"}}
 	if _, _, err := manager.Handle(context.Background(), "demo", event, share.Control{}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -472,7 +473,7 @@ func TestManagerRouteUsesConfiguredDefaults(t *testing.T) {
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, "demo", StatusReady)
-	event := share.Event{Platform: share.PlatformContext{Name: "test", ScopeID: "private:defaults"}, Actor: share.ActorContext{ID: "test:defaults", UserID: "defaults"}}
+	event := share.Event{Chat: share.ChatContext{Platform: "test", ChatType: "private", ID: "defaults"}, Actor: share.ActorContext{Platform: "test", ID: "defaults"}}
 	defaults := share.Control{Consume: true, StopPropagation: false}
 	if _, _, err := manager.Handle(context.Background(), "demo", event, defaults); err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -523,8 +524,8 @@ func TestManagerBlockedWaitingConversationFallsThrough(t *testing.T) {
 	}
 	t.Cleanup(func() { manager.Close(context.Background()) })
 	waitForStatus(t, manager, "demo", StatusReady)
-	event := share.Event{Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:123"}, Actor: share.ActorContext{ID: "qqonebot:1", UserID: "1"}}
-	policy, err := share.NewBlockPolicy(nil, []string{"qqonebot:123"}, nil)
+	event := share.Event{Chat: share.ChatContext{Platform: "qqonebot", ChatType: "group", ID: "123"}, Actor: share.ActorContext{ID: "1"}}
+	policy, err := share.NewBlockPolicy(nil, map[string][]string{"qqonebot": {"123"}}, nil)
 	if err != nil {
 		t.Fatalf("NewBlockPolicy: %v", err)
 	}
@@ -565,7 +566,7 @@ func TestWorkerRequestCancellationSendsEventCancelAndKeepsWorkerReady(t *testing
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		_, _, err := manager.Handle(ctx, config.ID, share.Event{Platform: share.PlatformContext{ConversationID: "cancel-me"}, Actor: share.ActorContext{ID: "test:cancel"}}, share.Control{})
+		_, _, err := manager.Handle(ctx, config.ID, share.Event{Chat: share.ChatContext{ID: "cancel-me"}, Actor: share.ActorContext{Platform: "test", ID: "cancel"}}, share.Control{})
 		errCh <- err
 	}()
 	time.Sleep(50 * time.Millisecond)
@@ -579,7 +580,7 @@ func TestWorkerRequestCancellationSendsEventCancelAndKeepsWorkerReady(t *testing
 		t.Fatal("Worker invocation did not cancel")
 	}
 	waitForStatus(t, manager, config.ID, StatusReady)
-	if _, _, err := manager.Handle(context.Background(), config.ID, share.Event{Actor: share.ActorContext{ID: "test:defaults"}}, share.Control{}); err != nil {
+	if _, _, err := manager.Handle(context.Background(), config.ID, share.Event{Actor: share.ActorContext{Platform: "test", ID: "defaults"}}, share.Control{}); err != nil {
 		t.Fatalf("Worker was not reusable after cancellation: %v", err)
 	}
 }

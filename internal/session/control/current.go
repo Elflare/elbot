@@ -75,8 +75,8 @@ func (s *Service) createCurrent(ctx context.Context, scope share.Scope, req Crea
 	if err != nil {
 		return nil, err
 	}
-	row := &storage.Session{ID: id, OwnerID: scope.ActorID, Platform: scope.Platform,
-		PlatformScopeID: scope.PlatformScopeID, Mode: req.Mode, Status: storage.SessionStatusActive,
+	row := &storage.Session{ID: id, Owner: scope.Owner, Platform: scope.Platform,
+		ChatType: scope.ChatType, ChatID: scope.ChatID, Mode: req.Mode, Status: storage.SessionStatusActive,
 		Title: req.Title, Metadata: metadata}
 	if err := s.deps.Sessions.Create(ctx, row); err != nil {
 		return nil, err

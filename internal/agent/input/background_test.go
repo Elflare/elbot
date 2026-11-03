@@ -2,6 +2,7 @@ package input
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"errors"
 	"reflect"
 	"strings"
@@ -74,7 +75,7 @@ func newBackgroundHarness(t *testing.T) (*backgroundHarness, *BackgroundHandler,
 		EnsureWorkspaceDir: func(ctx context.Context, id, dir string) error { return h.ensure(ctx, id, dir) },
 	})
 	ctx := workspace.WithPathScope(t.Context(), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
-	ctx = contextinfo.WithBackgroundKind(ctx, contextinfo.BackgroundKindCron)
+	ctx = testutil.TaskContext(ctx, "cron")
 	return h, handler, ctx
 }
 
@@ -82,8 +83,8 @@ func TestBackgroundPreparationKeepsContextAndMultimodalSkillMaterial(t *testing.
 	h, handler, ctx := newBackgroundHarness(t)
 	h.preload = tool.BackgroundPreload{SkillPrompt: "SKILL_GUIDANCE", Skills: []string{"notes"}, NeedsElyphRules: true}
 	req := BackgroundRequest{
-		Kind: "cron", Name: "task", Prompt: "before after", ModelProvider: "provider", Model: "model",
-		Actor: contextinfo.Actor{ID: "owner", Platform: "qq", PlatformUserID: "native-owner", Role: contextinfo.RoleUser},
+		TaskType: "cron", TaskID: "task", Prompt: "before after", ModelProvider: "provider", Model: "model",
+		Actor: contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qq", ID: "native-owner"}, Role: contextinfo.RoleUser},
 		PromptSegments: []llm.MessageSegment{
 			{Type: llm.SegmentText, Text: "before "},
 			{Type: llm.SegmentImage, MediaID: "image", MIMEType: "image/png"},
@@ -94,7 +95,7 @@ func TestBackgroundPreparationKeepsContextAndMultimodalSkillMaterial(t *testing.
 	if !reflect.DeepEqual(result, h.result) {
 		t.Fatal(result)
 	}
-	if h.scope.Platform != "qq" || h.scope.ActorID != "owner" || h.scope.PlatformUserID != "native-owner" || h.scope.PlatformScopeID != "cron:task" {
+	if h.scope.Platform != "qq" || h.scope.Owner.ID != "native-owner" || (h.scope.TaskType != "cron" || h.scope.TaskID != "task") {
 		t.Fatal(h.scope)
 	}
 	actor, _ := contextinfo.ActorFromContext(h.runContext)
@@ -117,7 +118,7 @@ func TestBackgroundPreparationKeepsContextAndMultimodalSkillMaterial(t *testing.
 	if beforePath != afterPath {
 		t.Fatal(afterPath)
 	}
-	if !contextinfo.BackgroundContext(h.runContext) {
+	if !(testutil.ExecutionMode(h.runContext) == "background") {
 		t.Fatal("background execution lost its output suppression identity")
 	}
 	if !h.input.NeedsElyphRules || !strings.Contains(h.input.Text, "SKILL_GUIDANCE") {
@@ -143,7 +144,7 @@ func TestBackgroundPreparationStopsBeforeExecutionOnFailure(t *testing.T) {
 			h, handler, ctx := newBackgroundHarness(t)
 			failure := errors.New(stage)
 			h.preload.Update = tool.StateUpdate{Tags: []string{"tag"}}
-			req := BackgroundRequest{Kind: "cron", Prompt: "task"}
+			req := BackgroundRequest{TaskType: "cron", Prompt: "task"}
 			switch stage {
 			case "session":
 				h.prepareErr = failure
@@ -177,7 +178,7 @@ func TestBackgroundPreparationStopsBeforeExecutionOnFailure(t *testing.T) {
 
 func TestBackgroundContinuationDoesNotPreload(t *testing.T) {
 	h, handler, ctx := newBackgroundHarness(t)
-	result := handler.RunBackground(ctx, BackgroundRequest{Kind: "cron", SessionID: "session", ToolListNames: []string{"ignored"}, Prompt: "continue"})
+	result := handler.RunBackground(ctx, BackgroundRequest{TaskType: "cron", SessionID: "session", ToolListNames: []string{"ignored"}, Prompt: "continue"})
 	if result.Err != nil || h.preloads != 0 || h.commits != 0 || h.executions != 1 {
 		t.Fatalf("result=%+v preload=%d commit=%d run=%d", result, h.preloads, h.commits, h.executions)
 	}

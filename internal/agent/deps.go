@@ -29,7 +29,7 @@ type SupervisorDeps struct {
 	} // 借用只读配置诊断能力，由 App 按当前配置路径装配。
 	Store       storage.Store
 	ChatHistory interface {
-		GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error)
+		GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
 	} // 借用历史身份查询，用于入站媒体关联。
 	Models     ModelCapabilities
 	Media      *media.MediaCenter
@@ -85,7 +85,7 @@ type HookCapabilities interface{ Commands() []command.Handler }
 
 // PlatformCapabilities supplies platform identity and delivery for Agent output.
 type PlatformCapabilities interface {
-	SessionIDCode(string, contextinfo.ConversationKind) (string, error)
+	SessionIDCode(string, contextinfo.ChatType) (string, error)
 	RestoreMessageContext(context.Context, context.Context) context.Context
 	SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
 	SendChat(context.Context, []delivery.Output) (delivery.Receipt, events.LogResult, error)

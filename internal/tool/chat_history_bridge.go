@@ -4,9 +4,11 @@ package tool
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"errors"
 	"fmt"
+	"strings"
 
 	"elbot/internal/media"
 	"elbot/internal/storage"
@@ -19,7 +21,7 @@ type chatHistoryBridge struct {
 	history interface {
 		Search(context.Context, storage.ChatHistorySearchRequest) ([]storage.ChatMessage, error)
 		Around(context.Context, storage.ChatHistoryAroundRequest) ([]storage.ChatMessage, error)
-		GetByPlatformMessage(context.Context, string, string, string) (*storage.ChatMessage, error)
+		GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
 	} // 借用历史查询能力。
 	platform interface {
 		ResolveMedia(context.Context, string, media.PlatformMedia, int64) (delivery.Source, error)
@@ -29,10 +31,10 @@ type chatHistoryBridge struct {
 
 func (b *chatHistoryBridge) Search(ctx context.Context, query chat_history.SearchQuery) ([]share.Message, error) {
 	rows, err := b.history.Search(ctx, storage.ChatHistorySearchRequest{
-		Platform: query.Platform, PlatformScopeID: query.ScopeID,
+		Platform: query.Platform, ChatID: query.ChatID,
 		QueryTerms: query.QueryTerms, QueryMode: query.QueryMode,
 		SenderQuery: query.SenderQuery,
-		Since:       query.Since, Until: query.Until, Limit: query.Limit,
+		Since:       query.Since, Until: query.Until, Limit: query.Limit, ChatType: query.ChatType,
 	})
 	if err != nil {
 		return nil, historyError(err)
@@ -42,8 +44,8 @@ func (b *chatHistoryBridge) Search(ctx context.Context, query chat_history.Searc
 
 func (b *chatHistoryBridge) Around(ctx context.Context, query chat_history.AroundQuery) ([]share.Message, error) {
 	rows, err := b.history.Around(ctx, storage.ChatHistoryAroundRequest{
-		Platform: query.Key.Platform, PlatformScopeID: query.Key.ScopeID,
-		PlatformMessageID: query.Key.MessageID, Before: query.Before, After: query.After,
+		Platform: query.Key.Platform, ChatID: query.Key.ChatID,
+		PlatformMessageID: query.Key.MessageID, Before: query.Before, After: query.After, ChatType: query.Key.ChatType,
 	})
 	if err != nil {
 		return nil, historyError(err)
@@ -52,7 +54,7 @@ func (b *chatHistoryBridge) Around(ctx context.Context, query chat_history.Aroun
 }
 
 func (b *chatHistoryBridge) GetMessage(ctx context.Context, key share.MessageKey) (share.Message, error) {
-	row, err := b.history.GetByPlatformMessage(ctx, key.Platform, key.ScopeID, key.MessageID)
+	row, err := b.history.GetByPlatformMessage(ctx, key.Platform, key.ChatType, key.ChatID, key.MessageID)
 	if err != nil {
 		return share.Message{}, historyError(err)
 	}
@@ -74,7 +76,7 @@ func (b *chatHistoryBridge) messages(ctx context.Context, rows []storage.ChatMes
 func (b *chatHistoryBridge) message(ctx context.Context, row storage.ChatMessage, includeCached bool) (share.Message, error) {
 	reply := storage.ChatMessageReply(row)
 	message := share.Message{
-		Key:      share.MessageKey{Platform: row.Platform, ScopeID: row.PlatformScopeID, MessageID: row.PlatformMessageID},
+		Key:      share.MessageKey{Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, ChatType: row.ChatType},
 		SenderID: row.SenderID, SenderName: row.SenderName, Text: row.Text, CreatedAt: row.CreatedAt,
 		Reply: share.ReplyContext{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text},
 	}
@@ -112,7 +114,7 @@ func (b *chatHistoryBridge) FetchMedia(ctx context.Context, queries []chat_histo
 		entry, ok := known[query.Key]
 		if !ok {
 			key := query.Key
-			entry.row, entry.err = b.history.GetByPlatformMessage(ctx, key.Platform, key.ScopeID, key.MessageID)
+			entry.row, entry.err = b.history.GetByPlatformMessage(ctx, key.Platform, key.ChatType, key.ChatID, key.MessageID)
 			known[key] = entry
 		}
 		if errors.Is(entry.err, storage.ErrNotFound) {
@@ -153,11 +155,29 @@ func historyError(err error) error {
 }
 
 func historyMediaMessage(row storage.ChatMessage) media.HistoryMessage {
-	message := media.HistoryMessage{ID: row.ID, Platform: row.Platform, ScopeID: row.PlatformScopeID, MessageID: row.PlatformMessageID}
+	message := media.HistoryMessage{ID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, ChatType: row.ChatType}
 	for _, segment := range storage.UnmarshalChatSegments(row.Segments) {
 		if segment.Type == "image" || segment.Type == "file" {
 			message.Media = append(message.Media, media.PlatformMedia{Type: segment.Type, MediaID: segment.MediaID, URL: segment.URL, PlatformFileID: segment.PlatformFileID, MIMEType: segment.MIMEType, Name: segment.Name, Size: segment.Size})
 		}
 	}
 	return message
+}
+
+// resolveHistoryChat 只在 Tool 边界解释调用范围；查询组件取得已确定的地址。
+func resolveHistoryChat(ctx context.Context, req share.SearchRequest) (contextinfo.Source, error) {
+	if share.PolicyFromContext(ctx).ExplicitChat {
+		if req.Platform == nil || req.ChatType == nil || req.ChatID == nil || strings.TrimSpace(*req.Platform) == "" || *req.ChatType == "" || *req.ChatID == "" {
+			return contextinfo.Source{}, fmt.Errorf("无聊天上下文时，查询聊天历史必须指定非空的 platform、chat_type 和 chat_id。")
+		}
+		return contextinfo.Source{Platform: *req.Platform, ChatType: *req.ChatType, ChatID: *req.ChatID}, nil
+	}
+	if req.Platform != nil || req.ChatType != nil || req.ChatID != nil {
+		return contextinfo.Source{}, fmt.Errorf("已有聊天上下文时，查询聊天历史不能指定 platform、chat_type 或 chat_id，请使用当前聊天。")
+	}
+	info, ok := contextinfo.ConversationFromContext(ctx)
+	if !ok {
+		return contextinfo.Source{}, share.ErrNoChatContext
+	}
+	return info.Source, nil
 }

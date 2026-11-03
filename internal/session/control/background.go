@@ -34,7 +34,7 @@ func (s *Service) PrepareBackground(ctx context.Context, scope share.Scope, req 
 			return nil
 		})
 	}
-	origin := share.BackgroundIDOrigin(scope, req.Kind, req.TargetPlatforms)
+	origin := share.BackgroundIDOrigin(scope, req.TaskType, req.TargetPlatforms)
 	id, err := s.deps.AllocateID(ctx, origin)
 	if err != nil {
 		return nil, err
@@ -48,11 +48,11 @@ func (s *Service) PrepareBackground(ctx context.Context, scope share.Scope, req 
 	if err != nil {
 		return nil, err
 	}
-	title := strings.TrimSpace(req.Title)
+	title := strings.TrimSpace(req.Name)
 	if title == "" {
-		title = share.BackgroundTitle(req.Kind, req.Name)
+		title = share.BackgroundTitle(req.TaskType, req.TaskID)
 	}
-	row := &storage.Session{ID: id, OwnerID: scope.ActorID, Platform: scope.Platform, PlatformScopeID: scope.PlatformScopeID,
+	row := &storage.Session{ID: id, Owner: scope.Owner, Platform: scope.Platform, TaskType: req.TaskType, TaskID: req.TaskID, TaskName: req.Name,
 		Mode: storage.SessionModeBackground, Status: storage.SessionStatusActive, Title: title, Metadata: metadata}
 	if err := s.deps.Sessions.Create(ctx, row); err != nil {
 		return nil, err
@@ -86,7 +86,7 @@ func backgroundMetadata(raw string, req BackgroundRequest, origin *share.IDOrigi
 			}
 		}
 	}
-	if err := share.BackgroundMetadata(fields, req.Kind, req.Name); err != nil {
+	if err := share.BackgroundMetadata(fields, req.TaskType); err != nil {
 		return "", err
 	}
 	if origin != nil {

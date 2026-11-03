@@ -17,14 +17,14 @@ func TestHistoryMediaReferencesAndAtomicReplacement(t *testing.T) {
 	if err := repo.Upsert(ctx, &storage.Media{ID: id, Backend: "local", MIMEType: "image/png"}); err != nil {
 		t.Fatal(err)
 	}
-	item := storage.HistoryMedia{HistoryID: "history-1", Platform: "qqonebot", ScopeID: "group:1", MessageID: "message", Kind: "image", MediaID: id}
+	item := storage.HistoryMedia{HistoryID: "history-1", Platform: "qqonebot", ChatType: "group", ChatID: "1", MessageID: "message", Kind: "image", MediaID: id}
 	for _, index := range []int{3, 1, 2} {
 		item.MediaIndex = index
 		if err := repo.SaveHistory(ctx, item); err != nil {
 			t.Fatal(err)
 		}
 	}
-	got, err := repo.FindHistory(ctx, item.Platform, item.ScopeID, item.MessageID)
+	got, err := repo.FindHistory(ctx, item.Platform, item.ChatType, item.ChatID, item.MessageID)
 	if err != nil || len(got) != 3 {
 		t.Fatalf("history = %#v %v", got, err)
 	}
@@ -43,7 +43,7 @@ func TestHistoryMediaReferencesAndAtomicReplacement(t *testing.T) {
 	if err := repo.SaveHistory(ctx, item); err == nil {
 		t.Fatal("missing media accepted")
 	}
-	got, err = repo.FindHistory(ctx, item.Platform, item.ScopeID, item.MessageID)
+	got, err = repo.FindHistory(ctx, item.Platform, item.ChatType, item.ChatID, item.MessageID)
 	if err != nil || len(got) != 3 || got[0].MediaID != id {
 		t.Fatalf("replacement lost history: %#v %v", got, err)
 	}
@@ -55,7 +55,7 @@ func TestHistoryMediaReferencesAndAtomicReplacement(t *testing.T) {
 	if len(refs) != 3 {
 		t.Fatalf("duplicate save refs = %#v", refs)
 	}
-	other, err := repo.FindHistory(ctx, item.Platform, "group:2", item.MessageID)
+	other, err := repo.FindHistory(ctx, item.Platform, "group", "2", item.MessageID)
 	if err != nil || len(other) != 0 {
 		t.Fatalf("scope leak: %#v %v", other, err)
 	}
@@ -96,7 +96,7 @@ func TestHistoryMediaReferencesAndAtomicReplacement(t *testing.T) {
 func TestHistoryMediaRejectsInvalidPosition(t *testing.T) {
 	repo := newTestStore(t).Media()
 	for _, index := range []int{-1, 0} {
-		if err := repo.SaveHistory(context.Background(), storage.HistoryMedia{HistoryID: "h", Platform: "p", ScopeID: "s", MessageID: "m", MediaIndex: index, Kind: "image", MediaID: "media:" + strings.Repeat("a", 64)}); err == nil {
+		if err := repo.SaveHistory(context.Background(), storage.HistoryMedia{HistoryID: "h", Platform: "p", ChatID: "s", MessageID: "m", MediaIndex: index, Kind: "image", MediaID: "media:" + strings.Repeat("a", 64)}); err == nil {
 			t.Fatalf("accepted index %d", index)
 		}
 	}

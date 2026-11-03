@@ -54,8 +54,8 @@ func (m *Supervisor) CopyBackground(ctx context.Context, req BackgroundCopyReque
 	}
 	defer done()
 	row, err := m.sessions.CopyBackground(ctx, req.Scope, session.BackgroundCopyRequest{
-		SourceSessionID: req.SourceSessionID, Kind: req.Kind, Name: req.Name,
-		Title: req.Title, Metadata: storage.SessionMetadata(req.Metadata),
+		SourceSessionID: req.SourceSessionID, TaskType: req.TaskType, TaskID: req.TaskID,
+		Name: req.Name, Metadata: storage.SessionMetadata(req.Metadata),
 	})
 	if err != nil {
 		return "", err

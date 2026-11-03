@@ -4,6 +4,7 @@ package telegram
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"fmt"
 	"strings"
@@ -36,7 +37,7 @@ func (a *Adapter) StartStream(ctx context.Context) (delivery.MessageStream, erro
 	if err != nil {
 		return nil, fmt.Errorf("telegram stream target: %w", err)
 	}
-	return &messageStream{gate: make(chan struct{}, 1), adapter: a, target: t, draftID: time.Now().UnixNano(), useDraft: strings.HasPrefix(t.ScopeID, "private:") && a.cfg.richMessageEnabled()}, nil
+	return &messageStream{gate: make(chan struct{}, 1), adapter: a, target: t, draftID: time.Now().UnixNano(), useDraft: t.ChatType == contextinfo.ChatPrivate && a.cfg.richMessageEnabled()}, nil
 }
 
 func (s *messageStream) Append(ctx context.Context, text string) error {
@@ -58,14 +59,14 @@ func (s *messageStream) Append(ctx context.Context, text string) error {
 		if time.Since(s.lastEdit) < s.adapter.cfg.streamEditInterval() {
 			return nil
 		}
-		if err := s.adapter.client.sendRichMessageDraft(ctx, sendRichMessageDraftRequest{ChatID: s.target.ChatID, DraftID: s.draftID, RichMessage: inputRichMessage{Markdown: preview}}); err != nil {
+		if err := s.adapter.client.sendRichMessageDraft(ctx, sendRichMessageDraftRequest{ChatID: s.target.NativeChatID, DraftID: s.draftID, RichMessage: inputRichMessage{Markdown: preview}}); err != nil {
 			return err
 		}
 		s.lastEdit = time.Now()
 		return nil
 	}
 	if s.message == 0 {
-		sent, err := s.adapter.client.sendMessage(ctx, sendMessageRequest{ChatID: s.target.ChatID, Text: previewText, ParseMode: previewParseMode})
+		sent, err := s.adapter.client.sendMessage(ctx, sendMessageRequest{ChatID: s.target.NativeChatID, Text: previewText, ParseMode: previewParseMode})
 		if err != nil {
 			return err
 		}
@@ -76,7 +77,7 @@ func (s *messageStream) Append(ctx context.Context, text string) error {
 	if time.Since(s.lastEdit) < s.adapter.cfg.streamEditInterval() {
 		return nil
 	}
-	if _, err := s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.ChatID, MessageID: s.message, Text: previewText, ParseMode: previewParseMode}); err != nil {
+	if _, err := s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.NativeChatID, MessageID: s.message, Text: previewText, ParseMode: previewParseMode}); err != nil {
 		return err
 	}
 	s.lastEdit = time.Now()
@@ -105,7 +106,7 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 	}
 	if s.adapter.cfg.richMessageEnabled() {
 		if s.message != 0 {
-			_, _ = s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.ChatID, MessageID: s.message, Text: "done"})
+			_, _ = s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.NativeChatID, MessageID: s.message, Text: "done"})
 		}
 		receipt, logResult, err := s.adapter.sendRichText(ctx, s.target, text, 0, nil)
 		s.finished = true
@@ -114,7 +115,7 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 	pages := telegramTextPages(text)
 	if s.message == 0 {
 		pageText, pageParseMode := s.adapter.streamPreviewPayload(pages[0])
-		sent, err := s.adapter.client.sendMessage(ctx, sendMessageRequest{ChatID: s.target.ChatID, Text: pageText, ParseMode: pageParseMode})
+		sent, err := s.adapter.client.sendMessage(ctx, sendMessageRequest{ChatID: s.target.NativeChatID, Text: pageText, ParseMode: pageParseMode})
 		if err != nil {
 			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
 			if errors.Is(err, context.Canceled) {
@@ -125,7 +126,7 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 		s.message = sent.MessageID
 	} else {
 		pageText, pageParseMode := s.adapter.streamPreviewPayload(pages[0])
-		if _, err := s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.ChatID, MessageID: s.message, Text: pageText, ParseMode: pageParseMode}); err != nil {
+		if _, err := s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.NativeChatID, MessageID: s.message, Text: pageText, ParseMode: pageParseMode}); err != nil {
 			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
 			if errors.Is(err, context.Canceled) {
 				logResult.ResultStatus = globalevents.ResultCanceled
@@ -136,7 +137,7 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 	receipt := delivery.Receipt{PlatformMessageIDs: []string{formatMessageID(s.message)}}
 	for _, page := range pages[1:] {
 		pageText, pageParseMode := s.adapter.streamPreviewPayload(page)
-		sent, err := s.adapter.client.sendMessage(ctx, sendMessageRequest{ChatID: s.target.ChatID, Text: pageText, ParseMode: pageParseMode})
+		sent, err := s.adapter.client.sendMessage(ctx, sendMessageRequest{ChatID: s.target.NativeChatID, Text: pageText, ParseMode: pageParseMode})
 		if err != nil {
 			s.finished = true
 			logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}

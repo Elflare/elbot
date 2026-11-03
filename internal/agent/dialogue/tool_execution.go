@@ -60,18 +60,10 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 		}
 		record.Identity.SessionID = &session.ID
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
+		record.Identity.RunID = &facts.RunID
+		record.Identity.Attempt = &facts.Attempt
+		record.Identity.RequestID = &facts.RequestID
+		record.Identity.RootRequestID = &facts.RootRequestID
 		if logResult.ResultStatus == events.ResultCanceled {
 			record.Level = slog.LevelInfo
 		}

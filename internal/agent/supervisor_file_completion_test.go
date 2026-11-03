@@ -102,7 +102,7 @@ func TestSupervisorCompletionUsesPermissionsTagsAndSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := contractSupervisor(t, deps)
-	user := contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "user", Role: contextinfo.RoleUser})
+	user := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleUser, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "user"}})
 	for _, tc := range []struct {
 		ctx         context.Context
 		input, want string

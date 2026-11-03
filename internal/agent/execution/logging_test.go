@@ -77,7 +77,7 @@ func TestAgentLogSourcePreservesExplicitIdentity(t *testing.T) {
 		Type:      globalevents.ContentText,
 		Content:   "hello",
 	})
-	if len(records) != 1 || records[0].Identity.SessionID == nil || *records[0].Identity.SessionID != "source" || records[0].Identity.RequestID != nil {
+	if len(records) != 1 || records[0].Identity.SessionID == nil || *records[0].Identity.SessionID != "source" || *records[0].Identity.RequestID != "" {
 		t.Fatalf("records = %#v", records)
 	}
 }

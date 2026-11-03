@@ -2,6 +2,7 @@ package binding
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"errors"
 	"fmt"
 	"sync"
@@ -50,7 +51,7 @@ func assertEmptyAdmissions(t *testing.T, m *Manager) {
 
 func TestBindingIdentityVersionsAndConditionalClear(t *testing.T) {
 	m := newTestManager(t)
-	scope := share.Scope{ActorID: "u", Platform: "cli", PlatformScopeID: "local"}
+	scope := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	var events []BindingChangedEvent
 	_, err := m.ObserveBindingChanged(func(_ context.Context, event BindingChangedEvent) error {
 		events = append(events, event)
@@ -95,7 +96,7 @@ func TestBindingIdentityVersionsAndConditionalClear(t *testing.T) {
 
 func TestClearSessionBindingsAndValidateOriginalHandle(t *testing.T) {
 	m := newTestManager(t)
-	a, b, c := share.Scope{ActorID: "a"}, share.Scope{ActorID: "b"}, share.Scope{ActorID: "c"}
+	a, b, c := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "a"}}, share.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "b"}}, share.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "c"}}
 	first := setCurrent(t, m, a, "shared")
 	second := setCurrent(t, m, b, "shared")
 	other := setCurrent(t, m, c, "other")
@@ -128,7 +129,7 @@ func TestClearSessionBindingsAndValidateOriginalHandle(t *testing.T) {
 
 func TestNestedLeasePublishesOutsideLocksDespiteCancellation(t *testing.T) {
 	m := newTestManager(t)
-	scope := share.Scope{ActorID: "u"}
+	scope := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "u"}}
 	first := setCurrent(t, m, scope, "old")
 	var calls atomic.Int32
 	_, err := m.ObserveBindingChanged(func(ctx context.Context, event BindingChangedEvent) error {
@@ -182,7 +183,7 @@ func TestNestedLeasePublishesOutsideLocksDespiteCancellation(t *testing.T) {
 
 func TestAdmissionOrderAndReentry(t *testing.T) {
 	m := newTestManager(t)
-	scope := share.Scope{ActorID: "u"}
+	scope := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "u"}}
 	ctx, release, err := m.EnterActivation(context.Background(), scope, "b", "a", "b", "")
 	if err != nil {
 		t.Fatal(err)
@@ -194,7 +195,9 @@ func TestAdmissionOrderAndReentry(t *testing.T) {
 	nested()
 	for _, enter := range []func() (context.Context, func(), error){
 		func() (context.Context, func(), error) { return m.EnterSessions(ctx, "0") },
-		func() (context.Context, func(), error) { return m.EnterScope(ctx, share.Scope{ActorID: "v"}) },
+		func() (context.Context, func(), error) {
+			return m.EnterScope(ctx, share.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "v"}})
+		},
 	} {
 		if _, leave, err := enter(); err == nil {
 			leave()
@@ -236,7 +239,7 @@ func TestWaitingGateSurvivesHolderReleaseAndCanceledWaiter(t *testing.T) {
 		}()
 		synctest.Wait()
 		m.mu.Lock()
-		gate := m.gates["session:same"]
+		gate := m.gates[admissionKey{Kind: 1, Name: "same"}]
 		refs := gate.refs
 		m.mu.Unlock()
 		if refs != 3 {
@@ -249,7 +252,7 @@ func TestWaitingGateSurvivesHolderReleaseAndCanceledWaiter(t *testing.T) {
 		first()
 		second := <-acquired
 		m.mu.Lock()
-		retained := m.gates["session:same"] == gate && gate.refs == 1
+		retained := m.gates[admissionKey{Kind: 1, Name: "same"}] == gate && gate.refs == 1
 		m.mu.Unlock()
 		if !retained {
 			t.Fatal("waiter lost the original gate")
@@ -269,7 +272,7 @@ func TestCancellationReleasesPartialAcquisition(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		result := make(chan error, 1)
 		go func() {
-			_, release, err := m.EnterActivation(ctx, share.Scope{ActorID: "u"}, "a", "z")
+			_, release, err := m.EnterActivation(ctx, share.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "u"}}, "a", "z")
 			if err == nil {
 				release()
 			}
@@ -313,7 +316,7 @@ func TestGateMutualExclusionAndChurn(t *testing.T) {
 	}
 	workers.Wait()
 	for i := range 100 {
-		scope := share.Scope{ActorID: fmt.Sprint(i)}
+		scope := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: fmt.Sprint(i)}}
 		setCurrent(t, m, scope, fmt.Sprint(i))
 		setCurrent(t, m, scope, "")
 	}

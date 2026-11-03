@@ -11,7 +11,7 @@ import (
 )
 
 func TestLogIdentityPreservesExecutionFields(t *testing.T) {
-	if got := logIdentity(context.Background()); !reflect.DeepEqual(got, events.LogIdentity{}) {
+	if got := logIdentity(context.Background()); !reflect.DeepEqual(got, events.LogIdentity{SessionID: new(string), RunID: new(string), Attempt: new(string), RequestID: new(string), RootRequestID: new(string)}) {
 		t.Fatalf("missing context: %+v", got)
 	}
 	facts := contextinfo.Execution{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}

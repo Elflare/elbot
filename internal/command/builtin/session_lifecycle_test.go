@@ -1,12 +1,13 @@
 package builtin
 
 import (
- "elbot/internal/testutil"
 	"context"
 	"elbot/internal/command"
+	"elbot/internal/contextinfo"
 	"elbot/internal/request"
 	"elbot/internal/session"
 	"elbot/internal/storage"
+	"elbot/internal/testutil"
 	"elbot/internal/turn"
 	"strings"
 	"testing"
@@ -18,7 +19,7 @@ func TestLifecycleCommandsArchiveAndArchives(t *testing.T) {
 	store := newCommandTestStore(t)
 
 	svc := newSessionSupervisor(t, store)
-	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	first, err := svc.Create(ctx, scope, session.CreateRequest{Title: "first"})
 	if err != nil {
 		t.Fatalf("create first: %v", err)
@@ -89,7 +90,7 @@ func TestArchiveCurrentConfirmationPinsSessionID(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)
 	svc := newSessionSupervisor(t, store)
-	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	current, err := svc.Create(ctx, scope, session.CreateRequest{Title: "current"})
 	if err != nil {
 		t.Fatalf("create current: %v", err)
@@ -136,7 +137,7 @@ func TestSessionTargetCommandsCompleteSessionIDsAndConfirm(t *testing.T) {
 	store := newCommandTestStore(t)
 
 	svc := newSessionSupervisor(t, store)
-	scope := session.Scope{ActorID: "u1", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 	first, err := svc.Create(ctx, scope, session.CreateRequest{Title: "first"})
 	if err != nil {
 		t.Fatalf("create first: %v", err)

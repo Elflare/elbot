@@ -5,7 +5,6 @@ package rules
 import (
 	"bufio"
 	"context"
-	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -378,10 +377,10 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 		}
 		if platformName == "" {
-			platformName = event.Platform.Name
+			platformName = event.Chat.Platform
 		}
-		if event.Platform.Name != "" && platformName != event.Platform.Name {
-			err := fmt.Errorf("platform.call can only call current platform %q", event.Platform.Name)
+		if event.Chat.Platform != "" && platformName != event.Chat.Platform {
+			err := fmt.Errorf("platform.call can only call current platform %q", event.Chat.Platform)
 			return nil, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 		}
 		api, err := rawString(paramsMap["api"])
@@ -439,7 +438,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 			content := map[string]any{"source": "rules", "rule": firstNonEmpty(action.source.FinalName, action.ActionName), "point": string(event.Point), "tool": event.Tool.Name, "output_count": len(outputs), "platform_message_ids": receipt.PlatformMessageIDs, "result": logResult.Content}
 			content["sent_messages"] = []map[string]any{}
 			for _, sent := range receipt.SentMessages {
-				content["sent_messages"] = append(content["sent_messages"].([]map[string]any), map[string]any{"platform": sent.Platform, "scope_id": sent.ScopeID, "platform_message_id": sent.PlatformMessageID, "output_indexes": sent.OutputIndexes})
+				content["sent_messages"] = append(content["sent_messages"].([]map[string]any), map[string]any{"platform": sent.Platform, "chat_type": sent.ChatType, "chat_id": sent.ChatID, "platform_message_id": sent.PlatformMessageID, "output_indexes": sent.OutputIndexes})
 			}
 			if event.Tool.ID != "" {
 				content["tool_call_id"] = event.Tool.ID
@@ -449,13 +448,9 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 				record.Level = slog.LevelError
 			}
 			record.Identity = logIdentity(ctx)
+			content["actor"] = event.Actor
 			if event.Session.ID != "" {
 				record.Identity.SessionID = &event.Session.ID
-				if event.Actor.ID != "" {
-					content["actor_id"] = event.Actor.ID
-				}
-			} else if actor, ok := contextinfo.ActorFromContext(ctx); ok && actor.ID != "" {
-				content["actor_id"] = actor.ID
 			}
 			for key, value := range content {
 				if value, ok := value.(string); ok {
@@ -485,7 +480,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 		}
 		return map[string]any{"sent": len(outputs), "receipts": []delivery.Receipt{receipt}}, logResult, nil
 	case "message.get_reply":
-		return map[string]any{"message_id": event.Platform.ReplyToMessageID, "available": event.Platform.ReplyToMessageID != ""}, logResult, nil
+		return map[string]any{"message_id": event.Chat.ReplyToMessageID, "available": event.Chat.ReplyToMessageID != ""}, logResult, nil
 	case "message.get":
 		return map[string]any{"available": false}, logResult, nil
 	case "hook.log":
@@ -534,8 +529,10 @@ func protocolOutputsFromMap(values map[string]json.RawMessage, action Action, de
 
 func renderedActionTarget(action Action, event share.Event, state state) hookoutput.Target {
 	return hookoutput.Target{
-		Platform: render(action.Target.Platform, event, state), ScopeID: render(action.Target.ScopeID, event, state),
-		PrivateUserID: render(action.Target.PrivateUserID, event, state), GroupID: render(action.Target.GroupID, event, state), Superadmins: action.Target.Superadmins,
+		Platform:    render(action.Target.Platform, event, state),
+		ChatType:    action.Target.ChatType,
+		ChatID:      render(action.Target.ChatID, event, state),
+		Superadmins: action.Target.Superadmins,
 	}
 }
 

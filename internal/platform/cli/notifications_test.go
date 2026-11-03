@@ -31,7 +31,7 @@ func TestRemoteNotificationFailureLoggedOnceByDelivery(t *testing.T) {
 	}
 	defer l.Disconnect()
 	_, err = source.Emit(t.Context(), events.Notification{Text: "another platform failed", Target: events.NotificationTarget{
-		Platform: "cli", Kind: contextinfo.ConversationPrivate, ID: "offline-admin",
+		Platform: "cli", ChatType: contextinfo.ChatPrivate, ID: "offline-admin",
 	}})
 	if err == nil {
 		t.Fatal("offline recipient unexpectedly succeeded")

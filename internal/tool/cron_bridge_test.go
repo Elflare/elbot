@@ -25,7 +25,7 @@ func TestCronBridgeStorageAndNotifications(t *testing.T) {
 	changed := signal.New[CronChangedEvent, signal.Empty]("test.cron_changed")
 	defer changed.Close(context.Background())
 	bridge := cronBridge{repo: store.CronJobs(), changed: changed}
-	owner := contextinfo.Actor{ID: "owner", Platform: "qq", PlatformUserID: "123", DisplayName: "Owner"}
+	owner := contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qq", ID: "123"}, Name: "Owner"}
 	ctx := contextinfo.WithActor(t.Context(), owner)
 	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.Local)
 	tools := builtin.NewCronTools(bridge, nil, func() time.Time { return now })
@@ -58,14 +58,14 @@ func TestCronBridgeStorageAndNotifications(t *testing.T) {
 	if err := json.Unmarshal([]byte(job.Metadata), &meta); err != nil {
 		t.Fatal(err)
 	}
-	if job.Handler != storage.CronHandlerName || meta.CreatedBy.ActorID != owner.ID || meta.CreatedBy.PlatformUserID != owner.PlatformUserID || meta.Schedule.RunAt != "2026-10-25 12:10:00" || meta.Kind != storage.CronMetadataKind {
+	if job.Handler != storage.CronHandlerName || meta.CreatedBy.Platform != owner.Platform || meta.CreatedBy.ID != owner.ID || meta.Schedule.RunAt != "2026-10-25 12:10:00" || meta.Kind != storage.CronMetadataKind {
 		t.Fatalf("persisted = %+v %+v", job, meta)
 	}
 	if ok, err := store.CronJobs().CompareAndSwapDelivery(ctx, job.ID, job.DeliveryToken, "delivery", `{"delivery_complete":true}`, nil); err != nil || !ok {
 		t.Fatal(ok, err)
 	}
 	info, err := bridge.GetByName(ctx, "reminder")
-	if err != nil || !info.Completed || info.CreatedBy.ID != owner.ID {
+	if err != nil || !info.Completed || info.CreatedBy.ActorIdentity != owner.ActorIdentity {
 		t.Fatalf("read = %+v %v", info, err)
 	}
 	result, _, err := callTool(ctx, tools[1], share.CallRequest{})

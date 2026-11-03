@@ -111,7 +111,7 @@ func TestLifecycleStopsInputKeepsHTTPAndWaitsForCallback(t *testing.T) {
 		t.Fatal(ctx.Err())
 	}
 	a.client.baseURL = httpServer.URL
-	if _, _, err := a.SendTo(ctx, delivery.Target{PrivateUserID: "u"}, []delivery.Output{delivery.Text("finish")}); err != nil {
+	if _, _, err := a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "u"}, []delivery.Output{delivery.Text("finish")}); err != nil {
 		t.Fatal(err)
 	}
 	close(release)
@@ -121,7 +121,7 @@ func TestLifecycleStopsInputKeepsHTTPAndWaitsForCallback(t *testing.T) {
 	if err := a.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := a.SendTo(ctx, delivery.Target{PrivateUserID: "u"}, nil); !errors.Is(err, signal.ErrClosed) {
+	if _, _, err := a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "u"}, nil); !errors.Is(err, signal.ErrClosed) {
 		t.Fatalf("send after close = %v", err)
 	}
 }
@@ -245,7 +245,7 @@ func TestCloseWaitsForWholeSendAndCanRetry(t *testing.T) {
 	a.chatHistory = blockingAliasHistory{a.chatHistory, entered, release}
 	sent := make(chan error, 1)
 	go func() {
-		_, _, err := a.SendTo(t.Context(), delivery.Target{PrivateUserID: "u"}, []delivery.Output{delivery.Text("hello")})
+		_, _, err := a.SendTo(t.Context(), delivery.Target{ChatType: "private", ChatID: "u"}, []delivery.Output{delivery.Text("hello")})
 		sent <- err
 	}()
 	ctx := testDeadline(t)
@@ -271,7 +271,7 @@ func TestCloseWaitsForWholeSendAndCanRetry(t *testing.T) {
 	if err := <-sent; err != nil {
 		t.Fatal(err)
 	}
-	if id, err := a.chatHistory.ResolvePlatformMessageAlias(ctx, config.PlatformQQOfficial, "c2c:u", "alias"); err != nil || id != "sent" {
+	if id, err := a.chatHistory.ResolvePlatformMessageAlias(ctx, config.PlatformQQOfficial, "private", "u", "alias"); err != nil || id != "sent" {
 		t.Fatalf("alias = %q, %v", id, err)
 	}
 }
@@ -287,7 +287,7 @@ func TestCloseCancelsInflightHTTP(t *testing.T) {
 	a := newQQOfficialSendTestAdapter(t, server)
 	sent := make(chan error, 1)
 	go func() {
-		_, _, err := a.SendTo(t.Context(), delivery.Target{PrivateUserID: "u"}, []delivery.Output{delivery.Text("hello")})
+		_, _, err := a.SendTo(t.Context(), delivery.Target{ChatType: "private", ChatID: "u"}, []delivery.Output{delivery.Text("hello")})
 		sent <- err
 	}()
 	ctx := testDeadline(t)

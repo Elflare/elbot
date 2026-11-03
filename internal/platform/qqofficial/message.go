@@ -15,7 +15,6 @@ import (
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/platform/share"
-	"elbot/internal/security"
 	"elbot/internal/storage"
 )
 
@@ -31,18 +30,18 @@ var qqOfficialFaceFallbackPattern = regexp.MustCompile(`<faceType=[^>]*>`)
 var qqOfficialGroupAtPrefixPattern = regexp.MustCompile(`^\s*(?:@\S+\s*|<@!?[^>]+>\s*)`)
 
 func (a *Adapter) handleC2CMessage(ctx context.Context, handler share.MessageHandler, p payload, msg inboundMessage) {
-	a.handleInboundMessage(ctx, handler, p, msg, contextinfo.ConversationPrivate, false)
+	a.handleInboundMessage(ctx, handler, p, msg, contextinfo.ChatPrivate, false)
 }
 
 func (a *Adapter) handleGroupMessage(ctx context.Context, handler share.MessageHandler, p payload, msg inboundMessage) {
-	a.handleInboundMessage(ctx, handler, p, msg, contextinfo.ConversationGroup, p.Type == eventGroupAtMessageCreate)
+	a.handleInboundMessage(ctx, handler, p, msg, contextinfo.ChatGroup, p.Type == eventGroupAtMessageCreate)
 }
 
-func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.MessageHandler, p payload, msg inboundMessage, conversation contextinfo.ConversationKind, mentionedBot bool) {
+func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.MessageHandler, p payload, msg inboundMessage, conversation contextinfo.ChatType, mentionedBot bool) {
 	senderID, scopeID, _, targetID := inboundRoute(msg, conversation)
 	if senderID == "" {
 		label := "member_openid"
-		if conversation == contextinfo.ConversationPrivate {
+		if conversation == contextinfo.ChatPrivate {
 			label = "user_openid"
 		}
 		{
@@ -57,21 +56,11 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 				ResultStatus: globalevents.ResultFailed,
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
+			record.Identity.SessionID = &facts.SessionID
+			record.Identity.RunID = &facts.RunID
+			record.Identity.Attempt = &facts.Attempt
+			record.Identity.RequestID = &facts.RequestID
+			record.Identity.RootRequestID = &facts.RootRequestID
 			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 		}
 		return
@@ -89,21 +78,11 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 				ResultStatus: globalevents.ResultFailed,
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
+			record.Identity.SessionID = &facts.SessionID
+			record.Identity.RunID = &facts.RunID
+			record.Identity.Attempt = &facts.Attempt
+			record.Identity.RequestID = &facts.RequestID
+			record.Identity.RootRequestID = &facts.RootRequestID
 			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 		}
 		return
@@ -117,11 +96,11 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 
 	msgIndex, refIndex := inboundReferenceIndexes(msg)
 	referenced := inboundReferencedMessage(msg, refIndex)
-	replyID, err := a.resolveInboundReplyID(ctx, scopeID, refIndex)
-	actorID := security.ActorID(a.Name(), senderID)
+	replyID, err := a.resolveInboundReplyID(ctx, conversation, scopeID, refIndex)
+	actorID := contextinfo.ActorIdentity{Platform: a.Name(), ID: senderID}
 	bot := share.Identity{}
 	var mentions []share.Mention
-	if conversation == contextinfo.ConversationGroup {
+	if conversation == contextinfo.ChatGroup {
 		bot.UserID = strings.TrimSpace(a.cfg.AppID)
 		if mentionedBot && bot.UserID != "" {
 			mentions = []share.Mention{{UserID: bot.UserID}}
@@ -130,14 +109,14 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 	messageCtx := share.MessageContext{
 		Conversation: contextinfo.Conversation{
 			Source: contextinfo.Source{
-				Platform:         a.Name(),
-				ScopeID:          scopeID,
-				ConversationKind: conversation,
-				ConversationID:   targetID,
+				Platform: a.Name(),
+
+				ChatType: conversation,
+				ChatID:   targetID,
 			},
 			Identity: contextinfo.Identity{
-				ActorID:        actorID,
-				PlatformUserID: senderID,
+
+				ID: senderID,
 			},
 			PlatformMessageID: strings.TrimSpace(msg.ID),
 			ReplyToMessageID:  replyID,
@@ -164,12 +143,12 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 	var ref share.ReferenceResult
 	if err == nil && replyID != "" {
 		ref, err = a.referenceResolver(msgCtx, share.ReferenceOptions{
-			Platform:     a.Name(),
-			ScopeID:      messageCtx.Conversation.Source.ScopeID,
-			ActorID:      actorID,
-			IsSuperadmin: a.superadmins.IsSuperadmin(senderID),
-			ReplyID:      replyID,
-			Text:         text,
+			Platform: a.Name(),
+			ChatID:   messageCtx.Conversation.Source.ChatID,
+			ChatType: conversation,
+			Owner:    actorID,
+			ReplyID:  replyID,
+			Text:     text,
 			Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
 				return referenced, len(referenced.Segments) > 0, nil
 			},
@@ -206,18 +185,18 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 		msgCtx = share.WithMessageContext(ctx, messageCtx)
 	}
 	a.recordChatMessage(ctx, msg, conversation, senderID, scopeID, text, replyID, messageCtx.Reply)
-	a.recordMessageAlias(ctx, scopeID, msgIndex, msg.ID)
+	a.recordMessageAlias(ctx, conversation, scopeID, msgIndex, msg.ID)
 	_ = handler(msgCtx, text, messageCtx)
 }
 
-func inboundRoute(msg inboundMessage, conversation contextinfo.ConversationKind) (senderID, scopeID string, kind sendTargetKind, targetID string) {
-	if conversation == contextinfo.ConversationGroup {
+func inboundRoute(msg inboundMessage, conversation contextinfo.ChatType) (senderID, scopeID string, kind sendTargetKind, targetID string) {
+	if conversation == contextinfo.ChatGroup {
 		senderID = strings.TrimSpace(msg.Author.MemberOpenID)
 		targetID = strings.TrimSpace(msg.GroupOpenID)
-		return senderID, "group:" + targetID, targetGroup, targetID
+		return senderID, targetID, targetGroup, targetID
 	}
 	senderID = strings.TrimSpace(msg.Author.UserOpenID)
-	return senderID, "c2c:" + senderID, targetC2C, senderID
+	return senderID, senderID, targetC2C, senderID
 }
 
 func normalizedInboundText(msg inboundMessage, mentionedBot bool) string {
@@ -228,7 +207,7 @@ func normalizedInboundText(msg inboundMessage, mentionedBot bool) string {
 	return strings.TrimSpace(text)
 }
 
-func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, conversation contextinfo.ConversationKind, senderID, scopeID, text, replyID string, reply share.ReplyContext) {
+func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, conversation contextinfo.ChatType, senderID, scopeID, text, replyID string, reply share.ReplyContext) {
 	if (strings.TrimSpace(text) == "" && len(msg.Attachments) == 0) || strings.TrimSpace(msg.ID) == "" {
 		return
 	}
@@ -238,10 +217,6 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 			createdAt = parsed
 		}
 	}
-	scopeType := "private"
-	if conversation == contextinfo.ConversationGroup {
-		scopeType = "group"
-	}
 	sourceSegments := inboundSegments(text, inboundAttachmentSegments(msg.Attachments))
 	segments := make([]storage.ChatSegment, len(sourceSegments))
 	for i, segment := range sourceSegments {
@@ -249,8 +224,8 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 	}
 	history := &storage.ChatMessage{
 		Platform:                 a.Name(),
-		PlatformScopeID:          scopeID,
-		ScopeType:                scopeType,
+		ChatID:                   scopeID,
+		ChatType:                 conversation,
 		PlatformMessageID:        strings.TrimSpace(msg.ID),
 		SenderID:                 senderID,
 		Text:                     strings.TrimSpace(text),
@@ -277,21 +252,11 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 				record.Level = slog.LevelInfo
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			if facts.SessionID != "" {
-				record.Identity.SessionID = &facts.SessionID
-			}
-			if facts.RunID != "" {
-				record.Identity.RunID = &facts.RunID
-			}
-			if facts.Attempt != "" {
-				record.Identity.Attempt = &facts.Attempt
-			}
-			if facts.RequestID != "" {
-				record.Identity.RequestID = &facts.RequestID
-			}
-			if facts.RootRequestID != "" {
-				record.Identity.RootRequestID = &facts.RootRequestID
-			}
+			record.Identity.SessionID = &facts.SessionID
+			record.Identity.RunID = &facts.RunID
+			record.Identity.Attempt = &facts.Attempt
+			record.Identity.RequestID = &facts.RequestID
+			record.Identity.RootRequestID = &facts.RootRequestID
 			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
 		}
 	}

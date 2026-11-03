@@ -3,6 +3,7 @@ package object
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"sync"
 	"time"
 
@@ -44,7 +45,7 @@ type Manager struct {
 // MediaRepository 仅包含对象管理实际使用的存储能力。
 type MediaRepository interface {
 	SaveHistory(ctx context.Context, item storage.HistoryMedia) error
-	FindHistory(ctx context.Context, platform, scopeID, messageID string) ([]storage.HistoryMedia, error)
+	FindHistory(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, messageID string) ([]storage.HistoryMedia, error)
 	ListHistory(ctx context.Context, afterOwnerID string, limit int) ([]storage.HistoryMedia, error)
 	DeleteHistory(ctx context.Context, ownerID string) error
 	Get(ctx context.Context, id string) (*storage.Media, error)
@@ -54,7 +55,7 @@ type MediaRepository interface {
 	ClaimOrphans(ctx context.Context, cutoff time.Time) ([]storage.Media, error)
 	FinishDelete(ctx context.Context, id string) error
 	Touch(ctx context.Context, id string, now time.Time) error
-	FindOutputs(ctx context.Context, platform, scopeID, messageID string, now time.Time) ([]storage.MediaOutput, error)
+	FindOutputs(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, messageID string, now time.Time) ([]storage.MediaOutput, error)
 	ExpireOutputs(ctx context.Context, now time.Time) error
 	CheckReferences(ctx context.Context) ([]string, error)
 	RecoverInterrupted(ctx context.Context) error
@@ -68,7 +69,7 @@ type ReferenceRepository interface {
 
 // History 只在对账、清理调用时借用，不保存完整历史服务。
 type History interface {
-	GetByPlatformMessage(ctx context.Context, platform, scopeID, messageID string) (*storage.ChatMessage, error)
+	GetByPlatformMessage(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, messageID string) (*storage.ChatMessage, error)
 }
 
 // NewManager 保存裁剪后的配置、仓储和后端并执行中断恢复。

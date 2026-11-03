@@ -3,6 +3,7 @@
 package elnis
 
 import (
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -13,15 +14,9 @@ import (
 )
 
 func toDeliveryTarget(t Target) delivery.Target {
-	out := delivery.Target{Platform: t.Platform}
-	switch t.Type {
-	case "private":
-		out.PrivateUserID = t.ID
-	case "group":
-		out.GroupID = t.ID
-	default:
-		out.Superadmins = true
-	}
+	out := delivery.Target{Platform: t.Platform, Superadmins: t.Type == ""}
+	out.ChatType = contextinfo.ChatType(t.Type)
+	out.ChatID = t.ID
 	return out
 }
 

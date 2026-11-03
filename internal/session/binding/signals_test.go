@@ -3,6 +3,7 @@ package binding
 import (
 	"bytes"
 	"context"
+	"elbot/internal/contextinfo"
 	"encoding/json"
 	"log/slog"
 	"sync"
@@ -34,7 +35,7 @@ func TestBindingEventFailurePreservesCommit(t *testing.T) {
 					t.Fatal(err)
 				}
 				m.changed = signal.New[BindingChangedEvent, signal.Empty]("session.binding_changed", signal.Options[BindingChangedEvent]{Capacity: 1, Concurrency: 1, Timeout: time.Second})
-				scope := share.Scope{ActorID: "u"}
+				scope := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "u"}}
 				old := setCurrent(t, m, scope, "old")
 				finish := make(chan struct{})
 				release := sync.OnceFunc(func() { close(finish) })
@@ -98,7 +99,7 @@ func TestBindingEventSuccessDoesNotWarn(t *testing.T) {
 		t.Run(map[bool]string{false: "normal", true: "canceled_request"}[canceled], func(t *testing.T) {
 			logs := captureBindingLogs(t)
 			m := newTestManager(t)
-			scope := share.Scope{ActorID: "u"}
+			scope := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "u"}}
 			var observed BindingChangedEvent
 			_, err := m.ObserveBindingChanged(func(ctx context.Context, event BindingChangedEvent) error {
 				observed = event

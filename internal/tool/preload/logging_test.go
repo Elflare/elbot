@@ -33,7 +33,7 @@ func TestPreloadAuditIdentityAndResult(t *testing.T) {
 			for _, sessionID := range []string{"", "explicit"} {
 				t.Run(fmt.Sprintf("%s/identity=%t/session=%s", tc.name, withIdentity, sessionID), func(t *testing.T) {
 					ctx := t.Context()
-					want := globalevents.LogIdentity{SessionID: &sessionID}
+					want := globalevents.LogIdentity{SessionID: &sessionID, RunID: new(string), Attempt: new(string), RequestID: new(string), RootRequestID: new(string)}
 					if withIdentity {
 						facts := contextinfo.Execution{SessionID: "context-session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}
 						ctx = contextinfo.WithExecution(ctx, facts)

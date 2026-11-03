@@ -109,9 +109,9 @@ func TestDynamicProviderClientPublishesRequestLog(t *testing.T) {
 func TestMapSentAssistantMessageUsesOnlyCompleteReceiptSources(t *testing.T) {
 	f := newReplyTestFixture(t, false)
 	sent := []delivery.SentMessage{
-		{Platform: "qqofficial", ScopeID: "c2c:1", PlatformMessageID: "101"},
-		{Platform: "telegram", ScopeID: "private:1", PlatformMessageID: "101"},
-		{Platform: "telegram", ScopeID: "supergroup:-2", PlatformMessageID: "101"},
+		{Platform: "qqofficial", ChatType: "private", ChatID: "1", PlatformMessageID: "101"},
+		{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "101"},
+		{Platform: "telegram", ChatType: "group", ChatID: "-2", PlatformMessageID: "101"},
 	}
 	f.platform.receipt = delivery.Receipt{SentMessages: sent}
 	result, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
@@ -119,12 +119,12 @@ func TestMapSentAssistantMessageUsesOnlyCompleteReceiptSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, message := range sent {
-		got, err := f.repo.FindByPlatformMessage(f.ctx, message.Platform, message.ScopeID, message.PlatformMessageID)
+		got, err := f.repo.FindByPlatformMessage(f.ctx, message.Platform, message.ChatType, message.ChatID, message.PlatformMessageID)
 		if err != nil || got.ID != result.MessageID {
 			t.Fatal(got, err)
 		}
 	}
-	if _, err := f.repo.FindByPlatformMessage(f.ctx, "cli", "local", "101"); err == nil {
+	if _, err := f.repo.FindByPlatformMessage(f.ctx, "cli", "", "local", "101"); err == nil {
 		t.Fatal("invented mapping from context")
 	}
 }

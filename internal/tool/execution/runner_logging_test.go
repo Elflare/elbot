@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -46,22 +47,26 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 		t.Run(initial, func(t *testing.T) {
 			ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "context-session", RunID: "before", Attempt: "attempt", RequestID: "request", RootRequestID: "root"})
 			if initial != "foreground" {
-				ctx = contextinfo.WithBackgroundKind(ctx, contextinfo.BackgroundKind(initial))
+				ctx = testutil.TaskContext(ctx, string(initial))
 			}
 			handedOff := false
 			row := &storage.Session{ID: "origin-session", Mode: storage.SessionModeWork}
+			if initial != "foreground" {
+				row.Mode, row.TaskType = storage.SessionModeBackground, initial
+			}
 			registry := toolregistry.NewRegistry(security.DefaultPermission())
 			if err := registerTestTools(registry, (loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "logging_tool"}, cancel: func() {
 				handedOff = true
-				row.Metadata = `{"background_kind":"forged-later-value"}`
+				row.TaskType = "forged-later-value"
 			}}).Definition()); err != nil {
 				t.Fatal(err)
 			}
 			manager := newTestManager(registry, security.NewPermission("high", "high", nil))
-			deps := &originLoggingDeps{refresh: func(ctx context.Context, _ *storage.Session) (context.Context, error) {
+			deps := &originLoggingDeps{refresh: func(ctx context.Context, snapshot *storage.Session) (context.Context, error) {
 				if handedOff {
+					snapshot.Mode, snapshot.TaskType = storage.SessionModeWork, ""
 					ctx = contextinfo.WithExecution(ctx, contextinfo.Execution{SessionID: "another-context-session", RunID: "after"})
-					return workspace.WithoutPathScope(contextinfo.WithoutBackgroundKind(ctx)), nil
+					return workspace.WithoutPathScope(testutil.ForegroundContext(ctx)), nil
 				}
 				return ctx, nil
 			}}
@@ -78,7 +83,7 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 			t.Cleanup(connection.Disconnect)
 			var result toolshare.RunResult
 			for _, id := range []string{"one", "two"} {
-				result = manager.Run(ctx, deps, toolshare.RunRequest{Committer: &testToolCommitter{}, Session: row, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: id, Name: "logging_tool", Arguments: "{}"}}})
+				result = manager.Run(ctx, deps, toolshare.RunRequest{Committer: &testToolCommitter{}, Session: row, DiscoveredTools: []toolshare.DiscoveredTool{{Name: "logging_tool", Source: toolshare.SourceKindNative, Schema: llm.ToolSchema{Name: "logging_tool"}}}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: id, Name: "logging_tool", Arguments: "{}"}}})
 				if result.Err != nil {
 					t.Fatal(result.Err)
 				}
@@ -87,9 +92,6 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 				t.Fatalf("result=%#v calls=%#v", result, records)
 			}
 			want := initial
-			if initial == "unknown" {
-				want = ""
-			}
 			for i, record := range records {
 				wantRun := "before"
 				if i >= 1 {
@@ -102,7 +104,7 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 					if record.Identity.Attempt == nil || *record.Identity.Attempt != "attempt" || record.Identity.RequestID == nil || *record.Identity.RequestID != "request" || record.Identity.RootRequestID == nil || *record.Identity.RootRequestID != "root" {
 						t.Fatalf("source identity omitted: %#v", record.Identity)
 					}
-				} else if record.Identity.Attempt != nil || record.Identity.RequestID != nil || record.Identity.RootRequestID != nil {
+				} else if *record.Identity.Attempt != "" || *record.Identity.RequestID != "" || *record.Identity.RootRequestID != "" {
 					t.Fatalf("stale identity retained after handoff: %#v", record.Identity)
 				}
 				if i >= 1 {

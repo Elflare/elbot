@@ -27,7 +27,7 @@ func TestPureMediaHistoryPreservesOrderWithoutCredentials(t *testing.T) {
 	raw := `[{"type":"image","data":{"file":"image-id","url":"https://example.com/image?rkey=secret"}},{"type":"file","data":{"file_id":"file-id","name":"file.txt"}},{"type":"image","data":{"file":"image-id","url":"https://example.com/image?rkey=secret"}}]`
 	handler := &captureHandler{}
 	a.handleEvent(ctx, handler.HandleMessage, Event{MessageType: "group", MessageID: 1, GroupID: 9, UserID: 1, Message: []byte(raw), RawMessage: raw})
-	row, err := history.Repository().GetByPlatformMessage(ctx, "qqonebot", "group:9", "1")
+	row, err := history.Repository().GetByPlatformMessage(ctx, "qqonebot", "group", "9", "1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestOutputReferenceDoesNotFetchPlatform(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Media().SaveOutput(ctx, storage.MediaOutput{Platform: "qqonebot", ScopeID: "group:9", MessageID: "sent", Kind: "image", MediaID: item.ID, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+	if err := store.Media().SaveOutput(ctx, storage.MediaOutput{Platform: "qqonebot", ChatType: "group", ChatID: "9", MessageID: "sent", Kind: "image", MediaID: item.ID, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
 	a := newTestAdapter(t, Config{}, store, nil)

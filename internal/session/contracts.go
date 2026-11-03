@@ -19,16 +19,19 @@ var (
 
 // Scope 标识前台会话所属的用户和平台范围。
 type Scope struct {
-	ConversationKind contextinfo.ConversationKind // 用于判断群聊、私聊等接入语义。
-	ActorID          string                       // 会话所属用户。
-	PlatformUserID   string                       // 原生用户 ID，用于按平台查询权限，不从 ActorID 反解。
-	Platform         string                       // 平台标识。
-	PlatformScopeID  string                       // 平台内的会话范围。
-	IsCLI            bool                         // 本地管理入口，可跨用户、平台和范围管理会话。
+	TaskType string                    // 后台任务类型；前台聊天为空。
+	TaskID   string                    // 类型内的原生任务 ID。
+	ChatType contextinfo.ChatType      // 用于判断群聊、私聊等接入语义。
+	Owner    contextinfo.ActorIdentity // 会话所有者，独立于会话投递平台。
+	Platform string                    // 平台标识。
+	ChatID   string                    // 平台内的会话范围。
+	IsCLI    bool                      // 本地管理入口，可跨用户、平台和范围管理会话。
 }
 
 // Key 返回 current 绑定的范围身份，不包含可变的会话状态。
-func (s Scope) Key() string { return share.Scope(s).Key() }
+type ScopeKey = share.ScopeKey
+
+func (s Scope) Key() ScopeKey { return share.Scope(s).Key() }
 
 type CreateRequest struct {
 	Title    string // 新会话标题。
@@ -57,18 +60,18 @@ type Status struct {
 type BackgroundRequest struct {
 	TargetPlatforms []string          // 创建时解析出的有效投递平台；ID 使用其去重快照。
 	SessionID       string            // 非空时复用指定的未接管后台会话。
-	Kind            string            // 后台来源种类。
-	Name            string            // 后台任务名称。
-	Title           string            // 新会话标题。
+	TaskType        string            // 后台来源种类。
+	TaskID          string            // 原生任务 ID。
+	Name            string            // 新会话标题。
 	Metadata        map[string]string // 后台业务附加字段。
 }
 
 // BackgroundCopyRequest 复制已提交的后台历史，不继承执行和工具状态。
 type BackgroundCopyRequest struct {
 	SourceSessionID string                  // 待复制的后台会话。
-	Kind            string                  // 副本的后台来源种类。
-	Name            string                  // 副本所属任务名称。
-	Title           string                  // 副本标题。
+	TaskType        string                  // 副本的后台来源种类。
+	TaskID          string                  // 副本所属任务的原生 ID。
+	Name            string                  // 副本标题。
 	Metadata        storage.SessionMetadata // 业务字段；命名和后台身份由 Session 填写。
 }
 

@@ -14,11 +14,11 @@ import (
 
 func TestChatHistoryUsesPublicSource(t *testing.T) {
 	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{
-		Source:   contextinfo.Source{Platform: "qqofficial", ScopeID: "group:openid"},
-		Identity: contextinfo.Identity{ActorID: "qqofficial:user", PlatformUserID: "user"},
+		Source:   contextinfo.Source{Platform: "qqofficial", ChatType: "group", ChatID: "openid"},
+		Identity: contextinfo.Identity{ID: "user"},
 	})
 	chat, err := currentChatHistoryContext(ctx)
-	if err != nil || chat.Platform != "qqofficial" || chat.ScopeID != "group:openid" {
+	if err != nil || chat.Platform != "qqofficial" || (chat.ChatType != "group" || chat.ChatID != "openid") {
 		t.Fatalf("chat = %+v, err = %v", chat, err)
 	}
 	if _, err := currentChatHistoryContext(context.Background()); err == nil {
@@ -55,24 +55,27 @@ func (b *queryBackend) GetMessage(_ context.Context, key share.MessageKey) (shar
 func TestManagerQueriesStayInConversation(t *testing.T) {
 	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.Local)
 	backend := &queryBackend{}
-	m := NewManager(backend, func() time.Time { return now })
+	m := NewManager(backend, func() time.Time { return now }, func(ctx context.Context, _ share.SearchRequest) (contextinfo.Source, error) {
+		info, _ := contextinfo.ConversationFromContext(ctx)
+		return info.Source, nil
+	})
 	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{
-		Source:   contextinfo.Source{Platform: "qqofficial", ScopeID: "group:one"},
-		Identity: contextinfo.Identity{PlatformUserID: "user"},
+		Source:   contextinfo.Source{Platform: "qqofficial", ChatType: "group", ChatID: "one"},
+		Identity: contextinfo.Identity{ID: "user"},
 	})
 	rows, err := m.Search(ctx, share.SearchRequest{Query: " ice,火，snow | wind ", QueryMode: "or", User: "我", Hours: 2, Days: 7, Limit: 100})
 	if err != nil || len(rows) != 1 || rows[0].Text != "search result" {
 		t.Fatalf("Search = %+v, %v", rows, err)
 	}
 	q := backend.search
-	if q.Platform != "qqofficial" || q.ScopeID != "group:one" || q.SenderQuery != "我" || q.Limit != 50 || q.QueryMode != "or" {
+	if q.Platform != "qqofficial" || (q.ChatType != "group" || q.ChatID != "one") || q.SenderQuery != "我" || q.Limit != 50 || q.QueryMode != "or" {
 		t.Fatalf("query = %+v", q)
 	}
 	if !reflect.DeepEqual(q.QueryTerms, []string{"ice", "火", "snow", "wind"}) || q.Since == nil || !q.Since.Equal(now.Add(-2*time.Hour)) || q.Until != nil {
 		t.Fatalf("terms/time = %+v", q)
 	}
 	_, err = m.Around(ctx, share.AroundRequest{MessageID: "42", Before: -1, After: 500})
-	wantKey := share.MessageKey{Platform: "qqofficial", ScopeID: "group:one", MessageID: "42"}
+	wantKey := share.MessageKey{Platform: "qqofficial", ChatType: "group", ChatID: "one", MessageID: "42"}
 	if err != nil || backend.around != (AroundQuery{Key: wantKey, Before: 0, After: 50}) {
 		t.Fatalf("Around = %+v, %v", backend.around, err)
 	}
@@ -83,7 +86,16 @@ func TestManagerQueriesStayInConversation(t *testing.T) {
 
 func TestManagerRejectsMissingContextBeforeBackend(t *testing.T) {
 	backend := &queryBackend{}
-	m := NewManager(backend, time.Now)
+	m := NewManager(backend, time.Now, func(ctx context.Context, _ share.SearchRequest) (contextinfo.Source, error) {
+		if err := ctx.Err(); err != nil {
+			return contextinfo.Source{}, err
+		}
+		info, ok := contextinfo.ConversationFromContext(ctx)
+		if !ok {
+			return contextinfo.Source{}, share.ErrNoChatContext
+		}
+		return info.Source, nil
+	})
 	canceled, cancel := context.WithCancel(t.Context())
 	cancel()
 	for _, tc := range []struct {
@@ -113,9 +125,15 @@ func TestManagerRejectsMissingContextBeforeBackend(t *testing.T) {
 
 func TestSearchOpaqueUserIDIsNotOnlyNickname(t *testing.T) {
 	backend := &queryBackend{}
-	m := NewManager(backend, time.Now)
+	m := NewManager(backend, time.Now, func(ctx context.Context, _ share.SearchRequest) (contextinfo.Source, error) {
+		info, ok := contextinfo.ConversationFromContext(ctx)
+		if !ok {
+			return contextinfo.Source{}, share.ErrNoChatContext
+		}
+		return info.Source, nil
+	})
 	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{
-		Source: contextinfo.Source{Platform: "qqofficial", ScopeID: "c2c:AB12_OPENID"},
+		Source: contextinfo.Source{Platform: "qqofficial", ChatType: "private", ChatID: "AB12_OPENID"},
 	})
 	if _, err := m.Search(ctx, share.SearchRequest{User: "AB12_OPENID"}); err != nil {
 		t.Fatal(err)
@@ -127,10 +145,16 @@ func TestSearchOpaqueUserIDIsNotOnlyNickname(t *testing.T) {
 
 func TestSearchUserIsAlwaysLiteral(t *testing.T) {
 	backend := &queryBackend{}
-	m := NewManager(backend, time.Now)
+	m := NewManager(backend, time.Now, func(ctx context.Context, _ share.SearchRequest) (contextinfo.Source, error) {
+		info, ok := contextinfo.ConversationFromContext(ctx)
+		if !ok {
+			return contextinfo.Source{}, share.ErrNoChatContext
+		}
+		return info.Source, nil
+	})
 	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{
-		Source:   contextinfo.Source{Platform: "qqofficial", ScopeID: "c2c:AB12_OPENID"},
-		Identity: contextinfo.Identity{PlatformUserID: "must-not-replace-user"},
+		Source:   contextinfo.Source{Platform: "qqofficial", ChatType: "private", ChatID: "AB12_OPENID"},
+		Identity: contextinfo.Identity{ID: "must-not-replace-user"},
 	})
 	for _, user := range []string{"AB12_OPENID", "123456", "Alice", "芙蕾娅", "@AB12_OPENID", "我", "本人", "自己", "  padded  ", "  "} {
 		if _, err := m.Search(ctx, share.SearchRequest{User: user}); err != nil {
@@ -139,56 +163,5 @@ func TestSearchUserIsAlwaysLiteral(t *testing.T) {
 		if backend.search.SenderQuery != strings.TrimSpace(user) {
 			t.Fatalf("user=%q query=%q", user, backend.search.SenderQuery)
 		}
-	}
-}
-
-func TestSearchExplicitScopeRules(t *testing.T) {
-	platform, scope, empty, blank := " qqofficial ", " c2c:AB12_OPENID ", "", "  "
-	foreground := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{
-		Source: contextinfo.Source{Platform: "telegram", ScopeID: "group:current"},
-	})
-	for _, tc := range []struct {
-		name string
-		ctx  context.Context
-		req  share.SearchRequest
-		want string
-	}{
-		{"foreground platform", foreground, share.SearchRequest{Platform: &platform}, "前台"},
-		{"foreground scope", foreground, share.SearchRequest{Scope: &scope}, "前台"},
-		{"foreground both", foreground, share.SearchRequest{Platform: &platform, Scope: &scope}, "前台"},
-		{"foreground empty", foreground, share.SearchRequest{Platform: &empty}, "前台"},
-		{"background missing", contextinfo.WithBackgroundKind(foreground, contextinfo.BackgroundKindCron), share.SearchRequest{}, "必须指定"},
-		{"background no scope", contextinfo.WithBackgroundKind(foreground, contextinfo.BackgroundKindCron), share.SearchRequest{Platform: &platform}, "必须指定"},
-		{"background no platform", contextinfo.WithBackgroundKind(foreground, contextinfo.BackgroundKindElnis), share.SearchRequest{Scope: &scope}, "必须指定"},
-		{"background blank scope", contextinfo.WithBackgroundKind(foreground, ""), share.SearchRequest{Platform: &platform, Scope: &blank}, "必须指定"},
-		{"background empty platform", contextinfo.WithBackgroundKind(foreground, ""), share.SearchRequest{Platform: &empty, Scope: &scope}, "必须指定"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			backend := &queryBackend{}
-			_, err := NewManager(backend, time.Now).Search(tc.ctx, tc.req)
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("error=%v", err)
-			}
-			if backend.calls != 0 {
-				t.Fatal("invalid scope reached backend")
-			}
-		})
-	}
-	for _, kind := range []contextinfo.BackgroundKind{contextinfo.BackgroundKindCron, contextinfo.BackgroundKindElnis, ""} {
-		for _, parent := range []context.Context{t.Context(), foreground} {
-			backend := &queryBackend{}
-			ctx := contextinfo.WithBackgroundKind(parent, kind)
-			_, err := NewManager(backend, time.Now).Search(ctx, share.SearchRequest{Platform: &platform, Scope: &scope})
-			if err != nil || backend.search.Platform != "qqofficial" || backend.search.ScopeID != "c2c:AB12_OPENID" {
-				t.Fatalf("query=%+v error=%v", backend.search, err)
-			}
-		}
-	}
-	backend := &queryBackend{}
-	ctx, cancel := context.WithCancel(contextinfo.WithBackgroundKind(t.Context(), contextinfo.BackgroundKindCron))
-	cancel()
-	_, err := NewManager(backend, time.Now).Search(ctx, share.SearchRequest{Platform: &platform, Scope: &scope})
-	if err != context.Canceled || backend.calls != 0 {
-		t.Fatalf("canceled search: %v, calls=%d", err, backend.calls)
 	}
 }

@@ -94,7 +94,7 @@ func TestSessionSequenceMigrationPreservesUUID(t *testing.T) {
 	if err := store.Sessions().Create(t.Context(), &storage.Session{ID: legacyID}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.Exec(`DROP TABLE id_sequences; DELETE FROM schema_migrations WHERE version>=28`); err != nil {
+	if _, err := store.db.Exec(`DROP TABLE id_sequences; DELETE FROM schema_migrations WHERE version IN (28,29)`); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {

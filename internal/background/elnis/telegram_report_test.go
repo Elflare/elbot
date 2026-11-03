@@ -16,8 +16,8 @@ func TestLLMTextReportMapsAdminReceipts(t *testing.T) {
 			t.Fatalf("target=%#v", target)
 		}
 		return delivery.Receipt{PlatformMessageIDs: []string{"77", "77"}, SentMessages: []delivery.SentMessage{
-			{Platform: "telegram", ScopeID: "private:1", PlatformMessageID: "77"},
-			{Platform: "telegram", ScopeID: "private:2", PlatformMessageID: "77"},
+			{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "77"},
+			{Platform: "telegram", ChatType: "private", ChatID: "2", PlatformMessageID: "77"},
 		}}, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 	})
 	defer cleanup()
@@ -32,8 +32,8 @@ func TestLLMTextReportMapsAdminReceipts(t *testing.T) {
 	if err := s.RunLLMEvent(ctx, queued.Event, queued.EventID); err != nil {
 		t.Fatal(err)
 	}
-	for _, scope := range []string{"private:1", "private:2"} {
-		assertReportMapping(t, s, "telegram", scope, "77")
+	for _, scope := range []string{"1", "2"} {
+		assertReportMapping(t, s, "telegram", "private", scope, "77")
 	}
 	record, err := testRepo(s).snapshot(ctx, queued.EventID)
 	if err != nil || record.Status != StatusCompleted {
