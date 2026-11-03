@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -285,9 +286,21 @@ func (s *Store) loadLocked() (tomlFile, error) {
 
 func (s *Store) saveLocked(file tomlFile) error {
 	path := strings.TrimSpace(s.Path)
-	data, err := toml.Marshal(file)
-	if err != nil {
-		return fmt.Errorf("marshal resident memory: %w", err)
+	var data []byte
+	for _, platform := range slices.Sorted(maps.Keys(file)) {
+		chunk, err := toml.Marshal(tomlFile{platform: file[platform]})
+		if err != nil {
+			return fmt.Errorf("marshal resident memory: %w", err)
+		}
+		// 单个平台的编码结果以独立父表声明开头，用户表已包含完整路径。
+		_, chunk, _ = bytes.Cut(chunk, []byte("\n"))
+		if len(chunk) == 0 {
+			continue
+		}
+		if len(data) > 0 {
+			data = append(data, '\n')
+		}
+		data = append(data, chunk...)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create resident memory dir %q: %w", filepath.Dir(path), err)
