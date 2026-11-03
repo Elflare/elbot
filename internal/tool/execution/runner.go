@@ -36,77 +36,6 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 	elyphRulesShown := state.ElyphRulesShown
 	messages := make([]llm.LLMMessage, len(req.Calls))
 	preparedCalls := append([]llm.ToolCallRequest(nil), req.Calls...)
-	// Invocation and orchestration records are assembled at their own boundaries
-	// in this runner. Publication receives only complete records.
-	newRecord := func(ctx context.Context, eventName string, logResult events.LogResult) events.LogRecord {
-		level := slog.LevelInfo
-		if logResult.ResultStatus == events.ResultFailed {
-			level = slog.LevelError
-		}
-		record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: eventName, Module: "toolrun", Type: events.ContentText, Content: logResult.Content, ContentLimit: 4096, Identity: events.LogIdentity{SessionID: &sessionID}, ResultStatus: logResult.ResultStatus}
-		// Read the current operation's execution facts after any foreground handoff.
-		// SessionID belongs to the supplied Session, including an explicit empty ID.
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		if facts.RunID != "" {
-			record.Identity.RunID = &facts.RunID
-		}
-		if facts.Attempt != "" {
-			record.Identity.Attempt = &facts.Attempt
-		}
-		if facts.RequestID != "" {
-			record.Identity.RequestID = &facts.RequestID
-		}
-		if facts.RootRequestID != "" {
-			record.Identity.RootRequestID = &facts.RootRequestID
-		}
-		return record
-	}
-	record := func(ctx context.Context, call llm.ToolCallRequest, eventName string, logResult events.LogResult) {
-		record := newRecord(ctx, eventName, logResult)
-		record.Content = fmt.Sprintf("tool=%s tool_call_id=%s\n%s", call.Name, call.ID, logResult.Content)
-		m.Log(ctx, record)
-	}
-	recordCall := func(ctx context.Context, call llm.ToolCallRequest, resolved resolvedTool, actor contextinfo.Actor, risk string, runSource string, startedAt time.Time, result *executionResult) {
-		// The execution source declares the outcome; tools supply their diagnostic body.
-		// runSource was fixed before entry; source separately identifies the
-		// native/Elwisp implementation. Neither is inferred from diagnostics.
-		if result.Result != nil && result.ExecutionStarted && resolved.Native != nil {
-			result.Result.NeedsElyphRules = result.Result.NeedsElyphRules || resolved.Native.Definition.NeedsElyphRules
-		}
-		if result.Result != nil && result.Result.DiscoveryText != nil {
-			// The hook processes business details; the summary and common rules
-			// are assembled once, after the hook, in model call order.
-			result.Message.Segments = llm.TextSegments(result.Result.DiscoveryText.Details)
-		}
-		logResult := result.LogResult
-		logResult.ResultStatus = result.ResultStatus
-		// Keep the source-owned summary separate from the bounded actual result.
-		content := struct {
-			Tool       string `json:"tool"`
-			ActorID    string `json:"actor_id"`
-			ElapsedMS  int64  `json:"elapsed_ms"`
-			Summary    string `json:"summary,omitempty"` // Source-owned summary, preserved without truncation.
-			Result     string `json:"result"`
-			Risk       string `json:"risk"`
-			RunSource  string `json:"run_source"`
-			Source     string `json:"source"`
-			ToolCallID string `json:"tool_call_id"`
-		}{
-			Tool:       toolshare.TruncateLogContent(call.Name, 2048),
-			ActorID:    toolshare.TruncateLogContent(actor.ID, 2048),
-			ElapsedMS:  time.Since(startedAt).Milliseconds(),
-			Summary:    logResult.Content,
-			Result:     result.Result.LogContent(result.Error),
-			Risk:       toolshare.TruncateLogContent(risk, 2048),
-			RunSource:  toolshare.TruncateLogContent(runSource, 2048),
-			Source:     toolshare.TruncateLogContent(string(resolved.Source), 2048),
-			ToolCallID: toolshare.TruncateLogContent(call.ID, 2048),
-		}
-		data, _ := json.Marshal(content)
-		record := newRecord(ctx, "tool_call_completed", logResult)
-		record.Category, record.Level, record.Type, record.ContentLimit, record.Content = events.LogAudit, slog.LevelInfo, events.ContentJSON, 0, string(data)
-		m.Log(ctx, record)
-	}
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
 	defer func() { cancel(); workers.Wait() }()
@@ -122,7 +51,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 	head := deps.ToolCallMessage(sessionID, req.AssistantText, req.AssistantRawText, req.Calls)
 	logResult, err := req.Committer.Begin(ctx, &head)
 	if logResult.ResultStatus == events.ResultFailed || logResult.ResultStatus == events.ResultCanceled {
-		m.Log(ctx, newRecord(ctx, "tool_batch_prepare_failed", logResult))
+		m.Log(ctx, newRunRecord(ctx, sessionID, "tool_batch_prepare_failed", logResult))
 	}
 	if err != nil {
 		return toolshare.RunResult{Err: err}
@@ -151,7 +80,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		metadata := storage.SessionMetadata{}
 		if result.Result != nil && len(result.Result.Outputs) > 0 {
 			logResult, err := deps.SendOutputs(ctx, result.Result.Outputs)
-			record(ctx, call, "tool_outputs", logResult)
+			m.recordOperation(ctx, sessionID, call, "tool_outputs", logResult)
 			if err != nil {
 				result.Error = errors.Join(result.Error, err)
 				result.Message.Segments = append(result.Message.Segments, llm.TextSegments(fmt.Sprintf("\ntool call %s failed: output: %v", call.Name, err))...)
@@ -202,7 +131,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		}
 		logResult, err = req.Committer.Result(ctx, index, call, result.Message, &storage.ToolResultCommit{Result: &stored, Record: rawRecord, Metadata: metadata})
 		if logResult.ResultStatus != events.ResultSkipped {
-			record(ctx, call, "tool_transcript_save", logResult)
+			m.recordOperation(ctx, sessionID, call, "tool_transcript_save", logResult)
 		}
 		if err != nil {
 			return err
@@ -278,7 +207,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		preparedCalls[index] = call
 		logResult, err := req.Committer.Prepared(ctx, index, call)
 		if logResult.ResultStatus == events.ResultFailed || logResult.ResultStatus == events.ResultCanceled {
-			record(ctx, call, "tool_transcript_save", logResult)
+			m.recordOperation(ctx, sessionID, call, "tool_transcript_save", logResult)
 		}
 		if err != nil {
 			preparedCalls[index] = original
@@ -297,7 +226,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		if resolved.ResultStatus != events.ResultSucceeded {
 			startedAt := time.Now()
 			task.result = m.executePrepared(ctx, call, resolved, nil, nil)
-			recordCall(ctx, call, resolved, actor, "", runSource, startedAt, &task.result)
+			m.recordCallCompleted(ctx, sessionID, call, resolved.Source, actor, "", runSource, startedAt, task.result)
 			task.finishedAt = storage.Now()
 			ready <- index
 			continue
@@ -311,7 +240,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 				resultStatus = events.ResultCanceled
 			}
 			task.result = executionError(call, toolMessage(call.Name, call.ID, ""), err, resultStatus)
-			recordCall(ctx, call, resolved, actor, "", runSource, task.startedAt, &task.result)
+			m.recordCallCompleted(ctx, sessionID, call, resolved.Source, actor, "", runSource, task.startedAt, task.result)
 			task.finishedAt = storage.Now()
 			ready <- index
 			continue
@@ -350,7 +279,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		}
 		runToolCtx, _, done, logResult, err := deps.StartToolRequest(toolCtx, sessionID, call.Name)
 		if logResult.ResultStatus == events.ResultFailed || logResult.ResultStatus == events.ResultCanceled {
-			record(ctx, call, "tool_prepare", logResult)
+			m.recordOperation(ctx, sessionID, call, "tool_prepare", logResult)
 		}
 		if err != nil {
 			fail(call, err, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
@@ -376,12 +305,9 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			result := m.executePrepared(runToolCtx, call, resolved, prepared, func() {
 				startedAt = time.Now()
 				task.startedAt = startedAt
-				content, _ := json.Marshal(map[string]string{"tool": call.Name, "tool_call_id": call.ID, "actor_id": actor.ID, "arguments": toolshare.TruncateLogContent(call.Arguments, 512), "risk": riskText, "run_source": runSource, "source": string(resolved.Source)})
-				record := newRecord(runToolCtx, "tool_call_prepared", events.LogResult{ResultStatus: events.ResultSucceeded})
-				record.Category, record.Type, record.ContentLimit, record.Content = events.LogAudit, events.ContentJSON, 0, string(content)
-				m.Log(runToolCtx, record)
+				m.recordCallStarted(runToolCtx, sessionID, call, resolved.Source, actor, riskText, runSource)
 			})
-			recordCall(runToolCtx, call, resolved, actor, riskText, runSource, startedAt, &result)
+			m.recordCallCompleted(runToolCtx, sessionID, call, resolved.Source, actor, riskText, runSource, startedAt, result)
 			task.finishedAt = storage.Now()
 			toolErr := runToolCtx.Err()
 			done()
@@ -409,7 +335,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 	}
 	logResult, err = req.Committer.Flush(ctx)
 	if logResult.ResultStatus != events.ResultSkipped {
-		m.Log(ctx, newRecord(ctx, "tool_transcript_save", logResult))
+		m.Log(ctx, newRunRecord(ctx, sessionID, "tool_transcript_save", logResult))
 	}
 	return toolshare.RunResult{Messages: messages, PreparedCalls: preparedCalls, ConfirmationExtra: confirmationExtra, Err: err}
 }

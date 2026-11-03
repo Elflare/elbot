@@ -12,9 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
-	"time"
 
 	"elbot/internal/elyph"
 	"elbot/internal/fileops"
@@ -157,32 +155,18 @@ func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 		}
 		summary := fmt.Sprintf("skill=%s build=skipped", name)
 		if strings.TrimSpace(args.GoSource) != "" {
-			binary := name
-			if runtime.GOOS == "windows" {
-				binary += ".exe"
+			build, err := runGoBuild(ctx, root, name, args.TimeoutMS, t.manager.processEnv)
+			if err == nil {
+				err = build.Err
 			}
-			timeout := 60 * time.Second
-			if args.TimeoutMS > 0 {
-				timeout = time.Duration(args.TimeoutMS) * time.Millisecond
-			}
-			runCtx, cancel := context.WithTimeout(ctx, timeout)
-			defer cancel()
-			cmd := t.manager.processEnv.CommandContext(runCtx, "go", "build", "-o", binary, ".")
-			cmd.Dir = root
-			stdout := limitedOutput{limit: maxRunnerStdout}
-			stderr := limitedOutput{limit: maxRunnerOutput}
-			cmd.Stdout = &stdout
-			cmd.Stderr = &stderr
-			if err := cmd.Run(); err != nil {
-				{
-					callErr := fmt.Errorf("go build failed: %w\nstdout:\n%s\nstderr:\n%s", err, truncateOutput(stdout.String()), truncateOutput(stderr.String()))
-					summary := fmt.Sprintf("skill=%s build=failed", name)
-					var exitErr *exec.ExitError
-					if errors.As(err, &exitErr) && exitErr.ExitCode() >= 0 {
-						summary += fmt.Sprintf(" exit_code=%d", exitErr.ExitCode())
-					}
-					return nil, summary, callErr
+			if err != nil {
+				callErr := fmt.Errorf("go build failed: %w\nstdout:\n%s\nstderr:\n%s", err, truncateOutput(build.Stdout), truncateOutput(build.Stderr))
+				summary := fmt.Sprintf("skill=%s build=failed", name)
+				var exitErr *exec.ExitError
+				if errors.As(err, &exitErr) && exitErr.ExitCode() >= 0 {
+					summary += fmt.Sprintf(" exit_code=%d", exitErr.ExitCode())
 				}
+				return nil, summary, callErr
 			}
 			summary = fmt.Sprintf("skill=%s build=ok exit_code=0", name)
 		}

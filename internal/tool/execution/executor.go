@@ -63,7 +63,15 @@ func (m *Manager) executePrepared(ctx context.Context, call llm.ToolCallRequest,
 	// 只把 Content/Segments 回灌给 LLM；Result.Data 留给 Agent 内部结构化消费。
 	// 避免 discover schema、内部状态或大对象污染上下文。
 	if result != nil {
-		message.Segments = result.LLMSegments()
+		if resolved.Native != nil {
+			result.NeedsElyphRules = result.NeedsElyphRules || resolved.Native.Definition.NeedsElyphRules
+		}
+		if result.DiscoveryText != nil {
+			// Hook 只处理业务详情；摘要与公共规则由协调器在 Hook 后组装。
+			message.Segments = llm.TextSegments(result.DiscoveryText.Details)
+		} else {
+			message.Segments = result.LLMSegments()
+		}
 	}
 	return executionResult{Call: call, Message: message, Result: result, LogResult: events.LogResult{Content: logContent}, Error: err, ResultStatus: resultStatus, ExecutionStarted: true}
 }

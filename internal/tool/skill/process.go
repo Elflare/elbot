@@ -190,9 +190,9 @@ func runGoBuild(ctx context.Context, root, name string, timeoutMS int, environme
 }
 
 func detectGoModVersion(ctx context.Context, environment processenv.Environment) (string, error) {
-	goPath, err := environment.LookPath("go")
+	goPath, err := resolveGoExecutable(environment)
 	if err != nil {
-		return "", fmt.Errorf("system go executable not found; install Go and ensure it is in PATH before creating Go skill")
+		return "", err
 	}
 	cmd := environment.CommandContext(ctx, goPath, "env", "GOVERSION")
 	stdout := limitedOutput{limit: maxRunnerStdout}
