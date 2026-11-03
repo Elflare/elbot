@@ -168,14 +168,6 @@
       "translation": "## Tools and Security\n\n```toml\n[config_files]\ntool_tags = \"tool_tags.toml\"\n\n[tools]\nmax_rounds_per_turn = 10\n\n[security]\nuser_max_tool_risk = \"low\"\nsuperadmin_confirm_risk = \"high\"\n\n[security.superadmins]\ncli = [\"local\"]\n```\n\n- Regular users can only discover and call tools within the allowed risk range; after permission verification, risk calls via `high` / `critical` still require confirmation from the current user.\n- `OwnerScoped` tools can only access the caller's own data, so they can be called by ordinary users; however, `high` / `critical` operations still require confirmation from the user themselves.\n- The superadmin's confirmation threshold is configured by `superadmin_confirm_risk`.\n- The default local CLI user `local` is a superadmin.\n\n",
       "updated_at": 1793418892
     },
-    "docs/configuration.md:section:8322e2c1b1278a3fd872842162a8ee09e8a55285c87e80ee86f93a32bf048b06": {
-      "kind": "section",
-      "source": "## 常驻记忆配置\n\n常驻记忆存放在配置目录的 `memories.toml`（首次运行时生成）。长度上限写在主配置：\n\n```toml\n[resident_memory]\ncore_max_units = 200\nnormal_max_units = 300\n```\n\n| 类型 | 含义 | 修改确认 |\n| --- | --- | --- |\n| `core` | 高风险核心记忆 | 普通用户改自己的 core 也需本人确认。 |\n| `normal` | 低风险普通记忆 | 无需确认。 |\n\n- `units` 近似“中文按字数、英文按单词”：中日韩字符单字计 1，英文/数字连续片段计 1。\n- 注入 Prompt 时两段合并为一段自然文本。\n\n",
-      "source_file": "docs/configuration.md",
-      "source_hash": "44e2d09829d030110244cf55b24bf47951a828049ca33e5d73bd942ef91a8011",
-      "translation": "## Resident Memory Configuration\n\nResident memory is stored in `memories.toml` within the configuration directory (generated upon the first run). The length limit is specified in the main configuration:\n\n```toml\n[resident_memory]\ncore_max_units = 200\nnormal_max_units = 300\n```\n\n| Type | Meaning | Modification Confirmation |\n| --- | --- | --- |\n| `core` | high-risk core memory | Regular users also need personal confirmation when modifying their own core memory. |\n| `normal` | low-risk ordinary memory | No confirmation required. |\n\n- `units` is similar to \"Chinese by character count, English by word count\": CJK characters are counted as 1 each, and continuous segments of English/numbers are counted as 1.\n- When injecting the Prompt, the two segments are merged into a single piece of natural text.\n\n",
-      "updated_at": 1793418892
-    },
     "docs/configuration.md:section:95f866a8a4e1c73a9f56eab51c323f388b82254bff48e67be62bb0b7de9b9163": {
       "kind": "section",
       "source": "### QQ 官方机器人\n\n```toml\n[platform.qqofficial]\nenabled = true\napp_id = \"your-app-id\"\nclient_secret_env = \"QQOFFICIAL_CLIENT_SECRET\"\ntrigger_keywords = [\"bot\"]\n```\n\n```dotenv\nQQOFFICIAL_CLIENT_SECRET=your-client-secret\n```\n\n- `client_secret_env` 指向保存 Client Secret 的环境变量名；也可用 `client_secret` 直接写入，但不建议提交真实 Secret。\n- 处理私聊、群内 @ 和平台实际下发的普通群消息。\n- 群聊沿用统一唤醒规则：slash 命令、`trigger_keywords`、@ 机器人或引用机器人的历史回复触发响应；未触发的普通群消息仍写入聊天历史。\n- 普通群消息是否下发取决于 QQ 开放平台为机器人启用的群消息能力。\n\n",
@@ -282,8 +274,8 @@
     }
   },
   "source": "docs/configuration.md",
-  "source_hash": "90c40ab878e2885ee8b7caf8b3a712ed929461812f3cc8132da0649cceed09cb",
+  "source_hash": "",
   "target": "docs.en/configuration.md",
-  "updated_at": 1793423794,
+  "updated_at": 1793692095,
   "version": 3
 }
