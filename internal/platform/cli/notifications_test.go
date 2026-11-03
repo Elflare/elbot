@@ -11,7 +11,7 @@ import (
 )
 
 func TestRemoteNotificationFailureLoggedOnceByDelivery(t *testing.T) {
-	server := &RemoteServer{clients: map[string]map[*remoteClientConn]struct{}{}}
+	server := &RemoteServer{name: testPlatformName, clients: map[string]map[*remoteClientConn]struct{}{}}
 	source := signal.New[events.Notification, events.NotificationReceipt]("test.remote.notice")
 	defer source.Close(context.Background())
 	c, err := server.ConnectNotifications(source)

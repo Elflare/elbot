@@ -23,6 +23,8 @@ type Deps struct {
 }
 
 type Adapter struct {
+	name              string             // 根部登记的平台名。
+	superadmins       *share.Superadmins // 根部注入的当前平台超管能力。
 	cfg               Config
 	parseCommand      func(string) command.Parsed                                                  // 借用的命令解析函数。
 	referenceResolver func(context.Context, share.ReferenceOptions) (share.ReferenceResult, error) // 借用的引用恢复函数。
@@ -54,5 +56,5 @@ type Adapter struct {
 	sends            sync.WaitGroup // 完整发送调用，包含回执别名入库。
 }
 
-func (a *Adapter) Name() string  { return platformName }
+func (a *Adapter) Name() string  { return a.name }
 func (a *Adapter) Enabled() bool { return a.cfg.Enabled }

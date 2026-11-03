@@ -23,7 +23,7 @@ type ClientResult struct {
 	Err  error            // 原始失败或回退原因；正常结束为 nil。
 }
 
-func RunClient(ctx context.Context, rawConfig map[string]any, configDir, name string) ClientResult {
+func RunClient(ctx context.Context, rawConfig map[string]any, configEnv func(string) (string, bool, error), name string) ClientResult {
 	name = strings.TrimSpace(name)
 	if err := ctx.Err(); err != nil {
 		return ClientResult{Kind: ClientFailed, Err: err}
@@ -36,7 +36,7 @@ func RunClient(ctx context.Context, rawConfig map[string]any, configDir, name st
 		err = fmt.Errorf("cli platform is disabled: %w", ErrClientNotConfigured)
 		return classifyClientResult(name, "", err)
 	}
-	client, err := NewRemoteClient(RemoteClientOptions{Config: cfg, ConfigDir: configDir, ClientName: name})
+	client, err := NewRemoteClient(RemoteClientOptions{Config: cfg, ConfigEnv: configEnv, ClientName: name})
 	if err != nil {
 		return classifyClientResult(name, "", err)
 	}

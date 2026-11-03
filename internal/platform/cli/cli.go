@@ -21,6 +21,7 @@ import (
 
 // Adapter is a CLI platform adapter that reads from stdin.
 type Adapter struct {
+	name                       string // 根部登记的平台名。
 	mu                         sync.Mutex
 	output                     chan tea.Msg
 	program                    *tea.Program
@@ -52,13 +53,13 @@ type cliMessageStream struct {
 }
 
 // New creates a new CLI adapter.
-func New() *Adapter {
-	return &Adapter{output: make(chan tea.Msg, 256), userName: "user", assistantName: "assistant", input: os.Stdin, interactive: isatty.IsTerminal(os.Stdin.Fd()), startDone: make(chan struct{}), inputDone: make(chan struct{}), renderDone: make(chan struct{}), done: make(chan struct{})}
+func New(platformName string) *Adapter {
+	return &Adapter{name: platformName, output: make(chan tea.Msg, 256), userName: "user", assistantName: "assistant", input: os.Stdin, interactive: isatty.IsTerminal(os.Stdin.Fd()), startDone: make(chan struct{}), inputDone: make(chan struct{}), renderDone: make(chan struct{}), done: make(chan struct{})}
 }
 
 // Name returns the platform name.
 func (a *Adapter) Name() string {
-	return "cli"
+	return a.name
 }
 
 func (a *Adapter) SetCompleter(service func(context.Context, completion.Request) ([]completion.Item, error)) {

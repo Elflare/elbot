@@ -118,7 +118,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 	normalized = a.resolveAtSegments(ctx, event, normalized)
 	replyToSenderID, err := a.replyToSenderID(ctx, event, normalized.ReplyID)
 	if err != nil {
-		logContextFailure(ctx, err)
+		a.logContextFailure(ctx, err)
 		return
 	}
 	text := normalized.Text
@@ -150,7 +150,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 		MediaResolver:         a,
 		Sender:                a,
 		BufferAssistantOutput: true,
-		Segments:              finalMessageSegments(text, currentSegments, nil),
+		Segments:              share.FinalMessageSegments(text, currentSegments, nil),
 		RawText:               normalized.Text,
 		PlatformMessage:       append(json.RawMessage(nil), event.Message...),
 		Bot:                   share.Identity{UserID: strconv.FormatInt(event.SelfID, 10)},
@@ -171,7 +171,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 			var err error
 			currentDisplay, err = a.expandForwardSegments(msgCtx, segments, event.SelfID, currentSegments)
 			if err != nil {
-				logContextFailure(msgCtx, err)
+				a.logContextFailure(msgCtx, err)
 				return
 			}
 		}
@@ -188,14 +188,14 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 			Platform:     a.Name(),
 			ScopeID:      messageCtx.Conversation.Source.ScopeID,
 			ActorID:      security.ActorID(a.Name(), strconv.FormatInt(event.UserID, 10)),
-			IsSuperadmin: isConfiguredSuperadmin(a.cfg.Superadmins, strconv.FormatInt(event.UserID, 10)),
+			IsSuperadmin: a.superadmins.IsSuperadmin(strconv.FormatInt(event.UserID, 10)),
 			ReplyID:      normalized.ReplyID,
 			Text:         referenceInputText,
 			Fetch:        a.referenceFetcher(event),
 			Enrich:       a.expandForwardReference(event),
 		})
 		if err != nil {
-			logContextFailure(msgCtx, err)
+			a.logContextFailure(msgCtx, err)
 			return
 		}
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID
@@ -206,7 +206,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 		if len(ref.DisplaySegments) > 0 {
 			messageCtx.ContextSegments = forwardContextSegments(ref.DisplaySegments, referenceInputSegments, referenceInputText)
 		} else if strings.TrimSpace(ref.Text) != "" || len(referenceSegments) > 0 {
-			messageCtx.ContextSegments = finalMessageSegments(ref.Text, referenceInputSegments, referenceSegments)
+			messageCtx.ContextSegments = share.FinalMessageSegments(ref.Text, referenceInputSegments, referenceSegments)
 		}
 	}
 	if len(currentDisplay) > 0 {
@@ -249,7 +249,7 @@ func (a *Adapter) resolveAtSegments(ctx context.Context, event Event, msg Normal
 					Category:     globalevents.LogRuntime,
 					Level:        slog.LevelWarn,
 					EventName:    "get_qq_group_member_info_failed",
-					Module:       "qq-onebot",
+					Module:       a.Name(),
 					Type:         globalevents.ContentText,
 					Content:      fmt.Sprintf("get qq group member info failed\ngroup_id=%v\nuser_id=%v\nerror=%v", event.GroupID, userID, err),
 					ContentLimit: 4096,
@@ -286,7 +286,16 @@ func oneBotGroupRole(event Event) contextinfo.GroupRole {
 	if event.MessageType != "group" {
 		return contextinfo.GroupRoleUnknown
 	}
-	return security.ParseGroupRole(event.Sender.Role)
+	switch event.Sender.Role {
+	case "owner":
+		return contextinfo.GroupRoleOwner
+	case "admin":
+		return contextinfo.GroupRoleAdmin
+	case "member":
+		return contextinfo.GroupRoleMember
+	default:
+		return contextinfo.GroupRoleUnknown
+	}
 }
 
 func oneBotConversationKind(event Event) contextinfo.ConversationKind {
@@ -384,7 +393,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized
 				Category:     globalevents.LogRuntime,
 				Level:        slog.LevelError,
 				EventName:    "record_qq_chat_message_failed",
-				Module:       "qq-onebot",
+				Module:       a.Name(),
 				Type:         globalevents.ContentText,
 				Content:      fmt.Sprintf("record qq chat message failed\nerror=%v\nmessage_id=%v", err, event.MessageID),
 				ContentLimit: 4096,
@@ -400,25 +409,6 @@ func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized
 	}
 }
 
-func finalMessageSegments(text string, current, referenced []share.MessageSegment) []share.MessageSegment {
-	out := make([]share.MessageSegment, 0, 1+len(current)+len(referenced))
-	if strings.TrimSpace(text) != "" {
-		out = append(out, share.MessageSegment{Type: share.SegmentText, Text: text})
-	}
-	out = appendNonTextSegments(out, current)
-	out = appendNonTextSegments(out, referenced)
-	return out
-}
-
-func appendNonTextSegments(out []share.MessageSegment, segments []share.MessageSegment) []share.MessageSegment {
-	for _, segment := range segments {
-		if segment.Type != share.SegmentText {
-			out = append(out, segment)
-		}
-	}
-	return out
-}
-
 func (a *Adapter) isMessageEvent(event Event) bool {
 	return event.PostType == "message" && (event.MessageType == "private" || event.MessageType == "group")
 }
@@ -430,24 +420,10 @@ func scopeID(event Event) string {
 	return fmt.Sprintf("private:%d", event.UserID)
 }
 
-func isConfiguredSuperadmin(superadmins []string, id string) bool {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return false
-	}
-	for _, candidate := range superadmins {
-		candidate = strings.TrimSpace(strings.TrimPrefix(candidate, "qqonebot:"))
-		if candidate == id {
-			return true
-		}
-	}
-	return false
-}
-
-func logContextFailure(ctx context.Context, err error) {
+func (a *Adapter) logContextFailure(ctx context.Context, err error) {
 	_ = globalevents.EmitLog(context.WithoutCancel(ctx), globalevents.LogRecord{
 		Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "platform_context_failed",
-		Module: "qq-onebot", Type: globalevents.ContentText, Content: fmt.Sprintf("prepare platform context failed: %v", err),
+		Module: a.Name(), Type: globalevents.ContentText, Content: fmt.Sprintf("prepare platform context failed: %v", err),
 		ContentLimit: 4096, ResultStatus: globalevents.ResultFailed,
 	})
 }

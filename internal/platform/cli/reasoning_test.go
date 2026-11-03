@@ -15,7 +15,7 @@ func testUI(t *testing.T) (*UI, *signal.Signal[StatusChangedEvent, signal.Empty]
 	t.Helper()
 	status := signal.New[StatusChangedEvent, signal.Empty]("test.cli.status")
 	binding := signal.New[BindingChangedEvent, signal.Empty]("test.cli.binding")
-	u, err := ConnectUI(testAgentEvents{status, binding})
+	u, err := ConnectUI(testPlatformName, testAgentEvents{status, binding})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func captureCLIOutput(t *testing.T, run func()) string {
 func TestReasoningEndsOnCancellationAndDoesNotReplayBackground(t *testing.T) {
 	u, _ := testUI(t)
 	background := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli"}})
-	foreground, cancel := context.WithCancel(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: New()}}))
+	foreground, cancel := context.WithCancel(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: New(testPlatformName)}}))
 	defer cancel()
 	got := captureCLIOutput(t, func() {
 		stream := u.StartReasoning(background)
@@ -72,7 +72,7 @@ func TestReasoningEndsOnCancellationAndDoesNotReplayBackground(t *testing.T) {
 
 func TestReasoningWithoutDeltasOrAfterUIShutdownIsSilent(t *testing.T) {
 	u, _ := testUI(t)
-	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: New()}})
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: New(testPlatformName)}})
 	got := captureCLIOutput(t, func() {
 		u.StartReasoning(ctx).Finish(ctx)
 		stream := u.StartReasoning(ctx)
@@ -89,8 +89,8 @@ func TestReasoningWithoutDeltasOrAfterUIShutdownIsSilent(t *testing.T) {
 
 func TestReasoningDestinationChangeClosesOriginalView(t *testing.T) {
 	u, _ := testUI(t)
-	one := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: New()}})
-	two := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: New()}})
+	one := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: New(testPlatformName)}})
+	two := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: New(testPlatformName)}})
 	got := captureCLIOutput(t, func() {
 		stream := u.StartReasoning(one)
 		stream.Append(one, "one")

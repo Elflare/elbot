@@ -19,7 +19,7 @@ import (
 
 func TestLocalTerminalLifecycle(t *testing.T) {
 	if os.Getenv("ELBOT_CLI_TERMINAL_HELPER") == "1" {
-		a := New()
+		a := New(testPlatformName)
 		if !a.interactive {
 			t.Fatal("not a real terminal")
 		}

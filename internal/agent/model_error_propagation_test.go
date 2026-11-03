@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"errors"
 	"io"
 	"net/http"
@@ -87,7 +88,7 @@ func TestModelErrorReachesNotificationWithoutIntermediatePrefixes(t *testing.T) 
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = connection.Close(context.Background()) })
-			err = m.HandleMessage(t.Context(), MessageRequest{Text: "hello"})
+			err = m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "hello"})
 			if err == nil || err.Error() != tc.want {
 				t.Fatalf("error=%v want=%q", err, tc.want)
 			}

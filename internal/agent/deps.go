@@ -87,7 +87,6 @@ type HookCapabilities interface{ Commands() []command.Handler }
 type PlatformCapabilities interface {
 	SessionIDCode(string, contextinfo.ConversationKind) (string, error)
 	RestoreMessageContext(context.Context, context.Context) context.Context
-	PrimaryName() string
 	SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, events.LogResult, error)
 	SendChat(context.Context, []delivery.Output) (delivery.Receipt, events.LogResult, error)
 	StartStream(context.Context) (delivery.MessageStream, error)

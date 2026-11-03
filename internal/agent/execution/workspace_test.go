@@ -162,7 +162,7 @@ func TestAgentToolRunDepsInjectsWorkspaceStoreForForegroundOnly(t *testing.T) {
 	foreground := newWorkspaceTestSession(t, ctx, store, "")
 	background := newWorkspaceTestSession(t, ctx, store, `{"background_kind":"cron"}`)
 	background.Mode = storage.SessionModeBackground
-	deps := agenttools.NewToolRunDeps(agenttools.ToolRunDeps{Sessions: newSessionSupervisor(t, store), NewWorkspaceStore: func(id string) workspace.WorkspaceStore { return newSessionSupervisor(t, store).WorkspaceStore(id) }, Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{Permission: security.DefaultPermission()}), Runtime: agenttools.NewToolRuntimeState(agenttools.ToolRuntimeStateDeps{FileRollback: fileops.NewService(nil)})}).ForTurn(nil, "")
+	deps := agenttools.NewToolRunDeps(agenttools.ToolRunDeps{Sessions: newSessionSupervisor(t, store), NewWorkspaceStore: func(id string) workspace.WorkspaceStore { return newSessionSupervisor(t, store).WorkspaceStore(id) }, Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()}), Runtime: agenttools.NewToolRuntimeState(agenttools.ToolRuntimeStateDeps{FileRollback: fileops.NewService(nil)})}).ForTurn(nil, "")
 	withStore := deps.PrepareToolContext(ctx, foreground, llm.ToolCallRequest{Name: "read_file"})
 	if _, ok := workspace.WorkspaceStoreFromContext(withStore); !ok {
 		t.Fatal("expected foreground workspace store")

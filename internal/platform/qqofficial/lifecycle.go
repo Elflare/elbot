@@ -170,7 +170,7 @@ func (a *Adapter) runGateway(handler share.MessageHandler) {
 						Category:     globalevents.LogRuntime,
 						Level:        slog.LevelWarn,
 						EventName:    "qqofficial_gateway_disconnected",
-						Module:       "qqofficial",
+						Module:       a.Name(),
 						Type:         globalevents.ContentText,
 						Content:      fmt.Sprintf("qqofficial gateway disconnected\nerror=%v\nreconnect_mode=%v", err, reason.mode.String()),
 						ContentLimit: 4096,

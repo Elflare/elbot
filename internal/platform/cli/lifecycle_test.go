@@ -56,7 +56,7 @@ func testLocalAdapter(t *testing.T) (*Adapter, *os.File) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := New()
+	a := New(testPlatformName)
 	a.input, a.interactive = reader, false
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -161,7 +161,7 @@ func TestLocalRegularFileAndStartFailure(t *testing.T) {
 		defer file.Close()
 		file.WriteString("/exit\n")
 		file.Seek(0, 0)
-		a := New()
+		a := New(testPlatformName)
 		a.input, a.interactive = file, false
 		defer a.Close(t.Context())
 		if err := a.Start(t.Context(), nil); err != nil {

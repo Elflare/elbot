@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 )
@@ -32,7 +33,7 @@ func TestTextReceiptsIncludeEverySuccessfulPage(t *testing.T) {
 			if err == nil || calls != 2 || len(receipt.SentMessages) != 1 {
 				t.Fatalf("receipt=%#v err=%v calls=%d", receipt, err, calls)
 			}
-			if sent := receipt.SentMessages[0]; sent.Platform != platformName || sent.ScopeID != "supergroup:-19" || sent.PlatformMessageID != "77" {
+			if sent := receipt.SentMessages[0]; sent.Platform != config.PlatformTelegram || sent.ScopeID != "supergroup:-19" || sent.PlatformMessageID != "77" {
 				t.Fatalf("source=%#v", sent)
 			}
 		})
@@ -49,7 +50,7 @@ func TestStreamSuccessAndFinishKeepSource(t *testing.T) {
 			}))
 			defer server.Close()
 			a := newTestAdapter(t, Config{BotToken: "token", APIBaseURL: server.URL, Format: format}, nil)
-			ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ScopeID: "supergroup:-19"}})
+			ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ScopeID: "supergroup:-19"}})
 			s, err := a.StartStream(ctx)
 			if err != nil {
 				t.Fatal(err)
@@ -59,7 +60,7 @@ func TestStreamSuccessAndFinishKeepSource(t *testing.T) {
 				t.Fatalf("receipt=%#v err=%v", receipt, err)
 			}
 			for _, sent := range receipt.SentMessages {
-				if sent.Platform != platformName || sent.ScopeID != "supergroup:-19" || sent.PlatformMessageID == "" || len(sent.OutputIndexes) != 0 {
+				if sent.Platform != config.PlatformTelegram || sent.ScopeID != "supergroup:-19" || sent.PlatformMessageID == "" || len(sent.OutputIndexes) != 0 {
 					t.Fatalf("source=%#v", sent)
 				}
 			}
@@ -68,7 +69,7 @@ func TestStreamSuccessAndFinishKeepSource(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, sent := range finished.SentMessages {
-				if sent.Platform != platformName || sent.ScopeID != "supergroup:-19" {
+				if sent.Platform != config.PlatformTelegram || sent.ScopeID != "supergroup:-19" {
 					t.Fatalf("finish source=%#v", sent)
 				}
 			}
@@ -110,7 +111,7 @@ func TestStreamPartialReceiptDoesNotResendSuccessfulPages(t *testing.T) {
 			if err == nil || calls != 2 || len(receipt.SentMessages) != 1 {
 				t.Fatalf("receipt=%#v err=%v calls=%d", receipt, err, calls)
 			}
-			if sent := receipt.SentMessages[0]; sent.Platform != platformName || sent.ScopeID != "supergroup:-19" || sent.PlatformMessageID != "77" {
+			if sent := receipt.SentMessages[0]; sent.Platform != config.PlatformTelegram || sent.ScopeID != "supergroup:-19" || sent.PlatformMessageID != "77" {
 				t.Fatalf("source=%#v", sent)
 			}
 		})

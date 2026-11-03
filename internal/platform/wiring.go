@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"strings"
 
 	"elbot/internal/command"
 	"elbot/internal/config"
@@ -28,13 +27,9 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps, entries []reg
 		}
 		return m.agentErr
 	}
-	for _, entry := range entries {
-		if err := m.registerPlatform(entry); err != nil {
-			return err
-		}
-	}
+	m.registered = entries
 	if deps.Mode != "tui" {
-		adapter := headless.New()
+		adapter := headless.New(config.PlatformService)
 		m.primary = adapter
 		m.ownRuntime(adapter, false, nil, headless.ValidateNotificationTarget)
 		m.outputWiring = append(m.outputWiring, func() error {
@@ -55,7 +50,12 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps, entries []reg
 		ChatHistory:           deps.ChatHistory,
 	}
 	for _, entry := range m.registered {
-		if err := entry.build(m, cfg, deps, referenceDeps); err != nil {
+		common := share.CommonConfig{
+			PlatformName: entry.name,
+			Superadmins:  share.NewSuperadmins(entry.name, cfg.Security.Superadmins[entry.name]),
+			ConfigEnv:    cfg.ConfigEnv,
+		}
+		if err := entry.build(m, deps, referenceDeps, cfg.Platform[entry.name], common); err != nil {
 			return err
 		}
 	}
@@ -86,8 +86,7 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps, entries []reg
 			}
 			seen := make(map[string]bool)
 			for _, id := range superadmins[runtime.name] {
-				id = strings.TrimSpace(id)
-				if id == "" || seen[id] {
+				if seen[id] {
 					continue
 				}
 				seen[id] = true

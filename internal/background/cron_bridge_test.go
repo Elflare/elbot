@@ -108,7 +108,7 @@ func TestCronBridgeServicePersistsReportMappingAndCompletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := elcron.NewManager(b)
-	s := elcron.NewService(elcron.Options{Store: b, Manager: m, Models: cronBridgeModels{}, Runner: cronBridgeRunner{}, SandboxRoot: t.TempDir(),
+	s := elcron.NewService(elcron.Options{CLIPlatformName: config.PlatformCLI, Store: b, Manager: m, Models: cronBridgeModels{}, Runner: cronBridgeRunner{}, SandboxRoot: t.TempDir(),
 		NewRunID: func(ctx context.Context) (string, error) {
 			return storage.IDSequence(store.NextIDSequence).ID(ctx, "run")
 		},

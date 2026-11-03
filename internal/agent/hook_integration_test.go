@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -37,7 +38,6 @@ func (*integrationPlatform) SessionIDCode(name string, _ contextinfo.Conversatio
 	return name, nil
 }
 
-func (*integrationPlatform) PrimaryName() string                                          { return "cli" }
 func (*integrationPlatform) RestoreMessageContext(ctx, _ context.Context) context.Context { return ctx }
 func (p *integrationPlatform) SendChat(_ context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
 	p.mu.Lock()
@@ -142,11 +142,11 @@ data: [DONE]
 	if !found {
 		t.Fatal("Hook command missing from Agent catalog")
 	}
-	items, err := a.Complete(t.Context(), completion.Request{Text: "/hooks integration", Cursor: len("/hooks integration")})
+	items, err := a.Complete(testutil.WithCLIConversation(t.Context()), completion.Request{Text: "/hooks integration", Cursor: len("/hooks integration")})
 	if err != nil || len(items) != 1 || items[0].Text != "integration_suffix" {
 		t.Fatalf("completion=%+v err=%v", items, err)
 	}
-	if err := a.HandleMessage(t.Context(), agent.MessageRequest{Text: "/hooks"}); err != nil {
+	if err := a.HandleMessage(testutil.WithCLIConversation(t.Context()), agent.MessageRequest{Text: "/hooks"}); err != nil {
 		t.Fatal(err)
 	}
 	platform.mu.Lock()
@@ -155,7 +155,7 @@ data: [DONE]
 	if !strings.Contains(output, "integration_suffix") {
 		t.Fatalf("command output=%q", output)
 	}
-	if err := a.HandleMessage(t.Context(), agent.MessageRequest{Text: "hello"}); err != nil {
+	if err := a.HandleMessage(testutil.WithCLIConversation(t.Context()), agent.MessageRequest{Text: "hello"}); err != nil {
 		t.Fatal(err)
 	}
 	platform.mu.Lock()
@@ -183,10 +183,10 @@ data: [DONE]
 	if err := os.WriteFile(filepath.Join(dir, "hooks.toml"), []byte(strings.ReplaceAll(rule, " [hook]", " [reloaded]")), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.HandleMessage(t.Context(), agent.MessageRequest{Text: "/hooks reload"}); err != nil {
+	if err := a.HandleMessage(testutil.WithCLIConversation(t.Context()), agent.MessageRequest{Text: "/hooks reload"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.HandleMessage(t.Context(), agent.MessageRequest{Text: "hello again"}); err != nil {
+	if err := a.HandleMessage(testutil.WithCLIConversation(t.Context()), agent.MessageRequest{Text: "hello again"}); err != nil {
 		t.Fatal(err)
 	}
 	platform.mu.Lock()

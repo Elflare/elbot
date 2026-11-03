@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/config"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -49,7 +50,7 @@ func TestInboundMediaHistoryAndDeferredResolver(t *testing.T) {
 	if captured.Conversation.Source.ConversationID != "9" || captured.Conversation.Source.ScopeID != "group:9" {
 		t.Fatalf("conversation source = %+v", captured.Conversation.Source)
 	}
-	row, err := history.Repository().GetByPlatformMessage(ctx, platformName, "group:9", "1")
+	row, err := history.Repository().GetByPlatformMessage(ctx, config.PlatformTelegram, "group:9", "1")
 	if err != nil {
 		t.Fatal(err)
 	}

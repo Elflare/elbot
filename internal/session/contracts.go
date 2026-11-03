@@ -21,6 +21,7 @@ var (
 type Scope struct {
 	ConversationKind contextinfo.ConversationKind // 用于判断群聊、私聊等接入语义。
 	ActorID          string                       // 会话所属用户。
+	PlatformUserID   string                       // 原生用户 ID，用于按平台查询权限，不从 ActorID 反解。
 	Platform         string                       // 平台标识。
 	PlatformScopeID  string                       // 平台内的会话范围。
 	IsCLI            bool                         // 本地管理入口，可跨用户、平台和范围管理会话。

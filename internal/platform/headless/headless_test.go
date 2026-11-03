@@ -14,7 +14,7 @@ import (
 )
 
 func TestStatelessLifecycle(t *testing.T) {
-	a := New()
+	a := New("service")
 	if a.Name() != "service" {
 		t.Fatalf("name = %q", a.Name())
 	}
@@ -58,7 +58,7 @@ func TestStatelessLifecycle(t *testing.T) {
 }
 
 func TestSendingRequiresTargetPlatform(t *testing.T) {
-	a := New()
+	a := New("service")
 	outputs := []delivery.Output{delivery.Text("hello")}
 	for name, send := range map[string]func() (delivery.Receipt, events.LogResult, error){
 		"chat": func() (delivery.Receipt, events.LogResult, error) {

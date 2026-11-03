@@ -72,16 +72,16 @@ func TestSuccessfulPureDirectivesRenewOriginalBinding(t *testing.T) {
 				if err := sessions.Start(); err != nil {
 					t.Fatal(err)
 				}
-				identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: security.DefaultPermission()})
-				row, err := sessions.Create(t.Context(), identity.Scope(t.Context()), session.CreateRequest{})
+				identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})
+				row, err := sessions.Create(t.Context(), identity.Scope(testutil.WithCLIConversation(t.Context())), session.CreateRequest{})
 				if err != nil {
 					t.Fatal(err)
 				}
-				_, binding, err := sessions.CurrentBound(t.Context(), identity.Scope(t.Context()))
+				_, binding, err := sessions.CurrentBound(t.Context(), identity.Scope(testutil.WithCLIConversation(t.Context())))
 				if err != nil {
 					t.Fatal(err)
 				}
-				ctx := session.WithBinding(t.Context(), binding)
+				ctx := session.WithBinding(testutil.WithCLIConversation(t.Context()), binding)
 				coordinator := NewInputCoordinator(InputCoordinatorDeps{CommandText: testCommandText,
 					Sessions: sessions, SessionRows: store.Sessions(), Identity: identity,
 					Execution: directiveExecution{}, Turns: turn.NewSupervisor(testutil.IDSequence()), Hooks: activityTestHooks{}, Output: activityTestOutput{},

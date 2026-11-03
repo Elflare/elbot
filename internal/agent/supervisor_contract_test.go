@@ -8,6 +8,7 @@ import (
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
+	"elbot/internal/testutil"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -81,11 +82,11 @@ func TestSupervisorToolPreloadExecutionAndPersistence(t *testing.T) {
 	client := &contractChat{call: llm.ToolCallRequest{Name: "read_file", Arguments: contractReadFile(t)}}
 	contractModels(t, &deps, client)
 	m := contractSupervisor(t, deps)
-	items, err := m.Complete(t.Context(), completion.Request{Text: "@tool:read_file"})
+	items, err := m.Complete(testutil.WithCLIConversation(t.Context()), completion.Request{Text: "@tool:read_file"})
 	if err != nil || !slices.Contains(completion.Texts(items), "@tool:read_file") {
 		t.Fatalf("completion: %v %v", items, err)
 	}
-	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "@tool:read_file hello"}); err != nil {
+	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "@tool:read_file hello"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(client.requests) != 2 {
@@ -153,7 +154,7 @@ func TestSupervisorBindingSubscriptionsAndCommandMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "hello"}); err != nil {
+	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "hello"}); err != nil {
 		t.Fatal(err)
 	}
 	observer.Disconnect()
@@ -163,7 +164,7 @@ func TestSupervisorBindingSubscriptionsAndCommandMetadata(t *testing.T) {
 		t.Errorf("binding snapshots: %#v", received)
 	}
 	mu.Unlock()
-	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "/new"}); err != nil {
+	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "/new"}); err != nil {
 		t.Fatal(err)
 	}
 	mu.Lock()

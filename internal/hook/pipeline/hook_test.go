@@ -39,6 +39,8 @@ func TestBlockPolicyMatchesPlatformGroupAndUser(t *testing.T) {
 		{name: "group", event: share.Event{Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:123"}}, want: true},
 		{name: "supergroup", event: share.Event{Platform: share.PlatformContext{Name: "telegram", ScopeID: "supergroup:-100456"}}, want: true},
 		{name: "user", event: share.Event{Platform: share.PlatformContext{Name: "qqonebot"}, Actor: share.ActorContext{UserID: "42"}}, want: true},
+		{name: "association does not supply user", event: share.Event{Platform: share.PlatformContext{Name: "qqonebot"}, Actor: share.ActorContext{ID: "qqonebot:42"}}},
+		{name: "native user keeps prefix", event: share.Event{Platform: share.PlatformContext{Name: "qqonebot"}, Actor: share.ActorContext{UserID: "qqonebot:42"}}},
 		{name: "private scope is not group", event: share.Event{Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "private:123"}}},
 		{name: "other", event: share.Event{Platform: share.PlatformContext{Name: "qqonebot", ScopeID: "group:999"}, Actor: share.ActorContext{UserID: "7"}}},
 	}

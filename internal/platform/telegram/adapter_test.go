@@ -4,6 +4,7 @@ package telegram
 
 import (
 	"context"
+	"elbot/internal/config"
 	globalevents "elbot/internal/events"
 	"elbot/internal/signal"
 	"encoding/json"
@@ -58,7 +59,7 @@ func TestPartialTextSendKeepsReceiptWithoutRestartingFallback(t *testing.T) {
 			}))
 			defer server.Close()
 			adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: format}, nil)
-			ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ConversationKind: contextinfo.ConversationGroup, ConversationID: "-19", ScopeID: "group:-19"}})
+			ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ConversationKind: contextinfo.ConversationGroup, ConversationID: "-19", ScopeID: "group:-19"}})
 			receipt, _, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(strings.Repeat("a", telegramRichTextRunes+1))})
 			if err == nil || len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != "71" || calls != 2 {
 				t.Fatalf("receipt=%#v error=%v calls=%d", receipt, err, calls)
@@ -80,8 +81,8 @@ func TestContextTargetUsesPublicConversationAndScope(t *testing.T) {
 		{contextinfo.ConversationGroup, "-21", "supergroup:-21", -21, "supergroup:-21"},
 		{contextinfo.ConversationUnknown, "", "private:22", 22, "private:22"},
 	} {
-		ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ConversationKind: tc.kind, ConversationID: tc.id, ScopeID: tc.scope}})
-		got, err := contextTarget(ctx)
+		ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ConversationKind: tc.kind, ConversationID: tc.id, ScopeID: tc.scope}})
+		got, err := (&Adapter{name: testPlatformName}).contextTarget(ctx)
 		if err != nil || got.ChatID != tc.wantID || got.ScopeID != tc.wantScope {
 			t.Fatalf("source=%#v target=%#v error=%v", tc, got, err)
 		}
@@ -102,8 +103,8 @@ func TestTelegramTokenEnvReadsConfigDotEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("TELEGRAM_BOT_TOKEN", "")
-	cfg := Config{BotTokenEnv: "TELEGRAM_BOT_TOKEN", ConfigEnvDir: dir}
-	got, err := cfg.tokenValue()
+	cfg := Config{BotTokenEnv: "TELEGRAM_BOT_TOKEN"}
+	got, err := cfg.tokenValue(testConfigEnv(dir))
 	if err != nil || got != "from-dotenv" {
 		t.Fatalf("token=%q err=%v", got, err)
 	}
@@ -115,8 +116,8 @@ func TestTelegramProxyEnvPrefersOSEnvOverConfigDotEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("TELEGRAM_PROXY_URL", "http://127.0.0.1:9090")
-	cfg := Config{ProxyURLEnv: "TELEGRAM_PROXY_URL", ConfigEnvDir: dir}
-	proxyURL, err := cfg.proxyURL()
+	cfg := Config{ProxyURLEnv: "TELEGRAM_PROXY_URL"}
+	proxyURL, err := cfg.proxyURL(testConfigEnv(dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +158,7 @@ func TestTelegramInvalidProxyURLFromPlatformConfig(t *testing.T) {
 		"enabled":   true,
 		"bot_token": "token",
 		"proxy_url": "://bad",
-	}, Deps{})
+	}, Deps{CommonConfig: testCommonConfig(t)})
 	if err == nil || !strings.Contains(err.Error(), "invalid telegram proxy_url") {
 		t.Fatalf("err = %v", err)
 	}
@@ -222,7 +223,7 @@ func TestSendActionsIndependentOfTextAndOnlyOnFirstPage(t *testing.T) {
 				}))
 				defer server.Close()
 				adapter := newTestAdapter(t, Config{Enabled: true, BotToken: "token", APIBaseURL: server.URL, Format: format}, nil)
-				ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ConversationKind: contextinfo.ConversationPrivate, ConversationID: "1"}})
+				ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ConversationKind: contextinfo.ConversationPrivate, ConversationID: "1"}})
 				out := delivery.Text("高风险工具调用等待确认 /confirm\n" + strings.Repeat("a", telegramRichTextRunes+1))
 				if hasActions {
 					out.Text = "正文完全改写\n" + strings.Repeat("a", telegramRichTextRunes+1)
@@ -393,11 +394,11 @@ func TestTelegramMediaReceiptAndTargetScope(t *testing.T) {
 	if target.ScopeID != "group:-100123" {
 		t.Fatalf("scope = %q", target.ScopeID)
 	}
-	receipt := telegramReceipt(delivery.Receipt{PlatformMessageIDs: []string{"10"}}, target, 2)
+	receipt := (&Adapter{name: testPlatformName}).telegramReceipt(delivery.Receipt{PlatformMessageIDs: []string{"10"}}, target, 2)
 	if len(receipt.SentMessages) != 1 || receipt.SentMessages[0].ScopeID != target.ScopeID || receipt.SentMessages[0].OutputIndexes[0] != 2 {
 		t.Fatalf("receipt = %#v", receipt)
 	}
-	fallback := telegramReceipt(delivery.Receipt{PlatformMessageIDs: []string{"11"}}, target)
+	fallback := (&Adapter{name: testPlatformName}).telegramReceipt(delivery.Receipt{PlatformMessageIDs: []string{"11"}}, target)
 	if len(fallback.SentMessages) != 1 || len(fallback.SentMessages[0].OutputIndexes) != 0 {
 		t.Fatalf("record fallback receipt = %#v", fallback)
 	}

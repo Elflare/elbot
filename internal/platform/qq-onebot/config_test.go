@@ -19,7 +19,7 @@ func TestNewFromPlatformConfigReadsAccessTokenFromDotEnv(t *testing.T) {
 	adapter, err := NewFromPlatformConfig(map[string]any{
 		"enabled":          true,
 		"access_token_env": "QQONEBOT_TOKEN",
-	}, Deps{CommonConfig: share.CommonConfig{ConfigDir: dir}})
+	}, Deps{CommonConfig: share.CommonConfig{PlatformName: testPlatformName, ConfigEnv: testConfigEnv(dir)}})
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestNewFromPlatformConfigPrefersSystemEnvironment(t *testing.T) {
 	adapter, err := NewFromPlatformConfig(map[string]any{
 		"enabled":          true,
 		"access_token_env": "QQONEBOT_TOKEN",
-	}, Deps{CommonConfig: share.CommonConfig{ConfigDir: dir}})
+	}, Deps{CommonConfig: share.CommonConfig{PlatformName: testPlatformName, ConfigEnv: testConfigEnv(dir)}})
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestNewFromPlatformConfigPrefersLegacyAccessToken(t *testing.T) {
 		"enabled":          true,
 		"access_token":     "legacy-token",
 		"access_token_env": "QQONEBOT_TOKEN",
-	}, Deps{CommonConfig: share.CommonConfig{ConfigDir: dir}})
+	}, Deps{CommonConfig: share.CommonConfig{PlatformName: testPlatformName, ConfigEnv: testConfigEnv(dir)}})
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestNewFromPlatformConfigPrefersLegacyAccessToken(t *testing.T) {
 }
 
 func TestNewFromPlatformConfigAllowsMissingAccessToken(t *testing.T) {
-	adapter, err := NewFromPlatformConfig(map[string]any{"enabled": true}, Deps{CommonConfig: share.CommonConfig{ConfigDir: t.TempDir()}})
+	adapter, err := NewFromPlatformConfig(map[string]any{"enabled": true}, Deps{CommonConfig: share.CommonConfig{PlatformName: testPlatformName, ConfigEnv: testConfigEnv(t.TempDir())}})
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}

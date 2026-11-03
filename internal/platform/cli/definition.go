@@ -8,7 +8,7 @@ import (
 
 func Definition() share.Definition {
 	return share.Definition{
-		Name: "cli", PrivateSessionIDCode: "cl", GroupSessionIDCode: "cl", ConfigDefinition: ConfigDefinition(),
+		PrivateSessionIDCode: "cl", GroupSessionIDCode: "cl", ConfigDefinition: ConfigDefinition(),
 		// 本地展示不需要聊天目标；远程客户端由 CLI 的原始连接及目标定位。
 		ValidateNotificationTarget: func(events.NotificationTarget) error { return nil },
 	}

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
@@ -20,7 +21,7 @@ import (
 func mapTestReference(t *testing.T, a *Adapter, scopeID, alias, id string) {
 	t.Helper()
 	if err := a.chatHistory.MapPlatformMessageAlias(t.Context(), storage.PlatformMessageAlias{
-		Platform: platformName, PlatformScopeID: scopeID, Alias: alias, PlatformMessageID: id,
+		Platform: config.PlatformQQOfficial, PlatformScopeID: scopeID, Alias: alias, PlatformMessageID: id,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +222,7 @@ func TestSendRegistersReferenceIndexWithoutChangingDelivery(t *testing.T) {
 					if err != nil || len(receipt.PlatformMessageIDs) != 1 || receipt.PlatformMessageIDs[0] != fmt.Sprintf("sent-%d", calls) {
 						t.Fatalf("receipt=%+v err=%v", receipt, err)
 					}
-					id, err := a.chatHistory.ResolvePlatformMessageAlias(t.Context(), platformName, qqOfficialTargetScope(target), fmt.Sprintf("REFIDX_%d", calls))
+					id, err := a.chatHistory.ResolvePlatformMessageAlias(t.Context(), config.PlatformQQOfficial, qqOfficialTargetScope(target), fmt.Sprintf("REFIDX_%d", calls))
 					if fail {
 						if !errors.Is(err, storage.ErrNotFound) {
 							t.Fatalf("failed write: %v", err)

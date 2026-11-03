@@ -49,7 +49,7 @@ func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []
 }
 
 func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-	t, err := contextTarget(ctx)
+	t, err := a.contextTarget(ctx)
 	if err != nil {
 		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
 		return delivery.Receipt{}, logResult, err
@@ -57,9 +57,9 @@ func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Outp
 	return a.sendOutputs(ctx, t, outputs)
 }
 
-func contextTarget(ctx context.Context) (target, error) {
+func (a *Adapter) contextTarget(ctx context.Context) (target, error) {
 	info, ok := contextinfo.ConversationFromContext(ctx)
-	if !ok || info.Source.Platform != platformName {
+	if !ok || info.Source.Platform != a.Name() {
 		return target{}, fmt.Errorf("telegram send target missing")
 	}
 	t, err := targetFromDelivery(delivery.Target{ScopeID: info.Source.ScopeID})
@@ -82,32 +82,7 @@ func contextTarget(ctx context.Context) (target, error) {
 
 func (a *Adapter) sendTarget(ctx context.Context, outTarget delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	if outTarget.Superadmins {
-		if len(a.cfg.Superadmins) == 0 {
-			{
-				err := fmt.Errorf("telegram superadmins are not configured")
-				logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-				return delivery.Receipt{}, logResult, err
-			}
-		}
-		var receipt delivery.Receipt
-		for _, id := range a.cfg.Superadmins {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
-			}
-			copyTarget := outTarget
-			copyTarget.Superadmins = false
-			copyTarget.PrivateUserID = id
-			copyTarget.GroupID = ""
-			copyTarget.ScopeID = ""
-			sent, logResult, err := a.sendTarget(ctx, copyTarget, outputs)
-			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
-			receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
-			if err != nil {
-				return receipt, logResult, err
-			}
-		}
-		return receipt, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+		return a.superadmins.SendTo(ctx, outputs, a.sendTarget)
 	}
 	t, err := targetFromDelivery(outTarget)
 	if err != nil {
@@ -125,7 +100,7 @@ func (a *Adapter) sendOutputs(ctx context.Context, t target, outputs []delivery.
 		if out.Kind == delivery.KindImage || out.Kind == delivery.KindFile {
 			mediaIndexes = []int{i}
 		}
-		sent = telegramReceipt(sent, t, mediaIndexes...)
+		sent = a.telegramReceipt(sent, t, mediaIndexes...)
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 		if err != nil {
@@ -136,11 +111,11 @@ func (a *Adapter) sendOutputs(ctx context.Context, t target, outputs []delivery.
 }
 
 // Every sent message has a source; only actual media outputs have media indexes.
-func telegramReceipt(receipt delivery.Receipt, target target, mediaIndexes ...int) delivery.Receipt {
+func (a *Adapter) telegramReceipt(receipt delivery.Receipt, target target, mediaIndexes ...int) delivery.Receipt {
 	scope := strings.TrimSpace(target.ScopeID)
 	for _, id := range receipt.PlatformMessageIDs {
 		if id = strings.TrimSpace(id); id != "" {
-			receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: platformName, ScopeID: scope, OutputIndexes: append([]int(nil), mediaIndexes...)})
+			receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: a.Name(), ScopeID: scope, OutputIndexes: append([]int(nil), mediaIndexes...)})
 		}
 	}
 	return receipt

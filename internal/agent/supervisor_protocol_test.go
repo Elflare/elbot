@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/testutil"
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
@@ -53,7 +54,7 @@ func TestSupervisorNativeResponseToolTurn(t *testing.T) {
 	t.Cleanup(func() { _ = models.Close(context.Background()) })
 	deps.Models = models
 	m := contractSupervisor(t, deps)
-	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "@tool:read_file hello"}); err != nil {
+	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "@tool:read_file hello"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(requests) != 2 {
@@ -112,7 +113,7 @@ func TestSupervisorStatusSnapshotIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "hello"}); err != nil {
+	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "hello"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := observe.Close(t.Context()); err != nil {
@@ -124,7 +125,7 @@ func TestSupervisorStatusSnapshotIsolation(t *testing.T) {
 		t.Errorf("usage snapshots: %v", totals)
 	}
 	mu.Unlock()
-	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "again"}); err != nil {
+	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "again"}); err != nil {
 		t.Fatal(err)
 	}
 	mu.Lock()
@@ -151,14 +152,16 @@ func TestSupervisorStopCancelsActiveMessage(t *testing.T) {
 	contractModels(t, &deps, client)
 	m := contractSupervisor(t, deps)
 	result := make(chan error, 1)
-	go func() { result <- m.HandleMessage(t.Context(), MessageRequest{Text: "hello"}) }()
+	go func() {
+		result <- m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "hello"})
+	}()
 	var call context.Context
 	select {
 	case call = <-client.entered:
 	case <-time.After(time.Second):
 		t.Fatal("model not started")
 	}
-	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "/stop"}); err != nil {
+	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "/stop"}); err != nil {
 		t.Fatal(err)
 	}
 	select {

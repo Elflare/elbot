@@ -4,6 +4,7 @@ package qqofficial
 
 import (
 	"context"
+	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"fmt"
 	"net/http"
@@ -30,7 +31,7 @@ func TestNoticeKeepsPartiallySuccessfulMediaReceipt(t *testing.T) {
 	defer server.Close()
 	a := newQQOfficialSendTestAdapter(t, server)
 	out := delivery.Output{Kind: delivery.KindImage, Source: delivery.Source{URL: "https://example.com/image.png"}}
-	receipt, _, err := a.SendTo(context.Background(), delivery.Target{Platform: platformName, GroupID: "9"}, []delivery.Output{out, out})
+	receipt, _, err := a.SendTo(context.Background(), delivery.Target{Platform: config.PlatformQQOfficial, GroupID: "9"}, []delivery.Output{out, out})
 	if err == nil || len(receipt.SentMessages) != 1 || len(receipt.PlatformMessageIDs) != 1 || receipt.SentMessages[0].ScopeID != "group:9" || receipt.SentMessages[0].OutputIndexes[0] != 0 {
 		t.Fatalf("partial receipt = %#v %v", receipt, err)
 	}

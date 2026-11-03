@@ -5,6 +5,7 @@ package qqofficial
 import (
 	"context"
 	"elbot/internal/command"
+	"elbot/internal/config"
 	globalevents "elbot/internal/events"
 	"elbot/internal/signal"
 	"encoding/json"
@@ -51,6 +52,9 @@ func TestHandleGroupAtMessageBuildsGroupContext(t *testing.T) {
 	}
 	if msgCtx.Conversation.Identity.ActorID != "qqofficial:member-1" || msgCtx.Conversation.Identity.PlatformUserID != "member-1" {
 		t.Fatalf("actor/user = %q/%q", msgCtx.Conversation.Identity.ActorID, msgCtx.Conversation.Identity.PlatformUserID)
+	}
+	if msgCtx.GroupRole != contextinfo.GroupRoleUnknown {
+		t.Fatalf("group role = %q, want unknown", msgCtx.GroupRole)
 	}
 	if msgCtx.Conversation.Source.ScopeID != "group:group-1" || msgCtx.Conversation.Source.ConversationKind != contextinfo.ConversationGroup || msgCtx.Conversation.Source.ConversationID != "group-1" {
 		t.Fatalf("scope/conversation = %q/%q", msgCtx.Conversation.Source.ScopeID, msgCtx.Conversation.Source.ConversationKind)
@@ -118,7 +122,7 @@ func TestHandleGroupMessageRecordsChatHistoryBeforeWakeup(t *testing.T) {
 		MessageScene: messageScene{Ext: []string{"ref_msg_idx=REFIDX_reply-1"}},
 	})
 
-	row, err := history.GetByPlatformMessage(ctx, platformName, "group:group-1", "msg-1")
+	row, err := history.GetByPlatformMessage(ctx, config.PlatformQQOfficial, "group:group-1", "msg-1")
 	if err != nil {
 		t.Fatalf("get chat history: %v", err)
 	}
@@ -140,7 +144,7 @@ func TestHandleGroupMessageAppliesAssistantReference(t *testing.T) {
 	called := false
 	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 		called = true
-		if opts.Platform != platformName || opts.ScopeID != "group:group-1" || opts.ReplyID != "assistant-1" || opts.Text != "继续" {
+		if opts.Platform != config.PlatformQQOfficial || opts.ScopeID != "group:group-1" || opts.ReplyID != "assistant-1" || opts.Text != "继续" {
 			t.Fatalf("options = %+v", opts)
 		}
 		return share.ReferenceResult{ForkFromMessageID: "fork-message", Reply: share.ReplyContext{MessageID: opts.ReplyID}, Text: "resolved"}, nil
@@ -194,6 +198,9 @@ func TestHandleC2CMessageUsesCanonicalActorID(t *testing.T) {
 	if msgCtx.Conversation.Identity.ActorID != "qqofficial:user-1" {
 		t.Fatalf("actor id = %q, want qqofficial:user-1", msgCtx.Conversation.Identity.ActorID)
 	}
+	if msgCtx.GroupRole != contextinfo.GroupRoleUnknown {
+		t.Fatalf("group role = %q, want unknown", msgCtx.GroupRole)
+	}
 	if msgCtx.Conversation.Identity.PlatformUserID != "user-1" {
 		t.Fatalf("platform user id = %q, want user-1", msgCtx.Conversation.Identity.PlatformUserID)
 	}
@@ -232,7 +239,7 @@ func TestHandleC2CMessageForksOwnOlderAssistantReference(t *testing.T) {
 	called := false
 	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 		called = true
-		if opts.Platform != platformName || opts.ScopeID != "c2c:user-1" || opts.ReplyID != "platform-old" || opts.Text != "继续" {
+		if opts.Platform != config.PlatformQQOfficial || opts.ScopeID != "c2c:user-1" || opts.ReplyID != "platform-old" || opts.Text != "继续" {
 			t.Fatalf("options = %+v", opts)
 		}
 		return share.ReferenceResult{ForkFromMessageID: "fork-message", Reply: share.ReplyContext{MessageID: opts.ReplyID}, Text: "resolved"}, nil
@@ -383,7 +390,7 @@ func TestHandleC2CMessageResumesLatestAssistantReference(t *testing.T) {
 	called := false
 	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 		called = true
-		if opts.Platform != platformName || opts.ScopeID != "c2c:user-1" || opts.ReplyID != "platform-latest" || opts.Text != "继续" {
+		if opts.Platform != config.PlatformQQOfficial || opts.ScopeID != "c2c:user-1" || opts.ReplyID != "platform-latest" || opts.Text != "继续" {
 			t.Fatalf("options = %+v", opts)
 		}
 		return share.ReferenceResult{ResumeSessionID: "resume-session", Reply: share.ReplyContext{MessageID: opts.ReplyID}, Text: "resolved"}, nil
@@ -421,7 +428,7 @@ func TestReadyPublishesGlobalConnectionWithoutAddingResumeEvent(t *testing.T) {
 	}
 }
 
-func newTestAdapter(t *testing.T, cfg Config, history storage.ChatHistoryRepository) *Adapter {
+func newTestAdapter(t *testing.T, cfg Config, history storage.ChatHistoryRepository, adminIDs ...string) *Adapter {
 	t.Helper()
 	if history == nil {
 		db, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
@@ -435,7 +442,7 @@ func newTestAdapter(t *testing.T, cfg Config, history storage.ChatHistoryReposit
 	if cfg.MarkdownByDefault != nil {
 		raw["markdown_by_default"] = *cfg.MarkdownByDefault
 	}
-	a, err := NewFromPlatformConfig(raw, Deps{CommonConfig: share.CommonConfig{Superadmins: cfg.Superadmins}, ParseCommand: func(text string) command.Parsed { return command.Parse(text, []string{"/"}) }, ChatHistory: history})
+	a, err := NewFromPlatformConfig(raw, Deps{CommonConfig: share.CommonConfig{PlatformName: testPlatformName, Superadmins: share.NewSuperadmins(testPlatformName, adminIDs)}, ParseCommand: func(text string) command.Parsed { return command.Parse(text, []string{"/"}) }, ChatHistory: history})
 	if err != nil {
 		t.Fatal(err)
 	}

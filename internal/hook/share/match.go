@@ -103,10 +103,7 @@ func (p BlockPolicy) Blocks(event Event) bool {
 			return true
 		}
 	}
-	userID := strings.TrimSpace(event.Actor.UserID)
-	if userID == "" {
-		userID = strings.TrimPrefix(strings.TrimSpace(event.Actor.ID), platform+":")
-	}
+	userID := event.Actor.UserID
 	_, blocked := p.users[platform+":"+userID]
 	return userID != "" && blocked
 }

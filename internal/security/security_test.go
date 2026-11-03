@@ -6,33 +6,26 @@ import (
 	"elbot/internal/contextinfo"
 )
 
-func TestActorIDCanonicalizesPlatformPrefix(t *testing.T) {
-	if got := ActorID("qqofficial", "qqofficial:user-1"); got != "qqofficial:user-1" {
-		t.Fatalf("ActorID() = %q, want qqofficial:user-1", got)
+func TestActorIDPreservesNativeUserID(t *testing.T) {
+	if got := ActorID("cli", "cli:local"); got != "cli:cli:local" {
+		t.Fatalf("ActorID() = %q, want cli:cli:local", got)
 	}
 }
 
-func TestPolicyActorUsesCanonicalIDAndNativePlatformUserID(t *testing.T) {
-	permission := NewPermission("low", "high", map[string][]string{"qqofficial": {"user-1"}})
-	actor := permission.Actor("user-1", "qqofficial", "qqofficial:user-1", "User")
-	if actor.ID != "qqofficial:user-1" {
-		t.Fatalf("actor.ID = %q, want qqofficial:user-1", actor.ID)
-	}
-	if actor.PlatformUserID != "user-1" {
-		t.Fatalf("actor.PlatformUserID = %q, want user-1", actor.PlatformUserID)
-	}
-	if actor.Role != contextinfo.RoleSuperadmin {
-		t.Fatalf("actor.Role = %q, want %q", actor.Role, contextinfo.RoleSuperadmin)
-	}
-}
-
-func TestPolicyActorFallsBackToIDWhenPlatformUserIDMissing(t *testing.T) {
-	actor := DefaultPermission().Actor("qqofficial:user-1", "qqofficial", "", "User")
-	if actor.ID != "qqofficial:user-1" {
-		t.Fatalf("actor.ID = %q, want qqofficial:user-1", actor.ID)
-	}
-	if actor.PlatformUserID != "user-1" {
-		t.Fatalf("actor.PlatformUserID = %q, want user-1", actor.PlatformUserID)
+func TestPolicyActorKeepsDistinctNativeIdentities(t *testing.T) {
+	permission := DefaultPermission()
+	for _, tt := range []struct {
+		userID string
+		role   contextinfo.Role
+	}{
+		{"local", contextinfo.RoleSuperadmin},
+		{"cli:local", contextinfo.RoleUser},
+		{" local ", contextinfo.RoleUser},
+	} {
+		actor := permission.Actor("cli", tt.userID, "User")
+		if actor.ID != "cli:"+tt.userID || actor.PlatformUserID != tt.userID || actor.Role != tt.role {
+			t.Fatalf("native ID %q resolved to %+v", tt.userID, actor)
+		}
 	}
 }
 

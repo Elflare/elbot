@@ -11,7 +11,7 @@ import (
 )
 
 func TestHookCallbackReceivesPublicFactsWithoutInventingSource(t *testing.T) {
-	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{Permission: security.DefaultPermission(), PlatformName: "cli", ActorID: "cli:local", ScopeID: "local"})
+	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})
 	for _, tc := range []struct {
 		name       string
 		ctx        context.Context
@@ -20,6 +20,7 @@ func TestHookCallbackReceivesPublicFactsWithoutInventingSource(t *testing.T) {
 	}{
 		{"absent", t.Context(), "", contextinfo.Source{}},
 		{"platform only", contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "telegram"}}), "", contextinfo.Source{Platform: "telegram"}},
+		{"association only", contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli"}, Identity: contextinfo.Identity{ActorID: "cli:local"}}), "", contextinfo.Source{Platform: "cli"}},
 		{"explicit actor", contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "trusted"}), "trusted", contextinfo.Source{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

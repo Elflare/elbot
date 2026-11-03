@@ -14,14 +14,14 @@ import (
 )
 
 func TestSendToAcceptsCLITarget(t *testing.T) {
-	adapter := New()
+	adapter := New(testPlatformName)
 	if _, _, err := adapter.SendTo(context.Background(), delivery.Target{Platform: "cli", Superadmins: true}, []delivery.Output{delivery.ImagePath("pic.png")}); err != nil {
 		t.Fatalf("SendTo: %v", err)
 	}
 }
 
 func TestSendToRejectsOtherPlatform(t *testing.T) {
-	adapter := New()
+	adapter := New(testPlatformName)
 	if _, _, err := adapter.SendTo(context.Background(), delivery.Target{Platform: "qqonebot"}, []delivery.Output{delivery.Text("hello")}); err == nil {
 		t.Fatal("expected platform mismatch error")
 	}
@@ -69,7 +69,7 @@ func TestRunPublishesGlobalPlatformConnection(t *testing.T) {
 	original := os.Stdin
 	os.Stdin = input
 	defer func() { os.Stdin = original }()
-	adapter := New()
+	adapter := New(testPlatformName)
 	defer adapter.Close(context.Background())
 	if err := adapter.Start(context.Background(), nil); err != nil {
 		t.Fatal(err)

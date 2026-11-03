@@ -22,7 +22,7 @@ type Supervisor struct {
 	notifications   *notification.Manager
 	connections     []*signal.Connection            // Platform 持有的通知接线，最终关闭时释放。
 	ui              *cli.UI                         // CLI 展示同时提供思考流；资源关闭由接线闭包登记。
-	registered      []registration                  // 已校验的静态声明及构造顺序，构造完成后只读。
+	registered      []registration                  // 根部固定的静态声明及构造顺序，构造完成后只读。
 	agentWiring     []func(AgentCapabilities) error // 构造时登记的最小 Agent 接线，不通过实例类型猜测能力。
 	agentCloseSteps []closeStep                     // Agent 接线取得的自有资源，先于通知及适配器关闭。
 	outputWiring    []func() error                  // 连接可投递实例的普通发送及通知能力。

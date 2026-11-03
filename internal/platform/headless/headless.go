@@ -12,13 +12,15 @@ import (
 )
 
 // Adapter is a non-interactive primary platform used by service mode.
-type Adapter struct{}
+type Adapter struct {
+	name string // 根部注入的宿主身份。
+}
 
 var _ share.Runtime = (*Adapter)(nil)
 
-func New() *Adapter { return &Adapter{} }
+func New(platformName string) *Adapter { return &Adapter{name: platformName} }
 
-func (a *Adapter) Name() string { return "service" }
+func (a *Adapter) Name() string { return a.name }
 
 // Start 不创建接入或保存 handler；Service 的持续运行由根部协调。
 func (a *Adapter) Start(ctx context.Context, _ share.MessageHandler) error {

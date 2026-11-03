@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"elbot/internal/config"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -26,7 +27,7 @@ func TestPureMediaHistoryPreservesOrder(t *testing.T) {
 		ID: "1", GroupOpenID: "9", Author: inboundAuthor{MemberOpenID: "1"},
 		Attachments: []messageAttachment{image, {URL: "https://example.com/file", ContentType: "file", Filename: "file.txt", Size: 5}, image},
 	})
-	row, err := history.Repository().GetByPlatformMessage(ctx, platformName, "group:9", "1")
+	row, err := history.Repository().GetByPlatformMessage(ctx, config.PlatformQQOfficial, "group:9", "1")
 	if err != nil {
 		t.Fatal(err)
 	}

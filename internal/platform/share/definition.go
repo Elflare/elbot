@@ -6,9 +6,8 @@ import (
 	"elbot/internal/events"
 )
 
-// Definition 不依赖适配器实例，平台禁用时仍提供身份与配置事实。
+// Definition 不依赖适配器实例；名字归根部登记项，禁用时仍提供能力与配置事实。
 type Definition struct {
-	Name                       string                                // 平台身份，与适配器 Name 及配置节点一致。
 	PrivateSessionIDCode       string                                // 私聊及其他直接会话的短码，也用于后台来源前缀。
 	GroupSessionIDCode         string                                // 群聊及频道的短码，按声明原样使用。
 	ConfigDefinition           config.Definition                     // 不创建适配器即可取得的配置描述。

@@ -43,12 +43,12 @@ func nextStatus(t *testing.T, sent <-chan runtimestatus.Snapshot) runtimestatus.
 func TestStatusCoalescesTerminalAndUpdatesDuringSend(t *testing.T) {
 	first, second := make(chan struct{}), make(chan struct{})
 	p := &slowStatusPlatform{sent: make(chan runtimestatus.Snapshot, 10), gates: []chan struct{}{first, second}}
-	d := newStatusDisplay()
+	d := newStatusDisplay(testPlatformName)
 	d.send = func(ctx context.Context, _ messageData, snapshot runtimestatus.Snapshot) error {
 		return p.SetRuntimeStatus(ctx, snapshot)
 	}
 	t.Cleanup(func() { _ = d.Close(context.Background()) })
-	ctx, cancel := context.WithCancel(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: New()}}))
+	ctx, cancel := context.WithCancel(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: New(testPlatformName)}}))
 	defer cancel()
 	emit := func(version uint64, phase runtimestatus.Phase, tokens int) {
 		t.Helper()
@@ -93,8 +93,8 @@ func TestStatusCoalescesTerminalAndUpdatesDuringSend(t *testing.T) {
 }
 
 func TestStatusTargetsKeepDistinctSendersAndBackgroundIsSilent(t *testing.T) {
-	one, two := New(), New()
-	d := newStatusDisplay()
+	one, two := New(testPlatformName), New(testPlatformName)
+	d := newStatusDisplay(testPlatformName)
 	sent := make(chan messageData, 2)
 	d.send = func(_ context.Context, target messageData, _ runtimestatus.Snapshot) error {
 		sent <- target

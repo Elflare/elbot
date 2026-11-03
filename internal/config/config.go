@@ -191,8 +191,6 @@ type FileDeliveryConfig struct {
 	S3SecretKeyEnv       string `toml:"s3_secret_key_env"`
 }
 
-type PlatformConfig map[string]map[string]any
-
 type PlatformFilesConfig struct {
 	MaxReceiveFileBytes int64 `toml:"max_receive_file_bytes"`
 	DownloadTimeoutSecs int   `toml:"download_timeout_secs"`
@@ -298,6 +296,11 @@ func platformDefaultDataDir() string {
 		return filepath.Join(home, ".local", "share", name)
 	}
 	return "data"
+}
+
+// ConfigEnv 根据当前配置位置读取进程环境变量或相邻 .env 文件。
+func (c *Config) ConfigEnv(key string) (string, bool, error) {
+	return ConfigEnv(key, filepath.Dir(c.ConfigPath))
 }
 
 func ConfigEnv(key, configDir string) (string, bool, error) {
@@ -548,7 +551,16 @@ func (c *Config) applyAppDefaults() {
 		c.Security.SuperadminConfirmRisk = "high"
 	}
 	if c.Security.Superadmins == nil {
-		c.Security.Superadmins = map[string][]string{"cli": {"local"}}
+		c.Security.Superadmins = map[string][]string{PlatformCLI: {"local"}}
+	}
+	for platform, ids := range c.Security.Superadmins {
+		cleaned := make([]string, 0, len(ids))
+		for _, id := range ids {
+			if id = strings.TrimSpace(id); id != "" {
+				cleaned = append(cleaned, id)
+			}
+		}
+		c.Security.Superadmins[platform] = cleaned
 	}
 	if c.Platform == nil {
 		c.Platform = PlatformConfig{}

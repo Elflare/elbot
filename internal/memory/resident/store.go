@@ -92,7 +92,7 @@ func NewStoreWithLimits(path string, limits Limits) *Store {
 }
 
 func ActorScope(actor contextinfo.Actor) session.Scope {
-	return session.Scope{ActorID: actor.ID, Platform: actor.Platform}
+	return session.Scope{ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, Platform: actor.Platform}
 }
 
 func (s *Store) Read(ctx context.Context, scope session.Scope) (Memory, error) {

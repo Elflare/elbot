@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/platform/share"
 	"elbot/internal/signal"
@@ -270,7 +271,7 @@ func TestCloseWaitsForWholeSendAndCanRetry(t *testing.T) {
 	if err := <-sent; err != nil {
 		t.Fatal(err)
 	}
-	if id, err := a.chatHistory.ResolvePlatformMessageAlias(ctx, platformName, "c2c:u", "alias"); err != nil || id != "sent" {
+	if id, err := a.chatHistory.ResolvePlatformMessageAlias(ctx, config.PlatformQQOfficial, "c2c:u", "alias"); err != nil || id != "sent" {
 		t.Fatalf("alias = %q, %v", id, err)
 	}
 }

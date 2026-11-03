@@ -23,7 +23,7 @@ func TestLogIdentityPreservesExecutionFields(t *testing.T) {
 }
 
 func TestDispatchResponseDecodeBoundaries(t *testing.T) {
-	transport := newTransport("", "", 0)
+	transport := newTransport(testPlatformName, "", "", 0)
 	defer transport.Close(context.Background())
 	ch := make(chan response, 1)
 	transport.pending["known"] = ch

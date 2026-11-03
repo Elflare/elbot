@@ -4,6 +4,7 @@ package telegram
 
 import (
 	"context"
+	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/platform/share"
@@ -27,7 +28,7 @@ func TestNormalizeDocument(t *testing.T) {
 
 func newTestStream(t *testing.T, a *Adapter, scope string) delivery.MessageStream {
 	t.Helper()
-	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ScopeID: scope}})
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ScopeID: scope}})
 	s, err := a.StartStream(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +36,7 @@ func newTestStream(t *testing.T, a *Adapter, scope string) delivery.MessageStrea
 	return s
 }
 
-func newTestAdapter(t *testing.T, cfg Config, history share.ChatHistoryWriter) *Adapter {
+func newTestAdapter(t *testing.T, cfg Config, history share.ChatHistoryWriter, adminIDs ...string) *Adapter {
 	t.Helper()
 	if history == nil {
 		db, err := sqlite.NewChatHistory(context.Background(), filepath.Join(t.TempDir(), "history.db"))
@@ -58,7 +59,7 @@ func newTestAdapter(t *testing.T, cfg Config, history share.ChatHistoryWriter) *
 		t.Fatal(err)
 	}
 	a, err := NewFromPlatformConfig(raw, Deps{
-		CommonConfig: share.CommonConfig{Superadmins: cfg.Superadmins, ConfigDir: cfg.ConfigEnvDir},
+		CommonConfig: share.CommonConfig{PlatformName: testPlatformName, Superadmins: share.NewSuperadmins(testPlatformName, adminIDs), ConfigEnv: testConfigEnv(t.TempDir())},
 		ChatHistory:  history,
 	})
 	if err != nil {

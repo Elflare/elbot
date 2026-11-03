@@ -4,8 +4,6 @@ package platform
 import (
 	"context"
 	"fmt"
-	"path/filepath"
-	"strings"
 
 	"elbot/internal/completion"
 	"elbot/internal/config"
@@ -19,8 +17,9 @@ import (
 )
 
 type registration struct {
-	definition share.Definition                                                            // 平台拥有的静态事实，禁用时也登记。
-	build      func(*Supervisor, *config.Config, SupervisorDeps, refcontext.Options) error // 根部裁剪依赖并登记取得的资源；不在适配器间共享完整依赖。
+	name       string                                                                                          // Config 定义的平台名，登记后作为唯一身份。
+	definition share.Definition                                                                                // 平台拥有的静态事实，禁用时也登记。
+	build      func(*Supervisor, SupervisorDeps, refcontext.Options, map[string]any, share.CommonConfig) error // 根部裁剪依赖并登记取得的资源；不在适配器间共享完整依赖。
 }
 
 // registrations 是唯一平台清单；顺序同时决定构造及接入启动顺序。
@@ -29,23 +28,23 @@ func registrations() []registration {
 	qqDefinition := qqofficial.Definition()
 	obDefinition := qqonebot.Definition()
 	tgDefinition := telegram.Definition()
-	return []registration{
-		{definition: cliDefinition, build: func(m *Supervisor, cfg *config.Config, deps SupervisorDeps, _ refcontext.Options) error {
+	entries := []registration{
+		{name: config.PlatformCLI, definition: cliDefinition, build: func(m *Supervisor, deps SupervisorDeps, _ refcontext.Options, raw map[string]any, common share.CommonConfig) error {
 			var setCompleter func(func(context.Context, completion.Request) ([]completion.Item, error))
 			if deps.Mode == "tui" {
-				adapter := cli.New()
+				adapter := cli.New(common.PlatformName)
 				m.primary = adapter
 				m.ownRuntime(adapter, true, adapter.WaitExit, cliDefinition.ValidateNotificationTarget)
 				setCompleter = adapter.SetCompleter
 			} else {
-				cfgCLI, err := cli.NewConfigFromPlatformConfig(cfg.Platform[cliDefinition.Name])
+				cfgCLI, err := cli.NewConfigFromPlatformConfig(raw)
 				if err != nil {
 					return err
 				}
 				if !cfgCLI.Enabled || !cfgCLI.Server.Enabled {
 					return nil
 				}
-				adapter, err := cli.NewRemoteServer(cli.RemoteServerOptions{Config: cfgCLI, ConfigDir: filepath.Dir(cfg.ConfigPath), Superadmins: cfg.Security.Superadmins[cliDefinition.Name]})
+				adapter, err := cli.NewRemoteServer(cli.RemoteServerOptions{Config: cfgCLI, PlatformName: common.PlatformName, ConfigEnv: common.ConfigEnv, Superadmins: common.Superadmins})
 				if err != nil {
 					return err
 				}
@@ -54,7 +53,7 @@ func registrations() []registration {
 			}
 			m.agentWiring = append(m.agentWiring, func(source AgentCapabilities) error {
 				setCompleter(source.Complete)
-				ui, err := cli.ConnectUI(agentEvents{source})
+				ui, err := cli.ConnectUI(common.PlatformName, agentEvents{source})
 				m.ui = ui
 				if ui != nil {
 					m.agentCloseSteps = append(m.agentCloseSteps, closeStep{"cli UI", ui.Close})
@@ -63,13 +62,12 @@ func registrations() []registration {
 			})
 			return nil
 		}},
-		{definition: qqDefinition, build: func(m *Supervisor, cfg *config.Config, deps SupervisorDeps, references refcontext.Options) error {
-			raw, ok := cfg.Platform[qqDefinition.Name]
-			if !ok {
+		{name: config.PlatformQQOfficial, definition: qqDefinition, build: func(m *Supervisor, deps SupervisorDeps, references refcontext.Options, raw map[string]any, common share.CommonConfig) error {
+			if raw == nil {
 				return nil
 			}
 			adapter, err := qqofficial.NewFromPlatformConfig(raw, qqofficial.Deps{
-				CommonConfig: share.CommonConfig{Superadmins: cfg.Security.Superadmins[qqDefinition.Name], ConfigDir: filepath.Dir(cfg.ConfigPath)},
+				CommonConfig: common,
 				ParseCommand: references.ParseCommand, ChatHistory: deps.ChatHistory,
 				ReferenceResolver: func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 					return refcontext.Apply(ctx, references, opts)
@@ -80,19 +78,14 @@ func registrations() []registration {
 			}
 			return err
 		}},
-		{definition: obDefinition, build: func(m *Supervisor, cfg *config.Config, deps SupervisorDeps, references refcontext.Options) error {
-			raw, ok := cfg.Platform[obDefinition.Name]
-			if !ok {
+		{name: config.PlatformQQOneBot, definition: obDefinition, build: func(m *Supervisor, deps SupervisorDeps, references refcontext.Options, raw map[string]any, common share.CommonConfig) error {
+			if raw == nil {
 				return nil
 			}
 			adapter, err := qqonebot.NewFromPlatformConfig(raw, qqonebot.Deps{
 				ParseCommand: references.ParseCommand,
-				CommonConfig: share.CommonConfig{
-					Superadmins: cfg.Security.Superadmins[obDefinition.Name], ConfigDir: filepath.Dir(cfg.ConfigPath),
-					AttachmentDir:       filepath.Join(cfg.Sandbox.Root, "platform", obDefinition.Name),
-					MaxReceiveFileBytes: cfg.PlatformFiles.MaxReceiveFileBytes, DownloadTimeoutSecs: cfg.PlatformFiles.DownloadTimeoutSecs,
-				},
-				ChatHistory: deps.ChatHistory,
+				CommonConfig: common,
+				ChatHistory:  deps.ChatHistory,
 				ReferenceResolver: func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 					return refcontext.Apply(ctx, references, opts)
 				},
@@ -104,13 +97,12 @@ func registrations() []registration {
 			}
 			return err
 		}},
-		{definition: tgDefinition, build: func(m *Supervisor, cfg *config.Config, deps SupervisorDeps, references refcontext.Options) error {
-			raw, ok := cfg.Platform[tgDefinition.Name]
-			if !ok {
+		{name: config.PlatformTelegram, definition: tgDefinition, build: func(m *Supervisor, deps SupervisorDeps, references refcontext.Options, raw map[string]any, common share.CommonConfig) error {
+			if raw == nil {
 				return nil
 			}
 			adapter, err := telegram.NewFromPlatformConfig(raw, telegram.Deps{
-				CommonConfig: share.CommonConfig{Superadmins: cfg.Security.Superadmins[tgDefinition.Name], ConfigDir: filepath.Dir(cfg.ConfigPath)},
+				CommonConfig: common,
 				ChatHistory:  deps.ChatHistory,
 				ReferenceResolver: func(ctx context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
 					return refcontext.Apply(ctx, references, opts)
@@ -126,42 +118,16 @@ func registrations() []registration {
 			return err
 		}},
 	}
-}
-
-func (m *Supervisor) registerPlatform(entry registration) error {
-	definition := entry.definition
-	switch {
-	case strings.TrimSpace(definition.Name) == "":
-		return fmt.Errorf("platform name is required")
-	case strings.TrimSpace(definition.PrivateSessionIDCode) == "":
-		return fmt.Errorf("platform %q private session ID code is required", definition.Name)
-	case strings.TrimSpace(definition.GroupSessionIDCode) == "":
-		return fmt.Errorf("platform %q group session ID code is required", definition.Name)
-	case definition.ConfigDefinition.New == nil:
-		return fmt.Errorf("platform %q config definition is required", definition.Name)
-	case definition.ValidateNotificationTarget == nil:
-		return fmt.Errorf("platform %q notification target validator is required", definition.Name)
-	case entry.build == nil:
-		return fmt.Errorf("platform %q constructor is required", definition.Name)
+	for i := range entries {
+		entries[i].definition.ConfigDefinition.Node = []string{"platform", entries[i].name}
 	}
-	for _, registered := range m.registered {
-		if registered.definition.Name == definition.Name {
-			return fmt.Errorf("platform %q already registered", definition.Name)
-		}
-		for _, code := range []string{definition.PrivateSessionIDCode, definition.GroupSessionIDCode} {
-			if code == registered.definition.PrivateSessionIDCode || code == registered.definition.GroupSessionIDCode {
-				return fmt.Errorf("platform %q session ID code %q already registered by %q", definition.Name, code, registered.definition.Name)
-			}
-		}
-	}
-	m.registered = append(m.registered, entry)
-	return nil
+	return entries
 }
 
 // SessionIDCode 查询已登记的平台声明，与平台是否启用或连接无关。
 func (m *Supervisor) SessionIDCode(name string, kind contextinfo.ConversationKind) (string, error) {
 	for _, entry := range m.registered {
-		if entry.definition.Name == name {
+		if entry.name == name {
 			if kind == contextinfo.ConversationGroup || kind == contextinfo.ConversationChannel {
 				return entry.definition.GroupSessionIDCode, nil
 			}

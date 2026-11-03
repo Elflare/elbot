@@ -40,8 +40,8 @@ type BackgroundHandlerDeps struct {
 		PrepareBackground(context.Context, session.Scope, session.BackgroundRequest) (*storage.Session, error)
 	} // Creates or resumes a task session without activating a foreground binding.
 	Identity interface {
-		PlatformName() string
-	} // Supplies the Agent's default platform identity.
+		IsCLI(context.Context) bool
+	} // 根据当前请求来源识别 CLI 平台。
 	WithPermission func(context.Context) context.Context // Attaches the permission policy supplied by the Agent root.
 	Execution      interface {
 		ModelContext(context.Context, *storage.Session) (context.Context, error)

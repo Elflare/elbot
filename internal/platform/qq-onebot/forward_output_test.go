@@ -160,7 +160,7 @@ func TestForwardAdminNoticesKeepPartialReceipts(t *testing.T) {
 				}
 				return response{Data: []byte(`{"message_id":88}`)}
 			})
-			a := newTestAdapter(t, Config{URL: transport.URL, Superadmins: []string{"1", "2", "3"}}, nil, nil)
+			a := newTestAdapter(t, Config{URL: transport.URL}, nil, nil, "1", "2", "3")
 			a.transport = transport
 			ctx := context.Background()
 			if temporary {

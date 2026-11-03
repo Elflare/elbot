@@ -60,7 +60,7 @@ func TestConfirmationWaitTimeoutUsesSessionTTLAsUpperBound(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 
 			policy := agentconfirmation.NewConfirmationPolicy(agentconfirmation.ConfirmationPolicyDeps{
-				Identity:                agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{Permission: security.DefaultPermission(), PlatformName: "test"}),
+				Identity:                agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()}),
 				IdleExpiration:          tt.cfg,
 				UserConfirmationTimeout: 10 * time.Minute,
 			})

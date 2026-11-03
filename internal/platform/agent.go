@@ -89,19 +89,11 @@ func messageSegments(segments []share.MessageSegment) []agent.MessageSegment {
 }
 
 func projectMessageContext(msg share.MessageContext) MessageContext {
-	segments := func(input []share.MessageSegment) []MessageSegment {
-		if input == nil {
-			return nil
-		}
-		result := make([]MessageSegment, len(input))
-		for i, segment := range input {
-			result[i] = MessageSegment{Type: MessageSegmentType(segment.Type), Text: segment.Text, UserID: segment.UserID, URL: segment.URL, MediaID: segment.MediaID, PlatformFileID: segment.PlatformFileID, MIMEType: segment.MIMEType, Name: segment.Name, Size: segment.Size}
-		}
-		return result
-	}
+	reply := msg.Reply
+	reply.Segments = slices.Clone(reply.Segments)
 	return MessageContext{
 		RawText: msg.RawText, PlatformMessage: slices.Clone(msg.PlatformMessage),
-		Reply: ReplyContext{MessageID: msg.Reply.MessageID, SenderID: msg.Reply.SenderID, SenderName: msg.Reply.SenderName, Text: msg.Reply.Text, Segments: segments(msg.Reply.Segments)},
+		Reply: reply,
 	}
 }
 

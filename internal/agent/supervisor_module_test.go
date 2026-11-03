@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"path/filepath"
 	"testing"
 	"time"
@@ -32,7 +33,6 @@ func (isolatedPlatformCapabilities) RestoreMessageContext(ctx, _ context.Context
 	return ctx
 }
 
-func (isolatedPlatformCapabilities) PrimaryName() string { return "cli" }
 func (isolatedPlatformCapabilities) SessionIDCode(name string, _ contextinfo.ConversationKind) (string, error) {
 	return name, nil
 }
@@ -131,7 +131,7 @@ func TestStandaloneDialogueOwnsStateAndBorrowsOnlyCapabilities(t *testing.T) {
 	if err := m.Start(); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "hello"}); err != nil {
+	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "hello"}); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := deps.Store.Sessions().List(t.Context(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 10})

@@ -29,15 +29,9 @@ type BackgroundHandler struct {
 
 func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundRequest) turn.Result {
 	actor := req.Actor
-	if actor.Role == "" {
-		actor.Role = contextinfo.RoleSuperadmin
-	}
 	platformName := req.Platform
 	if platformName == "" {
 		platformName = actor.Platform
-	}
-	if platformName == "" {
-		platformName = r.Identity.PlatformName()
 	}
 	scopeID := req.ScopeID
 	if scopeID == "" {
@@ -60,7 +54,7 @@ func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundReq
 		ctx = modelmgr.WithSelectionOverride(ctx, config.ModelSelection{Provider: req.ModelProvider, Model: req.Model})
 	}
 
-	sessionScope := session.Scope{ActorID: actor.ID, Platform: platformName, PlatformScopeID: scopeID, IsCLI: platformName == "cli"}
+	sessionScope := session.Scope{ActorID: actor.ID, PlatformUserID: actor.PlatformUserID, Platform: platformName, PlatformScopeID: scopeID, IsCLI: r.Identity.IsCLI(ctx)}
 	bgSession, err := r.Sessions.PrepareBackground(ctx, sessionScope, session.BackgroundRequest{TargetPlatforms: req.TargetPlatforms, SessionID: req.SessionID, Kind: string(req.Kind), Name: req.Name, Title: req.Title, Metadata: req.Metadata})
 	if err != nil {
 		if errors.Is(err, session.ErrForegroundSession) {

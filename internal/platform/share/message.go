@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"maps"
 	"slices"
+	"strings"
 )
 
 type MessageSegmentType string
@@ -20,10 +21,10 @@ const (
 	SegmentAt    MessageSegmentType = "at"
 )
 
-// MessageSegment 是平台内部处理和存储的有序消息片段。
+// MessageSegment 是平台处理、存储和公开引用事实共用的有序片段，不携带运行能力。
 type MessageSegment struct {
 	Type           MessageSegmentType `json:"type"`                       // 片段种类。
-	Text           string             `json:"text,omitempty"`             // 文本内容。
+	Text           string             `json:"text,omitempty"`             // 文本或附件说明。
 	UserID         string             `json:"user_id,omitempty"`          // 提及用户标识。
 	URL            string             `json:"url,omitempty"`              // 媒体来源地址。
 	MediaID        string             `json:"media,omitempty"`            // 已导入的媒体 ID。
@@ -39,6 +40,27 @@ type ReplyContext struct {
 	SenderName string           // 发送者展示名。
 	Text       string           // 引用正文。
 	Segments   []MessageSegment // 引用消息片段。
+}
+
+// FinalMessageSegments 保留非空白正文，再按当前消息、引用消息的顺序追加非文本片段；不修改输入切片。
+func FinalMessageSegments(text string, current, referenced []MessageSegment) []MessageSegment {
+	out := make([]MessageSegment, 0, 1+len(current)+len(referenced))
+	if strings.TrimSpace(text) != "" {
+		out = append(out, MessageSegment{Type: SegmentText, Text: text})
+	}
+	out = AppendNonTextSegments(out, current)
+	out = AppendNonTextSegments(out, referenced)
+	return out
+}
+
+// AppendNonTextSegments 将 segments 中的非文本片段按原顺序追加到 out。
+func AppendNonTextSegments(out []MessageSegment, segments []MessageSegment) []MessageSegment {
+	for _, segment := range segments {
+		if segment.Type != SegmentText {
+			out = append(out, segment)
+		}
+	}
+	return out
 }
 
 // MediaResolver 仅表达协议侧媒体来源解析，不负责媒体缓存。

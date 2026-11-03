@@ -3,6 +3,7 @@ package security
 import (
 	"strings"
 
+	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 )
 
@@ -55,25 +56,16 @@ func NewPermission(userMaxToolRisk, superadminConfirmRisk string, superadmins ma
 		Superadmins:           map[string]map[string]bool{},
 	}
 	for platform, ids := range superadmins {
-		platform = normalize(platform)
-		if platform == "" {
-			continue
-		}
-		if p.Superadmins[platform] == nil {
-			p.Superadmins[platform] = map[string]bool{}
-		}
+		p.Superadmins[platform] = map[string]bool{}
 		for _, id := range ids {
-			id = strings.TrimSpace(id)
-			if id != "" {
-				p.Superadmins[platform][id] = true
-			}
+			p.Superadmins[platform][id] = true
 		}
 	}
 	return p
 }
 
 func DefaultPermission() *Permission {
-	return NewPermission("low", "high", map[string][]string{"cli": {"local"}})
+	return NewPermission("low", "high", map[string][]string{config.PlatformCLI: {"local"}})
 }
 
 func ParseRisk(value string, fallback RiskLevel) RiskLevel {
@@ -85,62 +77,25 @@ func ParseRisk(value string, fallback RiskLevel) RiskLevel {
 	}
 }
 
-func (p *Permission) Actor(id, platform, platformUserID, displayName string) contextinfo.Actor {
-	platform = normalize(platform)
-	platformUserID = canonicalPlatformUserID(platform, platformUserID)
-	if platformUserID == "" {
-		platformUserID = canonicalPlatformUserID(platform, id)
-	}
-	id = ActorID(platform, platformUserID)
+// Actor 按平台和原生用户 ID 解析权限，不从关联 ID 恢复身份。
+func (p *Permission) Actor(platform, platformUserID, displayName string) contextinfo.Actor {
 	role := contextinfo.RoleUser
-	if p != nil && p.IsSuperadmin(platform, platformUserID) {
+	if p.IsSuperadmin(platform, platformUserID) {
 		role = contextinfo.RoleSuperadmin
 	}
-	return contextinfo.Actor{ID: id, Platform: platform, PlatformUserID: platformUserID, DisplayName: displayName, Role: role, GroupRole: contextinfo.GroupRoleUnknown}
+	return contextinfo.Actor{ID: ActorID(platform, platformUserID), Platform: platform, PlatformUserID: platformUserID, DisplayName: displayName, Role: role, GroupRole: contextinfo.GroupRoleUnknown}
 }
 
-func ParseGroupRole(value string) contextinfo.GroupRole {
-	switch normalize(value) {
-	case "owner", "group_owner", "creator":
-		return contextinfo.GroupRoleOwner
-	case "admin", "administrator", "group_admin":
-		return contextinfo.GroupRoleAdmin
-	case "member", "user", "group_member":
-		return contextinfo.GroupRoleMember
-	case "unknown", "":
-		return contextinfo.GroupRoleUnknown
-	default:
-		return contextinfo.GroupRoleUnknown
-	}
-}
-
+// ActorID 生成存储关联标识；消费者不得拆解它来恢复平台或用户身份。
 func ActorID(platform, platformUserID string) string {
-	platform = normalize(platform)
-	platformUserID = canonicalPlatformUserID(platform, platformUserID)
-	if platform == "" {
-		platform = "unknown"
-	}
-	if platformUserID == "" {
-		platformUserID = "unknown"
-	}
 	return platform + ":" + platformUserID
-}
-
-func canonicalPlatformUserID(platform, value string) string {
-	value = strings.TrimSpace(value)
-	prefix := normalize(platform) + ":"
-	if prefix != ":" && strings.HasPrefix(value, prefix) {
-		return strings.TrimSpace(strings.TrimPrefix(value, prefix))
-	}
-	return value
 }
 
 func (p *Permission) IsSuperadmin(platform, platformUserID string) bool {
 	if p == nil {
 		return false
 	}
-	ids := p.Superadmins[normalize(platform)]
-	return ids != nil && ids[strings.TrimSpace(platformUserID)]
+	return p.Superadmins[platform][platformUserID]
 }
 
 func (p *Permission) CanUseTool(actor contextinfo.Actor, risk RiskLevel, ownerScoped bool) bool {

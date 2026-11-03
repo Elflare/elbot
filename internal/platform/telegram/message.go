@@ -108,7 +108,7 @@ func (a *Adapter) referenceFetcher(msg message, normalized normalizedMessage) fu
 			senderName = displayName(*normalized.ReplyMessage.From)
 			label = "引用：" + senderName
 		}
-		return share.ReferencedMessage{SenderID: userIDString(normalized.ReplyMessage.From), SenderName: senderName, Label: label, Text: ref.Text, Segments: appendNonTextSegments(nil, ref.Segments)}, true, nil
+		return share.ReferencedMessage{SenderID: userIDString(normalized.ReplyMessage.From), SenderName: senderName, Label: label, Text: ref.Text, Segments: share.AppendNonTextSegments(nil, ref.Segments)}, true, nil
 	}
 }
 
@@ -146,7 +146,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 				Category:     globalevents.LogRuntime,
 				Level:        slog.LevelError,
 				EventName:    "record_telegram_chat_message_failed",
-				Module:       "telegram",
+				Module:       a.Name(),
 				Type:         globalevents.ContentText,
 				Content:      fmt.Sprintf("record telegram chat message failed\nerror=%v\nmessage_id=%v", err, msg.MessageID),
 				ContentLimit: 4096,
@@ -177,25 +177,6 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 	}
 }
 
-func finalMessageSegments(text string, current, referenced []share.MessageSegment) []share.MessageSegment {
-	out := make([]share.MessageSegment, 0, 1+len(current)+len(referenced))
-	if strings.TrimSpace(text) != "" {
-		out = append(out, share.MessageSegment{Type: share.SegmentText, Text: text})
-	}
-	out = appendNonTextSegments(out, current)
-	out = appendNonTextSegments(out, referenced)
-	return out
-}
-
-func appendNonTextSegments(out []share.MessageSegment, segments []share.MessageSegment) []share.MessageSegment {
-	for _, segment := range segments {
-		if segment.Type != share.SegmentText {
-			out = append(out, segment)
-		}
-	}
-	return out
-}
-
 func scopeID(c chat) string {
 	switch c.Type {
 	case "group":
@@ -219,20 +200,6 @@ func replySender(msg *message) *user {
 		return nil
 	}
 	return msg.From
-}
-
-func isConfiguredSuperadmin(superadmins []string, id string) bool {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return false
-	}
-	for _, candidate := range superadmins {
-		candidate = strings.TrimSpace(strings.TrimPrefix(candidate, "telegram:"))
-		if candidate == id {
-			return true
-		}
-	}
-	return false
 }
 
 func formatMessageID(id int64) string {
@@ -312,7 +279,7 @@ func (a *Adapter) messageGroupRole(ctx context.Context, msg message) contextinfo
 				Category:     globalevents.LogRuntime,
 				Level:        slog.LevelWarn,
 				EventName:    "get_telegram_chat_member_failed",
-				Module:       "telegram",
+				Module:       a.Name(),
 				Type:         globalevents.ContentText,
 				Content:      fmt.Sprintf("get telegram chat member failed\nerror=%v", err),
 				ContentLimit: 4096,
@@ -362,7 +329,7 @@ func (a *Adapter) handleCallbackQuery(ctx context.Context, handler share.Message
 					Category:     globalevents.LogRuntime,
 					Level:        slog.LevelError,
 					EventName:    "answer_telegram_callback_failed",
-					Module:       "telegram",
+					Module:       a.Name(),
 					Type:         globalevents.ContentText,
 					Content:      fmt.Sprintf("answer telegram callback failed\nerror=%v", err),
 					ContentLimit: 4096,
@@ -432,7 +399,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 
 		Sender:          a,
 		MediaResolver:   a,
-		Segments:        finalMessageSegments(text, normalized.Segments, nil),
+		Segments:        share.FinalMessageSegments(text, normalized.Segments, nil),
 		RawText:         normalized.Text,
 		Bot:             bot,
 		Mentions:        append([]share.Mention(nil), normalized.Mentions...),
@@ -450,7 +417,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 			Platform:     a.Name(),
 			ScopeID:      messageCtx.Conversation.Source.ScopeID,
 			ActorID:      messageCtx.Conversation.Identity.ActorID,
-			IsSuperadmin: isConfiguredSuperadmin(a.cfg.Superadmins, userIDString(msg.From)),
+			IsSuperadmin: a.superadmins.IsSuperadmin(userIDString(msg.From)),
 			ReplyID:      normalized.ReplyID,
 			Text:         text,
 			Fetch:        a.referenceFetcher(msg, normalized),
@@ -460,7 +427,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 				Category:     globalevents.LogRuntime,
 				Level:        slog.LevelError,
 				EventName:    "platform_context_failed",
-				Module:       "telegram",
+				Module:       a.Name(),
 				Type:         globalevents.ContentText,
 				Content:      fmt.Sprintf("prepare platform context failed: %v", err),
 				ContentLimit: 4096,
@@ -475,13 +442,13 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 		messageCtx.Reply = ref.Reply
 		referenceSegments = ref.ReferenceSegments
 		if strings.TrimSpace(ref.Text) != "" || len(referenceSegments) > 0 {
-			messageCtx.ContextSegments = finalMessageSegments(ref.Text, normalized.Segments, referenceSegments)
+			messageCtx.ContextSegments = share.FinalMessageSegments(ref.Text, normalized.Segments, referenceSegments)
 		}
 	}
 	a.recordChatMessage(ctx, msg, normalized, messageCtx.Reply)
 	if strings.TrimSpace(text) == "" && strings.TrimSpace(messageCtx.ContextText) == "" && len(messageCtx.ContextSegments) == 0 && len(normalized.Segments) == 0 {
 		return
 	}
-	messageCtx.Segments = finalMessageSegments(text, normalized.Segments, nil)
+	messageCtx.Segments = share.FinalMessageSegments(text, normalized.Segments, nil)
 	_ = handler(ctx, text, messageCtx)
 }

@@ -50,7 +50,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 				Category:     globalevents.LogRuntime,
 				Level:        slog.LevelWarn,
 				EventName:    p.Type,
-				Module:       "qqofficial",
+				Module:       a.Name(),
 				Type:         globalevents.ContentText,
 				Content:      fmt.Sprintf("qqofficial message missing sender\nfield=%v\nmessage_id=%v", label, msg.ID),
 				ContentLimit: 4096,
@@ -82,7 +82,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 				Category:     globalevents.LogRuntime,
 				Level:        slog.LevelWarn,
 				EventName:    p.Type,
-				Module:       "qqofficial",
+				Module:       a.Name(),
 				Type:         globalevents.ContentText,
 				Content:      fmt.Sprintf("qqofficial message missing target\nmessage_id=%v", msg.ID),
 				ContentLimit: 4096,
@@ -143,6 +143,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 			ReplyToMessageID:  replyID,
 			PlatformData:      messageData{EventID: strings.TrimSpace(p.ID), EventType: p.Type},
 		},
+		GroupRole:             contextinfo.GroupRoleUnknown,
 		Sender:                a,
 		BufferAssistantOutput: true,
 		Segments:              segments,
@@ -166,7 +167,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 			Platform:     a.Name(),
 			ScopeID:      messageCtx.Conversation.Source.ScopeID,
 			ActorID:      actorID,
-			IsSuperadmin: isConfiguredSuperadmin(a.cfg.Superadmins, senderID),
+			IsSuperadmin: a.superadmins.IsSuperadmin(senderID),
 			ReplyID:      replyID,
 			Text:         text,
 			Fetch: func(context.Context, string) (share.ReferencedMessage, bool, error) {
@@ -179,7 +180,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 			Category:     globalevents.LogRuntime,
 			Level:        slog.LevelError,
 			EventName:    "platform_context_failed",
-			Module:       "qqofficial",
+			Module:       a.Name(),
 			Type:         globalevents.ContentText,
 			Content:      fmt.Sprintf("prepare platform context failed: %v", err),
 			ContentLimit: 4096,
@@ -199,9 +200,9 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 		messageCtx.ContextText = ref.Text
 		messageCtx.Reply = ref.Reply
 		if strings.TrimSpace(ref.Text) != "" || len(ref.ReferenceSegments) > 0 {
-			messageCtx.ContextSegments = finalMessageSegments(ref.Text, segments, ref.ReferenceSegments)
+			messageCtx.ContextSegments = share.FinalMessageSegments(ref.Text, segments, ref.ReferenceSegments)
 		}
-		messageCtx.Segments = finalMessageSegments(text, segments, nil)
+		messageCtx.Segments = share.FinalMessageSegments(text, segments, nil)
 		msgCtx = share.WithMessageContext(ctx, messageCtx)
 	}
 	a.recordChatMessage(ctx, msg, conversation, senderID, scopeID, text, replyID, messageCtx.Reply)
@@ -265,7 +266,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 				Category:     globalevents.LogRuntime,
 				Level:        slog.LevelError,
 				EventName:    "record_qqofficial_chat_message_failed",
-				Module:       "qqofficial",
+				Module:       a.Name(),
 				Type:         globalevents.ContentText,
 				Content:      fmt.Sprintf("record qqofficial chat message failed\nerror=%v\nmessage_id=%v", err, msg.ID),
 				ContentLimit: 4096,
@@ -296,20 +297,6 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 	}
 }
 
-func isConfiguredSuperadmin(superadmins []string, id string) bool {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return false
-	}
-	for _, candidate := range superadmins {
-		candidate = strings.TrimSpace(strings.TrimPrefix(candidate, "qqofficial:"))
-		if candidate == id {
-			return true
-		}
-	}
-	return false
-}
-
 // messageData 是发布后不可变的协议扩展，消息和会话 ID 保存在公共会话事实中。
 type messageData struct {
 	EventID   string // 来源事件标识，供无消息 ID 的回复使用。
@@ -323,25 +310,6 @@ func inboundSegments(text string, attachments []share.MessageSegment) []share.Me
 	}
 	segments = append(segments, attachments...)
 	return segments
-}
-
-func finalMessageSegments(text string, current, referenced []share.MessageSegment) []share.MessageSegment {
-	out := make([]share.MessageSegment, 0, 1+len(current)+len(referenced))
-	if strings.TrimSpace(text) != "" {
-		out = append(out, share.MessageSegment{Type: share.SegmentText, Text: text})
-	}
-	out = appendNonTextSegments(out, current)
-	out = appendNonTextSegments(out, referenced)
-	return out
-}
-
-func appendNonTextSegments(out []share.MessageSegment, segments []share.MessageSegment) []share.MessageSegment {
-	for _, segment := range segments {
-		if segment.Type != share.SegmentText {
-			out = append(out, segment)
-		}
-	}
-	return out
 }
 
 func isImageURL(value string) bool {

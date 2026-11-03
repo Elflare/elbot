@@ -20,7 +20,7 @@ import (
 )
 
 func TestRemoteServerTargetClients(t *testing.T) {
-	s := &RemoteServer{superadmins: map[string]bool{"local": true}, clients: map[string]map[*remoteClientConn]struct{}{}}
+	s := &RemoteServer{name: testPlatformName, superadmins: share.NewSuperadmins(testPlatformName, []string{"local"}), clients: map[string]map[*remoteClientConn]struct{}{}}
 	local := &remoteClientConn{id: "local", server: s}
 	guest := &remoteClientConn{id: "guest", server: s}
 	s.addClient(local)
@@ -41,7 +41,12 @@ func TestRemoteServerTargetClients(t *testing.T) {
 	if len(clients) != 1 || clients[0].id != "guest" {
 		t.Fatalf("private clients = %#v", clients)
 	}
-	info, ok := contextinfo.ConversationFromContext(s.messageContext(t.Context(), guest))
+	ctx := s.messageContext(t.Context(), guest)
+	msg, _ := share.MessageContextFrom(ctx)
+	if msg.GroupRole != contextinfo.GroupRoleUnknown {
+		t.Fatalf("group role = %q, want unknown", msg.GroupRole)
+	}
+	info, ok := contextinfo.ConversationFromContext(ctx)
 	if !ok || info.Source.ConversationKind != contextinfo.ConversationCLI || info.Source.ConversationID != guest.id {
 		t.Fatalf("remote CLI source = %+v", info.Source)
 	}
@@ -53,7 +58,7 @@ func TestRemoteServerTargetClients(t *testing.T) {
 }
 
 func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
-	s := &RemoteServer{clients: map[string]map[*remoteClientConn]struct{}{}}
+	s := &RemoteServer{name: testPlatformName, clients: map[string]map[*remoteClientConn]struct{}{}}
 	accepted := make(chan *remoteClientConn, 2)
 	done := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -181,7 +186,7 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 }
 
 func TestRemoteServerEmptyTargetUsesContextClient(t *testing.T) {
-	s := &RemoteServer{clients: map[string]map[*remoteClientConn]struct{}{}}
+	s := &RemoteServer{name: testPlatformName, clients: map[string]map[*remoteClientConn]struct{}{}}
 	client := &remoteClientConn{id: "local", server: s}
 	ctx := s.messageContext(context.Background(), client)
 	clients, err := s.targetClients(ctx, delivery.Target{})

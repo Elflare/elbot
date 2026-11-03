@@ -24,7 +24,7 @@ func TestFailureNotificationWiringSurvivesIngressStop(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		cfg := &config.Config{}
 		cfg.Security.Superadmins = map[string][]string{
-			"healthy": {" one ", "one", "", "two"},
+			"healthy": {"one", "one", "two"},
 			"failed":  {"failed-admin"},
 			"stopped": {"stopped-admin"},
 		}

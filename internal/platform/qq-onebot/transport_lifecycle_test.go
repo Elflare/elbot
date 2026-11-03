@@ -143,7 +143,7 @@ func TestTransportCloseCancelsPendingConnect(t *testing.T) {
 			close(entered)
 			<-r.Context().Done()
 		}))
-		transport := newTransport("ws"+strings.TrimPrefix(server.URL, "http"), "", time.Second)
+		transport := newTransport(testPlatformName, "ws"+strings.TrimPrefix(server.URL, "http"), "", time.Second)
 		result := make(chan error, 1)
 		go func() { result <- transport.Connect(context.Background()) }()
 		<-entered

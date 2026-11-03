@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"errors"
 	"testing"
 	"testing/synctest"
@@ -43,7 +44,7 @@ func TestSessionRetirementWaitsForStoppingRequestAndIgnoresObserverFailure(t *te
 		if err := m.Start(); err != nil {
 			t.Fatal(err)
 		}
-		scope := session.Scope{ActorID: "cli:local", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+		scope := session.Scope{ActorID: "opaque-owner", PlatformUserID: "local", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 		row, err := m.sessions.Create(t.Context(), scope, session.CreateRequest{})
 		if err != nil {
 			t.Fatal(err)
@@ -74,7 +75,7 @@ func TestSessionRetirementWaitsForStoppingRequestAndIgnoresObserverFailure(t *te
 		time.Sleep(time.Minute)
 		synctest.Wait()
 		if !binding.Valid() {
-			t.Fatal("canonical actor ID lost superadmin TTL")
+			t.Fatal("native user identity lost superadmin TTL")
 		}
 		time.Sleep(time.Minute)
 		synctest.Wait()
@@ -118,9 +119,11 @@ func TestSessionTimerRestartsAfterCanceledExecutionActuallyExits(t *testing.T) {
 		}
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
-		go func() { done <- m.HandleMessage(ctx, MessageRequest{Text: "held execution"}) }()
+		go func() {
+			done <- m.HandleMessage(testutil.WithCLIConversation(ctx), MessageRequest{Text: "held execution"})
+		}()
 		<-started
-		scope := session.Scope{ActorID: "cli:local", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+		scope := session.Scope{ActorID: "cli:local", PlatformUserID: "local", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 		row, binding, err := m.sessions.CurrentBound(t.Context(), scope)
 		if err != nil {
 			t.Fatal(err)
@@ -172,15 +175,17 @@ func TestAppendConfirmationExpiryRestartsSessionTimer(t *testing.T) {
 			t.Fatal(err)
 		}
 		done := make(chan error, 1)
-		go func() { done <- m.HandleMessage(t.Context(), MessageRequest{Text: "original"}) }()
+		go func() {
+			done <- m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "original"})
+		}()
 		<-started
-		scope := session.Scope{ActorID: "cli:local", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
+		scope := session.Scope{ActorID: "cli:local", PlatformUserID: "local", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 		row, binding, err := m.sessions.CurrentBound(t.Context(), scope)
 		if err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(2 * time.Minute)
-		if err := m.HandleMessage(t.Context(), MessageRequest{Text: "append"}); err != nil {
+		if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "append"}); err != nil {
 			t.Fatal(err)
 		}
 		close(release)

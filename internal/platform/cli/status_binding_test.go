@@ -12,7 +12,7 @@ import (
 )
 
 func TestStatusBindingChangeFinishesOldSendAndRejectsLateEvents(t *testing.T) {
-	d := newStatusDisplay()
+	d := newStatusDisplay(testPlatformName)
 	defer d.Close(context.Background())
 	scope := session.Scope{ActorID: "user", Platform: "cli", PlatformScopeID: "local"}
 	old := &BindingSnapshot{Scope: scope, SessionID: "same", Version: 1}
@@ -32,7 +32,7 @@ func TestStatusBindingChangeFinishesOldSendAndRejectsLateEvents(t *testing.T) {
 		displayed <- snapshot.Provider
 		return nil
 	}
-	conversation := &contextinfo.Conversation{PlatformData: messageData{adapter: New()}}
+	conversation := &contextinfo.Conversation{PlatformData: messageData{adapter: New(testPlatformName)}}
 	event := StatusChangedEvent{Conversation: conversation, Binding: old, Version: 100, Snapshot: runtimestatus.Snapshot{SessionID: "same", Provider: "old", Phase: runtimestatus.PhaseLLM}}
 	if err := d.receive(event); err != nil {
 		t.Fatal(err)
@@ -85,11 +85,11 @@ func TestStatusBindingChangeFinishesOldSendAndRejectsLateEvents(t *testing.T) {
 }
 
 func TestStatusTerminalWatermarkOutlivesPendingBody(t *testing.T) {
-	d := newStatusDisplay()
+	d := newStatusDisplay(testPlatformName)
 	defer d.Close(context.Background())
 	sent := make(chan struct{}, 2)
 	d.send = func(context.Context, messageData, runtimestatus.Snapshot) error { sent <- struct{}{}; return nil }
-	event := StatusChangedEvent{Conversation: &contextinfo.Conversation{PlatformData: messageData{adapter: New()}}, Version: 10, Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone}}
+	event := StatusChangedEvent{Conversation: &contextinfo.Conversation{PlatformData: messageData{adapter: New(testPlatformName)}}, Version: 10, Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone}}
 	if err := d.receive(event); err != nil {
 		t.Fatal(err)
 	}

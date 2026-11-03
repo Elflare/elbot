@@ -27,7 +27,7 @@ func TestNewFromPlatformConfig(t *testing.T) {
 		"enabled":          true,
 		"ws_url":           "ws://example",
 		"trigger_keywords": []any{"芙莉丝"},
-	}, Deps{CommonConfig: share.CommonConfig{ConfigDir: t.TempDir()}})
+	}, Deps{CommonConfig: share.CommonConfig{PlatformName: testPlatformName, ConfigEnv: testConfigEnv(t.TempDir())}})
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestNewFromPlatformConfig(t *testing.T) {
 func TestNewFromPlatformConfigSendFileMode(t *testing.T) {
 	adapter, err := NewFromPlatformConfig(map[string]any{
 		"send_file_mode": "file_uri",
-	}, Deps{CommonConfig: share.CommonConfig{ConfigDir: t.TempDir()}})
+	}, Deps{CommonConfig: share.CommonConfig{PlatformName: testPlatformName, ConfigEnv: testConfigEnv(t.TempDir())}})
 	if err != nil {
 		t.Fatalf("NewFromPlatformConfig: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestNewFromPlatformConfigSendFileMode(t *testing.T) {
 func TestNewFromPlatformConfigRejectsInvalidSendFileMode(t *testing.T) {
 	_, err := NewFromPlatformConfig(map[string]any{
 		"send_file_mode": "auto",
-	}, Deps{CommonConfig: share.CommonConfig{ConfigDir: t.TempDir()}})
+	}, Deps{CommonConfig: share.CommonConfig{PlatformName: testPlatformName, ConfigEnv: testConfigEnv(t.TempDir())}})
 	if err == nil || !strings.Contains(err.Error(), "send_file_mode") {
 		t.Fatalf("err = %v", err)
 	}
@@ -145,7 +145,7 @@ func TestImageTextDoesNotRepeatPlaceholder(t *testing.T) {
 			if msg.Text != tc.text {
 				t.Fatalf("text = %q, want user text %q without generated image placeholder", msg.Text, tc.text)
 			}
-			segments := finalMessageSegments(msg.Text, msg.Segments, nil)
+			segments := share.FinalMessageSegments(msg.Text, msg.Segments, nil)
 			if len(segments) == 0 || segments[len(segments)-1].Type != share.SegmentImage {
 				t.Fatalf("image lost: %#v", segments)
 			}
@@ -153,6 +153,36 @@ func TestImageTextDoesNotRepeatPlaceholder(t *testing.T) {
 				if segment.Type == share.SegmentText && segment.Text != tc.text {
 					t.Fatalf("unexpected text: %q", segment.Text)
 				}
+			}
+		})
+	}
+}
+
+func TestHandleEventProvidesGroupRole(t *testing.T) {
+	for _, tc := range []struct {
+		name, messageType, role string
+		want                    contextinfo.GroupRole
+	}{
+		{"owner", "group", "owner", contextinfo.GroupRoleOwner},
+		{"admin", "group", "admin", contextinfo.GroupRoleAdmin},
+		{"member", "group", "member", contextinfo.GroupRoleMember},
+		{"missing", "group", "", contextinfo.GroupRoleUnknown},
+		{"unrecognized", "group", "other", contextinfo.GroupRoleUnknown},
+		{"telegram creator", "group", "creator", contextinfo.GroupRoleUnknown},
+		{"telegram administrator", "group", "administrator", contextinfo.GroupRoleUnknown},
+		{"legacy alias", "group", "group_admin", contextinfo.GroupRoleUnknown},
+		{"private", "private", "owner", contextinfo.GroupRoleUnknown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			adapter := newTestAdapter(t, Config{}, nil, nil)
+			handler := &captureHandler{}
+			adapter.handleEvent(t.Context(), handler.HandleMessage, Event{
+				MessageType: tc.messageType, SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 7,
+				Sender: Sender{Role: tc.role}, Message: []byte(`[{"type":"text","data":{"text":"hello"}}]`),
+			})
+			msg, _ := share.MessageContextFrom(handler.ctx)
+			if msg.GroupRole != tc.want {
+				t.Fatalf("group role = %q, want %q", msg.GroupRole, tc.want)
 			}
 		})
 	}
@@ -232,7 +262,7 @@ func TestHandleEventMediaRemainsRaw(t *testing.T) {
 			`[{"type":"image","data":{"file":"image-id"}}]`,
 			`[{"type":"file","data":{"file":"test.txt","file_id":"id-1"}}]`,
 		} {
-			adapter := newTestAdapter(t, Config{Enabled: true, Superadmins: []string{"1"}}, nil, nil)
+			adapter := newTestAdapter(t, Config{Enabled: true}, nil, nil, "1")
 			adapter.transport = newTestTransport(t, func(req request) response {
 				t.Errorf("unexpected eager API call: %s", req.Action)
 				return response{Status: "failed", Echo: req.Echo}
@@ -393,7 +423,7 @@ func TestHandleEventPreservesReferenceDecision(t *testing.T) {
 		{ResumeSessionID: "own-session"},
 		{Text: "foreign answer context", Reply: share.ReplyContext{MessageID: "42", Text: "foreign answer"}},
 	} {
-		adapter := newTestAdapter(t, Config{Superadmins: []string{"1"}}, nil, nil)
+		adapter := newTestAdapter(t, Config{}, nil, nil, "1")
 		adapter.findByPlatformMessage = func(context.Context, string, string, string) (*storage.Message, error) {
 			return &storage.Message{ID: storage.NewID(), Role: storage.RoleAssistant}, nil
 		}
@@ -419,7 +449,7 @@ func TestFinalMessageSegmentsIncludesReferenceImage(t *testing.T) {
 	current := []share.MessageSegment{{Type: share.SegmentText, Text: "看这个"}}
 	referenced := []share.MessageSegment{{Type: share.SegmentText, Text: "[图片]"}, {Type: share.SegmentImage, URL: "https://example.com/a.jpg", Name: "a.jpg"}}
 
-	segments := finalMessageSegments("[引用：用户]：[图片]\n\n看这个", current, referenced)
+	segments := share.FinalMessageSegments("[引用：用户]：[图片]\n\n看这个", current, referenced)
 	if len(segments) != 2 {
 		t.Fatalf("segments = %#v", segments)
 	}
@@ -596,7 +626,7 @@ func newTestTransport(t *testing.T, handle func(request) response) *Transport {
 		}
 	}))
 	t.Cleanup(server.Close)
-	transport := newTransport("ws"+strings.TrimPrefix(server.URL, "http"), "", time.Second)
+	transport := newTransport(testPlatformName, "ws"+strings.TrimPrefix(server.URL, "http"), "", time.Second)
 	ctx, cancel := context.WithCancel(context.Background())
 	if err := transport.Connect(ctx); err != nil {
 		t.Fatalf("connect transport: %v", err)
@@ -615,7 +645,7 @@ func newTestTransport(t *testing.T, handle func(request) response) *Transport {
 	return transport
 }
 
-func newTestAdapter(t *testing.T, cfg Config, store storage.Store, history storage.ChatHistoryRepository) *Adapter {
+func newTestAdapter(t *testing.T, cfg Config, store storage.Store, history storage.ChatHistoryRepository, adminIDs ...string) *Adapter {
 	t.Helper()
 	if store == nil {
 		db, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "store.db"))
@@ -639,8 +669,8 @@ func newTestAdapter(t *testing.T, cfg Config, store storage.Store, history stora
 		"trigger_keywords": cfg.TriggerKeywords, "send_file_mode": cfg.SendFileMode,
 	}, Deps{
 		ParseCommand: func(text string) command.Parsed { return command.Parse(text, []string{"/"}) },
-		CommonConfig: share.CommonConfig{
-			Superadmins: cfg.Superadmins,
+		CommonConfig: share.CommonConfig{PlatformName: testPlatformName,
+			Superadmins: share.NewSuperadmins(testPlatformName, adminIDs),
 		},
 		ChatHistory: history, FindByPlatformMessage: store.Messages().FindByPlatformMessage,
 		FindOutputs: store.Media().FindOutputs,

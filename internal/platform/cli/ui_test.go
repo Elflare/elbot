@@ -17,7 +17,7 @@ func TestUIConnectFailureReleasesPartialSubscription(t *testing.T) {
 	defer status.Close(context.Background())
 	binding := signal.New[BindingChangedEvent, signal.Empty]("test.binding")
 	_ = binding.Close(context.Background())
-	u, err := ConnectUI(testAgentEvents{status, binding})
+	u, err := ConnectUI(testPlatformName, testAgentEvents{status, binding})
 	if !errors.Is(err, signal.ErrClosed) || u == nil {
 		t.Fatal(u, err)
 	}
@@ -42,7 +42,7 @@ func TestUIClosePreservesInFlightSendAndRetries(t *testing.T) {
 		<-release
 		return ctx.Err()
 	}
-	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: New()}})
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: New(testPlatformName)}})
 	if _, err := status.Emit(ctx, StatusChangedEvent{Conversation: testConversation(ctx), Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseLLM}, Version: 1}); err != nil {
 		t.Fatal(err)
 	}

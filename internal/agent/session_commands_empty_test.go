@@ -2,13 +2,13 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/testutil"
 	"errors"
 	"log/slog"
 	"reflect"
 	"strings"
 	"testing"
 
-	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/session"
 	"elbot/internal/signal"
@@ -35,7 +35,7 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = connection.Close(context.Background()) })
-			ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "cli:local", Role: contextinfo.RoleSuperadmin})
+			ctx := testutil.WithCLIConversation(t.Context())
 			scope := session.Scope{ActorID: "cli:local", Platform: "cli", PlatformScopeID: "local", IsCLI: true}
 			if state == "after-new" {
 				if _, err := m.sessions.GetOrCreateCurrent(ctx, scope, "previous conversation"); err != nil {
@@ -100,7 +100,7 @@ func TestCommandTextWiringUsesConfigurationFirstPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = connection.Close(context.Background()) })
-	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ID: "cli:local", Role: contextinfo.RoleSuperadmin})
+	ctx := testutil.WithCLIConversation(t.Context())
 	if err := m.HandleMessage(ctx, MessageRequest{Text: "!!help"}); err != nil {
 		t.Fatal(err)
 	}

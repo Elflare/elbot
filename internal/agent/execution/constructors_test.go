@@ -48,7 +48,7 @@ func (constructorOutput) SendOutputs(context.Context, []delivery.Output) (events
 }
 
 func TestMessageEntryConstructsWithOnlyConsumptionCapabilities(t *testing.T) {
-	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: security.DefaultPermission()})
+	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})
 	input := &constructorInput{}
 	entry := agentinput.NewMessageHandler(agentinput.MessageHandlerDeps{Identity: identity, Hooks: constructorMessageHooks{}, Output: constructorOutput{}, Commands: constructorCommands{}, Input: input})
 	if err := entry.HandleMessage(t.Context(), "plain input"); err != nil {

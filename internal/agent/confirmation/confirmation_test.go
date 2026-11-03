@@ -37,14 +37,14 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 			defer store.Close()
 			sessions := newSessionSupervisor(t, store)
 			defer sessions.Close(context.Background())
-			identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: security.DefaultPermission()})
-			row, err := sessions.Create(t.Context(), identity.Scope(t.Context()), session.CreateRequest{Title: "confirmation"})
+			identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})
+			row, err := sessions.Create(t.Context(), identity.Scope(testutil.WithCLIConversation(t.Context())), session.CreateRequest{Title: "confirmation"})
 			if err != nil {
 				t.Fatal(err)
 			}
 			turns := turn.NewSupervisor(testutil.IDSequence())
 			defer turns.StopAll()
-			ctx := t.Context()
+			ctx := testutil.WithCLIConversation(t.Context())
 			execution := turn.NewExecution("confirmation")
 			requestCtx := turn.WithAttempt(turn.WithExecution(ctx, execution), "attempt")
 			if !turns.StartAttempt(row.ID, turn.Input{Text: "hello"}, execution, "attempt") || !turns.StartToolPhase(row.ID, "attempt") {

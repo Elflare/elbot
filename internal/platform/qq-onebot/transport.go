@@ -23,6 +23,8 @@ import (
 )
 
 type Transport struct {
+	platformName string // 所属平台注入的日志与回执身份。
+
 	URL         string
 	AccessToken string
 	Timeout     time.Duration
@@ -86,10 +88,11 @@ type getFileData struct {
 	FileName string `json:"file_name"`
 }
 
-func newTransport(url, accessToken string, timeout time.Duration) *Transport {
+func newTransport(platformName, url, accessToken string, timeout time.Duration) *Transport {
 	ctx, cancel := context.WithCancel(context.Background())
 	t := &Transport{
-		URL: url, AccessToken: accessToken, Timeout: timeout,
+		platformName: platformName,
+		URL:          url, AccessToken: accessToken, Timeout: timeout,
 		writeGate: make(chan struct{}, 1), pending: make(map[string]chan response),
 		closeCtx: ctx, closeCancel: cancel, closeDone: make(chan struct{}),
 	}
@@ -399,7 +402,7 @@ func (t *Transport) call(ctx context.Context, action string, params map[string]a
 
 		record := globalevents.LogRecord{
 			Category: globalevents.LogRuntime, Level: slog.LevelDebug,
-			EventName: "onebot_action_slow", Module: "qq-onebot", Type: globalevents.ContentText,
+			EventName: "onebot_action_slow", Module: t.platformName, Type: globalevents.ContentText,
 			Content:      fmt.Sprintf("onebot action\naction=%s\nframe_bytes=%d\nencode_ms=%d\nwait_writer_ms=%d\nwrite_ms=%d\nresponse_ms=%d\nelapsed_ms=%d", action, frameBytes, elapsedMillisBetween(startedAt, encodedAt), elapsedMillisBetween(encodedAt, waitWriterEnd), elapsedMillisBetween(acquiredAt, writeEnd), elapsedMillisBetween(writtenAt, finishedAt), elapsed.Milliseconds()),
 			ContentLimit: 4096, ResultStatus: globalevents.ResultSucceeded,
 		}

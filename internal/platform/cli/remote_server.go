@@ -19,22 +19,23 @@ import (
 	"github.com/coder/websocket/wsjson"
 
 	"elbot/internal/completion"
-	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/security"
 )
 
 type RemoteServerOptions struct {
-	Config      Config
-	ConfigDir   string
-	Superadmins []string
+	PlatformName string // 根部登记的平台名。
+	Config       Config
+	ConfigEnv    func(string) (string, bool, error) // 根部绑定配置位置的环境读取能力。
+	Superadmins  *share.Superadmins                 // 根部注入的当前平台超管能力。
 }
 
 type RemoteServer struct {
+	name        string // 根部登记的平台名。
 	cfg         Config
-	configDir   string
-	superadmins map[string]bool
+	configEnv   func(string) (string, bool, error)
+	superadmins *share.Superadmins
 	completer   func(context.Context, completion.Request) ([]completion.Item, error)
 
 	server                      *http.Server    // 接入 HTTP 服务，最终关闭时释放非升级连接。
@@ -65,9 +66,9 @@ type remoteClientConn struct {
 	server *RemoteServer
 }
 
-func originalClient(ctx context.Context) (*remoteClientConn, bool) {
+func (s *RemoteServer) originalClient(ctx context.Context) (*remoteClientConn, bool) {
 	info, ok := contextinfo.ConversationFromContext(ctx)
-	if !ok || info.Source.Platform != "cli" {
+	if !ok || info.Source.Platform != s.Name() {
 		return nil, false
 	}
 	data, ok := info.PlatformData.(messageData)
@@ -87,9 +88,10 @@ func NewRemoteServer(opts RemoteServerOptions) (*RemoteServer, error) {
 		return nil, fmt.Errorf("cli remote server tokens are not configured")
 	}
 	return &RemoteServer{
+		name:        opts.PlatformName,
 		cfg:         cfg,
-		configDir:   opts.ConfigDir,
-		superadmins: setFromStrings(opts.Superadmins),
+		configEnv:   opts.ConfigEnv,
+		superadmins: opts.Superadmins,
 		clients:     map[string]map[*remoteClientConn]struct{}{},
 		startDone:   make(chan struct{}), serveDone: make(chan struct{}), done: make(chan struct{}), closeDone: make(chan struct{}),
 	}, nil
@@ -101,7 +103,7 @@ func (s *RemoteServer) SetCompleter(completer func(context.Context, completion.R
 	s.completer = completer
 }
 
-func (s *RemoteServer) Name() string { return "cli" }
+func (s *RemoteServer) Name() string { return s.name }
 
 func (s *RemoteServer) handleWebSocket(ctx context.Context, handler share.MessageHandler, w http.ResponseWriter, req *http.Request) {
 	s.mu.Lock()
@@ -194,7 +196,7 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler share.Me
 }
 
 func (s *RemoteServer) SendChat(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, events.LogResult, error) {
-	if client, ok := originalClient(ctx); ok {
+	if client, ok := s.originalClient(ctx); ok {
 		{
 			logResult, err := client.write(ctx, outputMessage(remoteMsgChat, delivery.FallbackOutput(outputs)))
 			return delivery.Receipt{}, logResult, err
@@ -224,7 +226,7 @@ func (s *RemoteServer) SendTo(ctx context.Context, target delivery.Target, outpu
 }
 
 func (s *RemoteServer) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	client, ok := originalClient(ctx)
+	client, ok := s.originalClient(ctx)
 	if !ok {
 		return nil, fmt.Errorf("cli stream target missing")
 	}
@@ -272,7 +274,8 @@ func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientC
 				DisplayName:    client.id,
 			},
 		},
-		Sender: s,
+		GroupRole: contextinfo.GroupRoleUnknown,
+		Sender:    s,
 	}
 	return share.WithMessageContext(ctx, msg)
 }
@@ -282,13 +285,13 @@ func (s *RemoteServer) targetClients(ctx context.Context, target delivery.Target
 		return nil, fmt.Errorf("cli cannot send to platform %q", platformName)
 	}
 	if target.Empty() {
-		if client, ok := originalClient(ctx); ok {
+		if client, ok := s.originalClient(ctx); ok {
 			return []*remoteClientConn{client}, nil
 		}
 		return nil, fmt.Errorf("cli target missing")
 	}
 	if target.Superadmins {
-		return s.onlineClients(func(id string) bool { return s.superadmins[id] })
+		return s.onlineClients(s.superadmins.IsSuperadmin)
 	}
 	if id := strings.TrimSpace(target.PrivateUserID); id != "" {
 		return s.onlineClients(func(clientID string) bool { return clientID == id })
@@ -403,7 +406,7 @@ func (s *RemoteServer) validToken(clientID, token string) bool {
 		return false
 	}
 	for _, envName := range envs {
-		value, ok, err := config.ConfigEnv(envName, s.configDir)
+		value, ok, err := s.configEnv(envName)
 		if err != nil || !ok || strings.TrimSpace(value) == "" {
 			continue
 		}
@@ -422,17 +425,6 @@ func outputMessage(kind string, out delivery.Output) remoteMessage {
 		text = delivery.FallbackText(out)
 	}
 	return remoteMessage{Type: kind, Text: text}
-}
-
-func setFromStrings(values []string) map[string]bool {
-	out := map[string]bool{}
-	for _, value := range values {
-		value = strings.TrimSpace(strings.TrimPrefix(value, "cli:"))
-		if value != "" {
-			out[value] = true
-		}
-	}
-	return out
 }
 
 func (s *RemoteServer) ConnectedClientIDs() []string {

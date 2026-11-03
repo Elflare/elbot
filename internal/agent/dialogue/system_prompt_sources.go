@@ -32,7 +32,7 @@ func (ConversationMetaSystemPromptSource) Parts(ctx context.Context, req agentsh
 	default:
 		conversation = ""
 	}
-	userID := strings.TrimPrefix(strings.TrimSpace(info.Identity.PlatformUserID), strings.TrimSpace(info.Source.Platform)+":")
+	userID := info.Identity.PlatformUserID
 	conversationID := ""
 	if conversation == "group" || conversation == "channel" {
 		conversationID = info.Source.ConversationID

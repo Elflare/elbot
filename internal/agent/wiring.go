@@ -49,7 +49,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	signals := m.signals
 	view := dialogue.ExecutionView{Sessions: deps.Store.Sessions()}
 	m.restoreMessageContext = deps.Platform.RestoreMessageContext
-	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: deps.Platform.PrimaryName(), ActorID: "cli:local", ScopeID: "local", Permission: deps.Permission})
+	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: config.PlatformCLI, Permission: deps.Permission})
 	bridge := agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{
 		Identity: identity,
 	})
@@ -83,7 +83,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 			return view.CheckSelection(source, deps.Models.ResolveMode(storage.SessionModeWork))
 		},
 		IsSuperadmin: func(scope session.Scope) bool {
-			return deps.Permission.Actor(scope.ActorID, scope.Platform, "", "").Role == contextinfo.RoleSuperadmin
+			return deps.Permission.IsSuperadmin(scope.Platform, scope.PlatformUserID)
 		},
 		ReleaseSession: func(id string) {
 			status.ForgetSession(id)

@@ -8,6 +8,7 @@ import (
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/security"
+	"elbot/internal/testutil"
 	"elbot/internal/tool"
 	"encoding/json"
 	"fmt"
@@ -46,7 +47,7 @@ func TestSupervisorRollbackAndBindingInvalidation(t *testing.T) {
 	edit := func() uint64 {
 		t.Helper()
 		client.requests = nil
-		if err := m.HandleMessage(t.Context(), MessageRequest{Text: "@tool:edit_file edit"}); err != nil {
+		if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "@tool:edit_file edit"}); err != nil {
 			t.Fatal(err)
 		}
 		data, err := os.ReadFile(path)
@@ -60,7 +61,7 @@ func TestSupervisorRollbackAndBindingInvalidation(t *testing.T) {
 		return records[0].ID
 	}
 	id := edit()
-	if err := m.HandleMessage(t.Context(), MessageRequest{Text: fmt.Sprintf("/rollback %d", id)}); err != nil {
+	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: fmt.Sprintf("/rollback %d", id)}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(path)
@@ -69,13 +70,13 @@ func TestSupervisorRollbackAndBindingInvalidation(t *testing.T) {
 	}
 	oldID := edit()
 	oldCtx := files.bindingCtx
-	if err := m.HandleMessage(t.Context(), MessageRequest{Text: "/new"}); err != nil {
+	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "/new"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := files.ListRollbacks(oldCtx); err == nil {
 		t.Fatal("old binding still permits rollback access")
 	}
-	if err := m.HandleMessage(t.Context(), MessageRequest{Text: fmt.Sprintf("/rollback %d", oldID)}); err != nil {
+	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: fmt.Sprintf("/rollback %d", oldID)}); err != nil {
 		t.Fatal(err)
 	}
 	data, err = os.ReadFile(path)
@@ -107,13 +108,13 @@ func TestSupervisorCompletionUsesPermissionsTagsAndSkills(t *testing.T) {
 		input, want string
 		present     bool
 	}{
-		{t.Context(), "@tool:private", "@tool:private", true},
+		{testutil.WithCLIConversation(t.Context()), "@tool:private", "@tool:private", true},
 		{user, "@tool:private", "@tool:private", false},
-		{t.Context(), "@tool:read_file", "@tool:read_file", true},
+		{testutil.WithCLIConversation(t.Context()), "@tool:read_file", "@tool:read_file", true},
 		{user, "@tool:read_file", "@tool:read_file", false},
-		{t.Context(), "@skill:contract", "@skill:contract_skill", true},
+		{testutil.WithCLIConversation(t.Context()), "@skill:contract", "@skill:contract_skill", true},
 		{user, "@skill:contract", "@skill:contract_skill", true},
-		{t.Context(), "@tool:contract_skill", "@tool:contract_skill", false},
+		{testutil.WithCLIConversation(t.Context()), "@tool:contract_skill", "@tool:contract_skill", false},
 		{user, "/rollback", "/rollback", false},
 	} {
 		items, err := m.Complete(tc.ctx, completion.Request{Text: tc.input})

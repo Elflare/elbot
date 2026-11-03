@@ -32,7 +32,7 @@ func (a *Adapter) StartStream(ctx context.Context) (delivery.MessageStream, erro
 		return nil, err
 	}
 	defer finish()
-	t, err := contextTarget(ctx)
+	t, err := a.contextTarget(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("telegram stream target: %w", err)
 	}
@@ -109,7 +109,7 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 		}
 		receipt, logResult, err := s.adapter.sendRichText(ctx, s.target, text, 0, nil)
 		s.finished = true
-		return telegramReceipt(receipt, s.target), logResult, err
+		return s.adapter.telegramReceipt(receipt, s.target), logResult, err
 	}
 	pages := telegramTextPages(text)
 	if s.message == 0 {
@@ -143,14 +143,14 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 			if errors.Is(err, context.Canceled) {
 				logResult.ResultStatus = globalevents.ResultCanceled
 			}
-			return telegramReceipt(receipt, s.target), logResult, err
+			return s.adapter.telegramReceipt(receipt, s.target), logResult, err
 		}
 		if sent.MessageID != 0 {
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, formatMessageID(sent.MessageID))
 		}
 	}
 	s.finished = true
-	return telegramReceipt(receipt, s.target), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+	return s.adapter.telegramReceipt(receipt, s.target), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
 func (s *messageStream) Finish(ctx context.Context) (delivery.Receipt, globalevents.LogResult, error) {
@@ -167,7 +167,7 @@ func (s *messageStream) Finish(ctx context.Context) (delivery.Receipt, globaleve
 	if s.message == 0 {
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
-	return telegramReceipt(delivery.Receipt{PlatformMessageIDs: []string{formatMessageID(s.message)}}, s.target), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+	return s.adapter.telegramReceipt(delivery.Receipt{PlatformMessageIDs: []string{formatMessageID(s.message)}}, s.target), globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
 func (a *Adapter) streamPreviewPayload(text string) (string, string) {

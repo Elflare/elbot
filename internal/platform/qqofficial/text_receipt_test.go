@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"elbot/internal/config"
 	"elbot/internal/delivery"
 )
 
@@ -26,7 +27,7 @@ func TestTextReceiptsKeepActualTarget(t *testing.T) {
 			if err != nil || len(receipt.SentMessages) != 1 {
 				t.Fatalf("receipt=%#v err=%v", receipt, err)
 			}
-			if sent := receipt.SentMessages[0]; sent.Platform != platformName || sent.ScopeID != want || sent.PlatformMessageID != "sent" || (output.Kind == delivery.KindRecord && len(sent.OutputIndexes) != 0) {
+			if sent := receipt.SentMessages[0]; sent.Platform != config.PlatformQQOfficial || sent.ScopeID != want || sent.PlatformMessageID != "sent" || (output.Kind == delivery.KindRecord && len(sent.OutputIndexes) != 0) {
 				t.Fatalf("source=%#v", sent)
 			}
 		}

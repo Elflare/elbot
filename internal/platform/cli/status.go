@@ -31,6 +31,8 @@ type bindingState struct {
 
 // statusDisplay 按目标合并；版本水位独立于待发正文，终态后不接受迟到旧状态。
 type statusDisplay struct {
+	platformName string // 状态日志所属的平台身份。
+
 	send     func(context.Context, messageData, runtimestatus.Snapshot) error
 	mu       sync.Mutex
 	latest   map[statusTarget]*statusProjection
@@ -43,9 +45,9 @@ type statusDisplay struct {
 	closed   bool
 }
 
-func newStatusDisplay() *statusDisplay {
+func newStatusDisplay(platformName string) *statusDisplay {
 	ctx, cancel := context.WithCancel(context.Background())
-	d := &statusDisplay{
+	d := &statusDisplay{platformName: platformName,
 		send: func(ctx context.Context, target messageData, snapshot runtimestatus.Snapshot) error {
 			return target.setRuntimeStatus(ctx, snapshot)
 		},
@@ -151,7 +153,7 @@ func (d *statusDisplay) run() {
 			d.mu.Unlock()
 			err := d.send(ctx, key.Display, event.Snapshot)
 			if err != nil && !errors.Is(err, context.Canceled) && d.ctx.Err() == nil {
-				record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "status_display_failed", Module: "cli", Type: events.ContentText, Content: fmt.Sprintf("status display failed\nerror=%v", err), ContentLimit: 4096, ResultStatus: events.ResultFailed}
+				record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "status_display_failed", Module: d.platformName, Type: events.ContentText, Content: fmt.Sprintf("status display failed\nerror=%v", err), ContentLimit: 4096, ResultStatus: events.ResultFailed}
 				_ = events.EmitLog(ctx, record)
 			}
 			d.mu.Lock()

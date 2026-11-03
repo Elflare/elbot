@@ -11,7 +11,7 @@ import (
 )
 
 func TestDisabledConfigSkipsCredentialsAndOwnsNoHTTPClient(t *testing.T) {
-	a, err := NewFromPlatformConfig(map[string]any{"enabled": false, "bot_token_env": "MISSING_TELEGRAM_TOKEN", "proxy_url": "://bad"}, Deps{})
+	a, err := NewFromPlatformConfig(map[string]any{"enabled": false, "bot_token_env": "MISSING_TELEGRAM_TOKEN", "proxy_url": "://bad"}, Deps{CommonConfig: testCommonConfig(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestDisabledConfigSkipsCredentialsAndOwnsNoHTTPClient(t *testing.T) {
 	if err := a.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewFromPlatformConfig(map[string]any{"enabled": true}, Deps{}); err == nil {
+	if _, err := NewFromPlatformConfig(map[string]any{"enabled": true}, Deps{CommonConfig: testCommonConfig(t)}); err == nil {
 		t.Fatal("enabled adapter accepted missing token")
 	}
 }
@@ -44,7 +44,7 @@ func TestConstructorFreezesResolvedConfiguration(t *testing.T) {
 	a, err := NewFromPlatformConfig(map[string]any{
 		"enabled": true, "bot_token": "direct-token", "bot_token_env": "TG_TEST_TOKEN",
 		"proxy_url": "http://127.0.0.1:9992", "proxy_url_env": "TG_TEST_PROXY",
-	}, Deps{})
+	}, Deps{CommonConfig: testCommonConfig(t)})
 	if err != nil {
 		t.Fatal(err)
 	}

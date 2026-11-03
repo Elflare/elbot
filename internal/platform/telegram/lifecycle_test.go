@@ -16,6 +16,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
@@ -37,7 +38,7 @@ func awaitTelegram[T any](t *testing.T, ch <-chan T) T {
 }
 
 func telegramTestContext() context.Context {
-	return contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: platformName, ScopeID: "private:9"}})
+	return contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformTelegram, ScopeID: "private:9"}})
 }
 
 func TestOperationAdmissionResult(t *testing.T) {
@@ -191,7 +192,7 @@ func TestRuntimeStopsIngressAndWaitsForAcceptedWork(t *testing.T) {
 	if handled.Load() != 1 {
 		t.Fatalf("handled=%d", handled.Load())
 	}
-	if err := a.chatHistory.Append(context.Background(), &storage.ChatMessage{Platform: platformName, PlatformScopeID: "private:9", PlatformMessageID: "after-close", Text: "still open"}); err != nil {
+	if err := a.chatHistory.Append(context.Background(), &storage.ChatMessage{Platform: config.PlatformTelegram, PlatformScopeID: "private:9", PlatformMessageID: "after-close", Text: "still open"}); err != nil {
 		t.Fatalf("borrowed history closed: %v", err)
 	}
 	if err := a.Wait(observer); err != nil {

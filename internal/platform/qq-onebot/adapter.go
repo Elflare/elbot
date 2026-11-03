@@ -4,7 +4,6 @@ package qqonebot
 import (
 	"context"
 	"elbot/internal/command"
-	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/platform/share"
@@ -24,7 +23,6 @@ type Config struct {
 	APITimeoutSeconds        int      `toml:"api_timeout_seconds"`
 	TriggerKeywords          []string `toml:"trigger_keywords"`
 	SendFileMode             string   `toml:"send_file_mode"`
-	Superadmins              []string `toml:"-"`
 }
 
 // Deps 是 OneBot 构造所需的配置与借用能力，由 Platform 根部装配。
@@ -42,6 +40,8 @@ type Deps struct {
 }
 
 type Adapter struct {
+	name              string             // 根部登记的平台名。
+	superadmins       *share.Superadmins // 根部注入的当前平台超管能力。
 	cfg               Config
 	parseCommand      func(string) command.Parsed                                                  // 借用的命令解析函数。
 	referenceResolver func(context.Context, share.ReferenceOptions) (share.ReferenceResult, error) // 根部注入的引用恢复能力。
@@ -77,24 +77,24 @@ func NewFromPlatformConfig(raw map[string]any, deps Deps) (*Adapter, error) {
 	if err := share.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode qqonebot config: %w", err)
 	}
-	cfg.Superadmins = append([]string(nil), deps.Superadmins...)
 	applyDefaults(&cfg)
 	if err := validateSendFileMode(cfg.SendFileMode); err != nil {
 		return nil, err
 	}
 	envName := strings.TrimSpace(cfg.AccessTokenEnv)
 	if strings.TrimSpace(cfg.AccessToken) == "" && envName != "" {
-		value, _, err := config.ConfigEnv(envName, deps.ConfigDir)
+		value, _, err := deps.ConfigEnv(envName)
 		if err != nil {
 			return nil, fmt.Errorf("resolve qqonebot access token from %s: %w", envName, err)
 		}
 		cfg.AccessToken = strings.TrimSpace(value)
 	}
 	return &Adapter{
+		name: deps.PlatformName, superadmins: deps.Superadmins,
 		parseCommand: deps.ParseCommand,
 		cfg:          cfg, chatHistory: deps.ChatHistory, referenceResolver: deps.ReferenceResolver,
 		findByPlatformMessage: deps.FindByPlatformMessage, findOutputs: deps.FindOutputs,
-		transport:   newTransport(cfg.URL, cfg.AccessToken, time.Duration(cfg.APITimeoutSeconds)*time.Second),
+		transport:   newTransport(deps.PlatformName, cfg.URL, cfg.AccessToken, time.Duration(cfg.APITimeoutSeconds)*time.Second),
 		connectDone: make(chan struct{}), done: make(chan struct{}), closeDone: make(chan struct{}),
 		temporary: make(map[*Transport]context.CancelFunc),
 	}, nil
@@ -125,7 +125,7 @@ func validateSendFileMode(mode string) error {
 	}
 }
 
-func (a *Adapter) Name() string { return "qqonebot" }
+func (a *Adapter) Name() string { return a.name }
 
 func (a *Adapter) Enabled() bool { return a.cfg.Enabled }
 

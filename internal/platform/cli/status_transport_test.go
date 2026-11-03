@@ -30,7 +30,7 @@ func TestStatusInFlightWriteKeepsRemoteConnection(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			d := newStatusDisplay()
+			d := newStatusDisplay(testPlatformName)
 			defer d.Close(context.Background())
 			// 出错时先释放连接，避免清理仍等待背压中的写入。
 			defer clients[0].conn.CloseNow()

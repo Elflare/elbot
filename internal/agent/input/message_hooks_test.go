@@ -46,7 +46,7 @@ func (p *entryProbe) Notify(context.Context, slog.Level, string) {
 
 func hookMessageEntry(t *testing.T, p *entryProbe, points hooks.Points) *MessageHandler {
 	t.Helper()
-	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: security.DefaultPermission()})
+	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})
 	bridge := hooks.NewHookBridge(hooks.HookBridgeDeps{Identity: identity})
 	if _, err := bridge.Register(points); err != nil {
 		t.Fatal(err)

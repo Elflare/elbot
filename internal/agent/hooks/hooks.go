@@ -11,7 +11,7 @@ import (
 )
 
 type HookIdentity interface {
-	SourceActor(context.Context) contextinfo.Actor
+	Actor(context.Context) contextinfo.Actor
 }
 type HookBridgeDeps struct {
 	Identity HookIdentity // Source facts supplied by Agent; optional for source-free use.
@@ -73,7 +73,7 @@ func (h *HookBridge) acquire() (*Points, func(), error) {
 
 func (h *HookBridge) facts(ctx context.Context, facts Facts) Facts {
 	if h.identity != nil {
-		facts.Actor = h.identity.SourceActor(ctx)
+		facts.Actor = h.identity.Actor(ctx)
 	}
 	facts.Woken = agentshare.WakeupFromContext(ctx)
 	facts.ReadOnlyCalls = agentshare.ReadOnlyCallsFromContext(ctx)

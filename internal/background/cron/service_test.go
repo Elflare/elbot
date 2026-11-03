@@ -185,6 +185,9 @@ func TestCopyCronSessionUsesTaskSourceAndPreservesMetadata(t *testing.T) {
 		t.Fatalf("copies=%#v", copies)
 	}
 	for _, req := range copies {
+		if want := map[string]string{"qq-onebot": "1", "telegram": "2"}[req.Scope.Platform]; req.Scope.PlatformUserID != want {
+			t.Fatalf("copy lost native user ID: %+v", req.Scope)
+		}
 		if req.SourceSessionID != "source" || req.Scope.Platform == "cli" || req.Scope.PlatformScopeID != "cron:user.cron.test" || string(req.Metadata["cron_broadcast_copy"]) != "true" || string(req.Metadata["cron_source_session_id"]) != `"source"` || string(req.Metadata["cron_job_name"]) != `"user.cron.test"` {
 			t.Fatalf("copy=%#v", req)
 		}
@@ -704,6 +707,7 @@ func newTestCronService(t *testing.T, opts Options) *Service {
 		next := testutil.IDSequence()
 		opts.NewRunID = func(ctx context.Context) (string, error) { return next.ID(ctx, "run") }
 	}
+	opts.CLIPlatformName = "cli"
 	s := NewService(opts)
 	if err := opts.Manager.RegisterHandler(UserHandlerName, s.Handler); err != nil {
 		t.Fatal(err)

@@ -13,7 +13,6 @@ import (
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook/share"
-	"elbot/internal/security"
 )
 
 func validateExecAction(action Action) error {
@@ -131,15 +130,13 @@ func validateRule(rule *Rule) error {
 func (r *Rule) normalizeRoles() error {
 	for i, role := range r.Roles {
 		role = strings.TrimSpace(role)
-		switch contextinfo.Role(role) {
-		case contextinfo.RoleSuperadmin, contextinfo.RoleUser:
+		switch role {
+		case string(contextinfo.RoleSuperadmin), string(contextinfo.RoleUser),
+			string(contextinfo.GroupRoleOwner), string(contextinfo.GroupRoleAdmin),
+			string(contextinfo.GroupRoleMember), string(contextinfo.GroupRoleUnknown):
 			r.Roles[i] = role
 		default:
-			parsed := security.ParseGroupRole(role)
-			if parsed == contextinfo.GroupRoleUnknown && role != string(contextinfo.GroupRoleUnknown) {
-				return fmt.Errorf("unsupported role %q", role)
-			}
-			r.Roles[i] = string(parsed)
+			return fmt.Errorf("unsupported role %q", role)
 		}
 	}
 	for i, role := range r.ActorRoles {
@@ -152,11 +149,13 @@ func (r *Rule) normalizeRoles() error {
 		}
 	}
 	for i, role := range r.GroupRoles {
-		parsed := security.ParseGroupRole(role)
-		if parsed == contextinfo.GroupRoleUnknown && strings.TrimSpace(role) != string(contextinfo.GroupRoleUnknown) {
+		role = strings.TrimSpace(role)
+		switch contextinfo.GroupRole(role) {
+		case contextinfo.GroupRoleOwner, contextinfo.GroupRoleAdmin, contextinfo.GroupRoleMember, contextinfo.GroupRoleUnknown:
+			r.GroupRoles[i] = role
+		default:
 			return fmt.Errorf("unsupported group role %q", role)
 		}
-		r.GroupRoles[i] = string(parsed)
 	}
 	return nil
 }

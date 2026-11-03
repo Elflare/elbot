@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -39,9 +40,10 @@ type Models interface {
 }
 
 type Service struct {
-	newRunID func(context.Context) (string, error)
-	manager  *Manager
-	store    JobRepository
+	cliPlatformName string // 本地平台身份。
+	newRunID        func(context.Context) (string, error)
+	manager         *Manager
+	store           JobRepository
 
 	sendTarget       TargetSenderFunc
 	runner           background.Runner
@@ -59,9 +61,10 @@ type Service struct {
 }
 
 type Options struct {
-	NewRunID func(context.Context) (string, error) // 根部提供运行批次身份。
-	Manager  *Manager
-	Store    JobRepository
+	CLIPlatformName string                                // 根部注入的本地平台身份，用于默认目标和恢复通知。
+	NewRunID        func(context.Context) (string, error) // 根部提供运行批次身份。
+	Manager         *Manager
+	Store           JobRepository
 
 	SendTarget       TargetSenderFunc
 	Runner           background.Runner
@@ -75,17 +78,18 @@ type Options struct {
 
 func NewService(opts Options) *Service {
 	s := &Service{
-		newRunID:      opts.NewRunID,
-		manager:       opts.Manager,
-		store:         opts.Store,
-		sendTarget:    opts.SendTarget,
-		runner:        opts.Runner,
-		sandboxRoot:   opts.SandboxRoot,
-		now:           time.Now,
-		media:         opts.Media,
-		deliveryGates: map[string]*deliveryGate{},
+		cliPlatformName: opts.CLIPlatformName,
+		newRunID:        opts.NewRunID,
+		manager:         opts.Manager,
+		store:           opts.Store,
+		sendTarget:      opts.SendTarget,
+		runner:          opts.Runner,
+		sandboxRoot:     opts.SandboxRoot,
+		now:             time.Now,
+		media:           opts.Media,
+		deliveryGates:   map[string]*deliveryGate{},
 	}
-	s.enabledPlatforms = normalizePlatformTargets(opts.EnabledPlatforms)
+	s.enabledPlatforms = normalizePlatformTargets(opts.CLIPlatformName, opts.EnabledPlatforms)
 	s.models = opts.Models
 	s.copyBackground = opts.CopyBackground
 	s.sessionTakenOver = opts.SessionTakenOver
@@ -196,17 +200,16 @@ func cronLogIdentity(ctx context.Context) globalevents.LogIdentity {
 	return identity
 }
 
-func normalizePlatformTargets(targets []PlatformTarget) []PlatformTarget {
+func normalizePlatformTargets(cliPlatformName string, targets []PlatformTarget) []PlatformTarget {
 	seen := map[string]bool{}
-	out := []PlatformTarget{{Name: "cli", SuperadminIDs: []string{"local"}}}
-	seen["cli"] = true
+	out := []PlatformTarget{{Name: cliPlatformName, SuperadminIDs: []string{"local"}}}
+	seen[cliPlatformName] = true
 	for _, target := range targets {
-		name := strings.TrimSpace(target.Name)
-		if name == "" || seen[name] {
+		if seen[target.Name] {
 			continue
 		}
-		seen[name] = true
-		out = append(out, PlatformTarget{Name: name, SuperadminIDs: trimStrings(target.SuperadminIDs)})
+		seen[target.Name] = true
+		out = append(out, PlatformTarget{Name: target.Name, SuperadminIDs: slices.Clone(target.SuperadminIDs)})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
@@ -226,17 +229,6 @@ func targetOwnerID(target PlatformTarget) string {
 		return ""
 	}
 	return security.ActorID(target.Name, ids[0])
-}
-
-func trimStrings(values []string) []string {
-	out := []string{}
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value != "" {
-			out = append(out, value)
-		}
-	}
-	return out
 }
 
 func uniqueStrings(values []string) []string {

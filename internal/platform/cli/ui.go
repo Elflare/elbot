@@ -46,8 +46,8 @@ type UI struct {
 }
 
 // ConnectUI is called after construction and before any platform accepts input.
-func ConnectUI(source AgentEvents) (*UI, error) {
-	u := &UI{display: newStatusDisplay()}
+func ConnectUI(platformName string, source AgentEvents) (*UI, error) {
+	u := &UI{display: newStatusDisplay(platformName)}
 	c, err := source.ObserveStatusChanged(u.display.receive, signal.ConnectOptions{})
 	if c != nil {
 		u.connections = append(u.connections, c)

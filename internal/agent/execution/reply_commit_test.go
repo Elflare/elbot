@@ -172,7 +172,7 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 	var cancel context.CancelFunc
 	f.requestCtx, cancel = context.WithCancel(f.ctx)
 	t.Cleanup(cancel)
-	f.hooks = agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", Permission: security.DefaultPermission()})})
+	f.hooks = agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{Identity: agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})})
 	t.Cleanup(func() { _ = f.hooks.Close(context.Background()) })
 
 	sender := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{

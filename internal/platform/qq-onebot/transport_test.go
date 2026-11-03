@@ -24,7 +24,7 @@ import (
 )
 
 func TestTransportWriteTimeout(t *testing.T) {
-	transport := newTransport("", "", 15*time.Second)
+	transport := newTransport(testPlatformName, "", "", 15*time.Second)
 	tests := []struct {
 		name       string
 		frameBytes int
@@ -148,7 +148,7 @@ func TestTransportBlockedWriteClosesConnectionAndCanReconnect(t *testing.T) {
 			server.Close()
 		})
 
-		transport := newTransport("ws"+strings.TrimPrefix(server.URL, "http"), "", 25*time.Millisecond)
+		transport := newTransport(testPlatformName, "ws"+strings.TrimPrefix(server.URL, "http"), "", 25*time.Millisecond)
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
 		if err := transport.Connect(ctx); err != nil {
@@ -222,7 +222,7 @@ func serveOneBotResponses(ctx context.Context, conn *websocket.Conn, delay func(
 
 func connectTestTransport(t *testing.T, server *httptest.Server, timeout time.Duration) (*Transport, context.Context) {
 	t.Helper()
-	transport := newTransport("ws"+strings.TrimPrefix(server.URL, "http"), "", timeout)
+	transport := newTransport(testPlatformName, "ws"+strings.TrimPrefix(server.URL, "http"), "", timeout)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	if err := transport.Connect(ctx); err != nil {

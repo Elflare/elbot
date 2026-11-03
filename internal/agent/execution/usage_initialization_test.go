@@ -111,8 +111,8 @@ func TestExecutionRestoresUsageBeforeCancellationAndCleansUpFailure(t *testing.T
 					t.Fatal(err)
 				}
 			}
-			identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: security.DefaultPermission()})
-			row, err := sessions.Create(t.Context(), identity.Scope(t.Context()), session.CreateRequest{Metadata: tc.metadata})
+			identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})
+			row, err := sessions.Create(t.Context(), identity.Scope(testutil.WithCLIConversation(t.Context())), session.CreateRequest{Metadata: tc.metadata})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -126,7 +126,7 @@ func TestExecutionRestoresUsageBeforeCancellationAndCleansUpFailure(t *testing.T
 				},
 			})
 			defer c.Close(context.Background())
-			err = c.Run(t.Context(), row, "input", backgroundTurnOutput{})
+			err = c.Run(testutil.WithCLIConversation(t.Context()), row, "input", backgroundTurnOutput{})
 			if tc.cancel {
 				usage := recorder.Snapshot(row.ID).Usage
 				if usage == nil || usage.TotalTokens == nil || *usage.TotalTokens != 42 {
@@ -138,7 +138,7 @@ func TestExecutionRestoresUsageBeforeCancellationAndCleansUpFailure(t *testing.T
 			if turns.Snapshot(row.ID).Phase != turn.PhaseIdle || len(requests.List()) != 0 {
 				t.Fatal("execution left active Turn or Request after exit")
 			}
-			_, release, err := sessions.EnterActivation(t.Context(), identity.Scope(t.Context()), row.ID)
+			_, release, err := sessions.EnterActivation(t.Context(), identity.Scope(testutil.WithCLIConversation(t.Context())), row.ID)
 			if err != nil {
 				t.Fatal(err)
 			}

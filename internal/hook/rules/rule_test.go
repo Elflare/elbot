@@ -242,6 +242,36 @@ func (r *roleTestRuntime) Handle(_ context.Context, _ string, event share.Event,
 	return event, events.LogResult{ResultStatus: events.ResultSucceeded}, nil
 }
 
+func TestNormalizeRolesAcceptsCanonicalValues(t *testing.T) {
+	rule := Rule{
+		Roles:      []string{"superadmin", "user", "owner", "admin", "member", "unknown"},
+		ActorRoles: []string{"superadmin", "user"},
+		GroupRoles: []string{"owner", "admin", "member", "unknown"},
+	}
+	if err := rule.normalizeRoles(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNormalizeRolesRejectsAliasesAndInvalidValues(t *testing.T) {
+	for _, role := range []string{"creator", "administrator", "group_owner", "group_admin", "group_member", "invalid", ""} {
+		t.Run(role, func(t *testing.T) {
+			rule := Rule{Roles: []string{role}}
+			if err := rule.normalizeRoles(); err == nil {
+				t.Fatalf("roles accepted %q", role)
+			}
+			rule = Rule{GroupRoles: []string{role}}
+			if err := rule.normalizeRoles(); err == nil {
+				t.Fatalf("group_roles accepted %q", role)
+			}
+		})
+	}
+	rule := Rule{GroupRoles: []string{"user"}}
+	if err := rule.normalizeRoles(); err == nil {
+		t.Fatal("group_roles accepted actor role user")
+	}
+}
+
 func TestRegisteredRoleGatesRunOnce(t *testing.T) {
 	for _, worker := range []bool{false, true} {
 		for _, tc := range []struct {
@@ -254,7 +284,7 @@ func TestRegisteredRoleGatesRunOnce(t *testing.T) {
 			{name: "actor group blocks", roles: []string{"user"}, actorRoles: []string{"superadmin"}, groupRoles: []string{"admin"}},
 			{name: "group role blocks", roles: []string{"user"}, actorRoles: []string{"user"}, groupRoles: []string{"owner"}},
 			{name: "unified roles block", roles: []string{"owner"}, actorRoles: []string{"user"}, groupRoles: []string{"admin"}},
-			{name: "aliases", roles: []string{" group_admin "}, actorRoles: []string{" user "}, groupRoles: []string{" administrator "}, want: 1},
+			{name: "trimmed canonical roles", roles: []string{" admin "}, actorRoles: []string{" user "}, groupRoles: []string{" admin "}, want: 1},
 			{name: "unrestricted", want: 1},
 		} {
 			t.Run(fmt.Sprintf("worker=%t/%s", worker, tc.name), func(t *testing.T) {

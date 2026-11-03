@@ -16,6 +16,8 @@ type Deps struct {
 }
 
 type Adapter struct {
+	name              string             // 根部登记的平台名。
+	superadmins       *share.Superadmins // 根部注入的当前平台超管能力。
 	cfg               Config
 	referenceResolver func(context.Context, share.ReferenceOptions) (share.ReferenceResult, error) // 根部注入的引用恢复能力。
 	chatHistory       share.ChatHistoryWriter                                                      // 借用的历史写入能力。
@@ -39,5 +41,5 @@ type Adapter struct {
 	operations       sync.WaitGroup // 已接纳的完整外发、媒体及流式调用。
 }
 
-func (a *Adapter) Name() string  { return platformName }
+func (a *Adapter) Name() string  { return a.name }
 func (a *Adapter) Enabled() bool { return a.cfg.Enabled }

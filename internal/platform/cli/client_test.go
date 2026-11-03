@@ -51,13 +51,13 @@ func TestRunClientConfigurationAndDial(t *testing.T) {
 			want = ClientFailed
 		}
 		for _, raw := range []map[string]any{nil, {"enabled": false}} {
-			result := RunClient(t.Context(), raw, t.TempDir(), name)
+			result := RunClient(t.Context(), raw, testConfigEnv(t.TempDir()), name)
 			if result.Kind != want || !errors.Is(result.Err, ErrClientNotConfigured) {
 				t.Fatal(result)
 			}
 		}
 	}
-	if result := RunClient(t.Context(), map[string]any{"enabled": "bad"}, "", ""); result.Kind != ClientFailed {
+	if result := RunClient(t.Context(), map[string]any{"enabled": "bad"}, testConfigEnv(t.TempDir()), ""); result.Kind != ClientFailed {
 		t.Fatal(result)
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -69,7 +69,7 @@ func TestRunClientConfigurationAndDial(t *testing.T) {
 	t.Setenv("ELBOT_CLI_DIAL_TOKEN", "secret")
 	raw := map[string]any{"default_client": "local", "clients": map[string]any{"local": map[string]any{"url": "ws://" + address + defaultRemotePath, "token_env": []string{"ELBOT_CLI_DIAL_TOKEN"}}}}
 	for _, name := range []string{"", "local"} {
-		result := RunClient(t.Context(), raw, "", name)
+		result := RunClient(t.Context(), raw, testConfigEnv(t.TempDir()), name)
 		want := ClientFallback
 		if name != "" {
 			want = ClientFailed
@@ -80,7 +80,7 @@ func TestRunClientConfigurationAndDial(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if result := RunClient(ctx, raw, "", ""); result.Kind != ClientFailed || !errors.Is(result.Err, context.Canceled) {
+	if result := RunClient(ctx, raw, testConfigEnv(t.TempDir()), ""); result.Kind != ClientFailed || !errors.Is(result.Err, context.Canceled) {
 		t.Fatal(result)
 	}
 }
@@ -90,7 +90,7 @@ func newTestClient(t *testing.T, address string) *RemoteClient {
 	t.Setenv("ELBOT_CLI_CLIENT_TOKEN", "secret")
 	cfg := defaultConfig()
 	cfg.Clients = map[string]ClientConfig{"local": {ID: "user", URL: address, TokenEnv: []string{"ELBOT_CLI_CLIENT_TOKEN"}}}
-	client, err := NewRemoteClient(RemoteClientOptions{Config: cfg})
+	client, err := NewRemoteClient(RemoteClientOptions{Config: cfg, ConfigEnv: testConfigEnv(t.TempDir())})
 	if err != nil {
 		t.Fatal(err)
 	}

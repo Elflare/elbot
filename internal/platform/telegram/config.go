@@ -9,12 +9,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
-	appconfig "elbot/internal/config"
 )
 
 const (
-	platformName              = "telegram"
 	defaultAPIBaseURL         = "https://api.telegram.org"
 	defaultFileBaseURL        = "https://api.telegram.org/file"
 	defaultAPITimeout         = 15 * time.Second
@@ -40,8 +37,6 @@ type Config struct {
 	StreamEditIntervalMilliseconds int      `toml:"stream_edit_interval_milliseconds"`
 	Format                         string   `toml:"format"`
 	TriggerKeywords                []string `toml:"trigger_keywords"`
-	Superadmins                    []string `toml:"-"`
-	ConfigEnvDir                   string   `toml:"-"`
 }
 
 func NewFromPlatformConfig(raw map[string]any, deps Deps) (*Adapter, error) {
@@ -49,19 +44,17 @@ func NewFromPlatformConfig(raw map[string]any, deps Deps) (*Adapter, error) {
 	if err := share.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode telegram config: %w", err)
 	}
-	cfg.Superadmins = append([]string(nil), deps.Superadmins...)
-	cfg.ConfigEnvDir = deps.ConfigDir
 	applyDefaults(&cfg)
 	var client *apiClient
 	if cfg.Enabled {
-		token, err := cfg.tokenValue()
+		token, err := cfg.tokenValue(deps.ConfigEnv)
 		if err != nil {
 			return nil, err
 		}
 		if token == "" {
 			return nil, fmt.Errorf("telegram bot_token or bot_token_env is required")
 		}
-		proxyURL, err := cfg.proxyURL()
+		proxyURL, err := cfg.proxyURL(deps.ConfigEnv)
 		if err != nil {
 			return nil, err
 		}
@@ -70,6 +63,7 @@ func NewFromPlatformConfig(raw map[string]any, deps Deps) (*Adapter, error) {
 	}
 	operationCtx, operationCancel := context.WithCancel(context.Background())
 	adapter := &Adapter{
+		name: deps.PlatformName, superadmins: deps.Superadmins,
 		cfg: cfg, client: client, chatHistory: deps.ChatHistory, referenceResolver: deps.ReferenceResolver,
 		operationCtx: operationCtx, operationCancel: operationCancel,
 		pollDone: make(chan struct{}), done: make(chan struct{}), closeDone: make(chan struct{}),
@@ -99,15 +93,15 @@ func applyDefaults(cfg *Config) {
 	cfg.Format = normalizeTelegramFormat(cfg.Format)
 }
 
-func (c Config) tokenValue() (string, error) {
+func (c Config) tokenValue(configEnv func(string) (string, bool, error)) (string, error) {
 	if value := strings.TrimSpace(c.BotToken); value != "" {
 		return value, nil
 	}
-	return c.envValue(c.BotTokenEnv)
+	return c.envValue(c.BotTokenEnv, configEnv)
 }
 
-func (c Config) proxyURL() (*url.URL, error) {
-	value, err := c.proxyValue()
+func (c Config) proxyURL(configEnv func(string) (string, bool, error)) (*url.URL, error) {
+	value, err := c.proxyValue(configEnv)
 	if err != nil {
 		return nil, err
 	}
@@ -124,19 +118,19 @@ func (c Config) proxyURL() (*url.URL, error) {
 	return parsed, nil
 }
 
-func (c Config) proxyValue() (string, error) {
-	if value, err := c.envValue(c.ProxyURLEnv); err != nil || value != "" {
+func (c Config) proxyValue(configEnv func(string) (string, bool, error)) (string, error) {
+	if value, err := c.envValue(c.ProxyURLEnv, configEnv); err != nil || value != "" {
 		return value, err
 	}
 	return strings.TrimSpace(c.ProxyURL), nil
 }
 
-func (c Config) envValue(name string) (string, error) {
+func (c Config) envValue(name string, configEnv func(string) (string, bool, error)) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return "", nil
 	}
-	value, ok, err := appconfig.ConfigEnv(name, c.ConfigEnvDir)
+	value, ok, err := configEnv(name)
 	if err != nil {
 		return "", err
 	}

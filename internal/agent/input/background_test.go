@@ -33,7 +33,10 @@ type backgroundHarness struct {
 	ensure                            func(context.Context, string, string) error
 }
 
-func (h *backgroundHarness) PlatformName() string { return "cli" }
+func (h *backgroundHarness) IsCLI(ctx context.Context) bool {
+	info, _ := contextinfo.ConversationFromContext(ctx)
+	return info.Source.Platform == "cli"
+}
 func (h *backgroundHarness) PrepareBackground(ctx context.Context, scope session.Scope, req session.BackgroundRequest) (*storage.Session, error) {
 	h.scope = scope
 	if h.prepareErr != nil {
@@ -80,7 +83,7 @@ func TestBackgroundPreparationKeepsContextAndMultimodalSkillMaterial(t *testing.
 	h.preload = tool.BackgroundPreload{SkillPrompt: "SKILL_GUIDANCE", Skills: []string{"notes"}, NeedsElyphRules: true}
 	req := BackgroundRequest{
 		Kind: "cron", Name: "task", Prompt: "before after", ModelProvider: "provider", Model: "model",
-		Actor: contextinfo.Actor{ID: "owner", Platform: "qq", Role: contextinfo.RoleUser},
+		Actor: contextinfo.Actor{ID: "owner", Platform: "qq", PlatformUserID: "native-owner", Role: contextinfo.RoleUser},
 		PromptSegments: []llm.MessageSegment{
 			{Type: llm.SegmentText, Text: "before "},
 			{Type: llm.SegmentImage, MediaID: "image", MIMEType: "image/png"},
@@ -91,7 +94,7 @@ func TestBackgroundPreparationKeepsContextAndMultimodalSkillMaterial(t *testing.
 	if !reflect.DeepEqual(result, h.result) {
 		t.Fatal(result)
 	}
-	if h.scope.Platform != "qq" || h.scope.ActorID != "owner" || h.scope.PlatformScopeID != "cron:task" {
+	if h.scope.Platform != "qq" || h.scope.ActorID != "owner" || h.scope.PlatformUserID != "native-owner" || h.scope.PlatformScopeID != "cron:task" {
 		t.Fatal(h.scope)
 	}
 	actor, _ := contextinfo.ActorFromContext(h.runContext)
@@ -177,5 +180,9 @@ func TestBackgroundContinuationDoesNotPreload(t *testing.T) {
 	result := handler.RunBackground(ctx, BackgroundRequest{Kind: "cron", SessionID: "session", ToolListNames: []string{"ignored"}, Prompt: "continue"})
 	if result.Err != nil || h.preloads != 0 || h.commits != 0 || h.executions != 1 {
 		t.Fatalf("result=%+v preload=%d commit=%d run=%d", result, h.preloads, h.commits, h.executions)
+	}
+	actor, _ := contextinfo.ActorFromContext(h.runContext)
+	if actor != (contextinfo.Actor{}) || h.scope.Platform != "" || h.scope.IsCLI {
+		t.Fatalf("background request acquired an identity: actor=%+v scope=%+v", actor, h.scope)
 	}
 }

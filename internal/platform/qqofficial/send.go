@@ -47,7 +47,7 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 		if out.Kind == delivery.KindImage || out.Kind == delivery.KindFile {
 			mediaIndexes = []int{i}
 		}
-		sent = qqOfficialReceipt(sent, t, mediaIndexes...)
+		sent = a.qqOfficialReceipt(sent, t, mediaIndexes...)
 		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
 		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
 		if err != nil {
@@ -57,10 +57,10 @@ func (a *Adapter) sendOutputs(ctx context.Context, t sendTarget, outputs []deliv
 	return receipt, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 }
 
-func qqOfficialReceipt(receipt delivery.Receipt, target sendTarget, mediaIndexes ...int) delivery.Receipt {
+func (a *Adapter) qqOfficialReceipt(receipt delivery.Receipt, target sendTarget, mediaIndexes ...int) delivery.Receipt {
 	for _, id := range receipt.PlatformMessageIDs {
 		if id = strings.TrimSpace(id); id != "" {
-			receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: platformName, ScopeID: qqOfficialTargetScope(target), OutputIndexes: append([]int(nil), mediaIndexes...)})
+			receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: a.Name(), ScopeID: qqOfficialTargetScope(target), OutputIndexes: append([]int(nil), mediaIndexes...)})
 		}
 	}
 	return receipt
@@ -95,7 +95,7 @@ func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Out
 
 func (a *Adapter) contextTarget(ctx context.Context) (sendTarget, error) {
 	info, ok := contextinfo.ConversationFromContext(ctx)
-	if !ok || info.Source.Platform != platformName {
+	if !ok || info.Source.Platform != a.Name() {
 		return sendTarget{}, fmt.Errorf("qqofficial send target missing")
 	}
 	out := delivery.Target{ScopeID: info.Source.ScopeID}
@@ -107,11 +107,10 @@ func (a *Adapter) contextTarget(ctx context.Context) (sendTarget, error) {
 			out.PrivateUserID = id
 		}
 	}
-	targets, err := a.targets(out)
+	t, err := a.targetFromDelivery(out)
 	if err != nil {
 		return sendTarget{}, err
 	}
-	t := targets[0]
 	t.MsgID = info.PlatformMessageID
 	// Ordinary messages reply with msg_id. Event-only sources use event_id.
 	if data, ok := info.PlatformData.(messageData); ok && t.MsgID == "" {
@@ -221,58 +220,45 @@ func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 	}
 	defer finish()
-	targets, err := a.targets(target)
-	if err != nil {
-		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
-		if err == context.Canceled {
-			logResult.ResultStatus = globalevents.ResultCanceled
+	if target.Superadmins {
+		if name := strings.TrimSpace(target.Platform); name != "" && name != a.Name() {
+			err := fmt.Errorf("qqofficial cannot send to platform %q", name)
+			return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}, err
 		}
-		return delivery.Receipt{}, logResult, err
+		return a.superadmins.SendTo(ctx, outputs, a.sendTarget)
 	}
-	var receipt delivery.Receipt
-	for _, target := range targets {
-		target.Proactive = true
-		sent, logResult, err := a.sendOutputs(ctx, target, outputs)
-		receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
-		receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
-		if err != nil {
-			return receipt, logResult, err
-		}
-	}
-	return receipt, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+	return a.sendTarget(ctx, target, outputs)
 }
 
-func (a *Adapter) targets(target delivery.Target) ([]sendTarget, error) {
+func (a *Adapter) sendTarget(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
+	t, err := a.targetFromDelivery(target)
+	if err != nil {
+		logResult := globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: err.Error()}
+		return delivery.Receipt{}, logResult, err
+	}
+	t.Proactive = true
+	return a.sendOutputs(ctx, t, outputs)
+}
+
+func (a *Adapter) targetFromDelivery(target delivery.Target) (sendTarget, error) {
 	if platformName := strings.TrimSpace(target.Platform); platformName != "" && platformName != a.Name() {
-		return nil, fmt.Errorf("qqofficial cannot send to platform %q", platformName)
+		return sendTarget{}, fmt.Errorf("qqofficial cannot send to platform %q", platformName)
 	}
-	if target.Superadmins {
-		targets := make([]sendTarget, 0, len(a.cfg.Superadmins))
-		for _, id := range a.cfg.Superadmins {
-			id = strings.TrimSpace(strings.TrimPrefix(id, platformName+":"))
-			if id != "" {
-				targets = append(targets, sendTarget{Kind: targetC2C, OpenID: id})
-			}
-		}
-		if len(targets) == 0 {
-			return nil, fmt.Errorf("qqofficial superadmins are not configured")
-		}
-		return targets, nil
-	}
+
 	if id := strings.TrimSpace(target.PrivateUserID); id != "" {
-		return []sendTarget{{Kind: targetC2C, OpenID: id}}, nil
+		return sendTarget{Kind: targetC2C, OpenID: id}, nil
 	}
 	if id := strings.TrimSpace(target.GroupID); id != "" {
-		return []sendTarget{{Kind: targetGroup, OpenID: id}}, nil
+		return sendTarget{Kind: targetGroup, OpenID: id}, nil
 	}
 	scope := strings.TrimSpace(target.ScopeID)
 	if strings.HasPrefix(scope, "c2c:") {
-		return []sendTarget{{Kind: targetC2C, OpenID: strings.TrimPrefix(scope, "c2c:")}}, nil
+		return sendTarget{Kind: targetC2C, OpenID: strings.TrimPrefix(scope, "c2c:")}, nil
 	}
 	if strings.HasPrefix(scope, "group:") {
-		return []sendTarget{{Kind: targetGroup, OpenID: strings.TrimPrefix(scope, "group:")}}, nil
+		return sendTarget{Kind: targetGroup, OpenID: strings.TrimPrefix(scope, "group:")}, nil
 	}
-	return nil, fmt.Errorf("qqofficial target missing private_user_id, group_id or scope_id")
+	return sendTarget{}, fmt.Errorf("qqofficial target missing private_user_id, group_id or scope_id")
 }
 
 func (a *Adapter) nextMsgSeq(msgID string) int {

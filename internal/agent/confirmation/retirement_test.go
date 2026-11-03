@@ -7,6 +7,7 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage/sqlite"
+	"elbot/internal/testutil"
 	"errors"
 	"testing"
 )
@@ -20,9 +21,9 @@ func TestRetiredSessionDoesNotRestoreAutomaticConfirmation(t *testing.T) {
 	var c *ConfirmationCoordinator
 	s := newSessionSupervisor(t, store, func(deps *session.SupervisorDeps) { deps.ReleaseSession = func(id string) { c.ForgetSession(id) } })
 	defer s.Close(context.Background())
-	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: security.DefaultPermission()})
+	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})
 	c = NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: testCommandText, Sessions: s, Identity: identity})
-	scope := identity.Scope(t.Context())
+	scope := identity.Scope(testutil.WithCLIConversation(t.Context()))
 	row, err := s.Create(t.Context(), scope, session.CreateRequest{})
 	if err != nil {
 		t.Fatal(err)

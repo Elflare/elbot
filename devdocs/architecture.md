@@ -192,11 +192,11 @@ Platform dispatch 统一路由正文、媒体、Hook 输出与后台报告；Sen
 
 Platform 管输入归一化、历史落库、引用恢复和实际发送；适配器保留协议私有路由，根部公开最小发送、原生 API 与媒体能力。
 
-适配器提供静态声明，根部唯一清单关联声明与构造闭包，一次校验后按登记顺序构造及启动；未启用平台仍保留声明。根部裁剪依赖、登记 Agent 接线与自有资源，不通过实例类型猜测接线能力。声明与装配流如下：
+适配器提供静态声明，根部唯一清单关联 Config 定义的平台名、声明与构造闭包，按登记顺序构造及启动；清单完整性与唯一性由测试检查，未启用平台仍保留声明。根部裁剪依赖、登记 Agent 接线与自有资源，不通过实例类型猜测接线能力。声明与装配流如下：
 
 ```mermaid
 flowchart LR
-    Definition["各适配器 definition.go<br/>提供静态声明"] --> Registration["platform/registration.go<br/>校验登记、构造闭包"]
+    Definition["各适配器 definition.go<br/>提供静态声明"] --> Registration["platform/registration.go<br/>关联平台名、声明与构造闭包"]
     Registration --> Config["platform/config.go<br/>提取配置定义"]
     Registration --> Wiring["platform/wiring.go<br/>构造实例、连接能力"]
     Wiring --> Agent["platform/agent.go<br/>执行已登记的 Agent 接线"]
@@ -212,7 +212,7 @@ Chat History 由 App 持有、Tool 直接查询；Platform 不包装查询服务
 <!-- locator:session -->
 ## Session 生命周期
 
-Session 唯一管理 current 与 Binding：control 管会话业务及过期，binding 管准入，branch 管派生，naming 管命名；根部组合创建来源前缀与 Storage 全局序号。平台分别声明私聊与群聊短码，由 Agent 注入 Platform 根部按会话类型查询的能力；Session 原样使用，不转换大小写，不维护平台名单或缺失短码的默认值。创建时保存来源快照，压缩派生沿用快照；缺失时直接报错，不使用当前入口补齐。
+Session 唯一管理 current 与 Binding：control 管会话业务及过期，binding 管准入，branch 管派生，naming 管命名；根部组合创建来源前缀与 Storage 全局序号。平台分别声明私聊与群聊短码，由 Agent 注入 Platform 根部按会话类型查询的能力；Session 原样使用，不转换大小写，不维护平台名单或缺失短码的默认值。创建时保存来源快照，压缩派生沿用快照；缺失时直接报错，不使用当前入口补齐。会话范围保留平台与原生用户身份，权限检查直接使用这些事实；ActorID 仅作关联标识，不用于反向解析身份。
 
 - 切离使旧 binding 永久失效，切回建立新 binding。锁顺序：Scope → 排序 SessionID → 状态锁；外部 I/O 在锁外。
 - ForegroundActivated 是例外：接管提交后、释放准入前同步更新执行内存，不做 I/O 或再次准入；观察用 BindingChanged 在锁外发布。

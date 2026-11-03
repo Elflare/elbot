@@ -10,11 +10,9 @@ import (
 
 // CommonConfig 是根部为各平台提取的公共配置，不包含存储或运行服务。
 type CommonConfig struct {
-	Superadmins         []string // 当前平台的超级管理员标识。
-	ConfigDir           string   // 配置与环境文件目录。
-	AttachmentDir       string   // 平台附件目录。
-	MaxReceiveFileBytes int64    // 入站文件字节上限。
-	DownloadTimeoutSecs int      // 协议下载超时秒数。
+	PlatformName string                             // 根部登记的平台身份。
+	Superadmins  *Superadmins                       // 当前平台的超级管理员能力，由根部构造。
+	ConfigEnv    func(string) (string, bool, error) // 根部绑定配置位置的环境读取能力。
 }
 
 // DecodeConfig decodes a raw [platform.<name>] app.toml section into an adapter-owned config struct.

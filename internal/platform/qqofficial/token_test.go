@@ -241,7 +241,7 @@ func TestUnauthorizedRefreshRetriesOnlyOnce(t *testing.T) {
 func TestIngressStopsWhileOutgoingTokenRefreshContinues(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		entered, release := make(chan struct{}), make(chan struct{})
-		adapter, err := NewFromPlatformConfig(map[string]any{"enabled": true, "app_id": "app", "client_secret": "secret"}, Deps{})
+		adapter, err := NewFromPlatformConfig(map[string]any{"enabled": true, "app_id": "app", "client_secret": "secret"}, Deps{CommonConfig: testCommonConfig(t)})
 		if err != nil {
 			t.Fatal(err)
 		}

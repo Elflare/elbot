@@ -527,7 +527,7 @@ func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessi
 			}
 			metadata[key] = encoded
 		}
-		copySession, err := s.copyBackground(ctx, agent.BackgroundCopyRequest{Scope: session.Scope{ActorID: owner, Platform: target.Name, PlatformScopeID: cronScopeID(jobName)}, SourceSessionID: sourceSessionID, Kind: "cron", Name: jobName, Title: meta.Title, Metadata: metadata})
+		copySession, err := s.copyBackground(ctx, agent.BackgroundCopyRequest{Scope: session.Scope{ActorID: owner, PlatformUserID: target.SuperadminIDs[0], Platform: target.Name, PlatformScopeID: cronScopeID(jobName)}, SourceSessionID: sourceSessionID, Kind: "cron", Name: jobName, Title: meta.Title, Metadata: metadata})
 		if err != nil {
 			return err
 		}

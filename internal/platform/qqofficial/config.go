@@ -8,12 +8,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"elbot/internal/config"
 )
 
 const (
-	platformName       = "qqofficial"
 	defaultAPIBaseURL  = "https://api.sgroup.qq.com"
 	defaultTokenURL    = "https://bots.qq.com/app/getAppAccessToken"
 	defaultHTTPTimeout = 15 * time.Second
@@ -30,7 +27,6 @@ type Config struct {
 	HTTPTimeoutSeconds       int      `toml:"http_timeout_seconds"`
 	ReconnectIntervalSeconds int      `toml:"reconnect_interval_seconds"`
 	TriggerKeywords          []string `toml:"trigger_keywords"`
-	Superadmins              []string
 }
 
 func NewFromPlatformConfig(raw map[string]any, deps Deps) (*Adapter, error) {
@@ -38,13 +34,12 @@ func NewFromPlatformConfig(raw map[string]any, deps Deps) (*Adapter, error) {
 	if err := share.DecodeConfig(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("decode qqofficial config: %w", err)
 	}
-	cfg.Superadmins = append([]string(nil), deps.Superadmins...)
 	applyDefaults(&cfg)
 	if cfg.Enabled {
 		if strings.TrimSpace(cfg.AppID) == "" {
 			return nil, fmt.Errorf("qqofficial app_id is required")
 		}
-		secret, err := resolveSecret(cfg, deps.ConfigDir)
+		secret, err := resolveSecret(cfg, deps.ConfigEnv)
 		if err != nil {
 			return nil, err
 		}
@@ -55,6 +50,7 @@ func NewFromPlatformConfig(raw map[string]any, deps Deps) (*Adapter, error) {
 	}
 	sendCtx, sendCancel := context.WithCancel(context.Background())
 	adapter := &Adapter{
+		name: deps.PlatformName, superadmins: deps.Superadmins,
 		parseCommand: deps.ParseCommand,
 		cfg:          cfg, chatHistory: deps.ChatHistory, referenceResolver: deps.ReferenceResolver,
 		client: newAPIClient(cfg), seqByID: make(map[string]int),
@@ -64,7 +60,7 @@ func NewFromPlatformConfig(raw map[string]any, deps Deps) (*Adapter, error) {
 	return adapter, nil
 }
 
-func resolveSecret(cfg Config, configEnvDir string) (string, error) {
+func resolveSecret(cfg Config, configEnv func(string) (string, bool, error)) (string, error) {
 	if value := strings.TrimSpace(cfg.ClientSecret); value != "" {
 		return value, nil
 	}
@@ -72,7 +68,7 @@ func resolveSecret(cfg Config, configEnvDir string) (string, error) {
 	if envName == "" {
 		return "", nil
 	}
-	value, _, err := config.ConfigEnv(envName, configEnvDir)
+	value, _, err := configEnv(envName)
 	if err != nil {
 		return "", fmt.Errorf("resolve qqofficial client secret from %s: %w", envName, err)
 	}

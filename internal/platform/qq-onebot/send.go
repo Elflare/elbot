@@ -47,7 +47,7 @@ func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (deli
 	if text, ok := textOutputs(outputs); ok {
 		return a.sendContextText(ctx, text)
 	}
-	t, err := contextTarget(ctx)
+	t, err := a.contextTarget(ctx)
 	if err != nil {
 		logResult := sendLogResult(err)
 		return delivery.Receipt{}, logResult, err
@@ -58,11 +58,11 @@ func (a *Adapter) SendChat(ctx context.Context, outputs []delivery.Output) (deli
 		return delivery.Receipt{}, logResult, err
 	}
 	receipt, logResult, err := sendSegments(ctx, a.transport, t, segments)
-	return oneBotReceipt(receipt, t, outputs), logResult, err
+	return oneBotReceipt(a.Name(), receipt, t, outputs), logResult, err
 }
 
 func (a *Adapter) sendTemporary(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
-	transport := newTransport(a.cfg.URL, a.cfg.AccessToken, time.Duration(a.cfg.APITimeoutSeconds)*time.Second)
+	transport := newTransport(a.Name(), a.cfg.URL, a.cfg.AccessToken, time.Duration(a.cfg.APITimeoutSeconds)*time.Second)
 	dialCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if err := a.registerTemporary(transport, cancel); err != nil {
@@ -88,7 +88,7 @@ func (a *Adapter) sendTemporary(ctx context.Context, target delivery.Target, out
 	}()
 	t, err := targetToQQ(target)
 	if target.Empty() {
-		t, err = contextTarget(ctx)
+		t, err = a.contextTarget(ctx)
 	}
 	if err != nil {
 		logResult := sendLogResult(err)
@@ -103,36 +103,13 @@ func (a *Adapter) sendTemporary(ctx context.Context, target delivery.Target, out
 		return delivery.Receipt{}, logResult, err
 	}
 	receipt, logResult, err := sendSegments(ctx, transport, t, segments)
-	return oneBotReceipt(receipt, t, outputs), logResult, err
+	return oneBotReceipt(a.Name(), receipt, t, outputs), logResult, err
 }
 
 func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, globalevents.LogResult, error) {
 	outTarget := target
 	if outTarget.Superadmins {
-		if len(a.cfg.Superadmins) == 0 {
-			err := fmt.Errorf("qqonebot superadmins are not configured")
-			logResult := sendLogResult(err)
-			return delivery.Receipt{}, logResult, err
-		}
-		var receipt delivery.Receipt
-		for _, id := range a.cfg.Superadmins {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
-			}
-			copyTarget := outTarget
-			copyTarget.Superadmins = false
-			copyTarget.PrivateUserID = id
-			copyTarget.GroupID = ""
-			copyTarget.ScopeID = ""
-			sent, logResult, err := a.SendTo(ctx, copyTarget, outputs)
-			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, sent.PlatformMessageIDs...)
-			receipt.SentMessages = append(receipt.SentMessages, sent.SentMessages...)
-			if err != nil {
-				return receipt, logResult, err
-			}
-		}
-		return receipt, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
+		return a.superadmins.SendTo(ctx, outputs, a.SendTo)
 	}
 	if delivery.UseTemporaryConnection(ctx) {
 		return a.sendTemporary(ctx, target, outputs)
@@ -154,7 +131,7 @@ func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []
 		return delivery.Receipt{}, logResult, err
 	}
 	receipt, logResult, err := sendSegments(ctx, a.transport, t, segments)
-	return oneBotReceipt(receipt, t, outputs), logResult, err
+	return oneBotReceipt(a.Name(), receipt, t, outputs), logResult, err
 }
 
 func textOutputs(outputs []delivery.Output) (string, bool) {
@@ -172,7 +149,7 @@ func (a *Adapter) sendContextText(ctx context.Context, text string) (delivery.Re
 	if strings.TrimSpace(text) == "" {
 		return delivery.Receipt{}, globalevents.LogResult{ResultStatus: globalevents.ResultSucceeded}, nil
 	}
-	t, err := contextTarget(ctx)
+	t, err := a.contextTarget(ctx)
 	if err != nil {
 		logResult := sendLogResult(err)
 		return delivery.Receipt{}, logResult, err
@@ -212,7 +189,7 @@ func sendText(ctx context.Context, transport *Transport, t target, text string) 
 		err = fmt.Errorf("unsupported message target %q", t.MessageType)
 	}
 	logResult := sendLogResult(err)
-	return oneBotReceipt(receiptWithMessageID(id), t, nil), logResult, err
+	return oneBotReceipt(transport.platformName, receiptWithMessageID(id), t, nil), logResult, err
 }
 
 func sendSegments(ctx context.Context, transport *Transport, t target, segments []Segment) (delivery.Receipt, globalevents.LogResult, error) {
@@ -237,7 +214,7 @@ func receiptWithMessageID(id string) delivery.Receipt {
 	return delivery.Receipt{PlatformMessageIDs: []string{id}}
 }
 
-func oneBotReceipt(receipt delivery.Receipt, target target, outputs []delivery.Output) delivery.Receipt {
+func oneBotReceipt(platformName string, receipt delivery.Receipt, target target, outputs []delivery.Output) delivery.Receipt {
 	indexes := make([]int, 0, len(outputs))
 	for i, out := range outputs {
 		if out.Kind == delivery.KindImage || out.Kind == delivery.KindFile || out.Kind == delivery.KindRecord {
@@ -245,7 +222,7 @@ func oneBotReceipt(receipt delivery.Receipt, target target, outputs []delivery.O
 		}
 	}
 	for _, id := range receipt.PlatformMessageIDs {
-		receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: "qqonebot", ScopeID: oneBotTargetScope(target), OutputIndexes: append([]int(nil), indexes...)})
+		receipt.SentMessages = append(receipt.SentMessages, delivery.SentMessage{PlatformMessageID: id, Platform: platformName, ScopeID: oneBotTargetScope(target), OutputIndexes: append([]int(nil), indexes...)})
 	}
 	return receipt
 }
@@ -260,9 +237,9 @@ func oneBotTargetScope(target target) string {
 	return ""
 }
 
-func contextTarget(ctx context.Context) (target, error) {
+func (a *Adapter) contextTarget(ctx context.Context) (target, error) {
 	info, ok := contextinfo.ConversationFromContext(ctx)
-	if !ok || info.Source.Platform != "qqonebot" {
+	if !ok || info.Source.Platform != a.Name() {
 		return target{}, fmt.Errorf("qq send target missing")
 	}
 	out := delivery.Target{ScopeID: info.Source.ScopeID}

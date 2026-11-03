@@ -15,9 +15,13 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
+	"elbot/internal/platform/cli"
 	"elbot/internal/platform/headless"
+	qqonebot "elbot/internal/platform/qq-onebot"
+	"elbot/internal/platform/qqofficial"
 	"elbot/internal/platform/refcontext"
 	"elbot/internal/platform/share"
+	"elbot/internal/platform/telegram"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
@@ -26,71 +30,72 @@ import (
 
 func testRegistration() registration {
 	return registration{
+		name: "future",
 		definition: share.Definition{
-			Name: "future", PrivateSessionIDCode: "fx", GroupSessionIDCode: "room",
+			PrivateSessionIDCode: "fx", GroupSessionIDCode: "room",
 			ConfigDefinition:           config.Definition{Asset: "app.toml", Node: []string{"platform", "future"}, New: func() any { return &struct{}{} }},
 			ValidateNotificationTarget: share.ValidateNotificationTarget,
 		},
-		build: func(*Supervisor, *config.Config, SupervisorDeps, refcontext.Options) error { return nil },
+		build: func(*Supervisor, SupervisorDeps, refcontext.Options, map[string]any, share.CommonConfig) error {
+			return nil
+		},
 	}
 }
 
-func TestRegistrationRejectsIncompleteAndDuplicateDeclarations(t *testing.T) {
-	cases := []struct {
-		name   string
-		change func(*registration)
-	}{
-		{"name", func(r *registration) { r.definition.Name = " " }},
-		{"private code", func(r *registration) { r.definition.PrivateSessionIDCode = "" }},
-		{"group code", func(r *registration) { r.definition.GroupSessionIDCode = " " }},
-		{"config", func(r *registration) { r.definition.ConfigDefinition.New = nil }},
-		{"validator", func(r *registration) { r.definition.ValidateNotificationTarget = nil }},
-		{"constructor", func(r *registration) { r.build = nil }},
-		{"duplicate name", func(r *registration) {
-			r.definition.Name = "future"
-			r.definition.PrivateSessionIDCode, r.definition.GroupSessionIDCode = "other", "another"
-		}},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			m := &Supervisor{}
-			if err := m.registerPlatform(testRegistration()); err != nil {
-				t.Fatal(err)
+// 固定清单的开发错误在测试中发现，不在每次启动时重复防御。
+func TestRegistrationListIsCompleteAndUnique(t *testing.T) {
+	names, codes := map[string]bool{}, map[string]string{}
+	for _, entry := range registrations() {
+		d := entry.definition
+		if entry.name == "" || d.PrivateSessionIDCode == "" || d.GroupSessionIDCode == "" ||
+			d.ConfigDefinition.New == nil || d.ValidateNotificationTarget == nil || entry.build == nil {
+			t.Fatalf("incomplete registration: %+v", entry)
+		}
+		if names[entry.name] {
+			t.Fatalf("duplicate platform %q", entry.name)
+		}
+		names[entry.name] = true
+		for _, code := range []string{d.PrivateSessionIDCode, d.GroupSessionIDCode} {
+			if owner, exists := codes[code]; exists && owner != entry.name {
+				t.Fatalf("session code %q shared by %s and %s", code, owner, entry.name)
 			}
-			entry := testRegistration()
-			entry.definition.Name = "another"
-			entry.definition.PrivateSessionIDCode, entry.definition.GroupSessionIDCode = "private", "group"
-			tc.change(&entry)
-			if err := m.registerPlatform(entry); err == nil {
-				t.Fatalf("registration error = %v", err)
-			}
-			if len(m.registered) != 1 {
-				t.Fatal("invalid declaration was published")
-			}
-		})
+			codes[code] = entry.name
+		}
+		if !reflect.DeepEqual(d.ConfigDefinition.Node, []string{"platform", entry.name}) {
+			t.Fatalf("config node mismatch: %+v", entry)
+		}
 	}
 }
 
-func TestRegistrationCodeCollisions(t *testing.T) {
-	for _, codes := range [][2]string{{"fx", "other"}, {"room", "other"}, {"other", "fx"}, {"other", "room"}} {
-		t.Run(strings.Join(codes[:], "/"), func(t *testing.T) {
-			m := &Supervisor{}
-			if err := m.registerPlatform(testRegistration()); err != nil {
-				t.Fatal(err)
-			}
-			entry := testRegistration()
-			entry.definition.Name = "another"
-			entry.definition.PrivateSessionIDCode, entry.definition.GroupSessionIDCode = codes[0], codes[1]
-			if err := m.registerPlatform(entry); err == nil || len(m.registered) != 1 {
-				t.Fatalf("collision accepted: registrations=%d error=%v", len(m.registered), err)
-			}
-		})
+func TestAdaptersUseInjectedNames(t *testing.T) {
+	const name = "injected-platform"
+	common := share.CommonConfig{PlatformName: name, Superadmins: share.NewSuperadmins(name, nil), ConfigEnv: (&config.Config{}).ConfigEnv}
+	tg, err := telegram.NewFromPlatformConfig(nil, telegram.Deps{CommonConfig: common})
+	if err != nil {
+		t.Fatal(err)
 	}
-	m := &Supervisor{}
-	entry := testRegistration()
-	entry.definition.GroupSessionIDCode = entry.definition.PrivateSessionIDCode
-	if err := m.registerPlatform(entry); err != nil {
-		t.Fatalf("same platform may share a code: %v", err)
+	qq, err := qqofficial.NewFromPlatformConfig(nil, qqofficial.Deps{CommonConfig: common})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ob, err := qqonebot.NewFromPlatformConfig(nil, qqonebot.Deps{CommonConfig: common})
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote, err := cli.NewRemoteServer(cli.RemoteServerOptions{
+		PlatformName: name, Superadmins: common.Superadmins, ConfigEnv: common.ConfigEnv,
+		Config: cli.Config{Server: cli.ServerConfig{Enabled: true, Listen: "127.0.0.1:0", Tokens: map[string][]string{"local": {"TOKEN"}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, adapter := range []share.Runtime{tg, qq, ob, remote, cli.New(name), headless.New(name)} {
+		if adapter.Name() != name {
+			t.Fatalf("adapter %T name=%q", adapter, adapter.Name())
+		}
+		if err := adapter.Close(t.Context()); err != nil {
+			t.Errorf("close %T: %v", adapter, err)
+		}
 	}
 }
 
@@ -165,7 +170,7 @@ func TestNewPlatformFlowsThroughConstructionAgentNotificationsAndSession(t *test
 	runtime := &registeredTestRuntime{name: "future", received: make(chan string, 1)}
 	entry := testRegistration()
 	connected := 0
-	entry.build = func(m *Supervisor, _ *config.Config, _ SupervisorDeps, _ refcontext.Options) error {
+	entry.build = func(m *Supervisor, _ SupervisorDeps, _ refcontext.Options, _ map[string]any, _ share.CommonConfig) error {
 		m.ownRuntime(runtime, true, nil, entry.definition.ValidateNotificationTarget)
 		m.agentWiring = append(m.agentWiring, func(AgentCapabilities) error { connected++; return nil })
 		return nil
@@ -242,7 +247,7 @@ func TestRegisteredPartialFailuresRetainCleanup(t *testing.T) {
 			runtime := &registeredTestRuntime{name: "future"}
 			entry := testRegistration()
 			var released []string
-			entry.build = func(m *Supervisor, _ *config.Config, _ SupervisorDeps, _ refcontext.Options) error {
+			entry.build = func(m *Supervisor, _ SupervisorDeps, _ refcontext.Options, _ map[string]any, _ share.CommonConfig) error {
 				m.ownRuntime(runtime, false, nil, entry.definition.ValidateNotificationTarget)
 				if phase == "construction" {
 					return fault

@@ -18,7 +18,6 @@ import (
 	"github.com/coder/websocket/wsjson"
 
 	"elbot/internal/completion"
-	"elbot/internal/config"
 )
 
 // ErrServerUnavailable marks a network dial failure before the CLI handshake.
@@ -27,13 +26,13 @@ var ErrServerUnavailable = errors.New("cli server is unavailable")
 
 type RemoteClientOptions struct {
 	Config     Config
-	ConfigDir  string
+	ConfigEnv  func(string) (string, bool, error) // 根部绑定配置位置的环境读取能力。
 	ClientName string
 }
 
 type RemoteClient struct {
 	cfg       Config
-	configDir string
+	configEnv func(string) (string, bool, error)
 	profile   string
 	client    ClientConfig
 	conn      *websocket.Conn
@@ -55,7 +54,7 @@ func NewRemoteClient(opts RemoteClientOptions) (*RemoteClient, error) {
 	if strings.TrimSpace(client.URL) == "" {
 		return nil, fmt.Errorf("cli client %q url is empty", profile)
 	}
-	return &RemoteClient{cfg: cfg, configDir: opts.ConfigDir, profile: profile, client: client, pending: map[string]chan remoteMessage{}, output: make(chan tea.Msg, 256), done: make(chan struct{})}, nil
+	return &RemoteClient{cfg: cfg, configEnv: opts.ConfigEnv, profile: profile, client: client, pending: map[string]chan remoteMessage{}, output: make(chan tea.Msg, 256), done: make(chan struct{})}, nil
 }
 
 func (c *RemoteClient) URL() string {
@@ -262,7 +261,7 @@ func (c *RemoteClient) removePending(id string) {
 
 func (c *RemoteClient) resolveToken() (string, error) {
 	for _, envName := range c.client.TokenEnv {
-		value, ok, err := config.ConfigEnv(envName, c.configDir)
+		value, ok, err := c.configEnv(envName)
 		if err != nil {
 			return "", fmt.Errorf("resolve cli token %q: %w", envName, err)
 		}

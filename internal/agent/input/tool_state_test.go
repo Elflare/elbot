@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool/share"
 import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/events"
+	"elbot/internal/testutil"
 	"elbot/internal/tool"
 	"elbot/internal/tool/discovery"
 	"elbot/internal/workspace"
@@ -26,7 +27,7 @@ import (
 )
 
 func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
-	ctx := context.Background()
+	ctx := testutil.WithCLIConversation(t.Context())
 	store := newTestStore(t)
 
 	permission := security.NewPermission("low", "critical", map[string][]string{"cli": {"local"}})
@@ -40,7 +41,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{PlatformName: "cli", ActorID: "cli:local", ScopeID: "local", Permission: permission})
+	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: permission})
 	sessions := newSessionSupervisor(t, store)
 	t.Cleanup(func() { _ = sessions.Close(context.Background()) })
 	stateService := toolstate.NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
