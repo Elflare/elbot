@@ -77,7 +77,7 @@ func (m *Manager) executePrepared(ctx context.Context, call llm.ToolCallRequest,
 }
 
 func executionError(call llm.ToolCallRequest, message llm.LLMMessage, err error, resultStatus events.ResultStatus) executionResult {
-	content := fmt.Sprintf("tool call %s failed: %v", call.Name, err)
+	content := fmt.Sprintf("tool call %s %s: %v", call.Name, resultStatus, err)
 	message.Segments = llm.TextSegments(content)
 	return executionResult{Call: call, Message: message, Error: err, ResultStatus: resultStatus, LogResult: events.LogResult{ResultStatus: resultStatus, Content: content}}
 }

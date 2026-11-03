@@ -150,9 +150,6 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			}
 			req.Session.Metadata, _ = fields.Encode()
 		}
-		if result.Error != nil {
-			deps.SendPreview(ctx, fmt.Sprintf("%s 调用失败：%v", call.Name, result.Error))
-		}
 		return nil
 	}
 	// Blocking preparation receives a detached snapshot; completed tools can be
@@ -264,11 +261,18 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			if err == nil {
 				err = toolshare.PolicyDeniedError("tool confirmation rejected")
 			}
-			message := confirm.Message
-			if len(message.Segments) == 0 {
-				message = toolMessage(call.Name, call.ID, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
+			resultStatus := events.ResultFailed
+			var denied toolshare.PolicyDeniedError
+			switch {
+			case errors.As(err, &denied):
+				resultStatus = events.ResultRejected
+			case errors.Is(err, context.Canceled):
+				resultStatus = events.ResultCanceled
 			}
-			task.result = executionResult{Call: call, Message: message, Error: err}
+			task.result = executionError(call, toolMessage(call.Name, call.ID, ""), err, resultStatus)
+			if len(confirm.Message.Segments) > 0 {
+				task.result.Message = confirm.Message
+			}
 			task.finishedAt = storage.Now()
 			ready <- index
 			continue
