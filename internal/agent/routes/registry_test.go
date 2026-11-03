@@ -162,7 +162,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	requests := request.NewManager(0, testutil.IDSequence())
+	requests := request.NewManager(testutil.IDSequence())
 	info, requestCtx, done, _ := requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn})
 	defer done()
 	in.RequestID = info.ID

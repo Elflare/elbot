@@ -19,7 +19,7 @@ func TestBusinessIDsShareReservedRange(t *testing.T) {
 	if err != nil || message != "m1" {
 		t.Fatalf("message=%s err=%v", message, err)
 	}
-	requests := request.NewManager(0, next)
+	requests := request.NewManager(next)
 	req, _, done, err := requests.Start(t.Context(), request.StartRequest{})
 	if err != nil {
 		t.Fatal(err)

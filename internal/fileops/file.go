@@ -20,13 +20,12 @@ type EditFileOptions struct {
 }
 
 type File struct {
-	Path        string
-	Bytes       []byte
-	Text        string
-	Encoding    string
-	BOM         []byte
-	LineEnding  string
-	EndsNewline bool
+	Path       string
+	Bytes      []byte
+	Text       string
+	Encoding   string
+	BOM        []byte
+	LineEnding string
 }
 
 type EditResult struct {
@@ -69,7 +68,7 @@ func ReadFileWithLimit(path, requestedEncoding string, maxBytes int64) (File, er
 	if isUTF8Encoding(encName) && LooksBinaryUTF8(text) {
 		return File{}, fmt.Errorf("file appears to be binary")
 	}
-	return File{Path: path, Bytes: data, Text: text, Encoding: encName, BOM: bom, LineEnding: DetectLineEnding(text), EndsNewline: strings.HasSuffix(text, "\n")}, nil
+	return File{Path: path, Bytes: data, Text: text, Encoding: encName, BOM: bom, LineEnding: DetectLineEnding(text)}, nil
 }
 
 func ReadOrCreateFile(path, requestedEncoding string, create bool, hasExpectedRevision bool) (File, bool, error) {
@@ -137,8 +136,7 @@ func editFileWithResult(path, requestedEncoding, expectedRevision string, create
 		if !created && expectedRevision == "" && editsRequireRevision(edits) {
 			return EditResult{}, fmt.Errorf("expected_revision is required for replace, insert, delete, and overwrite on existing files")
 		}
-		oldText := NormalizeEditText(file.Text)
-		newText, err := ApplyEdits(oldText, edits)
+		newText, err := ApplyEdits(file.Text, edits)
 		if err != nil {
 			return EditResult{}, err
 		}

@@ -30,7 +30,6 @@ type Request struct {
 	Kind      Kind
 	Label     string
 	StartedAt time.Time
-	Deadline  *time.Time
 	// Stopping means cancellation was requested but execution has not acknowledged completion.
 	Stopping bool
 }
@@ -44,10 +43,9 @@ type StartRequest struct {
 }
 
 type Manager struct {
-	next           storage.IDSequence // 根部注入的持久化序号能力。
-	mu             sync.Mutex
-	defaultTimeout time.Duration
-	active         map[string]*activeRequest
+	next   storage.IDSequence // 根部注入的持久化序号能力。
+	mu     sync.Mutex
+	active map[string]*activeRequest
 }
 
 type activeRequest struct {
@@ -57,11 +55,10 @@ type activeRequest struct {
 	ctx context.Context
 }
 
-func NewManager(defaultTimeout time.Duration, next storage.IDSequence) *Manager {
+func NewManager(next storage.IDSequence) *Manager {
 	return &Manager{
-		next:           next,
-		defaultTimeout: defaultTimeout,
-		active:         map[string]*activeRequest{},
+		next:   next,
+		active: map[string]*activeRequest{},
 	}
 }
 
@@ -79,21 +76,13 @@ func (m *Manager) Start(parent context.Context, start StartRequest) (Request, co
 		_ = events.EmitLog(parent, record)
 		return Request{}, nil, nil, err
 	}
-	timeout := start.Timeout
-	if timeout == 0 {
-		timeout = m.defaultTimeout
-	}
-
 	startedAt := time.Now()
 	var (
-		ctx      context.Context
-		cancel   context.CancelFunc
-		deadline *time.Time
+		ctx    context.Context
+		cancel context.CancelFunc
 	)
-	if timeout > 0 {
-		ctx, cancel = context.WithTimeout(parent, timeout)
-		d := startedAt.Add(timeout)
-		deadline = &d
+	if start.Timeout > 0 {
+		ctx, cancel = context.WithTimeout(parent, start.Timeout)
 	} else {
 		ctx, cancel = context.WithCancel(parent)
 	}
@@ -105,7 +94,6 @@ func (m *Manager) Start(parent context.Context, start StartRequest) (Request, co
 		Kind:      start.Kind,
 		Label:     start.Label,
 		StartedAt: startedAt,
-		Deadline:  deadline,
 	}
 	if req.Kind == "" {
 		req.Kind = KindLLM
@@ -181,18 +169,10 @@ func (m *Manager) Cancel(id string) bool {
 }
 
 func (m *Manager) CancelSession(sessionID string) int {
-	return m.cancelMatching(func(req Request) bool { return req.SessionID == sessionID })
-}
-
-func (m *Manager) CancelAll() int {
-	return m.cancelMatching(func(Request) bool { return true })
-}
-
-func (m *Manager) cancelMatching(match func(Request) bool) int {
 	m.mu.Lock()
 	active := make([]*activeRequest, 0, len(m.active))
 	for _, req := range m.active {
-		if match(req.request) && !req.snapshot().Stopping {
+		if req.request.SessionID == sessionID && !req.snapshot().Stopping {
 			req.request.Stopping = true
 			active = append(active, req)
 		}

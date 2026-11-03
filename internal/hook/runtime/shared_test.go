@@ -149,8 +149,11 @@ func TestSharedStatePruneExpired(t *testing.T) {
 		t.Fatalf("Set kept: %v", err)
 	}
 	now = now.Add(2 * time.Second)
-	if removed := state.PruneExpired(); removed != 1 {
-		t.Fatalf("PruneExpired = %d", removed)
+	state.mu.Lock()
+	state.pruneExpiredLocked(now)
+	state.mu.Unlock()
+	if _, ok := state.items["expired"]; ok {
+		t.Fatal("expired entry remained after pruning")
 	}
 	if keys := state.List(""); len(keys) != 1 || keys[0] != "kept" {
 		t.Fatalf("remaining keys = %#v", keys)

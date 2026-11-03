@@ -48,7 +48,9 @@ func BenchmarkSharedMaintenance(b *testing.B) {
 							b.Fatal(ok, err)
 						}
 					case "prune":
-						s.PruneExpired()
+						s.mu.Lock()
+						s.pruneExpiredLocked(s.now())
+						s.mu.Unlock()
 					case "evict":
 						if err := s.SetWithTTL(keys[(i+count)%(count+1)], json.RawMessage(`1`), time.Hour); err != nil {
 							b.Fatal(err)

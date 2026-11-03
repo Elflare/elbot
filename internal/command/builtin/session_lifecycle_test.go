@@ -32,7 +32,7 @@ func TestLifecycleCommandsArchiveAndArchives(t *testing.T) {
 	selections.set(scope, []storage.SessionSummary{{ID: first.ID}})
 	deps := Deps{CommandText: testCommandText,
 		Sessions:     svc,
-		Requests:     request.NewManager(0, testutil.IDSequence()),
+		Requests:     request.NewManager(testutil.IDSequence()),
 		Turns:        turn.NewSupervisor(testutil.IDSequence()),
 		Store:        store,
 		Scope:        func(context.Context) session.Scope { return scope },

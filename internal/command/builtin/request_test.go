@@ -21,7 +21,7 @@ func TestRequestsCommandFormatsTree(t *testing.T) {
 	if err := store.Sessions().Create(ctx, sessionRow); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	manager := request.NewManager(time.Minute, testutil.IDSequence())
+	manager := request.NewManager(testutil.IDSequence())
 	turnReq, _, turnDone, _ := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	defer turnDone()
 	_, _, toolDone, _ := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
@@ -60,7 +60,7 @@ func assertCommandTestCanceled(t *testing.T, ctx context.Context) {
 
 func TestFormatActiveRequestsUsesTree(t *testing.T) {
 	ctx := context.Background()
-	manager := request.NewManager(time.Minute, testutil.IDSequence())
+	manager := request.NewManager(testutil.IDSequence())
 	turnReq, _, turnDone, _ := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	defer turnDone()
 	_, _, toolDone, _ := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
@@ -81,7 +81,7 @@ func TestFormatActiveRequestsUsesTree(t *testing.T) {
 
 func TestRequestCommandsWithoutActiveRequests(t *testing.T) {
 	ctx := context.Background()
-	deps := Deps{CommandText: testCommandText, Requests: request.NewManager(0, testutil.IDSequence())}
+	deps := Deps{CommandText: testCommandText, Requests: request.NewManager(testutil.IDSequence())}
 	result, err := NewRequests(deps).Handle(ctx, command.Request{})
 	if err != nil {
 		t.Fatal(err)
@@ -127,7 +127,7 @@ func TestWriteRequestLineKindsAndStopping(t *testing.T) {
 
 func TestStopCommandCancelsNumberedHookRequest(t *testing.T) {
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	manager := request.NewManager(time.Minute, testutil.IDSequence())
+	manager := request.NewManager(testutil.IDSequence())
 	turnReq, turnCtx, turnDone, _ := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	defer turnDone()
 	_, hookCtx, _, _ := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindHook, Label: "gpt_image_draw_fullwidth"})
@@ -146,7 +146,7 @@ func TestStopCommandCancelsNumberedHookRequest(t *testing.T) {
 
 func TestStopCommandCancelsNumberedChildRequest(t *testing.T) {
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	manager := request.NewManager(time.Minute, testutil.IDSequence())
+	manager := request.NewManager(testutil.IDSequence())
 	turnReq, turnCtx, turnDone, _ := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	defer turnDone()
 	_, toolCtx, _, _ := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
@@ -165,7 +165,7 @@ func TestStopCommandCancelsNumberedChildRequest(t *testing.T) {
 
 func TestStopCommandCancelsNumberedTurnAndChildren(t *testing.T) {
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	manager := request.NewManager(time.Minute, testutil.IDSequence())
+	manager := request.NewManager(testutil.IDSequence())
 	turnReq, turnCtx, turnDone, _ := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	defer turnDone()
 	_, toolCtx, toolDone, _ := manager.Start(turnCtx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
@@ -188,7 +188,7 @@ func TestStopCommandCancelsNumberedTurnAndChildren(t *testing.T) {
 }
 
 func TestStopCommandCompletesRequestIDs(t *testing.T) {
-	manager := request.NewManager(0, testutil.IDSequence())
+	manager := request.NewManager(testutil.IDSequence())
 	started, _, done, _ := manager.Start(context.Background(), request.StartRequest{SessionID: "s1", Kind: request.KindLLM, Label: "chat"})
 	defer done()
 

@@ -68,7 +68,7 @@ func TestStatusSessionMarkers(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			requests := request.NewManager(0, testutil.IDSequence())
+			requests := request.NewManager(testutil.IDSequence())
 			_, _, done, _ := requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn, Label: "chat"})
 			defer done()
 			handler := NewStatus(Deps{CommandText: testCommandText,

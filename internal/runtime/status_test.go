@@ -11,7 +11,4 @@ func TestSnapshotElapsedUsesFinishedAt(t *testing.T) {
 	if got := s.Elapsed(start.Add(2 * time.Minute)); got != 65*time.Second {
 		t.Fatal(got)
 	}
-	if got := s.StageElapsed(start.Add(2 * time.Minute)); got != 64*time.Second {
-		t.Fatal(got)
-	}
 }

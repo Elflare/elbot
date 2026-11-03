@@ -62,17 +62,3 @@ func (s Snapshot) Elapsed(now time.Time) time.Duration {
 	}
 	return end.Sub(start)
 }
-
-func (s Snapshot) StageElapsed(now time.Time) time.Duration {
-	if s.StageStartedAt.IsZero() {
-		return s.Elapsed(now)
-	}
-	end := s.FinishedAt
-	if end.IsZero() {
-		end = now
-	}
-	if end.Before(s.StageStartedAt) {
-		return 0
-	}
-	return end.Sub(s.StageStartedAt)
-}

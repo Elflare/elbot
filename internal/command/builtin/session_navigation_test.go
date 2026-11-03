@@ -93,7 +93,7 @@ func TestResumeAndForkTruncateHistoryWithoutChangingMessages(t *testing.T) {
 	}
 	deps := Deps{CommandText: testCommandText,
 		Sessions: svc,
-		Requests: request.NewManager(0, testutil.IDSequence()),
+		Requests: request.NewManager(testutil.IDSequence()),
 		Turns:    turn.NewSupervisor(testutil.IDSequence()),
 		Store:    store,
 		Scope:    func(context.Context) session.Scope { return scope },
@@ -350,7 +350,7 @@ func TestForkMessagesUseForkContextAndForkShowsHistory(t *testing.T) {
 	}
 	deps := Deps{CommandText: testCommandText,
 		Sessions: svc,
-		Requests: request.NewManager(0, testutil.IDSequence()),
+		Requests: request.NewManager(testutil.IDSequence()),
 		Turns:    turn.NewSupervisor(testutil.IDSequence()),
 		Store:    store,
 		Scope:    func(context.Context) session.Scope { return scope },

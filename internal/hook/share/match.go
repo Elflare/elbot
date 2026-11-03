@@ -118,24 +118,8 @@ func Contains(field, value string) Match {
 	return Match{Conditions: []Condition{{Field: field, Op: MatchContains, Value: value}}}
 }
 
-func FullMatch(field, value string) Match {
-	return Match{Conditions: []Condition{{Field: field, Op: MatchFull, Value: value}}}
-}
-
-func StartsWith(field, value string) Match {
-	return Match{Conditions: []Condition{{Field: field, Op: MatchPrefix, Value: value}}}
-}
-
-func EndsWith(field, value string) Match {
-	return Match{Conditions: []Condition{{Field: field, Op: MatchSuffix, Value: value}}}
-}
-
 func Regex(field, value string) Match {
 	return Match{Conditions: []Condition{{Field: field, Op: MatchRegex, Value: value}}}
-}
-
-func Exists(field string) Match {
-	return Match{Conditions: []Condition{{Field: field, Op: MatchExists}}}
 }
 
 func (m Match) Validate() error {
@@ -148,11 +132,6 @@ func (m Match) Validate() error {
 		}
 	}
 	return nil
-}
-
-func (m Match) Matches(event Event) bool {
-	matched := m.MatchEvent(event)
-	return matched.OK
 }
 
 type MatchResult struct {
@@ -200,11 +179,6 @@ func (c Condition) validate() error {
 		}
 	}
 	return nil
-}
-
-func (c Condition) matches(event Event) bool {
-	ok, _ := c.match(event)
-	return ok
 }
 
 func (c Condition) match(event Event) (bool, *RegexMatch) {

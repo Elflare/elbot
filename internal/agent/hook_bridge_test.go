@@ -12,7 +12,7 @@ import (
 func TestHookRequestAllocationFailure(t *testing.T) {
 	m := contractSupervisor(t, isolatedModuleDeps(t))
 	want := errors.New("reserve failed")
-	m.requests = request.NewManager(0, func(context.Context) (int64, error) { return 0, want })
+	m.requests = request.NewManager(func(context.Context) (int64, error) { return 0, want })
 	_, done, err := m.StartHookRequest(t.Context(), "session", "handler")
 	if !errors.Is(err, want) || done != nil || len(m.requests.List()) != 0 {
 		t.Fatalf("cause=%v requests=%v", err, m.requests.List())

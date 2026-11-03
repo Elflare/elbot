@@ -10,7 +10,7 @@ import (
 
 func TestAllocationFailureDoesNotRegisterRequest(t *testing.T) {
 	want := errors.New("reserve failed")
-	m := NewManager(time.Minute, func(context.Context) (int64, error) { return 0, want })
+	m := NewManager(func(context.Context) (int64, error) { return 0, want })
 	parent := t.Context()
 	req, ctx, done, err := m.Start(parent, StartRequest{SessionID: "s1", Kind: KindLLM})
 	if !errors.Is(err, want) || req.ID != "" || ctx != nil || done != nil || len(m.List()) != 0 {
@@ -22,15 +22,15 @@ func TestAllocationFailureDoesNotRegisterRequest(t *testing.T) {
 }
 
 func TestManagerStartListAndDone(t *testing.T) {
-	m := NewManager(time.Minute, testutil.IDSequence())
-	req, _, done, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM, Label: "chat"})
+	m := NewManager(testutil.IDSequence())
+	req, ctx, done, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM, Label: "chat", Timeout: time.Minute})
 
 	requests := m.List()
 	if len(requests) != 1 || requests[0].ID != req.ID {
 		t.Fatalf("List = %#v, want request %s", requests, req.ID)
 	}
-	if requests[0].Deadline == nil {
-		t.Fatal("expected deadline from default timeout")
+	if _, ok := ctx.Deadline(); !ok {
+		t.Fatal("expected deadline from request timeout")
 	}
 
 	done()
@@ -41,7 +41,7 @@ func TestManagerStartListAndDone(t *testing.T) {
 }
 
 func TestManagerCancel(t *testing.T) {
-	m := NewManager(time.Minute, testutil.IDSequence())
+	m := NewManager(testutil.IDSequence())
 	req, ctx, done, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM})
 	defer done()
 	got, ok := m.Get(req.ID)
@@ -66,7 +66,7 @@ func TestManagerCancel(t *testing.T) {
 }
 
 func TestManagerCancelSession(t *testing.T) {
-	m := NewManager(time.Minute, testutil.IDSequence())
+	m := NewManager(testutil.IDSequence())
 	parent, ctx1, done1, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindTurn})
 	defer done1()
 	child, ctx2, done2, _ := m.Start(ctx1, StartRequest{ParentID: parent.ID, SessionID: "s1", Kind: KindTool})
@@ -92,29 +92,9 @@ func TestManagerCancelSession(t *testing.T) {
 	}
 }
 
-func TestManagerCancelAll(t *testing.T) {
-	m := NewManager(time.Minute, testutil.IDSequence())
-	_, ctx1, done1, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM})
-	defer done1()
-	_, ctx2, done2, _ := m.Start(context.Background(), StartRequest{SessionID: "s2", Kind: KindTool})
-	defer done2()
-
-	if got := m.CancelAll(); got != 2 {
-		t.Fatalf("CancelAll = %d, want 2", got)
-	}
-	assertCanceled(t, ctx1)
-	assertCanceled(t, ctx2)
-	if got := len(m.List()); got != 2 {
-		t.Fatalf("stopping requests = %d, want 2", got)
-	}
-	if got := m.CancelAll(); got != 0 {
-		t.Fatalf("repeated CancelAll = %d, want 0", got)
-	}
-}
-
 func TestManagerTimeoutWaitsForExecutionCompletion(t *testing.T) {
-	m := NewManager(10*time.Millisecond, testutil.IDSequence())
-	req, ctx, done, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM})
+	m := NewManager(testutil.IDSequence())
+	req, ctx, done, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM, Timeout: 10 * time.Millisecond})
 	defer done()
 	assertCanceled(t, ctx)
 	if got, ok := m.Get(req.ID); !ok || !got.Stopping {
@@ -136,7 +116,7 @@ func assertCanceled(t *testing.T, ctx context.Context) {
 }
 
 func TestBatchCancelKeepsInheritedStopsAndMatchesEmptySession(t *testing.T) {
-	m := NewManager(0, testutil.IDSequence())
+	m := NewManager(testutil.IDSequence())
 	parent, stopParent := context.WithCancel(t.Context())
 	inherited, inheritedCtx, doneInherited, _ := m.Start(parent, StartRequest{})
 	defer doneInherited()
@@ -159,8 +139,8 @@ func TestBatchCancelKeepsInheritedStopsAndMatchesEmptySession(t *testing.T) {
 	if got, ok := m.Get(empty.ID); !ok || !got.Stopping {
 		t.Fatalf("canceled request lost: %+v, %v", got, ok)
 	}
-	if got := m.CancelAll(); got != 1 {
-		t.Fatalf("CancelAll = %d, want only remaining request", got)
+	if got := m.CancelSession("other"); got != 1 {
+		t.Fatalf("CancelSession(other) = %d, want 1", got)
 	}
 	assertCanceled(t, otherCtx)
 	doneInherited()

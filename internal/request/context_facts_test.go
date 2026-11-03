@@ -9,7 +9,7 @@ import (
 )
 
 func TestRequestsPublishIndependentAssociations(t *testing.T) {
-	manager := NewManager(0, testutil.IDSequence())
+	manager := NewManager(testutil.IDSequence())
 	ctx := contextinfo.WithExecution(t.Context(), contextinfo.Execution{RunID: "run", Attempt: "attempt"})
 	main, mainCtx, finishMain, _ := manager.Start(ctx, StartRequest{SessionID: "session", Kind: KindTurn})
 	defer finishMain()

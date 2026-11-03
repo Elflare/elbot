@@ -113,7 +113,7 @@ func TestPreparedErrorEventExposesMessage(t *testing.T) {
 
 func TestMatchErrorMessage(t *testing.T) {
 	event := share.Event{Point: share.PointErrorOccurred, Error: errors.New("hook failed")}
-	if !share.Contains("error.message", "failed").Matches(event) {
+	if !share.Contains("error.message", "failed").MatchEvent(event).OK {
 		t.Fatal("expected error.message match")
 	}
 }
@@ -123,10 +123,10 @@ func TestMatchMessageIntentText(t *testing.T) {
 		Segments:   llm.TextSegments("芙莉丝 咩"),
 		IntentText: "咩",
 	}}
-	if !share.FullMatch("message.intent_text", "咩").Matches(event) {
+	if !(share.Match{Conditions: []share.Condition{{Field: "message.intent_text", Op: share.MatchFull, Value: "咩"}}}).MatchEvent(event).OK {
 		t.Fatal("expected message.intent_text match")
 	}
-	if share.FullMatch("message.text", "咩").Matches(event) {
+	if (share.Match{Conditions: []share.Condition{{Field: "message.text", Op: share.MatchFull, Value: "咩"}}}).MatchEvent(event).OK {
 		t.Fatal("message.text should still include the original text")
 	}
 }

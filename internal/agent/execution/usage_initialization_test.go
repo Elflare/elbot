@@ -86,9 +86,9 @@ func TestExecutionRestoresUsageBeforeCancellationAndCleansUpFailure(t *testing.T
 			store := newTestStore(t)
 			sessions := newSessionSupervisor(t, store)
 			turns := usageTestTurns{turn.NewSupervisor(testutil.IDSequence())}
-			requests := &usageTestRequests{Manager: request.NewManager(0, testutil.IDSequence()), cancelOnStart: tc.cancel}
+			requests := &usageTestRequests{Manager: request.NewManager(testutil.IDSequence()), cancelOnStart: tc.cancel}
 			if tc.allocationFails {
-				requests.Manager = request.NewManager(0, func(context.Context) (int64, error) { return 0, errors.New("reserve failed") })
+				requests.Manager = request.NewManager(func(context.Context) (int64, error) { return 0, errors.New("reserve failed") })
 			}
 			view := dialogue.ExecutionView{Sessions: store.Sessions()}
 			changed := signal.New[StatusChangedEvent, signal.Empty]("usage-initialization")

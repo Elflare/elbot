@@ -210,13 +210,6 @@ func (s *SharedState) storeLocked(key string, entry sharedEntry) error {
 	return nil
 }
 
-func (s *SharedState) PruneExpired() int {
-	now := s.now()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.pruneExpiredLocked(now)
-}
-
 func (s *SharedState) makeRoomLocked(key string, incoming sharedEntry) error {
 	if sharedEntrySize(key, incoming) > s.maxSize {
 		return fmt.Errorf("hook shared state entry exceeds %d byte limit", s.maxSize)
@@ -262,20 +255,19 @@ func (s *SharedState) makeRoomLocked(key string, incoming sharedEntry) error {
 	return fmt.Errorf("hook shared state cannot make room for key %q", key)
 }
 
-func (s *SharedState) pruneExpiredLocked(now time.Time) int {
-	removed := 0
+func (s *SharedState) pruneExpiredLocked(now time.Time) {
+	removed := false
 	for {
 		key, ok := s.expiry.popDue(now)
 		if !ok {
 			break
 		}
 		s.deleteLocked(key, s.items[key])
-		removed++
+		removed = true
 	}
-	if removed > 0 {
+	if removed {
 		s.wakeExpiry()
 	}
-	return removed
 }
 
 func (s *SharedState) deleteLocked(key string, entry sharedEntry) {
