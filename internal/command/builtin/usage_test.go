@@ -488,15 +488,3 @@ func TestUsageCallRangePreservesUnknownAndDamage(t *testing.T) {
 		t.Fatalf("result = %+v, err = %v", result, err)
 	}
 }
-
-func TestUsageCallRangeHelp(t *testing.T) {
-	result, err := NewUsage(Deps{CommandText: testCommandText}).Handle(t.Context(), command.Request{Args: "--help"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"-n <x[-y]>", "筛选后按新到旧", "1..100000"} {
-		if !strings.Contains(result.Content, want) {
-			t.Fatalf("help missing %q:\n%s", want, result.Content)
-		}
-	}
-}

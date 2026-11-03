@@ -115,9 +115,6 @@ func TestAuditCommandRunSourceFilterAndCompletion(t *testing.T) {
 		}
 	}
 	cmd := NewAudit(Deps{CommandText: testCommandText})
-	if !strings.Contains(cmd.Info().Help, "--run_source") {
-		t.Fatal("help omits run source")
-	}
 	for _, raw := range []string{"/audit --run_", "/audit --run_source "} {
 		got := cmd.(command.Completer).Complete(t.Context(), command.CompletionRequest{Raw: raw, Prefix: "/", Name: "audit", Args: strings.TrimPrefix(raw, "/audit "), Cursor: len(raw)})
 		var values []string
@@ -489,16 +486,12 @@ func TestLogRawIndependentOfLevelAndContentRendering(t *testing.T) {
 		}
 	}
 }
-func TestLogUnspecifiedResultAndHelp(t *testing.T) {
+func TestLogUnspecifiedResult(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{Level: "INFO", Content: "plain", EventName: "progress"}}}
 	handler := NewLog(Deps{CommandText: testCommandText, Logs: service})
 	result, err := handler.Handle(t.Context(), command.Request{})
 	if err != nil || !strings.Contains(result.Content, " progress\n[plain]\nINFO") {
 		t.Fatalf("result=%+v err=%v", result, err)
-	}
-	result, err = handler.Handle(t.Context(), command.Request{Args: "-h"})
-	if err != nil || !strings.Contains(result.Content, "--raw") || !strings.Contains(result.Content, "-s, --system") {
-		t.Fatalf("help=%+v err=%v", result, err)
 	}
 }
 

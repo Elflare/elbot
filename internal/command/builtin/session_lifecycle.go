@@ -20,8 +20,9 @@ func NewArchive(deps Deps) command.Handler {
 	return sessionTargetCommand{
 		deps:        deps,
 		name:        "archive",
-		args:        "[number|session_id] --confirm",
+		args:        "[number|session_id] [--confirm]",
 		description: "归档会话",
+		help:        "省略目标=当前",
 		confirm:     true,
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
 			target, confirmed := parseTargetConfirm(req.Args)
@@ -51,6 +52,7 @@ func NewUnarchive(deps Deps) command.Handler {
 		name:        "unarchive",
 		args:        "[number|session_id]",
 		description: "取消归档",
+		help:        "省略目标=当前",
 		archived:    true,
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
 			sessionID, err := resolveSessionTarget(ctx, deps, req.Args)
@@ -72,6 +74,7 @@ func NewPin(deps Deps) command.Handler {
 		name:        "pin",
 		args:        "[number|session_id]",
 		description: "置顶会话",
+		help:        "省略目标=当前",
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
 			sessionID, err := resolveSessionTarget(ctx, deps, req.Args)
 			if err != nil {
@@ -92,6 +95,7 @@ func NewUnpin(deps Deps) command.Handler {
 		name:        "unpin",
 		args:        "[number|session_id]",
 		description: "取消置顶",
+		help:        "省略目标=当前",
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
 			sessionID, err := resolveSessionTarget(ctx, deps, req.Args)
 			if err != nil {
@@ -121,7 +125,7 @@ func (c renameCommand) Info() command.Info {
 		Description:   "重命名会话",
 		SessionEffect: command.SessionEffectMutate,
 		MinRole:       contextinfo.RoleUser,
-		Help:          "省略目标=当前会话；重名时用编号或 ID。",
+		Help:          "省略目标=当前",
 	}
 }
 
@@ -150,7 +154,7 @@ func NewDelete(deps Deps) command.Handler {
 	return sessionTargetCommand{
 		deps:        deps,
 		name:        "delete",
-		args:        "<number|session_id> --confirm",
+		args:        "<number|session_id> [--confirm]",
 		description: "永久删除会话",
 		confirm:     true,
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
@@ -188,9 +192,10 @@ type cleanCommand struct {
 func (c cleanCommand) Info() command.Info {
 	return command.Info{
 		Name:          "clean",
-		Args:          "--confirm",
-		Description:   "清理过期会话",
+		Args:          "[--confirm]",
+		Description:   "永久清理过期会话",
 		SessionEffect: command.SessionEffectMutate,
+		Help:          "仅清理未归档、未置顶的过期会话",
 	}
 }
 
@@ -221,13 +226,14 @@ type sessionTargetCommand struct {
 	name        string
 	args        string
 	description string
+	help        string // 命令的参数说明与必要规则，传入 Info.Help。
 	archived    bool
 	confirm     bool
 	handle      func(context.Context, Deps, command.Request) (*command.Result, error)
 }
 
 func (c sessionTargetCommand) Info() command.Info {
-	return command.Info{Name: c.name, Args: c.args, Description: c.description, SessionEffect: command.SessionEffectMutate, MinRole: contextinfo.RoleUser}
+	return command.Info{Name: c.name, Args: c.args, Description: c.description, Help: c.help, SessionEffect: command.SessionEffectMutate, MinRole: contextinfo.RoleUser}
 }
 
 func (c sessionTargetCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {

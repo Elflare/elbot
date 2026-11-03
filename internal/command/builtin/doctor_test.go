@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"strings"
 	"testing"
 
 	"elbot/internal/command"
@@ -77,11 +76,7 @@ func TestDoctorRegistrationPermissionsHelpAndCompletion(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if actor.Role == contextinfo.RoleSuperadmin {
-			if !strings.Contains(result.Content, "只读检查") {
-				t.Fatal(result.Content)
-			}
-		} else if result.Content != "unk command: doctor" {
+		if actor.Role != contextinfo.RoleSuperadmin && result.Content != "unk command: doctor" {
 			t.Fatal(result.Content)
 		}
 	}

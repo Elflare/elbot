@@ -21,8 +21,9 @@ type toolsCommand struct {
 func (c toolsCommand) Info() command.Info {
 	return command.Info{
 		Name:        "tools",
-		Args:        "[reload|uninstall|remove] [name]",
+		Args:        "[reload|remove <name>|uninstall <name>] [--confirm]",
 		Description: "工具与 Skill",
+		Help:        "省略=列表；reload=重载 Skill\nremove/uninstall=删除 Skill 及目录；无 --confirm 仅提示确认",
 	}
 }
 

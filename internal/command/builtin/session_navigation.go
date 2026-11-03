@@ -14,7 +14,10 @@ import (
 )
 
 func NewSessions(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "sessions", Args: "[keyword]", Description: "会话列表/搜索", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{
+		Name: "sessions", Args: "[page] [keyword]", Description: "会话列表/搜索", MinRole: contextinfo.RoleUser,
+		Help: "page≥1，默认1；keyword=搜索词，省略=不筛选",
+	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page, query, err := parseSessionsArgs(req.Args)
 		if err != nil {
 			return nil, err
@@ -36,7 +39,10 @@ func NewResume(deps Deps) command.Handler { return resumeCommand{deps: deps} }
 type resumeCommand struct{ deps Deps }
 
 func (c resumeCommand) Info() command.Info {
-	return command.Info{Name: "resume", Args: "[number|session_id]", Description: "恢复会话", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser}
+	return command.Info{
+		Name: "resume", Args: "[number|session_id|--page <page>]", Description: "恢复会话", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser,
+		Help: "省略=列可恢复会话；--page=翻页，page≥1\nnumber=该列表编号，更新倒序、跨页连续",
+	}
 }
 
 func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
@@ -117,7 +123,10 @@ func (c resumeCommand) Complete(ctx context.Context, req command.CompletionReque
 }
 
 func NewArchives(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "archives", Args: "[page] [keyword]", Description: "归档列表", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{
+		Name: "archives", Args: "[page] [keyword]", Description: "归档列表/搜索", MinRole: contextinfo.RoleUser,
+		Help: "page≥1，默认1；keyword=搜索词，省略=不筛选",
+	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page, query, err := parseSessionsArgs(req.Args)
 		if err != nil {
 			return nil, err
@@ -135,7 +144,10 @@ func NewArchives(deps Deps) command.Handler {
 }
 
 func NewMessages(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "messages", Args: "[page]", Description: "消息 ID 列表", MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{
+		Name: "messages", Args: "[page]", Description: "当前会话的 assistant 消息 ID", MinRole: contextinfo.RoleUser,
+		Help: "page≥1，默认1；ID 用于 " + deps.CommandText("fork"),
+	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page := 1
 		if arg := strings.TrimSpace(req.Args); arg != "" {
 			parsed, err := strconv.Atoi(arg)
@@ -165,7 +177,10 @@ func NewMessages(deps Deps) command.Handler {
 }
 
 func NewFork(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "fork", Args: "<message_id>", Description: "从消息创建分支", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	return command.NewFunc(command.Info{
+		Name: "fork", Args: "<message_id>", Description: "从消息创建并切换到分支", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser,
+		Help: "message_id 见 " + deps.CommandText("messages") + "；原会话保留",
+	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		messageID := strings.TrimSpace(req.Args)
 		if messageID == "" {
 			return nil, fmt.Errorf("usage: %s", deps.CommandText("fork", "<message_id>"))

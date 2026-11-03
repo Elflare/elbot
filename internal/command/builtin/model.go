@@ -22,15 +22,19 @@ type modelCommand struct {
 }
 
 func (c modelCommand) Info() command.Info {
-	return modelCommandInfo()
+	return modelCommandInfo(c.deps.CommandText)
 }
 
-func modelCommandInfo() command.Info {
+func modelCommandInfo(commandText func(string, ...string) string) command.Info {
 	return command.Info{
 		Name:        "model",
-		Args:        "[--chat|--work|--elwisp1|--elwisp2|--elwisp3|--compact|--naming] <name or number>",
+		Args:        "[target] <model>",
 		Description: "切换模型",
-		Help:        "省略目标=当前模式；模型=编号、名称或 provider/model。\n--compact: 压缩 · --naming: 命名 · --elwisp1/2/3: Elnis 槽位",
+		Help: "model=编号/名称/provider/model；编号见 " + commandText("checkmodel") + "\n" +
+			"target 至多一个；省略=当前模式，无会话=默认模式\n" +
+			"--chat/--work：模式；--elwisp1/--elwisp2/--elwisp3：Elnis 槽位\n" +
+			"--compact/-c：Chat 摘要；--naming/-n：会话命名\n" +
+			"按模式/槽位全局保存；Responses 原生压缩用当前模型",
 	}
 }
 
@@ -179,7 +183,7 @@ func NewCheckModel(deps Deps) command.Handler {
 		Args:        "[--fresh|--refresh] [query]",
 		Description: "模型列表/搜索",
 		Aliases:     []string{"models"},
-		Help:        "--fresh, --refresh 重载厂商配置并刷新模型列表",
+		Help:        "query=搜索词；省略=全部\n--fresh/--refresh：重载厂商配置并刷新列表",
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		args, fresh := parseModelListArgs(req.Args)
 		if fresh {

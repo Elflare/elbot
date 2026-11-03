@@ -24,12 +24,10 @@ func usageInfo() command.Info {
 		Args:        "[options]",
 		Description: "用量统计",
 		MinRole:     contextinfo.RoleSuperadmin,
-		Help: strings.TrimSpace(`-d, --days <n>       天数，默认 1
--n <x[-y]>           筛选后按新到旧取第 x..y 次，1..100000
--m, --model <name>   模型
--s, --session <id>   会话
---by model|day|session  分组，默认 model
---since/--until <time>  时间范围，如 2h、2026-06-03`),
+		Help: `-d/--days <n>：天数，默认1；--by <model|day|session>：分组，默认model
+-n <x[-y]>：筛选后按新到旧取第x次或x..y次，1≤x≤y≤100000
+-m/--model <name>：模型；-s/--session <id>：会话
+--since/--until <time>：起止时间，如 2h、2026-06-03`,
 	}
 }
 
@@ -45,7 +43,7 @@ func (c usageCommand) Info() command.Info { return usageInfo() }
 
 func (c usageCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
 	if wantsCommandHelp(req.Args) {
-		return formatCommandHelp(c.deps.CommandText, usageInfo()), nil
+		return formatCommandHelp(c.deps.CommandText, c.Info()), nil
 	}
 	query, groupBy, callRange, err := parseUsageQuery(req.Args)
 	if err != nil {

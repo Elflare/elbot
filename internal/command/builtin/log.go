@@ -17,23 +17,17 @@ func auditInfo() command.Info {
 		Name:        "audit",
 		Args:        "[options]",
 		Description: "审计日志",
-		Help: strings.TrimSpace(`-n, --limit <n>       条数，默认 5
---days <n>            天数，默认 1
---level <level>       最低 debug|info|warn|error，默认 debug
--d/-i/-w/-e           级别简写
---raw                原始记录
--t, --tool [name]     工具开始/结束，可指定名称
---run_source <name>   foreground|cron|elnis
---hook               Hook 日志
---since/--until <time>  时间范围，如 2h、2026-06-03
---event <name>        事件
---risk <level>        风险
---platform <name>     参与者平台
---actor-id <id>       原生用户 ID
---actor-name <name>   参与者展示名
---session <id>        会话
---msg <text>          正文过滤
---contains <text>     正文及原始记录搜索`),
+		Help: `-n/--limit <n>：条数，默认5；--days <n>：天数，默认1
+--level <level>：最低级别，默认debug；-d/-i/-w/-e=debug/info/warn/error
+-t/--tool：工具调用事件；--tool <name>：按工具名筛选
+--event <name>：事件；--hook：Hook 日志
+--run_source <name>：foreground|cron|elnis
+--risk <level>：low|medium|high|critical
+--platform <name>：参与者平台；--actor-id <id>：用户 ID
+--actor-name <name>：用户展示名；--session <id>：会话
+--since/--until <time>：起止时间，如 2h、2026-06-03
+--msg <text>：正文搜索；--contains <text>：正文+原始记录搜索
+--raw：原始记录；text 含空格→加引号`,
 	}
 }
 
@@ -46,22 +40,16 @@ func elwispInfo() command.Info {
 		Name:        "elwisp",
 		Args:        "[name] [options]",
 		Description: "Elwisp 日志",
-		Help: strings.TrimSpace(`[name], --name/--elwisp <name>  Elwisp 名称
--n, --limit <n>       条数，默认 5
---days <n>            天数，默认 1
---level <level>       最低 debug|info|warn|error，默认 debug
--d/-i/-w/-e           级别简写
---raw                原始记录
---since/--until <time>  时间范围，如 2h、2026-06-03
---source <source>    来源
---id/--source-id <id> 外部来源 ID
---mode <mode>        record|direct|llm
---event-key <key>    事件 key
---event-id <id>      内部事件 ID
---token <name>       HTTP 认证 token 名
---tag <tag>          标签，可重复
---msg <text>         正文过滤
---contains <text>    正文及原始记录搜索`),
+		Help: `name 或 --name/--elwisp <name>：Elwisp 名称
+-n/--limit <n>：条数，默认5；--days <n>：天数，默认1
+--level <level>：最低级别，默认debug；-d/-i/-w/-e=debug/info/warn/error
+--source <source>：来源；--id/--source-id <id>：外部来源 ID
+--mode <mode>：record|direct|llm
+--event-key <key>：事件 key；--event-id <id>：内部事件 ID
+--token <name>：认证 token 名；--tag <tag>：标签，可重复
+--since/--until <time>：起止时间，如 2h、2026-06-03
+--msg <text>：正文搜索；--contains <text>：正文+原始记录搜索
+--raw：原始记录；text 含空格→加引号`,
 	}
 }
 
@@ -74,17 +62,12 @@ func logInfo() command.Info {
 		Name:        "log",
 		Args:        "[options]",
 		Description: "运行日志",
-		Help: strings.TrimSpace(`-n, --limit <n>       条数，默认 5
---days <n>            天数，默认 1
---level <level>       最低 debug|info|warn|error，默认 debug
--d/-i/-w/-e           级别简写
---raw                原始记录
--u/-a                用户/助手消息
--s, --system         系统提示词
---hook               Hook 日志
---since/--until <time>  时间范围，如 2h、2026-06-03
---msg <text>          正文过滤
---contains <text>     正文及原始记录搜索`),
+		Help: `-n/--limit <n>：条数，默认5；--days <n>：天数，默认1
+--level <level>：最低级别，默认debug；-d/-i/-w/-e=debug/info/warn/error
+-u/-a：用户/助手消息；-s/--system：系统提示词；--hook：Hook 日志
+--since/--until <time>：起止时间，如 2h、2026-06-03
+--msg <text>：正文搜索；--contains <text>：正文+原始记录搜索
+--raw：原始记录；text 含空格→加引号`,
 	}
 }
 

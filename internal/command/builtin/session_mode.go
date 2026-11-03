@@ -15,7 +15,8 @@ func NewWork(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:          "work",
 		Args:          "[message]",
-		Description:   "切换 work",
+		Description:   "切换 work，启用工具",
+		Help:          "无会话→新建；message 在切换成功后发送",
 		SessionEffect: command.SessionEffectSwitchCurrent,
 		MinRole:       contextinfo.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
@@ -39,7 +40,8 @@ func NewChat(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:          "chat",
 		Args:          "[message]",
-		Description:   "切换 chat",
+		Description:   "切换 chat，不注入工具",
+		Help:          "无会话→新建；message 在切换成功后发送\nwork 已有历史→先 " + deps.CommandText("new"),
 		SessionEffect: command.SessionEffectSwitchCurrent,
 		MinRole:       contextinfo.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {

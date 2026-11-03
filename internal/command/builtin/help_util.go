@@ -14,19 +14,18 @@ func wantsCommandHelp(args string) bool {
 
 func formatCommandHelp(commandText func(string, ...string) string, info command.Info) *command.Result {
 	var sb strings.Builder
-	sb.WriteString(commandText(info.Name, info.Args) + "\n")
-	if len(info.Aliases) > 0 {
-		sb.WriteString(fmt.Sprintf("aliases: %s\n", strings.Join(info.Aliases, ", ")))
-	}
+	sb.WriteString(commandText(info.Name, info.Args))
 	if info.Description != "" {
-		sb.WriteString(info.Description + "\n")
+		sb.WriteString("：" + info.Description)
+	}
+	if len(info.Aliases) > 0 {
+		sb.WriteString(fmt.Sprintf(" · alias=%s", strings.Join(info.Aliases, ",")))
 	}
 	if strings.TrimSpace(info.Help) != "" {
 		sb.WriteString("\n")
 		sb.WriteString(strings.TrimSpace(info.Help))
-		sb.WriteString("\n")
 	}
-	return &command.Result{Content: trimTrailingNewlines(sb.String())}
+	return &command.Result{Content: sb.String()}
 }
 
 func trimTrailingNewlines(text string) string {

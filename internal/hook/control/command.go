@@ -33,8 +33,11 @@ type hookGroup struct {
 func (c hooksCommand) Info() command.Info {
 	return command.Info{
 		Name:        "hooks",
-		Args:        "[reload|start|stop|restart|<name>]",
-		Description: "Hook 列表与管理",
+		Args:        "[reload|<name>|start <id>|stop <id>|restart <id>]",
+		Description: "Hook 管理",
+		Help: "省略=列表；name=插件名/Hook 名，查看详情\n" +
+			"reload=重载配置；start/restart=启动/重启 persistent Worker\n" +
+			"stop=取消在途调用并停止 Worker（如有）\nid=插件 ID；stop 也支持 Hook 名",
 	}
 }
 

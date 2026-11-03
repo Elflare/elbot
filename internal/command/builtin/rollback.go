@@ -30,7 +30,7 @@ func (rollbackCommand) Info() command.Info {
 	return command.Info{
 		Name: "rollback", Args: "[编号]",
 		Description: "撤销文件编辑",
-		Help:        "无参数列出备份；指定编号直接撤销。",
+		Help:        "省略=备份列表；指定编号→直接撤销，无需确认\n原文件→恢复；新建文件→删除",
 		MinRole:     contextinfo.RoleSuperadmin,
 	}
 }

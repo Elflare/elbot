@@ -29,6 +29,7 @@ func NewRequests(deps Deps) command.Handler {
 		Name:        "requests",
 		Args:        "",
 		Description: "运行中的请求",
+		Help:        "编号用于 " + deps.CommandText("stop") + "；子编号形如 1.1",
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		requests := deps.Requests.List()
 		if len(requests) == 0 {
@@ -50,8 +51,10 @@ func (c stopCommand) Info() command.Info {
 	return command.Info{
 		Name:        "stop",
 		Args:        "[request_id|number]",
-		Description: fmt.Sprintf("停止请求；编号见 %s", c.deps.CommandText("requests")),
+		Description: "停止请求",
 		MinRole:     contextinfo.RoleUser,
+		Help: "省略=当前会话全部请求；停止主对话请求→停止该会话全部请求\n" +
+			"普通用户仅限当前会话，编号见 " + c.deps.CommandText("status") + "；超管编号见 " + c.deps.CommandText("requests"),
 	}
 }
 
@@ -131,7 +134,7 @@ func NewStopAll(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name:        "stopall",
 		Args:        "",
-		Description: "停止全部请求",
+		Description: "停止所有会话的请求",
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		ids := []string{}
 		seen := map[string]bool{}

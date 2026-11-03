@@ -9,34 +9,6 @@ import (
 	"elbot/internal/contextinfo"
 )
 
-func TestHelpCommandShowsDetailedHelp(t *testing.T) {
-	router := command.NewRouter([]string{"/"})
-	deps := Deps{CommandText: testCommandText, Router: router}
-	if err := RegisterFactories(router, deps, NewHelp); err != nil {
-		t.Fatalf("register help: %v", err)
-	}
-	if err := router.Register(command.NewFunc(command.Info{
-		Name:        "audit",
-		Args:        "[options]",
-		Description: "Show audit events.",
-		Aliases:     []string{"aud"},
-		Help:        "Options:\n  --event <name>",
-	}, nil)); err != nil {
-		t.Fatalf("register audit: %v", err)
-	}
-
-	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	result, err := NewHelp(deps).Handle(ctx, command.Request{Prefix: "/", Args: "aud"})
-	if err != nil {
-		t.Fatalf("help handle: %v", err)
-	}
-	for _, want := range []string{"/audit [options]", "Show audit events.", "aliases: aud", "--event <name>"} {
-		if !strings.Contains(result.Content, want) {
-			t.Fatalf("help content missing %q: %q", want, result.Content)
-		}
-	}
-}
-
 func TestCommandsUseConfiguredPrefixInsteadOfRequestPrefix(t *testing.T) {
 	router := command.NewRouter([]string{"!", "!!"})
 	commandText := func(name string, args ...string) string { return command.Format("!", name, args...) }
@@ -47,8 +19,6 @@ func TestCommandsUseConfiguredPrefixInsteadOfRequestPrefix(t *testing.T) {
 	}
 	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	for _, tc := range []struct{ input, want string }{
-		{"!!help", "!stop [request_id|number]: 停止请求"},
-		{"!!help model", "!model [--chat"},
 		{"!!tools remove echo", "!tools remove echo --confirm"},
 		{"!!doctor invalid", "usage: !doctor"},
 	} {

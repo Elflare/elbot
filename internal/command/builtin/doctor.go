@@ -18,7 +18,7 @@ func (c doctorCommand) Info() command.Info {
 		Name:        "doctor",
 		Args:        "",
 		Description: "检查配置与内置 Skill",
-		Help:        "只读检查当前服务的配置文件和内置 Skill，生成可复制给 Elbot 的处理请求。",
+		Help:        "只读；发现问题→给出可复制的修复请求",
 		MinRole:     contextinfo.RoleSuperadmin,
 	}
 }
