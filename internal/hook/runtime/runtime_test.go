@@ -79,7 +79,7 @@ func TestPluginToolAuditOutcome(t *testing.T) {
 			if err := registerHookTestTool(registry, auditTestTool{err: tc.err}); err != nil {
 				t.Fatal(err)
 			}
-			worker := &worker{manager: &Manager{rootCtx: context.Background(), opts: Options{Log: testLog, Notify: testNotify, Tools: testTools{registry}}}, config: share.RuntimeConfig{ID: "plugin", EventTimeoutSeconds: 10, Tools: share.RuntimeToolsConfig{BackgroundAllow: []string{"audit_test"}}}}
+			worker := newWorker(&Manager{rootCtx: context.Background(), opts: Options{Log: testLog, Notify: testNotify, Tools: testTools{registry}}}, share.RuntimeConfig{ID: "plugin", EventTimeoutSeconds: 10, Tools: share.RuntimeToolsConfig{BackgroundAllow: []string{"audit_test"}}})
 			_, err = worker.callTool(json.RawMessage(`{"name":"audit_test","arguments":{},"background":true,"target":{"platform":"cli"}}`))
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("business error changed: %v", err)

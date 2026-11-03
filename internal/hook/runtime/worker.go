@@ -28,6 +28,9 @@ type worker struct {
 	manager *Manager
 	config  share.RuntimeConfig
 
+	eventTimeout    time.Duration // 单次事件、宿主请求与协议写入的超时，由配置秒数初始化。
+	shutdownTimeout time.Duration // 优雅退出预算及强制终止后的等待上限，由配置秒数初始化。
+
 	mu           sync.Mutex
 	status       Status
 	detail       string
@@ -54,7 +57,7 @@ type routeLock struct {
 }
 
 func newWorker(manager *Manager, config share.RuntimeConfig) *worker {
-	return &worker{manager: manager, config: config, status: StatusStopped, restartDelay: time.Duration(config.Restart.InitialDelaySeconds) * time.Second, pending: map[string]chan frame{}, writeGate: make(chan struct{}, 1), routeLocks: map[routeKey]*routeLock{}}
+	return &worker{manager: manager, config: config, eventTimeout: time.Duration(config.EventTimeoutSeconds) * time.Second, shutdownTimeout: time.Duration(config.ShutdownTimeoutSeconds) * time.Second, status: StatusStopped, restartDelay: time.Duration(config.Restart.InitialDelaySeconds) * time.Second, pending: map[string]chan frame{}, writeGate: make(chan struct{}, 1), routeLocks: map[routeKey]*routeLock{}}
 }
 
 func (w *worker) start() error {
@@ -330,7 +333,7 @@ func (w *worker) stop(ctx context.Context) (logResult globalevents.LogResult, er
 		return globalevents.LogResult{ResultStatus: globalevents.ResultSkipped, Content: "worker was not running"}, nil
 	}
 	w.setStatus(StatusStopping, "")
-	shutdownCtx, cancel := context.WithTimeout(ctx, time.Duration(w.config.ShutdownTimeoutSeconds)*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(ctx, w.shutdownTimeout)
 	defer cancel()
 	_, logResult, err = w.request(shutdownCtx, "system.shutdown", map[string]any{})
 	graceful := true
@@ -339,7 +342,7 @@ func (w *worker) stop(ctx context.Context) (logResult globalevents.LogResult, er
 	case <-shutdownCtx.Done():
 		graceful = false
 		_ = processenv.KillProcessTree(cmd)
-		killTimer := time.NewTimer(time.Duration(w.config.ShutdownTimeoutSeconds) * time.Second)
+		killTimer := time.NewTimer(w.shutdownTimeout)
 		defer killTimer.Stop()
 		select {
 		case <-done:
@@ -418,7 +421,7 @@ func (w *worker) handle(ctx context.Context, event share.Event, continuation boo
 		return event, globalevents.LogResult{ResultStatus: globalevents.ResultFailed, Content: fmt.Sprintf("hook worker %q is %s", w.config.ID, status)}, fmt.Errorf("hook worker %q is %s", w.config.ID, status)
 	}
 	defer w.finishHandle()
-	requestCtx, cancel := context.WithTimeout(ctx, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
+	requestCtx, cancel := context.WithTimeout(ctx, w.eventTimeout)
 	token, err = w.manager.beginInvocation(w, requestCtx, event, cancel)
 	if err != nil {
 		cancel()
@@ -608,7 +611,7 @@ func (w *worker) notifyCancel(conversationID string) {
 		params["conversation_id"] = conversationID
 	}
 	_ = w.manager.startTask(func() {
-		ctx, cancel := context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
+		ctx, cancel := context.WithTimeout(w.manager.rootCtx, w.eventTimeout)
 		defer cancel()
 		_ = w.write(ctx, frame{Type: "event", Method: "event.cancel", Params: mustJSON(params)})
 	})
@@ -742,7 +745,7 @@ func (w *worker) readLoop(reader io.Reader) {
 			}
 			if err := w.manager.startTask(func() { w.handlePluginRequest(value) }); err != nil {
 				ok := false
-				ctx, cancel := context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
+				ctx, cancel := context.WithTimeout(w.manager.rootCtx, w.eventTimeout)
 				_ = w.write(ctx, frame{Type: "response", ID: value.ID, OK: &ok, Error: ErrClosed.Error()})
 				cancel()
 			}
@@ -798,7 +801,7 @@ func (w *worker) handlePluginRequest(value frame) {
 	} else {
 		response.Result = mustJSON(result)
 	}
-	ctx, cancel := context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.EventTimeoutSeconds)*time.Second)
+	ctx, cancel := context.WithTimeout(w.manager.rootCtx, w.eventTimeout)
 	writeErr := w.write(ctx, response)
 	cancel()
 	if writeErr != nil {

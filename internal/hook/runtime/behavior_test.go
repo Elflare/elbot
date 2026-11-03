@@ -55,7 +55,7 @@ func TestRuntimeBehaviorHelper(t *testing.T) {
 			writeHelperResponse(request.ID, map[string]any{"status": "completed"})
 		case "system.shutdown":
 			if mode == "shutdown-delay" {
-				time.Sleep(600 * time.Millisecond)
+				time.Sleep(60 * time.Millisecond)
 				writeHelperResponse(request.ID, map[string]any{})
 			}
 			if strings.HasPrefix(mode, "shutdown-") {
@@ -69,7 +69,7 @@ func TestRuntimeBehaviorHelper(t *testing.T) {
 	}
 }
 
-func behaviorWorker(t *testing.T, mode string) (*Manager, *worker) {
+func behaviorWorker(t *testing.T, mode string, timeout time.Duration) (*Manager, *worker) {
 	t.Helper()
 	m, err := NewManager(Options{SharedDir: t.TempDir(), Log: testLog, Notify: testNotify})
 	if err != nil {
@@ -95,6 +95,9 @@ func behaviorWorker(t *testing.T, mode string) (*Manager, *worker) {
 		}
 	})
 	waitForStatus(t, m, mode, StatusReady)
+	// The helper is idle after startup; set budgets before sending any requests.
+	w.eventTimeout = timeout
+	w.shutdownTimeout = timeout
 	return m, w
 }
 
@@ -120,7 +123,7 @@ func observePipe(w *worker) <-chan struct{} {
 func TestBlockedProtocolRequestCancellation(t *testing.T) {
 	for _, mode := range []string{"cancel", "deadline", "close"} {
 		t.Run(mode, func(t *testing.T) {
-			m, w := behaviorWorker(t, "blocked")
+			m, w := behaviorWorker(t, "blocked", time.Second)
 			entered := observePipe(w)
 			ctx, cancel := context.WithCancel(t.Context())
 			if mode == "deadline" {
@@ -159,15 +162,15 @@ func TestBlockedProtocolRequestCancellation(t *testing.T) {
 func TestShutdownUsesSingleBudget(t *testing.T) {
 	for _, mode := range []string{"shutdown-ignore", "shutdown-delay"} {
 		t.Run(mode, func(t *testing.T) {
-			_, w := behaviorWorker(t, mode)
+			_, w := behaviorWorker(t, mode, 100*time.Millisecond)
 			start := time.Now()
 			_, err := w.stop(t.Context())
 			elapsed := time.Since(start)
 			if err == nil {
 				t.Fatal("unresponsive worker shutdown succeeded")
 			}
-			if elapsed > 1400*time.Millisecond {
-				t.Fatalf("shutdown renewed its 1s budget: %v", elapsed)
+			if elapsed > 140*time.Millisecond {
+				t.Fatalf("shutdown renewed its 100ms budget: %v", elapsed)
 			}
 			select {
 			case <-w.done:
@@ -249,7 +252,7 @@ func TestContinuationCancellationUsesLeaseID(t *testing.T) {
 }
 
 func TestWriteWaiterCancelsWithoutKillingWriter(t *testing.T) {
-	_, w := behaviorWorker(t, "blocked")
+	_, w := behaviorWorker(t, "blocked", time.Second)
 	entered := observePipe(w)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -288,16 +291,21 @@ func TestWriteWaiterCancelsWithoutKillingWriter(t *testing.T) {
 func TestBlockedCancelNotificationDoesNotDelayInvocation(t *testing.T) {
 	for _, mode := range []string{"deadline", "close"} {
 		t.Run(mode, func(t *testing.T) {
-			m, w := behaviorWorker(t, "cancel-block")
+			m, w := behaviorWorker(t, "cancel-block", 100*time.Millisecond)
 			entered := observePipe(w)
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			done := make(chan error, 1)
 			go func() {
-				_, _, err := m.Handle(ctx, w.config.ID, share.Event{Chat: share.ChatContext{ID: strings.Repeat("x", 2<<20)}}, share.Control{})
+				// Exceed pipe capacity without spending the short budget encoding a multi-MiB frame.
+				_, _, err := m.Handle(ctx, w.config.ID, share.Event{Chat: share.ChatContext{ID: strings.Repeat("x", 256<<10)}}, share.Control{})
 				done <- err
 			}()
-			<-entered
+			select {
+			case <-entered:
+			case err := <-done:
+				t.Fatalf("request ended before writing the event frame: %v", err)
+			}
 			// Acquiring the gate proves the event frame finished writing.
 			w.writeGate <- struct{}{}
 			<-w.writeGate
@@ -594,7 +602,7 @@ func TestStandaloneToolKeepsIndependentTimeout(t *testing.T) {
 func TestPluginResponseWriteDeadlineAndClose(t *testing.T) {
 	for _, mode := range []string{"deadline", "close"} {
 		t.Run(mode, func(t *testing.T) {
-			m, w := behaviorWorker(t, "blocked")
+			m, w := behaviorWorker(t, "blocked", 100*time.Millisecond)
 			if err := m.shared.SetWithTTL("large", mustJSON(strings.Repeat("x", 1<<19)), 0); err != nil {
 				t.Fatal(err)
 			}
