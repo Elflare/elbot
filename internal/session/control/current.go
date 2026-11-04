@@ -130,10 +130,6 @@ func (s *Service) ActivateMode(ctx context.Context, scope share.Scope, req Activ
 		return ActivateModeResult{}, err
 	}
 	defer release()
-	if s.CurrentBinding(scope) == nil {
-		row, err := s.createCurrent(ctx, scope, CreateRequest{Title: req.NewSessionTitle, Mode: req.Mode})
-		return ActivateModeResult{Session: row}, err
-	}
 	locked, leave, err := s.EnterActivation(ctx, scope)
 	if err != nil {
 		return ActivateModeResult{}, err
