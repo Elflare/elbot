@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - 新增配置文件锁，防止多个实例使用同一份配置文件。
-- web 搜索增加markdownnew
+- web 搜索增加 `markdownnew`
 
 ### Changed
 
@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hook 事件输出快照的投递信息从 `Meta` 改为 `Delivery` 对象，包含 `Timing`、`HookPoint`、`HookName`、`HookMode`；移除派生字段 `AltText`。
 - `/status` 的 active requests 不再重复显示 Session 标题；直接使用 `/requests` 时仍保留该信息。
 - 修改了 Elwisp 协议，统一使用 `platform`、`api`、`params` 描述平台原生 API 调用。
-- send_file工具可以普通用户使用了，仅限媒体id和url
+- `send_file`工具可以普通用户使用了，仅限媒体id和url
 
 ### Fixed
 
