@@ -70,7 +70,7 @@ def protected_markup(text: str) -> list[str]:
     """Extract inline code, link/image nesting and HTML; prose and alt/title may translate."""
     tokens, brackets = [], []
     pattern = re.compile(
-        r"(?P<code>(`+).*?\2)|(?P<escape>\\.)|"
+        r"(?P<code>(`+).*?\2)|(?P<escape>\\.)|(?P<footnote>\[\^[^\]\n]+\])|"
         r"(?P<html></?[A-Za-z][\w:-]*(?:\s+(?:[^<>\"']|\"[^\"]*\"|'[^']*')*)?\s*/?>)|"
         r"(?P<open>!?\[)|(?P<close>\])|(?P<url>https?://[^\s<>)]+)", re.DOTALL)
     offset = 0
@@ -106,7 +106,7 @@ def protected_markup(text: str) -> list[str]:
         elif kind == "html":
             tokens.append(re.sub(r"(\s(?:alt|title)\s*=\s*)(\"[^\"]*\"|'[^']*')",
                                  r'\1""', match[0], flags=re.IGNORECASE))
-        elif kind in {"code", "url"}:
+        elif kind in {"code", "url", "footnote"}:
             tokens.append(match[0])
     return [token for token in tokens if token]
 
