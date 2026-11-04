@@ -79,9 +79,7 @@ func (m *Manager) Cleanup(ctx context.Context, history History) (err error) {
 	jobs := make(chan int)
 	var workers sync.WaitGroup
 	for range min(cleanupConcurrency, len(items)) {
-		workers.Add(1)
-		go func() {
-			defer workers.Done()
+		workers.Go(func() {
 			for i := range jobs {
 				if ctx.Err() != nil {
 					return
@@ -89,7 +87,7 @@ func (m *Manager) Cleanup(ctx context.Context, history History) (err error) {
 				started[i] = true
 				deleted[i], failures[i] = m.deleteObject(ctx, items[i].ID)
 			}
-		}()
+		})
 	}
 dispatch:
 	for i := range items {

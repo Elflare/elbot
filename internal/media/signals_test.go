@@ -64,7 +64,7 @@ func newUsageCenter(t *testing.T) (*MediaCenter, *sqlite.Store, *controlledRefer
 
 func drainUsageEvents(t *testing.T, m *MediaCenter) {
 	t.Helper()
-	if _, err := m.usageFinished.Emit(t.Context(), UsageFinishedEvent{}); err != nil {
+	if _, err := m.usageFinished.Emit(t.Context(), []string{}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -155,7 +155,7 @@ func TestUsageQueueRejectionAndCloseTimeoutKeepResources(t *testing.T) {
 		}
 	})
 	for range 256 {
-		if _, err := m.usageFinished.EmitAsync(t.Context(), UsageFinishedEvent{}); err != nil {
+		if _, err := m.usageFinished.EmitAsync(t.Context(), []string{}); err != nil {
 			t.Fatal(err)
 		}
 	}

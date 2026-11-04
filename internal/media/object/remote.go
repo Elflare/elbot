@@ -22,20 +22,19 @@ func (h *heldMedia) SignedURL(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("media hold is closed")
 	}
 
-	return h.manager.presignMedia(ctx, &h.record)
+	return h.manager.presignMedia(ctx, h.record.ID)
 }
 
 // presignMedia 在对象锁内重读副本事实，复用或更新签名缓存。
-// 仅内部接收已持有记录，后端只接收实际对象位置。
-func (m *Manager) presignMedia(ctx context.Context, metadata *storage.Media) (string, error) {
-	id := metadata.ID
+// 仅内部接收已持有对象的 ID，后端只接收实际对象位置。
+func (m *Manager) presignMedia(ctx context.Context, id string) (string, error) {
 	unlock, err := m.objects.acquire(ctx, id)
 	if err != nil {
 		return "", err
 	}
 	defer unlock()
 	// 每次读取当前副本事实，持有快照不随签名更新，允许多个读取同时使用。
-	metadata, err = m.media.Get(ctx, id)
+	metadata, err := m.media.Get(ctx, id)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return "", &share.UnavailableError{Err: err}
