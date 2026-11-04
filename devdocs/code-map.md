@@ -256,4 +256,4 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `AGENTS.md`：操作与维护规则；`devdocs/architecture.md`：架构；`devdocs/tasks.md`：候选及暂缓任务。
 - `docs/`：中文用户文档；`CHANGELOG.md`：中文变更记录。
 - `scripts/translate_docs.py`、`.github/workflows/docs-translate.yml`：翻译脚本、自动化入口。
-- `docs.en/`、`README.md`、`CHANGELOG.en.md`：自动翻译产物，不手动修改。
+- `docs.en/`、`README.md`、`CHANGELOG.en.md`：自动翻译产物；仅 README 的 `manual-header` 页首区域分别手动维护。
