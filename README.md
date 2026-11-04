@@ -51,15 +51,15 @@ ElBot does not inject the full schema of all tools by default in every round of 
 
 ### II. Powerful and Extensible
 
-**Extensible Hook system**: ElBot has a built-in Hook Layer, allowing extension logic to be inserted at key event points such as Agent input, LLM request, LLM response, platform sending, and platform connection. Hooks can modify messages, append output intents, call scripts, and more. Hook supports writing plugins in **any language**.
+**Extensible Hook System**: ElBot features a built-in Hook Layer, allowing extension logic to be inserted at key event points such as Agent input, LLM request, LLM response, platform sending, and platform connection. Hooks can modify messages, append output intents, call scripts, and more. Hooks support writing plugins in **any language**.
 
-**Standard Cron and LLM Cron**: ElBot features a built-in Cron Runtime and an LLM-orchestratable Cron service. Standard Cron sends fixed content directly according to a schedule; LLM Cron drives model execution using task descriptions, making it suitable for scheduled tasks that require analysis, summarization, or the use of tools.
+**Standard Cron and LLM Cron**: ElBot includes a built-in Cron Runtime and an LLM-orchestratable Cron service. Standard Cron sends fixed content directly according to a schedule; LLM Cron uses task descriptions to drive model execution, making it suitable for scheduled tasks that require analysis, summarization, or the use of tools.
 
-**ELyph Task Notation**: ELyph is used to describe LLM Cron and native skills. The goal is to reduce ambiguity in natural language task descriptions and use a shorter, more stable structure to express inputs, outputs, steps, conditions, and constraints. Compared to arbitrary Markdown, ELyph is better suited for reusing and passing tasks between LLMs, and is also easier to lint, audit, and process with tools.
+**ELyph Task Notation**: ELyph is used to describe LLM Cron and native skills. The goal is to reduce ambiguity in natural language task descriptions by using a shorter and more stable structure to express inputs, outputs, steps, conditions, and constraints. Compared to arbitrary Markdown, ELyph is better suited for reusing and passing tasks between LLMs, and is easier to lint, audit, and process programmatically.
 
-**EL Skills creatable by LLM**: ElBot has a built-in `create_el_skill` meta-tool, allowing the LLM to crystallize reusable experience into EL Skills. Automatically validate ELyph syntax upon creation, with optional Go source code attachment and compilation; The pure ELyph text or Go source code created is maintained by a unified `read_el_skill` / `modify_el_skill`; after the source code is modified, it is uniformly formatted and compiled via `finalize_el_skill`, and the check results are returned.
+**EL Skills Creatable by LLM**: ElBot includes a built-in `create_el_skill` meta-tool, allowing the LLM to crystallize reusable experience into EL Skills. It automatically validates ELyph syntax during creation, with the option to include and compile Go source code.
 
-**Compatible with external AgentSkill**: ElBot is compatible with external AgentSkills that follow the agentskills.io style. Any AgentSkill script can be used as a tool through configuration.
+**Compatible with External AgentSkills**: ElBot is compatible with external AgentSkills that follow the agentskills.io style. Any AgentSkill script can be used as a tool via configuration.
 
 ### III. Elnis Event Perception System
 
@@ -69,11 +69,11 @@ Elnis is the listening hub of ElBot, Elwisp consists of external listeners distr
 
 For detailed information, see [Elnis Listening Hub](docs.en/elnis.md).
 
-### IV. Flexible Deployment and Enhanced Sessions
+### IV. Flexible Deployment and Comprehensive Session Management
 
-**Multi-platform and Rich Output Abstraction**: ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, QQ Official, and Telegram, while reserving space for extending to other platforms.
+**Multi-platform and Rich Output Abstraction**: ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, QQ Official, and Telegram, with space reserved for extending to other platforms.
 
-**CLI Client/Server Separation**: Supports using ElBot as a client on any computer to connect to the ElBot server. **Free Frontend Customization**, allowing you to create any frontend interface you prefer. The following screenshots demonstrate different frontend forms; except for the TUI, all are conceptual HTML mockups and do not represent the final UI.
+**CLI Client/Server Separation**: Supports using ElBot as a client on any computer to connect to an ElBot server. **Frontend customization is free**, allowing you to create any frontend interface you prefer. The following screenshots show different frontend forms; except for the TUI, all are conceptual HTML mockups and do not represent the final UI.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/main/frontend/assets/frontend_1.png" width="260" />
@@ -81,9 +81,9 @@ For detailed information, see [Elnis Listening Hub](docs.en/elnis.md).
   <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/main/frontend/assets/tui.png" width="260" />
 </p>
 
-For more screenshots, see [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend).
+See more screenshots at [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend).
 
-**Session, Fork, and Context Compaction**: Built-in persistent Session service, supporting Session recovery, archiving, pinning, Forking, deletion, paginated viewing, and platform isolation. Long conversations automatically trigger context compaction to keep the window controllable; normal conversation can continue after compaction.
+**Session, Fork, and Context Compaction**: Built-in persistent Session service, supporting features such as session recovery, archiving, pinning, Forking, deletion, paginated viewing, platform isolation, and compaction.
 
 ### V. Secure and Reliable
 
