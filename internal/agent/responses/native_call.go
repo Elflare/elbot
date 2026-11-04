@@ -73,10 +73,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 	}
 	origin := s.selection.Origin
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	ids, err := json.Marshal(consumed)
-	if err != nil {
-		return result, err
-	}
+	ids, _ := json.Marshal(consumed)
 	exchange := &storage.NativeExchange{
 		SessionID:            s.session.ID,
 		APIType:              string(origin.APIType),

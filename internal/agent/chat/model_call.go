@@ -42,7 +42,6 @@ type llmCallResult struct {
 	ToolCalls []llm.ToolCallRequest
 	Outputs   []delivery.Output
 	Messages  []llm.LLMMessage
-	Stream    delivery.MessageStream
 }
 
 func (c *Caller) Call(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *agentshare.PendingUserMessage, stream delivery.MessageStream, out agentshare.Output) (result llmCallResult, callErr error) {
@@ -90,7 +89,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 			observation.LogRecord().Level = slog.LevelInfo
 		}
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
-			return llmCallResult{Messages: baseMessages, Stream: stream}, nil
+			return llmCallResult{Messages: baseMessages}, nil
 		}
 		if shouldFallbackVision(requestMessages, err) {
 			observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultFailed, slog.LevelWarn
@@ -126,7 +125,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 			}
 			if ctx.Err() != nil && errors.Is(chunk.Error, ctx.Err()) {
 				content := assistant.String()
-				return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls, Messages: baseMessages, Stream: stream}, nil
+				return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls, Messages: baseMessages}, nil
 			}
 			if shouldFallbackVision(requestMessages, chunk.Error) {
 				observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultFailed, slog.LevelWarn
@@ -184,7 +183,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	if err := ctx.Err(); err != nil {
 		completed.Err = err
 		observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultCanceled, slog.LevelInfo
-		return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls, Messages: baseMessages, Stream: stream}, nil
+		return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls, Messages: baseMessages}, nil
 	}
 	observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultSucceeded, slog.LevelInfo
 	publishCompleted()
@@ -195,7 +194,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	if err != nil {
 		return llmCallResult{}, err
 	}
-	return llmCallResult{Text: final.Text, RawText: content, Usage: final.Usage, ToolCalls: final.ToolCalls, Outputs: final.Outputs, Messages: baseMessages, Stream: stream}, nil
+	return llmCallResult{Text: final.Text, RawText: content, Usage: final.Usage, ToolCalls: final.ToolCalls, Outputs: final.Outputs, Messages: baseMessages}, nil
 }
 
 func shouldFallbackVision(messages []llm.LLMMessage, err error) bool {

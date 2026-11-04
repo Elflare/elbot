@@ -82,21 +82,19 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 		}
 		if !state.Available {
 			if store && state.Requested {
-				{
-					record := globalevents.LogRecord{
-						Category:     globalevents.LogRuntime,
-						Level:        slog.LevelWarn,
-						EventName:    "responses_switching_to_stateless_replay",
-						Module:       "agent",
-						Type:         globalevents.ContentText,
-						Content:      fmt.Sprintf("Responses switching to stateless replay\nprovider=%v\nmodel=%v\nresponse_id=%v\nreason=%v", s.selection.Provider, s.selection.Model, s.checkpoint.ResponseID, "upstream returned store:false"),
-						ContentLimit: 4096,
-					}
-					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					record.Identity = globalevents.LogIdentityFromExecution(facts)
-					record.Identity.SessionID = &s.session.ID
-					_ = globalevents.EmitLog(ctx, record)
+				record := globalevents.LogRecord{
+					Category:     globalevents.LogRuntime,
+					Level:        slog.LevelWarn,
+					EventName:    "responses_switching_to_stateless_replay",
+					Module:       "agent",
+					Type:         globalevents.ContentText,
+					Content:      fmt.Sprintf("Responses switching to stateless replay\nprovider=%v\nmodel=%v\nresponse_id=%v\nreason=%v", s.selection.Provider, s.selection.Model, s.checkpoint.ResponseID, "upstream returned store:false"),
+					ContentLimit: 4096,
 				}
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				record.Identity = globalevents.LogIdentityFromExecution(facts)
+				record.Identity.SessionID = &s.session.ID
+				_ = globalevents.EmitLog(ctx, record)
 			}
 			store = false
 		}

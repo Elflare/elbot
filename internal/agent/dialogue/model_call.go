@@ -201,11 +201,9 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	}
 	tools = result.Tools
 	// Hooks may change schemas, but cannot override registered availability.
-	if c.Tools != nil && c.Tools.Manager != nil {
-		tools, err = c.Tools.Manager.FilterSchemas(ctx, tools)
-		if err != nil {
-			return agentshare.CallInput{}, fmt.Errorf("filter tool schemas: %w", err)
-		}
+	tools, err = c.Tools.Manager.FilterSchemas(ctx, tools)
+	if err != nil {
+		return agentshare.CallInput{}, fmt.Errorf("filter tool schemas: %w", err)
 	}
 	if allowedTools != nil {
 		filtered := make([]llm.ToolSchema, 0, len(tools))

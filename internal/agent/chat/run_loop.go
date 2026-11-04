@@ -124,7 +124,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		if err != nil {
 			return failedLoop(err)
 		}
-		streaming := result.Stream != nil
+		streaming := stream != nil
 		if err := s.requestCtx.Err(); err != nil {
 			return agentshare.LoopResult{Outcome: agentshare.Canceled, Err: err, QuietCancellation: true}
 		}
@@ -156,10 +156,10 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		if len(result.ToolCalls) == 0 {
 			finalRawText = strings.TrimSpace(assistantRawText)
 			platformFinalText = strings.TrimSpace(assistantText)
-			finalStream = result.Stream
+			finalStream = stream
 			break
 		}
-		if err := s.output.FinishIntermediate(s.ctx, s.requestCtx, result.Stream, assistantText, streaming); err != nil {
+		if err := s.output.FinishIntermediate(s.ctx, s.requestCtx, stream, assistantText, streaming); err != nil {
 			return failedLoop(err)
 		}
 		if err := s.output.SendOutputs(s.ctx, laterOutputs); err != nil {
@@ -234,7 +234,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 			finalRawText = strings.TrimSpace(summaryRawText)
 			platformFinalText = strings.TrimSpace(summaryText)
-			finalStream = summary.Stream
+			finalStream = stream
 			break
 		}
 		toolRounds++
