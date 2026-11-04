@@ -56,7 +56,7 @@ func (m *Manager) EnterSessions(ctx context.Context, ids ...string) (context.Con
 		}
 	}
 	slices.SortFunc(keys, compareAdmissionKey)
-	return m.enterKeys(ctx, slices.Compact(keys))
+	return m.enterKeys(ctx, keys)
 }
 
 func (m *Manager) EnterActivation(ctx context.Context, scope share.Scope, targets ...string) (context.Context, func(), error) {

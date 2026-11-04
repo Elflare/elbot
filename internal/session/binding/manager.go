@@ -66,24 +66,6 @@ func (m *Manager) SetCurrent(ctx context.Context, scope share.Scope, id string) 
 	m.publishChange(ctx, event)
 }
 
-// ClearBinding 在对应准入内条件解绑；旧句柄不能清除后来建立的绑定。
-func (m *Manager) ClearBinding(ctx context.Context, binding *share.Binding) {
-	if binding == nil {
-		return
-	}
-	m.mu.Lock()
-	if m.current[binding.Scope().Key()] != binding {
-		m.mu.Unlock()
-		return
-	}
-	binding.Invalidate()
-	delete(m.current, binding.Scope().Key())
-	m.bindingVersion++
-	event := BindingChangedEvent{Version: m.bindingVersion, Old: binding}
-	m.mu.Unlock()
-	m.publishChange(ctx, event)
-}
-
 // ClearSessionBindings 在 Session 准入内失效该会话的全部绑定，供删除与清理使用。
 func (m *Manager) ClearSessionBindings(ctx context.Context, id string) {
 	m.mu.Lock()

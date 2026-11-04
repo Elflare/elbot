@@ -49,7 +49,7 @@ func assertEmptyAdmissions(t *testing.T, m *Manager) {
 	}
 }
 
-func TestBindingIdentityVersionsAndConditionalClear(t *testing.T) {
+func TestBindingIdentityVersionsAndUnbinding(t *testing.T) {
 	m := newTestManager(t)
 	scope := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	var events []BindingChangedEvent
@@ -72,16 +72,17 @@ func TestBindingIdentityVersionsAndConditionalClear(t *testing.T) {
 	if second == first || second.Version() != 3 || !second.Valid() {
 		t.Fatal("reactivation reused an old binding")
 	}
-	ctx, release, err := m.EnterActivation(context.Background(), scope)
-	if err != nil {
-		t.Fatal(err)
+	if _, release, err := m.EnterBinding(context.Background(), first); err == nil {
+		release()
+		t.Fatal("stale binding admitted after reactivation")
 	}
-	m.ClearBinding(ctx, first)
 	if m.CurrentBinding(scope) != second {
-		t.Fatal("stale binding cleared the new activation")
+		t.Fatal("rejected admission changed the new activation")
 	}
-	m.ClearBinding(ctx, second)
-	release()
+	setCurrent(t, m, scope, "")
+	if second.Valid() || m.CurrentBinding(scope) != nil {
+		t.Fatal("unbinding retained the reactivated binding")
+	}
 	setCurrent(t, m, scope, "")
 	if len(events) != 4 || events[1].Old != first || events[1].New != nil || events[3].Old != second {
 		t.Fatalf("events=%+v", events)
