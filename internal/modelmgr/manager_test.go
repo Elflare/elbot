@@ -127,7 +127,7 @@ func TestManagerCloseWaitsForObserverAndCanResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer connection.Close(context.Background())
-	err = m.retrying.Publish(t.Context(), ModelRetryingEvent{})
+	err = m.retrying.Publish(t.Context(), ModelRetryingEvent{CallContext: t.Context()})
 	if err != nil {
 		t.Fatal(err)
 	}

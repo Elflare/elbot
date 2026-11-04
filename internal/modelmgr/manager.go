@@ -14,19 +14,19 @@ import (
 // ModelManager publishes complete selection snapshots. Reloading replaces provider
 // data as a unit; callers retain their snapshot for the lifetime of an operation.
 type ModelManager struct {
-	mu             sync.RWMutex
-	state          runtimeState
-	commitMu       sync.Mutex
-	statePath      string
-	sessionState   config.StateSessionConfig
-	save           func(string, config.StateConfig) error
-	providers      *providerSet
-	reloadMu       sync.Mutex
-	providersPath  string                  // 重载读取的 providers 配置文件。
-	configDir      string                  // 主配置目录，用于解析重载凭据。
-	request        config.LLMRequestConfig // 构造时固定的请求参数，providers 重载不修改它。
-	retrying       *signal.Async[ModelRetryingEvent]
-	logConnections []*signal.Connection
+	mu            sync.RWMutex
+	state         runtimeState
+	commitMu      sync.Mutex
+	statePath     string
+	sessionState  config.StateSessionConfig
+	save          func(string, config.StateConfig) error
+	providers     *providerSet
+	reloadMu      sync.Mutex
+	providersPath string                  // 重载读取的 providers 配置文件。
+	configDir     string                  // 主配置目录，用于解析重载凭据。
+	request       config.LLMRequestConfig // 构造时固定的请求参数，providers 重载不修改它。
+	retrying      *signal.Async[ModelRetryingEvent]
+	connections   []*signal.Connection
 }
 
 // NewModelManager 接收已加载的完整配置；部分构造结果由 App 统一关闭。
@@ -66,7 +66,7 @@ func NewModelManager(ctx context.Context, cfg *config.Config) (*ModelManager, er
 	if err != nil {
 		return s, err
 	}
-	if err := s.connectLogSignals(); err != nil {
+	if err := s.connectRetrySignals(); err != nil {
 		return s, err
 	}
 	return s, nil
@@ -87,7 +87,7 @@ func (s *ModelManager) Close(ctx context.Context) error {
 	if err := s.retrying.Close(ctx); err != nil {
 		return err
 	}
-	for _, connection := range s.logConnections {
+	for _, connection := range s.connections {
 		if err := connection.Close(ctx); err != nil {
 			return err
 		}

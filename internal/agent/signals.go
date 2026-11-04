@@ -3,39 +3,16 @@ package agent
 import (
 	"context"
 	agentexecution "elbot/internal/agent/execution"
-	"elbot/internal/events"
 	"elbot/internal/media"
-	"elbot/internal/modelmgr"
-	"elbot/internal/notification/rules"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"errors"
-	"log/slog"
 )
 
 func publishMediaUsageFinished(center *media.MediaCenter) func(context.Context, media.UsageID) {
 	return func(ctx context.Context, id media.UsageID) {
 		center.PublishUsageFinished(ctx, []media.UsageID{id})
 	}
-}
-
-func (b *signalBindings) connectModels(models ModelCapabilities) error {
-	connection, err := models.ObserveModelRetrying(func(ctx context.Context, e modelmgr.ModelRetryingEvent) error {
-		ctx = e.CallContext
-		if ctx.Err() != nil {
-			return nil
-		}
-		text := rules.ModelRetry(e.Provider, e.Retry)
-		if text == "" {
-			return nil
-		}
-		_, err := events.NotificationRequested.EmitAsync(ctx, events.NewNotification(ctx, slog.LevelWarn, text))
-		return err
-	}, signal.ConnectOptions{})
-	if connection != nil {
-		b.connections = append(b.connections, connection)
-	}
-	return err
 }
 
 // signalBindings owns subscriptions before platforms start, including

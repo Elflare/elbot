@@ -167,13 +167,13 @@ func TestStandaloneDialogueOwnsStateAndBorrowsOnlyCapabilities(t *testing.T) {
 	}
 }
 
-func TestDialoguePartialConstructionCleansOwnedState(t *testing.T) {
+func TestAgentConstructionDoesNotSubscribeToModelRetries(t *testing.T) {
 	deps, models := isolatedModuleResources(t)
 	if err := models.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	m, err := NewSupervisor(t.Context(), isolatedAgentConfig(), deps)
-	if err == nil || m == nil || m.sessions == nil {
+	if err != nil || m == nil || m.sessions == nil {
 		t.Fatal(m, err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -184,7 +184,7 @@ func TestDialoguePartialConstructionCleansOwnedState(t *testing.T) {
 	select {
 	case <-m.Done():
 	default:
-		t.Fatal("partial state remained alive")
+		t.Fatal("Agent state remained alive")
 	}
 	assertAgentSignalsClosed(t, m)
 	if err := deps.Store.Media().RecoverInterrupted(ctx); err != nil {

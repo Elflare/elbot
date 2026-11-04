@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"testing"
+	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
@@ -15,6 +16,45 @@ import (
 type retryClient struct {
 	testClient
 	notify func(context.Context, llm.RetryEvent)
+}
+
+func TestRetryNotificationOwnedByModelManager(t *testing.T) {
+	notices := make(chan events.Notification, 2)
+	connection, err := events.NotificationRequested.Observe(func(_ context.Context, n events.Notification) error {
+		notices <- n
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close(context.Background())
+	service := newTestService(t, testOptions())
+	t.Cleanup(func() { _ = service.Close(context.Background()) })
+	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ChatID: "original"}})
+	event := ModelRetryingEvent{CallContext: ctx, Provider: "p", Retry: llm.RetryEvent{Attempt: 1, MaxRetries: 2, Delay: time.Second, Err: fmt.Errorf("busy")}}
+	if err := service.retrying.Publish(context.WithoutCancel(ctx), event); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case n := <-notices:
+		if n.Origin == nil || n.Origin.Source.ChatID != "original" || n.Level != slog.LevelWarn || n.Text != "LLM retry 1/2 · p · 1s 后: busy" {
+			t.Fatalf("notice=%+v", n)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("model manager did not publish notification without Agent")
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	event.CallContext = canceled
+	if err := service.retrying.Publish(context.WithoutCancel(ctx), event); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(notices) != 0 {
+		t.Fatal("canceled call published notification")
+	}
 }
 
 func (c *retryClient) SetRetryNotifier(fn func(context.Context, llm.RetryEvent)) { c.notify = fn }

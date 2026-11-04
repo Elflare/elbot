@@ -16,7 +16,6 @@ import (
 	"elbot/internal/modelmgr"
 	"elbot/internal/security"
 	"elbot/internal/session"
-	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 )
@@ -39,7 +38,7 @@ type SupervisorDeps struct {
 	Platform   PlatformCapabilities
 }
 
-// ModelCapabilities 声明 Agent 的模型选择、管理命令和重试观察能力；生命周期归 App。
+// ModelCapabilities 声明 Agent 的模型选择和管理命令能力；生命周期归 App。
 type ModelCapabilities interface {
 	Resolve(config.ModelSelection) modelmgr.Selection
 	ResolveMode(string) modelmgr.Selection
@@ -53,7 +52,6 @@ type ModelCapabilities interface {
 	SelectCompactModel(arg string) (modelmgr.ModelOption, error)
 	SelectNamingModel(arg string) (modelmgr.ModelOption, error)
 	ModelList(query string, opts modelmgr.ModelListOptions) modelmgr.ModelListResult
-	ObserveModelRetrying(handler func(context.Context, modelmgr.ModelRetryingEvent) error, options signal.ConnectOptions) (*signal.Connection, error)
 }
 
 // ToolCapabilities declares the Tool operations consumed by Agent without exposing owned components.

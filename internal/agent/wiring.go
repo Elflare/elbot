@@ -301,9 +301,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	if err := bindings.connectSession(m.sessions, execution); err != nil {
 		return m, err
 	}
-	if err := m.bindings.connectModels(deps.Models); err != nil {
-		return m, err
-	}
 	m.handler = handler
 	return m, nil
 }

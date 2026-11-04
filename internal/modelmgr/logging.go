@@ -6,17 +6,8 @@ import (
 	"log/slog"
 
 	"elbot/internal/events"
-	"elbot/internal/signal"
 )
 
-func (s *ModelManager) connectLogSignals() error {
-	connection, err := s.retrying.Observe(logModelRetry, signal.ConnectOptions{Shutdown: signal.Drain})
-	if err != nil {
-		return err
-	}
-	s.logConnections = append(s.logConnections, connection)
-	return nil
-}
 func logModelRetry(ctx context.Context, event ModelRetryingEvent) error {
 	errorMessage := ""
 	if event.Retry.Err != nil {

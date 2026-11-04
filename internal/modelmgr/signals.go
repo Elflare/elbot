@@ -4,7 +4,9 @@ import (
 	"context"
 	"elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/notification/rules"
 	"elbot/internal/signal"
+	"log/slog"
 )
 
 // ModelRetryingEvent is emitted with the actual provider call's context. That
@@ -25,4 +27,29 @@ type ModelRetryingEvent struct {
 // ObserveModelRetrying 只交付订阅连接；发布与关闭信号归模型总管。
 func (s *ModelManager) ObserveModelRetrying(handler func(context.Context, ModelRetryingEvent) error, options signal.ConnectOptions) (*signal.Connection, error) {
 	return s.retrying.Observe(handler, options)
+}
+
+func (s *ModelManager) connectRetrySignals() error {
+	connection, err := s.retrying.Observe(logModelRetry, signal.ConnectOptions{Shutdown: signal.Drain})
+	if err != nil {
+		return err
+	}
+	s.connections = append(s.connections, connection)
+	connection, err = s.retrying.Observe(func(_ context.Context, e ModelRetryingEvent) error {
+		ctx := e.CallContext
+		if ctx.Err() != nil {
+			return nil
+		}
+		text := rules.ModelRetry(e.Provider, e.Retry)
+		if text == "" {
+			return nil
+		}
+		_, err := events.NotificationRequested.EmitAsync(ctx, events.NewNotification(ctx, slog.LevelWarn, text))
+		return err
+	}, signal.ConnectOptions{Shutdown: signal.CancelPending})
+	if err != nil {
+		return err
+	}
+	s.connections = append(s.connections, connection)
+	return nil
 }
