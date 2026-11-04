@@ -43,9 +43,7 @@ func (s *Supervisor) BeginClose() {
 	}
 	s.cancel()
 	s.control.BeginClose()
-	if s.naming != nil {
-		s.naming.BeginClose()
-	}
+	s.naming.BeginClose()
 	// 只观察自有完成信号，不持有调用方的等待期限，也不关闭借用资源。
 	go s.waitClosed()
 }
@@ -54,9 +52,7 @@ func (s *Supervisor) BeginClose() {
 func (s *Supervisor) Done() <-chan struct{} { return s.done }
 
 func (s *Supervisor) waitClosed() {
-	if s.naming != nil {
-		<-s.naming.Done()
-	}
+	<-s.naming.Done()
 	<-s.control.Done()
 	<-s.bindings.Done()
 	close(s.done)
@@ -67,14 +63,12 @@ func (s *Supervisor) waitClosed() {
 func (s *Supervisor) Close(ctx context.Context) error {
 	s.BeginClose()
 	var errs []error
-	if s.naming != nil {
-		errs = append(errs, s.naming.Close(ctx))
-		select {
-		case <-s.naming.Done():
-		default:
-			// 命名及日志尚未收尾，不推进后续事件源关闭。
-			return errors.Join(errs...)
-		}
+	errs = append(errs, s.naming.Close(ctx))
+	select {
+	case <-s.naming.Done():
+	default:
+		// 命名及日志尚未收尾，不推进后续事件源关闭。
+		return errors.Join(errs...)
 	}
 
 	// Control 的定时回调仍可能持有准入；它实际退出后才能关闭 Binding。

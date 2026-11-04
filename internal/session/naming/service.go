@@ -4,7 +4,6 @@ package naming
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"elbot/internal/modelmgr"
@@ -49,7 +48,6 @@ type Service struct {
 	namingSignals  namingSignals
 	logConnections []*signal.Connection
 	closeOnce      sync.Once
-	closeErr       error // 由唯一关闭流程固定，在 done 之后读取。
 	done           chan struct{}
 }
 
@@ -101,27 +99,26 @@ func (s *Service) Close(ctx context.Context) error {
 		go func() {
 			s.tasks.Wait()
 			// Emit 的超时不代表回调退出；关闭信号和连接也必须等真实完成。
-			var errs []error
-			errs = append(errs, s.namingSignals.Scheduled.Close(context.Background()), s.namingSignals.Completed.Close(context.Background()))
+			_ = s.namingSignals.Scheduled.Close(context.Background())
+			_ = s.namingSignals.Completed.Close(context.Background())
 			for _, connection := range s.logConnections {
-				errs = append(errs, connection.Close(context.Background()))
+				_ = connection.Close(context.Background())
 			}
 			s.mu.Lock()
 			s.namingStates = nil
 			s.logConnections = nil
 			s.mu.Unlock()
-			s.closeErr = errors.Join(errs...)
 			close(s.done)
 		}()
 	})
 	select {
 	case <-s.done:
-		return s.closeErr
+		return nil
 	default:
 	}
 	select {
 	case <-s.done:
-		return s.closeErr
+		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
