@@ -40,6 +40,14 @@
       "translation": "### Added\n\n- **Lightweight Core**: Implemented in Go, local startup <10ms, resident memory approximately 30MB.\n- **Chat/Work Dual Mode**: chat mode disables tools, suitable for daily chatting and low-cost conversations; work mode enables tool discovery and invocation; models can be configured independently for both modes.\n- **Tool Discovery Mechanism**: By default, only `discover_tool` and the tool name are exposed, with the full schema injected on demand to reduce unnecessary context overhead.\n- **Session Service**: Persistent sessions supporting recovery, archiving, pinning, Forking, deletion, pagination, and platform isolation; automatic context compaction for long conversations.\n- **Hook Layer**: Inserts extension logic at key points such as Agent input, LLM request/response, and platform sending; includes built-in rule Hooks and resident memory Hooks.\n- **Standard Cron and LLM Cron**: Standard Cron sends fixed content directly according to a schedule; LLM Cron uses ELyph task descriptions to drive model execution, supporting one-time and periodic tasks, missed run recovery, and broadcasting.\n- **ELyph Task Notation**: A structured task description language used for LLM Cron and native Skills to reduce natural language ambiguity.\n- **Native and External Skills**: The `create_el_skill` meta-tool supports LLMs in creating native EL Skills (pure ELyph or accompanied by Go source code and compiled); Compatible with agentskills.io style external AgentSkills (accompanied by Python scripts).\n- **Elnis listening hub**: Receives external events delivered by Elwisp via the Elvena HTTP protocol, supporting three modes (record/direct/llm) and multi-target delivery.\n- **Multi-platform adapter**: CLI (including client/server separation and remote connection), QQ OneBot v11, QQ Official Bot, Telegram Bot API.\n- **Security Policy**: Tool risk grading, role permission verification, high-risk confirmation workflows, and a lightweight background shell sandbox.\n- **Memory System**: Resident memory (core/normal layers) injected by platform and actor; long-term memory based on Markdown source data and SQLite FTS retrieval.\n- **Logs and Audit**: Runtime logs, audit logs, and Elnis logs are separated, supporting structured fields and date-based rotation.\n- **SQLite Persistence**: Unified storage for Sessions, messages, context summaries, tool call records, Cron jobs, and Elnis events.\n\n",
       "updated_at": 1782376912
     },
+    "CHANGELOG.md:section:1f02c83725313ddb9b97b3712a31364c1a759c8c9479257e5b70ff3f82850cc3": {
+      "kind": "section",
+      "source": "### Added\n\n- 新增配置文件锁，防止多个实例使用同一份配置文件。\n- web 搜索增加markdownnew\n\n",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "66883f9e8d23d1b05a35860b32e8b93fd6b2cf02ef7f03a8ac54573761dc69e3",
+      "translation": "### Added\n\n- Added a configuration file lock to prevent multiple instances from using the same configuration file.\n- Added markdownnew to web search.\n\n",
+      "updated_at": 1793797519
+    },
     "CHANGELOG.md:section:292910447d542b393c73307c5c3a3fd4a22731bd7f73484947589ae478709c2c": {
       "kind": "section",
       "source": "### Added\n\n- QQ 官方机器人已支持群聊\n- 新增媒体中心，统一管理所有媒体文件\n\n",
@@ -120,14 +128,6 @@
       "translation": "### Changed\n\n- Optimized .env, platform secret, and token parsing logic\n- `read_file` now requires high-risk confirmation when reading `.env`, `.env.*`, and common credential filenames; reading other files remains low-risk.\n- Provider requests have been changed from defaulting to inheriting the process environment proxy to only using the explicit `proxy` of the corresponding Provider in `providers.toml`; Model lists and chat requests will connect directly when not configured or left blank.\n- CLI TUI notifications now support log levels and are displayed in White for Debug, Green for Info, Yellow for Warn, and Red for Error; Added an optional `level` field to the `notice` message synchronization of the remote CLI.\n\n",
       "updated_at": 1785810751
     },
-    "CHANGELOG.md:section:944332f1c0bebccfc195f19df5d083b9e8c66155d1e80b73831f761a592a4a61": {
-      "kind": "section",
-      "source": "### Added\n\n- 新增配置文件锁，防止多个实例使用同一份配置文件。\n\n",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "6208b78884479228533ac726cad128111a7b3fd35df7bdd5b05f17afa823d8c3",
-      "translation": "### Added\n\n- Added a configuration file lock to prevent multiple instances from using the same configuration file.\n\n",
-      "updated_at": 1793379505
-    },
     "CHANGELOG.md:section:a0590d4ce73093a87b4e7bf956c10487ec0937cf29e822a69988bdff4d9b61e1": {
       "kind": "section",
       "source": "### Fixed\n\n- 修复已保存的 workspace 目录不存在时阻断工具发现和路径工具的问题。\n- 修复 Chat Completions 重复结束标记导致工具调用重复交付、触发 `tool batch identity mismatch` 的问题。\n- 修复 `/stop` 或超时仅终止 Skill 启动器、子进程仍继续执行和发送的问题。\n- 修复后台拿不到skill的bug\n- 修复大量无用IO，提升性能\n- 修复无媒体 native seed 被序列化为 JSON `null`，导致媒体清理误报缺引用并中止的问题。\n- 修复普通消息并发启动时误报“请求失败”的问题。\n- 修复普通 `/audit` 等日志查询直接展示 JSON 转义的bug。\n- 修复媒体size超限判断bug\n- 修复 `shell` 先缓存全部输出、结束后才截断导致执行期间内存随输出量增长的问题；现在收集时限制容量，超出部分继续排空并丢弃。\n- 修复工具多行提示逐行重复添加 `[tool]` 的问题。\n- 修复高风险确认的bug。\n- 修复追加确认等待的bug。\n- QQ OneBot: 现在会过滤重复上报消息。\n- QQ OneBot: llm现在能看到引用回复的合并消息了，只展开一层内容。\n- QQ OneBot: 长文本分页现在只有非末页添加省略号。\n- 修复 Agent 去除唤醒词或工具指令时会合并全部文字段、打乱图文位置的问题。\n- 修复s3的url签名逻辑错误\n- 修复后台任务工具缓存bug。\n- 修复日志无意义的脱敏操作（因为本来就没记录敏感信息。之前是智障GPT无脑防御性编程多此一举，大量正则匹配，浪费性能）\n- chat 模式不再能传入工具。\n- 修复普通用户能stop其他用户的请求的bug。\n- 修复压缩期间能预载工具的bug。\n- 启动中途失败时，已经创建的 Hook／信号和延迟 Skill 加载现在统一取消并清理；平台退出等待也纳入共享 30 秒预算，超时不提前关闭仍被在途工作使用的存储和日志。\n- 统一发送链路现在同时保留成功结果与错误。Telegram 已发出部分分页时不再从头降级重发，避免重复消息。\n- 启动插件告警不再等待 Agent 创建后补发；交互模式直接显示于本地 CLI，service 模式记录实际告警内容。\n- 工具发现、预载现在是事务写入session。\n- 模型切换现在先原子保存 `state.toml` 再生效，并发切换不覆盖彼此更新。命名模型与 work fallback 改为每次操作从共享模型服务取得快照，后续命名跟随新选择，在途命名、对话和压缩保持本次选择。\n- Session 绑定由 Session 服务统一同步失效，修复旧工具／确认在切走再恢复后复活，以及延迟撤销清理影响新绑定的问题；运行中会话拒绝切离和删除，维护清理复用实时忙闲状态。\n- Session 整行快照写回改为事务内字段更新，防止活跃时间、workspace、缓存及命名互相覆盖，保留未知 metadata；手动改名优先于迟到的自动命名。\n- 压缩交接现在先结束旧 Turn 再激活新会话，并校验取消与执行身份；后台压缩及接管后的续接保留正确身份，迟到请求不能结束新 Turn。\n- 平台连接后的 Hook／Cron 处理现在按平台独立排队，退出时取消积压与在途处理，并共享 30 秒关闭预算。Cron 补发取消此前可能记录发送失败并追加失败通知，现在按正常取消处理；应用关闭预算耗尽也不再作为失败退出。\n- `/resume` 与 `/fork` 返回的历史消息预览现在每条最多保留 200 个 Unicode 字符。\n- 文档型 AgentSkill 详情此前向所有用户追加发现 `agent_skill_creator` 的引导；现在仅向超级管理员追加，普通用户或身份缺失时隐藏。工具发现、`@skill:` 和后台预加载均生效，配置错误提示仍保留。\n\n",
@@ -188,6 +188,6 @@
   "source": "CHANGELOG.md",
   "source_hash": "",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1793423213,
+  "updated_at": 1793798093,
   "version": 3
 }
