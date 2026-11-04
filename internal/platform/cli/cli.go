@@ -100,17 +100,11 @@ func (s cliMessageStream) Append(ctx context.Context, text string) error {
 }
 
 func (s cliMessageStream) Replace(ctx context.Context, text string) (delivery.Receipt, error) {
-	if err := s.adapter.sendTUIMessage(tuiReplaceAssistantMsg(text), text); err != nil {
-		return delivery.Receipt{}, err
-	}
-	return delivery.Receipt{}, nil
+	return delivery.Receipt{}, s.adapter.sendTUIMessage(tuiReplaceAssistantMsg(text), text)
 }
 
 func (s cliMessageStream) Finish(ctx context.Context) (delivery.Receipt, error) {
-	if err := s.adapter.sendTUIMessage(tuiFinishAssistantMsg{}, "\n"); err != nil {
-		return delivery.Receipt{}, err
-	}
-	return delivery.Receipt{}, nil
+	return delivery.Receipt{}, s.adapter.sendTUIMessage(tuiFinishAssistantMsg{}, "\n")
 }
 
 func outputsText(outputs []delivery.Output) string {
@@ -119,11 +113,7 @@ func outputsText(outputs []delivery.Output) string {
 
 func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	if platformName := strings.TrimSpace(target.Platform); platformName != "" && platformName != a.Name() {
-		{
-			err := fmt.Errorf("cli cannot send to platform %q", platformName)
-
-			return delivery.Receipt{}, err
-		}
+		return delivery.Receipt{}, fmt.Errorf("cli cannot send to platform %q", platformName)
 	}
 	text := outputsText(outputs)
 	if text != "" {

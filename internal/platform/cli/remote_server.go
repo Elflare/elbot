@@ -219,8 +219,7 @@ func (s remoteMessageStream) Append(ctx context.Context, text string) error {
 	if text == "" {
 		return nil
 	}
-	err := s.client.write(ctx, remoteMessage{Type: remoteMsgStreamAppend, Text: text})
-	return err
+	return s.client.write(ctx, remoteMessage{Type: remoteMsgStreamAppend, Text: text})
 }
 
 func (s remoteMessageStream) Replace(ctx context.Context, text string) (delivery.Receipt, error) {

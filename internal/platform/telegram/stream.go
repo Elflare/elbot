@@ -107,15 +107,14 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 		return s.adapter.telegramReceipt(receipt, s.target), err
 	}
 	pages := telegramTextPages(text)
+	pageText, pageParseMode := s.adapter.streamPreviewPayload(pages[0])
 	if s.message == 0 {
-		pageText, pageParseMode := s.adapter.streamPreviewPayload(pages[0])
 		sent, err := s.adapter.client.sendMessage(ctx, sendMessageRequest{ChatID: s.target.NativeChatID, Text: pageText, ParseMode: pageParseMode})
 		if err != nil {
 			return delivery.Receipt{}, err
 		}
 		s.message = sent.MessageID
 	} else {
-		pageText, pageParseMode := s.adapter.streamPreviewPayload(pages[0])
 		if _, err := s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.NativeChatID, MessageID: s.message, Text: pageText, ParseMode: pageParseMode}); err != nil {
 			return delivery.Receipt{}, err
 		}
@@ -160,9 +159,6 @@ func (a *Adapter) streamPreviewPayload(text string) (string, string) {
 
 func streamPreviewText(text string) string {
 	text = strings.TrimSpace(text)
-	if text == "" {
-		return ""
-	}
 	runes := []rune(text)
 	if len(runes) <= telegramTextPageRunes {
 		return text
