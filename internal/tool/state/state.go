@@ -95,9 +95,7 @@ func prepareUpdate(state *toolshare.State, update toolshare.StateUpdate) (storag
 		}
 	}
 	if len(state.ToolTags) > 0 {
-		if err := fields.Set("tool_tags", state.ToolTags); err != nil {
-			return nil, err
-		}
+		_ = fields.Set("tool_tags", state.ToolTags)
 	}
 	return fields, nil
 }
@@ -133,7 +131,7 @@ func (s *StateService) Commit(ctx context.Context, id string, update toolshare.S
 		}
 		before := discoveredNames(state.DiscoveredTools)
 		var injected, existing []string
-		for _, item := range normalizeDiscoveredTools(update.Tools) {
+		for _, item := range update.Tools {
 			name := item.CanonicalName
 			if name == "" {
 				name = item.Name

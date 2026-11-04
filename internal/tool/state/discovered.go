@@ -40,22 +40,15 @@ func normalizeDiscoveredTools(tools []toolshare.DiscoveredTool) []toolshare.Disc
 
 func mergeDiscoveredTools(existing, incoming []toolshare.DiscoveredTool) []toolshare.DiscoveredTool {
 	byKey := map[string]toolshare.DiscoveredTool{}
-	for _, discovered := range existing {
-		key := discovered.CanonicalName
-		if key == "" {
-			key = discovered.Name
-		}
-		if key != "" {
-			byKey[key] = discovered
-		}
-	}
-	for _, discovered := range incoming {
-		key := discovered.CanonicalName
-		if key == "" {
-			key = discovered.Name
-		}
-		if key != "" {
-			byKey[key] = discovered
+	for _, tools := range [][]toolshare.DiscoveredTool{existing, incoming} {
+		for _, discovered := range tools {
+			key := discovered.CanonicalName
+			if key == "" {
+				key = discovered.Name
+			}
+			if key != "" {
+				byKey[key] = discovered
+			}
 		}
 	}
 	out := make([]toolshare.DiscoveredTool, 0, len(byKey))

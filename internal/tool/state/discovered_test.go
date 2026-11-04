@@ -42,6 +42,28 @@ func TestEmptyDiscoveredToolsRemainNil(t *testing.T) {
 	}
 }
 
+func TestStateCommitReportsUniqueNamesAndKeepsLastDeclaration(t *testing.T) {
+	store, row := stateTestStore(t, "")
+	service := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
+	alpha, beta := stateTestTool("alpha"), stateTestTool("beta")
+	if _, err := service.Commit(t.Context(), row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{alpha}}); err != nil {
+		t.Fatal(err)
+	}
+	updated := alpha
+	updated.Description = "last declaration"
+	committed, err := service.Commit(t.Context(), row.ID, toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{beta, {}, alpha, beta, updated}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(committed.Injected, []string{"beta"}) || !slices.Equal(committed.Existing, []string{"alpha"}) {
+		t.Fatalf("receipt=%+v", committed)
+	}
+	state, err := DecodeState(committed.Metadata)
+	if err != nil || len(state.DiscoveredTools) != 2 || state.DiscoveredTools[0].Description != updated.Description {
+		t.Fatalf("state=%+v err=%v", state, err)
+	}
+}
+
 func TestStatePersistsCompleteDeclarationsByCanonicalName(t *testing.T) {
 	store, row := stateTestStore(t, "")
 	service := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
