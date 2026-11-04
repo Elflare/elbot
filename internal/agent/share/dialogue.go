@@ -167,7 +167,6 @@ type ReplyCommitResult struct {
 	MessageID  string
 	RawText    string
 	Receipt    delivery.Receipt
-	Persisted  bool
 	SendErr    error
 	PersistErr error
 }

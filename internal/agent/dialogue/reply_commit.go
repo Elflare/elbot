@@ -71,7 +71,7 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 		return result, errors.Join(result.SendErr, result.PersistErr)
 	}
 	if toSave != nil {
-		result.MessageID, result.Persisted = message.ID, true
+		result.MessageID = message.ID
 	}
 	if result.SendErr != nil {
 		return result, result.SendErr

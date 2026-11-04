@@ -70,7 +70,7 @@ func TestReplyDeliveryRecordsOncePerSend(t *testing.T) {
 				t.Fatalf("empty outputs logged: err=%v records=%+v", err, records)
 			}
 			result, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-			if err != nil || !result.Persisted || len(records) != 2 {
+			if err != nil || result.MessageID == "" || len(records) != 2 {
 				t.Fatalf("result=%+v err=%v records=%+v", result, err, records)
 			}
 			for i, r := range records {
@@ -172,7 +172,7 @@ func TestBufferedSendFailureKeepsReceipt(t *testing.T) {
 			f := newReplyTestFixture(t, true)
 			f.platform.sendErr = sendErr
 			result, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-			if !errors.Is(err, sendErr) || !result.Persisted || len(result.Receipt.SentMessages) != 1 {
+			if !errors.Is(err, sendErr) || result.MessageID == "" || len(result.Receipt.SentMessages) != 1 {
 				t.Fatalf("result=%+v err=%v", result, err)
 			}
 		})

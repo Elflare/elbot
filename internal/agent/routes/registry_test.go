@@ -167,7 +167,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	defer done()
 	in.RequestID = info.ID
 	result := runner.RunTurn(ctx, requestCtx, in, out)
-	if result.Outcome != agentshare.Completed || !result.Committed.Persisted || result.Usage == nil || (result.Usage.TotalTokens == nil || *result.Usage.TotalTokens != 7) {
+	if result.Outcome != agentshare.Completed || result.Committed.MessageID == "" || result.Usage == nil || (result.Usage.TotalTokens == nil || *result.Usage.TotalTokens != 7) {
 		t.Fatalf("common execution failed: %+v", result)
 	}
 	if loop.prepared != 1 || loop.ran != 1 || len(out.sent) != 1 || out.sent[0] != "visible reply" {

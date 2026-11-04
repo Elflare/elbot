@@ -154,11 +154,7 @@ func (o *OutputSender) Preview(ctx context.Context, text ...string) {
 		}
 		return
 	}
-	body := strings.TrimSpace(prepared)
-	if body == "" {
-		return
-	}
-	o.Notify(ctx, slog.LevelDebug, body)
+	o.Notify(ctx, slog.LevelDebug, strings.TrimSpace(prepared))
 }
 
 func formatToolPreview(text string) string {

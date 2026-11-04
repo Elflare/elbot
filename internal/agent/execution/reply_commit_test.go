@@ -170,7 +170,7 @@ func TestReplyCommitOrderAndTextSeparation(t *testing.T) {
 				wantOrder = []string{"/turn", "/send", "replace", "finish", "save", "map", "outputs"}
 			}
 			got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-			if err != nil || !got.Persisted || got.MessageID == "" || got.RawText != "raw" {
+			if err != nil || got.MessageID == "" || got.RawText != "raw" {
 				t.Fatalf("result=%+v err=%v", got, err)
 			}
 			if !reflect.DeepEqual(f.events, wantOrder) {
@@ -230,7 +230,7 @@ func TestReplyCommitFailureKeepsFactsAndDoesNotRetry(t *testing.T) {
 					wantPersisted = false
 				}
 				got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-				if !errors.Is(err, wantErr) || got.Persisted != wantPersisted || dialogue.HasReplyReceipt(got.Receipt) != wantReceipt {
+				if !errors.Is(err, wantErr) || (got.MessageID != "") != wantPersisted || dialogue.HasReplyReceipt(got.Receipt) != wantReceipt {
 					t.Fatalf("result=%+v err=%v events=%v", got, err, f.events)
 				}
 				if failure != "map" && !errors.Is(got.PersistErr, f.repo.appendErr) {
@@ -296,7 +296,7 @@ func TestReplyCommitStreamFailureRetainsReceipt(t *testing.T) {
 				s.finishErr = failure
 			}
 			got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-			if !errors.Is(err, failure) || got.Persisted != (mode != "replace") || dialogue.HasReplyReceipt(got.Receipt) != (mode != "replace") {
+			if !errors.Is(err, failure) || (got.MessageID != "") != (mode != "replace") || dialogue.HasReplyReceipt(got.Receipt) != (mode != "replace") {
 				t.Fatalf("result=%+v err=%v", got, err)
 			}
 			if strings.Contains(strings.Join(f.events, ","), "send") || strings.Contains(strings.Join(f.events, ","), "outputs") {
@@ -321,7 +321,7 @@ func TestReplyCommitMergesReplaceAndFinishReceipts(t *testing.T) {
 	}
 	f.in.Stream = s
 	got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-	if !errors.Is(err, s.finishErr) || !got.Persisted || !reflect.DeepEqual(got.Receipt.PlatformMessageIDs, []string{"first", "second"}) || len(got.Receipt.SentMessages) != 2 || !reflect.DeepEqual(got.Receipt.SentMessages[0].OutputIndexes, []int{0, 1}) {
+	if !errors.Is(err, s.finishErr) || got.MessageID == "" || !reflect.DeepEqual(got.Receipt.PlatformMessageIDs, []string{"first", "second"}) || len(got.Receipt.SentMessages) != 2 || !reflect.DeepEqual(got.Receipt.SentMessages[0].OutputIndexes, []int{0, 1}) {
 		t.Fatalf("result=%+v error=%v", got, err)
 	}
 	got.Receipt.SentMessages[0].OutputIndexes[0] = 9
@@ -348,7 +348,7 @@ func TestReplyCommitEmptyAndBackground(t *testing.T) {
 					f.platform.expectedOutputs = f.in.Outputs
 				}
 				got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-				if err != nil || got.Persisted != (mode == "outputs_only" || mode == "background_reply") {
+				if err != nil || (got.MessageID != "") != (mode == "outputs_only" || mode == "background_reply") {
 					t.Fatalf("result=%+v err=%v", got, err)
 				}
 				if mode == "empty" && f.platform.text != "LLM: nil" {
@@ -370,7 +370,7 @@ func TestReplyCommitFinalHookFailureDoesNotSaveOrSend(t *testing.T) {
 				return text, context.Canceled
 			}})
 			got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-			if !errors.Is(err, context.Canceled) || got.Persisted || dialogue.HasReplyReceipt(got.Receipt) || len(f.events) != 0 {
+			if !errors.Is(err, context.Canceled) || (got.MessageID != "") || dialogue.HasReplyReceipt(got.Receipt) || len(f.events) != 0 {
 				t.Fatalf("result=%+v err=%v events=%v", got, err, f.events)
 			}
 		})
@@ -389,7 +389,7 @@ func TestReplyCommitHookSuppressesDisplayWithoutChangingHistory(t *testing.T) {
 			}
 			f.register(t, agenthooks.Points{AgentTurnOutputPrepared: suppress("turn"), AgentOutputPrepared: suppress("send_hook")})
 			got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-			if err != nil || !got.Persisted || f.platform.text != "" {
+			if err != nil || got.MessageID == "" || f.platform.text != "" {
 				t.Fatalf("result=%+v err=%v text=%q", got, err, f.platform.text)
 			}
 			message, err := f.repo.Get(f.ctx, got.MessageID)
