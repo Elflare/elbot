@@ -33,10 +33,10 @@ func (m *Manager) executePrepared(ctx context.Context, call llm.ToolCallRequest,
 		ToolCallID: call.ID,
 	}
 	if resolved.Error != nil {
-		return executionError(call, message, resolved.Error)
+		return executionError(call, resolved.Error)
 	}
 	if err := ctx.Err(); err != nil {
-		return executionError(call, message, err)
+		return executionError(call, err)
 	}
 	request := toolshare.CallRequest{ID: call.ID, Name: call.Name, Arguments: json.RawMessage(call.Arguments)}
 	if !prepared.Matches(request) {
@@ -44,7 +44,7 @@ func (m *Manager) executePrepared(ctx context.Context, call llm.ToolCallRequest,
 		record := newRunRecord(ctx, "", "tool_prepare", err)
 		record.Level = slog.LevelError
 		m.Log(ctx, record)
-		return executionError(call, message, err)
+		return executionError(call, err)
 	}
 	if onStarted != nil {
 		onStarted()
@@ -69,7 +69,7 @@ func (m *Manager) executePrepared(ctx context.Context, call llm.ToolCallRequest,
 	return executionResult{Message: message, Result: result, Summary: logContent, Error: err, ExecutionStarted: true}
 }
 
-func executionError(call llm.ToolCallRequest, message llm.LLMMessage, err error) executionResult {
+func executionError(call llm.ToolCallRequest, err error) executionResult {
 	reason := "failed"
 	var denied toolshare.PolicyDeniedError
 	if errors.As(err, &denied) {
@@ -82,6 +82,5 @@ func executionError(call llm.ToolCallRequest, message llm.LLMMessage, err error)
 		}
 	}
 	content := fmt.Sprintf("tool call %s %s: %v", call.Name, reason, err)
-	message.Segments = llm.TextSegments(content)
-	return executionResult{Message: message, Error: err, Summary: content}
+	return executionResult{Message: toolMessage(call.Name, call.ID, content), Error: err, Summary: content}
 }

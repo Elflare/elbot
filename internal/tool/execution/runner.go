@@ -219,7 +219,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		var prepared *toolshare.PreparedCall
 		await(func() { prepared, err = m.prepareCall(toolCtx, resolved, call) })
 		if err != nil {
-			task.result = executionError(call, toolMessage(call.Name, call.ID, ""), err)
+			task.result = executionError(call, err)
 			m.recordCallCompleted(ctx, sessionID, call, resolved.Source, actor, "", runSource, task.startedAt, task.result)
 			task.finishedAt = storage.Now()
 			ready <- index
@@ -248,7 +248,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			if err == nil {
 				err = toolshare.PolicyDeniedError("tool confirmation rejected")
 			}
-			task.result = executionError(call, toolMessage(call.Name, call.ID, ""), err)
+			task.result = executionError(call, err)
 			if len(confirm.Message.Segments) > 0 {
 				task.result.Message = confirm.Message
 			}

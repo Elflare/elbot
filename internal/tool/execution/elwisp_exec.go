@@ -74,7 +74,6 @@ func executeELwispTool(ctx context.Context, req *http.Request, timeout time.Dura
 	content := strings.TrimSpace(string(body))
 	var parsed elwispToolResponse
 	if err := json.Unmarshal(body, &parsed); err == nil {
-		content = firstELwispResult(parsed.Content, parsed.Text, parsed.Result, content)
 		if strings.TrimSpace(parsed.Error) != "" {
 			content = firstELwispResult(parsed.Content, parsed.Text, parsed.Result)
 			var result *toolshare.Result
@@ -83,14 +82,15 @@ func executeELwispTool(ctx context.Context, req *http.Request, timeout time.Dura
 			}
 			return result, "", fmt.Errorf("ELwisp tool error: %s", strings.TrimSpace(parsed.Error))
 		}
+		content = firstELwispResult(parsed.Content, parsed.Text, parsed.Result, content)
 	}
 	return &toolshare.Result{Content: content}, "", nil
 }
 
 func firstELwispResult(values ...string) string {
 	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
+		if value = strings.TrimSpace(value); value != "" {
+			return value
 		}
 	}
 	return ""

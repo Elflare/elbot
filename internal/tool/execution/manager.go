@@ -66,24 +66,23 @@ func (m *Manager) resolve(ctx context.Context, name string, discovered []toolsha
 		if mode == storage.SessionModeBackground && len(m.BackgroundDiscoveredTools([]toolshare.DiscoveredTool{discoveredTool})) == 0 {
 			continue
 		}
-		discoveredCopy := discoveredTool
-		if mode != storage.SessionModeBackground && !m.InfoAvailableInContext(ctx, toolshare.Info{ForegroundOnly: discoveredCopy.ForegroundOnly}) {
-			return resolvedTool{Source: discoveredCopy.Source, Discovered: &discoveredCopy, Error: toolshare.PolicyDeniedError("tool is unavailable in this context")}
+		if mode != storage.SessionModeBackground && !m.InfoAvailableInContext(ctx, toolshare.Info{ForegroundOnly: discoveredTool.ForegroundOnly}) {
+			return resolvedTool{Source: discoveredTool.Source, Discovered: &discoveredTool, Error: toolshare.PolicyDeniedError("tool is unavailable in this context")}
 		}
-		source := discoveredCopy.Source
+		source := discoveredTool.Source
 		if source == toolshare.SourceKindELwisp {
-			if discoveredCopy.Endpoint == "" {
-				return resolvedTool{Source: source, Discovered: &discoveredCopy, Error: fmt.Errorf("ELwisp tool endpoint is missing")}
+			if discoveredTool.Endpoint == "" {
+				return resolvedTool{Source: source, Discovered: &discoveredTool, Error: fmt.Errorf("ELwisp tool endpoint is missing")}
 			}
-			return resolvedTool{Source: source, Discovered: &discoveredCopy}
+			return resolvedTool{Source: source, Discovered: &discoveredTool}
 		}
-		if nativeTool, ok := m.Registry.Get(discoveredCopy.Name); ok {
+		if nativeTool, ok := m.Registry.Get(discoveredTool.Name); ok {
 			if reason := m.UnavailableReason(ctx, nativeTool.Definition); reason != "" {
-				return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Discovered: &discoveredCopy, Error: toolshare.PolicyDeniedError(reason)}
+				return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Discovered: &discoveredTool, Error: toolshare.PolicyDeniedError(reason)}
 			}
-			return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Discovered: &discoveredCopy}
+			return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Discovered: &discoveredTool}
 		}
-		return resolvedTool{Source: toolshare.SourceKindNative, Discovered: &discoveredCopy, Error: fmt.Errorf("native tool is no longer available")}
+		return resolvedTool{Source: toolshare.SourceKindNative, Discovered: &discoveredTool, Error: fmt.Errorf("native tool is no longer available")}
 	}
 	if mode == storage.SessionModeBackground {
 		return resolvedTool{Error: toolshare.PolicyDeniedError("tool is not allowed in this background task")}

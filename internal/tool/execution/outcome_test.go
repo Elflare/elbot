@@ -19,8 +19,7 @@ import (
 func TestExecutionErrorPreservesOriginalCause(t *testing.T) {
 	call := llm.ToolCallRequest{ID: "call", Name: "shell"}
 	for _, err := range []error{toolshare.PolicyDeniedError("denied"), context.Canceled, errors.New("execution failed")} {
-		message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
-		result := executionError(call, message, err)
+		result := executionError(call, err)
 		if result.Error != err || result.ExecutionStarted || result.Message.ToolCallID != call.ID || !strings.Contains(result.Summary, err.Error()) {
 			t.Fatalf("result=%+v", result)
 		}
