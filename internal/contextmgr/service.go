@@ -29,41 +29,16 @@ type Service struct {
 	compactors   CompactorResolver
 	store        storage.Store
 	models       ModelCapabilities
-	loader       Loader
 	usageWriteMu sync.Mutex
 	config       config.ContextConfig
 }
 
 func New(opts Options) *Service {
-	return &Service{compactors: opts.Compactors, store: opts.Store, models: opts.Models, loader: Loader{Store: opts.Store}, config: opts.Config}
+	return &Service{compactors: opts.Compactors, store: opts.Store, models: opts.Models, config: opts.Config}
 }
 
 func (s *Service) Load(ctx context.Context, id string) (*LoadedContext, error) {
-	return s.loader.Load(ctx, id)
-}
-
-func cloneUsage(usage *llm.Usage) *llm.Usage {
-	if usage == nil {
-		return nil
-	}
-	copy := *usage
-	if usage.PromptTokens != nil {
-		copy.PromptTokens = new(int64)
-		*copy.PromptTokens = *usage.PromptTokens
-	}
-	if usage.CompletionTokens != nil {
-		copy.CompletionTokens = new(int64)
-		*copy.CompletionTokens = *usage.CompletionTokens
-	}
-	if usage.TotalTokens != nil {
-		copy.TotalTokens = new(int64)
-		*copy.TotalTokens = *usage.TotalTokens
-	}
-	if usage.CacheHitTokens != nil {
-		copy.CacheHitTokens = new(int64)
-		*copy.CacheHitTokens = *usage.CacheHitTokens
-	}
-	return &copy
+	return (Loader{Store: s.store}).Load(ctx, id)
 }
 
 // RecordTurn 在 Turn 的 loop 和回复提交成功后，一次保存活动时间与用量；nil 用量保留原值。
@@ -72,7 +47,6 @@ func (s *Service) RecordTurn(ctx context.Context, id string, usage *llm.Usage) e
 	if id == "" {
 		return nil
 	}
-	usage = cloneUsage(usage)
 	s.usageWriteMu.Lock()
 	defer s.usageWriteMu.Unlock()
 	_, err := s.store.Sessions().Mutate(ctx, id, func(row *storage.Session) error {
