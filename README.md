@@ -28,52 +28,48 @@ It supports general chat, tool calling, Hook extensions, long-term task scheduli
 
 | Metric           | Value                            |
 | -------------- | ------------------------------- |
-| Local startup time   | ~10ms (Tested on N5105, SATA SSD) |
+| Local startup time   | ~10ms (tested on N5105, SATA SSD) |
 | Resident memory       | ~50MB                           |
 | Binary size | <30MB                           |
 
-**Extremely token-efficient tool discovery**: Research shows that many ordinary users still primarily use LLM-like products as advanced search engines, writing assistants, and listening objects; frequent tool calls are not the norm for all conversations.
-Reference: Chatterji et al., _How People Use ChatGPT_, NBER, 2025; Yan et al., _ShareChat: A Dataset of Chatbot Conversations in the Wild_, arXiv:2512.17843, 2025.
+**On-demand tool discovery to save tokens**: Most users treat LLMs as search engines, writing assistants, or listeners; frequent tool calls are not the norm for conversations[^1][^2].
 
-ElBot does not inject the full schema of all tools by default in every round of conversation, but only exposes `discover_tool` and the names of currently available tools. When the model needs to use a tool, it first discovers the tool details on demand, and then the Agent injects the corresponding schema. This greatly reduces invalid context overhead.
+ElBot does not inject the full schema of all tools into every conversation round, exposing only `discover_tool` and the names of currently available tools; the model discovers details when needed, and the Agent injects the corresponding schema.
 
-**Chat / Work dual mode**: The two modes can configure models independently, allowing low-cost models to handle small talk and powerful models to focus on complex tasks.
+**Chat / Work dual mode**: The two modes can be configured with independent models: low-cost models for chatting and powerful models for complex tasks.
 
-**Layered resident memory and long-term memory**: Resident memory only saves short, stable information that truly needs to be injected in every round, and internally distinguishes between "core" (requiring confirmation for modification) and "normal" (organizable); longer and more complex memories are queried by the LLM on demand via `long_memory`. Long-term memory uses Markdown source data and SQLite FTS, balancing transparency and retrieval efficiency.
-
-| Mode   | Tool               | Applicable scenarios                                 | First request token consumption      |
+| Mode   | Tools               | Applicable Scenarios                                 | First Request Token Consumption      |
 | ------ | ------------------ | ---------------------------------------- | -------------------------- |
-| `chat` | No injection             | Small talk, companionship, lightweight Q&A, low-cost conversation         | <500 (Subsequent cache hit 98%+)  |
-| `work` | Enable tool discovery and invocation | Complex tasks such as search, files, commands, Cron, Skills, etc. | <1000 (Subsequent cache hit 95%+) |
+| `chat` | No injection             | Chatting, companionship, lightweight Q&A, low-cost conversations         | <500 (subsequent cache hit 98%+)  |
+| `work` | Enable tool discovery and invocation | Complex tasks such as search, files, commands, Cron, Skills, etc. | <1000 (subsequent cache hit 95%+) |
 
+> Note: After using the `Responses` protocol, tool discovery via `additional_tools` no longer breaks the cache, leading to higher subsequent cache hit rates.
 
-> Note: After using the `Responses` protocol, using `additional_tools` for tool discovery no longer breaks the cache, leading to higher subsequent cache hits.
+**Layered resident memory and long-term memory**: Resident memory only stores short and stable information injected into each round, internally distinguishing between 'core' (requiring confirmation for modification) and 'normal' (organizable); longer memories are queried by the LLM as needed via `long_memory`, using Markdown source data and SQLite FTS at the bottom to balance transparency and retrieval efficiency.
 
 ### II. Powerful and Extensible
 
-**Extensible Hook System**: ElBot features a built-in Hook Layer, allowing extension logic to be inserted at key event points such as Agent input, LLM request, LLM response, platform sending, and platform connection. Hooks can modify messages, append output intents, call scripts, and more. Hooks support writing plugins in **any language**.
+**Extensible Hook System**: The Hook Layer covers event points such as Agent input, LLM request, LLM response, platform sending, and platform connection, allowing for message modification, appending output intents, and calling scripts. Plugins can be written in **any language**.
 
-**Standard Cron and LLM Cron**: ElBot includes a built-in Cron Runtime and an LLM-orchestratable Cron service. Standard Cron sends fixed content directly according to a schedule; LLM Cron uses task descriptions to drive model execution, making it suitable for scheduled tasks that require analysis, summarization, or the use of tools.
+**Standard Cron and LLM Cron**: Standard Cron sends fixed content according to a schedule; LLM Cron uses task descriptions to drive model execution, making it suitable for scheduled tasks that require analysis, summarization, or the use of tools.
 
-**ELyph Task Notation**: ELyph is used to describe LLM Cron and native skills. The goal is to reduce ambiguity in natural language task descriptions by using a shorter and more stable structure to express inputs, outputs, steps, conditions, and constraints. Compared to arbitrary Markdown, ELyph is better suited for reusing and passing tasks between LLMs, and is easier to lint, audit, and process programmatically.
+**ELyph Task Notation**: Uses structured syntax to describe the inputs, outputs, steps, conditions, and constraints of LLM Cron and native skills, which is shorter and less ambiguous than natural language Markdown, facilitating reuse and transmission by the LLM, as well as linting, auditing, and tooling.
 
-**EL Skills Creatable by LLM**: ElBot includes a built-in `create_el_skill` meta-tool, allowing the LLM to crystallize reusable experience into EL Skills. It automatically validates ELyph syntax during creation, with the option to include and compile Go source code.
+**LLM-Creatable EL Skills**: The meta-tool `create_el_skill` allows the LLM to crystallize reusable experience into EL Skills, validating ELyph syntax during creation, with the option to include and compile Go source code.
 
-**Compatible with External AgentSkills**: ElBot is compatible with external AgentSkills that follow the agentskills.io style. Any AgentSkill script can be used as a tool via configuration.
+**Compatible with External AgentSkills**: Once configured, external AgentSkill scripts following the agentskills.io style can be used as tools.
 
 ### III. Elnis Event Perception System
 
-Traditional Agents usually only wait for user input; Cron can only respond to time. Elnis provides ElBot with another trigger method: external events.
+**The third trigger method**: Traditional Agents only wait for user input, and Cron can only respond to time; Elnis allows ElBot to be driven by external events.
 
-Elnis is the listening hub of ElBot, Elwisp consists of external listeners distributed in various locations, and Elvena is a unified JSON over HTTP event protocol. Working together, these three allow any signal from the external world—such as server alerts, RSS updates, Webhooks, game events, or even external computer information—to be sent to Elnis, then processed and returned by ElBot.
+**Listening Hub**: Elnis is the listening hub, and Elwisp consists of external listeners distributed everywhere. External information such as system alerts, RSS updates, Webhooks, and game events are sent to Elnis via Elwisp, then processed and returned by ElBot. See [Elnis Listening Hub](docs.en/elnis.md) for details.
 
-For detailed information, see [Elnis Listening Hub](docs.en/elnis.md).
+### IV. Flexible Deployment and Comprehensive Sessions
 
-### IV. Flexible Deployment and Comprehensive Session Management
+**Multi-platform and Rich Output Abstraction**: ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, QQ Official, and Telegram. The platform layer is extensible, and other platforms can be integrated via platform adapters.
 
-**Multi-platform and Rich Output Abstraction**: ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, QQ Official, and Telegram, with space reserved for extending to other platforms.
-
-**CLI Client/Server Separation**: Supports using ElBot as a client on any computer to connect to an ElBot server. **Frontend customization is free**, allowing you to create any frontend interface you prefer. The following screenshots show different frontend forms; except for the TUI, all are conceptual HTML mockups and do not represent the final UI.
+**CLI Client/Server Separation**: ElBot can function as either a client or a server. **Customizable Frontend**: You can create interfaces of any form; the images below are for illustration purposes only (except for the TUI, these are conceptual mockups and do not represent the final UI).
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/main/frontend/assets/frontend_1.png" width="260" />
@@ -81,51 +77,33 @@ For detailed information, see [Elnis Listening Hub](docs.en/elnis.md).
   <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/main/frontend/assets/tui.png" width="260" />
 </p>
 
-See more screenshots at [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend).
+More screenshots can be found at [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend).
 
-**Session, Fork, and Context Compaction**: Built-in persistent Session service, supporting features such as session recovery, archiving, pinning, Forking, deletion, paginated viewing, platform isolation, and compaction.
+**Sessions, Forking, and Context Compaction**: Built-in persistent Session service supporting features such as Session recovery, archiving, pinning, Forking, deletion, paginated viewing, platform isolation, and compaction.
 
 ### V. Secure and Reliable
 
-**Security Policies and Risk Confirmation**: The tool system has built-in risk levels, role permission checks, and high-risk confirmation processes. Regular users can only discover and invoke low-risk tools; even superadmins must confirm each item when invoking high-risk tools.
+**Security Policies and Risk Confirmation**: Tools are categorized by risk level and judged in combination with role permissions. Ordinary users can only discover and call tools within the permitted range; superadmins also require confirmation when calling high-risk tools.
 
-**Lightweight Sandbox Isolation**: Background Shell execution is subject to AST-level sandbox constraints. Background tasks have an independent sandbox working directory, reducing the impact of misoperations.
+**Lightweight Sandbox Isolation**: Background Shell execution is constrained by an AST-level sandbox, and background tasks have independent sandbox working directories.
 
-**Comprehensive Logging and Auditing**: Distinguishes between runtime logs, Elwisp logs, and audit logs, supporting structured fields, log queries, audit queries, and runtime debugging.
+**Logs and Auditing**: Runtime logs, Elwisp logs, and audit logs are separated, supporting structured fields and filtered queries; permission denials, tool calls, risk confirmations, and Cron deliveries are all recorded in the audit log.
 
-## Usage
+---
 
-Common startup methods:
-
-```bash
-elbot              # Automatic mode: Prioritize attempting the default remote CLI client; fall back to full foreground startup when local is unreachable
-elbot run          # Full foreground: Local CLI + Enabled platforms + Cron
-elbot cli [-c name]# Remote CLI client: Connect to a resident ElBot server
-elbot -c name      # Connect to the server directly using a specified CLI client profile
-elbot service run  # Linux/headless service mode: Do not start local CLI; remote CLI server, platforms, and Cron can be enabled
-```
-
-Shell completion can be generated via `elbot completion <shell>`, supporting `bash`, `zsh`, `fish`, `nushell`, `powershell`, and `auto`.
-
-Minimum usage flow:
-
-1. Configure the OpenAI-compatible Provider in `config/providers.toml`.
-2. Set the API Key corresponding to `api_key_env` via system environment variables or the configuration directory `.env`.
-3. After starting, use the command `/models` to view and then use `/model xx` to select the model. Or manually select the default `chat` / `work` mode and model in `config/state.toml`.
-4. Enter `/help` to view commands, or start a conversation directly.
-
-For detailed instructions, see:
+First-time use: Simply configure the Provider and API Key to start chatting. For detailed instructions, see:
 
 - [Quick Start](docs.en/getting-started.md)
 - [Configuration Guide](docs.en/configuration.md)
-- [Command Cheat Sheet](docs.en/commands.md)
+- [Command Reference](docs.en/commands.md)
 - [Core Concepts](docs.en/concepts.md)
 - [Elnis Listening Hub](docs.en/elnis.md)
 - [Elnis Configuration and Usage](docs.en/elnis-usage.md)
 - [Frontend API](docs.en/frontend-api.md)
 
-Development plan and task decomposition: [devdocs](devdocs/).
-
 ## Development Status
 
 ElBot is still under rapid development; interfaces, configurations, and internal implementations may continue to be adjusted. It is currently more suitable for exploration as a personal Agent/bot framework.
+
+[^1]: Chatterji et al., [_How People Use ChatGPT_](https://www.nber.org/papers/w34255), NBER Working Paper 34255, 2025.
+[^2]: Yan et al., [_ShareChat: A Dataset of Chatbot Conversations in the Wild_](https://arxiv.org/abs/2512.17843), arXiv:2512.17843, 2025.
