@@ -19,7 +19,6 @@ func (m *Supervisor) BeginClose() {
 	if m.execution != nil {
 		m.execution.BeginClose()
 	}
-	m.bindings.BeginClose()
 	// This observer waits on owned completion channels only; it never releases borrowed dependencies.
 	go func() {
 		if m.execution != nil {
@@ -31,11 +30,8 @@ func (m *Supervisor) BeginClose() {
 		if m.sessions != nil {
 			<-m.sessions.Done()
 		}
-		for _, connection := range m.bindings.connections {
-			<-connection.Done()
-		}
 		// Close starts signal shutdown after the caller has joined external producers.
-		<-m.signals.StatusChanged.Done()
+		<-m.statusChanged.Done()
 		close(m.done)
 	}()
 }
@@ -47,11 +43,6 @@ func (m *Supervisor) Done() <-chan struct{} { return m.done }
 func (m *Supervisor) Close(ctx context.Context) error {
 	m.BeginClose()
 	var errs []error
-	// Disconnect observers before joining owned execution and Session resources.
-	errs = append(errs, m.bindings.Close(ctx))
-	if !m.bindings.stopped() {
-		return errors.Join(errs...)
-	}
 	if m.execution != nil {
 		errs = append(errs, m.execution.Close(ctx))
 		select {
@@ -78,9 +69,9 @@ func (m *Supervisor) Close(ctx context.Context) error {
 	}
 	// All owned producers have stopped. Close uses the caller's remaining budget;
 	// the observer above still waits for actual callback exit after a timeout.
-	m.signals.StatusChanged.BeginClose()
+	m.statusChanged.BeginClose()
 	errs = append(errs,
-		m.signals.StatusChanged.Close(ctx),
+		m.statusChanged.Close(ctx),
 	)
 	select {
 	case <-m.done:

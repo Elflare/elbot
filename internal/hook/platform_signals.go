@@ -69,13 +69,17 @@ func (m *Supervisor) enqueuePlatformConnected(ctx context.Context, event events.
 		}
 		p.platformQueues[event.Platform] = queue
 	}
-	return queue.Submit(context.WithoutCancel(ctx), signal.Task{
+	err := queue.Submit(context.WithoutCancel(ctx), signal.Task{
 		Shutdown: signal.CancelPending,
 		Run: func(ctx context.Context) error {
 			m.handlePlatformConnected(ctx, event.Platform)
 			return nil
 		},
 	})
+	if err != nil && err != signal.ErrClosed {
+		LogHook(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "hook_platform_admission_failed", Module: "hook", Content: fmt.Sprintf("platform=%s error=%v", event.Platform, err), ResultStatus: events.ResultFailed})
+	}
+	return err
 }
 
 func (m *Supervisor) handlePlatformConnected(ctx context.Context, platformName string) {

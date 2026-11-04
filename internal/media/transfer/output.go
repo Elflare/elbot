@@ -19,7 +19,7 @@ func (m *Manager) ResolveForOutput(ctx context.Context, id string) (_ delivery.S
 	}
 	defer func() {
 		if err != nil {
-			err = errors.Join(err, m.abortUsage(ctx, usageID))
+			m.abortUsage(ctx, usageID)
 			usageID = ""
 		}
 	}()

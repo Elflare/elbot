@@ -178,6 +178,9 @@ func TestEmitLogValidatesContract(t *testing.T) {
 	if len(received) != 0 {
 		t.Fatalf("invalid records dispatched: %v", received)
 	}
+	if err := signal.FlushDiagnostics(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	data, err := os.ReadFile(file.Name())
 	if err != nil {
 		t.Fatal(err)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"elbot/internal/config"
+	"elbot/internal/events"
 	"elbot/internal/media/backend"
 	"elbot/internal/media/object"
 	"elbot/internal/media/share"
@@ -60,6 +61,9 @@ func NewMediaCenter(ctx context.Context, cfg *config.Config, deps MediaCenterDep
 		return m, fmt.Errorf("media objects: %w", err)
 	}
 	m.transfer = transfer.NewManager(m.objects, transfer.Options{
+		Log: func(ctx context.Context, record events.LogRecord) {
+			_ = events.EmitLog(context.WithoutCancel(ctx), record)
+		},
 		Backend: deliveryConfig.Backend, MaxDirectBase64Bytes: deliveryConfig.MaxDirectBase64Bytes,
 		MaxImportBytes: cfg.PlatformFiles.MaxReceiveFileBytes, DownloadTimeout: timeout,
 	})

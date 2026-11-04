@@ -2,6 +2,7 @@ package transfer
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"testing"
 	"time"
@@ -15,7 +16,7 @@ type cancelHeld struct {
 func (h *cancelHeld) Close(ctx context.Context) error { return h.release(ctx) }
 
 func TestUsageCancellationKeepsUnstartedResources(t *testing.T) {
-	m := &Manager{usages: make(map[string]*usage)}
+	m := &Manager{usages: make(map[string]*usage), options: Options{Log: func(context.Context, events.LogRecord) { t.Error("pure cancellation logged as resource failure") }}}
 	ctx, cancel := context.WithCancel(t.Context())
 	firstCalls, secondCalls := 0, 0
 	first := &cancelHeld{release: func(ctx context.Context) error { firstCalls++; cancel(); return ctx.Err() }}

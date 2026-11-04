@@ -3,7 +3,9 @@ package transfer
 import (
 	"context"
 	"crypto/rand"
-	"errors"
+	"elbot/internal/events"
+	"fmt"
+	"log/slog"
 	"os"
 	"sync/atomic"
 	"time"
@@ -59,7 +61,8 @@ func (m *Manager) FinishUsages(ids []string) {
 	}
 }
 
-// CleanupUsages 清理指定已结束记录；nil 表示维护当前集合快照。
+// CleanupUsages 清理指定已结束记录；nil 参数表示维护当前集合快照。
+// 资源失败单独记录并保留重试；返回 nil 仅表示遍历完成，中断返回 ctx.Err()。
 func (m *Manager) CleanupUsages(ctx context.Context, ids []string) error {
 	m.usagesMu.Lock()
 	entries := make(map[string]*usage)
@@ -75,15 +78,14 @@ func (m *Manager) CleanupUsages(ctx context.Context, ids []string) error {
 		}
 	}
 	m.usagesMu.Unlock()
-	var failures []error
 	for id, u := range entries {
 		if err := ctx.Err(); err != nil {
-			return errors.Join(append(failures, err)...)
+			return err
 		}
 		select {
 		case u.mu <- struct{}{}:
 		case <-ctx.Done():
-			return errors.Join(append(failures, ctx.Err())...)
+			return ctx.Err()
 		}
 		if !u.ended.Load() {
 			<-u.mu
@@ -97,7 +99,7 @@ func (m *Manager) CleanupUsages(ctx context.Context, ids []string) error {
 			}
 			if err := os.RemoveAll(dir); err != nil {
 				dirs = append(dirs, dir)
-				failures = append(failures, err)
+				m.options.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "media_usage_cleanup_failed", Module: "media", Content: fmt.Sprintf("usage_id=%s operation=remove_directory path=%s error=%v", id, dir, err), ContentLimit: 4096, ResultStatus: events.ResultFailed})
 			}
 		}
 		u.dirs = dirs
@@ -109,7 +111,9 @@ func (m *Manager) CleanupUsages(ctx context.Context, ids []string) error {
 			}
 			if err := item.Close(ctx); err != nil {
 				held = append(held, item)
-				failures = append(failures, err)
+				if err != ctx.Err() {
+					m.options.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "media_usage_cleanup_failed", Module: "media", Content: fmt.Sprintf("usage_id=%s operation=release_hold media_id=%s error=%v", id, item.Info().ID, err), ContentLimit: 4096, ResultStatus: events.ResultFailed})
+				}
 			}
 		}
 		u.held = held
@@ -120,15 +124,17 @@ func (m *Manager) CleanupUsages(ctx context.Context, ids []string) error {
 		}
 		<-u.mu
 	}
-	return errors.Join(append(failures, ctx.Err())...)
+	return ctx.Err()
 }
 
-func (m *Manager) abortUsage(ctx context.Context, id string) error {
+func (m *Manager) abortUsage(ctx context.Context, id string) {
 	ids := []string{id}
 	m.FinishUsages(ids)
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	return m.CleanupUsages(ctx, ids)
+	if err := m.CleanupUsages(ctx, ids); err != nil {
+		m.options.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_usage_cleanup_interrupted", Module: "media", Content: fmt.Sprintf("usage_id=%s error=%v", id, err), ContentLimit: 4096, ResultStatus: events.ResultCanceled})
+	}
 }
 
 // Hold 将显式持有登记到使用记录中，资源释放始终由 Media 负责。

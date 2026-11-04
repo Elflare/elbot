@@ -190,7 +190,7 @@ func TestOversizedRecordsReportAndContinue(t *testing.T) {
 	if len(entries) != 1 || string(entries[0]["content"]) != "\"following record\"" {
 		t.Fatal(entries)
 	}
-	if got := readStderr(); !strings.Contains(got, "exceeds 65536 bytes") || strings.Count(got, "signal task failed") != 1 {
+	if got := readStderr(); !strings.Contains(got, "exceeds 65536 bytes") || strings.Count(got, "logging record failed") != 1 {
 		t.Fatal(got)
 	}
 }
@@ -299,7 +299,7 @@ func TestGlobalWriteFailureReportsToStderrAndContinues(t *testing.T) {
 			if writes.Load() != 2 || publications.Load() != 2 {
 				t.Fatalf("writes=%d publications=%d", writes.Load(), publications.Load())
 			}
-			if got := readStderr(); !strings.Contains(got, failure.Error()) || strings.Count(got, "signal task failed") != 1 {
+			if got := readStderr(); !strings.Contains(got, failure.Error()) || strings.Count(got, "logging record failed") != 1 {
 				t.Fatal(got)
 			}
 		})

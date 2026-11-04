@@ -19,8 +19,9 @@ type Config struct {
 }
 
 type ServiceDeps struct {
-	AllocateID func(context.Context, share.IDOrigin) (string, error) // 根部提供的唯一 Session 发号入口。
-	Sessions   interface {
+	AdoptForeground func(context.Context, *storage.Session, *share.Binding) // 提交后准入内同步更新执行内存；不得 I/O、等待或重新准入。
+	AllocateID      func(context.Context, share.IDOrigin) (string, error)   // 根部提供的唯一 Session 发号入口。
+	Sessions        interface {
 		Create(context.Context, *storage.Session) error
 		Get(context.Context, string) (*storage.Session, error)
 		Mutate(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
@@ -80,26 +81,24 @@ type BackgroundRequest struct {
 // Service 的业务修改经过 Binding 准入；mu 只保护计时索引和启停状态。
 // 构造依赖由根部检查。外部调用退出后才能 Close，不关闭借用的仓库或 Binding。
 type Service struct {
-	deps                ServiceDeps
-	cfg                 Config
-	mu                  sync.Mutex
-	idle                map[string]map[*share.Binding]*idleBinding // Session 到绑定生命周期记录；不缓存存储行。
-	started             bool                                       // 已启用调度，不允许停止后重启。
-	closed              bool                                       // 不再接纳调度及事件订阅。
-	runCtx              context.Context                            // 定时任务运行上下文，不继承触发请求。
-	cancel              context.CancelFunc                         // 取消定时回调的准入等待。
-	stopParent          func() bool                                // 解除运行上下文的停止通知。
-	timers              sync.WaitGroup                             // 含已排期及已触发但尚未退出的 timer。
-	closeOnce           sync.Once
-	done                chan struct{} // 定时回调与接管观察者真实退出。
-	foregroundActivated *signal.Signal[ForegroundActivatedEvent, signal.Empty]
+	deps       ServiceDeps
+	cfg        Config
+	mu         sync.Mutex
+	idle       map[string]map[*share.Binding]*idleBinding // Session 到绑定生命周期记录；不缓存存储行。
+	started    bool                                       // 已启用调度，不允许停止后重启。
+	closed     bool                                       // 不再接纳调度及事件订阅。
+	runCtx     context.Context                            // 定时任务运行上下文，不继承触发请求。
+	cancel     context.CancelFunc                         // 取消定时回调的准入等待。
+	stopParent func() bool                                // 解除运行上下文的停止通知。
+	timers     sync.WaitGroup                             // 含已排期及已触发但尚未退出的 timer。
+	closeOnce  sync.Once
+	done       chan struct{} // 定时回调真实退出。
 }
 
 var _ share.BindingCoordinator = (*Service)(nil)
 
 func NewService(cfg Config, deps ServiceDeps) *Service {
-	return &Service{deps: deps, cfg: cfg, idle: make(map[string]map[*share.Binding]*idleBinding), done: make(chan struct{}),
-		foregroundActivated: signal.New[ForegroundActivatedEvent, signal.Empty]("session.foreground_activated")}
+	return &Service{deps: deps, cfg: cfg, idle: make(map[string]map[*share.Binding]*idleBinding), done: make(chan struct{})}
 }
 
 func (s *Service) Start(ctx context.Context) error {
@@ -150,8 +149,6 @@ func (s *Service) Close(ctx context.Context) error {
 	s.closeOnce.Do(func() {
 		go func() {
 			s.timers.Wait()
-			// 无期限关闭等待实际观察回调退出，只会成功返回。
-			_ = s.foregroundActivated.Close(context.Background())
 			s.mu.Lock()
 			s.idle = nil
 			s.mu.Unlock()

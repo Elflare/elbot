@@ -654,6 +654,9 @@ func TestCronSendAuditIncludesPlatform(t *testing.T) {
 }
 
 func newTestCronService(t *testing.T, opts Options) *Service {
+	if opts.Log == nil {
+		opts.Log = func(context.Context, globalevents.LogRecord) {}
+	}
 	t.Helper()
 	if opts.Store == nil {
 		opts.Store = newFakeCronRepo()

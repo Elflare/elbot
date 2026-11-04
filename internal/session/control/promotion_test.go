@@ -5,10 +5,7 @@ import (
 	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
-	"sync"
 	"testing"
-	"testing/synctest"
-	"time"
 
 	"elbot/internal/session/binding"
 	"elbot/internal/session/share"
@@ -54,19 +51,14 @@ func TestBackgroundPromotionCommitAndFailure(t *testing.T) {
 	}
 	f.s.deps.CheckForeground = func(context.Context, *storage.Session) error { return nil }
 	calls := 0
-	want := errors.New("observer failed")
-	_, err = f.s.ObserveForegroundActivated(func(_ context.Context, event ForegroundActivatedEvent) error {
+	f.s.deps.AdoptForeground = func(ctx context.Context, row *storage.Session, b *share.Binding) {
 		calls++
-		if event.Session.Mode != storage.SessionModeWork || event.Session.ChatID != scope.ChatID || event.Binding != f.s.CurrentBinding(scope) {
-			t.Error("incomplete committed event")
+		if ctx.Err() != nil || row.Mode != storage.SessionModeWork || row.ChatID != scope.ChatID || b != f.s.CurrentBinding(scope) {
+			t.Error("incomplete committed adoption")
 		}
-		return want
-	}, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
 	}
 	promoted, err := f.s.Resume(ctx, scope, row.ID)
-	if !errors.Is(err, want) || promoted == nil || !share.WasPromoted(promoted) || calls != 1 {
+	if err != nil || promoted == nil || !share.WasPromoted(promoted) || calls != 1 {
 		t.Fatalf("promotion: %+v %v calls=%d", promoted, err, calls)
 	}
 	if _, err := f.s.Resume(ctx, scope, row.ID); err != nil || calls != 1 {
@@ -78,45 +70,6 @@ func TestBackgroundPromotionCommitAndFailure(t *testing.T) {
 	if _, err := f.s.PrepareBackground(ctx, bgScope, BackgroundRequest{SessionID: row.ID}); !errors.Is(err, share.ErrForegroundSession) {
 		t.Fatalf("reused promoted background: %v", err)
 	}
-}
-
-func TestPromotionCloseWaitsForActualObserver(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		f := newFixture(t, IdleExpirationConfig{})
-		ctx, scope := context.Background(), privateScope()
-		row, err := f.s.PrepareBackground(ctx, scope, BackgroundRequest{TaskType: "cron"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		finish, started := make(chan struct{}), make(chan struct{})
-		release := sync.OnceFunc(func() { close(finish) })
-		defer release()
-		_, err = f.s.ObserveForegroundActivated(func(context.Context, ForegroundActivatedEvent) error { close(started); <-finish; return nil }, signal.ConnectOptions{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		result := make(chan error, 1)
-		go func() { _, err := f.s.Resume(ctx, scope, row.ID); result <- err }()
-		<-started
-		time.Sleep(31 * time.Second)
-		if err := <-result; !errors.Is(err, context.DeadlineExceeded) {
-			t.Fatalf("observer timeout: %v", err)
-		}
-		deadline, cancel := context.WithTimeout(ctx, time.Second)
-		defer cancel()
-		if err := f.s.Close(deadline); !errors.Is(err, context.DeadlineExceeded) {
-			t.Fatalf("close: %v", err)
-		}
-		select {
-		case <-f.s.Done():
-			t.Fatal("closed before actual observer exit")
-		default:
-		}
-		release()
-		if err := f.s.Close(ctx); err != nil {
-			t.Fatal(err)
-		}
-	})
 }
 
 func TestBindingNotificationFailureDoesNotPreventRelease(t *testing.T) {

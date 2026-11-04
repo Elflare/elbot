@@ -13,6 +13,7 @@ import (
 
 // SupervisorDeps 由 Agent 提供；所有资源均为借用，Session 不负责关闭。
 type SupervisorDeps struct {
+	AdoptForeground  func(context.Context, *storage.Session, *Binding)  // 提交后准入内同步更新执行内存；不得 I/O、等待或重新准入。
 	SessionIDCode    func(string, contextinfo.ChatType) (string, error) // Platform 根部按平台与会话类型查询已登记的短码。
 	Store            storage.Store                                      // 根部提取仓库能力，不向子包交付整个 Store。
 	Models           ModelCapabilities                                  // 仅提供命名选择，不交付模型管理操作。

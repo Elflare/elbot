@@ -95,10 +95,3 @@ type BindingChangedEvent struct {
 	Old     *Binding // 旧绑定；切离后永久失效。
 	New     *Binding // 新绑定；解除绑定时为 nil。
 }
-
-// ForegroundActivatedEvent 在接管提交后、释放准入前同步交付。
-// 接收方只能更新执行内存，不得执行 I/O 或再次获取 Scope／Session 准入。
-type ForegroundActivatedEvent struct {
-	Session storage.Session // 已提交的快照；接收方不得修改其中的指针字段。
-	Binding *Binding        // 本次接管建立的前台绑定。
-}

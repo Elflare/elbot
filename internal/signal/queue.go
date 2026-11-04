@@ -183,10 +183,11 @@ func (q *Queue) removePending(j *job) {
 	q.makeReady(l)
 	q.space.Broadcast()
 }
-func runTask(ctx context.Context, task Task) (err error) {
+func (q *Queue) runTask(ctx context.Context, task Task) (err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			err = fmt.Errorf("signal callback panic: %v", p)
+			ReportDiagnostic("signal callback panic", slog.String("queue", q.name), slog.Any("error", err))
 		}
 	}()
 	if err = ctx.Err(); err == nil {
@@ -216,11 +217,9 @@ func (q *Queue) work() {
 		j.cancel = cancel
 		q.active[j] = struct{}{}
 		q.mu.Unlock()
-		err := runTask(ctx, j.task)
+		err := q.runTask(ctx, j.task)
 		if j.task.Finish != nil {
 			j.task.Finish(err)
-		} else if err != nil && !errors.Is(err, ctx.Err()) {
-			reportFailure("signal task failed", slog.String("queue", q.name), slog.Any("error", err))
 		}
 		if j.task.cancel == nil {
 			cancel()
@@ -289,7 +288,7 @@ func (q *Queue) Close(ctx context.Context) error {
 	case <-ctx.Done():
 		pending, active := q.stop(true)
 		if pending > 0 || active {
-			reportFailure("signal drain incomplete", slog.String("queue", q.name), slog.Int("pending", pending), slog.Bool("active", active), slog.Any("error", ctx.Err()))
+			ReportDiagnostic("signal drain incomplete", slog.String("queue", q.name), slog.Int("pending", pending), slog.Bool("active", active), slog.Any("error", ctx.Err()))
 		}
 		return fmt.Errorf("signal queue %s not fully closed: %w", q.name, ctx.Err())
 	}

@@ -146,7 +146,7 @@ func TestPreviewGroupsToolNoticesBeforeHook(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			manager, err := notification.New("cli")
+			manager, err := notification.New("cli", func(context.Context, events.LogRecord) {})
 			if err != nil {
 				t.Fatal(err)
 			}

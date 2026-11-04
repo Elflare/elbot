@@ -60,7 +60,7 @@ func newTestService(t *testing.T) (*Supervisor, storage.Store) {
 func newTestSupervisor(t *testing.T, store storage.Store, configure func(*config.Config, *SupervisorDeps)) *Supervisor {
 	t.Helper()
 	cfg := &config.Config{Session: config.SessionConfig{DefaultMode: storage.SessionModeWork, Naming: config.SessionNamingConfig{TriggerStep: 1}}}
-	deps := SupervisorDeps{Store: store, Models: testModels(func(context.Context) modelmgr.NamingSelection { return modelmgr.NamingSelection{} }), ActiveSessionIDs: func() []string { return nil }, CheckForeground: func(context.Context, *storage.Session) error { return nil }, Materials: testMaterials{}, IsSuperadmin: func(Scope) bool { return false }, ReleaseSession: func(string) {}, ReleaseBinding: func(*Binding) {}}
+	deps := SupervisorDeps{AdoptForeground: func(context.Context, *storage.Session, *Binding) {}, Store: store, Models: testModels(func(context.Context) modelmgr.NamingSelection { return modelmgr.NamingSelection{} }), ActiveSessionIDs: func() []string { return nil }, CheckForeground: func(context.Context, *storage.Session) error { return nil }, Materials: testMaterials{}, IsSuperadmin: func(Scope) bool { return false }, ReleaseSession: func(string) {}, ReleaseBinding: func(*Binding) {}}
 	deps.SessionIDCode = func(name string, kind contextinfo.ChatType) (string, error) {
 		codes, ok := map[string][2]string{"cli": {"cl", "cl"}, "qqonebot": {"ob", "OB"}, "qqofficial": {"qq", "QQ"}, "telegram": {"tg", "TG"}}[name]
 		if !ok {
@@ -177,7 +177,9 @@ func TestPublicBindingIdentityAndSynchronousRollbackRelease(t *testing.T) {
 			if facts.SessionID != "" || facts.RunID != "run" {
 				t.Fatalf("clear facts=%+v", facts)
 			}
+			observed := make(chan struct{})
 			c, err := s.ObserveBindingChanged(func(ctx context.Context, e BindingChangedEvent) error {
+				defer close(observed)
 				if e.Old != binding {
 					t.Error("event copied old binding")
 				}
@@ -235,26 +237,28 @@ func TestPublicBindingIdentityAndSynchronousRollbackRelease(t *testing.T) {
 			if _, err := lease.List(); !errors.Is(err, fileops.ErrRollbackExpired) {
 				t.Fatalf("rollback survived %s: %v", action, err)
 			}
+			select {
+			case <-observed:
+			case <-time.After(time.Second):
+				t.Fatal("binding notification did not finish")
+			}
 		})
 	}
 }
 
-func TestPromotionObserverErrorPreservesResultAndBinding(t *testing.T) {
-	s, store := newTestService(t)
+func TestPromotionCallbackPreservesResultAndBinding(t *testing.T) {
+	store := newTestStore(t)
+	var observed *Binding
+	s := newTestSupervisor(t, store, func(_ *config.Config, deps *SupervisorDeps) {
+		deps.AdoptForeground = func(_ context.Context, _ *storage.Session, b *Binding) { observed = b }
+	})
 	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", IsCLI: true}
 	row, err := s.PrepareBackground(t.Context(), scope, BackgroundRequest{TaskType: "cron"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := errors.New("observer failed")
-	var observed *Binding
-	c, err := s.ObserveForegroundActivated(func(_ context.Context, e ForegroundActivatedEvent) error { observed = e.Binding; return want }, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Disconnect()
 	got, err := s.Resume(t.Context(), scope, row.ID)
-	if !errors.Is(err, want) || got == nil || IsBackground(got) {
+	if err != nil || got == nil || IsBackground(got) {
 		t.Fatalf("promotion=%+v %v", got, err)
 	}
 	_, current, err := s.CurrentBound(t.Context(), scope)

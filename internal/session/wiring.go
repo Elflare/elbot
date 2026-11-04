@@ -41,6 +41,9 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	s.control = control.NewService(
 		control.Config{DefaultMode: cfg.Session.DefaultMode, IdleExpiration: control.IdleExpirationConfig(cfg.Session.IdleExpiration)},
 		control.ServiceDeps{
+			AdoptForeground: func(ctx context.Context, row *storage.Session, b *share.Binding) {
+				deps.AdoptForeground(ctx, row, (*Binding)(b))
+			},
 			AllocateID:       s.allocateID,
 			Sessions:         sessions,
 			Messages:         messages,

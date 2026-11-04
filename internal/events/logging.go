@@ -4,9 +4,9 @@ package events
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/signal"
@@ -179,24 +179,35 @@ type LogRecord struct {
 var LogSubmitted = signal.New[LogRecord, signal.Empty]("log.submitted")
 
 // EmitLog reports admission errors, not durability. Logging must never replace
-// the caller's business result. The signal reports dispatch failures itself.
+// the caller's business result. Logging consumers diagnose their own failures.
 func EmitLog(ctx context.Context, record LogRecord) error {
 	record, err := prepareLogRecord(record)
 	if err != nil {
 		return err
 	}
-	_, err = LogSubmitted.Emit(context.WithoutCancel(ctx), record)
+	emission, err := LogSubmitted.EmitAsync(context.WithoutCancel(ctx), record)
+	if err != nil && !errors.Is(err, signal.ErrClosed) {
+		signal.ReportDiagnostic("log signal admission failed", slog.Any("error", err))
+	}
+	if emission == nil {
+		return err
+	}
+	_, err = emission.Wait(context.Background())
 	return err
 }
 
 // EmitLogAsync applies the same closed record contract without waiting for the
-// logging center's admission. It returns admission and eventual observer results.
-func EmitLogAsync(ctx context.Context, record LogRecord) (*signal.Emission[signal.Empty], error) {
+// logging center's admission. It returns validation and signal admission errors.
+func EmitLogAsync(ctx context.Context, record LogRecord) error {
 	record, err := prepareLogRecord(record)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return LogSubmitted.EmitAsync(context.WithoutCancel(ctx), record)
+	_, err = LogSubmitted.EmitAsync(context.WithoutCancel(ctx), record)
+	if err != nil && !errors.Is(err, signal.ErrClosed) {
+		signal.ReportDiagnostic("log signal admission failed", slog.Any("error", err))
+	}
+	return err
 }
 
 func prepareLogRecord(record LogRecord) (LogRecord, error) {
@@ -216,7 +227,7 @@ func prepareLogRecord(record LogRecord) (LogRecord, error) {
 	if err != nil {
 		// Contract failures must remain visible even without a logging center.
 		// Never publish recursively or expose source content in diagnostics.
-		slog.New(slog.NewTextHandler(os.Stderr, nil)).ErrorContext(context.Background(), "invalid log record", slog.Any("error", err))
+		signal.ReportDiagnostic("invalid log record", slog.Any("error", err))
 		return record, err
 	}
 	for _, field := range []**string{

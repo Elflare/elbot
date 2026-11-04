@@ -13,7 +13,7 @@ import (
 func assertAgentSignalsClosed(t *testing.T, m *Supervisor) {
 	t.Helper()
 	for name, done := range map[string]<-chan struct{}{
-		"status": m.signals.StatusChanged.Done(),
+		"status": m.statusChanged.Done(),
 	} {
 		select {
 		case <-done:
@@ -29,8 +29,8 @@ func TestSupervisorBeginClosePreservesSignalsUntilClose(t *testing.T) {
 		// no owned component left to delay the BeginClose observer.
 		ctx, cancel := context.WithCancel(t.Context())
 		m := &Supervisor{
-			ctx: ctx, cancel: cancel, signals: newSignals(),
-			bindings: &signalBindings{}, done: make(chan struct{}),
+			ctx: ctx, cancel: cancel, statusChanged: signal.NewAsync[agentexecution.StatusChangedEvent]("agent.status_changed"),
+			done: make(chan struct{}),
 		}
 		t.Cleanup(func() { _ = m.Close(context.Background()) })
 		received := false
@@ -44,7 +44,7 @@ func TestSupervisorBeginClosePreservesSignalsUntilClose(t *testing.T) {
 		synctest.Wait()
 		for name, done := range map[string]<-chan struct{}{
 			"agent":  m.Done(),
-			"status": m.signals.StatusChanged.Done(),
+			"status": m.statusChanged.Done(),
 		} {
 			select {
 			case <-done:
@@ -52,7 +52,7 @@ func TestSupervisorBeginClosePreservesSignalsUntilClose(t *testing.T) {
 			default:
 			}
 		}
-		if err := m.signals.StatusChanged.Publish(t.Context(), agentexecution.StatusChangedEvent{}); err != nil {
+		if err := m.statusChanged.Publish(t.Context(), agentexecution.StatusChangedEvent{}); err != nil {
 			t.Fatalf("external producer final status rejected: %v", err)
 		}
 		synctest.Wait()
@@ -113,7 +113,7 @@ func checkAgentSignalCloseWaits[T any](t *testing.T, m *Supervisor, source inter
 func TestSupervisorWaitsForEveryOwnedSignal(t *testing.T) {
 	for name, check := range map[string]func(*testing.T, *Supervisor){
 		"status": func(t *testing.T, m *Supervisor) {
-			checkAgentSignalCloseWaits(t, m, m.signals.StatusChanged, m.signals.StatusChanged.Publish)
+			checkAgentSignalCloseWaits(t, m, m.statusChanged, m.statusChanged.Publish)
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -125,28 +125,6 @@ func TestSupervisorWaitsForEveryOwnedSignal(t *testing.T) {
 
 func TestSupervisorAllowsFinalFactsButRejectsNewObservers(t *testing.T) {
 	m := contractSupervisor(t, isolatedModuleDeps(t))
-	producer := signal.New[signal.Empty, signal.Empty]("agent.test.producer")
-	t.Cleanup(func() { _ = producer.Close(context.Background()) })
-	entered, release := make(chan struct{}), make(chan struct{})
-	unblock := sync.OnceFunc(func() { close(release) })
-	t.Cleanup(unblock)
-	connection, err := producer.Observe(func(context.Context, signal.Empty) error {
-		close(entered)
-		<-release
-		return nil
-	}, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	m.bindings.connections = append(m.bindings.connections, connection)
-	if _, err := producer.EmitAsync(t.Context(), signal.Empty{}); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-entered:
-	case <-t.Context().Done():
-		t.Fatal(t.Context().Err())
-	}
 	received := make(chan struct{}, 1)
 	if _, err := m.ObserveStatusChanged(func(StatusChangedEvent) error {
 		received <- struct{}{}
@@ -161,7 +139,7 @@ func TestSupervisorAllowsFinalFactsButRejectsNewObservers(t *testing.T) {
 	if _, err := m.ObserveBindingChanged(func(BindingChangedEvent) error { return nil }, signal.ConnectOptions{}); !errors.Is(err, signal.ErrClosed) {
 		t.Fatalf("binding observer after BeginClose: %v", err)
 	}
-	if err := m.signals.StatusChanged.Publish(t.Context(), agentexecution.StatusChangedEvent{}); err != nil {
+	if err := m.statusChanged.Publish(t.Context(), agentexecution.StatusChangedEvent{}); err != nil {
 		t.Fatalf("final status rejected: %v", err)
 	}
 	select {
@@ -169,7 +147,6 @@ func TestSupervisorAllowsFinalFactsButRejectsNewObservers(t *testing.T) {
 	case <-t.Context().Done():
 		t.Fatal("final status not delivered")
 	}
-	unblock()
 	if err := m.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}

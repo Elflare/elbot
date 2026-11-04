@@ -64,7 +64,7 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps, entries []reg
 	}
 	m.dispatcher = dispatch.New(dispatch.Options{Primary: m.primary, SaveMediaOutput: deps.Store.Media().SaveOutput, Media: deps.Media, PublishUsageFinished: deps.Media.PublishUsageFinished, MediaRetentionDays: cfg.Maintenance.SandboxCleanup.RetentionDays})
 	var err error
-	m.notifications, err = notification.New(m.primary.Name())
+	m.notifications, err = notification.New(m.primary.Name(), func(ctx context.Context, record events.LogRecord) { _ = events.EmitLogAsync(ctx, record) })
 	if err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps, entries []reg
 	}
 	m.onFailure = func(name string, failure error) {
 		ctx := context.WithoutCancel(m.ctx)
-		_, _ = events.EmitLogAsync(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "platform_failed", Module: "platform", Type: events.ContentText, Content: fmt.Sprintf("%s: %v", name, failure), ResultStatus: events.ResultFailed})
+		_ = events.EmitLogAsync(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "platform_failed", Module: "platform", Type: events.ContentText, Content: fmt.Sprintf("%s: %v", name, failure), ResultStatus: events.ResultFailed})
 		m.mu.Lock()
 		var targets []events.NotificationTarget
 		for _, runtime := range m.runtimes {

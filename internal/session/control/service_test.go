@@ -37,6 +37,7 @@ func newFixture(t *testing.T, ttl IdleExpirationConfig) *fixture {
 		Sessions:   store.Sessions(), Messages: store.Messages(), Bindings: f.bindings,
 		ActiveSessionIDs: func() []string { f.mu.Lock(); defer f.mu.Unlock(); return append([]string(nil), f.busy...) },
 		CheckForeground:  func(context.Context, *storage.Session) error { return nil },
+		AdoptForeground:  func(context.Context, *storage.Session, *share.Binding) {},
 		IsSuperadmin:     func(scope share.Scope) bool { return scope.Owner.ID == "admin" },
 		ReleaseSession:   func(id string) { f.mu.Lock(); defer f.mu.Unlock(); f.releasedSessions = append(f.releasedSessions, id) },
 		ReleaseBinding: func(b *share.Binding) {

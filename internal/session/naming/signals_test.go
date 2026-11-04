@@ -74,8 +74,8 @@ func TestNamingLogFailureDoesNotChangeBusinessResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(string(data), "log observer unavailable") != 2 {
-		t.Fatalf("expected one report for each of two log submissions: %s", data)
+	if len(data) != 0 {
+		t.Fatalf("signal must not diagnose business observer failures: %s", data)
 	}
 }
 

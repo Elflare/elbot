@@ -42,9 +42,10 @@ func startDiagnostics() {
 	})
 }
 
+// ReportDiagnostic publishes framework or logging infrastructure failures.
 // Diagnostic I/O has one independent bounded worker. A blocked stderr never
 // holds an execution slot; overflow is counted and coalesced on recovery.
-func reportFailure(message string, attrs ...slog.Attr) {
+func ReportDiagnostic(message string, attrs ...slog.Attr) {
 	startDiagnostics()
 	select {
 	case diagnostics <- diagnostic{writer: os.Stderr, message: message, attrs: attrs}:

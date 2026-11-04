@@ -1,5 +1,6 @@
 // Package signal provides typed signals with independently bounded execution.
 // Publishers freeze mutable payloads before emitting them.
+// Consumers log their own business failures; returned errors are transported without logging.
 package signal
 
 import (
@@ -202,10 +203,14 @@ func (s *Signal[T, R]) EmitAsync(ctx context.Context, event T) (*Emission[R], er
 			if entry.forward != nil {
 				child := entry.forward(taskCtx, event)
 				if child == nil {
-					return errors.New("signal: nil forwarded emission")
+					err := errors.New("signal: nil forwarded emission")
+					ReportDiagnostic("signal forwarding failed", slog.String("signal", s.name), slog.Any("error", err))
+					return err
 				}
 				if len(child.results) != 1 {
-					return errors.New("signal: forwarding requires one downstream receiver")
+					err := errors.New("signal: forwarding requires one downstream receiver")
+					ReportDiagnostic("signal forwarding failed", slog.String("signal", s.name), slog.Any("error", err))
+					return err
 				}
 				forwarded = true
 				child.onComplete(func(results []Result[R]) { stopTask(); e.finish(i, results[0]); taskCancel() })
@@ -222,9 +227,6 @@ func (s *Signal[T, R]) EmitAsync(ctx context.Context, event T) (*Emission[R], er
 			defer entry.connection.release(owned)
 			if !forwarded {
 				stopTask()
-				if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, ErrClosed) && !errors.Is(err, ErrQueueFull) {
-					reportFailure("signal callback failed", slog.String("signal", s.name), slog.Any("error", err))
-				}
 				e.finish(i, Result[R]{Value: value, Err: err})
 				taskCancel()
 			}

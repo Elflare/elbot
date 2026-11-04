@@ -7,14 +7,8 @@ import (
 	"elbot/internal/contextinfo"
 
 	"elbot/internal/session/share"
-	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
-
-type ForegroundActivatedEvent struct {
-	Session storage.Session // 原子接管提交后的快照，不得修改其指针字段。
-	Binding *share.Binding  // 新前台激活的原绑定。
-}
 
 type ForegroundOrigin struct {
 	TaskType string                    `json:"task_type"` // 接管前任务类型。
@@ -22,15 +16,6 @@ type ForegroundOrigin struct {
 	Platform string                    `json:"platform"`  // 接管前的平台。
 	TaskID   string                    `json:"task_id"`   // 接管前任务原生 ID。
 	Name     string                    `json:"name"`      // 接管前任务展示名。
-}
-
-func (s *Service) ObserveForegroundActivated(handler func(context.Context, ForegroundActivatedEvent) error, options signal.ConnectOptions) (*signal.Connection, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return nil, signal.ErrClosed
-	}
-	return s.foregroundActivated.Observe(handler, options)
 }
 
 func (s *Service) Resume(ctx context.Context, scope share.Scope, id string) (*storage.Session, error) {
@@ -84,7 +69,7 @@ func (s *Service) activateExisting(ctx context.Context, scope share.Scope, id st
 	}
 	s.SetCurrent(ctx, scope, id)
 	if promoted {
-		_, err = s.foregroundActivated.Emit(context.WithoutCancel(ctx), ForegroundActivatedEvent{Session: *row, Binding: s.CurrentBinding(scope)})
+		s.deps.AdoptForeground(context.WithoutCancel(ctx), row, s.CurrentBinding(scope))
 	}
 	return row, err
 }

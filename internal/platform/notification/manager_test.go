@@ -142,7 +142,7 @@ func TestManagerCloseWaitsForSenderAndCanRetry(t *testing.T) {
 
 func testManager(t *testing.T, primary string) *Manager {
 	t.Helper()
-	m, err := New(primary)
+	m, err := New(primary, func(ctx context.Context, record events.LogRecord) { _ = events.EmitLogAsync(ctx, record) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +325,7 @@ func TestQueuedNotificationRejectsExpiredBinding(t *testing.T) {
 }
 func TestManagerOwnershipAndMissingPlatform(t *testing.T) {
 	m := testManager(t, "cli")
-	if _, err := New("cli"); err == nil {
+	if _, err := New("cli", func(context.Context, events.LogRecord) {}); err == nil {
 		t.Fatal("duplicate global manager")
 	}
 	if _, err := events.NotificationRequested.Emit(context.Background(), events.Notification{Text: "missing"}); err == nil {

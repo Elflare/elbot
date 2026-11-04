@@ -2,18 +2,21 @@
 package transfer
 
 import (
+	"context"
+	"elbot/internal/events"
 	"sync"
 	"time"
 
 	"elbot/internal/media/share"
 )
 
-// Options 只包含交付选择和物化限制，不包含后端凭据。
+// Options 包含交付配置与根部注入的日志出口，不包含后端凭据。
 type Options struct {
-	Backend              string        // 模型交付模式：base64、s3 或 hybrid。
-	MaxDirectBase64Bytes int64         // 直接内联的请求媒体总字节上限。
-	MaxImportBytes       int64         // 默认物化上限，也用于平台解析及预先检查。
-	DownloadTimeout      time.Duration // 默认下载期限。
+	Log                  func(context.Context, events.LogRecord) // 根部提供的日志出口；记录由具体失败位置组织。
+	Backend              string                                  // 模型交付模式：base64、s3 或 hybrid。
+	MaxDirectBase64Bytes int64                                   // 直接内联的请求媒体总字节上限。
+	MaxImportBytes       int64                                   // 默认物化上限，也用于平台解析及预先检查。
+	DownloadTimeout      time.Duration                           // 默认下载期限。
 }
 
 // Manager 只借用对象操作，不持有仓储或具体后端。

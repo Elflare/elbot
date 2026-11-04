@@ -29,7 +29,7 @@ func connectFixtureNotifications(t *testing.T, name string, router *dispatch.Rou
 	t.Helper()
 	value, ok := fixtureNotificationHubs.Load(t)
 	if !ok {
-		manager, err := notification.New(name)
+		manager, err := notification.New(name, func(context.Context, events.LogRecord) {})
 		if err != nil {
 			t.Fatal(err)
 		}

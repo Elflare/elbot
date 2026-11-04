@@ -23,7 +23,7 @@ func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) 
 	out := llm.CloneMessages(messages)
 	defer func() {
 		if err != nil {
-			err = errors.Join(err, m.abortUsage(ctx, usageID))
+			m.abortUsage(ctx, usageID)
 			usageID = ""
 		}
 	}()

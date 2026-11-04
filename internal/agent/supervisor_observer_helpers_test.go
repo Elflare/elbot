@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	agentexecution "elbot/internal/agent/execution"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/platform/dispatch"
@@ -21,7 +20,7 @@ type assemblyPlatform struct {
 
 func connectTestNotifications(t *testing.T, router *dispatch.Router) *notification.Manager {
 	t.Helper()
-	m, err := notification.New("cli")
+	m, err := notification.New("cli", func(context.Context, events.LogRecord) {})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,10 +52,4 @@ func (p *assemblyPlatform) text() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return strings.Join(p.outputs, "\n")
-}
-
-func observerSignals() signals {
-	return signals{
-		StatusChanged: signal.NewAsync[agentexecution.StatusChangedEvent]("status"),
-	}
 }

@@ -57,8 +57,9 @@ func newFixture(t *testing.T) *fixture {
 		AllocateID: func(ctx context.Context, _ share.IDOrigin) (string, error) { return storage.NewID(), ctx.Err() },
 		Sessions:   store.Sessions(), Messages: store.Messages(), Bindings: f.b, ActiveSessionIDs: active,
 		CheckForeground: func(context.Context, *storage.Session) error { return nil }, IsSuperadmin: func(share.Scope) bool { return false },
-		ReleaseSession: func(id string) { f.mu.Lock(); defer f.mu.Unlock(); f.released = append(f.released, id) },
-		ReleaseBinding: func(b *share.Binding) { f.mu.Lock(); defer f.mu.Unlock(); f.bindings = append(f.bindings, b) },
+		AdoptForeground: func(context.Context, *storage.Session, *share.Binding) {},
+		ReleaseSession:  func(id string) { f.mu.Lock(); defer f.mu.Unlock(); f.released = append(f.released, id) },
+		ReleaseBinding:  func(b *share.Binding) { f.mu.Lock(); defer f.mu.Unlock(); f.bindings = append(f.bindings, b) },
 	})
 	f.deps = branch.ServiceDeps{NewMessageID: testutil.IDSequence().MessageID, Sessions: store.Sessions(), Messages: store.Messages(), Dialogues: store.Dialogues(),
 		AllocateID: func(ctx context.Context, _ share.IDOrigin) (string, error) { return storage.NewID(), ctx.Err() },

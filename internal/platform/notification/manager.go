@@ -18,6 +18,7 @@ import (
 )
 
 type Manager struct {
+	log        func(context.Context, events.LogRecord) // 根部注入的异步日志出口。
 	mu         sync.Mutex
 	primary    string
 	platforms  map[string]platformRoute
@@ -30,8 +31,8 @@ type platformRoute struct {
 	validate func(events.NotificationTarget) error             // 提供方的入队前校验，不在接收方重复执行。
 }
 
-func New(primary string) (*Manager, error) {
-	m := &Manager{primary: primary, platforms: make(map[string]platformRoute)}
+func New(primary string, log func(context.Context, events.LogRecord)) (*Manager, error) {
+	m := &Manager{log: log, primary: primary, platforms: make(map[string]platformRoute)}
 	c, err := events.NotificationRequested.ConnectForward(m.route, signal.ConnectOptions{})
 	if err != nil {
 		return nil, err
@@ -61,8 +62,12 @@ func (m *Manager) AddPlatform(name string, validate func(events.NotificationTarg
 	return s, nil
 }
 func (m *Manager) route(ctx context.Context, n events.Notification) *signal.Emission[signal.Empty] {
+	reject := func(err error) *signal.Emission[signal.Empty] {
+		m.log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_rejected", Module: "notification", Content: fmt.Sprintf("platform=%s chat_type=%s id=%s error=%v", n.Target.Platform, n.Target.ChatType, n.Target.ID, err), ContentLimit: 4096, ResultStatus: events.ResultFailed})
+		return signal.Resolved(signal.Result[signal.Empty]{Err: err})
+	}
 	if strings.TrimSpace(n.Text) == "" {
-		return signal.Resolved(signal.Result[signal.Empty]{Err: errors.New("notification text is empty")})
+		return reject(errors.New("notification text is empty"))
 	}
 	if n.Origin != nil {
 		ctx = contextinfo.WithConversation(ctx, *n.Origin)
@@ -81,16 +86,16 @@ func (m *Manager) route(ctx context.Context, n events.Notification) *signal.Emis
 		return signal.Resolved(signal.Result[signal.Empty]{Err: signal.ErrClosed})
 	}
 	if !ok {
-		return signal.Resolved(signal.Result[signal.Empty]{Err: fmt.Errorf("notification platform %q is not configured", n.Target.Platform)})
+		return reject(fmt.Errorf("notification platform %q is not configured", n.Target.Platform))
 	}
 	if err := route.validate(n.Target); err != nil {
-		return signal.Resolved(signal.Result[signal.Empty]{Err: err})
+		return reject(err)
 	}
 	e, err := route.queue.EmitAsync(ctx, n)
 	if errors.Is(err, signal.ErrQueueFull) {
 		// Logging has its own bounded signal and category queues. Do not wait for
 		// the logger here: a congested platform must not monopolize routing.
-		_, _ = events.EmitLogAsync(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_queue_full", Module: "notification", Type: events.ContentText, Content: fmt.Sprintf("notification queue full: platform=%s chat_type=%s id=%s", n.Target.Platform, n.Target.ChatType, n.Target.ID), ContentLimit: 4096, ResultStatus: events.ResultFailed})
+		m.log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_queue_full", Module: "notification", Type: events.ContentText, Content: fmt.Sprintf("notification queue full: platform=%s chat_type=%s id=%s", n.Target.Platform, n.Target.ChatType, n.Target.ID), ContentLimit: 4096, ResultStatus: events.ResultFailed})
 	}
 	if e == nil {
 		return signal.Resolved(signal.Result[signal.Empty]{Err: err})

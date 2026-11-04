@@ -5,6 +5,7 @@ import (
 	"elbot/internal/modelmgr"
 	"elbot/internal/notification/rules"
 	"elbot/internal/session"
+	"elbot/internal/signal"
 	"elbot/internal/workspace"
 	"errors"
 	"time"
@@ -36,7 +37,7 @@ import (
 
 func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps) (*Supervisor, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	m := &Supervisor{ctx: ctx, cancel: cancel, signals: newSignals(), bindings: &signalBindings{}, done: make(chan struct{})}
+	m := &Supervisor{ctx: ctx, cancel: cancel, statusChanged: signal.NewAsync[agentexecution.StatusChangedEvent]("agent.status_changed"), done: make(chan struct{})}
 	m.routes = routes.New()
 	m.requests = request.NewManager(deps.Store.NextIDSequence)
 	m.turns = turn.NewSupervisor(deps.Store.NextIDSequence)
@@ -45,7 +46,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	prefix := cfg.Commands.Prefixes[0]
 	commandText := func(name string, args ...string) string { return command.Format(prefix, name, args...) }
 	sessionCommands := commandbuiltin.NewSessionCommandState(cfg.View.SessionListPageSize, cfg.Maintenance.SessionCleanup.RetentionDays)
-	signals := m.signals
 	view := dialogue.ExecutionView{Sessions: deps.Store.Sessions()}
 	m.restoreMessageContext = deps.Platform.RestoreMessageContext
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: config.PlatformCLI, Permission: deps.Permission})
@@ -53,11 +53,14 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Identity: identity,
 	})
 	m.bridge = bridge
-	status := agentexecution.NewStatusRecorder(agentexecution.StatusRecorderDeps{View: view, Turns: m.turns, Changed: signals.StatusChanged})
+	status := agentexecution.NewStatusRecorder(agentexecution.StatusRecorderDeps{View: view, Turns: m.turns, Changed: m.statusChanged})
 	// 构造不执行释放回调；全部消费者赋值后才启动 Session。
 	var confirmations *agentconfirmation.ConfirmationCoordinator
 	var err error
 	m.sessions, err = session.NewSupervisor(ctx, cfg, session.SupervisorDeps{
+		AdoptForeground: func(ctx context.Context, row *storage.Session, b *session.Binding) {
+			m.execution.AdoptForeground(ctx, row, b)
+		},
 		SessionIDCode: deps.Platform.SessionIDCode,
 		Store:         deps.Store, Models: deps.Models, Materials: m.routes,
 		ActiveSessionIDs: func() []string {
@@ -297,10 +300,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		},
 		completion.RouterSource{Router: m.commands, Actor: identity.Actor},
 	)
-	bindings := m.bindings
-	if err := bindings.connectSession(m.sessions, execution); err != nil {
-		return m, err
-	}
 	m.handler = handler
 	return m, nil
 }

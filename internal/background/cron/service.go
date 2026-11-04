@@ -39,7 +39,8 @@ type Models interface {
 }
 
 type Service struct {
-	cliPlatformName string // 本地平台身份。
+	log             func(context.Context, globalevents.LogRecord) // 根部注入的异步日志出口。
+	cliPlatformName string                                        // 本地平台身份。
 	newRunID        func(context.Context) (string, error)
 	manager         *Manager
 	store           JobRepository
@@ -60,8 +61,9 @@ type Service struct {
 }
 
 type Options struct {
-	CLIPlatformName string                                // 根部注入的本地平台身份，用于默认目标和恢复通知。
-	NewRunID        func(context.Context) (string, error) // 根部提供运行批次身份。
+	Log             func(context.Context, globalevents.LogRecord) // 发布由调用处组织的完整日志。
+	CLIPlatformName string                                        // 根部注入的本地平台身份，用于默认目标和恢复通知。
+	NewRunID        func(context.Context) (string, error)         // 根部提供运行批次身份。
 	Manager         *Manager
 	Store           JobRepository
 
@@ -76,7 +78,7 @@ type Options struct {
 }
 
 func NewService(opts Options) *Service {
-	s := &Service{
+	s := &Service{log: opts.Log,
 		cliPlatformName: opts.CLIPlatformName,
 		newRunID:        opts.NewRunID,
 		manager:         opts.Manager,

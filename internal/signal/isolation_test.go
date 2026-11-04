@@ -197,7 +197,7 @@ func TestBlockedDiagnosticsNeverBlockSignalWorkers(t *testing.T) {
 		}
 	}()
 	for range 1000 {
-		reportFailure(strings.Repeat("x", 8192))
+		ReportDiagnostic(strings.Repeat("x", 8192))
 	}
 	s := testSignal[int, int](t, Options[int]{})
 	want := errors.New("handler failed")

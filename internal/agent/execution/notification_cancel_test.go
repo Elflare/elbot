@@ -14,7 +14,7 @@ import (
 )
 
 func TestQueuedPreviewRespectsCancellation(t *testing.T) {
-	m, err := notification.New("cli")
+	m, err := notification.New("cli", func(context.Context, events.LogRecord) {})
 	if err != nil {
 		t.Fatal(err)
 	}

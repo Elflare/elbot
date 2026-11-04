@@ -2,7 +2,6 @@ package media
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 
 	"elbot/internal/signal"
@@ -48,12 +47,13 @@ func (m *MediaCenter) Close(ctx context.Context) error {
 			return err
 		}
 	}
-	var errs []error
 	if m.transfer != nil {
-		errs = append(errs, m.transfer.CleanupUsages(ctx, nil))
+		if err := m.transfer.CleanupUsages(ctx, nil); err != nil {
+			return err
+		}
 	}
 	if m.objects != nil {
-		errs = append(errs, m.objects.Close(ctx))
+		return m.objects.Close(ctx)
 	}
-	return errors.Join(errs...)
+	return nil
 }

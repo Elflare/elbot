@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -79,7 +80,12 @@ func newManager(level, logDir string, retentionDays int, open func(string) (io.W
 func (m *Manager) handleRecord(ctx context.Context, record events.LogRecord) error {
 	at := time.Now()
 	sink := m.sinks[record.Category]
-	return sink.queue.Submit(context.WithoutCancel(ctx), signal.Task{Shutdown: signal.Drain, Run: func(ctx context.Context) error {
+	err := sink.queue.Submit(context.WithoutCancel(ctx), signal.Task{Shutdown: signal.Drain, Run: func(ctx context.Context) (failure error) {
+		defer func() {
+			if failure != nil {
+				signal.ReportDiagnostic("logging record failed", slog.String("category", record.Category.String()), slog.Any("error", failure))
+			}
+		}()
 		if record.Category == events.LogRuntime && record.Level < m.level {
 			return nil
 		}
@@ -96,6 +102,10 @@ func (m *Manager) handleRecord(ctx context.Context, record events.LogRecord) err
 		}
 		return nil
 	}})
+	if err != nil && !errors.Is(err, signal.ErrClosed) {
+		signal.ReportDiagnostic("logging admission failed", slog.String("category", record.Category.String()), slog.Any("error", err))
+	}
+	return err
 }
 
 func (m *Manager) BeginClose() {

@@ -2,6 +2,7 @@ package transfer
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"io"
 	"os"
@@ -45,9 +46,9 @@ func TestOutputPreparationFailureRetainedByMedia(t *testing.T) {
 				}
 				return reader, nil
 			}
-			m := NewManager(&fakeObjects{hold: func(context.Context, string) (share.HeldMedia, error) { return h, nil }}, Options{})
+			m := NewManager(&fakeObjects{hold: func(context.Context, string) (share.HeldMedia, error) { return h, nil }}, Options{Log: func(context.Context, events.LogRecord) {}})
 			_, usageID, err := m.ResolveForOutput(ctx, "one")
-			if usageID != "" || !errors.Is(err, releaseErr) {
+			if usageID != "" || err == nil || errors.Is(err, releaseErr) {
 				t.Fatalf("lost usageID: %v", err)
 			}
 			if stage == "open" || stage == "read" || stage == "close" {
@@ -77,7 +78,7 @@ func TestOutputRetriesDirectoryRemovalIndependently(t *testing.T) {
 		t.Skip("requires filesystem permissions")
 	}
 	h := &fakeHeld{info: share.MediaInfo{ID: "one"}}
-	m := NewManager(&fakeObjects{hold: func(context.Context, string) (share.HeldMedia, error) { return h, nil }}, Options{})
+	m := NewManager(&fakeObjects{hold: func(context.Context, string) (share.HeldMedia, error) { return h, nil }}, Options{Log: func(context.Context, events.LogRecord) {}})
 	source, usageID, err := m.ResolveForOutput(t.Context(), "one")
 	if err != nil {
 		t.Fatal(err)
@@ -88,7 +89,7 @@ func TestOutputRetriesDirectoryRemovalIndependently(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.FinishUsages([]string{usageID})
-	if err := m.CleanupUsages(t.Context(), nil); err == nil || h.closes.Load() != 1 {
+	if err := m.CleanupUsages(t.Context(), nil); err != nil || h.closes.Load() != 1 {
 		t.Fatalf("failed removal must still release: %v", err)
 	}
 	if err := os.Chmod(dir, 0700); err != nil {

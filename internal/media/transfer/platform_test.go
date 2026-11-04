@@ -2,6 +2,7 @@ package transfer
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"reflect"
 	"testing"
@@ -51,7 +52,7 @@ func TestPlatformSourcesAndResolverContract(t *testing.T) {
 					return info, nil
 				},
 			}
-			m := NewManager(objects, Options{MaxImportBytes: 100, DownloadTimeout: time.Second})
+			m := NewManager(objects, Options{Log: func(context.Context, events.LogRecord) {}, MaxImportBytes: 100, DownloadTimeout: time.Second})
 			segment := PlatformMedia{Name: "raw%2520", PlatformFileID: "file-id"}
 			if kind == "existing" {
 				segment.MediaID = "saved"
@@ -105,7 +106,7 @@ func TestPlatformEarlyFailure(t *testing.T) {
 		calls++
 		return delivery.Source{}, fault
 	}
-	m := NewManager(&fakeObjects{}, Options{MaxImportBytes: 10})
+	m := NewManager(&fakeObjects{}, Options{Log: func(context.Context, events.LogRecord) {}, MaxImportBytes: 10})
 	if _, err := m.ImportPlatform(t.Context(), "p", resolver, PlatformMedia{Size: 11}); err == nil || calls != 0 {
 		t.Fatal("size limit not applied before resolver")
 	}
@@ -141,7 +142,7 @@ func TestHistoryBatchBudgetDuplicatesAndAssociations(t *testing.T) {
 			return nil
 		},
 	}
-	m := NewManager(objects, Options{MaxImportBytes: 100})
+	m := NewManager(objects, Options{Log: func(context.Context, events.LogRecord) {}, MaxImportBytes: 100})
 	row := HistoryMessage{ID: "history", Platform: "p", ChatID: "s", MessageID: "m", Media: []PlatformMedia{{Type: "file", PlatformFileID: "fail"}, {Type: "file", PlatformFileID: "two"}, {Type: "file"}, {Type: "file"}, {Type: "file"}}}
 	var requests []HistoryMediaRequest
 	for _, index := range []int{1, 1, 2, 2, 5, 3, 4, 0, 9} {
@@ -186,7 +187,7 @@ func TestHistoryBatchExistingIDAndIdentityIsolation(t *testing.T) {
 		},
 		associate: func(context.Context, share.HistoryKey, int, string, string) error { saves++; return nil },
 	}
-	m := NewManager(objects, Options{})
+	m := NewManager(objects, Options{Log: func(context.Context, events.LogRecord) {}})
 	var requests []HistoryMediaRequest
 	for _, p := range []string{"a", "b"} {
 		requests = append(requests, HistoryMediaRequest{Message: HistoryMessage{ID: "history", Platform: p, ChatID: "s", MessageID: "m", Media: []PlatformMedia{{Type: "file", MediaID: p}}}, Index: 1})
@@ -225,7 +226,7 @@ func TestHistoryBatchQueryCancellationAndAssociationFailure(t *testing.T) {
 					}
 					return fault
 				},
-			}, Options{})
+			}, Options{Log: func(context.Context, events.LogRecord) {}})
 			row := HistoryMessage{Media: []PlatformMedia{{Type: "file"}}}
 			results, err := m.GetHistoryMediaBatch(ctx, []HistoryMediaRequest{{Message: row, Index: 1}, {Message: row, Index: 1}}, nil, HistoryFetchOptions{})
 			if stage == "query" || stage == "cancel" {

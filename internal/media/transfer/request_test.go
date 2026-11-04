@@ -2,6 +2,7 @@ package transfer
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"fmt"
 	"io"
@@ -102,7 +103,7 @@ func TestAcquireModesDedupNamesAndIsolation(t *testing.T) {
 		t.Run(fmt.Sprintf("%s/%d", tc.mode, tc.limit), func(t *testing.T) {
 			h := &fakeHeld{info: share.MediaInfo{ID: "one", Name: "literal%2520.txt", MIMEType: "text/plain", Size: 4}}
 			calls := 0
-			m := NewManager(&fakeObjects{hold: func(context.Context, string) (share.HeldMedia, error) { calls++; return h, nil }}, Options{Backend: tc.mode, MaxDirectBase64Bytes: tc.limit})
+			m := NewManager(&fakeObjects{hold: func(context.Context, string) (share.HeldMedia, error) { calls++; return h, nil }}, Options{Log: func(context.Context, events.LogRecord) {}, Backend: tc.mode, MaxDirectBase64Bytes: tc.limit})
 			input := []llm.LLMMessage{{Segments: []llm.MessageSegment{{Type: llm.SegmentFile, MediaID: "one", Name: "https://secret/name?token=x"}, {Type: llm.SegmentImage, MediaID: "one"}}}}
 			before := llm.CloneMessages(input)
 			out, usageID, err := m.AcquireForLLM(t.Context(), input)
@@ -163,7 +164,7 @@ func TestAcquireUnavailableAndIndependentFailures(t *testing.T) {
 						return nil, problem
 					}
 					return h, nil
-				}}, Options{Backend: "base64", MaxDirectBase64Bytes: 100})
+				}}, Options{Log: func(context.Context, events.LogRecord) {}, Backend: "base64", MaxDirectBase64Bytes: 100})
 				if stage == "sign" {
 					m.options.Backend = "s3"
 				}
@@ -226,7 +227,7 @@ func TestRemoteCancellationWaitsAndPreservesFailures(t *testing.T) {
 	for _, h := range holds {
 		byID[h.info.ID] = h
 	}
-	m := NewManager(&fakeObjects{hold: func(_ context.Context, id string) (share.HeldMedia, error) { return byID[id], nil }}, Options{Backend: "s3"})
+	m := NewManager(&fakeObjects{hold: func(_ context.Context, id string) (share.HeldMedia, error) { return byID[id], nil }}, Options{Log: func(context.Context, events.LogRecord) {}, Backend: "s3"})
 	done := make(chan error, 1)
 	go func() {
 		_, _, err := m.AcquireForLLM(ctx, []llm.LLMMessage{{Segments: messages}})
@@ -293,7 +294,7 @@ func TestRemoteFailureCancelsAndWaitsForPeers(t *testing.T) {
 			return first, nil
 		}
 		return second, nil
-	}}, Options{Backend: "s3"})
+	}}, Options{Log: func(context.Context, events.LogRecord) {}, Backend: "s3"})
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 	_, usageID, err := m.AcquireForLLM(ctx, []llm.LLMMessage{{Segments: []llm.MessageSegment{
