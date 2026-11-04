@@ -25,7 +25,7 @@ type ExecutionDialogue interface {
 
 type ExecutionSender interface {
 	StartStream(context.Context) (delivery.MessageStream, error)
-	FinishIntermediate(context.Context, context.Context, delivery.MessageStream, string, bool) error
+	FinishIntermediate(context.Context, context.Context, delivery.MessageStream, string) error
 	ReplaceAndFinishStream(context.Context, context.Context, delivery.MessageStream, string) (delivery.Receipt, error)
 	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, error)
 	SendOutputs(context.Context, []delivery.Output) error

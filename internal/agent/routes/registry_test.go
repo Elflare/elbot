@@ -99,7 +99,7 @@ func (o *testOutput) PrepareAssistant(_ context.Context, text string) (string, e
 	return text, nil
 }
 func (*testOutput) StartStream(context.Context) (delivery.MessageStream, error) { return nil, nil }
-func (*testOutput) FinishIntermediate(context.Context, context.Context, delivery.MessageStream, string, bool) error {
+func (*testOutput) FinishIntermediate(context.Context, context.Context, delivery.MessageStream, string) error {
 	return nil
 }
 func (*testOutput) ReplaceAndFinishStream(context.Context, context.Context, delivery.MessageStream, string) (delivery.Receipt, error) {

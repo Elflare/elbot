@@ -51,7 +51,7 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Se
 			}
 			ctx = agentshare.WithInboundTurnInput(ctx, merged)
 			release()
-			return c.Run(ctx, row, merged.Text, foregroundTurnOutput{sender: c.output})
+			return c.Run(ctx, row, merged.Text, foregroundTurnOutput{ExecutionSender: c.output})
 		case agentshare.IsAppendCancel(text):
 			c.turns.CancelAppend(row.ID)
 			release()
@@ -144,7 +144,7 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 			return agentshare.InputHandled, err
 		default:
 			release()
-			err = c.Run(ctx, session, text, foregroundTurnOutput{sender: c.output})
+			err = c.Run(ctx, session, text, foregroundTurnOutput{ExecutionSender: c.output})
 			// A competing execution won after the idle snapshot. Revalidate the
 			// original binding and dispatch the prepared input by its latest phase.
 			if !errors.Is(err, errExecutionConflict) {

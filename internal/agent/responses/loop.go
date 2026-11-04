@@ -258,7 +258,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 			return result
 		}
-		if err := out.FinishIntermediate(s.ctx, s.requestCtx, stream, final.Text, stream != nil); err != nil {
+		if err := out.FinishIntermediate(s.ctx, s.requestCtx, stream, final.Text); err != nil {
 			return fail(err)
 		}
 		if err := out.SendOutputs(s.ctx, append(immediate, later...)); err != nil {

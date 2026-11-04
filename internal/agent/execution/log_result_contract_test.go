@@ -146,7 +146,7 @@ func TestIntermediateStreamDeliveryLogsOnce(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(connection.Disconnect)
-			err = f.out.FinishIntermediate(f.ctx, f.requestCtx, stream, tc.text, true)
+			err = f.out.FinishIntermediate(f.ctx, f.requestCtx, stream, tc.text)
 			if (tc.replaceErr != nil && !errors.Is(err, tc.replaceErr)) || (tc.replaceErr == nil && !errors.Is(err, tc.finishErr)) {
 				t.Fatalf("business error changed: %v", err)
 			}

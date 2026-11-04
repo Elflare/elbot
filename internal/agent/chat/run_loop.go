@@ -124,7 +124,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		if err != nil {
 			return failedLoop(err)
 		}
-		streaming := stream != nil
 		if err := s.requestCtx.Err(); err != nil {
 			return agentshare.LoopResult{Outcome: agentshare.Canceled, Err: err, QuietCancellation: true}
 		}
@@ -159,7 +158,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			finalStream = stream
 			break
 		}
-		if err := s.output.FinishIntermediate(s.ctx, s.requestCtx, stream, assistantText, streaming); err != nil {
+		if err := s.output.FinishIntermediate(s.ctx, s.requestCtx, stream, assistantText); err != nil {
 			return failedLoop(err)
 		}
 		if err := s.output.SendOutputs(s.ctx, laterOutputs); err != nil {

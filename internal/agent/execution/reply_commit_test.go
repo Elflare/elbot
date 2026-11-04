@@ -133,7 +133,7 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 	})
 	messages := &dialogue.MessageStore{NewMessageID: testutil.IDSequence().MessageID, Dialogues: replyTestDialogues{DialogueRepository: store.Dialogues(), repo: f.repo}, Gate: &dialogue.CommitGate{Sessions: newSessionSupervisor(t, store), Turns: turn.NewSupervisor(testutil.IDSequence()), View: dialogue.ExecutionView{Sessions: store.Sessions()}}}
 	f.committer = &dialogue.ReplyCommitter{NewMessageID: testutil.IDSequence().MessageID, Persistence: messages.Committer("append_assistant_message"), Output: sender}
-	f.out = foregroundTurnOutput{sender: sender}
+	f.out = foregroundTurnOutput{ExecutionSender: sender}
 	f.in = agentshare.ReplyCommitInput{Session: row, Text: "history", RawText: "raw", PlatformText: "visible", Outputs: []delivery.Output{delivery.Text("later")}}
 	f.platform.expectedOutputs = f.in.Outputs
 	return f

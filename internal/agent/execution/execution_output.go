@@ -34,9 +34,9 @@ func (o executionTurnOutput) StartStream(ctx context.Context) (delivery.MessageS
 	return out.StartStream(ctx)
 }
 
-func (o executionTurnOutput) FinishIntermediate(ctx, streamCtx context.Context, s delivery.MessageStream, text string, streaming bool) error {
+func (o executionTurnOutput) FinishIntermediate(ctx, streamCtx context.Context, s delivery.MessageStream, text string) error {
 	ctx, out := o.target(ctx)
-	return out.FinishIntermediate(ctx, o.view.Context(streamCtx), s, text, streaming)
+	return out.FinishIntermediate(ctx, o.view.Context(streamCtx), s, text)
 }
 
 func (o executionTurnOutput) ReplaceAndFinishStream(ctx, streamCtx context.Context, s delivery.MessageStream, text string) (delivery.Receipt, error) {

@@ -70,7 +70,7 @@ func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, te
 		}
 		c.sessionIdle(ctx, row.ID)
 	}()
-	out = executionTurnOutput{view: c.view, foreground: foregroundTurnOutput{sender: c.output}, execution: execution, fallback: out}
+	out = executionTurnOutput{view: c.view, foreground: foregroundTurnOutput{ExecutionSender: c.output}, execution: execution, fallback: out}
 	for {
 		next, pending, err := c.runAttempt(ctx, row, text, out)
 		previousID := row.ID

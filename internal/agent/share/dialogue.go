@@ -89,7 +89,7 @@ type TurnResult struct {
 type Output interface {
 	StartReasoning(context.Context) delivery.ReasoningStream
 	StartStream(ctx context.Context) (delivery.MessageStream, error)
-	FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string, streaming bool) error
+	FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) error
 	ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, error)
 	SendAssistant(ctx context.Context, text string) (delivery.Receipt, error)
 	// SendOutputs returns the original delivery error;

@@ -161,8 +161,8 @@ func formatToolPreview(text string) string {
 	return "[tool] " + text
 }
 
-func (o *OutputSender) FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string, streaming bool) error {
-	if streaming {
+func (o *OutputSender) FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) error {
+	if stream != nil {
 		if strings.TrimSpace(text) != "" {
 			_, err := o.ReplaceAndFinishStream(ctx, streamCtx, stream, text)
 			return err
