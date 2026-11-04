@@ -12,15 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added a configuration file lock to prevent multiple instances from using the same configuration file.
+- Added `markdownnew` to web search.
 
 ### Changed
 
-- Manually guided the AI to refactor the App to the business layer package by package, file by file, function by function, and field by field, further tightening boundaries, clarifying responsibilities, and streamlining code.
-- Streamlined prompt messages.
-- Hooked native emoji output now uniformly uses the required `name`; `text` is no longer involved in emoji construction or fallback; plain text display is unified as `[表情: 名称]`.
-- The delivery information for hooked event output snapshots has been changed from `Meta` to the `Delivery` object, which includes `Timing`, `HookPoint`, `HookName`, and `HookMode`; Removed derived field `AltText`.
-- Active requests in `/status` no longer repeatedly display the Session title; this information is still retained when using `/requests` directly.
+- Manually guided AI to refactor the App to the business layer package-by-package, file-by-file, function-by-function, and field-by-field, further tightening boundaries, clarifying responsibilities, and streamlining code.
+- Breaking change: Resident memory has been changed to TOML tables layered by platform and user ID. Old files will be automatically backed up and migrated upon the first read; compatibility code for migration will be removed after two minor version increments following the introduction version.
+- Breaking change: Updated the hook protocol.
+- Breaking change: Special fallback handling for models that do not support vision is no longer provided.
+- Streamlined user prompt and tool schema information.
+- Optimized log and audit display.
+- Modified ID formats in several locations.
+- Hook native emoji output now uniformly uses the required `name`; `text` is no longer involved in emoji construction or fallback. Plain text display is unified as `[Emoji: Name]`.
+- Hook event output snapshot delivery information has been changed from the `Meta` object to the `Delivery` object, containing `Timing`, `HookPoint`, `HookName`, and `HookMode`; the derived field `AltText` has been removed.
+- Active requests in `/status` no longer repeatedly display Session titles; this information is still retained when using `/requests` directly.
 - Modified the Elwisp protocol to uniformly use `platform`, `api`, and `params` to describe platform native API calls.
+- The `send_file` tool is now available for ordinary users, limited to media IDs and URLs.
 
 ### Fixed
 
