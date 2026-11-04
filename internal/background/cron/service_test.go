@@ -760,11 +760,7 @@ func mustDecodeTestDelivery(t *testing.T, raw string) CronDeliveryState {
 
 func mustMarshalTestDelivery(t *testing.T, state CronDeliveryState) string {
 	t.Helper()
-	raw, err := encodeDeliveryState(state)
-	if err != nil {
-		t.Fatalf("encode delivery state: %v", err)
-	}
-	return raw
+	return encodeDeliveryState(state)
 }
 
 func deliveryPlatformDone(state CronDeliveryState, platformName string) bool {

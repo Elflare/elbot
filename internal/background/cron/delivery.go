@@ -36,7 +36,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 	state.TakenOver = state.TakenOver || taken
 	if state.TakenOver {
 		state.Report, state.ReportSegments = "", nil
-		if _, err := s.persistDeliveryState(ctx, &job, state, nil); err != nil {
+		if _, err := s.persistDeliveryState(ctx, job, state, nil); err != nil {
 
 			return err
 		}
@@ -57,8 +57,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 			}
 			if taken {
 				state.TakenOver = true
-				err := s.deliverPrepared(ctx, job, meta, state, platformFilter, recovery)
-				return err
+				return s.deliverPrepared(ctx, job, meta, state, platformFilter, recovery)
 			}
 			outputState := ensureDeliveryOutputState(targetState, outputID)
 			if deliveryStatusDone(outputState.Status) {
@@ -99,7 +98,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 
 				outputState.Status = DeliveryFallbackPending
 				outputState.FallbackText = reportSegmentFallbackText(state.ReportSegments[segmentIndex])
-				active, saveErr := s.persistDeliveryState(ctx, &job, state, background.MapReportReceipt(state.ReportSessionID, state.ReportMessageID, receipt))
+				active, saveErr := s.persistDeliveryState(ctx, job, state, background.MapReportReceipt(state.ReportSessionID, state.ReportMessageID, receipt))
 				if saveErr != nil {
 
 					return errors.Join(buildErr, saveErr)
@@ -115,7 +114,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 				outputState.Status = status
 			}
 			if buildErr == nil || len(receipt.SentMessages) > 0 {
-				active, saveErr := s.persistDeliveryState(ctx, &job, state, background.MapReportReceipt(state.ReportSessionID, state.ReportMessageID, receipt))
+				active, saveErr := s.persistDeliveryState(ctx, job, state, background.MapReportReceipt(state.ReportSessionID, state.ReportMessageID, receipt))
 				if saveErr != nil {
 
 					return errors.Join(buildErr, saveErr)
@@ -130,8 +129,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 		}
 	}
 	if meta.Schedule.Mode == ScheduleOnce && s.deliveryComplete(meta, state) {
-		err := s.disableCompletedDelivery(ctx, job.Name, job.DeliveryToken)
-		return err
+		return s.disableCompletedDelivery(ctx, job.Name, job.DeliveryToken)
 	}
 	return nil
 }
@@ -190,7 +188,7 @@ func (s *Service) sendDeliveryOutput(ctx context.Context, jobName string, target
 	return receipt, err
 }
 
-func (s *Service) persistDeliveryState(ctx context.Context, job *Job, state CronDeliveryState, mappings []background.ReportMessageMap) (active bool, err error) {
+func (s *Service) persistDeliveryState(ctx context.Context, job Job, state CronDeliveryState, mappings []background.ReportMessageMap) (active bool, err error) {
 
 	defer func() {
 		if err == nil {
@@ -210,16 +208,8 @@ func (s *Service) persistDeliveryState(ctx context.Context, job *Job, state Cron
 		return false, err
 	}
 	state.DeliveryComplete = s.deliveryComplete(meta, state)
-	encoded, err := encodeDeliveryState(state)
-	if err != nil {
-		return false, err
-	}
-	swapped, err := s.store.CompareAndSwapDelivery(ctx, job.ID, job.DeliveryToken, job.DeliveryToken, encoded, mappings)
-	if err != nil || !swapped {
-		return swapped, err
-	}
-	job.DeliveryState = encoded
-	return true, nil
+	encoded := encodeDeliveryState(state)
+	return s.store.CompareAndSwapDelivery(ctx, job.ID, job.DeliveryToken, job.DeliveryToken, encoded, mappings)
 }
 
 func (s *Service) disableCompletedDelivery(ctx context.Context, jobName, deliveryToken string) error {
@@ -340,12 +330,9 @@ func (s *Service) cronSandbox(jobName string) (workspace.PathScope, error) {
 	return workspace.PathScope{Dir: dir, Restricted: true}, err
 }
 
-func encodeDeliveryState(state CronDeliveryState) (string, error) {
-	data, err := json.Marshal(state)
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
+func encodeDeliveryState(state CronDeliveryState) string {
+	data, _ := json.Marshal(state)
+	return string(data)
 }
 
 func decodeDeliveryState(raw string) (CronDeliveryState, error) {
@@ -419,10 +406,7 @@ func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessi
 		}
 		metadata := map[string]json.RawMessage{}
 		for key, value := range map[string]any{"cron_job_name": jobName, "cron_source_session_id": sourceSessionID, "cron_broadcast_copy": true} {
-			encoded, err := json.Marshal(value)
-			if err != nil {
-				return err
-			}
+			encoded, _ := json.Marshal(value)
 			metadata[key] = encoded
 		}
 		copySession, err := s.copyBackground(ctx, agent.BackgroundCopyRequest{Scope: session.Scope{Owner: contextinfo.ActorIdentity{Platform: target.Name, ID: target.SuperadminIDs[0]}, Platform: target.Name, TaskType: "cron", TaskID: jobName}, SourceSessionID: sourceSessionID, TaskType: "cron", TaskID: jobName, Name: meta.Title, Metadata: metadata})

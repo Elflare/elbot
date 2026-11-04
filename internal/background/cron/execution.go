@@ -58,11 +58,7 @@ func (s *Service) prepareDelivery(ctx context.Context, job Job, meta Metadata) (
 			return job, state, err
 		}
 		state = CronDeliveryState{RunID: id}
-		encoded, encodeErr := encodeDeliveryState(state)
-		if encodeErr != nil {
-			logFailure(encodeErr)
-			return job, CronDeliveryState{}, encodeErr
-		}
+		encoded := encodeDeliveryState(state)
 		swapped, swapErr := s.store.CompareAndSwapDelivery(ctx, job.ID, job.DeliveryToken, state.RunID, encoded, nil)
 		if swapErr != nil {
 			logFailure(swapErr)
@@ -97,11 +93,7 @@ func (s *Service) prepareDelivery(ctx context.Context, job Job, meta Metadata) (
 	}
 	nextToken := firstNonEmpty(state.ReportSessionID, state.RunID)
 	state.DeliveryComplete = s.deliveryComplete(meta, state)
-	encoded, encodeErr := encodeDeliveryState(state)
-	if encodeErr != nil {
-		logFailure(encodeErr)
-		return job, state, errors.Join(err, encodeErr)
-	}
+	encoded := encodeDeliveryState(state)
 	swapped, swapErr := s.store.CompareAndSwapDelivery(ctx, job.ID, job.DeliveryToken, nextToken, encoded, nil)
 	if swapErr != nil {
 		logFailure(swapErr)

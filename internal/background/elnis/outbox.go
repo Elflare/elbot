@@ -49,10 +49,7 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 		return false, importErr
 	}
 	result.ReportSegments = segments
-	encoded, err := json.Marshal(result)
-	if err != nil {
-		return false, err
-	}
+	encoded, _ := json.Marshal(result)
 	resultJSON = string(encoded)
 
 	outputs := make([]delivery.Output, 0, 1+len(result.ReportSegments))
@@ -68,11 +65,7 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 	for _, target := range resolved {
 		targetJSON, _ := json.Marshal(target)
 		for _, output := range outputs {
-			var outputJSON []byte
-			outputJSON, err = json.Marshal(output)
-			if err != nil {
-				return false, fmt.Errorf("marshal elnis report output: %w", err)
-			}
+			outputJSON, _ := json.Marshal(output)
 			deliveries = append(deliveries, CreateReportDeliveryRequest{
 				Target:    string(targetJSON),
 				Output:    string(outputJSON),
