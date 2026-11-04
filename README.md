@@ -1,11 +1,24 @@
-<!-- This file is auto-translated from README.zh-CN.md. Do not edit manually. -->
+<!-- Body auto-translated from README.zh-CN.md. Only the manual-header region may be edited manually. -->
 
-# ElBot
+<!-- manual-header:start -->
+<div align="center">
+
+<img src="assets/elbot-logo.svg" alt="ElBot Logo" width="94" height="94" align="middle" />&emsp;<img src="assets/elbot-wordmark.svg" alt="ElBot" width="102" height="38" align="middle" />
+
+Let ElBot Feel Everything.
+
+[![Token Efficient](https://img.shields.io/badge/Token_Efficient-365F8A?style=flat)](docs.en/concepts.md) [![Event Driven](https://img.shields.io/badge/Event_Driven-487DB5?style=flat)](docs.en/elnis.md) [![Extensible](https://img.shields.io/badge/Extensible-5B7190?style=flat)](docs.en/hooks.md)
 
 [中文](README.zh-CN.md) | English
 
+</div>
+
+## Introduction
+
 ElBot is a lightweight Agent/Chatbot framework written in Go, aiming to minimize operating costs, context costs, and maintenance complexity while preserving extensibility.
 It supports general chat, tool calling, Hook extensions, long-term task scheduling, persistent Sessions, and context compaction, making it suitable for scenarios such as personal assistants, platform bots, and orchestratable automation assistants.
+
+<!-- manual-header:end -->
 
 ## Features
 

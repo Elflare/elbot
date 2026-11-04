@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="204" height="76" viewBox="110 30 204 76" role="img" aria-labelledby="title desc">
+  <title id="title">ElBot</title>
+  <desc id="desc">Blue to off-white, intended for a dark background.</desc>
+  <defs>
+    <linearGradient id="ink" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#487DB5" />
+      <stop offset="100%" stop-color="#E6EDF3" />
+    </linearGradient>
+  </defs>
+  <text x="210" y="100" text-anchor="middle" font-family="Noto Sans Display, Segoe UI, Arial, sans-serif" font-size="86" font-weight="750" letter-spacing="-2" fill="url(#ink)">ElBot</text>
+</svg>

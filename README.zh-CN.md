@@ -1,9 +1,22 @@
-# ElBot
+<!-- manual-header:start -->
+<div align="center">
+
+<img src="assets/elbot-logo.svg" alt="ElBot Logo" width="94" height="94" align="middle" />&emsp;<img src="assets/elbot-wordmark.svg" alt="ElBot" width="102" height="38" align="middle" />
+
+让 ElBot 感知一切。
+
+[![token节约](https://img.shields.io/badge/token%E8%8A%82%E7%BA%A6-365F8A?style=flat)](docs/concepts.md) [![事件驱动](https://img.shields.io/badge/%E4%BA%8B%E4%BB%B6%E9%A9%B1%E5%8A%A8-487DB5?style=flat)](docs/elnis.md) [![丰富扩展](https://img.shields.io/badge/%E4%B8%B0%E5%AF%8C%E6%89%A9%E5%B1%95-5B7190?style=flat)](docs/hooks.md)
 
 中文 | [English](README.md)
 
+</div>
+
+## 简介
+
 ElBot 是一个使用 Go 编写的轻量级 Agent/Chatbot 框架，目标是在保留可扩展性的同时，尽量降低运行成本、上下文成本和维护复杂度。
 支持普通聊天、工具调用、Hook 扩展、长期任务调度、持久化会话与上下文压缩，适合个人助理、平台机器人和可编排自动化助手等场景。
+
+<!-- manual-header:end -->
 
 ## 特色
 

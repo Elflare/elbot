@@ -51,6 +51,66 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def split_manual_header(text: str) -> tuple[str, str]:
+    """Return the exact hand-maintained README prefix and the translatable body."""
+    start, end = "<!-- manual-header:start -->", "<!-- manual-header:end -->"
+    if text.count(start) != 1 or text.count(end) != 1 or text.index(start) >= text.index(end):
+        raise ValueError("README requires one ordered manual-header:start / manual-header:end pair")
+    prefix = text[:text.index(start)].strip()
+    if prefix and not re.fullmatch(r"<!-- (?:This file is auto-translated|Body auto-translated).*? -->", prefix):
+        raise ValueError("manual-header must be at the start of README, after its generation notice")
+    boundary = text.index(end) + len(end)
+    boundary += len(text[boundary:]) - len(text[boundary:].lstrip("\r\n"))
+    if not text[boundary:].startswith("## "):
+        raise ValueError("README body must start with a level-two heading after manual-header:end")
+    return text[:boundary], text[boundary:]
+
+
+def protected_markup(text: str) -> list[str]:
+    """Extract inline code, link/image nesting and HTML; prose and alt/title may translate."""
+    tokens, brackets = [], []
+    pattern = re.compile(
+        r"(?P<code>(`+).*?\2)|(?P<escape>\\.)|"
+        r"(?P<html></?[A-Za-z][\w:-]*(?:\s+(?:[^<>\"']|\"[^\"]*\"|'[^']*')*)?\s*/?>)|"
+        r"(?P<open>!?\[)|(?P<close>\])|(?P<url>https?://[^\s<>)]+)", re.DOTALL)
+    offset = 0
+    while match := pattern.search(text, offset):
+        offset = match.end()
+        kind = match.lastgroup
+        if kind == "escape":
+            continue
+        if kind == "open":
+            brackets.append((len(tokens), match[0]))
+            tokens.append("")
+        elif kind == "close" and brackets:
+            index, opening = brackets.pop()
+            if offset < len(text) and text[offset] == "(":
+                depth, end = 1, offset + 1
+                while end < len(text) and depth:
+                    if text[end] == "\\":
+                        end += 2
+                        continue
+                    if text[end] == "(":
+                        depth += 1
+                    elif text[end] == ")":
+                        depth -= 1
+                    end += 1
+                if depth == 0:
+                    tokens[index] = opening
+                    tokens.append("]" + text[offset:end])
+                    offset = end
+            elif reference := re.match(r"\[[^\]\n]*\]", text[offset:]):
+                tokens[index] = opening
+                tokens.append("]" + reference[0])
+                offset += reference.end()
+        elif kind == "html":
+            tokens.append(re.sub(r"(\s(?:alt|title)\s*=\s*)(\"[^\"]*\"|'[^']*')",
+                                 r'\1""', match[0], flags=re.IGNORECASE))
+        elif kind in {"code", "url"}:
+            tokens.append(match[0])
+    return [token for token in tokens if token]
+
+
 @dataclass(frozen=True)
 class Segment:
     source_file: str
@@ -84,7 +144,14 @@ def all_source_docs() -> list[SourceDoc]:
     paths += [(source, target) for source, target in [
         (README_SOURCE, README_TARGET), (CHANGELOG_SOURCE, CHANGELOG_TARGET),
     ] if source.exists()]
-    return [SourceDoc(source, target, source.read_text(encoding="utf-8")) for source, target in paths]
+    docs = [SourceDoc(source, target, source.read_text(encoding="utf-8")) for source, target in paths]
+    for doc in docs:
+        if doc.source == README_SOURCE:
+            split_manual_header(doc.text)
+            if not doc.target.exists():
+                raise ValueError("README.md is missing; create its English manual-header before translating")
+            split_manual_header(doc.target.read_text(encoding="utf-8"))
+    return docs
 
 
 def split_sections(text: str) -> list[tuple[str, str]]:
@@ -155,9 +222,12 @@ def validate_translation(source: str, translation: str) -> None:
 
     def parts(text):
         out, fence, language = [], "", ""
+        prose = []
         for line in re.sub(comments, "", text, flags=re.DOTALL).splitlines():
             marker = CODE_FENCE_RE.match(line)
             if marker and (not fence or (marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip())):
+                out.extend(("literal", token) for token in protected_markup("\n".join(prose)))
+                prose = []
                 out.append(("literal", line))
                 if fence:
                     fence = ""
@@ -167,7 +237,8 @@ def validate_translation(source: str, translation: str) -> None:
             elif fence:
                 out.append(("code:" + language, line))
             else:
-                out.extend(("literal", match[0]) for match in inline.finditer(line))
+                prose.append(line)
+        out.extend(("literal", token) for token in protected_markup("\n".join(prose)))
         return out
 
     original, translated = parts(source), parts(translation)
@@ -203,6 +274,8 @@ class TranslationClient:
                 "Translate ElBot documentation from Simplified Chinese to English. "
                 "Return ONLY the translated Markdown section, without explanations or an enclosing code fence. "
                 "Preserve Markdown structure, HTML comments, commands, code, inline code, URLs and link destinations. "
+                "Preserve image markers, nested links, HTML tags and attributes exactly; only prose and "
+                "HTML alt/title text may be translated. "
                 "Only Chinese documentation comments in bash/sh/shell/toml/yaml/yml code may be translated; "
                 "keep all executable code and other code comments unchanged. Preserve product names.\n"
                 "Terminology:\n" + glossary
@@ -271,7 +344,13 @@ def make_doc_cache(doc: SourceDoc, previous: dict, entries: dict, complete: bool
 
 
 def translate_document(doc: SourceDoc, entries: dict, client: TranslationClient) -> tuple[list[Segment], dict]:
-    sections = [Segment(doc.source_rel, text, context) for text, context in split_sections(doc.text)]
+    text = doc.text
+    if doc.source == README_SOURCE:
+        # Source discovery validates the boundary. Keep the body context independent of manual layout.
+        text = "# ElBot\n\n" + text.split("<!-- manual-header:end -->", 1)[1].lstrip("\r\n")
+    sections = [Segment(doc.source_rel, text, context) for text, context in split_sections(text)]
+    if doc.source == README_SOURCE:
+        sections = sections[1:]  # The synthetic title supplies context only; it is never published.
     pending = {section.key: section for section in sections
                if should_translate_text(section.text) and section.key not in entries}
     print(f"{doc.source_rel}: {len(entries)} cached, {len(pending)} pending", flush=True)
@@ -334,17 +413,37 @@ def commit_translation(paths: list[Path], message: str) -> bool:
 
 def rewrite_readme_links(rendered: str) -> str:
     roman = {1: "I", 2: "II", 3: "III", 4: "IV", 5: "V", 6: "VI", 7: "VII", 8: "VIII", 9: "IX", 10: "X"}
-    lines, in_features = rendered.splitlines(keepends=True), False
+    lines, in_features, fence, in_comment = rendered.splitlines(keepends=True), False, "", False
+    parts, prose = [], []
     for index, line in enumerate(lines):
-        if index < 8 and line.strip().lower() in {"chinese | [english](readme.md)", "中文 | [english](readme.md)"}:
-            lines[index] = "[中文](README.zh-CN.md) | English\n"
+        marker = CODE_FENCE_RE.match(line)
+        if marker and (not fence or (marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip())):
+            parts.append((False, "".join(prose)))
+            prose = []
+            parts.append((True, line))
+            fence = "" if fence else marker[1]
+            continue
+        if fence:
+            parts.append((True, line))
+            continue
+        if in_comment or "<!--" in line:
+            in_comment = "-->" not in line
+            prose.append(line)
+            continue
         if line.startswith("## "):
             in_features = line.strip().lower() == "## features"
         if in_features:
             match = re.match(r"^(###\s+)(\d{1,2})([.)]\s+)(.*)$", line)
             if match and int(match[2]) in roman:
                 lines[index] = f"{match[1]}{roman[int(match[2])]}. {match[4]}" + ("\n" if line.endswith("\n") else "")
-    return re.sub(r"\(docs/([^)\s]+\.md(?:#[^)\s]+)?)\)", r"(docs.en/\1)", "".join(lines))
+        prose.append(lines[index])
+    parts.append((False, "".join(prose)))
+    # Process prose across line boundaries so multiline code spans remain literal.
+    return "".join(text if literal else re.sub(
+            r"(?P<code>(`+).*?\2|<!--.*?-->)|(?P<prefix>\]\(<?|\bhref\s*=\s*[\"'])docs/"
+            r"(?P<path>[^\s<>\"')]+\.md(?:#[^\s<>\"')]+)?)(?=[>\"')\s])",
+            lambda match: match[0] if match["code"] else match["prefix"] + "docs.en/" + match["path"],
+            text, flags=re.DOTALL) for literal, text in parts)
 
 
 def write_text_file(path: Path, text: str) -> None:
@@ -407,9 +506,15 @@ def run(client: TranslationClient) -> None:
             paths = [cache_path_for_source(active)]
             cache = make_doc_cache(doc, cache, entries, complete)
             if complete:
-                rendered = AUTO_HEADER_TEMPLATE.format(source=active) + "".join(
+                rendered = "".join(
                     entries[section.key]["translation"] if section.key in entries else section.text for section in sections)
-                write_text_file(doc.target, rewrite_readme_links(rendered) if doc.target == README_TARGET else rendered)
+                if doc.target == README_TARGET:
+                    # Read after syncing upstream, so concurrent manual edits survive publication.
+                    header, _ = split_manual_header(doc.target.read_text(encoding="utf-8"))
+                    rendered = header + rewrite_readme_links(rendered)
+                else:
+                    rendered = AUTO_HEADER_TEMPLATE.format(source=active) + rendered
+                write_text_file(doc.target, rendered)
                 paths.append(doc.target)
             write_text_file(paths[0], json.dumps(cache, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
             message = f"docs: {'auto-translate' if complete else 'cache partial translation for'} {active}"

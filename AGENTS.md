@@ -70,7 +70,7 @@ rg -n "locator:agent-chat" AGENTS.md devdocs/*.md
 - 收录前判断：是否属于本文职责？是否已有说明？能否从对应代码直接看懂？超出职责的不收，已有说明的引用，代码足以表达的细节省略；必要的取舍、特殊约束和跨模块关系保留。
 - 表达以准确、简短、无歧义为准。可混用中英、逻辑符号、伪代码和 Mermaid；符号含义须明确，图与正文不重复复述，不为缩短篇幅省略条件、主体或因果关系。
 - 用户侧功能、命令、配置、行为变化：更新 `docs/*.md` 和 `CHANGELOG.md`。
-- `docs.en/`、`README.md`、`CHANGELOG.en.md` 是英文镜像或自动翻译产物，不要手动修改。
+- `docs.en/`、`CHANGELOG.en.md` 及 `README.md` 正文是自动翻译产物，不要手动修改。中英文 README 的 `manual-header:start` / `manual-header:end` 区域分别手动维护（标题至项目介绍），不参与自动翻译。
 - `devdocs/` 只给维护者和 Agent 看，不参与自动翻译。
 - `AGENTS.md` 只保留操作规则；不要把架构详解、逐文件说明重新写回这里。
 - 只有changelog.md执行补丁式写作：描述从旧状态怎样变化到新状态；其他文档只描述现在正确的状态。

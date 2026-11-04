@@ -500,13 +500,126 @@ class TranslationTest(unittest.TestCase):
             self.job()
         self.client.translate_section.assert_not_called()
 
-    def test_readme_keeps_switch_links_and_roman_numbering(self):
-        text = "# ElBot\n\nChinese | [English](README.md)\n\n## Features\n### 1. Small\n### II. Fast\n## Usage\n[Docs](docs/concepts.md#skill)\n"
+    def test_readme_rewrites_body_links_and_roman_numbering_only(self):
+        text = ('## Features\n### 1. Small\n### II. Fast\n## Usage\n[Docs](docs/concepts.md#skill)\n'
+                '<a href="docs/hooks.md">Hooks</a>\n<a\n href=\'docs/elnis.md\'>Elnis</a>\n'
+                '`[Docs](docs/concepts.md)` and [Docs](docs/concepts.md)\n'
+                '`multiline\n[Docs](docs/concepts.md)`\n'
+                '```markdown\n[Docs](docs/concepts.md)\n<a href="docs/hooks.md">Hooks</a>\n```\n'
+                '<!-- [Docs](docs/concepts.md) -->\n')
         result = td.rewrite_readme_links(text)
-        self.assertIn("[中文](README.zh-CN.md) | English", result)
         self.assertIn("### I. Small", result)
         self.assertIn("### II. Fast", result)
         self.assertIn("(docs.en/concepts.md#skill)", result)
+        self.assertIn('href="docs.en/hooks.md"', result)
+        self.assertIn("href='docs.en/elnis.md'", result)
+        self.assertIn('`[Docs](docs/concepts.md)` and [Docs](docs.en/concepts.md)', result)
+        self.assertIn('`multiline\n[Docs](docs/concepts.md)`', result)
+        self.assertIn('```markdown\n[Docs](docs/concepts.md)\n<a href="docs/hooks.md">Hooks</a>\n```', result)
+        self.assertIn('<!-- [Docs](docs/concepts.md) -->', result)
+
+    def test_badge_structure_and_destinations_are_protected(self):
+        source = '[![中文](https://example.invalid/badge.svg)](docs/concepts.md)\n'
+        good = source.replace('中文', 'English')
+        td.validate_translation(source, good)
+        for bad in [good.replace('![', '['), good.replace('[![', '![').replace('](docs/concepts.md)', ''),
+                    good.replace('badge.svg', 'changed.svg'), good.replace('docs/concepts.md', 'wrong.md'),
+                    '[中文](docs/concepts.md) ![English](https://example.invalid/badge.svg)\n']:
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                td.validate_translation(source, bad)
+        source = '![中文](assets/image_(1).svg) [中文][guide]\n'
+        td.validate_translation(source, source.replace('中文', 'English'))
+        with self.assertRaises(ValueError):
+            td.validate_translation(source, source.replace('image_(1)', 'image_(2)'))
+
+    def test_html_structure_is_protected_but_alt_and_title_translate(self):
+        source = ('<p align="center"><a href="docs/hooks.md" title="中文">中文</a>\n'
+                  '<img\n src="assets/test.svg" width="260" alt="中文" />\n</p>\n')
+        good = source.replace('中文', 'English')
+        td.validate_translation(source, good)
+        for bad in [good.replace('center', 'left'), good.replace('260', '280'),
+                    good.replace('assets/test.svg', 'assets/wrong.svg'), good.replace('</p>', ''),
+                    good.replace('docs/hooks.md', 'docs/other.md')]:
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                td.validate_translation(source, bad)
+
+    def readme(self):
+        header = '<!-- manual-header:start -->\n# ElBot\n\n中文页首\n<!-- manual-header:end -->\n\n'
+        body = '## Features\n中文正文 [Docs](docs/concepts.md)\n'
+        td.README_SOURCE.write_text(header + body, encoding='utf-8')
+        td.README_TARGET.write_text(header.replace('中文页首', 'English header') + '## Features\nOld body\n')
+        return td.SourceDoc(td.README_SOURCE, td.README_TARGET, header + body)
+
+    def test_manual_header_is_excluded_and_body_cache_keys_are_retained(self):
+        doc = self.readme()
+        old = '# ElBot\n\n旧介绍\n\n## Features\n中文正文 [Docs](docs/concepts.md)\n'
+        entries = self.entries(td.SourceDoc(doc.source, doc.target, old))
+        sections, entries = td.translate_document(doc, entries, self.client)
+        self.client.translate_section.assert_not_called()
+        self.assertEqual(len(sections), 1)
+        self.assertIn(sections[0].key, entries)
+        self.assertNotIn('页首', sections[0].text)
+
+    def test_publication_preserves_independent_header_and_header_edits_need_no_translation(self):
+        doc = self.readme()
+        header, _ = td.split_manual_header(doc.target.read_text())
+        self.remote()
+        self.job()
+        self.client.translate_section.assert_called_once()
+        self.assertNotIn('manual-header', self.client.translate_section.call_args.args[0].text)
+        self.assertEqual(td.split_manual_header(doc.target.read_text())[0], header)
+        self.assertIn('(docs.en/concepts.md)', doc.target.read_text())
+        cache = self.read_cache(doc)
+        self.assertTrue(all('manual-header' not in entry['source'] for entry in cache['segments'].values()))
+        updated = doc.text.replace('中文页首', '中文新页首').replace(
+            '# ElBot', '<h1><img src="assets/elbot-wordmark.svg" alt="ElBot" /></h1>\n\n## 简介')
+        doc.source.write_text(updated, encoding='utf-8')
+        self.git(self.root, 'add', '.')
+        self.git(self.root, 'commit', '-m', 'edit Chinese header')
+        self.git(self.root, 'push')
+        self.client.reset_mock()
+        self.job()
+        self.client.translate_section.assert_not_called()
+        self.assertEqual(td.split_manual_header(doc.target.read_text())[0], header)
+
+    def test_remote_english_header_edit_survives_publication(self):
+        doc = self.readme()
+        peer = self.remote()
+        latest = doc.target.read_text().replace('English header', 'New English header')
+
+        def translate(section):
+            (peer / 'README.md').write_text(latest)
+            self.push(peer)
+            return section.text.replace('中文', 'English')
+
+        self.client.translate_section.side_effect = translate
+        self.job()
+        self.assertEqual(td.split_manual_header(doc.target.read_text())[0], td.split_manual_header(latest)[0])
+        self.assertIn('English正文', doc.target.read_text())
+
+    def test_invalid_manual_headers_stop_before_model_or_writes(self):
+        doc = self.readme()
+        original = doc.target.read_text()
+        for bad in [original.replace('<!-- manual-header:start -->', ''),
+                    original.replace('<!-- manual-header:end -->', ''),
+                    '<!-- manual-header:start -->\n' + original,
+                    original.replace('manual-header:start', 'manual-header:swap')
+                    .replace('manual-header:end', 'manual-header:start').replace('manual-header:swap', 'manual-header:end')]:
+            for path in (doc.source, doc.target):
+                with self.subTest(path=path, bad=bad):
+                    doc.source.write_text(doc.text, encoding='utf-8')
+                    doc.target.write_text(original)
+                    path.write_text(bad, encoding='utf-8')
+                    before = doc.target.read_text()
+                    with self.assertRaisesRegex(ValueError, 'manual-header'):
+                        self.job()
+                    self.assertEqual(doc.target.read_text(), before)
+        doc.source.write_text(doc.text, encoding='utf-8')
+        doc.target.unlink()
+        with self.assertRaisesRegex(ValueError, 'README.md is missing'):
+            self.job()
+        self.assertFalse(doc.target.exists())
+        self.client.translate_section.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="168" height="168" viewBox="40 34 168 168" role="img" aria-labelledby="title desc">
+  <title id="title">三点 · 舒展</title>
+  <desc id="desc">An open circular bot with 3 detached Elwisp dots, subtly varied in size, angle and distance from the center.</desc>
+  <g fill="#487DB5">
+    <circle cx="59.056" cy="70.149" r="5"/>
+    <circle cx="186.505" cy="44.446" r="7"/>
+    <circle cx="185.545" cy="191.91" r="6"/>
+  </g>
+  <path d="M167.6 98.3 A49.5 49.5 0 1 0 175.85 141.2" fill="none" stroke="#487DB5" stroke-width="8" stroke-linecap="round"/>
+  <g fill="#487DB5">
+    <ellipse cx="116.5" cy="128" rx="5.5" ry="8"/>
+    <ellipse cx="146" cy="128" rx="5.5" ry="8"/>
+  </g>
+</svg>
