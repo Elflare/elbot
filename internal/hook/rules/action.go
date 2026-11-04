@@ -215,7 +215,7 @@ func makeOutputs(action Action, event share.Event, state state) ([]delivery.Outp
 func (m Module) callTool(ctx context.Context, event share.Event, action Action, state state) (actionResult, error) {
 	name := strings.TrimSpace(action.Tool)
 	arguments := render(action.Arguments, event, state)
-	call := llm.ToolCallRequest{ID: storage.NewID(), Name: name, Arguments: arguments}
+	call := storage.NewID()
 	record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_call_completed", Module: "hook", Type: globalevents.ContentJSON, ContentLimit: 0}
 	content := struct {
 		Tool       string             `json:"tool"`
@@ -233,7 +233,7 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 		Arguments:  share.TruncateLogContent(arguments, 512),
 		Point:      share.TruncateLogContent(string(event.Point), 2048),
 		Source:     "rules",
-		ToolCallID: call.ID,
+		ToolCallID: call,
 	}
 	record.Identity = logIdentity(ctx)
 	if event.Session.ID != "" {
@@ -255,7 +255,7 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 		// 此记录表示开始调用 Tool 服务，不代表工具已准备或执行成功。
 		start.EventName, start.Content, start.ResultStatus = "hook_tool_call_prepared", string(data), globalevents.ResultSucceeded
 		m.Opts.Log(ctx, start)
-		toolResult, summary, err = m.Opts.Tools.CallTool(ctx, tool.CallRequest{ID: call.ID, Name: name, Arguments: json.RawMessage(arguments)})
+		toolResult, summary, err = m.Opts.Tools.CallTool(ctx, tool.CallRequest{ID: call, Name: name, Arguments: json.RawMessage(arguments)})
 		if err != nil {
 			record.ResultStatus = globalevents.ResultFailed
 			if globalevents.LogStatus(err) == globalevents.ResultCanceled {

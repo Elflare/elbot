@@ -186,8 +186,7 @@ func (m Module) runRule(ctx context.Context, rule Rule, event share.Event, readO
 			return before, nil
 		}
 		if result.PassThrough != nil {
-			value := *result.PassThrough
-			passThrough = &value
+			passThrough = result.PassThrough
 		}
 	}
 	if passThrough != nil {

@@ -114,7 +114,7 @@ func (m *Manager) run(ctx context.Context, event share.Event, options CallOption
 		if reg.block.Blocks(event) {
 			continue
 		}
-		if m.skipForWakeup(options.Woken, reg) {
+		if skipForWakeup(options.Woken, reg) {
 			continue
 		}
 		matchResult := reg.match.MatchEvent(event)
@@ -148,7 +148,7 @@ func (m *Manager) notify(ctx context.Context, event share.Event, options CallOpt
 		if reg.block.Blocks(event) {
 			continue
 		}
-		if m.skipForWakeup(options.Woken, reg) {
+		if skipForWakeup(options.Woken, reg) {
 			continue
 		}
 		matchResult := reg.match.MatchEvent(event)
@@ -182,7 +182,7 @@ func (m *Manager) handlersFor(point share.Point) []registration {
 	return out
 }
 
-func (m *Manager) skipForWakeup(woken bool, reg registration) bool {
+func skipForWakeup(woken bool, reg registration) bool {
 	switch reg.wakeup {
 	case share.WakeupAny:
 		return false
@@ -198,7 +198,7 @@ func (m *Manager) invoke(ctx context.Context, reg registration, event share.Even
 	defer cancel()
 	activeID := m.startActive(reg, cancel)
 	defer m.finishActive(activeID)
-	runCtx, done, err := m.observe(ctx, reg, options)
+	runCtx, done, err := observe(ctx, reg, options)
 	if err != nil {
 		return runCtx, event, err
 	}
@@ -207,7 +207,7 @@ func (m *Manager) invoke(ctx context.Context, reg registration, event share.Even
 	return runCtx, updated, err
 }
 
-func (m *Manager) observe(ctx context.Context, reg registration, options CallOptions) (context.Context, func(), error) {
+func observe(ctx context.Context, reg registration, options CallOptions) (context.Context, func(), error) {
 	if options.Observe == nil {
 		return ctx, func() {}, nil
 	}

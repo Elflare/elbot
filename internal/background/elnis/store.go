@@ -20,35 +20,31 @@ func (s *Service) handleDuplicate(ctx context.Context, event Event, existing *Ev
 	identity := globalevents.LogIdentityFromExecution(facts)
 
 	if existing.ContentHash != event.ContentHash {
-		{
-			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "existing_event_id": existing.ID})
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogElnis,
-				Level:        slog.LevelWarn,
-				EventName:    "elnis_duplicate_event_hash_mismatch",
-				Module:       "elnis",
-				Type:         globalevents.ContentJSON,
-				Content:      string(content),
-				ResultStatus: globalevents.ResultSkipped,
-			}
-			record.Identity = identity
-			background.LogBackground(ctx, record)
+		content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "existing_event_id": existing.ID})
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogElnis,
+			Level:        slog.LevelWarn,
+			EventName:    "elnis_duplicate_event_hash_mismatch",
+			Module:       "elnis",
+			Type:         globalevents.ContentJSON,
+			Content:      string(content),
+			ResultStatus: globalevents.ResultSkipped,
 		}
+		record.Identity = identity
+		background.LogBackground(ctx, record)
 	} else {
-		{
-			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags})
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogElnis,
-				Level:        slog.LevelInfo,
-				EventName:    "elnis_duplicate_event",
-				Module:       "elnis",
-				Type:         globalevents.ContentJSON,
-				Content:      string(content),
-				ResultStatus: globalevents.ResultSkipped,
-			}
-			record.Identity = identity
-			background.LogBackground(ctx, record)
+		content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags})
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogElnis,
+			Level:        slog.LevelInfo,
+			EventName:    "elnis_duplicate_event",
+			Module:       "elnis",
+			Type:         globalevents.ContentJSON,
+			Content:      string(content),
+			ResultStatus: globalevents.ResultSkipped,
 		}
+		record.Identity = identity
+		background.LogBackground(ctx, record)
 	}
 	{
 		content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags})

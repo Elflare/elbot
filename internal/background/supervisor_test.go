@@ -12,7 +12,6 @@ import (
 
 	"elbot/internal/agent"
 	"elbot/internal/background/elnis"
-	"elbot/internal/background/share"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
@@ -93,10 +92,6 @@ func TestBackgroundLifecycleAndBorrowedResources(t *testing.T) {
 	recovered, err := deps.Store.ElnisEvents().Get(t.Context(), row.ID)
 	if err != nil || recovered.Status != elnis.StatusFailed {
 		t.Fatalf("recovery=%#v, %v", recovered, err)
-	}
-	result, err := m.runner.RunBackground(t.Context(), share.RunRequest{TaskType: share.KindCron, TaskID: "borrowed", SandboxSubdir: "borrowed", Prompt: "run"})
-	if err != nil || result.Text != "borrowed execution" {
-		t.Fatal(result, err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()

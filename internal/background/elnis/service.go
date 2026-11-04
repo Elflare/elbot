@@ -98,21 +98,19 @@ func (s *Service) SetLLMEnqueuer(enqueue EnqueueLLMFunc) {
 func (s *Service) Handle(ctx context.Context, token string, req Request) (Response, error) {
 	tokenName, ok := s.authenticate(token)
 	if !ok {
-		{
-			content, _ := json.Marshal(map[string]any{"error": "unauthorized"})
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogAudit,
-				Level:        slog.LevelWarn,
-				EventName:    "elnis.auth_failed",
-				Module:       "elnis",
-				Type:         globalevents.ContentJSON,
-				Content:      string(content),
-				ResultStatus: globalevents.ResultRejected,
-			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity = globalevents.LogIdentityFromExecution(facts)
-			background.LogBackground(ctx, record)
+		content, _ := json.Marshal(map[string]any{"error": "unauthorized"})
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogAudit,
+			Level:        slog.LevelWarn,
+			EventName:    "elnis.auth_failed",
+			Module:       "elnis",
+			Type:         globalevents.ContentJSON,
+			Content:      string(content),
+			ResultStatus: globalevents.ResultRejected,
 		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		record.Identity = globalevents.LogIdentityFromExecution(facts)
+		background.LogBackground(ctx, record)
 		return Response{Accepted: false, Status: StatusFailed, Error: "unauthorized"}, fmt.Errorf("unauthorized")
 	}
 	return s.DispatchElvena(ctx, elvena.Origin{Kind: elvena.OriginHTTPToken, Name: tokenName}, req)
@@ -124,21 +122,19 @@ func (s *Service) DispatchElvena(ctx context.Context, origin elvena.Origin, req 
 	}
 	event, err := s.prepareEvent(origin, req)
 	if err != nil {
-		{
-			content, _ := json.Marshal(map[string]any{"origin": origin, "error": fmt.Sprintf("%.2048s", err.Error())})
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogAudit,
-				Level:        slog.LevelWarn,
-				EventName:    "elnis.rejected",
-				Module:       "elnis",
-				Type:         globalevents.ContentJSON,
-				Content:      string(content),
-				ResultStatus: globalevents.ResultRejected,
-			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity = globalevents.LogIdentityFromExecution(facts)
-			background.LogBackground(ctx, record)
+		content, _ := json.Marshal(map[string]any{"origin": origin, "error": fmt.Sprintf("%.2048s", err.Error())})
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogAudit,
+			Level:        slog.LevelWarn,
+			EventName:    "elnis.rejected",
+			Module:       "elnis",
+			Type:         globalevents.ContentJSON,
+			Content:      string(content),
+			ResultStatus: globalevents.ResultRejected,
 		}
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		record.Identity = globalevents.LogIdentityFromExecution(facts)
+		background.LogBackground(ctx, record)
 		return Response{Accepted: false, Status: StatusFailed, Error: err.Error()}, err
 	}
 	return s.handlePreparedEvent(ctx, event)
@@ -151,60 +147,54 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 	req := event.Request
 
 	if err := s.authorizeElwisp(event); err != nil {
-		{
-			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "error": fmt.Sprintf("%.2048s", err.Error())})
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogAudit,
-				Level:        slog.LevelWarn,
-				EventName:    "elnis.permission_denied",
-				Module:       "elnis",
-				Type:         globalevents.ContentJSON,
-				Content:      string(content),
-				ResultStatus: globalevents.ResultRejected,
-			}
-			record.Identity = identity
-			background.LogBackground(ctx, record)
-			record.Category, record.EventName = globalevents.LogElnis, "elnis_permission_denied"
-			background.LogBackground(ctx, record)
+		content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "error": fmt.Sprintf("%.2048s", err.Error())})
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogAudit,
+			Level:        slog.LevelWarn,
+			EventName:    "elnis.permission_denied",
+			Module:       "elnis",
+			Type:         globalevents.ContentJSON,
+			Content:      string(content),
+			ResultStatus: globalevents.ResultRejected,
 		}
+		record.Identity = identity
+		background.LogBackground(ctx, record)
+		record.Category, record.EventName = globalevents.LogElnis, "elnis_permission_denied"
+		background.LogBackground(ctx, record)
 		return Response{Accepted: false, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
 	}
 	if err := s.authorizeInternalTools(ctx, event); err != nil {
-		{
-			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "error": fmt.Sprintf("%.2048s", err.Error())})
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogAudit,
-				Level:        slog.LevelWarn,
-				EventName:    "elnis.tool_denied",
-				Module:       "elnis",
-				Type:         globalevents.ContentJSON,
-				Content:      string(content),
-				ResultStatus: globalevents.ResultRejected,
-			}
-			record.Identity = identity
-			background.LogBackground(ctx, record)
-			record.Category, record.EventName = globalevents.LogElnis, "elnis_internal_tool_denied"
-			background.LogBackground(ctx, record)
+		content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "error": fmt.Sprintf("%.2048s", err.Error())})
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogAudit,
+			Level:        slog.LevelWarn,
+			EventName:    "elnis.tool_denied",
+			Module:       "elnis",
+			Type:         globalevents.ContentJSON,
+			Content:      string(content),
+			ResultStatus: globalevents.ResultRejected,
 		}
+		record.Identity = identity
+		background.LogBackground(ctx, record)
+		record.Category, record.EventName = globalevents.LogElnis, "elnis_internal_tool_denied"
+		background.LogBackground(ctx, record)
 		return Response{Accepted: false, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
 	}
 	if err := s.authorizeExternalTools(event); err != nil {
-		{
-			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "error": fmt.Sprintf("%.2048s", err.Error())})
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogAudit,
-				Level:        slog.LevelWarn,
-				EventName:    "elnis.external_tool_denied",
-				Module:       "elnis",
-				Type:         globalevents.ContentJSON,
-				Content:      string(content),
-				ResultStatus: globalevents.ResultRejected,
-			}
-			record.Identity = identity
-			background.LogBackground(ctx, record)
-			record.Category, record.EventName = globalevents.LogElnis, "elnis_external_tool_denied"
-			background.LogBackground(ctx, record)
+		content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "error": fmt.Sprintf("%.2048s", err.Error())})
+		record := globalevents.LogRecord{
+			Category:     globalevents.LogAudit,
+			Level:        slog.LevelWarn,
+			EventName:    "elnis.external_tool_denied",
+			Module:       "elnis",
+			Type:         globalevents.ContentJSON,
+			Content:      string(content),
+			ResultStatus: globalevents.ResultRejected,
 		}
+		record.Identity = identity
+		background.LogBackground(ctx, record)
+		record.Category, record.EventName = globalevents.LogElnis, "elnis_external_tool_denied"
+		background.LogBackground(ctx, record)
 		return Response{Accepted: false, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
 	}
 	if existing, err := s.store.GetByKey(ctx, req.Elwisp.Name, req.Source, req.ID); err == nil {

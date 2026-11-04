@@ -190,7 +190,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 
 	// Execution 只声明 Agent.RunBackground；Runner 准备任务目录和后台来源。
 	// 会话与工具准备由 Agent 完成，报告解析和重试由 Cron、Elnis 负责。
-	m.runner = execution.NewBackgroundRunner(execution.BackgroundRunnerDeps{
+	runner := execution.NewBackgroundRunner(execution.BackgroundRunnerDeps{
 		Execution: deps.Agent, SandboxRoot: cfg.Sandbox.Root,
 	})
 	cron := cronBridge{repo: deps.Store.CronJobs()}
@@ -201,7 +201,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		NewRunID: func(ctx context.Context) (string, error) {
 			return storage.IDSequence(deps.Store.NextIDSequence).ID(ctx, "run")
 		},
-		Manager: m.cronManager, Store: cron, Runner: m.runner,
+		Manager: m.cronManager, Store: cron, Runner: runner,
 		SendTarget: deps.Platform.SendTo, Models: deps.Models, Media: deps.Media, CopyBackground: deps.Agent.CopyBackground, SessionTakenOver: deps.Agent.SessionTakenOver,
 		EnabledPlatforms: enabledCronPlatforms(cfg), SandboxRoot: cfg.Sandbox.Root,
 	})
@@ -230,7 +230,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	service, err := elnis.NewService(elnis.Options{
 		Media: elnisDeps, Config: cfg.Elnis, SandboxRoot: cfg.Sandbox.Root, Tokens: tokens,
 		Store: elnisDeps, EnabledPlatforms: platforms, CallPlatformAPI: deps.Platform.CallPlatformAPI,
-		Send: deps.Platform.SendTo, Runner: m.runner, ToolPreloader: deps.Tools, SessionTakenOver: deps.Agent.SessionTakenOver,
+		Send: deps.Platform.SendTo, Runner: runner, ToolPreloader: deps.Tools, SessionTakenOver: deps.Agent.SessionTakenOver,
 		ResolveModel: func(slot string) config.ModelSelection {
 			return deps.Models.ResolveMode(slot).ModelSelection
 		},
