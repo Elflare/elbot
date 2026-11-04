@@ -10,7 +10,7 @@ import (
 
 // connectUsageFinished 由根部装配，transfer 不依赖信号系统。
 func (m *MediaCenter) connectUsageFinished() error {
-	m.usageFinished = signal.New[[]string, signal.Empty]("media.usage_finished", signal.Options[[]string]{Concurrency: 1})
+	m.usageFinished = signal.NewAsync[[]string]("media.usage_finished", signal.Options[[]string]{Concurrency: 1})
 	connection, err := m.usageFinished.Observe(m.transfer.CleanupUsages, signal.ConnectOptions{Shutdown: signal.Drain})
 	m.usageConnection = connection
 	return err
@@ -29,7 +29,7 @@ func (m *MediaCenter) PublishUsageFinished(ctx context.Context, event UsageFinis
 		return
 	}
 	m.transfer.FinishUsages(ids)
-	if _, err := m.usageFinished.EmitAsync(context.WithoutCancel(ctx), ids); err != nil {
+	if err := m.usageFinished.Publish(context.WithoutCancel(ctx), ids); err != nil {
 		slog.WarnContext(context.WithoutCancel(ctx), "media usage notification failed; maintenance retains cleanup", "error", err)
 	}
 }

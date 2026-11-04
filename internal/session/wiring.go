@@ -4,7 +4,7 @@ package session
 
 import (
 	"context"
-	"fmt"
+	"elbot/internal/events"
 
 	"elbot/internal/config"
 	"elbot/internal/llm"
@@ -72,17 +72,17 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 			return materialPreparer{source: preparer}, nil
 		},
 	})
-	s.naming, err = naming.NewService(
+	s.naming = naming.NewService(
 		naming.Config{TriggerStep: cfg.Session.Naming.TriggerStep},
 		naming.ServiceDeps{
+			Log: func(ctx context.Context, record events.LogRecord) {
+				_ = events.EmitLog(context.WithoutCancel(ctx), record)
+			},
 			Sessions:      sessions,
 			Messages:      messages,
 			ResolveNaming: deps.Models.ResolveNaming,
 		},
 	)
-	if err != nil {
-		return s, fmt.Errorf("session naming: %w", err)
-	}
 	// 接纳构造期间发生的取消；已创建的组件仍交回上层关闭。
 	return s, ctx.Err()
 }

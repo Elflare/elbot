@@ -16,7 +16,7 @@ import (
 
 func TestStatusRetirementRejectsLatePublicationAndIdleCacheRecreation(t *testing.T) {
 	turns := turn.NewSupervisor(testutil.IDSequence())
-	changed := signal.New[StatusChangedEvent, signal.Empty]("retirement")
+	changed := signal.NewAsync[StatusChangedEvent]("retirement")
 	defer changed.Close(context.Background())
 	r := NewStatusRecorder(StatusRecorderDeps{View: dialogue.ExecutionView{}, Turns: turns, Changed: changed})
 	e := turn.NewExecution("old")
@@ -66,7 +66,7 @@ func TestStatusRetirementRejectsLatePublicationAndIdleCacheRecreation(t *testing
 
 func TestStatusRetirementDoesNotWaitForDisplayCallback(t *testing.T) {
 	turns := turn.NewSupervisor(testutil.IDSequence())
-	changed := signal.New[StatusChangedEvent, signal.Empty]("retirement-blocked")
+	changed := signal.NewAsync[StatusChangedEvent]("retirement-blocked")
 	defer changed.Close(context.Background())
 	r := NewStatusRecorder(StatusRecorderDeps{View: dialogue.ExecutionView{}, Turns: turns, Changed: changed})
 	e := turn.NewExecution("old")

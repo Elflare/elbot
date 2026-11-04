@@ -6,7 +6,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"elbot/internal/contextinfo"
@@ -41,11 +40,14 @@ func TestForgetDuringPreparationGenerationAndCompletion(t *testing.T) {
 				})
 			}
 			if phase == "completion" {
-				c, err := f.s.namingSignals.Completed.Observe(func(context.Context, NamingCompletedEvent) error { close(started); <-release; return nil }, signal.ConnectOptions{})
-				if err != nil {
-					t.Fatal(err)
+				publish := f.s.deps.Log
+				f.s.deps.Log = func(ctx context.Context, record events.LogRecord) {
+					if record.EventName == "session_naming_completed" && record.Category == events.LogRuntime {
+						close(started)
+						<-release
+					}
+					publish(ctx, record)
 				}
-				defer c.Disconnect()
 			}
 			triggerDone := make(chan struct{})
 			go func() { f.s.MaybeScheduleNaming(context.Background(), id); close(triggerDone) }()
@@ -76,48 +78,6 @@ func TestForgetDuringPreparationGenerationAndCompletion(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestCloseWaitsAfterEmissionTimedOut(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		s, err := NewService(Config{}, ServiceDeps{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		started, release := make(chan struct{}), make(chan struct{})
-		c, err := s.namingSignals.Completed.Observe(func(context.Context, NamingCompletedEvent) error { close(started); <-release; return nil }, signal.ConnectOptions{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer c.Close(context.Background())
-		defer close(release)
-		id := "session"
-		emitted := make(chan struct{})
-		go func() {
-			s.notifyNamingCompleted(context.Background(), NamingCompletedEvent{Identity: events.LogIdentity{SessionID: &id}, ResultStatus: events.ResultSucceeded})
-			close(emitted)
-		}()
-		<-started
-		time.Sleep(31 * time.Second)
-		synctest.Wait()
-		select {
-		case <-emitted:
-		default:
-			t.Fatal("emission did not report timeout")
-		}
-		budget, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		if err := s.Close(budget); !errors.Is(err, context.DeadlineExceeded) {
-			t.Fatalf("close=%v", err)
-		}
-		select {
-		case <-s.Done():
-			t.Fatal("Done ignored actual callback")
-		default:
-		}
-		// 关闭等待由同一流程续接，调用方超时不能提前清掉所有权。
-		go func() { <-c.Done(); _ = s.Close(context.Background()) }()
-	})
 }
 
 func TestPreparationReservationReleasedBelowThresholdAndAfterCancellation(t *testing.T) {
@@ -245,11 +205,14 @@ func TestCloseWaitsForPreparationAndRealTerminalCallback(t *testing.T) {
 					return f.store.Messages().ListBySession(ctx, id)
 				})
 			} else {
-				c, err := f.s.namingSignals.Completed.Observe(func(context.Context, NamingCompletedEvent) error { close(started); <-release; return nil }, signal.ConnectOptions{})
-				if err != nil {
-					t.Fatal(err)
+				publish := f.s.deps.Log
+				f.s.deps.Log = func(ctx context.Context, record events.LogRecord) {
+					if record.EventName == "session_naming_completed" && record.Category == events.LogRuntime {
+						close(started)
+						<-release
+					}
+					publish(ctx, record)
 				}
-				defer c.Disconnect()
 			}
 			go func() { f.s.MaybeScheduleNaming(context.Background(), id); close(triggerDone) }()
 			receive(t, started)
@@ -274,7 +237,7 @@ func TestCloseWaitsForPreparationAndRealTerminalCallback(t *testing.T) {
 
 func TestNeverStartedAndConcurrentStartClose(t *testing.T) {
 	for i := 0; i < 20; i++ {
-		s, err := NewService(Config{TriggerStep: 1}, ServiceDeps{})
+		s, err := newTestService(Config{TriggerStep: 1}, ServiceDeps{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -305,7 +268,7 @@ func TestNeverStartedAndConcurrentStartClose(t *testing.T) {
 }
 
 func TestParentCancellationStopsAdmission(t *testing.T) {
-	s, err := NewService(Config{TriggerStep: 1}, ServiceDeps{})
+	s, err := newTestService(Config{TriggerStep: 1}, ServiceDeps{})
 	if err != nil {
 		t.Fatal(err)
 	}

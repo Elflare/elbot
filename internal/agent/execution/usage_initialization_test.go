@@ -91,7 +91,7 @@ func TestExecutionRestoresUsageBeforeCancellationAndCleansUpFailure(t *testing.T
 				requests.Manager = request.NewManager(func(context.Context) (int64, error) { return 0, errors.New("reserve failed") })
 			}
 			view := dialogue.ExecutionView{Sessions: store.Sessions()}
-			changed := signal.New[StatusChangedEvent, signal.Empty]("usage-initialization")
+			changed := signal.NewAsync[StatusChangedEvent]("usage-initialization")
 			defer changed.Close(context.Background())
 			recorder := NewStatusRecorder(StatusRecorderDeps{View: view, Turns: turns, Changed: changed})
 			var stopping chan struct{}

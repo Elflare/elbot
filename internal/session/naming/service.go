@@ -4,6 +4,7 @@ package naming
 
 import (
 	"context"
+	"elbot/internal/events"
 	"sync"
 
 	"elbot/internal/modelmgr"
@@ -16,6 +17,7 @@ type Config struct {
 }
 
 type ServiceDeps struct {
+	Log      func(context.Context, events.LogRecord) // 根部注入的日志发布能力；记录内容由命名源头确定。
 	Sessions interface {
 		Get(context.Context, string) (*storage.Session, error)
 		Mutate(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
@@ -36,29 +38,22 @@ type namingState struct {
 }
 
 type Service struct {
-	config         Config
-	deps           ServiceDeps
-	mu             sync.Mutex
-	ctx            context.Context
-	cancel         context.CancelFunc
-	stopParent     func() bool
-	closed         bool
-	namingStates   map[string]*namingState
-	tasks          sync.WaitGroup // 同时覆盖同步准备、生成与终态通知。
-	namingSignals  namingSignals
-	logConnections []*signal.Connection
-	closeOnce      sync.Once
-	done           chan struct{}
+	config       Config
+	deps         ServiceDeps
+	mu           sync.Mutex
+	ctx          context.Context
+	cancel       context.CancelFunc
+	stopParent   func() bool
+	closed       bool
+	namingStates map[string]*namingState
+	tasks        sync.WaitGroup // 同时覆盖同步准备、生成与终态通知。
+	closeOnce    sync.Once
+	done         chan struct{}
 }
 
-// NewService 只取得自有信号和订阅；部分失败仍交回组件供根部关闭。
-func NewService(cfg Config, deps ServiceDeps) (*Service, error) {
-	s := &Service{config: cfg, deps: deps, namingStates: make(map[string]*namingState), namingSignals: newNamingSignals(), done: make(chan struct{})}
-	if err := s.connectLogSignals(); err != nil {
-		s.BeginClose()
-		return s, err
-	}
-	return s, nil
+// NewService 构造命名组件；不启动后台工作。
+func NewService(cfg Config, deps ServiceDeps) *Service {
+	return &Service{config: cfg, deps: deps, namingStates: make(map[string]*namingState), done: make(chan struct{})}
 }
 
 func (s *Service) Start(ctx context.Context) error {
@@ -98,15 +93,8 @@ func (s *Service) Close(ctx context.Context) error {
 	s.closeOnce.Do(func() {
 		go func() {
 			s.tasks.Wait()
-			// Emit 的超时不代表回调退出；关闭信号和连接也必须等真实完成。
-			_ = s.namingSignals.Scheduled.Close(context.Background())
-			_ = s.namingSignals.Completed.Close(context.Background())
-			for _, connection := range s.logConnections {
-				_ = connection.Close(context.Background())
-			}
 			s.mu.Lock()
 			s.namingStates = nil
-			s.logConnections = nil
 			s.mu.Unlock()
 			close(s.done)
 		}()

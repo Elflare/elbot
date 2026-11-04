@@ -2,7 +2,9 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/agent/dialogue"
 	agentexecution "elbot/internal/agent/execution"
+	agentshare "elbot/internal/agent/share"
 	"elbot/internal/signal"
 	"errors"
 	"sync"
@@ -56,9 +58,10 @@ func TestSupervisorBeginClosePreservesSignalsUntilClose(t *testing.T) {
 			default:
 			}
 		}
-		if _, err := m.signals.StatusChanged.Emit(t.Context(), agentexecution.StatusChangedEvent{}); err != nil {
+		if err := m.signals.StatusChanged.Publish(t.Context(), agentexecution.StatusChangedEvent{}); err != nil {
 			t.Fatalf("external producer final status rejected: %v", err)
 		}
+		synctest.Wait()
 		if !received {
 			t.Fatal("external producer final status not delivered")
 		}
@@ -69,7 +72,9 @@ func TestSupervisorBeginClosePreservesSignalsUntilClose(t *testing.T) {
 	})
 }
 
-func checkAgentSignalCloseWaits[T any](t *testing.T, m *Supervisor, source *signal.Signal[T, signal.Empty]) {
+func checkAgentSignalCloseWaits[T any](t *testing.T, m *Supervisor, source interface {
+	Observe(func(context.Context, T) error, signal.ConnectOptions) (*signal.Connection, error)
+}, publish func(context.Context, T) error) {
 	t.Helper()
 	entered, release := make(chan struct{}), make(chan struct{})
 	unblock := sync.OnceFunc(func() { close(release) })
@@ -83,7 +88,7 @@ func checkAgentSignalCloseWaits[T any](t *testing.T, m *Supervisor, source *sign
 		t.Fatal(err)
 	}
 	var event T
-	if _, err := source.EmitAsync(t.Context(), event); err != nil {
+	if err := publish(t.Context(), event); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -113,9 +118,21 @@ func checkAgentSignalCloseWaits[T any](t *testing.T, m *Supervisor, source *sign
 
 func TestSupervisorWaitsForEveryOwnedSignal(t *testing.T) {
 	for name, check := range map[string]func(*testing.T, *Supervisor){
-		"model":  func(t *testing.T, m *Supervisor) { checkAgentSignalCloseWaits(t, m, m.signals.ModelCallCompleted) },
-		"status": func(t *testing.T, m *Supervisor) { checkAgentSignalCloseWaits(t, m, m.signals.StatusChanged) },
-		"vision": func(t *testing.T, m *Supervisor) { checkAgentSignalCloseWaits(t, m, m.signals.VisionFallbackUsed) },
+		"model": func(t *testing.T, m *Supervisor) {
+			checkAgentSignalCloseWaits(t, m, m.signals.ModelCallCompleted, func(ctx context.Context, e agentshare.ModelCallCompletedEvent) error {
+				_, err := m.signals.ModelCallCompleted.EmitAsync(ctx, e)
+				return err
+			})
+		},
+		"status": func(t *testing.T, m *Supervisor) {
+			checkAgentSignalCloseWaits(t, m, m.signals.StatusChanged, m.signals.StatusChanged.Publish)
+		},
+		"vision": func(t *testing.T, m *Supervisor) {
+			checkAgentSignalCloseWaits(t, m, m.signals.VisionFallbackUsed, func(ctx context.Context, e dialogue.VisionFallbackUsedEvent) error {
+				_, err := m.signals.VisionFallbackUsed.EmitAsync(ctx, e)
+				return err
+			})
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			m := contractSupervisor(t, isolatedModuleDeps(t))
@@ -162,12 +179,12 @@ func TestSupervisorAllowsFinalFactsButRejectsNewObservers(t *testing.T) {
 	if _, err := m.ObserveBindingChanged(func(BindingChangedEvent) error { return nil }, signal.ConnectOptions{}); !errors.Is(err, signal.ErrClosed) {
 		t.Fatalf("binding observer after BeginClose: %v", err)
 	}
-	if _, err := m.signals.StatusChanged.Emit(t.Context(), agentexecution.StatusChangedEvent{}); err != nil {
+	if err := m.signals.StatusChanged.Publish(t.Context(), agentexecution.StatusChangedEvent{}); err != nil {
 		t.Fatalf("final status rejected: %v", err)
 	}
 	select {
 	case <-received:
-	default:
+	case <-t.Context().Done():
 		t.Fatal("final status not delivered")
 	}
 	unblock()

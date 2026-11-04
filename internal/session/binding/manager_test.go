@@ -5,6 +5,7 @@ import (
 	"elbot/internal/contextinfo"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -52,9 +53,9 @@ func assertEmptyAdmissions(t *testing.T, m *Manager) {
 func TestBindingIdentityVersionsAndUnbinding(t *testing.T) {
 	m := newTestManager(t)
 	scope := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-	var events []BindingChangedEvent
+	observations := make(chan BindingChangedEvent, 4)
 	_, err := m.ObserveBindingChanged(func(_ context.Context, event BindingChangedEvent) error {
-		events = append(events, event)
+		observations <- event
 		return nil
 	}, signal.ConnectOptions{})
 	if err != nil {
@@ -84,6 +85,8 @@ func TestBindingIdentityVersionsAndUnbinding(t *testing.T) {
 		t.Fatal("unbinding retained the reactivated binding")
 	}
 	setCurrent(t, m, scope, "")
+	events := []BindingChangedEvent{<-observations, <-observations, <-observations, <-observations}
+	slices.SortFunc(events, func(a, b BindingChangedEvent) int { return int(a.Version) - int(b.Version) })
 	if len(events) != 4 || events[1].Old != first || events[1].New != nil || events[3].Old != second {
 		t.Fatalf("events=%+v", events)
 	}
@@ -133,6 +136,7 @@ func TestNestedLeasePublishesOutsideLocksDespiteCancellation(t *testing.T) {
 	scope := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "u"}}
 	first := setCurrent(t, m, scope, "old")
 	var calls atomic.Int32
+	done := make(chan struct{})
 	_, err := m.ObserveBindingChanged(func(ctx context.Context, event BindingChangedEvent) error {
 		if ctx.Err() != nil || event.Old != first || event.New != m.CurrentBinding(scope) {
 			return fmt.Errorf("incorrect committed event: %+v", event)
@@ -143,6 +147,7 @@ func TestNestedLeasePublishesOutsideLocksDespiteCancellation(t *testing.T) {
 		}
 		release()
 		calls.Add(1)
+		close(done)
 		return nil
 	}, signal.ConnectOptions{})
 	if err != nil {
@@ -171,6 +176,7 @@ func TestNestedLeasePublishesOutsideLocksDespiteCancellation(t *testing.T) {
 	cancel()
 	leaveOuter()
 	leaveOuter()
+	<-done
 	if calls.Load() != 1 || first.Valid() {
 		t.Fatalf("callbacks=%d old valid=%t", calls.Load(), first.Valid())
 	}

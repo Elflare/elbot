@@ -22,7 +22,7 @@ type Manager struct {
 	idle           chan struct{}                     // 停止接纳后，所有准入调用已释放。
 	closeOnce      sync.Once
 	done           chan struct{} // 准入、事件回调及自有状态全部退出。
-	changed        *signal.Signal[BindingChangedEvent, signal.Empty]
+	changed        *signal.Async[BindingChangedEvent]
 }
 
 var _ share.BindingCoordinator = (*Manager)(nil)
@@ -31,7 +31,7 @@ func NewManager() *Manager {
 	return &Manager{
 		current: make(map[share.ScopeKey]*share.Binding), gates: make(map[admissionKey]*scopeGate),
 		stop: make(chan struct{}), idle: make(chan struct{}), done: make(chan struct{}),
-		changed: signal.New[BindingChangedEvent, signal.Empty]("session.binding_changed"),
+		changed: signal.NewAsync[BindingChangedEvent]("session.binding_changed"),
 	}
 }
 

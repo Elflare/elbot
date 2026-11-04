@@ -64,8 +64,19 @@ func newUsageCenter(t *testing.T) (*MediaCenter, *sqlite.Store, *controlledRefer
 
 func drainUsageEvents(t *testing.T, m *MediaCenter) {
 	t.Helper()
-	if _, err := m.usageFinished.Emit(t.Context(), []string{}); err != nil {
+	done := make(chan struct{}, 1)
+	c, err := m.usageFinished.Observe(func(context.Context, []string) error { done <- struct{}{}; return nil }, signal.ConnectOptions{})
+	if err != nil {
 		t.Fatal(err)
+	}
+	defer c.Disconnect()
+	if err := m.usageFinished.Publish(t.Context(), []string{}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("cleanup did not drain")
 	}
 }
 
@@ -155,7 +166,7 @@ func TestUsageQueueRejectionAndCloseTimeoutKeepResources(t *testing.T) {
 		}
 	})
 	for range 256 {
-		if _, err := m.usageFinished.EmitAsync(t.Context(), []string{}); err != nil {
+		if err := m.usageFinished.Publish(t.Context(), []string{}); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -42,6 +42,24 @@ type Signal[T, R any] struct {
 	closed   atomic.Bool
 }
 
+// Async publishes facts without exposing callback completion to producers.
+// The private source owns the existing bounded execution and lifecycle.
+type Async[T any] struct{ source *Signal[T, Empty] }
+
+func NewAsync[T any](name string, options ...Options[T]) *Async[T] {
+	return &Async[T]{source: New[T, Empty](name, options...)}
+}
+func (s *Async[T]) Publish(ctx context.Context, event T) error {
+	_, err := s.source.EmitAsync(ctx, event)
+	return err
+}
+func (s *Async[T]) Observe(h func(context.Context, T) error, o ConnectOptions) (*Connection, error) {
+	return s.source.Observe(h, o)
+}
+func (s *Async[T]) BeginClose()                     { s.source.BeginClose() }
+func (s *Async[T]) Close(ctx context.Context) error { return s.source.Close(ctx) }
+func (s *Async[T]) Done() <-chan struct{}           { return s.source.Done() }
+
 func New[T, R any](name string, options ...Options[T]) *Signal[T, R] {
 	var o Options[T]
 	if len(options) > 0 {

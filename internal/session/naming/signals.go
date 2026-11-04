@@ -1,17 +1,14 @@
-// 职责：定义命名过程事件并完成日志投影。
-// 持有命名信号与日志订阅，随命名组件统一释放。
+// 定义命名过程事实并组织完整日志；发布能力由 Session 根部注入。
 package naming
 
 import (
 	"context"
 	"elbot/internal/logging"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"time"
 
 	"elbot/internal/events"
-	"elbot/internal/signal"
 )
 
 type NamingScheduledEvent struct {
@@ -50,109 +47,16 @@ type NamingCompletedEvent struct {
 	MaxFailures              int                 // 生成失败上限。
 }
 
-type namingSignals struct {
-	Scheduled *signal.Signal[NamingScheduledEvent, signal.Empty]
-	Completed *signal.Signal[NamingCompletedEvent, signal.Empty]
-}
-
-func newNamingSignals() namingSignals {
-	return namingSignals{Scheduled: signal.New[NamingScheduledEvent, signal.Empty]("session.naming_scheduled"), Completed: signal.New[NamingCompletedEvent, signal.Empty]("session.naming_completed")}
-}
-
-func (s *Service) connectLogSignals() error {
-	logs := namingLogProjection{}
-	connection, err := s.namingSignals.Scheduled.Observe(logs.scheduled, signal.ConnectOptions{})
-	if err != nil {
-		return err
-	}
-	s.logConnections = append(s.logConnections, connection)
-	connection, err = s.namingSignals.Completed.Observe(logs.completed, signal.ConnectOptions{})
-	if err != nil {
-		return err
-	}
-	s.logConnections = append(s.logConnections, connection)
-	return nil
-}
-
 func (s *Service) notifyNamingScheduled(ctx context.Context, event NamingScheduledEvent) {
-	event.Identity = copyIdentity(event.Identity)
-	if _, err := s.namingSignals.Scheduled.Emit(context.WithoutCancel(ctx), event); err != nil {
-		reportNamingDeliveryFailure(ctx, "session naming scheduled delivery failed", event.Identity, err)
-	}
-}
-
-func (s *Service) notifyNamingCompleted(ctx context.Context, event NamingCompletedEvent) {
-	event.Identity = copyIdentity(event.Identity)
-	if event.Title != nil {
-		value := *event.Title
-		event.Title = &value
-	}
-	if event.MessageCount != nil {
-		value := *event.MessageCount
-		event.MessageCount = &value
-	}
-	if event.TitleValid != nil {
-		value := *event.TitleValid
-		event.TitleValid = &value
-	}
-	if _, err := s.namingSignals.Completed.Emit(context.WithoutCancel(ctx), event); err != nil {
-		reportNamingDeliveryFailure(ctx, "session naming completed delivery failed", event.Identity, err)
-	}
-}
-
-// 普通回调错误由 signal 诊断；本层只补充其不报告的投递状态。
-// 只汇总这些状态，避免把已报告的普通错误再次带入摘要。
-func reportNamingDeliveryFailure(ctx context.Context, message string, identity events.LogIdentity, err error) {
-	var failures []error
-	for _, failure := range []error{signal.ErrQueueFull, signal.ErrClosed, context.Canceled, context.DeadlineExceeded} {
-		if errors.Is(err, failure) {
-			failures = append(failures, failure)
-		}
-	}
-	if len(failures) == 0 {
-		return
-	}
-	attrs := []slog.Attr{slog.Any("error", errors.Join(failures...))}
-	for _, field := range []struct {
-		key   string
-		value *string
-	}{
-		{"session_id", identity.SessionID},
-		{"request_id", identity.RequestID},
-		{"run_id", identity.RunID},
-		{"attempt", identity.Attempt},
-		{"root_request_id", identity.RootRequestID},
-	} {
-		if field.value != nil {
-			attrs = append(attrs, slog.String(field.key, *field.value))
-		}
-	}
-	slog.LogAttrs(ctx, slog.LevelWarn, message, attrs...)
-}
-
-func copyIdentity(identity events.LogIdentity) events.LogIdentity {
-	for _, field := range []**string{&identity.SessionID, &identity.RunID, &identity.Attempt, &identity.RequestID, &identity.RootRequestID} {
-		if *field != nil {
-			value := **field
-			*field = &value
-		}
-	}
-	return identity
-}
-
-type namingLogProjection struct{}
-
-func (n namingLogProjection) scheduled(ctx context.Context, event NamingScheduledEvent) error {
 	// 日志投递拥有自己的诊断，不把它变成 Naming 观察回调的失败。
 	content, _ := json.Marshal(map[string]any{"message_count": event.MessageCount, "trigger_step": event.TriggerStep})
-	_ = events.EmitLog(ctx, events.LogRecord{
+	s.deps.Log(ctx, events.LogRecord{
 		Category: events.LogRuntime, Level: slog.LevelInfo, EventName: "session_naming_scheduled", Module: "session", Identity: event.Identity,
 		Type: events.ContentJSON, Content: string(content),
 	})
-	return nil
 }
 
-func (n namingLogProjection) completed(ctx context.Context, event NamingCompletedEvent) error {
+func (s *Service) notifyNamingCompleted(ctx context.Context, event NamingCompletedEvent) {
 	level := slog.LevelInfo
 	if event.PreparationResultStatus == events.ResultFailed || event.PersistenceResultStatus == events.ResultFailed || event.FallbackResultStatus == events.ResultFailed {
 		level = slog.LevelError
@@ -200,10 +104,9 @@ func (n namingLogProjection) completed(ctx context.Context, event NamingComplete
 	}
 	data, _ := json.Marshal(content)
 	record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: "session_naming_completed", Module: "session", Type: events.ContentJSON, Content: string(data), Identity: event.Identity, ResultStatus: event.ResultStatus}
-	_ = events.EmitLog(ctx, record)
+	s.deps.Log(ctx, record)
 	if event.GenerationResultStatus == events.ResultFailed {
 		record.Category = events.LogAudit
-		_ = events.EmitLog(ctx, record)
+		s.deps.Log(ctx, record)
 	}
-	return nil
 }

@@ -80,7 +80,7 @@ func (s *ModelManager) bindRetryNotifier(provider string, client llm.Client) {
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
 			record := ModelRetryingEvent{Provider: provider, Retry: event, CallContext: ctx}
 			record.Identity = events.LogIdentityFromExecution(facts)
-			_, _ = s.retrying.Emit(context.WithoutCancel(ctx), record)
+			_ = s.retrying.Publish(context.WithoutCancel(ctx), record)
 		})
 	}
 }

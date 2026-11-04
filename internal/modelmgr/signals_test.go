@@ -20,9 +20,9 @@ type retryClient struct {
 func (c *retryClient) SetRetryNotifier(fn func(context.Context, llm.RetryEvent)) { c.notify = fn }
 
 func TestRetryLogsWithoutNotificationSubscriber(t *testing.T) {
-	var records []events.LogRecord
+	received := make(chan events.LogRecord, 2)
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-		records = append(records, record)
+		received <- record
 		return nil
 	}, signal.ConnectOptions{})
 	if err != nil {
@@ -40,6 +40,7 @@ func TestRetryLogsWithoutNotificationSubscriber(t *testing.T) {
 	ctx, cancel := context.WithCancel(contextinfo.WithExecution(context.Background(), contextinfo.Execution{RequestID: "retry-request"}))
 	cancel()
 	client.notify(ctx, llm.RetryEvent{ResultStatus: events.ResultFailed})
+	records := []events.LogRecord{<-received}
 	if len(records) != 1 || records[0].EventName != "model_retry" || records[0].Level != slog.LevelWarn || records[0].ResultStatus != events.ResultFailed {
 		t.Fatalf("retry facts: %+v", records)
 	}
@@ -47,12 +48,13 @@ func TestRetryLogsWithoutNotificationSubscriber(t *testing.T) {
 		t.Fatal("retry lost actual call identity")
 	}
 	client.notify(ctx, llm.RetryEvent{Err: fmt.Errorf("wrapped: %w", context.Canceled), ResultStatus: events.ResultCanceled})
+	records = append(records, <-received)
 	if len(records) != 2 || records[1].Level != slog.LevelInfo {
 		t.Fatal("wrapped cancellation treated as retry failure")
 	}
 	_ = service.Close(context.Background())
 	client.notify(ctx, llm.RetryEvent{})
-	if len(records) != 2 {
+	if len(received) != 0 {
 		t.Fatal("retry subscription survived close")
 	}
 }

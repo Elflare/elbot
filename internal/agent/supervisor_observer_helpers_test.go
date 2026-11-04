@@ -60,7 +60,7 @@ func (p *assemblyPlatform) text() string {
 func observerSignals() signals {
 	return signals{
 		ModelCallCompleted: signal.New[agentshare.ModelCallCompletedEvent, signal.Empty]("model"),
-		StatusChanged:      signal.New[agentexecution.StatusChangedEvent, signal.Empty]("status"),
+		StatusChanged:      signal.NewAsync[agentexecution.StatusChangedEvent]("status"),
 		VisionFallbackUsed: signal.New[dialogue.VisionFallbackUsedEvent, signal.Empty]("vision"),
 	}
 }

@@ -21,7 +21,7 @@ func TestCloseWaitsForLeaseAndPreservesCommittedEvent(t *testing.T) {
 		_, err := m.ObserveBindingChanged(func(_ context.Context, e BindingChangedEvent) error {
 			event = e
 			return nil
-		}, signal.ConnectOptions{})
+		}, signal.ConnectOptions{Shutdown: signal.Drain})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -89,7 +89,7 @@ func TestCloseWaitsForActualObserverExit(t *testing.T) {
 			close(published)
 		}()
 		<-started
-		// Emit 超时返回后，观察回调仍未退出。
+		// 发布已返回；即使执行期限过去，关闭仍须等待真实退出。
 		time.Sleep(31 * time.Second)
 		<-published
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)

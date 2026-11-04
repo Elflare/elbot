@@ -10,7 +10,7 @@ import (
 )
 
 func (s *ModelManager) connectLogSignals() error {
-	connection, err := s.retrying.Observe(logModelRetry, signal.ConnectOptions{})
+	connection, err := s.retrying.Observe(logModelRetry, signal.ConnectOptions{Shutdown: signal.Drain})
 	if err != nil {
 		return err
 	}

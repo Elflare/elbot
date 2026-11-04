@@ -187,3 +187,38 @@ func TestClosingCompletesPendingResults(t *testing.T) {
 	}
 	close(release)
 }
+
+// Async publication must not borrow the producer's lifetime to wait for a callback.
+func TestAsyncPublicationAndClose(t *testing.T) {
+	s := NewAsync[int]("async", Options[int]{Capacity: 1, Concurrency: 1})
+	entered, release := make(chan struct{}), make(chan struct{})
+	_, err := s.Observe(func(context.Context, int) error { close(entered); <-release; return nil }, ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close(context.Background())
+	defer close(release)
+	if err := s.Publish(t.Context(), 1); err != nil {
+		t.Fatal(err)
+	}
+	<-entered
+	if err := s.Publish(t.Context(), 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Publish(t.Context(), 3); !errors.Is(err, ErrQueueFull) {
+		t.Fatalf("full queue: %v", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := s.Close(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("close: %v", err)
+	}
+	select {
+	case <-s.Done():
+		t.Fatal("closed before callback exit")
+	default:
+	}
+	if err := s.Publish(t.Context(), 4); !errors.Is(err, ErrClosed) {
+		t.Fatalf("closed publication: %v", err)
+	}
+}

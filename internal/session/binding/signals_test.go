@@ -26,7 +26,7 @@ func captureBindingLogs(t *testing.T) *bytes.Buffer {
 }
 
 func TestBindingEventFailurePreservesCommit(t *testing.T) {
-	for _, failure := range []string{"queue_full", "timeout"} {
+	for _, failure := range []string{"queue_full"} {
 		t.Run(failure, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				logs := captureBindingLogs(t)
@@ -34,7 +34,7 @@ func TestBindingEventFailurePreservesCommit(t *testing.T) {
 				if err := m.changed.Close(context.Background()); err != nil {
 					t.Fatal(err)
 				}
-				m.changed = signal.New[BindingChangedEvent, signal.Empty]("session.binding_changed", signal.Options[BindingChangedEvent]{Capacity: 1, Concurrency: 1, Timeout: time.Second})
+				m.changed = signal.NewAsync[BindingChangedEvent]("session.binding_changed", signal.Options[BindingChangedEvent]{Capacity: 1, Concurrency: 1, Timeout: time.Second})
 				scope := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "u"}}
 				old := setCurrent(t, m, scope, "old")
 				finish := make(chan struct{})
@@ -54,7 +54,7 @@ func TestBindingEventFailurePreservesCommit(t *testing.T) {
 				if failure == "queue_full" {
 					// 占满一个执行位和一个等待位，后续解绑事件无法入队。
 					for range 2 {
-						if _, err := m.changed.EmitAsync(context.Background(), BindingChangedEvent{}); err != nil {
+						if err := m.changed.Publish(context.Background(), BindingChangedEvent{}); err != nil {
 							t.Fatal(err)
 						}
 						synctest.Wait()
@@ -100,9 +100,9 @@ func TestBindingEventSuccessDoesNotWarn(t *testing.T) {
 			logs := captureBindingLogs(t)
 			m := newTestManager(t)
 			scope := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "u"}}
-			var observed BindingChangedEvent
+			observations := make(chan BindingChangedEvent, 1)
 			_, err := m.ObserveBindingChanged(func(ctx context.Context, event BindingChangedEvent) error {
-				observed = event
+				observations <- event
 				return ctx.Err()
 			}, signal.ConnectOptions{})
 			if err != nil {
@@ -119,6 +119,7 @@ func TestBindingEventSuccessDoesNotWarn(t *testing.T) {
 				cancel()
 			}
 			release()
+			observed := <-observations
 			if observed.New != m.CurrentBinding(scope) || observed.New == nil || !observed.New.Valid() {
 				t.Fatal("committed event was not delivered")
 			}

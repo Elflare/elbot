@@ -103,14 +103,14 @@ func connectSignal[T any](b *signalBindings, source *signal.Signal[T, signal.Emp
 
 type signals struct {
 	ModelCallCompleted *signal.Signal[agentshare.ModelCallCompletedEvent, signal.Empty]
-	StatusChanged      *signal.Signal[agentexecution.StatusChangedEvent, signal.Empty]
+	StatusChanged      *signal.Async[agentexecution.StatusChangedEvent]
 	VisionFallbackUsed *signal.Signal[dialogue.VisionFallbackUsedEvent, signal.Empty]
 }
 
 func newSignals() signals {
 	return signals{
 		ModelCallCompleted: signal.New[agentshare.ModelCallCompletedEvent, signal.Empty]("agent.model_completed"),
-		StatusChanged:      signal.New[agentexecution.StatusChangedEvent, signal.Empty]("agent.status_changed"),
+		StatusChanged:      signal.NewAsync[agentexecution.StatusChangedEvent]("agent.status_changed"),
 		VisionFallbackUsed: signal.New[dialogue.VisionFallbackUsedEvent, signal.Empty]("agent.vision_fallback"),
 	}
 }

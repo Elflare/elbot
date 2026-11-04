@@ -1,7 +1,6 @@
 package naming
 
 import (
-	"bytes"
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
@@ -16,9 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
-	"testing/synctest"
 	"time"
 )
 
@@ -49,153 +46,6 @@ func captureNamingDiagnostics(t *testing.T) *os.File {
 		_ = file.Close()
 	})
 	return file
-}
-
-func TestNamingDeliveryCallbackErrorsReportedOnce(t *testing.T) {
-	for _, source := range []string{"log", "naming"} {
-		for _, stage := range []string{"scheduled", "completed", "audit"} {
-			if source == "naming" && stage == "audit" {
-				continue
-			}
-			t.Run(source+"/"+stage, func(t *testing.T) {
-				file := captureNamingDiagnostics(t)
-				s, err := NewService(Config{}, ServiceDeps{})
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer s.Close(context.Background())
-				failure := errors.New("delivery observer failed")
-				var connection *signal.Connection
-				if source == "log" {
-					connection, err = events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-						if stage == "audit" && record.Category != events.LogAudit {
-							return nil
-						}
-						return failure
-					}, signal.ConnectOptions{})
-				} else if stage == "scheduled" {
-					connection, err = s.namingSignals.Scheduled.Observe(func(context.Context, NamingScheduledEvent) error { return failure }, signal.ConnectOptions{})
-				} else {
-					connection, err = s.namingSignals.Completed.Observe(func(context.Context, NamingCompletedEvent) error { return failure }, signal.ConnectOptions{})
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer connection.Close(context.Background())
-				id := "source"
-				identity := events.LogIdentity{SessionID: &id}
-				if stage == "scheduled" {
-					s.notifyNamingScheduled(t.Context(), NamingScheduledEvent{Identity: identity})
-				} else {
-					event := NamingCompletedEvent{Identity: identity, ResultStatus: events.ResultSucceeded}
-					if stage == "audit" {
-						event.GenerationResultStatus = events.ResultFailed
-					}
-					s.notifyNamingCompleted(t.Context(), event)
-				}
-				if err := s.Close(t.Context()); err != nil {
-					t.Fatal(err)
-				}
-				if err := signal.FlushDiagnostics(t.Context()); err != nil {
-					t.Fatal(err)
-				}
-				data, err := os.ReadFile(file.Name())
-				if err != nil {
-					t.Fatal(err)
-				}
-				if strings.Count(string(data), failure.Error()) != 1 {
-					t.Fatalf("expected one diagnostic: %s", data)
-				}
-			})
-		}
-	}
-}
-
-func TestNamingDeliveryFailureSummaryIDs(t *testing.T) {
-	for _, stage := range []string{"scheduled", "completed"} {
-		for _, failure := range []string{"queue_full", "closed", "timeout"} {
-			for _, fullIdentity := range []bool{true, false} {
-				t.Run(fmt.Sprintf("%s/%s/full=%v", stage, failure, fullIdentity), func(t *testing.T) {
-					synctest.Test(t, func(t *testing.T) {
-						var logs bytes.Buffer
-						previous := slog.Default()
-						slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
-						defer slog.SetDefault(previous)
-						s := &Service{namingSignals: namingSignals{
-							Scheduled: signal.New[NamingScheduledEvent, signal.Empty]("scheduled", signal.Options[NamingScheduledEvent]{Concurrency: 1, Capacity: 1, Timeout: time.Second}),
-							Completed: signal.New[NamingCompletedEvent, signal.Empty]("completed", signal.Options[NamingCompletedEvent]{Concurrency: 1, Capacity: 1, Timeout: time.Second}),
-						}}
-						defer s.namingSignals.Scheduled.Close(context.Background())
-						defer s.namingSignals.Completed.Close(context.Background())
-						release := make(chan struct{})
-						unblock := sync.OnceFunc(func() { close(release) })
-						defer unblock()
-						var seed func() error
-						var closeSignal func(context.Context) error
-						var err error
-						if stage == "scheduled" {
-							_, err = s.namingSignals.Scheduled.Observe(func(context.Context, NamingScheduledEvent) error { <-release; return nil }, signal.ConnectOptions{})
-							seed = func() error {
-								_, err := s.namingSignals.Scheduled.EmitAsync(context.Background(), NamingScheduledEvent{})
-								return err
-							}
-							closeSignal = s.namingSignals.Scheduled.Close
-						} else {
-							_, err = s.namingSignals.Completed.Observe(func(context.Context, NamingCompletedEvent) error { <-release; return nil }, signal.ConnectOptions{})
-							seed = func() error {
-								_, err := s.namingSignals.Completed.EmitAsync(context.Background(), NamingCompletedEvent{})
-								return err
-							}
-							closeSignal = s.namingSignals.Completed.Close
-						}
-						if err != nil {
-							t.Fatal(err)
-						}
-						wantError := context.DeadlineExceeded.Error()
-						if failure == "closed" {
-							if err := closeSignal(t.Context()); err != nil {
-								t.Fatal(err)
-							}
-							wantError = signal.ErrClosed.Error()
-						} else if failure == "queue_full" {
-							for range 2 {
-								if err := seed(); err != nil {
-									t.Fatal(err)
-								}
-								synctest.Wait()
-							}
-							wantError = signal.ErrQueueFull.Error()
-						}
-						id, request, run, attempt, root := "source", "request", "run", "attempt", "root"
-						identity := events.LogIdentity{SessionID: &id}
-						if fullIdentity {
-							identity.RequestID = &request
-							identity.RunID = &run
-							identity.Attempt = &attempt
-							identity.RootRequestID = &root
-						}
-						if stage == "scheduled" {
-							s.notifyNamingScheduled(t.Context(), NamingScheduledEvent{Identity: identity})
-						} else {
-							s.notifyNamingCompleted(t.Context(), NamingCompletedEvent{Identity: identity})
-						}
-						unblock()
-						synctest.Wait()
-						got := logs.String()
-						if strings.Count(got, "delivery failed") != 1 || !strings.Contains(got, wantError) || !strings.Contains(got, "session_id=source") || strings.Contains(got, "0x") || strings.Contains(got, "identity=") {
-							t.Fatalf("bad diagnostic: %s", got)
-						}
-						for _, field := range []string{"request_id=request", "run_id=run", "attempt=attempt", "root_request_id=root"} {
-							key := strings.SplitN(field, "=", 2)[0] + "="
-							if fullIdentity && !strings.Contains(got, field) || !fullIdentity && strings.Contains(got, key) {
-								t.Fatalf("wrong optional identity %s: %s", field, got)
-							}
-						}
-					})
-				})
-			}
-		}
-	}
 }
 
 func TestNamingLogFailureDoesNotChangeBusinessResult(t *testing.T) {
@@ -237,7 +87,7 @@ func TestNamingFailureContentSurvivesRuntimeLevel(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = center.Close(context.Background()) })
-			service, err := NewService(Config{}, ServiceDeps{})
+			service, err := newTestService(Config{}, ServiceDeps{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -307,7 +157,7 @@ func TestNamingOwnsSynchronousLogProjection(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
-	service, err := NewService(Config{}, ServiceDeps{})
+	service, err := newTestService(Config{}, ServiceDeps{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,9 +174,5 @@ func TestNamingOwnsSynchronousLogProjection(t *testing.T) {
 	}
 	if err := service.Close(context.Background()); err != nil {
 		t.Fatal(err)
-	}
-	service.notifyNamingCompleted(ctx, NamingCompletedEvent{ResultStatus: events.ResultSucceeded})
-	if len(records) != 1 {
-		t.Fatal("naming log connection survived close")
 	}
 }

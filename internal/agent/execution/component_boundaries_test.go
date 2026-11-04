@@ -39,7 +39,7 @@ func TestComponentStatusCommittedBeforeObserversAndCancellation(t *testing.T) {
 		contexts[id] = turn.WithAttempt(turn.WithExecution(t.Context(), execution), "attempt")
 		turns.StartAttempt(id, turn.Input{}, execution, "attempt")
 	}
-	recorder := NewStatusRecorder(StatusRecorderDeps{View: dialogue.ExecutionView{}, Turns: turns, Changed: signal.New[StatusChangedEvent, signal.Empty]("test.status")})
+	recorder := NewStatusRecorder(StatusRecorderDeps{View: dialogue.ExecutionView{}, Turns: turns, Changed: signal.NewAsync[StatusChangedEvent]("test.status")})
 	t.Cleanup(func() { _ = recorder.changed.Close(context.Background()) })
 	started := time.Now()
 	recorder.Record(contexts["s1"], runtimestatus.Snapshot{SessionID: "s1", Model: "model", TurnStartedAt: started, Phase: runtimestatus.PhaseLLM})

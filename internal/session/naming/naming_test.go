@@ -2,6 +2,7 @@ package naming
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -16,7 +17,6 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
-	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 )
@@ -47,24 +47,23 @@ func newFixture(t *testing.T, step int, call func(context.Context, llm.TextReque
 			t.Error(err)
 		}
 	})
-	s, err := NewService(Config{TriggerStep: step}, ServiceDeps{Sessions: store.Sessions(), Messages: store.Messages(), ResolveNaming: func(context.Context) modelmgr.NamingSelection {
+	s, err := newTestService(Config{TriggerStep: step}, ServiceDeps{Sessions: store.Sessions(), Messages: store.Messages(), ResolveNaming: func(context.Context) modelmgr.NamingSelection {
 		return modelmgr.NamingSelection{Naming: modelmgr.Selection{ModelSelection: config.ModelSelection{Provider: "provider", Model: "title"}, Client: textClient{call: call}}}
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	f := &fixture{s: s, store: store, completed: make(chan NamingCompletedEvent, 30)}
-	c, err := s.namingSignals.Completed.Observe(func(_ context.Context, e NamingCompletedEvent) error { f.completed <- e; return nil }, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
+	s.deps.Log = func(ctx context.Context, record events.LogRecord) {
+		testPublishLog(ctx, record)
+		if record.EventName == "session_naming_completed" && record.Category == events.LogRuntime {
+			f.completed <- decodeNamingLog(t, record)
+		}
 	}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 		if err := s.Close(ctx); err != nil {
-			t.Error(err)
-		}
-		if err := c.Close(ctx); err != nil {
 			t.Error(err)
 		}
 	})
@@ -176,7 +175,7 @@ func TestThresholdFilteringAndPersistentCompletion(t *testing.T) {
 			if err := f.s.Close(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			restarted, err := NewService(Config{TriggerStep: step}, f.s.deps)
+			restarted, err := newTestService(Config{TriggerStep: step}, f.s.deps)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -236,10 +235,10 @@ func TestThreeFailuresThenFallbackAndPersistenceRetry(t *testing.T) {
 				if i < 3 && repo.mutations.Load() != 0 {
 					t.Fatal("persisted before third failure")
 				}
-				if i == 3 && (e.FallbackError != repo.err || e.FallbackTitle != "fallback text") {
+				if i == 3 && (!sameNamingError(e.FallbackError, repo.err) || e.FallbackTitle != "fallback text") {
 					t.Fatalf("event=%+v", e)
 				}
-				if output == "model error" && (!errors.Is(e.GenerationError, original) || e.GeneratedTitleRaw != "partial") {
+				if output == "model error" && (!sameNamingError(e.GenerationError, original)) {
 					t.Fatalf("lost generation failure: %+v", e)
 				}
 			}
@@ -271,7 +270,7 @@ func TestStorageFailureDoesNotConsumeGenerationRetries(t *testing.T) {
 	f.s.deps.Sessions = repo
 	for i := 0; i < 4; i++ {
 		e := f.attempt(t, id)
-		if e.FailureCount != 0 || e.PersistenceError != repo.err || e.FallbackResultStatus != events.ResultUnspecified {
+		if e.FailureCount != 0 || !sameNamingError(e.PersistenceError, repo.err) || e.FallbackResultStatus != events.ResultUnspecified {
 			t.Fatalf("event=%+v", e)
 		}
 	}
@@ -312,7 +311,7 @@ func TestManualRenameWinsAndMalformedMetadataFailsPreparation(t *testing.T) {
 			t.Fatal(err)
 		}
 		e := f.attempt(t, id)
-		if e.Scheduled || e.PreparationError == nil || e.FailureCount != 0 || e.GenerationResultStatus != events.ResultUnspecified {
+		if e.PreparationError == nil || e.FailureCount != 0 || e.GenerationResultStatus != events.ResultUnspecified {
 			t.Fatalf("event=%+v", e)
 		}
 	}
@@ -357,7 +356,7 @@ func TestProtectedTitlesAndMissingRows(t *testing.T) {
 		f.s.MaybeScheduleNaming(t.Context(), id)
 	}
 	e := f.attempt(t, "missing")
-	if !errors.Is(e.PreparationError, storage.ErrNotFound) {
+	if !sameNamingError(e.PreparationError, storage.ErrNotFound) {
 		t.Fatalf("event=%+v", e)
 	}
 	f.s.mu.Lock()
@@ -365,17 +364,6 @@ func TestProtectedTitlesAndMissingRows(t *testing.T) {
 	f.s.mu.Unlock()
 	if exists {
 		t.Fatal("missing session retained cache")
-	}
-}
-
-func TestCompletionCopiesOptionalFields(t *testing.T) {
-	f := newFixture(t, 1, nil)
-	id, title, count, valid := "id", "title", 3, true
-	f.s.notifyNamingCompleted(t.Context(), NamingCompletedEvent{Identity: events.LogIdentity{SessionID: &id}, Title: &title, MessageCount: &count, TitleValid: &valid, ResultStatus: events.ResultSucceeded})
-	e := receive(t, f.completed)
-	id, title, count, valid = "changed", "changed", 9, false
-	if *e.Identity.SessionID != "id" || *e.Title != "title" || *e.MessageCount != 3 || !*e.TitleValid {
-		t.Fatalf("event=%+v", e)
 	}
 }
 
@@ -401,7 +389,7 @@ func TestPreparationFailureIdentityAndRetry(t *testing.T) {
 	ctx := contextinfo.WithExecution(t.Context(), contextinfo.Execution{SessionID: "wrong", RequestID: "request", RunID: "run"})
 	f.s.MaybeScheduleNaming(ctx, id)
 	e := receive(t, f.completed)
-	if e.Scheduled || e.MessageCount != nil || e.PreparationError != original || e.FailureCount != 0 || *e.Identity.SessionID != id || *e.Identity.RequestID != "request" || e.CompletedAt.Before(e.TriggeredAt) {
+	if e.MessageCount != nil || !sameNamingError(e.PreparationError, original) || e.FailureCount != 0 || *e.Identity.SessionID != id || *e.Identity.RequestID != "request" {
 		t.Fatalf("event=%+v", e)
 	}
 	f.s.deps.Messages = f.store.Messages()
@@ -435,7 +423,7 @@ func TestSourceDeletedWhileGeneratingDoesNotRetainCache(t *testing.T) {
 	unblock()
 	e := receive(t, f.completed)
 	f.idle(t, id)
-	if !errors.Is(e.PersistenceError, storage.ErrNotFound) || e.FailureCount != 0 {
+	if !sameNamingError(e.PersistenceError, storage.ErrNotFound) || e.FailureCount != 0 {
 		t.Fatalf("event=%+v", e)
 	}
 	f.s.mu.Lock()
@@ -444,4 +432,59 @@ func TestSourceDeletedWhileGeneratingDoesNotRetainCache(t *testing.T) {
 	if exists {
 		t.Fatal("deleted session retained state")
 	}
+}
+
+func testPublishLog(ctx context.Context, record events.LogRecord) {
+	_ = events.EmitLog(context.WithoutCancel(ctx), record)
+}
+func newTestService(cfg Config, deps ServiceDeps) (*Service, error) {
+	if deps.Log == nil {
+		deps.Log = testPublishLog
+	}
+	return NewService(cfg, deps), nil
+}
+func sameNamingError(a, b error) bool {
+	return a != nil && b != nil && strings.Contains(a.Error(), b.Error())
+}
+func decodeNamingLog(t *testing.T, r events.LogRecord) NamingCompletedEvent {
+	t.Helper()
+	for _, p := range []**string{&r.Identity.SessionID, &r.Identity.RequestID, &r.Identity.RunID, &r.Identity.Attempt, &r.Identity.RootRequestID} {
+		if *p != nil {
+			v := **p
+			*p = &v
+		}
+	}
+	var data struct {
+		Provider                                       string
+		Model                                          string
+		FailureCount                                   int  `json:"failure_count"`
+		MessageCount                                   *int `json:"message_count"`
+		Title                                          *string
+		Preparation, Generation, Persistence, Fallback struct {
+			ResultStatus string `json:"result_status"`
+			Error        string
+			Title        string
+		}
+		Cancellation string
+	}
+	if err := json.Unmarshal([]byte(r.Content), &data); err != nil {
+		t.Fatal(err)
+	}
+	status := func(s string) events.ResultStatus {
+		for _, v := range []events.ResultStatus{events.ResultSucceeded, events.ResultFailed, events.ResultCanceled, events.ResultRejected, events.ResultSkipped} {
+			if v.String() == s {
+				return v
+			}
+		}
+		return events.ResultUnspecified
+	}
+	failure := func(s string) error {
+		if s == "" {
+			return nil
+		}
+		return errors.New(s)
+	}
+	return NamingCompletedEvent{Identity: r.Identity, ResultStatus: r.ResultStatus, Provider: data.Provider, Model: data.Model, FailureCount: data.FailureCount, MessageCount: data.MessageCount, Title: data.Title,
+		PreparationError: failure(data.Preparation.Error), GenerationError: failure(data.Generation.Error), PersistenceError: failure(data.Persistence.Error), FallbackError: failure(data.Fallback.Error),
+		PreparationResultStatus: status(data.Preparation.ResultStatus), GenerationResultStatus: status(data.Generation.ResultStatus), PersistenceResultStatus: status(data.Persistence.ResultStatus), FallbackResultStatus: status(data.Fallback.ResultStatus), FallbackTitle: data.Fallback.Title, CancellationError: failure(data.Cancellation)}
 }

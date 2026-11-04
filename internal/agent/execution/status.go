@@ -27,7 +27,7 @@ type StatusRecorder struct {
 	turns     interface {
 		Snapshot(string) turn.Snapshot
 	}
-	changed *signal.Signal[StatusChangedEvent, signal.Empty]
+	changed *signal.Async[StatusChangedEvent]
 	view    interface {
 		Context(context.Context) context.Context
 	}
@@ -98,7 +98,9 @@ func (r *StatusRecorder) record(ctx context.Context, snapshot runtimestatus.Snap
 		}
 	}
 	// This snapshot is committed. Publish it even when the request just ended.
-	agentshare.Emit(context.WithoutCancel(ctx), r.changed, event)
+	if r.changed != nil {
+		_ = r.changed.Publish(context.WithoutCancel(ctx), event)
+	}
 }
 
 // Usage restores durable usage for an active execution; idle queries do not
@@ -188,7 +190,7 @@ type StatusRecorderDeps struct {
 	Turns interface {
 		Snapshot(string) turn.Snapshot
 	}
-	Changed *signal.Signal[StatusChangedEvent, signal.Empty]
+	Changed *signal.Async[StatusChangedEvent]
 }
 
 // NewStatusRecorder initializes StatusRecorder without installing cross-service callbacks.

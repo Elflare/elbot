@@ -43,7 +43,7 @@ func (m *Manager) publishChange(ctx context.Context, event BindingChangedEvent) 
 	// 已提交事实不随触发请求取消；接收方用 Version 处理并发交付的先后。
 	// 必需的跨模块释放由未来 control 的同步退役流程承担，不依赖观察者成功。
 	ctx = context.WithoutCancel(ctx)
-	if _, err := m.changed.Emit(ctx, event); err != nil {
+	if err := m.changed.Publish(ctx, event); err != nil {
 		var oldSessionID, newSessionID string
 		if event.Old != nil {
 			oldSessionID = event.Old.SessionID()

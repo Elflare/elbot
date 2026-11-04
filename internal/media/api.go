@@ -15,12 +15,12 @@ import (
 
 // MediaCenter 持有内部组件，提供公开业务入口；不公开内部仓储或后端。
 type MediaCenter struct {
-	closed          atomic.Bool                            // 关闭后停止接纳新的媒体使用，已结束事实仍可登记。
-	objects         *object.Manager                        // 对象、引用、历史关联与回收。
-	transfer        *transfer.Manager                      // 入站、模型请求和平台交付。
-	chatHistory     History                                // 构造时借用的历史身份查询，对账和清理时传给对象管理。
-	usageFinished   *signal.Signal[[]string, signal.Empty] // 本实例的使用结束通知，携带自有的使用 ID 切片。
-	usageConnection *signal.Connection                     // Media 持有订阅，排空后解除。
+	closed          atomic.Bool             // 关闭后停止接纳新的媒体使用，已结束事实仍可登记。
+	objects         *object.Manager         // 对象、引用、历史关联与回收。
+	transfer        *transfer.Manager       // 入站、模型请求和平台交付。
+	chatHistory     History                 // 构造时借用的历史身份查询，对账和清理时传给对象管理。
+	usageFinished   *signal.Async[[]string] // 本实例的使用结束通知，携带自有的使用 ID 切片。
+	usageConnection *signal.Connection      // Media 持有订阅，排空后解除。
 }
 
 // Info 查询通用信息，不读内容、不校验图片、不增加持有。

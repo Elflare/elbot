@@ -5,6 +5,7 @@ import (
 	"elbot/internal/agent/dialogue"
 	"elbot/internal/testutil"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -18,10 +19,11 @@ import (
 
 func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 	turns := turn.NewSupervisor(testutil.IDSequence())
-	events := signal.New[StatusChangedEvent, signal.Empty]("status")
-	var observed []StatusChangedEvent
+	events := signal.NewAsync[StatusChangedEvent]("status")
+	observations := make(chan StatusChangedEvent, 3)
+	defer events.Close(context.Background())
 	_, _ = events.Observe(func(_ context.Context, e StatusChangedEvent) error {
-		observed = append(observed, e)
+		observations <- e
 		return nil
 	}, signal.ConnectOptions{})
 	r := NewStatusRecorder(StatusRecorderDeps{View: dialogue.ExecutionView{}, Turns: turns, Changed: events})
@@ -40,6 +42,8 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 	*usage.TotalTokens = 900
 	copy := r.Snapshot("s")
 	*copy.Usage.TotalTokens = 901
+	observed := []StatusChangedEvent{<-observations, <-observations}
+	slices.SortFunc(observed, func(a, b StatusChangedEvent) int { return int(a.Version) - int(b.Version) })
 	if len(observed) != 2 || observed[1].Version != observed[0].Version+1 || (observed[1].Snapshot.Usage.TotalTokens == nil || *observed[1].Snapshot.Usage.TotalTokens != 42) || (r.Snapshot("s").Usage.TotalTokens == nil || *r.Snapshot("s").Usage.TotalTokens != 42) {
 		t.Fatalf("old attempt/snapshot leaked: %+v", observed)
 	}
@@ -50,6 +54,13 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 		t.Fatal("matching terminal rejected after turn cleanup")
 	}
 	r.Record(oldCtx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone})
+	observed = append(observed, <-observations)
+	if err := events.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(observations) != 0 {
+		t.Fatal("old terminal accepted")
+	}
 	if len(observed) != 3 {
 		t.Fatal("old terminal accepted")
 	}
