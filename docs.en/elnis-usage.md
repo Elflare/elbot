@@ -6,7 +6,7 @@ This article follows [Elnis listening hub](elnis.md) and explains how to enable 
 
 ## Quick Start
 
-Elnis is disabled by default. When enabling it, first declare the configuration file entry in `app.toml`:
+Elnis is disabled by default. To enable it, first declare the configuration file entry in `app.toml`:
 
 ```toml
 [config_files]
@@ -16,18 +16,18 @@ elnis = "elnis.toml"
 Then configure it in `elnis.toml`:
 
 ```toml
-enabled = true # Elnis master switch; if false, the HTTP runtime will not start.
-allowed_tools = ["web_search", "web_extract"] # By default, ElBot internal tools preloaded by Elwisp are allowed.
+enabled = true # Main switch for Elnis; the HTTP runtime will not start if set to false.
+allowed_tools = ["web_search", "web_extract"] # Default allowed internal ElBot tools preloaded by Elwisp.
 
 [http]
-addr = "127.0.0.1:32170" # It is recommended to bind to a local address first, and use a reverse proxy or intranet forwarding when exposure is needed.
-max_body_bytes = 1048576 # Request body limit for a single Elvena request.
-queue_size = 128 # Background queue length for LLM mode.
-workers = 2 # Number of background workers in LLM mode.
-read_header_timeout_seconds = 5 # Request header read timeout.
-read_timeout_seconds = 30 # Read timeout for the entire request (including body).
+addr = "127.0.0.1:32170" # It is recommended to bind to a local address first; use a reverse proxy or intranet forwarding if exposure is needed.
+max_body_bytes = 1048576 # Maximum body size for a single Elvena request.
+queue_size = 128 # Background queue length in llm mode.
+workers = 2 # Number of background workers in llm mode.
+read_header_timeout_seconds = 5 # Timeout for reading request headers.
+read_timeout_seconds = 30 # Timeout for reading the entire request (including body).
 write_timeout_seconds = 300 # Timeout for handler execution and response writing; direct mode may involve external I/O, so the default is more lenient.
-idle_timeout_seconds = 60 # Keep-alive idle connection timeout.
+idle_timeout_seconds = 60 # Idle timeout for keep-alive connections.
 
 [tokens.home]
 token_env = ["ELNIS_HOME_TOKEN"] # Read from system environment variables or the .env file in the configuration directory.
@@ -39,50 +39,40 @@ targets = [
   # { platform = "qqonebot", type = "group", id = "987654321" },
 ]
 
-# Elwisp is enabled by default; configure it only when you need to limit tokens, override delivery policies, or disable it.
+# Elwisp is enabled by default; configure it only when you need to restrict tokens, override delivery strategies, or disable it.
 [elwisps.server-watchdog]
 allowed_tokens = ["home"]
-allowed_tools = ["shell", "web_search"] # Overrides the top-level allowed_tools when present.
+allowed_tools = ["shell", "web_search"] # Overrides the top-level allowed_tools if present.
 disabled_external_tools = ["danger_tool"] # External tools are allowed by default; only specified tools are disabled here.
 disabled_targets = [
   # { platform = "qqonebot", type = "group", id = "987654321" },
 ]
 
 [elwisps.spike-checker]
-enabled = false # This Elwisp is disabled only when enabled=false is explicitly set.
+enabled = false # This Elwisp is disabled only if explicitly set to enabled=false.
 ```
 
-`.env` example:
+`.env` Example:
 
 ```dotenv
 ELNIS_HOME_TOKEN=change-me
 ```
 
-Configuration description:
+Configuration Notes:
 
-- `enabled=false` will not start the Elnis HTTP runtime.
-- `elbot cli` is CLI-only mode; even with `enabled=true`, the Elnis HTTP runtime will not start; Please use `elbot run` or `elbot service run` when you need to receive Elvena events.
-- Currently, `targets=[{"platform":"cli"}]` only applies to scenarios where Elnis and the CLI are in the same `elbot run` foreground process, or when the CLI remote server is enabled in service mode; Independent `elbot cli` processes must connect to the server before they can receive notifications.
-- Do not write the token plaintext into the configuration; it is recommended to place it in system environment variables or the configuration directory `.env`.
-- `token_env` can contain multiple environment variable names, which will be tried in order.
-- Elwisp is enabled by default; it will receive events if `[elwisps.<name>]` is not specified, if it is specified but `enabled` is not, or if `enabled=true` is specified.
-- Only explicit `enabled=false` will disable the corresponding Elwisp.
-- `allowed_tokens` restricts which tokens can represent the Elwisp to deliver events; if not specified, any authenticated token is allowed.
-- The top-level `allowed_tools` is the default whitelist for ElBot internal tools; it is overridden when `allowed_tools` of an individual Elwisp exists.
-- External tools are allowed by default; an individual Elwisp can use `disabled_external_tools` to disable specific external tools.
-- Elnis allows delivery by default; Only targets explicitly listed in `[delivery_disabled].targets` or a single Elwisp `disabled_targets` will be prohibited.
-- When HTTP timeout configurations are less than or equal to 0, the aforementioned safe default values are used; timeouts cannot be disabled by using 0.
-- Non-loopback addresses should be placed behind a reverse proxy, with the proxy handling TLS, connection limits, and request rate limiting; application-layer timeouts cannot replace these boundaries.
+- **Startup Condition**: The Elnis HTTP runtime will not start when `enabled=false`.
+- `elbot client` is a CLI-only mode; the Elnis HTTP runtime will not start even if `enabled=true`; use `elbot run` or `elbot service run` to receive events.
+- `targets=[{"platform":"cli"}]` only takes effect in two cases: Elnis and the CLI are in the same `elbot run` foreground process, or the service mode has enabled the CLI remote server. An independent `elbot client` process must connect to the server to receive notifications.
+- **token**: The token is not written to the configuration file; place it in system environment variables or the `.env` in the configuration directory; `token_env` supports multiple variable names to be tried in order; `allowed_tokens` restricts which tokens can deliver on behalf of the Elwisp; if omitted, any authenticated token is allowed.
+- **Elwisp Activation**: Enabled by default. Events will be received if `[elwisps.<name>]` is missing, if it's present but `enabled` is missing, or if `enabled=true` is set; it is disabled only if explicitly set to `enabled=false`.
+- **Tool Whitelist**: The top-level `allowed_tools` is the default whitelist for internal ElBot tools; it is overridden if a specific Elwisp has `allowed_tools`; external tools are allowed by default, and a specific Elwisp can use `disabled_external_tools` to disable specified items.
+- **Delivery**: Allowed by default; only targets explicitly listed in `[delivery_disabled].targets` or a single Elwisp's `disabled_targets` will be prohibited.
+- **Timeout**: If less than or equal to 0, the safe default values mentioned above are used; 0 cannot be used to disable the timeout.
+- **Exposure**: Non-loopback addresses should be placed behind a reverse proxy, which handles TLS, connection limits, and request rate limiting; application-layer timeouts cannot replace these boundaries.
 
-If you want ElBot to help you generate an Elwisp listener, you can submit a request to the superadmin Session in work mode, for example:
+When you need ElBot to generate an Elwisp, simply state your requirement in a superadmin Session in work mode, for example, `@tool:elwisp_creator 帮我创建一个监听 RSS 更新并通过 Elnis 投递摘要的 Elwisp`.
 
-```text
-@tool:elwisp_creator 帮我创建一个监听 RSS 更新并通过 Elnis 投递摘要的 Elwisp
-```
-
-`elwisp_creator` will provide protocol descriptions, configuration snippets, event templates, code scaffolding, and test commands; actually writing files or running commands will still continue to use the corresponding tools.
-
-After starting ElBot, you can use curl to test a `direct` event:
+After starting, you can use curl to test a `direct` event:
 
 ```bash
 curl -sS http://127.0.0.1:32170/elvena/v3/events \
@@ -100,7 +90,7 @@ curl -sS http://127.0.0.1:32170/elvena/v3/events \
   }'
 ```
 
-If the same `elwisp.name + source + id` is sent again, Elnis will return duplicate and will not redistribute it.
+Sending the same `elwisp.name + source + id` again will return a duplicate and will not be redistributed.
 
 ## Elvena Request Example
 
@@ -166,14 +156,11 @@ Withdraw a message via the QQ OneBot native interface `delete_msg`, where `param
 }
 ```
 
-
 ## Segments (Multimodal Message Segments)
 
-Elvena v3 supports sending images and files via the `segments` field. `content` is reserved as a plain text fallback; In direct/record requests, at least one of `content`, `segments`, or `calls` must be provided; LLM mode still requires `content`.
+`segments` is used to send images and files, while `content` is reserved as a plain text fallback. In a direct/record request, at least one of `content`, `segments`, or `calls` must be provided; LLM mode still requires `content` to be provided.
 
-Behavior remains unchanged when `segments` is empty; when not empty, segments are rendered preferentially, and content serves as additional text.
-
-### Segment Fields
+Behavior remains unchanged when `segments` is empty; when not empty, it is rendered according to segments by priority, with `content` serving as additional text.
 
 | Field | Type | Required | Description |
 | --- | ---: | :---: | --- |
@@ -183,17 +170,14 @@ Behavior remains unchanged when `segments` is empty; when not empty, segments ar
 | `name` | string | No | File name, used for downloading, saving, and displaying. |
 | `mime_type` | string | No | MIME type hint. |
 
-### Download and Storage
+Download and Storage:
 
-- Events that are recorded, rejected, duplicated, or only queued do not download source media. References will be established for existing media IDs of queued tasks.
-- When 'direct' has an actual delivery target, Media Center media is imported or reused, and no download copy is kept in the Elnis sandbox.
-- LLM input is materialized into a stable media ID during actual execution; the Session saves the ID, which is then resolved before the request is sent.
-- Ordinary workspace files continue to be managed by the sandbox; report attachments are imported into the center when persistent delivery is determined to be necessary.
-- The original name is preserved if the filename already has an extension (including `.PNG`); it is only completed when no extension exists.
-- Direct mode also supports image/file output; it automatically degrades to a text description if the platform does not support it.
-- File size is limited by `[segment].max_file_bytes` of `elnis.toml` (default 100MB).
-- `data:` URIs only support base64 encoding and are similarly restricted after decoding.
-- Local protocols such as `file://` are prohibited.
+- **Download on demand**: Events that are recorded, rejected, duplicated, or only queued will not download source media; references will be established for media IDs already existing in queued tasks.
+- **direct**: Import or reuse Media Center media when there is an actual delivery target, without keeping a downloaded copy in the Elnis sandbox; Similarly supports image/file output, automatically falling back to text descriptions when the platform does not support them.
+- **llm**: Input is materialized into a stable media ID during actual execution; the Session saves the ID, which is then resolved before the request is sent.
+- **workspace**: Ordinary work files continue to be managed by the sandbox; report attachments are imported into the center when persistent delivery is determined to be necessary.
+- **File name**: The original name is preserved if an extension already exists (including `.PNG`); it is only completed when no extension is present.
+- **Limit**: File size is restricted by the `[segment].max_file_bytes` of `elnis.toml` (default 100MB); `data:` URIs only support base64 encoding and are similarly restricted after decoding; Local protocols such as `file://` are prohibited.
 
 ### Example
 
@@ -217,8 +201,11 @@ Behavior remains unchanged when `segments` is empty; when not empty, segments ar
 
 ### report_segments in LLM results
 
-After the background LLM processes the event, the `report_segments` of `JSONResult` can include images/files. When using `url`, fill in the relative path within the current task working directory; absolute paths, `~`, `..`, or symlinks/junctions that escape the directory cannot be used; Existing HTTP(S) sources remain compatible. You can also fill in `media:<sha256>` in `url` to reference central resources. The host imports attachments when preparing the report, and the outbox saves stable media IDs, so retries are still possible after the original workspace files are deleted.
+After the background LLM processes the event, the `report_segments` of `JSONResult` can include images / files:
 
+- `url` should be filled with a relative path within the current task working directory; absolute paths, `~`, `..`, or symlinks/junctions that escape the directory are not allowed. Existing HTTP(S) sources remain compatible.
+- `url` can also be filled with `media:<sha256>` to reference central resources.
+- The host imports attachments when preparing the report, and the outbox saves stable media IDs; therefore, retries are still possible after the original workspace files are deleted.
 
 ```json
 {
@@ -228,42 +215,44 @@ After the background LLM processes the event, the `report_segments` of `JSONResu
   "report_segments": [
     {"type": "image", "url": "chart.png"}
   ]
-
 }
 ```
 
-
 ### Output Association and Cleanup
 
-During sending and while pending retry in the outbox, media retains valid references. Successfully sent media will be associated with the corresponding platform message for subsequent reference and replies; no speculative associations are created when the correspondence cannot be determined.
+Media references are divided into four levels and are released in the following order:
 
-The retention period for sent cache reuses `[maintenance.sandbox_cleanup].retention_days` of `app.toml`; cache after sending is not retained if the value is not positive. Association references are released upon cache expiration; Independent references to Sessions, Transcripts, forks, and reports pending retry are still retained. After all references disappear and a 1-hour orphan grace period passes, the media maintenance task will clean up the entity and its records; Failures retain the deletion status for retries. The start of the grace period is saved in the database; time spent with ElBot shut down is also counted, and restarting does not reset it; Once the grace period is reached, cleanup occurs during the next execution of the media maintenance task, rather than being deleted immediately at exactly one hour. This task reuses the sandbox cleanup schedule but does not delete Media Center content based on the age of directory files.
+1. **Sending / outbox pending retry**: Keep valid references.
+2. **After successful sending**: Associated with the corresponding platform message for subsequent reference replies (speculative associations are not created when the correspondence cannot be determined).
+3. **Sent cache**: The retention period reuses `app.toml`'s `[maintenance.sandbox_cleanup].retention_days`; it is not retained if the value is not positive; Cache expiration only releases associated references; independent references for Sessions, Transcripts, forks, and reports pending retry are still retained.
+4. **Orphan Cleanup**: After all references disappear and a 1-hour grace period passes, the media maintenance task cleans up the entity and its record; if deletion fails, the state is preserved for retry.
 
-QQ OneBot, QQ Official, and Telegram support restoring associated media in quoted replies; Replying to the last assistant message of your own Session will automatically restore that Session, while replying to an earlier assistant message will Fork from that position. Elwisp remote tools only operate on their own files and do not obtain host media export paths, RPC, or storage credentials.
+The start of the grace period is stored in the database; time spent with ElBot shut down is also counted, and it is not reset upon restart; After the grace period expires, cleanup occurs during the **next** execution of the maintenance task, rather than being deleted immediately at the exact one-hour mark. This task reuses the sandbox cleanup schedule, but does not delete Media Center content based on the age of directory files.
 
-Common fields:
+QQ OneBot, QQ Official, and Telegram support restoring associated media in quoted replies: replying to the last assistant message of one's own Session will restore that Session, while replying to an earlier message will Fork from that position. Elwisp remote tools only operate on their own files and do not obtain host media export paths, RPC, or storage credentials.
+
+## Fields and Responses
 
 | Field | Required | Description |
 | --- | ---: | --- |
 | `version` | Yes | Protocol version, currently `elvena.v3`. |
-| `elwisp.name` | Yes | Elwisp name, which is also one of the source identities; only English letters, numbers, `_`, and `-` are allowed; dots are not allowed. |
-| `elwisp.tags` | No | Elwisp tag, used for logs and statistics. |
+| `elwisp.name` | Yes | Elwisp name, also one of the source identities; only English letters, numbers, `_`, and `-` are allowed; dots are not permitted. |
+| `elwisp.tags` | No | Elwisp tags, used for logs and statistics. |
 | `source` | Yes | Specific event source, such as service name, script name, or RSS name. |
 | `id` | Yes | Unique event ID within the source. |
 | `created_at` | No | Occurrence time of the external event; the reception time is used if missing. |
 | `mode` | Yes | `record`, `direct`, or `llm`. |
 | `title` | No | Event title, used for notifications and background Session titles. |
-| `format` | No | `text` or `elyph`, default `text`. |
-| `content` | No | Event body. Required for LLM mode; it is recommended to use ELyph Task Notation `#task`; Can be empty in direct/record mode, but at least one of `content`, `segments`, or `calls` must be provided. |
-| `model_slot` | No | Elnis LLM model slot, only supporting `elwisp1`, `elwisp2`, and `elwisp3`; if left blank or the corresponding slot is not configured, it will fall back to `work`. |
-| `tool_list_names` | No | The ElBot internal tool name or Skill name preloaded for background tasks; Ordinary tools inject the schema, while Skills inject task descriptions and automatically inject the corresponding runner; Must be within the Elnis `allowed_tools` adjudication range; `discover_tool` will be ignored. |
-| `tools` | No | External tools declared by Elwisp with events; allowed by default, rejected when hitting the `disabled_external_tools` of that Elwisp. |
-| `targets` | Yes | Elwisp expects a delivery target array: `{"platform":"telegram"}` indicates sending to the platform superadmin, `type=private/group` with `id` indicates sending to a specified private chat/group chat, and `{"platform":"all"}` indicates all enabled platform superadmins. The final decision is still made by Elnis. |
-| `calls` | No | An array of platform native API calls. Each item contains `platform` (platform name), `api` (native interface name), and `params` (native parameters); When `platform` is omitted, the platform of the first parsed target is used, and `api` and `params` are passed directly to that platform for execution. When a direct request only has `calls` and lacks `content`/`segments`, it only executes the API and does not send a message. |
-| `meta` | No | Original supplementary data, used only for recording and prompt attachment. |
+| `format` | No | `text` or `elyph`, defaults to `text`. |
+| `content` | No | Event body. Required for llm mode, ELyph `#task` is recommended; can be empty for direct/record, but at least one of `content`, `segments`, or `calls` must be provided. |
+| `model_slot` | No | Only `elwisp1`, `elwisp2`, `elwisp3`; falls back to `work` if not filled or the corresponding slot is not configured. |
+| `tool_list_names` | No | Internal tool names or Skill names preloaded for background tasks; ordinary tools inject the schema, while Skills inject descriptions and automatically inject the runner; must be within the Elnis `allowed_tools` range; `discover_tool` is ignored. |
+| `tools` | No | External tools declared by Elwisp with the event; allowed by default, rejected when hitting the `disabled_external_tools` of that Elwisp. |
+| `targets` | Yes | Array of expected delivery targets, see [Delivery Targets](#投递目标与安全边界) for semantics; ultimately decided by Elnis. |
+| `calls` | No | Array of platform native API calls. Each item contains `platform`, `api`, and `params`; if `platform` is omitted, the platform of the first resolved target is used. For direct requests, if only `calls` are present without `content`/`segments`, only the API is executed and no message is sent. |
+| `meta` | No | Original supplementary data, used only for recording and prompt appending. |
 
-The HTTP response only indicates that Elnis has received or rejected the request, and does not wait for the LLM to complete.
-
+The HTTP response only indicates whether Elnis has accepted or rejected the request, without waiting for the LLM to complete:
 
 ```json
 {
@@ -275,40 +264,22 @@ The HTTP response only indicates that Elnis has received or rejected the request
 }
 ```
 
-Each HTTP request body must contain exactly one JSON value. Trailing whitespace is allowed, but a trailing second JSON value or illegal content will return `400`. Unknown fields will be ignored and will not participate in protocol semantics, normalization, event `content_hash`, or auditing; Fields requiring formal semantics should be added to the corresponding Elvena protocol version.
+Each request body must contain one and only one JSON value; trailing whitespace is allowed; a second JSON value or illegal content will return `400`. Unknown fields are ignored and do not participate in protocol semantics, normalization, event `content_hash`, or auditing; fields requiring formal semantics should be added to the corresponding protocol version.
 
+## Delivery Targets and Security Boundaries
 
-## Delivery Target and Security Boundary
+`targets` must be an array; Elwisp can only declare the desired targets, and the final decision is made by Elnis:
 
-Elwisp can declare the expected target in `targets`, but the final target is decided by Elnis.
+- Only specify `platform`: deliver to the superadmin of that platform.
+- `type=private` / `type=group` + `id`: deliver to a specified private chat / group chat on the platform.
+- `platform=all`: deliver to the superadmins of all enabled platforms; `type` or `id` cannot be specified simultaneously.
 
-`targets` must be an array:
-
-```json
-{
-  "targets": [
-    {"platform": "telegram"},
-    {"platform": "telegram", "type": "private", "id": "123456789"},
-    {"platform": "qqonebot", "type": "group", "id": "987654321"},
-    {"platform": "all"}
-  ]
-}
-```
-
-Semantics:
-
-- Only write `platform`: deliver to the superadmin of that platform.
-- `type=private`: deliver to a specified platform private chat.
-- `type=group`: deliver to a specified platform group chat.
-- `platform=all`: deliver to the superadmins of all enabled platforms; `type` or `id` cannot be written at the same time.
-
-Elnis allows delivery by default; It is only prohibited when `[delivery_disabled].targets` or a single Elwisp `disabled_targets` is hit. Setting `{ platform = "telegram" }` in the disable configuration means disabling all deliveries for this platform.
+Elnis allows delivery by default; it is only prohibited when matching `[delivery_disabled].targets` or a single Elwisp's `disabled_targets`. `{ platform = "telegram" }` in the disable configuration indicates that all deliveries to that platform are disabled.
 
 Security Conventions:
 
-- The token name is used only for logs and audit logs, and is not equivalent to the Elwisp identity.
-- The original token text is not written to logs.
-- `model_slot` can only select `elwisp1`, `elwisp2`, or `elwisp3`, and cannot specify an arbitrary internal mode name.
-- Elwisp cannot bypass Tool Runtime and Security Policy to call ElBot internal tools; Tool names or Skill names in `tool_list_names` will all undergo Elnis `allowed_tools` adjudication.
-- External `tools` declared by Elwisp are allowed by default and are injected as model-callable function names in the form of `elwisp_<elwisp>_<tool>` via ToolRun; A single Elwisp can use `disabled_external_tools` to disable specific tools.
-- External tool calls are initiated by Elnis as HTTP JSON POST requests to the declared endpoint; the external tool itself is responsible for the actual risk boundary, and Elnis handles it as low-risk.
+- Token names are used only for logs and audits and are not equivalent to the Elwisp identity; the raw token is not written to logs.
+- `model_slot` can only be selected from `elwisp1/2/3` and cannot specify any arbitrary internal mode name.
+- Elwisp cannot bypass the Tool Runtime and Security Policy to call internal tools; names in `tool_list_names` will all be adjudicated by `allowed_tools`.
+- External `tools` are allowed by default and are injected via ToolRun as model-callable function names in the form of `elwisp_<elwisp>_<tool>`; a single Elwisp can disable them using `disabled_external_tools`.
+- External tool calls are initiated by Elnis as HTTP JSON POST requests to the declared endpoint; the external tool itself is responsible for the actual risk boundary, and Elnis treats them as low-risk.
