@@ -74,27 +74,18 @@ func (s *Service) prepareEvent(origin elvena.Origin, req Request) (Event, error)
 		}
 		createdAt = parsed
 	}
-	tagsJSON, err := json.Marshal(trimStrings(req.Elwisp.Tags))
-	if err != nil {
-		return Event{}, err
-	}
+	tagsJSON, _ := json.Marshal(trimStrings(req.Elwisp.Tags))
 	targets, err := normalizeTargets(req.Targets)
 	if err != nil {
 		return Event{}, err
 	}
 	req.Targets = targets
-	requestedTargets, err := json.Marshal(targets)
-	if err != nil {
-		return Event{}, err
-	}
+	requestedTargets, _ := json.Marshal(targets)
 	resolved, err := s.resolveTargets(req)
 	if err != nil {
 		return Event{}, err
 	}
-	resolvedTargets, err := json.Marshal(resolved)
-	if err != nil {
-		return Event{}, err
-	}
+	resolvedTargets, _ := json.Marshal(resolved)
 	toolDeclarations, err := normalizedToolDeclarations(req.Tools)
 	if err != nil {
 		return Event{}, err

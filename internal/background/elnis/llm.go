@@ -68,7 +68,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	}
 	runRequest := background.RunRequest{
 		TargetPlatforms: platforms,
-		NeedsElyphRules: strings.TrimSpace(event.Request.Format) == elyph.Format,
+		NeedsElyphRules: event.Request.Format == elyph.Format,
 		TaskType:        background.KindElnis,
 		TaskID:          event.EventKey,
 		Name:            firstNonEmpty(event.Request.Title, "Elnis: "+event.Request.Source),
@@ -210,10 +210,6 @@ func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, session
 }
 
 func (s *Service) llmPrompt(event Event) string {
-	format := strings.TrimSpace(event.Request.Format)
-	if format == "" {
-		format = "text"
-	}
 	parts := []string{"[系统 Elnis 后台事件任务]", ""}
 	parts = append(parts, "** 只能调用本任务提供的工具；没有提供工具时，基于已有信息完成或报告阻塞")
 	parts = append(parts,
@@ -236,19 +232,19 @@ func (s *Service) llmPrompt(event Event) string {
 		"事件标题："+strings.TrimSpace(event.Request.Title),
 		"事件来源："+event.Request.Source,
 		"事件 ID："+event.Request.ID,
-		"事件格式："+format,
+		"事件格式："+event.Request.Format,
 	)
 	if len(event.Request.Meta) > 0 {
 		if data, err := json.Marshal(event.Request.Meta); err == nil {
 			parts = append(parts, "事件 metadata："+string(data))
 		}
 	}
-	parts = append(parts, "", "事件内容：", strings.TrimSpace(event.Request.Content))
+	parts = append(parts, "", "事件内容：", event.Request.Content)
 	return strings.Join(parts, "\n")
 }
 
 func (s *Service) modelForEvent(event Event) config.ModelSelection {
-	slot := strings.TrimSpace(event.Request.ModelSlot)
+	slot := event.Request.ModelSlot
 	if slot == "" {
 		slot = "work"
 	}

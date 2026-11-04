@@ -19,7 +19,7 @@ func (s *Service) authenticate(token string) (string, bool) {
 		return "", false
 	}
 	for name, value := range s.tokens {
-		if value != "" && token == value {
+		if token == value {
 			return name, true
 		}
 	}

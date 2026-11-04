@@ -27,15 +27,15 @@ func (s *Service) resolveTargets(req Request) ([]Target, error) {
 		candidates := []Target{target}
 		if target.Platform == "all" {
 			candidates = nil
-			if len(s.enabledTargetPlatforms()) == 0 {
+			if len(s.enabledPlatforms) == 0 {
 				rejected = append(rejected, "all: no enabled platforms")
 			}
-			for _, platformName := range s.enabledTargetPlatforms() {
+			for _, platformName := range s.enabledPlatforms {
 				candidates = append(candidates, Target{Platform: platformName})
 			}
 		}
 		for _, candidate := range candidates {
-			if !slices.Contains(s.enabledTargetPlatforms(), candidate.Platform) {
+			if !slices.Contains(s.enabledPlatforms, candidate.Platform) {
 				rejected = append(rejected, fmt.Sprintf("%s: platform is not enabled", candidate.Platform))
 				continue
 			}
@@ -51,10 +51,6 @@ func (s *Service) resolveTargets(req Request) ([]Target, error) {
 		return nil, fmt.Errorf("no allowed delivery targets: %s", strings.Join(rejected, "; "))
 	}
 	return resolved, nil
-}
-
-func (s *Service) enabledTargetPlatforms() []string {
-	return s.enabledPlatforms
 }
 
 func (s *Service) targetDisabled(elwispName string, target Target) bool {
