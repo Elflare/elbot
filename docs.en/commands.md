@@ -128,50 +128,53 @@ Available to superadmins only.
 
 ## Logs and Audit
 
-| Command | Function |
+| Command | Description |
 | --- | --- |
-| `/log [options]` | Runtime log. |
-| `/audit [options]` | Audit log. |
-| `/elwisp [name] [options]` | Elnis/Elwisp event logs. |
-| `/usage [options]` | Summarize token consumption of audit logs (superadmin only). |
+| `/log [options]` | runtime log. |
+| `/audit [options]` | audit log. |
+| `/elwisp [name] [options]` | Elnis/Elwisp event log. |
+| `/usage [options]` | Summarize token consumption from audit logs (superadmin only). |
+
+Log queries and usage statistics read current JSONL records; the body can be text or JSON. Unparseable records are counted as corrupted records; `--raw` allows viewing a limited number of raw samples.
 
 Options (if the "Applicable" column is omitted, it applies to all three):
 
-| Option | Applicable | Function |
+| Option | Applicable | Description |
 | --- | --- | --- |
-| `-n, --limit <n>` | log/audit/elwisp | Number of entries to return, default is 5. |
-| `--days <n>` | log/audit/elwisp | Read the last n days, default is 1. |
+| `-n, --limit <n>` | log/audit/elwisp | Number of entries to return, default 5. |
+| `--days <n>` | log/audit/elwisp | Read the last n days, default 1. |
 | `--level <level>` | log/audit/elwisp | Minimum level: `debug`, `info`, `warn`, `error`. |
-| `-d, -i, -w, -e` | log/audit/elwisp | Level shortcuts (debug/info/warn/error), does not change the display format. |
-| `--raw` | log/audit/elwisp | Displays the complete raw records in the file, independent of level filtering. |
-| `--since <time>` / `--until <time>` | log/audit/elwisp | Time range, for example `2h`, `30m`, `2026-06-03`. |
+| `-d, -i, -w, -e` | log/audit/elwisp | Level shortcuts (debug/info/warn/error), does not change display format. |
+| `--raw` | log/audit/elwisp | Show full raw records from the file, independent of level filtering. |
+| `--since <time>` / `--until <time>` | log/audit/elwisp | Time range, e.g., `2h`, `30m`, `2026-06-03`. |
 | `--msg <text>` | log/audit/elwisp | Filter by message body. |
-| `--contains <text>` | log/audit/elwisp | Filter by decoded record content or raw records. |
+| `--contains <text>` | log/audit/elwisp | Filter by decoded record content or raw record. |
 | `-u` / `-a` | log | Filter user / assistant events. |
-| `-s, --system` | log | Filter and display `system prompt` logs. |
-| `--hook` | log/audit | Filter records of `module=hook`. |
-| `-t` | audit | Filter tool audits for `event=tool_call`. |
-| `--run_source <来源>` | audit | `foreground`, `cron`, `elnis`; can be combined with `-t` and other conditions. |
-| `--event <name>` | audit | For example, `tool_call`, `llm_usage`, `permission_denied`. |
+| `-s, --system` | log | Filter and show `system prompt` logs. |
+| `--hook` | log/audit | Filter records with `module=hook`. |
+| `-t` | audit | Filter tool audits for `tool_call_prepared` and `tool_call_completed`. |
+| `--run_source <source>` | audit | `foreground`, `cron`, `elnis`; can be combined with `-t` and other conditions. |
+| `--event <name>` | audit | e.g., `tool_call_completed`, `llm_usage`, `permission_denied`. |
 | `--risk <level>` | audit | Risk level. |
-| `--actor <id>` / `--session <id>` / `--tool <name>` | audit | Filter by actor, Session, or tool name. |
-| `[name]`、`--name`、`--elwisp <name>` | elwisp | Filter by Elwisp name; three writing styles are equivalent. |
-| `--source` / `--id`（= `--source-id`） | elwisp | By event source / external event ID. |
+| `--platform <name>` / `--actor-id <id>` / `--actor-name <name>` | audit | Exact match for participant's platform, native ID, display name; can be used in combination. |
+| `--session <id>` / `--tool <name>` | audit | Filter by Session or tool name. |
+| `[name]`, `--name`, `--elwisp <name>` | elwisp | Filter by Elwisp name; these three formats are equivalent. |
+| `--source` / `--id` (= `--source-id`) | elwisp | Filter by event source / external event ID. |
 | `--mode <record\|direct\|llm>` | elwisp | event mode. |
 | `--event-key <key>` / `--event-id <id>` | elwisp | Elnis event key / internal event ID. |
-| `--token <name>` | elwisp | token name (excluding original text). |
-| `--tag <tag>` | elwisp | Contains specified tags, can be repeated, all must match. |
-| `-d, --days <n>` | usage | Summarize the last n days, default is 1. |
-| `-n <x[-y]>` | usage | Summarize the x-th to y-th most recent model calls (inclusive), index 1–100000; if y is omitted, only the x-th call is taken. |
+| `--token <name>` | elwisp | Configuration name of the HTTP authentication token, does not include the token text itself. |
+| `--tag <tag>` | elwisp | Contains specified tag, can be repeated, requires all to match. |
+| `-d, --days <n>` | usage | Summarize the last n days, default 1. |
+| `-n <x[-y]>` | usage | Summarize model calls from the x-th to the y-th from the end (inclusive), index 1–100000; if y is omitted, only the x-th call is taken. |
 | `-m, --model <name>` | usage | Model name. |
-| `-s, --session <id>` | usage | Session ID。 |
+| `-s, --session <id>` | usage | Session ID. |
 | `--by <key>` | usage | `model` (default), `day`, `session`. |
 | `--since <time>` / `--until <time>` | usage | Time range. |
 
-Example: `/log -w -n 10` · `/log --system` · `/audit --event tool_call --risk high` · `/audit -t --run_source cron` · `/elwisp server-watchdog --mode llm --since 2h` · `/usage --by day -d 30` · `/usage -n 2-4 -m gpt-4o`.
+Examples: `/log -w -n 10` · `/log --system` · `/audit --event tool_call_completed --risk high` · `/audit -t --run_source cron` · `/elwisp server-watchdog --mode llm --since 2h` · `/usage --by day -d 30` · `/usage -n 2-4 -m gpt-4o`.
 
-- `/usage` aggregates from `llm_usage` events in the audit log, calculating statistics for prompt, completion, total, cache, and duration, grouped by model/day/Session; Unknown, illegal, or overflow values are displayed as `null` and passed to the affected groups and totals; explicit zeros are counted normally; calls with unknown usage are still counted in the number of calls; if corrupted records are encountered during scanning, a prompt will indicate that statistics may be incomplete.
-- Tool parameter logs are limited to 512 runes, and log summaries returned by tools are limited to 1024 runes; truncation ellipses are counted towards the limit (Chinese characters count as 1 rune); Actual call parameters and results returned to the model are not affected by the log length limit.
+- `/usage` aggregates from `llm_usage` events in the audit log, grouping statistics for prompt, completion, total, cache, and duration by model/day/session; unknown, illegal, or overflowing values are displayed as `null` and passed to the affected group and total items; explicit zeros are counted normally; calls with unknown usage are still counted in the number of calls; if corrupted records are encountered during scanning, a prompt will indicate that statistics may be incomplete.
+- Tool parameter logs are limited to 512 runes, and tool return log summaries are limited to 1024 runes; truncation ellipses are counted towards the limit (Chinese characters count as 1 rune); actual call parameters and results returned to the model are not affected by log length limits.
 
 ## High-risk Tool Confirmation
 
