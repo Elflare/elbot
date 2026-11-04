@@ -34,8 +34,7 @@ type providerCatalog struct {
 	apiKeyEnv  string
 	configured []string
 	mu         sync.Mutex
-	loaded     bool
-	models     []string
+	models     []string // nil 表示尚未加载；非 nil 的空切片也缓存加载结果。
 	err        error
 }
 
@@ -76,7 +75,7 @@ func (s *ModelManager) ModelList(query string, opts ModelListOptions) ModelListR
 				}
 			}
 			index++
-			if query != "" && !strings.Contains(strings.ToLower(name), query) && !strings.Contains(strings.ToLower(model), query) {
+			if !strings.Contains(strings.ToLower(name), query) && !strings.Contains(strings.ToLower(model), query) {
 				continue
 			}
 			result.Options = append(result.Options, option)
@@ -94,7 +93,7 @@ func (s *ModelManager) providerModels(snapshot *providerSet, name string, fresh 
 	// a newer result. Other providers and model selections remain independent.
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if !fresh && p.loaded {
+	if !fresh && p.models != nil {
 		return p.models, p.err
 	}
 	s.mu.RLock()
@@ -123,6 +122,6 @@ func (s *ModelManager) providerModels(snapshot *providerSet, name string, fresh 
 		models = append(models, model)
 	}
 	sort.Strings(models)
-	p.loaded, p.models, p.err = true, models, fetchErr
+	p.models, p.err = models, fetchErr
 	return models, fetchErr
 }

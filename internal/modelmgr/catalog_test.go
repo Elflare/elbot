@@ -49,6 +49,46 @@ func TestCatalogCachesErrorsAndRefreshesIndependentProviders(t *testing.T) {
 	}
 }
 
+func TestCatalogCachesEmptyResultsUntilRefresh(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{{"success", nil}, {"failure", errors.New("provider unavailable")}} {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls atomic.Int32
+			s := newTestService(t, testModelOptions{
+				Providers:  map[string]config.ProviderConfig{"p": {}},
+				ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}},
+				Clients: map[string]llm.Client{"p": &testClient{list: func(context.Context) ([]string, error) {
+					if calls.Add(1) == 1 {
+						return nil, tc.err
+					}
+					return []string{"remote"}, nil
+				}}},
+			})
+			for range 2 {
+				got := s.ModelList("", ModelListOptions{})
+				if len(got.Options) != 0 || calls.Load() != 1 {
+					t.Fatalf("empty cache = %#v, calls=%d", got, calls.Load())
+				}
+				if tc.err == nil {
+					if len(got.Errors) != 0 {
+						t.Fatalf("unexpected errors: %v", got.Errors)
+					}
+				} else if len(got.Errors) != 1 || got.Errors[0].Provider != "p" || !errors.Is(got.Errors[0].Err, tc.err) {
+					t.Fatalf("cached error lost: %v", got.Errors)
+				}
+			}
+			for _, fresh := range []bool{true, false} {
+				got := s.ModelList("", ModelListOptions{Fresh: fresh})
+				if calls.Load() != 2 || len(got.Errors) != 0 || len(got.Options) != 1 || got.Options[0].Model != "remote" {
+					t.Fatalf("refreshed cache = %#v, calls=%d", got, calls.Load())
+				}
+			}
+		})
+	}
+}
+
 func TestCatalogFetchesProvidersConcurrently(t *testing.T) {
 	opts := testOptions()
 	started := make(chan struct{}, 2)
