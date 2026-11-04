@@ -49,17 +49,11 @@ func appendNativeSnapshot(ctx context.Context, tx *sql.Tx, commit storage.Dialog
 	if err != nil {
 		return err
 	}
-	raw, err := json.Marshal(calls)
-	if err != nil {
-		return err
-	}
+	raw, _ := json.Marshal(calls)
 	snapshot.CallsJSON = string(raw)
 	if snapshot.CreatedAt.IsZero() {
 		snapshot.CreatedAt = storage.Now()
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO native_checkpoints(id,session_id,parent_id,exchange_id,response_id,message_id,seed_id,calls_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, snapshot.ID, snapshot.SessionID, snapshot.ParentID, snapshot.ExchangeID, snapshot.ResponseID, snapshot.MessageID, snapshot.SeedID, snapshot.CallsJSON, storage.FormatTime(snapshot.CreatedAt))
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }

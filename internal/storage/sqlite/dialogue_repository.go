@@ -184,10 +184,7 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			if calls == nil {
 				calls = []storage.NativeCall{}
 			}
-			snapshot, err := json.Marshal(calls)
-			if err != nil {
-				return err
-			}
+			snapshot, _ := json.Marshal(calls)
 			checkpoint.CallsJSON = string(snapshot)
 			if _, err := tx.ExecContext(ctx, `INSERT INTO native_checkpoints(id,session_id,parent_id,exchange_id,response_id,message_id,seed_id,calls_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)`, checkpoint.ID, checkpoint.SessionID, checkpoint.ParentID, checkpoint.ExchangeID, checkpoint.ResponseID, checkpoint.MessageID, checkpoint.SeedID, checkpoint.CallsJSON, storage.FormatTime(checkpoint.CreatedAt)); err != nil {
 				return err
@@ -271,10 +268,7 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	return nil
+	return tx.Commit()
 }
 
 func (r *DialogueRepository) CreateExchange(ctx context.Context, row *storage.NativeExchange) error {
