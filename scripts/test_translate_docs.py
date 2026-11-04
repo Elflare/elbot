@@ -95,50 +95,28 @@ class TranslationTest(unittest.TestCase):
         self.assertEqual(sections[-1][1], "文档 > 乙")
         self.assertEqual(td.split_sections("没有标题。\n\n整篇内容。"), [("没有标题。\n\n整篇内容。", "")])
 
-    def test_validator_preserves_structure_and_allows_chinese_in_code(self):
+    def test_validator_allows_translation_and_only_checks_fragment_types(self):
         source = (
-            "## 中文标题\n[中文说明](https://example.invalid/a) 和 `中文代码`。\n<!-- locator -->\n"
-            "```yaml\nvalue: '中文值 # 字面量' # 中文注释 `key`\nother: true # English comment\n````\n"
-            "```python\nprint('中文值') # 中文注释\n```\n"
+            "## 配置位置\n<!-- 中文说明 -->\n`rule.<序号>`\n"
+            "```toml\n[[plugins]]\nname = \"weather\"\n# 默认读取 plugins/weather/hook.toml\n```\n"
+            '<img width="260" alt="中文" />\n'
         )
-        good = (source.replace("中文标题", "Title").replace("中文说明", "Description")
-                .replace("中文代码", "code").replace("中文值", "Chinese value")
-                .replace("字面量", "literal").replace("中文注释", "Documentation"))
-        td.validate_translation(source, good)
-        td.validate_translation(source, source)
-        for bad in ["", good.replace("example.invalid/a", "example.invalid/b"),
-                    good.replace("value:", "wrong:"), good.replace("English comment", "changed comment"),
-                    good.replace("`key`", "`other`"), good.replace("print(", "eval("),
-                    good.replace("locator", "changed"), good.replace("```python", "```bash"),
-                    good.replace("print('Chinese value')", "print('Chinese value'); quit()"),
-                    "```markdown\n" + good + "```\n"]:
+        translated = (
+            "## Configuration Location\n<!-- Translated comment -->\n`rule.<index>`\n"
+            "```toml\n[[plugins]]\nname = \"weather\"\n# Reads plugins/weather/hook.toml by default\n```\n"
+            '<img width="280" alt="English" />\n'
+        )
+        td.validate_translation(source, translated)
+        td.validate_translation(source, translated.replace("<!-- Translated comment -->", "<!-- Another comment -->\n<!-- Extra -->"))
+        td.validate_translation(source, translated.replace("<!-- Translated comment -->", ""))
+        td.validate_translation(source, translated.replace("`rule.<index>`", "`other command`").replace('name = "weather"', 'other = "updated"'))
+        for bad in ["", " \n", translated.replace("```toml", "```python"),
+                    translated.replace("`rule.<index>`", ""), "```markdown\n" + translated + "```"]:
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 td.validate_translation(source, bad)
-
-    def test_chinese_placeholders_and_examples_translate_without_changing_syntax(self):
-        cases = [
-            ("`--run_source <来源>`", "`--run_source <source>`"),
-            ("`rule.<序号>`", "`rule.<index>`"),
-            ("`[表情: 名称]`", "`[Emoji: Name]`"),
-            ('`{"found":true,"value":<任意 JSON>}`', '`{"found":true,"value":<any JSON>}`'),
-            ("```text\n{{match.regex.<regex条件序号>.group.<分组序号>}}\n```",
-             "```text\n{{match.regex.<regex_condition_index>.group.<group_index>}}\n```"),
-            ('```json\n{"text":"正在查询……"}\n```', '```json\n{"text":"Querying..."}\n```'),
-        ]
-        for source, translated in cases:
-            with self.subTest(source=source):
-                td.validate_translation(source, translated)
-        for source, translated in [
-            ("`--run_source <来源>`", "`--source <source>`"),
-            ("`rule.<序号>`", "`rule.index`"),
-            ("`[表情: 名称]`", "`[Emoji: Name]; quit()`"),
-            ('```json\n{"text":"中文"}\n```', '```json\n{"body":"English"}\n```'),
-            ("[中文](docs/中文.md)", "[English](docs/English.md)"),
-            ('<a href="docs/中文.md">中文</a>', '<a href="docs/English.md">English</a>'),
-            ("`elbot`", "`other`"),
-        ]:
-            with self.subTest(source=source), self.assertRaises(ValueError):
-                td.validate_translation(source, translated)
+        # Equal fragment counts must still reject moving code outside a fence.
+        with self.assertRaisesRegex(ValueError, "code block language or structure changed"):
+            td.validate_translation("```text\nhello\nworld\n```", "```text\n```\n`hello` `world`")
 
     def test_api_returns_plain_markdown_and_validates_once(self):
         section = td.Segment("docs/test.md", "## 中文\n运行 `elbot`。\n\n", "文档")
@@ -156,7 +134,6 @@ class TranslationTest(unittest.TestCase):
         validate.assert_called_once_with(section.text, translated)
         payload = json.loads(request.call_args.args[0].data)
         self.assertEqual(payload["messages"][-1]["content"].count(section.text), 1)
-        self.assertNotIn("__ELBOT_CODE_", payload["messages"][-1]["content"])
         self.assertEqual(request.call_args.kwargs["timeout"], 240)
 
     def test_api_strips_leading_thoughts_and_preserves_markdown(self):
@@ -252,7 +229,7 @@ class TranslationTest(unittest.TestCase):
         self.assertIn(section.context, log)
         self.assertIn("## 中文", log)
         self.assertIn("attempt 1/11", log)
-        self.assertIn("protected Markdown structure changed", log)
+        self.assertIn("code block language or structure changed", log)
         self.assertNotIn(good, log)
         self.assertEqual(log.count("--- LLM response ---"), 1)
         self.assertEqual(request.call_count, 2)
@@ -549,30 +526,49 @@ class TranslationTest(unittest.TestCase):
         self.assertIn('```markdown\n[Docs](docs/concepts.md)\n<a href="docs/hooks.md">Hooks</a>\n```', result)
         self.assertIn('<!-- [Docs](docs/concepts.md) -->', result)
 
-    def test_badge_structure_and_destinations_are_protected(self):
-        source = '[![中文](https://example.invalid/badge.svg)](docs/concepts.md)\n'
-        good = source.replace('中文', 'English')
-        td.validate_translation(source, good)
-        for bad in [good.replace('![', '['), good.replace('[![', '![').replace('](docs/concepts.md)', ''),
-                    good.replace('badge.svg', 'changed.svg'), good.replace('docs/concepts.md', 'wrong.md'),
-                    '[中文](docs/concepts.md) ![English](https://example.invalid/badge.svg)\n']:
+    def test_links_preserve_targets_and_ids_with_natural_text_order(self):
+        source = (
+            '[![中文](https://example.invalid/badge.svg)](docs/concepts.md "中文标题")\n'
+            '[文档][guide] 和 [说明](assets/image_(1).svg)\n'
+            '<a href="docs/hooks.md" title="中文"><img src="assets/test.svg" width="260" alt="中文" /></a>\n'
+            'https://example.invalid/a 和 https://example.invalid/b\n'
+            '[guide]: docs/hooks.md "中文标题"\n'
+            '引用[^note]\n[^note]: 中文注释\n'
+        )
+        translated = (
+            '[![English](https://example.invalid/badge.svg)](docs/concepts.md "English title")\n'
+            '[Description](assets/image_(1).svg) and [Documentation][guide]\n'
+            '<a title="English" href="docs/hooks.md"><img width="280" alt="English" src="assets/test.svg" /></a>\n'
+            'https://example.invalid/b and https://example.invalid/a\n'
+            '[guide]: docs/hooks.md "English title"\n'
+            'Reference[^note]\n[^note]: English note\n'
+        )
+        td.validate_translation(source, translated)
+        td.validate_translation("[guide][]", "[guide][guide]")
+        td.validate_translation(
+            '<a href="docs/hooks.md" title="示例 src=\'中文\'">中文</a>',
+            '<a href="docs/hooks.md" title="Example src=\'English\'">English</a>',
+        )
+        td.validate_translation('[中文](<docs/path with spaces.md> "标题")', '[English](<docs/path with spaces.md> "Title")')
+        for bad in [translated.replace("badge.svg", "wrong.svg"),
+                    translated.replace("docs/concepts.md", "docs/other.md"),
+                    translated.replace("image_(1)", "image_(2)"),
+                    translated.replace('href="docs/hooks.md"', 'href="docs/other.md"'),
+                    translated.replace('src="assets/test.svg"', 'src="assets/other.svg"'),
+                    translated.replace("example.invalid/b", "example.invalid/a"),
+                    translated.replace("[guide]", "[other]"),
+                    translated.replace("[^note]", "[^other]"),
+                    translated.replace("docs/hooks.md \"English title\"", "docs/other.md \"English title\""),
+                    translated.replace("[Documentation][guide]", "Documentation"),
+                    translated + "\n[Extra](docs/hooks.md)"]:
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 td.validate_translation(source, bad)
-        source = '![中文](assets/image_(1).svg) [中文][guide]\n'
-        td.validate_translation(source, source.replace('中文', 'English'))
-        with self.assertRaises(ValueError):
-            td.validate_translation(source, source.replace('image_(1)', 'image_(2)'))
-
-    def test_html_structure_is_protected_but_alt_and_title_translate(self):
-        source = ('<p align="center"><a href="docs/hooks.md" title="中文">中文</a>\n'
-                  '<img\n src="assets/test.svg" width="260" alt="中文" />\n</p>\n')
-        good = source.replace('中文', 'English')
-        td.validate_translation(source, good)
-        for bad in [good.replace('center', 'left'), good.replace('260', '280'),
-                    good.replace('assets/test.svg', 'assets/wrong.svg'), good.replace('</p>', ''),
-                    good.replace('docs/hooks.md', 'docs/other.md')]:
-            with self.subTest(bad=bad), self.assertRaises(ValueError):
-                td.validate_translation(source, bad)
+        for source, translated in [
+            ("`https://example.invalid/a`", "`https://example.invalid/b`"),
+            ('```json\n{"url":"https://example.invalid/a"}\n```', '```json\n{"url":"https://example.invalid/b"}\n```'),
+        ]:
+            with self.subTest(source=source), self.assertRaisesRegex(ValueError, "link destination or reference changed"):
+                td.validate_translation(source, translated)
 
     def readme(self):
         header = '<!-- manual-header:start -->\n# ElBot\n\n中文页首\n<!-- manual-header:end -->\n\n'

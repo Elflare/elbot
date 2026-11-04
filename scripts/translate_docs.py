@@ -67,12 +67,13 @@ def split_manual_header(text: str) -> tuple[str, str]:
 
 
 def protected_markup(text: str) -> list[str]:
-    """Extract inline code, link/image nesting and HTML; prose and alt/title may translate."""
+    """Extract structural fragments and links; leave prose out of validation."""
     tokens, brackets = [], []
     pattern = re.compile(
         r"(?P<code>(`+).*?\2)|(?P<escape>\\.)|(?P<footnote>\[\^[^\]\n]+\])|"
+        r"(?P<definition>^ {0,3}\[[^\]\n]+\]:[^\n]*)|"
         r"(?P<html></?[A-Za-z][\w:-]*(?:\s+(?:[^<>\"']|\"[^\"]*\"|'[^']*')*)?\s*/?>)|"
-        r"(?P<open>!?\[)|(?P<close>\])|(?P<url>https?://[^\s<>)]+)", re.DOTALL)
+        r"(?P<open>!?\[)|(?P<close>\])|(?P<url>https?://[^\s<>)]+)", re.DOTALL | re.MULTILINE)
     offset = 0
     while match := pattern.search(text, offset):
         offset = match.end()
@@ -80,10 +81,10 @@ def protected_markup(text: str) -> list[str]:
         if kind == "escape":
             continue
         if kind == "open":
-            brackets.append((len(tokens), match[0]))
+            brackets.append((len(tokens), match[0], offset))
             tokens.append("")
         elif kind == "close" and brackets:
-            index, opening = brackets.pop()
+            index, opening, start = brackets.pop()
             if offset < len(text) and text[offset] == "(":
                 depth, end = 1, offset + 1
                 while end < len(text) and depth:
@@ -101,12 +102,9 @@ def protected_markup(text: str) -> list[str]:
                     offset = end
             elif reference := re.match(r"\[[^\]\n]*\]", text[offset:]):
                 tokens[index] = opening
-                tokens.append("]" + reference[0])
+                tokens.append("]" + (reference[0] if reference[0] != "[]" else "[" + text[start:match.start()] + "]"))
                 offset += reference.end()
-        elif kind == "html":
-            tokens.append(re.sub(r"(\s(?:alt|title)\s*=\s*)(\"[^\"]*\"|'[^']*')",
-                                 r'\1""', match[0], flags=re.IGNORECASE))
-        elif kind in {"code", "url", "footnote"}:
+        elif kind in {"html", "code", "url", "footnote", "definition"}:
             tokens.append(match[0])
     return [token for token in tokens if token]
 
@@ -195,17 +193,14 @@ def should_translate_text(text: str) -> bool:
 
 
 def validate_translation(source: str, translation: str) -> None:
-    """Check protected Markdown while allowing Chinese text inside code to translate."""
+    """Check nonempty output, fragment types and link targets without comparing code text."""
     if not translation.strip():
         raise ValueError("empty section translation")
-    comments = r"<!--.*?-->"
-    if re.findall(comments, source, re.DOTALL) != re.findall(comments, translation, re.DOTALL):
-        raise ValueError("HTML comments changed")
 
     def parts(text):
         out, fence, language = [], "", ""
         prose = []
-        for line in re.sub(comments, "", text, flags=re.DOTALL).splitlines():
+        for line in re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL).splitlines():
             marker = CODE_FENCE_RE.match(line)
             if marker and (not fence or (marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip())):
                 out.extend(("literal", token) for token in protected_markup("\n".join(prose)))
@@ -221,26 +216,36 @@ def validate_translation(source: str, translation: str) -> None:
             else:
                 prose.append(line)
         out.extend(("literal", token) for token in protected_markup("\n".join(prose)))
-        return out
+        links = []
+        for kind, token in out:
+            target = None
+            if kind.startswith("code:") or token.startswith("`"):
+                links.extend(("target", match[0]) for match in re.finditer(r"https?://[^\s<>`\"')]+", token))
+            elif token.startswith("]("):
+                target = token[2:-1]
+            elif token.startswith("]["):
+                links.append(("reference", token[2:-1]))
+            elif token.startswith("[^"):
+                links.append(("footnote", token[2:-1]))
+            elif match := re.match(r"^ {0,3}\[([^\]\n]+)\]:[ \t]*(.*)", token):
+                links.append(("reference", match[1]))
+                target = match[2]
+            elif token.startswith("<"):
+                for match in re.finditer(r"""\s([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))""", token):
+                    if match[1].lower() in {"href", "src"}:
+                        links.append(("target", next((value for value in match.groups()[1:] if value), "")))
+            elif token.startswith(("http://", "https://")):
+                target = token
+            if target is not None:
+                target = re.match(r"\s*(<[^>]*>|\S*)", target)[1]
+                links.append(("target", target.removeprefix("<").removesuffix(">")))
+        return [kind for kind, _ in out], sorted(links)
 
     original, translated = parts(source), parts(translation)
-    if len(original) != len(translated):
-        raise ValueError("protected Markdown structure changed")
-    for (kind, before), (other_kind, after) in zip(original, translated):
-        if kind != other_kind:
-            raise ValueError("code block language or structure changed")
-        if before == after:
-            continue
-        if (kind.startswith("code:") or before.startswith("`")) and should_translate_text(before):
-            # Only Chinese text and its punctuation may vary; keep surrounding code literal.
-            pattern = "".join(
-                r"[^`\\\n\"'{}\[\]<>();=]*?" if index % 2 else re.escape(prefix)
-                for index, prefix in enumerate(re.split(
-                    r"([\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\u2014\u2018-\u201d\u2026]+)", before))
-            )
-            if re.fullmatch(pattern, after):
-                continue
-        raise ValueError("code, inline code or link destination changed")
+    if original[0] != translated[0]:
+        raise ValueError("code block language or structure changed")
+    if original[1] != translated[1]:
+        raise ValueError("link destination or reference changed")
 
 
 class TranslationClient:
@@ -255,13 +260,13 @@ class TranslationClient:
             {"role": "system", "content": (
                 "Translate ElBot documentation from Simplified Chinese to English. "
                 "Return ONLY the translated Markdown section, without explanations or an enclosing code fence. "
-                "Preserve Markdown structure, HTML comments, commands, identifiers, URLs and link destinations. "
-                "Preserve image markers, nested links, HTML tags and attributes exactly; "
+                "Preserve Markdown structure, commands, identifiers, URLs and link destinations. "
+                "Preserve image markers, nested links and valid HTML; visible text, link titles and "
                 "HTML alt/title text may be translated. "
-                "Translate Chinese prose, including Chinese descriptions, placeholders, comments and example text "
-                "inside inline code and fenced code blocks in any language. Keep surrounding non-Chinese code, "
-                "syntax, code fences and backtick delimiters unchanged; do not add or remove backticks. "
-                "Keep pure English code and comments unchanged. Preserve product names.\n"
+                "Translate Chinese prose, including descriptions, placeholders, comments and example text "
+                "inside inline code and fenced code blocks in any language. Translate ordinary HTML comments too. "
+                "Use natural English word order in descriptions and comments while keeping executable code valid. "
+                "Preserve code fences, backtick delimiters and product names.\n"
                 "Terminology:\n" + glossary
             )},
             {"role": "user", "content": (
