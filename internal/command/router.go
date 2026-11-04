@@ -3,6 +3,7 @@ package command
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -12,7 +13,6 @@ import (
 type Router struct {
 	prefixes    []string
 	handlers    map[string]Handler
-	primary     map[string]bool
 	order       []string
 	commandText func(string, ...string) string // 绑定配置首个前缀，不受解析排序影响。
 }
@@ -26,7 +26,6 @@ func NewRouter(prefixes []string) *Router {
 		commandText: func(name string, args ...string) string { return Format(prefix, name, args...) },
 		prefixes:    prefixes,
 		handlers:    map[string]Handler{},
-		primary:     map[string]bool{},
 	}
 }
 
@@ -62,7 +61,6 @@ func (r *Router) Register(h Handler) error {
 	for _, n := range names {
 		r.handlers[n] = h
 	}
-	r.primary[name] = true
 	r.order = append(r.order, name)
 	return nil
 }
@@ -131,26 +129,11 @@ func (r *Router) Commands() []Info {
 }
 
 func (r *Router) CommandsForActor(actor contextinfo.Actor) []Info {
-	infos := r.Commands()
-	out := make([]Info, 0, len(infos))
-	for _, info := range infos {
-		if CanAccess(info, actor) {
-			out = append(out, info)
-		}
-	}
-	return out
+	return slices.DeleteFunc(r.Commands(), func(info Info) bool { return !CanAccess(info, actor) })
 }
 
-// Complete returns full-line command completions for the current input.
-func (r *Router) Complete(text string) []string {
-	return r.complete(text, nil)
-}
-
+// CompleteForActor returns accessible full-line command completions for the current input.
 func (r *Router) CompleteForActor(text string, actor contextinfo.Actor) []string {
-	return r.complete(text, &actor)
-}
-
-func (r *Router) complete(text string, actor *contextinfo.Actor) []string {
 	for _, prefix := range r.prefixes {
 		if !strings.HasPrefix(text, prefix) {
 			continue
@@ -173,12 +156,12 @@ func (r *Router) complete(text string, actor *contextinfo.Actor) []string {
 	return nil
 }
 
-func (r *Router) completionNames(actor *contextinfo.Actor) []string {
+func (r *Router) completionNames(actor contextinfo.Actor) []string {
 	seen := map[string]bool{}
 	out := []string{}
 	for _, primaryName := range r.order {
 		info := r.handlers[primaryName].Info()
-		if actor != nil && !CanAccess(info, *actor) {
+		if !CanAccess(info, actor) {
 			continue
 		}
 		names := append([]string{info.Name}, info.Aliases...)

@@ -24,7 +24,7 @@ func CurrentCompletionToken(req CompletionRequest) CompletionToken {
 func CompleteStaticOptions(options []CompletionOption, query string, start, end int, kind string) []Completion {
 	out := []Completion{}
 	for _, option := range options {
-		if query != "" && !strings.HasPrefix(option.Text, query) {
+		if !strings.HasPrefix(option.Text, query) {
 			continue
 		}
 		label := option.Label

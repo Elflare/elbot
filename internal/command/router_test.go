@@ -111,10 +111,11 @@ func TestRouterCompleteCommands(t *testing.T) {
 		t.Fatalf("Register resume: %v", err)
 	}
 
-	assertComplete(t, r.Complete("/m"), []string{"/model", "/m", "/models"})
-	assertComplete(t, r.Complete("-res"), []string{"-resume"})
-	assertComplete(t, r.Complete("/model "), nil)
-	assertComplete(t, r.Complete("hello"), nil)
+	admin := contextinfo.Actor{Role: contextinfo.RoleSuperadmin}
+	assertComplete(t, r.CompleteForActor("/m", admin), []string{"/model", "/m", "/models"})
+	assertComplete(t, r.CompleteForActor("-res", admin), []string{"-resume"})
+	assertComplete(t, r.CompleteForActor("/model ", admin), nil)
+	assertComplete(t, r.CompleteForActor("hello", admin), nil)
 }
 
 func TestRouterFiltersCommandsForActor(t *testing.T) {

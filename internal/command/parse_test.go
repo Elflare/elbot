@@ -4,6 +4,8 @@ import (
 	"context"
 	"slices"
 	"testing"
+
+	"elbot/internal/contextinfo"
 )
 
 func TestParse(t *testing.T) {
@@ -49,6 +51,7 @@ func TestRouterDoesNotStripExtraSlash(t *testing.T) {
 	if err != nil || result.Content != "unk command: !/help\n!help" {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
-	assertComplete(t, r.Complete("!/he"), nil)
-	assertComplete(t, r.Complete("!!he"), []string{"!!help"})
+	admin := contextinfo.Actor{Role: contextinfo.RoleSuperadmin}
+	assertComplete(t, r.CompleteForActor("!/he", admin), nil)
+	assertComplete(t, r.CompleteForActor("!!he", admin), []string{"!!help"})
 }
