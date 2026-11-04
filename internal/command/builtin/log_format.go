@@ -137,11 +137,6 @@ func formatLogEntry(category events.LogCategory, entry logging.LogEntry) string 
 	if footer != "" {
 		lines = append(lines, footer)
 	}
-	if entry.Type != events.ContentJSON {
-		for _, key := range []string{"module", "type", "time", "level", "event", "result_status", "msg"} {
-			delete(fields, key)
-		}
-	}
 	keys := make([]string, 0, len(fields))
 	for key := range fields {
 		keys = append(keys, key)

@@ -16,7 +16,7 @@ import (
 
 type requestTree struct {
 	Roots    []requestNode
-	ByNumber map[string]request.Request
+	ByNumber map[string]string
 }
 
 type requestNode struct {
@@ -68,19 +68,17 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 			return &command.Result{Content: fmt.Sprintf("request not found: %s", arg)}, nil
 		}
 		stopped, _ := deps.Requests.Get(id)
-		var locked context.Context
 		var release func()
 		var err error
 		if binding != nil {
-			locked, release, err = deps.Sessions.EnterBinding(ctx, binding)
+			_, release, err = deps.Sessions.EnterBinding(ctx, binding)
 		} else {
-			locked, release, err = deps.Sessions.EnterSessions(ctx, stopped.SessionID)
+			_, release, err = deps.Sessions.EnterSessions(ctx, stopped.SessionID)
 		}
 		if err != nil {
 			return nil, err
 		}
 		defer release()
-		ctx = locked
 		latest, exists := deps.Requests.Get(id)
 		if !exists || latest.SessionID != stopped.SessionID || (binding != nil && latest.SessionID != binding.SessionID()) {
 			return &command.Result{Content: "stopped"}, nil
@@ -234,11 +232,8 @@ func resolveRequestArg(requests []request.Request, arg string) (string, bool) {
 		}
 	}
 	tree := buildRequestTree(requests)
-	req, ok := tree.ByNumber[arg]
-	if !ok {
-		return "", false
-	}
-	return req.ID, true
+	id, ok := tree.ByNumber[arg]
+	return id, ok
 }
 
 func buildRequestTree(requests []request.Request) requestTree {
@@ -260,15 +255,15 @@ func buildRequestTree(requests []request.Request) requestTree {
 		roots = append(roots, requestNode{Request: req})
 	}
 	sort.Slice(roots, func(i, j int) bool { return requestLess(roots[i].Request, roots[j].Request) })
-	byNumber := map[string]request.Request{}
+	byNumber := map[string]string{}
 	for i := range roots {
 		root := &roots[i]
-		root.Children = append([]request.Request(nil), children[root.Request.ID]...)
+		root.Children = children[root.Request.ID]
 		sort.Slice(root.Children, func(i, j int) bool { return requestLess(root.Children[i], root.Children[j]) })
 		number := strconv.Itoa(i + 1)
-		byNumber[number] = root.Request
+		byNumber[number] = root.Request.ID
 		for j, child := range root.Children {
-			byNumber[fmt.Sprintf("%s.%d", number, j+1)] = child
+			byNumber[fmt.Sprintf("%s.%d", number, j+1)] = child.ID
 		}
 	}
 	return requestTree{Roots: roots, ByNumber: byNumber}

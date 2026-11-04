@@ -33,12 +33,6 @@ func sessionPageSize(deps Deps) int {
 }
 
 func listSessionPage(ctx context.Context, deps Deps, query string, page, pageSize int, archivedOnly bool) ([]storage.SessionSummary, bool, error) {
-	if page < 1 {
-		return nil, false, fmt.Errorf("page must be a positive number")
-	}
-	if pageSize <= 0 {
-		pageSize = defaultSessionListPageSize
-	}
 	sessions, err := deps.Sessions.ListPage(ctx, deps.Scope(ctx), query, pageSize+1, (page-1)*pageSize, archivedOnly)
 	if err != nil {
 		return nil, false, err
@@ -51,12 +45,6 @@ func listSessionPage(ctx context.Context, deps Deps, query string, page, pageSiz
 }
 
 func listResumablePage(ctx context.Context, deps Deps, page, pageSize int) ([]storage.SessionSummary, bool, error) {
-	if page < 1 {
-		return nil, false, fmt.Errorf("page must be a positive number")
-	}
-	if pageSize <= 0 {
-		pageSize = defaultSessionListPageSize
-	}
 	sessions, err := deps.Sessions.ListResumablePage(ctx, deps.Scope(ctx), pageSize+1, (page-1)*pageSize)
 	if err != nil {
 		return nil, false, err
@@ -170,9 +158,6 @@ func assistantMessages(messages []storage.Message) []storage.Message {
 }
 
 func formatMessagePage(messages []storage.Message, page, pageSize int) (string, error) {
-	if pageSize <= 0 {
-		pageSize = messageListPageSize
-	}
 	totalPages := (len(messages) + pageSize - 1) / pageSize
 	if page < 1 || page > totalPages {
 		return "", fmt.Errorf("page %d out of range; available pages: 1-%d", page, totalPages)

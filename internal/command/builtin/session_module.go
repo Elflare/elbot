@@ -45,8 +45,6 @@ func (s *SessionCommandState) config() (int, int) {
 	if s == nil {
 		return 0, 0
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.listPageSize, s.retentionDays
 }
 
