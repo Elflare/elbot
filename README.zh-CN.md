@@ -91,28 +91,9 @@ Elnis 是 ElBot 的监听枢纽，Elwisp 是分布在各地的外部监听器，
 
 **完善的日志与审计**： 区分运行日志、Elwisp 日志与审计日志，支持结构化字段、日志查询、审计查询和运行期调试。
 
-## 使用方法
+---
 
-常用启动方式：
-
-```bash
-elbot              # 自动模式：优先尝试默认远程 CLI client；本地不可达时回退完整前台启动
-elbot run          # 完整前台：本地 CLI + 已启用平台 + Cron
-elbot cli [-c name]# 远程 CLI 客户端：连接常驻 ElBot 服务端
-elbot -c name      # 直接用指定 CLI client profile 连接服务端
-elbot service run  # Linux/headless 服务模式：不启动本地 CLI，可启用远程 CLI server、平台和 Cron
-```
-
-Shell 补全可通过 `elbot completion <shell>` 生成，支持 `bash`、`zsh`、`fish`、`nushell`、`powershell` 和 `auto`。
-
-最小使用流程：
-
-1. 在 `config/providers.toml` 配置 OpenAI-compatible Provider。
-2. 通过系统环境变量或配置目录 `.env` 设置 `api_key_env` 对应的 API Key。
-3. 启动后使用命令 `/models` 查看然后使用 `/model xx` 选择模型。或手动在 `config/state.toml` 选择默认 `chat` / `work` 模式和模型。
-4. 输入 `/help` 查看命令，或直接开始对话。
-
-详细说明见：
+初次使用：配好 Provider 和 API Key 即可开始对话。详细说明见：
 
 - [快速开始](docs/getting-started.md)
 - [配置说明](docs/configuration.md)
