@@ -49,7 +49,6 @@ type TurnMaterials struct {
 }
 type LoopInput struct {
 	Session   *storage.Session
-	Text      string
 	Selection modelmgr.Selection
 	RequestID string
 	StartedAt time.Time

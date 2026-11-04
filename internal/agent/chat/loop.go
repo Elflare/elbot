@@ -83,7 +83,6 @@ type chatTurnState struct {
 	ctx        context.Context
 	requestCtx context.Context
 	session    *storage.Session
-	text       string
 	output     agentshare.Output
 	selection  modelmgr.Selection
 	requestID  string

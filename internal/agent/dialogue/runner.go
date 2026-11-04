@@ -113,7 +113,7 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 		result.Outcome, result.Err = agentshare.Failed, err
 		return result
 	}
-	loopIn := agentshare.LoopInput{Session: in.Session, Text: in.Text, Selection: in.Selection, RequestID: in.RequestID, StartedAt: result.StartedAt}
+	loopIn := agentshare.LoopInput{Session: in.Session, Selection: in.Selection, RequestID: in.RequestID, StartedAt: result.StartedAt}
 	prepared, err := in.Prepared.PrepareTurn(requestCtx)
 	var user *storage.Message
 	if err == nil {
@@ -238,7 +238,7 @@ func NewRunner(deps RunnerDeps) *Runner {
 	replies := &ReplyCommitter{NewMessageID: deps.NewMessageID, Output: deps.Output, Persistence: messages.Committer("append_assistant_message")}
 	preparer := &Preparer{NewMessageID: deps.NewMessageID, Contexts: deps.Contexts, Media: deps.Media, PublishUsageFinished: deps.PublishUsageFinished, Hooks: deps.Hooks, Tools: tools}
 	messages.Preparer = preparer
-	calls := &CallProcessor{Status: deps.Status, Messages: messages, Preparer: preparer, Hooks: deps.Hooks, Identity: deps.Identity, Tools: tools, Completed: deps.Completed, Vision: deps.Vision}
+	calls := &CallProcessor{Status: deps.Status, Preparer: preparer, Hooks: deps.Hooks, Identity: deps.Identity, Tools: tools, Completed: deps.Completed, Vision: deps.Vision}
 	soul := SoulProvider(StaticSoulProvider{Prompt: "You are a helpful assistant."})
 	if deps.SoulPath != "" {
 		soul = &FileSoulProvider{Path: deps.SoulPath}

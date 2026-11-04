@@ -24,7 +24,6 @@ type CallProcessor struct {
 	Status interface {
 		RecordUsage(context.Context, string, *llm.Usage)
 	}
-	Messages *MessageStore
 	Preparer *Preparer
 	Hooks    interface {
 		LLMRequestPrepared(context.Context, agentshare.Session, agentshare.LLMInput) (agentshare.LLMInputResult, error)

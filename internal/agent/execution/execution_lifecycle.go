@@ -35,7 +35,7 @@ func (l *appendWaitLifecycle) begin(source context.Context) (context.Context, fu
 	if l.ctx.Err() != nil {
 		cancel()
 	}
-	return ctx, sync.OnceFunc(func() {
+	return ctx, func() {
 		stop()
 		cancel()
 		l.mu.Lock()
@@ -44,7 +44,7 @@ func (l *appendWaitLifecycle) begin(source context.Context) (context.Context, fu
 		if l.closed && l.active == 0 {
 			close(l.done)
 		}
-	}), true
+	}, true
 }
 
 func (l *appendWaitLifecycle) beginClose() {

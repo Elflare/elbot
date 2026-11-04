@@ -44,7 +44,6 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 		ctx:        ctx,
 		requestCtx: requestCtx,
 		session:    in.Session,
-		text:       in.Text,
 		output:     out,
 		selection:  in.Selection,
 		requestID:  in.RequestID,
