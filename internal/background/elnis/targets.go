@@ -54,13 +54,13 @@ func (s *Service) resolveTargets(req Request) ([]Target, error) {
 }
 
 func (s *Service) targetDisabled(elwispName string, target Target) bool {
-	for _, disabled := range configTargetsToElnis(s.cfg.DeliveryDisabled.Targets) {
+	for _, disabled := range s.cfg.DeliveryDisabled.Targets {
 		if disabledTargetMatches(disabled, target) {
 			return true
 		}
 	}
 	if policy, ok := s.cfg.Elwisps[elwispName]; ok {
-		for _, disabled := range configTargetsToElnis(policy.DisabledTargets) {
+		for _, disabled := range policy.DisabledTargets {
 			if disabledTargetMatches(disabled, target) {
 				return true
 			}
@@ -69,7 +69,10 @@ func (s *Service) targetDisabled(elwispName string, target Target) bool {
 	return false
 }
 
-func disabledTargetMatches(disabled, target Target) bool {
+func disabledTargetMatches(disabled config.ElnisTargetConfig, target Target) bool {
+	disabled.Platform = strings.TrimSpace(disabled.Platform)
+	disabled.Type = strings.TrimSpace(disabled.Type)
+	disabled.ID = strings.TrimSpace(disabled.ID)
 	if disabled.Platform != target.Platform {
 		return false
 	}
@@ -77,14 +80,6 @@ func disabledTargetMatches(disabled, target Target) bool {
 		return true
 	}
 	return disabled.Type == target.Type && disabled.ID == target.ID
-}
-
-func configTargetsToElnis(targets []config.ElnisTargetConfig) []Target {
-	out := make([]Target, 0, len(targets))
-	for _, target := range targets {
-		out = append(out, Target{Platform: strings.TrimSpace(target.Platform), Type: strings.TrimSpace(target.Type), ID: strings.TrimSpace(target.ID)})
-	}
-	return out
 }
 
 func decodeResolvedTargets(raw string) ([]Target, error) {

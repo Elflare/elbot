@@ -61,12 +61,10 @@ func (r *Runtime) Start(ctx context.Context) (err error) {
 	r.started = true
 	r.startupDone = make(chan struct{})
 	r.ctx, r.cancel = context.WithCancel(ctx)
-	r.work.Add(1)
-	go func() {
-		defer r.work.Done()
+	r.work.Go(func() {
 		<-r.ctx.Done()
 		r.BeginClose()
-	}()
+	})
 	r.mu.Unlock()
 	defer func() {
 		r.mu.Lock()
@@ -98,19 +96,15 @@ func (r *Runtime) Start(ctx context.Context) (err error) {
 	}
 	r.listener = listener
 	r.ready = true
-	r.work.Add(r.workers + 2)
 	for i := 0; i < r.workers; i++ {
-		go func() {
-			defer r.work.Done()
+		r.work.Go(func() {
 			r.worker(r.ctx)
-		}()
+		})
 	}
-	go func() {
-		defer r.work.Done()
+	r.work.Go(func() {
 		r.reportWorker(r.ctx)
-	}()
-	go func() {
-		defer r.work.Done()
+	})
+	r.work.Go(func() {
 		err := r.server.Serve(listener)
 		r.mu.Lock()
 		if !r.closed || !errors.Is(err, http.ErrServerClosed) {
@@ -119,7 +113,7 @@ func (r *Runtime) Start(ctx context.Context) (err error) {
 		}
 		r.mu.Unlock()
 		r.BeginClose()
-	}()
+	})
 	r.mu.Unlock()
 	return r.ctx.Err()
 }

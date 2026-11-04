@@ -246,6 +246,11 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 		CreatedAt:        event.CreatedAt,
 	})
 	if err != nil {
+		// 并发请求可能在预查之后创建同键事件；只在确认存在时按重复处理。
+		if existing, lookupErr := s.store.GetByKey(ctx, req.Elwisp.Name, req.Source, req.ID); lookupErr == nil {
+			s.handleDuplicate(ctx, event, existing)
+			return Response{Accepted: true, Duplicate: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusDuplicate}, nil
+		}
 		return Response{}, err
 	}
 

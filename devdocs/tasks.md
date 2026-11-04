@@ -54,10 +54,11 @@
 - ⑦ 提交链收尾已落实：EncodeMaterials 只返回字符串，删除两处调用方错误分支；Responses 删除纯文本／InputContent 和 NativeCall 编码的不可达错误分支；工具 worker 统一使用 WaitGroup.Go。保留原生 JSON 校验、引用事务及取消后等待退出。
 - ⑧ 调度入口已落实：注册链和 RefreshJob 删除恒为 nil 的错误返回及调用方分支；Elnis 接管结果删除不可达的 JSON 编码错误分支；Cron 合并日志错误判断，刷新 worker 使用 WaitGroup.Go。保留锁内登记、停止等待、恢复重读和投递 token 校验。
 - ⑧ 报告投递已落实：Cron 状态编码只返回字符串，删除调用方不可达错误分支；回执保存删除无人读取的内存 DeliveryState 回写，Job 按值传入并直接返回事务结果；Elnis 报告及 Cron 广播 metadata 删除不可达编码错误分支。保留完成标记、降级文本、部分回执事务及取消后的保存上下文。
+- ⑧ 接收入口已落实：禁用目标直接匹配配置，删除临时切片转换；Runtime 使用 WaitGroup.Go，保留锁内启动与真实退出等待。并发重复事件在插入失败后确认同键记录，存在则按重复处理，否则保留原始错误；确定性并发测试覆盖两次预查均未命中的窗口。日志多余作用域暂留。
 - 保留：① Hook 前后取消判断、等待路由媒体准备及指令提交前准入复查；② 跨锁区间的状态复查、Request 取消后等待 done、追加恢复空输入检查、关闭完成优先返回。
-- 验证：本轮 gofmt、diff 检查、go test ./internal/background/... ./internal/storage/sqlite 及 go test -race ./internal/background/cron 通过。
+- 验证：并发重复测试修复前失败、修复后通过；本轮 gofmt、diff 检查、go test ./internal/background/... ./internal/storage/sqlite 及 go test -race ./internal/background/elnis 通过。
 - 支线：Hook 和媒体内部实现留给对应阶段，命令内部业务留给⑨。
-- 当前阶段：⑧ 已审查调度、后台 Agent 转接、报告落库、部分回执事务及恢复投递。下一入口为 Elnis 接收 → 持久化去重 → 入队／恢复，维持扩大的单轮审查范围。
+- 当前阶段：⑧ 已覆盖调度、Agent 转接、报告／回执事务、恢复投递及 Elnis 接收／去重／入队。下一轮收尾核对后台遗漏范围，再进入⑨ 扩展与基础设施。
 
 ## 不一定实现
 
