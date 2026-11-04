@@ -4,7 +4,6 @@ import (
 	"context"
 	"elbot/internal/agent/dialogue"
 	agentexecution "elbot/internal/agent/execution"
-	agentshare "elbot/internal/agent/share"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/platform/dispatch"
@@ -59,7 +58,6 @@ func (p *assemblyPlatform) text() string {
 
 func observerSignals() signals {
 	return signals{
-		ModelCallCompleted: signal.New[agentshare.ModelCallCompletedEvent, signal.Empty]("model"),
 		StatusChanged:      signal.NewAsync[agentexecution.StatusChangedEvent]("status"),
 		VisionFallbackUsed: signal.New[dialogue.VisionFallbackUsedEvent, signal.Empty]("vision"),
 	}

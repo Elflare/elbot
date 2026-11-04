@@ -6,6 +6,7 @@ import (
 	"context"
 	"elbot/internal/testutil"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync/atomic"
 	"testing"
@@ -54,7 +55,7 @@ func TestPlatformFailureDeliveryIsAsyncAndIsolated(t *testing.T) {
 	ctx = testutil.TaskContext(ctx, "cron")
 	returned := make(chan struct{})
 	go func() {
-		m.NotifyPlatformFailure(ctx, "failed", errors.New("offline"), targets)
+		publishFailure(ctx, "failed", errors.New("offline"), targets)
 		close(returned)
 	}()
 	select {
@@ -69,10 +70,10 @@ func TestPlatformFailureDeliveryIsAsyncAndIsolated(t *testing.T) {
 			t.Fatal("slow platform blocked another destination")
 		}
 	}
-	m.NotifyPlatformFailure(ctx, "failed", errors.New("offline"), nil)
+	publishFailure(ctx, "failed", errors.New("offline"), nil)
 	canceled, stop := context.WithCancel(ctx)
 	stop()
-	m.NotifyPlatformFailure(canceled, "failed", errors.New("offline"), targets)
+	publishFailure(canceled, "failed", errors.New("offline"), targets)
 	release <- struct{}{}
 	// 同目标的同步标记等待此前通知完成，避免用睡眠猜测队列进度。
 	for _, target := range targets {
@@ -98,12 +99,12 @@ func TestManagerCloseWaitsForSenderAndCanRetry(t *testing.T) {
 			return nil
 		})
 		targets := []events.NotificationTarget{{Platform: "remote", ChatType: contextinfo.ChatPrivate, ID: "admin"}}
-		m.NotifyPlatformFailure(context.Background(), "failed", errors.New("offline"), targets)
+		publishFailure(context.Background(), "failed", errors.New("offline"), targets)
 		synctest.Wait()
 		if calls.Load() != 1 {
 			t.Fatal("sender did not start")
 		}
-		m.NotifyPlatformFailure(context.Background(), "failed", errors.New("queued"), targets)
+		publishFailure(context.Background(), "failed", errors.New("queued"), targets)
 		synctest.Wait()
 		m.BeginClose()
 		synctest.Wait()
@@ -113,7 +114,7 @@ func TestManagerCloseWaitsForSenderAndCanRetry(t *testing.T) {
 		if _, err := m.AddPlatform("late", func(events.NotificationTarget) error { return nil }); !errors.Is(err, signal.ErrClosed) {
 			t.Fatalf("registration after close: %v", err)
 		}
-		m.NotifyPlatformFailure(context.Background(), "failed", errors.New("late"), targets)
+		publishFailure(context.Background(), "failed", errors.New("late"), targets)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 		if err := m.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
@@ -396,5 +397,11 @@ func TestNotificationDoesNotInferTargetFromScope(t *testing.T) {
 		if err == nil || len(results) != 1 || results[0].Started || deliveries.Load() != 0 {
 			t.Fatalf("incomplete target was admitted: target=%+v results=%v error=%v", target, results, err)
 		}
+	}
+}
+
+func publishFailure(ctx context.Context, name string, failure error, targets []events.NotificationTarget) {
+	for _, target := range targets {
+		_, _ = events.NotificationRequested.EmitAsync(ctx, events.Notification{Target: target, Level: slog.LevelError, Text: fmt.Sprintf("平台 %s 异常退出：%v", name, failure)})
 	}
 }

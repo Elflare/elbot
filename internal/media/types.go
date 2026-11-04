@@ -15,11 +15,6 @@ const IDPrefix = "media:"
 // UsageID 标识一次独立使用，不是媒体内容 ID；空值表示未取得资源。
 type UsageID string
 
-// UsageFinishedEvent 表达消费者已结束读取、上传或发送的事实。
-type UsageFinishedEvent struct {
-	UsageIDs []UsageID // 本次已结束的使用，事件不携带清理能力。
-}
-
 // MediaInfo 是查询、导入与导出返回的通用信息快照。
 type MediaInfo struct {
 	ID       string // 媒体标识。

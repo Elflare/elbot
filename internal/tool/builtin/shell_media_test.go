@@ -32,7 +32,7 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	shell := (ShellTool{ProcessEnv: processenv.Environment{}})
-	shell.Media = toolmedia.NewMediaRuntime(center, t.TempDir(), mediatest.Publisher(center))
+	shell.Media = toolmedia.NewMediaRuntime(center, t.TempDir(), center.PublishUsageFinished)
 	command := `cat "$ELBOT_MEDIA_1" "$ELBOT_MEDIA_2"`
 	slow := "sleep 10"
 	if isPowerShellEnv() {

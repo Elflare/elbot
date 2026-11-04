@@ -62,7 +62,7 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps, entries []reg
 			return err
 		}
 	}
-	m.dispatcher = dispatch.New(dispatch.Options{Primary: m.primary, SaveMediaOutput: deps.Store.Media().SaveOutput, Media: deps.Media, PublishUsageFinished: publishMediaUsageFinished(deps.Media), MediaRetentionDays: cfg.Maintenance.SandboxCleanup.RetentionDays})
+	m.dispatcher = dispatch.New(dispatch.Options{Primary: m.primary, SaveMediaOutput: deps.Store.Media().SaveOutput, Media: deps.Media, PublishUsageFinished: deps.Media.PublishUsageFinished, MediaRetentionDays: cfg.Maintenance.SandboxCleanup.RetentionDays})
 	var err error
 	m.notifications, err = notification.New(m.primary.Name())
 	if err != nil {
@@ -97,7 +97,12 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps, entries []reg
 			}
 		}
 		m.mu.Unlock()
-		m.notifications.NotifyPlatformFailure(ctx, name, failure, targets)
+		for _, target := range targets {
+			_, _ = events.NotificationRequested.EmitAsync(ctx, events.Notification{
+				Target: target, Level: slog.LevelError,
+				Text: fmt.Sprintf("平台 %s 异常退出：%v", name, failure),
+			})
+		}
 	}
 	return nil
 }

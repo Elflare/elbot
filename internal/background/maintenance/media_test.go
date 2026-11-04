@@ -27,7 +27,7 @@ func TestSandboxMediaCacheRefreshAndExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 	sandbox := t.TempDir()
-	bridge := toolmedia.NewMediaRuntime(center, sandbox, mediatest.Publisher(center))
+	bridge := toolmedia.NewMediaRuntime(center, sandbox, center.PublishUsageFinished)
 	call := bridge.NewCall()
 	path, err := call.CachedExport(ctx, item.ID)
 	if err != nil {

@@ -140,7 +140,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		SoulPath:             cfg.Soul.Path,
 		Memory:               deps.Tools,
 		Preloader:            deps.Tools,
-		Completed:            signals.ModelCallCompleted,
 		Vision:               signals.VisionFallbackUsed,
 		View:                 view,
 	})

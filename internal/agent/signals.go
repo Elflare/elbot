@@ -4,7 +4,6 @@ import (
 	"context"
 	"elbot/internal/agent/dialogue"
 	agentexecution "elbot/internal/agent/execution"
-	agentshare "elbot/internal/agent/share"
 	"elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
@@ -17,7 +16,7 @@ import (
 
 func publishMediaUsageFinished(center *media.MediaCenter) func(context.Context, media.UsageID) {
 	return func(ctx context.Context, id media.UsageID) {
-		center.PublishUsageFinished(ctx, media.UsageFinishedEvent{UsageIDs: []media.UsageID{id}})
+		center.PublishUsageFinished(ctx, []media.UsageID{id})
 	}
 }
 
@@ -102,14 +101,12 @@ func connectSignal[T any](b *signalBindings, source *signal.Signal[T, signal.Emp
 }
 
 type signals struct {
-	ModelCallCompleted *signal.Signal[agentshare.ModelCallCompletedEvent, signal.Empty]
 	StatusChanged      *signal.Async[agentexecution.StatusChangedEvent]
 	VisionFallbackUsed *signal.Signal[dialogue.VisionFallbackUsedEvent, signal.Empty]
 }
 
 func newSignals() signals {
 	return signals{
-		ModelCallCompleted: signal.New[agentshare.ModelCallCompletedEvent, signal.Empty]("agent.model_completed"),
 		StatusChanged:      signal.NewAsync[agentexecution.StatusChangedEvent]("agent.status_changed"),
 		VisionFallbackUsed: signal.New[dialogue.VisionFallbackUsedEvent, signal.Empty]("agent.vision_fallback"),
 	}

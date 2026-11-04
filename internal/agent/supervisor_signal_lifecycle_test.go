@@ -4,7 +4,6 @@ import (
 	"context"
 	"elbot/internal/agent/dialogue"
 	agentexecution "elbot/internal/agent/execution"
-	agentshare "elbot/internal/agent/share"
 	"elbot/internal/signal"
 	"errors"
 	"sync"
@@ -15,7 +14,6 @@ import (
 func assertAgentSignalsClosed(t *testing.T, m *Supervisor) {
 	t.Helper()
 	for name, done := range map[string]<-chan struct{}{
-		"model":  m.signals.ModelCallCompleted.Done(),
 		"status": m.signals.StatusChanged.Done(),
 		"vision": m.signals.VisionFallbackUsed.Done(),
 	} {
@@ -48,7 +46,6 @@ func TestSupervisorBeginClosePreservesSignalsUntilClose(t *testing.T) {
 		synctest.Wait()
 		for name, done := range map[string]<-chan struct{}{
 			"agent":  m.Done(),
-			"model":  m.signals.ModelCallCompleted.Done(),
 			"status": m.signals.StatusChanged.Done(),
 			"vision": m.signals.VisionFallbackUsed.Done(),
 		} {
@@ -118,12 +115,6 @@ func checkAgentSignalCloseWaits[T any](t *testing.T, m *Supervisor, source inter
 
 func TestSupervisorWaitsForEveryOwnedSignal(t *testing.T) {
 	for name, check := range map[string]func(*testing.T, *Supervisor){
-		"model": func(t *testing.T, m *Supervisor) {
-			checkAgentSignalCloseWaits(t, m, m.signals.ModelCallCompleted, func(ctx context.Context, e agentshare.ModelCallCompletedEvent) error {
-				_, err := m.signals.ModelCallCompleted.EmitAsync(ctx, e)
-				return err
-			})
-		},
 		"status": func(t *testing.T, m *Supervisor) {
 			checkAgentSignalCloseWaits(t, m, m.signals.StatusChanged, m.signals.StatusChanged.Publish)
 		},

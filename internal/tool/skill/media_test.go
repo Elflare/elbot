@@ -37,7 +37,7 @@ func TestSkillMediaBridge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mediaRuntime := toolmedia.NewMediaRuntime(center, t.TempDir(), mediatest.Publisher(center))
+	mediaRuntime := toolmedia.NewMediaRuntime(center, t.TempDir(), center.PublishUsageFinished)
 	dir := t.TempDir()
 	binary, err := os.Executable()
 	if err != nil {

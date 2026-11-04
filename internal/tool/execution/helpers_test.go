@@ -2,7 +2,6 @@ package execution
 
 import (
 	"context"
-	"elbot/internal/testutil/mediatest"
 
 	"elbot/internal/events"
 	"elbot/internal/llm"
@@ -24,7 +23,7 @@ func newTestManager(catalog *registry.Registry, permission *security.Permission,
 	if len(centers) > 0 {
 		center = centers[0]
 	}
-	return NewManager(ManagerDeps{Registry: catalog, Permission: permission, Media: toolmedia.NewMediaRuntime(center, "", mediatest.Publisher(center)), InfoAvailableInContext: registry.InfoAvailableInContext, UnavailableReason: registry.UnavailableReason, BackgroundDiscoveredTools: registry.BackgroundDiscoveredTools, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(catalog).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {
+	return NewManager(ManagerDeps{Registry: catalog, Permission: permission, Media: toolmedia.NewMediaRuntime(center, "", center.PublishUsageFinished), InfoAvailableInContext: registry.InfoAvailableInContext, UnavailableReason: registry.UnavailableReason, BackgroundDiscoveredTools: registry.BackgroundDiscoveredTools, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(catalog).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {
 		_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	}})
 }

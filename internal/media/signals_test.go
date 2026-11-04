@@ -100,7 +100,7 @@ func TestUsageFailureRemainsOwnedAfterCanceledConsumerReturns(t *testing.T) {
 	refs.fail.Store(true)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	m.PublishUsageFinished(ctx, UsageFinishedEvent{UsageIDs: []UsageID{a.UsageID}})
+	m.PublishUsageFinished(ctx, []UsageID{a.UsageID})
 	drainUsageEvents(t, m)
 	if refs.calls.Load() != 1 {
 		t.Fatal("consumer completion retried cleanup")
@@ -113,7 +113,7 @@ func TestUsageFailureRemainsOwnedAfterCanceledConsumerReturns(t *testing.T) {
 	if err != nil || len(remaining) != 1 {
 		t.Fatalf("other usage lost: %v %v", remaining, err)
 	}
-	m.PublishUsageFinished(ctx, UsageFinishedEvent{UsageIDs: []UsageID{a.UsageID, a.UsageID}})
+	m.PublishUsageFinished(ctx, []UsageID{a.UsageID, a.UsageID})
 	drainUsageEvents(t, m)
 	if refs.calls.Load() != 2 {
 		t.Fatal("successful resource released twice")
@@ -129,7 +129,7 @@ func TestUsageFailureRemainsOwnedAfterCanceledConsumerReturns(t *testing.T) {
 	if err := reader.Close(); err != nil {
 		t.Fatal(err)
 	}
-	m.PublishUsageFinished(ctx, UsageFinishedEvent{UsageIDs: []UsageID{b.UsageID}})
+	m.PublishUsageFinished(ctx, []UsageID{b.UsageID})
 	drainUsageEvents(t, m)
 	remaining, err = store.MediaReferences().ListMediaIDs(t.Context(), item.ID)
 	if err != nil || len(remaining) != 0 {
@@ -152,7 +152,7 @@ func TestUsageQueueRejectionAndCloseTimeoutKeepResources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.PublishUsageFinished(t.Context(), UsageFinishedEvent{UsageIDs: []UsageID{a.UsageID}})
+	m.PublishUsageFinished(t.Context(), []UsageID{a.UsageID})
 	select {
 	case <-refs.started:
 	case <-time.After(time.Second):
@@ -170,7 +170,7 @@ func TestUsageQueueRejectionAndCloseTimeoutKeepResources(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	m.PublishUsageFinished(t.Context(), UsageFinishedEvent{UsageIDs: []UsageID{b.UsageID}})
+	m.PublishUsageFinished(t.Context(), []UsageID{b.UsageID})
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 	defer cancel()
 	if err := m.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
@@ -225,7 +225,7 @@ func TestOutputFailureAndWorkspaceCleanupRemainInMedia(t *testing.T) {
 	if _, err := os.Stat(dir); err != nil {
 		t.Fatal("active workspace removed", err)
 	}
-	m.PublishUsageFinished(t.Context(), UsageFinishedEvent{UsageIDs: []UsageID{workspaceID}})
+	m.PublishUsageFinished(t.Context(), []UsageID{workspaceID})
 	if err := m.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}

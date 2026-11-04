@@ -27,12 +27,3 @@ func New(t *testing.T, deps media.MediaCenterDeps, root string, configure ...fun
 	}
 	return center
 }
-
-// Publisher 接入真实结束信号，供消费方测试按生产装配方式注入。
-func Publisher(center interface {
-	PublishUsageFinished(context.Context, media.UsageFinishedEvent)
-}) func(context.Context, []media.UsageID) {
-	return func(ctx context.Context, ids []media.UsageID) {
-		center.PublishUsageFinished(ctx, media.UsageFinishedEvent{UsageIDs: ids})
-	}
-}

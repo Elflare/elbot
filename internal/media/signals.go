@@ -18,9 +18,9 @@ func (m *MediaCenter) connectUsageFinished() error {
 
 // PublishUsageFinished 先保存结束事实，再唤醒清理；拒收或超时不丢失记录。
 // 结束通知隔离业务取消，错误留在 Media，不改变已完成的业务结果。
-func (m *MediaCenter) PublishUsageFinished(ctx context.Context, event UsageFinishedEvent) {
-	ids := make([]string, 0, len(event.UsageIDs))
-	for _, id := range event.UsageIDs {
+func (m *MediaCenter) PublishUsageFinished(ctx context.Context, usageIDs []UsageID) {
+	ids := make([]string, 0, len(usageIDs))
+	for _, id := range usageIDs {
 		if id != "" {
 			ids = append(ids, string(id))
 		}

@@ -43,7 +43,7 @@ func TestSendFileSourcePermissionsAndConfirmation(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
-	if _, err := registry.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, builtin.NewTools(builtin.Deps{ResidentMemory: sendFileMemory{}, FileRollback: fileops.NewService(nil), LongMemoryDir: t.TempDir(), Media: toolmedia.NewMediaRuntime(center, "", mediatest.Publisher(center))})); err != nil {
+	if _, err := registry.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, builtin.NewTools(builtin.Deps{ResidentMemory: sendFileMemory{}, FileRollback: fileops.NewService(nil), LongMemoryDir: t.TempDir(), Media: toolmedia.NewMediaRuntime(center, "", center.PublishUsageFinished)})); err != nil {
 		t.Fatal(err)
 	}
 	userCtx := contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleUser})

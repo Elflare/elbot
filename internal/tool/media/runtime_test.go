@@ -29,7 +29,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := NewMediaRuntime(center, t.TempDir(), mediatest.Publisher(center))
+	runtime := NewMediaRuntime(center, t.TempDir(), center.PublishUsageFinished)
 	ctx = workspace.WithPathScope(ctx, workspace.PathScope{Dir: t.TempDir(), Restricted: true})
 	errors := make(chan error, 8)
 	for range 8 {
@@ -163,7 +163,7 @@ func TestMediaExportFailureCanBeRetriedAndCanceled(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			runtime := NewMediaRuntime(center, t.TempDir(), mediatest.Publisher(center))
+			runtime := NewMediaRuntime(center, t.TempDir(), center.PublishUsageFinished)
 			call := runtime.NewCall()
 			defer call.Close()
 			base := t.TempDir()

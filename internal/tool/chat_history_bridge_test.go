@@ -120,7 +120,7 @@ func newHistoryMediaToolTest(t *testing.T, configure ...func(*config.Config)) (c
 	}
 	resolver := &getMediaResolver{}
 	ctx = contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ChatID: "s"}})
-	mediaRuntime := toolmedia.NewMediaRuntime(center, root, mediatest.Publisher(center))
+	mediaRuntime := toolmedia.NewMediaRuntime(center, root, center.PublishUsageFinished)
 	manager := chat_history.NewManager(&chatHistoryBridge{history: history.Repository(), platform: resolver, media: mediaRuntime}, time.Now, resolveHistoryChat)
 	return ctx, historyMediaToolFixture{ToolDefinition: builtinTestTool(t, "get_media", builtin.Deps{ChatHistory: manager}), manager: manager, history: history.Repository(), center: mediaRuntime, mediaCenter: center}, resolver
 }

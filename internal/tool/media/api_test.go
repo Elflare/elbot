@@ -30,7 +30,7 @@ func newMediaAPITest(t *testing.T, history media.History) (*MediaRuntime, *media
 	t.Cleanup(func() { store.Close() })
 	root := t.TempDir()
 	center := mediatest.New(t, media.MediaCenterDeps{Store: store, ChatHistory: history}, root)
-	return NewMediaRuntime(center, t.TempDir(), mediatest.Publisher(center)), center
+	return NewMediaRuntime(center, t.TempDir(), center.PublishUsageFinished), center
 }
 
 func TestMediaAPIMetadataAndImageValidation(t *testing.T) {

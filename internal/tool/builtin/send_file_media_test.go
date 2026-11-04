@@ -28,7 +28,7 @@ func TestSendFileMediaIDBuildsLocalOutput(t *testing.T) {
 		t.Fatalf("import media: %v", err)
 	}
 
-	toolValue := (SendFileTool{media: toolmedia.NewMediaRuntime(center, root, mediatest.Publisher(center))})
+	toolValue := (SendFileTool{media: toolmedia.NewMediaRuntime(center, root, center.PublishUsageFinished)})
 	arguments, _ := json.Marshal(map[string]string{"source": resource.ID})
 	result, _, err := callTool(ctx, toolValue.Definition(), toolshare.CallRequest{Arguments: arguments})
 	if err != nil {

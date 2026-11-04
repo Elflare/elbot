@@ -32,7 +32,7 @@ func TestMaterialsKeepCanonicalOriginalAndMissingPlaceholder(t *testing.T) {
 	root := t.TempDir()
 	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	preparer := &Preparer{NewMessageID: testutil.IDSequence().MessageID, Media: center, PublishUsageFinished: func(ctx context.Context, id media.UsageID) {
-		center.PublishUsageFinished(ctx, media.UsageFinishedEvent{UsageIDs: []media.UsageID{id}})
+		center.PublishUsageFinished(ctx, []media.UsageID{id})
 	}}
 	info, err := center.ImportBytes(t.Context(), []byte("image"), media.Input{Name: "image.png", MIMEType: "image/png"}, media.ImportLimits{})
 	if err != nil {

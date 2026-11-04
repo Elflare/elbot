@@ -56,7 +56,7 @@ func TestIncompleteMediaReceiptReportsStorageFailure(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(connection.Disconnect)
-			router := New(Options{Primary: sender, Media: center, PublishUsageFinished: mediatest.Publisher(center), MediaRetentionDays: 7, SaveMediaOutput: store.Media().SaveOutput})
+			router := New(Options{Primary: sender, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7, SaveMediaOutput: store.Media().SaveOutput})
 			got, err := router.SendTo(t.Context(), delivery.Target{}, []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("image")}}})
 			if err != nil || calls != 1 || !reflect.DeepEqual(got, want) {
 				t.Fatal("send changed: receipt= result= err= calls=", got, err, calls)
@@ -99,9 +99,9 @@ func (m *releasingMedia) ResolveForOutput(ctx context.Context, id string) (deliv
 	return source, release, err
 }
 
-func (m *releasingMedia) PublishUsageFinished(ctx context.Context, event media.UsageFinishedEvent) {
-	m.released += len(event.UsageIDs)
-	m.MediaCenter.PublishUsageFinished(ctx, event)
+func (m *releasingMedia) PublishUsageFinished(ctx context.Context, ids []media.UsageID) {
+	m.released += len(ids)
+	m.MediaCenter.PublishUsageFinished(ctx, ids)
 }
 
 func TestMediaReceiptCallbackPreservesPartialSendAndReleasesSources(t *testing.T) {
@@ -123,7 +123,7 @@ func TestMediaReceiptCallbackPreservesPartialSendAndReleasesSources(t *testing.T
 				return wantReceipt, wantErr
 			}}
 			var saved []storage.MediaOutput
-			router := New(Options{Primary: sender, Media: center, PublishUsageFinished: mediatest.Publisher(center), MediaRetentionDays: 7,
+			router := New(Options{Primary: sender, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7,
 				SaveMediaOutput: func(_ context.Context, output storage.MediaOutput) error {
 					saved = append(saved, output)
 					if cacheFails {
@@ -157,7 +157,7 @@ func TestMediaResolutionFailureReleasesPreparedSources(t *testing.T) {
 	router := New(Options{Primary: testSender{send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
 		t.Fatal("sent after media resolution failure")
 		return delivery.Receipt{}, nil
-	}}, Media: center, PublishUsageFinished: mediatest.Publisher(center)})
+	}}, Media: center, PublishUsageFinished: center.PublishUsageFinished})
 	_, err := router.SendTo(t.Context(), delivery.Target{}, []delivery.Output{
 		{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("first")}},
 		{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("second")}},
@@ -217,7 +217,7 @@ func TestOutputMediaSourcesAreCanonicalAndReceiptOrderPersists(t *testing.T) {
 	defer server.Close()
 
 	sender := &orderedMediaSender{t: t}
-	dispatcher := New(Options{Primary: sender, SaveMediaOutput: store.Media().SaveOutput, Media: center, PublishUsageFinished: mediatest.Publisher(center), MediaRetentionDays: 7})
+	dispatcher := New(Options{Primary: sender, SaveMediaOutput: store.Media().SaveOutput, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7})
 	messageCtx := contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "qqonebot", ChatType: "group", ChatID: "9"}})
 	outputs := []delivery.Output{
 		{Kind: delivery.KindImage, Name: "https://example.com/private/remote.png?rkey=name-secret", Source: delivery.Source{URL: server.URL}},
@@ -270,7 +270,7 @@ func TestMediaReceiptKeepsDuplicatesAndPartialSuccess(t *testing.T) {
 			return receipt, err
 		}
 	})
-	dispatcher := New(Options{Primary: sender, SaveMediaOutput: store.Media().SaveOutput, Media: center, PublishUsageFinished: mediatest.Publisher(center), MediaRetentionDays: 7})
+	dispatcher := New(Options{Primary: sender, SaveMediaOutput: store.Media().SaveOutput, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7})
 	got, sendErr := dispatcher.SendTo(ctx, delivery.Target{}, outputs)
 	if sendErr == nil || len(got.PlatformMessageIDs) != 1 {
 		t.Fatalf("receipt/error = %#v/%v", got, sendErr)
@@ -290,7 +290,7 @@ func TestMediaReceiptDoesNotGuessFallbackOrRetryCacheFailure(t *testing.T) {
 		return delivery.Receipt{PlatformMessageIDs: []string{"fallback"}}, nil
 	})
 	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
-	router := New(Options{Primary: sender, SaveMediaOutput: store.Media().SaveOutput, Media: center, PublishUsageFinished: mediatest.Publisher(center), MediaRetentionDays: 7})
+	router := New(Options{Primary: sender, SaveMediaOutput: store.Media().SaveOutput, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7})
 	_, err := router.SendTo(ctx, delivery.Target{}, outputs)
 	if err != nil {
 		t.Fatal(err)
@@ -307,7 +307,7 @@ func TestMediaReceiptDoesNotGuessFallbackOrRetryCacheFailure(t *testing.T) {
 			SentMessages:       []delivery.SentMessage{{Platform: "telegram", ChatType: "group", ChatID: "9", PlatformMessageID: "sent", OutputIndexes: []int{0}}},
 		}, nil
 	})
-	router = New(Options{Primary: sender, SaveMediaOutput: func(context.Context, storage.MediaOutput) error { return errors.New("cache unavailable") }, Media: center, PublishUsageFinished: mediatest.Publisher(center), MediaRetentionDays: 7})
+	router = New(Options{Primary: sender, SaveMediaOutput: func(context.Context, storage.MediaOutput) error { return errors.New("cache unavailable") }, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7})
 	receipt, err := router.SendTo(ctx, delivery.Target{}, outputs)
 	if err != nil || calls != 1 || len(receipt.PlatformMessageIDs) != 1 {
 		t.Fatalf("cache failure changed send result: %#v %d %v", receipt, calls, err)

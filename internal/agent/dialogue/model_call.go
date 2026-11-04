@@ -30,10 +30,9 @@ type CallProcessor struct {
 		LLMResponseReceived(context.Context, agentshare.Session, agentshare.LLMResponse) (agentshare.LLMResponseResult, error)
 		ErrorOccurred(context.Context, agentshare.Session, agentshare.LLMResponse, error)
 	}
-	Identity  interface{ IsCLI(context.Context) bool }
-	Tools     *ToolExecutor
-	Completed *signal.Signal[agentshare.ModelCallCompletedEvent, signal.Empty]
-	Vision    *signal.Signal[VisionFallbackUsedEvent, signal.Empty]
+	Identity interface{ IsCLI(context.Context) bool }
+	Tools    *ToolExecutor
+	Vision   *signal.Signal[VisionFallbackUsedEvent, signal.Empty]
 }
 type CallObservation struct {
 	processor *CallProcessor
@@ -122,7 +121,6 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 		record.Content = string(data)
 		_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	}
-	agentshare.Emit(ctx, o.processor.Completed, o.event)
 }
 func (c *CallProcessor) RecordVisionFallback(ctx context.Context, row *storage.Session) {
 	ctx = (ExecutionView{}).Context(ctx)

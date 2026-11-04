@@ -27,7 +27,6 @@ func TestNotificationFactsUseGlobalSignalAndVisionDedup(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		_ = b.Close(context.Background())
-		_ = facts.ModelCallCompleted.Close(context.Background())
 		_ = facts.StatusChanged.Close(context.Background())
 		_ = facts.VisionFallbackUsed.Close(context.Background())
 	})

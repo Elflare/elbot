@@ -73,7 +73,7 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				if usageID != "" {
-					m.PublishUsageFinished(ctx, UsageFinishedEvent{UsageIDs: []UsageID{usageID}})
+					m.PublishUsageFinished(ctx, []UsageID{usageID})
 				}
 				if err := m.Close(ctx); err != nil {
 					t.Error(err)
@@ -107,7 +107,7 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 			} else if !strings.HasPrefix(value, server.URL) || !strings.Contains(value, "X-Amz-Signature") {
 				t.Fatal(value)
 			}
-			m.PublishUsageFinished(t.Context(), UsageFinishedEvent{UsageIDs: []UsageID{usageID}})
+			m.PublishUsageFinished(t.Context(), []UsageID{usageID})
 			usageID = ""
 			if err := m.Cleanup(t.Context()); err != nil {
 				t.Fatal(err)
@@ -124,7 +124,7 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 			if err != nil || len(refs) != 1 {
 				t.Fatalf("output holds=%d %v", len(refs), err)
 			}
-			m.PublishUsageFinished(t.Context(), UsageFinishedEvent{UsageIDs: []UsageID{usageID}})
+			m.PublishUsageFinished(t.Context(), []UsageID{usageID})
 			usageID = ""
 			if err := m.Cleanup(t.Context()); err != nil {
 				t.Fatal(err)

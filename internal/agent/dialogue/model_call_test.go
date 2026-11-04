@@ -2,7 +2,6 @@ package dialogue
 
 import (
 	"context"
-	agentshare "elbot/internal/agent/share"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -38,16 +37,7 @@ func TestAssistantMessageLogSummary(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(logs.Disconnect)
-			processor := &CallProcessor{Completed: signal.New[agentshare.ModelCallCompletedEvent, signal.Empty]("test.completed")}
-			var completed agentshare.ModelCallCompletedEvent
-			connection, err := processor.Completed.Observe(func(_ context.Context, event agentshare.ModelCallCompletedEvent) error {
-				completed = event
-				return nil
-			}, signal.ConnectOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(connection.Disconnect)
+			processor := &CallProcessor{}
 			observation := processor.Begin("session", modelmgr.Selection{})
 			observation.Event().Provider, observation.Event().Model = "p", "m"
 			observation.Event().OutputReady = true
@@ -77,7 +67,7 @@ func TestAssistantMessageLogSummary(t *testing.T) {
 			if records[0].Type != events.ContentJSON || content.Provider != "p" || content.Model != "m" || content.ElapsedMS != 0 || content.ToolCallCount != 0 {
 				t.Fatalf("source metadata changed: %s", records[0].Content)
 			}
-			if completed.Text != tc.text || completed.SourceText != tc.raw || observation.Event().Text != tc.text || observation.Event().SourceText != tc.raw {
+			if observation.Event().Text != tc.text || observation.Event().SourceText != tc.raw {
 				t.Fatal("logging changed business text")
 			}
 		})
