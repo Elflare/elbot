@@ -275,9 +275,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			fail(call, err, fmt.Sprintf("tool call %s failed: retain media arguments: %v", call.Name, err))
 			continue
 		}
-		workers.Add(1)
-		go func() {
-			defer workers.Done()
+		workers.Go(func() {
 			startedAt := time.Now()
 			result := m.executePrepared(runToolCtx, call, resolved, prepared, func() {
 				startedAt = time.Now()
@@ -294,7 +292,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			}
 			task.result = result
 			ready <- index
-		}()
+		})
 	}
 	for completed < len(tasks) {
 		select {

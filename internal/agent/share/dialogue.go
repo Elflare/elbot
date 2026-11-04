@@ -282,12 +282,12 @@ func MaterialMediaIDs(materials []Material, arguments []string, retained []strin
 	return ids
 }
 
-func EncodeMaterials(materials []Material) (string, error) {
+func EncodeMaterials(materials []Material) string {
 	if materials == nil {
 		materials = []Material{}
 	}
-	data, err := json.Marshal(materials)
-	return string(data), err
+	data, _ := json.Marshal(materials)
+	return string(data)
 }
 
 func DecodeMaterials(raw string) ([]Material, error) {

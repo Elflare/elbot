@@ -49,7 +49,6 @@ func nativeItem(callID string, segments []llm.MessageSegment) (api.Item, error) 
 		return api.InputMessage("user", content)
 	}
 	var output json.RawMessage
-	var err error
 	textOnly := true
 	for _, segment := range segments {
 		if segment.Type != llm.SegmentText {
@@ -58,12 +57,9 @@ func nativeItem(callID string, segments []llm.MessageSegment) (api.Item, error) 
 		}
 	}
 	if textOnly {
-		output, err = json.Marshal(agentshare.MessageContent(segments))
+		output, _ = json.Marshal(agentshare.MessageContent(segments))
 	} else {
-		output, err = json.Marshal(content)
-	}
-	if err != nil {
-		return api.Item{}, err
+		output, _ = json.Marshal(content)
 	}
 	return api.FunctionCallOutput(callID, output)
 }
@@ -77,10 +73,7 @@ func queuedInput(sessionID, messageID, exchangeID, callID string, segments []llm
 	if err != nil {
 		return storage.NativeInput{}, err
 	}
-	materials, err := agentshare.EncodeMaterials([]agentshare.Material{{MessageID: messageID, Segments: segments}})
-	if err != nil {
-		return storage.NativeInput{}, err
-	}
+	materials := agentshare.EncodeMaterials([]agentshare.Material{{MessageID: messageID, Segments: segments}})
 	return storage.NativeInput{
 		ID:         storage.NewID(),
 		SessionID:  sessionID,

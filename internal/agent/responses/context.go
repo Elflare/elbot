@@ -457,18 +457,12 @@ func (w *nativeWindow) Seed(continuation []api.Item, calls []storage.NativeCall,
 	if err != nil {
 		return nil, err
 	}
-	materials, err := agentshare.EncodeMaterials(w.Materials)
-	if err != nil {
-		return nil, err
-	}
+	materials := agentshare.EncodeMaterials(w.Materials)
 	more, err := json.Marshal(continuation)
 	if err != nil {
 		return nil, err
 	}
-	snapshot, err := json.Marshal(calls)
-	if err != nil {
-		return nil, err
-	}
+	snapshot, _ := json.Marshal(calls)
 	source := ""
 	if w.Checkpoint != nil {
 		source = w.Checkpoint.ID
@@ -481,7 +475,7 @@ func (w *nativeWindow) Seed(continuation []api.Item, calls []storage.NativeCall,
 		ResponseID:         responseID,
 		SourceCheckpointID: source,
 		ItemsJSON:          string(items),
-		MaterialsJSON:      string(materials),
+		MaterialsJSON:      materials,
 		ContinuationJSON:   string(more),
 		CallsJSON:          string(snapshot),
 		MediaIDs:           w.mediaIDs(),

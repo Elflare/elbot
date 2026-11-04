@@ -12,7 +12,7 @@
 - [x] ④ 工具调用与结果提交：`agent/dialogue/tool_execution.go` 工具入口 → `tool/execution/runner.go` 批次执行 → `agent/dialogue/commit.go` 结果提交。
 - [x] ⑤ 回复与平台投递：`agent/dialogue/reply_commit.go` 回复提交 → `agent/output/output.go` 输出处理 → `platform/dispatch/router.go` 发送路由。
 - [x] ⑥ 会话与上下文：Session 绑定／切换 → 历史加载 → 压缩／派生 → 存储。检查重复快照、状态归属、无消费者字段，保留事务和并发准入语义。
-- [ ] ⑦ 媒体生命周期：输入归档 → 持有／引用 → 模型使用／平台发送 → 释放／清理。检查重复导入、转换及资源所有权。
+- [x] ⑦ 媒体生命周期：输入归档 → 持有／引用 → 模型使用／平台发送 → 释放／清理。检查重复导入、转换及资源所有权。
 - [ ] ⑧ 后台任务：Cron 调度／Elnis 接收 → Agent 执行入口 → 报告落库 → 投递／恢复。复用前台结论，深入后台特有的重试、接管、去重和恢复。
 - [ ] ⑨ 扩展与基础设施：Hook 规则／运行时 → 命令／补全 → 配置／装配／关闭 → 信号／日志。检查契约、转发层及重复配置、生命周期状态，并核对遗漏范围。
 
@@ -51,10 +51,11 @@
 - ⑦ 媒体历史已落实：对账缓存键补齐 ChatType，回归覆盖同 ID 私聊／群聊关联及引用隔离；入站关联删除未用消息上下文参数和日志多余作用域；批量媒体转换删除两处输入切片 nil 分支，保留返回结果 nil 语义。
 - ⑦ 媒体交付收尾已落实：内部结束信号复用独立 ID 切片，删除事件复制和回调转换；签名只传媒体 ID，保留锁内重读；清理 worker 统一使用 WaitGroup.Go。保留真实退出等待、失败资源重试和独立清理上下文。
 - ⑦ 调用方媒体已落实：Tool 删除重复查重的 retain 和重复 metadata 快照，改为读取持有句柄信息；write 删除未用接收器；Skill 两种执行入口删除三处多余作用域。保留模型重试的分次释放及 Hook 部分清理状态。
+- ⑦ 提交链收尾已落实：EncodeMaterials 只返回字符串，删除两处调用方错误分支；Responses 删除纯文本／InputContent 和 NativeCall 编码的不可达错误分支；工具 worker 统一使用 WaitGroup.Go。保留原生 JSON 校验、引用事务及取消后等待退出。
 - 保留：① Hook 前后取消判断、等待路由媒体准备及指令提交前准入复查；② 跨锁区间的状态复查、Request 取消后等待 done、追加恢复空输入检查、关闭完成优先返回。
-- 验证：本轮 gofmt、diff 检查、go test ./internal/tool/media ./internal/tool/skill 及对应 race 测试通过。
+- 验证：本轮 gofmt、diff 检查、go test ./internal/agent/... ./internal/tool/execution ./internal/storage/sqlite 及 go test -race ./internal/tool/execution 通过。
 - 支线：Hook 和媒体内部实现留给对应阶段，命令内部业务留给⑨。
-- 当前阶段：⑦ 媒体生命周期推进中，主链及调用方资源交接已核对，覆盖 Chat／Responses、工具导入导出与缓存、Skill 入口、Hook 租约和失败重试；下一入口为工具结果提交前后的媒体引用交接，随后评估⑦收口，维持扩大的单轮审查范围。
+- 当前阶段：⑦ 已收口，覆盖媒体主链、调用方资源交接及工具结果引用事务。下一入口为⑧ 后台任务，沿 Cron 调度／Elnis 接收 → Agent 执行 → 报告落库 → 投递／恢复推进，维持扩大的单轮审查范围。
 
 ## 不一定实现
 
