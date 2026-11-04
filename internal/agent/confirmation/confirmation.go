@@ -212,7 +212,7 @@ func (c *ConfirmationCoordinator) setSessionAutoConfirmed(sessionID string) {
 func (c *ConfirmationCoordinator) isToolAutoConfirmed(sessionID, toolName string) bool {
 	c.autoConfirmMu.Lock()
 	defer c.autoConfirmMu.Unlock()
-	return c.autoConfirmTools[sessionID] != nil && c.autoConfirmTools[sessionID][toolName]
+	return c.autoConfirmTools[sessionID][toolName]
 }
 
 func (c *ConfirmationCoordinator) setToolAutoConfirmed(sessionID, toolName string) {
@@ -280,11 +280,9 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	previewArgs := previewArguments(fullArgs)
 	timeout := c.policy.WaitTimeout(ctx)
 	wait := c.turns.BeginRiskConfirmation(sessionID, turn.RiskConfirmation{
-		ID:        call.ID,
 		ToolName:  call.Name,
 		Arguments: fullArgs,
 		Risk:      string(assessment.Level),
-		Summary:   fmt.Sprintf("%s %s", call.Name, previewArgs),
 		Detail:    detail,
 	}, turn.AttemptFromContext(ctx))
 	defer wait.Cancel()

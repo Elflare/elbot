@@ -104,11 +104,9 @@ type Snapshot struct {
 	Attempt     string    // Current attempt; empty during a continuation reservation.
 }
 type RiskConfirmation struct {
-	ID        string
 	ToolName  string
 	Arguments string
 	Risk      string
-	Summary   string
 	Detail    string
 }
 type Execution interface{ Finish(error) }

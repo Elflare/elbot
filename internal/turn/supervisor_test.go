@@ -19,7 +19,7 @@ func TestRefreshWinsPendingExpiry(t *testing.T) {
 				done := make(chan bool, 1)
 				if risk {
 					s.StartToolPhase("s", "a")
-					w := s.BeginRiskConfirmation("s", RiskConfirmation{ID: "call"}, "a")
+					w := s.BeginRiskConfirmation("s", RiskConfirmation{ToolName: "call"}, "a")
 					expire := w.wait.Expire
 					first := true
 					w.wait.Expire = func() bool {
@@ -99,16 +99,16 @@ func TestRiskCallbacksKeepReplacementAndRejectStoppedApproval(t *testing.T) {
 	s := NewSupervisor(testutil.IDSequence())
 	s.StartAttempt("s", Input{}, NewExecution("run"), "a")
 	s.StartToolPhase("s", "a")
-	first := s.BeginRiskConfirmation("s", RiskConfirmation{ID: "first"}, "a")
+	first := s.BeginRiskConfirmation("s", RiskConfirmation{ToolName: "first"}, "a")
 	s.ResolveRiskConfirmation("s", RiskDecision{Action: RiskConfirm})
 	if first.Wait(t.Context(), 0).Outcome != RiskAnswered {
 		t.Fatal("early response lost")
 	}
-	second := s.BeginRiskConfirmation("s", RiskConfirmation{ID: "second"}, "a")
+	second := s.BeginRiskConfirmation("s", RiskConfirmation{ToolName: "second"}, "a")
 	if first.Cancel() {
 		t.Fatal("old callback canceled replacement")
 	}
-	if pending, ok := s.PendingRiskConfirmation("s"); !ok || pending.ID != "second" {
+	if pending, ok := s.PendingRiskConfirmation("s"); !ok || pending.ToolName != "second" {
 		t.Fatal("replacement missing")
 	}
 	s.ResolveRiskConfirmation("s", RiskDecision{Action: RiskConfirm})
@@ -143,7 +143,7 @@ func TestConfirmationCallbacksExpireAndIgnoreOldAppend(t *testing.T) {
 	}
 	s.StartAttempt("s", Input{}, e, "b")
 	s.StartToolPhase("s", "b")
-	risk := s.BeginRiskConfirmation("s", RiskConfirmation{ID: "risk"}, "b")
+	risk := s.BeginRiskConfirmation("s", RiskConfirmation{ToolName: "risk"}, "b")
 	if result := risk.Wait(t.Context(), time.Millisecond); result.Outcome != RiskExpired {
 		t.Fatalf("risk expiry: %+v", result)
 	}
@@ -156,7 +156,7 @@ func TestSupervisorRiskDecisionAndTermination(t *testing.T) {
 			s := NewSupervisor(testutil.IDSequence())
 			s.StartAttempt("s", Input{}, NewExecution("run"), "a")
 			s.StartToolPhase("s", "a")
-			wait := s.BeginRiskConfirmation("s", RiskConfirmation{ID: "call"}, "a")
+			wait := s.BeginRiskConfirmation("s", RiskConfirmation{ToolName: "call"}, "a")
 			decision := RiskDecision{Action: action, Extra: "extra", Reason: "reason"}
 			if s.ResolveRiskConfirmation("s", RiskDecision{}) || !s.ResolveRiskConfirmation("s", decision) {
 				t.Fatal("decision validation failed")
@@ -165,7 +165,7 @@ func TestSupervisorRiskDecisionAndTermination(t *testing.T) {
 			if result.Outcome != RiskAnswered || result.Decision != decision || result.Err != nil {
 				t.Fatalf("result = %+v", result)
 			}
-			wait = s.BeginRiskConfirmation("s", RiskConfirmation{ID: "next"}, "a")
+			wait = s.BeginRiskConfirmation("s", RiskConfirmation{ToolName: "next"}, "a")
 			ctx, cancel := context.WithCancel(t.Context())
 			cancel()
 			result = wait.Wait(ctx, 0)

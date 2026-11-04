@@ -37,7 +37,7 @@ func TestRiskConfirmationSourceCompletesOnlyDuringRiskPhase(t *testing.T) {
 	if !turns.StartAttempt(sess.ID, turn.Input{Text: "run"}, turn.NewExecution("run"), "attempt") || !turns.StartToolPhase(sess.ID, "attempt") {
 		t.Fatal("failed to start tool phase")
 	}
-	wait := turns.BeginRiskConfirmation(sess.ID, turn.RiskConfirmation{ID: "call_1", ToolName: "shell", Risk: "high"}, "attempt")
+	wait := turns.BeginRiskConfirmation(sess.ID, turn.RiskConfirmation{ToolName: "shell", Risk: "high"}, "attempt")
 	defer turns.FinishAttempt(sess.ID, "attempt")
 	defer wait.Cancel()
 

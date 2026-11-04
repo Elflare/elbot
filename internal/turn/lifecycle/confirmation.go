@@ -82,7 +82,7 @@ func (m *Manager) ResolveRiskConfirmation(sessionID string, decision RiskDecisio
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
-	if !ok || turn.phase != PhaseAwaitRiskConfirm || turn.riskResponse == nil {
+	if !ok || turn.phase != PhaseAwaitRiskConfirm {
 		return false
 	}
 	select {
@@ -96,7 +96,7 @@ func (m *Manager) RefreshRiskConfirmation(sessionID string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
-	if !ok || turn.phase != PhaseAwaitRiskConfirm || turn.riskResponse == nil {
+	if !ok || turn.phase != PhaseAwaitRiskConfirm {
 		return false
 	}
 	refreshWait(turn)
@@ -106,7 +106,7 @@ func (m *Manager) PendingRiskConfirmation(sessionID string) (RiskConfirmation, b
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
-	if !ok || turn.phase != PhaseAwaitRiskConfirm || turn.riskConfirm == nil {
+	if !ok || turn.phase != PhaseAwaitRiskConfirm {
 		return RiskConfirmation{}, false
 	}
 	return *turn.riskConfirm, true

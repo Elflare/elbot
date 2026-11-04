@@ -19,11 +19,9 @@ const (
 )
 
 type RiskConfirmation struct {
-	ID        string
 	ToolName  string
 	Arguments string
 	Risk      string
-	Summary   string
 	Detail    string
 }
 
