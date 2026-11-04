@@ -194,31 +194,13 @@ def should_translate_text(text: str) -> bool:
     return bool(re.search(r"[\u4e00-\u9fff]", text))
 
 
-def find_unquoted_hash(text: str) -> int:
-    quote, escaped = "", False
-    for index, char in enumerate(text):
-        if escaped:
-            escaped = False
-        elif char == "\\":
-            escaped = True
-        elif quote:
-            if char == quote:
-                quote = ""
-        elif char in {'"', "'"}:
-            quote = char
-        elif char == "#":
-            return index
-    return -1
-
-
 def validate_translation(source: str, translation: str) -> None:
-    """Check protected Markdown once, allowing only source-marked Chinese comments."""
+    """Check protected Markdown while allowing Chinese text inside code to translate."""
     if not translation.strip():
         raise ValueError("empty section translation")
     comments = r"<!--.*?-->"
     if re.findall(comments, source, re.DOTALL) != re.findall(comments, translation, re.DOTALL):
         raise ValueError("HTML comments changed")
-    inline = re.compile(r"(`+).*?\1|\]\([^\n)]*\)|https?://[^\s<>)]+")
 
     def parts(text):
         out, fence, language = [], "", ""
@@ -247,18 +229,18 @@ def validate_translation(source: str, translation: str) -> None:
     for (kind, before), (other_kind, after) in zip(original, translated):
         if kind != other_kind:
             raise ValueError("code block language or structure changed")
-        index = find_unquoted_hash(before) if kind in {
-            "code:bash", "code:sh", "code:shell", "code:toml", "code:yaml", "code:yml",
-        } else -1
-        if index >= 0 and should_translate_text(before[index + 1:]):
-            prefix = before[:index + 1] + re.match(r"[ \t]*", before[index + 1:])[0]
-            if not after.startswith(prefix):
-                raise ValueError("executable code changed")
-            before, after = before[len(prefix):], after[len(prefix):]
-            if [m[0] for m in inline.finditer(before)] != [m[0] for m in inline.finditer(after)]:
-                raise ValueError("code or links in documentation comments changed")
-        elif before != after:
-            raise ValueError("code, inline code or link destination changed")
+        if before == after:
+            continue
+        if (kind.startswith("code:") or before.startswith("`")) and should_translate_text(before):
+            # Only Chinese text and its punctuation may vary; keep surrounding code literal.
+            pattern = "".join(
+                r"[^`\\\n\"'{}\[\]<>();=]*?" if index % 2 else re.escape(prefix)
+                for index, prefix in enumerate(re.split(
+                    r"([\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\u2014\u2018-\u201d\u2026]+)", before))
+            )
+            if re.fullmatch(pattern, after):
+                continue
+        raise ValueError("code, inline code or link destination changed")
 
 
 class TranslationClient:
@@ -273,11 +255,13 @@ class TranslationClient:
             {"role": "system", "content": (
                 "Translate ElBot documentation from Simplified Chinese to English. "
                 "Return ONLY the translated Markdown section, without explanations or an enclosing code fence. "
-                "Preserve Markdown structure, HTML comments, commands, code, inline code, URLs and link destinations. "
-                "Preserve image markers, nested links, HTML tags and attributes exactly; only prose and "
+                "Preserve Markdown structure, HTML comments, commands, identifiers, URLs and link destinations. "
+                "Preserve image markers, nested links, HTML tags and attributes exactly; "
                 "HTML alt/title text may be translated. "
-                "Only Chinese documentation comments in bash/sh/shell/toml/yaml/yml code may be translated; "
-                "keep all executable code and other code comments unchanged. Preserve product names.\n"
+                "Translate Chinese prose, including Chinese descriptions, placeholders, comments and example text "
+                "inside inline code and fenced code blocks in any language. Keep surrounding non-Chinese code, "
+                "syntax, code fences and backtick delimiters unchanged; do not add or remove backticks. "
+                "Keep pure English code and comments unchanged. Preserve product names.\n"
                 "Terminology:\n" + glossary
             )},
             {"role": "user", "content": (
