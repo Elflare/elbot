@@ -47,7 +47,7 @@ func TestDailyFileWriterRotatesWhenDateChanges(t *testing.T) {
 }
 
 func TestDailyFileWriterClosePreventsFurtherWrites(t *testing.T) {
-	writer, err := newDailyFileWriter(filepath.Join(t.TempDir(), "logs"), "elbot", nil)
+	writer, err := newDailyFileWriter(filepath.Join(t.TempDir(), "logs"), "elbot", time.Now)
 	if err != nil {
 		t.Fatalf("newDailyFileWriter: %v", err)
 	}

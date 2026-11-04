@@ -115,21 +115,11 @@ type dailyFileWriter struct {
 	now    func() time.Time
 	day    string
 	file   *os.File
-	closed bool
 }
 
 func newDailyFileWriter(logDir, prefix string, now func() time.Time) (*dailyFileWriter, error) {
-	if strings.TrimSpace(logDir) == "" {
-		return nil, fmt.Errorf("log directory is not configured")
-	}
-	if strings.TrimSpace(prefix) == "" {
-		return nil, fmt.Errorf("log prefix is not configured")
-	}
-	if now == nil {
-		now = time.Now
-	}
 	writer := &dailyFileWriter{logDir: logDir, prefix: prefix, now: now}
-	if err := writer.rotateLocked(writer.currentDay()); err != nil {
+	if err := writer.rotateLocked(); err != nil {
 		return nil, err
 	}
 	return writer, nil
@@ -139,10 +129,10 @@ func (w *dailyFileWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if w.closed {
+	if w.file == nil {
 		return 0, fmt.Errorf("log file writer is closed")
 	}
-	if err := w.rotateLocked(w.currentDay()); err != nil {
+	if err := w.rotateLocked(); err != nil {
 		return 0, err
 	}
 	return w.file.Write(p)
@@ -151,7 +141,6 @@ func (w *dailyFileWriter) Write(p []byte) (int, error) {
 func (w *dailyFileWriter) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.closed = true
 	if w.file == nil {
 		return nil
 	}
@@ -160,11 +149,8 @@ func (w *dailyFileWriter) Close() error {
 	return err
 }
 
-func (w *dailyFileWriter) currentDay() string {
-	return w.now().Format("2006-01-02")
-}
-
-func (w *dailyFileWriter) rotateLocked(day string) error {
+func (w *dailyFileWriter) rotateLocked() error {
+	day := w.now().Format("2006-01-02")
 	if w.file != nil && w.day == day {
 		return nil
 	}

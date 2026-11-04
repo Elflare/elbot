@@ -330,7 +330,7 @@ func matchLogEntry(entry LogEntry, query LogQuery) bool {
 	if query.Until != nil && !entry.Time.IsZero() && entry.Time.After(*query.Until) {
 		return false
 	}
-	if query.MinLevel != "" && !levelAtLeast(entry.Level, query.MinLevel) {
+	if query.MinLevel != "" && levelRank(entry.Level) < levelRank(query.MinLevel) {
 		return false
 	}
 	fields := map[string]string{"event": entry.EventName, "module": entry.Module, "level": entry.Level, "category": entry.Category.String(), "type": entry.Type.String(), "result_status": entry.ResultStatus.String()}
@@ -388,7 +388,7 @@ func matchLogEntry(entry LogEntry, query LogQuery) bool {
 			}
 		}
 	}
-	if query.Contains != "" && !logEntryContains(entry, query.Contains) {
+	if query.Contains != "" && !containsFold(entry.Content, query.Contains) && !containsFold(entry.Raw, query.Contains) {
 		return false
 	}
 	if query.ContentContains != "" && !containsFold(entry.Content, query.ContentContains) {
@@ -397,19 +397,8 @@ func matchLogEntry(entry LogEntry, query LogQuery) bool {
 	return true
 }
 
-func logEntryContains(entry LogEntry, needle string) bool {
-	if containsFold(entry.Content, needle) {
-		return true
-	}
-	return containsFold(entry.Raw, needle)
-}
-
 func containsFold(value, needle string) bool {
 	return strings.Contains(strings.ToLower(value), strings.ToLower(needle))
-}
-
-func levelAtLeast(got, min string) bool {
-	return levelRank(got) >= levelRank(min)
 }
 
 func levelRank(level string) int {
