@@ -4,6 +4,7 @@ import (
 	"context"
 	"elbot/internal/modelmgr"
 	"elbot/internal/notification/rules"
+	"elbot/internal/session"
 	"elbot/internal/workspace"
 	"errors"
 	"time"
@@ -29,7 +30,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/request"
-	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -140,7 +140,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		SoulPath:             cfg.Soul.Path,
 		Memory:               deps.Tools,
 		Preloader:            deps.Tools,
-		Vision:               signals.VisionFallbackUsed,
 		View:                 view,
 	})
 	chat := chatroute.NewLoop(chatroute.LoopDeps{
@@ -299,9 +298,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		completion.RouterSource{Router: m.commands, Actor: identity.Actor},
 	)
 	bindings := m.bindings
-	if err := bindings.connectAgentNotifications(signals); err != nil {
-		return m, err
-	}
 	if err := bindings.connectSession(m.sessions, execution); err != nil {
 		return m, err
 	}

@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-const VisionFallback = "vision → text fallback"
-
 func ModelRetry(provider string, event llm.RetryEvent) string {
 	if event.Err == nil {
 		return ""

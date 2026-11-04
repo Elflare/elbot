@@ -3,7 +3,6 @@ package share
 import (
 	"context"
 	"elbot/internal/contextinfo"
-	"elbot/internal/signal"
 
 	"elbot/internal/llm"
 	runtimestatus "elbot/internal/runtime"
@@ -17,20 +16,15 @@ type ExecutionStatus interface {
 }
 
 type ModelCallCompletedEvent struct {
-	Execution                                  contextinfo.Execution // Identity of the execution that produced this call result.
-	Provider, Model, Text, SourceText          string
-	ToolCallCount                              int
-	ElapsedMS                                  int64
-	Usage                                      *llm.Usage
-	Err                                        error
-	OutputReady, ProviderError, VisionFallback bool
+	Execution                         contextinfo.Execution // Identity of the execution that produced this call result.
+	Provider, Model, Text, SourceText string
+	ToolCallCount                     int
+	ElapsedMS                         int64
+	Usage                             *llm.Usage
+	Err                               error
+	OutputReady, ProviderError        bool
 }
 
-func Emit[T any](ctx context.Context, source *signal.Signal[T, signal.Empty], event T) {
-	if source != nil {
-		_, _ = source.Emit(ctx, event)
-	}
-}
 func CloneUsage(usage *llm.Usage) *llm.Usage {
 	if usage == nil {
 		return nil

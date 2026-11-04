@@ -185,15 +185,6 @@ func HasImageSegment(segments []MessageSegment) bool {
 	return false
 }
 
-func MessagesHaveImageSegment(messages []LLMMessage) bool {
-	for _, message := range messages {
-		if HasImageSegment(message.Segments) {
-			return true
-		}
-	}
-	return false
-}
-
 func SetLatestUserSegments(messages []LLMMessage, segments []MessageSegment) []LLMMessage {
 	out := append([]LLMMessage(nil), messages...)
 	for i := len(out) - 1; i >= 0; i-- {

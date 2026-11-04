@@ -32,7 +32,6 @@ type Caller struct {
 		PrepareCall(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingUserMessage, agentshare.MessageCommitter, *events.LogRecord) (agentshare.CallInput, error)
 		NotifyError(context.Context, string, agentshare.LLMResponse, error)
 		CompleteCall(context.Context, *storage.Session, modelmgr.Selection, string, *llm.Usage, []llm.ToolCallRequest, int64) (agentshare.CallOutput, error)
-		RecordVisionFallback(context.Context, *storage.Session)
 	}
 }
 type llmCallResult struct {
@@ -91,13 +90,6 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			return llmCallResult{Messages: baseMessages}, nil
 		}
-		if shouldFallbackVision(requestMessages, err) {
-			observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultFailed, slog.LevelWarn
-			completed.Err, completed.VisionFallback = err, true
-			publishCompleted()
-			c.Calls.RecordVisionFallback(ctx, session)
-			return c.Call(ctx, session, selection, fallbackVisionMessages(baseMessages), tools, nil, stream, out)
-		}
 		completed.ProviderError, completed.Err = true, err
 		observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultFailed, slog.LevelWarn
 		completed.ElapsedMS = elapsedMillis(startedAt)
@@ -126,16 +118,6 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 			if ctx.Err() != nil && errors.Is(chunk.Error, ctx.Err()) {
 				content := assistant.String()
 				return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls, Messages: baseMessages}, nil
-			}
-			if shouldFallbackVision(requestMessages, chunk.Error) {
-				observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultFailed, slog.LevelWarn
-				if reasoning != nil {
-					reasoning.Finish(ctx)
-				}
-				completed.Err, completed.VisionFallback = chunk.Error, true
-				publishCompleted()
-				c.Calls.RecordVisionFallback(ctx, session)
-				return c.Call(ctx, session, selection, fallbackVisionMessages(baseMessages), tools, nil, stream, out)
 			}
 			completed.ProviderError, completed.Err = true, chunk.Error
 			observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultFailed, slog.LevelWarn
@@ -195,31 +177,6 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 		return llmCallResult{}, err
 	}
 	return llmCallResult{Text: final.Text, RawText: content, Usage: final.Usage, ToolCalls: final.ToolCalls, Outputs: final.Outputs, Messages: baseMessages}, nil
-}
-
-func shouldFallbackVision(messages []llm.LLMMessage, err error) bool {
-	if err == nil || !llm.MessagesHaveImageSegment(messages) {
-		return false
-	}
-	text := strings.ToLower(err.Error())
-	needles := []string{"image", "vision", "multimodal", "content part", "unexpected item type in content", "provided messages input is invalid", "unsupported", "does not support"}
-	for _, needle := range needles {
-		if strings.Contains(text, needle) {
-			return true
-		}
-	}
-	return false
-}
-
-func fallbackVisionMessages(messages []llm.LLMMessage) []llm.LLMMessage {
-	out := append([]llm.LLMMessage(nil), messages...)
-	for i := range out {
-		if len(out[i].Segments) == 0 {
-			continue
-		}
-		out[i].Segments = llm.TextSegments(llm.SegmentsContentText(out[i].Segments))
-	}
-	return out
 }
 
 func elapsedMillis(startedAt time.Time) int64 {

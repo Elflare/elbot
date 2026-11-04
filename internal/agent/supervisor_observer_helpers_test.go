@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/agent/dialogue"
 	agentexecution "elbot/internal/agent/execution"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
@@ -58,7 +57,6 @@ func (p *assemblyPlatform) text() string {
 
 func observerSignals() signals {
 	return signals{
-		StatusChanged:      signal.NewAsync[agentexecution.StatusChangedEvent]("status"),
-		VisionFallbackUsed: signal.New[dialogue.VisionFallbackUsedEvent, signal.Empty]("vision"),
+		StatusChanged: signal.NewAsync[agentexecution.StatusChangedEvent]("status"),
 	}
 }

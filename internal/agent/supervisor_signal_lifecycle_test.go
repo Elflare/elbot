@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/agent/dialogue"
 	agentexecution "elbot/internal/agent/execution"
 	"elbot/internal/signal"
 	"errors"
@@ -15,7 +14,6 @@ func assertAgentSignalsClosed(t *testing.T, m *Supervisor) {
 	t.Helper()
 	for name, done := range map[string]<-chan struct{}{
 		"status": m.signals.StatusChanged.Done(),
-		"vision": m.signals.VisionFallbackUsed.Done(),
 	} {
 		select {
 		case <-done:
@@ -47,7 +45,6 @@ func TestSupervisorBeginClosePreservesSignalsUntilClose(t *testing.T) {
 		for name, done := range map[string]<-chan struct{}{
 			"agent":  m.Done(),
 			"status": m.signals.StatusChanged.Done(),
-			"vision": m.signals.VisionFallbackUsed.Done(),
 		} {
 			select {
 			case <-done:
@@ -117,12 +114,6 @@ func TestSupervisorWaitsForEveryOwnedSignal(t *testing.T) {
 	for name, check := range map[string]func(*testing.T, *Supervisor){
 		"status": func(t *testing.T, m *Supervisor) {
 			checkAgentSignalCloseWaits(t, m, m.signals.StatusChanged, m.signals.StatusChanged.Publish)
-		},
-		"vision": func(t *testing.T, m *Supervisor) {
-			checkAgentSignalCloseWaits(t, m, m.signals.VisionFallbackUsed, func(ctx context.Context, e dialogue.VisionFallbackUsedEvent) error {
-				_, err := m.signals.VisionFallbackUsed.EmitAsync(ctx, e)
-				return err
-			})
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

@@ -36,7 +36,6 @@ func (m *Supervisor) BeginClose() {
 		}
 		// Close starts signal shutdown after the caller has joined external producers.
 		<-m.signals.StatusChanged.Done()
-		<-m.signals.VisionFallbackUsed.Done()
 		close(m.done)
 	}()
 }
@@ -80,10 +79,8 @@ func (m *Supervisor) Close(ctx context.Context) error {
 	// All owned producers have stopped. Close uses the caller's remaining budget;
 	// the observer above still waits for actual callback exit after a timeout.
 	m.signals.StatusChanged.BeginClose()
-	m.signals.VisionFallbackUsed.BeginClose()
 	errs = append(errs,
 		m.signals.StatusChanged.Close(ctx),
-		m.signals.VisionFallbackUsed.Close(ctx),
 	)
 	select {
 	case <-m.done:

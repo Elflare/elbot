@@ -14,8 +14,6 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
-	sessionpkg "elbot/internal/session"
-	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
 
@@ -30,9 +28,7 @@ type CallProcessor struct {
 		LLMResponseReceived(context.Context, agentshare.Session, agentshare.LLMResponse) (agentshare.LLMResponseResult, error)
 		ErrorOccurred(context.Context, agentshare.Session, agentshare.LLMResponse, error)
 	}
-	Identity interface{ IsCLI(context.Context) bool }
-	Tools    *ToolExecutor
-	Vision   *signal.Signal[VisionFallbackUsedEvent, signal.Empty]
+	Tools *ToolExecutor
 }
 type CallObservation struct {
 	processor *CallProcessor
@@ -88,9 +84,6 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 		"cache_hit_tokens":  nil,
 		"cache_hit_percent": o.event.Usage.CacheHitPercent(),
 	}
-	if o.event.VisionFallback {
-		content["vision_fallback"] = true
-	}
 	if o.logRecord.Content != "" {
 		content["detail"] = fmt.Sprintf("%.8192s", o.logRecord.Content)
 	}
@@ -121,17 +114,6 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 		record.Content = string(data)
 		_ = events.EmitLog(context.WithoutCancel(ctx), record)
 	}
-}
-func (c *CallProcessor) RecordVisionFallback(ctx context.Context, row *storage.Session) {
-	ctx = (ExecutionView{}).Context(ctx)
-	event := VisionFallbackUsedEvent{
-		SessionID: row.ID,
-		Visible:   c.Identity.IsCLI(ctx) && !sessionpkg.IsBackground(row),
-	}
-	if conversation, ok := contextinfo.ConversationFromContext(ctx); ok {
-		event.Conversation = &conversation
-	}
-	agentshare.Emit(ctx, c.Vision, event)
 }
 func (c *CallProcessor) NotifyError(ctx context.Context, sessionID string, response agentshare.LLMResponse, err error) {
 	c.Hooks.ErrorOccurred(ctx, agentshare.Session{ID: sessionID}, response, err)
@@ -277,9 +259,3 @@ func (c *CallProcessor) CompleteCall(ctx context.Context, session *storage.Sessi
 
 func (o *CallObservation) Event() *agentshare.ModelCallCompletedEvent { return &o.event }
 func (o *CallObservation) LogRecord() *events.LogRecord               { return &o.logRecord }
-
-type VisionFallbackUsedEvent struct {
-	SessionID    string                    // Session used to deduplicate fallback notices.
-	Visible      bool                      // Whether this fallback should be shown to the user.
-	Conversation *contextinfo.Conversation // Original notification destination; nil when no conversation exists.
-}

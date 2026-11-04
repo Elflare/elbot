@@ -4,6 +4,7 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/events"
 	"elbot/internal/media"
+	"elbot/internal/session"
 	"elbot/internal/tool"
 
 	"context"
@@ -15,7 +16,6 @@ import (
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
 	runtimestatus "elbot/internal/runtime"
-	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
@@ -147,7 +147,6 @@ type LoopDeps struct {
 		PrepareCall(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingUserMessage, agentshare.MessageCommitter, *events.LogRecord) (agentshare.CallInput, error)
 		NotifyError(context.Context, string, agentshare.LLMResponse, error)
 		CompleteCall(context.Context, *storage.Session, modelmgr.Selection, string, *llm.Usage, []llm.ToolCallRequest, int64) (agentshare.CallOutput, error)
-		RecordVisionFallback(context.Context, *storage.Session)
 	}
 	System interface {
 		Build(context.Context, agentshare.SystemPromptRequest) (string, error)

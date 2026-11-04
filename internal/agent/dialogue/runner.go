@@ -12,7 +12,6 @@ import (
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
-	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"errors"
@@ -227,8 +226,7 @@ type RunnerDeps struct {
 		TagPrompts(context.Context, []string) ([]tool.TagPrompt, error)
 		DecodeState(string) (tool.State, error)
 	}
-	Vision *signal.Signal[VisionFallbackUsedEvent, signal.Empty]
-	View   ExecutionView
+	View ExecutionView
 }
 
 func NewRunner(deps RunnerDeps) *Runner {
@@ -237,7 +235,7 @@ func NewRunner(deps RunnerDeps) *Runner {
 	replies := &ReplyCommitter{NewMessageID: deps.NewMessageID, Output: deps.Output, Persistence: messages.Committer("append_assistant_message")}
 	preparer := &Preparer{NewMessageID: deps.NewMessageID, Contexts: deps.Contexts, Media: deps.Media, PublishUsageFinished: deps.PublishUsageFinished, Hooks: deps.Hooks, Tools: tools}
 	messages.Preparer = preparer
-	calls := &CallProcessor{Status: deps.Status, Preparer: preparer, Hooks: deps.Hooks, Identity: deps.Identity, Tools: tools, Vision: deps.Vision}
+	calls := &CallProcessor{Status: deps.Status, Preparer: preparer, Hooks: deps.Hooks, Tools: tools}
 	soul := SoulProvider(StaticSoulProvider{Prompt: "You are a helpful assistant."})
 	if deps.SoulPath != "" {
 		soul = &FileSoulProvider{Path: deps.SoulPath}

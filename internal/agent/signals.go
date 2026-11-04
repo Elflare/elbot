@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"elbot/internal/agent/dialogue"
 	agentexecution "elbot/internal/agent/execution"
 	"elbot/internal/events"
 	"elbot/internal/media"
@@ -18,15 +17,6 @@ func publishMediaUsageFinished(center *media.MediaCenter) func(context.Context, 
 	return func(ctx context.Context, id media.UsageID) {
 		center.PublishUsageFinished(ctx, []media.UsageID{id})
 	}
-}
-
-func (b *signalBindings) connectAgentNotifications(events signals) error {
-	vision := rules.NewVisionNotices()
-	return errors.Join(
-		connectSignal(b, events.VisionFallbackUsed, func(ctx context.Context, e dialogue.VisionFallbackUsedEvent) error {
-			return vision.Send(ctx, e.SessionID, e.Visible, e.Conversation)
-		}, signal.ConnectOptions{}),
-	)
 }
 
 func (b *signalBindings) connectModels(models ModelCapabilities) error {
@@ -92,22 +82,12 @@ func (b *signalBindings) stopped() bool {
 	return true
 }
 
-func connectSignal[T any](b *signalBindings, source *signal.Signal[T, signal.Empty], handler func(context.Context, T) error, options signal.ConnectOptions) error {
-	c, err := source.Observe(handler, options)
-	if err == nil {
-		b.connections = append(b.connections, c)
-	}
-	return err
-}
-
 type signals struct {
-	StatusChanged      *signal.Async[agentexecution.StatusChangedEvent]
-	VisionFallbackUsed *signal.Signal[dialogue.VisionFallbackUsedEvent, signal.Empty]
+	StatusChanged *signal.Async[agentexecution.StatusChangedEvent]
 }
 
 func newSignals() signals {
 	return signals{
-		StatusChanged:      signal.NewAsync[agentexecution.StatusChangedEvent]("agent.status_changed"),
-		VisionFallbackUsed: signal.New[dialogue.VisionFallbackUsedEvent, signal.Empty]("agent.vision_fallback"),
+		StatusChanged: signal.NewAsync[agentexecution.StatusChangedEvent]("agent.status_changed"),
 	}
 }
