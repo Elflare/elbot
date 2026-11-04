@@ -15,16 +15,13 @@ func TestMaintenanceHandlerPreservesContextAndResult(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	boom := errors.New("cleanup failed")
-	err := m.RegisterMaintenanceHandler("cleanup", func(got context.Context) error {
+	m.RegisterMaintenanceHandler("cleanup", func(got context.Context) error {
 		if got != ctx {
 			t.Fatal("context was replaced")
 		}
 		return boom
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = m.handlers["cleanup"](ctx, Job{})
+	err := m.handlers["cleanup"](ctx, Job{})
 	if err != boom {
 		t.Fatal(err)
 	}

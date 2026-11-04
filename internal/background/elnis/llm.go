@@ -256,10 +256,7 @@ func (s *Service) modelForEvent(event Event) config.ModelSelection {
 }
 
 func (s *Service) completeTakeover(ctx context.Context, eventID, resolved string, result background.RunResult, runErr error) error {
-	payload, err := json.Marshal(map[string]any{"taken_over": true, "run_id": result.RunID, "outcome": result.Outcome, "text": result.Text, "message_id": result.MessageID})
-	if err != nil {
-		return err
-	}
+	payload, _ := json.Marshal(map[string]any{"taken_over": true, "run_id": result.RunID, "outcome": result.Outcome, "text": result.Text, "message_id": result.MessageID})
 	message := ""
 	if runErr != nil {
 		message = runErr.Error()

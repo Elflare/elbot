@@ -43,11 +43,10 @@ func NewManager(repo JobRepository) *Manager {
 	return &Manager{repo: repo, handlers: map[string]Handler{}, entries: map[string]robfigcron.EntryID{}, running: map[string]bool{}, pendingJobs: map[string]struct{}{}, refreshWake: make(chan struct{}, 1)}
 }
 
-func (m *Manager) RegisterHandler(name string, handler Handler) error {
+func (m *Manager) RegisterHandler(name string, handler Handler) {
 	m.mu.Lock()
 	m.handlers[name] = handler
 	m.mu.Unlock()
-	return nil
 }
 
 func (m *Manager) UpsertJob(ctx context.Context, req UpsertJobRequest) (*Job, error) {
@@ -63,7 +62,7 @@ func (m *Manager) UpsertJob(ctx context.Context, req UpsertJobRequest) (*Job, er
 	if err != nil {
 		return nil, err
 	}
-	_ = m.RefreshJob(job.Name)
+	m.RefreshJob(job.Name)
 	return job, nil
 }
 
@@ -71,7 +70,8 @@ func (m *Manager) DisableJob(ctx context.Context, name string) error {
 	if err := m.repo.DisableByName(ctx, name); err != nil {
 		return err
 	}
-	return m.RefreshJob(name)
+	m.RefreshJob(name)
+	return nil
 }
 
 func (m *Manager) DisableJobIfDeliveryToken(ctx context.Context, name, deliveryToken string) (bool, error) {
@@ -79,7 +79,7 @@ func (m *Manager) DisableJobIfDeliveryToken(ctx context.Context, name, deliveryT
 	if err != nil || !disabled {
 		return disabled, err
 	}
-	_ = m.RefreshJob(name)
+	m.RefreshJob(name)
 	return true, nil
 }
 
@@ -124,8 +124,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		}
 		if len(m.pendingJobs) == 0 {
 			// 发布就绪和 worker 所有权必须与停止、接纳处于同一临界区。
-			m.workers.Add(1)
-			go m.runRefreshes(runCtx)
+			m.workers.Go(func() { m.runRefreshes(runCtx) })
 			m.scheduler.Start()
 			m.mu.Unlock()
 			break

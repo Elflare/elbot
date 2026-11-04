@@ -205,16 +205,12 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		SendTarget: deps.Platform.SendTo, Models: deps.Models, Media: deps.Media, CopyBackground: deps.Agent.CopyBackground, SessionTakenOver: deps.Agent.SessionTakenOver,
 		EnabledPlatforms: enabledCronPlatforms(cfg), SandboxRoot: cfg.Sandbox.Root,
 	})
-	if err := m.cronManager.RegisterHandler(elcron.UserHandlerName, m.cron.Handler); err != nil {
-		return m, fmt.Errorf("register cron handler: %w", err)
-	}
+	m.cronManager.RegisterHandler(elcron.UserHandlerName, m.cron.Handler)
 
 	// 维护组件只接收日志最小接口、两项清理函数和媒体 Cleanup 接口。
 	maint := maintenance.NewServiceWithConfig(deps.Logs, deps.ChatHistory.DeleteBefore, cfg, deps.Agent.CleanupSessions)
 	maint.Media = deps.Media
-	if err := maint.RegisterCronHandlers(m.cronManager.RegisterMaintenanceHandler); err != nil {
-		return m, fmt.Errorf("register maintenance handlers: %w", err)
-	}
+	maint.RegisterCronHandlers(m.cronManager.RegisterMaintenanceHandler)
 
 	var tokens map[string]string
 	if cfg.Elnis.Enabled {
@@ -247,7 +243,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 
 	// 变更回调只登记名称，由 Manager 串行读库刷新。
 	connection, err := deps.Tools.ObserveCronChanged(func(event tool.CronChangedEvent) error {
-		return m.cronManager.RefreshJob(event.Name)
+		m.cronManager.RefreshJob(event.Name)
+		return nil
 	}, signal.ConnectOptions{})
 	if err != nil {
 		return m, fmt.Errorf("observe cron changes: %w", err)

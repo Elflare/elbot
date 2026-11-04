@@ -143,15 +143,13 @@ func TestManagerRunsRegisteredHandlerAndUpdatesState(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
 	called := false
-	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job Job) error {
+	manager.RegisterHandler("test.handler", func(ctx context.Context, job Job) error {
 		called = true
 		if job.Name != "test.job" {
 			t.Fatalf("job = %#v", job)
 		}
 		return nil
-	}); err != nil {
-		t.Fatalf("register handler: %v", err)
-	}
+	})
 	job, err := manager.UpsertJob(context.Background(), UpsertJobRequest{Name: "test.job", Handler: "test.handler", Schedule: "0 3 * * *", Enabled: true})
 	if err != nil {
 		t.Fatalf("upsert job: %v", err)
@@ -175,11 +173,9 @@ func TestManagerFailedHandlerStillUpdatesRunState(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
 	boom := errors.New("boom")
-	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job Job) error {
+	manager.RegisterHandler("test.handler", func(ctx context.Context, job Job) error {
 		return boom
-	}); err != nil {
-		t.Fatalf("register handler: %v", err)
-	}
+	})
 	job, err := manager.UpsertJob(context.Background(), UpsertJobRequest{Name: "test.job", Handler: "test.handler", Schedule: "0 3 * * *", Enabled: true})
 	if err != nil {
 		t.Fatalf("upsert job: %v", err)
@@ -250,11 +246,9 @@ func TestManagerSchedulesNextRunState(t *testing.T) {
 			repo := newFakeCronRepo()
 			manager := NewManager(repo)
 			if tt.registered {
-				if err := manager.RegisterHandler("test.handler", func(context.Context, Job) error {
+				manager.RegisterHandler("test.handler", func(context.Context, Job) error {
 					return nil
-				}); err != nil {
-					t.Fatalf("register handler: %v", err)
-				}
+				})
 			}
 			if err := manager.Start(context.Background()); err != nil {
 				t.Fatalf("start manager: %v", err)
@@ -295,15 +289,13 @@ func TestManagerSchedulesNextRunState(t *testing.T) {
 func TestManagerRunJobDoesNotReenableJobDisabledByHandler(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
-	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job Job) error {
+	manager.RegisterHandler("test.handler", func(ctx context.Context, job Job) error {
 		err := manager.DisableJob(ctx, job.Name)
 		if err != nil {
 			return err
 		}
 		return nil
-	}); err != nil {
-		t.Fatalf("register handler: %v", err)
-	}
+	})
 	job, err := manager.UpsertJob(context.Background(), UpsertJobRequest{Name: "test.job", Handler: "test.handler", Schedule: "0 3 * * *", Enabled: true})
 	if err != nil {
 		t.Fatalf("upsert job: %v", err)
@@ -369,11 +361,9 @@ func TestManagerSkipsUnregisteredHandler(t *testing.T) {
 func TestManagerStartSchedulesEnabledJobs(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
-	if err := manager.RegisterHandler("test.handler", func(ctx context.Context, job Job) error {
+	manager.RegisterHandler("test.handler", func(ctx context.Context, job Job) error {
 		return nil
-	}); err != nil {
-		t.Fatalf("register handler: %v", err)
-	}
+	})
 	if _, err := manager.UpsertJob(context.Background(), UpsertJobRequest{Name: "test.job", Handler: "test.handler", Schedule: "0 3 * * *", Enabled: true}); err != nil {
 		t.Fatalf("upsert job: %v", err)
 	}

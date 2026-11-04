@@ -47,23 +47,12 @@ func NewServiceWithConfig(logs interface {
 	}
 }
 
-func (s *Service) RegisterCronHandlers(register func(string, func(context.Context) error) error) error {
-	if err := register("maintenance.log_cleanup", s.RunLogCleanup); err != nil {
-		return err
-	}
-	if err := register("maintenance.session_cleanup", s.RunSessionCleanup); err != nil {
-		return err
-	}
-	if err := register("maintenance.sandbox_cleanup", s.RunSandboxCleanup); err != nil {
-		return err
-	}
-	if err := register("maintenance.media_cleanup", s.Media.Cleanup); err != nil {
-		return err
-	}
-	if err := register("maintenance.chat_history_cleanup", s.RunChatHistoryCleanup); err != nil {
-		return err
-	}
-	return nil
+func (s *Service) RegisterCronHandlers(register func(string, func(context.Context) error)) {
+	register("maintenance.log_cleanup", s.RunLogCleanup)
+	register("maintenance.session_cleanup", s.RunSessionCleanup)
+	register("maintenance.sandbox_cleanup", s.RunSandboxCleanup)
+	register("maintenance.media_cleanup", s.Media.Cleanup)
+	register("maintenance.chat_history_cleanup", s.RunChatHistoryCleanup)
 }
 
 // SetupCron 只配置维护任务，调度启动由 Background 根部负责。

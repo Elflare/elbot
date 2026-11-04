@@ -685,9 +685,7 @@ func newTestCronService(t *testing.T, opts Options) *Service {
 	}
 	opts.CLIPlatformName = "cli"
 	s := NewService(opts)
-	if err := opts.Manager.RegisterHandler(UserHandlerName, s.Handler); err != nil {
-		t.Fatal(err)
-	}
+	opts.Manager.RegisterHandler(UserHandlerName, s.Handler)
 	return s
 }
 

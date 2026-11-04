@@ -30,11 +30,9 @@ func (r refreshRepo) ListEnabled(ctx context.Context) ([]Job, error) {
 
 func registerRefreshHandler(t *testing.T, m *Manager) {
 	t.Helper()
-	if err := m.RegisterHandler("handler", func(context.Context, Job) error {
+	m.RegisterHandler("handler", func(context.Context, Job) error {
 		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
 }
 
 func seedRefreshJob(t *testing.T, repo *fakeCronRepo, name string) *Job {
@@ -84,9 +82,7 @@ func TestRefreshCachesBeforeStartAndOverridesInitialSnapshot(t *testing.T) {
 	})
 	registerRefreshHandler(t, m)
 	for range 3 {
-		if err := m.RefreshJob("job"); err != nil {
-			t.Fatal(err)
-		}
+		m.RefreshJob("job")
 	}
 	if reads.Load() != 0 {
 		t.Fatal("notification performed storage I/O")
@@ -97,9 +93,7 @@ func TestRefreshCachesBeforeStartAndOverridesInitialSnapshot(t *testing.T) {
 	if err := base.DisableByName(t.Context(), "job"); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.RefreshJob("job"); err != nil {
-		t.Fatal(err)
-	}
+	m.RefreshJob("job")
 	close(release)
 	if err := <-started; err != nil {
 		t.Fatal(err)
@@ -132,17 +126,13 @@ func TestRefreshReadsChangesArrivingDuringReadAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { awaitCronDone(t, m.Stop().Done()) }()
-	if err := m.RefreshJob("job"); err != nil {
-		t.Fatal(err)
-	}
+	m.RefreshJob("job")
 	awaitCronDone(t, reading)
 	if err := base.DisableByName(t.Context(), "job"); err != nil {
 		t.Fatal(err)
 	}
 	for range 3 {
-		if err := m.RefreshJob("job"); err != nil {
-			t.Fatal(err)
-		}
+		m.RefreshJob("job")
 	}
 	close(release)
 	awaitRefreshCondition(t, func() bool {
@@ -168,7 +158,7 @@ func TestRefreshReloadsModifiedDeletedAndRecreatedJobs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = m.RefreshJob("job")
+	m.RefreshJob("job")
 	awaitRefreshCondition(t, func() bool {
 		job, _ := base.GetByName(t.Context(), "job")
 		return job.NextRunAt != nil && job.NextRunAt.Hour() == 4
@@ -176,13 +166,13 @@ func TestRefreshReloadsModifiedDeletedAndRecreatedJobs(t *testing.T) {
 	if err := base.DeleteByName(t.Context(), "job"); err != nil {
 		t.Fatal(err)
 	}
-	_ = m.RefreshJob("job")
+	m.RefreshJob("job")
 	awaitRefreshCondition(t, func() bool { return !scheduledJob(m, "job") })
 	job := seedRefreshJob(t, base, "job")
 	if old.ID == job.ID {
 		t.Fatal("fixture did not recreate identity")
 	}
-	_ = m.RefreshJob("job")
+	m.RefreshJob("job")
 	awaitRefreshCondition(t, func() bool { return scheduledJob(m, "job") })
 }
 
@@ -201,7 +191,7 @@ func TestRefreshStopWaitsForActiveReadAndRejectsLateWork(t *testing.T) {
 	if err := m.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	_ = m.RefreshJob("job")
+	m.RefreshJob("job")
 	awaitCronDone(t, reading)
 	stopped := m.Stop()
 	select {
@@ -209,7 +199,7 @@ func TestRefreshStopWaitsForActiveReadAndRejectsLateWork(t *testing.T) {
 		t.Fatal("stop ignored active refresh")
 	default:
 	}
-	_ = m.RefreshJob("late")
+	m.RefreshJob("late")
 	close(release)
 	awaitCronDone(t, stopped.Done())
 	if reads.Load() != 1 {
@@ -239,12 +229,12 @@ func TestRefreshIsolatesBadDefinitionAndReadFailure(t *testing.T) {
 	if !scheduledJob(m, "good") || scheduledJob(m, "bad") {
 		t.Fatal("bad row affected healthy scheduling")
 	}
-	_ = m.RefreshJob("bad")
+	m.RefreshJob("bad")
 	awaitRefreshCondition(t, func() bool { return !fail.Load() })
 	base.mu.Lock()
 	base.jobs["bad"].Metadata = ""
 	base.mu.Unlock()
-	_ = m.RefreshJob("bad")
+	m.RefreshJob("bad")
 	awaitRefreshCondition(t, func() bool { return scheduledJob(m, "bad") })
 }
 
@@ -253,13 +243,11 @@ func TestFinishingOldRunDoesNotCountIntoRecreatedJob(t *testing.T) {
 	old := seedRefreshJob(t, base, "job")
 	started, release := make(chan struct{}), make(chan struct{})
 	m := NewManager(base)
-	if err := m.RegisterHandler("handler", func(context.Context, Job) error {
+	m.RegisterHandler("handler", func(context.Context, Job) error {
 		close(started)
 		<-release
 		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
+	})
 	if err := m.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}

@@ -157,8 +157,6 @@ func (s *Service) Handler(ctx context.Context, job Job) (err error) {
 		if runErr != nil {
 			record.EventName = "cron.trigger_failed"
 			record.ResultStatus = globalevents.ResultFailed
-		}
-		if runErr != nil {
 			record.Level = slog.LevelWarn
 			if globalevents.LogStatus(runErr) == globalevents.ResultCanceled {
 				record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled

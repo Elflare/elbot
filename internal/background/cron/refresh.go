@@ -11,22 +11,20 @@ import (
 )
 
 // RefreshJob 只登记任务标识；启动前也接纳，读库和调度由 Manager 串行处理。
-func (m *Manager) RefreshJob(name string) error {
+func (m *Manager) RefreshJob(name string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.stopped {
-		return nil
+		return
 	}
 	m.pendingJobs[name] = struct{}{}
 	select {
 	case m.refreshWake <- struct{}{}:
 	default:
 	}
-	return nil
 }
 
 func (m *Manager) runRefreshes(ctx context.Context) {
-	defer m.workers.Done()
 	for {
 		select {
 		case <-ctx.Done():

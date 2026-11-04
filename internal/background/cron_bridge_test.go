@@ -159,12 +159,13 @@ func TestToolNotificationRefreshesCronThroughRealStorage(t *testing.T) {
 	}
 	b := cronBridge{repo: store.CronJobs()}
 	m := elcron.NewManager(b)
-	if err := m.RegisterHandler(elcron.UserHandlerName, func(context.Context, elcron.Job) error {
+	m.RegisterHandler(elcron.UserHandlerName, func(context.Context, elcron.Job) error {
 		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	connection, err := tools.ObserveCronChanged(func(event tool.CronChangedEvent) error { return m.RefreshJob(event.Name) }, signal.ConnectOptions{})
+	})
+	connection, err := tools.ObserveCronChanged(func(event tool.CronChangedEvent) error {
+		m.RefreshJob(event.Name)
+		return nil
+	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

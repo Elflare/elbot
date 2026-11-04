@@ -73,35 +73,23 @@ type cleanupMediaFunc func(context.Context) error
 
 func (f cleanupMediaFunc) Cleanup(ctx context.Context) error { return f(ctx) }
 
-func TestMaintenanceRegistrationAndFailure(t *testing.T) {
+func TestMaintenanceRegistration(t *testing.T) {
 	want := []string{"maintenance.log_cleanup", "maintenance.session_cleanup", "maintenance.sandbox_cleanup", "maintenance.media_cleanup", "maintenance.chat_history_cleanup"}
-	boom := errors.New("registration failed")
-	for failAt := 0; failAt <= len(want); failAt++ {
-		svc := &Service{Media: cleanupMediaFunc(func(context.Context) error {
-			return boom
-		})}
-		var names []string
-		err := svc.RegisterCronHandlers(func(name string, handler func(context.Context) error) error {
-			names = append(names, name)
-			if name == "maintenance.media_cleanup" {
-				err := handler(context.Background())
-				if err != boom {
-					t.Fatal("media result= err=", err)
-				}
+	boom := errors.New("cleanup failed")
+	svc := &Service{Media: cleanupMediaFunc(func(context.Context) error {
+		return boom
+	})}
+	var names []string
+	svc.RegisterCronHandlers(func(name string, handler func(context.Context) error) {
+		names = append(names, name)
+		if name == "maintenance.media_cleanup" {
+			if err := handler(context.Background()); err != boom {
+				t.Fatal("media result= err=", err)
 			}
-			if len(names) == failAt {
-				return boom
-			}
-			return nil
-		})
-		count := len(want)
-		var expected error
-		if failAt > 0 {
-			count, expected = failAt, boom
 		}
-		if err != expected || !reflect.DeepEqual(names, want[:count]) {
-			t.Fatalf("failAt=%d names=%v err=%v", failAt, names, err)
-		}
+	})
+	if !reflect.DeepEqual(names, want) {
+		t.Fatalf("names=%v", names)
 	}
 }
 

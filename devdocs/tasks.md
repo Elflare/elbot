@@ -52,10 +52,11 @@
 - ⑦ 媒体交付收尾已落实：内部结束信号复用独立 ID 切片，删除事件复制和回调转换；签名只传媒体 ID，保留锁内重读；清理 worker 统一使用 WaitGroup.Go。保留真实退出等待、失败资源重试和独立清理上下文。
 - ⑦ 调用方媒体已落实：Tool 删除重复查重的 retain 和重复 metadata 快照，改为读取持有句柄信息；write 删除未用接收器；Skill 两种执行入口删除三处多余作用域。保留模型重试的分次释放及 Hook 部分清理状态。
 - ⑦ 提交链收尾已落实：EncodeMaterials 只返回字符串，删除两处调用方错误分支；Responses 删除纯文本／InputContent 和 NativeCall 编码的不可达错误分支；工具 worker 统一使用 WaitGroup.Go。保留原生 JSON 校验、引用事务及取消后等待退出。
+- ⑧ 调度入口已落实：注册链和 RefreshJob 删除恒为 nil 的错误返回及调用方分支；Elnis 接管结果删除不可达的 JSON 编码错误分支；Cron 合并日志错误判断，刷新 worker 使用 WaitGroup.Go。保留锁内登记、停止等待、恢复重读和投递 token 校验。
 - 保留：① Hook 前后取消判断、等待路由媒体准备及指令提交前准入复查；② 跨锁区间的状态复查、Request 取消后等待 done、追加恢复空输入检查、关闭完成优先返回。
-- 验证：本轮 gofmt、diff 检查、go test ./internal/agent/... ./internal/tool/execution ./internal/storage/sqlite 及 go test -race ./internal/tool/execution 通过。
+- 验证：本轮 gofmt、diff 检查、go test ./internal/background/... ./internal/app/... 及 go test -race ./internal/background/cron 通过。
 - 支线：Hook 和媒体内部实现留给对应阶段，命令内部业务留给⑨。
-- 当前阶段：⑦ 已收口，覆盖媒体主链、调用方资源交接及工具结果引用事务。下一入口为⑧ 后台任务，沿 Cron 调度／Elnis 接收 → Agent 执行 → 报告落库 → 投递／恢复推进，维持扩大的单轮审查范围。
+- 当前阶段：⑧ 已审查 Cron 调度／刷新／恢复入口、后台 Agent 转接、Elnis 模型执行及相关测试。下一入口为报告落库 → 部分回执 → 恢复投递，随后补齐 Elnis 接收／去重链，维持扩大的单轮审查范围。
 
 ## 不一定实现
 
