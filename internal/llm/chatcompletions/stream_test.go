@@ -23,7 +23,7 @@ func TestChatStream_CompletedOutput(t *testing.T) {
 				`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"lookup","arguments":"{\"name\":"}}]}}]}`,
 				`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"alpha\"}"}}]},"finish_reason":"tool_calls"}]}`,
 			},
-			calls:  []ToolCallDelta{{Index: 0, ID: "call_1", Name: "lookup", Args: `{"name":"alpha"}`}},
+			calls:  []ToolCallDelta{{ID: "call_1", Name: "lookup", Args: `{"name":"alpha"}`}},
 			finish: "tool_calls",
 		},
 		{
@@ -34,8 +34,8 @@ func TestChatStream_CompletedOutput(t *testing.T) {
 				`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"alpha\"}"}}]},"finish_reason":"tool_calls"}]}`,
 			},
 			calls: []ToolCallDelta{
-				{Index: 0, ID: "call_0", Name: "lookup", Args: `{"name":"alpha"}`},
-				{Index: 2, ID: "call_2", Name: "lookup", Args: `{"name":"beta"}`},
+				{ID: "call_0", Name: "lookup", Args: `{"name":"alpha"}`},
+				{ID: "call_2", Name: "lookup", Args: `{"name":"beta"}`},
 			},
 			finish: "tool_calls",
 		},

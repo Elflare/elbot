@@ -61,14 +61,11 @@ type InputContent struct {
 }
 
 func InputMessage(role string, content []InputContent) (Item, error) {
-	raw, err := json.Marshal(struct {
+	raw, _ := json.Marshal(struct {
 		Type    string         `json:"type"`
 		Role    string         `json:"role"`
 		Content []InputContent `json:"content"`
 	}{"message", role, content})
-	if err != nil {
-		return Item{}, err
-	}
 	return ParseItem(raw)
 }
 

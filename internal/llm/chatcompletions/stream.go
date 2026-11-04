@@ -84,7 +84,7 @@ func (a *Client) readStream(ctx context.Context, sse *httpclient.SSE, out chan<-
 			sort.Ints(indices)
 			for _, index := range indices {
 				acc := accums[index]
-				chunk.ToolCallDeltas = append(chunk.ToolCallDeltas, ToolCallDelta{Index: index, ID: acc.id, Name: acc.name, Args: acc.args.String()})
+				chunk.ToolCallDeltas = append(chunk.ToolCallDeltas, ToolCallDelta{ID: acc.id, Name: acc.name, Args: acc.args.String()})
 			}
 		}
 		if !send(chunk) {

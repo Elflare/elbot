@@ -95,8 +95,8 @@ func testModelConfig(t *testing.T, opts testModelOptions) *config.Config {
 						finish := chunk.FinishReason
 						if len(chunk.ToolCallDeltas) > 0 {
 							calls := []map[string]any{}
-							for _, call := range chunk.ToolCallDeltas {
-								calls = append(calls, map[string]any{"index": call.Index, "id": call.ID, "function": map[string]string{"name": call.Name, "arguments": call.Args}})
+							for index, call := range chunk.ToolCallDeltas {
+								calls = append(calls, map[string]any{"index": index, "id": call.ID, "function": map[string]string{"name": call.Name, "arguments": call.Args}})
 							}
 							delta["tool_calls"] = calls
 							finish = "tool_calls"

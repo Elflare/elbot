@@ -17,10 +17,9 @@ type Chunk struct {
 
 // ToolCallDelta is an accumulated tool call emitted when the choice finishes.
 type ToolCallDelta struct {
-	Index int
-	ID    string
-	Name  string
-	Args  string // Arguments assembled from stream fragments.
+	ID   string
+	Name string
+	Args string // Arguments assembled from stream fragments.
 }
 
 type openAIStreamChunk struct {
