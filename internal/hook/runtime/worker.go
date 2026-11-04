@@ -162,16 +162,13 @@ func (w *worker) run() {
 	w.pending = map[string]chan frame{}
 	w.mu.Unlock()
 	// Both loops belong to this admitted startup, even if Close begins next.
-	w.manager.workWG.Add(2)
-	w.manager.mu.RUnlock()
-	go func() {
-		defer w.manager.workWG.Done()
+	w.manager.workWG.Go(func() {
 		w.readLoop(stdout)
-	}()
-	go func() {
-		defer w.manager.workWG.Done()
+	})
+	w.manager.workWG.Go(func() {
 		w.waitLoop(cmd)
-	}()
+	})
+	w.manager.mu.RUnlock()
 
 	ctx, cancel := context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.StartupTimeoutSeconds)*time.Second)
 	defer cancel()

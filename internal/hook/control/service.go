@@ -83,8 +83,7 @@ func (s *Service) PreparePluginReload(id string) (func() error, error) {
 	var config *share.RuntimeConfig
 	for i := range candidate.Runtimes {
 		if candidate.Runtimes[i].ID == id {
-			value := candidate.Runtimes[i]
-			config = &value
+			config = &candidate.Runtimes[i]
 			break
 		}
 	}

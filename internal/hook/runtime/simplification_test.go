@@ -220,11 +220,11 @@ func TestTransientWorkersAreIsolatedByPlugin(t *testing.T) {
 		t.Fatal(err)
 	}
 	key := routeKey{Actor: contextinfo.ActorIdentity{Platform: "cli", ID: "actor"}}
-	firstWorker, err := m.startTransient(t.Context(), config, key)
+	firstWorker, err := m.startTransient(t.Context(), config.ID, key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondWorker, err := m.startTransient(t.Context(), second, key)
+	secondWorker, err := m.startTransient(t.Context(), second.ID, key)
 	if err != nil {
 		t.Fatal(err)
 	}

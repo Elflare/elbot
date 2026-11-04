@@ -167,11 +167,9 @@ func (m *Manager) Apply(configs []share.RuntimeConfig, commit func(string)) erro
 	failures := make([]error, len(ids))
 	var wg sync.WaitGroup
 	for i, id := range ids {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			failures[i] = m.ReplacePlugin(id, next[id], func() { commit(id) })
-		}()
+		})
 	}
 	wg.Wait()
 	return errors.Join(failures...)
@@ -343,11 +341,9 @@ func stopWorkers(workers []*worker) error {
 	failures := make([]error, len(workers))
 	var wg sync.WaitGroup
 	for i, worker := range workers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			failures[i] = worker.stop(context.Background())
-		}()
+		})
 	}
 	wg.Wait()
 	return errors.Join(failures...)
@@ -372,12 +368,8 @@ func (m *Manager) startTask(task func()) error {
 		m.mu.Unlock()
 		return ErrClosed
 	}
-	m.workWG.Add(1)
+	m.workWG.Go(task)
 	m.mu.Unlock()
-	go func() {
-		defer m.workWG.Done()
-		task()
-	}()
 	return nil
 }
 
@@ -501,7 +493,7 @@ func (m *Manager) Handle(ctx context.Context, id string, event share.Event, defa
 		worker = m.worker(id)
 	case share.RuntimeModeTransient:
 		var err error
-		worker, err = m.startTransient(ctx, config, routeKeyFor(event))
+		worker, err = m.startTransient(ctx, id, routeKeyFor(event))
 		if err != nil {
 			return event, err
 		}
@@ -524,19 +516,18 @@ func (m *Manager) Handle(ctx context.Context, id string, event share.Event, defa
 	return updated, err
 }
 
-func (m *Manager) startTransient(ctx context.Context, config share.RuntimeConfig, key routeKey) (*worker, error) {
+func (m *Manager) startTransient(ctx context.Context, id string, key routeKey) (*worker, error) {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
 		return nil, ErrClosed
 	}
-	current, ok := m.configs[config.ID]
+	config, ok := m.configs[id]
 	if !ok {
 		m.mu.Unlock()
-		err := fmt.Errorf("hook worker %q is no longer configured", config.ID)
+		err := fmt.Errorf("hook worker %q is no longer configured", id)
 		return nil, err
 	}
-	config = current
 	for _, old := range m.transient {
 		if old.config.ID == config.ID {
 			old.mu.Lock()
@@ -588,9 +579,7 @@ func (m *Manager) stopTransient(key routeKey, wanted *worker) {
 	worker.mu.Lock()
 	worker.manualStop = true
 	worker.mu.Unlock()
-	m.workWG.Add(1)
-	go func() {
-		defer m.workWG.Done()
+	m.workWG.Go(func() {
 		_ = worker.stop(context.Background())
-	}()
+	})
 }

@@ -44,7 +44,7 @@ func loadConfig(opts Options) (Config, string, error) {
 		cfg.Rules[i].source = source
 	}
 
-	if err := normalizeLoadedRules(&cfg); err != nil {
+	if err := normalizeLoadedRules(cfg.Rules); err != nil {
 		return Config{}, path, fmt.Errorf("parse hook rule config %q: %w", path, err)
 	}
 	if err := validateLoadedRules(cfg.Rules); err != nil {
@@ -119,19 +119,18 @@ func loadConfig(opts Options) (Config, string, error) {
 			pcfg.Rules[i].source = source
 			pcfg.Rules[i].clearBlockConfig()
 		}
-		pluginRules := Config{Rules: pcfg.Rules}
-		if err := normalizeLoadedRules(&pluginRules); err != nil {
+		if err := normalizeLoadedRules(pcfg.Rules); err != nil {
 			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
 			continue
 		}
-		if err := validateLoadedRules(pluginRules.Rules); err != nil {
+		if err := validateLoadedRules(pcfg.Rules); err != nil {
 			reportPluginConfigError(context.Background(), opts, strings.TrimSpace(ref.Name), pluginPath, err)
 			continue
 		}
 		if runtimeID != "" {
 			cfg.Runtimes = append(cfg.Runtimes, *pcfg.Plugin.Runtime)
 		}
-		cfg.Rules = append(cfg.Rules, pluginRules.Rules...)
+		cfg.Rules = append(cfg.Rules, pcfg.Rules...)
 	}
 
 	seen := map[string]int{}
@@ -204,9 +203,9 @@ func pathWithin(base, path string) bool {
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
-func normalizeLoadedRules(cfg *Config) error {
-	for i := range cfg.Rules {
-		rule := &cfg.Rules[i]
+func normalizeLoadedRules(rules []Rule) error {
+	for i := range rules {
+		rule := &rules[i]
 		if err := rule.normalize(); err != nil {
 			return fmt.Errorf("rule %d: %w", i+1, err)
 		}

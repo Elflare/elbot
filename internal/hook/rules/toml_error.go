@@ -3,6 +3,7 @@
 package rules
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -16,7 +17,7 @@ func decodeTOMLFile(path string, target any) error {
 	if err != nil {
 		return fmt.Errorf("read hook rule config %q: %w", path, err)
 	}
-	decoder := toml.NewDecoder(strings.NewReader(string(data)))
+	decoder := toml.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		return detailedTOMLDecodeError(path, err)

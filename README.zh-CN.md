@@ -14,7 +14,7 @@
 ## 简介
 
 ElBot 是一个使用 Go 编写的轻量级 Agent/Chatbot 框架，目标是在保留可扩展性的同时，尽量降低运行成本、上下文成本和维护复杂度。
-支持普通聊天、工具调用、Hook 扩展、长期任务调度、持久化会话与上下文压缩，适合个人助理、平台机器人和可编排自动化助手等场景。
+支持普通聊天、工具调用、事件感知、Hook 扩展、长期任务调度、持久化会话等，适合个人助理、平台机器人和可编排自动化助手等场景。
 
 <!-- manual-header:end -->
 
@@ -55,7 +55,7 @@ ElBot 不会在每轮对话中默认注入所有工具的完整 schema，而是�
 
 **ELyph 任务表示法**： ELyph 用于描述 LLM Cron 与原生 Skill。目标是减少自然语言任务描述中的歧义，用更短、更稳定的结构表达输入、输出、步骤、条件和约束。相比随意 Markdown，ELyph 更适合 LLM 之间复用和传递任务，也便于 lint、审计和工具化处理。
 
-**可由 LLM 创建的 EL Skill**： ElBot 内置 `create_el_skill` 元工具，允许 LLM 将可复用经验沉淀为 EL Skill。创建时自动校验 ELyph 语法，可选附带 Go 源码并编译；创建后的纯 ELyph 文本或 Go 源码由统一的 `read_el_skill` / `modify_el_skill` 维护，源码改完后通过 `finalize_el_skill` 统一格式化、编译并返回检查结果。
+**可由 LLM 创建的 EL Skill**： ElBot 内置 `create_el_skill` 元工具，允许 LLM 将可复用经验沉淀为 EL Skill。创建时自动校验 ELyph 语法，可选附带 Go 源码并编译。
 
 **兼容外置 AgentSkill**： ElBot 兼容遵从 agentskills.io 风格的外置 AgentSkill。可通过配置将任意 AgentSKill 脚本作为工具使用。
 

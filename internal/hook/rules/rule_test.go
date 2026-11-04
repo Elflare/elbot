@@ -298,7 +298,7 @@ func TestRegisteredRoleGatesRunOnce(t *testing.T) {
 					rule.source.RuntimeID, rule.Actions = "worker", nil
 				}
 				cfg := Config{Rules: []Rule{rule}}
-				if err := normalizeLoadedRules(&cfg); err != nil {
+				if err := normalizeLoadedRules(cfg.Rules); err != nil {
 					t.Fatal(err)
 				}
 				if err := validateLoadedRules(cfg.Rules); err != nil {
