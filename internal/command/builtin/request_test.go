@@ -189,7 +189,7 @@ func TestStopCommandCancelsNumberedTurnAndChildren(t *testing.T) {
 
 func TestStopCommandCompletesRequestIDs(t *testing.T) {
 	manager := request.NewManager(testutil.IDSequence())
-	started, _, done, _ := manager.Start(context.Background(), request.StartRequest{SessionID: "s1", Kind: request.KindLLM, Label: "chat"})
+	started, _, done, _ := manager.Start(context.Background(), request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
 	defer done()
 
 	cmd := NewStop(Deps{CommandText: testCommandText, Sessions: newSessionSupervisor(t, newCommandTestStore(t)), Requests: manager}).(command.Completer)

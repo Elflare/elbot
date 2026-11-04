@@ -12,7 +12,7 @@ func TestAllocationFailureDoesNotRegisterRequest(t *testing.T) {
 	want := errors.New("reserve failed")
 	m := NewManager(func(context.Context) (int64, error) { return 0, want })
 	parent := t.Context()
-	req, ctx, done, err := m.Start(parent, StartRequest{SessionID: "s1", Kind: KindLLM})
+	req, ctx, done, err := m.Start(parent, StartRequest{SessionID: "s1", Kind: KindTurn})
 	if !errors.Is(err, want) || req.ID != "" || ctx != nil || done != nil || len(m.List()) != 0 {
 		t.Fatalf("allocation failure left request state: %+v ctx=%v err=%v", req, ctx, err)
 	}
@@ -23,7 +23,7 @@ func TestAllocationFailureDoesNotRegisterRequest(t *testing.T) {
 
 func TestManagerStartListAndDone(t *testing.T) {
 	m := NewManager(testutil.IDSequence())
-	req, ctx, done, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM, Label: "chat", Timeout: time.Minute})
+	req, ctx, done, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindTurn, Label: "chat", Timeout: time.Minute})
 
 	requests := m.List()
 	if len(requests) != 1 || requests[0].ID != req.ID {
@@ -42,7 +42,7 @@ func TestManagerStartListAndDone(t *testing.T) {
 
 func TestManagerCancel(t *testing.T) {
 	m := NewManager(testutil.IDSequence())
-	req, ctx, done, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM})
+	req, ctx, done, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindTurn})
 	defer done()
 	got, ok := m.Get(req.ID)
 	if !ok || got.ID != req.ID {
@@ -71,7 +71,7 @@ func TestManagerCancelSession(t *testing.T) {
 	defer done1()
 	child, ctx2, done2, _ := m.Start(ctx1, StartRequest{ParentID: parent.ID, SessionID: "s1", Kind: KindTool})
 	defer done2()
-	_, ctx3, done3, _ := m.Start(context.Background(), StartRequest{SessionID: "s2", Kind: KindLLM})
+	_, ctx3, done3, _ := m.Start(context.Background(), StartRequest{SessionID: "s2", Kind: KindTurn})
 	defer done3()
 	if child.ParentID != parent.ID {
 		t.Fatalf("child parent = %q, want %q", child.ParentID, parent.ID)
@@ -94,7 +94,7 @@ func TestManagerCancelSession(t *testing.T) {
 
 func TestManagerTimeoutWaitsForExecutionCompletion(t *testing.T) {
 	m := NewManager(testutil.IDSequence())
-	req, ctx, done, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindLLM, Timeout: 10 * time.Millisecond})
+	req, ctx, done, _ := m.Start(context.Background(), StartRequest{SessionID: "s1", Kind: KindTurn, Timeout: 10 * time.Millisecond})
 	defer done()
 	assertCanceled(t, ctx)
 	if got, ok := m.Get(req.ID); !ok || !got.Stopping {
@@ -118,11 +118,11 @@ func assertCanceled(t *testing.T, ctx context.Context) {
 func TestBatchCancelKeepsInheritedStopsAndMatchesEmptySession(t *testing.T) {
 	m := NewManager(testutil.IDSequence())
 	parent, stopParent := context.WithCancel(t.Context())
-	inherited, inheritedCtx, doneInherited, _ := m.Start(parent, StartRequest{})
+	inherited, inheritedCtx, doneInherited, _ := m.Start(parent, StartRequest{Kind: KindHook})
 	defer doneInherited()
-	empty, emptyCtx, doneEmpty, _ := m.Start(t.Context(), StartRequest{})
+	empty, emptyCtx, doneEmpty, _ := m.Start(t.Context(), StartRequest{Kind: KindHook})
 	defer doneEmpty()
-	_, otherCtx, doneOther, _ := m.Start(t.Context(), StartRequest{SessionID: "other"})
+	_, otherCtx, doneOther, _ := m.Start(t.Context(), StartRequest{SessionID: "other", Kind: KindHook})
 	defer doneOther()
 	stopParent()
 	assertCanceled(t, inheritedCtx)

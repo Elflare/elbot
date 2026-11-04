@@ -16,7 +16,6 @@ type Kind string
 
 const (
 	KindTurn     Kind = "turn"
-	KindLLM      Kind = "llm"
 	KindTool     Kind = "tool"
 	KindHook     Kind = "hook"
 	KindCompress Kind = "compress"
@@ -93,9 +92,6 @@ func (m *Manager) Start(parent context.Context, start StartRequest) (Request, co
 		Kind:      start.Kind,
 		Label:     start.Label,
 		StartedAt: startedAt,
-	}
-	if req.Kind == "" {
-		req.Kind = KindLLM
 	}
 	execution, _ := contextinfo.ExecutionFromContext(ctx)
 	execution.RequestID, execution.ParentRequestID = req.ID, req.ParentID

@@ -30,7 +30,7 @@ func (c *ExecutionCoordinator) ModelContext(ctx context.Context, row *storage.Se
 func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.Session, text string, out agentshare.Output) (*storage.Session, turn.Input, error) {
 	ctx, release, err := c.enterTurn(ctx, session)
 	if err != nil {
-		if ctx.Err() == nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) && !errors.Is(err, errExecutionConflict) {
+		if ctx.Err() == nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) {
 			agentshare.ReportFailure(ctx, session.ID, err, out.Notify)
 		}
 		return session, turn.Input{}, err
@@ -77,7 +77,7 @@ func (c *ExecutionCoordinator) runAttempt(ctx context.Context, session *storage.
 	}
 	ctx, release, err = c.enterTurn(ctx, session)
 	if err != nil {
-		if ctx.Err() == nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) && !errors.Is(err, errExecutionConflict) {
+		if ctx.Err() == nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) {
 			agentshare.ReportFailure(ctx, session.ID, err, out.Notify)
 		}
 		return session, turn.Input{}, err
