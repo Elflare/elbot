@@ -14,9 +14,6 @@ func (r *Resolver) DiscoveryStateUpdate(ctx context.Context, result *share.Resul
 	if err := ctx.Err(); err != nil {
 		return share.StateUpdate{}, err
 	}
-	if result == nil {
-		return share.StateUpdate{}, nil
-	}
 	update := share.StateUpdate{}
 	if len(result.Data) > 0 {
 		var discovery share.DiscoveryResult

@@ -167,7 +167,7 @@ func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (err e
 	}
 	native.Inputs = c.inputs
 	native.Checkpoint.MessageID = head.ID
-	native.Calls = append([]storage.NativeCall(nil), c.calls...)
+	native.Calls = c.calls
 	step = "commit"
 	err = s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, ToolBatch: batch, Native: &native}, "begin_tool_transcript")
 	if err != nil {
