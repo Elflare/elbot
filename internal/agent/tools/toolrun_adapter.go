@@ -106,7 +106,7 @@ func (d toolRunDeps) PrepareToolContext(ctx context.Context, session *storage.Se
 	return workspace.WithWorkspaceStore(ctx, d.NewWorkspaceStore(session.ID))
 }
 
-func (d toolRunDeps) ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool {
+func (d toolRunDeps) ShouldSendPreview(ctx context.Context, assistantText string) bool {
 	return d.identity.IsCLI(ctx) || strings.TrimSpace(assistantText) == ""
 }
 

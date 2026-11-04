@@ -65,7 +65,7 @@ func (d *runnerTestDeps) PrepareToolCall(ctx context.Context, session *storage.S
 	return call, nil
 }
 
-func (d *runnerTestDeps) ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool {
+func (d *runnerTestDeps) ShouldSendPreview(context.Context, string) bool {
 	return false
 }
 

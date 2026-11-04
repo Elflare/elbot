@@ -191,7 +191,7 @@ type ConfirmResult struct {
 type RunnerDeps interface {
 	RefreshExecution(context.Context, *storage.Session) (context.Context, error)
 	PrepareToolCall(context.Context, *storage.Session, llm.ToolCallRequest) (llm.ToolCallRequest, error)
-	ShouldSendPreview(context.Context, *storage.Session, llm.ToolCallRequest, string) bool
+	ShouldSendPreview(context.Context, string) bool
 	ConfirmToolCall(context.Context, string, llm.ToolCallRequest, RiskAssessment, string) (ConfirmResult, error)
 	StartToolRequest(context.Context, string, string) (context.Context, func(), error)
 	PrepareToolContext(context.Context, *storage.Session, llm.ToolCallRequest) context.Context

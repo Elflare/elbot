@@ -77,7 +77,6 @@ func (c messageCommitter) Commit(ctx context.Context, message *storage.Message, 
 // ToolTranscriptCommitter reserves ordered slots and commits each final result.
 type ToolTranscriptCommitter struct {
 	Messages  *MessageStore
-	SessionID string
 	committed []llm.LLMMessage
 	head      *storage.Message
 	calls     []llm.ToolCallRequest
@@ -101,16 +100,16 @@ func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Messa
 		agentshare.EmitAgentLog(ctx, facts, record)
 	}()
 
-	c.SessionID, c.head = head.SessionID, head
+	c.head = head
 	metadata, err := agentshare.AssistantMessageMetadata(head.Metadata)
 	if err != nil {
 		return err
 	}
-	c.calls = append([]llm.ToolCallRequest(nil), metadata.ToolCalls...)
+	c.calls = metadata.ToolCalls
 	c.results = make([]*storage.Message, len(c.calls))
 	c.remaining = len(c.calls)
 	for i, call := range c.calls {
-		stored := agentshare.ToolResultStorageMessage(c.SessionID, llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool outcome is unknown: result has not been saved; do not assume success or retry automatically")})
+		stored := agentshare.ToolResultStorageMessage(c.head.SessionID, llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool outcome is unknown: result has not been saved; do not assume success or retry automatically")})
 		fields, _ := storage.DecodeSessionMetadata(stored.Metadata)
 		_ = fields.Set("tool_result_status", "pending")
 		stored.Metadata, _ = fields.Encode()
@@ -124,18 +123,18 @@ func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Messa
 	_ = fields.Set("tool_batch_status", "pending")
 	head.Metadata, _ = fields.Encode()
 	step = "commit"
-	return c.Messages.Commit(ctx, storage.DialogueCommit{SessionID: c.SessionID, ToolBatch: batch}, "begin_tool_transcript")
+	return c.Messages.Commit(ctx, storage.DialogueCommit{SessionID: c.head.SessionID, ToolBatch: batch}, "begin_tool_transcript")
 }
 func (c *ToolTranscriptCommitter) Prepared(context.Context, int, llm.ToolCallRequest) error {
 	return nil
 }
 func (c *ToolTranscriptCommitter) Result(ctx context.Context, index int, call llm.ToolCallRequest, _ llm.LLMMessage, update *storage.ToolResultCommit) error {
-	commit := storage.DialogueCommit{SessionID: c.SessionID, ToolResult: update}
+	commit := storage.DialogueCommit{SessionID: c.head.SessionID, ToolResult: update}
 	if call.Arguments != c.calls[index].Arguments {
 		previous := media.ArgumentMediaIDs(c.calls[index].Arguments)
 		for _, id := range media.ArgumentMediaIDs(call.Arguments) {
 			if !slices.Contains(previous, id) {
-				commit.MediaReferences = append(commit.MediaReferences, storage.MediaReference{MediaID: id, OwnerType: "session_tool", OwnerID: c.SessionID, SessionID: c.SessionID, Purpose: "input", CreatedAt: storage.Now()})
+				commit.MediaReferences = append(commit.MediaReferences, storage.MediaReference{MediaID: id, OwnerType: "session_tool", OwnerID: c.head.SessionID, SessionID: c.head.SessionID, Purpose: "input", CreatedAt: storage.Now()})
 			}
 		}
 	}
@@ -164,7 +163,7 @@ func (c *ToolTranscriptCommitter) Flush(ctx context.Context) (err error) {
 			return
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		facts.SessionID = c.SessionID
+		facts.SessionID = c.head.SessionID
 		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, Module: "agent", EventName: "tool_transcript_projection_failed", ResultStatus: events.LogStatus(err), Content: err.Error()}
 		if record.ResultStatus == events.ResultCanceled {
 			record.Level = slog.LevelInfo

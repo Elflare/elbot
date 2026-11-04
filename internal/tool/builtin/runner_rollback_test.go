@@ -74,7 +74,7 @@ func (*runnerTestDeps) Flush(context.Context) error {
 func (d *runnerTestDeps) PrepareToolCall(_ context.Context, _ *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error) {
 	return call, nil
 }
-func (d *runnerTestDeps) ShouldSendPreview(context.Context, *storage.Session, llm.ToolCallRequest, string) bool {
+func (d *runnerTestDeps) ShouldSendPreview(context.Context, string) bool {
 	return false
 }
 func (d *runnerTestDeps) StartToolRequest(ctx context.Context, _, _ string) (context.Context, func(), error) {

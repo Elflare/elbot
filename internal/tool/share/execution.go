@@ -38,7 +38,7 @@ type RunnerDeps interface {
 	RefreshExecution(context.Context, *storage.Session) (context.Context, error)
 	// Hook sources publish their own records; Runner consumes only the business return.
 	PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error)
-	ShouldSendPreview(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, assistantText string) bool
+	ShouldSendPreview(ctx context.Context, assistantText string) bool
 	ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment RiskAssessment, detail string) (ConfirmResult, error)
 	// StartToolRequest registers the request and returns its context and cleanup.
 	StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, func(), error)

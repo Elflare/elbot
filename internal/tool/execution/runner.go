@@ -230,7 +230,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		task.risk = riskText
 		deps.AddToolUse(sessionID, call.Name)
 		// 调用进度提示独立于需要交互确认时展示的准备结果。
-		if !batchPreviewSent && deps.ShouldSendPreview(ctx, req.Session, call, req.AssistantText) {
+		if !batchPreviewSent && deps.ShouldSendPreview(ctx, req.AssistantText) {
 			deps.SendPreview(ctx, fmt.Sprintf("正在调用 %s：%s", call.Name, previewArguments(call.Arguments)))
 		}
 		var confirm toolshare.ConfirmResult
@@ -316,7 +316,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 }
 
 func sendBatchToolPreview(ctx context.Context, deps toolshare.RunnerDeps, req toolshare.RunRequest) bool {
-	if len(req.Calls) <= 1 || !deps.ShouldSendPreview(ctx, req.Session, llm.ToolCallRequest{}, req.AssistantText) {
+	if len(req.Calls) <= 1 || !deps.ShouldSendPreview(ctx, req.AssistantText) {
 		return false
 	}
 	lines := make([]string, 0, len(req.Calls))

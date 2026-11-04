@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"elbot/internal/llm"
-	"elbot/internal/storage"
 )
 
 type batchPreviewTestDeps struct {
@@ -17,7 +16,7 @@ type batchPreviewTestDeps struct {
 	notices [][]string
 }
 
-func (d *batchPreviewTestDeps) ShouldSendPreview(context.Context, *storage.Session, llm.ToolCallRequest, string) bool {
+func (d *batchPreviewTestDeps) ShouldSendPreview(context.Context, string) bool {
 	return d.enabled
 }
 
