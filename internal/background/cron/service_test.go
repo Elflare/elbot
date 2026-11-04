@@ -644,8 +644,8 @@ func TestCronSendAuditIncludesPlatform(t *testing.T) {
 			return delivery.Receipt{}, nil
 		},
 	})
-	if err := svc.sendToPlatforms(context.Background(), "user.cron.audit", []string{"cli"}, "hello"); err != nil {
-		t.Fatalf("sendToPlatforms: %v", err)
+	if _, err := svc.sendDeliveryOutput(context.Background(), "user.cron.audit", delivery.Target{Platform: "cli", Superadmins: true}, delivery.Text("hello"), ""); err != nil {
+		t.Fatalf("sendDeliveryOutput: %v", err)
 	}
 	joined := strings.Join(events, "|")
 	if !strings.Contains(joined, "cron.send_started:cli") || !strings.Contains(joined, "cron.send_completed:cli") {

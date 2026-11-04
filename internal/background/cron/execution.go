@@ -169,20 +169,18 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 				result.TakenOver = true
 				return takeoverState(state, result), nil
 			}
-			{
-				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
-					Level:        slog.LevelError,
-					EventName:    "copy_cron_session_failed",
-					Module:       "cron",
-					Type:         globalevents.ContentText,
-					Content:      fmt.Sprintf("copy cron session failed\njob=%v\nerror=%v", job.Name, err),
-					ContentLimit: 4096,
-					ResultStatus: globalevents.ResultFailed,
-				}
-				record.Identity = cronLogIdentity(ctx)
-				background.LogBackground(ctx, record)
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "copy_cron_session_failed",
+				Module:       "cron",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("copy cron session failed\njob=%v\nerror=%v", job.Name, err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
 			}
+			record.Identity = cronLogIdentity(ctx)
+			background.LogBackground(ctx, record)
 		}
 	}
 	state.ReportReady = true
@@ -222,10 +220,7 @@ func (s *Service) retryLLMResultFormat(ctx context.Context, job Job, meta Metada
 		return result, CronLLMResult{}, nil
 	}
 	parsed, err := background.ParseJSONResult(result.Text)
-	if err != nil {
-		return result, parsed, err
-	}
-	return result, parsed, nil
+	return result, parsed, err
 }
 
 func cronParseFailedMessage(title, sessionID string, err error) string {

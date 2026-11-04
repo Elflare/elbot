@@ -149,7 +149,7 @@ func TestDeliveryKeepsMixedFailureBeforeErrorWrapping(t *testing.T) {
 			return delivery.Receipt{}, err
 		}
 	}})
-	_, err := s.sendOutputsToPlatformTarget(ctx, "mixed", "cli", delivery.Target{Platform: "cli"}, []delivery.Output{delivery.Text("report")}, "")
+	_, err := s.sendDeliveryOutput(ctx, "mixed", delivery.Target{Platform: "cli"}, delivery.Text("report"), "")
 	if !errors.Is(err, failure) || !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}

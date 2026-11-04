@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 )
 
@@ -238,7 +239,7 @@ func (s *Service) deliverMissedOnce(ctx context.Context, job Job, meta Metadata,
 	defer func() {
 		if err != nil && ctx.Err() == nil && (!state.ReportReady || state.NeedReport) {
 			// 正文关闭时只保留失败日志；发送方记录通知自身的投递结果。
-			_ = s.sendToPlatforms(ctx, job.Name, []string{s.cliPlatformName}, fmt.Sprintf("cron 补跑失败：%s\n错误：%v", job.Name, err))
+			_, _ = s.sendDeliveryOutput(ctx, job.Name, delivery.Target{Platform: s.cliPlatformName, Superadmins: true}, delivery.Text(fmt.Sprintf("cron 补跑失败：%s\n错误：%v", job.Name, err)), "")
 		}
 	}()
 
