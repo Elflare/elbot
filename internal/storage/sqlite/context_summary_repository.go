@@ -69,9 +69,12 @@ LIMIT 1`, sessionID)
 }
 
 func (r *ContextSummaryRepository) LatestBySessionUpTo(ctx context.Context, sessionID, toMessageID string) (*storage.ContextSummary, error) {
-	toPosition, err := r.messagePositionExpr(ctx, sessionID, toMessageID)
-	if err != nil {
-		return nil, err
+	var toCreatedAt string
+	if err := r.db.QueryRowContext(ctx, `SELECT created_at FROM messages WHERE id = ? AND session_id = ?`, toMessageID, sessionID).Scan(&toCreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, storage.ErrNotFound
+		}
+		return nil, fmt.Errorf("get checkpoint message: %w", err)
 	}
 	row := r.db.QueryRowContext(ctx, `
 SELECT cs.id, cs.session_id, cs.from_message_id, cs.to_message_id, cs.summary, cs.provider, cs.model,
@@ -81,7 +84,7 @@ FROM context_summaries cs
 JOIN messages m ON m.id = cs.to_message_id AND m.session_id = cs.session_id
 WHERE cs.session_id = ? AND (m.created_at < ? OR (m.created_at = ? AND m.id <= ?))
 ORDER BY m.created_at DESC, m.id DESC, cs.created_at DESC, cs.id DESC
-LIMIT 1`, sessionID, toPosition.createdAt, toPosition.createdAt, toPosition.id)
+LIMIT 1`, sessionID, toCreatedAt, toCreatedAt, toMessageID)
 
 	summary, err := scanContextSummary(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -91,27 +94,6 @@ LIMIT 1`, sessionID, toPosition.createdAt, toPosition.createdAt, toPosition.id)
 		return nil, fmt.Errorf("latest context summary up to message: %w", err)
 	}
 	return summary, nil
-}
-
-type messagePosition struct {
-	createdAt string
-	id        string
-}
-
-func (r *ContextSummaryRepository) messagePositionExpr(ctx context.Context, sessionID, messageID string) (messagePosition, error) {
-	row := r.db.QueryRowContext(ctx, `
-SELECT created_at, id
-FROM messages
-WHERE id = ? AND session_id = ?`, messageID, sessionID)
-
-	var pos messagePosition
-	if err := row.Scan(&pos.createdAt, &pos.id); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return messagePosition{}, storage.ErrNotFound
-		}
-		return messagePosition{}, fmt.Errorf("get checkpoint message: %w", err)
-	}
-	return pos, nil
 }
 
 func scanContextSummary(row interface{ Scan(dest ...any) error }) (*storage.ContextSummary, error) {

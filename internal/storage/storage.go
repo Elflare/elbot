@@ -465,7 +465,6 @@ type MessageRepository interface {
 	ListBySessionUpTo(ctx context.Context, sessionID, toMessageID string) ([]Message, error)
 	ListBySessionAfter(ctx context.Context, sessionID, afterMessageID string) ([]Message, error)
 	ListBySessionAfterUpTo(ctx context.Context, sessionID, afterMessageID, toMessageID string) ([]Message, error)
-	MapPlatformMessage(ctx context.Context, mapping PlatformMessageMap) error
 	FindByPlatformMessage(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, platformMessageID string) (*Message, error)
 }
 

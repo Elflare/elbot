@@ -227,7 +227,7 @@ func createAssistantMessages(t *testing.T, ctx context.Context, store storage.St
 
 func mapPlatformMessage(t *testing.T, ctx context.Context, store storage.Store, scope referenceTestScope, platformMessageID string, msg *storage.Message) {
 	t.Helper()
-	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: scope.Platform, ChatID: scope.ChatID, PlatformMessageID: platformMessageID, MessageID: msg.ID, SessionID: msg.SessionID, ChatType: scope.ChatType}); err != nil {
+	if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: msg.SessionID, PlatformMessageMaps: []storage.PlatformMessageMap{{Platform: scope.Platform, ChatID: scope.ChatID, PlatformMessageID: platformMessageID, MessageID: msg.ID, SessionID: msg.SessionID, ChatType: scope.ChatType}}}); err != nil {
 		t.Fatalf("map message: %v", err)
 	}
 }

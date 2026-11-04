@@ -168,10 +168,6 @@ ORDER BY created_at ASC, rowid ASC`, sessionID, afterCreatedAt, afterCreatedAt, 
 	return scanMessages(rows)
 }
 
-func (r *MessageRepository) MapPlatformMessage(ctx context.Context, mapping storage.PlatformMessageMap) error {
-	return mapPlatformMessage(ctx, r.db, mapping)
-}
-
 func mapPlatformMessage(ctx context.Context, writer sessionWriter, mapping storage.PlatformMessageMap) error {
 	if mapping.CreatedAt.IsZero() {
 		mapping.CreatedAt = storage.Now()

@@ -662,13 +662,13 @@ func TestMessageRepositoryAndPlatformMap(t *testing.T) {
 		t.Fatalf("messages = %#v", messages)
 	}
 
-	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{
+	if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: session.ID, PlatformMessageMaps: []storage.PlatformMessageMap{{
 		Platform: "qq",
 		ChatType: "group", ChatID: "1",
 		PlatformMessageID: "p1",
 		MessageID:         user.ID,
 		SessionID:         session.ID,
-	}); err != nil {
+	}}}); err != nil {
 		t.Fatalf("map platform message: %v", err)
 	}
 	mapped, err := store.Messages().FindByPlatformMessage(ctx, "qq", "group", "1", "p1")

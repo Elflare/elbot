@@ -61,7 +61,7 @@ func TestRemoveUnusedIDsPreservesRecordsAndConstraints(t *testing.T) {
 	if err != nil || row.ID != "message" {
 		t.Fatalf("mapping=%+v err=%v", row, err)
 	}
-	if err := messages.MapPlatformMessage(t.Context(), storage.PlatformMessageMap{Platform: "cli", ChatType: "private", ChatID: "local", PlatformMessageID: "platform-message", MessageID: "message", SessionID: "legacy"}); err == nil {
+	if err := (&DialogueRepository{db: db}).Commit(t.Context(), storage.DialogueCommit{SessionID: "legacy", PlatformMessageMaps: []storage.PlatformMessageMap{{Platform: "cli", ChatType: "private", ChatID: "local", PlatformMessageID: "platform-message", MessageID: "message", SessionID: "legacy"}}}); err == nil {
 		t.Fatal("duplicate mapping accepted")
 	}
 	if err := sessions.Delete(t.Context(), "legacy"); err != nil {

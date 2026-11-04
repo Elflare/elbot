@@ -568,7 +568,7 @@ func TestWithReferenceUsesGetMessageImageWhenStoreHasText(t *testing.T) {
 	if err := store.Messages().Append(ctx, assistant); err != nil {
 		t.Fatalf("append assistant: %v", err)
 	}
-	if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: "qqonebot", ChatType: "group", ChatID: "9", PlatformMessageID: "77", MessageID: assistant.ID, SessionID: session.ID}); err != nil {
+	if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: session.ID, PlatformMessageMaps: []storage.PlatformMessageMap{{Platform: "qqonebot", ChatType: "group", ChatID: "9", PlatformMessageID: "77", MessageID: assistant.ID, SessionID: session.ID}}}); err != nil {
 		t.Fatalf("map platform message: %v", err)
 	}
 

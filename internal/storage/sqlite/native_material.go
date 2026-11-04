@@ -97,10 +97,7 @@ func (r *SessionRepository) CreateMaterial(ctx context.Context, req storage.Sess
 		if seed.MediaIDs == nil {
 			seed.MediaIDs = []string{}
 		}
-		ids, err := json.Marshal(seed.MediaIDs)
-		if err != nil {
-			return err
-		}
+		ids, _ := json.Marshal(seed.MediaIDs)
 		seed.CreatedAt = storage.Now()
 		if _, err := tx.ExecContext(ctx, `INSERT INTO native_seeds(id,session_id,protocol,provider,base_url,response_id,source_checkpoint_id,items_json,materials_json,continuation_json,calls_json,media_ids_json,consumed,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,?)`, seed.ID, seed.SessionID, seed.APIType, seed.Provider, seed.BaseURL, seed.ResponseID, seed.SourceCheckpointID, seed.ItemsJSON, seed.MaterialsJSON, seed.ContinuationJSON, seed.CallsJSON, string(ids), storage.FormatTime(seed.CreatedAt)); err != nil {
 			return err
@@ -109,10 +106,7 @@ func (r *SessionRepository) CreateMaterial(ctx context.Context, req storage.Sess
 			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	return nil
+	return tx.Commit()
 }
 
 func nativeMediaReferences(ctx context.Context, tx *sql.Tx, ownerType, ownerID, sessionID string, ids []string) error {
@@ -233,10 +227,7 @@ func (r *DialogueRepository) LoadNativeWindow(ctx context.Context, session *stor
 		for _, cp := range records.Checkpoints {
 			ids = append(ids, cp.ExchangeID)
 		}
-		encoded, err := json.Marshal(ids)
-		if err != nil {
-			return nil, err
-		}
+		encoded, _ := json.Marshal(ids)
 		rows, err := tx.QueryContext(ctx, `SELECT id,session_id,protocol,provider,base_url,model,request_id,run_id,attempt,previous_checkpoint_id,request_json,response_json,items_json,status,error,created_at,input_ids_json FROM native_exchanges WHERE id IN (SELECT value FROM json_each(?))`, string(encoded))
 		if err != nil {
 			return nil, err
@@ -272,10 +263,7 @@ func (r *DialogueRepository) LoadNativeWindow(ctx context.Context, session *stor
 				ids = append(ids, call.ResultInputID)
 			}
 		}
-		results, err := json.Marshal(ids)
-		if err != nil {
-			return nil, err
-		}
+		results, _ := json.Marshal(ids)
 		rows, err = tx.QueryContext(ctx, `SELECT id,session_id,message_id,exchange_id,call_id,item_json,media_json,consumed_by,created_at FROM native_inputs WHERE consumed_by IN (SELECT value FROM json_each(?)) OR id IN (SELECT value FROM json_each(?))`, string(encoded), string(results))
 		if err != nil {
 			return nil, err

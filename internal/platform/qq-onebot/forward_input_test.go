@@ -190,7 +190,7 @@ func TestPrivateForwardKeepsAssistantResumeAndFork(t *testing.T) {
 			t.Fatal(err)
 		}
 		id := []string{"41", "42"}[i]
-		if err := store.Messages().MapPlatformMessage(ctx, storage.PlatformMessageMap{Platform: "qqonebot", ChatType: "private", ChatID: "1", PlatformMessageID: id, MessageID: message.ID, SessionID: session.ID}); err != nil {
+		if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: session.ID, PlatformMessageMaps: []storage.PlatformMessageMap{{Platform: "qqonebot", ChatType: "private", ChatID: "1", PlatformMessageID: id, MessageID: message.ID, SessionID: session.ID}}}); err != nil {
 			t.Fatal(err)
 		}
 	}
