@@ -62,10 +62,8 @@ func formatRecord(record events.LogRecord, at time.Time) ([]byte, error) {
 	if record.ResultStatus != events.ResultUnspecified {
 		fields["result_status"] = record.ResultStatus.String()
 	}
-	data, err := json.Marshal(fields)
-	if err != nil {
-		return nil, fmt.Errorf("format log record: %w", err)
-	}
+	// Fields contain strings and JSON already validated at publication.
+	data, _ := json.Marshal(fields)
 	if len(data)+1 > maxRecordBytes {
 		return nil, fmt.Errorf("format log record: exceeds %d bytes including newline", maxRecordBytes)
 	}

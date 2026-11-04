@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pelletier/go-toml/v2"
+
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
@@ -21,6 +23,16 @@ import (
 
 type testClient struct {
 	list func(context.Context) ([]string, error)
+}
+
+func readTestState(path string) (*config.StateConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var state config.StateConfig
+	err = toml.Unmarshal(data, &state)
+	return &state, err
 }
 
 func (c *testClient) Stream(context.Context, chatcompletions.Request) (<-chan chatcompletions.Chunk, error) {
@@ -129,7 +141,7 @@ func TestSelectionsPersistAndRestoreWithFallbacks(t *testing.T) {
 	if _, err := s.SelectNamingModel("q/z"); err != nil {
 		t.Fatal(err)
 	}
-	state, err := config.LoadState(opts.StatePath)
+	state, err := readTestState(opts.StatePath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +254,7 @@ func TestConcurrentCommitsPublishOnlySavedSnapshots(t *testing.T) {
 			if err := waitError(t, second); err != nil {
 				t.Fatal(err)
 			}
-			state, err := config.LoadState(opts.StatePath)
+			state, err := readTestState(opts.StatePath)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -27,8 +27,8 @@ func TestSaveStateReplacesWholeFileAndPreservesMode(t *testing.T) {
 	if err := SaveState(path, state); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := LoadState(path)
-	if err != nil {
+	var loaded StateConfig
+	if err := loadTOML(path, &loaded); err != nil {
 		t.Fatal(err)
 	}
 	if loaded.ModeModels["work"].Model != "new" || loaded.Session.DefaultMode != "chat" {
@@ -80,8 +80,8 @@ func TestSaveStateThroughSymlinkReplacesTarget(t *testing.T) {
 	if info.Mode()&os.ModeSymlink == 0 {
 		t.Fatal("state symlink was replaced")
 	}
-	loaded, err := LoadState(target)
-	if err != nil {
+	var loaded StateConfig
+	if err := loadTOML(target, &loaded); err != nil {
 		t.Fatal(err)
 	}
 	if loaded.ModeModels["work"].Model != "new" {

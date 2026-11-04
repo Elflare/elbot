@@ -355,18 +355,16 @@ func matchLogEntry(entry LogEntry, query LogQuery) bool {
 		if strings.TrimSpace(want) == "" {
 			continue
 		}
-		var value string
-		if content != nil {
-			raw := json.RawMessage(entry.Content)
-			for _, part := range strings.Split(key, ".") {
-				var object map[string]json.RawMessage
-				_ = json.Unmarshal(raw, &object)
-				raw = object[part]
-			}
-			value = string(raw)
-			if strings.HasPrefix(value, "\"") {
-				_ = json.Unmarshal(raw, &value)
-			}
+		parts := strings.Split(key, ".")
+		raw := content[parts[0]]
+		for _, part := range parts[1:] {
+			var object map[string]json.RawMessage
+			_ = json.Unmarshal(raw, &object)
+			raw = object[part]
+		}
+		value := string(raw)
+		if strings.HasPrefix(value, "\"") {
+			_ = json.Unmarshal(raw, &value)
 		}
 		if value != want {
 			return false
@@ -374,9 +372,7 @@ func matchLogEntry(entry LogEntry, query LogQuery) bool {
 	}
 	for key, needles := range query.ContentFieldContains {
 		var values []string
-		if content != nil {
-			_ = json.Unmarshal(content[key], &values)
-		}
+		_ = json.Unmarshal(content[key], &values)
 		for _, needle := range needles {
 			if strings.TrimSpace(needle) == "" {
 				continue

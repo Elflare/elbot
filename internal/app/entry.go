@@ -216,32 +216,26 @@ func startBusinessLines(ctx context.Context, lines businessLines) error {
 // waitBusinessLines 将运行结果交回 Run，清理期限从统一退出流程开始计算。
 // Platform 继续解释 TUI／Service 的退出语义；Background 在故障时不等待清理。
 func waitBusinessLines(ctx context.Context, lines businessLines) error {
-	type participant struct {
-		kind   componentKind
-		waiter Waiter
-	}
-	var participants []participant
-	for _, line := range lines {
-		if waiter, ok := line.supervisor.(Waiter); ok {
-			participants = append(participants, participant{line.kind, waiter})
-		}
-	}
-	if len(participants) == 0 {
-		<-ctx.Done()
-		return ctx.Err()
-	}
 	waitCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	type result struct {
 		kind componentKind
 		err  error
 	}
-	results := make(chan result, len(participants))
-	for _, participant := range participants {
-		go func() { results <- result{participant.kind, participant.waiter.Wait(waitCtx)} }()
+	results := make(chan result, len(lines))
+	waiting := 0
+	for _, line := range lines {
+		if waiter, ok := line.supervisor.(Waiter); ok {
+			waiting++
+			go func() { results <- result{line.kind, waiter.Wait(waitCtx)} }()
+		}
+	}
+	if waiting == 0 {
+		<-ctx.Done()
+		return ctx.Err()
 	}
 	var errs []error
-	for range participants {
+	for range waiting {
 		result := <-results
 		// 首个结果结束运行等待；另一 Wait 必须响应等待上下文，实际收尾由 Close 负责。
 		cancel()

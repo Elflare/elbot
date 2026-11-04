@@ -410,14 +410,6 @@ type StateSessionConfig struct {
 	DefaultMode string `toml:"default_mode"`
 }
 
-func LoadState(path string) (*StateConfig, error) {
-	state := &StateConfig{}
-	if err := loadTOML(path, state); err != nil {
-		return nil, err
-	}
-	return state, nil
-}
-
 func SaveState(path string, state StateConfig) error {
 	data, err := toml.Marshal(state)
 	if err != nil {
@@ -707,11 +699,11 @@ func (c *Config) resolveProviderAPIKeys(configDir string) error {
 		if strings.TrimSpace(provider.APIKey) != "" || strings.TrimSpace(provider.APIKeyEnv) == "" {
 			continue
 		}
-		value, ok, err := ConfigEnv(provider.APIKeyEnv, configDir)
+		value, _, err := ConfigEnv(provider.APIKeyEnv, configDir)
 		if err != nil {
 			return fmt.Errorf("resolve provider %q api key: %w", name, err)
 		}
-		if !ok || strings.TrimSpace(value) == "" {
+		if value == "" {
 			continue
 		}
 		provider.APIKey = value
@@ -724,5 +716,5 @@ func resolveRelative(baseFile, path string) string {
 	if path == "" || filepath.IsAbs(path) {
 		return filepath.Clean(path)
 	}
-	return filepath.Clean(filepath.Join(filepath.Dir(baseFile), path))
+	return filepath.Join(filepath.Dir(baseFile), path)
 }

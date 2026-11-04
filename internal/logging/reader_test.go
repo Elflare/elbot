@@ -437,3 +437,29 @@ func TestActorFiltersMatchEachExactField(t *testing.T) {
 		}
 	}
 }
+
+func TestContentFieldPaths(t *testing.T) {
+	for _, tc := range []struct {
+		name, content, field, value string
+		kind                        events.LogContentType
+		want                        bool
+	}{
+		{"top", `{"name":"Alice"}`, "name", "Alice", events.ContentJSON, true},
+		{"nested", `{"actor":{"id":9007199254740993}}`, "actor.id", "9007199254740993", events.ContentJSON, true},
+		{"missing", `{}`, "actor.id", "Alice", events.ContentJSON, false},
+		{"scalar parent", `{"actor":"Alice"}`, "actor.id", "Alice", events.ContentJSON, false},
+		{"array parent", `{"actor":["Alice"]}`, "actor.id", "Alice", events.ContentJSON, false},
+		{"null", `null`, "name", "Alice", events.ContentJSON, false},
+		{"scalar", `"Alice"`, "name", "Alice", events.ContentJSON, false},
+		{"array", `["Alice"]`, "name", "Alice", events.ContentJSON, false},
+		{"text", `{"name":"Alice"}`, "name", "Alice", events.ContentText, false},
+		{"empty key", `{"":"Alice"}`, "", "Alice", events.ContentJSON, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			entry := LogEntry{Type: tc.kind, Content: tc.content}
+			if got := matchLogEntry(entry, LogQuery{ContentFields: map[string]string{tc.field: tc.value}}); got != tc.want {
+				t.Fatalf("match = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}

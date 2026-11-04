@@ -118,11 +118,10 @@ func readDocument(path string, newValue func() any) *document {
 }
 
 func decodeDocument(doc *document, newValue func() any) {
-	path := doc.path
 	if err := toml.Unmarshal(doc.data, &doc.raw); err != nil {
 		doc.kind = "TOML 格式错误"
 		doc.raw = nil // A partial parse must not supply dependent paths.
-		doc.err = wrapDecodeError(path, err)
+		doc.err = wrapDecodeError(doc.path, err)
 		return
 	}
 	if doc.raw == nil {
@@ -132,7 +131,7 @@ func decodeDocument(doc *document, newValue func() any) {
 		value := newValue()
 		if err := toml.Unmarshal(doc.data, value); err != nil {
 			doc.kind = "字段类型错误"
-			doc.err = wrapDecodeError(path, err)
+			doc.err = wrapDecodeError(doc.path, err)
 			return
 		}
 		doc.value = value
