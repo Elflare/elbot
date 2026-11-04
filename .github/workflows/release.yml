@@ -50,6 +50,15 @@ jobs:
         with:
           go-version: '1.26.10'
 
+      - name: Embed Windows icon
+        if: matrix.goos == 'windows'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends librsvg2-bin
+          go install github.com/tc-hib/go-winres@v0.3.3
+          rsvg-convert --width 256 --height 256 --output "$RUNNER_TEMP/elbot-logo.png" assets/elbot-logo.svg
+          go-winres simply --icon "$RUNNER_TEMP/elbot-logo.png" --manifest none --arch "${{ matrix.goarch }}" --out cmd/elbot/rsrc
+
       - name: Build binary
         env:
           GOOS: ${{ matrix.goos }}
@@ -59,18 +68,21 @@ jobs:
 
       - name: Archive
         run: |
-          mkdir -p assets
+          mkdir -p dist
           archive="elbot-${GITHUB_REF_NAME}-${{ matrix.goos }}-${{ matrix.goarch }}"
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            zip "assets/${archive}.zip" "elbot${{ matrix.ext }}"
+            zip "dist/${archive}.zip" "elbot${{ matrix.ext }}"
           else
-            tar czf "assets/${archive}.tar.gz" elbot
+            tar czf "dist/${archive}.tar.gz" elbot
           fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: elbot-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: assets
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+          if-no-files-found: error
 
   release:
     name: Publish release
