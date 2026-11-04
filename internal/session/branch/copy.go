@@ -139,8 +139,8 @@ func (s *Service) copyMessages(ctx context.Context, sessionID string, messages [
 		ids[message.ID] = id
 	}
 	copies := make([]*storage.Message, 0, len(messages))
-	for _, original := range messages {
-		fields, err := storage.DecodeSessionMetadata(original.Metadata)
+	for _, msg := range messages {
+		fields, err := storage.DecodeSessionMetadata(msg.Metadata)
 		if err != nil {
 			return nil, err
 		}
@@ -159,7 +159,6 @@ func (s *Service) copyMessages(ctx context.Context, sessionID string, messages [
 			}
 			resultIDs[i] = ids[id]
 		}
-		msg := original
 		if len(resultIDs) > 0 {
 			if err := fields.Set(storage.ToolResultMessageKey, resultIDs); err != nil {
 				return nil, err
@@ -169,7 +168,7 @@ func (s *Service) copyMessages(ctx context.Context, sessionID string, messages [
 				return nil, err
 			}
 		}
-		msg.ID, msg.SessionID = ids[original.ID], sessionID
+		msg.ID, msg.SessionID = ids[msg.ID], sessionID
 		msg.ParentMessageID, msg.ReplyToMessageID, msg.ReplyToPlatformMessageID = "", "", ""
 		copies = append(copies, &msg)
 	}
