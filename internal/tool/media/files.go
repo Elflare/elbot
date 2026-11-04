@@ -58,7 +58,7 @@ func (c *MediaCall) Export(ctx context.Context, id, base string) (string, share.
 		return "", share.MediaInfo{}, err
 	}
 	defer root.Close()
-	if err := c.write(ctx, root, name, c.mediaByID[id].held); err != nil {
+	if err := write(ctx, root, name, c.mediaByID[id].held); err != nil {
 		return "", share.MediaInfo{}, err
 	}
 	c.mediaByID[id].exported = true
@@ -95,10 +95,10 @@ func (c *MediaCall) Import(ctx context.Context, base, path string, input share.M
 	if err != nil {
 		return share.MediaInfo{}, err
 	}
-	return c.retain(ctx, metadata)
+	return c.Retain(ctx, metadata.ID)
 }
 
-func (c *MediaCall) write(ctx context.Context, root *os.Root, name string, held *media.HeldMedia) (err error) {
+func write(ctx context.Context, root *os.Root, name string, held *media.HeldMedia) (err error) {
 	reader, err := held.Open(ctx)
 	if err != nil {
 		return err

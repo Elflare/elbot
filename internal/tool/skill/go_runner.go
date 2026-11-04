@@ -68,18 +68,14 @@ func (r GoRunner) call(ctx context.Context, args goRunnerArgs, record record, ru
 	defer mediaCall.Close()
 	payload, err := prepareGoMedia(runCtx, args.Payload, mediaCall, record.Root)
 	if err != nil {
-		{
-			callErr := fmt.Errorf("prepare Go skill media: %w", err)
-			return nil, callErr.Error(), callErr
-		}
+		callErr := fmt.Errorf("prepare Go skill media: %w", err)
+		return nil, callErr.Error(), callErr
 	}
 	cmd := environment.CommandContext(runCtx, record.BinaryPath)
 	cmd.Dir = record.Root
 	cmd.Stdin = bytes.NewReader(payload)
-	{
-		result, callErr := run(runCtx, "go skill", cmd, mediaCall)
-		return result, "", callErr
-	}
+	result, callErr := run(runCtx, "go skill", cmd, mediaCall)
+	return result, "", callErr
 }
 
 func parseGoRunnerArgs(data json.RawMessage) (goRunnerArgs, error) {

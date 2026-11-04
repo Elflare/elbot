@@ -87,10 +87,8 @@ func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []strin
 	command = append(command, args...)
 	cmd := environment.CommandContext(runCtx, command[0], command[1:]...)
 	cmd.Dir = t.record.Root
-	{
-		result, callErr := run(runCtx, "AgentSkill command", cmd, mediaCall)
-		return result, "", callErr
-	}
+	result, callErr := run(runCtx, "AgentSkill command", cmd, mediaCall)
+	return result, "", callErr
 }
 
 func commandArguments(manifest AgentSkillManifest, raw json.RawMessage) ([]string, error) {

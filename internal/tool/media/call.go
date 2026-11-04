@@ -17,7 +17,6 @@ type MediaCall struct {
 }
 
 type retainedMedia struct {
-	metadata   media.MediaInfo  // 已持有媒体的公开信息快照。
 	held       *media.HeldMedia // 防止媒体在调用期间被清理的持有。
 	exported   bool             // 是否已导出到调用私有目录。
 	cachedPath string           // 本次调用已准备的共享缓存路径。
@@ -30,22 +29,14 @@ func (r *MediaRuntime) NewCall() share.MediaCall {
 // Retain 持有媒体到 Close，仅将通用信息交给工具。
 func (c *MediaCall) Retain(ctx context.Context, id string) (share.MediaInfo, error) {
 	if item, ok := c.mediaByID[id]; ok {
-		return mediaInfo(item.metadata), ctx.Err()
+		return mediaInfo(item.held.Info()), ctx.Err()
 	}
 	held, err := c.runtime.center.Hold(ctx, id)
 	if err != nil {
 		return share.MediaInfo{}, err
 	}
-	metadata := held.Info()
-	c.mediaByID[id] = &retainedMedia{metadata: metadata, held: held}
-	return mediaInfo(metadata), nil
-}
-
-func (c *MediaCall) retain(ctx context.Context, metadata media.MediaInfo) (share.MediaInfo, error) {
-	if item, ok := c.mediaByID[metadata.ID]; ok {
-		return mediaInfo(item.metadata), ctx.Err()
-	}
-	return c.Retain(ctx, metadata.ID)
+	c.mediaByID[id] = &retainedMedia{held: held}
+	return mediaInfo(held.Info()), nil
 }
 
 func (c *MediaCall) Close() {
