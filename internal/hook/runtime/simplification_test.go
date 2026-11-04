@@ -253,7 +253,7 @@ func TestWorkerInvalidResultDoesNotPublishWaiting(t *testing.T) {
 	if _, err := w.handle(t.Context(), event, false, "", share.Control{}); err == nil {
 		t.Fatal("invalid output was accepted")
 	}
-	if m.hasLease(event) {
+	if m.HasLease(event) {
 		t.Fatal("failed event published a waiting conversation")
 	}
 }
@@ -308,12 +308,13 @@ func TestWaitingOwnershipReclaimsOnlyItsTransientWorker(t *testing.T) {
 		_, retainedFirst := m.transient[firstRoute]
 		retainedSecond := m.transient[secondRoute] == second
 		m.mu.Unlock()
-		if retainedFirst || !retainedSecond || m.RouteHookID(event) != "second" {
+		lease, ok := m.lookupLease(event)
+		if retainedFirst || !retainedSecond || !ok || lease.Worker != second {
 			t.Fatal("waiting replacement reclaimed the wrong worker")
 		}
 		time.Sleep(2 * time.Second)
 		synctest.Wait()
-		if m.RouteHookID(event) != "" {
+		if m.HasLease(event) {
 			t.Fatal("expired waiting route is still visible")
 		}
 		m.mu.RLock()

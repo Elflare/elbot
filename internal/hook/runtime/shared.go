@@ -64,7 +64,7 @@ func (s *SharedState) HandleRequest(method string, params json.RawMessage) (any,
 			return map[string]any{"deleted": s.Delete(request.Key)}, nil
 		}
 		value, ok := s.Get(request.Key)
-		return map[string]any{"found": ok, "value": json.RawMessage(value)}, nil
+		return map[string]any{"found": ok, "value": value}, nil
 	case "shared.set", "shared.compare_and_swap":
 		var request struct {
 			Key        string          `json:"key"`

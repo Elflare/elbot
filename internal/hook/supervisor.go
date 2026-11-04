@@ -20,7 +20,7 @@ type Supervisor struct {
 		Notify(context.Context, share.Event, pipeline.CallOptions) error
 	}
 	runtime interface {
-		RouteHookID(share.Event) string
+		HasLease(share.Event) bool
 		Cancel(share.Event) bool
 		Close(context.Context) error
 		Done() <-chan struct{}

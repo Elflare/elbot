@@ -333,12 +333,10 @@ func shortProtocolLine(line string) string {
 func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, action Action, state state, method string, params json.RawMessage) (any, error) {
 
 	if strings.HasPrefix(method, "media.") {
-		result, err := m.Opts.Runtime.MediaRequest(ctx, action.sourceBaseDir(), method, params)
-		return result, err
+		return m.Opts.Runtime.MediaRequest(ctx, action.sourceBaseDir(), method, params)
 	}
 	if strings.HasPrefix(method, "shared.") {
-		result, err := m.Opts.Runtime.SharedRequest(method, params)
-		return result, err
+		return m.Opts.Runtime.SharedRequest(method, params)
 	}
 	switch method {
 	case "platform.call":
@@ -368,14 +366,12 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 			}
 		}
 		resp, err := m.Opts.CallPlatformAPI(ctx, platformName, api, callParams)
-		content := map[string]any{"platform": platformName, "api": api, "rule": firstNonEmpty(action.source.FinalName, action.ActionName), "result": string(resp)}
+		content := map[string]string{"platform": platformName, "api": api, "rule": firstNonEmpty(action.source.FinalName, action.ActionName), "result": string(resp)}
 		if err != nil {
 			content["error"] = err.Error()
 		}
 		for key, value := range content {
-			if value, ok := value.(string); ok {
-				content[key] = share.TruncateLogContent(value, 2048)
-			}
+			content[key] = share.TruncateLogContent(value, 2048)
 		}
 		data, _ := json.Marshal(content)
 		record := globalevents.LogRecord{

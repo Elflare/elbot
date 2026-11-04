@@ -272,6 +272,10 @@ shutdown_timeout_seconds = 5
 event_timeout_seconds = 30
 max_wait_seconds = 60
 
+[plugin.runtime.tools]
+allow = [" weather "]
+background_allow = [" weather "]
+
 [plugin.runtime.restart]
 strategy = "never"
 initial_delay_seconds = 1
@@ -293,6 +297,9 @@ always = true
 		t.Fatalf("config = %#v", cfg)
 	}
 	blockedEvent := share.Event{Chat: share.ChatContext{Platform: "qqonebot", ChatType: "group", ID: "123"}, Actor: share.ActorContext{Platform: "qqonebot", ID: "7"}}
+	if tools := cfg.Runtimes[0].Tools; len(tools.Allow) != 1 || tools.Allow[0] != "weather" || len(tools.BackgroundAllow) != 1 || tools.BackgroundAllow[0] != "weather" {
+		t.Fatalf("tool allowlists were not normalized: %+v", tools)
+	}
 	if !cfg.Runtimes[0].Block.Blocks(blockedEvent) || !cfg.Rules[0].source.Block.Blocks(blockedEvent) {
 		t.Fatalf("plugin block policy was not propagated: %#v", cfg)
 	}

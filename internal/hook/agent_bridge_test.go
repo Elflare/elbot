@@ -42,8 +42,8 @@ type bridgeTestRuntime struct {
 	once sync.Once
 }
 
-func (*bridgeTestRuntime) RouteHookID(share.Event) string { return "" }
-func (*bridgeTestRuntime) Cancel(share.Event) bool        { return false }
+func (*bridgeTestRuntime) HasLease(share.Event) bool { return false }
+func (*bridgeTestRuntime) Cancel(share.Event) bool   { return false }
 func (r *bridgeTestRuntime) Close(context.Context) error {
 	r.once.Do(func() { close(r.done) })
 	return nil

@@ -397,8 +397,8 @@ func TestManagerReclaimsTransientWorkerAfterPassThrough(t *testing.T) {
 	manager.mu.RLock()
 	active := len(manager.transient)
 	manager.mu.RUnlock()
-	if active != 1 || !manager.hasLease(event) {
-		t.Fatalf("transient worker = %d leased=%v, want one leased worker", active, manager.hasLease(event))
+	if active != 1 || !manager.HasLease(event) {
+		t.Fatalf("transient worker = %d leased=%v, want one leased worker", active, manager.HasLease(event))
 	}
 	updated, routed, err := manager.Route(context.Background(), event, nil)
 	if err != nil {
@@ -410,8 +410,8 @@ func TestManagerReclaimsTransientWorkerAfterPassThrough(t *testing.T) {
 	manager.mu.RLock()
 	active = len(manager.transient)
 	manager.mu.RUnlock()
-	if active != 0 || manager.hasLease(event) {
-		t.Fatalf("transient worker = %d leased=%v after completion", active, manager.hasLease(event))
+	if active != 0 || manager.HasLease(event) {
+		t.Fatalf("transient worker = %d leased=%v after completion", active, manager.HasLease(event))
 	}
 }
 
@@ -446,8 +446,8 @@ func TestManagerStopReclaimsTransientWorkers(t *testing.T) {
 	manager.mu.RLock()
 	active := len(manager.transient)
 	manager.mu.RUnlock()
-	if active != 0 || manager.hasLease(event) {
-		t.Fatalf("transient worker = %d leased=%v after stop", active, manager.hasLease(event))
+	if active != 0 || manager.HasLease(event) {
+		t.Fatalf("transient worker = %d leased=%v after stop", active, manager.HasLease(event))
 	}
 }
 
@@ -533,7 +533,7 @@ func TestManagerBlockedWaitingConversationFallsThrough(t *testing.T) {
 	if _, err := manager.Handle(context.Background(), "demo", event, share.Control{}); err != nil {
 		t.Fatalf("blocked Handle: %v", err)
 	}
-	if manager.hasLease(event) {
+	if manager.HasLease(event) {
 		t.Fatal("blocked Handle created a waiting lease")
 	}
 	manager.worker("demo").config.Block = share.BlockPolicy{}
@@ -545,8 +545,8 @@ func TestManagerBlockedWaitingConversationFallsThrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Route: %v", err)
 	}
-	if handled || len(updated.Outputs) != 0 || manager.hasLease(event) {
-		t.Fatalf("blocked route = handled=%v event=%#v leased=%v", handled, updated, manager.hasLease(event))
+	if handled || len(updated.Outputs) != 0 || manager.HasLease(event) {
+		t.Fatalf("blocked route = handled=%v event=%#v leased=%v", handled, updated, manager.HasLease(event))
 	}
 }
 

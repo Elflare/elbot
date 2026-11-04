@@ -81,7 +81,7 @@ Elnis 是 ElBot 的监听枢纽，Elwisp 是分布在各地的外部监听器，
 
 更多截图见 [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend)。
 
-**会话、Fork 与上下文压缩**： 内置持久化 Session 服务，支持会话恢复、归档、置顶、Fork、删除、分页查看和平台隔离。长对话自动触发上下文压缩，保持窗口可控，压缩后可继续正常对话。
+**会话、Fork 与上下文压缩**： 内置持久化 Session 服务，支持会话恢复、归档、置顶、Fork、删除、分页查看、平台隔离、压缩等功能。
 
 ### 五、安全可靠
 

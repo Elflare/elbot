@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -134,9 +135,9 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	}
 	call.ID = randomID("plugin")
 	content.ToolCallID = call.ID
-	allowed := contains(w.config.Tools.Allow, name)
+	allowed := slices.Contains(w.config.Tools.Allow, name)
 	if params.Background {
-		allowed = contains(w.config.Tools.BackgroundAllow, name)
+		allowed = slices.Contains(w.config.Tools.BackgroundAllow, name)
 	}
 	if !allowed {
 		return failCall(globalevents.ResultRejected, fmt.Errorf("tool %q is not allowed for hook %q", name, w.config.ID))
@@ -194,7 +195,6 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	if len(result.Outputs) == 0 {
 		return map[string]any{"content": result.Content, "segments": result.Segments, "warnings": result.Warnings, "receipts": []delivery.Receipt{}}, nil
 	}
-	content.Arguments = nil
 	content.Summary = nil
 	content.ElapsedMS = nil
 	target := params.Target
@@ -249,13 +249,4 @@ func (w *worker) schemas(ctx context.Context) ([]llm.ToolSchema, error) {
 		out = append(out, llm.ToolSchema{Name: info.Definition.Name, Description: info.Definition.Description, Parameters: info.Parameters})
 	}
 	return out, nil
-}
-
-func contains(values []string, target string) bool {
-	for _, value := range values {
-		if strings.TrimSpace(value) == target {
-			return true
-		}
-	}
-	return false
 }

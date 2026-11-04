@@ -20,7 +20,7 @@ const maxToolCallsPerInvocation = 32
 const dispatchedMetadataKey = "hook.runtime.dispatched"
 const skipHookIDMetadataKey = "hook.runtime.skip_id"
 
-func (m *Manager) hasLease(event share.Event) bool {
+func (m *Manager) HasLease(event share.Event) bool {
 	_, ok := m.lookupLease(event)
 	return ok
 }
@@ -34,14 +34,6 @@ func (m *Manager) lookupLease(event share.Event) (lease, bool) {
 		ok = false
 	}
 	return lease, ok
-}
-
-func (m *Manager) RouteHookID(event share.Event) string {
-	lease, ok := m.lookupLease(event)
-	if !ok {
-		return ""
-	}
-	return lease.Worker.config.ID
 }
 
 // Route resumes a matching waiting invocation before pipeline runs ordinary rules.

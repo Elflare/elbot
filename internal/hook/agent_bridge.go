@@ -103,7 +103,7 @@ func (m *Supervisor) agentPoints(agent interface {
 			defer done()
 			event := eventFor(facts, share.PointPlatformMessageReceived)
 			event.Message = message(value)
-			return m.runtime.RouteHookID(fillEventFromContext(ctx, event)) != ""
+			return m.runtime.HasLease(fillEventFromContext(ctx, event))
 		},
 		CancelRoute: func(ctx context.Context, facts agenthooks.Facts, value agenthooks.Message) bool {
 			ctx, done, err := m.beginCall(ctx)

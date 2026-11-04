@@ -475,7 +475,7 @@ func (m *Manager) worker(id string) *worker {
 }
 
 func (m *Manager) Handle(ctx context.Context, id string, event share.Event, defaults share.Control) (share.Event, error) {
-	if m.hasLease(event) {
+	if m.HasLease(event) {
 		return event, nil
 	}
 	if skipped, _ := event.Metadata[skipHookIDMetadataKey].(string); skipped == id {
