@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - 新增配置文件锁，防止多个实例使用同一份配置文件。
+- web 搜索增加markdownnew
 
 ### Changed
 
