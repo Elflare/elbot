@@ -31,9 +31,7 @@ func requestOptions(cfg config.LLMRequestConfig, proxy string) httpclient.Option
 func modelExtraPayloads(modelConfigs map[string]config.ModelConfig) map[string]map[string]any {
 	out := make(map[string]map[string]any)
 	for model, cfg := range modelConfigs {
-		if cfg.ExtraPayload != nil {
-			out[model] = cfg.ExtraPayload
-		}
+		out[model] = cfg.ExtraPayload
 	}
 	return out
 }

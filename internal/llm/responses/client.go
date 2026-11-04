@@ -154,7 +154,7 @@ func (c *Client) prepareRequest(req Request, compact bool) (PreparedRequest, err
 	if err = encoder.Encode(body); err != nil {
 		return PreparedRequest{}, fmt.Errorf("marshal response request: %w", err)
 	}
-	return PreparedRequest{body: append([]byte(nil), buf.Bytes()...), parameters: parameterJSON, model: req.Model, inputs: len(input), allowedTools: allowed}, nil
+	return PreparedRequest{body: buf.Bytes(), parameters: parameterJSON, model: req.Model, inputs: len(input), allowedTools: allowed}, nil
 }
 
 // StoreForModel exposes the configured preference to the native dialogue loop.

@@ -50,9 +50,6 @@ func (r *windowResolver) cacheValue(key string, value int) int {
 	if cached := r.cache[key]; cached > 0 {
 		return cached
 	}
-	if r.cache == nil {
-		r.cache = map[string]int{}
-	}
 	r.cache[key] = value
 	return value
 }
@@ -66,5 +63,5 @@ func newWindowResolver(metadata config.ModelMetadataConfig, providers map[string
 			}
 		}
 	}
-	return &windowResolver{DefaultWindow: metadata.DefaultContextWindow, ManualWindows: manual, ClientFor: clientFor}
+	return &windowResolver{DefaultWindow: metadata.DefaultContextWindow, ManualWindows: manual, ClientFor: clientFor, cache: map[string]int{}}
 }
