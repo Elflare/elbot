@@ -24,14 +24,6 @@
       "translation": "## Features\n\n",
       "updated_at": 1781513003
     },
-    "README.zh-CN.md:section:5cfab8c96fc22b4e76e3a260bb7789f79a38b7ab9f42ff4246f190ed509a2c96": {
-      "kind": "section",
-      "source": "# ElBot\n\n中文 | [English](README.md)\n\nElBot 是一个使用 Go 编写的轻量级 Agent/Chatbot 框架，目标是在保留可扩展性的同时，尽量降低运行成本、上下文成本和维护复杂度。\n支持普通聊天、工具调用、Hook 扩展、长期任务调度、持久化会话与上下文压缩，适合个人助理、平台机器人和可编排自动化助手等场景。\n\n",
-      "source_file": "README.zh-CN.md",
-      "source_hash": "e19772b67a7ad73a2351e1e9d4adcccd7f52218e6c309885df6a0c7484479826",
-      "translation": "# ElBot\n\nChinese | [English](README.md)\n\nElBot is a lightweight Agent/Chatbot framework written in Go, aiming to minimize operating costs, context costs, and maintenance complexity while preserving extensibility.\nIt supports general chat, tool calling, Hook extensions, long-term task scheduling, persistent Sessions, and context compaction, making it suitable for scenarios such as personal assistants, platform bots, and orchestratable automation assistants.\n\n",
-      "updated_at": 1781513003
-    },
     "README.zh-CN.md:section:69deca198c9eece83ac964ee19b40541c2a4f6d746782f6c380ecc59ba2dcf5f": {
       "kind": "section",
       "source": "### 三、Elnis 事件感知系统\n\n传统 Agent 通常只会等待用户输入；Cron 只能响应时间。Elnis 让 ElBot 多了一种触发方式：外部事件。\n\nElnis 是 ElBot 的监听枢纽，Elwisp 是分布在各地的外部监听器，Elvena 是统一的 JSON over HTTP 事件协议。三者协作，让外部世界的任何信号如服务器告警、RSS 更新、Webhook、游戏事件、甚至外部计算机信息都能送入 Elnis，再交由 ElBot 处理并返回。\n\n详细说明见 [Elnis 监听枢纽](docs/elnis.md)。\n\n",
@@ -74,8 +66,8 @@
     }
   },
   "source": "README.zh-CN.md",
-  "source_hash": "9869aaf36ba27623c5dfd909b0f45b06134b60f737339eafe12f98d5c1117da3",
+  "source_hash": "6a6005430cb5284ee30139330cf4e3cdd8c67846448128eae2e4488327cadbb2",
   "target": "README.md",
-  "updated_at": 1793712493,
+  "updated_at": 1793775221,
   "version": 3
 }
