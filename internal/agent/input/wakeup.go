@@ -18,7 +18,7 @@ func (h *MessageHandler) messageWakeup(ctx context.Context, text string) bool {
 	if info.Source.ChatType != contextinfo.ChatGroup && info.Source.ChatType != contextinfo.ChatChannel {
 		return true
 	}
-	if h.commands != nil && h.commands.IsCommand(text) {
+	if h.commands.IsCommand(text) {
 		return true
 	}
 	if _, ok := agentshare.StripTriggerKeyword(text, msg.TriggerKeywords); ok {

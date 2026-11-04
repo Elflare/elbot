@@ -33,9 +33,6 @@ type InputCoordinator struct {
 		Current(context.Context, sessionpkg.Scope) (*storage.Session, error)
 		RecordActivity(context.Context, *sessionpkg.Binding) error
 	}
-	sessionRows interface {
-		Get(context.Context, string) (*storage.Session, error)
-	}
 	turns    interface{ Snapshot(string) turn.Snapshot }
 	identity InputIdentity
 	hooks    interface {
@@ -138,21 +135,17 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 			}
 			return err
 		}
-		if len(directives.Injected) > 0 || len(directives.Existing) > 0 || len(directives.Invalid) > 0 {
-			if err := c.notifyToolDirectiveResult(ctx, directives); err != nil {
-				if ctx.Err() == nil {
-					agentshare.ReportFailure(ctx, session.ID, err, c.output.Notify)
-				}
-				return err
+		if err := c.notifyToolDirectiveResult(ctx, directives); err != nil {
+			if ctx.Err() == nil {
+				agentshare.ReportFailure(ctx, session.ID, err, c.output.Notify)
 			}
+			return err
 		}
-		if len(skillDirectives.Skills) > 0 || len(skillDirectives.InjectedWrappers) > 0 || len(skillDirectives.ExistingWrappers) > 0 || len(skillDirectives.Invalid) > 0 {
-			if err := c.notifySkillDirectiveResult(ctx, skillDirectives); err != nil {
-				if ctx.Err() == nil {
-					agentshare.ReportFailure(ctx, session.ID, err, c.output.Notify)
-				}
-				return err
+		if err := c.notifySkillDirectiveResult(ctx, skillDirectives); err != nil {
+			if ctx.Err() == nil {
+				agentshare.ReportFailure(ctx, session.ID, err, c.output.Notify)
 			}
+			return err
 		}
 		text = skillDirectives.Text
 		ctx = agentshare.WithInboundSegments(ctx, agentshare.ReplaceInboundTextSegments(ctx, text))
@@ -160,16 +153,6 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 		input.NeedsElyphRules = input.NeedsElyphRules || directives.NeedsElyphRules || skillDirectives.NeedsElyphRules
 		ctx = agentshare.WithInboundTurnInput(ctx, input)
 		if strings.TrimSpace(text) == "" && !agentshare.HasInboundNonTextSegment(ctx) {
-			if len(directives.Injected) > 0 || len(skillDirectives.InjectedWrappers) > 0 {
-				latest, err := c.sessionRows.Get(ctx, session.ID)
-				if err != nil {
-					if ctx.Err() == nil {
-						agentshare.ReportFailure(ctx, session.ID, err, c.output.Notify)
-					}
-					return err
-				}
-				*session = *latest
-			}
 			if len(directives.Injected) > 0 || len(directives.Existing) > 0 || len(skillDirectives.Skills) > 0 {
 				binding, _ := sessionpkg.BindingFromContext(ctx)
 				return c.sessions.RecordActivity(ctx, binding)
@@ -194,7 +177,6 @@ func NewInputCoordinator(deps InputCoordinatorDeps) *InputCoordinator {
 		commandText:       deps.CommandText,
 		sessions:          deps.Sessions,
 		NewWorkspaceStore: deps.NewWorkspaceStore,
-		sessionRows:       deps.SessionRows,
 		turns:             deps.Turns,
 		identity:          deps.Identity,
 		hooks:             deps.Hooks,

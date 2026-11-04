@@ -48,9 +48,6 @@ type InputCoordinatorDeps struct {
 		Current(context.Context, session.Scope) (*storage.Session, error)
 		RecordActivity(context.Context, *session.Binding) error
 	}
-	SessionRows interface {
-		Get(context.Context, string) (*storage.Session, error)
-	}
 	Turns    interface{ Snapshot(string) turn.Snapshot }
 	Identity InputIdentity
 	Hooks    interface {

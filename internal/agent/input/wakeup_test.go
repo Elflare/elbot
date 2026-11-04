@@ -8,7 +8,7 @@ import (
 )
 
 func TestWakeupRequiresTriggerOnlyForGroupConversations(t *testing.T) {
-	h := &MessageHandler{}
+	h := &MessageHandler{commands: &entryProbe{}}
 	for _, kind := range []contextinfo.ChatType{contextinfo.ChatPrivate, contextinfo.ChatPrivate, contextinfo.ChatGroup, contextinfo.ChatChannel} {
 		t.Run(string(kind), func(t *testing.T) {
 			ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{ChatType: kind}})
