@@ -12,10 +12,10 @@ import (
 	"elbot/internal/storage"
 )
 
-type testHistory func(context.Context, string, string, string) (*storage.ChatMessage, error)
+type testHistory func(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
 
 func (h testHistory) GetByPlatformMessage(ctx context.Context, p string, conversationKind contextinfo.ChatType, s string, id string) (*storage.ChatMessage, error) {
-	return h(ctx, p, s, id)
+	return h(ctx, p, conversationKind, s, id)
 }
 
 func TestHistoryMergesMatchingAssociationsAndOutputs(t *testing.T) {
@@ -69,7 +69,9 @@ func TestReconcileHistoryPaginatesAndStopsOnQueryFailure(t *testing.T) {
 		}
 	}
 	failure := errors.New("history unavailable")
-	unavailable := testHistory(func(context.Context, string, string, string) (*storage.ChatMessage, error) { return nil, failure })
+	unavailable := testHistory(func(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error) {
+		return nil, failure
+	})
 	m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
 	if err := m.Cleanup(t.Context(), unavailable); !errors.Is(err, failure) {
 		t.Fatalf("query failure = %v", err)
@@ -83,7 +85,7 @@ func TestReconcileHistoryPaginatesAndStopsOnQueryFailure(t *testing.T) {
 		t.Fatal("query failure did not stop cleanup")
 	}
 	calls := 0
-	replaced := testHistory(func(context.Context, string, string, string) (*storage.ChatMessage, error) {
+	replaced := testHistory(func(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error) {
 		calls++
 		return &storage.ChatMessage{ID: "new-history"}, nil
 	})
@@ -108,7 +110,7 @@ func TestReconcileKeepsExistingAndDeletesConfirmedMissing(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	history := testHistory(func(_ context.Context, _, _, id string) (*storage.ChatMessage, error) {
+	history := testHistory(func(_ context.Context, _ string, _ contextinfo.ChatType, _, id string) (*storage.ChatMessage, error) {
 		if id == "0" {
 			return &storage.ChatMessage{ID: "0"}, nil
 		}
@@ -120,5 +122,45 @@ func TestReconcileKeepsExistingAndDeletesConfirmedMissing(t *testing.T) {
 	records, err := store.Media().ListHistory(t.Context(), "", 10)
 	if err != nil || len(records) != 1 || records[0].HistoryID != "0" {
 		t.Fatalf("associations = %#v %v", records, err)
+	}
+}
+
+func TestReconcileHistorySeparatesChatTypes(t *testing.T) {
+	for _, missing := range []contextinfo.ChatType{"", "private", "group"} {
+		t.Run("missing="+string(missing), func(t *testing.T) {
+			m, store, _ := newTestManager(t)
+			mediaIDs := map[contextinfo.ChatType]string{}
+			for _, kind := range []contextinfo.ChatType{"private", "group"} {
+				item := importTestMedia(t, m, string(kind))
+				mediaIDs[kind] = item.ID
+				key := share.HistoryKey{ID: string(kind), Platform: "test", ChatType: kind, ChatID: "same", MessageID: "same"}
+				if err := m.AssociateHistory(t.Context(), key, 1, "file", item.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			history := testHistory(func(_ context.Context, _ string, kind contextinfo.ChatType, _, _ string) (*storage.ChatMessage, error) {
+				if kind == missing {
+					return nil, storage.ErrNotFound
+				}
+				return &storage.ChatMessage{ID: string(kind)}, nil
+			})
+			if err := m.ReconcileHistory(t.Context(), history); err != nil {
+				t.Fatal(err)
+			}
+			for kind, id := range mediaIDs {
+				want := 1
+				if kind == missing {
+					want = 0
+				}
+				records, err := store.Media().FindHistory(t.Context(), "test", kind, "same", "same")
+				if err != nil || len(records) != want {
+					t.Errorf("%s associations = %v, %v; want %d", kind, records, err, want)
+				}
+				refs, err := store.MediaReferences().ListMediaIDs(t.Context(), id)
+				if err != nil || len(refs) != want {
+					t.Errorf("%s references = %v, %v; want %d", kind, refs, err, want)
+				}
+			}
+		})
 	}
 }

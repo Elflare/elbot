@@ -93,14 +93,14 @@ func (m *Manager) ReconcileHistory(ctx context.Context, history History) error {
 	}
 	const pageSize = 100
 	after := ""
-	owners := map[[3]string]string{}
+	owners := map[[4]string]string{}
 	for {
 		items, err := m.media.ListHistory(ctx, after, pageSize)
 		if err != nil {
 			return err
 		}
 		for _, item := range items {
-			key := [3]string{item.Platform, item.ChatID, item.MessageID}
+			key := [4]string{item.Platform, string(item.ChatType), item.ChatID, item.MessageID}
 			owner, known := owners[key]
 			if !known {
 				row, err := history.GetByPlatformMessage(ctx, item.Platform, item.ChatType, item.ChatID, item.MessageID)

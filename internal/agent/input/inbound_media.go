@@ -41,10 +41,10 @@ func (h *MessageHandler) materializePlatformMedia(ctx context.Context) (context.
 	msg.Segments = resolve(msg.Segments)
 	msg.ContextSegments = resolve(msg.ContextSegments)
 	msg.Reply.Segments = resolve(msg.Reply.Segments)
-	if err := h.associateInboundHistory(ctx, msg, info.PlatformMessageID, original.Segments, msg.Segments); err != nil {
+	if err := h.associateInboundHistory(ctx, info.PlatformMessageID, original.Segments, msg.Segments); err != nil {
 		return ctx, err
 	}
-	if err := h.associateInboundHistory(ctx, msg, msg.Reply.MessageID, original.Reply.Segments, msg.Reply.Segments); err != nil {
+	if err := h.associateInboundHistory(ctx, msg.Reply.MessageID, original.Reply.Segments, msg.Reply.Segments); err != nil {
 		return ctx, err
 	}
 	return agentshare.WithMessageContext(ctx, msg), nil
@@ -66,7 +66,7 @@ func (h *MessageHandler) materializePlatformSegment(ctx context.Context, msg age
 }
 
 // associateInboundHistory 只为成功物化的媒体保存历史位置，无可关联媒体时不查询历史库。
-func (h *MessageHandler) associateInboundHistory(ctx context.Context, msg agentshare.MessageContext, messageID string, original, resolved []agentshare.MessageSegment) error {
+func (h *MessageHandler) associateInboundHistory(ctx context.Context, messageID string, original, resolved []agentshare.MessageSegment) error {
 	if messageID == "" {
 		return nil
 	}
@@ -100,25 +100,23 @@ func (h *MessageHandler) associateInboundHistory(ctx context.Context, msg agents
 		}
 		if err := h.media.AssociateHistory(ctx, media.HistoryMessage{ID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, ChatType: row.ChatType}, index, raw.Type, resolved[i].Media.MediaID); err != nil {
 			failures = append(failures, err)
-			{
-				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
-					Level:        slog.LevelError,
-					EventName:    "associate_inbound_history_media_failed",
-					Module:       "agent",
-					Type:         globalevents.ContentText,
-					Content:      fmt.Sprintf("associate inbound history media failed\nerror=%v", err),
-					ContentLimit: 4096,
-					ResultStatus: globalevents.ResultFailed,
-				}
-				if errors.Is(err, context.Canceled) {
-					record.ResultStatus = globalevents.ResultCanceled
-					record.Level = slog.LevelInfo
-				}
-				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				record.Identity = globalevents.LogIdentityFromExecution(facts)
-				_ = globalevents.EmitLog(ctx, record)
+			record := globalevents.LogRecord{
+				Category:     globalevents.LogRuntime,
+				Level:        slog.LevelError,
+				EventName:    "associate_inbound_history_media_failed",
+				Module:       "agent",
+				Type:         globalevents.ContentText,
+				Content:      fmt.Sprintf("associate inbound history media failed\nerror=%v", err),
+				ContentLimit: 4096,
+				ResultStatus: globalevents.ResultFailed,
 			}
+			if errors.Is(err, context.Canceled) {
+				record.ResultStatus = globalevents.ResultCanceled
+				record.Level = slog.LevelInfo
+			}
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			record.Identity = globalevents.LogIdentityFromExecution(facts)
+			_ = globalevents.EmitLog(ctx, record)
 		}
 	}
 	return errors.Join(failures...)

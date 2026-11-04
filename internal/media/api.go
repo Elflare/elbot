@@ -127,16 +127,11 @@ func (m *MediaCenter) AssociateHistory(ctx context.Context, row HistoryMessage, 
 // GetHistoryMediaBatch 保留输入顺序、重复位置、逐项错误及未缓存获取额度。
 // 根部转换公开与内部类型，不向调用方暴露存储记录。
 func (m *MediaCenter) GetHistoryMediaBatch(ctx context.Context, requests []HistoryMediaRequest, resolver func(context.Context, string, PlatformMedia, int64) (delivery.Source, error), opts HistoryFetchOptions) ([]HistoryMediaResult, error) {
-	var batch []transfer.HistoryMediaRequest
-	if requests != nil {
-		batch = make([]transfer.HistoryMediaRequest, len(requests))
-	}
+	batch := make([]transfer.HistoryMediaRequest, len(requests))
 	for i, request := range requests {
 		row := request.Message
 		message := transfer.HistoryMessage{ID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.MessageID, ChatType: row.ChatType}
-		if row.Media != nil {
-			message.Media = make([]transfer.PlatformMedia, len(row.Media))
-		}
+		message.Media = make([]transfer.PlatformMedia, len(row.Media))
 		for j, segment := range row.Media {
 			message.Media[j] = transfer.PlatformMedia(segment)
 		}
