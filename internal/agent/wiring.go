@@ -216,7 +216,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 			return m.sessions.WorkspaceStore(id)
 		},
 		Sessions:      m.sessions,
-		SessionRows:   deps.Store.Sessions(),
 		Turns:         m.turns,
 		Identity:      identity,
 		Hooks:         bridge,
