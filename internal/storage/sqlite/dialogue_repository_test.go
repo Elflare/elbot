@@ -227,7 +227,6 @@ func TestToolBatchLastResultFailureRollsBackEveryMessageAndMediaReference(t *tes
 func TestCommitSeparatesInternalValidationFromIOFailure(t *testing.T) {
 	store, _ := nativeStorageFixture(t)
 	for _, commit := range []storage.DialogueCommit{
-		{},
 		{SessionID: "s", Messages: []*storage.Message{{SessionID: "other"}}},
 		{SessionID: "s", Messages: []*storage.Message{{SessionID: "s", Segments: "["}}},
 		nativeStorageCommit("changed", "obsolete"),

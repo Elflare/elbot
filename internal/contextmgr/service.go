@@ -44,9 +44,6 @@ func (s *Service) Load(ctx context.Context, id string) (*LoadedContext, error) {
 // RecordTurn 在 Turn 的 loop 和回复提交成功后，一次保存活动时间与用量；nil 用量保留原值。
 // 当前用量由 StatusRecorder 持有；这里仅持久化调用方提供的快照。
 func (s *Service) RecordTurn(ctx context.Context, id string, usage *llm.Usage) error {
-	if id == "" {
-		return nil
-	}
 	s.usageWriteMu.Lock()
 	defer s.usageWriteMu.Unlock()
 	_, err := s.store.Sessions().Mutate(ctx, id, func(row *storage.Session) error {

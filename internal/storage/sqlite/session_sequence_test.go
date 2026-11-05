@@ -119,14 +119,3 @@ func TestSessionSequenceMigrationPreservesUUID(t *testing.T) {
 		t.Fatal("exhausted sequence must not wrap")
 	}
 }
-
-func TestSessionCreationRequiresPreallocatedID(t *testing.T) {
-	store := newTestStore(t)
-	row := &storage.Session{}
-	if err := store.Sessions().Create(t.Context(), row); err == nil || row.ID != "" {
-		t.Fatalf("storage allocated an ID: %+v %v", row, err)
-	}
-	if err := store.Sessions().CreateMaterial(t.Context(), storage.SessionMaterialCreate{Session: row}); err == nil || row.ID != "" {
-		t.Fatalf("material storage allocated an ID: %+v %v", row, err)
-	}
-}

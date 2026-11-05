@@ -20,10 +20,8 @@ func TestMapReportReceiptUsesOnlyActualSentMessages(t *testing.T) {
 	if got := MapReportReceipt("session", "message", receipt); !reflect.DeepEqual(got, want) {
 		t.Fatal(got)
 	}
-	for _, ids := range [][2]string{{"", "message"}, {"session", ""}, {"", ""}} {
-		if got := MapReportReceipt(ids[0], ids[1], receipt); got != nil {
-			t.Fatal(got)
-		}
+	if got := MapReportReceipt("session", "", receipt); got != nil {
+		t.Fatal(got)
 	}
 	if got := MapReportReceipt("session", "message", delivery.Receipt{PlatformMessageIDs: []string{"77"}}); len(got) != 0 {
 		t.Fatal(got)

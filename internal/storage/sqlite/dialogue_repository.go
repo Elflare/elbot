@@ -33,9 +33,6 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 		events.Log(ctx, record)
 	}()
 
-	if commit.SessionID == "" {
-		return fmt.Errorf("dialogue commit requires a session")
-	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -272,7 +269,7 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 }
 
 func (r *DialogueRepository) CreateExchange(ctx context.Context, row *storage.NativeExchange) error {
-	if row == nil || row.SessionID == "" || row.APIType == "" || row.Provider == "" || !json.Valid([]byte(row.RequestJSON)) {
+	if row == nil || row.APIType == "" || row.Provider == "" || !json.Valid([]byte(row.RequestJSON)) {
 		return fmt.Errorf("invalid native exchange")
 	}
 	if row.ID == "" {

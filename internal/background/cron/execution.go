@@ -205,9 +205,6 @@ func (s *Service) retryLLMResultFormat(ctx context.Context, job Job, meta Metada
 	if err != nil {
 		return result, CronLLMResult{}, err
 	}
-	if result.SessionID == "" {
-		result.SessionID = sessionID
-	}
 	if result.TakenOver {
 		return result, CronLLMResult{}, nil
 	}

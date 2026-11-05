@@ -44,7 +44,7 @@ func (a *Client) logChatRequest(ctx context.Context, req Request) {
 }
 
 func (a *Client) logFirstSystemMessage(ctx context.Context, req Request) {
-	if req.SessionID == "" || firstSystemText(req.Messages) == "" {
+	if firstSystemText(req.Messages) == "" {
 		return
 	}
 	a.loggedSystemMu.Lock()

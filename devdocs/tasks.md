@@ -40,7 +40,7 @@ dialogue 若在 执行任务 内部，也在这个最外层捕获范围里。
 
 ### 已完成：公共报告与通知投递
 
-- [日志入口](../internal/events/logging.go) `Log` 同步发布，`AsyncLog` 异步发布；均无返回值，发布失败交给底层诊断。身份字段使用字符串，有值直接写入，无值写空字符串，不复制指针或补上下文。
+- [日志入口](../internal/events/logging.go) `Log` 同步发布，`AsyncLog` 异步发布；均无返回值，发布失败交给底层诊断。身份字段使用字符串，直接传递和写入；已建立会话的 SessionID 不判空、不补默认值、不按空值省略。RootRequestID 允许为空；创建、选择和绑定会话之前的业务分支保留。
 - [通知入口](../internal/events/notification.go) 提供 `Notify`、`LogAndNotify`，复用两条现有信号；通知接纳失败只记日志，两次发布互不阻断。内容、身份、目标及取消策略由来源决定。
 - 普通通知发布已接入 `Notify`；重试通知不再返回投递错误，Hook 直接接入公共日志、通知入口，通知回调无返回值。业务层各处 `ReportFailure` 及终止错误的报告位置仍待下列整改。
 - [通知路由](../internal/platform/notification/manager.go) 和平台通知订阅各自处理本阶段故障后结束，不再返回或合并已处理的错误，不递归通知；投递故障在消费处直接构造通知日志并调用 `AsyncLog`，不借用聊天日志包装；路由故障携带执行身份；取消、过期 binding、正常关闭保留退出语义。

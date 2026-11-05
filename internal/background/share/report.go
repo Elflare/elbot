@@ -30,7 +30,7 @@ type ReportMessageMap struct {
 
 // MapReportReceipt 只映射发送方明确返回的消息归属，不推测平台或会话。
 func MapReportReceipt(sessionID, messageID string, receipt delivery.Receipt) []ReportMessageMap {
-	if sessionID == "" || messageID == "" {
+	if messageID == "" {
 		return nil
 	}
 	mappings := make([]ReportMessageMap, 0, len(receipt.SentMessages))

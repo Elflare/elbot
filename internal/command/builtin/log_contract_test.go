@@ -42,8 +42,8 @@ func TestShellLogHasNoBlankLineBeforeRisk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content := formatLogEntries(events.LogAudit, false)([]logging.LogEntry{{Type: events.ContentJSON, Content: string(body)}})
-	want := "audit events:\nunk-time [shell] · exit_code=0\n[Current directory: /home/test]\nrisk: low"
+	content := formatLogEntries(events.LogAudit, false)([]logging.LogEntry{{Type: events.ContentJSON, Content: string(body), Identity: events.LogIdentity{SessionID: "session"}}})
+	want := "audit events:\nunk-time [shell] · exit_code=0\n[Current directory: /home/test]\nsession: session\nrisk: low"
 	if content != want {
 		t.Fatalf("content=%q want=%q", content, want)
 	}
@@ -111,8 +111,8 @@ func TestLogQueriesPutToolBelowHeader(t *testing.T) {
 			}
 		}
 	}
-	entry := logging.LogEntry{Type: events.ContentJSON, Content: `{"result":"done","actor":{"platform":"telegram","id":"user"}}`}
-	if content := formatLogEntries(events.LogRuntime, false)([]logging.LogEntry{entry}); content != "runtime logs:\nunk-time\n[done]\nactor: {id: user · platform: telegram}" {
+	entry := logging.LogEntry{Type: events.ContentJSON, Content: `{"result":"done","actor":{"platform":"telegram","id":"user"}}`, Identity: events.LogIdentity{SessionID: "session"}}
+	if content := formatLogEntries(events.LogRuntime, false)([]logging.LogEntry{entry}); content != "runtime logs:\nunk-time\n[done]\nactor: {id: user · platform: telegram}\nsession: session" {
 		t.Fatalf("non-tool field order changed: %s", content)
 	}
 }
@@ -127,13 +127,13 @@ func TestLogQueryResultHeaders(t *testing.T) {
 			{events.ResultFailed, " ✗"}, {events.ResultCanceled, " 已取消"},
 			{events.ResultRejected, " 已拒绝"}, {events.ResultSkipped, " 已跳过"},
 		} {
-			entry := logging.LogEntry{Level: "INFO", EventName: "event", ResultStatus: tc.status, Content: "body"}
+			entry := logging.LogEntry{Level: "INFO", EventName: "event", ResultStatus: tc.status, Content: "body", Identity: events.LogIdentity{SessionID: "session"}}
 			got := formatLogEntries(category, false)([]logging.LogEntry{entry})
 			subject := "[event]"
 			if category == events.LogRuntime {
 				subject = "event"
 			}
-			want := formatLogEntryTime(entry) + " " + subject + tc.suffix + "\n[body]\nINFO"
+			want := formatLogEntryTime(entry) + " " + subject + tc.suffix + "\n[body]\nINFO\nsession: session"
 			if !strings.HasSuffix(got, want) {
 				t.Fatalf("got=%q want suffix=%q", got, want)
 			}
@@ -153,7 +153,7 @@ func TestAuditPreservesSourceOrderThroughStorageAndFiltering(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := `{"tool":"shell","summary":` + string(summaryJSON) + `,"run_source":"foreground","risk":"low","result":"first\nsecond","actor":{"platform":"telegram","id":"user"},"nested":{"z":9007199254740993,"a":[]}}`
-	events.Log(t.Context(), events.LogRecord{Category: events.LogAudit, EventName: "tool_call_completed", Module: "toolrun", Type: events.ContentJSON, Content: body, ResultStatus: events.ResultSucceeded})
+	events.Log(t.Context(), events.LogRecord{Category: events.LogAudit, EventName: "tool_call_completed", Module: "toolrun", Type: events.ContentJSON, Content: body, ResultStatus: events.ResultSucceeded, Identity: events.LogIdentity{SessionID: "session"}})
 	if err := center.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestAuditPreservesSourceOrderThroughStorageAndFiltering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := " [shell] ✓ · " + summary + "\n[first\nsecond]\ntool_call_completed · actor: {id: user · platform: telegram} · run_source: foreground\nINFO · risk: low\nnested: {a: [] · z: 9007199254740993}"
+	want := " [shell] ✓ · " + summary + "\n[first\nsecond]\ntool_call_completed · actor: {id: user · platform: telegram} · run_source: foreground\nsession: session\nINFO · risk: low\nnested: {a: [] · z: 9007199254740993}"
 	if !strings.HasSuffix(result.Content, want) {
 		t.Fatalf("display order changed: %s", result.Content)
 	}
@@ -182,38 +182,35 @@ func TestAuditPreservesSourceOrderThroughStorageAndFiltering(t *testing.T) {
 }
 
 func TestLogQueriesHideExecutionIdentity(t *testing.T) {
-	value := "execution-id"
-	session := "session-id"
 	for _, category := range []events.LogCategory{events.LogAudit, events.LogRuntime, events.LogElnis} {
-		for _, sessionID := range []string{"", session} {
-			entry := logging.LogEntry{
-				Level:     "INFO",
-				EventName: "tool_call_completed",
-				Type:      events.ContentJSON,
-				Content:   `{"result":"run_id: business content","actor":{"platform":"telegram","id":"user"},"run_source":"foreground"}`,
-				Raw:       `{"run_id":"run","attempt":"attempt","request_id":"request","root_request_id":"root"}`,
+		entry := logging.LogEntry{
+			Level:     "INFO",
+			EventName: "tool_call_completed",
+			Type:      events.ContentJSON,
+			Content:   `{"result":"run_id: business content","actor":{"platform":"telegram","id":"user"},"run_source":"foreground"}`,
+			Raw:       `{"run_id":"run","attempt":"attempt","request_id":"request","root_request_id":"root"}`,
+			Identity:  events.LogIdentity{SessionID: "session-id"},
+		}
+		want := formatLogEntries(category, false)([]logging.LogEntry{entry})
+		if !strings.Contains(want, "session: session-id") {
+			t.Fatalf("session missing: %s", want)
+		}
+		for _, id := range []string{"", "execution-id"} {
+			entry.Identity = events.LogIdentity{
+				SessionID:     "session-id",
+				RunID:         id,
+				Attempt:       id,
+				RequestID:     id,
+				RootRequestID: id,
 			}
-			want := formatLogEntries(category, false)([]logging.LogEntry{entry})
-			if sessionID != "" {
-				want += "\nsession: " + sessionID
+			got := formatLogEntries(category, false)([]logging.LogEntry{entry})
+			if got != want {
+				t.Fatalf("category=%v identity=%+v got=%q want=%q", category, entry.Identity, got, want)
 			}
-			for _, id := range []string{"", value} {
-				entry.Identity = events.LogIdentity{
-					SessionID:     sessionID,
-					RunID:         id,
-					Attempt:       id,
-					RequestID:     id,
-					RootRequestID: id,
-				}
-				got := formatLogEntries(category, false)([]logging.LogEntry{entry})
-				if got != want {
-					t.Fatalf("category=%v identity=%+v got=%q want=%q", category, entry.Identity, got, want)
-				}
-				raw := formatLogEntries(category, true)([]logging.LogEntry{entry})
-				_, body, found := strings.Cut(raw, "\n")
-				if !found || strings.TrimSpace(body) != entry.Raw {
-					t.Fatalf("raw record changed: %s", raw)
-				}
+			raw := formatLogEntries(category, true)([]logging.LogEntry{entry})
+			_, body, found := strings.Cut(raw, "\n")
+			if !found || strings.TrimSpace(body) != entry.Raw {
+				t.Fatalf("raw record changed: %s", raw)
 			}
 		}
 	}

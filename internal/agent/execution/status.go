@@ -50,9 +50,6 @@ func (r *StatusRecorder) record(ctx context.Context, snapshot runtimestatus.Snap
 	r.publishMu.Lock()
 	defer r.publishMu.Unlock()
 	ctx = r.view.Context(ctx)
-	if snapshot.SessionID == "" {
-		return
-	}
 	r.mu.Lock()
 	owner, _ := contextinfo.ExecutionFromContext(ctx)
 	owner.SessionID = snapshot.SessionID

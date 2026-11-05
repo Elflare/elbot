@@ -378,7 +378,8 @@ func TestRuleLogsPreserveOptionalIdentityAndEventSession(t *testing.T) {
 	}{
 		{name: "global", want: []string{"", "", "", "", ""}},
 		{name: "unbound input", facts: contextinfo.Execution{RequestID: "request", RootRequestID: "root"}, want: []string{"", "", "", "request", "root"}},
-		{name: "dialogue", facts: contextinfo.Execution{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}, want: []string{"session", "run", "attempt", "request", "root"}},
+		{name: "dialogue", facts: contextinfo.Execution{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}, eventSession: "session", want: []string{"session", "run", "attempt", "request", "root"}},
+		{name: "dialogue without root request", facts: contextinfo.Execution{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request"}, eventSession: "session", want: []string{"session", "run", "attempt", "request", ""}},
 		{name: "event session", facts: contextinfo.Execution{SessionID: "context-session", RequestID: "request"}, eventSession: "event-session", want: []string{"context-session", "", "", "request", ""}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -423,7 +424,7 @@ func TestRuleLogsPreserveOptionalIdentityAndEventSession(t *testing.T) {
 				got := []string{identity.SessionID, identity.RunID, identity.Attempt, identity.RequestID, identity.RootRequestID}
 				for i, value := range got {
 					want := tc.want[i]
-					if i == 0 && tc.eventSession != "" && (record.EventName == "hook_tool_call_prepared" || record.EventName == "hook_tool_call_completed" || record.EventName == "hook_tool_log") {
+					if i == 0 && (record.EventName == "hook_tool_call_prepared" || record.EventName == "hook_tool_call_completed" || record.EventName == "hook_tool_log") {
 						want = tc.eventSession
 					}
 					if value != want {

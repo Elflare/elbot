@@ -41,8 +41,8 @@ func (r *Registry) RegisterTools(ctx context.Context, source toolshare.Source, s
 			return toolshare.StateUpdate{}, fmt.Errorf("global tool group cannot have session or event")
 		}
 	case toolshare.SourceELwisp:
-		if scope.SessionID == "" || scope.EventKey == "" {
-			return toolshare.StateUpdate{}, fmt.Errorf("elwisp registration requires session and event")
+		if scope.EventKey == "" {
+			return toolshare.StateUpdate{}, fmt.Errorf("elwisp registration requires event")
 		}
 	default:
 		return toolshare.StateUpdate{}, fmt.Errorf("invalid tool source %d", source)

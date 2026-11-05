@@ -432,9 +432,7 @@ func (m *Manager) logHook(ctx context.Context, mode string, reg registration, be
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record.Identity = globalevents.LogIdentityFromExecution(facts)
-	if before.Session.ID != "" {
-		record.Identity.SessionID = before.Session.ID
-	}
+	record.Identity.SessionID = before.Session.ID
 	m.Log(ctx, record)
 }
 

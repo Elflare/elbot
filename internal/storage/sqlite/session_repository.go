@@ -29,9 +29,6 @@ type sessionWriter interface {
 }
 
 func createSession(ctx context.Context, writer sessionWriter, session *storage.Session) error {
-	if session.ID == "" {
-		return fmt.Errorf("create session: preallocated ID is required")
-	}
 	now := storage.Now()
 	if session.CreatedAt.IsZero() {
 		session.CreatedAt = now
