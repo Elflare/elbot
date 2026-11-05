@@ -32,6 +32,8 @@ const testProtocol llm.APIType = "test"
 type testClient struct{}
 
 func (*testClient) ListModels(context.Context) ([]string, error) { return []string{"m"}, nil }
+func (*testClient) RetryOptions() llm.RetryOptions               { return llm.RetryOptions{} }
+
 func (*testClient) GenerateText(context.Context, llm.TextRequest) (llm.TextResult, error) {
 	return llm.TextResult{Text: "text"}, nil
 }

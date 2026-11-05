@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"elbot/internal/llm"
+	"elbot/internal/llm/httpclient"
 	"elbot/internal/testutil"
 )
 
@@ -141,7 +142,7 @@ func TestStreamRejectsFailedIncompleteAndPrematureEOF(t *testing.T) {
 				emit(w, tc.event, tc.raw)
 			}))
 			defer srv.Close()
-			client := mustClient(t, srv.URL, nil, nil, RequestOptions{RetryInitialDelay: time.Millisecond})
+			client := mustClient(t, srv.URL, nil, nil, RequestOptions{RetryOptions: llm.RetryOptions{MaxRetries: 1, RetryInitialDelay: time.Millisecond}})
 			_, err := client.GenerateText(context.Background(), llm.TextRequest{Model: "m", Input: "input"})
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("error=%v want=%s", err, tc.want)
@@ -210,7 +211,7 @@ func TestResponseTimeoutsAndCancellation(t *testing.T) {
 					}
 					<-r.Context().Done()
 				}))
-				client := mustClient(t, srv.URL, nil, nil, RequestOptions{HTTPClient: srv.Client(), FirstChunkTimeout: 40 * time.Millisecond, StreamIdleTimeout: 40 * time.Millisecond})
+				client := mustClient(t, srv.URL, nil, nil, RequestOptions{Options: httpclient.Options{HTTPClient: srv.Client(), FirstChunkTimeout: 40 * time.Millisecond, StreamIdleTimeout: 40 * time.Millisecond}})
 				_, err := client.GenerateText(context.Background(), llm.TextRequest{Model: "m", Input: "input"})
 				want := "LLM stream idle timeout after 40ms"
 				if first {
@@ -231,7 +232,7 @@ func TestResponseTimeoutsAndCancellation(t *testing.T) {
 				close(started)
 				<-r.Context().Done()
 			}))
-			client := mustClient(t, srv.URL, nil, nil, RequestOptions{HTTPClient: srv.Client()})
+			client := mustClient(t, srv.URL, nil, nil, RequestOptions{Options: httpclient.Options{HTTPClient: srv.Client()}})
 			ctx, cancel := context.WithCancel(context.Background())
 			errCh := make(chan error, 1)
 			go func() { _, err := client.GenerateText(ctx, llm.TextRequest{Model: "m", Input: "input"}); errCh <- err }()
@@ -265,7 +266,7 @@ func TestResponseMetadataAndRetryKeepSharedNotifier(t *testing.T) {
 		emit(w, "response.completed", completedText)
 	}))
 	defer srv.Close()
-	client := mustClient(t, srv.URL, nil, nil, RequestOptions{RetryInitialDelay: time.Millisecond})
+	client := mustClient(t, srv.URL, nil, nil, RequestOptions{RetryOptions: llm.RetryOptions{MaxRetries: 1, RetryInitialDelay: time.Millisecond}})
 	var retries []llm.RetryEvent
 	client.SetRetryNotifier(func(ctx context.Context, event llm.RetryEvent) {
 		if ctx.Err() != nil {
@@ -281,7 +282,7 @@ func TestResponseMetadataAndRetryKeepSharedNotifier(t *testing.T) {
 	if err != nil || len(metadata) != 1 || metadata[0].ContextWindow != 1000 {
 		t.Fatalf("metadata=%v error=%v", metadata, err)
 	}
-	if _, err := client.GenerateText(context.Background(), llm.TextRequest{Model: "m"}); err != nil {
+	if _, err := llm.Retry(t.Context(), client, client.GenerateText, llm.TextRequest{Model: "m"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(retries) != 1 || retries[0].Attempt != 1 || requests.Load() != 2 {

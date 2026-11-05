@@ -327,6 +327,8 @@ func waitError(t *testing.T, ch <-chan error) error {
 	}
 }
 
+func (*testClient) RetryOptions() llm.RetryOptions { return llm.RetryOptions{} }
+
 func (c *testClient) GenerateText(ctx context.Context, req llm.TextRequest) (llm.TextResult, error) {
 	messages := []llm.LLMMessage{}
 	if req.Instructions != "" {

@@ -18,7 +18,7 @@ type RetryOptions struct {
 	OnRetry func(context.Context, RetryEvent)
 }
 
-// Retry owns one operation's budget. call must finish its cleanup before returning.
+// Retry owns one operation's budget. call must release attempt resources before returning.
 // Unmarked errors are terminal; the final attempt's result is retained on failure.
 func Retry[Q, R any](ctx context.Context, client Client, call func(context.Context, Q) (R, error), request Q) (result R, err error) {
 	opts := client.RetryOptions()

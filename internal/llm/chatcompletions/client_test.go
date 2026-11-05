@@ -37,7 +37,7 @@ func mustNewWithOptions(t *testing.T, baseURL, apiKey string, extraPayload map[s
 }
 
 func TestNewWithOptionsReturnsInvalidProxyError(t *testing.T) {
-	_, err := New("https://example.invalid/v1", "key", nil, nil, RequestOptions{Proxy: "://bad proxy"})
+	_, err := New("https://example.invalid/v1", "key", nil, nil, RequestOptions{Options: httpclient.Options{Proxy: "://bad proxy"}})
 	if err == nil || !strings.Contains(err.Error(), "invalid proxy URL") {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -444,13 +444,7 @@ func TestChatStream_ResponsePrefixHonorsFirstChunkTimeout(t *testing.T) {
 			<-r.Context().Done()
 		}))
 
-		adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{
-			HTTPClient:        srv.Client(),
-			FirstChunkTimeout: 20 * time.Millisecond,
-			StreamIdleTimeout: time.Second,
-			MaxRetries:        1,
-			RetryInitialDelay: time.Millisecond,
-		})
+		adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{Options: httpclient.Options{HTTPClient: srv.Client(), FirstChunkTimeout: 20 * time.Millisecond, StreamIdleTimeout: time.Second}})
 		_, err := adapter.Stream(context.Background(), Request{
 			Model:    "test",
 			Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
@@ -472,13 +466,7 @@ func TestChatStream_FirstChunkCanArriveAfterIdleTimeout(t *testing.T) {
 			w.(http.Flusher).Flush()
 		}))
 
-		adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{
-			HTTPClient:        srv.Client(),
-			FirstChunkTimeout: 100 * time.Millisecond,
-			StreamIdleTimeout: 10 * time.Millisecond,
-			MaxRetries:        1,
-			RetryInitialDelay: time.Millisecond,
-		})
+		adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{Options: httpclient.Options{HTTPClient: srv.Client(), FirstChunkTimeout: 100 * time.Millisecond, StreamIdleTimeout: 10 * time.Millisecond}})
 		ch, err := adapter.Stream(context.Background(), Request{
 			Model:    "test",
 			Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
@@ -509,13 +497,7 @@ func TestChatStream_StreamIdleTimeout(t *testing.T) {
 			time.Sleep(50 * time.Millisecond)
 		}))
 
-		adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{
-			HTTPClient:        srv.Client(),
-			FirstChunkTimeout: 100 * time.Millisecond,
-			StreamIdleTimeout: 10 * time.Millisecond,
-			MaxRetries:        1,
-			RetryInitialDelay: time.Millisecond,
-		})
+		adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{Options: httpclient.Options{HTTPClient: srv.Client(), FirstChunkTimeout: 100 * time.Millisecond, StreamIdleTimeout: 10 * time.Millisecond}})
 		ch, err := adapter.Stream(context.Background(), Request{
 			Model:    "test",
 			Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
@@ -558,13 +540,9 @@ func TestChatStream_StreamIdleResetsOnEachChunk(t *testing.T) {
 			}
 		}))
 
+		// Each 10ms gap is below this limit, but reaching c takes 20ms.
 		adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{
-			HTTPClient:        srv.Client(),
-			FirstChunkTimeout: 100 * time.Millisecond,
-			// Each 10ms gap is below this limit, but reaching c takes 20ms.
-			StreamIdleTimeout: 15 * time.Millisecond,
-			MaxRetries:        1,
-			RetryInitialDelay: time.Millisecond,
+			Options: httpclient.Options{HTTPClient: srv.Client(), FirstChunkTimeout: 100 * time.Millisecond, StreamIdleTimeout: 15 * time.Millisecond},
 		})
 		ch, err := adapter.Stream(context.Background(), Request{
 			Model:    "test",
@@ -602,13 +580,7 @@ func TestChatStream_ActiveStreamCompletes(t *testing.T) {
 			}
 		}))
 
-		adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{
-			HTTPClient:        srv.Client(),
-			FirstChunkTimeout: 100 * time.Millisecond,
-			StreamIdleTimeout: 50 * time.Millisecond,
-			MaxRetries:        1,
-			RetryInitialDelay: time.Millisecond,
-		})
+		adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{Options: httpclient.Options{HTTPClient: srv.Client(), FirstChunkTimeout: 100 * time.Millisecond, StreamIdleTimeout: 50 * time.Millisecond}})
 		ch, err := adapter.Stream(context.Background(), Request{
 			Model:    "test",
 			Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
@@ -957,52 +929,25 @@ func TestChatStream_OmitsEmptyToolsPayload(t *testing.T) {
 	}
 }
 
-func TestChatStream_RetriesRetryableHTTPStatus(t *testing.T) {
-	attempts := 0
-	retryEvents := 0
+func TestChatStreamDoesNotRetryHTTPStatus(t *testing.T) {
+	attempts, retryEvents := 0, 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
-		if attempts < 3 {
-			w.WriteHeader(http.StatusBadGateway)
-			io.WriteString(w, `{"error":{"message":"temporary upstream error"}}`)
-			return
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		io.WriteString(w, "data: [DONE]\n\n")
-		w.(http.Flusher).Flush()
+		w.WriteHeader(http.StatusBadGateway)
+		io.WriteString(w, `{"error":{"message":"temporary upstream error"}}`)
 	}))
 	defer srv.Close()
-
 	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{
-		MaxRetries:        3,
-		RetryInitialDelay: time.Millisecond,
-		OnRetry: func(ctx context.Context, event llm.RetryEvent) {
-			retryEvents++
-			if event.Attempt != retryEvents {
-				t.Fatalf("retry attempt = %d, want %d", event.Attempt, retryEvents)
-			}
-			if event.MaxRetries != 3 {
-				t.Fatalf("max retries = %d, want 3", event.MaxRetries)
-			}
-			if event.Err == nil {
-				t.Fatal("expected retry error")
-			}
-		},
+		RetryOptions: llm.RetryOptions{MaxRetries: 3, RetryInitialDelay: time.Millisecond,
+			OnRetry: func(context.Context, llm.RetryEvent) { retryEvents++ }},
 	})
-	ch, err := adapter.Stream(context.Background(), Request{
-		Model:    "test",
-		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},
-	})
-	if err != nil {
-		t.Fatalf("ChatStream: %v", err)
+	_, err := adapter.Stream(t.Context(), Request{Model: "test"})
+	var failure *llm.CallError
+	if !errors.As(err, &failure) || !failure.Retryable || failure.Kind != llm.ErrorTemporaryFailure || err.Error() != "temporary upstream error" {
+		t.Fatalf("error=%v", err)
 	}
-	for range ch {
-	}
-	if attempts != 3 {
-		t.Fatalf("attempts = %d, want 3", attempts)
-	}
-	if retryEvents != 2 {
-		t.Fatalf("retry events = %d, want 2", retryEvents)
+	if attempts != 1 || retryEvents != 0 {
+		t.Fatalf("requests=%d retries=%d", attempts, retryEvents)
 	}
 }
 
@@ -1014,7 +959,7 @@ func TestChatStream_ReportsMissingDoneAsInterrupted(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{MaxRetries: 1, RetryInitialDelay: time.Millisecond})
+	adapter := mustNewWithOptions(t, srv.URL, "test-key", nil, nil, RequestOptions{RetryOptions: llm.RetryOptions{MaxRetries: 1, RetryInitialDelay: time.Millisecond}})
 	ch, err := adapter.Stream(context.Background(), Request{
 		Model:    "test",
 		Messages: []llm.LLMMessage{{Role: llm.RoleUser, Segments: llm.TextSegments("Hi")}},

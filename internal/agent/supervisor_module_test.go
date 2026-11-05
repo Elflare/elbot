@@ -50,6 +50,8 @@ type isolatedClient struct{}
 
 func (isolatedClient) ListModels(context.Context) ([]string, error) { return []string{"m"}, nil }
 
+func (isolatedClient) RetryOptions() llm.RetryOptions { return llm.RetryOptions{} }
+
 func (isolatedClient) GenerateText(context.Context, llm.TextRequest) (llm.TextResult, error) {
 	return llm.TextResult{Text: "title"}, nil
 }

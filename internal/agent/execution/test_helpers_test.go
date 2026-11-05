@@ -296,6 +296,8 @@ DELETE FROM media;
 	return sharedTestStore
 }
 
+func (*fakeLLM) RetryOptions() llm.RetryOptions { return llm.RetryOptions{} }
+
 func (f *fakeLLM) GenerateText(ctx context.Context, req llm.TextRequest) (llm.TextResult, error) {
 	messages := []llm.LLMMessage{}
 	if req.Instructions != "" {

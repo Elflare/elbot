@@ -58,7 +58,7 @@ func (a *Client) fetchModelsOnce(ctx context.Context, url string) (*modelList, e
 
 	var result modelList
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode models response: %w", err)
+		return nil, llm.MapTransportError(fmt.Errorf("decode models response: %w", err))
 	}
 	return &result, nil
 }

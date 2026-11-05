@@ -153,8 +153,8 @@ func TestManagerCloseWaitsForObserverAndCanResume(t *testing.T) {
 }
 
 func TestRequestOptionsPreserveConfiguredDurationsAndProxy(t *testing.T) {
-	options := requestOptions(config.LLMRequestConfig{FirstChunkTimeoutSeconds: 7, StreamIdleTimeoutSeconds: 11, MaxRetries: 2, RetryInitialDelaySeconds: 3}, "http://proxy.invalid")
-	if options.FirstChunkTimeout != 7*time.Second || options.StreamIdleTimeout != 11*time.Second || options.MaxRetries != 2 || options.RetryInitialDelay != 3*time.Second || options.Proxy != "http://proxy.invalid" {
-		t.Fatal(options)
+	options, retry := requestOptions(config.LLMRequestConfig{FirstChunkTimeoutSeconds: 7, StreamIdleTimeoutSeconds: 11, MaxRetries: 2, RetryInitialDelaySeconds: 3}, "http://proxy.invalid")
+	if options.FirstChunkTimeout != 7*time.Second || options.StreamIdleTimeout != 11*time.Second || retry.MaxRetries != 2 || retry.RetryInitialDelay != 3*time.Second || options.Proxy != "http://proxy.invalid" {
+		t.Fatal(options, retry)
 	}
 }

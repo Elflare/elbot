@@ -33,7 +33,7 @@ func (p *Preparer) ArchiveMaterials(ctx context.Context, messages []llm.LLMMessa
 // PrepareMaterials is the shared media preparation boundary for Chat and Responses.
 // Callers supply all material in one actual request, including replay/continuation
 // prefixes, so the media manager chooses one delivery policy for the whole request.
-// Its usage belongs to that request's lifecycle, including HTTP transport retries.
+// Its usage belongs to the complete model call, including retries.
 func (p *Preparer) PrepareMaterials(ctx context.Context, messages []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, "", err

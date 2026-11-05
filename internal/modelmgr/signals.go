@@ -10,10 +10,9 @@ import (
 	"log/slog"
 )
 
-// ModelRetryingEvent is emitted with the actual provider call's context. That
-// context expires when the response stream ends, even if its parent survives.
+// ModelRetryingEvent uses the complete operation's context across attempts.
 type ModelRetryingEvent struct {
-	// CallContext retains the actual provider call lifetime for transient UI
+	// CallContext retains the complete operation's lifetime for transient UI
 	// notifications. The fact itself must still be logged after cancellation.
 	CallContext context.Context
 	// Identity is captured by the publishing source from this provider call;
@@ -21,7 +20,7 @@ type ModelRetryingEvent struct {
 	Identity events.LogIdentity
 	// Provider identifies the configured provider that owns the retrying client.
 	Provider string
-	// Retry retains the transport's explicit attempt result and original error.
+	// Retry retains the common retry loop's attempt result and original error.
 	Retry llm.RetryEvent
 }
 

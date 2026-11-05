@@ -25,7 +25,7 @@ func TestModelErrorReachesNotificationWithoutIntermediatePrefixes(t *testing.T) 
 		{
 			name: "chat HTTP", api: "chat", status: http.StatusUnauthorized,
 			body: `{"error":{"message":"invalid credentials"}}`,
-			want: "HTTP 401: invalid credentials",
+			want: "invalid credentials",
 		},
 		{
 			name: "chat parse", api: "chat",
@@ -40,7 +40,7 @@ func TestModelErrorReachesNotificationWithoutIntermediatePrefixes(t *testing.T) 
 		{
 			name: "response upstream", api: "response",
 			body: "data: {\"type\":\"error\",\"error\":{\"code\":\"request_timeout\",\"message\":\"stream error: stream disconnected before completion: stream closed before response.completed\"}}\n\n",
-			want: "request_timeout: stream error: stream disconnected before completion: stream closed before response.completed",
+			want: "stream error: stream disconnected before completion: stream closed before response.completed",
 		},
 		{
 			name: "response EOF", api: "response",

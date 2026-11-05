@@ -143,7 +143,7 @@ func TestCompactRejectsInvalidOutputAndUnsuccessfulStreams(t *testing.T) {
 		{name: "API error", event: "error", raw: `{"type":"error","code":"bad","message":"bad compact"}`, want: "bad compact"},
 		{name: "invalid terminal", event: "response.completed", raw: `{"type":"response.completed","response":{"id":"r","status":"in_progress"}}`, want: "invalid completed"},
 		{name: "EOF", want: "unexpected EOF"},
-		{name: "404", want: "404"},
+		{name: "404", want: `{"detail":"Not Found"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var requests atomic.Int32
