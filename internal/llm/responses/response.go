@@ -104,6 +104,7 @@ type Response struct {
 
 type APIError struct {
 	Code       string `json:"code"`
+	Type       string `json:"type"` // Provider category used only by the boundary mapper.
 	Message    string `json:"message"`
 	Param      string `json:"param"`
 	StatusCode int    `json:"-"`

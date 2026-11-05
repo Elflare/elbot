@@ -20,7 +20,7 @@ func logModelRetry(ctx context.Context, event ModelRetryingEvent) error {
 	_ = events.EmitLog(ctx, events.LogRecord{
 		Category: events.LogRuntime, Level: level, EventName: "model_retry", Module: "model",
 		Identity: event.Identity, ResultStatus: event.Retry.ResultStatus,
-		Content: fmt.Sprintf("model call retry: provider=%s retry_attempt=%d max_retries=%d delay=%s error=%s", event.Provider, event.Retry.Attempt, event.Retry.MaxRetries, event.Retry.Delay, errorMessage),
+		Content: fmt.Sprintf("model call retry: provider=%s retry_attempt=%d max_retries=%d delay=%s error_kind=%s error=%s", event.Provider, event.Retry.Attempt, event.Retry.MaxRetries, event.Retry.Delay, event.Retry.Kind, errorMessage),
 	})
 	return nil
 }

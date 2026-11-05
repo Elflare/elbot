@@ -3,36 +3,18 @@ package responses
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"regexp"
 	"strings"
 	"unicode/utf8"
 
-	"elbot/internal/llm/httpclient"
+	"elbot/internal/llm"
 )
 
-func (e *APIError) Error() string {
-	message := errorSummary(e.Message, 256)
-	if message == "" {
-		message = "上游返回错误，但未提供可识别的错误说明"
-	}
-	if e.StatusCode != 0 {
-		return fmt.Sprintf("HTTP %d: %s", e.StatusCode, message)
-	}
-	prefix := errorSummary(e.Code, 256)
-	if e.EventType == "response.incomplete" {
-		prefix = strings.TrimSpace(e.EventType + " " + prefix)
-	}
-	if prefix == "" {
-		return message
-	}
-	return prefix + ": " + message
-}
+func (e *APIError) Error() string { return e.Message }
 
-func streamAPIError(event Event) *APIError {
+func streamAPIError(event Event) error {
 	apiErr := &APIError{}
 	detail := event.Raw
 	if event.Type == "error" {
@@ -67,6 +49,15 @@ func streamAPIError(event Event) *APIError {
 	}
 	apiErr.EventType = event.Type
 	apiErr.Detail = errorDetail(detail)
+	if apiErr.Message == "" {
+		apiErr.Message = string(detail)
+	}
+	// Preserve existing chain recovery; other stream errors remain terminal.
+	// TODO: normalize other stream errors when retry output handling is implemented.
+	failure := llm.MapProviderError(0, apiErr.Code, apiErr.Type, apiErr.Param, apiErr)
+	if failure.Kind == llm.ErrorPreviousResponseUnavailable {
+		return failure
+	}
 	return apiErr
 }
 
@@ -81,10 +72,6 @@ func redactErrorText(text string) string {
 		return text[:match[1]] + "[redacted]"
 	}
 	return text
-}
-
-func errorSummary(text string, limit int) string {
-	return limitErrorText(strings.Join(strings.Fields(redactErrorText(text)), " "), limit)
 }
 
 func limitErrorText(text string, limit int) string {
@@ -136,39 +123,18 @@ func redactErrorValue(value any) any {
 	}
 }
 
-// Only explicit, structured chain errors qualify. Free-form messages, transport
-// errors and unrelated invalid requests never trigger a context replay.
-func PreviousResponseUnavailable(err error) bool {
-	var apiErr *APIError
-	if !errors.As(err, &apiErr) {
-		return false
-	}
-	if apiErr.StatusCode != 0 && apiErr.StatusCode != http.StatusBadRequest && apiErr.StatusCode != http.StatusNotFound {
-		return false
-	}
-	switch apiErr.Code {
-	case "previous_response_not_found", "previous_response_id_not_found", "invalid_previous_response_id":
-		return apiErr.Param == "" || apiErr.Param == "previous_response_id"
-	case "response_not_found", "not_found":
-		return apiErr.Param == "previous_response_id"
-	}
-	return false
-}
-
 func parseError(resp *http.Response) error {
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 8193))
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("HTTP %d (failed to read body: %w)", resp.StatusCode, err)
+		return llm.MapProviderError(resp.StatusCode, "", "", "", err)
 	}
 	var apiErr struct {
 		Error APIError `json:"error"`
 	}
+	message := string(body)
 	if err := json.Unmarshal(body, &apiErr); err == nil && apiErr.Error.Message != "" {
-		apiErr.Error.StatusCode = resp.StatusCode
-		return &apiErr.Error
+		message = apiErr.Error.Message
 	}
-	if strings.HasPrefix(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") || httpclient.LooksLikeHTML(body) {
-		return fmt.Errorf("HTTP %d: 上游返回 HTML 而不是 API 响应，请检查 API Base URL、代理或网关", resp.StatusCode)
-	}
-	return fmt.Errorf("HTTP %d: %s", resp.StatusCode, httpclient.SafeSummary(body))
+	apiErr.Error.Message, apiErr.Error.StatusCode = message, resp.StatusCode
+	return llm.MapProviderError(resp.StatusCode, apiErr.Error.Code, apiErr.Error.Type, apiErr.Error.Param, &apiErr.Error)
 }

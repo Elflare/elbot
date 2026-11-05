@@ -73,6 +73,8 @@ type RetryEvent struct {
 	Delay time.Duration
 	// Err is the original error from the completed attempt and is read-only after publication.
 	Err error
+	// Kind carries the source's internal classification for logging and notification consumers.
+	Kind ErrorKind
 	// ResultStatus describes the completed attempt, not the eventual model call.
 	// The shared retry loop declares it; zero means unspecified, never success.
 	ResultStatus events.ResultStatus

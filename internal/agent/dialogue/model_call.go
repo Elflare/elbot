@@ -131,7 +131,11 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 		content["detail"] = fmt.Sprintf("%.8192s", o.logRecord.Content)
 	}
 	if o.event.ProviderError && o.event.Err != nil {
-		content["error"] = fmt.Sprintf("%.2048s", o.event.Err.Error())
+		content["error"] = o.event.Err.Error()
+		var failure *llm.CallError
+		if errors.As(o.event.Err, &failure) {
+			content["error_kind"], content["retryable"] = failure.Kind, failure.Retryable
+		}
 	}
 	if usage := o.event.Usage; usage != nil {
 		content["prompt_tokens"], content["completion_tokens"], content["total_tokens"], content["cache_hit_tokens"] = usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens, usage.CacheHitTokens

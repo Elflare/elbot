@@ -18,17 +18,6 @@ type RetryOptions struct {
 	OnRetry func(context.Context, RetryEvent)
 }
 
-// CallError carries the source's retry decision for one failure.
-type CallError struct {
-	// Retryable allows another complete attempt after this attempt's cleanup succeeds.
-	Retryable bool
-	// Cause preserves the original failure, including structured protocol details.
-	Cause error
-}
-
-func (e *CallError) Error() string { return e.Cause.Error() }
-func (e *CallError) Unwrap() error { return e.Cause }
-
 // Retry owns one operation's budget. call must finish its cleanup before returning.
 // Unmarked errors are terminal; the final attempt's result is retained on failure.
 func Retry[Q, R any](ctx context.Context, client Client, call func(context.Context, Q) (R, error), request Q) (result R, err error) {
@@ -50,7 +39,7 @@ func Retry[Q, R any](ctx context.Context, client Client, call func(context.Conte
 			return result, err
 		}
 		if opts.OnRetry != nil {
-			opts.OnRetry(ctx, RetryEvent{Attempt: attempt + 1, MaxRetries: opts.MaxRetries, Delay: delay, Err: err, ResultStatus: events.ResultFailed})
+			opts.OnRetry(ctx, RetryEvent{Attempt: attempt + 1, MaxRetries: opts.MaxRetries, Delay: delay, Err: err, Kind: failure.Kind, ResultStatus: events.ResultFailed})
 		}
 		timer := time.NewTimer(delay)
 		select {

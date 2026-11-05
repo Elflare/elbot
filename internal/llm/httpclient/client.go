@@ -2,13 +2,9 @@
 package httpclient
 
 import (
-	"errors"
 	"fmt"
-	"io"
-	"net"
 	"net/http"
 	"net/url"
-	"syscall"
 	"time"
 
 	"elbot/internal/llm"
@@ -61,30 +57,11 @@ func New(opts Options) (*Client, error) {
 func (c *Client) Do(req *http.Request, decodeError func(*http.Response) error) (*http.Response, error) {
 	resp, err := c.http.Do(req)
 	if err != nil {
-		if err := req.Context().Err(); err != nil {
-			return nil, err
-		}
-		var networkError net.Error
-		var dnsError *net.DNSError
-		retryable := (errors.As(err, &networkError) && networkError.Timeout()) ||
-			(errors.As(err, &dnsError) && dnsError.IsTemporary) ||
-			errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
-			errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNABORTED) ||
-			errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.EPIPE) ||
-			errors.Is(err, syscall.ENETUNREACH) || errors.Is(err, syscall.EHOSTUNREACH)
-		return nil, &llm.CallError{Retryable: retryable, Cause: err}
+		return nil, llm.MapTransportError(err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
-		return nil, &llm.CallError{Retryable: isRetryableStatus(resp.StatusCode), Cause: decodeError(resp)}
+		return nil, decodeError(resp)
 	}
 	return resp, nil
-}
-
-func isRetryableStatus(status int) bool {
-	return status == http.StatusRequestTimeout ||
-		status == http.StatusConflict ||
-		status == http.StatusTooEarly ||
-		status == http.StatusTooManyRequests ||
-		(status >= http.StatusInternalServerError && status < 600)
 }

@@ -5,6 +5,7 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/media"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -130,7 +131,8 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 		}
 		if callErr != nil {
 			// Partial output is retained as a fact, never as executable tool calls.
-			if request.PreviousResponseID == "" || result.OutputStarted || !result.FactsSaved || !api.PreviousResponseUnavailable(callErr) {
+			var failure *llm.CallError
+			if request.PreviousResponseID == "" || result.OutputStarted || !result.FactsSaved || !errors.As(callErr, &failure) || failure.Kind != llm.ErrorPreviousResponseUnavailable {
 				return final, callErr
 			}
 			s.route.Preparer.FinishMaterials(ctx, usageID)
@@ -140,10 +142,7 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 				return final, err
 			}
 			// replayRequest clears PreviousResponseID; recovery can happen only once.
-			if failure, ok := callErr.(*llm.CallError); ok {
-				callErr = failure.Cause
-			}
-			return final, &llm.CallError{Retryable: true, Cause: callErr}
+			return final, &llm.CallError{Kind: failure.Kind, Retryable: true, Cause: failure.Cause}
 		}
 		seen := map[string]bool{}
 		for _, item := range result.Items {

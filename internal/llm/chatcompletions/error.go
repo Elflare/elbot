@@ -1,33 +1,33 @@
 package chatcompletions
 
 import (
-	"elbot/internal/llm/httpclient"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
-	"strings"
+
+	"elbot/internal/llm"
 )
 
 type openAIError struct {
 	Error struct {
 		Message string `json:"message"`
 		Type    string `json:"type"`
+		Code    string `json:"code"`  // Provider code consumed by the boundary mapper.
+		Param   string `json:"param"` // Request field associated with the provider error.
 	} `json:"error"`
 }
 
 func parseError(resp *http.Response) error {
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 8192+1))
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("HTTP %d (failed to read body: %w)", resp.StatusCode, err)
+		return llm.MapProviderError(resp.StatusCode, "", "", "", err)
 	}
 
 	var apiErr openAIError
+	message := string(body)
 	if err := json.Unmarshal(body, &apiErr); err == nil && apiErr.Error.Message != "" {
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, httpclient.SafeSummary([]byte(apiErr.Error.Message)))
+		message = apiErr.Error.Message
 	}
-	if strings.HasPrefix(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") || httpclient.LooksLikeHTML(body) {
-		return fmt.Errorf("HTTP %d: 上游返回 HTML 而不是 API 响应，请检查 API Base URL、代理或网关", resp.StatusCode)
-	}
-	return fmt.Errorf("HTTP %d: %s", resp.StatusCode, httpclient.SafeSummary(body))
+	return llm.MapProviderError(resp.StatusCode, apiErr.Error.Code, apiErr.Error.Type, apiErr.Error.Param, errors.New(message))
 }
