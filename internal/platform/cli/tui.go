@@ -6,6 +6,7 @@ import (
 	"context"
 	"log/slog"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -29,9 +30,19 @@ type tuiStreamMsg struct {
 	Event delivery.StreamEvent
 }
 
-type tuiStreamContent struct {
-	start, end      int    // Byte range occupied by this preview in content.
-	text, reasoning string // Current attempt's display buffers.
+type tuiContentKind uint8
+
+const (
+	tuiContentUser tuiContentKind = iota
+	tuiContentAssistant
+	tuiContentNotice
+	tuiContentSeparator
+)
+
+type tuiContentBlock struct {
+	kind            tuiContentKind // Determines presentation without interpreting text.
+	text, reasoning string         // Body and independent reasoning of this message.
+	level           slog.Level     // Severity of an inline notice.
 }
 type tuiStatusMsg runtimestatus.Snapshot
 type tuiStatusTickMsg time.Time
@@ -154,30 +165,29 @@ type tuiModel struct {
 	stop     func()
 	output   chan tea.Msg
 
-	copyState          copyModeState
-	clipboard          clipboardWriter
-	completion         func(context.Context, completion.Request) ([]completion.Item, error)
-	localFiles         *localFileResolver
-	completionState    completionState
-	content            string
-	notices            []tuiNotice
-	inlineNoticeLevels []slog.Level
-	history            []string
-	histPos            int
-	userName           string
-	assistantName      string
-	streams            map[uint64]*tuiStreamContent // Only uncommitted message previews.
-	runtimeStatus      runtimestatus.Snapshot
-	statusNow          time.Time
-	viewport           viewport.Model
-	noticeViewport     viewport.Model
-	input              textarea.Model
-	pasteBurst         tuiPasteBurst
-	inputNow           func() time.Time
-	width              int
-	height             int
-	noticeWidth        int
-	resizingNotice     bool
+	copyState       copyModeState
+	clipboard       clipboardWriter
+	completion      func(context.Context, completion.Request) ([]completion.Item, error)
+	localFiles      *localFileResolver
+	completionState completionState
+	content         []*tuiContentBlock
+	notices         []tuiNotice
+	history         []string
+	histPos         int
+	userName        string
+	assistantName   string
+	streams         map[uint64]*tuiContentBlock // Only uncommitted message previews.
+	runtimeStatus   runtimestatus.Snapshot
+	statusNow       time.Time
+	viewport        viewport.Model
+	noticeViewport  viewport.Model
+	input           textarea.Model
+	pasteBurst      tuiPasteBurst
+	inputNow        func() time.Time
+	width           int
+	height          int
+	noticeWidth     int
+	resizingNotice  bool
 }
 
 func newTUIInput() textarea.Model {
@@ -808,10 +818,10 @@ func (m *tuiModel) clearInput() {
 }
 
 func (m *tuiModel) appendUserContent(text string) {
-	if strings.TrimSpace(m.content) != "" {
-		m.content += "\n" + m.separatorLine() + "\n"
+	if len(m.content) != 0 {
+		m.content = append(m.content, &tuiContentBlock{kind: tuiContentSeparator, text: m.separatorLine()})
 	}
-	m.content += m.userName + ": " + text + "\n"
+	m.content = append(m.content, &tuiContentBlock{kind: tuiContentUser, text: text})
 	m.refreshContent()
 }
 
@@ -830,7 +840,7 @@ func (m *tuiModel) appendAssistantContent(text string) {
 	if text == "" {
 		return
 	}
-	m.content += "\n" + m.assistantName + ": " + text
+	m.content = append(m.content, &tuiContentBlock{kind: tuiContentAssistant, text: text})
 	m.refreshContent()
 }
 
@@ -841,15 +851,16 @@ func (m *tuiModel) applyStreamEvent(msg tuiStreamMsg) {
 		return
 	}
 	if m.streams == nil {
-		m.streams = make(map[uint64]*tuiStreamContent)
+		m.streams = make(map[uint64]*tuiContentBlock)
 	}
 	stream := m.streams[msg.ID]
 	if stream == nil {
 		if event.Type == delivery.StreamReset {
 			return
 		}
-		stream = &tuiStreamContent{start: len(m.content), end: len(m.content)}
+		stream = &tuiContentBlock{kind: tuiContentAssistant}
 		m.streams[msg.ID] = stream
+		m.content = append(m.content, stream)
 	}
 	switch event.Type {
 	case delivery.StreamTextDelta:
@@ -857,26 +868,13 @@ func (m *tuiModel) applyStreamEvent(msg tuiStreamMsg) {
 	case delivery.StreamReasoningDelta:
 		stream.reasoning += event.Text
 	case delivery.StreamReset:
-		stream.text, stream.reasoning = "", ""
+		m.content = slices.DeleteFunc(m.content, func(block *tuiContentBlock) bool { return block == stream })
 	case delivery.StreamSend:
 		stream.text = event.Text
-	}
-	text := ""
-	if stream.reasoning != "" {
-		text = "\nthinking: " + stream.reasoning
-	}
-	if stream.text != "" {
-		text += "\n" + m.assistantName + ": " + stream.text
-	}
-	change := len(text) - (stream.end - stream.start)
-	m.content = m.content[:stream.start] + text + m.content[stream.end:]
-	for id, other := range m.streams {
-		if id != msg.ID && other.start >= stream.end {
-			other.start += change
-			other.end += change
+		if stream.text == "" && stream.reasoning == "" {
+			m.content = slices.DeleteFunc(m.content, func(block *tuiContentBlock) bool { return block == stream })
 		}
 	}
-	stream.end = stream.start + len(text)
 	if event.Type == delivery.StreamReset || event.Type == delivery.StreamSend {
 		delete(m.streams, msg.ID)
 	}
@@ -900,11 +898,10 @@ func (m *tuiModel) appendNoticeLevel(text string, level slog.Level) {
 }
 
 func (m *tuiModel) appendNoticeContent(text string, level slog.Level) {
-	if strings.TrimSpace(m.content) != "" {
-		m.content += "\n" + m.separatorLine() + "\n"
+	if len(m.content) != 0 {
+		m.content = append(m.content, &tuiContentBlock{kind: tuiContentSeparator, text: m.separatorLine()})
 	}
-	m.content += "[notice] " + text
-	m.inlineNoticeLevels = append(m.inlineNoticeLevels, level)
+	m.content = append(m.content, &tuiContentBlock{kind: tuiContentNotice, text: text, level: level})
 	m.refreshContent()
 }
 
@@ -956,12 +953,11 @@ func tuiNoticeLevelStyle(level slog.Level) lipgloss.Style {
 }
 
 func (m *tuiModel) refreshContent() {
-	content := m.wrappedContent()
 	if m.copyState.active() && m.copyState.Region == regionChat {
-		m.viewport.SetContent(m.renderCopyLines(regionChat, splitLines(content)))
+		m.viewport.SetContent(m.renderCopyLines(regionChat, splitLines(m.wrappedContent())))
 		return
 	}
-	m.viewport.SetContent(m.renderContent(content))
+	m.viewport.SetContent(m.renderContent(true))
 	m.viewport.GotoBottom()
 }
 
@@ -974,67 +970,60 @@ func (m *tuiModel) refreshCopyRegion() {
 	}
 }
 
-func (m tuiModel) renderContent(content string) string {
-	if content == "" {
-		return tuiTitleMutedStyle.Render("还没有消息。输入内容后按 Enter 发送。")
+func (m tuiModel) renderContent(styled bool) string {
+	wrap := func(text string) string {
+		if m.viewport.Width <= 1 {
+			return text
+		}
+		return wrapDisplayWidth(text, m.viewport.Width)
 	}
-	lines := strings.Split(content, "\n")
-	inReasoning := false
-	inNotice := false
-	noticeIndex := 0
-	var noticeStyle lipgloss.Style
-	for i, line := range lines {
-		switch {
-		case strings.HasPrefix(line, m.userName+": "):
-			inReasoning = false
-			inNotice = false
-			lines[i] = renderSpeakerLine(line, m.userName, tuiUserStyle)
-		case strings.HasPrefix(line, m.assistantName+": "):
-			inReasoning = false
-			inNotice = false
-			lines[i] = renderSpeakerLine(line, m.assistantName, tuiAssistantStyle)
-		case strings.HasPrefix(line, "thinking: "):
-			inReasoning = true
-			inNotice = false
-			lines[i] = tuiReasoningStyle.Render(line)
-		case isSeparatorLine(line):
-			inReasoning = false
-			inNotice = false
-			lines[i] = tuiSeparatorStyle.Render(line)
-		case strings.HasPrefix(line, "[notice] "):
-			level := slog.LevelInfo
-			if noticeIndex < len(m.inlineNoticeLevels) {
-				level = m.inlineNoticeLevels[noticeIndex]
+	render := func(text string, style lipgloss.Style) string {
+		lines := strings.Split(wrap(text), "\n")
+		if styled {
+			for i, line := range lines {
+				lines[i] = style.Render(line)
 			}
-			noticeIndex++
-			inReasoning = false
-			inNotice = true
-			noticeStyle = tuiNoticeLevelStyle(level)
-			lines[i] = noticeStyle.Render(line)
-		case inReasoning:
-			lines[i] = tuiReasoningStyle.Render(line)
-		case inNotice:
-			lines[i] = noticeStyle.Render(line)
+		}
+		return strings.Join(lines, "\n")
+	}
+	speaker := func(name, text string, style lipgloss.Style) string {
+		text = wrap(name + ": " + text)
+		if styled {
+			return renderSpeakerLine(text, name, style)
+		}
+		return text
+	}
+	var content strings.Builder
+	for _, block := range m.content {
+		switch block.kind {
+		case tuiContentUser:
+			content.WriteString(speaker(m.userName, block.text, tuiUserStyle) + "\n")
+		case tuiContentAssistant:
+			if block.reasoning != "" {
+				content.WriteString("\n" + render("thinking: "+block.reasoning, tuiReasoningStyle))
+			}
+			if block.text != "" {
+				content.WriteString("\n" + speaker(m.assistantName, block.text, tuiAssistantStyle))
+			}
+		case tuiContentNotice:
+			content.WriteString(render("[notice] "+block.text, tuiNoticeLevelStyle(block.level)))
+		case tuiContentSeparator:
+			content.WriteString("\n" + render(block.text, tuiSeparatorStyle) + "\n")
 		}
 	}
-	return strings.Join(lines, "\n")
+	if content.Len() == 0 && styled {
+		return tuiTitleMutedStyle.Render("还没有消息。输入内容后按 Enter 发送。")
+	}
+	return content.String()
 }
 
 func (m tuiModel) wrappedContent() string {
-	if m.viewport.Width <= 1 {
-		return m.content
-	}
-	return wrapDisplayWidth(m.content, m.viewport.Width)
+	return m.renderContent(false)
 }
 
 func renderSpeakerLine(line, name string, style lipgloss.Style) string {
 	prefix := name + ":"
 	return style.Render(prefix) + strings.TrimPrefix(line, prefix)
-}
-
-func isSeparatorLine(line string) bool {
-	line = strings.TrimSpace(line)
-	return line != "" && strings.Trim(line, "─") == ""
 }
 
 func wrapDisplayWidth(text string, width int) string {

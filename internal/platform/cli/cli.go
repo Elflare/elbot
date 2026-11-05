@@ -95,9 +95,6 @@ func (a *Adapter) StartStream(ctx context.Context) (delivery.MessageStream, erro
 }
 
 func (s cliMessageStream) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
-	if event.Outputs != nil {
-		event.Text = outputsText(event.Outputs)
-	}
 	if !s.adapter.interactive && event.Type != delivery.StreamSend {
 		return delivery.Receipt{}, nil
 	}

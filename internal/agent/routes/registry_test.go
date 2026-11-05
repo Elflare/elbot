@@ -98,11 +98,11 @@ type testOutput struct {
 func (o *testOutput) PrepareAssistant(_ context.Context, text string) (string, error) {
 	return text, nil
 }
-func (o *testOutput) StartStream(context.Context) (delivery.MessageStream, error) {
-	return delivery.StreamFunc(o.Send), nil
+func (o *testOutput) StartStream(context.Context) delivery.MessageStream {
+	return delivery.StreamFunc(o.Send)
 }
 func (o *testOutput) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
-	if event.Type != delivery.StreamSend || event.Outputs != nil {
+	if event.Type != delivery.StreamSend {
 		return delivery.Receipt{}, nil
 	}
 	rows, err := o.messages.ListBySession(ctx, "session")

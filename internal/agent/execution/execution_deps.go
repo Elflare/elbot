@@ -24,7 +24,7 @@ type ExecutionDialogue interface {
 }
 
 type ExecutionSender interface {
-	StartStream(context.Context) (delivery.MessageStream, error)
+	StartStream(context.Context) delivery.MessageStream
 	Send(context.Context, delivery.StreamEvent) (delivery.Receipt, error)
 	Notify(context.Context, slog.Level, string)
 	// Preview takes one complete notice per tool call; multiline bodies stay in

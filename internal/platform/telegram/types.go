@@ -130,10 +130,9 @@ type sendRichMessageRequest struct {
 	ReplyMarkup     *replyMarkup     `json:"reply_markup,omitempty"`
 }
 
-type sendRichMessageDraftRequest struct {
-	ChatID      int64            `json:"chat_id"`
-	DraftID     int64            `json:"draft_id"`
-	RichMessage inputRichMessage `json:"rich_message"`
+type deleteMessageRequest struct {
+	ChatID    int64 `json:"chat_id"`    // Chat containing the preview to remove.
+	MessageID int64 `json:"message_id"` // Platform identity of this preview.
 }
 
 type getUpdatesRequest struct {

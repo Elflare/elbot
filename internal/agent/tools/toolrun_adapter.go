@@ -119,7 +119,7 @@ func (d toolRunDeps) SendPreview(ctx context.Context, text ...string) {
 }
 
 func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
-	_, err := d.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append([]delivery.Output{}, outputs...)})
+	_, err := d.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: outputs})
 	return err
 }
 

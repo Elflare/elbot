@@ -32,7 +32,7 @@ func (p *entryProbe) Handle(_ context.Context, text string) (bool, error) {
 }
 func (p *entryProbe) IsCommand(string) bool { return false }
 func (p *entryProbe) Send(_ context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
-	if event.Outputs != nil {
+	if event.Type == delivery.StreamSendExtras {
 		p.order = append(p.order, "outputs")
 	} else {
 		p.order = append(p.order, "chat")

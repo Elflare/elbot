@@ -22,7 +22,14 @@ type ReplyCommitter struct {
 
 // Commit requires contexts and Session refreshed through executionView by the
 // caller. streamCtx retains the model request's original cancellation chain.
-func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.ReplyCommitInput, out agentshare.Output) (result agentshare.ReplyCommitResult, _ error) {
+func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.ReplyCommitInput, out agentshare.Output) (result agentshare.ReplyCommitResult, err error) {
+	submitted := false
+	defer func() {
+		if !submitted && streamCtx.Err() != nil {
+			_, _ = in.Stream.Send(context.WithoutCancel(streamCtx), delivery.StreamEvent{Type: delivery.StreamReset})
+			err = streamCtx.Err()
+		}
+	}()
 	persistence := in.Persistence
 	if persistence == nil {
 		persistence = c.Persistence
@@ -45,10 +52,14 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 		if err != nil {
 			return result, fmt.Errorf("turn output hook: %w", err)
 		}
-		result.Receipt, result.SendErr = in.Stream.Send(streamCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: text})
-		if result.SendErr != nil && !HasReplyReceipt(result.Receipt) {
-			return result, result.SendErr
-		}
+	}
+	result.Receipt, result.SendErr = in.Stream.Send(streamCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: text})
+	submitted = result.SendErr == nil
+	if streamCtx.Err() != nil && !submitted {
+		return result, streamCtx.Err()
+	}
+	if result.SendErr != nil && !HasReplyReceipt(result.Receipt) {
+		return result, result.SendErr
 	}
 	toSave := message
 	var mappings []storage.PlatformMessageMap
@@ -72,7 +83,7 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 	if result.SendErr != nil {
 		return result, result.SendErr
 	}
-	_, result.SendErr = out.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append([]delivery.Output{}, in.Outputs...)})
+	_, result.SendErr = out.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: in.Outputs})
 	return result, result.SendErr
 }
 

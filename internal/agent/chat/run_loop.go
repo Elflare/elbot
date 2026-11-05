@@ -44,7 +44,13 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 	}()
 	var finalRawText string
 	var platformFinalText string
-	var finalStream delivery.MessageStream
+	var stream delivery.MessageStream
+	defer func() {
+		if err := s.requestCtx.Err(); err != nil && stream != nil {
+			_, _ = stream.Send(context.WithoutCancel(s.requestCtx), delivery.StreamEvent{Type: delivery.StreamReset})
+			result.Outcome, result.Err, result.QuietCancellation = agentshare.Canceled, err, true
+		}
+	}()
 	var deferredOutputs []delivery.Output
 	toolRounds := 0
 	inToolPhase := false
@@ -99,10 +105,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		if inToolPhase {
 			s.messages, pending = drainPendingUserInput(r.Turns, s.session.ID, s.messages, turn.AttemptFromContext(s.ctx))
 		}
-		stream, err := s.output.StartStream(s.requestCtx)
-		if err != nil {
-			return failedLoop(err)
-		}
+		stream = s.output.StartStream(s.requestCtx)
 		llmStageStartedAt := storage.Now()
 		r.Status.Record(s.ctx, runtimestatus.Snapshot{
 			SessionID:      s.session.ID,
@@ -149,19 +152,19 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		if len(result.ToolCalls) == 0 {
 			deferredOutputs = append(deferredOutputs, laterOutputs...)
 		}
-		if _, err := s.output.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append([]delivery.Output{}, immediateOutputs...)}); err != nil {
+		if _, err := s.output.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: immediateOutputs}); err != nil {
 			return failedLoop(err)
 		}
 		if len(result.ToolCalls) == 0 {
 			finalRawText = strings.TrimSpace(assistantRawText)
 			platformFinalText = strings.TrimSpace(assistantText)
-			finalStream = stream
 			break
 		}
 		if _, err := stream.Send(s.requestCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: assistantText}); err != nil {
 			return failedLoop(err)
 		}
-		if _, err := s.output.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append([]delivery.Output{}, laterOutputs...)}); err != nil {
+		stream = nil
+		if _, err := s.output.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: laterOutputs}); err != nil {
 			return failedLoop(err)
 		}
 		if !inToolPhase {
@@ -203,10 +206,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 			s.messages = append(s.messages, projected)
 			s.tools = nil
-			stream, err := s.output.StartStream(s.requestCtx)
-			if err != nil {
-				return failedLoop(err)
-			}
+			stream = s.output.StartStream(s.requestCtx)
 			summary, err := r.Caller.Call(s.requestCtx, s.session, s.selection, s.messages, s.tools, summaryPending, stream)
 			if err != nil {
 				return failedLoop(err)
@@ -217,7 +217,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 			immediateOutputs, laterOutputs := delivery.SplitByDeliveryTiming(summary.Outputs)
 			deferredOutputs = append(deferredOutputs, laterOutputs...)
-			if _, err := s.output.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append([]delivery.Output{}, immediateOutputs...)}); err != nil {
+			if _, err := s.output.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: immediateOutputs}); err != nil {
 				return failedLoop(err)
 			}
 			summaryText := summary.Text
@@ -233,7 +233,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 			finalRawText = strings.TrimSpace(summaryRawText)
 			platformFinalText = strings.TrimSpace(summaryText)
-			finalStream = stream
 			break
 		}
 		toolRounds++
@@ -280,7 +279,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			Text:         finalRawText,
 			RawText:      finalRawText,
 			PlatformText: platformFinalText,
-			Stream:       finalStream,
+			Stream:       stream,
 			Outputs:      deferredOutputs,
 		},
 	}

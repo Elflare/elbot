@@ -219,9 +219,6 @@ type remoteMessageStream struct {
 }
 
 func (s remoteMessageStream) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
-	if event.Outputs != nil {
-		event.Text = outputsText(event.Outputs)
-	}
 	err := s.client.write(ctx, remoteMessage{Type: remoteMsgStream, StreamID: s.id, Event: &event})
 	return delivery.Receipt{}, err
 }

@@ -123,7 +123,7 @@ func TestSendOutputsLogsBusinessFailure(t *testing.T) {
 			})
 			ctx := context.Background()
 			sender := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Dispatcher: backend})
-			_, err = sender.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: []delivery.Output{delivery.Text("business text")}})
+			_, err = sender.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: []delivery.Output{delivery.Text("business text")}})
 			if err != tc.err {
 				t.Fatal("error:", err)
 			}

@@ -59,13 +59,14 @@ func requestAudit(parameters json.RawMessage, refs []inputReference) (string, er
 func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request api.Request, consumed []string, stream delivery.MessageStream, observation agentshare.CallObservation) (result nativeCallResult, err error) {
 	defer func() {
 		if ctx.Err() != nil {
-			_, _ = stream.Send(context.WithoutCancel(ctx), delivery.StreamEvent{Type: delivery.StreamReasoningDone})
+			observation.Event().Err, observation.Event().ProviderError = ctx.Err(), false
+			observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultCanceled, slog.LevelInfo
+			err = ctx.Err()
 			return
 		}
 		var failure *llm.CallError
 		if errors.As(observation.Event().Err, &failure) && (failure.Kind == llm.ErrorStreamFailure || failure.Kind == llm.ErrorPreviousResponseUnavailable) {
 			if _, resetErr := stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReset}); resetErr != nil {
-				slog.ErrorContext(ctx, "reset message stream", "error", resetErr, "request_error", observation.Event().Err)
 				err = resetErr
 			}
 		}
@@ -309,7 +310,9 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		case "response.output_text.delta", "response.refusal.delta":
 			if event.Delta != "" {
 				if _, err := stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamTextDelta, Text: event.Delta}); err != nil {
-					observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultCanceled, slog.LevelInfo
+					observation.Event().Err = err
+					observation.LogRecord().Content = fmt.Sprintf("display_error=%v", err)
+					observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.LogStatus(err), slog.LevelWarn
 					return result, err
 				}
 			}
@@ -321,8 +324,13 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 			_, _ = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReasoningDone})
 		case "response.completed":
 			status = "completed"
-			observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultSucceeded, slog.LevelInfo
 			_, err = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamFinish})
+			observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultSucceeded, slog.LevelInfo
+			if err != nil {
+				observation.Event().Err = err
+				observation.LogRecord().Content = fmt.Sprintf("display_error=%v", err)
+				observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.LogStatus(err), slog.LevelWarn
+			}
 			return result, err
 		}
 	}

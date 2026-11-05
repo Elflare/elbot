@@ -71,7 +71,7 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 		return err
 	}
 	if len(result.Outputs) > 0 {
-		if _, err := h.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append([]delivery.Output{}, result.Outputs...)}); err != nil {
+		if _, err := h.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: result.Outputs}); err != nil {
 			if ctx.Err() == nil {
 				agentshare.ReportFailure(ctx, "", fmt.Errorf("发送入站 Hook 输出: %w", err), h.output.Notify)
 			}

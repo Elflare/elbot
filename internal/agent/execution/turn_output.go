@@ -24,8 +24,8 @@ func (o foregroundTurnOutput) SendPreview(ctx context.Context, text ...string) {
 	o.ExecutionSender.Preview(ctx, text...)
 }
 
-func (o backgroundTurnOutput) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	return delivery.StreamFunc(o.Send), nil
+func (o backgroundTurnOutput) StartStream(ctx context.Context) delivery.MessageStream {
+	return delivery.StreamFunc(o.Send)
 }
 
 func (o backgroundTurnOutput) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {

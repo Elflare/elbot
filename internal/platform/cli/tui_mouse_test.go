@@ -9,10 +9,7 @@ import (
 
 func TestMouseWheelScrollsRegionUnderPointer(t *testing.T) {
 	m := newCopyTestModel()
-	m.content = ""
-	for i := 0; i < 50; i++ {
-		m.content += "line\n"
-	}
+	m.content = []*tuiContentBlock{{kind: tuiContentUser, text: strings.Repeat("line\n", 50)}}
 	m.notices = []tuiNotice{{Text: strings.Repeat("notice\n", 80)}}
 	m.refreshContent()
 	m.refreshNotices()

@@ -29,22 +29,19 @@ func (o executionTurnOutput) target(ctx context.Context) (context.Context, agent
 	return ctx, o.fallback
 }
 
-func (o executionTurnOutput) StartStream(ctx context.Context) (delivery.MessageStream, error) {
+func (o executionTurnOutput) StartStream(ctx context.Context) delivery.MessageStream {
+	fallback := o.fallback.StartStream(ctx)
 	var foreground delivery.MessageStream
 	return delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
-		ctx, out := o.target(ctx)
 		if o.execution.Foreground() == nil {
-			return out.Send(ctx, event)
+			return fallback.Send(ctx, event)
 		}
+		ctx = o.view.Context(ctx)
 		if foreground == nil {
-			var err error
-			foreground, err = out.StartStream(ctx)
-			if err != nil {
-				return delivery.Receipt{}, err
-			}
+			foreground = o.foreground.StartStream(ctx)
 		}
 		return foreground.Send(ctx, event)
-	}), nil
+	})
 }
 
 func (o executionTurnOutput) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {

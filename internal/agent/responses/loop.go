@@ -173,6 +173,13 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 	}
 	toolPhase, foregroundPrepared := false, false
 	rounds := 0
+	var stream delivery.MessageStream
+	defer func() {
+		if err := s.requestCtx.Err(); err != nil && stream != nil {
+			_, _ = stream.Send(context.WithoutCancel(s.requestCtx), delivery.StreamEvent{Type: delivery.StreamReset})
+			result.Outcome, result.Err, result.QuietCancellation = agentshare.Canceled, err, true
+		}
+	}()
 	for {
 		var err error
 		s.requestCtx, err = s.route.View.RefreshSession(s.requestCtx, s.session)
@@ -221,10 +228,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 				s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleUser, Segments: pending.Segments})
 			}
 		}
-		stream, err := out.StartStream(s.requestCtx)
-		if err != nil {
-			return fail(err)
-		}
+		stream = out.StartStream(s.requestCtx)
 		s.route.Status.Record(s.ctx, runtimestatus.Snapshot{
 			SessionID:      s.session.ID,
 			Phase:          runtimestatus.PhaseLLM,
@@ -243,7 +247,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		result.Usage = final.Usage
 		immediate, later := delivery.SplitByDeliveryTiming(final.Outputs)
 		if len(s.calls) == 0 {
-			if _, err := out.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append([]delivery.Output{}, immediate...)}); err != nil {
+			if _, err := out.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: immediate}); err != nil {
 				return fail(err)
 			}
 			result.Outcome = agentshare.Completed
@@ -261,7 +265,8 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		if _, err := stream.Send(s.requestCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: final.Text}); err != nil {
 			return fail(err)
 		}
-		if _, err := out.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append(append([]delivery.Output{}, immediate...), later...)}); err != nil {
+		stream = nil
+		if _, err := out.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: append(immediate, later...)}); err != nil {
 			return fail(err)
 		}
 		committer := &toolCommitter{state: s}
@@ -305,11 +310,8 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 			// The next request retains all calls and their explicit skip outputs.
 			// It sends no tools, so another function call is a provider error.
-			summaryStream, err := out.StartStream(s.requestCtx)
-			if err != nil {
-				return fail(err)
-			}
-			summary, err := s.call(s.requestCtx, pending, summaryStream)
+			stream = out.StartStream(s.requestCtx)
+			summary, err := s.call(s.requestCtx, pending, stream)
 			if err != nil {
 				return fail(err)
 			}
@@ -318,7 +320,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 			result.Usage = summary.Usage
 			immediate, later = delivery.SplitByDeliveryTiming(summary.Outputs)
-			if _, err := out.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append([]delivery.Output{}, immediate...)}); err != nil {
+			if _, err := out.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: immediate}); err != nil {
 				return fail(err)
 			}
 			result.Outcome = agentshare.Completed
@@ -328,7 +330,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 				Text:         s.sourceText,
 				RawText:      s.sourceText,
 				PlatformText: summary.Text,
-				Stream:       summaryStream,
+				Stream:       stream,
 				Outputs:      later,
 			}
 			return result

@@ -27,11 +27,7 @@ type OutputSender struct {
 
 // Send delivers an independent message through the same event pipeline as a reply.
 func (o *OutputSender) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
-	stream, err := o.StartStream(ctx)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
-	return stream.Send(ctx, event)
+	return o.StartStream(ctx).Send(ctx, event)
 }
 
 func (o *OutputSender) observeDelivery(ctx context.Context, operation string, receipt delivery.Receipt, err error) {
@@ -131,44 +127,43 @@ func formatToolPreview(text string) string {
 	return "[tool] " + text
 }
 
-func (o *OutputSender) StartStream(ctx context.Context) (delivery.MessageStream, error) {
+func (o *OutputSender) StartStream(ctx context.Context) delivery.MessageStream {
 	var platformStream delivery.MessageStream
 	return delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (receipt delivery.Receipt, err error) {
 		if agentshare.ExecutionMode(ctx) == "background" {
 			return receipt, nil
 		}
 		buffered := agentshare.BufferAssistantOutput(ctx)
-		if buffered && event.Type != delivery.StreamSend {
+		if buffered && event.Type != delivery.StreamSend && event.Type != delivery.StreamSendExtras {
 			return receipt, nil
 		}
 		defer func() {
-			if err != nil && (event.Type == delivery.StreamReasoningDelta || event.Type == delivery.StreamReasoningDone) {
-				slog.WarnContext(ctx, "reasoning display failed", "error", err)
-				err = nil
+			if err != nil && event.Type != delivery.StreamSend && event.Type != delivery.StreamSendExtras {
+				slog.WarnContext(context.WithoutCancel(ctx), "message stream display failed", "event", event.Type, "error", err)
+				if event.Type == delivery.StreamReasoningDelta || event.Type == delivery.StreamReasoningDone {
+					err = nil
+				}
 			}
 		}()
-		if event.Type == delivery.StreamSend {
-			if event.Outputs != nil && len(event.Outputs) == 0 {
+		switch event.Type {
+		case delivery.StreamSendExtras:
+			if len(event.Outputs) == 0 {
 				return receipt, nil
 			}
-			operation := "send_assistant_message"
-			if event.Outputs != nil {
-				operation = "send_outputs"
+			defer func() { o.observeDelivery(ctx, "send_outputs", receipt, err) }()
+			target, err := delivery.ValidateOutputsTarget(event.Outputs)
+			if err != nil {
+				return receipt, err
 			}
-			defer func() { o.observeDelivery(ctx, operation, receipt, err) }()
-			if event.Outputs != nil {
-				target, err := delivery.ValidateOutputsTarget(event.Outputs)
-				if err != nil {
-					return receipt, err
-				}
-				return o.dispatcher.SendTo(ctx, target, event.Outputs)
-			}
+			return o.dispatcher.SendTo(ctx, target, event.Outputs)
+		case delivery.StreamSend:
+			defer func() { o.observeDelivery(ctx, "send_assistant_message", receipt, err) }()
 			event.Text, err = o.hooks.AgentOutputPrepared(ctx, event.Text)
 			if err != nil {
 				return receipt, err
 			}
 			defer func() {
-				if err == nil {
+				if err == nil && strings.TrimSpace(event.Text) != "" {
 					o.hooks.PlatformMessageSent(ctx, event.Text)
 				}
 			}()
@@ -183,7 +178,7 @@ func (o *OutputSender) StartStream(ctx context.Context) (delivery.MessageStream,
 			}
 		}
 		return platformStream.Send(ctx, event)
-	}), nil
+	})
 }
 
 // NewOutputSender initializes OutputSender without installing cross-service callbacks.

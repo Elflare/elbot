@@ -55,7 +55,7 @@ func TestBackgroundOutputIsSilentExceptExplicitDelivery(t *testing.T) {
 	hooks := &previewTestHooks{}
 	out := NewOutputSender(OutputSenderDeps{Dispatcher: probe, Hooks: hooks})
 	ctx := testutil.TaskContext(t.Context(), "cron")
-	if _, err := out.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: []delivery.Output{delivery.Text("ordinary")}}); err != nil {
+	if _, err := out.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: []delivery.Output{delivery.Text("ordinary")}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := out.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "assistant"}); err != nil {

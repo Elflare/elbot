@@ -127,8 +127,8 @@ func TestCompleteInputCyclesCandidates(t *testing.T) {
 	if !m.completionState.visible() {
 		t.Fatal("completion popup should be visible")
 	}
-	if strings.TrimSpace(m.content) != "" {
-		t.Fatalf("completion candidates should not be printed to transcript: %q", m.content)
+	if strings.TrimSpace(m.wrappedContent()) != "" {
+		t.Fatalf("completion candidates should not be printed to transcript: %q", m.wrappedContent())
 	}
 
 	updated, _ = m.completeInput(1)
@@ -288,8 +288,8 @@ func TestEnterExpandsLocalFileReferencesBeforeSending(t *testing.T) {
 	if len(m.history) != 1 || m.history[0] != "see #foo.txt" {
 		t.Fatalf("history = %#v", m.history)
 	}
-	if !strings.Contains(m.content, "see #foo.txt") {
-		t.Fatalf("transcript = %q", m.content)
+	if !strings.Contains(m.wrappedContent(), "see #foo.txt") {
+		t.Fatalf("transcript = %q", m.wrappedContent())
 	}
 }
 
@@ -368,11 +368,11 @@ func TestAppendNoticeContentUsesSeparator(t *testing.T) {
 	m.appendUserContent("hello")
 	m.appendNoticeLevel("notice one", slog.LevelInfo)
 
-	if !strings.Contains(m.content, "\n"+m.separatorLine()+"\n[notice] notice one") {
-		t.Fatalf("notice content not separated:\n%s", m.content)
+	if !strings.Contains(m.wrappedContent(), "\n"+m.separatorLine()+"\n[notice] notice one") {
+		t.Fatalf("notice content not separated:\n%s", m.wrappedContent())
 	}
-	if strings.HasSuffix(m.content, "\n") {
-		t.Fatalf("notice content should not end with newline: %q", m.content)
+	if strings.HasSuffix(m.wrappedContent(), "\n") {
+		t.Fatalf("notice content should not end with newline: %q", m.wrappedContent())
 	}
 }
 
@@ -407,11 +407,11 @@ func TestNoticeLevelPreservedInWideAndInlineLayouts(t *testing.T) {
 	narrow := tuiModel{input: newTUIInput(), width: 80, height: 20}
 	narrow.resizeViewports()
 	narrow.appendNoticeLevel("problem\ndetail", slog.LevelWarn)
-	if len(narrow.inlineNoticeLevels) != 1 || narrow.inlineNoticeLevels[0] != slog.LevelWarn {
-		t.Fatalf("inline levels = %#v", narrow.inlineNoticeLevels)
+	if len(narrow.content) != 1 || narrow.content[0].level != slog.LevelWarn {
+		t.Fatalf("inline notice = %#v", narrow.content)
 	}
-	if !strings.Contains(narrow.content, "[notice] problem\ndetail") {
-		t.Fatalf("inline content = %q", narrow.content)
+	if !strings.Contains(narrow.wrappedContent(), "[notice] problem\ndetail") {
+		t.Fatalf("inline content = %q", narrow.wrappedContent())
 	}
 }
 
@@ -423,8 +423,8 @@ func TestCommandNoticeStaysOutOfChat(t *testing.T) {
 	m.resizeViewports()
 	updated, _ := m.Update(<-client.output)
 	m = updated.(tuiModel)
-	if m.content != "" || len(m.notices) != 1 || m.notices[0].Text != strings.TrimSpace(text) {
-		t.Fatalf("chat=%q notices=%#v", m.content, m.notices)
+	if m.wrappedContent() != "" || len(m.notices) != 1 || m.notices[0].Text != strings.TrimSpace(text) {
+		t.Fatalf("chat=%q notices=%#v", m.wrappedContent(), m.notices)
 	}
 }
 
@@ -539,8 +539,8 @@ func TestMultilinePasteStaysInTextareaUntilEnter(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("pasted text was not sent")
 	}
-	if !strings.Contains(m.content, "first\nsecond") {
-		t.Fatalf("transcript did not show full paste: %q", m.content)
+	if !strings.Contains(m.wrappedContent(), "first\nsecond") {
+		t.Fatalf("transcript did not show full paste: %q", m.wrappedContent())
 	}
 }
 
@@ -709,7 +709,7 @@ func TestAppendUserContentAddsSeparatorBetweenTurns(t *testing.T) {
 	m.appendUserContent("第一轮")
 	m.appendAssistantContent("回答")
 	m.appendUserContent("第二轮")
-	got := m.content
+	got := m.wrappedContent()
 	if !strings.Contains(got, "────────────") {
 		t.Fatalf("missing separator line: %q", got)
 	}

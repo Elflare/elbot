@@ -30,7 +30,7 @@ func newCopyTestModel() tuiModel {
 		ctx:           context.Background(),
 	}
 	m.resizeViewports()
-	m.content = "user: hello\nassistant: first line\nsecond error line\nthird line\n"
+	m.content = []*tuiContentBlock{{kind: tuiContentUser, text: "hello\nassistant: first line\nsecond error line\nthird line"}}
 	m.notices = []tuiNotice{{Text: "notice one"}, {Text: "notice two error"}}
 	m.refreshContent()
 	m.refreshNotices()
@@ -201,52 +201,52 @@ func TestCopySearchJumpsAndRepeats(t *testing.T) {
 
 func TestCopyWordMotionsMoveWithinLine(t *testing.T) {
 	m := newCopyTestModel()
-	m.content = "alpha beta gamma\n"
+	m.content = []*tuiContentBlock{{kind: tuiContentUser, text: "\nalpha beta gamma"}}
 	m.refreshContent()
 	m.enterCopyMode(regionChat)
-	m.copyState.Cursor = copyCursor{Line: 0, Col: 0}
+	m.copyState.Cursor = copyCursor{Line: 1, Col: 0}
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
 	m = updated.(tuiModel)
-	if m.copyState.Cursor != (copyCursor{Line: 0, Col: 6}) {
+	if m.copyState.Cursor != (copyCursor{Line: 1, Col: 6}) {
 		t.Fatalf("w cursor = %#v", m.copyState.Cursor)
 	}
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
 	m = updated.(tuiModel)
-	if m.copyState.Cursor != (copyCursor{Line: 0, Col: 9}) {
+	if m.copyState.Cursor != (copyCursor{Line: 1, Col: 9}) {
 		t.Fatalf("e cursor = %#v", m.copyState.Cursor)
 	}
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
 	m = updated.(tuiModel)
-	if m.copyState.Cursor != (copyCursor{Line: 0, Col: 6}) {
+	if m.copyState.Cursor != (copyCursor{Line: 1, Col: 6}) {
 		t.Fatalf("b cursor = %#v", m.copyState.Cursor)
 	}
 }
 
 func TestCopyWordMotionsCrossLinesAndUnicode(t *testing.T) {
 	m := newCopyTestModel()
-	m.content = "alpha beta\n\n助手 冰火_test 42!\n"
+	m.content = []*tuiContentBlock{{kind: tuiContentUser, text: "\nalpha beta\n\n助手 冰火_test 42!"}}
 	m.refreshContent()
 	m.enterCopyMode(regionChat)
-	m.copyState.Cursor = copyCursor{Line: 0, Col: 6}
+	m.copyState.Cursor = copyCursor{Line: 1, Col: 6}
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
 	m = updated.(tuiModel)
-	if m.copyState.Cursor != (copyCursor{Line: 2, Col: 0}) {
+	if m.copyState.Cursor != (copyCursor{Line: 3, Col: 0}) {
 		t.Fatalf("cross-line w cursor = %#v", m.copyState.Cursor)
 	}
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
 	m = updated.(tuiModel)
-	if m.copyState.Cursor != (copyCursor{Line: 2, Col: 3}) {
+	if m.copyState.Cursor != (copyCursor{Line: 3, Col: 3}) {
 		t.Fatalf("unicode w cursor = %#v", m.copyState.Cursor)
 	}
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
 	m = updated.(tuiModel)
-	if m.copyState.Cursor != (copyCursor{Line: 2, Col: 9}) {
+	if m.copyState.Cursor != (copyCursor{Line: 3, Col: 9}) {
 		t.Fatalf("unicode e cursor = %#v", m.copyState.Cursor)
 	}
 }
@@ -254,10 +254,10 @@ func TestCopyWordMotionsCrossLinesAndUnicode(t *testing.T) {
 func TestVisualCharWordMotionExtendsSelection(t *testing.T) {
 	m := newCopyTestModel()
 	clip := m.clipboard.(*fakeClipboard)
-	m.content = "alpha beta gamma\n"
+	m.content = []*tuiContentBlock{{kind: tuiContentUser, text: "\nalpha beta gamma"}}
 	m.refreshContent()
 	m.enterCopyMode(regionChat)
-	m.copyState.Cursor = copyCursor{Line: 0, Col: 0}
+	m.copyState.Cursor = copyCursor{Line: 1, Col: 0}
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'v'}})
 	m = updated.(tuiModel)

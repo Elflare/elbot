@@ -122,10 +122,6 @@ func (r *Router) StartStream(ctx context.Context) (delivery.MessageStream, error
 		if event.Type != delivery.StreamSend {
 			return delivery.Receipt{}, nil
 		}
-		outputs := event.Outputs
-		if outputs == nil {
-			outputs = []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Actions: event.Actions}}
-		}
-		return r.SendTo(ctx, delivery.Target{}, outputs)
+		return r.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Actions: event.Actions}})
 	}), nil
 }

@@ -89,8 +89,8 @@ func (c *apiClient) sendRichMessage(ctx context.Context, req sendRichMessageRequ
 	return callTelegram[sentMessage](c, ctx, "sendRichMessage", req, c.cfg.apiTimeout())
 }
 
-func (c *apiClient) sendRichMessageDraft(ctx context.Context, req sendRichMessageDraftRequest) error {
-	_, err := callTelegram[bool](c, ctx, "sendRichMessageDraft", req, c.cfg.apiTimeout())
+func (c *apiClient) deleteMessage(ctx context.Context, req deleteMessageRequest) error {
+	_, err := callTelegram[bool](c, ctx, "deleteMessage", req, c.cfg.apiTimeout())
 	return err
 }
 

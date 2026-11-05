@@ -100,7 +100,7 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 	f.committer = &dialogue.ReplyCommitter{NewMessageID: testutil.IDSequence().MessageID, Persistence: messages.Committer("append_assistant_message"), Output: sender}
 	f.out = foregroundTurnOutput{ExecutionSender: sender}
 	f.in = agentshare.ReplyCommitInput{Session: row, Text: "history", RawText: "raw", PlatformText: "visible", Outputs: []delivery.Output{delivery.Text("later")}}
-	f.in.Stream, _ = f.out.StartStream(f.requestCtx)
+	f.in.Stream = f.out.StartStream(f.requestCtx)
 	f.platform.expectedOutputs = f.in.Outputs
 	return f
 }

@@ -19,8 +19,8 @@ func TestTUIStopDisablesInputButRetainsOutput(t *testing.T) {
 	m = model.(tuiModel)
 	model, _ = m.Update(tuiOutputMsg("draining output"))
 	m = model.(tuiModel)
-	if !strings.Contains(m.content, "draining output") {
-		t.Fatal(m.content)
+	if !strings.Contains(m.wrappedContent(), "draining output") {
+		t.Fatal(m.wrappedContent())
 	}
 	m.input.SetValue("late input")
 	if _, cmd := m.submitInput(); cmd != nil {

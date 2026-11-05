@@ -87,7 +87,7 @@ type TurnResult struct {
 }
 
 type Output interface {
-	StartStream(ctx context.Context) (delivery.MessageStream, error)
+	StartStream(ctx context.Context) delivery.MessageStream
 	Send(context.Context, delivery.StreamEvent) (delivery.Receipt, error)
 	// Notify publishes a business fact to its captured conversation; callers
 	// choose its lifetime. SendPreview remains tied to the active operation.
