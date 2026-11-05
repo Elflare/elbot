@@ -24,7 +24,7 @@ func newTestManager(catalog *registry.Registry, permission *security.Permission,
 		center = centers[0]
 	}
 	return NewManager(ManagerDeps{Registry: catalog, Permission: permission, Media: toolmedia.NewMediaRuntime(center, "", center.PublishUsageFinished), InfoAvailableInContext: registry.InfoAvailableInContext, UnavailableReason: registry.UnavailableReason, BackgroundDiscoveredTools: registry.BackgroundDiscoveredTools, DecodeState: state.DecodeState, PrepareUpdate: state.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(catalog).DiscoveryStateUpdate, Log: func(ctx context.Context, record events.LogRecord) {
-		_ = events.EmitLog(context.WithoutCancel(ctx), record)
+		events.Log(context.WithoutCancel(ctx), record)
 	}})
 }
 

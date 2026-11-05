@@ -27,7 +27,7 @@ func TestLogBackgroundPublishesSourceRecordAfterCancellation(t *testing.T) {
 	cancel()
 	ctx = contextinfo.WithExecution(ctx, contextinfo.Execution{RunID: "context-only-run"})
 	sessionID := "fixed-session"
-	record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: "source-failed", Module: "cron", Type: events.ContentJSON, Content: `{"reason":"source failure"}`, Identity: events.LogIdentity{SessionID: &sessionID}, ResultStatus: events.ResultFailed}
+	record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: "source-failed", Module: "cron", Type: events.ContentJSON, Content: `{"reason":"source failure"}`, Identity: events.LogIdentity{SessionID: sessionID}, ResultStatus: events.ResultFailed}
 	LogBackground(ctx, record)
 	record.Category, record.EventName = events.LogElnis, "second-source-record"
 	LogBackground(ctx, record)
@@ -36,7 +36,7 @@ func TestLogBackgroundPublishesSourceRecordAfterCancellation(t *testing.T) {
 		t.Fatalf("independent records changed: %#v", records)
 	}
 	for _, got := range records {
-		if got.Level != slog.LevelInfo || got.ResultStatus != events.ResultFailed || got.Content != record.Content || got.Identity.SessionID == nil || *got.Identity.SessionID != "fixed-session" || got.Identity.RunID != nil {
+		if got.Level != slog.LevelInfo || got.ResultStatus != events.ResultFailed || got.Content != record.Content || got.Identity.SessionID != "fixed-session" || got.Identity.RunID != "" {
 			t.Fatalf("source fields changed: %#v", got)
 		}
 	}

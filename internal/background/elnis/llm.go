@@ -93,7 +93,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	}
 
 	result, err := s.runner.RunBackground(ctx, runRequest)
-	identity.SessionID = &result.SessionID
+	identity.SessionID = result.SessionID
 	if taken, lookupErr := s.sessionTakenOver(context.WithoutCancel(ctx), result.SessionID); lookupErr != nil {
 		logFailure("check_takeover", lookupErr, slog.LevelError)
 		err = errors.Join(err, lookupErr)
@@ -155,7 +155,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 			ResultStatus: globalevents.ResultSucceeded,
 		}
 		record.Identity = identity
-		record.Identity.SessionID = &result.SessionID
+		record.Identity.SessionID = result.SessionID
 		background.LogBackground(ctx, record)
 		record.Category, record.EventName = globalevents.LogElnis, "elnis_llm_completed"
 		background.LogBackground(ctx, record)

@@ -62,8 +62,8 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (
 	record.Content = string(data)
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record.Identity = events.LogIdentityFromExecution(facts)
-	record.Identity.SessionID = &in.Session.ID
-	_ = events.EmitLog(context.WithoutCancel(ctx), record)
+	record.Identity.SessionID = in.Session.ID
+	events.Log(context.WithoutCancel(ctx), record)
 	loaded, err := p.Contexts.Load(ctx, in.Session.ID)
 	if err != nil {
 		return agentshare.TurnMaterials{}, fmt.Errorf("读取对话上下文: %w", err)

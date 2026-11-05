@@ -152,9 +152,9 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 	data, _ := json.Marshal(content)
 	o.logRecord.Content = string(data)
 	o.logRecord.Identity = events.LogIdentityFromExecution(o.event.Execution)
-	o.logRecord.Identity.SessionID = &o.sessionID
+	o.logRecord.Identity.SessionID = o.sessionID
 	if o.logRecord.EventName != "" {
-		_ = events.EmitLog(context.WithoutCancel(ctx), o.logRecord)
+		events.Log(context.WithoutCancel(ctx), o.logRecord)
 	}
 	if o.event.OutputReady {
 		record := o.logRecord
@@ -168,7 +168,7 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 		}
 		data, _ := json.Marshal(content)
 		record.Content = string(data)
-		_ = events.EmitLog(context.WithoutCancel(ctx), record)
+		events.Log(context.WithoutCancel(ctx), record)
 	}
 }
 func (c *CallProcessor) NotifyError(ctx context.Context, sessionID string, response agentshare.LLMResponse, err error) {

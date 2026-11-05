@@ -241,7 +241,7 @@ func (c *Client) StreamPrepared(ctx context.Context, prepared PreparedRequest) (
 		),
 	}
 	record.Identity = globalevents.LogIdentityFromExecution(facts)
-	_ = globalevents.EmitLog(ctx, record)
+	globalevents.Log(ctx, record)
 
 	callCtx, cancel := context.WithCancel(ctx)
 	r, err := http.NewRequestWithContext(callCtx, http.MethodPost, c.baseURL+"/responses", bytes.NewReader(prepared.body))

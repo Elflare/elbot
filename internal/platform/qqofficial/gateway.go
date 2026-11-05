@@ -113,7 +113,7 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler share.MessageHandl
 					}
 					facts, _ := contextinfo.ExecutionFromContext(ctx)
 					record.Identity = globalevents.LogIdentityFromExecution(facts)
-					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+					globalevents.Log(context.WithoutCancel(ctx), record)
 				}
 			}
 		case opHeartbeat:
@@ -141,7 +141,7 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler share.MessageHandl
 				}
 				facts, _ := contextinfo.ExecutionFromContext(ctx)
 				record.Identity = globalevents.LogIdentityFromExecution(facts)
-				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				globalevents.Log(context.WithoutCancel(ctx), record)
 			}
 		}
 	}
@@ -200,7 +200,7 @@ func (a *Adapter) heartbeatLoop(ctx context.Context, conn *websocket.Conn, state
 					}
 					facts, _ := contextinfo.ExecutionFromContext(ctx)
 					record.Identity = globalevents.LogIdentityFromExecution(facts)
-					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+					globalevents.Log(context.WithoutCancel(ctx), record)
 				}
 				_ = conn.CloseNow()
 				return
@@ -231,7 +231,7 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler share.MessageHandl
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
 			record.Identity = globalevents.LogIdentityFromExecution(facts)
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 		a.notifyConnected(ctx)
 	case eventResumed:
@@ -264,7 +264,7 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler share.MessageHandl
 				}
 				facts, _ := contextinfo.ExecutionFromContext(ctx)
 				record.Identity = globalevents.LogIdentityFromExecution(facts)
-				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				globalevents.Log(context.WithoutCancel(ctx), record)
 			}
 		}
 	}

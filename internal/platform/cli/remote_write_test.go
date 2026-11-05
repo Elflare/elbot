@@ -5,7 +5,6 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/signal"
 	"errors"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -97,7 +96,7 @@ func TestRemoteFanoutPreservesCancellationCause(t *testing.T) {
 	s.addClient(client)
 	var records []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-		if record.Module == "cli" {
+		if record.EventName == "chat_output_failed" {
 			records = append(records, record)
 		}
 		return errors.New("logger unavailable")
@@ -112,7 +111,7 @@ func TestRemoteFanoutPreservesCancellationCause(t *testing.T) {
 	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), client.id) {
 		t.Fatalf("fanout lost cause or client: %v", err)
 	}
-	if len(records) != 1 || records[0].ResultStatus != events.ResultCanceled || records[0].Level != slog.LevelInfo {
-		t.Fatalf("write diagnostic: %+v", records)
+	if len(records) != 0 {
+		t.Fatalf("returned failure must not also be reported: %+v", records)
 	}
 }

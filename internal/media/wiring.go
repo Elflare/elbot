@@ -62,7 +62,7 @@ func NewMediaCenter(ctx context.Context, cfg *config.Config, deps MediaCenterDep
 	}
 	m.transfer = transfer.NewManager(m.objects, transfer.Options{
 		Log: func(ctx context.Context, record events.LogRecord) {
-			_ = events.EmitLog(context.WithoutCancel(ctx), record)
+			events.Log(context.WithoutCancel(ctx), record)
 		},
 		Backend: deliveryConfig.Backend, MaxDirectBase64Bytes: deliveryConfig.MaxDirectBase64Bytes,
 		MaxImportBytes: cfg.PlatformFiles.MaxReceiveFileBytes, DownloadTimeout: timeout,

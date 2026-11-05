@@ -39,8 +39,8 @@ type Options struct {
 	// Send returns delivered receipts, including partial delivery on error.
 	Send      func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 	SharedDir string
-	Log       func(context.Context, events.LogRecord)          // Publishes the source-owned record.
-	Notify    func(context.Context, events.Notification) error // Publishes the source-owned notice.
+	Log       func(context.Context, events.LogRecord)    // Publishes the source-owned record.
+	Notify    func(context.Context, events.Notification) // Publishes the source-owned notice without affecting the business result.
 }
 
 func resolveCwd(dir, cwd string) (string, error) {

@@ -33,11 +33,11 @@ func TestPreloadAuditIdentityAndResult(t *testing.T) {
 			for _, sessionID := range []string{"", "explicit"} {
 				t.Run(fmt.Sprintf("%s/identity=%t/session=%s", tc.name, withIdentity, sessionID), func(t *testing.T) {
 					ctx := t.Context()
-					want := globalevents.LogIdentity{SessionID: &sessionID, RunID: new(string), Attempt: new(string), RequestID: new(string), RootRequestID: new(string)}
+					want := globalevents.LogIdentity{SessionID: sessionID, RunID: "", Attempt: "", RequestID: "", RootRequestID: ""}
 					if withIdentity {
 						facts := contextinfo.Execution{SessionID: "context-session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}
 						ctx = contextinfo.WithExecution(ctx, facts)
-						want.RunID, want.Attempt, want.RequestID, want.RootRequestID = &facts.RunID, &facts.Attempt, &facts.RequestID, &facts.RootRequestID
+						want.RunID, want.Attempt, want.RequestID, want.RootRequestID = facts.RunID, facts.Attempt, facts.RequestID, facts.RootRequestID
 					}
 					r := registry.NewRegistry(security.DefaultPermission())
 					skill := &preloadSkill{availabilityTestTool: availabilityTestTool{name: "guide"}, err: tc.err}

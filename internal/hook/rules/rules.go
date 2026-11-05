@@ -37,8 +37,8 @@ type Options struct {
 	// Runtime borrows execution capabilities without exposing owned components.
 	Runtime    share.RuntimeCaller
 	ProcessEnv processenv.Environment
-	Log        func(context.Context, globalevents.LogRecord)          // Publishes a complete source-owned record.
-	Notify     func(context.Context, globalevents.Notification) error // Publishes the notice chosen by this source.
+	Log        func(context.Context, globalevents.LogRecord)    // Publishes a complete source-owned record.
+	Notify     func(context.Context, globalevents.Notification) // Publishes the notice chosen by this source without affecting the business result.
 }
 
 type Config struct {

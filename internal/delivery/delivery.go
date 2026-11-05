@@ -202,8 +202,7 @@ func (m Manager) SendTo(ctx context.Context, target Target, outputs []Output) (R
 	return receipt, wrapOutputSourceError(outputs[0], err)
 }
 
-// LogSendResult publishes the sending source's result. Native notification
-// senders use this boundary when their protocol cannot use ordinary chat output.
+// LogSendResult asynchronously publishes a chat output's source-owned failure.
 func LogSendResult(ctx context.Context, target Target, out Output, err error) {
 	if err == nil {
 		return
@@ -219,7 +218,7 @@ func LogSendResult(ctx context.Context, target Target, out Output, err error) {
 	if globalevents.LogStatus(err) == globalevents.ResultCanceled {
 		record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
 	}
-	_ = globalevents.EmitLog(ctx, record)
+	globalevents.AsyncLog(ctx, record)
 }
 
 func wrapOutputSourceError(out Output, err error) error {

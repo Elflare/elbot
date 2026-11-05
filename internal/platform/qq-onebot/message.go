@@ -263,7 +263,7 @@ func (a *Adapter) resolveAtSegments(ctx context.Context, event Event, msg Normal
 					record.Level = slog.LevelInfo
 				}
 				record.Identity = logIdentity(ctx)
-				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				globalevents.Log(context.WithoutCancel(ctx), record)
 			}
 			continue
 		}
@@ -407,7 +407,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized
 				record.Level = slog.LevelInfo
 			}
 			record.Identity = logIdentity(ctx)
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 	}
 }
@@ -424,7 +424,7 @@ func scopeID(event Event) string {
 }
 
 func (a *Adapter) logContextFailure(ctx context.Context, err error) {
-	_ = globalevents.EmitLog(context.WithoutCancel(ctx), globalevents.LogRecord{
+	globalevents.Log(context.WithoutCancel(ctx), globalevents.LogRecord{
 		Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "platform_context_failed",
 		Module: a.Name(), Type: globalevents.ContentText, Content: fmt.Sprintf("prepare platform context failed: %v", err),
 		ContentLimit: 4096, ResultStatus: globalevents.ResultFailed,

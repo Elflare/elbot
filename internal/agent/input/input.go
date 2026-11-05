@@ -59,7 +59,8 @@ func (c *InputCoordinator) HandleInput(ctx context.Context, text string) error {
 	ctx, session, err := c.execution.ResolveInput(ctx, text)
 	if err != nil {
 		if errors.Is(err, sessionpkg.ErrSessionBusy) {
-			_, err = globalevents.NotificationRequested.Emit(sessionpkg.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, fmt.Sprintf("%v，请等待完成，或先用 %s 停止任务。", err, c.commandText("stop"))))
+			globalevents.Notify(sessionpkg.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, fmt.Sprintf("%v，请等待完成，或先用 %s 停止任务。", err, c.commandText("stop"))))
+			return nil
 		} else if ctx.Err() == nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) {
 			agentshare.ReportFailure(ctx, "", fmt.Errorf("准备会话: %w", err), c.output.Notify)
 		}

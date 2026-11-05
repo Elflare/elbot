@@ -38,19 +38,12 @@ func TestLogSignalAdmissionDiagnosedWithoutDuplicatingConsumerFailure(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := EmitLogAsync(t.Context(), LogRecord{Category: LogRuntime, Content: "block"}); err != nil {
-		t.Fatal(err)
-	}
+	Log(t.Context(), LogRecord{Category: LogRuntime})
+	AsyncLog(t.Context(), LogRecord{Category: LogRuntime, Content: "block"})
 	<-started
-	if err := EmitLogAsync(t.Context(), LogRecord{Category: LogRuntime}); err != nil {
-		close(release)
-		t.Fatal(err)
-	}
-	rejected := EmitLogAsync(t.Context(), LogRecord{Category: LogRuntime})
+	AsyncLog(t.Context(), LogRecord{Category: LogRuntime})
+	AsyncLog(t.Context(), LogRecord{Category: LogRuntime})
 	close(release)
-	if !errors.Is(rejected, signal.ErrQueueFull) {
-		t.Fatalf("rejection: %v", rejected)
-	}
 	if err := source.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}

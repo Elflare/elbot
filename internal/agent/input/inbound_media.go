@@ -116,7 +116,7 @@ func (h *MessageHandler) associateInboundHistory(ctx context.Context, messageID 
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
 			record.Identity = globalevents.LogIdentityFromExecution(facts)
-			_ = globalevents.EmitLog(ctx, record)
+			globalevents.Log(ctx, record)
 		}
 	}
 	return errors.Join(failures...)

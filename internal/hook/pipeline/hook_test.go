@@ -579,6 +579,6 @@ func captureLogs(t *testing.T, logger *slog.Logger) {
 
 func newTestManager() *Manager {
 	return NewManager(func(ctx context.Context, record globalevents.LogRecord) {
-		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		globalevents.Log(context.WithoutCancel(ctx), record)
 	}, nil)
 }

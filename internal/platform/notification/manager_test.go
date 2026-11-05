@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -142,7 +143,7 @@ func TestManagerCloseWaitsForSenderAndCanRetry(t *testing.T) {
 
 func testManager(t *testing.T, primary string) *Manager {
 	t.Helper()
-	m, err := New(primary, func(ctx context.Context, record events.LogRecord) { _ = events.EmitLogAsync(ctx, record) })
+	m, err := New(primary, events.AsyncLog)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,12 +251,13 @@ func TestPlatformFullWarnsAndOtherPlatformStillSends(t *testing.T) {
 	}
 	defer c.Close(context.Background())
 	n := events.Notification{Target: events.NotificationTarget{Platform: "slow", ChatType: contextinfo.ChatPrivate, ID: "one"}, Text: "overflow"}
-	if _, err := events.NotificationRequested.Emit(context.Background(), n); !errors.Is(err, signal.ErrQueueFull) {
+	facts := contextinfo.Execution{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}
+	if _, err := events.NotificationRequested.Emit(contextinfo.WithExecution(t.Context(), facts), n); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case r := <-logs:
-		if r.Level != slog.LevelWarn {
+		if r.Level != slog.LevelWarn || !reflect.DeepEqual(r.Identity, events.LogIdentityFromExecution(facts)) {
 			t.Fatal(r)
 		}
 	case <-time.After(time.Second):
@@ -325,18 +327,30 @@ func TestQueuedNotificationRejectsExpiredBinding(t *testing.T) {
 }
 func TestManagerOwnershipAndMissingPlatform(t *testing.T) {
 	m := testManager(t, "cli")
+	var logs []events.LogRecord
+	m.log = func(_ context.Context, record events.LogRecord) { logs = append(logs, record) }
+	facts := contextinfo.Execution{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}
+	ctx := contextinfo.WithExecution(t.Context(), facts)
 	if _, err := New("cli", func(context.Context, events.LogRecord) {}); err == nil {
 		t.Fatal("duplicate global manager")
 	}
-	if _, err := events.NotificationRequested.Emit(context.Background(), events.Notification{Text: "missing"}); err == nil {
-		t.Fatal("missing platform succeeded")
+	if _, err := events.NotificationRequested.Emit(ctx, events.Notification{Text: "missing"}); err != nil {
+		t.Fatal("handled routing failure escaped", err)
 	}
 	s, err := m.AddPlatform("cli", func(events.NotificationTarget) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := events.NotificationRequested.Emit(context.Background(), events.Notification{Text: "no receiver"}); !errors.Is(err, signal.ErrNoReceiver) {
+	if _, err := events.NotificationRequested.Emit(ctx, events.Notification{Text: "no receiver"}); err != nil {
 		t.Fatal(err)
+	}
+	if len(logs) != 2 || logs[0].EventName != "notification_rejected" || logs[1].EventName != "notification_rejected" {
+		t.Fatalf("routing failures must each be logged once: %+v", logs)
+	}
+	for _, record := range logs {
+		if !reflect.DeepEqual(record.Identity, events.LogIdentityFromExecution(facts)) {
+			t.Fatalf("routing failure lost execution identity: %+v", record)
+		}
 	}
 	if _, err := s.Observe(func(context.Context, events.Notification) error {
 		return nil
@@ -366,7 +380,7 @@ func TestRegisteredValidatorRunsOnceBeforeAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	results, err := events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "rejected"})
-	if !errors.Is(err, rejected) || len(results) != 1 || results[0].Started || deliveries.Load() != 0 || validations.Load() != 1 {
+	if err != nil || len(results) != 1 || results[0].Started || deliveries.Load() != 0 || validations.Load() != 1 {
 		t.Fatalf("invalid admission: results=%v error=%v validations=%d deliveries=%d", results, err, validations.Load(), deliveries.Load())
 	}
 	results, err = events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "accepted", Target: events.NotificationTarget{Platform: "cli", ID: "allowed"}})
@@ -394,7 +408,7 @@ func TestNotificationDoesNotInferTargetFromScope(t *testing.T) {
 		{Platform: "network", ID: "chat"},
 	} {
 		results, err := events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "notice", Target: target})
-		if err == nil || len(results) != 1 || results[0].Started || deliveries.Load() != 0 {
+		if err != nil || len(results) != 1 || results[0].Started || deliveries.Load() != 0 {
 			t.Fatalf("incomplete target was admitted: target=%+v results=%v error=%v", target, results, err)
 		}
 	}

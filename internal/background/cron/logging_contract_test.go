@@ -100,11 +100,11 @@ func TestTaskAuditIdentityAndOperation(t *testing.T) {
 		for _, withIdentity := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/identity=%t", mode, withIdentity), func(t *testing.T) {
 				ctx := t.Context()
-				want := globalevents.LogIdentity{SessionID: new(string), RunID: new(string), Attempt: new(string), RequestID: new(string), RootRequestID: new(string)}
+				want := globalevents.LogIdentity{SessionID: "", RunID: "", Attempt: "", RequestID: "", RootRequestID: ""}
 				if withIdentity {
 					facts := contextinfo.Execution{SessionID: "source-session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}
 					ctx = contextinfo.WithExecution(ctx, facts)
-					want = globalevents.LogIdentity{SessionID: &facts.SessionID, RunID: &facts.RunID, Attempt: &facts.Attempt, RequestID: &facts.RequestID, RootRequestID: &facts.RootRequestID}
+					want = globalevents.LogIdentity{SessionID: facts.SessionID, RunID: facts.RunID, Attempt: facts.Attempt, RequestID: facts.RequestID, RootRequestID: facts.RootRequestID}
 				}
 				repo := newFakeCronRepo()
 				job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Schedule: CronSchedule{Mode: ScheduleCron}, Trigger: CronTrigger{Mode: mode, Message: "report"}, Target: CronTarget{SourcePlatform: "cli"}})
@@ -133,7 +133,7 @@ func TestTaskAuditIdentityAndOperation(t *testing.T) {
 						if mode == TriggerLLM {
 							sessionID = "cron-session"
 						}
-						identity.SessionID = &sessionID
+						identity.SessionID = sessionID
 					}
 					if records[i].EventName != name || !reflect.DeepEqual(records[i].Identity, identity) {
 						t.Fatalf("record=%+v want event=%s identity=%+v", records[i], name, identity)
@@ -214,7 +214,7 @@ func TestRunJobLogsFinalResultAfterStateSave(t *testing.T) {
 			if record.Level != wantLevel {
 				t.Fatalf("level = %s, want %s", record.Level, wantLevel)
 			}
-			if record.Identity.SessionID == nil || *record.Identity.SessionID != "session" || record.Identity.RequestID == nil || *record.Identity.RequestID != "request" {
+			if record.Identity.SessionID != "session" || record.Identity.RequestID != "request" {
 				t.Fatalf("identity = %#v", record.Identity)
 			}
 			for _, err := range []error{tc.runErr, tc.saveErr} {

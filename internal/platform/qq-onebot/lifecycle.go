@@ -192,7 +192,7 @@ func (a *Adapter) runConnections(handler share.MessageHandler) {
 						record.Level = slog.LevelInfo
 					}
 					record.Identity = logIdentity(ctx)
-					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+					globalevents.Log(context.WithoutCancel(ctx), record)
 				}
 			}
 			if !sleepContext(ctx, backoff.Delay()) {
@@ -219,7 +219,7 @@ func (a *Adapter) runConnections(handler share.MessageHandler) {
 				ResultStatus: globalevents.ResultSucceeded,
 			}
 			record.Identity = logIdentity(ctx)
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 		a.notifyConnected(ctx)
 		var err error
@@ -241,7 +241,7 @@ func (a *Adapter) runConnections(handler share.MessageHandler) {
 					ResultStatus: globalevents.ResultFailed,
 				}
 				record.Identity = logIdentity(ctx)
-				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				globalevents.Log(context.WithoutCancel(ctx), record)
 			}
 		}
 		if !sleepContext(ctx, backoff.Delay()) {

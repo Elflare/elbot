@@ -178,7 +178,7 @@ func (a *Adapter) runGateway(handler share.MessageHandler) {
 					}
 					facts, _ := contextinfo.ExecutionFromContext(ctx)
 					record.Identity = globalevents.LogIdentityFromExecution(facts)
-					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+					globalevents.Log(context.WithoutCancel(ctx), record)
 				}
 			}
 		} else {

@@ -202,7 +202,7 @@ func registerPluginTestHook(t *testing.T, registrar share.Registrar, pluginID, n
 }
 
 func testLog(ctx context.Context, record events.LogRecord) {
-	_ = events.EmitLog(context.WithoutCancel(ctx), record)
+	events.Log(context.WithoutCancel(ctx), record)
 }
 
 // testLoader supplies the same candidate/commit contract as root wiring while

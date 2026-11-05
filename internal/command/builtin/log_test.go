@@ -361,9 +361,7 @@ func TestLogCommandsQueryGlobalRecords(t *testing.T) {
 			t.Cleanup(closeCenter)
 			publish := func(record events.LogRecord) {
 				t.Helper()
-				if err := events.EmitLog(context.Background(), record); err != nil {
-					t.Fatal(err)
-				}
+				events.Log(context.Background(), record)
 			}
 			body := strings.Repeat("中文正文", 100) + "TAIL_BODY"
 			for _, name := range []string{"user_message", "assistant_message", "system_message"} {

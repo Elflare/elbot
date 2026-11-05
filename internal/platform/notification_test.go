@@ -148,7 +148,7 @@ func TestServiceNotificationBusinessIgnoresLogFailure(t *testing.T) {
 		t.Fatal("headless accepted a conversation destination")
 	}
 	results, err = events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "invalid", Target: events.NotificationTarget{Platform: "service", ChatType: contextinfo.ChatPrivate, ID: "chat"}})
-	if err == nil || len(results) != 1 || results[0].Started || len(records) != 1 {
+	if err != nil || len(results) != 1 || results[0].Started || len(records) != 1 {
 		t.Fatalf("invalid host destination: %v %v", results, err)
 	}
 	agentshare.ReportFailure(t.Context(), "session", errors.New("ordinary model failure"), func(ctx context.Context, level slog.Level, text string) {

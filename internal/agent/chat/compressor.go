@@ -62,8 +62,8 @@ func (c Compressor) Compact(ctx context.Context, req CompactRequest) (*CompactRe
 	}
 	if err != nil {
 		if ctx.Err() == nil {
-			_ = events.EmitLog(context.WithoutCancel(ctx), events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "compact_error", Module: "agent", Content: err.Error(), ResultStatus: events.ResultFailed})
-			_, _ = events.NotificationRequested.EmitAsync(session.WithBinding(context.WithoutCancel(ctx), nil), events.NewNotification(ctx, slog.LevelError, "上下文压缩失败："+err.Error()))
+			events.Log(context.WithoutCancel(ctx), events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "compact_error", Module: "agent", Content: err.Error(), ResultStatus: events.ResultFailed})
+			events.Notify(session.WithBinding(context.WithoutCancel(ctx), nil), events.NewNotification(ctx, slog.LevelError, "上下文压缩失败："+err.Error()))
 		}
 		return nil, fmt.Errorf("调用压缩模型: %w", err)
 	}

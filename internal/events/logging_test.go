@@ -2,12 +2,10 @@ package events
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
-	"os"
 	"reflect"
-	"strings"
 	"testing"
+	"testing/synctest"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/signal"
@@ -16,16 +14,16 @@ import (
 func TestLogEnums(t *testing.T) {
 	for value := 0; value <= 255; value++ {
 		want := map[LogCategory]string{LogRuntime: "runtime", LogAudit: "audit", LogElnis: "elnis"}[LogCategory(value)]
-		if LogCategory(value).Valid() != (want != "") || LogCategory(value).String() != want {
-			t.Fatalf("category %d: valid=%v string=%q", value, LogCategory(value).Valid(), LogCategory(value).String())
+		if LogCategory(value).String() != want {
+			t.Fatalf("category %d: string=%q", value, LogCategory(value).String())
 		}
 		want = map[LogContentType]string{ContentText: "text", ContentJSON: "json"}[LogContentType(value)]
-		if LogContentType(value).Valid() != (want != "") || LogContentType(value).String() != want {
-			t.Fatalf("type %d: valid=%v string=%q", value, LogContentType(value).Valid(), LogContentType(value).String())
+		if LogContentType(value).String() != want {
+			t.Fatalf("type %d: string=%q", value, LogContentType(value).String())
 		}
 		want = map[ResultStatus]string{ResultSucceeded: "succeeded", ResultFailed: "failed", ResultCanceled: "canceled", ResultRejected: "rejected", ResultSkipped: "skipped"}[ResultStatus(value)]
-		if ResultStatus(value).Valid() != (value == 0 || want != "") || ResultStatus(value).String() != want {
-			t.Fatalf("result %d: valid=%v string=%q", value, ResultStatus(value).Valid(), ResultStatus(value).String())
+		if ResultStatus(value).String() != want {
+			t.Fatalf("result %d: string=%q", value, ResultStatus(value).String())
 		}
 	}
 	if LogRuntime != 1 || LogAudit != 2 || LogElnis != 3 || ContentText != 0 || ContentJSON != 1 || ResultUnspecified != 0 || ResultSucceeded != 1 || ResultSkipped != 5 {
@@ -34,52 +32,82 @@ func TestLogEnums(t *testing.T) {
 }
 
 func TestLogIdentityFromExecutionPreservesSnapshot(t *testing.T) {
-	empty := ""
+	source := contextinfo.Execution{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}
+	got := LogIdentityFromExecution(source)
+	source.SessionID = "changed"
+	want := LogIdentity{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}
+	if got != want {
+		t.Fatalf("identity = %+v, want %+v", got, want)
+	}
+	if got := LogIdentityFromExecution(contextinfo.Execution{}); got != (LogIdentity{}) {
+		t.Fatalf("empty execution gained identity: %+v", got)
+	}
+}
+
+func TestLogPublicationModes(t *testing.T) {
 	for _, tc := range []struct {
-		name      string
-		execution contextinfo.Execution
-		sessionID *string
+		name    string
+		publish func(context.Context, LogRecord)
+		async   bool
 	}{
-		{name: "complete", execution: contextinfo.Execution{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}},
-		{name: "empty"},
-		{name: "explicit_empty_session", execution: contextinfo.Execution{SessionID: "source-session", RunID: "run"}, sessionID: &empty},
+		{name: "sync", publish: Log},
+		{name: "async", publish: AsyncLog, async: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			source := tc.execution
-			record := LogRecord{Category: LogRuntime, Identity: LogIdentityFromExecution(source)}
-			want := LogIdentity{SessionID: &tc.execution.SessionID, RunID: &tc.execution.RunID, Attempt: &tc.execution.Attempt, RequestID: &tc.execution.RequestID, RootRequestID: &tc.execution.RootRequestID}
-			if tc.sessionID != nil {
-				record.Identity.SessionID = tc.sessionID
-				want.SessionID = tc.sessionID
-			}
-			// Delayed publication must retain the selected snapshot, not the
-			// later source value or the execution attached to the publishing context.
-			source = contextinfo.Execution{SessionID: "later", RunID: "later", Attempt: "later", RequestID: "later", RootRequestID: "later"}
-			ctx, cancel := context.WithCancel(contextinfo.WithExecution(t.Context(), source))
-			cancel()
-			var received []LogRecord
-			connection, err := LogSubmitted.Observe(func(ctx context.Context, record LogRecord) error {
-				if ctx.Err() != nil {
-					t.Error("publication retained cancellation")
+			synctest.Test(t, func(t *testing.T) {
+				previous := LogSubmitted
+				LogSubmitted = signal.New[LogRecord, signal.Empty]("test.logs")
+				defer func() {
+					_ = LogSubmitted.Close(context.Background())
+					LogSubmitted = previous
+				}()
+				started, release := make(chan struct{}), make(chan struct{})
+				received := make(chan LogRecord, 1)
+				_, err := LogSubmitted.Observe(func(ctx context.Context, record LogRecord) error {
+					if ctx.Err() != nil {
+						t.Error("publication retained cancellation")
+					}
+					close(started)
+					<-release
+					received <- record
+					return nil
+				}, signal.ConnectOptions{Shutdown: signal.Drain})
+				if err != nil {
+					t.Fatal(err)
 				}
-				received = append(received, record)
-				return nil
-			}, signal.ConnectOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer connection.Disconnect()
-			if err := EmitLog(ctx, record); err != nil {
-				t.Fatal(err)
-			}
-			if len(received) != 1 || !reflect.DeepEqual(received[0].Identity, want) {
-				t.Fatalf("selected identity changed: got %+v, want %+v", received, want)
-			}
+				ctx, cancel := context.WithCancel(contextinfo.WithExecution(t.Context(), contextinfo.Execution{SessionID: "context-session"}))
+				cancel()
+				record := LogRecord{Category: LogRuntime, Content: "original", Identity: LogIdentity{SessionID: "source-session"}}
+				done := make(chan struct{})
+				go func() {
+					tc.publish(ctx, record)
+					close(done)
+				}()
+				<-started
+				synctest.Wait()
+				returned := false
+				select {
+				case <-done:
+					returned = true
+				default:
+				}
+				if returned != tc.async {
+					t.Errorf("returned before consumer finished = %v, want %v", returned, tc.async)
+				}
+				record.Identity.SessionID = "changed"
+				record.Content = "changed"
+				close(release)
+				<-done
+				got := <-received
+				if got.Identity.SessionID != "source-session" || got.Content != "original" {
+					t.Fatalf("published record changed: %+v", got)
+				}
+			})
 		})
 	}
 }
 
-func TestEmitLogCopiesSourceIdentity(t *testing.T) {
+func TestLogPreservesSourceRecord(t *testing.T) {
 	var received []LogRecord
 	connection, err := LogSubmitted.Observe(func(_ context.Context, record LogRecord) error {
 		received = append(received, record)
@@ -89,105 +117,7 @@ func TestEmitLogCopiesSourceIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
-	values := []string{"source-session", "", "source-attempt", "source-request", "source-root"}
-	ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "context-session", RunID: "context-run", Attempt: "2", RequestID: "req", RootRequestID: "root"})
-	record := LogRecord{Category: LogAudit, Level: slog.LevelWarn, ResultStatus: ResultFailed, Type: ContentJSON, Content: `{"reason":"call failed"}`,
-		Identity: LogIdentity{SessionID: &values[0], RunID: &values[1], Attempt: &values[2], RequestID: &values[3], RootRequestID: &values[4]}}
-	if err := EmitLog(ctx, record); err != nil {
-		t.Fatal(err)
-	}
-	for i := range values {
-		values[i] = "changed"
-	}
-	record.Content = "changed"
-	if len(received) != 1 {
-		t.Fatal(received)
-	}
-	got := received[0]
-	if got.Level != slog.LevelWarn || got.ResultStatus != ResultFailed || got.Content != `{"reason":"call failed"}` {
-		t.Fatal(got)
-	}
-	for i, value := range []*string{got.Identity.SessionID, got.Identity.RunID, got.Identity.Attempt, got.Identity.RequestID, got.Identity.RootRequestID} {
-		want := []string{"source-session", "", "source-attempt", "source-request", "source-root"}[i]
-		if value == nil || *value != want || value == &values[i] {
-			t.Fatalf("identity %d: %v", i, value)
-		}
-	}
-	if err := EmitLog(ctx, LogRecord{Category: LogRuntime}); err != nil {
-		t.Fatal(err)
-	}
-	got = received[1]
-	if got.Identity != (LogIdentity{}) {
-		t.Fatalf("identity inferred from context: %+v", got.Identity)
-	}
-	values = []string{"partial-session", ""}
-	if err := EmitLog(ctx, LogRecord{Category: LogRuntime, Identity: LogIdentity{SessionID: &values[0], RequestID: &values[1]}}); err != nil {
-		t.Fatal(err)
-	}
-	values[0], values[1] = "changed", "changed"
-	got = received[len(received)-1]
-	if got.Identity.SessionID == nil || *got.Identity.SessionID != "partial-session" || got.Identity.SessionID == &values[0] ||
-		got.Identity.RequestID == nil || *got.Identity.RequestID != "" || got.Identity.RequestID == &values[1] {
-		t.Fatalf("supplied identities were not copied: %+v", got.Identity)
-	}
-	if got.Identity.RunID != nil || got.Identity.Attempt != nil || got.Identity.RootRequestID != nil {
-		t.Fatalf("missing identities inferred from context: %+v", got.Identity)
-	}
-	for _, ctx := range []context.Context{context.Background(), contextinfo.WithExecution(context.Background(), contextinfo.Execution{})} {
-		if err := EmitLog(ctx, LogRecord{Category: LogRuntime}); err != nil {
-			t.Fatal(err)
-		}
-		got = received[len(received)-1]
-		if got.Identity != (LogIdentity{}) || got.ResultStatus != ResultUnspecified {
-			t.Fatalf("manufactured absent facts: %+v", got)
-		}
-	}
-}
-
-func TestEmitLogValidatesContract(t *testing.T) {
-	file, err := os.CreateTemp(t.TempDir(), "stderr")
-	if err != nil {
-		t.Fatal(err)
-	}
-	old := os.Stderr
-	os.Stderr = file
-	t.Cleanup(func() { os.Stderr = old; _ = file.Close() })
-	var received []LogRecord
-	connection, err := LogSubmitted.Observe(func(_ context.Context, record LogRecord) error { received = append(received, record); return nil }, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer connection.Disconnect()
-	for name, record := range map[string]LogRecord{
-		"missing category":    {},
-		"invalid category":    {Category: LogCategory(255)},
-		"invalid type":        {Category: LogRuntime, Type: LogContentType(255)},
-		"invalid result":      {Category: LogRuntime, ResultStatus: ResultStatus(255)},
-		"negative text limit": {Category: LogRuntime, ContentLimit: -1},
-		"negative JSON limit": {Category: LogRuntime, Type: ContentJSON, Content: "null", ContentLimit: -1},
-		"empty JSON":          {Category: LogRuntime, Type: ContentJSON},
-		"malformed JSON":      {Category: LogRuntime, Type: ContentJSON, Content: "{sensitive-invalid-body"},
-		"trailing JSON":       {Category: LogRuntime, Type: ContentJSON, Content: "{} {}"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			if err := EmitLog(context.Background(), record); err == nil {
-				t.Fatal("invalid record accepted")
-			}
-		})
-	}
-	if len(received) != 0 {
-		t.Fatalf("invalid records dispatched: %v", received)
-	}
-	if err := signal.FlushDiagnostics(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	data, err := os.ReadFile(file.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Count(string(data), "invalid log record") != 9 || strings.Contains(string(data), "sensitive-invalid-body") {
-		t.Fatalf("invalid diagnostics: %s", data)
-	}
+	ctx := contextinfo.WithExecution(t.Context(), contextinfo.Execution{SessionID: "context-session"})
 	for _, record := range []LogRecord{
 		{Category: LogRuntime},
 		{Category: LogAudit, Level: slog.LevelWarn, ResultStatus: ResultFailed, Content: "reason"},
@@ -195,20 +125,9 @@ func TestEmitLogValidatesContract(t *testing.T) {
 		{Category: LogAudit, Type: ContentJSON, Content: "null"},
 		{Category: LogAudit, Type: ContentJSON, Content: "9007199254740993", ContentLimit: 1},
 	} {
-		if err := EmitLog(context.Background(), record); err != nil {
-			t.Fatal(err)
-		}
+		Log(ctx, record)
 		if !reflect.DeepEqual(received[len(received)-1], record) {
 			t.Fatalf("business facts changed: %+v", received)
 		}
-	}
-	for _, record := range received {
-		if record.Type == ContentJSON && !json.Valid([]byte(record.Content)) {
-			t.Fatal(record)
-		}
-	}
-	connection.Disconnect()
-	if err := EmitLog(context.Background(), LogRecord{Category: LogRuntime}); err != nil {
-		t.Fatalf("no subscribers: %v", err)
 	}
 }

@@ -96,7 +96,7 @@ func (s *Service) materializeSegments(ctx context.Context, segments []delivery.O
 		if record.ResultStatus == events.ResultCanceled {
 			record.Level = slog.LevelInfo
 		}
-		_ = events.EmitLog(ctx, record)
+		events.Log(ctx, record)
 	}()
 
 	out := make([]llm.MessageSegment, 0, len(segments))
@@ -168,7 +168,7 @@ func (s *Service) importReportSegments(ctx context.Context, segments []delivery.
 		if record.ResultStatus == events.ResultCanceled {
 			record.Level = slog.LevelInfo
 		}
-		_ = events.EmitLog(ctx, record)
+		events.Log(ctx, record)
 	}()
 
 	out := append([]delivery.Output(nil), segments...)

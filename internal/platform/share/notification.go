@@ -5,6 +5,8 @@ package share
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -20,8 +22,17 @@ type NotificationReceiver interface {
 // ConnectNotifications 将通知交给发送端，连接由根部持有和释放。
 func ConnectNotifications(s *signal.Signal[events.Notification, signal.Empty], sender delivery.MessageSender) (*signal.Connection, error) {
 	return s.Observe(func(ctx context.Context, n events.Notification) error {
-		_, err := delivery.NewManager(sender).SendTo(ctx, NotificationTarget(n), []delivery.Output{delivery.Text(n.Text)})
-		return err
+		target := NotificationTarget(n)
+		_, err := sender.SendTo(ctx, target, []delivery.Output{delivery.Text(n.Text)})
+		if err != nil {
+			facts, _ := contextinfo.ExecutionFromContext(ctx)
+			record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_send_failed", Module: "notification", Content: fmt.Sprintf("target=%+v error=%v", n.Target, err), ContentLimit: 4096, Identity: events.LogIdentityFromExecution(facts), ResultStatus: events.LogStatus(err)}
+			if record.ResultStatus == events.ResultCanceled {
+				record.Level = slog.LevelInfo
+			}
+			events.AsyncLog(ctx, record)
+		}
+		return nil
 	}, signal.ConnectOptions{})
 }
 

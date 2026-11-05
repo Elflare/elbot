@@ -84,7 +84,7 @@ func (s *Service) RunLogCleanup(ctx context.Context) (err error) {
 	record.EventName = "maintenance.log_cleanup"
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record.Identity = globalevents.LogIdentityFromExecution(facts)
-	_ = globalevents.EmitLog(ctx, record)
+	globalevents.Log(ctx, record)
 	return err
 }
 
@@ -104,7 +104,7 @@ func (s *Service) RunSessionCleanup(ctx context.Context) (err error) {
 	record.EventName = "maintenance.session_cleanup"
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record.Identity = globalevents.LogIdentityFromExecution(facts)
-	_ = globalevents.EmitLog(ctx, record)
+	globalevents.Log(ctx, record)
 	return err
 }
 
@@ -125,7 +125,7 @@ func (s *Service) RunChatHistoryCleanup(ctx context.Context) (err error) {
 	record.EventName = "maintenance.chat_history_cleanup"
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record.Identity = globalevents.LogIdentityFromExecution(facts)
-	_ = globalevents.EmitLog(ctx, record)
+	globalevents.Log(ctx, record)
 	return err
 }
 
@@ -143,7 +143,7 @@ func (s *Service) RunSandboxCleanup(ctx context.Context) (err error) {
 	record.EventName = "maintenance.sandbox_cleanup"
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record.Identity = globalevents.LogIdentityFromExecution(facts)
-	_ = globalevents.EmitLog(ctx, record)
+	globalevents.Log(ctx, record)
 	return err
 }
 

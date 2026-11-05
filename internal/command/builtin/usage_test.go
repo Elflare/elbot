@@ -23,7 +23,7 @@ func makeUsageEntry(t time.Time, provider, model, sessionID string, prompt, comp
 	})
 	return logging.LogEntry{
 		Time:      t,
-		Identity:  events.LogIdentity{SessionID: &sessionID},
+		Identity:  events.LogIdentity{SessionID: sessionID},
 		Level:     "INFO",
 		EventName: "llm_usage", Type: events.ContentJSON,
 		Content: string(content),
@@ -34,7 +34,7 @@ func TestUsageJSONGroupingPreservesTokenTypes(t *testing.T) {
 	sessionID := "session"
 	entry := logging.LogEntry{
 		Time:     time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC),
-		Identity: events.LogIdentity{SessionID: &sessionID},
+		Identity: events.LogIdentity{SessionID: sessionID},
 		Type:     events.ContentJSON,
 		Content:  `{"provider":" p ","model":" m ","prompt_tokens":9007199254740993,"completion_tokens":"2","total_tokens":-1}`,
 	}

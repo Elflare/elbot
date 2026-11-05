@@ -4,9 +4,7 @@ package cli
 
 import (
 	"context"
-	"elbot/internal/events"
 	"elbot/internal/platform/share"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -21,6 +19,7 @@ import (
 	"elbot/internal/completion"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 )
 
 type RemoteServerOptions struct {
@@ -145,8 +144,16 @@ func (s *RemoteServer) handleWebSocket(ctx context.Context, handler share.Messag
 	defer s.removeClient(client)
 	s.work.Done()
 	handshakeDone = true
-	_ = client.write(ctx, remoteMessage{Type: remoteMsgHelloOK, ClientID: clientID})
 	msgCtx := s.messageContext(s.workCtx, client)
+	if err := client.write(ctx, remoteMessage{Type: remoteMsgHelloOK, ClientID: clientID}); err != nil {
+		facts, _ := contextinfo.ExecutionFromContext(msgCtx)
+		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "cli_control_send_failed", Module: "cli", Content: fmt.Sprintf("client_id=%s operation=%s error=%v", client.id, remoteMsgHelloOK, err), ContentLimit: 4096, Identity: events.LogIdentityFromExecution(facts), ResultStatus: events.LogStatus(err)}
+		if record.ResultStatus == events.ResultCanceled {
+			record.Level = slog.LevelInfo
+		}
+		events.AsyncLog(msgCtx, record)
+		return
+	}
 	for {
 		var msg remoteMessage
 		if err := wsjson.Read(ctx, conn, &msg); err != nil {
@@ -186,10 +193,18 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler share.Me
 				items, err = complete(ctx, completion.Request{Text: msg.Text, Cursor: msg.Cursor})
 			}
 			if err != nil {
-				_ = client.write(s.transportCtx, remoteMessage{Type: remoteMsgError, ID: msg.ID, Text: err.Error()})
-				return
+				msg = remoteMessage{Type: remoteMsgError, ID: msg.ID, Text: err.Error()}
+			} else {
+				msg = remoteMessage{Type: remoteMsgCompleteResult, ID: msg.ID, Items: items}
 			}
-			_ = client.write(s.transportCtx, remoteMessage{Type: remoteMsgCompleteResult, ID: msg.ID, Items: items})
+			if err := client.write(s.transportCtx, msg); err != nil {
+				facts, _ := contextinfo.ExecutionFromContext(ctx)
+				record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "cli_control_send_failed", Module: "cli", Content: fmt.Sprintf("client_id=%s operation=%s error=%v", client.id, msg.Type, err), ContentLimit: 4096, Identity: events.LogIdentityFromExecution(facts), ResultStatus: events.LogStatus(err)}
+				if record.ResultStatus == events.ResultCanceled {
+					record.Level = slog.LevelInfo
+				}
+				events.AsyncLog(ctx, record)
+			}
 		}
 	}()
 }
@@ -285,40 +300,30 @@ func (s *RemoteServer) onlineClients(match func(string) bool) ([]*remoteClientCo
 }
 
 func (s *RemoteServer) writeClients(ctx context.Context, clients []*remoteClientConn, msg remoteMessage) error {
-	var errs []error
 	sent := 0
 
-	for _, client := range clients {
+	for i, client := range clients {
 		err := client.write(ctx, msg)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("client %s: %w", client.id, err))
 			s.removeClient(client)
 			_ = client.conn.Close(websocket.StatusInternalError, "write failed")
+			err = fmt.Errorf("client %s: %w", client.id, err)
+			if sent == 0 && i == len(clients)-1 {
+				return err
+			}
+			delivery.LogSendResult(ctx, delivery.Target{Platform: s.name, ChatType: contextinfo.ChatPrivate, ChatID: client.id}, delivery.Text(msg.Text), err)
 			continue
 		}
 		sent++
 	}
 
-	if sent == 0 {
-		return fmt.Errorf("send cli message failed: %w", errors.Join(errs...))
-	}
 	return nil
 }
 
 func (c *remoteClientConn) write(ctx context.Context, msg remoteMessage) error {
 	writeCtx, cancel := context.WithTimeout(ctx, remoteWriteTimeout)
 	defer cancel()
-	err := wsjson.Write(writeCtx, c.conn, msg)
-	if err != nil {
-		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "chat_output_failed", Module: "cli", ResultStatus: events.ResultFailed, Content: fmt.Sprintf("client_id=%s operation=%s write_error=%v", c.id, msg.Type, err)}
-		if events.LogStatus(err) == events.ResultCanceled {
-			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		record.Identity = events.LogIdentityFromExecution(facts)
-		_ = events.EmitLog(ctx, record)
-	}
-	return err
+	return wsjson.Write(writeCtx, c.conn, msg)
 }
 
 func (s *RemoteServer) addClient(client *remoteClientConn) bool {

@@ -197,7 +197,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	// Models 只暴露 ResolveMode 和 ValidateSelection，发送与复制使用独立函数。
 	m.cronManager = elcron.NewManager(cron)
 	m.cron = elcron.NewService(elcron.Options{
-		Log:             func(ctx context.Context, record globalevents.LogRecord) { _ = globalevents.EmitLogAsync(ctx, record) },
+		Log:             globalevents.AsyncLog,
 		CLIPlatformName: config.PlatformCLI,
 		NewRunID: func(ctx context.Context) (string, error) {
 			return storage.IDSequence(deps.Store.NextIDSequence).ID(ctx, "run")

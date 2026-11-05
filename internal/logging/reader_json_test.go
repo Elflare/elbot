@@ -44,7 +44,7 @@ func TestReaderJSONBusinessPredicatesBeforeLimit(t *testing.T) {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	entry := result.Entries[0]
-	if entry.Raw != wanted || entry.Identity.SessionID == nil || *entry.Identity.SessionID != "" || entry.ResultStatus != events.ResultFailed || entry.Category != events.LogAudit {
+	if entry.Raw != wanted || entry.Identity.SessionID != "" || entry.ResultStatus != events.ResultFailed || entry.Category != events.LogAudit {
 		t.Fatalf("entry=%+v", entry)
 	}
 	query.Fields["event"] = "forged"
@@ -65,7 +65,7 @@ func TestReaderRejectsLegacyFormatAndPreservesTextContent(t *testing.T) {
 	if err != nil || len(result.Entries) != 1 || result.DamagedCount != 1 || len(result.DamagedLines) != 1 || result.DamagedLines[0] != `level=INFO msg="old body" event=tool_call tool=shell` {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
-	if result.Entries[0].Content != "正文\n下一行" || result.Entries[0].ResultStatus != events.ResultUnspecified || result.Entries[0].Identity.SessionID != nil {
+	if result.Entries[0].Content != "正文\n下一行" || result.Entries[0].ResultStatus != events.ResultUnspecified || result.Entries[0].Identity.SessionID != "" {
 		t.Fatalf("entries=%+v", result.Entries)
 	}
 	result, err = r.Query(t.Context(), LogQuery{Prefix: "audit", ContentFields: map[string]string{"tool": "shell"}})

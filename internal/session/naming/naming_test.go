@@ -391,7 +391,7 @@ func TestPreparationFailureIdentityAndRetry(t *testing.T) {
 	ctx := contextinfo.WithExecution(t.Context(), contextinfo.Execution{SessionID: "wrong", RequestID: "request", RunID: "run"})
 	f.s.MaybeScheduleNaming(ctx, id)
 	e := receive(t, f.completed)
-	if e.MessageCount != nil || !sameNamingError(e.PreparationError, original) || e.FailureCount != 0 || *e.Identity.SessionID != id || *e.Identity.RequestID != "request" {
+	if e.MessageCount != nil || !sameNamingError(e.PreparationError, original) || e.FailureCount != 0 || e.Identity.SessionID != id || e.Identity.RequestID != "request" {
 		t.Fatalf("event=%+v", e)
 	}
 	f.s.deps.Messages = f.store.Messages()
@@ -437,7 +437,7 @@ func TestSourceDeletedWhileGeneratingDoesNotRetainCache(t *testing.T) {
 }
 
 func testPublishLog(ctx context.Context, record events.LogRecord) {
-	_ = events.EmitLog(context.WithoutCancel(ctx), record)
+	events.Log(context.WithoutCancel(ctx), record)
 }
 func newTestService(cfg Config, deps ServiceDeps) (*Service, error) {
 	if deps.Log == nil {
@@ -450,12 +450,6 @@ func sameNamingError(a, b error) bool {
 }
 func decodeNamingLog(t *testing.T, r events.LogRecord) NamingCompletedEvent {
 	t.Helper()
-	for _, p := range []**string{&r.Identity.SessionID, &r.Identity.RequestID, &r.Identity.RunID, &r.Identity.Attempt, &r.Identity.RootRequestID} {
-		if *p != nil {
-			v := **p
-			*p = &v
-		}
-	}
 	var data struct {
 		Provider                                       string
 		Model                                          string

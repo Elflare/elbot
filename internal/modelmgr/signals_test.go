@@ -84,7 +84,7 @@ func TestRetryLogsWithoutNotificationSubscriber(t *testing.T) {
 	if len(records) != 1 || records[0].EventName != "model_retry" || records[0].Level != slog.LevelWarn || records[0].ResultStatus != events.ResultFailed {
 		t.Fatalf("retry facts: %+v", records)
 	}
-	if records[0].Identity.RequestID == nil || *records[0].Identity.RequestID != "retry-request" {
+	if records[0].Identity.RequestID != "retry-request" {
 		t.Fatal("retry lost actual call identity")
 	}
 	client.notify(ctx, llm.RetryEvent{Err: fmt.Errorf("wrapped: %w", context.Canceled), ResultStatus: events.ResultCanceled})

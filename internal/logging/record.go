@@ -35,35 +35,30 @@ func formatRecord(record events.LogRecord, at time.Time) ([]byte, error) {
 		}
 		value = TruncateContent(record.Content, limit)
 	case events.ContentJSON:
-		// EmitLog already validates JSON. Preserve the source's field order and
-		// values instead of decoding and rebuilding its body.
+		// Preserve the source's field order and values when encoding the record.
 		value = json.RawMessage(record.Content)
 	}
 	fields := map[string]any{
-		"time":     at.Format(time.RFC3339),
-		"category": record.Category.String(),
-		"level":    record.Level.String(),
-		"event":    record.EventName,
-		"module":   record.Module,
-		"type":     record.Type.String(),
-		"content":  value,
-	}
-	for key, value := range map[string]*string{
+		"time":            at.Format(time.RFC3339),
+		"category":        record.Category.String(),
+		"level":           record.Level.String(),
+		"event":           record.EventName,
+		"module":          record.Module,
+		"type":            record.Type.String(),
+		"content":         value,
 		"session_id":      record.Identity.SessionID,
 		"run_id":          record.Identity.RunID,
 		"attempt":         record.Identity.Attempt,
 		"request_id":      record.Identity.RequestID,
 		"root_request_id": record.Identity.RootRequestID,
-	} {
-		if value != nil {
-			fields[key] = *value
-		}
 	}
 	if record.ResultStatus != events.ResultUnspecified {
 		fields["result_status"] = record.ResultStatus.String()
 	}
-	// Fields contain strings and JSON already validated at publication.
-	data, _ := json.Marshal(fields)
+	data, err := json.Marshal(fields)
+	if err != nil {
+		return nil, fmt.Errorf("format log record: %w", err)
+	}
 	if len(data)+1 > maxRecordBytes {
 		return nil, fmt.Errorf("format log record: exceeds %d bytes including newline", maxRecordBytes)
 	}

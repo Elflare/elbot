@@ -421,7 +421,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 			record.Identity = logIdentity(ctx)
 			content["actor"] = event.Actor
 			if event.Session.ID != "" {
-				record.Identity.SessionID = &event.Session.ID
+				record.Identity.SessionID = event.Session.ID
 			}
 			for key, value := range content {
 				if value, ok := value.(string); ok {

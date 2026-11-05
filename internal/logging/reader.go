@@ -159,15 +159,15 @@ func (r Reader) Query(ctx context.Context, query LogQuery) (LogQueryResult, erro
 							err = fmt.Errorf("invalid log result")
 						}
 					case "session_id":
-						entry.Identity.SessionID = &text
+						entry.Identity.SessionID = text
 					case "run_id":
-						entry.Identity.RunID = &text
+						entry.Identity.RunID = text
 					case "attempt":
-						entry.Identity.Attempt = &text
+						entry.Identity.Attempt = text
 					case "request_id":
-						entry.Identity.RequestID = &text
+						entry.Identity.RequestID = text
 					case "root_request_id":
-						entry.Identity.RootRequestID = &text
+						entry.Identity.RootRequestID = text
 					}
 					if err != nil {
 						break
@@ -334,11 +334,11 @@ func matchLogEntry(entry LogEntry, query LogQuery) bool {
 		return false
 	}
 	fields := map[string]string{"event": entry.EventName, "module": entry.Module, "level": entry.Level, "category": entry.Category.String(), "type": entry.Type.String(), "result_status": entry.ResultStatus.String()}
-	for key, value := range map[string]*string{"session_id": entry.Identity.SessionID, "run_id": entry.Identity.RunID, "attempt": entry.Identity.Attempt, "request_id": entry.Identity.RequestID, "root_request_id": entry.Identity.RootRequestID} {
-		if value != nil {
-			fields[key] = *value
-		}
-	}
+	fields["session_id"] = entry.Identity.SessionID
+	fields["run_id"] = entry.Identity.RunID
+	fields["attempt"] = entry.Identity.Attempt
+	fields["request_id"] = entry.Identity.RequestID
+	fields["root_request_id"] = entry.Identity.RootRequestID
 	for key, want := range query.Fields {
 		if strings.TrimSpace(want) == "" {
 			continue

@@ -77,7 +77,7 @@ func TestAgentLogSourcePreservesExplicitIdentity(t *testing.T) {
 		Type:      globalevents.ContentText,
 		Content:   "hello",
 	})
-	if len(records) != 1 || records[0].Identity.SessionID == nil || *records[0].Identity.SessionID != "source" || *records[0].Identity.RequestID != "" {
+	if len(records) != 1 || records[0].Identity.SessionID != "source" || records[0].Identity.RequestID != "" {
 		t.Fatalf("records = %#v", records)
 	}
 }
@@ -135,16 +135,14 @@ func captureLogs(t *testing.T, logger *slog.Logger) {
 		}
 		out := slog.NewRecord(time.Now(), record.Level, record.Content, 0)
 		out.AddAttrs(slog.String("event", record.EventName), slog.String("module", record.Module), slog.String("result_status", record.ResultStatus.String()))
-		for key, value := range map[string]*string{
+		for key, value := range map[string]string{
 			"session_id":      record.Identity.SessionID,
 			"run_id":          record.Identity.RunID,
 			"attempt":         record.Identity.Attempt,
 			"request_id":      record.Identity.RequestID,
 			"root_request_id": record.Identity.RootRequestID,
 		} {
-			if value != nil {
-				out.AddAttrs(slog.String(key, *value))
-			}
+			out.AddAttrs(slog.String(key, value))
 		}
 		return logger.Handler().Handle(ctx, out)
 	}, signal.ConnectOptions{})

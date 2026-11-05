@@ -113,7 +113,7 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 					record.ResultStatus = globalevents.ResultCanceled
 				}
 				record.Content = fmt.Sprintf("skill preload failed: tool=%s error=%v", name, err)
-				_ = globalevents.EmitLog(ctx, record)
+				globalevents.Log(ctx, record)
 				return share.SkillPreload{}, err
 			}
 			seen[name] = true
@@ -213,7 +213,7 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 		record.Level = slog.LevelInfo
 		record.ResultStatus = globalevents.ResultSkipped
 		record.Content = fmt.Sprintf("%s: %s=%s reason=%s", eventName, key, name, reason)
-		_ = globalevents.EmitLog(ctx, record)
+		globalevents.Log(ctx, record)
 	}
 	candidates, err := s.Registry.Query(ctx, share.ToolQuery{Names: []string{name}, IncludeHidden: true})
 	if err != nil {
@@ -246,6 +246,6 @@ func preloadLogRecord(ctx context.Context, sessionID string) globalevents.LogRec
 	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool"}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record.Identity = globalevents.LogIdentityFromExecution(facts)
-	record.Identity.SessionID = &sessionID
+	record.Identity.SessionID = sessionID
 	return record
 }

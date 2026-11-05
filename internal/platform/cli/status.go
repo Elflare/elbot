@@ -155,7 +155,7 @@ func (d *statusDisplay) run() {
 			err := d.send(ctx, key.Display, event.Snapshot)
 			if err != nil && !errors.Is(err, context.Canceled) && d.ctx.Err() == nil {
 				record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "status_display_failed", Module: d.platformName, Type: events.ContentText, Content: fmt.Sprintf("status display failed\nerror=%v", err), ContentLimit: 4096, ResultStatus: events.ResultFailed}
-				_ = events.EmitLog(ctx, record)
+				events.Log(ctx, record)
 			}
 			d.mu.Lock()
 			if d.latest[key] == selected {

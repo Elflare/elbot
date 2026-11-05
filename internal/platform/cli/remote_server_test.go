@@ -2,12 +2,15 @@ package cli
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"elbot/internal/completion"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
@@ -18,6 +21,65 @@ import (
 	"github.com/coder/websocket/wsjson"
 	"log/slog"
 )
+
+func TestRemoteControlFailurePreservesOperationAndIdentity(t *testing.T) {
+	for _, failedCompletion := range []bool{false, true} {
+		t.Run(fmt.Sprint(failedCompletion), func(t *testing.T) {
+			accepted := make(chan *websocket.Conn, 1)
+			release := make(chan struct{})
+			host := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				conn, err := websocket.Accept(w, r, nil)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				defer conn.CloseNow()
+				accepted <- conn
+				<-release
+			}))
+			defer host.Close()
+			defer close(release)
+			peer, _, err := websocket.Dial(t.Context(), "ws"+strings.TrimPrefix(host.URL, "http"), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer peer.CloseNow()
+			conn := <-accepted
+			conn.CloseNow()
+			s := &RemoteServer{transportCtx: t.Context()}
+			if failedCompletion {
+				s.completer = func(context.Context, completion.Request) ([]completion.Item, error) {
+					return nil, errors.New("completion failed")
+				}
+			}
+			logs := make(chan events.LogRecord, 2)
+			logging, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+				logs <- record
+				return nil
+			}, signal.ConnectOptions{Shutdown: signal.Drain})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer logging.Close(context.Background())
+			ctx := contextinfo.WithExecution(t.Context(), contextinfo.Execution{RequestID: "request"})
+			s.handleClientMessage(ctx, nil, &remoteClientConn{id: "client", conn: conn}, remoteMessage{Type: remoteMsgComplete, ID: "completion"})
+			s.work.Wait()
+			var record events.LogRecord
+			select {
+			case record = <-logs:
+			case <-time.After(time.Second):
+				t.Fatal("missing control failure log")
+			}
+			operation := remoteMsgCompleteResult
+			if failedCompletion {
+				operation = remoteMsgError
+			}
+			if record.EventName != "cli_control_send_failed" || record.Module != "cli" || record.Identity.RequestID != "request" || !strings.Contains(record.Content, "client_id=client") || !strings.Contains(record.Content, "operation="+operation) || !strings.Contains(record.Content, "error=") {
+				t.Fatalf("lost control failure facts: %+v", record)
+			}
+		})
+	}
+}
 
 func TestRemoteServerTargetClients(t *testing.T) {
 	s := &RemoteServer{name: testPlatformName, superadmins: share.NewSuperadmins(testPlatformName, []string{"local"}), clients: map[string]map[*remoteClientConn]struct{}{}}
@@ -159,14 +221,9 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	read(two, "second-barrier") // Status did not leak to the same user's other connection.
-	first.conn.CloseNow()
-	if _, err := notices.Emit(ctx, events.Notification{Target: events.NotificationTarget{Platform: "cli", ChatType: contextinfo.ChatPrivate, ID: "same-user"}, Text: "partial-notice"}); err == nil {
-		t.Fatal("notification partial failure reported success")
-	}
-	read(two, "partial-notice")
 	logs := make(chan events.LogRecord, 4)
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
-		if r.Module == "cli" && r.EventName == "chat_output_failed" {
+		if r.EventName == "chat_output_failed" || r.EventName == "notification_send_failed" {
 			logs <- r
 		}
 		return nil
@@ -175,6 +232,19 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
+	first.conn.CloseNow()
+	if _, err := notices.Emit(ctx, events.Notification{Target: events.NotificationTarget{Platform: "cli", ChatType: contextinfo.ChatPrivate, ID: "same-user"}, Text: "partial-notice"}); err != nil {
+		t.Fatal("handled notification failure escaped", err)
+	}
+	read(two, "partial-notice")
+	select {
+	case record := <-logs:
+		if record.EventName != "notification_send_failed" || record.Module != "cli" || !strings.Contains(record.Content, first.id) || !strings.Contains(record.Content, "operation="+remoteMsgNotice) {
+			t.Fatal("notification log lost client identity", record)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("notification failure was not logged")
+	}
 	err = s.writeClients(ctx, []*remoteClientConn{first, second}, remoteMessage{Type: remoteMsgNotice, Text: "partial-fanout"})
 	if err != nil {
 		t.Fatal("partial fanout changed business success or hid logging failure:  / ", err)
@@ -185,7 +255,7 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 		if r.Level != slog.LevelWarn || r.ResultStatus != events.ResultFailed || !strings.Contains(r.Content, first.id) {
 			t.Fatalf("partial fanout log=%+v", r)
 		}
-	default:
+	case <-time.After(time.Second):
 		t.Fatal("failed client write was not logged")
 	}
 	s.removeClient(first)

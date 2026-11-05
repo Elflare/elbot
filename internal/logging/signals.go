@@ -76,7 +76,7 @@ func newManager(level, logDir string, retentionDays int, open func(string) (io.W
 }
 
 // handleRecord only admits an already frozen record. Filtering and formatting
-// happen in its category's consumer. Business code calls events.EmitLog.
+// happen in its category's consumer. Business code calls events.Log or events.AsyncLog.
 func (m *Manager) handleRecord(ctx context.Context, record events.LogRecord) error {
 	at := time.Now()
 	sink := m.sinks[record.Category]

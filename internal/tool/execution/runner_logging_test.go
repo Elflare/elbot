@@ -96,14 +96,14 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 				if i >= 1 {
 					wantRun = "after"
 				}
-				if record.Identity.SessionID == nil || *record.Identity.SessionID != row.ID || record.Identity.RunID == nil || *record.Identity.RunID != wantRun {
+				if record.Identity.SessionID != row.ID || record.Identity.RunID != wantRun {
 					t.Fatalf("identity did not follow the operation source: %#v", record.Identity)
 				}
 				if i < 1 {
-					if record.Identity.Attempt == nil || *record.Identity.Attempt != "attempt" || record.Identity.RequestID == nil || *record.Identity.RequestID != "request" || record.Identity.RootRequestID == nil || *record.Identity.RootRequestID != "root" {
+					if record.Identity.Attempt != "attempt" || record.Identity.RequestID != "request" || record.Identity.RootRequestID != "root" {
 						t.Fatalf("source identity omitted: %#v", record.Identity)
 					}
-				} else if *record.Identity.Attempt != "" || *record.Identity.RequestID != "" || *record.Identity.RootRequestID != "" {
+				} else if record.Identity.Attempt != "" || record.Identity.RequestID != "" || record.Identity.RootRequestID != "" {
 					t.Fatalf("stale identity retained after handoff: %#v", record.Identity)
 				}
 				if i >= 1 {
@@ -402,7 +402,7 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 			var calls []events.LogRecord
 			operations := map[string]events.LogRecord{}
 			connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
-				if r.Module != "toolrun" || r.Identity.SessionID == nil || *r.Identity.SessionID != "session-log" {
+				if r.Module != "toolrun" || r.Identity.SessionID != "session-log" {
 					return nil
 				}
 				if r.EventName == "tool_call_completed" && r.Category == events.LogAudit {

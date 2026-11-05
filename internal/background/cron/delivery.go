@@ -151,7 +151,7 @@ func (s *Service) sendDeliveryOutput(ctx context.Context, jobName string, target
 			ContentLimit: 4096,
 		}
 		record.Identity = identity
-		record.Identity.SessionID = &sessionID
+		record.Identity.SessionID = sessionID
 		background.LogBackground(ctx, record)
 	}
 	receipt, err := s.sendTarget(ctx, target, []delivery.Output{out})
@@ -182,7 +182,7 @@ func (s *Service) sendDeliveryOutput(ctx context.Context, jobName string, target
 		if status == globalevents.ResultFailed {
 			record.Level = slog.LevelWarn
 		}
-		record.Identity.SessionID = &sessionID
+		record.Identity.SessionID = sessionID
 		background.LogBackground(ctx, record)
 	}
 	return receipt, err

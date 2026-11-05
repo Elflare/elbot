@@ -220,7 +220,7 @@ func (m *Manager) ValidatePlugin(config share.RuntimeConfig) error {
 func (m *Manager) ReplacePlugin(id string, config *share.RuntimeConfig, commit func()) error {
 	if config != nil {
 		if err := m.validateConfig(*config); err != nil {
-			_ = m.opts.Notify(context.WithoutCancel(m.rootCtx), globalevents.Notification{Text: fmt.Sprintf("Hook %s 配置应用失败：%v", id, err), Level: slog.LevelWarn})
+			m.opts.Notify(context.WithoutCancel(m.rootCtx), globalevents.Notification{Text: fmt.Sprintf("Hook %s 配置应用失败：%v", id, err), Level: slog.LevelWarn})
 			return fmt.Errorf("hook %s config: %w", id, err)
 		}
 	}

@@ -32,8 +32,8 @@ func (c *ExecutionCoordinator) usageForSession(ctx context.Context, row *storage
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		record.Identity = globalevents.LogIdentityFromExecution(facts)
-		record.Identity.SessionID = &row.ID
-		_ = globalevents.EmitLog(ctx, record)
+		record.Identity.SessionID = row.ID
+		globalevents.Log(ctx, record)
 	}
 	return usage
 }

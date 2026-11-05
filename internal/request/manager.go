@@ -67,11 +67,11 @@ func (m *Manager) Start(parent context.Context, start StartRequest) (Request, co
 	if err != nil {
 		facts, _ := contextinfo.ExecutionFromContext(parent)
 		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, Module: "request", EventName: "request_start_failed", ResultStatus: events.ResultFailed, Content: err.Error(), Identity: events.LogIdentityFromExecution(facts)}
-		record.Identity.SessionID = &start.SessionID
+		record.Identity.SessionID = start.SessionID
 		if events.LogStatus(err) == events.ResultCanceled {
 			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
 		}
-		_ = events.EmitLog(parent, record)
+		events.Log(parent, record)
 		return Request{}, nil, nil, err
 	}
 	startedAt := time.Now()

@@ -11,12 +11,11 @@ import (
 )
 
 func testLog(ctx context.Context, record events.LogRecord) {
-	_ = events.EmitLog(context.WithoutCancel(ctx), record)
+	events.Log(context.WithoutCancel(ctx), record)
 }
 
-func testNotify(ctx context.Context, notice events.Notification) error {
-	_, err := events.NotificationRequested.EmitAsync(context.WithoutCancel(ctx), notice)
-	return err
+func testNotify(ctx context.Context, notice events.Notification) {
+	events.Notify(context.WithoutCancel(ctx), notice)
 }
 
 type testTools struct{ *registry.Registry }

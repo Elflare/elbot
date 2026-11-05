@@ -138,7 +138,7 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 				json.Unmarshal(content["actor"], &actor)
 				json.Unmarshal(content["result"], &body)
 				json.Unmarshal(content["summary"], &summary)
-				if id != callID || id == "" || actor != (contextinfo.ActorIdentity{Platform: "cli", ID: "trigger-actor"}) || record.Identity.SessionID == nil || *record.Identity.SessionID != "trigger-session" || record.Identity.RootRequestID == nil || *record.Identity.RootRequestID != "root" {
+				if id != callID || id == "" || actor != (contextinfo.ActorIdentity{Platform: "cli", ID: "trigger-actor"}) || record.Identity.SessionID != "trigger-session" || record.Identity.RootRequestID != "root" {
 					t.Fatalf("identity=%+v content=%s", record.Identity, record.Content)
 				}
 				if i == 0 {
@@ -244,11 +244,7 @@ func TestToolAuditUsesTriggerActorAndKeepsEnteredCancellation(t *testing.T) {
 				t.Fatal(content)
 			}
 			identity := (*records)[0].Identity
-			if tc.expectedSession == "" {
-				if identity.SessionID == nil || *identity.SessionID != "" {
-					t.Fatalf("absent session became explicit: %+v", identity)
-				}
-			} else if identity.SessionID == nil || *identity.SessionID != tc.expectedSession {
+			if identity.SessionID != tc.expectedSession {
 				t.Fatalf("session identity = %+v; want %q", identity, tc.expectedSession)
 			}
 		})

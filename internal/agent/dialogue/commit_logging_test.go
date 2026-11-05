@@ -35,7 +35,7 @@ func TestToolTranscriptPreparationOwnsInternalFailure(t *testing.T) {
 			if err == nil || (!malformed && err != failure) {
 				t.Fatalf("business error changed: %v", err)
 			}
-			if len(records) != 1 || records[0].Level != slog.LevelError || records[0].EventName != "tool_batch_prepare_failed" || !strings.Contains(records[0].Content, err.Error()) || records[0].Identity.SessionID == nil || *records[0].Identity.SessionID != "session" {
+			if len(records) != 1 || records[0].Level != slog.LevelError || records[0].EventName != "tool_batch_prepare_failed" || !strings.Contains(records[0].Content, err.Error()) || records[0].Identity.SessionID != "session" {
 				t.Fatalf("missing or duplicate internal diagnostic: %+v", records)
 			}
 		})

@@ -108,14 +108,14 @@ func (s *StateService) Commit(ctx context.Context, id string, update toolshare.S
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: "tool_state_error", Module: "tool", Content: err.Error(), ResultStatus: events.ResultFailed, Identity: events.LogIdentityFromExecution(facts)}
-		record.Identity.SessionID = &id
+		record.Identity.SessionID = id
 		if errors.Is(err, storage.ErrNotFound) {
 			record.Level = slog.LevelWarn
 		}
 		if events.LogStatus(err) == events.ResultCanceled {
 			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
 		}
-		_ = events.EmitLog(ctx, record)
+		events.Log(ctx, record)
 	}()
 
 	for _, group := range update.ReplaceGroups {
@@ -197,14 +197,14 @@ func (s *StateService) DiscoveredToolsForSession(ctx context.Context, id string,
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: "tool_state_error", Module: "tool", Content: err.Error(), ResultStatus: events.ResultFailed, Identity: events.LogIdentityFromExecution(facts)}
-		record.Identity.SessionID = &id
+		record.Identity.SessionID = id
 		if errors.Is(err, storage.ErrNotFound) {
 			record.Level = slog.LevelWarn
 		}
 		if events.LogStatus(err) == events.ResultCanceled {
 			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
 		}
-		_ = events.EmitLog(ctx, record)
+		events.Log(ctx, record)
 	}()
 
 	row, err := s.store.Get(ctx, id)

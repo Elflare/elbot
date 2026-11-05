@@ -176,7 +176,7 @@ func Run(ctx context.Context, opts Options) (err error) {
 	if err = runStartupSteps(runCtx, steps, &timing); err != nil {
 		return err
 	}
-	_ = events.EmitLog(runCtx, events.LogRecord{
+	events.Log(runCtx, events.LogRecord{
 		Category: events.LogRuntime, Module: "app", Level: slog.LevelInfo,
 		EventName: "elbot_started", Type: events.ContentText,
 		Content:      fmt.Sprintf("version=%s\nmode=%s\nconfig_path=%s", opts.Version, opts.Mode, configPath),
@@ -270,14 +270,14 @@ func (t *startupTiming) markStage(phase lifecyclePhase) {
 }
 
 func (t *startupTiming) log(ctx context.Context) {
-	_ = events.EmitLog(ctx, events.LogRecord{
+	events.Log(ctx, events.LogRecord{
 		Category: events.LogRuntime, Module: "app", Level: slog.LevelInfo,
 		EventName: "startup_completed", Type: events.ContentText,
 		Content:      fmt.Sprintf("total=%s", time.Since(t.startedAt)),
 		ResultStatus: events.ResultSucceeded,
 	})
 	for _, stage := range t.stages {
-		_ = events.EmitLog(ctx, events.LogRecord{
+		events.Log(ctx, events.LogRecord{
 			Category: events.LogRuntime, Module: "app", Level: slog.LevelDebug,
 			EventName: "startup_stage", Type: events.ContentText,
 			Content:      fmt.Sprintf("stage=%s\nduration=%s", stage.phase, stage.duration),

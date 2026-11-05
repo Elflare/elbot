@@ -244,7 +244,7 @@ func reportPluginConfigError(ctx context.Context, opts Options, name, path strin
 	if opts.Notices != nil {
 		*opts.Notices = append(*opts.Notices, text)
 	}
-	_ = opts.Notify(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
+	opts.Notify(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 }
 
 func reportPluginConfigWarning(ctx context.Context, opts Options, name, path, message string) {
@@ -262,7 +262,7 @@ func reportPluginConfigWarning(ctx context.Context, opts Options, name, path, me
 	if opts.Notices != nil {
 		*opts.Notices = append(*opts.Notices, text)
 	}
-	_ = opts.Notify(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
+	opts.Notify(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 }
 
 func reportConfigError(ctx context.Context, opts Options, path string, err error) {
@@ -280,7 +280,7 @@ func reportConfigError(ctx context.Context, opts Options, path string, err error
 	if opts.Notices != nil {
 		*opts.Notices = append(*opts.Notices, text)
 	}
-	_ = opts.Notify(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
+	opts.Notify(context.WithoutCancel(ctx), globalevents.NewNotification(ctx, slog.LevelWarn, text))
 }
 
 func (r Rule) hasBlockConfig() bool {

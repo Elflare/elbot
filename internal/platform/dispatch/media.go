@@ -113,7 +113,7 @@ func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Outpu
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		record.Identity = globalevents.LogIdentityFromExecution(facts)
-		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		globalevents.Log(context.WithoutCancel(ctx), record)
 	}
 	return receipt, sendErr
 }

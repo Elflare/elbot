@@ -77,7 +77,7 @@ func (m *Supervisor) enqueuePlatformConnected(ctx context.Context, event events.
 		},
 	})
 	if err != nil && err != signal.ErrClosed {
-		LogHook(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "hook_platform_admission_failed", Module: "hook", Content: fmt.Sprintf("platform=%s error=%v", event.Platform, err), ResultStatus: events.ResultFailed})
+		events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "hook_platform_admission_failed", Module: "hook", Content: fmt.Sprintf("platform=%s error=%v", event.Platform, err), ResultStatus: events.ResultFailed})
 	}
 	return err
 }
@@ -104,7 +104,7 @@ func (m *Supervisor) handlePlatformConnected(ctx context.Context, platformName s
 			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
 		}
 	}
-	LogHook(ctx, record)
+	events.AsyncLog(ctx, record)
 }
 
 func (m *Supervisor) beginClosePlatformEvents() {

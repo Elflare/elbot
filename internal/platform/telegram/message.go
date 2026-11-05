@@ -157,7 +157,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
 			record.Identity = globalevents.LogIdentityFromExecution(facts)
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 	}
 }
@@ -267,7 +267,7 @@ func (a *Adapter) messageGroupRole(ctx context.Context, msg message) contextinfo
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
 			record.Identity = globalevents.LogIdentityFromExecution(facts)
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 		return contextinfo.GroupRoleUnknown
 	}
@@ -303,7 +303,7 @@ func (a *Adapter) handleCallbackQuery(ctx context.Context, handler share.Message
 				}
 				facts, _ := contextinfo.ExecutionFromContext(ctx)
 				record.Identity = globalevents.LogIdentityFromExecution(facts)
-				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				globalevents.Log(context.WithoutCancel(ctx), record)
 			}
 		}
 	}
@@ -385,7 +385,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultFailed,
 			}
-			_ = globalevents.EmitLog(context.WithoutCancel(msgCtx), record)
+			globalevents.Log(context.WithoutCancel(msgCtx), record)
 			return
 		}
 		messageCtx.ForkFromMessageID = ref.ForkFromMessageID

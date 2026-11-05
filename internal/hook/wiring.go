@@ -9,6 +9,7 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/config"
+	"elbot/internal/events"
 	"elbot/internal/hook/control"
 	"elbot/internal/hook/pipeline"
 	"elbot/internal/hook/rules"
@@ -23,14 +24,14 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Media:     deps.Media,
 		Tools:     deps.Tools,
 		Send:      deps.Platform.SendTo,
-		Log:       LogHook,
-		Notify:    notify,
+		Log:       events.AsyncLog,
+		Notify:    events.Notify,
 		SharedDir: filepath.Join(configDir, "_shared"),
 	})
 	if err != nil {
 		return nil, err
 	}
-	manager := pipeline.NewManager(LogHook, runtime.Route)
+	manager := pipeline.NewManager(events.AsyncLog, runtime.Route)
 	opts := rules.Options{
 		BuildMessageSegments: runtime.BuildMessageSegments,
 		ConfigDir:            configDir,
@@ -39,11 +40,11 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		CallPlatformAPI:      deps.Platform.CallPlatformAPI,
 		Runtime:              runtime,
 		ProcessEnv:           processenv.New(os.Environ()),
-		Log:                  LogHook,
-		Notify:               notify,
+		Log:                  events.AsyncLog,
+		Notify:               events.Notify,
 	}
 	loadHooks := func() (share.ReloadReport, control.ReloadCandidate, error) {
-		candidate := pipeline.NewManager(LogHook, nil)
+		candidate := pipeline.NewManager(events.AsyncLog, nil)
 		var notices []string
 		loadOpts := opts
 		loadOpts.Notices = &notices

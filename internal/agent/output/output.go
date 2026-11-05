@@ -63,7 +63,7 @@ func (o *OutputSender) observeDelivery(ctx context.Context, operation string, re
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record.Identity = globalevents.LogIdentityFromExecution(facts)
-	_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+	globalevents.Log(context.WithoutCancel(ctx), record)
 }
 
 func (o *OutputSender) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) error {
@@ -86,7 +86,7 @@ func (o *OutputSender) Notify(ctx context.Context, level slog.Level, text string
 	if (agentshare.ExecutionMode(ctx) == "background") || strings.TrimSpace(text) == "" {
 		return
 	}
-	_, _ = globalevents.NotificationRequested.EmitAsync(ctx, globalevents.NewNotification(ctx, level, text))
+	globalevents.Notify(ctx, globalevents.NewNotification(ctx, level, text))
 }
 
 // Preview treats each text argument as one complete tool-call notice, including

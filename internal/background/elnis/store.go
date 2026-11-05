@@ -73,7 +73,7 @@ func (s *Service) completeEventWithSession(ctx context.Context, id, resolvedTarg
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		record := globalevents.LogRecord{Category: globalevents.LogElnis, Level: slog.LevelError, Module: "elnis", EventName: "elnis_event_save_failed", ResultStatus: globalevents.ResultFailed, Identity: globalevents.LogIdentityFromExecution(facts), Content: fmt.Sprintf("event_id=%s status=%s error=%v", id, status, err)}
-		record.Identity.SessionID = &sessionID
+		record.Identity.SessionID = sessionID
 		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
 			record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
 		}

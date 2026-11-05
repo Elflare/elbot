@@ -57,7 +57,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
 			record.Identity = globalevents.LogIdentityFromExecution(facts)
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 		return
 	}
@@ -75,7 +75,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
 			record.Identity = globalevents.LogIdentityFromExecution(facts)
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 		return
 	}
@@ -157,7 +157,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 			ContentLimit: 4096,
 			ResultStatus: globalevents.ResultFailed,
 		}
-		_ = globalevents.EmitLog(context.WithoutCancel(msgCtx), record)
+		globalevents.Log(context.WithoutCancel(msgCtx), record)
 		return
 	}
 	if replyID == "" && len(referenced.Segments) > 0 && !a.parseCommand(text).OK {
@@ -245,7 +245,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
 			record.Identity = globalevents.LogIdentityFromExecution(facts)
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 	}
 }

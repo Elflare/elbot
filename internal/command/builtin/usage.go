@@ -311,10 +311,7 @@ func usageGroupKeyFor(entry logging.LogEntry, groupBy usageGroupKey, content map
 		}
 		return entry.Time.Format("2006-01-02")
 	case groupBySession:
-		if entry.Identity.SessionID != nil {
-			return firstNonEmpty(*entry.Identity.SessionID, "unk-session")
-		}
-		return "unk-session"
+		return firstNonEmpty(entry.Identity.SessionID, "unk-session")
 	default:
 		var provider, model string
 		if entry.Type == events.ContentJSON {

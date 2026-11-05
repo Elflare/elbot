@@ -153,9 +153,7 @@ func TestAuditPreservesSourceOrderThroughStorageAndFiltering(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := `{"tool":"shell","summary":` + string(summaryJSON) + `,"run_source":"foreground","risk":"low","result":"first\nsecond","actor":{"platform":"telegram","id":"user"},"nested":{"z":9007199254740993,"a":[]}}`
-	if err := events.EmitLog(t.Context(), events.LogRecord{Category: events.LogAudit, EventName: "tool_call_completed", Module: "toolrun", Type: events.ContentJSON, Content: body, ResultStatus: events.ResultSucceeded}); err != nil {
-		t.Fatal(err)
-	}
+	events.Log(t.Context(), events.LogRecord{Category: events.LogAudit, EventName: "tool_call_completed", Module: "toolrun", Type: events.ContentJSON, Content: body, ResultStatus: events.ResultSucceeded})
 	if err := center.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -185,10 +183,9 @@ func TestAuditPreservesSourceOrderThroughStorageAndFiltering(t *testing.T) {
 
 func TestLogQueriesHideExecutionIdentity(t *testing.T) {
 	value := "execution-id"
-	empty := ""
 	session := "session-id"
 	for _, category := range []events.LogCategory{events.LogAudit, events.LogRuntime, events.LogElnis} {
-		for _, sessionID := range []*string{nil, &empty, &session} {
+		for _, sessionID := range []string{"", session} {
 			entry := logging.LogEntry{
 				Level:     "INFO",
 				EventName: "tool_call_completed",
@@ -197,14 +194,10 @@ func TestLogQueriesHideExecutionIdentity(t *testing.T) {
 				Raw:       `{"run_id":"run","attempt":"attempt","request_id":"request","root_request_id":"root"}`,
 			}
 			want := formatLogEntries(category, false)([]logging.LogEntry{entry})
-			if sessionID != nil {
-				if *sessionID == "" {
-					want += "\nsession: \"\""
-				} else {
-					want += "\nsession: " + *sessionID
-				}
+			if sessionID != "" {
+				want += "\nsession: " + sessionID
 			}
-			for _, id := range []*string{nil, &empty, &value} {
+			for _, id := range []string{"", value} {
 				entry.Identity = events.LogIdentity{
 					SessionID:     sessionID,
 					RunID:         id,

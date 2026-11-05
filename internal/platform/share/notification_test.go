@@ -3,8 +3,12 @@ package share
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"reflect"
+	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -15,6 +19,49 @@ import (
 type notificationSender struct {
 	delivery.MessageSender
 	send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
+}
+
+func TestNotificationFailureDoesNotWaitForLogger(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		source := signal.New[events.Notification, signal.Empty](t.Name())
+		defer source.Close(context.Background())
+		release, started := make(chan struct{}), make(chan struct{})
+		logging, err := events.LogSubmitted.Observe(func(context.Context, events.LogRecord) error {
+			close(started)
+			<-release
+			return nil
+		}, signal.ConnectOptions{Shutdown: signal.Drain})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer logging.Close(context.Background())
+		defer close(release)
+		_, err = ConnectNotifications(source, notificationSender{send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+			return delivery.Receipt{}, errors.New("send failed")
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		completed := make(chan error, 1)
+		go func() {
+			_, err := source.Emit(t.Context(), events.Notification{Text: "notice"})
+			completed <- err
+		}()
+		synctest.Wait()
+		select {
+		case <-started:
+		default:
+			t.Fatal("send failure did not reach logger")
+		}
+		select {
+		case err := <-completed:
+			if err != nil {
+				t.Fatal("handled notification failure escaped", err)
+			}
+		default:
+			t.Fatal("notification waited for blocked logger")
+		}
+	})
 }
 
 func (s notificationSender) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
@@ -38,11 +85,21 @@ func TestConnectNotifications(t *testing.T) {
 		{name: "explicit target", target: explicit},
 		{name: "matching origin", origin: origin},
 		{name: "partial receipt on failure", target: explicit, err: sendErr},
+		{name: "canceled during send", target: explicit, err: context.Canceled},
 		{name: "canceled before send", canceled: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			source := signal.New[events.Notification, signal.Empty](t.Name())
 			defer source.Close(context.Background())
+			logs := make(chan events.LogRecord, 4)
+			logging, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+				logs <- record
+				return nil
+			}, signal.ConnectOptions{Shutdown: signal.Drain})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer logging.Close(context.Background())
 			calls := 0
 			sender := notificationSender{send: func(_ context.Context, got delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 				calls++
@@ -56,7 +113,7 @@ func TestConnectNotifications(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer connection.Close(context.Background())
-			ctx, cancel := context.WithCancel(t.Context())
+			ctx, cancel := context.WithCancel(contextinfo.WithExecution(t.Context(), contextinfo.Execution{RequestID: "request"}))
 			defer cancel()
 			if tt.canceled {
 				cancel()
@@ -68,8 +125,24 @@ func TestConnectNotifications(t *testing.T) {
 				}
 				return
 			}
-			if !errors.Is(err, tt.err) || calls != 1 || len(results) != 1 || !results[0].Started {
+			if err != nil || calls != 1 || len(results) != 1 || !results[0].Started {
 				t.Fatalf("calls = %d, results = %+v, err = %v", calls, results, err)
+			}
+			if tt.err != nil {
+				select {
+				case record := <-logs:
+					status, level := events.ResultFailed, slog.LevelWarn
+					if errors.Is(tt.err, context.Canceled) {
+						status, level = events.ResultCanceled, slog.LevelInfo
+					}
+					if record.EventName != "notification_send_failed" || record.Module != "notification" || record.ResultStatus != status || record.Level != level || record.Identity.RequestID != "request" || !strings.Contains(record.Content, tt.err.Error()) || strings.Contains(record.Content, "hook=") {
+						t.Fatal("notification failure lost its source facts", record)
+					}
+				case <-time.After(time.Second):
+					t.Fatal("send failure was not logged")
+				}
+			} else if len(logs) != 0 {
+				t.Fatal("successful send logged a failure")
 			}
 		})
 	}

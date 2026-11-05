@@ -3,9 +3,7 @@ package events
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 
 	"elbot/internal/contextinfo"
@@ -21,8 +19,6 @@ const (
 	LogAudit
 	LogElnis
 )
-
-func (value LogCategory) Valid() bool { return value >= LogRuntime && value <= LogElnis }
 
 func (value LogCategory) String() string {
 	switch value {
@@ -44,8 +40,6 @@ const (
 	ContentText LogContentType = iota
 	ContentJSON
 )
-
-func (value LogContentType) Valid() bool { return value == ContentText || value == ContentJSON }
 
 func (value LogContentType) String() string {
 	switch value {
@@ -69,8 +63,6 @@ const (
 	ResultRejected
 	ResultSkipped
 )
-
-func (value ResultStatus) Valid() bool { return value <= ResultSkipped }
 
 func (value ResultStatus) String() string {
 	switch value {
@@ -117,31 +109,28 @@ func LogStatus(err error) ResultStatus {
 	return ResultFailed
 }
 
-// LogIdentity contains fixed associations supplied by the business source.
-// EmitLog copies supplied pointers but never fills identities from context.
-// Subscribers must treat the published pointers as read-only.
+// LogIdentity contains source-supplied associations. Empty strings mean unspecified.
 type LogIdentity struct {
-	// SessionID is the source's session ID; nil is absent, non-nil empty is explicit empty.
-	SessionID *string
-	// RunID is the source's run ID spanning requests; nil is absent, non-nil empty is explicit empty.
-	RunID *string
-	// Attempt is the source's attempt within a run; nil is absent, non-nil empty is explicit empty.
-	Attempt *string
-	// RequestID is the source's current request ID; nil is absent, non-nil empty is explicit empty.
-	RequestID *string
-	// RootRequestID is the source's root dialogue request ID; nil is absent, non-nil empty is explicit empty.
-	RootRequestID *string
+	// SessionID identifies the source session.
+	SessionID string
+	// RunID identifies the run spanning requests.
+	RunID string
+	// Attempt identifies the attempt within a run.
+	Attempt string
+	// RequestID identifies the current request.
+	RequestID string
+	// RootRequestID identifies the root dialogue request.
+	RootRequestID string
 }
 
 // LogIdentityFromExecution copies the source-selected execution snapshot.
-// All five fields are supplied, including explicit empty values.
 func LogIdentityFromExecution(e contextinfo.Execution) LogIdentity {
 	return LogIdentity{
-		SessionID:     &e.SessionID,
-		RunID:         &e.RunID,
-		Attempt:       &e.Attempt,
-		RequestID:     &e.RequestID,
-		RootRequestID: &e.RootRequestID,
+		SessionID:     e.SessionID,
+		RunID:         e.RunID,
+		Attempt:       e.Attempt,
+		RequestID:     e.RequestID,
+		RootRequestID: e.RootRequestID,
 	}
 }
 
@@ -156,7 +145,7 @@ type LogRecord struct {
 	EventName string
 	// Module names the source module; empty stays empty and does not imply a level.
 	Module string
-	// Type selects text (zero) or JSON; unknown values are rejected at publication.
+	// Type selects text (zero) or JSON; sources must supply a valid value.
 	Type LogContentType
 	// Content is source-organized text or valid JSON, including error explanations.
 	// Empty text is valid; empty JSON is not. No business objects are accepted.
@@ -166,78 +155,33 @@ type LogRecord struct {
 	// JSON ignores this limit, and sources must bound their JSON size themselves.
 	ContentLimit int
 	// Identity contains associations explicitly supplied by the source.
-	// Zero is fully absent. EmitLog only copies pointers, without context fallback.
+	// Empty fields stay empty; publication never fills them from context.
 	Identity LogIdentity
 	// ResultStatus is source-defined, independent of severity or content. Zero
-	// means unspecified and is omitted on disk; unknown values are rejected.
+	// means unspecified and is omitted on disk; sources must supply a valid value.
 	ResultStatus ResultStatus
 }
 
 // LogSubmitted is stable for the lifetime of the process. Connect here; publish
-// through EmitLog so consumers receive a validated record with copied identities.
-// Consumers must not modify the shared record. There is no replay.
+// through Log or AsyncLog. There is no replay.
 var LogSubmitted = signal.New[LogRecord, signal.Empty]("log.submitted")
 
-// EmitLog reports admission errors, not durability. Logging must never replace
-// the caller's business result. Logging consumers diagnose their own failures.
-func EmitLog(ctx context.Context, record LogRecord) error {
-	record, err := prepareLogRecord(record)
-	if err != nil {
-		return err
-	}
+// Log publishes synchronously. Logging failures never change the business result.
+func Log(ctx context.Context, record LogRecord) {
 	emission, err := LogSubmitted.EmitAsync(context.WithoutCancel(ctx), record)
 	if err != nil && !errors.Is(err, signal.ErrClosed) {
 		signal.ReportDiagnostic("log signal admission failed", slog.Any("error", err))
 	}
-	if emission == nil {
-		return err
+	// Wait for completion; consumers diagnose their own failures.
+	if emission != nil {
+		_, _ = emission.Wait(context.Background())
 	}
-	_, err = emission.Wait(context.Background())
-	return err
 }
 
-// EmitLogAsync applies the same closed record contract without waiting for the
-// logging center's admission. It returns validation and signal admission errors.
-func EmitLogAsync(ctx context.Context, record LogRecord) error {
-	record, err := prepareLogRecord(record)
-	if err != nil {
-		return err
-	}
-	_, err = LogSubmitted.EmitAsync(context.WithoutCancel(ctx), record)
+// AsyncLog publishes without waiting for consumers.
+func AsyncLog(ctx context.Context, record LogRecord) {
+	_, err := LogSubmitted.EmitAsync(context.WithoutCancel(ctx), record)
 	if err != nil && !errors.Is(err, signal.ErrClosed) {
 		signal.ReportDiagnostic("log signal admission failed", slog.Any("error", err))
 	}
-	return err
-}
-
-func prepareLogRecord(record LogRecord) (LogRecord, error) {
-	var err error
-	switch {
-	case !record.Category.Valid():
-		err = fmt.Errorf("invalid log category: %d", record.Category)
-	case !record.Type.Valid():
-		err = fmt.Errorf("invalid log content type: %d", record.Type)
-	case !record.ResultStatus.Valid():
-		err = fmt.Errorf("invalid log result status: %d", record.ResultStatus)
-	case record.ContentLimit < 0:
-		err = fmt.Errorf("invalid log content limit: %d", record.ContentLimit)
-	case record.Type == ContentJSON && !json.Valid([]byte(record.Content)):
-		err = fmt.Errorf("invalid log JSON content")
-	}
-	if err != nil {
-		// Contract failures must remain visible even without a logging center.
-		// Never publish recursively or expose source content in diagnostics.
-		signal.ReportDiagnostic("invalid log record", slog.Any("error", err))
-		return record, err
-	}
-	for _, field := range []**string{
-		&record.Identity.SessionID, &record.Identity.RunID, &record.Identity.Attempt,
-		&record.Identity.RequestID, &record.Identity.RootRequestID,
-	} {
-		if *field != nil {
-			value := **field
-			*field = &value
-		}
-	}
-	return record, nil
 }

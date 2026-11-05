@@ -117,8 +117,8 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 	}, request)
 	if err != nil {
 		if ctx.Err() == nil {
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "compact_error", Module: "agent", Content: err.Error(), ResultStatus: globalevents.ResultFailed})
-			_, _ = globalevents.NotificationRequested.EmitAsync(session.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelError, "上下文压缩失败："+err.Error()))
+			globalevents.Log(context.WithoutCancel(ctx), globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "compact_error", Module: "agent", Content: err.Error(), ResultStatus: globalevents.ResultFailed})
+			globalevents.Notify(session.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelError, "上下文压缩失败："+err.Error()))
 		}
 		return nil, err
 	}

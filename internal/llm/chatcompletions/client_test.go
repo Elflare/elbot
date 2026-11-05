@@ -1227,8 +1227,8 @@ func captureLogs(t *testing.T, logger *slog.Logger) {
 		}
 		out := slog.NewRecord(time.Now(), record.Level, record.Content, 0)
 		out.AddAttrs(slog.String("event", record.EventName), slog.String("module", record.Module))
-		if record.Identity.SessionID != nil {
-			out.AddAttrs(slog.String("session_id", *record.Identity.SessionID))
+		if record.Identity.SessionID != "" {
+			out.AddAttrs(slog.String("session_id", record.Identity.SessionID))
 		}
 		return logger.Handler().Handle(ctx, out)
 	}, signal.ConnectOptions{})

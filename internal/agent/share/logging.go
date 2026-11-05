@@ -13,7 +13,7 @@ import (
 // EmitAgentLog copies only the source's explicit execution identity.
 func EmitAgentLog(ctx context.Context, execution contextinfo.Execution, record events.LogRecord) {
 	record.Identity = events.LogIdentityFromExecution(execution)
-	_ = events.EmitLog(context.WithoutCancel(ctx), record)
+	events.Log(context.WithoutCancel(ctx), record)
 }
 
 // TruncateLogContent 只截断日志文本；limit 是包含省略号的正字符数上限。
@@ -33,7 +33,7 @@ func ReportFailure(ctx context.Context, sessionID string, err error, notify func
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record.Identity = events.LogIdentityFromExecution(facts)
-	record.Identity.SessionID = &sessionID
-	_ = events.EmitLog(context.WithoutCancel(ctx), record)
+	record.Identity.SessionID = sessionID
+	events.Log(context.WithoutCancel(ctx), record)
 	notify(session.WithBinding(context.WithoutCancel(ctx), nil), slog.LevelWarn, "对话处理失败："+err.Error())
 }

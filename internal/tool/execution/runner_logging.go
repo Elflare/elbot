@@ -31,7 +31,7 @@ func newRunRecord(ctx context.Context, sessionID, eventName string, err error) e
 	// SessionID belongs to the supplied Session, including an explicit empty ID.
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record.Identity = events.LogIdentityFromExecution(facts)
-	record.Identity.SessionID = &sessionID
+	record.Identity.SessionID = sessionID
 	return record
 }
 

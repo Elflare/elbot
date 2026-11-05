@@ -82,8 +82,8 @@ func formatContextStatus(ctx context.Context, deps Deps, row *storage.Session, m
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		record.Identity = globalevents.LogIdentityFromExecution(facts)
-		record.Identity.SessionID = &row.ID
-		_ = globalevents.EmitLog(ctx, record)
+		record.Identity.SessionID = row.ID
+		globalevents.Log(ctx, record)
 	}
 	return deps.Contexts.Status(ctx, usage, config.ModelSelection{Provider: model.Provider, Model: model.Model})
 }

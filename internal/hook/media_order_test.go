@@ -24,7 +24,7 @@ import (
 func TestMediaImportKeepsPipelinePriorityAndResultDependency(t *testing.T) {
 	center := mediatest.New(t, media.MediaCenterDeps{Store: testutil.NewSQLiteStore(t)}, t.TempDir())
 	log := func(context.Context, events.LogRecord) {}
-	run, err := runtime.NewManager(runtime.Options{SharedDir: t.TempDir(), Media: center, Log: log, Notify: func(context.Context, events.Notification) error { return nil }})
+	run, err := runtime.NewManager(runtime.Options{SharedDir: t.TempDir(), Media: center, Log: log, Notify: func(context.Context, events.Notification) {}})
 	if err != nil {
 		t.Fatal(err)
 	}

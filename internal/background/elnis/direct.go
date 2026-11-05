@@ -21,7 +21,7 @@ func (s *Service) runDirect(ctx context.Context, event Event, eventID string) er
 	resolved, err := decodeResolvedTargets(event.ResolvedTargets)
 	if err != nil {
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		_ = events.EmitLog(ctx, events.LogRecord{Category: events.LogElnis, Level: slog.LevelError, Module: "elnis", EventName: "elnis_direct_failed", ResultStatus: events.ResultFailed, Identity: events.LogIdentityFromExecution(facts), Content: fmt.Sprintf("event_id=%s error=%v", eventID, err)})
+		events.Log(ctx, events.LogRecord{Category: events.LogElnis, Level: slog.LevelError, Module: "elnis", EventName: "elnis_direct_failed", ResultStatus: events.ResultFailed, Identity: events.LogIdentityFromExecution(facts), Content: fmt.Sprintf("event_id=%s error=%v", eventID, err)})
 		return err
 	}
 	err = s.executeCalls(ctx, resolved, req.Calls)
@@ -52,7 +52,7 @@ func (s *Service) executeCalls(ctx context.Context, targets []Target, calls []Ca
 			if record.ResultStatus == events.ResultCanceled {
 				record.Level = slog.LevelInfo
 			}
-			_ = events.EmitLog(ctx, record)
+			events.Log(ctx, record)
 			return err
 		}
 	}

@@ -96,7 +96,7 @@ func TestNamingFailureContentSurvivesRuntimeLevel(t *testing.T) {
 			sessionID, requestID := "source", "naming-request"
 			ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "wrong", RequestID: "wrong"})
 			service.notifyNamingCompleted(ctx, NamingCompletedEvent{
-				Identity:    events.LogIdentity{SessionID: &sessionID, RequestID: &requestID},
+				Identity:    events.LogIdentity{SessionID: sessionID, RequestID: requestID},
 				TriggeredAt: at, CompletedAt: time.Now(), Provider: "provider", Model: "model",
 				ResultStatus: events.ResultFailed, GenerationResultStatus: events.ResultFailed,
 				GenerationError: fmt.Errorf("wrapped: %w", namingDiagnosticError{}),
@@ -164,12 +164,12 @@ func TestNamingOwnsSynchronousLogProjection(t *testing.T) {
 	at := time.Unix(123, 0)
 	sessionID, title := "source", "title"
 	ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "wrong", RequestID: "request"})
-	service.notifyNamingCompleted(ctx, NamingCompletedEvent{Identity: events.LogIdentity{SessionID: &sessionID}, TriggeredAt: at, Title: &title, ResultStatus: events.ResultSucceeded})
-	if len(records) != 1 || records[0].EventName != "session_naming_completed" || records[0].Identity.SessionID == nil || *records[0].Identity.SessionID != "source" || records[0].Identity.RequestID != nil {
+	service.notifyNamingCompleted(ctx, NamingCompletedEvent{Identity: events.LogIdentity{SessionID: sessionID}, TriggeredAt: at, Title: &title, ResultStatus: events.ResultSucceeded})
+	if len(records) != 1 || records[0].EventName != "session_naming_completed" || records[0].Identity.SessionID != "source" || records[0].Identity.RequestID != "" {
 		t.Fatal(records)
 	}
 	sessionID = "changed"
-	if *records[0].Identity.SessionID != "source" {
+	if records[0].Identity.SessionID != "source" {
 		t.Fatal("identity aliased source")
 	}
 	if err := service.Close(context.Background()); err != nil {

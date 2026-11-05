@@ -88,7 +88,7 @@ func (m *Manager) Route(ctx context.Context, event share.Event, observe func(con
 func logIdentity(ctx context.Context, sessionID string) globalevents.LogIdentity {
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record := globalevents.LogIdentityFromExecution(facts)
-	record.SessionID = &sessionID
+	record.SessionID = sessionID
 	return record
 }
 

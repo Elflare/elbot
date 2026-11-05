@@ -420,13 +420,13 @@ func TestRuleLogsPreserveOptionalIdentityAndEventSession(t *testing.T) {
 			}
 			for _, record := range records {
 				identity := record.Identity
-				got := []*string{identity.SessionID, identity.RunID, identity.Attempt, identity.RequestID, identity.RootRequestID}
+				got := []string{identity.SessionID, identity.RunID, identity.Attempt, identity.RequestID, identity.RootRequestID}
 				for i, value := range got {
 					want := tc.want[i]
 					if i == 0 && tc.eventSession != "" && (record.EventName == "hook_tool_call_prepared" || record.EventName == "hook_tool_call_completed" || record.EventName == "hook_tool_log") {
 						want = tc.eventSession
 					}
-					if value == nil || *value != want {
+					if value != want {
 						t.Fatalf("%s identity field %d = %v, want %q", record.EventName, i, value, want)
 					}
 				}

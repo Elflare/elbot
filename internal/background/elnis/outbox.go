@@ -24,7 +24,7 @@ func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resul
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		record := globalevents.LogRecord{Category: globalevents.LogElnis, Level: slog.LevelError, Module: "elnis", EventName: "elnis_report_prepare_failed", ResultStatus: globalevents.ResultFailed, Identity: globalevents.LogIdentityFromExecution(facts), Content: fmt.Sprintf("event_id=%s error=%v", eventID, err)}
-		record.Identity.SessionID = &sessionID
+		record.Identity.SessionID = sessionID
 		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
 			record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
 		}
@@ -116,7 +116,7 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) error {
 	if err != nil {
 		return s.releaseReport(ctx, eventID, err)
 	}
-	identity.SessionID = &event.SessionID
+	identity.SessionID = event.SessionID
 	step = "load_deliveries"
 	deliveries, err := repo.ListReportDeliveries(ctx, eventID)
 	if err != nil {
@@ -193,7 +193,7 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) error {
 	content, _ := json.Marshal(map[string]any{"event_id": eventID, "event_key": event.EventKey, "result": "report delivered"})
 	record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "elnis.llm_completed", Module: "elnis", Type: globalevents.ContentJSON, Content: string(content), ResultStatus: globalevents.ResultSucceeded}
 	record.Identity = identity
-	record.Identity.SessionID = &event.SessionID
+	record.Identity.SessionID = event.SessionID
 	background.LogBackground(ctx, record)
 	record.Category, record.EventName = globalevents.LogElnis, "elnis_llm_completed"
 	background.LogBackground(ctx, record)

@@ -86,8 +86,8 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record.Identity = globalevents.LogIdentityFromExecution(facts)
-	record.Identity.SessionID = &session.ID
-	_ = globalevents.EmitLog(ctx, record)
+	record.Identity.SessionID = session.ID
+	globalevents.Log(ctx, record)
 	return &command.Result{Content: formatResumeResult(ctx, deps, session)}, nil
 }
 
@@ -189,13 +189,13 @@ func NewFork(deps Deps) command.Handler {
 		if err != nil {
 			return nil, err
 		}
-		_ = globalevents.EmitLog(context.Background(), globalevents.LogRecord{
+		globalevents.Log(context.Background(), globalevents.LogRecord{
 			Category:     globalevents.LogAudit,
 			Level:        slog.LevelInfo,
 			EventName:    "session_fork",
 			Module:       "command",
 			Content:      fmt.Sprintf("parent: %s · message: %s", session.ParentSessionID, session.ForkFromMessageID),
-			Identity:     globalevents.LogIdentity{SessionID: &session.ID},
+			Identity:     globalevents.LogIdentity{SessionID: session.ID},
 			ResultStatus: globalevents.ResultSucceeded,
 		})
 		return &command.Result{Content: formatForkResult(ctx, deps, session)}, nil

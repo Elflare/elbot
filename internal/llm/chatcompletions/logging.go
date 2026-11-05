@@ -15,7 +15,7 @@ import (
 
 func (a *Client) logChatRequest(ctx context.Context, req Request) {
 	a.logFirstSystemMessage(ctx, req)
-	// The request source supplies identity explicitly; EmitLog never fills it.
+	// The request source supplies identity explicitly; Log never fills it.
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	latest := ""
 	if len(req.Messages) > 0 {
@@ -39,8 +39,8 @@ func (a *Client) logChatRequest(ctx context.Context, req Request) {
 		Content:   string(content),
 	}
 	record.Identity = globalevents.LogIdentityFromExecution(facts)
-	record.Identity.SessionID = &req.SessionID
-	_ = globalevents.EmitLog(ctx, record)
+	record.Identity.SessionID = req.SessionID
+	globalevents.Log(ctx, record)
 }
 
 func (a *Client) logFirstSystemMessage(ctx context.Context, req Request) {
@@ -64,8 +64,8 @@ func (a *Client) logFirstSystemMessage(ctx context.Context, req Request) {
 		Content:   "system prompt: " + firstSystemText(req.Messages) + "\nmodel=" + req.Model,
 	}
 	record.Identity = globalevents.LogIdentityFromExecution(facts)
-	record.Identity.SessionID = &req.SessionID
-	_ = globalevents.EmitLog(ctx, record)
+	record.Identity.SessionID = req.SessionID
+	globalevents.Log(ctx, record)
 }
 
 func latestLogMessage(messages []llm.LLMMessage) *openAIMessage {

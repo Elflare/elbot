@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
@@ -25,6 +26,16 @@ func TestSendLoggingKeepsSourceResultAndPartialReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Disconnect()
+	nextLog := func() events.LogRecord {
+		t.Helper()
+		select {
+		case record := <-logs:
+			return record
+		case <-time.After(time.Second):
+			t.Fatal("missing send log")
+			return events.LogRecord{}
+		}
+	}
 	want := errors.New("partial send failed")
 	sender := &independentChatSender{fakeSender: fakeSender{err: want}}
 	facts := contextinfo.Execution{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}
@@ -32,10 +43,10 @@ func TestSendLoggingKeepsSourceResultAndPartialReceipt(t *testing.T) {
 	out := Text("notice")
 	out.Delivery = DeliveryInfo{HookName: " notify ", HookPoint: " point ", HookMode: " run "}
 	receipt, err := NewManager(sender).SendTo(ctx, Target{Platform: "test"}, []Output{out})
-	if !errors.Is(err, want) || len(receipt.PlatformMessageIDs) != 1 || len(logs) != 1 {
+	if !errors.Is(err, want) || len(receipt.PlatformMessageIDs) != 1 {
 		t.Fatal(receipt, err, len(logs))
 	}
-	record := <-logs
+	record := nextLog()
 	if record.Level != slog.LevelWarn || record.ResultStatus != events.ResultFailed {
 		t.Fatalf("failure record = %#v", record)
 	}
@@ -44,23 +55,17 @@ func TestSendLoggingKeepsSourceResultAndPartialReceipt(t *testing.T) {
 			t.Fatalf("log %q missing %q", record.Content, content)
 		}
 	}
-	identity := events.LogIdentity{SessionID: &facts.SessionID, RunID: &facts.RunID, Attempt: &facts.Attempt, RequestID: &facts.RequestID, RootRequestID: &facts.RootRequestID}
+	identity := events.LogIdentity{SessionID: facts.SessionID, RunID: facts.RunID, Attempt: facts.Attempt, RequestID: facts.RequestID, RootRequestID: facts.RootRequestID}
 	if !reflect.DeepEqual(record.Identity, identity) {
 		t.Fatalf("identity = %#v, want %#v", record.Identity, identity)
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	cancel()
 	LogSendResult(ctx, Target{Platform: "test"}, Text("notice"), want)
-	if len(logs) != 1 {
-		t.Fatal("shutdown discarded an already known send failure")
-	}
-	<-logs
+	nextLog()
 	LogSendResult(t.Context(), Target{}, Text("notice"), context.Canceled)
-	if len(logs) != 1 {
-		t.Fatal("cancellation log missing")
-	}
-	record = <-logs
-	if record.Level != slog.LevelInfo || record.ResultStatus != events.ResultCanceled || record.Identity.SessionID == nil || *record.Identity.SessionID != "" {
+	record = nextLog()
+	if record.Level != slog.LevelInfo || record.ResultStatus != events.ResultCanceled || record.Identity.SessionID != "" {
 		t.Fatalf("cancellation record = %#v", record)
 	}
 	LogSendResult(t.Context(), Target{}, Text("notice"), nil)

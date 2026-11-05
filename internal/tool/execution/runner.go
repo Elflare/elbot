@@ -346,7 +346,7 @@ func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor 
 		}
 		record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: permission.Reason, Module: "tool", Type: events.ContentJSON, Content: string(data), ResultStatus: resultStatus}
 		record.Identity = events.LogIdentityFromExecution(facts)
-		record.Identity.SessionID = &sessionID
+		record.Identity.SessionID = sessionID
 		m.Log(ctx, record)
 	}
 	if !permission.Allowed {

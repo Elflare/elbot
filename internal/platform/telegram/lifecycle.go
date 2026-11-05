@@ -185,7 +185,7 @@ func (a *Adapter) runPolling(handler share.MessageHandler) {
 					}
 					facts, _ := contextinfo.ExecutionFromContext(ctx)
 					record.Identity = globalevents.LogIdentityFromExecution(facts)
-					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+					globalevents.Log(context.WithoutCancel(ctx), record)
 				}
 			}
 			if !sleepContext(ctx, backoff.Delay()) {
@@ -213,7 +213,7 @@ func (a *Adapter) runPolling(handler share.MessageHandler) {
 				}
 				facts, _ := contextinfo.ExecutionFromContext(ctx)
 				record.Identity = globalevents.LogIdentityFromExecution(facts)
-				_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+				globalevents.Log(context.WithoutCancel(ctx), record)
 			}
 		}
 		{
@@ -229,7 +229,7 @@ func (a *Adapter) runPolling(handler share.MessageHandler) {
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
 			record.Identity = globalevents.LogIdentityFromExecution(facts)
-			_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 		a.notifyConnected(ctx)
 		for {
@@ -251,7 +251,7 @@ func (a *Adapter) runPolling(handler share.MessageHandler) {
 					}
 					facts, _ := contextinfo.ExecutionFromContext(ctx)
 					record.Identity = globalevents.LogIdentityFromExecution(facts)
-					_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+					globalevents.Log(context.WithoutCancel(ctx), record)
 				}
 				break
 			}

@@ -417,7 +417,7 @@ func (t *Transport) call(ctx context.Context, action string, params map[string]a
 			}
 		}
 		record.Identity = logIdentity(ctx)
-		_ = globalevents.EmitLog(context.WithoutCancel(ctx), record)
+		globalevents.Log(context.WithoutCancel(ctx), record)
 
 	}()
 	if err := ctx.Err(); err != nil {

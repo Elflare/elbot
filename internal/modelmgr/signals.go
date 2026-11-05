@@ -6,7 +6,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/notification/rules"
 	"elbot/internal/signal"
-	"errors"
 	"log/slog"
 )
 
@@ -44,11 +43,8 @@ func (s *ModelManager) connectRetrySignals() error {
 		if text == "" {
 			return nil
 		}
-		_, err := events.NotificationRequested.EmitAsync(ctx, events.NewNotification(ctx, slog.LevelWarn, text))
-		if err != nil && ctx.Err() == nil && !errors.Is(err, signal.ErrClosed) {
-			_ = events.EmitLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "model_retry_notification_failed", Module: "modelmgr", Content: err.Error(), Identity: e.Identity, ResultStatus: events.ResultFailed})
-		}
-		return err
+		events.Notify(ctx, events.NewNotification(ctx, slog.LevelWarn, text))
+		return nil
 	}, signal.ConnectOptions{Shutdown: signal.CancelPending})
 	if err != nil {
 		return err

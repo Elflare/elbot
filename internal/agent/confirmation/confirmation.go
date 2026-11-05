@@ -105,7 +105,7 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 	defer func() {
 		release()
 		if observed != nil {
-			_ = events.EmitLog(context.WithoutCancel(ctx), *observed)
+			events.Log(context.WithoutCancel(ctx), *observed)
 		}
 	}()
 	confirmation, hasConfirmation := c.turns.PendingRiskConfirmation(sessionID)
@@ -193,7 +193,7 @@ func confirmationAction(ctx context.Context, sessionID, action string, confirmat
 	}
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record.Identity = events.LogIdentityFromExecution(facts)
-	record.Identity.SessionID = &sessionID
+	record.Identity.SessionID = sessionID
 	return record
 }
 

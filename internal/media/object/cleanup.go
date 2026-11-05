@@ -41,7 +41,7 @@ func (m *Manager) Cleanup(ctx context.Context, history History) (err error) {
 			lines = append(lines[:49], fmt.Sprintf("truncated=true omitted_details=%d", len(lines)-49))
 		}
 		record.Content = strings.Join(lines, "\n")
-		_ = events.EmitLog(ctx, record)
+		events.Log(ctx, record)
 	}()
 	unlock, err := m.cleanupMu.acquire(ctx, "cleanup")
 	if err != nil {
@@ -143,7 +143,7 @@ func (m *Manager) deleteObject(ctx context.Context, id string) (deleted bool, er
 		if err != nil {
 			record.Content += fmt.Sprintf(" error=%q", err.Error())
 		}
-		_ = events.EmitLog(ctx, record)
+		events.Log(ctx, record)
 	}()
 	unlock, err := m.objects.acquire(ctx, id)
 	if err != nil {

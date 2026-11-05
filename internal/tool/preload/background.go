@@ -50,7 +50,7 @@ func (s *PreloadService) PrepareBackground(ctx context.Context, req share.Backgr
 		record.Level = slog.LevelInfo
 		record.ResultStatus = globalevents.ResultSkipped
 		record.Content = fmt.Sprintf("background preload skipped: name=%s reason=%s", name, reason)
-		_ = globalevents.EmitLog(ctx, record)
+		globalevents.Log(ctx, record)
 	}
 	selections, err := s.BackgroundSelections(ctx, req.Names)
 	if err != nil {

@@ -30,8 +30,8 @@ func (r *Loop) consumeContextCompactSeed(ctx context.Context, session *storage.S
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		record.Identity = globalevents.LogIdentityFromExecution(facts)
-		record.Identity.SessionID = &session.ID
-		_ = globalevents.EmitLog(ctx, record)
+		record.Identity.SessionID = session.ID
+		globalevents.Log(ctx, record)
 		return err
 	}
 	session.Metadata = latest.Metadata

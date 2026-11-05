@@ -23,14 +23,14 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: "dialogue_commit_failed", Module: "storage", Content: err.Error(), Identity: events.LogIdentityFromExecution(facts), ResultStatus: events.ResultFailed}
-		record.Identity.SessionID = &commit.SessionID
+		record.Identity.SessionID = commit.SessionID
 		if errors.Is(err, storage.ErrNotFound) {
 			record.Level = slog.LevelWarn
 		}
 		if events.LogStatus(err) == events.ResultCanceled {
 			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
 		}
-		_ = events.EmitLog(ctx, record)
+		events.Log(ctx, record)
 	}()
 
 	if commit.SessionID == "" {

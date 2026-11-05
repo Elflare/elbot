@@ -79,7 +79,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		naming.Config{TriggerStep: cfg.Session.Naming.TriggerStep},
 		naming.ServiceDeps{
 			Log: func(ctx context.Context, record events.LogRecord) {
-				_ = events.EmitLog(context.WithoutCancel(ctx), record)
+				events.Log(context.WithoutCancel(ctx), record)
 			},
 			Sessions:      sessions,
 			Messages:      messages,

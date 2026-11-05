@@ -93,8 +93,8 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 					}
 					facts, _ := contextinfo.ExecutionFromContext(ctx)
 					record.Identity = globalevents.LogIdentityFromExecution(facts)
-					record.Identity.SessionID = &s.session.ID
-					_ = globalevents.EmitLog(ctx, record)
+					record.Identity.SessionID = s.session.ID
+					globalevents.Log(ctx, record)
 				}
 				store = false
 			}

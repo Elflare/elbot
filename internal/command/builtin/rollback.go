@@ -95,10 +95,10 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		record.Identity = globalevents.LogIdentityFromExecution(facts)
-		record.Identity.SessionID = &sessionID
+		record.Identity.SessionID = sessionID
 		data, _ := json.Marshal(content)
 		record.Content = string(data)
-		_ = globalevents.EmitLog(ctx, record)
+		globalevents.Log(ctx, record)
 	}
 	if err != nil {
 		if errors.Is(err, session.ErrSessionBusy) {

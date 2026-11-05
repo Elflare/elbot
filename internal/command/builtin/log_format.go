@@ -127,12 +127,8 @@ func formatLogEntry(category events.LogCategory, entry logging.LogEntry) string 
 	if meta != "" {
 		lines = append(lines, meta)
 	}
-	if entry.Identity.SessionID != nil {
-		value := *entry.Identity.SessionID
-		if value == "" {
-			value = `""`
-		}
-		lines = append(lines, "session: "+value)
+	if entry.Identity.SessionID != "" {
+		lines = append(lines, "session: "+entry.Identity.SessionID)
 	}
 	if footer != "" {
 		lines = append(lines, footer)

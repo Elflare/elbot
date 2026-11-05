@@ -50,11 +50,11 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 		}
 		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: "dialogue_commit_failed", Module: "agent", Content: fmt.Sprintf("operation=%s error=%v", operation, err), Identity: events.LogIdentityFromExecution(facts), ResultStatus: events.ResultFailed}
-		record.Identity.SessionID = &commit.SessionID
+		record.Identity.SessionID = commit.SessionID
 		if events.LogStatus(err) == events.ResultCanceled {
 			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
 		}
-		_ = events.EmitLog(ctx, record)
+		events.Log(ctx, record)
 	}()
 	if commit.ToolBatch != nil {
 		metadata, err := agentshare.AssistantMessageMetadata(commit.ToolBatch.Call.Metadata)

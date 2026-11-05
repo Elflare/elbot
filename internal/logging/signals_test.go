@@ -38,9 +38,7 @@ func testManager(t *testing.T, level string) *Manager {
 
 func emitRecord(t *testing.T, record events.LogRecord) {
 	t.Helper()
-	if err := events.EmitLog(context.Background(), record); err != nil {
-		t.Fatal(err)
-	}
+	events.Log(context.Background(), record)
 }
 
 func readJSONRecords(t *testing.T, dir, prefix string) []map[string]json.RawMessage {
@@ -147,7 +145,7 @@ func TestGlobalRecordsSnapshotBeforeQueueConsumption(t *testing.T) {
 		<-started
 		value := "source-session"
 		before := time.Now()
-		emitRecord(t, events.LogRecord{Category: events.LogRuntime, Content: "original content", Identity: events.LogIdentity{SessionID: &value}})
+		emitRecord(t, events.LogRecord{Category: events.LogRuntime, Content: "original content", Identity: events.LogIdentity{SessionID: value}})
 		after := time.Now()
 		value = "changed"
 		// RFC3339 has second precision. Consume only after the next second so a
@@ -306,23 +304,19 @@ func TestGlobalWriteFailureReportsToStderrAndContinues(t *testing.T) {
 	}
 }
 
-func TestManagerReportsInvalidCategoryValue(t *testing.T) {
+func TestManagerReportsEncodingFailureAndContinues(t *testing.T) {
+	readStderr := captureStderr(t)
 	m := testManager(t, "info")
-	for _, category := range []events.LogCategory{0, 255} {
-		// Invalid records are rejected at the publication boundary, before the
-		// manager receives them; consumers do not repeat contract validation.
-		err := events.EmitLog(context.Background(), events.LogRecord{Category: category})
-		want := fmt.Sprintf("invalid log category: %d", category)
-		if err == nil || err.Error() != want {
-			t.Fatalf("category %d: got %v, want %s", category, err, want)
-		}
-	}
+	emitRecord(t, events.LogRecord{Category: events.LogRuntime, Type: events.ContentJSON, Content: "{"})
 	emitRecord(t, events.LogRecord{Category: events.LogRuntime, EventName: "after_invalid", Content: "valid"})
 	if err := m.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if records := readJSONRecords(t, m.LogDir(), "elbot"); len(records) != 1 || string(records[0]["event"]) != `"after_invalid"` {
-		t.Fatalf("invalid records entered the consumer or blocked later records: %#v", records)
+		t.Fatalf("encoding failure wrote invalid output or blocked later records: %#v", records)
+	}
+	if got := readStderr(); strings.Count(got, "logging record failed") != 1 || !strings.Contains(got, "format log record") {
+		t.Fatalf("missing encoding diagnostic: %s", got)
 	}
 }
 
@@ -355,23 +349,22 @@ func TestManagerRecordsTimeBeforeCapacityWait(t *testing.T) {
 			emitRecord(t, events.LogRecord{Category: events.LogAudit, EventName: "queued"})
 		}
 		receivedAt := time.Now()
-		done := make(chan error, 1)
+		done := make(chan struct{})
 		go func() {
-			done <- events.EmitLog(context.Background(), events.LogRecord{Category: events.LogAudit, EventName: "waiting"})
+			events.Log(context.Background(), events.LogRecord{Category: events.LogAudit, EventName: "waiting"})
+			close(done)
 		}()
 		// Wait until the publisher is blocked inside the full queue. The fake
 		// clock then advances without relying on real scheduler timing.
 		synctest.Wait()
 		time.Sleep(250 * time.Millisecond)
 		select {
-		case err := <-done:
-			t.Fatalf("full queue did not block publication: %v", err)
+		case <-done:
+			t.Fatal("full queue did not block publication")
 		default:
 		}
 		releaseOnce.Do(func() { close(release) })
-		if err := <-done; err != nil {
-			t.Fatal(err)
-		}
+		<-done
 		if err := m.Close(context.Background()); err != nil {
 			t.Fatal(err)
 		}
@@ -413,27 +406,25 @@ func TestManagerBackpressureCancellationDrainAndTimeout(t *testing.T) {
 		t.Cleanup(func() { releaseOnce.Do(func() { close(release) }); _ = m.Close(context.Background()) })
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		if err := events.EmitLog(ctx, events.LogRecord{Category: events.LogAudit}); err != nil {
-			t.Fatal(err)
-		}
+		events.Log(ctx, events.LogRecord{Category: events.LogAudit})
 		<-started
 		for range 256 {
 			emitRecord(t, events.LogRecord{Category: events.LogAudit})
 		}
-		blocked := make(chan error, 1)
-		go func() { blocked <- events.EmitLog(ctx, events.LogRecord{Category: events.LogAudit}) }()
+		blocked := make(chan struct{})
+		go func() {
+			events.Log(ctx, events.LogRecord{Category: events.LogAudit})
+			close(blocked)
+		}()
 		synctest.Wait()
 		select {
-		case err := <-blocked:
-			t.Fatalf("request cancellation escaped backpressure: %v", err)
+		case <-blocked:
+			t.Fatal("request cancellation escaped backpressure")
 		default:
 		}
 		m.BeginClose()
 		select {
-		case err := <-blocked:
-			if !errors.Is(err, signal.ErrClosed) {
-				t.Fatal(err)
-			}
+		case <-blocked:
 		case <-time.After(time.Second):
 			t.Fatal("BeginClose did not wake producer")
 		}
@@ -504,7 +495,7 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 			if !utf8.ValidString(got) || utf8.RuneCountInString(got) != want || !strings.HasSuffix(got, "…") {
 				t.Fatalf("limit %d: %q", limit, got)
 			}
-			if string(entry["time"]) != "\"2026-10-08T12:34:56+08:00\"" || len(entry) != 7 {
+			if string(entry["time"]) != "\"2026-10-08T12:34:56+08:00\"" || len(entry) != 12 {
 				t.Fatalf("unexpected fields: %s", data)
 			}
 		}
@@ -545,6 +536,21 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 			t.Fatalf("%s", data)
 		}
 	})
+	t.Run("empty identity fields", func(t *testing.T) {
+		data, err := formatRecord(events.LogRecord{Category: events.LogRuntime}, at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var entry map[string]json.RawMessage
+		if err := json.Unmarshal(data, &entry); err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"session_id", "run_id", "attempt", "request_id", "root_request_id"} {
+			if string(entry[key]) != `""` {
+				t.Fatalf("%s = %s, want empty string", key, entry[key])
+			}
+		}
+	})
 	t.Run("JSON types and precision", func(t *testing.T) {
 		for _, text := range []string{"null", "true", "false", "9007199254740993123456789", "0.12345678901234567890123456789", "1e1000", "\"中🙂\"", "[1,\"two\",null]", "{\"count\":9007199254740993}", strings.Repeat("[", 64) + "9007199254740993" + strings.Repeat("]", 64)} {
 			data, err := formatRecord(events.LogRecord{Category: events.LogAudit, Type: events.ContentJSON, Content: text, ContentLimit: 1}, at)
@@ -564,7 +570,7 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 		text := `{"nested":[{"api_key":"nested-secret","authorization":"header-secret","cookie":"cookie-secret","image_data":"media-secret","text":"Bearer inline-secret","url":"data:image/png;base64,url-secret"}],"prompt_tokens":9007199254740993,"token_name":"business-name","event":"inner","level":"ERROR","result_status":"failed"}`
 		values := []string{"session", "", "2", "request", "root"}
 		record := events.LogRecord{Category: events.LogAudit, EventName: "outer", Module: "test", Type: events.ContentJSON, Content: text, ContentLimit: 1,
-			ResultStatus: events.ResultCanceled, Identity: events.LogIdentity{SessionID: &values[0], RunID: &values[1], Attempt: &values[2], RequestID: &values[3], RootRequestID: &values[4]}}
+			ResultStatus: events.ResultCanceled, Identity: events.LogIdentity{SessionID: values[0], RunID: values[1], Attempt: values[2], RequestID: values[3], RootRequestID: values[4]}}
 		data, err := formatRecord(record, at)
 		if err != nil {
 			t.Fatal(err)

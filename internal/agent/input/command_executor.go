@@ -66,8 +66,8 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		return true, e.confirmations.SubmitResponse(ctx, sessionRow.ID, text)
 	}
 	if sessionErr == nil && hasInfo && snapshot.Phase != turn.PhaseIdle && blocksDuringActiveTurn(info.SessionEffect) {
-		_, err := globalevents.NotificationRequested.Emit(session.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, fmt.Sprintf("%v，请等待完成，或先用 %s 停止任务后再切换。", session.ErrSessionBusy, e.commandText("stop"))))
-		return true, err
+		globalevents.Notify(session.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, fmt.Sprintf("%v，请等待完成，或先用 %s 停止任务后再切换。", session.ErrSessionBusy, e.commandText("stop"))))
+		return true, nil
 	}
 	if sessionErr == nil && hasInfo && e.execution.CompactActive(sessionRow.ID) && blocksDuringCompact(info.SessionEffect) {
 		_, err := e.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: compactCommandBlockedText(text, e.commandText)})
@@ -90,7 +90,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 			}
 			facts, _ := contextinfo.ExecutionFromContext(ctx)
 			record.Identity = globalevents.LogIdentityFromExecution(facts)
-			_ = globalevents.EmitLog(ctx, record)
+			globalevents.Log(ctx, record)
 		}
 		_, err := e.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: fmt.Sprintf("%s%s: superadmin required", parsed.Prefix, parsed.Name)})
 		return true, err
@@ -112,8 +112,8 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		if errors.Is(err, session.ErrSessionBusy) {
 			err = fmt.Errorf("%w，请等待完成，或先用 %s 停止任务。", err, e.commandText("stop"))
 		}
-		_, notifyErr := globalevents.NotificationRequested.Emit(session.WithBinding(ctx, nil), globalevents.NewNotification(ctx, slog.LevelError, fmt.Sprintf("%s%s: %v", parsed.Prefix, parsed.Name, err)))
-		return true, errors.Join(err, notifyErr)
+		globalevents.Notify(session.WithBinding(ctx, nil), globalevents.NewNotification(ctx, slog.LevelError, fmt.Sprintf("%s%s: %v", parsed.Prefix, parsed.Name, err)))
+		return true, err
 	}
 	if result == nil {
 		return true, nil
@@ -121,9 +121,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 	if result.Content != "" {
 		// A command can invalidate its old session binding. Its result still
 		// belongs to the original conversation, independently of that activation.
-		if _, err := globalevents.NotificationRequested.Emit(session.WithBinding(ctx, nil), globalevents.NewNotification(ctx, slog.LevelInfo, result.Content)); err != nil {
-			return true, err
-		}
+		globalevents.Notify(session.WithBinding(ctx, nil), globalevents.NewNotification(ctx, slog.LevelInfo, result.Content))
 	}
 	if result.Continuation != nil {
 		return true, e.input.ContinueCommandInput(ctx, *result.Continuation)
