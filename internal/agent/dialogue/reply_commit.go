@@ -22,14 +22,7 @@ type ReplyCommitter struct {
 
 // Commit requires contexts and Session refreshed through executionView by the
 // caller. streamCtx retains the model request's original cancellation chain.
-func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.ReplyCommitInput, out agentshare.Output) (result agentshare.ReplyCommitResult, err error) {
-	submitted := false
-	defer func() {
-		if !submitted && streamCtx.Err() != nil {
-			_, _ = in.Stream.Send(context.WithoutCancel(streamCtx), delivery.StreamEvent{Type: delivery.StreamReset})
-			err = streamCtx.Err()
-		}
-	}()
+func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.ReplyCommitInput, out agentshare.Output) (result agentshare.ReplyCommitResult, _ error) {
 	persistence := in.Persistence
 	if persistence == nil {
 		persistence = c.Persistence
@@ -54,10 +47,6 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 		}
 	}
 	result.Receipt, result.SendErr = in.Stream.Send(streamCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: text})
-	submitted = result.SendErr == nil
-	if streamCtx.Err() != nil && !submitted {
-		return result, streamCtx.Err()
-	}
 	if result.SendErr != nil && !HasReplyReceipt(result.Receipt) {
 		return result, result.SendErr
 	}

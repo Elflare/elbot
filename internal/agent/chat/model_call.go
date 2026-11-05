@@ -28,7 +28,7 @@ type Caller struct {
 		FinishMaterials(context.Context, media.UsageID)
 	}
 	Calls interface {
-		Call(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingUserMessage, agentshare.MessageCommitter,
+		Call(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingUserMessage, agentshare.MessageCommitter, delivery.MessageStream,
 			func(context.Context, agentshare.CallInput) error,
 			func(context.Context, agentshare.CallObservation) (agentshare.CallOutput, error)) (agentshare.CallOutput, error)
 	}
@@ -64,7 +64,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 		result, err = c.callOnce(ctx, client, req, observation, stream, toolsEnabled)
 		return agentshare.CallOutput{Text: result.RawText, SourceText: result.RawText, Usage: result.Usage, ToolCalls: result.ToolCalls}, err
 	}
-	final, err := c.Calls.Call(ctx, session, selection, messages, tools, pending, c.Messages.Committer("append_pending_user_message"), prepare, attempt)
+	final, err := c.Calls.Call(ctx, session, selection, messages, tools, pending, c.Messages.Committer("append_pending_user_message"), stream, prepare, attempt)
 	result.Messages = baseMessages
 	if err != nil {
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
@@ -84,13 +84,6 @@ func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, 
 			completed.Err, completed.ProviderError = ctx.Err(), false
 			observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultCanceled, slog.LevelInfo
 			callErr = ctx.Err()
-			return
-		}
-		var failure *llm.CallError
-		if errors.As(completed.Err, &failure) && (failure.Kind == llm.ErrorStreamFailure || failure.Kind == llm.ErrorPreviousResponseUnavailable) {
-			if _, resetErr := stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReset}); resetErr != nil {
-				callErr = resetErr
-			}
 		}
 	}()
 	observation.LogRecord().EventName = "llm_usage"

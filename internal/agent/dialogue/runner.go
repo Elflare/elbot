@@ -5,7 +5,6 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
-	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
@@ -147,13 +146,6 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 	if loop.Outcome != agentshare.Completed {
 		return result
 	}
-	stream := loop.Commit.Stream
-	defer func() {
-		if stream != nil && requestCtx.Err() != nil {
-			_, _ = stream.Send(context.WithoutCancel(requestCtx), delivery.StreamEvent{Type: delivery.StreamReset})
-			result.Outcome, result.Err, result.QuietCancellation = agentshare.Canceled, requestCtx.Err(), true
-		}
-	}()
 	requestCtx, err = r.View.RefreshSession(requestCtx, in.Session)
 	if err != nil {
 		result.Outcome, result.Err = agentshare.Failed, err
@@ -171,7 +163,6 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 	r.Status.Record(ctx, runtimestatus.Snapshot{SessionID: in.Session.ID, Phase: runtimestatus.PhaseSending,
 		Provider: result.Selection.Provider, Model: result.Selection.Model, Mode: in.Session.Mode, RequestID: in.RequestID,
 		Kind: request.KindTurn, Label: "chat", TurnStartedAt: result.StartedAt, StageStartedAt: storage.Now()})
-	stream = nil // Commit now owns cancellation cleanup of the final message.
 	result.Committed, err = r.Replies.Commit(ctx, requestCtx, loop.Commit, out)
 	if err != nil {
 		result.Outcome, result.Err = agentshare.Failed, err

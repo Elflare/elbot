@@ -163,7 +163,7 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 		final.ToolCalls = calls
 		return final, nil
 	}
-	final, err = s.route.Calls.Call(ctx, s.session, s.selection, s.projection, s.tools, pending, inputCommitter{state: s}, prepare, attempt)
+	final, err = s.route.Calls.Call(ctx, s.session, s.selection, s.projection, s.tools, pending, inputCommitter{state: s}, stream, prepare, attempt)
 	s.sourceText = outputText(result.Items)
 	if err != nil {
 		return final, err

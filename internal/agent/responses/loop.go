@@ -173,13 +173,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 	}
 	toolPhase, foregroundPrepared := false, false
 	rounds := 0
-	var stream delivery.MessageStream
-	defer func() {
-		if err := s.requestCtx.Err(); err != nil && stream != nil {
-			_, _ = stream.Send(context.WithoutCancel(s.requestCtx), delivery.StreamEvent{Type: delivery.StreamReset})
-			result.Outcome, result.Err, result.QuietCancellation = agentshare.Canceled, err, true
-		}
-	}()
 	for {
 		var err error
 		s.requestCtx, err = s.route.View.RefreshSession(s.requestCtx, s.session)
@@ -228,7 +221,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 				s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleUser, Segments: pending.Segments})
 			}
 		}
-		stream = out.StartStream(s.requestCtx)
+		stream := out.StartStream(s.requestCtx)
 		s.route.Status.Record(s.ctx, runtimestatus.Snapshot{
 			SessionID:      s.session.ID,
 			Phase:          runtimestatus.PhaseLLM,
@@ -265,7 +258,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		if _, err := stream.Send(s.requestCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: final.Text}); err != nil {
 			return fail(err)
 		}
-		stream = nil
 		if _, err := out.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: append(immediate, later...)}); err != nil {
 			return fail(err)
 		}

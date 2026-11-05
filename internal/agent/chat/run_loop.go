@@ -45,12 +45,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 	var finalRawText string
 	var platformFinalText string
 	var stream delivery.MessageStream
-	defer func() {
-		if err := s.requestCtx.Err(); err != nil && stream != nil {
-			_, _ = stream.Send(context.WithoutCancel(s.requestCtx), delivery.StreamEvent{Type: delivery.StreamReset})
-			result.Outcome, result.Err, result.QuietCancellation = agentshare.Canceled, err, true
-		}
-	}()
 	var deferredOutputs []delivery.Output
 	toolRounds := 0
 	inToolPhase := false
@@ -163,7 +157,6 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		if _, err := stream.Send(s.requestCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: assistantText}); err != nil {
 			return failedLoop(err)
 		}
-		stream = nil
 		if _, err := s.output.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: laterOutputs}); err != nil {
 			return failedLoop(err)
 		}

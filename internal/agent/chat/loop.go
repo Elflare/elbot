@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"elbot/internal/contextmgr"
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
@@ -142,7 +143,7 @@ type LoopDeps struct {
 		Committer(string) agentshare.MessageCommitter
 	}
 	Calls interface {
-		Call(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingUserMessage, agentshare.MessageCommitter,
+		Call(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingUserMessage, agentshare.MessageCommitter, delivery.MessageStream,
 			func(context.Context, agentshare.CallInput) error,
 			func(context.Context, agentshare.CallObservation) (agentshare.CallOutput, error)) (agentshare.CallOutput, error)
 	}

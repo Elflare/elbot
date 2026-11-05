@@ -3,6 +3,7 @@ package responses
 import (
 	"context"
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/session"
@@ -65,7 +66,7 @@ type LoopDeps struct {
 		Commit(context.Context, storage.DialogueCommit, string) error
 	}
 	Calls interface {
-		Call(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingUserMessage, agentshare.MessageCommitter,
+		Call(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingUserMessage, agentshare.MessageCommitter, delivery.MessageStream,
 			func(context.Context, agentshare.CallInput) error,
 			func(context.Context, agentshare.CallObservation) (agentshare.CallOutput, error)) (agentshare.CallOutput, error)
 	}

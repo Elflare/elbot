@@ -62,13 +62,6 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 			observation.Event().Err, observation.Event().ProviderError = ctx.Err(), false
 			observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultCanceled, slog.LevelInfo
 			err = ctx.Err()
-			return
-		}
-		var failure *llm.CallError
-		if errors.As(observation.Event().Err, &failure) && (failure.Kind == llm.ErrorStreamFailure || failure.Kind == llm.ErrorPreviousResponseUnavailable) {
-			if _, resetErr := stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReset}); resetErr != nil {
-				err = resetErr
-			}
 		}
 	}()
 	if err := s.route.View.CheckSelection(s.session, s.selection); err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -48,6 +49,7 @@ func (c *CallProcessor) Call(
 	ctx context.Context, session *storage.Session, selection modelmgr.Selection,
 	messages []llm.LLMMessage, tools []llm.ToolSchema,
 	pending *agentshare.PendingUserMessage, persistence agentshare.MessageCommitter,
+	stream delivery.MessageStream,
 	prepare func(context.Context, agentshare.CallInput) error,
 	attempt func(context.Context, agentshare.CallObservation) (agentshare.CallOutput, error),
 ) (agentshare.CallOutput, error) {
@@ -63,11 +65,18 @@ func (c *CallProcessor) Call(
 		return agentshare.CallOutput{}, err
 	}
 
+	retrying := false
 	result, err := llm.Retry(ctx, selection.Client, func(
 		ctx context.Context,
 		selection modelmgr.Selection,
 	) (result agentshare.CallOutput, err error) {
 		observation = c.Begin(session.ID, selection)
+		if retrying {
+			if _, err := stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReset}); err != nil {
+				return result, err
+			}
+		}
+		retrying = true
 		defer func() { observation.Publish(ctx, err) }()
 		return attempt(ctx, observation)
 	}, selection)
