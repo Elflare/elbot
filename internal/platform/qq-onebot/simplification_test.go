@@ -3,24 +3,8 @@ package qqonebot
 import (
 	"context"
 	"encoding/json"
-	"reflect"
 	"testing"
-
-	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 )
-
-func TestLogIdentityPreservesExecutionFields(t *testing.T) {
-	if got := logIdentity(context.Background()); !reflect.DeepEqual(got, events.LogIdentity{SessionID: "", RunID: "", Attempt: "", RequestID: "", RootRequestID: ""}) {
-		t.Fatalf("missing context: %+v", got)
-	}
-	facts := contextinfo.Execution{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}
-	got := logIdentity(contextinfo.WithExecution(t.Context(), facts))
-	want := events.LogIdentity{SessionID: facts.SessionID, RunID: facts.RunID, Attempt: facts.Attempt, RequestID: facts.RequestID, RootRequestID: facts.RootRequestID}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got=%+v want=%+v", got, want)
-	}
-}
 
 func TestDispatchResponseDecodeBoundaries(t *testing.T) {
 	transport := newTransport(testPlatformName, "", "", 0)

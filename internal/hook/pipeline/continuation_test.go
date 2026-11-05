@@ -79,12 +79,12 @@ func TestPipelineFailureNotifiesOnceAndPreservesOriginalFailure(t *testing.T) {
 				cancel()
 			}
 			var err error
-			wantError, wantNotified := original, 1
+			var wantError error
+			wantNotified := 1
 			switch source {
 			case "error-hook":
 				event.Point, event.Error = share.PointErrorOccurred, original
 				err = manager.Notify(ctx, event, CallOptions{Woken: true})
-				wantError = secondary
 			case "notify":
 				err = manager.Notify(ctx, event, CallOptions{Woken: true})
 			default:
@@ -95,7 +95,11 @@ func TestPipelineFailureNotifiesOnceAndPreservesOriginalFailure(t *testing.T) {
 				}
 			}
 			if source == "canceled" {
+				wantError = original
 				wantNotified = 0
+			}
+			if source == "route" {
+				wantNotified = 2
 			}
 			if !errors.Is(err, wantError) || notified != wantNotified {
 				t.Fatalf("notified=%d err=%v", notified, err)
@@ -103,7 +107,7 @@ func TestPipelineFailureNotifiesOnceAndPreservesOriginalFailure(t *testing.T) {
 			if source != "error-hook" && (errors.Is(err, secondary)) {
 				t.Fatalf("source failure replaced: %v", err)
 			}
-			if source == "route" && (ordinary != 0) {
+			if source == "route" && ordinary != 1 {
 				t.Fatalf("ordinary=%d", ordinary)
 			}
 		})

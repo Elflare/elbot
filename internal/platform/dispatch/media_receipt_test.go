@@ -45,10 +45,10 @@ func TestIncompleteMediaReceiptReportsStorageFailure(t *testing.T) {
 				calls++
 				return want, nil
 			}}
-			var warnings []events.LogRecord
+			warnings := make(chan events.LogRecord, 2)
 			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 				if record.EventName == "cache_sent_media_receipt_failed" {
-					warnings = append(warnings, record)
+					warnings <- record
 				}
 				return nil
 			}, signal.ConnectOptions{})
@@ -61,8 +61,13 @@ func TestIncompleteMediaReceiptReportsStorageFailure(t *testing.T) {
 			if err != nil || calls != 1 || !reflect.DeepEqual(got, want) {
 				t.Fatal("send changed: receipt= result= err= calls=", got, err, calls)
 			}
-			if len(warnings) != 1 || warnings[0].Level != slog.LevelWarn || !strings.Contains(warnings[0].Content, "output media requires") {
-				t.Fatalf("storage validation warning missing: %#v", warnings)
+			select {
+			case warning := <-warnings:
+				if warning.Level != slog.LevelWarn || !strings.Contains(warning.Content, "output media requires") {
+					t.Fatalf("storage validation warning changed: %#v", warning)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("storage validation warning missing")
 			}
 		})
 	}

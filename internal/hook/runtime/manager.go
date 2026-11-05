@@ -89,7 +89,7 @@ func NewManager(opts Options) (*Manager, error) {
 		return m.shared.expiry.next()
 	})
 	go m.maintain(rootCtx, m.media.wake, func() time.Time {
-		_ = m.pruneMedia(rootCtx, false)
+		m.pruneMedia(rootCtx, false)
 		m.media.mu.Lock()
 		defer m.media.mu.Unlock()
 		return m.media.expiry.next()
@@ -120,8 +120,8 @@ func (m *Manager) maintain(ctx context.Context, wake <-chan struct{}, sweep func
 	}
 }
 
-func (m *Manager) pruneMedia(ctx context.Context, closeAll bool) error {
-	return m.media.prune(ctx, time.Now(), closeAll, func(record globalevents.LogRecord) { m.opts.Log(ctx, record) })
+func (m *Manager) pruneMedia(ctx context.Context, closeAll bool) {
+	m.media.prune(ctx, time.Now(), closeAll, func(record globalevents.LogRecord) { m.opts.Log(ctx, record) })
 }
 
 func (m *Manager) SharedRequest(method string, params json.RawMessage) (any, error) {
@@ -288,7 +288,7 @@ func (m *Manager) Close(ctx context.Context) error {
 	if m.closed {
 		done := m.closeDone
 		m.mu.Unlock()
-		if err := m.waitClose(ctx, done); err == nil || ctx.Err() != nil {
+		if err := m.waitClose(ctx, done); ctx.Err() != nil {
 			return err
 		}
 		select {
@@ -297,10 +297,10 @@ func (m *Manager) Close(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-		err := m.pruneMedia(ctx, true)
+		m.pruneMedia(ctx, true)
 		m.mu.Lock()
-		m.closeErr = errors.Join(m.workerCloseErr, err)
-		err = m.closeErr
+		m.closeErr = m.workerCloseErr
+		err := m.closeErr
 		m.mu.Unlock()
 		return err
 	}
@@ -353,10 +353,10 @@ func (m *Manager) finishClose(ctx context.Context, workers []*worker) {
 	err := stopWorkers(workers)
 	m.workWG.Wait()
 
-	closeErr := m.pruneMedia(ctx, true)
+	m.pruneMedia(ctx, true)
 	m.mu.Lock()
 	m.workerCloseErr = err
-	m.closeErr = errors.Join(m.workerCloseErr, closeErr)
+	m.closeErr = m.workerCloseErr
 	close(m.closeDone)
 	m.mu.Unlock()
 }

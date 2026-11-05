@@ -4,11 +4,6 @@ package rules
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"log/slog"
-
-	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook/share"
@@ -16,6 +11,9 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/processenv"
 	"elbot/internal/tool"
+	"encoding/json"
+	"fmt"
+	"log/slog"
 )
 
 const (
@@ -223,9 +221,4 @@ func (m Module) RegisterHooks(registrar share.Registrar) {
 			}),
 		})
 	}
-}
-
-func logIdentity(ctx context.Context) globalevents.LogIdentity {
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	return globalevents.LogIdentityFromExecution(facts)
 }

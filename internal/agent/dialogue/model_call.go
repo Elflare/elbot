@@ -37,9 +37,8 @@ type CallObservation struct {
 	startedAt time.Time
 	published bool
 	event     agentshare.ModelCallCompletedEvent
-	// LogRecord holds this call's source-defined logging result independently of
-	// the business event. Branches fill status and content; Publish does not infer
-	// outcomes from Event.Err. Identity is fixed from the source at publication.
+	// Protocol branches supply the call outcome. Publish records usage facts,
+	// without reporting the error that is returned to the task entrypoint.
 	logRecord events.LogRecord
 }
 
@@ -55,7 +54,7 @@ func (c *CallProcessor) Call(
 ) (agentshare.CallOutput, error) {
 	startedAt := time.Now()
 	observation := c.Begin(session.ID, selection)
-	input, err := c.PrepareCall(ctx, session, selection, messages, tools, pending, persistence, observation.LogRecord())
+	input, err := c.PrepareCall(ctx, session, selection, messages, tools, pending, persistence)
 	if err != nil {
 		observation.Publish(ctx, err)
 		return agentshare.CallOutput{}, err
@@ -136,22 +135,13 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 		"cache_hit_tokens":  nil,
 		"cache_hit_percent": o.event.Usage.CacheHitPercent(),
 	}
-	if o.logRecord.Content != "" {
-		content["detail"] = fmt.Sprintf("%.8192s", o.logRecord.Content)
-	}
-	if o.event.ProviderError && o.event.Err != nil {
-		content["error"] = o.event.Err.Error()
-		var failure *llm.CallError
-		if errors.As(o.event.Err, &failure) {
-			content["error_kind"], content["retryable"] = failure.Kind, failure.Retryable
-		}
-	}
 	if usage := o.event.Usage; usage != nil {
 		content["prompt_tokens"], content["completion_tokens"], content["total_tokens"], content["cache_hit_tokens"] = usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens, usage.CacheHitTokens
 	}
 	data, _ := json.Marshal(content)
 	o.logRecord.Content = string(data)
-	o.logRecord.Identity = events.LogIdentityFromExecution(o.event.Execution)
+	o.logRecord.Level = slog.LevelInfo
+	o.logRecord.Identity = events.LogIdentityFromContext(ctx)
 	o.logRecord.Identity.SessionID = o.sessionID
 	if o.logRecord.EventName != "" {
 		events.Log(context.WithoutCancel(ctx), o.logRecord)
@@ -177,7 +167,7 @@ func (c *CallProcessor) NotifyError(ctx context.Context, sessionID string, respo
 
 // PrepareCall applies common hooks and authorization to canonical business
 // material. PrepareMaterials expands only the material selected for this call.
-func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *agentshare.PendingUserMessage, persistence agentshare.MessageCommitter, record *events.LogRecord) (agentshare.CallInput, error) {
+func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *agentshare.PendingUserMessage, persistence agentshare.MessageCommitter) (agentshare.CallInput, error) {
 	sessionID := session.ID
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
 	if !toolsEnabled {
@@ -221,19 +211,7 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 		Tools:    tools,
 	})
 	if err != nil {
-		record.Content += "\nrequest_hook:\n" + err.Error()
-		record.ResultStatus, record.Level = events.ResultFailed, slog.LevelWarn
-		if events.LogStatus(err) == events.ResultCanceled {
-			record.ResultStatus, record.Level = events.ResultCanceled, slog.LevelInfo
-		}
-		if pending != nil {
-			if persistErr := persistence.Commit(ctx, &pending.Message, nil); persistErr != nil {
-				record.Content += "\npersistence:\n" + persistErr.Error()
-				record.ResultStatus, record.Level = events.ResultFailed, slog.LevelError
-				err = errors.Join(err, persistErr)
-			}
-		}
-		return agentshare.CallInput{}, fmt.Errorf("llm request hook: %w", err)
+		return agentshare.CallInput{}, err
 	}
 	tools = result.Tools
 	// Hooks may change schemas, but cannot override registered availability.

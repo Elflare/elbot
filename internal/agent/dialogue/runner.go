@@ -62,29 +62,12 @@ func (r *Runner) PrepareTurn(ctx context.Context, in agentshare.TurnInput) (agen
 	return &PreparedTurn{route: route, input: in, preparer: r.Preparer}, nil
 }
 
-func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInput, out agentshare.Output) (result agentshare.TurnResult) {
+func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInput, out agentshare.Output) (requestContext context.Context, result agentshare.TurnResult) {
 	result.StartedAt = storage.Now()
 	result.Selection = in.Selection
 	defer func() {
 		if result.Err != nil && requestCtx.Err() != nil {
-			result.QuietCancellation = true
-			pending := []error{result.Err}
-			for len(pending) > 0 {
-				err := pending[len(pending)-1]
-				pending = pending[:len(pending)-1]
-				if joined, ok := err.(interface{ Unwrap() []error }); ok {
-					pending = append(pending, joined.Unwrap()...)
-					continue
-				}
-				if cause := errors.Unwrap(err); cause != nil {
-					pending = append(pending, cause)
-					continue
-				}
-				if !errors.Is(err, requestCtx.Err()) {
-					result.QuietCancellation = false
-					break
-				}
-			}
+			result.QuietCancellation = errors.Is(result.Err, requestCtx.Err())
 			if result.QuietCancellation {
 				result.Outcome = agentshare.Canceled
 			}
@@ -99,9 +82,6 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 		} else if execution != nil && current.Attempt != turn.AttemptFromContext(ctx) {
 			result.Outcome = agentshare.Superseded
 		}
-		if result.Outcome == agentshare.Failed && result.Err != nil {
-			agentshare.ReportFailure(requestCtx, in.Session.ID, result.Err, out.Notify)
-		}
 	}()
 	var err error
 	ctx, err = r.View.WithModel(ctx, in.Selection)
@@ -110,7 +90,7 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 	}
 	if err != nil {
 		result.Outcome, result.Err = agentshare.Failed, err
-		return result
+		return requestCtx, result
 	}
 	loopIn := agentshare.LoopInput{Session: in.Session, Selection: in.Selection, RequestID: in.RequestID, StartedAt: result.StartedAt}
 	prepared, err := in.Prepared.PrepareTurn(requestCtx)
@@ -126,7 +106,7 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 	}
 	if err != nil {
 		result.Outcome, result.Err = agentshare.Failed, err
-		return result
+		return requestCtx, result
 	}
 	if user != nil {
 		fields, _ := storage.DecodeSessionMetadata(user.Metadata)
@@ -134,7 +114,7 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 			fields, err := storage.DecodeSessionMetadata(in.Session.Metadata)
 			if err != nil {
 				result.Outcome, result.Err = agentshare.Failed, err
-				return result
+				return requestCtx, result
 			}
 			_ = fields.Set("elyph_rules_shown", true)
 			in.Session.Metadata, _ = fields.Encode()
@@ -144,12 +124,12 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 	result.Outcome, result.Err, result.QuietCancellation = loop.Outcome, loop.Err, loop.QuietCancellation
 	result.Usage, result.Selection = loop.Usage, loop.Selection
 	if loop.Outcome != agentshare.Completed {
-		return result
+		return requestCtx, result
 	}
 	requestCtx, err = r.View.RefreshSession(requestCtx, in.Session)
 	if err != nil {
 		result.Outcome, result.Err = agentshare.Failed, err
-		return result
+		return requestCtx, result
 	}
 	ctx = r.View.Context(ctx)
 	ctx, err = r.View.WithModel(ctx, result.Selection)
@@ -158,7 +138,7 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 	}
 	if err != nil {
 		result.Outcome, result.Err = agentshare.Failed, err
-		return result
+		return requestCtx, result
 	}
 	r.Status.Record(ctx, runtimestatus.Snapshot{SessionID: in.Session.ID, Phase: runtimestatus.PhaseSending,
 		Provider: result.Selection.Provider, Model: result.Selection.Model, Mode: in.Session.Mode, RequestID: in.RequestID,
@@ -167,7 +147,7 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 	if err != nil {
 		result.Outcome, result.Err = agentshare.Failed, err
 	}
-	return result
+	return requestCtx, result
 }
 
 // RunnerDeps contains external capabilities needed to build the common single-turn collaborators.

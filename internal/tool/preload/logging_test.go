@@ -64,7 +64,13 @@ func TestPreloadAuditIdentityAndResult(t *testing.T) {
 					} else {
 						_, err = s.PrepareSkills(ctx, sessionID, []string{"guide"})
 					}
-					if !errors.Is(err, tc.err) || len(records) != 1 {
+					if tc.err != nil {
+						if !errors.Is(err, tc.err) || len(records) != 0 {
+							t.Fatalf("terminal failure must only return: err=%v records=%+v", err, records)
+						}
+						return
+					}
+					if err != nil || len(records) != 1 {
 						t.Fatalf("err=%v records=%+v", err, records)
 					}
 					record := records[0]

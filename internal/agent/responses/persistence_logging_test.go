@@ -3,8 +3,6 @@ package responses
 import (
 	"context"
 	"errors"
-	"log/slog"
-	"strings"
 	"testing"
 
 	agentshare "elbot/internal/agent/share"
@@ -15,7 +13,7 @@ import (
 	"elbot/internal/storage"
 )
 
-func TestNativeToolPreparationOwnsInternalFailure(t *testing.T) {
+func TestNativeToolPreparationReturnsInternalFailure(t *testing.T) {
 	for _, malformed := range []bool{false, true} {
 		t.Run(map[bool]string{false: "allocation", true: "metadata"}[malformed], func(t *testing.T) {
 			failure := errors.New("message ID database unavailable")
@@ -49,8 +47,8 @@ func TestNativeToolPreparationOwnsInternalFailure(t *testing.T) {
 			if err == nil || (!malformed && err != failure) {
 				t.Fatalf("business error changed: %v", err)
 			}
-			if len(records) != 1 || records[0].Level != slog.LevelError || records[0].EventName != "tool_batch_prepare_failed" || !strings.Contains(records[0].Content, err.Error()) || records[0].Identity.SessionID != "session" {
-				t.Fatalf("missing or duplicate internal diagnostic: %+v", records)
+			if len(records) != 0 {
+				t.Fatalf("terminal failure reported below task boundary: %+v", records)
 			}
 		})
 	}

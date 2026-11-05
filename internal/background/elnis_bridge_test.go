@@ -274,8 +274,8 @@ func TestElnisBridgeImportLimitsArePerCall(t *testing.T) {
 
 type elnisBridgeRunner struct{ result string }
 
-func (r elnisBridgeRunner) RunBackground(context.Context, share.RunRequest) (share.RunResult, error) {
-	return share.RunResult{SessionID: "session", MessageID: "message", Text: r.result}, nil
+func (r elnisBridgeRunner) RunBackground(ctx context.Context, _ share.RunRequest) (context.Context, share.RunResult, error) {
+	return ctx, share.RunResult{SessionID: "session", MessageID: "message", Text: r.result}, nil
 }
 func TestElnisBridgeReportMediaSurvivesWorkspaceRemoval(t *testing.T) {
 	b, store := newElnisBridgeFixture(t)
@@ -348,8 +348,8 @@ func TestElnisBridgeCancelledEnqueueReleasesInput(t *testing.T) {
 	svc.SetLLMEnqueuer(func(ctx context.Context, _ elnis.QueuedLLMEvent) error { cancel(); return ctx.Err() })
 	req := elnisBridgeRequest(elnis.ModeLLM)
 	req.Segments = []elnis.Segment{{Kind: elnis.SegmentKindFile, URL: id}}
-	if _, err := svc.Handle(ctx, "secret", req); !errors.Is(err, context.Canceled) {
-		t.Fatal(err)
+	if response, err := svc.Handle(ctx, "secret", req); err != nil || response.Status != elnis.StatusFailed || response.Error != context.Canceled.Error() {
+		t.Fatal(response, err)
 	}
 	row, err := store.ElnisEvents().GetByKey(t.Context(), "watcher", "source", "event")
 	if err != nil || row.Status != elnis.StatusFailed {
@@ -401,8 +401,8 @@ func TestElnisBridgeDirectCancellationReleasesImportedMedia(t *testing.T) {
 	}})
 	req := elnisBridgeRequest(elnis.ModeDirect)
 	req.Segments = []elnis.Segment{{Kind: elnis.SegmentKindFile, URL: "data:text/plain;base64,aGVsbG8=", Name: "input.txt"}}
-	if _, err := svc.Handle(ctx, "secret", req); !errors.Is(err, context.Canceled) {
-		t.Fatal(err)
+	if response, err := svc.Handle(ctx, "secret", req); err != nil || response.Status != elnis.StatusFailed || response.Error != context.Canceled.Error() {
+		t.Fatal(response, err)
 	}
 	if !media.ValidID(id) {
 		t.Fatal(id)
@@ -555,10 +555,10 @@ func TestQueuedMediaReferencesRecoverAfterInterruption(t *testing.T) {
 
 type blockedElnisRunner struct{ entered, release chan struct{} }
 
-func (r blockedElnisRunner) RunBackground(ctx context.Context, _ share.RunRequest) (share.RunResult, error) {
+func (r blockedElnisRunner) RunBackground(ctx context.Context, _ share.RunRequest) (context.Context, share.RunResult, error) {
 	close(r.entered)
 	<-r.release
-	return share.RunResult{}, ctx.Err()
+	return ctx, share.RunResult{}, ctx.Err()
 }
 
 func TestRuntimeCloseCommitsInterruptedEventsAndPreservesOutbox(t *testing.T) {

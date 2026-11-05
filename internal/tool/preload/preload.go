@@ -3,14 +3,12 @@ package preload
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
 	"strings"
 
 	"elbot/internal/config"
-	"elbot/internal/contextinfo"
 	"elbot/internal/elyph"
 	globalevents "elbot/internal/events"
 	"elbot/internal/tool/share"
@@ -87,8 +85,6 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 	for _, candidate := range candidates {
 		targets[candidate.Definition.Name] = candidate
 	}
-	record := preloadLogRecord(ctx, sessionID)
-
 	result := share.SkillPreload{Accepted: make([]bool, len(names))}
 	seen := map[string]bool{}
 	var blocks []share.DetailBlock
@@ -105,15 +101,6 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 				err = ctx.Err()
 			}
 			if err != nil {
-				record.EventName = "skill_preload_failed"
-				record.Level = slog.LevelError
-				record.ResultStatus = globalevents.ResultFailed
-				if errors.Is(err, context.Canceled) {
-					record.Level = slog.LevelInfo
-					record.ResultStatus = globalevents.ResultCanceled
-				}
-				record.Content = fmt.Sprintf("skill preload failed: tool=%s error=%v", name, err)
-				globalevents.Log(ctx, record)
 				return share.SkillPreload{}, err
 			}
 			seen[name] = true
@@ -244,8 +231,7 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 
 func preloadLogRecord(ctx context.Context, sessionID string) globalevents.LogRecord {
 	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool"}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	record.Identity = globalevents.LogIdentityFromExecution(facts)
+	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	record.Identity.SessionID = sessionID
 	return record
 }

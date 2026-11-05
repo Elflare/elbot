@@ -23,7 +23,9 @@ func (constructorMessageHooks) PlatformMessageReceived(_ context.Context, messag
 
 type constructorCommands struct{}
 
-func (constructorCommands) Handle(context.Context, string) (bool, error) { return false, nil }
+func (constructorCommands) Handle(ctx context.Context, _ string) (context.Context, bool, error) {
+	return ctx, false, nil
+}
 
 func (constructorCommands) IsCommand(string) bool { return false }
 
@@ -31,9 +33,9 @@ type constructorInput struct {
 	text string
 }
 
-func (i *constructorInput) HandleInput(_ context.Context, text string) error {
+func (i *constructorInput) HandleInput(ctx context.Context, text string) (context.Context, error) {
 	i.text = text
-	return nil
+	return ctx, nil
 }
 
 type constructorOutput struct{}
@@ -48,7 +50,7 @@ func TestMessageEntryConstructsWithOnlyConsumptionCapabilities(t *testing.T) {
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})
 	input := &constructorInput{}
 	entry := agentinput.NewMessageHandler(agentinput.MessageHandlerDeps{Identity: identity, Hooks: constructorMessageHooks{}, Output: constructorOutput{}, Commands: constructorCommands{}, Input: input})
-	if err := entry.HandleMessage(t.Context(), "plain input"); err != nil {
+	if _, err := entry.HandleMessage(t.Context(), "plain input"); err != nil {
 		t.Fatal(err)
 	}
 	if input.text != "plain input" {

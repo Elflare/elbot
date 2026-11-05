@@ -2,7 +2,6 @@ package input
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"reflect"
 	"strings"
@@ -38,7 +37,7 @@ type MessageHandler struct {
 }
 
 // HandleMessage dispatches commands and chat messages.
-func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err error) {
+func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (context.Context, error) {
 	actor := h.identity.Actor(ctx)
 	ctx = contextinfo.WithActor(ctx, actor)
 	segments := agentshare.InboundSegments(ctx, text)
@@ -48,38 +47,30 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	if strings.TrimSpace(llm.SegmentsTextOnly(segments)) == "/cancel" {
 		if h.hooks.CancelRoute(ctx, message) {
 			_, err := h.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "Hook canceled"})
-			return err
+			return ctx, err
 		}
 	}
 	waiting := h.hooks.HasRoute(ctx, message)
 	if woken || waiting {
-		ctx, err = h.materializePlatformMedia(ctx)
+		prepared, err := h.materializePlatformMedia(ctx)
 		if err != nil {
-			if ctx.Err() == nil {
-				agentshare.ReportFailure(ctx, "", fmt.Errorf("接收媒体: %w", err), h.output.Notify)
-			}
-			return err
+			return ctx, err
 		}
+		ctx = prepared
 		segments = agentshare.InboundSegments(ctx, text)
 		message.Segments = segments
 	}
 	result, err := h.hooks.PlatformMessageReceived(ctx, message)
 	if err != nil {
-		if ctx.Err() == nil {
-			agentshare.ReportFailure(ctx, "", fmt.Errorf("入站 Hook: %w", err), h.output.Notify)
-		}
-		return err
+		return ctx, err
 	}
 	if len(result.Outputs) > 0 {
 		if _, err := h.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: result.Outputs}); err != nil {
-			if ctx.Err() == nil {
-				agentshare.ReportFailure(ctx, "", fmt.Errorf("发送入站 Hook 输出: %w", err), h.output.Notify)
-			}
-			return err
+			return ctx, err
 		}
 	}
 	if result.Consume {
-		return nil
+		return ctx, nil
 	}
 	hookChangedSegments := !reflect.DeepEqual(result.Segments, segments)
 	if hookChangedSegments {
@@ -92,16 +83,17 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	message.Segments = result.Segments
 	if strings.TrimSpace(text) == "/cancel" && h.hooks.CancelRoute(ctx, message) {
 		_, err := h.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "Hook canceled"})
-		return err
+		return ctx, err
 	}
 	if !woken {
-		return nil
+		return ctx, nil
 	}
 	text = agentshare.StripWakeupPrefix(ctx, text)
 	segments = agentshare.ReplaceInboundTextSegments(ctx, text)
 	ctx = agentshare.WithInboundSegments(ctx, segments)
-	if handled, err := h.commands.Handle(ctx, text); handled {
-		return err
+	ctx, handled, err := h.commands.Handle(ctx, text)
+	if handled {
+		return ctx, err
 	}
 	return h.input.HandleInput(ctx, text)
 }
@@ -122,12 +114,12 @@ type MessageOutput interface {
 }
 
 type MessageCommands interface {
-	Handle(context.Context, string) (bool, error)
+	Handle(context.Context, string) (context.Context, bool, error)
 	IsCommand(string) bool
 }
 
 type MessageInput interface {
-	HandleInput(context.Context, string) error
+	HandleInput(context.Context, string) (context.Context, error)
 }
 
 // MessageHandlerDeps declares only the capabilities consumed by MessageHandler.

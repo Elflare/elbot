@@ -4,9 +4,10 @@ package media
 import (
 	"context"
 	"crypto/rand"
-	"errors"
+	"elbot/internal/events"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,7 +104,11 @@ func write(ctx context.Context, root *os.Root, name string, held *media.HeldMedi
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, reader.Close()) }()
+	defer func() {
+		if closeErr := reader.Close(); closeErr != nil {
+			events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
+		}
+	}()
 	temporary := name + "." + rand.Text() + ".tmp"
 	file, err := root.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
@@ -111,8 +116,15 @@ func write(ctx context.Context, root *os.Root, name string, held *media.HeldMedi
 	}
 	defer root.Remove(temporary)
 	_, copyErr := io.Copy(file, reader)
-	if err := errors.Join(copyErr, file.Close()); err != nil {
-		return err
+	closeErr := file.Close()
+	if copyErr != nil {
+		if closeErr != nil {
+			events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
+		}
+		return copyErr
+	}
+	if closeErr != nil {
+		return closeErr
 	}
 	return root.Rename(temporary, name)
 }

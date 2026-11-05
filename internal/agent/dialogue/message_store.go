@@ -4,12 +4,9 @@ import (
 	agentshare "elbot/internal/agent/share"
 
 	"context"
-	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 
 	"elbot/internal/llm"
 	"elbot/internal/media"
@@ -42,20 +39,6 @@ func (s *MessageStore) Append(ctx context.Context, message *storage.Message, ope
 }
 
 func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit, operation string) (err error) {
-	level := slog.LevelError
-	persisting := false
-	defer func() {
-		if err == nil || persisting {
-			return
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: "dialogue_commit_failed", Module: "agent", Content: fmt.Sprintf("operation=%s error=%v", operation, err), Identity: events.LogIdentityFromExecution(facts), ResultStatus: events.ResultFailed}
-		record.Identity.SessionID = commit.SessionID
-		if events.LogStatus(err) == events.ResultCanceled {
-			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
-		}
-		events.Log(ctx, record)
-	}()
 	if commit.ToolBatch != nil {
 		metadata, err := agentshare.AssistantMessageMetadata(commit.ToolBatch.Call.Metadata)
 		if err != nil {
@@ -95,12 +78,10 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 			if err != nil {
 				return err
 			}
-			level = slog.LevelWarn
 			archived, err := s.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{projected})
 			if err != nil {
 				return err
 			}
-			level = slog.LevelError
 			segments := archived[0].Segments
 			message.Segments = agentshare.StoredMessageSegments(segments)
 			message.Content = agentshare.MessageContent(segments)
@@ -111,7 +92,6 @@ func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit
 		return err
 	}
 	defer release()
-	persisting = true
 	err = s.Dialogues.Commit(locked, commit)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {

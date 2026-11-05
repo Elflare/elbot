@@ -252,12 +252,13 @@ func TestPlatformFullWarnsAndOtherPlatformStillSends(t *testing.T) {
 	defer c.Close(context.Background())
 	n := events.Notification{Target: events.NotificationTarget{Platform: "slow", ChatType: contextinfo.ChatPrivate, ID: "one"}, Text: "overflow"}
 	facts := contextinfo.Execution{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}
-	if _, err := events.NotificationRequested.Emit(contextinfo.WithExecution(t.Context(), facts), n); err != nil {
+	ctx := contextinfo.WithExecution(t.Context(), facts)
+	if _, err := events.NotificationRequested.Emit(ctx, n); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case r := <-logs:
-		if r.Level != slog.LevelWarn || !reflect.DeepEqual(r.Identity, events.LogIdentityFromExecution(facts)) {
+		if r.Level != slog.LevelWarn || !reflect.DeepEqual(r.Identity, events.LogIdentityFromContext(ctx)) {
 			t.Fatal(r)
 		}
 	case <-time.After(time.Second):
@@ -348,7 +349,7 @@ func TestManagerOwnershipAndMissingPlatform(t *testing.T) {
 		t.Fatalf("routing failures must each be logged once: %+v", logs)
 	}
 	for _, record := range logs {
-		if !reflect.DeepEqual(record.Identity, events.LogIdentityFromExecution(facts)) {
+		if !reflect.DeepEqual(record.Identity, events.LogIdentityFromContext(ctx)) {
 			t.Fatalf("routing failure lost execution identity: %+v", record)
 		}
 	}

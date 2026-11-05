@@ -3,12 +3,9 @@ package sqlite
 import (
 	"context"
 	"database/sql"
-	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 
 	"elbot/internal/storage"
 )
@@ -16,22 +13,6 @@ import (
 type DialogueRepository struct{ db *sql.DB }
 
 func (r *DialogueRepository) Commit(ctx context.Context, commit storage.DialogueCommit) (err error) {
-	level := slog.LevelError
-	defer func() {
-		if err == nil {
-			return
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: "dialogue_commit_failed", Module: "storage", Content: err.Error(), Identity: events.LogIdentityFromExecution(facts), ResultStatus: events.ResultFailed}
-		record.Identity.SessionID = commit.SessionID
-		if errors.Is(err, storage.ErrNotFound) {
-			record.Level = slog.LevelWarn
-		}
-		if events.LogStatus(err) == events.ResultCanceled {
-			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
-		}
-		events.Log(ctx, record)
-	}()
 
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -60,7 +41,6 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			}
 		}
 		if current != commit.Native.ExpectedCheckpointID {
-			level = slog.LevelWarn
 			return fmt.Errorf("native checkpoint changed")
 		}
 	}

@@ -28,7 +28,7 @@ type InputOutput interface {
 type InputExecution interface {
 	ResolveInput(context.Context, string) (context.Context, *storage.Session, error)
 	EnterInput(context.Context, *storage.Session) (context.Context, func(), error)
-	AcceptInput(context.Context, *storage.Session, string) (agentshare.InputDisposition, error)
+	AcceptInput(context.Context, *storage.Session, string) (context.Context, agentshare.InputDisposition, error)
 	ModelContext(context.Context, *storage.Session) (context.Context, error)
 }
 

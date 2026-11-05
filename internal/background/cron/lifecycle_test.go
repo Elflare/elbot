@@ -20,12 +20,12 @@ func TestManagerCancellationAndRepeatedStopWaitForHandlerExit(t *testing.T) {
 	repo := newFakeCronRepo()
 	manager := NewManager(repo)
 	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	manager.RegisterHandler("wait", func(ctx context.Context, _ Job) error {
+	manager.RegisterHandler("wait", func(ctx context.Context, _ Job) (context.Context, error) {
 		close(started)
 		<-ctx.Done()
 		close(canceled)
 		<-release
-		return ctx.Err()
+		return ctx, ctx.Err()
 	})
 	job, err := manager.UpsertJob(context.Background(), UpsertJobRequest{Name: "wait", Handler: "wait", Schedule: "0 0 1 1 *", Enabled: true})
 	if err != nil {
@@ -89,9 +89,9 @@ func TestManagerStopWaitsForStartupAndPreventsLateScheduling(t *testing.T) {
 		<-release
 		return []Job{{Name: "late", Handler: "late", Enabled: true, Schedule: "@every 1s"}}, nil
 	}})
-	manager.RegisterHandler("late", func(context.Context, Job) error {
+	manager.RegisterHandler("late", func(ctx context.Context, _ Job) (context.Context, error) {
 		t.Error("late handler ran")
-		return nil
+		return ctx, nil
 	})
 	startErr := make(chan error, 1)
 	go func() { startErr <- manager.Start(context.Background()) }()
@@ -146,8 +146,8 @@ func TestManagerStopWaitsForRunBookkeeping(t *testing.T) {
 		<-release
 		return base.UpdateRunState(ctx, id, state)
 	}})
-	manager.RegisterHandler("test", func(context.Context, Job) error {
-		return nil
+	manager.RegisterHandler("test", func(ctx context.Context, _ Job) (context.Context, error) {
+		return ctx, nil
 	})
 	job, err := manager.UpsertJob(context.Background(), UpsertJobRequest{Name: "test", Handler: "test", Schedule: "0 0 1 1 *", Enabled: true})
 	if err != nil {

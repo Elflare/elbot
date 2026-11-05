@@ -155,8 +155,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 				record.ResultStatus = globalevents.ResultCanceled
 				record.Level = slog.LevelInfo
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity = globalevents.LogIdentityFromExecution(facts)
+			record.Identity = globalevents.LogIdentityFromContext(ctx)
 			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 	}
@@ -265,8 +264,7 @@ func (a *Adapter) messageGroupRole(ctx context.Context, msg message) contextinfo
 				record.ResultStatus = globalevents.ResultCanceled
 				record.Level = slog.LevelInfo
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity = globalevents.LogIdentityFromExecution(facts)
+			record.Identity = globalevents.LogIdentityFromContext(ctx)
 			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 		return contextinfo.GroupRoleUnknown
@@ -301,8 +299,7 @@ func (a *Adapter) handleCallbackQuery(ctx context.Context, handler share.Message
 					record.ResultStatus = globalevents.ResultCanceled
 					record.Level = slog.LevelInfo
 				}
-				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				record.Identity = globalevents.LogIdentityFromExecution(facts)
+				record.Identity = globalevents.LogIdentityFromContext(ctx)
 				globalevents.Log(context.WithoutCancel(ctx), record)
 			}
 		}

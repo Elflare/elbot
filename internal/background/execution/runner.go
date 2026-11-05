@@ -15,17 +15,17 @@ type BackgroundRunner struct {
 	sandboxRoot string              // Configured root for restricted task directories.
 }
 
-func (r *BackgroundRunner) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
+func (r *BackgroundRunner) RunBackground(ctx context.Context, req background.RunRequest) (context.Context, background.RunResult, error) {
 	dir, err := workspace.SandboxDir(r.sandboxRoot, req.SandboxSubdir)
 	if err != nil {
-		return background.RunResult{}, err
+		return ctx, background.RunResult{}, err
 	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return background.RunResult{}, err
+		return ctx, background.RunResult{}, err
 	}
 	ctx = workspace.WithPathScope(ctx, workspace.PathScope{Dir: dir, Restricted: true})
 
-	result, err := r.execution.RunBackground(ctx, agent.BackgroundRequest{
+	ctx, result, err := r.execution.RunBackground(ctx, agent.BackgroundRequest{
 		TargetPlatforms: req.TargetPlatforms,
 		TaskType:        string(req.TaskType), TaskID: req.TaskID, Name: req.Name,
 		Actor: req.Actor, SessionID: req.SessionID,
@@ -34,7 +34,7 @@ func (r *BackgroundRunner) RunBackground(ctx context.Context, req background.Run
 		ToolListNames: req.ToolListNames, AllowedToolNames: req.AllowedToolNames,
 		ELwispTools: req.ELwispTools, Metadata: req.Metadata,
 	})
-	return background.RunResult{
+	return ctx, background.RunResult{
 		RunID: result.RunID, SessionID: result.SessionID, MessageID: result.MessageID,
 		Text: result.Text, TakenOver: result.TakenOver, Outcome: result.Outcome,
 	}, err

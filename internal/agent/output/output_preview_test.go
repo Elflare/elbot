@@ -141,7 +141,6 @@ func TestPreviewGroupsToolNoticesBeforeHook(t *testing.T) {
 			text:  []string{"shell 提示"},
 			input: "[tool] shell 提示",
 			err:   errors.New("output hook failed"),
-			want:  []string{"对话处理失败：准备工具预览: output hook failed"},
 		},
 	}
 	for _, tt := range tests {

@@ -62,9 +62,8 @@ func (m *Manager) AddPlatform(name string, validate func(events.NotificationTarg
 	return s, nil
 }
 func (m *Manager) route(ctx context.Context, n events.Notification) *signal.Emission[signal.Empty] {
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	reject := func(err error) *signal.Emission[signal.Empty] {
-		m.log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_rejected", Module: "notification", Content: fmt.Sprintf("platform=%s chat_type=%s id=%s error=%v", n.Target.Platform, n.Target.ChatType, n.Target.ID, err), ContentLimit: 4096, Identity: events.LogIdentityFromExecution(facts), ResultStatus: events.ResultFailed})
+		m.log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_rejected", Module: "notification", Content: fmt.Sprintf("platform=%s chat_type=%s id=%s error=%v", n.Target.Platform, n.Target.ChatType, n.Target.ID, err), ContentLimit: 4096, Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.ResultFailed})
 		return signal.Resolved(signal.Result[signal.Empty]{})
 	}
 	if strings.TrimSpace(n.Text) == "" {
@@ -96,7 +95,7 @@ func (m *Manager) route(ctx context.Context, n events.Notification) *signal.Emis
 	if errors.Is(err, signal.ErrQueueFull) {
 		// Logging has its own bounded signal and category queues. Do not wait for
 		// the logger here: a congested platform must not monopolize routing.
-		m.log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_queue_full", Module: "notification", Type: events.ContentText, Content: fmt.Sprintf("notification queue full: platform=%s chat_type=%s id=%s", n.Target.Platform, n.Target.ChatType, n.Target.ID), ContentLimit: 4096, Identity: events.LogIdentityFromExecution(facts), ResultStatus: events.ResultFailed})
+		m.log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_queue_full", Module: "notification", Type: events.ContentText, Content: fmt.Sprintf("notification queue full: platform=%s chat_type=%s id=%s", n.Target.Platform, n.Target.ChatType, n.Target.ID), ContentLimit: 4096, Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.ResultFailed})
 		return signal.Resolved(signal.Result[signal.Empty]{})
 	}
 	if err != nil {

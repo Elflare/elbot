@@ -4,8 +4,9 @@ import (
 	agentshare "elbot/internal/agent/share"
 
 	"context"
-	"errors"
+	"elbot/internal/events"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"elbot/internal/delivery"
@@ -46,9 +47,14 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 			return result, fmt.Errorf("turn output hook: %w", err)
 		}
 	}
-	result.Receipt, result.SendErr = in.Stream.Send(streamCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: text})
-	if result.SendErr != nil && !HasReplyReceipt(result.Receipt) {
-		return result, result.SendErr
+	var err error
+	result.Receipt, err = in.Stream.Send(streamCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: text})
+	if err != nil {
+		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "reply_send_failed", Module: "agent", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}
+		if record.ResultStatus == events.ResultCanceled {
+			record.Level = slog.LevelInfo
+		}
+		events.LogAndNotify(context.WithoutCancel(ctx), record, events.NewNotification(ctx, record.Level, err.Error()))
 	}
 	toSave := message
 	var mappings []storage.PlatformMessageMap
@@ -62,20 +68,18 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 			})
 		}
 	}
-	result.PersistErr = persistence.Commit(ctx, toSave, mappings)
-	if result.PersistErr != nil {
-		return result, errors.Join(result.SendErr, result.PersistErr)
+	if err := persistence.Commit(ctx, toSave, mappings); err != nil {
+		return result, err
 	}
 	if toSave != nil {
 		result.MessageID = message.ID
 	}
-	if result.SendErr != nil {
-		return result, result.SendErr
+	if _, err := out.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: in.Outputs}); err != nil {
+		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "reply_extras_failed", Module: "agent", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}
+		if record.ResultStatus == events.ResultCanceled {
+			record.Level = slog.LevelInfo
+		}
+		events.LogAndNotify(context.WithoutCancel(ctx), record, events.NewNotification(ctx, record.Level, err.Error()))
 	}
-	_, result.SendErr = out.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: in.Outputs})
-	return result, result.SendErr
-}
-
-func HasReplyReceipt(receipt delivery.Receipt) bool {
-	return len(receipt.PlatformMessageIDs) != 0 || len(receipt.SentMessages) != 0
+	return result, nil
 }

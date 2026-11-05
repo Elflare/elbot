@@ -2,9 +2,7 @@ package elnis
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -16,19 +14,23 @@ import (
 )
 
 // RunLLMEvent 执行已通过 prepareEvent 的入队事件；有效投递目标已在入口保证非空。
-func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) error {
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	identity := globalevents.LogIdentityFromExecution(facts)
-	// Only local preparation failures are logged here. Dialogue, report delivery
-	// and event persistence own their diagnostics.
+func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) (err error) {
+	identity := globalevents.LogIdentityFromContext(ctx)
+	// This entrypoint owns terminal reports; handled failures end here before state updates.
 	logFailure := func(operation string, err error, level slog.Level) {
+		identity := globalevents.LogIdentityFromContext(ctx)
 		content, _ := json.Marshal(map[string]any{"event_id": eventID, "event_key": event.EventKey, "operation": operation, "error": err.Error()})
 		record := globalevents.LogRecord{Category: globalevents.LogElnis, Level: level, Module: "elnis", EventName: "elnis_llm_failed", Type: globalevents.ContentJSON, Content: string(content), Identity: identity, ResultStatus: globalevents.LogStatus(err)}
 		if record.ResultStatus == globalevents.ResultCanceled {
 			record.Level = slog.LevelInfo
 		}
-		background.LogBackground(ctx, record)
+		globalevents.Log(ctx, record)
 	}
+	defer func() {
+		if err != nil {
+			logFailure("run", err, slog.LevelError)
+		}
+	}()
 	if err := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusRunning, "", ""); err != nil {
 		return err
 	}
@@ -44,22 +46,19 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 			Content:   string(content),
 		}
 		record.Identity = identity
-		background.LogBackground(ctx, record)
+		globalevents.Log(ctx, record)
 		record.Category, record.EventName = globalevents.LogElnis, "elnis_llm_started"
-		background.LogBackground(ctx, record)
+		globalevents.Log(ctx, record)
 	}
 
 	segments, err := s.materializeSegments(ctx, event.Segments, eventID)
 	if err != nil {
-		if saveErr := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error()); saveErr != nil {
-			return errors.Join(err, saveErr)
-		}
-		return err
+		logFailure("task", err, slog.LevelError)
+		return s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
 	}
 	model := s.modelForEvent(event)
 	targets, err := decodeResolvedTargets(event.ResolvedTargets)
 	if err != nil {
-		logFailure("decode_targets", err, slog.LevelError)
 		return err
 	}
 	platforms := make([]string, 0, len(targets))
@@ -92,52 +91,49 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		runRequest.AllowedToolNames = append(runRequest.AllowedToolNames, name)
 	}
 
-	result, err := s.runner.RunBackground(ctx, runRequest)
+	ctx, result, err := s.runner.RunBackground(ctx, runRequest)
 	identity.SessionID = result.SessionID
-	if taken, lookupErr := s.sessionTakenOver(context.WithoutCancel(ctx), result.SessionID); lookupErr != nil {
-		logFailure("check_takeover", lookupErr, slog.LevelError)
-		err = errors.Join(err, lookupErr)
-		if saveErr := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, result.Text, err.Error()); saveErr != nil {
-			return errors.Join(err, saveErr)
-		}
-		return err
-	} else if taken {
-		result.TakenOver = true
-	}
 	if result.TakenOver {
 		return s.completeTakeover(ctx, eventID, event.ResolvedTargets, result, err)
 	}
 	if err != nil {
-		if saveErr := s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error()); saveErr != nil {
-			return errors.Join(err, saveErr)
-		}
-		return err
+		logFailure("run_model", err, slog.LevelError)
+		return s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, result.Text, err.Error())
+	}
+	if taken, lookupErr := s.sessionTakenOver(context.WithoutCancel(ctx), result.SessionID); lookupErr != nil {
+		return lookupErr
+	} else if taken {
+		result.TakenOver = true
+		return s.completeTakeover(ctx, eventID, event.ResolvedTargets, result, nil)
 	}
 	parsed, parseErr := background.ParseJSONResult(result.Text)
 	if parseErr != nil {
-		result, parsed, parseErr = s.retryLLMResultFormat(ctx, event, result.SessionID, model)
-	}
-	if result.TakenOver {
-		return s.completeTakeover(ctx, eventID, event.ResolvedTargets, result, parseErr)
+		logFailure("parse_result", parseErr, slog.LevelWarn)
+		ctx, result, err = s.retryLLMResultFormat(ctx, event, result.SessionID, model)
+		if result.TakenOver {
+			return s.completeTakeover(ctx, eventID, event.ResolvedTargets, result, err)
+		}
+		if err != nil {
+			logFailure("run_model", err, slog.LevelError)
+			return s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, result.Text, err.Error())
+		}
+		parsed, parseErr = background.ParseJSONResult(result.Text)
 	}
 	if parseErr != nil {
 		message := fmt.Sprintf("Elnis 事件 %s 解析格式失败，请查看后台 session。\nsession: %s\n错误：%v", event.EventKey, result.SessionID, parseErr)
-		if saveErr := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, message, parseErr.Error()); saveErr != nil {
-			return errors.Join(parseErr, saveErr)
-		}
-		return parseErr
+		logFailure("task", parseErr, slog.LevelError)
+		return s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, message, parseErr.Error())
 	}
 	resultJSON, _ := json.Marshal(parsed)
 	if parsed.NeedReport && (strings.TrimSpace(parsed.Report) != "" || len(parsed.ReportSegments) > 0) {
 		prepared, err := s.prepareReport(ctx, event, eventID, string(resultJSON), result.SessionID, result.MessageID, parsed)
 		if err != nil {
-			if saveErr := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, string(resultJSON), err.Error()); saveErr != nil {
-				return errors.Join(err, saveErr)
-			}
-			return err
+			logFailure("prepare_report", err, slog.LevelError)
+			return s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, string(resultJSON), err.Error())
 		}
 		if prepared {
-			return s.deliverReport(ctx, eventID)
+			ctx, err = s.deliverReport(ctx, eventID)
+			return err
 		}
 	} else if err := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, result.SessionID, string(resultJSON), ""); err != nil {
 		return err
@@ -156,37 +152,19 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		}
 		record.Identity = identity
 		record.Identity.SessionID = result.SessionID
-		background.LogBackground(ctx, record)
+		globalevents.Log(ctx, record)
 		record.Category, record.EventName = globalevents.LogElnis, "elnis_llm_completed"
-		background.LogBackground(ctx, record)
+		globalevents.Log(ctx, record)
 	}
 	return nil
 }
 
-func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, sessionID string, model config.ModelSelection) (_ background.RunResult, _ background.JSONResult, err error) {
-	step := "check_takeover"
-	defer func() {
-		if err == nil || step == "run" {
-			return
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		facts.SessionID = sessionID
-		level, name := slog.LevelError, "elnis_llm_failed"
-		if step == "parse_result" {
-			level, name = slog.LevelWarn, "elnis_llm_format_failed"
-		}
-		record := globalevents.LogRecord{Category: globalevents.LogElnis, Level: level, Module: "elnis", EventName: name, Identity: globalevents.LogIdentityFromExecution(facts), ResultStatus: globalevents.LogStatus(err), Content: fmt.Sprintf("event_key=%s operation=%s error=%v", event.EventKey, step, err)}
-		if record.ResultStatus == globalevents.ResultCanceled {
-			record.Level = slog.LevelInfo
-		}
-		background.LogBackground(ctx, record)
-	}()
+func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, sessionID string, model config.ModelSelection) (context.Context, background.RunResult, error) {
 
 	if taken, err := s.sessionTakenOver(ctx, sessionID); err != nil || taken {
-		return background.RunResult{SessionID: sessionID, TakenOver: taken, Outcome: "taken_over"}, background.JSONResult{}, err
+		return ctx, background.RunResult{SessionID: sessionID, TakenOver: taken, Outcome: "taken_over"}, err
 	}
-	step = "run"
-	result, err := s.runner.RunBackground(ctx, background.RunRequest{
+	return s.runner.RunBackground(ctx, background.RunRequest{
 		TaskType:      background.KindElnis,
 		TaskID:        event.EventKey,
 		Name:          firstNonEmpty(event.Request.Title, "Elnis: "+event.Request.Source),
@@ -198,15 +176,6 @@ func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, session
 		SandboxSubdir: elnisSandboxSubdir(event.Request.Elwisp.Name),
 		Metadata:      map[string]string{"elnis_event_key": event.EventKey, "elwisp_name": event.Request.Elwisp.Name},
 	})
-	if err != nil {
-		return result, background.JSONResult{}, err
-	}
-	if result.TakenOver {
-		return result, background.JSONResult{}, nil
-	}
-	step = "parse_result"
-	parsed, err := background.ParseJSONResult(result.Text)
-	return result, parsed, err
 }
 
 func (s *Service) llmPrompt(event Event) string {
@@ -261,8 +230,8 @@ func (s *Service) completeTakeover(ctx context.Context, eventID, resolved string
 	if runErr != nil {
 		message = runErr.Error()
 	}
-	if err := s.completeEventWithSession(ctx, eventID, resolved, StatusTakenOver, result.SessionID, string(payload), message); err != nil {
-		return errors.Join(runErr, err)
+	if runErr != nil {
+		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogElnis, Level: slog.LevelInfo, EventName: "elnis_takeover_result", Module: "elnis", Content: runErr.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(runErr)})
 	}
-	return runErr
+	return s.completeEventWithSession(ctx, eventID, resolved, StatusTakenOver, result.SessionID, string(payload), message)
 }

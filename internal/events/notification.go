@@ -32,11 +32,10 @@ var NotificationRequested = signal.New[Notification, signal.Empty]("notification
 func Notify(ctx context.Context, notification Notification) {
 	_, err := NotificationRequested.EmitAsync(ctx, notification)
 	if err != nil && ctx.Err() == nil && !errors.Is(err, signal.ErrClosed) {
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
 		AsyncLog(ctx, LogRecord{
 			Category: LogRuntime, Level: slog.LevelWarn, EventName: "notification_rejected", Module: "notification",
 			Content: fmt.Sprintf("target=%+v error=%v", notification.Target, err), ContentLimit: 4096,
-			Identity: LogIdentityFromExecution(facts), ResultStatus: ResultFailed,
+			Identity: LogIdentityFromContext(ctx), ResultStatus: ResultFailed,
 		})
 	}
 }

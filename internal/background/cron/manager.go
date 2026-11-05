@@ -2,7 +2,6 @@ package cron
 
 import (
 	"context"
-	background "elbot/internal/background/share"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -16,7 +15,7 @@ import (
 
 // Handler supplies the execution result and independent diagnostic body. The
 // scheduler consumes these source facts without classifying the original error.
-type Handler func(ctx context.Context, job Job) (err error)
+type Handler func(ctx context.Context, job Job) (context.Context, error)
 
 type Manager struct {
 	repo JobRepository
@@ -152,8 +151,8 @@ func (m *Manager) Start(ctx context.Context) error {
 			Content:      "cron manager started",
 			ContentLimit: 4096,
 		}
-		record.Identity = cronLogIdentity(ctx)
-		background.LogBackground(ctx, record)
+		record.Identity = globalevents.LogIdentityFromContext(ctx)
+		globalevents.Log(ctx, record)
 	}
 	return nil
 }
@@ -188,7 +187,7 @@ func (m *Manager) Stop() context.Context {
 			Content:      "cron manager stopping",
 			ContentLimit: 4096,
 		}
-		background.LogBackground(context.Background(), record)
+		globalevents.Log(context.Background(), record)
 	}
 	go func() {
 		if schedulerDone != nil {
@@ -218,8 +217,8 @@ func (m *Manager) reloadEnabled(ctx context.Context) error {
 					ContentLimit: 4096,
 					ResultStatus: globalevents.ResultFailed,
 				}
-				record.Identity = cronLogIdentity(ctx)
-				background.LogBackground(ctx, record)
+				record.Identity = globalevents.LogIdentityFromContext(ctx)
+				globalevents.Log(ctx, record)
 			}
 		}
 	}
@@ -253,7 +252,7 @@ func (m *Manager) scheduleJob(ctx context.Context, job Job) error {
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultFailed,
 			}
-			background.LogBackground(context.Background(), record)
+			globalevents.Log(context.Background(), record)
 		}
 		return m.updateNextRunAt(ctx, job, nil)
 	}
@@ -289,7 +288,7 @@ func (m *Manager) scheduleJob(ctx context.Context, job Job) error {
 			ContentLimit: 4096,
 			ResultStatus: globalevents.ResultSucceeded,
 		}
-		background.LogBackground(context.Background(), record)
+		globalevents.Log(context.Background(), record)
 	}
 	return nil
 }
@@ -302,7 +301,7 @@ func (m *Manager) runJob(name string) {
 	}
 	ctx := m.runCtx
 
-	identity := cronLogIdentity(ctx)
+	identity := globalevents.LogIdentityFromContext(ctx)
 	m.workers.Add(1)
 	m.mu.Unlock()
 	defer m.workers.Done()
@@ -321,7 +320,7 @@ func (m *Manager) runJob(name string) {
 					ResultStatus: globalevents.ResultFailed,
 				}
 				record.Identity = identity
-				background.LogBackground(ctx, record)
+				globalevents.Log(ctx, record)
 			}
 		}
 		return
@@ -350,7 +349,7 @@ func (m *Manager) runJob(name string) {
 				ResultStatus: globalevents.ResultSkipped,
 			}
 			record.Identity = identity
-			background.LogBackground(ctx, record)
+			globalevents.Log(ctx, record)
 		}
 		return
 	}
@@ -369,7 +368,7 @@ func (m *Manager) runJob(name string) {
 				ResultStatus: globalevents.ResultFailed,
 			}
 			record.Identity = identity
-			background.LogBackground(ctx, record)
+			globalevents.Log(ctx, record)
 		}
 		return
 	}
@@ -393,9 +392,10 @@ func (m *Manager) runJob(name string) {
 			ContentLimit: 4096,
 		}
 		record.Identity = identity
-		background.LogBackground(ctx, record)
+		globalevents.Log(ctx, record)
 	}
-	runErr := handler(ctx, *job)
+	ctx, runErr := handler(ctx, *job)
+	identity = globalevents.LogIdentityFromContext(ctx)
 	resultStatus := globalevents.ResultSucceeded
 	if runErr != nil {
 		resultStatus = globalevents.ResultFailed
@@ -419,13 +419,11 @@ func (m *Manager) runJob(name string) {
 		record.Level = slog.LevelWarn
 	}
 	record.Identity = identity
-	defer func() {
-		if record.ResultStatus == globalevents.ResultFailed {
-			record.EventName = "cron_job_failed"
-		}
-		record.EventName += "." + job.Handler
-		background.LogBackground(ctx, record)
-	}()
+	if record.ResultStatus == globalevents.ResultFailed {
+		record.EventName = "cron_job_failed"
+	}
+	record.EventName += "." + job.Handler
+	globalevents.Log(ctx, record)
 	// Final bookkeeping remains part of the tracked invocation after cancel.
 	ctx = context.WithoutCancel(ctx)
 
@@ -434,9 +432,6 @@ func (m *Manager) runJob(name string) {
 		LastRunAt: startedAt,
 		UpdatedAt: time.Now(),
 	}); err != nil {
-		record.Content += fmt.Sprintf("\nstate_save_error=%q", err.Error())
-		record.ResultStatus = globalevents.ResultFailed
-		record.Level = slog.LevelError
 		{
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogRuntime,
@@ -449,7 +444,7 @@ func (m *Manager) runJob(name string) {
 				ResultStatus: globalevents.ResultFailed,
 			}
 			record.Identity = identity
-			background.LogBackground(ctx, record)
+			globalevents.Log(ctx, record)
 		}
 	}
 }
@@ -485,24 +480,7 @@ func (m *Manager) updateNextRunAt(ctx context.Context, job Job, nextRunAt *time.
 		job.NextRunAt != nil && nextRunAt != nil && job.NextRunAt.Equal(*nextRunAt) {
 		return nil
 	}
-	if err := m.repo.UpdateNextRunAt(ctx, job.ID, nextRunAt, time.Now()); err != nil {
-		{
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
-				Level:        slog.LevelError,
-				EventName:    "cron_job_next_run_update_failed",
-				Module:       "cron",
-				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("cron job next run update failed\njob=%v\nhandler=%v\nerror=%v", job.Name, job.Handler, err),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultFailed,
-			}
-			record.Identity = cronLogIdentity(ctx)
-			background.LogBackground(ctx, record)
-		}
-		return err
-	}
-	return nil
+	return m.repo.UpdateNextRunAt(ctx, job.ID, nextRunAt, time.Now())
 }
 
 func computeNextRunAt(schedule, metadata string, enabled bool, now time.Time) (*time.Time, error) {

@@ -23,10 +23,10 @@ type expiryMediaAPI struct {
 	remove func(context.Context, media.Reference) error
 }
 
-func pruneMediaForTest(ctx context.Context, b *mediaBridge, now time.Time, closeAll bool) ([]events.LogRecord, error) {
+func pruneMediaForTest(ctx context.Context, b *mediaBridge, now time.Time, closeAll bool) []events.LogRecord {
 	var records []events.LogRecord
-	err := b.prune(ctx, now, closeAll, func(record events.LogRecord) { records = append(records, record) })
-	return records, err
+	b.prune(ctx, now, closeAll, func(record events.LogRecord) { records = append(records, record) })
+	return records
 }
 
 func (p expiryMediaAPI) AddReference(ctx context.Context, ref media.Reference) error {

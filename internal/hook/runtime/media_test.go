@@ -89,9 +89,7 @@ func TestMediaProtocolImportReadExportAndLeases(t *testing.T) {
 	if err := center.AddReference(ctx, ref); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pruneMediaForTest(ctx, m.media, time.Now().Add(2*mediaLeaseTTL), false); err != nil {
-		t.Fatal(err)
-	}
+	pruneMediaForTest(ctx, m.media, time.Now().Add(2*mediaLeaseTTL), false)
 	if _, err := os.Stat(exported.Path); !os.IsNotExist(err) {
 		t.Fatalf("export survived expiry: %v", err)
 	}

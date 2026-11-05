@@ -3,6 +3,9 @@ package responses
 import (
 	"bytes"
 	"context"
+	globalevents "elbot/internal/events"
+	"elbot/internal/llm"
+	"elbot/internal/llm/httpclient"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,11 +13,6 @@ import (
 	"maps"
 	"net/http"
 	"strings"
-
-	"elbot/internal/contextinfo"
-	globalevents "elbot/internal/events"
-	"elbot/internal/llm"
-	"elbot/internal/llm/httpclient"
 )
 
 var _ Streamer = (*Client)(nil)
@@ -226,8 +224,6 @@ func (c *Client) StreamPrepared(ctx context.Context, prepared PreparedRequest) (
 	if len(prepared.body) == 0 {
 		return nil, fmt.Errorf("prepared response request is empty")
 	}
-
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record := globalevents.LogRecord{
 		Category:  globalevents.LogRuntime,
 		Level:     slog.LevelDebug,
@@ -240,7 +236,7 @@ func (c *Client) StreamPrepared(ctx context.Context, prepared PreparedRequest) (
 			prepared.inputs, len(prepared.allowedTools), len(prepared.body),
 		),
 	}
-	record.Identity = globalevents.LogIdentityFromExecution(facts)
+	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	globalevents.Log(ctx, record)
 
 	callCtx, cancel := context.WithCancel(ctx)

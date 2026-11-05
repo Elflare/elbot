@@ -116,10 +116,6 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 		return c.compactOnce(ctx, row, selection, client, request, checkpointID, audit)
 	}, request)
 	if err != nil {
-		if ctx.Err() == nil {
-			globalevents.Log(context.WithoutCancel(ctx), globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "compact_error", Module: "agent", Content: err.Error(), ResultStatus: globalevents.ResultFailed})
-			globalevents.Notify(session.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelError, "上下文压缩失败："+err.Error()))
-		}
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
@@ -182,15 +178,14 @@ func (c *Compactor) compactOnce(ctx context.Context, row *storage.Session, selec
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
+	result, err = client.CompactPrepared(ctx, request)
+	archiveErr := func() error {
 		status, raw, output, failure := "failed", "", "", ""
 		if result != nil {
 			raw = string(result.Raw)
 			encoded, encodeErr := json.Marshal(result.Output)
 			if encodeErr != nil {
-				slog.ErrorContext(context.WithoutCancel(ctx), "encode compact response", "exchange_id", exchange.ID, "error", encodeErr, "request_error", err)
-				err = fmt.Errorf("encode compact response: %w", encodeErr)
-				return
+				return fmt.Errorf("encode compact response: %w", encodeErr)
 			}
 			output = string(encoded)
 		}
@@ -203,9 +198,16 @@ func (c *Compactor) compactOnce(ctx context.Context, row *storage.Session, selec
 			}
 		}
 		if saveErr := c.Context.Repository.FinishExchange(context.WithoutCancel(ctx), exchange.ID, status, raw, output, failure); saveErr != nil {
-			slog.ErrorContext(context.WithoutCancel(ctx), "save compact response", "exchange_id", exchange.ID, "error", saveErr, "request_error", err)
-			err = fmt.Errorf("save compact response: %w", saveErr)
+			return fmt.Errorf("save compact response: %w", saveErr)
 		}
+
+		return nil
 	}()
-	return client.CompactPrepared(ctx, request)
+	if archiveErr != nil {
+		if err == nil {
+			return result, archiveErr
+		}
+		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "compact_archive_failed", Module: "agent", Content: archiveErr.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.ResultFailed})
+	}
+	return result, err
 }

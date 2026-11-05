@@ -24,9 +24,9 @@ import (
 
 type backgroundExecutionStub struct{ request agent.BackgroundRequest }
 
-func (s *backgroundExecutionStub) RunBackground(_ context.Context, req agent.BackgroundRequest) (agent.BackgroundResult, error) {
+func (s *backgroundExecutionStub) RunBackground(ctx context.Context, req agent.BackgroundRequest) (context.Context, agent.BackgroundResult, error) {
 	s.request = req
-	return agent.BackgroundResult{SessionID: "borrowed", Text: "borrowed execution"}, nil
+	return ctx, agent.BackgroundResult{SessionID: "borrowed", Text: "borrowed execution"}, nil
 }
 func (*backgroundExecutionStub) CopyBackground(context.Context, agent.BackgroundCopyRequest) (string, error) {
 	return "", nil

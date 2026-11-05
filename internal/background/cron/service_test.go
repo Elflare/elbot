@@ -135,7 +135,7 @@ func TestRunLLMReportPassesToolListNames(t *testing.T) {
 	svc := newTestCronService(t, Options{Store: repo, Runner: runner})
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}, LLM: CronLLMMetadata{ToolListNames: []string{"web_search"}}})
 	meta := mustDecodeTestMetadata(t, job.Metadata)
-	if _, err := svc.runLLMReport(context.Background(), *job, meta, CronDeliveryState{RunID: "run"}); err != nil {
+	if _, _, err := svc.runLLMReport(context.Background(), *job, meta, CronDeliveryState{RunID: "run"}); err != nil {
 		t.Fatalf("runLLMReport: %v", err)
 	}
 	if len(runner.requests) != 1 || strings.Join(runner.requests[0].ToolListNames, ",") != "web_search" {
@@ -163,7 +163,7 @@ func TestRunLLMMapsReportNoticeToBackgroundMessage(t *testing.T) {
 	})
 	job := upsertTestCronJob(t, store, Metadata{Kind: metadataKind, Version: 1, Title: "总结", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
 	meta := mustDecodeTestMetadata(t, job.Metadata)
-	if err := svc.runTask(ctx, *job, meta); err != nil {
+	if _, err := svc.runTask(ctx, *job, meta); err != nil {
 		t.Fatalf("runTask: %v", err)
 	}
 	if len(store.mappings) != 1 || store.mappings[0] != (background.ReportMessageMap{Platform: "qq-onebot", ChatType: "private", ChatID: "1001", PlatformMessageID: "notice-1", SessionID: "cron-session", MessageID: "cron-message"}) {
@@ -214,7 +214,7 @@ func TestRunLLMSendsReportSegments(t *testing.T) {
 	}})
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
 	meta := mustDecodeTestMetadata(t, job.Metadata)
-	if err := svc.runTask(context.Background(), *job, meta); err != nil {
+	if _, err := svc.runTask(context.Background(), *job, meta); err != nil {
 		t.Fatalf("runTask: %v", err)
 	}
 	if len(sent) != 2 || sent[0] != delivery.KindText || sent[1] != delivery.KindImage {
@@ -422,11 +422,11 @@ func TestRunLLMReportStartsFreshSessionEachCronTrigger(t *testing.T) {
 	svc := newTestCronService(t, Options{Store: repo, Runner: runner})
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleCron, CronExpr: "*/5 * * * *"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}, LLM: CronLLMMetadata{ToolListNames: []string{"web_search"}}})
 	meta := mustDecodeTestMetadata(t, job.Metadata)
-	_, err := svc.runLLMReport(context.Background(), *job, meta, CronDeliveryState{RunID: "run-1"})
+	_, _, err := svc.runLLMReport(context.Background(), *job, meta, CronDeliveryState{RunID: "run-1"})
 	if err != nil {
 		t.Fatalf("first runLLMReport: %v", err)
 	}
-	_, err = svc.runLLMReport(context.Background(), *job, meta, CronDeliveryState{RunID: "run-2"})
+	_, _, err = svc.runLLMReport(context.Background(), *job, meta, CronDeliveryState{RunID: "run-2"})
 	if err != nil {
 		t.Fatalf("second runLLMReport: %v", err)
 	}
@@ -451,7 +451,7 @@ func TestRunLLMReportStoresGeneratedReport(t *testing.T) {
 		Target:   CronTarget{SourcePlatform: "cli"},
 	})
 
-	updated, err := svc.runLLMReport(context.Background(), *job, mustDecodeTestMetadata(t, job.Metadata), CronDeliveryState{RunID: "new-run"})
+	_, updated, err := svc.runLLMReport(context.Background(), *job, mustDecodeTestMetadata(t, job.Metadata), CronDeliveryState{RunID: "new-run"})
 	if err != nil {
 		t.Fatalf("runLLMReport: %v", err)
 	}
@@ -470,7 +470,7 @@ func TestRunLLMReportPreservesTextWhenNeedReportFalse(t *testing.T) {
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
 
 	meta := mustDecodeTestMetadata(t, job.Metadata)
-	updated, err := svc.runLLMReport(context.Background(), *job, meta, CronDeliveryState{RunID: "run"})
+	_, updated, err := svc.runLLMReport(context.Background(), *job, meta, CronDeliveryState{RunID: "run"})
 	if err != nil {
 		t.Fatalf("runLLMReport: %v", err)
 	}
@@ -508,7 +508,7 @@ func TestRunLLMNeedReportOnlyControlsText(t *testing.T) {
 			}})
 			svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 			job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
-			err := svc.runTask(t.Context(), *job, mustDecodeTestMetadata(t, job.Metadata))
+			_, err := svc.runTask(t.Context(), *job, mustDecodeTestMetadata(t, job.Metadata))
 			if tc.attachment && !errors.Is(err, failure) || !tc.attachment && err != nil {
 				t.Fatalf("runTask: %v", err)
 			}
@@ -550,7 +550,7 @@ func TestRunLLMReportRetriesInvalidJSONOnce(t *testing.T) {
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}, LLM: CronLLMMetadata{ToolListNames: []string{"web_search"}}})
 
 	meta := mustDecodeTestMetadata(t, job.Metadata)
-	updated, err := svc.runLLMReport(context.Background(), *job, meta, CronDeliveryState{RunID: "run"})
+	_, updated, err := svc.runLLMReport(context.Background(), *job, meta, CronDeliveryState{RunID: "run"})
 	if err != nil {
 		t.Fatalf("runLLMReport: %v", err)
 	}
@@ -586,8 +586,8 @@ func TestRunLLMSendsAdminNoticeWhenRetryStillInvalid(t *testing.T) {
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
 
 	meta := mustDecodeTestMetadata(t, job.Metadata)
-	if err := svc.runTask(context.Background(), *job, meta); err == nil {
-		t.Fatal("expected parse error")
+	if _, err := svc.runTask(context.Background(), *job, meta); err != nil {
+		t.Fatalf("handled format failure escaped: %v", err)
 	}
 	if runner.calls != 2 {
 		t.Fatalf("runner calls = %d", runner.calls)
@@ -701,12 +701,13 @@ func (f cronReportMediaFunc) ImportReader(ctx context.Context, reader io.Reader,
 type fakeCronRunner struct {
 	text       string
 	texts      []string
+	errors     []error
 	sessionIDs []string
 	calls      int
 	requests   []background.RunRequest
 }
 
-func (r *fakeCronRunner) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
+func (r *fakeCronRunner) RunBackground(ctx context.Context, req background.RunRequest) (context.Context, background.RunResult, error) {
 	r.requests = append(r.requests, req)
 	text := r.text
 	if r.calls < len(r.texts) {
@@ -717,7 +718,10 @@ func (r *fakeCronRunner) RunBackground(ctx context.Context, req background.RunRe
 		sessionID = r.sessionIDs[r.calls]
 	}
 	r.calls++
-	return background.RunResult{SessionID: sessionID, MessageID: "cron-message", Text: text}, nil
+	if r.calls <= len(r.errors) && r.errors[r.calls-1] != nil {
+		return ctx, background.RunResult{SessionID: sessionID}, r.errors[r.calls-1]
+	}
+	return ctx, background.RunResult{SessionID: sessionID, MessageID: "cron-message", Text: text}, nil
 }
 
 func testElyphTask(name string) string {

@@ -2,7 +2,6 @@ package platform
 
 import (
 	"context"
-	agentshare "elbot/internal/agent/share"
 	"errors"
 	"log/slog"
 	"reflect"
@@ -151,10 +150,9 @@ func TestServiceNotificationBusinessIgnoresLogFailure(t *testing.T) {
 	if err != nil || len(results) != 1 || results[0].Started || len(records) != 1 {
 		t.Fatalf("invalid host destination: %v %v", results, err)
 	}
-	agentshare.ReportFailure(t.Context(), "session", errors.New("ordinary model failure"), func(ctx context.Context, level slog.Level, text string) {
-		_, _ = events.NotificationRequested.Emit(ctx, events.Notification{Text: text, Level: level})
-	})
-	if len(records) != 2 || records[1].Level != slog.LevelWarn || records[1].Content != "对话处理失败：ordinary model failure" {
+	events.Notify(t.Context(), events.NewNotification(t.Context(), slog.LevelWarn, "ordinary model failure"))
+	_, _ = events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "barrier", Level: slog.LevelWarn})
+	if len(records) != 3 || records[1].Level != slog.LevelWarn || records[1].Content != "ordinary model failure" {
 		t.Fatalf("headless reclassified an ordinary failure: %+v", records)
 	}
 	if err := m.Close(context.Background()); err != nil {

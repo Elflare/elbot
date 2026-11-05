@@ -4,10 +4,7 @@ import (
 	agentshare "elbot/internal/agent/share"
 
 	"context"
-	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"fmt"
-	"log/slog"
 	"slices"
 
 	"elbot/internal/llm"
@@ -85,20 +82,6 @@ type ToolTranscriptCommitter struct {
 }
 
 func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Message) (err error) {
-	step := "prepare_tool_transcript"
-	defer func() {
-		// The commit boundary owns failures after preparation is complete.
-		if err == nil || step == "commit" {
-			return
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		facts.SessionID = head.SessionID
-		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, Module: "agent", EventName: "tool_batch_prepare_failed", ResultStatus: events.LogStatus(err), Content: fmt.Sprintf("operation=%s error=%v", step, err)}
-		if record.ResultStatus == events.ResultCanceled {
-			record.Level = slog.LevelInfo
-		}
-		agentshare.EmitAgentLog(ctx, facts, record)
-	}()
 
 	c.head = head
 	metadata, err := agentshare.AssistantMessageMetadata(head.Metadata)
@@ -122,7 +105,6 @@ func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Messa
 	fields, _ := storage.DecodeSessionMetadata(head.Metadata)
 	_ = fields.Set("tool_batch_status", "pending")
 	head.Metadata, _ = fields.Encode()
-	step = "commit"
 	return c.Messages.Commit(ctx, storage.DialogueCommit{SessionID: c.head.SessionID, ToolBatch: batch}, "begin_tool_transcript")
 }
 func (c *ToolTranscriptCommitter) Prepared(context.Context, int, llm.ToolCallRequest) error {
@@ -158,18 +140,6 @@ func (c *ToolTranscriptCommitter) Result(ctx context.Context, index int, call ll
 	return err
 }
 func (c *ToolTranscriptCommitter) Flush(ctx context.Context) (err error) {
-	defer func() {
-		if err == nil {
-			return
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		facts.SessionID = c.head.SessionID
-		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, Module: "agent", EventName: "tool_transcript_projection_failed", ResultStatus: events.LogStatus(err), Content: err.Error()}
-		if record.ResultStatus == events.ResultCanceled {
-			record.Level = slog.LevelInfo
-		}
-		agentshare.EmitAgentLog(ctx, facts, record)
-	}()
 
 	if c.remaining != 0 {
 		return fmt.Errorf("tool batch has unfinished results")

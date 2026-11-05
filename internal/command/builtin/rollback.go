@@ -93,8 +93,7 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 				record.ResultStatus = globalevents.ResultCanceled
 			}
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		record.Identity = globalevents.LogIdentityFromExecution(facts)
+		record.Identity = globalevents.LogIdentityFromContext(ctx)
 		record.Identity.SessionID = sessionID
 		data, _ := json.Marshal(content)
 		record.Content = string(data)

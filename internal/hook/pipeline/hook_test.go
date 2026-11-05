@@ -203,11 +203,15 @@ func TestMatchMessagePlatformTextAndReplyFields(t *testing.T) {
 	}
 }
 
-func TestManagerStopsOnRunError(t *testing.T) {
+func TestManagerDiscardsFailedEditAndContinues(t *testing.T) {
 	manager := newTestManager()
 
 	boom := errors.New("boom")
 	called := false
+	manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Priority: -1, Name: "first", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, error) {
+		event.Message.Segments = llm.TextSegments("accepted")
+		return event, nil
+	})})
 	manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Priority: 0, Name: "boom", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, error) {
 		event.Message.Segments = llm.ReplaceSegmentText(event.Message.Segments, regexp.MustCompile(".*"), "changed", false)
 		return event, boom
@@ -218,17 +222,14 @@ func TestManagerStopsOnRunError(t *testing.T) {
 	})})
 
 	event, err := manager.Run(context.Background(), share.Event{Point: share.PointAgentInputPrepared, Message: share.MessagePayload{Segments: llm.TextSegments("original")}}, CallOptions{Woken: true})
-	if !errors.Is(err, boom) {
-		t.Fatalf("error = %v, want %v", err, boom)
+	if err != nil {
+		t.Fatalf("handled Hook error escaped: %v", err)
 	}
-	if !strings.Contains(err.Error(), "hook boom") {
-		t.Fatalf("error = %q, want hook name", err.Error())
+	if llm.SegmentsTextOnly(event.Message.Segments) != "accepted" {
+		t.Fatalf("event text = %q, want previous successful edit", llm.SegmentsTextOnly(event.Message.Segments))
 	}
-	if llm.SegmentsTextOnly(event.Message.Segments) != "original" {
-		t.Fatalf("event text = %q, want original because failed update is not committed", llm.SegmentsTextOnly(event.Message.Segments))
-	}
-	if called {
-		t.Fatal("expected later handler not to run")
+	if !called {
+		t.Fatal("expected later handler to run")
 	}
 }
 
@@ -318,8 +319,8 @@ func TestManagerLogsCanceledHookAsInfo(t *testing.T) {
 	})
 
 	_, err := manager.Run(context.Background(), share.Event{Point: share.PointAgentInputPrepared}, CallOptions{Woken: true})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("Run error = %v, want context canceled", err)
+	if err != nil {
+		t.Fatalf("individual Hook cancellation escaped: %v", err)
 	}
 	logs := buf.String()
 	if !strings.Contains(logs, "level=INFO") || !strings.Contains(logs, "event=hook_canceled") {
@@ -327,7 +328,7 @@ func TestManagerLogsCanceledHookAsInfo(t *testing.T) {
 	}
 }
 
-func TestNotifyRunsAllHandlersAndJoinsErrors(t *testing.T) {
+func TestNotifyHandlesEachFailureAndContinues(t *testing.T) {
 	manager := newTestManager()
 
 	first := errors.New("first")
@@ -343,11 +344,8 @@ func TestNotifyRunsAllHandlersAndJoinsErrors(t *testing.T) {
 	})})
 
 	err := manager.Notify(context.Background(), share.Event{Point: share.PointErrorOccurred}, CallOptions{Woken: true})
-	if !errors.Is(err, first) || !errors.Is(err, second) {
-		t.Fatalf("joined error = %v, want both errors", err)
-	}
-	if !strings.Contains(err.Error(), "hook first") || !strings.Contains(err.Error(), "hook second") {
-		t.Fatalf("joined error = %q, want hook names", err.Error())
+	if err != nil {
+		t.Fatalf("handled notification errors escaped: %v", err)
 	}
 	if calls != 2 {
 		t.Fatalf("calls = %d, want 2", calls)

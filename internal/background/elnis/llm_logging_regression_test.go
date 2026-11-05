@@ -31,8 +31,8 @@ func (r failingReportReceiptRepository) MarkReportDeliveriesDelivered(context.Co
 	return r.err
 }
 
-func (r joinedFailureBackgroundRunner) RunBackground(context.Context, background.RunRequest) (background.RunResult, error) {
-	return background.RunResult{}, r.err
+func (r joinedFailureBackgroundRunner) RunBackground(ctx context.Context, _ background.RunRequest) (context.Context, background.RunResult, error) {
+	return ctx, background.RunResult{}, r.err
 }
 
 func TestElnisEventFailureDoesNotReclassifyDialogueError(t *testing.T) {
@@ -55,11 +55,11 @@ func TestElnisEventFailureDoesNotReclassifyDialogueError(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(connection.Disconnect)
-	if err := service.RunLLMEvent(t.Context(), queued.Event, queued.EventID); err != failure {
-		t.Fatalf("business error changed: %v", err)
+	if err := service.RunLLMEvent(t.Context(), queued.Event, queued.EventID); err != nil {
+		t.Fatalf("handled model error escaped: %v", err)
 	}
 	row, err := testRepo(service).snapshot(t.Context(), queued.EventID)
-	if err != nil || row.Status != StatusFailed || len(records) != 0 {
+	if err != nil || row.Status != StatusFailed || len(records) != 1 || records[0].ResultStatus != events.ResultFailed {
 		t.Fatalf("event=%#v logs=%#v err=%v", row, records, err)
 	}
 
@@ -89,7 +89,7 @@ func TestElnisLogsSuccessfulRunSaveFailure(t *testing.T) {
 
 	var records []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-		if record.Category == events.LogElnis && record.EventName == "elnis_event_save_failed" {
+		if record.Category == events.LogElnis && record.EventName == "elnis_llm_failed" {
 			records = append(records, record)
 		}
 		return nil
@@ -176,7 +176,11 @@ func TestElnisDeliveryErrorAndBusinessState(t *testing.T) {
 					}
 					eventID = row.ID
 				}
-				if err != tc.err {
+				wantErr := tc.err
+				if mode == ModeDirect {
+					wantErr = nil
+				}
+				if err != wantErr {
 					t.Fatalf("business error changed: got=%v want=%v", err, tc.err)
 				}
 				row, err := testRepo(service).snapshot(t.Context(), eventID)
@@ -191,7 +195,14 @@ func TestElnisDeliveryErrorAndBusinessState(t *testing.T) {
 					t.Fatalf("state=%#v error=%v records=%#v", row, err, records)
 				}
 				for _, record := range records {
-					if record.ResultStatus != tc.status || (tc.status == events.ResultCanceled && record.Level != slog.LevelInfo) || (tc.status == events.ResultFailed && record.Level != slog.LevelWarn) {
+					wantLevel := slog.LevelInfo
+					if tc.status == events.ResultFailed {
+						wantLevel = slog.LevelWarn
+						if mode == ModeLLM {
+							wantLevel = slog.LevelError
+						}
+					}
+					if record.ResultStatus != tc.status || record.Level != wantLevel {
 						t.Fatalf("source result reclassified: %#v", record)
 					}
 				}
@@ -224,8 +235,8 @@ func TestElnisRecoverySuccessDoesNotEmitFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(connection.Disconnect)
-	err = service.recoverReports(t.Context())
-	if err != nil || len(records) != 0 {
+	service.recoverReports(t.Context())
+	if len(records) != 0 {
 		t.Fatal("recovery result= error= records=", err, records)
 	}
 	row, err := testRepo(service).snapshot(t.Context(), queued.EventID)
@@ -253,10 +264,8 @@ func TestElnisRecoveryFailureKeepsOneSourceDiagnostic(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(connection.Disconnect)
-	if err := service.recoverReports(t.Context()); !errors.Is(err, sendErr) {
-		t.Fatalf("recovery lost original error: %v", err)
-	}
-	if len(records) != 1 || records[0].Module != "delivery" || records[0].Level != slog.LevelWarn {
+	service.recoverReports(t.Context())
+	if len(records) != 1 || records[0].EventName != "recover_elnis_report_failed" || records[0].Content != sendErr.Error() || records[0].Level != slog.LevelWarn {
 		t.Fatalf("recovery repeated or reclassified source diagnostic: %#v", records)
 	}
 	row, err := testRepo(service).snapshot(t.Context(), queued.EventID)
@@ -281,7 +290,7 @@ func TestElnisReportPreservesSaveErrorAndRetry(t *testing.T) {
 			service.store = failingReportReceiptRepository{EventRepository: service.store, err: tc.saveErr}
 			var records []events.LogRecord
 			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-				if record.EventName == "elnis_report_delivery_failed" {
+				if record.EventName == "elnis_llm_failed" {
 					records = append(records, record)
 				}
 				return nil
@@ -304,7 +313,7 @@ func TestElnisReportPreservesSaveErrorAndRetry(t *testing.T) {
 	}
 }
 
-func TestElnisFormatRetryFailureIsWarning(t *testing.T) {
+func TestElnisFormatFailuresAreHandledBeforeRetryAndStateSave(t *testing.T) {
 	runner := &fakeBackgroundRunner{text: "invalid json"}
 	service, cleanup := newTestServiceWithRunner(t, runner, nil)
 	defer cleanup()
@@ -315,7 +324,7 @@ func TestElnisFormatRetryFailureIsWarning(t *testing.T) {
 	}
 	var records []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-		if record.EventName == "elnis_llm_format_failed" {
+		if record.EventName == "elnis_llm_failed" {
 			records = append(records, record)
 		}
 		return nil
@@ -325,7 +334,7 @@ func TestElnisFormatRetryFailureIsWarning(t *testing.T) {
 	}
 	defer connection.Disconnect()
 	err = service.RunLLMEvent(t.Context(), queued.Event, queued.EventID)
-	if err == nil || len(runner.requests) != 2 || len(records) != 1 || records[0].Level != slog.LevelWarn || records[0].ResultStatus != events.ResultFailed {
+	if err != nil || len(runner.requests) != 2 || len(records) != 2 || records[0].Level != slog.LevelWarn || records[0].ResultStatus != events.ResultFailed || records[1].Level != slog.LevelError {
 		t.Fatalf("error=%v attempts=%d logs=%+v", err, len(runner.requests), records)
 	}
 }
@@ -363,21 +372,21 @@ func TestElnisSendAndCleanupFailuresEachLoggedOnce(t *testing.T) {
 	}
 	defer connection.Disconnect()
 	err = service.RunLLMEvent(t.Context(), queued.Event, queued.EventID)
-	if !errors.Is(err, sendErr) || !errors.Is(err, saveErr) {
-		t.Fatalf("independent cause lost: %v", err)
+	if !errors.Is(err, sendErr) || errors.Is(err, saveErr) {
+		t.Fatalf("cleanup replaced or merged with primary failure: %v", err)
 	}
 	if len(records) != 2 {
 		t.Fatalf("diagnostics duplicated or missing: %+v", records)
 	}
-	if records[0].Module != "delivery" || records[0].Level != slog.LevelWarn || records[1].EventName != "elnis_report_failure_save_failed" || records[1].Level != slog.LevelError {
+	if records[0].EventName != "elnis_report_failure_save_failed" || records[0].Level != slog.LevelError || records[1].EventName != "elnis_llm_failed" || records[1].Level != slog.LevelError {
 		t.Fatalf("incorrect owners or severity: %+v", records)
 	}
-	if strings.Contains(records[1].Content, sendErr.Error()) {
+	if strings.Contains(records[0].Content, sendErr.Error()) {
 		t.Fatal("cleanup repeated transport error")
 	}
 }
 
-func TestElnisNativeCallFailureIsLoggedOnce(t *testing.T) {
+func TestElnisNativeCallFailureOnlyReturns(t *testing.T) {
 	service, cleanup := newTestServiceWithRunner(t, nil, nil)
 	defer cleanup()
 	failure := errors.New("native platform failed")
@@ -394,7 +403,7 @@ func TestElnisNativeCallFailureIsLoggedOnce(t *testing.T) {
 	}
 	defer connection.Disconnect()
 	err = service.executeCalls(t.Context(), nil, []Call{{Platform: "telegram", API: "sendMessage"}})
-	if err != failure || len(records) != 1 || records[0].Level != slog.LevelWarn || records[0].EventName != "elnis_platform_call_failed" {
+	if err != failure || len(records) != 0 {
 		t.Fatalf("native call diagnostic=%+v error=%v", records, err)
 	}
 }

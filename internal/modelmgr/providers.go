@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"elbot/internal/config"
-	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/llm"
 )
@@ -77,9 +76,8 @@ func (s *ModelManager) ReloadProviders(ctx context.Context) error {
 func (s *ModelManager) bindRetryNotifier(provider string, client llm.Client) {
 	if notifier, ok := client.(llm.RetryNotifier); ok {
 		notifier.SetRetryNotifier(func(ctx context.Context, event llm.RetryEvent) {
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
 			record := ModelRetryingEvent{Provider: provider, Retry: event, CallContext: ctx}
-			record.Identity = events.LogIdentityFromExecution(facts)
+			record.Identity = events.LogIdentityFromContext(ctx)
 			_ = s.retrying.Publish(context.WithoutCancel(ctx), record)
 		})
 	}

@@ -3,7 +3,6 @@ package qqofficial
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/platform/share"
 	"elbot/internal/signal"
@@ -176,8 +175,7 @@ func (a *Adapter) runGateway(handler share.MessageHandler) {
 						ContentLimit: 4096,
 						ResultStatus: globalevents.ResultFailed,
 					}
-					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					record.Identity = globalevents.LogIdentityFromExecution(facts)
+					record.Identity = globalevents.LogIdentityFromContext(ctx)
 					globalevents.Log(context.WithoutCancel(ctx), record)
 				}
 			}

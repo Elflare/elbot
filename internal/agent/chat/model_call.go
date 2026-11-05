@@ -5,8 +5,6 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/media"
 	"errors"
-	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -79,13 +77,6 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, req chatcompletions.Request, observation agentshare.CallObservation, stream delivery.MessageStream, toolsEnabled bool) (result llmCallResult, callErr error) {
 	startedAt := time.Now()
 	completed := observation.Event()
-	defer func() {
-		if ctx.Err() != nil {
-			completed.Err, completed.ProviderError = ctx.Err(), false
-			observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultCanceled, slog.LevelInfo
-			callErr = ctx.Err()
-		}
-	}()
 	observation.LogRecord().EventName = "llm_usage"
 	observation.LogRecord().ResultStatus = events.ResultCanceled
 	callCtx, cancel := context.WithCancel(ctx)
@@ -99,17 +90,12 @@ func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, 
 	}()
 	if err != nil {
 		completed.Err = err
-		observation.LogRecord().Content = fmt.Sprintf("call_error=%v", err)
 		observation.LogRecord().ResultStatus = events.LogStatus(err)
-		observation.LogRecord().Level = slog.LevelWarn
-		if observation.LogRecord().ResultStatus == events.ResultCanceled {
-			observation.LogRecord().Level = slog.LevelInfo
-		}
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			return llmCallResult{}, err
 		}
 		completed.ProviderError, completed.Err = true, err
-		observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultFailed, slog.LevelWarn
+		observation.LogRecord().ResultStatus = events.ResultFailed
 		completed.ElapsedMS = elapsedMillis(startedAt)
 		return llmCallResult{}, err
 	}
@@ -121,18 +107,13 @@ func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, 
 			completed.Err = chunk.Error
 			completed.Text, completed.SourceText, completed.Usage, completed.ToolCallCount = assistant.String(), assistant.String(), usage, len(toolCalls)
 			completed.OutputReady = assistant.Len() > 0 || len(toolCalls) > 0
-			observation.LogRecord().Content = fmt.Sprintf("call_error=%v", chunk.Error)
 			observation.LogRecord().ResultStatus = events.LogStatus(chunk.Error)
-			observation.LogRecord().Level = slog.LevelWarn
-			if observation.LogRecord().ResultStatus == events.ResultCanceled {
-				observation.LogRecord().Level = slog.LevelInfo
-			}
 			if ctx.Err() != nil && errors.Is(chunk.Error, ctx.Err()) {
 				content := assistant.String()
 				return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls}, chunk.Error
 			}
 			completed.ProviderError, completed.Err = true, chunk.Error
-			observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultFailed, slog.LevelWarn
+			observation.LogRecord().ResultStatus = events.ResultFailed
 			completed.ElapsedMS = elapsedMillis(startedAt)
 			return llmCallResult{Text: assistant.String(), RawText: assistant.String(), Usage: usage, ToolCalls: toolCalls}, chunk.Error
 		}
@@ -154,8 +135,7 @@ func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, 
 				completed.Text, completed.SourceText, completed.Usage, completed.ToolCallCount = assistant.String(), assistant.String(), usage, len(toolCalls)
 				completed.OutputReady = assistant.Len() > 0 || len(toolCalls) > 0
 				completed.Err = err
-				observation.LogRecord().Content = fmt.Sprintf("display_error=%v", err)
-				observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.LogStatus(err), slog.LevelWarn
+				observation.LogRecord().ResultStatus = events.LogStatus(err)
 				return llmCallResult{}, err
 			}
 		}
@@ -167,15 +147,14 @@ func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, 
 	completed.OutputReady = assistant.Len() > 0 || len(toolCalls) > 0
 	if err := ctx.Err(); err != nil {
 		completed.Err = err
-		observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultCanceled, slog.LevelInfo
+		observation.LogRecord().ResultStatus = events.ResultCanceled
 		return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls}, err
 	}
 	_, err = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamFinish})
-	observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultSucceeded, slog.LevelInfo
+	observation.LogRecord().ResultStatus = events.ResultSucceeded
 	if err != nil {
 		completed.Err = err
-		observation.LogRecord().Content = fmt.Sprintf("display_error=%v", err)
-		observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.LogStatus(err), slog.LevelWarn
+		observation.LogRecord().ResultStatus = events.LogStatus(err)
 	}
 	return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls}, err
 }

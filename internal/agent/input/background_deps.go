@@ -41,7 +41,7 @@ type BackgroundHandlerDeps struct {
 	} // 根据当前请求来源识别 CLI 平台。
 	Execution interface {
 		ModelContext(context.Context, *storage.Session) (context.Context, error)
-		RunBackground(context.Context, *storage.Session, string) turn.Result
+		RunBackground(context.Context, *storage.Session, string) (context.Context, turn.Result)
 	} // Resolves model context and executes through the existing coordinator.
 	Preloader interface {
 		PrepareBackground(context.Context, tool.BackgroundPreloadRequest) (tool.BackgroundPreload, error)

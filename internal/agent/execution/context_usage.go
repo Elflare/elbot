@@ -2,15 +2,13 @@ package execution
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"log/slog"
-
-	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/storage"
+	"errors"
+	"fmt"
+	"log/slog"
 )
 
 func (c *ExecutionCoordinator) usageForSession(ctx context.Context, row *storage.Session) *llm.Usage {
@@ -30,8 +28,7 @@ func (c *ExecutionCoordinator) usageForSession(ctx context.Context, row *storage
 			record.ResultStatus = globalevents.ResultCanceled
 			record.Level = slog.LevelInfo
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		record.Identity = globalevents.LogIdentityFromExecution(facts)
+		record.Identity = globalevents.LogIdentityFromContext(ctx)
 		record.Identity.SessionID = row.ID
 		globalevents.Log(ctx, record)
 	}

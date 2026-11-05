@@ -3,7 +3,6 @@ package telegram
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/platform/share"
 	"elbot/internal/signal"
@@ -183,8 +182,7 @@ func (a *Adapter) runPolling(handler share.MessageHandler) {
 						record.ResultStatus = globalevents.ResultCanceled
 						record.Level = slog.LevelInfo
 					}
-					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					record.Identity = globalevents.LogIdentityFromExecution(facts)
+					record.Identity = globalevents.LogIdentityFromContext(ctx)
 					globalevents.Log(context.WithoutCancel(ctx), record)
 				}
 			}
@@ -211,8 +209,7 @@ func (a *Adapter) runPolling(handler share.MessageHandler) {
 					record.ResultStatus = globalevents.ResultCanceled
 					record.Level = slog.LevelInfo
 				}
-				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				record.Identity = globalevents.LogIdentityFromExecution(facts)
+				record.Identity = globalevents.LogIdentityFromContext(ctx)
 				globalevents.Log(context.WithoutCancel(ctx), record)
 			}
 		}
@@ -227,8 +224,7 @@ func (a *Adapter) runPolling(handler share.MessageHandler) {
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultSucceeded,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity = globalevents.LogIdentityFromExecution(facts)
+			record.Identity = globalevents.LogIdentityFromContext(ctx)
 			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 		a.notifyConnected(ctx)
@@ -249,8 +245,7 @@ func (a *Adapter) runPolling(handler share.MessageHandler) {
 						ContentLimit: 4096,
 						ResultStatus: globalevents.ResultFailed,
 					}
-					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					record.Identity = globalevents.LogIdentityFromExecution(facts)
+					record.Identity = globalevents.LogIdentityFromContext(ctx)
 					globalevents.Log(context.WithoutCancel(ctx), record)
 				}
 				break

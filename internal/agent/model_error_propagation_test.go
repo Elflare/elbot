@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/config"
 	"elbot/internal/events"
@@ -93,10 +94,10 @@ func TestModelErrorReachesNotificationWithoutIntermediatePrefixes(t *testing.T) 
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = connection.Close(context.Background()) })
-			var records []events.LogRecord
+			logs := make(chan events.LogRecord, 3)
 			logConnection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 				if record.EventName == "llm_usage" || record.EventName == "dialogue_failed" {
-					records = append(records, record)
+					logs <- record
 					return errors.New("logger rejected record")
 				}
 				return nil
@@ -112,21 +113,31 @@ func TestModelErrorReachesNotificationWithoutIntermediatePrefixes(t *testing.T) 
 			if tc.cause != nil && !errors.Is(err, tc.cause) {
 				t.Fatalf("error cause lost: %v", err)
 			}
-			if len(records) != 2 {
-				t.Fatalf("model and dialogue completion logs=%+v", records)
+			var records []events.LogRecord
+			for range 2 {
+				select {
+				case record := <-logs:
+					records = append(records, record)
+				case <-time.After(time.Second):
+					t.Fatalf("model and dialogue completion logs=%+v", records)
+				}
 			}
 			for _, record := range records {
-				if record.EventName == "dialogue_failed" && strings.Contains(record.Content, tc.want) {
-					t.Fatalf("termination repeated provider diagnostic: %+v", record)
-				}
-				if record.Level != slog.LevelWarn || record.ResultStatus != events.ResultFailed {
+				if record.ResultStatus != events.ResultFailed {
 					t.Fatalf("ordinary model failure was reclassified: %+v", record)
+				}
+				if record.EventName == "dialogue_failed" {
+					if record.Content != tc.want || record.Level != slog.LevelWarn || record.Identity != records[0].Identity {
+						t.Fatalf("final report lost original error or request identity: %+v", record)
+					}
+				} else if record.Level != slog.LevelInfo || strings.Contains(record.Content, tc.want) {
+					t.Fatalf("usage fact repeated failure report: %+v", record)
 				}
 			}
 			if _, err := events.NotificationRequested.Emit(t.Context(), events.Notification{Text: "barrier"}); err != nil {
 				t.Fatal(err)
 			}
-			if len(notices) != 1 || notices[0] != "对话处理失败："+tc.want {
+			if len(notices) != 1 || notices[0] != tc.want {
 				t.Fatalf("notifications=%v", notices)
 			}
 		})

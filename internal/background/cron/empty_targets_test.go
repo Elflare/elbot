@@ -15,13 +15,13 @@ func TestCronEmptyTargetsCancelBeforeModelAndRunner(t *testing.T) {
 	models := &taskModels{current: config.ModelSelection{Provider: "provider", Model: "model"}}
 	svc := newTestCronService(t, Options{Runner: runner, Models: models})
 	svc.enabledPlatforms = nil
-	_, state, err := svc.prepareDelivery(t.Context(), Job{Name: "empty"}, Metadata{Target: CronTarget{AllEnabledPlatforms: true}})
+	_, _, state, err := svc.prepareDelivery(t.Context(), Job{Name: "empty"}, Metadata{Target: CronTarget{AllEnabledPlatforms: true}})
 	if err == nil || runner.calls != 0 || models.resolutions != 0 || state.ReportSessionID != "" {
 		t.Fatal("state= result= err= calls= resolutions=", state, err, runner.calls, models.resolutions)
 	}
 }
 
-func TestCronUnconfiguredTargetCancelsAndLogsBeforeDeliveryState(t *testing.T) {
+func TestCronUnconfiguredTargetReturnsBeforeDeliveryState(t *testing.T) {
 	for _, mode := range []TriggerMode{TriggerLLM, TriggerDirect} {
 		t.Run(string(mode), func(t *testing.T) {
 			repo := newFakeCronRepo()
@@ -40,11 +40,11 @@ func TestCronUnconfiguredTargetCancelsAndLogsBeforeDeliveryState(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer connection.Disconnect()
-			err = svc.Handler(t.Context(), *job)
+			_, err = svc.Handler(t.Context(), *job)
 			if err == nil || runner.calls != 0 || models.resolutions != 0 {
 				t.Fatal("result= err= calls= resolutions=", err, runner.calls, models.resolutions)
 			}
-			if len(records) != 1 || records[0].ResultStatus != events.ResultFailed || !strings.Contains(records[0].Content, "not enabled") || !strings.Contains(records[0].Content, "telegram") {
+			if len(records) != 0 || !strings.Contains(err.Error(), "not enabled") || !strings.Contains(err.Error(), "telegram") {
 				t.Fatalf("logs=%+v", records)
 			}
 			if got := repo.jobs[job.Name]; got.DeliveryState != job.DeliveryState || got.DeliveryToken != job.DeliveryToken {

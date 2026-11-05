@@ -85,8 +85,8 @@ func (cronBridgeModels) ValidateSelection(config.ModelSelection) error { return 
 
 type cronBridgeRunner struct{}
 
-func (cronBridgeRunner) RunBackground(context.Context, share.RunRequest) (share.RunResult, error) {
-	return share.RunResult{SessionID: "session", MessageID: "message", Text: `{"completed":true,"need_report":true,"report":"report"}`}, nil
+func (cronBridgeRunner) RunBackground(ctx context.Context, _ share.RunRequest) (context.Context, share.RunResult, error) {
+	return ctx, share.RunResult{SessionID: "session", MessageID: "message", Text: `{"completed":true,"need_report":true,"report":"report"}`}, nil
 }
 
 func TestCronBridgeServicePersistsReportMappingAndCompletion(t *testing.T) {
@@ -124,7 +124,7 @@ func TestCronBridgeServicePersistsReportMappingAndCompletion(t *testing.T) {
 		},
 	})
 	t.Cleanup(func() { _ = s.Close(context.Background()); <-m.Stop().Done() })
-	if err := s.Handler(ctx, *cronJob(row)); err != nil {
+	if _, err := s.Handler(ctx, *cronJob(row)); err != nil {
 		t.Fatal(err)
 	}
 	message, err := store.Messages().FindByPlatformMessage(ctx, "telegram", "private", "1", "notice")
@@ -159,8 +159,8 @@ func TestToolNotificationRefreshesCronThroughRealStorage(t *testing.T) {
 	}
 	b := cronBridge{repo: store.CronJobs()}
 	m := elcron.NewManager(b)
-	m.RegisterHandler(elcron.UserHandlerName, func(context.Context, elcron.Job) error {
-		return nil
+	m.RegisterHandler(elcron.UserHandlerName, func(ctx context.Context, _ elcron.Job) (context.Context, error) {
+		return ctx, nil
 	})
 	connection, err := tools.ObserveCronChanged(func(event tool.CronChangedEvent) error {
 		m.RefreshJob(event.Name)

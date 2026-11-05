@@ -235,7 +235,7 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 		Source:     "rules",
 		ToolCallID: call,
 	}
-	record.Identity = logIdentity(ctx)
+	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	record.Identity.SessionID = event.Session.ID
 	summary := ""
 	record.ResultStatus = globalevents.ResultSucceeded

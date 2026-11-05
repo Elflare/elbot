@@ -191,7 +191,7 @@ func (a *Adapter) runConnections(handler share.MessageHandler) {
 						record.ResultStatus = globalevents.ResultCanceled
 						record.Level = slog.LevelInfo
 					}
-					record.Identity = logIdentity(ctx)
+					record.Identity = globalevents.LogIdentityFromContext(ctx)
 					globalevents.Log(context.WithoutCancel(ctx), record)
 				}
 			}
@@ -218,7 +218,7 @@ func (a *Adapter) runConnections(handler share.MessageHandler) {
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultSucceeded,
 			}
-			record.Identity = logIdentity(ctx)
+			record.Identity = globalevents.LogIdentityFromContext(ctx)
 			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 		a.notifyConnected(ctx)
@@ -240,7 +240,7 @@ func (a *Adapter) runConnections(handler share.MessageHandler) {
 					ContentLimit: 4096,
 					ResultStatus: globalevents.ResultFailed,
 				}
-				record.Identity = logIdentity(ctx)
+				record.Identity = globalevents.LogIdentityFromContext(ctx)
 				globalevents.Log(context.WithoutCancel(ctx), record)
 			}
 		}

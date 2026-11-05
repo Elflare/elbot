@@ -36,9 +36,7 @@ func TestPartialReportMapsSuccessAndRemainsRetryable(t *testing.T) {
 	if err != nil || event.Status != StatusResultReady {
 		t.Fatalf("event=%#v/%v", event, err)
 	}
-	if err := s.recoverReports(ctx); err != nil {
-		t.Fatal(err)
-	}
+	s.recoverReports(ctx)
 	event, err = testRepo(s).snapshot(ctx, queued.EventID)
 	if err != nil || event.Status != StatusCompleted || calls != 2 {
 		t.Fatalf("recovery=%#v/%v calls=%d", event, err, calls)

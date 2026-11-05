@@ -60,8 +60,7 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (
 	content := map[string]any{"text": agentshare.TruncateLogContent(message.Content, 4096), "actor": actor, "chat": conversation.Source, "platform_message_id": conversation.PlatformMessageID}
 	data, _ := json.Marshal(content)
 	record.Content = string(data)
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	record.Identity = events.LogIdentityFromExecution(facts)
+	record.Identity = events.LogIdentityFromContext(ctx)
 	record.Identity.SessionID = in.Session.ID
 	events.Log(context.WithoutCancel(ctx), record)
 	loaded, err := p.Contexts.Load(ctx, in.Session.ID)

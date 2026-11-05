@@ -3,9 +3,10 @@ package share
 import (
 	"context"
 	"elbot/internal/contextinfo"
-	"errors"
+	"elbot/internal/events"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -53,12 +54,20 @@ func BuildReportSegmentOutput(ctx context.Context, segment delivery.Output, scop
 	if err != nil {
 		return delivery.Output{}, err
 	}
-	defer func() { err = errors.Join(err, root.Close()) }()
+	defer func() {
+		if closeErr := root.Close(); closeErr != nil {
+			events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
+		}
+	}()
 	file, err := root.Open(segment.Source.Path)
 	if err != nil {
 		return delivery.Output{}, fmt.Errorf("open report media: %w", err)
 	}
-	defer func() { err = errors.Join(err, file.Close()) }()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
+		}
+	}()
 	stat, err := file.Stat()
 	if err != nil {
 		return delivery.Output{}, err

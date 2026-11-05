@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -55,7 +54,6 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 	}
 	ready := make(chan int, len(req.Calls))
 	completed := 0
-	var resultErr error
 	complete := func(index int) error {
 		defer func() { completed++ }()
 		task := &tasks[index]
@@ -78,15 +76,14 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		if result.Result != nil && len(result.Result.Outputs) > 0 {
 			err := deps.SendOutputs(ctx, result.Result.Outputs)
 			if err != nil {
-				result.Error = errors.Join(result.Error, err)
+				events.LogAndNotify(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "tool_output_failed", Module: "tool", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}, events.NewNotification(ctx, slog.LevelWarn, err.Error()))
 				result.Message.Segments = append(result.Message.Segments, llm.TextSegments(fmt.Sprintf("\ntool call %s failed: output: %v", call.Name, err))...)
 			}
 		}
 		if result.ExecutionStarted {
 			segments, hookErr := deps.CompleteToolCall(ctx, req.Session, call, task.risk, result.Message.Segments, result.Error)
 			if hookErr != nil {
-				result.Error = errors.Join(result.Error, hookErr)
-				result.Message.Segments = append(result.Message.Segments, llm.TextSegments(fmt.Sprintf("\ntool call %s failed: hook: %v", call.Name, hookErr))...)
+				return hookErr
 			} else {
 				result.Message.Segments = segments
 			}
@@ -147,18 +144,22 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 	}
 	// Blocking preparation receives a detached snapshot; completed tools can be
 	// persisted while a later Hook or confirmation is waiting.
-	await := func(run func()) {
+	await := func(run func()) error {
 		done := make(chan struct{})
 		go func() { defer close(done); run() }()
 		for {
 			select {
 			case <-done:
-				return
+				return nil
 			case index := <-ready:
 				if err := complete(index); err != nil {
-					resultErr = errors.Join(resultErr, err)
 					cancel()
+					<-done
+					return err
 				}
+			case <-ctx.Done():
+				<-done
+				return ctx.Err()
 			}
 		}
 	}
@@ -166,7 +167,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 	batchPreviewSent := sendBatchToolPreview(ctx, deps, req)
 	for index, original := range req.Calls {
 		if ctx.Err() != nil {
-			return toolshare.RunResult{Stopped: true, Err: resultErr}
+			return toolshare.RunResult{Stopped: true, Err: ctx.Err()}
 		}
 		updated, err := deps.RefreshExecution(ctx, req.Session)
 		if err != nil {
@@ -189,18 +190,17 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		}
 		var call llm.ToolCallRequest
 		prepareCtx := ctx
-		await(func() { call, err = deps.PrepareToolCall(prepareCtx, &snapshot, original) })
+		if waitErr := await(func() { call, err = deps.PrepareToolCall(prepareCtx, &snapshot, original) }); waitErr != nil {
+			return toolshare.RunResult{Err: waitErr}
+		}
 		if err != nil {
-			fail(original, err, fmt.Sprintf("tool call %s failed: hook: %v", original.Name, err))
-			continue
+			return toolshare.RunResult{Err: err}
 		}
 		preparedCalls[index] = call
 		err = req.Committer.Prepared(ctx, index, call)
 
 		if err != nil {
-			preparedCalls[index] = original
-			fail(original, err, fmt.Sprintf("tool call %s was not executed: prepare transcript: %v", original.Name, err))
-			continue
+			return toolshare.RunResult{Err: err}
 		}
 		resolved := m.resolve(ctx, call.Name, req.DiscoveredTools, snapshot.Mode)
 		runSource := "foreground"
@@ -217,7 +217,9 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		}
 		toolCtx := deps.PrepareToolContext(ctx, &snapshot, call)
 		var prepared *toolshare.PreparedCall
-		await(func() { prepared, err = m.prepareCall(toolCtx, resolved, call) })
+		if waitErr := await(func() { prepared, err = m.prepareCall(toolCtx, resolved, call) }); waitErr != nil {
+			return toolshare.RunResult{Err: waitErr}
+		}
 		if err != nil {
 			task.result = executionError(call, err)
 			m.recordCallCompleted(ctx, sessionID, call, resolved.Source, actor, "", runSource, task.startedAt, task.result)
@@ -234,13 +236,12 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			deps.SendPreview(ctx, fmt.Sprintf("正在调用 %s：%s", call.Name, previewArguments(call.Arguments)))
 		}
 		var confirm toolshare.ConfirmResult
-		await(func() {
+		if waitErr := await(func() {
 			confirm, err = m.confirm(toolCtx, deps, actor, sessionID, call, resolved, assessment, prepared.Preview())
-		})
-		confirmationExtra = joinAssistantText(confirmationExtra, confirm.Extra)
-		if resultErr != nil {
-			return toolshare.RunResult{Err: resultErr}
+		}); waitErr != nil {
+			return toolshare.RunResult{Err: waitErr}
 		}
+		confirmationExtra = joinAssistantText(confirmationExtra, confirm.Extra)
 		if confirm.Stopped {
 			return toolshare.RunResult{ConfirmationExtra: confirmationExtra, Stopped: true}
 		}
@@ -259,8 +260,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		runToolCtx, done, err := deps.StartToolRequest(toolCtx, sessionID, call.Name)
 
 		if err != nil {
-			fail(call, err, fmt.Sprintf("tool call %s failed: %v", call.Name, err))
-			continue
+			return toolshare.RunResult{Err: err}
 		}
 		runToolCtx = deps.PrepareToolContext(runToolCtx, &snapshot, call)
 		// Validate prepared argument references without opening another write transaction.
@@ -286,8 +286,8 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			task.finishedAt = storage.Now()
 			toolErr := runToolCtx.Err()
 			done()
-			if toolErr != nil {
-				result.Error = errors.Join(result.Error, toolErr)
+			if toolErr != nil && result.Error == nil {
+				result.Error = toolErr
 				result.Message.Segments = append(result.Message.Segments, llm.TextSegments(fmt.Sprintf("\ntool call %s canceled by user", call.Name))...)
 			}
 			task.result = result
@@ -298,15 +298,11 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		select {
 		case index := <-ready:
 			if err := complete(index); err != nil {
-				resultErr = errors.Join(resultErr, err)
-				cancel()
+				return toolshare.RunResult{Err: err}
 			}
 		case <-ctx.Done():
-			return toolshare.RunResult{Stopped: true, Err: resultErr}
+			return toolshare.RunResult{Stopped: true, Err: ctx.Err()}
 		}
-	}
-	if resultErr != nil {
-		return toolshare.RunResult{ConfirmationExtra: confirmationExtra, Err: resultErr}
 	}
 	err = req.Committer.Flush(ctx)
 
@@ -345,7 +341,7 @@ func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor 
 			resultStatus = events.ResultRejected
 		}
 		record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: permission.Reason, Module: "tool", Type: events.ContentJSON, Content: string(data), ResultStatus: resultStatus}
-		record.Identity = events.LogIdentityFromExecution(facts)
+		record.Identity = events.LogIdentityFromContext(ctx)
 		record.Identity.SessionID = sessionID
 		m.Log(ctx, record)
 	}

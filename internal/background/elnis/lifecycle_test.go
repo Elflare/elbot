@@ -57,8 +57,9 @@ func (r lifecycleRepository) FailInterrupted(ctx context.Context, from []string,
 
 type lifecycleRunner func(context.Context, background.RunRequest) (background.RunResult, error)
 
-func (f lifecycleRunner) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
-	return f(ctx, req)
+func (f lifecycleRunner) RunBackground(ctx context.Context, req background.RunRequest) (context.Context, background.RunResult, error) {
+	result, err := f(ctx, req)
+	return ctx, result, err
 }
 
 func TestRuntimeStartPreservesPublishedFaultOnCancellation(t *testing.T) {
@@ -299,8 +300,8 @@ func TestRuntimeFaultPrecedesWorkerExitAndBulkCleanup(t *testing.T) {
 	}
 	third := first
 	third.ID = "full"
-	if _, err := s.Handle(t.Context(), "secret", third); err == nil {
-		t.Fatal("full queue accepted another event")
+	if response, err := s.Handle(t.Context(), "secret", third); err != nil || response.Status != StatusFailed || response.Error == "" {
+		t.Fatal("full queue failure was not recorded", response, err)
 	}
 	// Closing the listener externally is a real Serve failure, not a requested stop.
 	if err := r.listener.Close(); err != nil {

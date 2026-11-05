@@ -85,7 +85,9 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 		return err
 	}
 	fail := func(result actionResult, source error) (share.Event, actionResult, error) {
-		source = errors.Join(source, killProcessTree())
+		if err := killProcessTree(); err != nil {
+			m.Opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "hook_process_cleanup_failed", Module: "hook", Content: err.Error(), ResultStatus: globalevents.LogStatus(err)})
+		}
 		_ = waitExec()
 		stderr := stderrTail.String()
 		source = withExecStderr(source, stderr)
@@ -135,7 +137,7 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 			select {
 			case cancelErr := <-cancelRequested:
 				if cancelErr != nil {
-					err = errors.Join(err, cancelErr)
+					m.Opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "hook_process_cleanup_failed", Module: "hook", Content: cancelErr.Error(), ResultStatus: globalevents.LogStatus(cancelErr)})
 
 				} else if processenv.ExitCanceled(cmd, true) {
 					err = execContextError(runCtx, action)
@@ -231,7 +233,7 @@ func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin 
 					Content:      fmt.Sprintf("%s\nrule=%v", "hook.v2 plugin event"+": "+string(frame.Params), firstNonEmpty(action.source.FinalName, action.ActionName)),
 					ContentLimit: 4096,
 				}
-				record.Identity = logIdentity(ctx)
+				record.Identity = globalevents.LogIdentityFromContext(ctx)
 				m.Opts.Log(ctx, record)
 			}
 		default:
@@ -390,7 +392,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 				record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
 			}
 		}
-		record.Identity = logIdentity(ctx)
+		record.Identity = globalevents.LogIdentityFromContext(ctx)
 		m.Opts.Log(ctx, record)
 		if err != nil {
 			return nil, err
@@ -418,7 +420,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 					record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
 				}
 			}
-			record.Identity = logIdentity(ctx)
+			record.Identity = globalevents.LogIdentityFromContext(ctx)
 			content["actor"] = event.Actor
 			record.Identity.SessionID = event.Session.ID
 			for key, value := range content {
@@ -468,7 +470,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 			Content:      fmt.Sprintf("%s\nrule=%v", "hook plugin log"+": "+string(params), firstNonEmpty(action.source.FinalName, action.ActionName)),
 			ContentLimit: 4096,
 		}
-		record.Identity = logIdentity(ctx)
+		record.Identity = globalevents.LogIdentityFromContext(ctx)
 		m.Opts.Log(ctx, record)
 		return map[string]any{"ok": true}, nil
 	default:
@@ -669,7 +671,7 @@ func (w *execStderrLogger) emitLocked(line string) {
 		Content:      fmt.Sprintf("%s\nrule=%v", "hook exec stderr"+": "+line, firstNonEmpty(w.action.source.FinalName, w.action.ActionName)),
 		ContentLimit: 4096,
 	}
-	record.Identity = logIdentity(w.ctx)
+	record.Identity = globalevents.LogIdentityFromContext(w.ctx)
 	w.module.Opts.Log(w.ctx, record)
 }
 

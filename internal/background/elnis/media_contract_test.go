@@ -142,8 +142,8 @@ func TestMediaFailureMarksEventFailed(t *testing.T) {
 			}
 			req := testRequest(ModeDirect)
 			req.Segments = []Segment{{Kind: SegmentKindFile, URL: "https://example.test/file"}}
-			if _, err := s.Handle(t.Context(), "secret", req); !errors.Is(err, failure) {
-				t.Fatal(err)
+			if response, err := s.Handle(t.Context(), "secret", req); err != nil || response.Status != StatusFailed || !strings.Contains(response.Error, failure.Error()) {
+				t.Fatal(response, err)
 			}
 			row, err := testRepo(s).snapshotByKey(t.Context(), req.Elwisp.Name, req.Source, req.ID)
 			if err != nil || row.Status != StatusFailed || !strings.Contains(row.Error, failure.Error()) {

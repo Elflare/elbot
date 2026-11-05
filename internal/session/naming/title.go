@@ -4,8 +4,9 @@ package naming
 
 import (
 	"context"
-	"errors"
+	"elbot/internal/events"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"elbot/internal/llm"
@@ -31,13 +32,15 @@ func (s *Service) generateTitle(ctx context.Context, messages []storage.Message)
 		}
 	}
 	if selected.Fallback.Client == nil || selected.Fallback.Model == "" {
-		return result, errors.Join(namingErr, fmt.Errorf("no title fallback model available"))
+		if namingErr != nil {
+			return result, namingErr
+		}
+		return result, fmt.Errorf("no title fallback model available")
 	}
-	result, err := generate(ctx, selected.Fallback, prompt)
-	if err != nil {
-		return result, errors.Join(namingErr, err)
+	if namingErr != nil {
+		events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "session_naming_fallback", Module: "session", Content: namingErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(namingErr)})
 	}
-	return result, nil
+	return generate(ctx, selected.Fallback, prompt)
 }
 
 func generate(ctx context.Context, selection modelmgr.Selection, prompt string) (TitleResult, error) {

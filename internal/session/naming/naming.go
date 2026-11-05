@@ -24,7 +24,7 @@ func (s *Service) MaybeScheduleNaming(ctx context.Context, id string) {
 	if model, ok := contextinfo.ModelFromContext(ctx); ok {
 		worker = contextinfo.WithModel(worker, model)
 	}
-	event := NamingCompletedEvent{Identity: events.LogIdentityFromExecution(facts), TriggeredAt: storage.Now(), MaxFailures: maxNamingFailures}
+	event := NamingCompletedEvent{Identity: events.LogIdentityFromContext(worker), TriggeredAt: storage.Now(), MaxFailures: maxNamingFailures}
 	ctx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(worker, cancel)
 	defer func() { stop(); cancel() }()

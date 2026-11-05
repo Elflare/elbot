@@ -26,7 +26,7 @@ type BackgroundHandler struct {
 	BackgroundHandlerDeps // Borrowed preparation capabilities, wired by the Agent root.
 }
 
-func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundRequest) turn.Result {
+func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundRequest) (context.Context, turn.Result) {
 	actor := req.Actor
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	facts.Mode, facts.TaskType, facts.TaskID = storage.SessionModeBackground, req.TaskType, req.TaskID
@@ -46,23 +46,25 @@ func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundReq
 	bgSession, err := r.Sessions.PrepareBackground(ctx, sessionScope, session.BackgroundRequest{TargetPlatforms: req.TargetPlatforms, SessionID: req.SessionID, TaskType: string(req.TaskType), TaskID: req.TaskID, Name: req.Name, Metadata: req.Metadata})
 	if err != nil {
 		if errors.Is(err, session.ErrForegroundSession) {
-			return turn.Result{SessionID: req.SessionID, TakenOver: true, Outcome: "taken_over"}
+			return ctx, turn.Result{SessionID: req.SessionID, TakenOver: true, Outcome: "taken_over"}
 		}
-		return turn.Result{Err: err}
+		return ctx, turn.Result{Err: err}
 	}
+	facts.SessionID = bgSession.ID
+	ctx = contextinfo.WithExecution(ctx, facts)
 	if err := r.EnsureWorkspaceDir(ctx, bgSession.ID, scope.Dir); err != nil {
-		return turn.Result{SessionID: bgSession.ID, Err: err}
+		return ctx, turn.Result{SessionID: bgSession.ID, Err: err}
 	}
 	var preloaded backgroundPreloadResult
 	if req.SessionID == "" {
 		ctx, err = r.Execution.ModelContext(ctx, bgSession)
 		if err != nil {
-			return turn.Result{SessionID: bgSession.ID, Err: err}
+			return ctx, turn.Result{SessionID: bgSession.ID, Err: err}
 		}
 		preloaded = r.preloadBackgroundResources(ctx, bgSession, req.ToolListNames, req.ELwispTools, req.AllowedToolNames)
 	}
 	if preloaded.Err != nil {
-		return turn.Result{SessionID: bgSession.ID, Err: preloaded.Err}
+		return ctx, turn.Result{SessionID: bgSession.ID, Err: preloaded.Err}
 	}
 	record := globalevents.LogRecord{
 		Category:     globalevents.LogAudit,

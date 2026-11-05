@@ -18,7 +18,7 @@ const (
 )
 
 type Runner interface {
-	RunBackground(ctx context.Context, req RunRequest) (RunResult, error)
+	RunBackground(ctx context.Context, req RunRequest) (context.Context, RunResult, error)
 }
 
 type RunRequest struct {

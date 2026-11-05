@@ -158,11 +158,9 @@ type ReplyCommitInput struct {
 // A failed commit can still have delivered or persisted a reply. Receipt covers
 // the assistant send; deferred outputs retain their existing delivery boundary.
 type ReplyCommitResult struct {
-	MessageID  string
-	RawText    string
-	Receipt    delivery.Receipt
-	SendErr    error
-	PersistErr error
+	MessageID string
+	RawText   string
+	Receipt   delivery.Receipt
 }
 
 type ToolNameProvider interface {

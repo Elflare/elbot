@@ -34,7 +34,6 @@ type ExecutionCoordinator struct {
 	requests         ExecutionRequests
 	contexts         ExecutionContexts
 	SelectionForTurn func(context.Context, *storage.Session) modelmgr.Selection
-	TurnTimeout      string // User-facing notification for a response deadline.
 	dialogue         ExecutionDialogue
 	identity         ExecutionIdentity
 	view             ExecutionView
@@ -45,13 +44,13 @@ type ExecutionCoordinator struct {
 	responseTimeout  time.Duration
 }
 
-func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, text string, out agentshare.Output) (runErr error) {
+func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, text string, out agentshare.Output) (requestCtx context.Context, runErr error) {
 	execution := turn.ExecutionFromContext(ctx)
 	if execution == nil {
 		var err error
 		execution, err = c.turns.NewExecution(ctx)
 		if err != nil {
-			return err
+			return ctx, err
 		}
 		ctx = turn.WithExecution(ctx, execution)
 	}
@@ -72,29 +71,29 @@ func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, te
 	}()
 	out = executionTurnOutput{view: c.view, foreground: foregroundTurnOutput{ExecutionSender: c.output}, execution: execution, fallback: out}
 	for {
-		next, pending, err := c.runAttempt(ctx, row, text, out)
+		requestCtx, next, pending, err := c.runAttempt(ctx, row, text, out)
 		previousID := row.ID
 		row = next
 		if err != nil {
 			execution.Finish(err)
-			return err
+			return requestCtx, err
 		}
 		if pending.Text == "" && len(pending.Segments) == 0 {
 			if c.turns.Snapshot(next.ID).Execution != execution {
 				execution.Finish(nil)
 			}
-			return nil
+			return requestCtx, nil
 		}
 		ctx = c.view.Context(ctx)
 		if next.ID != previousID && !agentshare.IsBackgroundSession(next) {
 			_, binding, err := c.sessions.CurrentBound(ctx, c.identity.Scope(ctx))
 			if err != nil {
 				execution.Finish(err)
-				return err
+				return requestCtx, err
 			}
 			if binding.SessionID() != next.ID {
 				execution.Finish(agentshare.ErrSessionBindingChanged)
-				return agentshare.ErrSessionBindingChanged
+				return requestCtx, agentshare.ErrSessionBindingChanged
 			}
 			ctx = session.WithBinding(ctx, binding)
 		}
@@ -111,14 +110,15 @@ func (c *ExecutionCoordinator) sessionIdle(ctx context.Context, id string) {
 	}
 }
 
-func (c *ExecutionCoordinator) RunBackground(ctx context.Context, row *storage.Session, text string) turn.Result {
+func (c *ExecutionCoordinator) RunBackground(ctx context.Context, row *storage.Session, text string) (context.Context, turn.Result) {
 	execution, err := c.turns.NewExecution(ctx)
 	if err != nil {
-		return turn.Result{SessionID: row.ID, Err: err, Outcome: "failed"}
+		return ctx, turn.Result{SessionID: row.ID, Err: err, Outcome: "failed"}
 	}
 	execution.SetResult(row.ID, "", "")
 	ctx = turn.WithExecution(ctx, execution)
-	if err := c.Run(ctx, row, text, backgroundTurnOutput{}); err != nil {
+	requestCtx, err := c.Run(ctx, row, text, backgroundTurnOutput{})
+	if err != nil {
 		execution.Finish(err)
 	}
 	result := execution.Wait(ctx)
@@ -135,7 +135,7 @@ func (c *ExecutionCoordinator) RunBackground(ctx context.Context, row *storage.S
 			release()
 		}
 	}
-	return result
+	return requestCtx, result
 }
 
 // NewExecutionCoordinator initializes ExecutionCoordinator without installing cross-service callbacks.
@@ -147,7 +147,6 @@ func NewExecutionCoordinator(ctx context.Context, deps ExecutionCoordinatorDeps)
 		requests:         deps.Requests,
 		contexts:         deps.Contexts,
 		SelectionForTurn: deps.SelectionForTurn,
-		TurnTimeout:      deps.TurnTimeout,
 		dialogue:         deps.Dialogue,
 		identity:         deps.Identity,
 		view:             deps.View,

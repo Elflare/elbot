@@ -2,7 +2,9 @@ package maintenance
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
+	"elbot/internal/background/share"
+	"elbot/internal/config"
+	globalevents "elbot/internal/events"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,10 +12,6 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
-
-	"elbot/internal/background/share"
-	"elbot/internal/config"
-	globalevents "elbot/internal/events"
 )
 
 type Service struct {
@@ -82,8 +80,7 @@ func (s *Service) RunLogCleanup(ctx context.Context) (err error) {
 		record.Content += fmt.Sprintf("\nerror=%q", err.Error())
 	}
 	record.EventName = "maintenance.log_cleanup"
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	record.Identity = globalevents.LogIdentityFromExecution(facts)
+	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	globalevents.Log(ctx, record)
 	return err
 }
@@ -102,8 +99,7 @@ func (s *Service) RunSessionCleanup(ctx context.Context) (err error) {
 		record.Content += fmt.Sprintf("\nerror=%q", err.Error())
 	}
 	record.EventName = "maintenance.session_cleanup"
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	record.Identity = globalevents.LogIdentityFromExecution(facts)
+	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	globalevents.Log(ctx, record)
 	return err
 }
@@ -123,8 +119,7 @@ func (s *Service) RunChatHistoryCleanup(ctx context.Context) (err error) {
 		record.Content += fmt.Sprintf("\nerror=%q", err.Error())
 	}
 	record.EventName = "maintenance.chat_history_cleanup"
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	record.Identity = globalevents.LogIdentityFromExecution(facts)
+	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	globalevents.Log(ctx, record)
 	return err
 }
@@ -141,8 +136,7 @@ func (s *Service) RunSandboxCleanup(ctx context.Context) (err error) {
 		record.Content += fmt.Sprintf("\nerror=%q", err.Error())
 	}
 	record.EventName = "maintenance.sandbox_cleanup"
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	record.Identity = globalevents.LogIdentityFromExecution(facts)
+	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	globalevents.Log(ctx, record)
 	return err
 }

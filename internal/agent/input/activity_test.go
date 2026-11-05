@@ -91,12 +91,12 @@ func TestSuccessfulPureDirectivesRenewOriginalBinding(t *testing.T) {
 					NewWorkspaceStore: func(id string) workspace.WorkspaceStore { return sessions.WorkspaceStore(id) },
 				})
 				if tc.existing {
-					if err := coordinator.handleSessionInput(ctx, row, tc.input); err != nil {
+					if _, err := coordinator.handleSessionInput(ctx, row, tc.input); err != nil {
 						t.Fatal(err)
 					}
 				}
 				time.Sleep(59 * time.Second)
-				if err := coordinator.handleSessionInput(ctx, row, tc.input); err != nil {
+				if _, err := coordinator.handleSessionInput(ctx, row, tc.input); err != nil {
 					t.Fatal(err)
 				}
 				time.Sleep(2 * time.Second)

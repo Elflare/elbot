@@ -416,7 +416,7 @@ func (t *Transport) call(ctx context.Context, action string, params map[string]a
 				record.ResultStatus = globalevents.ResultCanceled
 			}
 		}
-		record.Identity = logIdentity(ctx)
+		record.Identity = globalevents.LogIdentityFromContext(ctx)
 		globalevents.Log(context.WithoutCancel(ctx), record)
 
 	}()

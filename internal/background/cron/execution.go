@@ -14,63 +14,45 @@ import (
 	globalevents "elbot/internal/events"
 )
 
-func (s *Service) runTask(ctx context.Context, job Job, meta Metadata) error {
-	job, state, prepareErr := s.prepareDelivery(ctx, job, meta)
-
-	if !state.ReportReady {
-		return prepareErr
+func (s *Service) runTask(ctx context.Context, job Job, meta Metadata) (context.Context, error) {
+	ctx, job, state, err := s.prepareDelivery(ctx, job, meta)
+	if err != nil || !state.ReportReady {
+		return ctx, err
 	}
 	if state.TakenOver {
 		ctx = context.WithoutCancel(ctx)
 	}
-	deliverErr := s.deliverPrepared(ctx, job, meta, state, "", false)
-	if prepareErr == nil {
-		return deliverErr
-	}
-	if deliverErr == nil {
-		return prepareErr
-	}
-	return errors.Join(prepareErr, deliverErr)
+	return ctx, s.deliverPrepared(ctx, job, meta, state, "", false)
 }
 
-func (s *Service) prepareDelivery(ctx context.Context, job Job, meta Metadata) (Job, CronDeliveryState, error) {
-	logFailure := func(err error) {
-		record := globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, Module: "cron", EventName: "prepare_cron_delivery_failed", ResultStatus: globalevents.ResultFailed, Identity: cronLogIdentity(ctx), Content: fmt.Sprintf("job=%s error=%v", job.Name, err)}
-		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
-			record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
-		}
-		background.LogBackground(ctx, record)
-	}
+func (s *Service) prepareDelivery(ctx context.Context, job Job, meta Metadata) (context.Context, Job, CronDeliveryState, error) {
 
 	if len(s.targetPlatformNames(meta)) == 0 {
 		err := fmt.Errorf("no allowed delivery targets: source_platform=%q all_enabled_platforms=%t enabled_platforms=%v; target platform is not enabled", meta.Target.SourcePlatform, meta.Target.AllEnabledPlatforms, s.enabledPlatformNames())
-		return job, CronDeliveryState{}, err
+		return ctx, job, CronDeliveryState{}, err
 	}
 	state, err := decodeDeliveryState(job.DeliveryState)
 	if err != nil {
-		logFailure(err)
-		return job, CronDeliveryState{}, err
+		return ctx, job, CronDeliveryState{}, err
 	}
 	if meta.Schedule.Mode == ScheduleCron || strings.TrimSpace(job.DeliveryToken) == "" || strings.TrimSpace(state.RunID) == "" {
 		id, err := s.newRunID(ctx)
 		if err != nil {
-			logFailure(err)
-			return job, state, err
+			return ctx, job, state, err
 		}
 		state = CronDeliveryState{RunID: id}
 		encoded := encodeDeliveryState(state)
 		swapped, swapErr := s.store.CompareAndSwapDelivery(ctx, job.ID, job.DeliveryToken, state.RunID, encoded, nil)
 		if swapErr != nil {
-			logFailure(swapErr)
-			return job, CronDeliveryState{}, swapErr
+			return ctx, job, CronDeliveryState{}, swapErr
 		}
 		if !swapped {
-			return job, CronDeliveryState{}, nil
+			return ctx, job, CronDeliveryState{}, nil
 		}
 		job.DeliveryToken, job.DeliveryState = state.RunID, encoded
 	}
 	if state.ReportReady {
-		return job, state, nil
+		return ctx, job, state, nil
 	}
 
 	switch meta.Trigger.Mode {
@@ -79,14 +61,14 @@ func (s *Service) prepareDelivery(ctx context.Context, job Job, meta Metadata) (
 		state.NeedReport = true
 		state.Report = strings.TrimSpace(meta.Trigger.Message)
 	case TriggerLLM:
-		state, err = s.runLLMReport(ctx, job, meta, state)
+		ctx, state, err = s.runLLMReport(ctx, job, meta, state)
 
 	default:
 		err := fmt.Errorf("unsupported trigger mode %q", meta.Trigger.Mode)
-		return job, state, err
+		return ctx, job, state, err
 	}
 	if meta.Trigger.Mode == TriggerLLM && !state.ReportReady {
-		return job, state, err
+		return ctx, job, state, err
 	}
 	if state.TakenOver {
 		ctx = context.WithoutCancel(ctx)
@@ -96,23 +78,22 @@ func (s *Service) prepareDelivery(ctx context.Context, job Job, meta Metadata) (
 	encoded := encodeDeliveryState(state)
 	swapped, swapErr := s.store.CompareAndSwapDelivery(ctx, job.ID, job.DeliveryToken, nextToken, encoded, nil)
 	if swapErr != nil {
-		logFailure(swapErr)
-		return job, state, errors.Join(err, swapErr)
+		return ctx, job, state, swapErr
 	}
 	if !swapped {
-		return job, CronDeliveryState{}, err
+		return ctx, job, CronDeliveryState{}, err
 	}
 	job.DeliveryToken, job.DeliveryState = nextToken, encoded
-	return job, state, err
+	return ctx, job, state, err
 }
 
-func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, state CronDeliveryState) (CronDeliveryState, error) {
+func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, state CronDeliveryState) (context.Context, CronDeliveryState, error) {
 
 	platforms := s.targetPlatformNames(meta)
 
 	model, err := s.modelForTask(meta.LLM)
 	if err != nil {
-		return state, err
+		return ctx, state, err
 	}
 	actor := contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: meta.CreatedBy.Platform, ID: meta.CreatedBy.ID}, Name: meta.CreatedBy.Name, Role: contextinfo.RoleSuperadmin}
 	runRequest := background.RunRequest{TaskType: background.KindCron, TaskID: job.Name, Name: meta.Title, Actor: actor, Prompt: cronPrompt(meta.Trigger.Message), SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}}
@@ -120,29 +101,35 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 	runRequest.NeedsElyphRules = true
 	runRequest.ToolListNames = meta.LLM.ToolListNames
 	runRequest.ModelProvider, runRequest.Model = model.Provider, model.Model
-	result, err := s.runner.RunBackground(ctx, runRequest)
+	ctx, result, err := s.runner.RunBackground(ctx, runRequest)
+	if err != nil && !result.TakenOver {
+		return ctx, state, err
+	}
 	if taken, lookupErr := s.sessionTakenOver(context.WithoutCancel(ctx), result.SessionID); lookupErr != nil {
-		err := errors.Join(err, lookupErr)
-		return state, err
+		return ctx, state, lookupErr
 	} else if taken {
 		result.TakenOver = true
 	}
 	if result.TakenOver {
-		return takeoverState(state, result), err
+		return ctx, takeoverState(state, result), err
 	}
 	if err != nil {
 		// The report operation did not complete. Lower-level cancellation and
 		// tool/model outcomes are recorded by their own sources, not inferred here.
-		return state, err
+		return ctx, state, err
 	}
 
 	parsed, err := background.ParseJSONResult(result.Text)
 	if err != nil {
-		result, parsed, err = s.retryLLMResultFormat(ctx, job, meta, actor, result.SessionID, model)
-
-	}
-	if result.TakenOver {
-		return takeoverState(state, result), err
+		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "cron_format_retry", Module: "cron", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
+		ctx, result, err = s.retryLLMResultFormat(ctx, job, meta, actor, result.SessionID, model)
+		if err != nil {
+			return ctx, state, err
+		}
+		if result.TakenOver {
+			return ctx, takeoverState(state, result), nil
+		}
+		parsed, err = background.ParseJSONResult(result.Text)
 	}
 	if err != nil {
 		message := cronParseFailedMessage(meta.Title, result.SessionID, err)
@@ -151,7 +138,8 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 		state.Report = message
 		state.ReportSessionID = result.SessionID
 		state.ReportMessageID = result.MessageID
-		return state, err
+		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "cron_format_failed", Module: "cron", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
+		return ctx, state, nil
 	}
 	var copyErr error
 	if meta.Target.AllEnabledPlatforms {
@@ -159,7 +147,7 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 		if err := copyErr; err != nil {
 			if errors.Is(err, agent.ErrForegroundSession) {
 				result.TakenOver = true
-				return takeoverState(state, result), nil
+				return ctx, takeoverState(state, result), nil
 			}
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogRuntime,
@@ -171,8 +159,8 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultFailed,
 			}
-			record.Identity = cronLogIdentity(ctx)
-			background.LogBackground(ctx, record)
+			record.Identity = globalevents.LogIdentityFromContext(ctx)
+			globalevents.Log(ctx, record)
 		}
 	}
 	state.ReportReady = true
@@ -184,32 +172,24 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 	report := strings.TrimSpace(parsed.Report)
 	if parsed.Completed {
 		state.Report = report
-		return state, copyErr
+		return ctx, state, nil
 	}
 	if report == "" {
 		report = "任务未完成。"
 	}
 	report += fmt.Sprintf("\n可 /resume 到 cron session 查看详情。\nsession: %s", result.SessionID)
 	state.Report = report
-	return state, copyErr
+	return ctx, state, nil
 }
 
-func (s *Service) retryLLMResultFormat(ctx context.Context, job Job, meta Metadata, actor contextinfo.Actor, sessionID string, model config.ModelSelection) (background.RunResult, CronLLMResult, error) {
+func (s *Service) retryLLMResultFormat(ctx context.Context, job Job, meta Metadata, actor contextinfo.Actor, sessionID string, model config.ModelSelection) (context.Context, background.RunResult, error) {
 
 	if taken, err := s.sessionTakenOver(ctx, sessionID); err != nil || taken {
-		return background.RunResult{SessionID: sessionID, TakenOver: taken, Outcome: "taken_over"}, CronLLMResult{}, err
+		return ctx, background.RunResult{SessionID: sessionID, TakenOver: taken, Outcome: "taken_over"}, err
 	}
 	runRequest := background.RunRequest{TaskType: background.KindCron, TaskID: job.Name, Name: meta.Title, Actor: actor, SessionID: sessionID, Prompt: cronFormatRetryPrompt(), SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}}
 	runRequest.ModelProvider, runRequest.Model = model.Provider, model.Model
-	result, err := s.runner.RunBackground(ctx, runRequest)
-	if err != nil {
-		return result, CronLLMResult{}, err
-	}
-	if result.TakenOver {
-		return result, CronLLMResult{}, nil
-	}
-	parsed, err := background.ParseJSONResult(result.Text)
-	return result, parsed, err
+	return s.runner.RunBackground(ctx, runRequest)
 }
 
 func cronParseFailedMessage(title, sessionID string, err error) string {

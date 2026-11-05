@@ -2,36 +2,13 @@ package chat
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"log/slog"
 
-	"elbot/internal/contextinfo"
-	globalevents "elbot/internal/events"
 	"elbot/internal/storage"
 )
 
 func (r *Loop) consumeContextCompactSeed(ctx context.Context, session *storage.Session) error {
 	latest, err := r.Contexts.ConsumeSeed(ctx, session.ID)
 	if err != nil {
-		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
-			Level:        slog.LevelError,
-			EventName:    "consume_compact_context_failed",
-			Module:       "agent",
-			Type:         globalevents.ContentText,
-			Content:      fmt.Sprintf("consume compact context failed\nerror=%v", err),
-			ContentLimit: 4096,
-			ResultStatus: globalevents.ResultFailed,
-		}
-		if errors.Is(err, context.Canceled) {
-			record.ResultStatus = globalevents.ResultCanceled
-			record.Level = slog.LevelInfo
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		record.Identity = globalevents.LogIdentityFromExecution(facts)
-		record.Identity.SessionID = session.ID
-		globalevents.Log(ctx, record)
 		return err
 	}
 	session.Metadata = latest.Metadata

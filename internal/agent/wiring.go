@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"elbot/internal/modelmgr"
-	"elbot/internal/notification/rules"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/workspace"
@@ -195,7 +194,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		SelectionForTurn: func(ctx context.Context, row *storage.Session) modelmgr.Selection {
 			return modelmgr.SelectionForTurn(ctx, deps.Models, row)
 		},
-		TurnTimeout:     rules.TurnTimeout,
 		Dialogue:        runner,
 		Identity:        identity,
 		View:            view,

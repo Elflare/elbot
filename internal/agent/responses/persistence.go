@@ -4,10 +4,7 @@ import (
 	agentshare "elbot/internal/agent/share"
 
 	"context"
-	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"fmt"
-	"log/slog"
 
 	"elbot/internal/llm"
 	"elbot/internal/storage"
@@ -16,19 +13,6 @@ import (
 type inputCommitter struct{ state *turnState }
 
 func (c inputCommitter) Commit(ctx context.Context, message *storage.Message, mappings []storage.PlatformMessageMap) (err error) {
-	step := "prepare"
-	defer func() {
-		if err == nil || step == "commit" {
-			return
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		facts.SessionID = c.state.session.ID
-		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, Module: "agent", EventName: "native_input_prepare_failed", ResultStatus: events.LogStatus(err), Content: err.Error()}
-		if record.ResultStatus == events.ResultCanceled {
-			record.Level = slog.LevelInfo
-		}
-		agentshare.EmitAgentLog(ctx, facts, record)
-	}()
 
 	if message == nil {
 		err := fmt.Errorf("native input message is required")
@@ -45,7 +29,6 @@ func (c inputCommitter) Commit(ctx context.Context, message *storage.Message, ma
 	if err != nil {
 		return err
 	}
-	step = "commit"
 	return c.state.commit(ctx, storage.DialogueCommit{
 		SessionID:           message.SessionID,
 		Messages:            []*storage.Message{message},
@@ -117,19 +100,6 @@ type toolCommitter struct {
 }
 
 func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (err error) {
-	step := "prepare"
-	defer func() {
-		if err == nil || step == "commit" {
-			return
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		facts.SessionID = c.state.session.ID
-		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, Module: "agent", EventName: "tool_batch_prepare_failed", ResultStatus: events.LogStatus(err), Content: err.Error()}
-		if record.ResultStatus == events.ResultCanceled {
-			record.Level = slog.LevelInfo
-		}
-		agentshare.EmitAgentLog(ctx, facts, record)
-	}()
 
 	s := c.state
 	c.head = head
@@ -168,7 +138,6 @@ func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (err e
 	native.Inputs = c.inputs
 	native.Checkpoint.MessageID = head.ID
 	native.Calls = c.calls
-	step = "commit"
 	err = s.commit(ctx, storage.DialogueCommit{SessionID: s.session.ID, ToolBatch: batch, Native: &native}, "begin_tool_transcript")
 	if err != nil {
 		return err
@@ -184,30 +153,14 @@ func (c *toolCommitter) Prepared(ctx context.Context, index int, call llm.ToolCa
 	return nil
 }
 func (c *toolCommitter) Result(ctx context.Context, index int, _ llm.ToolCallRequest, message llm.LLMMessage, update *storage.ToolResultCommit) (err error) {
-	step := "prepare"
-	level := slog.LevelError
-	defer func() {
-		if err == nil || step == "commit" {
-			return
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		facts.SessionID = c.state.session.ID
-		record := events.LogRecord{Category: events.LogRuntime, Level: level, Module: "agent", EventName: "tool_result_prepare_failed", ResultStatus: events.LogStatus(err), Content: err.Error()}
-		if record.ResultStatus == events.ResultCanceled {
-			record.Level = slog.LevelInfo
-		}
-		agentshare.EmitAgentLog(ctx, facts, record)
-	}()
 
 	s := c.state
 	stored := update.Result
 	stored.ID, stored.CreatedAt = c.results[index].ID, c.results[index].CreatedAt
-	level = slog.LevelWarn
 	archived, err := s.route.Preparer.ArchiveMaterials(ctx, []llm.LLMMessage{message})
 	if err != nil {
 		return err
 	}
-	level = slog.LevelError
 	segments := archived[0].Segments
 	stored.Content, stored.Segments = agentshare.MessageContent(segments), agentshare.StoredMessageSegments(segments)
 	input, err := queuedInput(s.session.ID, stored.ID, s.exchange.ID, c.calls[index].CallID, segments)
@@ -231,7 +184,6 @@ func (c *toolCommitter) Result(ctx context.Context, index int, _ llm.ToolCallReq
 		native.Snapshot = &snapshot
 	}
 	update.Call = c.head
-	step = "commit"
 	err = s.commit(context.WithoutCancel(ctx), storage.DialogueCommit{SessionID: s.session.ID, ToolResult: update, Native: &native}, "save_tool_result")
 	if err == nil {
 		c.remaining--
@@ -240,18 +192,6 @@ func (c *toolCommitter) Result(ctx context.Context, index int, _ llm.ToolCallReq
 }
 
 func (c *toolCommitter) Flush(ctx context.Context) (err error) {
-	defer func() {
-		if err == nil {
-			return
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		facts.SessionID = c.state.session.ID
-		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, Module: "agent", EventName: "tool_transcript_projection_failed", ResultStatus: events.LogStatus(err), Content: err.Error()}
-		if record.ResultStatus == events.ResultCanceled {
-			record.Level = slog.LevelInfo
-		}
-		agentshare.EmitAgentLog(ctx, facts, record)
-	}()
 
 	s := c.state
 

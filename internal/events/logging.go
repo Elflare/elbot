@@ -123,8 +123,9 @@ type LogIdentity struct {
 	RootRequestID string
 }
 
-// LogIdentityFromExecution copies the source-selected execution snapshot.
-func LogIdentityFromExecution(e contextinfo.Execution) LogIdentity {
+// LogIdentityFromContext copies the execution identity carried by ctx.
+func LogIdentityFromContext(ctx context.Context) LogIdentity {
+	e, _ := contextinfo.ExecutionFromContext(ctx)
 	return LogIdentity{
 		SessionID:     e.SessionID,
 		RunID:         e.RunID,

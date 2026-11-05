@@ -46,6 +46,10 @@ func TestSendLoggingKeepsSourceResultAndPartialReceipt(t *testing.T) {
 	if !errors.Is(err, want) || len(receipt.PlatformMessageIDs) != 1 {
 		t.Fatal(receipt, err, len(logs))
 	}
+	if len(logs) != 0 {
+		t.Fatal("SendTo reported an error it returns to its caller")
+	}
+	LogSendResult(ctx, Target{Platform: "test"}, out, want)
 	record := nextLog()
 	if record.Level != slog.LevelWarn || record.ResultStatus != events.ResultFailed {
 		t.Fatalf("failure record = %#v", record)

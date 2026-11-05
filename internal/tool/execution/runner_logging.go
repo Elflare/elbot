@@ -29,8 +29,7 @@ func newRunRecord(ctx context.Context, sessionID, eventName string, err error) e
 	record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: eventName, Module: "toolrun", Content: content, ContentLimit: 4096, ResultStatus: status}
 	// Read the current operation's execution facts after any foreground handoff.
 	// SessionID belongs to the supplied Session, including an explicit empty ID.
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	record.Identity = events.LogIdentityFromExecution(facts)
+	record.Identity = events.LogIdentityFromContext(ctx)
 	record.Identity.SessionID = sessionID
 	return record
 }

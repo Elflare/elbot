@@ -4,19 +4,16 @@ package pipeline
 
 import (
 	"context"
+	globalevents "elbot/internal/events"
+	"elbot/internal/hook/share"
+	"elbot/internal/llm"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
 	"sort"
 	"strings"
 	"sync"
-
-	"elbot/internal/contextinfo"
-	globalevents "elbot/internal/events"
-	"elbot/internal/hook/share"
-	"elbot/internal/llm"
 )
 
 type Manager struct {
@@ -69,34 +66,30 @@ func (m *Manager) Register(reg share.Registration) {
 }
 
 // Run first tries an inbound continuation, then runs ordinary rules unless stopped.
-// On failure it returns the entry snapshot and notifies error hooks once.
+// Ordinary Hook failures are handled here; task cancellation propagates.
 func (m *Manager) Run(ctx context.Context, event share.Event, options CallOptions) (share.Event, error) {
 	before := share.SnapshotCalls(event)
 	if event.Point == share.PointPlatformMessageReceived && m.route != nil {
 		updated, routed, err := m.route(ctx, event, options.Observe)
 		if err != nil {
+			if ctx.Err() != nil {
+				return before, err
+			}
+			globalevents.LogAndNotify(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "hook_error", Module: "hook", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)}, globalevents.NewNotification(ctx, slog.LevelWarn, err.Error()))
 			m.notifyError(ctx, before, options, err)
-			return before, err
+			event = before
+		} else {
+			event = updated
 		}
-		event = updated
 		if routed && event.Control.StopPropagation {
 			return event, nil
 		}
 	}
-	updated, err := m.run(ctx, event, options)
-	if err != nil {
-		m.notifyError(ctx, before, options, err)
-		return before, err
-	}
-	return updated, nil
+	return m.run(ctx, event, options)
 }
 
 func (m *Manager) Notify(ctx context.Context, event share.Event, options CallOptions) error {
-	err := m.notify(ctx, event, options)
-	if err != nil {
-		m.notifyError(ctx, event, options, err)
-	}
-	return err
+	return m.notify(ctx, event, options)
 }
 
 func (m *Manager) notifyError(ctx context.Context, event share.Event, options CallOptions, err error) {
@@ -127,8 +120,14 @@ func (m *Manager) run(ctx context.Context, event share.Event, options CallOption
 		delete(event.Metadata, "match")
 
 		if err != nil {
+			if ctx.Err() != nil {
+				return before, err
+			}
 			m.logHook(runCtx, "run", reg, before, before, err)
-			return before, wrapHookError(reg, err)
+			globalevents.Notify(ctx, globalevents.NewNotification(ctx, slog.LevelWarn, err.Error()))
+			m.notifyError(ctx, before, options, err)
+			event = before
+			continue
 		}
 		markHookOutputs(updated, len(before.Outputs), reg, "run")
 		event = share.PrepareEvent(updated)
@@ -143,7 +142,6 @@ func (m *Manager) run(ctx context.Context, event share.Event, options CallOption
 
 func (m *Manager) notify(ctx context.Context, event share.Event, options CallOptions) error {
 	event = share.PrepareEvent(event)
-	var joined error
 	for _, reg := range m.handlersFor(event.Point) {
 		if reg.block.Blocks(event) {
 			continue
@@ -156,12 +154,19 @@ func (m *Manager) notify(ctx context.Context, event share.Event, options CallOpt
 			continue
 		}
 		event.Metadata["match"] = matchResult.Context
-		before := event
+		before := share.SnapshotCalls(event)
 		runCtx, updated, err := m.invoke(ctx, reg, event, options)
 		delete(event.Metadata, "match")
 		if err != nil {
+			if ctx.Err() != nil {
+				return err
+			}
 			m.logHook(runCtx, "notify", reg, before, before, err)
-			joined = errors.Join(joined, wrapHookError(reg, err))
+			if event.Point != share.PointErrorOccurred {
+				globalevents.Notify(ctx, globalevents.NewNotification(ctx, slog.LevelWarn, err.Error()))
+				m.notifyError(ctx, before, options, err)
+			}
+			event = before
 			continue
 		}
 		markHookOutputs(updated, len(before.Outputs), reg, "notify")
@@ -170,7 +175,7 @@ func (m *Manager) notify(ctx context.Context, event share.Event, options CallOpt
 			break
 		}
 	}
-	return joined
+	return nil
 }
 
 func (m *Manager) handlersFor(point share.Point) []registration {
@@ -372,10 +377,6 @@ func (m *Manager) ReplacePlugin(pluginID string, next *Manager) {
 	}
 }
 
-func wrapHookError(reg registration, err error) error {
-	return fmt.Errorf("hook %s: %w", reg.name, err)
-}
-
 func markHookOutputs(event share.Event, start int, reg registration, mode string) {
 	for i := start; i < len(event.Outputs); i++ {
 		info := &event.Outputs[i].Delivery
@@ -430,8 +431,7 @@ func (m *Manager) logHook(ctx context.Context, mode string, reg registration, be
 		Category: globalevents.LogRuntime, Level: level, EventName: name, Module: "hook",
 		ResultStatus: status, Type: globalevents.ContentJSON, Content: string(data),
 	}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	record.Identity = globalevents.LogIdentityFromExecution(facts)
+	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	record.Identity.SessionID = before.Session.ID
 	m.Log(ctx, record)
 }

@@ -8,7 +8,7 @@ import (
 
 // BackgroundExecution is the Agent capability consumed by this task runner.
 type BackgroundExecution interface {
-	RunBackground(context.Context, agent.BackgroundRequest) (agent.BackgroundResult, error)
+	RunBackground(context.Context, agent.BackgroundRequest) (context.Context, agent.BackgroundResult, error)
 }
 
 // BackgroundRunnerDeps declares only the capabilities consumed by BackgroundRunner.

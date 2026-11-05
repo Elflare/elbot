@@ -545,9 +545,7 @@ func TestRunLLMEventRetriesOnlyIncompleteReportDeliveries(t *testing.T) {
 		t.Fatalf("deliveries after failure = %#v", deliveries)
 	}
 
-	if err := service.recoverReports(context.Background()); err != nil {
-		t.Fatalf("recoverReports: %v", err)
-	}
+	service.recoverReports(context.Background())
 	record, err = testRepo(service).snapshot(context.Background(), queued.EventID)
 	if err != nil {
 		t.Fatalf("Get recovered event: %v", err)
@@ -602,9 +600,7 @@ func TestRunLLMEventRetriesWhenReceiptPersistenceFails(t *testing.T) {
 	if err != nil || len(pending) != 1 || pending[0].Status != "pending" || pending[0].Receipt != "" {
 		t.Fatalf("delivery did not roll back: %#v %v", pending, err)
 	}
-	if err := service.recoverReports(context.Background()); err != nil {
-		t.Fatalf("recoverReports: %v", err)
-	}
+	service.recoverReports(context.Background())
 	record, err = testRepo(service).snapshot(context.Background(), queued.EventID)
 	if err != nil {
 		t.Fatalf("Get recovered event: %v", err)
@@ -654,9 +650,7 @@ func TestRecoverReportsResetsInterruptedDeliveringEvent(t *testing.T) {
 	if err := service.resetDeliveringReports(context.Background()); err != nil {
 		t.Fatalf("resetDeliveringReports: %v", err)
 	}
-	if err := service.recoverReports(context.Background()); err != nil {
-		t.Fatalf("recoverReports: %v", err)
-	}
+	service.recoverReports(context.Background())
 	record, err := testRepo(service).snapshot(context.Background(), queued.EventID)
 	if err != nil {
 		t.Fatalf("Get recovered event: %v", err)
@@ -710,9 +704,7 @@ func TestRecoverReportsDoesNotResendPersistedReceipt(t *testing.T) {
 	if err := service.resetDeliveringReports(context.Background()); err != nil {
 		t.Fatalf("resetDeliveringReports: %v", err)
 	}
-	if err := service.recoverReports(context.Background()); err != nil {
-		t.Fatalf("recoverReports: %v", err)
-	}
+	service.recoverReports(context.Background())
 	record, err := testRepo(service).snapshot(context.Background(), queued.EventID)
 	if err != nil {
 		t.Fatalf("Get recovered event: %v", err)
@@ -772,8 +764,12 @@ func TestRunLLMEventRejectsAbsoluteReportSegmentPath(t *testing.T) {
 	if _, err := service.Handle(context.Background(), "secret", req); err != nil {
 		t.Fatalf("Handle llm: %v", err)
 	}
-	if err := service.RunLLMEvent(context.Background(), queued.Event, queued.EventID); err == nil {
-		t.Fatal("expected absolute report segment path error")
+	if err := service.RunLLMEvent(context.Background(), queued.Event, queued.EventID); err != nil {
+		t.Fatal(err)
+	}
+	row, err := testRepo(service).snapshot(t.Context(), queued.EventID)
+	if err != nil || row.Status != StatusFailed || row.Error == "" {
+		t.Fatalf("invalid report was not recorded as failed: %+v %v", row, err)
 	}
 }
 
@@ -1073,6 +1069,7 @@ func (r *fakePlatformCallerResolver) CallPlatformAPI(ctx context.Context, platfo
 type fakeBackgroundRunner struct {
 	text     string
 	requests []background.RunRequest
+	errors   []error
 }
 
 type failOnceReceiptRepository struct {
@@ -1088,9 +1085,12 @@ func (r *failOnceReceiptRepository) MarkReportDeliveriesDelivered(ctx context.Co
 	return r.EventRepository.MarkReportDeliveriesDelivered(ctx, deliveryIDs, receipt, mappings)
 }
 
-func (r *fakeBackgroundRunner) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
+func (r *fakeBackgroundRunner) RunBackground(ctx context.Context, req background.RunRequest) (context.Context, background.RunResult, error) {
 	r.requests = append(r.requests, req)
-	return background.RunResult{SessionID: "bg-session", MessageID: "bg-message", Text: r.text}, nil
+	if len(r.requests) <= len(r.errors) && r.errors[len(r.requests)-1] != nil {
+		return ctx, background.RunResult{SessionID: "bg-session"}, r.errors[len(r.requests)-1]
+	}
+	return ctx, background.RunResult{SessionID: "bg-session", MessageID: "bg-message", Text: r.text}, nil
 }
 
 func testRequest(mode string) Request {

@@ -11,9 +11,9 @@ import (
 
 type takeoverRunner struct{ calls int }
 
-func (r *takeoverRunner) RunBackground(context.Context, background.RunRequest) (background.RunResult, error) {
+func (r *takeoverRunner) RunBackground(ctx context.Context, _ background.RunRequest) (context.Context, background.RunResult, error) {
 	r.calls++
-	return background.RunResult{RunID: "logical-run", SessionID: "adopted", MessageID: "actual-answer", Text: "ordinary foreground answer", TakenOver: true, Outcome: "completed"}, nil
+	return ctx, background.RunResult{RunID: "logical-run", SessionID: "adopted", MessageID: "actual-answer", Text: "ordinary foreground answer", TakenOver: true, Outcome: "completed"}, nil
 }
 
 func TestTakeoverSuppressesRepairAndDelivery(t *testing.T) {
@@ -25,7 +25,7 @@ func TestTakeoverSuppressesRepairAndDelivery(t *testing.T) {
 		return delivery.Receipt{}, nil
 	}})
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "takeover", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
-	if err := svc.runTask(context.Background(), *job, mustDecodeTestMetadata(t, job.Metadata)); err != nil {
+	if _, err := svc.runTask(context.Background(), *job, mustDecodeTestMetadata(t, job.Metadata)); err != nil {
 		t.Fatal(err)
 	}
 	state := mustDecodeTestDelivery(t, repo.jobs[job.Name].DeliveryState)
@@ -47,7 +47,7 @@ func TestInjectedTakeoverQuerySuppressesRepairAndSurfacesFailure(t *testing.T) {
 		runner := &fakeCronRunner{text: "invalid JSON"}
 		queried := ""
 		svc := newTestCronService(t, Options{Runner: runner, SessionTakenOver: func(_ context.Context, id string) (bool, error) { queried = id; return lookupErr == nil, lookupErr }})
-		state, err := svc.runLLMReport(t.Context(), Job{Name: "job"}, Metadata{Target: CronTarget{SourcePlatform: "cli"}}, CronDeliveryState{RunID: "run"})
+		_, state, err := svc.runLLMReport(t.Context(), Job{Name: "job"}, Metadata{Target: CronTarget{SourcePlatform: "cli"}}, CronDeliveryState{RunID: "run"})
 		if runner.calls != 1 || queried != "cron-session" || state.Report != "" {
 			t.Fatalf("calls=%d query=%q report=%q", runner.calls, queried, state.Report)
 		}

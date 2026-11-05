@@ -126,7 +126,7 @@ func TestExecutionRestoresUsageBeforeCancellationAndCleansUpFailure(t *testing.T
 				},
 			})
 			defer c.Close(context.Background())
-			err = c.Run(testutil.WithCLIConversation(t.Context()), row, "input", backgroundTurnOutput{})
+			_, err = c.Run(testutil.WithCLIConversation(t.Context()), row, "input", backgroundTurnOutput{})
 			if tc.cancel {
 				usage := recorder.Snapshot(row.ID).Usage
 				if usage == nil || usage.TotalTokens == nil || *usage.TotalTokens != 42 {

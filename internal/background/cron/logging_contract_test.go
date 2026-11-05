@@ -41,7 +41,7 @@ func TestDeliverySuccessHasIndependentAudit(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(connection.Disconnect)
-	err = s.runTask(ctx, *job, meta)
+	_, err = s.runTask(ctx, *job, meta)
 	if err != nil {
 		t.Fatal("delivery error:", err)
 	}
@@ -50,7 +50,7 @@ func TestDeliverySuccessHasIndependentAudit(t *testing.T) {
 	}
 }
 
-func TestHandlerLogsDeliveryErrors(t *testing.T) {
+func TestHandlerReturnsDeliveryErrorsToTaskBoundary(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		status globalevents.ResultStatus
@@ -79,8 +79,12 @@ func TestHandlerLogsDeliveryErrors(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer connection.Disconnect()
-			err = s.Handler(t.Context(), *job)
-			if !errors.Is(err, tc.err) || len(records) != 2 {
+			_, err = s.Handler(t.Context(), *job)
+			wantLogs := 0
+			if tc.err == nil {
+				wantLogs = 1
+			}
+			if !errors.Is(err, tc.err) || len(records) != wantLogs {
 				t.Fatal("source/business result changed: log= error= records=", err, records)
 			}
 			for _, record := range records {
@@ -122,11 +126,11 @@ func TestTaskAuditIdentityAndOperation(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer connection.Disconnect()
-				err = s.Handler(ctx, *job)
-				if err != nil || len(records) != 4 {
+				_, err = s.Handler(ctx, *job)
+				if err != nil || len(records) != 3 {
 					t.Fatal("result= err= records=", err, records)
 				}
-				for i, name := range []string{"cron.trigger_started", "cron.send_started", "cron.send_completed", "cron.trigger_completed"} {
+				for i, name := range []string{"cron.trigger_started", "cron.send_started", "cron.send_completed"} {
 					identity := want
 					if strings.HasPrefix(name, "cron.send_") {
 						sessionID := ""
@@ -152,7 +156,7 @@ func (r *loggingCronRepo) UpdateRunState(ctx context.Context, id string, state J
 	return r.fakeCronRepo.UpdateRunState(ctx, id, state)
 }
 
-func TestRunJobLogsFinalResultAfterStateSave(t *testing.T) {
+func TestRunJobReportsTaskAndBookkeepingFailuresIndependently(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		cancel  bool
@@ -163,8 +167,8 @@ func TestRunJobLogsFinalResultAfterStateSave(t *testing.T) {
 		{"success", false, nil, nil, globalevents.ResultSucceeded},
 		{"canceled", true, fmt.Errorf("wrapped: %w", context.Canceled), nil, globalevents.ResultCanceled},
 		{"deadline", false, context.DeadlineExceeded, nil, globalevents.ResultFailed},
-		{"cancel_and_save_failure", true, context.Canceled, errors.New("save failed"), globalevents.ResultFailed},
-		{"success_and_save_failure", false, nil, errors.New("save failed"), globalevents.ResultFailed},
+		{"cancel_and_save_failure", true, context.Canceled, errors.New("save failed"), globalevents.ResultCanceled},
+		{"success_and_save_failure", false, nil, errors.New("save failed"), globalevents.ResultSucceeded},
 		{"mixed_failure", true, errors.Join(context.Canceled, errors.New("independent failure")), nil, globalevents.ResultFailed},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -173,23 +177,27 @@ func TestRunJobLogsFinalResultAfterStateSave(t *testing.T) {
 			ctx, cancel := context.WithCancel(contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "session", RequestID: "request"}))
 			defer cancel()
 			manager.started, manager.runCtx = true, ctx
-			manager.handlers["handler"] = func(context.Context, Job) error {
+			manager.handlers["handler"] = func(ctx context.Context, _ Job) (context.Context, error) {
 				if tc.cancel {
 					cancel()
 				}
-				return tc.runErr
+				return ctx, tc.runErr
 			}
 			job, err := repo.Upsert(ctx, UpsertJobRequest{Name: "job", Handler: "handler", Enabled: true})
 			if err != nil {
 				t.Fatal(err)
 			}
 			var final []globalevents.LogRecord
+			var saves []globalevents.LogRecord
 			connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
 				if record.EventName == "cron_job_completed.handler" || record.EventName == "cron_job_failed.handler" {
-					if !repo.saved {
-						t.Error("final result emitted before state save")
+					if repo.saved {
+						t.Error("task failure was retained through bookkeeping")
 					}
 					final = append(final, record)
+				}
+				if record.EventName == "cron_job_state_update_failed" {
+					saves = append(saves, record)
 				}
 				return nil
 			}, signal.ConnectOptions{})
@@ -206,9 +214,7 @@ func TestRunJobLogsFinalResultAfterStateSave(t *testing.T) {
 				t.Fatalf("result = %s, want %s", record.ResultStatus, tc.want)
 			}
 			wantLevel := slog.LevelInfo
-			if tc.saveErr != nil {
-				wantLevel = slog.LevelError
-			} else if tc.want == globalevents.ResultFailed {
+			if tc.want == globalevents.ResultFailed {
 				wantLevel = slog.LevelWarn
 			}
 			if record.Level != wantLevel {
@@ -217,10 +223,15 @@ func TestRunJobLogsFinalResultAfterStateSave(t *testing.T) {
 			if record.Identity.SessionID != "session" || record.Identity.RequestID != "request" {
 				t.Fatalf("identity = %#v", record.Identity)
 			}
-			for _, err := range []error{tc.runErr, tc.saveErr} {
-				if err != nil && !strings.Contains(record.Content, err.Error()) {
-					t.Fatalf("missing error %v in %q", err, record.Content)
+			if tc.runErr != nil && !strings.Contains(record.Content, tc.runErr.Error()) {
+				t.Fatalf("task error missing: %+v", record)
+			}
+			if tc.saveErr != nil {
+				if len(saves) != 1 || !strings.Contains(saves[0].Content, tc.saveErr.Error()) || strings.Contains(record.Content, tc.saveErr.Error()) {
+					t.Fatalf("bookkeeping error mixed with task result: final=%+v saves=%+v", final, saves)
 				}
+			} else if len(saves) != 0 {
+				t.Fatalf("unexpected save failure: %+v", saves)
 			}
 		})
 	}
@@ -258,7 +269,7 @@ func TestRunJobPublishesHandlerContentOnlyOnce(t *testing.T) {
 			auditCount++
 		}
 	}
-	if runtimeCount != 2 || auditCount != 4 || !repo.saved {
+	if runtimeCount != 2 || auditCount != 3 || !repo.saved {
 		t.Fatalf("runtime=%d audit=%d saved=%v records=%#v", runtimeCount, auditCount, repo.saved, records)
 	}
 	if final.ResultStatus != globalevents.ResultSucceeded || strings.Count(final.Content, "job=") != 1 || strings.Count(final.Content, "handler=") != 1 || strings.Contains(final.Content, "\n\n") {

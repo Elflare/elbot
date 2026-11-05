@@ -41,7 +41,7 @@ type ModelCapabilities interface {
 // AgentCapabilities 只描述后台业务操作，不取得 Agent 的 Session、执行器或权限对象。
 // Agent 根包提供请求、结果及以下公开方法；会话准备、执行上下文和工具预载由 Agent 负责。
 type AgentCapabilities interface {
-	RunBackground(context.Context, agent.BackgroundRequest) (agent.BackgroundResult, error)
+	RunBackground(context.Context, agent.BackgroundRequest) (context.Context, agent.BackgroundResult, error)
 	CopyBackground(context.Context, agent.BackgroundCopyRequest) (string, error)
 	CleanupSessions(ctx context.Context, cutoff time.Time) (int, error)
 	SessionTakenOver(context.Context, string) (bool, error)

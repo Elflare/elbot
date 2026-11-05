@@ -10,12 +10,16 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/contextmgr"
+	"elbot/internal/events"
 	"elbot/internal/request"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
+	"errors"
+	"log/slog"
 	"sync"
+	"unicode/utf8"
 )
 
 // Supervisor owns foreground and background execution and its independently managed Session, Request and Turn state.
@@ -52,7 +56,23 @@ func (m *Supervisor) HandleMessage(ctx context.Context, req MessageRequest) erro
 	for _, mention := range req.Mentions {
 		msg.Mentions = append(msg.Mentions, agentshare.Mention{UserID: mention.UserID, Username: mention.Username, Text: mention.Text})
 	}
-	return m.handler.HandleMessage(agentshare.WithMessageContext(ctx, msg), req.Text)
+	ctx, err := m.handler.HandleMessage(agentshare.WithMessageContext(ctx, msg), req.Text)
+	if err != nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) {
+		record := events.LogRecord{
+			Category: events.LogRuntime, Level: slog.LevelWarn,
+			EventName: "dialogue_failed", Module: "dialogue", Type: events.ContentText,
+			Content: err.Error(), ContentLimit: utf8.RuneCountInString(err.Error()),
+			Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err),
+		}
+		ctx = session.WithBinding(context.WithoutCancel(ctx), nil)
+		if record.ResultStatus == events.ResultCanceled {
+			record.Level = slog.LevelInfo
+			events.AsyncLog(ctx, record)
+		} else {
+			events.LogAndNotify(ctx, record, events.NewNotification(ctx, record.Level, err.Error()))
+		}
+	}
+	return err
 }
 
 func messageSegments(input []MessageSegment) []agentshare.MessageSegment {

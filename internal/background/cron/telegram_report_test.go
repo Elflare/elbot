@@ -18,8 +18,8 @@ func TestTextReportMapsPartialReceipt(t *testing.T) {
 		return delivery.Receipt{PlatformMessageIDs: []string{"77"}, SentMessages: []delivery.SentMessage{{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "77"}}}, fmt.Errorf("second target failed")
 	}})
 	err := deliverTestReport(t, svc, "telegram", "task", "report")
-	if err == nil {
-		t.Fatal("expected second target failure")
+	if err != nil {
+		t.Fatalf("handled partial send failure escaped: %v", err)
 	}
 	if len(repo.mappings) != 1 || repo.mappings[0] != (background.ReportMessageMap{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "77", SessionID: "task", MessageID: "report"}) {
 		t.Fatalf("mappings=%#v", repo.mappings)

@@ -41,16 +41,16 @@ type CommandExecutor struct {
 	input         CommandInput
 }
 
-func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error) {
+func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Context, bool, error) {
 	if !e.router.IsCommand(text) {
-		return false, nil
+		return ctx, false, nil
 	}
 
 	parsed := e.router.Parse(text)
 	info, hasInfo := e.router.CommandInfo(parsed.Name)
 	sessionRow, binding, sessionErr := e.sessions.CurrentBound(ctx, e.identity.Scope(ctx))
 	if sessionErr != nil && !errors.Is(sessionErr, session.ErrNoCurrentSession) {
-		return true, sessionErr
+		return ctx, true, sessionErr
 	}
 	if sessionErr == nil {
 		ctx = session.WithBinding(ctx, binding)
@@ -60,18 +60,19 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		snapshot = e.turns.Snapshot(sessionRow.ID)
 	}
 	if sessionErr == nil && snapshot.Phase == turn.PhaseAwaitAppendConfirm && (agentshare.IsAppendConfirm(text) || agentshare.IsAppendCancel(text)) {
-		return true, e.execution.ResumeAppend(ctx, sessionRow, text)
+		ctx, err := e.execution.ResumeAppend(ctx, sessionRow, text)
+		return ctx, true, err
 	}
 	if sessionErr == nil && snapshot.Phase == turn.PhaseAwaitRiskConfirm && e.IsRiskConfirmationCommand(text) {
-		return true, e.confirmations.SubmitResponse(ctx, sessionRow.ID, text)
+		return ctx, true, e.confirmations.SubmitResponse(ctx, sessionRow.ID, text)
 	}
 	if sessionErr == nil && hasInfo && snapshot.Phase != turn.PhaseIdle && blocksDuringActiveTurn(info.SessionEffect) {
 		globalevents.Notify(session.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, fmt.Sprintf("%v，请等待完成，或先用 %s 停止任务后再切换。", session.ErrSessionBusy, e.commandText("stop"))))
-		return true, nil
+		return ctx, true, nil
 	}
 	if sessionErr == nil && hasInfo && e.execution.CompactActive(sessionRow.ID) && blocksDuringCompact(info.SessionEffect) {
 		_, err := e.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: compactCommandBlockedText(text, e.commandText)})
-		return true, err
+		return ctx, true, err
 	}
 
 	actor, _ := contextinfo.ActorFromContext(ctx)
@@ -88,12 +89,11 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultRejected,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity = globalevents.LogIdentityFromExecution(facts)
+			record.Identity = globalevents.LogIdentityFromContext(ctx)
 			globalevents.Log(ctx, record)
 		}
 		_, err := e.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: fmt.Sprintf("%s%s: superadmin required", parsed.Prefix, parsed.Name)})
-		return true, err
+		return ctx, true, err
 	}
 
 	if parsed.Name == "tools" {
@@ -112,11 +112,10 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		if errors.Is(err, session.ErrSessionBusy) {
 			err = fmt.Errorf("%w，请等待完成，或先用 %s 停止任务。", err, e.commandText("stop"))
 		}
-		globalevents.Notify(session.WithBinding(ctx, nil), globalevents.NewNotification(ctx, slog.LevelError, fmt.Sprintf("%s%s: %v", parsed.Prefix, parsed.Name, err)))
-		return true, err
+		return ctx, true, err
 	}
 	if result == nil {
-		return true, nil
+		return ctx, true, nil
 	}
 	if result.Content != "" {
 		// A command can invalidate its old session binding. Its result still
@@ -124,9 +123,10 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (bool, error)
 		globalevents.Notify(session.WithBinding(ctx, nil), globalevents.NewNotification(ctx, slog.LevelInfo, result.Content))
 	}
 	if result.Continuation != nil {
-		return true, e.input.ContinueCommandInput(ctx, *result.Continuation)
+		ctx, err := e.input.ContinueCommandInput(ctx, *result.Continuation)
+		return ctx, true, err
 	}
-	return true, nil
+	return ctx, true, nil
 }
 
 func blocksDuringActiveTurn(effect command.SessionEffect) bool {
@@ -138,7 +138,7 @@ func blocksDuringCompact(effect command.SessionEffect) bool {
 }
 
 type CommandExecution interface {
-	ResumeAppend(context.Context, *storage.Session, string) error
+	ResumeAppend(context.Context, *storage.Session, string) (context.Context, error)
 	CompactActive(string) bool
 	ModelContext(context.Context, *storage.Session) (context.Context, error)
 }
@@ -152,7 +152,7 @@ type CommandConfirmations interface {
 }
 
 type CommandInput interface {
-	ContinueCommandInput(context.Context, command.Continuation) error
+	ContinueCommandInput(context.Context, command.Continuation) (context.Context, error)
 }
 
 // CommandExecutorDeps declares only the capabilities consumed by CommandExecutor.

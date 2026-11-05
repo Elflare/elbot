@@ -55,8 +55,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultFailed,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity = globalevents.LogIdentityFromExecution(facts)
+			record.Identity = globalevents.LogIdentityFromContext(ctx)
 			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 		return
@@ -73,8 +72,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultFailed,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity = globalevents.LogIdentityFromExecution(facts)
+			record.Identity = globalevents.LogIdentityFromContext(ctx)
 			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 		return
@@ -243,8 +241,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 				record.ResultStatus = globalevents.ResultCanceled
 				record.Level = slog.LevelInfo
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity = globalevents.LogIdentityFromExecution(facts)
+			record.Identity = globalevents.LogIdentityFromContext(ctx)
 			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 	}

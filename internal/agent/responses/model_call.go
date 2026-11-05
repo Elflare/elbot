@@ -3,7 +3,12 @@ package responses
 import (
 	"context"
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/delivery"
+	globalevents "elbot/internal/events"
+	"elbot/internal/llm"
+	api "elbot/internal/llm/responses"
 	"elbot/internal/media"
+	"elbot/internal/storage"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,13 +16,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-
-	"elbot/internal/contextinfo"
-	"elbot/internal/delivery"
-	globalevents "elbot/internal/events"
-	"elbot/internal/llm"
-	api "elbot/internal/llm/responses"
-	"elbot/internal/storage"
 )
 
 func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMessage, stream delivery.MessageStream) (final agentshare.CallOutput, err error) {
@@ -91,8 +89,7 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 						Content:      fmt.Sprintf("Responses switching to stateless replay\nprovider=%v\nmodel=%v\nresponse_id=%v\nreason=%v", s.selection.Provider, s.selection.Model, s.checkpoint.ResponseID, "upstream returned store:false"),
 						ContentLimit: 4096,
 					}
-					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					record.Identity = globalevents.LogIdentityFromExecution(facts)
+					record.Identity = globalevents.LogIdentityFromContext(ctx)
 					record.Identity.SessionID = s.session.ID
 					globalevents.Log(ctx, record)
 				}

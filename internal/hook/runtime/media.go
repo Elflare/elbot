@@ -326,7 +326,7 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 	return result, nil
 }
 
-func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool, log func(events.LogRecord)) error {
+func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool, log func(events.LogRecord)) {
 	// Only shutdown visits the entire collection. Snapshot keys so a failed
 	// lease is attempted once per Close, without occupying the whole batch.
 	var keys []string
@@ -337,7 +337,6 @@ func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool, l
 		}
 		b.mu.Unlock()
 	}
-	var failures []error
 	for {
 		if !closeAll && ctx.Err() != nil {
 			break
@@ -369,21 +368,15 @@ func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool, l
 		}
 		lease.busy = make(chan struct{})
 		b.mu.Unlock()
-		err := b.pruneLease(ctx, id, lease, closeAll, log)
-		if err != nil {
-			failures = append(failures, err)
-		}
+		b.pruneLease(ctx, id, lease, closeAll, log)
 	}
-	return errors.Join(failures...)
 }
 
 // pruneLease holds this lease's busy slot throughout I/O and final state changes.
-func (b *mediaBridge) pruneLease(ctx context.Context, id string, lease *mediaLease, closeAll bool, log func(events.LogRecord)) error {
-	var failures []error
+func (b *mediaBridge) pruneLease(ctx context.Context, id string, lease *mediaLease, closeAll bool, log func(events.LogRecord)) {
 	record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelInfo, EventName: "prune_hook_media", Module: "hook", ContentLimit: 4096, ResultStatus: events.ResultSucceeded, Content: "Hook media lease release\nmedia_id=" + id}
 	if lease.retained {
 		if err := b.api.RemoveReference(ctx, lease.reference); err != nil {
-			failures = append(failures, err)
 			record.Level, record.ResultStatus = slog.LevelError, events.ResultFailed
 			if errors.Is(err, context.Canceled) && ctx.Err() != nil {
 				record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
@@ -396,7 +389,6 @@ func (b *mediaBridge) pruneLease(ctx context.Context, id string, lease *mediaLea
 	}
 	if lease.dir != "" {
 		if err := os.RemoveAll(lease.dir); err != nil {
-			failures = append(failures, err)
 			record.Level, record.ResultStatus = slog.LevelError, events.ResultFailed
 			record.Content += fmt.Sprintf("\ndirectory_release_error=%v", err)
 		} else {
@@ -426,5 +418,4 @@ func (b *mediaBridge) pruneLease(ctx context.Context, id string, lease *mediaLea
 	lease.busy = nil
 	b.mu.Unlock()
 	log(record)
-	return errors.Join(failures...)
 }

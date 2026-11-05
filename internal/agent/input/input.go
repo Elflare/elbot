@@ -55,27 +55,22 @@ func compactCommandBlockedText(text string, commandText func(string, ...string) 
 	return fmt.Sprintf("%s: compacting · 等待或 %s", text, commandText("stop"))
 }
 
-func (c *InputCoordinator) HandleInput(ctx context.Context, text string) error {
+func (c *InputCoordinator) HandleInput(ctx context.Context, text string) (context.Context, error) {
 	ctx, session, err := c.execution.ResolveInput(ctx, text)
 	if err != nil {
 		if errors.Is(err, sessionpkg.ErrSessionBusy) {
 			globalevents.Notify(sessionpkg.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, fmt.Sprintf("%v，请等待完成，或先用 %s 停止任务。", err, c.commandText("stop"))))
-			return nil
-		} else if ctx.Err() == nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) {
-			agentshare.ReportFailure(ctx, "", fmt.Errorf("准备会话: %w", err), c.output.Notify)
+			return ctx, nil
 		}
-		return err
+		return ctx, err
 	}
 	return c.handleSessionInput(ctx, session, text)
 }
 
-func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuation command.Continuation) error {
+func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuation command.Continuation) (context.Context, error) {
 	locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), continuation.SessionID)
 	if err != nil {
-		if ctx.Err() == nil {
-			agentshare.ReportFailure(ctx, continuation.SessionID, err, c.output.Notify)
-		}
-		return err
+		return ctx, err
 	}
 	row, err := c.sessions.Resume(locked, c.identity.Scope(ctx), continuation.SessionID)
 	if err == nil {
@@ -85,31 +80,25 @@ func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuatio
 	}
 	release()
 	if err != nil {
-		if ctx.Err() == nil {
-			agentshare.ReportFailure(ctx, continuation.SessionID, err, c.output.Notify)
-		}
-		return err
+		return ctx, err
 	}
 	segments := agentshare.ReplaceInboundTextSegments(ctx, continuation.Text)
 	ctx = agentshare.WithInboundSegments(ctx, segments)
 	return c.handleSessionInput(ctx, row, continuation.Text)
 }
 
-func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *storage.Session, text string) error {
+func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *storage.Session, text string) (context.Context, error) {
 	locked, release, err := c.execution.EnterInput(ctx, session)
 	if errors.Is(err, agentshare.ErrInputCompacting) {
 		_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: fmt.Sprintf("%v · 等待或 %s", err, c.commandText("stop"))})
-		return err
+		return ctx, err
 	}
 	if errors.Is(err, agentshare.ErrInputArchived) {
 		_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: fmt.Sprintf("%v · %s 后可继续", err, c.commandText("unarchive"))})
-		return err
+		return ctx, err
 	}
 	if err != nil {
-		if ctx.Err() == nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) {
-			agentshare.ReportFailure(ctx, session.ID, err, c.output.Notify)
-		}
-		return err
+		return ctx, err
 	}
 	ctx = locked
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
@@ -120,10 +109,7 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 		agentshare.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status},
 		agentshare.Message{Role: string(llm.RoleUser), Segments: agentshare.InboundSegments(ctx, text)})
 	if err != nil {
-		if ctx.Err() == nil {
-			agentshare.ReportFailure(ctx, session.ID, fmt.Errorf("agent input hook: %w", err), c.output.Notify)
-		}
-		return err
+		return ctx, err
 	}
 	ctx = agentshare.WithInboundSegments(ctx, segments)
 	text = llm.SegmentsTextOnly(segments)
@@ -132,22 +118,13 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 	if snapshot.Phase != turn.PhaseAwaitRiskConfirm {
 		directives, skillDirectives, err := c.applyInputDirectives(ctx, session, text)
 		if err != nil {
-			if ctx.Err() == nil {
-				agentshare.ReportFailure(ctx, session.ID, fmt.Errorf("准备输入指令: %w", err), c.output.Notify)
-			}
-			return err
+			return ctx, err
 		}
 		if err := c.notifyToolDirectiveResult(ctx, directives); err != nil {
-			if ctx.Err() == nil {
-				agentshare.ReportFailure(ctx, session.ID, err, c.output.Notify)
-			}
-			return err
+			return ctx, err
 		}
 		if err := c.notifySkillDirectiveResult(ctx, skillDirectives); err != nil {
-			if ctx.Err() == nil {
-				agentshare.ReportFailure(ctx, session.ID, err, c.output.Notify)
-			}
-			return err
+			return ctx, err
 		}
 		text = skillDirectives.Text
 		ctx = agentshare.WithInboundSegments(ctx, agentshare.ReplaceInboundTextSegments(ctx, text))
@@ -157,20 +134,20 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 		if strings.TrimSpace(text) == "" && !agentshare.HasInboundNonTextSegment(ctx) {
 			if len(directives.Injected) > 0 || len(directives.Existing) > 0 || len(skillDirectives.Skills) > 0 {
 				binding, _ := sessionpkg.BindingFromContext(ctx)
-				return c.sessions.RecordActivity(ctx, binding)
+				return ctx, c.sessions.RecordActivity(ctx, binding)
 			}
-			return nil
+			return ctx, nil
 		}
 	}
 
-	disposition, err := c.execution.AcceptInput(ctx, session, text)
+	ctx, disposition, err := c.execution.AcceptInput(ctx, session, text)
 	if err != nil {
-		return err
+		return ctx, err
 	}
 	if disposition == agentshare.InputRiskConfirmation {
-		return c.confirmations.SubmitResponse(ctx, session.ID, text)
+		return ctx, c.confirmations.SubmitResponse(ctx, session.ID, text)
 	}
-	return nil
+	return ctx, nil
 }
 
 // NewInputCoordinator initializes InputCoordinator without installing cross-service callbacks.

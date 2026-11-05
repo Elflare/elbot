@@ -2,7 +2,6 @@ package elnis
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
@@ -15,13 +14,13 @@ type takeoverRunner struct {
 	err   error
 }
 
-func (r *takeoverRunner) RunBackground(context.Context, background.RunRequest) (background.RunResult, error) {
+func (r *takeoverRunner) RunBackground(ctx context.Context, _ background.RunRequest) (context.Context, background.RunResult, error) {
 	r.calls++
 	outcome := "completed"
 	if r.err != nil {
 		outcome = "cancelled"
 	}
-	return background.RunResult{RunID: "logical-run", SessionID: "adopted", MessageID: "actual-answer", Text: "ordinary foreground answer", TakenOver: true, Outcome: outcome}, r.err
+	return ctx, background.RunResult{RunID: "logical-run", SessionID: "adopted", MessageID: "actual-answer", Text: "ordinary foreground answer", TakenOver: true, Outcome: outcome}, r.err
 }
 
 func TestTakeoverSuppressesRepairAndReport(t *testing.T) {
@@ -43,7 +42,7 @@ func TestTakeoverSuppressesRepairAndReport(t *testing.T) {
 			if _, err := svc.Handle(context.Background(), "secret", testRequest(ModeLLM)); err != nil {
 				t.Fatal(err)
 			}
-			if err := svc.RunLLMEvent(context.Background(), queued.Event, queued.EventID); !errors.Is(err, runErr) {
+			if err := svc.RunLLMEvent(context.Background(), queued.Event, queued.EventID); err != nil {
 				t.Fatalf("error: %v", err)
 			}
 			record, err := testRepo(svc).snapshot(context.Background(), queued.EventID)
@@ -56,7 +55,7 @@ func TestTakeoverSuppressesRepairAndReport(t *testing.T) {
 			if runner.calls != 1 || sent != 0 {
 				t.Fatalf("calls=%d sent=%d", runner.calls, sent)
 			}
-			if err := svc.deliverReport(context.Background(), queued.EventID); err != nil {
+			if _, err := svc.deliverReport(context.Background(), queued.EventID); err != nil {
 				t.Fatal(err)
 			}
 			if sent != 0 {

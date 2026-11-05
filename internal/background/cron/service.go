@@ -3,7 +3,6 @@ package cron
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"slices"
 	"sort"
@@ -14,7 +13,6 @@ import (
 	"elbot/internal/agent"
 	background "elbot/internal/background/share"
 	"elbot/internal/config"
-	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/modelmgr"
@@ -97,27 +95,27 @@ func NewService(opts Options) *Service {
 	return s
 }
 
-func (s *Service) Handler(ctx context.Context, job Job) (err error) {
-	identity := cronLogIdentity(ctx)
+func (s *Service) Handler(ctx context.Context, job Job) (context.Context, error) {
+	identity := globalevents.LogIdentityFromContext(ctx)
 
 	unlock, err := s.lockDeliveryJob(ctx, job.Name)
 	if err != nil {
-		return err
+		return ctx, err
 	}
 	defer unlock()
 
 	latest, err := s.store.GetByName(ctx, job.Name)
 	if err != nil {
-		return err
+		return ctx, err
 	}
 	if !latest.Enabled {
-		return nil
+		return ctx, nil
 	}
 	job = *latest
 
 	meta, err := decodeMetadata(job.Metadata)
 	if err != nil {
-		return err
+		return ctx, err
 	}
 	{
 		content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms, "trigger_mode": meta.Trigger.Mode, "schedule_mode": meta.Schedule.Mode})
@@ -131,47 +129,10 @@ func (s *Service) Handler(ctx context.Context, job Job) (err error) {
 			ContentLimit: 4096,
 		}
 		record.Identity = identity
-		background.LogBackground(ctx, record)
+		globalevents.Log(ctx, record)
 	}
 
-	var runErr error
-	switch meta.Trigger.Mode {
-	case TriggerDirect, TriggerLLM:
-		runErr = s.runTask(ctx, job, meta)
-	default:
-		runErr = fmt.Errorf("unsupported trigger mode %q", meta.Trigger.Mode)
-
-	}
-
-	{
-		content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms, "result": fmt.Sprintf("%.2048v", runErr)})
-		record := globalevents.LogRecord{
-			Category:     globalevents.LogAudit,
-			Level:        slog.LevelInfo,
-			EventName:    "cron.trigger_completed",
-			Module:       "cron",
-			Type:         globalevents.ContentJSON,
-			Content:      string(content),
-			ContentLimit: 4096,
-			ResultStatus: globalevents.ResultSucceeded,
-			Identity:     identity,
-		}
-		if runErr != nil {
-			record.EventName = "cron.trigger_failed"
-			record.ResultStatus = globalevents.ResultFailed
-			record.Level = slog.LevelWarn
-			if globalevents.LogStatus(runErr) == globalevents.ResultCanceled {
-				record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
-			}
-		}
-		background.LogBackground(ctx, record)
-	}
-	return runErr
-}
-
-func cronLogIdentity(ctx context.Context) globalevents.LogIdentity {
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	return globalevents.LogIdentityFromExecution(facts)
+	return s.runTask(ctx, job, meta)
 }
 
 func normalizePlatformTargets(cliPlatformName string, targets []PlatformTarget) []PlatformTarget {

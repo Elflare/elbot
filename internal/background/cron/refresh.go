@@ -2,12 +2,10 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"fmt"
 	"log/slog"
-
-	background "elbot/internal/background/share"
-	"elbot/internal/events"
 )
 
 // RefreshJob 只登记任务标识；启动前也接纳，读库和调度由 Manager 串行处理。
@@ -53,7 +51,7 @@ func (m *Manager) refreshPending(ctx context.Context, pending map[string]struct{
 			err = m.scheduleJob(ctx, *job)
 		}
 		if err != nil && ctx.Err() == nil {
-			background.LogBackground(ctx, events.LogRecord{
+			events.Log(ctx, events.LogRecord{
 				Category: events.LogRuntime, Level: slog.LevelError, Module: "cron",
 				EventName: "cron_job_refresh_failed", Type: events.ContentText,
 				Content: fmt.Sprintf("job=%s\nerror=%v", name, err), ContentLimit: 4096,

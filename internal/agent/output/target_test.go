@@ -40,7 +40,7 @@ func TestSendOutputsResolvesTargetBeforeDispatch(t *testing.T) {
 			defer connection.Disconnect()
 			_, err = sender.Send(t.Context(), delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: tc.outputs})
 			if tc.conflict {
-				if err == nil || probe.calls != 0 || len(records) != 1 || records[0].ResultStatus != events.ResultFailed {
+				if err == nil || probe.calls != 0 || len(records) != 0 {
 					t.Fatal("conflict: result= err= calls= logs=", err, probe.calls, records)
 				}
 				return

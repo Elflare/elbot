@@ -18,8 +18,9 @@ import (
 
 type backgroundAgentFunc func(context.Context, agent.BackgroundRequest) (agent.BackgroundResult, error)
 
-func (f backgroundAgentFunc) RunBackground(ctx context.Context, req agent.BackgroundRequest) (agent.BackgroundResult, error) {
-	return f(ctx, req)
+func (f backgroundAgentFunc) RunBackground(ctx context.Context, req agent.BackgroundRequest) (context.Context, agent.BackgroundResult, error) {
+	result, err := f(ctx, req)
+	return ctx, result, err
 }
 
 func TestRunnerPreparesWorkspaceAndSource(t *testing.T) {
@@ -51,7 +52,7 @@ func TestRunnerPreparesWorkspaceAndSource(t *testing.T) {
 				return agent.BackgroundResult{}, nil
 			})})
 			ctx := workspace.WithPathScope(t.Context(), workspace.PathScope{Dir: t.TempDir()})
-			_, err := runner.RunBackground(ctx, background.RunRequest{TaskType: tc.kind, SandboxSubdir: tc.subdir})
+			_, _, err := runner.RunBackground(ctx, background.RunRequest{TaskType: tc.kind, SandboxSubdir: tc.subdir})
 			if err != nil || calls != 1 {
 				t.Fatalf("calls=%d err=%v", calls, err)
 			}
@@ -97,7 +98,7 @@ func TestRunnerForwardsTaskAndPreservesExecutionResult(t *testing.T) {
 				}
 				return tc.result, tc.err
 			})})
-			got, err := runner.RunBackground(t.Context(), req)
+			_, got, err := runner.RunBackground(t.Context(), req)
 			wantResult := background.RunResult{RunID: tc.result.RunID, SessionID: tc.result.SessionID, MessageID: tc.result.MessageID, Text: tc.result.Text, TakenOver: tc.result.TakenOver, Outcome: tc.result.Outcome}
 			if calls != 1 || !errors.Is(err, tc.err) || !reflect.DeepEqual(got, wantResult) {
 				t.Fatalf("calls=%d result=%+v err=%v", calls, got, err)
@@ -120,7 +121,7 @@ func TestRunnerPreservesCallerCancellationAndValues(t *testing.T) {
 		}
 		return agent.BackgroundResult{SessionID: "prepared"}, ctx.Err()
 	})})
-	result, err := runner.RunBackground(ctx, background.RunRequest{SandboxSubdir: "task"})
+	_, result, err := runner.RunBackground(ctx, background.RunRequest{SandboxSubdir: "task"})
 	if !errors.Is(err, context.Canceled) || result.SessionID != "prepared" {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
@@ -137,7 +138,7 @@ func TestRunnerRejectsWorkspaceFailureBeforeAgent(t *testing.T) {
 				t.Fatal("Agent called before successful workspace preparation")
 				return agent.BackgroundResult{}, nil
 			})})
-			result, err := runner.RunBackground(t.Context(), background.RunRequest{SandboxSubdir: subdir})
+			_, result, err := runner.RunBackground(t.Context(), background.RunRequest{SandboxSubdir: subdir})
 			if err == nil || !reflect.DeepEqual(result, background.RunResult{}) {
 				t.Fatalf("result=%+v err=%v", result, err)
 			}

@@ -4,7 +4,6 @@ package qqofficial
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -111,8 +110,7 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler share.MessageHandl
 						record.ResultStatus = globalevents.ResultCanceled
 						record.Level = slog.LevelInfo
 					}
-					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					record.Identity = globalevents.LogIdentityFromExecution(facts)
+					record.Identity = globalevents.LogIdentityFromContext(ctx)
 					globalevents.Log(context.WithoutCancel(ctx), record)
 				}
 			}
@@ -139,8 +137,7 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler share.MessageHandl
 					ContentLimit: 4096,
 					ResultStatus: globalevents.ResultSkipped,
 				}
-				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				record.Identity = globalevents.LogIdentityFromExecution(facts)
+				record.Identity = globalevents.LogIdentityFromContext(ctx)
 				globalevents.Log(context.WithoutCancel(ctx), record)
 			}
 		}
@@ -198,8 +195,7 @@ func (a *Adapter) heartbeatLoop(ctx context.Context, conn *websocket.Conn, state
 						record.ResultStatus = globalevents.ResultCanceled
 						record.Level = slog.LevelInfo
 					}
-					facts, _ := contextinfo.ExecutionFromContext(ctx)
-					record.Identity = globalevents.LogIdentityFromExecution(facts)
+					record.Identity = globalevents.LogIdentityFromContext(ctx)
 					globalevents.Log(context.WithoutCancel(ctx), record)
 				}
 				_ = conn.CloseNow()
@@ -229,8 +225,7 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler share.MessageHandl
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultSucceeded,
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity = globalevents.LogIdentityFromExecution(facts)
+			record.Identity = globalevents.LogIdentityFromContext(ctx)
 			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 		a.notifyConnected(ctx)
@@ -262,8 +257,7 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler share.MessageHandl
 					ContentLimit: 4096,
 					ResultStatus: globalevents.ResultSucceeded,
 				}
-				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				record.Identity = globalevents.LogIdentityFromExecution(facts)
+				record.Identity = globalevents.LogIdentityFromContext(ctx)
 				globalevents.Log(context.WithoutCancel(ctx), record)
 			}
 		}

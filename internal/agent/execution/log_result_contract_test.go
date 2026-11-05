@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"strings"
 	"testing"
+	"time"
 
 	agentoutput "elbot/internal/agent/output"
 
@@ -48,7 +48,7 @@ func (f outputSendFunc) StartStream(context.Context) (delivery.MessageStream, er
 	}), nil
 }
 
-func TestAssistantSendFailureUsesUnifiedDeliveryLog(t *testing.T) {
+func TestAssistantSendFailureReturnsWithoutLowerReport(t *testing.T) {
 	f := newReplyTestFixture(t, false)
 	want := errors.New("send failed")
 	f.platform.sendErr = want
@@ -73,7 +73,7 @@ func TestAssistantSendFailureUsesUnifiedDeliveryLog(t *testing.T) {
 	}
 	defer connection.Disconnect()
 	receipt, err := f.out.Send(f.ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "message"})
-	if !errors.Is(err, want) || len(receipt.PlatformMessageIDs) != 1 || counts["delivery"] != 1 || counts["agent"] != 1 {
+	if !errors.Is(err, want) || len(receipt.PlatformMessageIDs) != 1 || counts["delivery"] != 0 || counts["agent"] != 1 {
 		t.Fatal("receipt= result= err= logs=", receipt, err, counts)
 	}
 }
@@ -84,14 +84,14 @@ func TestBufferedSendFailureKeepsReceipt(t *testing.T) {
 			f := newReplyTestFixture(t, true)
 			f.platform.sendErr = sendErr
 			result, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-			if !errors.Is(err, sendErr) || result.MessageID == "" || len(result.Receipt.SentMessages) != 1 {
+			if err != nil || result.MessageID == "" || len(result.Receipt.SentMessages) != 1 {
 				t.Fatalf("result=%+v err=%v", result, err)
 			}
 		})
 	}
 }
 
-func TestSendOutputsLogsBusinessFailure(t *testing.T) {
+func TestSendOutputsRecordsReceiptsAndReturnsFailure(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		status events.ResultStatus
@@ -127,17 +127,17 @@ func TestSendOutputsLogsBusinessFailure(t *testing.T) {
 			if err != tc.err {
 				t.Fatal("error:", err)
 			}
-			if len(records) != 1 || records[0].ResultStatus != tc.status || records[0].Level != tc.level {
+			if len(records) != 1 || records[0].ResultStatus != events.ResultSucceeded || records[0].Level != slog.LevelDebug {
 				t.Fatalf("records=%#v", records)
 			}
-			if content := readDeliveryLog(t, records[0]); content.Operation != "send_outputs" || (tc.err == nil && content.Detail != "" || tc.err != nil && content.Detail != tc.err.Error()) {
+			if content := readDeliveryLog(t, records[0]); content.Operation != "send_outputs" || content.Detail != "" {
 				t.Fatalf("source diagnostic changed: %s", records[0].Content)
 			}
 		})
 	}
 }
 
-func TestReplyCommitLogSpacingComesFromSources(t *testing.T) {
+func TestReplyCommitReportsSendFailureSeparatelyFromReceipts(t *testing.T) {
 	for _, mode := range []string{"direct", "buffered"} {
 		for _, tc := range []struct {
 			status     events.ResultStatus
@@ -162,9 +162,13 @@ func TestReplyCommitLogSpacingComesFromSources(t *testing.T) {
 				}
 				fixture.platform.sendErr = sendErr
 				var records []events.LogRecord
+				failures := make(chan events.LogRecord, 1)
 				connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 					if record.EventName == "reply_delivered" {
 						records = append(records, record)
+					}
+					if record.EventName == "reply_send_failed" {
+						failures <- record
 					}
 					return nil
 				}, signal.ConnectOptions{})
@@ -173,22 +177,22 @@ func TestReplyCommitLogSpacingComesFromSources(t *testing.T) {
 				}
 				t.Cleanup(connection.Disconnect)
 				result, err := fixture.committer.Commit(fixture.ctx, fixture.requestCtx, fixture.in, fixture.out)
-				if !errors.Is(err, sendErr) || len(result.Receipt.PlatformMessageIDs) != 1 || len(records) != 1 {
+				if err != nil || len(result.Receipt.PlatformMessageIDs) != 1 || len(records) != 1 {
 					t.Fatalf("result=%+v err=%v records=%+v", result, err, records)
 				}
 				content := readDeliveryLog(t, records[0])
-				if records[0].ResultStatus != status || records[0].Level != tc.level || content.Operation != "send_assistant_message" || !slices.Contains(content.PlatformMessageIDs, "sent") {
+				if records[0].ResultStatus != events.ResultSucceeded || records[0].Level != slog.LevelDebug || content.Operation != "send_assistant_message" || !slices.Contains(content.PlatformMessageIDs, "sent") || content.Detail != "" {
 					t.Fatalf("reply facts changed: %+v", records[0])
 				}
-				if strings.Contains(content.Detail, "\nfinish:") {
-					t.Fatalf("empty finish section: %+v", content)
-				}
-				if diagnostic == "" {
-					if strings.Contains(content.Detail, "\n\n") || strings.HasSuffix(content.Detail, "\n") || strings.Contains(content.Detail, "\nreplace:") {
-						t.Fatalf("source introduced blank lines or empty sections: %+v", content)
+				if sendErr != nil {
+					select {
+					case record := <-failures:
+						if record.Content != diagnostic || record.ResultStatus != status || record.Level != tc.level {
+							t.Fatalf("source diagnostic changed: %+v", record)
+						}
+					case <-time.After(time.Second):
+						t.Fatal("send failure was not reported")
 					}
-				} else if !strings.Contains(content.Detail, diagnostic) {
-					t.Fatalf("diagnostic paragraph break was changed: %+v", content)
 				}
 			})
 		}

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"elbot/internal/agent/hooks"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/storage"
@@ -53,7 +52,7 @@ func TestRequestPointOnlyBindsNewPendingAndKeepsHistoryDetached(t *testing.T) {
 			}
 			commits := &hookInputCommitter{}
 			processor := &CallProcessor{Hooks: bridge, Preparer: &Preparer{NewMessageID: testutil.IDSequence().MessageID}, Tools: &ToolExecutor{Manager: hookTools{}}}
-			got, err := processor.PrepareCall(t.Context(), &storage.Session{ID: "s", Mode: storage.SessionModeWork}, modelmgr.Selection{}, messages, nil, pending, commits, &events.LogRecord{})
+			got, err := processor.PrepareCall(t.Context(), &storage.Session{ID: "s", Mode: storage.SessionModeWork}, modelmgr.Selection{}, messages, nil, pending, commits)
 			if err != nil {
 				t.Fatal(err)
 			}

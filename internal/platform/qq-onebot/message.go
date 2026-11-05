@@ -262,7 +262,7 @@ func (a *Adapter) resolveAtSegments(ctx context.Context, event Event, msg Normal
 					record.ResultStatus = globalevents.ResultCanceled
 					record.Level = slog.LevelInfo
 				}
-				record.Identity = logIdentity(ctx)
+				record.Identity = globalevents.LogIdentityFromContext(ctx)
 				globalevents.Log(context.WithoutCancel(ctx), record)
 			}
 			continue
@@ -406,7 +406,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized
 				record.ResultStatus = globalevents.ResultCanceled
 				record.Level = slog.LevelInfo
 			}
-			record.Identity = logIdentity(ctx)
+			record.Identity = globalevents.LogIdentityFromContext(ctx)
 			globalevents.Log(context.WithoutCancel(ctx), record)
 		}
 	}

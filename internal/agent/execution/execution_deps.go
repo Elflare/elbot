@@ -20,7 +20,7 @@ import (
 type ExecutionDialogue interface {
 	CheckSelection(modelmgr.Selection) error
 	PrepareTurn(context.Context, agentshare.TurnInput) (agentshare.PreparedTurn, error)
-	RunTurn(context.Context, context.Context, agentshare.TurnInput, agentshare.Output) agentshare.TurnResult
+	RunTurn(context.Context, context.Context, agentshare.TurnInput, agentshare.Output) (context.Context, agentshare.TurnResult)
 }
 
 type ExecutionSender interface {
@@ -101,7 +101,6 @@ type ExecutionCoordinatorDeps struct {
 	Requests         ExecutionRequests
 	Contexts         ExecutionContexts
 	SelectionForTurn func(context.Context, *storage.Session) modelmgr.Selection
-	TurnTimeout      string // User-facing notification for a response deadline.
 	Dialogue         ExecutionDialogue
 	Identity         ExecutionIdentity
 	View             ExecutionView

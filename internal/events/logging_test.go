@@ -31,15 +31,15 @@ func TestLogEnums(t *testing.T) {
 	}
 }
 
-func TestLogIdentityFromExecutionPreservesSnapshot(t *testing.T) {
+func TestLogIdentityFromContextPreservesSnapshot(t *testing.T) {
 	source := contextinfo.Execution{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}
-	got := LogIdentityFromExecution(source)
+	got := LogIdentityFromContext(contextinfo.WithExecution(t.Context(), source))
 	source.SessionID = "changed"
 	want := LogIdentity{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}
 	if got != want {
 		t.Fatalf("identity = %+v, want %+v", got, want)
 	}
-	if got := LogIdentityFromExecution(contextinfo.Execution{}); got != (LogIdentity{}) {
+	if got := LogIdentityFromContext(t.Context()); got != (LogIdentity{}) {
 		t.Fatalf("empty execution gained identity: %+v", got)
 	}
 }

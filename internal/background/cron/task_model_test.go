@@ -34,7 +34,7 @@ type changingModelRunner struct {
 	models *taskModels
 }
 
-func (r *changingModelRunner) RunBackground(ctx context.Context, req background.RunRequest) (background.RunResult, error) {
+func (r *changingModelRunner) RunBackground(ctx context.Context, req background.RunRequest) (context.Context, background.RunResult, error) {
 	r.models.current.Model = "changed"
 	return r.fakeCronRunner.RunBackground(ctx, req)
 }
@@ -49,7 +49,7 @@ func TestCronModelSnapshotSurvivesFormatRetry(t *testing.T) {
 			meta.LLM.ModelProvider, meta.LLM.Model = "provider", "explicit"
 			want = "explicit"
 		}
-		if _, err := svc.runLLMReport(context.Background(), Job{Name: "models"}, meta, CronDeliveryState{}); err != nil {
+		if _, _, err := svc.runLLMReport(context.Background(), Job{Name: "models"}, meta, CronDeliveryState{}); err != nil {
 			t.Fatal(err)
 		}
 		if len(runner.requests) != 2 {
@@ -73,7 +73,7 @@ func TestCronExecutionRejectsInvalidModelBeforeRunning(t *testing.T) {
 	for _, pair := range []config.ModelSelection{{Provider: "provider"}, {Model: "model"}, {Provider: "missing", Model: "model"}} {
 		runner := &fakeCronRunner{}
 		svc := newTestCronService(t, Options{Models: &taskModels{}, Runner: runner})
-		_, err := svc.runLLMReport(t.Context(), Job{Name: "model"}, Metadata{Target: CronTarget{SourcePlatform: "cli"}, LLM: CronLLMMetadata{ModelProvider: pair.Provider, Model: pair.Model}}, CronDeliveryState{})
+		_, _, err := svc.runLLMReport(t.Context(), Job{Name: "model"}, Metadata{Target: CronTarget{SourcePlatform: "cli"}, LLM: CronLLMMetadata{ModelProvider: pair.Provider, Model: pair.Model}}, CronDeliveryState{})
 		if err == nil || runner.calls != 0 {
 			t.Fatalf("model=%#v err=%v calls=%d", pair, err, runner.calls)
 		}

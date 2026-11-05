@@ -129,14 +129,13 @@ func TestReplyCommitFailureKeepsFactsAndDoesNotRetry(t *testing.T) {
 		for _, failure := range []string{"send", "partial", "save", "partial_and_save", "outputs", "map"} {
 			t.Run(map[bool]string{false: "direct", true: "buffered"}[buffered]+"/"+failure, func(t *testing.T) {
 				f := newReplyTestFixture(t, buffered)
-				wantErr := sendErr
+				var wantErr error
 				wantPersisted, wantReceipt := true, true
 				switch failure {
 				case "send":
 					f.platform.sendErr = sendErr
 					f.platform.receipt = delivery.Receipt{}
 					wantReceipt = false
-					wantPersisted = false
 				case "partial":
 					f.platform.sendErr = sendErr
 				case "save":
@@ -158,17 +157,11 @@ func TestReplyCommitFailureKeepsFactsAndDoesNotRetry(t *testing.T) {
 					wantPersisted = false
 				}
 				got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-				if !errors.Is(err, wantErr) || (got.MessageID != "") != wantPersisted || dialogue.HasReplyReceipt(got.Receipt) != wantReceipt {
+				if !errors.Is(err, wantErr) || (got.MessageID != "") != wantPersisted || (len(got.Receipt.PlatformMessageIDs) > 0 || len(got.Receipt.SentMessages) > 0) != wantReceipt {
 					t.Fatalf("result=%+v err=%v events=%v", got, err, f.events)
 				}
-				if failure != "map" && !errors.Is(got.PersistErr, f.repo.appendErr) {
-					t.Fatalf("lost save failure: %+v", got)
-				}
-				if failure == "partial_and_save" && !buffered && !errors.Is(got.SendErr, sendErr) {
-					t.Fatalf("lost earlier send failure: %+v", got)
-				}
-				if failure == "map" && !errors.Is(got.PersistErr, mapErr) {
-					t.Fatalf("lost association failure: %+v", got)
+				if errors.Is(err, sendErr) {
+					t.Fatalf("handled send failure escaped: %v", err)
 				}
 				if failure == "map" {
 					rows, err := f.repo.ListBySession(f.ctx, f.in.Session.ID)
@@ -181,6 +174,9 @@ func TestReplyCommitFailureKeepsFactsAndDoesNotRetry(t *testing.T) {
 				}
 				sends, maps := 0, 0
 				for _, event := range f.events {
+					if wantErr != nil && event == "outputs" {
+						t.Fatal("extras sent after persistence failure")
+					}
 					if event == "send" {
 						sends++
 					}
@@ -243,7 +239,7 @@ func TestReplyCommitFinalHookFailureDoesNotSaveOrSend(t *testing.T) {
 				return text, context.Canceled
 			}})
 			got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-			if !errors.Is(err, context.Canceled) || (got.MessageID != "") || dialogue.HasReplyReceipt(got.Receipt) || len(f.events) != 0 {
+			if !errors.Is(err, context.Canceled) || (got.MessageID != "") || len(got.Receipt.PlatformMessageIDs) > 0 || len(got.Receipt.SentMessages) > 0 || len(f.events) != 0 {
 				t.Fatalf("result=%+v err=%v events=%v", got, err, f.events)
 			}
 		})

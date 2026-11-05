@@ -194,11 +194,9 @@ func (m Manager) SendTo(ctx context.Context, target Target, outputs []Output) (R
 		return Receipt{}, nil
 	}
 	if err := ValidateOutputs(outputs); err != nil {
-		LogSendResult(ctx, target, outputs[0], err)
 		return Receipt{}, err
 	}
 	receipt, err := m.Sender.SendTo(ctx, target, outputs)
-	LogSendResult(ctx, target, outputs[0], err)
 	return receipt, wrapOutputSourceError(outputs[0], err)
 }
 
@@ -207,12 +205,11 @@ func LogSendResult(ctx context.Context, target Target, out Output, err error) {
 	if err == nil {
 		return
 	}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record := globalevents.LogRecord{
 		Category: globalevents.LogRuntime, Level: slog.LevelWarn,
 		EventName: "chat_output_failed", Module: "delivery", ResultStatus: globalevents.ResultFailed,
 		Content:  fmt.Sprintf("chat output failed: platform=%s hook=%q hook_point=%q hook_mode=%q\n%s", target.Platform, strings.TrimSpace(out.Delivery.HookName), strings.TrimSpace(out.Delivery.HookPoint), strings.TrimSpace(out.Delivery.HookMode), err),
-		Identity: globalevents.LogIdentityFromExecution(facts),
+		Identity: globalevents.LogIdentityFromContext(ctx),
 	}
 	// Cancellation is quiet only when no independent failure is present.
 	if globalevents.LogStatus(err) == globalevents.ResultCanceled {

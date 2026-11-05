@@ -5,8 +5,6 @@ package dispatch
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -100,30 +98,15 @@ func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Outpu
 		return delivery.Receipt{}, err
 	}
 	receipt, sendErr := send(resolved)
-	if err := a.cacheMediaReceipt(ctx, prepared, receipt); err != nil {
-		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
-			Level:        slog.LevelWarn,
-			EventName:    "cache_sent_media_receipt_failed",
-			Module:       "delivery",
-			Type:         globalevents.ContentText,
-			Content:      fmt.Sprintf("cache sent media receipt failed\nerror=%v", err),
-			ContentLimit: 4096,
-			ResultStatus: globalevents.ResultFailed,
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		record.Identity = globalevents.LogIdentityFromExecution(facts)
-		globalevents.Log(context.WithoutCancel(ctx), record)
-	}
+	a.cacheMediaReceipt(ctx, prepared, receipt)
 	return receipt, sendErr
 }
 
-func (a *Router) cacheMediaReceipt(ctx context.Context, outputs []delivery.Output, receipt delivery.Receipt) error {
+func (a *Router) cacheMediaReceipt(ctx context.Context, outputs []delivery.Output, receipt delivery.Receipt) {
 	if a.mediaRetentionDays <= 0 {
-		return nil
+		return
 	}
 	expiresAt := time.Now().AddDate(0, 0, a.mediaRetentionDays)
-	var errs []error
 	for _, message := range receipt.SentMessages {
 		segmentIndex := 0
 		for _, outputIndex := range message.OutputIndexes {
@@ -132,12 +115,11 @@ func (a *Router) cacheMediaReceipt(ctx context.Context, outputs []delivery.Outpu
 				continue
 			}
 			if err := a.saveMediaOutput(ctx, storage.MediaOutput{Platform: message.Platform, ChatType: message.ChatType, ChatID: message.ChatID, MessageID: message.PlatformMessageID, SegmentIndex: segmentIndex, Kind: string(out.Kind), MediaID: out.Source.MediaID, ExpiresAt: expiresAt}); err != nil {
-				errs = append(errs, err)
+				globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "cache_sent_media_receipt_failed", Module: "delivery", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
 			}
 			segmentIndex++
 		}
 	}
-	return errors.Join(errs...)
 }
 
 func isMediaOutputKind(kind delivery.Kind) bool {

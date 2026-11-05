@@ -3,12 +3,8 @@ package state
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log/slog"
 	"sort"
 
 	"elbot/internal/storage"
@@ -101,26 +97,9 @@ func prepareUpdate(state *toolshare.State, update toolshare.StateUpdate) (storag
 }
 
 func (s *StateService) Commit(ctx context.Context, id string, update toolshare.StateUpdate) (result toolshare.StateCommit, err error) {
-	level := slog.LevelError
-	defer func() {
-		if err == nil {
-			return
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: "tool_state_error", Module: "tool", Content: err.Error(), ResultStatus: events.ResultFailed, Identity: events.LogIdentityFromExecution(facts)}
-		record.Identity.SessionID = id
-		if errors.Is(err, storage.ErrNotFound) {
-			record.Level = slog.LevelWarn
-		}
-		if events.LogStatus(err) == events.ResultCanceled {
-			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
-		}
-		events.Log(ctx, record)
-	}()
 
 	for _, group := range update.ReplaceGroups {
 		if group.SessionID != id {
-			level = slog.LevelWarn
 			return toolshare.StateCommit{}, fmt.Errorf("tool registration belongs to session %q, not %q", group.SessionID, id)
 		}
 	}
@@ -144,7 +123,6 @@ func (s *StateService) Commit(ctx context.Context, id string, update toolshare.S
 		}
 		patch, err := prepareUpdate(&state, update)
 		if err != nil {
-			level = slog.LevelWarn
 			return err
 		}
 		fields, err := storage.DecodeSessionMetadata(row.Metadata)
@@ -190,22 +168,6 @@ func uniqueNames(values []string) []string {
 }
 
 func (s *StateService) DiscoveredToolsForSession(ctx context.Context, id string, background bool) (items []toolshare.DiscoveredTool, err error) {
-	level := slog.LevelError
-	defer func() {
-		if err == nil {
-			return
-		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: "tool_state_error", Module: "tool", Content: err.Error(), ResultStatus: events.ResultFailed, Identity: events.LogIdentityFromExecution(facts)}
-		record.Identity.SessionID = id
-		if errors.Is(err, storage.ErrNotFound) {
-			record.Level = slog.LevelWarn
-		}
-		if events.LogStatus(err) == events.ResultCanceled {
-			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
-		}
-		events.Log(ctx, record)
-	}()
 
 	row, err := s.store.Get(ctx, id)
 	if err != nil {

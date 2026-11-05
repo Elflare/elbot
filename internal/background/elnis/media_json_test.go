@@ -27,8 +27,8 @@ func TestCancelledEnqueueCommitsTerminalState(t *testing.T) {
 	})
 	req := testRequest(ModeLLM)
 	req.Segments = []Segment{{Kind: SegmentKindImage, URL: item}}
-	if _, err := s.Handle(ctx, "secret", req); err == nil {
-		t.Fatal("expected cancelled enqueue")
+	if response, err := s.Handle(ctx, "secret", req); err != nil || response.Status != StatusFailed || response.Error != context.Canceled.Error() {
+		t.Fatal("cancelled enqueue was not recorded", response, err)
 	}
 	record, err := testRepo(s).snapshotByKey(context.Background(), req.Elwisp.Name, req.Source, req.ID)
 	if err != nil || record.Status != StatusFailed {

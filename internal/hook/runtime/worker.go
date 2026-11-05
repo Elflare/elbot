@@ -276,12 +276,6 @@ func (w *worker) restartLater() {
 }
 
 func (w *worker) stop(ctx context.Context) (err error) {
-	defer func() {
-		if err != nil && err != context.Canceled {
-			w.manager.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "hook_worker_stop_failed", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: fmt.Sprintf("hook=%s %s", w.config.ID, err.Error()), ResultStatus: globalevents.ResultFailed})
-			w.manager.opts.Notify(context.WithoutCancel(ctx), globalevents.Notification{Text: fmt.Sprintf("Hook %s 停止失败：%v", w.config.ID, err), Level: slog.LevelWarn})
-		}
-	}()
 	w.mu.Lock()
 	if w.stopping {
 		done := w.done
@@ -316,6 +310,9 @@ func (w *worker) stop(ctx context.Context) (err error) {
 	shutdownCtx, cancel := context.WithTimeout(ctx, w.shutdownTimeout)
 	defer cancel()
 	_, err = w.request(shutdownCtx, "system.shutdown", map[string]any{})
+	if err != nil {
+		w.manager.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "hook_worker_shutdown_request_failed", Module: "hook", Content: err.Error(), ResultStatus: globalevents.LogStatus(err)})
+	}
 	graceful := true
 	select {
 	case <-done:
@@ -327,19 +324,16 @@ func (w *worker) stop(ctx context.Context) (err error) {
 		select {
 		case <-done:
 		case <-ctx.Done():
-			return errors.Join(err, ctx.Err())
+			return ctx.Err()
 		case <-killTimer.C:
-			return errors.Join(err, fmt.Errorf("hook worker %q did not exit after kill", w.config.ID))
+			return fmt.Errorf("hook worker %q did not exit after kill", w.config.ID)
 		}
 	}
 	w.mu.Lock()
 	w.stopping = false
 	w.mu.Unlock()
 	if !graceful {
-		return errors.Join(err, shutdownCtx.Err())
-	}
-	if err != nil {
-		return fmt.Errorf("hook worker %q shutdown: %w", w.config.ID, err)
+		return shutdownCtx.Err()
 	}
 	return nil
 }
@@ -666,7 +660,10 @@ func (w *worker) write(ctx context.Context, value frame) error {
 	}
 	if err != nil {
 		kill() // A partial frame leaves this protocol stream unusable.
-		return errors.Join(ctx.Err(), fmt.Errorf("write hook protocol frame: %w", err))
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return fmt.Errorf("write hook protocol frame: %w", err)
 	}
 	return ctx.Err()
 }

@@ -3,20 +3,17 @@ package chatcompletions
 import (
 	"bytes"
 	"context"
+	globalevents "elbot/internal/events"
+	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"encoding/json"
 	"log/slog"
 	"strings"
-
-	"elbot/internal/contextinfo"
-	globalevents "elbot/internal/events"
-	"elbot/internal/llm"
 )
 
 func (a *Client) logChatRequest(ctx context.Context, req Request) {
 	a.logFirstSystemMessage(ctx, req)
 	// The request source supplies identity explicitly; Log never fills it.
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	latest := ""
 	if len(req.Messages) > 0 {
 		message := req.Messages[len(req.Messages)-1]
@@ -38,7 +35,7 @@ func (a *Client) logChatRequest(ctx context.Context, req Request) {
 		Type:      globalevents.ContentJSON,
 		Content:   string(content),
 	}
-	record.Identity = globalevents.LogIdentityFromExecution(facts)
+	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	record.Identity.SessionID = req.SessionID
 	globalevents.Log(ctx, record)
 }
@@ -54,8 +51,6 @@ func (a *Client) logFirstSystemMessage(ctx context.Context, req Request) {
 	}
 	a.loggedSystem[req.SessionID] = true
 	a.loggedSystemMu.Unlock()
-
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	record := globalevents.LogRecord{
 		Category:  globalevents.LogRuntime,
 		Level:     slog.LevelInfo,
@@ -63,7 +58,7 @@ func (a *Client) logFirstSystemMessage(ctx context.Context, req Request) {
 		Module:    "model",
 		Content:   "system prompt: " + firstSystemText(req.Messages) + "\nmodel=" + req.Model,
 	}
-	record.Identity = globalevents.LogIdentityFromExecution(facts)
+	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	record.Identity.SessionID = req.SessionID
 	globalevents.Log(ctx, record)
 }

@@ -80,8 +80,7 @@ func formatContextStatus(ctx context.Context, deps Deps, row *storage.Session, m
 			Content:      "load usage failed: " + err.Error(),
 			ResultStatus: globalevents.ResultFailed,
 		}
-		facts, _ := contextinfo.ExecutionFromContext(ctx)
-		record.Identity = globalevents.LogIdentityFromExecution(facts)
+		record.Identity = globalevents.LogIdentityFromContext(ctx)
 		record.Identity.SessionID = row.ID
 		globalevents.Log(ctx, record)
 	}

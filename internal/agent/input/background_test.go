@@ -56,11 +56,11 @@ func (h *backgroundHarness) Commit(context.Context, string, tool.StateUpdate) (t
 func (h *backgroundHarness) ModelContext(ctx context.Context, row *storage.Session) (context.Context, error) {
 	return ctx, nil
 }
-func (h *backgroundHarness) RunBackground(ctx context.Context, row *storage.Session, text string) turn.Result {
+func (h *backgroundHarness) RunBackground(ctx context.Context, row *storage.Session, text string) (context.Context, turn.Result) {
 	h.executions++
 	h.input = agentshare.InboundTurnInput(ctx, text)
 	h.runContext = ctx
-	return h.result
+	return ctx, h.result
 }
 func newBackgroundHarness(t *testing.T) (*backgroundHarness, *BackgroundHandler, context.Context) {
 	t.Helper()
@@ -87,7 +87,7 @@ func TestBackgroundPreparationKeepsContextAndMultimodalSkillMaterial(t *testing.
 			{Type: llm.SegmentText, Text: "after"},
 		},
 	}
-	result := handler.RunBackground(ctx, req)
+	_, result := handler.RunBackground(ctx, req)
 	if !reflect.DeepEqual(result, h.result) {
 		t.Fatal(result)
 	}
@@ -153,7 +153,7 @@ func TestBackgroundPreparationStopsBeforeExecutionOnFailure(t *testing.T) {
 				h.prepareErr = session.ErrForegroundSession
 				req.SessionID = "existing"
 			}
-			result := handler.RunBackground(ctx, req)
+			_, result := handler.RunBackground(ctx, req)
 			if h.executions != 0 {
 				t.Fatal("executed after preparation failure")
 			}
@@ -173,7 +173,7 @@ func TestBackgroundPreparationStopsBeforeExecutionOnFailure(t *testing.T) {
 
 func TestBackgroundContinuationDoesNotPreload(t *testing.T) {
 	h, handler, ctx := newBackgroundHarness(t)
-	result := handler.RunBackground(ctx, BackgroundRequest{TaskType: "cron", SessionID: "session", ToolListNames: []string{"ignored"}, Prompt: "continue"})
+	_, result := handler.RunBackground(ctx, BackgroundRequest{TaskType: "cron", SessionID: "session", ToolListNames: []string{"ignored"}, Prompt: "continue"})
 	if result.Err != nil || h.preloads != 0 || h.commits != 0 || h.executions != 1 {
 		t.Fatalf("result=%+v preload=%d commit=%d run=%d", result, h.preloads, h.commits, h.executions)
 	}

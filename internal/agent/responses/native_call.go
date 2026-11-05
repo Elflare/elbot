@@ -57,13 +57,6 @@ func requestAudit(parameters json.RawMessage, refs []inputReference) (string, er
 // Each actual HTTP attempt gets its own immutable request and terminal facts.
 // Local hooks/inputs are prepared by the caller once, outside recovery retries.
 func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request api.Request, consumed []string, stream delivery.MessageStream, observation agentshare.CallObservation) (result nativeCallResult, err error) {
-	defer func() {
-		if ctx.Err() != nil {
-			observation.Event().Err, observation.Event().ProviderError = ctx.Err(), false
-			observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultCanceled, slog.LevelInfo
-			err = ctx.Err()
-		}
-	}()
 	if err := s.route.View.CheckSelection(s.session, s.selection); err != nil {
 		return result, err
 	}
@@ -109,34 +102,208 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 	// Keep only observed content indices; a sparse upstream index must not
 	// allocate placeholders or turn an otherwise received delta into a failure.
 	parts := map[int]map[int]json.RawMessage{}
-	defer func() {
-		result.Items = outputItems(result.Response, completed)
-		observation.Event().Text, observation.Event().SourceText = outputText(result.Items), outputText(result.Items)
-		observation.Event().OutputReady = len(result.Items) > 0
-		if result.Response != nil {
-			observation.Event().Usage = result.Response.TokenUsage()
+	result, err = func() (nativeCallResult, error) {
+		callCtx, cancel := context.WithCancel(ctx)
+		observation.LogRecord().EventName = "llm_usage"
+		observation.LogRecord().ResultStatus = globalevents.ResultCanceled
+		events, err := client.StreamPrepared(callCtx, prepared)
+		defer func() {
+			cancel()
+			if events != nil {
+				for range events {
+				}
+			}
+		}()
+		if err != nil {
+			if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
+				observation.LogRecord().ResultStatus = globalevents.ResultCanceled
+				status = "canceled"
+				return result, ctx.Err()
+			}
+			observation.Event().ProviderError, observation.Event().Err = true, err
+			observation.LogRecord().ResultStatus = globalevents.ResultFailed
+			return result, err
 		}
-		if observation.Event().ProviderError {
-			var failure *api.APIError
-			if errors.As(observation.Event().Err, &failure) {
-				observation.LogRecord().Content += "\nupstream_detail=" + failure.Detail
+		failStream := func(cause error) (nativeCallResult, error) {
+			failure := llm.MapStreamError(cause)
+			observation.Event().ProviderError, observation.Event().Err = true, failure
+			observation.LogRecord().ResultStatus = globalevents.ResultFailed
+			return result, failure
+		}
+		for event := range events {
+			if event.Response != nil {
+				result.Response = event.Response
+			}
+			if event.Item != nil || event.Delta != "" {
+				result.OutputStarted = true
+			}
+			if event.Response != nil && len(event.Response.Output) > 0 {
+				result.OutputStarted = true
+			}
+			if (event.Type == "response.output_item.added" || event.Type == "response.output_item.done") && event.Item != nil {
+				completed[event.OutputIndex] = *event.Item
+			}
+			if event.Error != nil {
+				if event.Type != "" {
+					status = event.Type
+				}
+				if ctx.Err() != nil && errors.Is(event.Error, ctx.Err()) {
+					observation.LogRecord().ResultStatus = globalevents.ResultCanceled
+					status = "canceled"
+					return result, ctx.Err()
+				}
+				observation.Event().ProviderError, observation.Event().Err = true, event.Error
+				observation.LogRecord().ResultStatus = globalevents.ResultFailed
+				return result, event.Error
+			}
+			switch event.Type {
+			case "response.content_part.added", "response.content_part.done", "response.output_text.done", "response.refusal.done", "response.output_text.delta", "response.refusal.delta":
+				if event.OutputIndex < 0 || event.ContentIndex < 0 {
+					return failStream(fmt.Errorf("responses stream: negative output or content index"))
+				}
+				item := completed[event.OutputIndex]
+				content := map[string]json.RawMessage{}
+				if len(item.Raw) > 0 {
+					if err := json.Unmarshal(item.Raw, &content); err != nil {
+						return failStream(fmt.Errorf("responses stream item: %w", err))
+					}
+				} else {
+					content["type"] = json.RawMessage(`"message"`)
+					content["role"] = json.RawMessage(`"assistant"`)
+					if event.ItemID != "" {
+						content["id"], _ = json.Marshal(event.ItemID)
+					}
+				}
+				if parts[event.OutputIndex] == nil {
+					parts[event.OutputIndex] = map[int]json.RawMessage{}
+					var data []json.RawMessage
+					if len(content["content"]) > 0 {
+						if err := json.Unmarshal(content["content"], &data); err != nil {
+							return failStream(fmt.Errorf("responses stream content: %w", err))
+						}
+					}
+					for index, part := range data {
+						parts[event.OutputIndex][index] = part
+					}
+				}
+				part := map[string]json.RawMessage{}
+				if data := parts[event.OutputIndex][event.ContentIndex]; len(data) > 0 {
+					if err := json.Unmarshal(data, &part); err != nil {
+						return failStream(fmt.Errorf("responses stream part: %w", err))
+					}
+				}
+				switch event.Type {
+				case "response.content_part.added", "response.content_part.done":
+					data := map[string]json.RawMessage{}
+					if err := json.Unmarshal(event.Raw, &data); err != nil {
+						return failStream(fmt.Errorf("responses stream part event: %w", err))
+					}
+					if err := json.Unmarshal(data["part"], &part); err != nil {
+						return failStream(fmt.Errorf("responses stream part event: %w", err))
+					}
+				case "response.output_text.delta", "response.output_text.done":
+					var text string
+					if len(part["text"]) > 0 {
+						if err := json.Unmarshal(part["text"], &text); err != nil {
+							return failStream(fmt.Errorf("responses stream text: %w", err))
+						}
+					}
+					if event.Type == "response.output_text.done" {
+						text = event.Text
+					} else {
+						text += event.Delta
+					}
+					part["type"] = json.RawMessage(`"output_text"`)
+					part["text"], _ = json.Marshal(text)
+				case "response.refusal.delta", "response.refusal.done":
+					var text string
+					if len(part["refusal"]) > 0 {
+						if err := json.Unmarshal(part["refusal"], &text); err != nil {
+							return failStream(fmt.Errorf("responses stream refusal: %w", err))
+						}
+					}
+					if event.Type == "response.refusal.done" {
+						text = event.Refusal
+					} else {
+						text += event.Delta
+					}
+					part["type"] = json.RawMessage(`"refusal"`)
+					part["refusal"], _ = json.Marshal(text)
+				}
+				parts[event.OutputIndex][event.ContentIndex], _ = json.Marshal(part)
+				indices := make([]int, 0, len(parts[event.OutputIndex]))
+				for index := range parts[event.OutputIndex] {
+					indices = append(indices, index)
+				}
+				sort.Ints(indices)
+				{
+					data := make([]json.RawMessage, 0, len(indices))
+					for _, index := range indices {
+						data = append(data, parts[event.OutputIndex][index])
+					}
+					content["content"], _ = json.Marshal(data)
+				}
+				data, _ := json.Marshal(content)
+				item, err = api.ParseItem(data)
+				if err != nil {
+					return failStream(fmt.Errorf("responses stream partial item: %w", err))
+				}
+				completed[event.OutputIndex] = item
+				result.OutputStarted = true
+			}
+			switch event.Type {
+			case "response.output_text.delta", "response.refusal.delta":
+				if event.Delta != "" {
+					if _, err := stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamTextDelta, Text: event.Delta}); err != nil {
+						observation.Event().Err = err
+						observation.LogRecord().ResultStatus = globalevents.LogStatus(err)
+						return result, err
+					}
+				}
+			case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
+				if event.Delta != "" {
+					_, _ = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReasoningDelta, Text: event.Delta})
+				}
+			case "response.reasoning_summary_text.done", "response.reasoning_text.done":
+				_, _ = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReasoningDone})
+			case "response.completed":
+				status = "completed"
+				_, err = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamFinish})
+				observation.LogRecord().ResultStatus = globalevents.ResultSucceeded
+				if err != nil {
+					observation.Event().Err = err
+					observation.LogRecord().ResultStatus = globalevents.LogStatus(err)
+				}
+				return result, err
 			}
 		}
-		observation.Event().ToolCallCount = 0
-		for _, item := range result.Items {
-			if item.Type == "function_call" {
-				observation.Event().ToolCallCount++
-			}
+		if err := ctx.Err(); err != nil {
+			observation.LogRecord().ResultStatus = globalevents.ResultCanceled
+			status = "canceled"
+			return result, err
 		}
-		raw := ""
-		if result.Response != nil {
-			raw = string(result.Response.Raw)
+		return failStream(fmt.Errorf("response stream closed before response.completed: %w", io.ErrUnexpectedEOF))
+	}()
+	result.Items = outputItems(result.Response, completed)
+	observation.Event().Text, observation.Event().SourceText = outputText(result.Items), outputText(result.Items)
+	observation.Event().OutputReady = len(result.Items) > 0
+	if result.Response != nil {
+		observation.Event().Usage = result.Response.TokenUsage()
+	}
+	observation.Event().ToolCallCount = 0
+	for _, item := range result.Items {
+		if item.Type == "function_call" {
+			observation.Event().ToolCallCount++
 		}
+	}
+	raw := ""
+	if result.Response != nil {
+		raw = string(result.Response.Raw)
+	}
+	archiveErr := func() error {
 		encoded, encodeErr := json.Marshal(result.Items)
 		if encodeErr != nil {
-			slog.ErrorContext(context.WithoutCancel(ctx), "encode native response", "exchange_id", exchange.ID, "error", encodeErr, "request_error", err)
-			err = fmt.Errorf("encode native response: %w", encodeErr)
-			return
+			return fmt.Errorf("encode native response: %w", encodeErr)
 		}
 		failure := ""
 		if err != nil {
@@ -144,193 +311,19 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		}
 		saveErr := s.route.Repository.FinishExchange(context.WithoutCancel(s.ctx), exchange.ID, status, raw, string(encoded), failure)
 		if saveErr != nil {
-			slog.ErrorContext(context.WithoutCancel(ctx), "save native response", "exchange_id", exchange.ID, "error", saveErr, "request_error", err)
-			err = fmt.Errorf("save native response: %w", saveErr)
+			return fmt.Errorf("save native response: %w", saveErr)
 		} else {
 			exchange.Status, exchange.ResponseJSON, exchange.ItemsJSON, exchange.Error = status, raw, string(encoded), failure
 			result.FactsSaved = true
 		}
+
+		return nil
 	}()
-	callCtx, cancel := context.WithCancel(ctx)
-	observation.LogRecord().EventName = "llm_usage"
-	observation.LogRecord().ResultStatus = globalevents.ResultCanceled
-	events, err := client.StreamPrepared(callCtx, prepared)
-	defer func() {
-		cancel()
-		if events != nil {
-			for range events {
-			}
+	if archiveErr != nil {
+		if err == nil {
+			return result, archiveErr
 		}
-	}()
-	if err != nil {
-		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
-			observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultCanceled, slog.LevelInfo
-			status = "canceled"
-			return result, ctx.Err()
-		}
-		observation.Event().ProviderError, observation.Event().Err = true, err
-		observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultFailed, slog.LevelWarn
-		return result, err
+		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "native_archive_failed", Module: "agent", Content: archiveErr.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.ResultFailed})
 	}
-	failStream := func(cause error) (nativeCallResult, error) {
-		failure := llm.MapStreamError(cause)
-		observation.Event().ProviderError, observation.Event().Err = true, failure
-		observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultFailed, slog.LevelWarn
-		return result, failure
-	}
-	for event := range events {
-		if event.Response != nil {
-			result.Response = event.Response
-		}
-		if event.Item != nil || event.Delta != "" {
-			result.OutputStarted = true
-		}
-		if event.Response != nil && len(event.Response.Output) > 0 {
-			result.OutputStarted = true
-		}
-		if (event.Type == "response.output_item.added" || event.Type == "response.output_item.done") && event.Item != nil {
-			completed[event.OutputIndex] = *event.Item
-		}
-		if event.Error != nil {
-			if event.Type != "" {
-				status = event.Type
-			}
-			if ctx.Err() != nil && errors.Is(event.Error, ctx.Err()) {
-				observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultCanceled, slog.LevelInfo
-				status = "canceled"
-				return result, ctx.Err()
-			}
-			observation.Event().ProviderError, observation.Event().Err = true, event.Error
-			observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultFailed, slog.LevelWarn
-			return result, event.Error
-		}
-		switch event.Type {
-		case "response.content_part.added", "response.content_part.done", "response.output_text.done", "response.refusal.done", "response.output_text.delta", "response.refusal.delta":
-			if event.OutputIndex < 0 || event.ContentIndex < 0 {
-				return failStream(fmt.Errorf("responses stream: negative output or content index"))
-			}
-			item := completed[event.OutputIndex]
-			content := map[string]json.RawMessage{}
-			if len(item.Raw) > 0 {
-				if err := json.Unmarshal(item.Raw, &content); err != nil {
-					return failStream(fmt.Errorf("responses stream item: %w", err))
-				}
-			} else {
-				content["type"] = json.RawMessage(`"message"`)
-				content["role"] = json.RawMessage(`"assistant"`)
-				if event.ItemID != "" {
-					content["id"], _ = json.Marshal(event.ItemID)
-				}
-			}
-			if parts[event.OutputIndex] == nil {
-				parts[event.OutputIndex] = map[int]json.RawMessage{}
-				var data []json.RawMessage
-				if len(content["content"]) > 0 {
-					if err := json.Unmarshal(content["content"], &data); err != nil {
-						return failStream(fmt.Errorf("responses stream content: %w", err))
-					}
-				}
-				for index, part := range data {
-					parts[event.OutputIndex][index] = part
-				}
-			}
-			part := map[string]json.RawMessage{}
-			if data := parts[event.OutputIndex][event.ContentIndex]; len(data) > 0 {
-				if err := json.Unmarshal(data, &part); err != nil {
-					return failStream(fmt.Errorf("responses stream part: %w", err))
-				}
-			}
-			switch event.Type {
-			case "response.content_part.added", "response.content_part.done":
-				data := map[string]json.RawMessage{}
-				if err := json.Unmarshal(event.Raw, &data); err != nil {
-					return failStream(fmt.Errorf("responses stream part event: %w", err))
-				}
-				if err := json.Unmarshal(data["part"], &part); err != nil {
-					return failStream(fmt.Errorf("responses stream part event: %w", err))
-				}
-			case "response.output_text.delta", "response.output_text.done":
-				var text string
-				if len(part["text"]) > 0 {
-					if err := json.Unmarshal(part["text"], &text); err != nil {
-						return failStream(fmt.Errorf("responses stream text: %w", err))
-					}
-				}
-				if event.Type == "response.output_text.done" {
-					text = event.Text
-				} else {
-					text += event.Delta
-				}
-				part["type"] = json.RawMessage(`"output_text"`)
-				part["text"], _ = json.Marshal(text)
-			case "response.refusal.delta", "response.refusal.done":
-				var text string
-				if len(part["refusal"]) > 0 {
-					if err := json.Unmarshal(part["refusal"], &text); err != nil {
-						return failStream(fmt.Errorf("responses stream refusal: %w", err))
-					}
-				}
-				if event.Type == "response.refusal.done" {
-					text = event.Refusal
-				} else {
-					text += event.Delta
-				}
-				part["type"] = json.RawMessage(`"refusal"`)
-				part["refusal"], _ = json.Marshal(text)
-			}
-			parts[event.OutputIndex][event.ContentIndex], _ = json.Marshal(part)
-			indices := make([]int, 0, len(parts[event.OutputIndex]))
-			for index := range parts[event.OutputIndex] {
-				indices = append(indices, index)
-			}
-			sort.Ints(indices)
-			{
-				data := make([]json.RawMessage, 0, len(indices))
-				for _, index := range indices {
-					data = append(data, parts[event.OutputIndex][index])
-				}
-				content["content"], _ = json.Marshal(data)
-			}
-			data, _ := json.Marshal(content)
-			item, err = api.ParseItem(data)
-			if err != nil {
-				return failStream(fmt.Errorf("responses stream partial item: %w", err))
-			}
-			completed[event.OutputIndex] = item
-			result.OutputStarted = true
-		}
-		switch event.Type {
-		case "response.output_text.delta", "response.refusal.delta":
-			if event.Delta != "" {
-				if _, err := stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamTextDelta, Text: event.Delta}); err != nil {
-					observation.Event().Err = err
-					observation.LogRecord().Content = fmt.Sprintf("display_error=%v", err)
-					observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.LogStatus(err), slog.LevelWarn
-					return result, err
-				}
-			}
-		case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
-			if event.Delta != "" {
-				_, _ = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReasoningDelta, Text: event.Delta})
-			}
-		case "response.reasoning_summary_text.done", "response.reasoning_text.done":
-			_, _ = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReasoningDone})
-		case "response.completed":
-			status = "completed"
-			_, err = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamFinish})
-			observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultSucceeded, slog.LevelInfo
-			if err != nil {
-				observation.Event().Err = err
-				observation.LogRecord().Content = fmt.Sprintf("display_error=%v", err)
-				observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.LogStatus(err), slog.LevelWarn
-			}
-			return result, err
-		}
-	}
-	if err := ctx.Err(); err != nil {
-		observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultCanceled, slog.LevelInfo
-		status = "canceled"
-		return result, err
-	}
-	return failStream(fmt.Errorf("response stream closed before response.completed: %w", io.ErrUnexpectedEOF))
+	return result, err
 }

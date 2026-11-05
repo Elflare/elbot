@@ -81,7 +81,11 @@ func TestToolCommitFailureStopsOnlyOnPersistenceError(t *testing.T) {
 			failure := errors.New("commit failed")
 			sink := &failingToolCommitter{failure: failure, phase: phase}
 			result := manager.Run(ctx, deps, toolshare.RunRequest{Committer: sink, Session: &storage.Session{ID: "s", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "A", Name: "count", Arguments: "{}"}, {ID: "B", Name: "count", Arguments: "{}"}}})
-			if (phase != "prepared" && !errors.Is(result.Err, failure)) || (phase == "prepared" && result.Err != nil) || count.Load() != 1 {
+			wantCalls := int32(1)
+			if phase == "prepared" {
+				wantCalls = 0
+			}
+			if !errors.Is(result.Err, failure) || count.Load() != wantCalls {
 				t.Fatalf("result=%+v calls=%d", result, count.Load())
 			}
 		})

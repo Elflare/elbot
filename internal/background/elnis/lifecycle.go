@@ -224,7 +224,7 @@ func (r *Runtime) worker(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			// RunLLMEvent records failures at their source.
+			// RunLLMEvent owns the complete task's terminal report.
 			_ = r.service.RunLLMEvent(ctx, event.Event, event.EventID)
 		}
 	}
@@ -232,7 +232,7 @@ func (r *Runtime) worker(ctx context.Context) {
 
 func (r *Runtime) reportWorker(ctx context.Context) {
 	// Recovery and delivery own their operation diagnostics.
-	_ = r.service.recoverReports(ctx)
+	r.service.recoverReports(ctx)
 	ticker := time.NewTicker(reportRecoveryInterval)
 	defer ticker.Stop()
 	for {
@@ -240,7 +240,7 @@ func (r *Runtime) reportWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_ = r.service.recoverReports(ctx)
+			r.service.recoverReports(ctx)
 		}
 	}
 }

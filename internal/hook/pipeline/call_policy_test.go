@@ -34,7 +34,7 @@ func TestInvocationReleasesContext(t *testing.T) {
 			} else {
 				_, err = manager.Run(t.Context(), event, options)
 			}
-			if errors.Is(err, failure) != fail || done != 1 || captured.Err() != context.Canceled || t.Context().Err() != nil || manager.List()[0].Active != 0 {
+			if err != nil || done != 1 || captured.Err() != context.Canceled || t.Context().Err() != nil || manager.List()[0].Active != 0 {
 				t.Fatalf("notify=%v fail=%v err=%v done=%d context=%v", notify, fail, err, done, captured.Err())
 			}
 		}

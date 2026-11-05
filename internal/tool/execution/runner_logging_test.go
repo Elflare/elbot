@@ -461,7 +461,7 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 					t.Fatalf("actual result or error lost from audit: %s", calls[0].Content)
 				}
 			}
-			if tc.startErr != nil && (len(committer.messages) != 1 || !strings.Contains(llm.SegmentsContentText(committer.messages[0].Segments), tc.startErr.Error())) {
+			if tc.startErr != nil && (!errors.Is(result.Err, tc.startErr) || len(committer.messages) != 0 || deps.completed != 0) {
 				t.Fatalf("request error lost: %+v", result)
 			}
 

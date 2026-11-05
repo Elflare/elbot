@@ -117,9 +117,7 @@ func TestLeaseWaitCancellationPruneAndCloseDuringExport(t *testing.T) {
 	if _, err := m.MediaRequest(ctx, dir, "media.export", mustJSON(map[string]string{"media": item.ID})); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal("same-lease wait ignored cancellation", err)
 	}
-	if _, err := pruneMediaForTest(t.Context(), m.media, time.Now().Add(2*mediaLeaseTTL), false); err != nil {
-		t.Fatal(err)
-	}
+	pruneMediaForTest(t.Context(), m.media, time.Now().Add(2*mediaLeaseTTL), false)
 	refs, err := store.MediaReferences().ListByOwner(t.Context(), "hook", m.media.owner)
 	if err != nil || len(refs) != 1 {
 		t.Fatal("maintenance released active lease", refs, err)
@@ -179,8 +177,8 @@ func TestLeaseCleanupBlocksOnlySameLeaseAndReacquiresAfterRemoval(t *testing.T) 
 	})
 	done := make(chan error, 1)
 	go func() {
-		_, err := pruneMediaForTest(t.Context(), m.media, time.Now().Add(2*mediaLeaseTTL), false)
-		done <- err
+		pruneMediaForTest(t.Context(), m.media, time.Now().Add(2*mediaLeaseTTL), false)
+		done <- nil
 	}()
 	<-started
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
@@ -229,8 +227,9 @@ func TestCloseRetryRetainsFailedLease(t *testing.T) {
 		}
 		return center.RemoveReference(ctx, ref)
 	}}
-	if err := m.Close(t.Context()); err == nil || attempts.Load() != 1 {
-		t.Fatal("close retried or hid failure", err, attempts.Load())
+	records := captureHookRecords(t)
+	if err := m.Close(t.Context()); err != nil || attempts.Load() != 1 || len(*records) != 1 {
+		t.Fatal("cleanup failure must be handled once", err, attempts.Load(), *records)
 	}
 	fail.Store(false)
 	if err := m.Close(t.Context()); err != nil || attempts.Load() != 2 || len(m.media.leases) != 0 {

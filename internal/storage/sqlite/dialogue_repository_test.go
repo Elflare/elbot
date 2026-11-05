@@ -6,7 +6,6 @@ import (
 	"elbot/internal/signal"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"testing"
 
@@ -368,7 +367,7 @@ func TestDialogueStorageFaultLoggingCannotReplaceBusinessError(t *testing.T) {
 	}
 	defer c.Disconnect()
 	err = store.Dialogues().Commit(t.Context(), nativeStorageCommit("fault", ""))
-	if err == nil || errors.Is(err, fault) || len(records) != 1 || records[0].Level != slog.LevelError || records[0].ResultStatus != events.ResultFailed || records[0].Content != err.Error() {
+	if err == nil || errors.Is(err, fault) || len(records) != 0 {
 		t.Fatalf("err=%v records=%+v", err, records)
 	}
 }

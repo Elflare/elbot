@@ -3,8 +3,10 @@ package execution
 import (
 	"context"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	agentshare "elbot/internal/agent/share"
@@ -13,34 +15,34 @@ import (
 	"elbot/internal/turn"
 )
 
-func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Session, text string) error {
+func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Session, text string) (context.Context, error) {
 	defer c.sessionIdle(ctx, row.ID)
 	for {
 		locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), row.ID)
 		if err != nil {
-			return err
+			return ctx, err
 		}
 		locked, err = agentshare.CaptureSessionBinding(locked, c.sessions, c.identity, row)
 		if err != nil {
 			release()
-			return err
+			return ctx, err
 		}
 		binding, _ := sessionpkg.BindingFromContext(locked)
 		if err := c.sessions.RecordActivity(locked, binding); err != nil {
 			release()
-			return err
+			return ctx, err
 		}
 		switch {
 		case agentshare.IsAppendConfirm(text):
 			snapshot := c.turns.Snapshot(row.ID)
 			if snapshot.Phase != turn.PhaseAwaitAppendConfirm {
 				release()
-				return nil
+				return ctx, nil
 			}
 			if snapshot.AttemptDone != nil {
 				release()
 				if err := c.waitForAttempt(ctx, snapshot.AttemptDone); err != nil {
-					return err
+					return ctx, err
 				}
 				continue
 			}
@@ -48,7 +50,7 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Se
 			ctx = turn.WithExecution(locked, execution)
 			if !ok || (merged.Text == "" && len(merged.Segments) == 0) {
 				release()
-				return nil
+				return ctx, nil
 			}
 			ctx = agentshare.WithInboundTurnInput(ctx, merged)
 			release()
@@ -57,11 +59,11 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Se
 			c.turns.CancelAppend(row.ID)
 			release()
 			_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "append canceled · stopping"})
-			return err
+			return ctx, err
 		default:
 			c.turns.AppendPendingInput(row.ID, agentshare.InboundTurnInput(ctx, text))
 			release()
-			return nil
+			return ctx, nil
 		}
 	}
 }
@@ -80,17 +82,20 @@ func (c *ExecutionCoordinator) waitForAttempt(ctx context.Context, done <-chan s
 	case <-waitCtx.Done():
 		return waitCtx.Err()
 	case <-done:
-		return errors.Join(ctx.Err(), waitCtx.Err())
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return waitCtx.Err()
 	}
 }
 
 // AcceptInput revalidates the prepared input and dispatches under its original binding.
 // Risk responses return to the entrypoint for ConfirmationCoordinator to consume.
-func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage.Session, text string) (agentshare.InputDisposition, error) {
+func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage.Session, text string) (context.Context, agentshare.InputDisposition, error) {
 	for {
 		locked, release, err := c.EnterInput(ctx, session)
 		if err != nil {
-			return agentshare.InputHandled, err
+			return ctx, agentshare.InputHandled, err
 		}
 		ctx = locked
 		snapshot := c.turns.Snapshot(session.ID)
@@ -98,33 +103,34 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 			binding, _ := sessionpkg.BindingFromContext(ctx)
 			if err := c.sessions.RecordActivity(ctx, binding); err != nil {
 				release()
-				return agentshare.InputHandled, err
+				return ctx, agentshare.InputHandled, err
 			}
 		}
 		switch snapshot.Phase {
 		case turn.PhaseStopping:
 			release()
 			if err := c.waitForAttempt(ctx, snapshot.AttemptDone); err != nil {
-				return agentshare.InputHandled, err
+				return ctx, agentshare.InputHandled, err
 			}
 			continue
 		case turn.PhaseAwaitRiskConfirm:
 			release()
-			return agentshare.InputRiskConfirmation, nil
+			return ctx, agentshare.InputRiskConfirmation, nil
 		case turn.PhaseAwaitAppendConfirm:
 			release()
-			return agentshare.InputHandled, c.ResumeAppend(ctx, session, text)
+			ctx, err := c.ResumeAppend(ctx, session, text)
+			return ctx, agentshare.InputHandled, err
 		case turn.PhaseLLM:
 			waitCtx, finishWait, accepted := c.appendWaits.begin(ctx)
 			if !accepted {
 				release()
-				return agentshare.InputHandled, context.Canceled
+				return ctx, agentshare.InputHandled, context.Canceled
 			}
 			wait := c.turns.BeginAppend(session.ID, snapshot.Attempt, agentshare.InboundTurnInput(ctx, text))
 			if wait == nil {
 				finishWait()
 				release()
-				return agentshare.InputHandled, nil
+				return ctx, agentshare.InputHandled, nil
 			}
 			c.requests.CancelSession(session.ID)
 			release()
@@ -134,22 +140,28 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 				defer finishWait()
 				defer c.sessionIdle(waitCtx, session.ID)
 				if wait.Wait(waitCtx, timeout) {
-					_, _ = c.output.Send(waitCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "append timeout → dropped · stopped"})
+					if _, err := c.output.Send(waitCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "append timeout → dropped · stopped"}); err != nil {
+						record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "append_timeout_notice_failed", Module: "agent", Content: err.Error(), Identity: events.LogIdentityFromContext(waitCtx), ResultStatus: events.LogStatus(err)}
+						if record.ResultStatus == events.ResultCanceled {
+							record.Level = slog.LevelInfo
+						}
+						events.AsyncLog(waitCtx, record)
+					}
 				}
 			}()
-			return agentshare.InputHandled, err
+			return ctx, agentshare.InputHandled, err
 		case turn.PhaseTool:
 			c.turns.AppendPendingInput(session.ID, agentshare.InboundTurnInput(ctx, text))
 			release()
 			_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "queued → next LLM call"})
-			return agentshare.InputHandled, err
+			return ctx, agentshare.InputHandled, err
 		default:
 			release()
-			err = c.Run(ctx, session, text, foregroundTurnOutput{ExecutionSender: c.output})
+			ctx, err = c.Run(ctx, session, text, foregroundTurnOutput{ExecutionSender: c.output})
 			// A competing execution won after the idle snapshot. Revalidate the
 			// original binding and dispatch the prepared input by its latest phase.
 			if !errors.Is(err, errExecutionConflict) {
-				return agentshare.InputHandled, err
+				return ctx, agentshare.InputHandled, err
 			}
 		}
 	}

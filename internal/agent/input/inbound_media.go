@@ -88,7 +88,6 @@ func (h *MessageHandler) associateInboundHistory(ctx context.Context, messageID 
 	if err != nil {
 		return err
 	}
-	var failures []error
 	index := 0
 	for i, raw := range original {
 		if raw.Type != "image" && raw.Type != "file" {
@@ -99,7 +98,6 @@ func (h *MessageHandler) associateInboundHistory(ctx context.Context, messageID 
 			continue
 		}
 		if err := h.media.AssociateHistory(ctx, media.HistoryMessage{ID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, ChatType: row.ChatType}, index, raw.Type, resolved[i].Media.MediaID); err != nil {
-			failures = append(failures, err)
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogRuntime,
 				Level:        slog.LevelError,
@@ -114,12 +112,11 @@ func (h *MessageHandler) associateInboundHistory(ctx context.Context, messageID 
 				record.ResultStatus = globalevents.ResultCanceled
 				record.Level = slog.LevelInfo
 			}
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			record.Identity = globalevents.LogIdentityFromExecution(facts)
+			record.Identity = globalevents.LogIdentityFromContext(ctx)
 			globalevents.Log(ctx, record)
 		}
 	}
-	return errors.Join(failures...)
+	return nil
 }
 
 func unavailablePlatformSegment(segment agentshare.MessageSegment) agentshare.MessageSegment {

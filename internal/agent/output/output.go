@@ -4,7 +4,6 @@ import (
 	"context"
 	agentshare "elbot/internal/agent/share"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"strings"
 
@@ -30,8 +29,11 @@ func (o *OutputSender) Send(ctx context.Context, event delivery.StreamEvent) (de
 	return o.StartStream(ctx).Send(ctx, event)
 }
 
-func (o *OutputSender) observeDelivery(ctx context.Context, operation string, receipt delivery.Receipt, err error) {
-	// This source records only the send operation, never the overall tool result.
+func (o *OutputSender) observeDelivery(ctx context.Context, operation string, receipt delivery.Receipt) {
+	// Successful receipts are facts; callers own send failures.
+	if len(receipt.SentMessages) == 0 && len(receipt.PlatformMessageIDs) == 0 {
+		return
+	}
 	sentMessages := make([]map[string]any, 0, len(receipt.SentMessages))
 	for _, sent := range receipt.SentMessages {
 		sentMessages = append(sentMessages, map[string]any{
@@ -41,9 +43,6 @@ func (o *OutputSender) observeDelivery(ctx context.Context, operation string, re
 	}
 	content := map[string]any{
 		"operation": operation, "platform_message_ids": receipt.PlatformMessageIDs, "sent_messages": sentMessages,
-	}
-	if err != nil {
-		content["detail"] = agentshare.TruncateLogContent(err.Error(), 4096)
 	}
 	data, _ := json.Marshal(content)
 	record := globalevents.LogRecord{
@@ -55,14 +54,7 @@ func (o *OutputSender) observeDelivery(ctx context.Context, operation string, re
 		Content:      string(data),
 		ResultStatus: globalevents.ResultSucceeded,
 	}
-	if err != nil {
-		record.Level, record.ResultStatus = slog.LevelWarn, globalevents.ResultFailed
-		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
-			record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
-		}
-	}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	record.Identity = globalevents.LogIdentityFromExecution(facts)
+	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	globalevents.Log(context.WithoutCancel(ctx), record)
 }
 
@@ -114,10 +106,6 @@ func (o *OutputSender) Preview(ctx context.Context, text ...string) {
 	preview := strings.Join(lines, "\n")
 	prepared, err := o.hooks.AgentOutputPrepared(ctx, preview)
 	if err != nil {
-		if ctx.Err() == nil {
-			facts, _ := contextinfo.ExecutionFromContext(ctx)
-			agentshare.ReportFailure(ctx, facts.SessionID, fmt.Errorf("准备工具预览: %w", err), o.Notify)
-		}
 		return
 	}
 	o.Notify(ctx, slog.LevelDebug, strings.TrimSpace(prepared))
@@ -138,11 +126,9 @@ func (o *OutputSender) StartStream(ctx context.Context) delivery.MessageStream {
 			return receipt, nil
 		}
 		defer func() {
-			if err != nil && event.Type != delivery.StreamSend && event.Type != delivery.StreamSendExtras {
-				slog.WarnContext(context.WithoutCancel(ctx), "message stream display failed", "event", event.Type, "error", err)
-				if event.Type == delivery.StreamReasoningDelta || event.Type == delivery.StreamReasoningDone {
-					err = nil
-				}
+			if err != nil && (event.Type == delivery.StreamReasoningDelta || event.Type == delivery.StreamReasoningDone) {
+				globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "reasoning_display_failed", Module: "agent", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
+				err = nil
 			}
 		}()
 		switch event.Type {
@@ -150,14 +136,14 @@ func (o *OutputSender) StartStream(ctx context.Context) delivery.MessageStream {
 			if len(event.Outputs) == 0 {
 				return receipt, nil
 			}
-			defer func() { o.observeDelivery(ctx, "send_outputs", receipt, err) }()
+			defer func() { o.observeDelivery(ctx, "send_outputs", receipt) }()
 			target, err := delivery.ValidateOutputsTarget(event.Outputs)
 			if err != nil {
 				return receipt, err
 			}
 			return o.dispatcher.SendTo(ctx, target, event.Outputs)
 		case delivery.StreamSend:
-			defer func() { o.observeDelivery(ctx, "send_assistant_message", receipt, err) }()
+			defer func() { o.observeDelivery(ctx, "send_assistant_message", receipt) }()
 			event.Text, err = o.hooks.AgentOutputPrepared(ctx, event.Text)
 			if err != nil {
 				return receipt, err

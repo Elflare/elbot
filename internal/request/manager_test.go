@@ -2,6 +2,8 @@ package request
 
 import (
 	"context"
+	"elbot/internal/events"
+	"elbot/internal/signal"
 	"elbot/internal/testutil"
 	"errors"
 	"testing"
@@ -9,6 +11,15 @@ import (
 )
 
 func TestAllocationFailureDoesNotRegisterRequest(t *testing.T) {
+	var records []events.LogRecord
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+		records = append(records, record)
+		return nil
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
 	want := errors.New("reserve failed")
 	m := NewManager(func(context.Context) (int64, error) { return 0, want })
 	parent := t.Context()
@@ -18,6 +29,9 @@ func TestAllocationFailureDoesNotRegisterRequest(t *testing.T) {
 	}
 	if parent.Err() != nil {
 		t.Fatal("allocation canceled parent")
+	}
+	if len(records) != 0 {
+		t.Fatalf("request reported a propagated error: %+v", records)
 	}
 }
 

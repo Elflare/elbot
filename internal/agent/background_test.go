@@ -70,9 +70,13 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 		ToolListNames: []string{"task_notes"},
 		ELwispTools:   []tool.ELwispToolDeclaration{{Name: "remote", CanonicalName: "event_remote", Description: "Remote", Risk: security.RiskLow, Schema: map[string]any{"type": "object", "properties": map[string]any{}}, EventKey: "event", Endpoint: "https://example.invalid"}},
 	}
-	result, err := m.RunBackground(ctx, req)
+	returnedCtx, result, err := m.RunBackground(ctx, req)
 	if err != nil || result.SessionID == "" || result.RunID == "" || result.MessageID == "" || result.Text != "isolated answer" || result.Outcome != "completed" {
 		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	facts, _ := contextinfo.ExecutionFromContext(returnedCtx)
+	if returnedCtx.Err() != nil || facts.SessionID != result.SessionID || facts.RunID != result.RunID || facts.RequestID == "" {
+		t.Fatalf("returned task context lost facts or inherited completed request cancellation: %+v %v", facts, returnedCtx.Err())
 	}
 	row, err := deps.Store.Sessions().Get(ctx, result.SessionID)
 	if err != nil {
@@ -108,7 +112,7 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 	req.ToolListNames = []string{"missing_skill"}
 	req.ELwispTools = []tool.ELwispToolDeclaration{{Name: "changed", CanonicalName: "changed"}}
 	req.Prompt = "continue"
-	continued, err := m.RunBackground(ctx, req)
+	_, continued, err := m.RunBackground(returnedCtx, req)
 	if err != nil || continued.SessionID != row.ID {
 		t.Fatalf("continuation=%+v err=%v", continued, err)
 	}
@@ -162,7 +166,7 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 	if _, err := m.sessions.Resume(ctx, foregroundScope, row.ID); err != nil {
 		t.Fatal(err)
 	}
-	taken, err := m.RunBackground(ctx, req)
+	_, taken, err := m.RunBackground(ctx, req)
 	if err != nil || !taken.TakenOver || taken.Outcome != "taken_over" {
 		t.Fatalf("takeover=%+v err=%v", taken, err)
 	}
@@ -195,7 +199,7 @@ func TestBackgroundCancellationDuringPreparation(t *testing.T) {
 			defer cancel()
 			results := make(chan error, 1)
 			go func() {
-				result, err := m.RunBackground(ctx, BackgroundRequest{TaskType: "cron", TaskID: "cancel", Prompt: "run"})
+				_, result, err := m.RunBackground(ctx, BackgroundRequest{TaskType: "cron", TaskID: "cancel", Prompt: "run"})
 				if result.SessionID == "" {
 					results <- errors.New("lost prepared session ID")
 					return
@@ -229,7 +233,7 @@ func TestBackgroundCancellationDuringPreparation(t *testing.T) {
 				t.Fatalf("executed after preload cancellation: %+v %v", messages, err)
 			}
 			if shutdown {
-				if _, err := m.RunBackground(t.Context(), BackgroundRequest{}); !errors.Is(err, context.Canceled) {
+				if _, _, err := m.RunBackground(t.Context(), BackgroundRequest{}); !errors.Is(err, context.Canceled) {
 					t.Fatal(err)
 				}
 				if _, err := m.CopyBackground(t.Context(), BackgroundCopyRequest{}); !errors.Is(err, context.Canceled) {
@@ -305,7 +309,7 @@ func TestBackgroundCancellationDuringExecution(t *testing.T) {
 			results := make(chan BackgroundResult, 1)
 			errors := make(chan error, 1)
 			go func() {
-				result, err := m.RunBackground(ctx, BackgroundRequest{TaskType: "cron", TaskID: "cancel", Prompt: "run"})
+				_, result, err := m.RunBackground(ctx, BackgroundRequest{TaskType: "cron", TaskID: "cancel", Prompt: "run"})
 				results <- result
 				errors <- err
 			}()

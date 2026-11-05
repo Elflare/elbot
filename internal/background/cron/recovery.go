@@ -2,14 +2,12 @@ package cron
 
 import (
 	"context"
-	background "elbot/internal/background/share"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 
-	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 )
 
@@ -25,14 +23,14 @@ func (s *Service) handlePlatformConnected(ctx context.Context, platformName stri
 			Content:      fmt.Sprintf("cron platform connected\nplatform=%v", platformName),
 			ContentLimit: 4096,
 		}
-		record.Identity = cronLogIdentity(ctx)
-		background.LogBackground(ctx, record)
+		record.Identity = globalevents.LogIdentityFromContext(ctx)
+		globalevents.Log(ctx, record)
 	}
 	s.runMissedOnceForPlatform(ctx, platformName)
 }
 
 func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName string) {
-	identity := cronLogIdentity(ctx)
+	identity := globalevents.LogIdentityFromContext(ctx)
 
 	jobs, err := s.store.ListEnabled(ctx)
 	if err != nil {
@@ -51,7 +49,7 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 				ResultStatus: globalevents.ResultFailed,
 			}
 			record.Identity = identity
-			background.LogBackground(ctx, record)
+			globalevents.Log(ctx, record)
 		}
 		return
 	}
@@ -64,7 +62,7 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 		}
 		meta, err := decodeMetadata(job.Metadata)
 		if err != nil {
-			background.LogBackground(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "missed_cron_run_failed", Module: "cron", Type: globalevents.ContentText, Content: fmt.Sprintf("job=%s\nstage=metadata\nerror=%v", job.Name, err), Identity: identity, ResultStatus: globalevents.ResultFailed})
+			globalevents.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "missed_cron_run_failed", Module: "cron", Type: globalevents.ContentText, Content: fmt.Sprintf("job=%s\nstage=metadata\nerror=%v", job.Name, err), Identity: identity, ResultStatus: globalevents.ResultFailed})
 			continue
 		}
 		if meta.Schedule.Mode != ScheduleOnce {
@@ -72,7 +70,7 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 		}
 		runAt, err := parseRunAt(meta.Schedule.RunAt)
 		if err != nil {
-			background.LogBackground(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "missed_cron_run_failed", Module: "cron", Type: globalevents.ContentText, Content: fmt.Sprintf("job=%s\nstage=schedule\nerror=%v", job.Name, err), Identity: identity, ResultStatus: globalevents.ResultFailed})
+			globalevents.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "missed_cron_run_failed", Module: "cron", Type: globalevents.ContentText, Content: fmt.Sprintf("job=%s\nstage=schedule\nerror=%v", job.Name, err), Identity: identity, ResultStatus: globalevents.ResultFailed})
 			continue
 		}
 		if runAt.After(s.now()) || !containsString(s.targetPlatformNames(meta), platformName) {
@@ -89,7 +87,7 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 				return
 			}
 			if !errors.Is(loadErr, ErrJobNotFound) {
-				background.LogBackground(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "missed_cron_run_failed", Module: "cron", Type: globalevents.ContentText, Content: fmt.Sprintf("job=%s\nstage=reload\nerror=%v", job.Name, loadErr), Identity: identity, ResultStatus: globalevents.ResultFailed})
+				globalevents.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "missed_cron_run_failed", Module: "cron", Type: globalevents.ContentText, Content: fmt.Sprintf("job=%s\nstage=reload\nerror=%v", job.Name, loadErr), Identity: identity, ResultStatus: globalevents.ResultFailed})
 			}
 			continue
 		}
@@ -100,7 +98,7 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 		latestMeta, metaErr := decodeMetadata(latest.Metadata)
 		if metaErr != nil {
 			unlock()
-			background.LogBackground(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "missed_cron_run_failed", Module: "cron", Type: globalevents.ContentText, Content: fmt.Sprintf("job=%s\nstage=reload_metadata\nerror=%v", job.Name, metaErr), Identity: identity, ResultStatus: globalevents.ResultFailed})
+			globalevents.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "missed_cron_run_failed", Module: "cron", Type: globalevents.ContentText, Content: fmt.Sprintf("job=%s\nstage=reload_metadata\nerror=%v", job.Name, metaErr), Identity: identity, ResultStatus: globalevents.ResultFailed})
 			continue
 		}
 		if latestMeta.Schedule.Mode != ScheduleOnce {
@@ -110,7 +108,7 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 		latestRunAt, runAtErr := parseRunAt(latestMeta.Schedule.RunAt)
 		if runAtErr != nil {
 			unlock()
-			background.LogBackground(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "missed_cron_run_failed", Module: "cron", Type: globalevents.ContentText, Content: fmt.Sprintf("job=%s\nstage=reload_schedule\nerror=%v", job.Name, runAtErr), Identity: identity, ResultStatus: globalevents.ResultFailed})
+			globalevents.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "missed_cron_run_failed", Module: "cron", Type: globalevents.ContentText, Content: fmt.Sprintf("job=%s\nstage=reload_schedule\nerror=%v", job.Name, runAtErr), Identity: identity, ResultStatus: globalevents.ResultFailed})
 			continue
 		}
 		if latestRunAt.After(s.now()) || !containsString(s.targetPlatformNames(latestMeta), platformName) {
@@ -129,7 +127,7 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 				ContentLimit: 4096,
 			}
 			record.Identity = identity
-			background.LogBackground(ctx, record)
+			globalevents.Log(ctx, record)
 		}
 		{
 			record := globalevents.LogRecord{
@@ -142,9 +140,10 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 				ContentLimit: 4096,
 			}
 			record.Identity = identity
-			background.LogBackground(ctx, record)
+			globalevents.Log(ctx, record)
 		}
-		deliverErr := s.deliverMissedOnce(ctx, *latest, latestMeta, platformName)
+		requestCtx, state, deliverErr := s.deliverMissedOnce(ctx, *latest, latestMeta, platformName)
+		identity = globalevents.LogIdentityFromContext(requestCtx)
 		resultStatus := globalevents.ResultSucceeded
 		if deliverErr != nil {
 			resultStatus = globalevents.ResultFailed
@@ -154,26 +153,6 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 		}
 		unlock()
 		if deliverErr != nil {
-			{
-				content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": latestMeta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(latestMeta), ","), "target_all_enabled_platforms": latestMeta.Target.AllEnabledPlatforms, "platform": platformName, "error": deliverErr.Error()})
-				record := globalevents.LogRecord{
-					Category:     globalevents.LogAudit,
-					Level:        slog.LevelWarn,
-					EventName:    "cron.missed_delivery_failed",
-					Module:       "cron",
-					Type:         globalevents.ContentJSON,
-					Content:      string(content),
-					ContentLimit: 4096,
-					ResultStatus: globalevents.ResultFailed,
-				}
-				record.ResultStatus = resultStatus
-				if resultStatus == globalevents.ResultCanceled {
-					record.Level = slog.LevelInfo
-				}
-
-				record.Identity = identity
-				background.LogBackground(ctx, record)
-			}
 			{
 				record := globalevents.LogRecord{
 					Category:     globalevents.LogRuntime,
@@ -193,10 +172,15 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 				}
 
 				record.Identity = identity
-				background.LogBackground(ctx, record)
+				globalevents.Log(requestCtx, record)
 			}
 			if ctx.Err() != nil {
 				return
+			}
+			if !state.ReportReady || state.NeedReport {
+				notice := globalevents.NewNotification(requestCtx, slog.LevelWarn, deliverErr.Error())
+				notice.Target = globalevents.NotificationTarget{Platform: s.cliPlatformName}
+				globalevents.Notify(requestCtx, notice)
 			}
 			continue
 		}
@@ -213,7 +197,7 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 				ResultStatus: globalevents.ResultSucceeded,
 			}
 			record.Identity = identity
-			background.LogBackground(ctx, record)
+			globalevents.Log(ctx, record)
 		}
 		{
 			record := globalevents.LogRecord{
@@ -228,32 +212,17 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 			}
 
 			record.Identity = identity
-			background.LogBackground(ctx, record)
+			globalevents.Log(ctx, record)
 		}
 	}
 }
 
-func (s *Service) deliverMissedOnce(ctx context.Context, job Job, meta Metadata, platformName string) (err error) {
-
-	job, state, prepareErr := s.prepareDelivery(ctx, job, meta)
-	defer func() {
-		if err != nil && ctx.Err() == nil && (!state.ReportReady || state.NeedReport) {
-			// 正文关闭时只保留失败日志；发送方记录通知自身的投递结果。
-			_, _ = s.sendDeliveryOutput(ctx, job.Name, delivery.Target{Platform: s.cliPlatformName, Superadmins: true}, delivery.Text(fmt.Sprintf("cron 补跑失败：%s\n错误：%v", job.Name, err)), "")
-		}
-	}()
-
-	if !state.ReportReady {
-		return prepareErr
+func (s *Service) deliverMissedOnce(ctx context.Context, job Job, meta Metadata, platformName string) (context.Context, CronDeliveryState, error) {
+	ctx, job, state, prepareErr := s.prepareDelivery(ctx, job, meta)
+	if prepareErr != nil || !state.ReportReady {
+		return ctx, state, prepareErr
 	}
-	deliverErr := s.deliverPrepared(ctx, job, meta, state, platformName, true)
-	if prepareErr == nil {
-		return deliverErr
-	}
-	if deliverErr == nil {
-		return prepareErr
-	}
-	return errors.Join(prepareErr, deliverErr)
+	return ctx, state, s.deliverPrepared(ctx, job, meta, state, platformName, true)
 }
 
 func missedOnceReportText(title, report string) string {

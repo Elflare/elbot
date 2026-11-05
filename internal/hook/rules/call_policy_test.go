@@ -10,16 +10,16 @@ import (
 	"testing"
 )
 
-func TestReadOnlyRuleFailureRestoresPipelineInputAndStopsFollowingRule(t *testing.T) {
+func TestReadOnlyRuleFailureRestoresInputAndContinuesFollowingRule(t *testing.T) {
 	manager := pipeline.NewManager(testLog, nil)
 	module := Module{Opts: Options{Log: testLog, Notify: testNotify}, Rules: []Rule{
 		{Name: "rewrite", On: string(share.PointToolCallPrepared), Match: []share.Condition{{Op: share.MatchAlways}}, Actions: []Action{{Type: "append", Field: "tool.arguments", Text: "changed"}}},
-		{Name: "following", On: string(share.PointToolCallPrepared), Match: []share.Condition{{Op: share.MatchAlways}}, Actions: []Action{{Type: "send", Text: "must not run"}}},
+		{Name: "following", On: string(share.PointToolCallPrepared), Match: []share.Condition{{Op: share.MatchAlways}}, Actions: []Action{{Type: "send", Text: "following output"}}},
 	}}
 	module.RegisterHooks(manager)
 	event := share.Event{Point: share.PointToolCallPrepared, Tool: share.ToolPayload{ID: "call", Name: "tool", Arguments: "{}"}}
 	got, err := manager.Run(context.Background(), event, pipeline.CallOptions{Woken: true, ReadOnlyCalls: true})
-	if err == nil || !strings.Contains(err.Error(), "read-only") || got.Tool.Arguments != "{}" || len(got.Outputs) != 0 {
+	if err != nil || got.Tool.Arguments != "{}" || len(got.Outputs) != 1 || got.Outputs[0].Text != "following output" {
 		t.Fatalf("read-only failure escaped rule boundary: event=%+v err=%v", got, err)
 	}
 }

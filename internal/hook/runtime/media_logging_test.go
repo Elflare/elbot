@@ -36,9 +36,9 @@ func TestMediaPruneKeepsIndependentFailureAndCancellation(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	outcomes, err := pruneMediaForTest(ctx, bridge, time.Now(), true)
-	if err == nil || len(outcomes) != 2 || len(bridge.leases) != 2 {
-		t.Fatalf("outcomes=%+v err=%v", outcomes, err)
+	outcomes := pruneMediaForTest(ctx, bridge, time.Now(), true)
+	if len(outcomes) != 2 || len(bridge.leases) != 2 {
+		t.Fatalf("outcomes=%+v", outcomes)
 	}
 	for _, outcome := range outcomes {
 		if strings.Contains(outcome.Content, "independent reference failure") {
@@ -58,9 +58,9 @@ func TestMediaPruneKeepsDirectoryFailureAfterReferenceRelease(t *testing.T) {
 	}
 	bridge := newMediaBridge(releaseMediaAPI{release: func(context.Context, media.Reference) error { return nil }})
 	bridge.leases["lease"] = &mediaLease{retained: true, dir: filepath.Join(file, "child")}
-	outcomes, err := pruneMediaForTest(t.Context(), bridge, time.Now(), true)
-	if err == nil || len(outcomes) != 1 || outcomes[0].ResultStatus != events.ResultFailed || !strings.Contains(outcomes[0].Content, "directory_release_error") {
-		t.Fatalf("outcomes=%+v err=%v", outcomes, err)
+	outcomes := pruneMediaForTest(t.Context(), bridge, time.Now(), true)
+	if len(outcomes) != 1 || outcomes[0].ResultStatus != events.ResultFailed || !strings.Contains(outcomes[0].Content, "directory_release_error") {
+		t.Fatalf("outcomes=%+v", outcomes)
 	}
 }
 

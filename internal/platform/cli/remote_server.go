@@ -146,8 +146,7 @@ func (s *RemoteServer) handleWebSocket(ctx context.Context, handler share.Messag
 	handshakeDone = true
 	msgCtx := s.messageContext(s.workCtx, client)
 	if err := client.write(ctx, remoteMessage{Type: remoteMsgHelloOK, ClientID: clientID}); err != nil {
-		facts, _ := contextinfo.ExecutionFromContext(msgCtx)
-		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "cli_control_send_failed", Module: "cli", Content: fmt.Sprintf("client_id=%s operation=%s error=%v", client.id, remoteMsgHelloOK, err), ContentLimit: 4096, Identity: events.LogIdentityFromExecution(facts), ResultStatus: events.LogStatus(err)}
+		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "cli_control_send_failed", Module: "cli", Content: fmt.Sprintf("client_id=%s operation=%s error=%v", client.id, remoteMsgHelloOK, err), ContentLimit: 4096, Identity: events.LogIdentityFromContext(msgCtx), ResultStatus: events.LogStatus(err)}
 		if record.ResultStatus == events.ResultCanceled {
 			record.Level = slog.LevelInfo
 		}
@@ -198,8 +197,7 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler share.Me
 				msg = remoteMessage{Type: remoteMsgCompleteResult, ID: msg.ID, Items: items}
 			}
 			if err := client.write(s.transportCtx, msg); err != nil {
-				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "cli_control_send_failed", Module: "cli", Content: fmt.Sprintf("client_id=%s operation=%s error=%v", client.id, msg.Type, err), ContentLimit: 4096, Identity: events.LogIdentityFromExecution(facts), ResultStatus: events.LogStatus(err)}
+				record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "cli_control_send_failed", Module: "cli", Content: fmt.Sprintf("client_id=%s operation=%s error=%v", client.id, msg.Type, err), ContentLimit: 4096, Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}
 				if record.ResultStatus == events.ResultCanceled {
 					record.Level = slog.LevelInfo
 				}

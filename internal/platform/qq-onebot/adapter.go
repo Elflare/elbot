@@ -5,7 +5,6 @@ import (
 	"context"
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"fmt"
@@ -128,8 +127,3 @@ func validateSendFileMode(mode string) error {
 func (a *Adapter) Name() string { return a.name }
 
 func (a *Adapter) Enabled() bool { return a.cfg.Enabled }
-
-func logIdentity(ctx context.Context) events.LogIdentity {
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	return events.LogIdentityFromExecution(facts)
-}

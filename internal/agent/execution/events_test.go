@@ -83,7 +83,7 @@ func TestReplyFactsPreservePartialSuccessAndReceiptSnapshot(t *testing.T) {
 	}
 	defer connection.Disconnect()
 	result, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-	if err == nil || result.MessageID != "" || result.SendErr == nil || !errors.Is(result.PersistErr, f.repo.mapErr) || len(records) != 1 || records[0].EventName != "reply_delivered" {
+	if !errors.Is(err, f.repo.mapErr) || errors.Is(err, f.platform.sendErr) || result.MessageID != "" || len(records) != 1 || records[0].EventName != "reply_delivered" {
 		t.Fatalf("partial facts lost: %+v / %+v / %v", result, records, err)
 	}
 	f.platform.receipt.PlatformMessageIDs[0] = "changed"

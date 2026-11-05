@@ -40,47 +40,40 @@ dialogue 若在 执行任务 内部，也在这个最外层捕获范围里。
 
 ### 已完成：公共报告与通知投递
 
-- [日志入口](../internal/events/logging.go) `Log` 同步发布，`AsyncLog` 异步发布；均无返回值，发布失败交给底层诊断。身份字段使用字符串，直接传递和写入；已建立会话的 SessionID 不判空、不补默认值、不按空值省略。RootRequestID 允许为空；创建、选择和绑定会话之前的业务分支保留。
-- [通知入口](../internal/events/notification.go) 提供 `Notify`、`LogAndNotify`，复用两条现有信号；通知接纳失败只记日志，两次发布互不阻断。内容、身份、目标及取消策略由来源决定。
-- 普通通知发布已接入 `Notify`；重试通知不再返回投递错误，Hook 直接接入公共日志、通知入口，通知回调无返回值。业务层各处 `ReportFailure` 及终止错误的报告位置仍待下列整改。
-- [通知路由](../internal/platform/notification/manager.go) 和平台通知订阅各自处理本阶段故障后结束，不再返回或合并已处理的错误，不递归通知；投递故障在消费处直接构造通知日志并调用 `AsyncLog`，不借用聊天日志包装；路由故障携带执行身份；取消、过期 binding、正常关闭保留退出语义。
-- [CLI 发送](../internal/platform/cli/remote_server.go) 的单连接 write 只返回；握手及补全发送失败由处理处记录客户端、操作和执行身份；通知逐连接失败记录后继续。普通多连接发送中，决定继续的失败当场记录；若最后一个连接也失败且此前没有成功，直接返回该错误，不重复记录、不合并前面的错误。
+- [日志入口](../internal/events/logging.go)：`Log` 同步发布，`AsyncLog` 异步发布；均无返回值，发布失败交给信号诊断。`LogIdentityFromContext(ctx)` 直接提取执行身份，不增加错误日志包装；已建立会话的 SessionID 不判空、不补默认值，RootRequestID 允许为空。
+- [通知入口](../internal/events/notification.go)：`Notify`、`LogAndNotify` 复用现有信号。日志与通知独立发布，通知接纳、路由和投递失败在对应消费处记录，不递归通知、不改变业务结果。
+- [CLI 多连接发送](../internal/platform/cli/remote_server.go)：决定继续的连接失败就地记录；最后一个连接失败且此前没有成功时直接返回该错误，不合并先前已处理的错误。
 
-### 统一报告边界
+### 已完成：任务报告边界
 
-- 每条任务调用链只在最上层统一捕获终止错误，覆盖输入准备、执行、Dialogue 及收尾；不拆成输入、执行等阶段分别报告。
-- 删除 Input、Execution、Dialogue 各处分支中的 `ReportFailure`。下层和中间层只返回终止错误，不发失败日志或通知；最上层报告后可将错误作为任务结果返回，外围不再重复报告。
-- [ReportFailure](../internal/agent/share/logging.go) 必须记录完整错误，替换只有 `dialogue terminated` 的日志；保留原错误内容及错误链，不重复拼接厂商详情。
-- 保留出错任务的 Session、Request、模型和通知目标上下文；具体传递方式待实现前确定，不能以此为由改成多层报告，也不增加“已报告”标记。
-- 取消、接管、暂停沿用各自的结果语义，取消仍记录 Canceled，不伪装成普通业务失败。
-- 正常业务事实与错误报告分开：模型用量、成功回执等事实保留，不能借事实记录重复报告终止错误。公共 Retry 继续负责决定重试时的事件；最终失败交回最上层。
+- 前台任务由 [Supervisor.HandleMessage](../internal/agent/supervisor.go) 统一接住输入、命令、执行、Dialogue 和收尾的终止错误并直接报告。Input、Execution、Dialogue 和存储层只返回终止错误。
+- 更新执行事实的协调层显式返回最新 `context.Context`，保留会话、请求、模型和通知目标；后台调用返回上下文保留调用方生命周期，不携带已结束请求的取消状态。无“已报告”标记，也不把上下文塞进错误包装。
+- 最终报告保留完整原错误；取消记 Canceled，暂停、接管和被替代的 attempt 保留各自语义。模型用量和成功回执单独记录事实，不重复附带终止错误。重试事件仍由公共 Retry 负责。
+- Cron 的 [runJob](../internal/background/cron/manager.go) 负责整次调度任务报告；恢复任务在各自入口报告。Elnis 的入站任务、[RunLLMEvent](../internal/background/elnis/llm.go) 和报告恢复分别拥有自己的最外层边界；决定继续保存失败状态时，先处理业务错误，保存再失败只传播保存错误。
+- Cron 下一次运行时间保存、Request 取号失败只返回，由各自任务入口报告。后台日志直接使用公共日志入口，不保留单行转发包装。
 
-### 已确认整改项
+### 已完成：继续与终止的处理
 
-| 位置 | 当前问题 | 修改方向 |
-|---|---|---|
-| [Hook 流水线](../internal/hook/pipeline/manager.go)：run、notify、notifyError | 普通 Hook 失败先记录再返回；通知型 Hook 继续执行后又合并返回；error.occurred 回调被混同于用户通知 | 普通故障就地记日志、发用户通知，保留前面成功的修改、丢弃失败 Hook 的修改，继续后面的 Hook；不返回或合并该错误。整次任务取消仍向上传递；error.occurred 不替代用户通知，也不递归报告自身失败。 |
-| [请求准备](../internal/agent/dialogue/model_call.go)：PrepareCall | 请求 Hook 失败后保存，再合并错误 | 普通 Hook 故障在流水线处理完；必要准备或用户消息保存失败立即返回，不记录失败信号，不执行后续模型请求。 |
-| [回复提交](../internal/agent/dialogue/reply_commit.go)：Commit | 发送完全失败跳过保存；部分失败与保存错误合并，保存后又返回发送错误 | 发送失败独立记录、通知，继续保存模型回复及成功回执；保存失败立即返回并停止后续操作；保存成功继续附加输出，附加输出失败独立处理。不保留等待合并或再次返回的发送错误。 |
-| [发送层](../internal/agent/output/output.go)：StartStream、observeDelivery | 正文增量、Finish、Reset 失败记录后返回；最终发送也先记录失败再返回 | 需要上抛的发送错误只返回，由调用方决定继续或终止。思考展示等已决定忽略的故障处理完不返回；保留成功发送事实。 |
-| [MessageStore](../internal/agent/dialogue/message_store.go)、[SQLite Commit](../internal/storage/sqlite/dialogue_repository.go) | defer 记录失败并返回，使用 persisting、level 等状态分配日志责任 | 删除失败报告及其专用状态，保存失败直接返回；保留事务回滚和必要资源释放。 |
-| [Chat 工具提交](../internal/agent/dialogue/commit.go)、[Responses 工具提交](../internal/agent/responses/persistence.go) | 准备、投影、保存失败时 defer 发日志后返回 | 终止错误直接返回，不由提交层报告。 |
-| [Chat 压缩](../internal/agent/chat/compressor.go)、[Responses 压缩](../internal/agent/responses/compact.go) | 失败自己记录、通知后返回，调用入口再次报告 | 删除压缩内部失败报告，交给自动压缩所属任务或命令所属任务的最上层。 |
-| [命名 fallback](../internal/session/naming/title.go) | 首选失败后继续却未独立记录；fallback 失败时合并两个错误 | 决定继续 fallback 时记录首选失败并结束其传播；fallback 失败只返回自身错误。没有 fallback 时不制造第二个错误与首选失败合并。 |
-| [工具执行](../internal/tool/execution/runner.go) | 工具执行、输出发送和完成 Hook 错误被合并；保存失败后继续收集错误 | 工具业务结果、输出投递故障、Hook 故障分别处理；普通 Hook 故障不阻止工具执行，输出失败记录后继续。记录准备和保存失败属于终止错误，不转换成普通工具结果。 |
-| [命令入口](../internal/agent/input/command_executor.go) | 命令失败仍先通知再返回，报告边界待统一 | 命令错误直接返回最上层；通知投递错误独立处理，不叠加到业务错误。 |
-| [入站媒体关联](../internal/agent/input/inbound_media.go)：associateInboundHistory | 逐项失败记录、继续，最后合并返回 | 每项关联失败记录后继续，删除错误收集和 Join；前置查询等直接返回的错误不在下层报告。 |
-| [发送回执缓存](../internal/platform/dispatch/media.go)：cacheMediaReceipt | 逐项缓存失败后继续，最后合并给上层记录 | 在决定继续的位置逐项记录，删除错误集合和返回；不改变实际发送结果。 |
-| [工具状态](../internal/tool/state/state.go)：Commit、DiscoveredToolsForSession | 状态保存和读取失败都在 defer 中记录后返回 | 删除下层失败日志，原错误向上传递。 |
-| [Skill 预载](../internal/tool/preload/preload.go)：PrepareSkills | 详情读取失败记录 skill_preload_failed 后返回 | 删除下层失败报告，预载失败直接返回。 |
-| [压缩 seed 消费](../internal/agent/chat/context_seed.go)：consumeContextCompactSeed | 消费失败先记录再返回 | 删除下层失败报告，直接返回并停止后续业务。 |
+| 位置 | 当前职责 |
+|---|---|
+| [Hook 流水线](../internal/hook/pipeline/manager.go) | 普通故障就地记日志、通知，保留前面成功的修改，不接纳失败 Hook 的返回值，继续后续 Hook；复用已有只读原文，不增加全事件快照。整次任务取消向上传递；error.occurred 自身失败只记录，不递归通知。 |
+| [请求准备](../internal/agent/dialogue/model_call.go) | 必要准备和用户消息保存失败立即返回，停止模型请求；普通 Hook 失败由流水线处理。 |
+| [回复提交](../internal/agent/dialogue/reply_commit.go) | 发送失败独立处理后仍保存模型回复和成功回执；保存失败立即返回，阻止附加输出；附加输出失败独立处理。不在结果结构中保留等待合并的发送、保存错误。 |
+| [发送层](../internal/agent/output/output.go) | 需上抛的发送错误只返回；思考展示等决定忽略的故障处理后结束传播。成功回执独立记录。 |
+| append 超时提示、压缩提示 | 发送失败就地异步记录后继续；取消记 Info，不额外通知或返回。 |
+| Cron／Elnis 格式纠正请求 | 执行成功且未被接管后才解析 JSON。Cron 执行失败原样返回；Elnis 执行失败记录原因并保存失败状态。只有实际解析失败才进入格式错误处理。 |
+| [MessageStore](../internal/agent/dialogue/message_store.go)、[SQLite](../internal/storage/sqlite/dialogue_repository.go)、Chat／Responses 工具提交 | 保存失败直接返回；保留事务回滚与资源释放。 |
+| Chat／Responses 压缩、[工具状态](../internal/tool/state/state.go)、[Skill 预载](../internal/tool/preload/preload.go)、压缩 seed 消费 | 终止错误交给任务入口，不在下层重复报告。 |
+| [命名 fallback](../internal/session/naming/title.go) | 有 fallback 时先记录首选失败，再尝试 fallback；fallback 失败只返回自身错误。没有 fallback 时直接返回首选错误。 |
+| [入站媒体关联](../internal/agent/input/inbound_media.go)、[回执缓存](../internal/platform/dispatch/media.go) | 逐项失败在决定继续的位置独立记录，不收集或合并错误。 |
 
-### 需要明确拆开控制流程的位置
+### 已完成：并发、归档与资源收尾
 
-- **工具并发执行**：[runner.go](../internal/tool/execution/runner.go) 的 await 和结果消费循环在保存失败后仍收集、合并后续错误；Prepared 保存失败还会生成普通工具失败结果后继续。首个终止错误发生后停止派发和业务处理，取消并等待已启动工作退出，返回该终止错误。等待退出属于必要收尾，不是继续执行业务，不以取消错误覆盖或合并原错误。
-- **Responses 请求归档**：[native_call.go](../internal/agent/responses/native_call.go)、[compact.go](../internal/agent/responses/compact.go) 在 defer 中编码、归档，失败时记录并覆盖请求错误。请求结果与归档必须成为明确的两个阶段，不通过 defer 偷改返回错误，不合并错误；失败请求归档的职责及归档再次失败时的处理需进一步确定。
-- **必要资源收尾**：[工具文件写入](../internal/tool/media/files.go)、[Hook 子进程执行](../internal/hook/rules/exec.go)、[Hook worker](../internal/hook/runtime/worker.go)、[Hook 媒体释放](../internal/hook/runtime/media.go) 仍存在关闭、终止、释放错误的合并。逐处确定收尾失败是记录后继续，还是本次唯一终止错误；不机械删除关闭、回滚或等待退出操作，不借收尾继续执行后续业务。
-- 同步迁移依赖旧行为的测试：下层失败不发报告；最上层只报告一次且包含原错误；普通 Hook 失败后继续；发送失败仍保存；保存失败阻止后续业务；并发失败停止派发但等待退出；取消不被额外错误合并成失败。
+- [工具执行](../internal/tool/execution/runner.go)：工具业务结果、输出故障、Hook 故障分别处理。准备记录和结果保存失败属于终止错误；立即停止派发、取消并等待已启动工作退出，保留首个终止错误，不继续提交其余结果。
+- Responses [普通请求](../internal/agent/responses/native_call.go) 与[压缩](../internal/agent/responses/compact.go)：请求、归档为显式阶段。请求成功而归档失败时返回归档错误；请求已失败时，归档故障独立记录，仍返回原请求错误。Chat／Responses 不用 defer 以取消错误覆盖已发生的其他错误。
+- [工具文件写入](../internal/tool/media/files.go)、[Hook 子进程](../internal/hook/rules/exec.go)、[worker](../internal/hook/runtime/worker.go) 和[媒体释放](../internal/hook/runtime/media.go)：保留关闭、终止和等待退出；次要收尾故障独立记录，不覆盖或合并主错误。失败媒体 lease 保留后续清理机会。
+- 上述任务链路的测试已迁移，并覆盖原错误只报告一次、完整上下文、Hook 失败后继续、发送失败仍保存、保存失败停止后续业务、并发退出及请求／归档同时失败。定向竞态检查通过。
+- 全仓测试仍有改前已存在的失败：Agent 命令通知接线、空回复／缓冲回复、协议公共接线、App doctor；不将这些既有失败标为本轮通过。
 
 ## 不一定实现
 
