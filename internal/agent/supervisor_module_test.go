@@ -10,7 +10,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	"elbot/internal/delivery"
+
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/media"
@@ -35,9 +35,6 @@ func (isolatedPlatformCapabilities) RestoreMessageContext(ctx, _ context.Context
 
 func (isolatedPlatformCapabilities) SessionIDCode(name string, _ contextinfo.ChatType) (string, error) {
 	return name, nil
-}
-func (isolatedPlatformCapabilities) StartReasoning(context.Context) delivery.ReasoningStream {
-	return nil
 }
 
 func isolatedAgentConfig() *config.Config {

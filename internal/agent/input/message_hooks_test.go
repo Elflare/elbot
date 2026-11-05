@@ -31,13 +31,13 @@ func (p *entryProbe) Handle(_ context.Context, text string) (bool, error) {
 	return false, nil
 }
 func (p *entryProbe) IsCommand(string) bool { return false }
-func (p *entryProbe) SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, error) {
-	p.order = append(p.order, "chat")
+func (p *entryProbe) Send(_ context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+	if event.Outputs != nil {
+		p.order = append(p.order, "outputs")
+	} else {
+		p.order = append(p.order, "chat")
+	}
 	return delivery.Receipt{}, nil
-}
-func (p *entryProbe) SendOutputs(context.Context, []delivery.Output) error {
-	p.order = append(p.order, "outputs")
-	return nil
 }
 func (p *entryProbe) Notify(context.Context, slog.Level, string) {
 	p.order = append(p.order, "failure")

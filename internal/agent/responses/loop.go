@@ -243,7 +243,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		result.Usage = final.Usage
 		immediate, later := delivery.SplitByDeliveryTiming(final.Outputs)
 		if len(s.calls) == 0 {
-			if err := out.SendOutputs(s.ctx, immediate); err != nil {
+			if _, err := out.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append([]delivery.Output{}, immediate...)}); err != nil {
 				return fail(err)
 			}
 			result.Outcome = agentshare.Completed
@@ -258,10 +258,10 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 			return result
 		}
-		if err := out.FinishIntermediate(s.ctx, s.requestCtx, stream, final.Text); err != nil {
+		if _, err := stream.Send(s.requestCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: final.Text}); err != nil {
 			return fail(err)
 		}
-		if err := out.SendOutputs(s.ctx, append(immediate, later...)); err != nil {
+		if _, err := out.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append(append([]delivery.Output{}, immediate...), later...)}); err != nil {
 			return fail(err)
 		}
 		committer := &toolCommitter{state: s}
@@ -318,7 +318,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 			result.Usage = summary.Usage
 			immediate, later = delivery.SplitByDeliveryTiming(summary.Outputs)
-			if err := out.SendOutputs(s.ctx, immediate); err != nil {
+			if _, err := out.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append([]delivery.Output{}, immediate...)}); err != nil {
 				return fail(err)
 			}
 			result.Outcome = agentshare.Completed

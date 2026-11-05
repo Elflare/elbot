@@ -25,15 +25,11 @@ type ExecutionDialogue interface {
 
 type ExecutionSender interface {
 	StartStream(context.Context) (delivery.MessageStream, error)
-	FinishIntermediate(context.Context, context.Context, delivery.MessageStream, string) error
-	ReplaceAndFinishStream(context.Context, context.Context, delivery.MessageStream, string) (delivery.Receipt, error)
-	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, error)
-	SendOutputs(context.Context, []delivery.Output) error
+	Send(context.Context, delivery.StreamEvent) (delivery.Receipt, error)
 	Notify(context.Context, slog.Level, string)
 	// Preview takes one complete notice per tool call; multiline bodies stay in
 	// one argument. General workflow notices also occupy one argument.
 	Preview(context.Context, ...string)
-	StartReasoning(context.Context) delivery.ReasoningStream
 }
 
 type ExecutionSessions interface {

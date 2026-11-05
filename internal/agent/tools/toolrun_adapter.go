@@ -119,7 +119,8 @@ func (d toolRunDeps) SendPreview(ctx context.Context, text ...string) {
 }
 
 func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
-	return d.output.SendOutputs(ctx, outputs)
+	_, err := d.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append([]delivery.Output{}, outputs...)})
+	return err
 }
 
 func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk security.RiskLevel, reason string) {

@@ -123,14 +123,10 @@ func (a *Client) GenerateText(ctx context.Context, req llm.TextRequest) (llm.Tex
 	var usage *llm.Usage
 	for chunk := range chunks {
 		if chunk.Error != nil {
-			// TODO: classify stream failures for retry after stream retry handling is implemented.
 			return llm.TextResult{}, chunk.Error
 		}
 		if len(chunk.ToolCallDeltas) > 0 {
 			return llm.TextResult{}, errors.New("unexpected tool call in independent text generation")
-		}
-		if chunk.FinishReason == "length" || chunk.FinishReason == "content_filter" {
-			return llm.TextResult{}, fmt.Errorf("text generation incomplete: %s", chunk.FinishReason)
 		}
 		text.WriteString(chunk.DeltaContent)
 		if chunk.Usage != nil {

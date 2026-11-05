@@ -14,10 +14,6 @@ type foregroundTurnOutput struct {
 
 type backgroundTurnOutput struct{}
 
-func (o foregroundTurnOutput) SendAssistant(ctx context.Context, text string) (delivery.Receipt, error) {
-	return o.ExecutionSender.SendAssistant(ctx, text)
-}
-
 func (o foregroundTurnOutput) Notify(ctx context.Context, level slog.Level, text string) {
 	// A business result belongs to its captured conversation even after the
 	// session changes. Live tool previews retain binding validation separately.
@@ -29,27 +25,13 @@ func (o foregroundTurnOutput) SendPreview(ctx context.Context, text ...string) {
 }
 
 func (o backgroundTurnOutput) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	return nil, nil
+	return delivery.StreamFunc(o.Send), nil
 }
 
-func (o backgroundTurnOutput) FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) error {
-	return nil
-}
-
-func (o backgroundTurnOutput) ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, error) {
+func (o backgroundTurnOutput) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
 	return delivery.Receipt{}, nil
-}
-
-func (o backgroundTurnOutput) SendAssistant(ctx context.Context, text string) (delivery.Receipt, error) {
-	return delivery.Receipt{}, nil
-}
-
-func (o backgroundTurnOutput) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
-	return nil
 }
 
 func (o backgroundTurnOutput) Notify(ctx context.Context, level slog.Level, text string) {}
 
 func (o backgroundTurnOutput) SendPreview(ctx context.Context, text ...string) {}
-
-func (o backgroundTurnOutput) StartReasoning(context.Context) delivery.ReasoningStream { return nil }

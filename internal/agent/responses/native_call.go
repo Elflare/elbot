@@ -14,6 +14,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
+	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
 	"elbot/internal/storage"
 )
@@ -56,6 +57,19 @@ func requestAudit(parameters json.RawMessage, refs []inputReference) (string, er
 // Each actual HTTP attempt gets its own immutable request and terminal facts.
 // Local hooks/inputs are prepared by the caller once, outside recovery retries.
 func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request api.Request, consumed []string, stream delivery.MessageStream, observation agentshare.CallObservation) (result nativeCallResult, err error) {
+	defer func() {
+		if ctx.Err() != nil {
+			_, _ = stream.Send(context.WithoutCancel(ctx), delivery.StreamEvent{Type: delivery.StreamReasoningDone})
+			return
+		}
+		var failure *llm.CallError
+		if errors.As(observation.Event().Err, &failure) && (failure.Kind == llm.ErrorStreamFailure || failure.Kind == llm.ErrorPreviousResponseUnavailable) {
+			if _, resetErr := stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReset}); resetErr != nil {
+				slog.ErrorContext(ctx, "reset message stream", "error", resetErr, "request_error", observation.Event().Err)
+				err = resetErr
+			}
+		}
+	}()
 	if err := s.route.View.CheckSelection(s.session, s.selection); err != nil {
 		return result, err
 	}
@@ -164,9 +178,11 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultFailed, slog.LevelWarn
 		return result, err
 	}
-	reasoning := s.output.StartReasoning(ctx)
-	if reasoning != nil {
-		defer reasoning.Finish(ctx)
+	failStream := func(cause error) (nativeCallResult, error) {
+		failure := llm.MapStreamError(cause)
+		observation.Event().ProviderError, observation.Event().Err = true, failure
+		observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultFailed, slog.LevelWarn
+		return result, failure
 	}
 	for event := range events {
 		if event.Response != nil {
@@ -197,13 +213,13 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		switch event.Type {
 		case "response.content_part.added", "response.content_part.done", "response.output_text.done", "response.refusal.done", "response.output_text.delta", "response.refusal.delta":
 			if event.OutputIndex < 0 || event.ContentIndex < 0 {
-				return result, fmt.Errorf("responses stream: negative output or content index")
+				return failStream(fmt.Errorf("responses stream: negative output or content index"))
 			}
 			item := completed[event.OutputIndex]
 			content := map[string]json.RawMessage{}
 			if len(item.Raw) > 0 {
 				if err := json.Unmarshal(item.Raw, &content); err != nil {
-					return result, fmt.Errorf("responses stream item: %w", err)
+					return failStream(fmt.Errorf("responses stream item: %w", err))
 				}
 			} else {
 				content["type"] = json.RawMessage(`"message"`)
@@ -217,7 +233,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 				var data []json.RawMessage
 				if len(content["content"]) > 0 {
 					if err := json.Unmarshal(content["content"], &data); err != nil {
-						return result, fmt.Errorf("responses stream content: %w", err)
+						return failStream(fmt.Errorf("responses stream content: %w", err))
 					}
 				}
 				for index, part := range data {
@@ -227,23 +243,23 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 			part := map[string]json.RawMessage{}
 			if data := parts[event.OutputIndex][event.ContentIndex]; len(data) > 0 {
 				if err := json.Unmarshal(data, &part); err != nil {
-					return result, fmt.Errorf("responses stream part: %w", err)
+					return failStream(fmt.Errorf("responses stream part: %w", err))
 				}
 			}
 			switch event.Type {
 			case "response.content_part.added", "response.content_part.done":
 				data := map[string]json.RawMessage{}
 				if err := json.Unmarshal(event.Raw, &data); err != nil {
-					return result, fmt.Errorf("responses stream part event: %w", err)
+					return failStream(fmt.Errorf("responses stream part event: %w", err))
 				}
 				if err := json.Unmarshal(data["part"], &part); err != nil {
-					return result, fmt.Errorf("responses stream part event: %w", err)
+					return failStream(fmt.Errorf("responses stream part event: %w", err))
 				}
 			case "response.output_text.delta", "response.output_text.done":
 				var text string
 				if len(part["text"]) > 0 {
 					if err := json.Unmarshal(part["text"], &text); err != nil {
-						return result, fmt.Errorf("responses stream text: %w", err)
+						return failStream(fmt.Errorf("responses stream text: %w", err))
 					}
 				}
 				if event.Type == "response.output_text.done" {
@@ -257,7 +273,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 				var text string
 				if len(part["refusal"]) > 0 {
 					if err := json.Unmarshal(part["refusal"], &text); err != nil {
-						return result, fmt.Errorf("responses stream refusal: %w", err)
+						return failStream(fmt.Errorf("responses stream refusal: %w", err))
 					}
 				}
 				if event.Type == "response.refusal.done" {
@@ -284,27 +300,30 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 			data, _ := json.Marshal(content)
 			item, err = api.ParseItem(data)
 			if err != nil {
-				return result, fmt.Errorf("responses stream partial item: %w", err)
+				return failStream(fmt.Errorf("responses stream partial item: %w", err))
 			}
 			completed[event.OutputIndex] = item
 			result.OutputStarted = true
 		}
 		switch event.Type {
 		case "response.output_text.delta", "response.refusal.delta":
-			if stream != nil && event.Delta != "" {
-				if err := stream.Append(ctx, event.Delta); err != nil {
+			if event.Delta != "" {
+				if _, err := stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamTextDelta, Text: event.Delta}); err != nil {
 					observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultCanceled, slog.LevelInfo
 					return result, err
 				}
 			}
 		case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
-			if reasoning != nil && event.Delta != "" {
-				reasoning.Append(ctx, event.Delta)
+			if event.Delta != "" {
+				_, _ = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReasoningDelta, Text: event.Delta})
 			}
+		case "response.reasoning_summary_text.done", "response.reasoning_text.done":
+			_, _ = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReasoningDone})
 		case "response.completed":
 			status = "completed"
 			observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultSucceeded, slog.LevelInfo
-			return result, nil
+			_, err = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamFinish})
+			return result, err
 		}
 	}
 	if err := ctx.Err(); err != nil {
@@ -312,8 +331,5 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		status = "canceled"
 		return result, err
 	}
-	err = fmt.Errorf("response stream closed before response.completed: %w", io.ErrUnexpectedEOF)
-	observation.Event().ProviderError, observation.Event().Err = true, err
-	observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultFailed, slog.LevelWarn
-	return result, err
+	return failStream(fmt.Errorf("response stream closed before response.completed: %w", io.ErrUnexpectedEOF))
 }

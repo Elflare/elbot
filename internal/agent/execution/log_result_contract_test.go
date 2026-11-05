@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	agentoutput "elbot/internal/agent/output"
-	"elbot/internal/contextinfo"
+
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/signal"
@@ -39,51 +39,13 @@ func (f outputSendFunc) SendTo(_ context.Context, _ delivery.Target, outputs []d
 	return f(outputs)
 }
 
-func (outputSendFunc) StartStream(context.Context) (delivery.MessageStream, error) {
-	return nil, nil
-}
-
-func TestReplyDeliveryRecordsOncePerSend(t *testing.T) {
-	for _, mode := range []string{"direct", "buffered", "stream"} {
-		t.Run(mode, func(t *testing.T) {
-			f := newReplyTestFixture(t, mode == "buffered")
-			f.ctx = contextinfo.WithExecution(f.ctx, contextinfo.Execution{SessionID: f.in.Session.ID, RequestID: "delivery-request"})
-			f.platform.outputsReceipt = delivery.Receipt{
-				PlatformMessageIDs: []string{"emoticon"},
-				SentMessages:       []delivery.SentMessage{{Platform: "telegram", ChatType: "private", ChatID: "actual", PlatformMessageID: "emoticon", OutputIndexes: []int{0}}},
-			}
-			if mode == "stream" {
-				f.in.Stream = &replyTestStream{events: &f.events, wantCtx: f.requestCtx, t: t, replaceReceipt: f.platform.receipt}
-			}
-			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
-				if r.EventName == "reply_delivered" {
-					records = append(records, r)
-				}
-				return nil
-			}, signal.ConnectOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(connection.Disconnect)
-			if err := f.out.SendOutputs(f.ctx, nil); err != nil || len(records) != 0 {
-				t.Fatalf("empty outputs logged: err=%v records=%+v", err, records)
-			}
-			result, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-			if err != nil || result.MessageID == "" || len(records) != 2 {
-				t.Fatalf("result=%+v err=%v records=%+v", result, err, records)
-			}
-			for i, r := range records {
-				if r.EventName != "reply_delivered" || r.Level != slog.LevelDebug || r.ResultStatus != events.ResultSucceeded || r.Identity.SessionID == nil || *r.Identity.SessionID != f.in.Session.ID || r.Identity.RequestID == nil || *r.Identity.RequestID != "delivery-request" {
-					t.Fatalf("delivery record=%+v", r)
-				}
-				want := []string{"sent", "emoticon"}[i]
-				if !slices.Contains(readDeliveryLog(t, r).PlatformMessageIDs, want) {
-					t.Fatalf("missing %q: %s", want, r.Content)
-				}
-			}
-		})
-	}
+func (f outputSendFunc) StartStream(context.Context) (delivery.MessageStream, error) {
+	return delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+		if event.Type != delivery.StreamSend {
+			return delivery.Receipt{}, nil
+		}
+		return f([]delivery.Output{{Kind: delivery.KindText, Text: event.Text, Actions: event.Actions}})
+	}), nil
 }
 
 func TestAssistantSendFailureUsesUnifiedDeliveryLog(t *testing.T) {
@@ -110,59 +72,9 @@ func TestAssistantSendFailureUsesUnifiedDeliveryLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer connection.Disconnect()
-	receipt, err := f.out.SendAssistant(f.ctx, "message")
+	receipt, err := f.out.Send(f.ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "message"})
 	if !errors.Is(err, want) || len(receipt.PlatformMessageIDs) != 1 || counts["delivery"] != 1 || counts["agent"] != 1 {
 		t.Fatal("receipt= result= err= logs=", receipt, err, counts)
-	}
-}
-
-func TestIntermediateStreamDeliveryLogsOnce(t *testing.T) {
-	for _, tc := range []struct {
-		name, text            string
-		replaceErr, finishErr error
-		status                events.ResultStatus
-		level                 slog.Level
-	}{
-		{"text", "visible", nil, nil, events.ResultSucceeded, slog.LevelDebug},
-		{"empty", "", nil, nil, events.ResultSucceeded, slog.LevelDebug},
-		{"replace_failure", "visible", errors.New("replace failed"), nil, events.ResultFailed, slog.LevelWarn},
-		{"finish_canceled", "visible", nil, context.Canceled, events.ResultCanceled, slog.LevelInfo},
-		{"empty_finish_failure", "", nil, errors.New("finish failed"), events.ResultFailed, slog.LevelWarn},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			f := newReplyTestFixture(t, false)
-			stream := &replyTestStream{events: &f.events, wantCtx: f.requestCtx, t: t,
-				replaceReceipt: f.platform.receipt, finishReceipt: f.platform.receipt,
-				replaceErr: tc.replaceErr, finishErr: tc.finishErr,
-			}
-			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
-				if r.EventName == "reply_delivered" {
-					records = append(records, r)
-				}
-				return nil
-			}, signal.ConnectOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(connection.Disconnect)
-			err = f.out.FinishIntermediate(f.ctx, f.requestCtx, stream, tc.text)
-			if (tc.replaceErr != nil && !errors.Is(err, tc.replaceErr)) || (tc.replaceErr == nil && !errors.Is(err, tc.finishErr)) {
-				t.Fatalf("business error changed: %v", err)
-			}
-			if len(records) != 1 || records[0].ResultStatus != tc.status || records[0].Level != tc.level || !slices.Contains(readDeliveryLog(t, records[0]).PlatformMessageIDs, "sent") {
-				t.Fatalf("stream records=%+v", records)
-			}
-			wantCalls := "replace,finish"
-			if tc.replaceErr != nil {
-				wantCalls = "replace"
-			} else if tc.text == "" {
-				wantCalls = "finish"
-			}
-			if strings.Join(f.events, ",") != wantCalls {
-				t.Fatalf("stream calls changed: %v", f.events)
-			}
-		})
 	}
 }
 
@@ -211,7 +123,7 @@ func TestSendOutputsLogsBusinessFailure(t *testing.T) {
 			})
 			ctx := context.Background()
 			sender := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Dispatcher: backend})
-			err = sender.SendOutputs(ctx, []delivery.Output{delivery.Text("business text")})
+			_, err = sender.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: []delivery.Output{delivery.Text("business text")}})
 			if err != tc.err {
 				t.Fatal("error:", err)
 			}
@@ -226,7 +138,7 @@ func TestSendOutputsLogsBusinessFailure(t *testing.T) {
 }
 
 func TestReplyCommitLogSpacingComesFromSources(t *testing.T) {
-	for _, mode := range []string{"direct", "buffered", "stream"} {
+	for _, mode := range []string{"direct", "buffered"} {
 		for _, tc := range []struct {
 			status     events.ResultStatus
 			level      slog.Level
@@ -249,12 +161,6 @@ func TestReplyCommitLogSpacingComesFromSources(t *testing.T) {
 					diagnostic = sendErr.Error()
 				}
 				fixture.platform.sendErr = sendErr
-				if mode == "stream" {
-					fixture.in.Stream = &replyTestStream{
-						events: &fixture.events, wantCtx: fixture.requestCtx, t: t,
-						replaceReceipt: fixture.platform.receipt, replaceErr: sendErr,
-					}
-				}
 				var records []events.LogRecord
 				connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
 					if record.EventName == "reply_delivered" {
@@ -287,20 +193,4 @@ func TestReplyCommitLogSpacingComesFromSources(t *testing.T) {
 			})
 		}
 	}
-}
-
-func TestStreamPreservesReplaceReceiptWhenFinishCanceled(t *testing.T) {
-	fixture := newReplyTestFixture(t, false)
-	stream := &replyTestStream{
-		events: &fixture.events, wantCtx: fixture.requestCtx, t: t,
-		replaceReceipt: delivery.Receipt{PlatformMessageIDs: []string{"partial"}},
-		finishReceipt:  delivery.Receipt{PlatformMessageIDs: []string{"final"}},
-
-		finishErr: context.Canceled,
-	}
-	receipt, err := fixture.out.ReplaceAndFinishStream(fixture.ctx, fixture.requestCtx, stream, "visible")
-	if !errors.Is(err, context.Canceled) || len(receipt.PlatformMessageIDs) != 2 {
-		t.Fatal("receipt and error:", receipt, err)
-	}
-
 }

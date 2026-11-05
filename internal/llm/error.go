@@ -21,6 +21,7 @@ const (
 	ErrorTemporaryFailure            ErrorKind = "temporary_failure"
 	ErrorRequestRejected             ErrorKind = "request_rejected"
 	ErrorPreviousResponseUnavailable ErrorKind = "previous_response_unavailable"
+	ErrorStreamFailure               ErrorKind = "stream_failure"
 )
 
 // CallError carries the source's classification and retry decision for one failure.
@@ -35,6 +36,19 @@ type CallError struct {
 
 func (e *CallError) Error() string { return e.Cause.Error() }
 func (e *CallError) Unwrap() error { return e.Cause }
+
+// MapStreamError allows replay of a failed generation while preserving explicit
+// chain recovery and cancellation decisions already made at their source.
+func MapStreamError(cause error) *CallError {
+	var failure *CallError
+	if errors.As(cause, &failure) {
+		return failure
+	}
+	if errors.Is(cause, context.Canceled) {
+		return &CallError{Kind: ErrorCanceled, Cause: cause}
+	}
+	return &CallError{Kind: ErrorStreamFailure, Retryable: true, Cause: cause}
+}
 
 // MapProviderError maps structured provider fields once at the protocol boundary.
 // Recognized codes take precedence over error types, then HTTP status. Messages

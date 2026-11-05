@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/delivery"
 	"errors"
 	"fmt"
 	"time"
@@ -55,7 +56,7 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Se
 		case agentshare.IsAppendCancel(text):
 			c.turns.CancelAppend(row.ID)
 			release()
-			_, err := c.output.SendAssistant(ctx, "append canceled · stopping")
+			_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "append canceled · stopping"})
 			return err
 		default:
 			c.turns.AppendPendingInput(row.ID, agentshare.InboundTurnInput(ctx, text))
@@ -128,19 +129,19 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 			c.requests.CancelSession(session.ID)
 			release()
 			timeout := c.waitPolicy.WaitTimeout(ctx)
-			_, err := c.output.SendAssistant(ctx, appendConfirmPromptText(timeout))
+			_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: appendConfirmPromptText(timeout)})
 			go func() {
 				defer finishWait()
 				defer c.sessionIdle(waitCtx, session.ID)
 				if wait.Wait(waitCtx, timeout) {
-					_, _ = c.output.SendAssistant(waitCtx, "append timeout → dropped · stopped")
+					_, _ = c.output.Send(waitCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "append timeout → dropped · stopped"})
 				}
 			}()
 			return agentshare.InputHandled, err
 		case turn.PhaseTool:
 			c.turns.AppendPendingInput(session.ID, agentshare.InboundTurnInput(ctx, text))
 			release()
-			_, err := c.output.SendAssistant(ctx, "queued → next LLM call")
+			_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "queued → next LLM call"})
 			return agentshare.InputHandled, err
 		default:
 			release()

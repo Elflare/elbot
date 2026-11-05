@@ -9,9 +9,11 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mattn/go-isatty"
+
 	"github.com/muesli/cancelreader"
 
 	"elbot/internal/completion"
@@ -50,7 +52,10 @@ type Adapter struct {
 
 type cliMessageStream struct {
 	adapter *Adapter
+	id      uint64 // Identity of this message's preview, shared by all its events.
 }
+
+var nextStreamID atomic.Uint64
 
 // New creates a new CLI adapter.
 func New(platformName string) *Adapter {
@@ -80,31 +85,23 @@ func (a *Adapter) notifyConnected(ctx context.Context) {
 }
 
 func (a *Adapter) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	if !a.interactive {
-		return nil, fmt.Errorf("cli streaming output requires interactive TUI")
-	}
 	a.mu.Lock()
 	program := a.program
 	a.mu.Unlock()
-	if program == nil {
+	if a.interactive && program == nil {
 		return nil, fmt.Errorf("cli TUI is not running")
 	}
-	return cliMessageStream{adapter: a}, nil
+	return cliMessageStream{adapter: a, id: nextStreamID.Add(1)}, nil
 }
 
-func (s cliMessageStream) Append(ctx context.Context, text string) error {
-	if text == "" {
-		return nil
+func (s cliMessageStream) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+	if event.Outputs != nil {
+		event.Text = outputsText(event.Outputs)
 	}
-	return s.adapter.sendTUIMessage(tuiOutputMsg(text), text)
-}
-
-func (s cliMessageStream) Replace(ctx context.Context, text string) (delivery.Receipt, error) {
-	return delivery.Receipt{}, s.adapter.sendTUIMessage(tuiReplaceAssistantMsg(text), text)
-}
-
-func (s cliMessageStream) Finish(ctx context.Context) (delivery.Receipt, error) {
-	return delivery.Receipt{}, s.adapter.sendTUIMessage(tuiFinishAssistantMsg{}, "\n")
+	if !s.adapter.interactive && event.Type != delivery.StreamSend {
+		return delivery.Receipt{}, nil
+	}
+	return delivery.Receipt{}, s.adapter.sendTUIMessage(tuiStreamMsg{ID: s.id, Event: event}, event.Text)
 }
 
 func outputsText(outputs []delivery.Output) string {

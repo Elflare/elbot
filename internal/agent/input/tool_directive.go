@@ -2,6 +2,7 @@ package input
 
 import (
 	"context"
+	"elbot/internal/delivery"
 	"elbot/internal/tool"
 	"sort"
 	"strings"
@@ -136,7 +137,7 @@ func (c *InputCoordinator) notifyToolDirectiveResult(ctx context.Context, result
 	if len(parts) == 0 {
 		return nil
 	}
-	_, err := c.output.SendAssistant(ctx, strings.Join(parts, "\n"))
+	_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: strings.Join(parts, "\n")})
 	return err
 }
 
@@ -157,7 +158,7 @@ func (c *InputCoordinator) notifySkillDirectiveResult(ctx context.Context, resul
 	if len(parts) == 0 {
 		return nil
 	}
-	_, err := c.output.SendAssistant(ctx, strings.Join(parts, "\n"))
+	_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: strings.Join(parts, "\n")})
 	return err
 }
 

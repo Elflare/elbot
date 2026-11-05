@@ -2,8 +2,10 @@ package chatcompletions
 
 import (
 	"context"
+	"elbot/internal/llm"
 	"elbot/internal/llm/httpclient"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -20,6 +22,9 @@ func (a *Client) readStream(ctx context.Context, sse *httpclient.SSE, out chan<-
 	defer close(out)
 	defer sse.Close()
 	send := func(c Chunk) bool {
+		if c.Error != nil {
+			c.Error = llm.MapStreamError(c.Error)
+		}
 		select {
 		case out <- c:
 			return true
@@ -47,6 +52,17 @@ func (a *Client) readStream(ctx context.Context, sse *httpclient.SSE, out chan<-
 			send(Chunk{Error: fmt.Errorf("parse stream chunk: %w", err)})
 			return
 		}
+		if len(raw.Error) != 0 && string(raw.Error) != "null" {
+			var failure struct {
+				Message string `json:"message"`
+			}
+			message := string(raw.Error)
+			if json.Unmarshal(raw.Error, &failure) == nil && failure.Message != "" {
+				message = failure.Message
+			}
+			send(Chunk{Error: errors.New(message)})
+			return
+		}
 		if finished || len(raw.Choices) == 0 {
 			if raw.Usage != nil && !send(Chunk{Usage: toUsage(raw.Usage)}) {
 				return
@@ -57,6 +73,10 @@ func (a *Client) readStream(ctx context.Context, sse *httpclient.SSE, out chan<-
 		chunk := Chunk{DeltaContent: choice.Delta.Content, DeltaReasoningContent: choice.Delta.ReasoningContent}
 		if choice.FinishReason != nil {
 			chunk.FinishReason = *choice.FinishReason
+			if chunk.FinishReason == "length" || chunk.FinishReason == "content_filter" {
+				send(Chunk{Error: errors.New(chunk.FinishReason)})
+				return
+			}
 		}
 		if raw.Usage != nil {
 			chunk.Usage = toUsage(raw.Usage)

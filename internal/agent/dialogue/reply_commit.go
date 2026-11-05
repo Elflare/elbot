@@ -45,11 +45,7 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 		if err != nil {
 			return result, fmt.Errorf("turn output hook: %w", err)
 		}
-		if in.Stream != nil {
-			result.Receipt, result.SendErr = out.ReplaceAndFinishStream(ctx, streamCtx, in.Stream, text)
-		} else {
-			result.Receipt, result.SendErr = out.SendAssistant(ctx, text)
-		}
+		result.Receipt, result.SendErr = in.Stream.Send(streamCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: text})
 		if result.SendErr != nil && !HasReplyReceipt(result.Receipt) {
 			return result, result.SendErr
 		}
@@ -76,7 +72,7 @@ func (c *ReplyCommitter) Commit(ctx, streamCtx context.Context, in agentshare.Re
 	if result.SendErr != nil {
 		return result, result.SendErr
 	}
-	result.SendErr = out.SendOutputs(ctx, in.Outputs)
+	_, result.SendErr = out.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append([]delivery.Output{}, in.Outputs...)})
 	return result, result.SendErr
 }
 

@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/delivery"
 	"fmt"
 
 	agentshare "elbot/internal/agent/share"
@@ -178,7 +179,7 @@ func (c *ExecutionCoordinator) compactBeforeTurn(ctx context.Context, session *s
 			}
 			ctx = sessionpkg.WithBinding(ctx, binding)
 		}
-		_, _ = out.SendAssistant(ctx, content)
+		_, _ = out.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: content})
 	}
 	return ctx, session, nil
 }

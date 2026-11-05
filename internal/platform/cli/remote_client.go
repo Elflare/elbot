@@ -204,16 +204,10 @@ func (c *RemoteClient) handleServerMessage(msg remoteMessage) {
 		c.sendTUI(tuiOutputMsg(msg.Text))
 	case remoteMsgNotice:
 		c.sendTUI(tuiNoticeMsg{Text: msg.Text, Level: remoteNoticeLevel(msg.Level)})
-	case remoteMsgReasoning:
-		c.sendTUI(tuiReasoningMsg(msg.Text))
 	case remoteMsgStatus:
 		c.sendTUI(tuiStatusMsg(msg.Snapshot))
-	case remoteMsgStreamAppend:
-		c.sendTUI(tuiOutputMsg(msg.Text))
-	case remoteMsgStreamReplace:
-		c.sendTUI(tuiReplaceAssistantMsg(msg.Text))
-	case remoteMsgStreamFinish:
-		c.sendTUI(tuiFinishAssistantMsg{})
+	case remoteMsgStream:
+		c.sendTUI(tuiStreamMsg{ID: msg.StreamID, Event: *msg.Event})
 	case remoteMsgCompleteResult, remoteMsgError:
 		if msg.Type == remoteMsgError && msg.ID == "" {
 			c.sendTUI(tuiNoticeMsg{Text: "error: " + msg.Text, Level: slog.LevelError})

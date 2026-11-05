@@ -123,7 +123,6 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 	attempt := func(ctx context.Context, observation agentshare.CallObservation) (agentshare.CallOutput, error) {
 		calls = nil
 		var callErr error
-		// TODO: reset streamed output between attempts before enabling retries of stream failures.
 		result, callErr = s.nativeCall(ctx, client, request, consumed, stream, observation)
 		final := agentshare.CallOutput{Text: outputText(result.Items), SourceText: outputText(result.Items)}
 		if result.Response != nil {

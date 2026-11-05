@@ -87,14 +87,8 @@ type TurnResult struct {
 }
 
 type Output interface {
-	StartReasoning(context.Context) delivery.ReasoningStream
 	StartStream(ctx context.Context) (delivery.MessageStream, error)
-	FinishIntermediate(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) error
-	ReplaceAndFinishStream(ctx context.Context, streamCtx context.Context, stream delivery.MessageStream, text string) (delivery.Receipt, error)
-	SendAssistant(ctx context.Context, text string) (delivery.Receipt, error)
-	// SendOutputs returns the original delivery error;
-	// partial delivery facts belong to the source log body, not a returned receipt.
-	SendOutputs(ctx context.Context, outputs []delivery.Output) error
+	Send(context.Context, delivery.StreamEvent) (delivery.Receipt, error)
 	// Notify publishes a business fact to its captured conversation; callers
 	// choose its lifetime. SendPreview remains tied to the active operation.
 	Notify(ctx context.Context, level slog.Level, text string)

@@ -117,7 +117,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			StageStartedAt: llmStageStartedAt,
 			Usage:          s.usage,
 		})
-		result, err := r.Caller.Call(s.requestCtx, s.session, s.selection, s.messages, s.tools, pending, stream, s.output)
+		result, err := r.Caller.Call(s.requestCtx, s.session, s.selection, s.messages, s.tools, pending, stream)
 		if len(result.Messages) > 0 {
 			s.messages = result.Messages
 		}
@@ -149,7 +149,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		if len(result.ToolCalls) == 0 {
 			deferredOutputs = append(deferredOutputs, laterOutputs...)
 		}
-		if err := s.output.SendOutputs(s.ctx, immediateOutputs); err != nil {
+		if _, err := s.output.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append([]delivery.Output{}, immediateOutputs...)}); err != nil {
 			return failedLoop(err)
 		}
 		if len(result.ToolCalls) == 0 {
@@ -158,10 +158,10 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			finalStream = stream
 			break
 		}
-		if err := s.output.FinishIntermediate(s.ctx, s.requestCtx, stream, assistantText); err != nil {
+		if _, err := stream.Send(s.requestCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: assistantText}); err != nil {
 			return failedLoop(err)
 		}
-		if err := s.output.SendOutputs(s.ctx, laterOutputs); err != nil {
+		if _, err := s.output.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append([]delivery.Output{}, laterOutputs...)}); err != nil {
 			return failedLoop(err)
 		}
 		if !inToolPhase {
@@ -207,7 +207,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			if err != nil {
 				return failedLoop(err)
 			}
-			summary, err := r.Caller.Call(s.requestCtx, s.session, s.selection, s.messages, s.tools, summaryPending, stream, s.output)
+			summary, err := r.Caller.Call(s.requestCtx, s.session, s.selection, s.messages, s.tools, summaryPending, stream)
 			if err != nil {
 				return failedLoop(err)
 			}
@@ -217,7 +217,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 			immediateOutputs, laterOutputs := delivery.SplitByDeliveryTiming(summary.Outputs)
 			deferredOutputs = append(deferredOutputs, laterOutputs...)
-			if err := s.output.SendOutputs(s.ctx, immediateOutputs); err != nil {
+			if _, err := s.output.Send(s.ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append([]delivery.Output{}, immediateOutputs...)}); err != nil {
 				return failedLoop(err)
 			}
 			summaryText := summary.Text

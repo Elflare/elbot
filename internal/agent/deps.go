@@ -86,5 +86,4 @@ type PlatformCapabilities interface {
 	RestoreMessageContext(context.Context, context.Context) context.Context
 	SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 	StartStream(context.Context) (delivery.MessageStream, error)
-	StartReasoning(context.Context) delivery.ReasoningStream
 }

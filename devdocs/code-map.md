@@ -157,6 +157,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 ## 输出、投递与通知
 
 - `internal/delivery/delivery.go`：输出、目标、回执与发送契约。
+- `internal/delivery/stream.go`：消息流事件与消费契约。
 - `internal/platform/dispatch/`：`router.go` 发送路由；`media.go` 媒体准备；`calls.go` 原生 API。
 - `internal/platform/notification/manager.go`、`internal/notification/rules/`：通知队列、提示规则。
 - `internal/agent/output/output.go`、`internal/agent/dialogue/reply_commit.go`：输出 Hook、回复提交。
@@ -174,7 +175,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `share/`：平台内部契约；`definition.go` 静态声明类型，`notification.go` 通知接入与目标转换。
 - `refcontext/refcontext.go`：引用恢复。
 - `cli/`：`cli.go` 本地入口；`lifecycle.go` 本地启停；`remote_lifecycle.go` 远程启停；`remote_server.go` 远程服务。
-- `cli/`：`client.go` 连接选择；`remote_client.go` 远程通信；`tui.go` 终端交互；`ui.go` 订阅；`status.go` 状态；`reasoning.go` 思考流。
+- `cli/`：`client.go` 连接选择；`remote_client.go`、`remote_protocol.go` 远程通信与消息流事件；`tui.go` 终端交互及正文／思考展示；`ui.go` 订阅；`status.go` 状态。
 - `qq-onebot/`：`adapter.go` 入口；`lifecycle.go` 启停；`message.go` 入站；`send.go` 发送；`transport.go` WebSocket；`capability_api.go` 原生 API；`forward.go` 合并转发。
 - `qqofficial/`：`adapter.go` 入口；`lifecycle.go` 启停；`gateway.go` 网关；`message.go` 入站；`send.go` 发送；`client.go` HTTP；`token.go` 鉴权；`reference.go` 引用。
 - `telegram/`：`adapter.go` 入口；`lifecycle.go` 启停；`message.go` 入站；`send.go` 发送；`stream.go` 流；`commands.go` 命令同步；`capability_api.go` 原生 API。
@@ -208,7 +209,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/modelmgr/`：`manager.go` 总管；`client.go` 客户端装配；`providers.go` 厂商快照；`selection.go` 模型选择；`context_window.go` 窗口。
 - `internal/llm/`：公共模型、消息、工具与用量契约。
-- `internal/llm/httpclient/`：HTTP、SSE、重试与超时。
+- `internal/llm/httpclient/`：单次 HTTP、SSE 与超时。
 - `internal/llm/chatcompletions/`：Chat 协议。
 - `internal/llm/responses/`：`client.go` 请求；`tools.go` 工具；`compact.go` 压缩；`stream.go` 流；`error.go` 错误；`response.go` 响应解析。
 

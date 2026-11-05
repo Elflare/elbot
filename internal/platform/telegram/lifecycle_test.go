@@ -13,7 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"testing/synctest"
+
 	"time"
 
 	"elbot/internal/config"
@@ -45,7 +45,6 @@ func TestOperationAdmissionResult(t *testing.T) {
 	for _, state := range []string{"canceled", "deadline", "closed"} {
 		t.Run(state, func(t *testing.T) {
 			a := newTestAdapter(t, Config{}, nil)
-			s := newTestStream(t, a, "private", "9")
 			ctx := telegramTestContext()
 			wantErr, wantStatus := error(context.Canceled), events.ResultCanceled
 			switch state {
@@ -71,8 +70,6 @@ func TestOperationAdmissionResult(t *testing.T) {
 				"SendTo": func() (delivery.Receipt, error) {
 					return a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "9"}, []delivery.Output{delivery.Text("hello")})
 				},
-				"Replace": func() (delivery.Receipt, error) { return s.Replace(ctx, "hello") },
-				"Finish":  func() (delivery.Receipt, error) { return s.Finish(ctx) },
 			}
 			for name, operation := range operations {
 				_, err := operation()
@@ -80,41 +77,6 @@ func TestOperationAdmissionResult(t *testing.T) {
 					t.Error(": error= status=, want /", name, err, wantErr, wantStatus)
 				}
 			}
-		})
-	}
-}
-
-func TestStreamQueuedCancellationResult(t *testing.T) {
-	for _, operation := range []string{"Replace", "Finish"} {
-		t.Run(operation, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				a := newTestAdapter(t, Config{}, nil)
-				s := newTestStream(t, a, "private", "9").(*messageStream)
-				s.gate <- struct{}{}
-				s.text = "original"
-				ctx, cancel := context.WithCancel(context.Background())
-				defer cancel()
-				done := make(chan struct{})
-				go func() {
-					defer close(done)
-					var err error
-					if operation == "Replace" {
-						_, err = s.Replace(ctx, "replacement")
-					} else {
-						_, err = s.Finish(ctx)
-					}
-					if !errors.Is(err, context.Canceled) {
-						t.Errorf("error=%v, want canceled", err)
-					}
-				}()
-				synctest.Wait()
-				cancel()
-				<-done
-				if len(s.gate) != 1 || s.text != "original" || s.finished {
-					t.Fatal("canceled waiter changed the owner or stream state")
-				}
-				<-s.gate
-			})
 		})
 	}
 }
@@ -247,7 +209,6 @@ func TestOperationsRemainAvailableUntilFinalClose(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	a := newTestAdapter(t, Config{APIBaseURL: server.URL, FileBaseURL: server.URL}, nil)
-	idle := newTestStream(t, a, "private", "9")
 	a.BeginClose()
 	if err := a.Wait(context.Background()); err != nil {
 		t.Fatal(err)
@@ -268,12 +229,8 @@ func TestOperationsRemainAvailableUntilFinalClose(t *testing.T) {
 			return err
 		},
 		"StartStream": func() error { _, err := a.StartStream(ctx); return err },
-		"Append":      func() error { return idle.Append(ctx, "hello") },
-		"Replace":     func() error { _, err := idle.Replace(ctx, "final"); return err },
-		"Finish":      func() error { _, err := idle.Finish(ctx); return err },
 	}
-	// Stream methods use a deterministic order; other operations have no ordering dependency.
-	for _, name := range []string{"SendToCurrentConversation", "SendTo", "API", "media", "StartStream", "Append", "Replace", "Finish"} {
+	for _, name := range []string{"SendToCurrentConversation", "SendTo", "API", "media", "StartStream"} {
 		if err := operations[name](); err != nil {
 			t.Fatalf("%s after BeginClose: %v", name, err)
 		}
@@ -327,50 +284,6 @@ func TestCloseCancelsAndWaitsForWholeOperation(t *testing.T) {
 	}
 }
 
-func TestStreamWaitCancellationDoesNotCancelOwner(t *testing.T) {
-	a := newTestAdapter(t, Config{}, nil)
-	entered, release := make(chan struct{}), make(chan struct{})
-	var once sync.Once
-	t.Cleanup(func() { once.Do(func() { close(release) }) })
-	var calls atomic.Int32
-	a.client.http.Transport = telegramRoundTripper(func(r *http.Request) (*http.Response, error) {
-		calls.Add(1)
-		close(entered)
-		select {
-		case <-release:
-		case <-r.Context().Done():
-			return nil, r.Context().Err()
-		}
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":{"message_id":77}}`)), Header: make(http.Header)}, nil
-	})
-	s := newTestStream(t, a, "private", "9")
-	owner := make(chan error, 1)
-	go func() { owner <- s.Append(context.Background(), "hello") }()
-	awaitTelegram(t, entered)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	defer cancel()
-	waiter := make(chan error, 1)
-	go func() { _, err := s.Replace(ctx, "canceled replacement"); waiter <- err }()
-	if err := awaitTelegram(t, waiter); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("waiter=%v", err)
-	}
-	select {
-	case err := <-owner:
-		t.Fatalf("owner interrupted: %v", err)
-	default:
-	}
-	once.Do(func() { close(release) })
-	if err := awaitTelegram(t, owner); err != nil {
-		t.Fatal(err)
-	}
-	if calls.Load() != 1 {
-		t.Fatalf("calls=%d", calls.Load())
-	}
-	if _, err := s.Finish(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestConcurrentLifecycleAndCanceledStart(t *testing.T) {
 	for _, mode := range []string{"unstarted", "canceled", "concurrent"} {
 		t.Run(mode, func(t *testing.T) {
@@ -410,10 +323,9 @@ func TestConcurrentLifecycleAndCanceledStart(t *testing.T) {
 }
 
 func TestFinalCloseCancelsEveryHTTPBackedOperation(t *testing.T) {
-	for _, name := range []string{"SendToCurrentConversation", "SendTo", "media", "Append", "Replace"} {
+	for _, name := range []string{"SendToCurrentConversation", "SendTo", "media"} {
 		t.Run(name, func(t *testing.T) {
 			a := newTestAdapter(t, Config{}, nil)
-			s := newTestStream(t, a, "private", "9")
 			entered := make(chan struct{})
 			a.client.http.Transport = telegramRoundTripper(func(r *http.Request) (*http.Response, error) {
 				close(entered)
@@ -431,10 +343,6 @@ func TestFinalCloseCancelsEveryHTTPBackedOperation(t *testing.T) {
 					_, err = a.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "9"}, []delivery.Output{delivery.Text("hello")})
 				case "media":
 					_, err = a.ResolveMedia(ctx, share.MessageSegment{PlatformFileID: "file"}, 10)
-				case "Append":
-					err = s.Append(ctx, "hello")
-				case "Replace":
-					_, err = s.Replace(ctx, "hello")
 				}
 				result <- err
 			}()

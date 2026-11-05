@@ -42,7 +42,7 @@ type llmCallResult struct {
 	Messages  []llm.LLMMessage
 }
 
-func (c *Caller) Call(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *agentshare.PendingUserMessage, stream delivery.MessageStream, out agentshare.Output) (result llmCallResult, callErr error) {
+func (c *Caller) Call(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *agentshare.PendingUserMessage, stream delivery.MessageStream) (result llmCallResult, callErr error) {
 	client := selection.Client.(chatcompletions.Streamer)
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
 	var req chatcompletions.Request
@@ -61,7 +61,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	}
 	attempt := func(ctx context.Context, observation agentshare.CallObservation) (agentshare.CallOutput, error) {
 		var err error
-		result, err = c.callOnce(ctx, client, req, observation, stream, out, toolsEnabled)
+		result, err = c.callOnce(ctx, client, req, observation, stream, toolsEnabled)
 		return agentshare.CallOutput{Text: result.RawText, SourceText: result.RawText, Usage: result.Usage, ToolCalls: result.ToolCalls}, err
 	}
 	final, err := c.Calls.Call(ctx, session, selection, messages, tools, pending, c.Messages.Committer("append_pending_user_message"), prepare, attempt)
@@ -76,10 +76,22 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	return result, nil
 }
 
-func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, req chatcompletions.Request, observation agentshare.CallObservation, stream delivery.MessageStream, out agentshare.Output, toolsEnabled bool) (result llmCallResult, callErr error) {
+func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, req chatcompletions.Request, observation agentshare.CallObservation, stream delivery.MessageStream, toolsEnabled bool) (result llmCallResult, callErr error) {
 	startedAt := time.Now()
 	completed := observation.Event()
-	// TODO: reset streamed output between attempts before enabling retries of stream failures.
+	defer func() {
+		if ctx.Err() != nil {
+			_, _ = stream.Send(context.WithoutCancel(ctx), delivery.StreamEvent{Type: delivery.StreamReasoningDone})
+			return
+		}
+		var failure *llm.CallError
+		if errors.As(completed.Err, &failure) && (failure.Kind == llm.ErrorStreamFailure || failure.Kind == llm.ErrorPreviousResponseUnavailable) {
+			if _, resetErr := stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReset}); resetErr != nil {
+				slog.ErrorContext(ctx, "reset message stream", "error", resetErr, "request_error", completed.Err)
+				callErr = resetErr
+			}
+		}
+	}()
 	observation.LogRecord().EventName = "llm_usage"
 	observation.LogRecord().ResultStatus = events.ResultCanceled
 	callCtx, cancel := context.WithCancel(ctx)
@@ -110,13 +122,8 @@ func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, 
 	var assistant strings.Builder
 	var usage *llm.Usage
 	var toolCalls []llm.ToolCallRequest
-	reasoning := out.StartReasoning(ctx)
-	if reasoning != nil {
-		defer reasoning.Finish(ctx)
-	}
 	for chunk := range ch {
 		if chunk.Error != nil {
-			// TODO: classify stream failures only when retry output handling is available.
 			completed.Err = chunk.Error
 			completed.Text, completed.SourceText, completed.Usage, completed.ToolCallCount = assistant.String(), assistant.String(), usage, len(toolCalls)
 			completed.OutputReady = assistant.Len() > 0 || len(toolCalls) > 0
@@ -138,8 +145,8 @@ func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, 
 		if chunk.Usage != nil {
 			usage = chunk.Usage
 		}
-		if chunk.DeltaReasoningContent != "" && reasoning != nil {
-			reasoning.Append(ctx, chunk.DeltaReasoningContent)
+		if chunk.DeltaReasoningContent != "" {
+			_, _ = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReasoningDelta, Text: chunk.DeltaReasoningContent})
 		}
 		if toolsEnabled {
 			for _, delta := range chunk.ToolCallDeltas {
@@ -148,12 +155,12 @@ func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, 
 		}
 		delta := chunk.DeltaContent
 		assistant.WriteString(delta)
-		if stream != nil && delta != "" {
-			if err := stream.Append(ctx, delta); err != nil {
+		if delta != "" {
+			if _, err := stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamTextDelta, Text: delta}); err != nil {
 				completed.Text, completed.SourceText, completed.Usage, completed.ToolCallCount = assistant.String(), assistant.String(), usage, len(toolCalls)
 				completed.OutputReady = assistant.Len() > 0 || len(toolCalls) > 0
 				observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultCanceled, slog.LevelInfo
-				return llmCallResult{}, fmt.Errorf("stream append: %w", err)
+				return llmCallResult{}, err
 			}
 		}
 	}
@@ -168,7 +175,8 @@ func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, 
 		return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls}, err
 	}
 	observation.LogRecord().ResultStatus, observation.LogRecord().Level = events.ResultSucceeded, slog.LevelInfo
-	return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls}, nil
+	_, err = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamFinish})
+	return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls}, err
 }
 
 func elapsedMillis(startedAt time.Time) int64 {

@@ -21,7 +21,7 @@ type ConfirmationIdentity interface {
 }
 
 type ConfirmationOutput interface {
-	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, error)
+	Send(context.Context, delivery.StreamEvent) (delivery.Receipt, error)
 }
 
 // ConfirmationCoordinatorDeps declares only the capabilities consumed by ConfirmationCoordinator.

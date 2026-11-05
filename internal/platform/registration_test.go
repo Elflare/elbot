@@ -340,11 +340,6 @@ func TestRegisteredCLIAndTelegramAgentConnections(t *testing.T) {
 			if len(source.connections) != 2 || source.commandCalls != 1 {
 				t.Fatalf("connections=%d command calls=%d", len(source.connections), source.commandCalls)
 			}
-			stream := m.StartReasoning(t.Context())
-			if stream == nil {
-				t.Fatal("CLI reasoning provider was not connected")
-			}
-			stream.Finish(t.Context())
 			if err := m.Close(context.Background()); err != nil {
 				t.Fatal(err)
 			}

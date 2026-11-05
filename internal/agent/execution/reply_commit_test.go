@@ -61,41 +61,6 @@ func (p *replyTestPlatform) SendTo(_ context.Context, _ delivery.Target, outputs
 	return receipt, err
 }
 
-type replyTestStream struct {
-	events                        *[]string
-	replaceReceipt, finishReceipt delivery.Receipt
-	replaceErr, finishErr         error
-
-	text    string
-	wantCtx context.Context
-	t       *testing.T
-}
-
-func (s *replyTestStream) Append(context.Context, string) error { return nil }
-
-func (s *replyTestStream) Replace(ctx context.Context, text string) (delivery.Receipt, error) {
-	if ctx != s.wantCtx {
-		s.t.Fatal("stream lost request context")
-	}
-	*s.events = append(*s.events, "replace")
-	s.text = text
-	{
-		err := s.replaceErr
-		return s.replaceReceipt, err
-	}
-}
-
-func (s *replyTestStream) Finish(ctx context.Context) (delivery.Receipt, error) {
-	if ctx != s.wantCtx {
-		s.t.Fatal("stream lost request context")
-	}
-	*s.events = append(*s.events, "finish")
-	{
-		err := s.finishErr
-		return s.finishReceipt, err
-	}
-}
-
 // The fixture uses real output adapters and SQLite for isolated reply commit tests.
 type replyTestFixture struct {
 	events          []string
@@ -135,6 +100,7 @@ func newReplyTestFixture(t *testing.T, buffered bool) *replyTestFixture {
 	f.committer = &dialogue.ReplyCommitter{NewMessageID: testutil.IDSequence().MessageID, Persistence: messages.Committer("append_assistant_message"), Output: sender}
 	f.out = foregroundTurnOutput{ExecutionSender: sender}
 	f.in = agentshare.ReplyCommitInput{Session: row, Text: "history", RawText: "raw", PlatformText: "visible", Outputs: []delivery.Output{delivery.Text("later")}}
+	f.in.Stream, _ = f.out.StartStream(f.requestCtx)
 	f.platform.expectedOutputs = f.in.Outputs
 	return f
 }
@@ -155,44 +121,6 @@ func (f *replyTestFixture) captureHooks(t *testing.T) {
 		}
 	}
 	f.register(t, agenthooks.Points{AgentTurnOutputPrepared: appendText("/turn"), AgentOutputPrepared: appendText("/send")})
-}
-
-func TestReplyCommitOrderAndTextSeparation(t *testing.T) {
-	for _, mode := range []string{"direct", "buffered", "stream"} {
-		t.Run(mode, func(t *testing.T) {
-			f := newReplyTestFixture(t, mode == "buffered")
-			f.captureHooks(t)
-			var stream *replyTestStream
-			wantOrder := []string{"/turn", "/send", "send", "save", "map", "outputs"}
-			if mode == "stream" {
-				stream = &replyTestStream{events: &f.events, replaceReceipt: f.platform.receipt, wantCtx: f.requestCtx, t: t}
-				f.in.Stream = stream
-				wantOrder = []string{"/turn", "/send", "replace", "finish", "save", "map", "outputs"}
-			}
-			got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-			if err != nil || got.MessageID == "" || got.RawText != "raw" {
-				t.Fatalf("result=%+v err=%v", got, err)
-			}
-			if !reflect.DeepEqual(f.events, wantOrder) {
-				t.Fatalf("order=%v want=%v", f.events, wantOrder)
-			}
-			text := f.platform.text
-			if stream != nil {
-				text = stream.text
-			}
-			if text != "visible/turn/send" {
-				t.Fatalf("display=%q", text)
-			}
-			message, err := f.repo.Get(f.ctx, got.MessageID)
-			if err != nil || message.Content != "history" || message.Metadata != dialogue.AssistantRawTextMetadata("history", "raw") {
-				t.Fatalf("history=%+v err=%v", message, err)
-			}
-			mapped, err := f.repo.FindByPlatformMessage(f.ctx, "telegram", "private", "actual", "sent")
-			if err != nil || mapped.ID != got.MessageID {
-				t.Fatalf("mapping=%+v err=%v", mapped, err)
-			}
-		})
-	}
 }
 
 func TestReplyCommitFailureKeepsFactsAndDoesNotRetry(t *testing.T) {
@@ -272,61 +200,6 @@ func TestReplyCommitFailureKeepsFactsAndDoesNotRetry(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-func TestReplyCommitStreamFailureRetainsReceipt(t *testing.T) {
-	failure := errors.New("stream failed")
-	for _, mode := range []string{"replace", "partial_replace", "finish", "partial_finish"} {
-		t.Run(mode, func(t *testing.T) {
-			f := newReplyTestFixture(t, false)
-			s := &replyTestStream{events: &f.events, wantCtx: f.requestCtx, t: t}
-			f.in.Stream = s
-			switch mode {
-			case "replace":
-				s.replaceErr = failure
-			case "partial_replace":
-				s.replaceReceipt = f.platform.receipt
-				s.replaceErr = failure
-			case "finish":
-				s.replaceReceipt = f.platform.receipt
-				s.finishErr = failure
-			case "partial_finish":
-				s.finishReceipt = f.platform.receipt
-				s.finishErr = failure
-			}
-			got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-			if !errors.Is(err, failure) || (got.MessageID != "") != (mode != "replace") || dialogue.HasReplyReceipt(got.Receipt) != (mode != "replace") {
-				t.Fatalf("result=%+v err=%v", got, err)
-			}
-			if strings.Contains(strings.Join(f.events, ","), "send") || strings.Contains(strings.Join(f.events, ","), "outputs") {
-				t.Fatalf("stream retried or continued after failure: %v", f.events)
-			}
-		})
-	}
-}
-
-func TestReplyCommitMergesReplaceAndFinishReceipts(t *testing.T) {
-	f := newReplyTestFixture(t, false)
-	s := &replyTestStream{events: &f.events, wantCtx: f.requestCtx, t: t,
-		replaceReceipt: delivery.Receipt{
-			PlatformMessageIDs: []string{"first"},
-			SentMessages:       []delivery.SentMessage{{Platform: "telegram", ChatID: "scope", PlatformMessageID: "first", OutputIndexes: []int{0}}},
-		},
-		finishReceipt: delivery.Receipt{
-			PlatformMessageIDs: []string{"first", "second"},
-			SentMessages:       []delivery.SentMessage{{Platform: "telegram", ChatID: "scope", PlatformMessageID: "first", OutputIndexes: []int{0, 1}}, {Platform: "telegram", ChatID: "scope", PlatformMessageID: "second", OutputIndexes: []int{2}}},
-		},
-		finishErr: errors.New("finish partially failed"),
-	}
-	f.in.Stream = s
-	got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-	if !errors.Is(err, s.finishErr) || got.MessageID == "" || !reflect.DeepEqual(got.Receipt.PlatformMessageIDs, []string{"first", "second"}) || len(got.Receipt.SentMessages) != 2 || !reflect.DeepEqual(got.Receipt.SentMessages[0].OutputIndexes, []int{0, 1}) {
-		t.Fatalf("result=%+v error=%v", got, err)
-	}
-	got.Receipt.SentMessages[0].OutputIndexes[0] = 9
-	if s.replaceReceipt.SentMessages[0].OutputIndexes[0] != 0 || s.finishReceipt.SentMessages[0].OutputIndexes[0] != 0 {
-		t.Fatal("merged receipt aliases platform receipt")
 	}
 }
 

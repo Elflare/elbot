@@ -235,10 +235,10 @@ func (c *Client) StreamPrepared(ctx context.Context, prepared PreparedRequest) (
 		Module:    "model",
 		Type:      globalevents.ContentJSON,
 		Content: fmt.Sprintf(
-    "endpoint=%q model=%q input_items=%d allowed_tools=%d request_bytes=%d",
-    c.baseURL+"/responses", prepared.model,
-    prepared.inputs, len(prepared.allowedTools), len(prepared.body),
-),
+			"endpoint=%q model=%q input_items=%d allowed_tools=%d request_bytes=%d",
+			c.baseURL+"/responses", prepared.model,
+			prepared.inputs, len(prepared.allowedTools), len(prepared.body),
+		),
 	}
 	record.Identity = globalevents.LogIdentityFromExecution(facts)
 	_ = globalevents.EmitLog(ctx, record)
@@ -281,7 +281,6 @@ func (c *Client) GenerateText(ctx context.Context, req llm.TextRequest) (llm.Tex
 	var result *Response
 	for event := range events {
 		if event.Error != nil {
-			// TODO: classify stream failures for retry after stream retry handling is implemented.
 			return llm.TextResult{}, event.Error
 		}
 		if event.Type == "response.completed" {

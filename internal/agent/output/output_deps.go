@@ -17,5 +17,4 @@ type OutputSenderDeps struct {
 		AgentTurnOutputPrepared(context.Context, string) (string, error)
 		PlatformMessageSent(context.Context, string)
 	}
-	Reasoning func(context.Context) delivery.ReasoningStream // Optional per-call presentation capability.
 }

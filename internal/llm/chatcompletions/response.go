@@ -23,8 +23,9 @@ type ToolCallDelta struct {
 }
 
 type openAIStreamChunk struct {
-	Choices []openAIChoice `json:"choices"`
-	Usage   *openAIUsage   `json:"usage"`
+	Error   json.RawMessage `json:"error"` // Original provider error payload, separate from response choices.
+	Choices []openAIChoice  `json:"choices"`
+	Usage   *openAIUsage    `json:"usage"`
 }
 
 type openAIChoice struct {

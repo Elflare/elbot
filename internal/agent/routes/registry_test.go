@@ -98,27 +98,22 @@ type testOutput struct {
 func (o *testOutput) PrepareAssistant(_ context.Context, text string) (string, error) {
 	return text, nil
 }
-func (*testOutput) StartStream(context.Context) (delivery.MessageStream, error) { return nil, nil }
-func (*testOutput) FinishIntermediate(context.Context, context.Context, delivery.MessageStream, string) error {
-	return nil
+func (o *testOutput) StartStream(context.Context) (delivery.MessageStream, error) {
+	return delivery.StreamFunc(o.Send), nil
 }
-func (*testOutput) ReplaceAndFinishStream(context.Context, context.Context, delivery.MessageStream, string) (delivery.Receipt, error) {
-	return delivery.Receipt{}, nil
-}
-func (o *testOutput) SendAssistant(ctx context.Context, text string) (delivery.Receipt, error) {
+func (o *testOutput) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+	if event.Type != delivery.StreamSend || event.Outputs != nil {
+		return delivery.Receipt{}, nil
+	}
 	rows, err := o.messages.ListBySession(ctx, "session")
 	if err != nil || len(rows) != 1 || rows[0].Content != "canonical input" {
 		o.t.Fatalf("route bypassed common input persistence: rows=%+v err=%v", rows, err)
 	}
-	o.sent = append(o.sent, text)
+	o.sent = append(o.sent, event.Text)
 	return delivery.Receipt{}, nil
 }
-func (*testOutput) SendOutputs(context.Context, []delivery.Output) error {
-	return nil
-}
-func (*testOutput) Notify(context.Context, slog.Level, string)              {}
-func (*testOutput) SendPreview(context.Context, ...string)                  {}
-func (*testOutput) StartReasoning(context.Context) delivery.ReasoningStream { return nil }
+func (*testOutput) Notify(context.Context, slog.Level, string) {}
+func (*testOutput) SendPreview(context.Context, ...string)     {}
 
 type testStatus struct{}
 

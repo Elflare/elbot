@@ -12,6 +12,24 @@ import (
 	"elbot/internal/signal"
 )
 
+func testUI(t *testing.T) (*UI, *signal.Signal[StatusChangedEvent, signal.Empty]) {
+	t.Helper()
+	status := signal.New[StatusChangedEvent, signal.Empty]("test.cli.status")
+	binding := signal.New[BindingChangedEvent, signal.Empty]("test.cli.binding")
+	u, err := ConnectUI(testPlatformName, testAgentEvents{status, binding})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := u.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+		_ = status.Close(context.Background())
+		_ = binding.Close(context.Background())
+	})
+	return u, status
+}
+
 func TestUIConnectFailureReleasesPartialSubscription(t *testing.T) {
 	status := signal.New[StatusChangedEvent, signal.Empty]("test.status", signal.Options[StatusChangedEvent]{Single: true})
 	defer status.Close(context.Background())

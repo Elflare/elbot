@@ -2,6 +2,7 @@ package input
 
 import (
 	"context"
+	"elbot/internal/delivery"
 	"elbot/internal/tool"
 	"elbot/internal/workspace"
 	"errors"
@@ -96,11 +97,11 @@ func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuatio
 func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *storage.Session, text string) error {
 	locked, release, err := c.execution.EnterInput(ctx, session)
 	if errors.Is(err, agentshare.ErrInputCompacting) {
-		_, err := c.output.SendAssistant(ctx, fmt.Sprintf("%v · 等待或 %s", err, c.commandText("stop")))
+		_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: fmt.Sprintf("%v · 等待或 %s", err, c.commandText("stop"))})
 		return err
 	}
 	if errors.Is(err, agentshare.ErrInputArchived) {
-		_, err := c.output.SendAssistant(ctx, fmt.Sprintf("%v · %s 后可继续", err, c.commandText("unarchive")))
+		_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: fmt.Sprintf("%v · %s 后可继续", err, c.commandText("unarchive"))})
 		return err
 	}
 	if err != nil {

@@ -45,10 +45,14 @@ func (p *integrationPlatform) SendTo(_ context.Context, _ delivery.Target, outpu
 	p.outputs = append(p.outputs, delivery.FallbackOutput(outputs).Text)
 	return delivery.Receipt{}, nil
 }
-func (*integrationPlatform) StartStream(context.Context) (delivery.MessageStream, error) {
-	return nil, nil
+func (p *integrationPlatform) StartStream(context.Context) (delivery.MessageStream, error) {
+	return delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+		if event.Type != delivery.StreamSend {
+			return delivery.Receipt{}, nil
+		}
+		return p.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Actions: event.Actions}})
+	}), nil
 }
-func (*integrationPlatform) StartReasoning(context.Context) delivery.ReasoningStream { return nil }
 func (*integrationPlatform) CallPlatformAPI(context.Context, string, string, map[string]any) (json.RawMessage, error) {
 	return nil, nil
 }

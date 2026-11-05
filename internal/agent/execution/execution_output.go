@@ -30,28 +30,26 @@ func (o executionTurnOutput) target(ctx context.Context) (context.Context, agent
 }
 
 func (o executionTurnOutput) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	ctx, out := o.target(ctx)
-	return out.StartStream(ctx)
+	var foreground delivery.MessageStream
+	return delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+		ctx, out := o.target(ctx)
+		if o.execution.Foreground() == nil {
+			return out.Send(ctx, event)
+		}
+		if foreground == nil {
+			var err error
+			foreground, err = out.StartStream(ctx)
+			if err != nil {
+				return delivery.Receipt{}, err
+			}
+		}
+		return foreground.Send(ctx, event)
+	}), nil
 }
 
-func (o executionTurnOutput) FinishIntermediate(ctx, streamCtx context.Context, s delivery.MessageStream, text string) error {
+func (o executionTurnOutput) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
 	ctx, out := o.target(ctx)
-	return out.FinishIntermediate(ctx, o.view.Context(streamCtx), s, text)
-}
-
-func (o executionTurnOutput) ReplaceAndFinishStream(ctx, streamCtx context.Context, s delivery.MessageStream, text string) (delivery.Receipt, error) {
-	ctx, out := o.target(ctx)
-	return out.ReplaceAndFinishStream(ctx, o.view.Context(streamCtx), s, text)
-}
-
-func (o executionTurnOutput) SendAssistant(ctx context.Context, text string) (delivery.Receipt, error) {
-	ctx, out := o.target(ctx)
-	return out.SendAssistant(ctx, text)
-}
-
-func (o executionTurnOutput) SendOutputs(ctx context.Context, v []delivery.Output) error {
-	ctx, out := o.target(ctx)
-	return out.SendOutputs(ctx, v)
+	return out.Send(ctx, event)
 }
 
 func (o executionTurnOutput) Notify(ctx context.Context, l slog.Level, text string) {
@@ -63,25 +61,3 @@ func (o executionTurnOutput) SendPreview(ctx context.Context, text ...string) {
 	ctx, out := o.target(ctx)
 	out.SendPreview(ctx, text...)
 }
-
-func (o executionTurnOutput) StartReasoning(ctx context.Context) delivery.ReasoningStream {
-	stream := o.foreground.StartReasoning(ctx)
-	if stream == nil {
-		return nil
-	}
-	return executionReasoningStream{view: o.view, stream: stream}
-}
-
-// Resolve foreground context for each new delta, including adoption mid-call.
-type executionReasoningStream struct {
-	view interface {
-		Context(context.Context) context.Context
-	}
-	stream delivery.ReasoningStream
-}
-
-func (s executionReasoningStream) Append(ctx context.Context, text string) {
-	s.stream.Append(s.view.Context(ctx), text)
-}
-
-func (s executionReasoningStream) Finish(ctx context.Context) { s.stream.Finish(ctx) }

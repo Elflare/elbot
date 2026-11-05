@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"elbot/internal/completion"
+	"elbot/internal/delivery"
 	runtimestatus "elbot/internal/runtime"
 )
 
@@ -17,16 +18,15 @@ const (
 	remoteMsgCompleteResult = "complete_result"
 	remoteMsgChat           = "chat"
 	remoteMsgNotice         = "notice"
-	remoteMsgReasoning      = "reasoning"
 	remoteMsgStatus         = "status"
-	remoteMsgStreamAppend   = "stream_append"
-	remoteMsgStreamReplace  = "stream_replace"
-	remoteMsgStreamFinish   = "stream_finish"
+	remoteMsgStream         = "stream"
 	remoteMsgError          = "error"
 	remoteWriteTimeout      = 15 * time.Second
 )
 
 type remoteMessage struct {
+	StreamID uint64                 `json:"stream_id,omitempty"` // Scope for ordered preview updates and reset.
+	Event    *delivery.StreamEvent  `json:"event,omitempty"`     // Message stream operation.
 	Type     string                 `json:"type"`
 	ID       string                 `json:"id,omitempty"`
 	ClientID string                 `json:"client_id,omitempty"`

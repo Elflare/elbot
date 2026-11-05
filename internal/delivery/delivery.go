@@ -171,29 +171,6 @@ type Receipt struct {
 	SentMessages       []SentMessage
 }
 
-// StreamingMessageSender is an optional platform capability for editable streaming delivery.
-// Platforms can implement it with terminal replacement, message editing, or any equivalent mechanism.
-type StreamingMessageSender interface {
-	StartStream(ctx context.Context) (MessageStream, error)
-}
-
-// MessageStream represents one assistant message that can be appended while streaming
-// and replaced with the final post-hook content.
-// Replace and Finish preserve partial receipts alongside the original business error.
-type MessageStream interface {
-	Append(ctx context.Context, text string) error
-	Replace(ctx context.Context, text string) (Receipt, error)
-	Finish(ctx context.Context) (Receipt, error)
-}
-
-// ReasoningStream consumes raw model deltas in order for one call. Presentation
-// failures are isolated from the business result. Finish closes any opened view,
-// including on error or cancellation; implementations must tolerate repetition.
-type ReasoningStream interface {
-	Append(context.Context, string)
-	Finish(context.Context)
-}
-
 // MessageSender sends one logical message, represented by ordered output segments.
 // Receipt preserves actual delivery facts, including partial completion on error.
 // SendTo uses only its target argument: an empty target selects the current conversation.

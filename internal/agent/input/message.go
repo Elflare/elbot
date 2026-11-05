@@ -47,7 +47,7 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	message := agentshare.Message{Role: string(llm.RoleUser), Segments: segments}
 	if strings.TrimSpace(llm.SegmentsTextOnly(segments)) == "/cancel" {
 		if h.hooks.CancelRoute(ctx, message) {
-			_, err := h.output.SendAssistant(ctx, "Hook canceled")
+			_, err := h.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "Hook canceled"})
 			return err
 		}
 	}
@@ -71,7 +71,7 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 		return err
 	}
 	if len(result.Outputs) > 0 {
-		if err := h.output.SendOutputs(ctx, result.Outputs); err != nil {
+		if _, err := h.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Outputs: append([]delivery.Output{}, result.Outputs...)}); err != nil {
 			if ctx.Err() == nil {
 				agentshare.ReportFailure(ctx, "", fmt.Errorf("发送入站 Hook 输出: %w", err), h.output.Notify)
 			}
@@ -91,7 +91,7 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (err er
 	text = llm.SegmentsTextOnly(segments)
 	message.Segments = result.Segments
 	if strings.TrimSpace(text) == "/cancel" && h.hooks.CancelRoute(ctx, message) {
-		_, err := h.output.SendAssistant(ctx, "Hook canceled")
+		_, err := h.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "Hook canceled"})
 		return err
 	}
 	if !woken {
@@ -117,8 +117,7 @@ type MessageHooks interface {
 }
 
 type MessageOutput interface {
-	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, error)
-	SendOutputs(context.Context, []delivery.Output) error
+	Send(context.Context, delivery.StreamEvent) (delivery.Receipt, error)
 	Notify(context.Context, slog.Level, string)
 }
 

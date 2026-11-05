@@ -210,25 +210,19 @@ func (s *RemoteServer) StartStream(ctx context.Context) (delivery.MessageStream,
 	if !ok {
 		return nil, fmt.Errorf("cli stream target missing")
 	}
-	return remoteMessageStream{client: client}, nil
+	return remoteMessageStream{client: client, id: nextStreamID.Add(1)}, nil
 }
 
-type remoteMessageStream struct{ client *remoteClientConn }
+type remoteMessageStream struct {
+	client *remoteClientConn
+	id     uint64 // Identifies one preview in the receiving TUI.
+}
 
-func (s remoteMessageStream) Append(ctx context.Context, text string) error {
-	if text == "" {
-		return nil
+func (s remoteMessageStream) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+	if event.Outputs != nil {
+		event.Text = outputsText(event.Outputs)
 	}
-	return s.client.write(ctx, remoteMessage{Type: remoteMsgStreamAppend, Text: text})
-}
-
-func (s remoteMessageStream) Replace(ctx context.Context, text string) (delivery.Receipt, error) {
-	err := s.client.write(ctx, remoteMessage{Type: remoteMsgStreamReplace, Text: text})
-	return delivery.Receipt{}, err
-}
-
-func (s remoteMessageStream) Finish(ctx context.Context) (delivery.Receipt, error) {
-	err := s.client.write(ctx, remoteMessage{Type: remoteMsgStreamFinish})
+	err := s.client.write(ctx, remoteMessage{Type: remoteMsgStream, StreamID: s.id, Event: &event})
 	return delivery.Receipt{}, err
 }
 

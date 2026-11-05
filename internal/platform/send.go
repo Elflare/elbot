@@ -15,10 +15,3 @@ func (m *Supervisor) SendTo(ctx context.Context, target delivery.Target, outputs
 func (m *Supervisor) StartStream(ctx context.Context) (delivery.MessageStream, error) {
 	return m.dispatcher.StartStream(ctx)
 }
-
-func (m *Supervisor) StartReasoning(ctx context.Context) delivery.ReasoningStream {
-	if m.ui == nil {
-		return nil
-	}
-	return m.ui.StartReasoning(ctx)
-}

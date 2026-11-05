@@ -52,8 +52,7 @@ func streamAPIError(event Event) error {
 	if apiErr.Message == "" {
 		apiErr.Message = string(detail)
 	}
-	// Preserve existing chain recovery; other stream errors remain terminal.
-	// TODO: normalize other stream errors when retry output handling is implemented.
+	// Chain errors require rebuilding the request before replay is allowed.
 	failure := llm.MapProviderError(0, apiErr.Code, apiErr.Type, apiErr.Param, apiErr)
 	if failure.Kind == llm.ErrorPreviousResponseUnavailable {
 		return failure

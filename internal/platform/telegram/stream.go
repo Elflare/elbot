@@ -38,12 +38,39 @@ func (a *Adapter) StartStream(ctx context.Context) (delivery.MessageStream, erro
 	return &messageStream{gate: make(chan struct{}, 1), adapter: a, target: t, draftID: time.Now().UnixNano(), useDraft: t.ChatType == contextinfo.ChatPrivate && a.cfg.richMessageEnabled()}, nil
 }
 
-func (s *messageStream) Append(ctx context.Context, text string) error {
+func (s *messageStream) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
 	ctx, finish, err := s.beginOperation(ctx)
 	if err != nil {
-		return err
+		return delivery.Receipt{}, err
 	}
 	defer finish()
+	switch event.Type {
+	case delivery.StreamTextDelta:
+		return delivery.Receipt{}, s.sendPreview(ctx, event.Text)
+	case delivery.StreamReset:
+		visible := !s.lastEdit.IsZero()
+		s.text, s.lastEdit = "", time.Time{}
+		if s.useDraft && visible {
+			return delivery.Receipt{}, s.adapter.client.sendRichMessageDraft(ctx, sendRichMessageDraftRequest{
+				ChatID: s.target.NativeChatID, DraftID: s.draftID,
+				RichMessage: inputRichMessage{HTML: "<tg-thinking>重新生成中…</tg-thinking>"},
+			})
+		}
+		if s.message != 0 {
+			_, err := s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.NativeChatID, MessageID: s.message, Text: "重新生成中…"})
+			return delivery.Receipt{}, err
+		}
+	case delivery.StreamSend:
+		if event.Outputs != nil {
+			return s.adapter.SendTo(ctx, delivery.Target{}, event.Outputs)
+		}
+		return s.sendFinal(ctx, event.Text, event.Actions)
+	}
+	// Finish and reasoning events do not submit a message or release its preview.
+	return delivery.Receipt{}, nil
+}
+
+func (s *messageStream) sendPreview(ctx context.Context, text string) error {
 	if s.finished || text == "" {
 		return nil
 	}
@@ -82,50 +109,46 @@ func (s *messageStream) Append(ctx context.Context, text string) error {
 	return nil
 }
 
-func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Receipt, error) {
-	ctx, finish, err := s.beginOperation(ctx)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
-	defer finish()
+func (s *messageStream) sendFinal(ctx context.Context, text string, actions []delivery.Action) (delivery.Receipt, error) {
 	if s.finished {
 		return delivery.Receipt{}, nil
 	}
 	text = strings.TrimSpace(text)
 	if text == "" {
-		text = strings.TrimSpace(s.text)
-	}
-	if text == "" {
 		return delivery.Receipt{}, nil
 	}
-	if s.adapter.cfg.richMessageEnabled() {
-		if s.message != 0 {
-			_, _ = s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.NativeChatID, MessageID: s.message, Text: "done"})
-		}
-		receipt, err := s.adapter.sendRichText(ctx, s.target, text, 0, nil)
-		s.finished = true
-		return s.adapter.telegramReceipt(receipt, s.target), err
-	}
 	pages := telegramTextPages(text)
-	pageText, pageParseMode := s.adapter.streamPreviewPayload(pages[0])
-	if s.message == 0 {
-		sent, err := s.adapter.client.sendMessage(ctx, sendMessageRequest{ChatID: s.target.NativeChatID, Text: pageText, ParseMode: pageParseMode})
-		if err != nil {
-			return delivery.Receipt{}, err
-		}
-		s.message = sent.MessageID
-	} else {
-		if _, err := s.adapter.client.editMessageText(ctx, editMessageTextRequest{ChatID: s.target.NativeChatID, MessageID: s.message, Text: pageText, ParseMode: pageParseMode}); err != nil {
-			return delivery.Receipt{}, err
-		}
+	if s.adapter.cfg.richMessageEnabled() {
+		pages = telegramRichTextPages(text)
 	}
-	receipt := delivery.Receipt{PlatformMessageIDs: []string{formatMessageID(s.message)}}
-	for _, page := range pages[1:] {
+	var receipt delivery.Receipt
+	for i, page := range pages {
 		pageText, pageParseMode := s.adapter.streamPreviewPayload(page)
-		sent, err := s.adapter.client.sendMessage(ctx, sendMessageRequest{ChatID: s.target.NativeChatID, Text: pageText, ParseMode: pageParseMode})
+		req := editMessageTextRequest{ChatID: s.target.NativeChatID, Text: pageText, ParseMode: pageParseMode}
+		if s.adapter.cfg.richMessageEnabled() {
+			req.Text, req.ParseMode = "", ""
+			req.RichMessage = &inputRichMessage{Markdown: page}
+		}
+		if i == 0 {
+			req.MessageID, req.ReplyMarkup = s.message, commandKeyboard(actions)
+		}
+		var sent sentMessage
+		var err error
+		switch {
+		case req.MessageID != 0:
+			_, err = s.adapter.client.editMessageText(ctx, req)
+			sent.MessageID = req.MessageID
+		case req.RichMessage != nil:
+			sent, err = s.adapter.client.sendRichMessage(ctx, sendRichMessageRequest{ChatID: req.ChatID, RichMessage: *req.RichMessage, ReplyMarkup: req.ReplyMarkup})
+		default:
+			sent, err = s.adapter.client.sendMessage(ctx, sendMessageRequest{ChatID: req.ChatID, Text: req.Text, ParseMode: req.ParseMode, ReplyMarkup: req.ReplyMarkup})
+		}
 		if err != nil {
 			s.finished = true
 			return s.adapter.telegramReceipt(receipt, s.target), err
+		}
+		if i == 0 {
+			s.message = sent.MessageID
 		}
 		if sent.MessageID != 0 {
 			receipt.PlatformMessageIDs = append(receipt.PlatformMessageIDs, formatMessageID(sent.MessageID))
@@ -133,19 +156,6 @@ func (s *messageStream) Replace(ctx context.Context, text string) (delivery.Rece
 	}
 	s.finished = true
 	return s.adapter.telegramReceipt(receipt, s.target), nil
-}
-
-func (s *messageStream) Finish(ctx context.Context) (delivery.Receipt, error) {
-	ctx, finish, err := s.beginOperation(ctx)
-	if err != nil {
-		return delivery.Receipt{}, err
-	}
-	defer finish()
-	s.finished = true
-	if s.message == 0 {
-		return delivery.Receipt{}, nil
-	}
-	return s.adapter.telegramReceipt(delivery.Receipt{PlatformMessageIDs: []string{formatMessageID(s.message)}}, s.target), nil
 }
 
 func (a *Adapter) streamPreviewPayload(text string) (string, string) {

@@ -17,15 +17,22 @@ import (
 	"github.com/mattn/go-runewidth"
 
 	"elbot/internal/completion"
+	"elbot/internal/delivery"
 	runtimestatus "elbot/internal/runtime"
 )
 
 type tuiReadyMsg struct{}
 
 type tuiOutputMsg string
-type tuiReplaceAssistantMsg string
-type tuiFinishAssistantMsg struct{}
-type tuiReasoningMsg string
+type tuiStreamMsg struct {
+	ID    uint64 // Identifies the message independently of notices and other replies.
+	Event delivery.StreamEvent
+}
+
+type tuiStreamContent struct {
+	start, end      int    // Byte range occupied by this preview in content.
+	text, reasoning string // Current attempt's display buffers.
+}
 type tuiStatusMsg runtimestatus.Snapshot
 type tuiStatusTickMsg time.Time
 type tuiNoticeMsg struct {
@@ -159,9 +166,7 @@ type tuiModel struct {
 	histPos            int
 	userName           string
 	assistantName      string
-	assistantOpen      bool
-	assistantStart     int
-	reasoningOpen      bool
+	streams            map[uint64]*tuiStreamContent // Only uncommitted message previews.
 	runtimeStatus      runtimestatus.Snapshot
 	statusNow          time.Time
 	viewport           viewport.Model
@@ -255,14 +260,8 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tuiOutputMsg:
 		m.appendAssistantContent(string(msg))
 		return m, waitTUIOutput(m.ctx, m.output)
-	case tuiReplaceAssistantMsg:
-		m.replaceAssistantContent(string(msg))
-		return m, waitTUIOutput(m.ctx, m.output)
-	case tuiFinishAssistantMsg:
-		m.finishAssistantContent()
-		return m, waitTUIOutput(m.ctx, m.output)
-	case tuiReasoningMsg:
-		m.appendReasoningContent(string(msg))
+	case tuiStreamMsg:
+		m.applyStreamEvent(msg)
 		return m, waitTUIOutput(m.ctx, m.output)
 	case tuiStatusMsg:
 		m.runtimeStatus = runtimestatus.Snapshot(msg)
@@ -813,8 +812,6 @@ func (m *tuiModel) appendUserContent(text string) {
 		m.content += "\n" + m.separatorLine() + "\n"
 	}
 	m.content += m.userName + ": " + text + "\n"
-	m.assistantOpen = false
-	m.reasoningOpen = false
 	m.refreshContent()
 }
 
@@ -829,60 +826,60 @@ func (m tuiModel) separatorLine() string {
 	return strings.Repeat("─", max(8, width))
 }
 
-func (m *tuiModel) appendReasoningContent(text string) {
-	text = strings.ReplaceAll(text, "[thinking] ", "")
-	text = strings.ReplaceAll(text, "[thinking]", "")
-	text = strings.ReplaceAll(text, "[/thinking]\n\n", "")
-	text = strings.ReplaceAll(text, "[/thinking]", "")
-	if text == "" {
-		return
-	}
-	if !m.reasoningOpen {
-		if strings.TrimSpace(m.content) != "" {
-			m.content += "\n"
-		}
-		m.content += "thinking: "
-		m.reasoningOpen = true
-	}
-	m.content += text
-	m.refreshContent()
-}
-
 func (m *tuiModel) appendAssistantContent(text string) {
 	if text == "" {
 		return
 	}
-	if !m.assistantOpen {
-		if m.reasoningOpen {
-			m.content += "\n\n"
-			m.reasoningOpen = false
-		} else if strings.TrimSpace(m.content) != "" {
-			m.content += "\n"
-		}
-		m.assistantStart = len(m.content)
-		m.content += m.assistantName + ": "
-		m.assistantOpen = true
-	}
-	m.content += text
+	m.content += "\n" + m.assistantName + ": " + text
 	m.refreshContent()
 }
 
-func (m *tuiModel) replaceAssistantContent(text string) {
-	if !m.assistantOpen {
-		m.appendAssistantContent(text)
+func (m *tuiModel) applyStreamEvent(msg tuiStreamMsg) {
+	event := msg.Event
+	if event.Type == delivery.StreamFinish || event.Type == delivery.StreamReasoningDone {
+		// Generation is finished; retain the preview's identity for the final Send.
 		return
 	}
-	if m.assistantStart < 0 || m.assistantStart > len(m.content) {
-		m.assistantStart = len(m.content)
+	if m.streams == nil {
+		m.streams = make(map[uint64]*tuiStreamContent)
 	}
-	m.content = m.content[:m.assistantStart] + m.assistantName + ": " + text
-	m.refreshContent()
-}
-
-func (m *tuiModel) finishAssistantContent() {
-	m.assistantOpen = false
-	m.assistantStart = 0
-	m.reasoningOpen = false
+	stream := m.streams[msg.ID]
+	if stream == nil {
+		if event.Type == delivery.StreamReset {
+			return
+		}
+		stream = &tuiStreamContent{start: len(m.content), end: len(m.content)}
+		m.streams[msg.ID] = stream
+	}
+	switch event.Type {
+	case delivery.StreamTextDelta:
+		stream.text += event.Text
+	case delivery.StreamReasoningDelta:
+		stream.reasoning += event.Text
+	case delivery.StreamReset:
+		stream.text, stream.reasoning = "", ""
+	case delivery.StreamSend:
+		stream.text = event.Text
+	}
+	text := ""
+	if stream.reasoning != "" {
+		text = "\nthinking: " + stream.reasoning
+	}
+	if stream.text != "" {
+		text += "\n" + m.assistantName + ": " + stream.text
+	}
+	change := len(text) - (stream.end - stream.start)
+	m.content = m.content[:stream.start] + text + m.content[stream.end:]
+	for id, other := range m.streams {
+		if id != msg.ID && other.start >= stream.end {
+			other.start += change
+			other.end += change
+		}
+	}
+	stream.end = stream.start + len(text)
+	if event.Type == delivery.StreamReset || event.Type == delivery.StreamSend {
+		delete(m.streams, msg.ID)
+	}
 	m.refreshContent()
 }
 
@@ -908,8 +905,6 @@ func (m *tuiModel) appendNoticeContent(text string, level slog.Level) {
 	}
 	m.content += "[notice] " + text
 	m.inlineNoticeLevels = append(m.inlineNoticeLevels, level)
-	m.assistantOpen = false
-	m.reasoningOpen = false
 	m.refreshContent()
 }
 

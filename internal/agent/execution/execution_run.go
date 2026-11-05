@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/delivery"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -228,7 +229,7 @@ func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session 
 	c.status.Record(ctx, doneStatus)
 	nextSelection := c.SelectionForTurn(ctx, session)
 	if c.shouldCompact(ctx, session, nextSelection) {
-		_, _ = out.SendAssistant(ctx, "compact → next request")
+		_, _ = out.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "compact → next request"})
 	}
 	pending, completed := c.turns.CompleteTurn(session.ID, turn.AttemptFromContext(ctx))
 	if !completed {

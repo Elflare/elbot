@@ -21,7 +21,7 @@ type InputIdentity interface {
 }
 
 type InputOutput interface {
-	SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, error)
+	Send(context.Context, delivery.StreamEvent) (delivery.Receipt, error)
 	Notify(context.Context, slog.Level, string)
 }
 

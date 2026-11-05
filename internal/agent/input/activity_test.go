@@ -31,7 +31,7 @@ func (activityTestHooks) AgentInputPrepared(_ context.Context, _ agentshare.Sess
 
 type activityTestOutput struct{}
 
-func (activityTestOutput) SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, error) {
+func (activityTestOutput) Send(context.Context, delivery.StreamEvent) (delivery.Receipt, error) {
 	return delivery.Receipt{}, nil
 }
 func (activityTestOutput) Notify(context.Context, slog.Level, string) {}

@@ -2,6 +2,7 @@ package responses
 
 import (
 	"context"
+	"elbot/internal/llm"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -77,6 +78,9 @@ func readStream(ctx context.Context, sse *httpclient.SSE, out chan<- Event) {
 	defer close(out)
 	defer sse.Close()
 	send := func(event Event) bool {
+		if event.Error != nil {
+			event.Error = llm.MapStreamError(event.Error)
+		}
 		select {
 		case out <- event:
 			return true

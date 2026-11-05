@@ -115,8 +115,17 @@ func (r *Router) StartStream(ctx context.Context) (delivery.MessageStream, error
 	if err != nil {
 		return nil, err
 	}
-	if streaming, ok := sender.(delivery.StreamingMessageSender); ok {
+	if streaming, ok := sender.(delivery.StreamSender); ok {
 		return streaming.StartStream(ctx)
 	}
-	return nil, nil
+	return delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+		if event.Type != delivery.StreamSend {
+			return delivery.Receipt{}, nil
+		}
+		outputs := event.Outputs
+		if outputs == nil {
+			outputs = []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Actions: event.Actions}}
+		}
+		return r.SendTo(ctx, delivery.Target{}, outputs)
+	}), nil
 }

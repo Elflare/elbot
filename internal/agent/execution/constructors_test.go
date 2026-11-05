@@ -40,12 +40,8 @@ type constructorOutput struct{}
 
 func (constructorOutput) Notify(context.Context, slog.Level, string) {}
 
-func (constructorOutput) SendAssistant(context.Context, string, ...delivery.Action) (delivery.Receipt, error) {
+func (constructorOutput) Send(context.Context, delivery.StreamEvent) (delivery.Receipt, error) {
 	return delivery.Receipt{}, nil
-}
-
-func (constructorOutput) SendOutputs(context.Context, []delivery.Output) error {
-	return nil
 }
 
 func TestMessageEntryConstructsWithOnlyConsumptionCapabilities(t *testing.T) {

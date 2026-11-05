@@ -125,12 +125,12 @@ type confirmationOutput struct {
 	texts chan string
 }
 
-func (o confirmationOutput) SendAssistant(_ context.Context, text string, actions ...delivery.Action) (delivery.Receipt, error) {
+func (o confirmationOutput) Send(_ context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
 	if o.texts != nil {
-		o.texts <- text
+		o.texts <- event.Text
 	}
 	if o.sent != nil {
-		o.sent <- actions
+		o.sent <- event.Actions
 	}
 	if o.err != nil {
 		return delivery.Receipt{}, o.err

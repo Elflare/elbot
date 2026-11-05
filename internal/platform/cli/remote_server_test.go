@@ -142,14 +142,9 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 	}
 	read(one, "both")
 	read(two, "both")
-	u, status := testUI(t)
+	_, status := testUI(t)
 	requestCtx, cancelRequest := context.WithCancel(firstCtx)
-	stream := u.StartReasoning(requestCtx)
-	stream.Append(requestCtx, "original-only")
-	read(one, "[thinking] original-only")
 	cancelRequest()
-	stream.Finish(secondCtx) // Closing keeps the view that actually received deltas.
-	read(one, "[/thinking]\n\n")
 	if _, err := status.Emit(context.WithoutCancel(requestCtx), StatusChangedEvent{Conversation: testConversation(requestCtx), Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone}, Version: 1}); err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +158,7 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 	if _, err := s.SendTo(secondCtx, delivery.Target{}, []delivery.Output{delivery.Text("second-barrier")}); err != nil {
 		t.Fatal(err)
 	}
-	read(two, "second-barrier") // Neither reasoning nor status leaked to the same user's other connection.
+	read(two, "second-barrier") // Status did not leak to the same user's other connection.
 	first.conn.CloseNow()
 	if _, err := notices.Emit(ctx, events.Notification{Target: events.NotificationTarget{Platform: "cli", ChatType: contextinfo.ChatPrivate, ID: "same-user"}, Text: "partial-notice"}); err == nil {
 		t.Fatal("notification partial failure reported success")
