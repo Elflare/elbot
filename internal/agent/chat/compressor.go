@@ -51,11 +51,12 @@ func (c Compressor) Compact(ctx context.Context, req CompactRequest) (*CompactRe
 	if client == nil {
 		return nil, fmt.Errorf("压缩模型客户端不可用")
 	}
-	result, err := client.GenerateText(ctx, llm.TextRequest{
+	request := llm.TextRequest{
 		Model:        req.Model,
 		Instructions: compactSystemPrompt,
 		Input:        compactPrompt(req.Messages, req.UserInputs),
-	})
+	}
+	result, err := llm.Retry(ctx, client, client.GenerateText, request)
 	if err == nil && strings.TrimSpace(result.Text) == "" {
 		err = fmt.Errorf("压缩模型返回空摘要")
 	}

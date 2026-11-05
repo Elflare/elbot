@@ -10,7 +10,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -23,155 +22,151 @@ import (
 func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMessage, stream delivery.MessageStream) (final agentshare.CallOutput, err error) {
 	client := s.selection.Client.(api.Streamer)
 	ctx = agentshare.WithReadOnlyCalls(ctx)
-	observation := s.route.Calls.Begin(s.session.ID, s.selection)
-	defer func() {
-		observation.Publish(ctx, err)
-	}()
-	projection, err := s.route.Calls.PrepareCall(ctx, s.session, s.selection, s.projection, s.tools, pending, inputCommitter{state: s}, observation.LogRecord())
-	if err != nil {
-		return final, err
-	}
-	s.projection, s.tools = projection.Messages, projection.Tools
-	inputs, err := s.route.Repository.PendingInputs(ctx, s.session.ID)
-	if err != nil {
-		return final, err
-	}
-	inputs, err = s.queueForegroundNotice(ctx, inputs)
-	if err != nil {
-		return final, err
-	}
-	inputs, err = s.queueToolDefinitions(ctx, inputs)
-	if err != nil {
-		return final, err
-	}
-	sort.SliceStable(inputs, func(i, j int) bool { return inputOrder(inputs[i]) < inputOrder(inputs[j]) })
-	w := &nativeWindow{}
+	var request api.Request
+	var inputs []storage.NativeInput
 	var consumed []string
-	s.requestReferences = nil
-	for _, input := range inputs {
-		consumed = append(consumed, input.ID)
-		s.requestReferences = append(s.requestReferences, inputReference{Kind: "input", ID: input.ID})
-	}
-	instructions, err := s.instructions(ctx)
-	if err != nil {
-		return final, err
-	}
-	store, err := client.StoreForModel(s.selection.Model)
-	if err != nil {
-		return final, err
-	}
-	request := api.Request{
-		Model:        s.selection.Model,
-		Instructions: instructions,
-		AllowedTools: s.allowedToolNames(),
-		Store:        &store,
-		Include:      []string{"reasoning.encrypted_content"},
-	}
-	origin := s.selection.Origin
-	baseURL := origin.BaseURL
-	if s.checkpoint != nil {
-		request.PreviousResponseID = s.checkpoint.ResponseID
-		exchange := s.exchange
-		if s.window != nil {
-			exchange = s.window.exchange
-		}
-		baseURL = exchange.BaseURL
-		state, err := exchangeStorage(exchange)
-		if err != nil {
-			return final, err
-		}
-		if !state.Available {
-			if store && state.Requested {
-				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
-					Level:        slog.LevelWarn,
-					EventName:    "responses_switching_to_stateless_replay",
-					Module:       "agent",
-					Type:         globalevents.ContentText,
-					Content:      fmt.Sprintf("Responses switching to stateless replay\nprovider=%v\nmodel=%v\nresponse_id=%v\nreason=%v", s.selection.Provider, s.selection.Model, s.checkpoint.ResponseID, "upstream returned store:false"),
-					ContentLimit: 4096,
-				}
-				facts, _ := contextinfo.ExecutionFromContext(ctx)
-				record.Identity = globalevents.LogIdentityFromExecution(facts)
-				record.Identity.SessionID = &s.session.ID
-				_ = globalevents.EmitLog(ctx, record)
-			}
-			store = false
-		}
-	} else if s.seed != nil {
-		request.PreviousResponseID, baseURL = s.seed.ResponseID, s.seed.BaseURL
-		if store && request.PreviousResponseID != "" && baseURL == origin.BaseURL {
-			w, err = s.route.Context.resolveContinuation(s.seed)
-			if err != nil {
-				return final, err
-			}
-			var refs []inputReference
-			for i := range w.Items {
-				refs = append(refs, inputReference{Kind: "continuation", ID: s.seed.ID, Index: i})
-			}
-			s.requestReferences = append(refs, s.requestReferences...)
-		}
-	}
-	replay := !store && (s.checkpoint != nil || s.seed != nil) || request.PreviousResponseID == "" && s.seed != nil || request.PreviousResponseID != "" && baseURL != origin.BaseURL
 	var usageID media.UsageID
-	if replay {
-		request, usageID, err = s.replayRequest(ctx, request, inputs, consumed, origin)
-	} else {
-		request.Input, usageID, err = s.resolveInputs(ctx, inputs, w)
-	}
-	defer func() {
-		s.route.Preparer.FinishMaterials(ctx, usageID)
-	}()
-	if err != nil {
-		return final, err
-	}
-	started := time.Now()
-	result, err := s.nativeCall(ctx, client, request, consumed, stream, observation)
-	if err != nil && request.PreviousResponseID != "" && !result.OutputStarted && result.FactsSaved && api.PreviousResponseUnavailable(err) {
-		observation.Publish(ctx, err)
-		observation = s.route.Calls.Begin(s.session.ID, s.selection)
-		s.route.Preparer.FinishMaterials(ctx, usageID)
-		request, usageID, err = s.replayRequest(ctx, request, inputs, consumed, origin)
+	var result nativeCallResult
+	var calls []llm.ToolCallRequest
+	origin := s.selection.Origin
+	defer func() { s.route.Preparer.FinishMaterials(ctx, usageID) }()
+	prepare := func(ctx context.Context, projection agentshare.CallInput) error {
+		s.projection, s.tools = projection.Messages, projection.Tools
+		var err error
+		inputs, err = s.route.Repository.PendingInputs(ctx, s.session.ID)
 		if err != nil {
-			return final, err
+			return err
 		}
-		result, err = s.nativeCall(ctx, client, request, consumed, stream, observation)
+		inputs, err = s.queueForegroundNotice(ctx, inputs)
+		if err != nil {
+			return err
+		}
+		inputs, err = s.queueToolDefinitions(ctx, inputs)
+		if err != nil {
+			return err
+		}
+		sort.SliceStable(inputs, func(i, j int) bool { return inputOrder(inputs[i]) < inputOrder(inputs[j]) })
+		w := &nativeWindow{}
+		s.requestReferences = nil
+		for _, input := range inputs {
+			consumed = append(consumed, input.ID)
+			s.requestReferences = append(s.requestReferences, inputReference{Kind: "input", ID: input.ID})
+		}
+		instructions, err := s.instructions(ctx)
+		if err != nil {
+			return err
+		}
+		store, err := client.StoreForModel(s.selection.Model)
+		if err != nil {
+			return err
+		}
+		request = api.Request{
+			Model:        s.selection.Model,
+			Instructions: instructions,
+			AllowedTools: s.allowedToolNames(),
+			Store:        &store,
+			Include:      []string{"reasoning.encrypted_content"},
+		}
+		baseURL := origin.BaseURL
+		if s.checkpoint != nil {
+			request.PreviousResponseID = s.checkpoint.ResponseID
+			exchange := s.exchange
+			if s.window != nil {
+				exchange = s.window.exchange
+			}
+			baseURL = exchange.BaseURL
+			state, err := exchangeStorage(exchange)
+			if err != nil {
+				return err
+			}
+			if !state.Available {
+				if store && state.Requested {
+					record := globalevents.LogRecord{
+						Category:     globalevents.LogRuntime,
+						Level:        slog.LevelWarn,
+						EventName:    "responses_switching_to_stateless_replay",
+						Module:       "agent",
+						Type:         globalevents.ContentText,
+						Content:      fmt.Sprintf("Responses switching to stateless replay\nprovider=%v\nmodel=%v\nresponse_id=%v\nreason=%v", s.selection.Provider, s.selection.Model, s.checkpoint.ResponseID, "upstream returned store:false"),
+						ContentLimit: 4096,
+					}
+					facts, _ := contextinfo.ExecutionFromContext(ctx)
+					record.Identity = globalevents.LogIdentityFromExecution(facts)
+					record.Identity.SessionID = &s.session.ID
+					_ = globalevents.EmitLog(ctx, record)
+				}
+				store = false
+			}
+		} else if s.seed != nil {
+			request.PreviousResponseID, baseURL = s.seed.ResponseID, s.seed.BaseURL
+			if store && request.PreviousResponseID != "" && baseURL == origin.BaseURL {
+				w, err = s.route.Context.resolveContinuation(s.seed)
+				if err != nil {
+					return err
+				}
+				var refs []inputReference
+				for i := range w.Items {
+					refs = append(refs, inputReference{Kind: "continuation", ID: s.seed.ID, Index: i})
+				}
+				s.requestReferences = append(refs, s.requestReferences...)
+			}
+		}
+		replay := !store && (s.checkpoint != nil || s.seed != nil) || request.PreviousResponseID == "" && s.seed != nil || request.PreviousResponseID != "" && baseURL != origin.BaseURL
+		if replay {
+			request, usageID, err = s.replayRequest(ctx, request, inputs, consumed, origin)
+		} else {
+			request.Input, usageID, err = s.resolveInputs(ctx, inputs, w)
+		}
+		return err
 	}
-	if err != nil {
-		// The failed attempt's partial output remains a business fact. It must
-		// not be promoted to a completed response or executable tool calls.
-		final.Text, final.SourceText = outputText(result.Items), outputText(result.Items)
-		s.sourceText = final.SourceText
+	attempt := func(ctx context.Context, observation agentshare.CallObservation) (agentshare.CallOutput, error) {
+		calls = nil
+		var callErr error
+		// TODO: reset streamed output between attempts before enabling retries of stream failures.
+		result, callErr = s.nativeCall(ctx, client, request, consumed, stream, observation)
+		final := agentshare.CallOutput{Text: outputText(result.Items), SourceText: outputText(result.Items)}
 		if result.Response != nil {
 			final.Usage = result.Response.TokenUsage()
 		}
-		if observation.Event().ProviderError {
-			s.route.Calls.NotifyError(ctx, s.session.ID, agentshare.LLMResponse{Provider: s.selection.Provider, Model: s.selection.Model}, observation.Event().Err)
+		if callErr != nil {
+			// Partial output is retained as a fact, never as executable tool calls.
+			if request.PreviousResponseID == "" || result.OutputStarted || !result.FactsSaved || !api.PreviousResponseUnavailable(callErr) {
+				return final, callErr
+			}
+			s.route.Preparer.FinishMaterials(ctx, usageID)
+			var err error
+			request, usageID, err = s.replayRequest(ctx, request, inputs, consumed, origin)
+			if err != nil {
+				return final, err
+			}
+			// replayRequest clears PreviousResponseID; recovery can happen only once.
+			if failure, ok := callErr.(*llm.CallError); ok {
+				callErr = failure.Cause
+			}
+			return final, &llm.CallError{Retryable: true, Cause: callErr}
 		}
-		return final, err
+		seen := map[string]bool{}
+		for _, item := range result.Items {
+			if item.Type != "function_call" {
+				continue
+			}
+			if item.CallID == "" || item.Name == "" || seen[item.CallID] {
+				return final, fmt.Errorf("invalid or duplicate Responses function call")
+			}
+			if !slices.Contains(result.AllowedTools, item.Name) {
+				return final, fmt.Errorf("Responses returned unavailable function %q", item.Name)
+			}
+			seen[item.CallID] = true
+			calls = append(calls, llm.ToolCallRequest{ID: item.CallID, Name: item.Name, Arguments: item.Arguments})
+		}
+		if s.session.Mode == storage.SessionModeChat && len(calls) > 0 {
+			return final, fmt.Errorf("unexpected function call with tools disabled")
+		}
+		final.ToolCalls = calls
+		return final, nil
 	}
-	var calls []llm.ToolCallRequest
-	seen := map[string]bool{}
-	for _, item := range result.Items {
-		if item.Type != "function_call" {
-			continue
-		}
-		if item.CallID == "" || item.Name == "" || seen[item.CallID] {
-			return final, fmt.Errorf("invalid or duplicate Responses function call")
-		}
-		if !slices.Contains(result.AllowedTools, item.Name) {
-			return final, fmt.Errorf("Responses returned unavailable function %q", item.Name)
-		}
-		seen[item.CallID] = true
-		calls = append(calls, llm.ToolCallRequest{ID: item.CallID, Name: item.Name, Arguments: item.Arguments})
-	}
-	if s.session.Mode == storage.SessionModeChat && len(calls) > 0 {
-		return final, fmt.Errorf("unexpected function call with tools disabled")
-	}
-	text := outputText(result.Items)
-	s.sourceText = text
-	elapsed := time.Since(started).Milliseconds()
-	final, err = s.route.Calls.CompleteCall(ctx, s.session, s.selection, text, result.Response.TokenUsage(), calls, elapsed)
+	final, err = s.route.Calls.Call(ctx, s.session, s.selection, s.projection, s.tools, pending, inputCommitter{state: s}, prepare, attempt)
+	s.sourceText = outputText(result.Items)
 	if err != nil {
 		return final, err
 	}

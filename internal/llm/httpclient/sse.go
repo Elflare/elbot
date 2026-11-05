@@ -37,6 +37,7 @@ func (s *SSE) Close() { s.once.Do(func() { s.cancel(); _ = s.body.Close() }) }
 func (c *Client) OpenSSE(ctx context.Context, resp *http.Response) (*SSE, error) {
 	body, err := prepareStreamBody(ctx, resp, c.options.FirstChunkTimeout)
 	if err != nil {
+		// TODO: classify stream failures after retry output handling is implemented.
 		_ = resp.Body.Close()
 		return nil, err
 	}

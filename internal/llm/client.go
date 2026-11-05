@@ -9,6 +9,7 @@ import (
 
 // Client exposes independent operations, not a particular conversation protocol.
 type Client interface {
+	RetryOptions() RetryOptions
 	ListModels(context.Context) ([]string, error)
 	GenerateText(context.Context, TextRequest) (TextResult, error)
 }
@@ -64,7 +65,7 @@ type ModelMetadataProvider interface {
 }
 
 type RetryEvent struct {
-	// Attempt is the next retry number, supplied by the HTTP attempt source.
+	// Attempt is the next retry number, supplied by the shared operation retry loop.
 	Attempt int
 	// MaxRetries is the configured retry limit for this call.
 	MaxRetries int
@@ -73,7 +74,7 @@ type RetryEvent struct {
 	// Err is the original error from the completed attempt and is read-only after publication.
 	Err error
 	// ResultStatus describes the completed attempt, not the eventual model call.
-	// The transport source declares it; zero means unspecified, never success.
+	// The shared retry loop declares it; zero means unspecified, never success.
 	ResultStatus events.ResultStatus
 }
 

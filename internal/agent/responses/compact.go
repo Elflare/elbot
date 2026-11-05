@@ -5,13 +5,13 @@ import (
 
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	globalevents "elbot/internal/events"
+	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
 	"elbot/internal/modelmgr"
 	"elbot/internal/session"
@@ -107,59 +107,14 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 	if cp != nil {
 		checkpointID = cp.ID
 	}
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	refs := append(append([]inputReference(nil), w.References...), inputReference{Kind: "synthetic", Item: json.RawMessage(`{"type":"compaction_trigger"}`)})
 	audit, err := requestAudit(request.ParametersJSON(), refs)
 	if err != nil {
 		return nil, err
 	}
-	exchange := &storage.NativeExchange{
-		SessionID:            row.ID,
-		APIType:              string(target.APIType),
-		Provider:             target.Provider,
-		BaseURL:              target.BaseURL,
-		Model:                selection.Model,
-		RequestID:            facts.RequestID,
-		RunID:                facts.RunID,
-		Attempt:              facts.Attempt,
-		PreviousCheckpointID: checkpointID,
-		RequestJSON:          audit,
-		InputIDsJSON:         "[]",
-	}
-	locked, leave, err := c.Gate.Enter(ctx, row.ID)
-	if err != nil {
-		return nil, err
-	}
-	err = c.Context.Repository.CreateExchange(locked, exchange)
-	leave()
-	if err != nil {
-		return nil, err
-	}
-	var result *api.CompactResult
-	defer func() {
-		status, raw, output, failure := "failed", "", "", ""
-		if result != nil {
-			raw = string(result.Raw)
-			encoded, encodeErr := json.Marshal(result.Output)
-			if encodeErr != nil {
-				err = errors.Join(err, encodeErr)
-			} else {
-				output = string(encoded)
-			}
-		}
-		if err == nil {
-			status = "compacted"
-		} else {
-			failure = err.Error()
-			if ctx.Err() != nil {
-				status = "canceled"
-			}
-		}
-		if saveErr := c.Context.Repository.FinishExchange(context.WithoutCancel(ctx), exchange.ID, status, raw, output, failure); saveErr != nil {
-			err = errors.Join(err, saveErr)
-		}
-	}()
-	result, err = client.CompactPrepared(ctx, request)
+	result, err := llm.Retry(ctx, selection.Client, func(ctx context.Context, request api.PreparedCompactRequest) (*api.CompactResult, error) {
+		return c.compactOnce(ctx, row, selection, client, request, checkpointID, audit)
+	}, request)
 	if err != nil {
 		if ctx.Err() == nil {
 			_ = globalevents.EmitLog(context.WithoutCancel(ctx), globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "compact_error", Module: "agent", Content: err.Error(), ResultStatus: globalevents.ResultFailed})
@@ -200,4 +155,57 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 		compact.SourceTokens, compact.SummaryTokens, compact.TotalTokens, compact.CacheHitTokens = usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens, usage.CacheHitTokens
 	}
 	return &contextmgr.PreparedCompact{Title: title, State: compact, Seed: seed, ExpectedCheckpointID: checkpointID}, nil
+}
+
+func (c *Compactor) compactOnce(ctx context.Context, row *storage.Session, selection modelmgr.Selection, client api.Compactor, request api.PreparedCompactRequest, checkpointID, audit string) (result *api.CompactResult, err error) {
+	target := selection.Origin
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	exchange := &storage.NativeExchange{
+		SessionID:            row.ID,
+		APIType:              string(target.APIType),
+		Provider:             target.Provider,
+		BaseURL:              target.BaseURL,
+		Model:                selection.Model,
+		RequestID:            facts.RequestID,
+		RunID:                facts.RunID,
+		Attempt:              facts.Attempt,
+		PreviousCheckpointID: checkpointID,
+		RequestJSON:          audit,
+		InputIDsJSON:         "[]",
+	}
+	locked, leave, err := c.Gate.Enter(ctx, row.ID)
+	if err != nil {
+		return nil, err
+	}
+	err = c.Context.Repository.CreateExchange(locked, exchange)
+	leave()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		status, raw, output, failure := "failed", "", "", ""
+		if result != nil {
+			raw = string(result.Raw)
+			encoded, encodeErr := json.Marshal(result.Output)
+			if encodeErr != nil {
+				slog.ErrorContext(context.WithoutCancel(ctx), "encode compact response", "exchange_id", exchange.ID, "error", encodeErr, "request_error", err)
+				err = fmt.Errorf("encode compact response: %w", encodeErr)
+				return
+			}
+			output = string(encoded)
+		}
+		if err == nil {
+			status = "compacted"
+		} else {
+			failure = err.Error()
+			if ctx.Err() != nil {
+				status = "canceled"
+			}
+		}
+		if saveErr := c.Context.Repository.FinishExchange(context.WithoutCancel(ctx), exchange.ID, status, raw, output, failure); saveErr != nil {
+			slog.ErrorContext(context.WithoutCancel(ctx), "save compact response", "exchange_id", exchange.ID, "error", saveErr, "request_error", err)
+			err = fmt.Errorf("save compact response: %w", saveErr)
+		}
+	}()
+	return client.CompactPrepared(ctx, request)
 }

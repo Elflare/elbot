@@ -2,23 +2,21 @@
 package httpclient
 
 import (
-	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"syscall"
 	"time"
 
-	"elbot/internal/events"
 	"elbot/internal/llm"
 )
 
 type Options struct {
 	FirstChunkTimeout time.Duration
 	StreamIdleTimeout time.Duration
-	MaxRetries        int
-	RetryInitialDelay time.Duration
-	OnRetry           func(context.Context, llm.RetryEvent)
 	Proxy             string
 	// HTTPClient optionally supplies a transport, for embedding and tests.
 	HTTPClient *http.Client
@@ -31,19 +29,12 @@ func (o Options) withDefaults() Options {
 	if o.StreamIdleTimeout <= 0 {
 		o.StreamIdleTimeout = 60 * time.Second
 	}
-	if o.MaxRetries <= 0 {
-		o.MaxRetries = 3
-	}
-	if o.RetryInitialDelay <= 0 {
-		o.RetryInitialDelay = 2 * time.Second
-	}
 	return o
 }
 
 type Client struct {
 	http    *http.Client
 	options Options
-	onRetry func(context.Context, llm.RetryEvent)
 }
 
 func New(opts Options) (*Client, error) {
@@ -62,66 +53,32 @@ func New(opts Options) (*Client, error) {
 	if client == nil {
 		client = &http.Client{Transport: transport}
 	}
-	return &Client{http: client, options: opts, onRetry: opts.OnRetry}, nil
+	return &Client{http: client, options: opts}, nil
 }
 
-func (c *Client) SetRetryNotifier(f func(context.Context, llm.RetryEvent)) { c.onRetry = f }
-
-// Do retries only the initial HTTP exchange, never a consumed response stream.
-// The protocol client supplies the HTTP error decoder.
-func (c *Client) Do(ctx context.Context, request func(context.Context) (*http.Request, error), decodeError func(*http.Response) error) (*http.Response, error) {
-	var lastErr error
-	for attempt := 0; attempt <= c.options.MaxRetries; attempt++ {
-		if err := ctx.Err(); err != nil {
+// Do performs one HTTP exchange and marks failures at their source.
+// Non-200 bodies are decoded and closed here; the caller owns successful bodies.
+func (c *Client) Do(req *http.Request, decodeError func(*http.Response) error) (*http.Response, error) {
+	resp, err := c.http.Do(req)
+	if err != nil {
+		if err := req.Context().Err(); err != nil {
 			return nil, err
 		}
-		req, err := request(ctx)
-		if err != nil {
-			return nil, err
-		}
-		resp, err := c.http.Do(req)
-		if err == nil && !isRetryableStatus(resp.StatusCode) {
-			return resp, nil
-		}
-		if err != nil {
-			lastErr = err
-		} else {
-			lastErr = decodeError(resp)
-			_ = resp.Body.Close()
-			if lastErr == nil {
-				lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
-			}
-		}
-		if attempt == c.options.MaxRetries {
-			return nil, lastErr
-		}
-		delay := retryDelay(c.options.RetryInitialDelay, attempt)
-		if c.onRetry != nil {
-			event := llm.RetryEvent{Attempt: attempt + 1, MaxRetries: c.options.MaxRetries, Delay: delay, Err: lastErr, ResultStatus: events.ResultFailed}
-			if errors.Is(lastErr, context.Canceled) {
-				event.ResultStatus = events.ResultCanceled
-			}
-			c.onRetry(ctx, event)
-		}
-		if err := waitRetryDelay(ctx, delay); err != nil {
-			return nil, err
-		}
+		var networkError net.Error
+		var dnsError *net.DNSError
+		retryable := (errors.As(err, &networkError) && networkError.Timeout()) ||
+			(errors.As(err, &dnsError) && dnsError.IsTemporary) ||
+			errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+			errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNABORTED) ||
+			errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.EPIPE) ||
+			errors.Is(err, syscall.ENETUNREACH) || errors.Is(err, syscall.EHOSTUNREACH)
+		return nil, &llm.CallError{Retryable: retryable, Cause: err}
 	}
-	return nil, lastErr
-}
-func retryDelay(initial time.Duration, attempt int) time.Duration {
-	return initial << attempt
-}
-
-func waitRetryDelay(ctx context.Context, delay time.Duration) error {
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		return nil, &llm.CallError{Retryable: isRetryableStatus(resp.StatusCode), Cause: decodeError(resp)}
 	}
+	return resp, nil
 }
 
 func isRetryableStatus(status int) bool {
@@ -129,5 +86,5 @@ func isRetryableStatus(status int) bool {
 		status == http.StatusConflict ||
 		status == http.StatusTooEarly ||
 		status == http.StatusTooManyRequests ||
-		status >= http.StatusInternalServerError
+		(status >= http.StatusInternalServerError && status < 600)
 }

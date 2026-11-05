@@ -42,6 +42,49 @@ type CallObservation struct {
 	logRecord events.LogRecord
 }
 
+// Call owns the shared preparation, retry and completion boundaries. Protocol
+// callbacks retain their private request state and finish each attempt before returning.
+func (c *CallProcessor) Call(
+	ctx context.Context, session *storage.Session, selection modelmgr.Selection,
+	messages []llm.LLMMessage, tools []llm.ToolSchema,
+	pending *agentshare.PendingUserMessage, persistence agentshare.MessageCommitter,
+	prepare func(context.Context, agentshare.CallInput) error,
+	attempt func(context.Context, agentshare.CallObservation) (agentshare.CallOutput, error),
+) (agentshare.CallOutput, error) {
+	startedAt := time.Now()
+	observation := c.Begin(session.ID, selection)
+	input, err := c.PrepareCall(ctx, session, selection, messages, tools, pending, persistence, observation.LogRecord())
+	if err != nil {
+		observation.Publish(ctx, err)
+		return agentshare.CallOutput{}, err
+	}
+	if err := prepare(ctx, input); err != nil {
+		observation.Publish(ctx, err)
+		return agentshare.CallOutput{}, err
+	}
+
+	result, err := llm.Retry(ctx, selection.Client, func(
+		ctx context.Context,
+		selection modelmgr.Selection,
+	) (result agentshare.CallOutput, err error) {
+		observation = c.Begin(session.ID, selection)
+		defer func() { observation.Publish(ctx, err) }()
+		return attempt(ctx, observation)
+	}, selection)
+	if err != nil {
+		completed := observation.Event()
+		if completed.ProviderError && !(ctx.Err() != nil && errors.Is(err, ctx.Err())) {
+			c.NotifyError(ctx, session.ID, agentshare.LLMResponse{
+				Provider: selection.Provider, Model: selection.Model,
+				Text: completed.Text, SourceText: completed.SourceText,
+				ToolCalls: result.ToolCalls, Usage: completed.Usage, ElapsedMS: completed.ElapsedMS,
+			}, err)
+		}
+		return result, err
+	}
+	return c.CompleteCall(ctx, session, selection, result.SourceText, result.Usage, result.ToolCalls, time.Since(startedAt).Milliseconds())
+}
+
 func (c *CallProcessor) Begin(sessionID string, selected modelmgr.Selection) agentshare.CallObservation {
 	return &CallObservation{
 		processor: c,

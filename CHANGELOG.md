@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/status` 的 active requests 不再重复显示 Session 标题；直接使用 `/requests` 时仍保留该信息。
 - 修改了 Elwisp 协议，统一使用 `platform`、`api`、`params` 描述平台原生 API 调用。
 - `send_file`工具可以普通用户使用了，仅限媒体id和url
+- 优化重试逻辑
 
 ### Fixed
 

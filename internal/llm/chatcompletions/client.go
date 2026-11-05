@@ -15,7 +15,10 @@ import (
 
 var _ Streamer = (*Client)(nil)
 
-type RequestOptions = httpclient.Options
+type RequestOptions struct {
+	httpclient.Options
+	llm.RetryOptions
+}
 
 type Streamer interface {
 	llm.Client
@@ -28,21 +31,24 @@ type Client struct {
 	extraPayload       map[string]any
 	modelExtraPayloads map[string]map[string]any
 	transport          *httpclient.Client
+	retryOptions       llm.RetryOptions
 
 	loggedSystemMu sync.Mutex
 	loggedSystem   map[string]bool
 }
 
 func New(baseURL, apiKey string, extraPayload map[string]any, modelExtraPayloads map[string]map[string]any, opts RequestOptions) (*Client, error) {
-	transport, err := httpclient.New(opts)
+	transport, err := httpclient.New(opts.Options)
 	if err != nil {
 		return nil, err
 	}
-	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, extraPayload: extraPayload, modelExtraPayloads: modelExtraPayloads, transport: transport, loggedSystem: map[string]bool{}}, nil
+	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, extraPayload: extraPayload, modelExtraPayloads: modelExtraPayloads, transport: transport, retryOptions: opts.RetryOptions, loggedSystem: map[string]bool{}}, nil
 }
 
+func (a *Client) RetryOptions() llm.RetryOptions { return a.retryOptions }
+
 func (a *Client) SetRetryNotifier(f func(context.Context, llm.RetryEvent)) {
-	a.transport.SetRetryNotifier(f)
+	a.retryOptions.OnRetry = f
 }
 func (a *Client) endpoint() string { return a.baseURL + "/chat/completions" }
 func (a *Client) validateBaseURL() error {
@@ -79,22 +85,15 @@ func (a *Client) Stream(ctx context.Context, req Request) (<-chan Chunk, error) 
 	}
 	a.logChatRequest(ctx, req)
 	responseCtx, cancel := context.WithCancel(ctx)
-	resp, err := a.transport.Do(responseCtx, func(ctx context.Context) (*http.Request, error) {
-		r, err := http.NewRequestWithContext(ctx, http.MethodPost, a.endpoint(), bytes.NewReader(bodyBytes))
-		if err != nil {
-			return nil, err
-		}
-		r.Header.Set("Authorization", "Bearer "+a.apiKey)
-		r.Header.Set("Content-Type", "application/json")
-		return r, nil
-	}, parseError)
+	r, err := http.NewRequestWithContext(responseCtx, http.MethodPost, a.endpoint(), bytes.NewReader(bodyBytes))
 	if err != nil {
 		cancel()
 		return nil, err
 	}
-	if resp.StatusCode != http.StatusOK {
-		err = parseError(resp)
-		_ = resp.Body.Close()
+	r.Header.Set("Authorization", "Bearer "+a.apiKey)
+	r.Header.Set("Content-Type", "application/json")
+	resp, err := a.transport.Do(r, parseError)
+	if err != nil {
 		cancel()
 		return nil, err
 	}
@@ -124,6 +123,7 @@ func (a *Client) GenerateText(ctx context.Context, req llm.TextRequest) (llm.Tex
 	var usage *llm.Usage
 	for chunk := range chunks {
 		if chunk.Error != nil {
+			// TODO: classify stream failures for retry after stream retry handling is implemented.
 			return llm.TextResult{}, chunk.Error
 		}
 		if len(chunk.ToolCallDeltas) > 0 {

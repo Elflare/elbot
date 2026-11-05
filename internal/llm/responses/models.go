@@ -41,23 +41,20 @@ func (a *Client) fetchModels(ctx context.Context) (*modelList, error) {
 		return nil, err
 	}
 	url := strings.TrimRight(a.baseURL, "/") + "/models"
+	return llm.Retry(ctx, a, a.fetchModelsOnce, url)
+}
 
-	resp, err := a.transport.Do(ctx, func(ctx context.Context) (*http.Request, error) {
-		httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		if err != nil {
-			return nil, fmt.Errorf("create request: %w", err)
-		}
-		httpReq.Header.Set("Authorization", "Bearer "+a.apiKey)
-		return httpReq, nil
-	}, parseError)
+func (a *Client) fetchModelsOnce(ctx context.Context, url string) (*modelList, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+a.apiKey)
+	resp, err := a.transport.Do(httpReq, parseError)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, parseError(resp)
-	}
 
 	var result modelList
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {

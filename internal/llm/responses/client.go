@@ -19,7 +19,10 @@ import (
 
 var _ Streamer = (*Client)(nil)
 
-type RequestOptions = httpclient.Options
+type RequestOptions struct {
+	httpclient.Options
+	llm.RetryOptions
+}
 
 type Streamer interface {
 	llm.Client
@@ -53,18 +56,21 @@ type Client struct {
 	extraPayload       map[string]any
 	modelExtraPayloads map[string]map[string]any
 	transport          *httpclient.Client
+	retryOptions       llm.RetryOptions
 }
 
 func New(baseURL, apiKey string, extras map[string]any, modelExtras map[string]map[string]any, opts RequestOptions) (*Client, error) {
-	transport, err := httpclient.New(opts)
+	transport, err := httpclient.New(opts.Options)
 	if err != nil {
 		return nil, err
 	}
-	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, extraPayload: extras, modelExtraPayloads: modelExtras, transport: transport}, nil
+	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, extraPayload: extras, modelExtraPayloads: modelExtras, transport: transport, retryOptions: opts.RetryOptions}, nil
 }
 
+func (c *Client) RetryOptions() llm.RetryOptions { return c.retryOptions }
+
 func (c *Client) SetRetryNotifier(f func(context.Context, llm.RetryEvent)) {
-	c.transport.SetRetryNotifier(f)
+	c.retryOptions.OnRetry = f
 }
 
 func (c *Client) validateBaseURL() error {
@@ -222,38 +228,31 @@ func (c *Client) StreamPrepared(ctx context.Context, prepared PreparedRequest) (
 	}
 
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	content, _ := json.Marshal(map[string]any{
-		"endpoint": c.baseURL + "/responses", "model": prepared.model,
-		"input_items": prepared.inputs, "allowed_tools": len(prepared.allowedTools), "request_bytes": len(prepared.body),
-	})
 	record := globalevents.LogRecord{
 		Category:  globalevents.LogRuntime,
 		Level:     slog.LevelDebug,
 		EventName: "responses_request",
 		Module:    "model",
 		Type:      globalevents.ContentJSON,
-		Content:   string(content),
+		Content: fmt.Sprintf(
+    "endpoint=%q model=%q input_items=%d allowed_tools=%d request_bytes=%d",
+    c.baseURL+"/responses", prepared.model,
+    prepared.inputs, len(prepared.allowedTools), len(prepared.body),
+),
 	}
 	record.Identity = globalevents.LogIdentityFromExecution(facts)
 	_ = globalevents.EmitLog(ctx, record)
 
 	callCtx, cancel := context.WithCancel(ctx)
-	resp, err := c.transport.Do(callCtx, func(ctx context.Context) (*http.Request, error) {
-		r, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/responses", bytes.NewReader(prepared.body))
-		if err != nil {
-			return nil, err
-		}
-		r.Header.Set("Authorization", "Bearer "+c.apiKey)
-		r.Header.Set("Content-Type", "application/json")
-		return r, nil
-	}, parseError)
+	r, err := http.NewRequestWithContext(callCtx, http.MethodPost, c.baseURL+"/responses", bytes.NewReader(prepared.body))
 	if err != nil {
 		cancel()
 		return nil, err
 	}
-	if resp.StatusCode != http.StatusOK {
-		err = parseError(resp)
-		_ = resp.Body.Close()
+	r.Header.Set("Authorization", "Bearer "+c.apiKey)
+	r.Header.Set("Content-Type", "application/json")
+	resp, err := c.transport.Do(r, parseError)
+	if err != nil {
 		cancel()
 		return nil, err
 	}
@@ -282,6 +281,7 @@ func (c *Client) GenerateText(ctx context.Context, req llm.TextRequest) (llm.Tex
 	var result *Response
 	for event := range events {
 		if event.Error != nil {
+			// TODO: classify stream failures for retry after stream retry handling is implemented.
 			return llm.TextResult{}, event.Error
 		}
 		if event.Type == "response.completed" {

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"elbot/internal/llm"
 )
 
 type CompactRequest struct {
@@ -56,7 +58,7 @@ func (c *Client) Compact(ctx context.Context, req CompactRequest) (*CompactResul
 	if err != nil {
 		return nil, err
 	}
-	return c.CompactPrepared(ctx, prepared)
+	return llm.Retry(ctx, c, c.CompactPrepared, prepared)
 }
 
 func (c *Client) CompactPrepared(ctx context.Context, prepared PreparedCompactRequest) (*CompactResult, error) {

@@ -41,11 +41,12 @@ func (s *Service) generateTitle(ctx context.Context, messages []storage.Message)
 }
 
 func generate(ctx context.Context, selection modelmgr.Selection, prompt string) (TitleResult, error) {
-	result, err := selection.Client.GenerateText(ctx, llm.TextRequest{
+	request := llm.TextRequest{
 		Model:        selection.Model,
 		Instructions: "你是会话命名助手。请根据对话内容生成一个简短中文标题，只输出标题，不要解释。",
 		Input:        prompt,
-	})
+	}
+	result, err := llm.Retry(ctx, selection.Client, selection.Client.GenerateText, request)
 	return TitleResult{RawTitle: result.Text, Provider: selection.Provider, Model: selection.Model}, err
 }
 

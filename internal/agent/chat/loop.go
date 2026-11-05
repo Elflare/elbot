@@ -2,7 +2,6 @@ package chat
 
 import (
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/session"
 	"elbot/internal/tool"
@@ -143,10 +142,9 @@ type LoopDeps struct {
 		Committer(string) agentshare.MessageCommitter
 	}
 	Calls interface {
-		Begin(string, modelmgr.Selection) agentshare.CallObservation
-		PrepareCall(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingUserMessage, agentshare.MessageCommitter, *events.LogRecord) (agentshare.CallInput, error)
-		NotifyError(context.Context, string, agentshare.LLMResponse, error)
-		CompleteCall(context.Context, *storage.Session, modelmgr.Selection, string, *llm.Usage, []llm.ToolCallRequest, int64) (agentshare.CallOutput, error)
+		Call(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingUserMessage, agentshare.MessageCommitter,
+			func(context.Context, agentshare.CallInput) error,
+			func(context.Context, agentshare.CallObservation) (agentshare.CallOutput, error)) (agentshare.CallOutput, error)
 	}
 	System interface {
 		Build(context.Context, agentshare.SystemPromptRequest) (string, error)

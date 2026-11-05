@@ -226,9 +226,9 @@ Session 唯一管理 current 与 Binding：control 管会话业务及过期，bi
 <!-- locator:llm -->
 ## 模型服务与客户端
 
-modelmgr 管模型选择、厂商客户端、目录及窗口快照；App 负责关闭。httpclient 管传输、代理、重试与 SSE，协议客户端管鉴权、编解码及终态。
+modelmgr 管模型选择、厂商客户端、目录及窗口快照；App 负责关闭。httpclient 管单次传输、代理与 SSE，协议客户端管鉴权、编解码及终态；llm.Retry 统一管理重试预算、等待和重试事件。
 
-只重试可取消的初始交换，断流不重放。命名与摘要固定自己的模型及 fallback；Prepared Hook 不改模型身份。
+对话由 dialogue.Call 包住完整单次模型调用，独立任务由各自入口调用公共 Retry；同一调用链只设一处重试边界，每次清理和归档结束后才能再试。错误源头用 CallError 明确重试资格，普通错误不重试，归档失败终止调用；重试事件沿用业务调用上下文，最终失败通知留在业务入口。当前仅对可恢复网络错误、指定 HTTP 状态及明确旧链恢复重试，断流不重放。旧链恢复与普通失败共用预算。命名与摘要固定自己的模型及 fallback；Prepared Hook 不改模型身份。
 
 <!-- locator:context -->
 ## 上下文与压缩

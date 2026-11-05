@@ -56,9 +56,6 @@ func requestAudit(parameters json.RawMessage, refs []inputReference) (string, er
 // Each actual HTTP attempt gets its own immutable request and terminal facts.
 // Local hooks/inputs are prepared by the caller once, outside recovery retries.
 func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request api.Request, consumed []string, stream delivery.MessageStream, observation agentshare.CallObservation) (result nativeCallResult, err error) {
-	if err := ctx.Err(); err != nil {
-		return result, err
-	}
 	if err := s.route.View.CheckSelection(s.session, s.selection); err != nil {
 		return result, err
 	}
@@ -104,7 +101,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 	// Keep only observed content indices; a sparse upstream index must not
 	// allocate placeholders or turn an otherwise received delta into a failure.
 	parts := map[int]map[int]json.RawMessage{}
-	publish := func() {
+	defer func() {
 		result.Items = outputItems(result.Response, completed)
 		observation.Event().Text, observation.Event().SourceText = outputText(result.Items), outputText(result.Items)
 		observation.Event().OutputReady = len(result.Items) > 0
@@ -123,16 +120,14 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 				observation.Event().ToolCallCount++
 			}
 		}
-		observation.Publish(ctx, err)
-	}
-	defer func() {
 		raw := ""
 		if result.Response != nil {
 			raw = string(result.Response.Raw)
 		}
 		encoded, encodeErr := json.Marshal(result.Items)
 		if encodeErr != nil {
-			err = errors.Join(err, encodeErr)
+			slog.ErrorContext(context.WithoutCancel(ctx), "encode native response", "exchange_id", exchange.ID, "error", encodeErr, "request_error", err)
+			err = fmt.Errorf("encode native response: %w", encodeErr)
 			return
 		}
 		failure := ""
@@ -141,7 +136,8 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		}
 		saveErr := s.route.Repository.FinishExchange(context.WithoutCancel(s.ctx), exchange.ID, status, raw, string(encoded), failure)
 		if saveErr != nil {
-			err = errors.Join(err, fmt.Errorf("save native response: %w", saveErr))
+			slog.ErrorContext(context.WithoutCancel(ctx), "save native response", "exchange_id", exchange.ID, "error", saveErr, "request_error", err)
+			err = fmt.Errorf("save native response: %w", saveErr)
 		} else {
 			exchange.Status, exchange.ResponseJSON, exchange.ItemsJSON, exchange.Error = status, raw, string(encoded), failure
 			result.FactsSaved = true
@@ -162,19 +158,16 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultCanceled, slog.LevelInfo
 			status = "canceled"
-			publish()
-			return result, errors.Join(err, ctx.Err())
+			return result, ctx.Err()
 		}
 		observation.Event().ProviderError, observation.Event().Err = true, err
 		observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultFailed, slog.LevelWarn
-		publish()
 		return result, err
 	}
 	reasoning := s.output.StartReasoning(ctx)
 	if reasoning != nil {
 		defer reasoning.Finish(ctx)
 	}
-	defer publish()
 	for event := range events {
 		if event.Response != nil {
 			result.Response = event.Response
@@ -195,7 +188,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 			if ctx.Err() != nil && errors.Is(event.Error, ctx.Err()) {
 				observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultCanceled, slog.LevelInfo
 				status = "canceled"
-				return result, errors.Join(event.Error, ctx.Err())
+				return result, ctx.Err()
 			}
 			observation.Event().ProviderError, observation.Event().Err = true, event.Error
 			observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultFailed, slog.LevelWarn
