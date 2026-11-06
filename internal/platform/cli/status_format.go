@@ -2,6 +2,8 @@
 
 package cli
 
+// TODO(结构迁移): 终端状态格式化迁入 local/。
+
 import (
 	"elbot/internal/llm"
 	runtimestatus "elbot/internal/runtime"

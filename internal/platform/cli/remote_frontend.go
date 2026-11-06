@@ -1,6 +1,8 @@
 // remote_frontend.go 托管用户提供的静态前端，与远程 CLI 共用 HTTP 服务。
 package cli
 
+// TODO(结构迁移): 静态前端托管迁入 remote/。
+
 import (
 	"fmt"
 	"log/slog"

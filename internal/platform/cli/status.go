@@ -1,6 +1,8 @@
 // status.go 合并运行状态并调度 CLI 状态展示。
 package cli
 
+// TODO(结构迁移): 状态事件协调留根包，终端格式化迁入 local/。
+
 import (
 	"context"
 	"errors"

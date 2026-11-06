@@ -26,7 +26,7 @@ type SupervisorDeps struct {
 		ResolvePlatformMessageAlias(context.Context, string, contextinfo.ChatType, string, string) (string, error)
 		GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
 	}
-	Media *media.MediaCenter // 发送媒体准备所需能力，由 dispatch 的消费接口裁剪。
+	Media *media.MediaCenter // 由 dispatch 和远程 CLI 各自的消费接口裁剪媒体能力。
 }
 
 // AgentCapabilities 按目标 Agent 公开契约接线，不向子包交付完整总管。

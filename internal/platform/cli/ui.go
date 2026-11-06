@@ -2,6 +2,8 @@
 
 package cli
 
+// TODO(结构迁移): 状态订阅与目标协调留根包，呈现/传输能力迁入对应子包。
+
 import (
 	"context"
 	"time"

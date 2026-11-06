@@ -44,7 +44,7 @@ func registrations(frontendDir string) []registration {
 				if !cfgCLI.Enabled || !cfgCLI.Server.Enabled {
 					return nil
 				}
-				adapter, err := cli.NewRemoteServer(cli.RemoteServerOptions{Config: cfgCLI, PlatformName: common.PlatformName, ConfigEnv: common.ConfigEnv, Superadmins: common.Superadmins, FrontendDir: frontendDir})
+				adapter, err := cli.NewRemoteServer(cli.RemoteServerOptions{Config: cfgCLI, PlatformName: common.PlatformName, ConfigEnv: common.ConfigEnv, Superadmins: common.Superadmins, FrontendDir: frontendDir, Media: deps.Media})
 				if err != nil {
 					return err
 				}

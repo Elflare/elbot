@@ -2,6 +2,8 @@
 
 package cli
 
+// TODO(结构迁移): 本地输入上下文构造迁入 local/。
+
 import (
 	"context"
 

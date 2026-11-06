@@ -2,6 +2,8 @@
 
 package cli
 
+// TODO(结构迁移): TUI 复制交互迁入 local/。
+
 import (
 	"sort"
 	"strconv"

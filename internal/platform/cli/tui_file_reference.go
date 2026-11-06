@@ -2,6 +2,8 @@
 
 package cli
 
+// TODO(结构迁移): 本地文件引用处理迁入 local/。
+
 import (
 	"bytes"
 	"context"

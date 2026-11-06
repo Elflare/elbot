@@ -183,7 +183,7 @@ func (s *orderedMediaSender) SendTo(_ context.Context, _ delivery.Target, output
 		if out.Kind != delivery.KindImage && out.Kind != delivery.KindFile && out.Kind != delivery.KindRecord {
 			continue
 		}
-		if out.Source.MediaID != "" || out.Source.URL != "" || len(out.Source.Data) != 0 {
+		if !media.ValidID(out.Source.MediaID) || out.Source.URL != "" || len(out.Source.Data) != 0 {
 			s.t.Fatalf("unresolved source: %#v", out.Source)
 		}
 		data, err := os.ReadFile(out.Source.Path)

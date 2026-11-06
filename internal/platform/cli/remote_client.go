@@ -2,6 +2,8 @@
 
 package cli
 
+// TODO(结构迁移): 远程客户端实现迁入 remote/。
+
 import (
 	"context"
 	"errors"

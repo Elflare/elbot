@@ -2,6 +2,8 @@
 
 package cli
 
+// TODO(结构迁移): TUI 主模型迁入 local/。
+
 import (
 	"context"
 	"log/slog"

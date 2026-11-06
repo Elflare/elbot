@@ -2,8 +2,11 @@
 
 package cli
 
+// TODO(结构迁移): 远程服务端实现迁入 remote/。
+
 import (
 	"context"
+	"crypto/rand"
 	"elbot/internal/platform/share"
 	"fmt"
 	"log/slog"
@@ -23,16 +26,18 @@ import (
 )
 
 type RemoteServerOptions struct {
-	FrontendDir  string // 静态前端目录；为空时不启用托管。
-	PlatformName string // 根部登记的平台名。
+	Media        RemoteMedia // 根部裁剪并注入的附件归档与持有能力。
+	FrontendDir  string      // 静态前端目录；为空时不启用托管。
+	PlatformName string      // 根部登记的平台名。
 	Config       Config
 	ConfigEnv    func(string) (string, bool, error) // 根部绑定配置位置的环境读取能力。
 	Superadmins  *share.Superadmins                 // 根部注入的当前平台超管能力。
 }
 
 type RemoteServer struct {
-	frontendDir string // 用户静态前端目录，启动监听后异步检查。
-	name        string // 根部登记的平台名。
+	media       RemoteMedia // 借用附件能力，不管理 Media 的生命周期。
+	frontendDir string      // 用户静态前端目录，启动监听后异步检查。
+	name        string      // 根部登记的平台名。
 	cfg         Config
 	configEnv   func(string) (string, bool, error)
 	superadmins *share.Superadmins
@@ -53,17 +58,20 @@ type RemoteServer struct {
 	transportCtx                context.Context // 已认证连接保留至最终关闭。
 	workCancel, transportCancel context.CancelFunc
 	stopParent                  func() bool    // 解除上游取消观察。
-	work                        sync.WaitGroup // 已接纳握手、消息、补全及前端初始化。
+	work                        sync.WaitGroup // 已接纳握手、消息、补全、附件请求及前端初始化。
 	transports                  sync.WaitGroup // 持有升级连接的处理协程。
 
-	mu      sync.Mutex
-	clients map[string]map[*remoteClientConn]struct{}
+	mu           sync.Mutex
+	clients      map[string]map[*remoteClientConn]struct{}
+	mediaClients map[string]*remoteClientConn // 临时 HTTP 凭据到已认证连接的索引，由 mu 保护。
 }
 
 type remoteClientConn struct {
-	id     string
-	conn   *websocket.Conn
-	server *RemoteServer
+	mediaToken string                     // 本连接的 HTTP 附件凭据，断连即撤销。
+	files      map[string]*remoteMediaRef // 本连接的附件授权，由 server.mu 保护。
+	id         string
+	conn       *websocket.Conn
+	server     *RemoteServer
 }
 
 func (s *RemoteServer) originalClient(ctx context.Context) (*remoteClientConn, bool) {
@@ -88,13 +96,15 @@ func NewRemoteServer(opts RemoteServerOptions) (*RemoteServer, error) {
 		return nil, fmt.Errorf("cli remote server tokens are not configured")
 	}
 	return &RemoteServer{
-		frontendDir: opts.FrontendDir,
-		name:        opts.PlatformName,
-		cfg:         cfg,
-		configEnv:   opts.ConfigEnv,
-		superadmins: opts.Superadmins,
-		clients:     map[string]map[*remoteClientConn]struct{}{},
-		startDone:   make(chan struct{}), serveDone: make(chan struct{}), done: make(chan struct{}), closeDone: make(chan struct{}),
+		media:        opts.Media,
+		frontendDir:  opts.FrontendDir,
+		name:         opts.PlatformName,
+		cfg:          cfg,
+		configEnv:    opts.ConfigEnv,
+		superadmins:  opts.Superadmins,
+		clients:      map[string]map[*remoteClientConn]struct{}{},
+		mediaClients: map[string]*remoteClientConn{},
+		startDone:    make(chan struct{}), serveDone: make(chan struct{}), done: make(chan struct{}), closeDone: make(chan struct{}),
 	}, nil
 }
 
@@ -140,7 +150,7 @@ func (s *RemoteServer) handleWebSocket(ctx context.Context, handler share.Messag
 		_ = wsjson.Write(ctx, conn, remoteMessage{Type: remoteMsgError, Text: "unauthorized"})
 		return
 	}
-	client := &remoteClientConn{id: clientID, conn: conn, server: s}
+	client := &remoteClientConn{id: clientID, conn: conn, server: s, mediaToken: rand.Text()}
 	if !s.addClient(client) {
 		return
 	}
@@ -148,7 +158,7 @@ func (s *RemoteServer) handleWebSocket(ctx context.Context, handler share.Messag
 	s.work.Done()
 	handshakeDone = true
 	msgCtx := s.messageContext(s.workCtx, client)
-	if err := client.write(ctx, remoteMessage{Type: remoteMsgHelloOK, ClientID: clientID}); err != nil {
+	if err := client.write(ctx, remoteMessage{Type: remoteMsgHelloOK, ClientID: clientID, MediaToken: client.mediaToken}); err != nil {
 		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "cli_control_send_failed", Module: "cli", Content: fmt.Sprintf("client_id=%s operation=%s error=%v", client.id, remoteMsgHelloOK, err), ContentLimit: 4096, Identity: events.LogIdentityFromContext(msgCtx), ResultStatus: events.LogStatus(err)}
 		if record.ResultStatus == events.ResultCanceled {
 			record.Level = slog.LevelInfo
@@ -182,11 +192,22 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler share.Me
 		switch msg.Type {
 		case remoteMsgInput:
 			text := strings.TrimSpace(msg.Text)
-			if text == "" {
+			if text == "" && len(msg.FileIDs) == 0 {
 				return
 			}
+			files, err := s.borrowFiles(ctx, client, msg.FileIDs)
+			if err != nil {
+				s.inputMediaError(ctx, client, msg.ID, err)
+				return
+			}
+			defer s.releaseFiles(ctx, files)
 			input, _ := share.MessageContextFrom(ctx)
 			input.RawText = msg.Text
+			text, input.Segments, err = s.prepareInputFiles(ctx, text, files)
+			if err != nil {
+				s.inputMediaError(ctx, client, msg.ID, err)
+				return
+			}
 			_ = handler(ctx, text, input)
 		case remoteMsgComplete:
 			var items []completion.Item
@@ -216,9 +237,7 @@ func (s *RemoteServer) SendTo(ctx context.Context, target delivery.Target, outpu
 
 		return delivery.Receipt{}, err
 	}
-	msg := outputMessage(remoteMsgChat, delivery.FallbackOutput(outputs))
-	err = s.writeClients(ctx, clients, msg)
-	return delivery.Receipt{}, err
+	return delivery.Receipt{}, s.sendOutputs(ctx, clients, outputs)
 }
 
 func (s *RemoteServer) StartStream(ctx context.Context) (delivery.MessageStream, error) {
@@ -337,20 +356,32 @@ func (s *RemoteServer) addClient(client *remoteClientConn) bool {
 		s.clients[client.id] = map[*remoteClientConn]struct{}{}
 	}
 	s.clients[client.id][client] = struct{}{}
+	client.files = map[string]*remoteMediaRef{}
+	if client.mediaToken != "" {
+		s.mediaClients[client.mediaToken] = client
+	}
 	return true
 }
 
 func (s *RemoteServer) removeClient(client *remoteClientConn) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	conns := s.clients[client.id]
 	if conns == nil {
+		s.mu.Unlock()
 		return
 	}
 	delete(conns, client)
 	if len(conns) == 0 {
 		delete(s.clients, client.id)
 	}
+	delete(s.mediaClients, client.mediaToken)
+	files := make([]*remoteMediaRef, 0, len(client.files))
+	for _, file := range client.files {
+		files = append(files, file)
+	}
+	client.files = nil
+	s.mu.Unlock()
+	s.releaseFiles(context.Background(), files)
 }
 
 func (s *RemoteServer) closeAll() {
@@ -361,9 +392,9 @@ func (s *RemoteServer) closeAll() {
 			clients = append(clients, client)
 		}
 	}
-	s.clients = map[string]map[*remoteClientConn]struct{}{}
 	s.mu.Unlock()
 	for _, client := range clients {
+		s.removeClient(client)
 		_ = client.conn.CloseNow()
 	}
 }

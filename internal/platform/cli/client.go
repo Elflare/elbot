@@ -1,6 +1,8 @@
 // client.go 选择客户端连接并分类运行结果，不启动本地应用。
 package cli
 
+// TODO(结构迁移): 客户端选择留根包装配；远程连接实现迁入 remote/。
+
 import (
 	"context"
 	"errors"

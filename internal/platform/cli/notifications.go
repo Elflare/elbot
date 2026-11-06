@@ -2,6 +2,8 @@
 
 package cli
 
+// TODO(结构迁移): 统一通知订阅留根包，分别调用 local/ 展示与 remote/ 投递。
+
 import (
 	"context"
 	"elbot/internal/events"

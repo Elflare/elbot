@@ -2,6 +2,8 @@
 
 package cli
 
+// TODO(结构迁移): 剪贴板实现迁入 local/。
+
 import (
 	"fmt"
 	"io"

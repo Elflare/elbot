@@ -61,5 +61,5 @@ func (m *Manager) ResolveForOutput(ctx context.Context, id string) (_ delivery.S
 	if err := ctx.Err(); err != nil {
 		return delivery.Source{}, usageID, err
 	}
-	return delivery.Source{Path: path, MIMEType: held.Info().MIMEType}, usageID, nil
+	return delivery.Source{MediaID: id, Path: path, MIMEType: held.Info().MIMEType}, usageID, nil
 }

@@ -1,6 +1,8 @@
 // lifecycle.go 管理本地 CLI 接入与终端资源的分阶段退出。
 package cli
 
+// TODO(结构迁移): 本地终端生命周期迁入 local/。
+
 import (
 	"bufio"
 	"context"

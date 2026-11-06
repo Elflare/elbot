@@ -1,6 +1,8 @@
 // remote_lifecycle.go 将远程 CLI 接入停止与连接最终释放分开。
 package cli
 
+// TODO(结构迁移): 远程服务生命周期迁入 remote/。
+
 import (
 	"context"
 	"errors"
@@ -55,6 +57,9 @@ func (s *RemoteServer) Start(ctx context.Context, handler share.MessageHandler) 
 		return err
 	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /cli/v1/files", s.handleMedia)
+	mux.HandleFunc("GET /cli/v1/files/{id}", s.handleMedia)
+	mux.HandleFunc("DELETE /cli/v1/files/{id}", s.handleMedia)
 	mux.HandleFunc(defaultRemotePath, func(w http.ResponseWriter, req *http.Request) {
 		s.handleWebSocket(s.transportCtx, handler, w, req)
 	})

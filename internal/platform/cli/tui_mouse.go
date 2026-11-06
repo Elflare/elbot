@@ -2,6 +2,8 @@
 
 package cli
 
+// TODO(结构迁移): TUI 鼠标交互迁入 local/。
+
 import tea "github.com/charmbracelet/bubbletea"
 
 func (m tuiModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
