@@ -37,19 +37,21 @@ Tokens are mapped to environment variable names by client_id in `[platform.cli.s
 
 ## Message Format
 
-All messages are in JSON and share the same structure:
+All messages are JSON and share the same structure:
 
 | Field | Type | Description |
 |------|------|------|
-| type | string | Message type, see the table below |
-| id | string | Message ID, used for matching completion requests/responses |
+| type | string | Message type, see table below |
+| id | string | Message ID, used for pairing completion requests/responses |
 | client_id | string | Client identifier |
 | token | string | Authentication token (hello only) |
 | text | string | Text content |
 | level | string | Notification level (notice only) |
 | cursor | int | Cursor position (completion requests only) |
 | items | array | Completion candidates list (completion responses only) |
-| snapshot | object | Runtime status snapshot (status only) |
+| snapshot | object | Runtime state snapshot (status only) |
+| stream_id | uint64 | Logical message stream identifier (stream only), used to associate previews, resets, and submissions of the same message |
+| event | object | Message stream event (stream only), fields see below |
 
 ## Client → Server
 
@@ -73,31 +75,23 @@ The server responds with `complete_result`.
 
 ## Server → Client
 
-### chat — Formal Response
+### chat — Formal Reply
 
 ```json
-{"type": "chat", "text": "你好！有什么可以帮你的？"}
+{"type": "chat", "text": "Hello! How can I help you?"}
 ```
 
-Complete conversation output, including Agent replies, Hook body, and Cron/Elnis background reports. Background reports also enter the chat area.
+An independent, complete dialogue output, including non-streaming delivered body text, Hook outputs, and Cron/Elnis background reports. Background reports also enter the chat area. Body text submitted via the `send` event of `stream` will not be resent as `chat`; the client must handle both types of messages simultaneously.
 
 ### notice — Notification
 
 ```json
-{"type": "notice", "level": "WARN", "text": "模型调用失败，正在重试…"}
+{"type": "notice", "level": "WARN", "text": "Model call failed, retrying..."}
 ```
 
-Plain text notifications, including command return results, as well as runtime prompts such as retries, visual fallbacks, Hook failures, and configuration warnings. Command results use `INFO` and can contain multi-line long text. `level` can be `DEBUG`, `INFO`, `WARN`, or `ERROR`; When omitted, it is handled as `INFO`. Notifications do not carry files, media, or background reports.
+Plain text notifications, including command return results, as well as runtime prompts such as retries, Hook failures, and configuration warnings. Command results use `INFO` and can contain multi-line long text. `level` can be `DEBUG`, `INFO`, `WARN`, or `ERROR`; if omitted, it is treated as `INFO`. Notifications do not carry files, media, or background reports.
 
-Notifications are queued independently by platform and sent sequentially to the same target. A warning is logged when the queue is full; it is not automatically resent; Notifications wait for a maximum of 30 seconds by default. Reply notifications from the original remote connection will not be migrated to a new connection for the same user. Queued tool previews and retry prompts are cancelled along with the request; Failure and timeout prompts that have already occurred are retained based on their source.
-
-### reasoning — Reasoning Process
-
-```json
-{"type": "reasoning", "text": "用户在问天气，我需要调用搜索工具..."}
-```
-
-Reasoning text pushed by models that support reasoning output during the generation process. The frontend can choose to display or hide it. The CLI adds `[thinking] ` before the first valid increment, closes the active display when the call ends normally, fails, or is cancelled, and sends `[/thinking]` followed by a newline; Empty markers are not sent when there are no increments. The display is fixed to the original connection and is not transferred to other connections of the same user. After a background task takes over, only newly generated reasoning increments are displayed; previous content is not replayed.
+Notifications are queued independently by platform and sent sequentially to the same target. When the queue is full, a warning is logged and it is not automatically resent; notifications wait for a maximum of 30 seconds by default. Reply notifications from the original remote connection will not migrate to a new connection for the same user. Queued tool previews and retry prompts are cancelled along with the request; failure and timeout prompts that have already occurred are retained based on their source.
 
 ### status — Runtime Status
 
@@ -135,29 +129,47 @@ A runtime status snapshot, which the frontend can use for status bar display. Th
 | done | Completed |
 | error | Error |
 
-### stream_append — Stream Append
+### stream — Message Stream Events
 
 ```json
-{"type": "stream_append", "text": "你好"}
+{
+  "type": "stream",
+  "stream_id": 1,
+  "event": {"type": "text_delta", "text": "Hello"}
+}
 ```
 
-An incremental piece of text streamed from the LLM. The frontend should append it to the end of the message currently being generated.
+`stream_id` identifies a logical message, not a Session ID or request ID. The client maintains the body and reasoning preview based on this identifier; do not append all increments to a single global buffer. The identifier is only used for message association within the current connection, not as a cursor for recovering history after reconnection.
 
-### stream_replace — Streaming Replace
+`event` field:
+
+| Field | Type | Description |
+|------|------|------|
+| type | string | Event type, see table below |
+| text | string | Body/reasoning increment, or the final complete body for `send`; empty text may be omitted and should be treated as an empty string |
+| actions | array | Optional message actions; element fields are `ID`, `Label`, and `Command`. The frontend can display these as buttons; clicking them submits the `Command` via `input`, which is still subject to server-side permission validation |
+
+| event.type | Client Handling |
+|------------|------------|
+| text_delta | Append `text` to the body preview of the stream |
+| reasoning_delta | Append `text` to the reasoning preview of the stream; the frontend may choose to show or hide this |
+| reasoning_done | End the current reasoning generation and retain the reasoning content received |
+| reset | Delete the current body and reasoning previews for the stream; retries can continue using the same `stream_id` to generate new previews |
+| finish | Generation ends; retain the preview and its stream association, waiting for the final `send` or a `reset` from a subsequent retry |
+| send | **Entirely replace** the body preview with `text` and submit the message, while retaining reasoning content; remove the active stream association. If no preview exists, create a complete message directly |
+
+For example, the final body may be rewritten by a Hook, so the full text in `send` must be used instead of directly fixing the result of incremental concatenation:
 
 ```json
-{"type": "stream_replace", "text": "你好！有什么可以帮你的？"}
+{"type": "stream", "stream_id": 1, "event": {"type": "finish"}}
+{"type": "stream", "stream_id": 1, "event": {"type": "send", "text": "Hello! How can I help you?"}}
 ```
 
-After streaming ends, replace the previously accumulated streaming content with the final complete text. This may differ from the result of streaming concatenation (Hooks may have modified the output).
+An empty body in `send` must also overwrite the original preview and cannot be ignored; if both body and reasoning are empty, the message can be removed. `finish` is not equivalent to a formal submission; the stream association should not be removed upon receiving it, nor should it be required that increments or `finish` precede every `send`.
 
-### stream_finish — Streaming Finish
+Reasoning content consists of raw increments and does not include `[thinking]` / `[/thinking]` text markers; the display style is determined by the frontend. Message streams are delivered exclusively to the original connection and do not migrate to a new connection for the same user; once a background task takes over, only newly generated content is displayed, and reasoning increments from before the takeover are not replayed.
 
-```json
-{"type": "stream_finish"}
-```
-
-Marks that the current streaming message has ended; the frontend can now pin this message.
+Additional content is delivered separately by the Agent output layer and is not transmitted as `stream` events for the remote CLI.
 
 ### complete_result — Completion Result
 
@@ -220,17 +232,20 @@ my-client = ["ELBOT_CLI_TOKEN"]
 ## Typical Interaction Flow
 
 ```
-客户端                              服务端
+Client                               Server
   │                                   │
   │──── hello ──────────────────────▶│
   │◀─── hello_ok ────────────────────│
   │                                   │
-  │──── input("/model gpt-4o") ─────▶│
+  │──── input("Hello") ───────────────▶│
   │◀─── status(preparing) ───────────│
   │◀─── status(llm) ─────────────────│
-  │◀─── stream_append("已切换") ──────│
-  │◀─── stream_replace("已切换模型") ─│
-  │◀─── stream_finish ────────────────│
+  │◀─── stream(1, reasoning_delta) ──│
+  │◀─── stream(1, reasoning_done) ───│
+  │◀─── stream(1, text_delta) ───────│
+  │◀─── stream(1, finish) ───────────│
+  │◀─── status(sending) ─────────────│
+  │◀─── stream(1, send) ─────────────│
   │◀─── status(done) ────────────────│
   │                                   │
   │──── complete("/mod", cursor=4) ──▶│
@@ -238,9 +253,65 @@ my-client = ["ELBOT_CLI_TOKEN"]
   │                                   │
 ```
 
+The `stream(1, ...)` in the diagram represents `stream_id=1` and the corresponding `event.type`, not actual JSON. Reasoning events are optional, and status updates may be merged; after a generation failure, a `reset` may be received followed by regeneration; do not rely on the complete sequence above occurring every time. Results of commands such as model switching are returned via `notice` and do not require LLM streaming generation.
+
 ## Minimal Client Example
 
+The following code can be run in a browser page; it uses `textContent` to display content to avoid treating model output as HTML. The example handles body text and reasoning, retry resets, and final submissions; buttons and status bars can be extended as needed.
+
 ```javascript
+const output = document.createElement("pre");
+document.body.append(output);
+const messages = [];
+const streams = new Map();
+const render = () => {
+  output.textContent = messages.map((m) =>
+    (m.reasoning ? "[Thinking] " + m.reasoning + "\n" : "") + m.text
+  ).join("\n\n");
+};
+const removeMessage = (message) => {
+  const index = messages.indexOf(message);
+  if (index !== -1) messages.splice(index, 1);
+};
+
+function handleStream({ stream_id: id, event }) {
+  if (!event) return;
+  const text = event.text ?? "";
+  switch (event.type) {
+    case "reasoning_done":
+    case "finish":
+      // Only end generation; preserve preview and stream association, waiting for send or reset.
+      return;
+    case "reset": {
+      const message = streams.get(id);
+      if (message) removeMessage(message);
+      streams.delete(id);
+      render();
+      return;
+    }
+    case "text_delta":
+    case "reasoning_delta":
+    case "send":
+      break;
+    default:
+      return;
+  }
+  let message = streams.get(id);
+  if (!message) {
+    message = { text: "", reasoning: "" };
+    streams.set(id, message);
+    messages.push(message);
+  }
+  if (event.type === "text_delta") message.text += text;
+  if (event.type === "reasoning_delta") message.reasoning += text;
+  if (event.type === "send") {
+    message.text = text; // Replace the entire body even if empty; do not append another message.
+    streams.delete(id);
+    if (!message.text && !message.reasoning) removeMessage(message);
+  }
+  render();
+}
+
 const ws = new WebSocket("ws://127.0.0.1:32172/cli/v1/ws");
 
 ws.onopen = () => {
@@ -255,18 +326,21 @@ ws.onmessage = (e) => {
   const msg = JSON.parse(e.data);
   switch (msg.type) {
     case "hello_ok":
-      // 鉴权成功，发送一条消息
-      ws.send(JSON.stringify({ type: "input", text: "你好" }));
+      // Authentication successful, send a message
+      ws.send(JSON.stringify({ type: "input", text: "Hello" }));
       break;
     case "chat":
-    case "stream_append":
-      console.log(msg.text);
+      messages.push({ text: msg.text ?? "", reasoning: "" });
+      render();
       break;
-    case "stream_replace":
-      console.log("\n[最终] " + msg.text);
+    case "stream":
+      handleStream(msg);
       break;
-    case "stream_finish":
-      console.log("\n--- 完成 ---");
+    case "notice":
+      console.log(`[${msg.level ?? "INFO"}] ${msg.text ?? ""}`);
+      break;
+    case "status":
+      console.log("status:", msg.snapshot);
       break;
     case "error":
       console.error("error: " + msg.text);
