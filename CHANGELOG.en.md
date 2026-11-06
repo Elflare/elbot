@@ -16,18 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Manually guided AI to refactor the App to the business layer package-by-package, file-by-file, function-by-function, and field-by-field, further tightening boundaries, clarifying responsibilities, and streamlining code.
-- Breaking change: Resident memory has been changed to TOML tables layered by platform and user ID. Old files will be automatically backed up and migrated upon the first read; compatibility code for migration will be removed after two minor version increments following the introduction version.
-- Breaking change: Updated the hook protocol.
-- Breaking change: Special fallback handling for models that do not support vision is no longer provided.
-- Streamlined user prompt and tool schema information.
-- Optimized log and audit display.
-- Modified ID formats in several locations.
-- Hook native emoji output now uniformly uses the required `name`; `text` is no longer involved in emoji construction or fallback. Plain text display is unified as `[Emoji: Name]`.
-- Hook event output snapshot delivery information has been changed from the `Meta` object to the `Delivery` object, containing `Timing`, `HookPoint`, `HookName`, and `HookMode`; the derived field `AltText` has been removed.
-- Active requests in `/status` no longer repeatedly display Session titles; this information is still retained when using `/requests` directly.
+- Manually guided the AI to refactor the App to the business layer package-by-package, file-by-file, function-by-function, and field-by-field, further tightening boundaries, clarifying responsibilities, and streamlining code.
+- Breaking Change: Resident memory has been changed to TOML tables layered by platform and user ID. Old files will be automatically backed up and migrated upon the first read; compatibility code for migration will be removed after two minor version increments following the introduction version.
+- Breaking Change: Changed the hook protocol.
+- Breaking Change: No longer performing specific fallback handling for models that do not support vision.
+- Streamlined user prompt information and tool schema information.
+- Optimized log and audit log display.
+- Modified ID formats in multiple places.
+- Hook native emoji output now uniformly uses the required `name`; `text` is no longer used for emoji construction or fallback. Plain text display is unified as `[Emoji: Name]`.
+- Delivery information for Hook event output snapshots has been changed from the `Meta` object to the `Delivery` object, containing `Timing`, `HookPoint`, `HookName`, and `HookMode`; removed the derived field `AltText`.
+- Active requests in `/status` no longer repeatedly display the Session title; this information is still retained when using `/requests` directly.
 - Modified the Elwisp protocol to uniformly use `platform`, `api`, and `params` to describe platform native API calls.
-- The `send_file` tool is now available for ordinary users, limited to media IDs and URLs.
+- The `send_file` tool is now available to ordinary users, limited to media IDs and URLs.
+- Optimized retry logic.
 
 ### Fixed
 
