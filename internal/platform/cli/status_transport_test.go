@@ -51,9 +51,7 @@ func TestStatusInFlightWriteKeepsRemoteConnection(t *testing.T) {
 				Conversation: &contextinfo.Conversation{PlatformData: messageData{client: clients[0]}},
 				Snapshot:     runtimestatus.Snapshot{SessionID: "old", Provider: strings.Repeat("x", 16<<20)},
 			}
-			if err := d.receive(event); err != nil {
-				t.Fatal(err)
-			}
+			d.receive(event)
 			sending := <-entered
 			select {
 			case err := <-finished:
@@ -63,13 +61,9 @@ func TestStatusInFlightWriteKeepsRemoteConnection(t *testing.T) {
 			if closing {
 				d.BeginClose()
 			} else {
-				if err := d.forget(BindingChangedEvent{Version: 2, Old: old, New: next}); err != nil {
-					t.Fatal(err)
-				}
+				d.forget(BindingChangedEvent{Version: 2, Old: old, New: next})
 				event.Binding, event.Snapshot = next, runtimestatus.Snapshot{SessionID: "new", Phase: runtimestatus.PhaseDone}
-				if err := d.receive(event); err != nil {
-					t.Fatal(err)
-				}
+				d.receive(event)
 			}
 			if sending.Err() != nil {
 				t.Fatal("in-flight transport was canceled", sending.Err())

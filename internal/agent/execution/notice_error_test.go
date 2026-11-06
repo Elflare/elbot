@@ -78,11 +78,11 @@ func TestWorkflowNoticeFailureIsLoggedAndHandled(t *testing.T) {
 				})
 				defer c.Close(context.Background())
 				logs := make(chan events.LogRecord, 1)
-				connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+				connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 					if record.EventName == tc.event {
 						logs <- record
 					}
-					return nil
+
 				}, signal.ConnectOptions{})
 				if err != nil {
 					t.Fatal(err)

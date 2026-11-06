@@ -16,7 +16,7 @@ import (
 
 func TestStatusRetirementRejectsLatePublicationAndIdleCacheRecreation(t *testing.T) {
 	turns := turn.NewSupervisor(testutil.IDSequence())
-	changed := signal.NewAsync[StatusChangedEvent]("retirement")
+	changed := signal.New[StatusChangedEvent, signal.Empty]("retirement")
 	defer changed.Close(context.Background())
 	r := NewStatusRecorder(StatusRecorderDeps{View: dialogue.ExecutionView{}, Turns: turns, Changed: changed})
 	e := turn.NewExecution("old")
@@ -66,14 +66,14 @@ func TestStatusRetirementRejectsLatePublicationAndIdleCacheRecreation(t *testing
 
 func TestStatusRetirementDoesNotWaitForDisplayCallback(t *testing.T) {
 	turns := turn.NewSupervisor(testutil.IDSequence())
-	changed := signal.NewAsync[StatusChangedEvent]("retirement-blocked")
+	changed := signal.New[StatusChangedEvent, signal.Empty]("retirement-blocked")
 	defer changed.Close(context.Background())
 	r := NewStatusRecorder(StatusRecorderDeps{View: dialogue.ExecutionView{}, Turns: turns, Changed: changed})
 	e := turn.NewExecution("old")
 	ctx := turn.WithAttempt(turn.WithExecution(t.Context(), e), "attempt")
 	turns.StartAttempt("s", turn.Input{}, e, "attempt")
 	started, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	_, err := changed.Observe(func(context.Context, StatusChangedEvent) error { close(started); <-release; return nil }, signal.ConnectOptions{})
+	_, err := changed.Observe(func(context.Context, StatusChangedEvent) { close(started); <-release }, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

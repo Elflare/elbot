@@ -29,9 +29,9 @@ func connectTestNotifications(t *testing.T, router *dispatch.Router) *notificati
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.Observe(func(ctx context.Context, n events.Notification) error {
-		_, err := router.SendTo(ctx, delivery.Target{Platform: n.Target.Platform, ChatID: n.Target.ID, ChatType: n.Target.ChatType}, []delivery.Output{delivery.Text(n.Text)})
-		return err
+	_, err = s.Observe(func(ctx context.Context, n events.Notification) {
+		_, _ = router.SendTo(ctx, delivery.Target{Platform: n.Target.Platform, ChatID: n.Target.ID, ChatType: n.Target.ChatType}, []delivery.Output{delivery.Text(n.Text)})
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

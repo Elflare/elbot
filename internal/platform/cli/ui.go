@@ -34,8 +34,8 @@ func (d messageData) setRuntimeStatus(ctx context.Context, snapshot runtimestatu
 
 // AgentEvents exposes only the fact subscriptions consumed by CLI presentation.
 type AgentEvents interface {
-	ObserveStatusChanged(func(StatusChangedEvent) error, signal.ConnectOptions) (*signal.Connection, error)
-	ObserveBindingChanged(func(BindingChangedEvent) error, signal.ConnectOptions) (*signal.Connection, error)
+	ObserveStatusChanged(func(StatusChangedEvent), signal.ConnectOptions) (*signal.Connection, error)
+	ObserveBindingChanged(func(BindingChangedEvent), signal.ConnectOptions) (*signal.Connection, error)
 }
 
 // UI owns CLI state subscriptions and their asynchronous display worker.

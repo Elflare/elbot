@@ -70,11 +70,11 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 				return ctx, nil
 			}}
 			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 				if record.Module == "toolrun" && record.EventName == "tool_call_completed" {
 					records = append(records, record)
 				}
-				return nil
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -231,11 +231,11 @@ func TestRunnerRecordsInvocationBeforeCancellationStopsLaterOperations(t *testin
 	}
 	manager := newTestManager(registry, security.NewPermission("high", "high", nil))
 	var calls []events.LogRecord
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if record.EventName == "tool_call_completed" && record.Category == events.LogAudit {
 			calls = append(calls, record)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -251,11 +251,11 @@ func TestRunnerRecordsInvocationBeforeCancellationStopsLaterOperations(t *testin
 func TestRunnerRecordsUnenteredCallFailure(t *testing.T) {
 	manager := newTestManager(toolregistry.NewRegistry(security.DefaultPermission()), security.DefaultPermission())
 	var calls []events.LogRecord
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if record.EventName == "tool_call_completed" && record.Category == events.LogAudit {
 			calls = append(calls, record)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -306,11 +306,11 @@ func TestRunnerBatchFailureDoesNotInventToolCompletions(t *testing.T) {
 	manager := newTestManager(toolregistry.NewRegistry(security.DefaultPermission()), security.NewPermission("high", "high", nil))
 	committer := &loggingCommitter{beginErr: errors.New("batch save failed")}
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) {
 		if r.Module == "toolrun" {
 			records = append(records, r)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -350,11 +350,11 @@ func TestRunnerUsesSourceSaveResult(t *testing.T) {
 			deps := &loggingDeps{}
 			committer := &loggingCommitter{err: tc.err}
 			var saves []events.LogRecord
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 				if record.Module == "toolrun" && record.EventName == "tool_transcript_save" {
 					saves = append(saves, record)
 				}
-				return nil
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -401,9 +401,9 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 			deps := &loggingDeps{runnerTestDeps: runnerTestDeps{reject: tc.reject}, confirmErr: tc.confirmErr, startErr: tc.startErr}
 			var calls []events.LogRecord
 			operations := map[string]events.LogRecord{}
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) {
 				if r.Module != "toolrun" || r.Identity.SessionID != "session-log" {
-					return nil
+					return
 				}
 				if r.EventName == "tool_call_completed" && r.Category == events.LogAudit {
 					if committer.finished {
@@ -413,7 +413,7 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 				} else if r.EventName != "tool_call_completed" {
 					operations[r.EventName] = r
 				}
-				return nil
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)

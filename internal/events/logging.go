@@ -151,22 +151,15 @@ type LogRecord struct {
 // through Log or AsyncLog. There is no replay.
 var LogSubmitted = signal.New[LogRecord, signal.Empty]("log.submitted")
 
-// Log publishes synchronously. Logging failures never change the business result.
+// Log waits for logging consumers to accept the record. Consumers own write failures.
 func Log(ctx context.Context, record LogRecord) {
-	emission, err := LogSubmitted.EmitAsync(context.WithoutCancel(ctx), record)
+	_, err := LogSubmitted.Emit(context.WithoutCancel(ctx), record)
 	if err != nil && !errors.Is(err, signal.ErrClosed) {
 		signal.ReportDiagnostic("log signal admission failed", slog.Any("error", err))
-	}
-	// Wait for completion; consumers diagnose their own failures.
-	if emission != nil {
-		_, _ = emission.Wait(context.Background())
 	}
 }
 
-// AsyncLog publishes without waiting for consumers.
+// AsyncLog submits without waiting for consumers.
 func AsyncLog(ctx context.Context, record LogRecord) {
-	_, err := LogSubmitted.EmitAsync(context.WithoutCancel(ctx), record)
-	if err != nil && !errors.Is(err, signal.ErrClosed) {
-		signal.ReportDiagnostic("log signal admission failed", slog.Any("error", err))
-	}
+	LogSubmitted.EmitAsync(context.WithoutCancel(ctx), record)
 }

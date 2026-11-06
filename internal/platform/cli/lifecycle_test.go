@@ -177,7 +177,7 @@ func TestLocalRegularFileAndStartFailure(t *testing.T) {
 		if err := a.Start(t.Context(), nil); !errors.Is(err, os.ErrClosed) {
 			t.Fatal(err)
 		}
-		if err := a.Wait(t.Context()); !errors.Is(err, os.ErrClosed) {
+		if err := a.Wait(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 	})

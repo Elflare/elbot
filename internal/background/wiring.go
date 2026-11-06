@@ -255,13 +255,13 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 
 	// App 在全部构造完成后启动 Platform；此时已订阅，避免漏掉启动时的连接通知。
 	// Service.Start 前按平台缓存通知，根部完成前置启动后才放行消费。
-	connection, err = globalevents.PlatformConnected.Observe(func(ctx context.Context, event globalevents.PlatformConnectedEvent) error {
+	connection, err = globalevents.PlatformConnected.Observe(func(ctx context.Context, event globalevents.PlatformConnectedEvent) {
 		if err := m.cron.EnqueuePlatformConnected(ctx, event.Platform); err != nil {
 			globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn,
 				EventName: "cron_platform_admission_failed", Module: "cron", Content: err.Error(),
 				Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		return m, fmt.Errorf("observe platform connections: %w", err)

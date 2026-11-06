@@ -100,11 +100,11 @@ func TestShutdownStepsPreservesOrderAndErrors(t *testing.T) {
 		{name: "ordinary failures", errors: []error{first, nil, last}, kind: stopCompleted},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-				records = append(records, record)
-				return nil
-			}, signal.ConnectOptions{})
+			records := make(chan events.LogRecord, 3)
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
+				records <- record
+
+			}, signal.ConnectOptions{Shutdown: signal.Drain})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -118,6 +118,9 @@ func TestShutdownStepsPreservesOrderAndErrors(t *testing.T) {
 				}})
 			}
 			result := runShutdownSteps(t.Context(), steps)
+			if err := connection.Close(t.Context()); err != nil {
+				t.Fatal(err)
+			}
 			if result.kind != tt.kind || !slices.Equal(order, []int{0, 1, 2}) {
 				t.Fatalf("result=%+v order=%v", result, order)
 			}
@@ -131,9 +134,12 @@ func TestShutdownStepsPreservesOrderAndErrors(t *testing.T) {
 				}
 			}
 			var got []string
-			for _, record := range records {
+			close(records)
+			for record := range records {
 				got = append(got, record.Content)
 			}
+			slices.Sort(got)
+			slices.Sort(want)
 			if !slices.Equal(got, want) {
 				t.Fatalf("logs=%v want=%v", got, want)
 			}
@@ -172,6 +178,29 @@ func TestShutdownStepsSharesDeadlineAndStopsDependencies(t *testing.T) {
 		}
 		requireLifecycleError(t, result.err, componentTool, phaseClose)
 	})
+}
+
+func TestShutdownReportingDoesNotWaitForBlockedLogConsumer(t *testing.T) {
+	release := make(chan struct{})
+	connection, err := events.LogSubmitted.Observe(func(context.Context, events.LogRecord) { <-release }, signal.ConnectOptions{Shutdown: signal.Drain})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { close(release); _ = connection.Close(context.Background()) }()
+	done := make(chan stopResult, 1)
+	go func() {
+		done <- runShutdownSteps(t.Context(), []shutdownStep{
+			{component: componentMedia, phase: phaseClose, close: func(context.Context) error { return errors.New("cleanup failed") }},
+		})
+	}()
+	select {
+	case result := <-done:
+		if result.kind != stopCompleted || result.err != nil {
+			t.Fatal(result)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("shutdown waited for log consumer")
+	}
 }
 
 type failingResourceStore struct {

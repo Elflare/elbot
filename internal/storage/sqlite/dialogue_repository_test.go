@@ -355,12 +355,12 @@ func TestDialogueStorageFaultLoggingCannotReplaceBusinessError(t *testing.T) {
 	}
 	fault := errors.New("log rejected")
 	var records []events.LogRecord
-	c, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
+	c, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) {
 		if r.Module == "storage" {
 			records = append(records, r)
-			return fault
+			return
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

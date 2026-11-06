@@ -126,7 +126,7 @@ func runShutdownSteps(ctx context.Context, steps []shutdownStep) stopResult {
 			if step.component == componentLogs || step.component == componentConfigLock {
 				signal.ReportDiagnostic("shutdown step failed", slog.Any("error", result.err))
 			} else {
-				events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError,
+				events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError,
 					EventName: "shutdown_step_failed", Module: "app", Content: result.err.Error(),
 					ResultStatus: events.LogStatus(result.err)})
 			}

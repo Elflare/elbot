@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"elbot/internal/events"
+	"elbot/internal/session"
 	"elbot/internal/signal"
 )
 
@@ -18,8 +19,11 @@ func ValidateNotificationTarget(target events.NotificationTarget) error {
 }
 
 func (a *Adapter) ConnectNotifications(source *signal.Signal[events.Notification, signal.Empty]) (*signal.Connection, error) {
-	return source.Observe(func(ctx context.Context, n events.Notification) error {
+	return source.Observe(func(ctx context.Context, n events.Notification) {
+		if binding, ok := session.BindingFromContext(ctx); ok && !binding.Valid() {
+			return
+		}
 		events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: n.Level, EventName: "runtime_notification", Module: "notification", Content: n.Text, ContentLimit: 4096})
-		return nil
+
 	}, signal.ConnectOptions{})
 }

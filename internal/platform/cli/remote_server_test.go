@@ -53,9 +53,9 @@ func TestRemoteControlFailurePreservesOperationAndIdentity(t *testing.T) {
 				}
 			}
 			logs := make(chan events.LogRecord, 2)
-			logging, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+			logging, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 				logs <- record
-				return nil
+
 			}, signal.ConnectOptions{Shutdown: signal.Drain})
 			if err != nil {
 				t.Fatal(err)
@@ -222,11 +222,11 @@ func TestRemoteReplySnapshotKeepsOriginalConnection(t *testing.T) {
 	}
 	read(two, "second-barrier") // Status did not leak to the same user's other connection.
 	logs := make(chan events.LogRecord, 4)
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) {
 		if r.EventName == "chat_output_failed" || r.EventName == "notification_send_failed" {
 			logs <- r
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

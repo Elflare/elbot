@@ -383,11 +383,11 @@ func TestManagerOmitsInapplicableLogFields(t *testing.T) {
 	manager := newTestManager()
 
 	var records []globalevents.LogRecord
-	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, r globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, r globalevents.LogRecord) {
 		if r.EventName == "hook_triggered" {
 			records = append(records, r)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -562,13 +562,16 @@ func TestMarkHookOutputsPreservesExistingSource(t *testing.T) {
 // captureLogs observes the public signal; production never receives this logger.
 func captureLogs(t *testing.T, logger *slog.Logger) func() {
 	t.Helper()
-	connection, err := globalevents.LogSubmitted.Observe(func(ctx context.Context, record globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(ctx context.Context, record globalevents.LogRecord) {
 		if !logger.Enabled(ctx, record.Level) {
-			return nil
+			return
 		}
 		out := slog.NewRecord(time.Now(), record.Level, record.Content, 0)
 		out.AddAttrs(slog.String("event", record.EventName), slog.String("module", record.Module), slog.String("result_status", record.ResultStatus.String()))
-		return logger.Handler().Handle(ctx, out)
+		if err := logger.Handler().Handle(ctx, out); err != nil {
+			t.Error(err)
+		}
+
 	}, signal.ConnectOptions{Shutdown: signal.Drain})
 	if err != nil {
 		t.Fatal(err)

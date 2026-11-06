@@ -49,11 +49,11 @@ func TestCleanupDeletesRemoteThenLocalAndRetries(t *testing.T) {
 	local.remove = func(context.Context, string) error { calls = append(calls, "local"); return nil }
 	m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
 	logs := make(chan events.LogRecord, 8)
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) {
 		if r.Module == "media" && strings.Contains(r.Content, item.ID) {
 			logs <- r
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

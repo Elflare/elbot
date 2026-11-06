@@ -3,13 +3,11 @@ package execution
 import (
 	"context"
 	agentshare "elbot/internal/agent/share"
-	"log/slog"
 	"sync"
 	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
@@ -29,7 +27,7 @@ type StatusRecorder struct {
 	turns     interface {
 		Snapshot(string) turn.Snapshot
 	}
-	changed *signal.Async[StatusChangedEvent]
+	changed *signal.Signal[StatusChangedEvent, signal.Empty]
 	view    interface {
 		Context(context.Context) context.Context
 	}
@@ -98,11 +96,7 @@ func (r *StatusRecorder) record(ctx context.Context, snapshot runtimestatus.Snap
 	}
 	// This snapshot is committed. Publish it even when the request just ended.
 	if r.changed != nil {
-		if err := r.changed.Publish(context.WithoutCancel(ctx), event); err != nil {
-			events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn,
-				EventName: "status_publish_failed", Module: "agent", Content: err.Error(),
-				Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
-		}
+		r.changed.EmitAsync(context.WithoutCancel(ctx), event)
 	}
 }
 
@@ -193,7 +187,7 @@ type StatusRecorderDeps struct {
 	Turns interface {
 		Snapshot(string) turn.Snapshot
 	}
-	Changed *signal.Async[StatusChangedEvent]
+	Changed *signal.Signal[StatusChangedEvent, signal.Empty]
 }
 
 // NewStatusRecorder initializes StatusRecorder without installing cross-service callbacks.

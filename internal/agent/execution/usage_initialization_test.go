@@ -91,13 +91,13 @@ func TestExecutionRestoresUsageBeforeCancellationAndCleansUpFailure(t *testing.T
 				requests.Manager = request.NewManager(func(context.Context) (int64, error) { return 0, errors.New("reserve failed") })
 			}
 			view := dialogue.ExecutionView{Sessions: store.Sessions()}
-			changed := signal.NewAsync[StatusChangedEvent]("usage-initialization")
+			changed := signal.New[StatusChangedEvent, signal.Empty]("usage-initialization")
 			defer changed.Close(context.Background())
 			recorder := NewStatusRecorder(StatusRecorderDeps{View: view, Turns: turns, Changed: changed})
 			var stopping chan struct{}
 			if tc.cancel {
 				stopping = make(chan struct{})
-				_, err := changed.Observe(func(_ context.Context, event StatusChangedEvent) error {
+				_, err := changed.Observe(func(_ context.Context, event StatusChangedEvent) {
 					if event.Snapshot.Phase == runtimestatus.PhaseStopping {
 						usage := event.Snapshot.Usage
 						if usage == nil || usage.TotalTokens == nil || *usage.TotalTokens != 42 {
@@ -105,7 +105,7 @@ func TestExecutionRestoresUsageBeforeCancellationAndCleansUpFailure(t *testing.T
 						}
 						close(stopping)
 					}
-					return nil
+
 				}, signal.ConnectOptions{})
 				if err != nil {
 					t.Fatal(err)

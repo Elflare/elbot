@@ -13,7 +13,6 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
-	"elbot/internal/session"
 	"elbot/internal/signal"
 )
 
@@ -52,19 +51,14 @@ func (m *Manager) AddPlatform(name string, validate func(events.NotificationTarg
 	if _, ok := m.platforms[name]; ok {
 		return nil, fmt.Errorf("notification platform %q already registered", name)
 	}
-	s := signal.New[events.Notification, signal.Empty]("notification."+name, signal.Options[events.Notification]{Required: true, Single: true, Key: func(n events.Notification) any { return n.Target }, Before: func(ctx context.Context, _ events.Notification) error {
-		if binding, ok := session.BindingFromContext(ctx); ok && !binding.Valid() {
-			return context.Canceled
-		}
-		return nil
-	}})
+	s := signal.New[events.Notification, signal.Empty]("notification."+name, signal.Options[events.Notification]{Required: true, Single: true, Key: func(n events.Notification) any { return n.Target }})
 	m.platforms[name] = platformRoute{queue: s, validate: validate}
 	return s, nil
 }
-func (m *Manager) route(ctx context.Context, n events.Notification) *signal.Emission[signal.Empty] {
-	reject := func(err error) *signal.Emission[signal.Empty] {
+func (m *Manager) route(ctx context.Context, n events.Notification) (context.Context, *signal.Signal[events.Notification, signal.Empty], events.Notification) {
+	reject := func(err error) (context.Context, *signal.Signal[events.Notification, signal.Empty], events.Notification) {
 		m.log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_rejected", Module: "notification", Content: fmt.Sprintf("platform=%s chat_type=%s id=%s error=%v", n.Target.Platform, n.Target.ChatType, n.Target.ID, err), ContentLimit: 4096, Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.ResultFailed})
-		return signal.Resolved(signal.Result[signal.Empty]{})
+		return ctx, nil, n
 	}
 	if strings.TrimSpace(n.Text) == "" {
 		return reject(errors.New("notification text is empty"))
@@ -83,7 +77,7 @@ func (m *Manager) route(ctx context.Context, n events.Notification) *signal.Emis
 	closed := m.closed
 	m.mu.Unlock()
 	if closed {
-		return signal.Resolved(signal.Result[signal.Empty]{})
+		return ctx, nil, n
 	}
 	if !ok {
 		return reject(fmt.Errorf("notification platform %q is not configured", n.Target.Platform))
@@ -91,20 +85,7 @@ func (m *Manager) route(ctx context.Context, n events.Notification) *signal.Emis
 	if err := route.validate(n.Target); err != nil {
 		return reject(err)
 	}
-	e, err := route.queue.EmitAsync(ctx, n)
-	if errors.Is(err, signal.ErrQueueFull) {
-		// Logging has its own bounded signal and category queues. Do not wait for
-		// the logger here: a congested platform must not monopolize routing.
-		m.log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_queue_full", Module: "notification", Type: events.ContentText, Content: fmt.Sprintf("notification queue full: platform=%s chat_type=%s id=%s", n.Target.Platform, n.Target.ChatType, n.Target.ID), ContentLimit: 4096, Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.ResultFailed})
-		return signal.Resolved(signal.Result[signal.Empty]{})
-	}
-	if err != nil {
-		if ctx.Err() != nil || errors.Is(err, signal.ErrClosed) {
-			return signal.Resolved(signal.Result[signal.Empty]{})
-		}
-		return reject(err)
-	}
-	return e
+	return ctx, route.queue, n
 }
 func (m *Manager) BeginClose() {
 	m.mu.Lock()

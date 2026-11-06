@@ -75,6 +75,9 @@ func (m *Manager) Close(ctx context.Context) error {
 	if m.closed {
 		return nil
 	}
+	if err := m.connection.Close(ctx); err != nil {
+		return err
+	}
 	for _, category := range logCategories {
 		if err := m.sinks[category].queue.Close(ctx); err != nil {
 			return err

@@ -4,7 +4,6 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/testutil"
-	"errors"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -53,7 +52,7 @@ func TestSessionRetirementWaitsForStoppingRequestAndIgnoresObserverFailure(t *te
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = m.sessions.ObserveBindingChanged(func(context.Context, session.BindingChangedEvent) error { return errors.New("display failed") }, signal.ConnectOptions{})
+		_, err = m.sessions.ObserveBindingChanged(func(context.Context, session.BindingChangedEvent) {}, signal.ConnectOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -53,7 +53,7 @@ func TestAssistantSendFailureReturnsWithoutLowerReport(t *testing.T) {
 	want := errors.New("send failed")
 	f.platform.sendErr = want
 	counts := map[string]int{}
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if record.Module == "delivery" {
 			counts["delivery"]++
 			if record.ResultStatus != events.ResultFailed {
@@ -66,7 +66,7 @@ func TestAssistantSendFailureReturnsWithoutLowerReport(t *testing.T) {
 				t.Errorf("duplicate failure log: %s", record.EventName)
 			}
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -104,11 +104,11 @@ func TestSendOutputsRecordsReceiptsAndReturnsFailure(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 				if record.EventName == "reply_delivered" && readDeliveryLog(t, record).Operation == "send_outputs" {
 					records = append(records, record)
 				}
-				return nil
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -163,14 +163,14 @@ func TestReplyCommitReportsSendFailureSeparatelyFromReceipts(t *testing.T) {
 				fixture.platform.sendErr = sendErr
 				var records []events.LogRecord
 				failures := make(chan events.LogRecord, 1)
-				connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+				connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 					if record.EventName == "reply_delivered" {
 						records = append(records, record)
 					}
 					if record.EventName == "reply_send_failed" {
 						failures <- record
 					}
-					return nil
+
 				}, signal.ConnectOptions{})
 				if err != nil {
 					t.Fatal(err)

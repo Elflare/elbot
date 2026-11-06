@@ -20,9 +20,9 @@ type retryClient struct {
 
 func TestRetryNotificationOwnedByModelManager(t *testing.T) {
 	notices := make(chan events.Notification, 2)
-	connection, err := events.NotificationRequested.Observe(func(_ context.Context, n events.Notification) error {
+	connection, err := events.NotificationRequested.Observe(func(_ context.Context, n events.Notification) {
 		notices <- n
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -32,9 +32,7 @@ func TestRetryNotificationOwnedByModelManager(t *testing.T) {
 	t.Cleanup(func() { _ = service.Close(context.Background()) })
 	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ChatID: "original"}})
 	event := ModelRetryingEvent{CallContext: ctx, Provider: "p", Retry: llm.RetryEvent{Attempt: 1, MaxRetries: 2, Delay: time.Second, Err: fmt.Errorf("busy")}}
-	if err := service.retrying.Publish(context.WithoutCancel(ctx), event); err != nil {
-		t.Fatal(err)
-	}
+	service.retrying.EmitAsync(context.WithoutCancel(ctx), event)
 	select {
 	case n := <-notices:
 		if n.Origin == nil || n.Origin.Source.ChatID != "original" || n.Level != slog.LevelWarn || n.Text != "LLM retry 1/2 · p · 1s 后: busy" {
@@ -46,9 +44,7 @@ func TestRetryNotificationOwnedByModelManager(t *testing.T) {
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
 	event.CallContext = canceled
-	if err := service.retrying.Publish(context.WithoutCancel(ctx), event); err != nil {
-		t.Fatal(err)
-	}
+	service.retrying.EmitAsync(context.WithoutCancel(ctx), event)
 	if err := service.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -61,9 +57,9 @@ func (c *retryClient) SetRetryNotifier(fn func(context.Context, llm.RetryEvent))
 
 func TestRetryLogsWithoutNotificationSubscriber(t *testing.T) {
 	received := make(chan events.LogRecord, 2)
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		received <- record
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

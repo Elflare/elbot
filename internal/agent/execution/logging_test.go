@@ -29,11 +29,11 @@ func TestReplyLogPreservesCanceledSendAndIndependentSaveFailure(t *testing.T) {
 	f.platform.sendErr = context.Canceled
 	f.repo.appendErr = errors.New("independent save failure")
 	var records []globalevents.LogRecord
-	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, r globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, r globalevents.LogRecord) {
 		if r.EventName == "reply_delivered" {
 			records = append(records, r)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -58,11 +58,11 @@ func TestReplyLogPreservesCanceledSendAndIndependentSaveFailure(t *testing.T) {
 
 func TestAgentLogSourcePreservesExplicitIdentity(t *testing.T) {
 	var records []globalevents.LogRecord
-	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) {
 		if record.EventName == "identity_test" {
 			records = append(records, record)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -84,9 +84,9 @@ func TestAgentLogSourcePreservesExplicitIdentity(t *testing.T) {
 
 func TestModelObservationPreservesExplicitResultAndUsage(t *testing.T) {
 	var records []globalevents.LogRecord
-	connection, _ := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
+	connection, _ := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) {
 		records = append(records, record)
-		return nil
+
 	}, signal.ConnectOptions{})
 	defer connection.Disconnect()
 	processor := &dialogue.CallProcessor{}
@@ -129,9 +129,9 @@ func TestStableLogNamesIndependentOfContent(t *testing.T) {
 // captureLogs observes the public signal without injecting a production logger.
 func captureLogs(t *testing.T, logger *slog.Logger) {
 	t.Helper()
-	connection, err := globalevents.LogSubmitted.Observe(func(ctx context.Context, record globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(ctx context.Context, record globalevents.LogRecord) {
 		if !logger.Enabled(ctx, record.Level) {
-			return nil
+			return
 		}
 		out := slog.NewRecord(time.Now(), record.Level, record.Content, 0)
 		out.AddAttrs(slog.String("event", record.EventName), slog.String("module", record.Module), slog.String("result_status", record.ResultStatus.String()))
@@ -144,7 +144,10 @@ func captureLogs(t *testing.T, logger *slog.Logger) {
 		} {
 			out.AddAttrs(slog.String(key, value))
 		}
-		return logger.Handler().Handle(ctx, out)
+		if err := logger.Handler().Handle(ctx, out); err != nil {
+			t.Error(err)
+		}
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

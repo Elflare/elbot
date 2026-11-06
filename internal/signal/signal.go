@@ -1,6 +1,6 @@
 // Package signal provides typed signals with independently bounded execution.
 // Publishers freeze mutable payloads before emitting them.
-// Handled callback failures stop at the consumer; unhandled failures travel in Result.Err.
+// Synchronous handlers return business results unchanged; observers handle their own failures.
 package signal
 
 import (
@@ -18,7 +18,8 @@ var ErrRecursive = errors.New("signal: recursive dependency")
 type Handler[T, R any] func(context.Context, T) (R, error)
 type slot[T, R any] struct {
 	handler    Handler[T, R]
-	forward    func(context.Context, T) *Emission[R]
+	observer   func(context.Context, T) // Receives facts and owns any business failure handling.
+	forward    func(context.Context, T) (context.Context, *Signal[T, R], T)
 	options    ConnectOptions
 	connection *Connection
 }
@@ -41,34 +42,8 @@ type Signal[T, R any] struct {
 	snapshot atomic.Pointer[snapshot[T, R]]
 	queue    *Queue
 	closed   atomic.Bool
+	done     chan struct{} // Closed after the queue and any transferred callbacks actually exit.
 }
-
-// Async publishes facts without exposing callback completion to producers.
-// The private source owns the existing bounded execution and lifecycle.
-type Async[T any] struct{ source *Signal[T, Empty] }
-
-func NewAsync[T any](name string, options ...Options[T]) *Async[T] {
-	return &Async[T]{source: New[T, Empty](name, options...)}
-}
-func (s *Async[T]) Publish(ctx context.Context, event T) error {
-	e, err := s.source.EmitAsync(ctx, event)
-	if e != nil {
-		e.onComplete(func(results []Result[Empty]) {
-			for _, result := range results {
-				if result.Started && result.Err != nil && !errors.Is(result.Err, context.Canceled) && !errors.Is(result.Err, ErrClosed) {
-					ReportDiagnostic("async signal callback failed", slog.String("signal", s.source.name), slog.Any("error", result.Err))
-				}
-			}
-		})
-	}
-	return err
-}
-func (s *Async[T]) Observe(h func(context.Context, T) error, o ConnectOptions) (*Connection, error) {
-	return s.source.Observe(h, o)
-}
-func (s *Async[T]) BeginClose()                     { s.source.BeginClose() }
-func (s *Async[T]) Close(ctx context.Context) error { return s.source.Close(ctx) }
-func (s *Async[T]) Done() <-chan struct{}           { return s.source.Done() }
 
 func New[T, R any](name string, options ...Options[T]) *Signal[T, R] {
 	var o Options[T]
@@ -85,7 +60,7 @@ func New[T, R any](name string, options ...Options[T]) *Signal[T, R] {
 	if err != nil || o.Timeout < 0 {
 		panic("signal: invalid options")
 	}
-	s := &Signal[T, R]{name: name, options: o, queue: q}
+	s := &Signal[T, R]{name: name, options: o, queue: q, done: make(chan struct{})}
 	s.snapshot.Store(&snapshot[T, R]{})
 	return s
 }
@@ -97,17 +72,16 @@ func (s *Signal[T, R]) Connect(h Handler[T, R], o ConnectOptions) (*Connection, 
 }
 
 // Observe connects a fact observer without a business return value.
-func (s *Signal[T, R]) Observe(h func(context.Context, T) error, o ConnectOptions) (*Connection, error) {
+func (s *Signal[T, R]) Observe(h func(context.Context, T), o ConnectOptions) (*Connection, error) {
 	if h == nil {
 		return nil, errors.New("signal: nil handler")
 	}
-	return s.Connect(func(ctx context.Context, t T) (r R, err error) { err = h(ctx, t); return }, o)
+	return s.connect(&slot[T, R]{observer: h, options: o})
 }
 
-// ConnectForward adopts a single downstream receiver's completion. The forwarder
-// must emit with ctx so the operation retains its original deadline and path.
-// Immediate failures and skips use Resolved; nil is a contract error.
-func (s *Signal[T, R]) ConnectForward(h func(context.Context, T) *Emission[R], o ConnectOptions) (*Connection, error) {
+// ConnectForward routes to one downstream receiver. A nil destination skips delivery.
+// The framework retains the original deadline and cancellation until downstream completion.
+func (s *Signal[T, R]) ConnectForward(h func(context.Context, T) (context.Context, *Signal[T, R], T), o ConnectOptions) (*Connection, error) {
 	if h == nil {
 		return nil, errors.New("signal: nil forwarder")
 	}
@@ -126,7 +100,7 @@ func (s *Signal[T, R]) connect(entry *slot[T, R]) (*Connection, error) {
 	if s.options.Single && len(old) != 0 {
 		return nil, errors.New("signal: receiver already connected")
 	}
-	entry.connection = &Connection{disconnect: func() { s.remove(entry) }, tasks: make(map[*connectionTask]struct{}), done: make(chan struct{})}
+	entry.connection = &Connection{disconnect: func() { s.remove(entry) }, tasks: make(map[*connectionTask]struct{}), shutdown: entry.options.Shutdown, done: make(chan struct{})}
 	next := append(append([]*slot[T, R](nil), old...), entry)
 	s.snapshot.Store(&snapshot[T, R]{slots: next})
 	return entry.connection, nil
@@ -134,6 +108,10 @@ func (s *Signal[T, R]) connect(entry *slot[T, R]) (*Connection, error) {
 func (s *Signal[T, R]) remove(entry *slot[T, R]) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Retain the closing snapshot so repeated Close still joins transferred callbacks.
+	if s.closed.Load() {
+		return
+	}
 	old := s.snapshot.Load().slots
 	for i, v := range old {
 		if v == entry {
@@ -152,7 +130,7 @@ func (s *Signal[T, R]) Emit(ctx context.Context, event T) ([]Result[R], error) {
 		}
 		return nil, ctx.Err()
 	}
-	e, err := s.EmitAsync(ctx, event)
+	e, err := s.emit(ctx, event, true)
 	if e == nil {
 		return nil, err
 	}
@@ -163,8 +141,15 @@ func (s *Signal[T, R]) Emit(ctx context.Context, event T) ([]Result[R], error) {
 	return results, waitErr
 }
 
-// EmitAsync stops admission at the first failure; already admitted callbacks retain their lifetime.
-func (s *Signal[T, R]) EmitAsync(ctx context.Context, event T) (*Emission[R], error) {
+// EmitAsync submits observers without exposing completion or business results.
+func (s *Signal[T, R]) EmitAsync(ctx context.Context, event T) {
+	if _, err := s.emit(ctx, event, false); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, ErrClosed) {
+		ReportDiagnostic("signal admission failed", slog.String("signal", s.name), slog.Any("error", err))
+	}
+}
+
+// emit shares admission and lifetime management; only synchronous emissions collect results.
+func (s *Signal[T, R]) emit(ctx context.Context, event T, synchronous bool) (*emission[R], error) {
 	if s.closed.Load() {
 		return nil, ErrClosed
 	}
@@ -188,60 +173,93 @@ func (s *Signal[T, R]) EmitAsync(ctx context.Context, event T) (*Emission[R], er
 		cancel()
 		return nil, ErrNoReceiver
 	}
-	e := newEmission[R](cancel, len(entries))
+	if !synchronous {
+		for _, entry := range entries {
+			if entry.handler != nil {
+				cancel()
+				return nil, errors.New("signal: asynchronous emission requires observers")
+			}
+		}
+	}
+	e := newEmission[R](cancel, len(entries), synchronous)
 	for i, entry := range entries {
 		var value R
 		forwarded := false
 		taskCtx, taskCancel := context.WithCancel(ctx)
-		parentStart, _ := ctx.Value(startKey{}).(*startPath)
-		if entry.forward != nil {
+		var parentStart *startPath
+		if synchronous {
+			parentStart, _ = ctx.Value(startKey{}).(*startPath)
+		}
+		if synchronous && entry.forward != nil {
 			taskCtx = context.WithValue(taskCtx, startKey{}, &startPath{started: &e.started[i], parent: parentStart})
 		}
 		owned := entry.connection.acquire(taskCancel)
 		if owned == nil {
 			taskCancel()
-			e.finish(i, Result[R]{Err: ErrClosed})
-			for j := i + 1; j < len(entries); j++ {
-				e.finish(j, Result[R]{Err: ErrClosed})
+			for j := i; j < len(entries); j++ {
+				if synchronous {
+					e.finish(j, Result[R]{Err: ErrClosed})
+				}
+				e.exit()
 			}
 			return e, ErrClosed
 		}
-		stopTask := context.AfterFunc(taskCtx, func() { e.finish(i, Result[R]{Err: taskCtx.Err()}) })
+		var stopTask func() bool
+		if synchronous {
+			stopTask = context.AfterFunc(taskCtx, func() { e.finish(i, Result[R]{Err: taskCtx.Err()}) })
+		}
 		task := Task{cancel: taskCancel, Shutdown: entry.options.Shutdown, Run: func(runCtx context.Context) error {
-			if err := runCtx.Err(); err != nil {
-				return err
-			}
-			if s.options.Before != nil {
-				if err := s.options.Before(taskCtx, event); err != nil {
-					return err
-				}
-			}
 			if entry.forward != nil {
-				child := entry.forward(taskCtx, event)
-				if child == nil {
-					err := errors.New("signal: nil forwarded emission")
-					return err
+				ctx, target, event := entry.forward(taskCtx, event)
+				if target == nil {
+					return nil
 				}
-				if len(child.results) != 1 {
-					err := errors.New("signal: forwarding requires one downstream receiver")
+				if !target.options.Single {
+					return errors.New("signal: forwarding requires a single-receiver destination")
+				}
+				child, err := target.emit(ctx, event, synchronous)
+				if err != nil {
 					return err
 				}
 				forwarded = true
-				child.onComplete(func(results []Result[R]) { stopTask(); e.finish(i, results[0]); taskCancel() })
+				child.onExit(func() { taskCancel(); entry.connection.release(owned); e.exit() })
+				if synchronous {
+					child.onComplete(func(results []Result[R]) {
+						stopTask()
+						var result Result[R]
+						// Optional destinations may have no receiver.
+						if len(results) != 0 {
+							result = results[0]
+						}
+						e.finish(i, result)
+						taskCancel()
+					})
+				}
 				return nil
 			}
-			e.start(i)
-			for p := parentStart; p != nil; p = p.parent {
-				p.started.Store(true)
+			if synchronous {
+				e.start(i)
+				for p := parentStart; p != nil; p = p.parent {
+					p.started.Store(true)
+				}
+			}
+			if entry.observer != nil {
+				entry.observer(taskCtx, event)
+				return nil
 			}
 			var err error
 			value, err = entry.handler(taskCtx, event)
 			return err
 		}, Finish: func(err error) {
-			defer entry.connection.release(owned)
 			if !forwarded {
-				stopTask()
-				e.finish(i, Result[R]{Value: value, Err: err})
+				defer e.exit()
+				defer entry.connection.release(owned)
+				if synchronous {
+					stopTask()
+					e.finish(i, Result[R]{Value: value, Err: err})
+				} else if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, ErrClosed) {
+					ReportDiagnostic("signal delivery failed", slog.String("signal", s.name), slog.Any("error", err))
+				}
 				taskCancel()
 			}
 		}}
@@ -249,9 +267,16 @@ func (s *Signal[T, R]) EmitAsync(ctx context.Context, event T) (*Emission[R], er
 			task.Key = s.options.Key(event)
 		}
 		if err := s.queue.Submit(taskCtx, task); err != nil {
-			task.Finish(err)
-			for j := i + 1; j < len(entries); j++ {
-				e.finish(j, Result[R]{Err: err})
+			if synchronous {
+				stopTask()
+			}
+			entry.connection.release(owned)
+			taskCancel()
+			for j := i; j < len(entries); j++ {
+				if synchronous {
+					e.finish(j, Result[R]{Err: err})
+				}
+				e.exit()
 			}
 			return e, err
 		}
@@ -260,9 +285,35 @@ func (s *Signal[T, R]) EmitAsync(ctx context.Context, event T) (*Emission[R], er
 }
 func (s *Signal[T, R]) BeginClose() {
 	s.mu.Lock()
-	s.closed.Store(true)
+	if s.closed.Swap(true) {
+		s.mu.Unlock()
+		return
+	}
+	entries := s.snapshot.Load().slots
 	s.mu.Unlock()
+	for _, entry := range entries {
+		entry.connection.BeginClose()
+	}
 	s.queue.BeginClose()
+	go func() {
+		<-s.queue.Done()
+		for _, entry := range entries {
+			<-entry.connection.Done()
+		}
+		close(s.done)
+	}()
 }
-func (s *Signal[T, R]) Close(ctx context.Context) error { s.BeginClose(); return s.queue.Close(ctx) }
-func (s *Signal[T, R]) Done() <-chan struct{}           { return s.queue.Done() }
+func (s *Signal[T, R]) Close(ctx context.Context) error {
+	s.BeginClose()
+	if err := s.queue.Close(ctx); err != nil {
+		return err
+	}
+	for _, entry := range s.snapshot.Load().slots {
+		if err := entry.connection.Close(ctx); err != nil {
+			return err
+		}
+	}
+	<-s.done
+	return nil
+}
+func (s *Signal[T, R]) Done() <-chan struct{} { return s.done }

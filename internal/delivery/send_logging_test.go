@@ -16,11 +16,11 @@ import (
 
 func TestSendLoggingKeepsSourceResultAndPartialReceipt(t *testing.T) {
 	logs := make(chan events.LogRecord, 4)
-	c, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
+	c, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) {
 		if r.Module == "delivery" {
 			logs <- r
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

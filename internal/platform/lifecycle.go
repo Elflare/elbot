@@ -4,7 +4,6 @@ package platform
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -96,7 +95,7 @@ func (l *lifecycle) Start() error {
 			l.mu.Unlock()
 			startErr := runtime.start(l.ctx)
 			l.monitorWG.Add(1)
-			go l.observe(runtime, startErr)
+			go l.observe(runtime)
 			if startErr != nil {
 				err = fmt.Errorf("start %s: %w", runtime.name, startErr)
 				break
@@ -113,24 +112,20 @@ func (l *lifecycle) Start() error {
 	return err
 }
 
-func (l *lifecycle) observe(runtime *platformLifecycle, startErr error) {
+func (l *lifecycle) observe(runtime *platformLifecycle) {
 	defer l.monitorWG.Done()
 	if runtime.waitExit != nil {
 		_ = runtime.waitExit(context.Background())
 		l.BeginClose()
 	}
 	err := runtime.wait(context.Background())
-	// 启动错误已由 Start 返回；这里只处理独立的运行故障。
-	if startErr != nil && errors.Is(err, startErr) {
-		err = nil
-	}
 	l.mu.Lock()
 	runtime.running = false
-	if runtime.waitExit != nil && startErr == nil && err != nil {
+	if runtime.waitExit != nil && err != nil {
 		l.runErr = fmt.Errorf("%s: %w", runtime.name, err)
 	}
 	l.mu.Unlock()
-	if err != nil && (runtime.waitExit == nil || startErr != nil) && l.onFailure != nil {
+	if err != nil && runtime.waitExit == nil && l.onFailure != nil {
 		l.onFailure(runtime.name, err)
 	}
 }
@@ -167,10 +162,7 @@ func (l *lifecycle) Wait(ctx context.Context) error {
 	case <-ctx.Done():
 	}
 	l.mu.Lock()
-	err := l.startErr
-	if err == nil {
-		err = l.runErr
-	}
+	err := l.runErr
 	var critical []*platformLifecycle
 	for _, runtime := range l.runtimes {
 		if runtime.waitExit != nil && runtime.attempted {

@@ -50,7 +50,7 @@ func connectFixtureNotifications(t *testing.T, name string, router *dispatch.Rou
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.Observe(func(ctx context.Context, n events.Notification) error {
+	_, err = s.Observe(func(ctx context.Context, n events.Notification) {
 		route, _ := ctx.Value(fixtureNotificationRouteKey{}).(*dispatch.Router)
 		if route == nil {
 			hub.mu.Lock()
@@ -58,8 +58,8 @@ func connectFixtureNotifications(t *testing.T, name string, router *dispatch.Rou
 			hub.mu.Unlock()
 		}
 		target := delivery.Target{Platform: n.Target.Platform, ChatID: n.Target.ID, ChatType: n.Target.ChatType}
-		_, err := route.SendTo(ctx, target, []delivery.Output{delivery.Text(n.Text)})
-		return err
+		_, _ = route.SendTo(ctx, target, []delivery.Output{delivery.Text(n.Text)})
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

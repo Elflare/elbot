@@ -34,23 +34,15 @@ func TestStatusBindingChangeFinishesOldSendAndRejectsLateEvents(t *testing.T) {
 	}
 	conversation := &contextinfo.Conversation{PlatformData: messageData{adapter: New(testPlatformName)}}
 	event := StatusChangedEvent{Conversation: conversation, Binding: old, Version: 100, Snapshot: runtimestatus.Snapshot{SessionID: "same", Provider: "old", Phase: runtimestatus.PhaseLLM}}
-	if err := d.receive(event); err != nil {
-		t.Fatal(err)
-	}
+	d.receive(event)
 	<-entered
 	event.Version, event.Snapshot.Provider = 101, "old pending"
-	if err := d.receive(event); err != nil {
-		t.Fatal(err)
-	}
-	if err := d.forget(BindingChangedEvent{Version: 2, Old: old, New: next}); err != nil {
-		t.Fatal(err)
-	}
+	d.receive(event)
+	d.forget(BindingChangedEvent{Version: 2, Old: old, New: next})
 	// 状态版本和绑定版本各自独立，新激活不沿用旧状态的版本水位。
 	event.Binding, event.Version, event.Snapshot.Provider = next, 1, "new"
 	event.Snapshot.Phase = runtimestatus.PhaseDone
-	if err := d.receive(event); err != nil {
-		t.Fatal(err)
-	}
+	d.receive(event)
 	once.Do(func() { close(release) })
 	for _, want := range []string{"old", "new"} {
 		select {
@@ -62,20 +54,12 @@ func TestStatusBindingChangeFinishesOldSendAndRejectsLateEvents(t *testing.T) {
 			t.Fatal("ordered status did not display")
 		}
 	}
-	if err := d.forget(BindingChangedEvent{Version: 1, New: old}); err != nil {
-		t.Fatal(err)
-	}
+	d.forget(BindingChangedEvent{Version: 1, New: old})
 	event.Binding, event.Version, event.Snapshot.Provider = old, 101, "late old"
-	if err := d.receive(event); err != nil {
-		t.Fatal(err)
-	}
-	if err := d.forget(BindingChangedEvent{Version: 3, Old: next}); err != nil {
-		t.Fatal(err)
-	}
+	d.receive(event)
+	d.forget(BindingChangedEvent{Version: 3, Old: next})
 	event.Binding, event.Version, event.Snapshot.Provider = next, 2, "late unbound"
-	if err := d.receive(event); err != nil {
-		t.Fatal(err)
-	}
+	d.receive(event)
 	if err := d.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -90,9 +74,7 @@ func TestStatusTerminalWatermarkOutlivesPendingBody(t *testing.T) {
 	sent := make(chan struct{}, 2)
 	d.send = func(context.Context, messageData, runtimestatus.Snapshot) error { sent <- struct{}{}; return nil }
 	event := StatusChangedEvent{Conversation: &contextinfo.Conversation{PlatformData: messageData{adapter: New(testPlatformName)}}, Version: 10, Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone}}
-	if err := d.receive(event); err != nil {
-		t.Fatal(err)
-	}
+	d.receive(event)
 	<-sent
 	deadline := time.Now().Add(time.Second)
 	for {
@@ -108,9 +90,7 @@ func TestStatusTerminalWatermarkOutlivesPendingBody(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	event.Version, event.Snapshot.Phase = 9, runtimestatus.PhaseLLM
-	if err := d.receive(event); err != nil {
-		t.Fatal(err)
-	}
+	d.receive(event)
 	d.mu.Lock()
 	pending := len(d.latest)
 	d.mu.Unlock()

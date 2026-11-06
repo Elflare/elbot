@@ -197,12 +197,12 @@ func TestBackgroundCloseWaitsForAcceptedSubscription(t *testing.T) {
 		t.Fatal(err)
 	}
 	entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	connection, err := events.PlatformConnected.Observe(func(ctx context.Context, _ events.PlatformConnectedEvent) error {
+	connection, err := events.PlatformConnected.Observe(func(ctx context.Context, _ events.PlatformConnectedEvent) {
 		close(entered)
 		<-ctx.Done()
 		close(canceled)
 		<-release
-		return ctx.Err()
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

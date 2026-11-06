@@ -43,7 +43,7 @@ func TestUIConnectFailureReleasesPartialSubscription(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A failed assembly must not retain the single available registration.
-	c, err := status.Observe(func(context.Context, StatusChangedEvent) error { return nil }, signal.ConnectOptions{})
+	c, err := status.Observe(func(context.Context, StatusChangedEvent) {}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

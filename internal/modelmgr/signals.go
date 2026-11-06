@@ -24,7 +24,7 @@ type ModelRetryingEvent struct {
 }
 
 // ObserveModelRetrying 只交付订阅连接；发布与关闭信号归模型总管。
-func (s *ModelManager) ObserveModelRetrying(handler func(context.Context, ModelRetryingEvent) error, options signal.ConnectOptions) (*signal.Connection, error) {
+func (s *ModelManager) ObserveModelRetrying(handler func(context.Context, ModelRetryingEvent), options signal.ConnectOptions) (*signal.Connection, error) {
 	return s.retrying.Observe(handler, options)
 }
 
@@ -34,17 +34,17 @@ func (s *ModelManager) connectRetrySignals() error {
 		return err
 	}
 	s.connections = append(s.connections, connection)
-	connection, err = s.retrying.Observe(func(_ context.Context, e ModelRetryingEvent) error {
+	connection, err = s.retrying.Observe(func(_ context.Context, e ModelRetryingEvent) {
 		ctx := e.CallContext
 		if ctx.Err() != nil {
-			return nil
+			return
 		}
 		text := rules.ModelRetry(e.Provider, e.Retry)
 		if text == "" {
-			return nil
+			return
 		}
 		events.Notify(ctx, events.NewNotification(ctx, slog.LevelWarn, text))
-		return nil
+
 	}, signal.ConnectOptions{Shutdown: signal.CancelPending})
 	if err != nil {
 		return err

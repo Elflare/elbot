@@ -19,12 +19,12 @@ import (
 
 func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 	turns := turn.NewSupervisor(testutil.IDSequence())
-	events := signal.NewAsync[StatusChangedEvent]("status")
+	events := signal.New[StatusChangedEvent, signal.Empty]("status")
 	observations := make(chan StatusChangedEvent, 3)
 	defer events.Close(context.Background())
-	_, _ = events.Observe(func(_ context.Context, e StatusChangedEvent) error {
+	_, _ = events.Observe(func(_ context.Context, e StatusChangedEvent) {
 		observations <- e
-		return nil
+
 	}, signal.ConnectOptions{})
 	r := NewStatusRecorder(StatusRecorderDeps{View: dialogue.ExecutionView{}, Turns: turns, Changed: events})
 	old, current := turn.NewExecution("old"), turn.NewExecution("current")
@@ -72,11 +72,11 @@ func TestReplyFactsPreservePartialSuccessAndReceiptSnapshot(t *testing.T) {
 	f.repo.mapErr = errors.New("map failed")
 	f.platform.receipt.SentMessages[0].OutputIndexes = []int{0}
 	var records []globalevents.LogRecord
-	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) {
 		if record.EventName == "reply_delivered" {
 			records = append(records, record)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

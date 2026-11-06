@@ -54,9 +54,9 @@ func TestBindingIdentityVersionsAndUnbinding(t *testing.T) {
 	m := newTestManager(t)
 	scope := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	observations := make(chan BindingChangedEvent, 4)
-	_, err := m.ObserveBindingChanged(func(_ context.Context, event BindingChangedEvent) error {
+	_, err := m.ObserveBindingChanged(func(_ context.Context, event BindingChangedEvent) {
 		observations <- event
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -137,18 +137,21 @@ func TestNestedLeasePublishesOutsideLocksDespiteCancellation(t *testing.T) {
 	first := setCurrent(t, m, scope, "old")
 	var calls atomic.Int32
 	done := make(chan struct{})
-	_, err := m.ObserveBindingChanged(func(ctx context.Context, event BindingChangedEvent) error {
+	_, err := m.ObserveBindingChanged(func(ctx context.Context, event BindingChangedEvent) {
 		if ctx.Err() != nil || event.Old != first || event.New != m.CurrentBinding(scope) {
-			return fmt.Errorf("incorrect committed event: %+v", event)
+			if err := fmt.Errorf("incorrect committed event: %+v", event); err != nil {
+				t.Error(err)
+			}
+			return
 		}
 		_, release, err := m.EnterActivation(ctx, scope)
 		if err != nil {
-			return err
+			return
 		}
 		release()
 		calls.Add(1)
 		close(done)
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

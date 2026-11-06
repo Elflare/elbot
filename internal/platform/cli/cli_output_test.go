@@ -46,12 +46,12 @@ func TestRemoteClientNoticeLevelDefaultsToInfo(t *testing.T) {
 
 func TestRunPublishesGlobalPlatformConnection(t *testing.T) {
 	calls := 0
-	connection, err := globalevents.PlatformConnected.Observe(func(_ context.Context, e globalevents.PlatformConnectedEvent) error {
+	connection, err := globalevents.PlatformConnected.Observe(func(_ context.Context, e globalevents.PlatformConnectedEvent) {
 		calls++
 		if e.Platform != "cli" {
 			t.Errorf("platform=%q", e.Platform)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

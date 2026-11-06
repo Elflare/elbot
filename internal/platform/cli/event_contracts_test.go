@@ -11,11 +11,11 @@ type testAgentEvents struct {
 	binding *signal.Signal[BindingChangedEvent, signal.Empty]
 }
 
-func (s testAgentEvents) ObserveStatusChanged(receive func(StatusChangedEvent) error, options signal.ConnectOptions) (*signal.Connection, error) {
-	return s.status.Observe(func(_ context.Context, event StatusChangedEvent) error { return receive(event) }, options)
+func (s testAgentEvents) ObserveStatusChanged(receive func(StatusChangedEvent), options signal.ConnectOptions) (*signal.Connection, error) {
+	return s.status.Observe(func(_ context.Context, event StatusChangedEvent) { receive(event) }, options)
 }
-func (s testAgentEvents) ObserveBindingChanged(receive func(BindingChangedEvent) error, options signal.ConnectOptions) (*signal.Connection, error) {
-	return s.binding.Observe(func(_ context.Context, event BindingChangedEvent) error { return receive(event) }, options)
+func (s testAgentEvents) ObserveBindingChanged(receive func(BindingChangedEvent), options signal.ConnectOptions) (*signal.Connection, error) {
+	return s.binding.Observe(func(_ context.Context, event BindingChangedEvent) { receive(event) }, options)
 }
 func testConversation(ctx context.Context) *contextinfo.Conversation {
 	info, ok := contextinfo.ConversationFromContext(ctx)

@@ -25,33 +25,26 @@ func TestQueuedPreviewRespectsCancellation(t *testing.T) {
 	}
 	entered, release := make(chan struct{}), make(chan struct{})
 	seen := make(chan string, 8)
-	_, err = s.Observe(func(_ context.Context, n events.Notification) error {
+	_, err = s.Observe(func(_ context.Context, n events.Notification) {
 		if n.Text == "block" {
 			close(entered)
 			<-release
 		} else {
 			seen <- n.Text
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = events.NotificationRequested.EmitAsync(context.Background(), events.Notification{Text: "block"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	events.NotificationRequested.EmitAsync(context.Background(), events.Notification{Text: "block"})
 	<-entered
 	ctx, cancel := context.WithCancel(context.Background())
 	out := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Hooks: agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{})})
 	out.Preview(ctx, "stale preview")
 	cancel()
-	last, err := events.NotificationRequested.EmitAsync(context.Background(), events.Notification{Text: "marker"})
-	if err != nil {
-		t.Fatal(err)
-	}
 	close(release)
-	if _, err = last.Wait(context.Background()); err != nil {
+	if _, err = events.NotificationRequested.Emit(context.Background(), events.Notification{Text: "marker"}); err != nil {
 		t.Fatal(err)
 	}
 	close(seen)

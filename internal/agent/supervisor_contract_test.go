@@ -135,21 +135,21 @@ func TestSupervisorBindingSubscriptionsAndCommandMetadata(t *testing.T) {
 	}
 	var mu sync.Mutex
 	var received []BindingChangedEvent
-	mutator, err := m.ObserveBindingChanged(func(e BindingChangedEvent) error {
+	mutator, err := m.ObserveBindingChanged(func(e BindingChangedEvent) {
 		if e.New != nil {
 			e.New.SessionID = "corrupted"
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer mutator.Disconnect()
-	observer, err := m.ObserveBindingChanged(func(e BindingChangedEvent) error {
+	observer, err := m.ObserveBindingChanged(func(e BindingChangedEvent) {
 		mu.Lock()
 		defer mu.Unlock()
 		received = append(received, e)
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

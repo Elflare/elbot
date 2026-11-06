@@ -6,13 +6,17 @@ import (
 	"context"
 	"elbot/internal/events"
 	"elbot/internal/platform/share"
+	"elbot/internal/session"
 	"elbot/internal/signal"
 	"fmt"
 	"log/slog"
 )
 
 func (a *Adapter) ConnectNotifications(s *signal.Signal[events.Notification, signal.Empty]) (*signal.Connection, error) {
-	return s.Observe(func(ctx context.Context, n events.Notification) error {
+	return s.Observe(func(ctx context.Context, n events.Notification) {
+		if binding, ok := session.BindingFromContext(ctx); ok && !binding.Valid() {
+			return
+		}
 		err := a.sendTUIMessage(tuiNoticeMsg{Text: n.Text, Level: n.Level}, "[notice] "+n.Text)
 		if err != nil {
 			record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_send_failed", Module: "cli", Content: fmt.Sprintf("target=%+v operation=tui_notice error=%v", n.Target, err), ContentLimit: 4096, Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}
@@ -21,16 +25,19 @@ func (a *Adapter) ConnectNotifications(s *signal.Signal[events.Notification, sig
 			}
 			events.AsyncLog(ctx, record)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 }
 func (s *RemoteServer) ConnectNotifications(source *signal.Signal[events.Notification, signal.Empty]) (*signal.Connection, error) {
-	return source.Observe(func(ctx context.Context, n events.Notification) error {
+	return source.Observe(func(ctx context.Context, n events.Notification) {
+		if binding, ok := session.BindingFromContext(ctx); ok && !binding.Valid() {
+			return
+		}
 		target := share.NotificationTarget(n)
 		clients, err := s.targetClients(ctx, target)
 		if err != nil {
 			events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_rejected", Module: "cli", Content: fmt.Sprintf("target=%+v error=%v", n.Target, err), ContentLimit: 4096, Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.ResultFailed})
-			return nil
+			return
 		}
 		for _, client := range clients {
 			err := client.write(ctx, remoteMessage{Type: remoteMsgNotice, Text: n.Text, Level: n.Level.String()})
@@ -44,6 +51,6 @@ func (s *RemoteServer) ConnectNotifications(source *signal.Signal[events.Notific
 				_ = client.conn.CloseNow()
 			}
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 }

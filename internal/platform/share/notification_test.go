@@ -26,10 +26,10 @@ func TestNotificationFailureDoesNotWaitForLogger(t *testing.T) {
 		source := signal.New[events.Notification, signal.Empty](t.Name())
 		defer source.Close(context.Background())
 		release, started := make(chan struct{}), make(chan struct{})
-		logging, err := events.LogSubmitted.Observe(func(context.Context, events.LogRecord) error {
+		logging, err := events.LogSubmitted.Observe(func(context.Context, events.LogRecord) {
 			close(started)
 			<-release
-			return nil
+
 		}, signal.ConnectOptions{Shutdown: signal.Drain})
 		if err != nil {
 			t.Fatal(err)
@@ -92,9 +92,9 @@ func TestConnectNotifications(t *testing.T) {
 			source := signal.New[events.Notification, signal.Empty](t.Name())
 			defer source.Close(context.Background())
 			logs := make(chan events.LogRecord, 4)
-			logging, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+			logging, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 				logs <- record
-				return nil
+
 			}, signal.ConnectOptions{Shutdown: signal.Drain})
 			if err != nil {
 				t.Fatal(err)

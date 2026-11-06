@@ -28,12 +28,12 @@ func TestLogSignalAdmissionDiagnosedWithoutDuplicatingConsumerFailure(t *testing
 		_ = file.Close()
 	}()
 	failure := errors.New("consumer owns this failure")
-	_, err = source.Observe(func(_ context.Context, record LogRecord) error {
+	_, err = source.Observe(func(_ context.Context, record LogRecord) {
 		if record.Content == "block" {
 			close(started)
 			<-release
 		}
-		return failure
+
 	}, signal.ConnectOptions{Shutdown: signal.Drain})
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +54,7 @@ func TestLogSignalAdmissionDiagnosedWithoutDuplicatingConsumerFailure(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(string(data), "log signal admission failed") != 1 || strings.Contains(string(data), failure.Error()) {
+	if strings.Count(string(data), "signal admission failed") != 1 || strings.Contains(string(data), failure.Error()) {
 		t.Fatalf("diagnostics: %s", data)
 	}
 }

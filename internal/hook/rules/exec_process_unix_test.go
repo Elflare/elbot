@@ -42,11 +42,11 @@ func TestExecIndependentSignalSurvivesLaterCancellation(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if record.EventName == "hook_exec_stderr" && strings.Contains(record.Content, "independent signal exit") {
 			cancel()
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

@@ -114,7 +114,7 @@ func TestManagerConstructionCancellationAndPartialCleanup(t *testing.T) {
 	if err := m.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.ObserveModelRetrying(func(context.Context, ModelRetryingEvent) error { return nil }, signal.ConnectOptions{}); !errors.Is(err, signal.ErrClosed) {
+	if _, err := m.ObserveModelRetrying(func(context.Context, ModelRetryingEvent) {}, signal.ConnectOptions{}); !errors.Is(err, signal.ErrClosed) {
 		t.Fatal(err)
 	}
 }
@@ -122,15 +122,12 @@ func TestManagerConstructionCancellationAndPartialCleanup(t *testing.T) {
 func TestManagerCloseWaitsForObserverAndCanResume(t *testing.T) {
 	m := newTestService(t, testOptions())
 	entered, release := make(chan struct{}), make(chan struct{})
-	connection, err := m.ObserveModelRetrying(func(context.Context, ModelRetryingEvent) error { close(entered); <-release; return nil }, signal.ConnectOptions{})
+	connection, err := m.ObserveModelRetrying(func(context.Context, ModelRetryingEvent) { close(entered); <-release }, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer connection.Close(context.Background())
-	err = m.retrying.Publish(t.Context(), ModelRetryingEvent{CallContext: t.Context()})
-	if err != nil {
-		t.Fatal(err)
-	}
+	m.retrying.EmitAsync(t.Context(), ModelRetryingEvent{CallContext: t.Context()})
 	<-entered
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
 	defer cancel()

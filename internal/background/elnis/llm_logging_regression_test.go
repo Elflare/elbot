@@ -45,11 +45,11 @@ func TestElnisEventFailureDoesNotReclassifyDialogueError(t *testing.T) {
 		t.Fatal(err)
 	}
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if record.Module == "elnis" && (record.EventName == "elnis.llm_failed" || record.EventName == "elnis_llm_failed") {
 			records = append(records, record)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -88,11 +88,11 @@ func TestElnisLogsSuccessfulRunSaveFailure(t *testing.T) {
 	service.store = failCompletedEventRepository{EventRepository: service.store, err: failure}
 
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if record.Category == events.LogElnis && record.EventName == "elnis_llm_failed" {
 			records = append(records, record)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -148,11 +148,11 @@ func TestElnisDeliveryErrorAndBusinessState(t *testing.T) {
 					t.Cleanup(cleanup)
 				}
 				var records []events.LogRecord
-				connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+				connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 					if (record.Module == "elnis" || record.Module == "delivery") && (record.ResultStatus == events.ResultFailed || record.ResultStatus == events.ResultCanceled || record.EventName == "elnis.direct_completed" || record.EventName == "elnis.llm_completed") {
 						records = append(records, record)
 					}
-					return nil
+
 				}, signal.ConnectOptions{})
 				if err != nil {
 					t.Fatal(err)
@@ -225,11 +225,11 @@ func TestElnisRecoverySuccessDoesNotEmitFailure(t *testing.T) {
 		t.Fatalf("initial error=%v", err)
 	}
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if record.EventName == "recover_elnis_report_failed" {
 			records = append(records, record)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -254,11 +254,11 @@ func TestElnisRecoveryFailureKeepsOneSourceDiagnostic(t *testing.T) {
 		t.Fatalf("initial error=%v", err)
 	}
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if record.ResultStatus == events.ResultFailed {
 			records = append(records, record)
 		}
-		return errors.New("log observer unavailable")
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -289,11 +289,11 @@ func TestElnisReportPreservesSaveErrorAndRetry(t *testing.T) {
 			})
 			service.store = failingReportReceiptRepository{EventRepository: service.store, err: tc.saveErr}
 			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 				if record.EventName == "elnis_llm_failed" {
 					records = append(records, record)
 				}
-				return nil
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -323,11 +323,11 @@ func TestElnisFormatFailuresAreHandledBeforeRetryAndStateSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if record.EventName == "elnis_llm_failed" {
 			records = append(records, record)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -361,11 +361,11 @@ func TestElnisSendAndCleanupFailuresEachLoggedOnce(t *testing.T) {
 	})
 	service.store = failingReportCleanupRepository{EventRepository: service.store, err: saveErr}
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if strings.Contains(record.Content, sendErr.Error()) || strings.Contains(record.Content, saveErr.Error()) {
 			records = append(records, record)
 		}
-		return errors.New("logger rejected diagnostic")
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -392,11 +392,11 @@ func TestElnisNativeCallFailureOnlyReturns(t *testing.T) {
 	failure := errors.New("native platform failed")
 	service.callPlatformAPI = func(context.Context, string, string, map[string]any) (json.RawMessage, error) { return nil, failure }
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if strings.Contains(record.Content, failure.Error()) {
 			records = append(records, record)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

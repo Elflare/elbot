@@ -30,11 +30,11 @@ func TestCronUnconfiguredTargetReturnsBeforeDeliveryState(t *testing.T) {
 			svc := newTestCronService(t, Options{Store: repo, Runner: runner, Models: models})
 			job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "disabled target", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: mode, Message: "test"}, Target: CronTarget{SourcePlatform: "telegram"}})
 			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 				if record.EventName == "cron.trigger_failed" {
 					records = append(records, record)
 				}
-				return nil
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)

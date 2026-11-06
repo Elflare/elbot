@@ -12,7 +12,6 @@ import (
 	"elbot/internal/events"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
-	"elbot/internal/signal"
 )
 
 type statusTarget struct {
@@ -70,13 +69,13 @@ func (d *statusDisplay) validBindingLocked(binding *BindingSnapshot) bool {
 	}
 	return state.current != nil && *state.current == *binding
 }
-func (d *statusDisplay) receive(event StatusChangedEvent) error {
+func (d *statusDisplay) receive(event StatusChangedEvent) {
 	if event.Conversation == nil {
-		return nil
+		return
 	}
 	display, _ := event.Conversation.PlatformData.(messageData)
 	if display == (messageData{}) {
-		return nil
+		return
 	}
 	source := event.Conversation.Source
 	key := statusTarget{SessionID: event.Snapshot.SessionID, Platform: source.Platform, ChatID: source.ChatID, Display: display, ChatType: source.ChatType}
@@ -86,13 +85,13 @@ func (d *statusDisplay) receive(event StatusChangedEvent) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.closed {
-		return signal.ErrClosed
+		return
 	}
 	if !d.validBindingLocked(event.Binding) {
-		return nil
+		return
 	}
 	if version, ok := d.versions[key]; ok && version >= event.Version {
-		return nil
+		return
 	}
 	d.versions[key] = event.Version
 	d.latest[key] = &statusProjection{event: event, dirty: true}
@@ -100,9 +99,9 @@ func (d *statusDisplay) receive(event StatusChangedEvent) error {
 	case d.wake <- struct{}{}:
 	default:
 	}
-	return nil
+	return
 }
-func (d *statusDisplay) forget(event BindingChangedEvent) error {
+func (d *statusDisplay) forget(event BindingChangedEvent) {
 	binding := event.New
 	if binding == nil {
 		binding = event.Old
@@ -110,10 +109,10 @@ func (d *statusDisplay) forget(event BindingChangedEvent) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.closed {
-		return signal.ErrClosed
+		return
 	}
 	if state, ok := d.bindings[binding.Scope]; ok && state.version >= event.Version {
-		return nil
+		return
 	}
 	d.bindings[binding.Scope] = bindingState{version: event.Version, current: event.New}
 	for key := range d.versions {
@@ -122,7 +121,7 @@ func (d *statusDisplay) forget(event BindingChangedEvent) error {
 			delete(d.latest, key)
 		}
 	}
-	return nil
+	return
 }
 func (d *statusDisplay) run() {
 	defer close(d.done)

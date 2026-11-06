@@ -106,7 +106,7 @@ func TestSkillMediaBridge(t *testing.T) {
 							}
 							assertPrepared(t)
 							<-ctx.Done()
-							return nil, commandError(ctx, label, ctx.Err(), "", "")
+							return nil, commandError(label, ctx.Err(), "", "")
 						}
 					}
 					var raw []byte

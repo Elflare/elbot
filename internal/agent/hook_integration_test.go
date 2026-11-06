@@ -106,10 +106,10 @@ data: [DONE]
 	t.Cleanup(func() { _ = tools.Close(context.Background()) })
 	platform := &integrationPlatform{}
 	notified := make(chan struct{}, 1)
-	notifications, err := events.NotificationRequested.Observe(func(ctx context.Context, notice events.Notification) error {
-		_, err := platform.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(notice.Text)})
+	notifications, err := events.NotificationRequested.Observe(func(ctx context.Context, notice events.Notification) {
+		_, _ = platform.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(notice.Text)})
 		notified <- struct{}{}
-		return err
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -177,13 +177,13 @@ data: [DONE]
 	// the active pipeline's Agent callback and source logging.
 	var logMu sync.Mutex
 	var triggered []events.LogRecord
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if record.EventName == "hook_triggered" {
 			logMu.Lock()
 			triggered = append(triggered, record)
 			logMu.Unlock()
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

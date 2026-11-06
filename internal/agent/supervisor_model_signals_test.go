@@ -60,7 +60,7 @@ data: [DONE]
 		t.Fatal(err)
 	}
 	defer models.Close(context.Background())
-	connection, err := models.ObserveModelRetrying(func(_ context.Context, e modelmgr.ModelRetryingEvent) error { calls <- e.CallContext; return nil }, signal.ConnectOptions{})
+	connection, err := models.ObserveModelRetrying(func(_ context.Context, e modelmgr.ModelRetryingEvent) { calls <- e.CallContext }, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,11 +77,11 @@ data: [DONE]
 	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "cli", ChatID: "local", ChatType: "private"}, Identity: contextinfo.Identity{ID: "local"}})
 	ctx = contextinfo.WithModel(ctx, contextinfo.Model{Provider: "p", Model: "m", APIType: "chat"})
 	namingDone := make(chan struct{}, 1)
-	logs, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	logs, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if record.EventName == "session_naming_completed" && record.Category == events.LogRuntime {
 			namingDone <- struct{}{}
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

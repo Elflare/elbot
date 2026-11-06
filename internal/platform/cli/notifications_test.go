@@ -21,11 +21,11 @@ func TestRemoteNotificationFailureLoggedByCLI(t *testing.T) {
 	}
 	defer c.Disconnect()
 	logs := make(chan events.LogRecord, 4)
-	l, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
+	l, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) {
 		if r.Module == "cli" {
 			logs <- r
 		}
-		return nil
+
 	}, signal.ConnectOptions{Shutdown: signal.Drain})
 	if err != nil {
 		t.Fatal(err)

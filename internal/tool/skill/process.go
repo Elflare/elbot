@@ -61,11 +61,31 @@ func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall
 	stderr := limitedOutput{limit: maxRunnerOutput}
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	cancel := cmd.Cancel
+	cancelRequested := make(chan error, 1)
+	cmd.Cancel = func() error {
+		err := cancel()
+		cancelRequested <- err
+		return err
+	}
 	err := cmd.Run()
+	select {
+	case cancelErr := <-cancelRequested:
+		if cancelErr != nil {
+			if !errors.Is(cancelErr, os.ErrProcessDone) && !errors.Is(err, cancelErr) {
+				events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn,
+					EventName: "skill_process_cleanup_failed", Module: "skill", Content: cancelErr.Error(),
+					Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(cancelErr)})
+			}
+		} else if processenv.ExitCanceled(cmd, true) {
+			err = ctx.Err()
+		}
+	default:
+	}
 	if err != nil {
 		out := truncateOutput(stdout.String())
 		errText := stderr.String()
-		return nil, commandError(ctx, label, err, out, errText)
+		return nil, commandError(label, err, out, errText)
 	}
 	if stdout.truncated {
 		return nil, fmt.Errorf("%s stdout exceeds %d byte limit%s", label, maxRunnerStdout, commandOutputSuffix("", stderr.String()))
@@ -73,22 +93,17 @@ func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall
 	return resultFromStdoutWithMedia(ctx, stdout.String(), mediaCall, cmd.Dir)
 }
 
-func commandError(ctx context.Context, label string, err error, stdout, stderr string) error {
+func commandError(label string, err error, stdout, stderr string) error {
 	var exitErr *exec.ExitError
-	if ctx.Err() != nil && !errors.Is(err, ctx.Err()) && !errors.As(err, &exitErr) {
-		events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn,
-			EventName: "skill_process_failed", Module: "skill", Content: err.Error(),
-			Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
-	}
-	if ctxErr := ctx.Err(); errors.Is(ctxErr, context.DeadlineExceeded) {
-		return fmt.Errorf("%s timed out: %w%s", label, ctxErr, commandOutputSuffix(stdout, stderr))
-	} else if errors.Is(ctxErr, context.Canceled) {
-		return fmt.Errorf("%s canceled: %w%s", label, ctxErr, commandOutputSuffix(stdout, stderr))
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("%s timed out: %w%s", label, err, commandOutputSuffix(stdout, stderr))
+	} else if errors.Is(err, context.Canceled) {
+		return fmt.Errorf("%s canceled: %w%s", label, err, commandOutputSuffix(stdout, stderr))
 	}
 	if errors.As(err, &exitErr) {
 		return fmt.Errorf("%s process failed with exit code %d: %w%s", label, exitErr.ExitCode(), err, commandOutputSuffix(stdout, stderr))
 	}
-	return fmt.Errorf("start %s failed: %w", label, err)
+	return fmt.Errorf("start %s failed: %w%s", label, err, commandOutputSuffix(stdout, stderr))
 }
 
 func commandOutputSuffix(stdout, stderr string) string {

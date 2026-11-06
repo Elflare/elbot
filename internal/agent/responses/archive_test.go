@@ -96,11 +96,11 @@ func TestArchiveFailureDoesNotReplaceRequestFailure(t *testing.T) {
 				row := &storage.Session{ID: "session"}
 				selection := modelmgr.Selection{ModelSelection: config.ModelSelection{Provider: "test", Model: "model"}, Origin: llm.Origin{APIType: llm.APITypeResponse, Provider: "test", BaseURL: "http://unused.invalid"}}
 				logs := make(chan events.LogRecord, 2)
-				connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+				connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 					if record.EventName == route+"_archive_failed" {
 						logs <- record
 					}
-					return nil
+
 				}, signal.ConnectOptions{})
 				if err != nil {
 					t.Fatal(err)

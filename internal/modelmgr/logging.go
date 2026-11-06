@@ -8,7 +8,7 @@ import (
 	"elbot/internal/events"
 )
 
-func logModelRetry(ctx context.Context, event ModelRetryingEvent) error {
+func logModelRetry(ctx context.Context, event ModelRetryingEvent) {
 	errorMessage := ""
 	if event.Retry.Err != nil {
 		errorMessage = event.Retry.Err.Error()
@@ -22,5 +22,5 @@ func logModelRetry(ctx context.Context, event ModelRetryingEvent) error {
 		Identity: event.Identity, ResultStatus: event.Retry.ResultStatus,
 		Content: fmt.Sprintf("model call retry: provider=%s retry_attempt=%d max_retries=%d delay=%s error_kind=%s error=%s", event.Provider, event.Retry.Attempt, event.Retry.MaxRetries, event.Retry.Delay, event.Retry.Kind, errorMessage),
 	})
-	return nil
+	return
 }

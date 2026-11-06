@@ -29,11 +29,11 @@ func TestLLMRejectsEmptyEffectiveTargetsBeforeEnqueue(t *testing.T) {
 				req.Targets = []Target{{Platform: "telegram"}}
 			}
 			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 				if record.EventName == "elnis.rejected" {
 					records = append(records, record)
 				}
-				return nil
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)

@@ -4,64 +4,126 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
-func TestForwardResolvedPreservesSingleResult(t *testing.T) {
+func TestForwardPreservesBusinessResult(t *testing.T) {
 	failure := errors.New("partial delivery")
-	for _, want := range []Result[int]{{}, {Err: ErrClosed}, {Value: 42, Err: failure, Started: true}} {
-		s := testSignal[int, int](t, Options[int]{Single: true})
-		_, err := s.ConnectForward(func(context.Context, int) *Emission[int] { return Resolved(want) }, ConnectOptions{})
+	up := testSignal[int, int](t, Options[int]{Single: true})
+	down := testSignal[int, int](t, Options[int]{Single: true})
+	connect(t, down, func(context.Context, int) (int, error) { return 42, failure }, ConnectOptions{})
+	_, err := up.ConnectForward(func(ctx context.Context, n int) (context.Context, *Signal[int, int], int) { return ctx, down, n }, ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := up.Emit(t.Context(), 1)
+	if err != nil || len(got) != 1 || got[0].Value != 42 || got[0].Err != failure || !got[0].Started {
+		t.Fatal(got, err)
+	}
+}
+
+func TestForwardRejectsNonSingleDestinationBeforeDispatch(t *testing.T) {
+	up := testSignal[int, int](t, Options[int]{Single: true})
+	down := testSignal[int, int](t, Options[int]{})
+	var calls atomic.Int32
+	for range 2 {
+		connect(t, down, func(context.Context, int) (int, error) { calls.Add(1); return 1, nil }, ConnectOptions{})
+	}
+	_, err := up.ConnectForward(func(ctx context.Context, n int) (context.Context, *Signal[int, int], int) { return ctx, down, n }, ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := up.Emit(t.Context(), 0)
+	if err != nil || len(results) != 1 || results[0].Err == nil || !strings.Contains(results[0].Err.Error(), "single-receiver") {
+		t.Fatal(results, err)
+	}
+	if calls.Load() != 0 {
+		t.Fatal("invalid destination executed business callbacks")
+	}
+}
+
+func TestForwardEmptyDestinationHonorsRequiredOption(t *testing.T) {
+	for _, required := range []bool{false, true} {
+		up := testSignal[int, int](t, Options[int]{Single: true})
+		down := testSignal[int, int](t, Options[int]{Single: true, Required: required})
+		_, err := up.ConnectForward(func(ctx context.Context, n int) (context.Context, *Signal[int, int], int) { return ctx, down, n }, ConnectOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := s.Emit(context.Background(), 0)
-		if len(got) != 1 || got[0] != want || err != nil {
-			t.Fatalf("got=%+v err=%v want=%+v", got, err, want)
+		results, err := up.Emit(t.Context(), 0)
+		if err != nil || len(results) != 1 || results[0].Started {
+			t.Fatal(results, err)
+		}
+		if required && !errors.Is(results[0].Err, ErrNoReceiver) {
+			t.Fatal(results)
+		}
+		if !required && results[0].Err != nil {
+			t.Fatal(results)
 		}
 	}
 }
 
-func TestForwardNilIsContractError(t *testing.T) {
-	s := testSignal[int, int](t, Options[int]{Single: true})
-	_, err := s.ConnectForward(func(context.Context, int) *Emission[int] { return nil }, ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	results, err := s.Emit(context.Background(), 0)
-	if err != nil || results[0].Err == nil || !strings.Contains(results[0].Err.Error(), "nil forwarded emission") || results[0].Started {
-		t.Fatal(results, err)
-	}
-}
-
-func TestForwardRejectedEmissionKeepsAdmissionErrorOnce(t *testing.T) {
-	down := testSignal[int, int](t, Options[int]{Single: true, Concurrency: 1, Capacity: 1})
-	started, release := make(chan struct{}, 1), make(chan struct{})
+func TestForwardCloseWaitsForActualDownstreamExit(t *testing.T) {
+	up := testSignal[int, Empty](t, Options[int]{Single: true})
+	down := testSignal[int, Empty](t, Options[int]{Single: true})
+	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	defer close(release)
-	connect(t, down, func(context.Context, int) (int, error) {
-		select {
-		case started <- struct{}{}:
-		default:
-		}
-		<-release
-		return 0, nil
-	}, ConnectOptions{})
-	_, _ = down.EmitAsync(context.Background(), 0)
-	<-started
-	_, _ = down.EmitAsync(context.Background(), 0)
-	up := testSignal[int, int](t, Options[int]{Single: true})
-	_, err := up.ConnectForward(func(ctx context.Context, n int) *Emission[int] {
-		e, admission := down.EmitAsync(ctx, n)
-		if e == nil {
-			return Resolved(Result[int]{Err: admission})
-		}
-		return e
-	}, ConnectOptions{})
+	_, err := down.Observe(func(ctx context.Context, _ int) { close(started); <-ctx.Done(); close(canceled); <-release }, ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	results, err := up.Emit(context.Background(), 1)
-	if err != nil || len(results) != 1 || results[0].Err != ErrQueueFull || results[0].Started {
-		t.Fatal(results, err)
+	_, err = up.ConnectForward(func(ctx context.Context, n int) (context.Context, *Signal[int, Empty], int) { return ctx, down, n }, ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	up.EmitAsync(t.Context(), 0)
+	<-started
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+	defer cancel()
+	if err := up.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+	select {
+	case <-canceled:
+	default:
+		t.Fatal("upstream close did not cancel downstream")
+	}
+	select {
+	case <-up.Done():
+		t.Fatal("Done before downstream exit")
+	default:
+	}
+}
+
+func TestForwardNilDestinationSkipsDelivery(t *testing.T) {
+	s := testSignal[int, int](t, Options[int]{Single: true})
+	_, err := s.ConnectForward(func(ctx context.Context, n int) (context.Context, *Signal[int, int], int) { return ctx, nil, n }, ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Emit(t.Context(), 0)
+	if err != nil || len(got) != 1 || got[0].Err != nil || got[0].Started {
+		t.Fatal(got, err)
+	}
+}
+
+func TestForwardReturnsAdmissionError(t *testing.T) {
+	down := testSignal[int, int](t, Options[int]{Single: true, Concurrency: 1, Capacity: 1})
+	started, release := make(chan struct{}), make(chan struct{})
+	defer close(release)
+	connect(t, down, func(context.Context, int) (int, error) { close(started); <-release; return 0, nil }, ConnectOptions{})
+	_, _ = down.emit(t.Context(), 0, true)
+	<-started
+	_, _ = down.emit(t.Context(), 0, true)
+	up := testSignal[int, int](t, Options[int]{Single: true})
+	_, err := up.ConnectForward(func(ctx context.Context, n int) (context.Context, *Signal[int, int], int) { return ctx, down, n }, ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := up.Emit(t.Context(), 1)
+	if err != nil || len(got) != 1 || got[0].Err != ErrQueueFull || got[0].Started {
+		t.Fatal(got, err)
 	}
 }

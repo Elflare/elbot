@@ -171,11 +171,11 @@ func TestToolNotificationRefreshesCronThroughRealStorage(t *testing.T) {
 	}
 	t.Cleanup(func() { connection.Disconnect(); <-m.Stop().Done() })
 	scheduled := make(chan events.LogRecord, 16)
-	logs, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	logs, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if record.EventName == "cron_job_scheduled" && strings.Contains(record.Content, "user.cron.chain") {
 			scheduled <- record
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

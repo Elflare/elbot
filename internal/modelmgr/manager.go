@@ -25,7 +25,7 @@ type ModelManager struct {
 	providersPath string                  // 重载读取的 providers 配置文件。
 	configDir     string                  // 主配置目录，用于解析重载凭据。
 	request       config.LLMRequestConfig // 构造时固定的请求参数，providers 重载不修改它。
-	retrying      *signal.Async[ModelRetryingEvent]
+	retrying      *signal.Signal[ModelRetryingEvent, signal.Empty]
 	connections   []*signal.Connection
 }
 
@@ -59,7 +59,7 @@ func NewModelManager(ctx context.Context, cfg *config.Config) (*ModelManager, er
 		providersPath: cfg.ProvidersConfigPath,
 		configDir:     filepath.Dir(cfg.ConfigPath),
 		request:       cfg.LLMRequest,
-		retrying:      signal.NewAsync[ModelRetryingEvent]("model.retrying"),
+		retrying:      signal.New[ModelRetryingEvent, signal.Empty]("model.retrying"),
 	}
 	var err error
 	s.providers, err = s.newProviderSet(ctx, config.ProviderFile{Providers: cfg.Providers, ModelMetadata: cfg.ModelMetadata})

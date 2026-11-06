@@ -10,12 +10,12 @@ import (
 )
 
 // ObserveBindingChanged 返回调用方拥有的连接，不交付事件源或建立额外转发订阅。
-func (s *Supervisor) ObserveBindingChanged(handler func(context.Context, BindingChangedEvent) error, options signal.ConnectOptions) (*signal.Connection, error) {
+func (s *Supervisor) ObserveBindingChanged(handler func(context.Context, BindingChangedEvent), options signal.ConnectOptions) (*signal.Connection, error) {
 	if handler == nil {
 		return s.bindings.ObserveBindingChanged(nil, options)
 	}
-	return s.bindings.ObserveBindingChanged(func(ctx context.Context, event binding.BindingChangedEvent) error {
-		return handler(ctx, BindingChangedEvent{
+	return s.bindings.ObserveBindingChanged(func(ctx context.Context, event binding.BindingChangedEvent) {
+		handler(ctx, BindingChangedEvent{
 			Version: event.Version, Old: (*Binding)(event.Old), New: (*Binding)(event.New),
 		})
 	}, options)

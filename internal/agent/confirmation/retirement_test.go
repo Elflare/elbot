@@ -8,7 +8,6 @@ import (
 	"elbot/internal/signal"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil"
-	"errors"
 	"testing"
 )
 
@@ -31,7 +30,7 @@ func TestRetiredSessionDoesNotRestoreAutomaticConfirmation(t *testing.T) {
 	c.setSessionAutoConfirmed(row.ID)
 	c.setToolAutoConfirmed(row.ID, "shell")
 	c.setSessionAutoConfirmed("other")
-	_, err = s.ObserveBindingChanged(func(context.Context, session.BindingChangedEvent) error { return errors.New("observer failed") }, signal.ConnectOptions{})
+	_, err = s.ObserveBindingChanged(func(context.Context, session.BindingChangedEvent) {}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

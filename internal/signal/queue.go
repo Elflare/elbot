@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"sync"
 	"time"
 )
@@ -184,12 +183,6 @@ func (q *Queue) removePending(j *job) {
 	q.space.Broadcast()
 }
 func (q *Queue) runTask(ctx context.Context, task Task) (err error) {
-	defer func() {
-		if p := recover(); p != nil {
-			err = fmt.Errorf("signal callback panic: %v", p)
-			ReportDiagnostic("signal callback panic", slog.String("queue", q.name), slog.Any("error", err))
-		}
-	}()
 	if err = ctx.Err(); err == nil {
 		err = task.Run(ctx)
 	}
@@ -286,10 +279,7 @@ func (q *Queue) Close(ctx context.Context) error {
 	case <-q.done:
 		return nil
 	case <-ctx.Done():
-		pending, active := q.stop(true)
-		if pending > 0 || active {
-			ReportDiagnostic("signal drain incomplete", slog.String("queue", q.name), slog.Int("pending", pending), slog.Bool("active", active), slog.Any("error", ctx.Err()))
-		}
+		q.stop(true)
 		return fmt.Errorf("signal queue %s not fully closed: %w", q.name, ctx.Err())
 	}
 }

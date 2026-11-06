@@ -46,11 +46,11 @@ func TestIncompleteMediaReceiptReportsStorageFailure(t *testing.T) {
 				return want, nil
 			}}
 			warnings := make(chan events.LogRecord, 2)
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 				if record.EventName == "cache_sent_media_receipt_failed" {
 					warnings <- record
 				}
-				return nil
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)

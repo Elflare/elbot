@@ -11,6 +11,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	"elbot/internal/session"
 	"elbot/internal/signal"
 )
 
@@ -21,7 +22,10 @@ type NotificationReceiver interface {
 
 // ConnectNotifications 将通知交给发送端，连接由根部持有和释放。
 func ConnectNotifications(s *signal.Signal[events.Notification, signal.Empty], sender delivery.MessageSender) (*signal.Connection, error) {
-	return s.Observe(func(ctx context.Context, n events.Notification) error {
+	return s.Observe(func(ctx context.Context, n events.Notification) {
+		if binding, ok := session.BindingFromContext(ctx); ok && !binding.Valid() {
+			return
+		}
 		target := NotificationTarget(n)
 		_, err := sender.SendTo(ctx, target, []delivery.Output{delivery.Text(n.Text)})
 		if err != nil {
@@ -31,7 +35,7 @@ func ConnectNotifications(s *signal.Signal[events.Notification, signal.Empty], s
 			}
 			events.AsyncLog(ctx, record)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 }
 

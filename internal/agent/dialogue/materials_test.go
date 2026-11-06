@@ -73,14 +73,14 @@ func TestMaterialsKeepCanonicalOriginalAndMissingPlaceholder(t *testing.T) {
 		t.Fatalf("archive re-read existing media: %v", err)
 	}
 	logs := 0
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if record.EventName == "dialogue_media_unavailable" {
 			logs++
 			if strings.Count(record.Content, segment.MediaID) != 1 || strings.Contains(record.Content, "base64") {
 				t.Errorf("unsafe or duplicated notice: %s", record.Content)
 			}
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

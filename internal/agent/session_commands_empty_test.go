@@ -29,9 +29,9 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = m.Close(context.Background()) })
 			notices := make(chan events.Notification, 32)
-			connection, err := events.NotificationRequested.Observe(func(_ context.Context, notice events.Notification) error {
+			connection, err := events.NotificationRequested.Observe(func(_ context.Context, notice events.Notification) {
 				notices <- notice
-				return nil
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -95,9 +95,9 @@ func TestCommandTextWiringUsesConfigurationFirstPrefix(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = m.Close(context.Background()) })
 	notices := make(chan events.Notification, 32)
-	connection, err := events.NotificationRequested.Observe(func(_ context.Context, notice events.Notification) error {
+	connection, err := events.NotificationRequested.Observe(func(_ context.Context, notice events.Notification) {
 		notices <- notice
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

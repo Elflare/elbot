@@ -20,7 +20,7 @@ func TestBlockedSignalBoundedResourcesAndTailLatency(t *testing.T) {
 	connect(t, blocked, func(context.Context, int) (Empty, error) { started <- struct{}{}; <-release; return Empty{}, nil }, ConnectOptions{})
 	connect(t, fast, func(_ context.Context, n int) (int, error) { return n, nil }, ConnectOptions{})
 	for range 8 {
-		if _, err := blocked.EmitAsync(context.Background(), 0); err != nil {
+		if _, err := blocked.emit(context.Background(), 0, true); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -30,7 +30,7 @@ func TestBlockedSignalBoundedResourcesAndTailLatency(t *testing.T) {
 	queued, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	for range 64 {
-		if _, err := blocked.EmitAsync(queued, 0); err != nil {
+		if _, err := blocked.emit(queued, 0, true); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -39,7 +39,7 @@ func TestBlockedSignalBoundedResourcesAndTailLatency(t *testing.T) {
 	runtime.GC()
 	runtime.ReadMemStats(&before)
 	for range 2000 {
-		if _, err := blocked.EmitAsync(context.Background(), 0); !errors.Is(err, ErrQueueFull) {
+		if _, err := blocked.emit(context.Background(), 0, true); !errors.Is(err, ErrQueueFull) {
 			t.Fatal(err)
 		}
 	}
@@ -96,15 +96,15 @@ func TestDisconnectRetainsSnapshotAndCloseWaitsForActualExit(t *testing.T) {
 		}
 		return n, ctx.Err()
 	}, ConnectOptions{})
-	first, _ := s.EmitAsync(context.Background(), 0)
+	first, _ := s.emit(context.Background(), 0, true)
 	<-started
-	second, _ := s.EmitAsync(context.Background(), 1)
+	second, _ := s.emit(context.Background(), 1, true)
 	c.Disconnect()
 	if r, err := s.Emit(context.Background(), 2); err != nil || len(r) != 0 {
 		t.Fatal(r, err)
 	}
 	once.Do(func() { close(release) })
-	for _, e := range []*Emission[int]{first, second} {
+	for _, e := range []*emission[int]{first, second} {
 		if _, err := e.Wait(context.Background()); err != nil {
 			t.Fatal(err)
 		}
@@ -137,7 +137,7 @@ func TestConnectionCloseCancelsButWaitsForRunningCallback(t *testing.T) {
 	started, release := make(chan struct{}), make(chan struct{})
 	defer close(release)
 	c := connect(t, s, func(context.Context, int) (int, error) { close(started); <-release; return 1, nil }, ConnectOptions{})
-	e, _ := s.EmitAsync(context.Background(), 0)
+	e, _ := s.emit(context.Background(), 0, true)
 	<-started
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
@@ -169,7 +169,7 @@ func TestPartialAdmissionKeepsEverySubscriberResult(t *testing.T) {
 		t.Error("subscriber started after admission failed")
 		return 3, nil
 	}, ConnectOptions{})
-	e, err := s.EmitAsync(context.Background(), 0)
+	e, err := s.emit(context.Background(), 0, true)
 	if !errors.Is(err, ErrQueueFull) || e == nil {
 		t.Fatal(e, err)
 	}

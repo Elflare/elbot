@@ -59,14 +59,14 @@ func (a *Adapter) Start(ctx context.Context, handler share.MessageHandler) (err 
 		close(a.renderDone)
 		info, statErr := a.input.Stat()
 		if statErr != nil {
-			a.finishInput(statErr)
+			a.finishInput(nil)
 			return statErr
 		}
 		var reader io.Reader = a.input
 		if !info.Mode().IsRegular() {
 			cancellable, readErr := cancelreader.NewReader(a.input)
 			if readErr != nil {
-				a.finishInput(readErr)
+				a.finishInput(nil)
 				return readErr
 			}
 			a.mu.Lock()
@@ -109,9 +109,17 @@ func (a *Adapter) Start(ctx context.Context, handler share.MessageHandler) (err 
 		case <-a.renderDone:
 			a.mu.Lock()
 			err = a.runErr
+			a.runErr = nil // 该故障由 Start 返回，不再作为运行结果发布。
 			a.mu.Unlock()
 			return err
 		case <-a.workCtx.Done():
+			a.mu.Lock()
+			err = a.runErr
+			a.runErr = nil
+			a.mu.Unlock()
+			if err != nil {
+				return err
+			}
 			return a.workCtx.Err()
 		}
 	}
@@ -200,9 +208,6 @@ func (a *Adapter) WaitExit(ctx context.Context) error {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.startErr != nil {
-		return a.startErr
-	}
 	if a.runErr != nil {
 		return a.runErr
 	}

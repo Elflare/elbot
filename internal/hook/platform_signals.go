@@ -51,14 +51,14 @@ func (m *Supervisor) startPlatformEvents(ctx context.Context) error {
 	return nil
 }
 
-func (m *Supervisor) enqueuePlatformConnected(ctx context.Context, event events.PlatformConnectedEvent) error {
+func (m *Supervisor) enqueuePlatformConnected(ctx context.Context, event events.PlatformConnectedEvent) {
 	p := &m.platformEvents
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	// An emission snapshot may outlive disconnection. Admission and queue creation
 	// share the shutdown lock; platform event validity belongs to its publisher.
 	if p.closed || p.parent.Err() != nil {
-		return nil
+		return
 	}
 	queue := p.platformQueues[event.Platform]
 	if queue == nil {
@@ -66,7 +66,7 @@ func (m *Supervisor) enqueuePlatformConnected(ctx context.Context, event events.
 		queue, err = signal.NewQueue(signal.QueueOptions{Name: event.Platform + ".connected.hooks"})
 		if err != nil {
 			events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "hook_platform_admission_failed", Module: "hook", Content: err.Error(), ResultStatus: events.LogStatus(err)})
-			return nil
+			return
 		}
 		p.platformQueues[event.Platform] = queue
 	}
@@ -80,7 +80,7 @@ func (m *Supervisor) enqueuePlatformConnected(ctx context.Context, event events.
 	if err != nil && err != signal.ErrClosed {
 		events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "hook_platform_admission_failed", Module: "hook", Content: fmt.Sprintf("platform=%s error=%v", event.Platform, err), ResultStatus: events.ResultFailed})
 	}
-	return nil
+	return
 }
 
 func (m *Supervisor) handlePlatformConnected(ctx context.Context, platformName string) {

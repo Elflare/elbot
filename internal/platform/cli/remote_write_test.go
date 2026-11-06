@@ -95,11 +95,14 @@ func TestRemoteFanoutPreservesCancellationCause(t *testing.T) {
 	client := &remoteClientConn{id: "canceled-client", server: s, conn: conn}
 	s.addClient(client)
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if record.EventName == "chat_output_failed" {
 			records = append(records, record)
 		}
-		return errors.New("logger unavailable")
+		if err := errors.New("logger unavailable"); err != nil {
+			t.Error(err)
+		}
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

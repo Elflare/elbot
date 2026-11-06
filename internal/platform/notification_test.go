@@ -40,13 +40,13 @@ func TestFailureNotificationWiringSurvivesIngressStop(t *testing.T) {
 		var mu sync.Mutex
 		var destinations []string
 		var failures []events.LogRecord
-		logs, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+		logs, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 			if record.EventName == "platform_failed" {
 				mu.Lock()
 				failures = append(failures, record)
 				mu.Unlock()
 			}
-			return nil
+
 		}, signal.ConnectOptions{})
 		if err != nil {
 			t.Fatal(err)
@@ -60,14 +60,14 @@ func TestFailureNotificationWiringSurvivesIngressStop(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			connection, err := queue.Observe(func(ctx context.Context, n events.Notification) error {
+			connection, err := queue.Observe(func(ctx context.Context, n events.Notification) {
 				if ctx.Err() != nil || n.Target.ChatType != contextinfo.ChatPrivate || n.Level != slog.LevelError || n.Text != "平台 failed 异常退出：offline" {
 					t.Errorf("unexpected notification: %+v, context error: %v", n, ctx.Err())
 				}
 				mu.Lock()
 				destinations = append(destinations, n.Target.Platform+":"+n.Target.ID)
 				mu.Unlock()
-				return nil
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -124,13 +124,12 @@ func TestServiceNotificationBusinessIgnoresLogFailure(t *testing.T) {
 		t.Fatalf("headless notification connections=%d", len(m.connections))
 	}
 	var records []events.LogRecord
-	fault := errors.New("logger rejected notice")
-	c, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	c, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if record.EventName == "runtime_notification" {
 			records = append(records, record)
-			return fault
+			return
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

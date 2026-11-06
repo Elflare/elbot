@@ -164,7 +164,7 @@ func TestPartialStartWaitsForActualExit(t *testing.T) {
 	r, _ := testRuntime("partial", false, nil)
 	r.start = func(context.Context) error { return fault }
 	r.beginClose = func() {}
-	r.wait = func(context.Context) error { <-exit; return fault }
+	r.wait = func(context.Context) error { <-exit; return nil }
 	l.onFailure = func(_ string, err error) { t.Errorf("startup failure reported twice: %v", err) }
 	l.runtimes = []*platformLifecycle{r}
 	if err := l.Start(); !errors.Is(err, fault) {
@@ -184,7 +184,7 @@ func TestPartialStartWaitsForActualExit(t *testing.T) {
 	if err := l.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if err := l.Wait(context.Background()); !errors.Is(err, fault) {
+	if err := l.Wait(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -264,7 +264,7 @@ func TestCanceledWaitReadsPublishedFaultBeforeObserver(t *testing.T) {
 
 func TestUnstartedPartialConstructionAndCleanupFailure(t *testing.T) {
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error { records = append(records, record); return nil }, signal.ConnectOptions{})
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) { records = append(records, record) }, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

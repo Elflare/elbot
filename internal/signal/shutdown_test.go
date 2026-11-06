@@ -64,7 +64,7 @@ func TestSubmitRacesWithClose(t *testing.T) {
 	wg.Wait()
 }
 
-func TestDrainFailureDiagnosticDoesNotDependOnBackpressure(t *testing.T) {
+func TestCloseFailureReturnsWithoutDuplicateDiagnostic(t *testing.T) {
 	file, err := os.CreateTemp(t.TempDir(), "stderr")
 	if err != nil {
 		t.Fatal(err)
@@ -96,11 +96,7 @@ func TestDrainFailureDiagnosticDoesNotDependOnBackpressure(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := 0
-		if policy == Drain {
-			want = 1
-		}
-		if got := strings.Count(string(data), "signal drain incomplete"); got != want {
+		if got := strings.Count(string(data), "signal drain incomplete"); got != 0 {
 			t.Fatalf("policy=%d diagnostics=%s", policy, data)
 		}
 	}

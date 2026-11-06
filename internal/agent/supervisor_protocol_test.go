@@ -91,23 +91,23 @@ func TestSupervisorStatusSnapshotIsolation(t *testing.T) {
 	m := contractSupervisor(t, deps)
 	var mu sync.Mutex
 	var totals []int64
-	mutate, err := m.ObserveStatusChanged(func(e StatusChangedEvent) error {
+	mutate, err := m.ObserveStatusChanged(func(e StatusChangedEvent) {
 		if e.Snapshot.Usage != nil && e.Snapshot.Usage.TotalTokens != nil {
 			*e.Snapshot.Usage.TotalTokens = -1
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer mutate.Disconnect()
-	observe, err := m.ObserveStatusChanged(func(e StatusChangedEvent) error {
+	observe, err := m.ObserveStatusChanged(func(e StatusChangedEvent) {
 		if e.Snapshot.Usage != nil && e.Snapshot.Usage.TotalTokens != nil {
 			mu.Lock()
 			totals = append(totals, *e.Snapshot.Usage.TotalTokens)
 			mu.Unlock()
 		}
-		return nil
+
 	}, signal.ConnectOptions{Shutdown: signal.Drain})
 	if err != nil {
 		t.Fatal(err)

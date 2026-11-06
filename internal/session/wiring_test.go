@@ -180,7 +180,7 @@ func TestPublicBindingIdentityAndSynchronousRollbackRelease(t *testing.T) {
 				t.Fatalf("clear facts=%+v", facts)
 			}
 			observed := make(chan struct{})
-			c, err := s.ObserveBindingChanged(func(ctx context.Context, e BindingChangedEvent) error {
+			c, err := s.ObserveBindingChanged(func(ctx context.Context, e BindingChangedEvent) {
 				defer close(observed)
 				if e.Old != binding {
 					t.Error("event copied old binding")
@@ -194,7 +194,7 @@ func TestPublicBindingIdentityAndSynchronousRollbackRelease(t *testing.T) {
 						t.Error("event copied new binding")
 					}
 				}
-				return nil
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -338,7 +338,7 @@ func TestCloseWaitsNamingBeforeClosingBinding(t *testing.T) {
 	if err := s.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("close=%v", err)
 	}
-	c, err := s.ObserveBindingChanged(func(context.Context, BindingChangedEvent) error { return nil }, signal.ConnectOptions{})
+	c, err := s.ObserveBindingChanged(func(context.Context, BindingChangedEvent) {}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal("binding closed before naming", err)
 	}

@@ -132,7 +132,7 @@ func (c *RemoteClient) run(ctx context.Context, display func(context.Context) er
 	if !readDone {
 		// 关闭连接导致的读循环退出属于收尾，不再覆盖终止原因。
 		readErr = <-reads
-		if readErr != nil && !errors.Is(readErr, context.Canceled) && websocket.CloseStatus(readErr) == -1 && !errors.Is(readErr, net.ErrClosed) {
+		if readErr != nil && !errors.Is(readErr, context.Canceled) && !errors.Is(readErr, net.ErrClosed) && websocket.CloseStatus(readErr) != websocket.StatusNormalClosure && websocket.CloseStatus(readErr) != websocket.StatusGoingAway {
 			signal.ReportDiagnostic("cli read cleanup failed", slog.Any("error", readErr))
 		}
 	}

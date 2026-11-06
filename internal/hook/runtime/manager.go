@@ -241,7 +241,7 @@ func (m *Manager) ReplacePlugin(id string, config *share.RuntimeConfig, commit f
 	}
 	if len(workers) > 0 {
 		m.mu.Unlock()
-		if err := stopWorkers(context.Background(), workers); err != nil {
+		if err := m.stopWorkers(context.Background(), workers); err != nil {
 			return fmt.Errorf("hook %s stop: %w", id, err)
 		}
 		m.mu.Lock()
@@ -325,7 +325,7 @@ func (m *Manager) waitClose(ctx context.Context, done <-chan struct{}) error {
 	}
 }
 
-func stopWorkers(ctx context.Context, workers []*worker) error {
+func (m *Manager) stopWorkers(ctx context.Context, workers []*worker) error {
 	results := make(chan error, len(workers))
 	for _, worker := range workers {
 		go func() { results <- worker.stop(ctx) }()
@@ -336,7 +336,7 @@ func stopWorkers(ctx context.Context, workers []*worker) error {
 			if failure == nil {
 				failure = err
 			} else {
-				workers[0].manager.opts.Log(context.Background(), globalevents.LogRecord{Category: globalevents.LogRuntime,
+				m.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime,
 					Level: slog.LevelWarn, EventName: "hook_worker_stop_failed", Module: "hook",
 					Content: err.Error(), ResultStatus: globalevents.LogStatus(err)})
 			}
@@ -346,7 +346,7 @@ func stopWorkers(ctx context.Context, workers []*worker) error {
 }
 
 func (m *Manager) finishClose(ctx context.Context, workers []*worker) {
-	if err := stopWorkers(context.Background(), workers); err != nil {
+	if err := m.stopWorkers(context.Background(), workers); err != nil {
 		m.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn,
 			EventName: "hook_worker_stop_failed", Module: "hook", Content: err.Error(), ResultStatus: globalevents.LogStatus(err)})
 	}
@@ -451,7 +451,7 @@ func (m *Manager) Stop(ctx context.Context, id string) (bool, error) {
 		}
 	}
 	m.mu.Unlock()
-	return true, stopWorkers(ctx, workers)
+	return true, m.stopWorkers(ctx, workers)
 }
 
 func (m *Manager) Restart(ctx context.Context, id string) error {

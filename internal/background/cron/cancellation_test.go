@@ -158,13 +158,16 @@ func TestDeliveryKeepsMixedFailureBeforeErrorWrapping(t *testing.T) {
 // captureLogs observes the public signal; production never receives this logger.
 func captureLogs(t *testing.T, logger *slog.Logger) {
 	t.Helper()
-	connection, err := globalevents.LogSubmitted.Observe(func(ctx context.Context, record globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(ctx context.Context, record globalevents.LogRecord) {
 		if !logger.Enabled(ctx, record.Level) {
-			return nil
+			return
 		}
 		out := slog.NewRecord(time.Now(), record.Level, record.Content, 0)
 		out.AddAttrs(slog.String("event", record.EventName), slog.String("module", record.Module), slog.String("result_status", record.ResultStatus.String()))
-		return logger.Handler().Handle(ctx, out)
+		if err := logger.Handler().Handle(ctx, out); err != nil {
+			t.Error(err)
+		}
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

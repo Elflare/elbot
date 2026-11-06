@@ -4,13 +4,21 @@ import (
 	"context"
 	"log/slog"
 
+	"elbot/internal/events"
+
 	"elbot/internal/signal"
 )
 
 // connectUsageFinished 由根部装配，transfer 不依赖信号系统。
 func (m *MediaCenter) connectUsageFinished() error {
-	m.usageFinished = signal.NewAsync[[]string]("media.usage_finished", signal.Options[[]string]{Concurrency: 1})
-	connection, err := m.usageFinished.Observe(m.transfer.CleanupUsages, signal.ConnectOptions{Shutdown: signal.Drain})
+	m.usageFinished = signal.New[[]string, signal.Empty]("media.usage_finished", signal.Options[[]string]{Concurrency: 1})
+	connection, err := m.usageFinished.Observe(func(ctx context.Context, ids []string) {
+		if err := m.transfer.CleanupUsages(ctx, ids); err != nil {
+			events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn,
+				EventName: "media_usage_cleanup_failed", Module: "media", Content: err.Error(),
+				Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
+		}
+	}, signal.ConnectOptions{Shutdown: signal.Drain})
 	m.usageConnection = connection
 	return err
 }
@@ -28,9 +36,7 @@ func (m *MediaCenter) PublishUsageFinished(ctx context.Context, usageIDs []Usage
 		return
 	}
 	m.transfer.FinishUsages(ids)
-	if err := m.usageFinished.Publish(context.WithoutCancel(ctx), ids); err != nil {
-		slog.WarnContext(context.WithoutCancel(ctx), "media usage notification failed; maintenance retains cleanup", "error", err)
-	}
+	m.usageFinished.EmitAsync(context.WithoutCancel(ctx), ids)
 }
 
 // Close 在全部使用方退出后排空信号、解除订阅，并清理已结束资源。

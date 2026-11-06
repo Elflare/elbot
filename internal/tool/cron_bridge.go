@@ -27,8 +27,8 @@ func (m *Supervisor) ObserveCronChanged(handler func(CronChangedEvent) error, op
 	if m.closed {
 		return nil, signal.ErrClosed
 	}
-	return m.cronChanged.Observe(func(_ context.Context, event CronChangedEvent) error {
-		return handler(event)
+	return m.cronChanged.Connect(func(_ context.Context, event CronChangedEvent) (signal.Empty, error) {
+		return signal.Empty{}, handler(event)
 	}, options)
 }
 

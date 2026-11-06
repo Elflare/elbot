@@ -36,6 +36,6 @@ type AgentCapabilities interface {
 	HandleMessage(context.Context, agent.MessageRequest) error
 	Complete(context.Context, completion.Request) ([]completion.Item, error)
 	Commands() []command.Info
-	ObserveStatusChanged(func(agent.StatusChangedEvent) error, signal.ConnectOptions) (*signal.Connection, error)
-	ObserveBindingChanged(func(agent.BindingChangedEvent) error, signal.ConnectOptions) (*signal.Connection, error)
+	ObserveStatusChanged(func(agent.StatusChangedEvent), signal.ConnectOptions) (*signal.Connection, error)
+	ObserveBindingChanged(func(agent.BindingChangedEvent), signal.ConnectOptions) (*signal.Connection, error)
 }

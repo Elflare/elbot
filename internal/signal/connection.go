@@ -11,6 +11,7 @@ type Connection struct {
 	disconnect func()
 	mu         sync.Mutex
 	tasks      map[*connectionTask]struct{}
+	shutdown   ShutdownPolicy // Drain retains accepted callbacks until they actually return.
 	closed     bool
 	done       chan struct{}
 }
@@ -40,8 +41,8 @@ func (c *Connection) release(t *connectionTask) {
 	}
 }
 
-// BeginClose additionally cancels accepted work. Disconnect alone deliberately
-// retains the snapshot semantics of an ordinary signal disconnection.
+// BeginClose stops admission and applies the subscription shutdown policy.
+// Disconnect alone retains existing snapshots and accepted work.
 func (c *Connection) BeginClose() {
 	if c == nil {
 		return
@@ -50,8 +51,10 @@ func (c *Connection) BeginClose() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.closed = true
-	for t := range c.tasks {
-		t.cancel()
+	if c.shutdown == CancelPending {
+		for t := range c.tasks {
+			t.cancel()
+		}
 	}
 	if len(c.tasks) == 0 {
 		select {

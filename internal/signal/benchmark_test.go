@@ -14,7 +14,7 @@ func BenchmarkSignalSync(b *testing.B) {
 			s := New[int, Empty]("benchmark")
 			defer s.Close(context.Background())
 			for range subscribers {
-				if _, err := s.Observe(func(context.Context, int) error { return nil }, ConnectOptions{}); err != nil {
+				if _, err := s.Observe(func(context.Context, int) {}, ConnectOptions{}); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -57,12 +57,12 @@ func BenchmarkSignalAsyncBatch(b *testing.B) {
 			for range subscribers {
 				_, _ = s.Connect(func(_ context.Context, n int) (int, error) { return n, nil }, ConnectOptions{})
 			}
-			var batch [64]*Emission[int]
+			var batch [64]*emission[int]
 			b.ReportAllocs()
 			for b.Loop() {
 				for i := range batch {
 					var err error
-					batch[i], err = s.EmitAsync(context.Background(), i)
+					batch[i], err = s.emit(context.Background(), i, true)
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -84,12 +84,12 @@ func BenchmarkSignalQueueFull(b *testing.B) {
 	var once sync.Once
 	_, _ = s.Connect(func(context.Context, int) (int, error) { once.Do(func() { close(started) }); <-release; return 0, nil }, ConnectOptions{})
 	defer func() { close(release); _ = s.Close(context.Background()) }()
-	_, _ = s.EmitAsync(context.Background(), 0)
+	_, _ = s.emit(context.Background(), 0, true)
 	<-started
-	_, _ = s.EmitAsync(context.Background(), 0)
+	_, _ = s.emit(context.Background(), 0, true)
 	b.ReportAllocs()
 	for b.Loop() {
-		if _, err := s.EmitAsync(context.Background(), 0); !errors.Is(err, ErrQueueFull) {
+		if _, err := s.emit(context.Background(), 0, true); !errors.Is(err, ErrQueueFull) {
 			b.Fatal(err)
 		}
 	}
@@ -119,12 +119,8 @@ func BenchmarkSignalForward(b *testing.B) {
 	defer up.Close(context.Background())
 	defer down.Close(context.Background())
 	_, _ = down.Connect(func(_ context.Context, n int) (int, error) { return n, nil }, ConnectOptions{})
-	_, _ = up.ConnectForward(func(ctx context.Context, n int) *Emission[int] {
-		e, err := down.EmitAsync(ctx, n)
-		if e == nil {
-			return Resolved(Result[int]{Err: err})
-		}
-		return e
+	_, _ = up.ConnectForward(func(ctx context.Context, n int) (context.Context, *Signal[int, int], int) {
+		return ctx, down, n
 	}, ConnectOptions{})
 	b.ReportAllocs()
 	for b.Loop() {

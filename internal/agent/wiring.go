@@ -36,7 +36,7 @@ import (
 
 func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps) (*Supervisor, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	m := &Supervisor{ctx: ctx, cancel: cancel, statusChanged: signal.NewAsync[agentexecution.StatusChangedEvent]("agent.status_changed"), done: make(chan struct{})}
+	m := &Supervisor{ctx: ctx, cancel: cancel, statusChanged: signal.New[agentexecution.StatusChangedEvent, signal.Empty]("agent.status_changed"), done: make(chan struct{})}
 	m.routes = routes.New()
 	m.requests = request.NewManager(deps.Store.NextIDSequence)
 	m.turns = turn.NewSupervisor(deps.Store.NextIDSequence)

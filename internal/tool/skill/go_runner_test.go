@@ -110,36 +110,17 @@ func TestRunMediaCommandOutputLimits(t *testing.T) {
 	}
 }
 
-func TestCommandErrorPreservesUnderlyingCancellationFailure(t *testing.T) {
-	for _, reason := range []error{context.Canceled, context.DeadlineExceeded} {
-		t.Run(reason.Error(), func(t *testing.T) {
-			var ctx context.Context
-			var cancel context.CancelFunc
-			if reason == context.Canceled {
-				ctx, cancel = context.WithCancel(t.Context())
-			} else {
-				ctx, cancel = context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
-			}
-			cancel()
-			failure := errors.New("terminate process group failed")
-			stdout := truncateOutput(strings.Repeat("o", maxRunnerOutput+1))
-			stderr := limitedOutput{limit: maxRunnerOutput}
-			_, _ = stderr.Write([]byte(strings.Repeat("e", maxRunnerOutput+1)))
-			err := commandError(ctx, "test skill", failure, stdout, stderr.String())
-			if !errors.Is(err, reason) || errors.Is(err, failure) {
-				t.Fatalf("incorrect cancellation error: %v", err)
-			}
-			if !strings.Contains(err.Error(), "stdout:\n"+stdout) || !strings.Contains(err.Error(), "stderr:\n"+stderr.String()) || strings.Count(err.Error(), "output truncated") != 2 {
-				t.Fatalf("lost command output: %v", err)
-			}
-			want := "test skill canceled:"
-			if reason == context.DeadlineExceeded {
-				want = "test skill timed out:"
-			}
-			if !strings.HasPrefix(err.Error(), want) || len(err.Error()) > 2*maxRunnerOutput+512 {
-				t.Fatalf("incorrect cancellation diagnostics: %v", err)
-			}
-		})
+func TestCommandErrorPreservesOriginalFailureAndOutput(t *testing.T) {
+	failure := errors.New("process failed")
+	stdout := truncateOutput(strings.Repeat("o", maxRunnerOutput+1))
+	stderr := limitedOutput{limit: maxRunnerOutput}
+	_, _ = stderr.Write([]byte(strings.Repeat("e", maxRunnerOutput+1)))
+	err := commandError("test skill", failure, stdout, stderr.String())
+	if !errors.Is(err, failure) {
+		t.Fatalf("lost original failure: %v", err)
+	}
+	if !strings.Contains(err.Error(), "stdout:\n"+stdout) || !strings.Contains(err.Error(), "stderr:\n"+stderr.String()) || strings.Count(err.Error(), "output truncated") != 2 {
+		t.Fatalf("lost output: %v", err)
 	}
 }
 
@@ -245,7 +226,7 @@ func TestGoRunnerRejectsMissingPayload(t *testing.T) {
 }
 
 func TestCommandErrorIncludesSkillOutput(t *testing.T) {
-	err := commandError(context.Background(), "go skill", &exec.ExitError{}, "bad stdout", "bad stderr")
+	err := commandError("go skill", &exec.ExitError{}, "bad stdout", "bad stderr")
 	text := err.Error()
 	for _, want := range []string{"go skill process failed", "stdout:\nbad stdout", "stderr:\nbad stderr"} {
 		if !strings.Contains(text, want) {

@@ -87,6 +87,10 @@ func TestPlatformFailureDeliveryIsAsyncAndIsolated(t *testing.T) {
 	}
 }
 func TestManagerCloseWaitsForSenderAndCanRetry(t *testing.T) {
+	// 全局诊断 worker 不属于测试的虚拟时钟生命周期。
+	if err := signal.FlushDiagnostics(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	synctest.Test(t, func(t *testing.T) {
 		m := testManager(t, "remote")
 		release := make(chan struct{})
@@ -162,7 +166,14 @@ func addTestPlatform(t *testing.T, m *Manager, name string, h func(context.Conte
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.Observe(h, signal.ConnectOptions{}); err != nil {
+	if _, err = s.Observe(func(ctx context.Context, n events.Notification) {
+		if binding, ok := session.BindingFromContext(ctx); ok && !binding.Valid() {
+			return
+		}
+		if err := h(ctx, n); err != nil {
+			m.log(ctx, events.LogRecord{Category: events.LogRuntime, EventName: "notification_send_failed", Content: err.Error(), ResultStatus: events.LogStatus(err)})
+		}
+	}, signal.ConnectOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	return s
@@ -181,7 +192,7 @@ func TestOriginalSourceAndPartialFailure(t *testing.T) {
 	n := events.NewNotification(contextinfo.WithConversation(context.Background(), origin), slog.LevelWarn, "warning")
 	worker := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: origin.Source, PlatformData: "other-connection"})
 	r, err := events.NotificationRequested.Emit(worker, n)
-	if err != nil || len(r) != 1 || !errors.Is(r[0].Err, wantErr) || !r[0].Started {
+	if err != nil || len(r) != 1 || r[0].Err != nil || !r[0].Started {
 		t.Fatal(r, err)
 	}
 }
@@ -227,42 +238,19 @@ func TestPlatformFullWarnsAndOtherPlatformStillSends(t *testing.T) {
 		return nil
 	})
 	for i := range 8 {
-		if _, err := slow.EmitAsync(context.Background(), events.Notification{Target: events.NotificationTarget{ID: string(rune('a' + i))}, Text: "busy"}); err != nil {
-			t.Fatal(err)
-		}
+		slow.EmitAsync(context.Background(), events.Notification{Target: events.NotificationTarget{ID: string(rune('a' + i))}, Text: "busy"})
 	}
 	for range 8 {
 		<-started
 	}
 	for range 256 {
-		if _, err := slow.EmitAsync(context.Background(), events.Notification{Text: "queued"}); err != nil {
-			t.Fatal(err)
-		}
+		slow.EmitAsync(context.Background(), events.Notification{Text: "queued"})
 	}
-	logs := make(chan events.LogRecord, 1)
-	c, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error {
-		if r.EventName == "notification_queue_full" {
-			logs <- r
-		}
-		return nil
-	}, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close(context.Background())
 	n := events.Notification{Target: events.NotificationTarget{Platform: "slow", ChatType: contextinfo.ChatPrivate, ID: "one"}, Text: "overflow"}
 	facts := contextinfo.Execution{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}
 	ctx := contextinfo.WithExecution(t.Context(), facts)
-	if _, err := events.NotificationRequested.Emit(ctx, n); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case r := <-logs:
-		if r.Level != slog.LevelWarn || !reflect.DeepEqual(r.Identity, events.LogIdentityFromContext(ctx)) {
-			t.Fatal(r)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("missing overflow warning")
+	if r, err := events.NotificationRequested.Emit(ctx, n); err != nil || len(r) != 1 || !errors.Is(r[0].Err, signal.ErrQueueFull) {
+		t.Fatal(r, err)
 	}
 	n.Target.Platform = "fast"
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -305,21 +293,18 @@ func TestQueuedNotificationRejectsExpiredBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	n := events.Notification{Target: events.NotificationTarget{Platform: "cli"}, Text: "block"}
-	_, _ = s.EmitAsync(context.Background(), n)
+	s.EmitAsync(context.Background(), n)
 	<-started
 	n.Text = "old"
 	ctx := session.WithBinding(context.Background(), binding)
-	e, err := s.EmitAsync(ctx, n)
-	if err != nil {
-		t.Fatal(err)
-	}
+	s.EmitAsync(ctx, n)
 	if _, err := sessions.Create(context.Background(), scope, session.CreateRequest{}); err != nil {
 		t.Fatal(err)
 	}
 	close(release)
 	deadline, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if results, err := e.Wait(deadline); err != nil || len(results) != 1 || !errors.Is(results[0].Err, context.Canceled) || results[0].Started {
+	if results, err := s.Emit(session.WithBinding(deadline, binding), n); err != nil || len(results) != 1 || results[0].Err != nil || !results[0].Started {
 		t.Fatal(results, err)
 	}
 	if calls.Load() != 1 {
@@ -342,10 +327,10 @@ func TestManagerOwnershipAndMissingPlatform(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := events.NotificationRequested.Emit(ctx, events.Notification{Text: "no receiver"}); err != nil {
-		t.Fatal(err)
+	if results, err := events.NotificationRequested.Emit(ctx, events.Notification{Text: "no receiver"}); err != nil || len(results) != 1 || !errors.Is(results[0].Err, signal.ErrNoReceiver) {
+		t.Fatal(results, err)
 	}
-	if len(logs) != 2 || logs[0].EventName != "notification_rejected" || logs[1].EventName != "notification_rejected" {
+	if len(logs) != 1 || logs[0].EventName != "notification_rejected" {
 		t.Fatalf("routing failures must each be logged once: %+v", logs)
 	}
 	for _, record := range logs {
@@ -353,8 +338,8 @@ func TestManagerOwnershipAndMissingPlatform(t *testing.T) {
 			t.Fatalf("routing failure lost execution identity: %+v", record)
 		}
 	}
-	if _, err := s.Observe(func(context.Context, events.Notification) error {
-		return nil
+	if _, err := s.Observe(func(context.Context, events.Notification) {
+
 	}, signal.ConnectOptions{}); err != nil {
 		t.Fatal(err)
 	}
@@ -374,9 +359,9 @@ func TestRegisteredValidatorRunsOnceBeforeAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Observe(func(context.Context, events.Notification) error {
+	if _, err := s.Observe(func(context.Context, events.Notification) {
 		deliveries.Add(1)
-		return nil
+
 	}, signal.ConnectOptions{}); err != nil {
 		t.Fatal(err)
 	}
@@ -397,9 +382,9 @@ func TestNotificationDoesNotInferTargetFromScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	var deliveries atomic.Int32
-	if _, err := s.Observe(func(context.Context, events.Notification) error {
+	if _, err := s.Observe(func(context.Context, events.Notification) {
 		deliveries.Add(1)
-		return nil
+
 	}, signal.ConnectOptions{}); err != nil {
 		t.Fatal(err)
 	}
@@ -417,6 +402,6 @@ func TestNotificationDoesNotInferTargetFromScope(t *testing.T) {
 
 func publishFailure(ctx context.Context, name string, failure error, targets []events.NotificationTarget) {
 	for _, target := range targets {
-		_, _ = events.NotificationRequested.EmitAsync(ctx, events.Notification{Target: target, Level: slog.LevelError, Text: fmt.Sprintf("平台 %s 异常退出：%v", name, failure)})
+		events.NotificationRequested.EmitAsync(ctx, events.Notification{Target: target, Level: slog.LevelError, Text: fmt.Sprintf("平台 %s 异常退出：%v", name, failure)})
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"elbot/internal/contextinfo"
-	"encoding/json"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -26,6 +25,9 @@ func captureBindingLogs(t *testing.T) *bytes.Buffer {
 }
 
 func TestBindingEventFailurePreservesCommit(t *testing.T) {
+	if err := signal.FlushDiagnostics(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	for _, failure := range []string{"queue_full"} {
 		t.Run(failure, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -34,19 +36,19 @@ func TestBindingEventFailurePreservesCommit(t *testing.T) {
 				if err := m.changed.Close(context.Background()); err != nil {
 					t.Fatal(err)
 				}
-				m.changed = signal.NewAsync[BindingChangedEvent]("session.binding_changed", signal.Options[BindingChangedEvent]{Capacity: 1, Concurrency: 1, Timeout: time.Second})
+				m.changed = signal.New[BindingChangedEvent, signal.Empty]("session.binding_changed", signal.Options[BindingChangedEvent]{Capacity: 1, Concurrency: 1, Timeout: time.Second})
 				scope := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "u"}}
 				old := setCurrent(t, m, scope, "old")
 				finish := make(chan struct{})
 				release := sync.OnceFunc(func() { close(finish) })
 				defer release()
 				var calls atomic.Int32
-				_, err := m.ObserveBindingChanged(func(_ context.Context, event BindingChangedEvent) error {
+				_, err := m.ObserveBindingChanged(func(_ context.Context, event BindingChangedEvent) {
 					if event.Version != 0 {
 						calls.Add(1)
 					}
 					<-finish
-					return nil
+
 				}, signal.ConnectOptions{})
 				if err != nil {
 					t.Fatal(err)
@@ -54,9 +56,7 @@ func TestBindingEventFailurePreservesCommit(t *testing.T) {
 				if failure == "queue_full" {
 					// 占满一个执行位和一个等待位，后续解绑事件无法入队。
 					for range 2 {
-						if err := m.changed.Publish(context.Background(), BindingChangedEvent{}); err != nil {
-							t.Fatal(err)
-						}
+						m.changed.EmitAsync(context.Background(), BindingChangedEvent{})
 						synctest.Wait()
 					}
 				}
@@ -69,25 +69,11 @@ func TestBindingEventFailurePreservesCommit(t *testing.T) {
 				if err := m.Close(context.Background()); err != nil {
 					t.Fatal(err)
 				}
-				wantCalls, wantError := int32(0), signal.ErrQueueFull.Error()
-				if failure == "timeout" {
-					wantCalls, wantError = 1, context.DeadlineExceeded.Error()
+				if calls.Load() != 0 {
+					t.Fatal("rejected event was retried")
 				}
-				if calls.Load() != wantCalls {
-					t.Fatalf("callback calls = %d, want %d; failed event must not be retried", calls.Load(), wantCalls)
-				}
-				var record struct {
-					Level        string `json:"level"`
-					Version      uint64 `json:"version"`
-					OldSessionID string `json:"old_session_id"`
-					NewSessionID string `json:"new_session_id"`
-					Error        string `json:"error"`
-				}
-				if err := json.Unmarshal(bytes.TrimSpace(logs.Bytes()), &record); err != nil {
-					t.Fatalf("expected one failure summary, got %q: %v", logs.String(), err)
-				}
-				if record.Level != "WARN" || record.Version != old.Version()+1 || record.OldSessionID != "old" || record.NewSessionID != "" || record.Error != wantError {
-					t.Fatalf("wrong failure summary: %+v", record)
+				if logs.Len() != 0 {
+					t.Fatalf("framework failure reported as business error: %s", logs.String())
 				}
 			})
 		})
@@ -101,9 +87,9 @@ func TestBindingEventSuccessDoesNotWarn(t *testing.T) {
 			m := newTestManager(t)
 			scope := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "u"}}
 			observations := make(chan BindingChangedEvent, 1)
-			_, err := m.ObserveBindingChanged(func(ctx context.Context, event BindingChangedEvent) error {
+			_, err := m.ObserveBindingChanged(func(ctx context.Context, event BindingChangedEvent) {
 				observations <- event
-				return ctx.Err()
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)

@@ -18,9 +18,9 @@ func TestCloseWaitsForLeaseAndPreservesCommittedEvent(t *testing.T) {
 		m := newTestManager(t)
 		scope := share.Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "u"}}
 		var event BindingChangedEvent
-		_, err := m.ObserveBindingChanged(func(_ context.Context, e BindingChangedEvent) error {
+		_, err := m.ObserveBindingChanged(func(_ context.Context, e BindingChangedEvent) {
 			event = e
-			return nil
+
 		}, signal.ConnectOptions{Shutdown: signal.Drain})
 		if err != nil {
 			t.Fatal(err)
@@ -47,7 +47,7 @@ func TestCloseWaitsForLeaseAndPreservesCommittedEvent(t *testing.T) {
 		if _, _, err := m.EnterSessions(context.Background(), "one"); !errors.Is(err, signal.ErrClosed) {
 			t.Fatalf("new admission: %v", err)
 		}
-		if _, err := m.ObserveBindingChanged(func(context.Context, BindingChangedEvent) error { return nil }, signal.ConnectOptions{}); !errors.Is(err, signal.ErrClosed) {
+		if _, err := m.ObserveBindingChanged(func(context.Context, BindingChangedEvent) {}, signal.ConnectOptions{}); !errors.Is(err, signal.ErrClosed) {
 			t.Fatalf("new subscription: %v", err)
 		}
 		deadline, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -79,10 +79,10 @@ func TestCloseWaitsForActualObserverExit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		m := newTestManager(t)
 		started, finish := make(chan struct{}), make(chan struct{})
-		_, err := m.ObserveBindingChanged(func(context.Context, BindingChangedEvent) error {
+		_, err := m.ObserveBindingChanged(func(context.Context, BindingChangedEvent) {
 			close(started)
 			<-finish // 故意忽略信号执行期限，验证实际退出语义。
-			return nil
+
 		}, signal.ConnectOptions{})
 		if err != nil {
 			t.Fatal(err)

@@ -4,12 +4,9 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
-	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/signal"
-	"elbot/internal/storage"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -46,37 +43,6 @@ func captureNamingDiagnostics(t *testing.T) *os.File {
 		_ = file.Close()
 	})
 	return file
-}
-
-func TestNamingLogFailureDoesNotChangeBusinessResult(t *testing.T) {
-	file := captureNamingDiagnostics(t)
-	connection, err := events.LogSubmitted.Observe(func(context.Context, events.LogRecord) error { return errors.New("log observer unavailable") }, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer connection.Close(context.Background())
-	f := newFixture(t, 1, func(context.Context, llm.TextRequest) (llm.TextResult, error) {
-		return llm.TextResult{Text: "saved title"}, nil
-	})
-	id := f.row(t, storage.Message{ID: storage.NewID(), Role: storage.RoleUser, Content: "user"})
-	event := f.attempt(t, id)
-	if event.ResultStatus != events.ResultSucceeded || event.Title == nil || *event.Title != "saved title" {
-		t.Fatalf("log failure changed result: %+v", event)
-	}
-	row, err := f.store.Sessions().Get(t.Context(), id)
-	if err != nil || row.Title != "saved title" {
-		t.Fatalf("row=%+v err=%v", row, err)
-	}
-	if err := signal.FlushDiagnostics(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	data, err := os.ReadFile(file.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(data) != 0 {
-		t.Fatalf("signal must not diagnose business observer failures: %s", data)
-	}
 }
 
 func TestNamingFailureContentSurvivesRuntimeLevel(t *testing.T) {
@@ -152,7 +118,7 @@ func TestNamingFailureContentSurvivesRuntimeLevel(t *testing.T) {
 
 func TestNamingOwnsSynchronousLogProjection(t *testing.T) {
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) error { records = append(records, r); return nil }, signal.ConnectOptions{})
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) { records = append(records, r) }, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

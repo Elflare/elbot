@@ -48,11 +48,11 @@ func TestPreloadAuditIdentityAndResult(t *testing.T) {
 						t.Fatal(err)
 					}
 					var records []globalevents.LogRecord
-					connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
+					connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) {
 						if record.Module == "tool" {
 							records = append(records, record)
 						}
-						return nil
+
 					}, signal.ConnectOptions{})
 					if err != nil {
 						t.Fatal(err)

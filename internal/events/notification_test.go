@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
@@ -15,16 +16,16 @@ func captureReports(t *testing.T, receiveNotifications bool) (chan LogRecord, ch
 	LogSubmitted = signal.New[LogRecord, signal.Empty]("test.logs", signal.Options[LogRecord]{Concurrency: 1})
 	NotificationRequested = signal.New[Notification, signal.Empty]("test.notifications", signal.Options[Notification]{Required: true, Single: true})
 	logs, notices := make(chan LogRecord, 8), make(chan Notification, 8)
-	if _, err := LogSubmitted.Observe(func(_ context.Context, record LogRecord) error {
+	if _, err := LogSubmitted.Observe(func(_ context.Context, record LogRecord) {
 		logs <- record
-		return nil
+
 	}, signal.ConnectOptions{Shutdown: signal.Drain}); err != nil {
 		t.Fatal(err)
 	}
 	if receiveNotifications {
-		if _, err := NotificationRequested.Observe(func(_ context.Context, n Notification) error {
+		if _, err := NotificationRequested.Observe(func(_ context.Context, n Notification) {
 			notices <- n
-			return nil
+
 		}, signal.ConnectOptions{Shutdown: signal.Drain}); err != nil {
 			t.Fatal(err)
 		}
@@ -97,16 +98,29 @@ func TestLogFailureDoesNotPreventNotification(t *testing.T) {
 }
 
 func TestNotificationAdmissionFailureIsLoggedOnce(t *testing.T) {
+	if err := signal.FlushDiagnostics(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.CreateTemp(t.TempDir(), "framework-diagnostic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := os.Stderr
+	os.Stderr = file
+	defer func() { _ = signal.FlushDiagnostics(context.Background()); os.Stderr = previous; _ = file.Close() }()
 	logs, notices, drain := captureReports(t, false)
 	ctx := contextinfo.WithExecution(t.Context(), contextinfo.Execution{RequestID: "request"})
 	Notify(ctx, Notification{Text: "original notification"})
 	drain()
-	if len(logs) != 1 || len(notices) != 0 {
+	if len(logs) != 0 || len(notices) != 0 {
 		t.Fatalf("logs=%d notices=%d", len(logs), len(notices))
 	}
-	record := <-logs
-	if record.EventName != "notification_rejected" || !strings.Contains(record.Content, signal.ErrNoReceiver.Error()) || record.Identity.RequestID != "request" {
-		t.Fatalf("missing failure facts: %+v", record)
+	if err := signal.FlushDiagnostics(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(file.Name())
+	if err != nil || strings.Count(string(data), signal.ErrNoReceiver.Error()) != 1 {
+		t.Fatalf("framework diagnostic: %s error=%v", data, err)
 	}
 }
 

@@ -28,11 +28,11 @@ func TestFormatRetryExecutionFailureKeepsOriginalCause(t *testing.T) {
 				t.Fatal(err)
 			}
 			var records []events.LogRecord
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 				if record.EventName == "elnis_llm_failed" {
 					records = append(records, record)
 				}
-				return nil
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)

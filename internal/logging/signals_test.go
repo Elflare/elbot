@@ -283,7 +283,7 @@ func TestGlobalWriteFailureReportsToStderrAndContinues(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = m.Close(context.Background()) })
 			var publications atomic.Int32
-			connection, err := events.LogSubmitted.Observe(func(context.Context, events.LogRecord) error { publications.Add(1); return nil }, signal.ConnectOptions{Shutdown: signal.CancelPending})
+			connection, err := events.LogSubmitted.Observe(func(context.Context, events.LogRecord) { publications.Add(1) }, signal.ConnectOptions{Shutdown: signal.CancelPending})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -447,7 +447,7 @@ func TestManagerBackpressureCancellationDrainAndTimeout(t *testing.T) {
 			t.Fatal("writer not closed after worker exited")
 		}
 	})
-	if got := readStderr(); !strings.Contains(got, "signal drain incomplete") {
+	if got := readStderr(); strings.Contains(got, "signal drain incomplete") {
 		t.Fatal(got)
 	}
 }

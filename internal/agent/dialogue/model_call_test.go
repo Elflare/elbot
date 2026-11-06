@@ -27,11 +27,11 @@ func TestAssistantMessageLogSummary(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var records []events.LogRecord
-			logs, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+			logs, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 				if record.EventName == "assistant_message" {
 					records = append(records, record)
 				}
-				return nil
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)

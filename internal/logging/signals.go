@@ -72,7 +72,7 @@ func newManager(level, logDir string, retentionDays int, open func(string) (io.W
 		}
 		m.sinks[category] = &logSink{queue: queue, writer: writer}
 	}
-	m.connection, err = events.LogSubmitted.Observe(m.handleRecord, signal.ConnectOptions{Shutdown: signal.CancelPending})
+	m.connection, err = events.LogSubmitted.Observe(m.handleRecord, signal.ConnectOptions{Shutdown: signal.Drain})
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func newManager(level, logDir string, retentionDays int, open func(string) (io.W
 
 // handleRecord only admits an already frozen record. Filtering and formatting
 // happen in its category's consumer. Business code calls events.Log or events.AsyncLog.
-func (m *Manager) handleRecord(ctx context.Context, record events.LogRecord) error {
+func (m *Manager) handleRecord(ctx context.Context, record events.LogRecord) {
 	at := time.Now()
 	sink := m.sinks[record.Category]
 	err := sink.queue.Submit(context.WithoutCancel(ctx), signal.Task{Shutdown: signal.Drain, Run: func(ctx context.Context) (failure error) {
@@ -109,7 +109,7 @@ func (m *Manager) handleRecord(ctx context.Context, record events.LogRecord) err
 	if err != nil && !errors.Is(err, signal.ErrClosed) {
 		signal.ReportDiagnostic("logging admission failed", slog.String("category", record.Category.String()), slog.Any("error", err))
 	}
-	return nil
+	return
 }
 
 func (m *Manager) BeginClose() {
@@ -117,9 +117,6 @@ func (m *Manager) BeginClose() {
 		return
 	}
 	m.beginOnce.Do(func() {
-		for _, category := range logCategories {
-			m.sinks[category].queue.BeginClose()
-		}
-		m.connection.Disconnect()
+		m.connection.BeginClose()
 	})
 }

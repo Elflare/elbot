@@ -45,15 +45,15 @@ func (t loggingTool) PrepareCall(ctx context.Context, req toolshare.CallRequest)
 func captureHookRecords(t *testing.T, includeStarts ...bool) *[]events.LogRecord {
 	t.Helper()
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		// Existing assertions inspect terminal facts; boundary tests opt into starts.
 		if record.EventName == "hook_tool_call_prepared" && len(includeStarts) == 0 {
-			return nil
+			return
 		}
 		if record.Module == "hook" {
 			records = append(records, record)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -350,11 +350,11 @@ func TestToolWithoutOutputsDoesNotInvokeSenderOrLogSend(t *testing.T) {
 func TestWorkerReloadLogsOriginalFailure(t *testing.T) {
 	for _, status := range []events.ResultStatus{events.ResultFailed, events.ResultCanceled} {
 		received := make(chan events.LogRecord, 1)
-		connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+		connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 			if record.EventName == "hook_plugin_reload_failed" {
 				received <- record
 			}
-			return nil
+
 		}, signal.ConnectOptions{})
 		if err != nil {
 			t.Fatal(err)

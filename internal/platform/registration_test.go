@@ -147,9 +147,9 @@ type registeredTestRuntime struct {
 func (r *registeredTestRuntime) Name() string                { return r.name }
 func (r *registeredTestRuntime) Close(context.Context) error { r.closed = true; return nil }
 func (r *registeredTestRuntime) ConnectNotifications(s *signal.Signal[events.Notification, signal.Empty]) (*signal.Connection, error) {
-	return s.Observe(func(_ context.Context, n events.Notification) error {
+	return s.Observe(func(_ context.Context, n events.Notification) {
 		r.received <- n.Text
-		return nil
+
 	}, signal.ConnectOptions{})
 }
 
@@ -299,13 +299,13 @@ func (*registrationAgent) Complete(context.Context, completion.Request) ([]compl
 	return nil, nil
 }
 func (a *registrationAgent) Commands() []command.Info { a.commandCalls++; return nil }
-func (a *registrationAgent) ObserveStatusChanged(receive func(agent.StatusChangedEvent) error, options signal.ConnectOptions) (*signal.Connection, error) {
-	c, err := a.status.Observe(func(_ context.Context, event agent.StatusChangedEvent) error { return receive(event) }, options)
+func (a *registrationAgent) ObserveStatusChanged(receive func(agent.StatusChangedEvent), options signal.ConnectOptions) (*signal.Connection, error) {
+	c, err := a.status.Observe(func(_ context.Context, event agent.StatusChangedEvent) { receive(event) }, options)
 	a.connections = append(a.connections, c)
 	return c, err
 }
-func (a *registrationAgent) ObserveBindingChanged(receive func(agent.BindingChangedEvent) error, options signal.ConnectOptions) (*signal.Connection, error) {
-	c, err := a.binding.Observe(func(_ context.Context, event agent.BindingChangedEvent) error { return receive(event) }, options)
+func (a *registrationAgent) ObserveBindingChanged(receive func(agent.BindingChangedEvent), options signal.ConnectOptions) (*signal.Connection, error) {
+	c, err := a.binding.Observe(func(_ context.Context, event agent.BindingChangedEvent) { receive(event) }, options)
 	a.connections = append(a.connections, c)
 	return c, err
 }

@@ -65,14 +65,12 @@ func newUsageCenter(t *testing.T) (*MediaCenter, *sqlite.Store, *controlledRefer
 func drainUsageEvents(t *testing.T, m *MediaCenter) {
 	t.Helper()
 	done := make(chan struct{}, 1)
-	c, err := m.usageFinished.Observe(func(context.Context, []string) error { done <- struct{}{}; return nil }, signal.ConnectOptions{})
+	c, err := m.usageFinished.Observe(func(context.Context, []string) { done <- struct{}{} }, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.Disconnect()
-	if err := m.usageFinished.Publish(t.Context(), []string{}); err != nil {
-		t.Fatal(err)
-	}
+	m.usageFinished.EmitAsync(t.Context(), []string{})
 	select {
 	case <-done:
 	case <-time.After(time.Second):
@@ -166,9 +164,7 @@ func TestUsageQueueRejectionAndCloseTimeoutKeepResources(t *testing.T) {
 		}
 	})
 	for range 256 {
-		if err := m.usageFinished.Publish(t.Context(), []string{}); err != nil {
-			t.Fatal(err)
-		}
+		m.usageFinished.EmitAsync(t.Context(), []string{})
 	}
 	m.PublishUsageFinished(t.Context(), []UsageID{b.UsageID})
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)

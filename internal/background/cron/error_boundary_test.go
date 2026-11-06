@@ -59,11 +59,11 @@ func TestReloadReportsNextRunSaveFailureOnce(t *testing.T) {
 	m := NewManager(repo)
 	m.started = true
 	var records []events.LogRecord
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if strings.Contains(record.Content, failure.Error()) {
 			records = append(records, record)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

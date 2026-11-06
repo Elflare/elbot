@@ -31,11 +31,11 @@ func TestDeliverySuccessHasIndependentAudit(t *testing.T) {
 		return delivery.Receipt{PlatformMessageIDs: []string{"received"}}, nil
 	}})
 	var records []globalevents.LogRecord
-	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) {
 		if record.EventName == "cron.send_failed" || record.EventName == "cron.send_completed" {
 			records = append(records, record)
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -69,11 +69,11 @@ func TestHandlerReturnsDeliveryErrorsToTaskBoundary(t *testing.T) {
 				return delivery.Receipt{PlatformMessageIDs: []string{"received"}}, tc.err
 			}})
 			var records []globalevents.LogRecord
-			connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
+			connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) {
 				if record.EventName == "cron.trigger_failed" || record.EventName == "cron.trigger_completed" || record.EventName == "cron.send_failed" || record.EventName == "cron.send_completed" {
 					records = append(records, record)
 				}
-				return nil
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -116,11 +116,11 @@ func TestTaskAuditIdentityAndOperation(t *testing.T) {
 					return delivery.Receipt{}, nil
 				}})
 				var records []globalevents.LogRecord
-				connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
+				connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) {
 					if strings.HasPrefix(record.EventName, "cron.trigger_") || strings.HasPrefix(record.EventName, "cron.send_") {
 						records = append(records, record)
 					}
-					return nil
+
 				}, signal.ConnectOptions{})
 				if err != nil {
 					t.Fatal(err)
@@ -189,7 +189,7 @@ func TestRunJobReportsTaskAndBookkeepingFailuresIndependently(t *testing.T) {
 			}
 			var final []globalevents.LogRecord
 			var saves []globalevents.LogRecord
-			connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
+			connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) {
 				if record.EventName == "cron_job_completed.handler" || record.EventName == "cron_job_failed.handler" {
 					if repo.saved {
 						t.Error("task failure was retained through bookkeeping")
@@ -199,7 +199,7 @@ func TestRunJobReportsTaskAndBookkeepingFailuresIndependently(t *testing.T) {
 				if record.EventName == "cron_job_state_update_failed" {
 					saves = append(saves, record)
 				}
-				return nil
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -248,9 +248,9 @@ func TestRunJobPublishesHandlerContentOnlyOnce(t *testing.T) {
 	manager.started, manager.runCtx = true, t.Context()
 	manager.handlers[job.Handler] = s.Handler
 	var records []globalevents.LogRecord
-	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
+	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) {
 		records = append(records, record)
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -294,11 +294,11 @@ func TestRecoveryPublishesReturnedDeliveryDetails(t *testing.T) {
 			}})
 			s.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 			var final []globalevents.LogRecord
-			connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) error {
+			connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) {
 				if record.EventName == "cron_missed_delivery_completed" || record.EventName == "missed_cron_run_failed" {
 					final = append(final, record)
 				}
-				return nil
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)

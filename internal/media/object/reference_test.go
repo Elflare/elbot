@@ -105,11 +105,11 @@ func TestHoldProtectsUntilLastRelease(t *testing.T) {
 func captureMediaLogs(t *testing.T) <-chan events.LogRecord {
 	t.Helper()
 	logs := make(chan events.LogRecord, 128)
-	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if record.Module == "media" {
 			logs <- record
 		}
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

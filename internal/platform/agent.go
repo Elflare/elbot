@@ -100,15 +100,15 @@ func projectMessageContext(msg share.MessageContext) MessageContext {
 // agentEvents 将 Agent 公共事件转为 CLI 自有展示数据，不泄露完整 Agent。
 type agentEvents struct{ source AgentCapabilities }
 
-func (e agentEvents) ObserveStatusChanged(receive func(cli.StatusChangedEvent) error, options signal.ConnectOptions) (*signal.Connection, error) {
-	return e.source.ObserveStatusChanged(func(event agent.StatusChangedEvent) error {
-		return receive(cli.StatusChangedEvent{Snapshot: event.Snapshot, Version: event.Version, Execution: event.Execution, Conversation: event.Conversation, Binding: bindingSnapshot(event.Binding)})
+func (e agentEvents) ObserveStatusChanged(receive func(cli.StatusChangedEvent), options signal.ConnectOptions) (*signal.Connection, error) {
+	return e.source.ObserveStatusChanged(func(event agent.StatusChangedEvent) {
+		receive(cli.StatusChangedEvent{Snapshot: event.Snapshot, Version: event.Version, Execution: event.Execution, Conversation: event.Conversation, Binding: bindingSnapshot(event.Binding)})
 	}, options)
 }
 
-func (e agentEvents) ObserveBindingChanged(receive func(cli.BindingChangedEvent) error, options signal.ConnectOptions) (*signal.Connection, error) {
-	return e.source.ObserveBindingChanged(func(event agent.BindingChangedEvent) error {
-		return receive(cli.BindingChangedEvent{Version: event.Version, Old: bindingSnapshot(event.Old), New: bindingSnapshot(event.New)})
+func (e agentEvents) ObserveBindingChanged(receive func(cli.BindingChangedEvent), options signal.ConnectOptions) (*signal.Connection, error) {
+	return e.source.ObserveBindingChanged(func(event agent.BindingChangedEvent) {
+		receive(cli.BindingChangedEvent{Version: event.Version, Old: bindingSnapshot(event.Old), New: bindingSnapshot(event.New)})
 	}, options)
 }
 

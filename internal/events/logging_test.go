@@ -63,14 +63,14 @@ func TestLogPublicationModes(t *testing.T) {
 				}()
 				started, release := make(chan struct{}), make(chan struct{})
 				received := make(chan LogRecord, 1)
-				_, err := LogSubmitted.Observe(func(ctx context.Context, record LogRecord) error {
+				_, err := LogSubmitted.Observe(func(ctx context.Context, record LogRecord) {
 					if ctx.Err() != nil {
 						t.Error("publication retained cancellation")
 					}
 					close(started)
 					<-release
 					received <- record
-					return nil
+
 				}, signal.ConnectOptions{Shutdown: signal.Drain})
 				if err != nil {
 					t.Fatal(err)
@@ -109,9 +109,9 @@ func TestLogPublicationModes(t *testing.T) {
 
 func TestLogPreservesSourceRecord(t *testing.T) {
 	var received []LogRecord
-	connection, err := LogSubmitted.Observe(func(_ context.Context, record LogRecord) error {
+	connection, err := LogSubmitted.Observe(func(_ context.Context, record LogRecord) {
 		received = append(received, record)
-		return nil
+
 	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)

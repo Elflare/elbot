@@ -77,7 +77,12 @@ func TestBindingNotificationFailureDoesNotPreventRelease(t *testing.T) {
 	ctx, scope := context.Background(), privateScope()
 	row := f.create(t, scope, "old")
 	b := f.s.CurrentBinding(scope)
-	_, err := f.bindings.ObserveBindingChanged(func(context.Context, binding.BindingChangedEvent) error { return errors.New("notification failed") }, signal.ConnectOptions{})
+	_, err := f.bindings.ObserveBindingChanged(func(context.Context, binding.BindingChangedEvent) {
+		if err := errors.New("notification failed"); err != nil {
+			t.Log(err) // 观察者自行处理故障，不改变绑定退役结果。
+		}
+
+	}, signal.ConnectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

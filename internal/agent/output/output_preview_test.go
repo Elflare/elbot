@@ -25,11 +25,11 @@ func TestPreviewConversationPolicyPrecedesHookAndSignal(t *testing.T) {
 			for _, batch := range []bool{false, true} {
 				t.Run(platform+"/"+string(kind)+"/"+map[bool]string{false: "single", true: "batch"}[batch], func(t *testing.T) {
 					var seen []string
-					connection, err := events.NotificationRequested.Observe(func(_ context.Context, notice events.Notification) error {
+					connection, err := events.NotificationRequested.Observe(func(_ context.Context, notice events.Notification) {
 						if notice.Text != "barrier" {
 							seen = append(seen, notice.Text)
 						}
-						return nil
+
 					}, signal.ConnectOptions{})
 					if err != nil {
 						t.Fatal(err)
@@ -155,11 +155,11 @@ func TestPreviewGroupsToolNoticesBeforeHook(t *testing.T) {
 				t.Fatal(err)
 			}
 			var seen []string
-			_, err = platformSignal.Observe(func(_ context.Context, n events.Notification) error {
+			_, err = platformSignal.Observe(func(_ context.Context, n events.Notification) {
 				if n.Text != "preview test barrier" {
 					seen = append(seen, n.Text)
 				}
-				return nil
+
 			}, signal.ConnectOptions{})
 			if err != nil {
 				t.Fatal(err)
@@ -167,11 +167,7 @@ func TestPreviewGroupsToolNoticesBeforeHook(t *testing.T) {
 			hooks := &previewTestHooks{rewrite: tt.rewrite, output: tt.output, err: tt.err}
 			out := &OutputSender{hooks: hooks}
 			out.Preview(context.Background(), tt.text...)
-			barrier, err := events.NotificationRequested.EmitAsync(context.Background(), events.Notification{Text: "preview test barrier"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := barrier.Wait(context.Background()); err != nil {
+			if _, err := events.NotificationRequested.Emit(context.Background(), events.Notification{Text: "preview test barrier"}); err != nil {
 				t.Fatal(err)
 			}
 			if !slices.Equal(seen, tt.want) {
