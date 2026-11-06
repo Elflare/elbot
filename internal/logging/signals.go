@@ -39,9 +39,6 @@ func newManager(level, logDir string, retentionDays int, open func(string) (io.W
 		if err == nil {
 			return
 		}
-		if m.connection != nil {
-			m.connection.Disconnect()
-		}
 		for _, sink := range m.sinks {
 			if closeErr := sink.queue.Close(context.Background()); closeErr != nil {
 				signal.ReportDiagnostic("logging cleanup failed", slog.Any("error", closeErr))
@@ -84,25 +81,23 @@ func newManager(level, logDir string, retentionDays int, open func(string) (io.W
 func (m *Manager) handleRecord(ctx context.Context, record events.LogRecord) {
 	at := time.Now()
 	sink := m.sinks[record.Category]
-	err := sink.queue.Submit(context.WithoutCancel(ctx), signal.Task{Shutdown: signal.Drain, Run: func(ctx context.Context) (failure error) {
-		defer func() {
-			if failure != nil {
-				signal.ReportDiagnostic("logging record failed", slog.String("category", record.Category.String()), slog.Any("error", failure))
-			}
-		}()
+	err := sink.queue.Submit(context.WithoutCancel(ctx), signal.Task{Shutdown: signal.Drain, Run: func(ctx context.Context) error {
 		if record.Category == events.LogRuntime && record.Level < m.level {
 			return nil
 		}
 		data, err := formatRecord(record, at)
-		if err != nil {
-			return err
+		if err == nil {
+			var n int
+			n, err = sink.writer.Write(data)
+			if err == nil && n != len(data) {
+				err = io.ErrShortWrite
+			}
+			if err != nil {
+				err = fmt.Errorf("write %s log: %w", record.Category, err)
+			}
 		}
-		n, err := sink.writer.Write(data)
-		if err == nil && n != len(data) {
-			err = io.ErrShortWrite
-		}
 		if err != nil {
-			return fmt.Errorf("write %s log: %w", record.Category, err)
+			signal.ReportDiagnostic("logging record failed", slog.String("category", record.Category.String()), slog.Any("error", err))
 		}
 		return nil
 	}})
