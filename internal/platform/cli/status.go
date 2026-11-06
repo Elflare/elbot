@@ -1,8 +1,6 @@
 // status.go 合并运行状态并调度 CLI 状态展示。
 package cli
 
-// TODO(结构迁移): 状态事件协调留根包，终端格式化迁入 local/。
-
 import (
 	"context"
 	"errors"
@@ -12,55 +10,60 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
+	"elbot/internal/platform/cli/share"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 )
 
 type statusTarget struct {
 	SessionID, Platform, ChatID string
-	ChatType                    contextinfo.ChatType // 平台会话类型。
-	Display                     messageData
-	Binding                     BindingSnapshot // 值身份隔离同一会话的不同激活。
+	ChatType                    contextinfo.ChatType
+	DisplayID                   string
+	Binding                     BindingSnapshot
 }
+
 type statusProjection struct {
-	event StatusChangedEvent
-	dirty bool
+	event  StatusChangedEvent
+	target share.DisplayTarget
+	dirty  bool
 }
+
 type bindingState struct {
-	version uint64 // 最近已知变更，包括解绑留下的水位。
+	version uint64
 	current *BindingSnapshot
 }
 
-// statusDisplay 按目标合并；版本水位独立于待发正文，终态后不接受迟到旧状态。
+// statusDisplay 按目标合并状态，并拒绝迟到的旧版本和旧绑定事件。
 type statusDisplay struct {
-	platformName string // 状态日志所属的平台身份。
-
-	send     func(context.Context, messageData, runtimestatus.Snapshot) error
-	mu       sync.Mutex
-	latest   map[statusTarget]*statusProjection
-	versions map[statusTarget]uint64
-	bindings map[session.Scope]bindingState
-	wake     chan struct{}
-	ctx      context.Context
-	cancel   context.CancelFunc
-	done     chan struct{}
-	closed   bool
+	platformName string
+	send         func(context.Context, share.DisplayTarget, runtimestatus.Snapshot) error
+	mu           sync.Mutex
+	latest       map[statusTarget]*statusProjection
+	versions     map[statusTarget]uint64
+	bindings     map[session.Scope]bindingState
+	wake         chan struct{}
+	ctx          context.Context
+	cancel       context.CancelFunc
+	done         chan struct{}
+	closed       bool
 }
 
 func newStatusDisplay(platformName string) *statusDisplay {
 	ctx, cancel := context.WithCancel(context.Background())
-	d := &statusDisplay{platformName: platformName,
-		send: func(ctx context.Context, target messageData, snapshot runtimestatus.Snapshot) error {
-			return target.setRuntimeStatus(ctx, snapshot)
+	d := &statusDisplay{
+		platformName: platformName,
+		send: func(ctx context.Context, target share.DisplayTarget, snapshot runtimestatus.Snapshot) error {
+			return target.PresentStatus(ctx, share.Status{Snapshot: snapshot})
 		},
-		latest: make(map[statusTarget]*statusProjection), versions: make(map[statusTarget]uint64), bindings: make(map[session.Scope]bindingState),
-		wake: make(chan struct{}, 1), ctx: ctx, cancel: cancel, done: make(chan struct{}),
+		latest:   make(map[statusTarget]*statusProjection),
+		versions: make(map[statusTarget]uint64),
+		bindings: make(map[session.Scope]bindingState),
+		wake:     make(chan struct{}, 1), ctx: ctx, cancel: cancel, done: make(chan struct{}),
 	}
 	go d.run()
 	return d
 }
 
-// validBindingLocked 比较绑定版本，不与状态发布版本混用。
 func (d *statusDisplay) validBindingLocked(binding *BindingSnapshot) bool {
 	if binding == nil {
 		return true
@@ -71,38 +74,39 @@ func (d *statusDisplay) validBindingLocked(binding *BindingSnapshot) bool {
 	}
 	return state.current != nil && *state.current == *binding
 }
+
 func (d *statusDisplay) receive(event StatusChangedEvent) {
 	if event.Conversation == nil {
 		return
 	}
-	display, _ := event.Conversation.PlatformData.(messageData)
-	if display == (messageData{}) {
+	display, ok := event.Conversation.PlatformData.(share.DisplayTarget)
+	if !ok || display == nil {
 		return
 	}
 	source := event.Conversation.Source
-	key := statusTarget{SessionID: event.Snapshot.SessionID, Platform: source.Platform, ChatID: source.ChatID, Display: display, ChatType: source.ChatType}
+	key := statusTarget{
+		SessionID: event.Snapshot.SessionID, Platform: source.Platform, ChatID: source.ChatID,
+		ChatType: source.ChatType, DisplayID: display.TargetID(),
+	}
 	if event.Binding != nil {
 		key.Binding = *event.Binding
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.closed {
-		return
-	}
-	if !d.validBindingLocked(event.Binding) {
+	if d.closed || !d.validBindingLocked(event.Binding) {
 		return
 	}
 	if version, ok := d.versions[key]; ok && version >= event.Version {
 		return
 	}
 	d.versions[key] = event.Version
-	d.latest[key] = &statusProjection{event: event, dirty: true}
+	d.latest[key] = &statusProjection{event: event, target: display, dirty: true}
 	select {
 	case d.wake <- struct{}{}:
 	default:
 	}
-	return
 }
+
 func (d *statusDisplay) forget(event BindingChangedEvent) {
 	binding := event.New
 	if binding == nil {
@@ -123,8 +127,8 @@ func (d *statusDisplay) forget(event BindingChangedEvent) {
 			delete(d.latest, key)
 		}
 	}
-	return
 }
+
 func (d *statusDisplay) run() {
 	defer close(d.done)
 	for {
@@ -137,9 +141,9 @@ func (d *statusDisplay) run() {
 			d.mu.Lock()
 			var key statusTarget
 			var selected *statusProjection
-			for k, entry := range d.latest {
+			for candidate, entry := range d.latest {
 				if entry.dirty {
-					key, selected = k, entry
+					key, selected = candidate, entry
 					entry.dirty = false
 					break
 				}
@@ -153,9 +157,14 @@ func (d *statusDisplay) run() {
 			ctx = contextinfo.WithConversation(ctx, *event.Conversation)
 			// 取出即开始发送；换绑与展示停止不取消共享连接上的在途写入。
 			d.mu.Unlock()
-			err := d.send(ctx, key.Display, event.Snapshot)
+			err := d.send(ctx, selected.target, event.Snapshot)
 			if err != nil && !errors.Is(err, context.Canceled) && d.ctx.Err() == nil {
-				record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "status_display_failed", Module: d.platformName, Type: events.ContentText, Content: fmt.Sprintf("status display failed\nerror=%v", err), ContentLimit: 4096, ResultStatus: events.ResultFailed}
+				record := events.LogRecord{
+					Category: events.LogRuntime, Level: slog.LevelError, EventName: "status_display_failed",
+					Module: d.platformName, Type: events.ContentText,
+					Content: fmt.Sprintf("status display failed\nerror=%v", err), ContentLimit: 4096,
+					ResultStatus: events.ResultFailed,
+				}
 				events.Log(ctx, record)
 			}
 			d.mu.Lock()
@@ -172,6 +181,7 @@ func (d *statusDisplay) run() {
 		}
 	}
 }
+
 func (d *statusDisplay) BeginClose() {
 	d.mu.Lock()
 	d.closed = true
@@ -181,6 +191,7 @@ func (d *statusDisplay) BeginClose() {
 	d.cancel()
 	d.mu.Unlock()
 }
+
 func (d *statusDisplay) Close(ctx context.Context) error {
 	d.BeginClose()
 	select {
@@ -195,6 +206,7 @@ func (d *statusDisplay) Close(ctx context.Context) error {
 		return ctx.Err()
 	}
 }
+
 func (d *statusDisplay) stopped() bool {
 	select {
 	case <-d.done:

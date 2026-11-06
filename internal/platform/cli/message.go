@@ -20,7 +20,7 @@ type localMessageHandler struct {
 
 func (h localMessageHandler) HandleMessage(ctx context.Context, text string) error {
 	info := contextinfo.Conversation{
-		PlatformData: messageData{adapter: h.adapter},
+		PlatformData: h.adapter.runtime,
 		Source:       contextinfo.Source{Platform: h.adapter.Name(), ChatType: contextinfo.ChatPrivate, ChatID: "local", Name: h.adapter.userName},
 		Identity:     contextinfo.Identity{ID: "local", Name: h.adapter.userName},
 	}

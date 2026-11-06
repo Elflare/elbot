@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+
+	"elbot/internal/platform/cli/remote"
 	"strings"
 )
 
@@ -38,11 +40,12 @@ func RunClient(ctx context.Context, rawConfig map[string]any, configEnv func(str
 		err = fmt.Errorf("cli platform is disabled: %w", ErrClientNotConfigured)
 		return classifyClientResult(name, "", err)
 	}
-	client, err := NewRemoteClient(RemoteClientOptions{Config: cfg, ConfigEnv: configEnv, ClientName: name})
+	_, client, err := cfg.Client(name)
 	if err != nil {
 		return classifyClientResult(name, "", err)
 	}
-	return classifyClientResult(name, client.URL(), client.Run(ctx))
+	runErr := remote.RunClient(ctx, remote.ClientOptions{Config: cfg, ConfigEnv: configEnv, ClientName: name})
+	return classifyClientResult(name, client.URL, runErr)
 }
 
 func classifyClientResult(name, address string, err error) ClientResult {

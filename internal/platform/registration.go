@@ -30,12 +30,11 @@ func registrations(frontendDir string) []registration {
 	tgDefinition := telegram.Definition()
 	entries := []registration{
 		{name: config.PlatformCLI, definition: cliDefinition, build: func(m *Supervisor, deps SupervisorDeps, _ refcontext.Options, raw map[string]any, common share.CommonConfig) error {
-			var setCompleter func(func(context.Context, completion.Request) ([]completion.Item, error))
+			var adapter *cli.Adapter
 			if deps.Mode == "tui" {
-				adapter := cli.New(common.PlatformName)
+				adapter = cli.New(common.PlatformName)
 				m.primary = adapter
 				m.ownRuntime(adapter, true, adapter.WaitExit, cliDefinition.ValidateNotificationTarget)
-				setCompleter = adapter.SetCompleter
 			} else {
 				cfgCLI, err := cli.NewConfigFromPlatformConfig(raw)
 				if err != nil {
@@ -44,15 +43,14 @@ func registrations(frontendDir string) []registration {
 				if !cfgCLI.Enabled || !cfgCLI.Server.Enabled {
 					return nil
 				}
-				adapter, err := cli.NewRemoteServer(cli.RemoteServerOptions{Config: cfgCLI, PlatformName: common.PlatformName, ConfigEnv: common.ConfigEnv, Superadmins: common.Superadmins, FrontendDir: frontendDir, Media: deps.Media})
+				adapter, err = cli.NewRemoteServer(cli.RemoteServerOptions{Config: cfgCLI, PlatformName: common.PlatformName, ConfigEnv: common.ConfigEnv, Superadmins: common.Superadmins, FrontendDir: frontendDir, Media: deps.Media})
 				if err != nil {
 					return err
 				}
 				m.ownRuntime(adapter, true, nil, cliDefinition.ValidateNotificationTarget)
-				setCompleter = adapter.SetCompleter
 			}
 			m.agentWiring = append(m.agentWiring, func(source AgentCapabilities) error {
-				setCompleter(source.Complete)
+				adapter.SetCompleter(source.Complete)
 				ui, err := cli.ConnectUI(common.PlatformName, agentEvents{source})
 				m.ui = ui
 				if ui != nil {

@@ -55,7 +55,7 @@ func testRemoteServerWithFrontend(t *testing.T, frontendDir string) *RemoteServe
 	t.Setenv("ELBOT_CLI_TEST_TOKEN", "secret")
 	cfg := defaultConfig()
 	cfg.Server = ServerConfig{Enabled: true, Listen: "127.0.0.1:0", Tokens: map[string][]string{"user": {"ELBOT_CLI_TEST_TOKEN"}}}
-	s, err := NewRemoteServer(RemoteServerOptions{FrontendDir: frontendDir, Config: cfg, PlatformName: testPlatformName, ConfigEnv: testConfigEnv(t.TempDir()), Superadmins: share.NewSuperadmins(testPlatformName, nil)})
+	s, err := newRemoteServerReference(remoteServerReferenceOptions{FrontendDir: frontendDir, Config: cfg, PlatformName: testPlatformName, ConfigEnv: testConfigEnv(t.TempDir()), Superadmins: share.NewSuperadmins(testPlatformName, nil)})
 	if err != nil {
 		t.Fatal(err)
 	}

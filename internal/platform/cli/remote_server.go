@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -23,9 +24,19 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	clishare "elbot/internal/platform/cli/share"
 )
 
 type RemoteServerOptions struct {
+	Media        clishare.Media
+	FrontendDir  string
+	PlatformName string
+	Config       Config
+	ConfigEnv    func(string) (string, bool, error)
+	Superadmins  *share.Superadmins
+}
+
+type remoteServerReferenceOptions struct {
 	Media        RemoteMedia // 根部裁剪并注入的附件归档与持有能力。
 	FrontendDir  string      // 静态前端目录；为空时不启用托管。
 	PlatformName string      // 根部登记的平台名。
@@ -79,11 +90,15 @@ func (s *RemoteServer) originalClient(ctx context.Context) (*remoteClientConn, b
 	if !ok || info.Source.Platform != s.Name() {
 		return nil, false
 	}
-	data, ok := info.PlatformData.(messageData)
-	return data.client, ok && data.client != nil
+	display, ok := info.PlatformData.(clishare.DisplayTarget)
+	if !ok {
+		return nil, false
+	}
+	target, ok := display.(remoteDisplayTarget)
+	return target.client, ok
 }
 
-func NewRemoteServer(opts RemoteServerOptions) (*RemoteServer, error) {
+func newRemoteServerReference(opts remoteServerReferenceOptions) (*RemoteServer, error) {
 	cfg := opts.Config
 	applyConfigDefaults(&cfg)
 	if !cfg.Server.Enabled {
@@ -231,6 +246,15 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler share.Me
 	}()
 }
 
+func (s *RemoteServer) PresentNotice(ctx context.Context, notice clishare.Notice) error {
+	target := notice.Destination
+	clients, err := s.targetClients(ctx, target)
+	if err != nil {
+		return err
+	}
+	return s.writeClients(ctx, clients, remoteMessage{Type: remoteMsgNotice, Text: notice.Text, Level: notice.Level})
+}
+
 func (s *RemoteServer) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
 	clients, err := s.targetClients(ctx, target)
 	if err != nil {
@@ -245,8 +269,10 @@ func (s *RemoteServer) StartStream(ctx context.Context) (delivery.MessageStream,
 	if !ok {
 		return nil, fmt.Errorf("cli stream target missing")
 	}
-	return remoteMessageStream{client: client, id: nextStreamID.Add(1)}, nil
+	return remoteMessageStream{client: client, id: remoteStreamID.Add(1)}, nil
 }
+
+var remoteStreamID atomic.Uint64
 
 type remoteMessageStream struct {
 	client *remoteClientConn
@@ -268,7 +294,7 @@ func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientC
 				ChatID:   client.id,
 				Name:     client.id,
 			},
-			PlatformData: messageData{client: client},
+			PlatformData: remoteDisplayTarget{server: s, client: client},
 			Identity: contextinfo.Identity{
 
 				ID:       client.id,
@@ -280,6 +306,25 @@ func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientC
 		Sender:    s,
 	}
 	return share.WithMessageContext(ctx, msg)
+}
+
+type remoteDisplayTarget struct {
+	server *RemoteServer
+	client *remoteClientConn
+}
+
+func (t remoteDisplayTarget) TargetID() string { return fmt.Sprintf("%p", t.client) }
+
+func (t remoteDisplayTarget) SendReply(ctx context.Context, outputs []delivery.Output) error {
+	return t.server.sendOutputs(ctx, []*remoteClientConn{t.client}, outputs)
+}
+
+func (t remoteDisplayTarget) StartStream(ctx context.Context) (delivery.MessageStream, error) {
+	return remoteMessageStream{client: t.client, id: remoteStreamID.Add(1)}, nil
+}
+
+func (t remoteDisplayTarget) PresentStatus(ctx context.Context, status clishare.Status) error {
+	return t.client.write(ctx, remoteMessage{Type: remoteMsgStatus, Snapshot: status.Snapshot})
 }
 
 func (s *RemoteServer) targetClients(ctx context.Context, target delivery.Target) ([]*remoteClientConn, error) {

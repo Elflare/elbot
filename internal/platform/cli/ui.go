@@ -1,81 +1,51 @@
-// ui.go 接入 CLI 展示能力并管理状态订阅与展示生命周期。
-
+// ui.go 接入 Agent 状态事件并管理根部状态协调生命周期。
 package cli
-
-// TODO(结构迁移): 状态订阅与目标协调留根包，呈现/传输能力迁入对应子包。
 
 import (
 	"context"
-	"time"
 
-	"elbot/internal/contextinfo"
-	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/signal"
 )
 
-// messageData identifies the original CLI destination. Background conversations
-// have no CLI destination, even when their public platform name is "cli".
-type messageData struct {
-	client  *remoteClientConn // Original remote connection; never replaced by the current client.
-	adapter *Adapter          // Local terminal that accepted the input.
-}
-
-func uiTarget(ctx context.Context) messageData {
-	info, _ := contextinfo.ConversationFromContext(ctx)
-	data, _ := info.PlatformData.(messageData)
-	return data
-}
-
-func (d messageData) setRuntimeStatus(ctx context.Context, snapshot runtimestatus.Snapshot) error {
-	if d.client != nil {
-		err := d.client.write(ctx, remoteMessage{Type: remoteMsgStatus, Snapshot: snapshot})
-		return err
-	}
-	return d.adapter.sendTUIMessage(tuiStatusMsg(snapshot), FormatCompact(snapshot, time.Now(), 0))
-}
-
-// AgentEvents exposes only the fact subscriptions consumed by CLI presentation.
+// AgentEvents 是 CLI 根部消费的 Agent 状态与绑定事实。
 type AgentEvents interface {
 	ObserveStatusChanged(func(StatusChangedEvent), signal.ConnectOptions) (*signal.Connection, error)
 	ObserveBindingChanged(func(BindingChangedEvent), signal.ConnectOptions) (*signal.Connection, error)
 }
 
-// UI owns CLI state subscriptions and their asynchronous display worker.
+// UI 持有 CLI 根部状态协调器和事件订阅。
 type UI struct {
 	display     *statusDisplay
 	connections []*signal.Connection
 }
 
-// ConnectUI is called after construction and before any platform accepts input.
+// ConnectUI 在平台开始接收输入前建立状态订阅。
 func ConnectUI(platformName string, source AgentEvents) (*UI, error) {
 	u := &UI{display: newStatusDisplay(platformName)}
-	c, err := source.ObserveStatusChanged(u.display.receive, signal.ConnectOptions{})
-	if c != nil {
-		u.connections = append(u.connections, c)
+	connection, err := source.ObserveStatusChanged(u.display.receive, signal.ConnectOptions{})
+	if connection != nil {
+		u.connections = append(u.connections, connection)
 	}
 	if err == nil {
-		c, err = source.ObserveBindingChanged(u.display.forget, signal.ConnectOptions{})
-		if c != nil {
-			u.connections = append(u.connections, c)
+		connection, err = source.ObserveBindingChanged(u.display.forget, signal.ConnectOptions{})
+		if connection != nil {
+			u.connections = append(u.connections, connection)
 		}
 	}
-	if err != nil {
-		return u, err
-	}
-	return u, nil
+	return u, err
 }
 
 func (u *UI) BeginClose() {
-	for _, c := range u.connections {
-		c.BeginClose()
+	for _, connection := range u.connections {
+		connection.BeginClose()
 	}
 	u.display.BeginClose()
 }
 
 func (u *UI) Close(ctx context.Context) error {
 	u.BeginClose()
-	for _, c := range u.connections {
-		if err := c.Close(ctx); err != nil {
+	for _, connection := range u.connections {
+		if err := connection.Close(ctx); err != nil {
 			return err
 		}
 	}

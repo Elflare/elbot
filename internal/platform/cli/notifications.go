@@ -1,58 +1,39 @@
-// notifications.go 将通知投递到对应的 CLI 展示目标。
-
+// notifications.go 统一订阅 CLI 通知并委托根部持有的实现呈现。
 package cli
-
-// TODO(结构迁移): 统一通知订阅留根包，分别调用 local/ 展示与 remote/ 投递。
 
 import (
 	"context"
-	"elbot/internal/events"
-	"elbot/internal/platform/share"
-	"elbot/internal/session"
-	"elbot/internal/signal"
 	"fmt"
 	"log/slog"
+
+	"elbot/internal/events"
+	clishare "elbot/internal/platform/cli/share"
+	platformshare "elbot/internal/platform/share"
+	"elbot/internal/session"
+	"elbot/internal/signal"
 )
 
-func (a *Adapter) ConnectNotifications(s *signal.Signal[events.Notification, signal.Empty]) (*signal.Connection, error) {
-	return s.Observe(func(ctx context.Context, n events.Notification) {
+func (a *Adapter) ConnectNotifications(source *signal.Signal[events.Notification, signal.Empty]) (*signal.Connection, error) {
+	return source.Observe(func(ctx context.Context, notification events.Notification) {
 		if binding, ok := session.BindingFromContext(ctx); ok && !binding.Valid() {
 			return
 		}
-		err := a.sendTUIMessage(tuiNoticeMsg{Text: n.Text, Level: n.Level}, "[notice] "+n.Text)
-		if err != nil {
-			record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_send_failed", Module: "cli", Content: fmt.Sprintf("target=%+v operation=tui_notice error=%v", n.Target, err), ContentLimit: 4096, Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}
-			if record.ResultStatus == events.ResultCanceled {
-				record.Level = slog.LevelInfo
-			}
-			events.AsyncLog(ctx, record)
-		}
-
-	}, signal.ConnectOptions{})
-}
-func (s *RemoteServer) ConnectNotifications(source *signal.Signal[events.Notification, signal.Empty]) (*signal.Connection, error) {
-	return source.Observe(func(ctx context.Context, n events.Notification) {
-		if binding, ok := session.BindingFromContext(ctx); ok && !binding.Valid() {
+		err := a.runtime.PresentNotice(ctx, clishare.Notice{
+			Text: notification.Text, Level: notification.Level.String(),
+			Target: notification.Target,
+			Destination: platformshare.NotificationTarget(notification),
+		})
+		if err == nil {
 			return
 		}
-		target := share.NotificationTarget(n)
-		clients, err := s.targetClients(ctx, target)
-		if err != nil {
-			events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_rejected", Module: "cli", Content: fmt.Sprintf("target=%+v error=%v", n.Target, err), ContentLimit: 4096, Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.ResultFailed})
-			return
+		level := slog.LevelWarn
+		if events.LogStatus(err) == events.ResultCanceled {
+			level = slog.LevelInfo
 		}
-		for _, client := range clients {
-			err := client.write(ctx, remoteMessage{Type: remoteMsgNotice, Text: n.Text, Level: n.Level.String()})
-			if err != nil {
-				record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_send_failed", Module: "cli", Content: fmt.Sprintf("client_id=%s operation=%s error=%v", client.id, remoteMsgNotice, err), ContentLimit: 4096, Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}
-				if record.ResultStatus == events.ResultCanceled {
-					record.Level = slog.LevelInfo
-				}
-				events.AsyncLog(ctx, record)
-				s.removeClient(client)
-				_ = client.conn.CloseNow()
-			}
-		}
-
+		events.AsyncLog(ctx, events.LogRecord{
+			Category: events.LogRuntime, Level: level, EventName: "notification_send_failed", Module: "cli",
+			Content: fmt.Sprintf("target=%+v error=%v", notification.Target, err), ContentLimit: 4096,
+			Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err),
+		})
 	}, signal.ConnectOptions{})
 }
