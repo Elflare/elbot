@@ -1,6 +1,6 @@
 # 配置说明
 
-ElBot 使用一个主配置入口加载应用配置、Provider 配置和运行态状态。除 `.env` 外，所有配置文件均由内置 assets 首次运行时自动生成到平台配置目录，已存在的文件不会被覆盖。
+ElBot 使用一个主配置入口加载应用配置、Provider 配置和运行态状态。配置文件由内置 assets 首次运行时自动生成到平台配置目录，已存在的文件不会被覆盖；`.env` 和用户静态前端需自行提供。
 
 ## 配置文件职责
 
@@ -16,6 +16,7 @@ ElBot 使用一个主配置入口加载应用配置、Provider 配置和运行�
 | `long_memory/` | 长期记忆 Markdown 源数据。 |
 | `plugins/` | Hook 与插件配置目录（`hooks.toml`、`<plugin>/hook.toml`、`.env`、`_shared/`）。 |
 | `skills/` | 用户 Skill 目录，含 `skills/agent/` 与 `skills/go/`；AgentSkill 可在根目录放 `ELBOT_SKILL.toml` 配置可见性或注册为普通工具。 |
+| `frontend/` | 可选的用户静态前端，入口为 `index.html`，由 CLI 远程服务同端口托管。 |
 | `.env` | 可选本地密钥文件，不建议提交；首次只生成 `.env.example`，不会直接生成 `.env`。 |
 
 以上均可放在平台配置目录，也可用 `--config` 指向其他位置。
@@ -265,6 +266,7 @@ token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
 ```
 
 - `server.enabled=true` 时，`elbot service run` 会启动 CLI WebSocket 服务端，监听 `server.listen`。
+- 主配置旁的 `frontend/index.html` 存在时，同一监听地址还提供静态网页；首次添加入口后需重启服务。无需新增配置项，托管行为与前端接入见[静态前端托管](frontend-api.md#静态前端托管)。
 - `server.tokens` 是允许登录的 CLI client id 与 token 环境变量列表。
 - `clients.<name>` 是连接配置：`id` 可省略（默认等于 `<name>`），`url` 可省略（默认用 `default_url`）；连其他机器时写远程 WebSocket 地址。
 - `elbot client -c <name>` 使用指定连接配置，未指定时用 `default_client`。

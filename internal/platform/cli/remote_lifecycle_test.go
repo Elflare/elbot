@@ -47,10 +47,15 @@ func TestRemoteWaitPreservesFaultWhileCallbackDrains(t *testing.T) {
 
 func testRemoteServer(t *testing.T) *RemoteServer {
 	t.Helper()
+	return testRemoteServerWithFrontend(t, "")
+}
+
+func testRemoteServerWithFrontend(t *testing.T, frontendDir string) *RemoteServer {
+	t.Helper()
 	t.Setenv("ELBOT_CLI_TEST_TOKEN", "secret")
 	cfg := defaultConfig()
 	cfg.Server = ServerConfig{Enabled: true, Listen: "127.0.0.1:0", Tokens: map[string][]string{"user": {"ELBOT_CLI_TEST_TOKEN"}}}
-	s, err := NewRemoteServer(RemoteServerOptions{Config: cfg, PlatformName: testPlatformName, ConfigEnv: testConfigEnv(t.TempDir()), Superadmins: share.NewSuperadmins(testPlatformName, nil)})
+	s, err := NewRemoteServer(RemoteServerOptions{FrontendDir: frontendDir, Config: cfg, PlatformName: testPlatformName, ConfigEnv: testConfigEnv(t.TempDir()), Superadmins: share.NewSuperadmins(testPlatformName, nil)})
 	if err != nil {
 		t.Fatal(err)
 	}

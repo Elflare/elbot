@@ -45,7 +45,7 @@ func testRegistration() registration {
 // 固定清单的开发错误在测试中发现，不在每次启动时重复防御。
 func TestRegistrationListIsCompleteAndUnique(t *testing.T) {
 	names, codes := map[string]bool{}, map[string]string{}
-	for _, entry := range registrations() {
+	for _, entry := range registrations("") {
 		d := entry.definition
 		if entry.name == "" || d.PrivateSessionIDCode == "" || d.GroupSessionIDCode == "" ||
 			d.ConfigDefinition.New == nil || d.ValidateNotificationTarget == nil || entry.build == nil {
@@ -177,7 +177,7 @@ func TestNewPlatformFlowsThroughConstructionAgentNotificationsAndSession(t *test
 	}
 	m := &Supervisor{}
 	m.lifecycle.init(context.Background())
-	err := m.wire(&config.Config{}, SupervisorDeps{Mode: "service", Store: store}, append(registrations(), entry))
+	err := m.wire(&config.Config{}, SupervisorDeps{Mode: "service", Store: store}, append(registrations(""), entry))
 	m.configureCloseSteps()
 	t.Cleanup(func() {
 		if err := m.Close(context.Background()); err != nil {

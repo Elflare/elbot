@@ -64,6 +64,8 @@ func (s *RemoteServer) Start(ctx context.Context, handler share.MessageHandler) 
 	closing := s.closing
 	if closing {
 		s.listenerStopped = listener.Close() == nil
+	} else if s.frontendDir != "" {
+		s.work.Add(1)
 	}
 	s.mu.Unlock()
 	go func() {
@@ -78,6 +80,9 @@ func (s *RemoteServer) Start(ctx context.Context, handler share.MessageHandler) 
 	}()
 	if closing {
 		return signal.ErrClosed
+	}
+	if s.frontendDir != "" {
+		go s.initFrontend(mux)
 	}
 	return nil
 }

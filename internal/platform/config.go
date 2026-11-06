@@ -8,7 +8,7 @@ import (
 
 func ConfigDefinitions() []config.Definition {
 	var definitions []config.Definition
-	for _, entry := range registrations() {
+	for _, entry := range registrations("") {
 		definitions = append(definitions, entry.definition.ConfigDefinition)
 	}
 	return definitions

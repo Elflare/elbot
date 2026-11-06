@@ -10,6 +10,30 @@ ws://<host>:<port>/cli/v1/ws
 
 默认地址 `ws://127.0.0.1:32172/cli/v1/ws`。地址和端口在 `[platform.cli]` 配置中修改。
 
+## 静态前端托管
+
+启用 CLI 远程服务后，可在主配置文件所在目录放置 `frontend/index.html`，访问 `http://<host>:<port>/` 即可打开。页面和 WebSocket 共用 `server.listen`，无需另启服务器，也没有内置前端模板：
+
+```text
+配置目录/
+├── app.toml
+├── .env
+└── frontend/
+    ├── index.html
+    ├── settings.html
+    ├── app.js
+    └── assets/
+        └── app.css
+```
+
+- 初始化时自动识别入口；目录或入口不存在时不启用托管，其他读取错误或入口不是普通文件时报错。首次放入入口后需重启服务。
+- `/` 返回 `index.html`；`/settings.html`、`/app.js` 和 `/assets/app.css` 返回对应文件。目录路径以 `/` 结尾时读取其中的 `index.html`，没有入口则返回 404，不列出目录内容。
+- 支持多个实际 HTML 页面和 hash 路由；不提供 SPA 路径回退，缺失的 `/settings` 等路径返回 404。
+- 文件按请求从磁盘读取，修改已有文件后可刷新页面加载，缓存遵循 HTTP 行为。只开放 `frontend/` 内的文件，禁止路径越界和符号链接逃逸。
+- 静态文件无需登录即可加载；前端自行提供登录界面，通过下述 `hello` 认证后才能操作 ElBot。不要把 token 写进前端文件或 URL，默认只在页面内存保留。
+
+前端应根据当前页面地址连接 `/cli/v1/ws`：HTTP 页面用 `ws:`，HTTPS 页面用 `wss:`，见下方[最小客户端示例](#最小客户端示例)。使用 HTTPS 时由部署环境提供 TLS 入口；ElBot 的监听与认证配置见[CLI 远程配置](configuration.md#cli-远程配置)。
+
 ## 鉴权
 
 连接建立后，客户端必须立即发送一条 `hello` 消息：
@@ -255,7 +279,7 @@ my-client = ["ELBOT_CLI_TOKEN"]
 
 ## 最小客户端示例
 
-以下代码可放在浏览器页面中运行；用 `textContent` 展示内容，不把模型输出作为 HTML。示例处理正文和推理、重试重置及最终提交；按钮和状态栏可按需扩展。
+以下示例用于 ElBot 托管的浏览器页面，输入的凭据仅保留在页面内存；用 `textContent` 展示内容，不把模型输出作为 HTML。示例处理正文和推理、重试重置及最终提交；登录界面、按钮和状态栏可按需扩展。
 
 ```javascript
 const output = document.createElement("pre");
@@ -310,13 +334,17 @@ function handleStream({ stream_id: id, event }) {
   render();
 }
 
-const ws = new WebSocket("ws://127.0.0.1:32172/cli/v1/ws");
+const clientId = window.prompt("Client ID");
+const token = window.prompt("Token");
+const wsUrl = new URL("/cli/v1/ws", window.location.href);
+wsUrl.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+const ws = new WebSocket(wsUrl);
 
 ws.onopen = () => {
   ws.send(JSON.stringify({
     type: "hello",
-    client_id: "web",
-    token: "your-token",
+    client_id: clientId,
+    token,
   }));
 };
 

@@ -23,7 +23,7 @@ type registration struct {
 }
 
 // registrations 是唯一平台清单；顺序同时决定构造及接入启动顺序。
-func registrations() []registration {
+func registrations(frontendDir string) []registration {
 	cliDefinition := cli.Definition()
 	qqDefinition := qqofficial.Definition()
 	obDefinition := qqonebot.Definition()
@@ -44,7 +44,7 @@ func registrations() []registration {
 				if !cfgCLI.Enabled || !cfgCLI.Server.Enabled {
 					return nil
 				}
-				adapter, err := cli.NewRemoteServer(cli.RemoteServerOptions{Config: cfgCLI, PlatformName: common.PlatformName, ConfigEnv: common.ConfigEnv, Superadmins: common.Superadmins})
+				adapter, err := cli.NewRemoteServer(cli.RemoteServerOptions{Config: cfgCLI, PlatformName: common.PlatformName, ConfigEnv: common.ConfigEnv, Superadmins: common.Superadmins, FrontendDir: frontendDir})
 				if err != nil {
 					return err
 				}

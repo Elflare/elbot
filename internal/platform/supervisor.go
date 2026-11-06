@@ -4,6 +4,7 @@ package platform
 
 import (
 	"context"
+	"path/filepath"
 
 	"elbot/internal/config"
 	"elbot/internal/platform/cli"
@@ -35,7 +36,7 @@ type Supervisor struct {
 func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps) (*Supervisor, error) {
 	m := &Supervisor{}
 	m.lifecycle.init(ctx)
-	err := m.wire(cfg, deps, registrations())
+	err := m.wire(cfg, deps, registrations(filepath.Join(filepath.Dir(cfg.ConfigPath), "frontend")))
 	if err != nil {
 		m.prepare = func() error { return err }
 	}

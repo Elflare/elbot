@@ -23,6 +23,7 @@ import (
 )
 
 type RemoteServerOptions struct {
+	FrontendDir  string // 静态前端目录；为空时不启用托管。
 	PlatformName string // 根部登记的平台名。
 	Config       Config
 	ConfigEnv    func(string) (string, bool, error) // 根部绑定配置位置的环境读取能力。
@@ -30,6 +31,7 @@ type RemoteServerOptions struct {
 }
 
 type RemoteServer struct {
+	frontendDir string // 用户静态前端目录，启动监听后异步检查。
 	name        string // 根部登记的平台名。
 	cfg         Config
 	configEnv   func(string) (string, bool, error)
@@ -44,14 +46,14 @@ type RemoteServer struct {
 	closingResources            bool            // 最终资源释放已启动，重试仅等待同一次收尾。
 	startDone                   chan struct{}   // 监听初始化结果已发布。
 	serveDone                   chan struct{}   // Serve 已退出。
-	done                        chan struct{}   // 监听与握手、已接纳业务调用均已退出。
+	done                        chan struct{}   // 监听、前端初始化、握手及已接纳业务调用均已退出。
 	closeDone                   chan struct{}   // 全部自有连接和处理协程已退出。
 	startErr, runErr, closeErr  error           // 初始化、运行、清理结果分别保留。
-	workCtx                     context.Context // 握手及已接纳业务的运行上下文。
+	workCtx                     context.Context // 前端初始化、握手及已接纳业务的运行上下文。
 	transportCtx                context.Context // 已认证连接保留至最终关闭。
 	workCancel, transportCancel context.CancelFunc
 	stopParent                  func() bool    // 解除上游取消观察。
-	work                        sync.WaitGroup // 已接纳握手、消息与补全。
+	work                        sync.WaitGroup // 已接纳握手、消息、补全及前端初始化。
 	transports                  sync.WaitGroup // 持有升级连接的处理协程。
 
 	mu      sync.Mutex
@@ -86,6 +88,7 @@ func NewRemoteServer(opts RemoteServerOptions) (*RemoteServer, error) {
 		return nil, fmt.Errorf("cli remote server tokens are not configured")
 	}
 	return &RemoteServer{
+		frontendDir: opts.FrontendDir,
 		name:        opts.PlatformName,
 		cfg:         cfg,
 		configEnv:   opts.ConfigEnv,

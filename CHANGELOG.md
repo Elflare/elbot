@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- CLI 远程服务新增静态前端托管：自动识别主配置旁的 `frontend/index.html`，与 WebSocket 共用端口，支持用户替换页面和资源，并复用现有 token 认证。
 - 新增配置文件锁，防止多个实例使用同一份配置文件。
 - web 搜索增加 `markdownnew`
 
