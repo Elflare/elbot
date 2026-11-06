@@ -16,7 +16,7 @@ func TestForwardResolvedPreservesSingleResult(t *testing.T) {
 			t.Fatal(err)
 		}
 		got, err := s.Emit(context.Background(), 0)
-		if len(got) != 1 || got[0] != want || !errors.Is(err, want.Err) {
+		if len(got) != 1 || got[0] != want || err != nil {
 			t.Fatalf("got=%+v err=%v want=%+v", got, err, want)
 		}
 	}
@@ -29,7 +29,7 @@ func TestForwardNilIsContractError(t *testing.T) {
 		t.Fatal(err)
 	}
 	results, err := s.Emit(context.Background(), 0)
-	if err == nil || !strings.Contains(err.Error(), "nil forwarded emission") || results[0].Started {
+	if err != nil || results[0].Err == nil || !strings.Contains(results[0].Err.Error(), "nil forwarded emission") || results[0].Started {
 		t.Fatal(results, err)
 	}
 }
@@ -61,7 +61,7 @@ func TestForwardRejectedEmissionKeepsAdmissionErrorOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	results, err := up.Emit(context.Background(), 1)
-	if !errors.Is(err, ErrQueueFull) || len(results) != 1 || results[0].Err != ErrQueueFull || results[0].Started {
+	if err != nil || len(results) != 1 || results[0].Err != ErrQueueFull || results[0].Started {
 		t.Fatal(results, err)
 	}
 }

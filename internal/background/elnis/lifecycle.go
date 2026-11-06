@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
 	"time"
+
+	"elbot/internal/events"
 )
 
 // Runtime owns HTTP ingress and event/report workers, but no borrowed services.
@@ -29,7 +32,6 @@ type Runtime struct {
 	runErr      error          // Fatal Serve failure, published through failed.
 	failed      chan struct{}  // Wakes observers before shutdown finishes.
 	done        chan struct{}  // All owned work and final persistence have finished.
-	closeErr    error          // Cleanup result, published through done.
 	work        sync.WaitGroup // Startup adds workers before shutdown can wait.
 	connections sync.WaitGroup // StateClosed follows handler exit; Serve exit ends StateNew additions.
 }
@@ -69,7 +71,9 @@ func (r *Runtime) Start(ctx context.Context) (err error) {
 	defer func() {
 		r.mu.Lock()
 		// Serve 可能在启动结果发布前失败并取消执行；保留具体故障。
-		err = errors.Join(err, r.runErr)
+		if errors.Is(err, context.Canceled) && r.runErr != nil {
+			err = r.runErr
+		}
 		r.startErr = err
 		close(r.startupDone)
 		r.mu.Unlock()
@@ -92,7 +96,11 @@ func (r *Runtime) Start(ctx context.Context) (err error) {
 	r.mu.Lock()
 	if r.closed || r.ctx.Err() != nil {
 		r.mu.Unlock()
-		return errors.Join(context.Canceled, listener.Close())
+		if err := listener.Close(); err != nil {
+			events.Log(context.Background(), events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError,
+				EventName: "elnis_listener_close_failed", Module: "background", Content: err.Error(), ResultStatus: events.LogStatus(err)})
+		}
+		return context.Canceled
 	}
 	r.listener = listener
 	r.ready = true
@@ -159,20 +167,25 @@ func (r *Runtime) BeginClose() {
 			<-startupDone
 		}
 		// Closing transport interrupts body reads; Close itself does not join handlers.
-		err := r.server.Close()
+		if err := r.server.Close(); err != nil {
+			events.Log(context.Background(), events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError,
+				EventName: "elnis_server_close_failed", Module: "background", Content: err.Error(), ResultStatus: events.LogStatus(err)})
+		}
 		r.work.Wait()
 		r.connections.Wait()
 		if r.ready {
 			// No event writer remains. Preserve durable reports and release only unfinished execution references.
 			ctx, cancel := context.WithTimeout(context.WithoutCancel(r.ctx), 5*time.Second)
-			err = errors.Join(err, r.service.store.FailInterrupted(ctx,
-				[]string{StatusAccepted, StatusQueued, StatusRunning}, StatusFailed, "elnis stopped before durable report"))
+			if err := r.service.store.FailInterrupted(ctx,
+				[]string{StatusAccepted, StatusQueued, StatusRunning}, StatusFailed, "elnis stopped before durable report"); err != nil {
+				events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError,
+					EventName: "elnis_shutdown_save_failed", Module: "background", Content: err.Error(), ResultStatus: events.LogStatus(err)})
+			}
 			cancel()
 		}
 		for len(r.queue) > 0 {
 			<-r.queue
 		}
-		r.closeErr = err
 		close(r.done)
 	}()
 }
@@ -184,12 +197,12 @@ func (r *Runtime) Close(ctx context.Context) error {
 	r.BeginClose()
 	select {
 	case <-r.done:
-		return r.closeErr
+		return nil
 	default:
 	}
 	select {
 	case <-r.done:
-		return r.closeErr
+		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}

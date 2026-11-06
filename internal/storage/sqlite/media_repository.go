@@ -107,7 +107,7 @@ func (r *MediaReferenceRepository) AddAll(ctx context.Context, refs []storage.Me
 			// 本语句唯一外键指向 media，唯一拒绝插入的触发器保护 deleting 对象。
 			var dbErr *sqlitedriver.Error
 			if errors.As(err, &dbErr) && (dbErr.Code() == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY || dbErr.Code() == sqlite3.SQLITE_CONSTRAINT_TRIGGER) {
-				return fmt.Errorf("add media reference: %w: %w", storage.ErrNotFound, err)
+				return fmt.Errorf("add media reference: %w: %v", storage.ErrNotFound, err)
 			}
 			return fmt.Errorf("add media reference: %w", err)
 		}

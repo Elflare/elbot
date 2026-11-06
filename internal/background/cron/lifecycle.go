@@ -2,9 +2,7 @@ package cron
 
 import (
 	"context"
-	"elbot/internal/events"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 
@@ -86,14 +84,10 @@ func (s *Service) submitPlatformConnected(ctx context.Context, platform string) 
 		}
 		p.platformQueues[platform] = queue
 	}
-	err := queue.Submit(ctx, signal.Task{Shutdown: signal.CancelPending, Run: func(runCtx context.Context) error {
+	return queue.Submit(ctx, signal.Task{Shutdown: signal.CancelPending, Run: func(runCtx context.Context) error {
 		s.handlePlatformConnected(runCtx, platform)
 		return nil
 	}})
-	if err != nil && ctx.Err() == nil && err != signal.ErrClosed {
-		s.log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "cron_platform_admission_failed", Module: "cron", Content: fmt.Sprintf("platform=%s error=%v", platform, err), ResultStatus: events.ResultFailed})
-	}
-	return err
 }
 
 func (s *Service) BeginClose() {

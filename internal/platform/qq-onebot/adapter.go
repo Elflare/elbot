@@ -68,7 +68,6 @@ type Adapter struct {
 	work             sync.WaitGroup                    // 已接纳的入站处理。
 	transports       sync.WaitGroup                    // 常驻读取协程及临时发送调用。
 	temporary        map[*Transport]context.CancelFunc // 临时连接所有权及各自的拨号取消函数。
-	closeErr         error                             // 最终清理结果。
 }
 
 func NewFromPlatformConfig(raw map[string]any, deps Deps) (*Adapter, error) {

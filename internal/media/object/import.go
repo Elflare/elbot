@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"elbot/internal/events"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
@@ -163,7 +165,10 @@ func (m *Manager) ImportReader(ctx context.Context, input io.Reader, size int64,
 	if err := m.media.Upsert(ctx, item); err != nil {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		return share.MediaInfo{}, errors.Join(err, backend.Remove(cleanupCtx, location))
+		if cleanupErr := backend.Remove(cleanupCtx, location); cleanupErr != nil {
+			events.Log(cleanupCtx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_cleanup_failed", Module: "media", Content: cleanupErr.Error(), Identity: events.LogIdentityFromContext(cleanupCtx), ResultStatus: events.LogStatus(cleanupErr)})
+		}
+		return share.MediaInfo{}, err
 	}
 	return mediaInfo(item), nil
 }

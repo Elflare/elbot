@@ -166,8 +166,8 @@ func TestShutdownUsesSingleBudget(t *testing.T) {
 			start := time.Now()
 			err := w.stop(t.Context())
 			elapsed := time.Since(start)
-			if err == nil {
-				t.Fatal("unresponsive worker shutdown succeeded")
+			if err != nil {
+				t.Fatalf("exited worker returned handled shutdown failure: %v", err)
 			}
 			if elapsed > 140*time.Millisecond {
 				t.Fatalf("shutdown renewed its 100ms budget: %v", elapsed)

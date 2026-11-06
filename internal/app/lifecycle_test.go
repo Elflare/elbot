@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"elbot/internal/events"
+	"elbot/internal/signal"
 	"errors"
 	"fmt"
 	"slices"
@@ -53,15 +55,15 @@ func requireLifecycleError(t *testing.T, err error, component componentKind, pha
 
 func TestLifecycleErrorPreservesNestedCauseAndCancellation(t *testing.T) {
 	failure := errors.New("independent failure")
-	for _, cause := range []error{context.Canceled, errors.Join(context.Canceled, failure)} {
+	for _, cause := range []error{context.Canceled, failure} {
 		inner := &lifecycleError{component: componentMedia, phase: phaseBuild, cause: cause}
 		outer := &lifecycleError{component: componentApp, phase: phaseResources, cause: inner}
 		detail := requireLifecycleError(t, outer, componentApp, phaseResources)
 		requireLifecycleError(t, errors.Unwrap(detail), componentMedia, phaseBuild)
-		if !errors.Is(outer, context.Canceled) || errors.Is(outer, failure) != errors.Is(cause, failure) {
+		if !errors.Is(outer, cause) {
 			t.Fatalf("lost cause: %v", outer)
 		}
-		if isOnlyCancellation(outer, context.Canceled) != (cause == context.Canceled) {
+		if errors.Is(outer, context.Canceled) != (cause == context.Canceled) {
 			t.Fatalf("incorrect cancellation classification: %v", outer)
 		}
 	}
@@ -284,27 +286,26 @@ func TestWaitBusinessLinesDiscoversAvailableWaiters(t *testing.T) {
 
 func TestWaitBusinessLinesPreservesConcurrentIndependentFailures(t *testing.T) {
 	first, second := errors.New("first fault"), errors.New("second fault")
+	var records []events.LogRecord
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error { records = append(records, record); return nil }, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close(context.Background())
 	lines := businessLines{
 		{kind: componentAgent, supervisor: &testWaitingLine{wait: func(context.Context) error { return first }}},
 		{kind: componentBackground, supervisor: &testWaitingLine{wait: func(ctx context.Context) error {
 			<-ctx.Done()
-			return fmt.Errorf("combined: %w", errors.Join(ctx.Err(), second))
+			return second
 		}}},
 	}
-	err := waitBusinessLines(t.Context(), lines)
-	if !errors.Is(err, first) || !errors.Is(err, second) {
+	err = waitBusinessLines(t.Context(), lines)
+	if !errors.Is(err, first) || errors.Is(err, second) {
 		t.Fatalf("lost independent failure: %v", err)
 	}
-	joined := err.(interface{ Unwrap() []error }).Unwrap()
-	if len(joined) != 2 {
-		t.Fatalf("failures=%v", joined)
-	}
-	for _, failure := range joined {
-		component := componentBackground
-		if errors.Is(failure, first) {
-			component = componentAgent
-		}
-		requireLifecycleError(t, failure, component, phaseWait)
+	requireLifecycleError(t, err, componentAgent, phaseWait)
+	if len(records) != 1 || records[0].Content != (&lifecycleError{component: componentBackground, phase: phaseWait, cause: second}).Error() {
+		t.Fatalf("independent failure logs=%+v", records)
 	}
 }
 

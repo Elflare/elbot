@@ -230,7 +230,7 @@ func TestHistoryBatchQueryCancellationAndAssociationFailure(t *testing.T) {
 			row := HistoryMessage{Media: []PlatformMedia{{Type: "file"}}}
 			results, err := m.GetHistoryMediaBatch(ctx, []HistoryMediaRequest{{Message: row, Index: 1}, {Message: row, Index: 1}}, nil, HistoryFetchOptions{})
 			if stage == "query" || stage == "cancel" {
-				if !errors.Is(err, fault) || results != nil {
+				if (stage == "query" && !errors.Is(err, fault)) || (stage == "cancel" && errors.Is(err, fault)) || results != nil {
 					t.Fatalf("%+v %v", results, err)
 				}
 				if stage == "cancel" && !errors.Is(err, context.Canceled) {

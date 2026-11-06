@@ -2,9 +2,11 @@ package object
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"time"
 
 	"elbot/internal/media/share"
@@ -62,18 +64,20 @@ func (m *Manager) presignMedia(ctx context.Context, id string) (string, error) {
 			return "", err
 		}
 		location, err := m.remote.Put(ctx, id, reader, metadata.Size, metadata.MIMEType)
-		cleanupErr := reader.Close()
+		if cleanupErr := reader.Close(); cleanupErr != nil {
+			events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: cleanupErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(cleanupErr)})
+		}
 		if err != nil {
-			return "", errors.Join(err, cleanupErr)
+			return "", err
 		}
 		metadata.ObjectKey = location
 		if err := m.media.Upsert(ctx, metadata); err != nil {
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			return "", errors.Join(err, cleanupErr, m.remote.Remove(cleanupCtx, location))
-		}
-		if cleanupErr != nil {
-			return "", cleanupErr
+			if cleanupErr := m.remote.Remove(cleanupCtx, location); cleanupErr != nil {
+				events.Log(cleanupCtx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_cleanup_failed", Module: "media", Content: cleanupErr.Error(), Identity: events.LogIdentityFromContext(cleanupCtx), ResultStatus: events.LogStatus(cleanupErr)})
+			}
+			return "", err
 		}
 	}
 	cached, err := m.media.GetSignedURL(ctx, id)

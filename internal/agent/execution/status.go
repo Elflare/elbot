@@ -3,11 +3,13 @@ package execution
 import (
 	"context"
 	agentshare "elbot/internal/agent/share"
+	"log/slog"
 	"sync"
 	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
+	"elbot/internal/events"
 	"elbot/internal/llm"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
@@ -96,7 +98,11 @@ func (r *StatusRecorder) record(ctx context.Context, snapshot runtimestatus.Snap
 	}
 	// This snapshot is committed. Publish it even when the request just ended.
 	if r.changed != nil {
-		_ = r.changed.Publish(context.WithoutCancel(ctx), event)
+		if err := r.changed.Publish(context.WithoutCancel(ctx), event); err != nil {
+			events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn,
+				EventName: "status_publish_failed", Module: "agent", Content: err.Error(),
+				Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
+		}
 	}
 }
 

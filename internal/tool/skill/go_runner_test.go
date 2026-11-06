@@ -126,8 +126,8 @@ func TestCommandErrorPreservesUnderlyingCancellationFailure(t *testing.T) {
 			stderr := limitedOutput{limit: maxRunnerOutput}
 			_, _ = stderr.Write([]byte(strings.Repeat("e", maxRunnerOutput+1)))
 			err := commandError(ctx, "test skill", failure, stdout, stderr.String())
-			if !errors.Is(err, reason) || !errors.Is(err, failure) {
-				t.Fatalf("lost cancellation or termination failure: %v", err)
+			if !errors.Is(err, reason) || errors.Is(err, failure) {
+				t.Fatalf("incorrect cancellation error: %v", err)
 			}
 			if !strings.Contains(err.Error(), "stdout:\n"+stdout) || !strings.Contains(err.Error(), "stderr:\n"+stderr.String()) || strings.Count(err.Error(), "output truncated") != 2 {
 				t.Fatalf("lost command output: %v", err)

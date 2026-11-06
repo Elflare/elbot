@@ -65,7 +65,8 @@ func (m *Supervisor) enqueuePlatformConnected(ctx context.Context, event events.
 		var err error
 		queue, err = signal.NewQueue(signal.QueueOptions{Name: event.Platform + ".connected.hooks"})
 		if err != nil {
-			return err
+			events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "hook_platform_admission_failed", Module: "hook", Content: err.Error(), ResultStatus: events.LogStatus(err)})
+			return nil
 		}
 		p.platformQueues[event.Platform] = queue
 	}
@@ -79,7 +80,7 @@ func (m *Supervisor) enqueuePlatformConnected(ctx context.Context, event events.
 	if err != nil && err != signal.ErrClosed {
 		events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "hook_platform_admission_failed", Module: "hook", Content: fmt.Sprintf("platform=%s error=%v", event.Platform, err), ResultStatus: events.ResultFailed})
 	}
-	return err
+	return nil
 }
 
 func (m *Supervisor) handlePlatformConnected(ctx context.Context, platformName string) {

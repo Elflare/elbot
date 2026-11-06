@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"errors"
 )
 
 func (m *Supervisor) BeginClose() {
@@ -42,47 +41,30 @@ func (m *Supervisor) Done() <-chan struct{} { return m.done }
 // BeginClose alone preserves event sources for their final publications.
 func (m *Supervisor) Close(ctx context.Context) error {
 	m.BeginClose()
-	var errs []error
 	if m.execution != nil {
-		errs = append(errs, m.execution.Close(ctx))
-		select {
-		case <-m.execution.Done():
-		default:
-			return errors.Join(errs...)
+		if err := m.execution.Close(ctx); err != nil {
+			return err
 		}
 	}
 	if m.sessions != nil {
-		errs = append(errs, m.sessions.Close(ctx))
-		select {
-		case <-m.sessions.Done():
-		default:
-			return errors.Join(errs...)
+		if err := m.sessions.Close(ctx); err != nil {
+			return err
 		}
 	}
 	if m.bridge != nil {
-		errs = append(errs, m.bridge.Close(ctx))
-		select {
-		case <-m.bridge.Done():
-		default:
-			return errors.Join(errs...)
+		if err := m.bridge.Close(ctx); err != nil {
+			return err
 		}
 	}
-	// All owned producers have stopped. Close uses the caller's remaining budget;
-	// the observer above still waits for actual callback exit after a timeout.
-	m.statusChanged.BeginClose()
-	errs = append(errs,
-		m.statusChanged.Close(ctx),
-	)
+	if err := m.statusChanged.Close(ctx); err != nil {
+		return err
+	}
 	select {
 	case <-m.done:
-	default:
-		select {
-		case <-m.done:
-		case <-ctx.Done():
-			errs = append(errs, ctx.Err())
-		}
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	return errors.Join(errs...)
 }
 
 func (m *Supervisor) Start() error {

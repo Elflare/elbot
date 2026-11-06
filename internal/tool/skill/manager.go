@@ -3,8 +3,9 @@ package skill
 
 import (
 	"context"
-	"errors"
+	"elbot/internal/events"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 
@@ -184,11 +185,11 @@ func (m *Manager) commitAgentSkillConfig(ctx context.Context, name, path string,
 	}
 	if err := m.reloadLocked(ctx); err != nil {
 		if rollbackErr := previous.restore(path); rollbackErr != nil {
-			combined := fmt.Errorf("reload and restore previous %s failed: %w", AgentSkillConfigFile, errors.Join(err, rollbackErr))
-			m.setReloadResult(combined)
-			return combined
+			events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError,
+				EventName: "skill_rollback_failed", Module: "skill", Content: rollbackErr.Error(),
+				Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(rollbackErr)})
 		}
-		return fmt.Errorf("reload failed; restored previous %s: %w", AgentSkillConfigFile, err)
+		return err
 	}
 	m.setReloadResult(nil)
 	return nil

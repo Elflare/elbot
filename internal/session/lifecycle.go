@@ -4,7 +4,6 @@ package session
 
 import (
 	"context"
-	"errors"
 )
 
 // Start 启用命名接纳及 Control 局部计时；构造阶段不启动任务。
@@ -62,32 +61,19 @@ func (s *Supervisor) waitClosed() {
 // 组件的 Close 必须幂等，保留独立关闭错误；Done 只表达实际资源退出。
 func (s *Supervisor) Close(ctx context.Context) error {
 	s.BeginClose()
-	var errs []error
-	errs = append(errs, s.naming.Close(ctx))
-	select {
-	case <-s.naming.Done():
-	default:
-		// 命名及日志尚未收尾，不推进后续事件源关闭。
-		return errors.Join(errs...)
+	if err := s.naming.Close(ctx); err != nil {
+		return err
 	}
-
-	// Control 的定时回调仍可能持有准入；它实际退出后才能关闭 Binding。
-	errs = append(errs, s.control.Close(ctx))
-	select {
-	case <-s.control.Done():
-	default:
-		return errors.Join(errs...)
+	if err := s.control.Close(ctx); err != nil {
+		return err
 	}
-	errs = append(errs, s.bindings.Close(ctx))
-
+	if err := s.bindings.Close(ctx); err != nil {
+		return err
+	}
 	select {
 	case <-s.done:
-	default:
-		select {
-		case <-s.done:
-		case <-ctx.Done():
-			errs = append(errs, ctx.Err())
-		}
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	return errors.Join(errs...)
 }

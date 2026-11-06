@@ -120,10 +120,13 @@ func (m *Manager) BeginClose() {
 }
 func (m *Manager) Close(ctx context.Context) error {
 	m.BeginClose()
-	var errs []error
-	errs = append(errs, m.connection.Close(ctx))
-	for _, route := range m.platforms {
-		errs = append(errs, route.queue.Close(ctx))
+	if err := m.connection.Close(ctx); err != nil {
+		return err
 	}
-	return errors.Join(errs...)
+	for _, route := range m.platforms {
+		if err := route.queue.Close(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }

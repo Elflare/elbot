@@ -2,8 +2,9 @@ package transfer
 
 import (
 	"context"
-	"errors"
+	"elbot/internal/events"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -37,14 +38,27 @@ func (m *Manager) ResolveForOutput(ctx context.Context, id string) (_ delivery.S
 	if err != nil {
 		return delivery.Source{}, usageID, err
 	}
+	defer func() {
+		if closeErr := reader.Close(); closeErr != nil {
+			m.options.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
+		}
+	}()
 	path := filepath.Join(dir, "media")
 	file, err := os.Create(path)
 	if err != nil {
-		return delivery.Source{}, usageID, errors.Join(err, reader.Close())
+		return delivery.Source{}, usageID, err
 	}
 	_, err = io.Copy(file, reader)
-	err = errors.Join(err, reader.Close(), file.Close(), ctx.Err())
+	if closeErr := file.Close(); closeErr != nil {
+		if err == nil {
+			return delivery.Source{}, usageID, closeErr
+		}
+		m.options.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_file_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
+	}
 	if err != nil {
+		return delivery.Source{}, usageID, err
+	}
+	if err := ctx.Err(); err != nil {
 		return delivery.Source{}, usageID, err
 	}
 	return delivery.Source{Path: path, MIMEType: held.Info().MIMEType}, usageID, nil

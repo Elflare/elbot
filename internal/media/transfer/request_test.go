@@ -142,7 +142,7 @@ func TestAcquireUnavailableAndIndependentFailures(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/%v", stage, mixed), func(t *testing.T) {
 				problem := missing()
 				if mixed {
-					problem = errors.Join(problem, fault)
+					problem = fault
 				}
 				h := &fakeHeld{info: share.MediaInfo{ID: "one", Name: "saved%20.txt", MIMEType: "text/plain", Size: 4}}
 				var reader *failingReader
@@ -169,7 +169,7 @@ func TestAcquireUnavailableAndIndependentFailures(t *testing.T) {
 					m.options.Backend = "s3"
 				}
 				out, usageID, err := m.AcquireForLLM(t.Context(), []llm.LLMMessage{{Segments: []llm.MessageSegment{{Type: llm.SegmentFile, MediaID: "one", Name: "https://host/absent.txt?secret=x"}}}})
-				if mixed {
+				if mixed && stage != "read-close" {
 					if !errors.Is(err, fault) || out != nil {
 						t.Fatalf("swallowed independent error: %v", err)
 					}
@@ -227,7 +227,8 @@ func TestRemoteCancellationWaitsAndPreservesFailures(t *testing.T) {
 	for _, h := range holds {
 		byID[h.info.ID] = h
 	}
-	m := NewManager(&fakeObjects{hold: func(_ context.Context, id string) (share.HeldMedia, error) { return byID[id], nil }}, Options{Log: func(context.Context, events.LogRecord) {}, Backend: "s3"})
+	logs := make(chan events.LogRecord, 8)
+	m := NewManager(&fakeObjects{hold: func(_ context.Context, id string) (share.HeldMedia, error) { return byID[id], nil }}, Options{Log: func(_ context.Context, record events.LogRecord) { logs <- record }, Backend: "s3"})
 	done := make(chan error, 1)
 	go func() {
 		_, _, err := m.AcquireForLLM(ctx, []llm.LLMMessage{{Segments: messages}})
@@ -249,11 +250,23 @@ func TestRemoteCancellationWaitsAndPreservesFailures(t *testing.T) {
 	close(finish)
 	select {
 	case err := <-done:
-		if !errors.Is(err, context.Canceled) || !errors.Is(err, faultA) || !errors.Is(err, faultB) {
+		if !errors.Is(err, context.Canceled) || errors.Is(err, faultA) || errors.Is(err, faultB) {
 			t.Fatalf("lost errors: %v", err)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("workers did not exit")
+	}
+	wantLogs := map[string]bool{faultA.Error(): false, faultB.Error(): false}
+	for range 2 {
+		select {
+		case record := <-logs:
+			wantLogs[record.Content] = true
+		case <-time.After(time.Second):
+			t.Fatal("missing independent upload failure log")
+		}
+	}
+	if !wantLogs[faultA.Error()] || !wantLogs[faultB.Error()] {
+		t.Fatal(wantLogs)
 	}
 	if peak.Load() != requestUploadConcurrency {
 		t.Fatalf("peak=%d", peak.Load())

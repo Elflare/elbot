@@ -8,6 +8,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"elbot/internal/events"
+	"elbot/internal/signal"
 )
 
 func testLifecycle() *lifecycle {
@@ -105,7 +108,7 @@ func TestTUIExitStopsIngressAndPreservesResources(t *testing.T) {
 			}
 			// 放行回调后才允许最终关闭展示资源。
 			release <- struct{}{}
-			if err := l.WaitIngress(context.Background()); !errors.Is(err, fault) {
+			if err := l.WaitIngress(context.Background()); err != nil {
 				t.Fatalf("WaitIngress = %v", err)
 			}
 			if err := l.Close(context.Background()); err != nil {
@@ -161,7 +164,8 @@ func TestPartialStartWaitsForActualExit(t *testing.T) {
 	r, _ := testRuntime("partial", false, nil)
 	r.start = func(context.Context) error { return fault }
 	r.beginClose = func() {}
-	r.wait = func(context.Context) error { <-exit; return nil }
+	r.wait = func(context.Context) error { <-exit; return fault }
+	l.onFailure = func(_ string, err error) { t.Errorf("startup failure reported twice: %v", err) }
 	l.runtimes = []*platformLifecycle{r}
 	if err := l.Start(); !errors.Is(err, fault) {
 		t.Fatal(err)
@@ -231,7 +235,7 @@ func TestCloseDeadlineRetainsDependenciesAndCanResume(t *testing.T) {
 
 func TestCanceledWaitReadsPublishedFaultBeforeObserver(t *testing.T) {
 	l := testLifecycle()
-	fault := errors.Join(context.Canceled, errors.New("independent failure"))
+	fault := errors.New("independent failure")
 	observerEntered, release := make(chan struct{}), make(chan struct{})
 	r, _ := testRuntime("cli", true, nil)
 	r.waitExit = func(ctx context.Context) error {
@@ -259,6 +263,12 @@ func TestCanceledWaitReadsPublishedFaultBeforeObserver(t *testing.T) {
 }
 
 func TestUnstartedPartialConstructionAndCleanupFailure(t *testing.T) {
+	var records []events.LogRecord
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error { records = append(records, record); return nil }, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close(context.Background())
 	l := testLifecycle()
 	fault := errors.New("cleanup failed")
 	var adapterClosed bool
@@ -266,14 +276,17 @@ func TestUnstartedPartialConstructionAndCleanupFailure(t *testing.T) {
 		{"ui", func(context.Context) error { return fault }},
 		{"adapter", func(context.Context) error { adapterClosed = true; return nil }},
 	}
-	if err := l.Close(context.Background()); !errors.Is(err, fault) {
+	if err := l.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if !adapterClosed {
 		t.Fatal("ordinary failure skipped adapter cleanup")
 	}
-	if err := l.Close(context.Background()); !errors.Is(err, fault) {
+	if err := l.Close(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+	if len(records) != 1 || records[0].EventName != "platform_close_failed" {
+		t.Fatalf("close logs=%+v", records)
 	}
 }
 

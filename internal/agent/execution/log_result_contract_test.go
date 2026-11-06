@@ -100,7 +100,7 @@ func TestSendOutputsRecordsReceiptsAndReturnsFailure(t *testing.T) {
 	}{
 		{"success", events.ResultSucceeded, nil, slog.LevelDebug},
 		{"wrapped_cancellation", events.ResultCanceled, fmt.Errorf("transport: %w", context.Canceled), slog.LevelInfo},
-		{"mixed_failure", events.ResultFailed, errors.Join(context.Canceled, errors.New("independent send failure")), slog.LevelWarn},
+		{"mixed_failure", events.ResultFailed, errors.New("independent send failure"), slog.LevelWarn},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var records []events.LogRecord

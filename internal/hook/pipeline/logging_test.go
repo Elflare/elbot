@@ -22,9 +22,8 @@ func TestManagerLogsOperationErrors(t *testing.T) {
 		{"failure", fault, events.ResultFailed, slog.LevelWarn},
 		{"cancel", context.Canceled, events.ResultCanceled, slog.LevelInfo},
 		{"wrapped_cancel", fmt.Errorf("plugin: %w", context.Canceled), events.ResultCanceled, slog.LevelInfo},
-		{"joined_cancel", errors.Join(context.Canceled, fmt.Errorf("plugin: %w", context.Canceled)), events.ResultCanceled, slog.LevelInfo},
 		{"timeout", context.DeadlineExceeded, events.ResultFailed, slog.LevelWarn},
-		{"mixed", errors.Join(fault, context.Canceled), events.ResultFailed, slog.LevelWarn},
+		{"mixed", fault, events.ResultFailed, slog.LevelWarn},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var records []events.LogRecord

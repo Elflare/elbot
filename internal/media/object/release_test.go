@@ -73,10 +73,12 @@ func TestReaderCloseFailureDoesNotQueueReleasedHold(t *testing.T) {
 	backend.open = func(context.Context, string) (io.ReadCloser, error) {
 		return &testReader{Reader: strings.NewReader("reader close"), closeErr: failure}, nil
 	}
+	logs := captureMediaLogs(t)
 	_, _, err := m.Read(t.Context(), item.ID)
-	if !errors.Is(err, failure) {
-		t.Fatalf("close error lost: %v", err)
+	if err != nil {
+		t.Fatalf("read failed: %v", err)
 	}
+	requireMediaLog(t, logs, failure.Error())
 	if len(m.pendingReleases) != 0 {
 		t.Fatal("successfully released hold queued")
 	}
@@ -143,24 +145,23 @@ func TestExplicitHoldsAreNotReleasedByCleanup(t *testing.T) {
 	}
 }
 
-func TestOwnedReleaseRetryFailureStopsCleanup(t *testing.T) {
+func TestOwnedReleaseRetryFailureAllowsOtherCleanup(t *testing.T) {
 	m, store, _ := newTestManager(t)
 	item := importTestMedia(t, m, "pending release")
 	orphan := importTestMedia(t, m, "other orphan")
 	failure := errors.New("release unavailable")
 	m.references = testReferences{ReferenceRepository: m.references, remove: func(context.Context, storage.MediaReference) error { return failure }}
-	if _, _, err := m.Read(t.Context(), item.ID); !errors.Is(err, failure) {
+	if _, _, err := m.Read(t.Context(), item.ID); err != nil {
 		t.Fatal(err)
 	}
 	m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
 	for range 2 {
 		err := m.Cleanup(t.Context(), nil)
-		if !errors.Is(err, failure) {
+		if err != nil {
 			t.Fatal("cleanup =  ", err)
 		}
-		record, err := store.Media().Get(t.Context(), orphan.ID)
-		if err != nil || record.Deleting {
-			t.Fatalf("cleanup continued after release failure: %#v %v", record, err)
+		if _, err := store.Media().Get(t.Context(), orphan.ID); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("unrelated orphan was not removed: %v", err)
 		}
 		if len(m.pendingReleases) != 1 {
 			t.Fatalf("retry lost/duplicated item: %d", len(m.pendingReleases))
@@ -194,7 +195,7 @@ func TestOwnedReleaseCancellationPreservesPendingAndNewItems(t *testing.T) {
 			failure := errors.New("release failed")
 			m.references = testReferences{ReferenceRepository: m.references, remove: func(context.Context, storage.MediaReference) error { return failure }}
 			for _, id := range []string{first.ID, second.ID} {
-				if _, _, err := m.Read(t.Context(), id); !errors.Is(err, failure) {
+				if _, _, err := m.Read(t.Context(), id); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -227,7 +228,7 @@ func TestOwnedReleaseCancellationPreservesPendingAndNewItems(t *testing.T) {
 			go func() { err := m.Cleanup(ctx, nil); done <- outcome{err} }()
 			awaitTest(t, entered)
 			// 当前批次正在重试时，另一个便捷调用登记新的失败释放。
-			if _, _, err := m.Read(t.Context(), third.ID); !errors.Is(err, failure) {
+			if _, _, err := m.Read(t.Context(), third.ID); err != nil {
 				t.Fatal(err)
 			}
 			cancel()
@@ -239,7 +240,7 @@ func TestOwnedReleaseCancellationPreservesPendingAndNewItems(t *testing.T) {
 			close(release)
 			got := awaitTest(t, done)
 			wantPending := 3
-			if !errors.Is(got.err, context.Canceled) || errors.Is(got.err, failure) != failCurrent {
+			if !errors.Is(got.err, context.Canceled) || errors.Is(got.err, failure) {
 				t.Fatal(got.err)
 			}
 			if secondCalls.Load() != 0 || len(m.pendingReleases) != wantPending {
@@ -281,8 +282,14 @@ func TestOwnedReleaseFailureRecoveredByCleanup(t *testing.T) {
 				delete(backend.data, item.ID)
 				_, _, err = m.Read(t.Context(), item.ID)
 			}
-			if !errors.Is(err, failure) {
-				t.Fatalf("release failure lost: %v", err)
+			if errors.Is(err, failure) {
+				t.Fatalf("handled release failure escaped: %v", err)
+			}
+			if operation != "validate" && operation != "open failure" && err != nil {
+				t.Fatal(err)
+			}
+			if len(m.pendingReleases) != 1 {
+				t.Fatal("release failure was not retained for retry")
 			}
 			m.references = store.MediaReferences()
 			if err := m.Cleanup(t.Context(), nil); err != nil {

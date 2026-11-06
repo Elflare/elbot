@@ -72,6 +72,10 @@ func TestCloseWaitsForLeaseAndPreservesCommittedEvent(t *testing.T) {
 }
 
 func TestCloseWaitsForActualObserverExit(t *testing.T) {
+	// 全局诊断 worker 的生命周期不属于测试的虚拟时钟。
+	if err := signal.FlushDiagnostics(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	synctest.Test(t, func(t *testing.T) {
 		m := newTestManager(t)
 		started, finish := make(chan struct{}), make(chan struct{})

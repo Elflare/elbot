@@ -3,10 +3,12 @@ package skill
 
 import (
 	"context"
+	"elbot/internal/events"
 	"elbot/internal/processenv"
 	toolshare "elbot/internal/tool/share"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -72,12 +74,17 @@ func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall
 }
 
 func commandError(ctx context.Context, label string, err error, stdout, stderr string) error {
-	if ctxErr := ctx.Err(); errors.Is(ctxErr, context.DeadlineExceeded) {
-		return fmt.Errorf("%s timed out: %w%s", label, errors.Join(ctxErr, err), commandOutputSuffix(stdout, stderr))
-	} else if errors.Is(ctxErr, context.Canceled) {
-		return fmt.Errorf("%s canceled: %w%s", label, errors.Join(ctxErr, err), commandOutputSuffix(stdout, stderr))
-	}
 	var exitErr *exec.ExitError
+	if ctx.Err() != nil && !errors.Is(err, ctx.Err()) && !errors.As(err, &exitErr) {
+		events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn,
+			EventName: "skill_process_failed", Module: "skill", Content: err.Error(),
+			Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
+	}
+	if ctxErr := ctx.Err(); errors.Is(ctxErr, context.DeadlineExceeded) {
+		return fmt.Errorf("%s timed out: %w%s", label, ctxErr, commandOutputSuffix(stdout, stderr))
+	} else if errors.Is(ctxErr, context.Canceled) {
+		return fmt.Errorf("%s canceled: %w%s", label, ctxErr, commandOutputSuffix(stdout, stderr))
+	}
 	if errors.As(err, &exitErr) {
 		return fmt.Errorf("%s process failed with exit code %d: %w%s", label, exitErr.ExitCode(), err, commandOutputSuffix(stdout, stderr))
 	}

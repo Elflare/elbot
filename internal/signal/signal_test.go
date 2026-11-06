@@ -35,7 +35,7 @@ func TestResults(t *testing.T) {
 	want := errors.New("failed")
 	connect(t, s, func(_ context.Context, n int) (int, error) { return n + 2, want }, ConnectOptions{})
 	results, err := s.Emit(context.Background(), 4)
-	if !errors.Is(err, want) || len(results) != 2 || results[0].Value != 5 || results[1].Value != 6 {
+	if err != nil || len(results) != 2 || !errors.Is(results[1].Err, want) || results[0].Value != 5 || results[1].Value != 6 {
 		t.Fatalf("results=%v err=%v", results, err)
 	}
 }
@@ -51,7 +51,7 @@ func TestTimeoutRetainsSlotAndOtherSignalsProgress(t *testing.T) {
 	}
 	<-started
 	results, err := e.Wait(context.Background())
-	if !errors.Is(err, context.DeadlineExceeded) || !results[0].Started {
+	if err != nil || !errors.Is(results[0].Err, context.DeadlineExceeded) || !results[0].Started {
 		t.Fatal(results, err)
 	}
 	queued, err := s.EmitAsync(context.Background(), 1)
@@ -66,7 +66,7 @@ func TestTimeoutRetainsSlotAndOtherSignalsProgress(t *testing.T) {
 	if r, err := fast.Emit(context.Background(), 7); err != nil || r[0].Value != 7 {
 		t.Fatal(r, err)
 	}
-	if r, err := queued.Wait(context.Background()); !errors.Is(err, context.DeadlineExceeded) || r[0].Started {
+	if r, err := queued.Wait(context.Background()); err != nil || !errors.Is(r[0].Err, context.DeadlineExceeded) || r[0].Started {
 		t.Fatal(r, err)
 	}
 	if calls.Load() != 1 {
@@ -144,7 +144,7 @@ func TestForwardingReleasesUpstreamWorkerAndPreservesDeadline(t *testing.T) {
 	if r, err := up.Emit(context.Background(), 5); err != nil || r[0].Value != 5 {
 		t.Fatal(r, err)
 	}
-	if results, err := a.Wait(context.Background()); !errors.Is(err, context.DeadlineExceeded) || !results[0].Started {
+	if results, err := a.Wait(context.Background()); err != nil || !errors.Is(results[0].Err, context.DeadlineExceeded) || !results[0].Started {
 		t.Fatal(results, err)
 	}
 }
@@ -154,7 +154,7 @@ func TestRecursiveWaitAndMissingReceiver(t *testing.T) {
 		t.Fatal(err)
 	}
 	connect(t, s, func(ctx context.Context, n int) (int, error) { _, err := s.Emit(ctx, n); return 0, err }, ConnectOptions{})
-	if _, err := s.Emit(context.Background(), 0); !errors.Is(err, ErrRecursive) {
+	if results, err := s.Emit(context.Background(), 0); err != nil || !errors.Is(results[0].Err, ErrRecursive) {
 		t.Fatal(err)
 	}
 	if _, err := s.Connect(func(context.Context, int) (int, error) { return 0, nil }, ConnectOptions{}); err == nil {
@@ -174,10 +174,10 @@ func TestClosingCompletesPendingResults(t *testing.T) {
 	<-started
 	b, _ := s.EmitAsync(context.Background(), 1)
 	s.BeginClose()
-	if _, err := b.Wait(context.Background()); err == nil {
+	if results, err := b.Wait(context.Background()); err != nil || results[0].Err == nil {
 		t.Fatal("pending result not canceled")
 	}
-	if _, err := a.Wait(context.Background()); !errors.Is(err, context.Canceled) {
+	if results, err := a.Wait(context.Background()); err != nil || !errors.Is(results[0].Err, context.Canceled) {
 		t.Fatal(err)
 	}
 	select {

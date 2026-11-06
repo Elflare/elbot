@@ -132,8 +132,11 @@ func TestPrepareResourcesRetainsPartialModelsForCleanup(t *testing.T) {
 	}
 	_, writeErr := file.WriteString("proxy = '://invalid'\n")
 	closeErr := file.Close()
-	if err := errors.Join(writeErr, closeErr); err != nil {
-		t.Fatal(err)
+	if writeErr != nil {
+		t.Fatal(writeErr)
+	}
+	if closeErr != nil {
+		t.Fatal(closeErr)
 	}
 	r, err := prepareResources(t.Context(), path)
 	cleanupAppResources(t, r)

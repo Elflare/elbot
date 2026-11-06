@@ -101,16 +101,16 @@ func (a *Adapter) Close(ctx context.Context) error {
 	a.mu.Unlock()
 	select {
 	case <-a.closeDone:
-		return a.closeErr
+		return nil
 	default:
 	}
 	select {
 	case <-a.closeDone:
-		return a.closeErr
+		return nil
 	case <-ctx.Done():
 		select {
 		case <-a.closeDone:
-			return a.closeErr
+			return nil
 		default:
 			return ctx.Err()
 		}
@@ -132,9 +132,12 @@ func (a *Adapter) closeResources() {
 			results <- transport.Close(context.Background())
 		}(transport)
 	}
-	var err error
 	for range len(temporary) + 1 {
-		err = errors.Join(err, <-results)
+		if err := <-results; err != nil {
+			globalevents.Log(context.Background(), globalevents.LogRecord{Category: globalevents.LogRuntime,
+				Level: slog.LevelWarn, EventName: "transport_close_failed", Module: "qq-onebot",
+				Content: err.Error(), ResultStatus: globalevents.LogStatus(err)})
+		}
 	}
 	if a.transportCancel != nil {
 		a.transportCancel()
@@ -143,7 +146,6 @@ func (a *Adapter) closeResources() {
 	if a.stopParent != nil {
 		a.stopParent()
 	}
-	a.closeErr = err
 	close(a.closeDone)
 }
 

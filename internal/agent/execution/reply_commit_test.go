@@ -208,6 +208,7 @@ func TestReplyCommitEmptyAndBackground(t *testing.T) {
 				if strings.HasPrefix(mode, "background") {
 					f.in.Session.Mode = storage.SessionModeBackground
 					f.out = backgroundTurnOutput{}
+					f.in.Stream = f.out.StartStream(f.requestCtx)
 				}
 				if mode == "background_reply" {
 					f.in.Text, f.in.RawText, f.in.PlatformText = "raw", "raw", "visible"
@@ -272,9 +273,6 @@ func TestReplyCommitHookSuppressesDisplayWithoutChangingHistory(t *testing.T) {
 				}
 			}
 			want := 1
-			if buffered {
-				want = 0
-			}
 			if count != want {
 				t.Fatalf("send hook calls=%d want=%d", count, want)
 			}
@@ -302,7 +300,7 @@ func (r replyTestDialogues) Commit(ctx context.Context, commit storage.DialogueC
 	}
 	err := r.DialogueRepository.Commit(ctx, commit)
 	if err != nil && r.repo.mapErr != nil {
-		err = errors.Join(err, r.repo.mapErr)
+		return r.repo.mapErr
 	}
 	return err
 }

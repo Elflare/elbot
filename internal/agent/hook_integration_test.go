@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"elbot/internal/agent"
 	"elbot/internal/completion"
@@ -104,8 +105,10 @@ data: [DONE]
 	}
 	t.Cleanup(func() { _ = tools.Close(context.Background()) })
 	platform := &integrationPlatform{}
+	notified := make(chan struct{}, 1)
 	notifications, err := events.NotificationRequested.Observe(func(ctx context.Context, notice events.Notification) error {
 		_, err := platform.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(notice.Text)})
+		notified <- struct{}{}
 		return err
 	}, signal.ConnectOptions{})
 	if err != nil {
@@ -149,6 +152,11 @@ data: [DONE]
 	}
 	if err := a.HandleMessage(testutil.WithCLIConversation(t.Context()), agent.MessageRequest{Text: "/hooks"}); err != nil {
 		t.Fatal(err)
+	}
+	select {
+	case <-notified:
+	case <-time.After(5 * time.Second):
+		t.Fatal("command notification was not delivered")
 	}
 	platform.mu.Lock()
 	output := strings.Join(platform.outputs, "\n")

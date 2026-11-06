@@ -174,10 +174,10 @@ func cleanupSandbox(ctx context.Context, dir string, cutoff time.Time) (int, err
 	if err != nil {
 		return deleted, err
 	}
-	return deleted, removeEmptyDirs(dir)
+	return deleted, removeEmptyDirs(ctx, dir)
 }
 
-func removeEmptyDirs(root string) error {
+func removeEmptyDirs(ctx context.Context, root string) error {
 	dirs := []string{}
 	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil || path == root || !entry.IsDir() {
@@ -188,11 +188,12 @@ func removeEmptyDirs(root string) error {
 	}); err != nil {
 		return err
 	}
-	var errs []error
 	for i := len(dirs) - 1; i >= 0; i-- {
 		if err := os.Remove(dirs[i]); err != nil && !errors.Is(err, syscall.ENOTEMPTY) {
-			errs = append(errs, err)
+			globalevents.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn,
+				EventName: "maintenance_cleanup_failed", Module: "background", Content: err.Error(),
+				Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
 		}
 	}
-	return errors.Join(errs...)
+	return nil
 }

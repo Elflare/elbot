@@ -123,12 +123,13 @@ func TestReplicaPersistenceFailureRollsBackAndPreservesErrors(t *testing.T) {
 		}
 		return removeErr
 	}
+	logs := captureMediaLogs(t)
 	_, err = held.SignedURL(t.Context())
-	for _, want := range []error{persistErr, closeErr, removeErr} {
-		if !errors.Is(err, want) {
-			t.Fatalf("lost %v: %v", want, err)
-		}
+	if err != persistErr {
+		t.Fatalf("persistence error=%v", err)
 	}
+	requireMediaLog(t, logs, closeErr.Error())
+	requireMediaLog(t, logs, removeErr.Error())
 	record, _ := m.media.Get(t.Context(), item.ID)
 	if record.ObjectKey != "" {
 		t.Fatal("failed persistence changed record")

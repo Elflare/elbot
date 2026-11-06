@@ -2,7 +2,6 @@ package logging
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -28,7 +27,6 @@ type Manager struct {
 	beginOnce     sync.Once
 	closeGate     chan struct{}
 	closed        bool
-	closeErr      error
 }
 
 func NewManager(level, sqlitePath string, retentionDays int) (*Manager, error) {
@@ -75,37 +73,23 @@ func (m *Manager) Close(ctx context.Context) error {
 	}
 	defer func() { <-m.closeGate }()
 	if m.closed {
-		return m.closeErr
+		return nil
 	}
-	var errs []error
-	stopped := true
 	for _, category := range logCategories {
-		queue := m.sinks[category].queue
-		if err := queue.Close(ctx); err != nil {
-			errs = append(errs, err)
+		if err := m.sinks[category].queue.Close(ctx); err != nil {
+			return err
 		}
-		select {
-		case <-queue.Done():
-		default:
-			stopped = false
-		}
-	}
-	// A timeout never authorizes closing a writer still used by a callback.
-	// Keep ownership until an explicit later Close or process exit.
-	if !stopped {
-		return errors.Join(errs...)
 	}
 	for _, writer := range m.writers {
 		if err := writer.Close(); err != nil {
-			errs = append(errs, err)
+			signal.ReportDiagnostic("logging writer close failed", slog.Any("error", err))
 		}
 	}
 	m.closed = true
-	m.closeErr = errors.Join(errs...)
 	managerOwnership.Lock()
 	managerOwnership.active = false
 	managerOwnership.Unlock()
-	return m.closeErr
+	return nil
 }
 
 type dailyFileWriter struct {

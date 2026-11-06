@@ -308,7 +308,7 @@ func TestManagerLogsCanceledHookAsInfo(t *testing.T) {
 	var buf bytes.Buffer
 	manager := newTestManager()
 
-	captureLogs(t, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	finishLogs := captureLogs(t, slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	manager.Register(share.Registration{
 		Point: share.PointAgentInputPrepared,
 		Name:  "cancel",
@@ -322,6 +322,7 @@ func TestManagerLogsCanceledHookAsInfo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("individual Hook cancellation escaped: %v", err)
 	}
+	finishLogs()
 	logs := buf.String()
 	if !strings.Contains(logs, "level=INFO") || !strings.Contains(logs, "event=hook_canceled") {
 		t.Fatalf("logs missing info cancellation:\n%s", logs)
@@ -559,7 +560,7 @@ func TestMarkHookOutputsPreservesExistingSource(t *testing.T) {
 }
 
 // captureLogs observes the public signal; production never receives this logger.
-func captureLogs(t *testing.T, logger *slog.Logger) {
+func captureLogs(t *testing.T, logger *slog.Logger) func() {
 	t.Helper()
 	connection, err := globalevents.LogSubmitted.Observe(func(ctx context.Context, record globalevents.LogRecord) error {
 		if !logger.Enabled(ctx, record.Level) {
@@ -568,11 +569,17 @@ func captureLogs(t *testing.T, logger *slog.Logger) {
 		out := slog.NewRecord(time.Now(), record.Level, record.Content, 0)
 		out.AddAttrs(slog.String("event", record.EventName), slog.String("module", record.Module), slog.String("result_status", record.ResultStatus.String()))
 		return logger.Handler().Handle(ctx, out)
-	}, signal.ConnectOptions{})
+	}, signal.ConnectOptions{Shutdown: signal.Drain})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(connection.Disconnect)
+	finish := func() {
+		if err := connection.Close(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(finish)
+	return finish
 }
 
 func newTestManager() *Manager {

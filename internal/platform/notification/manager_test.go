@@ -181,7 +181,7 @@ func TestOriginalSourceAndPartialFailure(t *testing.T) {
 	n := events.NewNotification(contextinfo.WithConversation(context.Background(), origin), slog.LevelWarn, "warning")
 	worker := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{Source: origin.Source, PlatformData: "other-connection"})
 	r, err := events.NotificationRequested.Emit(worker, n)
-	if !errors.Is(err, wantErr) || len(r) != 1 || !errors.Is(r[0].Err, wantErr) || !r[0].Started {
+	if err != nil || len(r) != 1 || !errors.Is(r[0].Err, wantErr) || !r[0].Started {
 		t.Fatal(r, err)
 	}
 }
@@ -319,7 +319,7 @@ func TestQueuedNotificationRejectsExpiredBinding(t *testing.T) {
 	close(release)
 	deadline, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if results, err := e.Wait(deadline); !errors.Is(err, context.Canceled) || len(results) != 1 || results[0].Started {
+	if results, err := e.Wait(deadline); err != nil || len(results) != 1 || !errors.Is(results[0].Err, context.Canceled) || results[0].Started {
 		t.Fatal(results, err)
 	}
 	if calls.Load() != 1 {

@@ -333,7 +333,8 @@ func (w *worker) stop(ctx context.Context) (err error) {
 	w.stopping = false
 	w.mu.Unlock()
 	if !graceful {
-		return shutdownCtx.Err()
+		w.manager.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn,
+			EventName: "hook_worker_forced_stop", Module: "hook", Content: shutdownCtx.Err().Error(), ResultStatus: globalevents.LogStatus(shutdownCtx.Err())})
 	}
 	return nil
 }

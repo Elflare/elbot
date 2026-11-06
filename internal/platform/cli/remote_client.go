@@ -18,6 +18,7 @@ import (
 	"github.com/coder/websocket/wsjson"
 
 	"elbot/internal/completion"
+	"elbot/internal/signal"
 )
 
 // ErrServerUnavailable marks a network dial failure before the CLI handshake.
@@ -74,6 +75,9 @@ func (c *RemoteClient) run(ctx context.Context, display func(context.Context) er
 		c.runErr = err
 		close(c.done)
 		c.pendingMu.Unlock()
+		flushCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = signal.FlushDiagnostics(flushCtx)
 	}()
 	token, err := c.resolveToken()
 	if err != nil {
@@ -83,7 +87,7 @@ func (c *RemoteClient) run(ctx context.Context, display func(context.Context) er
 	if err != nil {
 		var dialError *net.OpError
 		if response == nil && errors.As(err, &dialError) && dialError.Op == "dial" && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("connect cli server %s: %w: %w", c.client.URL, ErrServerUnavailable, err)
+			return fmt.Errorf("%w: connect cli server %s: %v", ErrServerUnavailable, c.client.URL, err)
 		}
 		return fmt.Errorf("connect cli server %s: %w", c.client.URL, err)
 	}
@@ -117,38 +121,25 @@ func (c *RemoteClient) run(ctx context.Context, display func(context.Context) er
 	case <-ctx.Done():
 		err = ctx.Err()
 	}
-	// 收回已发布的独立结果，再发起其余工作取消。
-	if !readDone {
-		select {
-		case readErr = <-reads:
-			readDone = true
-		default:
-		}
-	}
-	if !uiDone {
-		select {
-		case uiErr = <-ui:
-			uiDone = true
-		default:
-		}
-	}
 	if readDone && readErr != nil {
-		err = errors.Join(err, fmt.Errorf("cli server disconnected: %w", readErr))
+		err = fmt.Errorf("cli server disconnected: %w", readErr)
 	}
 	if uiDone {
-		err = errors.Join(err, uiErr)
+		err = uiErr
 	}
 	cancel()
 	_ = conn.CloseNow()
 	if !readDone {
-		<-reads
+		// 关闭连接导致的读循环退出属于收尾，不再覆盖终止原因。
+		readErr = <-reads
+		if readErr != nil && !errors.Is(readErr, context.Canceled) && websocket.CloseStatus(readErr) == -1 && !errors.Is(readErr, net.ErrClosed) {
+			signal.ReportDiagnostic("cli read cleanup failed", slog.Any("error", readErr))
+		}
 	}
 	if !uiDone {
-		uiErr = <-ui
-		err = errors.Join(err, uiErr)
-	}
-	if ctx.Err() != nil {
-		err = errors.Join(err, ctx.Err())
+		if uiErr = <-ui; uiErr != nil && !errors.Is(uiErr, context.Canceled) {
+			signal.ReportDiagnostic("cli display cleanup failed", slog.Any("error", uiErr))
+		}
 	}
 	return err
 }

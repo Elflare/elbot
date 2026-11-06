@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"elbot/internal/events"
+	"elbot/internal/signal"
 )
 
 // Options 是调用方传入的应用启动参数。
@@ -89,7 +90,7 @@ func (phase lifecyclePhase) String() string {
 type lifecycleError struct {
 	component componentKind  // 失败步骤所属的组件。
 	phase     lifecyclePhase // 失败步骤的编排阶段。
-	cause     error          // 原始错误或多个错误的汇总，供 errors.Is/As 解包。
+	cause     error          // 当前阶段的原始错误，供 errors.Is/As 解包。
 }
 
 func (err *lifecycleError) Error() string {
@@ -136,7 +137,7 @@ type startupStep struct {
 	run   func() error   // 先保存本阶段取得的资源，再交回错误。
 }
 
-// Run 组织完整运行；正常外部取消返回 nil，其他错误与清理错误合并。
+// Run 组织完整运行；正常外部取消返回 nil，必要清理不覆盖运行错误。
 // 即使下层关闭不响应取消，也在统一退出期限到达后返回给 main。
 func Run(ctx context.Context, opts Options) (err error) {
 	now := time.Now()
@@ -152,10 +153,19 @@ func Run(ctx context.Context, opts Options) (err error) {
 	)
 	defer func() {
 		cancel()
-		if ctx.Err() != nil && isOnlyCancellation(err, ctx.Err()) {
+		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
 			err = nil
 		}
-		err = errors.Join(err, shutdown(ctx, lines, resources, configLock))
+		if closeErr := shutdown(ctx, lines, resources, configLock); closeErr != nil {
+			if err == nil {
+				err = closeErr
+			} else {
+				signal.ReportDiagnostic("shutdown failed", slog.Any("error", closeErr))
+			}
+		}
+		flushCtx, stop := context.WithTimeout(context.Background(), time.Second)
+		defer stop()
+		_ = signal.FlushDiagnostics(flushCtx)
 	}()
 	var configPath string
 	steps := []startupStep{
@@ -234,33 +244,22 @@ func waitBusinessLines(ctx context.Context, lines businessLines) error {
 		<-ctx.Done()
 		return ctx.Err()
 	}
-	var errs []error
-	for range waiting {
-		result := <-results
-		// 首个结果结束运行等待；另一 Wait 必须响应等待上下文，实际收尾由 Close 负责。
-		cancel()
-		if result.err != nil && !isOnlyCancellation(result.err, waitCtx.Err()) {
-			errs = append(errs, &lifecycleError{component: result.kind, phase: phaseWait, cause: result.err})
+	received := <-results
+	cancel()
+	// 运行等待已结束；其余观察者只收尾，各自独立故障在这里处理。
+	for range waiting - 1 {
+		other := <-results
+		if other.err != nil && !errors.Is(other.err, waitCtx.Err()) {
+			events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError,
+				EventName: "runtime_failed", Module: "app",
+				Content:      (&lifecycleError{component: other.kind, phase: phaseWait, cause: other.err}).Error(),
+				ResultStatus: events.LogStatus(other.err)})
 		}
 	}
-	return errors.Join(append(errs, ctx.Err())...)
-}
-
-// isOnlyCancellation 保留包装或合并错误中的独立故障，只识别纯取消结果。
-func isOnlyCancellation(err, cancellation error) bool {
-	pending := []error{err}
-	for len(pending) > 0 {
-		cause := pending[len(pending)-1]
-		pending = pending[:len(pending)-1]
-		if joined, ok := cause.(interface{ Unwrap() []error }); ok {
-			pending = append(pending, joined.Unwrap()...)
-		} else if inner := errors.Unwrap(cause); inner != nil {
-			pending = append(pending, inner)
-		} else if cause != nil && !errors.Is(cause, cancellation) {
-			return false
-		}
+	if received.err != nil {
+		return &lifecycleError{component: received.kind, phase: phaseWait, cause: received.err}
 	}
-	return true
+	return ctx.Err()
 }
 
 func (t *startupTiming) markStage(phase lifecyclePhase) {

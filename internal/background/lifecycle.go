@@ -30,16 +30,13 @@ func (m *Supervisor) Start() (err error) {
 	m.startupDone = make(chan struct{})
 	m.mu.Unlock()
 	defer func() {
-		// 取消可能先于观察协程转交结果；由子组件解释已发布的生命周期结果。
-		// 已取消的上下文保证这里只读取结果，不等待子组件清理。
-		if m.ctx.Err() != nil && m.elnis != nil {
-			if childErr := m.elnis.Wait(m.ctx); childErr != nil && childErr != m.ctx.Err() {
-				err = errors.Join(err, fmt.Errorf("start elnis: %w", childErr))
+		// 启动被运行故障取消时返回故障原因，不叠加派生取消。
+		if errors.Is(err, context.Canceled) && m.elnis != nil {
+			if childErr := m.elnis.Wait(m.ctx); childErr != nil && !errors.Is(childErr, context.Canceled) {
+				err = childErr
 			}
 		}
 		m.mu.Lock()
-		// 运行故障可能在 Start 返回前取消本线；保留故障而非仅交回取消。
-		err = errors.Join(err, m.runErr)
 		m.startErr = err
 		close(m.startupDone)
 		m.mu.Unlock()
@@ -99,10 +96,10 @@ func (m *Supervisor) Wait(ctx context.Context) error {
 	}
 	m.mu.Unlock()
 	// 不依赖观察协程的调度时机，也不解释 Elnis 内部的取消原因。
-	// 仅排除这一次等待自身的取消结果；包装或合并的子组件错误原样保留。
-	if ctx.Err() != nil && m.elnis != nil {
+	// 已观察到的运行错误直接返回，避免再读取同一故障。
+	if err == nil && ctx.Err() != nil && m.elnis != nil {
 		if childErr := m.elnis.Wait(ctx); childErr != nil && childErr != ctx.Err() {
-			err = errors.Join(err, fmt.Errorf("wait elnis: %w", childErr))
+			err = fmt.Errorf("wait elnis: %w", childErr)
 		}
 	}
 	if err != nil {
@@ -182,13 +179,5 @@ func (m *Supervisor) Close(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
-	// 内部 Close 在 Done 后返回实际清理结果，重复调用保留同一结果。
-	var errs []error
-	if m.elnis != nil {
-		errs = append(errs, m.elnis.Close(ctx))
-	}
-	if m.cron != nil {
-		errs = append(errs, m.cron.Close(ctx))
-	}
-	return errors.Join(errs...)
+	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/events"
 	"elbot/internal/session"
@@ -27,9 +28,9 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = m.Close(context.Background()) })
-			var notices []events.Notification
+			notices := make(chan events.Notification, 32)
 			connection, err := events.NotificationRequested.Observe(func(_ context.Context, notice events.Notification) error {
-				notices = append(notices, notice)
+				notices <- notice
 				return nil
 			}, signal.ConnectOptions{})
 			if err != nil {
@@ -45,6 +46,7 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 				if err := m.HandleMessage(ctx, MessageRequest{Text: "-new"}); err != nil {
 					t.Fatal(err)
 				}
+				awaitNotification(t, notices)
 			}
 			before, err := deps.Store.Sessions().List(ctx, storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 100})
 			if err != nil {
@@ -52,12 +54,12 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 			}
 			for _, text := range []string{"-pin", "-unpin", "-archive", "-archive --confirm", "-unarchive", "-rename title", "-messages", "-compact", "-rollback", "-rollback 1", "-stop", "/pin", "/compact"} {
 				t.Run(text, func(t *testing.T) {
-					notices = nil
 					if err := m.HandleMessage(ctx, MessageRequest{Text: text}); err != nil {
 						t.Fatalf("command returned an error: %v", err)
 					}
-					if len(notices) != 1 || notices[0].Text != "还未开始对话" || notices[0].Level != slog.LevelInfo {
-						t.Fatalf("expected a normal empty-conversation notice, got %+v", notices)
+					notice := awaitNotification(t, notices)
+					if notice.Text != "还未开始对话" || notice.Level != slog.LevelInfo {
+						t.Fatalf("expected a normal empty-conversation notice, got %+v", notice)
 					}
 					if _, binding, _ := m.sessions.CurrentBound(ctx, scope); binding != nil {
 						t.Fatal("command created a current conversation")
@@ -70,12 +72,12 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 			}
 			for _, text := range []string{"-pin missing-session", "-fork missing-message"} {
 				t.Run(text, func(t *testing.T) {
-					notices = nil
 					if err := m.HandleMessage(ctx, MessageRequest{Text: text}); !errors.Is(err, storage.ErrNotFound) {
 						t.Fatalf("explicit missing target error = %v", err)
 					}
-					if len(notices) != 1 || notices[0].Level != slog.LevelError {
-						t.Fatalf("expected target failure, got %+v", notices)
+					notice := awaitNotification(t, notices)
+					if notice.Level != slog.LevelWarn {
+						t.Fatalf("expected target failure, got %+v", notice)
 					}
 				})
 			}
@@ -92,9 +94,9 @@ func TestCommandTextWiringUsesConfigurationFirstPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = m.Close(context.Background()) })
-	var notices []events.Notification
+	notices := make(chan events.Notification, 32)
 	connection, err := events.NotificationRequested.Observe(func(_ context.Context, notice events.Notification) error {
-		notices = append(notices, notice)
+		notices <- notice
 		return nil
 	}, signal.ConnectOptions{})
 	if err != nil {
@@ -105,7 +107,19 @@ func TestCommandTextWiringUsesConfigurationFirstPrefix(t *testing.T) {
 	if err := m.HandleMessage(ctx, MessageRequest{Text: "!!help"}); err != nil {
 		t.Fatal(err)
 	}
-	if len(notices) != 1 || !strings.Contains(notices[0].Text, "!stop [request_id|number]") || strings.Contains(notices[0].Text, "!!") || strings.Contains(notices[0].Text, "/help") {
-		t.Fatalf("notices=%+v", notices)
+	notice := awaitNotification(t, notices)
+	if !strings.Contains(notice.Text, "!stop [request_id|number]") || strings.Contains(notice.Text, "!!") || strings.Contains(notice.Text, "/help") {
+		t.Fatalf("notice=%+v", notice)
+	}
+}
+
+func awaitNotification(t *testing.T, notices <-chan events.Notification) events.Notification {
+	t.Helper()
+	select {
+	case notice := <-notices:
+		return notice
+	case <-time.After(5 * time.Second):
+		t.Fatal("notification was not delivered")
+		return events.Notification{}
 	}
 }

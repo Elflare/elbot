@@ -65,11 +65,13 @@ func TestUnavailableContentDoesNotHideOtherFaults(t *testing.T) {
 			t.Fatalf("SignedURL: %v", err)
 		}
 	}
-	// 关闭阶段的文件错误不能伪装成对象内容缺失。
+	// 上传成功后，读取器释放故障独立记录，不将内容标为不可用。
 	backend.open = func(context.Context, string) (io.ReadCloser, error) {
 		return &testReader{Reader: strings.NewReader("content"), closeErr: os.ErrNotExist}, nil
 	}
-	if _, err := held.SignedURL(t.Context()); share.IsUnavailable(err) || !errors.Is(err, os.ErrNotExist) {
+	logs := captureMediaLogs(t)
+	if _, err := held.SignedURL(t.Context()); err != nil {
 		t.Fatalf("close fault misclassified: %v", err)
 	}
+	requireMediaLog(t, logs, os.ErrNotExist.Error())
 }

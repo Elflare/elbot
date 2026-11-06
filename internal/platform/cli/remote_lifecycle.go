@@ -70,7 +70,7 @@ func (s *RemoteServer) Start(ctx context.Context, handler share.MessageHandler) 
 		serveErr := server.Serve(listener)
 		s.mu.Lock()
 		if !(s.listenerStopped && (errors.Is(serveErr, net.ErrClosed) || errors.Is(serveErr, http.ErrServerClosed))) {
-			s.runErr = errors.Join(s.runErr, serveErr)
+			s.runErr = serveErr
 		}
 		close(s.serveDone)
 		s.mu.Unlock()

@@ -34,8 +34,8 @@ func TestClientResultClassification(t *testing.T) {
 		{address: "http://localhost/cli/v1/ws", err: ErrServerUnavailable, want: ClientFailed},
 		{name: "local", address: "ws://127.0.0.1:1", err: ErrServerUnavailable, want: ClientFailed},
 		{err: failure, want: ClientFailed},
-		{address: "ws://localhost:1", err: errors.Join(ErrServerUnavailable, context.Canceled), want: ClientFailed},
-		{address: "ws://localhost:1", err: errors.Join(ErrServerUnavailable, context.DeadlineExceeded), want: ClientFailed},
+		{address: "ws://localhost:1", err: context.Canceled, want: ClientFailed},
+		{address: "ws://localhost:1", err: context.DeadlineExceeded, want: ClientFailed},
 	} {
 		result := classifyClientResult(tt.name, tt.address, tt.err)
 		if result.Kind != tt.want || result.Err != tt.err {

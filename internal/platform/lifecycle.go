@@ -6,7 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
+
+	"elbot/internal/events"
 )
 
 // platformLifecycle 是根部持有的接入阶段；关闭资源另列，以保留退出期间的输出能力。
@@ -43,7 +46,6 @@ type lifecycle struct {
 	closeGate        chan struct{} // 串行化可重试的最终清理。
 	closeSteps       []closeStep
 	closeIndex       int // 已完成步骤不重复执行；超时停在当前步骤。
-	closeErr         error
 }
 
 func (l *lifecycle) init(ctx context.Context) {
@@ -94,7 +96,7 @@ func (l *lifecycle) Start() error {
 			l.mu.Unlock()
 			startErr := runtime.start(l.ctx)
 			l.monitorWG.Add(1)
-			go l.observe(runtime)
+			go l.observe(runtime, startErr)
 			if startErr != nil {
 				err = fmt.Errorf("start %s: %w", runtime.name, startErr)
 				break
@@ -111,20 +113,24 @@ func (l *lifecycle) Start() error {
 	return err
 }
 
-func (l *lifecycle) observe(runtime *platformLifecycle) {
+func (l *lifecycle) observe(runtime *platformLifecycle, startErr error) {
 	defer l.monitorWG.Done()
 	if runtime.waitExit != nil {
 		_ = runtime.waitExit(context.Background())
 		l.BeginClose()
 	}
 	err := runtime.wait(context.Background())
+	// 启动错误已由 Start 返回；这里只处理独立的运行故障。
+	if startErr != nil && errors.Is(err, startErr) {
+		err = nil
+	}
 	l.mu.Lock()
 	runtime.running = false
-	if runtime.waitExit != nil && err != nil {
-		l.runErr = errors.Join(l.runErr, fmt.Errorf("%s: %w", runtime.name, err))
+	if runtime.waitExit != nil && startErr == nil && err != nil {
+		l.runErr = fmt.Errorf("%s: %w", runtime.name, err)
 	}
 	l.mu.Unlock()
-	if err != nil && l.onFailure != nil {
+	if err != nil && (runtime.waitExit == nil || startErr != nil) && l.onFailure != nil {
 		l.onFailure(runtime.name, err)
 	}
 }
@@ -161,7 +167,10 @@ func (l *lifecycle) Wait(ctx context.Context) error {
 	case <-ctx.Done():
 	}
 	l.mu.Lock()
-	err := errors.Join(l.startErr, l.runErr)
+	err := l.startErr
+	if err == nil {
+		err = l.runErr
+	}
 	var critical []*platformLifecycle
 	for _, runtime := range l.runtimes {
 		if runtime.waitExit != nil && runtime.attempted {
@@ -194,12 +203,10 @@ func (l *lifecycle) WaitIngress(ctx context.Context) error {
 		select {
 		case <-l.ingressDone:
 		default:
-			return errors.Join(l.Wait(ctx), ctx.Err())
+			return ctx.Err()
 		}
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return errors.Join(l.startErr, l.runErr)
+	return nil
 }
 
 func (l *lifecycle) Close(ctx context.Context) error {
@@ -217,25 +224,30 @@ func (l *lifecycle) Close(ctx context.Context) error {
 	defer func() { l.closeGate <- struct{}{} }()
 	select {
 	case <-l.finalDone:
-		return l.closeErr
+		return nil
 	default:
 	}
 	for l.closeIndex < len(l.closeSteps) {
 		if err := ctx.Err(); err != nil {
-			return errors.Join(l.closeErr, err)
+			return err
 		}
 		step := l.closeSteps[l.closeIndex]
 		err := step.close(ctx)
 		if ctx.Err() != nil {
-			return errors.Join(l.closeErr, err, ctx.Err())
+			if err != nil {
+				return err
+			}
+			return ctx.Err()
 		}
 		if err != nil {
-			l.closeErr = errors.Join(l.closeErr, fmt.Errorf("close %s: %w", step.name, err))
+			events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError,
+				EventName: "platform_close_failed", Module: "platform",
+				Content: fmt.Sprintf("close %s: %v", step.name, err), ResultStatus: events.LogStatus(err)})
 		}
 		l.closeIndex++
 	}
 	close(l.finalDone)
-	return l.closeErr
+	return nil
 }
 
 func (l *lifecycle) Done() <-chan struct{} { return l.finalDone }

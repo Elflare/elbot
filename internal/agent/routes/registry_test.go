@@ -75,10 +75,10 @@ func (p *testPrepared) PrepareInput(_, requestCtx context.Context, in agentshare
 	return p.user, nil
 }
 
-func (p *testPrepared) RunLoop(_, requestCtx context.Context, in agentshare.LoopInput, _ agentshare.Output) agentshare.LoopResult {
+func (p *testPrepared) RunLoop(_, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) agentshare.LoopResult {
 	p.loop.ran++
 	return agentshare.LoopResult{Outcome: agentshare.Completed, Selection: in.Selection, Usage: &llm.Usage{TotalTokens: func() *int64 { n := int64(7); return &n }()},
-		Commit: agentshare.ReplyCommitInput{Session: in.Session, Text: "stored reply", RawText: "source reply", PlatformText: "visible reply"}}
+		Commit: agentshare.ReplyCommitInput{Stream: out.StartStream(requestCtx), Session: in.Session, Text: "stored reply", RawText: "source reply", PlatformText: "visible reply"}}
 }
 
 type testCompactor struct{ calls int }

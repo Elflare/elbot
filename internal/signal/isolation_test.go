@@ -144,7 +144,7 @@ func TestConnectionCloseCancelsButWaitsForRunningCallback(t *testing.T) {
 	if err := c.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err)
 	}
-	if r, err := e.Wait(t.Context()); !errors.Is(err, context.Canceled) || !r[0].Started {
+	if r, err := e.Wait(t.Context()); err != nil || !errors.Is(r[0].Err, context.Canceled) || !r[0].Started {
 		t.Fatal(r, err)
 	}
 	select {
@@ -165,13 +165,17 @@ func TestPartialAdmissionKeepsEverySubscriberResult(t *testing.T) {
 	<-started
 	connect(t, s, func(context.Context, int) (int, error) { return 1, nil }, ConnectOptions{})
 	connect(t, s, func(context.Context, int) (int, error) { return 2, nil }, ConnectOptions{})
+	connect(t, s, func(context.Context, int) (int, error) {
+		t.Error("subscriber started after admission failed")
+		return 3, nil
+	}, ConnectOptions{})
 	e, err := s.EmitAsync(context.Background(), 0)
 	if !errors.Is(err, ErrQueueFull) || e == nil {
 		t.Fatal(e, err)
 	}
 	once.Do(func() { close(release) })
 	r, err := e.Wait(t.Context())
-	if !errors.Is(err, ErrQueueFull) || len(r) != 2 || r[0].Value != 1 || !r[0].Started || !errors.Is(r[1].Err, ErrQueueFull) || r[1].Started {
+	if err != nil || len(r) != 3 || r[0].Value != 1 || !r[0].Started || !errors.Is(r[1].Err, ErrQueueFull) || r[1].Started || !errors.Is(r[2].Err, ErrQueueFull) || r[2].Started {
 		t.Fatal(r, err)
 	}
 }
@@ -204,7 +208,7 @@ func TestBlockedDiagnosticsNeverBlockSignalWorkers(t *testing.T) {
 	connect(t, s, func(context.Context, int) (int, error) { return 4, want }, ConnectOptions{})
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if results, err := s.Emit(ctx, 0); !errors.Is(err, want) || results[0].Value != 4 {
+	if results, err := s.Emit(ctx, 0); err != nil || !errors.Is(results[0].Err, want) || results[0].Value != 4 {
 		t.Fatal(results, err)
 	}
 	if len(diagnostics) > cap(diagnostics) {

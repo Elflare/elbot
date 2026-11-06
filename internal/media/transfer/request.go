@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"sync"
 
+	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/media/share"
 )
@@ -101,10 +103,10 @@ func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) 
 // prepareRemoteURLs 并发处理去重后的持有句柄，全部 worker 退出后才返回。
 // 地址结果按媒体 ID 组织；副本上传和签名缓存由句柄所属对象组件完成。
 func (m *Manager) prepareRemoteURLs(ctx context.Context, items []share.HeldMedia) (map[string]string, error) {
-	workCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	workCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 	results := make([]string, len(items))
-	failures := make([]error, len(items))
+	var failureMu sync.Mutex
 	jobs := make(chan int)
 	var workers sync.WaitGroup
 	for range min(requestUploadConcurrency, len(items)) {
@@ -118,8 +120,16 @@ func (m *Manager) prepareRemoteURLs(ctx context.Context, items []share.HeldMedia
 					if share.IsUnavailable(err) {
 						continue
 					}
-					failures[i] = err
-					cancel()
+					failureMu.Lock()
+					if workCtx.Err() == nil {
+						cancel(err)
+						failureMu.Unlock()
+						return
+					}
+					failureMu.Unlock()
+					if !errors.Is(err, workCtx.Err()) {
+						m.options.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_upload_failed", Module: "media", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
+					}
 					return
 				}
 				results[i] = value
@@ -139,7 +149,7 @@ dispatch:
 	}
 	close(jobs)
 	workers.Wait()
-	if err := errors.Join(append(failures, ctx.Err())...); err != nil {
+	if err := context.Cause(workCtx); err != nil {
 		return nil, err
 	}
 	urls := make(map[string]string, len(items))
@@ -153,10 +163,18 @@ dispatch:
 func (m *Manager) readMedia(ctx context.Context, held share.HeldMedia) ([]byte, error) {
 	reader, err := held.Open(ctx)
 	if err != nil {
-		return nil, errors.Join(err, ctx.Err())
+		return nil, err
 	}
+	defer func() {
+		if closeErr := reader.Close(); closeErr != nil {
+			m.options.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
+		}
+	}()
 	data, err := io.ReadAll(reader)
-	return data, errors.Join(err, reader.Close(), ctx.Err())
+	if err != nil {
+		return nil, err
+	}
+	return data, ctx.Err()
 }
 
 // unavailable 将不可用媒体替换为包含展示名称和媒体标识的文本说明。

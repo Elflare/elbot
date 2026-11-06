@@ -3,10 +3,13 @@ package app
 import (
 	"cmp"
 	"context"
-	"errors"
 	"io"
+	"log/slog"
 	"slices"
 	"time"
+
+	"elbot/internal/events"
+	"elbot/internal/signal"
 )
 
 // shutdownTimeout 是整个退出过程的统一预算，各步骤不重新计时。
@@ -24,7 +27,7 @@ const (
 // stopResult 将清理控制结果与错误详情分开。
 type stopResult struct {
 	kind stopKind // 调用方据此决定继续清理或立即返回。
-	err  error    // 当前步骤或已执行步骤的错误详情。
+	err  error    // 当前终止步骤的错误详情。
 }
 
 // shutdownStep 描述一个关闭步骤；业务线按阶段和次序排序，共享资源按声明顺序执行。
@@ -44,20 +47,18 @@ func shutdown(ctx context.Context, lines businessLines, resources *sharedResourc
 	if result.kind == stopTimedOut {
 		return result.err
 	}
-	err := result.err
 	result = closeSharedResources(ctx, resources)
-	err = errors.Join(err, result.err)
 	if result.kind == stopTimedOut {
-		return err
+		return result.err
 	}
 	if configLock != nil {
 		result = runShutdownStep(ctx, shutdownStep{
 			component: componentConfigLock, phase: phaseClose,
 			close: func(context.Context) error { return configLock.Close() },
 		})
-		err = errors.Join(err, result.err)
+		return result.err
 	}
-	return err
+	return nil
 }
 
 // stopBusinessLines 先停止新工作，再按使用方到依赖方的顺序关闭。
@@ -114,22 +115,24 @@ func closeSharedResources(ctx context.Context, resources *sharedResources) stopR
 	return runShutdownSteps(ctx, steps)
 }
 
-// runShutdownSteps 按顺序执行关闭步骤，普通错误汇总，超时停止后续清理。
+// runShutdownSteps 按顺序执行关闭步骤，普通错误就地记录，超时停止后续清理。
 func runShutdownSteps(ctx context.Context, steps []shutdownStep) stopResult {
-	var errs []error
 	for _, step := range steps {
 		result := runShutdownStep(ctx, step)
 		switch result.kind {
 		case stopCompleted:
 			continue
 		case stopFailed:
-			errs = append(errs, result.err)
+			if step.component == componentLogs || step.component == componentConfigLock {
+				signal.ReportDiagnostic("shutdown step failed", slog.Any("error", result.err))
+			} else {
+				events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError,
+					EventName: "shutdown_step_failed", Module: "app", Content: result.err.Error(),
+					ResultStatus: events.LogStatus(result.err)})
+			}
 		case stopTimedOut:
-			return stopResult{kind: stopTimedOut, err: errors.Join(append(errs, result.err)...)}
+			return result
 		}
-	}
-	if err := errors.Join(errs...); err != nil {
-		return stopResult{kind: stopFailed, err: err}
 	}
 	return stopResult{kind: stopCompleted}
 }
@@ -146,7 +149,10 @@ func runShutdownStep(ctx context.Context, step shutdownStep) stopResult {
 	case err := <-result:
 		// 关闭完成与期限到达可能同时发生；统一在这里分类，保留关闭错误。
 		if ctx.Err() != nil {
-			return stopResult{kind: stopTimedOut, err: &lifecycleError{component: step.component, phase: step.phase, cause: errors.Join(err, ctx.Err())}}
+			if err == nil {
+				err = ctx.Err()
+			}
+			return stopResult{kind: stopTimedOut, err: &lifecycleError{component: step.component, phase: step.phase, cause: err}}
 		}
 		if err != nil {
 			return stopResult{kind: stopFailed, err: &lifecycleError{component: step.component, phase: step.phase, cause: err}}

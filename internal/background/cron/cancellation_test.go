@@ -145,12 +145,12 @@ func TestDeliveryKeepsMixedFailureBeforeErrorWrapping(t *testing.T) {
 	s := newTestCronService(t, Options{SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
 		cancel()
 		{
-			err := fmt.Errorf("mixed: %w", errors.Join(context.Canceled, failure))
+			err := fmt.Errorf("mixed: %w", failure)
 			return delivery.Receipt{}, err
 		}
 	}})
 	_, err := s.sendDeliveryOutput(ctx, "mixed", delivery.Target{Platform: "cli"}, delivery.Text("report"), "")
-	if !errors.Is(err, failure) || !errors.Is(err, context.Canceled) {
+	if !errors.Is(err, failure) || errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 }

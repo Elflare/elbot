@@ -46,12 +46,21 @@ func TestOutputPreparationFailureRetainedByMedia(t *testing.T) {
 				}
 				return reader, nil
 			}
-			m := NewManager(&fakeObjects{hold: func(context.Context, string) (share.HeldMedia, error) { return h, nil }}, Options{Log: func(context.Context, events.LogRecord) {}})
+			var records []events.LogRecord
+			m := NewManager(&fakeObjects{hold: func(context.Context, string) (share.HeldMedia, error) { return h, nil }}, Options{Log: func(_ context.Context, record events.LogRecord) { records = append(records, record) }})
 			_, usageID, err := m.ResolveForOutput(ctx, "one")
-			if usageID != "" || err == nil || errors.Is(err, releaseErr) {
+			if stage == "close" {
+				if err != nil || usageID == "" || len(records) != 1 || records[0].Content != business.Error() {
+					t.Fatalf("result=%s err=%v logs=%+v", usageID, err, records)
+				}
+				m.FinishUsages([]string{usageID})
+				if err := m.CleanupUsages(t.Context(), nil); err != nil {
+					t.Fatal(err)
+				}
+			} else if usageID != "" || err == nil || errors.Is(err, releaseErr) {
 				t.Fatalf("lost usageID: %v", err)
 			}
-			if stage == "open" || stage == "read" || stage == "close" {
+			if stage == "open" || stage == "read" {
 				if !errors.Is(err, business) {
 					t.Fatal(err)
 				}

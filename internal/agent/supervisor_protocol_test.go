@@ -108,7 +108,7 @@ func TestSupervisorStatusSnapshotIsolation(t *testing.T) {
 			mu.Unlock()
 		}
 		return nil
-	}, signal.ConnectOptions{})
+	}, signal.ConnectOptions{Shutdown: signal.Drain})
 	if err != nil {
 		t.Fatal(err)
 	}

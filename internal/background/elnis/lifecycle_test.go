@@ -3,6 +3,8 @@ package elnis
 import (
 	"bytes"
 	"context"
+	"elbot/internal/events"
+	"elbot/internal/signal"
 	"encoding/json"
 	"errors"
 	"io"
@@ -387,7 +389,13 @@ func TestRuntimeDoneWaitsForCanceledHTTPHandler(t *testing.T) {
 	}
 }
 
-func TestRuntimeCleanupErrorIsStableAndRecoveryCanRetry(t *testing.T) {
+func TestRuntimeCleanupErrorIsLoggedOnceAndRecoveryCanRetry(t *testing.T) {
+	var records []events.LogRecord
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error { records = append(records, record); return nil }, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close(context.Background())
 	s, cleanup := newTestService(t, nil)
 	defer cleanup()
 	repo := testRepo(s)
@@ -410,12 +418,15 @@ func TestRuntimeCleanupErrorIsStableAndRecoveryCanRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		if err := r.Close(t.Context()); !errors.Is(err, failure) {
+		if err := r.Close(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := r.Wait(t.Context()); err != nil {
 		t.Fatalf("cleanup result leaked into run result: %v", err)
+	}
+	if len(records) != 1 || records[0].Content != failure.Error() {
+		t.Fatalf("logs=%+v", records)
 	}
 	if calls.Load() != 1 {
 		t.Fatal("Close retried terminal write")

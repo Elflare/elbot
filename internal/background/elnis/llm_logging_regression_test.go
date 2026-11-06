@@ -36,7 +36,7 @@ func (r joinedFailureBackgroundRunner) RunBackground(ctx context.Context, _ back
 }
 
 func TestElnisEventFailureDoesNotReclassifyDialogueError(t *testing.T) {
-	failure := errors.Join(context.Canceled, errors.New("independent model failure"))
+	failure := errors.New("independent model failure")
 	service, cleanup := newTestServiceWithRunner(t, joinedFailureBackgroundRunner{err: failure}, nil)
 	defer cleanup()
 	var queued QueuedLLMEvent
@@ -132,7 +132,7 @@ func TestElnisDeliveryErrorAndBusinessState(t *testing.T) {
 		}{
 			{"success", events.ResultSucceeded, nil},
 			{"wrapped_cancellation", events.ResultCanceled, fmt.Errorf("transport: %w", context.Canceled)},
-			{"mixed_failure", events.ResultFailed, errors.Join(context.Canceled, errors.New("independent transport failure"))},
+			{"mixed_failure", events.ResultFailed, errors.New("independent transport failure")},
 		} {
 			t.Run(mode+"/"+tc.name, func(t *testing.T) {
 				send := func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {

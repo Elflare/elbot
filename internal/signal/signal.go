@@ -1,6 +1,6 @@
 // Package signal provides typed signals with independently bounded execution.
 // Publishers freeze mutable payloads before emitting them.
-// Consumers log their own business failures; returned errors are transported without logging.
+// Handled callback failures stop at the consumer; unhandled failures travel in Result.Err.
 package signal
 
 import (
@@ -51,7 +51,16 @@ func NewAsync[T any](name string, options ...Options[T]) *Async[T] {
 	return &Async[T]{source: New[T, Empty](name, options...)}
 }
 func (s *Async[T]) Publish(ctx context.Context, event T) error {
-	_, err := s.source.EmitAsync(ctx, event)
+	e, err := s.source.EmitAsync(ctx, event)
+	if e != nil {
+		e.onComplete(func(results []Result[Empty]) {
+			for _, result := range results {
+				if result.Started && result.Err != nil && !errors.Is(result.Err, context.Canceled) && !errors.Is(result.Err, ErrClosed) {
+					ReportDiagnostic("async signal callback failed", slog.String("signal", s.source.name), slog.Any("error", result.Err))
+				}
+			}
+		})
+	}
 	return err
 }
 func (s *Async[T]) Observe(h func(context.Context, T) error, o ConnectOptions) (*Connection, error) {
@@ -147,8 +156,14 @@ func (s *Signal[T, R]) Emit(ctx context.Context, event T) ([]Result[R], error) {
 	if e == nil {
 		return nil, err
 	}
-	return e.Wait(context.Background())
+	results, waitErr := e.Wait(context.Background())
+	if err != nil {
+		return results, err
+	}
+	return results, waitErr
 }
+
+// EmitAsync stops admission at the first failure; already admitted callbacks retain their lifetime.
 func (s *Signal[T, R]) EmitAsync(ctx context.Context, event T) (*Emission[R], error) {
 	if s.closed.Load() {
 		return nil, ErrClosed
@@ -174,7 +189,6 @@ func (s *Signal[T, R]) EmitAsync(ctx context.Context, event T) (*Emission[R], er
 		return nil, ErrNoReceiver
 	}
 	e := newEmission[R](cancel, len(entries))
-	var errs []error
 	for i, entry := range entries {
 		var value R
 		forwarded := false
@@ -187,8 +201,10 @@ func (s *Signal[T, R]) EmitAsync(ctx context.Context, event T) (*Emission[R], er
 		if owned == nil {
 			taskCancel()
 			e.finish(i, Result[R]{Err: ErrClosed})
-			errs = append(errs, ErrClosed)
-			continue
+			for j := i + 1; j < len(entries); j++ {
+				e.finish(j, Result[R]{Err: ErrClosed})
+			}
+			return e, ErrClosed
 		}
 		stopTask := context.AfterFunc(taskCtx, func() { e.finish(i, Result[R]{Err: taskCtx.Err()}) })
 		task := Task{cancel: taskCancel, Shutdown: entry.options.Shutdown, Run: func(runCtx context.Context) error {
@@ -204,12 +220,10 @@ func (s *Signal[T, R]) EmitAsync(ctx context.Context, event T) (*Emission[R], er
 				child := entry.forward(taskCtx, event)
 				if child == nil {
 					err := errors.New("signal: nil forwarded emission")
-					ReportDiagnostic("signal forwarding failed", slog.String("signal", s.name), slog.Any("error", err))
 					return err
 				}
 				if len(child.results) != 1 {
 					err := errors.New("signal: forwarding requires one downstream receiver")
-					ReportDiagnostic("signal forwarding failed", slog.String("signal", s.name), slog.Any("error", err))
 					return err
 				}
 				forwarded = true
@@ -236,10 +250,13 @@ func (s *Signal[T, R]) EmitAsync(ctx context.Context, event T) (*Emission[R], er
 		}
 		if err := s.queue.Submit(taskCtx, task); err != nil {
 			task.Finish(err)
-			errs = append(errs, err)
+			for j := i + 1; j < len(entries); j++ {
+				e.finish(j, Result[R]{Err: err})
+			}
+			return e, err
 		}
 	}
-	return e, errors.Join(errs...)
+	return e, nil
 }
 func (s *Signal[T, R]) BeginClose() {
 	s.mu.Lock()

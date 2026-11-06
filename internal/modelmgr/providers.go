@@ -3,6 +3,7 @@ package modelmgr
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"elbot/internal/config"
@@ -78,7 +79,11 @@ func (s *ModelManager) bindRetryNotifier(provider string, client llm.Client) {
 		notifier.SetRetryNotifier(func(ctx context.Context, event llm.RetryEvent) {
 			record := ModelRetryingEvent{Provider: provider, Retry: event, CallContext: ctx}
 			record.Identity = events.LogIdentityFromContext(ctx)
-			_ = s.retrying.Publish(context.WithoutCancel(ctx), record)
+			if err := s.retrying.Publish(context.WithoutCancel(ctx), record); err != nil {
+				events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn,
+					EventName: "retry_notice_failed", Module: "modelmgr", Content: err.Error(),
+					Identity: record.Identity, ResultStatus: events.LogStatus(err)})
+			}
 		})
 	}
 }

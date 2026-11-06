@@ -2,10 +2,12 @@ package object
 
 import (
 	"context"
+	"elbot/internal/events"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"sync/atomic"
 	"time"
 
@@ -111,16 +113,16 @@ func (h *heldMedia) Close(ctx context.Context) error {
 
 // releaseOwned 结束便捷方法独占的持有，失败后将最终释放责任交给 Cleanup。
 // 交给 transfer 管理的 Hold 不经过此入口。
-func (m *Manager) releaseOwned(held share.HeldMedia) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+func (m *Manager) releaseOwned(ctx context.Context, held share.HeldMedia) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	err := held.Close(ctx)
 	if err != nil {
 		m.releasesMu.Lock()
 		m.pendingReleases = append(m.pendingReleases, held)
 		m.releasesMu.Unlock()
+		events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_release_failed", Module: "media", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
 	}
-	return err
 }
 
 // retryReleases 在清理轮次内重试一个快照；失败及未开始项留给后续轮次。
@@ -131,7 +133,6 @@ func (m *Manager) retryReleases(ctx context.Context) error {
 	m.pendingReleases = nil
 	m.releasesMu.Unlock()
 	var remaining []share.HeldMedia
-	var failures []error
 	for i, held := range pending {
 		if ctx.Err() != nil {
 			remaining = append(remaining, pending[i:]...)
@@ -140,17 +141,14 @@ func (m *Manager) retryReleases(ctx context.Context) error {
 		if err := held.Close(ctx); err != nil {
 			remaining = append(remaining, held)
 			if err != ctx.Err() {
-				failures = append(failures, err)
+				events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_release_failed", Module: "media", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
 			}
 		}
 	}
 	m.releasesMu.Lock()
 	m.pendingReleases = append(m.pendingReleases, remaining...)
 	m.releasesMu.Unlock()
-	if len(failures) == 0 {
-		return ctx.Err()
-	}
-	return errors.Join(append(failures, ctx.Err())...)
+	return ctx.Err()
 }
 
 // Close 只收尾自有失败持有，不关闭借用存储，也不执行周期性回收。

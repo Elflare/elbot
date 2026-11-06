@@ -2,7 +2,6 @@ package signal
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 )
@@ -89,6 +88,7 @@ func (e *Emission[R]) onComplete(fn func([]Result[R])) {
 }
 func (e *Emission[R]) Done() <-chan struct{} { return e.done }
 
+// Wait returns receiver errors only in Result.Err; its error describes interruption of this wait.
 func (e *Emission[R]) Wait(ctx context.Context) ([]Result[R], error) {
 	select {
 	case <-e.done:
@@ -100,11 +100,5 @@ func (e *Emission[R]) Wait(ctx context.Context) ([]Result[R], error) {
 		}
 	}
 	results := append([]Result[R](nil), e.results...)
-	var errs []error
-	for _, r := range results {
-		if r.Err != nil {
-			errs = append(errs, r.Err)
-		}
-	}
-	return results, errors.Join(errs...)
+	return results, nil
 }

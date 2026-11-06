@@ -97,7 +97,7 @@ func TestModelObservationPreservesExplicitResultAndUsage(t *testing.T) {
 	observation.LogRecord().ResultStatus, observation.LogRecord().Level = globalevents.ResultFailed, slog.LevelError
 	observation.LogRecord().EventName = "llm_usage"
 	observation.LogRecord().Content = "call_error=context canceled\npersistence_error=disk full"
-	observation.Publish(context.Background(), errors.Join(context.Canceled, errors.New("disk full")))
+	observation.Publish(context.Background(), errors.New("disk full"))
 	observation.Publish(context.Background(), nil)
 	if len(records) != 2 || records[0].ResultStatus != globalevents.ResultFailed || records[1].Content == "" {
 		t.Fatalf("records = %#v", records)

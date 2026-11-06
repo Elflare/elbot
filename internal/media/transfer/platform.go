@@ -3,8 +3,10 @@ package transfer
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"elbot/internal/delivery"
@@ -150,7 +152,10 @@ func (m *Manager) GetHistoryMediaBatch(ctx context.Context, requests []HistoryMe
 			}
 		}
 		if err := ctx.Err(); err != nil {
-			return nil, errors.Join(result.Err, err)
+			if result.Err != nil && !errors.Is(result.Err, err) {
+				m.options.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "history_media_failed", Module: "media", Content: result.Err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(result.Err)})
+			}
+			return nil, err
 		}
 		seen[pos] = result
 		results = append(results, result)

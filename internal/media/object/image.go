@@ -3,13 +3,14 @@ package object
 import (
 	"bytes"
 	"context"
-	"errors"
+	"elbot/internal/events"
 	"fmt"
 	"image"
 	"image/color"
 	_ "image/gif"
 	"image/jpeg"
 	_ "image/png"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -17,20 +18,24 @@ import (
 	"elbot/internal/media/share"
 )
 
-// ValidateImage 验证可解码内容与图片 MIME，并汇总读取器及持有释放错误。
+// ValidateImage 验证可解码内容与图片 MIME，释放故障独立记录。
 // 释放失败的自有持有交给 Cleanup 重试。
 func (m *Manager) ValidateImage(ctx context.Context, id string) (info share.MediaInfo, err error) {
 	held, err := m.Hold(ctx, id)
 	if err != nil {
 		return info, err
 	}
-	defer func() { err = errors.Join(err, m.releaseOwned(held)) }()
+	defer m.releaseOwned(ctx, held)
 	info = held.Info()
 	reader, err := held.Open(ctx)
 	if err != nil {
 		return info, err
 	}
-	defer func() { err = errors.Join(err, reader.Close()) }()
+	defer func() {
+		if closeErr := reader.Close(); closeErr != nil {
+			events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
+		}
+	}()
 	if !strings.HasPrefix(info.MIMEType, "image/") {
 		return info, fmt.Errorf("媒体类型不是图片")
 	}

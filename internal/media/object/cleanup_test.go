@@ -60,7 +60,7 @@ func TestCleanupDeletesRemoteThenLocalAndRetries(t *testing.T) {
 	}
 	defer connection.Disconnect()
 	err = m.Cleanup(t.Context(), nil)
-	if !errors.Is(err, failure) || !reflect.DeepEqual(calls, []string{"remote"}) {
+	if err != nil || !reflect.DeepEqual(calls, []string{"remote"}) {
 		t.Fatal("first cleanup:   ", err, calls)
 	}
 	select {
@@ -103,6 +103,7 @@ func TestCleanupConcurrencyCancellationAndFailure(t *testing.T) {
 	entered := make(chan struct{}, 8)
 	failure := errors.New("independent failure")
 	var calls atomic.Int32
+	logs := captureMediaLogs(t)
 	backend.remove = func(ctx context.Context, _ string) error {
 		n := calls.Add(1)
 		entered <- struct{}{}
@@ -133,7 +134,8 @@ func TestCleanupConcurrencyCancellationAndFailure(t *testing.T) {
 	}
 	cancel()
 	got := awaitTest(t, done)
-	if !errors.Is(got.err, failure) || !errors.Is(got.err, context.Canceled) {
+	requireMediaLog(t, logs, failure.Error())
+	if errors.Is(got.err, failure) || !errors.Is(got.err, context.Canceled) {
 		t.Fatal(got.err)
 	}
 
@@ -183,43 +185,17 @@ func TestObjectLocksCancellationAndReuse(t *testing.T) {
 	unlock()
 }
 
-func TestCleanupPreservesCancellationDetailsAndIndependentFailures(t *testing.T) {
+func TestCleanupReturnsCancellationAndLogsIndependentFailure(t *testing.T) {
+	m, _, backend := newTestManager(t)
+	importTestMedia(t, m, "cancel-detail")
+	m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
 	failure := errors.New("local filesystem failed")
-	for _, tc := range []struct {
-		name   string
-		cause  error
-		status events.ResultStatus
-		level  slog.Level
-	}{
-		{"canceled", fmt.Errorf("remove interrupted: %w", context.Canceled), events.ResultCanceled, slog.LevelInfo},
-		{"mixed", errors.Join(context.Canceled, failure), events.ResultFailed, slog.LevelWarn},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			m, _, backend := newTestManager(t)
-			importTestMedia(t, m, "cancel-detail")
-			m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
-			ctx, cancel := context.WithCancel(t.Context())
-			defer cancel()
-			backend.remove = func(context.Context, string) error { cancel(); return tc.cause }
-			logs := make(chan events.LogRecord, 4)
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
-				if record.Module == "media" && strings.HasPrefix(record.Content, "claimed=") {
-					logs <- record
-				}
-				return nil
-			}, signal.ConnectOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer connection.Disconnect()
-			err = m.Cleanup(ctx, nil)
-			if !errors.Is(err, tc.cause) || !strings.Contains(err.Error(), tc.cause.Error()) {
-				t.Fatalf("cleanup lost original cause: %v", err)
-			}
-			record := awaitTest(t, logs)
-			if record.Level != tc.level || record.ResultStatus != tc.status {
-				t.Fatalf("cleanup summary: %+v", record)
-			}
-		})
+	backend.remove = func(context.Context, string) error { cancel(); return failure }
+	logs := captureMediaLogs(t)
+	if err := m.Cleanup(ctx, nil); !errors.Is(err, context.Canceled) || errors.Is(err, failure) {
+		t.Fatalf("cleanup error=%v", err)
 	}
+	requireMediaLog(t, logs, failure.Error())
 }

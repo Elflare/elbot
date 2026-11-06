@@ -78,8 +78,8 @@ func TestAgentSkillWriteRollsBackConfigWhenReloadFails(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, _, err = callTool(context.Background(), (AgentSkillTool{manager: manager}).Definition(), toolshare.CallRequest{Arguments: args})
-			if err == nil || !strings.Contains(err.Error(), "restored previous") {
-				t.Fatalf("Call error = %v, want rollback error", err)
+			if err == nil || !strings.Contains(err.Error(), "read SKILL.md") {
+				t.Fatalf("Call error = %v, want original reload error", err)
 			}
 
 			data, readErr := os.ReadFile(path)

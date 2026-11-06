@@ -35,11 +35,9 @@ type Manager struct {
 	closed        bool
 	// workWG joins owned asynchronous work, including tasks whose worker left an index.
 	// New work is admitted under mu; counted tasks register cleanup before returning.
-	workWG         sync.WaitGroup
-	closeDone      chan struct{}
-	closeErr       error
-	workerCloseErr error         // worker 退出结果独立于可重试的媒体清理结果。
-	closeMedia     chan struct{} // 串行关闭重试；等待可由调用方取消。
+	workWG     sync.WaitGroup
+	closeDone  chan struct{}
+	closeMedia chan struct{} // 串行关闭重试；等待可由调用方取消。
 }
 
 var ErrClosed = errors.New("hook runtime manager is closed")
@@ -164,15 +162,12 @@ func (m *Manager) Apply(configs []share.RuntimeConfig, commit func(string)) erro
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	failures := make([]error, len(ids))
-	var wg sync.WaitGroup
-	for i, id := range ids {
-		wg.Go(func() {
-			failures[i] = m.ReplacePlugin(id, next[id], func() { commit(id) })
-		})
+	for _, id := range ids {
+		if err := m.ReplacePlugin(id, next[id], func() { commit(id) }); err != nil {
+			return err
+		}
 	}
-	wg.Wait()
-	return errors.Join(failures...)
+	return nil
 }
 
 func (m *Manager) validateConfig(config share.RuntimeConfig) error {
@@ -246,7 +241,7 @@ func (m *Manager) ReplacePlugin(id string, config *share.RuntimeConfig, commit f
 	}
 	if len(workers) > 0 {
 		m.mu.Unlock()
-		if err := stopWorkers(workers); err != nil {
+		if err := stopWorkers(context.Background(), workers); err != nil {
 			return fmt.Errorf("hook %s stop: %w", id, err)
 		}
 		m.mu.Lock()
@@ -288,7 +283,7 @@ func (m *Manager) Close(ctx context.Context) error {
 	if m.closed {
 		done := m.closeDone
 		m.mu.Unlock()
-		if err := m.waitClose(ctx, done); ctx.Err() != nil {
+		if err := m.waitClose(ctx, done); err != nil {
 			return err
 		}
 		select {
@@ -298,11 +293,7 @@ func (m *Manager) Close(ctx context.Context) error {
 			return ctx.Err()
 		}
 		m.pruneMedia(ctx, true)
-		m.mu.Lock()
-		m.closeErr = m.workerCloseErr
-		err := m.closeErr
-		m.mu.Unlock()
-		return err
+		return nil
 	}
 	m.closed = true
 	m.rootCancel()
@@ -328,35 +319,41 @@ func (m *Manager) Close(ctx context.Context) error {
 func (m *Manager) waitClose(ctx context.Context, done <-chan struct{}) error {
 	select {
 	case <-done:
-		m.mu.RLock()
-		err := m.closeErr
-		m.mu.RUnlock()
-		return err
+		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 }
 
-func stopWorkers(workers []*worker) error {
-	failures := make([]error, len(workers))
-	var wg sync.WaitGroup
-	for i, worker := range workers {
-		wg.Go(func() {
-			failures[i] = worker.stop(context.Background())
-		})
+func stopWorkers(ctx context.Context, workers []*worker) error {
+	results := make(chan error, len(workers))
+	for _, worker := range workers {
+		go func() { results <- worker.stop(ctx) }()
 	}
-	wg.Wait()
-	return errors.Join(failures...)
+	var failure error
+	for range workers {
+		if err := <-results; err != nil {
+			if failure == nil {
+				failure = err
+			} else {
+				workers[0].manager.opts.Log(context.Background(), globalevents.LogRecord{Category: globalevents.LogRuntime,
+					Level: slog.LevelWarn, EventName: "hook_worker_stop_failed", Module: "hook",
+					Content: err.Error(), ResultStatus: globalevents.LogStatus(err)})
+			}
+		}
+	}
+	return failure
 }
 
 func (m *Manager) finishClose(ctx context.Context, workers []*worker) {
-	err := stopWorkers(workers)
+	if err := stopWorkers(context.Background(), workers); err != nil {
+		m.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn,
+			EventName: "hook_worker_stop_failed", Module: "hook", Content: err.Error(), ResultStatus: globalevents.LogStatus(err)})
+	}
 	m.workWG.Wait()
 
 	m.pruneMedia(ctx, true)
 	m.mu.Lock()
-	m.workerCloseErr = err
-	m.closeErr = m.workerCloseErr
 	close(m.closeDone)
 	m.mu.Unlock()
 }
@@ -454,11 +451,7 @@ func (m *Manager) Stop(ctx context.Context, id string) (bool, error) {
 		}
 	}
 	m.mu.Unlock()
-	stopErrs := make([]error, len(workers))
-	for i, transient := range workers {
-		stopErrs[i] = transient.stop(ctx)
-	}
-	return true, errors.Join(stopErrs...)
+	return true, stopWorkers(ctx, workers)
 }
 
 func (m *Manager) Restart(ctx context.Context, id string) error {

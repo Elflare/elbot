@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/aws/smithy-go"
+	"strings"
 )
 
 func TestS3MissingContentClassification(t *testing.T) {
@@ -29,8 +29,7 @@ func TestS3MissingContentClassification(t *testing.T) {
 			if errors.Is(err, fs.ErrNotExist) != (code == "NoSuchKey" || code == "NotFound") {
 				t.Fatalf("classification: %v", err)
 			}
-			var api smithy.APIError
-			if !errors.As(err, &api) || api.ErrorCode() != code {
+			if err == nil || !strings.Contains(err.Error(), code+": test") {
 				t.Fatalf("original error lost: %v", err)
 			}
 		})

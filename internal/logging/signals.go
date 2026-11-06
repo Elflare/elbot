@@ -43,10 +43,14 @@ func newManager(level, logDir string, retentionDays int, open func(string) (io.W
 			m.connection.Disconnect()
 		}
 		for _, sink := range m.sinks {
-			err = errors.Join(err, sink.queue.Close(context.Background()))
+			if closeErr := sink.queue.Close(context.Background()); closeErr != nil {
+				signal.ReportDiagnostic("logging cleanup failed", slog.Any("error", closeErr))
+			}
 		}
 		for _, writer := range m.writers {
-			err = errors.Join(err, writer.Close())
+			if closeErr := writer.Close(); closeErr != nil {
+				signal.ReportDiagnostic("logging cleanup failed", slog.Any("error", closeErr))
+			}
 		}
 		managerOwnership.Lock()
 		managerOwnership.active = false
@@ -105,7 +109,7 @@ func (m *Manager) handleRecord(ctx context.Context, record events.LogRecord) err
 	if err != nil && !errors.Is(err, signal.ErrClosed) {
 		signal.ReportDiagnostic("logging admission failed", slog.String("category", record.Category.String()), slog.Any("error", err))
 	}
-	return err
+	return nil
 }
 
 func (m *Manager) BeginClose() {

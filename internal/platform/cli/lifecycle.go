@@ -149,7 +149,7 @@ func (a *Adapter) complete(_ context.Context, request completion.Request) ([]com
 
 func (a *Adapter) finishInput(err error) {
 	a.mu.Lock()
-	a.runErr = errors.Join(a.runErr, err)
+	a.runErr = err
 	if !a.inputStopped {
 		a.inputStopped = true
 		close(a.inputDone)
@@ -200,8 +200,11 @@ func (a *Adapter) WaitExit(ctx context.Context) error {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if err := errors.Join(a.startErr, a.runErr); err != nil {
-		return err
+	if a.startErr != nil {
+		return a.startErr
+	}
+	if a.runErr != nil {
+		return a.runErr
 	}
 	if a.inputStopped {
 		return nil

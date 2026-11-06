@@ -73,7 +73,15 @@ dialogue 若在 执行任务 内部，也在这个最外层捕获范围里。
 - Responses [普通请求](../internal/agent/responses/native_call.go) 与[压缩](../internal/agent/responses/compact.go)：请求、归档为显式阶段。请求成功而归档失败时返回归档错误；请求已失败时，归档故障独立记录，仍返回原请求错误。Chat／Responses 不用 defer 以取消错误覆盖已发生的其他错误。
 - [工具文件写入](../internal/tool/media/files.go)、[Hook 子进程](../internal/hook/rules/exec.go)、[worker](../internal/hook/runtime/worker.go) 和[媒体释放](../internal/hook/runtime/media.go)：保留关闭、终止和等待退出；次要收尾故障独立记录，不覆盖或合并主错误。失败媒体 lease 保留后续清理机会。
 - 上述任务链路的测试已迁移，并覆盖原错误只报告一次、完整上下文、Hook 失败后继续、发送失败仍保存、保存失败停止后续业务、并发退出及请求／归档同时失败。定向竞态检查通过。
-- 全仓测试仍有改前已存在的失败：Agent 命令通知接线、空回复／缓冲回复、协议公共接线、App doctor；不将这些既有失败标为本轮通过。
+
+### 已完成：生命周期与公共信号
+
+- [App](../internal/app/entry.go)、[关闭编排](../internal/app/shutdown.go)及各业务线区分运行失败与清理失败：首个终止错误向上传递，独立清理故障在决定继续处记录；Start／Wait 的错误不在 Close 再次返回。关闭超时停止释放后续依赖，实际退出后才完成 Done。
+- [Hook runtime](../internal/hook/runtime/manager.go)、[媒体](../internal/media/object/cleanup.go)、[Skill](../internal/tool/skill/manager.go)保留必要回滚、停止和等待；次要错误分别记录，不覆盖主错误。逐项清理失败记录后继续处理其他项。
+- [公共信号](../internal/signal/signal.go)接纳失败立即停止派发，已接纳工作继续完成；回调错误只在各自 Result.Err 中传递，Wait 只返回等待中断。异步回调未处理的故障交给信号诊断，不再聚合错误。
+- 日志基础设施失败走独立诊断，日志与通知故障不改变业务结果；App 和远程 CLI 退出前有界等待诊断写入。
+- Agent 通知、Stream 提交、App doctor 等旧测试已按当前契约迁移；补充了异步日志等待、部分信号接纳、启动错误不重复报告和资源真实退出的验证。
+- 全仓普通测试与 race 检查均通过（92 个有测试的包）；实时模型测试未配置而跳过，Windows 专属测试在 Linux 下跳过。
 
 ## 不一定实现
 

@@ -4,7 +4,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"elbot/internal/contextinfo"
@@ -73,9 +72,10 @@ func (u *UI) BeginClose() {
 
 func (u *UI) Close(ctx context.Context) error {
 	u.BeginClose()
-	var errs []error
 	for _, c := range u.connections {
-		errs = append(errs, c.Close(ctx))
+		if err := c.Close(ctx); err != nil {
+			return err
+		}
 	}
-	return errors.Join(append(errs, u.display.Close(ctx))...)
+	return u.display.Close(ctx)
 }

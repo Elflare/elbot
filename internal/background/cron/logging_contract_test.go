@@ -58,7 +58,7 @@ func TestHandlerReturnsDeliveryErrorsToTaskBoundary(t *testing.T) {
 	}{
 		{"success", globalevents.ResultSucceeded, nil},
 		{"canceled", globalevents.ResultCanceled, context.Canceled},
-		{"mixed_failure", globalevents.ResultFailed, errors.Join(context.Canceled, errors.New("independent transport failure"))},
+		{"mixed_failure", globalevents.ResultFailed, errors.New("independent transport failure")},
 		{"failure", globalevents.ResultFailed, errors.New("business-only send error")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -169,7 +169,7 @@ func TestRunJobReportsTaskAndBookkeepingFailuresIndependently(t *testing.T) {
 		{"deadline", false, context.DeadlineExceeded, nil, globalevents.ResultFailed},
 		{"cancel_and_save_failure", true, context.Canceled, errors.New("save failed"), globalevents.ResultCanceled},
 		{"success_and_save_failure", false, nil, errors.New("save failed"), globalevents.ResultSucceeded},
-		{"mixed_failure", true, errors.Join(context.Canceled, errors.New("independent failure")), nil, globalevents.ResultFailed},
+		{"mixed_failure", true, errors.New("independent failure"), nil, globalevents.ResultFailed},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &loggingCronRepo{fakeCronRepo: newFakeCronRepo(), saveErr: tc.saveErr}

@@ -34,6 +34,8 @@ type testTextClient struct {
 	call func(context.Context, llm.TextRequest) (llm.TextResult, error)
 }
 
+func (c testTextClient) RetryOptions() llm.RetryOptions { return llm.RetryOptions{} }
+
 func (c testTextClient) GenerateText(ctx context.Context, req llm.TextRequest) (llm.TextResult, error) {
 	return c.call(ctx, req)
 }

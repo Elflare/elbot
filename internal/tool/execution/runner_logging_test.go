@@ -339,7 +339,7 @@ func TestRunnerUsesSourceSaveResult(t *testing.T) {
 	}{
 		{"failed_without_error", events.ResultFailed, nil},
 		{"wrapped_cancellation", events.ResultCanceled, fmt.Errorf("storage: %w", context.Canceled)},
-		{"mixed_failure", events.ResultFailed, errors.Join(context.Canceled, errors.New("independent storage failure"))},
+		{"mixed_failure", events.ResultFailed, errors.New("independent storage failure")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			registry := toolregistry.NewRegistry(security.DefaultPermission())

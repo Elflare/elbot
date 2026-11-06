@@ -184,10 +184,12 @@ func TestImportLimitsAndRollback(t *testing.T) {
 		}
 		return rollback
 	}
+	logs := captureMediaLogs(t)
 	_, err := m.ImportBytes(ctx, []byte("ok"), share.Input{}, share.ImportLimits{})
-	if !errors.Is(err, failure) || !errors.Is(err, rollback) {
+	if !errors.Is(err, failure) || errors.Is(err, rollback) {
 		t.Fatalf("rollback errors = %v", err)
 	}
+	requireMediaLog(t, logs, rollback.Error())
 }
 
 func TestRecoveryAndPartialConstruction(t *testing.T) {

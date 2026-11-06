@@ -81,30 +81,14 @@ func (value ResultStatus) String() string {
 }
 
 // LogStatus projects an error into a log result only; business control flow must
-// use the original error. Cancellation requires every cause to be canceled.
+// use the original error. Cancellation follows the single original error.
 // Severity and known outcomes such as rejection or skipping remain source-owned.
 func LogStatus(err error) ResultStatus {
 	if err == nil {
 		return ResultSucceeded
 	}
-	if err == context.Canceled {
+	if errors.Is(err, context.Canceled) {
 		return ResultCanceled
-	}
-	switch wrapped := err.(type) {
-	case interface{ Unwrap() []error }:
-		causes := wrapped.Unwrap()
-		for _, cause := range causes {
-			if LogStatus(cause) != ResultCanceled {
-				return ResultFailed
-			}
-		}
-		if len(causes) > 0 {
-			return ResultCanceled
-		}
-	case interface{ Unwrap() error }:
-		if cause := wrapped.Unwrap(); cause != nil {
-			return LogStatus(cause)
-		}
 	}
 	return ResultFailed
 }

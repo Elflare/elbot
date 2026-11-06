@@ -153,9 +153,14 @@ func cronInfo(job storage.CronJob) (builtin.CronInfo, error) {
 
 func (b cronBridge) notify(ctx context.Context, name string) error {
 	// 写入已经提交；调用方此时取消也不能撤销变更或跳过通知。
-	_, err := b.changed.Emit(context.WithoutCancel(ctx), CronChangedEvent{Name: name})
+	results, err := b.changed.Emit(context.WithoutCancel(ctx), CronChangedEvent{Name: name})
 	if err != nil {
 		return fmt.Errorf("cron %q 已写入，但变更通知失败: %w", name, err)
+	}
+	for _, result := range results {
+		if result.Err != nil {
+			return fmt.Errorf("cron %q 已写入，但变更通知失败: %w", name, result.Err)
+		}
 	}
 	return nil
 }

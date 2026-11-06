@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"elbot/internal/events"
+	"elbot/internal/signal"
 	"errors"
 	"path/filepath"
 	"slices"
@@ -95,9 +97,18 @@ func TestShutdownStepsPreservesOrderAndErrors(t *testing.T) {
 		kind   stopKind
 	}{
 		{name: "success", errors: []error{nil, nil, nil}, kind: stopCompleted},
-		{name: "ordinary failures", errors: []error{first, nil, last}, kind: stopFailed},
+		{name: "ordinary failures", errors: []error{first, nil, last}, kind: stopCompleted},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			var records []events.LogRecord
+			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) error {
+				records = append(records, record)
+				return nil
+			}, signal.ConnectOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer connection.Close(context.Background())
 			var order []int
 			var steps []shutdownStep
 			for i, err := range tt.errors {
@@ -113,10 +124,18 @@ func TestShutdownStepsPreservesOrderAndErrors(t *testing.T) {
 			if tt.kind == stopCompleted && result.err != nil {
 				t.Fatal(result.err)
 			}
+			var want []string
 			for _, err := range tt.errors {
-				if err != nil && !errors.Is(result.err, err) {
-					t.Fatalf("lost error %v: %v", err, result.err)
+				if err != nil {
+					want = append(want, (&lifecycleError{component: componentMedia, phase: phaseClose, cause: err}).Error())
 				}
+			}
+			var got []string
+			for _, record := range records {
+				got = append(got, record.Content)
+			}
+			if !slices.Equal(got, want) {
+				t.Fatalf("logs=%v want=%v", got, want)
 			}
 		})
 	}
@@ -145,18 +164,13 @@ func TestShutdownStepsSharesDeadlineAndStopsDependencies(t *testing.T) {
 				return nil
 			}},
 		})
-		if result.kind != stopTimedOut || !errors.Is(result.err, cause) || !errors.Is(result.err, context.DeadlineExceeded) {
+		if result.kind != stopTimedOut || errors.Is(result.err, cause) || !errors.Is(result.err, context.DeadlineExceeded) {
 			t.Fatalf("result=%+v", result)
 		}
 		if called || time.Since(started) != time.Second {
 			t.Fatalf("called=%v elapsed=%s", called, time.Since(started))
 		}
-		joined := result.err.(interface{ Unwrap() []error }).Unwrap()
-		if len(joined) != 2 {
-			t.Fatalf("failures=%v", joined)
-		}
-		requireLifecycleError(t, joined[0], componentAgent, phaseClose)
-		requireLifecycleError(t, joined[1], componentTool, phaseClose)
+		requireLifecycleError(t, result.err, componentTool, phaseClose)
 	})
 }
 
@@ -165,7 +179,12 @@ type failingResourceStore struct {
 	cause error
 }
 
-func (s failingResourceStore) Close() error { return errors.Join(s.Store.Close(), s.cause) }
+func (s failingResourceStore) Close() error {
+	if err := s.Store.Close(); err != nil {
+		return err
+	}
+	return s.cause
+}
 
 func TestCloseSharedResourcesContinuesAfterOrdinaryError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sessions.db")
@@ -183,8 +202,7 @@ func TestCloseSharedResourcesContinuesAfterOrdinaryError(t *testing.T) {
 	cause := errors.New("injected storage close failure")
 	r := &sharedResources{logs: logs, store: failingResourceStore{Store: store, cause: cause}}
 	result := closeSharedResources(t.Context(), r)
-	requireLifecycleError(t, result.err, componentStorage, phaseClose)
-	if result.kind != stopFailed || !errors.Is(result.err, cause) {
+	if result.kind != stopCompleted || result.err != nil {
 		t.Fatalf("result=%+v", result)
 	}
 	// 存储关闭失败后仍须释放日志所有权，才能创建下一实例。
@@ -220,7 +238,7 @@ func TestShutdownOwnsHistoryUntilUsersClose(t *testing.T) {
 				return nil
 			}}
 			err = shutdown(t.Context(), businessLines{{kind: componentTool, supervisor: user}}, &sharedResources{historyStore: history}, nil)
-			if !closed || (partial && !errors.Is(err, cause)) || (!partial && err != nil) {
+			if !closed || err != nil {
 				t.Fatal(closed, err)
 			}
 			if _, err := history.Repository().GetByPlatformMessage(t.Context(), "test", "", "scope", "message"); err == nil {

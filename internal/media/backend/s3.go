@@ -87,7 +87,7 @@ func (b *S3Backend) Open(ctx context.Context, location string) (io.ReadCloser, e
 	if err != nil {
 		var remoteErr smithy.APIError
 		if errors.As(err, &remoteErr) && (remoteErr.ErrorCode() == "NoSuchKey" || remoteErr.ErrorCode() == "NotFound") {
-			return nil, fmt.Errorf("get media object: %w: %w", fs.ErrNotExist, err)
+			return nil, fmt.Errorf("get media object: %w: %v", fs.ErrNotExist, err)
 		}
 		return nil, fmt.Errorf("get media object: %w", err)
 	}
