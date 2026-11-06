@@ -1,6 +1,6 @@
 # 前端 API
 
-ElBot 前后端分离，CLI 远程协议是基于 WebSocket 的 JSON 消息协议。任何能连 WebSocket 的客户端都可以作为 ElBot 前端——TUI、Web、移动端、甚至另一台机器上的脚本。
+ElBot 前后端分离，CLI 远程协议通过 WebSocket 交换 JSON 消息，通过同一端口的 HTTP 接口收发附件。TUI、Web、移动端和脚本共用这套协议，客户端自行处理展示和下载交互。
 
 ## 连接
 
@@ -52,10 +52,12 @@ ws://<host>:<port>/cli/v1/ws
 - `error` — 鉴权失败，连接关闭
 
 ```json
-{"type": "hello_ok", "client_id": "my-client"}
+{"type": "hello_ok", "client_id": "my-client", "media_token": "connection-media-token"}
 ```
 
 Token 在 `[platform.cli.server.tokens]` 中按 client_id 映射到环境变量名，服务端从对应环境变量读取实际值。
+
+`media_token` 仅用于下述 HTTP 附件接口，绑定当前已认证的 WebSocket 连接；断连后失效，重连获取新凭据。相同 client_id 的多个连接各自隔离。凭据保留在客户端内存，通过 `Authorization: Bearer <media_token>` 发送，不放进 URL。
 
 ## 消息格式
 
@@ -64,9 +66,12 @@ Token 在 `[platform.cli.server.tokens]` 中按 client_id 映射到环境变量�
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | type | string | 消息类型，见下表 |
-| id | string | 消息 ID，用于补全请求/响应配对 |
+| id | string | 消息 ID，用于补全请求/响应配对，以及关联附件输入错误 |
 | client_id | string | 客户端标识 |
 | token | string | 鉴权 token（仅 hello） |
+| media_token | string | 当前连接的 HTTP 附件凭据（仅 hello_ok） |
+| file_ids | array of string | 当前连接已上传或收到的附件 ID（仅 input） |
+| attachment | object | 附件描述（仅 attachment），字段见下文 |
 | text | string | 文本内容 |
 | level | string | 通知等级（仅 notice） |
 | cursor | int | 光标位置（仅补全请求） |
@@ -74,6 +79,24 @@ Token 在 `[platform.cli.server.tokens]` 中按 client_id 映射到环境变量�
 | snapshot | object | 运行状态快照（仅 status） |
 | stream_id | uint64 | 逻辑消息流标识（仅 stream），用于关联同一条消息的预览、重置和提交 |
 | event | object | 消息流事件（仅 stream），字段见下文 |
+
+## HTTP 附件接口
+
+所有接口都需要当前 WebSocket 连接的 `media_token`，与静态页面是否存在无关：
+
+| 接口 | 请求与响应 |
+|------|------------|
+| `POST /cli/v1/files` | `multipart/form-data`，单个文件字段 `file`；成功返回 201 和附件描述 |
+| `GET /cli/v1/files/{id}` | 返回文件内容；HEAD 返回相同元信息而不返回正文 |
+| `DELETE /cli/v1/files/{id}` | 撤销当前连接的附件授权，成功返回 204 |
+
+上传响应与 `attachment` 消息中的描述相同。文件名、类型、大小以归档结果为准，包括已有的图片压缩行为。多文件分别上传，不在一个 POST 中夹带其他字段或文件。
+
+GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosniff`，附件响应使用 `Cache-Control: no-store`。浏览器可先通过带认证头的 `fetch` 获取 Blob，再自行处理预览或下载。
+
+删除或断连只撤销附件授权并结束连接持有，不直接删除 Media 对象；已取得独立持有的在途操作可以完成，最终回收仍由 Media 管理。刷新或重连后，原附件 ID 不可复用，需要重新上传。
+
+认证无效返回 401；附件不存在或不属于当前连接返回 404；请求格式错误返回 400；服务停止接入时返回 503；媒体处理失败（包括超过上传限制）返回 500 和统一文案“附件处理失败”，具体原因记录在服务端日志。
 
 ## 客户端 → 服务端
 
@@ -84,6 +107,16 @@ Token 在 `[platform.cli.server.tokens]` 中按 client_id 映射到环境变量�
 ```
 
 将文本作为用户输入交给 Agent 处理。服务端不回复确认，处理结果通过 chat/stream 等消息异步返回。
+
+上传附件后，将返回的 ID 放入 `file_ids`，也支持省略正文的纯附件消息：
+
+```json
+{"type":"input","id":"m-1","text":"看看这个文件","file_ids":["attachment-id"]}
+```
+
+服务端先处理正文，再按 `file_ids` 顺序处理附件。图片转为图片输入；其他文件在单文件 256 KiB、累计展开 1 MiB 内，有效 UTF-8 且不含 NUL 时按文件名和代码围栏展开为文本，其余作为文件输入。该额度只控制文本展开，上传大小限制复用 Media 配置。
+
+附件必须属于当前连接；准备任一附件失败时，不提交部分输入，而是返回 `error` 和原输入的 `id`，正文为“附件处理失败”。附件不会因发送输入自动释放，客户端可在不再需要时调用 DELETE。
 
 ### complete — 请求补全
 
@@ -104,6 +137,14 @@ Token 在 `[platform.cli.server.tokens]` 中按 client_id 映射到环境变量�
 ```
 
 独立的完整对话输出，包括非流式投递的正文、Hook 输出以及 Cron／Elnis 后台报告。后台报告也进入聊天区。通过 `stream` 的 `send` 事件提交的正文不会再以 `chat` 重复发送，客户端需同时处理两种消息。
+
+### attachment — 文件或图片输出
+
+```json
+{"type":"attachment","attachment":{"id":"attachment-id","name":"report.pdf","mime_type":"application/pdf","size":2048,"kind":"file"}}
+```
+
+`kind` 为 `image` 或 `file`；描述中的 `id` 是当前连接的附件 ID，不是 MediaID 或磁盘路径。混合输出按原顺序发送 `chat` 和 `attachment`。客户端通过 HTTP 获取附件内容；`send_file` 使用同一套协议，不区分网页或 TUI。
 
 ### notice — 通知
 
