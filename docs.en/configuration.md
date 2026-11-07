@@ -1,8 +1,8 @@
 <!-- This file is auto-translated from docs/configuration.md. Do not edit manually. -->
 
-# Configuration Guide
+# Configuration Instructions
 
-ElBot uses a main configuration entry to load application configurations, Provider configurations, and runtime states. Except for `.env`, all configuration files are automatically generated from built-in assets to the platform configuration directory upon the first run; existing files will not be overwritten.
+ElBot uses a main configuration entry to load application configurations, Provider configurations, and runtime states. Configuration files are automatically generated from built-in assets to the platform configuration directory upon the first run; existing files will not be overwritten. `.env` and user static frontends must be provided manually.
 
 ## Configuration File Responsibilities
 
@@ -17,10 +17,11 @@ ElBot uses a main configuration entry to load application configurations, Provid
 | `memories.toml` | Resident memory. |
 | `long_memory/` | Long-term memory Markdown source data. |
 | `plugins/` | Hook and plugin configuration directory (`hooks.toml`, `<plugin>/hook.toml`, `.env`, `_shared/`). |
-| `skills/` | User Skill directory, containing `skills/agent/` and `skills/go/`; AgentSkill can place `ELBOT_SKILL.toml` in the root directory to configure visibility or be registered as a normal tool. |
-| `.env` | Optional local key file, not recommended for submission; only `.env.example` is generated the first time, and `.env` will not be generated directly. |
+| `skills/` | User Skill directory, containing `skills/agent/` and `skills/go/`; AgentSkill can place `ELBOT_SKILL.toml` in the root directory to configure visibility or be registered as a regular tool. |
+| `frontend/` | Optional user static frontend, with `index.html` as the entry point, hosted by the CLI remote service on the same port. |
+| `.env` | Optional local secret file, not recommended for submission; only `.env.example` is generated initially, `.env` will not be generated directly. |
 
-The above can all be placed in the platform configuration directory, or `--config` can be used to point to other locations.
+All of the above can be placed in the platform configuration directory, or `--config` can be used to point to other locations.
 
 ## Main Configuration Lookup Order
 
@@ -242,7 +243,7 @@ retry_initial_delay_seconds = 2
 
 ## CLI Remote Configuration
 
-`[platform.cli]` saves both server-side configuration and client connection configuration: `server` is the configuration read when the current ElBot acts as a server, and `clients` is a set of connection configurations used by the client to connect to the server.
+`[platform.cli]` stores both server-side and client connection configurations: `server` is the configuration read when the current ElBot acts as a server, and `clients` is a set of connection configurations used by clients to connect to the server.
 
 ```toml
 [platform.cli]
@@ -266,9 +267,10 @@ url = "ws://192.168.1.10:32172/cli/v1/ws"
 token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
 ```
 
-- When `server.enabled=true`, `elbot service run` will start the CLI WebSocket server and listen on `server.listen`.
-- `server.tokens` is a list of environment variables for CLI client IDs and tokens allowed to log in.
-- `clients.<name>` is the connection configuration: `id` can be omitted (defaults to `<name>`), `url` can be omitted (defaults to `default_url`); Enter the remote WebSocket address when connecting to other machines.
+- When `server.enabled=true`, `elbot service run` will start the CLI WebSocket server, listening on `server.listen`.
+- If `frontend/index.html` exists next to the main configuration, the same listening address will also provide a static webpage; the service must be restarted after the entry point is first added. No additional configuration items are required; for hosting behavior and frontend integration, see [Static Frontend Hosting](frontend-api.md#静态前端托管).
+- `server.tokens` is a list of CLI client IDs and token environment variables allowed to log in.
+- `clients.<name>` is the connection configuration: `id` can be omitted (defaults to `<name>`), and `url` can be omitted (defaults to `default_url`); when connecting to other machines, specify the remote WebSocket address.
 - `elbot client -c <name>` uses the specified connection configuration; if not specified, `default_client` is used.
 
 ## AgentSkill Tooling Configuration
