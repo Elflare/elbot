@@ -89,7 +89,7 @@ func TestAdaptersUseInjectedNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, adapter := range []share.Runtime{tg, qq, ob, remote, cli.New(name), headless.New(name)} {
+	for _, adapter := range []share.Runtime{tg, qq, ob, remote, cli.New(name, ""), headless.New(name)} {
 		if adapter.Name() != name {
 			t.Fatalf("adapter %T name=%q", adapter, adapter.Name())
 		}

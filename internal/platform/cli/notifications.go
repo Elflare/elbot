@@ -20,7 +20,7 @@ func (a *Adapter) ConnectNotifications(source *signal.Signal[events.Notification
 		}
 		err := a.runtime.PresentNotice(ctx, clishare.Notice{
 			Text: notification.Text, Level: notification.Level.String(),
-			Target: notification.Target,
+			Target:      notification.Target,
 			Destination: platformshare.NotificationTarget(notification),
 		})
 		if err == nil {

@@ -27,15 +27,6 @@ import (
 	clishare "elbot/internal/platform/cli/share"
 )
 
-type RemoteServerOptions struct {
-	Media        clishare.Media
-	FrontendDir  string
-	PlatformName string
-	Config       Config
-	ConfigEnv    func(string) (string, bool, error)
-	Superadmins  *share.Superadmins
-}
-
 type remoteServerReferenceOptions struct {
 	Media        RemoteMedia // 根部裁剪并注入的附件归档与持有能力。
 	FrontendDir  string      // 静态前端目录；为空时不启用托管。

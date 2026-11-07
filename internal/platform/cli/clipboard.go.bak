@@ -2,7 +2,7 @@
 
 package cli
 
-// TODO(结构迁移): 剪贴板实现迁入 local/。
+// 迁移参考：remote client 暂时复用此实现；本地实现位于 local/。
 
 import (
 	"fmt"

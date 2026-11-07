@@ -1,8 +1,6 @@
 // tui_mouse.go 处理终端界面的鼠标交互。
 
-package cli
-
-// TODO(结构迁移): TUI 鼠标交互迁入 local/。
+package local
 
 import tea "github.com/charmbracelet/bubbletea"
 

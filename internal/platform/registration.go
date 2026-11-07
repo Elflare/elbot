@@ -3,9 +3,9 @@ package platform
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
-	"elbot/internal/completion"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/platform/cli"
@@ -32,7 +32,19 @@ func registrations(frontendDir string) []registration {
 		{name: config.PlatformCLI, definition: cliDefinition, build: func(m *Supervisor, deps SupervisorDeps, _ refcontext.Options, raw map[string]any, common share.CommonConfig) error {
 			var adapter *cli.Adapter
 			if deps.Mode == "tui" {
-				adapter = cli.New(common.PlatformName)
+				cfgCLI, err := cli.NewConfigFromPlatformConfig(raw)
+				if err != nil {
+					return err
+				}
+				_, client, err := cfgCLI.Client("")
+				clientID := ""
+				if err != nil && !errors.Is(err, cli.ErrClientNotConfigured) {
+					return err
+				}
+				if err == nil {
+					clientID = client.ID
+				}
+				adapter = cli.New(common.PlatformName, clientID)
 				m.primary = adapter
 				m.ownRuntime(adapter, true, adapter.WaitExit, cliDefinition.ValidateNotificationTarget)
 			} else {

@@ -1,8 +1,6 @@
 // tui_copy.go 处理终端内容的选择与复制。
 
-package cli
-
-// TODO(结构迁移): TUI 复制交互迁入 local/。
+package local
 
 import (
 	"sort"
