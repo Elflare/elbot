@@ -32,6 +32,7 @@ type ClientConfig struct {
 }
 
 type RemoteClientOptions struct {
+	Profile   string
 	Client    ClientConfig
 	ConfigEnv func(string) (string, bool, error)
 	Display   clishare.ClientDisplayFactory
@@ -55,7 +56,7 @@ func NewRemoteClient(opts RemoteClientOptions) (*RemoteClient, error) {
 	if strings.TrimSpace(opts.Client.URL) == "" {
 		return nil, fmt.Errorf("cli client URL is empty")
 	}
-	return &RemoteClient{configEnv: opts.ConfigEnv, profile: opts.Client.ID, client: opts.Client, displayFactory: opts.Display, pending: map[string]chan remoteMessage{}, output: make(chan clishare.DisplayEvent, 256), done: make(chan struct{})}, nil
+	return &RemoteClient{configEnv: opts.ConfigEnv, profile: opts.Profile, client: opts.Client, displayFactory: opts.Display, pending: map[string]chan remoteMessage{}, output: make(chan clishare.DisplayEvent, 256), done: make(chan struct{})}, nil
 }
 
 func (c *RemoteClient) URL() string {

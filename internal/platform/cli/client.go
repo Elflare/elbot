@@ -42,11 +42,12 @@ func RunClient(ctx context.Context, rawConfig map[string]any, configEnv func(str
 		err = fmt.Errorf("cli platform is disabled: %w", ErrClientNotConfigured)
 		return classifyClientResult(name, "", err)
 	}
-	_, client, err := cfg.Client(name)
+	profile, client, err := cfg.Client(name)
 	if err != nil {
 		return classifyClientResult(name, "", err)
 	}
 	clientRuntime, err := remote.NewRemoteClient(remote.RemoteClientOptions{
+		Profile:   profile,
 		Client:    remote.ClientConfig{ID: client.ID, URL: client.URL, TokenEnv: client.TokenEnv},
 		ConfigEnv: configEnv, Display: func() clishare.ClientDisplay { return local.NewClientDisplay() },
 	})

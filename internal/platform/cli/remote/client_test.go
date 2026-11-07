@@ -32,6 +32,19 @@ func newTestClient(t *testing.T, address string) *RemoteClient {
 	return client
 }
 
+func TestResolveTokenErrorUsesProfileName(t *testing.T) {
+	client, err := NewRemoteClient(RemoteClientOptions{
+		Profile: "production",
+		Client:  ClientConfig{ID: "client-id", URL: "ws://localhost"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.resolveToken(); err == nil || !strings.Contains(err.Error(), `"production"`) {
+		t.Fatalf("resolveToken error = %v, want profile name production", err)
+	}
+}
+
 type testClientDisplay struct{}
 
 func TestClientServerMessagesBecomeDisplayEvents(t *testing.T) {
