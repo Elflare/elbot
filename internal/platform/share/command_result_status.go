@@ -31,7 +31,7 @@ func formatStatus(d command.StatusData) string {
 		fmt.Fprintf(&out, "  %s\n", strings.Join(marks, ", "))
 	}
 	fmt.Fprintf(&out, "created=%s\nupdated=%s\nuser: %s\nbot: %s\n", s.CreatedAt.Format("2006-01-02 15:04:05"), s.UpdatedAt.Format("2006-01-02 15:04:05"), statusPreviewOrNil(d.LastUserContent, 80), statusPreviewOrNil(d.LastAssistantContent, 80))
-	if requests := formatActiveRequestsData(d.Requests); requests != "" {
+	if requests := formatActiveRequestsData(d.Requests, false); requests != "" {
 		out.WriteString(requests)
 	}
 	fmt.Fprintf(&out, "phase=%s · pending=%d\n", d.Phase, d.PendingCount)
@@ -43,7 +43,7 @@ func formatStatus(d command.StatusData) string {
 	return strings.TrimRight(out.String(), "\n")
 }
 
-func formatActiveRequestsData(requests []command.RequestData) string {
+func formatActiveRequestsData(requests []command.RequestData, showSessionTitle bool) string {
 	if len(requests) == 0 {
 		return ""
 	}
@@ -62,12 +62,13 @@ func formatActiveRequestsData(requests []command.RequestData) string {
 		}
 		roots = append(roots, item)
 	}
-	sort.SliceStable(roots, func(i, j int) bool { return roots[i].StartedAt.Before(roots[j].StartedAt) })
 	var out strings.Builder
 	out.WriteString("requests:\n")
 	for i, item := range roots {
 		writeRequestDataLine(&out, item, fmt.Sprint(i+1), "")
-		sort.SliceStable(children[item.ID], func(i, j int) bool { return children[item.ID][i].StartedAt.Before(children[item.ID][j].StartedAt) })
+		if showSessionTitle && item.SessionTitle != "" {
+			fmt.Fprintf(&out, "      session: %s\n", item.SessionTitle)
+		}
 		for j, child := range children[item.ID] {
 			writeRequestDataLine(&out, child, fmt.Sprintf("%d.%d", i+1, j+1), "└── ")
 		}

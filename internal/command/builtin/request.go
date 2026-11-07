@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
@@ -157,56 +156,6 @@ func NewStopAll(deps Deps) command.Handler {
 	})
 }
 
-func formatRequests(ctx context.Context, deps Deps, requests []request.Request) string {
-	if len(requests) == 0 {
-		return "nil"
-	}
-	return formatRequestTree(requests, func(sb *strings.Builder, req request.Request) {
-		title := "unk"
-		if row, err := deps.Store.Sessions().Get(ctx, req.SessionID); err == nil && row.Title != "" {
-			title = row.Title
-		}
-		sb.WriteString(fmt.Sprintf("      session: %s\n", title))
-	})
-}
-
-func formatRequestTree(requests []request.Request, writeDetails func(*strings.Builder, request.Request)) string {
-	if len(requests) == 0 {
-		return ""
-	}
-	tree := buildRequestTree(requests)
-	var sb strings.Builder
-	sb.WriteString("requests:")
-	sb.WriteString("\n")
-	for i, root := range tree.Roots {
-		number := strconv.Itoa(i + 1)
-		writeRequestLine(&sb, number, "", root.Request)
-		if writeDetails != nil {
-			writeDetails(&sb, root.Request)
-		}
-		for j, child := range root.Children {
-			childNumber := fmt.Sprintf("%s.%d", number, j+1)
-			writeRequestLine(&sb, childNumber, "└── ", child)
-		}
-	}
-	return trimTrailingNewlines(sb.String())
-}
-
-func writeRequestLine(sb *strings.Builder, number, prefix string, req request.Request) {
-	label := strings.TrimSpace(req.Label)
-	if req.Kind == request.KindTurn {
-		if label == "" {
-			label = "chat"
-		}
-	} else if label == "" {
-		label = "request"
-	}
-	if req.Stopping {
-		label += " stopping"
-	}
-	sb.WriteString(fmt.Sprintf("  %s[%s] %s: %s · %s\n", prefix, number, req.Kind, label, formatDuration(time.Since(req.StartedAt))))
-}
-
 // Both argument resolution and completion use the caller's cancellation scope.
 func stoppableRequests(ctx context.Context, deps Deps) ([]request.Request, *session.Binding) {
 	if deps.Requests == nil {
@@ -276,17 +225,6 @@ func requestLess(left, right request.Request) bool {
 	return left.ID < right.ID
 }
 
-func formatActiveRequests(requests []request.Request) string {
-	return formatRequestTree(requests, nil)
-}
-
-func formatDuration(d time.Duration) string {
-	if d < time.Second {
-		return "0s"
-	}
-	return d.Round(time.Second).String()
-}
-
 func plural(count int) string {
 	if count == 1 {
 		return ""
@@ -305,6 +243,8 @@ func (RequestModule) RegisterCommands(registrar Registrar, deps Deps) error {
 }
 
 func requestData(ctx context.Context, deps Deps, rows []request.Request) []command.RequestData {
+	rows = append([]request.Request(nil), rows...)
+	sort.Slice(rows, func(i, j int) bool { return requestLess(rows[i], rows[j]) })
 	out := make([]command.RequestData, 0, len(rows))
 	for _, r := range rows {
 		title := "unk"

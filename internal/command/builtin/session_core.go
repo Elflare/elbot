@@ -3,8 +3,6 @@ package builtin
 import (
 	"context"
 	"errors"
-	"fmt"
-	"strings"
 
 	command "elbot/internal/command/share"
 	"elbot/internal/config"
@@ -15,7 +13,6 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
-	"math"
 )
 
 func NewNew(deps Deps) command.Handler {
@@ -89,50 +86,9 @@ func contextData(s contextmgr.UsageState) command.ContextData {
 	return command.ContextData{Usage: tokenUsageData(s.Usage), ContextWindow: s.ContextWindow, CompactEnabled: s.CompactEnabled, CompactTriggerRatio: s.TriggerRatio}
 }
 
-func formatContextData(s command.ContextData) string {
-	prefix := contextmgr.FormatTokens(usageForText(s.Usage)) + "\n"
-	known := s.Usage != nil && s.Usage.TotalTokens != nil && *s.Usage.TotalTokens >= 0 && s.ContextWindow > 0
-	status := "unk"
-	if !known {
-		prefix += fmt.Sprintf("ctx.window=%d · ratio=unk\n", s.ContextWindow)
-	} else {
-		ratio := float64(*s.Usage.TotalTokens) / float64(s.ContextWindow)
-		prefix += fmt.Sprintf("ctx=%d/%d (%.1f%%)\n", *s.Usage.TotalTokens, s.ContextWindow, ratio*100)
-		status = "ok"
-		if ratio >= s.CompactTriggerRatio {
-			status = "next request"
-		} else if ratio >= math.Max(0, s.CompactTriggerRatio-0.1) {
-			status = "near"
-		}
-	}
-	if !s.CompactEnabled {
-		status = "off"
-	}
-	return prefix + fmt.Sprintf("compact=%.0f%% · %s\n", s.CompactTriggerRatio*100, status)
-}
-
-func formatToolUsage(usage, live map[string]int) string {
-	persisted, current := toolsString(usage), toolsString(live)
-	var sb strings.Builder
-	if persisted != "" {
-		fmt.Fprintf(&sb, "tools.saved: %s\n", persisted)
-	}
-	if current != "" {
-		fmt.Fprintf(&sb, "tools.turn: %s\n", current)
-	}
-	return sb.String()
-}
-
 func tokenUsageData(usage *llm.Usage) *command.TokenUsage {
 	if usage == nil {
 		return nil
 	}
 	return &command.TokenUsage{PromptTokens: usage.PromptTokens, CompletionTokens: usage.CompletionTokens, TotalTokens: usage.TotalTokens, CacheHitTokens: usage.CacheHitTokens}
-}
-
-func usageForText(usage *command.TokenUsage) *llm.Usage {
-	if usage == nil {
-		return nil
-	}
-	return &llm.Usage{PromptTokens: usage.PromptTokens, CompletionTokens: usage.CompletionTokens, TotalTokens: usage.TotalTokens, CacheHitTokens: usage.CacheHitTokens}
 }

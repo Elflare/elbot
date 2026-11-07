@@ -112,7 +112,7 @@ type RequestData struct {
 	Stopping     bool         `json:"stopping"`      // 已接受停止，尚未退出。
 }
 type RequestsData struct {
-	Items []RequestData `json:"items"` // 请求快照。
+	Items []RequestData `json:"items"` // 按 StartedAt、ID 升序的请求快照；Platform 按此顺序展示，编号与 /stop 一致。
 }
 type StatusData struct {
 	Session              *SessionData   `json:"session"`                // 当前会话，尚未开始时为 nil。

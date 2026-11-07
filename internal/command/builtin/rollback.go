@@ -46,15 +46,6 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 		for _, r := range records {
 			items = append(items, command.RollbackData{ID: r.ID, Path: r.Path, Created: r.Created, EditedAt: r.EditedAt})
 		}
-		var b strings.Builder
-		for _, record := range records {
-			action := "restore"
-			if record.Created {
-				action = "delete"
-			}
-			fmt.Fprintf(&b, "%d  %s  %s  %s\n", record.ID, record.Path, formatTime(record.EditedAt), action)
-		}
-		fmt.Fprintf(&b, "\n%s", c.deps.CommandText("rollback", "<编号>"))
 		return &command.Result{Kind: command.ResultKindRollbacks, Data: command.RollbacksData{Items: items}}, nil
 	}
 	id, err := strconv.ParseUint(arg, 10, 64)

@@ -15,7 +15,6 @@ import (
 )
 
 const resumeHistoryTurns = 3 // TODO: 后续支持配置恢复时展示多少轮历史。
-const defaultSessionListPageSize = 10
 const messageListPageSize = 20
 
 func NewArchive(deps Deps) command.Handler {
@@ -297,7 +296,7 @@ func resolveRenameTarget(ctx context.Context, deps Deps, target string) (string,
 		return "", true, err
 	}
 
-	sessions, err := deps.Sessions.List(ctx, deps.Scope(ctx), target, sessionPageSize(deps))
+	sessions, err := deps.Sessions.List(ctx, deps.Scope(ctx), target, deps.SessionListPageSize)
 	if err != nil {
 		return "", true, err
 	}

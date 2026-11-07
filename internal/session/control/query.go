@@ -40,8 +40,14 @@ func (s *Service) ListPage(ctx context.Context, scope share.Scope, req ListReque
 	if result.Page == 0 {
 		result.Page = max(1, result.TotalPages)
 	}
-	if result.TotalCount == 0 || result.Page > result.TotalPages {
+	if result.TotalCount == 0 {
+		if req.Page > 1 {
+			return result, fmt.Errorf("%w: %d", share.ErrInvalidPage, req.Page)
+		}
 		return result, nil
+	}
+	if result.Page > result.TotalPages {
+		return result, fmt.Errorf("%w: %d", share.ErrInvalidPage, result.Page)
 	}
 	query.Offset = (result.Page - 1) * req.PageSize
 	result.Items, err = s.deps.Sessions.List(ctx, query)

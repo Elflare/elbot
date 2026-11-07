@@ -34,18 +34,34 @@ func TestRequestsCommandFormatsTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	for _, want := range []string{"[1] turn: chat · ", "[1.1] tool: shell · ", "[1.2] hook: gpt_image_draw_fullwidth · ", "session: 测试会话"} {
-		if !strings.Contains(commandResultText(result), want) {
-			t.Fatalf("requests output missing %q:\n%s", want, commandResultText(result))
-		}
+	data := result.Data.(command.RequestsData)
+	if len(data.Items) != 3 || data.Items[0].Kind != request.KindTurn || data.Items[1].ParentID != data.Items[0].ID || data.Items[1].Label != "shell" || data.Items[2].ParentID != data.Items[0].ID || data.Items[2].SessionTitle != "测试会话" {
+		t.Fatalf("requests data = %+v", data)
 	}
-	if strings.Count(commandResultText(result), "shell") != 1 || strings.Count(commandResultText(result), "gpt_image_draw_fullwidth") != 1 {
-		t.Fatalf("requests repeats child names:\n%s", commandResultText(result))
+}
+
+func TestRequestDataOrderMatchesStopNumbering(t *testing.T) {
+	ctx := context.Background()
+	store := newCommandTestStore(t)
+	if err := store.Sessions().Create(ctx, &storage.Session{ID: "s1", Title: "session", Mode: storage.SessionModeWork, Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", CreatedAt: storage.Now(), UpdatedAt: storage.Now(), ChatType: "private"}); err != nil {
+		t.Fatal(err)
 	}
-	for _, unwanted := range []string{"phase:", "mode:", "tools:"} {
-		if strings.Contains(commandResultText(result), unwanted) {
-			t.Fatalf("requests contains session details %q:\n%s", unwanted, commandResultText(result))
-		}
+	started := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	rows := []request.Request{
+		{ID: "root-z", SessionID: "s1", Kind: request.KindTurn, StartedAt: started},
+		{ID: "child-z", ParentID: "root-a", SessionID: "s1", Kind: request.KindTool, StartedAt: started},
+		{ID: "root-a", SessionID: "s1", Kind: request.KindTurn, StartedAt: started},
+		{ID: "child-a", ParentID: "root-a", SessionID: "s1", Kind: request.KindTool, StartedAt: started},
+	}
+	data := requestData(ctx, Deps{Store: store}, rows)
+	if got := []string{data[0].ID, data[1].ID, data[2].ID, data[3].ID}; strings.Join(got, ",") != "child-a,child-z,root-a,root-z" {
+		t.Fatalf("requestData order = %v", got)
+	}
+	if id, ok := resolveRequestArg(rows, "1"); !ok || id != "root-a" {
+		t.Fatalf("stop number 1 resolved to %q, %v", id, ok)
+	}
+	if id, ok := resolveRequestArg(rows, "1.1"); !ok || id != "child-a" {
+		t.Fatalf("stop number 1.1 resolved to %q, %v", id, ok)
 	}
 }
 
@@ -58,27 +74,6 @@ func assertCommandTestCanceled(t *testing.T, ctx context.Context) {
 	}
 }
 
-func TestFormatActiveRequestsUsesTree(t *testing.T) {
-	ctx := context.Background()
-	manager := request.NewManager(testutil.IDSequence())
-	turnReq, _, turnDone, _ := manager.Start(ctx, request.StartRequest{SessionID: "s1", Kind: request.KindTurn, Label: "chat"})
-	defer turnDone()
-	_, _, toolDone, _ := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindTool, Label: "shell"})
-	defer toolDone()
-	_, _, hookDone, _ := manager.Start(ctx, request.StartRequest{ParentID: turnReq.ID, SessionID: "s1", Kind: request.KindHook, Label: "gpt_image_draw_fullwidth"})
-	defer hookDone()
-
-	got := formatActiveRequests(manager.ListBySession("s1"))
-	for _, want := range []string{"[1] turn: chat · ", "[1.1] tool: shell · ", "[1.2] hook: gpt_image_draw_fullwidth · "} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("active requests output missing %q:\n%s", want, got)
-		}
-	}
-	if len(strings.Split(got, "\n")) != 4 {
-		t.Fatalf("active requests contains extra details:\n%s", got)
-	}
-}
-
 func TestRequestCommandsWithoutActiveRequests(t *testing.T) {
 	ctx := context.Background()
 	deps := Deps{CommandText: testCommandText, Requests: request.NewManager(testutil.IDSequence())}
@@ -86,42 +81,8 @@ func TestRequestCommandsWithoutActiveRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if commandResultText(result) != "nil" {
-		t.Fatalf("requests = %q", commandResultText(result))
-	}
-	if got := formatActiveRequests(nil); got != "" {
-		t.Fatalf("active requests = %q", got)
-	}
-}
-
-func TestWriteRequestLineKindsAndStopping(t *testing.T) {
-	for _, tc := range []struct {
-		name     string
-		kind     request.Kind
-		label    string
-		stopping bool
-		want     string
-	}{
-		{name: "turn", kind: request.KindTurn, label: "chat", want: "turn: chat"},
-		{name: "tool", kind: request.KindTool, label: "draw", want: "tool: draw"},
-		{name: "hook", kind: request.KindHook, label: "draw", want: "hook: draw"},
-		{name: "compress", kind: request.KindCompress, label: "compact", want: "compress: compact"},
-		{name: "stopping", kind: request.KindTool, label: "draw", stopping: true, want: "tool: draw stopping"},
-		{name: "unnamed turn", kind: request.KindTurn, want: "turn: chat"},
-		{name: "unnamed hook", kind: request.KindHook, want: "hook: request"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			for _, prefix := range []string{"", "└── "} {
-				var sb strings.Builder
-				writeRequestLine(&sb, "1", prefix, request.Request{
-					Kind: tc.kind, Label: tc.label, Stopping: tc.stopping, StartedAt: time.Now(),
-				})
-				got := sb.String()
-				if !strings.HasPrefix(got, "  "+prefix+"[1] "+tc.want+" · ") || strings.Count(got, "\n") != 1 {
-					t.Fatalf("request line = %q", got)
-				}
-			}
-		})
+	if got := result.Data.(command.RequestsData).Items; len(got) != 0 {
+		t.Fatalf("requests items = %+v", got)
 	}
 }
 

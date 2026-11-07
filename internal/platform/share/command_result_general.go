@@ -2,9 +2,7 @@ package share
 
 import (
 	"fmt"
-	"sort"
 	"strings"
-	"time"
 
 	command "elbot/internal/command/share"
 )
@@ -53,42 +51,7 @@ func formatRequests(d command.RequestsData) string {
 	if len(d.Items) == 0 {
 		return "nil"
 	}
-	var out strings.Builder
-	out.WriteString("requests:\n")
-	children := make(map[string][]command.RequestData)
-	byID := make(map[string]command.RequestData, len(d.Items))
-	for _, item := range d.Items {
-		byID[item.ID] = item
-	}
-	var roots []command.RequestData
-	for _, item := range d.Items {
-		if item.ParentID != "" {
-			if _, ok := byID[item.ParentID]; ok {
-				children[item.ParentID] = append(children[item.ParentID], item)
-				continue
-			}
-		}
-		roots = append(roots, item)
-	}
-	sort.SliceStable(roots, func(i, j int) bool { return roots[i].StartedAt.Before(roots[j].StartedAt) })
-	for i, item := range roots {
-		label := item.Label
-		if label == "" {
-			label = "request"
-		}
-		if item.Stopping {
-			label += " stopping"
-		}
-		fmt.Fprintf(&out, "  [%d] %s: %s · %s\n", i+1, item.Kind, label, time.Since(item.StartedAt).Round(time.Second))
-		if item.SessionTitle != "" {
-			fmt.Fprintf(&out, "      session: %s\n", item.SessionTitle)
-		}
-		sort.SliceStable(children[item.ID], func(i, j int) bool { return children[item.ID][i].StartedAt.Before(children[item.ID][j].StartedAt) })
-		for j, child := range children[item.ID] {
-			writeRequestDataLine(&out, child, fmt.Sprintf("%d.%d", i+1, j+1), "└── ")
-		}
-	}
-	return strings.TrimRight(out.String(), "\n")
+	return strings.TrimRight(formatActiveRequestsData(d.Items, true), "\n")
 }
 
 func formatModels(d command.ModelsData) string {

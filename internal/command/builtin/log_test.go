@@ -14,6 +14,7 @@ import (
 	command "elbot/internal/command/share"
 	"elbot/internal/events"
 	"elbot/internal/logging"
+	platformshare "elbot/internal/platform/share"
 )
 
 // Both event selectors replace the previous selector; named --tool remains
@@ -57,8 +58,9 @@ func (s *fakeLogService) Query(ctx context.Context, query logging.LogQuery) (log
 func TestAuditCommandParsesFilters(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{
 		Time:      time.Date(2026, 6, 3, 15, 0, 0, 0, time.Local),
+		Category:  events.LogAudit,
 		EventName: "tool_call_completed", Type: events.ContentJSON,
-		Content: `{"risk":"high","tool":"shell"}`,
+		Content: `{"risk":"high","tool":"shell"}`, ResultStatus: events.ResultSucceeded,
 	}}}
 	result, err := NewAudit(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{Args: "--event tool_call_completed --risk high --tool shell -n 3 --days 2"})
 	if err != nil {
@@ -70,8 +72,8 @@ func TestAuditCommandParsesFilters(t *testing.T) {
 	if service.query.Fields["event"] != "tool_call_completed" || service.query.ContentFields["risk"] != "high" || service.query.ContentFields["tool"] != "shell" {
 		t.Fatalf("fields = %#v", service.query.Fields)
 	}
-	if !strings.Contains(commandResultText(result), "tool_call_completed") || !strings.Contains(commandResultText(result), "[shell]") {
-		t.Fatalf("content = %q", commandResultText(result))
+	if got := platformshare.FormatCommandResult(result); !strings.Contains(got, "[shell]") || strings.Contains(got, "tool_call_completed") {
+		t.Fatalf("content = %q", got)
 	}
 }
 
@@ -135,10 +137,11 @@ func TestAuditCommandRunSourceFilterAndCompletion(t *testing.T) {
 
 func TestElwispCommandDefaultsToElnisDebugAndFiveEntries(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{
-		Time:    time.Date(2026, 6, 18, 12, 0, 0, 0, time.Local),
-		Level:   "INFO",
-		Type:    events.ContentJSON,
-		Content: `{"summary":"elnis event accepted","elwisp_name":"server-watchdog","source":"minecraft-main","source_id":"cpu-alert-001","mode":"llm"}`,
+		Time:     time.Date(2026, 6, 18, 12, 0, 0, 0, time.Local),
+		Category: events.LogElnis,
+		Level:    "INFO",
+		Type:     events.ContentJSON,
+		Content:  `{"summary":"elnis event accepted","elwisp_name":"server-watchdog","source":"minecraft-main","source_id":"cpu-alert-001","mode":"llm"}`,
 	}}}
 	result, err := NewElwisp(Deps{CommandText: testCommandText, Logs: service}).Handle(context.Background(), command.Request{})
 	if err != nil {
@@ -148,8 +151,8 @@ func TestElwispCommandDefaultsToElnisDebugAndFiveEntries(t *testing.T) {
 		t.Fatalf("query = %#v", service.query)
 	}
 	for _, want := range []string{"elwisp logs:", "elnis event accepted", "[server-watchdog]", "source: minecraft-main", "source_id: cpu-alert-001", "mode: llm"} {
-		if !strings.Contains(commandResultText(result), want) {
-			t.Fatalf("content missing %q:\n%s", want, commandResultText(result))
+		if !strings.Contains(platformshare.FormatCommandResult(result), want) {
+			t.Fatalf("content missing %q:\n%s", want, platformshare.FormatCommandResult(result))
 		}
 	}
 }
@@ -462,33 +465,37 @@ func TestLogAndAuditCommandsCompleteOptionsAndValues(t *testing.T) {
 }
 
 func TestLogRawIndependentOfLevelAndContentRendering(t *testing.T) {
-	for _, factory := range []func(Deps) command.Handler{NewLog, NewAudit, NewElwisp} {
+	for _, tc := range []struct {
+		factory  func(Deps) command.Handler
+		category events.LogCategory
+		audit    bool
+	}{{NewLog, events.LogRuntime, false}, {NewAudit, events.LogAudit, true}, {NewElwisp, events.LogElnis, false}} {
 		for _, args := range []string{"-d", "--level debug", "--raw -w", "-w --raw", "--raw --level debug", "--level error --raw"} {
-			service := &fakeLogService{entries: []logging.LogEntry{{Level: "WARN", EventName: "tool_call_completed", Content: `{"tool":"shell","count":9007199254740993}`, Type: events.ContentJSON, ResultStatus: events.ResultFailed, Raw: "ORIGINAL_PHYSICAL_RECORD"}}}
-			result, err := factory(Deps{CommandText: testCommandText, Logs: service}).Handle(t.Context(), command.Request{Args: args})
+			service := &fakeLogService{entries: []logging.LogEntry{{Category: tc.category, Level: "WARN", EventName: "tool_call_completed", Content: `{"tool":"shell","count":9007199254740993}`, Type: events.ContentJSON, ResultStatus: events.ResultFailed, Raw: "ORIGINAL_PHYSICAL_RECORD"}}}
+			result, err := tc.factory(Deps{CommandText: testCommandText, Logs: service}).Handle(t.Context(), command.Request{Args: args})
 			if err != nil {
 				t.Fatal(err)
 			}
 			wantRaw := strings.Contains(args, "--raw")
-			if service.query.Raw != wantRaw || strings.Contains(commandResultText(result), "ORIGINAL_PHYSICAL_RECORD") != wantRaw {
-				t.Fatalf("args=%q query=%+v content=%s", args, service.query, commandResultText(result))
+			got := platformshare.FormatCommandResult(result)
+			if service.query.Raw != wantRaw || strings.Contains(got, "ORIGINAL_PHYSICAL_RECORD") != wantRaw {
+				t.Fatalf("args=%q query=%+v content=%s", args, service.query, got)
 			}
-			audit := service.query.Prefix == "audit"
 			status, tool := "✗", "tool: shell"
-			if audit {
+			if tc.audit {
 				status, tool = "✗", "[shell]"
 			}
-			if !wantRaw && (!strings.Contains(commandResultText(result), status) || !strings.Contains(commandResultText(result), "WARN") || !strings.Contains(commandResultText(result), tool) || !strings.Contains(commandResultText(result), "9007199254740993")) {
-				t.Fatalf("normal content=%s", commandResultText(result))
+			if !wantRaw && (!strings.Contains(got, status) || !strings.Contains(got, "WARN") || !strings.Contains(got, tool) || !strings.Contains(got, "9007199254740993")) {
+				t.Fatalf("normal content=%s", got)
 			}
 		}
 	}
 }
 func TestLogUnspecifiedResult(t *testing.T) {
-	service := &fakeLogService{entries: []logging.LogEntry{{Level: "INFO", Content: "plain", EventName: "progress"}}}
+	service := &fakeLogService{entries: []logging.LogEntry{{Category: events.LogRuntime, Level: "INFO", Content: "plain", EventName: "progress"}}}
 	handler := NewLog(Deps{CommandText: testCommandText, Logs: service})
 	result, err := handler.Handle(t.Context(), command.Request{})
-	if err != nil || !strings.Contains(commandResultText(result), " progress\n[plain]\nINFO") {
+	if err != nil || !strings.Contains(platformshare.FormatCommandResult(result), " progress\n[plain]\nINFO") {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }

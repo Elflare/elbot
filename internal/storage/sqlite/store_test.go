@@ -160,7 +160,7 @@ func TestSessionRepositoryCRUDAndScope(t *testing.T) {
 		t.Fatalf("Title = %q", got.Title)
 	}
 
-	scoped, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "qq", ID: "u1"}, Platform: "qq", ChatType: "group", ChatID: "1"})
+	scoped, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "qq", ID: "u1"}, Platform: "qq", ChatType: "group", ChatID: "1", Limit: 20})
 	if err != nil {
 		t.Fatalf("list scoped: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestSessionRepositoryCRUDAndScope(t *testing.T) {
 		t.Fatalf("scoped list = %#v", scoped)
 	}
 
-	all, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "", ID: "u1"}, IncludeAllPlatforms: true})
+	all, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "", ID: "u1"}, IncludeAllPlatforms: true, Limit: 20})
 	if err != nil {
 		t.Fatalf("list all: %v", err)
 	}
@@ -251,14 +251,14 @@ func TestSessionRepositoryArchivePinAndCleanup(t *testing.T) {
 		}
 	}
 
-	listed, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", MessageLimit: 5, ChatType: "private"})
+	listed, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", MessageLimit: 5, ChatType: "private", Limit: 20})
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
 	if len(listed) != 2 || listed[0].ID != pinned.ID || listed[1].ID != normal.ID {
 		t.Fatalf("active list = %#v", listed)
 	}
-	excluded, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ExcludeSessionID: normal.ID, ChatType: "private"})
+	excluded, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ExcludeSessionID: normal.ID, ChatType: "private", Limit: 20})
 	if err != nil {
 		t.Fatalf("list excluding current: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestSessionRepositoryArchivePinAndCleanup(t *testing.T) {
 		t.Fatalf("excluded list = %#v", excluded)
 	}
 
-	archives, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ArchivedOnly: true, ChatType: "private"})
+	archives, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ArchivedOnly: true, ChatType: "private", Limit: 20})
 	if err != nil {
 		t.Fatalf("list archives: %v", err)
 	}
@@ -324,7 +324,7 @@ func TestSessionListExcerptsPreserveBlankMessages(t *testing.T) {
 		}
 	}
 
-	sessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", MessageLimit: 5, ChatType: "private"})
+	sessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", MessageLimit: 5, ChatType: "private", Limit: 20})
 	if err != nil {
 		t.Fatalf("list sessions: %v", err)
 	}
@@ -361,7 +361,7 @@ func TestSessionListExcerptsUsesInsertionOrderForEqualTimestamps(t *testing.T) {
 		}
 	}
 
-	sessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ChatType: "private", MessageLimit: 5})
+	sessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ChatType: "private", MessageLimit: 5, Limit: 20})
 	if err != nil {
 		t.Fatalf("list sessions: %v", err)
 	}
@@ -395,18 +395,18 @@ func TestSessionCountUsesListFilters(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	base := storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "p", ID: "u"}, Platform: "p", ChatType: "private", ChatID: "chat"}
+	base := storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "p", ID: "u"}, Platform: "p", ChatType: "private", ChatID: "chat", Limit: 20}
 	for _, tc := range []struct {
 		name  string
 		query storage.ListSessionsRequest
 		want  int
 	}{
 		{"scope", base, 1},
-		{"archives", storage.ListSessionsRequest{IncludeAllPlatforms: true, ArchivedOnly: true}, 1},
-		{"all active", storage.ListSessionsRequest{IncludeAllPlatforms: true}, 3},
-		{"all", storage.ListSessionsRequest{IncludeAllPlatforms: true, IncludeArchived: true}, 4},
-		{"search", storage.ListSessionsRequest{IncludeAllPlatforms: true, Query: "other"}, 1},
-		{"exclude", storage.ListSessionsRequest{IncludeAllPlatforms: true, ExcludeSessionID: "active"}, 2},
+		{"archives", storage.ListSessionsRequest{IncludeAllPlatforms: true, ArchivedOnly: true, Limit: 20}, 1},
+		{"all active", storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 20}, 3},
+		{"all", storage.ListSessionsRequest{IncludeAllPlatforms: true, IncludeArchived: true, Limit: 20}, 4},
+		{"search", storage.ListSessionsRequest{IncludeAllPlatforms: true, Query: "other", Limit: 20}, 1},
+		{"exclude", storage.ListSessionsRequest{IncludeAllPlatforms: true, ExcludeSessionID: "active", Limit: 20}, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rows, err := store.Sessions().List(ctx, tc.query)

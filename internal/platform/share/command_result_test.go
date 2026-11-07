@@ -3,8 +3,11 @@ package share
 import (
 	"strings"
 	"testing"
+	"time"
 
 	command "elbot/internal/command/share"
+	"elbot/internal/events"
+	"elbot/internal/request"
 )
 
 func TestFormatCommandResultRendersData(t *testing.T) {
@@ -101,5 +104,102 @@ func TestEmptyUsageRetainsNotices(t *testing.T) {
 	text := FormatCommandResult(&command.Result{Data: command.UsageData{Total: command.UsageBucket{Calls: 1}}})
 	if !strings.Contains(text, "calls: 1") || !strings.Contains(text, "prompt: unk") {
 		t.Fatal(text)
+	}
+}
+
+func TestFormatLogsPreservesJSONValuesAndText(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want []string
+	}{
+		{"object", `{"tool":"shell","elapsed_ms":1200,"summary":"done","empty":"","none":null,"large":9007199254740993}`, []string{"1.2s · done", `empty: ""`, "none: null", "large: 9007199254740993", "tool: shell"}},
+		{"array", `[1,"two",null]`, []string{`[1, two, null]`}},
+		{"string", `"first\nsecond"`, []string{"[first\nsecond]"}},
+		{"number", `9007199254740993`, []string{"9007199254740993"}},
+		{"boolean", `false`, []string{"false"}},
+		{"null", `null`, []string{"null"}},
+		{"newline semantics", `{"summary":"real\nnewline","literal":"line1\\nline2"}`, []string{"real\nnewline", `literal: line1\nline2`}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := FormatCommandResult(&command.Result{Kind: command.ResultKindLogs, Data: command.LogsData{Items: []command.LogData{{Type: events.ContentJSON, Content: []byte(tc.body)}}}})
+			for _, want := range tc.want {
+				if !strings.Contains(got, want) {
+					t.Fatalf("missing %q in %q", want, got)
+				}
+			}
+		})
+	}
+}
+
+func TestFormatLogsUsesAuditGroupsAndOmitsDuplicateCompletionEvent(t *testing.T) {
+	got := FormatCommandResult(&command.Result{Kind: command.ResultKindLogs, Data: command.LogsData{Title: "audit events", Items: []command.LogData{{
+		Category: events.LogAudit, EventName: "tool_call_completed", Type: events.ContentJSON,
+		Content:      []byte(`{"tool":"shell","summary":"ok","arguments":{"cmd":"pwd"},"risk":"low","run_source":"foreground","elapsed_ms":20}`),
+		ResultStatus: events.ResultSucceeded, Identity: command.LogIdentityData{SessionID: "s"},
+	}}}})
+	for _, want := range []string{"[shell] ✓ 20ms · ok", "{cmd: pwd}", "run_source: foreground", "risk: low", "session: s"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in %q", want, got)
+		}
+	}
+	if strings.Contains(got, "tool_call_completed") {
+		t.Fatalf("duplicate completion event shown: %q", got)
+	}
+}
+
+func TestFormatLogsKeepsAuditTitlesAndProcessStates(t *testing.T) {
+	for _, tc := range []struct {
+		item command.LogData
+		want string
+	}{
+		{
+			item: command.LogData{Category: events.LogAudit, EventName: "llm_usage", Type: events.ContentJSON, Content: []byte(`{"provider":"openai","model":"gpt-5","elapsed_ms":999,"prompt_tokens":10,"completion_tokens":5,"cache_hit_percent":20}`)},
+			want: "[openai/gpt-5] 999ms\n输入 10 · 输出 5 · 缓存 20.0%",
+		},
+		{
+			item: command.LogData{Category: events.LogAudit, EventName: "tool_call_prepared", Type: events.ContentJSON, Content: []byte(`{"tool":"shell"}`), ResultStatus: events.ResultSucceeded},
+			want: "[shell] →",
+		},
+		{
+			item: command.LogData{Category: events.LogAudit, EventName: "risk_confirmation_wait", Type: events.ContentJSON, Content: []byte(`{}`)},
+			want: "[risk_confirmation_wait] 待确认",
+		},
+	} {
+		got := FormatCommandResult(&command.Result{Data: command.LogsData{Items: []command.LogData{tc.item}}})
+		if !strings.Contains(got, tc.want) {
+			t.Fatalf("missing %q in %q", tc.want, got)
+		}
+	}
+}
+
+func TestFormatActiveRequestsUsesReturnedOrderAndOptionalTitle(t *testing.T) {
+	started := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	items := []command.RequestData{
+		{ID: "root-b", Kind: request.KindTurn, Label: "b", StartedAt: started, SessionTitle: "title b"},
+		{ID: "child-z", ParentID: "root-b", Kind: request.KindTool, Label: "z", StartedAt: started},
+		{ID: "root-a", Kind: request.KindTurn, Label: "a", StartedAt: started, SessionTitle: "title a"},
+		{ID: "child-a", ParentID: "root-b", Kind: request.KindTool, Label: "a", StartedAt: started},
+	}
+	withTitles := formatActiveRequestsData(items, true)
+	if strings.Index(withTitles, "[1] turn: b") > strings.Index(withTitles, "[2] turn: a") || strings.Index(withTitles, "[1.1] tool: z") > strings.Index(withTitles, "[1.2] tool: a") {
+		t.Fatalf("request order changed: %s", withTitles)
+	}
+	if !strings.Contains(withTitles, "session: title b") || strings.Contains(formatActiveRequestsData(items, false), "session: title") {
+		t.Fatalf("session title control failed: %s", withTitles)
+	}
+}
+
+func TestUsageNumbersArePlainAndUnknownValuesRemainUnk(t *testing.T) {
+	large := int64(9007199254740993)
+	data := command.UsageData{
+		GroupBy: "model", Range: "1d",
+		Items: []command.UsageBucket{{Key: "m", Calls: 1, PromptTokens: &large}},
+		Total: command.UsageBucket{Key: "total", Calls: 1, PromptTokens: &large},
+	}
+	got := FormatCommandResult(&command.Result{Data: data})
+	if !strings.Contains(got, "9007199254740993") || strings.Contains(got, "9,007,199,254,740,993") || !strings.Contains(got, "completion: unk") {
+		t.Fatalf("usage format = %q", got)
 	}
 }

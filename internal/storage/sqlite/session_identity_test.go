@@ -22,7 +22,7 @@ func TestSessionListReleasesRowsOnInvalidTime(t *testing.T) {
 	if _, err := store.db.ExecContext(ctx, "UPDATE sessions SET created_at='invalid'"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Sessions().List(ctx, storage.ListSessionsRequest{IncludeAllPlatforms: true}); err == nil {
+	if _, err := store.Sessions().List(ctx, storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 20}); err == nil {
 		t.Fatal("expected invalid time error")
 	}
 	if n := store.db.Stats().InUse; n != 0 {

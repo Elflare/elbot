@@ -4,9 +4,30 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/storage"
+	"errors"
 	"testing"
 	"time"
 )
+
+func TestListPageReturnsInvalidPageAndKeepsEmptyDefault(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+
+	empty, err := svc.ListPage(ctx, scope, ListRequest{PageSize: 1})
+	if err != nil || empty.Page != 1 || empty.TotalPages != 0 || len(empty.Items) != 0 {
+		t.Fatalf("empty default page=%+v err=%v", empty, err)
+	}
+	if _, err := svc.ListPage(ctx, scope, ListRequest{Page: 2, PageSize: 1}); !errors.Is(err, ErrInvalidPage) {
+		t.Fatalf("empty explicit page error=%v", err)
+	}
+	if _, err := svc.Create(ctx, scope, CreateRequest{Title: "one"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ListPage(ctx, scope, ListRequest{Page: 2, PageSize: 1}); !errors.Is(err, ErrInvalidPage) {
+		t.Fatalf("non-empty explicit page error=%v", err)
+	}
+}
 
 func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
 	svc, store := newTestService(t)

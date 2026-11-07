@@ -12,7 +12,6 @@ import (
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
-	"elbot/internal/llm"
 	"elbot/internal/logging"
 )
 
@@ -63,16 +62,12 @@ func (c usageCommand) Handle(ctx context.Context, req command.Request) (*command
 		start := min(callRange.start-1, available)
 		selected = selected[start:min(callRange.end, available)]
 	}
-	data, content := summarizeUsage(selected, query, groupBy)
+	data := summarizeUsage(selected, groupBy)
 	data.Range = usageRangeDesc(query)
 	data.DamagedCount = entries.DamagedCount
 	data.AvailableCalls = available
 	if callRange != nil && available < callRange.end {
 		data.RangeTruncated = true
-		content += fmt.Sprintf("\n仅有 %d 次调用", available)
-	}
-	if entries.DamagedCount > 0 {
-		content += fmt.Sprintf("\nwarn: damaged=%d · usage incomplete", entries.DamagedCount)
 	}
 	return &command.Result{Kind: command.ResultKindUsage, Data: data}, nil
 }
@@ -242,7 +237,7 @@ type usageBucket struct {
 	elapsedMs        *int64
 }
 
-func summarizeUsage(entries []logging.LogEntry, query logging.LogQuery, groupBy usageGroupKey) (command.UsageData, string) {
+func summarizeUsage(entries []logging.LogEntry, groupBy usageGroupKey) command.UsageData {
 	buckets := map[string]*usageBucket{}
 	var order []string
 	grand := &usageBucket{}
@@ -284,21 +279,11 @@ func summarizeUsage(entries []logging.LogEntry, query logging.LogQuery, groupBy 
 
 	sort.Strings(order)
 
-	rangeDesc := usageRangeDesc(query)
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("usage: %s · by=%s\n", rangeDesc, groupBy))
-	for _, key := range order {
-		b := buckets[key]
-		formatUsageBucket(&sb, key, b)
-		sb.WriteString("\n")
-	}
-	formatUsageBucket(&sb, "total", grand)
 	data := command.UsageData{GroupBy: string(groupBy), Items: []command.UsageBucket{}, Total: usageBucketData("total", grand)}
 	for _, key := range order {
 		data.Items = append(data.Items, usageBucketData(key, buckets[key]))
 	}
-	return data, sb.String()
+	return data
 }
 
 func usageGroupKeyFor(entry logging.LogEntry, groupBy usageGroupKey, content map[string]json.RawMessage) string {
@@ -352,55 +337,6 @@ func atoiSafe(value string) int64 {
 		return -1
 	}
 	return n
-}
-
-func formatThousands(n *int64) string {
-	if n == nil || *n < 0 {
-		return "unk"
-	}
-	if *n == 0 {
-		return "0"
-	}
-	digits := strconv.FormatInt(*n, 10)
-	if len(digits) <= 3 {
-		return digits
-	}
-	var sb strings.Builder
-	rem := len(digits) % 3
-	if rem > 0 {
-		sb.WriteString(digits[:rem])
-		if len(digits) > rem {
-			sb.WriteByte(',')
-		}
-	}
-	for i := rem; i < len(digits); i += 3 {
-		sb.WriteString(digits[i : i+3])
-		if i+3 < len(digits) {
-			sb.WriteByte(',')
-		}
-	}
-	return sb.String()
-}
-
-func formatUsageBucket(sb *strings.Builder, label string, b *usageBucket) {
-	sb.WriteString(fmt.Sprintf("[%s] calls: %d\n", label, b.calls))
-	sb.WriteString(fmt.Sprintf("  prompt: %s | completion: %s | total: %s\n",
-		formatThousands(b.promptTokens),
-		formatThousands(b.completionTokens),
-		formatThousands(b.totalTokens)))
-	sb.WriteString(fmt.Sprintf("  cache: %s", formatThousands(b.cacheHitTokens)))
-	usage := llm.Usage{PromptTokens: b.promptTokens, CacheHitTokens: b.cacheHitTokens}
-	if percent := usage.CacheHitPercent(); percent != nil {
-		sb.WriteString(fmt.Sprintf(" (%.1f%%)", *percent))
-	}
-	sb.WriteString(fmt.Sprintf(" | elapsed: %s\n", formatElapsed(b.elapsedMs)))
-}
-
-func formatElapsed(ms *int64) string {
-	if ms == nil || *ms < 0 {
-		return "unk"
-	}
-	return fmt.Sprintf("%.1fs", float64(*ms)/1000)
 }
 
 func usageBucketData(key string, b *usageBucket) command.UsageBucket {

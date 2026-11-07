@@ -6,9 +6,6 @@ import (
 	"elbot/internal/llm"
 	"encoding/json"
 	"fmt"
-	"sort"
-	"strings"
-	"time"
 
 	"elbot/internal/contextmgr"
 	"elbot/internal/session"
@@ -16,34 +13,13 @@ import (
 	"errors"
 )
 
-func toolsString(tools map[string]int) string {
-	names := make([]string, 0, len(tools))
-	for name := range tools {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	parts := make([]string, 0, len(names))
-	for _, name := range names {
-		parts = append(parts, fmt.Sprintf("%s×%d", name, tools[name]))
-	}
-	return strings.Join(parts, ", ")
-}
-
-func sessionPageSize(deps Deps) int {
-	pageSize := deps.SessionListPageSize
-	if pageSize > 0 {
-		return pageSize
-	}
-	return defaultSessionListPageSize
-}
-
 func listSessionPage(ctx context.Context, deps Deps, query string, page int, archivedOnly, excludeCurrent bool) (session.ListResult, error) {
-	result, err := deps.Sessions.ListPage(ctx, deps.Scope(ctx), session.ListRequest{Query: query, Page: page, PageSize: sessionPageSize(deps), ArchivedOnly: archivedOnly, ExcludeCurrent: excludeCurrent})
+	result, err := deps.Sessions.ListPage(ctx, deps.Scope(ctx), session.ListRequest{Query: query, Page: page, PageSize: deps.SessionListPageSize, ArchivedOnly: archivedOnly, ExcludeCurrent: excludeCurrent})
 	if err != nil {
+		if errors.Is(err, session.ErrInvalidPage) {
+			return result, inputError(err)
+		}
 		return result, err
-	}
-	if result.Page > max(1, result.TotalPages) {
-		return result, inputError(fmt.Errorf("page %d out of range; available pages: 1-%d", result.Page, max(1, result.TotalPages)))
 	}
 	return result, nil
 }
@@ -84,8 +60,6 @@ func recentConversationMessages(ctx context.Context, deps Deps, sessionID string
 	}
 	return loaded.Messages, nil
 }
-
-func formatTime(t time.Time) string { return t.Format("2006-01-02 15:04:05") }
 
 func sessionData(s *storage.Session) *command.SessionData {
 	if s == nil {

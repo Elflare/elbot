@@ -299,13 +299,39 @@ func TestResumeCommandUsesIDsAndLast(t *testing.T) {
 	if _, err := NewResume(deps).Handle(ctx, command.Request{Args: "0"}); err == nil {
 		t.Fatal("resume 0 should fail")
 	}
-	if _, err := NewResume(deps).Handle(ctx, command.Request{Args: "3"}); err == nil {
+	if _, err := NewResume(deps).Handle(ctx, command.Request{Args: "--page 3"}); err == nil {
 		t.Fatal("resume out of range should fail")
+	} else {
+		var failure *command.Error
+		if !errors.As(err, &failure) || failure.Kind != command.ErrorInput || failure.Code != command.CodeInvalidArguments {
+			t.Fatalf("resume page error classification = %#v", err)
+		}
 	}
 	// 未先列出会话也能按 ID 恢复。
 	result, err = NewResume(deps).Handle(ctx, command.Request{Args: older.ID})
 	if err != nil || result.Data.(command.SessionChangeData).SessionID != older.ID {
 		t.Fatalf("resume id: %+v %v", result, err)
+	}
+}
+
+func TestSessionListEmptyDefaultAndExplicitOutOfRange(t *testing.T) {
+	ctx := t.Context()
+	store := newCommandTestStore(t)
+	svc := newSessionSupervisor(t, store)
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "empty"}, Platform: "cli", ChatID: "local", ChatType: "private", IsCLI: true}
+	deps := Deps{CommandText: testCommandText, Sessions: svc, Store: store, Scope: func(context.Context) session.Scope { return scope }, SessionListPageSize: 10}
+	result, err := NewSessions(deps).Handle(ctx, command.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := result.Data.(command.SessionsData)
+	if data.Page.Page != 1 || data.TotalPages == nil || *data.TotalPages != 0 || len(data.Items) != 0 {
+		t.Fatalf("empty default page = %+v", data)
+	}
+	_, err = NewSessions(deps).Handle(ctx, command.Request{Args: "2"})
+	var failure *command.Error
+	if !errors.As(err, &failure) || failure.Kind != command.ErrorInput || failure.Code != command.CodeInvalidArguments {
+		t.Fatalf("empty out-of-range error = %#v", err)
 	}
 }
 

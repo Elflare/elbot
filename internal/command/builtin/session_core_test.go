@@ -106,38 +106,6 @@ func TestStatusSessionMarkers(t *testing.T) {
 	}
 }
 
-func TestFormatToolUsageHidesEmptyLines(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		saved bool
-		live  map[string]int
-		want  string
-	}{
-		{name: "empty"},
-		{name: "empty map", live: map[string]int{}},
-		{name: "saved only", saved: true, want: "tools.saved: shell×1\n"},
-		{name: "turn only", live: map[string]int{"shell": 2}, want: "tools.turn: shell×2\n"},
-		{name: "both", saved: true, live: map[string]int{"shell": 2}, want: "tools.saved: shell×1\ntools.turn: shell×2\n"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			saved := map[string]int{}
-			if tc.saved {
-				saved["shell"] = 1
-			}
-			if got := formatToolUsage(saved, tc.live); got != tc.want {
-				t.Fatalf("tool usage = %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestFormatTimeForDisplay(t *testing.T) {
-	tm := time.Date(2026, 5, 31, 14, 24, 45, 704514100, time.FixedZone("CST", 8*60*60))
-	if got := formatTime(tm); got != "2026-05-31 14:24:45" {
-		t.Fatalf("formatTime = %q", got)
-	}
-}
-
 func TestFormatSessionsPageShowsNextCommand(t *testing.T) {
 	item := command.SessionSummaryData{SessionData: command.SessionData{ID: "s1", Title: "one", UpdatedAt: time.Date(2026, 1, 1, 1, 2, 3, 0, time.UTC)}, MessageCount: 2, Messages: []command.MessageData{{Role: "user", Content: "question"}, {Role: "assistant", Content: "answer"}}}
 	content := commandResultText(&command.Result{Kind: command.ResultKindSessions, Data: command.SessionsData{Page: command.Page{Page: 1, PageSize: 10, HasNext: true}, Items: []command.SessionSummaryData{item}, NextCommand: "/sessions 2 -k foo"}})

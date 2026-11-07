@@ -11,10 +11,12 @@ import (
 
 var (
 	// ErrNoCurrentSession 表示当前 Scope 还未开始对话，与指定记录不存在区分。
-	ErrNoCurrentSession             = control.ErrNoCurrentSession
-	ErrAccessDenied                 = share.ErrAccessDenied
-	ErrSessionBusy                  = share.ErrSessionBusy
-	ErrForegroundSession            = share.ErrForegroundSession
+	ErrNoCurrentSession  = control.ErrNoCurrentSession
+	ErrAccessDenied      = share.ErrAccessDenied
+	ErrSessionBusy       = share.ErrSessionBusy
+	ErrForegroundSession = share.ErrForegroundSession
+	// ErrInvalidPage marks an explicitly requested session page beyond the available range.
+	ErrInvalidPage                  = share.ErrInvalidPage
 	ErrChatModeRequiresEmptySession = control.ErrChatModeRequiresEmptySession
 )
 

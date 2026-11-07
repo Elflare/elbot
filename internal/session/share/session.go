@@ -15,6 +15,7 @@ var (
 	ErrAccessDenied      = errors.New("无权访问该会话")
 	ErrSessionBusy       = errors.New("会话正忙")
 	ErrForegroundSession = errors.New("会话已由前台接管")
+	ErrInvalidPage       = errors.New("invalid session page")
 )
 
 // Scope 标识 current 绑定的归属及调用入口的访问范围。
