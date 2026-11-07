@@ -12,6 +12,7 @@ import (
 )
 
 var (
+	ErrAccessDenied      = errors.New("无权访问该会话")
 	ErrSessionBusy       = errors.New("会话正忙")
 	ErrForegroundSession = errors.New("会话已由前台接管")
 )

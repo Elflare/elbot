@@ -47,40 +47,32 @@ func (c usageCommand) Handle(ctx context.Context, req command.Request) (*command
 	}
 	query, groupBy, callRange, err := parseUsageQuery(req.Args)
 	if err != nil {
-		return nil, err
+		return nil, inputError(err)
 	}
 	if c.deps.Logs == nil {
-		return &command.Result{Kind: command.ResultKindText, Text: "logs: not configured"}, nil
+		return nil, &command.Error{Kind: command.ErrorRejected, Code: "not_configured", Message: "logs: not configured"}
 	}
 	entries, err := c.deps.Logs.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
-	content := "nil"
-	if callRange == nil {
-		if len(entries.Entries) > 0 {
-			content = formatUsageSummary(entries.Entries, query, groupBy)
-		}
-	} else {
-		content = "nil"
-		if len(entries.Entries) > 0 {
-			if len(entries.Entries) >= callRange.start {
-				content = formatUsageSummary(entries.Entries[callRange.start-1:min(callRange.end, len(entries.Entries))], query, groupBy)
-			} else {
-				content = ""
-			}
-			if len(entries.Entries) < callRange.end {
-				if content != "" {
-					content += "\n"
-				}
-				content += fmt.Sprintf("仅有 %d 次调用", len(entries.Entries))
-			}
-		}
+
+	available := len(entries.Entries)
+	selected := entries.Entries
+	if callRange != nil {
+		start := min(callRange.start-1, available)
+		selected = selected[start:min(callRange.end, available)]
+	}
+	data, content := summarizeUsage(selected, query, groupBy)
+	data.DamagedCount = entries.DamagedCount
+	data.AvailableCalls = available
+	if callRange != nil && available < callRange.end {
+		content += fmt.Sprintf("\n仅有 %d 次调用", available)
 	}
 	if entries.DamagedCount > 0 {
 		content += fmt.Sprintf("\nwarn: damaged=%d · usage incomplete", entries.DamagedCount)
 	}
-	return &command.Result{Kind: command.ResultKindText, Text: content}, nil
+	return &command.Result{Kind: command.ResultKindUsage, Text: content, Data: data}, nil
 }
 
 func (c usageCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -249,6 +241,11 @@ type usageBucket struct {
 }
 
 func formatUsageSummary(entries []logging.LogEntry, query logging.LogQuery, groupBy usageGroupKey) string {
+	_, text := summarizeUsage(entries, query, groupBy)
+	return text
+}
+
+func summarizeUsage(entries []logging.LogEntry, query logging.LogQuery, groupBy usageGroupKey) (command.UsageData, string) {
 	buckets := map[string]*usageBucket{}
 	var order []string
 	grand := &usageBucket{}
@@ -300,7 +297,11 @@ func formatUsageSummary(entries []logging.LogEntry, query logging.LogQuery, grou
 		sb.WriteString("\n")
 	}
 	formatUsageBucket(&sb, "total", grand)
-	return sb.String()
+	data := command.UsageData{GroupBy: string(groupBy), Items: []command.UsageBucket{}, Total: usageBucketData("total", grand)}
+	for _, key := range order {
+		data.Items = append(data.Items, usageBucketData(key, buckets[key]))
+	}
+	return data, sb.String()
 }
 
 func usageGroupKeyFor(entry logging.LogEntry, groupBy usageGroupKey, content map[string]json.RawMessage) string {
@@ -403,4 +404,8 @@ func formatElapsed(ms *int64) string {
 		return "unk"
 	}
 	return fmt.Sprintf("%.1fs", float64(*ms)/1000)
+}
+
+func usageBucketData(key string, b *usageBucket) command.UsageBucket {
+	return command.UsageBucket{Key: key, Calls: b.calls, PromptTokens: b.promptTokens, CompletionTokens: b.completionTokens, TotalTokens: b.totalTokens, CacheHitTokens: b.cacheHitTokens, ElapsedMS: b.elapsedMs}
 }

@@ -35,12 +35,15 @@ func (h helpCommand) Handle(ctx context.Context, req command.Request) (*command.
 
 	var sb strings.Builder
 	actor, _ := contextinfo.ActorFromContext(ctx)
-	for _, info := range h.deps.Router.CommandsForActor(actor) {
+	infos := h.deps.Router.CommandsForActor(actor)
+	items := make([]command.HelpItem, 0, len(infos))
+	for _, info := range infos {
+		items = append(items, helpItem(info, h.deps.CommandText))
 		usage := h.deps.CommandText(info.Name, info.Args)
 		sb.WriteString(fmt.Sprintf("%s: %s\n", usage, info.Description))
 	}
 	sb.WriteString("\n" + h.deps.CommandText("help", "<command>"))
-	return &command.Result{Kind: command.ResultKindText, Text: sb.String()}, nil
+	return &command.Result{Kind: command.ResultKindHelp, Text: sb.String(), Data: command.HelpData{Items: items}}, nil
 }
 
 func (h helpCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -68,7 +71,7 @@ func detailedHelp(ctx context.Context, deps Deps, name string) (*command.Result,
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	info, ok := deps.Router.CommandInfoForActor(name, actor)
 	if !ok {
-		return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("unk command: %s", strings.TrimSpace(name))}, nil
+		return nil, &command.Error{Kind: command.ErrorInput, Code: command.CodeUnknownCommand, Message: fmt.Sprintf("unk command: %s", strings.TrimSpace(name))}
 	}
 	return formatCommandHelp(deps.CommandText, info), nil
 }

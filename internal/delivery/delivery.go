@@ -74,9 +74,9 @@ type DeliveryInfo struct {
 
 // Action 是随消息投递的命令操作；平台只负责展示，执行仍经过命令入口。
 type Action struct {
-	ID      string // 操作标识，不作为授权凭据。
-	Label   string // 用户看到的按钮文字。
-	Command string // 点击后提交的完整命令，由业务层提供。
+	ID      string `json:"id"`      // 操作标识，不作为授权凭据。
+	Label   string `json:"label"`   // 用户看到的按钮文字。
+	Command string `json:"command"` // 点击后提交的完整命令，由业务层提供。
 }
 
 type Output struct {

@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -71,11 +72,9 @@ func TestRouterCommandInfoFindsPrimaryAndAlias(t *testing.T) {
 func TestRouterUnknownCommand(t *testing.T) {
 	r := NewRouter([]string{"/"})
 	result, err := r.Dispatch(context.Background(), "/missing")
-	if err != nil {
-		t.Fatalf("Dispatch unknown: %v", err)
-	}
-	if !strings.Contains(result.Text, "unk command: /missing") {
-		t.Fatalf("unexpected content: %q", result.Text)
+	var failure *Error
+	if result != nil || !errors.As(err, &failure) || failure.Kind != ErrorInput || failure.Code != CodeUnknownCommand || !strings.Contains(failure.Message, "unk command: /missing") {
+		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }
 
@@ -91,7 +90,8 @@ func TestRouterAdviceUsesFirstConfiguredPrefix(t *testing.T) {
 	prefixes := []string{"!", "!!"}
 	r := NewRouter(prefixes)
 	result, err := r.Dispatch(t.Context(), "!!missing")
-	if err != nil || result.Text != "unk command: !!missing\n!help" {
+	var failure *Error
+	if result != nil || !errors.As(err, &failure) || failure.Message != "unk command: !!missing\n!help" {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	if prefixes[0] != "!" || prefixes[1] != "!!" {

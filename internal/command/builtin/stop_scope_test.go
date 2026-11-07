@@ -115,11 +115,11 @@ func TestStopRejectsMissingOrExpiredCurrent(t *testing.T) {
 			cmd := NewStop(Deps{CommandText: testCommandText, Sessions: svc, Requests: requests, Turns: turn.NewSupervisor(testutil.IDSequence()), Scope: func(context.Context) session.Scope { return scope }})
 			for _, arg := range []string{r.ID, "1", ""} {
 				result, err := cmd.Handle(ctx, command.Request{Args: arg})
-				if err != nil {
+				if err != nil && command.ClassifyError(err).Kind != command.ErrorRejected {
 					t.Fatal(err)
 				}
 				if running.Err() != nil {
-					t.Fatalf("stale cancellation: %s", result.Text)
+					t.Fatalf("stale cancellation: %+v", result)
 				}
 			}
 			if got := cmd.(command.Completer).Complete(ctx, command.CompletionRequest{Raw: "/stop ", Prefix: "/", Name: "stop", Cursor: 6}); len(got) != 0 {

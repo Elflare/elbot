@@ -56,8 +56,8 @@ func (m *Supervisor) HandleMessage(ctx context.Context, req MessageRequest) erro
 	for _, mention := range req.Mentions {
 		msg.Mentions = append(msg.Mentions, agentshare.Mention{UserID: mention.UserID, Username: mention.Username, Text: mention.Text})
 	}
-	ctx, err := m.handler.HandleMessage(agentshare.WithMessageContext(ctx, msg), req.Text)
-	if err != nil && !errors.Is(err, agentshare.ErrSessionBindingChanged) {
+	ctx, commandHandled, err := m.handler.HandleMessage(agentshare.WithMessageContext(ctx, msg), req.Text)
+	if err != nil && !commandHandled && !errors.Is(err, agentshare.ErrSessionBindingChanged) {
 		record := events.LogRecord{
 			Category: events.LogRuntime, Level: slog.LevelWarn,
 			EventName: "dialogue_failed", Module: "dialogue", Type: events.ContentText,

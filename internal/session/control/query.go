@@ -43,28 +43,11 @@ func (s *Service) Status(ctx context.Context, scope share.Scope) (*Status, error
 	if err != nil {
 		return nil, err
 	}
-	messages, err := s.deps.Messages.ListBySession(ctx, row.ID)
+	stats, err := s.deps.Messages.Stats(ctx, row.ID)
 	if err != nil {
 		return nil, err
 	}
-	status := &Status{Session: row, MessageCount: len(messages)}
-	for i := len(messages) - 1; i >= 0; i-- {
-		message := messages[i]
-		switch message.Role {
-		case storage.RoleUser:
-			if status.LastUserContent == "" {
-				status.LastUserContent = message.Content
-			}
-		case storage.RoleAssistant:
-			if status.LastAnswerContent == "" {
-				status.LastAnswerContent = message.Content
-			}
-		}
-		if status.LastUserContent != "" && status.LastAnswerContent != "" {
-			break
-		}
-	}
-	return status, nil
+	return &Status{Session: row, MessageCount: stats.Count, LastUserContent: stats.LastUserContent, LastAnswerContent: stats.LastAssistantContent}, nil
 }
 
 // enterTarget 先解析 Scope 内的空目标，再一次取得 current 和目标 Session 准入。
@@ -93,7 +76,7 @@ func (s *Service) enterTarget(ctx context.Context, scope share.Scope, id string)
 
 func checkAccess(scope share.Scope, row *storage.Session) error {
 	if !share.CanAccess(scope, row) {
-		return fmt.Errorf("session %s is not in current platform scope", row.ID)
+		return fmt.Errorf("%w: session %s is not in current platform scope", share.ErrAccessDenied, row.ID)
 	}
 	return nil
 }

@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -78,11 +79,9 @@ func TestHelpCommandFiltersByActor(t *testing.T) {
 		t.Fatalf("user help content = %q", list.Text)
 	}
 	privateDetail, err := help.Handle(userCtx, Request{Prefix: "/", Args: "sec"})
-	if err != nil {
-		t.Fatalf("user private help: %v", err)
-	}
-	if privateDetail.Text != "unk command: sec" {
-		t.Fatalf("private help content = %q", privateDetail.Text)
+	var failure *Error
+	if privateDetail != nil || !errors.As(err, &failure) || failure.Code != CodeUnknownCommand || failure.Message != "unk command: sec" {
+		t.Fatalf("result=%+v err=%v", privateDetail, err)
 	}
 	publicDetail, err := help.Handle(userCtx, Request{Prefix: "/", Args: "public"})
 	if err != nil || !strings.Contains(publicDetail.Text, "/public") {
@@ -129,11 +128,13 @@ func TestDoctorRegistrationPermissionsHelpAndCompletion(t *testing.T) {
 	for _, actor := range []contextinfo.Actor{admin, user} {
 		ctx := contextinfo.WithActor(context.Background(), actor)
 		result, err := router.Dispatch(ctx, "/help doctor")
-		if err != nil {
+		if actor.Role != contextinfo.RoleSuperadmin {
+			var failure *Error
+			if result != nil || !errors.As(err, &failure) || failure.Code != CodeUnknownCommand {
+				t.Fatalf("result=%+v err=%v", result, err)
+			}
+		} else if err != nil {
 			t.Fatal(err)
-		}
-		if actor.Role != contextinfo.RoleSuperadmin && result.Text != "unk command: doctor" {
-			t.Fatal(result.Text)
 		}
 	}
 }

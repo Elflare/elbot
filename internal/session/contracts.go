@@ -12,6 +12,7 @@ import (
 var (
 	// ErrNoCurrentSession 表示当前 Scope 还未开始对话，与指定记录不存在区分。
 	ErrNoCurrentSession             = control.ErrNoCurrentSession
+	ErrAccessDenied                 = share.ErrAccessDenied
 	ErrSessionBusy                  = share.ErrSessionBusy
 	ErrForegroundSession            = share.ErrForegroundSession
 	ErrChatModeRequiresEmptySession = control.ErrChatModeRequiresEmptySession
@@ -94,4 +95,9 @@ type BindingChangedEvent struct {
 	Version uint64   // 已提交的变更版本；解除绑定也推进版本。
 	Old     *Binding // 旧绑定；切离后永久失效。
 	New     *Binding // 新绑定；解除绑定时为 nil。
+}
+
+// CanAccess 判断已读取会话是否属于给定访问范围，不授予执行准入。
+func CanAccess(scope Scope, row *storage.Session) bool {
+	return share.CanAccess(share.Scope(scope), row)
 }

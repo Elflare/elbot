@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"elbot/internal/config"
+	"elbot/internal/contextmgr"
 	"elbot/internal/doctor"
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
@@ -68,11 +69,11 @@ type ModelService interface {
 }
 
 type ContextService interface {
-	Status(context.Context, *llm.Usage, config.ModelSelection) string
+	Status(context.Context, *llm.Usage, config.ModelSelection) contextmgr.UsageState
 }
 
 type CompactService interface {
-	CompactCurrent(context.Context, string) (string, error)
+	CompactCurrent(context.Context, string) (*storage.Session, error)
 }
 
 type ToolService interface {

@@ -2,8 +2,6 @@ package contextmgr
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"testing"
 
 	"elbot/internal/config"
@@ -11,7 +9,7 @@ import (
 	"elbot/internal/modelmgr"
 )
 
-func TestStatusCompactLayout(t *testing.T) {
+func TestStatusPreservesStructuredUsage(t *testing.T) {
 	selection := config.ModelSelection{Provider: "test", Model: "model"}
 	models, err := modelmgr.NewModelManager(t.Context(), &config.Config{
 		Providers:     map[string]config.ProviderConfig{"test": {Models: []string{"model"}}},
@@ -46,13 +44,11 @@ func TestStatusCompactLayout(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := New(Options{Models: models, Config: config.ContextConfig{CompactEnabled: !tc.disabled, CompactTriggerRatio: 0.8}})
 			got := svc.Status(context.Background(), tc.usage, selection)
-			want := "ctx.window=128000 · ratio=unk\n"
-			if tc.percent != "unk" {
-				want = fmt.Sprintf("ctx=%d/128000 (%s)\n", *tc.usage.TotalTokens, tc.percent)
+			if got.Usage != tc.usage || got.ContextWindow != 128000 || got.TriggerRatio != 0.8 || got.CompactEnabled == tc.disabled {
+				t.Fatalf("status lost source facts: %+v", got)
 			}
-			want += fmt.Sprintf("compact=80%% · %s\n", tc.status)
-			if !strings.HasSuffix(got, want) || strings.Count(got, "\n") != 3 {
-				t.Fatalf("status = %q, want token line followed by %q", got, want)
+			if got.TokensKnown() != (tc.percent != "unk") {
+				t.Fatalf("known=%v", got.TokensKnown())
 			}
 		})
 	}

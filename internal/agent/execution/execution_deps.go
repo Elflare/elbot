@@ -93,8 +93,9 @@ type ExecutionView interface {
 
 // ExecutionCoordinatorDeps declares only the capabilities consumed by ExecutionCoordinator.
 type ExecutionCoordinatorDeps struct {
-	Sessions    ExecutionSessions
-	SessionRows interface {
+	AppendConfirmation delivery.Confirmation // 追加确认操作；为空时保留正文控制说明。
+	Sessions           ExecutionSessions
+	SessionRows        interface {
 		Get(context.Context, string) (*storage.Session, error)
 	}
 	Turns            ExecutionTurns

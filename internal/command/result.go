@@ -26,3 +26,26 @@ const (
 	CodeTimeout          = share.CodeTimeout
 	CodeInternalError    = share.CodeInternalError
 )
+
+const (
+	ResultKindSession       = share.ResultKindSession
+	ResultKindSessions      = share.ResultKindSessions
+	ResultKindMessages      = share.ResultKindMessages
+	ResultKindStatus        = share.ResultKindStatus
+	ResultKindModel         = share.ResultKindModel
+	ResultKindModels        = share.ResultKindModels
+	ResultKindRequests      = share.ResultKindRequests
+	ResultKindStop          = share.ResultKindStop
+	ResultKindTools         = share.ResultKindTools
+	ResultKindRollback      = share.ResultKindRollback
+	ResultKindRollbacks     = share.ResultKindRollbacks
+	ResultKindLogs          = share.ResultKindLogs
+	ResultKindUsage         = share.ResultKindUsage
+	ResultKindDoctor        = share.ResultKindDoctor
+	ResultKindHooks         = share.ResultKindHooks
+	ResultKindCompact       = share.ResultKindCompact
+	ResultKindHelp          = share.ResultKindHelp
+	CodeConfirmationExpired = share.CodeConfirmationExpired
+)
+
+func ClassifyError(err error) *Error { return share.ClassifyError(err) }

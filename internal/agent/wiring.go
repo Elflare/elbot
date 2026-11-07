@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"elbot/internal/delivery"
 	"elbot/internal/modelmgr"
 	"elbot/internal/session"
 	"elbot/internal/signal"
@@ -184,11 +185,12 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	})
 	bindProtocolRoutes(m.routes, chat, response)
 	execution := agentexecution.NewExecutionCoordinator(ctx, agentexecution.ExecutionCoordinatorDeps{
-		Sessions:    m.sessions,
-		SessionRows: deps.Store.Sessions(),
-		Turns:       m.turns,
-		Requests:    m.requests,
-		Contexts:    m.contexts,
+		AppendConfirmation: delivery.Confirmation{Actions: []delivery.Action{{ID: "append_confirm", Label: "继续发送", Command: commandText("confirm")}, {ID: "append_cancel", Label: "取消追加", Command: commandText("reject")}}},
+		Sessions:           m.sessions,
+		SessionRows:        deps.Store.Sessions(),
+		Turns:              m.turns,
+		Requests:           m.requests,
+		Contexts:           m.contexts,
 		SelectionForTurn: func(ctx context.Context, row *storage.Session) modelmgr.Selection {
 			return modelmgr.SelectionForTurn(ctx, deps.Models, row)
 		},
@@ -233,16 +235,15 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Identity: identity,
 	})
 	commands, err := wireCommands(m.commands, agentinput.CommandExecutorDeps{
-		CommandText:               commandText,
-		IsRiskConfirmationCommand: func(text string) bool { return agentconfirmation.IsRiskConfirmationCommand(text, m.commands) },
-		Router:                    m.commands,
-		Sessions:                  m.sessions,
-		Turns:                     m.turns,
-		Identity:                  identity,
-		Execution:                 execution,
-		Output:                    output,
-		Confirmations:             confirmations,
-		Input:                     input,
+		CommandText:   commandText,
+		Router:        m.commands,
+		Sessions:      m.sessions,
+		Turns:         m.turns,
+		Identity:      identity,
+		Execution:     execution,
+		Output:        deps.Platform,
+		Confirmations: confirmations,
+		Input:         input,
 	}, command.BuiltinDeps{
 		Doctor:               deps.Doctor,
 		Sessions:             m.sessions,

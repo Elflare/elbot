@@ -32,10 +32,7 @@ func NewRequests(deps Deps) command.Handler {
 		Help:        "编号用于 " + deps.CommandText("stop") + "；子编号形如 1.1",
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		requests := deps.Requests.List()
-		if len(requests) == 0 {
-			return &command.Result{Kind: command.ResultKindText, Text: "nil"}, nil
-		}
-		return &command.Result{Kind: command.ResultKindText, Text: formatRequests(ctx, deps, requests)}, nil
+		return &command.Result{Kind: command.ResultKindRequests, Text: formatRequests(ctx, deps, requests), Data: command.RequestsData{Items: requestData(requests)}}, nil
 	})
 }
 
@@ -65,7 +62,7 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 	if arg != "" {
 		id, ok := resolveRequestArg(requests, arg)
 		if !ok {
-			return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("request not found: %s", arg)}, nil
+			return nil, &command.Error{Kind: command.ErrorRejected, Code: command.CodeNotFound, Message: fmt.Sprintf("request not found: %s", arg)}
 		}
 		stopped, _ := deps.Requests.Get(id)
 		var release func()
@@ -81,20 +78,20 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 		defer release()
 		latest, exists := deps.Requests.Get(id)
 		if !exists || latest.SessionID != stopped.SessionID || (binding != nil && latest.SessionID != binding.SessionID()) {
-			return &command.Result{Kind: command.ResultKindText, Text: "stopped"}, nil
+			return &command.Result{Kind: command.ResultKindStop, Text: "stopped", Data: command.StopData{RequestID: id, SessionIDs: []string{stopped.SessionID}}}, nil
 		}
 		if stopped.Kind == request.KindTurn {
 			deps.Turns.StopSession(stopped.SessionID)
 			count := deps.Requests.CancelSession(stopped.SessionID)
-			return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("stopping: %d", count)}, nil
+			return &command.Result{Kind: command.ResultKindStop, Text: fmt.Sprintf("stopping: %d", count), Data: command.StopData{SessionIDs: []string{stopped.SessionID}, RequestID: id, AcceptedCount: count}}, nil
 		}
 		if latest.Stopping {
-			return &command.Result{Kind: command.ResultKindText, Text: "stopping"}, nil
+			return &command.Result{Kind: command.ResultKindStop, Text: "stopping", Data: command.StopData{RequestID: id, SessionIDs: []string{stopped.SessionID}}}, nil
 		}
 		if !deps.Requests.Cancel(id) {
-			return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("request not found: %s", arg)}, nil
+			return nil, &command.Error{Kind: command.ErrorRejected, Code: command.CodeNotFound, Message: fmt.Sprintf("request not found: %s", arg)}
 		}
-		return &command.Result{Kind: command.ResultKindText, Text: "stopping: 1"}, nil
+		return &command.Result{Kind: command.ResultKindStop, Text: "stopping: 1", Data: command.StopData{RequestID: id, SessionIDs: []string{stopped.SessionID}, AcceptedCount: 1}}, nil
 	}
 
 	actor, _ := contextinfo.ActorFromContext(ctx)
@@ -102,7 +99,7 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 		_, binding, _ = deps.Sessions.CurrentBound(ctx, deps.Scope(ctx))
 	}
 	if binding == nil {
-		return &command.Result{Kind: command.ResultKindText, Text: session.ErrNoCurrentSession.Error()}, nil
+		return nil, session.ErrNoCurrentSession
 	}
 	locked, release, err := deps.Sessions.EnterBinding(ctx, binding)
 	if err != nil {
@@ -116,7 +113,7 @@ func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.
 	}
 	deps.Turns.StopSession(current.ID)
 	count := deps.Requests.CancelSession(current.ID)
-	return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("stopping: %d", count)}, nil
+	return &command.Result{Kind: command.ResultKindStop, Text: fmt.Sprintf("stopping: %d", count), Data: command.StopData{SessionIDs: []string{current.ID}, AcceptedCount: count}}, nil
 }
 
 func (c stopCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -156,11 +153,14 @@ func NewStopAll(deps Deps) command.Handler {
 			deps.Turns.StopSession(id)
 			count += deps.Requests.CancelSession(id)
 		}
-		return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("stopping: %d", count)}, nil
+		return &command.Result{Kind: command.ResultKindStop, Text: fmt.Sprintf("stopping: %d", count), Data: command.StopData{SessionIDs: ids, AcceptedCount: count}}, nil
 	})
 }
 
 func formatRequests(ctx context.Context, deps Deps, requests []request.Request) string {
+	if len(requests) == 0 {
+		return "nil"
+	}
 	return formatRequestTree(requests, func(sb *strings.Builder, req request.Request) {
 		title := "unk"
 		if row, err := deps.Store.Sessions().Get(ctx, req.SessionID); err == nil && row.Title != "" {
@@ -302,4 +302,12 @@ func (RequestModule) RegisterCommands(registrar Registrar, deps Deps) error {
 		NewStop,
 		NewStopAll,
 	)
+}
+
+func requestData(rows []request.Request) []command.RequestData {
+	out := make([]command.RequestData, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, command.RequestData{ID: r.ID, ParentID: r.ParentID, SessionID: r.SessionID, Kind: r.Kind, Label: r.Label, StartedAt: r.StartedAt, Stopping: r.Stopping})
+	}
+	return out
 }

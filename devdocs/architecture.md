@@ -108,9 +108,9 @@ Routes 按 Origin 分派对话、压缩与派生能力；模型 Selection 固定
 <!-- locator:commands -->
 ## 命令链路
 
-`CommandExecutor → Router → Handler → 领域服务`。Command 根部装配内置命令；Agent 注入领域能力、注册外部业务命令，执行器统一发送结果；用法见[命令文档](../docs/commands.md)。
+`CommandExecutor → Router → Handler → 领域服务`。Command 根部装配内置命令；Agent 注入领域能力、注册外部业务命令，执行器通过 Platform 根部独立交付结构化结果和分类错误；用法见[命令文档](../docs/commands.md)。
 
-Config 拥有前缀规则，Command 提供纯解析／组装，根部向消费者注入能力；平台按钮消费结构化 Action，不解析展示正文。改变 Session 的命令声明 SessionEffect，由执行器协调冲突、Session 裁决绑定；结果成功发送后才执行 Continuation。
+Config 拥有前缀规则，Command 提供纯解析／组装，根部向消费者注入能力；平台按钮消费结构化 Action，不解析展示正文。改变 Session 的命令声明 SessionEffect，由执行器协调冲突、Session 裁决绑定；结果成功发送后才执行 Continuation。命令结果不经过通知队列，执行失败与投递失败分别记录；协议请求关联及连接路由留在 Platform 内部。
 
 <!-- locator:request-turn -->
 ## Request、Turn 与状态

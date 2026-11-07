@@ -90,15 +90,15 @@ func (p *ConfirmationPolicy) WaitTimeout(ctx context.Context) time.Duration {
 	return userTimeout
 }
 
-func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID, text string) error {
+func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID, text string) (*command.Result, error) {
 	locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), sessionID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	locked, err = agentshare.CaptureSessionBinding(locked, c.sessions, c.identity, &storage.Session{ID: sessionID})
 	if err != nil {
 		release()
-		return err
+		return nil, err
 	}
 	ctx = locked
 	var observed *events.LogRecord
@@ -110,17 +110,14 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 	}()
 	confirmation, hasConfirmation := c.turns.PendingRiskConfirmation(sessionID)
 	if !hasConfirmation {
-		release()
-		return nil
+		return nil, confirmationExpired()
 	}
 	// 风险确认等待期间只接受确认/拒绝/详情/停止类命令。
 	// 普通文本不能混入当前 turn，避免被误当作高风险工具的隐式确认
 	// 或污染下一次 LLM 调用上下文。
 	if !c.commands.IsCommand(text) {
 		observed = confirmationAction(ctx, sessionID, "invalid_text", confirmation, "")
-		release()
-		_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: riskConfirmationWaitingText(c.commandText)})
-		return err
+		return &command.Result{Kind: command.ResultKindText, Text: riskConfirmationWaitingText(c.commandText), Confirmation: riskConfirmationActions(c.commandText)}, nil
 	}
 
 	parsed := c.commands.Parse(text)
@@ -128,48 +125,48 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 	case "detail", "details", "confirm", "c", "confirmtool", "ct", "confirmall", "ca", "reject", "stop":
 		binding, _ := session.BindingFromContext(ctx)
 		if err := c.sessions.RecordActivity(ctx, binding); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	switch parsed.Name {
 	case "detail", "details":
 		if !c.turns.RefreshRiskConfirmation(sessionID) {
-			release()
-			return nil
+			return nil, confirmationExpired()
 		}
 		observed = confirmationAction(ctx, sessionID, "detail", confirmation, "")
-		release()
-		_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: riskConfirmationDetailText(confirmation)})
-		return err
+		return &command.Result{Kind: command.ResultKindText, Text: riskConfirmationDetailText(confirmation), Confirmation: riskConfirmationActions(c.commandText)}, nil
 	case "confirm", "c":
+		if !c.turns.ResolveRiskConfirmation(sessionID, turn.RiskDecision{Action: turn.RiskConfirm, Extra: parsed.Args}) {
+			return nil, confirmationExpired()
+		}
 		observed = confirmationAction(ctx, sessionID, "confirm", confirmation, parsed.Args)
-		c.turns.ResolveRiskConfirmation(sessionID, turn.RiskDecision{Action: turn.RiskConfirm, Extra: parsed.Args})
 	case "confirmtool", "ct":
+		if !c.turns.ResolveRiskConfirmation(sessionID, turn.RiskDecision{Action: turn.RiskConfirmTool, Extra: parsed.Args}) {
+			return nil, confirmationExpired()
+		}
 		observed = confirmationAction(ctx, sessionID, "confirmtool", confirmation, parsed.Args)
-		c.turns.ResolveRiskConfirmation(sessionID, turn.RiskDecision{Action: turn.RiskConfirmTool, Extra: parsed.Args})
 	case "confirmall", "ca":
+		if !c.turns.ResolveRiskConfirmation(sessionID, turn.RiskDecision{Action: turn.RiskConfirmAll, Extra: parsed.Args}) {
+			return nil, confirmationExpired()
+		}
 		observed = confirmationAction(ctx, sessionID, "confirmall", confirmation, parsed.Args)
-		c.turns.ResolveRiskConfirmation(sessionID, turn.RiskDecision{Action: turn.RiskConfirmAll, Extra: parsed.Args})
 
 	case "reject":
+		if !c.turns.ResolveRiskConfirmation(sessionID, turn.RiskDecision{Action: turn.RiskReject, Reason: parsed.Args}) {
+			return nil, confirmationExpired()
+		}
 		observed = confirmationAction(ctx, sessionID, "reject", confirmation, parsed.Args)
-		c.turns.ResolveRiskConfirmation(sessionID, turn.RiskDecision{Action: turn.RiskReject, Reason: parsed.Args})
 	case "stop":
 		observed = confirmationAction(ctx, sessionID, "stop", confirmation, "")
 		c.turns.StopSession(sessionID)
-		c.requests.CancelSession(sessionID)
-		release()
-		_, err := c.output.Send(context.WithoutCancel(ctx), delivery.StreamEvent{Type: delivery.StreamSend, Text: "stopping"})
-		return err
+		count := c.requests.CancelSession(sessionID)
+		return &command.Result{Kind: command.ResultKindStop, Text: "stopping", Data: command.StopData{SessionIDs: []string{sessionID}, AcceptedCount: count}}, nil
 	default:
 		observed = confirmationAction(ctx, sessionID, "invalid_command", confirmation, parsed.Name)
-		release()
-		_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: riskConfirmationWaitingText(c.commandText)})
-		return err
+		return &command.Result{Kind: command.ResultKindText, Text: riskConfirmationWaitingText(c.commandText), Confirmation: riskConfirmationActions(c.commandText)}, &command.Error{Kind: command.ErrorInput, Code: command.CodeInvalidArguments, Message: "当前只接受确认、拒绝、详情或停止命令"}
 
 	}
-	release()
-	return nil
+	return &command.Result{Kind: command.ResultKindText, Text: "确认操作已接受"}, nil
 }
 
 func confirmationAction(ctx context.Context, sessionID, action string, confirmation turn.RiskConfirmation, extra string) *events.LogRecord {
@@ -287,11 +284,8 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	defer wait.Cancel()
 	if wait != nil && ctx.Err() == nil {
 		c.publishConfirmationWait(ctx, sessionID, call, assessment.Level, assessment.Reasons)
-		var actions []delivery.Action
-		for _, cmd := range riskConfirmationCommands() {
-			actions = append(actions, delivery.Action{ID: cmd.Name, Label: cmd.Description, Command: c.commandText(cmd.Name)})
-		}
-		if _, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: fmt.Sprintf("%s [%s]: confirm\n%s%s\n\n%s", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout, c.commandText)), Actions: actions}); err != nil {
+		presentation := riskConfirmationActions(c.commandText)
+		if _, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: fmt.Sprintf("%s [%s]: confirm\n%s%s\n\n%s", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout, c.commandText)), Actions: presentation.Actions}); err != nil {
 			resultStatus, level := events.ResultFailed, slog.LevelWarn
 			if events.LogStatus(err) == events.ResultCanceled {
 				resultStatus = events.ResultCanceled

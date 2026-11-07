@@ -77,13 +77,17 @@ func RegisterHandlers(registrar interface{ Register(Handler) error }, handlers .
 func (r *Router) Dispatch(ctx context.Context, raw string) (*Result, error) {
 	parsed := r.Parse(raw)
 	if !parsed.OK {
-		return nil, fmt.Errorf("not a command")
+		return nil, &Error{Kind: ErrorInput, Code: CodeInvalidArguments, Message: "not a command"}
 	}
 	h, ok := r.handlers[parsed.Name]
 	if !ok {
-		return &Result{Kind: ResultKindText, Text: fmt.Sprintf("unk command: %s%s\n%s", parsed.Prefix, parsed.Name, r.commandText("help"))}, nil
+		return nil, &Error{Kind: ErrorInput, Code: CodeUnknownCommand, Message: fmt.Sprintf("unk command: %s%s\n%s", parsed.Prefix, parsed.Name, r.commandText("help"))}
 	}
-	return h.Handle(ctx, Request{Raw: raw, Prefix: parsed.Prefix, Name: parsed.Name, Args: parsed.Args})
+	result, err := h.Handle(ctx, Request{Raw: raw, Prefix: parsed.Prefix, Name: parsed.Name, Args: parsed.Args})
+	if err != nil {
+		return result, ClassifyError(err)
+	}
+	return result, nil
 }
 
 func (r *Router) IsCommand(text string) bool {

@@ -458,7 +458,17 @@ type SessionRepository interface {
 	DeleteIfExpired(ctx context.Context, id string, cutoff time.Time) (bool, error)
 }
 
+// MessageStats 只读取会话消息计数和最近正文，不加载完整历史。
+type MessageStats struct {
+	Count                int    // 会话自己的持久化消息数量。
+	LastUserContent      string // 最近一条非空用户正文。
+	LastAssistantContent string // 最近一条非空助手正文。
+}
+
 type MessageRepository interface {
+	Stats(context.Context, string) (MessageStats, error)
+	CountConversationMessages(ctx context.Context, sessionID, toMessageID string) (int, error)                         // 对指定分支范围的用户与助手消息计数。
+	ListConversationMessages(ctx context.Context, sessionID, toMessageID string, limit, offset int) ([]Message, error) // 限量倒序读取原始对话，不应用压缩摘要。
 	Append(ctx context.Context, message *Message) error
 	Get(ctx context.Context, id string) (*Message, error)
 	ListBySession(ctx context.Context, sessionID string) ([]Message, error)

@@ -108,6 +108,19 @@ ORDER BY created_at ASC, rowid ASC`, sessionID)
 	return scanMessages(rows)
 }
 
+func (r *MessageRepository) Stats(ctx context.Context, sessionID string) (storage.MessageStats, error) {
+	var out storage.MessageStats
+	err := r.db.QueryRowContext(ctx, `
+ SELECT COUNT(*),
+ COALESCE((SELECT content FROM messages WHERE session_id=? AND role='user' AND content<>'' ORDER BY created_at DESC,rowid DESC LIMIT 1),''),
+ COALESCE((SELECT content FROM messages WHERE session_id=? AND role='assistant' AND content<>'' ORDER BY created_at DESC,rowid DESC LIMIT 1),'')
+ FROM messages WHERE session_id=?`, sessionID, sessionID, sessionID).Scan(&out.Count, &out.LastUserContent, &out.LastAssistantContent)
+	if err != nil {
+		return storage.MessageStats{}, fmt.Errorf("read message stats: %w", err)
+	}
+	return out, nil
+}
+
 func (r *MessageRepository) ListBySessionUpTo(ctx context.Context, sessionID, toMessageID string) ([]storage.Message, error) {
 	toCreatedAt, toRowID, err := r.messagePosition(ctx, sessionID, toMessageID)
 	if err != nil {
@@ -276,4 +289,43 @@ func scanMessage(row interface{ Scan(dest ...any) error }) (*storage.Message, er
 		return nil, err
 	}
 	return &message, nil
+}
+
+func (r *MessageRepository) conversationRange(ctx context.Context, sessionID, toMessageID string) (string, []any, error) {
+	where := "session_id = ? AND role IN ('user','assistant') AND (length(trim(content, char(9,10,11,12,13,32))) > 0 OR EXISTS (SELECT 1 FROM json_each(segments) WHERE json_extract(value, '$.type') IN ('image','file')))"
+	args := []any{sessionID}
+	if toMessageID != "" {
+		at, rowID, err := r.messagePosition(ctx, sessionID, toMessageID)
+		if err != nil {
+			return "", nil, err
+		}
+		where += " AND (created_at < ? OR (created_at = ? AND rowid <= ?))"
+		args = append(args, at, at, rowID)
+	}
+	return where, args, nil
+}
+
+func (r *MessageRepository) CountConversationMessages(ctx context.Context, sessionID, toMessageID string) (int, error) {
+	where, args, err := r.conversationRange(ctx, sessionID, toMessageID)
+	if err != nil {
+		return 0, err
+	}
+	var count int
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM messages WHERE "+where, args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count conversation messages: %w", err)
+	}
+	return count, nil
+}
+
+func (r *MessageRepository) ListConversationMessages(ctx context.Context, sessionID, toMessageID string, limit, offset int) ([]storage.Message, error) {
+	where, args, err := r.conversationRange(ctx, sessionID, toMessageID)
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, limit, offset)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, session_id, role, content, parent_message_id, reply_to_platform_message_id, reply_to_message_id, tool_call_id, segments, metadata, created_at FROM messages WHERE `+where+" ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?", args...)
+	if err != nil {
+		return nil, fmt.Errorf("page conversation messages: %w", err)
+	}
+	return scanMessages(rows)
 }

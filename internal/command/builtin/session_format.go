@@ -2,6 +2,9 @@ package builtin
 
 import (
 	"context"
+	command "elbot/internal/command/share"
+	"elbot/internal/llm"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -125,55 +128,15 @@ func appendRecentMessages(sb *strings.Builder, ctx context.Context, deps Deps, s
 }
 
 func recentConversationMessages(ctx context.Context, deps Deps, sessionID string, turns int) []storage.Message {
-	loaded, err := (contextmgr.Loader{Store: deps.Store}).Load(ctx, sessionID)
+	loaded, err := (contextmgr.Loader{Store: deps.Store}).LoadMessagePage(ctx, sessionID, 1, turns*2)
 	if err != nil {
 		return nil
 	}
-	limit := turns * 2
-	out := make([]storage.Message, 0, limit)
-	for i := len(loaded.Messages) - 1; i >= 0 && len(out) < limit; i-- {
-		message := loaded.Messages[i]
-		if (message.Role == storage.RoleUser || message.Role == storage.RoleAssistant) && strings.TrimSpace(message.Content) != "" {
-			out = append(out, message)
-		}
-	}
-	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
-		out[i], out[j] = out[j], out[i]
-	}
-	return out
+	return loaded.Messages
 }
 
 func previewContent(text string) string {
 	return truncateRunes(strings.TrimSpace(strings.ReplaceAll(text, "\n", " ")), 80)
-}
-
-func conversationMessages(messages []storage.Message) []storage.Message {
-	out := make([]storage.Message, 0, len(messages))
-	for _, message := range messages {
-		if (message.Role == storage.RoleUser || message.Role == storage.RoleAssistant) && strings.TrimSpace(message.Content) != "" {
-			out = append(out, message)
-		}
-	}
-	return out
-}
-
-func formatMessagePage(messages []storage.Message, page, pageSize int) (string, error) {
-	totalPages := (len(messages) + pageSize - 1) / pageSize
-	if page < 1 || page > totalPages {
-		return "", fmt.Errorf("page %d out of range; available pages: 1-%d", page, totalPages)
-	}
-	start := (page - 1) * pageSize
-	end := min(start+pageSize, len(messages))
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("page=%d/%d\n", page, totalPages))
-	for _, message := range messages[start:end] {
-		if message.Role == storage.RoleAssistant {
-			sb.WriteString(fmt.Sprintf("bot: [%s] %s\n", message.ID, messagePreview(message.Content)))
-		} else {
-			sb.WriteString(fmt.Sprintf("user: %s\n", messagePreview(message.Content)))
-		}
-	}
-	return trimTrailingNewlines(sb.String()), nil
 }
 
 func messagePreview(text string) string {
@@ -287,4 +250,43 @@ func sessionStatusPreview(text string) string {
 		return string(runes[:80]) + "..."
 	}
 	return text
+}
+
+func sessionData(s *storage.Session) *command.SessionData {
+	if s == nil {
+		return nil
+	}
+	return &command.SessionData{ID: s.ID, Title: s.Title, Mode: s.Mode, Status: s.Status, Platform: s.Platform, ChatID: s.ChatID, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, ArchivedAt: s.ArchivedAt, PinnedAt: s.PinnedAt}
+}
+
+func sessionChange(ctx context.Context, deps Deps, row *storage.Session, id string, count int, text string) *command.Result {
+	return &command.Result{Kind: command.ResultKindSession, Text: text, Data: command.SessionChangeData{Session: sessionData(row), SessionID: id, AffectedCount: count, CurrentSessionID: currentSessionID(ctx, deps)}}
+}
+
+func sessionsResult(rows []storage.SessionSummary, current string, page, size int, query string, hasNext bool, text string) *command.Result {
+	items := make([]command.SessionData, 0, len(rows))
+	for _, s := range rows {
+		items = append(items, command.SessionData{ID: s.ID, Title: s.Title, Mode: s.Mode, Status: s.Status, Platform: s.Platform, ChatID: s.ChatID, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, ArchivedAt: s.ArchivedAt, PinnedAt: s.PinnedAt})
+	}
+	return &command.Result{Kind: command.ResultKindSessions, Text: text, Data: command.SessionsData{Page: command.Page{Page: page, PageSize: size, HasNext: hasNext}, Items: items, CurrentSessionID: current, Query: query}}
+}
+
+func messageData(rows []storage.Message) ([]command.MessageData, error) {
+	out := make([]command.MessageData, 0, len(rows))
+	for _, m := range rows {
+		attachments := []command.AttachmentData{}
+		var segments []llm.MessageSegment
+		if m.Segments != "" {
+			if err := json.Unmarshal([]byte(m.Segments), &segments); err != nil {
+				return nil, fmt.Errorf("decode message %s segments: %w", m.ID, err)
+			}
+			for _, segment := range segments {
+				if segment.Type == llm.SegmentFile || segment.Type == llm.SegmentImage {
+					attachments = append(attachments, command.AttachmentData{Name: segment.Name})
+				}
+			}
+		}
+		out = append(out, command.MessageData{ID: m.ID, Role: llm.MessageRole(m.Role), Content: m.Content, Attachments: attachments, CreatedAt: m.CreatedAt})
+	}
+	return out, nil
 }

@@ -91,20 +91,20 @@ func (c logCommand) Handle(ctx context.Context, req command.Request) (*command.R
 	if c.audit {
 		query, err := parseAuditQuery(req.Args)
 		if err != nil {
-			return nil, err
+			return nil, inputError(err)
 		}
 		return queryLogs(ctx, c.deps, query, formatLogEntries(events.LogAudit, query.Raw))
 	}
 	if c.elwisp {
 		query, err := parseElwispLogQuery(req.Args)
 		if err != nil {
-			return nil, err
+			return nil, inputError(err)
 		}
 		return queryLogs(ctx, c.deps, query, formatLogEntries(events.LogElnis, query.Raw))
 	}
 	query, err := parseRuntimeLogQuery(req.Args)
 	if err != nil {
-		return nil, err
+		return nil, inputError(err)
 	}
 	return queryLogs(ctx, c.deps, query, formatLogEntries(events.LogRuntime, query.Raw))
 }
@@ -227,7 +227,7 @@ func queryLogs(ctx context.Context, deps Deps, query logging.LogQuery, formatter
 			}
 		}
 	}
-	return &command.Result{Kind: command.ResultKindText, Text: content}, nil
+	return &command.Result{Kind: command.ResultKindLogs, Text: content, Data: command.LogsData{Items: logData(entries.Entries, query.Raw), DamagedCount: entries.DamagedCount, DamagedLines: append([]string{}, entries.DamagedLines...)}}, nil
 }
 
 type LogModule struct{}

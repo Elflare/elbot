@@ -46,7 +46,7 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 	}
 	args, target, err := parseModelArgs(req.Args)
 	if err != nil {
-		return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("%v\n%s", err, deps.CommandText(info.Name, info.Args))}, nil
+		return nil, inputError(fmt.Errorf("%v\n%s", err, deps.CommandText(info.Name, info.Args)))
 	}
 	var selected modelmgr.ModelOption
 	switch target {
@@ -91,12 +91,12 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 		}
 	}
 	if err != nil {
-		return &command.Result{Kind: command.ResultKindText, Text: err.Error()}, nil
+		return nil, err
 	}
 	if target == modelTargetCurrent {
-		return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("model → %s/%s", selected.Provider, selected.Model)}, nil
+		return &command.Result{Kind: command.ResultKindModel, Text: fmt.Sprintf("model → %s/%s", selected.Provider, selected.Model), Data: command.ModelSelectionData{Target: string(target), Model: modelData(selected)}}, nil
 	}
-	return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("%s.model → %s/%s", target, selected.Provider, selected.Model)}, nil
+	return &command.Result{Kind: command.ResultKindModel, Text: fmt.Sprintf("%s.model → %s/%s", target, selected.Provider, selected.Model), Data: command.ModelSelectionData{Target: string(target), Model: modelData(selected)}}, nil
 }
 
 func (c modelCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -194,6 +194,15 @@ func NewCheckModel(deps Deps) command.Handler {
 		result := deps.Models.ModelList(args, modelmgr.ModelListOptions{Fresh: fresh})
 
 		models := result.Options
+		data := command.ModelsData{Items: []command.ModelData{}, Errors: []command.ItemError{}}
+		for _, m := range models {
+			data.Items = append(data.Items, modelData(m))
+		}
+		for _, failure := range result.Errors {
+			if failure.Err != nil {
+				data.Errors = append(data.Errors, command.ItemError{ID: failure.Provider, Error: &command.Error{Kind: command.ErrorInternal, Code: "model_request_failed", Message: fmt.Sprintf("获取 %s 模型列表失败", failure.Provider), Cause: failure.Err}})
+			}
+		}
 		if len(models) == 0 {
 			var sb strings.Builder
 			if strings.TrimSpace(args) != "" {
@@ -202,7 +211,7 @@ func NewCheckModel(deps Deps) command.Handler {
 				sb.WriteString("nil")
 			}
 			appendModelProviderErrors(&sb, result.Errors)
-			return &command.Result{Kind: command.ResultKindText, Text: trimTrailingNewlines(sb.String())}, nil
+			return &command.Result{Kind: command.ResultKindModels, Data: data, Text: trimTrailingNewlines(sb.String())}, nil
 		}
 
 		var sb strings.Builder
@@ -226,7 +235,7 @@ func NewCheckModel(deps Deps) command.Handler {
 			sb.WriteString(fmt.Sprintf("  %s [%d] %s%s", marker, m.Index, m.Model, suffix))
 		}
 		appendModelProviderErrors(&sb, result.Errors)
-		return &command.Result{Kind: command.ResultKindText, Text: trimTrailingNewlines(sb.String())}, nil
+		return &command.Result{Kind: command.ResultKindModels, Data: data, Text: trimTrailingNewlines(sb.String())}, nil
 	})
 }
 
@@ -326,4 +335,8 @@ func (ModelModule) RegisterCommands(registrar Registrar, deps Deps) error {
 		NewModel,
 		NewCheckModel,
 	)
+}
+
+func modelData(m modelmgr.ModelOption) command.ModelData {
+	return command.ModelData{Provider: m.Provider, Model: m.Model, Index: m.Index, Modes: append([]string{}, m.ModeMarks...), Compact: m.Compact, Naming: m.Naming}
 }

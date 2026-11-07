@@ -62,7 +62,7 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 			if turns.Snapshot(row.ID).Phase != turn.PhaseAwaitRiskConfirm {
 				t.Fatal("confirmation not pending")
 			}
-			if err := coordinator.SubmitResponse(ctx, row.ID, command); err != nil {
+			if _, err := coordinator.SubmitResponse(ctx, row.ID, command); err != nil {
 				t.Fatal(err)
 			}
 			select {
@@ -216,4 +216,36 @@ func TestCronRiskConfirmationArgumentDetails(t *testing.T) {
 
 func testCommandText(name string, args ...string) string {
 	return commandpkg.Format("/", name, args...)
+}
+
+func TestRiskConfirmationAliasesKeepCanonicalNames(t *testing.T) {
+	c := &ConfirmationCoordinator{commands: commandpkg.NewRouter([]string{"!"})}
+	for _, tc := range []struct{ input, name string }{{"!c", "confirm"}, {"!ct", "confirmtool"}, {"!ca", "confirmall"}, {"!details", "detail"}, {"!reject", "reject"}} {
+		info, ok := c.CommandInfo(tc.input)
+		if !ok || info.Name != tc.name {
+			t.Fatalf("input=%s info=%+v ok=%v", tc.input, info, ok)
+		}
+	}
+}
+func TestMissingRiskConfirmationReturnsRejection(t *testing.T) {
+	store, err := sqlite.New(t.Context(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	sessions := newSessionSupervisor(t, store)
+	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})
+	ctx := testutil.WithCLIConversation(t.Context())
+	row, err := sessions.Create(ctx, identity.Scope(ctx), session.CreateRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turns := turn.NewSupervisor(testutil.IDSequence())
+	t.Cleanup(turns.StopAll)
+	c := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{Sessions: sessions, Turns: turns, Identity: identity})
+	result, err := c.SubmitResponse(ctx, row.ID, "/confirm")
+	var failure *commandpkg.Error
+	if result != nil || !errors.As(err, &failure) || failure.Kind != commandpkg.ErrorRejected || failure.Code != commandpkg.CodeConfirmationExpired {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
 }

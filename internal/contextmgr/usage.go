@@ -7,9 +7,10 @@ import (
 )
 
 type UsageState struct {
-	Usage         *llm.Usage
-	ContextWindow int
-	TriggerRatio  float64
+	CompactEnabled bool // 是否启用自动压缩。
+	Usage          *llm.Usage
+	ContextWindow  int
+	TriggerRatio   float64
 }
 
 func (s UsageState) TokensKnown() bool {

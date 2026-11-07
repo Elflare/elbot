@@ -50,7 +50,7 @@ func TestMessageEntryConstructsWithOnlyConsumptionCapabilities(t *testing.T) {
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})
 	input := &constructorInput{}
 	entry := agentinput.NewMessageHandler(agentinput.MessageHandlerDeps{Identity: identity, Hooks: constructorMessageHooks{}, Output: constructorOutput{}, Commands: constructorCommands{}, Input: input})
-	if _, err := entry.HandleMessage(t.Context(), "plain input"); err != nil {
+	if _, _, err := entry.HandleMessage(t.Context(), "plain input"); err != nil {
 		t.Fatal(err)
 	}
 	if input.text != "plain input" {

@@ -1,10 +1,9 @@
 package builtin
 
 import (
+	command "elbot/internal/command/share"
 	"fmt"
 	"strings"
-
-	command "elbot/internal/command/share"
 )
 
 func wantsCommandHelp(args string) bool {
@@ -25,9 +24,17 @@ func formatCommandHelp(commandText func(string, ...string) string, info command.
 		sb.WriteString("\n")
 		sb.WriteString(strings.TrimSpace(info.Help))
 	}
-	return &command.Result{Kind: command.ResultKindText, Text: sb.String()}
+	return &command.Result{Kind: command.ResultKindHelp, Text: sb.String(), Data: command.HelpData{Items: []command.HelpItem{helpItem(info, commandText)}}}
 }
 
 func trimTrailingNewlines(text string) string {
 	return strings.TrimRight(text, "\n")
+}
+
+func inputError(err error) *command.Error {
+	return &command.Error{Kind: command.ErrorInput, Code: command.CodeInvalidArguments, Message: err.Error(), Cause: err}
+}
+
+func helpItem(info command.Info, commandText func(string, ...string) string) command.HelpItem {
+	return command.HelpItem{Name: info.Name, Aliases: append([]string{}, info.Aliases...), Args: info.Args, Description: info.Description, Help: info.Help, Usage: commandText(info.Name, info.Args)}
 }

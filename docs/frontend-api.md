@@ -66,7 +66,7 @@ Token 在 `[platform.cli.server.tokens]` 中按 client_id 映射到环境变量�
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | type | string | 消息类型，见下表 |
-| id | string | 消息 ID，用于补全请求/响应配对，以及关联附件输入错误 |
+| id | string | 输入／补全关联 ID；命令结果的 request_id 回传输入 id，附件输入错误回传 id |
 | client_id | string | 客户端标识 |
 | token | string | 鉴权 token（仅 hello） |
 | media_token | string | 当前连接的 HTTP 附件凭据（仅 hello_ok） |
@@ -152,9 +152,78 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 {"type": "notice", "level": "WARN", "text": "模型调用失败，正在重试…"}
 ```
 
-纯文本通知，包括命令返回结果，以及重试、Hook 失败和配置告警等运行提示。命令结果使用 `INFO`，可以包含多行长文本。`level` 可取 `DEBUG`、`INFO`、`WARN`、`ERROR`；省略时按 `INFO` 处理。通知不承载文件、媒体或后台报告。
+纯文本运行提示，包括重试、Hook 失败和配置告警。`level` 可取 `DEBUG`、`INFO`、`WARN`、`ERROR`；省略时按 `INFO` 处理。通知不承载文件、媒体或后台报告。
 
 通知按平台独立排队，同一目标按顺序发送。队列满时记录告警，不自动重发；通知默认最多等待 30 秒。原远程连接的回复通知不会迁移到同一用户的新连接。排队中的工具预览和重试提示随请求取消；已经发生的失败和超时提示由其来源决定保留。
+
+### command_result — 命令结果
+
+```json
+{
+  "type": "command_result",
+  "request_id": "m-1",
+  "command": "messages",
+  "result": {
+    "kind": "messages",
+    "text": "page=1/1\nuser: 你好\nbot: [a-1] 你好",
+    "data": {
+      "session_id": "s-1",
+      "page": 1,
+      "page_size": 20,
+      "has_next": false,
+      "total_pages": 1,
+      "items": [
+        {"id":"u-1","role":"user","content":"你好","attachments":[],"created_at":"2026-11-07T12:00:00Z"},
+        {"id":"a-1","role":"assistant","content":"你好","attachments":[],"created_at":"2026-11-07T12:00:01Z"}
+      ]
+    },
+    "confirmation": null
+  },
+  "error": null
+}
+```
+
+`request_id` 原样关联 `input.id`，不是 Agent 内部请求 ID。结果只发给原始连接；同一 Client ID 的其他连接不会收到。命令不通过 `notice` 返回。追加确认中的纯文本控制输入会返回 `command="append"`；确认按钮提交带配置前缀的确认／拒绝命令，失效后返回 `confirmation_expired`。
+
+| 字段 | 说明 |
+| --- | --- |
+| result.kind | 数据结构类别，由服务端明确指定；同一命令不同分支可以不同 |
+| result.text | 可直接展示的文字；不能作为业务字段的解析来源 |
+| result.data | 对应类别的具名业务数据；纯文字回复为 null |
+| result.confirmation | 非 null 表示仍待确认、目标操作尚未执行；包含 actions |
+| error | 独立的分类错误；成功时为 null |
+
+完整失败时 `result=null`；存在部分结果时可以同时返回 `result` 和 `error`。列表里的逐项失败保留在该结果的数据中，不抹去成功项。服务端内部的原始错误链和后续输入不进入 JSON。
+
+`error` 包含 `kind`、`code`、`message`：`kind` 为 `input`（未知命令／参数错误）、`rejected`（权限／忙状态／目标不存在／确认失效）、`internal`（内部故障）或 `interrupted`（实际执行取消／超时）。`code` 给出具体原因，如 `unknown_command`、`invalid_arguments`、`permission_denied`、`session_busy`、`confirmation_expired`、`canceled`、`timeout`。客户端等待超时或断线不代表后端执行已取消。`/stop` 接受停止请求是正常结果。
+
+确认操作的结构为：
+
+```json
+{"actions":[{"id":"confirm","label":"确认删除","command":"/delete s-1 --confirm"}]}
+```
+
+客户端将 `command` 作为新的 `input.text` 提交；权限和目标状态仍由服务端校验，`id` 不是授权凭据。
+
+主要数据类别：
+
+| kind | data |
+| --- | --- |
+| sessions | items、当前绑定、搜索词及分页；用于 sessions、archives 和 resume 列表 |
+| session | 操作目标、变更后的会话、当前绑定及实际变更数量 |
+| messages | session_id、items 及分页；消息正文完整，历史附件只提供名称 |
+| status | 可空当前会话、模式、模型、Turn 阶段、请求、工具统计及 context |
+| models / model | 模型目录与逐提供方错误／实际提交的模型及目标 |
+| requests / stop | 请求快照／停止目标及实际接受取消数量 |
+| tools、rollbacks、rollback | 工具目录和管理目标／撤销列表和实际结果 |
+| logs、usage、doctor、hooks、compact、help | 对应领域的原始报告、统计或操作结果 |
+| text | 无业务数据的文字反馈 |
+
+`/messages` 默认读取第 1 页，每页 20 条。第 1 页最新，页码递增向更早历史读取；每页内按对话顺序排列。向上加载时将更早页面插到顶部，并按消息 ID 去重。页码查询期间有新消息时页面边界可以移动，不提供跨请求快照。空历史返回 `items=[]`、`total_pages=0`。
+
+`/status` 的 `context` 包含 `usage`、`context_window`、`compact_enabled`、`compact_trigger_ratio`。用量字段为 `prompt_tokens`、`completion_tokens`、`total_tokens`、`cache_hit_tokens`；null 表示未知，0 是已知零值。上下文比例使用已知 total/window，缓存命中率使用已知 cache/prompt，不推算缺失计数。此处阶段来自 Turn；实时 `status` 帧仍使用 Runtime 快照。
+
+完整业务字段与类别定义见 [Command 公共数据类型](../internal/command/data.go) 和 [结果契约](../internal/command/result.go)。
 
 ### status — 运行状态
 
@@ -162,25 +231,25 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 {
   "type": "status",
   "snapshot": {
-    "session_id": "abc123",
-    "phase": "llm",
-    "provider": "openai",
-    "model": "gpt-4o",
-    "mode": "work",
-    "request_id": "req-1",
-    "kind": "turn",
-    "label": "",
-    "tool_name": "",
-    "turn_started_at": "2026-07-01T12:00:00Z",
-    "stage_started_at": "2026-07-01T12:00:01Z",
-    "finished_at": "0001-01-01T00:00:00Z",
-    "usage": {"prompt_tokens": 500, "completion_tokens": 100, "total_tokens": 600, "cache_hit_tokens": 0},
-    "error": ""
+    "SessionID": "abc123",
+    "Phase": "llm",
+    "Provider": "openai",
+    "Model": "gpt-4o",
+    "Mode": "work",
+    "RequestID": "req-1",
+    "Kind": "turn",
+    "Label": "",
+    "ToolName": "",
+    "TurnStartedAt": "2026-07-01T12:00:00Z",
+    "StageStartedAt": "2026-07-01T12:00:01Z",
+    "FinishedAt": "0001-01-01T00:00:00Z",
+    "Usage": {"PromptTokens": 500, "CompletionTokens": 100, "TotalTokens": 600, "CacheHitTokens": 0},
+    "Error": ""
   }
 }
 ```
 
-运行状态快照，前端可用于状态栏展示。请求取消后仍发布已提交的终态；后台任务没有前台展示目标，接管后只展示新状态。状态更新会合并，应用整体关闭不保证向已关闭的前端补发终态。`phase` 取值：
+运行状态快照，前端可用于状态栏展示。请求取消后仍发布已提交的终态；后台任务没有前台展示目标，接管后只展示新状态。状态更新会合并，应用整体关闭不保证向已关闭的前端补发终态。`Phase` 取值：
 
 | Phase | 说明 |
 |-------|------|
@@ -210,7 +279,7 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 |------|------|------|
 | type | string | 事件类型，见下表 |
 | text | string | 正文／推理增量，或 `send` 的最终完整正文；空文本可能省略，按空字符串处理 |
-| actions | array | 可选的消息操作；元素字段为 `ID`、`Label`、`Command`。前端可展示为按钮，点击后用 `input` 提交 `Command`，仍由服务端校验权限 |
+| actions | array | 可选的消息操作；元素字段为 `id`、`label`、`command`。前端可展示为按钮，点击后用 `input` 提交 `command`，仍由服务端校验权限 |
 
 | event.type | 客户端处理 |
 |------------|------------|
@@ -242,18 +311,18 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
   "id": "c-1",
   "items": [
     {
-      "text": "/model",
-      "label": "/model",
-      "description": "切换或查看模型",
-      "kind": "command",
-      "replace_start": 0,
-      "replace_end": 4
+      "Text": "/model",
+      "Label": "/model",
+      "Description": "切换或查看模型",
+      "Kind": "command",
+      "ReplaceStart": 0,
+      "ReplaceEnd": 4
     }
   ]
 }
 ```
 
-补全候选列表，`id` 对应请求时的 `id`。`replace_start`/`replace_end` 指示应替换原输入文本的字节区间。
+补全候选列表，`id` 对应请求时的 `id`。`ReplaceStart`/`ReplaceEnd` 指示应替换原输入文本的字节区间。
 
 ### error — 错误
 
@@ -267,12 +336,12 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| text | string | 插入的文本 |
-| label | string | 展示标签 |
-| description | string | 补充描述 |
-| kind | string | 候选类型，如 `command`、`tool`、`fork` |
-| replace_start | int | 替换起始字节偏移 |
-| replace_end | int | 替换结束字节偏移 |
+| Text | string | 插入的文本 |
+| Label | string | 展示标签 |
+| Description | string | 补充描述 |
+| Kind | string | 候选类型，如 `command`、`tool`、`fork` |
+| ReplaceStart | int | 替换起始字节偏移 |
+| ReplaceEnd | int | 替换结束字节偏移 |
 
 ## 配置
 
@@ -316,7 +385,7 @@ my-client = ["ELBOT_CLI_TOKEN"]
   │                                   │
 ```
 
-图中的 `stream(1, ...)` 表示 `stream_id=1` 及对应的 `event.type`，不是实际 JSON。推理事件可缺省，状态更新可能合并；生成失败后可能收到 `reset` 并重新生成，不能依赖每次都有完整的上述序列。模型切换等命令结果通过 `notice` 返回，不需要经过 LLM 流式生成。
+图中的 `stream(1, ...)` 表示 `stream_id=1` 及对应的 `event.type`，不是实际 JSON。推理事件可缺省，状态更新可能合并；生成失败后可能收到 `reset` 并重新生成，不能依赖每次都有完整的上述序列。模型切换等命令结果通过 `command_result` 返回，不需要经过 LLM 流式生成。
 
 ## 最小客户端示例
 
@@ -402,6 +471,10 @@ ws.onmessage = (e) => {
       break;
     case "stream":
       handleStream(msg);
+      break;
+    case "command_result":
+      if (msg.result?.text) { messages.push({text: msg.result.text, reasoning: ""}); render(); }
+      if (msg.error) console.error(msg.error.kind, msg.error.code, msg.error.message);
       break;
     case "notice":
       console.log(`[${msg.level ?? "INFO"}] ${msg.text ?? ""}`);

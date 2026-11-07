@@ -42,8 +42,9 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 		if err != nil {
 			return nil, err
 		}
-		if len(records) == 0 {
-			return &command.Result{Kind: command.ResultKindText, Text: "nil"}, nil
+		items := []command.RollbackData{}
+		for _, r := range records {
+			items = append(items, command.RollbackData{ID: r.ID, Path: r.Path, Created: r.Created, EditedAt: r.EditedAt})
 		}
 		var b strings.Builder
 		for _, record := range records {
@@ -54,11 +55,11 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 			fmt.Fprintf(&b, "%d  %s  %s  %s\n", record.ID, record.Path, formatTime(record.EditedAt), action)
 		}
 		fmt.Fprintf(&b, "\n%s", c.deps.CommandText("rollback", "<编号>"))
-		return &command.Result{Kind: command.ResultKindText, Text: b.String()}, nil
+		return &command.Result{Kind: command.ResultKindRollbacks, Text: b.String(), Data: command.RollbacksData{Items: items}}, nil
 	}
 	id, err := strconv.ParseUint(arg, 10, 64)
 	if err != nil || id == 0 {
-		return nil, fmt.Errorf("%s", c.deps.CommandText("rollback", "[编号]"))
+		return nil, inputError(fmt.Errorf("%s", c.deps.CommandText("rollback", "[编号]")))
 	}
 	ctx, err = c.deps.PrepareFileContext(ctx, true)
 	if errors.Is(err, session.ErrNoCurrentSession) {
@@ -68,7 +69,7 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 		if errors.Is(err, session.ErrSessionBusy) {
 			err = fmt.Errorf("%w，请等待完成，或先用 %s 停止任务。", err, c.deps.CommandText("stop"))
 		}
-		return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("rollback: %v\n%s", err, c.deps.CommandText("rollback"))}, nil
+		return nil, err
 	}
 	result, err := c.deps.FileRollback.RollbackByID(ctx, id)
 	actor, _ := contextinfo.ActorFromContext(ctx)
@@ -100,12 +101,12 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 		if errors.Is(err, session.ErrSessionBusy) {
 			err = fmt.Errorf("%w，请等待完成，或先用 %s 停止任务。", err, c.deps.CommandText("stop"))
 		}
-		return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("rollback: %v\n%s", err, c.deps.CommandText("rollback"))}, nil
+		return nil, err
 	}
 	if result.Deleted {
-		return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("deleted: %s", result.Path)}, nil
+		return &command.Result{Kind: command.ResultKindRollback, Text: fmt.Sprintf("deleted: %s", result.Path), Data: command.RollbackData{ID: id, Path: result.Path, Deleted: true, Revision: result.Revision}}, nil
 	}
-	return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("restored: %s · rev=%s", result.Path, result.Revision)}, nil
+	return &command.Result{Kind: command.ResultKindRollback, Text: fmt.Sprintf("restored: %s · rev=%s", result.Path, result.Revision), Data: command.RollbackData{ID: id, Path: result.Path, Revision: result.Revision}}, nil
 }
 
 func (c rollbackCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {

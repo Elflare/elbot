@@ -4,16 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	command "elbot/internal/command/share"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
-	globalevents "elbot/internal/events"
+	"elbot/internal/contextmgr"
+	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
 	"elbot/internal/session"
 	"elbot/internal/storage"
+	"elbot/internal/turn"
+	"math"
 )
 
 func NewNew(deps Deps) command.Handler {
@@ -24,7 +26,7 @@ func NewNew(deps Deps) command.Handler {
 		if err := deps.Sessions.ResetCurrent(ctx, deps.Scope(ctx)); err != nil {
 			return nil, err
 		}
-		return &command.Result{Kind: command.ResultKindText, Text: "New Session"}, nil
+		return sessionChange(ctx, deps, nil, "", 0, "New Session"), nil
 	})
 }
 
@@ -34,7 +36,14 @@ func NewStatus(deps Deps) command.Handler {
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		status, err := deps.Sessions.Status(ctx, deps.Scope(ctx))
 		if errors.Is(err, session.ErrNoCurrentSession) {
-			return &command.Result{Kind: command.ResultKindText, Text: formatEmptyStatus(ctx, deps)}, nil
+			mode := deps.Sessions.DefaultMode()
+			model := deps.Models.CurrentModelForMode(mode)
+			state := command.StatusData{Mode: mode, Model: modelData(model), Phase: turn.PhaseIdle, Requests: []command.RequestData{}, ToolUsage: map[string]int{}, Errors: []command.ItemError{}}
+			if deps.Contexts != nil {
+				v := deps.Contexts.Status(ctx, nil, config.ModelSelection{Provider: model.Provider, Model: model.Model})
+				state.Context = contextData(v)
+			}
+			return &command.Result{Kind: command.ResultKindStatus, Text: formatEmptyStatus(ctx, deps), Data: state}, nil
 		}
 		if err != nil {
 			return nil, err
@@ -51,53 +60,80 @@ func NewStatus(deps Deps) command.Handler {
 				pinned += ", "
 			}
 		}
-		active := formatActiveRequests(deps.Requests.ListBySession(s.ID))
+		requests := deps.Requests.ListBySession(s.ID)
+		active := formatActiveRequests(requests)
 		turnSnapshot := deps.Turns.Snapshot(s.ID)
 		pendingInput := fmt.Sprintf("%d", turnSnapshot.PendingCount)
 		currentModel := deps.Models.CurrentModelForMode(s.Mode)
-		return &command.Result{Kind: command.ResultKindText, Text: trimTrailingNewlines(fmt.Sprintf(`%s · %s
+		contextState, contextErrors := loadContextStatus(ctx, deps, s, currentModel)
+		toolUsage := map[string]int{}
+		if deps.Store != nil && deps.Store.ToolCalls() != nil {
+			summaries, err := deps.Store.ToolCalls().UsageBySession(ctx, s.ID)
+			if err != nil {
+				toolUsage = nil
+				contextErrors = append(contextErrors, command.ItemError{ID: "tool_usage", Error: command.ClassifyError(err)})
+			} else {
+				for _, entry := range summaries {
+					toolUsage[entry.ToolName] += entry.Count
+				}
+			}
+		}
+		data := command.StatusData{Session: sessionData(s), Mode: s.Mode, Model: modelData(currentModel), Phase: turnSnapshot.Phase, PendingCount: turnSnapshot.PendingCount, MessageCount: status.MessageCount, Requests: requestData(requests), ToolUsage: toolUsage, TurnToolUsage: turnSnapshot.Tools, Context: contextState, Errors: contextErrors}
+		result := &command.Result{Kind: command.ResultKindStatus, Data: data, Text: trimTrailingNewlines(fmt.Sprintf(`%s · %s
 %s · %s/%s · msgs=%d
 %screated=%s
 updated=%s
 user: %s
 bot: %s
 %sphase=%s · pending=%s
-%s%s`, s.ID, s.Title, s.Mode, currentModel.Provider, currentModel.Model, status.MessageCount, indentStatusBlock(pinned+archived), formatTime(s.CreatedAt), formatTime(s.UpdatedAt), emptyTODO(sessionStatusPreview(status.LastUserContent)), emptyTODO(sessionStatusPreview(status.LastAnswerContent)), indentStatusBlock(active), turnSnapshot.Phase, pendingInput, formatToolUsage(ctx, deps, s.ID, turnSnapshot.Tools), formatContextStatus(ctx, deps, s, currentModel)))}, nil
+%s%s`, s.ID, s.Title, s.Mode, currentModel.Provider, currentModel.Model, status.MessageCount, indentStatusBlock(pinned+archived), formatTime(s.CreatedAt), formatTime(s.UpdatedAt), emptyTODO(sessionStatusPreview(status.LastUserContent)), emptyTODO(sessionStatusPreview(status.LastAnswerContent)), indentStatusBlock(active), turnSnapshot.Phase, pendingInput, formatToolUsage(toolUsage, turnSnapshot.Tools), formatContextData(contextState)))}
+		for _, failure := range contextErrors {
+			result.Text += "\nwarn: " + failure.ID + ": " + failure.Error.Message
+		}
+		return result, nil
 	})
 }
 
-func formatContextStatus(ctx context.Context, deps Deps, row *storage.Session, model modelmgr.ModelOption) string {
+func loadContextStatus(ctx context.Context, deps Deps, row *storage.Session, model modelmgr.ModelOption) (command.ContextData, []command.ItemError) {
+	failures := []command.ItemError{}
 	if deps.Contexts == nil {
-		return ""
+		return command.ContextData{}, failures
 	}
 	usage, err := deps.Usage(row)
 	if err != nil {
-		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
-			Level:        slog.LevelError,
-			EventName:    "load_usage_failed",
-			Module:       "command",
-			Content:      "load usage failed: " + err.Error(),
-			ResultStatus: globalevents.ResultFailed,
-		}
-		record.Identity = globalevents.LogIdentityFromContext(ctx)
-		record.Identity.SessionID = row.ID
-		globalevents.Log(ctx, record)
+		failures = append(failures, command.ItemError{ID: "usage", Error: command.ClassifyError(err)})
 	}
-	return deps.Contexts.Status(ctx, usage, config.ModelSelection{Provider: model.Provider, Model: model.Model})
+	state := deps.Contexts.Status(ctx, usage, config.ModelSelection{Provider: model.Provider, Model: model.Model})
+	return contextData(state), failures
 }
 
-func formatToolUsage(ctx context.Context, deps Deps, sessionID string, live map[string]int) string {
-	usage := map[string]int{}
-	if deps.Store != nil && deps.Store.ToolCalls() != nil {
-		if summaries, err := deps.Store.ToolCalls().UsageBySession(ctx, sessionID); err == nil {
-			for _, summary := range summaries {
-				if summary.ToolName != "" && summary.Count > 0 {
-					usage[summary.ToolName] += summary.Count
-				}
-			}
+func contextData(s contextmgr.UsageState) command.ContextData {
+	return command.ContextData{Usage: tokenUsageData(s.Usage), ContextWindow: s.ContextWindow, CompactEnabled: s.CompactEnabled, CompactTriggerRatio: s.TriggerRatio}
+}
+
+func formatContextData(s command.ContextData) string {
+	prefix := contextmgr.FormatTokens(usageForText(s.Usage)) + "\n"
+	known := s.Usage != nil && s.Usage.TotalTokens != nil && *s.Usage.TotalTokens >= 0 && s.ContextWindow > 0
+	status := "unk"
+	if !known {
+		prefix += fmt.Sprintf("ctx.window=%d · ratio=unk\n", s.ContextWindow)
+	} else {
+		ratio := float64(*s.Usage.TotalTokens) / float64(s.ContextWindow)
+		prefix += fmt.Sprintf("ctx=%d/%d (%.1f%%)\n", *s.Usage.TotalTokens, s.ContextWindow, ratio*100)
+		status = "ok"
+		if ratio >= s.CompactTriggerRatio {
+			status = "next request"
+		} else if ratio >= math.Max(0, s.CompactTriggerRatio-0.1) {
+			status = "near"
 		}
 	}
+	if !s.CompactEnabled {
+		status = "off"
+	}
+	return prefix + fmt.Sprintf("compact=%.0f%% · %s\n", s.CompactTriggerRatio*100, status)
+}
+
+func formatToolUsage(usage, live map[string]int) string {
 	persisted, current := toolsString(usage), toolsString(live)
 	var sb strings.Builder
 	if persisted != "" {
@@ -107,4 +143,18 @@ func formatToolUsage(ctx context.Context, deps Deps, sessionID string, live map[
 		fmt.Fprintf(&sb, "tools.turn: %s\n", current)
 	}
 	return sb.String()
+}
+
+func tokenUsageData(usage *llm.Usage) *command.TokenUsage {
+	if usage == nil {
+		return nil
+	}
+	return &command.TokenUsage{PromptTokens: usage.PromptTokens, CompletionTokens: usage.CompletionTokens, TotalTokens: usage.TotalTokens, CacheHitTokens: usage.CacheHitTokens}
+}
+
+func usageForText(usage *command.TokenUsage) *llm.Usage {
+	if usage == nil {
+		return nil
+	}
+	return &llm.Usage{PromptTokens: usage.PromptTokens, CompletionTokens: usage.CompletionTokens, TotalTokens: usage.TotalTokens, CacheHitTokens: usage.CacheHitTokens}
 }

@@ -3,6 +3,7 @@ package input
 import (
 	"context"
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
@@ -33,7 +34,7 @@ type InputExecution interface {
 }
 
 type InputConfirmations interface {
-	SubmitResponse(context.Context, string, string) error
+	SubmitResponse(context.Context, string, string) (*command.Result, error)
 }
 
 // InputCoordinatorDeps declares only the capabilities consumed by InputCoordinator.

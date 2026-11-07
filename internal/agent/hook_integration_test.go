@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"elbot/internal/agent"
+	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
@@ -220,4 +221,19 @@ data: [DONE]
 		t.Fatalf("replacement lost source logging: %+v", triggered)
 	}
 
+}
+
+func (p *integrationPlatform) SendCommandResult(ctx context.Context, _ string, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
+	var outputs []delivery.Output
+	if result != nil {
+		out := delivery.Text(result.Text)
+		if result.Confirmation != nil {
+			out.Actions = result.Confirmation.Actions
+		}
+		outputs = append(outputs, out)
+	}
+	if failure != nil {
+		outputs = append(outputs, delivery.Text(failure.Message))
+	}
+	return p.SendTo(ctx, delivery.Target{}, outputs)
 }

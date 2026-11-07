@@ -120,17 +120,11 @@ func TestFormatToolUsageHidesEmptyLines(t *testing.T) {
 		{name: "both", saved: true, live: map[string]int{"shell": 2}, want: "tools.saved: shell×1\ntools.turn: shell×2\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			store := newCommandTestStore(t)
-			row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", Title: "tools", ChatType: "private"}
-			if err := store.Sessions().Create(t.Context(), row); err != nil {
-				t.Fatal(err)
-			}
+			saved := map[string]int{}
 			if tc.saved {
-				if err := store.ToolCalls().Create(t.Context(), &storage.ToolCallRecord{SessionID: row.ID, ToolCallID: "call_1", ToolName: "shell", Success: true}); err != nil {
-					t.Fatal(err)
-				}
+				saved["shell"] = 1
 			}
-			if got := formatToolUsage(t.Context(), Deps{Store: store}, row.ID, tc.live); got != tc.want {
+			if got := formatToolUsage(saved, tc.live); got != tc.want {
 				t.Fatalf("tool usage = %q, want %q", got, tc.want)
 			}
 		})

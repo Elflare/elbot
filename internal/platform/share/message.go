@@ -4,6 +4,7 @@ package share
 
 import (
 	"context"
+	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"encoding/json"
@@ -81,6 +82,9 @@ type Mention struct {
 
 // MessageContext 保存平台内部路由与入站状态，公共会话事实由 contextinfo 持有。
 type MessageContext struct {
+	CommandReply interface {
+		SendCommandResult(context.Context, string, *command.Result, *command.Error) (delivery.Receipt, error)
+	} // 可选的结构化命令回复能力；未提供时由根部发送文字。
 	contextinfo.Conversation                        // 读写边界投影的公共会话事实。
 	GroupRole                contextinfo.GroupRole  // 入站行为者的群身份。
 	Sender                   delivery.MessageSender // 当前协议消息的回复通道。

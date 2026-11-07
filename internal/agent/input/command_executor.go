@@ -18,9 +18,8 @@ import (
 )
 
 type CommandExecutor struct {
-	commandText               func(string, ...string) string
-	IsRiskConfirmationCommand func(string) bool
-	router                    interface {
+	commandText func(string, ...string) string
+	router      interface {
 		IsCommand(string) bool
 		Parse(string) command.Parsed
 		CommandInfo(string) (command.Info, bool)
@@ -42,91 +41,139 @@ type CommandExecutor struct {
 }
 
 func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Context, bool, error) {
-	if !e.router.IsCommand(text) {
+	if !e.router.IsCommand(text) && !agentshare.IsAppendConfirm(text) && !agentshare.IsAppendCancel(text) {
 		return ctx, false, nil
 	}
-
 	parsed := e.router.Parse(text)
-	info, hasInfo := e.router.CommandInfo(parsed.Name)
-	sessionRow, binding, sessionErr := e.sessions.CurrentBound(ctx, e.identity.Scope(ctx))
-	if sessionErr != nil && !errors.Is(sessionErr, session.ErrNoCurrentSession) {
-		return ctx, true, sessionErr
+	info, known := e.router.CommandInfo(parsed.Name)
+	name := parsed.Name
+	riskInfo, riskCommand := e.confirmations.CommandInfo(text)
+	if known {
+		name = info.Name
+	} else if riskCommand {
+		name = riskInfo.Name
+	} else if !parsed.OK {
+		name = "append"
 	}
-	if sessionErr == nil {
-		ctx = session.WithBinding(ctx, binding)
+	originCtx := ctx
+	riskName := ""
+	if riskCommand {
+		riskName = riskInfo.Name
 	}
-	snapshot := turn.Snapshot{Phase: turn.PhaseIdle}
-	if sessionErr == nil {
-		snapshot = e.turns.Snapshot(sessionRow.ID)
+	ctx, result, handled, err := e.execute(ctx, text, parsed, info, known, riskName)
+	if !handled {
+		return ctx, false, err
 	}
-	if sessionErr == nil && snapshot.Phase == turn.PhaseAwaitAppendConfirm && (agentshare.IsAppendConfirm(text) || agentshare.IsAppendCancel(text)) {
-		ctx, err := e.execution.ResumeAppend(ctx, sessionRow, text)
-		return ctx, true, err
+	failure := command.ClassifyError(err)
+	if failure != nil {
+		e.logFailure(ctx, "command_failed", failure)
 	}
-	if sessionErr == nil && snapshot.Phase == turn.PhaseAwaitRiskConfirm && e.IsRiskConfirmationCommand(text) {
-		return ctx, true, e.confirmations.SubmitResponse(ctx, sessionRow.ID, text)
+	// 会话命令可能已解除旧绑定；回复仍发给原始输入目标。
+	sendCtx := session.WithBinding(context.WithoutCancel(originCtx), nil)
+	_, sendErr := e.output.SendCommandResult(sendCtx, name, result, failure)
+	if sendErr != nil {
+		e.logFailure(sendCtx, "command_send_failed", sendErr)
+		return ctx, true, sendErr
 	}
-	if sessionErr == nil && hasInfo && snapshot.Phase != turn.PhaseIdle && blocksDuringActiveTurn(info.SessionEffect) {
-		globalevents.Notify(session.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, fmt.Sprintf("%v，请等待完成，或先用 %s 停止任务后再切换。", session.ErrSessionBusy, e.commandText("stop"))))
-		return ctx, true, nil
+	if failure != nil {
+		return ctx, true, failure
 	}
-	if sessionErr == nil && hasInfo && e.execution.CompactActive(sessionRow.ID) && blocksDuringCompact(info.SessionEffect) {
-		_, err := e.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: compactCommandBlockedText(text, e.commandText)})
-		return ctx, true, err
-	}
-
-	actor, _ := contextinfo.ActorFromContext(ctx)
-	if hasInfo && !command.CanAccess(info, actor) {
-		{
-			content, _ := json.Marshal(map[string]any{"actor": actor, "command": text, "reason": "slash_command_requires_superadmin"})
-			record := globalevents.LogRecord{
-				Category:     globalevents.LogAudit,
-				Level:        slog.LevelWarn,
-				EventName:    "permission_denied",
-				Module:       "agent",
-				Type:         globalevents.ContentJSON,
-				Content:      string(content),
-				ContentLimit: 4096,
-				ResultStatus: globalevents.ResultRejected,
-			}
-			record.Identity = globalevents.LogIdentityFromContext(ctx)
-			globalevents.Log(ctx, record)
+	if result != nil && result.Continuation != nil {
+		next, nextErr := e.input.ContinueCommandInput(ctx, *result.Continuation)
+		if nextErr != nil {
+			e.logFailure(next, "command_continuation_failed", nextErr)
+			globalevents.Notify(session.WithBinding(context.WithoutCancel(next), nil), globalevents.NewNotification(next, slog.LevelWarn, nextErr.Error()))
 		}
-		_, err := e.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: fmt.Sprintf("%s%s: superadmin required", parsed.Prefix, parsed.Name)})
-		return ctx, true, err
-	}
-
-	if parsed.Name == "tools" {
-		prepared, err := e.execution.ModelContext(ctx, sessionRow)
-		if err == nil {
-			ctx = prepared
-		} else {
-			ctx = contextinfo.WithoutModel(ctx)
-		}
-	}
-	result, err := e.router.Dispatch(ctx, text)
-	if errors.Is(err, session.ErrNoCurrentSession) {
-		result, err = &command.Result{Kind: command.ResultKindText, Text: session.ErrNoCurrentSession.Error()}, nil
-	}
-	if err != nil {
-		if errors.Is(err, session.ErrSessionBusy) {
-			err = fmt.Errorf("%w，请等待完成，或先用 %s 停止任务。", err, e.commandText("stop"))
-		}
-		return ctx, true, err
-	}
-	if result == nil {
-		return ctx, true, nil
-	}
-	if result.Text != "" {
-		// A command can invalidate its old session binding. Its result still
-		// belongs to the original conversation, independently of that activation.
-		globalevents.Notify(session.WithBinding(ctx, nil), globalevents.NewNotification(ctx, slog.LevelInfo, result.Text))
-	}
-	if result.Continuation != nil {
-		ctx, err := e.input.ContinueCommandInput(ctx, *result.Continuation)
-		return ctx, true, err
+		return next, true, nextErr
 	}
 	return ctx, true, nil
+}
+
+func (e *CommandExecutor) execute(ctx context.Context, text string, parsed command.Parsed, info command.Info, known bool, riskName string) (context.Context, *command.Result, bool, error) {
+	actor, _ := contextinfo.ActorFromContext(ctx)
+	if known && !command.CanAccess(info, actor) {
+		content, _ := json.Marshal(map[string]any{"actor": actor, "command": text, "reason": "slash_command_requires_superadmin"})
+		record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelWarn, EventName: "permission_denied", Module: "command", Type: globalevents.ContentJSON, Content: string(content), ContentLimit: 4096, ResultStatus: globalevents.ResultRejected}
+		record.Identity = globalevents.LogIdentityFromContext(ctx)
+		globalevents.Log(ctx, record)
+		return ctx, nil, true, &command.Error{Kind: command.ErrorRejected, Code: command.CodePermissionDenied, Message: fmt.Sprintf("%s%s: superadmin required", parsed.Prefix, parsed.Name)}
+	}
+	row, binding, err := e.sessions.CurrentBound(ctx, e.identity.Scope(ctx))
+	if err != nil && !errors.Is(err, session.ErrNoCurrentSession) {
+		return ctx, nil, true, err
+	}
+	snapshot := turn.Snapshot{Phase: turn.PhaseIdle}
+	if err == nil {
+		ctx = session.WithBinding(ctx, binding)
+		snapshot = e.turns.Snapshot(row.ID)
+	}
+	appendResponse := text
+	if riskName == "confirm" {
+		appendResponse = "y"
+	} else if riskName == "reject" {
+		appendResponse = "n"
+	}
+	if row != nil && snapshot.Phase == turn.PhaseAwaitAppendConfirm && (agentshare.IsAppendConfirm(appendResponse) || agentshare.IsAppendCancel(appendResponse)) {
+		next, err := e.execution.ResumeAppend(ctx, row, appendResponse)
+		if err != nil {
+			if errors.Is(err, agentshare.ErrConfirmationExpired) {
+				err = &command.Error{Kind: command.ErrorRejected, Code: command.CodeConfirmationExpired, Message: err.Error(), Cause: err}
+			}
+			return next, nil, true, err
+		}
+		reply := "追加输入已处理"
+		if agentshare.IsAppendCancel(appendResponse) {
+			reply = "追加输入已取消"
+		}
+		return next, &command.Result{Kind: command.ResultKindText, Text: reply}, true, nil
+	}
+	if !parsed.OK {
+		return ctx, nil, false, nil
+	}
+	if row != nil && snapshot.Phase == turn.PhaseAwaitRiskConfirm && riskName != "" {
+		result, err := e.confirmations.SubmitResponse(ctx, row.ID, text)
+		return ctx, result, true, err
+	}
+	if !known {
+		if riskName != "" {
+			return ctx, nil, true, &command.Error{Kind: command.ErrorRejected, Code: command.CodeConfirmationExpired, Message: "当前没有待处理的风险确认"}
+		}
+		result, err := e.router.Dispatch(ctx, text)
+		return ctx, result, true, err
+	}
+	if row != nil && snapshot.Phase != turn.PhaseIdle && blocksDuringActiveTurn(info.SessionEffect) {
+		return ctx, nil, true, &command.Error{Kind: command.ErrorRejected, Code: command.CodeSessionBusy, Message: fmt.Sprintf("%v，请等待完成，或先用 %s 停止任务后再切换。", session.ErrSessionBusy, e.commandText("stop")), Cause: session.ErrSessionBusy}
+	}
+	if row != nil && e.execution.CompactActive(row.ID) && blocksDuringCompact(info.SessionEffect) {
+		return ctx, nil, true, &command.Error{Kind: command.ErrorRejected, Code: command.CodeSessionBusy, Message: compactCommandBlockedText(text, e.commandText), Cause: session.ErrSessionBusy}
+	}
+	if parsed.Name == "tools" {
+		prepared, err := e.execution.ModelContext(ctx, row)
+		if err != nil {
+			return ctx, nil, true, err
+		}
+		ctx = prepared
+	}
+	result, err := e.router.Dispatch(ctx, text)
+	return ctx, result, true, err
+}
+
+func (e *CommandExecutor) logFailure(ctx context.Context, event string, err error) {
+	level := slog.LevelWarn
+	if errors.Is(err, context.Canceled) {
+		level = slog.LevelInfo
+	}
+	content := err.Error()
+	var failure *command.Error
+	if errors.As(err, &failure) && failure.Cause != nil {
+		content += ": " + failure.Cause.Error()
+	}
+	record := globalevents.LogRecord{Category: globalevents.LogRuntime, Level: level, EventName: event, Module: "command", Content: content, ContentLimit: 4096, ResultStatus: globalevents.LogStatus(err)}
+	record.Identity = globalevents.LogIdentityFromContext(ctx)
+	if failure != nil && (failure.Kind == command.ErrorInput || failure.Kind == command.ErrorRejected) {
+		record.ResultStatus = globalevents.ResultRejected
+	}
+	globalevents.Log(context.WithoutCancel(ctx), record)
 }
 
 func blocksDuringActiveTurn(effect command.SessionEffect) bool {
@@ -144,11 +191,12 @@ type CommandExecution interface {
 }
 
 type CommandOutput interface {
-	Send(context.Context, delivery.StreamEvent) (delivery.Receipt, error)
+	SendCommandResult(context.Context, string, *command.Result, *command.Error) (delivery.Receipt, error)
 }
 
 type CommandConfirmations interface {
-	SubmitResponse(context.Context, string, string) error
+	CommandInfo(string) (command.Info, bool)
+	SubmitResponse(context.Context, string, string) (*command.Result, error)
 }
 
 type CommandInput interface {
@@ -157,9 +205,8 @@ type CommandInput interface {
 
 // CommandExecutorDeps declares only the capabilities consumed by CommandExecutor.
 type CommandExecutorDeps struct {
-	CommandText               func(string, ...string) string // 根部绑定配置首个前缀的命令组装能力。
-	IsRiskConfirmationCommand func(string) bool
-	Router                    interface {
+	CommandText func(string, ...string) string // 根部绑定配置首个前缀的命令组装能力。
+	Router      interface {
 		IsCommand(string) bool
 		Parse(string) command.Parsed
 		CommandInfo(string) (command.Info, bool)
@@ -183,16 +230,15 @@ type CommandExecutorDeps struct {
 // NewCommandExecutor initializes CommandExecutor without installing cross-service callbacks.
 func NewCommandExecutor(deps CommandExecutorDeps) *CommandExecutor {
 	return &CommandExecutor{
-		commandText:               deps.CommandText,
-		router:                    deps.Router,
-		IsRiskConfirmationCommand: deps.IsRiskConfirmationCommand,
-		sessions:                  deps.Sessions,
-		turns:                     deps.Turns,
-		identity:                  deps.Identity,
-		execution:                 deps.Execution,
-		output:                    deps.Output,
-		confirmations:             deps.Confirmations,
-		input:                     deps.Input,
+		commandText:   deps.CommandText,
+		router:        deps.Router,
+		sessions:      deps.Sessions,
+		turns:         deps.Turns,
+		identity:      deps.Identity,
+		execution:     deps.Execution,
+		output:        deps.Output,
+		confirmations: deps.Confirmations,
+		input:         deps.Input,
 	}
 }
 

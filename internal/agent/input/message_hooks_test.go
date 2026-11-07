@@ -71,7 +71,7 @@ func TestInboundCallbackOutputPrecedesConsumeAndDispatch(t *testing.T) {
 					return agentshare.PlatformMessageReceivedResult{Segments: llm.TextSegments("edited"), Consume: consume, Outputs: []delivery.Output{delivery.Text("extra")}}, nil
 				},
 			})
-			if _, err := h.HandleMessage(t.Context(), "original"); err != nil {
+			if _, _, err := h.HandleMessage(t.Context(), "original"); err != nil {
 				t.Fatal(err)
 			}
 			want := []string{"route?", "received", "outputs"}
@@ -113,7 +113,7 @@ func TestWaitingInputPreparesMediaWithoutRecomputingWakeup(t *testing.T) {
 		TriggerKeywords: []string{"wake"}, ResolveMedia: resolver.ResolveMedia,
 		Segments: []agentshare.MessageSegment{{Type: "image", Media: media.PlatformMedia{Type: "image", PlatformFileID: "image"}}},
 	})
-	if _, err := h.HandleMessage(ctx, "original"); err != nil {
+	if _, _, err := h.HandleMessage(ctx, "original"); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.order) != 0 {
@@ -144,7 +144,7 @@ func TestCancelRouteBeforeAndAfterMessageRewrite(t *testing.T) {
 				text = "/cancel"
 				want = []string{"cancel", "chat"}
 			}
-			if _, err := h.HandleMessage(t.Context(), text); err != nil {
+			if _, _, err := h.HandleMessage(t.Context(), text); err != nil {
 				t.Fatal(err)
 			}
 			if !reflect.DeepEqual(p.order, want) {

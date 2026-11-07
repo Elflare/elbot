@@ -421,7 +421,7 @@ func (m *Manager) Start(id string) error {
 	}
 	worker := m.worker(id)
 	if worker == nil {
-		return fmt.Errorf("persistent hook %q not found", id)
+		return fmt.Errorf("persistent hook %q not found: %w", id, share.ErrHookNotFound)
 	}
 	if err := worker.start(); err != nil {
 		return err
@@ -441,7 +441,7 @@ func (m *Manager) Stop(ctx context.Context, id string) (bool, error) {
 	config, ok := m.configs[id]
 	if !ok || config.ModeOrOnce() != share.RuntimeModeTransient {
 		m.mu.Unlock()
-		return false, fmt.Errorf("hook worker %q not found", id)
+		return false, fmt.Errorf("hook worker %q not found: %w", id, share.ErrHookNotFound)
 	}
 	workers := make([]*worker, 0)
 	for key, transient := range m.transient {

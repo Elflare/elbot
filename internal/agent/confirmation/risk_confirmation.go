@@ -11,6 +11,7 @@ import (
 
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/command"
+	"elbot/internal/delivery"
 	"elbot/internal/turn"
 )
 
@@ -210,19 +211,33 @@ func RiskConfirmationCommandNames() []string {
 	return names
 }
 
-func isRiskConfirmationCommandName(name string) bool {
-	name = strings.TrimSpace(name)
-	for _, candidate := range RiskConfirmationCommandNames() {
-		if name == candidate {
-			return true
+// CommandInfo 返回风险确认命令的规范名称，别名只在此处定义一次。
+func (c *ConfirmationCoordinator) CommandInfo(text string) (command.Info, bool) {
+	parsed := c.commands.Parse(text)
+	if !parsed.OK {
+		return command.Info{}, false
+	}
+	for _, item := range riskConfirmationCommands() {
+		if parsed.Name == item.Name {
+			return command.Info{Name: item.Name, Aliases: item.Aliases, Args: item.Args, Description: item.Description}, true
+		}
+		for _, alias := range item.Aliases {
+			if parsed.Name == alias {
+				return command.Info{Name: item.Name, Aliases: item.Aliases, Args: item.Args, Description: item.Description}, true
+			}
 		}
 	}
-	return false
+	return command.Info{}, false
 }
 
-func IsRiskConfirmationCommand(text string, router interface {
-	Parse(string) command.Parsed
-}) bool {
-	parsed := router.Parse(text)
-	return parsed.OK && isRiskConfirmationCommandName(parsed.Name)
+func confirmationExpired() *command.Error {
+	return &command.Error{Kind: command.ErrorRejected, Code: command.CodeConfirmationExpired, Message: "确认已失效，请查看当前状态"}
+}
+
+func riskConfirmationActions(commandText func(string, ...string) string) *delivery.Confirmation {
+	presentation := &delivery.Confirmation{Actions: []delivery.Action{}}
+	for _, item := range riskConfirmationCommands() {
+		presentation.Actions = append(presentation.Actions, delivery.Action{ID: item.Name, Label: item.Description, Command: commandText(item.Name)})
+	}
+	return presentation
 }

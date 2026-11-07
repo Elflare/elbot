@@ -37,7 +37,7 @@ type MessageHandler struct {
 }
 
 // HandleMessage dispatches commands and chat messages.
-func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (context.Context, error) {
+func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (context.Context, bool, error) {
 	actor := h.identity.Actor(ctx)
 	ctx = contextinfo.WithActor(ctx, actor)
 	segments := agentshare.InboundSegments(ctx, text)
@@ -47,14 +47,14 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (contex
 	if strings.TrimSpace(llm.SegmentsTextOnly(segments)) == "/cancel" {
 		if h.hooks.CancelRoute(ctx, message) {
 			_, err := h.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "Hook canceled"})
-			return ctx, err
+			return ctx, false, err
 		}
 	}
 	waiting := h.hooks.HasRoute(ctx, message)
 	if woken || waiting {
 		prepared, err := h.materializePlatformMedia(ctx)
 		if err != nil {
-			return ctx, err
+			return ctx, false, err
 		}
 		ctx = prepared
 		segments = agentshare.InboundSegments(ctx, text)
@@ -62,15 +62,15 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (contex
 	}
 	result, err := h.hooks.PlatformMessageReceived(ctx, message)
 	if err != nil {
-		return ctx, err
+		return ctx, false, err
 	}
 	if len(result.Outputs) > 0 {
 		if _, err := h.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: result.Outputs}); err != nil {
-			return ctx, err
+			return ctx, false, err
 		}
 	}
 	if result.Consume {
-		return ctx, nil
+		return ctx, false, nil
 	}
 	hookChangedSegments := !reflect.DeepEqual(result.Segments, segments)
 	if hookChangedSegments {
@@ -83,19 +83,20 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (contex
 	message.Segments = result.Segments
 	if strings.TrimSpace(text) == "/cancel" && h.hooks.CancelRoute(ctx, message) {
 		_, err := h.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "Hook canceled"})
-		return ctx, err
+		return ctx, false, err
 	}
 	if !woken {
-		return ctx, nil
+		return ctx, false, nil
 	}
 	text = agentshare.StripWakeupPrefix(ctx, text)
 	segments = agentshare.ReplaceInboundTextSegments(ctx, text)
 	ctx = agentshare.WithInboundSegments(ctx, segments)
 	ctx, handled, err := h.commands.Handle(ctx, text)
 	if handled {
-		return ctx, err
+		return ctx, true, err
 	}
-	return h.input.HandleInput(ctx, text)
+	next, err := h.input.HandleInput(ctx, text)
+	return next, false, err
 }
 
 type MessageIdentity interface {

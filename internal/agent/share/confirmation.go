@@ -2,6 +2,7 @@ package share
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -35,3 +36,6 @@ func ConfirmationWaitDurationText(timeout time.Duration) string {
 	}
 	return timeout.String()
 }
+
+// ErrConfirmationExpired 表示输入控制对应的等待已结束，不能再接受该决定。
+var ErrConfirmationExpired = errors.New("确认已失效")

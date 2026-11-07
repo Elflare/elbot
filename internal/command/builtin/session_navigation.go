@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -27,10 +28,7 @@ func NewSessions(deps Deps) command.Handler {
 			return nil, err
 		}
 		deps.SessionState.set(deps.Scope(ctx), sessions)
-		if len(sessions) == 0 {
-			return &command.Result{Kind: command.ResultKindText, Text: "nil"}, nil
-		}
-		return &command.Result{Kind: command.ResultKindText, Text: formatSessionsPage(sessions, currentSessionID(ctx, deps), page, query, hasNext, deps.CommandText, "sessions")}, nil
+		return sessionsResult(sessions, currentSessionID(ctx, deps), page, sessionPageSize(deps), query, hasNext, formatSessionsPage(sessions, currentSessionID(ctx, deps), page, query, hasNext, deps.CommandText, "sessions")), nil
 	})
 }
 
@@ -51,7 +49,7 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 	if strings.HasPrefix(arg, "--page") {
 		page, err := parseResumePageArg(arg)
 		if err != nil {
-			return nil, fmt.Errorf("%v\n%s", err, deps.CommandText("resume", "--page", "<page>"))
+			return nil, err
 		}
 		return resumePage(ctx, deps, page)
 	}
@@ -61,14 +59,14 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 	sessionID := arg
 	if idx, err := strconv.Atoi(arg); err == nil {
 		if idx < 1 {
-			return nil, fmt.Errorf("session index must be a positive number")
+			return nil, inputError(fmt.Errorf("session index must be a positive number"))
 		}
 		sessions, err := deps.Sessions.ListResumablePage(ctx, deps.Scope(ctx), 1, idx-1)
 		if err != nil {
 			return nil, err
 		}
 		if len(sessions) == 0 {
-			return nil, fmt.Errorf("session index %d out of range", idx)
+			return nil, inputError(fmt.Errorf("session index %d out of range", idx))
 		}
 		sessionID = sessions[0].ID
 	}
@@ -87,7 +85,7 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	record.Identity.SessionID = session.ID
 	globalevents.Log(ctx, record)
-	return &command.Result{Kind: command.ResultKindText, Text: formatResumeResult(ctx, deps, session)}, nil
+	return sessionChange(ctx, deps, session, session.ID, 1, formatResumeResult(ctx, deps, session)), nil
 }
 
 func resumePage(ctx context.Context, deps Deps, page int) (*command.Result, error) {
@@ -96,10 +94,7 @@ func resumePage(ctx context.Context, deps Deps, page int) (*command.Result, erro
 	if err != nil {
 		return nil, err
 	}
-	if len(sessions) == 0 {
-		return &command.Result{Kind: command.ResultKindText, Text: "nil"}, nil
-	}
-	return &command.Result{Kind: command.ResultKindText, Text: formatResumableSessionsPage(sessions, page, pageSize, hasNext, deps.CommandText)}, nil
+	return sessionsResult(sessions, currentSessionID(ctx, deps), page, pageSize, "", hasNext, formatResumableSessionsPage(sessions, page, pageSize, hasNext, deps.CommandText)), nil
 }
 
 func (c resumeCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -135,23 +130,20 @@ func NewArchives(deps Deps) command.Handler {
 			return nil, err
 		}
 		deps.SessionState.set(deps.Scope(ctx), sessions)
-		if len(sessions) == 0 {
-			return &command.Result{Kind: command.ResultKindText, Text: "nil"}, nil
-		}
-		return &command.Result{Kind: command.ResultKindText, Text: formatSessionsPage(sessions, currentSessionID(ctx, deps), page, query, hasNext, deps.CommandText, "archives")}, nil
+		return sessionsResult(sessions, currentSessionID(ctx, deps), page, sessionPageSize(deps), query, hasNext, formatSessionsPage(sessions, currentSessionID(ctx, deps), page, query, hasNext, deps.CommandText, "archives")), nil
 	})
 }
 
 func NewMessages(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name: "messages", Args: "[page]", Description: "当前会话的用户与助手消息", MinRole: contextinfo.RoleUser,
-		Help: "page≥1，默认1；仅 bot 消息显示 ID，可用于 " + deps.CommandText("fork"),
+		Help: "page≥1，默认最新页；页码越大越早，页内旧到新；bot 消息 ID 可用于 " + deps.CommandText("fork"),
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page := 1
 		if arg := strings.TrimSpace(req.Args); arg != "" {
 			parsed, err := strconv.Atoi(arg)
 			if err != nil || parsed < 1 {
-				return nil, fmt.Errorf("page must be a positive number")
+				return nil, inputError(fmt.Errorf("page must be a positive number"))
 			}
 			page = parsed
 		}
@@ -159,19 +151,35 @@ func NewMessages(deps Deps) command.Handler {
 		if err != nil {
 			return nil, err
 		}
-		loaded, err := (contextmgr.Loader{Store: deps.Store}).Load(ctx, session.ID)
+
+		loaded, err := (contextmgr.Loader{Store: deps.Store}).LoadMessagePage(ctx, session.ID, page, messageListPageSize)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, err
+			}
+			return nil, &command.Error{Kind: command.ErrorInternal, Code: "history_read_failed", Message: "读取会话历史失败", Cause: err}
+		}
+		if page > max(1, loaded.TotalPages) {
+			return nil, inputError(fmt.Errorf("page %d out of range; available pages: 1-%d", page, max(1, loaded.TotalPages)))
+		}
+		items, err := messageData(loaded.Messages)
 		if err != nil {
 			return nil, err
 		}
-		messages := conversationMessages(loaded.Messages)
-		if len(messages) == 0 {
-			return &command.Result{Kind: command.ResultKindText, Text: "nil"}, nil
+		var body strings.Builder
+		fmt.Fprintf(&body, "page=%d/%d\n", page, loaded.TotalPages)
+		for _, message := range loaded.Messages {
+			if message.Role == "assistant" {
+				fmt.Fprintf(&body, "bot: [%s] %s\n", message.ID, messagePreview(message.Content))
+			} else {
+				fmt.Fprintf(&body, "user: %s\n", messagePreview(message.Content))
+			}
 		}
-		content, err := formatMessagePage(messages, page, messageListPageSize)
-		if err != nil {
-			return nil, err
+		content := trimTrailingNewlines(body.String())
+		if len(items) == 0 {
+			content = "nil"
 		}
-		return &command.Result{Kind: command.ResultKindText, Text: content}, nil
+		return &command.Result{Kind: command.ResultKindMessages, Text: content, Data: command.MessagesData{Page: command.Page{Page: page, PageSize: messageListPageSize, HasNext: page < loaded.TotalPages, TotalPages: &loaded.TotalPages}, SessionID: session.ID, Items: items}}, nil
 	})
 }
 
@@ -182,7 +190,7 @@ func NewFork(deps Deps) command.Handler {
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		messageID := strings.TrimSpace(req.Args)
 		if messageID == "" {
-			return nil, fmt.Errorf("usage: %s", deps.CommandText("fork", "<message_id>"))
+			return nil, inputError(fmt.Errorf("usage: %s", deps.CommandText("fork", "<message_id>")))
 		}
 		session, err := deps.Sessions.Fork(ctx, deps.Scope(ctx), messageID)
 		if err != nil {
@@ -197,6 +205,6 @@ func NewFork(deps Deps) command.Handler {
 			Identity:     globalevents.LogIdentity{SessionID: session.ID},
 			ResultStatus: globalevents.ResultSucceeded,
 		})
-		return &command.Result{Kind: command.ResultKindText, Text: formatForkResult(ctx, deps, session)}, nil
+		return sessionChange(ctx, deps, session, session.ID, 1, formatForkResult(ctx, deps, session)), nil
 	})
 }

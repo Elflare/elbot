@@ -3,6 +3,7 @@ package builtin
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"errors"
 	"sync"
 	"testing"
 
@@ -60,11 +61,8 @@ func TestChatCommandDoesNotContinueWhenHistoryBlocksSwitch(t *testing.T) {
 		t.Fatalf("Append: %v", err)
 	}
 	result, err := NewChat(Deps{CommandText: testCommandText, Sessions: svc, Scope: func(context.Context) session.Scope { return scope }}).Handle(ctx, command.Request{Args: "do not send"})
-	if err != nil {
-		t.Fatalf("Handle: %v", err)
-	}
-	if result.Continuation != nil {
-		t.Fatalf("continuation = %#v", result.Continuation)
+	if result != nil || !errors.Is(err, session.ErrChatModeRequiresEmptySession) {
+		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
 
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
@@ -189,4 +190,19 @@ func TestAgentConstructionDoesNotSubscribeToModelRetries(t *testing.T) {
 	if err := deps.Store.Media().RecoverInterrupted(ctx); err != nil {
 		t.Fatal("borrowed storage closed", err)
 	}
+}
+
+func (p isolatedPlatformCapabilities) SendCommandResult(ctx context.Context, name string, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
+	var outputs []delivery.Output
+	if result != nil {
+		out := delivery.Text(result.Text)
+		if result.Confirmation != nil {
+			out.Actions = result.Confirmation.Actions
+		}
+		outputs = append(outputs, out)
+	}
+	if failure != nil {
+		outputs = append(outputs, delivery.Text(failure.Message))
+	}
+	return p.SendTo(ctx, delivery.Target{}, outputs)
 }

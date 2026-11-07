@@ -4,6 +4,8 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/testutil"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -17,122 +19,88 @@ import (
 	"elbot/internal/turn"
 )
 
-func TestFormatMessagePageIncludesConversationMessages(t *testing.T) {
-	messages := conversationMessages([]storage.Message{
-		{ID: "s1", Role: storage.RoleSystem, Content: "system prompt"},
-		{ID: "u1", Role: storage.RoleUser, Content: "question"},
-		{ID: "a1", Role: storage.RoleAssistant, Content: "answer one"},
-		{ID: "t1", Role: storage.RoleTool, Content: "tool output"},
-		{ID: "empty-user", Role: storage.RoleUser, Content: " \n\t"},
-		{ID: "empty-bot", Role: storage.RoleAssistant},
-		{ID: "u2", Role: storage.RoleUser, Content: "follow up"},
-		{ID: "a2", Role: storage.RoleAssistant, Content: "answer two"},
-	})
-	for _, tc := range []struct {
-		page int
-		want string
-	}{
-		{page: 1, want: "page=1/2\nuser: question\nbot: [a1] answer one"},
-		{page: 2, want: "page=2/2\nuser: follow up\nbot: [a2] answer two"},
-	} {
-		content, err := formatMessagePage(messages, tc.page, 2)
-		if err != nil {
-			t.Fatalf("formatMessagePage(%d): %v", tc.page, err)
-		}
-		if content != tc.want {
-			t.Fatalf("page %d = %q, want %q", tc.page, content, tc.want)
-		}
-	}
-	for _, page := range []int{0, 3} {
-		if _, err := formatMessagePage(messages, page, 2); err == nil {
-			t.Fatalf("expected out-of-range error for page %d", page)
-		}
-	}
-}
-
-func TestMessagesTruncateOnlyWhenFormatting(t *testing.T) {
-	text := " \t" + strings.Repeat("中😀", 21) + "\n尾 "
-	source := []storage.Message{
-		{ID: "u1", Role: storage.RoleUser, Content: text},
-		{ID: "a1", Role: storage.RoleAssistant, Content: text},
-	}
-	messages := conversationMessages(source)
-	if len(messages) != len(source) {
-		t.Fatalf("messages = %v", messages)
-	}
-	for _, message := range messages {
-		if message.Content != text {
-			t.Fatalf("filter changed content: %q", message.Content)
-		}
-	}
-	content, err := formatMessagePage(messages, 1, messageListPageSize)
+func TestMessagesKeepFullTextAndReturnLatestPage(t *testing.T) {
+	ctx := t.Context()
+	store := newCommandTestStore(t)
+	svc := newSessionSupervisor(t, store)
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+	row, err := svc.Create(ctx, scope, session.CreateRequest{Title: "history"})
 	if err != nil {
-		t.Fatalf("formatMessagePage: %v", err)
+		t.Fatal(err)
 	}
-	preview := strings.Repeat("中😀", 20) + "..."
-	want := "page=1/1\nuser: " + preview + "\nbot: [a1] " + preview
-	if content != want {
-		t.Fatalf("content = %q, want %q", content, want)
+	text := "  " + strings.Repeat("中😀", 30) + "\n尾 "
+	fixed := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 25; i++ {
+		role := storage.RoleUser
+		if i%2 == 1 {
+			role = storage.RoleAssistant
+		}
+		m := storage.Message{ID: fmt.Sprintf("m-%d", i), SessionID: row.ID, Role: role, Content: text, CreatedAt: fixed}
+		if err := store.Messages().Append(ctx, &m); err != nil {
+			t.Fatal(err)
+		}
 	}
-	for i := range source {
-		if source[i].Content != text || messages[i].Content != text {
-			t.Fatalf("formatting changed message %d", i)
+	handler := NewMessages(Deps{CommandText: testCommandText, Sessions: svc, Store: store, Scope: func(context.Context) session.Scope { return scope }})
+	for _, tc := range []struct {
+		args        string
+		page, count int
+		first, last string
+	}{{"", 1, 20, "m-5", "m-24"}, {"2", 2, 5, "m-0", "m-4"}} {
+		result, err := handler.Handle(ctx, command.Request{Args: tc.args})
+		if err != nil {
+			t.Fatal(err)
+		}
+		data := result.Data.(command.MessagesData)
+		if result.Kind != command.ResultKindMessages || data.Page.Page != tc.page || *data.TotalPages != 2 || len(data.Items) != tc.count || data.Items[0].ID != tc.first || data.Items[len(data.Items)-1].ID != tc.last {
+			t.Fatalf("page=%+v", data)
+		}
+		for _, m := range data.Items {
+			if m.Content != text {
+				t.Fatalf("body was truncated: %q", m.Content)
+			}
+		}
+		if strings.Contains(result.Text, text) {
+			t.Fatal("text preview should remain compact")
+		}
+	}
+	for _, args := range []string{"0", "3", "x"} {
+		_, err := handler.Handle(ctx, command.Request{Args: args})
+		var failure *command.Error
+		if !errors.As(err, &failure) || failure.Kind != command.ErrorInput {
+			t.Fatalf("args=%s err=%v", args, err)
 		}
 	}
 }
 
-func TestMessagesHandlesEmptyAndUserOnlySessions(t *testing.T) {
-	for _, tc := range []struct {
-		name     string
-		messages []storage.Message
-		want     string
-	}{
-		{name: "empty", want: "nil"},
-		{
-			name: "blank messages",
-			messages: []storage.Message{
-				{Role: storage.RoleUser, Content: " \n\t"},
-				{Role: storage.RoleAssistant, Content: " "},
-			},
-			want: "nil",
-		},
-		{
-			name:     "user only",
-			messages: []storage.Message{{Role: storage.RoleUser, Content: "question"}},
-			want:     "page=1/1\nuser: question",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx := context.Background()
-			store := newCommandTestStore(t)
-			svc := newSessionSupervisor(t, store)
-			scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
-			row, err := svc.Create(ctx, scope, session.CreateRequest{})
-			if err != nil {
-				t.Fatalf("create session: %v", err)
-			}
-			for _, message := range tc.messages {
-				message.ID = storage.NewID()
-				message.SessionID = row.ID
-				if err := store.Messages().Append(ctx, &message); err != nil {
-					t.Fatalf("append message: %v", err)
-				}
-			}
-			deps := Deps{
-				CommandText: testCommandText,
-				Sessions:    svc,
-				Store:       store,
-				Scope:       func(context.Context) session.Scope { return scope },
-			}
-			result, err := NewMessages(deps).Handle(ctx, command.Request{})
-			if err != nil {
-				t.Fatalf("messages handle: %v", err)
-			}
-			if result.Text != tc.want {
-				t.Fatalf("content = %q, want %q", result.Text, tc.want)
-			}
-		})
+func TestMessagesEmptyHistoryIsStructured(t *testing.T) {
+	store := newCommandTestStore(t)
+	svc := newSessionSupervisor(t, store)
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private", IsCLI: true}
+	row, err := svc.Create(t.Context(), scope, session.CreateRequest{})
+	if err != nil {
+		t.Fatal(err)
 	}
+	result, err := NewMessages(Deps{CommandText: testCommandText, Sessions: svc, Store: store, Scope: func(context.Context) session.Scope { return scope }}).Handle(t.Context(), command.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := result.Data.(command.MessagesData)
+	if data.SessionID != row.ID || data.Items == nil || len(data.Items) != 0 || *data.TotalPages != 0 {
+		t.Fatalf("data=%+v", data)
+	}
+	m := storage.Message{ID: "attachment", SessionID: row.ID, Role: storage.RoleUser, Segments: `[{"type":"file","name":"note.txt"}]`}
+	if err := store.Messages().Append(t.Context(), &m); err != nil {
+		t.Fatal(err)
+	}
+	result, err = NewMessages(Deps{CommandText: testCommandText, Sessions: svc, Store: store, Scope: func(context.Context) session.Scope { return scope }}).Handle(t.Context(), command.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = result.Data.(command.MessagesData)
+	if len(data.Items) != 1 || len(data.Items[0].Attachments) != 1 || data.Items[0].Attachments[0].Name != "note.txt" {
+		t.Fatalf("data=%+v", data)
+	}
+
 }
 
 func TestMessagePreviewTruncatesAndFlattensWhitespace(t *testing.T) {

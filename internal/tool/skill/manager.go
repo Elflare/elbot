@@ -154,7 +154,7 @@ func (m *Manager) Remove(ctx context.Context, name string) (err error) {
 	}
 	record, ok := m.catalog.Get(name)
 	if !ok {
-		return fmt.Errorf("external skill %q not found", name)
+		return fmt.Errorf("external skill %q not found: %w", name, toolshare.ErrSkillNotFound)
 	}
 	if record.Root == "" {
 		return fmt.Errorf("external skill %q has no root directory", name)

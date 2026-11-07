@@ -150,7 +150,7 @@ func (c *RemoteClient) run(ctx context.Context, display func(context.Context) er
 }
 
 func (c *RemoteClient) HandleMessage(ctx context.Context, text string) error {
-	return c.write(ctx, remoteMessage{Type: remoteMsgInput, Text: text})
+	return c.write(ctx, remoteMessage{Type: remoteMsgInput, ID: fmt.Sprintf("i-%d", c.seq.Add(1)), Text: text})
 }
 
 func (c *RemoteClient) Complete(ctx context.Context, req completion.Request) ([]completion.Item, error) {
@@ -196,6 +196,13 @@ func (c *RemoteClient) readLoop(ctx context.Context) error {
 
 func (c *RemoteClient) handleServerMessage(msg remoteMessage) {
 	switch msg.Type {
+	case remoteMsgCommandResult:
+		if msg.Result != nil && msg.Result.Text != "" {
+			c.sendDisplay(clishare.DisplayEvent{Kind: clishare.DisplayChat, Text: msg.Result.Text})
+		}
+		if msg.Error != nil {
+			c.sendDisplay(clishare.DisplayEvent{Kind: clishare.DisplayNotice, Text: msg.Error.Message, Level: slog.LevelError.String()})
+		}
 	case remoteMsgChat:
 		c.sendDisplay(clishare.DisplayEvent{Kind: clishare.DisplayChat, Text: msg.Text})
 	case remoteMsgNotice:

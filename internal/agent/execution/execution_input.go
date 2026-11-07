@@ -37,7 +37,7 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Se
 			snapshot := c.turns.Snapshot(row.ID)
 			if snapshot.Phase != turn.PhaseAwaitAppendConfirm {
 				release()
-				return ctx, nil
+				return ctx, agentshare.ErrConfirmationExpired
 			}
 			if snapshot.AttemptDone != nil {
 				release()
@@ -50,16 +50,19 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Se
 			ctx = turn.WithExecution(locked, execution)
 			if !ok || (merged.Text == "" && len(merged.Segments) == 0) {
 				release()
-				return ctx, nil
+				return ctx, agentshare.ErrConfirmationExpired
 			}
 			ctx = agentshare.WithInboundTurnInput(ctx, merged)
 			release()
 			return c.Run(ctx, row, merged.Text, foregroundTurnOutput{ExecutionSender: c.output})
 		case agentshare.IsAppendCancel(text):
+			if c.turns.Snapshot(row.ID).Phase != turn.PhaseAwaitAppendConfirm {
+				release()
+				return ctx, agentshare.ErrConfirmationExpired
+			}
 			c.turns.CancelAppend(row.ID)
 			release()
-			_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "append canceled · stopping"})
-			return ctx, err
+			return ctx, nil
 		default:
 			c.turns.AppendPendingInput(row.ID, agentshare.InboundTurnInput(ctx, text))
 			release()
@@ -119,6 +122,9 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 		case turn.PhaseAwaitAppendConfirm:
 			release()
 			ctx, err := c.ResumeAppend(ctx, session, text)
+			if err == nil && agentshare.IsAppendCancel(text) {
+				_, err = c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "append canceled · stopping"})
+			}
 			return ctx, agentshare.InputHandled, err
 		case turn.PhaseLLM:
 			waitCtx, finishWait, accepted := c.appendWaits.begin(ctx)
@@ -135,7 +141,8 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 			c.requests.CancelSession(session.ID)
 			release()
 			timeout := c.waitPolicy.WaitTimeout(ctx)
-			_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: appendConfirmPromptText(timeout)})
+			presentation := c.appendConfirmation
+			_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: appendConfirmPromptText(timeout), Actions: presentation.Actions})
 			go func() {
 				defer finishWait()
 				defer c.sessionIdle(waitCtx, session.ID)

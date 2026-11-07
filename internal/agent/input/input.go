@@ -145,7 +145,16 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 		return ctx, err
 	}
 	if disposition == agentshare.InputRiskConfirmation {
-		return ctx, c.confirmations.SubmitResponse(ctx, session.ID, text)
+		result, err := c.confirmations.SubmitResponse(ctx, session.ID, text)
+		if err != nil {
+			return ctx, err
+		}
+		event := delivery.StreamEvent{Type: delivery.StreamSend, Text: result.Text}
+		if result.Confirmation != nil {
+			event.Actions = result.Confirmation.Actions
+		}
+		_, err = c.output.Send(ctx, event)
+		return ctx, err
 	}
 	return ctx, nil
 }

@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	command "elbot/internal/command/share"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -251,4 +252,20 @@ func formatLogDuration(ms int64) string {
 		return fmt.Sprintf("%dms", ms)
 	}
 	return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%d.%03d", ms/1000, ms%1000), "0"), ".") + "s"
+}
+
+func logData(rows []logging.LogEntry, raw bool) []command.LogData {
+	out := make([]command.LogData, 0, len(rows))
+	for _, e := range rows {
+		content := json.RawMessage(e.Content)
+		if e.Type != events.ContentJSON {
+			content, _ = json.Marshal(e.Content)
+		}
+		item := command.LogData{Time: e.Time, Category: e.Category, Level: e.Level, EventName: e.EventName, Module: e.Module, Type: e.Type, Content: content, Identity: command.LogIdentityData{SessionID: e.Identity.SessionID, RunID: e.Identity.RunID, Attempt: e.Identity.Attempt, RequestID: e.Identity.RequestID, RootRequestID: e.Identity.RootRequestID}, ResultStatus: e.ResultStatus}
+		if raw {
+			item.Raw = e.Raw
+		}
+		out = append(out, item)
+	}
+	return out
 }

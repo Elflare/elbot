@@ -18,6 +18,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 
+	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -226,6 +227,7 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler platform
 			defer s.releaseFiles(ctx, files)
 			input, _ := platformshare.MessageContextFrom(ctx)
 			input.RawText = msg.Text
+			input.CommandReply = remoteCommandReply{client: client, requestID: msg.ID}
 			text, input.Segments, err = s.prepareInputFiles(ctx, text, files)
 			if err != nil {
 				s.inputMediaError(ctx, client, msg.ID, err)
@@ -477,4 +479,16 @@ func outputMessage(kind string, out delivery.Output) remoteMessage {
 		text = delivery.FallbackText(out)
 	}
 	return remoteMessage{Type: kind, Text: text}
+}
+
+type remoteCommandReply struct {
+	client    *remoteClientConn
+	requestID string
+}
+
+func (r remoteCommandReply) SendCommandResult(ctx context.Context, name string, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
+	writeCtx, cancel := context.WithTimeout(ctx, remoteWriteTimeout)
+	defer cancel()
+	err := wsjson.Write(writeCtx, r.client.conn, commandResultMessage{Type: remoteMsgCommandResult, RequestID: r.requestID, Command: name, Result: result, Error: failure})
+	return delivery.Receipt{}, err
 }

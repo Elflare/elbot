@@ -5,6 +5,7 @@ package remote
 import (
 	"time"
 
+	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/delivery"
 	runtimestatus "elbot/internal/runtime"
@@ -18,6 +19,7 @@ const (
 	remoteMsgComplete       = "complete"
 	remoteMsgCompleteResult = "complete_result"
 	remoteMsgChat           = "chat"
+	remoteMsgCommandResult  = "command_result"
 	remoteMsgAttachment     = "attachment"
 	remoteMsgNotice         = "notice"
 	remoteMsgStatus         = "status"
@@ -27,6 +29,10 @@ const (
 )
 
 type remoteMessage struct {
+	RequestID  string                 `json:"request_id,omitempty"`
+	Command    string                 `json:"command,omitempty"`
+	Result     *command.Result        `json:"result,omitempty"`
+	Error      *command.Error         `json:"error,omitempty"`
 	MediaToken string                 `json:"media_token,omitempty"` // 当前 WS 连接的 HTTP 附件凭据，仅 hello_ok 返回。
 	FileIDs    []string               `json:"file_ids,omitempty"`    // input 引用的当前连接附件，顺序即输入顺序。
 	Attachment *remoteAttachment      `json:"attachment,omitempty"`  // attachment 输出的下载描述。
@@ -50,4 +56,12 @@ type remoteAttachment struct {
 	MIMEType string `json:"mime_type"` // Media 归档后的内容类型。
 	Size     int64  `json:"size"`      // 归档后的实际字节数。
 	Kind     string `json:"kind"`      // image 或 file。
+}
+
+type commandResultMessage struct {
+	Type      string          `json:"type"`       // 结构化命令响应帧。
+	RequestID string          `json:"request_id"` // 发起输入的客户端关联 ID。
+	Command   string          `json:"command"`    // 规范命令名。
+	Result    *command.Result `json:"result"`     // 正常结果或部分结果。
+	Error     *command.Error  `json:"error"`      // 独立的执行失败。
 }

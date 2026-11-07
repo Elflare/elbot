@@ -152,15 +152,21 @@ func (s *ModelManager) SelectNamingModel(arg string) (ModelOption, error) {
 func (s *ModelManager) selectModelOption(arg string) (ModelOption, error) {
 	name := strings.TrimSpace(arg)
 	if name == "" {
-		return ModelOption{}, fmt.Errorf("usage: /model <name or number>")
+		return ModelOption{}, &SelectionError{Message: "usage: /model <name or number>"}
 	}
-	models := s.ModelList("", ModelListOptions{}).Options
+	catalog := s.ModelList("", ModelListOptions{})
+	models := catalog.Options
 	if len(models) == 0 {
-		return ModelOption{}, fmt.Errorf("no models available")
+		for _, failure := range catalog.Errors {
+			if failure.Err != nil {
+				return ModelOption{}, fmt.Errorf("load model catalog %s: %w", failure.Provider, failure.Err)
+			}
+		}
+		return ModelOption{}, &SelectionError{Message: "no models available"}
 	}
 	if idx, err := strconv.Atoi(name); err == nil {
 		if idx < 1 || idx > len(models) {
-			return ModelOption{}, fmt.Errorf("model index %d out of range [1-%d]", idx, len(models))
+			return ModelOption{}, &SelectionError{Message: fmt.Sprintf("model index %d out of range [1-%d]", idx, len(models))}
 		}
 		return models[idx-1], nil
 	}
@@ -182,11 +188,18 @@ func (s *ModelManager) selectModelOption(arg string) (ModelOption, error) {
 		return matches[0], nil
 	}
 	if len(matches) == 0 {
-		return ModelOption{}, fmt.Errorf("model %q not found", name)
+		return ModelOption{}, &SelectionError{Message: fmt.Sprintf("model %q not found", name)}
 	}
 	parts := make([]string, len(matches))
 	for i, m := range matches {
 		parts[i] = fmt.Sprintf("[%d] %s/%s", m.Index, m.Provider, m.Model)
 	}
-	return ModelOption{}, fmt.Errorf("ambiguous model %q, matches: %s", name, strings.Join(parts, ", "))
+	return ModelOption{}, &SelectionError{Message: fmt.Sprintf("ambiguous model %q, matches: %s", name, strings.Join(parts, ", "))}
 }
+
+// SelectionError 表示用户提供的模型选择无法解析，不包含持久化或网络故障。
+type SelectionError struct {
+	Message string // 完整的选择错误说明。
+}
+
+func (e *SelectionError) Error() string { return e.Message }

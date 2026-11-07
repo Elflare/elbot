@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	command "elbot/internal/command/share"
+	"elbot/internal/delivery"
 	"elbot/internal/tool"
 )
 
@@ -30,34 +31,42 @@ func (c toolsCommand) Info() command.Info {
 func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
 	deps := c.deps
 	if deps.Tools == nil {
-		return &command.Result{Kind: command.ResultKindText, Text: "tools: not configured"}, nil
+		return nil, &command.Error{Kind: command.ErrorRejected, Code: "not_configured", Message: "tools: not configured"}
 	}
 	fields := strings.Fields(req.Args)
 	if len(fields) == 0 {
-		content, err := formatTools(ctx, deps)
-		return &command.Result{Kind: command.ResultKindText, Text: content}, err
+		infos, err := deps.Tools.QueryTools(ctx, tool.ToolQuery{IncludeHidden: true, IncludeDiscover: true})
+		if err != nil {
+			return nil, err
+		}
+		items := []command.ToolData{}
+		for _, info := range infos {
+			source := map[tool.Source]string{tool.SourceBuiltin: "builtin", tool.SourceSkill: "skill", tool.SourceELwisp: "elwisp"}[info.Definition.Source]
+			items = append(items, command.ToolData{Name: info.Definition.Name, Description: info.Definition.Description, Source: source, Risk: info.Definition.Risk, Tags: append([]string{}, info.Definition.Tags...)})
+		}
+		return &command.Result{Kind: command.ResultKindTools, Text: formatTools(infos), Data: command.ToolsData{Items: items}}, nil
 	}
 	switch fields[0] {
 	case "reload":
 		if err := deps.Skills.Reload(ctx); err != nil {
 			return nil, err
 		}
-		return &command.Result{Kind: command.ResultKindText, Text: "skills reloaded"}, nil
+		return &command.Result{Kind: command.ResultKindTools, Text: "skills reloaded", Data: command.ToolsData{Items: []command.ToolData{}}}, nil
 	case "uninstall", "remove":
 		if len(fields) < 2 {
-			return &command.Result{Kind: command.ResultKindText, Text: "usage: " + deps.CommandText("tools", "remove", "<name>", "--confirm")}, nil
+			return nil, inputError(fmt.Errorf("usage: %s", deps.CommandText("tools", "remove", "<name>", "--confirm")))
 		}
 		name := fields[1]
 		if !slices.Contains(fields[2:], "--confirm") {
-			return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("删除 %q 及目录？\n%s", name, deps.CommandText("tools", "remove", name, "--confirm"))}, nil
+			return &command.Result{Kind: command.ResultKindTools, Text: fmt.Sprintf("删除 %q 及目录？\n%s", name, deps.CommandText("tools", "remove", name, "--confirm")), Data: command.ToolsData{Items: []command.ToolData{}, Name: name}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认删除", Command: deps.CommandText("tools", "remove", name, "--confirm")}}}}, nil
 		}
 		err := deps.Skills.Remove(ctx, name)
 		if err != nil {
-			return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("remove %s: %v", name, err)}, nil
+			return nil, fmt.Errorf("remove %s: %w", name, err)
 		}
-		return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("removed: %s", name)}, nil
+		return &command.Result{Kind: command.ResultKindTools, Text: fmt.Sprintf("removed: %s", name), Data: command.ToolsData{Items: []command.ToolData{}, Name: name}}, nil
 	default:
-		return &command.Result{Kind: command.ResultKindText, Text: "usage: " + deps.CommandText("tools", c.Info().Args)}, nil
+		return nil, inputError(fmt.Errorf("usage: %s", deps.CommandText("tools", c.Info().Args)))
 	}
 }
 
@@ -80,13 +89,9 @@ func (c toolsCommand) Complete(ctx context.Context, req command.CompletionReques
 	return completeConfirmFlag(req.Args, token)
 }
 
-func formatTools(ctx context.Context, deps Deps) (string, error) {
-	infos, err := deps.Tools.QueryTools(ctx, tool.ToolQuery{IncludeHidden: true, IncludeDiscover: true})
-	if err != nil {
-		return "", err
-	}
+func formatTools(infos []tool.ToolInfo) string {
 	if len(infos) == 0 {
-		return "nil", nil
+		return "nil"
 	}
 	var sb strings.Builder
 	sb.WriteString("tools:\n")
@@ -97,7 +102,7 @@ func formatTools(ctx context.Context, deps Deps) (string, error) {
 		}
 		sb.WriteString(fmt.Sprintf("  %s [%s]%s %s\n", info.Definition.Name, [...]string{tool.SourceBuiltin: "builtin", tool.SourceSkill: "skill", tool.SourceELwisp: "elwisp"}[info.Definition.Source], tags, info.Definition.Description))
 	}
-	return trimTrailingNewlines(sb.String()), nil
+	return trimTrailingNewlines(sb.String())
 }
 
 type ToolModule struct{}

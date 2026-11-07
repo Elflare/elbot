@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/delivery"
 	"elbot/internal/signal"
 	"errors"
 	"log/slog"
@@ -25,6 +26,7 @@ func (c *ExecutionCoordinator) AdoptForeground(ctx context.Context, row *storage
 // ExecutionCoordinator owns cross-turn admission and handoffs; domain managers
 // remain the source of truth for requests, attempts and logical execution state.
 type ExecutionCoordinator struct {
+	appendConfirmation delivery.Confirmation // 根部绑定当前命令前缀的追加确认展示。
 	// Context usage diagnostics.
 	sessions    ExecutionSessions
 	sessionRows interface {
@@ -141,19 +143,20 @@ func (c *ExecutionCoordinator) RunBackground(ctx context.Context, row *storage.S
 // NewExecutionCoordinator initializes ExecutionCoordinator without installing cross-service callbacks.
 func NewExecutionCoordinator(ctx context.Context, deps ExecutionCoordinatorDeps) *ExecutionCoordinator {
 	return &ExecutionCoordinator{
-		sessions:         deps.Sessions,
-		sessionRows:      deps.SessionRows,
-		turns:            deps.Turns,
-		requests:         deps.Requests,
-		contexts:         deps.Contexts,
-		SelectionForTurn: deps.SelectionForTurn,
-		dialogue:         deps.Dialogue,
-		identity:         deps.Identity,
-		view:             deps.View,
-		output:           deps.Output,
-		status:           deps.Status,
-		waitPolicy:       deps.WaitPolicy,
-		responseTimeout:  deps.ResponseTimeout,
-		appendWaits:      newAppendWaitLifecycle(ctx),
+		appendConfirmation: deps.AppendConfirmation,
+		sessions:           deps.Sessions,
+		sessionRows:        deps.SessionRows,
+		turns:              deps.Turns,
+		requests:           deps.Requests,
+		contexts:           deps.Contexts,
+		SelectionForTurn:   deps.SelectionForTurn,
+		dialogue:           deps.Dialogue,
+		identity:           deps.Identity,
+		view:               deps.View,
+		output:             deps.Output,
+		status:             deps.Status,
+		waitPolicy:         deps.WaitPolicy,
+		responseTimeout:    deps.ResponseTimeout,
+		appendWaits:        newAppendWaitLifecycle(ctx),
 	}
 }

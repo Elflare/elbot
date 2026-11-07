@@ -82,6 +82,7 @@ type HookCapabilities interface{ Commands() []command.Handler }
 
 // PlatformCapabilities supplies platform identity and delivery for Agent output.
 type PlatformCapabilities interface {
+	SendCommandResult(context.Context, string, *command.Result, *command.Error) (delivery.Receipt, error)
 	SessionIDCode(string, contextinfo.ChatType) (string, error)
 	RestoreMessageContext(context.Context, context.Context) context.Context
 	SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)

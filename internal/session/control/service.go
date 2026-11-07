@@ -31,6 +31,7 @@ type ServiceDeps struct {
 		DeleteIfExpired(context.Context, string, time.Time) (bool, error)
 	}
 	Messages interface {
+		Stats(context.Context, string) (storage.MessageStats, error)
 		ListBySession(context.Context, string) ([]storage.Message, error)
 	}
 	Bindings interface {

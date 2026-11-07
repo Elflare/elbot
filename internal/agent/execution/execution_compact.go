@@ -14,13 +14,12 @@ import (
 	"elbot/internal/turn"
 )
 
-func (c *ExecutionCoordinator) CompactCurrent(ctx context.Context, triggerReason string) (string, error) {
+func (c *ExecutionCoordinator) CompactCurrent(ctx context.Context, triggerReason string) (*storage.Session, error) {
 	current, err := c.sessions.Current(ctx, c.identity.Scope(ctx))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	_, content, err := c.compactSession(ctx, current, triggerReason, c.SelectionForTurn(ctx, current))
-	return content, err
+	return c.runCompact(ctx, current, c.identity.Scope(ctx), triggerReason, c.SelectionForTurn(ctx, current))
 }
 
 func (c *ExecutionCoordinator) compactSession(ctx context.Context, current *storage.Session, triggerReason string, fallback modelmgr.Selection) (*storage.Session, string, error) {

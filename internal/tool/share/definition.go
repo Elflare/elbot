@@ -4,6 +4,7 @@ package share
 import (
 	"context"
 	"elbot/internal/llm"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -114,3 +115,6 @@ func NormalizeToolTag(tag string) string {
 	}
 	return tag
 }
+
+// ErrSkillNotFound 表示待管理的外部 Skill 未注册。
+var ErrSkillNotFound = errors.New("Skill 不存在")
