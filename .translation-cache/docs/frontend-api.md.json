@@ -8,6 +8,14 @@
       "translation": "### attachment — File or Image Output\n\n```json\n{\"type\":\"attachment\",\"attachment\":{\"id\":\"attachment-id\",\"name\":\"report.pdf\",\"mime_type\":\"application/pdf\",\"size\":2048,\"kind\":\"file\"}}\n```\n\n`kind` is `image` or `file`; the `id` in the description is the attachment ID of the current connection, not a MediaID or disk path. Mixed outputs send `chat` and `attachment` in their original order. The client retrieves attachment content via HTTP; `send_file` uses the same set of protocols, regardless of whether it is a web page or TUI.\n\n",
       "updated_at": 1794065757
     },
+    "docs/frontend-api.md:section:0f3a77bbd38f9d1cae1ce3d5f3ec1740ebeb9cc1491436ae505222e633cd1028": {
+      "kind": "section",
+      "source": "## 鉴权\n\n连接建立后，客户端必须立即发送一条 `hello` 消息：\n\n```json\n{\n  \"type\": \"hello\",\n  \"client_id\": \"my-client\",\n  \"token\": \"your-token\"\n}\n```\n\n服务端校验 token 后回复：\n\n- `hello_ok` — 鉴权通过，可以开始交互\n- `error` — 鉴权失败，连接关闭\n\n```json\n{\"type\": \"hello_ok\", \"client_id\": \"my-client\", \"media_token\": \"connection-media-token\"}\n```\n\nToken 在 `[platform.cli.server.tokens]` 中按 client_id 映射到环境变量名，服务端从对应环境变量读取实际值。\n\n`media_token` 仅用于下述 HTTP 附件接口，绑定当前已认证的 WebSocket 连接；断连后失效，重连获取新凭据。相同 client_id 的多个连接各自隔离。凭据保留在客户端内存，通过 `Authorization: Bearer <media_token>` 发送，不放进 URL。\n\n",
+      "source_file": "docs/frontend-api.md",
+      "source_hash": "b1f3229c398cba6ce48dc1da123c00cbe7d483bbac0f532cd02c75fa435c2344",
+      "translation": "## Authentication\n\nAfter the connection is established, the client must immediately send a `hello` message:\n\n```json\n{\n  \"type\": \"hello\",\n  \"client_id\": \"my-client\",\n  \"token\": \"your-token\"\n}\n```\n\nAfter validating the token, the server responds with:\n\n- `hello_ok` — Authentication successful, interaction can begin\n- `error` — Authentication failed, connection closed\n\n```json\n{\"type\": \"hello_ok\", \"client_id\": \"my-client\", \"media_token\": \"connection-media-token\"}\n```\n\nTokens are mapped to environment variable names by client_id in `[platform.cli.server.tokens]`; the server reads the actual values from the corresponding environment variables.\n\nThe `media_token` is used only for the HTTP attachment interfaces described below and is bound to the currently authenticated WebSocket connection; it becomes invalid after disconnection, and new credentials must be obtained upon reconnection. Multiple connections with the same client_id are isolated from each other. Credentials are kept in client memory and sent via `Authorization: Bearer <media_token>`, not included in the URL.\n\n",
+      "updated_at": 1794069128
+    },
     "docs/frontend-api.md:section:1bb9b63f47db5043417b104bed2a35d6651b5c01d2455c19a3aa720451609fe7": {
       "kind": "section",
       "source": "## 消息格式\n\n所有消息均为 JSON，共享同一个结构：\n\n| 字段 | 类型 | 说明 |\n|------|------|------|\n| type | string | 消息类型，见下表 |\n| id | string | 输入／补全关联 ID；命令结果的 request_id 回传输入 id，附件输入错误回传 id |\n| client_id | string | 客户端标识 |\n| token | string | 鉴权 token（仅 hello） |\n| media_token | string | 当前连接的 HTTP 附件凭据（仅 hello_ok） |\n| file_ids | array of string | 当前连接已上传或收到的附件 ID（仅 input） |\n| attachment | object | 附件描述（仅 attachment），字段见下文 |\n| text | string | 文本内容 |\n| level | string | 通知等级（仅 notice） |\n| cursor | int | 光标位置（仅补全请求） |\n| items | array | 补全候选列表（仅补全响应） |\n| snapshot | object | 运行状态快照（仅 status） |\n| stream_id | uint64 | 逻辑消息流标识（仅 stream），用于关联同一条消息的预览、重置和提交 |\n| event | object | 消息流事件（仅 stream），字段见下文 |\n\n",
@@ -170,8 +178,8 @@
     }
   },
   "source": "docs/frontend-api.md",
-  "source_hash": "",
+  "source_hash": "4e56786b809b3cb6978b0a8ea2b018ae8d979cb7386331878ec98a6b03535ab2",
   "target": "docs.en/frontend-api.md",
-  "updated_at": 1794066203,
+  "updated_at": 1794069128,
   "version": 3
 }
