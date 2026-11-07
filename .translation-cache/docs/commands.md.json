@@ -16,14 +16,6 @@
       "translation": "## High-risk Tool Confirmation\n\nAvailable commands when triggering high-risk confirmation:\n\n| Command | Function |\n| --- | --- |\n| `/detail` | Details of the tool call awaiting confirmation; supports custom plain-text details defined by the tool; if not customized, formatted parameters are displayed. |\n| `/confirm` | Confirm the current tool call awaiting confirmation. |\n| `/confirmtool` | Confirm the current tool. |\n| `/confirmall` | Confirm all pending tools in the current batch. |\n| `/reject` | Reject the current pending tool call. |\n\n- Confirmation wait for ordinary users expires by default after 10 minutes of no valid operation; A shorter time limit is used if the Session TTL of the current group chat or private chat is shorter. Superadmins are not subject to the additional 10-minute limit, but still adhere to a Session TTL greater than 0. `/detail` will reset the timer; After expiration, the tool will not be executed, and current processing will stop.\n- `/stop` can also be used to stop the current request (see [Request Management](#请求管理)). Specific prompts are subject to the runtime output.\n",
       "updated_at": 1793351491
     },
-    "docs/commands.md:section:1da100da963c7ebc0063fd873f4031be3fa73bac463b76ec581b1e91777a2943": {
-      "kind": "section",
-      "source": "## Session\n\n| 命令 | 作用 |\n| --- | --- |\n| `/new` | 创建并切换到新 Session。 |\n| `/status` | 当前 Session 状态。 |\n| `/sessions [关键词]` | 列出或搜索可见 Session。 |\n| `/resume [编号或 session_id]` | 恢复历史 Session。 |\n| `/archives [页码] [关键词]` | 已归档 Session 列表。 |\n| `/archive [编号或 session_id] --confirm` | 归档。 |\n| `/unarchive [编号或 session_id]` | 取消归档。 |\n| `/pin` / `/unpin [编号或 session_id]` | 置顶 / 取消置顶。 |\n| `/rename [编号或 session_id\\|当前标题] <新标题>` | 重命名。 |\n| `/delete <编号或 session_id> --confirm` | 永久删除。 |\n| `/clean --confirm` | 删除过期且未归档、未置顶的 Session。 |\n\n- 除 `/rename` 与 `/delete` 外，带 `[编号或 session_id]` 的命令省略参数时作用于当前 Session；编号由 `/sessions`、`/archives` 展示，可被这些命令复用。\n- `/resume 1` 直接恢复最近更新的非当前 Session，无需先执行裸 `/resume`；编号按更新时间排列，翻页连续。\n- CLI 是本地高权限入口，可跨平台查看和管理 Session；非 CLI 平台只看当前平台和作用域。Cron／Elnis 后台会话仅所属用户可同平台私聊恢复，或从 CLI 管理入口恢复，群聊和频道不显示，也无法通过直接 ID、引用消息或解除归档绕过；首次恢复会永久转为前台归属，切走不会恢复后台身份。\n- 当前会话处理中时不能执行 `/new`、`/resume`、`/fork`、`/chat`、`/work` 等切换类命令，需要先 `/stop`。\n- 删除是永久操作且需要 `--confirm`；执行中的会话不能删除，自动清理也会跳过。\n\n",
-      "source_file": "docs/commands.md",
-      "source_hash": "f951bd2b7a1511b9b1a67ac2fa08839a42aa51ac4157bf7001cbda291aa8f8af",
-      "translation": "## Session\n\n| Command | Function |\n| --- | --- |\n| `/new` | Create and switch to a new Session. |\n| `/status` | Current Session status. |\n| `/sessions [关键词]` | List or search visible Sessions. |\n| `/resume [编号或 session_id]` | Restore historical Session. |\n| `/archives [页码] [关键词]` | List of archived Sessions. |\n| `/archive [编号或 session_id] --confirm` | Archive. |\n| `/unarchive [编号或 session_id]` | Unarchive. |\n| `/pin` / `/unpin [编号或 session_id]` | Pin / Unpin. |\n| `/rename [Number or session_id\\\"|Current Title] <New Title>` | Rename. |\n| `/delete <编号或 session_id> --confirm` | Permanently delete. |\n| `/clean --confirm` | Delete expired Sessions that are not archived or pinned. |\n\n- Except for `/rename` and `/delete`, commands with `[编号或 session_id]` act on the current Session when parameters are omitted; IDs are displayed by `/sessions` and `/archives`, and can be reused by these commands.\n- `/resume 1` directly restores the most recently updated non-current Session without needing to first execute a bare `/resume`; IDs are sorted by update time, and pagination is continuous.\n- CLI is a local high-privilege entry point, allowing viewing and managing Sessions across platforms; Non-CLI platforms only see the current platform and scope. Cron/Elnis background Sessions can only be restored via private chat on the same platform by the owning user, or via the CLI management entry point; they are not displayed in group chats or channels, and cannot be bypassed via direct ID, message quoting, or unarchiving; The first recovery will permanently transfer ownership to the foreground; switching away will not restore the background identity.\n- While the current Session is processing, switching commands such as `/new`, `/resume`, `/fork`, `/chat`, and `/work` cannot be executed; `/stop` is required first.\n- Deletion is a permanent operation and requires `--confirm`; Sessions currently executing cannot be deleted, and automatic cleanup will also skip them.\n\n",
-      "updated_at": 1793356431
-    },
     "docs/commands.md:section:22929c773248be736329061e848db378484aa85ad7bad58e0d63984055f27ab9": {
       "kind": "section",
       "source": "## 上下文压缩\n\n| 命令 | 作用 |\n| --- | --- |\n| `/compact` | 手动压缩当前 Session 上下文。 |\n\n- 自动压缩由 `[context] compact_enabled` 和 `compact_trigger_ratio` 控制。\n- 压缩保留历史用户原话、忽略工具返回值，成功后创建并切换到独立的 `原标题 compacted-N` Session，旧 Session 不修改；可用 `/stop` 取消。\n\n",
@@ -46,14 +38,6 @@
       "source_file": "docs/commands.md",
       "source_hash": "0229f15660ba26790fe7f56076b614e2083dd0b04a14fb10607260c9a3bdc7bd",
       "translation": "## Undo File Edits\n\nAvailable to superadmins only.\n\n| Command | Function |\n| --- | --- |\n| `/rollback` | List undoable files: ID, absolute path, edit time, undo action. |\n| `/rollback <编号>` | Directly undo the file edit corresponding to the index. |\n\n- Each file retains the most recent successful `edit_file` modification: existing files are restored to their original content and permissions, and new files are deleted while parent directories are kept; backups are consumed after undoing, and consecutive undoes or redos are not supported.\n- IDs are bound to specific modifications: editing again will generate a new ID and invalidate the old one; IDs are not reused within the process; Undo will be rejected after the file has been modified again. Undo requires that the current Session has no running tasks or compaction (you can wait for completion or `/stop`).\n- Backups are stored in memory only and are isolated by user, platform Scope, and current Session: they become invalid immediately after switching or clearing the Session, cannot be recovered upon switching back, and are also lost upon restart. The entire process supports a maximum of 256 MiB of original content and 1024 records; once the limit is exceeded, the oldest records are evicted, and a notification will be provided in the edit results; Failures and previews do not replace existing backups.\n\n",
-      "updated_at": 1793351491
-    },
-    "docs/commands.md:section:5e252e8f3f12895b37d1f476d0f8a8ba16221fe51a4d2ccb08c814ba4367e461": {
-      "kind": "section",
-      "source": "## Fork\n\n| 命令 | 作用 |\n| --- | --- |\n| `/messages [页码]` | 列出当前 Session 中可用于 fork 的 assistant message ID。 |\n| `/fork <message_id>` | 从该 assistant 消息创建分支 Session，原会话不变。 |\n\n",
-      "source_file": "docs/commands.md",
-      "source_hash": "a4c265f2467ac9955e668989eeeacd49c0126e1b398921e2bce3bfd0d728c739",
-      "translation": "## Fork\n\n| Command | Function |\n| --- | --- |\n| `/messages [页码]` | List assistant message IDs available for forking in the current Session. |\n| `/fork <message_id>` | Create a branched Session from this assistant message; the original Session remains unchanged. |\n\n",
       "updated_at": 1793351491
     },
     "docs/commands.md:section:6b3892ff2edfcc183e59851bbf9f6395dbcdfd84b7d014eb719b0be8e27ba6c1": {
@@ -96,6 +80,14 @@
       "translation": "## Hook\n\n| Command | Function |\n| --- | --- |\n| `/hooks` | List all registered Hooks. |\n| `/hooks <name>` | Detailed configuration of a specific Hook. |\n| `/hooks start <id>` / `stop <id>` | Start / gracefully stop a persistent Hook. |\n| `/hooks restart <id>` | Stop and restart a persistent Hook. |\n| `/hooks reload` | Reread rules and persistent Hook configurations, and re-coordinate process lifecycles. |\n\n- Rule Hooks use `name` from the configuration; built-in Hooks use `builtin.*`, such as `builtin.cron.missed_once`.\n- `Description` is displayed in the list and details; rule details are only displayed in the details.\n- `reload` rereads `hooks.toml` and the `hook.toml` of each plugin, rebuilds Hook registrations, and replaces affected persistent processes.\n- `/hooks` is a superadmin command.\n\n",
       "updated_at": 1793351491
     },
+    "docs/commands.md:section:94c249d2c2bbafd65c9860dee5208baf43230bc8f5fd69c3c650d3597c9d130f": {
+      "kind": "section",
+      "source": "## 追加输入\n\nLLM 正在处理时收到的新输入会停止当前请求并进入追加等待；连续输入会累积。发送 `y` 或 `/confirm` 继续，已累积的输入会合并后使用原会话继续执行；发送 `/stop` 取消当前处理。\n\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "d73fbe471c44cdf92843dce5ef41b44a97cd602f4ded534b52ef0815de72556f",
+      "translation": "## Additional Input\n\nNew input received while the LLM is processing will stop the current request and enter an append-wait state; consecutive inputs will accumulate. Send `y` or `/confirm` to continue, and the accumulated inputs will be merged and executed using the original Session; send `/stop` to cancel the current processing.\n\n",
+      "updated_at": 1794064547
+    },
     "docs/commands.md:section:9fe6b351ed415d3736a422887a2ee2ff6b6b893ad2144700a693d235c12d6145": {
       "kind": "section",
       "source": "## 模型\n\n| 命令 | 作用 |\n| --- | --- |\n| `/checkmodel [关键词]`（别名 `/models`） | 查看或搜索模型。 |\n| `/models --fresh` / `--refresh` | 重载厂商配置并强制刷新模型列表。 |\n| `/model <编号或名称>` | 切换当前 Session 模式使用的模型。 |\n| `/model --chat <模型>` / `--work <模型>` | 切换 chat / work 模式模型。 |\n| `/model --elwisp<1\\|2\\|3> <模型>` | 切换 Elnis elwisp1/2/3 模型槽位。 |\n| `/model --compact <模型>` | 切换 Chat 文字摘要模型；Responses 原生压缩使用当前对话模型。 |\n| `/model --naming <模型>` | 切换 Session 自动命名模型。 |\n\n模型参数可以是列表编号、模型名或 `provider/model`，例如 `/model --work deepseek/deepseek-chat`。\n\n模型选择按模式／槽位全局生效并保存到 `state.toml`；`/model` 未指定目标时使用当前 Session 的模式，无当前 Session 时使用默认模式。\n\n",
@@ -103,11 +95,19 @@
       "source_hash": "1df1b2456c1ed1138d5a8f004cdb90d3a1b5abbaf5400ac84649d019f30dfa26",
       "translation": "## Model\n\n| Command | Function |\n| --- | --- |\n| `/checkmodel [关键词]` (alias `/models`) | View or search for models. |\n| `/models --fresh` / `--refresh` | Reload vendor configurations and force refresh the model list. |\n| `/model <编号或名称>` | Switch the model used in the current Session mode. |\n| `/model --chat <模型>` / `--work <模型>` | Switch models for chat / work mode. |\n| `/model --elwisp<1\\|2\\|3> `<model>` | Switch Elnis elwisp1/2/3 model slots. |\n| `/model --compact <模型>` | Switch the Chat text summary model; Responses native compression uses the current conversation model. |\n| `/model --naming <模型>` | Switch the Session auto-naming model. |\n\nModel parameters can be a list number, a model name, or `provider/model`, for example `/model --work deepseek/deepseek-chat`.\n\nModel selection takes effect globally by mode/slot and is saved to `state.toml`; When `/model` does not specify a target, it uses the mode of the current Session; if there is no current Session, the default mode is used.\n\n",
       "updated_at": 1793351491
+    },
+    "docs/commands.md:section:a69aa8bbfaa805e13a9113d4b388a3563fefa593f52f9611826b7119e002cb0e": {
+      "kind": "section",
+      "source": "## Fork\n\n| 命令 | 作用 |\n| --- | --- |\n| `/messages [页码]` | 分页展示当前 Session 的原始用户与助手消息，默认最新页。|\n| `/fork <message_id>` | 从该 assistant 消息创建分支 Session，原会话不变。 |\n\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "ecbdc8d2e0a38504e24e2873210cec6b5cffa31b919a6a2986ecbe5aa3867c97",
+      "translation": "## Fork\n\n| Command | Function |\n| --- | --- |\n| `/messages [page_number]` | Display original user and assistant messages of the current Session in pages, defaulting to the latest page. |\n| `/fork <message_id>` | Create a branched Session from this assistant message; the original session remains unchanged. |\n\n",
+      "updated_at": 1794064405
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "39627ddf03575b4dd91781108b166a5ab52157d99516f9f11b30f6ee05cfd762",
+  "source_hash": "",
   "target": "docs.en/commands.md",
-  "updated_at": 1793804076,
+  "updated_at": 1794065130,
   "version": 3
 }
