@@ -304,10 +304,12 @@ func (r *SessionRepository) messageExcerpts(ctx context.Context, sessionID strin
 	var messages []storage.Message
 	for rows.Next() {
 		message := storage.Message{SessionID: sessionID}
+		var segments sql.NullString
 		var createdAt string
-		if err := rows.Scan(&message.ID, &message.Role, &message.Content, &message.Segments, &createdAt); err != nil {
+		if err := rows.Scan(&message.ID, &message.Role, &message.Content, &segments, &createdAt); err != nil {
 			return nil, err
 		}
+		message.Segments = segments.String
 		message.CreatedAt, err = storage.ParseTime(createdAt)
 		if err != nil {
 			return nil, fmt.Errorf("parse message created_at: %w", err)
