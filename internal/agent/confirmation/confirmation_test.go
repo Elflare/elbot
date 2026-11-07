@@ -62,8 +62,16 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 			if turns.Snapshot(row.ID).Phase != turn.PhaseAwaitRiskConfirm {
 				t.Fatal("confirmation not pending")
 			}
-			if _, err := coordinator.SubmitResponse(ctx, row.ID, command); err != nil {
+			response, err := coordinator.SubmitResponse(ctx, row.ID, command)
+			if err != nil {
 				t.Fatal(err)
+			}
+			if command == "/stop" {
+				if response.Kind != commandpkg.ResultKindStop {
+					t.Fatalf("stop response=%+v", response)
+				}
+			} else if response.Data.(commandpkg.TextData).Content != "✓" {
+				t.Fatalf("confirmation response=%+v", response)
 			}
 			select {
 			case result := <-done:

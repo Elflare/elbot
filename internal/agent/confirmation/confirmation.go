@@ -166,7 +166,7 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 		return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: riskConfirmationWaitingText(c.commandText)}, Confirmation: riskConfirmationActions(c.commandText)}, &command.Error{Kind: command.ErrorInput, Code: command.CodeInvalidArguments, Message: "当前只接受确认、拒绝、详情或停止命令"}
 
 	}
-	return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: "确认操作已接受"}}, nil
+	return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: "✓"}}, nil
 }
 
 func confirmationAction(ctx context.Context, sessionID, action string, confirmation turn.RiskConfirmation, extra string) *events.LogRecord {
