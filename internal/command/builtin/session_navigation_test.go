@@ -17,21 +17,121 @@ import (
 	"elbot/internal/turn"
 )
 
-func TestFormatMessagePageOnlyUsesAssistantMessages(t *testing.T) {
-	messages := assistantMessages([]storage.Message{
+func TestFormatMessagePageIncludesConversationMessages(t *testing.T) {
+	messages := conversationMessages([]storage.Message{
+		{ID: "s1", Role: storage.RoleSystem, Content: "system prompt"},
 		{ID: "u1", Role: storage.RoleUser, Content: "question"},
 		{ID: "a1", Role: storage.RoleAssistant, Content: "answer one"},
+		{ID: "t1", Role: storage.RoleTool, Content: "tool output"},
+		{ID: "empty-user", Role: storage.RoleUser, Content: " \n\t"},
+		{ID: "empty-bot", Role: storage.RoleAssistant},
+		{ID: "u2", Role: storage.RoleUser, Content: "follow up"},
 		{ID: "a2", Role: storage.RoleAssistant, Content: "answer two"},
 	})
-	content, err := formatMessagePage(messages, 1, 1)
+	for _, tc := range []struct {
+		page int
+		want string
+	}{
+		{page: 1, want: "page=1/2\nuser: question\nbot: [a1] answer one"},
+		{page: 2, want: "page=2/2\nuser: follow up\nbot: [a2] answer two"},
+	} {
+		content, err := formatMessagePage(messages, tc.page, 2)
+		if err != nil {
+			t.Fatalf("formatMessagePage(%d): %v", tc.page, err)
+		}
+		if content != tc.want {
+			t.Fatalf("page %d = %q, want %q", tc.page, content, tc.want)
+		}
+	}
+	for _, page := range []int{0, 3} {
+		if _, err := formatMessagePage(messages, page, 2); err == nil {
+			t.Fatalf("expected out-of-range error for page %d", page)
+		}
+	}
+}
+
+func TestMessagesTruncateOnlyWhenFormatting(t *testing.T) {
+	text := " \t" + strings.Repeat("中😀", 21) + "\n尾 "
+	source := []storage.Message{
+		{ID: "u1", Role: storage.RoleUser, Content: text},
+		{ID: "a1", Role: storage.RoleAssistant, Content: text},
+	}
+	messages := conversationMessages(source)
+	if len(messages) != len(source) {
+		t.Fatalf("messages = %v", messages)
+	}
+	for _, message := range messages {
+		if message.Content != text {
+			t.Fatalf("filter changed content: %q", message.Content)
+		}
+	}
+	content, err := formatMessagePage(messages, 1, messageListPageSize)
 	if err != nil {
 		t.Fatalf("formatMessagePage: %v", err)
 	}
-	if !strings.Contains(content, "page=1/2") || !strings.Contains(content, "a1: answer one") {
-		t.Fatalf("content = %q", content)
+	preview := strings.Repeat("中😀", 20) + "..."
+	want := "page=1/1\nuser: " + preview + "\nbot: [a1] " + preview
+	if content != want {
+		t.Fatalf("content = %q, want %q", content, want)
 	}
-	if strings.Contains(content, "u1") {
-		t.Fatalf("content should not include user messages: %q", content)
+	for i := range source {
+		if source[i].Content != text || messages[i].Content != text {
+			t.Fatalf("formatting changed message %d", i)
+		}
+	}
+}
+
+func TestMessagesHandlesEmptyAndUserOnlySessions(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		messages []storage.Message
+		want     string
+	}{
+		{name: "empty", want: "nil"},
+		{
+			name: "blank messages",
+			messages: []storage.Message{
+				{Role: storage.RoleUser, Content: " \n\t"},
+				{Role: storage.RoleAssistant, Content: " "},
+			},
+			want: "nil",
+		},
+		{
+			name:     "user only",
+			messages: []storage.Message{{Role: storage.RoleUser, Content: "question"}},
+			want:     "page=1/1\nuser: question",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			store := newCommandTestStore(t)
+			svc := newSessionSupervisor(t, store)
+			scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+			row, err := svc.Create(ctx, scope, session.CreateRequest{})
+			if err != nil {
+				t.Fatalf("create session: %v", err)
+			}
+			for _, message := range tc.messages {
+				message.ID = storage.NewID()
+				message.SessionID = row.ID
+				if err := store.Messages().Append(ctx, &message); err != nil {
+					t.Fatalf("append message: %v", err)
+				}
+			}
+			deps := Deps{
+				CommandText: testCommandText,
+				Sessions:    svc,
+				Store:       store,
+				Scope:       func(context.Context) session.Scope { return scope },
+			}
+			result, err := NewMessages(deps).Handle(ctx, command.Request{})
+			if err != nil {
+				t.Fatalf("messages handle: %v", err)
+			}
+			if result.Content != tc.want {
+				t.Fatalf("content = %q, want %q", result.Content, tc.want)
+			}
+		})
 	}
 }
 
@@ -367,8 +467,9 @@ func TestForkMessagesUseForkContextAndForkShowsHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("messages handle: %v", err)
 	}
-	if !strings.Contains(messagesResult.Content, assistant.ID) {
-		t.Fatalf("messages result missing fork point: %q", messagesResult.Content)
+	want := "page=1/1\nuser: 你好\nbot: [" + assistant.ID + "] 这是可以 fork 的回复"
+	if messagesResult.Content != want {
+		t.Fatalf("messages result = %q, want %q", messagesResult.Content, want)
 	}
 	if strings.Contains(messagesResult.Content, ignored.ID) || strings.Contains(messagesResult.Content, "fork 点之后不该出现") {
 		t.Fatalf("messages result included post-fork message: %q", messagesResult.Content)

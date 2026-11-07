@@ -144,8 +144,8 @@ func NewArchives(deps Deps) command.Handler {
 
 func NewMessages(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
-		Name: "messages", Args: "[page]", Description: "当前会话的 assistant 消息 ID", MinRole: contextinfo.RoleUser,
-		Help: "page≥1，默认1；ID 用于 " + deps.CommandText("fork"),
+		Name: "messages", Args: "[page]", Description: "当前会话的用户与助手消息", MinRole: contextinfo.RoleUser,
+		Help: "page≥1，默认1；仅 bot 消息显示 ID，可用于 " + deps.CommandText("fork"),
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page := 1
 		if arg := strings.TrimSpace(req.Args); arg != "" {
@@ -163,11 +163,11 @@ func NewMessages(deps Deps) command.Handler {
 		if err != nil {
 			return nil, err
 		}
-		assistants := assistantMessages(loaded.Messages)
-		if len(assistants) == 0 {
+		messages := conversationMessages(loaded.Messages)
+		if len(messages) == 0 {
 			return &command.Result{Content: "nil"}, nil
 		}
-		content, err := formatMessagePage(assistants, page, messageListPageSize)
+		content, err := formatMessagePage(messages, page, messageListPageSize)
 		if err != nil {
 			return nil, err
 		}

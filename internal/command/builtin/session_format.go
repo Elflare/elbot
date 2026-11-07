@@ -147,10 +147,10 @@ func previewContent(text string) string {
 	return truncateRunes(strings.TrimSpace(strings.ReplaceAll(text, "\n", " ")), 80)
 }
 
-func assistantMessages(messages []storage.Message) []storage.Message {
+func conversationMessages(messages []storage.Message) []storage.Message {
 	out := make([]storage.Message, 0, len(messages))
 	for _, message := range messages {
-		if message.Role == storage.RoleAssistant && strings.TrimSpace(message.Content) != "" {
+		if (message.Role == storage.RoleUser || message.Role == storage.RoleAssistant) && strings.TrimSpace(message.Content) != "" {
 			out = append(out, message)
 		}
 	}
@@ -167,7 +167,11 @@ func formatMessagePage(messages []storage.Message, page, pageSize int) (string, 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("page=%d/%d\n", page, totalPages))
 	for _, message := range messages[start:end] {
-		sb.WriteString(fmt.Sprintf("%s: %s\n", message.ID, messagePreview(message.Content)))
+		if message.Role == storage.RoleAssistant {
+			sb.WriteString(fmt.Sprintf("bot: [%s] %s\n", message.ID, messagePreview(message.Content)))
+		} else {
+			sb.WriteString(fmt.Sprintf("user: %s\n", messagePreview(message.Content)))
+		}
 	}
 	return trimTrailingNewlines(sb.String()), nil
 }

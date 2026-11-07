@@ -64,7 +64,7 @@ slash 命令由 Agent Core 统一处理，CLI、QQ 等平台共享同一套语�
 
 | 命令 | 作用 |
 | --- | --- |
-| `/messages [页码]` | 列出当前 Session 中可用于 fork 的 assistant message ID。 |
+| `/messages [页码]` | 展示当前 Session 的用户与助手消息。|
 | `/fork <message_id>` | 从该 assistant 消息创建分支 Session，原会话不变。 |
 
 ## 请求管理
