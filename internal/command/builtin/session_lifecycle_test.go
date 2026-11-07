@@ -182,7 +182,8 @@ func TestSessionTargetCommandsCompleteSessionIDsAndConfirm(t *testing.T) {
 
 func TestFormatSessionsShowsLifecycleMarkers(t *testing.T) {
 	now := time.Date(2026, 1, 1, 1, 2, 3, 0, time.UTC)
-	content := formatSessionsWithOffset([]storage.SessionSummary{{ID: "s1", Title: "one", UpdatedAt: now, PinnedAt: &now, ArchivedAt: &now}}, "s1", 0)
+	item := command.SessionSummaryData{SessionData: command.SessionData{ID: "s1", Title: "one", UpdatedAt: now, PinnedAt: &now, ArchivedAt: &now}}
+	content := commandResultText(&command.Result{Kind: command.ResultKindSessions, Data: command.SessionsData{Page: command.Page{Page: 1, PageSize: 10}, Items: []command.SessionSummaryData{item}, CurrentSessionID: "s1"}})
 	if !strings.Contains(content, "[current, pinned, archived]") {
 		t.Fatalf("content = %q", content)
 	}

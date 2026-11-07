@@ -103,40 +103,6 @@ func TestMessagesEmptyHistoryIsStructured(t *testing.T) {
 
 }
 
-func TestMessagePreviewTruncatesAndFlattensWhitespace(t *testing.T) {
-	got := messagePreview("这是一个很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长的回答\n第二行")
-	if strings.Contains(got, "\n") {
-		t.Fatalf("preview contains newline: %q", got)
-	}
-	if !strings.HasSuffix(got, "...") {
-		t.Fatalf("preview should be truncated: %q", got)
-	}
-}
-
-func TestPreviewContentTruncatesLongMessages(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		text string
-		want string
-	}{
-		{name: "empty"},
-		{name: "short", text: "short message", want: "short message"},
-		{name: "whitespace", text: "  first\nsecond  ", want: "first second"},
-		{name: "at limit", text: strings.Repeat("a", 80), want: strings.Repeat("a", 80)},
-		{name: "over limit", text: strings.Repeat("a", 81), want: strings.Repeat("a", 80) + "..."},
-		{name: "unicode at limit", text: strings.Repeat("中😀", 40), want: strings.Repeat("中😀", 40)},
-		{name: "unicode over limit", text: strings.Repeat("中😀", 41), want: strings.Repeat("中😀", 40) + "..."},
-		{name: "trim before limit", text: "  " + strings.Repeat("中", 80) + "\n ", want: strings.Repeat("中", 80)},
-		{name: "newline before limit", text: strings.Repeat("中", 79) + "\n尾", want: strings.Repeat("中", 79) + " ..."},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := previewContent(tc.text); got != tc.want {
-				t.Fatalf("previewContent() = %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestResumeAndForkTruncateHistoryWithoutChangingMessages(t *testing.T) {
 	ctx := context.Background()
 	store := newCommandTestStore(t)
