@@ -9,6 +9,7 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
+	"encoding/json"
 	"errors"
 )
 
@@ -36,13 +37,123 @@ const (
 	ResultKindHelp      ResultKind = "help"
 )
 
-// Result 保留可展示文字和结构化业务数据，执行失败通过 error 独立返回。
+// Result 保留唯一结构化业务数据，执行失败通过 error 独立返回。
 type Result struct {
 	Kind         ResultKind             `json:"kind"`         // 结果的数据类别。
-	Text         string                 `json:"text"`         // 可直接展示的文字，不作为结构化数据来源。
 	Data         any                    `json:"data"`         // 对应 Kind 的业务结构体；没有业务数据时为 nil。
 	Confirmation *delivery.Confirmation `json:"confirmation"` // 非 nil 表示仍需用户确认，操作尚未执行。
 	Continuation *Continuation          `json:"-"`            // 结果投递成功后继续处理的输入，不下发给客户端。
+}
+
+func (r *Result) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Kind         ResultKind             `json:"kind"`
+		Data         json.RawMessage        `json:"data"`
+		Confirmation *delivery.Confirmation `json:"confirmation"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	r.Kind, r.Confirmation = raw.Kind, raw.Confirmation
+	if len(raw.Data) == 0 || string(raw.Data) == "null" {
+		r.Data = nil
+		return nil
+	}
+	var target any
+	switch raw.Kind {
+	case ResultKindText:
+		target = &TextData{}
+	case ResultKindSession:
+		target = &SessionChangeData{}
+	case ResultKindCompact:
+		target = &SessionData{}
+	case ResultKindSessions:
+		target = &SessionsData{}
+	case ResultKindMessages:
+		target = &MessagesData{}
+	case ResultKindStatus:
+		target = &StatusData{}
+	case ResultKindModel:
+		target = &ModelSelectionData{}
+	case ResultKindModels:
+		target = &ModelsData{}
+	case ResultKindRequests:
+		target = &RequestsData{}
+	case ResultKindStop:
+		target = &StopData{}
+	case ResultKindTools:
+		target = &ToolsData{}
+	case ResultKindRollback:
+		target = &RollbackData{}
+	case ResultKindRollbacks:
+		target = &RollbacksData{}
+	case ResultKindLogs:
+		target = &LogsData{}
+	case ResultKindUsage:
+		target = &UsageData{}
+	case ResultKindDoctor:
+		target = &DoctorData{}
+	case ResultKindHooks:
+		target = &HooksData{}
+	case ResultKindHelp:
+		target = &HelpData{}
+	default:
+		r.Data = json.RawMessage(raw.Data)
+		return nil
+	}
+	if err := json.Unmarshal(raw.Data, target); err != nil {
+		return err
+	}
+	r.Data = valueOf(target)
+	return nil
+}
+
+func valueOf(value any) any {
+	switch typed := value.(type) {
+	case *TextData:
+		return *typed
+	case *SessionChangeData:
+		return *typed
+	case *SessionData:
+		return *typed
+	case *SessionsData:
+		return *typed
+	case *MessagesData:
+		return *typed
+	case *StatusData:
+		return *typed
+	case *ModelSelectionData:
+		return *typed
+	case *ModelsData:
+		return *typed
+	case *RequestsData:
+		return *typed
+	case *StopData:
+		return *typed
+	case *ToolsData:
+		return *typed
+	case *RollbackData:
+		return *typed
+	case *RollbacksData:
+		return *typed
+	case *LogsData:
+		return *typed
+	case *UsageData:
+		return *typed
+	case *DoctorData:
+		return *typed
+	case *HooksData:
+		return *typed
+	case *HelpData:
+		return *typed
+	default:
+		return value
+	}
+}
+
+// TextData 保存没有其他业务结构的纯文字结果。
+type TextData struct {
+	Content string `json:"content"` // 纯文字正文。
 }
 
 // Continuation 是命令结果交给执行协调方的后续输入。

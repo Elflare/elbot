@@ -50,8 +50,12 @@ func TestCommandsUseConfiguredPrefixInsteadOfRequestPrefix(t *testing.T) {
 			}
 			continue
 		}
-		if result == nil || !strings.Contains(result.Text, tc.want) || strings.Contains(result.Text, "!!") {
+		if result == nil || result.Kind != ResultKindTools {
 			t.Fatalf("%s: %+v", tc.input, result)
+		}
+		data, ok := result.Data.(ToolsData)
+		if !ok || !strings.Contains(data.Prompt, tc.want) || strings.Contains(data.Prompt, "!!") {
+			t.Fatalf("%s: %+v", tc.input, result.Data)
 		}
 	}
 }
@@ -75,8 +79,11 @@ func TestHelpCommandFiltersByActor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("user help: %v", err)
 	}
-	if !strings.Contains(list.Text, "/help") || !strings.Contains(list.Text, "/public") || strings.Contains(list.Text, "/secret") {
-		t.Fatalf("user help content = %q", list.Text)
+	listData := list.Data.(HelpData)
+	if !slices.ContainsFunc(listData.Items, func(item HelpItem) bool { return item.Name == "help" }) ||
+		!slices.ContainsFunc(listData.Items, func(item HelpItem) bool { return item.Name == "public" }) ||
+		slices.ContainsFunc(listData.Items, func(item HelpItem) bool { return item.Name == "secret" }) {
+		t.Fatalf("user help data = %+v", listData)
 	}
 	privateDetail, err := help.Handle(userCtx, Request{Prefix: "/", Args: "sec"})
 	var failure *Error
@@ -84,7 +91,7 @@ func TestHelpCommandFiltersByActor(t *testing.T) {
 		t.Fatalf("result=%+v err=%v", privateDetail, err)
 	}
 	publicDetail, err := help.Handle(userCtx, Request{Prefix: "/", Args: "public"})
-	if err != nil || !strings.Contains(publicDetail.Text, "/public") {
+	if err != nil || publicDetail.Data.(HelpData).Items[0].Name != "public" {
 		t.Fatalf("public help = %#v, %v", publicDetail, err)
 	}
 
@@ -95,11 +102,11 @@ func TestHelpCommandFiltersByActor(t *testing.T) {
 
 	adminCtx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	adminList, err := help.Handle(adminCtx, Request{Prefix: "/"})
-	if err != nil || !strings.Contains(adminList.Text, "/secret") {
+	if err != nil || !slices.ContainsFunc(adminList.Data.(HelpData).Items, func(item HelpItem) bool { return item.Name == "secret" }) {
 		t.Fatalf("admin help = %#v, %v", adminList, err)
 	}
 	adminDetail, err := help.Handle(adminCtx, Request{Prefix: "/", Args: "sec"})
-	if err != nil || !strings.Contains(adminDetail.Text, "/secret") {
+	if err != nil || adminDetail.Data.(HelpData).Items[0].Name != "secret" {
 		t.Fatalf("admin private help = %#v, %v", adminDetail, err)
 	}
 	if got := completer.Complete(adminCtx, CompletionRequest{Raw: "/help sec", Prefix: "/", Name: "help", Args: "sec", Cursor: len("/help sec")}); len(got) != 1 || got[0].Text != "secret" {

@@ -59,7 +59,7 @@ func TestMessagesKeepFullTextAndReturnLatestPage(t *testing.T) {
 				t.Fatalf("body was truncated: %q", m.Content)
 			}
 		}
-		if strings.Contains(result.Text, text) {
+		if strings.Contains(commandResultText(result), text) {
 			t.Fatal("text preview should remain compact")
 		}
 	}
@@ -180,8 +180,8 @@ func TestResumeAndForkTruncateHistoryWithoutChangingMessages(t *testing.T) {
 			if err != nil {
 				t.Fatalf("handle: %v", err)
 			}
-			if !strings.HasSuffix(result.Text, wantHistory) {
-				t.Fatalf("unexpected history: %q", result.Text)
+			if !strings.HasSuffix(commandResultText(result), wantHistory) {
+				t.Fatalf("unexpected history: %q", commandResultText(result))
 			}
 			for _, message := range messages {
 				stored, err := store.Messages().Get(ctx, message.ID)
@@ -256,8 +256,8 @@ func TestResumeCommandEmitsAudit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume: %v", err)
 	}
-	if !strings.Contains(result.Text, created.ID) {
-		t.Fatalf("resume result = %q", result.Text)
+	if !strings.Contains(commandResultText(result), created.ID) {
+		t.Fatalf("resume result = %q", commandResultText(result))
 	}
 	if len(events) != 1 || events[0] != "session_resume" {
 		t.Fatalf("events = %#v", events)
@@ -298,18 +298,18 @@ func TestResumeCommandUsesPinnedNonCurrentGlobalIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume page: %v", err)
 	}
-	if !strings.Contains(page.Text, "[1] older pinned") || strings.Contains(page.Text, current.ID) {
-		t.Fatalf("resume page = %q", page.Text)
+	if !strings.Contains(commandResultText(page), "[1] older pinned") || strings.Contains(commandResultText(page), current.ID) {
+		t.Fatalf("resume page = %q", commandResultText(page))
 	}
 	secondPage, err := NewResume(deps).Handle(ctx, command.Request{Args: "--page 2"})
 	if err != nil {
 		t.Fatalf("resume page 2: %v", err)
 	}
-	if !strings.Contains(secondPage.Text, "[2] recent") {
-		t.Fatalf("resume page 2 = %q", secondPage.Text)
+	if !strings.Contains(commandResultText(secondPage), "[2] recent") {
+		t.Fatalf("resume page 2 = %q", commandResultText(secondPage))
 	}
 	listed, err := NewSessions(deps).Handle(ctx, command.Request{})
-	if err != nil || !strings.Contains(listed.Text, "[1] older pinned") {
+	if err != nil || !strings.Contains(commandResultText(listed), "[1] older pinned") {
 		t.Fatalf("sessions disagree with resume: %+v, %v", listed, err)
 	}
 	completions := NewResume(deps).(command.Completer).Complete(ctx, command.CompletionRequest{Raw: "/resume ", Prefix: "/", Name: "resume", Cursor: len("/resume ")})
@@ -323,8 +323,8 @@ func TestResumeCommandUsesPinnedNonCurrentGlobalIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume 1: %v", err)
 	}
-	if !strings.Contains(result.Text, older.ID) {
-		t.Fatalf("resume result = %q", result.Text)
+	if !strings.Contains(commandResultText(result), older.ID) {
+		t.Fatalf("resume result = %q", commandResultText(result))
 	}
 	resumed, err := svc.Current(ctx, scope)
 	if err != nil || resumed.ID != older.ID {
@@ -359,8 +359,8 @@ func TestSessionsCommandCLIListsAllPlatformOwners(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sessions handle: %v", err)
 	}
-	if !strings.Contains(result.Text, qqSession.ID) || !strings.Contains(result.Text, "qq visible") {
-		t.Fatalf("sessions result missing qq session: %q", result.Text)
+	if !strings.Contains(commandResultText(result), qqSession.ID) || !strings.Contains(commandResultText(result), "qq visible") {
+		t.Fatalf("sessions result missing qq session: %q", commandResultText(result))
 	}
 }
 
@@ -427,8 +427,8 @@ func TestForkMessagesUseForkContextAndForkShowsHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fork handle: %v", err)
 	}
-	if !strings.Contains(forkResult.Text, "bot:") || !strings.Contains(forkResult.Text, "这是可以 fork 的回复") {
-		t.Fatalf("fork result = %q", forkResult.Text)
+	if !strings.Contains(commandResultText(forkResult), "bot:") || !strings.Contains(commandResultText(forkResult), "这是可以 fork 的回复") {
+		t.Fatalf("fork result = %q", commandResultText(forkResult))
 	}
 
 	messagesResult, err := NewMessages(deps).Handle(ctx, command.Request{})
@@ -436,10 +436,10 @@ func TestForkMessagesUseForkContextAndForkShowsHistory(t *testing.T) {
 		t.Fatalf("messages handle: %v", err)
 	}
 	want := "page=1/1\nuser: 你好\nbot: [" + assistant.ID + "] 这是可以 fork 的回复"
-	if messagesResult.Text != want {
-		t.Fatalf("messages result = %q, want %q", messagesResult.Text, want)
+	if commandResultText(messagesResult) != want {
+		t.Fatalf("messages result = %q, want %q", commandResultText(messagesResult), want)
 	}
-	if strings.Contains(messagesResult.Text, ignored.ID) || strings.Contains(messagesResult.Text, "fork 点之后不该出现") {
-		t.Fatalf("messages result included post-fork message: %q", messagesResult.Text)
+	if strings.Contains(commandResultText(messagesResult), ignored.ID) || strings.Contains(commandResultText(messagesResult), "fork 点之后不该出现") {
+		t.Fatalf("messages result included post-fork message: %q", commandResultText(messagesResult))
 	}
 }

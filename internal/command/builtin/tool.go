@@ -44,27 +44,27 @@ func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command
 			source := map[tool.Source]string{tool.SourceBuiltin: "builtin", tool.SourceSkill: "skill", tool.SourceELwisp: "elwisp"}[info.Definition.Source]
 			items = append(items, command.ToolData{Name: info.Definition.Name, Description: info.Definition.Description, Source: source, Risk: info.Definition.Risk, Tags: append([]string{}, info.Definition.Tags...)})
 		}
-		return &command.Result{Kind: command.ResultKindTools, Text: formatTools(infos), Data: command.ToolsData{Items: items}}, nil
+		return &command.Result{Kind: command.ResultKindTools, Data: command.ToolsData{Items: items}}, nil
 	}
 	switch fields[0] {
 	case "reload":
 		if err := deps.Skills.Reload(ctx); err != nil {
 			return nil, err
 		}
-		return &command.Result{Kind: command.ResultKindTools, Text: "skills reloaded", Data: command.ToolsData{Items: []command.ToolData{}}}, nil
+		return &command.Result{Kind: command.ResultKindTools, Data: command.ToolsData{Items: []command.ToolData{}, Operation: "reload"}}, nil
 	case "uninstall", "remove":
 		if len(fields) < 2 {
 			return nil, inputError(fmt.Errorf("usage: %s", deps.CommandText("tools", "remove", "<name>", "--confirm")))
 		}
 		name := fields[1]
 		if !slices.Contains(fields[2:], "--confirm") {
-			return &command.Result{Kind: command.ResultKindTools, Text: fmt.Sprintf("删除 %q 及目录？\n%s", name, deps.CommandText("tools", "remove", name, "--confirm")), Data: command.ToolsData{Items: []command.ToolData{}, Name: name}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认删除", Command: deps.CommandText("tools", "remove", name, "--confirm")}}}}, nil
+			return &command.Result{Kind: command.ResultKindTools, Data: command.ToolsData{Items: []command.ToolData{}, Name: name, Operation: "remove", Prompt: fmt.Sprintf("删除 %q 及目录？\n%s", name, deps.CommandText("tools", "remove", name, "--confirm"))}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认删除", Command: deps.CommandText("tools", "remove", name, "--confirm")}}}}, nil
 		}
 		err := deps.Skills.Remove(ctx, name)
 		if err != nil {
 			return nil, fmt.Errorf("remove %s: %w", name, err)
 		}
-		return &command.Result{Kind: command.ResultKindTools, Text: fmt.Sprintf("removed: %s", name), Data: command.ToolsData{Items: []command.ToolData{}, Name: name}}, nil
+		return &command.Result{Kind: command.ResultKindTools, Data: command.ToolsData{Items: []command.ToolData{}, Name: name, Operation: "remove"}}, nil
 	default:
 		return nil, inputError(fmt.Errorf("usage: %s", deps.CommandText("tools", c.Info().Args)))
 	}

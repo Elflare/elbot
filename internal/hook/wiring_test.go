@@ -14,6 +14,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	platformshare "elbot/internal/platform/share"
 	"elbot/internal/signal"
 )
 
@@ -72,7 +73,7 @@ func TestSupervisorLoadsRulesAtStartAndKeepsConfigFailureNonFatal(t *testing.T) 
 	case <-time.After(time.Second):
 		t.Fatal("missing configuration notice")
 	}
-	if result, err := m.Commands()[0].Handle(t.Context(), command.Request{}); err != nil || result.Text != "nil" {
+	if result, err := m.Commands()[0].Handle(t.Context(), command.Request{}); err != nil || platformshare.FormatCommandResult(result) != "nil" {
 		t.Fatalf("invalid rules registered: %+v, %v", result, err)
 	}
 	if err := m.Close(context.Background()); err != nil {

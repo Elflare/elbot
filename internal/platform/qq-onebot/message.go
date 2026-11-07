@@ -131,6 +131,7 @@ func (a *Adapter) handleEvent(ctx context.Context, handler share.MessageHandler,
 		chatName = senderName(event.Sender)
 	}
 	messageCtx := share.MessageContext{
+		CommandReply: a,
 		Conversation: contextinfo.Conversation{
 			Source: contextinfo.Source{
 				Platform: a.Name(),

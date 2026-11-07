@@ -43,7 +43,7 @@ func (h helpCommand) Handle(ctx context.Context, req command.Request) (*command.
 		sb.WriteString(fmt.Sprintf("%s: %s\n", usage, info.Description))
 	}
 	sb.WriteString("\n" + h.deps.CommandText("help", "<command>"))
-	return &command.Result{Kind: command.ResultKindHelp, Text: sb.String(), Data: command.HelpData{Items: items}}, nil
+	return &command.Result{Kind: command.ResultKindHelp, Data: command.HelpData{Items: items, HelpCommand: h.deps.CommandText("help", "<command>")}}, nil
 }
 
 func (h helpCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {

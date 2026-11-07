@@ -61,7 +61,7 @@ func TestCommandContinuationRequiresSuccessfulDelivery(t *testing.T) {
 		router := command.NewRouter([]string{"/"})
 		if err := router.Register(command.NewFunc(command.Info{Name: "go", MinRole: contextinfo.RoleUser}, func(context.Context, command.Request) (*command.Result, error) {
 			p.order = append(p.order, "execute")
-			return &command.Result{Kind: command.ResultKindText, Text: "accepted", Continuation: &command.Continuation{Kind: command.ContinuationInput, SessionID: "s", Text: "next"}}, nil
+			return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: "accepted"}, Continuation: &command.Continuation{Kind: command.ContinuationInput, SessionID: "s", Text: "next"}}, nil
 		})); err != nil {
 			t.Fatal(err)
 		}
@@ -137,7 +137,7 @@ func TestAppendControlOnlyInterceptsPendingConfirmation(t *testing.T) {
 				want = append(want, "continue")
 			}
 		}
-		if tc.pending && !tc.failSend && (p.result == nil || p.result.Text != "追加输入已接受" || p.result.Continuation.Kind != command.ContinuationAppend) {
+		if tc.pending && !tc.failSend && (p.result == nil || p.result.Data.(command.TextData).Content != "追加输入已接受" || p.result.Continuation.Kind != command.ContinuationAppend) {
 			t.Fatalf("append acceptance result = %+v", p.result)
 		}
 		if !reflect.DeepEqual(p.order, want) {
@@ -183,13 +183,13 @@ func TestExecutionFailureAndDeliveryFailureStaySeparate(t *testing.T) {
 	t.Cleanup(func() { _ = connection.Close(context.Background()) })
 	router := command.NewRouter([]string{"/"})
 	if err := router.Register(command.NewFunc(command.Info{Name: "partial", MinRole: contextinfo.RoleUser}, func(context.Context, command.Request) (*command.Result, error) {
-		return &command.Result{Kind: command.ResultKindText, Text: "one item completed", Continuation: &command.Continuation{Kind: command.ContinuationInput, Text: "never run"}}, executionErr
+		return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: "one item completed"}, Continuation: &command.Continuation{Kind: command.ContinuationInput, Text: "never run"}}, executionErr
 	})); err != nil {
 		t.Fatal(err)
 	}
 	executor := NewCommandExecutor(CommandExecutorDeps{Router: router, Sessions: p, Turns: p, Identity: p, Output: p, Confirmations: p, Input: p})
 	_, _, err = executor.Handle(t.Context(), "/partial")
-	if !errors.Is(err, sendErr) || !errors.Is(p.failure, executionErr) || p.result.Text != "one item completed" || !reflect.DeepEqual(p.order, []string{"send"}) {
+	if !errors.Is(err, sendErr) || !errors.Is(p.failure, executionErr) || p.result.Data.(command.TextData).Content != "one item completed" || !reflect.DeepEqual(p.order, []string{"send"}) {
 		t.Fatalf("result=%+v failure=%+v err=%v order=%v", p.result, p.failure, err, p.order)
 	}
 	if len(logs) != 2 || logs[0].EventName != "command_failed" || logs[1].EventName != "command_send_failed" {

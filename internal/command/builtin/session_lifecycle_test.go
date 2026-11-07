@@ -43,8 +43,8 @@ func TestLifecycleCommandsArchiveAndArchives(t *testing.T) {
 	if err != nil {
 		t.Fatalf("archive preview: %v", err)
 	}
-	if !strings.Contains(preview.Text, "/archive "+first.ID+" --confirm") || !strings.Contains(preview.Text, "archive? first") || !strings.Contains(preview.Text, first.ID) {
-		t.Fatalf("archive preview = %q", preview.Text)
+	if !strings.Contains(commandResultText(preview), "/archive "+first.ID+" --confirm") || !strings.Contains(commandResultText(preview), "archive? first") || !strings.Contains(commandResultText(preview), first.ID) {
+		t.Fatalf("archive preview = %q", commandResultText(preview))
 	}
 	selections.set(scope, []storage.SessionSummary{{ID: second.ID}})
 	if _, err := NewArchive(deps).Handle(ctx, command.Request{Args: first.ID + " --confirm"}); err != nil {
@@ -55,22 +55,22 @@ func TestLifecycleCommandsArchiveAndArchives(t *testing.T) {
 	if err != nil {
 		t.Fatalf("archives list: %v", err)
 	}
-	if !strings.Contains(list.Text, "first") || strings.Contains(list.Text, "second") {
-		t.Fatalf("archives list = %q", list.Text)
+	if !strings.Contains(commandResultText(list), "first") || strings.Contains(commandResultText(list), "second") {
+		t.Fatalf("archives list = %q", commandResultText(list))
 	}
-	if !strings.Contains(list.Text, "page=1") {
-		t.Fatalf("archives list missing page: %q", list.Text)
+	if !strings.Contains(commandResultText(list), "page=1") {
+		t.Fatalf("archives list missing page: %q", commandResultText(list))
 	}
 
 	deletePreview, err := NewDelete(deps).Handle(ctx, command.Request{Args: "1"})
 	if err != nil {
 		t.Fatalf("delete preview: %v", err)
 	}
-	if !strings.Contains(deletePreview.Text, "delete? first") || !strings.Contains(deletePreview.Text, first.ID) {
-		t.Fatalf("delete preview = %q", deletePreview.Text)
+	if !strings.Contains(commandResultText(deletePreview), "delete? first") || !strings.Contains(commandResultText(deletePreview), first.ID) {
+		t.Fatalf("delete preview = %q", commandResultText(deletePreview))
 	}
-	if !strings.Contains(deletePreview.Text, "/delete "+first.ID+" --confirm") {
-		t.Fatalf("delete preview does not pin canonical id: %q", deletePreview.Text)
+	if !strings.Contains(commandResultText(deletePreview), "/delete "+first.ID+" --confirm") {
+		t.Fatalf("delete preview does not pin canonical id: %q", commandResultText(deletePreview))
 	}
 
 	if _, err := NewUnarchive(deps).Handle(ctx, command.Request{Args: "1"}); err != nil {
@@ -105,8 +105,8 @@ func TestArchiveCurrentConfirmationPinsSessionID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("archive preview: %v", err)
 	}
-	if !strings.Contains(preview.Text, "/archive "+current.ID+" --confirm") {
-		t.Fatalf("archive preview does not pin current id: %q", preview.Text)
+	if !strings.Contains(commandResultText(preview), "/archive "+current.ID+" --confirm") {
+		t.Fatalf("archive preview does not pin current id: %q", commandResultText(preview))
 	}
 
 	replacement, err := svc.Create(ctx, scope, session.CreateRequest{Title: "replacement"})

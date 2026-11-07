@@ -11,6 +11,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	platformshare "elbot/internal/platform/share"
 
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
@@ -195,7 +196,7 @@ func TestAgentConstructionDoesNotSubscribeToModelRetries(t *testing.T) {
 func (p isolatedPlatformCapabilities) SendCommandResult(ctx context.Context, name string, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
 	var outputs []delivery.Output
 	if result != nil {
-		out := delivery.Text(result.Text)
+		out := delivery.Text(platformshare.FormatCommandResult(result))
 		if result.Confirmation != nil {
 			out.Actions = result.Confirmation.Actions
 		}

@@ -7,9 +7,26 @@ import (
 	"fmt"
 	"strings"
 
+	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	platformshare "elbot/internal/platform/share"
 )
+
+func (a *Adapter) SendCommandResult(ctx context.Context, _ string, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
+	var outputs []delivery.Output
+	if result != nil {
+		out := delivery.Text(platformshare.FormatCommandResult(result))
+		if result.Confirmation != nil {
+			out.Actions = result.Confirmation.Actions
+		}
+		outputs = append(outputs, out)
+	}
+	if failure != nil {
+		outputs = append(outputs, delivery.Text(failure.Message))
+	}
+	return a.SendTo(ctx, delivery.Target{}, outputs)
+}
 
 const (
 	msgTypeText     = 0

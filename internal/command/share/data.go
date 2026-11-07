@@ -45,6 +45,9 @@ type SessionsData struct {
 	Items            []SessionSummaryData `json:"items"`              // 当前页可访问的会话摘要。
 	CurrentSessionID string               `json:"current_session_id"` // 当前绑定，空字符串表示未绑定。
 	Query            string               `json:"query"`              // 本次搜索词。
+	ListType         string               `json:"list_type"`          // sessions/archives/resume 列表。
+	PrevCommand      string               `json:"prev_command"`       // 上一页命令；第一页为空。
+	NextCommand      string               `json:"next_command"`       // 下一页命令；没有下一页时为空。
 }
 type SessionChangeData struct {
 	Session          *SessionData  `json:"session"`            // 目标会话快照；确认前保留原状态，解除绑定或删除后为 nil。
@@ -52,6 +55,9 @@ type SessionChangeData struct {
 	CurrentSessionID string        `json:"current_session_id"` // 返回时的当前绑定，空字符串表示未绑定。
 	AffectedCount    int           `json:"affected_count"`     // 实际变更数量。
 	Messages         []MessageData `json:"messages"`           // resume/fork 已读取的最近消息。
+	Operation        string        `json:"operation"`          // 成功操作类别，用于消费端生成展示文案。
+	Prompt           string        `json:"prompt"`             // 待确认操作的说明。
+	Unchanged        bool          `json:"unchanged"`          // 切换模式时目标已是当前模式。
 }
 type AttachmentData struct {
 	Name string `json:"name"` // 历史附件展示名称，不携带存储位置或授权。
@@ -85,6 +91,7 @@ type ItemError struct {
 	Error *Error `json:"error"` // 此项的分类错误。
 }
 type ModelsData struct {
+	Query  string      `json:"query"`  // 原模型搜索词。
 	Items  []ModelData `json:"items"`  // 查询匹配的模型。
 	Errors []ItemError `json:"errors"` // 各提供方的失败，不覆盖成功项。
 }
@@ -95,13 +102,14 @@ type ContextData struct {
 	CompactTriggerRatio float64     `json:"compact_trigger_ratio"` // 自动压缩触发比例。
 }
 type RequestData struct {
-	ID        string       `json:"id"`         // 请求标识。
-	ParentID  string       `json:"parent_id"`  // 父请求标识。
-	SessionID string       `json:"session_id"` // 所属会话。
-	Kind      request.Kind `json:"kind"`       // 请求业务类型。
-	Label     string       `json:"label"`      // 原始说明。
-	StartedAt time.Time    `json:"started_at"` // 开始时间。
-	Stopping  bool         `json:"stopping"`   // 已接受停止，尚未退出。
+	ID           string       `json:"id"`            // 请求标识。
+	ParentID     string       `json:"parent_id"`     // 父请求标识。
+	SessionID    string       `json:"session_id"`    // 所属会话。
+	SessionTitle string       `json:"session_title"` // 所属会话标题，供请求列表展示。
+	Kind         request.Kind `json:"kind"`          // 请求业务类型。
+	Label        string       `json:"label"`         // 原始说明。
+	StartedAt    time.Time    `json:"started_at"`    // 开始时间。
+	Stopping     bool         `json:"stopping"`      // 已接受停止，尚未退出。
 }
 type RequestsData struct {
 	Items []RequestData `json:"items"` // 请求快照。
@@ -120,11 +128,17 @@ type StatusData struct {
 	TurnToolUsage        map[string]int `json:"turn_tool_usage"`        // 当前轮次的工具计数，独立于已保存统计。
 	Context              ContextData    `json:"context"`                // 用量与上下文配置。
 	Errors               []ItemError    `json:"errors"`                 // 可选统计读取失败，不伪造零值。
+	DefaultMode          string         `json:"default_mode"`           // 无当前会话时配置的默认模式。
+	CompactModel         ModelData      `json:"compact_model"`          // 无当前会话时默认模式的压缩模型。
+	Platform             string         `json:"platform"`               // 无当前会话时的平台范围。
+	ChatID               string         `json:"chat_id"`                // 无当前会话时的平台会话范围。
 }
 type StopData struct {
 	SessionIDs    []string `json:"session_ids"`    // 停止所涉及的会话。
 	RequestID     string   `json:"request_id"`     // 指定的请求；按会话停止时为空。
 	AcceptedCount int      `json:"accepted_count"` // 实际接受取消的请求数量。
+	State         string   `json:"state"`          // stopped 或 stopping。
+	ShowCount     bool     `json:"show_count"`     // 旧文案是否展示接受取消的数量。
 }
 type ToolData struct {
 	Name        string             `json:"name"`        // 工具或 Skill 名称。
@@ -134,8 +148,10 @@ type ToolData struct {
 	Tags        []string           `json:"tags"`        // 目录标签。
 }
 type ToolsData struct {
-	Items []ToolData `json:"items"` // 可见目录。
-	Name  string     `json:"name"`  // 单项操作目标，列表或重载时为空。
+	Items     []ToolData `json:"items"`     // 可见目录。
+	Name      string     `json:"name"`      // 单项操作目标，列表时为空。
+	Operation string     `json:"operation"` // reload/remove 操作；列表时为空。
+	Prompt    string     `json:"prompt"`    // 待确认操作说明。
 }
 type RollbackData struct {
 	ID       uint64    `json:"id"`        // 撤销记录标识。
@@ -157,7 +173,8 @@ type HelpItem struct {
 	Usage       string   `json:"usage"`       // 使用当前配置前缀构造的命令用法。
 }
 type HelpData struct {
-	Items []HelpItem `json:"items"` // 已经过权限过滤的帮助项。
+	Items       []HelpItem `json:"items"`        // 已经过权限过滤的帮助项。
+	HelpCommand string     `json:"help_command"` // 列表底部展示的详细帮助命令。
 }
 type HookData struct {
 	ID          string `json:"id"`          // 插件或 Hook 标识。
@@ -172,9 +189,10 @@ type HookData struct {
 	Waiting     int    `json:"waiting"`     // 等待租约数量。
 }
 type HooksData struct {
-	Items   []HookData `json:"items"`   // 原始注册项与运行快照。
-	Target  string     `json:"target"`  // 单项管理目标；列表或重载时为空。
-	Notices []string   `json:"notices"` // 重载报告的独立提示。
+	Items     []HookData `json:"items"`     // 原始注册项与运行快照。
+	Target    string     `json:"target"`    // 单项管理目标；列表或重载时为空。
+	Notices   []string   `json:"notices"`   // 重载报告的独立提示。
+	Operation string     `json:"operation"` // reload/start/stop/restart 操作；普通查询为空。
 }
 
 type LogIdentityData struct {
@@ -197,6 +215,7 @@ type LogData struct {
 	Raw          string                `json:"raw,omitempty"` // 仅原始查询附带的物理记录。
 }
 type LogsData struct {
+	Title        string    `json:"title"`         // runtime logs/audit events/elwisp logs。
 	Items        []LogData `json:"items"`         // 匹配的有效日志。
 	DamagedCount int       `json:"damaged_count"` // 扫描中遇到的损坏条数。
 	DamagedLines []string  `json:"damaged_lines"` // 有界损坏样本。
@@ -212,10 +231,12 @@ type UsageBucket struct {
 }
 type UsageData struct {
 	GroupBy        string        `json:"group_by"`        // 原查询的聚合维度。
+	Range          string        `json:"range"`           // 本次用量查询覆盖的时间范围。
 	Items          []UsageBucket `json:"items"`           // 排序后的聚合项。
 	Total          UsageBucket   `json:"total"`           // 全部选中记录的总计。
 	DamagedCount   int           `json:"damaged_count"`   // 不计入聚合的损坏记录数量。
 	AvailableCalls int           `json:"available_calls"` // 本次查询可供区间选择的调用数。
+	RangeTruncated bool          `json:"range_truncated"` // 请求的调用区间超出可用调用数。
 }
 type DoctorIssue struct {
 	Path    string       `json:"path"`    // 涉及的配置路径。

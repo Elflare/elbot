@@ -327,6 +327,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 		chatName = strings.TrimSpace(msg.Chat.FirstName + " " + msg.Chat.LastName)
 	}
 	messageCtx := share.MessageContext{
+		CommandReply: a,
 		Conversation: contextinfo.Conversation{
 			Source: contextinfo.Source{
 				Platform: a.Name(),

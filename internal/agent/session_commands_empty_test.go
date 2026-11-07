@@ -6,6 +6,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	platformshare "elbot/internal/platform/share"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
@@ -120,7 +121,7 @@ func TestCommandTextWiringUsesConfigurationFirstPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	reply := platform.replies[0]
-	if reply.name != "help" || reply.result.Kind != command.ResultKindHelp || !strings.Contains(reply.result.Text, "!stop [request_id|number]") || strings.Contains(reply.result.Text, "!!") || strings.Contains(reply.result.Text, "/help") {
+	if reply.name != "help" || reply.result.Kind != command.ResultKindHelp || !strings.Contains(platformshare.FormatCommandResult(reply.result), "!stop [request_id|number]") || strings.Contains(platformshare.FormatCommandResult(reply.result), "!!") || strings.Contains(platformshare.FormatCommandResult(reply.result), "/help") {
 		t.Fatalf("reply=%+v", reply)
 	}
 }

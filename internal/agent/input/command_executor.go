@@ -117,7 +117,7 @@ func (e *CommandExecutor) execute(ctx context.Context, text string, parsed comma
 		appendResponse = "n"
 	}
 	if row != nil && snapshot.Phase == turn.PhaseAwaitAppendConfirm && agentshare.IsAppendConfirm(appendResponse) {
-		return ctx, &command.Result{Kind: command.ResultKindText, Text: "追加输入已接受", Continuation: &command.Continuation{Kind: command.ContinuationAppend, SessionID: row.ID}}, true, nil
+		return ctx, &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: "追加输入已接受"}, Continuation: &command.Continuation{Kind: command.ContinuationAppend, SessionID: row.ID}}, true, nil
 	}
 	if !parsed.OK {
 		return ctx, nil, false, nil

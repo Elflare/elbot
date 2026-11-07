@@ -3,6 +3,7 @@ package builtin
 import (
 	"context"
 	command "elbot/internal/command/share"
+	platformshare "elbot/internal/platform/share"
 	"testing"
 
 	"elbot/internal/storage"
@@ -20,3 +21,7 @@ func newCommandTestStore(t *testing.T) storage.Store {
 }
 
 func testCommandText(name string, args ...string) string { return command.Format("/", name, args...) }
+
+func commandResultText(result *command.Result) string {
+	return platformshare.FormatCommandResult(result)
+}

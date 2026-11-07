@@ -70,8 +70,8 @@ func TestAuditCommandParsesFilters(t *testing.T) {
 	if service.query.Fields["event"] != "tool_call_completed" || service.query.ContentFields["risk"] != "high" || service.query.ContentFields["tool"] != "shell" {
 		t.Fatalf("fields = %#v", service.query.Fields)
 	}
-	if !strings.Contains(result.Text, "tool_call_completed") || !strings.Contains(result.Text, "[shell]") {
-		t.Fatalf("content = %q", result.Text)
+	if !strings.Contains(commandResultText(result), "tool_call_completed") || !strings.Contains(commandResultText(result), "[shell]") {
+		t.Fatalf("content = %q", commandResultText(result))
 	}
 }
 
@@ -88,8 +88,8 @@ func TestLogCommandDefaultsToDebugAndFiveEntries(t *testing.T) {
 	if service.query.Prefix != "elbot" || service.query.Limit != defaultLogListLimit || strings.ToLower(service.query.MinLevel) != "debug" {
 		t.Fatalf("query = %#v", service.query)
 	}
-	if !strings.Contains(result.Text, "runtime logs:") || !strings.Contains(result.Text, "started") {
-		t.Fatalf("content = %q", result.Text)
+	if !strings.Contains(commandResultText(result), "runtime logs:") || !strings.Contains(commandResultText(result), "started") {
+		t.Fatalf("content = %q", commandResultText(result))
 	}
 }
 
@@ -148,8 +148,8 @@ func TestElwispCommandDefaultsToElnisDebugAndFiveEntries(t *testing.T) {
 		t.Fatalf("query = %#v", service.query)
 	}
 	for _, want := range []string{"elwisp logs:", "elnis event accepted", "[server-watchdog]", "source: minecraft-main", "source_id: cpu-alert-001", "mode: llm"} {
-		if !strings.Contains(result.Text, want) {
-			t.Fatalf("content missing %q:\n%s", want, result.Text)
+		if !strings.Contains(commandResultText(result), want) {
+			t.Fatalf("content missing %q:\n%s", want, commandResultText(result))
 		}
 	}
 }
@@ -166,13 +166,13 @@ func TestLogCommandShowsStructuredRuntimeFields(t *testing.T) {
 		t.Fatalf("log handle: %v", err)
 	}
 	for _, want := range []string{"hook triggered", "point: platform.connected", "hook: notify_qqonebot_connected", "priority: 1000", "order: 1", "mode: run"} {
-		if !strings.Contains(result.Text, want) {
-			t.Fatalf("content missing %q:\n%s", want, result.Text)
+		if !strings.Contains(commandResultText(result), want) {
+			t.Fatalf("content missing %q:\n%s", want, commandResultText(result))
 		}
 	}
 	for _, hidden := range []string{"secret before", "secret after", "secret raw", "before_content", "after_content", "raw_content"} {
-		if !strings.Contains(result.Text, hidden) {
-			t.Fatalf("content missing declared value %q:\n%s", hidden, result.Text)
+		if !strings.Contains(commandResultText(result), hidden) {
+			t.Fatalf("content missing declared value %q:\n%s", hidden, commandResultText(result))
 		}
 	}
 }
@@ -214,8 +214,8 @@ func TestElwispCommandParsesTagFilters(t *testing.T) {
 	if len(wants) != 2 || wants[0] != "onedrive" || wants[1] != "watchdog" || service.query.Contains != "" {
 		t.Fatalf("query = %#v", service.query)
 	}
-	if !strings.Contains(result.Text, `tags: [windows, onedrive, watchdog]`) {
-		t.Fatalf("content = %q", result.Text)
+	if !strings.Contains(commandResultText(result), `tags: [windows, onedrive, watchdog]`) {
+		t.Fatalf("content = %q", commandResultText(result))
 	}
 }
 
@@ -249,8 +249,8 @@ func TestLogCommandParsesTypeFiltersAndQuotedContains(t *testing.T) {
 		if service.query.Fields["event"] != "system_message" {
 			t.Fatalf("query = %#v", service.query)
 		}
-		if !strings.Contains(result.Text, "system prompt") || !strings.Contains(result.Text, "first_system_message_json") {
-			t.Fatalf("content = %q", result.Text)
+		if !strings.Contains(commandResultText(result), "system prompt") || !strings.Contains(commandResultText(result), "first_system_message_json") {
+			t.Fatalf("content = %q", commandResultText(result))
 		}
 	}
 
@@ -383,7 +383,7 @@ func TestLogCommandsQueryGlobalRecords(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				return result.Text
+				return commandResultText(result)
 			}
 			for _, filter := range []string{"-u", "-a", "--system"} {
 				summary := query(NewLog(deps), filter)
@@ -470,16 +470,16 @@ func TestLogRawIndependentOfLevelAndContentRendering(t *testing.T) {
 				t.Fatal(err)
 			}
 			wantRaw := strings.Contains(args, "--raw")
-			if service.query.Raw != wantRaw || strings.Contains(result.Text, "ORIGINAL_PHYSICAL_RECORD") != wantRaw {
-				t.Fatalf("args=%q query=%+v content=%s", args, service.query, result.Text)
+			if service.query.Raw != wantRaw || strings.Contains(commandResultText(result), "ORIGINAL_PHYSICAL_RECORD") != wantRaw {
+				t.Fatalf("args=%q query=%+v content=%s", args, service.query, commandResultText(result))
 			}
 			audit := service.query.Prefix == "audit"
 			status, tool := "✗", "tool: shell"
 			if audit {
 				status, tool = "✗", "[shell]"
 			}
-			if !wantRaw && (!strings.Contains(result.Text, status) || !strings.Contains(result.Text, "WARN") || !strings.Contains(result.Text, tool) || !strings.Contains(result.Text, "9007199254740993")) {
-				t.Fatalf("normal content=%s", result.Text)
+			if !wantRaw && (!strings.Contains(commandResultText(result), status) || !strings.Contains(commandResultText(result), "WARN") || !strings.Contains(commandResultText(result), tool) || !strings.Contains(commandResultText(result), "9007199254740993")) {
+				t.Fatalf("normal content=%s", commandResultText(result))
 			}
 		}
 	}
@@ -488,7 +488,7 @@ func TestLogUnspecifiedResult(t *testing.T) {
 	service := &fakeLogService{entries: []logging.LogEntry{{Level: "INFO", Content: "plain", EventName: "progress"}}}
 	handler := NewLog(Deps{CommandText: testCommandText, Logs: service})
 	result, err := handler.Handle(t.Context(), command.Request{})
-	if err != nil || !strings.Contains(result.Text, " progress\n[plain]\nINFO") {
+	if err != nil || !strings.Contains(commandResultText(result), " progress\n[plain]\nINFO") {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }

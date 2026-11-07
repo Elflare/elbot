@@ -80,8 +80,8 @@ func TestModelCommandSuccessTextForEveryTarget(t *testing.T) {
 			args, want = "--"+target+" model", target+".model → /"
 		}
 		got, err := NewModel(Deps{CommandText: testCommandText, Models: fakeModelService{}}).Handle(t.Context(), command.Request{Args: args})
-		if err != nil || got.Text != want {
-			t.Fatalf("target=%s got=%+v err=%v", target, got, err)
+		if err != nil || commandResultText(got) != want {
+			t.Fatalf("target=%s got=%q err=%v", target, commandResultText(got), err)
 		}
 	}
 }
@@ -162,7 +162,7 @@ func TestModelCommandSwitchesElwispSlot(t *testing.T) {
 	if models.mode != "elwisp2" || models.arg != "openai/gpt-4.1" {
 		t.Fatalf("selected mode=%q arg=%q", models.mode, models.arg)
 	}
-	if result == nil || !strings.Contains(result.Text, "elwisp2.model →") {
+	if result == nil || !strings.Contains(commandResultText(result), "elwisp2.model →") {
 		t.Fatalf("result = %#v", result)
 	}
 }

@@ -35,16 +35,16 @@ func TestRequestsCommandFormatsTree(t *testing.T) {
 		t.Fatalf("Handle: %v", err)
 	}
 	for _, want := range []string{"[1] turn: chat · ", "[1.1] tool: shell · ", "[1.2] hook: gpt_image_draw_fullwidth · ", "session: 测试会话"} {
-		if !strings.Contains(result.Text, want) {
-			t.Fatalf("requests output missing %q:\n%s", want, result.Text)
+		if !strings.Contains(commandResultText(result), want) {
+			t.Fatalf("requests output missing %q:\n%s", want, commandResultText(result))
 		}
 	}
-	if strings.Count(result.Text, "shell") != 1 || strings.Count(result.Text, "gpt_image_draw_fullwidth") != 1 {
-		t.Fatalf("requests repeats child names:\n%s", result.Text)
+	if strings.Count(commandResultText(result), "shell") != 1 || strings.Count(commandResultText(result), "gpt_image_draw_fullwidth") != 1 {
+		t.Fatalf("requests repeats child names:\n%s", commandResultText(result))
 	}
 	for _, unwanted := range []string{"phase:", "mode:", "tools:"} {
-		if strings.Contains(result.Text, unwanted) {
-			t.Fatalf("requests contains session details %q:\n%s", unwanted, result.Text)
+		if strings.Contains(commandResultText(result), unwanted) {
+			t.Fatalf("requests contains session details %q:\n%s", unwanted, commandResultText(result))
 		}
 	}
 }
@@ -86,8 +86,8 @@ func TestRequestCommandsWithoutActiveRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Text != "nil" {
-		t.Fatalf("requests = %q", result.Text)
+	if commandResultText(result) != "nil" {
+		t.Fatalf("requests = %q", commandResultText(result))
 	}
 	if got := formatActiveRequests(nil); got != "" {
 		t.Fatalf("active requests = %q", got)

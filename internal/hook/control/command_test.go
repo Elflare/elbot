@@ -7,7 +7,12 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/hook/share"
+	platformshare "elbot/internal/platform/share"
 )
+
+func commandResultText(result *command.Result) string {
+	return platformshare.FormatCommandResult(result)
+}
 
 type fakeHookService struct {
 	infos        []share.Info
@@ -82,8 +87,8 @@ func TestHooksCommandShowsDescriptionsAndDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Text, "greet") || !strings.Contains(result.Text, "123456789012345678901234567890123456789012345678901234567890...") || strings.Contains(result.Text, "tail") {
-		t.Fatalf("list content = %q", result.Text)
+	if !strings.Contains(commandResultText(result), "greet") || !strings.Contains(commandResultText(result), "123456789012345678901234567890123456789012345678901234567890...") || strings.Contains(commandResultText(result), "tail") {
+		t.Fatalf("list content = %q", commandResultText(result))
 	}
 	if hooks.listCalls != 1 || hooks.runtimeCalls != 1 {
 		t.Fatalf("list enumerations = %d/%d", hooks.listCalls, hooks.runtimeCalls)
@@ -93,17 +98,17 @@ func TestHooksCommandShowsDescriptionsAndDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Text, "name: greet") || !strings.Contains(result.Text, "description: "+longDescription) {
-		t.Fatalf("detail content = %q", result.Text)
+	if !strings.Contains(commandResultText(result), "name: greet") || !strings.Contains(commandResultText(result), "description: "+longDescription) {
+		t.Fatalf("detail content = %q", commandResultText(result))
 	}
 	if hooks.listCalls != 2 || hooks.runtimeCalls != 2 {
 		t.Fatalf("detail enumerations = %d/%d", hooks.listCalls, hooks.runtimeCalls)
 	}
-	if strings.Count(result.Text, "description:") != 1 {
-		t.Fatalf("description duplicated in %q", result.Text)
+	if strings.Count(commandResultText(result), "description:") != 1 {
+		t.Fatalf("description duplicated in %q", commandResultText(result))
 	}
-	if !strings.Contains(result.Text, "priority: 1000\ndescription: "+longDescription+"\non: platform.message.received") || strings.Contains(result.Text, "\n\n") {
-		t.Fatalf("detail fields are not contiguous in %q", result.Text)
+	if !strings.Contains(commandResultText(result), "priority: 1000\ndescription: "+longDescription+"\non: platform.message.received") || strings.Contains(commandResultText(result), "\n\n") {
+		t.Fatalf("detail fields are not contiguous in %q", commandResultText(result))
 	}
 }
 
@@ -132,14 +137,14 @@ func TestHooksCommandGroupsPluginRulesAndExpandsDetail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(result.Text, "\n  weather  ") != 1 || !strings.Contains(result.Text, "weather  [persistent:ready]  rules=2") {
-		t.Fatalf("grouped list = %q", result.Text)
+	if strings.Count(commandResultText(result), "\n  weather  ") != 1 || !strings.Contains(commandResultText(result), "weather  [persistent:ready]  rules=2") {
+		t.Fatalf("grouped list = %q", commandResultText(result))
 	}
-	if strings.Contains(result.Text, "forecast") || strings.Contains(result.Text, "weather_help") {
-		t.Fatalf("plugin rules leaked into list: %q", result.Text)
+	if strings.Contains(commandResultText(result), "forecast") || strings.Contains(commandResultText(result), "weather_help") {
+		t.Fatalf("plugin rules leaked into list: %q", commandResultText(result))
 	}
-	if !strings.Contains(result.Text, "builtin.cron.missed_once  [platform.connected]") {
-		t.Fatalf("standalone hook missing from list: %q", result.Text)
+	if !strings.Contains(commandResultText(result), "builtin.cron.missed_once  [platform.connected]") {
+		t.Fatalf("standalone hook missing from list: %q", commandResultText(result))
 	}
 
 	result, err = cmd.Handle(context.Background(), command.Request{Args: "weather"})
@@ -147,16 +152,16 @@ func TestHooksCommandGroupsPluginRulesAndExpandsDetail(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"mode: persistent\nstatus: ready", "rules: 2", "rule: forecast", "rule: weather_help", "match: forecast", "match: help"} {
-		if !strings.Contains(result.Text, want) {
-			t.Fatalf("plugin detail missing %q: %q", want, result.Text)
+		if !strings.Contains(commandResultText(result), want) {
+			t.Fatalf("plugin detail missing %q: %q", want, commandResultText(result))
 		}
 	}
-	if strings.Count(result.Text, "description: weather plugin") != 1 {
-		t.Fatalf("plugin description duplicated in %q", result.Text)
+	if strings.Count(commandResultText(result), "description: weather plugin") != 1 {
+		t.Fatalf("plugin description duplicated in %q", commandResultText(result))
 	}
 
 	result, err = cmd.Handle(context.Background(), command.Request{Args: "forecast"})
-	if err != nil || !strings.Contains(result.Text, "name: forecast\npoint: platform.message.received") {
+	if err != nil || !strings.Contains(commandResultText(result), "name: forecast\npoint: platform.message.received") {
 		t.Fatalf("direct rule detail = %#v, %v", result, err)
 	}
 
@@ -175,8 +180,8 @@ func TestHooksReloadShowsWarnings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Text, "hooks reloaded\nwarn:") || !strings.Contains(result.Text, "gpt_image") {
-		t.Fatalf("reload content = %q", result.Text)
+	if !strings.Contains(commandResultText(result), "hooks reloaded\nwarn:") || !strings.Contains(commandResultText(result), "gpt_image") {
+		t.Fatalf("reload content = %q", commandResultText(result))
 	}
 }
 
@@ -185,15 +190,15 @@ func TestHooksCommandManagesStatefulHooks(t *testing.T) {
 	cmd := NewHooks(hooks, testBeginCall, testCommandText)
 
 	result, err := cmd.Handle(context.Background(), command.Request{})
-	if err != nil || !strings.Contains(result.Text, "weather  [persistent:ready]") {
+	if err != nil || !strings.Contains(commandResultText(result), "weather  [persistent:ready]") {
 		t.Fatalf("list = %#v, %v", result, err)
 	}
 	result, err = cmd.Handle(context.Background(), command.Request{Args: "weather"})
-	if err != nil || !strings.Contains(result.Text, "mode: persistent\nstatus: ready") {
+	if err != nil || !strings.Contains(commandResultText(result), "mode: persistent\nstatus: ready") {
 		t.Fatalf("detail = %#v, %v", result, err)
 	}
 	result, err = cmd.Handle(context.Background(), command.Request{Args: "restart weather"})
-	if err != nil || hooks.restarted != "weather" || !strings.Contains(result.Text, "OK") {
+	if err != nil || hooks.restarted != "weather" || !strings.Contains(commandResultText(result), "OK") {
 		t.Fatalf("restart = %#v, restarted=%q, err=%v", result, hooks.restarted, err)
 	}
 }

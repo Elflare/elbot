@@ -53,7 +53,7 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 	fields := strings.Fields(req.Args)
 	if len(fields) == 0 {
 		groups := collectHookGroups(deps)
-		return &command.Result{Kind: command.ResultKindHooks, Text: formatHookList(groups), Data: hookCommandData(groups, "")}, nil
+		return &command.Result{Kind: command.ResultKindHooks, Data: hookCommandData(groups, "")}, nil
 	}
 	switch fields[0] {
 	case "reload":
@@ -61,13 +61,15 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 		if err != nil {
 			groups := collectHookGroups(deps)
 			data := hookCommandData(groups, "")
+			data.Operation = "reload_failed"
 			data.Notices = append([]string{}, report.Notices...)
-			return &command.Result{Kind: command.ResultKindHooks, Text: strings.Join(report.Notices, "\n"), Data: data}, &command.Error{Kind: command.ErrorInternal, Code: "hook_reload_failed", Message: "Hook 重载失败", Cause: err}
+			return &command.Result{Kind: command.ResultKindHooks, Data: data}, &command.Error{Kind: command.ErrorInternal, Code: "hook_reload_failed", Message: "Hook 重载失败", Cause: err}
 		}
 		groups := collectHookGroups(deps)
 		data := hookCommandData(groups, "")
+		data.Operation = "reload"
 		data.Notices = append([]string{}, report.Notices...)
-		return &command.Result{Kind: command.ResultKindHooks, Text: formatHookReloadResult(report), Data: data}, nil
+		return &command.Result{Kind: command.ResultKindHooks, Data: data}, nil
 	case "start", "stop", "restart":
 		if len(fields) != 2 {
 			return nil, &command.Error{Kind: command.ErrorInput, Code: command.CodeInvalidArguments, Message: fmt.Sprintf("usage: %s", c.commandText("hooks", fields[0], "<id>"))}
@@ -91,7 +93,9 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 			}
 			return nil, fmt.Errorf("hook %s %s: %w", fields[0], fields[1], err)
 		}
-		return &command.Result{Kind: command.ResultKindHooks, Text: fmt.Sprintf("hook %s: %s · OK", fields[0], fields[1]), Data: hookCommandData(collectHookGroups(deps), fields[1])}, nil
+		data := hookCommandData(collectHookGroups(deps), fields[1])
+		data.Operation = fields[0]
+		return &command.Result{Kind: command.ResultKindHooks, Data: data}, nil
 	default:
 		name := fields[0]
 		groups := collectHookGroups(deps)
@@ -99,7 +103,7 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 		if len(data.Items) == 0 {
 			return nil, &command.Error{Kind: command.ErrorRejected, Code: command.CodeNotFound, Message: fmt.Sprintf("hook %q: not found", name)}
 		}
-		return &command.Result{Kind: command.ResultKindHooks, Text: formatHookDetail(groups, name, c.commandText), Data: data}, nil
+		return &command.Result{Kind: command.ResultKindHooks, Data: data}, nil
 	}
 }
 

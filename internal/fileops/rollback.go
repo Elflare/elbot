@@ -373,10 +373,10 @@ func (s *RollbackSession) rollback(ctx context.Context, path string, expectedID 
 		}
 		release = leave
 		ctx = locked
-		if err := checkFileTarget(path, record.Target, false); err != nil {
+		if err := checkRollbackFileTarget(path, record.Target); err != nil {
 			return err
 		}
-		if err := checkFileTarget(record.Path, record.Target, false); err != nil {
+		if err := checkRollbackFileTarget(record.Path, record.Target); err != nil {
 			return err
 		}
 		if checkWrite != nil {
@@ -468,10 +468,7 @@ func (s *RollbackSession) loadRecord(ctx context.Context, path, target string, e
 		return nil, nil, ErrRollbackNotFound
 	}
 	for _, checkedPath := range []string{path, record.Path} {
-		if err := checkFileTarget(checkedPath, record.Target, false); err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				return nil, nil, ErrRollbackNotFound
-			}
+		if err := checkRollbackFileTarget(checkedPath, record.Target); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -581,6 +578,14 @@ func checkFileTarget(path, target string, allowCreate bool) error {
 	return nil
 }
 
+func checkRollbackFileTarget(path, target string) error {
+	err := checkFileTarget(path, target, false)
+	if errors.Is(err, os.ErrNotExist) {
+		return ErrRollbackNotFound
+	}
+	return err
+}
+
 // inspectFileState checks bytes outside Session admission. The final commit
 // only rechecks identity and stat information, so large reads cannot hold a
 // Session gate. The target lock serializes all writes through this service.
@@ -592,15 +597,18 @@ func inspectFileState(path string, created bool, revision string, size int64) (o
 	if err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() || info.Size() != size {
-		return nil, fmt.Errorf("file changed before commit")
+	if !info.Mode().IsRegular() {
+		return nil, ErrNotRegularFile
+	}
+	if info.Size() != size {
+		return nil, fileChanged("file changed before commit")
 	}
 	data, err := readRevisionBytes(path, size)
 	if err != nil {
 		return nil, err
 	}
 	if ContentRevision(data) != revision {
-		return nil, fmt.Errorf("file changed before commit")
+		return nil, fileChanged("file changed before commit")
 	}
 	return info, checkFileState(path, false, info)
 }
@@ -611,14 +619,17 @@ func checkFileState(path string, created bool, previous os.FileInfo) error {
 		} else if err != nil {
 			return err
 		}
-		return fmt.Errorf("file appeared after preflight; edit refused")
+		return fileChanged("file appeared after preflight; edit refused")
 	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return err
 	}
+	if !info.Mode().IsRegular() {
+		return ErrNotRegularFile
+	}
 	if previous == nil || !os.SameFile(previous, info) || info.Size() != previous.Size() || info.Mode() != previous.Mode() || !info.ModTime().Equal(previous.ModTime()) {
-		return fmt.Errorf("file changed before commit")
+		return fileChanged("file changed before commit")
 	}
 	return nil
 }

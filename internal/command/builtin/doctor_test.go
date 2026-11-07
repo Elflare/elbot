@@ -25,12 +25,12 @@ func TestDoctorCommandUsesDiagnosisAndRejectsArguments(t *testing.T) {
 	service := &doctorStub{}
 	cmd := NewDoctor(Deps{CommandText: testCommandText, Doctor: service})
 	result, err := cmd.Handle(context.Background(), command.Request{})
-	if err != nil || result.Text != "Everything is OK" || service.calls != 1 {
+	if err != nil || commandResultText(result) != "Everything is OK" || service.calls != 1 {
 		t.Fatalf("result=%#v, err=%v, calls=%d", result, err, service.calls)
 	}
 	service.report = doctor.Report{ConfigPath: "/config/app.toml", Files: []doctor.FileIssue{{Path: "/config/app.toml", Issues: []config.Issue{{Level: config.LevelError, Message: "文件缺失。"}}}}}
 	result, err = cmd.Handle(context.Background(), command.Request{})
-	if err != nil || result.Text != service.report.Text() {
+	if err != nil || commandResultText(result) != service.report.Text() {
 		t.Fatalf("result=%#v, err=%v", result, err)
 	}
 	for _, arg := range []string{"fix", "diff", "--config custom.toml"} {

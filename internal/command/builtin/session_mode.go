@@ -24,11 +24,10 @@ func NewWork(deps Deps) command.Handler {
 		if err != nil {
 			return nil, err
 		}
-		content := fmt.Sprintf("%s · %s", activated.Session.Mode, activated.Session.ID)
-		if activated.AlreadyActive {
-			content = fmt.Sprintf("work · %s · unchanged", activated.Session.ID)
-		}
-		result := sessionChange(ctx, deps, activated.Session, activated.Session.ID, 1, content)
+		result := sessionChange(ctx, deps, activated.Session, activated.Session.ID, 1, "work")
+		data := result.Data.(command.SessionChangeData)
+		data.Unchanged = activated.AlreadyActive
+		result.Data = data
 		if req.Args != "" {
 			result.Continuation = &command.Continuation{Kind: command.ContinuationInput, Text: req.Args, SessionID: activated.Session.ID}
 		}
@@ -52,11 +51,10 @@ func NewChat(deps Deps) command.Handler {
 			}
 			return nil, err
 		}
-		content := fmt.Sprintf("%s · %s", activated.Session.Mode, activated.Session.ID)
-		if activated.AlreadyActive {
-			content = fmt.Sprintf("chat · %s · unchanged", activated.Session.ID)
-		}
-		result := sessionChange(ctx, deps, activated.Session, activated.Session.ID, 1, content)
+		result := sessionChange(ctx, deps, activated.Session, activated.Session.ID, 1, "chat")
+		data := result.Data.(command.SessionChangeData)
+		data.Unchanged = activated.AlreadyActive
+		result.Data = data
 		if req.Args != "" {
 			result.Continuation = &command.Continuation{Kind: command.ContinuationInput, Text: req.Args, SessionID: activated.Session.ID}
 		}

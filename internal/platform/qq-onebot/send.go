@@ -3,8 +3,10 @@ package qqonebot
 
 import (
 	"context"
+	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	platformshare "elbot/internal/platform/share"
 	"encoding/base64"
 	"fmt"
 	"net/url"
@@ -14,6 +16,17 @@ import (
 	"strings"
 	"time"
 )
+
+func (a *Adapter) SendCommandResult(ctx context.Context, _ string, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
+	var outputs []delivery.Output
+	if result != nil {
+		outputs = append(outputs, delivery.Text(platformshare.FormatCommandResult(result)))
+	}
+	if failure != nil {
+		outputs = append(outputs, delivery.Text(failure.Message))
+	}
+	return a.SendTo(ctx, delivery.Target{}, outputs)
+}
 
 const (
 	qqTextPageRunes     = 3000

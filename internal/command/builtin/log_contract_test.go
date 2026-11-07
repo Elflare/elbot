@@ -75,13 +75,13 @@ func TestDamagedLogsAreReportedWithoutMatchedEntries(t *testing.T) {
 	for _, factory := range []func(Deps) command.Handler{NewLog, NewAudit, NewElwisp, NewUsage} {
 		service := &fakeLogService{damagedCount: 12, damagedLines: []string{"{broken"}}
 		result, err := factory(Deps{CommandText: testCommandText, Logs: service}).Handle(t.Context(), command.Request{})
-		if err != nil || !strings.Contains(result.Text, "damaged=12") || !strings.Contains(result.Text, "incomplete") || strings.Contains(result.Text, "{broken") {
+		if err != nil || !strings.Contains(commandResultText(result), "damaged=12") || !strings.Contains(commandResultText(result), "incomplete") || strings.Contains(commandResultText(result), "{broken") {
 			t.Fatalf("result=%+v err=%v", result, err)
 		}
 	}
 	service := &fakeLogService{damagedCount: 12, damagedLines: []string{"{broken"}}
 	result, err := NewLog(Deps{CommandText: testCommandText, Logs: service}).Handle(t.Context(), command.Request{Args: "--raw -e"})
-	if err != nil || !strings.Contains(result.Text, "无法判断是否匹配筛选条件") || !strings.Contains(result.Text, "{broken") || !strings.Contains(result.Text, "damaged hidden=11") {
+	if err != nil || !strings.Contains(commandResultText(result), "无法判断是否匹配筛选条件") || !strings.Contains(commandResultText(result), "{broken") || !strings.Contains(commandResultText(result), "damaged hidden=11") {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }
@@ -171,8 +171,8 @@ func TestAuditPreservesSourceOrderThroughStorageAndFiltering(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := " [shell] ✓ · " + summary + "\n[first\nsecond]\ntool_call_completed · actor: {id: user · platform: telegram} · run_source: foreground\nsession: session\nINFO · risk: low\nnested: {a: [] · z: 9007199254740993}"
-	if !strings.HasSuffix(result.Text, want) {
-		t.Fatalf("display order changed: %s", result.Text)
+	if !strings.HasSuffix(commandResultText(result), want) {
+		t.Fatalf("display order changed: %s", commandResultText(result))
 	}
 	query.ContentFields["tool"] = "different"
 	entries, err = reader.Query(t.Context(), query)
@@ -228,15 +228,15 @@ func TestLogQueriesRenderDecodedJSONStrings(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, want := range []string{"first\n", "\tsecond", "line one\n", "line two", `printf '\n'`, "9007199254740993", "false", "null", "[]"} {
-			if !strings.Contains(result.Text, want) {
-				t.Errorf("missing decoded value %q in %s", want, result.Text)
+			if !strings.Contains(commandResultText(result), want) {
+				t.Errorf("missing decoded value %q in %s", want, commandResultText(result))
 			}
 		}
-		if strings.Contains(result.Text, `first\n\tsecond`) || strings.Contains(result.Text, `line one\nline two`) {
-			t.Errorf("JSON escapes leaked into normal display: %s", result.Text)
+		if strings.Contains(commandResultText(result), `first\n\tsecond`) || strings.Contains(commandResultText(result), `line one\nline two`) {
+			t.Errorf("JSON escapes leaked into normal display: %s", commandResultText(result))
 		}
 		result, err = factory(Deps{CommandText: testCommandText, Logs: service}).Handle(t.Context(), command.Request{Args: "--raw"})
-		if err != nil || !strings.Contains(result.Text, service.entries[0].Raw) {
+		if err != nil || !strings.Contains(commandResultText(result), service.entries[0].Raw) {
 			t.Fatalf("raw display changed: result=%+v err=%v", result, err)
 		}
 	}

@@ -32,8 +32,14 @@ func NewSessions(deps Deps) command.Handler {
 		if err != nil {
 			return nil, err
 		}
-		text := formatSessionsPage(sessions, current, page, query, hasNext, deps.CommandText, "sessions")
-		return sessionsResult(sessions, current, page, sessionPageSize(deps), query, hasNext, text)
+		prev, next := "", ""
+		if page > 1 {
+			prev = nextPageCommand(deps.CommandText, "sessions", page-1, query)
+		}
+		if hasNext {
+			next = nextPageCommand(deps.CommandText, "sessions", page+1, query)
+		}
+		return sessionsResult(sessions, current, page, sessionPageSize(deps), query, "sessions", prev, next)
 	})
 }
 
@@ -91,7 +97,7 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 	record.Identity.SessionID = session.ID
 	globalevents.Log(ctx, record)
 	history, historyErr := recentConversationMessages(ctx, deps, session.ID, resumeHistoryTurns)
-	result := sessionChangeAtCurrent(session, session.ID, 1, formatResumeResult(session, history), session.ID)
+	result := sessionChangeAtCurrent(session, session.ID, 1, session.ID, "resume")
 	data := result.Data.(command.SessionChangeData)
 	data.Messages, err = messageData(history)
 	if err != nil {
@@ -111,8 +117,14 @@ func resumePage(ctx context.Context, deps Deps, page int) (*command.Result, erro
 	if err != nil {
 		return nil, err
 	}
-	text := formatResumableSessionsPage(sessions, page, pageSize, hasNext, deps.CommandText)
-	return sessionsResult(sessions, current, page, pageSize, "", hasNext, text)
+	prev, next := "", ""
+	if page > 1 {
+		prev = nextPageCommand(deps.CommandText, "resume", page-1, "")
+	}
+	if hasNext {
+		next = nextPageCommand(deps.CommandText, "resume", page+1, "")
+	}
+	return sessionsResult(sessions, current, page, pageSize, "", "resume", prev, next)
 }
 
 func (c resumeCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -152,8 +164,14 @@ func NewArchives(deps Deps) command.Handler {
 		if err != nil {
 			return nil, err
 		}
-		text := formatSessionsPage(sessions, current, page, query, hasNext, deps.CommandText, "archives")
-		return sessionsResult(sessions, current, page, sessionPageSize(deps), query, hasNext, text)
+		prev, next := "", ""
+		if page > 1 {
+			prev = nextPageCommand(deps.CommandText, "archives", page-1, query)
+		}
+		if hasNext {
+			next = nextPageCommand(deps.CommandText, "archives", page+1, query)
+		}
+		return sessionsResult(sessions, current, page, sessionPageSize(deps), query, "archives", prev, next)
 	})
 }
 
@@ -189,20 +207,7 @@ func NewMessages(deps Deps) command.Handler {
 		if err != nil {
 			return nil, err
 		}
-		var body strings.Builder
-		fmt.Fprintf(&body, "page=%d/%d\n", page, loaded.TotalPages)
-		for _, message := range loaded.Messages {
-			if message.Role == "assistant" {
-				fmt.Fprintf(&body, "bot: [%s] %s\n", message.ID, messagePreview(message.Content))
-			} else {
-				fmt.Fprintf(&body, "user: %s\n", messagePreview(message.Content))
-			}
-		}
-		content := trimTrailingNewlines(body.String())
-		if len(items) == 0 {
-			content = "nil"
-		}
-		return &command.Result{Kind: command.ResultKindMessages, Text: content, Data: command.MessagesData{Page: command.Page{Page: page, PageSize: messageListPageSize, HasNext: page < loaded.TotalPages, TotalPages: &loaded.TotalPages}, SessionID: session.ID, Items: items}}, nil
+		return &command.Result{Kind: command.ResultKindMessages, Data: command.MessagesData{Page: command.Page{Page: page, PageSize: messageListPageSize, HasNext: page < loaded.TotalPages, TotalPages: &loaded.TotalPages}, SessionID: session.ID, Items: items}}, nil
 	})
 }
 
@@ -229,7 +234,7 @@ func NewFork(deps Deps) command.Handler {
 			ResultStatus: globalevents.ResultSucceeded,
 		})
 		history, historyErr := recentConversationMessages(ctx, deps, session.ID, resumeHistoryTurns)
-		result := sessionChangeAtCurrent(session, session.ID, 1, formatForkResult(session, history), session.ID)
+		result := sessionChangeAtCurrent(session, session.ID, 1, session.ID, "fork")
 		data := result.Data.(command.SessionChangeData)
 		data.Messages, err = messageData(history)
 		if err != nil {

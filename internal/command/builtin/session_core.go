@@ -26,7 +26,7 @@ func NewNew(deps Deps) command.Handler {
 		if err := deps.Sessions.ResetCurrent(ctx, deps.Scope(ctx)); err != nil {
 			return nil, err
 		}
-		return sessionChange(ctx, deps, nil, "", 0, "New Session"), nil
+		return sessionChange(ctx, deps, nil, "", 0, "new"), nil
 	})
 }
 
@@ -38,32 +38,21 @@ func NewStatus(deps Deps) command.Handler {
 		if errors.Is(err, session.ErrNoCurrentSession) {
 			mode := deps.Sessions.DefaultMode()
 			model := deps.Models.CurrentModelForMode(mode)
-			state := command.StatusData{Mode: mode, Model: modelData(model), Phase: turn.PhaseIdle, Requests: []command.RequestData{}, ToolUsage: map[string]int{}, Errors: []command.ItemError{}}
+			scope := deps.Scope(ctx)
+			compact := deps.Models.CurrentCompactModel(mode)
+			state := command.StatusData{Mode: mode, Model: modelData(model), Phase: turn.PhaseIdle, Requests: []command.RequestData{}, ToolUsage: map[string]int{}, Errors: []command.ItemError{}, DefaultMode: mode, CompactModel: modelData(compact), Platform: scope.Platform, ChatID: scope.ChatID}
 			if deps.Contexts != nil {
 				v := deps.Contexts.Status(ctx, nil, config.ModelSelection{Provider: model.Provider, Model: model.Model})
 				state.Context = contextData(v)
 			}
-			return &command.Result{Kind: command.ResultKindStatus, Text: formatEmptyStatus(ctx, deps), Data: state}, nil
+			return &command.Result{Kind: command.ResultKindStatus, Data: state}, nil
 		}
 		if err != nil {
 			return nil, err
 		}
 		s := status.Session
-		archived := ""
-		if s.ArchivedAt != nil {
-			archived = "archived"
-		}
-		pinned := ""
-		if s.PinnedAt != nil {
-			pinned = "pinned"
-			if archived != "" {
-				pinned += ", "
-			}
-		}
 		requests := deps.Requests.ListBySession(s.ID)
-		active := formatActiveRequests(requests)
 		turnSnapshot := deps.Turns.Snapshot(s.ID)
-		pendingInput := fmt.Sprintf("%d", turnSnapshot.PendingCount)
 		currentModel := deps.Models.CurrentModelForMode(s.Mode)
 		contextState, contextErrors := loadContextStatus(ctx, deps, s, currentModel)
 		toolUsage := map[string]int{}
@@ -78,19 +67,8 @@ func NewStatus(deps Deps) command.Handler {
 				}
 			}
 		}
-		data := command.StatusData{Session: sessionData(s), Mode: s.Mode, Model: modelData(currentModel), Phase: turnSnapshot.Phase, PendingCount: turnSnapshot.PendingCount, MessageCount: status.MessageCount, LastUserContent: status.LastUserContent, LastAssistantContent: status.LastAnswerContent, Requests: requestData(requests), ToolUsage: toolUsage, TurnToolUsage: turnSnapshot.Tools, Context: contextState, Errors: contextErrors}
-		result := &command.Result{Kind: command.ResultKindStatus, Data: data, Text: trimTrailingNewlines(fmt.Sprintf(`%s · %s
-%s · %s/%s · msgs=%d
-%screated=%s
-updated=%s
-user: %s
-bot: %s
-%sphase=%s · pending=%s
-%s%s`, s.ID, s.Title, s.Mode, currentModel.Provider, currentModel.Model, status.MessageCount, indentStatusBlock(pinned+archived), formatTime(s.CreatedAt), formatTime(s.UpdatedAt), emptyTODO(sessionStatusPreview(status.LastUserContent)), emptyTODO(sessionStatusPreview(status.LastAnswerContent)), indentStatusBlock(active), turnSnapshot.Phase, pendingInput, formatToolUsage(toolUsage, turnSnapshot.Tools), formatContextData(contextState)))}
-		for _, failure := range contextErrors {
-			result.Text += "\nwarn: " + failure.ID + ": " + failure.Error.Message
-		}
-		return result, nil
+		data := command.StatusData{Session: sessionData(s), Mode: s.Mode, Model: modelData(currentModel), Phase: turnSnapshot.Phase, PendingCount: turnSnapshot.PendingCount, MessageCount: status.MessageCount, LastUserContent: status.LastUserContent, LastAssistantContent: status.LastAnswerContent, Requests: requestData(ctx, deps, requests), ToolUsage: toolUsage, TurnToolUsage: turnSnapshot.Tools, Context: contextState, Errors: contextErrors}
+		return &command.Result{Kind: command.ResultKindStatus, Data: data}, nil
 	})
 }
 

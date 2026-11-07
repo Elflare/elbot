@@ -165,7 +165,6 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
   "command": "messages",
   "result": {
     "kind": "messages",
-    "text": "page=1/1\nuser: 你好\nbot: [a-1] 你好",
     "data": {
       "session_id": "s-1",
       "page": 1,
@@ -188,8 +187,7 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 | 字段 | 说明 |
 | --- | --- |
 | result.kind | 数据结构类别，由服务端明确指定；同一命令不同分支可以不同 |
-| result.text | 可直接展示的文字；不能作为业务字段的解析来源 |
-| result.data | 对应类别的具名业务数据；纯文字回复为 null |
+| result.data | 对应类别的具名业务数据；`kind=text` 时为 `{content: string}` |
 | result.confirmation | 非 null 表示仍待确认、目标操作尚未执行；包含 actions |
 | error | 独立的分类错误；成功时为 null |
 
@@ -473,7 +471,7 @@ ws.onmessage = (e) => {
       handleStream(msg);
       break;
     case "command_result":
-      if (msg.result?.text) { messages.push({text: msg.result.text, reasoning: ""}); render(); }
+      if (msg.result) console.log(msg.result.kind, msg.result.data);
       if (msg.error) console.error(msg.error.kind, msg.error.code, msg.error.message);
       break;
     case "notice":

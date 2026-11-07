@@ -40,7 +40,7 @@ func (c doctorCommand) Handle(ctx context.Context, req command.Request) (*comman
 			items = append(items, command.DoctorIssue{Path: file.Path, Level: issue.Level, Topic: issue.Topic, Message: issue.Message, Field: issue.Field, Missing: issue.Missing})
 		}
 	}
-	return &command.Result{Kind: command.ResultKindDoctor, Text: report.Text(), Data: command.DoctorData{ConfigPath: report.ConfigPath, Items: items}}, nil
+	return &command.Result{Kind: command.ResultKindDoctor, Data: command.DoctorData{ConfigPath: report.ConfigPath, Items: items}}, nil
 }
 
 type DoctorModule struct{}

@@ -3,6 +3,7 @@ package command
 
 import "elbot/internal/command/share"
 
+type TextData = share.TextData
 type Page = share.Page
 type SessionData = share.SessionData
 type SessionSummaryData = share.SessionSummaryData
@@ -35,5 +36,4 @@ type UsageBucket = share.UsageBucket
 type UsageData = share.UsageData
 type DoctorIssue = share.DoctorIssue
 type DoctorData = share.DoctorData
-
 type TokenUsage = share.TokenUsage

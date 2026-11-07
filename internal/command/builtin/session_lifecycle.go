@@ -43,7 +43,7 @@ func NewArchive(deps Deps) command.Handler {
 			if err != nil {
 				return nil, err
 			}
-			return sessionChange(ctx, deps, session, session.ID, 1, fmt.Sprintf("archived: %s · %s", session.Title, session.ID)), nil
+			return sessionChange(ctx, deps, session, session.ID, 1, "archive"), nil
 		},
 	}
 }
@@ -65,7 +65,7 @@ func NewUnarchive(deps Deps) command.Handler {
 			if err != nil {
 				return nil, err
 			}
-			return sessionChange(ctx, deps, session, session.ID, 1, fmt.Sprintf("unarchived: %s · %s", session.Title, session.ID)), nil
+			return sessionChange(ctx, deps, session, session.ID, 1, "unarchive"), nil
 		},
 	}
 }
@@ -86,7 +86,7 @@ func NewPin(deps Deps) command.Handler {
 			if err != nil {
 				return nil, err
 			}
-			return sessionChange(ctx, deps, session, session.ID, 1, fmt.Sprintf("pinned: %s · %s", session.Title, session.ID)), nil
+			return sessionChange(ctx, deps, session, session.ID, 1, "pin"), nil
 		},
 	}
 }
@@ -107,7 +107,7 @@ func NewUnpin(deps Deps) command.Handler {
 			if err != nil {
 				return nil, err
 			}
-			return sessionChange(ctx, deps, session, session.ID, 1, fmt.Sprintf("unpinned: %s · %s", session.Title, session.ID)), nil
+			return sessionChange(ctx, deps, session, session.ID, 1, "unpin"), nil
 		},
 	}
 }
@@ -141,7 +141,7 @@ func (c renameCommand) Handle(ctx context.Context, req command.Request) (*comman
 	if err != nil {
 		return nil, err
 	}
-	return sessionChange(ctx, deps, session, session.ID, 1, fmt.Sprintf("renamed: %s · %s", session.Title, session.ID)), nil
+	return sessionChange(ctx, deps, session, session.ID, 1, "rename"), nil
 }
 
 func (c renameCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -178,7 +178,7 @@ func NewDelete(deps Deps) command.Handler {
 			if err := deps.Sessions.Delete(ctx, deps.Scope(ctx), sessionID); err != nil {
 				return nil, err
 			}
-			return sessionChange(ctx, deps, nil, sessionID, 1, fmt.Sprintf("deleted: %s", sessionID)), nil
+			return sessionChange(ctx, deps, nil, sessionID, 1, "delete"), nil
 		},
 	}
 }
@@ -205,16 +205,16 @@ func (c cleanCommand) Handle(ctx context.Context, req command.Request) (*command
 	deps := c.deps
 	_, confirmed := parseTargetConfirm(req.Args)
 	if !confirmed {
-		return &command.Result{Kind: command.ResultKindSession, Text: "永久删除过期且未归档、未置顶的会话？\n" + deps.CommandText("clean", "--confirm"), Data: command.SessionChangeData{}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认清理", Command: deps.CommandText("clean", "--confirm")}}}}, nil
+		return &command.Result{Kind: command.ResultKindSession, Data: command.SessionChangeData{Operation: "clean", Prompt: "永久删除过期且未归档、未置顶的会话？\n" + deps.CommandText("clean", "--confirm")}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认清理", Command: deps.CommandText("clean", "--confirm")}}}}, nil
 	}
 	deleted, err := deps.Sessions.CleanupExpired(ctx, storage.Now().AddDate(0, 0, -cleanupRetentionDays(deps)))
 	if err != nil {
 		if deleted > 0 {
-			return sessionChange(ctx, deps, nil, "", deleted, fmt.Sprintf("cleaned: %d", deleted)), err
+			return sessionChange(ctx, deps, nil, "", deleted, "clean"), err
 		}
 		return nil, err
 	}
-	return sessionChange(ctx, deps, nil, "", deleted, fmt.Sprintf("cleaned: %d", deleted)), nil
+	return sessionChange(ctx, deps, nil, "", deleted, "clean"), nil
 }
 
 func (c cleanCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -378,7 +378,7 @@ func confirmCommandMessage(ctx context.Context, deps Deps, name, target string) 
 	}
 	action := deps.CommandText(name, id, "--confirm")
 	text := fmt.Sprintf("%s? %s · %s\n%s", name, emptyTitle(row.Title), id, action)
-	return &command.Result{Kind: command.ResultKindSession, Text: text, Data: command.SessionChangeData{Session: sessionData(row), SessionID: id, CurrentSessionID: currentSessionID(ctx, deps)}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认", Command: action}}}}, nil
+	return &command.Result{Kind: command.ResultKindSession, Data: command.SessionChangeData{Session: sessionData(row), SessionID: id, CurrentSessionID: currentSessionID(ctx, deps), Operation: "confirm", Prompt: text}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认", Command: action}}}}, nil
 }
 
 func emptyTitle(title string) string {

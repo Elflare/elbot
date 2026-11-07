@@ -24,7 +24,7 @@ func formatCommandHelp(commandText func(string, ...string) string, info command.
 		sb.WriteString("\n")
 		sb.WriteString(strings.TrimSpace(info.Help))
 	}
-	return &command.Result{Kind: command.ResultKindHelp, Text: sb.String(), Data: command.HelpData{Items: []command.HelpItem{helpItem(info, commandText)}}}
+	return &command.Result{Kind: command.ResultKindHelp, Data: command.HelpData{Items: []command.HelpItem{helpItem(info, commandText)}}}
 }
 
 func trimTrailingNewlines(text string) string {

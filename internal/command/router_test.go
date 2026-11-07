@@ -22,7 +22,7 @@ func TestRouterDispatchAndHelpInfo(t *testing.T) {
 		if req.Prefix != "-" || req.Name != "ping" || req.Args != "hello" {
 			t.Fatalf("request = %#v", req)
 		}
-		return &Result{Kind: ResultKindText, Text: "pong"}, nil
+		return &Result{Kind: ResultKindText, Data: TextData{Content: "pong"}}, nil
 	})); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -31,7 +31,7 @@ func TestRouterDispatchAndHelpInfo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
-	if !called || result.Text != "pong" {
+	if !called || result.Data.(TextData).Content != "pong" {
 		t.Fatalf("called=%v result=%#v", called, result)
 	}
 

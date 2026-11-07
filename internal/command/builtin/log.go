@@ -93,20 +93,20 @@ func (c logCommand) Handle(ctx context.Context, req command.Request) (*command.R
 		if err != nil {
 			return nil, inputError(err)
 		}
-		return queryLogs(ctx, c.deps, query, formatLogEntries(events.LogAudit, query.Raw))
+		return queryLogs(ctx, c.deps, query, "audit events", formatLogEntries(events.LogAudit, query.Raw))
 	}
 	if c.elwisp {
 		query, err := parseElwispLogQuery(req.Args)
 		if err != nil {
 			return nil, inputError(err)
 		}
-		return queryLogs(ctx, c.deps, query, formatLogEntries(events.LogElnis, query.Raw))
+		return queryLogs(ctx, c.deps, query, "elwisp logs", formatLogEntries(events.LogElnis, query.Raw))
 	}
 	query, err := parseRuntimeLogQuery(req.Args)
 	if err != nil {
 		return nil, inputError(err)
 	}
-	return queryLogs(ctx, c.deps, query, formatLogEntries(events.LogRuntime, query.Raw))
+	return queryLogs(ctx, c.deps, query, "runtime logs", formatLogEntries(events.LogRuntime, query.Raw))
 }
 
 func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -207,7 +207,7 @@ func previousLogToken(raw string, tokenStart int) string {
 	return fields[len(fields)-1]
 }
 
-func queryLogs(ctx context.Context, deps Deps, query logging.LogQuery, formatter func([]logging.LogEntry) string) (*command.Result, error) {
+func queryLogs(ctx context.Context, deps Deps, query logging.LogQuery, title string, formatter func([]logging.LogEntry) string) (*command.Result, error) {
 	entries, err := deps.Logs.Query(ctx, query)
 	if err != nil {
 		return nil, err
@@ -227,7 +227,7 @@ func queryLogs(ctx context.Context, deps Deps, query logging.LogQuery, formatter
 			}
 		}
 	}
-	return &command.Result{Kind: command.ResultKindLogs, Text: content, Data: command.LogsData{Items: logData(entries.Entries, query.Raw), DamagedCount: entries.DamagedCount, DamagedLines: append([]string{}, entries.DamagedLines...)}}, nil
+	return &command.Result{Kind: command.ResultKindLogs, Data: command.LogsData{Title: title, Items: logData(entries.Entries, query.Raw), DamagedCount: entries.DamagedCount, DamagedLines: append([]string{}, entries.DamagedLines...)}}, nil
 }
 
 type LogModule struct{}

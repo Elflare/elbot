@@ -4,7 +4,7 @@ package share
 
 import (
 	"context"
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"encoding/json"

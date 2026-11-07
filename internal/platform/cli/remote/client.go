@@ -18,6 +18,7 @@ import (
 
 	"elbot/internal/completion"
 	clishare "elbot/internal/platform/cli/share"
+	platformshare "elbot/internal/platform/share"
 	"elbot/internal/signal"
 )
 
@@ -197,8 +198,10 @@ func (c *RemoteClient) readLoop(ctx context.Context) error {
 func (c *RemoteClient) handleServerMessage(msg remoteMessage) {
 	switch msg.Type {
 	case remoteMsgCommandResult:
-		if msg.Result != nil && msg.Result.Text != "" {
-			c.sendDisplay(clishare.DisplayEvent{Kind: clishare.DisplayChat, Text: msg.Result.Text})
+		if msg.Result != nil {
+			if text := platformshare.FormatCommandResult(msg.Result); text != "" {
+				c.sendDisplay(clishare.DisplayEvent{Kind: clishare.DisplayChat, Text: text})
+			}
 		}
 		if msg.Error != nil {
 			c.sendDisplay(clishare.DisplayEvent{Kind: clishare.DisplayNotice, Text: msg.Error.Message, Level: slog.LevelError.String()})

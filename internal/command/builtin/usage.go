@@ -64,15 +64,17 @@ func (c usageCommand) Handle(ctx context.Context, req command.Request) (*command
 		selected = selected[start:min(callRange.end, available)]
 	}
 	data, content := summarizeUsage(selected, query, groupBy)
+	data.Range = usageRangeDesc(query)
 	data.DamagedCount = entries.DamagedCount
 	data.AvailableCalls = available
 	if callRange != nil && available < callRange.end {
+		data.RangeTruncated = true
 		content += fmt.Sprintf("\n仅有 %d 次调用", available)
 	}
 	if entries.DamagedCount > 0 {
 		content += fmt.Sprintf("\nwarn: damaged=%d · usage incomplete", entries.DamagedCount)
 	}
-	return &command.Result{Kind: command.ResultKindUsage, Text: content, Data: data}, nil
+	return &command.Result{Kind: command.ResultKindUsage, Data: data}, nil
 }
 
 func (c usageCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {

@@ -271,15 +271,15 @@ func sessionData(s *storage.Session) *command.SessionData {
 	return &command.SessionData{ID: s.ID, Title: s.Title, Mode: s.Mode, Status: s.Status, Platform: s.Platform, ChatID: s.ChatID, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, ArchivedAt: s.ArchivedAt, PinnedAt: s.PinnedAt, ParentSessionID: s.ParentSessionID, ForkFromMessageID: s.ForkFromMessageID}
 }
 
-func sessionChange(ctx context.Context, deps Deps, row *storage.Session, id string, count int, text string) *command.Result {
-	return &command.Result{Kind: command.ResultKindSession, Text: text, Data: command.SessionChangeData{Session: sessionData(row), SessionID: id, AffectedCount: count, CurrentSessionID: currentSessionID(ctx, deps)}}
+func sessionChange(ctx context.Context, deps Deps, row *storage.Session, id string, count int, operation string) *command.Result {
+	return &command.Result{Kind: command.ResultKindSession, Data: command.SessionChangeData{Session: sessionData(row), SessionID: id, AffectedCount: count, CurrentSessionID: currentSessionID(ctx, deps), Operation: operation}}
 }
 
-func sessionChangeAtCurrent(row *storage.Session, id string, count int, text, currentID string) *command.Result {
-	return &command.Result{Kind: command.ResultKindSession, Text: text, Data: command.SessionChangeData{Session: sessionData(row), SessionID: id, AffectedCount: count, CurrentSessionID: currentID}}
+func sessionChangeAtCurrent(row *storage.Session, id string, count int, currentID, operation string) *command.Result {
+	return &command.Result{Kind: command.ResultKindSession, Data: command.SessionChangeData{Session: sessionData(row), SessionID: id, AffectedCount: count, CurrentSessionID: currentID, Operation: operation}}
 }
 
-func sessionsResult(rows []storage.SessionSummary, current string, page, size int, query string, hasNext bool, text string) (*command.Result, error) {
+func sessionsResult(rows []storage.SessionSummary, current string, page, size int, query, listType, prevCommand, nextCommand string) (*command.Result, error) {
 	items := make([]command.SessionSummaryData, 0, len(rows))
 	for _, s := range rows {
 		messages, err := messageData(s.Messages)
@@ -291,7 +291,7 @@ func sessionsResult(rows []storage.SessionSummary, current string, page, size in
 			MessageCount: s.MessageCount, Messages: messages, LastUserContent: s.LastUserContent, LastAssistantContent: s.LastAssistantContent,
 		})
 	}
-	return &command.Result{Kind: command.ResultKindSessions, Text: text, Data: command.SessionsData{Page: command.Page{Page: page, PageSize: size, HasNext: hasNext}, Items: items, CurrentSessionID: current, Query: query}}, nil
+	return &command.Result{Kind: command.ResultKindSessions, Data: command.SessionsData{Page: command.Page{Page: page, PageSize: size, HasNext: nextCommand != ""}, Items: items, CurrentSessionID: current, Query: query, ListType: listType, PrevCommand: prevCommand, NextCommand: nextCommand}}, nil
 }
 
 func messageData(rows []storage.Message) ([]command.MessageData, error) {

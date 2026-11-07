@@ -117,7 +117,7 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 	// 或污染下一次 LLM 调用上下文。
 	if !c.commands.IsCommand(text) {
 		observed = confirmationAction(ctx, sessionID, "invalid_text", confirmation, "")
-		return &command.Result{Kind: command.ResultKindText, Text: riskConfirmationWaitingText(c.commandText), Confirmation: riskConfirmationActions(c.commandText)}, nil
+		return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: riskConfirmationWaitingText(c.commandText)}, Confirmation: riskConfirmationActions(c.commandText)}, nil
 	}
 
 	parsed := c.commands.Parse(text)
@@ -134,7 +134,7 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 			return nil, confirmationExpired()
 		}
 		observed = confirmationAction(ctx, sessionID, "detail", confirmation, "")
-		return &command.Result{Kind: command.ResultKindText, Text: riskConfirmationDetailText(confirmation), Confirmation: riskConfirmationActions(c.commandText)}, nil
+		return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: riskConfirmationDetailText(confirmation)}, Confirmation: riskConfirmationActions(c.commandText)}, nil
 	case "confirm", "c":
 		if !c.turns.ResolveRiskConfirmation(sessionID, turn.RiskDecision{Action: turn.RiskConfirm, Extra: parsed.Args}) {
 			return nil, confirmationExpired()
@@ -160,13 +160,13 @@ func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID,
 		observed = confirmationAction(ctx, sessionID, "stop", confirmation, "")
 		c.turns.StopSession(sessionID)
 		count := c.requests.CancelSession(sessionID)
-		return &command.Result{Kind: command.ResultKindStop, Text: "stopping", Data: command.StopData{SessionIDs: []string{sessionID}, AcceptedCount: count}}, nil
+		return &command.Result{Kind: command.ResultKindStop, Data: command.StopData{SessionIDs: []string{sessionID}, AcceptedCount: count, State: "stopping"}}, nil
 	default:
 		observed = confirmationAction(ctx, sessionID, "invalid_command", confirmation, parsed.Name)
-		return &command.Result{Kind: command.ResultKindText, Text: riskConfirmationWaitingText(c.commandText), Confirmation: riskConfirmationActions(c.commandText)}, &command.Error{Kind: command.ErrorInput, Code: command.CodeInvalidArguments, Message: "当前只接受确认、拒绝、详情或停止命令"}
+		return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: riskConfirmationWaitingText(c.commandText)}, Confirmation: riskConfirmationActions(c.commandText)}, &command.Error{Kind: command.ErrorInput, Code: command.CodeInvalidArguments, Message: "当前只接受确认、拒绝、详情或停止命令"}
 
 	}
-	return &command.Result{Kind: command.ResultKindText, Text: "确认操作已接受"}, nil
+	return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: "确认操作已接受"}}, nil
 }
 
 func confirmationAction(ctx context.Context, sessionID, action string, confirmation turn.RiskConfirmation, extra string) *events.LogRecord {

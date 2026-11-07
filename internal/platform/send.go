@@ -4,6 +4,7 @@ package platform
 
 import (
 	"context"
+	"errors"
 
 	"elbot/internal/command"
 	"elbot/internal/delivery"
@@ -23,16 +24,5 @@ func (m *Supervisor) SendCommandResult(ctx context.Context, name string, result 
 	if msg, ok := share.MessageContextFrom(ctx); ok && msg.CommandReply != nil {
 		return msg.CommandReply.SendCommandResult(ctx, name, result, failure)
 	}
-	var outputs []delivery.Output
-	if result != nil && (result.Text != "" || result.Confirmation != nil) {
-		out := delivery.Text(result.Text)
-		if result.Confirmation != nil {
-			out.Actions = result.Confirmation.Actions
-		}
-		outputs = append(outputs, out)
-	}
-	if failure != nil {
-		outputs = append(outputs, delivery.Text(failure.Message))
-	}
-	return m.SendTo(ctx, delivery.Target{}, outputs)
+	return delivery.Receipt{}, errors.New("command reply target missing")
 }

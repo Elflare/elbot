@@ -17,7 +17,7 @@ func TestCommandResultCorrelatesOnlyWithOriginConnection(t *testing.T) {
 			t.Error("command reply not attached")
 			return nil
 		}
-		_, err := msg.CommandReply.SendCommandResult(ctx, "status", &command.Result{Kind: command.ResultKindText, Text: text}, nil)
+		_, err := msg.CommandReply.SendCommandResult(ctx, "status", &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: text}}, nil)
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -35,7 +35,7 @@ func TestCommandResultCorrelatesOnlyWithOriginConnection(t *testing.T) {
 			t.Fatal(err)
 		}
 		got := readTestRemote(t, conn)
-		if got.Type != remoteMsgCommandResult || got.RequestID != tc.id || got.Command != "status" || got.Result == nil || got.Result.Text != tc.id || got.Error != nil {
+		if got.Type != remoteMsgCommandResult || got.RequestID != tc.id || got.Command != "status" || got.Result == nil || got.Result.Data.(command.TextData).Content != tc.id || got.Error != nil {
 			t.Fatalf("reply=%+v", got)
 		}
 	}
@@ -43,7 +43,7 @@ func TestCommandResultCorrelatesOnlyWithOriginConnection(t *testing.T) {
 
 func TestRemoteClientPresentsCommandResultAsIndependentReply(t *testing.T) {
 	client := &RemoteClient{output: make(chan clishare.DisplayEvent, 1)}
-	client.handleServerMessage(remoteMessage{Type: remoteMsgCommandResult, Result: &command.Result{Kind: command.ResultKindText, Text: "confirm?", Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{Label: "yes", Command: "/confirm"}}}}})
+	client.handleServerMessage(remoteMessage{Type: remoteMsgCommandResult, Result: &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: "confirm?"}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{Label: "yes", Command: "/confirm"}}}}})
 	event := <-client.output
 	if event.Kind != clishare.DisplayChat || event.Text != "confirm?" {
 		t.Fatalf("event=%+v", event)

@@ -3,13 +3,30 @@ package telegram
 
 import (
 	"context"
+	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	platformshare "elbot/internal/platform/share"
 	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
 )
+
+func (a *Adapter) SendCommandResult(ctx context.Context, _ string, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
+	var outputs []delivery.Output
+	if result != nil {
+		out := delivery.Text(platformshare.FormatCommandResult(result))
+		if result.Confirmation != nil {
+			out.Actions = result.Confirmation.Actions
+		}
+		outputs = append(outputs, out)
+	}
+	if failure != nil {
+		outputs = append(outputs, delivery.Text(failure.Message))
+	}
+	return a.SendTo(ctx, delivery.Target{}, outputs)
+}
 
 type target struct {
 	NativeChatID int64                // Telegram 原生聊天标识，群组允许负数。

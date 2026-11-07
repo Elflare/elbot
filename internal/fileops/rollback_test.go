@@ -140,6 +140,19 @@ func TestRollbackPreviewAndFailedEditsPreserveBackup(t *testing.T) {
 	if _, err := s.Rollback(context.Background(), path, 0, nil); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(path, []byte("before"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	rollbackTestEdit(t, s, path, "after", false)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Rollback(context.Background(), path, 0, nil); !errors.Is(err, ErrNotRegularFile) {
+		t.Fatalf("non-regular target classification: %v", err)
+	}
 }
 
 func TestRollbackConflictsAndGuardKeepRecord(t *testing.T) {
@@ -150,15 +163,15 @@ func TestRollbackConflictsAndGuardKeepRecord(t *testing.T) {
 		if err := os.WriteFile(path, []byte(changed), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.Rollback(context.Background(), path, 0, nil); err == nil {
-			t.Fatal("external edit overwritten")
+		if _, err := s.Rollback(context.Background(), path, 0, nil); !errors.Is(err, ErrFileChanged) {
+			t.Fatalf("external edit classification: %v", err)
 		}
 	}
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Rollback(context.Background(), path, 0, nil); err == nil {
-		t.Fatal("missing file recreated")
+	if _, err := s.Rollback(context.Background(), path, 0, nil); !errors.Is(err, ErrRollbackNotFound) {
+		t.Fatalf("missing target classification: %v", err)
 	}
 	if err := os.WriteFile(path, []byte("one"), 0600); err != nil {
 		t.Fatal(err)

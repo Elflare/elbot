@@ -2,7 +2,6 @@ package builtin
 
 import (
 	"context"
-	"fmt"
 
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
@@ -20,7 +19,7 @@ func NewCompact(deps Deps) command.Handler {
 		if err != nil {
 			return nil, err
 		}
-		return &command.Result{Kind: command.ResultKindCompact, Text: fmt.Sprintf("compacted → %s", row.ID), Data: sessionData(row)}, nil
+		return &command.Result{Kind: command.ResultKindCompact, Data: sessionData(row)}, nil
 	})
 }
 

@@ -21,6 +21,7 @@ import (
 	"elbot/internal/hook"
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
+	platformshare "elbot/internal/platform/share"
 	"elbot/internal/security"
 	"elbot/internal/signal"
 	"elbot/internal/storage/sqlite"
@@ -226,7 +227,7 @@ data: [DONE]
 func (p *integrationPlatform) SendCommandResult(ctx context.Context, _ string, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
 	var outputs []delivery.Output
 	if result != nil {
-		out := delivery.Text(result.Text)
+		out := delivery.Text(platformshare.FormatCommandResult(result))
 		if result.Confirmation != nil {
 			out.Actions = result.Confirmation.Actions
 		}

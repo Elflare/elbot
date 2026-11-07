@@ -17,6 +17,7 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/muesli/cancelreader"
 
+	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -114,7 +115,7 @@ func (r *Runtime) Start(ctx context.Context, handler platformshare.MessageHandle
 			Source:       contextinfo.Source{Platform: r.name, ChatType: contextinfo.ChatPrivate, ChatID: "local", Name: r.clientID},
 			Identity:     contextinfo.Identity{ID: "local", Name: r.clientID},
 		}
-		msg := platformshare.MessageContext{Conversation: info, GroupRole: contextinfo.GroupRoleUnknown, RawText: text, Sender: r}
+		msg := platformshare.MessageContext{CommandReply: r, Conversation: info, GroupRole: contextinfo.GroupRoleUnknown, RawText: text, Sender: r}
 		return handler(contextinfo.WithConversation(callCtx, info), text, msg)
 	}
 	submit := func(text string) error {
@@ -364,6 +365,17 @@ func (r *Runtime) SendTo(ctx context.Context, target delivery.Target, outputs []
 func (r *Runtime) SendReply(ctx context.Context, outputs []delivery.Output) error {
 	_, err := r.SendTo(ctx, delivery.Target{}, outputs)
 	return err
+}
+
+func (r *Runtime) SendCommandResult(ctx context.Context, _ string, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
+	var outputs []delivery.Output
+	if result != nil {
+		outputs = append(outputs, delivery.Text(platformshare.FormatCommandResult(result)))
+	}
+	if failure != nil {
+		outputs = append(outputs, delivery.Text(failure.Message))
+	}
+	return r.SendTo(ctx, delivery.Target{}, outputs)
 }
 
 func (r *Runtime) StartStream(context.Context) (delivery.MessageStream, error) {

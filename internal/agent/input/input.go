@@ -152,7 +152,7 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 		if err != nil {
 			return ctx, err
 		}
-		event := delivery.StreamEvent{Type: delivery.StreamSend, Text: result.Text}
+		event := delivery.StreamEvent{Type: delivery.StreamSend, Text: confirmationResponseText(result)}
 		if result.Confirmation != nil {
 			event.Actions = result.Confirmation.Actions
 		}
@@ -160,6 +160,23 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 		return ctx, err
 	}
 	return ctx, nil
+}
+
+func confirmationResponseText(result *command.Result) string {
+	if result == nil {
+		return ""
+	}
+	switch data := result.Data.(type) {
+	case command.TextData:
+		return data.Content
+	case command.StopData:
+		if data.State == "stopped" {
+			return "stopped"
+		}
+		return "stopping"
+	default:
+		return ""
+	}
 }
 
 // NewInputCoordinator initializes InputCoordinator without installing cross-service callbacks.

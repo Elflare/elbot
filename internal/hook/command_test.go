@@ -3,7 +3,6 @@ package hook
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"testing/synctest"
 
@@ -95,13 +94,10 @@ func TestCommandStopReceivesCloseCancellation(t *testing.T) {
 			return false, ctx.Err()
 		}}
 		handler := control.NewHooks(service, m.beginCall, testCommandText)
-		finished := make(chan *command.Result, 1)
+		finished := make(chan error, 1)
 		go func() {
-			result, err := handler.Handle(context.Background(), command.Request{Args: "stop worker"})
-			if err != nil {
-				t.Error(err)
-			}
-			finished <- result
+			_, err := handler.Handle(context.Background(), command.Request{Args: "stop worker"})
+			finished <- err
 		}()
 		ctx := <-entered
 		if err := m.Close(context.Background()); err != nil {
@@ -110,8 +106,8 @@ func TestCommandStopReceivesCloseCancellation(t *testing.T) {
 		if !errors.Is(ctx.Err(), context.Canceled) {
 			t.Fatal("command context was not canceled")
 		}
-		if result := <-finished; result == nil || !strings.Contains(result.Text, "context canceled") {
-			t.Fatalf("command result=%v", result)
+		if err := <-finished; !errors.Is(err, context.Canceled) {
+			t.Fatalf("command error=%v", err)
 		}
 	})
 }
