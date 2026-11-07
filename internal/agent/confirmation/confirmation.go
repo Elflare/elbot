@@ -335,15 +335,9 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	}
 	if resp.Action == turn.RiskConfirmTool {
 		c.setToolAutoConfirmed(sessionID, call.Name)
-		if _, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: fmt.Sprintf("本会话 %s 免确认", call.Name)}); err != nil {
-			return tool.ConfirmResult{Allowed: true, Extra: resp.Extra}, err
-		}
 	}
 	if resp.Action == turn.RiskConfirmAll {
 		c.setSessionAutoConfirmed(sessionID)
-		if _, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "本会话全部工具免确认"}); err != nil {
-			return tool.ConfirmResult{Allowed: true, Extra: resp.Extra}, err
-		}
 	}
 	if resp.Action == turn.RiskReject {
 		reason := strings.TrimSpace(resp.Reason)
