@@ -249,7 +249,7 @@ func TestUsageNoData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("usage handle: %v", err)
 	}
-	if commandResultText(result) != "nil" {
+	if commandResultText(result) != "-" {
 		t.Fatalf("content = %q", commandResultText(result))
 	}
 }
@@ -426,7 +426,7 @@ func TestUsageCallRangesWithLogReader(t *testing.T) {
 		{name: "short range with offset", args: "-n 3-6", calls: 2, prompt: 50, notice: "仅有 4 次调用"},
 		{name: "start out of range", args: "-n 5-6", notice: "仅有 4 次调用"},
 		{name: "last allowed position", args: "-n 100000", notice: "仅有 4 次调用"},
-		{name: "no matches", args: "-n 1 -m missing", notice: "nil"},
+		{name: "no matches", args: "-n 1 -m missing", notice: "仅有 0 次调用"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			result, err := NewUsage(Deps{CommandText: testCommandText, Logs: logging.Reader{Dir: dir}}).Handle(t.Context(), command.Request{Args: tc.args})
@@ -434,8 +434,8 @@ func TestUsageCallRangesWithLogReader(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.calls == 0 {
-				if commandResultText(result) != tc.notice {
-					t.Fatalf("content = %q, want %q", commandResultText(result), tc.notice)
+				if commandResultText(result) != "-\n"+tc.notice {
+					t.Fatalf("content = %q, want %q", commandResultText(result), "-\n"+tc.notice)
 				}
 				return
 			}
@@ -484,7 +484,7 @@ func TestUsageCallRangePreservesUnknownAndDamage(t *testing.T) {
 		})
 	}
 	result, err := NewUsage(Deps{CommandText: testCommandText, Logs: &fakeLogService{damagedCount: 2}}).Handle(t.Context(), command.Request{Args: "-n 1"})
-	if err != nil || commandResultText(result) != "nil\nwarn: damaged=2 · usage incomplete" {
+	if err != nil || commandResultText(result) != "-\n仅有 0 次调用\nwarn: damaged=2 · usage incomplete" {
 		t.Fatalf("result = %+v, err = %v", result, err)
 	}
 }

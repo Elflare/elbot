@@ -31,6 +31,10 @@ func (s *Supervisor) Resume(ctx context.Context, scope Scope, sessionID string) 
 	return s.control.Resume(ctx, share.Scope(scope), sessionID)
 }
 
+func (s *Supervisor) ResumeLast(ctx context.Context, scope Scope) (*storage.Session, error) {
+	return s.control.ResumeLast(ctx, share.Scope(scope))
+}
+
 // ResetCurrent 只解除 current 绑定，下一条输入再创建会话。
 func (s *Supervisor) ResetCurrent(ctx context.Context, scope Scope) error {
 	return s.control.ResetCurrent(ctx, share.Scope(scope))
@@ -44,15 +48,13 @@ func (s *Supervisor) ActivateMode(ctx context.Context, scope Scope, req Activate
 }
 
 func (s *Supervisor) List(ctx context.Context, scope Scope, query string, limit int) ([]storage.SessionSummary, error) {
-	return s.control.ListPage(ctx, share.Scope(scope), query, limit, 0, false)
+	result, err := s.ListPage(ctx, scope, ListRequest{Query: query, Page: 1, PageSize: limit})
+	return result.Items, err
 }
 
-func (s *Supervisor) ListPage(ctx context.Context, scope Scope, query string, limit, offset int, archivedOnly bool) ([]storage.SessionSummary, error) {
-	return s.control.ListPage(ctx, share.Scope(scope), query, limit, offset, archivedOnly)
-}
-
-func (s *Supervisor) ListResumablePage(ctx context.Context, scope Scope, limit, offset int) ([]storage.SessionSummary, error) {
-	return s.control.ListResumablePage(ctx, share.Scope(scope), limit, offset)
+func (s *Supervisor) ListPage(ctx context.Context, scope Scope, req ListRequest) (ListResult, error) {
+	result, err := s.control.ListPage(ctx, share.Scope(scope), control.ListRequest(req))
+	return ListResult(result), err
 }
 
 func (s *Supervisor) Status(ctx context.Context, scope Scope) (*Status, error) {

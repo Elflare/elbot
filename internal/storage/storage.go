@@ -407,6 +407,7 @@ type ListSessionsRequest struct {
 	Query                         string
 	Limit                         int
 	Offset                        int
+	RecentFirst                   bool // 忽略置顶，按更新时间倒序查询最近会话。
 	// MessageLimit bounds the ordered, unmodified message excerpts returned per session.
 	MessageLimit int
 }
@@ -455,6 +456,7 @@ type SessionRepository interface {
 	Get(ctx context.Context, id string) (*Session, error)
 	Mutate(ctx context.Context, id string, update func(*Session) error) (*Session, error)
 	List(ctx context.Context, req ListSessionsRequest) ([]SessionSummary, error)
+	Count(ctx context.Context, req ListSessionsRequest) (int, error)
 	Delete(ctx context.Context, id string) error
 	ListExpiredIDs(ctx context.Context, cutoff time.Time) ([]string, error)
 	DeleteIfExpired(ctx context.Context, id string, cutoff time.Time) (bool, error)

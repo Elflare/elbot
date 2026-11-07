@@ -67,9 +67,6 @@ func formatActiveRequestsData(requests []command.RequestData) string {
 	out.WriteString("requests:\n")
 	for i, item := range roots {
 		writeRequestDataLine(&out, item, fmt.Sprint(i+1), "")
-		if item.SessionTitle != "" {
-			fmt.Fprintf(&out, "      session: %s\n", item.SessionTitle)
-		}
 		sort.SliceStable(children[item.ID], func(i, j int) bool { return children[item.ID][i].StartedAt.Before(children[item.ID][j].StartedAt) })
 		for j, child := range children[item.ID] {
 			writeRequestDataLine(&out, child, fmt.Sprintf("%d.%d", i+1, j+1), "└── ")

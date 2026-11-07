@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 命令返回从通知改为独立的结构化结果，统一提供业务数据、分类错误和确认操作；远程协议新增按输入 ID 关联的 `command_result`，执行失败与投递失败分别处理。
 - `/messages` 改为原始对话的有界分页：第 1 页最新、页内旧到新，结构化数据保留完整正文及附件名称，包含分支历史且不受压缩摘要影响。
-- 追加输入确认现在取消时只支持/stop
+- 追加输入确认现在取消时只支持`/stop`
 - `/status` 改为数据库统计，不再为消息计数读取完整历史。
 - 人工逐包、逐文件、逐函数、逐字段指导AI重构App到业务层，再次收拢边界、分清职责、精简代码。
 - 破坏性更新：常驻记忆改为按平台和用户 ID 分层的 TOML 表，旧文件首次读取时自动备份并迁移，迁移兼容代码将在引入版本之后次版本号递增两次时移除。
@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 修改了 Elwisp 协议，统一使用 `platform`、`api`、`params` 描述平台原生 API 调用。
 - `send_file`工具可以普通用户使用了，仅限媒体id和url
 - 优化重试逻辑
+- `/resume` 不再使用编号
+- `/sessions`、`/archives` 关键词现在需要-k/--keyword
 
 ### Fixed
 

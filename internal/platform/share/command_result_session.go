@@ -29,7 +29,7 @@ func formatSessionChange(d command.SessionChangeData) string {
 			if string(message.Role) == "assistant" {
 				role = "bot"
 			}
-			fmt.Fprintf(&out, "%s: %s\n", role, preview(message.Content, 80))
+			fmt.Fprintf(&out, "%s: %s\n", role, messagePreview(message, 80))
 		}
 		return strings.TrimRight(out.String(), "\n")
 	case "work", "chat":
@@ -80,13 +80,13 @@ func formatSessions(d command.SessionsData) string {
 		if len(markers) > 0 {
 			mark = " [" + strings.Join(markers, ", ") + "]"
 		}
-		fmt.Fprintf(&out, "[%d] %s%s\n%s · %s/%s · %s · msgs=%d\n", (d.Page.Page-1)*d.Page.PageSize+i+1, title, mark, item.ID, item.Platform, item.ChatID, item.UpdatedAt.Format("2006-01-02 15:04:05"), item.MessageCount)
+		fmt.Fprintf(&out, "[%s] %s%s\n%s/%s · %s · msgs=%d\n", item.ID, title, mark, item.Platform, item.ChatID, item.UpdatedAt.Format("2006-01-02 15:04:05"), item.MessageCount)
 		var previews []string
-		for index, message := range item.Messages {
-			if index == 4 {
-				break
-			}
-			content := strings.TrimSpace(strings.ReplaceAll(message.Content, "\n", " "))
+		if len(item.Messages) > 4 {
+			previews = append(previews, "...")
+		}
+		for _, message := range item.Messages[max(0, len(item.Messages)-4):] {
+			content := messagePreview(message, 24)
 			if content == "" {
 				continue
 			}
@@ -94,10 +94,7 @@ func formatSessions(d command.SessionsData) string {
 			if string(message.Role) == "assistant" {
 				role = "bot"
 			}
-			previews = append(previews, role+": "+preview(content, 24))
-		}
-		if len(item.Messages) > 4 {
-			previews = append(previews, "...")
+			previews = append(previews, role+": "+content)
 		}
 		if len(previews) > 0 {
 			out.WriteString(strings.Join(previews, " / ") + "\n")
@@ -107,6 +104,9 @@ func formatSessions(d command.SessionsData) string {
 		out.WriteString("\n")
 	}
 	fmt.Fprintf(&out, "page=%d", d.Page.Page)
+	if d.Page.TotalPages != nil {
+		fmt.Fprintf(&out, "/%d", *d.Page.TotalPages)
+	}
 	if d.PrevCommand != "" {
 		fmt.Fprintf(&out, " · prev: %s", d.PrevCommand)
 	}
@@ -128,12 +128,27 @@ func formatMessages(d command.MessagesData) string {
 	fmt.Fprintf(&out, "page=%d/%d\n", d.Page.Page, pages)
 	for _, message := range d.Items {
 		if string(message.Role) == "assistant" {
-			fmt.Fprintf(&out, "bot: [%s] %s\n", message.ID, preview(message.Content, 40))
+			fmt.Fprintf(&out, "bot: [%s] %s\n", message.ID, messagePreview(message, 40))
 		} else {
-			fmt.Fprintf(&out, "user: %s\n", preview(message.Content, 40))
+			fmt.Fprintf(&out, "user: %s\n", messagePreview(message, 40))
 		}
 	}
 	return strings.TrimRight(out.String(), "\n")
+}
+
+func messagePreview(message command.MessageData, n int) string {
+	parts := []string{}
+	if text := preview(message.Content, n); text != "" {
+		parts = append(parts, text)
+	}
+	for _, attachment := range message.Attachments {
+		if attachment.Name == "" {
+			parts = append(parts, "[附件]")
+		} else {
+			parts = append(parts, "[附件: "+attachment.Name+"]")
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 func preview(text string, n int) string {

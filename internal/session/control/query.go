@@ -13,24 +13,39 @@ import (
 	"elbot/internal/storage"
 )
 
-func (s *Service) ListPage(ctx context.Context, scope share.Scope, query string, limit, offset int, archivedOnly bool) ([]storage.SessionSummary, error) {
-	return s.deps.Sessions.List(ctx, storage.ListSessionsRequest{
-		Owner: scope.Owner, Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID,
-		IncludeAllPlatforms: scope.IsCLI, IncludeSamePlatformBackground: !scope.IsCLI && scope.ChatType == contextinfo.ChatPrivate,
-		ArchivedOnly: archivedOnly, Query: query, Limit: limit, Offset: offset, MessageLimit: 5,
-	})
-}
-
-func (s *Service) ListResumablePage(ctx context.Context, scope share.Scope, limit, offset int) ([]storage.SessionSummary, error) {
-	currentID := ""
-	if binding := s.CurrentBinding(scope); binding != nil {
-		currentID = binding.SessionID()
+func (s *Service) ListPage(ctx context.Context, scope share.Scope, req ListRequest) (ListResult, error) {
+	result := ListResult{Items: []storage.SessionSummary{}, Page: req.Page, PageSize: req.PageSize}
+	if req.Page < 0 || req.PageSize <= 0 {
+		return result, fmt.Errorf("invalid session pagination")
 	}
-	return s.deps.Sessions.List(ctx, storage.ListSessionsRequest{
+	query := storage.ListSessionsRequest{
 		Owner: scope.Owner, Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID,
 		IncludeAllPlatforms: scope.IsCLI, IncludeSamePlatformBackground: !scope.IsCLI && scope.ChatType == contextinfo.ChatPrivate,
-		ExcludeSessionID: currentID, Limit: limit, Offset: offset, MessageLimit: 5,
-	})
+		ArchivedOnly: req.ArchivedOnly, Query: req.Query, Limit: req.PageSize, MessageLimit: 5,
+	}
+	if req.ExcludeCurrent {
+		if binding := s.CurrentBinding(scope); binding != nil {
+			query.ExcludeSessionID = binding.SessionID()
+		}
+	}
+	var err error
+	result.TotalCount, err = s.deps.Sessions.Count(ctx, query)
+	if err != nil {
+		return result, err
+	}
+	result.TotalPages = result.TotalCount / req.PageSize
+	if result.TotalCount%req.PageSize != 0 {
+		result.TotalPages++
+	}
+	if result.Page == 0 {
+		result.Page = max(1, result.TotalPages)
+	}
+	if result.TotalCount == 0 || result.Page > result.TotalPages {
+		return result, nil
+	}
+	query.Offset = (result.Page - 1) * req.PageSize
+	result.Items, err = s.deps.Sessions.List(ctx, query)
+	return result, err
 }
 
 func (s *Service) Status(ctx context.Context, scope share.Scope) (*Status, error) {

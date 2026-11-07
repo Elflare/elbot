@@ -39,6 +39,9 @@ func formatLogs(d command.LogsData) string {
 		for _, raw := range d.DamagedLines {
 			fmt.Fprintf(&out, "\n损坏记录（无法判断是否匹配筛选条件）：\n%s", raw)
 		}
+		if hidden := d.DamagedCount - len(d.DamagedLines); hidden > 0 {
+			fmt.Fprintf(&out, "\ndamaged hidden=%d", hidden)
+		}
 	}
 	return strings.TrimRight(out.String(), "\n")
 }

@@ -30,42 +30,32 @@ func toolsString(tools map[string]int) string {
 }
 
 func sessionPageSize(deps Deps) int {
-	pageSize, _ := deps.SessionState.config()
+	pageSize := deps.SessionListPageSize
 	if pageSize > 0 {
 		return pageSize
 	}
 	return defaultSessionListPageSize
 }
 
-func listSessionPage(ctx context.Context, deps Deps, query string, page, pageSize int, archivedOnly bool) ([]storage.SessionSummary, bool, error) {
-	sessions, err := deps.Sessions.ListPage(ctx, deps.Scope(ctx), query, pageSize+1, (page-1)*pageSize, archivedOnly)
+func listSessionPage(ctx context.Context, deps Deps, query string, page int, archivedOnly, excludeCurrent bool) (session.ListResult, error) {
+	result, err := deps.Sessions.ListPage(ctx, deps.Scope(ctx), session.ListRequest{Query: query, Page: page, PageSize: sessionPageSize(deps), ArchivedOnly: archivedOnly, ExcludeCurrent: excludeCurrent})
 	if err != nil {
-		return nil, false, err
+		return result, err
 	}
-	hasNext := len(sessions) > pageSize
-	if hasNext {
-		sessions = sessions[:pageSize]
+	if result.Page > max(1, result.TotalPages) {
+		return result, inputError(fmt.Errorf("page %d out of range; available pages: 1-%d", result.Page, max(1, result.TotalPages)))
 	}
-	return sessions, hasNext, nil
-}
-
-func listResumablePage(ctx context.Context, deps Deps, page, pageSize int) ([]storage.SessionSummary, bool, error) {
-	sessions, err := deps.Sessions.ListResumablePage(ctx, deps.Scope(ctx), pageSize+1, (page-1)*pageSize)
-	if err != nil {
-		return nil, false, err
-	}
-	hasNext := len(sessions) > pageSize
-	if hasNext {
-		sessions = sessions[:pageSize]
-	}
-	return sessions, hasNext, nil
+	return result, nil
 }
 
 func nextPageCommand(commandText func(string, ...string) string, name string, page int, query string) string {
 	if name == "resume" {
 		return commandText(name, "--page", fmt.Sprint(page))
 	}
-	return commandText(name, fmt.Sprint(page), query)
+	if query != "" {
+		return commandText(name, fmt.Sprint(page), "-k", query)
+	}
+	return commandText(name, fmt.Sprint(page))
 }
 
 func currentSessionID(ctx context.Context, deps Deps) string {
@@ -112,9 +102,20 @@ func sessionChangeAtCurrent(row *storage.Session, id string, count int, currentI
 	return &command.Result{Kind: command.ResultKindSession, Data: command.SessionChangeData{Session: sessionData(row), SessionID: id, AffectedCount: count, CurrentSessionID: currentID, Operation: operation}}
 }
 
-func sessionsResult(rows []storage.SessionSummary, current string, page, size int, query, listType, prevCommand, nextCommand string) (*command.Result, error) {
-	items := make([]command.SessionSummaryData, 0, len(rows))
-	for _, s := range rows {
+func sessionsResult(ctx context.Context, deps Deps, page session.ListResult, query, listType string) (*command.Result, error) {
+	current, err := currentBoundSessionID(ctx, deps)
+	if err != nil {
+		return nil, err
+	}
+	prevCommand, nextCommand := "", ""
+	if page.Page > 1 {
+		prevCommand = nextPageCommand(deps.CommandText, listType, page.Page-1, query)
+	}
+	if page.Page < page.TotalPages {
+		nextCommand = nextPageCommand(deps.CommandText, listType, page.Page+1, query)
+	}
+	items := make([]command.SessionSummaryData, 0, len(page.Items))
+	for _, s := range page.Items {
 		messages, err := messageData(s.Messages)
 		if err != nil {
 			return nil, err
@@ -124,7 +125,7 @@ func sessionsResult(rows []storage.SessionSummary, current string, page, size in
 			MessageCount: s.MessageCount, Messages: messages, LastUserContent: s.LastUserContent, LastAssistantContent: s.LastAssistantContent,
 		})
 	}
-	return &command.Result{Kind: command.ResultKindSessions, Data: command.SessionsData{Page: command.Page{Page: page, PageSize: size, HasNext: nextCommand != ""}, Items: items, CurrentSessionID: current, Query: query, ListType: listType, PrevCommand: prevCommand, NextCommand: nextCommand}}, nil
+	return &command.Result{Kind: command.ResultKindSessions, Data: command.SessionsData{Page: command.Page{Page: page.Page, PageSize: page.PageSize, HasNext: nextCommand != "", TotalPages: &page.TotalPages}, Items: items, CurrentSessionID: current, Query: query, ListType: listType, PrevCommand: prevCommand, NextCommand: nextCommand}}, nil
 }
 
 func messageData(rows []storage.Message) ([]command.MessageData, error) {

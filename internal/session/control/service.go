@@ -26,6 +26,7 @@ type ServiceDeps struct {
 		Get(context.Context, string) (*storage.Session, error)
 		Mutate(context.Context, string, func(*storage.Session) error) (*storage.Session, error)
 		List(context.Context, storage.ListSessionsRequest) ([]storage.SessionSummary, error)
+		Count(context.Context, storage.ListSessionsRequest) (int, error)
 		Delete(context.Context, string) error
 		ListExpiredIDs(context.Context, time.Time) ([]string, error)
 		DeleteIfExpired(context.Context, string, time.Time) (bool, error)
@@ -68,6 +69,22 @@ type Status struct {
 	MessageCount      int              // 当前会话自己的消息数。
 	LastUserContent   string           // 最近一条非空用户正文。
 	LastAnswerContent string           // 最近一条非空助手正文。
+}
+
+type ListRequest struct {
+	Query          string // 标题搜索词。
+	ArchivedOnly   bool   // 仅查询归档会话。
+	ExcludeCurrent bool   // 排除当前绑定。
+	Page           int    // 0 表示最后一页，其余从 1 开始。
+	PageSize       int    // 每页容量。
+}
+
+type ListResult struct {
+	Items      []storage.SessionSummary // 当前页原始摘要，按查询顺序排列。
+	Page       int                      // 实际页码。
+	PageSize   int                      // 每页容量。
+	TotalCount int                      // 匹配会话总数。
+	TotalPages int                      // 总页数，空列表为 0。
 }
 
 type BackgroundRequest struct {

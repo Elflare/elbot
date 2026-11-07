@@ -24,12 +24,12 @@ func completeSessionIDs(ctx context.Context, deps Deps, query string, archived b
 	if deps.Sessions == nil || deps.Scope == nil {
 		return nil
 	}
-	sessions, _, err := listSessionPage(ctx, deps, "", 1, sessionPageSize(deps), archived)
+	sessions, err := listSessionPage(ctx, deps, "", 0, archived, false)
 	if err != nil {
 		return nil
 	}
 	out := []command.Completion{}
-	for _, session := range sessions {
+	for _, session := range sessions.Items {
 		if !strings.HasPrefix(session.ID, query) {
 			continue
 		}

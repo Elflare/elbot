@@ -4,7 +4,6 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"errors"
-	"sync"
 	"testing"
 
 	command "elbot/internal/command/share"
@@ -63,34 +62,5 @@ func TestChatCommandDoesNotContinueWhenHistoryBlocksSwitch(t *testing.T) {
 	result, err := NewChat(Deps{CommandText: testCommandText, Sessions: svc, Scope: func(context.Context) session.Scope { return scope }}).Handle(ctx, command.Request{Args: "do not send"})
 	if result != nil || !errors.Is(err, session.ErrChatModeRequiresEmptySession) {
 		t.Fatalf("result=%+v err=%v", result, err)
-	}
-}
-
-func TestSessionCommandStateIsScopedAndConcurrent(t *testing.T) {
-	state := NewSessionCommandState(10, 30)
-	one := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "one"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-	two := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "two"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-
-	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			state.set(one, []storage.SessionSummary{{ID: "one-session"}})
-			_ = state.get(two)
-		}()
-		go func() {
-			defer wg.Done()
-			state.set(two, []storage.SessionSummary{{ID: "two-session"}})
-			_ = state.get(one)
-		}()
-	}
-	wg.Wait()
-
-	if got := state.get(one); len(got) != 1 || got[0] != "one-session" {
-		t.Fatalf("scope one = %#v", got)
-	}
-	if got := state.get(two); len(got) != 1 || got[0] != "two-session" {
-		t.Fatalf("scope two = %#v", got)
 	}
 }

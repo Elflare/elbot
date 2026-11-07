@@ -44,9 +44,9 @@ slash 命令由 Agent Core 统一处理，CLI、QQ 等平台共享同一套语�
 | --- | --- |
 | `/new` | 创建并切换到新 Session。 |
 | `/status` | 当前 Session 状态。 |
-| `/sessions [关键词]` | 列出或搜索可见 Session。 |
-| `/resume [编号或 session_id]` | 恢复历史 Session。 |
-| `/archives [页码] [关键词]` | 已归档 Session 列表。 |
+| `/sessions [页码] [-k\|--keyword <关键词>]` | 列出或搜索可见 Session，默认末页。 |
+| `/resume [session_id\|last]` | 恢复历史 Session。 |
+| `/archives [页码] [-k\|--keyword <关键词>]` | 已归档 Session 列表，默认末页。 |
 | `/archive [编号或 session_id] --confirm` | 归档。 |
 | `/unarchive [编号或 session_id]` | 取消归档。 |
 | `/pin` / `/unpin [编号或 session_id]` | 置顶 / 取消置顶。 |
@@ -55,7 +55,7 @@ slash 命令由 Agent Core 统一处理，CLI、QQ 等平台共享同一套语�
 | `/clean --confirm` | 删除过期且未归档、未置顶的 Session。 |
 
 - 除 `/rename` 与 `/delete` 外，带 `[编号或 session_id]` 的命令省略参数时作用于当前 Session；编号由 `/sessions`、`/archives` 展示，可被这些命令复用。
-- `/resume 1` 直接恢复最近更新的非当前 Session，无需先执行裸 `/resume`；编号按更新时间排列，翻页连续。
+- `/resume last` 恢复最近更新的非当前 Session，忽略置顶。
 - CLI 超级管理员可跨平台查看和管理 Session；普通 CLI 用户与消息平台用户遵循各自的平台和作用域。Cron／Elnis 后台会话仅所属用户可同平台私聊恢复，或从 CLI 管理入口恢复。恢复会永久转为前台归属。
 - 当前会话处理中时不能执行 `/new`、`/resume`、`/fork`、`/chat`、`/work` 等切换类命令，需要先 `/stop`。
 - 删除是永久操作且需要 `--confirm`；执行中的会话不能删除，自动清理也会跳过。

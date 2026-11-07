@@ -225,15 +225,15 @@ func TestSessionRepositoryPinnedOrderAcrossPages(t *testing.T) {
 			}
 		}
 	}
-	checkPages("", "pinned-b,pinned-a,pinned-old,normal-z,normal-y,normal-old")
-	checkPages("pinned-b", "pinned-a,pinned-old,normal-z,normal-y,normal-old")
+	checkPages("", "pinned-old,pinned-a,pinned-b,normal-old,normal-y,normal-z")
+	checkPages("pinned-b", "pinned-old,pinned-a,normal-old,normal-y,normal-z")
 	if _, err := store.Sessions().Mutate(ctx, "pinned-b", func(row *storage.Session) error {
 		row.PinnedAt = nil
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	checkPages("", "pinned-a,pinned-old,normal-z,normal-y,pinned-b,normal-old")
+	checkPages("", "pinned-old,pinned-a,normal-old,pinned-b,normal-y,normal-z")
 }
 
 func TestSessionRepositoryArchivePinAndCleanup(t *testing.T) {
@@ -350,6 +350,10 @@ func TestSessionListExcerptsUsesInsertionOrderForEqualTimestamps(t *testing.T) {
 		{ID: "a-user", SessionID: session.ID, Role: storage.RoleUser, Content: "second", CreatedAt: createdAt},
 		{ID: "z-assistant", SessionID: session.ID, Role: storage.RoleAssistant, Content: "third", CreatedAt: createdAt},
 		{ID: "a-assistant", SessionID: session.ID, Role: storage.RoleAssistant, Content: "fourth", CreatedAt: createdAt},
+		{ID: "fifth-user", SessionID: session.ID, Role: storage.RoleUser, Content: "fifth", CreatedAt: createdAt},
+		{ID: "sixth-assistant", SessionID: session.ID, Role: storage.RoleAssistant, Content: "sixth", CreatedAt: createdAt},
+		{ID: "seventh-user", SessionID: session.ID, Role: storage.RoleUser, Content: "seventh", CreatedAt: createdAt},
+		{ID: "ignored-tool", SessionID: session.ID, Role: storage.RoleTool, Content: "tool", CreatedAt: createdAt},
 	}
 	for i := range messages {
 		if err := store.Messages().Append(ctx, &messages[i]); err != nil {
@@ -357,20 +361,68 @@ func TestSessionListExcerptsUsesInsertionOrderForEqualTimestamps(t *testing.T) {
 		}
 	}
 
-	sessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ChatType: "private"})
+	sessions, err := store.Sessions().List(ctx, storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ChatType: "private", MessageLimit: 5})
 	if err != nil {
 		t.Fatalf("list sessions: %v", err)
 	}
 	if len(sessions) != 1 {
 		t.Fatalf("session count = %d", len(sessions))
 	}
-	if sessions[0].LastUserContent != "second" || sessions[0].LastAssistantContent != "fourth" {
+	if sessions[0].LastUserContent != "seventh" || sessions[0].LastAssistantContent != "sixth" {
 		t.Fatalf("last previews = %q / %q", sessions[0].LastUserContent, sessions[0].LastAssistantContent)
 	}
+	if len(sessions[0].Messages) != 5 {
+		t.Fatalf("excerpts=%+v", sessions[0].Messages)
+	}
 	for i, message := range sessions[0].Messages {
-		if message.ID != messages[i].ID || message.Content != messages[i].Content {
+		if message.ID != messages[i+2].ID || message.Content != messages[i+2].Content {
 			t.Fatalf("excerpt %d = %+v", i, message)
 		}
+	}
+}
+
+func TestSessionCountUsesListFilters(t *testing.T) {
+	store := newTestStore(t)
+	ctx := t.Context()
+	now := storage.Now()
+	for _, row := range []storage.Session{
+		{ID: "active", Title: "match", Owner: contextinfo.ActorIdentity{Platform: "p", ID: "u"}, Platform: "p", ChatType: "private", ChatID: "chat"},
+		{ID: "archived", Title: "match", Owner: contextinfo.ActorIdentity{Platform: "p", ID: "u"}, Platform: "p", ChatType: "private", ChatID: "chat", ArchivedAt: &now},
+		{ID: "background", Title: "match", Owner: contextinfo.ActorIdentity{Platform: "p", ID: "u"}, Platform: "p", ChatType: "private", ChatID: "other", Mode: storage.SessionModeBackground},
+		{ID: "foreign", Title: "other", Owner: contextinfo.ActorIdentity{Platform: "p", ID: "v"}, Platform: "p", ChatType: "private", ChatID: "chat"},
+	} {
+		if err := store.Sessions().Create(ctx, &row); err != nil {
+			t.Fatal(err)
+		}
+	}
+	base := storage.ListSessionsRequest{Owner: contextinfo.ActorIdentity{Platform: "p", ID: "u"}, Platform: "p", ChatType: "private", ChatID: "chat"}
+	for _, tc := range []struct {
+		name  string
+		query storage.ListSessionsRequest
+		want  int
+	}{
+		{"scope", base, 1},
+		{"archives", storage.ListSessionsRequest{IncludeAllPlatforms: true, ArchivedOnly: true}, 1},
+		{"all active", storage.ListSessionsRequest{IncludeAllPlatforms: true}, 3},
+		{"all", storage.ListSessionsRequest{IncludeAllPlatforms: true, IncludeArchived: true}, 4},
+		{"search", storage.ListSessionsRequest{IncludeAllPlatforms: true, Query: "other"}, 1},
+		{"exclude", storage.ListSessionsRequest{IncludeAllPlatforms: true, ExcludeSessionID: "active"}, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rows, err := store.Sessions().List(ctx, tc.query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tc.query.Limit, tc.query.Offset = 1, 99
+			count, err := store.Sessions().Count(ctx, tc.query)
+			if err != nil || count != tc.want || count != len(rows) {
+				t.Fatalf("count=%d rows=%d err=%v", count, len(rows), err)
+			}
+		})
+	}
+	base.IncludeSamePlatformBackground = true
+	if count, err := store.Sessions().Count(ctx, base); err != nil || count != 2 {
+		t.Fatalf("background count=%d err=%v", count, err)
 	}
 }
 

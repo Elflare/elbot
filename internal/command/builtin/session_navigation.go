@@ -12,34 +12,23 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	globalevents "elbot/internal/events"
+	"elbot/internal/storage"
 )
 
 func NewSessions(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
-		Name: "sessions", Args: "[page] [keyword]", Description: "会话列表/搜索", MinRole: contextinfo.RoleUser,
-		Help: "page≥1，默认1；keyword=搜索词，省略=不筛选",
+		Name: "sessions", Args: "[page] [-k|--keyword <keyword>]", Description: "会话列表/搜索", MinRole: contextinfo.RoleUser,
+		Help: "page≥1，默认末页；前翻=页码-1\n置顶优先，其余更新正序；-k/--keyword 后为搜索词",
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page, query, err := parseSessionsArgs(req.Args)
 		if err != nil {
 			return nil, err
 		}
-		sessions, hasNext, err := listSessionPage(ctx, deps, query, page, sessionPageSize(deps), false)
+		sessions, err := listSessionPage(ctx, deps, query, page, false, false)
 		if err != nil {
 			return nil, err
 		}
-		deps.SessionState.set(deps.Scope(ctx), sessions)
-		current, err := currentBoundSessionID(ctx, deps)
-		if err != nil {
-			return nil, err
-		}
-		prev, next := "", ""
-		if page > 1 {
-			prev = nextPageCommand(deps.CommandText, "sessions", page-1, query)
-		}
-		if hasNext {
-			next = nextPageCommand(deps.CommandText, "sessions", page+1, query)
-		}
-		return sessionsResult(sessions, current, page, sessionPageSize(deps), query, "sessions", prev, next)
+		return sessionsResult(ctx, deps, sessions, query, "sessions")
 	})
 }
 
@@ -49,8 +38,8 @@ type resumeCommand struct{ deps Deps }
 
 func (c resumeCommand) Info() command.Info {
 	return command.Info{
-		Name: "resume", Args: "[number|session_id|--page <page>]", Description: "恢复会话", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser,
-		Help: "省略=列可恢复会话；--page=翻页，page≥1\nnumber=该列表编号，更新倒序、跨页连续",
+		Name: "resume", Args: "[session_id|last|--page <page>]", Description: "恢复会话", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser,
+		Help: "省略=列表；默认末页；--page≥1，前翻=页码-1\nlast=最近更新，排除当前，忽略置顶",
 	}
 }
 
@@ -65,23 +54,15 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 		return resumePage(ctx, deps, page)
 	}
 	if arg == "" {
-		return resumePage(ctx, deps, 1)
+		return resumePage(ctx, deps, 0)
 	}
-	sessionID := arg
-	if idx, err := strconv.Atoi(arg); err == nil {
-		if idx < 1 {
-			return nil, inputError(fmt.Errorf("session index must be a positive number"))
-		}
-		sessions, err := deps.Sessions.ListResumablePage(ctx, deps.Scope(ctx), 1, idx-1)
-		if err != nil {
-			return nil, err
-		}
-		if len(sessions) == 0 {
-			return nil, inputError(fmt.Errorf("session index %d out of range", idx))
-		}
-		sessionID = sessions[0].ID
+	var session *storage.Session
+	var err error
+	if arg == "last" {
+		session, err = deps.Sessions.ResumeLast(ctx, deps.Scope(ctx))
+	} else {
+		session, err = deps.Sessions.Resume(ctx, deps.Scope(ctx), arg)
 	}
-	session, err := deps.Sessions.Resume(ctx, deps.Scope(ctx), sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -108,23 +89,11 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 }
 
 func resumePage(ctx context.Context, deps Deps, page int) (*command.Result, error) {
-	pageSize := sessionPageSize(deps)
-	sessions, hasNext, err := listResumablePage(ctx, deps, page, pageSize)
+	sessions, err := listSessionPage(ctx, deps, "", page, false, true)
 	if err != nil {
 		return nil, err
 	}
-	current, err := currentBoundSessionID(ctx, deps)
-	if err != nil {
-		return nil, err
-	}
-	prev, next := "", ""
-	if page > 1 {
-		prev = nextPageCommand(deps.CommandText, "resume", page-1, "")
-	}
-	if hasNext {
-		next = nextPageCommand(deps.CommandText, "resume", page+1, "")
-	}
-	return sessionsResult(sessions, current, page, pageSize, "", "resume", prev, next)
+	return sessionsResult(ctx, deps, sessions, "", "resume")
 }
 
 func (c resumeCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -133,12 +102,12 @@ func (c resumeCommand) Complete(ctx context.Context, req command.CompletionReque
 	if query == "--page" || strings.HasPrefix(query, "--") {
 		return nil
 	}
-	sessions, _, err := listResumablePage(ctx, c.deps, 1, sessionPageSize(c.deps))
+	sessions, err := listSessionPage(ctx, c.deps, "", 0, false, true)
 	if err != nil {
 		return nil
 	}
-	out := []command.Completion{}
-	for _, session := range sessions {
+	out := completeStringOptions([]string{"last"}, query, token.Start, token.End, "keyword")
+	for _, session := range sessions.Items {
 		if query == "" || strings.HasPrefix(session.ID, query) {
 			out = append(out, command.Completion{Text: session.ID, Label: session.ID, Description: emptyTitle(session.Title), Kind: "session_id", ReplaceStart: token.Start, ReplaceEnd: token.End})
 		}
@@ -148,30 +117,18 @@ func (c resumeCommand) Complete(ctx context.Context, req command.CompletionReque
 
 func NewArchives(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
-		Name: "archives", Args: "[page] [keyword]", Description: "归档列表/搜索", MinRole: contextinfo.RoleUser,
-		Help: "page≥1，默认1；keyword=搜索词，省略=不筛选",
+		Name: "archives", Args: "[page] [-k|--keyword <keyword>]", Description: "归档列表/搜索", MinRole: contextinfo.RoleUser,
+		Help: "page≥1，默认末页；前翻=页码-1\n置顶优先，其余更新正序；-k/--keyword 后为搜索词",
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page, query, err := parseSessionsArgs(req.Args)
 		if err != nil {
 			return nil, err
 		}
-		sessions, hasNext, err := listSessionPage(ctx, deps, query, page, sessionPageSize(deps), true)
+		sessions, err := listSessionPage(ctx, deps, query, page, true, false)
 		if err != nil {
 			return nil, err
 		}
-		deps.SessionState.set(deps.Scope(ctx), sessions)
-		current, err := currentBoundSessionID(ctx, deps)
-		if err != nil {
-			return nil, err
-		}
-		prev, next := "", ""
-		if page > 1 {
-			prev = nextPageCommand(deps.CommandText, "archives", page-1, query)
-		}
-		if hasNext {
-			next = nextPageCommand(deps.CommandText, "archives", page+1, query)
-		}
-		return sessionsResult(sessions, current, page, sessionPageSize(deps), query, "archives", prev, next)
+		return sessionsResult(ctx, deps, sessions, query, "archives")
 	})
 }
 

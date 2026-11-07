@@ -100,7 +100,7 @@ func TestServiceGetOrCreateCurrentCreatesNewWhenNoInMemoryCurrent(t *testing.T) 
 	}
 }
 
-func TestServiceListResumablePageUsesPinnedNonCurrentOrder(t *testing.T) {
+func TestServiceListPageUsesPinnedNonCurrentOrder(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
 	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
@@ -141,11 +141,11 @@ func TestServiceListResumablePageUsesPinnedNonCurrentOrder(t *testing.T) {
 		t.Fatalf("pin current: %v", err)
 	}
 
-	got, err := svc.ListResumablePage(ctx, scope, 10, 0)
+	got, err := svc.ListPage(ctx, scope, ListRequest{PageSize: 10, ExcludeCurrent: true})
 	if err != nil {
-		t.Fatalf("ListResumablePage: %v", err)
+		t.Fatalf("ListPage: %v", err)
 	}
-	if len(got) != 2 || got[0].ID != older.ID || got[1].ID != recent.ID {
+	if len(got.Items) != 2 || got.Items[0].ID != older.ID || got.Items[1].ID != recent.ID || got.TotalCount != 2 {
 		t.Fatalf("resumable sessions = %#v", got)
 	}
 }

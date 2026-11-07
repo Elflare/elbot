@@ -5,6 +5,7 @@ package control
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"fmt"
 
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
@@ -20,6 +21,30 @@ type ForegroundOrigin struct {
 
 func (s *Service) Resume(ctx context.Context, scope share.Scope, id string) (*storage.Session, error) {
 	return s.activateExisting(ctx, scope, id, false)
+}
+
+func (s *Service) ResumeLast(ctx context.Context, scope share.Scope) (*storage.Session, error) {
+	ctx, release, err := s.deps.Bindings.EnterScope(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	query := storage.ListSessionsRequest{
+		Owner: scope.Owner, Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID,
+		IncludeAllPlatforms: scope.IsCLI, IncludeSamePlatformBackground: !scope.IsCLI && scope.ChatType == contextinfo.ChatPrivate,
+		RecentFirst: true, Limit: 1,
+	}
+	if binding := s.CurrentBinding(scope); binding != nil {
+		query.ExcludeSessionID = binding.SessionID()
+	}
+	rows, err := s.deps.Sessions.List(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("没有其他可恢复会话: %w", storage.ErrNotFound)
+	}
+	return s.activateExisting(ctx, scope, rows[0].ID, false)
 }
 
 func (s *Service) activateExisting(ctx context.Context, scope share.Scope, id string, unarchive bool) (*storage.Session, error) {

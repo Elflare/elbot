@@ -168,12 +168,7 @@ func sessionValuesEqual(a, b *storage.Session) bool {
 		optionalTimeEqual(a.PinnedAt, b.PinnedAt)
 }
 
-func (r *SessionRepository) List(ctx context.Context, req storage.ListSessionsRequest) ([]storage.SessionSummary, error) {
-	limit := req.Limit
-	if limit <= 0 {
-		limit = 20
-	}
-
+func sessionListFilter(req storage.ListSessionsRequest) (string, []any) {
 	where := []string{}
 	args := []any{}
 	if !req.IncludeAllPlatforms {
@@ -204,7 +199,30 @@ func (r *SessionRepository) List(ctx context.Context, req storage.ListSessionsRe
 	if len(where) == 0 {
 		where = append(where, "1=1")
 	}
+	return strings.Join(where, " AND "), args
+}
+
+func (r *SessionRepository) Count(ctx context.Context, req storage.ListSessionsRequest) (int, error) {
+	where, args := sessionListFilter(req)
+	var count int
+	err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sessions s WHERE "+where, args...).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count sessions: %w", err)
+	}
+	return count, nil
+}
+
+func (r *SessionRepository) List(ctx context.Context, req storage.ListSessionsRequest) ([]storage.SessionSummary, error) {
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	where, args := sessionListFilter(req)
 	args = append(args, limit, max(0, req.Offset))
+	order := "CASE WHEN s.pinned_at IS NULL THEN 1 ELSE 0 END, s.pinned_at ASC, CASE WHEN s.pinned_at IS NULL THEN s.updated_at END ASC, s.id ASC"
+	if req.RecentFirst {
+		order = "s.updated_at DESC, s.id DESC"
+	}
 
 	query := fmt.Sprintf(`
 SELECT s.id, s.owner_platform, s.owner_id, s.platform, s.chat_type, s.chat_id, s.title, s.mode, s.status,
@@ -217,8 +235,8 @@ FROM sessions s
 LEFT JOIN messages m ON m.session_id = s.id
 WHERE %s
 GROUP BY s.id
-ORDER BY CASE WHEN s.pinned_at IS NULL THEN 1 ELSE 0 END, s.pinned_at DESC, s.updated_at DESC, s.id DESC
-LIMIT ? OFFSET ?`, strings.Join(where, " AND "))
+ORDER BY %s
+LIMIT ? OFFSET ?`, where, order)
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -294,9 +312,11 @@ LIMIT ? OFFSET ?`, strings.Join(where, " AND "))
 }
 
 func (r *SessionRepository) messageExcerpts(ctx context.Context, sessionID string, limit int) ([]storage.Message, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, role, content, segments, created_at FROM messages
+	rows, err := r.db.QueryContext(ctx, `SELECT id, role, content, segments, created_at FROM (
+	 SELECT id, role, content, segments, created_at, rowid AS insertion_order FROM messages
  WHERE session_id = ? AND role IN ('user', 'assistant')
- ORDER BY created_at ASC, rowid ASC LIMIT ?`, sessionID, limit)
+ ORDER BY created_at DESC, rowid DESC LIMIT ?)
+ ORDER BY created_at ASC, insertion_order ASC`, sessionID, limit)
 	if err != nil {
 		return nil, err
 	}

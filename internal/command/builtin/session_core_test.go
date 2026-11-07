@@ -140,8 +140,8 @@ func TestFormatTimeForDisplay(t *testing.T) {
 
 func TestFormatSessionsPageShowsNextCommand(t *testing.T) {
 	item := command.SessionSummaryData{SessionData: command.SessionData{ID: "s1", Title: "one", UpdatedAt: time.Date(2026, 1, 1, 1, 2, 3, 0, time.UTC)}, MessageCount: 2, Messages: []command.MessageData{{Role: "user", Content: "question"}, {Role: "assistant", Content: "answer"}}}
-	content := commandResultText(&command.Result{Kind: command.ResultKindSessions, Data: command.SessionsData{Page: command.Page{Page: 1, PageSize: 10, HasNext: true}, Items: []command.SessionSummaryData{item}, NextCommand: "/sessions 2 foo"}})
-	if !strings.Contains(content, "page=1") || !strings.Contains(content, "next: /sessions 2 foo") || !strings.Contains(content, "user: question / bot: answer") {
+	content := commandResultText(&command.Result{Kind: command.ResultKindSessions, Data: command.SessionsData{Page: command.Page{Page: 1, PageSize: 10, HasNext: true}, Items: []command.SessionSummaryData{item}, NextCommand: "/sessions 2 -k foo"}})
+	if !strings.Contains(content, "page=1") || !strings.Contains(content, "next: /sessions 2 -k foo") || !strings.Contains(content, "user: question / bot: answer") {
 		t.Fatalf("content = %q", content)
 	}
 	resume := commandResultText(&command.Result{Kind: command.ResultKindSessions, Data: command.SessionsData{Page: command.Page{Page: 2, PageSize: 10}, Items: []command.SessionSummaryData{item}, PrevCommand: "/resume --page 1"}})
@@ -150,7 +150,7 @@ func TestFormatSessionsPageShowsNextCommand(t *testing.T) {
 	}
 	resumableItem := command.SessionSummaryData{SessionData: command.SessionData{ID: "s11", Title: "eleven"}, Messages: item.Messages}
 	resumable := commandResultText(&command.Result{Kind: command.ResultKindSessions, Data: command.SessionsData{Page: command.Page{Page: 2, PageSize: 10}, Items: []command.SessionSummaryData{resumableItem}, PrevCommand: "/resume --page 1"}})
-	if !strings.Contains(resumable, "[11] eleven") || !strings.Contains(resumable, "prev: /resume --page 1") || !strings.Contains(resumable, "user: question / bot: answer") {
+	if !strings.Contains(resumable, "[s11] eleven") || strings.Count(resumable, "s11") != 1 || !strings.Contains(resumable, "prev: /resume --page 1") || !strings.Contains(resumable, "user: question / bot: answer") {
 		t.Fatalf("resumable content = %q", resumable)
 	}
 }

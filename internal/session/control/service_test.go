@@ -86,6 +86,61 @@ func (f *fixture) releaseCounts() (int, int) {
 	return len(f.releasedSessions), len(f.releasedBindings)
 }
 
+func TestResumeLastUsesRecentAccessibleSession(t *testing.T) {
+	f := newFixture(t, IdleExpirationConfig{})
+	ctx, scope := t.Context(), privateScope()
+	if _, err := f.s.ResumeLast(ctx, scope); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("empty last: %v", err)
+	}
+	pinned := f.create(t, scope, "pinned")
+	recent := f.create(t, scope, "recent")
+	current := f.create(t, scope, "current")
+	otherScope := scope
+	otherScope.Owner.ID = "other"
+	f.create(t, otherScope, "foreign")
+	now := storage.Now()
+	for i, row := range []*storage.Session{pinned, recent} {
+		if _, err := f.store.Sessions().Mutate(ctx, row.ID, func(row *storage.Session) error {
+			row.UpdatedAt = now.Add(time.Duration(i-3) * time.Hour)
+			if row.ID == pinned.ID {
+				row.PinnedAt = &now
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.setBusy(current.ID)
+	if _, err := f.s.ResumeLast(ctx, scope); !errors.Is(err, share.ErrSessionBusy) {
+		t.Fatalf("busy last: %v", err)
+	}
+	f.setBusy()
+	for _, want := range []string{recent.ID, current.ID, recent.ID} {
+		row, err := f.s.ResumeLast(ctx, scope)
+		if err != nil || row.ID != want {
+			t.Fatalf("last=%+v err=%v want=%s", row, err, want)
+		}
+	}
+	// 新活动改变候选；不维护固定的两会话切换历史。
+	if _, err := f.s.Rename(ctx, scope, pinned.ID, "active now"); err != nil {
+		t.Fatal(err)
+	}
+	row, err := f.s.ResumeLast(ctx, scope)
+	if err != nil || row.ID != pinned.ID {
+		t.Fatalf("updated last=%+v err=%v", row, err)
+	}
+	if _, err := f.s.Archive(ctx, scope, recent.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.ResetCurrent(ctx, scope); err != nil {
+		t.Fatal(err)
+	}
+	row, err = f.s.ResumeLast(ctx, scope)
+	if err != nil || row.ID != pinned.ID {
+		t.Fatalf("unbound last=%+v err=%v", row, err)
+	}
+}
+
 func TestCurrentModesManagementAndQueries(t *testing.T) {
 	f := newFixture(t, IdleExpirationConfig{})
 	ctx, scope := context.Background(), privateScope()
@@ -128,8 +183,8 @@ func TestCurrentModesManagementAndQueries(t *testing.T) {
 	if _, err := f.s.Archive(ctx, scope, row.ID); err != nil {
 		t.Fatal(err)
 	}
-	listed, err := f.s.ListPage(ctx, scope, "renamed", 10, 0, true)
-	if err != nil || len(listed) != 1 {
+	listed, err := f.s.ListPage(ctx, scope, ListRequest{Query: "renamed", PageSize: 10, ArchivedOnly: true})
+	if err != nil || len(listed.Items) != 1 {
 		t.Fatalf("archive list: %+v %v", listed, err)
 	}
 	if err := f.s.ResetCurrent(ctx, scope); err != nil {
@@ -146,8 +201,8 @@ func TestCurrentModesManagementAndQueries(t *testing.T) {
 		t.Fatal(err)
 	}
 	other := f.create(t, scope, "other")
-	resumable, err := f.s.ListResumablePage(ctx, scope, 10, 0)
-	if err != nil || len(resumable) != 1 || resumable[0].ID != row.ID {
+	resumable, err := f.s.ListPage(ctx, scope, ListRequest{PageSize: 10, ExcludeCurrent: true})
+	if err != nil || len(resumable.Items) != 1 || resumable.Items[0].ID != row.ID {
 		t.Fatalf("resumable: %+v %v", resumable, err)
 	}
 	f.setBusy(other.ID)

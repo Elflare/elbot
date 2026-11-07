@@ -22,7 +22,7 @@ func NewArchive(deps Deps) command.Handler {
 	return sessionTargetCommand{
 		deps:        deps,
 		name:        "archive",
-		args:        "[number|session_id] [--confirm]",
+		args:        "[session_id] [--confirm]",
 		description: "归档会话",
 		help:        "省略目标=当前",
 		confirm:     true,
@@ -52,7 +52,7 @@ func NewUnarchive(deps Deps) command.Handler {
 	return sessionTargetCommand{
 		deps:        deps,
 		name:        "unarchive",
-		args:        "[number|session_id]",
+		args:        "[session_id]",
 		description: "取消归档",
 		help:        "省略目标=当前",
 		archived:    true,
@@ -74,7 +74,7 @@ func NewPin(deps Deps) command.Handler {
 	return sessionTargetCommand{
 		deps:        deps,
 		name:        "pin",
-		args:        "[number|session_id]",
+		args:        "[session_id]",
 		description: "置顶会话",
 		help:        "省略目标=当前",
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
@@ -95,7 +95,7 @@ func NewUnpin(deps Deps) command.Handler {
 	return sessionTargetCommand{
 		deps:        deps,
 		name:        "unpin",
-		args:        "[number|session_id]",
+		args:        "[session_id]",
 		description: "取消置顶",
 		help:        "省略目标=当前",
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
@@ -123,7 +123,7 @@ type renameCommand struct {
 func (c renameCommand) Info() command.Info {
 	return command.Info{
 		Name:          "rename",
-		Args:          "[number|session_id|current_title] <title>",
+		Args:          "[session_id|current_title] <title>",
 		Description:   "重命名会话",
 		SessionEffect: command.SessionEffectMutate,
 		MinRole:       contextinfo.RoleUser,
@@ -156,13 +156,13 @@ func NewDelete(deps Deps) command.Handler {
 	return sessionTargetCommand{
 		deps:        deps,
 		name:        "delete",
-		args:        "<number|session_id> [--confirm]",
+		args:        "<session_id> [--confirm]",
 		description: "永久删除会话",
 		confirm:     true,
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
 			target, confirmed := parseTargetConfirm(req.Args)
 			if target == "" {
-				return nil, inputError(fmt.Errorf("usage: %s", deps.CommandText("delete", "<number|session_id>", "--confirm")))
+				return nil, inputError(fmt.Errorf("usage: %s", deps.CommandText("delete", "<session_id>", "--confirm")))
 			}
 			if !confirmed {
 				content, err := confirmCommandMessage(ctx, deps, "delete", target)
@@ -264,7 +264,7 @@ func (c sessionTargetCommand) Complete(ctx context.Context, req command.Completi
 }
 
 func cleanupRetentionDays(deps Deps) int {
-	_, days := deps.SessionState.config()
+	days := deps.SessionRetentionDays
 	if days <= 0 {
 		return 30
 	}
@@ -274,7 +274,7 @@ func cleanupRetentionDays(deps Deps) int {
 func parseRenameArgs(ctx context.Context, deps Deps, args string) (string, string, error) {
 	fields := strings.Fields(args)
 	if len(fields) == 0 {
-		return "", "", inputError(fmt.Errorf("usage: %s", deps.CommandText("rename", "[number|session_id|current_title]", "<title>")))
+		return "", "", inputError(fmt.Errorf("usage: %s", deps.CommandText("rename", "[session_id|current_title]", "<title>")))
 	}
 	if len(fields) == 1 {
 		return "", fields[0], nil
@@ -288,13 +288,6 @@ func parseRenameArgs(ctx context.Context, deps Deps, args string) (string, strin
 }
 
 func resolveRenameTarget(ctx context.Context, deps Deps, target string) (string, bool, error) {
-	if idx, err := strconv.Atoi(target); err == nil {
-		ids := deps.SessionState.get(deps.Scope(ctx))
-		if idx < 1 || idx > len(ids) {
-			return "", true, inputError(fmt.Errorf("session index %d out of range; %s · %s", idx, deps.CommandText("sessions"), deps.CommandText("archives")))
-		}
-		return ids[idx-1], true, nil
-	}
 	if deps.Store == nil {
 		return "", false, nil
 	}
@@ -320,22 +313,31 @@ func resolveRenameTarget(ctx context.Context, deps Deps, target string) (string,
 	case 1:
 		return matches[0], true, nil
 	default:
-		return "", true, inputError(fmt.Errorf("session title %q matches multiple sessions; %s → 用编号或 ID", target, deps.CommandText("sessions")))
+		return "", true, inputError(fmt.Errorf("session title %q matches multiple sessions; %s → 用 ID", target, deps.CommandText("sessions")))
 	}
 }
 
 func parseSessionsArgs(args string) (int, string, error) {
 	fields := strings.Fields(args)
 	if len(fields) == 0 {
-		return 1, "", nil
+		return 0, "", nil
 	}
-	if page, err := strconv.Atoi(fields[0]); err == nil {
-		if page < 1 {
-			return 0, "", inputError(fmt.Errorf("page must be a positive number"))
+	page := 0
+	if fields[0] != "-k" && fields[0] != "--keyword" {
+		var err error
+		page, err = strconv.Atoi(fields[0])
+		if err != nil || page < 1 {
+			return 0, "", inputError(fmt.Errorf("expected page≥1 or -k/--keyword"))
 		}
-		return page, strings.Join(fields[1:], " "), nil
+		fields = fields[1:]
 	}
-	return 1, strings.Join(fields, " "), nil
+	if len(fields) == 0 {
+		return page, "", nil
+	}
+	if (fields[0] != "-k" && fields[0] != "--keyword") || len(fields) < 2 {
+		return 0, "", inputError(fmt.Errorf("expected -k/--keyword <keyword>"))
+	}
+	return page, strings.Join(fields[1:], " "), nil
 }
 
 func parseResumePageArg(args string) (int, error) {
@@ -396,13 +398,6 @@ func resolveSessionTarget(ctx context.Context, deps Deps, target string) (string
 			return "", err
 		}
 		return current.ID, nil
-	}
-	if idx, err := strconv.Atoi(target); err == nil {
-		ids := deps.SessionState.get(deps.Scope(ctx))
-		if idx < 1 || idx > len(ids) {
-			return "", inputError(fmt.Errorf("session index %d out of range; %s · %s", idx, deps.CommandText("sessions"), deps.CommandText("archives")))
-		}
-		return ids[idx-1], nil
 	}
 	return target, nil
 }

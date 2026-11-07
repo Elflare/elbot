@@ -30,26 +30,27 @@ type SkillService = command.SkillService
 type LogService = command.LogService
 type DoctorService = command.DoctorService
 
-// Deps 在根部注入的业务能力上增加 builtin 自有的命令展示状态。
+// Deps 在根部注入的业务能力上增加 builtin 自有配置。
 type Deps struct {
-	CommandText        func(string, ...string) string // 根部确定的命令组装能力。
-	Doctor             DoctorService
-	Router             CommandCatalog // 只读目录，不允许命令修改路由。
-	Sessions           command.SessionService
-	Requests           command.RequestService
-	Turns              command.TurnService
-	Store              storage.Store
-	Scope              func(context.Context) session.Scope
-	Models             ModelService
-	Compact            CompactService
-	Contexts           ContextService
-	Tools              ToolService
-	Skills             SkillService
-	FileRollback       FileRollbackService
-	PrepareFileContext func(context.Context, bool) (context.Context, error)
-	SessionState       *SessionCommandState // 本组内置命令共用的列表选择与展示配置。
-	Logs               LogService
-	Usage              func(*storage.Session) (*llm.Usage, error)
+	CommandText          func(string, ...string) string // 根部确定的命令组装能力。
+	Doctor               DoctorService
+	Router               CommandCatalog // 只读目录，不允许命令修改路由。
+	Sessions             command.SessionService
+	Requests             command.RequestService
+	Turns                command.TurnService
+	Store                storage.Store
+	Scope                func(context.Context) session.Scope
+	Models               ModelService
+	Compact              CompactService
+	Contexts             ContextService
+	Tools                ToolService
+	Skills               SkillService
+	FileRollback         FileRollbackService
+	PrepareFileContext   func(context.Context, bool) (context.Context, error)
+	SessionListPageSize  int // 会话列表每页条数。
+	SessionRetentionDays int // 清理会话时使用的保留天数。
+	Logs                 LogService
+	Usage                func(*storage.Session) (*llm.Usage, error)
 }
 
 func RegisterFactories(registrar Registrar, deps Deps, factories ...HandlerFactory) error {

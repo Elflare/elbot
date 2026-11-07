@@ -57,6 +57,22 @@ type Status struct {
 	LastAnswerContent string           // 最近一条非空助手正文。
 }
 
+type ListRequest struct {
+	Query          string // 标题搜索词，空值不筛选。
+	ArchivedOnly   bool   // 仅查询已归档会话。
+	ExcludeCurrent bool   // 排除当前绑定的会话。
+	Page           int    // 从 1 开始；0 表示最后一页。
+	PageSize       int    // 每页会话数量。
+}
+
+type ListResult struct {
+	Items      []storage.SessionSummary // 按全局顺序排列的当前页原始摘要。
+	Page       int                      // 实际页码，从 1 开始。
+	PageSize   int                      // 每页容量。
+	TotalCount int                      // 筛选后的会话总数。
+	TotalPages int                      // 总页数，空列表为 0。
+}
+
 // BackgroundRequest 准备任务会话，不激活前台绑定，也不承载工具运行状态。
 type BackgroundRequest struct {
 	TargetPlatforms []string          // 创建时解析出的有效投递平台；ID 使用其去重快照。

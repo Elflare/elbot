@@ -9,16 +9,20 @@ import (
 
 func formatUsage(d command.UsageData) string {
 	var out strings.Builder
-	fmt.Fprintf(&out, "usage: %s · by=%s\n", d.Range, d.GroupBy)
-	for _, item := range d.Items {
-		formatUsageBucket(&out, item)
+	if len(d.Items) == 0 && d.Total.Calls == 0 {
+		out.WriteString("-\n")
+	} else {
+		fmt.Fprintf(&out, "usage: %s · by=%s\n", d.Range, d.GroupBy)
+		for _, item := range d.Items {
+			formatUsageBucket(&out, item)
+		}
+		formatUsageBucket(&out, d.Total)
 	}
-	formatUsageBucket(&out, d.Total)
 	if d.RangeTruncated {
 		fmt.Fprintf(&out, "仅有 %d 次调用\n", d.AvailableCalls)
 	}
 	if d.DamagedCount > 0 {
-		fmt.Fprintf(&out, "\nwarn: damaged=%d · usage incomplete", d.DamagedCount)
+		fmt.Fprintf(&out, "warn: damaged=%d · usage incomplete", d.DamagedCount)
 	}
 	return strings.TrimRight(out.String(), "\n")
 }

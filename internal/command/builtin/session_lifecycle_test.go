@@ -6,7 +6,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/request"
 	"elbot/internal/session"
-	"elbot/internal/storage"
 	"elbot/internal/testutil"
 	"elbot/internal/turn"
 	"strings"
@@ -28,25 +27,22 @@ func TestLifecycleCommandsArchiveAndArchives(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create second: %v", err)
 	}
-	selections := NewSessionCommandState(1, 30)
-	selections.set(scope, []storage.SessionSummary{{ID: first.ID}})
 	deps := Deps{CommandText: testCommandText,
-		Sessions:     svc,
-		Requests:     request.NewManager(testutil.IDSequence()),
-		Turns:        turn.NewSupervisor(testutil.IDSequence()),
-		Store:        store,
-		Scope:        func(context.Context) session.Scope { return scope },
-		SessionState: selections,
+		Sessions:            svc,
+		Requests:            request.NewManager(testutil.IDSequence()),
+		Turns:               turn.NewSupervisor(testutil.IDSequence()),
+		Store:               store,
+		Scope:               func(context.Context) session.Scope { return scope },
+		SessionListPageSize: 1,
 	}
 
-	preview, err := NewArchive(deps).Handle(ctx, command.Request{Args: "1"})
+	preview, err := NewArchive(deps).Handle(ctx, command.Request{Args: first.ID})
 	if err != nil {
 		t.Fatalf("archive preview: %v", err)
 	}
 	if !strings.Contains(commandResultText(preview), "/archive "+first.ID+" --confirm") || !strings.Contains(commandResultText(preview), "archive? first") || !strings.Contains(commandResultText(preview), first.ID) {
 		t.Fatalf("archive preview = %q", commandResultText(preview))
 	}
-	selections.set(scope, []storage.SessionSummary{{ID: second.ID}})
 	if _, err := NewArchive(deps).Handle(ctx, command.Request{Args: first.ID + " --confirm"}); err != nil {
 		t.Fatalf("archive confirm: %v", err)
 	}
@@ -62,7 +58,7 @@ func TestLifecycleCommandsArchiveAndArchives(t *testing.T) {
 		t.Fatalf("archives list missing page: %q", commandResultText(list))
 	}
 
-	deletePreview, err := NewDelete(deps).Handle(ctx, command.Request{Args: "1"})
+	deletePreview, err := NewDelete(deps).Handle(ctx, command.Request{Args: first.ID})
 	if err != nil {
 		t.Fatalf("delete preview: %v", err)
 	}
@@ -73,7 +69,7 @@ func TestLifecycleCommandsArchiveAndArchives(t *testing.T) {
 		t.Fatalf("delete preview does not pin canonical id: %q", commandResultText(deletePreview))
 	}
 
-	if _, err := NewUnarchive(deps).Handle(ctx, command.Request{Args: "1"}); err != nil {
+	if _, err := NewUnarchive(deps).Handle(ctx, command.Request{Args: first.ID}); err != nil {
 		t.Fatalf("unarchive: %v", err)
 	}
 	active, err := svc.List(ctx, scope, "first", 10)
@@ -116,11 +112,11 @@ func TestArchiveCurrentConfirmationPinsSessionID(t *testing.T) {
 	if _, err := NewArchive(deps).Handle(ctx, command.Request{Args: current.ID + " --confirm"}); err != nil {
 		t.Fatalf("archive pinned current: %v", err)
 	}
-	archived, err := svc.ListPage(ctx, scope, "", 10, 0, true)
+	archived, err := svc.ListPage(ctx, scope, session.ListRequest{PageSize: 10, ArchivedOnly: true})
 	if err != nil {
 		t.Fatalf("list archived: %v", err)
 	}
-	if len(archived) != 1 || archived[0].ID != current.ID {
+	if len(archived.Items) != 1 || archived.Items[0].ID != current.ID {
 		t.Fatalf("archived sessions = %#v", archived)
 	}
 	active, err := svc.Current(ctx, scope)
@@ -149,7 +145,7 @@ func TestSessionTargetCommandsCompleteSessionIDsAndConfirm(t *testing.T) {
 	if _, err := svc.Archive(ctx, scope, archived.ID); err != nil {
 		t.Fatalf("archive: %v", err)
 	}
-	deps := Deps{CommandText: testCommandText, Sessions: svc, Scope: func(context.Context) session.Scope { return scope }, SessionState: NewSessionCommandState(10, 30)}
+	deps := Deps{CommandText: testCommandText, Sessions: svc, Scope: func(context.Context) session.Scope { return scope }, SessionListPageSize: 10}
 
 	deleteCmd := NewDelete(deps).(command.Completer)
 	prefix := first.ID[:len(first.ID)-1]

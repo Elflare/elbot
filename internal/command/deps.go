@@ -22,7 +22,7 @@ type LogService = share.LogService
 type DoctorService = share.DoctorService
 type FileRollbackService = share.FileRollbackService
 
-// BuiltinDeps 借用内置命令需要的业务能力；路由和命令状态由 Command 根部装配。
+// BuiltinDeps 借用内置命令需要的业务能力；路由和配置由 Command 根部装配。
 type BuiltinDeps struct {
 	Doctor               DoctorService                                        // 配置与内置 Skill 的只读诊断能力。
 	Sessions             SessionService                                       // 会话查询、管理和操作准入。
