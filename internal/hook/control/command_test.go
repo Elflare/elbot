@@ -16,13 +16,18 @@ type fakeHookService struct {
 	started      string
 	stopped      string
 	restarted    string
+	listCalls    int
+	runtimeCalls int
 }
 
-func (s *fakeHookService) HookList() []share.Info { return s.infos }
+func (s *fakeHookService) HookList() []share.Info { s.listCalls++; return s.infos }
 func (s *fakeHookService) HookReload() (share.ReloadReport, error) {
 	return s.reloadReport, nil
 }
-func (s *fakeHookService) StatefulHooks() []share.RuntimeInfo { return s.runtimeInfos }
+func (s *fakeHookService) StatefulHooks() []share.RuntimeInfo {
+	s.runtimeCalls++
+	return s.runtimeInfos
+}
 func (s *fakeHookService) StartStatefulHook(id string) error {
 	s.started = id
 	return nil
@@ -52,7 +57,7 @@ func TestHookListPreservesDescriptionsAndActivity(t *testing.T) {
 		{name: "unicode truncation", infos: []share.Info{{Name: "rule", Description: " " + strings.Repeat("雪", 61) + " "}}, want: "hooks:\n  rule  []  priority=0 - " + strings.Repeat("雪", 60) + "..."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := formatHookList(&fakeHookService{infos: tc.infos, runtimeInfos: tc.runtimes})
+			got := formatHookList(collectHookGroups(&fakeHookService{infos: tc.infos, runtimeInfos: tc.runtimes}))
 			if got != tc.want {
 				t.Fatalf("list = %q, want %q", got, tc.want)
 			}
@@ -80,6 +85,9 @@ func TestHooksCommandShowsDescriptionsAndDetails(t *testing.T) {
 	if !strings.Contains(result.Text, "greet") || !strings.Contains(result.Text, "123456789012345678901234567890123456789012345678901234567890...") || strings.Contains(result.Text, "tail") {
 		t.Fatalf("list content = %q", result.Text)
 	}
+	if hooks.listCalls != 1 || hooks.runtimeCalls != 1 {
+		t.Fatalf("list enumerations = %d/%d", hooks.listCalls, hooks.runtimeCalls)
+	}
 
 	result, err = cmd.Handle(context.Background(), command.Request{Args: "greet"})
 	if err != nil {
@@ -87,6 +95,9 @@ func TestHooksCommandShowsDescriptionsAndDetails(t *testing.T) {
 	}
 	if !strings.Contains(result.Text, "name: greet") || !strings.Contains(result.Text, "description: "+longDescription) {
 		t.Fatalf("detail content = %q", result.Text)
+	}
+	if hooks.listCalls != 2 || hooks.runtimeCalls != 2 {
+		t.Fatalf("detail enumerations = %d/%d", hooks.listCalls, hooks.runtimeCalls)
 	}
 	if strings.Count(result.Text, "description:") != 1 {
 		t.Fatalf("description duplicated in %q", result.Text)

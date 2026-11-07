@@ -32,7 +32,6 @@ func (m *Supervisor) CompleteCompactRun(sessionID, runID string) bool {
 func (m *Supervisor) AppendPendingInput(sessionID string, input Input) bool {
 	return m.lifecycle.AppendPendingInput(sessionID, lifecycle.Input(input))
 }
-func (m *Supervisor) CancelAppend(sessionID string) bool { return m.lifecycle.CancelAppend(sessionID) }
 func (m *Supervisor) BeginRiskConfirmation(sessionID string, confirmation RiskConfirmation, attempt string) *RiskConfirmationWait {
 	w := m.lifecycle.BeginRiskConfirmation(sessionID, lifecycle.RiskConfirmation(confirmation), attempt)
 	if w == nil {
@@ -95,10 +94,6 @@ func (m *Supervisor) CanCompact(sessionID string, e *Execution) bool {
 	return m.lifecycle.CanCompact(sessionID, executionContract(e))
 }
 func (m *Supervisor) StopSession(sessionID string) { m.lifecycle.StopSession(sessionID) }
-func (m *Supervisor) BeginAppend(sessionID, attempt string, input Input) *AppendWait {
-	w := m.lifecycle.BeginAppend(sessionID, attempt, lifecycle.Input(input))
-	if w == nil {
-		return nil
-	}
-	return &AppendWait{wait: w}
+func (m *Supervisor) BeginAppend(sessionID, attempt string, input Input) bool {
+	return m.lifecycle.BeginAppend(sessionID, attempt, lifecycle.Input(input))
 }

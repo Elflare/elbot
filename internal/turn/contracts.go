@@ -85,6 +85,4 @@ type RiskResult struct {
 	Err      error // Request cancellation or deadline; nil for user stop or wait expiry.
 }
 
-type AppendWait struct{ wait *share.AppendWait }
-
 type RiskConfirmationWait struct{ wait *share.RiskWait }

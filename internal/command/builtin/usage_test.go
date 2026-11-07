@@ -39,14 +39,14 @@ func TestUsageJSONGroupingPreservesTokenTypes(t *testing.T) {
 		Content:  `{"provider":" p ","model":" m ","prompt_tokens":9007199254740993,"completion_tokens":"2","total_tokens":-1}`,
 	}
 	for group, key := range map[usageGroupKey]string{groupByModel: "p/m", groupByDay: "2026-10-30", groupBySession: "session"} {
-		got := formatUsageSummary([]logging.LogEntry{entry}, logging.LogQuery{}, group)
+		_, got := summarizeUsage([]logging.LogEntry{entry}, logging.LogQuery{}, group)
 		if !strings.Contains(got, "["+key+"] calls: 1") || !strings.Contains(got, "prompt: 9,007,199,254,740,993 | completion: unk | total: unk") {
 			t.Fatalf("group=%s: %s", group, got)
 		}
 	}
 	for _, body := range []string{`{"provider":12,"model":null}`, `{}`} {
 		entry.Content = body
-		got := formatUsageSummary([]logging.LogEntry{entry}, logging.LogQuery{}, groupByModel)
+		_, got := summarizeUsage([]logging.LogEntry{entry}, logging.LogQuery{}, groupByModel)
 		if !strings.Contains(got, "[unk-model] calls: 1") {
 			t.Fatal(got)
 		}
@@ -96,7 +96,7 @@ func TestUsageSummarySkipsUnknown(t *testing.T) {
 				entries = append(entries, logging.LogEntry{Type: events.ContentJSON, Content: body})
 			}
 			for _, group := range []usageGroupKey{groupByModel, groupByDay, groupBySession} {
-				got := formatUsageSummary(entries, logging.LogQuery{}, group)
+				_, got := summarizeUsage(entries, logging.LogQuery{}, group)
 				if strings.Count(got, tc.want) != 2 || !strings.Contains(got, fmt.Sprintf("[total] calls: %d", len(entries))) {
 					t.Fatalf("group=%s: %s", group, got)
 				}
@@ -112,7 +112,7 @@ func TestUsageKnownTotalsAcrossGroupsAndCallRange(t *testing.T) {
 		makeUsageEntry(time.Date(2026, 10, 28, 0, 0, 0, 0, time.UTC), "p", "c", "s3", 200, 30, 230, 10, 200),
 	}
 	for _, group := range []usageGroupKey{groupByModel, groupByDay, groupBySession} {
-		got := formatUsageSummary(entries, logging.LogQuery{}, group)
+		_, got := summarizeUsage(entries, logging.LogQuery{}, group)
 		want := "[total] calls: 3\n  prompt: 300 | completion: 50 | total: 350\n  cache: 10 (3.3%) | elapsed: 0.3s\n"
 		if !strings.HasSuffix(got, want) || strings.Count(got, "calls: 1") != 3 || strings.Count(got, "prompt: unk") != 1 {
 			t.Fatalf("group=%s: %s", group, got)

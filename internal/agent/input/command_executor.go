@@ -41,7 +41,7 @@ type CommandExecutor struct {
 }
 
 func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Context, bool, error) {
-	if !e.router.IsCommand(text) && !agentshare.IsAppendConfirm(text) && !agentshare.IsAppendCancel(text) {
+	if !e.router.IsCommand(text) && !agentshare.IsAppendConfirm(text) {
 		return ctx, false, nil
 	}
 	parsed := e.router.Parse(text)
@@ -83,6 +83,9 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Cont
 		if nextErr != nil {
 			e.logFailure(next, "command_continuation_failed", nextErr)
 			globalevents.Notify(session.WithBinding(context.WithoutCancel(next), nil), globalevents.NewNotification(next, slog.LevelWarn, nextErr.Error()))
+			if result.Continuation.Kind == command.ContinuationAppend {
+				return next, true, nil
+			}
 		}
 		return next, true, nextErr
 	}
@@ -113,19 +116,8 @@ func (e *CommandExecutor) execute(ctx context.Context, text string, parsed comma
 	} else if riskName == "reject" {
 		appendResponse = "n"
 	}
-	if row != nil && snapshot.Phase == turn.PhaseAwaitAppendConfirm && (agentshare.IsAppendConfirm(appendResponse) || agentshare.IsAppendCancel(appendResponse)) {
-		next, err := e.execution.ResumeAppend(ctx, row, appendResponse)
-		if err != nil {
-			if errors.Is(err, agentshare.ErrConfirmationExpired) {
-				err = &command.Error{Kind: command.ErrorRejected, Code: command.CodeConfirmationExpired, Message: err.Error(), Cause: err}
-			}
-			return next, nil, true, err
-		}
-		reply := "追加输入已处理"
-		if agentshare.IsAppendCancel(appendResponse) {
-			reply = "追加输入已取消"
-		}
-		return next, &command.Result{Kind: command.ResultKindText, Text: reply}, true, nil
+	if row != nil && snapshot.Phase == turn.PhaseAwaitAppendConfirm && agentshare.IsAppendConfirm(appendResponse) {
+		return ctx, &command.Result{Kind: command.ResultKindText, Text: "追加输入已接受", Continuation: &command.Continuation{Kind: command.ContinuationAppend, SessionID: row.ID}}, true, nil
 	}
 	if !parsed.OK {
 		return ctx, nil, false, nil
@@ -185,7 +177,6 @@ func blocksDuringCompact(effect command.SessionEffect) bool {
 }
 
 type CommandExecution interface {
-	ResumeAppend(context.Context, *storage.Session, string) (context.Context, error)
 	CompactActive(string) bool
 	ModelContext(context.Context, *storage.Session) (context.Context, error)
 }

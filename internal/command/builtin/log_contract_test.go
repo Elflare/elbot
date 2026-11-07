@@ -55,17 +55,17 @@ func TestUsageUnknownAndOverflowDoNotLoseCallsOrOtherTotals(t *testing.T) {
 		{Type: events.ContentJSON, Content: `{"provider":"p","model":"a","prompt_tokens":1,"completion_tokens":3,"total_tokens":4,"cache_hit_tokens":0,"elapsed_ms":20}`},
 		{Type: events.ContentJSON, Content: `{"provider":"p","model":"b","prompt_tokens":5,"completion_tokens":6,"total_tokens":11,"cache_hit_tokens":"illegal","elapsed_ms":30}`},
 	}
-	content := formatUsageSummary(entries, logging.LogQuery{Days: 1}, groupByModel)
+	_, content := summarizeUsage(entries, logging.LogQuery{Days: 1}, groupByModel)
 	for _, want := range []string{"[p/a] calls: 2", "prompt: unk | completion: 5 | total: 4", "[p/b] calls: 1", "prompt: 5 | completion: 6 | total: 11", "[total] calls: 3", "prompt: unk | completion: 11 | total: 15", "cache: unk"} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("missing %q in %s", want, content)
 		}
 	}
-	content = formatUsageSummary([]logging.LogEntry{{Type: events.ContentJSON, Content: `{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0,"cache_hit_tokens":0,"elapsed_ms":0}`}}, logging.LogQuery{}, groupByModel)
+	_, content = summarizeUsage([]logging.LogEntry{{Type: events.ContentJSON, Content: `{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0,"cache_hit_tokens":0,"elapsed_ms":0}`}}, logging.LogQuery{}, groupByModel)
 	if !strings.Contains(content, "prompt: 0 | completion: 0 | total: 0") {
 		t.Fatal(content)
 	}
-	content = formatUsageSummary([]logging.LogEntry{{Type: events.ContentJSON, Content: `{}`}}, logging.LogQuery{}, groupByModel)
+	_, content = summarizeUsage([]logging.LogEntry{{Type: events.ContentJSON, Content: `{}`}}, logging.LogQuery{}, groupByModel)
 	if !strings.Contains(content, "calls: 1") || !strings.Contains(content, "prompt: unk | completion: unk | total: unk") {
 		t.Fatal(content)
 	}

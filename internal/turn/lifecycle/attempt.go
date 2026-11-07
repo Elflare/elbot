@@ -94,10 +94,6 @@ func (m *Manager) ResumeAppend(sessionID string) (Input, Execution, bool) {
 	}
 	input := mergeInputs(append([]Input{s.originalInput}, s.pending...))
 	e := s.execution
-	if s.appendDone != nil {
-		close(s.appendDone)
-		s.appendDone = nil
-	}
 	s.phase = PhaseLLM
 	s.originalInput = input
 	s.originalInput.Segments = append([]llm.MessageSegment(nil), input.Segments...)
@@ -149,10 +145,6 @@ func removeTurn(turns map[string]*state, sessionID string, turn *state, preserve
 	}
 	finishAttempt(turn)
 	stopTurn(turn)
-	if turn.appendDone != nil {
-		close(turn.appendDone)
-		turn.appendDone = nil
-	}
 	delete(turns, sessionID)
 }
 func finishAttempt(turn *state) {
@@ -169,10 +161,6 @@ func beginStopTurn(turns map[string]*state, sessionID string, turn *state) {
 	stopTurn(turn)
 	turn.phase = PhaseStopping
 	turn.pending = nil
-	if turn.appendDone != nil {
-		close(turn.appendDone)
-		turn.appendDone = nil
-	}
 }
 func stopTurn(turn *state) {
 	if turn.riskDone != nil {

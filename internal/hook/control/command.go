@@ -52,17 +52,20 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 	deps := c.deps
 	fields := strings.Fields(req.Args)
 	if len(fields) == 0 {
-		return &command.Result{Kind: command.ResultKindHooks, Text: formatHookList(deps), Data: hookCommandData(deps, "")}, nil
+		groups := collectHookGroups(deps)
+		return &command.Result{Kind: command.ResultKindHooks, Text: formatHookList(groups), Data: hookCommandData(groups, "")}, nil
 	}
 	switch fields[0] {
 	case "reload":
 		report, err := deps.HookReload()
 		if err != nil {
-			data := hookCommandData(deps, "")
+			groups := collectHookGroups(deps)
+			data := hookCommandData(groups, "")
 			data.Notices = append([]string{}, report.Notices...)
 			return &command.Result{Kind: command.ResultKindHooks, Text: strings.Join(report.Notices, "\n"), Data: data}, &command.Error{Kind: command.ErrorInternal, Code: "hook_reload_failed", Message: "Hook 重载失败", Cause: err}
 		}
-		data := hookCommandData(deps, "")
+		groups := collectHookGroups(deps)
+		data := hookCommandData(groups, "")
 		data.Notices = append([]string{}, report.Notices...)
 		return &command.Result{Kind: command.ResultKindHooks, Text: formatHookReloadResult(report), Data: data}, nil
 	case "start", "stop", "restart":
@@ -88,14 +91,15 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 			}
 			return nil, fmt.Errorf("hook %s %s: %w", fields[0], fields[1], err)
 		}
-		return &command.Result{Kind: command.ResultKindHooks, Text: fmt.Sprintf("hook %s: %s · OK", fields[0], fields[1]), Data: hookCommandData(deps, fields[1])}, nil
+		return &command.Result{Kind: command.ResultKindHooks, Text: fmt.Sprintf("hook %s: %s · OK", fields[0], fields[1]), Data: hookCommandData(collectHookGroups(deps), fields[1])}, nil
 	default:
 		name := fields[0]
-		data := hookCommandData(deps, name)
+		groups := collectHookGroups(deps)
+		data := hookCommandData(groups, name)
 		if len(data.Items) == 0 {
 			return nil, &command.Error{Kind: command.ErrorRejected, Code: command.CodeNotFound, Message: fmt.Sprintf("hook %q: not found", name)}
 		}
-		return &command.Result{Kind: command.ResultKindHooks, Text: formatHookDetail(deps, name, c.commandText), Data: data}, nil
+		return &command.Result{Kind: command.ResultKindHooks, Text: formatHookDetail(groups, name, c.commandText), Data: data}, nil
 	}
 }
 
@@ -161,8 +165,7 @@ func collectHookGroups(deps HookService) []*hookGroup {
 	return groups
 }
 
-func formatHookList(deps HookService) string {
-	groups := collectHookGroups(deps)
+func formatHookList(groups []*hookGroup) string {
 	if len(groups) == 0 {
 		return "nil"
 	}
@@ -249,8 +252,7 @@ func formatHookReloadResult(report share.ReloadReport) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-func formatHookDetail(deps HookService, name string, commandText func(string, ...string) string) string {
-	groups := collectHookGroups(deps)
+func formatHookDetail(groups []*hookGroup, name string, commandText func(string, ...string) string) string {
 	for _, group := range groups {
 		if group.plugin && group.name == name {
 			return formatPluginHookDetail(group)
@@ -339,19 +341,28 @@ type HookService interface {
 	RestartStatefulHook(ctx context.Context, id string) error
 }
 
-func hookCommandData(deps HookService, target string) command.HooksData {
+func hookCommandData(groups []*hookGroup, target string) command.HooksData {
 	data := command.HooksData{Items: []command.HookData{}, Target: target, Notices: []string{}}
-	for _, info := range deps.HookList() {
-		if target != "" && info.Name != target && info.PluginID != target {
-			continue
+	for _, group := range groups {
+		if target != "" && group.name != target {
+			found := false
+			for _, info := range group.infos {
+				if info.Name == target || info.PluginID == target {
+					found = true
+				}
+			}
+			if !found && (group.stateful == nil || group.stateful.ID != target) {
+				continue
+			}
 		}
-		data.Items = append(data.Items, command.HookData{ID: info.PluginID, Name: info.Name, Description: info.Description, Point: string(info.Point), Priority: info.Priority, Detail: info.Detail, Active: info.Active})
-	}
-	for _, info := range deps.StatefulHooks() {
-		if target != "" && info.ID != target {
-			continue
+		for _, info := range group.infos {
+			if target == "" || info.Name == target || info.PluginID == target {
+				data.Items = append(data.Items, command.HookData{ID: info.PluginID, Name: info.Name, Description: info.Description, Point: string(info.Point), Priority: info.Priority, Detail: info.Detail, Active: info.Active})
+			}
 		}
-		data.Items = append(data.Items, command.HookData{ID: info.ID, Description: info.Description, Mode: info.Mode, Status: info.Status, Detail: info.Detail, Active: info.Active, Waiting: info.Waiting})
+		if stateful := group.stateful; stateful != nil && (target == "" || stateful.ID == target) {
+			data.Items = append(data.Items, command.HookData{ID: stateful.ID, Description: stateful.Description, Mode: stateful.Mode, Status: stateful.Status, Detail: stateful.Detail, Active: stateful.Active, Waiting: stateful.Waiting})
+		}
 	}
 	return data
 }

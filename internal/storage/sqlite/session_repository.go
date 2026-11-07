@@ -208,6 +208,7 @@ func (r *SessionRepository) List(ctx context.Context, req storage.ListSessionsRe
 
 	query := fmt.Sprintf(`
 SELECT s.id, s.owner_platform, s.owner_id, s.platform, s.chat_type, s.chat_id, s.title, s.mode, s.status,
+       s.parent_session_id, s.fork_from_message_id,
        s.created_at, s.updated_at, s.archived_at, s.pinned_at,
        COUNT(m.id) AS message_count,
        COALESCE((SELECT content FROM messages WHERE session_id = s.id AND role = 'user' ORDER BY created_at DESC, rowid DESC LIMIT 1), '') AS last_user_content,
@@ -229,6 +230,7 @@ LIMIT ? OFFSET ?`, strings.Join(where, " AND "))
 	for rows.Next() {
 		var summary storage.SessionSummary
 		var title sql.NullString
+		var parentSessionID, forkFromMessageID sql.NullString
 		var createdAt, updatedAt string
 		var archivedAt, pinnedAt sql.NullString
 		if err := rows.Scan(
@@ -239,6 +241,8 @@ LIMIT ? OFFSET ?`, strings.Join(where, " AND "))
 			&title,
 			&summary.Mode,
 			&summary.Status,
+			&parentSessionID,
+			&forkFromMessageID,
 			&createdAt,
 			&updatedAt,
 			&archivedAt,
@@ -250,6 +254,8 @@ LIMIT ? OFFSET ?`, strings.Join(where, " AND "))
 			return nil, fmt.Errorf("scan session summary: %w", err)
 		}
 		summary.Title = title.String
+		summary.ParentSessionID = parentSessionID.String
+		summary.ForkFromMessageID = forkFromMessageID.String
 		parsedCreatedAt, err := storage.ParseTime(createdAt)
 		if err != nil {
 			return nil, fmt.Errorf("parse session created_at: %w", err)
@@ -288,7 +294,7 @@ LIMIT ? OFFSET ?`, strings.Join(where, " AND "))
 }
 
 func (r *SessionRepository) messageExcerpts(ctx context.Context, sessionID string, limit int) ([]storage.Message, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, role, content FROM messages
+	rows, err := r.db.QueryContext(ctx, `SELECT id, role, content, segments, created_at FROM messages
  WHERE session_id = ? AND role IN ('user', 'assistant')
  ORDER BY created_at ASC, rowid ASC LIMIT ?`, sessionID, limit)
 	if err != nil {
@@ -298,8 +304,13 @@ func (r *SessionRepository) messageExcerpts(ctx context.Context, sessionID strin
 	var messages []storage.Message
 	for rows.Next() {
 		message := storage.Message{SessionID: sessionID}
-		if err := rows.Scan(&message.ID, &message.Role, &message.Content); err != nil {
+		var createdAt string
+		if err := rows.Scan(&message.ID, &message.Role, &message.Content, &message.Segments, &createdAt); err != nil {
 			return nil, err
+		}
+		message.CreatedAt, err = storage.ParseTime(createdAt)
+		if err != nil {
+			return nil, fmt.Errorf("parse message created_at: %w", err)
 		}
 		messages = append(messages, message)
 	}

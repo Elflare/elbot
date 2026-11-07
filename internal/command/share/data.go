@@ -20,28 +20,38 @@ type Page struct {
 	TotalPages *int `json:"total_pages,omitempty"` // 已知总页数，空历史为 0。
 }
 type SessionData struct {
-	ID         string     `json:"id"`          // 会话标识。
-	Title      string     `json:"title"`       // 原始标题。
-	Mode       string     `json:"mode"`        // 会话运行模式。
-	Status     string     `json:"status"`      // 持久化状态。
-	Platform   string     `json:"platform"`    // 所属平台。
-	ChatID     string     `json:"chat_id"`     // 所属平台会话。
-	CreatedAt  time.Time  `json:"created_at"`  // 创建时间。
-	UpdatedAt  time.Time  `json:"updated_at"`  // 最后更新时间。
-	ArchivedAt *time.Time `json:"archived_at"` // 归档时间，nil 表示未归档。
-	PinnedAt   *time.Time `json:"pinned_at"`   // 置顶时间，nil 表示未置顶。
+	ID                string     `json:"id"`                   // 会话标识。
+	Title             string     `json:"title"`                // 原始标题。
+	Mode              string     `json:"mode"`                 // 会话运行模式。
+	Status            string     `json:"status"`               // 持久化状态。
+	Platform          string     `json:"platform"`             // 所属平台。
+	ChatID            string     `json:"chat_id"`              // 所属平台会话。
+	CreatedAt         time.Time  `json:"created_at"`           // 创建时间。
+	UpdatedAt         time.Time  `json:"updated_at"`           // 最后更新时间。
+	ArchivedAt        *time.Time `json:"archived_at"`          // 归档时间，nil 表示未归档。
+	PinnedAt          *time.Time `json:"pinned_at"`            // 置顶时间，nil 表示未置顶。
+	ParentSessionID   string     `json:"parent_session_id"`    // 派生会话的父会话；非派生会话为空。
+	ForkFromMessageID string     `json:"fork_from_message_id"` // 分支起点消息；非分支会话为空。
+}
+type SessionSummaryData struct {
+	SessionData
+	MessageCount         int           `json:"message_count"`          // 会话消息数量。
+	Messages             []MessageData `json:"messages"`               // 最近原始对话消息。
+	LastUserContent      string        `json:"last_user_content"`      // 最近用户正文。
+	LastAssistantContent string        `json:"last_assistant_content"` // 最近助手正文。
 }
 type SessionsData struct {
 	Page
-	Items            []SessionData `json:"items"`              // 当前页可访问的会话。
-	CurrentSessionID string        `json:"current_session_id"` // 当前绑定，空字符串表示未绑定。
-	Query            string        `json:"query"`              // 本次搜索词。
+	Items            []SessionSummaryData `json:"items"`              // 当前页可访问的会话摘要。
+	CurrentSessionID string               `json:"current_session_id"` // 当前绑定，空字符串表示未绑定。
+	Query            string               `json:"query"`              // 本次搜索词。
 }
 type SessionChangeData struct {
-	Session          *SessionData `json:"session"`            // 目标会话快照；确认前保留原状态，解除绑定或删除后为 nil。
-	SessionID        string       `json:"session_id"`         // 操作目标；批量清理不填写。
-	CurrentSessionID string       `json:"current_session_id"` // 返回时的当前绑定，空字符串表示未绑定。
-	AffectedCount    int          `json:"affected_count"`     // 实际变更数量。
+	Session          *SessionData  `json:"session"`            // 目标会话快照；确认前保留原状态，解除绑定或删除后为 nil。
+	SessionID        string        `json:"session_id"`         // 操作目标；批量清理不填写。
+	CurrentSessionID string        `json:"current_session_id"` // 返回时的当前绑定，空字符串表示未绑定。
+	AffectedCount    int           `json:"affected_count"`     // 实际变更数量。
+	Messages         []MessageData `json:"messages"`           // resume/fork 已读取的最近消息。
 }
 type AttachmentData struct {
 	Name string `json:"name"` // 历史附件展示名称，不携带存储位置或授权。
@@ -97,17 +107,19 @@ type RequestsData struct {
 	Items []RequestData `json:"items"` // 请求快照。
 }
 type StatusData struct {
-	Session       *SessionData   `json:"session"`         // 当前会话，尚未开始时为 nil。
-	Mode          string         `json:"mode"`            // 当前模式或无会话时的默认模式。
-	Model         ModelData      `json:"model"`           // 当前模式实际选择的模型。
-	Phase         turn.Phase     `json:"phase"`           // 当前轮次阶段，不混用 Runtime 阶段。
-	PendingCount  int            `json:"pending_count"`   // 待处理输入数量。
-	MessageCount  int            `json:"message_count"`   // 已持久化消息数量。
-	Requests      []RequestData  `json:"requests"`        // 当前会话的运行请求。
-	ToolUsage     map[string]int `json:"tool_usage"`      // 当前会话各工具的调用数量。
-	TurnToolUsage map[string]int `json:"turn_tool_usage"` // 当前轮次的工具计数，独立于已保存统计。
-	Context       ContextData    `json:"context"`         // 用量与上下文配置。
-	Errors        []ItemError    `json:"errors"`          // 可选统计读取失败，不伪造零值。
+	Session              *SessionData   `json:"session"`                // 当前会话，尚未开始时为 nil。
+	Mode                 string         `json:"mode"`                   // 当前模式或无会话时的默认模式。
+	Model                ModelData      `json:"model"`                  // 当前模式实际选择的模型。
+	Phase                turn.Phase     `json:"phase"`                  // 当前轮次阶段，不混用 Runtime 阶段。
+	PendingCount         int            `json:"pending_count"`          // 待处理输入数量。
+	MessageCount         int            `json:"message_count"`          // 已持久化消息数量。
+	LastUserContent      string         `json:"last_user_content"`      // 最近用户正文。
+	LastAssistantContent string         `json:"last_assistant_content"` // 最近助手正文。
+	Requests             []RequestData  `json:"requests"`               // 当前会话的运行请求。
+	ToolUsage            map[string]int `json:"tool_usage"`             // 当前会话各工具的调用数量。
+	TurnToolUsage        map[string]int `json:"turn_tool_usage"`        // 当前轮次的工具计数，独立于已保存统计。
+	Context              ContextData    `json:"context"`                // 用量与上下文配置。
+	Errors               []ItemError    `json:"errors"`                 // 可选统计读取失败，不伪造零值。
 }
 type StopData struct {
 	SessionIDs    []string `json:"session_ids"`    // 停止所涉及的会话。

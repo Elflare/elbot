@@ -6,11 +6,14 @@ import "elbot/internal/command/share"
 type Result = share.Result
 type ResultKind = share.ResultKind
 type Continuation = share.Continuation
+type ContinuationKind = share.ContinuationKind
 type Error = share.Error
 type ErrorKind = share.ErrorKind
 
 const (
-	ResultKindText = share.ResultKindText
+	ResultKindText     = share.ResultKindText
+	ContinuationInput  = share.ContinuationInput
+	ContinuationAppend = share.ContinuationAppend
 
 	ErrorInput       = share.ErrorInput
 	ErrorRejected    = share.ErrorRejected

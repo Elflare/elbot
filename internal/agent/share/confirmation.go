@@ -14,16 +14,7 @@ type ConfirmationWaitPolicy interface {
 
 func IsAppendConfirm(text string) bool {
 	switch strings.ToLower(strings.TrimSpace(text)) {
-	case "$", "是", "y", "yes":
-		return true
-	default:
-		return false
-	}
-}
-
-func IsAppendCancel(text string) bool {
-	switch strings.ToLower(strings.TrimSpace(text)) {
-	case "取消", "否", "n", "no":
+	case "y":
 		return true
 	default:
 		return false

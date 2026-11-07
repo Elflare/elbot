@@ -28,7 +28,12 @@ func NewSessions(deps Deps) command.Handler {
 			return nil, err
 		}
 		deps.SessionState.set(deps.Scope(ctx), sessions)
-		return sessionsResult(sessions, currentSessionID(ctx, deps), page, sessionPageSize(deps), query, hasNext, formatSessionsPage(sessions, currentSessionID(ctx, deps), page, query, hasNext, deps.CommandText, "sessions")), nil
+		current, err := currentBoundSessionID(ctx, deps)
+		if err != nil {
+			return nil, err
+		}
+		text := formatSessionsPage(sessions, current, page, query, hasNext, deps.CommandText, "sessions")
+		return sessionsResult(sessions, current, page, sessionPageSize(deps), query, hasNext, text)
 	})
 }
 
@@ -85,7 +90,15 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	record.Identity.SessionID = session.ID
 	globalevents.Log(ctx, record)
-	return sessionChange(ctx, deps, session, session.ID, 1, formatResumeResult(ctx, deps, session)), nil
+	history, historyErr := recentConversationMessages(ctx, deps, session.ID, resumeHistoryTurns)
+	result := sessionChangeAtCurrent(session, session.ID, 1, formatResumeResult(session, history), session.ID)
+	data := result.Data.(command.SessionChangeData)
+	data.Messages, err = messageData(history)
+	if err != nil {
+		return result, err
+	}
+	result.Data = data
+	return result, historyErr
 }
 
 func resumePage(ctx context.Context, deps Deps, page int) (*command.Result, error) {
@@ -94,7 +107,12 @@ func resumePage(ctx context.Context, deps Deps, page int) (*command.Result, erro
 	if err != nil {
 		return nil, err
 	}
-	return sessionsResult(sessions, currentSessionID(ctx, deps), page, pageSize, "", hasNext, formatResumableSessionsPage(sessions, page, pageSize, hasNext, deps.CommandText)), nil
+	current, err := currentBoundSessionID(ctx, deps)
+	if err != nil {
+		return nil, err
+	}
+	text := formatResumableSessionsPage(sessions, page, pageSize, hasNext, deps.CommandText)
+	return sessionsResult(sessions, current, page, pageSize, "", hasNext, text)
 }
 
 func (c resumeCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -130,7 +148,12 @@ func NewArchives(deps Deps) command.Handler {
 			return nil, err
 		}
 		deps.SessionState.set(deps.Scope(ctx), sessions)
-		return sessionsResult(sessions, currentSessionID(ctx, deps), page, sessionPageSize(deps), query, hasNext, formatSessionsPage(sessions, currentSessionID(ctx, deps), page, query, hasNext, deps.CommandText, "archives")), nil
+		current, err := currentBoundSessionID(ctx, deps)
+		if err != nil {
+			return nil, err
+		}
+		text := formatSessionsPage(sessions, current, page, query, hasNext, deps.CommandText, "archives")
+		return sessionsResult(sessions, current, page, sessionPageSize(deps), query, hasNext, text)
 	})
 }
 
@@ -205,6 +228,14 @@ func NewFork(deps Deps) command.Handler {
 			Identity:     globalevents.LogIdentity{SessionID: session.ID},
 			ResultStatus: globalevents.ResultSucceeded,
 		})
-		return sessionChange(ctx, deps, session, session.ID, 1, formatForkResult(ctx, deps, session)), nil
+		history, historyErr := recentConversationMessages(ctx, deps, session.ID, resumeHistoryTurns)
+		result := sessionChangeAtCurrent(session, session.ID, 1, formatForkResult(session, history), session.ID)
+		data := result.Data.(command.SessionChangeData)
+		data.Messages, err = messageData(history)
+		if err != nil {
+			return result, err
+		}
+		result.Data = data
+		return result, historyErr
 	})
 }

@@ -21,9 +21,8 @@ type state struct {
 	pending       []Input
 	riskConfirm   *RiskConfirmation
 	riskResponse  chan RiskDecision
-	riskDone      chan struct{}
 	waitRefresh   chan struct{}
-	appendDone    chan struct{}
+	riskDone      chan struct{}
 	tools         map[string]int
 	// attemptDone belongs to this attempt and survives cancellation until its owner finishes.
 	attemptDone chan struct{}

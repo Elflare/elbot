@@ -183,7 +183,7 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 }
 ```
 
-`request_id` 原样关联 `input.id`，不是 Agent 内部请求 ID。结果只发给原始连接；同一 Client ID 的其他连接不会收到。命令不通过 `notice` 返回。追加确认中的纯文本控制输入会返回 `command="append"`；确认按钮提交带配置前缀的确认／拒绝命令，失效后返回 `confirmation_expired`。
+`request_id` 原样关联 `input.id`，不是 Agent 内部请求 ID。结果只发给原始连接；同一 Client ID 的其他连接不会收到。命令不通过 `notice` 返回。追加确认回执通过 `command="append"` 返回；确认按钮用于接受追加，发送 `y` 或 `/confirm` 续跑，使用 `/stop` 取消。
 
 | 字段 | 说明 |
 | --- | --- |
@@ -209,10 +209,10 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 
 | kind | data |
 | --- | --- |
-| sessions | items、当前绑定、搜索词及分页；用于 sessions、archives 和 resume 列表 |
-| session | 操作目标、变更后的会话、当前绑定及实际变更数量 |
+| sessions | items、当前绑定、搜索词及分页；每个 item 含会话字段、消息数量、最近消息和用户／助手正文摘要 |
+| session | 操作目标、变更后的会话、当前绑定、实际变更数量及 resume/fork 已读取的最近消息 |
 | messages | session_id、items 及分页；消息正文完整，历史附件只提供名称 |
-| status | 可空当前会话、模式、模型、Turn 阶段、请求、工具统计及 context |
+| status | 可空当前会话、模式、模型、Turn 阶段、请求、工具统计、最近用户／助手正文及 context |
 | models / model | 模型目录与逐提供方错误／实际提交的模型及目标 |
 | requests / stop | 请求快照／停止目标及实际接受取消数量 |
 | tools、rollbacks、rollback | 工具目录和管理目标／撤销列表和实际结果 |

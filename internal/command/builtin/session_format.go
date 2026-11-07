@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"elbot/internal/contextmgr"
+	"elbot/internal/session"
 	"elbot/internal/storage"
+	"errors"
 )
 
 func toolsString(tools map[string]int) string {
@@ -99,22 +101,32 @@ func currentSessionID(ctx context.Context, deps Deps) string {
 	return current.ID
 }
 
-func formatResumeResult(ctx context.Context, deps Deps, session *storage.Session) string {
+func currentBoundSessionID(ctx context.Context, deps Deps) (string, error) {
+	current, _, err := deps.Sessions.CurrentBound(ctx, deps.Scope(ctx))
+	if errors.Is(err, session.ErrNoCurrentSession) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return current.ID, nil
+}
+
+func formatResumeResult(session *storage.Session, history []storage.Message) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("resume → %s · %s\n", session.Title, session.ID))
-	appendRecentMessages(&sb, ctx, deps, session.ID)
+	appendRecentMessages(&sb, history)
 	return trimTrailingNewlines(sb.String())
 }
 
-func formatForkResult(ctx context.Context, deps Deps, session *storage.Session) string {
+func formatForkResult(session *storage.Session, history []storage.Message) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("fork → %s · %s\nparent=%s · from=%s\n", session.ID, session.Mode, session.ParentSessionID, session.ForkFromMessageID))
-	appendRecentMessages(&sb, ctx, deps, session.ID)
+	appendRecentMessages(&sb, history)
 	return trimTrailingNewlines(sb.String())
 }
 
-func appendRecentMessages(sb *strings.Builder, ctx context.Context, deps Deps, sessionID string) {
-	history := recentConversationMessages(ctx, deps, sessionID, resumeHistoryTurns)
+func appendRecentMessages(sb *strings.Builder, history []storage.Message) {
 	if len(history) == 0 {
 		return
 	}
@@ -127,12 +139,12 @@ func appendRecentMessages(sb *strings.Builder, ctx context.Context, deps Deps, s
 	}
 }
 
-func recentConversationMessages(ctx context.Context, deps Deps, sessionID string, turns int) []storage.Message {
+func recentConversationMessages(ctx context.Context, deps Deps, sessionID string, turns int) ([]storage.Message, error) {
 	loaded, err := (contextmgr.Loader{Store: deps.Store}).LoadMessagePage(ctx, sessionID, 1, turns*2)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return loaded.Messages
+	return loaded.Messages, nil
 }
 
 func previewContent(text string) string {
@@ -256,19 +268,30 @@ func sessionData(s *storage.Session) *command.SessionData {
 	if s == nil {
 		return nil
 	}
-	return &command.SessionData{ID: s.ID, Title: s.Title, Mode: s.Mode, Status: s.Status, Platform: s.Platform, ChatID: s.ChatID, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, ArchivedAt: s.ArchivedAt, PinnedAt: s.PinnedAt}
+	return &command.SessionData{ID: s.ID, Title: s.Title, Mode: s.Mode, Status: s.Status, Platform: s.Platform, ChatID: s.ChatID, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, ArchivedAt: s.ArchivedAt, PinnedAt: s.PinnedAt, ParentSessionID: s.ParentSessionID, ForkFromMessageID: s.ForkFromMessageID}
 }
 
 func sessionChange(ctx context.Context, deps Deps, row *storage.Session, id string, count int, text string) *command.Result {
 	return &command.Result{Kind: command.ResultKindSession, Text: text, Data: command.SessionChangeData{Session: sessionData(row), SessionID: id, AffectedCount: count, CurrentSessionID: currentSessionID(ctx, deps)}}
 }
 
-func sessionsResult(rows []storage.SessionSummary, current string, page, size int, query string, hasNext bool, text string) *command.Result {
-	items := make([]command.SessionData, 0, len(rows))
+func sessionChangeAtCurrent(row *storage.Session, id string, count int, text, currentID string) *command.Result {
+	return &command.Result{Kind: command.ResultKindSession, Text: text, Data: command.SessionChangeData{Session: sessionData(row), SessionID: id, AffectedCount: count, CurrentSessionID: currentID}}
+}
+
+func sessionsResult(rows []storage.SessionSummary, current string, page, size int, query string, hasNext bool, text string) (*command.Result, error) {
+	items := make([]command.SessionSummaryData, 0, len(rows))
 	for _, s := range rows {
-		items = append(items, command.SessionData{ID: s.ID, Title: s.Title, Mode: s.Mode, Status: s.Status, Platform: s.Platform, ChatID: s.ChatID, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, ArchivedAt: s.ArchivedAt, PinnedAt: s.PinnedAt})
+		messages, err := messageData(s.Messages)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, command.SessionSummaryData{
+			SessionData:  command.SessionData{ID: s.ID, Title: s.Title, Mode: s.Mode, Status: s.Status, Platform: s.Platform, ChatID: s.ChatID, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt, ArchivedAt: s.ArchivedAt, PinnedAt: s.PinnedAt, ParentSessionID: s.ParentSessionID, ForkFromMessageID: s.ForkFromMessageID},
+			MessageCount: s.MessageCount, Messages: messages, LastUserContent: s.LastUserContent, LastAssistantContent: s.LastAssistantContent,
+		})
 	}
-	return &command.Result{Kind: command.ResultKindSessions, Text: text, Data: command.SessionsData{Page: command.Page{Page: page, PageSize: size, HasNext: hasNext}, Items: items, CurrentSessionID: current, Query: query}}
+	return &command.Result{Kind: command.ResultKindSessions, Text: text, Data: command.SessionsData{Page: command.Page{Page: page, PageSize: size, HasNext: hasNext}, Items: items, CurrentSessionID: current, Query: query}}, nil
 }
 
 func messageData(rows []storage.Message) ([]command.MessageData, error) {

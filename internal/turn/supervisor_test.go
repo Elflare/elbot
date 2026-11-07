@@ -8,57 +8,40 @@ import (
 	"time"
 )
 
-// Inject refresh after the timer fires but before expiry commits. This forces
-// the race without relying on select scheduling or wall-clock sleeps.
+// Inject refresh after the timer fires but before expiry commits.
 func TestRefreshWinsPendingExpiry(t *testing.T) {
-	for _, risk := range []bool{false, true} {
-		t.Run(map[bool]string{false: "append", true: "risk"}[risk], func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				s := NewSupervisor(testutil.IDSequence())
-				s.StartAttempt("s", Input{}, NewExecution("run"), "a")
-				done := make(chan bool, 1)
-				if risk {
-					s.StartToolPhase("s", "a")
-					w := s.BeginRiskConfirmation("s", RiskConfirmation{ToolName: "call"}, "a")
-					expire := w.wait.Expire
-					first := true
-					w.wait.Expire = func() bool {
-						if first {
-							first = false
-							s.RefreshRiskConfirmation("s")
-						}
-						return expire()
-					}
-					go func() { done <- w.Wait(t.Context(), time.Second).Outcome == RiskExpired }()
-				} else {
-					w := s.BeginAppend("s", "a", Input{Text: "more"})
-					expire := w.wait.Expire
-					first := true
-					w.wait.Expire = func() bool {
-						if first {
-							first = false
-							s.AppendPendingInput("s", Input{Text: "latest"})
-						}
-						return expire()
-					}
-					go func() { done <- w.Wait(t.Context(), time.Second) }()
+	t.Run("risk", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s := NewSupervisor(testutil.IDSequence())
+			s.StartAttempt("s", Input{}, NewExecution("run"), "a")
+			done := make(chan bool, 1)
+			s.StartToolPhase("s", "a")
+			w := s.BeginRiskConfirmation("s", RiskConfirmation{ToolName: "call"}, "a")
+			expire := w.wait.Expire
+			first := true
+			w.wait.Expire = func() bool {
+				if first {
+					first = false
+					s.RefreshRiskConfirmation("s")
 				}
-				synctest.Wait()
-				time.Sleep(time.Second)
-				synctest.Wait()
-				select {
-				case <-done:
-					t.Fatal("accepted refresh lost to old timer")
-				default:
-				}
-				time.Sleep(time.Second)
-				if !<-done || s.Snapshot("s").Phase != PhaseStopping {
-					t.Fatal("refreshed wait did not expire")
-				}
-				s.FinishAttempt("s", "a")
-			})
+				return expire()
+			}
+			go func() { done <- w.Wait(t.Context(), time.Second).Outcome == RiskExpired }()
+			synctest.Wait()
+			time.Sleep(time.Second)
+			synctest.Wait()
+			select {
+			case <-done:
+				t.Fatal("accepted refresh lost to old timer")
+			default:
+			}
+			time.Sleep(time.Second)
+			if !<-done || s.Snapshot("s").Phase != PhaseStopping {
+				t.Fatal("refreshed wait did not expire")
+			}
+			s.FinishAttempt("s", "a")
 		})
-	}
+	})
 }
 
 func TestSupervisorAppendAndAttemptOwnership(t *testing.T) {
@@ -67,8 +50,7 @@ func TestSupervisorAppendAndAttemptOwnership(t *testing.T) {
 	if !s.StartAttempt("s", Input{Text: "first"}, e, "old") {
 		t.Fatal("start failed")
 	}
-	wait := s.BeginAppend("s", "old", Input{Text: "more"})
-	if wait == nil {
+	if !s.BeginAppend("s", "old", Input{Text: "more"}) {
 		t.Fatal("append registration failed")
 	}
 	snapshot := s.Snapshot("s")
@@ -84,9 +66,6 @@ func TestSupervisorAppendAndAttemptOwnership(t *testing.T) {
 	s.FinishAttempt("s", "old")
 	if s.Snapshot("s").Attempt != "new" {
 		t.Fatal("old attempt affected replacement")
-	}
-	if wait.Wait(t.Context(), 0) {
-		t.Fatal("resolved append wait expired")
 	}
 	s.StopSession("s")
 	if s.Snapshot("s").Phase != PhaseStopping {
@@ -122,24 +101,24 @@ func TestRiskCallbacksKeepReplacementAndRejectStoppedApproval(t *testing.T) {
 	s.FinishAttempt("s", "a")
 }
 
-func TestConfirmationCallbacksExpireAndIgnoreOldAppend(t *testing.T) {
+func TestAppendReservationSurvivesOldAttemptExit(t *testing.T) {
 	s := NewSupervisor(testutil.IDSequence())
 	e := NewExecution("run")
 	s.StartAttempt("s", Input{Text: "original"}, e, "a")
-	old := s.BeginAppend("s", "a", Input{Text: "more"})
+	if !s.BeginAppend("s", "a", Input{Text: "more"}) {
+		t.Fatal("append transition failed")
+	}
 	s.FinishAttempt("s", "a")
 	_, _, ok := s.ResumeAppend("s")
 	if !ok {
 		t.Fatal("resume failed")
 	}
-	replacement := s.BeginAppend("s", "", Input{Text: "latest"})
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	if old.Wait(ctx, 0) || s.Snapshot("s").Phase != PhaseAwaitAppendConfirm {
-		t.Fatal("old cancellation changed replacement")
+	if !s.BeginAppend("s", "", Input{Text: "latest"}) || s.Snapshot("s").Phase != PhaseAwaitAppendConfirm {
+		t.Fatal("reserved append did not accept further input")
 	}
-	if !replacement.Wait(t.Context(), time.Millisecond) || s.Snapshot("s").Phase != PhaseIdle {
-		t.Fatal("append expiry failed")
+	s.StopSession("s")
+	if s.Snapshot("s").Phase != PhaseIdle {
+		t.Fatal("stop did not release reserved append")
 	}
 	s.StartAttempt("s", Input{}, e, "b")
 	s.StartToolPhase("s", "b")

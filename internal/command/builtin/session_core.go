@@ -78,7 +78,7 @@ func NewStatus(deps Deps) command.Handler {
 				}
 			}
 		}
-		data := command.StatusData{Session: sessionData(s), Mode: s.Mode, Model: modelData(currentModel), Phase: turnSnapshot.Phase, PendingCount: turnSnapshot.PendingCount, MessageCount: status.MessageCount, Requests: requestData(requests), ToolUsage: toolUsage, TurnToolUsage: turnSnapshot.Tools, Context: contextState, Errors: contextErrors}
+		data := command.StatusData{Session: sessionData(s), Mode: s.Mode, Model: modelData(currentModel), Phase: turnSnapshot.Phase, PendingCount: turnSnapshot.PendingCount, MessageCount: status.MessageCount, LastUserContent: status.LastUserContent, LastAssistantContent: status.LastAnswerContent, Requests: requestData(requests), ToolUsage: toolUsage, TurnToolUsage: turnSnapshot.Tools, Context: contextState, Errors: contextErrors}
 		result := &command.Result{Kind: command.ResultKindStatus, Data: data, Text: trimTrailingNewlines(fmt.Sprintf(`%s · %s
 %s · %s/%s · msgs=%d
 %screated=%s

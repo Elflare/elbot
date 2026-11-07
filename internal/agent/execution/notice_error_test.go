@@ -36,10 +36,6 @@ func (o failingWorkflowNotice) Send(_ context.Context, event delivery.StreamEven
 }
 func (failingWorkflowNotice) Preview(context.Context, ...string) {}
 
-type shortAppendWait struct{}
-
-func (shortAppendWait) WaitTimeout(context.Context) time.Duration { return time.Millisecond }
-
 type noticeTestContexts struct{ ExecutionContexts }
 
 func (noticeTestContexts) ReachedCompactThreshold(context.Context, *llm.Usage, modelmgr.Selection) bool {
@@ -49,7 +45,6 @@ func (noticeTestContexts) RecordTurn(context.Context, string, *llm.Usage) error 
 
 func TestWorkflowNoticeFailureIsLoggedAndHandled(t *testing.T) {
 	for _, tc := range []struct{ name, text, event string }{
-		{"append", "append timeout → dropped · stopped", "append_timeout_notice_failed"},
 		{"compact", "compact → next request", "compact_notice_failed"},
 	} {
 		for _, failure := range []error{errors.New("notice transport failed"), context.Canceled} {
@@ -72,7 +67,7 @@ func TestWorkflowNoticeFailureIsLoggedAndHandled(t *testing.T) {
 				out := failingWorkflowNotice{text: tc.text, err: failure}
 				c := NewExecutionCoordinator(ctx, ExecutionCoordinatorDeps{
 					Sessions: sessions, SessionRows: store.Sessions(), Turns: turns, Requests: request.NewManager(testutil.IDSequence()),
-					View: view, Identity: identity, Output: out, Contexts: noticeTestContexts{}, WaitPolicy: shortAppendWait{},
+					View: view, Identity: identity, Output: out, Contexts: noticeTestContexts{},
 					Status:           NewStatusRecorder(StatusRecorderDeps{View: view, Turns: turns}),
 					SelectionForTurn: func(context.Context, *storage.Session) modelmgr.Selection { return modelmgr.Selection{} },
 				})
@@ -88,18 +83,11 @@ func TestWorkflowNoticeFailureIsLoggedAndHandled(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer connection.Close(context.Background())
-				if tc.name == "append" {
-					_, disposition, err := c.AcceptInput(ctx, row, "pending")
-					if err != nil || disposition != agentshare.InputHandled {
-						t.Fatalf("disposition=%v err=%v", disposition, err)
-					}
-				} else {
-					turns.StartToolPhase(row.ID, "attempt")
-					turns.AppendPendingInput(row.ID, turn.Input{Text: "pending"})
-					pending, err := c.finishCompletedTurn(ctx, row, out, agentshare.TurnResult{})
-					if err != nil || pending.Text != "pending" {
-						t.Fatalf("pending=%+v err=%v", pending, err)
-					}
+				turns.StartToolPhase(row.ID, "attempt")
+				turns.AppendPendingInput(row.ID, turn.Input{Text: "pending"})
+				pending, err := c.finishCompletedTurn(ctx, row, out, agentshare.TurnResult{})
+				if err != nil || pending.Text != "pending" {
+					t.Fatalf("pending=%+v err=%v", pending, err)
 				}
 				select {
 				case record := <-logs:

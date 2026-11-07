@@ -60,7 +60,7 @@ func TestDrainMergedInputPreservesMediaAndPlatformText(t *testing.T) {
 func TestInterruptAndConfirmMergesOriginalInput(t *testing.T) {
 	m := NewSupervisor(testutil.IDSequence())
 	e := startTestExecution(t, m, "s1", Input{Text: "zz"})
-	if m.BeginAppend("s1", "attempt", Input{Text: "等等！"}) == nil {
+	if !m.BeginAppend("s1", "attempt", Input{Text: "等等！"}) {
 		t.Fatal("InterruptLLMInput returned false")
 	}
 	if !m.AppendPendingInput("s1", Input{Text: "再补一句"}) {
@@ -93,14 +93,12 @@ func TestInterruptAndConfirmMergesOriginalInput(t *testing.T) {
 	}
 }
 
-func TestCancelAppendWaitsForAttempt(t *testing.T) {
+func TestStopAppendWaitsForAttempt(t *testing.T) {
 	m := NewSupervisor(testutil.IDSequence())
 	startTestExecution(t, m, "s1", Input{Text: "zz"})
 	m.BeginAppend("s1", "attempt", Input{Text: "等等！"})
 
-	if !m.CancelAppend("s1") {
-		t.Fatal("CancelAppend returned false")
-	}
+	m.StopSession("s1")
 	if got := m.Snapshot("s1").Phase; got != PhaseStopping {
 		t.Fatalf("phase = %s, want stopping", got)
 	}

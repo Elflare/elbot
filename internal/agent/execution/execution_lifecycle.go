@@ -5,9 +5,8 @@ import (
 	"sync"
 )
 
-// appendWaitLifecycle owns confirmation waits, attempt joins and expiry output.
-// Their routing values survive a request, but cancellation belongs to the app.
-type appendWaitLifecycle struct {
+// attemptWaitLifecycle tracks joins on attempts canceled by accepted input.
+type attemptWaitLifecycle struct {
 	mu     sync.Mutex
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -16,14 +15,14 @@ type appendWaitLifecycle struct {
 	done   chan struct{}
 }
 
-func newAppendWaitLifecycle(parent context.Context) *appendWaitLifecycle {
+func newAttemptWaitLifecycle(parent context.Context) *attemptWaitLifecycle {
 	ctx, cancel := context.WithCancel(parent)
-	l := &appendWaitLifecycle{ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	l := &attemptWaitLifecycle{ctx: ctx, cancel: cancel, done: make(chan struct{})}
 	context.AfterFunc(ctx, l.beginClose)
 	return l
 }
 
-func (l *appendWaitLifecycle) begin(source context.Context) (context.Context, func(), bool) {
+func (l *attemptWaitLifecycle) begin(source context.Context) (context.Context, func(), bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.closed || l.ctx.Err() != nil {
@@ -47,7 +46,7 @@ func (l *appendWaitLifecycle) begin(source context.Context) (context.Context, fu
 	}, true
 }
 
-func (l *appendWaitLifecycle) beginClose() {
+func (l *attemptWaitLifecycle) beginClose() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.closed {
@@ -60,7 +59,7 @@ func (l *appendWaitLifecycle) beginClose() {
 	}
 }
 
-func (l *appendWaitLifecycle) Close(ctx context.Context) error {
+func (l *attemptWaitLifecycle) Close(ctx context.Context) error {
 	l.beginClose()
 	select {
 	case <-l.done:
@@ -76,8 +75,14 @@ func (l *appendWaitLifecycle) Close(ctx context.Context) error {
 }
 
 // Execution shutdown owns append waits; entrypoints own foreground/background producers.
-func (c *ExecutionCoordinator) BeginClose() { c.appendWaits.beginClose() }
+func (c *ExecutionCoordinator) BeginClose() {
+	for _, snapshot := range c.turns.SnapshotAll() {
+		c.requests.CancelSession(snapshot.SessionID)
+	}
+	c.turns.StopAll()
+	c.attemptWaits.beginClose()
+}
 
-func (c *ExecutionCoordinator) Done() <-chan struct{} { return c.appendWaits.done }
+func (c *ExecutionCoordinator) Done() <-chan struct{} { return c.attemptWaits.done }
 
-func (c *ExecutionCoordinator) Close(ctx context.Context) error { return c.appendWaits.Close(ctx) }
+func (c *ExecutionCoordinator) Close(ctx context.Context) error { return c.attemptWaits.Close(ctx) }

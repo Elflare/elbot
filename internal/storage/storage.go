@@ -424,6 +424,8 @@ type SessionSummary struct {
 	UpdatedAt            time.Time
 	ArchivedAt           *time.Time
 	PinnedAt             *time.Time
+	ParentSessionID      string // Parent session when this session was derived.
+	ForkFromMessageID    string // Message that anchors this session branch.
 	MessageCount         int
 	LastUserContent      string
 	LastAssistantContent string

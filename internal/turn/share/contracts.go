@@ -32,12 +32,6 @@ type RiskResult struct {
 	Err      error // Request cancellation or deadline; nil for user stop or wait expiry.
 }
 
-type AppendWait struct {
-	Refresh <-chan struct{} // A pending refresh; repeated notifications may coalesce.
-	Done    <-chan struct{} // Closed by lifecycle when this wait ends.
-	Cancel  func() bool     // Stops only this registered wait; false means it is no longer current.
-	Expire  func() bool     // Atomically expires this wait unless a pending refresh wins.
-}
 type RiskWait struct {
 	Response <-chan RiskDecision                  // Buffered so a response may precede Wait.
 	Refresh  <-chan struct{}                      // Refreshes this wait's deadline.

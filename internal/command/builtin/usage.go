@@ -240,11 +240,6 @@ type usageBucket struct {
 	elapsedMs        *int64
 }
 
-func formatUsageSummary(entries []logging.LogEntry, query logging.LogQuery, groupBy usageGroupKey) string {
-	_, text := summarizeUsage(entries, query, groupBy)
-	return text
-}
-
 func summarizeUsage(entries []logging.LogEntry, query logging.LogQuery, groupBy usageGroupKey) (command.UsageData, string) {
 	buckets := map[string]*usageBucket{}
 	var order []string

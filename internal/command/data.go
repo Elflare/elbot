@@ -5,6 +5,7 @@ import "elbot/internal/command/share"
 
 type Page = share.Page
 type SessionData = share.SessionData
+type SessionSummaryData = share.SessionSummaryData
 type SessionsData = share.SessionsData
 type SessionChangeData = share.SessionChangeData
 type AttachmentData = share.AttachmentData

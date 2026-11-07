@@ -11,7 +11,7 @@ import (
 
 func TestCommandResultWireKeepsDataAndExcludesExecutionInternals(t *testing.T) {
 	zero := int64(0)
-	result := Result{Kind: ResultKindStatus, Text: "display", Data: StatusData{Context: ContextData{Usage: &TokenUsage{TotalTokens: &zero}}}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认", Command: "/delete s --confirm"}}}, Continuation: &Continuation{Text: "private continuation", SessionID: "s"}}
+	result := Result{Kind: ResultKindStatus, Text: "display", Data: StatusData{Context: ContextData{Usage: &TokenUsage{TotalTokens: &zero}}}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认", Command: "/delete s --confirm"}}}, Continuation: &Continuation{Kind: ContinuationInput, Text: "private continuation", SessionID: "s"}}
 	raw, err := json.Marshal(result)
 	if err != nil {
 		t.Fatal(err)

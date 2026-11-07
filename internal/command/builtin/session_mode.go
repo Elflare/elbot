@@ -30,7 +30,7 @@ func NewWork(deps Deps) command.Handler {
 		}
 		result := sessionChange(ctx, deps, activated.Session, activated.Session.ID, 1, content)
 		if req.Args != "" {
-			result.Continuation = &command.Continuation{Text: req.Args, SessionID: activated.Session.ID}
+			result.Continuation = &command.Continuation{Kind: command.ContinuationInput, Text: req.Args, SessionID: activated.Session.ID}
 		}
 		return result, nil
 	})
@@ -58,7 +58,7 @@ func NewChat(deps Deps) command.Handler {
 		}
 		result := sessionChange(ctx, deps, activated.Session, activated.Session.ID, 1, content)
 		if req.Args != "" {
-			result.Continuation = &command.Continuation{Text: req.Args, SessionID: activated.Session.ID}
+			result.Continuation = &command.Continuation{Kind: command.ContinuationInput, Text: req.Args, SessionID: activated.Session.ID}
 		}
 		return result, nil
 	})

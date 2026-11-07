@@ -22,6 +22,39 @@ type retryCallClient struct {
 
 func (c retryCallClient) RetryOptions() llm.RetryOptions { return c.options }
 
+func TestAttemptOutputResetOnlyUncommitted(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		events []delivery.StreamEvent
+		want   []delivery.StreamEventType
+	}{
+		{name: "no output"},
+		{name: "body and reasoning", events: []delivery.StreamEvent{{Type: delivery.StreamTextDelta, Text: "partial"}, {Type: delivery.StreamReasoningDelta, Text: "thought"}}, want: []delivery.StreamEventType{delivery.StreamTextDelta, delivery.StreamReasoningDelta, delivery.StreamReset}},
+		{name: "committed reply", events: []delivery.StreamEvent{{Type: delivery.StreamSend, Text: "complete"}}, want: []delivery.StreamEventType{delivery.StreamSend}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var got []delivery.StreamEventType
+			output := &attemptOutput{}
+			if len(tc.events) > 0 {
+				output.stream = &attemptMessageStream{MessageStream: delivery.StreamFunc(func(_ context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+					got = append(got, event.Type)
+					return delivery.Receipt{}, nil
+				})}
+				for _, event := range tc.events {
+					if _, err := output.stream.Send(t.Context(), event); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if err := output.reset(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("events=%v want=%v", got, tc.want)
+			}
+		})
+	}
+}
 func TestCallRetryStreamBoundary(t *testing.T) {
 	terminal := errors.New("terminal")
 	resetFailure := errors.New("reset failed")

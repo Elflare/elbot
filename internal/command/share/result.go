@@ -46,9 +46,17 @@ type Result struct {
 }
 
 // Continuation 是命令结果交给执行协调方的后续输入。
+type ContinuationKind string
+
+const (
+	ContinuationInput  ContinuationKind = "input"
+	ContinuationAppend ContinuationKind = "append"
+)
+
 type Continuation struct {
-	Text      string // 后续输入正文。
-	SessionID string // 后续输入实际使用的会话。
+	Kind      ContinuationKind // 后续输入由普通输入准备或追加续跑处理。
+	Text      string           // 后续输入正文。
+	SessionID string           // 后续输入实际使用的会话。
 }
 
 // ErrorKind 区分输入错误、业务拒绝、内部故障和执行中断。
@@ -103,6 +111,10 @@ func ClassifyError(err error) *Error {
 		kind, code, message = ErrorRejected, "model_incompatible", err.Error()
 	case errors.Is(err, tool.ErrSkillNotFound):
 		kind, code, message = ErrorRejected, CodeNotFound, err.Error()
+	case errors.Is(err, fileops.ErrFileChanged):
+		kind, code, message = ErrorRejected, "file_changed", err.Error()
+	case errors.Is(err, fileops.ErrNotRegularFile):
+		kind, code, message = ErrorRejected, "invalid_target", err.Error()
 	case errors.Is(err, context.Canceled):
 		kind, code, message = ErrorInterrupted, CodeCanceled, "命令执行已取消"
 	case errors.Is(err, context.DeadlineExceeded):

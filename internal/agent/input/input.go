@@ -68,6 +68,9 @@ func (c *InputCoordinator) HandleInput(ctx context.Context, text string) (contex
 }
 
 func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuation command.Continuation) (context.Context, error) {
+	if continuation.Kind == command.ContinuationAppend {
+		return c.execution.ResumeAppend(ctx, continuation.SessionID)
+	}
 	locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), continuation.SessionID)
 	if err != nil {
 		return ctx, err

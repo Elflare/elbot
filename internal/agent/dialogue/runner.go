@@ -16,9 +16,64 @@ import (
 	"elbot/internal/tool"
 	"errors"
 	"fmt"
+	"log/slog"
+	"sync"
 
+	"elbot/internal/delivery"
 	"elbot/internal/turn"
 )
+
+type attemptOutput struct {
+	agentshare.Output
+	mu     sync.Mutex
+	stream *attemptMessageStream
+}
+
+type attemptMessageStream struct {
+	delivery.MessageStream
+	mu        sync.Mutex
+	committed bool
+}
+
+func (s *attemptMessageStream) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+	receipt, err := s.MessageStream.Send(ctx, event)
+	if err == nil {
+		s.mu.Lock()
+		switch event.Type {
+		case delivery.StreamSend:
+			s.committed = true
+		case delivery.StreamReset:
+			s.committed = false
+		}
+		s.mu.Unlock()
+	}
+	return receipt, err
+}
+
+func (o *attemptOutput) StartStream(ctx context.Context) delivery.MessageStream {
+	stream := &attemptMessageStream{MessageStream: o.Output.StartStream(ctx)}
+	o.mu.Lock()
+	o.stream = stream
+	o.mu.Unlock()
+	return stream
+}
+
+func (o *attemptOutput) reset(ctx context.Context) error {
+	o.mu.Lock()
+	stream := o.stream
+	o.mu.Unlock()
+	if stream == nil {
+		return nil
+	}
+	stream.mu.Lock()
+	committed := stream.committed
+	stream.mu.Unlock()
+	if committed {
+		return nil
+	}
+	_, err := stream.Send(context.WithoutCancel(ctx), delivery.StreamEvent{Type: delivery.StreamReset})
+	return err
+}
 
 type Runner struct {
 	Status interface {
@@ -63,6 +118,8 @@ func (r *Runner) PrepareTurn(ctx context.Context, in agentshare.TurnInput) (agen
 }
 
 func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInput, out agentshare.Output) (requestContext context.Context, result agentshare.TurnResult) {
+	streamOutput := &attemptOutput{Output: out}
+	out = streamOutput
 	result.StartedAt = storage.Now()
 	result.Selection = in.Selection
 	defer func() {
@@ -77,7 +134,10 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 		}
 		current := r.Turns.Snapshot(in.Session.ID)
 		execution := current.Execution
-		if execution != nil && execution == turn.ExecutionFromContext(ctx) && current.Phase == turn.PhaseAwaitAppendConfirm {
+		if execution != nil && execution == turn.ExecutionFromContext(ctx) && current.Attempt == turn.AttemptFromContext(ctx) && current.Phase == turn.PhaseAwaitAppendConfirm {
+			if err := streamOutput.reset(ctx); err != nil {
+				slog.WarnContext(context.WithoutCancel(ctx), "reset interrupted reply stream", "session_id", in.Session.ID, "error", err)
+			}
 			result.Outcome = agentshare.Paused
 		} else if execution != nil && current.Attempt != turn.AttemptFromContext(ctx) {
 			result.Outcome = agentshare.Superseded

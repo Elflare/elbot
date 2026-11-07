@@ -75,6 +75,10 @@ slash 命令由 Agent Core 统一处理，CLI、QQ 等平台共享同一套语�
 | `/stop [request_id\|编号]` | 停止指定请求，编号取自 `/requests`；不传参数时停止当前 Session 的请求。一次性 exec Hook 会结束完整进程树，持久 Worker 只取消当前调用。 |
 | `/stopall` | 停止当前进程的所有 active request。 |
 
+## 追加输入
+
+LLM 正在处理时收到的新输入会停止当前请求并进入追加等待；连续输入会累积。发送 `y` 或 `/confirm` 继续，已累积的输入会合并后使用原会话继续执行；发送 `/stop` 取消当前处理。
+
 ## 上下文压缩
 
 | 命令 | 作用 |

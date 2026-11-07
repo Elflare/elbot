@@ -53,9 +53,8 @@ type ExecutionTurns interface {
 	NewExecution(context.Context) (*turn.Execution, error)
 	AllocateAttempt(context.Context) (string, error)
 	AppendPendingInput(string, turn.Input) bool
-	BeginAppend(string, string, turn.Input) *turn.AppendWait
+	BeginAppend(string, string, turn.Input) bool
 	CanCompact(string, *turn.Execution) bool
-	CancelAppend(string) bool
 	CompleteCompactRun(string, string) bool
 	CompleteTurn(string, string) (turn.Input, bool)
 	FinishAttempt(string, string)
@@ -65,7 +64,9 @@ type ExecutionTurns interface {
 	StartCompactRun(string, string, *turn.Execution) bool
 	StartAttempt(string, turn.Input, *turn.Execution, string) bool
 	StopSession(string)
+	StopAll()
 	StopAttempt(string, string)
+	SnapshotAll() []turn.Snapshot
 }
 
 type ExecutionRequests interface {
@@ -107,7 +108,6 @@ type ExecutionCoordinatorDeps struct {
 	View             ExecutionView
 	Output           ExecutionSender
 	Status           agentshare.ExecutionStatus
-	WaitPolicy       agentshare.ConfirmationWaitPolicy
 	// ResponseTimeout bounds one response; non-positive values disable the deadline.
 	ResponseTimeout time.Duration
 }

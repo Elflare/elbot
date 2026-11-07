@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-func TestAppendWaitRegistrationRacesClose(t *testing.T) {
-	lifecycle := newAppendWaitLifecycle(context.Background())
+func TestAttemptWaitRegistrationRacesClose(t *testing.T) {
+	lifecycle := newAttemptWaitLifecycle(context.Background())
 	var workers sync.WaitGroup
 	start := make(chan struct{})
 	for range 64 {

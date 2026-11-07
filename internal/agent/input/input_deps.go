@@ -31,6 +31,7 @@ type InputExecution interface {
 	EnterInput(context.Context, *storage.Session) (context.Context, func(), error)
 	AcceptInput(context.Context, *storage.Session, string) (context.Context, agentshare.InputDisposition, error)
 	ModelContext(context.Context, *storage.Session) (context.Context, error)
+	ResumeAppend(context.Context, string) (context.Context, error)
 }
 
 type InputConfirmations interface {

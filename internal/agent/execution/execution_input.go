@@ -3,11 +3,7 @@ package execution
 import (
 	"context"
 	"elbot/internal/delivery"
-	"elbot/internal/events"
 	"errors"
-	"fmt"
-	"log/slog"
-	"time"
 
 	agentshare "elbot/internal/agent/share"
 	sessionpkg "elbot/internal/session"
@@ -15,11 +11,16 @@ import (
 	"elbot/internal/turn"
 )
 
-func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Session, text string) (context.Context, error) {
-	defer c.sessionIdle(ctx, row.ID)
+func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, sessionID string) (context.Context, error) {
+	defer c.sessionIdle(ctx, sessionID)
 	for {
-		locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), row.ID)
+		locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), sessionID)
 		if err != nil {
+			return ctx, err
+		}
+		row, err := c.sessionRows.Get(locked, sessionID)
+		if err != nil {
+			release()
 			return ctx, err
 		}
 		locked, err = agentshare.CaptureSessionBinding(locked, c.sessions, c.identity, row)
@@ -32,49 +33,34 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, row *storage.Se
 			release()
 			return ctx, err
 		}
-		switch {
-		case agentshare.IsAppendConfirm(text):
-			snapshot := c.turns.Snapshot(row.ID)
-			if snapshot.Phase != turn.PhaseAwaitAppendConfirm {
-				release()
-				return ctx, agentshare.ErrConfirmationExpired
-			}
-			if snapshot.AttemptDone != nil {
-				release()
-				if err := c.waitForAttempt(ctx, snapshot.AttemptDone); err != nil {
-					return ctx, err
-				}
-				continue
-			}
-			merged, execution, ok := c.turns.ResumeAppend(row.ID)
-			ctx = turn.WithExecution(locked, execution)
-			if !ok || (merged.Text == "" && len(merged.Segments) == 0) {
-				release()
-				return ctx, agentshare.ErrConfirmationExpired
-			}
-			ctx = agentshare.WithInboundTurnInput(ctx, merged)
+		snapshot := c.turns.Snapshot(row.ID)
+		if snapshot.Phase != turn.PhaseAwaitAppendConfirm {
 			release()
-			return c.Run(ctx, row, merged.Text, foregroundTurnOutput{ExecutionSender: c.output})
-		case agentshare.IsAppendCancel(text):
-			if c.turns.Snapshot(row.ID).Phase != turn.PhaseAwaitAppendConfirm {
-				release()
-				return ctx, agentshare.ErrConfirmationExpired
-			}
-			c.turns.CancelAppend(row.ID)
-			release()
-			return ctx, nil
-		default:
-			c.turns.AppendPendingInput(row.ID, agentshare.InboundTurnInput(ctx, text))
-			release()
-			return ctx, nil
+			return ctx, agentshare.ErrConfirmationExpired
 		}
+		if snapshot.AttemptDone != nil {
+			release()
+			if err := c.waitForAttempt(ctx, snapshot.AttemptDone); err != nil {
+				return ctx, err
+			}
+			continue
+		}
+		merged, execution, ok := c.turns.ResumeAppend(row.ID)
+		if !ok || (merged.Text == "" && len(merged.Segments) == 0) {
+			release()
+			return ctx, agentshare.ErrConfirmationExpired
+		}
+		ctx = turn.WithExecution(locked, execution)
+		ctx = agentshare.WithInboundTurnInput(ctx, merged)
+		release()
+		return c.Run(ctx, row, merged.Text, foregroundTurnOutput{ExecutionSender: c.output})
 	}
 }
 
 // waitForAttempt joins an old attempt outside admission locks. The input and
 // application lifetimes can both abandon this wait without replaying the input.
 func (c *ExecutionCoordinator) waitForAttempt(ctx context.Context, done <-chan struct{}) error {
-	waitCtx, finish, accepted := c.appendWaits.begin(ctx)
+	waitCtx, finish, accepted := c.attemptWaits.begin(ctx)
 	if !accepted {
 		return context.Canceled
 	}
@@ -120,42 +106,18 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 			release()
 			return ctx, agentshare.InputRiskConfirmation, nil
 		case turn.PhaseAwaitAppendConfirm:
+			c.turns.AppendPendingInput(session.ID, agentshare.InboundTurnInput(ctx, text))
 			release()
-			ctx, err := c.ResumeAppend(ctx, session, text)
-			if err == nil && agentshare.IsAppendCancel(text) {
-				_, err = c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "append canceled · stopping"})
-			}
-			return ctx, agentshare.InputHandled, err
+			return ctx, agentshare.InputHandled, nil
 		case turn.PhaseLLM:
-			waitCtx, finishWait, accepted := c.appendWaits.begin(ctx)
-			if !accepted {
+			if !c.turns.BeginAppend(session.ID, snapshot.Attempt, agentshare.InboundTurnInput(ctx, text)) {
 				release()
-				return ctx, agentshare.InputHandled, context.Canceled
-			}
-			wait := c.turns.BeginAppend(session.ID, snapshot.Attempt, agentshare.InboundTurnInput(ctx, text))
-			if wait == nil {
-				finishWait()
-				release()
-				return ctx, agentshare.InputHandled, nil
+				continue
 			}
 			c.requests.CancelSession(session.ID)
 			release()
-			timeout := c.waitPolicy.WaitTimeout(ctx)
 			presentation := c.appendConfirmation
-			_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: appendConfirmPromptText(timeout), Actions: presentation.Actions})
-			go func() {
-				defer finishWait()
-				defer c.sessionIdle(waitCtx, session.ID)
-				if wait.Wait(waitCtx, timeout) {
-					if _, err := c.output.Send(waitCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "append timeout → dropped · stopped"}); err != nil {
-						record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "append_timeout_notice_failed", Module: "agent", Content: err.Error(), Identity: events.LogIdentityFromContext(waitCtx), ResultStatus: events.LogStatus(err)}
-						if record.ResultStatus == events.ResultCanceled {
-							record.Level = slog.LevelInfo
-						}
-						events.AsyncLog(waitCtx, record)
-					}
-				}
-			}()
+			_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "stopped · append?\ny=send · " + presentation.Actions[1].Command + "=drop+stop", Actions: presentation.Actions})
 			return ctx, agentshare.InputHandled, err
 		case turn.PhaseTool:
 			c.turns.AppendPendingInput(session.ID, agentshare.InboundTurnInput(ctx, text))
@@ -172,12 +134,4 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 			}
 		}
 	}
-}
-
-func appendConfirmPromptText(timeout time.Duration) string {
-	text := "stopped · append?\ny=send · n=drop+stop"
-	if timeout > 0 {
-		text += fmt.Sprintf("\nidle=%s → drop+stop", agentshare.ConfirmationWaitDurationText(timeout))
-	}
-	return text
 }

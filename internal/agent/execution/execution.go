@@ -41,8 +41,7 @@ type ExecutionCoordinator struct {
 	view             ExecutionView
 	output           ExecutionSender
 	status           agentshare.ExecutionStatus
-	waitPolicy       agentshare.ConfirmationWaitPolicy
-	appendWaits      *appendWaitLifecycle
+	attemptWaits     *attemptWaitLifecycle
 	responseTimeout  time.Duration
 }
 
@@ -155,8 +154,7 @@ func NewExecutionCoordinator(ctx context.Context, deps ExecutionCoordinatorDeps)
 		view:               deps.View,
 		output:             deps.Output,
 		status:             deps.Status,
-		waitPolicy:         deps.WaitPolicy,
 		responseTimeout:    deps.ResponseTimeout,
-		appendWaits:        newAppendWaitLifecycle(ctx),
+		attemptWaits:       newAttemptWaitLifecycle(ctx),
 	}
 }

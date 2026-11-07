@@ -3,16 +3,6 @@ package lifecycle
 
 import "elbot/internal/turn/share"
 
-func (m *Manager) CancelAppend(sessionID string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	turn, ok := m.turns[sessionID]
-	if !ok || turn.phase != PhaseAwaitAppendConfirm {
-		return false
-	}
-	beginStopTurn(m.turns, sessionID, turn)
-	return true
-}
 func (m *Manager) BeginRiskConfirmation(sessionID string, confirmation RiskConfirmation, attempt string) *share.RiskWait {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -111,38 +101,14 @@ func (m *Manager) PendingRiskConfirmation(sessionID string) (RiskConfirmation, b
 	}
 	return *turn.riskConfirm, true
 }
-func (m *Manager) BeginAppend(sessionID, attempt string, input Input) *share.AppendWait {
+func (m *Manager) BeginAppend(sessionID, attempt string, input Input) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn := m.turns[sessionID]
 	if !matches(turn, attempt) || turn.phase != PhaseLLM {
-		return nil
+		return false
 	}
 	turn.phase = PhaseAwaitAppendConfirm
-	turn.waitRefresh = make(chan struct{}, 1)
-	turn.appendDone = make(chan struct{})
 	appendPending(turn, input)
-	done := turn.appendDone
-	return &share.AppendWait{Refresh: turn.waitRefresh, Done: done, Expire: func() bool {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		if m.turns[sessionID] != turn || turn.phase != PhaseAwaitAppendConfirm || turn.appendDone != done {
-			return false
-		}
-		select {
-		case <-turn.waitRefresh:
-			return false
-		default:
-		}
-		beginStopTurn(m.turns, sessionID, turn)
-		return true
-	}, Cancel: func() bool {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		if m.turns[sessionID] != turn || turn.phase != PhaseAwaitAppendConfirm || turn.appendDone != done {
-			return false
-		}
-		beginStopTurn(m.turns, sessionID, turn)
-		return true
-	}}
+	return true
 }

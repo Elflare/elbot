@@ -20,7 +20,16 @@ const (
 var (
 	ErrRollbackExpired  = errors.New("rollback session expired")
 	ErrRollbackNotFound = errors.New("no rollback record: it may have been consumed, replaced, or evicted")
+	ErrFileChanged      = errors.New("file changed; rollback refused")
+	ErrNotRegularFile   = errors.New("rollback target is not a regular file")
 )
+
+type fileChangedError struct{ message string }
+
+func (e fileChangedError) Error() string { return e.message }
+func (e fileChangedError) Unwrap() error { return ErrFileChanged }
+
+func fileChanged(message string) error { return fileChangedError{message: message} }
 
 // RollbackInfo is safe to return to callers; file contents stay inside the manager.
 type RollbackInfo struct {
@@ -423,6 +432,9 @@ func (s *RollbackSession) prepare(ctx context.Context, path string, expectedID u
 	}
 	target, err := ResolveFileTarget(path, false)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil, nil, ErrRollbackNotFound
+		}
 		return nil, nil, nil, fmt.Errorf("rollback target unavailable: %w", err)
 	}
 	unlock, err := s.manager.lockTarget(ctx, target)
@@ -447,7 +459,7 @@ func (s *RollbackSession) loadRecord(ctx context.Context, path, target string, e
 	for _, candidate := range s.scope.files {
 		if candidate.Path == path && candidate.Target != target {
 			m.mu.Unlock()
-			return nil, nil, fmt.Errorf("file target changed; rollback refused")
+			return nil, nil, fileChanged("file target changed; rollback refused")
 		}
 	}
 	record := s.scope.files[target]
@@ -457,6 +469,9 @@ func (s *RollbackSession) loadRecord(ctx context.Context, path, target string, e
 	}
 	for _, checkedPath := range []string{path, record.Path} {
 		if err := checkFileTarget(checkedPath, record.Target, false); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil, nil, ErrRollbackNotFound
+			}
 			return nil, nil, err
 		}
 	}
@@ -473,20 +488,26 @@ func (s *RollbackSession) loadRecord(ctx context.Context, path, target string, e
 	// Avoid loading arbitrarily large externally modified files into memory.
 	info, err := os.Stat(target)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil, ErrRollbackNotFound
+		}
 		return nil, nil, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, nil, fmt.Errorf("rollback target is not a regular file")
+		return nil, nil, ErrNotRegularFile
 	}
 	if info.Size() != record.afterSize {
-		return nil, nil, fmt.Errorf("file changed after edit; rollback refused")
+		return nil, nil, fileChanged("file changed after edit; rollback refused")
 	}
 	current, err := readRevisionBytes(target, record.afterSize)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil, ErrRollbackNotFound
+		}
 		return nil, nil, err
 	}
 	if ContentRevision(current) != record.RevisionAfter {
-		return nil, nil, fmt.Errorf("file changed after edit; rollback refused")
+		return nil, nil, fileChanged("file changed after edit; rollback refused")
 	}
 	return record, current, nil
 }
@@ -502,7 +523,7 @@ func readRevisionBytes(path string, size int64) ([]byte, error) {
 		return nil, err
 	}
 	if int64(len(data)) != size {
-		return nil, fmt.Errorf("file changed after edit; rollback refused")
+		return nil, fileChanged("file changed after edit; rollback refused")
 	}
 	return data, nil
 }
@@ -520,7 +541,7 @@ func ResolveFileTarget(path string, allowCreate bool) (string, error) {
 			return "", statErr
 		}
 		if !info.Mode().IsRegular() {
-			return "", fmt.Errorf("path is not a regular file")
+			return "", ErrNotRegularFile
 		}
 		return filepath.Clean(target), nil
 	}
@@ -555,7 +576,7 @@ func checkFileTarget(path, target string, allowCreate bool) error {
 		return err
 	}
 	if current != target {
-		return fmt.Errorf("file target changed; operation refused")
+		return fileChanged("file target changed; operation refused")
 	}
 	return nil
 }

@@ -46,6 +46,9 @@ func (p *commandResultProbe) SendCommandResult(ctx context.Context, _ string, r 
 }
 func (p *commandResultProbe) ContinueCommandInput(ctx context.Context, _ command.Continuation) (context.Context, error) {
 	p.order = append(p.order, "continue")
+	if p.nextCtx != nil {
+		return p.nextCtx, nil
+	}
 	return ctx, nil
 }
 
@@ -58,7 +61,7 @@ func TestCommandContinuationRequiresSuccessfulDelivery(t *testing.T) {
 		router := command.NewRouter([]string{"/"})
 		if err := router.Register(command.NewFunc(command.Info{Name: "go", MinRole: contextinfo.RoleUser}, func(context.Context, command.Request) (*command.Result, error) {
 			p.order = append(p.order, "execute")
-			return &command.Result{Kind: command.ResultKindText, Text: "accepted", Continuation: &command.Continuation{SessionID: "s", Text: "next"}}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: "accepted", Continuation: &command.Continuation{Kind: command.ContinuationInput, SessionID: "s", Text: "next"}}, nil
 		})); err != nil {
 			t.Fatal(err)
 		}
@@ -108,30 +111,37 @@ func TestCommandEntryErrorsUseStructuredReply(t *testing.T) {
 func (p *commandResultProbe) CommandInfo(string) (command.Info, bool) {
 	return command.Info{Name: p.riskName}, p.riskName != ""
 }
-func (p *commandResultProbe) ResumeAppend(ctx context.Context, _ *storage.Session, _ string) (context.Context, error) {
-	p.order = append(p.order, "append")
-	if p.nextCtx != nil {
-		return p.nextCtx, nil
-	}
-	return ctx, nil
-}
-
 func TestAppendControlOnlyInterceptsPendingConfirmation(t *testing.T) {
-	for _, pending := range []bool{false, true} {
+	for _, tc := range []struct {
+		pending  bool
+		failSend bool
+	}{
+		{pending: false}, {pending: true}, {pending: true, failSend: true},
+	} {
 		p := &commandResultProbe{row: &storage.Session{ID: "s"}, phase: turn.PhaseIdle}
-		if pending {
+		if tc.pending {
 			p.phase = turn.PhaseAwaitAppendConfirm
 		}
-		executor := NewCommandExecutor(CommandExecutorDeps{Router: command.NewRouter([]string{"/"}), Sessions: p, Turns: p, Identity: p, Execution: p, Output: p, Confirmations: p})
+		if tc.failSend {
+			p.sendErr = errors.New("send failed")
+		}
+		executor := NewCommandExecutor(CommandExecutorDeps{Router: command.NewRouter([]string{"/"}), Sessions: p, Turns: p, Identity: p, Execution: p, Output: p, Confirmations: p, Input: p})
 		_, handled, err := executor.Handle(t.Context(), "y")
-		if err != nil || handled != pending {
-			t.Fatalf("handled=%v pending=%v err=%v", handled, pending, err)
+		if err != p.sendErr || handled != tc.pending {
+			t.Fatalf("handled=%v pending=%v send-failed=%v err=%v", handled, tc.pending, tc.failSend, err)
 		}
-		if pending && !reflect.DeepEqual(p.order, []string{"append", "send"}) {
+		want := []string{}
+		if tc.pending {
+			want = []string{"send"}
+			if !tc.failSend {
+				want = append(want, "continue")
+			}
+		}
+		if tc.pending && !tc.failSend && (p.result == nil || p.result.Text != "追加输入已接受" || p.result.Continuation.Kind != command.ContinuationAppend) {
+			t.Fatalf("append acceptance result = %+v", p.result)
+		}
+		if !reflect.DeepEqual(p.order, want) {
 			t.Fatalf("order=%v", p.order)
-		}
-		if !pending && len(p.order) != 0 {
-			t.Fatal(p.order)
 		}
 	}
 }
@@ -140,7 +150,7 @@ type commandOriginKey struct{}
 
 func TestCommandReplyRetainsOriginalInputContext(t *testing.T) {
 	p := &commandResultProbe{row: &storage.Session{ID: "s"}, phase: turn.PhaseAwaitAppendConfirm, nextCtx: context.WithValue(t.Context(), commandOriginKey{}, "execution")}
-	executor := NewCommandExecutor(CommandExecutorDeps{Router: command.NewRouter([]string{"/"}), Sessions: p, Turns: p, Identity: p, Execution: p, Output: p, Confirmations: p})
+	executor := NewCommandExecutor(CommandExecutorDeps{Router: command.NewRouter([]string{"/"}), Sessions: p, Turns: p, Identity: p, Execution: p, Output: p, Confirmations: p, Input: p})
 	ctx := context.WithValue(t.Context(), commandOriginKey{}, "input")
 	if _, handled, err := executor.Handle(ctx, "y"); err != nil || !handled {
 		t.Fatalf("handled=%v err=%v", handled, err)
@@ -173,7 +183,7 @@ func TestExecutionFailureAndDeliveryFailureStaySeparate(t *testing.T) {
 	t.Cleanup(func() { _ = connection.Close(context.Background()) })
 	router := command.NewRouter([]string{"/"})
 	if err := router.Register(command.NewFunc(command.Info{Name: "partial", MinRole: contextinfo.RoleUser}, func(context.Context, command.Request) (*command.Result, error) {
-		return &command.Result{Kind: command.ResultKindText, Text: "one item completed", Continuation: &command.Continuation{Text: "never run"}}, executionErr
+		return &command.Result{Kind: command.ResultKindText, Text: "one item completed", Continuation: &command.Continuation{Kind: command.ContinuationInput, Text: "never run"}}, executionErr
 	})); err != nil {
 		t.Fatal(err)
 	}
