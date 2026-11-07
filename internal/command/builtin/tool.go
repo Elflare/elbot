@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/tool"
 )
 
@@ -30,34 +30,34 @@ func (c toolsCommand) Info() command.Info {
 func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
 	deps := c.deps
 	if deps.Tools == nil {
-		return &command.Result{Content: "tools: not configured"}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: "tools: not configured"}, nil
 	}
 	fields := strings.Fields(req.Args)
 	if len(fields) == 0 {
 		content, err := formatTools(ctx, deps)
-		return &command.Result{Content: content}, err
+		return &command.Result{Kind: command.ResultKindText, Text: content}, err
 	}
 	switch fields[0] {
 	case "reload":
 		if err := deps.Skills.Reload(ctx); err != nil {
 			return nil, err
 		}
-		return &command.Result{Content: "skills reloaded"}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: "skills reloaded"}, nil
 	case "uninstall", "remove":
 		if len(fields) < 2 {
-			return &command.Result{Content: "usage: " + deps.CommandText("tools", "remove", "<name>", "--confirm")}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: "usage: " + deps.CommandText("tools", "remove", "<name>", "--confirm")}, nil
 		}
 		name := fields[1]
 		if !slices.Contains(fields[2:], "--confirm") {
-			return &command.Result{Content: fmt.Sprintf("删除 %q 及目录？\n%s", name, deps.CommandText("tools", "remove", name, "--confirm"))}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("删除 %q 及目录？\n%s", name, deps.CommandText("tools", "remove", name, "--confirm"))}, nil
 		}
 		err := deps.Skills.Remove(ctx, name)
 		if err != nil {
-			return &command.Result{Content: fmt.Sprintf("remove %s: %v", name, err)}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("remove %s: %v", name, err)}, nil
 		}
-		return &command.Result{Content: fmt.Sprintf("removed: %s", name)}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("removed: %s", name)}, nil
 	default:
-		return &command.Result{Content: "usage: " + deps.CommandText("tools", c.Info().Args)}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: "usage: " + deps.CommandText("tools", c.Info().Args)}, nil
 	}
 }
 

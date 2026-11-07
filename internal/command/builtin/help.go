@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 )
 
@@ -40,7 +40,7 @@ func (h helpCommand) Handle(ctx context.Context, req command.Request) (*command.
 		sb.WriteString(fmt.Sprintf("%s: %s\n", usage, info.Description))
 	}
 	sb.WriteString("\n" + h.deps.CommandText("help", "<command>"))
-	return &command.Result{Content: sb.String()}, nil
+	return &command.Result{Kind: command.ResultKindText, Text: sb.String()}, nil
 }
 
 func (h helpCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -68,7 +68,7 @@ func detailedHelp(ctx context.Context, deps Deps, name string) (*command.Result,
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	info, ok := deps.Router.CommandInfoForActor(name, actor)
 	if !ok {
-		return &command.Result{Content: fmt.Sprintf("unk command: %s", strings.TrimSpace(name))}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("unk command: %s", strings.TrimSpace(name))}, nil
 	}
 	return formatCommandHelp(deps.CommandText, info), nil
 }

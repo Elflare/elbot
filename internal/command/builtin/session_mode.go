@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
@@ -28,7 +28,7 @@ func NewWork(deps Deps) command.Handler {
 		if activated.AlreadyActive {
 			content = fmt.Sprintf("work · %s · unchanged", activated.Session.ID)
 		}
-		result := &command.Result{Content: content}
+		result := &command.Result{Kind: command.ResultKindText, Text: content}
 		if req.Args != "" {
 			result.Continuation = &command.Continuation{Text: req.Args, SessionID: activated.Session.ID}
 		}
@@ -48,7 +48,7 @@ func NewChat(deps Deps) command.Handler {
 		activated, err := deps.Sessions.ActivateMode(ctx, deps.Scope(ctx), sessionpkg.ActivateModeRequest{Mode: storage.SessionModeChat, NewSessionTitle: "New chat session"})
 		if err != nil {
 			if errors.Is(err, sessionpkg.ErrChatModeRequiresEmptySession) {
-				return &command.Result{Content: fmt.Sprintf("已有对话记录，请先 %s 再 %s", deps.CommandText("new"), deps.CommandText("chat"))}, nil
+				return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("已有对话记录，请先 %s 再 %s", deps.CommandText("new"), deps.CommandText("chat"))}, nil
 			}
 			return nil, err
 		}
@@ -56,7 +56,7 @@ func NewChat(deps Deps) command.Handler {
 		if activated.AlreadyActive {
 			content = fmt.Sprintf("chat · %s · unchanged", activated.Session.ID)
 		}
-		result := &command.Result{Content: content}
+		result := &command.Result{Kind: command.ResultKindText, Text: content}
 		if req.Args != "" {
 			result.Continuation = &command.Continuation{Text: req.Args, SessionID: activated.Session.ID}
 		}

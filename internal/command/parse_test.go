@@ -48,7 +48,7 @@ func TestRouterDoesNotStripExtraSlash(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := r.Dispatch(t.Context(), "!/help")
-	if err != nil || result.Content != "unk command: !/help\n!help" {
+	if err != nil || result.Text != "unk command: !/help\n!help" {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	admin := contextinfo.Actor{Role: contextinfo.RoleSuperadmin}

@@ -21,7 +21,7 @@ func TestRouterDispatchAndHelpInfo(t *testing.T) {
 		if req.Prefix != "-" || req.Name != "ping" || req.Args != "hello" {
 			t.Fatalf("request = %#v", req)
 		}
-		return &Result{Content: "pong"}, nil
+		return &Result{Kind: ResultKindText, Text: "pong"}, nil
 	})); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestRouterDispatchAndHelpInfo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Dispatch: %v", err)
 	}
-	if !called || result.Content != "pong" {
+	if !called || result.Text != "pong" {
 		t.Fatalf("called=%v result=%#v", called, result)
 	}
 
@@ -74,8 +74,8 @@ func TestRouterUnknownCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Dispatch unknown: %v", err)
 	}
-	if !strings.Contains(result.Content, "unk command: /missing") {
-		t.Fatalf("unexpected content: %q", result.Content)
+	if !strings.Contains(result.Text, "unk command: /missing") {
+		t.Fatalf("unexpected content: %q", result.Text)
 	}
 }
 
@@ -91,7 +91,7 @@ func TestRouterAdviceUsesFirstConfiguredPrefix(t *testing.T) {
 	prefixes := []string{"!", "!!"}
 	r := NewRouter(prefixes)
 	result, err := r.Dispatch(t.Context(), "!!missing")
-	if err != nil || result.Content != "unk command: !!missing\n!help" {
+	if err != nil || result.Text != "unk command: !!missing\n!help" {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	if prefixes[0] != "!" || prefixes[1] != "!!" {

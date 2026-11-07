@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 )
 
 func wantsCommandHelp(args string) bool {
@@ -25,7 +25,7 @@ func formatCommandHelp(commandText func(string, ...string) string, info command.
 		sb.WriteString("\n")
 		sb.WriteString(strings.TrimSpace(info.Help))
 	}
-	return &command.Result{Content: sb.String()}
+	return &command.Result{Kind: command.ResultKindText, Text: sb.String()}
 }
 
 func trimTrailingNewlines(text string) string {

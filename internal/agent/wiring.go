@@ -21,7 +21,6 @@ import (
 	agentshare "elbot/internal/agent/share"
 	agenttools "elbot/internal/agent/tools"
 	"elbot/internal/command"
-	commandbuiltin "elbot/internal/command/builtin"
 	"elbot/internal/completion"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
@@ -44,7 +43,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	m.commands = command.NewRouter(cfg.Commands.Prefixes)
 	prefix := cfg.Commands.Prefixes[0]
 	commandText := func(name string, args ...string) string { return command.Format(prefix, name, args...) }
-	sessionCommands := commandbuiltin.NewSessionCommandState(cfg.View.SessionListPageSize, cfg.Maintenance.SessionCleanup.RetentionDays)
 	view := dialogue.ExecutionView{Sessions: deps.Store.Sessions()}
 	m.restoreMessageContext = deps.Platform.RestoreMessageContext
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: config.PlatformCLI, Permission: deps.Permission})
@@ -234,7 +232,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Requests: m.requests,
 		Identity: identity,
 	})
-	commands, err := wireCommands(agentinput.CommandExecutorDeps{
+	commands, err := wireCommands(m.commands, agentinput.CommandExecutorDeps{
 		CommandText:               commandText,
 		IsRiskConfirmationCommand: func(text string) bool { return agentconfirmation.IsRiskConfirmationCommand(text, m.commands) },
 		Router:                    m.commands,
@@ -245,25 +243,24 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Output:                    output,
 		Confirmations:             confirmations,
 		Input:                     input,
-	}, commandbuiltin.Deps{
-		CommandText:        commandText,
-		Doctor:             deps.Doctor,
-		Router:             m.commands,
-		Sessions:           m.sessions,
-		Requests:           m.requests,
-		Turns:              m.turns,
-		Store:              deps.Store,
-		Scope:              identity.Scope,
-		Models:             deps.Models,
-		Contexts:           m.contexts,
-		Compact:            execution,
-		Tools:              deps.Tools,
-		Skills:             deps.Tools,
-		FileRollback:       fileRollbackCapabilities{tools: deps.Tools},
-		PrepareFileContext: fileCommands.PrepareFileCommand,
-		SessionState:       sessionCommands,
-		Logs:               logging.Reader{Dir: deps.Logs.LogDir()},
-		Usage:              status.Usage,
+	}, command.BuiltinDeps{
+		Doctor:               deps.Doctor,
+		Sessions:             m.sessions,
+		Requests:             m.requests,
+		Turns:                m.turns,
+		Store:                deps.Store,
+		Scope:                identity.Scope,
+		Models:               deps.Models,
+		Contexts:             m.contexts,
+		Compact:              execution,
+		Tools:                deps.Tools,
+		Skills:               deps.Tools,
+		FileRollback:         fileRollbackCapabilities{tools: deps.Tools},
+		PrepareFileContext:   fileCommands.PrepareFileCommand,
+		SessionListPageSize:  cfg.View.SessionListPageSize,
+		SessionRetentionDays: cfg.Maintenance.SessionCleanup.RetentionDays,
+		Logs:                 logging.Reader{Dir: deps.Logs.LogDir()},
+		Usage:                status.Usage,
 	})
 	if err != nil {
 		return m, err
@@ -303,9 +300,9 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 }
 
 // wireCommands constructs the command consumer and registers its modules.
-func wireCommands(deps agentinput.CommandExecutorDeps, modules commandbuiltin.Deps) (*agentinput.CommandExecutor, error) {
+func wireCommands(router *command.Router, deps agentinput.CommandExecutorDeps, modules command.BuiltinDeps) (*agentinput.CommandExecutor, error) {
 	executor := agentinput.NewCommandExecutor(deps)
-	if err := commandbuiltin.RegisterDefaultModules(modules.Router, modules); err != nil {
+	if err := command.RegisterBuiltins(router, modules); err != nil {
 		return nil, err
 	}
 	return executor, nil

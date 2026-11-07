@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/events"
 	"elbot/internal/logging"
 )
@@ -227,7 +227,7 @@ func queryLogs(ctx context.Context, deps Deps, query logging.LogQuery, formatter
 			}
 		}
 	}
-	return &command.Result{Content: content}, nil
+	return &command.Result{Kind: command.ResultKindText, Text: content}, nil
 }
 
 type LogModule struct{}

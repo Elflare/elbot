@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 )
 
 type fakeToolService struct {
@@ -30,8 +30,8 @@ func TestToolsRemoveRequiresConfirm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "--confirm") || len(tools.removed) != 0 {
-		t.Fatalf("result=%q removed=%#v", result.Content, tools.removed)
+	if !strings.Contains(result.Text, "--confirm") || len(tools.removed) != 0 {
+		t.Fatalf("result=%q removed=%#v", result.Text, tools.removed)
 	}
 }
 
@@ -42,8 +42,8 @@ func TestToolsRemoveConfirmedCallsRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "removed: echo") || len(tools.removed) != 1 || tools.removed[0] != "echo" {
-		t.Fatalf("result=%q removed=%#v", result.Content, tools.removed)
+	if !strings.Contains(result.Text, "removed: echo") || len(tools.removed) != 1 || tools.removed[0] != "echo" {
+		t.Fatalf("result=%q removed=%#v", result.Text, tools.removed)
 	}
 }
 
@@ -98,7 +98,7 @@ func TestToolsListUsesQualifiedQueryAndReturnsQueryFailure(t *testing.T) {
 			}
 			continue
 		}
-		if err != nil || !strings.Contains(result.Content, "qualified") || strings.Contains(result.Content, "unqualified") {
+		if err != nil || !strings.Contains(result.Text, "qualified") || strings.Contains(result.Text, "unqualified") {
 			t.Fatalf("result=%+v err=%v", result, err)
 		}
 	}

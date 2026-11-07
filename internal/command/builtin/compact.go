@@ -3,7 +3,7 @@ package builtin
 import (
 	"context"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 )
 
@@ -19,7 +19,7 @@ func NewCompact(deps Deps) command.Handler {
 		if err != nil {
 			return nil, err
 		}
-		return &command.Result{Content: content}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: content}, nil
 	})
 }
 

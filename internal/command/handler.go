@@ -1,20 +1,13 @@
 package command
 
-import "context"
+import (
+	"context"
 
-type FuncHandler struct {
-	info Info
-	fn   func(context.Context, Request) (*Result, error)
-}
+	"elbot/internal/command/share"
+)
+
+type FuncHandler = share.FuncHandler
 
 func NewFunc(info Info, fn func(context.Context, Request) (*Result, error)) *FuncHandler {
-	return &FuncHandler{info: info, fn: fn}
-}
-
-func (h *FuncHandler) Info() Info {
-	return h.info
-}
-
-func (h *FuncHandler) Handle(ctx context.Context, req Request) (*Result, error) {
-	return h.fn(ctx, req)
+	return share.NewFunc(info, fn)
 }

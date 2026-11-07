@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 )
 
@@ -34,7 +34,7 @@ func (c doctorCommand) Handle(ctx context.Context, req command.Request) (*comman
 	if err != nil {
 		return nil, err
 	}
-	return &command.Result{Content: report.Text()}, nil
+	return &command.Result{Kind: command.ResultKindText, Text: report.Text()}, nil
 }
 
 type DoctorModule struct{}

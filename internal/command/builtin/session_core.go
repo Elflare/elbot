@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
@@ -24,7 +24,7 @@ func NewNew(deps Deps) command.Handler {
 		if err := deps.Sessions.ResetCurrent(ctx, deps.Scope(ctx)); err != nil {
 			return nil, err
 		}
-		return &command.Result{Content: "New Session"}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: "New Session"}, nil
 	})
 }
 
@@ -34,7 +34,7 @@ func NewStatus(deps Deps) command.Handler {
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		status, err := deps.Sessions.Status(ctx, deps.Scope(ctx))
 		if errors.Is(err, session.ErrNoCurrentSession) {
-			return &command.Result{Content: formatEmptyStatus(ctx, deps)}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: formatEmptyStatus(ctx, deps)}, nil
 		}
 		if err != nil {
 			return nil, err
@@ -55,7 +55,7 @@ func NewStatus(deps Deps) command.Handler {
 		turnSnapshot := deps.Turns.Snapshot(s.ID)
 		pendingInput := fmt.Sprintf("%d", turnSnapshot.PendingCount)
 		currentModel := deps.Models.CurrentModelForMode(s.Mode)
-		return &command.Result{Content: trimTrailingNewlines(fmt.Sprintf(`%s · %s
+		return &command.Result{Kind: command.ResultKindText, Text: trimTrailingNewlines(fmt.Sprintf(`%s · %s
 %s · %s/%s · msgs=%d
 %screated=%s
 updated=%s

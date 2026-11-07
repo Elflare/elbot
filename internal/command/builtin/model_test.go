@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/config"
 	"elbot/internal/modelmgr"
 )
@@ -80,7 +80,7 @@ func TestModelCommandSuccessTextForEveryTarget(t *testing.T) {
 			args, want = "--"+target+" model", target+".model → /"
 		}
 		got, err := NewModel(Deps{CommandText: testCommandText, Models: fakeModelService{}}).Handle(t.Context(), command.Request{Args: args})
-		if err != nil || got.Content != want {
+		if err != nil || got.Text != want {
 			t.Fatalf("target=%s got=%+v err=%v", target, got, err)
 		}
 	}
@@ -162,7 +162,7 @@ func TestModelCommandSwitchesElwispSlot(t *testing.T) {
 	if models.mode != "elwisp2" || models.arg != "openai/gpt-4.1" {
 		t.Fatalf("selected mode=%q arg=%q", models.mode, models.arg)
 	}
-	if result == nil || !strings.Contains(result.Content, "elwisp2.model →") {
+	if result == nil || !strings.Contains(result.Text, "elwisp2.model →") {
 		t.Fatalf("result = %#v", result)
 	}
 }

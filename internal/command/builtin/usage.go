@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/llm"
@@ -50,7 +50,7 @@ func (c usageCommand) Handle(ctx context.Context, req command.Request) (*command
 		return nil, err
 	}
 	if c.deps.Logs == nil {
-		return &command.Result{Content: "logs: not configured"}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: "logs: not configured"}, nil
 	}
 	entries, err := c.deps.Logs.Query(ctx, query)
 	if err != nil {
@@ -80,7 +80,7 @@ func (c usageCommand) Handle(ctx context.Context, req command.Request) (*command
 	if entries.DamagedCount > 0 {
 		content += fmt.Sprintf("\nwarn: damaged=%d · usage incomplete", entries.DamagedCount)
 	}
-	return &command.Result{Content: content}, nil
+	return &command.Result{Kind: command.ResultKindText, Text: content}, nil
 }
 
 func (c usageCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {

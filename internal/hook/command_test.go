@@ -110,7 +110,7 @@ func TestCommandStopReceivesCloseCancellation(t *testing.T) {
 		if !errors.Is(ctx.Err(), context.Canceled) {
 			t.Fatal("command context was not canceled")
 		}
-		if result := <-finished; result == nil || !strings.Contains(result.Content, "context canceled") {
+		if result := <-finished; result == nil || !strings.Contains(result.Text, "context canceled") {
 			t.Fatalf("command result=%v", result)
 		}
 	})

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/storage"
 )
@@ -31,7 +31,7 @@ func NewArchive(deps Deps) command.Handler {
 				if err != nil {
 					return nil, err
 				}
-				return &command.Result{Content: content}, nil
+				return &command.Result{Kind: command.ResultKindText, Text: content}, nil
 			}
 			sessionID, err := resolveSessionTarget(ctx, deps, target)
 			if err != nil {
@@ -41,7 +41,7 @@ func NewArchive(deps Deps) command.Handler {
 			if err != nil {
 				return nil, err
 			}
-			return &command.Result{Content: fmt.Sprintf("archived: %s · %s", session.Title, session.ID)}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("archived: %s · %s", session.Title, session.ID)}, nil
 		},
 	}
 }
@@ -63,7 +63,7 @@ func NewUnarchive(deps Deps) command.Handler {
 			if err != nil {
 				return nil, err
 			}
-			return &command.Result{Content: fmt.Sprintf("unarchived: %s · %s", session.Title, session.ID)}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("unarchived: %s · %s", session.Title, session.ID)}, nil
 		},
 	}
 }
@@ -84,7 +84,7 @@ func NewPin(deps Deps) command.Handler {
 			if err != nil {
 				return nil, err
 			}
-			return &command.Result{Content: fmt.Sprintf("pinned: %s · %s", session.Title, session.ID)}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("pinned: %s · %s", session.Title, session.ID)}, nil
 		},
 	}
 }
@@ -105,7 +105,7 @@ func NewUnpin(deps Deps) command.Handler {
 			if err != nil {
 				return nil, err
 			}
-			return &command.Result{Content: fmt.Sprintf("unpinned: %s · %s", session.Title, session.ID)}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("unpinned: %s · %s", session.Title, session.ID)}, nil
 		},
 	}
 }
@@ -139,7 +139,7 @@ func (c renameCommand) Handle(ctx context.Context, req command.Request) (*comman
 	if err != nil {
 		return nil, err
 	}
-	return &command.Result{Content: fmt.Sprintf("renamed: %s · %s", session.Title, session.ID)}, nil
+	return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("renamed: %s · %s", session.Title, session.ID)}, nil
 }
 
 func (c renameCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -167,7 +167,7 @@ func NewDelete(deps Deps) command.Handler {
 				if err != nil {
 					return nil, err
 				}
-				return &command.Result{Content: content}, nil
+				return &command.Result{Kind: command.ResultKindText, Text: content}, nil
 			}
 			sessionID, err := resolveSessionTarget(ctx, deps, target)
 			if err != nil {
@@ -176,7 +176,7 @@ func NewDelete(deps Deps) command.Handler {
 			if err := deps.Sessions.Delete(ctx, deps.Scope(ctx), sessionID); err != nil {
 				return nil, err
 			}
-			return &command.Result{Content: fmt.Sprintf("deleted: %s", sessionID)}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("deleted: %s", sessionID)}, nil
 		},
 	}
 }
@@ -203,13 +203,13 @@ func (c cleanCommand) Handle(ctx context.Context, req command.Request) (*command
 	deps := c.deps
 	_, confirmed := parseTargetConfirm(req.Args)
 	if !confirmed {
-		return &command.Result{Content: "永久删除过期且未归档、未置顶的会话？\n" + deps.CommandText("clean", "--confirm")}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: "永久删除过期且未归档、未置顶的会话？\n" + deps.CommandText("clean", "--confirm")}, nil
 	}
 	deleted, err := deps.Sessions.CleanupExpired(ctx, storage.Now().AddDate(0, 0, -cleanupRetentionDays(deps)))
 	if err != nil {
 		return nil, err
 	}
-	return &command.Result{Content: fmt.Sprintf("cleaned: %d", deleted)}, nil
+	return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("cleaned: %d", deleted)}, nil
 }
 
 func (c cleanCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {

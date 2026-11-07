@@ -51,18 +51,18 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 	deps := c.deps
 	fields := strings.Fields(req.Args)
 	if len(fields) == 0 {
-		return &command.Result{Content: formatHookList(deps)}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: formatHookList(deps)}, nil
 	}
 	switch fields[0] {
 	case "reload":
 		report, err := deps.HookReload()
 		if err != nil {
-			return &command.Result{Content: fmt.Sprintf("hooks reload: %v", err) + "\n" + strings.Join(report.Notices, "\n")}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("hooks reload: %v", err) + "\n" + strings.Join(report.Notices, "\n")}, nil
 		}
-		return &command.Result{Content: formatHookReloadResult(report)}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: formatHookReloadResult(report)}, nil
 	case "start", "stop", "restart":
 		if len(fields) != 2 {
-			return &command.Result{Content: fmt.Sprintf("usage: %s", c.commandText("hooks", fields[0], "<id>"))}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("usage: %s", c.commandText("hooks", fields[0], "<id>"))}, nil
 		}
 		var err error
 		switch fields[0] {
@@ -74,12 +74,12 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command
 			err = deps.RestartStatefulHook(ctx, fields[1])
 		}
 		if err != nil {
-			return &command.Result{Content: fmt.Sprintf("hook %s %s: %v", fields[0], fields[1], err)}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("hook %s %s: %v", fields[0], fields[1], err)}, nil
 		}
-		return &command.Result{Content: fmt.Sprintf("hook %s: %s · OK", fields[0], fields[1])}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("hook %s: %s · OK", fields[0], fields[1])}, nil
 	default:
 		name := fields[0]
-		return &command.Result{Content: formatHookDetail(deps, name, c.commandText)}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: formatHookDetail(deps, name, c.commandText)}, nil
 	}
 }
 

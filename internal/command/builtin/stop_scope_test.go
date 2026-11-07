@@ -5,7 +5,7 @@ import (
 	"elbot/internal/testutil"
 	"testing"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/request"
 	"elbot/internal/session"
@@ -119,7 +119,7 @@ func TestStopRejectsMissingOrExpiredCurrent(t *testing.T) {
 					t.Fatal(err)
 				}
 				if running.Err() != nil {
-					t.Fatalf("stale cancellation: %s", result.Content)
+					t.Fatalf("stale cancellation: %s", result.Text)
 				}
 			}
 			if got := cmd.(command.Completer).Complete(ctx, command.CompletionRequest{Raw: "/stop ", Prefix: "/", Name: "stop", Cursor: 6}); len(got) != 0 {

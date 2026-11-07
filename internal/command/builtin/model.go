@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/config"
 	"elbot/internal/modelmgr"
 	"elbot/internal/session"
@@ -46,7 +46,7 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 	}
 	args, target, err := parseModelArgs(req.Args)
 	if err != nil {
-		return &command.Result{Content: fmt.Sprintf("%v\n%s", err, deps.CommandText(info.Name, info.Args))}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("%v\n%s", err, deps.CommandText(info.Name, info.Args))}, nil
 	}
 	var selected modelmgr.ModelOption
 	switch target {
@@ -91,12 +91,12 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 		}
 	}
 	if err != nil {
-		return &command.Result{Content: err.Error()}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: err.Error()}, nil
 	}
 	if target == modelTargetCurrent {
-		return &command.Result{Content: fmt.Sprintf("model → %s/%s", selected.Provider, selected.Model)}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("model → %s/%s", selected.Provider, selected.Model)}, nil
 	}
-	return &command.Result{Content: fmt.Sprintf("%s.model → %s/%s", target, selected.Provider, selected.Model)}, nil
+	return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("%s.model → %s/%s", target, selected.Provider, selected.Model)}, nil
 }
 
 func (c modelCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -202,7 +202,7 @@ func NewCheckModel(deps Deps) command.Handler {
 				sb.WriteString("nil")
 			}
 			appendModelProviderErrors(&sb, result.Errors)
-			return &command.Result{Content: trimTrailingNewlines(sb.String())}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: trimTrailingNewlines(sb.String())}, nil
 		}
 
 		var sb strings.Builder
@@ -226,7 +226,7 @@ func NewCheckModel(deps Deps) command.Handler {
 			sb.WriteString(fmt.Sprintf("  %s [%d] %s%s", marker, m.Index, m.Model, suffix))
 		}
 		appendModelProviderErrors(&sb, result.Errors)
-		return &command.Result{Content: trimTrailingNewlines(sb.String())}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: trimTrailingNewlines(sb.String())}, nil
 	})
 }
 

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	globalevents "elbot/internal/events"
@@ -28,9 +28,9 @@ func NewSessions(deps Deps) command.Handler {
 		}
 		deps.SessionState.set(deps.Scope(ctx), sessions)
 		if len(sessions) == 0 {
-			return &command.Result{Content: "nil"}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: "nil"}, nil
 		}
-		return &command.Result{Content: formatSessionsPage(sessions, currentSessionID(ctx, deps), page, query, hasNext, deps.CommandText, "sessions")}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: formatSessionsPage(sessions, currentSessionID(ctx, deps), page, query, hasNext, deps.CommandText, "sessions")}, nil
 	})
 }
 
@@ -87,7 +87,7 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	record.Identity.SessionID = session.ID
 	globalevents.Log(ctx, record)
-	return &command.Result{Content: formatResumeResult(ctx, deps, session)}, nil
+	return &command.Result{Kind: command.ResultKindText, Text: formatResumeResult(ctx, deps, session)}, nil
 }
 
 func resumePage(ctx context.Context, deps Deps, page int) (*command.Result, error) {
@@ -97,9 +97,9 @@ func resumePage(ctx context.Context, deps Deps, page int) (*command.Result, erro
 		return nil, err
 	}
 	if len(sessions) == 0 {
-		return &command.Result{Content: "nil"}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: "nil"}, nil
 	}
-	return &command.Result{Content: formatResumableSessionsPage(sessions, page, pageSize, hasNext, deps.CommandText)}, nil
+	return &command.Result{Kind: command.ResultKindText, Text: formatResumableSessionsPage(sessions, page, pageSize, hasNext, deps.CommandText)}, nil
 }
 
 func (c resumeCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -136,9 +136,9 @@ func NewArchives(deps Deps) command.Handler {
 		}
 		deps.SessionState.set(deps.Scope(ctx), sessions)
 		if len(sessions) == 0 {
-			return &command.Result{Content: "nil"}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: "nil"}, nil
 		}
-		return &command.Result{Content: formatSessionsPage(sessions, currentSessionID(ctx, deps), page, query, hasNext, deps.CommandText, "archives")}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: formatSessionsPage(sessions, currentSessionID(ctx, deps), page, query, hasNext, deps.CommandText, "archives")}, nil
 	})
 }
 
@@ -165,13 +165,13 @@ func NewMessages(deps Deps) command.Handler {
 		}
 		messages := conversationMessages(loaded.Messages)
 		if len(messages) == 0 {
-			return &command.Result{Content: "nil"}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: "nil"}, nil
 		}
 		content, err := formatMessagePage(messages, page, messageListPageSize)
 		if err != nil {
 			return nil, err
 		}
-		return &command.Result{Content: content}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: content}, nil
 	})
 }
 
@@ -197,6 +197,6 @@ func NewFork(deps Deps) command.Handler {
 			Identity:     globalevents.LogIdentity{SessionID: session.ID},
 			ResultStatus: globalevents.ResultSucceeded,
 		})
-		return &command.Result{Content: formatForkResult(ctx, deps, session)}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: formatForkResult(ctx, deps, session)}, nil
 	})
 }

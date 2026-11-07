@@ -72,7 +72,7 @@ func TestSupervisorLoadsRulesAtStartAndKeepsConfigFailureNonFatal(t *testing.T) 
 	case <-time.After(time.Second):
 		t.Fatal("missing configuration notice")
 	}
-	if result, err := m.Commands()[0].Handle(t.Context(), command.Request{}); err != nil || result.Content != "nil" {
+	if result, err := m.Commands()[0].Handle(t.Context(), command.Request{}); err != nil || result.Text != "nil" {
 		t.Fatalf("invalid rules registered: %+v, %v", result, err)
 	}
 	if err := m.Close(context.Background()); err != nil {

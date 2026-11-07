@@ -106,7 +106,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Cont
 	}
 	result, err := e.router.Dispatch(ctx, text)
 	if errors.Is(err, session.ErrNoCurrentSession) {
-		result, err = &command.Result{Content: session.ErrNoCurrentSession.Error()}, nil
+		result, err = &command.Result{Kind: command.ResultKindText, Text: session.ErrNoCurrentSession.Error()}, nil
 	}
 	if err != nil {
 		if errors.Is(err, session.ErrSessionBusy) {
@@ -117,10 +117,10 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Cont
 	if result == nil {
 		return ctx, true, nil
 	}
-	if result.Content != "" {
+	if result.Text != "" {
 		// A command can invalidate its old session binding. Its result still
 		// belongs to the original conversation, independently of that activation.
-		globalevents.Notify(session.WithBinding(ctx, nil), globalevents.NewNotification(ctx, slog.LevelInfo, result.Content))
+		globalevents.Notify(session.WithBinding(ctx, nil), globalevents.NewNotification(ctx, slog.LevelInfo, result.Text))
 	}
 	if result.Continuation != nil {
 		ctx, err := e.input.ContinueCommandInput(ctx, *result.Continuation)

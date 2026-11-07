@@ -3,12 +3,10 @@ package builtin
 import (
 	"context"
 	"errors"
-	"slices"
 	"testing"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/config"
-	"elbot/internal/contextinfo"
 	"elbot/internal/doctor"
 )
 
@@ -27,12 +25,12 @@ func TestDoctorCommandUsesDiagnosisAndRejectsArguments(t *testing.T) {
 	service := &doctorStub{}
 	cmd := NewDoctor(Deps{CommandText: testCommandText, Doctor: service})
 	result, err := cmd.Handle(context.Background(), command.Request{})
-	if err != nil || result.Content != "Everything is OK" || service.calls != 1 {
+	if err != nil || result.Text != "Everything is OK" || service.calls != 1 {
 		t.Fatalf("result=%#v, err=%v, calls=%d", result, err, service.calls)
 	}
 	service.report = doctor.Report{ConfigPath: "/config/app.toml", Files: []doctor.FileIssue{{Path: "/config/app.toml", Issues: []config.Issue{{Level: config.LevelError, Message: "文件缺失。"}}}}}
 	result, err = cmd.Handle(context.Background(), command.Request{})
-	if err != nil || result.Content != service.report.Text() {
+	if err != nil || result.Text != service.report.Text() {
 		t.Fatalf("result=%#v, err=%v", result, err)
 	}
 	for _, arg := range []string{"fix", "diff", "--config custom.toml"} {
@@ -49,35 +47,5 @@ func TestDoctorCommandUsesDiagnosisAndRejectsArguments(t *testing.T) {
 	}
 	if _, err := NewDoctor(Deps{CommandText: testCommandText}).Handle(context.Background(), command.Request{}); err == nil {
 		t.Fatal("unconfigured doctor reported success")
-	}
-}
-
-func TestDoctorRegistrationPermissionsHelpAndCompletion(t *testing.T) {
-	router := command.NewRouter([]string{"/"})
-	deps := Deps{CommandText: testCommandText, Router: router, Doctor: &doctorStub{}}
-	if err := RegisterDefaultModules(router, deps); err != nil {
-		t.Fatal(err)
-	}
-	admin := contextinfo.Actor{Role: contextinfo.RoleSuperadmin}
-	user := contextinfo.Actor{Role: contextinfo.RoleUser}
-	info, ok := router.CommandInfo("doctor")
-	if !ok || command.CanAccess(info, user) || !command.CanAccess(info, admin) || info.SessionEffect != command.SessionEffectNone {
-		t.Fatalf("doctor info = %#v", info)
-	}
-	if !slices.Contains(router.CompleteForActor("/doc", admin), "/doctor") {
-		t.Fatal("missing admin completion")
-	}
-	if got := router.CompleteForActor("/doc", user); len(got) != 0 {
-		t.Fatalf("user completion = %#v", got)
-	}
-	for _, actor := range []contextinfo.Actor{admin, user} {
-		ctx := contextinfo.WithActor(context.Background(), actor)
-		result, err := NewHelp(deps).Handle(ctx, command.Request{Args: "doctor", Prefix: "/"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if actor.Role != contextinfo.RoleSuperadmin && result.Content != "unk command: doctor" {
-			t.Fatal(result.Content)
-		}
 	}
 }

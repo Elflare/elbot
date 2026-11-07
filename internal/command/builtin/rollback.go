@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/fileops"
@@ -17,10 +17,7 @@ import (
 	"elbot/internal/storage"
 )
 
-type FileRollbackService interface {
-	List(context.Context) ([]fileops.RollbackInfo, error)
-	RollbackByID(context.Context, uint64) (fileops.RollbackResult, error)
-}
+type FileRollbackService = command.FileRollbackService
 
 type rollbackCommand struct{ deps Deps }
 
@@ -46,7 +43,7 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 			return nil, err
 		}
 		if len(records) == 0 {
-			return &command.Result{Content: "nil"}, nil
+			return &command.Result{Kind: command.ResultKindText, Text: "nil"}, nil
 		}
 		var b strings.Builder
 		for _, record := range records {
@@ -57,7 +54,7 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 			fmt.Fprintf(&b, "%d  %s  %s  %s\n", record.ID, record.Path, formatTime(record.EditedAt), action)
 		}
 		fmt.Fprintf(&b, "\n%s", c.deps.CommandText("rollback", "<编号>"))
-		return &command.Result{Content: b.String()}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: b.String()}, nil
 	}
 	id, err := strconv.ParseUint(arg, 10, 64)
 	if err != nil || id == 0 {
@@ -71,7 +68,7 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 		if errors.Is(err, session.ErrSessionBusy) {
 			err = fmt.Errorf("%w，请等待完成，或先用 %s 停止任务。", err, c.deps.CommandText("stop"))
 		}
-		return &command.Result{Content: fmt.Sprintf("rollback: %v\n%s", err, c.deps.CommandText("rollback"))}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("rollback: %v\n%s", err, c.deps.CommandText("rollback"))}, nil
 	}
 	result, err := c.deps.FileRollback.RollbackByID(ctx, id)
 	actor, _ := contextinfo.ActorFromContext(ctx)
@@ -103,12 +100,12 @@ func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*comm
 		if errors.Is(err, session.ErrSessionBusy) {
 			err = fmt.Errorf("%w，请等待完成，或先用 %s 停止任务。", err, c.deps.CommandText("stop"))
 		}
-		return &command.Result{Content: fmt.Sprintf("rollback: %v\n%s", err, c.deps.CommandText("rollback"))}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("rollback: %v\n%s", err, c.deps.CommandText("rollback"))}, nil
 	}
 	if result.Deleted {
-		return &command.Result{Content: fmt.Sprintf("deleted: %s", result.Path)}, nil
+		return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("deleted: %s", result.Path)}, nil
 	}
-	return &command.Result{Content: fmt.Sprintf("restored: %s · rev=%s", result.Path, result.Revision)}, nil
+	return &command.Result{Kind: command.ResultKindText, Text: fmt.Sprintf("restored: %s · rev=%s", result.Path, result.Revision)}, nil
 }
 
 func (c rollbackCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {

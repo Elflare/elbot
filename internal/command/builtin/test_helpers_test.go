@@ -2,7 +2,7 @@ package builtin
 
 import (
 	"context"
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"testing"
 
 	"elbot/internal/storage"

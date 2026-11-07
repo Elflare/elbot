@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/events"
 	"elbot/internal/logging"
 )
@@ -122,8 +122,8 @@ func TestUsageKnownTotalsAcrossGroupsAndCallRange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(result.Content, "[total] calls: 2\n  prompt: 200 | completion: 30 | total: 230\n  cache: 10 (5.0%) | elapsed: 0.2s\n") {
-		t.Fatal(result.Content)
+	if !strings.HasSuffix(result.Text, "[total] calls: 2\n  prompt: 200 | completion: 30 | total: 230\n  cache: 10 (5.0%) | elapsed: 0.2s\n") {
+		t.Fatal(result.Text)
 	}
 }
 
@@ -154,8 +154,8 @@ func TestUsageDefaultQueryByModel(t *testing.T) {
 		"prompt: 2,300 | completion: 350 | total: 2,650",
 		"cache: 500 (21.7%) | elapsed: 2.6s",
 	} {
-		if !strings.Contains(result.Content, want) {
-			t.Fatalf("content missing %q:\n%s", want, result.Content)
+		if !strings.Contains(result.Text, want) {
+			t.Fatalf("content missing %q:\n%s", want, result.Text)
 		}
 	}
 }
@@ -186,8 +186,8 @@ func TestUsageQueryByDay(t *testing.T) {
 		"prompt: 1,800 | completion: 350 | total: 2,150",
 		"cache: 0 (0.0%) | elapsed: 1.8s",
 	} {
-		if !strings.Contains(result.Content, want) {
-			t.Fatalf("content missing %q:\n%s", want, result.Content)
+		if !strings.Contains(result.Text, want) {
+			t.Fatalf("content missing %q:\n%s", want, result.Text)
 		}
 	}
 }
@@ -215,8 +215,8 @@ func TestUsageQueryBySession(t *testing.T) {
 		"prompt: 1,800 | completion: 350 | total: 2,150",
 		"cache: 100 (5.6%) | elapsed: 1.8s",
 	} {
-		if !strings.Contains(result.Content, want) {
-			t.Fatalf("content missing %q:\n%s", want, result.Content)
+		if !strings.Contains(result.Text, want) {
+			t.Fatalf("content missing %q:\n%s", want, result.Text)
 		}
 	}
 }
@@ -249,8 +249,8 @@ func TestUsageNoData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("usage handle: %v", err)
 	}
-	if result.Content != "nil" {
-		t.Fatalf("content = %q", result.Content)
+	if result.Text != "nil" {
+		t.Fatalf("content = %q", result.Text)
 	}
 }
 
@@ -434,27 +434,27 @@ func TestUsageCallRangesWithLogReader(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.calls == 0 {
-				if result.Content != tc.notice {
-					t.Fatalf("content = %q, want %q", result.Content, tc.notice)
+				if result.Text != tc.notice {
+					t.Fatalf("content = %q, want %q", result.Text, tc.notice)
 				}
 				return
 			}
 			total := fmt.Sprintf("[total] calls: %d\n  prompt: %d | completion: %d | total: %d\n  cache: 0 (0.0%%) | elapsed: %.1fs\n",
 				tc.calls, tc.prompt, tc.prompt/10, tc.prompt+tc.prompt/10, float64(tc.calls)/10)
-			if !strings.Contains(result.Content, total) {
-				t.Fatalf("missing total %q in:\n%s", total, result.Content)
+			if !strings.Contains(result.Text, total) {
+				t.Fatalf("missing total %q in:\n%s", total, result.Text)
 			}
 			for _, want := range tc.want {
-				if !strings.Contains(result.Content, want) {
-					t.Fatalf("missing %q in:\n%s", want, result.Content)
+				if !strings.Contains(result.Text, want) {
+					t.Fatalf("missing %q in:\n%s", want, result.Text)
 				}
 			}
 			if tc.notice != "" {
-				if !strings.HasSuffix(result.Content, "\n"+tc.notice) {
-					t.Fatalf("missing exact notice %q in:\n%s", tc.notice, result.Content)
+				if !strings.HasSuffix(result.Text, "\n"+tc.notice) {
+					t.Fatalf("missing exact notice %q in:\n%s", tc.notice, result.Text)
 				}
-			} else if strings.Contains(result.Content, "仅有") {
-				t.Fatalf("unexpected shortage notice:\n%s", result.Content)
+			} else if strings.Contains(result.Text, "仅有") {
+				t.Fatalf("unexpected shortage notice:\n%s", result.Text)
 			}
 		})
 	}
@@ -477,14 +477,14 @@ func TestUsageCallRangePreservesUnknownAndDamage(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, want := range append(tc.want, "warn: damaged=2 · usage incomplete") {
-				if !strings.Contains(result.Content, want) {
-					t.Fatalf("missing %q in:\n%s", want, result.Content)
+				if !strings.Contains(result.Text, want) {
+					t.Fatalf("missing %q in:\n%s", want, result.Text)
 				}
 			}
 		})
 	}
 	result, err := NewUsage(Deps{CommandText: testCommandText, Logs: &fakeLogService{damagedCount: 2}}).Handle(t.Context(), command.Request{Args: "-n 1"})
-	if err != nil || result.Content != "nil\nwarn: damaged=2 · usage incomplete" {
+	if err != nil || result.Text != "nil\nwarn: damaged=2 · usage incomplete" {
 		t.Fatalf("result = %+v, err = %v", result, err)
 	}
 }

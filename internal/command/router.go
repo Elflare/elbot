@@ -81,7 +81,7 @@ func (r *Router) Dispatch(ctx context.Context, raw string) (*Result, error) {
 	}
 	h, ok := r.handlers[parsed.Name]
 	if !ok {
-		return &Result{Content: fmt.Sprintf("unk command: %s%s\n%s", parsed.Prefix, parsed.Name, r.commandText("help"))}, nil
+		return &Result{Kind: ResultKindText, Text: fmt.Sprintf("unk command: %s%s\n%s", parsed.Prefix, parsed.Name, r.commandText("help"))}, nil
 	}
 	return h.Handle(ctx, Request{Raw: raw, Prefix: parsed.Prefix, Name: parsed.Name, Args: parsed.Args})
 }

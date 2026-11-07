@@ -5,7 +5,7 @@ import (
 	"elbot/internal/tool"
 	"strings"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/request"
 )
 

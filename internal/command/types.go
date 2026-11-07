@@ -1,75 +1,26 @@
+// types.go 公开命令输入、处理器和补全契约；内部实现通过 share 使用同一份定义。
 package command
 
 import (
-	"context"
-
+	"elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 )
 
-type Info struct {
-	Name          string
-	Args          string // 用法中的参数语法，不含命令名和前缀。
-	Description   string
-	Aliases       []string
-	Help          string
-	SessionEffect SessionEffect
-	// MinRole controls slash-command access. RoleUser allows regular users;
-	// empty defaults to RoleSuperadmin for backward compatibility.
-	MinRole contextinfo.Role
-}
-
-func CanAccess(info Info, actor contextinfo.Actor) bool {
-	return info.MinRole == contextinfo.RoleUser || actor.Role == contextinfo.RoleSuperadmin
-}
-
-type SessionEffect uint8
-
-const SessionEffectNone SessionEffect = 0
+type Info = share.Info
+type SessionEffect = share.SessionEffect
 
 const (
-	SessionEffectSwitchCurrent SessionEffect = 1 << iota
-	SessionEffectMutate
+	SessionEffectNone          = share.SessionEffectNone
+	SessionEffectSwitchCurrent = share.SessionEffectSwitchCurrent
+	SessionEffectMutate        = share.SessionEffectMutate
 )
 
-type Request struct {
-	Raw    string
-	Prefix string
-	Name   string
-	Args   string
-}
+type Request = share.Request
+type CompletionRequest = share.CompletionRequest
+type Completion = share.Completion
+type Completer = share.Completer
+type Handler = share.Handler
 
-type Result struct {
-	Content      string
-	Continuation *Continuation
-}
-
-type Continuation struct {
-	Text      string
-	SessionID string
-}
-
-type CompletionRequest struct {
-	Raw    string
-	Prefix string
-	Name   string
-	Args   string
-	Cursor int
-}
-
-type Completion struct {
-	Text         string
-	Label        string
-	Description  string
-	Kind         string
-	ReplaceStart int
-	ReplaceEnd   int
-}
-
-type Completer interface {
-	Complete(ctx context.Context, req CompletionRequest) []Completion
-}
-
-type Handler interface {
-	Info() Info
-	Handle(ctx context.Context, req Request) (*Result, error)
+func CanAccess(info Info, actor contextinfo.Actor) bool {
+	return share.CanAccess(info, actor)
 }

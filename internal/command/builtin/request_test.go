@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/request"
 	"elbot/internal/storage"
@@ -35,16 +35,16 @@ func TestRequestsCommandFormatsTree(t *testing.T) {
 		t.Fatalf("Handle: %v", err)
 	}
 	for _, want := range []string{"[1] turn: chat · ", "[1.1] tool: shell · ", "[1.2] hook: gpt_image_draw_fullwidth · ", "session: 测试会话"} {
-		if !strings.Contains(result.Content, want) {
-			t.Fatalf("requests output missing %q:\n%s", want, result.Content)
+		if !strings.Contains(result.Text, want) {
+			t.Fatalf("requests output missing %q:\n%s", want, result.Text)
 		}
 	}
-	if strings.Count(result.Content, "shell") != 1 || strings.Count(result.Content, "gpt_image_draw_fullwidth") != 1 {
-		t.Fatalf("requests repeats child names:\n%s", result.Content)
+	if strings.Count(result.Text, "shell") != 1 || strings.Count(result.Text, "gpt_image_draw_fullwidth") != 1 {
+		t.Fatalf("requests repeats child names:\n%s", result.Text)
 	}
 	for _, unwanted := range []string{"phase:", "mode:", "tools:"} {
-		if strings.Contains(result.Content, unwanted) {
-			t.Fatalf("requests contains session details %q:\n%s", unwanted, result.Content)
+		if strings.Contains(result.Text, unwanted) {
+			t.Fatalf("requests contains session details %q:\n%s", unwanted, result.Text)
 		}
 	}
 }
@@ -86,8 +86,8 @@ func TestRequestCommandsWithoutActiveRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Content != "nil" {
-		t.Fatalf("requests = %q", result.Content)
+	if result.Text != "nil" {
+		t.Fatalf("requests = %q", result.Text)
 	}
 	if got := formatActiveRequests(nil); got != "" {
 		t.Fatalf("active requests = %q", got)

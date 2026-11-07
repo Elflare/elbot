@@ -2,7 +2,7 @@ package builtin
 
 import (
 	"context"
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/modelmgr"
@@ -48,8 +48,8 @@ func TestStatusSessionMarkers(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(empty.Content, "session=nil") || strings.Contains(empty.Content, "requests") || strings.Contains(empty.Content, "tools") || strings.Contains(empty.Content, "\n\n") {
-				t.Fatalf("empty status = %q", empty.Content)
+			if !strings.Contains(empty.Text, "session=nil") || strings.Contains(empty.Text, "requests") || strings.Contains(empty.Text, "tools") || strings.Contains(empty.Text, "\n\n") {
+				t.Fatalf("empty status = %q", empty.Text)
 			}
 			row, err := svc.Create(ctx, scope, session.CreateRequest{Title: "status test"})
 			if err != nil {
@@ -80,27 +80,27 @@ func TestStatusSessionMarkers(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, want := range []string{row.ID, "status test", "requests:", "[1] turn: chat", "user: nil", "bot: nil"} {
-				if !strings.Contains(result.Content, want) {
-					t.Fatalf("status missing %q:\n%s", want, result.Content)
+				if !strings.Contains(result.Text, want) {
+					t.Fatalf("status missing %q:\n%s", want, result.Text)
 				}
 			}
-			if strings.Contains(result.Content, "      session:") || strings.Count(result.Content, "status test") != 1 {
-				t.Fatalf("status repeats session information:\n%s", result.Content)
+			if strings.Contains(result.Text, "      session:") || strings.Count(result.Text, "status test") != 1 {
+				t.Fatalf("status repeats session information:\n%s", result.Text)
 			}
 			want := "msgs=0\n" + tc.want + "created="
-			if !strings.Contains(result.Content, want) {
-				t.Fatalf("status = %q, want contiguous block %q", result.Content, want)
+			if !strings.Contains(result.Text, want) {
+				t.Fatalf("status = %q, want contiguous block %q", result.Text, want)
 			}
-			if strings.Contains(result.Content, "pinned:") || strings.Contains(result.Content, "archived:") || strings.Contains(result.Content, "\n\n") {
-				t.Fatalf("status contains old fields or blank lines: %q", result.Content)
+			if strings.Contains(result.Text, "pinned:") || strings.Contains(result.Text, "archived:") || strings.Contains(result.Text, "\n\n") {
+				t.Fatalf("status contains old fields or blank lines: %q", result.Text)
 			}
 			done()
 			result, err = handler.Handle(ctx, command.Request{})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if strings.Contains(result.Content, "requests") || strings.Contains(result.Content, "tools.") || strings.Contains(result.Content, "\n\n") {
-				t.Fatalf("idle status contains empty sections: %q", result.Content)
+			if strings.Contains(result.Text, "requests") || strings.Contains(result.Text, "tools.") || strings.Contains(result.Text, "\n\n") {
+				t.Fatalf("idle status contains empty sections: %q", result.Text)
 			}
 		})
 	}

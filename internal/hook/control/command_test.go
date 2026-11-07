@@ -77,22 +77,22 @@ func TestHooksCommandShowsDescriptionsAndDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "greet") || !strings.Contains(result.Content, "123456789012345678901234567890123456789012345678901234567890...") || strings.Contains(result.Content, "tail") {
-		t.Fatalf("list content = %q", result.Content)
+	if !strings.Contains(result.Text, "greet") || !strings.Contains(result.Text, "123456789012345678901234567890123456789012345678901234567890...") || strings.Contains(result.Text, "tail") {
+		t.Fatalf("list content = %q", result.Text)
 	}
 
 	result, err = cmd.Handle(context.Background(), command.Request{Args: "greet"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "name: greet") || !strings.Contains(result.Content, "description: "+longDescription) {
-		t.Fatalf("detail content = %q", result.Content)
+	if !strings.Contains(result.Text, "name: greet") || !strings.Contains(result.Text, "description: "+longDescription) {
+		t.Fatalf("detail content = %q", result.Text)
 	}
-	if strings.Count(result.Content, "description:") != 1 {
-		t.Fatalf("description duplicated in %q", result.Content)
+	if strings.Count(result.Text, "description:") != 1 {
+		t.Fatalf("description duplicated in %q", result.Text)
 	}
-	if !strings.Contains(result.Content, "priority: 1000\ndescription: "+longDescription+"\non: platform.message.received") || strings.Contains(result.Content, "\n\n") {
-		t.Fatalf("detail fields are not contiguous in %q", result.Content)
+	if !strings.Contains(result.Text, "priority: 1000\ndescription: "+longDescription+"\non: platform.message.received") || strings.Contains(result.Text, "\n\n") {
+		t.Fatalf("detail fields are not contiguous in %q", result.Text)
 	}
 }
 
@@ -121,14 +121,14 @@ func TestHooksCommandGroupsPluginRulesAndExpandsDetail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(result.Content, "\n  weather  ") != 1 || !strings.Contains(result.Content, "weather  [persistent:ready]  rules=2") {
-		t.Fatalf("grouped list = %q", result.Content)
+	if strings.Count(result.Text, "\n  weather  ") != 1 || !strings.Contains(result.Text, "weather  [persistent:ready]  rules=2") {
+		t.Fatalf("grouped list = %q", result.Text)
 	}
-	if strings.Contains(result.Content, "forecast") || strings.Contains(result.Content, "weather_help") {
-		t.Fatalf("plugin rules leaked into list: %q", result.Content)
+	if strings.Contains(result.Text, "forecast") || strings.Contains(result.Text, "weather_help") {
+		t.Fatalf("plugin rules leaked into list: %q", result.Text)
 	}
-	if !strings.Contains(result.Content, "builtin.cron.missed_once  [platform.connected]") {
-		t.Fatalf("standalone hook missing from list: %q", result.Content)
+	if !strings.Contains(result.Text, "builtin.cron.missed_once  [platform.connected]") {
+		t.Fatalf("standalone hook missing from list: %q", result.Text)
 	}
 
 	result, err = cmd.Handle(context.Background(), command.Request{Args: "weather"})
@@ -136,16 +136,16 @@ func TestHooksCommandGroupsPluginRulesAndExpandsDetail(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"mode: persistent\nstatus: ready", "rules: 2", "rule: forecast", "rule: weather_help", "match: forecast", "match: help"} {
-		if !strings.Contains(result.Content, want) {
-			t.Fatalf("plugin detail missing %q: %q", want, result.Content)
+		if !strings.Contains(result.Text, want) {
+			t.Fatalf("plugin detail missing %q: %q", want, result.Text)
 		}
 	}
-	if strings.Count(result.Content, "description: weather plugin") != 1 {
-		t.Fatalf("plugin description duplicated in %q", result.Content)
+	if strings.Count(result.Text, "description: weather plugin") != 1 {
+		t.Fatalf("plugin description duplicated in %q", result.Text)
 	}
 
 	result, err = cmd.Handle(context.Background(), command.Request{Args: "forecast"})
-	if err != nil || !strings.Contains(result.Content, "name: forecast\npoint: platform.message.received") {
+	if err != nil || !strings.Contains(result.Text, "name: forecast\npoint: platform.message.received") {
 		t.Fatalf("direct rule detail = %#v, %v", result, err)
 	}
 
@@ -164,8 +164,8 @@ func TestHooksReloadShowsWarnings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "hooks reloaded\nwarn:") || !strings.Contains(result.Content, "gpt_image") {
-		t.Fatalf("reload content = %q", result.Content)
+	if !strings.Contains(result.Text, "hooks reloaded\nwarn:") || !strings.Contains(result.Text, "gpt_image") {
+		t.Fatalf("reload content = %q", result.Text)
 	}
 }
 
@@ -174,15 +174,15 @@ func TestHooksCommandManagesStatefulHooks(t *testing.T) {
 	cmd := NewHooks(hooks, testBeginCall, testCommandText)
 
 	result, err := cmd.Handle(context.Background(), command.Request{})
-	if err != nil || !strings.Contains(result.Content, "weather  [persistent:ready]") {
+	if err != nil || !strings.Contains(result.Text, "weather  [persistent:ready]") {
 		t.Fatalf("list = %#v, %v", result, err)
 	}
 	result, err = cmd.Handle(context.Background(), command.Request{Args: "weather"})
-	if err != nil || !strings.Contains(result.Content, "mode: persistent\nstatus: ready") {
+	if err != nil || !strings.Contains(result.Text, "mode: persistent\nstatus: ready") {
 		t.Fatalf("detail = %#v, %v", result, err)
 	}
 	result, err = cmd.Handle(context.Background(), command.Request{Args: "restart weather"})
-	if err != nil || hooks.restarted != "weather" || !strings.Contains(result.Content, "OK") {
+	if err != nil || hooks.restarted != "weather" || !strings.Contains(result.Text, "OK") {
 		t.Fatalf("restart = %#v, restarted=%q, err=%v", result, hooks.restarted, err)
 	}
 }

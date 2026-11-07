@@ -1,91 +1,55 @@
 package builtin
 
-import "elbot/internal/tool"
-
 import (
 	"context"
 
-	"elbot/internal/command"
-	"elbot/internal/config"
-	"elbot/internal/doctor"
+	command "elbot/internal/command/share"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
-	"elbot/internal/logging"
-	"elbot/internal/modelmgr"
-	"elbot/internal/request"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-
-	"elbot/internal/turn"
 )
 
-type Registrar interface {
-	Register(command.Handler) error
-}
+type Registrar interface{ Register(command.Handler) error }
 
-type Module interface {
-	RegisterCommands(Registrar, Deps) error
-}
+type Module interface{ RegisterCommands(Registrar, Deps) error }
 
 type HandlerFactory func(Deps) command.Handler
 
-type ModelService interface {
-	Resolve(config.ModelSelection) modelmgr.Selection
-	ReloadProviders(context.Context) error
-	CurrentModelForMode(mode string) modelmgr.ModelOption
-	CurrentCompactModel(mode string) modelmgr.ModelOption
-	PrepareModel(arg string) (modelmgr.ModelOption, error)
-	CommitModelForMode(mode string, selected modelmgr.ModelOption) (modelmgr.ModelOption, error)
-	SelectCompactModel(arg string) (modelmgr.ModelOption, error)
-	SelectNamingModel(arg string) (modelmgr.ModelOption, error)
-	ModelList(query string, opts modelmgr.ModelListOptions) modelmgr.ModelListResult
+// CommandCatalog 是帮助命令所需的只读目录。
+type CommandCatalog interface {
+	CommandsForActor(contextinfo.Actor) []command.Info
+	CommandInfoForActor(string, contextinfo.Actor) (command.Info, bool)
 }
 
-type ContextService interface {
-	Status(context.Context, *llm.Usage, config.ModelSelection) string
-}
+type ModelService = command.ModelService
+type ContextService = command.ContextService
+type CompactService = command.CompactService
+type ToolService = command.ToolService
+type SkillService = command.SkillService
+type LogService = command.LogService
+type DoctorService = command.DoctorService
 
-type CompactService interface {
-	CompactCurrent(ctx context.Context, triggerReason string) (string, error)
-}
-
-type ToolService interface {
-	QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
-}
-
-type SkillService interface {
-	Remove(ctx context.Context, name string) error
-	Reload(ctx context.Context) error
-}
-
-type LogService interface {
-	Query(ctx context.Context, query logging.LogQuery) (logging.LogQueryResult, error)
-}
-
-type DoctorService interface {
-	Check(context.Context) (doctor.Report, error)
-}
-
+// Deps 在根部注入的业务能力上增加 builtin 自有的命令展示状态。
 type Deps struct {
-	CommandText func(string, ...string) string // 由根部绑定配置首个前缀的命令组装能力。
-	Doctor      DoctorService
-	Router      *command.Router
-	Sessions    *session.Supervisor
-	Requests    *request.Manager
-	Turns       *turn.Supervisor
-	Store       storage.Store
-	Scope       func(context.Context) session.Scope
-	Models      ModelService
-	Compact     CompactService
-	Contexts    ContextService
-
+	CommandText        func(string, ...string) string // 根部确定的命令组装能力。
+	Doctor             DoctorService
+	Router             CommandCatalog // 只读目录，不允许命令修改路由。
+	Sessions           command.SessionService
+	Requests           command.RequestService
+	Turns              command.TurnService
+	Store              storage.Store
+	Scope              func(context.Context) session.Scope
+	Models             ModelService
+	Compact            CompactService
+	Contexts           ContextService
 	Tools              ToolService
 	Skills             SkillService
 	FileRollback       FileRollbackService
 	PrepareFileContext func(context.Context, bool) (context.Context, error)
-	SessionState       *SessionCommandState
-
-	Logs  LogService
-	Usage func(*storage.Session) (*llm.Usage, error)
+	SessionState       *SessionCommandState // 本组内置命令共用的列表选择与展示配置。
+	Logs               LogService
+	Usage              func(*storage.Session) (*llm.Usage, error)
 }
 
 func RegisterFactories(registrar Registrar, deps Deps, factories ...HandlerFactory) error {

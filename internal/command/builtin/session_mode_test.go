@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"elbot/internal/command"
+	command "elbot/internal/command/share"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 )
