@@ -7,6 +7,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
+	clishare "elbot/internal/platform/cli/share"
 	runtimestatus "elbot/internal/runtime"
 )
 
@@ -44,11 +45,11 @@ func TestStatusCoalescesTerminalAndUpdatesDuringSend(t *testing.T) {
 	first, second := make(chan struct{}), make(chan struct{})
 	p := &slowStatusPlatform{sent: make(chan runtimestatus.Snapshot, 10), gates: []chan struct{}{first, second}}
 	d := newStatusDisplay(testPlatformName)
-	d.send = func(ctx context.Context, _ messageData, snapshot runtimestatus.Snapshot) error {
+	d.send = func(ctx context.Context, _ clishare.DisplayTarget, snapshot runtimestatus.Snapshot) error {
 		return p.SetRuntimeStatus(ctx, snapshot)
 	}
 	t.Cleanup(func() { _ = d.Close(context.Background()) })
-	ctx, cancel := context.WithCancel(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: New(testPlatformName)}}))
+	ctx, cancel := context.WithCancel(contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: testDisplayTarget{id: "one"}}))
 	defer cancel()
 	emit := func(version uint64, phase runtimestatus.Phase, tokens int) {
 		t.Helper()
@@ -91,24 +92,24 @@ func TestStatusCoalescesTerminalAndUpdatesDuringSend(t *testing.T) {
 }
 
 func TestStatusTargetsKeepDistinctSendersAndBackgroundIsSilent(t *testing.T) {
-	one, two := New(testPlatformName), New(testPlatformName)
+	one, two := New(testPlatformName, "user"), New(testPlatformName, "user")
 	d := newStatusDisplay(testPlatformName)
-	sent := make(chan messageData, 2)
-	d.send = func(_ context.Context, target messageData, _ runtimestatus.Snapshot) error {
+	sent := make(chan clishare.DisplayTarget, 2)
+	d.send = func(_ context.Context, target clishare.DisplayTarget, _ runtimestatus.Snapshot) error {
 		sent <- target
 		return nil
 	}
 	t.Cleanup(func() { _ = d.Close(context.Background()) })
 	e := StatusChangedEvent{Snapshot: runtimestatus.Snapshot{SessionID: "same", Phase: runtimestatus.PhaseDone}, Version: 1}
-	for _, a := range []*Adapter{one, two} {
-		ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: a}})
+	for _, id := range []string{one.Name() + ":one", two.Name() + ":two"} {
+		ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: testDisplayTarget{id: id}})
 		d.receive(StatusChangedEvent{Snapshot: e.Snapshot, Version: e.Version, Conversation: testConversation(ctx)})
 	}
-	targets := map[messageData]bool{}
+	targets := map[string]bool{}
 	for range 2 {
 		select {
 		case target := <-sent:
-			targets[target] = true
+			targets[target.TargetID()] = true
 		case <-time.After(time.Second):
 			t.Fatal("display missing")
 		}

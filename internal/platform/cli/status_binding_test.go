@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	clishare "elbot/internal/platform/cli/share"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 )
@@ -21,7 +22,7 @@ func TestStatusBindingChangeFinishesOldSendAndRejectsLateEvents(t *testing.T) {
 	var once sync.Once
 	defer once.Do(func() { close(release) })
 	displayed := make(chan string, 4)
-	d.send = func(ctx context.Context, _ messageData, snapshot runtimestatus.Snapshot) error {
+	d.send = func(ctx context.Context, _ clishare.DisplayTarget, snapshot runtimestatus.Snapshot) error {
 		if snapshot.Provider == "old" {
 			close(entered)
 			<-release
@@ -32,7 +33,7 @@ func TestStatusBindingChangeFinishesOldSendAndRejectsLateEvents(t *testing.T) {
 		displayed <- snapshot.Provider
 		return nil
 	}
-	conversation := &contextinfo.Conversation{PlatformData: messageData{adapter: New(testPlatformName)}}
+	conversation := &contextinfo.Conversation{PlatformData: testDisplayTarget{id: "one"}}
 	event := StatusChangedEvent{Conversation: conversation, Binding: old, Version: 100, Snapshot: runtimestatus.Snapshot{SessionID: "same", Provider: "old", Phase: runtimestatus.PhaseLLM}}
 	d.receive(event)
 	<-entered
@@ -72,8 +73,11 @@ func TestStatusTerminalWatermarkOutlivesPendingBody(t *testing.T) {
 	d := newStatusDisplay(testPlatformName)
 	defer d.Close(context.Background())
 	sent := make(chan struct{}, 2)
-	d.send = func(context.Context, messageData, runtimestatus.Snapshot) error { sent <- struct{}{}; return nil }
-	event := StatusChangedEvent{Conversation: &contextinfo.Conversation{PlatformData: messageData{adapter: New(testPlatformName)}}, Version: 10, Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone}}
+	d.send = func(context.Context, clishare.DisplayTarget, runtimestatus.Snapshot) error {
+		sent <- struct{}{}
+		return nil
+	}
+	event := StatusChangedEvent{Conversation: &contextinfo.Conversation{PlatformData: testDisplayTarget{id: "one"}}, Version: 10, Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone}}
 	d.receive(event)
 	<-sent
 	deadline := time.Now().Add(time.Second)

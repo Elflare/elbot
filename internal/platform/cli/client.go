@@ -1,17 +1,17 @@
 // client.go 选择客户端连接并分类运行结果，不启动本地应用。
 package cli
 
-// TODO(结构迁移): 客户端选择留根包装配；远程连接实现迁入 remote/。
-
 import (
 	"context"
 	"errors"
 	"fmt"
 	"net"
 	"net/url"
-
-	"elbot/internal/platform/cli/remote"
 	"strings"
+
+	"elbot/internal/platform/cli/local"
+	"elbot/internal/platform/cli/remote"
+	clishare "elbot/internal/platform/cli/share"
 )
 
 type ClientResultKind uint8
@@ -21,6 +21,8 @@ const (
 	ClientFallback                          // 默认连接不可用，允许入口尝试本地运行。
 	ClientFailed                            // 其他失败，不允许本地回退。
 )
+
+var ErrServerUnavailable = remote.ErrServerUnavailable
 
 type ClientResult struct {
 	Kind ClientResultKind // 客户端运行结果的分类。
@@ -44,7 +46,14 @@ func RunClient(ctx context.Context, rawConfig map[string]any, configEnv func(str
 	if err != nil {
 		return classifyClientResult(name, "", err)
 	}
-	runErr := remote.RunClient(ctx, remote.ClientOptions{Config: cfg, ConfigEnv: configEnv, ClientName: name})
+	clientRuntime, err := remote.NewRemoteClient(remote.RemoteClientOptions{
+		Client:    remote.ClientConfig{ID: client.ID, URL: client.URL, TokenEnv: client.TokenEnv},
+		ConfigEnv: configEnv, Display: func() clishare.ClientDisplay { return local.NewClientDisplay() },
+	})
+	if err != nil {
+		return classifyClientResult(name, client.URL, err)
+	}
+	runErr := clientRuntime.Run(ctx)
 	return classifyClientResult(name, client.URL, runErr)
 }
 

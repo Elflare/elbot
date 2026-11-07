@@ -1,4 +1,4 @@
-package cli
+package local
 
 import (
 	"context"
@@ -417,17 +417,15 @@ func TestNoticeLevelPreservedInWideAndInlineLayouts(t *testing.T) {
 
 func TestCommandNoticeStaysOutOfChat(t *testing.T) {
 	text := strings.Repeat("available model information\n", 400)
-	client := &RemoteClient{output: make(chan tea.Msg, 1)}
-	client.handleServerMessage(remoteMessage{Type: remoteMsgNotice, Text: text, Level: "INFO"})
 	m := tuiModel{input: newTUIInput(), width: 120, height: 20}
 	m.resizeViewports()
-	updated, _ := m.Update(<-client.output)
+
+	updated, _ := m.Update(tuiNoticeMsg{Text: text, Level: slog.LevelInfo})
 	m = updated.(tuiModel)
 	if m.wrappedContent() != "" || len(m.notices) != 1 || m.notices[0].Text != strings.TrimSpace(text) {
 		t.Fatalf("chat=%q notices=%#v", m.wrappedContent(), m.notices)
 	}
 }
-
 func TestRefreshNoticesUsesSeparator(t *testing.T) {
 	m := tuiModel{input: newTUIInput(), width: 120, height: 20}
 	m.resizeViewports()

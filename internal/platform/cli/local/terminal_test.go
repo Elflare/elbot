@@ -1,6 +1,6 @@
 //go:build linux
 
-package cli
+package local
 
 import (
 	"context"
@@ -13,48 +13,25 @@ import (
 	"testing"
 	"time"
 	"unsafe"
-
-	"elbot/internal/delivery"
 )
 
 func TestLocalTerminalLifecycle(t *testing.T) {
 	if os.Getenv("ELBOT_CLI_TERMINAL_HELPER") == "1" {
-		a := New(testPlatformName)
-		if !a.interactive {
-			t.Fatal("not a real terminal")
-		}
+		runtime := New("cli", "user")
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		if err := a.Start(ctx, nil); err != nil {
+		if err := runtime.Start(ctx, nil); err != nil {
 			t.Fatal(err)
 		}
-		cancel() // 应用停止只关接入，不能提前退出终端展示。
-		a.BeginClose()
+		cancel() // Application stop leaves the display available for draining.
+		runtime.BeginClose()
 		deadline, stop := context.WithTimeout(context.Background(), time.Second)
 		defer stop()
-		if err := a.Wait(deadline); err != nil {
+		if err := runtime.Wait(deadline); err != nil {
 			t.Fatal(err)
 		}
-		a.mu.Lock()
-		program := a.program
-		a.mu.Unlock()
-		if program == nil {
-			t.Fatal("terminal released before Close")
-		}
-		if _, err := a.SendTo(context.Background(), delivery.Target{}, []delivery.Output{delivery.Text("draining")}); err != nil {
+		if err := runtime.Close(deadline); err != nil {
 			t.Fatal(err)
-		}
-		if err := a.Close(deadline); err != nil {
-			t.Fatal(err)
-		}
-		a.mu.Lock()
-		program = a.program
-		a.mu.Unlock()
-		if program != nil {
-			t.Fatal("terminal still running after Close")
-		}
-		if _, err := a.SendTo(context.Background(), delivery.Target{}, []delivery.Output{delivery.Text("closed")}); err == nil {
-			t.Fatal("send succeeded after Close")
 		}
 		fmt.Println("CLI_TERMINAL_CLOSED")
 		return

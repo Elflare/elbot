@@ -1,4 +1,4 @@
-package cli
+package remote
 
 import (
 	"bufio"
@@ -22,6 +22,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/media"
+	clishare "elbot/internal/platform/cli/share"
 	"elbot/internal/platform/share"
 	"elbot/internal/testutil"
 	"elbot/internal/testutil/mediatest"
@@ -316,7 +317,7 @@ func TestRemoteMediaInputNormalization(t *testing.T) {
 		{"code.go", []byte("package main\n// ```\n"), share.SegmentText},
 		{"binary.bin", []byte{'a', 0, 'b'}, share.SegmentFile},
 		{"invalid.txt", []byte{255, 254}, share.SegmentFile},
-		{"large.txt", bytes.Repeat([]byte("x"), defaultLocalFileMaxSize+1), share.SegmentFile},
+		{"large.txt", bytes.Repeat([]byte("x"), maxInlineAttachmentBytes+1), share.SegmentFile},
 		{"image.png", imageData.Bytes(), share.SegmentImage},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -339,7 +340,7 @@ func TestRemoteMediaInputNormalization(t *testing.T) {
 					t.Fatalf("input = %+v", input)
 				}
 				if tc.kind == share.SegmentText {
-					want := formatLocalFileExpansion(tc.name, string(tc.data))
+					want := clishare.FormatFileExpansion(tc.name, string(tc.data))
 					if text != want || input.Segments[0].Text != want {
 						t.Fatalf("expanded text = %q", text)
 					}
@@ -360,7 +361,7 @@ func TestRemoteMediaInputTotalLimitAndInvalidIDs(t *testing.T) {
 	_, other := dialRemoteMedia(t, s)
 	var ids []string
 	for i := range 5 {
-		data := bytes.Repeat([]byte{byte('a' + i)}, defaultLocalFileMaxSize)
+		data := bytes.Repeat([]byte{byte('a' + i)}, maxInlineAttachmentBytes)
 		ids = append(ids, uploadRemoteMedia(t, s, client, fmt.Sprintf("%d.txt", i), data).ID)
 	}
 	for _, invalid := range [][]string{{ids[0], "missing"}, {ids[0], uploadRemoteMedia(t, s, other, "other.txt", []byte("other")).ID}} {
@@ -499,13 +500,13 @@ func TestRemoteMediaOutputKeepsOrderAndOutlivesSendFiles(t *testing.T) {
 }
 
 type enteringRemoteMedia struct {
-	RemoteMedia
+	clishare.Media
 	entered chan struct{}
 }
 
 func (m enteringRemoteMedia) ImportReader(ctx context.Context, r io.Reader, size int64, spec media.Input, limits media.ImportLimits) (media.MediaInfo, error) {
 	close(m.entered)
-	return m.RemoteMedia.ImportReader(ctx, r, size, spec, limits)
+	return m.Media.ImportReader(ctx, r, size, spec, limits)
 }
 
 func TestRemoteMediaCloseInterruptsSlowUpload(t *testing.T) {
@@ -513,7 +514,7 @@ func TestRemoteMediaCloseInterruptsSlowUpload(t *testing.T) {
 	_, client := dialRemoteMedia(t, s)
 	entered := make(chan struct{})
 	s.mu.Lock()
-	s.media = enteringRemoteMedia{RemoteMedia: m, entered: entered}
+	s.media = enteringRemoteMedia{Media: m, entered: entered}
 	s.mu.Unlock()
 	conn, err := net.Dial("tcp", s.listener.Addr().String())
 	if err != nil {

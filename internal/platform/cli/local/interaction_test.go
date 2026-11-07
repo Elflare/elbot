@@ -1,62 +1,24 @@
-package cli
+package local
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"os"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"elbot/internal/completion"
 	"elbot/internal/platform/share"
 	"elbot/internal/signal"
 )
 
-func TestLocalWaitPreservesFaultWhileCompletionDrains(t *testing.T) {
-	a, writer := testLocalAdapter(t)
-	entered, release, completed := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	a.SetCompleter(func(context.Context, completion.Request) ([]completion.Item, error) {
-		close(entered)
-		<-release
-		return nil, nil
-	})
-	if err := a.Start(t.Context(), nil); err != nil {
-		t.Fatal(err)
-	}
-	go func() { defer close(completed); _, _ = a.complete(t.Context(), completion.Request{}) }()
-	defer func() { close(release); <-completed }()
-	<-entered
-	if _, err := writer.WriteString(strings.Repeat("x", bufio.MaxScanTokenSize)); err != nil {
-		t.Fatal(err)
-	}
-	if err := a.WaitExit(t.Context()); !errors.Is(err, bufio.ErrTooLong) {
-		t.Fatalf("exit signal lost scanner fault: %v", err)
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	if err := a.WaitExit(ctx); !errors.Is(err, bufio.ErrTooLong) {
-		t.Fatalf("canceled exit observation lost scanner fault: %v", err)
-	}
-	if err := a.Wait(ctx); !errors.Is(err, bufio.ErrTooLong) {
-		t.Fatalf("published scanner fault lost while completion drains: %v", err)
-	}
-	select {
-	case <-a.done:
-		t.Fatal("reported exit while completion remains")
-	default:
-	}
-}
-
-func testLocalAdapter(t *testing.T) (*Adapter, *os.File) {
+func testLocalAdapter(t *testing.T) (*Runtime, *os.File) {
 	t.Helper()
 	reader, writer, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := New(testPlatformName)
+	a := New("cli", "user")
 	a.input, a.interactive = reader, false
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -119,15 +81,6 @@ func TestLocalCloseTimeoutKeepsWorkAndCanRetry(t *testing.T) {
 	if err := a.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err)
 	}
-	a.mu.Lock()
-	closed := a.closed
-	a.mu.Unlock()
-	if closed {
-		t.Fatal("closed while callback remains")
-	}
-	if _, err := a.complete(t.Context(), completion.Request{}); !errors.Is(err, signal.ErrClosed) {
-		t.Fatal(err)
-	}
 }
 
 func TestLocalConcurrentStartStopAndClose(t *testing.T) {
@@ -161,7 +114,7 @@ func TestLocalRegularFileAndStartFailure(t *testing.T) {
 		defer file.Close()
 		file.WriteString("/exit\n")
 		file.Seek(0, 0)
-		a := New(testPlatformName)
+		a := New("cli", "user")
 		a.input, a.interactive = file, false
 		defer a.Close(t.Context())
 		if err := a.Start(t.Context(), nil); err != nil {

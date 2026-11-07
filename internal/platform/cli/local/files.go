@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"elbot/internal/completion"
+	clishare "elbot/internal/platform/cli/share"
 )
 
 const (
@@ -377,16 +378,5 @@ func (r *localFileResolver) expandReference(refPath string, total *int64) (strin
 		return "", fmt.Errorf("local file reference %q appears to be binary", refPath)
 	}
 	*total += int64(len(data))
-	return formatLocalFileExpansion(displayPath, string(data)), nil
-}
-
-func formatLocalFileExpansion(path, content string) string {
-	fence := "```"
-	for strings.Contains(content, fence) {
-		fence += "`"
-	}
-	if content != "" && !strings.HasSuffix(content, "\n") {
-		content += "\n"
-	}
-	return fmt.Sprintf("[file: %s]\n%stext\n%s%s", path, fence, content, fence)
+	return clishare.FormatFileExpansion(displayPath, string(data)), nil
 }

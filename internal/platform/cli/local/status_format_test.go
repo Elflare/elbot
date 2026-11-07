@@ -1,4 +1,4 @@
-package cli
+package local
 
 import (
 	"elbot/internal/llm"

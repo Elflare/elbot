@@ -1,9 +1,10 @@
-package cli
+package remote
 
 import (
 	"context"
 	"errors"
 	"net"
+
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 )
 
 func TestRemoteWaitPreservesFaultWhileCallbackDrains(t *testing.T) {
+
 	s := testRemoteServer(t)
 	entered, release := make(chan struct{}), make(chan struct{})
 	defer close(release)
@@ -53,9 +55,8 @@ func testRemoteServer(t *testing.T) *RemoteServer {
 func testRemoteServerWithFrontend(t *testing.T, frontendDir string) *RemoteServer {
 	t.Helper()
 	t.Setenv("ELBOT_CLI_TEST_TOKEN", "secret")
-	cfg := defaultConfig()
-	cfg.Server = ServerConfig{Enabled: true, Listen: "127.0.0.1:0", Tokens: map[string][]string{"user": {"ELBOT_CLI_TEST_TOKEN"}}}
-	s, err := newRemoteServerReference(remoteServerReferenceOptions{FrontendDir: frontendDir, Config: cfg, PlatformName: testPlatformName, ConfigEnv: testConfigEnv(t.TempDir()), Superadmins: share.NewSuperadmins(testPlatformName, nil)})
+	cfg := Config{Server: ServerConfig{Enabled: true, Listen: "127.0.0.1:0", Tokens: map[string][]string{"user": {"ELBOT_CLI_TEST_TOKEN"}}}}
+	s, err := NewServer(ServerOptions{FrontendDir: frontendDir, Config: cfg, PlatformName: testPlatformName, ConfigEnv: testConfigEnv(t.TempDir()), Superadmins: share.NewSuperadmins(testPlatformName, nil)})
 	if err != nil {
 		t.Fatal(err)
 	}

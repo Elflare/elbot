@@ -29,12 +29,15 @@ func New(platformName, clientID string) *Adapter {
 
 // NewRemoteServer 创建远程服务实现并以 CLI 平台门面对外提供。
 func NewRemoteServer(opts RemoteServerOptions) (*Adapter, error) {
+
 	instance, err := remote.NewServer(remote.ServerOptions{
-		Config: opts.Config, PlatformName: opts.PlatformName, ConfigEnv: opts.ConfigEnv,
+		Config:       remote.Config{Server: remote.ServerConfig{Enabled: opts.Config.Server.Enabled, Listen: opts.Config.Server.Listen, Tokens: opts.Config.Server.Tokens}},
+		PlatformName: opts.PlatformName, ConfigEnv: opts.ConfigEnv,
 		Superadmins: opts.Superadmins, FrontendDir: opts.FrontendDir, Media: opts.Media,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create CLI remote server: %w", err)
 	}
 	return &Adapter{name: opts.PlatformName, runtime: instance}, nil
+
 }

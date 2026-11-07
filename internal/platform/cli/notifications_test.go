@@ -8,14 +8,23 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
+	"elbot/internal/platform/share"
 	"elbot/internal/signal"
 )
 
 func TestRemoteNotificationFailureLoggedByCLI(t *testing.T) {
-	server := &RemoteServer{name: testPlatformName, clients: map[string]map[*remoteClientConn]struct{}{}}
+	adapter, err := NewRemoteServer(RemoteServerOptions{
+		PlatformName: testPlatformName,
+		Config:       Config{Server: ServerConfig{Enabled: true, Listen: "127.0.0.1:0", Tokens: map[string][]string{"user": {"TOKEN"}}}},
+		ConfigEnv:    func(string) (string, bool, error) { return "", false, nil },
+		Superadmins:  share.NewSuperadmins(testPlatformName, nil),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	source := signal.New[events.Notification, signal.Empty]("test.remote.notice")
 	defer source.Close(context.Background())
-	c, err := server.ConnectNotifications(source)
+	c, err := adapter.ConnectNotifications(source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +49,7 @@ func TestRemoteNotificationFailureLoggedByCLI(t *testing.T) {
 	}
 	select {
 	case record := <-logs:
-		if record.EventName != "notification_rejected" || record.ResultStatus != events.ResultFailed || !strings.Contains(record.Content, "no matching cli clients") || !strings.Contains(record.Content, "offline-admin") || record.Identity.RequestID != "request" {
+		if record.EventName != "notification_send_failed" || record.ResultStatus != events.ResultFailed || !strings.Contains(record.Content, "no matching cli clients") || !strings.Contains(record.Content, "offline-admin") || record.Identity.RequestID != "request" {
 			t.Fatal(record)
 		}
 	case <-time.After(time.Second):

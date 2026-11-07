@@ -2,13 +2,16 @@ package share
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"strings"
 
 	"elbot/internal/completion"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/media"
 	platformshare "elbot/internal/platform/share"
+	runtimestatus "elbot/internal/runtime"
 )
 
 // Runtime 是 local/remote 实现向 CLI 根包提供的平台运行能力。
@@ -33,6 +36,43 @@ type NoticePresenter interface {
 // StreamRuntime 为没有原始会话目标的本地输入创建消息流。
 type StreamRuntime interface {
 	StartStream(context.Context) (delivery.MessageStream, error)
+}
+
+// DisplayEvent 是 remote client 接收并交给终端呈现的业务事件。
+type DisplayEvent struct {
+	Kind     DisplayEventKind
+	Text     string
+	Level    string
+	Status   runtimestatus.Snapshot
+	Stream   delivery.StreamEvent
+	StreamID uint64
+}
+
+type DisplayEventKind uint8
+
+const (
+	DisplayChat DisplayEventKind = iota
+	DisplayNotice
+	DisplayStatus
+	DisplayStream
+)
+
+// ClientDisplay 由 local 实现终端交互；remote 只提供输入与补全回调。
+type ClientDisplay interface {
+	Run(context.Context, string, func(context.Context, string) error, func(context.Context, completion.Request) ([]completion.Item, error), <-chan DisplayEvent) error
+}
+
+type ClientDisplayFactory func() ClientDisplay
+
+func FormatFileExpansion(path, content string) string {
+	fence := "```"
+	for strings.Contains(content, fence) {
+		fence += "`"
+	}
+	if content != "" && !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	return fmt.Sprintf("[file: %s]\n%stext\n%s%s", path, fence, content, fence)
 }
 
 // Media 是远程 CLI 使用的最小归档与持有能力。

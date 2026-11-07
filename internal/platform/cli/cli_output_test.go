@@ -4,43 +4,23 @@ import (
 	"context"
 	globalevents "elbot/internal/events"
 	"elbot/internal/signal"
-	"log/slog"
 	"os"
 	"testing"
-
-	tea "github.com/charmbracelet/bubbletea"
 
 	"elbot/internal/delivery"
 )
 
 func TestSendToAcceptsCLITarget(t *testing.T) {
-	adapter := New(testPlatformName)
+	adapter := New(testPlatformName, "user")
 	if _, err := adapter.SendTo(context.Background(), delivery.Target{Platform: "cli", Superadmins: true}, []delivery.Output{delivery.ImagePath("pic.png")}); err != nil {
 		t.Fatalf("SendTo: %v", err)
 	}
 }
 
 func TestSendToRejectsOtherPlatform(t *testing.T) {
-	adapter := New(testPlatformName)
+	adapter := New(testPlatformName, "user")
 	if _, err := adapter.SendTo(context.Background(), delivery.Target{Platform: "qqonebot"}, []delivery.Output{delivery.Text("hello")}); err == nil {
 		t.Fatal("expected platform mismatch error")
-	}
-}
-
-func TestRemoteClientNoticeLevelDefaultsToInfo(t *testing.T) {
-	client := &RemoteClient{output: make(chan tea.Msg, 2)}
-	for _, test := range []struct {
-		level string
-		want  slog.Level
-	}{
-		{level: "WARN", want: slog.LevelWarn},
-		{level: "", want: slog.LevelInfo},
-	} {
-		client.handleServerMessage(remoteMessage{Type: remoteMsgNotice, Text: "notice", Level: test.level})
-		got := (<-client.output).(tuiNoticeMsg)
-		if got.Level != test.want {
-			t.Fatalf("level %q parsed as %s, want %s", test.level, got.Level, test.want)
-		}
 	}
 }
 
@@ -69,7 +49,7 @@ func TestRunPublishesGlobalPlatformConnection(t *testing.T) {
 	original := os.Stdin
 	os.Stdin = input
 	defer func() { os.Stdin = original }()
-	adapter := New(testPlatformName)
+	adapter := New(testPlatformName, "user")
 	defer adapter.Close(context.Background())
 	if err := adapter.Start(context.Background(), nil); err != nil {
 		t.Fatal(err)

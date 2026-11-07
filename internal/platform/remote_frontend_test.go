@@ -11,7 +11,6 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/events"
-	"elbot/internal/platform/cli"
 	"elbot/internal/signal"
 	"elbot/internal/testutil"
 )
@@ -51,11 +50,10 @@ func TestCLIFrontendUsesConfigDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, adapter := range m.adapters {
-		remote, ok := adapter.(*cli.RemoteServer)
-		if !ok {
+		if adapter.Name() != "cli" {
 			continue
 		}
-		if err := remote.Start(t.Context(), nil); err != nil {
+		if err := adapter.Start(t.Context(), nil); err != nil {
 			t.Fatal(err)
 		}
 		select {

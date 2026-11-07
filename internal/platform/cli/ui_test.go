@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	clishare "elbot/internal/platform/cli/share"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/signal"
 )
@@ -55,12 +56,12 @@ func TestUIClosePreservesInFlightSendAndRetries(t *testing.T) {
 	started, release := make(chan context.Context, 1), make(chan struct{})
 	var once sync.Once
 	defer once.Do(func() { close(release) })
-	u.display.send = func(ctx context.Context, _ messageData, _ runtimestatus.Snapshot) error {
+	u.display.send = func(ctx context.Context, _ clishare.DisplayTarget, _ runtimestatus.Snapshot) error {
 		started <- ctx
 		<-release
 		return ctx.Err()
 	}
-	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: messageData{adapter: New(testPlatformName)}})
+	ctx := contextinfo.WithConversation(context.Background(), contextinfo.Conversation{PlatformData: testDisplayTarget{id: "cli:test"}})
 	if _, err := status.Emit(ctx, StatusChangedEvent{Conversation: testConversation(ctx), Snapshot: runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseLLM}, Version: 1}); err != nil {
 		t.Fatal(err)
 	}
