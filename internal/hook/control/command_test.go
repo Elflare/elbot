@@ -107,8 +107,8 @@ func TestHooksCommandShowsDescriptionsAndDetails(t *testing.T) {
 	if strings.Count(commandResultText(result), "description:") != 1 {
 		t.Fatalf("description duplicated in %q", commandResultText(result))
 	}
-	if !strings.Contains(commandResultText(result), "priority: 1000\ndescription: "+longDescription+"\non: platform.message.received") || strings.Contains(commandResultText(result), "\n\n") {
-		t.Fatalf("detail fields are not contiguous in %q", commandResultText(result))
+	if !strings.Contains(commandResultText(result), "priority: 1000\non: platform.message.received") || !strings.Contains(commandResultText(result), "rules: 1\n\nrule: greet") {
+		t.Fatalf("detail fields are incomplete in %q", commandResultText(result))
 	}
 }
 
@@ -137,7 +137,7 @@ func TestHooksCommandGroupsPluginRulesAndExpandsDetail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(commandResultText(result), "\n  weather  ") != 1 || !strings.Contains(commandResultText(result), "weather  [persistent:ready]  rules=2") {
+	if strings.Count(commandResultText(result), "\n  weather  ") != 1 || !strings.Contains(commandResultText(result), "weather  [persistent:ready]  rules=2 - weather plugin · active=1 · waiting=1") {
 		t.Fatalf("grouped list = %q", commandResultText(result))
 	}
 	if strings.Contains(commandResultText(result), "forecast") || strings.Contains(commandResultText(result), "weather_help") {
@@ -161,7 +161,7 @@ func TestHooksCommandGroupsPluginRulesAndExpandsDetail(t *testing.T) {
 	}
 
 	result, err = cmd.Handle(context.Background(), command.Request{Args: "forecast"})
-	if err != nil || !strings.Contains(commandResultText(result), "name: forecast\npoint: platform.message.received") {
+	if err != nil || !strings.Contains(commandResultText(result), "name: forecast\ndescription: weather plugin\nrules: 1") || !strings.Contains(commandResultText(result), "point: platform.message.received") {
 		t.Fatalf("direct rule detail = %#v, %v", result, err)
 	}
 

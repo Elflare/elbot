@@ -129,6 +129,30 @@ func TestAppendReservationSurvivesOldAttemptExit(t *testing.T) {
 	s.FinishAttempt("s", "b")
 }
 
+func TestExpiredAppendWaitDoesNotRetireReplacementWait(t *testing.T) {
+	s := NewSupervisor(testutil.IDSequence())
+	e := NewExecution("run")
+	s.StartAttempt("s", Input{Text: "original"}, e, "a")
+	if !s.BeginAppend("s", "a", Input{Text: "first"}) {
+		t.Fatal("first append transition failed")
+	}
+	firstWait := s.Snapshot("s").AppendWaitID
+	s.FinishAttempt("s", "a")
+	if _, _, ok := s.ResumeAppend("s"); !ok {
+		t.Fatal("first append did not resume")
+	}
+	if !s.BeginAppend("s", "", Input{Text: "second"}) {
+		t.Fatal("replacement append transition failed")
+	}
+	secondWait := s.Snapshot("s").AppendWaitID
+	if firstWait == secondWait || s.ExpireAppend("s", firstWait) || s.Snapshot("s").Phase != PhaseAwaitAppendConfirm {
+		t.Fatal("stale append timer retired replacement wait")
+	}
+	if !s.ExpireAppend("s", secondWait) || s.Snapshot("s").Phase != PhaseIdle {
+		t.Fatal("current append timer did not retire wait")
+	}
+}
+
 func TestSupervisorRiskDecisionAndTermination(t *testing.T) {
 	for _, action := range []RiskAction{RiskConfirm, RiskConfirmTool, RiskConfirmAll, RiskReject} {
 		t.Run(string(action), func(t *testing.T) {

@@ -38,7 +38,7 @@ func (s *Service) ListPage(ctx context.Context, scope share.Scope, req ListReque
 		result.TotalPages++
 	}
 	if result.Page == 0 {
-		result.Page = max(1, result.TotalPages)
+		result.Page = 1
 	}
 	if result.TotalCount == 0 {
 		if req.Page > 1 {

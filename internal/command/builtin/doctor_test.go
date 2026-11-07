@@ -30,7 +30,8 @@ func TestDoctorCommandUsesDiagnosisAndRejectsArguments(t *testing.T) {
 	}
 	service.report = doctor.Report{ConfigPath: "/config/app.toml", Files: []doctor.FileIssue{{Path: "/config/app.toml", Issues: []config.Issue{{Level: config.LevelError, Message: "文件缺失。"}}}}}
 	result, err = cmd.Handle(context.Background(), command.Request{})
-	if err != nil || commandResultText(result) != service.report.Text() {
+	data, ok := result.Data.(command.DoctorData)
+	if err != nil || !ok || data.ConfigPath != service.report.ConfigPath || len(data.Items) != 1 || data.Items[0].Path != service.report.Files[0].Path || data.Items[0].Level != config.LevelError || data.Items[0].Message != "文件缺失。" {
 		t.Fatalf("result=%#v, err=%v", result, err)
 	}
 	for _, arg := range []string{"fix", "diff", "--config custom.toml"} {

@@ -225,15 +225,15 @@ func TestSessionRepositoryPinnedOrderAcrossPages(t *testing.T) {
 			}
 		}
 	}
-	checkPages("", "pinned-old,pinned-a,pinned-b,normal-old,normal-y,normal-z")
-	checkPages("pinned-b", "pinned-old,pinned-a,normal-old,normal-y,normal-z")
+	checkPages("", "pinned-old,pinned-a,pinned-b,normal-y,normal-z,normal-old")
+	checkPages("pinned-b", "pinned-old,pinned-a,normal-y,normal-z,normal-old")
 	if _, err := store.Sessions().Mutate(ctx, "pinned-b", func(row *storage.Session) error {
 		row.PinnedAt = nil
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	checkPages("", "pinned-old,pinned-a,normal-old,pinned-b,normal-y,normal-z")
+	checkPages("", "pinned-old,pinned-a,normal-y,normal-z,pinned-b,normal-old")
 }
 
 func TestSessionRepositoryArchivePinAndCleanup(t *testing.T) {

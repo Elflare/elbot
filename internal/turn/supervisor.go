@@ -97,3 +97,7 @@ func (m *Supervisor) StopSession(sessionID string) { m.lifecycle.StopSession(ses
 func (m *Supervisor) BeginAppend(sessionID, attempt string, input Input) bool {
 	return m.lifecycle.BeginAppend(sessionID, attempt, lifecycle.Input(input))
 }
+
+func (m *Supervisor) ExpireAppend(sessionID string, waitID uint64) bool {
+	return m.lifecycle.ExpireAppend(sessionID, waitID)
+}

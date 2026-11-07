@@ -153,7 +153,14 @@ func formatHooks(d command.HooksData) string {
 	for i := 0; i < len(d.Items); {
 		item := d.Items[i]
 		if item.ID == "" {
-			fmt.Fprintf(&out, "  %s  [%s]  priority=%d\n", item.Name, item.Point, item.Priority)
+			fmt.Fprintf(&out, "  %s  [%s]  priority=%d", item.Name, item.Point, item.Priority)
+			if item.Description != "" {
+				fmt.Fprintf(&out, " - %s", preview(item.Description, 60))
+			}
+			if item.Active > 0 {
+				fmt.Fprintf(&out, " · active=%d", item.Active)
+			}
+			out.WriteByte('\n')
 			i++
 			continue
 		}
@@ -161,21 +168,45 @@ func formatHooks(d command.HooksData) string {
 		for end < len(d.Items) && d.Items[end].ID == item.ID {
 			end++
 		}
-		if item.Mode != "" {
-			fmt.Fprintf(&out, "  %s  [%s:%s]", item.ID, item.Mode, item.Status)
+		stateful := command.HookData{}
+		for _, entry := range d.Items[i:end] {
+			if entry.Mode != "" {
+				stateful = entry
+				break
+			}
+		}
+		if stateful.Mode != "" {
+			fmt.Fprintf(&out, "  %s  [%s:%s]", item.ID, stateful.Mode, stateful.Status)
 		} else {
 			fmt.Fprintf(&out, "  %s  [plugin]", item.ID)
 		}
-		if rules := end - i; item.Point != "" {
-			fmt.Fprintf(&out, "  rules=%d", rules)
-		}
-		if item.Description != "" {
-			fmt.Fprintf(&out, " - %s", preview(item.Description, 60))
-		}
+		rules := 0
 		active, waiting := 0, 0
 		for _, entry := range d.Items[i:end] {
-			active += entry.Active
+			if entry.Point != "" {
+				rules++
+			}
+			if entry.Mode == "" {
+				active += entry.Active
+			}
 			waiting += entry.Waiting
+		}
+		if rules > 0 {
+			fmt.Fprintf(&out, "  rules=%d", rules)
+		}
+		description := item.Description
+		if stateful.Description != "" {
+			description = stateful.Description
+		}
+		if description != "" {
+			fmt.Fprintf(&out, " - %s", preview(description, 60))
+		}
+		for _, entry := range d.Items[i:end] {
+			if entry.Mode != "" {
+				active = entry.Active
+				waiting = entry.Waiting
+				break
+			}
 		}
 		if active > 0 {
 			fmt.Fprintf(&out, " · active=%d", active)
@@ -185,6 +216,61 @@ func formatHooks(d command.HooksData) string {
 		}
 		out.WriteByte('\n')
 		i = end
+	}
+	return strings.TrimRight(out.String(), "\n")
+}
+
+func formatDoctor(d command.DoctorData) string {
+	if len(d.Items) == 0 {
+		return "Everything is OK"
+	}
+	groups := make([]struct {
+		path  string
+		items []command.DoctorIssue
+	}, 0)
+	indexes := make(map[string]int)
+	errorCount, hintCount := 0, 0
+	for _, item := range d.Items {
+		index, ok := indexes[item.Path]
+		if !ok {
+			index = len(groups)
+			indexes[item.Path] = index
+			groups = append(groups, struct {
+				path  string
+				items []command.DoctorIssue
+			}{path: item.Path})
+		}
+		groups[index].items = append(groups[index].items, item)
+		if item.Level == "error" {
+			errorCount++
+		} else {
+			hintCount++
+		}
+	}
+	var out strings.Builder
+	if errorCount == 0 {
+		fmt.Fprintf(&out, "未发现必要问题，有 %d 项提示，涉及 %d 个文件。", hintCount, len(groups))
+	} else {
+		fmt.Fprintf(&out, "发现 %d 项错误、%d 项提示，涉及 %d 个文件。", errorCount, hintCount, len(groups))
+	}
+	fmt.Fprintf(&out, "\n\n主配置：%s\n\n检查结果：\n", d.ConfigPath)
+	for i, group := range groups {
+		if i > 0 {
+			out.WriteByte('\n')
+		}
+		fmt.Fprintf(&out, "%d. %s\n", i+1, group.path)
+		for _, item := range group.items {
+			label := "提示"
+			if item.Level == "error" {
+				label = "错误"
+			}
+			field := strings.Join(item.Field, ".")
+			if field != "" {
+				fmt.Fprintf(&out, "   - [%s] %s: %s\n", label, field, item.Message)
+			} else {
+				fmt.Fprintf(&out, "   - [%s] %s\n", label, item.Message)
+			}
+		}
 	}
 	return strings.TrimRight(out.String(), "\n")
 }

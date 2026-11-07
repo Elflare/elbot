@@ -44,9 +44,9 @@ slash 命令由 Agent Core 统一处理，CLI、QQ 等平台共享同一套语�
 | --- | --- |
 | `/new` | 创建并切换到新 Session。 |
 | `/status` | 当前 Session 状态。 |
-| `/sessions [页码] [-k\|--keyword <关键词>]` | 列出或搜索可见 Session，默认末页。 |
+| `/sessions [页码] [-k\|--keyword <关键词>]` | 列出或搜索可见 Session。 |
 | `/resume [session_id\|last]` | 恢复历史 Session。 |
-| `/archives [页码] [-k\|--keyword <关键词>]` | 已归档 Session 列表，默认末页。 |
+| `/archives [页码] [-k\|--keyword <关键词>]` | 已归档 Session 列表。 |
 | `/archive [session_id] --confirm` | 归档。 |
 | `/unarchive [session_id]` | 取消归档。 |
 | `/pin` / `/unpin [session_id]` | 置顶 / 取消置顶。 |

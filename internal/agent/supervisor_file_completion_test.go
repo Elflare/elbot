@@ -76,8 +76,8 @@ func TestSupervisorRollbackAndBindingInvalidation(t *testing.T) {
 	if _, err := files.ListRollbacks(oldCtx); err == nil {
 		t.Fatal("old binding still permits rollback access")
 	}
-	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: fmt.Sprintf("/rollback %d", oldID)}); err != nil {
-		t.Fatal(err)
+	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: fmt.Sprintf("/rollback %d", oldID)}); err == nil {
+		t.Fatal("rollback should reject a new session without a conversation")
 	}
 	data, err = os.ReadFile(path)
 	if err != nil || string(data) != "after" {

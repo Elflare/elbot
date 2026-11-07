@@ -26,7 +26,7 @@ func publicExecution(e lifecycle.Execution) *Execution {
 	return e.(*Execution)
 }
 func publicSnapshot(s lifecycle.Snapshot) Snapshot {
-	return Snapshot{SessionID: s.SessionID, Phase: Phase(s.Phase), PendingCount: s.PendingCount, Tools: s.Tools, AttemptDone: s.AttemptDone, Execution: publicExecution(s.Execution), Attempt: s.Attempt}
+	return Snapshot{SessionID: s.SessionID, Phase: Phase(s.Phase), PendingCount: s.PendingCount, AppendWaitID: s.AppendWaitID, Tools: s.Tools, AttemptDone: s.AttemptDone, Execution: publicExecution(s.Execution), Attempt: s.Attempt}
 }
 func (w *RiskConfirmationWait) Cancel() bool { return w != nil && w.wait.Cancel() }
 func (w *RiskConfirmationWait) Wait(ctx context.Context, timeout time.Duration) RiskResult {

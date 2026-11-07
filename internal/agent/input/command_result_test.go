@@ -119,6 +119,7 @@ func TestAppendControlOnlyInterceptsPendingConfirmation(t *testing.T) {
 		{pending: false}, {pending: true}, {pending: true, failSend: true},
 	} {
 		p := &commandResultProbe{row: &storage.Session{ID: "s"}, phase: turn.PhaseIdle}
+		p.order = []string{}
 		if tc.pending {
 			p.phase = turn.PhaseAwaitAppendConfirm
 		}

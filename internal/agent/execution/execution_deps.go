@@ -58,6 +58,7 @@ type ExecutionTurns interface {
 	CompleteCompactRun(string, string) bool
 	CompleteTurn(string, string) (turn.Input, bool)
 	FinishAttempt(string, string)
+	ExpireAppend(string, uint64) bool
 	ReserveExecution(string, turn.Input, *turn.Execution) bool
 	ResumeAppend(string) (turn.Input, *turn.Execution, bool)
 	Snapshot(string) turn.Snapshot
@@ -95,6 +96,7 @@ type ExecutionView interface {
 // ExecutionCoordinatorDeps declares only the capabilities consumed by ExecutionCoordinator.
 type ExecutionCoordinatorDeps struct {
 	AppendConfirmation delivery.Confirmation // 追加确认操作；为空时保留正文控制说明。
+	AppendWait         agentshare.ConfirmationWaitPolicy
 	Sessions           ExecutionSessions
 	SessionRows        interface {
 		Get(context.Context, string) (*storage.Session, error)

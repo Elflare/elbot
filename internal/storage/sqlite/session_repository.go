@@ -215,7 +215,7 @@ func (r *SessionRepository) Count(ctx context.Context, req storage.ListSessionsR
 func (r *SessionRepository) List(ctx context.Context, req storage.ListSessionsRequest) ([]storage.SessionSummary, error) {
 	where, args := sessionListFilter(req)
 	args = append(args, req.Limit, req.Offset)
-	order := "CASE WHEN s.pinned_at IS NULL THEN 1 ELSE 0 END, s.pinned_at ASC, CASE WHEN s.pinned_at IS NULL THEN s.updated_at END ASC, s.id ASC"
+	order := "CASE WHEN s.pinned_at IS NULL THEN 1 ELSE 0 END, s.pinned_at ASC, CASE WHEN s.pinned_at IS NULL THEN s.updated_at END DESC, s.id ASC"
 	if req.RecentFirst {
 		order = "s.updated_at DESC, s.id DESC"
 	}

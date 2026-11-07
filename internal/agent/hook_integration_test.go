@@ -48,6 +48,13 @@ func (p *integrationPlatform) SendTo(_ context.Context, _ delivery.Target, outpu
 	p.outputs = append(p.outputs, delivery.FallbackOutput(outputs).Text)
 	return delivery.Receipt{}, nil
 }
+func (p *integrationPlatform) SendCommandResult(ctx context.Context, _ string, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
+	text := platformshare.FormatCommandResult(result)
+	if failure != nil {
+		text = failure.Message
+	}
+	return p.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(text)})
+}
 func (p *integrationPlatform) StartStream(context.Context) (delivery.MessageStream, error) {
 	return delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
 		if event.Type != delivery.StreamSend {
@@ -107,16 +114,6 @@ data: [DONE]
 	}
 	t.Cleanup(func() { _ = tools.Close(context.Background()) })
 	platform := &integrationPlatform{}
-	notified := make(chan struct{}, 1)
-	notifications, err := events.NotificationRequested.Observe(func(ctx context.Context, notice events.Notification) {
-		_, _ = platform.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(notice.Text)})
-		notified <- struct{}{}
-
-	}, signal.ConnectOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = notifications.Close(context.Background()) })
 	hooks, err := hook.NewSupervisor(t.Context(), cfg, hook.SupervisorDeps{Tools: tools, Platform: platform})
 	if err != nil {
 		t.Fatal(err)
@@ -152,13 +149,11 @@ data: [DONE]
 	if err != nil || len(items) != 1 || items[0].Text != "integration_suffix" {
 		t.Fatalf("completion=%+v err=%v", items, err)
 	}
-	if err := a.HandleMessage(testutil.WithCLIConversation(t.Context()), agent.MessageRequest{Text: "/hooks"}); err != nil {
+	commandCtx := testutil.WithCLIConversation(t.Context())
+	commandCtx = contextinfo.WithActor(commandCtx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}})
+	commandCtx = platformshare.WithMessageContext(commandCtx, platformshare.MessageContext{CommandReply: platform})
+	if err := a.HandleMessage(commandCtx, agent.MessageRequest{Text: "/hooks"}); err != nil {
 		t.Fatal(err)
-	}
-	select {
-	case <-notified:
-	case <-time.After(5 * time.Second):
-		t.Fatal("command notification was not delivered")
 	}
 	platform.mu.Lock()
 	output := strings.Join(platform.outputs, "\n")
@@ -177,13 +172,10 @@ data: [DONE]
 	}
 	// A new root-built candidate must replace the loaded rule while retaining
 	// the active pipeline's Agent callback and source logging.
-	var logMu sync.Mutex
-	var triggered []events.LogRecord
+	triggered := make(chan events.LogRecord, 8)
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
 		if record.EventName == "hook_triggered" {
-			logMu.Lock()
-			triggered = append(triggered, record)
-			logMu.Unlock()
+			triggered <- record
 		}
 
 	}, signal.ConnectOptions{})
@@ -206,10 +198,15 @@ data: [DONE]
 	if !strings.Contains(output, "answer [reloaded]") {
 		t.Fatalf("reloaded output=%q", output)
 	}
-	logMu.Lock()
-	defer logMu.Unlock()
 	logged := false
-	for _, record := range triggered {
+	deadline := time.After(time.Second)
+	for !logged {
+		var record events.LogRecord
+		select {
+		case record = <-triggered:
+		case <-deadline:
+			t.Fatal("replacement hook log was not delivered")
+		}
 		var content map[string]any
 		if err := json.Unmarshal([]byte(record.Content), &content); err != nil {
 			t.Fatal(err)
@@ -218,23 +215,4 @@ data: [DONE]
 			logged = true
 		}
 	}
-	if !logged {
-		t.Fatalf("replacement lost source logging: %+v", triggered)
-	}
-
-}
-
-func (p *integrationPlatform) SendCommandResult(ctx context.Context, _ string, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
-	var outputs []delivery.Output
-	if result != nil {
-		out := delivery.Text(platformshare.FormatCommandResult(result))
-		if result.Confirmation != nil {
-			out.Actions = result.Confirmation.Actions
-		}
-		outputs = append(outputs, out)
-	}
-	if failure != nil {
-		outputs = append(outputs, delivery.Text(failure.Message))
-	}
-	return p.SendTo(ctx, delivery.Target{}, outputs)
 }

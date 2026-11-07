@@ -186,6 +186,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	bindProtocolRoutes(m.routes, chat, response)
 	execution := agentexecution.NewExecutionCoordinator(ctx, agentexecution.ExecutionCoordinatorDeps{
 		AppendConfirmation: delivery.Confirmation{Actions: []delivery.Action{{ID: "append_confirm", Label: "继续发送", Command: commandText("confirm")}, {ID: "append_cancel", Label: "取消追加", Command: commandText("stop")}}},
+		AppendWait:         policy,
 		Sessions:           m.sessions,
 		SessionRows:        deps.Store.Sessions(),
 		Turns:              m.turns,

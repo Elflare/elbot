@@ -266,22 +266,22 @@ func TestResumeCommandUsesIDsAndLast(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume page: %v", err)
 	}
-	if !strings.Contains(commandResultText(page), "["+recent.ID+"] recent") || strings.Contains(commandResultText(page), current.ID) || !strings.Contains(commandResultText(page), "page=2/2") {
+	if !strings.Contains(commandResultText(page), "["+older.ID+"] older pinned") || strings.Contains(commandResultText(page), current.ID) || !strings.Contains(commandResultText(page), "page=1/2") {
 		t.Fatalf("resume page = %q", commandResultText(page))
 	}
-	secondPage, err := NewResume(deps).Handle(ctx, command.Request{Args: "--page 1"})
+	secondPage, err := NewResume(deps).Handle(ctx, command.Request{Args: "--page 2"})
 	if err != nil {
 		t.Fatalf("resume page 2: %v", err)
 	}
-	if !strings.Contains(commandResultText(secondPage), "["+older.ID+"] older pinned") {
+	if !strings.Contains(commandResultText(secondPage), "["+recent.ID+"] recent") {
 		t.Fatalf("resume page 2 = %q", commandResultText(secondPage))
 	}
 	listed, err := NewSessions(deps).Handle(ctx, command.Request{})
-	if err != nil || !strings.Contains(commandResultText(listed), "["+current.ID+"] current") || !strings.Contains(commandResultText(listed), "page=3/3") {
+	if err != nil || !strings.Contains(commandResultText(listed), "["+older.ID+"] older pinned") || !strings.Contains(commandResultText(listed), "page=1/3") {
 		t.Fatalf("sessions disagree with resume: %+v, %v", listed, err)
 	}
 	completions := NewResume(deps).(command.Completer).Complete(ctx, command.CompletionRequest{Raw: "/resume ", Prefix: "/", Name: "resume", Cursor: len("/resume ")})
-	if len(completions) != 2 || completions[0].Text != "last" || completions[1].Text != recent.ID {
+	if len(completions) != 2 || completions[0].Text != "last" || completions[1].Text != older.ID {
 		t.Fatalf("resume completions = %+v", completions)
 	}
 
@@ -465,14 +465,18 @@ func TestSessionListsSharePagination(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			wantOrder := []string{ids[0], ids[1], ids[2], ids[6], ids[5], ids[4], ids[3]}
+			if tc.name == "resume" {
+				wantOrder = []string{ids[0], ids[1], ids[2], ids[5], ids[4], ids[3]}
+			}
 			pages := (tc.count + 1) / 2
 			result, err := handler.Handle(ctx, command.Request{})
 			if err != nil {
 				t.Fatal(err)
 			}
 			data := result.Data.(command.SessionsData)
-			if data.Page.Page != pages || *data.TotalPages != pages || data.HasNext || data.PrevCommand == "" || data.Items[len(data.Items)-1].ID != ids[tc.count-1] {
-				t.Fatalf("last page=%+v", data)
+			if data.Page.Page != 1 || *data.TotalPages != pages || !data.HasNext || data.PrevCommand != "" || len(data.Items) != 2 || data.Items[0].ID != wantOrder[0] || data.Items[1].ID != wantOrder[1] {
+				t.Fatalf("default page=%+v", data)
 			}
 			var got []string
 			for page := 1; page <= pages; page++ {
@@ -492,8 +496,8 @@ func TestSessionListsSharePagination(t *testing.T) {
 					got = append(got, item.ID)
 				}
 			}
-			if strings.Join(got, ",") != strings.Join(ids[:tc.count], ",") {
-				t.Fatalf("order=%v want=%v", got, ids[:tc.count])
+			if strings.Join(got, ",") != strings.Join(wantOrder, ",") {
+				t.Fatalf("order=%v want=%v", got, wantOrder)
 			}
 			args := fmt.Sprint(pages + 1)
 			if tc.name == "resume" {
@@ -504,8 +508,8 @@ func TestSessionListsSharePagination(t *testing.T) {
 			}
 			if tc.name != "resume" {
 				result, err := handler.Handle(ctx, command.Request{Args: "--keyword 2026 项目"})
-				if err != nil || result.Data.(command.SessionsData).Page.Page != pages {
-					t.Fatalf("search last=%+v err=%v", result, err)
+				if err != nil || result.Data.(command.SessionsData).Page.Page != 1 {
+					t.Fatalf("search default=%+v err=%v", result, err)
 				}
 				result, err = handler.Handle(ctx, command.Request{Args: "1 -k 2026 项目"})
 				if err != nil || result.Data.(command.SessionsData).NextCommand != "/"+tc.name+" 2 -k 2026 项目" {

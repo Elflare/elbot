@@ -29,6 +29,7 @@ type Snapshot struct {
 	SessionID    string
 	Phase        Phase
 	PendingCount int
+	AppendWaitID uint64
 	Tools        map[string]int
 	// AttemptDone closes when the current attempt has finished its actual work.
 	// It is nil when a confirmation is waiting without an active attempt.

@@ -3,6 +3,7 @@ package execution
 import (
 	"context"
 	"sync"
+	"time"
 )
 
 // attemptWaitLifecycle tracks joins on attempts canceled by accepted input.
@@ -13,6 +14,39 @@ type attemptWaitLifecycle struct {
 	closed bool
 	active int
 	done   chan struct{}
+}
+
+func (c *ExecutionCoordinator) expireAppendAfter(ctx context.Context, sessionID string, waitID uint64) {
+	if c.appendWait == nil {
+		return
+	}
+	timeout := c.appendWait.WaitTimeout(ctx)
+	if timeout <= 0 {
+		return
+	}
+	waitCtx, finish, accepted := c.attemptWaits.begin(ctx)
+	if !accepted {
+		return
+	}
+	go func() {
+		defer finish()
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-waitCtx.Done():
+			return
+		}
+		_, release, err := c.sessions.EnterSessions(waitCtx, sessionID)
+		if err != nil {
+			return
+		}
+		expired := c.turns.ExpireAppend(sessionID, waitID)
+		release()
+		if expired {
+			c.sessionIdle(waitCtx, sessionID)
+		}
+	}()
 }
 
 func newAttemptWaitLifecycle(parent context.Context) *attemptWaitLifecycle {

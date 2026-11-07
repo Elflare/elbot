@@ -72,9 +72,10 @@ ElBot does not inject the full schema of all tools into every conversation round
 **CLI Client/Server Separation**: ElBot can function as either a client or a server. **Customizable Frontend**: You can create interfaces of any form; the images below are for illustration purposes only (except for the TUI, these are conceptual mockups and do not represent the final UI).
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/main/frontend/assets/frontend_1.png" width="260" />
-  <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/main/frontend/assets/frontend_2.jpg" width="260" />
-  <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/main/frontend/assets/tui.png" width="260" />
+  <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-light.png" width="500" />
+  <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-dark.png" width="500" />
+  <br>
+  <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-status.png" width="500" />
 </p>
 
 More screenshots can be found at [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend).

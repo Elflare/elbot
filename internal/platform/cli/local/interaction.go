@@ -170,6 +170,14 @@ func (r *Runtime) Start(ctx context.Context, handler platformshare.MessageHandle
 				completion: complete, output: r.output, userName: r.clientID, assistantName: "assistant",
 				ready: func() { close(ready) }, stop: r.BeginClose,
 			}, nil)
+			if runErr != nil {
+				r.mu.Lock()
+				closing := r.closing
+				r.mu.Unlock()
+				if closing {
+					runErr = signal.ErrClosed
+				}
+			}
 			r.finishInput(runErr)
 			close(r.renderDone)
 		}()

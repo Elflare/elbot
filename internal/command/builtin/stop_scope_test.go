@@ -43,8 +43,8 @@ func TestStopUserScopeResolutionAndChildren(t *testing.T) {
 					t.Fatal("foreign request disclosed")
 				}
 			}
-			if _, err := cmd.Handle(ctx, command.Request{Args: foreign.ID}); err != nil {
-				t.Fatal(err)
+			if _, err := cmd.Handle(ctx, command.Request{Args: foreign.ID}); err == nil || command.ClassifyError(err).Code != command.CodeNotFound {
+				t.Fatalf("foreign request should be hidden: %v", err)
 			}
 			if foreignCtx.Err() != nil {
 				t.Fatal("foreign ID canceled")

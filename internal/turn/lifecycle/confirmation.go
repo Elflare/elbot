@@ -109,6 +109,18 @@ func (m *Manager) BeginAppend(sessionID, attempt string, input Input) bool {
 		return false
 	}
 	turn.phase = PhaseAwaitAppendConfirm
+	turn.appendWaitID++
 	appendPending(turn, input)
+	return true
+}
+
+func (m *Manager) ExpireAppend(sessionID string, waitID uint64) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	turn := m.turns[sessionID]
+	if turn == nil || turn.phase != PhaseAwaitAppendConfirm || turn.appendWaitID != waitID {
+		return false
+	}
+	removeTurn(m.turns, sessionID, turn, false)
 	return true
 }

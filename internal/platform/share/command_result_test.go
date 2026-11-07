@@ -32,6 +32,18 @@ func TestFormatCommandResultRendersData(t *testing.T) {
 	}
 }
 
+func TestDoctorFormattingRetainsConfigPathsAndFields(t *testing.T) {
+	got := FormatCommandResult(&command.Result{Data: command.DoctorData{
+		ConfigPath: "/config/app.toml",
+		Items:      []command.DoctorIssue{{Path: "/config/providers.toml", Level: "error", Field: []string{"platform", "telegram", "enabled"}, Message: "类型错误。"}},
+	}})
+	for _, want := range []string{"主配置：/config/app.toml", "/config/providers.toml", "[错误]", "platform.telegram.enabled", "类型错误。"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("doctor output missing %q: %s", want, got)
+		}
+	}
+}
+
 func TestMessagePreviewsIncludeAttachments(t *testing.T) {
 	for _, body := range []string{"", "body"} {
 		message := command.MessageData{Role: "user", Content: body, Attachments: []command.AttachmentData{{Name: "note.txt"}, {Name: "image.png"}}}

@@ -27,6 +27,7 @@ func (c *ExecutionCoordinator) AdoptForeground(ctx context.Context, row *storage
 // remain the source of truth for requests, attempts and logical execution state.
 type ExecutionCoordinator struct {
 	appendConfirmation delivery.Confirmation // 根部绑定当前命令前缀的追加确认展示。
+	appendWait         agentshare.ConfirmationWaitPolicy
 	// Context usage diagnostics.
 	sessions    ExecutionSessions
 	sessionRows interface {
@@ -67,6 +68,9 @@ func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, te
 				}
 				release()
 			}
+		}
+		if snapshot := c.turns.Snapshot(row.ID); snapshot.Phase == turn.PhaseAwaitAppendConfirm {
+			c.expireAppendAfter(ctx, row.ID, snapshot.AppendWaitID)
 		}
 		c.sessionIdle(ctx, row.ID)
 	}()
@@ -143,6 +147,7 @@ func (c *ExecutionCoordinator) RunBackground(ctx context.Context, row *storage.S
 func NewExecutionCoordinator(ctx context.Context, deps ExecutionCoordinatorDeps) *ExecutionCoordinator {
 	return &ExecutionCoordinator{
 		appendConfirmation: deps.AppendConfirmation,
+		appendWait:         deps.AppendWait,
 		sessions:           deps.Sessions,
 		sessionRows:        deps.SessionRows,
 		turns:              deps.Turns,

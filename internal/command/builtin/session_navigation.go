@@ -18,7 +18,7 @@ import (
 func NewSessions(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name: "sessions", Args: "[page] [-k|--keyword <keyword>]", Description: "会话列表/搜索", MinRole: contextinfo.RoleUser,
-		Help: "page≥1，默认末页；前翻=页码-1\n置顶优先，其余更新正序；-k/--keyword 后为搜索词",
+		Help: "page≥1，默认第一页；前翻=页码-1\n置顶优先，其余按更新时间倒序；-k/--keyword 后为搜索词",
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page, query, err := parseSessionsArgs(req.Args)
 		if err != nil {
@@ -39,7 +39,7 @@ type resumeCommand struct{ deps Deps }
 func (c resumeCommand) Info() command.Info {
 	return command.Info{
 		Name: "resume", Args: "[session_id|last|--page <page>]", Description: "恢复会话", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser,
-		Help: "省略=列表；默认末页；--page≥1，前翻=页码-1\nlast=最近更新，排除当前，忽略置顶",
+		Help: "省略=列表；默认第一页；--page≥1，前翻=页码-1\nlast=最近更新，排除当前，忽略置顶",
 	}
 }
 
@@ -118,7 +118,7 @@ func (c resumeCommand) Complete(ctx context.Context, req command.CompletionReque
 func NewArchives(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name: "archives", Args: "[page] [-k|--keyword <keyword>]", Description: "归档列表/搜索", MinRole: contextinfo.RoleUser,
-		Help: "page≥1，默认末页；前翻=页码-1\n置顶优先，其余更新正序；-k/--keyword 后为搜索词",
+		Help: "page≥1，默认第一页；前翻=页码-1\n置顶优先，其余按更新时间倒序；-k/--keyword 后为搜索词",
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		page, query, err := parseSessionsArgs(req.Args)
 		if err != nil {

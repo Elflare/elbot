@@ -12,8 +12,22 @@ import (
 	"time"
 
 	"elbot/internal/agent"
+	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
+	platformshare "elbot/internal/platform/share"
 )
+
+type doctorCommandReply struct{ text string }
+
+func (r *doctorCommandReply) SendCommandResult(_ context.Context, _ string, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
+	if failure != nil {
+		r.text = failure.Message
+	} else {
+		r.text = platformshare.FormatCommandResult(result)
+	}
+	return delivery.Receipt{}, nil
+}
 
 func TestDoctorThroughProductionWiring(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
@@ -87,30 +101,17 @@ func TestDoctorThroughProductionWiring(t *testing.T) {
 			t.Fatal(err)
 		}
 		before := doctorConfigSnapshot(t, root)
-		ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.
+		reply := &doctorCommandReply{}
+		ctx := platformshare.WithMessageContext(contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.
 			ActorIdentity{Platform: "cli", ID: "local"},
-		})
+		}), platformshare.MessageContext{CommandReply: reply})
 		for _, text := range []string{"-doctor", "/doctor"} {
 			func() {
-				output, err := os.CreateTemp(t.TempDir(), "output")
-				if err != nil {
-					t.Fatal(err)
-				}
-				stdout := os.Stdout
-				os.Stdout = output
-				defer func() {
-					os.Stdout = stdout
-					_ = output.Close()
-				}()
 				if err := supervisor.HandleMessage(ctx, agent.MessageRequest{Text: text}); err != nil {
 					t.Fatal(err)
 				}
 				synctest.Wait()
-				data, err := os.ReadFile(output.Name())
-				if err != nil {
-					t.Fatal(err)
-				}
-				report := string(data)
+				report := reply.text
 				if strings.Count(report, "主配置：") != 1 {
 					t.Fatalf("expected one diagnosis report, got output=%s", report)
 				}

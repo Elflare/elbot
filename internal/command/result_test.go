@@ -43,7 +43,7 @@ func TestTextResultUsesContentData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(raw); !strings.Contains(got, `"data":{"content":"accepted"}`) || strings.Contains(got, `"text"`) {
+	if got := string(raw); !strings.Contains(got, `"kind":"text"`) || !strings.Contains(got, `"data":{"content":"accepted"}`) || strings.Contains(got, `"text":"`) {
 		t.Fatalf("result wire=%s", got)
 	}
 }

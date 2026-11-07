@@ -1,11 +1,6 @@
 package share
 
-import (
-	"fmt"
-	"strings"
-
-	command "elbot/internal/command/share"
-)
+import command "elbot/internal/command/share"
 
 func FormatCommandResult(result *command.Result) string {
 	if result == nil {
@@ -56,14 +51,7 @@ func FormatCommandResult(result *command.Result) string {
 	case command.UsageData:
 		return formatUsage(data)
 	case command.DoctorData:
-		if len(data.Items) == 0 {
-			return "Everything is OK"
-		}
-		var out strings.Builder
-		for _, item := range data.Items {
-			fmt.Fprintf(&out, "%s: %s\n", item.Level, item.Message)
-		}
-		return strings.TrimRight(out.String(), "\n")
+		return formatDoctor(data)
 	}
 	return ""
 }

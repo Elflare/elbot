@@ -24,6 +24,10 @@ func TestListPageReturnsInvalidPageAndKeepsEmptyDefault(t *testing.T) {
 	if _, err := svc.Create(ctx, scope, CreateRequest{Title: "one"}); err != nil {
 		t.Fatal(err)
 	}
+	first, err := svc.ListPage(ctx, scope, ListRequest{PageSize: 1})
+	if err != nil || first.Page != 1 || len(first.Items) != 1 || first.Items[0].Title != "one" {
+		t.Fatalf("default page = %+v err=%v", first, err)
+	}
 	if _, err := svc.ListPage(ctx, scope, ListRequest{Page: 2, PageSize: 1}); !errors.Is(err, ErrInvalidPage) {
 		t.Fatalf("non-empty explicit page error=%v", err)
 	}

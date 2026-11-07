@@ -75,7 +75,7 @@ type ListRequest struct {
 	Query          string // 标题搜索词。
 	ArchivedOnly   bool   // 仅查询归档会话。
 	ExcludeCurrent bool   // 排除当前绑定。
-	Page           int    // 0 表示最后一页，其余从 1 开始。
+	Page           int    // 0 表示第一页，其余从 1 开始。
 	PageSize       int    // 每页容量。
 }
 
