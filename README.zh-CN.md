@@ -70,9 +70,10 @@ ElBot 不在每轮对话中注入所有工具的完整 schema，只暴露 `disco
 **CLI 客户端/服务端分离**： ElBot 既可作为客户端也可作为服务端。 **前端自由定制**：可自行制作任意形态的界面，下图仅作示意（除 TUI 外为概念性 mockup，不代表最终 UI）。
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/main/frontend/assets/frontend_1.png" width="260" />
-  <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/main/frontend/assets/frontend_2.jpg" width="260" />
-  <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/main/frontend/assets/tui.png" width="260" />
+  <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-light.png" width="500" />
+  <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-dark.png" width="500" />
+  <br>
+  <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-status.png" width="500" />
 </p>
 
 更多截图见 [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend)。
