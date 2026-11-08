@@ -91,7 +91,7 @@ type ModelCapabilities interface {
 	ModelList(string, modelmgr.ModelListOptions) modelmgr.ModelListResult
 }
 
-// ConfirmationCapabilities 在提交时原子复核 ID、绑定、权限与等待状态；C 不先读后猜测确认对象。
+// ConfirmationCapabilities 查询并响应当前确认等待项。
 type ConfirmationCapabilities interface {
 	Current(context.Context, CurrentConfirmationRequest) (CurrentConfirmationResult, error)
 	Respond(context.Context, RespondConfirmationRequest) (RespondConfirmationResult, error)

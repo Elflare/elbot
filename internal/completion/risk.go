@@ -5,31 +5,25 @@ import (
 	"strings"
 
 	"elbot/internal/command"
-	"elbot/internal/session"
-	"elbot/internal/storage"
-	"elbot/internal/turn"
+	"elbot/internal/control"
 )
 
 const KindRiskConfirmation = "risk_confirmation"
 
-type ScopeFunc func(context.Context) session.Scope
-
 type RiskConfirmationSource struct {
-	Router   *command.Router
-	Sessions interface {
-		Current(context.Context, session.Scope) (*storage.Session, error)
+	Router  *command.Router
+	Control interface {
+		CurrentConfirmation(context.Context, control.CurrentConfirmationRequest) (control.CurrentConfirmationResult, error)
 	}
-	Turns        *turn.Supervisor
-	Scope        ScopeFunc
 	CommandNames []string
 }
 
 func (s RiskConfirmationSource) Complete(ctx context.Context, req Request) ([]Item, error) {
-	if s.Router == nil || s.Sessions == nil || s.Turns == nil || s.Scope == nil || len(s.CommandNames) == 0 {
+	if s.Router == nil || s.Control == nil || len(s.CommandNames) == 0 {
 		return nil, nil
 	}
-	sess, err := s.Sessions.Current(ctx, s.Scope(ctx))
-	if err != nil || s.Turns.Snapshot(sess.ID).Phase != turn.PhaseAwaitRiskConfirm {
+	current, err := s.Control.CurrentConfirmation(ctx, control.CurrentConfirmationRequest{})
+	if err != nil || current.Kind != "tool" {
 		return nil, nil
 	}
 	parsed := s.Router.Parse(req.Text)

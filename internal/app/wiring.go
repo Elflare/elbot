@@ -70,7 +70,6 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 
 	agentSupervisor, err := agent.NewSupervisor(ctx, cfg, agent.SupervisorDeps{
 		Control: controller,
-		Doctor:  doctorService,
 		Store:   resources.store, Models: resources.models, Media: resources.media,
 		Permission: resources.permission, Logs: resources.logs,
 		Tools: toolSupervisor, Platform: platformSupervisor, ChatHistory: history,

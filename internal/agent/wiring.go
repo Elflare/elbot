@@ -257,8 +257,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		MediaRows: deps.Store.Media(),
 	})
 	m.completion = completion.NewService(
-		completion.RiskConfirmationSource{Router: m.commands, Sessions: m.sessions, Turns: m.turns, Scope: identity.Scope, CommandNames: agentconfirmation.RiskConfirmationCommandNames()},
-		completion.ForkMessageSource{Router: m.commands, Sessions: m.sessions, Store: deps.Store, Scope: identity.Scope},
+		completion.RiskConfirmationSource{Router: m.commands, Control: deps.Control, CommandNames: agentconfirmation.RiskConfirmationCommandNames()},
+		completion.ForkMessageSource{Router: m.commands, Control: deps.Control, PageSize: cfg.View.SessionListPageSize},
 		completion.ToolDirectiveSource{
 			Context: func(ctx context.Context) (context.Context, error) {
 				ctx = contextinfo.WithActor(ctx, identity.Actor(ctx))

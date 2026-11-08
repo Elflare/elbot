@@ -2,91 +2,106 @@ package completion
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
-	"elbot/internal/testutil"
-	"path/filepath"
+	"errors"
+	"reflect"
 	"testing"
 
 	"elbot/internal/command"
-	"elbot/internal/session"
-	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
-	"elbot/internal/turn"
+	"elbot/internal/control"
 )
 
-func TestRiskConfirmationSourceCompletesOnlyDuringRiskPhase(t *testing.T) {
-	ctx := context.Background()
-	store := newCompletionTestStore(t)
-	sessions := newSessionSupervisor(t, store)
-	sess, err := sessions.Create(ctx, testScope(), session.CreateRequest{Title: "risk"})
-	if err != nil {
-		t.Fatalf("create session: %v", err)
+type completionControlStub struct {
+	current    control.CurrentConfirmationResult
+	currentErr error
+	currentReq control.CurrentConfirmationRequest
+	pages      []control.SessionMessagesResult
+	pageReqs   []control.SessionMessagesRequest
+	pageErr    error
+}
+
+func (s *completionControlStub) CurrentConfirmation(_ context.Context, req control.CurrentConfirmationRequest) (control.CurrentConfirmationResult, error) {
+	s.currentReq = req
+	return s.current, s.currentErr
+}
+
+func (s *completionControlStub) SessionMessages(_ context.Context, req control.SessionMessagesRequest) (control.SessionMessagesResult, error) {
+	s.pageReqs = append(s.pageReqs, req)
+	if s.pageErr != nil {
+		return control.SessionMessagesResult{}, s.pageErr
 	}
-	turns := turn.NewSupervisor(testutil.IDSequence())
-	router := command.NewRouter([]string{"/"})
+	return s.pages[req.Page-1], nil
+}
+
+func TestRiskConfirmationSourceQueriesControlAndCompletesOnlyForToolWait(t *testing.T) {
+	ctx := context.Background()
+	controlStub := &completionControlStub{}
 	source := RiskConfirmationSource{
-		Router:       router,
-		Sessions:     sessions,
-		Turns:        turns,
-		Scope:        func(context.Context) session.Scope { return testScope() },
+		Router:       command.NewRouter([]string{"/"}),
+		Control:      controlStub,
 		CommandNames: []string{"confirm", "c", "reject"},
 	}
-	if got, _ := source.Complete(ctx, Request{Text: "/c"}); len(got) != 0 {
-		t.Fatalf("Complete before risk phase = %#v", got)
+	if got, err := source.Complete(ctx, Request{Text: "/c"}); err != nil || len(got) != 0 {
+		t.Fatalf("Complete without pending confirmation = %#v, %v", got, err)
 	}
-	if !turns.StartAttempt(sess.ID, turn.Input{Text: "run"}, turn.NewExecution("run"), "attempt") || !turns.StartToolPhase(sess.ID, "attempt") {
-		t.Fatal("failed to start tool phase")
+	if controlStub.currentReq.Refresh {
+		t.Fatal("completion refreshed confirmation timeout")
 	}
-	wait := turns.BeginRiskConfirmation(sess.ID, turn.RiskConfirmation{ToolName: "shell", Risk: "high"}, "attempt")
-	defer turns.FinishAttempt(sess.ID, "attempt")
-	defer wait.Cancel()
 
-	got, _ := source.Complete(ctx, Request{Text: "/c"})
-	if len(got) != 2 || got[0].Text != "/confirm" || got[1].Text != "/c" {
-		t.Fatalf("Complete during risk phase = %#v", got)
+	controlStub.current.Kind = "tool"
+	got, err := source.Complete(ctx, Request{Text: "/c"})
+	if err != nil || len(got) != 2 || got[0].Text != "/confirm" || got[1].Text != "/c" {
+		t.Fatalf("Complete during risk wait = %#v, %v", got, err)
+	}
+	argGot, err := source.Complete(ctx, Request{Text: "/confirm extra"})
+	if err != nil || len(argGot) != 0 {
+		t.Fatalf("argument completion = %#v, %v", argGot, err)
 	}
 }
 
-func TestForkMessageSourceCompletesAssistantMessageIDs(t *testing.T) {
+func TestForkMessageSourceUsesControlPagesAndPreservesRawMessages(t *testing.T) {
 	ctx := context.Background()
-	store := newCompletionTestStore(t)
-	sessions := newSessionSupervisor(t, store)
-	sess, err := sessions.Create(ctx, testScope(), session.CreateRequest{Title: "fork"})
-	if err != nil {
-		t.Fatalf("create session: %v", err)
+	pages := []control.SessionMessagesResult{
+		{
+			Page:      control.Page{Page: 1, PageSize: 1, HasNext: true, TotalPages: 2},
+			SessionID: "session-1",
+			Items: []control.MessageData{
+				{ID: "abc-new", Role: "assistant", Content: "new answer"},
+			},
+		},
+		{
+			Page:      control.Page{Page: 2, PageSize: 1, TotalPages: 2},
+			SessionID: "session-1",
+			Items: []control.MessageData{
+				{ID: "abc-old", Role: "assistant", Content: "old answer"},
+			},
+		},
 	}
-	messages := []*storage.Message{
-		{ID: storage.NewID(), SessionID: sess.ID, Role: storage.RoleUser, Content: "question"},
-		{ID: "abcdef-message", SessionID: sess.ID, Role: storage.RoleAssistant, Content: "answer"},
-		{ID: "abc-empty", SessionID: sess.ID, Role: storage.RoleAssistant, Content: ""},
+	controlStub := &completionControlStub{pages: pages}
+	source := ForkMessageSource{Router: command.NewRouter([]string{"/"}), Control: controlStub, PageSize: 1}
+	got, err := source.Complete(ctx, Request{Text: "/fork abc"})
+	if err != nil || len(got) != 2 || got[0].Text != "/fork abc-old" || got[0].Kind != KindForkMessage || got[1].Text != "/fork abc-new" {
+		t.Fatalf("Complete = %#v, %v", got, err)
 	}
-	for _, message := range messages {
-		if err := store.Messages().Append(ctx, message); err != nil {
-			t.Fatalf("append message: %v", err)
-		}
+	wantRequests := []control.SessionMessagesRequest{
+		{Page: 1, PageSize: 1},
+		{SessionID: "session-1", Page: 2, PageSize: 1},
 	}
+	if !reflect.DeepEqual(controlStub.pageReqs, wantRequests) {
+		t.Fatalf("page requests = %#v, want %#v", controlStub.pageReqs, wantRequests)
+	}
+	if !reflect.DeepEqual(controlStub.pages, pages) {
+		t.Fatal("completion modified raw message results")
+	}
+}
+
+func TestForkMessageSourceSuppressesControlReadErrors(t *testing.T) {
 	source := ForkMessageSource{
 		Router:   command.NewRouter([]string{"/"}),
-		Sessions: sessions,
-		Store:    store,
-		Scope:    func(context.Context) session.Scope { return testScope() },
+		Control:  &completionControlStub{pageErr: errors.New("history unavailable")},
+		PageSize: 10,
 	}
-	got, _ := source.Complete(ctx, Request{Text: "/fork abc"})
-	if len(got) != 1 || got[0].Text != "/fork abcdef-message" || got[0].Kind != KindForkMessage {
-		t.Fatalf("Complete = %#v", got)
+	got, err := source.Complete(context.Background(), Request{Text: "/fork abc"})
+	if err != nil || len(got) != 0 {
+		t.Fatalf("Complete after read error = %#v, %v", got, err)
 	}
-}
-
-func newCompletionTestStore(t *testing.T) storage.Store {
-	t.Helper()
-	store, err := sqlite.New(context.Background(), filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatalf("sqlite.New: %v", err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-	return store
-}
-
-func testScope() session.Scope {
-	return session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
 }

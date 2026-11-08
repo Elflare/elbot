@@ -8,7 +8,6 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/control"
 	"elbot/internal/delivery"
-	"elbot/internal/doctor"
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
@@ -23,10 +22,7 @@ import (
 
 // SupervisorDeps borrows shared resources and business capabilities; their owners retain lifecycle control.
 type SupervisorDeps struct {
-	Control *control.Supervisor // App 创建的统一操作入口，Agent 仅接入自身能力并供命令消费。
-	Doctor  interface {
-		Check(context.Context) (doctor.Report, error)
-	} // 借用只读配置诊断能力，由 App 按当前配置路径装配。
+	Control     *control.Supervisor // App 创建的统一操作入口，Agent 仅接入自身能力并供命令消费。
 	Store       storage.Store
 	ChatHistory interface {
 		GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)

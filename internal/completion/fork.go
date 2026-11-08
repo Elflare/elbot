@@ -5,47 +5,51 @@ import (
 	"strings"
 
 	"elbot/internal/command"
-	"elbot/internal/contextmgr"
-	"elbot/internal/session"
-	"elbot/internal/storage"
+	"elbot/internal/control"
 )
 
 const KindForkMessage = "fork_message"
 
 type ForkMessageSource struct {
-	Router   *command.Router
-	Sessions interface {
-		Current(context.Context, session.Scope) (*storage.Session, error)
+	Router  *command.Router
+	Control interface {
+		SessionMessages(context.Context, control.SessionMessagesRequest) (control.SessionMessagesResult, error)
 	}
-	Store storage.Store
-	Scope ScopeFunc
+	PageSize int
 }
 
 func (s ForkMessageSource) Complete(ctx context.Context, req Request) ([]Item, error) {
-	if s.Router == nil || s.Sessions == nil || s.Store == nil || s.Scope == nil {
+	if s.Router == nil || s.Control == nil {
 		return nil, nil
 	}
 	parsed := s.Router.Parse(req.Text)
 	if !parsed.OK || parsed.Name != "fork" || !hasForkArgs(req.Text, parsed.Prefix) {
 		return nil, nil
 	}
-	sess, err := s.Sessions.Current(ctx, s.Scope(ctx))
-	if err != nil {
-		return nil, nil
-	}
-	loaded, err := (contextmgr.Loader{Store: s.Store}).Load(ctx, sess.ID)
-	if err != nil {
-		return nil, nil
-	}
 	prefix := strings.TrimSpace(parsed.Args)
-	out := []Item{}
-	for _, message := range loaded.Messages {
-		if message.Role != storage.RoleAssistant || strings.TrimSpace(message.Content) == "" {
-			continue
+	pages := [][]control.MessageData{}
+	sessionID := ""
+	for page := 1; ; page++ {
+		loaded, err := s.Control.SessionMessages(ctx, control.SessionMessagesRequest{SessionID: sessionID, Page: page, PageSize: s.PageSize})
+		if err != nil {
+			return nil, nil
 		}
-		if strings.HasPrefix(message.ID, prefix) {
-			text := parsed.Prefix + "fork " + message.ID
-			out = append(out, Item{Text: text, Label: message.ID, Kind: KindForkMessage})
+		sessionID = loaded.SessionID
+		pages = append(pages, loaded.Items)
+		if !loaded.HasNext {
+			break
+		}
+	}
+	out := []Item{}
+	for i := len(pages) - 1; i >= 0; i-- {
+		for _, message := range pages[i] {
+			if message.Role != "assistant" || strings.TrimSpace(message.Content) == "" {
+				continue
+			}
+			if strings.HasPrefix(message.ID, prefix) {
+				text := parsed.Prefix + "fork " + message.ID
+				out = append(out, Item{Text: text, Label: message.ID, Kind: KindForkMessage})
+			}
 		}
 	}
 	return out, nil
