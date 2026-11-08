@@ -42,32 +42,32 @@ Model selection takes effect globally by mode/slot and is saved to `state.toml`;
 
 ## Session
 
-| Command | Function |
+| Command | Description |
 | --- | --- |
 | `/new` | Create and switch to a new Session. |
 | `/status` | Current Session status. |
-| `/sessions [关键词]` | List or search visible Sessions. |
-| `/resume [编号或 session_id]` | Restore historical Session. |
-| `/archives [页码] [关键词]` | List of archived Sessions. |
-| `/archive [编号或 session_id] --confirm` | Archive. |
-| `/unarchive [编号或 session_id]` | Unarchive. |
-| `/pin` / `/unpin [编号或 session_id]` | Pin / Unpin. |
-| `/rename [Number or session_id\"|Current Title] <New Title>` | Rename. |
-| `/delete <编号或 session_id> --confirm` | Permanently delete. |
-| `/clean --confirm` | Delete expired Sessions that are not archived or pinned. |
+| `/sessions [page] [-k\|--keyword <keyword>]` | List or search visible Sessions. |
+| `/resume [session_id\|last]` | Resume a historical Session. |
+| `/archives [page] [-k\|--keyword <keyword>]` | List of archived Sessions. |
+| `/archive [session_id] --confirm` | Archive. |
+| `/unarchive [session_id]` | Unarchive. |
+| `/pin` / `/unpin [session_id]` | Pin / Unpin. |
+| `/rename [session_id\|current_title] <new_title>` | Rename. |
+| `/delete <session_id> --confirm` | Permanently delete. |
+| `/clean --confirm` | Delete expired Sessions that are neither archived nor pinned. |
 
-- Except for `/rename` and `/delete`, commands with `[编号或 session_id]` act on the current Session when parameters are omitted; IDs are displayed by `/sessions` and `/archives`, and can be reused by these commands.
-- `/resume 1` directly restores the most recently updated non-current Session without needing to first execute a bare `/resume`; IDs are sorted by update time, and pagination is continuous.
-- CLI is a local high-privilege entry point, allowing viewing and managing Sessions across platforms; Non-CLI platforms only see the current platform and scope. Cron/Elnis background Sessions can only be restored via private chat on the same platform by the owning user, or via the CLI management entry point; they are not displayed in group chats or channels, and cannot be bypassed via direct ID, message quoting, or unarchiving; The first recovery will permanently transfer ownership to the foreground; switching away will not restore the background identity.
-- While the current Session is processing, switching commands such as `/new`, `/resume`, `/fork`, `/chat`, and `/work` cannot be executed; `/stop` is required first.
-- Deletion is a permanent operation and requires `--confirm`; Sessions currently executing cannot be deleted, and automatic cleanup will also skip them.
+- When the target is omitted, `/archive`, `/unarchive`, `/pin`, and `/unpin` apply to the current Session; `/rename` uses the current title when the target is omitted, and `/delete` must provide a `session_id`. A bare `/resume` returns a list of resumable Sessions.
+- `/resume last` resumes the most recently updated Session other than the current one, ignoring pins.
+- CLI superadmins can view and manage Sessions across platforms; ordinary CLI users and messaging platform users follow their respective platforms and scopes. Cron/Elnis background Sessions can only be resumed via private chat on the same platform by the owner, or via the CLI management entry. Resuming will permanently transfer ownership to the foreground.
+- Switching commands such as `/new`, `/resume`, `/fork`, `/chat`, and `/work` cannot be executed while the current Session is processing; `/stop` must be called first.
+- Deletion is a permanent operation and requires `--confirm`; Sessions currently executing cannot be deleted and will be skipped during automatic cleanup.
 
 ## Fork
 
 | Command | Function |
 | --- | --- |
-| `/messages [页码]` | List assistant message IDs available for forking in the current Session. |
-| `/fork <message_id>` | Create a branched Session from this assistant message; the original Session remains unchanged. |
+| `/messages [page_number]` | Display original user and assistant messages of the current Session in pages, defaulting to the latest page. |
+| `/fork <message_id>` | Create a branched Session from this assistant message; the original session remains unchanged. |
 
 ## Request Management
 
@@ -76,6 +76,10 @@ Model selection takes effect globally by mode/slot and is saved to `state.toml`;
 | `/requests` | Active requests of the current process, including turn, LLM, tool, and hook; turn displays the execution stage and the duration of that stage. |
 | `/stop [request_id\|ID]` | Stop a specified request; the ID is taken from `/requests`; Stops the request of the current Session when no parameters are passed. A one-time exec Hook will terminate the entire process tree, while a persistent Worker only cancels the current call. |
 | `/stopall` | Stop all active requests of the current process. |
+
+## Additional Input
+
+New input received while the LLM is processing will stop the current request and enter an append-wait state; consecutive inputs will accumulate. Send `y` or `/confirm` to continue, and the accumulated inputs will be merged and executed using the original Session; send `/stop` to cancel the current processing.
 
 ## Context Compaction
 

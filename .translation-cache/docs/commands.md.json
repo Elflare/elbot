@@ -103,11 +103,19 @@
       "source_hash": "ecbdc8d2e0a38504e24e2873210cec6b5cffa31b919a6a2986ecbe5aa3867c97",
       "translation": "## Fork\n\n| Command | Function |\n| --- | --- |\n| `/messages [page_number]` | Display original user and assistant messages of the current Session in pages, defaulting to the latest page. |\n| `/fork <message_id>` | Create a branched Session from this assistant message; the original session remains unchanged. |\n\n",
       "updated_at": 1794064405
+    },
+    "docs/commands.md:section:a8578d832bad582782fcbac5a102774f5fe2d333a58514da6bb7e83750f94511": {
+      "kind": "section",
+      "source": "## Session\n\n| 命令 | 作用 |\n| --- | --- |\n| `/new` | 创建并切换到新 Session。 |\n| `/status` | 当前 Session 状态。 |\n| `/sessions [页码] [-k\\|--keyword <关键词>]` | 列出或搜索可见 Session。 |\n| `/resume [session_id\\|last]` | 恢复历史 Session。 |\n| `/archives [页码] [-k\\|--keyword <关键词>]` | 已归档 Session 列表。 |\n| `/archive [session_id] --confirm` | 归档。 |\n| `/unarchive [session_id]` | 取消归档。 |\n| `/pin` / `/unpin [session_id]` | 置顶 / 取消置顶。 |\n| `/rename [session_id\\|当前标题] <新标题>` | 重命名。 |\n| `/delete <session_id> --confirm` | 永久删除。 |\n| `/clean --confirm` | 删除过期且未归档、未置顶的 Session。 |\n\n- `/archive`、`/unarchive`、`/pin`、`/unpin` 省略目标时作用于当前 Session；`/rename` 省略目标时使用当前标题，`/delete` 必须提供 `session_id`。裸 `/resume` 返回可恢复列表。\n- `/resume last` 恢复最近更新的非当前 Session，忽略置顶。\n- CLI 超级管理员可跨平台查看和管理 Session；普通 CLI 用户与消息平台用户遵循各自的平台和作用域。Cron／Elnis 后台会话仅所属用户可同平台私聊恢复，或从 CLI 管理入口恢复。恢复会永久转为前台归属。\n- 当前会话处理中时不能执行 `/new`、`/resume`、`/fork`、`/chat`、`/work` 等切换类命令，需要先 `/stop`。\n- 删除是永久操作且需要 `--confirm`；执行中的会话不能删除，自动清理也会跳过。\n\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "596463abc481abaa332769e700849b9cda368b34140f7f97fcff875e030a4a3c",
+      "translation": "## Session\n\n| Command | Description |\n| --- | --- |\n| `/new` | Create and switch to a new Session. |\n| `/status` | Current Session status. |\n| `/sessions [page] [-k\\|--keyword <keyword>]` | List or search visible Sessions. |\n| `/resume [session_id\\|last]` | Resume a historical Session. |\n| `/archives [page] [-k\\|--keyword <keyword>]` | List of archived Sessions. |\n| `/archive [session_id] --confirm` | Archive. |\n| `/unarchive [session_id]` | Unarchive. |\n| `/pin` / `/unpin [session_id]` | Pin / Unpin. |\n| `/rename [session_id\\|current_title] <new_title>` | Rename. |\n| `/delete <session_id> --confirm` | Permanently delete. |\n| `/clean --confirm` | Delete expired Sessions that are neither archived nor pinned. |\n\n- When the target is omitted, `/archive`, `/unarchive`, `/pin`, and `/unpin` apply to the current Session; `/rename` uses the current title when the target is omitted, and `/delete` must provide a `session_id`. A bare `/resume` returns a list of resumable Sessions.\n- `/resume last` resumes the most recently updated Session other than the current one, ignoring pins.\n- CLI superadmins can view and manage Sessions across platforms; ordinary CLI users and messaging platform users follow their respective platforms and scopes. Cron/Elnis background Sessions can only be resumed via private chat on the same platform by the owner, or via the CLI management entry. Resuming will permanently transfer ownership to the foreground.\n- Switching commands such as `/new`, `/resume`, `/fork`, `/chat`, and `/work` cannot be executed while the current Session is processing; `/stop` must be called first.\n- Deletion is a permanent operation and requires `--confirm`; Sessions currently executing cannot be deleted and will be skipped during automatic cleanup.\n\n",
+      "updated_at": 1794153951
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "",
+  "source_hash": "2413853a314212a073b456c49f306f2e193a62c99e522da2d83430578f9346c0",
   "target": "docs.en/commands.md",
-  "updated_at": 1794065130,
+  "updated_at": 1794153951,
   "version": 3
 }
