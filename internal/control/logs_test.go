@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"math"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -27,6 +29,36 @@ func (s *logStub) Query(_ context.Context, query logging.LogQuery) (logging.LogQ
 		result.Entries = result.Entries[:query.Limit]
 	}
 	return result, nil
+}
+
+func TestQueryLogsReadsCategoryFiles(t *testing.T) {
+	for _, item := range []struct{ category, prefix string }{
+		{"runtime", "elbot"}, {"audit", "audit"}, {"elnis", "elnis"},
+	} {
+		t.Run(item.category, func(t *testing.T) {
+			dir := t.TempDir()
+			now := time.Now()
+			data, err := json.Marshal(map[string]any{
+				"time": now.Format(time.RFC3339Nano), "category": item.category,
+				"level": "INFO", "event": "category_log", "module": "control", "type": "text", "content": "entry",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(dir, item.prefix+"-"+now.Format("2006-01-02")+".log")
+			if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			m, _ := testSupervisor(t, SupervisorDeps{Logs: logging.Reader{Dir: dir}})
+			result, err := m.QueryLogs(testContext(true), QueryLogsRequest{Category: item.category, Query: logging.LogQuery{Days: 2}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Items) != 1 || result.Items[0].EventName != "category_log" {
+				t.Fatalf("category %s did not read its log file: %+v", item.category, result)
+			}
+		})
+	}
 }
 
 func TestLogJSONPrecisionAndRawSelection(t *testing.T) {
@@ -119,7 +151,7 @@ func TestLogQueriesForwardCallerOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := query
-	want.Prefix = "runtime"
+	want.Prefix = "elbot"
 	if !reflect.DeepEqual(provider.query, want) {
 		t.Fatalf("log query options changed: %+v", provider.query)
 	}
