@@ -18,8 +18,8 @@ func (m *Supervisor) QueryLogs(ctx context.Context, req QueryLogsRequest) (Query
 	if err := authorize(ctx, true, m.deps.Logs != nil); err != nil {
 		return result, err
 	}
-	if !slices.Contains([]string{"elbot", "audit", "elnis"}, req.Category) {
-		return result, invalid("category 必须是 elbot、audit 或 elnis")
+	if !slices.Contains([]string{"log", "audit", "elnis"}, req.Category) {
+		return result, invalid("category 必须是 log、audit 或 elnis")
 	}
 	query := req.Query
 	query.Prefix = req.Category
