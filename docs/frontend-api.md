@@ -30,9 +30,9 @@ ws://<host>:<port>/cli/v1/ws
 - `/` 返回 `index.html`；`/settings.html`、`/app.js` 和 `/assets/app.css` 返回对应文件。目录路径以 `/` 结尾时读取其中的 `index.html`，没有入口则返回 404，不列出目录内容。
 - 支持多个实际 HTML 页面和 hash 路由；不提供 SPA 路径回退，缺失的 `/settings` 等路径返回 404。
 - 文件按请求从磁盘读取，修改已有文件后可刷新页面加载，缓存遵循 HTTP 行为。只开放 `frontend/` 内的文件，禁止路径越界和符号链接逃逸。
-- 静态文件无需登录即可加载；前端自行提供登录界面，通过下述 `hello` 认证后才能操作 ElBot。不要把 token 写进前端文件或 URL，默认只在页面内存保留。
+- 静态文件无需登录即可加载；前端自行提供登录界面，通过下述 `hello` 认证后才能操作 ElBot。
 
-前端应根据当前页面地址连接 `/cli/v1/ws`：HTTP 页面用 `ws:`，HTTPS 页面用 `wss:`，见下方[最小客户端示例](#最小客户端示例)。使用 HTTPS 时由部署环境提供 TLS 入口；ElBot 的监听与认证配置见[CLI 远程配置](configuration.md#cli-远程配置)。
+前端应根据当前页面地址连接 `/cli/v1/ws`：HTTP 页面用 `ws:`，HTTPS 页面用 `wss:`。使用 HTTPS 时由部署环境提供 TLS 入口；ElBot 的监听与认证配置见[CLI 远程配置](configuration.md#cli-远程配置)。
 
 ## 鉴权
 
@@ -384,107 +384,5 @@ my-client = ["ELBOT_CLI_TOKEN"]
 ```
 
 图中的 `stream(1, ...)` 表示 `stream_id=1` 及对应的 `event.type`，不是实际 JSON。推理事件可缺省，状态更新可能合并；生成失败后可能收到 `reset` 并重新生成，不能依赖每次都有完整的上述序列。模型切换等命令结果通过 `command_result` 返回，不需要经过 LLM 流式生成。
-
-## 最小客户端示例
-
-以下示例用于 ElBot 托管的浏览器页面，输入的凭据仅保留在页面内存；用 `textContent` 展示内容，不把模型输出作为 HTML。示例处理正文和推理、重试重置及最终提交；登录界面、按钮和状态栏可按需扩展。
-
-```javascript
-const output = document.createElement("pre");
-document.body.append(output);
-const messages = [];
-const streams = new Map();
-const render = () => {
-  output.textContent = messages.map((m) =>
-    (m.reasoning ? "[思考] " + m.reasoning + "\n" : "") + m.text
-  ).join("\n\n");
-};
-const removeMessage = (message) => {
-  const index = messages.indexOf(message);
-  if (index !== -1) messages.splice(index, 1);
-};
-
-function handleStream({ stream_id: id, event }) {
-  if (!event) return;
-  const text = event.text ?? "";
-  switch (event.type) {
-    case "reasoning_done":
-    case "finish":
-      // 只结束生成；保留预览和流关联，等待 send 或 reset。
-      return;
-    case "reset": {
-      const message = streams.get(id);
-      if (message) removeMessage(message);
-      streams.delete(id);
-      render();
-      return;
-    }
-    case "text_delta":
-    case "reasoning_delta":
-    case "send":
-      break;
-    default:
-      return;
-  }
-  let message = streams.get(id);
-  if (!message) {
-    message = { text: "", reasoning: "" };
-    streams.set(id, message);
-    messages.push(message);
-  }
-  if (event.type === "text_delta") message.text += text;
-  if (event.type === "reasoning_delta") message.reasoning += text;
-  if (event.type === "send") {
-    message.text = text; // 即使为空，也替换全部正文；不另追加一条消息。
-    streams.delete(id);
-    if (!message.text && !message.reasoning) removeMessage(message);
-  }
-  render();
-}
-
-const clientId = window.prompt("Client ID");
-const token = window.prompt("Token");
-const wsUrl = new URL("/cli/v1/ws", window.location.href);
-wsUrl.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-const ws = new WebSocket(wsUrl);
-
-ws.onopen = () => {
-  ws.send(JSON.stringify({
-    type: "hello",
-    client_id: clientId,
-    token,
-  }));
-};
-
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  switch (msg.type) {
-    case "hello_ok":
-      // 鉴权成功，发送一条消息
-      ws.send(JSON.stringify({ type: "input", text: "你好" }));
-      break;
-    case "chat":
-      messages.push({ text: msg.text ?? "", reasoning: "" });
-      render();
-      break;
-    case "stream":
-      handleStream(msg);
-      break;
-    case "command_result":
-      if (msg.result) console.log(msg.result.kind, msg.result.data);
-      if (msg.error) console.error(msg.error.kind, msg.error.code, msg.error.message);
-      break;
-    case "notice":
-      console.log(`[${msg.level ?? "INFO"}] ${msg.text ?? ""}`);
-      break;
-    case "status":
-      console.log("status:", msg.snapshot);
-      break;
-    case "error":
-      console.error("error: " + msg.text);
-      break;
-  }
-};
-```
 
 更多前端示例见 [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend)。
