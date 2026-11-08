@@ -1,12 +1,12 @@
 {
   "segments": {
-    "docs/README.md:section:218a44071097452de9a727845efb1227b5e45ca5e2a9bebf705d700ba9e5b04b": {
+    "docs/README.md:section:6ff17a6e1d5df580b20ba66d4903e439a5529a997d2e7cb322920e2187d1e6fa": {
       "kind": "section",
-      "source": "## 阅读顺序\n\n1. [快速开始](getting-started.md)：配置 API Key → 启动 CLI → 第一次对话。\n2. [配置说明](configuration.md)：配置文件布局、路径规则、Provider、运行数据、插件目录。\n3. [命令速查](commands.md)：slash 命令与会话管理。\n4. [核心概念](concepts.md)：Chat / Work 模式、工具发现、Session、Hook、Cron、Skill、安全策略。\n5. [Hook](hooks.md)：规则 Hook、action 类型、多段输出、exec 脚本。\n6. [Elnis 监听枢纽](elnis.md)：Elnis / Elwisp / Elvena 与外部事件接入。\n7. [Elnis 配置与使用](elnis-usage.md)：启用 Elnis、配置 Elwisp、投递事件。\n8. [ELyph 任务表示法](elyph.md)：Skill 和 Cron 任务条共用的任务语法。\n9. [前端 API](frontend-api.md)：WebSocket 协议、消息类型和补全接口。\n\n",
+      "source": "## 阅读顺序\n\n1. [快速开始](getting-started.md)：配置 API Key → 启动 CLI → 第一次对话。\n2. [配置说明](configuration.md)：配置文件布局、路径规则、Provider、运行数据、插件目录。\n3. [命令速查](commands.md)：slash 命令与会话管理。\n4. [核心概念](concepts.md)：Chat / Work 模式、工具发现、Session、Hook、Cron、Skill、安全策略。\n5. [Hook](hooks.md)：规则 Hook、action 类型、多段输出、exec 脚本。\n6. [Elnis 监听枢纽](elnis.md)：Elnis / Elwisp / Elvena 与外部事件接入。\n7. [Elnis 配置与使用](elnis-usage.md)：启用 Elnis、配置 Elwisp、投递事件。\n8. [ELyph 任务表示法](elyph.md)：Skill 和 Cron 任务条共用的任务语法。\n9. [前端 API](frontend-api.md)：WebSocket 协议、附件接口和结构化管理 API。\n\n",
       "source_file": "docs/README.md",
-      "source_hash": "8477ad1f1e8843bd50c73c394b87eb9c38a32ec6975664699c7f4dc47a22f734",
-      "translation": "## Reading Order\n\n1. [Quick Start](getting-started.md): Configure API Key → Start CLI → First Conversation.\n2. [Configuration Guide](configuration.md): Configuration file layout, path rules, Provider, runtime data, plugin directory.\n3. [Command Cheat Sheet](commands.md): Slash commands and Session management.\n4. [Core Concepts](concepts.md): Chat / Work mode, tool discovery, Session, Hook, Cron, Skill, security policies.\n5. [Hook](hooks.md): Rule Hook, action types, multi-segment output, exec scripts.\n6. [Elnis Listening Hub](elnis.md): Elnis / Elwisp / Elvena and external event integration.\n7. [Elnis Configuration and Usage](elnis-usage.md): Enable Elnis, configure Elwisp, and deliver events.\n8. [ELyph Task Notation](elyph.md): The task syntax shared by Skills and Cron task entries.\n9. [Frontend API](frontend-api.md): WebSocket protocol, message types, and completion interfaces.\n\n",
-      "updated_at": 1793349365
+      "source_hash": "5b4448921149b8dd6a995d832b216c446abef3edd4bcfd16ef683788f805d291",
+      "translation": "## Reading Order\n\n1. [Quick Start](getting-started.md): Configure API Key → Start CLI → First conversation.\n2. [Configuration Guide](configuration.md): Configuration file layout, path rules, Provider, runtime data, plugin directory.\n3. [Command Reference](commands.md): slash commands and Session management.\n4. [Core Concepts](concepts.md): chat / work mode, tool discovery, Session, Hook, Cron, Skill, security policies.\n5. [Hook](hooks.md): Rule Hooks, action types, multi-segment output, exec scripts.\n6. [Elnis listening hub](elnis.md): Elnis / Elwisp / Elvena and external event integration.\n7. [Elnis Configuration and Usage](elnis-usage.md): Enable Elnis, configure Elwisp, deliver events.\n8. [ELyph Task Notation](elyph.md): Task syntax shared by Skill and Cron task entries.\n9. [Frontend API](frontend-api.md): WebSocket protocol, attachment interface, and structured management API.\n\n",
+      "updated_at": 1794126495
     },
     "docs/README.md:section:873ae496e4bcaf2a69de3a7cb22c624a5f4cc56fb5ecc3f1093941b5328c0253": {
       "kind": "section",
@@ -26,8 +26,8 @@
     }
   },
   "source": "docs/README.md",
-  "source_hash": "cb2251efc286294bf2be28a78fef1533f78b4dd7886569c879a983dff536a71a",
+  "source_hash": "67eb6190f5e9b0723c8461e94915fd801a447675c16d1d40a1a8681491dbc230",
   "target": "docs.en/README.md",
-  "updated_at": 1793423213,
+  "updated_at": 1794126496,
   "version": 3
 }
