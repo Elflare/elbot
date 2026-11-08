@@ -2,7 +2,7 @@
 
 # Frontend API
 
-ElBot features frontend-backend separation. The CLI remote protocol exchanges JSON messages via WebSocket and sends/receives attachments through an HTTP interface on the same port. TUI, Web, mobile clients, and scripts share this protocol, with clients handling display and download interactions independently.
+ElBot uses a decoupled frontend and backend architecture. The CLI remote protocol exchanges JSON messages via WebSocket, and uses HTTP interfaces on the same port to send and receive attachments and invoke structured management operations. TUI, Web, mobile clients, and scripts share the same protocol, with clients handling their own display and download interactions.
 
 ## Connection
 
@@ -14,10 +14,10 @@ Default address `ws://127.0.0.1:32172/cli/v1/ws`. The address and port can be mo
 
 ## Static Frontend Hosting
 
-After enabling the CLI remote service, you can place `frontend/index.html` in the directory where the main configuration file is located. Accessing `http://<host>:<port>/` will open it. The page and WebSocket share `server.listen`, so no separate server is needed, and there are no built-in frontend templates:
+After enabling the CLI remote service, you can place `frontend/index.html` in the directory where the main configuration file is located; access it via `http://<host>:<port>/`. The page and WebSocket share `server.listen`, so no separate server is required, and there are no built-in frontend templates:
 
 ```text
-config directory/
+config_directory/
 ├── app.toml
 ├── .env
 └── frontend/
@@ -29,12 +29,12 @@ config directory/
 ```
 
 - The entry point is automatically recognized during initialization; hosting is not enabled if the directory or entry point does not exist, and an error is reported for other read errors or if the entry point is not a regular file. The service must be restarted after the entry point is placed for the first time.
-- `/` returns `index.html`; `/settings.html`, `/app.js`, and `/assets/app.css` return their corresponding files. When a directory path ends with `/`, the `index.html` within it is read; if no entry point exists, a 404 is returned, and directory contents are not listed.
-- Supports multiple actual HTML pages and hash routing; no SPA path fallback is provided, so missing paths like `/settings` return 404.
-- Files are read from disk upon request; existing files can be reloaded by refreshing the page, and caching follows HTTP behavior. Only files within `frontend/` are exposed; path traversal and symbolic link escape are prohibited.
-- Static files can be loaded without logging in; the frontend should provide its own login interface, and ElBot can only be operated after authentication via the `hello` command described below. Do not write tokens into frontend files or URLs; by default, they are only kept in page memory.
+- `/` returns `index.html`; `/settings.html`, `/app.js`, and `/assets/app.css` return their respective files. When a directory path ends with `/`, the `index.html` within it is read; if no entry point exists, a 404 is returned, and directory contents are not listed.
+- Multiple actual HTML pages and hash routing are supported; SPA path fallback is not provided, and missing paths such as `/settings` return 404.
+- Files are read from disk upon request; existing files can be reloaded by refreshing the page, and caching follows HTTP behavior. Only files within `frontend/` are exposed; path traversal and symbolic link escapes are prohibited.
+- Static files can be loaded without logging in; the frontend should provide its own login interface, and ElBot can only be operated after passing the `hello` authentication described below.
 
-The frontend should connect to `/cli/v1/ws` based on the current page address: use `ws:` for HTTP pages and `wss:` for HTTPS pages, see the [Minimal Client Example](#最小客户端示例) below. When using HTTPS, the TLS entry is provided by the deployment environment; for ElBot's listening and authentication configuration, see [CLI Remote Configuration](configuration.md#cli-远程配置).
+The frontend should connect to `/cli/v1/ws` based on the current page address: use `ws:` for HTTP pages and `wss:` for HTTPS pages. When using HTTPS, the TLS entry point is provided by the deployment environment; for ElBot's listening and authentication configuration, see [CLI Remote Configuration](configuration.md#cli-远程配置).
 
 ## Authentication
 
@@ -54,12 +54,14 @@ After validating the token, the server responds with:
 - `error` — Authentication failed, connection closed
 
 ```json
-{"type": "hello_ok", "client_id": "my-client", "media_token": "connection-media-token"}
+{"type": "hello_ok", "client_id": "my-client", "media_token": "connection-media-token", "api_token": "connection-api-token"}
 ```
 
-Tokens are mapped to environment variable names by client_id in `[platform.cli.server.tokens]`; the server reads the actual values from the corresponding environment variables.
+Tokens are mapped to environment variable names by `client_id` in `[platform.cli.server.tokens]`; the server reads the actual values from the corresponding environment variables.
 
-The `media_token` is used only for the HTTP attachment interfaces described below and is bound to the currently authenticated WebSocket connection; it becomes invalid after disconnection, and new credentials must be obtained upon reconnection. Multiple connections with the same client_id are isolated from each other. Credentials are kept in client memory and sent via `Authorization: Bearer <media_token>`, not included in the URL.
+`media_token` is used only for the HTTP attachment interfaces described below and is bound to the current authenticated WebSocket connection; it becomes invalid after disconnection, and new credentials must be obtained upon reconnection. Multiple connections with the same `client_id` are isolated from each other. Credentials are kept in client memory and sent via `Authorization: Bearer <media_token>`, not included in the URL.
+
+`api_token` is used only to route subsequent actions back to the current WebSocket after confirming additional input; it is bound to the current connection and becomes invalid upon disconnection. Each request to the Management API still requires the configured client token and must send `X-Client-ID: <client_id>`; the `api_token` is placed in the `X-CLI-Connection` request header and does not grant permissions on its own.
 
 ## Message Format
 
@@ -72,14 +74,15 @@ All messages are JSON and share the same structure:
 | client_id | string | Client identifier |
 | token | string | Authentication token (hello only) |
 | media_token | string | HTTP attachment credentials for the current connection (hello_ok only) |
+| api_token | string | Management API route credentials for the current connection (hello_ok only) |
 | file_ids | array of string | Attachment IDs uploaded or received in the current connection (input only) |
 | attachment | object | Attachment description (attachment only), fields see below |
 | text | string | Text content |
 | level | string | Notification level (notice only) |
 | cursor | int | Cursor position (completion requests only) |
 | items | array | Completion candidates list (completion responses only) |
-| snapshot | object | Runtime state snapshot (status only) |
-| stream_id | uint64 | Logical message stream identifier (stream only), used to correlate the preview, reset, and submission of the same message |
+| snapshot | object | Runtime status snapshot (status only) |
+| stream_id | uint64 | Logical message stream identifier (stream only), used to correlate previews, resets, and submissions of the same message |
 | event | object | Message stream event (stream only), fields see below |
 
 ## HTTP Attachment Interface
@@ -99,6 +102,10 @@ GET uses `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff`
 Deletion or disconnection only revokes attachment authorization and ends the connection hold; it does not directly delete the Media object. In-flight operations that have already acquired independent hold can be completed; final reclamation is still managed by Media. After refreshing or reconnecting, the original attachment ID cannot be reused and must be re-uploaded.
 
 Invalid authentication returns 401; if the attachment does not exist or does not belong to the current connection, 404 is returned; incorrect request format returns 400; 503 is returned when the service stops accepting connections; media processing failure (including exceeding upload limits) returns 500 and the unified message "Attachment processing failed", with specific reasons recorded in the server-side logs.
+
+## HTTP Management API
+
+Refer to the [Official API Documentation](https://elfreese.github.io/elbot-landing/docs/api/) for Management API endpoints, requests, and response fields. Permissions, Session scopes, and file scopes are adjudicated by Control and its providers. Writing to configuration files only modifies disk content and does not hot-update the assembled runtime configuration; configuration diagnostics can be called to check file content before restarting.
 
 ## Client → Server
 
@@ -189,13 +196,13 @@ Notifications are queued independently by platform and sent sequentially to the 
 | Field | Description |
 | --- | --- |
 | result.kind | Data structure category, explicitly specified by the server; different branches of the same command may vary |
-| result.data | Named business data corresponding to the category; when `kind=text`, it is `{content: string}` |
-| result.confirmation | If not null, indicates that confirmation is still pending and the target operation has not yet been executed; contains actions |
-| error | Independent categorized error; null upon success |
+| result.data | Named business data corresponding to the category; for `kind=text`, it is `{content: string}` |
+| result.confirmation | Non-null indicates that confirmation is still pending and the target operation has not yet been executed; contains actions |
+| error | Independent categorized error; null on success |
 
-When a complete failure occurs, `result=null`; when partial results exist, both `result` and `error` can be returned simultaneously. Itemized failures within a list are preserved in the result data without erasing successful items. Internal server raw error chains and subsequent inputs are not included in the JSON.
+In case of complete failure, `result=null`; when partial results exist, both `result` and `error` can be returned simultaneously. Item-by-item failures in a list are preserved within the result data, without erasing successful items. Original internal server error chains and subsequent inputs are not included in the JSON.
 
-`error` contains `kind`, `code`, and `message`: `kind` can be `input` (unknown command/parameter error), `rejected` (permission/busy status/target does not exist/confirmation expired), `internal` (internal failure), or `interrupted` (actual execution canceled/timeout). `code` provides the specific reason, such as `unknown_command`, `invalid_arguments`, `permission_denied`, `session_busy`, `confirmation_expired`, `canceled`, `timeout`. Client-side timeout or disconnection does not mean the backend execution has been canceled. Accepting a stop request via `/stop` is a normal result.
+`error` contains `kind`, `code`, and `message`: `kind` is `input` (unknown command/parameter error), `rejected` (permission/busy status/target does not exist/confirmation expired), `internal` (internal failure), or `interrupted` (actual execution canceled/timeout). `code` provides the specific reason, such as `unknown_command`, `invalid_arguments`, `permission_denied`, `session_busy`, `confirmation_expired`, `canceled`, `timeout`. Client timeout or disconnection does not mean the backend execution has been canceled. `/stop` accepting a stop request is a normal result.
 
 The structure of a confirmation operation is:
 
@@ -203,7 +210,7 @@ The structure of a confirmation operation is:
 {"actions":[{"id":"confirm","label":"Confirm Delete","command":"/delete s-1 --confirm"}]}
 ```
 
-The client submits the `command` as a new `input.text`; permissions and target states are still validated by the server, and the `id` is not an authorization credential.
+The client submits the `command` as a new `input.text`; permissions and target status are still validated by the server, and the `id` is not an authorization credential.
 
 Main data categories:
 
@@ -212,18 +219,17 @@ Main data categories:
 | sessions | items, current binding, search terms, and pagination; each item contains Session fields, message count, the most recent message, and summaries of user/assistant content |
 | session | operation target, the Session after changes, current binding, actual number of changes, and the most recent messages read by resume/fork |
 | messages | session_id, items, and pagination; message content is complete, while historical attachments only provide names |
-| status | nullable current Session, mode, model, Turn phase, requests, tool statistics, recent user/assistant content, and context |
-| models / model | model directory and errors per provider / the actually submitted model and target |
+| status | nullable current Session, mode, model, Turn phase, request, tool statistics, most recent user/assistant content, and context |
+| models / model | model directory and errors per provider / the actual submitted model and target |
 | requests / stop | request snapshot / stop target and the actual number of accepted cancellations |
 | tools, rollbacks, rollback | tool directory and management target / rollback list and actual results |
 | logs, usage, doctor, hooks, compact, help | raw reports, statistics, or operation results for the corresponding domains |
 | text | text feedback without business data |
 
-`/messages` reads page 1 by default, with 20 items per page. Page 1 is the most recent, and page numbers increase as they read further back into history; items within each page are ordered by conversation sequence. When loading upwards, earlier pages are inserted at the top and deduplicated by message ID. Page boundaries may shift if new messages arrive during page queries; cross-request snapshots are not provided. Empty history returns `items=[]` and `total_pages=0`.
+`/messages` reads page 1 by default, with 20 items per page. Page 1 is the most recent, and increasing page numbers read further back into history; items within each page are ordered by conversation sequence. When loading upwards, earlier pages are inserted at the top and deduplicated by message ID. Page boundaries may shift if new messages arrive during page queries; cross-request snapshots are not provided. An empty history returns `items=[]` and `total_pages=0`.
 
-The `context` of `/status` contains `usage`, `context_window`, `compact_enabled`, and `compact_trigger_ratio`. Usage fields are `prompt_tokens`, `completion_tokens`, `total_tokens`, and `cache_hit_tokens`; null indicates unknown, and 0 is a known zero value. The context ratio uses known total/window, and the cache hit rate uses known cache/prompt; missing counts are not extrapolated. The phase here comes from Turn; real-time `status` frames still use Runtime snapshots.
+The `context` of `/status` contains `usage`, `context_window`, `compact_enabled`, and `compact_trigger_ratio`. Usage fields are `prompt_tokens`, `completion_tokens`, `total_tokens`, and `cache_hit_tokens`; null indicates unknown, and 0 is a known zero value. The context ratio uses known total/window, and the cache hit rate uses known cache/prompt; missing counts are not extrapolated. The phase here comes from the Turn; real-time `status` frames still use the Runtime snapshot.
 
-For complete business field and category definitions, see [Command Common Data Types](../internal/command/data.go) and [Result Contract](../internal/command/result.go).
 
 ### status — Runtime Status
 
@@ -364,12 +370,12 @@ my-client = ["ELBOT_CLI_TOKEN"]
 ## Typical Interaction Flow
 
 ```
-Client                               Server
+Client                                Server
   │                                   │
   │──── hello ──────────────────────▶│
   │◀─── hello_ok ────────────────────│
   │                                   │
-  │──── input("Hello") ───────────────▶│
+  │──── input("Hello") ──────────────▶│
   │◀─── status(preparing) ───────────│
   │◀─── status(llm) ─────────────────│
   │◀─── stream(1, reasoning_delta) ──│
@@ -385,108 +391,6 @@ Client                               Server
   │                                   │
 ```
 
-The `stream(1, ...)` in the diagram represents `stream_id=1` and the corresponding `event.type`, not actual JSON. Reasoning events may be omitted, and status updates may be merged; after a generation failure, a `reset` may be received followed by regeneration, so you cannot rely on the complete sequence above occurring every time. Results of commands such as model switching are returned via `command_result` and do not require LLM streaming generation.
-
-## Minimal Client Example
-
-The following example is for browser pages hosted by ElBot; the entered credentials are kept only in page memory. Content is displayed using `textContent` to avoid treating model output as HTML. The example handles body text and reasoning, retry resets, and final submissions; the login interface, buttons, and status bar can be expanded as needed.
-
-```javascript
-const output = document.createElement("pre");
-document.body.append(output);
-const messages = [];
-const streams = new Map();
-const render = () => {
-  output.textContent = messages.map((m) =>
-    (m.reasoning ? "[Thinking] " + m.reasoning + "\n" : "") + m.text
-  ).join("\n\n");
-};
-const removeMessage = (message) => {
-  const index = messages.indexOf(message);
-  if (index !== -1) messages.splice(index, 1);
-};
-
-function handleStream({ stream_id: id, event }) {
-  if (!event) return;
-  const text = event.text ?? "";
-  switch (event.type) {
-    case "reasoning_done":
-    case "finish":
-      // Only end generation; keep preview and stream association, waiting for send or reset.
-      return;
-    case "reset": {
-      const message = streams.get(id);
-      if (message) removeMessage(message);
-      streams.delete(id);
-      render();
-      return;
-    }
-    case "text_delta":
-    case "reasoning_delta":
-    case "send":
-      break;
-    default:
-      return;
-  }
-  let message = streams.get(id);
-  if (!message) {
-    message = { text: "", reasoning: "" };
-    streams.set(id, message);
-    messages.push(message);
-  }
-  if (event.type === "text_delta") message.text += text;
-  if (event.type === "reasoning_delta") message.reasoning += text;
-  if (event.type === "send") {
-    message.text = text; // Replace the entire body even if empty; do not append another message.
-    streams.delete(id);
-    if (!message.text && !message.reasoning) removeMessage(message);
-  }
-  render();
-}
-
-const clientId = window.prompt("Client ID");
-const token = window.prompt("Token");
-const wsUrl = new URL("/cli/v1/ws", window.location.href);
-wsUrl.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-const ws = new WebSocket(wsUrl);
-
-ws.onopen = () => {
-  ws.send(JSON.stringify({
-    type: "hello",
-    client_id: clientId,
-    token,
-  }));
-};
-
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  switch (msg.type) {
-    case "hello_ok":
-      // Authentication successful, send a message
-      ws.send(JSON.stringify({ type: "input", text: "Hello" }));
-      break;
-    case "chat":
-      messages.push({ text: msg.text ?? "", reasoning: "" });
-      render();
-      break;
-    case "stream":
-      handleStream(msg);
-      break;
-    case "command_result":
-      if (msg.result) console.log(msg.result.kind, msg.result.data);
-      if (msg.error) console.error(msg.error.kind, msg.error.code, msg.error.message);
-      break;
-    case "notice":
-      console.log(`[${msg.level ?? "INFO"}] ${msg.text ?? ""}`);
-      break;
-    case "status":
-      console.log("status:", msg.snapshot);
-      break;
-    case "error":
-      console.error("error: " + msg.text);
-      break;
-  }
-};
-```
+The `stream(1, ...)` in the diagram represents `stream_id=1` and the corresponding `event.type`, not actual JSON. Reasoning events may be omitted, and status updates may be merged; after a generation failure, a `reset` may be received followed by regeneration; do not rely on the complete sequence above occurring every time. Results of commands such as model switching are returned via `command_result` and do not require LLM streaming generation.
 
 For more frontend examples, see [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend).
