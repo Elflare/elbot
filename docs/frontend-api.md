@@ -103,7 +103,7 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 
 ## HTTP 管理 API
 
-管理 API 的端点、请求和响应字段见[静态 OpenAPI 契约](frontend-api.openapi.yaml)。权限、会话范围和文件范围由 Control 及其提供方裁决。配置文件写入只改磁盘内容，不热更新已装配的运行配置；重启前可调用配置诊断检查文件内容。
+管理 API 的端点、请求和响应字段见[官网 API 文档](https://elfreese.github.io/elbot-landing/docs/api/)。权限、会话范围和文件范围由 Control 及其提供方裁决。配置文件写入只改磁盘内容，不热更新已装配的运行配置；重启前可调用配置诊断检查文件内容。
 
 ## 客户端 → 服务端
 
@@ -228,7 +228,6 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 
 `/status` 的 `context` 包含 `usage`、`context_window`、`compact_enabled`、`compact_trigger_ratio`。用量字段为 `prompt_tokens`、`completion_tokens`、`total_tokens`、`cache_hit_tokens`；null 表示未知，0 是已知零值。上下文比例使用已知 total/window，缓存命中率使用已知 cache/prompt，不推算缺失计数。此处阶段来自 Turn；实时 `status` 帧仍使用 Runtime 快照。
 
-完整业务字段与类别定义见 [Command 公共数据类型](../internal/command/data.go) 和 [结果契约](../internal/command/result.go)。
 
 ### status — 运行状态
 
