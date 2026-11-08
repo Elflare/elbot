@@ -10,6 +10,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/contextmgr"
+	"elbot/internal/control"
 	"elbot/internal/events"
 	"elbot/internal/request"
 	"elbot/internal/session"
@@ -35,6 +36,7 @@ type Supervisor struct {
 	commands              *command.Router
 	background            *agentinput.BackgroundHandler // Prepares task input using owned Session and execution capabilities.
 	handler               *agentinput.MessageHandler
+	input                 *agentinput.InputCoordinator
 	completion            *completion.Service
 	execution             *agentexecution.ExecutionCoordinator
 	bridge                *agenthooks.HookBridge
@@ -42,6 +44,14 @@ type Supervisor struct {
 	started, closed       bool
 	done                  chan struct{}
 	restoreMessageContext func(context.Context, context.Context) context.Context // 注入的平台上下文恢复能力，不读取平台内部值。
+}
+
+// ContinueControlInput resumes work requested by a Control operation after its result was delivered.
+func (m *Supervisor) ContinueControlInput(ctx context.Context, continuation control.Continuation) (context.Context, error) {
+	if m.input == nil {
+		return ctx, errors.New("agent input coordinator is not connected")
+	}
+	return m.input.ContinueCommandInput(ctx, continuation)
 }
 
 func (m *Supervisor) HandleMessage(ctx context.Context, req MessageRequest) error {

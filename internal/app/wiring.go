@@ -32,7 +32,7 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 	// 历史库由 App 持有，各线只借用实际使用的能力。
 	history := resources.historyStore.Repository()
 	platformSupervisor, err := platform.NewSupervisor(ctx, cfg, platform.SupervisorDeps{
-		Mode: string(mode), Store: resources.store, Media: resources.media, ChatHistory: history,
+		Mode: string(mode), Store: resources.store, Media: resources.media, ChatHistory: history, Control: controller,
 	})
 	if platformSupervisor != nil {
 		lines = append(lines, businessLine{

@@ -241,6 +241,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Preloader:     deps.Tools,
 		ToolState:     deps.Tools,
 	})
+	m.input = input
 	commands, err := wireCommands(m.commands, agentinput.CommandExecutorDeps{Router: m.commands, Sessions: m.sessions, Identity: identity, Output: deps.Platform, Confirmations: deps.Control, Input: input}, command.BuiltinDeps{Control: deps.Control, SessionListPageSize: cfg.View.SessionListPageSize, SessionRetentionDays: cfg.Maintenance.SessionCleanup.RetentionDays})
 	if err != nil {
 		return m, err

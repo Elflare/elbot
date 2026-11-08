@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
+	"elbot/internal/control"
 	"elbot/internal/platform/cli/local"
 	"elbot/internal/platform/cli/remote"
 	clishare "elbot/internal/platform/cli/share"
@@ -14,12 +16,15 @@ import (
 // RemoteServerOptions 是平台注册层交给 CLI 根包的远程服务配置。
 type RemoteServerOptions struct {
 	Media        clishare.Media
+	Control      ControlCapabilities
 	FrontendDir  string
 	PlatformName string
 	Config       Config
 	ConfigEnv    func(string) (string, bool, error)
 	Superadmins  *platformshare.Superadmins
 }
+
+type ControlCapabilities = remote.ControlCapabilities
 
 // New 创建本地终端实现并以 CLI 平台门面对外提供。
 func New(platformName, clientID string) *Adapter {
@@ -34,10 +39,19 @@ func NewRemoteServer(opts RemoteServerOptions) (*Adapter, error) {
 		Config:       remote.Config{Server: remote.ServerConfig{Enabled: opts.Config.Server.Enabled, Listen: opts.Config.Server.Listen, Tokens: opts.Config.Server.Tokens}},
 		PlatformName: opts.PlatformName, ConfigEnv: opts.ConfigEnv,
 		Superadmins: opts.Superadmins, FrontendDir: opts.FrontendDir, Media: opts.Media,
+		Control: opts.Control,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create CLI remote server: %w", err)
 	}
 	return &Adapter{name: opts.PlatformName, runtime: instance}, nil
 
+}
+
+func (a *Adapter) SetControlContinuation(continueInput func(context.Context, control.Continuation) (context.Context, error)) {
+	if runtime, ok := a.runtime.(interface {
+		SetControlContinuation(func(context.Context, control.Continuation) (context.Context, error))
+	}); ok {
+		runtime.SetControlContinuation(continueInput)
+	}
 }

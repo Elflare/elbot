@@ -34,6 +34,7 @@ type remoteMessage struct {
 	Result     *command.Result        `json:"result,omitempty"`
 	Error      *command.Error         `json:"error,omitempty"`
 	MediaToken string                 `json:"media_token,omitempty"` // 当前 WS 连接的 HTTP 附件凭据，仅 hello_ok 返回。
+	APIToken   string                 `json:"api_token,omitempty"`   // 当前 WS 连接的管理 API 路由凭据，仅 hello_ok 返回。
 	FileIDs    []string               `json:"file_ids,omitempty"`    // input 引用的当前连接附件，顺序即输入顺序。
 	Attachment *remoteAttachment      `json:"attachment,omitempty"`  // attachment 输出的下载描述。
 	StreamID   uint64                 `json:"stream_id,omitempty"`   // Scope for ordered preview updates and reset.

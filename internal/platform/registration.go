@@ -55,7 +55,7 @@ func registrations(frontendDir string) []registration {
 				if !cfgCLI.Enabled || !cfgCLI.Server.Enabled {
 					return nil
 				}
-				adapter, err = cli.NewRemoteServer(cli.RemoteServerOptions{Config: cfgCLI, PlatformName: common.PlatformName, ConfigEnv: common.ConfigEnv, Superadmins: common.Superadmins, FrontendDir: frontendDir, Media: deps.Media})
+				adapter, err = cli.NewRemoteServer(cli.RemoteServerOptions{Config: cfgCLI, PlatformName: common.PlatformName, ConfigEnv: common.ConfigEnv, Superadmins: common.Superadmins, FrontendDir: frontendDir, Media: deps.Media, Control: deps.Control})
 				if err != nil {
 					return err
 				}
@@ -63,6 +63,7 @@ func registrations(frontendDir string) []registration {
 			}
 			m.agentWiring = append(m.agentWiring, func(source AgentCapabilities) error {
 				adapter.SetCompleter(source.Complete)
+				adapter.SetControlContinuation(source.ContinueControlInput)
 				ui, err := cli.ConnectUI(common.PlatformName, agentEvents{source})
 				m.ui = ui
 				if ui != nil {

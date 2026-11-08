@@ -55,6 +55,7 @@ func (s *RemoteServer) Start(ctx context.Context, handler platformshare.MessageH
 		return err
 	}
 	mux := http.NewServeMux()
+	mux.Handle("/api/v1/", s.managementHandler())
 	mux.HandleFunc("POST /cli/v1/files", s.handleMedia)
 	mux.HandleFunc("GET /cli/v1/files/{id}", s.handleMedia)
 	mux.HandleFunc("DELETE /cli/v1/files/{id}", s.handleMedia)
