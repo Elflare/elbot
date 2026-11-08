@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	command "elbot/internal/command/share"
-	"elbot/internal/request"
+	"elbot/internal/control"
 )
 
 func completeStringOptions(values []string, query string, start, end int, kind string) []command.Completion {
@@ -21,9 +21,6 @@ func completeStringOptions(values []string, query string, start, end int, kind s
 }
 
 func completeSessionIDs(ctx context.Context, deps Deps, query string, archived bool, start, end int) []command.Completion {
-	if deps.Sessions == nil || deps.Scope == nil {
-		return nil
-	}
 	sessions, err := listSessionPage(ctx, deps, "", 0, archived, false)
 	if err != nil {
 		return nil
@@ -38,7 +35,7 @@ func completeSessionIDs(ctx context.Context, deps Deps, query string, archived b
 	return out
 }
 
-func completeRequestIDs(requests []request.Request, query string, start, end int) []command.Completion {
+func completeRequestIDs(requests []control.RequestData, query string, start, end int) []command.Completion {
 	out := []command.Completion{}
 	for _, req := range requests {
 		if !strings.HasPrefix(req.ID, query) {
@@ -50,10 +47,7 @@ func completeRequestIDs(requests []request.Request, query string, start, end int
 }
 
 func completeToolNames(ctx context.Context, deps Deps, query string, start, end int) []command.Completion {
-	if deps.Tools == nil {
-		return nil
-	}
-	infos, err := deps.Tools.QueryTools(ctx, tool.ToolQuery{Scope: tool.QueryCatalog, IncludeHidden: true, IncludeDiscover: true})
+	infos, err := deps.Control.QueryTools(ctx, tool.ToolQuery{Scope: tool.QueryCatalog, IncludeHidden: true, IncludeDiscover: true})
 	if err != nil {
 		return nil
 	}

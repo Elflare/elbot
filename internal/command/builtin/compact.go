@@ -5,6 +5,7 @@ import (
 
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
+	"elbot/internal/control"
 )
 
 func NewCompact(deps Deps) command.Handler {
@@ -15,11 +16,8 @@ func NewCompact(deps Deps) command.Handler {
 		SessionEffect: command.SessionEffectMutate,
 		MinRole:       contextinfo.RoleUser,
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
-		row, err := deps.Compact.CompactCurrent(ctx, "manual")
-		if err != nil {
-			return nil, err
-		}
-		return &command.Result{Kind: command.ResultKindCompact, Data: sessionData(row)}, nil
+		data, err := deps.Control.CompactSession(ctx, control.CompactSessionRequest{})
+		return &command.Result{Kind: command.ResultKindCompact, Data: data}, err
 	})
 }
 

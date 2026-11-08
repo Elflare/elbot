@@ -10,6 +10,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/control"
 	"elbot/internal/delivery"
 	platformshare "elbot/internal/platform/share"
 
@@ -24,10 +25,6 @@ import (
 	"elbot/internal/testutil/mediatest"
 	"elbot/internal/tool"
 )
-
-type isolatedHookCapabilities struct{}
-
-func (isolatedHookCapabilities) Commands() []command.Handler { return nil }
 
 type isolatedPlatformCapabilities struct{ *dispatch.Router }
 
@@ -98,6 +95,10 @@ func configuredModuleResources(t *testing.T, cfg *config.Config) (SupervisorDeps
 	}
 	t.Cleanup(func() { _ = models.Close(context.Background()) })
 	permission := security.DefaultPermission()
+	controller, err := control.NewSupervisor(cfg, control.SupervisorDeps{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	sender := dispatch.New(dispatch.Options{Primary: &assemblyPlatform{}})
 	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, t.TempDir())
 	tools, err := tool.NewSupervisor(t.Context(), cfg, tool.SupervisorDeps{Store: store, ChatHistory: history.Repository(), Models: models, Media: center, Permission: permission})
@@ -113,9 +114,8 @@ func configuredModuleResources(t *testing.T, cfg *config.Config) (SupervisorDeps
 		t.Fatal(err)
 	}
 	return SupervisorDeps{
-		Media: center, Store: store, ChatHistory: history.Repository(), Models: models, Permission: permission,
+		Control: controller, Media: center, Store: store, ChatHistory: history.Repository(), Models: models, Permission: permission,
 		Platform: isolatedPlatformCapabilities{sender},
-		Hooks:    isolatedHookCapabilities{},
 		Tools:    tools,
 	}, models
 }
@@ -193,10 +193,10 @@ func TestAgentConstructionDoesNotSubscribeToModelRetries(t *testing.T) {
 	}
 }
 
-func (p isolatedPlatformCapabilities) SendCommandResult(ctx context.Context, name string, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
+func (p isolatedPlatformCapabilities) SendCommandResult(ctx context.Context, req command.Request, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
 	var outputs []delivery.Output
 	if result != nil {
-		out := delivery.Text(platformshare.FormatCommandResult(result))
+		out := delivery.Text(platformshare.FormatCommandResult(req, result))
 		if result.Confirmation != nil {
 			out.Actions = result.Confirmation.Actions
 		}

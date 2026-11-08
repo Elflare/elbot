@@ -2,22 +2,14 @@ package builtin
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"log/slog"
 	"strconv"
 	"strings"
 
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
-	globalevents "elbot/internal/events"
-	"elbot/internal/fileops"
-	"elbot/internal/session"
-	"elbot/internal/storage"
+	"elbot/internal/control"
 )
-
-type FileRollbackService = command.FileRollbackService
 
 type rollbackCommand struct{ deps Deps }
 
@@ -33,82 +25,25 @@ func (rollbackCommand) Info() command.Info {
 }
 
 func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
-	if c.deps.FileRollback == nil || c.deps.PrepareFileContext == nil {
-		return nil, fmt.Errorf("file rollback is not configured")
-	}
 	arg := strings.TrimSpace(req.Args)
 	if arg == "" {
-		records, err := c.list(ctx)
-		if err != nil {
-			return nil, err
-		}
-		items := []command.RollbackData{}
-		for _, r := range records {
-			items = append(items, command.RollbackData{ID: r.ID, Path: r.Path, Created: r.Created, EditedAt: r.EditedAt})
-		}
-		return &command.Result{Kind: command.ResultKindRollbacks, Data: command.RollbacksData{Items: items}}, nil
+		data, err := c.deps.Control.ListRollbacks(ctx)
+		return &command.Result{Kind: command.ResultKindRollbacks, Data: data}, err
 	}
 	id, err := strconv.ParseUint(arg, 10, 64)
 	if err != nil || id == 0 {
-		return nil, inputError(fmt.Errorf("%s", c.deps.CommandText("rollback", "[编号]")))
+		return nil, inputError(fmt.Errorf("usage: %s", c.deps.CommandText("rollback", "[编号]")))
 	}
-	ctx, err = c.deps.PrepareFileContext(ctx, true)
-	if errors.Is(err, session.ErrNoCurrentSession) {
-		return nil, err
-	}
-	if err != nil {
-		if errors.Is(err, session.ErrSessionBusy) {
-			err = fmt.Errorf("%w，请等待完成，或先用 %s 停止任务。", err, c.deps.CommandText("stop"))
-		}
-		return nil, err
-	}
-	result, err := c.deps.FileRollback.RollbackByID(ctx, id)
-	actor, _ := contextinfo.ActorFromContext(ctx)
-	binding, _ := session.BindingFromContext(ctx)
-	if result.Path != "" {
-		sessionID := ""
-		if binding != nil {
-			sessionID = binding.SessionID()
-		}
-		content := map[string]any{"actor": actor, "path": result.Path, "deleted": result.Deleted}
-		record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "command", Level: slog.LevelInfo, EventName: "file_rollback", Type: globalevents.ContentJSON, ResultStatus: globalevents.ResultSucceeded}
-		if err != nil {
-			content["error"] = err.Error()
-			record.EventName = "file_rollback_failed"
-			record.Level = slog.LevelError
-			record.ResultStatus = globalevents.ResultFailed
-			if errors.Is(err, context.Canceled) {
-				record.Level = slog.LevelInfo
-				record.ResultStatus = globalevents.ResultCanceled
-			}
-		}
-		record.Identity = globalevents.LogIdentityFromContext(ctx)
-		record.Identity.SessionID = sessionID
-		data, _ := json.Marshal(content)
-		record.Content = string(data)
-		globalevents.Log(ctx, record)
-	}
-	if err != nil {
-		if errors.Is(err, session.ErrSessionBusy) {
-			err = fmt.Errorf("%w，请等待完成，或先用 %s 停止任务。", err, c.deps.CommandText("stop"))
-		}
-		return nil, err
-	}
-	if result.Deleted {
-		return &command.Result{Kind: command.ResultKindRollback, Data: command.RollbackData{ID: id, Path: result.Path, Deleted: true, Revision: result.Revision}}, nil
-	}
-	return &command.Result{Kind: command.ResultKindRollback, Data: command.RollbackData{ID: id, Path: result.Path, Revision: result.Revision}}, nil
+	data, err := c.deps.Control.RollbackByID(ctx, control.RollbackByIDRequest{ID: id})
+	return &command.Result{Kind: command.ResultKindRollback, Data: data}, err
 }
 
 func (c rollbackCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
-	if c.deps.FileRollback == nil || c.deps.PrepareFileContext == nil {
-		return nil
-	}
 	token := command.CurrentCompletionToken(req)
 	if !command.IsFirstArg(req, token) {
 		return nil
 	}
-	records, err := c.list(ctx)
+	records, err := c.deps.Control.ListRollbacks(ctx)
 	if err != nil {
 		return nil
 	}
@@ -117,15 +52,4 @@ func (c rollbackCommand) Complete(ctx context.Context, req command.CompletionReq
 		options = append(options, command.CompletionOption{Text: strconv.FormatUint(record.ID, 10), Description: record.Path})
 	}
 	return command.CompleteStaticOptions(options, token.Text, token.Start, token.End, "rollback_record")
-}
-
-func (c rollbackCommand) list(ctx context.Context) ([]fileops.RollbackInfo, error) {
-	ctx, err := c.deps.PrepareFileContext(ctx, false)
-	if errors.Is(err, storage.ErrNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return c.deps.FileRollback.List(ctx)
 }

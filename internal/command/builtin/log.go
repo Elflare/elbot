@@ -2,11 +2,10 @@ package builtin
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 
 	command "elbot/internal/command/share"
-	"elbot/internal/events"
+	"elbot/internal/control"
 	"elbot/internal/logging"
 )
 
@@ -93,20 +92,20 @@ func (c logCommand) Handle(ctx context.Context, req command.Request) (*command.R
 		if err != nil {
 			return nil, inputError(err)
 		}
-		return queryLogs(ctx, c.deps, query, "audit events")
+		return queryLogs(ctx, c.deps, query, "audit")
 	}
 	if c.elwisp {
 		query, err := parseElwispLogQuery(req.Args)
 		if err != nil {
 			return nil, inputError(err)
 		}
-		return queryLogs(ctx, c.deps, query, "elwisp logs")
+		return queryLogs(ctx, c.deps, query, "elnis")
 	}
 	query, err := parseRuntimeLogQuery(req.Args)
 	if err != nil {
 		return nil, inputError(err)
 	}
-	return queryLogs(ctx, c.deps, query, "runtime logs")
+	return queryLogs(ctx, c.deps, query, "runtime")
 }
 
 func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -207,28 +206,9 @@ func previousLogToken(raw string, tokenStart int) string {
 	return fields[len(fields)-1]
 }
 
-func queryLogs(ctx context.Context, deps Deps, query logging.LogQuery, title string) (*command.Result, error) {
-	entries, err := deps.Logs.Query(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	return &command.Result{Kind: command.ResultKindLogs, Data: command.LogsData{Title: title, Items: logData(entries.Entries, query.Raw), DamagedCount: entries.DamagedCount, DamagedLines: append([]string{}, entries.DamagedLines...)}}, nil
-}
-
-func logData(rows []logging.LogEntry, raw bool) []command.LogData {
-	out := make([]command.LogData, 0, len(rows))
-	for _, entry := range rows {
-		content := json.RawMessage(entry.Content)
-		if entry.Type != events.ContentJSON {
-			content, _ = json.Marshal(entry.Content)
-		}
-		item := command.LogData{Time: entry.Time, Category: entry.Category, Level: entry.Level, EventName: entry.EventName, Module: entry.Module, Type: entry.Type, Content: content, Identity: command.LogIdentityData{SessionID: entry.Identity.SessionID, RunID: entry.Identity.RunID, Attempt: entry.Identity.Attempt, RequestID: entry.Identity.RequestID, RootRequestID: entry.Identity.RootRequestID}, ResultStatus: entry.ResultStatus}
-		if raw {
-			item.Raw = entry.Raw
-		}
-		out = append(out, item)
-	}
-	return out
+func queryLogs(ctx context.Context, deps Deps, query logging.LogQuery, category string) (*command.Result, error) {
+	data, err := deps.Control.QueryLogs(ctx, control.QueryLogsRequest{Category: category, Query: query})
+	return &command.Result{Kind: command.ResultKindLogs, Data: data}, err
 }
 
 type LogModule struct{}

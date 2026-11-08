@@ -1,4 +1,4 @@
-package share
+package format
 
 import (
 	"fmt"
@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	command "elbot/internal/command/share"
+	"elbot/internal/control"
 )
 
-func formatStatus(d command.StatusData) string {
+func Status(d control.StatusResult) string {
 	if d.Session == nil {
 		var out strings.Builder
 		fmt.Fprintf(&out, "session=nil\ndefault=%s · model=%s/%s\nphase=%s · pending=%d", d.Mode, d.Model.Provider, d.Model.Model, d.Phase, d.PendingCount)
@@ -31,7 +31,7 @@ func formatStatus(d command.StatusData) string {
 		fmt.Fprintf(&out, "  %s\n", strings.Join(marks, ", "))
 	}
 	fmt.Fprintf(&out, "created=%s\nupdated=%s\nuser: %s\nbot: %s\n", s.CreatedAt.Format("2006-01-02 15:04:05"), s.UpdatedAt.Format("2006-01-02 15:04:05"), statusPreviewOrNil(d.LastUserContent, 80), statusPreviewOrNil(d.LastAssistantContent, 80))
-	if requests := formatActiveRequestsData(d.Requests, false); requests != "" {
+	if requests := activeRequests(d.Requests, false); requests != "" {
 		out.WriteString(requests)
 	}
 	fmt.Fprintf(&out, "phase=%s · pending=%d\n", d.Phase, d.PendingCount)
@@ -43,16 +43,16 @@ func formatStatus(d command.StatusData) string {
 	return strings.TrimRight(out.String(), "\n")
 }
 
-func formatActiveRequestsData(requests []command.RequestData, showSessionTitle bool) string {
+func activeRequests(requests []control.RequestData, showSessionTitle bool) string {
 	if len(requests) == 0 {
 		return ""
 	}
-	children := make(map[string][]command.RequestData)
-	byID := make(map[string]command.RequestData, len(requests))
+	children := make(map[string][]control.RequestData)
+	byID := make(map[string]control.RequestData, len(requests))
 	for _, item := range requests {
 		byID[item.ID] = item
 	}
-	var roots []command.RequestData
+	var roots []control.RequestData
 	for _, item := range requests {
 		if item.ParentID != "" {
 			if _, ok := byID[item.ParentID]; ok {
@@ -76,7 +76,7 @@ func formatActiveRequestsData(requests []command.RequestData, showSessionTitle b
 	return out.String()
 }
 
-func writeRequestDataLine(out *strings.Builder, item command.RequestData, number, prefix string) {
+func writeRequestDataLine(out *strings.Builder, item control.RequestData, number, prefix string) {
 	name := item.Label
 	if name == "" {
 		if item.Kind == "turn" {
@@ -117,7 +117,7 @@ func formatToolUsageData(saved, live map[string]int) string {
 	return out.String()
 }
 
-func appendStatusContext(out *strings.Builder, data command.ContextData) {
+func appendStatusContext(out *strings.Builder, data control.ContextData) {
 	usage := data.Usage
 	tokens, cache := "unk", "unk"
 	if usage != nil {
@@ -155,7 +155,7 @@ func appendStatusContext(out *strings.Builder, data command.ContextData) {
 	fmt.Fprintf(out, "compact=%.0f%% · %s\n", data.CompactTriggerRatio*100, state)
 }
 
-func appendStatusErrors(out *strings.Builder, errors []command.ItemError) {
+func appendStatusErrors(out *strings.Builder, errors []control.ItemError) {
 	for _, failure := range errors {
 		if failure.Error != nil {
 			fmt.Fprintf(out, "warn: %s: %s\n", failure.ID, failure.Error.Message)

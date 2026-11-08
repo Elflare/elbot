@@ -6,7 +6,6 @@ import (
 	"time"
 
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 
@@ -41,10 +40,7 @@ type ConfirmationCoordinatorDeps struct {
 		RefreshRiskConfirmation(string) bool
 		ResolveRiskConfirmation(string, turn.RiskDecision) bool
 		StopSession(string)
-	}
-	Commands interface {
-		IsCommand(string) bool
-		Parse(string) command.Parsed
+		Snapshot(string) turn.Snapshot
 	}
 	Identity ConfirmationIdentity
 	Output   ConfirmationOutput

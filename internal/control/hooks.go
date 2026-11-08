@@ -39,11 +39,12 @@ func (m *Supervisor) GetHook(ctx context.Context, req GetHookRequest) (GetHookRe
 	return result, nil
 }
 
-func (m *Supervisor) ReloadHooks(ctx context.Context) error {
+func (m *Supervisor) ReloadHooks(ctx context.Context) (ReloadHooksResult, error) {
 	if err := authorize(ctx, true, m.deps.Hooks != nil); err != nil {
-		return err
+		return ReloadHooksResult{}, err
 	}
-	return ClassifyError(m.deps.Hooks.Reload(ctx))
+	result, err := m.deps.Hooks.Reload(ctx)
+	return result, ClassifyError(err)
 }
 
 func (m *Supervisor) StartHook(ctx context.Context, req StartHookRequest) error {

@@ -3,17 +3,14 @@ package command
 
 import "elbot/internal/command/share"
 
+type TextData = share.TextData
 type Result = share.Result
 type ResultKind = share.ResultKind
-type Continuation = share.Continuation
-type ContinuationKind = share.ContinuationKind
 type Error = share.Error
 type ErrorKind = share.ErrorKind
 
 const (
-	ResultKindText     = share.ResultKindText
-	ContinuationInput  = share.ContinuationInput
-	ContinuationAppend = share.ContinuationAppend
+	ResultKindText = share.ResultKindText
 
 	ErrorInput       = share.ErrorInput
 	ErrorRejected    = share.ErrorRejected
@@ -31,24 +28,23 @@ const (
 )
 
 const (
-	ResultKindSession       = share.ResultKindSession
-	ResultKindSessions      = share.ResultKindSessions
-	ResultKindMessages      = share.ResultKindMessages
-	ResultKindStatus        = share.ResultKindStatus
-	ResultKindModel         = share.ResultKindModel
-	ResultKindModels        = share.ResultKindModels
-	ResultKindRequests      = share.ResultKindRequests
-	ResultKindStop          = share.ResultKindStop
-	ResultKindTools         = share.ResultKindTools
-	ResultKindRollback      = share.ResultKindRollback
-	ResultKindRollbacks     = share.ResultKindRollbacks
-	ResultKindLogs          = share.ResultKindLogs
-	ResultKindUsage         = share.ResultKindUsage
-	ResultKindDoctor        = share.ResultKindDoctor
-	ResultKindHooks         = share.ResultKindHooks
-	ResultKindCompact       = share.ResultKindCompact
-	ResultKindHelp          = share.ResultKindHelp
-	CodeConfirmationExpired = share.CodeConfirmationExpired
+	ResultKindSession   = share.ResultKindSession
+	ResultKindSessions  = share.ResultKindSessions
+	ResultKindMessages  = share.ResultKindMessages
+	ResultKindStatus    = share.ResultKindStatus
+	ResultKindModel     = share.ResultKindModel
+	ResultKindModels    = share.ResultKindModels
+	ResultKindRequests  = share.ResultKindRequests
+	ResultKindStop      = share.ResultKindStop
+	ResultKindTools     = share.ResultKindTools
+	ResultKindRollback  = share.ResultKindRollback
+	ResultKindRollbacks = share.ResultKindRollbacks
+	ResultKindLogs      = share.ResultKindLogs
+	ResultKindUsage     = share.ResultKindUsage
+	ResultKindDoctor    = share.ResultKindDoctor
+	ResultKindHooks     = share.ResultKindHooks
+	ResultKindCompact   = share.ResultKindCompact
+	ResultKindHelp      = share.ResultKindHelp
 )
 
 func ClassifyError(err error) *Error { return share.ClassifyError(err) }

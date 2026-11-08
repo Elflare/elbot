@@ -6,6 +6,7 @@ import "elbot/internal/tool"
 
 import (
 	"context"
+	"elbot/internal/control"
 	"encoding/json"
 
 	"elbot/internal/delivery"
@@ -14,8 +15,9 @@ import (
 // SupervisorDeps contains borrowed capabilities. Hook neither owns their
 // lifecycle nor obtains their registries, adapters or storage implementations.
 type SupervisorDeps struct {
-	Media MediaAPI // Shared media center; runtime owns only its own media leases.
-	Tools interface {
+	Control *control.Supervisor // App 创建的统一操作入口，仅借用构造接线能力。
+	Media   MediaAPI            // Shared media center; runtime owns only its own media leases.
+	Tools   interface {
 		QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
 		CallTool(context.Context, tool.CallRequest) (*tool.Result, string, error)
 	} // Tool metadata, schema and invocation, without exposing callable Tool objects.

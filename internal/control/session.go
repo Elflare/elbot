@@ -2,8 +2,10 @@ package control
 
 import (
 	"context"
+	"elbot/internal/events"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"elbot/internal/llm"
@@ -39,30 +41,81 @@ func (m *Supervisor) GetSession(ctx context.Context, req GetSessionRequest) (Get
 	if err := authorize(ctx, false, m.deps.History != nil); err != nil {
 		return GetSessionResult{}, err
 	}
-	row, err := m.readSession(ctx, req.SessionID)
+	id, err := m.resolveSessionID(ctx, req.SessionID)
+	if err != nil {
+		return GetSessionResult{}, err
+	}
+	row, err := m.readSession(ctx, id)
 	if err != nil {
 		return GetSessionResult{}, err
 	}
 	return *sessionData(row), nil
 }
 
-func (m *Supervisor) NewSession(ctx context.Context, req NewSessionRequest) (NewSessionResult, error) {
+func (m *Supervisor) NewSession(ctx context.Context) (NewSessionResult, error) {
 	ctx, err := m.beforeSession(ctx)
 	if err != nil {
 		return NewSessionResult{}, err
 	}
-	row, err := m.deps.Sessions.Create(ctx, m.deps.Scope(ctx), session.CreateRequest{Mode: req.Mode, Title: req.Title})
-	if err != nil {
+	if err := m.deps.Sessions.ResetCurrent(ctx, m.deps.Scope(ctx)); err != nil {
 		return NewSessionResult{}, ClassifyError(err)
 	}
-	return SessionChangeResult{Session: sessionData(row), SessionID: row.ID, CurrentSessionID: row.ID, AffectedCount: 1}, nil
+	return NewSessionResult{}, nil
 }
 
 func (m *Supervisor) RenameSession(ctx context.Context, req RenameSessionRequest) (RenameSessionResult, error) {
 	if err := authorize(ctx, false, m.deps.Sessions != nil); err != nil {
 		return RenameSessionResult{}, err
 	}
-	row, err := m.deps.Sessions.Rename(ctx, m.deps.Scope(ctx), req.SessionID, req.Title)
+	target := strings.TrimSpace(req.Target)
+	title := req.Title
+	id := ""
+	if target == "" {
+		var err error
+		id, err = m.resolveSessionID(ctx, "")
+		if err != nil {
+			return RenameSessionResult{}, err
+		}
+	} else {
+		row, err := m.readSession(ctx, target)
+		if err == nil {
+			id = row.ID
+		} else if failure, ok := err.(*Error); !ok || failure.Code != "not_found" {
+			return RenameSessionResult{}, err
+		} else {
+			if req.PageSize <= 0 {
+				return RenameSessionResult{}, invalid("page_size 必须为正数")
+			}
+			matches := []string{}
+			for page := 1; ; page++ {
+				listed, err := m.deps.Sessions.ListPage(ctx, m.deps.Scope(ctx), session.ListRequest{Query: target, Page: page, PageSize: req.PageSize})
+				if err != nil {
+					return RenameSessionResult{}, ClassifyError(err)
+				}
+				for _, row := range listed.Items {
+					if row.Title == target {
+						matches = append(matches, row.ID)
+					}
+				}
+				if page >= listed.TotalPages {
+					break
+				}
+			}
+			switch len(matches) {
+			case 0:
+				id, err = m.resolveSessionID(ctx, "")
+				if err != nil {
+					return RenameSessionResult{}, err
+				}
+				title = target + " " + title
+			case 1:
+				id = matches[0]
+			default:
+				return RenameSessionResult{}, invalid("session title 匹配多个会话，请使用 session ID")
+			}
+		}
+	}
+	row, err := m.deps.Sessions.Rename(ctx, m.deps.Scope(ctx), id, title)
 	if err != nil {
 		return RenameSessionResult{}, ClassifyError(err)
 	}
@@ -76,12 +129,15 @@ func (m *Supervisor) SetSessionArchived(ctx context.Context, req SetSessionArchi
 	if req.Archived && !req.Confirmed {
 		return SetSessionArchivedResult{}, &Error{Code: "confirmation_required", Message: "归档操作需要确认"}
 	}
+	id, err := m.resolveSessionID(ctx, req.SessionID)
+	if err != nil {
+		return SetSessionArchivedResult{}, err
+	}
 	var row *storage.Session
-	var err error
 	if req.Archived {
-		row, err = m.deps.Sessions.Archive(ctx, m.deps.Scope(ctx), req.SessionID)
+		row, err = m.deps.Sessions.Archive(ctx, m.deps.Scope(ctx), id)
 	} else {
-		row, err = m.deps.Sessions.Unarchive(ctx, m.deps.Scope(ctx), req.SessionID)
+		row, err = m.deps.Sessions.Unarchive(ctx, m.deps.Scope(ctx), id)
 	}
 	if err != nil {
 		return SetSessionArchivedResult{}, ClassifyError(err)
@@ -93,12 +149,15 @@ func (m *Supervisor) SetSessionPinned(ctx context.Context, req SetSessionPinnedR
 	if err := authorize(ctx, false, m.deps.Sessions != nil); err != nil {
 		return SetSessionPinnedResult{}, err
 	}
+	id, err := m.resolveSessionID(ctx, req.SessionID)
+	if err != nil {
+		return SetSessionPinnedResult{}, err
+	}
 	var row *storage.Session
-	var err error
 	if req.Pinned {
-		row, err = m.deps.Sessions.Pin(ctx, m.deps.Scope(ctx), req.SessionID)
+		row, err = m.deps.Sessions.Pin(ctx, m.deps.Scope(ctx), id)
 	} else {
-		row, err = m.deps.Sessions.Unpin(ctx, m.deps.Scope(ctx), req.SessionID)
+		row, err = m.deps.Sessions.Unpin(ctx, m.deps.Scope(ctx), id)
 	}
 	if err != nil {
 		return SetSessionPinnedResult{}, ClassifyError(err)
@@ -134,6 +193,9 @@ func (m *Supervisor) CleanSessions(ctx context.Context, req CleanSessionsRequest
 }
 
 func (m *Supervisor) ResumeSession(ctx context.Context, req ResumeSessionRequest) (ResumeSessionResult, error) {
+	if req.MessageLimit < 0 {
+		return ResumeSessionResult{}, invalid("message_limit 不能为负数")
+	}
 	ctx, err := m.beforeSession(ctx)
 	if err != nil {
 		return ResumeSessionResult{}, err
@@ -150,10 +212,16 @@ func (m *Supervisor) ResumeSession(ctx context.Context, req ResumeSessionRequest
 	if err != nil {
 		return ResumeSessionResult{}, ClassifyError(err)
 	}
-	return ResumeSessionResult{Session: sessionData(row), SessionID: row.ID, CurrentSessionID: row.ID, AffectedCount: 1}, nil
+	record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: "session_resume", Module: "control", Content: "title: " + row.Title, ResultStatus: events.ResultSucceeded, Identity: events.LogIdentityFromContext(ctx)}
+	record.Identity.SessionID = row.ID
+	events.Log(ctx, record)
+	return m.sessionPreview(ctx, row, req.MessageLimit)
 }
 
 func (m *Supervisor) ForkSession(ctx context.Context, req ForkSessionRequest) (ForkSessionResult, error) {
+	if req.MessageLimit < 0 {
+		return ForkSessionResult{}, invalid("message_limit 不能为负数")
+	}
 	ctx, err := m.beforeSession(ctx)
 	if err != nil {
 		return ForkSessionResult{}, err
@@ -161,14 +229,21 @@ func (m *Supervisor) ForkSession(ctx context.Context, req ForkSessionRequest) (F
 	if strings.TrimSpace(req.MessageID) == "" {
 		return ForkSessionResult{}, invalid("message_id 不能为空")
 	}
-	if err := m.requireCurrent(ctx, req.SessionID); err != nil {
+	id, err := m.resolveSessionID(ctx, req.SessionID)
+	if err != nil {
+		return ForkSessionResult{}, err
+	}
+	if err := m.requireCurrent(ctx, id); err != nil {
 		return ForkSessionResult{}, err
 	}
 	row, err := m.deps.Sessions.Fork(ctx, m.deps.Scope(ctx), req.MessageID)
 	if err != nil {
 		return ForkSessionResult{}, ClassifyError(err)
 	}
-	return ForkSessionResult{Session: sessionData(row), SessionID: row.ID, CurrentSessionID: row.ID, AffectedCount: 1}, nil
+	record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: "session_fork", Module: "control", Content: "parent: " + row.ParentSessionID + " · message: " + row.ForkFromMessageID, ResultStatus: events.ResultSucceeded, Identity: events.LogIdentityFromContext(ctx)}
+	record.Identity.SessionID = row.ID
+	events.Log(ctx, record)
+	return m.sessionPreview(ctx, row, req.MessageLimit)
 }
 
 func (m *Supervisor) CompactSession(ctx context.Context, req CompactSessionRequest) (CompactSessionResult, error) {
@@ -176,13 +251,17 @@ func (m *Supervisor) CompactSession(ctx context.Context, req CompactSessionReque
 	if err != nil {
 		return CompactSessionResult{}, err
 	}
-	if err := m.requireCurrent(ctx, req.SessionID); err != nil {
+	id, err := m.resolveSessionID(ctx, req.SessionID)
+	if err != nil {
+		return CompactSessionResult{}, err
+	}
+	if err := m.requireCurrent(ctx, id); err != nil {
 		return CompactSessionResult{}, err
 	}
 	if m.deps.Execution == nil {
 		return CompactSessionResult{}, &Error{Code: "not_configured", Message: "会话压缩尚未接入"}
 	}
-	row, err := m.deps.Execution.CompactCurrent(ctx, req.SessionID)
+	row, err := m.deps.Execution.CompactCurrent(ctx, id)
 	if err != nil {
 		return CompactSessionResult{}, ClassifyError(err)
 	}
@@ -201,23 +280,28 @@ func (m *Supervisor) SetMode(ctx context.Context, req SetModeRequest) (SetModeRe
 	row := activated.Session
 	result := SetModeResult{Session: sessionData(row), SessionID: row.ID, CurrentSessionID: row.ID, AffectedCount: 1, Unchanged: activated.AlreadyActive}
 	if req.Text != "" {
-		result.Continuation = &Continuation{SessionID: row.ID, Text: req.Text}
+		result.Continuation = &Continuation{Kind: "input", SessionID: row.ID, Text: req.Text}
 	}
 	return result, nil
 }
 
 func (m *Supervisor) SessionMessages(ctx context.Context, req SessionMessagesRequest) (SessionMessagesResult, error) {
-	result := SessionMessagesResult{SessionID: req.SessionID, Items: []MessageData{}}
+	result := SessionMessagesResult{Items: []MessageData{}}
 	if err := authorize(ctx, false, m.deps.History != nil); err != nil {
 		return result, err
 	}
-	if _, err := m.readSession(ctx, req.SessionID); err != nil {
+	id, err := m.resolveSessionID(ctx, req.SessionID)
+	if err != nil {
+		return result, err
+	}
+	result.SessionID = id
+	if _, err := m.readSession(ctx, id); err != nil {
 		return result, err
 	}
 	if req.Page < 1 || req.PageSize < 1 {
 		return result, invalid("page 和 page_size 必须为正数")
 	}
-	loaded, err := m.deps.History.LoadMessagePage(ctx, req.SessionID, req.Page, req.PageSize)
+	loaded, err := m.deps.History.LoadMessagePage(ctx, id, req.Page, req.PageSize)
 	if err != nil {
 		return result, ClassifyError(err)
 	}
@@ -244,6 +328,21 @@ func (m *Supervisor) beforeSession(ctx context.Context) (context.Context, error)
 		return ctx, nil
 	}
 	return session.WithBinding(ctx, binding), nil
+}
+
+func (m *Supervisor) resolveSessionID(ctx context.Context, id string) (string, error) {
+	id = strings.TrimSpace(id)
+	if id != "" {
+		return id, nil
+	}
+	if m.deps.Sessions == nil || m.deps.Scope == nil {
+		return "", &Error{Code: "not_configured", Message: "会话访问范围尚未接入"}
+	}
+	row, err := m.deps.Sessions.Current(ctx, m.deps.Scope(ctx))
+	if err != nil {
+		return "", ClassifyError(err)
+	}
+	return row.ID, nil
 }
 
 func (m *Supervisor) readSession(ctx context.Context, id string) (*storage.Session, error) {
@@ -323,4 +422,14 @@ func messageData(rows []storage.Message) ([]MessageData, error) {
 		result = append(result, item)
 	}
 	return result, nil
+}
+
+func (m *Supervisor) sessionPreview(ctx context.Context, row *storage.Session, limit int) (SessionChangeResult, error) {
+	result := SessionChangeResult{Session: sessionData(row), SessionID: row.ID, CurrentSessionID: row.ID, AffectedCount: 1}
+	if limit == 0 {
+		return result, nil
+	}
+	messages, err := m.SessionMessages(ctx, SessionMessagesRequest{SessionID: row.ID, Page: 1, PageSize: limit})
+	result.Messages = messages.Items
+	return result, err
 }

@@ -3,12 +3,8 @@ package share
 
 import (
 	"context"
+	"elbot/internal/control"
 	"elbot/internal/delivery"
-	"elbot/internal/fileops"
-	"elbot/internal/modelmgr"
-	"elbot/internal/session"
-	"elbot/internal/storage"
-	"elbot/internal/tool"
 	"encoding/json"
 	"errors"
 )
@@ -42,9 +38,10 @@ type Result struct {
 	Kind         ResultKind             `json:"kind"`         // 结果的数据类别。
 	Data         any                    `json:"data"`         // 对应 Kind 的业务结构体；没有业务数据时为 nil。
 	Confirmation *delivery.Confirmation `json:"confirmation"` // 非 nil 表示仍需用户确认，操作尚未执行。
-	Continuation *Continuation          `json:"-"`            // 结果投递成功后继续处理的输入，不下发给客户端。
+	Continuation *control.Continuation  `json:"-"`            // 结果投递成功后继续处理的输入，不下发给客户端。
 }
 
+// UnmarshalJSON 保留原始 JSON，具体业务结构由最终消费端按调用操作解码。
 func (r *Result) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		Kind         ResultKind             `json:"kind"`
@@ -54,120 +51,17 @@ func (r *Result) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	r.Kind, r.Confirmation = raw.Kind, raw.Confirmation
-	if len(raw.Data) == 0 || string(raw.Data) == "null" {
-		r.Data = nil
-		return nil
+	r.Kind, r.Confirmation, r.Continuation = raw.Kind, raw.Confirmation, nil
+	r.Data = nil
+	if len(raw.Data) > 0 && string(raw.Data) != "null" {
+		r.Data = raw.Data
 	}
-	var target any
-	switch raw.Kind {
-	case ResultKindText:
-		target = &TextData{}
-	case ResultKindSession:
-		target = &SessionChangeData{}
-	case ResultKindCompact:
-		target = &SessionData{}
-	case ResultKindSessions:
-		target = &SessionsData{}
-	case ResultKindMessages:
-		target = &MessagesData{}
-	case ResultKindStatus:
-		target = &StatusData{}
-	case ResultKindModel:
-		target = &ModelSelectionData{}
-	case ResultKindModels:
-		target = &ModelsData{}
-	case ResultKindRequests:
-		target = &RequestsData{}
-	case ResultKindStop:
-		target = &StopData{}
-	case ResultKindTools:
-		target = &ToolsData{}
-	case ResultKindRollback:
-		target = &RollbackData{}
-	case ResultKindRollbacks:
-		target = &RollbacksData{}
-	case ResultKindLogs:
-		target = &LogsData{}
-	case ResultKindUsage:
-		target = &UsageData{}
-	case ResultKindDoctor:
-		target = &DoctorData{}
-	case ResultKindHooks:
-		target = &HooksData{}
-	case ResultKindHelp:
-		target = &HelpData{}
-	default:
-		r.Data = json.RawMessage(raw.Data)
-		return nil
-	}
-	if err := json.Unmarshal(raw.Data, target); err != nil {
-		return err
-	}
-	r.Data = valueOf(target)
 	return nil
-}
-
-func valueOf(value any) any {
-	switch typed := value.(type) {
-	case *TextData:
-		return *typed
-	case *SessionChangeData:
-		return *typed
-	case *SessionData:
-		return *typed
-	case *SessionsData:
-		return *typed
-	case *MessagesData:
-		return *typed
-	case *StatusData:
-		return *typed
-	case *ModelSelectionData:
-		return *typed
-	case *ModelsData:
-		return *typed
-	case *RequestsData:
-		return *typed
-	case *StopData:
-		return *typed
-	case *ToolsData:
-		return *typed
-	case *RollbackData:
-		return *typed
-	case *RollbacksData:
-		return *typed
-	case *LogsData:
-		return *typed
-	case *UsageData:
-		return *typed
-	case *DoctorData:
-		return *typed
-	case *HooksData:
-		return *typed
-	case *HelpData:
-		return *typed
-	default:
-		return value
-	}
 }
 
 // TextData 保存没有其他业务结构的纯文字结果。
 type TextData struct {
 	Content string `json:"content"` // 纯文字正文。
-}
-
-// Continuation 是命令结果交给执行协调方的后续输入。
-type ContinuationKind string
-
-const (
-	ContinuationInput  ContinuationKind = "input"
-	ContinuationAppend ContinuationKind = "append"
-)
-
-type Continuation struct {
-	Kind      ContinuationKind // 后续输入由普通输入准备或追加续跑处理。
-	Text      string           // 后续输入正文。
-	SessionID string           // 后续输入实际使用的会话。
 }
 
 // ErrorKind 区分输入错误、业务拒绝、内部故障和执行中断。
@@ -182,15 +76,14 @@ const (
 
 // 通用错误码保持字符串，业务可以按实际需要扩展具体原因。
 const (
-	CodeUnknownCommand      = "unknown_command"
-	CodeInvalidArguments    = "invalid_arguments"
-	CodePermissionDenied    = "permission_denied"
-	CodeSessionBusy         = "session_busy"
-	CodeNotFound            = "not_found"
-	CodeCanceled            = "canceled"
-	CodeTimeout             = "timeout"
-	CodeInternalError       = "internal_error"
-	CodeConfirmationExpired = "confirmation_expired"
+	CodeUnknownCommand   = "unknown_command"
+	CodeInvalidArguments = "invalid_arguments"
+	CodePermissionDenied = "permission_denied"
+	CodeSessionBusy      = "session_busy"
+	CodeNotFound         = "not_found"
+	CodeCanceled         = "canceled"
+	CodeTimeout          = "timeout"
+	CodeInternalError    = "internal_error"
 )
 
 // Error 表达一次命令失败；分类和文案由产生错误的业务边界确定。
@@ -213,33 +106,25 @@ func ClassifyError(err error) *Error {
 	if errors.As(err, &failure) {
 		return failure
 	}
-	var selectionError *modelmgr.SelectionError
+	var operation *control.Error
+	if errors.As(err, &operation) {
+		kind := ErrorRejected
+		switch operation.Code {
+		case CodeInvalidArguments:
+			kind = ErrorInput
+		case CodeCanceled, CodeTimeout:
+			kind = ErrorInterrupted
+		case CodeInternalError:
+			kind = ErrorInternal
+		}
+		return &Error{Kind: kind, Code: operation.Code, Message: operation.Message, Cause: operation}
+	}
 	kind, code, message := ErrorInternal, CodeInternalError, "命令执行失败"
 	switch {
-	case errors.As(err, &selectionError):
-		kind, code, message = ErrorInput, CodeInvalidArguments, selectionError.Message
-	case errors.Is(err, modelmgr.ErrIncompatibleProtocol):
-		kind, code, message = ErrorRejected, "model_incompatible", err.Error()
-	case errors.Is(err, tool.ErrSkillNotFound):
-		kind, code, message = ErrorRejected, CodeNotFound, err.Error()
-	case errors.Is(err, fileops.ErrFileChanged):
-		kind, code, message = ErrorRejected, "file_changed", err.Error()
-	case errors.Is(err, fileops.ErrNotRegularFile):
-		kind, code, message = ErrorRejected, "invalid_target", err.Error()
 	case errors.Is(err, context.Canceled):
 		kind, code, message = ErrorInterrupted, CodeCanceled, "命令执行已取消"
 	case errors.Is(err, context.DeadlineExceeded):
 		kind, code, message = ErrorInterrupted, CodeTimeout, "命令执行超时"
-	case errors.Is(err, session.ErrAccessDenied):
-		kind, code, message = ErrorRejected, CodePermissionDenied, "无权访问该会话"
-	case errors.Is(err, session.ErrSessionBusy):
-		kind, code, message = ErrorRejected, CodeSessionBusy, err.Error()
-	case errors.Is(err, session.ErrNoCurrentSession):
-		kind, code, message = ErrorRejected, "no_current_session", err.Error()
-	case errors.Is(err, session.ErrChatModeRequiresEmptySession):
-		kind, code, message = ErrorRejected, "mode_conflict", err.Error()
-	case errors.Is(err, storage.ErrNotFound), errors.Is(err, fileops.ErrRollbackNotFound), errors.Is(err, fileops.ErrRollbackExpired):
-		kind, code, message = ErrorRejected, CodeNotFound, err.Error()
 	}
 	return &Error{Kind: kind, Code: code, Message: message, Cause: err}
 }

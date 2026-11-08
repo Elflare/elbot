@@ -30,7 +30,7 @@ const (
 
 type remoteMessage struct {
 	RequestID  string                 `json:"request_id,omitempty"`
-	Command    string                 `json:"command,omitempty"`
+	Command    command.Request        `json:"command,omitempty"`
 	Result     *command.Result        `json:"result,omitempty"`
 	Error      *command.Error         `json:"error,omitempty"`
 	MediaToken string                 `json:"media_token,omitempty"` // 当前 WS 连接的 HTTP 附件凭据，仅 hello_ok 返回。
@@ -61,7 +61,7 @@ type remoteAttachment struct {
 type commandResultMessage struct {
 	Type      string          `json:"type"`       // 结构化命令响应帧。
 	RequestID string          `json:"request_id"` // 发起输入的客户端关联 ID。
-	Command   string          `json:"command"`    // 规范命令名。
+	Command   command.Request `json:"command"`    // 本次命令调用上下文。
 	Result    *command.Result `json:"result"`     // 正常结果或部分结果。
 	Error     *command.Error  `json:"error"`      // 独立的执行失败。
 }

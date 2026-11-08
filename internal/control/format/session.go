@@ -1,17 +1,15 @@
-package share
+package format
 
 import (
 	"fmt"
 	"strings"
 
-	command "elbot/internal/command/share"
+	"elbot/internal/control"
+	"elbot/internal/llm"
 )
 
-func formatSessionChange(d command.SessionChangeData) string {
-	if d.Prompt != "" {
-		return d.Prompt
-	}
-	switch d.Operation {
+func SessionChange(operation string, d control.SessionChangeResult, opts MessagesOptions) string {
+	switch operation {
 	case "new":
 		return "New Session"
 	case "resume", "fork":
@@ -19,7 +17,7 @@ func formatSessionChange(d command.SessionChangeData) string {
 			return ""
 		}
 		var out strings.Builder
-		if d.Operation == "resume" {
+		if operation == "resume" {
 			fmt.Fprintf(&out, "resume → %s · %s\n", d.Session.Title, d.Session.ID)
 		} else {
 			fmt.Fprintf(&out, "fork → %s · %s\nparent=%s · from=%s\n", d.Session.ID, d.Session.Mode, d.Session.ParentSessionID, d.Session.ForkFromMessageID)
@@ -29,7 +27,7 @@ func formatSessionChange(d command.SessionChangeData) string {
 			if string(message.Role) == "assistant" {
 				role = "bot"
 			}
-			fmt.Fprintf(&out, "%s: %s\n", role, messagePreview(message, 80))
+			fmt.Fprintf(&out, "%s: %s\n", role, messagePreview(message, opts.PreviewLimit))
 		}
 		return strings.TrimRight(out.String(), "\n")
 	case "work", "chat":
@@ -37,14 +35,14 @@ func formatSessionChange(d command.SessionChangeData) string {
 			return ""
 		}
 		if d.Unchanged {
-			return fmt.Sprintf("%s · %s · unchanged", d.Operation, d.Session.ID)
+			return fmt.Sprintf("%s · %s · unchanged", operation, d.Session.ID)
 		}
 		return fmt.Sprintf("%s · %s", d.Session.Mode, d.Session.ID)
 	case "archive", "unarchive", "pin", "unpin", "rename":
 		if d.Session == nil {
 			return ""
 		}
-		verb := map[string]string{"archive": "archived", "unarchive": "unarchived", "pin": "pinned", "unpin": "unpinned", "rename": "renamed"}[d.Operation]
+		verb := map[string]string{"archive": "archived", "unarchive": "unarchived", "pin": "pinned", "unpin": "unpinned", "rename": "renamed"}[operation]
 		return fmt.Sprintf("%s: %s · %s", verb, d.Session.Title, d.Session.ID)
 	case "delete":
 		return "deleted: " + d.SessionID
@@ -56,7 +54,7 @@ func formatSessionChange(d command.SessionChangeData) string {
 	return ""
 }
 
-func formatSessions(d command.SessionsData) string {
+func Sessions(d control.ListSessionsResult, opts SessionsOptions) string {
 	var out strings.Builder
 	for i, item := range d.Items {
 		if i > 0 {
@@ -82,11 +80,11 @@ func formatSessions(d command.SessionsData) string {
 		}
 		fmt.Fprintf(&out, "[%s] %s%s\n%s/%s · %s · msgs=%d\n", item.ID, title, mark, item.Platform, item.ChatID, item.UpdatedAt.Format("2006-01-02 15:04:05"), item.MessageCount)
 		var previews []string
-		if len(item.Messages) > 4 {
+		if len(item.Messages) > opts.MessageLimit {
 			previews = append(previews, "...")
 		}
-		for _, message := range item.Messages[max(0, len(item.Messages)-4):] {
-			content := messagePreview(message, 24)
+		for _, message := range item.Messages[max(0, len(item.Messages)-opts.MessageLimit):] {
+			content := messagePreview(message, opts.PreviewLimit)
 			if content == "" {
 				continue
 			}
@@ -104,31 +102,25 @@ func formatSessions(d command.SessionsData) string {
 		out.WriteString("\n")
 	}
 	fmt.Fprintf(&out, "page=%d", d.Page.Page)
-	if d.Page.TotalPages != nil {
-		fmt.Fprintf(&out, "/%d", *d.Page.TotalPages)
+	fmt.Fprintf(&out, "/%d", d.TotalPages)
+	if opts.PrevCommand != "" {
+		fmt.Fprintf(&out, " · prev: %s", opts.PrevCommand)
 	}
-	if d.PrevCommand != "" {
-		fmt.Fprintf(&out, " · prev: %s", d.PrevCommand)
-	}
-	if d.NextCommand != "" {
-		fmt.Fprintf(&out, " · next: %s", d.NextCommand)
+	if opts.NextCommand != "" {
+		fmt.Fprintf(&out, " · next: %s", opts.NextCommand)
 	}
 	return strings.TrimRight(out.String(), "\n")
 }
 
-func formatMessages(d command.MessagesData) string {
+func Messages(d control.SessionMessagesResult, opts MessagesOptions) string {
 	if len(d.Items) == 0 {
 		return "nil"
 	}
 	var out strings.Builder
-	pages := 1
-	if d.Page.TotalPages != nil {
-		pages = *d.Page.TotalPages
-	}
-	fmt.Fprintf(&out, "page=%d/%d\n", d.Page.Page, pages)
+	fmt.Fprintf(&out, "page=%d/%d\n", d.Page.Page, d.TotalPages)
 	for _, message := range d.Items {
 		if string(message.Role) == "assistant" {
-			fmt.Fprintf(&out, "bot: [%s] %s\n", message.ID, messagePreview(message, 40))
+			fmt.Fprintf(&out, "bot: [%s] %s\n", message.ID, messagePreview(message, opts.PreviewLimit))
 		} else {
 			fmt.Fprintf(&out, "user: %s\n", messagePreview(message, 40))
 		}
@@ -136,12 +128,15 @@ func formatMessages(d command.MessagesData) string {
 	return strings.TrimRight(out.String(), "\n")
 }
 
-func messagePreview(message command.MessageData, n int) string {
+func messagePreview(message control.MessageData, n int) string {
 	parts := []string{}
 	if text := preview(message.Content, n); text != "" {
 		parts = append(parts, text)
 	}
-	for _, attachment := range message.Attachments {
+	for _, attachment := range message.Segments {
+		if attachment.Type != llm.SegmentFile && attachment.Type != llm.SegmentImage {
+			continue
+		}
 		if attachment.Name == "" {
 			parts = append(parts, "[附件]")
 		} else {
@@ -154,7 +149,7 @@ func messagePreview(message command.MessageData, n int) string {
 func preview(text string, n int) string {
 	text = strings.TrimSpace(strings.Join(strings.Fields(text), " "))
 	runes := []rune(text)
-	if len(runes) > n {
+	if n > 0 && len(runes) > n {
 		return string(runes[:n]) + "..."
 	}
 	return text

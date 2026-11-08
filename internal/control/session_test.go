@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"elbot/internal/contextinfo"
@@ -76,6 +77,9 @@ type managedSessionStub struct {
 	target  string
 	title   string
 	failure error
+	rows    map[string]*storage.Session
+	listed  []storage.SessionSummary
+	queries []session.ListRequest
 }
 
 func (*managedSessionStub) CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error) {
@@ -84,6 +88,36 @@ func (*managedSessionStub) CurrentBound(context.Context, session.Scope) (*storag
 func (s *managedSessionStub) Rename(_ context.Context, _ session.Scope, id, title string) (*storage.Session, error) {
 	s.target, s.title = id, title
 	return &storage.Session{ID: id}, s.failure
+}
+func (s *managedSessionStub) GetSession(_ context.Context, id string) (*storage.Session, error) {
+	if row := s.rows[id]; row != nil {
+		return row, nil
+	}
+	return nil, storage.ErrNotFound
+}
+func (*managedSessionStub) LoadMessagePage(context.Context, string, int, int) (contextmgr.MessagePage, error) {
+	return contextmgr.MessagePage{}, nil
+}
+func (s *managedSessionStub) ListPage(_ context.Context, _ session.Scope, req session.ListRequest) (session.ListResult, error) {
+	s.queries = append(s.queries, req)
+	filtered := make([]storage.SessionSummary, 0, len(s.listed))
+	for _, row := range s.listed {
+		if strings.Contains(row.Title, req.Query) {
+			filtered = append(filtered, row)
+		}
+	}
+	start := (req.Page - 1) * req.PageSize
+	end := min(start+req.PageSize, len(filtered))
+	items := []storage.SessionSummary{}
+	if start < end {
+		items = filtered[start:end]
+	}
+	total := len(filtered)
+	pages := total / req.PageSize
+	if total%req.PageSize != 0 {
+		pages++
+	}
+	return session.ListResult{Items: items, Page: req.Page, PageSize: req.PageSize, TotalPages: pages}, nil
 }
 func (s *managedSessionStub) Archive(ctx context.Context, scope session.Scope, id string) (*storage.Session, error) {
 	return s.Rename(ctx, scope, id, "")
@@ -103,11 +137,11 @@ func (s *managedSessionStub) Delete(_ context.Context, _ session.Scope, id strin
 }
 
 func TestSessionManagementUsesExplicitTargetAndProviderAdmission(t *testing.T) {
-	provider := &managedSessionStub{sessionStub: sessionStub{current: &storage.Session{ID: "current"}}}
-	m, _ := testSupervisor(t, SupervisorDeps{Sessions: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }})
+	provider := &managedSessionStub{sessionStub: sessionStub{current: &storage.Session{ID: "current"}}, rows: map[string]*storage.Session{"target": {ID: "target"}}}
+	m, _ := testSupervisor(t, SupervisorDeps{Sessions: provider, History: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }})
 	operations := map[string]func() error{
 		"rename": func() error {
-			_, err := m.RenameSession(testContext(false), RenameSessionRequest{SessionID: "target", Title: "title"})
+			_, err := m.RenameSession(testContext(false), RenameSessionRequest{Target: "target", Title: "title", PageSize: 10})
 			return err
 		},
 		"archive": func() error {
@@ -145,10 +179,57 @@ func TestSessionManagementUsesExplicitTargetAndProviderAdmission(t *testing.T) {
 			}
 		})
 	}
+	provider.target, provider.failure = "", nil
+	if _, err := m.SetSessionPinned(testContext(false), SetSessionPinnedRequest{Pinned: true}); err != nil || provider.target != "current" {
+		t.Fatalf("current session target=%q error=%v", provider.target, err)
+	}
 	provider.failure = errors.New("provider title validation")
-	_, err := m.RenameSession(testContext(false), RenameSessionRequest{SessionID: "target"})
+	_, err := m.RenameSession(testContext(false), RenameSessionRequest{Title: ""})
 	if !errors.Is(err, provider.failure) || provider.title != "" {
 		t.Fatal("control repeated provider title validation")
+	}
+}
+
+func TestRenameSessionResolvesUniqueTitleAcrossPages(t *testing.T) {
+	provider := &managedSessionStub{
+		sessionStub: sessionStub{current: &storage.Session{ID: "current"}},
+		rows:        map[string]*storage.Session{},
+		listed: []storage.SessionSummary{
+			{ID: "other", Title: "known title alpha"},
+			{ID: "target", Title: "known title"},
+		},
+	}
+	m, _ := testSupervisor(t, SupervisorDeps{Sessions: provider, History: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }})
+	if _, err := m.RenameSession(testContext(false), RenameSessionRequest{Target: "known title", Title: "new title", PageSize: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if provider.target != "target" || provider.title != "new title" || len(provider.queries) != 2 {
+		t.Fatalf("target=%q title=%q queries=%+v", provider.target, provider.title, provider.queries)
+	}
+}
+
+func TestRenameSessionRejectsDuplicateTitleAndFallsBackForMissingTitle(t *testing.T) {
+	provider := &managedSessionStub{
+		sessionStub: sessionStub{current: &storage.Session{ID: "current"}},
+		rows:        map[string]*storage.Session{},
+		listed: []storage.SessionSummary{
+			{ID: "one", Title: "shared title"},
+			{ID: "two", Title: "shared title"},
+		},
+	}
+	m, _ := testSupervisor(t, SupervisorDeps{Sessions: provider, History: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }})
+	_, err := m.RenameSession(testContext(false), RenameSessionRequest{Target: "shared title", Title: "replacement", PageSize: 1})
+	requireCode(t, err, "invalid_arguments")
+	if provider.target != "" {
+		t.Fatalf("duplicate title reached provider: %+v", provider)
+	}
+	provider.listed = nil
+	provider.queries = nil
+	if _, err := m.RenameSession(testContext(false), RenameSessionRequest{Target: "new current", Title: "title", PageSize: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if provider.target != "current" || provider.title != "new current title" {
+		t.Fatalf("fallback target=%q title=%q", provider.target, provider.title)
 	}
 }
 

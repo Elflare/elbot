@@ -6,6 +6,7 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/tool"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -13,12 +14,11 @@ import (
 	"time"
 
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/command"
 	"elbot/internal/contextinfo"
+	"elbot/internal/control"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/llm"
-
 	"elbot/internal/session"
 	"elbot/internal/storage"
 
@@ -48,10 +48,7 @@ type ConfirmationCoordinator struct {
 		RefreshRiskConfirmation(string) bool
 		ResolveRiskConfirmation(string, turn.RiskDecision) bool
 		StopSession(string)
-	}
-	commands interface {
-		IsCommand(string) bool
-		Parse(string) command.Parsed
+		Snapshot(string) turn.Snapshot
 	}
 	identity           ConfirmationIdentity
 	output             ConfirmationOutput
@@ -90,83 +87,104 @@ func (p *ConfirmationPolicy) WaitTimeout(ctx context.Context) time.Duration {
 	return userTimeout
 }
 
-func (c *ConfirmationCoordinator) SubmitResponse(ctx context.Context, sessionID, text string) (*command.Result, error) {
-	locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), sessionID)
+// Current 读取原等待快照；显式刷新只作用于同一风险等待。
+func (c *ConfirmationCoordinator) Current(ctx context.Context, req control.CurrentConfirmationRequest) (control.CurrentConfirmationResult, error) {
+	ctx, row, release, err := c.confirmationContext(ctx)
 	if err != nil {
-		return nil, err
+		return control.CurrentConfirmationResult{}, err
 	}
-	locked, err = agentshare.CaptureSessionBinding(locked, c.sessions, c.identity, &storage.Session{ID: sessionID})
-	if err != nil {
-		release()
-		return nil, err
+	if row == nil {
+		return control.CurrentConfirmationResult{}, nil
 	}
-	ctx = locked
-	var observed *events.LogRecord
-	defer func() {
-		release()
-		if observed != nil {
-			events.Log(context.WithoutCancel(ctx), *observed)
+	defer func() { release() }()
+	snapshot := c.turns.Snapshot(row.ID)
+	if snapshot.Phase == turn.PhaseAwaitAppendConfirm {
+		return control.CurrentConfirmationResult{SessionID: row.ID, Kind: "append"}, nil
+	}
+	pending, ok := c.turns.PendingRiskConfirmation(row.ID)
+	if !ok {
+		return control.CurrentConfirmationResult{}, nil
+	}
+	if req.Refresh {
+		if !c.turns.RefreshRiskConfirmation(row.ID) {
+			return control.CurrentConfirmationResult{}, nil
 		}
-	}()
-	confirmation, hasConfirmation := c.turns.PendingRiskConfirmation(sessionID)
-	if !hasConfirmation {
-		return nil, confirmationExpired()
-	}
-	// 风险确认等待期间只接受确认/拒绝/详情/停止类命令。
-	// 普通文本不能混入当前 turn，避免被误当作高风险工具的隐式确认
-	// 或污染下一次 LLM 调用上下文。
-	if !c.commands.IsCommand(text) {
-		observed = confirmationAction(ctx, sessionID, "invalid_text", confirmation, "")
-		return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: riskConfirmationWaitingText(c.commandText)}, Confirmation: riskConfirmationActions(c.commandText)}, nil
-	}
-
-	parsed := c.commands.Parse(text)
-	switch parsed.Name {
-	case "detail", "details", "confirm", "c", "confirmtool", "ct", "confirmall", "ca", "reject", "stop":
 		binding, _ := session.BindingFromContext(ctx)
 		if err := c.sessions.RecordActivity(ctx, binding); err != nil {
-			return nil, err
+			return control.CurrentConfirmationResult{}, err
 		}
 	}
-	switch parsed.Name {
-	case "detail", "details":
-		if !c.turns.RefreshRiskConfirmation(sessionID) {
-			return nil, confirmationExpired()
-		}
-		observed = confirmationAction(ctx, sessionID, "detail", confirmation, "")
-		return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: riskConfirmationDetailText(confirmation)}, Confirmation: riskConfirmationActions(c.commandText)}, nil
-	case "confirm", "c":
-		if !c.turns.ResolveRiskConfirmation(sessionID, turn.RiskDecision{Action: turn.RiskConfirm, Extra: parsed.Args}) {
-			return nil, confirmationExpired()
-		}
-		observed = confirmationAction(ctx, sessionID, "confirm", confirmation, parsed.Args)
-	case "confirmtool", "ct":
-		if !c.turns.ResolveRiskConfirmation(sessionID, turn.RiskDecision{Action: turn.RiskConfirmTool, Extra: parsed.Args}) {
-			return nil, confirmationExpired()
-		}
-		observed = confirmationAction(ctx, sessionID, "confirmtool", confirmation, parsed.Args)
-	case "confirmall", "ca":
-		if !c.turns.ResolveRiskConfirmation(sessionID, turn.RiskDecision{Action: turn.RiskConfirmAll, Extra: parsed.Args}) {
-			return nil, confirmationExpired()
-		}
-		observed = confirmationAction(ctx, sessionID, "confirmall", confirmation, parsed.Args)
+	return control.CurrentConfirmationResult{SessionID: row.ID, Kind: "tool", ToolName: pending.ToolName, Arguments: pending.Arguments, Risk: pending.Risk, Detail: pending.Detail}, nil
+}
 
-	case "reject":
-		if !c.turns.ResolveRiskConfirmation(sessionID, turn.RiskDecision{Action: turn.RiskReject, Reason: parsed.Args}) {
-			return nil, confirmationExpired()
-		}
-		observed = confirmationAction(ctx, sessionID, "reject", confirmation, parsed.Args)
-	case "stop":
-		observed = confirmationAction(ctx, sessionID, "stop", confirmation, "")
-		c.turns.StopSession(sessionID)
-		count := c.requests.CancelSession(sessionID)
-		return &command.Result{Kind: command.ResultKindStop, Data: command.StopData{SessionIDs: []string{sessionID}, AcceptedCount: count, State: "stopping"}}, nil
-	default:
-		observed = confirmationAction(ctx, sessionID, "invalid_command", confirmation, parsed.Name)
-		return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: riskConfirmationWaitingText(c.commandText)}, Confirmation: riskConfirmationActions(c.commandText)}, &command.Error{Kind: command.ErrorInput, Code: command.CodeInvalidArguments, Message: "当前只接受确认、拒绝、详情或停止命令"}
-
+// Respond 只消费类型化决定，并作用于当前绑定 session 的等待项。
+func (c *ConfirmationCoordinator) Respond(ctx context.Context, req control.RespondConfirmationRequest) (control.RespondConfirmationResult, error) {
+	ctx, row, release, err := c.confirmationContext(ctx)
+	if err != nil {
+		return control.RespondConfirmationResult{}, err
 	}
-	return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: "✓"}}, nil
+	if row == nil {
+		return control.RespondConfirmationResult{}, nil
+	}
+	defer func() { release() }()
+	snapshot := c.turns.Snapshot(row.ID)
+	if snapshot.Phase == turn.PhaseAwaitAppendConfirm {
+		if req.Decision != "approve" || req.Scope != "current" {
+			return control.RespondConfirmationResult{}, nil
+		}
+		return control.RespondConfirmationResult{Accepted: true, Continuation: &control.Continuation{Kind: "append", SessionID: row.ID}}, nil
+	}
+	pending, ok := c.turns.PendingRiskConfirmation(row.ID)
+	if !ok {
+		return control.RespondConfirmationResult{}, nil
+	}
+	decision := turn.RiskDecision{Action: turn.RiskConfirm, Extra: req.Extra}
+	action := "confirm"
+	if req.Decision == "reject" {
+		decision = turn.RiskDecision{Action: turn.RiskReject, Reason: req.Extra}
+		action = "reject"
+	} else {
+		switch req.Scope {
+		case "tool":
+			decision.Action = turn.RiskConfirmTool
+			action = "confirmtool"
+		case "all":
+			decision.Action = turn.RiskConfirmAll
+			action = "confirmall"
+		}
+	}
+	binding, _ := session.BindingFromContext(ctx)
+	if err := c.sessions.RecordActivity(ctx, binding); err != nil {
+		return control.RespondConfirmationResult{}, err
+	}
+	if !c.turns.ResolveRiskConfirmation(row.ID, decision) {
+		return control.RespondConfirmationResult{}, nil
+	}
+	observed := confirmationAction(ctx, row.ID, action, pending, req.Extra)
+	release()
+	release = func() {}
+	events.Log(context.WithoutCancel(ctx), *observed)
+	return control.RespondConfirmationResult{Accepted: true}, nil
+}
+
+func (c *ConfirmationCoordinator) confirmationContext(ctx context.Context) (context.Context, *storage.Session, func(), error) {
+	row, _, err := c.sessions.CurrentBound(ctx, c.identity.Scope(ctx))
+	if errors.Is(err, session.ErrNoCurrentSession) {
+		return ctx, nil, nil, nil
+	}
+	if err != nil {
+		return ctx, nil, nil, err
+	}
+	locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), row.ID)
+	if err != nil {
+		return ctx, nil, nil, err
+	}
+	locked, err = agentshare.CaptureSessionBinding(locked, c.sessions, c.identity, row)
+	if err != nil {
+		release()
+		return ctx, nil, nil, err
+	}
+	return locked, row, release, nil
 }
 
 func confirmationAction(ctx context.Context, sessionID, action string, confirmation turn.RiskConfirmation, extra string) *events.LogRecord {
@@ -374,7 +392,6 @@ func NewConfirmationCoordinator(deps ConfirmationCoordinatorDeps) *ConfirmationC
 		sessions:           deps.Sessions,
 		requests:           deps.Requests,
 		turns:              deps.Turns,
-		commands:           deps.Commands,
 		identity:           deps.Identity,
 		output:             deps.Output,
 		policy:             deps.Policy,

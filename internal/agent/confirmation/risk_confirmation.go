@@ -10,7 +10,6 @@ import (
 	"time"
 
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/command"
 	"elbot/internal/delivery"
 	"elbot/internal/turn"
 )
@@ -209,29 +208,6 @@ func RiskConfirmationCommandNames() []string {
 		names = append(names, cmd.Aliases...)
 	}
 	return names
-}
-
-// CommandInfo 返回风险确认命令的规范名称，别名只在此处定义一次。
-func (c *ConfirmationCoordinator) CommandInfo(text string) (command.Info, bool) {
-	parsed := c.commands.Parse(text)
-	if !parsed.OK {
-		return command.Info{}, false
-	}
-	for _, item := range riskConfirmationCommands() {
-		if parsed.Name == item.Name {
-			return command.Info{Name: item.Name, Aliases: item.Aliases, Args: item.Args, Description: item.Description}, true
-		}
-		for _, alias := range item.Aliases {
-			if parsed.Name == alias {
-				return command.Info{Name: item.Name, Aliases: item.Aliases, Args: item.Args, Description: item.Description}, true
-			}
-		}
-	}
-	return command.Info{}, false
-}
-
-func confirmationExpired() *command.Error {
-	return &command.Error{Kind: command.ErrorRejected, Code: command.CodeConfirmationExpired, Message: "确认已失效，请查看当前状态"}
 }
 
 func riskConfirmationActions(commandText func(string, ...string) string) *delivery.Confirmation {

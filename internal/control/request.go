@@ -14,7 +14,15 @@ func (m *Supervisor) ListRequests(ctx context.Context) (ListRequestsResult, erro
 	if err := authorize(ctx, true, m.deps.Requests != nil); err != nil {
 		return ListRequestsResult{}, err
 	}
-	return ListRequestsResult{Items: requestData(m.deps.Requests.List())}, nil
+	result := ListRequestsResult{Items: requestData(m.deps.Requests.List())}
+	if m.deps.History != nil {
+		for i := range result.Items {
+			if row, err := m.deps.History.GetSession(ctx, result.Items[i].SessionID); err == nil {
+				result.Items[i].SessionTitle = row.Title
+			}
+		}
+	}
+	return result, nil
 }
 
 func (m *Supervisor) StopRequest(ctx context.Context, req StopRequestRequest) (StopRequestResult, error) {

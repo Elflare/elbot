@@ -2,8 +2,10 @@ package command
 
 import (
 	"context"
+	"elbot/internal/control"
 	"elbot/internal/delivery"
 	"elbot/internal/fileops"
+	"elbot/internal/llm"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,13 +15,13 @@ import (
 
 func TestCommandResultWireKeepsDataAndExcludesExecutionInternals(t *testing.T) {
 	zero := int64(0)
-	result := Result{Kind: ResultKindStatus, Data: StatusData{Context: ContextData{Usage: &TokenUsage{TotalTokens: &zero}}}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认", Command: "/delete s --confirm"}}}, Continuation: &Continuation{Kind: ContinuationInput, Text: "private continuation", SessionID: "s"}}
+	result := Result{Kind: ResultKindStatus, Data: control.StatusResult{Context: control.ContextData{Usage: &llm.Usage{TotalTokens: &zero}}}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认", Command: "/delete s --confirm"}}}, Continuation: &control.Continuation{Kind: "input", Text: "private continuation", SessionID: "s"}}
 	raw, err := json.Marshal(result)
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(raw)
-	for _, part := range []string{`"kind":"status"`, `"total_tokens":0`, `"prompt_tokens":null`, `"confirmation":{"actions":[{"id":"confirm","label":"确认","command":"/delete s --confirm"}]}`} {
+	for _, part := range []string{`"kind":"status"`, `"TotalTokens":0`, `"PromptTokens":null`, `"confirmation":{"actions":[{"id":"confirm","label":"确认","command":"/delete s --confirm"}]}`} {
 		if !strings.Contains(text, part) {
 			t.Fatalf("missing %s: %s", part, text)
 		}
@@ -67,8 +69,8 @@ func TestFileRollbackErrorsKeepDomainClassification(t *testing.T) {
 		text  string
 	}{{fileops.ErrFileChanged, "file_changed", "file changed; rollback refused"}, {fileops.ErrNotRegularFile, "invalid_target", "rollback target is not a regular file"}} {
 		wrapped := fmt.Errorf("rollback file: %w", tc.cause)
-		failure := ClassifyError(wrapped)
-		if failure.Kind != ErrorRejected || failure.Code != tc.code || failure.Message != "rollback file: "+tc.text || !errors.Is(failure, tc.cause) || failure.Cause != wrapped {
+		failure := ClassifyError(control.ClassifyError(wrapped))
+		if failure.Kind != ErrorRejected || failure.Code != tc.code || failure.Message != "rollback file: "+tc.text || !errors.Is(failure, tc.cause) {
 			t.Fatalf("failure = %+v", failure)
 		}
 	}

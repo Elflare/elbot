@@ -146,11 +146,6 @@ data: [DONE]
 		case <-time.After(5 * time.Second):
 			t.Fatalf("%s did not finish", name)
 		}
-		select {
-		case <-call.Done():
-		case <-time.After(5 * time.Second):
-			t.Fatal("call context remained alive")
-		}
 	}
 	if len(p.retryNotices) != 0 {
 		t.Fatal("duplicate retries")

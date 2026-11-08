@@ -27,20 +27,8 @@ func (c doctorCommand) Handle(ctx context.Context, req command.Request) (*comman
 	if strings.TrimSpace(req.Args) != "" {
 		return nil, inputError(fmt.Errorf("usage: %s", c.deps.CommandText("doctor")))
 	}
-	if c.deps.Doctor == nil {
-		return nil, fmt.Errorf("doctor service is not configured")
-	}
-	report, err := c.deps.Doctor.Check(ctx)
-	if err != nil {
-		return nil, err
-	}
-	items := []command.DoctorIssue{}
-	for _, file := range report.Files {
-		for _, issue := range file.Issues {
-			items = append(items, command.DoctorIssue{Path: file.Path, Level: issue.Level, Topic: issue.Topic, Message: issue.Message, Field: issue.Field, Missing: issue.Missing})
-		}
-	}
-	return &command.Result{Kind: command.ResultKindDoctor, Data: command.DoctorData{ConfigPath: report.ConfigPath, Items: items}}, nil
+	data, err := c.deps.Control.CheckConfiguration(ctx)
+	return &command.Result{Kind: command.ResultKindDoctor, Data: data}, err
 }
 
 type DoctorModule struct{}

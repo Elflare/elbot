@@ -18,7 +18,7 @@ import (
 )
 
 type capturedCommandReply struct {
-	name    string
+	request command.Request
 	result  *command.Result
 	failure *command.Error
 }
@@ -27,9 +27,9 @@ type commandCapturePlatform struct {
 	replies []capturedCommandReply
 }
 
-func (p *commandCapturePlatform) SendCommandResult(ctx context.Context, name string, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
-	p.replies = append(p.replies, capturedCommandReply{name, result, failure})
-	return p.PlatformCapabilities.SendCommandResult(ctx, name, result, failure)
+func (p *commandCapturePlatform) SendCommandResult(ctx context.Context, req command.Request, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
+	p.replies = append(p.replies, capturedCommandReply{req, result, failure})
+	return p.PlatformCapabilities.SendCommandResult(ctx, req, result, failure)
 }
 
 func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
@@ -92,6 +92,12 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 			for _, text := range []string{"-pin missing-session", "-fork missing-message"} {
 				err := m.HandleMessage(ctx, MessageRequest{Text: text})
 				var failure *command.Error
+				if text == "-fork missing-message" {
+					if !errors.As(err, &failure) || failure.Code != "no_current_session" || !errors.Is(err, session.ErrNoCurrentSession) {
+						t.Fatalf("error=%v", err)
+					}
+					continue
+				}
 				if !errors.As(err, &failure) || failure.Code != command.CodeNotFound || !errors.Is(err, storage.ErrNotFound) {
 					t.Fatalf("error=%v", err)
 				}
@@ -121,7 +127,8 @@ func TestCommandTextWiringUsesConfigurationFirstPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	reply := platform.replies[0]
-	if reply.name != "help" || reply.result.Kind != command.ResultKindHelp || !strings.Contains(platformshare.FormatCommandResult(reply.result), "!stop [request_id|number]") || strings.Contains(platformshare.FormatCommandResult(reply.result), "!!") || strings.Contains(platformshare.FormatCommandResult(reply.result), "/help") {
-		t.Fatalf("reply=%+v", reply)
+	text := platformshare.FormatCommandResult(reply.request, reply.result)
+	if reply.request.Name != "help" || reply.result.Kind != command.ResultKindHelp || !strings.Contains(text, "!!stop [request_id|number]") || !strings.Contains(text, "!!help <command>") || strings.Contains(text, "/help") {
+		t.Fatalf("reply=%+v formatted=%q", reply, text)
 	}
 }

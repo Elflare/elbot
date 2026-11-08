@@ -2,17 +2,13 @@ package builtin
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log/slog"
 	"strconv"
 	"strings"
 
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
-	"elbot/internal/contextmgr"
-	globalevents "elbot/internal/events"
-	"elbot/internal/storage"
+	"elbot/internal/control"
 )
 
 func NewSessions(deps Deps) command.Handler {
@@ -28,7 +24,7 @@ func NewSessions(deps Deps) command.Handler {
 		if err != nil {
 			return nil, err
 		}
-		return sessionsResult(ctx, deps, sessions, query, "sessions")
+		return sessionsResult(sessions), nil
 	})
 }
 
@@ -56,36 +52,8 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 	if arg == "" {
 		return resumePage(ctx, deps, 0)
 	}
-	var session *storage.Session
-	var err error
-	if arg == "last" {
-		session, err = deps.Sessions.ResumeLast(ctx, deps.Scope(ctx))
-	} else {
-		session, err = deps.Sessions.Resume(ctx, deps.Scope(ctx), arg)
-	}
-	if err != nil {
-		return nil, err
-	}
-	record := globalevents.LogRecord{
-		Category:     globalevents.LogAudit,
-		Level:        slog.LevelInfo,
-		EventName:    "session_resume",
-		Module:       "command",
-		Content:      "title: " + session.Title,
-		ResultStatus: globalevents.ResultSucceeded,
-	}
-	record.Identity = globalevents.LogIdentityFromContext(ctx)
-	record.Identity.SessionID = session.ID
-	globalevents.Log(ctx, record)
-	history, historyErr := recentConversationMessages(ctx, deps, session.ID, resumeHistoryTurns)
-	result := sessionChangeAtCurrent(session, session.ID, 1, session.ID, "resume")
-	data := result.Data.(command.SessionChangeData)
-	data.Messages, err = messageData(history)
-	if err != nil {
-		return result, err
-	}
-	result.Data = data
-	return result, historyErr
+	data, err := deps.Control.ResumeSession(ctx, control.ResumeSessionRequest{SessionID: arg, MessageLimit: resumeHistoryTurns * 2})
+	return sessionChange(data), err
 }
 
 func resumePage(ctx context.Context, deps Deps, page int) (*command.Result, error) {
@@ -93,7 +61,7 @@ func resumePage(ctx context.Context, deps Deps, page int) (*command.Result, erro
 	if err != nil {
 		return nil, err
 	}
-	return sessionsResult(ctx, deps, sessions, "", "resume")
+	return sessionsResult(sessions), nil
 }
 
 func (c resumeCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -128,7 +96,7 @@ func NewArchives(deps Deps) command.Handler {
 		if err != nil {
 			return nil, err
 		}
-		return sessionsResult(ctx, deps, sessions, query, "archives")
+		return sessionsResult(sessions), nil
 	})
 }
 
@@ -145,26 +113,8 @@ func NewMessages(deps Deps) command.Handler {
 			}
 			page = parsed
 		}
-		session, err := deps.Sessions.Current(ctx, deps.Scope(ctx))
-		if err != nil {
-			return nil, err
-		}
-
-		loaded, err := (contextmgr.Loader{Store: deps.Store}).LoadMessagePage(ctx, session.ID, page, messageListPageSize)
-		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return nil, err
-			}
-			return nil, &command.Error{Kind: command.ErrorInternal, Code: "history_read_failed", Message: "读取会话历史失败", Cause: err}
-		}
-		if page > max(1, loaded.TotalPages) {
-			return nil, inputError(fmt.Errorf("page %d out of range; available pages: 1-%d", page, max(1, loaded.TotalPages)))
-		}
-		items, err := messageData(loaded.Messages)
-		if err != nil {
-			return nil, err
-		}
-		return &command.Result{Kind: command.ResultKindMessages, Data: command.MessagesData{Page: command.Page{Page: page, PageSize: messageListPageSize, HasNext: page < loaded.TotalPages, TotalPages: &loaded.TotalPages}, SessionID: session.ID, Items: items}}, nil
+		data, err := deps.Control.SessionMessages(ctx, control.SessionMessagesRequest{Page: page, PageSize: messageListPageSize})
+		return &command.Result{Kind: command.ResultKindMessages, Data: data}, err
 	})
 }
 
@@ -177,27 +127,7 @@ func NewFork(deps Deps) command.Handler {
 		if messageID == "" {
 			return nil, inputError(fmt.Errorf("usage: %s", deps.CommandText("fork", "<message_id>")))
 		}
-		session, err := deps.Sessions.Fork(ctx, deps.Scope(ctx), messageID)
-		if err != nil {
-			return nil, err
-		}
-		globalevents.Log(context.Background(), globalevents.LogRecord{
-			Category:     globalevents.LogAudit,
-			Level:        slog.LevelInfo,
-			EventName:    "session_fork",
-			Module:       "command",
-			Content:      fmt.Sprintf("parent: %s · message: %s", session.ParentSessionID, session.ForkFromMessageID),
-			Identity:     globalevents.LogIdentity{SessionID: session.ID},
-			ResultStatus: globalevents.ResultSucceeded,
-		})
-		history, historyErr := recentConversationMessages(ctx, deps, session.ID, resumeHistoryTurns)
-		result := sessionChangeAtCurrent(session, session.ID, 1, session.ID, "fork")
-		data := result.Data.(command.SessionChangeData)
-		data.Messages, err = messageData(history)
-		if err != nil {
-			return result, err
-		}
-		result.Data = data
-		return result, historyErr
+		data, err := deps.Control.ForkSession(ctx, control.ForkSessionRequest{MessageID: messageID, MessageLimit: resumeHistoryTurns * 2})
+		return sessionChange(data), err
 	})
 }

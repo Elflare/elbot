@@ -16,6 +16,7 @@ import (
 	"elbot/internal/completion"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/control"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/hook"
@@ -48,8 +49,8 @@ func (p *integrationPlatform) SendTo(_ context.Context, _ delivery.Target, outpu
 	p.outputs = append(p.outputs, delivery.FallbackOutput(outputs).Text)
 	return delivery.Receipt{}, nil
 }
-func (p *integrationPlatform) SendCommandResult(ctx context.Context, _ string, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
-	text := platformshare.FormatCommandResult(result)
+func (p *integrationPlatform) SendCommandResult(ctx context.Context, req command.Request, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
+	text := platformshare.FormatCommandResult(req, result)
 	if failure != nil {
 		text = failure.Message
 	}
@@ -67,7 +68,7 @@ func (*integrationPlatform) CallPlatformAPI(context.Context, string, string, map
 	return nil, nil
 }
 
-func TestAgentRegistersHookCommandsAndRunsPublicBridge(t *testing.T) {
+func TestHookManagementUsesControlAndBridgeRemainsActive(t *testing.T) {
 	root := t.TempDir()
 	cfg := &config.Config{ConfigPath: filepath.Join(root, "config.toml")}
 	cfg.Session = config.SessionConfig{DefaultMode: "work", Naming: config.SessionNamingConfig{TriggerStep: 100}}
@@ -113,13 +114,17 @@ data: [DONE]
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = tools.Close(context.Background()) })
+	controller, err := control.NewSupervisor(cfg, control.SupervisorDeps{Models: models})
+	if err != nil {
+		t.Fatal(err)
+	}
 	platform := &integrationPlatform{}
-	hooks, err := hook.NewSupervisor(t.Context(), cfg, hook.SupervisorDeps{Tools: tools, Platform: platform})
+	hooks, err := hook.NewSupervisor(t.Context(), cfg, hook.SupervisorDeps{Control: controller, Tools: tools, Platform: platform})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = hooks.Close(context.Background()) })
-	a, err := agent.NewSupervisor(t.Context(), cfg, agent.SupervisorDeps{Store: store, Models: models, Media: center, Permission: permission, Tools: tools, Hooks: hooks, Platform: platform})
+	a, err := agent.NewSupervisor(t.Context(), cfg, agent.SupervisorDeps{Control: controller, Store: store, Models: models, Media: center, Permission: permission, Tools: tools, Platform: platform})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,21 +141,16 @@ data: [DONE]
 	if err := hooks.Start(); err != nil {
 		t.Fatal(err)
 	}
-	found := false
-	for _, info := range a.Commands() {
-		if info.Name == "hooks" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("Hook command missing from Agent catalog")
+	commandCtx := testutil.WithCLIConversation(t.Context())
+	commandCtx = contextinfo.WithActor(commandCtx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}})
+	commands, err := controller.ListCommands(commandCtx, control.ListCommandsRequest{Name: "hooks"})
+	if err != nil || len(commands.Items) != 1 || commands.Items[0].Name != "hooks" {
+		t.Fatalf("Hook command missing from control catalog: %+v err=%v", commands, err)
 	}
 	items, err := a.Complete(testutil.WithCLIConversation(t.Context()), completion.Request{Text: "/hooks integration", Cursor: len("/hooks integration")})
 	if err != nil || len(items) != 1 || items[0].Text != "integration_suffix" {
 		t.Fatalf("completion=%+v err=%v", items, err)
 	}
-	commandCtx := testutil.WithCLIConversation(t.Context())
-	commandCtx = contextinfo.WithActor(commandCtx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}})
 	commandCtx = platformshare.WithMessageContext(commandCtx, platformshare.MessageContext{CommandReply: platform})
 	if err := a.HandleMessage(commandCtx, agent.MessageRequest{Text: "/hooks"}); err != nil {
 		t.Fatal(err)

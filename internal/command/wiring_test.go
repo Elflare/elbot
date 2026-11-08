@@ -8,116 +8,105 @@ import (
 	"testing"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/doctor"
+	"elbot/internal/control"
 	"elbot/internal/tool"
 )
 
-type builtinToolsStub struct{}
+type builtinControlStub struct {
+	ControlCapabilities
+	commands []control.CommandInfo
+	remove   *control.RemoveSkillRequest
+}
 
-func (*builtinToolsStub) QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error) {
+func (s *builtinControlStub) ListCommands(ctx context.Context, req control.ListCommandsRequest) (control.ListCommandsResult, error) {
+	actor, _ := contextinfo.ActorFromContext(ctx)
+	result := control.ListCommandsResult{Items: []control.CommandInfo{}}
+	for _, item := range s.commands {
+		if req.Name != "" && item.Name != req.Name && !slices.Contains(item.Aliases, req.Name) {
+			continue
+		}
+		if item.MinRole != contextinfo.RoleUser && actor.Role != contextinfo.RoleSuperadmin {
+			continue
+		}
+		result.Items = append(result.Items, item)
+	}
+	if req.Name != "" && len(result.Items) == 0 {
+		return result, &control.Error{Code: "not_found", Message: "command unavailable"}
+	}
+	return result, nil
+}
+
+func (*builtinControlStub) QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error) {
 	return nil, nil
 }
-func (*builtinToolsStub) Reload(context.Context) error         { return nil }
-func (*builtinToolsStub) Remove(context.Context, string) error { return nil }
 
-type doctorStub struct {
-	report doctor.Report
-	err    error
-	calls  int
+func (s *builtinControlStub) RemoveSkill(_ context.Context, req control.RemoveSkillRequest) error {
+	s.remove = &req
+	return nil
 }
 
-func (d *doctorStub) Check(context.Context) (doctor.Report, error) {
-	d.calls++
-	return d.report, d.err
-}
-
-func TestCommandsUseConfiguredPrefixInsteadOfRequestPrefix(t *testing.T) {
+func TestCommandsUseConfiguredPrefixAndReturnConfirmationAction(t *testing.T) {
 	router := NewRouter([]string{"!", "!!"})
-	tools := &builtinToolsStub{}
-	deps := BuiltinDeps{Tools: tools, Skills: tools, SessionListPageSize: 10, SessionRetentionDays: 30}
-	if err := RegisterBuiltins(router, deps); err != nil {
+	controlStub := &builtinControlStub{}
+	if err := RegisterBuiltins(router, BuiltinDeps{Control: controlStub, SessionListPageSize: 10, SessionRetentionDays: 30}); err != nil {
 		t.Fatal(err)
 	}
 	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	for _, tc := range []struct{ input, want string }{
-		{"!!tools remove echo", "!tools remove echo --confirm"},
-		{"!!doctor invalid", "usage: !doctor"},
-	} {
-		result, err := router.Dispatch(ctx, tc.input)
-		if err != nil {
-			if !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("%s: %v", tc.input, err)
-			}
-			continue
-		}
-		if result == nil || result.Kind != ResultKindTools {
-			t.Fatalf("%s: %+v", tc.input, result)
-		}
-		data, ok := result.Data.(ToolsData)
-		if !ok || !strings.Contains(data.Prompt, tc.want) || strings.Contains(data.Prompt, "!!") {
-			t.Fatalf("%s: %+v", tc.input, result.Data)
-		}
+	result, err := router.Dispatch(ctx, "!!tools remove echo")
+	if err != nil || result == nil || result.Confirmation == nil || len(result.Confirmation.Actions) != 1 {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	if got := result.Confirmation.Actions[0].Command; got != "!tools remove echo --confirm" {
+		t.Fatalf("confirmation command=%q", got)
+	}
+	if controlStub.remove != nil {
+		t.Fatal("unconfirmed request reached skill removal")
+	}
+
+	if _, err := router.Dispatch(ctx, "!!doctor invalid"); err == nil || !strings.Contains(err.Error(), "usage: !doctor") {
+		t.Fatalf("doctor usage error=%v", err)
+	}
+	result, err = router.Dispatch(ctx, "!!tools remove echo --confirm")
+	if err != nil || controlStub.remove == nil || controlStub.remove.Name != "echo" || !controlStub.remove.Confirmed {
+		t.Fatalf("remove=%+v err=%v", controlStub.remove, err)
 	}
 }
 
-func TestHelpCommandFiltersByActor(t *testing.T) {
+func TestHelpPassesLookupToControlAndPreservesReturnedData(t *testing.T) {
+	controlStub := &builtinControlStub{commands: []control.CommandInfo{
+		{Name: "public", Description: "Public command.", MinRole: contextinfo.RoleUser},
+		{Name: "secret", Description: "Private command."},
+	}}
 	router := NewRouter([]string{"/"})
-	deps := BuiltinDeps{SessionListPageSize: 10, SessionRetentionDays: 30}
-	if err := RegisterBuiltins(router, deps); err != nil {
-		t.Fatalf("register help: %v", err)
+	if err := RegisterBuiltins(router, BuiltinDeps{Control: controlStub}); err != nil {
+		t.Fatal(err)
 	}
-	if err := router.Register(NewFunc(Info{Name: "public", Args: "", Description: "Public command.", MinRole: contextinfo.RoleUser}, nil)); err != nil {
-		t.Fatalf("register public: %v", err)
-	}
-	if err := router.Register(NewFunc(Info{Name: "secret", Args: "", Description: "Private command.", Aliases: []string{"sec"}}, nil)); err != nil {
-		t.Fatalf("register secret: %v", err)
-	}
-
 	help, _ := router.Handler("help")
-	userCtx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser})
+	userCtx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleUser})
 	list, err := help.Handle(userCtx, Request{Prefix: "/"})
 	if err != nil {
-		t.Fatalf("user help: %v", err)
+		t.Fatal(err)
 	}
-	listData := list.Data.(HelpData)
-	if !slices.ContainsFunc(listData.Items, func(item HelpItem) bool { return item.Name == "help" }) ||
-		!slices.ContainsFunc(listData.Items, func(item HelpItem) bool { return item.Name == "public" }) ||
-		slices.ContainsFunc(listData.Items, func(item HelpItem) bool { return item.Name == "secret" }) {
-		t.Fatalf("user help data = %+v", listData)
+	data, ok := list.Data.(control.ListCommandsResult)
+	if !ok || len(data.Items) != 1 || data.Items[0].Name != "public" {
+		t.Fatalf("help result=%#v", list.Data)
 	}
-	privateDetail, err := help.Handle(userCtx, Request{Prefix: "/", Args: "sec"})
-	var failure *Error
-	if privateDetail != nil || !errors.As(err, &failure) || failure.Code != CodeUnknownCommand || failure.Message != "unk command: sec" {
-		t.Fatalf("result=%+v err=%v", privateDetail, err)
+	if _, err := help.Handle(userCtx, Request{Prefix: "/", Args: "secret"}); err == nil {
+		t.Fatal("control lookup error was not returned")
 	}
-	publicDetail, err := help.Handle(userCtx, Request{Prefix: "/", Args: "public"})
-	if err != nil || publicDetail.Data.(HelpData).Items[0].Name != "public" {
-		t.Fatalf("public help = %#v, %v", publicDetail, err)
-	}
-
 	completer := help.(Completer)
-	if got := completer.Complete(userCtx, CompletionRequest{Raw: "/help sec", Prefix: "/", Name: "help", Args: "sec", Cursor: len("/help sec")}); len(got) != 0 {
-		t.Fatalf("user private completions = %#v", got)
+	if got := completer.Complete(userCtx, CompletionRequest{Raw: "/help p", Prefix: "/", Name: "help", Args: "p", Cursor: len("/help p")}); len(got) != 1 || got[0].Text != "public" {
+		t.Fatalf("completions=%#v", got)
 	}
-
-	adminCtx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	adminList, err := help.Handle(adminCtx, Request{Prefix: "/"})
-	if err != nil || !slices.ContainsFunc(adminList.Data.(HelpData).Items, func(item HelpItem) bool { return item.Name == "secret" }) {
-		t.Fatalf("admin help = %#v, %v", adminList, err)
-	}
-	adminDetail, err := help.Handle(adminCtx, Request{Prefix: "/", Args: "sec"})
-	if err != nil || adminDetail.Data.(HelpData).Items[0].Name != "secret" {
-		t.Fatalf("admin private help = %#v, %v", adminDetail, err)
-	}
-	if got := completer.Complete(adminCtx, CompletionRequest{Raw: "/help sec", Prefix: "/", Name: "help", Args: "sec", Cursor: len("/help sec")}); len(got) != 1 || got[0].Text != "secret" {
-		t.Fatalf("admin private completions = %#v", got)
+	adminCtx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	if got := completer.Complete(adminCtx, CompletionRequest{Raw: "/help s", Prefix: "/", Name: "help", Args: "s", Cursor: len("/help s")}); len(got) != 1 || got[0].Text != "secret" {
+		t.Fatalf("admin completions=%#v", got)
 	}
 }
 
-func TestDoctorRegistrationPermissionsHelpAndCompletion(t *testing.T) {
+func TestDoctorRegistrationPermissionsAndHelp(t *testing.T) {
 	router := NewRouter([]string{"/"})
-	deps := BuiltinDeps{Doctor: &doctorStub{}, SessionListPageSize: 10, SessionRetentionDays: 30}
-	if err := RegisterBuiltins(router, deps); err != nil {
+	if err := RegisterBuiltins(router, BuiltinDeps{Control: &builtinControlStub{commands: []control.CommandInfo{{Name: "doctor", MinRole: contextinfo.RoleSuperadmin}}}}); err != nil {
 		t.Fatal(err)
 	}
 	admin := contextinfo.Actor{Role: contextinfo.RoleSuperadmin}
@@ -126,18 +115,20 @@ func TestDoctorRegistrationPermissionsHelpAndCompletion(t *testing.T) {
 	if !ok || CanAccess(info, user) || !CanAccess(info, admin) || info.SessionEffect != SessionEffectNone {
 		t.Fatalf("doctor info = %#v", info)
 	}
-	if !slices.Contains(router.CompleteForActor("/doc", admin), "/doctor") {
-		t.Fatal("missing admin completion")
-	}
-	if got := router.CompleteForActor("/doc", user); len(got) != 0 {
-		t.Fatalf("user completion = %#v", got)
+	if !slices.Contains(router.CompleteForActor("/doc", admin), "/doctor") || len(router.CompleteForActor("/doc", user)) != 0 {
+		t.Fatal("doctor completion permissions are incorrect")
 	}
 	for _, actor := range []contextinfo.Actor{admin, user} {
-		ctx := contextinfo.WithActor(context.Background(), actor)
+		ctx := contextinfo.WithActor(t.Context(), actor)
 		result, err := router.Dispatch(ctx, "/help doctor")
 		if actor.Role != contextinfo.RoleSuperadmin {
 			var failure *Error
-			if result != nil || !errors.As(err, &failure) || failure.Code != CodeUnknownCommand {
+			var data control.ListCommandsResult
+			ok := false
+			if result != nil {
+				data, ok = result.Data.(control.ListCommandsResult)
+			}
+			if !ok || len(data.Items) != 0 || !errors.As(err, &failure) || failure.Code != CodeNotFound {
 				t.Fatalf("result=%+v err=%v", result, err)
 			}
 		} else if err != nil {

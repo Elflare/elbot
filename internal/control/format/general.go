@@ -1,43 +1,38 @@
-package share
+package format
 
 import (
 	"fmt"
 	"strings"
 
-	command "elbot/internal/command/share"
+	"elbot/internal/control"
+	"elbot/internal/fileops"
+	"elbot/internal/tool"
 )
 
-func formatTools(d command.ToolsData) string {
-	if d.Prompt != "" {
-		return d.Prompt
-	}
-	if d.Operation == "reload" {
-		return "skills reloaded"
-	}
-	if d.Operation == "remove" {
-		return "removed: " + d.Name
-	}
-	if len(d.Items) == 0 {
+func Tools(items []tool.ToolInfo) string {
+	if len(items) == 0 {
 		return "nil"
 	}
 	var out strings.Builder
 	out.WriteString("tools:\n")
-	for _, item := range d.Items {
+	for _, entry := range items {
+		item := entry.Definition
+		source := map[tool.Source]string{tool.SourceBuiltin: "builtin", tool.SourceSkill: "skill", tool.SourceELwisp: "elwisp"}[item.Source]
 		tags := ""
 		if len(item.Tags) > 0 {
 			tags = " tags=" + strings.Join(item.Tags, ",")
 		}
-		fmt.Fprintf(&out, "  %s [%s]%s %s\n", item.Name, item.Source, tags, item.Description)
+		fmt.Fprintf(&out, "  %s [%s]%s %s\n", item.Name, source, tags, item.Description)
 	}
 	return strings.TrimRight(out.String(), "\n")
 }
 
-func formatRollbacks(d command.RollbacksData) string {
-	if len(d.Items) == 0 {
+func Rollbacks(items []fileops.RollbackInfo) string {
+	if len(items) == 0 {
 		return "nil"
 	}
 	var out strings.Builder
-	for _, item := range d.Items {
+	for _, item := range items {
 		action := "restore"
 		if item.Created {
 			action = "delete"
@@ -47,14 +42,14 @@ func formatRollbacks(d command.RollbacksData) string {
 	return strings.TrimRight(out.String(), "\n")
 }
 
-func formatRequests(d command.RequestsData) string {
+func Requests(d control.ListRequestsResult, opts RequestsOptions) string {
 	if len(d.Items) == 0 {
 		return "nil"
 	}
-	return strings.TrimRight(formatActiveRequestsData(d.Items, true), "\n")
+	return strings.TrimRight(activeRequests(d.Items, opts.ShowSessionTitle), "\n")
 }
 
-func formatModels(d command.ModelsData) string {
+func Models(d control.ListModelsResult) string {
 	var out strings.Builder
 	provider := ""
 	for _, item := range d.Items {
@@ -101,12 +96,12 @@ func formatModels(d command.ModelsData) string {
 	return strings.TrimRight(out.String(), "\n")
 }
 
-func formatHelp(d command.HelpData) string {
+func Help(prefix string, d control.ListCommandsResult) string {
 	var out strings.Builder
 	for _, item := range d.Items {
 		if len(d.Items) == 1 {
-			if item.Usage != "" {
-				out.WriteString(item.Usage)
+			if commandUsage(prefix, item.Name, item.Args) != "" {
+				out.WriteString(commandUsage(prefix, item.Name, item.Args))
 			}
 			if item.Description != "" {
 				out.WriteString("：" + item.Description)
@@ -119,34 +114,25 @@ func formatHelp(d command.HelpData) string {
 			}
 			break
 		}
-		if item.Usage != "" {
-			fmt.Fprintf(&out, "%s: %s\n", item.Usage, item.Description)
+		if commandUsage(prefix, item.Name, item.Args) != "" {
+			fmt.Fprintf(&out, "%s: %s\n", commandUsage(prefix, item.Name, item.Args), item.Description)
 		}
 	}
 	if len(d.Items) > 1 {
-		fmt.Fprintf(&out, "\n%s", d.HelpCommand)
+		fmt.Fprintf(&out, "\n%s", commandUsage(prefix, "help", "<command>"))
 	}
 	return strings.TrimRight(out.String(), "\n")
 }
 
-func formatHooks(d command.HooksData) string {
-	if d.Operation == "reload_failed" {
-		return strings.Join(d.Notices, "\n")
+func HookReload(d control.ReloadHooksResult) string {
+	if len(d.Notices) == 0 {
+		return "hooks reloaded"
 	}
-	if d.Operation == "reload" {
-		if len(d.Notices) == 0 {
-			return "hooks reloaded"
-		}
-		return "hooks reloaded\nwarn:\n- " + strings.Join(d.Notices, "\n- ")
-	}
+	return "hooks reloaded\nwarn:\n- " + strings.Join(d.Notices, "\n- ")
+}
+func Hooks(d control.ListHooksResult) string {
 	if len(d.Items) == 0 {
 		return "nil"
-	}
-	if d.Operation != "" {
-		return fmt.Sprintf("hook %s: %s · OK", d.Operation, d.Target)
-	}
-	if d.Target != "" {
-		return formatHookDetail(d)
 	}
 	var out strings.Builder
 	out.WriteString("hooks:\n")
@@ -168,7 +154,7 @@ func formatHooks(d command.HooksData) string {
 		for end < len(d.Items) && d.Items[end].ID == item.ID {
 			end++
 		}
-		stateful := command.HookData{}
+		stateful := control.HookInfo{}
 		for _, entry := range d.Items[i:end] {
 			if entry.Mode != "" {
 				stateful = entry
@@ -220,13 +206,13 @@ func formatHooks(d command.HooksData) string {
 	return strings.TrimRight(out.String(), "\n")
 }
 
-func formatDoctor(d command.DoctorData) string {
+func Doctor(d control.CheckConfigurationResult) string {
 	if len(d.Items) == 0 {
 		return "Everything is OK"
 	}
 	groups := make([]struct {
 		path  string
-		items []command.DoctorIssue
+		items []control.DoctorIssue
 	}, 0)
 	indexes := make(map[string]int)
 	errorCount, hintCount := 0, 0
@@ -237,7 +223,7 @@ func formatDoctor(d command.DoctorData) string {
 			indexes[item.Path] = index
 			groups = append(groups, struct {
 				path  string
-				items []command.DoctorIssue
+				items []control.DoctorIssue
 			}{path: item.Path})
 		}
 		groups[index].items = append(groups[index].items, item)
@@ -275,7 +261,10 @@ func formatDoctor(d command.DoctorData) string {
 	return strings.TrimRight(out.String(), "\n")
 }
 
-func formatHookDetail(d command.HooksData) string {
+func HookDetail(d control.GetHookResult) string {
+	if len(d.Items) == 0 {
+		return "nil"
+	}
 	var out strings.Builder
 	first := d.Items[0]
 	if first.Point != "" {

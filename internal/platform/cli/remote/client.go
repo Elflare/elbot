@@ -199,7 +199,7 @@ func (c *RemoteClient) handleServerMessage(msg remoteMessage) {
 	switch msg.Type {
 	case remoteMsgCommandResult:
 		if msg.Result != nil {
-			if text := platformshare.FormatCommandResult(msg.Result); text != "" {
+			if text := platformshare.FormatCommandResult(msg.Command, msg.Result); text != "" {
 				c.sendDisplay(clishare.DisplayEvent{Kind: clishare.DisplayChat, Text: text})
 			}
 		}

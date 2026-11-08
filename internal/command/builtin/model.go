@@ -2,15 +2,12 @@ package builtin
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	command "elbot/internal/command/share"
-	"elbot/internal/config"
-	"elbot/internal/modelmgr"
-	"elbot/internal/session"
-	"elbot/internal/storage"
+	"elbot/internal/control"
+	"strconv"
 )
 
 func NewModel(deps Deps) command.Handler {
@@ -48,55 +45,26 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 	if err != nil {
 		return nil, inputError(fmt.Errorf("%v\n%s", err, deps.CommandText(info.Name, info.Args)))
 	}
-	var selected modelmgr.ModelOption
-	switch target {
-	case modelTargetCompact:
-		selected, err = deps.Models.SelectCompactModel(args)
-	case modelTargetNaming:
-		selected, err = deps.Models.SelectNamingModel(args)
-	default:
-		mode := storage.SessionModeWork
-		var current *storage.Session
-		if deps.Sessions != nil {
-			mode = deps.Sessions.DefaultMode()
-			var currentErr error
-			current, currentErr = deps.Sessions.Current(ctx, deps.Scope(ctx))
-			if currentErr != nil && !errors.Is(currentErr, session.ErrNoCurrentSession) {
-				return nil, currentErr
-			}
-		}
-		if current != nil && current.Mode != "" && current.Mode != storage.SessionModeBackground {
-			mode = current.Mode
-		}
-		if current != nil && current.Mode == storage.SessionModeBackground {
-			mode = storage.SessionModeWork
-		}
-		currentMode := mode
-		if target != modelTargetCurrent {
-			mode = string(target)
-		}
-		selected, err = deps.Models.PrepareModel(args)
-		if err == nil && current != nil && mode == currentMode {
-			source, known, originErr := session.Origin(current)
-			if originErr != nil {
-				return nil, originErr
-			}
-			if known {
-				targetOrigin := deps.Models.Resolve(config.ModelSelection{Provider: selected.Provider, Model: selected.Model}).Origin
-				err = modelmgr.CanSwitch(source, targetOrigin)
-			}
-		}
-		if err == nil {
-			selected, err = deps.Models.CommitModelForMode(mode, selected)
-		}
-	}
+	listed, err := deps.Control.ListModels(ctx, control.ListModelsRequest{Query: args})
 	if err != nil {
 		return nil, err
 	}
-	if target == modelTargetCurrent {
-		return &command.Result{Kind: command.ResultKindModel, Data: command.ModelSelectionData{Target: string(target), Model: modelData(selected)}}, nil
+	var selected *control.ModelData
+	index, indexErr := strconv.Atoi(args)
+	for i := range listed.Items {
+		item := &listed.Items[i]
+		if (indexErr == nil && item.Index == index) || (indexErr != nil && (item.Model == args || item.Provider+"/"+item.Model == args)) {
+			if selected != nil {
+				return nil, inputError(fmt.Errorf("model %q matches multiple models; use provider/model", args))
+			}
+			selected = item
+		}
 	}
-	return &command.Result{Kind: command.ResultKindModel, Data: command.ModelSelectionData{Target: string(target), Model: modelData(selected)}}, nil
+	if selected == nil {
+		return nil, inputError(fmt.Errorf("model %q: not found", args))
+	}
+	data, err := deps.Control.SelectModel(ctx, control.SelectModelRequest{Target: string(target), Provider: selected.Provider, Model: selected.Model})
+	return &command.Result{Kind: command.ResultKindModel, Data: data}, err
 }
 
 func (c modelCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -106,13 +74,16 @@ func (c modelCommand) Complete(ctx context.Context, req command.CompletionReques
 	if strings.HasPrefix(query, "-") {
 		return completeModelOptions(query, token.Start, token.End)
 	}
-	if optionOnlyModelArgs(req.Args) || c.deps.Models == nil {
+	if optionOnlyModelArgs(req.Args) {
 		return nil
 	}
-	result := c.deps.Models.ModelList(query, modelmgr.ModelListOptions{})
-	items := result.Options
+	result, err := c.deps.Control.ListModels(ctx, control.ListModelsRequest{Query: query})
+	if err != nil {
+		return nil
+	}
+	items := result.Items
 	if len(items) == 0 {
-		items = c.fuzzyModelOptions(query)
+		items = c.fuzzyModelOptions(ctx, query)
 	}
 	out := make([]command.Completion, 0, len(items))
 	seen := map[string]bool{}
@@ -127,13 +98,17 @@ func (c modelCommand) Complete(ctx context.Context, req command.CompletionReques
 	return out
 }
 
-func (c modelCommand) fuzzyModelOptions(query string) []modelmgr.ModelOption {
+func (c modelCommand) fuzzyModelOptions(ctx context.Context, query string) []control.ModelData {
 	query = strings.ToLower(strings.TrimSpace(query))
 	if query == "" {
 		return nil
 	}
-	items := c.deps.Models.ModelList("", modelmgr.ModelListOptions{}).Options
-	out := make([]modelmgr.ModelOption, 0, len(items))
+	result, err := c.deps.Control.ListModels(ctx, control.ListModelsRequest{})
+	if err != nil {
+		return nil
+	}
+	items := result.Items
+	out := make([]control.ModelData, 0, len(items))
 	for _, model := range items {
 		providerModel := strings.ToLower(model.Provider + "/" + model.Model)
 		if fuzzySubsequenceMatch(providerModel, query) {
@@ -186,85 +161,15 @@ func NewCheckModel(deps Deps) command.Handler {
 		Help:        "query=搜索词；省略=全部\n--fresh/--refresh：重载厂商配置并刷新列表",
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
 		args, fresh := parseModelListArgs(req.Args)
+		var data control.ListModelsResult
+		var err error
 		if fresh {
-			if err := deps.Models.ReloadProviders(ctx); err != nil {
-				return nil, fmt.Errorf("reload provider configuration: %w", err)
-			}
+			data, err = deps.Control.RefreshModels(ctx, control.ListModelsRequest{Query: args})
+		} else {
+			data, err = deps.Control.ListModels(ctx, control.ListModelsRequest{Query: args})
 		}
-		result := deps.Models.ModelList(args, modelmgr.ModelListOptions{Fresh: fresh})
-
-		models := result.Options
-		data := command.ModelsData{Query: strings.TrimSpace(args), Items: []command.ModelData{}, Errors: []command.ItemError{}}
-		for _, m := range models {
-			data.Items = append(data.Items, modelData(m))
-		}
-		for _, failure := range result.Errors {
-			if failure.Err != nil {
-				data.Errors = append(data.Errors, command.ItemError{ID: failure.Provider, Error: &command.Error{Kind: command.ErrorInternal, Code: "model_request_failed", Message: failure.Err.Error(), Cause: failure.Err}})
-			}
-		}
-		if len(models) == 0 {
-			var sb strings.Builder
-			if strings.TrimSpace(args) != "" {
-				sb.WriteString(fmt.Sprintf("models[%q]: nil", strings.TrimSpace(args)))
-			} else {
-				sb.WriteString("nil")
-			}
-			appendModelProviderErrors(&sb, result.Errors)
-			return &command.Result{Kind: command.ResultKindModels, Data: data}, nil
-		}
-
-		var sb strings.Builder
-		currentProvider := ""
-		for _, m := range models {
-			if m.Provider != currentProvider {
-				if currentProvider != "" {
-					sb.WriteString("\n")
-				}
-				currentProvider = m.Provider
-				sb.WriteString(fmt.Sprintf("%s:\n", currentProvider))
-			}
-			marker := " "
-			if len(m.ModeMarks) > 0 || m.Compact || m.Naming {
-				marker = "*"
-			}
-			suffix := modelSuffix(m)
-			if !strings.HasSuffix(sb.String(), "\n") {
-				sb.WriteString("\n")
-			}
-			sb.WriteString(fmt.Sprintf("  %s [%d] %s%s", marker, m.Index, m.Model, suffix))
-		}
-		appendModelProviderErrors(&sb, result.Errors)
-		return &command.Result{Kind: command.ResultKindModels, Data: data}, nil
+		return &command.Result{Kind: command.ResultKindModels, Data: data}, err
 	})
-}
-
-func appendModelProviderErrors(sb *strings.Builder, errors []modelmgr.ModelProviderError) {
-	hasError := false
-	for _, providerErr := range errors {
-		if providerErr.Err == nil {
-			continue
-		}
-		if !hasError {
-			sb.WriteString("\nproviders err:")
-			hasError = true
-		}
-		sb.WriteString(fmt.Sprintf("\n  - %s: %v", providerErr.Provider, providerErr.Err))
-	}
-}
-
-func modelSuffix(m modelmgr.ModelOption) string {
-	marks := append([]string{}, m.ModeMarks...)
-	if m.Compact {
-		marks = append(marks, "compact")
-	}
-	if m.Naming {
-		marks = append(marks, "naming")
-	}
-	if len(marks) == 0 {
-		return ""
-	}
-	return " (" + strings.Join(marks, ", ") + ")"
 }
 
 func parseModelListArgs(args string) (string, bool) {
@@ -335,8 +240,4 @@ func (ModelModule) RegisterCommands(registrar Registrar, deps Deps) error {
 		NewModel,
 		NewCheckModel,
 	)
-}
-
-func modelData(m modelmgr.ModelOption) command.ModelData {
-	return command.ModelData{Provider: m.Provider, Model: m.Model, Index: m.Index, Modes: append([]string{}, m.ModeMarks...), Compact: m.Compact, Naming: m.Naming}
 }

@@ -10,11 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"elbot/internal/command"
 	"elbot/internal/config"
+	"elbot/internal/control"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
-	platformshare "elbot/internal/platform/share"
 	"elbot/internal/signal"
 )
 
@@ -47,7 +46,11 @@ func TestSupervisorLoadsRulesAtStartAndKeepsConfigFailureNonFatal(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer connection.Close(context.Background())
-	m, err := NewSupervisor(t.Context(), cfg, SupervisorDeps{Platform: wiringTestPlatform{}})
+	controller, err := control.NewSupervisor(cfg, control.SupervisorDeps{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewSupervisor(t.Context(), cfg, SupervisorDeps{Control: controller, Platform: wiringTestPlatform{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,9 +75,6 @@ func TestSupervisorLoadsRulesAtStartAndKeepsConfigFailureNonFatal(t *testing.T) 
 		}
 	case <-time.After(time.Second):
 		t.Fatal("missing configuration notice")
-	}
-	if result, err := m.Commands()[0].Handle(t.Context(), command.Request{}); err != nil || platformshare.FormatCommandResult(result) != "nil" {
-		t.Fatalf("invalid rules registered: %+v, %v", result, err)
 	}
 	if err := m.Close(context.Background()); err != nil {
 		t.Fatal(err)

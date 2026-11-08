@@ -1,14 +1,6 @@
 package builtin
 
-import (
-	"context"
-
-	command "elbot/internal/command/share"
-	"elbot/internal/contextinfo"
-	"elbot/internal/llm"
-	"elbot/internal/session"
-	"elbot/internal/storage"
-)
+import command "elbot/internal/command/share"
 
 type Registrar interface{ Register(command.Handler) error }
 
@@ -16,41 +8,12 @@ type Module interface{ RegisterCommands(Registrar, Deps) error }
 
 type HandlerFactory func(Deps) command.Handler
 
-// CommandCatalog 是帮助命令所需的只读目录。
-type CommandCatalog interface {
-	CommandsForActor(contextinfo.Actor) []command.Info
-	CommandInfoForActor(string, contextinfo.Actor) (command.Info, bool)
-}
-
-type ModelService = command.ModelService
-type ContextService = command.ContextService
-type CompactService = command.CompactService
-type ToolService = command.ToolService
-type SkillService = command.SkillService
-type LogService = command.LogService
-type DoctorService = command.DoctorService
-
 // Deps 在根部注入的业务能力上增加 builtin 自有配置。
 type Deps struct {
-	CommandText          func(string, ...string) string // 根部确定的命令组装能力。
-	Doctor               DoctorService
-	Router               CommandCatalog // 只读目录，不允许命令修改路由。
-	Sessions             command.SessionService
-	Requests             command.RequestService
-	Turns                command.TurnService
-	Store                storage.Store
-	Scope                func(context.Context) session.Scope
-	Models               ModelService
-	Compact              CompactService
-	Contexts             ContextService
-	Tools                ToolService
-	Skills               SkillService
-	FileRollback         FileRollbackService
-	PrepareFileContext   func(context.Context, bool) (context.Context, error)
-	SessionListPageSize  int // 会话列表每页条数。
-	SessionRetentionDays int // 清理会话时使用的保留天数。
-	Logs                 LogService
-	Usage                func(*storage.Session) (*llm.Usage, error)
+	Control              command.ControlCapabilities
+	CommandText          func(string, ...string) string // 根据配置构造命令。
+	SessionListPageSize  int                            // 命令列表每页容量。
+	SessionRetentionDays int                            // 命令清理时使用的保留天数。
 }
 
 func RegisterFactories(registrar Registrar, deps Deps, factories ...HandlerFactory) error {
@@ -81,6 +44,8 @@ func DefaultModules() []Module {
 		RequestModule{},
 		LogModule{},
 		ToolModule{},
+		HookModule{},
+		ConfirmationModule{},
 	}
 }
 

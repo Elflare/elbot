@@ -17,10 +17,10 @@ import (
 	"time"
 )
 
-func (a *Adapter) SendCommandResult(ctx context.Context, _ string, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
+func (a *Adapter) SendCommandResult(ctx context.Context, req command.Request, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
 	var outputs []delivery.Output
 	if result != nil {
-		outputs = append(outputs, delivery.Text(platformshare.FormatCommandResult(result)))
+		outputs = append(outputs, delivery.Text(platformshare.FormatCommandResult(req, result)))
 	}
 	if failure != nil {
 		outputs = append(outputs, delivery.Text(failure.Message))

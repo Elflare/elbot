@@ -7,17 +7,24 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextmgr"
 	"elbot/internal/doctor"
+	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/modelmgr"
 	"elbot/internal/request"
 	"elbot/internal/session"
 	"elbot/internal/storage"
+	"elbot/internal/tool"
 	"elbot/internal/turn"
 )
 
 // SupervisorDeps 只借用能力，不取得提供方组件或生命周期。未接入的能力返回 not_configured。
 type SupervisorDeps struct {
+	Tools              ToolCapabilities                                     // 原始工具目录查询。
+	Skills             SkillCapabilities                                    // 技能重载与删除。
+	FileRollback       FileRollbackCapabilities                             // 原始备份记录与撤销。
+	PrepareFileContext func(context.Context, bool) (context.Context, error) // Agent 提供绑定与提交准入，bool 表示写入。
+
 	Sessions      SessionCapabilities                          // 会话业务裁决，包含其自身的写入准入。
 	History       HistoryCapabilities                          // 会话快照和分支原始消息读取。
 	Requests      RequestCapabilities                          // 请求查询与取消，不负责实际退出。
@@ -35,7 +42,7 @@ type SupervisorDeps struct {
 }
 
 type SessionCapabilities interface {
-	Create(context.Context, session.Scope, session.CreateRequest) (*storage.Session, error)
+	ResetCurrent(context.Context, session.Scope) error
 	Current(context.Context, session.Scope) (*storage.Session, error)
 	CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
 	DefaultMode() string
@@ -86,13 +93,13 @@ type ModelCapabilities interface {
 
 // ConfirmationCapabilities 在提交时原子复核 ID、绑定、权限与等待状态；C 不先读后猜测确认对象。
 type ConfirmationCapabilities interface {
-	Current(context.Context) (CurrentConfirmationResult, error)
+	Current(context.Context, CurrentConfirmationRequest) (CurrentConfirmationResult, error)
 	Respond(context.Context, RespondConfirmationRequest) (RespondConfirmationResult, error)
 }
 
 type HookCapabilities interface {
 	List(context.Context) ([]HookInfo, error)
-	Reload(context.Context) error
+	Reload(context.Context) (ReloadHooksResult, error)
 	Start(context.Context, string) error
 	Stop(context.Context, string) error
 	Restart(context.Context, string) error
@@ -122,4 +129,16 @@ type ContextData struct {
 	ContextWindow       int        `json:"context_window"`
 	CompactEnabled      bool       `json:"compact_enabled"`
 	CompactTriggerRatio float64    `json:"compact_trigger_ratio"`
+}
+
+type ToolCapabilities interface {
+	QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
+}
+type SkillCapabilities interface {
+	Reload(context.Context) error
+	Remove(context.Context, string) error
+}
+type FileRollbackCapabilities interface {
+	List(context.Context) ([]fileops.RollbackInfo, error)
+	RollbackByID(context.Context, uint64) (fileops.RollbackResult, error)
 }

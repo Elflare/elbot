@@ -95,10 +95,10 @@ type sessionStub struct {
 	SessionCapabilities
 	current       *storage.Session
 	currentErr    error
-	creates       int
+	resets        int
 	deletes       int
 	modeErr       error
-	createErr     error
+	resetErr      error
 	deleteErr     error
 	modeRequest   session.ActivateModeRequest
 	cleanupBefore time.Time
@@ -111,12 +111,13 @@ func (s *sessionStub) CurrentBound(context.Context, session.Scope) (*storage.Ses
 	return s.current, nil, s.currentErr
 }
 func (s *sessionStub) DefaultMode() string { return "work" }
-func (s *sessionStub) Create(_ context.Context, _ session.Scope, req session.CreateRequest) (*storage.Session, error) {
-	s.creates++
-	if s.createErr != nil {
-		return nil, s.createErr
+func (s *sessionStub) ResetCurrent(context.Context, session.Scope) error {
+	s.resets++
+	if s.resetErr != nil {
+		return s.resetErr
 	}
-	return &storage.Session{ID: "new", Mode: req.Mode, Title: req.Title}, nil
+	s.current, s.currentErr = nil, session.ErrNoCurrentSession
+	return nil
 }
 func (s *sessionStub) ActivateMode(_ context.Context, _ session.Scope, req session.ActivateModeRequest) (session.ActivateModeResult, error) {
 	s.modeRequest = req
@@ -148,10 +149,10 @@ func (s *executionStub) SnapshotAll() []turn.Snapshot { return nil }
 func TestSessionAdmissionAndContinuation(t *testing.T) {
 	sessions := &sessionStub{current: &storage.Session{ID: "old", Mode: "work"}}
 	m, _ := testSupervisor(t, SupervisorDeps{Sessions: sessions, Scope: func(context.Context) session.Scope { return session.Scope{} }})
-	sessions.createErr = session.ErrSessionBusy
-	_, err := m.NewSession(testContext(false), NewSessionRequest{Mode: "work"})
+	sessions.resetErr = session.ErrSessionBusy
+	_, err := m.NewSession(testContext(false))
 	requireCode(t, err, "session_busy")
-	if !errors.Is(err, session.ErrSessionBusy) || sessions.creates != 1 {
+	if !errors.Is(err, session.ErrSessionBusy) || sessions.resets != 1 {
 		t.Fatal("session provider did not decide creation admission")
 	}
 	sessions.deleteErr = session.ErrSessionBusy

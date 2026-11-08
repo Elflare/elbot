@@ -83,16 +83,13 @@ type ListSessionsResult struct {
 	CurrentSessionID string               `json:"current_session_id"`
 	Query            string               `json:"query"`
 }
-type NewSessionRequest struct {
-	Mode  string `json:"mode"`
-	Title string `json:"title"`
-}
 type GetSessionRequest struct {
 	SessionID string `json:"session_id"`
 }
 type RenameSessionRequest struct {
-	SessionID string `json:"session_id"`
-	Title     string `json:"title"`
+	Target   string `json:"target"`    // 可选会话 ID 或标题；空值表示当前会话。
+	Title    string `json:"title"`     // 重命名后的标题；Target 未匹配时与 Target 合并用于当前会话。
+	PageSize int    `json:"page_size"` // 标题匹配的分页容量，由调用方指定。
 }
 type SetSessionArchivedRequest struct {
 	SessionID string `json:"session_id"`
@@ -112,11 +109,13 @@ type CleanSessionsRequest struct {
 	Before    time.Time `json:"before"` // 清理截止时间，由调用方根据保留期或用户选择计算。
 }
 type ResumeSessionRequest struct {
-	SessionID string `json:"session_id"`
+	SessionID    string `json:"session_id"`
+	MessageLimit int    `json:"message_limit"` // 返回最近消息的数量；0 不查询。
 }
 type ForkSessionRequest struct {
-	SessionID string `json:"session_id"`
-	MessageID string `json:"message_id"`
+	SessionID    string `json:"session_id"`
+	MessageID    string `json:"message_id"`
+	MessageLimit int    `json:"message_limit"` // 返回最近消息的数量；0 不查询。
 }
 type CompactSessionRequest struct {
 	SessionID string `json:"session_id"`
@@ -129,10 +128,12 @@ type SetModeRequest struct {
 
 // Continuation 必须在业务结果成功交付后进入 Agent 输入链；不序列化成客户端可提交的指令。
 type Continuation struct {
+	Kind      string // input 为普通输入，append 为当前追加等待的续跑。
 	SessionID string // 已完成模式切换的目标会话。
 	Text      string // 保留原始输入，不 TrimSpace。
 }
 type SessionChangeResult struct {
+	Messages         []MessageData `json:"messages"` // 按调用方选择读取的完整原始消息。
 	Session          *SessionData  `json:"session"`
 	SessionID        string        `json:"session_id"`
 	CurrentSessionID string        `json:"current_session_id"`
@@ -182,13 +183,14 @@ type StatusResult struct {
 	ChatID               string         `json:"chat_id"`
 }
 type RequestData struct {
-	ID        string       `json:"id"`
-	ParentID  string       `json:"parent_id"`
-	SessionID string       `json:"session_id"`
-	Kind      request.Kind `json:"kind"`
-	Label     string       `json:"label"`
-	StartedAt time.Time    `json:"started_at"`
-	Stopping  bool         `json:"stopping"`
+	ID           string       `json:"id"`
+	ParentID     string       `json:"parent_id"`
+	SessionID    string       `json:"session_id"`
+	SessionTitle string       `json:"session_title"`
+	Kind         request.Kind `json:"kind"`
+	Label        string       `json:"label"`
+	StartedAt    time.Time    `json:"started_at"`
+	Stopping     bool         `json:"stopping"`
 }
 type ListRequestsResult struct {
 	Items []RequestData `json:"items"`
@@ -237,16 +239,21 @@ type SelectModelResult struct {
 	Model  ModelData `json:"model"`
 }
 
+type CurrentConfirmationRequest struct {
+	Refresh bool `json:"refresh"` // 读取详情时刷新原等待的超时，普通查询不刷新。
+}
 type CurrentConfirmationResult struct {
-	ID        string `json:"id"` // 原有等待对象的唯一身份；每次新等待不得复用。
 	SessionID string `json:"session_id"`
 	Kind      string `json:"kind"` // tool 或 append。
 	Detail    string `json:"detail"`
+	ToolName  string `json:"tool_name"`
+	Arguments string `json:"arguments"`
+	Risk      string `json:"risk"`
 }
 type RespondConfirmationRequest struct {
-	ConfirmationID string `json:"confirmation_id"`
-	Decision       string `json:"decision"` // approve 或 reject。
-	Scope          string `json:"scope"`    // current 或 all。
+	Decision string `json:"decision"` // approve 或 reject。
+	Scope    string `json:"scope"`    // current、tool 或 all。
+	Extra    string `json:"extra"`    // 批准附加输入，或拒绝原因。
 }
 type RespondConfirmationResult struct {
 	Accepted     bool          `json:"accepted"`
@@ -266,6 +273,9 @@ type HookInfo struct {
 }
 type ListHooksResult struct {
 	Items []HookInfo `json:"items"`
+}
+type ReloadHooksResult struct {
+	Notices []string `json:"notices"` // 提供方重载产生的警告，失败时也保留。
 }
 type GetHookRequest struct {
 	HookID string `json:"hook_id"`
@@ -381,4 +391,12 @@ type RequestRestartResult struct {
 	Accepted bool                        `json:"accepted"`
 	Commit   func(context.Context) error `json:"-"`
 	Cancel   func()                      `json:"-"`
+}
+
+type RemoveSkillRequest struct {
+	Name      string `json:"name"`      // 技能名称。
+	Confirmed bool   `json:"confirmed"` // 调用方已获得删除确认。
+}
+type RollbackByIDRequest struct {
+	ID uint64 `json:"id"` // 原始文件编辑记录 ID。
 }

@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool"
 import (
 	"context"
 	commandpkg "elbot/internal/command"
+	"elbot/internal/control"
 	"elbot/internal/delivery"
 	"elbot/internal/security"
 	"elbot/internal/storage/sqlite"
@@ -26,7 +27,7 @@ import (
 )
 
 func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
-	for _, command := range []string{"/confirm extra", "/confirmtool extra", "/confirmall extra", "/reject reason", "/stop"} {
+	for _, command := range []string{"/confirm extra", "/confirmtool extra", "/confirmall extra", "/reject reason"} {
 		t.Run(command, func(t *testing.T) {
 			store, err := sqlite.New(t.Context(), ":memory:")
 			if err != nil {
@@ -48,7 +49,7 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 			if !turns.StartAttempt(row.ID, turn.Input{Text: "hello"}, execution, "attempt") || !turns.StartToolPhase(row.ID, "attempt") {
 				t.Fatal("start tools")
 			}
-			coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: testCommandText, Sessions: sessions, Requests: request.NewManager(testutil.IDSequence()), Turns: turns, Commands: commandpkg.NewRouter([]string{"/"}), Identity: identity, Output: confirmationOutput{}, Policy: NewConfirmationPolicy(ConfirmationPolicyDeps{Identity: identity, UserConfirmationTimeout: time.Second})})
+			coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: testCommandText, Sessions: sessions, Requests: request.NewManager(testutil.IDSequence()), Turns: turns, Identity: identity, Output: confirmationOutput{}, Policy: NewConfirmationPolicy(ConfirmationPolicyDeps{Identity: identity, UserConfirmationTimeout: time.Second})})
 
 			done := make(chan toolshare.ConfirmResult, 1)
 			go func() {
@@ -62,21 +63,36 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 			if turns.Snapshot(row.ID).Phase != turn.PhaseAwaitRiskConfirm {
 				t.Fatal("confirmation not pending")
 			}
-			response, err := coordinator.SubmitResponse(ctx, row.ID, command)
+			if _, ok := turns.PendingRiskConfirmation(row.ID); !ok {
+				t.Fatal("risk confirmation missing")
+			}
+			scope, decision, extra := "current", "approve", "extra"
+			if command == "/confirmtool extra" {
+				scope = "tool"
+			} else if command == "/confirmall extra" {
+				scope = "all"
+			} else if command == "/reject reason" {
+				decision, extra = "reject", "reason"
+			}
+			response, err := coordinator.Respond(ctx, control.RespondConfirmationRequest{Decision: decision, Scope: scope, Extra: extra})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if command == "/stop" {
-				if response.Kind != commandpkg.ResultKindStop {
-					t.Fatalf("stop response=%+v", response)
-				}
-			} else if response.Data.(commandpkg.TextData).Content != "✓" {
+			if !response.Accepted {
 				t.Fatalf("confirmation response=%+v", response)
+			}
+			duplicate, err := coordinator.Respond(ctx, control.RespondConfirmationRequest{Decision: decision, Scope: scope, Extra: extra})
+			if err != nil || duplicate.Accepted {
+				t.Fatalf("duplicate confirmation response=%+v error=%v", duplicate, err)
 			}
 			select {
 			case result := <-done:
-				allowed := command == "/confirm extra" || command == "/confirmtool extra" || command == "/confirmall extra"
-				if result.Allowed != allowed || result.Stopped != (command == "/stop") || (allowed && result.Extra != "extra") {
+				allowed := command != "/reject reason"
+				wantExtra := extra
+				if !allowed {
+					wantExtra = ""
+				}
+				if result.Allowed != allowed || result.Stopped || (allowed && result.Extra != wantExtra) {
 					t.Fatalf("confirmation result=%+v", result)
 				}
 			case <-time.After(time.Second):
@@ -112,7 +128,7 @@ func TestConfirmationTerminationAndPromptFailure(t *testing.T) {
 				coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: testCommandText, Turns: turns, Output: output, Policy: fixedWaitPolicy(time.Second)})
 				result, err := coordinator.AwaitToolConfirmation(ctx, "s", llm.ToolCallRequest{ID: "call", Name: "danger", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, "detail")
 				if !result.Stopped || result.Allowed || !errors.Is(err, output.err) {
-					t.Fatalf("result=%+v err=%v", result, err)
+					t.Fatalf("err=%v", err)
 				}
 				if turns.Snapshot("s").Phase != turn.PhaseStopping {
 					t.Fatal("confirmation failure did not stop attempt")
@@ -226,15 +242,6 @@ func testCommandText(name string, args ...string) string {
 	return commandpkg.Format("/", name, args...)
 }
 
-func TestRiskConfirmationAliasesKeepCanonicalNames(t *testing.T) {
-	c := &ConfirmationCoordinator{commands: commandpkg.NewRouter([]string{"!"})}
-	for _, tc := range []struct{ input, name string }{{"!c", "confirm"}, {"!ct", "confirmtool"}, {"!ca", "confirmall"}, {"!details", "detail"}, {"!reject", "reject"}} {
-		info, ok := c.CommandInfo(tc.input)
-		if !ok || info.Name != tc.name {
-			t.Fatalf("input=%s info=%+v ok=%v", tc.input, info, ok)
-		}
-	}
-}
 func TestMissingRiskConfirmationReturnsRejection(t *testing.T) {
 	store, err := sqlite.New(t.Context(), ":memory:")
 	if err != nil {
@@ -244,16 +251,15 @@ func TestMissingRiskConfirmationReturnsRejection(t *testing.T) {
 	sessions := newSessionSupervisor(t, store)
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})
 	ctx := testutil.WithCLIConversation(t.Context())
-	row, err := sessions.Create(ctx, identity.Scope(ctx), session.CreateRequest{})
+	_, err = sessions.Create(ctx, identity.Scope(ctx), session.CreateRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	turns := turn.NewSupervisor(testutil.IDSequence())
 	t.Cleanup(turns.StopAll)
 	c := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{Sessions: sessions, Turns: turns, Identity: identity})
-	result, err := c.SubmitResponse(ctx, row.ID, "/confirm")
-	var failure *commandpkg.Error
-	if result != nil || !errors.As(err, &failure) || failure.Kind != commandpkg.ErrorRejected || failure.Code != commandpkg.CodeConfirmationExpired {
+	result, err := c.Respond(ctx, control.RespondConfirmationRequest{Decision: "approve", Scope: "current"})
+	if err != nil || result.Accepted {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }

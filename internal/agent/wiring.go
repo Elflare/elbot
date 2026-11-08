@@ -8,6 +8,7 @@ import (
 	"elbot/internal/signal"
 	"elbot/internal/workspace"
 	"errors"
+	"fmt"
 	"time"
 
 	chatroute "elbot/internal/agent/chat"
@@ -26,15 +27,18 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
+	"elbot/internal/control"
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
-	"elbot/internal/logging"
 	"elbot/internal/request"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
 
 func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps) (*Supervisor, error) {
+	if deps.Control == nil {
+		return nil, fmt.Errorf("agent: Control is required")
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	m := &Supervisor{ctx: ctx, cancel: cancel, statusChanged: signal.New[agentexecution.StatusChangedEvent, signal.Empty]("agent.status_changed"), done: make(chan struct{})}
 	m.routes = routes.New()
@@ -101,7 +105,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Sessions:    m.sessions,
 		Requests:    m.requests,
 		Turns:       m.turns,
-		Commands:    m.commands,
 		Identity:    identity,
 		Output:      output,
 		Policy:      policy,
@@ -203,6 +206,20 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		ResponseTimeout: time.Duration(cfg.LLMRequest.ResponseTimeoutSeconds) * time.Second,
 	})
 	m.execution = execution
+	fileCommands := agentinput.NewFileCommandPreparer(agentinput.FileCommandPreparerDeps{
+		NewWorkspaceStore: func(id string) workspace.WorkspaceStore {
+			return m.sessions.WorkspaceStore(id)
+		},
+		Service:  deps.Tools,
+		Sessions: m.sessions,
+		Turns:    m.turns,
+		Requests: m.requests,
+		Identity: identity,
+	})
+	controlAdapter := controlAdapter{supervisor: m, store: deps.Store, models: deps.Models, scope: identity.Scope, status: status}
+	if err := deps.Control.ConnectAgent(control.AgentDeps{Sessions: m.sessions, History: controlAdapter, Requests: m.requests, Execution: controlAdapter, Confirmations: confirmations, Scope: identity.Scope, Status: controlAdapter.Status, Commands: controlAdapter.Commands, Tools: deps.Tools, Skills: deps.Tools, FileRollback: fileRollbackCapabilities{tools: deps.Tools}, PrepareFileContext: fileCommands.PrepareFileCommand}); err != nil {
+		return m, err
+	}
 	m.background = agentinput.NewBackgroundHandler(agentinput.BackgroundHandlerDeps{
 		Sessions: m.sessions, Identity: identity, Execution: execution, Preloader: deps.Tools, ToolState: deps.Tools,
 		EnsureWorkspaceDir: func(ctx context.Context, id, dir string) error {
@@ -220,53 +237,12 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Hooks:         bridge,
 		Output:        output,
 		Execution:     execution,
-		Confirmations: confirmations,
+		Confirmations: deps.Control,
 		Preloader:     deps.Tools,
 		ToolState:     deps.Tools,
 	})
-	fileCommands := agentinput.NewFileCommandPreparer(agentinput.FileCommandPreparerDeps{
-		NewWorkspaceStore: func(id string) workspace.WorkspaceStore {
-			return m.sessions.WorkspaceStore(id)
-		},
-		Service:  deps.Tools,
-		Sessions: m.sessions,
-		Turns:    m.turns,
-		Requests: m.requests,
-		Identity: identity,
-	})
-	commands, err := wireCommands(m.commands, agentinput.CommandExecutorDeps{
-		CommandText:   commandText,
-		Router:        m.commands,
-		Sessions:      m.sessions,
-		Turns:         m.turns,
-		Identity:      identity,
-		Execution:     execution,
-		Output:        deps.Platform,
-		Confirmations: confirmations,
-		Input:         input,
-	}, command.BuiltinDeps{
-		Doctor:               deps.Doctor,
-		Sessions:             m.sessions,
-		Requests:             m.requests,
-		Turns:                m.turns,
-		Store:                deps.Store,
-		Scope:                identity.Scope,
-		Models:               deps.Models,
-		Contexts:             m.contexts,
-		Compact:              execution,
-		Tools:                deps.Tools,
-		Skills:               deps.Tools,
-		FileRollback:         fileRollbackCapabilities{tools: deps.Tools},
-		PrepareFileContext:   fileCommands.PrepareFileCommand,
-		SessionListPageSize:  cfg.View.SessionListPageSize,
-		SessionRetentionDays: cfg.Maintenance.SessionCleanup.RetentionDays,
-		Logs:                 logging.Reader{Dir: deps.Logs.LogDir()},
-		Usage:                status.Usage,
-	})
+	commands, err := wireCommands(m.commands, agentinput.CommandExecutorDeps{Router: m.commands, Sessions: m.sessions, Identity: identity, Output: deps.Platform, Confirmations: deps.Control, Input: input}, command.BuiltinDeps{Control: deps.Control, SessionListPageSize: cfg.View.SessionListPageSize, SessionRetentionDays: cfg.Maintenance.SessionCleanup.RetentionDays})
 	if err != nil {
-		return m, err
-	}
-	if err := command.RegisterHandlers(m.commands, deps.Hooks.Commands()...); err != nil {
 		return m, err
 	}
 	handler := agentinput.NewMessageHandler(agentinput.MessageHandlerDeps{

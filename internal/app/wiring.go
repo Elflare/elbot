@@ -6,8 +6,10 @@ import (
 	"elbot/internal/agent"
 	"elbot/internal/background"
 	"elbot/internal/config"
+	"elbot/internal/control"
 	"elbot/internal/doctor"
 	"elbot/internal/hook"
+	"elbot/internal/logging"
 	"elbot/internal/platform"
 	"elbot/internal/tool"
 )
@@ -20,6 +22,10 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 	definitions := append(platform.ConfigDefinitions(), hook.ConfigDefinitions()...)
 	inspector := config.NewInspector(definitions...)
 	doctorService, err := doctor.New(cfg.ConfigPath, inspector)
+	if err != nil {
+		return lines, err
+	}
+	controller, err := control.NewSupervisor(cfg, control.SupervisorDeps{Models: resources.models, Logs: logging.Reader{Dir: resources.logs.LogDir()}, Doctor: doctorService, LogDir: resources.logs.LogDir()})
 	if err != nil {
 		return lines, err
 	}
@@ -50,7 +56,8 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 		return lines, &lifecycleError{component: componentTool, phase: phaseBuild, cause: err}
 	}
 	hookSupervisor, err := hook.NewSupervisor(ctx, cfg, hook.SupervisorDeps{
-		Media: resources.media, Tools: toolSupervisor, Platform: platformSupervisor,
+		Control: controller,
+		Media:   resources.media, Tools: toolSupervisor, Platform: platformSupervisor,
 	})
 	if hookSupervisor != nil {
 		lines = append(lines, businessLine{
@@ -62,10 +69,11 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 	}
 
 	agentSupervisor, err := agent.NewSupervisor(ctx, cfg, agent.SupervisorDeps{
-		Doctor: doctorService,
-		Store:  resources.store, Models: resources.models, Media: resources.media,
+		Control: controller,
+		Doctor:  doctorService,
+		Store:   resources.store, Models: resources.models, Media: resources.media,
 		Permission: resources.permission, Logs: resources.logs,
-		Tools: toolSupervisor, Hooks: hookSupervisor, Platform: platformSupervisor, ChatHistory: history,
+		Tools: toolSupervisor, Platform: platformSupervisor, ChatHistory: history,
 	})
 	if agentSupervisor != nil {
 		lines = append(lines, businessLine{

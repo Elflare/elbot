@@ -1,18 +1,18 @@
-package share
+package format
 
 import (
 	"fmt"
 	"strings"
 
-	command "elbot/internal/command/share"
+	"elbot/internal/control"
 )
 
-func formatUsage(d command.UsageData) string {
+func Usage(d control.QueryUsageResult) string {
 	var out strings.Builder
 	if len(d.Items) == 0 && d.Total.Calls == 0 {
 		out.WriteString("-\n")
 	} else {
-		fmt.Fprintf(&out, "usage: %s · by=%s\n", d.Range, d.GroupBy)
+		fmt.Fprintf(&out, "usage · by=%s\n", d.GroupBy)
 		for _, item := range d.Items {
 			formatUsageBucket(&out, item)
 		}
@@ -27,7 +27,7 @@ func formatUsage(d command.UsageData) string {
 	return strings.TrimRight(out.String(), "\n")
 }
 
-func formatUsageBucket(out *strings.Builder, item command.UsageBucket) {
+func formatUsageBucket(out *strings.Builder, item control.UsageBucket) {
 	fmt.Fprintf(out, "[%s] calls: %d\n  prompt: %s | completion: %s | total: %s\n", item.Key, item.Calls, number(item.PromptTokens), number(item.CompletionTokens), number(item.TotalTokens))
 	cache := number(item.CacheHitTokens)
 	if item.CacheHitTokens != nil && *item.CacheHitTokens >= 0 && item.PromptTokens != nil && *item.PromptTokens > 0 {

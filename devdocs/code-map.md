@@ -75,10 +75,11 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 <!-- locator:commands -->
 ## 命令与补全
 
-- `internal/command/`：`types.go`、`result.go`、`data.go` 公开契约；`deps.go`、`wiring.go` 内置命令装配；`router.go` 路由；`parse.go` 解析；`format.go` 组装；`completion.go` 补全。
-- `internal/command/share/`：内部共用契约、外部能力接口及纯辅助逻辑。
+- `internal/command/`：`types.go`、`result.go` 命令契约；`wiring.go` 内置命令装配；`router.go` 路由；`parse.go` 解析；`format.go` 命令文本组装；`completion.go` 补全。
+- `internal/command/share/`：内部共用契约及纯辅助逻辑。
 - `internal/command/builtin/`：`register.go` 内部模块登记；其他命令按同名文件定位。
 - `internal/command/builtin/`：`log.go` 日志入口；`log_query.go` 查询解析；`usage.go` 用量统计。
+- `internal/control/`：统一业务操作入口；`contracts.go` 请求与 raw 结果；按会话、日志、工具、Hook、文件等主题分文件实现；`format/` 提供可选展示格式化。
 - `internal/agent/input/command_executor.go`：执行协调。
 - `internal/agent/input/file_rollback.go`、`internal/command/builtin/rollback.go`：撤销准入、撤销命令。
 - `internal/completion/`：结构化补全与工具候选。

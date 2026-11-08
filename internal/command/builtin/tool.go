@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	command "elbot/internal/command/share"
+	"elbot/internal/control"
 	"elbot/internal/delivery"
 	"elbot/internal/tool"
 )
@@ -30,41 +31,25 @@ func (c toolsCommand) Info() command.Info {
 
 func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
 	deps := c.deps
-	if deps.Tools == nil {
-		return nil, &command.Error{Kind: command.ErrorRejected, Code: "not_configured", Message: "tools: not configured"}
-	}
 	fields := strings.Fields(req.Args)
 	if len(fields) == 0 {
-		infos, err := deps.Tools.QueryTools(ctx, tool.ToolQuery{IncludeHidden: true, IncludeDiscover: true})
-		if err != nil {
-			return nil, err
-		}
-		items := []command.ToolData{}
-		for _, info := range infos {
-			source := map[tool.Source]string{tool.SourceBuiltin: "builtin", tool.SourceSkill: "skill", tool.SourceELwisp: "elwisp"}[info.Definition.Source]
-			items = append(items, command.ToolData{Name: info.Definition.Name, Description: info.Definition.Description, Source: source, Risk: info.Definition.Risk, Tags: append([]string{}, info.Definition.Tags...)})
-		}
-		return &command.Result{Kind: command.ResultKindTools, Data: command.ToolsData{Items: items}}, nil
+		infos, err := deps.Control.QueryTools(ctx, tool.ToolQuery{Scope: tool.QueryCatalog, IncludeHidden: true, IncludeDiscover: true})
+		return &command.Result{Kind: command.ResultKindTools, Data: infos}, err
 	}
 	switch fields[0] {
 	case "reload":
-		if err := deps.Skills.Reload(ctx); err != nil {
-			return nil, err
-		}
-		return &command.Result{Kind: command.ResultKindTools, Data: command.ToolsData{Items: []command.ToolData{}, Operation: "reload"}}, nil
+		err := deps.Control.ReloadSkills(ctx)
+		return &command.Result{Kind: command.ResultKindTools}, err
 	case "uninstall", "remove":
 		if len(fields) < 2 {
 			return nil, inputError(fmt.Errorf("usage: %s", deps.CommandText("tools", "remove", "<name>", "--confirm")))
 		}
 		name := fields[1]
 		if !slices.Contains(fields[2:], "--confirm") {
-			return &command.Result{Kind: command.ResultKindTools, Data: command.ToolsData{Items: []command.ToolData{}, Name: name, Operation: "remove", Prompt: fmt.Sprintf("删除 %q 及目录？\n%s", name, deps.CommandText("tools", "remove", name, "--confirm"))}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认删除", Command: deps.CommandText("tools", "remove", name, "--confirm")}}}}, nil
+			return &command.Result{Kind: command.ResultKindTools, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认删除", Command: deps.CommandText("tools", "remove", name, "--confirm")}}}}, nil
 		}
-		err := deps.Skills.Remove(ctx, name)
-		if err != nil {
-			return nil, fmt.Errorf("remove %s: %w", name, err)
-		}
-		return &command.Result{Kind: command.ResultKindTools, Data: command.ToolsData{Items: []command.ToolData{}, Name: name, Operation: "remove"}}, nil
+		err := deps.Control.RemoveSkill(ctx, control.RemoveSkillRequest{Name: name, Confirmed: true})
+		return &command.Result{Kind: command.ResultKindTools}, err
 	default:
 		return nil, inputError(fmt.Errorf("usage: %s", deps.CommandText("tools", c.Info().Args)))
 	}
@@ -87,22 +72,6 @@ func (c toolsCommand) Complete(ctx context.Context, req command.CompletionReques
 		return completeToolNames(ctx, c.deps, token.Text, token.Start, token.End)
 	}
 	return completeConfirmFlag(req.Args, token)
-}
-
-func formatTools(infos []tool.ToolInfo) string {
-	if len(infos) == 0 {
-		return "nil"
-	}
-	var sb strings.Builder
-	sb.WriteString("tools:\n")
-	for _, info := range infos {
-		tags := ""
-		if len(info.Definition.Tags) > 0 {
-			tags = " tags=" + strings.Join(info.Definition.Tags, ",")
-		}
-		sb.WriteString(fmt.Sprintf("  %s [%s]%s %s\n", info.Definition.Name, [...]string{tool.SourceBuiltin: "builtin", tool.SourceSkill: "skill", tool.SourceELwisp: "elwisp"}[info.Definition.Source], tags, info.Definition.Description))
-	}
-	return trimTrailingNewlines(sb.String())
 }
 
 type ToolModule struct{}

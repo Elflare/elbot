@@ -108,7 +108,7 @@ Routes 按 Origin 分派对话、压缩与派生能力；模型 Selection 固定
 <!-- locator:commands -->
 ## 命令链路
 
-`CommandExecutor → Router → Handler → 领域服务`。Command 根部装配内置命令；Agent 注入领域能力、注册外部业务命令，执行器通过 Platform 根部独立交付结构化结果和分类错误；用法见[命令文档](../docs/commands.md)。
+`CommandExecutor → Router → Handler → control → 领域能力`。App 装配统一 control 总管，并在构造阶段接入 Agent 与 Hook 能力；Command 负责解析、补全、注册和调用 control，不持有领域服务。命令以完整结构化业务结果和分类错误独立交付；平台在最终展示出口按需格式化，不裁剪内部数据。用法见[命令文档](../docs/commands.md)。
 
 Config 拥有前缀规则，Command 提供纯解析／组装，根部向消费者注入能力；平台按钮消费结构化 Action，不解析展示正文。改变 Session 的命令声明 SessionEffect，由执行器协调冲突、Session 裁决绑定；结果成功发送后才执行 Continuation。命令结果不经过通知队列，执行失败与投递失败分别记录；协议请求关联及连接路由留在 Platform 内部。
 
@@ -169,7 +169,7 @@ Skill 将文档或可执行技能接入 Tool 目录。Manager 管扫描、注册
 <!-- locator:hook -->
 ## Hook
 
-Hook 根部负责外部接入与装配；pipeline 编排，rules 执行动作，runtime 管进程／RPC／waiting／共享状态，control 管查询与重载。协议和配置见[Hook 文档](../docs/hooks.md)。
+Hook 根部负责外部接入与装配；pipeline 编排，rules 执行动作，runtime 管进程／RPC／waiting／共享状态，并将 Hook 管理能力接入应用 control。命令与未来其他调用方共用 control 业务操作。协议和配置见[Hook 文档](../docs/hooks.md)。
 
 - Agent 交付业务事实，不构造插件协议或维护第二套规则流水线；每个实际 handler 独立登记 Request。
 - 入站：唤醒及原始取消检查 → waiting 续接／普通规则 → 命令或模型。改写不重新计算唤醒，仍检查改写后的取消命令。

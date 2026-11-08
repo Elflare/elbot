@@ -2,19 +2,18 @@ package builtin
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
+	"elbot/internal/control"
 	"elbot/internal/delivery"
-	"elbot/internal/session"
 	"elbot/internal/storage"
 )
 
-const resumeHistoryTurns = 3 // TODO: 后续支持配置恢复时展示多少轮历史。
+const resumeHistoryTurns = 3
 const messageListPageSize = 20
 
 func NewArchive(deps Deps) command.Handler {
@@ -34,15 +33,11 @@ func NewArchive(deps Deps) command.Handler {
 				}
 				return content, nil
 			}
-			sessionID, err := resolveSessionTarget(ctx, deps, target)
+			session, err := deps.Control.SetSessionArchived(ctx, control.SetSessionArchivedRequest{SessionID: target, Archived: true, Confirmed: true})
 			if err != nil {
 				return nil, err
 			}
-			session, err := deps.Sessions.Archive(ctx, deps.Scope(ctx), sessionID)
-			if err != nil {
-				return nil, err
-			}
-			return sessionChange(ctx, deps, session, session.ID, 1, "archive"), nil
+			return sessionChange(session), nil
 		},
 	}
 }
@@ -56,15 +51,11 @@ func NewUnarchive(deps Deps) command.Handler {
 		help:        "省略目标=当前",
 		archived:    true,
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
-			sessionID, err := resolveSessionTarget(ctx, deps, req.Args)
+			session, err := deps.Control.SetSessionArchived(ctx, control.SetSessionArchivedRequest{SessionID: req.Args, Archived: false})
 			if err != nil {
 				return nil, err
 			}
-			session, err := deps.Sessions.Unarchive(ctx, deps.Scope(ctx), sessionID)
-			if err != nil {
-				return nil, err
-			}
-			return sessionChange(ctx, deps, session, session.ID, 1, "unarchive"), nil
+			return sessionChange(session), nil
 		},
 	}
 }
@@ -77,15 +68,11 @@ func NewPin(deps Deps) command.Handler {
 		description: "置顶会话",
 		help:        "省略目标=当前",
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
-			sessionID, err := resolveSessionTarget(ctx, deps, req.Args)
+			session, err := deps.Control.SetSessionPinned(ctx, control.SetSessionPinnedRequest{SessionID: req.Args, Pinned: true})
 			if err != nil {
 				return nil, err
 			}
-			session, err := deps.Sessions.Pin(ctx, deps.Scope(ctx), sessionID)
-			if err != nil {
-				return nil, err
-			}
-			return sessionChange(ctx, deps, session, session.ID, 1, "pin"), nil
+			return sessionChange(session), nil
 		},
 	}
 }
@@ -98,15 +85,11 @@ func NewUnpin(deps Deps) command.Handler {
 		description: "取消置顶",
 		help:        "省略目标=当前",
 		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
-			sessionID, err := resolveSessionTarget(ctx, deps, req.Args)
+			session, err := deps.Control.SetSessionPinned(ctx, control.SetSessionPinnedRequest{SessionID: req.Args, Pinned: false})
 			if err != nil {
 				return nil, err
 			}
-			session, err := deps.Sessions.Unpin(ctx, deps.Scope(ctx), sessionID)
-			if err != nil {
-				return nil, err
-			}
-			return sessionChange(ctx, deps, session, session.ID, 1, "unpin"), nil
+			return sessionChange(session), nil
 		},
 	}
 }
@@ -131,16 +114,15 @@ func (c renameCommand) Info() command.Info {
 }
 
 func (c renameCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
-	deps := c.deps
-	sessionID, title, err := parseRenameArgs(ctx, deps, req.Args)
+	target, title, ok := parseRenameArgs(req.Args)
+	if !ok {
+		return nil, inputError(fmt.Errorf("usage: %s", c.deps.CommandText("rename", "[session_id|current_title]", "<title>")))
+	}
+	session, err := c.deps.Control.RenameSession(ctx, control.RenameSessionRequest{Target: target, Title: title, PageSize: c.deps.SessionListPageSize})
 	if err != nil {
 		return nil, err
 	}
-	session, err := deps.Sessions.Rename(ctx, deps.Scope(ctx), sessionID, title)
-	if err != nil {
-		return nil, err
-	}
-	return sessionChange(ctx, deps, session, session.ID, 1, "rename"), nil
+	return sessionChange(session), nil
 }
 
 func (c renameCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -170,14 +152,8 @@ func NewDelete(deps Deps) command.Handler {
 				}
 				return content, nil
 			}
-			sessionID, err := resolveSessionTarget(ctx, deps, target)
-			if err != nil {
-				return nil, err
-			}
-			if err := deps.Sessions.Delete(ctx, deps.Scope(ctx), sessionID); err != nil {
-				return nil, err
-			}
-			return sessionChange(ctx, deps, nil, sessionID, 1, "delete"), nil
+			data, err := deps.Control.DeleteSession(ctx, control.DeleteSessionRequest{SessionID: target, Confirmed: true})
+			return sessionChange(data), err
 		},
 	}
 }
@@ -201,19 +177,12 @@ func (c cleanCommand) Info() command.Info {
 }
 
 func (c cleanCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
-	deps := c.deps
 	_, confirmed := parseTargetConfirm(req.Args)
 	if !confirmed {
-		return &command.Result{Kind: command.ResultKindSession, Data: command.SessionChangeData{Operation: "clean", Prompt: "永久删除过期且未归档、未置顶的会话？\n" + deps.CommandText("clean", "--confirm")}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认清理", Command: deps.CommandText("clean", "--confirm")}}}}, nil
+		return &command.Result{Kind: command.ResultKindSession, Data: control.CleanSessionsResult{}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认清理", Command: c.deps.CommandText("clean", "--confirm")}}}}, nil
 	}
-	deleted, err := deps.Sessions.CleanupExpired(ctx, storage.Now().AddDate(0, 0, -cleanupRetentionDays(deps)))
-	if err != nil {
-		if deleted > 0 {
-			return sessionChange(ctx, deps, nil, "", deleted, "clean"), err
-		}
-		return nil, err
-	}
-	return sessionChange(ctx, deps, nil, "", deleted, "clean"), nil
+	data, err := c.deps.Control.CleanSessions(ctx, control.CleanSessionsRequest{Confirmed: true, Before: storage.Now().AddDate(0, 0, -cleanupRetentionDays(c.deps))})
+	return sessionChange(data), err
 }
 
 func (c cleanCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -270,50 +239,15 @@ func cleanupRetentionDays(deps Deps) int {
 	return days
 }
 
-func parseRenameArgs(ctx context.Context, deps Deps, args string) (string, string, error) {
+func parseRenameArgs(args string) (string, string, bool) {
 	fields := strings.Fields(args)
 	if len(fields) == 0 {
-		return "", "", inputError(fmt.Errorf("usage: %s", deps.CommandText("rename", "[session_id|current_title]", "<title>")))
+		return "", "", false
 	}
 	if len(fields) == 1 {
-		return "", fields[0], nil
+		return "", fields[0], true
 	}
-	if sessionID, ok, err := resolveRenameTarget(ctx, deps, fields[0]); err != nil {
-		return "", "", err
-	} else if ok {
-		return sessionID, strings.Join(fields[1:], " "), nil
-	}
-	return "", strings.Join(fields, " "), nil
-}
-
-func resolveRenameTarget(ctx context.Context, deps Deps, target string) (string, bool, error) {
-	if deps.Store == nil {
-		return "", false, nil
-	}
-	if session, err := deps.Store.Sessions().Get(ctx, target); err == nil {
-		return session.ID, true, nil
-	} else if !errors.Is(err, storage.ErrNotFound) {
-		return "", true, err
-	}
-
-	sessions, err := deps.Sessions.List(ctx, deps.Scope(ctx), target, deps.SessionListPageSize)
-	if err != nil {
-		return "", true, err
-	}
-	matches := []string{}
-	for _, session := range sessions {
-		if session.Title == target {
-			matches = append(matches, session.ID)
-		}
-	}
-	switch len(matches) {
-	case 0:
-		return "", false, nil
-	case 1:
-		return matches[0], true, nil
-	default:
-		return "", true, inputError(fmt.Errorf("session title %q matches multiple sessions; %s → 用 ID", target, deps.CommandText("sessions")))
-	}
+	return fields[0], strings.Join(fields[1:], " "), true
 }
 
 func parseSessionsArgs(args string) (int, string, error) {
@@ -366,20 +300,12 @@ func parseTargetConfirm(args string) (string, bool) {
 }
 
 func confirmCommandMessage(ctx context.Context, deps Deps, name, target string) (*command.Result, error) {
-	id, err := resolveSessionTarget(ctx, deps, target)
+	row, err := deps.Control.GetSession(ctx, control.GetSessionRequest{SessionID: target})
 	if err != nil {
 		return nil, err
 	}
-	row, err := deps.Store.Sessions().Get(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if !session.CanAccess(deps.Scope(ctx), row) {
-		return nil, &command.Error{Kind: command.ErrorRejected, Code: command.CodePermissionDenied, Message: "无权访问该会话"}
-	}
-	action := deps.CommandText(name, id, "--confirm")
-	text := fmt.Sprintf("%s? %s · %s\n%s", name, emptyTitle(row.Title), id, action)
-	return &command.Result{Kind: command.ResultKindSession, Data: command.SessionChangeData{Session: sessionData(row), SessionID: id, CurrentSessionID: currentSessionID(ctx, deps), Operation: "confirm", Prompt: text}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认", Command: action}}}}, nil
+	action := deps.CommandText(name, row.ID, "--confirm")
+	return &command.Result{Kind: command.ResultKindSession, Data: control.SessionChangeResult{Session: &row, SessionID: row.ID}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认", Command: action}}}}, nil
 }
 
 func emptyTitle(title string) string {
@@ -387,16 +313,4 @@ func emptyTitle(title string) string {
 		return "(untitled)"
 	}
 	return title
-}
-
-func resolveSessionTarget(ctx context.Context, deps Deps, target string) (string, error) {
-	target = strings.TrimSpace(target)
-	if target == "" {
-		current, err := deps.Sessions.Current(ctx, deps.Scope(ctx))
-		if err != nil {
-			return "", err
-		}
-		return current.ID, nil
-	}
-	return target, nil
 }

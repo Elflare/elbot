@@ -6,7 +6,6 @@ import (
 	"context"
 	"sync"
 
-	"elbot/internal/command"
 	"elbot/internal/delivery"
 	"elbot/internal/hook/pipeline"
 	"elbot/internal/hook/share"
@@ -27,9 +26,13 @@ type Supervisor struct {
 	}
 	control interface {
 		HookReload() (share.ReloadReport, error)
+		HookList() []share.Info
+		StatefulHooks() []share.RuntimeInfo
+		StartStatefulHook(string) error
+		StopHook(context.Context, string) (bool, error)
+		RestartStatefulHook(context.Context, string) error
 	}
-	commands []command.Handler // 已装配的管理命令能力；外部仅取得标准 Handler。
-	send     func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
+	send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
 
 	parent         context.Context // Construction context, used for startup and platform subscription ownership.
 	ctx            context.Context // Hook-owned cancellation for admitted boundary calls; canceled only by Close.
@@ -45,11 +48,6 @@ type Supervisor struct {
 	closeOnce      sync.Once
 	closeErr       error         // Actual shutdown result, published before done closes.
 	done           chan struct{} // All boundary calls, platform callbacks and runtime resources have exited.
-}
-
-// Commands returns a detached collection of callable management commands.
-func (m *Supervisor) Commands() []command.Handler {
-	return append([]command.Handler(nil), m.commands...)
 }
 
 // run admits an external call and supplies its facts; pipeline owns execution.

@@ -6,6 +6,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/control"
 	"elbot/internal/delivery"
 	"elbot/internal/doctor"
 	"elbot/internal/fileops"
@@ -22,7 +23,8 @@ import (
 
 // SupervisorDeps borrows shared resources and business capabilities; their owners retain lifecycle control.
 type SupervisorDeps struct {
-	Doctor interface {
+	Control *control.Supervisor // App 创建的统一操作入口，Agent 仅接入自身能力并供命令消费。
+	Doctor  interface {
 		Check(context.Context) (doctor.Report, error)
 	} // 借用只读配置诊断能力，由 App 按当前配置路径装配。
 	Store       storage.Store
@@ -34,7 +36,6 @@ type SupervisorDeps struct {
 	Permission *security.Permission // Shared permission service; Agent does not own its lifecycle.
 	Logs       *logging.Manager
 	Tools      ToolCapabilities
-	Hooks      HookCapabilities
 	Platform   PlatformCapabilities
 }
 
@@ -77,12 +78,9 @@ type ToolCapabilities interface {
 	RollbackByID(context.Context, uint64) (fileops.RollbackResult, error)
 }
 
-// HookCapabilities supplies standard management commands; callbacks enter through RegisterHooks.
-type HookCapabilities interface{ Commands() []command.Handler }
-
 // PlatformCapabilities supplies platform identity and delivery for Agent output.
 type PlatformCapabilities interface {
-	SendCommandResult(context.Context, string, *command.Result, *command.Error) (delivery.Receipt, error)
+	SendCommandResult(context.Context, command.Request, *command.Result, *command.Error) (delivery.Receipt, error)
 	SessionIDCode(string, contextinfo.ChatType) (string, error)
 	RestoreMessageContext(context.Context, context.Context) context.Context
 	SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)

@@ -486,9 +486,9 @@ type remoteCommandReply struct {
 	requestID string
 }
 
-func (r remoteCommandReply) SendCommandResult(ctx context.Context, name string, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
+func (r remoteCommandReply) SendCommandResult(ctx context.Context, req command.Request, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
 	writeCtx, cancel := context.WithTimeout(ctx, remoteWriteTimeout)
 	defer cancel()
-	err := wsjson.Write(writeCtx, r.client.conn, commandResultMessage{Type: remoteMsgCommandResult, RequestID: r.requestID, Command: name, Result: result, Error: failure})
+	err := wsjson.Write(writeCtx, r.client.conn, commandResultMessage{Type: remoteMsgCommandResult, RequestID: r.requestID, Command: req, Result: result, Error: failure})
 	return delivery.Receipt{}, err
 }

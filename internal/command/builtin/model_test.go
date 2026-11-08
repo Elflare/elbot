@@ -2,194 +2,82 @@ package builtin
 
 import (
 	"context"
-	"strings"
+	"reflect"
 	"testing"
 
 	command "elbot/internal/command/share"
-	"elbot/internal/config"
-	"elbot/internal/modelmgr"
+	"elbot/internal/control"
 )
 
-type fakeModelService struct {
-	models []modelmgr.ModelOption
+type modelControlStub struct {
+	command.ControlCapabilities
+	listed     control.ListModelsResult
+	refreshed  control.RefreshModelsResult
+	selected   control.SelectModelResult
+	listReq    control.ListModelsRequest
+	selectReq  control.SelectModelRequest
+	refreshReq control.ListModelsRequest
 }
 
-func (s fakeModelService) CurrentModel() string                   { return "" }
-func (s fakeModelService) CurrentProvider() string                { return "" }
-func (s fakeModelService) CurrentModeModel() modelmgr.ModelOption { return modelmgr.ModelOption{} }
-func (s fakeModelService) CurrentModelForMode(string) modelmgr.ModelOption {
-	return modelmgr.ModelOption{}
+func (s *modelControlStub) ListModels(_ context.Context, req control.ListModelsRequest) (control.ListModelsResult, error) {
+	s.listReq = req
+	return s.listed, nil
 }
-func (s fakeModelService) CurrentCompactModel(string) modelmgr.ModelOption {
-	return modelmgr.ModelOption{}
+func (s *modelControlStub) RefreshModels(_ context.Context, req control.ListModelsRequest) (control.RefreshModelsResult, error) {
+	s.refreshReq = req
+	return s.refreshed, nil
 }
-func (s fakeModelService) CurrentNamingModel() modelmgr.ModelOption { return modelmgr.ModelOption{} }
-func (s fakeModelService) SelectModel(context.Context, string) (modelmgr.ModelOption, error) {
-	return modelmgr.ModelOption{}, nil
+func (s *modelControlStub) SelectModel(_ context.Context, req control.SelectModelRequest) (control.SelectModelResult, error) {
+	s.selectReq = req
+	return s.selected, nil
 }
-func (s fakeModelService) SelectCompactModel(string) (modelmgr.ModelOption, error) {
-	return modelmgr.ModelOption{}, nil
-}
-func (s fakeModelService) SelectNamingModel(string) (modelmgr.ModelOption, error) {
-	return modelmgr.ModelOption{}, nil
-}
-func (s fakeModelService) PrepareModel(string) (modelmgr.ModelOption, error) {
-	return modelmgr.ModelOption{}, nil
-}
-func (s fakeModelService) CommitModelForMode(_ string, option modelmgr.ModelOption) (modelmgr.ModelOption, error) {
-	return option, nil
-}
-func (s fakeModelService) Models(query string) []modelmgr.ModelOption {
-	return s.ModelList(query, modelmgr.ModelListOptions{}).Options
-}
-func (s fakeModelService) ModelList(query string, opts modelmgr.ModelListOptions) modelmgr.ModelListResult {
-	query = strings.ToLower(strings.TrimSpace(query))
-	out := []modelmgr.ModelOption{}
-	for _, model := range s.models {
-		value := strings.ToLower(model.Provider + "/" + model.Model)
-		if query == "" || strings.Contains(value, query) {
-			out = append(out, model)
-		}
+
+func TestModelCommandPassesSelectionToControlAndReturnsRawData(t *testing.T) {
+	controlStub := &modelControlStub{
+		listed:   control.ListModelsResult{Items: []control.ModelData{{Provider: "p", Model: "m", Index: 2}}},
+		selected: control.SelectModelResult{Target: "work", Model: control.ModelData{Provider: "p", Model: "m"}},
 	}
-	return modelmgr.ModelListResult{Options: out}
+	result, err := NewModel(Deps{Control: controlStub, CommandText: testCommandText}).Handle(t.Context(), command.Request{Args: "--work p/m"})
+	if err != nil || result == nil || !reflect.DeepEqual(result.Data, controlStub.selected) {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+	if controlStub.listReq.Query != "p/m" || controlStub.selectReq != (control.SelectModelRequest{Target: "work", Provider: "p", Model: "m"}) {
+		t.Fatalf("list=%+v select=%+v", controlStub.listReq, controlStub.selectReq)
+	}
 }
 
-func TestModelCompletionCursorAndFuzzyCase(t *testing.T) {
-	model := modelmgr.ModelOption{Provider: "DeepSeek", Model: "deepseek-v3"}
-	completer := NewModel(Deps{CommandText: testCommandText, Models: fakeModelService{models: []modelmgr.ModelOption{model, model}}}).(command.Completer)
+func TestModelAndCheckModelCompletionUseControlCatalog(t *testing.T) {
+	controlStub := &modelControlStub{listed: control.ListModelsResult{Items: []control.ModelData{{Provider: "openai", Model: "gpt-4.1"}}}}
+	completer := NewModel(Deps{Control: controlStub, CommandText: testCommandText}).(command.Completer)
+	got := completer.Complete(t.Context(), command.CompletionRequest{Raw: "/model gpt", Prefix: "/", Name: "model", Args: "gpt", Cursor: len("/model gpt")})
+	if len(got) != 1 || got[0].Text != "openai/gpt-4.1" || controlStub.listReq.Query != "gpt" {
+		t.Fatalf("completion=%#v request=%+v", got, controlStub.listReq)
+	}
+	check := NewCheckModel(Deps{Control: controlStub})
+	result, err := check.Handle(t.Context(), command.Request{Args: "--fresh gpt"})
+	if err != nil || result == nil || result.Kind != command.ResultKindModels || controlStub.refreshReq.Query != "gpt" {
+		t.Fatalf("result=%#v refresh=%+v err=%v", result, controlStub.refreshReq, err)
+	}
+}
+
+func TestModelArgumentParsing(t *testing.T) {
 	for _, tc := range []struct {
-		raw         string
-		cursor, end int
+		args   string
+		query  string
+		target modelTarget
+		bad    bool
 	}{
-		{"/model\tDPSK trailing", 11, 11},
-		{"/model DPSK", 0, 11},
-		{"/model DPSK", 100, 11},
-		{"/model ", 0, 7},
+		{args: "--work p/m", query: "p/m", target: modelTargetWork},
+		{args: "-c gpt", query: "gpt", target: modelTargetCompact},
+		{args: "--work --chat gpt", bad: true},
 	} {
-		got := completer.Complete(t.Context(), command.CompletionRequest{Raw: tc.raw, Args: tc.raw[7:], Cursor: tc.cursor})
-		if len(got) != 1 || got[0].Text != "DeepSeek/deepseek-v3" || got[0].ReplaceStart != 7 || got[0].ReplaceEnd != tc.end {
-			t.Fatalf("%+v: %+v", tc, got)
+		query, target, err := parseModelArgs(tc.args)
+		if (err != nil) != tc.bad || query != tc.query || target != tc.target {
+			t.Fatalf("parseModelArgs(%q) = (%q, %q, %v)", tc.args, query, target, err)
 		}
 	}
-}
-
-func TestModelCommandSuccessTextForEveryTarget(t *testing.T) {
-	for _, target := range []string{"", "chat", "work", "elwisp1", "elwisp2", "elwisp3", "compact", "naming"} {
-		args, want := "model", "model → /"
-		if target != "" {
-			args, want = "--"+target+" model", target+".model → /"
-		}
-		got, err := NewModel(Deps{CommandText: testCommandText, Models: fakeModelService{}}).Handle(t.Context(), command.Request{Args: args})
-		if err != nil || commandResultText(got) != want {
-			t.Fatalf("target=%s got=%q err=%v", target, commandResultText(got), err)
-		}
+	query, fresh := parseModelListArgs("--refresh gpt-4.1")
+	if query != "gpt-4.1" || !fresh {
+		t.Fatalf("parseModelListArgs = (%q, %v)", query, fresh)
 	}
 }
-
-func TestModelCommandCompletesOptions(t *testing.T) {
-	completer := NewModel(Deps{CommandText: testCommandText, Models: fakeModelService{}}).(command.Completer)
-	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model --", Prefix: "/", Name: "model", Args: "--", Cursor: len("/model --")})
-	if len(got) < 7 {
-		t.Fatalf("Complete options = %#v", got)
-	}
-	if got[0].Text != "--chat" || got[0].Kind != "model_option" || got[0].ReplaceStart != len("/model ") {
-		t.Fatalf("first option = %#v", got[0])
-	}
-}
-
-func TestModelCommandCompletesElwispOptions(t *testing.T) {
-	completer := NewModel(Deps{CommandText: testCommandText, Models: fakeModelService{}}).(command.Completer)
-	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model --elw", Prefix: "/", Name: "model", Args: "--elw", Cursor: len("/model --elw")})
-	if len(got) != 3 {
-		t.Fatalf("Complete elwisp options = %#v", got)
-	}
-	if got[0].Text != "--elwisp1" || got[1].Text != "--elwisp2" || got[2].Text != "--elwisp3" {
-		t.Fatalf("elwisp options = %#v", got)
-	}
-}
-
-func TestModelCommandCompletesModelNames(t *testing.T) {
-	models := fakeModelService{models: []modelmgr.ModelOption{{Provider: "openai", Model: "gpt-4o"}, {Provider: "anthropic", Model: "claude-sonnet"}}}
-	completer := NewModel(Deps{CommandText: testCommandText, Models: models}).(command.Completer)
-	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model gp", Prefix: "/", Name: "model", Args: "gp", Cursor: len("/model gp")})
-	if len(got) != 1 {
-		t.Fatalf("Complete models = %#v", got)
-	}
-	if got[0].Text != "openai/gpt-4o" || got[0].Label != "gpt-4o" || got[0].Description != "openai" || got[0].Kind != "model" {
-		t.Fatalf("model completion = %#v", got[0])
-	}
-}
-
-func TestModelCommandCompletesModelAfterTargetOption(t *testing.T) {
-	models := fakeModelService{models: []modelmgr.ModelOption{{Provider: "openai", Model: "gpt-4o"}, {Provider: "anthropic", Model: "claude-sonnet"}}}
-	completer := NewModel(Deps{CommandText: testCommandText, Models: models}).(command.Completer)
-	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model --chat cla", Prefix: "/", Name: "model", Args: "--chat cla", Cursor: len("/model --chat cla")})
-	if len(got) != 1 {
-		t.Fatalf("Complete option models = %#v", got)
-	}
-	if got[0].Text != "anthropic/claude-sonnet" || got[0].ReplaceStart != len("/model --chat ") {
-		t.Fatalf("option model completion = %#v", got[0])
-	}
-}
-
-func TestModelCommandFuzzyCompletesAbbreviation(t *testing.T) {
-	models := fakeModelService{models: []modelmgr.ModelOption{{Provider: "deepseek", Model: "deepseek-v3"}, {Provider: "openai", Model: "gpt-4o"}}}
-	completer := NewModel(Deps{CommandText: testCommandText, Models: models}).(command.Completer)
-	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model dpsk", Prefix: "/", Name: "model", Args: "dpsk", Cursor: len("/model dpsk")})
-	if len(got) != 1 {
-		t.Fatalf("fuzzy completion = %#v", got)
-	}
-	if got[0].Text != "deepseek/deepseek-v3" {
-		t.Fatalf("fuzzy completion text = %#v", got[0])
-	}
-}
-
-func TestModelCommandDoesNotCompleteModelImmediatelyAfterOption(t *testing.T) {
-	models := fakeModelService{models: []modelmgr.ModelOption{{Provider: "openai", Model: "gpt-4o"}}}
-	completer := NewModel(Deps{CommandText: testCommandText, Models: models}).(command.Completer)
-	got := completer.Complete(context.Background(), command.CompletionRequest{Raw: "/model --chat", Prefix: "/", Name: "model", Args: "--chat", Cursor: len("/model --chat")})
-	if len(got) != 1 || got[0].Text != "--chat" {
-		t.Fatalf("Complete option token = %#v", got)
-	}
-}
-
-func TestModelCommandSwitchesElwispSlot(t *testing.T) {
-	models := &recordingModelService{}
-	result, err := NewModel(Deps{CommandText: testCommandText, Models: models}).Handle(context.Background(), command.Request{Prefix: "/", Name: "model", Args: "--elwisp2 openai/gpt-4.1"})
-	if err != nil {
-		t.Fatalf("Handle elwisp model: %v", err)
-	}
-	if models.mode != "elwisp2" || models.arg != "openai/gpt-4.1" {
-		t.Fatalf("selected mode=%q arg=%q", models.mode, models.arg)
-	}
-	if result == nil || !strings.Contains(commandResultText(result), "elwisp2.model →") {
-		t.Fatalf("result = %#v", result)
-	}
-}
-
-func TestModelSuffixUsesModeMarks(t *testing.T) {
-	got := modelSuffix(modelmgr.ModelOption{ModeMarks: []string{"work", "elwisp2"}, Compact: true})
-	if got != " (work, elwisp2, compact)" {
-		t.Fatalf("modelSuffix = %q", got)
-	}
-}
-
-type recordingModelService struct {
-	fakeModelService
-	mode string
-	arg  string
-}
-
-func (s *recordingModelService) PrepareModel(arg string) (modelmgr.ModelOption, error) {
-	s.arg = arg
-	return modelmgr.ModelOption{Provider: "openai", Model: "gpt-4.1"}, nil
-}
-func (s *recordingModelService) CommitModelForMode(mode string, option modelmgr.ModelOption) (modelmgr.ModelOption, error) {
-	s.mode = mode
-	return option, nil
-}
-
-func (s fakeModelService) Resolve(selected config.ModelSelection) modelmgr.Selection {
-	return modelmgr.Selection{ModelSelection: selected}
-}
-func (s fakeModelService) ReloadProviders(context.Context) error { return nil }

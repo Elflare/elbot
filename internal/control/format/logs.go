@@ -1,4 +1,4 @@
-package share
+package format
 
 import (
 	"bytes"
@@ -8,14 +8,14 @@ import (
 	"strconv"
 	"strings"
 
-	command "elbot/internal/command/share"
+	"elbot/internal/control"
 	"elbot/internal/events"
 )
 
-func formatLogs(d command.LogsData) string {
+func Logs(title string, d control.QueryLogsResult) string {
 	var out strings.Builder
-	if d.Title != "" && len(d.Items) > 0 {
-		fmt.Fprintf(&out, "%s:\n", d.Title)
+	if len(d.Items) > 0 {
+		fmt.Fprintf(&out, "%s:\n", title)
 	}
 	for i, item := range d.Items {
 		if item.Raw != "" {
@@ -48,7 +48,7 @@ func formatLogs(d command.LogsData) string {
 	return strings.TrimRight(out.String(), "\n")
 }
 
-func formatLogDataItem(item command.LogData) string {
+func formatLogDataItem(item control.LogData) string {
 	fields, body := decodeLogContent(item)
 	subject, status := item.EventName, logStatus(item.ResultStatus)
 	var details []string
@@ -147,7 +147,7 @@ func formatLogDataItem(item command.LogData) string {
 	return strings.Join(lines, "\n")
 }
 
-func decodeLogContent(item command.LogData) (map[string]any, string) {
+func decodeLogContent(item control.LogData) (map[string]any, string) {
 	fields := map[string]any{}
 	decoder := json.NewDecoder(bytes.NewReader(item.Content))
 	decoder.UseNumber()
@@ -164,7 +164,7 @@ func decodeLogContent(item command.LogData) (map[string]any, string) {
 	return fields, formatLogDataValue(value)
 }
 
-func formatAuditDataFields(item command.LogData, fields map[string]any) (subject, status string, details []string) {
+func formatAuditDataFields(item control.LogData, fields map[string]any) (subject, status string, details []string) {
 	subject = item.EventName
 	for _, key := range []string{"tool", "model", "job", "elwisp_name", "path", "name", "api"} {
 		if value, ok := fields[key]; ok && value != nil && value != "" {
@@ -286,7 +286,7 @@ func logDataInt(value any) (int64, bool) {
 	return n, err == nil
 }
 
-func formatLogDataTime(item command.LogData) string {
+func formatLogDataTime(item control.LogData) string {
 	if item.Time.IsZero() {
 		return "unk-time"
 	}

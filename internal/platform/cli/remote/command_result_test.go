@@ -6,7 +6,9 @@ import (
 	"elbot/internal/delivery"
 	clishare "elbot/internal/platform/cli/share"
 	"elbot/internal/platform/share"
+	"encoding/json"
 	"github.com/coder/websocket/wsjson"
+	"reflect"
 	"testing"
 )
 
@@ -17,7 +19,8 @@ func TestCommandResultCorrelatesOnlyWithOriginConnection(t *testing.T) {
 			t.Error("command reply not attached")
 			return nil
 		}
-		_, err := msg.CommandReply.SendCommandResult(ctx, "status", &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: text}}, nil)
+		request := command.Request{Raw: "/status", Prefix: "/", Name: "status"}
+		_, err := msg.CommandReply.SendCommandResult(ctx, request, &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: text}}, nil)
 		return err
 	}); err != nil {
 		t.Fatal(err)
@@ -35,7 +38,8 @@ func TestCommandResultCorrelatesOnlyWithOriginConnection(t *testing.T) {
 			t.Fatal(err)
 		}
 		got := readTestRemote(t, conn)
-		if got.Type != remoteMsgCommandResult || got.RequestID != tc.id || got.Command != "status" || got.Result == nil || got.Result.Data.(command.TextData).Content != tc.id || got.Error != nil {
+		wantData, _ := json.Marshal(command.TextData{Content: tc.id})
+		if got.Type != remoteMsgCommandResult || got.RequestID != tc.id || got.Command != (command.Request{Raw: "/status", Prefix: "/", Name: "status"}) || got.Result == nil || !reflect.DeepEqual(got.Result.Data, json.RawMessage(wantData)) || got.Error != nil {
 			t.Fatalf("reply=%+v", got)
 		}
 	}

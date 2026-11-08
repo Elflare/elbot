@@ -5,9 +5,11 @@ import (
 	"errors"
 	"io/fs"
 
+	"elbot/internal/fileops"
 	"elbot/internal/modelmgr"
 	"elbot/internal/session"
 	"elbot/internal/storage"
+	"elbot/internal/tool"
 )
 
 // Error 由业务边界确定原因；传输适配器只根据 Code 映射状态，不解析 Message。
@@ -46,7 +48,11 @@ func ClassifyError(err error) error {
 		code, message = "mode_conflict", "切换到 chat 模式需要空会话"
 	case errors.Is(err, session.ErrInvalidPage):
 		code, message = "invalid_arguments", err.Error()
-	case errors.Is(err, storage.ErrNotFound), errors.Is(err, fs.ErrNotExist):
+	case errors.Is(err, fileops.ErrFileChanged):
+		code, message = "file_changed", err.Error()
+	case errors.Is(err, fileops.ErrNotRegularFile):
+		code, message = "invalid_target", err.Error()
+	case errors.Is(err, tool.ErrSkillNotFound), errors.Is(err, fileops.ErrRollbackNotFound), errors.Is(err, fileops.ErrRollbackExpired), errors.Is(err, storage.ErrNotFound), errors.Is(err, fs.ErrNotExist):
 		code, message = "not_found", "目标不存在"
 	case errors.Is(err, fs.ErrExist):
 		code, message = "file_changed", "目标文件已存在"

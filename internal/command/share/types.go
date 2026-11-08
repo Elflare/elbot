@@ -7,7 +7,7 @@ import (
 )
 
 type Info struct {
-	Name          string
+	Name          string `json:"name"`
 	Args          string // 用法中的参数语法，不含命令名和前缀。
 	Description   string
 	Aliases       []string
@@ -32,10 +32,10 @@ const (
 )
 
 type Request struct {
-	Raw    string
-	Prefix string
+	Raw    string `json:"raw"`
+	Prefix string `json:"prefix"`
 	Name   string
-	Args   string
+	Args   string `json:"args"`
 }
 
 type CompletionRequest struct {

@@ -99,7 +99,6 @@ func TestModelErrorReachesNotificationWithoutIntermediatePrefixes(t *testing.T) 
 				if record.EventName == "llm_usage" || record.EventName == "dialogue_failed" {
 					logs <- record
 					return
-					return
 				}
 
 			}, signal.ConnectOptions{})

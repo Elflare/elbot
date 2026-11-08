@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/command"
 	"elbot/internal/contextinfo"
+	"elbot/internal/control"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 	sessionpkg "elbot/internal/session"
@@ -67,8 +67,8 @@ func (c *InputCoordinator) HandleInput(ctx context.Context, text string) (contex
 	return c.handleSessionInput(ctx, session, text)
 }
 
-func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuation command.Continuation) (context.Context, error) {
-	if continuation.Kind == command.ContinuationAppend {
+func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuation control.Continuation) (context.Context, error) {
+	if continuation.Kind == "append" {
 		return c.execution.ResumeAppend(ctx, continuation.SessionID)
 	}
 	locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), continuation.SessionID)
@@ -148,35 +148,18 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 		return ctx, err
 	}
 	if disposition == agentshare.InputRiskConfirmation {
-		result, err := c.confirmations.SubmitResponse(ctx, session.ID, text)
+		current, err := c.confirmations.CurrentConfirmation(ctx, control.CurrentConfirmationRequest{})
 		if err != nil {
 			return ctx, err
 		}
-		event := delivery.StreamEvent{Type: delivery.StreamSend, Text: confirmationResponseText(result)}
-		if result.Confirmation != nil {
-			event.Actions = result.Confirmation.Actions
+		text := "无待确认"
+		if current.Kind == "tool" {
+			text = "待确认\n" + c.commandText("detail") + ": 详情 · " + c.commandText("confirm") + ": 确认 · " + c.commandText("reject") + ": 拒绝 · " + c.commandText("stop") + ": 停止"
 		}
-		_, err = c.output.Send(ctx, event)
+		_, err = c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: text})
 		return ctx, err
 	}
 	return ctx, nil
-}
-
-func confirmationResponseText(result *command.Result) string {
-	if result == nil {
-		return ""
-	}
-	switch data := result.Data.(type) {
-	case command.TextData:
-		return data.Content
-	case command.StopData:
-		if data.State == "stopped" {
-			return "stopped"
-		}
-		return "stopping"
-	default:
-		return ""
-	}
 }
 
 // NewInputCoordinator initializes InputCoordinator without installing cross-service callbacks.

@@ -1,105 +1,67 @@
 package builtin
 
-import toolshare "elbot/internal/tool"
-
 import (
 	"context"
-	"errors"
-	"strings"
+	"reflect"
 	"testing"
 
 	command "elbot/internal/command/share"
+	"elbot/internal/control"
+	"elbot/internal/tool"
+	toolshare "elbot/internal/tool/share"
 )
 
-type fakeToolService struct {
-	infos   []toolshare.Info
-	removed []string
-	query   func(context.Context, toolshare.ToolQuery) ([]toolshare.ToolInfo, error)
+type toolControlStub struct {
+	command.ControlCapabilities
+	infos    []tool.ToolInfo
+	query    tool.ToolQuery
+	removed  control.RemoveSkillRequest
+	reloaded bool
+	err      error
 }
 
-func (s *fakeToolService) Reload(context.Context) error { return nil }
-func (s *fakeToolService) Remove(_ context.Context, name string) error {
-	s.removed = append(s.removed, name)
-	return nil
+func (s *toolControlStub) QueryTools(_ context.Context, query tool.ToolQuery) ([]tool.ToolInfo, error) {
+	s.query = query
+	return s.infos, s.err
+}
+func (s *toolControlStub) ReloadSkills(context.Context) error {
+	s.reloaded = true
+	return s.err
+}
+func (s *toolControlStub) RemoveSkill(_ context.Context, req control.RemoveSkillRequest) error {
+	s.removed = req
+	return s.err
 }
 
-func TestToolsRemoveRequiresConfirm(t *testing.T) {
-	tools := &fakeToolService{}
-	h := NewTools(Deps{CommandText: testCommandText, Tools: tools, Skills: tools})
-	result, err := h.Handle(context.Background(), command.Request{Args: "remove echo"})
-	if err != nil {
-		t.Fatal(err)
+func TestToolsCommandConfirmsBeforeCallingControl(t *testing.T) {
+	controlStub := &toolControlStub{}
+	handler := NewTools(Deps{CommandText: testCommandText, Control: controlStub})
+	result, err := handler.Handle(t.Context(), command.Request{Args: "remove echo"})
+	if err != nil || result == nil || result.Confirmation == nil || len(result.Confirmation.Actions) != 1 || result.Confirmation.Actions[0].Command != "/tools remove echo --confirm" {
+		t.Fatalf("result=%+v err=%v", result, err)
 	}
-	if !strings.Contains(commandResultText(result), "--confirm") || len(tools.removed) != 0 {
-		t.Fatalf("result=%q removed=%#v", commandResultText(result), tools.removed)
+	if controlStub.removed.Name != "" {
+		t.Fatal("unconfirmed removal reached control")
 	}
-}
-
-func TestToolsRemoveConfirmedCallsRemove(t *testing.T) {
-	tools := &fakeToolService{}
-	h := NewTools(Deps{CommandText: testCommandText, Tools: tools, Skills: tools})
-	result, err := h.Handle(context.Background(), command.Request{Args: "remove echo --confirm"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(commandResultText(result), "removed: echo") || len(tools.removed) != 1 || tools.removed[0] != "echo" {
-		t.Fatalf("result=%q removed=%#v", commandResultText(result), tools.removed)
-	}
-}
-
-func TestToolsCommandCompletesActionsNamesAndConfirm(t *testing.T) {
-	tools := &fakeToolService{infos: []toolshare.Info{{Name: "echo", Description: "echo skill"}, {Name: "web_search", Description: "search"}}}
-	cmd := NewTools(Deps{CommandText: testCommandText, Tools: tools, Skills: tools}).(command.Completer)
-
-	got := cmd.Complete(context.Background(), command.CompletionRequest{Raw: "/tools r", Prefix: "/", Name: "tools", Args: "r", Cursor: len("/tools r")})
-	if len(got) != 2 || got[0].Text != "reload" || got[1].Text != "remove" {
-		t.Fatalf("action Complete = %#v", got)
-	}
-
-	got = cmd.Complete(context.Background(), command.CompletionRequest{Raw: "/tools remove e", Prefix: "/", Name: "tools", Args: "remove e", Cursor: len("/tools remove e")})
-	if len(got) != 1 || got[0].Text != "echo" || got[0].Kind != "tool_name" {
-		t.Fatalf("name Complete = %#v", got)
-	}
-
-	got = cmd.Complete(context.Background(), command.CompletionRequest{Raw: "/tools remove echo --", Prefix: "/", Name: "tools", Args: "remove echo --", Cursor: len("/tools remove echo --")})
-	if len(got) != 1 || got[0].Text != "--confirm" {
-		t.Fatalf("confirm Complete = %#v", got)
+	result, err = handler.Handle(t.Context(), command.Request{Args: "remove echo --confirm"})
+	if err != nil || result == nil || controlStub.removed != (control.RemoveSkillRequest{Name: "echo", Confirmed: true}) {
+		t.Fatalf("result=%+v request=%+v err=%v", result, controlStub.removed, err)
 	}
 }
 
-func (s *fakeToolService) QueryTools(ctx context.Context, query toolshare.ToolQuery) ([]toolshare.ToolInfo, error) {
-	if s.query != nil {
-		return s.query(ctx, query)
+func TestToolsCommandQueriesRawCatalogAndCompletesThroughControl(t *testing.T) {
+	controlStub := &toolControlStub{infos: []tool.ToolInfo{{Definition: toolshare.Info{Name: "echo", Description: "echo tool"}}}}
+	handler := NewTools(Deps{CommandText: testCommandText, Control: controlStub})
+	result, err := handler.Handle(t.Context(), command.Request{})
+	if err != nil || result == nil || !reflect.DeepEqual(result.Data, controlStub.infos) {
+		t.Fatalf("result=%#v err=%v", result, err)
 	}
-	infos := make([]toolshare.ToolInfo, len(s.infos))
-	for i, info := range s.infos {
-		infos[i] = toolshare.ToolInfo{Definition: info}
+	if controlStub.query.Scope != tool.QueryCatalog || !controlStub.query.IncludeHidden || !controlStub.query.IncludeDiscover {
+		t.Fatalf("query=%+v", controlStub.query)
 	}
-	return infos, nil
-}
-
-func TestToolsListUsesQualifiedQueryAndReturnsQueryFailure(t *testing.T) {
-	failure := errors.New("catalog unavailable")
-	for _, fail := range []bool{false, true} {
-		service := &fakeToolService{infos: []toolshare.Info{{Name: "unqualified"}}}
-		service.query = func(ctx context.Context, query toolshare.ToolQuery) ([]toolshare.ToolInfo, error) {
-			if !query.IncludeHidden || !query.IncludeDiscover || query.Kind != "" || query.Names != nil {
-				t.Fatalf("query=%+v", query)
-			}
-			if fail {
-				return nil, failure
-			}
-			return []toolshare.ToolInfo{{Definition: toolshare.Info{Name: "qualified", Hidden: true}}}, nil
-		}
-		result, err := NewTools(Deps{CommandText: testCommandText, Tools: service}).Handle(t.Context(), command.Request{})
-		if fail {
-			if !errors.Is(err, failure) {
-				t.Fatalf("error=%v", err)
-			}
-			continue
-		}
-		if err != nil || !strings.Contains(commandResultText(result), "qualified") || strings.Contains(commandResultText(result), "unqualified") {
-			t.Fatalf("result=%+v err=%v", result, err)
-		}
+	completer := handler.(command.Completer)
+	got := completer.Complete(t.Context(), command.CompletionRequest{Raw: "/tools remove e", Prefix: "/", Name: "tools", Args: "remove e", Cursor: len("/tools remove e")})
+	if len(got) != 1 || got[0].Text != "echo" {
+		t.Fatalf("completion=%#v", got)
 	}
 }

@@ -4,10 +4,10 @@ package hook
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 
-	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/events"
 	"elbot/internal/hook/control"
@@ -19,6 +19,9 @@ import (
 )
 
 func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps) (*Supervisor, error) {
+	if deps.Control == nil {
+		return nil, fmt.Errorf("hook: Control is required")
+	}
 	configDir := config.PluginConfigDir(cfg.ConfigPath)
 	runtime, err := hookruntime.NewManager(hookruntime.Options{
 		Media:     deps.Media,
@@ -69,8 +72,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		send:   deps.Platform.SendTo,
 		parent: ctx, ctx: callCtx, cancel: cancel, done: make(chan struct{}),
 	}
-	prefix := cfg.Commands.Prefixes[0]
-	commandText := func(name string, args ...string) string { return command.Format(prefix, name, args...) }
-	m.commands = []command.Handler{control.NewHooks(service, m.beginCall, commandText)}
+	if err := deps.Control.ConnectHooks(management{supervisor: m}); err != nil {
+		return m, err
+	}
 	return m, nil
 }

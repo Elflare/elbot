@@ -16,11 +16,15 @@ import (
 )
 
 type startTestControl struct {
-	*Supervisor
 	reload func() (share.ReloadReport, error)
 }
 
 func (c startTestControl) HookReload() (share.ReloadReport, error) { return c.reload() }
+func (startTestControl) HookList() []share.Info                   { return nil }
+func (startTestControl) StatefulHooks() []share.RuntimeInfo        { return nil }
+func (startTestControl) StartStatefulHook(string) error            { return nil }
+func (startTestControl) StopHook(context.Context, string) (bool, error) { return true, nil }
+func (startTestControl) RestartStatefulHook(context.Context, string) error { return nil }
 
 func TestSupervisorConcurrentStartWaitsForPlatformSubscription(t *testing.T) {
 

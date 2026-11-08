@@ -2,16 +2,13 @@ package builtin
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"math"
-	"sort"
 	"strconv"
 	"strings"
 
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
+	"elbot/internal/control"
 	"elbot/internal/logging"
 )
 
@@ -48,28 +45,12 @@ func (c usageCommand) Handle(ctx context.Context, req command.Request) (*command
 	if err != nil {
 		return nil, inputError(err)
 	}
-	if c.deps.Logs == nil {
-		return nil, &command.Error{Kind: command.ErrorRejected, Code: "not_configured", Message: "logs: not configured"}
-	}
-	entries, err := c.deps.Logs.Query(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-
-	available := len(entries.Entries)
-	selected := entries.Entries
+	first, last := 1, usageQueryLimit
 	if callRange != nil {
-		start := min(callRange.start-1, available)
-		selected = selected[start:min(callRange.end, available)]
+		first, last = callRange.start, callRange.end
 	}
-	data := summarizeUsage(selected, groupBy)
-	data.Range = usageRangeDesc(query)
-	data.DamagedCount = entries.DamagedCount
-	data.AvailableCalls = available
-	if callRange != nil && available < callRange.end {
-		data.RangeTruncated = true
-	}
-	return &command.Result{Kind: command.ResultKindUsage, Data: data}, nil
+	data, err := c.deps.Control.QueryUsage(ctx, control.QueryUsageRequest{Query: query, GroupBy: string(groupBy), First: first, Last: last})
+	return &command.Result{Kind: command.ResultKindUsage, Data: data}, err
 }
 
 func (c usageCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -224,121 +205,4 @@ func parseUsageQuery(args string) (logging.LogQuery, usageGroupKey, *usageCallRa
 		}
 	}
 	return query, groupBy, callRange, nil
-}
-
-type usageBucket struct {
-	calls int
-	// Token and elapsed totals sum known values only. Nil means no known values;
-	// zero is an explicit known total, and -1 marks an overflowed total.
-	promptTokens     *int64
-	completionTokens *int64
-	totalTokens      *int64
-	cacheHitTokens   *int64
-	elapsedMs        *int64
-}
-
-func summarizeUsage(entries []logging.LogEntry, groupBy usageGroupKey) command.UsageData {
-	buckets := map[string]*usageBucket{}
-	var order []string
-	grand := &usageBucket{}
-
-	for _, entry := range entries {
-		var content map[string]json.RawMessage
-		if entry.Type == events.ContentJSON {
-			_ = json.Unmarshal([]byte(entry.Content), &content)
-		}
-		key := usageGroupKeyFor(entry, groupBy, content)
-		b := buckets[key]
-		if b == nil {
-			b = &usageBucket{}
-			buckets[key] = b
-			order = append(order, key)
-		}
-		prompt := atoiSafe(string(content["prompt_tokens"]))
-		completion := atoiSafe(string(content["completion_tokens"]))
-		total := atoiSafe(string(content["total_tokens"]))
-		cache := atoiSafe(string(content["cache_hit_tokens"]))
-		elapsed := atoiSafe(string(content["elapsed_ms"]))
-		for _, b := range []*usageBucket{b, grand} {
-			b.calls++
-			for total, value := range map[**int64]int64{&b.promptTokens: prompt, &b.completionTokens: completion, &b.totalTokens: total, &b.cacheHitTokens: cache, &b.elapsedMs: elapsed} {
-				if value < 0 {
-					continue
-				}
-				if *total == nil {
-					*total = new(int64)
-				}
-				if **total < 0 || value > math.MaxInt64-**total {
-					**total = -1
-				} else {
-					**total += value
-				}
-			}
-		}
-	}
-
-	sort.Strings(order)
-
-	data := command.UsageData{GroupBy: string(groupBy), Items: []command.UsageBucket{}, Total: usageBucketData("total", grand)}
-	for _, key := range order {
-		data.Items = append(data.Items, usageBucketData(key, buckets[key]))
-	}
-	return data
-}
-
-func usageGroupKeyFor(entry logging.LogEntry, groupBy usageGroupKey, content map[string]json.RawMessage) string {
-	switch groupBy {
-	case groupByDay:
-		if entry.Time.IsZero() {
-			return "unk-date"
-		}
-		return entry.Time.Format("2006-01-02")
-	case groupBySession:
-		return entry.Identity.SessionID
-	default:
-		var provider, model string
-		if entry.Type == events.ContentJSON {
-			_ = json.Unmarshal(content["provider"], &provider)
-			_ = json.Unmarshal(content["model"], &model)
-		}
-		provider = strings.TrimSpace(provider)
-		model = strings.TrimSpace(model)
-		if provider != "" && model != "" {
-			return provider + "/" + model
-		}
-		return firstNonEmpty(model, provider, "unk-model")
-	}
-}
-
-func usageRangeDesc(query logging.LogQuery) string {
-	parts := []string{}
-	if query.Since != nil {
-		parts = append(parts, "since "+query.Since.Format("2006-01-02 15:04"))
-	}
-	if query.Until != nil {
-		parts = append(parts, "until "+query.Until.Format("2006-01-02 15:04"))
-	}
-	if len(parts) > 0 {
-		return strings.Join(parts, ", ")
-	}
-	if query.Days > 0 {
-		return fmt.Sprintf("%dd", query.Days)
-	}
-	return "all"
-}
-
-func atoiSafe(value string) int64 {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return -1
-	}
-	n, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || n < 0 {
-		return -1
-	}
-	return n
-}
-
-func usageBucketData(key string, b *usageBucket) command.UsageBucket {
-	return command.UsageBucket{Key: key, Calls: b.calls, PromptTokens: b.promptTokens, CompletionTokens: b.completionTokens, TotalTokens: b.totalTokens, CacheHitTokens: b.cacheHitTokens, ElapsedMS: b.elapsedMs}
 }
