@@ -1,0 +1,233 @@
+openapi: 3.1.0
+info:
+  title: ElBot Frontend Management API
+  version: 1.0.0
+  description: >-
+    Static contract for the management endpoints served under /api/v1. All
+    successful responses are JSON. The API delegates business operations to
+    Control and does not accept command text.
+servers:
+  - url: /api/v1
+security:
+  - ClientID: []
+    BearerToken: []
+paths:
+  /sessions:
+    $ref: './frontend-api/paths/sessions.yaml#/~1sessions'
+  /sessions/{session_id}:
+    $ref: './frontend-api/paths/sessions.yaml#/~1sessions~1{session_id}'
+  /sessions/{session_id}/messages:
+    $ref: './frontend-api/paths/sessions.yaml#/~1sessions~1{session_id}~1messages'
+  /sessions/{session_id}/resume:
+    $ref: './frontend-api/paths/sessions.yaml#/~1sessions~1{session_id}~1resume'
+  /sessions/{session_id}/fork:
+    $ref: './frontend-api/paths/sessions.yaml#/~1sessions~1{session_id}~1fork'
+  /sessions/{session_id}/archive:
+    $ref: './frontend-api/paths/sessions.yaml#/~1sessions~1{session_id}~1archive'
+  /sessions/{session_id}/unarchive:
+    $ref: './frontend-api/paths/sessions.yaml#/~1sessions~1{session_id}~1unarchive'
+  /sessions/{session_id}/pin:
+    $ref: './frontend-api/paths/sessions.yaml#/~1sessions~1{session_id}~1pin'
+  /sessions/{session_id}/unpin:
+    $ref: './frontend-api/paths/sessions.yaml#/~1sessions~1{session_id}~1unpin'
+  /sessions/clean:
+    $ref: './frontend-api/paths/sessions.yaml#/~1sessions~1clean'
+  /sessions/{session_id}/compact:
+    $ref: './frontend-api/paths/sessions.yaml#/~1sessions~1{session_id}~1compact'
+  /session/mode:
+    $ref: './frontend-api/paths/sessions.yaml#/~1session~1mode'
+  /commands:
+    $ref: './frontend-api/paths/runtime.yaml#/~1commands'
+  /status:
+    $ref: './frontend-api/paths/runtime.yaml#/~1status'
+  /models:
+    $ref: './frontend-api/paths/runtime.yaml#/~1models'
+  /models/refresh:
+    $ref: './frontend-api/paths/runtime.yaml#/~1models~1refresh'
+  /models/selection:
+    $ref: './frontend-api/paths/runtime.yaml#/~1models~1selection'
+  /requests:
+    $ref: './frontend-api/paths/runtime.yaml#/~1requests'
+  /requests/{request_id}/stop:
+    $ref: './frontend-api/paths/runtime.yaml#/~1requests~1{request_id}~1stop'
+  /requests/stop-session:
+    $ref: './frontend-api/paths/runtime.yaml#/~1requests~1stop-session'
+  /requests/stop-all:
+    $ref: './frontend-api/paths/runtime.yaml#/~1requests~1stop-all'
+  /confirmation:
+    $ref: './frontend-api/paths/runtime.yaml#/~1confirmation'
+  /confirmation/respond:
+    $ref: './frontend-api/paths/runtime.yaml#/~1confirmation~1respond'
+  /runtime/restart:
+    $ref: './frontend-api/paths/runtime.yaml#/~1runtime~1restart'
+  /tools:
+    $ref: './frontend-api/paths/extensions.yaml#/~1tools'
+  /skills/reload:
+    $ref: './frontend-api/paths/extensions.yaml#/~1skills~1reload'
+  /skills/{name}:
+    $ref: './frontend-api/paths/extensions.yaml#/~1skills~1{name}'
+  /hooks:
+    $ref: './frontend-api/paths/extensions.yaml#/~1hooks'
+  /hooks/{hook_id}:
+    $ref: './frontend-api/paths/extensions.yaml#/~1hooks~1{hook_id}'
+  /hooks/reload:
+    $ref: './frontend-api/paths/extensions.yaml#/~1hooks~1reload'
+  /hooks/{hook_id}/start:
+    $ref: './frontend-api/paths/extensions.yaml#/~1hooks~1{hook_id}~1start'
+  /hooks/{hook_id}/stop:
+    $ref: './frontend-api/paths/extensions.yaml#/~1hooks~1{hook_id}~1stop'
+  /hooks/{hook_id}/restart:
+    $ref: './frontend-api/paths/extensions.yaml#/~1hooks~1{hook_id}~1restart'
+  /rollbacks:
+    $ref: './frontend-api/paths/files.yaml#/~1rollbacks'
+  /rollbacks/{id}/apply:
+    $ref: './frontend-api/paths/files.yaml#/~1rollbacks~1{id}~1apply'
+  /files:
+    $ref: './frontend-api/paths/files.yaml#/~1files'
+  /files/content:
+    $ref: './frontend-api/paths/files.yaml#/~1files~1content'
+  /logs:
+    $ref: './frontend-api/paths/diagnostics.yaml#/~1logs'
+  /usage:
+    $ref: './frontend-api/paths/diagnostics.yaml#/~1usage'
+  /configuration/check:
+    $ref: './frontend-api/paths/diagnostics.yaml#/~1configuration~1check'
+components:
+  securitySchemes:
+    ClientID:
+      $ref: './frontend-api/components/transport.yaml#/securitySchemes/ClientID'
+    BearerToken:
+      $ref: './frontend-api/components/transport.yaml#/securitySchemes/BearerToken'
+  parameters:
+    connection:
+      $ref: './frontend-api/components/transport.yaml#/parameters/connection'
+    connectionRequired:
+      $ref: './frontend-api/components/transport.yaml#/parameters/connectionRequired'
+    name:
+      $ref: './frontend-api/components/transport.yaml#/parameters/name'
+    query:
+      $ref: './frontend-api/components/transport.yaml#/parameters/query'
+    page:
+      $ref: './frontend-api/components/transport.yaml#/parameters/page'
+    pageSize:
+      $ref: './frontend-api/components/transport.yaml#/parameters/pageSize'
+    sessionID:
+      $ref: './frontend-api/components/transport.yaml#/parameters/sessionID'
+    hookID:
+      $ref: './frontend-api/components/transport.yaml#/parameters/hookID'
+    root:
+      $ref: './frontend-api/components/transport.yaml#/parameters/root'
+    path:
+      $ref: './frontend-api/components/transport.yaml#/parameters/path'
+    logLimit:
+      $ref: './frontend-api/components/transport.yaml#/parameters/logLimit'
+    logDays:
+      $ref: './frontend-api/components/transport.yaml#/parameters/logDays'
+    logLevel:
+      $ref: './frontend-api/components/transport.yaml#/parameters/logLevel'
+    logEvent:
+      $ref: './frontend-api/components/transport.yaml#/parameters/logEvent'
+    logField:
+      $ref: './frontend-api/components/transport.yaml#/parameters/logField'
+    logContentField:
+      $ref: './frontend-api/components/transport.yaml#/parameters/logContentField'
+    logContentFieldContains:
+      $ref: './frontend-api/components/transport.yaml#/parameters/logContentFieldContains'
+    logSince:
+      $ref: './frontend-api/components/transport.yaml#/parameters/logSince'
+    logUntil:
+      $ref: './frontend-api/components/transport.yaml#/parameters/logUntil'
+    logContains:
+      $ref: './frontend-api/components/transport.yaml#/parameters/logContains'
+    logContentContains:
+      $ref: './frontend-api/components/transport.yaml#/parameters/logContentContains'
+    logRaw:
+      $ref: './frontend-api/components/transport.yaml#/parameters/logRaw'
+  responses:
+    Error:
+      $ref: './frontend-api/components/transport.yaml#/responses/Error'
+  schemas:
+    ErrorEnvelope:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/ErrorEnvelope'
+    Error:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/Error'
+    OK:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/OK'
+    Confirmed:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/Confirmed'
+    Page:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/Page'
+    CommandList:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/CommandList'
+    Command:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/Command'
+    Session:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/Session'
+    SessionSummary:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/SessionSummary'
+    SessionList:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/SessionList'
+    Message:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/Message'
+    MessageList:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/MessageList'
+    SessionChange:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/SessionChange'
+    Model:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/Model'
+    ItemError:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/ItemError'
+    ModelList:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/ModelList'
+    ModelSelection:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/ModelSelection'
+    Request:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/Request'
+    RequestList:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/RequestList'
+    StopResult:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/StopResult'
+    Context:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/Context'
+    UsageSnapshot:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/UsageSnapshot'
+    Status:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/Status'
+    Confirmation:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/Confirmation'
+    Hook:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/Hook'
+    HookList:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/HookList'
+    ToolInfo:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/ToolInfo'
+    ToolDefinitionInfo:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/ToolDefinitionInfo'
+    RollbackInfo:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/RollbackInfo'
+    RollbackResult:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/RollbackResult'
+    LogIdentity:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/LogIdentity'
+    LogEntry:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/LogEntry'
+    LogResult:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/LogResult'
+    UsageBucket:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/UsageBucket'
+    UsageResult:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/UsageResult'
+    ConfigurationIssue:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/ConfigurationIssue'
+    ConfigurationCheck:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/ConfigurationCheck'
+    FileEntry:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/FileEntry'
+    FileList:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/FileList'
+    FileContent:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/FileContent'
+    WriteFileRequest:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/WriteFileRequest'
+    WriteFileResult:
+      $ref: './frontend-api/components/schemas.yaml#/schemas/WriteFileResult'

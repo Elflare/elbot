@@ -1,0 +1,185 @@
+  /commands:
+    get:
+      operationId: listCommands
+      summary: List command metadata
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/name'
+      responses:
+        '200':
+          description: Command metadata; commands are not executed by this endpoint.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/CommandList' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /status:
+    get:
+      operationId: getStatus
+      summary: Read current runtime status
+      responses:
+        '200':
+          description: Current status snapshot.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/Status' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /models:
+    get:
+      operationId: listModels
+      summary: List available models
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/query'
+      responses:
+        '200':
+          description: Model choices and per-provider errors.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/ModelList' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /models/refresh:
+    post:
+      operationId: refreshModels
+      summary: Refresh model catalog
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/query'
+      responses:
+        '200':
+          description: Refreshed model choices and per-provider errors.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/ModelList' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /models/selection:
+    put:
+      operationId: selectModel
+      summary: Select model
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                target: { type: string }
+                provider: { type: string }
+                model: { type: string }
+              required: [target, provider, model]
+            example: { target: current, provider: openai, model: gpt-4.1 }
+      responses:
+        '200':
+          description: Selected model.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/ModelSelection' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /requests:
+    get:
+      operationId: listRequests
+      summary: List active requests
+      responses:
+        '200':
+          description: Active request snapshots.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/RequestList' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /requests/{request_id}/stop:
+    post:
+      operationId: stopRequest
+      summary: Request cancellation of a request
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Cancellation acceptance; it does not mean execution has exited.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/StopResult' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /requests/stop-session:
+    post:
+      operationId: stopSessionRequests
+      summary: Stop requests for the current session
+      responses:
+        '200':
+          description: Cancellation result.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/StopResult' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /requests/stop-all:
+    post:
+      operationId: stopAllRequests
+      summary: Stop all requests
+      responses:
+        '200':
+          description: Cancellation result.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/StopResult' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /confirmation:
+    get:
+      operationId: getCurrentConfirmation
+      summary: Read current confirmation request
+      parameters:
+        - name: refresh
+          in: query
+          schema: { type: boolean, default: false }
+          description: Refresh the pending confirmation timeout when reading details.
+      responses:
+        '200':
+          description: Confirmation detail.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/Confirmation' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /confirmation/respond:
+    post:
+      operationId: respondConfirmation
+      summary: Respond to current confirmation
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/connectionRequired'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                decision: { type: string, enum: [approve, reject] }
+                scope: { type: string, enum: [current, tool, all] }
+                extra: { type: string }
+              required: [decision, scope, extra]
+            example: { decision: approve, scope: current, extra: '' }
+      responses:
+        '200':
+          description: Confirmation decision. Continuation is omitted from JSON and runs after response delivery.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted: { type: boolean }
+                required: [accepted]
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /runtime/restart:
+    post:
+      operationId: requestRestart
+      summary: Request process restart
+      responses:
+        '202':
+          description: Restart reservation accepted and committed after the response is delivered.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted: { type: boolean }
+                required: [accepted]
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+

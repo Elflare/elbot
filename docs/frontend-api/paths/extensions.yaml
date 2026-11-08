@@ -1,0 +1,150 @@
+  /tools:
+    get:
+      operationId: queryTools
+      summary: Query tool catalog
+      parameters:
+        - name: scope
+          in: query
+          schema: { type: string, enum: [available, catalog], default: available }
+        - name: tag
+          in: query
+          schema: { type: string }
+        - name: kind
+          in: query
+          schema: { type: string, enum: ['', tool, skill] }
+        - name: name
+          in: query
+          description: Repeat to filter by multiple exact tool names.
+          schema: { type: array, items: { type: string } }
+          style: form
+          explode: true
+        - name: include_hidden
+          in: query
+          schema: { type: boolean, default: false }
+        - name: include_discover
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Tool entries. Nested Go types without JSON tags use their exported field names.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '../components/schemas.yaml#/schemas/ToolInfo' }
+                required: [items]
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /skills/reload:
+    post:
+      operationId: reloadSkills
+      summary: Reload skills
+      responses:
+        '200':
+          description: Reload result.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/OK' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /skills/{name}:
+    delete:
+      operationId: removeSkill
+      summary: Remove a skill
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/schemas/Confirmed' }
+            example: { confirmed: true }
+      responses:
+        '200':
+          description: Removal result.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/OK' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /hooks:
+    get:
+      operationId: listHooks
+      summary: List hooks
+      responses:
+        '200':
+          description: Hook registrations.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/HookList' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /hooks/{hook_id}:
+    get:
+      operationId: getHook
+      summary: Get hook registrations
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/hookID'
+      responses:
+        '200':
+          description: Matching registrations; one plugin can register multiple hooks.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/HookList' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /hooks/reload:
+    post:
+      operationId: reloadHooks
+      summary: Reload hooks
+      responses:
+        '200':
+          description: Reload notices.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notices: { type: array, items: { type: string } }
+                required: [notices]
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /hooks/{hook_id}/start:
+    post:
+      operationId: startHook
+      summary: Start a hook
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/hookID'
+      responses:
+        '200':
+          description: Action result.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/OK' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /hooks/{hook_id}/stop:
+    post:
+      operationId: stopHook
+      summary: Stop a hook
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/hookID'
+      responses:
+        '200':
+          description: Action result.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/OK' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /hooks/{hook_id}/restart:
+    post:
+      operationId: restartHook
+      summary: Restart a hook
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/hookID'
+      responses:
+        '200':
+          description: Action result.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/OK' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }

@@ -1,0 +1,407 @@
+schemas:
+    ErrorEnvelope:
+      type: object
+      properties:
+        error: { $ref: '#/schemas/Error' }
+      required: [error]
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+      required: [code, message]
+    OK:
+      type: object
+      properties:
+        ok: { type: boolean, const: true }
+      required: [ok]
+    Confirmed:
+      type: object
+      additionalProperties: false
+      properties:
+        confirmed: { type: boolean, const: true }
+      required: [confirmed]
+    Page:
+      type: object
+      properties:
+        page: { type: integer }
+        page_size: { type: integer }
+        has_next: { type: boolean }
+        total_pages: { type: integer }
+      required: [page, page_size, has_next, total_pages]
+    CommandList:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/schemas/Command' }
+      required: [items]
+    Command:
+      type: object
+      properties:
+        name: { type: string }
+        args: { type: string }
+        aliases: { type: array, items: { type: string } }
+        description: { type: string }
+        help: { type: string }
+      required: [name, args, aliases, description, help]
+    Session:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        mode: { type: string }
+        status: { type: string }
+        platform: { type: string }
+        chat_id: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        archived_at: { type: [string, 'null'], format: date-time }
+        pinned_at: { type: [string, 'null'], format: date-time }
+        parent_session_id: { type: string }
+        fork_from_message_id: { type: string }
+      required: [id, title, mode, status, platform, chat_id, created_at, updated_at, archived_at, pinned_at, parent_session_id, fork_from_message_id]
+    SessionSummary:
+      allOf:
+        - { $ref: '#/schemas/Session' }
+        - type: object
+          properties:
+            message_count: { type: integer }
+            messages: { type: array, items: { $ref: '#/schemas/Message' } }
+            last_user_content: { type: string }
+            last_assistant_content: { type: string }
+          required: [message_count, messages, last_user_content, last_assistant_content]
+    SessionList:
+      allOf:
+        - { $ref: '#/schemas/Page' }
+        - type: object
+          properties:
+            items: { type: array, items: { $ref: '#/schemas/SessionSummary' } }
+            current_session_id: { type: string }
+            query: { type: string }
+          required: [items, current_session_id, query]
+    Message:
+      type: object
+      properties:
+        id: { type: string }
+        session_id: { type: string }
+        role: { type: string }
+        content: { type: string }
+        parent_message_id: { type: string }
+        reply_to_platform_message_id: { type: string }
+        reply_to_message_id: { type: string }
+        tool_call_id: { type: string }
+        segments:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string, enum: [text, image, file] }
+              text: { type: string }
+              url: { type: string }
+              media: { type: string }
+              mime_type: { type: string }
+              name: { type: string }
+            required: [type]
+        metadata: { type: string }
+        created_at: { type: string, format: date-time }
+      required: [id, session_id, role, content, parent_message_id, reply_to_platform_message_id, reply_to_message_id, tool_call_id, segments, metadata, created_at]
+    MessageList:
+      allOf:
+        - { $ref: '#/schemas/Page' }
+        - type: object
+          properties:
+            session_id: { type: string }
+            items: { type: array, items: { $ref: '#/schemas/Message' } }
+          required: [session_id, items]
+    SessionChange:
+      type: object
+      properties:
+        messages: { type: array, items: { $ref: '#/schemas/Message' } }
+        session: { oneOf: [{ $ref: '#/schemas/Session' }, { type: 'null' }] }
+        session_id: { type: string }
+        current_session_id: { type: string }
+        affected_count: { type: integer }
+        unchanged: { type: boolean }
+      required: [messages, session, session_id, current_session_id, affected_count, unchanged]
+    Model:
+      type: object
+      properties:
+        provider: { type: string }
+        model: { type: string }
+        index: { type: integer }
+        modes: { type: array, items: { type: string } }
+        compact: { type: boolean }
+        naming: { type: boolean }
+      required: [provider, model, index, modes, compact, naming]
+    ItemError:
+      type: object
+      properties:
+        id: { type: string }
+        error: { oneOf: [{ $ref: '#/schemas/Error' }, { type: 'null' }] }
+      required: [id, error]
+    ModelList:
+      type: object
+      properties:
+        query: { type: string }
+        items: { type: array, items: { $ref: '#/schemas/Model' } }
+        errors: { type: array, items: { $ref: '#/schemas/ItemError' } }
+      required: [query, items, errors]
+    ModelSelection:
+      type: object
+      properties:
+        target: { type: string }
+        model: { $ref: '#/schemas/Model' }
+      required: [target, model]
+    Request:
+      type: object
+      properties:
+        id: { type: string }
+        parent_id: { type: string }
+        session_id: { type: string }
+        session_title: { type: string }
+        kind: { type: string }
+        label: { type: string }
+        started_at: { type: string, format: date-time }
+        stopping: { type: boolean }
+      required: [id, parent_id, session_id, session_title, kind, label, started_at, stopping]
+    RequestList:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/schemas/Request' } }
+      required: [items]
+    StopResult:
+      type: object
+      properties:
+        session_ids: { type: array, items: { type: string } }
+        request_id: { type: string }
+        accepted_count: { type: integer }
+        state: { type: string, enum: [stopping, stopped] }
+      required: [session_ids, request_id, accepted_count, state]
+    Context:
+      type: object
+      properties:
+        usage: { oneOf: [{ $ref: '#/schemas/UsageSnapshot' }, { type: 'null' }] }
+        context_window: { type: integer }
+        compact_enabled: { type: boolean }
+        compact_trigger_ratio: { type: number }
+      required: [usage, context_window, compact_enabled, compact_trigger_ratio]
+    UsageSnapshot:
+      type: object
+      description: Go encoding/json default field names are preserved for llm.Usage.
+      properties:
+        PromptTokens: { type: [integer, 'null'], format: int64 }
+        CompletionTokens: { type: [integer, 'null'], format: int64 }
+        TotalTokens: { type: [integer, 'null'], format: int64 }
+        CacheHitTokens: { type: [integer, 'null'], format: int64 }
+      required: [PromptTokens, CompletionTokens, TotalTokens, CacheHitTokens]
+    Status:
+      type: object
+      properties:
+        session: { oneOf: [{ $ref: '#/schemas/Session' }, { type: 'null' }] }
+        mode: { type: string }
+        model: { $ref: '#/schemas/Model' }
+        phase: { type: string }
+        pending_count: { type: integer }
+        message_count: { type: integer }
+        last_user_content: { type: string }
+        last_assistant_content: { type: string }
+        requests: { type: array, items: { $ref: '#/schemas/Request' } }
+        context: { $ref: '#/schemas/Context' }
+        tool_usage: { type: [object, 'null'], additionalProperties: { type: integer } }
+        turn_tool_usage: { type: [object, 'null'], additionalProperties: { type: integer } }
+        errors: { type: array, items: { $ref: '#/schemas/ItemError' } }
+        default_mode: { type: string }
+        compact_model: { $ref: '#/schemas/Model' }
+        platform: { type: string }
+        chat_id: { type: string }
+      required: [session, mode, model, phase, pending_count, message_count, last_user_content, last_assistant_content, requests, context, tool_usage, turn_tool_usage, errors, default_mode, compact_model, platform, chat_id]
+    Confirmation:
+      type: object
+      properties:
+        session_id: { type: string }
+        kind: { type: string, enum: [tool, append] }
+        detail: { type: string }
+        tool_name: { type: string }
+        arguments: { type: string }
+        risk: { type: string }
+      required: [session_id, kind, detail, tool_name, arguments, risk]
+    Hook:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        point: { type: string }
+        priority: { type: integer }
+        mode: { type: string }
+        status: { type: string }
+        detail: { type: string }
+        active: { type: integer }
+        waiting: { type: integer }
+      required: [id, name, description, point, priority, mode, status, detail, active, waiting]
+    HookList:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/schemas/Hook' } }
+      required: [items]
+    ToolInfo:
+      type: object
+      description: Go encoding/json default field names are preserved for this type.
+      properties:
+        Definition: { $ref: '#/schemas/ToolDefinitionInfo' }
+        Parameters: { type: [object, 'null'], additionalProperties: true }
+      required: [Definition, Parameters]
+    ToolDefinitionInfo:
+      type: object
+      properties:
+        NeedsElyphRules: { type: boolean }
+        APITypes: { type: array, items: { type: string } }
+        Name: { type: string }
+        Description: { type: string }
+        Source: { type: integer }
+        Risk: { type: string }
+        SuperadminOnly: { type: boolean }
+        Hidden: { type: boolean }
+        OwnerScoped: { type: boolean }
+        ForegroundOnly: { type: boolean }
+        Tags: { type: array, items: { type: string } }
+        DependsOn: { type: array, items: { type: string } }
+      required: [NeedsElyphRules, APITypes, Name, Description, Source, Risk, SuperadminOnly, Hidden, OwnerScoped, ForegroundOnly, Tags, DependsOn]
+    RollbackInfo:
+      type: object
+      description: Go encoding/json default field names are preserved for this type.
+      properties:
+        ID: { type: integer, format: uint64, minimum: 0 }
+        Path: { type: string }
+        Target: { type: string }
+        Created: { type: boolean }
+        EditedAt: { type: string, format: date-time }
+        RevisionBefore: { type: string }
+        RevisionAfter: { type: string }
+      required: [ID, Path, Target, Created, EditedAt, RevisionBefore, RevisionAfter]
+    RollbackResult:
+      type: object
+      properties:
+        Path: { type: string }
+        Deleted: { type: boolean }
+        Revision: { type: string }
+      required: [Path, Deleted, Revision]
+    LogIdentity:
+      type: object
+      properties:
+        session_id: { type: string }
+        run_id: { type: string }
+        attempt: { type: string }
+        request_id: { type: string }
+        root_request_id: { type: string }
+      required: [session_id, run_id, attempt, request_id, root_request_id]
+    LogEntry:
+      type: object
+      properties:
+        time: { type: string, format: date-time }
+        category: { type: integer, description: Log category enum encoded as its numeric value. }
+        level: { type: string }
+        event_name: { type: string }
+        module: { type: string }
+        type: { type: integer, description: Log content type enum encoded as its numeric value. }
+        content: {}
+        identity: { $ref: '#/schemas/LogIdentity' }
+        result_status: { type: integer, description: Result status enum encoded as its numeric value. }
+        raw: { type: string }
+      required: [time, category, level, event_name, module, type, content, identity, result_status]
+    LogResult:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/schemas/LogEntry' } }
+        damaged_count: { type: integer }
+        damaged_lines: { type: array, items: { type: string } }
+      required: [items, damaged_count, damaged_lines]
+    UsageBucket:
+      type: object
+      properties:
+        key: { type: string }
+        calls: { type: integer }
+        prompt_tokens: { type: [integer, 'null'], format: int64 }
+        completion_tokens: { type: [integer, 'null'], format: int64 }
+        total_tokens: { type: [integer, 'null'], format: int64 }
+        cache_hit_tokens: { type: [integer, 'null'], format: int64 }
+        elapsed_ms: { type: [integer, 'null'], format: int64 }
+      required: [key, calls, prompt_tokens, completion_tokens, total_tokens, cache_hit_tokens, elapsed_ms]
+    UsageResult:
+      type: object
+      properties:
+        group_by: { type: string }
+        items: { type: array, items: { $ref: '#/schemas/UsageBucket' } }
+        total: { $ref: '#/schemas/UsageBucket' }
+        damaged_count: { type: integer }
+        available_calls: { type: integer }
+        range_truncated: { type: boolean }
+      required: [group_by, items, total, damaged_count, available_calls, range_truncated]
+    ConfigurationIssue:
+      type: object
+      properties:
+        path: { type: string }
+        level: { type: string }
+        topic: { type: string }
+        message: { type: string }
+        field: { type: array, items: { type: string } }
+        missing: { type: boolean }
+      required: [path, level, topic, message, field, missing]
+    ConfigurationCheck:
+      type: object
+      properties:
+        config_path: { type: string }
+        items: { type: array, items: { $ref: '#/schemas/ConfigurationIssue' } }
+      required: [config_path, items]
+    FileEntry:
+      type: object
+      properties:
+        name: { type: string }
+        path: { type: string }
+        kind: { type: string }
+        size: { type: integer, format: int64 }
+        exists: { type: boolean }
+        writable: { type: boolean }
+      required: [name, path, kind, size, exists, writable]
+    FileList:
+      type: object
+      properties:
+        root: { type: string }
+        path: { type: string }
+        items: { type: array, items: { $ref: '#/schemas/FileEntry' } }
+      required: [root, path, items]
+    FileContent:
+      type: object
+      properties:
+        root: { type: string }
+        path: { type: string }
+        content: { type: string, description: Raw byte range represented as a JSON string. }
+        revision: { type: string }
+        size: { type: integer, format: int64 }
+        offset: { type: integer, format: int64 }
+        next_offset: { type: integer, format: int64 }
+        truncated: { type: boolean }
+      required: [root, path, content, revision, size, offset, next_offset, truncated]
+    WriteFileRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        root: { type: string }
+        path: { type: string }
+        content: { type: string }
+        expected_revision:
+          type: string
+          description: Required for overwriting an existing file; empty when creating a new file.
+        create:
+          type: boolean
+          description: Only allows creation when the target does not exist; it does not permit overwrite.
+      required: [root, path, content, expected_revision, create]
+    WriteFileResult:
+      type: object
+      properties:
+        root: { type: string }
+        path: { type: string }
+        revision: { type: string }
+        created: { type: boolean }
+      required: [root, path, revision, created]

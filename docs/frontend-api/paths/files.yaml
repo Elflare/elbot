@@ -1,0 +1,89 @@
+  /rollbacks:
+    get:
+      operationId: listRollbacks
+      summary: List available file rollbacks
+      responses:
+        '200':
+          description: Rollback records.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '../components/schemas.yaml#/schemas/RollbackInfo' }
+                required: [items]
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /rollbacks/{id}/apply:
+    post:
+      operationId: applyRollback
+      summary: Apply a file rollback
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: uint64, minimum: 0 }
+      responses:
+        '200':
+          description: Rollback result.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/RollbackResult' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /files:
+    get:
+      operationId: listFiles
+      summary: List files in a managed root
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/root'
+        - $ref: '../components/transport.yaml#/parameters/path'
+      responses:
+        '200':
+          description: Files and directories at the requested path.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/FileList' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /files/content:
+    get:
+      operationId: readFile
+      summary: Read a file or byte range
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/root'
+        - $ref: '../components/transport.yaml#/parameters/path'
+        - name: offset
+          in: query
+          schema: { type: integer, format: int64, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          description: Number of bytes to read; 0 reads to end of file.
+          schema: { type: integer, format: int64, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: File content and revision. Read the full file before using its revision to overwrite.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/FileContent' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+    put:
+      operationId: writeFile
+      summary: Write a file using revision checks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/schemas/WriteFileRequest' }
+            example:
+              root: config
+              path: app.toml
+              content: "[app]\nmode = \"service\"\n"
+              expected_revision: revision-from-full-read
+              create: false
+      responses:
+        '200':
+          description: Write result.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/WriteFileResult' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }

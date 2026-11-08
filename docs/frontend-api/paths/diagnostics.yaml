@@ -1,0 +1,73 @@
+  /logs:
+    get:
+      operationId: queryLogs
+      summary: Query structured logs
+      parameters:
+        - name: category
+          in: query
+          schema: { type: string, enum: [runtime, audit, elnis] }
+        - { $ref: '../components/transport.yaml#/parameters/logLimit' }
+        - { $ref: '../components/transport.yaml#/parameters/logDays' }
+        - { $ref: '../components/transport.yaml#/parameters/logLevel' }
+        - { $ref: '../components/transport.yaml#/parameters/logEvent' }
+        - { $ref: '../components/transport.yaml#/parameters/logField' }
+        - { $ref: '../components/transport.yaml#/parameters/logContentField' }
+        - { $ref: '../components/transport.yaml#/parameters/logContentFieldContains' }
+        - { $ref: '../components/transport.yaml#/parameters/logSince' }
+        - { $ref: '../components/transport.yaml#/parameters/logUntil' }
+        - { $ref: '../components/transport.yaml#/parameters/logContains' }
+        - { $ref: '../components/transport.yaml#/parameters/logContentContains' }
+        - { $ref: '../components/transport.yaml#/parameters/logRaw' }
+      responses:
+        '200':
+          description: Matching entries and damaged-line diagnostics.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/LogResult' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /usage:
+    get:
+      operationId: queryUsage
+      summary: Query model usage
+      parameters:
+        - { $ref: '../components/transport.yaml#/parameters/logLimit' }
+        - { $ref: '../components/transport.yaml#/parameters/logDays' }
+        - { $ref: '../components/transport.yaml#/parameters/logLevel' }
+        - { $ref: '../components/transport.yaml#/parameters/logEvent' }
+        - { $ref: '../components/transport.yaml#/parameters/logField' }
+        - { $ref: '../components/transport.yaml#/parameters/logContentField' }
+        - { $ref: '../components/transport.yaml#/parameters/logContentFieldContains' }
+        - { $ref: '../components/transport.yaml#/parameters/logSince' }
+        - { $ref: '../components/transport.yaml#/parameters/logUntil' }
+        - { $ref: '../components/transport.yaml#/parameters/logContains' }
+        - { $ref: '../components/transport.yaml#/parameters/logContentContains' }
+        - { $ref: '../components/transport.yaml#/parameters/logRaw' }
+        - name: group_by
+          in: query
+          schema: { type: string, enum: [model, day, session], default: model }
+        - name: first
+          in: query
+          description: First call position, ordered newest to oldest.
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: last
+          in: query
+          description: Inclusive last call position; defaults to 100000 in the HTTP adapter.
+          schema: { type: integer, minimum: 1, default: 100000 }
+      responses:
+        '200':
+          description: Usage groups and totals.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/UsageResult' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /configuration/check:
+    get:
+      operationId: checkConfiguration
+      summary: Check current configuration files
+      responses:
+        '200':
+          description: Configuration diagnostics.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/ConfigurationCheck' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }

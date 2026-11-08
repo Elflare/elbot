@@ -1,0 +1,265 @@
+  /sessions:
+    get:
+      operationId: listSessions
+      summary: List sessions
+      parameters:
+        - { $ref: '../components/transport.yaml#/parameters/query' }
+        - { $ref: '../components/transport.yaml#/parameters/page' }
+        - { $ref: '../components/transport.yaml#/parameters/pageSize' }
+        - name: archived
+          in: query
+          schema: { type: boolean, default: false }
+          description: true selects archived sessions; false selects active sessions.
+        - name: exclude_current
+          in: query
+          schema: { type: boolean, default: false }
+          description: Exclude the session currently bound to this caller.
+      responses:
+        '200':
+          description: Session page.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/SessionList' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+    post:
+      operationId: newSession
+      summary: Create and bind a new session
+      responses:
+        '200':
+          description: Created session and current binding.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/SessionChange' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /sessions/{session_id}:
+    parameters:
+      - $ref: '../components/transport.yaml#/parameters/sessionID'
+    get:
+      operationId: getSession
+      summary: Get a session
+      responses:
+        '200':
+          description: Session data.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/Session' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+    patch:
+      operationId: renameSession
+      summary: Rename a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                title: { type: string }
+              required: [title]
+            example: { title: Research notes }
+      responses:
+        '200':
+          description: Updated session and current binding.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/SessionChange' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+    delete:
+      operationId: deleteSession
+      summary: Delete a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/schemas/Confirmed' }
+            example: { confirmed: true }
+      responses:
+        '200':
+          description: Deletion result.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/SessionChange' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /sessions/{session_id}/messages:
+    get:
+      operationId: listSessionMessages
+      summary: List messages in a session
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/sessionID'
+        - { $ref: '../components/transport.yaml#/parameters/page' }
+        - { $ref: '../components/transport.yaml#/parameters/pageSize' }
+      responses:
+        '200':
+          description: Message page, ordered within each page in conversation order.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/MessageList' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /sessions/{session_id}/resume:
+    post:
+      operationId: resumeSession
+      summary: Resume a session and bind it as current
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/sessionID'
+        - $ref: '../components/transport.yaml#/parameters/connection'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                message_limit: { type: integer, minimum: 0, default: 0 }
+            example: { message_limit: 20 }
+      responses:
+        '200':
+          description: Resume result. The internal continuation field is omitted from JSON.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/SessionChange' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /sessions/{session_id}/fork:
+    post:
+      operationId: forkSession
+      summary: Fork a session from a message
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/sessionID'
+        - $ref: '../components/transport.yaml#/parameters/connection'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                message_id: { type: string }
+                message_limit: { type: integer, minimum: 0, default: 0 }
+              required: [message_id]
+            example: { message_id: msg-123, message_limit: 20 }
+      responses:
+        '200':
+          description: Fork result. The internal continuation field is omitted from JSON.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/SessionChange' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /sessions/{session_id}/archive:
+    post:
+      operationId: archiveSession
+      summary: Archive a session
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/sessionID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/schemas/Confirmed' }
+            example: { confirmed: true }
+      responses:
+        '200':
+          description: Archive result.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/SessionChange' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /sessions/{session_id}/unarchive:
+    post:
+      operationId: unarchiveSession
+      summary: Unarchive a session
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/sessionID'
+      responses:
+        '200':
+          description: Unarchive result.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/SessionChange' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /sessions/{session_id}/pin:
+    post:
+      operationId: pinSession
+      summary: Pin a session
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/sessionID'
+      responses:
+        '200':
+          description: Pin result.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/SessionChange' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /sessions/{session_id}/unpin:
+    post:
+      operationId: unpinSession
+      summary: Unpin a session
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/sessionID'
+      responses:
+        '200':
+          description: Unpin result.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/SessionChange' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /sessions/clean:
+    post:
+      operationId: cleanSessions
+      summary: Clean expired sessions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                confirmed: { type: boolean }
+                before: { type: string, format: date-time }
+              required: [confirmed, before]
+            example: { confirmed: true, before: '2026-01-01T00:00:00Z' }
+      responses:
+        '200':
+          description: Cleanup result.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/SessionChange' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /sessions/{session_id}/compact:
+    post:
+      operationId: compactSession
+      summary: Compact a session
+      parameters:
+        - $ref: '../components/transport.yaml#/parameters/sessionID'
+      responses:
+        '200':
+          description: Compaction result.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/SessionChange' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /session/mode:
+    post:
+      operationId: setSessionMode
+      summary: Switch mode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                mode: { type: string, enum: [chat, work] }
+                new_session_title: { type: string }
+              required: [mode]
+            example: { mode: work, new_session_title: My work }
+      responses:
+        '200':
+          description: Mode and session change result.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/SessionChange' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }

@@ -1,6 +1,6 @@
 # 前端 API
 
-ElBot 前后端分离，CLI 远程协议通过 WebSocket 交换 JSON 消息，通过同一端口的 HTTP 接口收发附件。TUI、Web、移动端和脚本共用这套协议，客户端自行处理展示和下载交互。
+ElBot 前后端分离，CLI 远程协议通过 WebSocket 交换 JSON 消息，通过同一端口的 HTTP 接口收发附件和调用结构化管理操作。TUI、Web、移动端和脚本共用协议，客户端自行处理展示和下载交互。
 
 ## 连接
 
@@ -52,12 +52,14 @@ ws://<host>:<port>/cli/v1/ws
 - `error` — 鉴权失败，连接关闭
 
 ```json
-{"type": "hello_ok", "client_id": "my-client", "media_token": "connection-media-token"}
+{"type": "hello_ok", "client_id": "my-client", "media_token": "connection-media-token", "api_token": "connection-api-token"}
 ```
 
 Token 在 `[platform.cli.server.tokens]` 中按 client_id 映射到环境变量名，服务端从对应环境变量读取实际值。
 
 `media_token` 仅用于下述 HTTP 附件接口，绑定当前已认证的 WebSocket 连接；断连后失效，重连获取新凭据。相同 client_id 的多个连接各自隔离。凭据保留在客户端内存，通过 `Authorization: Bearer <media_token>` 发送，不放进 URL。
+
+`api_token` 仅用于追加输入确认后把后续动作路由回当前 WebSocket，绑定当前连接并在断连时失效。管理 API 的每个请求仍需配置的 client token，并发送 `X-Client-ID: <client_id>`；`api_token` 放在 `X-CLI-Connection` 请求头，不单独授予权限。
 
 ## 消息格式
 
@@ -70,6 +72,7 @@ Token 在 `[platform.cli.server.tokens]` 中按 client_id 映射到环境变量�
 | client_id | string | 客户端标识 |
 | token | string | 鉴权 token（仅 hello） |
 | media_token | string | 当前连接的 HTTP 附件凭据（仅 hello_ok） |
+| api_token | string | 当前连接的管理 API 路由凭据（仅 hello_ok） |
 | file_ids | array of string | 当前连接已上传或收到的附件 ID（仅 input） |
 | attachment | object | 附件描述（仅 attachment），字段见下文 |
 | text | string | 文本内容 |
@@ -97,6 +100,10 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 删除或断连只撤销附件授权并结束连接持有，不直接删除 Media 对象；已取得独立持有的在途操作可以完成，最终回收仍由 Media 管理。刷新或重连后，原附件 ID 不可复用，需要重新上传。
 
 认证无效返回 401；附件不存在或不属于当前连接返回 404；请求格式错误返回 400；服务停止接入时返回 503；媒体处理失败（包括超过上传限制）返回 500 和统一文案“附件处理失败”，具体原因记录在服务端日志。
+
+## HTTP 管理 API
+
+管理 API 的端点、请求和响应字段见[静态 OpenAPI 契约](frontend-api.openapi.yaml)。权限、会话范围和文件范围由 Control 及其提供方裁决。配置文件写入只改磁盘内容，不热更新已装配的运行配置；重启前可调用配置诊断检查文件内容。
 
 ## 客户端 → 服务端
 

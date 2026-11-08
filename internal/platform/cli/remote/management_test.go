@@ -10,11 +10,12 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/control"
+	"elbot/internal/platform/cli/remote/management"
 	"elbot/internal/platform/share"
 )
 
 type managementControlStub struct {
-	ControlCapabilities
+	management.ControlCapabilities
 	role contextinfo.Role
 }
 
@@ -116,7 +117,7 @@ func TestManagementAPIResolvesSuperadminFromConfiguredIdentity(t *testing.T) {
 	}
 }
 
-func TestControlContinuationRunsAfterHTTPResultIsWritten(t *testing.T) {
+func TestControlContinuationIsScheduledAsynchronously(t *testing.T) {
 	s := testRemoteServer(t)
 	s.workCtx = context.Background()
 	entered, release := make(chan struct{}), make(chan struct{})
@@ -125,21 +126,7 @@ func TestControlContinuationRunsAfterHTTPResultIsWritten(t *testing.T) {
 		<-release
 		return context.Background(), nil
 	})
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/confirmation/respond", nil)
-	finished := make(chan struct{})
-	go func() {
-		s.writeContinuationResult(w, req, map[string]bool{"accepted": true}, &control.Continuation{Kind: "append", SessionID: "s"})
-		close(finished)
-	}()
-	select {
-	case <-finished:
-	case <-time.After(time.Second):
-		t.Fatal("HTTP response waited for the continuation")
-	}
-	if w.Code != http.StatusOK || w.Body.String() == "" {
-		t.Fatalf("status=%d body=%q", w.Code, w.Body.String())
-	}
+	s.scheduleControlContinuation(context.Background(), control.Continuation{Kind: "append", SessionID: "s"})
 	select {
 	case <-entered:
 	case <-time.After(time.Second):

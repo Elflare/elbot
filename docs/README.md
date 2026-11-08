@@ -12,7 +12,7 @@
 6. [Elnis 监听枢纽](elnis.md)：Elnis / Elwisp / Elvena 与外部事件接入。
 7. [Elnis 配置与使用](elnis-usage.md)：启用 Elnis、配置 Elwisp、投递事件。
 8. [ELyph 任务表示法](elyph.md)：Skill 和 Cron 任务条共用的任务语法。
-9. [前端 API](frontend-api.md)：WebSocket 协议、消息类型和补全接口。
+9. [前端 API](frontend-api.md)：WebSocket 协议、附件接口和结构化管理 API。
 
 ## 文档维护
 

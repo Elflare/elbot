@@ -1,0 +1,138 @@
+securitySchemes:
+  ClientID:
+    type: apiKey
+    in: header
+    name: X-Client-ID
+    description: Client identity configured under platform.cli.server.tokens.
+  BearerToken:
+    type: http
+    scheme: bearer
+    description: Configured token value for the X-Client-ID.
+parameters:
+  connection:
+    name: X-CLI-Connection
+    in: header
+    required: false
+    schema: { type: string }
+    description: Connection api_token returned by hello_ok; associates continuations with this WebSocket.
+  connectionRequired:
+    name: X-CLI-Connection
+    in: header
+    required: true
+    schema: { type: string }
+    description: Connection api_token returned by hello_ok.
+  name:
+    name: name
+    in: query
+    schema: { type: string }
+  query:
+    name: query
+    in: query
+    schema: { type: string }
+  page:
+    name: page
+    in: query
+    schema: { type: integer, minimum: 1, default: 1 }
+  pageSize:
+    name: page_size
+    in: query
+    schema: { type: integer, minimum: 1, default: 20 }
+  sessionID:
+    name: session_id
+    in: path
+    required: true
+    schema: { type: string }
+  hookID:
+    name: hook_id
+    in: path
+    required: true
+    schema: { type: string }
+  root:
+    name: root
+    in: query
+    required: true
+    schema: { type: string }
+  path:
+    name: path
+    in: query
+    schema: { type: string, default: '' }
+  logLimit:
+    name: limit
+    in: query
+    schema: { type: integer, default: 5 }
+    description: Non-positive values use the service default.
+  logDays:
+    name: days
+    in: query
+    schema: { type: integer, default: 1 }
+    description: Number of daily files to scan; non-positive values scan today only.
+  logLevel:
+    name: level
+    in: query
+    schema: { type: string }
+    description: Minimum severity threshold.
+  logEvent:
+    name: event
+    in: query
+    description: Repeat to match any listed event name.
+    schema: { type: array, items: { type: string } }
+    style: form
+    explode: true
+  logField:
+    name: field
+    in: query
+    description: Repeat exact outer-field filters in key=value form.
+    schema: { type: array, items: { type: string } }
+    style: form
+    explode: true
+    example: [module=agent]
+  logContentField:
+    name: content_field
+    in: query
+    description: Repeat exact JSON content-field filters in key=value form.
+    schema: { type: array, items: { type: string } }
+    style: form
+    explode: true
+    example: [user.id=42]
+  logContentFieldContains:
+    name: content_field_contains
+    in: query
+    description: Repeat JSON array content-field filters in key=value form.
+    schema: { type: array, items: { type: string } }
+    style: form
+    explode: true
+    example: [tags=important]
+  logSince:
+    name: since
+    in: query
+    schema: { type: string, format: date-time }
+  logUntil:
+    name: until
+    in: query
+    schema: { type: string, format: date-time }
+  logContains:
+    name: contains
+    in: query
+    schema: { type: string }
+  logContentContains:
+    name: content_contains
+    in: query
+    schema: { type: string }
+  logRaw:
+    name: raw
+    in: query
+    schema: { type: boolean, default: false }
+    description: Include bounded damaged-line samples.
+responses:
+  Error:
+    description: >-
+      Structured API error. Statuses include 400 invalid arguments, 401
+      authentication failure, 403 permission denied, 404 missing target or
+      route, 405 unsupported method, 408 cancellation, 409 conflict, 500
+      internal error, 503 unavailable capability or stopping service, and
+      504 timeout.
+    content:
+      application/json:
+        schema: { $ref: './schemas.yaml#/schemas/ErrorEnvelope' }
+        example:
+          error: { code: invalid_arguments, message: Request JSON is invalid }
