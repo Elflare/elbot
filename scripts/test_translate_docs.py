@@ -110,8 +110,10 @@ class TranslationTest(unittest.TestCase):
         td.validate_translation(source, translated.replace("<!-- Translated comment -->", "<!-- Another comment -->\n<!-- Extra -->"))
         td.validate_translation(source, translated.replace("<!-- Translated comment -->", ""))
         td.validate_translation(source, translated.replace("`rule.<index>`", "`other command`").replace('name = "weather"', 'other = "updated"'))
+        td.validate_translation("Use session_id.", "Use `session_id`.")
+        td.validate_translation("Use `session_id`.", "Use session_id.")
         for bad in ["", " \n", translated.replace("```toml", "```python"),
-                    translated.replace("`rule.<index>`", ""), "```markdown\n" + translated + "```"]:
+                    "```markdown\n" + translated + "```"]:
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 td.validate_translation(source, bad)
         # Equal fragment counts must still reject moving code outside a fence.
@@ -184,7 +186,7 @@ class TranslationTest(unittest.TestCase):
         section = td.Segment("docs/test.md", "## 中文\n`elbot`\n", "")
         response = mock.MagicMock()
         response.__enter__.return_value.read.side_effect = [json.dumps({"choices": [{"message": {"content": content}}]}).encode()
-                                                          for content in ["lost code", section.text]]
+                                                          for content in ["```text\nlost code\n```", section.text]]
         with (
             mock.patch.dict(os.environ, {"TRANSLATE_LLM_API_KEY": "test", "TRANSLATE_LLM_BASE_URL": "https://example.invalid", "TRANSLATE_LLM_MODEL": "model"}),
             mock.patch.object(td.urllib.request, "urlopen", return_value=response) as request,
@@ -209,7 +211,7 @@ class TranslationTest(unittest.TestCase):
 
     def test_validation_failure_logs_raw_content_before_success(self):
         section = td.Segment("docs/test.md", "## 中文\n`elbot`\n", "文档")
-        bad = "\n\n## Failed translation\nMissing protected code.\n\n\n"
+        bad = "\n\n```text\nMissing protected code.\n```\n\n\n"
         good = "## English\n`elbot`\n"
         response = mock.MagicMock()
         response.__enter__.return_value.read.side_effect = [
@@ -236,7 +238,7 @@ class TranslationTest(unittest.TestCase):
 
     def test_validation_failure_logs_final_response(self):
         section = td.Segment("docs/test.md", "## 中文\n`elbot`\n", "")
-        responses = ["\nFirst invalid response\n", "\nSecond invalid response\n", "\n\n"]
+        responses = ["```text\nFirst invalid response\n```", "```text\nSecond invalid response\n```", "\n\n"]
         response = mock.MagicMock()
         response.__enter__.return_value.read.side_effect = [
             json.dumps({"choices": [{"message": {"content": content}}]}).encode()

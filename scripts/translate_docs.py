@@ -200,10 +200,14 @@ def validate_translation(source: str, translation: str) -> None:
     def parts(text):
         out, fence, language = [], "", ""
         prose = []
+
+        def add_markup(tokens):
+            out.extend(("inline_code" if token.startswith("`") else "literal", token) for token in tokens)
+
         for line in re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL).splitlines():
             marker = CODE_FENCE_RE.match(line)
             if marker and (not fence or (marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip())):
-                out.extend(("literal", token) for token in protected_markup("\n".join(prose)))
+                add_markup(protected_markup("\n".join(prose)))
                 prose = []
                 out.append(("literal", line))
                 if fence:
@@ -215,7 +219,7 @@ def validate_translation(source: str, translation: str) -> None:
                 out.append(("code:" + language, line))
             else:
                 prose.append(line)
-        out.extend(("literal", token) for token in protected_markup("\n".join(prose)))
+        add_markup(protected_markup("\n".join(prose)))
         links = []
         for kind, token in out:
             target = None
@@ -239,7 +243,7 @@ def validate_translation(source: str, translation: str) -> None:
             if target is not None:
                 target = re.match(r"\s*(<[^>]*>|\S*)", target)[1]
                 links.append(("target", target.removeprefix("<").removesuffix(">")))
-        return [kind for kind, _ in out], sorted(links)
+        return [kind for kind, _ in out if kind != "inline_code"], sorted(links)
 
     original, translated = parts(source), parts(translation)
     if original[0] != translated[0]:
