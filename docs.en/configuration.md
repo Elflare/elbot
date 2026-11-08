@@ -465,14 +465,14 @@ log_retention_days = 30
 ```
 
 - `runtime.log_level` only controls the runtime log, supporting `debug`, `info`, `warn`, and `error`.
-- Audit and Elnis logs are retained independently; usage facts required by `/usage` will continue to be recorded even if the runtime level is increased.
-- Log files are rotated daily with prefixes `elbot-`, `audit-`, and `elnis-`; the number of days to retain is controlled by `log_retention_days`.
-- Query level and recording level are independent: `/log -d` only displays existing records, without changing configurations or recovering unrecorded content. For filtering methods, see [Log and Audit Commands](commands.md#日志和审计).
-- Facility failures such as signal dispatch, background signal tasks, and log writing are reported directly to stderr (not filtered by log level); the system continues to run after reporting during runtime, but returns to the main program for handling if initialization fails.
+- Audit and Elnis logs are retained independently; even if the runtime log level is increased, usage facts required for `/usage` will continue to be recorded.
+- Log files rotate daily with prefixes `log-`, `audit-`, and `elnis-`; the number of days to retain is controlled by `log_retention_days`.
+- Query levels and recording levels are independent: `/log -d` only displays existing records; it does not change the configuration or recover unrecorded content. See [Logs and Audit Commands](commands.md#日志和审计) for filtering methods.
+- Failures in facilities such as signal dispatching, background signal tasks, and log writing are reported directly to stderr (not filtered by log level); the system continues to run after reporting during runtime, but initialization failures are returned to the main program for handling.
 
-Maintenance tasks use a Linux crontab-style 5-field Cron: `分钟 小时 日 月 星期`, scheduled by the internal Cron Runtime.
+Maintenance tasks use Linux crontab-style 5-field Cron: `minute hour day month weekday`, scheduled by the internal Cron Runtime.
 
-| Task | Enabled by default | Scheduled by default | Default retention_days |
+| Task | Default enabled | Default schedule | Default retention_days |
 | --- | --- | --- | --- |
 | `[maintenance.log_cleanup]` | `true` | `0 3 * * *` | — |
 | `[maintenance.session_cleanup]` | `false` | `15 3 * * *` | 30 |
