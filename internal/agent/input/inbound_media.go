@@ -99,7 +99,7 @@ func (h *MessageHandler) associateInboundHistory(ctx context.Context, messageID 
 		}
 		if err := h.media.AssociateHistory(ctx, media.HistoryMessage{ID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, ChatType: row.ChatType}, index, raw.Type, resolved[i].Media.MediaID); err != nil {
 			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
+				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelError,
 				EventName:    "associate_inbound_history_media_failed",
 				Module:       "agent",

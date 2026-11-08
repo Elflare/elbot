@@ -26,7 +26,7 @@ func newRunRecord(ctx context.Context, sessionID, eventName string, err error) e
 			level, status = slog.LevelInfo, events.ResultCanceled
 		}
 	}
-	record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: eventName, Module: "toolrun", Content: content, ContentLimit: 4096, ResultStatus: status}
+	record := events.LogRecord{Category: events.LogCategoryLog, Level: level, EventName: eventName, Module: "toolrun", Content: content, ContentLimit: 4096, ResultStatus: status}
 	// Read the current operation's execution facts after any foreground handoff.
 	// SessionID belongs to the supplied Session, including an explicit empty ID.
 	record.Identity = events.LogIdentityFromContext(ctx)
@@ -37,7 +37,7 @@ func newRunRecord(ctx context.Context, sessionID, eventName string, err error) e
 func (m *Manager) recordCallStarted(ctx context.Context, sessionID string, call llm.ToolCallRequest, source toolshare.SourceKind, actor contextinfo.Actor, risk, runSource string) {
 	content, _ := json.Marshal(map[string]any{"tool": call.Name, "tool_call_id": call.ID, "actor": actor, "arguments": toolshare.TruncateLogContent(call.Arguments, 512), "risk": risk, "run_source": runSource, "source": string(source)})
 	record := newRunRecord(ctx, sessionID, "tool_call_prepared", nil)
-	record.Category, record.Type, record.ContentLimit, record.Content = events.LogAudit, events.ContentJSON, 0, string(content)
+	record.Category, record.Type, record.ContentLimit, record.Content = events.LogCategoryAudit, events.ContentJSON, 0, string(content)
 	m.Log(ctx, record)
 }
 
@@ -69,6 +69,6 @@ func (m *Manager) recordCallCompleted(ctx context.Context, sessionID string, cal
 	}
 	data, _ := json.Marshal(content)
 	record := newRunRecord(ctx, sessionID, "tool_call_completed", result.Error)
-	record.Category, record.Type, record.ContentLimit, record.Content = events.LogAudit, events.ContentJSON, 0, string(data)
+	record.Category, record.Type, record.ContentLimit, record.Content = events.LogCategoryAudit, events.ContentJSON, 0, string(data)
 	m.Log(ctx, record)
 }

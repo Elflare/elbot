@@ -20,7 +20,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	logFailure := func(operation string, err error, level slog.Level) {
 		identity := globalevents.LogIdentityFromContext(ctx)
 		content, _ := json.Marshal(map[string]any{"event_id": eventID, "event_key": event.EventKey, "operation": operation, "error": err.Error()})
-		record := globalevents.LogRecord{Category: globalevents.LogElnis, Level: level, Module: "elnis", EventName: "elnis_llm_failed", Type: globalevents.ContentJSON, Content: string(content), Identity: identity, ResultStatus: globalevents.LogStatus(err)}
+		record := globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: level, Module: "elnis", EventName: "elnis_llm_failed", Type: globalevents.ContentJSON, Content: string(content), Identity: identity, ResultStatus: globalevents.LogStatus(err)}
 		if record.ResultStatus == globalevents.ResultCanceled {
 			record.Level = slog.LevelInfo
 		}
@@ -38,7 +38,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	{
 		content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID})
 		record := globalevents.LogRecord{
-			Category:  globalevents.LogAudit,
+			Category:  globalevents.LogCategoryAudit,
 			Level:     slog.LevelInfo,
 			EventName: "elnis.llm_started",
 			Module:    "elnis",
@@ -47,7 +47,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		}
 		record.Identity = identity
 		globalevents.Log(ctx, record)
-		record.Category, record.EventName = globalevents.LogElnis, "elnis_llm_started"
+		record.Category, record.EventName = globalevents.LogCategoryElnis, "elnis_llm_started"
 		globalevents.Log(ctx, record)
 	}
 
@@ -142,7 +142,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	{
 		content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": eventID})
 		record := globalevents.LogRecord{
-			Category:     globalevents.LogAudit,
+			Category:     globalevents.LogCategoryAudit,
 			Level:        slog.LevelInfo,
 			EventName:    "elnis.llm_completed",
 			Module:       "elnis",
@@ -153,7 +153,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		record.Identity = identity
 		record.Identity.SessionID = result.SessionID
 		globalevents.Log(ctx, record)
-		record.Category, record.EventName = globalevents.LogElnis, "elnis_llm_completed"
+		record.Category, record.EventName = globalevents.LogCategoryElnis, "elnis_llm_completed"
 		globalevents.Log(ctx, record)
 	}
 	return nil
@@ -231,7 +231,7 @@ func (s *Service) completeTakeover(ctx context.Context, eventID, resolved string
 		message = runErr.Error()
 	}
 	if runErr != nil {
-		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogElnis, Level: slog.LevelInfo, EventName: "elnis_takeover_result", Module: "elnis", Content: runErr.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(runErr)})
+		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelInfo, EventName: "elnis_takeover_result", Module: "elnis", Content: runErr.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(runErr)})
 	}
 	return s.completeEventWithSession(ctx, eventID, resolved, StatusTakenOver, result.SessionID, string(payload), message)
 }

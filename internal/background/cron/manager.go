@@ -143,7 +143,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 	{
 		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
+			Category:     globalevents.LogCategoryLog,
 			Level:        slog.LevelInfo,
 			EventName:    "cron_manager_started",
 			Module:       "cron",
@@ -179,7 +179,7 @@ func (m *Manager) Stop() context.Context {
 	m.mu.Unlock()
 	{
 		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
+			Category:     globalevents.LogCategoryLog,
 			Level:        slog.LevelInfo,
 			EventName:    "cron_manager_stopping",
 			Module:       "cron",
@@ -208,7 +208,7 @@ func (m *Manager) reloadEnabled(ctx context.Context) error {
 		if err := m.scheduleJob(ctx, job); err != nil {
 			{
 				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
+					Category:     globalevents.LogCategoryLog,
 					Level:        slog.LevelError,
 					EventName:    "cron_job_schedule_failed",
 					Module:       "cron",
@@ -243,7 +243,7 @@ func (m *Manager) scheduleJob(ctx context.Context, job Job) error {
 		m.mu.Unlock()
 		{
 			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
+				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelError,
 				EventName:    "cron_job_handler_not_registered",
 				Module:       "cron",
@@ -279,7 +279,7 @@ func (m *Manager) scheduleJob(ctx context.Context, job Job) error {
 	}
 	{
 		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
+			Category:     globalevents.LogCategoryLog,
 			Level:        slog.LevelInfo,
 			EventName:    "cron_job_scheduled",
 			Module:       "cron",
@@ -310,7 +310,7 @@ func (m *Manager) runJob(name string) {
 		if ctx.Err() == nil {
 			{
 				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
+					Category:     globalevents.LogCategoryLog,
 					Level:        slog.LevelError,
 					EventName:    "cron_job_load_failed",
 					Module:       "cron",
@@ -339,7 +339,7 @@ func (m *Manager) runJob(name string) {
 		m.mu.Unlock()
 		{
 			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
+				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelWarn,
 				EventName:    "cron_job_skipped_because_previous_run_is_still_running",
 				Module:       "cron",
@@ -358,7 +358,7 @@ func (m *Manager) runJob(name string) {
 		m.mu.Unlock()
 		{
 			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
+				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelError,
 				EventName:    "cron_job_handler_not_registered",
 				Module:       "cron",
@@ -383,7 +383,7 @@ func (m *Manager) runJob(name string) {
 	startedAt := time.Now()
 	{
 		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
+			Category:     globalevents.LogCategoryLog,
 			Level:        slog.LevelInfo,
 			EventName:    "cron_job_started",
 			Module:       "cron",
@@ -406,7 +406,7 @@ func (m *Manager) runJob(name string) {
 	duration := time.Since(startedAt)
 	// Deadline expiry is a failure; only explicit cancellation is canceled in logs.
 	record := globalevents.LogRecord{
-		Category: globalevents.LogRuntime, Level: slog.LevelInfo,
+		Category: globalevents.LogCategoryLog, Level: slog.LevelInfo,
 		EventName: "cron_job_completed", Module: "cron", Type: globalevents.ContentText,
 		Content:      fmt.Sprintf("cron job finished\njob=%s\nhandler=%s\nduration=%s", job.Name, job.Handler, duration),
 		ContentLimit: 4096, ResultStatus: resultStatus,
@@ -434,7 +434,7 @@ func (m *Manager) runJob(name string) {
 	}); err != nil {
 		{
 			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
+				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelError,
 				EventName:    "cron_job_state_update_failed",
 				Module:       "cron",

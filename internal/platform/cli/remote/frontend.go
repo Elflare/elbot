@@ -17,7 +17,7 @@ func (s *RemoteServer) initFrontend(mux *http.ServeMux) {
 	frontend, err := newFrontendHandler(s.frontendDir)
 	if err != nil {
 		events.AsyncLog(s.workCtx, events.LogRecord{
-			Category: events.LogRuntime, Level: slog.LevelError, EventName: "cli_frontend_init_failed",
+			Category: events.LogCategoryLog, Level: slog.LevelError, EventName: "cli_frontend_init_failed",
 			Module: "cli", Content: fmt.Sprintf("directory=%s error=%v", s.frontendDir, err),
 			ResultStatus: events.ResultFailed,
 		})
@@ -67,7 +67,7 @@ func newFrontendHandler(frontendDir string) (http.Handler, error) {
 				return
 			}
 			events.AsyncLog(req.Context(), events.LogRecord{
-				Category: events.LogRuntime, Level: slog.LevelError, EventName: "cli_frontend_request_failed",
+				Category: events.LogCategoryLog, Level: slog.LevelError, EventName: "cli_frontend_request_failed",
 				Module: "cli", Content: fmt.Sprintf("path=%s error=%v", req.URL.Path, err),
 				ResultStatus: events.ResultFailed,
 			})

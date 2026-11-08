@@ -74,7 +74,7 @@ func TestPreloadAuditIdentityAndResult(t *testing.T) {
 						t.Fatalf("err=%v records=%+v", err, records)
 					}
 					record := records[0]
-					if !reflect.DeepEqual(record.Identity, want) || record.EventName != tc.event || record.Level != tc.level || record.ResultStatus != tc.status || record.Category != globalevents.LogAudit || !strings.Contains(record.Content, tc.content) {
+					if !reflect.DeepEqual(record.Identity, want) || record.EventName != tc.event || record.Level != tc.level || record.ResultStatus != tc.status || record.Category != globalevents.LogCategoryAudit || !strings.Contains(record.Content, tc.content) {
 						t.Fatalf("unexpected audit: %+v identity=%+v want=%+v", record, record.Identity, want)
 					}
 				})

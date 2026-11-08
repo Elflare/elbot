@@ -33,7 +33,7 @@ func (m *Manager) ValidateImage(ctx context.Context, id string) (info share.Medi
 	}
 	defer func() {
 		if closeErr := reader.Close(); closeErr != nil {
-			events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
+			events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
 		}
 	}()
 	if !strings.HasPrefix(info.MIMEType, "image/") {

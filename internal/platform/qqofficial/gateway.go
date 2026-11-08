@@ -97,7 +97,7 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler share.MessageHandl
 			if err := a.handleDispatch(ctx, handler, p, state); err != nil {
 				{
 					record := globalevents.LogRecord{
-						Category:     globalevents.LogRuntime,
+						Category:     globalevents.LogCategoryLog,
 						Level:        slog.LevelWarn,
 						EventName:    p.Type,
 						Module:       a.Name(),
@@ -128,7 +128,7 @@ func (a *Adapter) runGatewayOnce(ctx context.Context, handler share.MessageHandl
 		default:
 			{
 				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
+					Category:     globalevents.LogCategoryLog,
 					Level:        slog.LevelDebug,
 					EventName:    "qqofficial_gateway_op_ignored",
 					Module:       a.Name(),
@@ -182,7 +182,7 @@ func (a *Adapter) heartbeatLoop(ctx context.Context, conn *websocket.Conn, state
 			if err := a.writeGateway(ctx, conn, payload{Op: opHeartbeat, Data: mustJSON(state.seq.Load())}); err != nil {
 				{
 					record := globalevents.LogRecord{
-						Category:     globalevents.LogRuntime,
+						Category:     globalevents.LogCategoryLog,
 						Level:        slog.LevelWarn,
 						EventName:    "send_qqofficial_heartbeat_failed",
 						Module:       a.Name(),
@@ -216,7 +216,7 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler share.MessageHandl
 		state.resume = true
 		{
 			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
+				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelInfo,
 				EventName:    "qqofficial_gateway_ready",
 				Module:       a.Name(),
@@ -248,7 +248,7 @@ func (a *Adapter) handleDispatch(ctx context.Context, handler share.MessageHandl
 		if strings.TrimSpace(p.Type) != "" {
 			{
 				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
+					Category:     globalevents.LogCategoryLog,
 					Level:        slog.LevelDebug,
 					EventName:    p.Type,
 					Module:       a.Name(),

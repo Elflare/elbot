@@ -185,7 +185,7 @@ func (m *Manager) commitAgentSkillConfig(ctx context.Context, name, path string,
 	}
 	if err := m.reloadLocked(ctx); err != nil {
 		if rollbackErr := previous.restore(path); rollbackErr != nil {
-			events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError,
+			events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError,
 				EventName: "skill_rollback_failed", Module: "skill", Content: rollbackErr.Error(),
 				Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(rollbackErr)})
 		}

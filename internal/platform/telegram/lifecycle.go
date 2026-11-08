@@ -169,7 +169,7 @@ func (a *Adapter) runPolling(handler share.MessageHandler) {
 			if backoff.ShouldWarn() {
 				{
 					record := globalevents.LogRecord{
-						Category:     globalevents.LogRuntime,
+						Category:     globalevents.LogCategoryLog,
 						Level:        slog.LevelWarn,
 						EventName:    "telegram_getme_failed",
 						Module:       a.Name(),
@@ -196,7 +196,7 @@ func (a *Adapter) runPolling(handler share.MessageHandler) {
 		if err := a.syncBotCommands(ctx); err != nil {
 			{
 				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
+					Category:     globalevents.LogCategoryLog,
 					Level:        slog.LevelError,
 					EventName:    "sync_telegram_bot_commands_failed",
 					Module:       a.Name(),
@@ -215,7 +215,7 @@ func (a *Adapter) runPolling(handler share.MessageHandler) {
 		}
 		{
 			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
+				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelInfo,
 				EventName:    "telegram_connected",
 				Module:       a.Name(),
@@ -236,7 +236,7 @@ func (a *Adapter) runPolling(handler share.MessageHandler) {
 				}
 				{
 					record := globalevents.LogRecord{
-						Category:     globalevents.LogRuntime,
+						Category:     globalevents.LogCategoryLog,
 						Level:        slog.LevelWarn,
 						EventName:    "telegram_getupdates_failed",
 						Module:       a.Name(),

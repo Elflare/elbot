@@ -44,7 +44,7 @@ func TestReaderJSONBusinessPredicatesBeforeLimit(t *testing.T) {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	entry := result.Entries[0]
-	if entry.Raw != wanted || entry.Identity.SessionID != "" || entry.ResultStatus != events.ResultFailed || entry.Category != events.LogAudit {
+	if entry.Raw != wanted || entry.Identity.SessionID != "" || entry.ResultStatus != events.ResultFailed || entry.Category != events.LogCategoryAudit {
 		t.Fatalf("entry=%+v", entry)
 	}
 	query.Fields["event"] = "forged"
@@ -109,7 +109,7 @@ func TestReaderMatchesDeclaredRunSourceBeforeLimit(t *testing.T) {
 		t.Run(source, func(t *testing.T) {
 			line := func(module, event, kind, level string, content any) string {
 				t.Helper()
-				data, err := json.Marshal(map[string]any{"time": "2026-10-08T12:34:56Z", "category": "runtime", "level": level, "module": module, "event": event, "type": kind, "content": content})
+				data, err := json.Marshal(map[string]any{"time": "2026-10-08T12:34:56Z", "category": "log", "level": level, "module": module, "event": event, "type": kind, "content": content})
 				if err != nil {
 					t.Fatal(err)
 				}

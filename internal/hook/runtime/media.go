@@ -374,7 +374,7 @@ func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool, l
 
 // pruneLease holds this lease's busy slot throughout I/O and final state changes.
 func (b *mediaBridge) pruneLease(ctx context.Context, id string, lease *mediaLease, closeAll bool, log func(events.LogRecord)) {
-	record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelInfo, EventName: "prune_hook_media", Module: "hook", ContentLimit: 4096, ResultStatus: events.ResultSucceeded, Content: "Hook media lease release\nmedia_id=" + id}
+	record := events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelInfo, EventName: "prune_hook_media", Module: "hook", ContentLimit: 4096, ResultStatus: events.ResultSucceeded, Content: "Hook media lease release\nmedia_id=" + id}
 	if lease.retained {
 		if err := b.api.RemoveReference(ctx, lease.reference); err != nil {
 			record.Level, record.ResultStatus = slog.LevelError, events.ResultFailed

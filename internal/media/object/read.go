@@ -51,7 +51,7 @@ func (m *Manager) Read(ctx context.Context, id string) (data []byte, info share.
 	}
 	defer func() {
 		if closeErr := reader.Close(); closeErr != nil {
-			events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
+			events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
 		}
 	}()
 	data, err = io.ReadAll(reader)
@@ -76,7 +76,7 @@ func (m *Manager) Export(ctx context.Context, id, destination string) (info shar
 	}
 	defer func() {
 		if closeErr := reader.Close(); closeErr != nil {
-			events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
+			events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
 		}
 	}()
 	file, err := os.Create(destination)
@@ -88,7 +88,7 @@ func (m *Manager) Export(ctx context.Context, id, destination string) (info shar
 		if err == nil {
 			return info, closeErr
 		}
-		events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_file_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
+		events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_file_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
 	}
 	if err != nil {
 		return info, err

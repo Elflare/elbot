@@ -260,12 +260,12 @@ func TestRunJobPublishesHandlerContentOnlyOnce(t *testing.T) {
 	var runtimeCount, auditCount int
 	var final globalevents.LogRecord
 	for _, record := range records {
-		if record.Category == globalevents.LogRuntime {
+		if record.Category == globalevents.LogCategoryLog {
 			runtimeCount++
 			if record.EventName == "cron_job_completed."+job.Handler {
 				final = record
 			}
-		} else if record.Category == globalevents.LogAudit {
+		} else if record.Category == globalevents.LogCategoryAudit {
 			auditCount++
 		}
 	}

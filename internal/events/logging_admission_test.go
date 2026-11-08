@@ -38,11 +38,11 @@ func TestLogSignalAdmissionDiagnosedWithoutDuplicatingConsumerFailure(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	Log(t.Context(), LogRecord{Category: LogRuntime})
-	AsyncLog(t.Context(), LogRecord{Category: LogRuntime, Content: "block"})
+	Log(t.Context(), LogRecord{Category: LogCategoryLog})
+	AsyncLog(t.Context(), LogRecord{Category: LogCategoryLog, Content: "block"})
 	<-started
-	AsyncLog(t.Context(), LogRecord{Category: LogRuntime})
-	AsyncLog(t.Context(), LogRecord{Category: LogRuntime})
+	AsyncLog(t.Context(), LogRecord{Category: LogCategoryLog})
+	AsyncLog(t.Context(), LogRecord{Category: LogCategoryLog})
 	close(release)
 	if err := source.Close(t.Context()); err != nil {
 		t.Fatal(err)

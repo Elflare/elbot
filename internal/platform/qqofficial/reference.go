@@ -73,7 +73,7 @@ func (a *Adapter) recordMessageAlias(ctx context.Context, conversationKind conte
 		Platform: a.Name(), ChatType: conversationKind, ChatID: scopeID, Alias: alias, PlatformMessageID: messageID,
 	}); err != nil {
 		globalevents.Log(context.WithoutCancel(ctx), globalevents.LogRecord{
-			Category: globalevents.LogRuntime, Level: slog.LevelWarn,
+			Category: globalevents.LogCategoryLog, Level: slog.LevelWarn,
 			EventName: "record_qqofficial_message_alias_failed", Module: a.Name(),
 			Type: globalevents.ContentText, ContentLimit: 4096, ResultStatus: globalevents.ResultFailed,
 			Content: fmt.Sprintf("record qqofficial message alias failed: %v", err),

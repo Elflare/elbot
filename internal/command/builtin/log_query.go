@@ -46,8 +46,8 @@ func parseAuditQuery(args string) (logging.LogQuery, error) {
 	return query, nil
 }
 
-func parseRuntimeLogQuery(args string) (logging.LogQuery, error) {
-	query := baseLogQuery("elbot")
+func parseLogQuery(args string) (logging.LogQuery, error) {
+	query := baseLogQuery("log")
 	query.MinLevel = "debug"
 	fields := map[string]string{}
 	if err := parseLogArgsWithOptions(args, &query, fields, func(name, value string) error {

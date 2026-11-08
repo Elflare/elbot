@@ -48,7 +48,7 @@ func (p *Preparer) LoadMaterials(ctx context.Context, in agentshare.TurnInput) (
 		return agentshare.TurnMaterials{}, err
 	}
 	record := events.LogRecord{
-		Category:     events.LogRuntime,
+		Category:     events.LogCategoryLog,
 		Level:        slog.LevelInfo,
 		EventName:    "user_message",
 		Module:       "agent",

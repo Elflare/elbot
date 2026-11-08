@@ -47,7 +47,7 @@ func (m *Supervisor) RollbackByID(ctx context.Context, req RollbackByIDRequest) 
 			sessionID = binding.SessionID()
 		}
 		content := map[string]any{"actor": actor, "path": result.Path, "deleted": result.Deleted}
-		record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "control", Level: slog.LevelInfo, EventName: "file_rollback", Type: globalevents.ContentJSON, ResultStatus: globalevents.ResultSucceeded}
+		record := globalevents.LogRecord{Category: globalevents.LogCategoryAudit, Module: "control", Level: slog.LevelInfo, EventName: "file_rollback", Type: globalevents.ContentJSON, ResultStatus: globalevents.ResultSucceeded}
 		if err != nil {
 			content["error"] = err.Error()
 			record.EventName = "file_rollback_failed"

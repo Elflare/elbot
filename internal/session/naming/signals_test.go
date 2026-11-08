@@ -70,12 +70,12 @@ func TestNamingFailureContentSurvivesRuntimeLevel(t *testing.T) {
 			if err := center.Close(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			for _, prefix := range []string{"audit", "elbot"} {
+			for _, prefix := range []string{"audit", "log"} {
 				paths, err := filepath.Glob(filepath.Join(center.LogDir(), prefix+"-*.log"))
 				if err != nil {
 					t.Fatal(err)
 				}
-				if prefix == "elbot" && level == "error" {
+				if prefix == "log" && level == "error" {
 					for _, path := range paths {
 						data, err := os.ReadFile(path)
 						if err != nil || len(strings.TrimSpace(string(data))) != 0 {

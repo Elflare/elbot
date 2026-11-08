@@ -40,7 +40,7 @@ func (m *Manager) ResolveForOutput(ctx context.Context, id string) (_ delivery.S
 	}
 	defer func() {
 		if closeErr := reader.Close(); closeErr != nil {
-			m.options.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
+			m.options.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
 		}
 	}()
 	path := filepath.Join(dir, "media")
@@ -53,7 +53,7 @@ func (m *Manager) ResolveForOutput(ctx context.Context, id string) (_ delivery.S
 		if err == nil {
 			return delivery.Source{}, usageID, closeErr
 		}
-		m.options.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_file_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
+		m.options.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_file_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
 	}
 	if err != nil {
 		return delivery.Source{}, usageID, err

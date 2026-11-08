@@ -30,12 +30,12 @@ func testLogLine(t *testing.T, fields map[string]any) string {
 
 func TestReaderStopsBeforeOlderOversizedLine(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "elbot-"+time.Now().Format("2006-01-02")+".log")
+	path := filepath.Join(dir, "log-"+time.Now().Format("2006-01-02")+".log")
 	content := strings.Repeat("x", maxLogLineBytes+1) + "\n" + testLogLine(t, map[string]any{"type": "text", "content": "latest"})
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "elbot", Limit: 1})
+	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "log", Limit: 1})
 	if err != nil || len(entries.Entries) != 1 || entries.Entries[0].Content != "latest" {
 		t.Fatalf("tail query: entries=%v err=%v", entries, err)
 	}
@@ -94,7 +94,7 @@ func TestReaderParsesAndFiltersJSONLogs(t *testing.T) {
 
 func TestReaderContainsMatchesStructuredFieldsAndRaw(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "elbot-"+time.Now().Format("2006-01-02")+".log")
+	path := filepath.Join(dir, "log-"+time.Now().Format("2006-01-02")+".log")
 	content := testLogLine(t, map[string]any{"event": "user_message", "content": map[string]any{"text": "hello world"}}) +
 		testLogLine(t, map[string]any{"content": map[string]any{"arguments": `{"path":"a.txt"}`, "result": "file content"}}) +
 		testLogLine(t, map[string]any{"module": "needle", "type": "text", "content": "other"})
@@ -102,7 +102,7 @@ func TestReaderContainsMatchesStructuredFieldsAndRaw(t *testing.T) {
 		t.Fatalf("write log: %v", err)
 	}
 
-	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "elbot", Contains: "file content"})
+	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "log", Contains: "file content"})
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestReaderContainsMatchesStructuredFieldsAndRaw(t *testing.T) {
 		t.Fatalf("entries = %#v", entries)
 	}
 
-	entries, err = (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "elbot", Contains: "needle"})
+	entries, err = (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "log", Contains: "needle"})
 	if err != nil {
 		t.Fatalf("Query raw: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestReaderFieldContainsMatchesOnlyRequestedField(t *testing.T) {
 
 func TestReaderAppliesMinLevelAndLimit(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "elbot-"+time.Now().Format("2006-01-02")+".log")
+	path := filepath.Join(dir, "log-"+time.Now().Format("2006-01-02")+".log")
 	content := testLogLine(t, map[string]any{"level": "DEBUG", "type": "text", "content": "debug"}) +
 		testLogLine(t, map[string]any{"type": "text", "content": "info"}) +
 		testLogLine(t, map[string]any{"level": "ERROR", "type": "text", "content": "error"})
@@ -156,7 +156,7 @@ func TestReaderAppliesMinLevelAndLimit(t *testing.T) {
 		t.Fatalf("write log: %v", err)
 	}
 
-	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "elbot", MinLevel: "info", Limit: 1})
+	entries, err := (Reader{Dir: dir}).Query(context.Background(), LogQuery{Prefix: "log", MinLevel: "info", Limit: 1})
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
@@ -396,7 +396,7 @@ func TestReaderCrossDayFiltersAndPhysicalOrder(t *testing.T) {
 
 func TestReaderLimitSkipsOlderFilesAndPropagatesReadErrors(t *testing.T) {
 	dir := t.TempDir()
-	paths := logPaths(dir, "elbot", 2)
+	paths := logPaths(dir, "log", 2)
 	if err := os.WriteFile(paths[0], []byte(testLogLine(t, map[string]any{"type": "text", "content": "latest"})), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -404,11 +404,11 @@ func TestReaderLimitSkipsOlderFilesAndPropagatesReadErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	reader := Reader{Dir: dir}
-	entries, err := reader.Query(context.Background(), LogQuery{Prefix: "elbot", Days: 2, Limit: 1})
+	entries, err := reader.Query(context.Background(), LogQuery{Prefix: "log", Days: 2, Limit: 1})
 	if err != nil || len(entries.Entries) != 1 {
 		t.Fatalf("limit: entries=%v err=%v", entries, err)
 	}
-	_, err = reader.Query(context.Background(), LogQuery{Prefix: "elbot", Days: 2, Limit: 2})
+	_, err = reader.Query(context.Background(), LogQuery{Prefix: "log", Days: 2, Limit: 2})
 	if err == nil || !strings.Contains(err.Error(), paths[1]) {
 		t.Fatalf("file error: %v", err)
 	}

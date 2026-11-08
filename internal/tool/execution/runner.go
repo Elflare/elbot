@@ -76,7 +76,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		if result.Result != nil && len(result.Result.Outputs) > 0 {
 			err := deps.SendOutputs(ctx, result.Result.Outputs)
 			if err != nil {
-				events.LogAndNotify(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "tool_output_failed", Module: "tool", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}, events.NewNotification(ctx, slog.LevelWarn, err.Error()))
+				events.LogAndNotify(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "tool_output_failed", Module: "tool", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}, events.NewNotification(ctx, slog.LevelWarn, err.Error()))
 				result.Message.Segments = append(result.Message.Segments, llm.TextSegments(fmt.Sprintf("\ntool call %s failed: output: %v", call.Name, err))...)
 			}
 		}
@@ -340,7 +340,7 @@ func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor 
 		if !permission.Allowed {
 			resultStatus = events.ResultRejected
 		}
-		record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: permission.Reason, Module: "tool", Type: events.ContentJSON, Content: string(data), ResultStatus: resultStatus}
+		record := events.LogRecord{Category: events.LogCategoryAudit, Level: slog.LevelInfo, EventName: permission.Reason, Module: "tool", Type: events.ContentJSON, Content: string(data), ResultStatus: resultStatus}
 		record.Identity = events.LogIdentityFromContext(ctx)
 		record.Identity.SessionID = sessionID
 		m.Log(ctx, record)

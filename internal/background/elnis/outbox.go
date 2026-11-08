@@ -159,11 +159,11 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (context.Co
 		return ctx, s.releaseReport(ctx, eventID, err)
 	}
 	content, _ := json.Marshal(map[string]any{"event_id": eventID, "event_key": event.EventKey, "result": "report delivered"})
-	record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "elnis.llm_completed", Module: "elnis", Type: globalevents.ContentJSON, Content: string(content), ResultStatus: globalevents.ResultSucceeded}
+	record := globalevents.LogRecord{Category: globalevents.LogCategoryAudit, Level: slog.LevelInfo, EventName: "elnis.llm_completed", Module: "elnis", Type: globalevents.ContentJSON, Content: string(content), ResultStatus: globalevents.ResultSucceeded}
 	record.Identity = identity
 	record.Identity.SessionID = event.SessionID
 	globalevents.Log(ctx, record)
-	record.Category, record.EventName = globalevents.LogElnis, "elnis_llm_completed"
+	record.Category, record.EventName = globalevents.LogCategoryElnis, "elnis_llm_completed"
 	globalevents.Log(ctx, record)
 	return ctx, nil
 }
@@ -173,7 +173,7 @@ func (s *Service) failReportDelivery(ctx context.Context, eventID, deliveryID st
 	defer cancel()
 	receiptJSON, _ := json.Marshal(receipt)
 	if err := s.store.MarkReportDeliveryFailed(cleanupCtx, eventID, deliveryID, StatusResultReady, deliveryErr.Error(), string(receiptJSON), mappings); err != nil {
-		record := globalevents.LogRecord{Category: globalevents.LogElnis, Level: slog.LevelError, Module: "elnis", EventName: "elnis_report_failure_save_failed", ResultStatus: globalevents.LogStatus(err), Identity: globalevents.LogIdentityFromContext(ctx), Content: fmt.Sprintf("event_id=%s error=%v", eventID, err)}
+		record := globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelError, Module: "elnis", EventName: "elnis_report_failure_save_failed", ResultStatus: globalevents.LogStatus(err), Identity: globalevents.LogIdentityFromContext(ctx), Content: fmt.Sprintf("event_id=%s error=%v", eventID, err)}
 		if record.ResultStatus == globalevents.ResultCanceled {
 			record.Level = slog.LevelInfo
 		}
@@ -186,7 +186,7 @@ func (s *Service) releaseReport(ctx context.Context, eventID string, deliveryErr
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	if err := s.store.ReleaseReport(cleanupCtx, eventID, StatusDelivering, StatusResultReady, deliveryErr.Error()); err != nil {
-		record := globalevents.LogRecord{Category: globalevents.LogElnis, Level: slog.LevelError, Module: "elnis", EventName: "elnis_report_release_failed", ResultStatus: globalevents.LogStatus(err), Identity: globalevents.LogIdentityFromContext(ctx), Content: fmt.Sprintf("event_id=%s error=%v", eventID, err)}
+		record := globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelError, Module: "elnis", EventName: "elnis_report_release_failed", ResultStatus: globalevents.LogStatus(err), Identity: globalevents.LogIdentityFromContext(ctx), Content: fmt.Sprintf("event_id=%s error=%v", eventID, err)}
 		if record.ResultStatus == globalevents.ResultCanceled {
 			record.Level = slog.LevelInfo
 		}
@@ -204,7 +204,7 @@ func (s *Service) recoverReports(ctx context.Context) {
 	repo := s.store
 	ids, err := repo.ListResultReadyReportIDs(ctx, StatusResultReady)
 	if err != nil {
-		record := globalevents.LogRecord{Category: globalevents.LogElnis, Level: slog.LevelError, Module: "elnis", EventName: "recover_elnis_report_failed", ResultStatus: globalevents.LogStatus(err), Identity: globalevents.LogIdentityFromContext(ctx), Content: "list pending reports: " + err.Error()}
+		record := globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelError, Module: "elnis", EventName: "recover_elnis_report_failed", ResultStatus: globalevents.LogStatus(err), Identity: globalevents.LogIdentityFromContext(ctx), Content: "list pending reports: " + err.Error()}
 		if record.ResultStatus == globalevents.ResultCanceled {
 			record.Level = slog.LevelInfo
 		}
@@ -215,7 +215,7 @@ func (s *Service) recoverReports(ctx context.Context) {
 	for _, eventID := range ids {
 		ctx, err := s.deliverReport(ctx, eventID)
 		if err != nil {
-			record := globalevents.LogRecord{Category: globalevents.LogElnis, Level: slog.LevelWarn, EventName: "recover_elnis_report_failed", Module: "elnis", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)}
+			record := globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelWarn, EventName: "recover_elnis_report_failed", Module: "elnis", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)}
 			if record.ResultStatus == globalevents.ResultCanceled {
 				record.Level = slog.LevelInfo
 			}

@@ -86,7 +86,7 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 	}
 	fail := func(result actionResult, source error) (share.Event, actionResult, error) {
 		if err := killProcessTree(); err != nil {
-			m.Opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "hook_process_cleanup_failed", Module: "hook", Content: err.Error(), ResultStatus: globalevents.LogStatus(err)})
+			m.Opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "hook_process_cleanup_failed", Module: "hook", Content: err.Error(), ResultStatus: globalevents.LogStatus(err)})
 		}
 		_ = waitExec()
 		stderr := stderrTail.String()
@@ -137,7 +137,7 @@ func (m Module) runExec(ctx context.Context, event share.Event, action Action, s
 			select {
 			case cancelErr := <-cancelRequested:
 				if cancelErr != nil {
-					m.Opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "hook_process_cleanup_failed", Module: "hook", Content: cancelErr.Error(), ResultStatus: globalevents.LogStatus(cancelErr)})
+					m.Opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "hook_process_cleanup_failed", Module: "hook", Content: cancelErr.Error(), ResultStatus: globalevents.LogStatus(cancelErr)})
 
 				} else if processenv.ExitCanceled(cmd, true) {
 					err = execContextError(runCtx, action)
@@ -225,7 +225,7 @@ func (m Module) readV2Response(ctx context.Context, reader *bufio.Reader, stdin 
 		case "event":
 			if frame.Method == "hook.log" {
 				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
+					Category:     globalevents.LogCategoryLog,
 					Level:        slog.LevelInfo,
 					EventName:    "hook_v2_plugin_event",
 					Module:       "hook",
@@ -377,7 +377,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 		}
 		data, _ := json.Marshal(content)
 		record := globalevents.LogRecord{
-			Category:     globalevents.LogAudit,
+			Category:     globalevents.LogCategoryAudit,
 			Level:        slog.LevelInfo,
 			EventName:    "hook.platform_call",
 			Module:       "hook",
@@ -412,7 +412,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 			if event.Tool.ID != "" {
 				content["tool_call_id"] = event.Tool.ID
 			}
-			record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_log", Module: "hook", Type: globalevents.ContentJSON, ContentLimit: 0, ResultStatus: globalevents.ResultSucceeded}
+			record := globalevents.LogRecord{Category: globalevents.LogCategoryAudit, Level: slog.LevelInfo, EventName: "hook_tool_log", Module: "hook", Type: globalevents.ContentJSON, ContentLimit: 0, ResultStatus: globalevents.ResultSucceeded}
 			if err != nil {
 				content["result"] = err.Error()
 				record.Level, record.ResultStatus = slog.LevelWarn, globalevents.ResultFailed
@@ -462,7 +462,7 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 		return map[string]any{"available": false}, nil
 	case "hook.log":
 		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
+			Category:     globalevents.LogCategoryLog,
 			Level:        slog.LevelInfo,
 			EventName:    "hook_plugin_log",
 			Module:       "hook",
@@ -663,7 +663,7 @@ func (w *execStderrLogger) emitLocked(line string) {
 	}
 	w.tail.Add(line)
 	record := globalevents.LogRecord{
-		Category:     globalevents.LogRuntime,
+		Category:     globalevents.LogCategoryLog,
 		Level:        slog.LevelInfo,
 		EventName:    "hook_exec_stderr",
 		Module:       "hook",

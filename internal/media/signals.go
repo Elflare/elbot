@@ -14,7 +14,7 @@ func (m *MediaCenter) connectUsageFinished() error {
 	m.usageFinished = signal.New[[]string, signal.Empty]("media.usage_finished", signal.Options[[]string]{Concurrency: 1})
 	connection, err := m.usageFinished.Observe(func(ctx context.Context, ids []string) {
 		if err := m.transfer.CleanupUsages(ctx, ids); err != nil {
-			events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn,
+			events.AsyncLog(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn,
 				EventName: "media_usage_cleanup_failed", Module: "media", Content: err.Error(),
 				Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
 		}

@@ -97,7 +97,7 @@ func (r *Runtime) Start(ctx context.Context) (err error) {
 	if r.closed || r.ctx.Err() != nil {
 		r.mu.Unlock()
 		if err := listener.Close(); err != nil {
-			events.Log(context.Background(), events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError,
+			events.Log(context.Background(), events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError,
 				EventName: "elnis_listener_close_failed", Module: "background", Content: err.Error(), ResultStatus: events.LogStatus(err)})
 		}
 		return context.Canceled
@@ -168,7 +168,7 @@ func (r *Runtime) BeginClose() {
 		}
 		// Closing transport interrupts body reads; Close itself does not join handlers.
 		if err := r.server.Close(); err != nil {
-			events.Log(context.Background(), events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError,
+			events.Log(context.Background(), events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError,
 				EventName: "elnis_server_close_failed", Module: "background", Content: err.Error(), ResultStatus: events.LogStatus(err)})
 		}
 		r.work.Wait()
@@ -178,7 +178,7 @@ func (r *Runtime) BeginClose() {
 			ctx, cancel := context.WithTimeout(context.WithoutCancel(r.ctx), 5*time.Second)
 			if err := r.service.store.FailInterrupted(ctx,
 				[]string{StatusAccepted, StatusQueued, StatusRunning}, StatusFailed, "elnis stopped before durable report"); err != nil {
-				events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError,
+				events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError,
 					EventName: "elnis_shutdown_save_failed", Module: "background", Content: err.Error(), ResultStatus: events.LogStatus(err)})
 			}
 			cancel()

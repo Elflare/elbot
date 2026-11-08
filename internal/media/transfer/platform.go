@@ -153,7 +153,7 @@ func (m *Manager) GetHistoryMediaBatch(ctx context.Context, requests []HistoryMe
 		}
 		if err := ctx.Err(); err != nil {
 			if result.Err != nil && !errors.Is(result.Err, err) {
-				m.options.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "history_media_failed", Module: "media", Content: result.Err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(result.Err)})
+				m.options.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "history_media_failed", Module: "media", Content: result.Err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(result.Err)})
 			}
 			return nil, err
 		}

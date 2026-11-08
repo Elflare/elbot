@@ -206,7 +206,7 @@ func LogSendResult(ctx context.Context, target Target, out Output, err error) {
 		return
 	}
 	record := globalevents.LogRecord{
-		Category: globalevents.LogRuntime, Level: slog.LevelWarn,
+		Category: globalevents.LogCategoryLog, Level: slog.LevelWarn,
 		EventName: "chat_output_failed", Module: "delivery", ResultStatus: globalevents.ResultFailed,
 		Content:  fmt.Sprintf("chat output failed: platform=%s hook=%q hook_point=%q hook_mode=%q\n%s", target.Platform, strings.TrimSpace(out.Delivery.HookName), strings.TrimSpace(out.Delivery.HookPoint), strings.TrimSpace(out.Delivery.HookMode), err),
 		Identity: globalevents.LogIdentityFromContext(ctx),

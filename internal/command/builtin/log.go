@@ -101,11 +101,11 @@ func (c logCommand) Handle(ctx context.Context, req command.Request) (*command.R
 		}
 		return queryLogs(ctx, c.deps, query, "elnis")
 	}
-	query, err := parseRuntimeLogQuery(req.Args)
+	query, err := parseLogQuery(req.Args)
 	if err != nil {
 		return nil, inputError(err)
 	}
-	return queryLogs(ctx, c.deps, query, "runtime")
+	return queryLogs(ctx, c.deps, query, "log")
 }
 
 func (c logCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {

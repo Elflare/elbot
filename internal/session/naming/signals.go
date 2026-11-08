@@ -51,7 +51,7 @@ func (s *Service) notifyNamingScheduled(ctx context.Context, event NamingSchedul
 	// 日志投递拥有自己的诊断，不把它变成 Naming 观察回调的失败。
 	content, _ := json.Marshal(map[string]any{"message_count": event.MessageCount, "trigger_step": event.TriggerStep})
 	s.deps.Log(ctx, events.LogRecord{
-		Category: events.LogRuntime, Level: slog.LevelInfo, EventName: "session_naming_scheduled", Module: "session", Identity: event.Identity,
+		Category: events.LogCategoryLog, Level: slog.LevelInfo, EventName: "session_naming_scheduled", Module: "session", Identity: event.Identity,
 		Type: events.ContentJSON, Content: string(content),
 	})
 }
@@ -103,10 +103,10 @@ func (s *Service) notifyNamingCompleted(ctx context.Context, event NamingComplet
 		content["message_count"] = *event.MessageCount
 	}
 	data, _ := json.Marshal(content)
-	record := events.LogRecord{Category: events.LogRuntime, Level: level, EventName: "session_naming_completed", Module: "session", Type: events.ContentJSON, Content: string(data), Identity: event.Identity, ResultStatus: event.ResultStatus}
+	record := events.LogRecord{Category: events.LogCategoryLog, Level: level, EventName: "session_naming_completed", Module: "session", Type: events.ContentJSON, Content: string(data), Identity: event.Identity, ResultStatus: event.ResultStatus}
 	s.deps.Log(ctx, record)
 	if event.GenerationResultStatus == events.ResultFailed {
-		record.Category = events.LogAudit
+		record.Category = events.LogCategoryAudit
 		s.deps.Log(ctx, record)
 	}
 }

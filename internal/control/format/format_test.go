@@ -139,7 +139,7 @@ func TestFormatLogsPreservesJSONValuesAndText(t *testing.T) {
 
 func TestFormatLogsUsesAuditGroupsAndOmitsDuplicateCompletionEvent(t *testing.T) {
 	got := formatTestResult(&testResult{Kind: "logs", Data: control.QueryLogsResult{Items: []control.LogData{{
-		Category: events.LogAudit, EventName: "tool_call_completed", Type: events.ContentJSON,
+		Category: events.LogCategoryAudit, EventName: "tool_call_completed", Type: events.ContentJSON,
 		Content:      []byte(`{"tool":"shell","summary":"ok","arguments":{"cmd":"pwd"},"risk":"low","run_source":"foreground","elapsed_ms":20}`),
 		ResultStatus: events.ResultSucceeded, Identity: control.LogIdentityData{SessionID: "s"},
 	}}}})
@@ -159,15 +159,15 @@ func TestFormatLogsKeepsAuditTitlesAndProcessStates(t *testing.T) {
 		want string
 	}{
 		{
-			item: control.LogData{Category: events.LogAudit, EventName: "llm_usage", Type: events.ContentJSON, Content: []byte(`{"provider":"openai","model":"gpt-5","elapsed_ms":999,"prompt_tokens":10,"completion_tokens":5,"cache_hit_percent":20}`)},
+			item: control.LogData{Category: events.LogCategoryAudit, EventName: "llm_usage", Type: events.ContentJSON, Content: []byte(`{"provider":"openai","model":"gpt-5","elapsed_ms":999,"prompt_tokens":10,"completion_tokens":5,"cache_hit_percent":20}`)},
 			want: "[openai/gpt-5] 999ms\n输入 10 · 输出 5 · 缓存 20.0%",
 		},
 		{
-			item: control.LogData{Category: events.LogAudit, EventName: "tool_call_prepared", Type: events.ContentJSON, Content: []byte(`{"tool":"shell"}`), ResultStatus: events.ResultSucceeded},
+			item: control.LogData{Category: events.LogCategoryAudit, EventName: "tool_call_prepared", Type: events.ContentJSON, Content: []byte(`{"tool":"shell"}`), ResultStatus: events.ResultSucceeded},
 			want: "[shell] →",
 		},
 		{
-			item: control.LogData{Category: events.LogAudit, EventName: "risk_confirmation_wait", Type: events.ContentJSON, Content: []byte(`{}`)},
+			item: control.LogData{Category: events.LogCategoryAudit, EventName: "risk_confirmation_wait", Type: events.ContentJSON, Content: []byte(`{}`)},
 			want: "[risk_confirmation_wait] 待确认",
 		},
 	} {

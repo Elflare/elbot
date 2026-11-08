@@ -128,7 +128,7 @@ func (m *Manager) prepareRemoteURLs(ctx context.Context, items []share.HeldMedia
 					}
 					failureMu.Unlock()
 					if !errors.Is(err, workCtx.Err()) {
-						m.options.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_upload_failed", Module: "media", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
+						m.options.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_upload_failed", Module: "media", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
 					}
 					return
 				}
@@ -167,7 +167,7 @@ func (m *Manager) readMedia(ctx context.Context, held share.HeldMedia) ([]byte, 
 	}
 	defer func() {
 		if closeErr := reader.Close(); closeErr != nil {
-			m.options.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
+			m.options.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
 		}
 	}()
 	data, err := io.ReadAll(reader)

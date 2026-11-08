@@ -95,7 +95,7 @@ func TestGlobalRecordsUseIndependentLevelsAndContent(t *testing.T) {
 				}
 			}
 			if configuredLevel != "debug" {
-				emitRecord(t, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelDebug, Type: events.ContentJSON, Content: "\"" + strings.Repeat("x", maxRecordBytes) + "\""})
+				emitRecord(t, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelDebug, Type: events.ContentJSON, Content: "\"" + strings.Repeat("x", maxRecordBytes) + "\""})
 			}
 			if err := m.Close(context.Background()); err != nil {
 				t.Fatal(err)
@@ -105,13 +105,10 @@ func TestGlobalRecordsUseIndependentLevelsAndContent(t *testing.T) {
 			}
 			for _, category := range logCategories {
 				prefix := category.String()
-				if category == events.LogRuntime {
-					prefix = "elbot"
-				}
 				entries := readJSONRecords(t, m.LogDir(), prefix)
 				var expected []int
 				for i, fact := range facts {
-					if category != events.LogRuntime || fact.level >= parseLevel(configuredLevel) {
+					if category != events.LogCategoryLog || fact.level >= parseLevel(configuredLevel) {
 						expected = append(expected, i)
 					}
 				}
@@ -139,13 +136,13 @@ func TestGlobalRecordsSnapshotBeforeQueueConsumption(t *testing.T) {
 		started, release := make(chan struct{}), make(chan struct{})
 		var releaseOnce sync.Once
 		t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
-		if err := m.sinks[events.LogRuntime].queue.Submit(context.Background(), signal.Task{Shutdown: signal.Drain, Run: func(context.Context) error { close(started); <-release; return nil }}); err != nil {
+		if err := m.sinks[events.LogCategoryLog].queue.Submit(context.Background(), signal.Task{Shutdown: signal.Drain, Run: func(context.Context) error { close(started); <-release; return nil }}); err != nil {
 			t.Fatal(err)
 		}
 		<-started
 		value := "source-session"
 		before := time.Now()
-		emitRecord(t, events.LogRecord{Category: events.LogRuntime, Content: "original content", Identity: events.LogIdentity{SessionID: value}})
+		emitRecord(t, events.LogRecord{Category: events.LogCategoryLog, Content: "original content", Identity: events.LogIdentity{SessionID: value}})
 		after := time.Now()
 		value = "changed"
 		// RFC3339 has second precision. Consume only after the next second so a
@@ -155,7 +152,7 @@ func TestGlobalRecordsSnapshotBeforeQueueConsumption(t *testing.T) {
 		if err := m.Close(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		entries := readJSONRecords(t, m.LogDir(), "elbot")
+		entries := readJSONRecords(t, m.LogDir(), "log")
 		if len(entries) != 1 {
 			t.Fatal(entries)
 		}
@@ -179,8 +176,8 @@ func TestGlobalRecordsSnapshotBeforeQueueConsumption(t *testing.T) {
 func TestOversizedRecordsReportAndContinue(t *testing.T) {
 	readStderr := captureStderr(t)
 	m := testManager(t, "error")
-	emitRecord(t, events.LogRecord{Category: events.LogAudit, Type: events.ContentJSON, Content: "\"" + strings.Repeat("x", maxRecordBytes) + "\""})
-	emitRecord(t, events.LogRecord{Category: events.LogAudit, Content: "following record"})
+	emitRecord(t, events.LogRecord{Category: events.LogCategoryAudit, Type: events.ContentJSON, Content: "\"" + strings.Repeat("x", maxRecordBytes) + "\""})
+	emitRecord(t, events.LogRecord{Category: events.LogCategoryAudit, Content: "following record"})
 	if err := m.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +228,7 @@ func TestManagerRejectsDuplicatesAndRollsBackFailedInitialization(t *testing.T) 
 	if original != events.LogSubmitted {
 		t.Fatal("replaced global signal")
 	}
-	emitRecord(t, events.LogRecord{Category: events.LogAudit, Content: "one consumer"})
+	emitRecord(t, events.LogRecord{Category: events.LogCategoryAudit, Content: "one consumer"})
 	if err := next.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +286,7 @@ func TestGlobalWriteFailureReportsToStderrAndContinues(t *testing.T) {
 			}
 			defer connection.Disconnect()
 			for range 2 {
-				emitRecord(t, events.LogRecord{Category: events.LogAudit, Content: "business fact"})
+				emitRecord(t, events.LogRecord{Category: events.LogCategoryAudit, Content: "business fact"})
 			}
 			if err := m.Close(context.Background()); err != nil {
 				t.Fatal(err)
@@ -307,12 +304,12 @@ func TestGlobalWriteFailureReportsToStderrAndContinues(t *testing.T) {
 func TestManagerReportsEncodingFailureAndContinues(t *testing.T) {
 	readStderr := captureStderr(t)
 	m := testManager(t, "info")
-	emitRecord(t, events.LogRecord{Category: events.LogRuntime, Type: events.ContentJSON, Content: "{"})
-	emitRecord(t, events.LogRecord{Category: events.LogRuntime, EventName: "after_invalid", Content: "valid"})
+	emitRecord(t, events.LogRecord{Category: events.LogCategoryLog, Type: events.ContentJSON, Content: "{"})
+	emitRecord(t, events.LogRecord{Category: events.LogCategoryLog, EventName: "after_invalid", Content: "valid"})
 	if err := m.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if records := readJSONRecords(t, m.LogDir(), "elbot"); len(records) != 1 || string(records[0]["event"]) != `"after_invalid"` {
+	if records := readJSONRecords(t, m.LogDir(), "log"); len(records) != 1 || string(records[0]["event"]) != `"after_invalid"` {
 		t.Fatalf("encoding failure wrote invalid output or blocked later records: %#v", records)
 	}
 	if got := readStderr(); strings.Count(got, "logging record failed") != 1 || !strings.Contains(got, "format log record") {
@@ -343,15 +340,15 @@ func TestManagerRecordsTimeBeforeCapacityWait(t *testing.T) {
 				t.Error(err)
 			}
 		})
-		emitRecord(t, events.LogRecord{Category: events.LogAudit, EventName: "active"})
+		emitRecord(t, events.LogRecord{Category: events.LogCategoryAudit, EventName: "active"})
 		<-started
 		for range 256 {
-			emitRecord(t, events.LogRecord{Category: events.LogAudit, EventName: "queued"})
+			emitRecord(t, events.LogRecord{Category: events.LogCategoryAudit, EventName: "queued"})
 		}
 		receivedAt := time.Now()
 		done := make(chan struct{})
 		go func() {
-			events.Log(context.Background(), events.LogRecord{Category: events.LogAudit, EventName: "waiting"})
+			events.Log(context.Background(), events.LogRecord{Category: events.LogCategoryAudit, EventName: "waiting"})
 			close(done)
 		}()
 		// Wait until the publisher is blocked inside the full queue. The fake
@@ -406,14 +403,14 @@ func TestManagerBackpressureCancellationDrainAndTimeout(t *testing.T) {
 		t.Cleanup(func() { releaseOnce.Do(func() { close(release) }); _ = m.Close(context.Background()) })
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		events.Log(ctx, events.LogRecord{Category: events.LogAudit})
+		events.Log(ctx, events.LogRecord{Category: events.LogCategoryAudit})
 		<-started
 		for range 256 {
-			emitRecord(t, events.LogRecord{Category: events.LogAudit})
+			emitRecord(t, events.LogRecord{Category: events.LogCategoryAudit})
 		}
 		blocked := make(chan struct{})
 		go func() {
-			events.Log(ctx, events.LogRecord{Category: events.LogAudit})
+			events.Log(ctx, events.LogRecord{Category: events.LogCategoryAudit})
 			close(blocked)
 		}()
 		synctest.Wait()
@@ -455,7 +452,7 @@ func TestManagerBackpressureCancellationDrainAndTimeout(t *testing.T) {
 func TestGlobalRecordsDrainInCategoryOrder(t *testing.T) {
 	m := testManager(t, "info")
 	for i := range 100 {
-		emitRecord(t, events.LogRecord{Category: events.LogAudit, EventName: "order", Type: events.ContentJSON, Content: fmt.Sprintf(`{"index":%d}`, i)})
+		emitRecord(t, events.LogRecord{Category: events.LogCategoryAudit, EventName: "order", Type: events.ContentJSON, Content: fmt.Sprintf(`{"index":%d}`, i)})
 	}
 	if err := m.Close(context.Background()); err != nil {
 		t.Fatal(err)
@@ -475,7 +472,7 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 	at := time.Date(2026, 10, 8, 12, 34, 56, 0, time.FixedZone("test", 8*60*60))
 	t.Run("text limits", func(t *testing.T) {
 		for _, limit := range []int{0, 1, 2, 256, 512} {
-			record := events.LogRecord{Category: events.LogRuntime, Content: strings.Repeat("中🙂", 300), ContentLimit: limit}
+			record := events.LogRecord{Category: events.LogCategoryLog, Content: strings.Repeat("中🙂", 300), ContentLimit: limit}
 			data, err := formatRecord(record, at)
 			if err != nil {
 				t.Fatal(err)
@@ -502,7 +499,7 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 	})
 	t.Run("text stays text", func(t *testing.T) {
 		for _, text := range []string{"", "中🙂", "line\n\"quoted\"", " { \"count\" : 9007199254740993 } "} {
-			data, err := formatRecord(events.LogRecord{Category: events.LogRuntime, Content: text}, at)
+			data, err := formatRecord(events.LogRecord{Category: events.LogCategoryLog, Content: text}, at)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -520,7 +517,7 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 		}
 	})
 	t.Run("text is only limited", func(t *testing.T) {
-		data, err := formatRecord(events.LogRecord{Category: events.LogRuntime, Content: "reason: token=" + strings.Repeat("secret", 1000)}, at)
+		data, err := formatRecord(events.LogRecord{Category: events.LogCategoryLog, Content: "reason: token=" + strings.Repeat("secret", 1000)}, at)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -537,7 +534,7 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 		}
 	})
 	t.Run("empty identity fields", func(t *testing.T) {
-		data, err := formatRecord(events.LogRecord{Category: events.LogRuntime}, at)
+		data, err := formatRecord(events.LogRecord{Category: events.LogCategoryLog}, at)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -553,7 +550,7 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 	})
 	t.Run("JSON types and precision", func(t *testing.T) {
 		for _, text := range []string{"null", "true", "false", "9007199254740993123456789", "0.12345678901234567890123456789", "1e1000", "\"中🙂\"", "[1,\"two\",null]", "{\"count\":9007199254740993}", strings.Repeat("[", 64) + "9007199254740993" + strings.Repeat("]", 64)} {
-			data, err := formatRecord(events.LogRecord{Category: events.LogAudit, Type: events.ContentJSON, Content: text, ContentLimit: 1}, at)
+			data, err := formatRecord(events.LogRecord{Category: events.LogCategoryAudit, Type: events.ContentJSON, Content: text, ContentLimit: 1}, at)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -569,7 +566,7 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 	t.Run("JSON source order and public fields", func(t *testing.T) {
 		text := `{"nested":[{"api_key":"nested-secret","authorization":"header-secret","cookie":"cookie-secret","image_data":"media-secret","text":"Bearer inline-secret","url":"data:image/png;base64,url-secret"}],"prompt_tokens":9007199254740993,"token_name":"business-name","event":"inner","level":"ERROR","result_status":"failed"}`
 		values := []string{"session", "", "2", "request", "root"}
-		record := events.LogRecord{Category: events.LogAudit, EventName: "outer", Module: "test", Type: events.ContentJSON, Content: text, ContentLimit: 1,
+		record := events.LogRecord{Category: events.LogCategoryAudit, EventName: "outer", Module: "test", Type: events.ContentJSON, Content: text, ContentLimit: 1,
 			ResultStatus: events.ResultCanceled, Identity: events.LogIdentity{SessionID: values[0], RunID: values[1], Attempt: values[2], RequestID: values[3], RootRequestID: values[4]}}
 		data, err := formatRecord(record, at)
 		if err != nil {
@@ -600,7 +597,7 @@ func TestRecordPreservesContentUTF8AndSerializedLimit(t *testing.T) {
 	})
 	t.Run("serialized boundary", func(t *testing.T) {
 		for _, value := range []events.LogContentType{events.ContentText, events.ContentJSON} {
-			record := events.LogRecord{Category: events.LogAudit, Type: value, ContentLimit: maxRecordBytes}
+			record := events.LogRecord{Category: events.LogCategoryAudit, Type: value, ContentLimit: maxRecordBytes}
 			if value == events.ContentJSON {
 				record.Content = "\"\""
 			}

@@ -42,7 +42,7 @@ func TestForgetDuringPreparationGenerationAndCompletion(t *testing.T) {
 			if phase == "completion" {
 				publish := f.s.deps.Log
 				f.s.deps.Log = func(ctx context.Context, record events.LogRecord) {
-					if record.EventName == "session_naming_completed" && record.Category == events.LogRuntime {
+					if record.EventName == "session_naming_completed" && record.Category == events.LogCategoryLog {
 						close(started)
 						<-release
 					}
@@ -207,7 +207,7 @@ func TestCloseWaitsForPreparationAndRealTerminalCallback(t *testing.T) {
 			} else {
 				publish := f.s.deps.Log
 				f.s.deps.Log = func(ctx context.Context, record events.LogRecord) {
-					if record.EventName == "session_naming_completed" && record.Category == events.LogRuntime {
+					if record.EventName == "session_naming_completed" && record.Category == events.LogCategoryLog {
 						close(started)
 						<-release
 					}

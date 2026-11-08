@@ -29,7 +29,7 @@ func ConnectNotifications(s *signal.Signal[events.Notification, signal.Empty], s
 		target := NotificationTarget(n)
 		_, err := sender.SendTo(ctx, target, []delivery.Output{delivery.Text(n.Text)})
 		if err != nil {
-			record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_send_failed", Module: "notification", Content: fmt.Sprintf("target=%+v error=%v", n.Target, err), ContentLimit: 4096, Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}
+			record := events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "notification_send_failed", Module: "notification", Content: fmt.Sprintf("target=%+v error=%v", n.Target, err), ContentLimit: 4096, Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}
 			if record.ResultStatus == events.ResultCanceled {
 				record.Level = slog.LevelInfo
 			}

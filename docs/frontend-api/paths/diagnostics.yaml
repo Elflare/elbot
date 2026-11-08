@@ -5,7 +5,7 @@
       parameters:
         - name: category
           in: query
-          schema: { type: string, enum: [runtime, audit, elnis] }
+          schema: { type: string, enum: [log, audit, elnis] }
         - { $ref: '../components/transport.yaml#/parameters/logLimit' }
         - { $ref: '../components/transport.yaml#/parameters/logDays' }
         - { $ref: '../components/transport.yaml#/parameters/logLevel' }

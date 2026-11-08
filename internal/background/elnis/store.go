@@ -18,7 +18,7 @@ func (s *Service) handleDuplicate(ctx context.Context, event Event, existing *Ev
 	if existing.ContentHash != event.ContentHash {
 		content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "existing_event_id": existing.ID})
 		record := globalevents.LogRecord{
-			Category:     globalevents.LogElnis,
+			Category:     globalevents.LogCategoryElnis,
 			Level:        slog.LevelWarn,
 			EventName:    "elnis_duplicate_event_hash_mismatch",
 			Module:       "elnis",
@@ -31,7 +31,7 @@ func (s *Service) handleDuplicate(ctx context.Context, event Event, existing *Ev
 	} else {
 		content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags})
 		record := globalevents.LogRecord{
-			Category:     globalevents.LogElnis,
+			Category:     globalevents.LogCategoryElnis,
 			Level:        slog.LevelInfo,
 			EventName:    "elnis_duplicate_event",
 			Module:       "elnis",
@@ -45,7 +45,7 @@ func (s *Service) handleDuplicate(ctx context.Context, event Event, existing *Ev
 	{
 		content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags})
 		record := globalevents.LogRecord{
-			Category:     globalevents.LogAudit,
+			Category:     globalevents.LogCategoryAudit,
 			Level:        slog.LevelInfo,
 			EventName:    "elnis.duplicate",
 			Module:       "elnis",

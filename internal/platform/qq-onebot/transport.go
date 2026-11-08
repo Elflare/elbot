@@ -401,7 +401,7 @@ func (t *Transport) call(ctx context.Context, action string, params map[string]a
 		}
 
 		record := globalevents.LogRecord{
-			Category: globalevents.LogRuntime, Level: slog.LevelDebug,
+			Category: globalevents.LogCategoryLog, Level: slog.LevelDebug,
 			EventName: "onebot_action_slow", Module: t.platformName, Type: globalevents.ContentText,
 			Content:      fmt.Sprintf("onebot action\naction=%s\nframe_bytes=%d\nencode_ms=%d\nwait_writer_ms=%d\nwrite_ms=%d\nresponse_ms=%d\nelapsed_ms=%d", action, frameBytes, elapsedMillisBetween(startedAt, encodedAt), elapsedMillisBetween(encodedAt, waitWriterEnd), elapsedMillisBetween(acquiredAt, writeEnd), elapsedMillisBetween(writtenAt, finishedAt), elapsed.Milliseconds()),
 			ContentLimit: 4096, ResultStatus: globalevents.ResultSucceeded,

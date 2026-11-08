@@ -65,7 +65,7 @@ func (m *Manager) Route(ctx context.Context, event share.Event, observe func(con
 	if err == nil {
 		updated, err = worker.handle(ctx, event, true, lease.ConversationID, lease.Control)
 	}
-	record := globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, EventName: "hook_triggered", Module: "hook", ContentLimit: 4096, Content: fmt.Sprintf("continuation: hook=%s point=%s", worker.config.ID, event.Point), ResultStatus: globalevents.ResultSucceeded}
+	record := globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelInfo, EventName: "hook_triggered", Module: "hook", ContentLimit: 4096, Content: fmt.Sprintf("continuation: hook=%s point=%s", worker.config.ID, event.Point), ResultStatus: globalevents.ResultSucceeded}
 	if err != nil {
 		record.Level, record.EventName, record.ResultStatus = slog.LevelWarn, "hook_error", globalevents.ResultFailed
 		record.Content += "\n" + err.Error()

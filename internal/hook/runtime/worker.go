@@ -197,7 +197,7 @@ func (w *worker) startFailed(err error) {
 	w.detail = strings.TrimSpace(err.Error())
 	cmd := w.cmd
 	w.mu.Unlock()
-	w.manager.opts.Log(w.manager.rootCtx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "hook_worker_start_failed", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: fmt.Sprintf("hook=%s startup_error=%v", w.config.ID, err), ResultStatus: globalevents.ResultFailed})
+	w.manager.opts.Log(w.manager.rootCtx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "hook_worker_start_failed", Module: "hook", Type: globalevents.ContentText, ContentLimit: 4096, Content: fmt.Sprintf("hook=%s startup_error=%v", w.config.ID, err), ResultStatus: globalevents.ResultFailed})
 	w.manager.opts.Notify(context.WithoutCancel(w.manager.rootCtx), globalevents.Notification{Text: fmt.Sprintf("Hook %s 启动失败：%v", w.config.ID, err), Level: slog.LevelWarn})
 	if cmd == nil && w.shouldRestart() {
 		w.restartLater()
@@ -233,7 +233,7 @@ func (w *worker) waitLoop(cmd *exec.Cmd) {
 	close(w.done)
 	w.mu.Unlock()
 	if !stopping && !manualStop {
-		w.manager.opts.Log(w.manager.rootCtx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "hook_worker_failed", Module: "hook", Content: fmt.Sprintf("hook=%s process_exit=%v worker_fault=%s", w.config.ID, err, exitDetail), ResultStatus: globalevents.ResultFailed})
+		w.manager.opts.Log(w.manager.rootCtx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "hook_worker_failed", Module: "hook", Content: fmt.Sprintf("hook=%s process_exit=%v worker_fault=%s", w.config.ID, err, exitDetail), ResultStatus: globalevents.ResultFailed})
 		w.manager.mu.Lock()
 		w.manager.clearWorkerLocked(w)
 		for key, transient := range w.manager.transient {
@@ -311,7 +311,7 @@ func (w *worker) stop(ctx context.Context) (err error) {
 	defer cancel()
 	_, err = w.request(shutdownCtx, "system.shutdown", map[string]any{})
 	if err != nil {
-		w.manager.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "hook_worker_shutdown_request_failed", Module: "hook", Content: err.Error(), ResultStatus: globalevents.LogStatus(err)})
+		w.manager.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "hook_worker_shutdown_request_failed", Module: "hook", Content: err.Error(), ResultStatus: globalevents.LogStatus(err)})
 	}
 	graceful := true
 	select {
@@ -333,7 +333,7 @@ func (w *worker) stop(ctx context.Context) (err error) {
 	w.stopping = false
 	w.mu.Unlock()
 	if !graceful {
-		w.manager.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn,
+		w.manager.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn,
 			EventName: "hook_worker_forced_stop", Module: "hook", Content: shutdownCtx.Err().Error(), ResultStatus: globalevents.LogStatus(shutdownCtx.Err())})
 	}
 	return nil
@@ -527,7 +527,7 @@ func (w *worker) runReload(reload func() error) {
 			if globalevents.LogStatus(err) == globalevents.ResultCanceled {
 				level, status = slog.LevelInfo, globalevents.ResultCanceled
 			}
-			w.manager.opts.Log(context.Background(), globalevents.LogRecord{Category: globalevents.LogRuntime, Level: level, EventName: "hook_plugin_reload_failed", Module: "hook", ContentLimit: 4096, Content: fmt.Sprintf("hook plugin reload: hook=%s\n%s", w.config.ID, err), ResultStatus: status})
+			w.manager.opts.Log(context.Background(), globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: level, EventName: "hook_plugin_reload_failed", Module: "hook", ContentLimit: 4096, Content: fmt.Sprintf("hook plugin reload: hook=%s\n%s", w.config.ID, err), ResultStatus: status})
 		}
 	})
 }
@@ -729,7 +729,7 @@ func (w *worker) deliverResponse(value frame) {
 func (w *worker) handlePluginEvent(value frame) {
 	if value.Method == "hook.log" {
 		w.manager.opts.Log(context.Background(), globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
+			Category:     globalevents.LogCategoryLog,
 			Level:        slog.LevelInfo,
 			EventName:    "stateful_hook_event",
 			Module:       "hook",
@@ -755,7 +755,7 @@ func (w *worker) handlePluginRequest(value frame) {
 	cancel()
 	if writeErr != nil {
 		w.manager.opts.Log(context.Background(), globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
+			Category:     globalevents.LogCategoryLog,
 			Level:        slog.LevelWarn,
 			EventName:    "write_hook_request_response_failed",
 			Module:       "hook",

@@ -52,7 +52,7 @@ func (m *Manager) refreshPending(ctx context.Context, pending map[string]struct{
 		}
 		if err != nil && ctx.Err() == nil {
 			events.Log(ctx, events.LogRecord{
-				Category: events.LogRuntime, Level: slog.LevelError, Module: "cron",
+				Category: events.LogCategoryLog, Level: slog.LevelError, Module: "cron",
 				EventName: "cron_job_refresh_failed", Type: events.ContentText,
 				Content: fmt.Sprintf("job=%s\nerror=%v", name, err), ContentLimit: 4096,
 				ResultStatus: events.ResultFailed,

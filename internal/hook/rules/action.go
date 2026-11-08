@@ -216,7 +216,7 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 	name := strings.TrimSpace(action.Tool)
 	arguments := render(action.Arguments, event, state)
 	call := storage.NewID()
-	record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: "hook_tool_call_completed", Module: "hook", Type: globalevents.ContentJSON, ContentLimit: 0}
+	record := globalevents.LogRecord{Category: globalevents.LogCategoryAudit, Level: slog.LevelInfo, EventName: "hook_tool_call_completed", Module: "hook", Type: globalevents.ContentJSON, ContentLimit: 0}
 	content := struct {
 		Tool       string             `json:"tool"`
 		Actor      share.ActorContext `json:"actor"`

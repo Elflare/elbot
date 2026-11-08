@@ -90,7 +90,7 @@ func (s *Service) materializeSegments(ctx context.Context, segments []delivery.O
 		if err == nil {
 			return
 		}
-		record := events.LogRecord{Category: events.LogElnis, Level: level, Module: "elnis", EventName: "elnis_media_prepare_failed", ResultStatus: events.LogStatus(err), Identity: events.LogIdentityFromContext(ctx), Content: fmt.Sprintf("event_id=%s purpose=input operation=%s error=%v", eventID, step, err)}
+		record := events.LogRecord{Category: events.LogCategoryElnis, Level: level, Module: "elnis", EventName: "elnis_media_prepare_failed", ResultStatus: events.LogStatus(err), Identity: events.LogIdentityFromContext(ctx), Content: fmt.Sprintf("event_id=%s purpose=input operation=%s error=%v", eventID, step, err)}
 		if record.ResultStatus == events.ResultCanceled {
 			record.Level = slog.LevelInfo
 		}
@@ -161,7 +161,7 @@ func (s *Service) importReportSegments(ctx context.Context, segments []delivery.
 		if err == nil {
 			return
 		}
-		record := events.LogRecord{Category: events.LogElnis, Level: level, Module: "elnis", EventName: "elnis_media_prepare_failed", ResultStatus: events.LogStatus(err), Identity: events.LogIdentityFromContext(ctx), Content: fmt.Sprintf("event_id=%s purpose=report operation=%s error=%v", eventID, step, err)}
+		record := events.LogRecord{Category: events.LogCategoryElnis, Level: level, Module: "elnis", EventName: "elnis_media_prepare_failed", ResultStatus: events.LogStatus(err), Identity: events.LogIdentityFromContext(ctx), Content: fmt.Sprintf("event_id=%s purpose=report operation=%s error=%v", eventID, step, err)}
 		if record.ResultStatus == events.ResultCanceled {
 			record.Level = slog.LevelInfo
 		}

@@ -187,7 +187,7 @@ func Run(ctx context.Context, opts Options) (err error) {
 		return err
 	}
 	events.Log(runCtx, events.LogRecord{
-		Category: events.LogRuntime, Module: "app", Level: slog.LevelInfo,
+		Category: events.LogCategoryLog, Module: "app", Level: slog.LevelInfo,
 		EventName: "elbot_started", Type: events.ContentText,
 		Content:      fmt.Sprintf("version=%s\nmode=%s\nconfig_path=%s", opts.Version, opts.Mode, configPath),
 		ResultStatus: events.ResultSucceeded,
@@ -250,7 +250,7 @@ func waitBusinessLines(ctx context.Context, lines businessLines) error {
 	for range waiting - 1 {
 		other := <-results
 		if other.err != nil && !errors.Is(other.err, waitCtx.Err()) {
-			events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError,
+			events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError,
 				EventName: "runtime_failed", Module: "app",
 				Content:      (&lifecycleError{component: other.kind, phase: phaseWait, cause: other.err}).Error(),
 				ResultStatus: events.LogStatus(other.err)})
@@ -270,14 +270,14 @@ func (t *startupTiming) markStage(phase lifecyclePhase) {
 
 func (t *startupTiming) log(ctx context.Context) {
 	events.Log(ctx, events.LogRecord{
-		Category: events.LogRuntime, Module: "app", Level: slog.LevelInfo,
+		Category: events.LogCategoryLog, Module: "app", Level: slog.LevelInfo,
 		EventName: "startup_completed", Type: events.ContentText,
 		Content:      fmt.Sprintf("total=%s", time.Since(t.startedAt)),
 		ResultStatus: events.ResultSucceeded,
 	})
 	for _, stage := range t.stages {
 		events.Log(ctx, events.LogRecord{
-			Category: events.LogRuntime, Module: "app", Level: slog.LevelDebug,
+			Category: events.LogCategoryLog, Module: "app", Level: slog.LevelDebug,
 			EventName: "startup_stage", Type: events.ContentText,
 			Content:      fmt.Sprintf("stage=%s\nduration=%s", stage.phase, stage.duration),
 			ResultStatus: events.ResultSucceeded,

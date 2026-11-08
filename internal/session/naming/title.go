@@ -38,7 +38,7 @@ func (s *Service) generateTitle(ctx context.Context, messages []storage.Message)
 		return result, fmt.Errorf("no title fallback model available")
 	}
 	if namingErr != nil {
-		events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "session_naming_fallback", Module: "session", Content: namingErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(namingErr)})
+		events.AsyncLog(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "session_naming_fallback", Module: "session", Content: namingErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(namingErr)})
 	}
 	return generate(ctx, selected.Fallback, prompt)
 }

@@ -52,15 +52,15 @@ func formatLogDataItem(item control.LogData) string {
 	fields, body := decodeLogContent(item)
 	subject, status := item.EventName, logStatus(item.ResultStatus)
 	var details []string
-	if item.Category == events.LogAudit {
+	if item.Category == events.LogCategoryAudit {
 		subject, status, details = formatAuditDataFields(item, fields)
-	} else if item.Category == events.LogElnis {
+	} else if item.Category == events.LogCategoryElnis {
 		if value, ok := fields["elwisp_name"]; ok && value != nil && value != "" {
 			subject = takeLogDataField(fields, "elwisp_name")
 		}
 	}
 	header := formatLogDataTime(item)
-	if item.Category == events.LogRuntime {
+	if item.Category == events.LogCategoryLog {
 		if item.Module != "" {
 			header += " [" + item.Module + "]"
 		}
@@ -108,7 +108,7 @@ func formatLogDataItem(item control.LogData) string {
 		lines = append(lines, text)
 	}
 	meta := ""
-	if item.Category != events.LogRuntime && subject != item.EventName && !(item.EventName == "tool_call_completed" && status != "") {
+	if item.Category != events.LogCategoryLog && subject != item.EventName && !(item.EventName == "tool_call_completed" && status != "") {
 		meta = item.EventName
 	}
 	if text := groupLogDataFields(fields, "actor", "run_source"); text != "" {

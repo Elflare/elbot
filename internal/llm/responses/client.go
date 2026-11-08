@@ -225,7 +225,7 @@ func (c *Client) StreamPrepared(ctx context.Context, prepared PreparedRequest) (
 		return nil, fmt.Errorf("prepared response request is empty")
 	}
 	record := globalevents.LogRecord{
-		Category:  globalevents.LogRuntime,
+		Category:  globalevents.LogCategoryLog,
 		Level:     slog.LevelDebug,
 		EventName: "responses_request",
 		Module:    "model",

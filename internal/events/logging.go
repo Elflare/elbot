@@ -11,22 +11,22 @@ import (
 )
 
 // LogCategory selects a log file category. Sources must provide a valid value;
-// zero is invalid and never defaults to runtime.
+// zero is invalid and never defaults to log.
 type LogCategory uint8
 
 const (
-	LogRuntime LogCategory = iota + 1
-	LogAudit
-	LogElnis
+	LogCategoryLog LogCategory = iota + 1
+	LogCategoryAudit
+	LogCategoryElnis
 )
 
 func (value LogCategory) String() string {
 	switch value {
-	case LogRuntime:
-		return "runtime"
-	case LogAudit:
+	case LogCategoryLog:
+		return "log"
+	case LogCategoryAudit:
 		return "audit"
-	case LogElnis:
+	case LogCategoryElnis:
 		return "elnis"
 	}
 	return ""

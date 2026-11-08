@@ -65,7 +65,7 @@ func (m *Supervisor) enqueuePlatformConnected(ctx context.Context, event events.
 		var err error
 		queue, err = signal.NewQueue(signal.QueueOptions{Name: event.Platform + ".connected.hooks"})
 		if err != nil {
-			events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "hook_platform_admission_failed", Module: "hook", Content: err.Error(), ResultStatus: events.LogStatus(err)})
+			events.AsyncLog(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "hook_platform_admission_failed", Module: "hook", Content: err.Error(), ResultStatus: events.LogStatus(err)})
 			return
 		}
 		p.platformQueues[event.Platform] = queue
@@ -78,7 +78,7 @@ func (m *Supervisor) enqueuePlatformConnected(ctx context.Context, event events.
 		},
 	})
 	if err != nil && err != signal.ErrClosed {
-		events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "hook_platform_admission_failed", Module: "hook", Content: fmt.Sprintf("platform=%s error=%v", event.Platform, err), ResultStatus: events.ResultFailed})
+		events.AsyncLog(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "hook_platform_admission_failed", Module: "hook", Content: fmt.Sprintf("platform=%s error=%v", event.Platform, err), ResultStatus: events.ResultFailed})
 	}
 	return
 }
@@ -97,7 +97,7 @@ func (m *Supervisor) handlePlatformConnected(ctx context.Context, platformName s
 	if err == nil {
 		_, err = m.send(ctx, target, event.Outputs)
 	}
-	record := events.LogRecord{Category: events.LogRuntime, Module: "hook", EventName: "hook_output", Level: slog.LevelInfo, ContentLimit: 4096, Content: fmt.Sprintf("platform=%s", platformName), ResultStatus: events.ResultSucceeded}
+	record := events.LogRecord{Category: events.LogCategoryLog, Module: "hook", EventName: "hook_output", Level: slog.LevelInfo, ContentLimit: 4096, Content: fmt.Sprintf("platform=%s", platformName), ResultStatus: events.ResultSucceeded}
 	if err != nil {
 		record.Level, record.ResultStatus = slog.LevelWarn, events.ResultFailed
 		record.Content += "\n" + err.Error()

@@ -28,7 +28,7 @@ func (a *Client) logChatRequest(ctx context.Context, req Request) {
 		"message": latestLogMessage(req.Messages),
 	})
 	record := globalevents.LogRecord{
-		Category:  globalevents.LogRuntime,
+		Category:  globalevents.LogCategoryLog,
 		Level:     slog.LevelDebug,
 		EventName: "openai_chat_request",
 		Module:    "model",
@@ -52,7 +52,7 @@ func (a *Client) logFirstSystemMessage(ctx context.Context, req Request) {
 	a.loggedSystem[req.SessionID] = true
 	a.loggedSystemMu.Unlock()
 	record := globalevents.LogRecord{
-		Category:  globalevents.LogRuntime,
+		Category:  globalevents.LogCategoryLog,
 		Level:     slog.LevelInfo,
 		EventName: "system_message",
 		Module:    "model",

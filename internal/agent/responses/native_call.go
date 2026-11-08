@@ -323,7 +323,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 		if err == nil {
 			return result, archiveErr
 		}
-		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "native_archive_failed", Module: "agent", Content: archiveErr.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.ResultFailed})
+		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelError, EventName: "native_archive_failed", Module: "agent", Content: archiveErr.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.ResultFailed})
 	}
 	return result, err
 }

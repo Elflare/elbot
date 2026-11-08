@@ -230,7 +230,7 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 }
 
 func preloadLogRecord(ctx context.Context, sessionID string) globalevents.LogRecord {
-	record := globalevents.LogRecord{Category: globalevents.LogAudit, Module: "tool"}
+	record := globalevents.LogRecord{Category: globalevents.LogCategoryAudit, Module: "tool"}
 	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	record.Identity.SessionID = sessionID
 	return record

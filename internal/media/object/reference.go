@@ -121,7 +121,7 @@ func (m *Manager) releaseOwned(ctx context.Context, held share.HeldMedia) {
 		m.releasesMu.Lock()
 		m.pendingReleases = append(m.pendingReleases, held)
 		m.releasesMu.Unlock()
-		events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_release_failed", Module: "media", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
+		events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_release_failed", Module: "media", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
 	}
 }
 
@@ -141,7 +141,7 @@ func (m *Manager) retryReleases(ctx context.Context) error {
 		if err := held.Close(ctx); err != nil {
 			remaining = append(remaining, held)
 			if err != ctx.Err() {
-				events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_release_failed", Module: "media", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
+				events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_release_failed", Module: "media", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
 			}
 		}
 	}

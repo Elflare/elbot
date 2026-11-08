@@ -56,7 +56,7 @@ func BuildReportSegmentOutput(ctx context.Context, segment delivery.Output, scop
 	}
 	defer func() {
 		if closeErr := root.Close(); closeErr != nil {
-			events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
+			events.AsyncLog(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
 		}
 	}()
 	file, err := root.Open(segment.Source.Path)
@@ -65,7 +65,7 @@ func BuildReportSegmentOutput(ctx context.Context, segment delivery.Output, scop
 	}
 	defer func() {
 		if closeErr := file.Close(); closeErr != nil {
-			events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
+			events.AsyncLog(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
 		}
 	}()
 	stat, err := file.Stat()

@@ -250,7 +250,7 @@ func (a *Adapter) resolveAtSegments(ctx context.Context, event Event, msg Normal
 		if err != nil {
 			{
 				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
+					Category:     globalevents.LogCategoryLog,
 					Level:        slog.LevelWarn,
 					EventName:    "get_qq_group_member_info_failed",
 					Module:       a.Name(),
@@ -394,7 +394,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, event Event, normalized
 	if err := a.chatHistory.Append(ctx, message); err != nil {
 		{
 			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
+				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelError,
 				EventName:    "record_qq_chat_message_failed",
 				Module:       a.Name(),
@@ -426,7 +426,7 @@ func scopeID(event Event) string {
 
 func (a *Adapter) logContextFailure(ctx context.Context, err error) {
 	globalevents.Log(context.WithoutCancel(ctx), globalevents.LogRecord{
-		Category: globalevents.LogRuntime, Level: slog.LevelError, EventName: "platform_context_failed",
+		Category: globalevents.LogCategoryLog, Level: slog.LevelError, EventName: "platform_context_failed",
 		Module: a.Name(), Type: globalevents.ContentText, Content: fmt.Sprintf("prepare platform context failed: %v", err),
 		ContentLimit: 4096, ResultStatus: globalevents.ResultFailed,
 	})

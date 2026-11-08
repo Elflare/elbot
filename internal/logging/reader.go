@@ -125,12 +125,12 @@ func (r Reader) Query(ctx context.Context, query LogQuery) (LogQueryResult, erro
 						entry.Module = text
 					case "category":
 						switch text {
-						case "runtime":
-							entry.Category = events.LogRuntime
+						case "log":
+							entry.Category = events.LogCategoryLog
 						case "audit":
-							entry.Category = events.LogAudit
+							entry.Category = events.LogCategoryAudit
 						case "elnis":
-							entry.Category = events.LogElnis
+							entry.Category = events.LogCategoryElnis
 						default:
 							err = fmt.Errorf("invalid log category")
 						}

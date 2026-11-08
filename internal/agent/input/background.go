@@ -67,7 +67,7 @@ func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundReq
 		return ctx, turn.Result{SessionID: bgSession.ID, Err: preloaded.Err}
 	}
 	record := globalevents.LogRecord{
-		Category:     globalevents.LogAudit,
+		Category:     globalevents.LogCategoryAudit,
 		Level:        slog.LevelInfo,
 		Module:       "agent",
 		Type:         globalevents.ContentJSON,

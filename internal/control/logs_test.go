@@ -33,7 +33,7 @@ func (s *logStub) Query(_ context.Context, query logging.LogQuery) (logging.LogQ
 
 func TestQueryLogsReadsCategoryFiles(t *testing.T) {
 	for _, item := range []struct{ category, prefix string }{
-		{"runtime", "elbot"}, {"audit", "audit"}, {"elnis", "elnis"},
+		{"log", "log"}, {"audit", "audit"}, {"elnis", "elnis"},
 	} {
 		t.Run(item.category, func(t *testing.T) {
 			dir := t.TempDir()
@@ -86,7 +86,7 @@ func TestLogJSONPrecisionAndRawSelection(t *testing.T) {
 	if !strings.Contains(string(data), `9007199254740993`) || !strings.Contains(string(data), `"root_request_id":"r"`) {
 		t.Fatalf("lost JSON value or identity: %s", data)
 	}
-	result, err = m.QueryLogs(testContext(true), QueryLogsRequest{Category: "runtime", Query: logging.LogQuery{Raw: true}})
+	result, err = m.QueryLogs(testContext(true), QueryLogsRequest{Category: "log", Query: logging.LogQuery{Raw: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,12 +146,12 @@ func TestLogQueriesForwardCallerOptions(t *testing.T) {
 	since := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
 	until := since.AddDate(0, 0, 7)
 	query := logging.LogQuery{Limit: 100001, Days: 90, Since: &since, Until: &until, MinLevel: "warn", Fields: map[string]string{"session_id": "s"}, Events: []string{"chosen-event"}, ContentFields: map[string]string{"model": "m"}, ContentFieldContains: map[string][]string{"tools": {"read"}}, Contains: "record", ContentContains: "content", Raw: true}
-	_, err := m.QueryLogs(testContext(true), QueryLogsRequest{Category: "runtime", Query: query})
+	_, err := m.QueryLogs(testContext(true), QueryLogsRequest{Category: "log", Query: query})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := query
-	want.Prefix = "elbot"
+	want.Prefix = "log"
 	if !reflect.DeepEqual(provider.query, want) {
 		t.Fatalf("log query options changed: %+v", provider.query)
 	}

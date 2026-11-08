@@ -134,7 +134,7 @@ func (a *Adapter) closeResources() {
 	}
 	for range len(temporary) + 1 {
 		if err := <-results; err != nil {
-			globalevents.Log(context.Background(), globalevents.LogRecord{Category: globalevents.LogRuntime,
+			globalevents.Log(context.Background(), globalevents.LogRecord{Category: globalevents.LogCategoryLog,
 				Level: slog.LevelWarn, EventName: "transport_close_failed", Module: "qq-onebot",
 				Content: err.Error(), ResultStatus: globalevents.LogStatus(err)})
 		}
@@ -180,7 +180,7 @@ func (a *Adapter) runConnections(handler share.MessageHandler) {
 			if backoff.ShouldWarn() {
 				{
 					record := globalevents.LogRecord{
-						Category:     globalevents.LogRuntime,
+						Category:     globalevents.LogCategoryLog,
 						Level:        slog.LevelWarn,
 						EventName:    "onebot_connect_failed",
 						Module:       a.Name(),
@@ -211,7 +211,7 @@ func (a *Adapter) runConnections(handler share.MessageHandler) {
 		backoff.Reset()
 		{
 			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
+				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelInfo,
 				EventName:    "onebot_connected",
 				Module:       a.Name(),
@@ -233,7 +233,7 @@ func (a *Adapter) runConnections(handler share.MessageHandler) {
 		if err != nil && !errors.Is(err, context.Canceled) {
 			{
 				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
+					Category:     globalevents.LogCategoryLog,
 					Level:        slog.LevelWarn,
 					EventName:    "onebot_disconnected",
 					Module:       a.Name(),

@@ -15,7 +15,7 @@ func (c *ExecutionCoordinator) usageForSession(ctx context.Context, row *storage
 	usage, err := c.status.Usage(row)
 	if err != nil {
 		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
+			Category:     globalevents.LogCategoryLog,
 			Level:        slog.LevelError,
 			EventName:    "load_usage_failed",
 			Module:       "agent",

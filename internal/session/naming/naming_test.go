@@ -58,7 +58,7 @@ func newFixture(t *testing.T, step int, call func(context.Context, llm.TextReque
 	f := &fixture{s: s, store: store, completed: make(chan NamingCompletedEvent, 30)}
 	s.deps.Log = func(ctx context.Context, record events.LogRecord) {
 		testPublishLog(ctx, record)
-		if record.EventName == "session_naming_completed" && record.Category == events.LogRuntime {
+		if record.EventName == "session_naming_completed" && record.Category == events.LogCategoryLog {
 			f.completed <- decodeNamingLog(t, record)
 		}
 	}

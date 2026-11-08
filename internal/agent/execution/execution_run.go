@@ -219,7 +219,7 @@ func (c *ExecutionCoordinator) finishCompletedTurn(ctx context.Context, session 
 	nextSelection := c.SelectionForTurn(ctx, session)
 	if c.shouldCompact(ctx, session, nextSelection) {
 		if _, err := out.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "compact → next request"}); err != nil {
-			record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "compact_notice_failed", Module: "agent", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}
+			record := events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "compact_notice_failed", Module: "agent", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}
 			if record.ResultStatus == events.ResultCanceled {
 				record.Level = slog.LevelInfo
 			}

@@ -17,7 +17,7 @@ var managerOwnership struct {
 	sync.Mutex
 	active bool
 }
-var logCategories = [...]events.LogCategory{events.LogRuntime, events.LogAudit, events.LogElnis}
+var logCategories = [...]events.LogCategory{events.LogCategoryLog, events.LogCategoryAudit, events.LogCategoryElnis}
 
 type logSink struct {
 	queue  *signal.Queue
@@ -54,11 +54,7 @@ func newManager(level, logDir string, retentionDays int, open func(string) (io.W
 		managerOwnership.Unlock()
 	}()
 	for _, category := range logCategories {
-		prefix := category.String()
-		if category == events.LogRuntime {
-			prefix = "elbot"
-		}
-		writer, openErr := open(prefix)
+		writer, openErr := open(category.String())
 		if openErr != nil {
 			return nil, openErr
 		}
@@ -82,7 +78,7 @@ func (m *Manager) handleRecord(ctx context.Context, record events.LogRecord) {
 	at := time.Now()
 	sink := m.sinks[record.Category]
 	err := sink.queue.Submit(context.WithoutCancel(ctx), signal.Task{Shutdown: signal.Drain, Run: func(ctx context.Context) error {
-		if record.Category == events.LogRuntime && record.Level < m.level {
+		if record.Category == events.LogCategoryLog && record.Level < m.level {
 			return nil
 		}
 		data, err := formatRecord(record, at)

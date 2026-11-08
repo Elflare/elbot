@@ -13,7 +13,7 @@ import (
 
 func TestLogEnums(t *testing.T) {
 	for value := 0; value <= 255; value++ {
-		want := map[LogCategory]string{LogRuntime: "runtime", LogAudit: "audit", LogElnis: "elnis"}[LogCategory(value)]
+		want := map[LogCategory]string{LogCategoryLog: "log", LogCategoryAudit: "audit", LogCategoryElnis: "elnis"}[LogCategory(value)]
 		if LogCategory(value).String() != want {
 			t.Fatalf("category %d: string=%q", value, LogCategory(value).String())
 		}
@@ -26,7 +26,7 @@ func TestLogEnums(t *testing.T) {
 			t.Fatalf("result %d: string=%q", value, ResultStatus(value).String())
 		}
 	}
-	if LogRuntime != 1 || LogAudit != 2 || LogElnis != 3 || ContentText != 0 || ContentJSON != 1 || ResultUnspecified != 0 || ResultSucceeded != 1 || ResultSkipped != 5 {
+	if LogCategoryLog != 1 || LogCategoryAudit != 2 || LogCategoryElnis != 3 || ContentText != 0 || ContentJSON != 1 || ResultUnspecified != 0 || ResultSucceeded != 1 || ResultSkipped != 5 {
 		t.Fatal("enum values changed")
 	}
 }
@@ -77,7 +77,7 @@ func TestLogPublicationModes(t *testing.T) {
 				}
 				ctx, cancel := context.WithCancel(contextinfo.WithExecution(t.Context(), contextinfo.Execution{SessionID: "context-session"}))
 				cancel()
-				record := LogRecord{Category: LogRuntime, Content: "original", Identity: LogIdentity{SessionID: "source-session"}}
+				record := LogRecord{Category: LogCategoryLog, Content: "original", Identity: LogIdentity{SessionID: "source-session"}}
 				done := make(chan struct{})
 				go func() {
 					tc.publish(ctx, record)
@@ -119,11 +119,11 @@ func TestLogPreservesSourceRecord(t *testing.T) {
 	defer connection.Disconnect()
 	ctx := contextinfo.WithExecution(t.Context(), contextinfo.Execution{SessionID: "context-session"})
 	for _, record := range []LogRecord{
-		{Category: LogRuntime},
-		{Category: LogAudit, Level: slog.LevelWarn, ResultStatus: ResultFailed, Content: "reason"},
-		{Category: LogElnis, Level: slog.LevelError, ResultStatus: ResultCanceled},
-		{Category: LogAudit, Type: ContentJSON, Content: "null"},
-		{Category: LogAudit, Type: ContentJSON, Content: "9007199254740993", ContentLimit: 1},
+		{Category: LogCategoryLog},
+		{Category: LogCategoryAudit, Level: slog.LevelWarn, ResultStatus: ResultFailed, Content: "reason"},
+		{Category: LogCategoryElnis, Level: slog.LevelError, ResultStatus: ResultCanceled},
+		{Category: LogCategoryAudit, Type: ContentJSON, Content: "null"},
+		{Category: LogCategoryAudit, Type: ContentJSON, Content: "9007199254740993", ContentLimit: 1},
 	} {
 		Log(ctx, record)
 		if !reflect.DeepEqual(received[len(received)-1], record) {

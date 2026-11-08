@@ -89,7 +89,7 @@ func TestElnisLogsSuccessfulRunSaveFailure(t *testing.T) {
 
 	var records []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
-		if record.Category == events.LogElnis && record.EventName == "elnis_llm_failed" {
+		if record.Category == events.LogCategoryElnis && record.EventName == "elnis_llm_failed" {
 			records = append(records, record)
 		}
 

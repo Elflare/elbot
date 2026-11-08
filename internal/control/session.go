@@ -212,7 +212,7 @@ func (m *Supervisor) ResumeSession(ctx context.Context, req ResumeSessionRequest
 	if err != nil {
 		return ResumeSessionResult{}, ClassifyError(err)
 	}
-	record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: "session_resume", Module: "control", Content: "title: " + row.Title, ResultStatus: events.ResultSucceeded, Identity: events.LogIdentityFromContext(ctx)}
+	record := events.LogRecord{Category: events.LogCategoryAudit, Level: slog.LevelInfo, EventName: "session_resume", Module: "control", Content: "title: " + row.Title, ResultStatus: events.ResultSucceeded, Identity: events.LogIdentityFromContext(ctx)}
 	record.Identity.SessionID = row.ID
 	events.Log(ctx, record)
 	return m.sessionPreview(ctx, row, req.MessageLimit)
@@ -240,7 +240,7 @@ func (m *Supervisor) ForkSession(ctx context.Context, req ForkSessionRequest) (F
 	if err != nil {
 		return ForkSessionResult{}, ClassifyError(err)
 	}
-	record := events.LogRecord{Category: events.LogAudit, Level: slog.LevelInfo, EventName: "session_fork", Module: "control", Content: "parent: " + row.ParentSessionID + " · message: " + row.ForkFromMessageID, ResultStatus: events.ResultSucceeded, Identity: events.LogIdentityFromContext(ctx)}
+	record := events.LogRecord{Category: events.LogCategoryAudit, Level: slog.LevelInfo, EventName: "session_fork", Module: "control", Content: "parent: " + row.ParentSessionID + " · message: " + row.ForkFromMessageID, ResultStatus: events.ResultSucceeded, Identity: events.LogIdentityFromContext(ctx)}
 	record.Identity.SessionID = row.ID
 	events.Log(ctx, record)
 	return m.sessionPreview(ctx, row, req.MessageLimit)

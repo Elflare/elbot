@@ -53,7 +53,7 @@ func (l stderrLogger) Write(data []byte) (int, error) {
 	line := strings.TrimSpace(string(data))
 	if line != "" {
 		l.Log(context.Background(), globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
+			Category:     globalevents.LogCategoryLog,
 			Level:        slog.LevelInfo,
 			EventName:    "stateful_hook_stderr",
 			Module:       "hook",

@@ -166,7 +166,7 @@ func (a *Adapter) runGateway(handler share.MessageHandler) {
 			if backoff.ShouldWarn() {
 				{
 					record := globalevents.LogRecord{
-						Category:     globalevents.LogRuntime,
+						Category:     globalevents.LogCategoryLog,
 						Level:        slog.LevelWarn,
 						EventName:    "qqofficial_gateway_disconnected",
 						Module:       a.Name(),

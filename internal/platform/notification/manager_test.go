@@ -171,7 +171,7 @@ func addTestPlatform(t *testing.T, m *Manager, name string, h func(context.Conte
 			return
 		}
 		if err := h(ctx, n); err != nil {
-			m.log(ctx, events.LogRecord{Category: events.LogRuntime, EventName: "notification_send_failed", Content: err.Error(), ResultStatus: events.LogStatus(err)})
+			m.log(ctx, events.LogRecord{Category: events.LogCategoryLog, EventName: "notification_send_failed", Content: err.Error(), ResultStatus: events.LogStatus(err)})
 		}
 	}, signal.ConnectOptions{}); err != nil {
 		t.Fatal(err)

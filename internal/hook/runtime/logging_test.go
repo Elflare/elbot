@@ -397,7 +397,7 @@ func TestInvalidToolParametersAreInfoCallRecords(t *testing.T) {
 				t.Fatalf("err=%v records=%+v", err, *records)
 			}
 			record := (*records)[0]
-			if record.EventName != "hook_tool_call_completed" || record.Category != events.LogAudit || record.Level != slog.LevelInfo || record.ResultStatus != events.ResultRejected || !strings.Contains(record.Content, "not entered") {
+			if record.EventName != "hook_tool_call_completed" || record.Category != events.LogCategoryAudit || record.Level != slog.LevelInfo || record.ResultStatus != events.ResultRejected || !strings.Contains(record.Content, "not entered") {
 				t.Fatal(record)
 			}
 			var content map[string]json.RawMessage

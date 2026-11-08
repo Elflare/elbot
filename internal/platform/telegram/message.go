@@ -142,7 +142,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg message, normalized
 	if err := a.chatHistory.Append(ctx, chatMessage); err != nil {
 		{
 			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
+				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelError,
 				EventName:    "record_telegram_chat_message_failed",
 				Module:       a.Name(),
@@ -251,7 +251,7 @@ func (a *Adapter) messageGroupRole(ctx context.Context, msg message) contextinfo
 	if err != nil {
 		{
 			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
+				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelWarn,
 				EventName:    "get_telegram_chat_member_failed",
 				Module:       a.Name(),
@@ -286,7 +286,7 @@ func (a *Adapter) handleCallbackQuery(ctx context.Context, handler share.Message
 		if err := a.client.answerCallbackQuery(ctx, query.ID, "已收到"); err != nil {
 			{
 				record := globalevents.LogRecord{
-					Category:     globalevents.LogRuntime,
+					Category:     globalevents.LogCategoryLog,
 					Level:        slog.LevelError,
 					EventName:    "answer_telegram_callback_failed",
 					Module:       a.Name(),
@@ -374,7 +374,7 @@ func (a *Adapter) handleMessage(ctx context.Context, handler share.MessageHandle
 		})
 		if err != nil {
 			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
+				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelError,
 				EventName:    "platform_context_failed",
 				Module:       a.Name(),

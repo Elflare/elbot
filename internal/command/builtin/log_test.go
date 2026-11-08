@@ -47,7 +47,7 @@ func TestLogCommandsUseCategoryDefaultsAndRejectInvalidFilters(t *testing.T) {
 		cat  string
 		args string
 	}{
-		{name: "runtime", new: NewLog, cat: "runtime"},
+		{name: "log", new: NewLog, cat: "log"},
 		{name: "elwisp", new: NewElwisp, cat: "elnis", args: "server-watchdog --source minecraft --mode llm"},
 	} {
 		service := &logControlStub{}
@@ -65,7 +65,7 @@ func TestLogCommandsUseCategoryDefaultsAndRejectInvalidFilters(t *testing.T) {
 }
 
 func TestLogQueryParsingAndCompletion(t *testing.T) {
-	query, err := parseRuntimeLogQuery(`-u --contains "hello world" --system --raw -n 7 --since 2h`)
+	query, err := parseLogQuery(`-u --contains "hello world" --system --raw -n 7 --since 2h`)
 	if err != nil || !query.Raw || query.Limit != 7 || query.Fields["event"] != "system_message" || query.Contains != "hello world" || query.Since == nil {
 		t.Fatalf("query=%+v err=%v", query, err)
 	}

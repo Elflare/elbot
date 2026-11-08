@@ -136,7 +136,7 @@ func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	facts.SessionID = sessionID
 	agentshare.EmitAgentLog(ctx, facts, events.LogRecord{
-		Category:     events.LogAudit,
+		Category:     events.LogCategoryAudit,
 		Level:        slog.LevelInfo,
 		EventName:    "permission_denied",
 		Module:       "agent",

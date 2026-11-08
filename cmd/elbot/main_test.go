@@ -155,7 +155,7 @@ func TestEntryServiceStartsStopsAndReleasesLock(t *testing.T) {
 		case err := <-done:
 			t.Fatalf("service exited before startup: %v: %s", err, output)
 		case <-ticker.C:
-			paths, err := filepath.Glob(filepath.Join(filepath.Dir(path), "logs", "elbot-*.log"))
+			paths, err := filepath.Glob(filepath.Join(filepath.Dir(path), "logs", "log-*.log"))
 			if err != nil {
 				t.Fatal(err)
 			}

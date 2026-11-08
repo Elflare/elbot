@@ -148,7 +148,7 @@ func loadConfig(opts Options) (Config, string, error) {
 		if count := seen[original]; count > 0 {
 			rule.source.FinalName = fmt.Sprintf("%s.%d", original, count)
 			opts.Log(context.Background(), globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
+				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelWarn,
 				EventName:    "duplicate_hook_rule_name_renamed",
 				Module:       "hook",
@@ -230,7 +230,7 @@ func validateLoadedRules(rules []Rule) error {
 
 func reportPluginConfigError(ctx context.Context, opts Options, name, path string, err error) {
 	opts.Log(ctx, globalevents.LogRecord{
-		Category:     globalevents.LogRuntime,
+		Category:     globalevents.LogCategoryLog,
 		Level:        slog.LevelError,
 		EventName:    "hook_plugin_skipped",
 		Module:       "hook",
@@ -249,7 +249,7 @@ func reportPluginConfigError(ctx context.Context, opts Options, name, path strin
 
 func reportPluginConfigWarning(ctx context.Context, opts Options, name, path, message string) {
 	opts.Log(ctx, globalevents.LogRecord{
-		Category:     globalevents.LogRuntime,
+		Category:     globalevents.LogCategoryLog,
 		Level:        slog.LevelWarn,
 		EventName:    "hook_plugin_warning",
 		Module:       "hook",
@@ -267,7 +267,7 @@ func reportPluginConfigWarning(ctx context.Context, opts Options, name, path, me
 
 func reportConfigError(ctx context.Context, opts Options, path string, err error) {
 	opts.Log(ctx, globalevents.LogRecord{
-		Category:     globalevents.LogRuntime,
+		Category:     globalevents.LogCategoryLog,
 		Level:        slog.LevelError,
 		EventName:    "hook_rule_config_error",
 		Module:       "hook",

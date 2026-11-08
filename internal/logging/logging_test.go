@@ -14,7 +14,7 @@ import (
 func TestDailyFileWriterRotatesWhenDateChanges(t *testing.T) {
 	dir := t.TempDir()
 	current := time.Date(2026, 6, 16, 23, 59, 0, 0, time.Local)
-	writer, err := newDailyFileWriter(filepath.Join(dir, "logs"), "elbot", func() time.Time { return current })
+	writer, err := newDailyFileWriter(filepath.Join(dir, "logs"), "log", func() time.Time { return current })
 	if err != nil {
 		t.Fatalf("newDailyFileWriter: %v", err)
 	}
@@ -30,11 +30,11 @@ func TestDailyFileWriterRotatesWhenDateChanges(t *testing.T) {
 		t.Fatalf("close writer: %v", err)
 	}
 
-	oldData, err := os.ReadFile(filepath.Join(dir, "logs", "elbot-2026-06-16.log"))
+	oldData, err := os.ReadFile(filepath.Join(dir, "logs", "log-2026-06-16.log"))
 	if err != nil {
 		t.Fatalf("read old log: %v", err)
 	}
-	newData, err := os.ReadFile(filepath.Join(dir, "logs", "elbot-2026-06-17.log"))
+	newData, err := os.ReadFile(filepath.Join(dir, "logs", "log-2026-06-17.log"))
 	if err != nil {
 		t.Fatalf("read new log: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestDailyFileWriterRotatesWhenDateChanges(t *testing.T) {
 }
 
 func TestDailyFileWriterClosePreventsFurtherWrites(t *testing.T) {
-	writer, err := newDailyFileWriter(filepath.Join(t.TempDir(), "logs"), "elbot", time.Now)
+	writer, err := newDailyFileWriter(filepath.Join(t.TempDir(), "logs"), "log", time.Now)
 	if err != nil {
 		t.Fatalf("newDailyFileWriter: %v", err)
 	}
@@ -59,21 +59,21 @@ func TestDailyFileWriterClosePreventsFurtherWrites(t *testing.T) {
 	}
 }
 
-func TestManagerCreatesRuntimeAuditAndElnisLogs(t *testing.T) {
+func TestManagerCreatesLogAuditAndElnisLogs(t *testing.T) {
 	dir := t.TempDir()
 	manager, err := NewManager("info", filepath.Join(dir, "elbot_sessions.db"), 30)
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
 	}
-	emitRecord(t, events.LogRecord{Category: events.LogRuntime, Content: "runtime log"})
-	emitRecord(t, events.LogRecord{Category: events.LogAudit, Content: "audit log"})
-	emitRecord(t, events.LogRecord{Category: events.LogElnis, Content: "elnis log"})
+	emitRecord(t, events.LogRecord{Category: events.LogCategoryLog, Content: "log entry"})
+	emitRecord(t, events.LogRecord{Category: events.LogCategoryAudit, Content: "audit log"})
+	emitRecord(t, events.LogRecord{Category: events.LogCategoryElnis, Content: "elnis log"})
 	if err := manager.Close(context.Background()); err != nil {
 		t.Fatalf("close manager: %v", err)
 	}
 
 	date := time.Now().Format("2006-01-02")
-	for _, name := range []string{"elbot-" + date + ".log", "audit-" + date + ".log", "elnis-" + date + ".log"} {
+	for _, name := range []string{"log-" + date + ".log", "audit-" + date + ".log", "elnis-" + date + ".log"} {
 		data, err := os.ReadFile(filepath.Join(dir, "logs", name))
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
@@ -90,7 +90,7 @@ func TestCleanupOldLogsRemovesExpiredManagedLogs(t *testing.T) {
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		t.Fatalf("mkdir log dir: %v", err)
 	}
-	oldLog := filepath.Join(logDir, "elbot-2000-01-01.log")
+	oldLog := filepath.Join(logDir, "log-2000-01-01.log")
 	oldElnisLog := filepath.Join(logDir, "elnis-2000-01-01.log")
 	for _, path := range []string{oldLog, oldElnisLog} {
 		if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
@@ -102,7 +102,7 @@ func TestCleanupOldLogsRemovesExpiredManagedLogs(t *testing.T) {
 		}
 	}
 
-	file, err := newDailyFileWriter(logDir, "elbot", time.Now)
+	file, err := newDailyFileWriter(logDir, "log", time.Now)
 	if err != nil {
 		t.Fatalf("NewFile: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestCleanupOldLogsRemovesExpiredManagedLogs(t *testing.T) {
 			t.Fatalf("old log still exists or stat failed: %v", err)
 		}
 	}
-	todayLog := filepath.Join(logDir, "elbot-"+time.Now().Format("2006-01-02")+".log")
+	todayLog := filepath.Join(logDir, "log-"+time.Now().Format("2006-01-02")+".log")
 	data, err := os.ReadFile(todayLog)
 	if err != nil {
 		t.Fatalf("read today log: %v", err)

@@ -464,7 +464,7 @@ log_retention_days = 30
 
 - `runtime.log_level` 只控制运行日志，支持 `debug`、`info`、`warn`、`error`。
 - 审计和 Elnis 日志独立保留，即使提高运行等级也会继续记录 `/usage` 所需的用量事实。
-- 日志文件按日轮转，前缀为 `elbot-`、`audit-`、`elnis-`，保留天数由 `log_retention_days` 控制。
+- 日志文件按日轮转，前缀为 `log-`、`audit-`、`elnis-`，保留天数由 `log_retention_days` 控制。
 - 查询等级与记录等级独立：`/log -d` 只显示已有记录，不改配置、不补回未记录内容。筛选方式见[日志和审计命令](commands.md#日志和审计)。
 - 信号派发、后台信号任务和日志写入等设施故障直接报告到 stderr（不受日志等级过滤）；运行期报告后继续运行，初始化失败则返回主程序处理。
 

@@ -336,7 +336,7 @@ func (m *Manager) stopWorkers(ctx context.Context, workers []*worker) error {
 			if failure == nil {
 				failure = err
 			} else {
-				m.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime,
+				m.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog,
 					Level: slog.LevelWarn, EventName: "hook_worker_stop_failed", Module: "hook",
 					Content: err.Error(), ResultStatus: globalevents.LogStatus(err)})
 			}
@@ -347,7 +347,7 @@ func (m *Manager) stopWorkers(ctx context.Context, workers []*worker) error {
 
 func (m *Manager) finishClose(ctx context.Context, workers []*worker) {
 	if err := m.stopWorkers(context.Background(), workers); err != nil {
-		m.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn,
+		m.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn,
 			EventName: "hook_worker_stop_failed", Module: "hook", Content: err.Error(), ResultStatus: globalevents.LogStatus(err)})
 	}
 	m.workWG.Wait()

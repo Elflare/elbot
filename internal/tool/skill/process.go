@@ -73,7 +73,7 @@ func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall
 	case cancelErr := <-cancelRequested:
 		if cancelErr != nil {
 			if !errors.Is(cancelErr, os.ErrProcessDone) && !errors.Is(err, cancelErr) {
-				events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn,
+				events.AsyncLog(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn,
 					EventName: "skill_process_cleanup_failed", Module: "skill", Content: cancelErr.Error(),
 					Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(cancelErr)})
 			}

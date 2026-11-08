@@ -100,7 +100,7 @@ func (c *CallProcessor) Begin(sessionID string, selected modelmgr.Selection) age
 		startedAt: time.Now(),
 		event:     agentshare.ModelCallCompletedEvent{Provider: selected.Provider, Model: selected.Model, ElapsedMS: -1},
 		logRecord: events.LogRecord{
-			Category:     events.LogAudit,
+			Category:     events.LogCategoryAudit,
 			Level:        slog.LevelInfo,
 			Module:       "agent",
 			Type:         events.ContentJSON,
@@ -148,7 +148,7 @@ func (o *CallObservation) Publish(ctx context.Context, err error) {
 	}
 	if o.event.OutputReady {
 		record := o.logRecord
-		record.Category, record.Type, record.EventName = events.LogRuntime, events.ContentJSON, "assistant_message"
+		record.Category, record.Type, record.EventName = events.LogCategoryLog, events.ContentJSON, "assistant_message"
 		content := map[string]any{
 			"provider": o.event.Provider, "model": o.event.Model, "elapsed_ms": o.event.ElapsedMS,
 			"text": agentshare.TruncateLogContent(o.event.Text, 512), "tool_call_count": o.event.ToolCallCount,

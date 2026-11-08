@@ -81,7 +81,7 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 			if !state.Available {
 				if store && state.Requested {
 					record := globalevents.LogRecord{
-						Category:     globalevents.LogRuntime,
+						Category:     globalevents.LogCategoryLog,
 						Level:        slog.LevelWarn,
 						EventName:    "responses_switching_to_stateless_replay",
 						Module:       "agent",

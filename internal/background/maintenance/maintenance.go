@@ -71,7 +71,7 @@ func SetupCron(ctx context.Context, configure func(context.Context, share.Mainte
 
 func (s *Service) RunLogCleanup(ctx context.Context) (err error) {
 	err = s.logs.CleanupOldLogs()
-	record := globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, Module: "maintenance", ResultStatus: globalevents.ResultSucceeded, Content: fmt.Sprintf("retention_days=%d", s.logs.RetentionDays())}
+	record := globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelInfo, Module: "maintenance", ResultStatus: globalevents.ResultSucceeded, Content: fmt.Sprintf("retention_days=%d", s.logs.RetentionDays())}
 	if err != nil {
 		record.Level, record.ResultStatus = slog.LevelError, globalevents.ResultFailed
 		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
@@ -90,7 +90,7 @@ func (s *Service) RunSessionCleanup(ctx context.Context) (err error) {
 		return nil
 	}
 	deleted, err := s.cleanupSessions(ctx, time.Now().AddDate(0, 0, -s.sessionCleanup.RetentionDays))
-	record := globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, Module: "maintenance", ResultStatus: globalevents.ResultSucceeded, Content: fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.sessionCleanup.RetentionDays)}
+	record := globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelInfo, Module: "maintenance", ResultStatus: globalevents.ResultSucceeded, Content: fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.sessionCleanup.RetentionDays)}
 	if err != nil {
 		record.Level, record.ResultStatus = slog.LevelError, globalevents.ResultFailed
 		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
@@ -110,7 +110,7 @@ func (s *Service) RunChatHistoryCleanup(ctx context.Context) (err error) {
 	}
 	cutoff := time.Now().AddDate(0, 0, -s.chatHistoryCleanup.RetentionDays)
 	deleted, err := s.cleanupChatHistory(ctx, cutoff)
-	record := globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, Module: "maintenance", ResultStatus: globalevents.ResultSucceeded, Content: fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.chatHistoryCleanup.RetentionDays)}
+	record := globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelInfo, Module: "maintenance", ResultStatus: globalevents.ResultSucceeded, Content: fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.chatHistoryCleanup.RetentionDays)}
 	if err != nil {
 		record.Level, record.ResultStatus = slog.LevelError, globalevents.ResultFailed
 		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
@@ -127,7 +127,7 @@ func (s *Service) RunChatHistoryCleanup(ctx context.Context) (err error) {
 func (s *Service) RunSandboxCleanup(ctx context.Context) (err error) {
 	cutoff := time.Now().AddDate(0, 0, -s.sandboxCleanup.RetentionDays)
 	deleted, err := cleanupSandbox(ctx, s.sandboxRoot, cutoff)
-	record := globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, Module: "maintenance", ResultStatus: globalevents.ResultSucceeded, Content: fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.sandboxCleanup.RetentionDays)}
+	record := globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelInfo, Module: "maintenance", ResultStatus: globalevents.ResultSucceeded, Content: fmt.Sprintf("deleted=%d\nretention_days=%d", deleted, s.sandboxCleanup.RetentionDays)}
 	if err != nil {
 		record.Level, record.ResultStatus = slog.LevelError, globalevents.ResultFailed
 		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
@@ -190,7 +190,7 @@ func removeEmptyDirs(ctx context.Context, root string) error {
 	}
 	for i := len(dirs) - 1; i >= 0; i-- {
 		if err := os.Remove(dirs[i]); err != nil && !errors.Is(err, syscall.ENOTEMPTY) {
-			globalevents.Log(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn,
+			globalevents.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn,
 				EventName: "maintenance_cleanup_failed", Module: "background", Content: err.Error(),
 				Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
 		}

@@ -109,7 +109,7 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 				if i >= 1 {
 					want = "foreground"
 				}
-				if record.Category == events.LogAudit {
+				if record.Category == events.LogCategoryAudit {
 					var content map[string]json.RawMessage
 					if err := json.Unmarshal([]byte(record.Content), &content); err != nil {
 						t.Fatal(err)
@@ -180,14 +180,14 @@ func TestRunnerWritesOnlyAuditWithBoundedArgumentPreview(t *testing.T) {
 		t.Fatal(err)
 	}
 	reader := logging.Reader{Dir: center.LogDir()}
-	for _, prefix := range []string{"audit", "elbot"} {
+	for _, prefix := range []string{"audit", "log"} {
 		found, err := reader.Query(t.Context(), logging.LogQuery{Prefix: prefix, Days: 1, Limit: 10, MinLevel: "debug", Events: []string{"tool_call_prepared", "tool_call_completed"}})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if prefix == "elbot" {
+		if prefix == "log" {
 			if len(found.Entries) != 0 {
-				t.Fatalf("runtime duplicated tool calls: %+v", found.Entries)
+				t.Fatalf("log duplicated tool calls: %+v", found.Entries)
 			}
 			continue
 		}
@@ -232,7 +232,7 @@ func TestRunnerRecordsInvocationBeforeCancellationStopsLaterOperations(t *testin
 	manager := newTestManager(registry, security.NewPermission("high", "high", nil))
 	var calls []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
-		if record.EventName == "tool_call_completed" && record.Category == events.LogAudit {
+		if record.EventName == "tool_call_completed" && record.Category == events.LogCategoryAudit {
 			calls = append(calls, record)
 		}
 
@@ -252,7 +252,7 @@ func TestRunnerRecordsUnenteredCallFailure(t *testing.T) {
 	manager := newTestManager(toolregistry.NewRegistry(security.DefaultPermission()), security.DefaultPermission())
 	var calls []events.LogRecord
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
-		if record.EventName == "tool_call_completed" && record.Category == events.LogAudit {
+		if record.EventName == "tool_call_completed" && record.Category == events.LogCategoryAudit {
 			calls = append(calls, record)
 		}
 
@@ -405,7 +405,7 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 				if r.Module != "toolrun" || r.Identity.SessionID != "session-log" {
 					return
 				}
-				if r.EventName == "tool_call_completed" && r.Category == events.LogAudit {
+				if r.EventName == "tool_call_completed" && r.Category == events.LogCategoryAudit {
 					if committer.finished {
 						t.Error("invocation log delayed until transcript save")
 					}
@@ -466,7 +466,7 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 			}
 
 			for _, r := range operations {
-				if r.Category == events.LogRuntime && r.Level >= slog.LevelError && tc.saveErr == nil && tc.startErr == nil {
+				if r.Category == events.LogCategoryLog && r.Level >= slog.LevelError && tc.saveErr == nil && tc.startErr == nil {
 					t.Fatalf("ordinary tool failure logged as runtime error: %#v", r)
 				}
 				if tc.prepareErr != nil && r.EventName == "tool_prepare" {

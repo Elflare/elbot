@@ -257,7 +257,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	// Service.Start 前按平台缓存通知，根部完成前置启动后才放行消费。
 	connection, err = globalevents.PlatformConnected.Observe(func(ctx context.Context, event globalevents.PlatformConnectedEvent) {
 		if err := m.cron.EnqueuePlatformConnected(ctx, event.Platform); err != nil {
-			globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn,
+			globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn,
 				EventName: "cron_platform_admission_failed", Module: "cron", Content: err.Error(),
 				Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
 		}

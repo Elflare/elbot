@@ -115,7 +115,7 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 			body = share.TruncateLogContent(body, 2048)
 		}
 		data, _ := json.Marshal(content)
-		record := globalevents.LogRecord{Category: globalevents.LogAudit, Level: slog.LevelInfo, EventName: eventName, Module: "hook", Type: globalevents.ContentJSON, Content: string(data), ContentLimit: 0, ResultStatus: status}
+		record := globalevents.LogRecord{Category: globalevents.LogCategoryAudit, Level: slog.LevelInfo, EventName: eventName, Module: "hook", Type: globalevents.ContentJSON, Content: string(data), ContentLimit: 0, ResultStatus: status}
 		if status == globalevents.ResultFailed {
 			record.Level = slog.LevelWarn
 		}

@@ -169,7 +169,7 @@ func NewModule(opts Options) (Module, error) {
 		}
 	}
 	record := globalevents.LogRecord{
-		Category:     globalevents.LogRuntime,
+		Category:     globalevents.LogCategoryLog,
 		Level:        slog.LevelInfo,
 		EventName:    "hook_rule_config_loaded",
 		Module:       "hook",
@@ -195,7 +195,7 @@ func (m Module) RegisterHooks(registrar share.Registrar) {
 		name := rule.source.FinalName
 
 		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
+			Category:     globalevents.LogCategoryLog,
 			Level:        slog.LevelInfo,
 			EventName:    "hook_rule_registered",
 			Module:       "hook",

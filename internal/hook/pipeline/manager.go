@@ -75,7 +75,7 @@ func (m *Manager) Run(ctx context.Context, event share.Event, options CallOption
 			if ctx.Err() != nil {
 				return before, err
 			}
-			globalevents.LogAndNotify(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "hook_error", Module: "hook", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)}, globalevents.NewNotification(ctx, slog.LevelWarn, err.Error()))
+			globalevents.LogAndNotify(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "hook_error", Module: "hook", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)}, globalevents.NewNotification(ctx, slog.LevelWarn, err.Error()))
 			m.notifyError(ctx, before, options, err)
 			event = before
 		} else {
@@ -428,7 +428,7 @@ func (m *Manager) logHook(ctx context.Context, mode string, reg registration, be
 	}
 	data, _ := json.Marshal(content)
 	record := globalevents.LogRecord{
-		Category: globalevents.LogRuntime, Level: level, EventName: name, Module: "hook",
+		Category: globalevents.LogCategoryLog, Level: level, EventName: name, Module: "hook",
 		ResultStatus: status, Type: globalevents.ContentJSON, Content: string(data),
 	}
 	record.Identity = globalevents.LogIdentityFromContext(ctx)

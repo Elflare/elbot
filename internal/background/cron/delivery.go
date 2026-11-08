@@ -95,7 +95,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 			}
 			if buildErr != nil && outputID != "text" && status != DeliveryFallbackDelivered && state.NeedReport && recovery && ctx.Err() == nil {
 
-				globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "cron_output_fallback", Module: "cron", Content: buildErr.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(buildErr)})
+				globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "cron_output_fallback", Module: "cron", Content: buildErr.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(buildErr)})
 				buildErr = nil
 				outputState.Status = DeliveryFallbackPending
 				outputState.FallbackText = reportSegmentFallbackText(state.ReportSegments[segmentIndex])
@@ -115,7 +115,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 				outputState.Status = status
 			}
 			if buildErr != nil && len(receipt.SentMessages) > 0 {
-				globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "cron_output_partial", Module: "cron", Content: buildErr.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(buildErr)})
+				globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "cron_output_partial", Module: "cron", Content: buildErr.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(buildErr)})
 				buildErr = nil
 			}
 			if buildErr == nil || len(receipt.SentMessages) > 0 {
@@ -147,7 +147,7 @@ func (s *Service) sendDeliveryOutput(ctx context.Context, jobName string, target
 	{
 		content, _ := json.Marshal(map[string]any{"job": jobName, "platform": target.Platform, "target": cronTargetLabel(target), "kind": out.Kind})
 		record := globalevents.LogRecord{
-			Category:     globalevents.LogAudit,
+			Category:     globalevents.LogCategoryAudit,
 			Level:        slog.LevelInfo,
 			EventName:    "cron.send_started",
 			Module:       "cron",
@@ -166,7 +166,7 @@ func (s *Service) sendDeliveryOutput(ctx context.Context, jobName string, target
 	{
 		content, _ := json.Marshal(map[string]any{"job": jobName, "platform": target.Platform, "target": cronTargetLabel(target), "kind": out.Kind, "content": ""})
 		record := globalevents.LogRecord{
-			Category:     globalevents.LogAudit,
+			Category:     globalevents.LogCategoryAudit,
 			Level:        slog.LevelInfo,
 			EventName:    "cron.send_completed",
 			Module:       "cron",
@@ -400,7 +400,7 @@ func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessi
 		{
 			content, _ := json.Marshal(map[string]any{"job": jobName, "source_session_id": sourceSessionID, "target_session_id": copySession, "platform": target.Name})
 			record := globalevents.LogRecord{
-				Category:     globalevents.LogAudit,
+				Category:     globalevents.LogCategoryAudit,
 				Level:        slog.LevelInfo,
 				EventName:    "cron.session_copied",
 				Module:       "cron",

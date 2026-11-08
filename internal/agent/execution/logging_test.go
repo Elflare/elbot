@@ -70,7 +70,7 @@ func TestAgentLogSourcePreservesExplicitIdentity(t *testing.T) {
 	defer connection.Disconnect()
 	ctx := contextinfo.WithExecution(context.Background(), contextinfo.Execution{SessionID: "wrong", RequestID: "wrong"})
 	agentshare.EmitAgentLog(ctx, contextinfo.Execution{SessionID: "source"}, globalevents.LogRecord{
-		Category:  globalevents.LogRuntime,
+		Category:  globalevents.LogCategoryLog,
 		Level:     slog.LevelInfo,
 		EventName: "identity_test",
 		Module:    "agent",
@@ -115,12 +115,12 @@ func TestStableLogNamesIndependentOfContent(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = center.Close(context.Background()) })
 	for _, content := range []string{"before wording", "after wording：变化"} {
-		agentshare.EmitAgentLog(context.Background(), contextinfo.Execution{}, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelInfo, EventName: "stable_event", Module: "agent", Content: content})
+		agentshare.EmitAgentLog(context.Background(), contextinfo.Execution{}, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelInfo, EventName: "stable_event", Module: "agent", Content: content})
 	}
 	if err := center.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	result, err := (logging.Reader{Dir: center.LogDir()}).Query(context.Background(), logging.LogQuery{Prefix: "elbot", Fields: map[string]string{"event": "stable_event"}})
+	result, err := (logging.Reader{Dir: center.LogDir()}).Query(context.Background(), logging.LogQuery{Prefix: "log", Fields: map[string]string{"event": "stable_event"}})
 	if err != nil || len(result.Entries) != 2 || result.Entries[0].Content == result.Entries[1].Content {
 		t.Fatalf("result = %#v, err = %v", result, err)
 	}

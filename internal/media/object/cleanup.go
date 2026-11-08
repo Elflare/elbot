@@ -26,7 +26,7 @@ func (m *Manager) Cleanup(ctx context.Context, history History) (err error) {
 		if err != nil {
 			return // Terminal failures belong to the maintenance task boundary.
 		}
-		record := events.LogRecord{Category: events.LogRuntime, Level: slog.LevelInfo, Module: "media", EventName: "media_cleanup", ResultStatus: events.ResultSucceeded, ContentLimit: 8192}
+		record := events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelInfo, Module: "media", EventName: "media_cleanup", ResultStatus: events.ResultSucceeded, ContentLimit: 8192}
 		if stage != "delete" {
 			lines = append([]string{"stage=" + stage}, lines...)
 		}
@@ -86,7 +86,7 @@ func (m *Manager) Cleanup(ctx context.Context, history History) (err error) {
 						return
 					}
 					failedItems[i] = true
-					events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn,
+					events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn,
 						EventName: "media_cleanup", Module: "media",
 						Content: fmt.Sprintf("media_id=%s error=%q", items[i].ID, err.Error()), ResultStatus: events.LogStatus(err)})
 				}

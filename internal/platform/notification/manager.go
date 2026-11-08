@@ -57,7 +57,7 @@ func (m *Manager) AddPlatform(name string, validate func(events.NotificationTarg
 }
 func (m *Manager) route(ctx context.Context, n events.Notification) (context.Context, *signal.Signal[events.Notification, signal.Empty], events.Notification) {
 	reject := func(err error) (context.Context, *signal.Signal[events.Notification, signal.Empty], events.Notification) {
-		m.log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "notification_rejected", Module: "notification", Content: fmt.Sprintf("platform=%s chat_type=%s id=%s error=%v", n.Target.Platform, n.Target.ChatType, n.Target.ID, err), ContentLimit: 4096, Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.ResultFailed})
+		m.log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "notification_rejected", Module: "notification", Content: fmt.Sprintf("platform=%s chat_type=%s id=%s error=%v", n.Target.Platform, n.Target.ChatType, n.Target.ID, err), ContentLimit: 4096, Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.ResultFailed})
 		return ctx, nil, n
 	}
 	if strings.TrimSpace(n.Text) == "" {

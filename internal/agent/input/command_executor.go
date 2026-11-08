@@ -108,7 +108,7 @@ func (e *CommandExecutor) logFailure(ctx context.Context, event string, err erro
 	if errors.As(err, &failure) && failure.Cause != nil {
 		content += ": " + failure.Cause.Error()
 	}
-	record := globalevents.LogRecord{Category: globalevents.LogRuntime, Level: level, EventName: event, Module: "command", Content: content, ContentLimit: 4096, ResultStatus: globalevents.LogStatus(err)}
+	record := globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: level, EventName: event, Module: "command", Content: content, ContentLimit: 4096, ResultStatus: globalevents.LogStatus(err)}
 	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	if failure != nil && (failure.Kind == command.ErrorInput || failure.Kind == command.ErrorRejected) {
 		record.ResultStatus = globalevents.ResultRejected

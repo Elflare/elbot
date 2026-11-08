@@ -325,7 +325,7 @@ func (s *RemoteServer) sendOutputs(ctx context.Context, clients []*remoteClientC
 }
 
 func (s *RemoteServer) logMediaError(ctx context.Context, err error) {
-	events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError,
+	events.AsyncLog(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError,
 		EventName: "cli_media_failed", Module: "cli", Content: err.Error(),
 		Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
 }

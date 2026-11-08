@@ -121,7 +121,7 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 
 	parsed, err := background.ParseJSONResult(result.Text)
 	if err != nil {
-		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "cron_format_retry", Module: "cron", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
+		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "cron_format_retry", Module: "cron", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
 		ctx, result, err = s.retryLLMResultFormat(ctx, job, meta, actor, result.SessionID, model)
 		if err != nil {
 			return ctx, state, err
@@ -138,7 +138,7 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 		state.Report = message
 		state.ReportSessionID = result.SessionID
 		state.ReportMessageID = result.MessageID
-		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "cron_format_failed", Module: "cron", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
+		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "cron_format_failed", Module: "cron", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
 		return ctx, state, nil
 	}
 	var copyErr error
@@ -150,7 +150,7 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 				return ctx, takeoverState(state, result), nil
 			}
 			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
+				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelError,
 				EventName:    "copy_cron_session_failed",
 				Module:       "cron",

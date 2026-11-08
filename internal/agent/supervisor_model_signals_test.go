@@ -78,7 +78,7 @@ data: [DONE]
 	ctx = contextinfo.WithModel(ctx, contextinfo.Model{Provider: "p", Model: "m", APIType: "chat"})
 	namingDone := make(chan struct{}, 1)
 	logs, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
-		if record.EventName == "session_naming_completed" && record.Category == events.LogRuntime {
+		if record.EventName == "session_naming_completed" && record.Category == events.LogCategoryLog {
 			namingDone <- struct{}{}
 		}
 

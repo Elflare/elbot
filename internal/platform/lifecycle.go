@@ -232,7 +232,7 @@ func (l *lifecycle) Close(ctx context.Context) error {
 			return ctx.Err()
 		}
 		if err != nil {
-			events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError,
+			events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError,
 				EventName: "platform_close_failed", Module: "platform",
 				Content: fmt.Sprintf("close %s: %v", step.name, err), ResultStatus: events.LogStatus(err)})
 		}

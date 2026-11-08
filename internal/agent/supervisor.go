@@ -69,7 +69,7 @@ func (m *Supervisor) HandleMessage(ctx context.Context, req MessageRequest) erro
 	ctx, commandHandled, err := m.handler.HandleMessage(agentshare.WithMessageContext(ctx, msg), req.Text)
 	if err != nil && !commandHandled && !errors.Is(err, agentshare.ErrSessionBindingChanged) {
 		record := events.LogRecord{
-			Category: events.LogRuntime, Level: slog.LevelWarn,
+			Category: events.LogCategoryLog, Level: slog.LevelWarn,
 			EventName: "dialogue_failed", Module: "dialogue", Type: events.ContentText,
 			Content: err.Error(), ContentLimit: utf8.RuneCountInString(err.Error()),
 			Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err),

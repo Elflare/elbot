@@ -197,7 +197,7 @@ func confirmationAction(ctx context.Context, sessionID, action string, confirmat
 	}
 	data, _ := json.Marshal(content)
 	record := &events.LogRecord{
-		Category:     events.LogAudit,
+		Category:     events.LogCategoryAudit,
 		Level:        slog.LevelInfo,
 		EventName:    "risk_confirmation_command",
 		Module:       "agent",
@@ -250,7 +250,7 @@ func (c *ConfirmationCoordinator) publishConfirmationWait(ctx context.Context, s
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	facts.SessionID = sessionID
 	agentshare.EmitAgentLog(ctx, facts, events.LogRecord{
-		Category:     events.LogAudit,
+		Category:     events.LogCategoryAudit,
 		Level:        slog.LevelInfo,
 		EventName:    "risk_confirmation_wait",
 		Module:       "agent",
@@ -274,7 +274,7 @@ func (c *ConfirmationCoordinator) publishConfirmationResult(ctx context.Context,
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	facts.SessionID = sessionID
 	agentshare.EmitAgentLog(ctx, facts, events.LogRecord{
-		Category:     events.LogAudit,
+		Category:     events.LogCategoryAudit,
 		Level:        level,
 		EventName:    "risk_confirmation_result",
 		Module:       "agent",

@@ -31,7 +31,7 @@ func (a *Adapter) ConnectNotifications(source *signal.Signal[events.Notification
 			level = slog.LevelInfo
 		}
 		events.AsyncLog(ctx, events.LogRecord{
-			Category: events.LogRuntime, Level: level, EventName: "notification_send_failed", Module: "cli",
+			Category: events.LogCategoryLog, Level: level, EventName: "notification_send_failed", Module: "cli",
 			Content: fmt.Sprintf("target=%+v error=%v", notification.Target, err), ContentLimit: 4096,
 			Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err),
 		})

@@ -46,7 +46,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 		}
 		{
 			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
+				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelWarn,
 				EventName:    p.Type,
 				Module:       a.Name(),
@@ -63,7 +63,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 	if targetID == "" {
 		{
 			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
+				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelWarn,
 				EventName:    p.Type,
 				Module:       a.Name(),
@@ -147,7 +147,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 	}
 	if err != nil {
 		record := globalevents.LogRecord{
-			Category:     globalevents.LogRuntime,
+			Category:     globalevents.LogCategoryLog,
 			Level:        slog.LevelError,
 			EventName:    "platform_context_failed",
 			Module:       a.Name(),
@@ -229,7 +229,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 	if err := a.chatHistory.Append(ctx, history); err != nil {
 		{
 			record := globalevents.LogRecord{
-				Category:     globalevents.LogRuntime,
+				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelError,
 				EventName:    "record_qqofficial_chat_message_failed",
 				Module:       a.Name(),

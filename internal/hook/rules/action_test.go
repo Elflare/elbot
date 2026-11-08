@@ -261,7 +261,7 @@ func TestRuleToolAuditOutcome(t *testing.T) {
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("business error changed: %v", err)
 			}
-			if len(records) != 1 || records[0].EventName != "hook_tool_call_completed" || records[0].Category != events.LogAudit || records[0].Level != tc.level {
+			if len(records) != 1 || records[0].EventName != "hook_tool_call_completed" || records[0].Category != events.LogCategoryAudit || records[0].Level != tc.level {
 				t.Fatalf("records: %+v", records)
 			}
 			fields := map[string]any{}

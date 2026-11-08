@@ -46,7 +46,7 @@ func (o *OutputSender) observeDelivery(ctx context.Context, operation string, re
 	}
 	data, _ := json.Marshal(content)
 	record := globalevents.LogRecord{
-		Category:     globalevents.LogRuntime,
+		Category:     globalevents.LogCategoryLog,
 		Level:        slog.LevelDebug,
 		EventName:    "reply_delivered",
 		Module:       "agent",
@@ -127,7 +127,7 @@ func (o *OutputSender) StartStream(ctx context.Context) delivery.MessageStream {
 		}
 		defer func() {
 			if err != nil && (event.Type == delivery.StreamReasoningDelta || event.Type == delivery.StreamReasoningDone) {
-				globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "reasoning_display_failed", Module: "agent", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
+				globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "reasoning_display_failed", Module: "agent", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
 				err = nil
 			}
 		}()

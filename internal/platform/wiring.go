@@ -80,7 +80,7 @@ func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps, entries []reg
 	}
 	m.onFailure = func(name string, failure error) {
 		ctx := context.WithoutCancel(m.ctx)
-		events.AsyncLog(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "platform_failed", Module: "platform", Type: events.ContentText, Content: fmt.Sprintf("%s: %v", name, failure), ResultStatus: events.ResultFailed})
+		events.AsyncLog(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError, EventName: "platform_failed", Module: "platform", Type: events.ContentText, Content: fmt.Sprintf("%s: %v", name, failure), ResultStatus: events.ResultFailed})
 		m.mu.Lock()
 		var targets []events.NotificationTarget
 		for _, runtime := range m.runtimes {

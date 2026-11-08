@@ -99,7 +99,7 @@ func (m *Manager) CleanupUsages(ctx context.Context, ids []string) error {
 			}
 			if err := os.RemoveAll(dir); err != nil {
 				dirs = append(dirs, dir)
-				m.options.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "media_usage_cleanup_failed", Module: "media", Content: fmt.Sprintf("usage_id=%s operation=remove_directory path=%s error=%v", id, dir, err), ContentLimit: 4096, ResultStatus: events.ResultFailed})
+				m.options.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError, EventName: "media_usage_cleanup_failed", Module: "media", Content: fmt.Sprintf("usage_id=%s operation=remove_directory path=%s error=%v", id, dir, err), ContentLimit: 4096, ResultStatus: events.ResultFailed})
 			}
 		}
 		u.dirs = dirs
@@ -112,7 +112,7 @@ func (m *Manager) CleanupUsages(ctx context.Context, ids []string) error {
 			if err := item.Close(ctx); err != nil {
 				held = append(held, item)
 				if err != ctx.Err() {
-					m.options.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelError, EventName: "media_usage_cleanup_failed", Module: "media", Content: fmt.Sprintf("usage_id=%s operation=release_hold media_id=%s error=%v", id, item.Info().ID, err), ContentLimit: 4096, ResultStatus: events.ResultFailed})
+					m.options.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError, EventName: "media_usage_cleanup_failed", Module: "media", Content: fmt.Sprintf("usage_id=%s operation=release_hold media_id=%s error=%v", id, item.Info().ID, err), ContentLimit: 4096, ResultStatus: events.ResultFailed})
 				}
 			}
 		}
@@ -133,7 +133,7 @@ func (m *Manager) abortUsage(ctx context.Context, id string) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	if err := m.CleanupUsages(ctx, ids); err != nil {
-		m.options.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: slog.LevelWarn, EventName: "media_usage_cleanup_interrupted", Module: "media", Content: fmt.Sprintf("usage_id=%s error=%v", id, err), ContentLimit: 4096, ResultStatus: events.ResultCanceled})
+		m.options.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_usage_cleanup_interrupted", Module: "media", Content: fmt.Sprintf("usage_id=%s error=%v", id, err), ContentLimit: 4096, ResultStatus: events.ResultCanceled})
 	}
 }
 

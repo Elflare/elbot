@@ -23,7 +23,7 @@ func (a *Adapter) ConnectNotifications(source *signal.Signal[events.Notification
 		if binding, ok := session.BindingFromContext(ctx); ok && !binding.Valid() {
 			return
 		}
-		events.Log(ctx, events.LogRecord{Category: events.LogRuntime, Level: n.Level, EventName: "runtime_notification", Module: "notification", Content: n.Text, ContentLimit: 4096})
+		events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: n.Level, EventName: "runtime_notification", Module: "notification", Content: n.Text, ContentLimit: 4096})
 
 	}, signal.ConnectOptions{})
 }

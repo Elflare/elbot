@@ -115,7 +115,7 @@ func (a *Router) cacheMediaReceipt(ctx context.Context, outputs []delivery.Outpu
 				continue
 			}
 			if err := a.saveMediaOutput(ctx, storage.MediaOutput{Platform: message.Platform, ChatType: message.ChatType, ChatID: message.ChatID, MessageID: message.PlatformMessageID, SegmentIndex: segmentIndex, Kind: string(out.Kind), MediaID: out.Source.MediaID, ExpiresAt: expiresAt}); err != nil {
-				globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogRuntime, Level: slog.LevelWarn, EventName: "cache_sent_media_receipt_failed", Module: "delivery", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
+				globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "cache_sent_media_receipt_failed", Module: "delivery", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
 			}
 			segmentIndex++
 		}

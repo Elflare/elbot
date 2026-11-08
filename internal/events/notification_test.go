@@ -51,7 +51,7 @@ func TestReportSelectionPreservesSourceFacts(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			logs, notices, drain := captureReports(t, true)
 			id := "source-request"
-			record := LogRecord{Category: LogRuntime, Content: "provider: original detail", Identity: LogIdentity{RequestID: id}}
+			record := LogRecord{Category: LogCategoryLog, Content: "provider: original detail", Identity: LogIdentity{RequestID: id}}
 			notice := Notification{Text: record.Content, Target: NotificationTarget{Platform: "cli", ID: "recipient"}}
 			ctx := contextinfo.WithExecution(t.Context(), contextinfo.Execution{RequestID: "other-request"})
 			switch mode {
@@ -90,7 +90,7 @@ func TestLogFailureDoesNotPreventNotification(t *testing.T) {
 	if err := LogSubmitted.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	LogAndNotify(t.Context(), LogRecord{Category: LogRuntime}, Notification{Text: "still deliver"})
+	LogAndNotify(t.Context(), LogRecord{Category: LogCategoryLog}, Notification{Text: "still deliver"})
 	drain()
 	if len(notices) != 1 || (<-notices).Text != "still deliver" {
 		t.Fatal("log rejection prevented notification")
@@ -128,7 +128,7 @@ func TestReportCancellationKeepsLogAndSuppressesNotice(t *testing.T) {
 	logs, notices, drain := captureReports(t, true)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	LogAndNotify(ctx, LogRecord{Category: LogRuntime, Content: "canceled", ResultStatus: ResultCanceled}, Notification{Text: "stale"})
+	LogAndNotify(ctx, LogRecord{Category: LogCategoryLog, Content: "canceled", ResultStatus: ResultCanceled}, Notification{Text: "stale"})
 	drain()
 	if len(logs) != 1 || len(notices) != 0 || (<-logs).ResultStatus != ResultCanceled {
 		t.Fatal("cancellation lost its log or generated an extra notification failure")
