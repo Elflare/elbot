@@ -155,18 +155,22 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		NewToolTranscriptCommitter: func() agentshare.ToolTranscriptCommitter {
 			return &dialogue.ToolTranscriptCommitter{Messages: runner.Messages}
 		},
+		Status:   status,
+		Contexts: m.contexts,
+		Turns:    m.turns,
+		View:     view,
+		Preparer: runner.Preparer,
+		Tools:    runner.Preparer.Tools,
+		Messages: runner.Messages,
+		Caller: &chatroute.Caller{
+			Calls: runner.Calls, Messages: runner.Messages, Preparer: runner.Preparer,
+		},
+		PromptBuilder: chatroute.PromptBuilder{System: runner.System},
+	}, &chatroute.Compactor{
 		ToolCalls: deps.Store.ToolCalls(),
-		Loader:    contextmgr.Loader{Store: deps.Store},
-		Status:    status,
-		Contexts:  m.contexts,
 		Models:    deps.Models,
-		Turns:     m.turns,
-		View:      view,
-		Preparer:  runner.Preparer,
-		Tools:     runner.Preparer.Tools,
-		Messages:  runner.Messages,
-		Calls:     runner.Calls,
-		System:    runner.System,
+		Contexts:  m.contexts,
+		Loader:    contextmgr.Loader{Store: deps.Store},
 	})
 	response := responseroute.NewLoop(responseroute.LoopDeps{
 		NewMessageID: storage.IDSequence(deps.Store.NextIDSequence).MessageID,

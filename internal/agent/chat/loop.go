@@ -2,7 +2,6 @@ package chat
 
 import (
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/media"
 	"elbot/internal/session"
 	"elbot/internal/tool"
 
@@ -11,7 +10,6 @@ import (
 	"time"
 
 	"elbot/internal/contextmgr"
-	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/modelmgr"
@@ -21,48 +19,10 @@ import (
 )
 
 type Loop struct {
-	NewMessageID func(context.Context) (string, error) // 内部输入创建时分配身份。
-	Identity     interface {
-		Scope(context.Context) session.Scope
-	}
-	SelectionForTurn           func(context.Context, *storage.Session) modelmgr.Selection
-	NewToolTranscriptCommitter func() agentshare.ToolTranscriptCommitter
-
-	Status interface {
-		Record(context.Context, runtimestatus.Snapshot)
-	}
+	LoopDeps
 	compactor contextmgr.Compactor
-	Contexts  interface {
-		ConsumeSeed(context.Context, string) (*storage.Session, error)
-	}
-	Turns interface {
-		StartToolPhase(string, string) bool
-		DrainMergedInput(string, string) turn.Input
-	}
-	View interface {
-		Context(context.Context) context.Context
-		RefreshSession(context.Context, *storage.Session) (context.Context, error)
-		WithModel(context.Context, modelmgr.Selection) (context.Context, error)
-		CheckSelection(*storage.Session, modelmgr.Selection) error
-	}
-	Preparer interface {
-		PrepareInput(context.Context, agentshare.LoopInput, *storage.Message, string, []llm.MessageSegment, []llm.LLMMessage, []llm.ToolSchema, bool) ([]llm.MessageSegment, []llm.ToolSchema, error)
-		PrepareMaterials(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error)
-		FinishMaterials(context.Context, media.UsageID)
-	}
-	Tools interface {
-		Schemas(context.Context, *storage.Session) ([]llm.ToolSchema, error)
-		MaxRoundsPerTurn() int
-		ExecuteWithCommitter(context.Context, *storage.Session, []llm.ToolCallRequest, string, string, agentshare.Output, tool.ToolCommitter) tool.RunResult
-	}
-	Messages interface {
-		Commit(context.Context, storage.DialogueCommit, string) error
-		Append(context.Context, *storage.Message, string) error
-		Committer(string) agentshare.MessageCommitter
-	}
-	Caller        *Caller
-	PromptBuilder PromptBuilder
 }
+
 type preparedLoop struct {
 	route                    *Loop
 	materials                agentshare.TurnMaterials
@@ -92,7 +52,7 @@ type chatTurnState struct {
 	usage      *llm.Usage
 }
 
-// LoopDeps contains protocol collaborators, never another protocol implementation.
+// LoopDeps contains runtime capabilities and collaborators assembled by the Agent root.
 type LoopDeps struct {
 	NewMessageID func(context.Context) (string, error) // 根部注入的消息发号能力。
 	Identity     interface {
@@ -104,18 +64,8 @@ type LoopDeps struct {
 	Status interface {
 		Record(context.Context, runtimestatus.Snapshot)
 	}
-	ToolCalls interface {
-		SuccessfulIDs(context.Context, []string) (map[string]bool, error)
-	}
-	Loader interface {
-		LoadRawMessages(context.Context, string) ([]storage.Message, error)
-	}
 	Contexts interface {
-		Load(context.Context, string) (*contextmgr.LoadedContext, error)
 		ConsumeSeed(context.Context, string) (*storage.Session, error)
-	}
-	Models interface {
-		ResolveCompact(modelmgr.Selection) modelmgr.Selection
 	}
 	Turns interface {
 		StartToolPhase(string, string) bool
@@ -129,8 +79,6 @@ type LoopDeps struct {
 	}
 	Preparer interface {
 		PrepareInput(context.Context, agentshare.LoopInput, *storage.Message, string, []llm.MessageSegment, []llm.LLMMessage, []llm.ToolSchema, bool) ([]llm.MessageSegment, []llm.ToolSchema, error)
-		PrepareMaterials(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error)
-		FinishMaterials(context.Context, media.UsageID)
 	}
 	Tools interface {
 		Schemas(context.Context, *storage.Session) ([]llm.ToolSchema, error)
@@ -142,31 +90,12 @@ type LoopDeps struct {
 		Append(context.Context, *storage.Message, string) error
 		Committer(string) agentshare.MessageCommitter
 	}
-	Calls interface {
-		Call(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingUserMessage, agentshare.MessageCommitter, delivery.MessageStream,
-			func(context.Context, agentshare.CallInput) error,
-			func(context.Context, agentshare.CallObservation) (agentshare.CallOutput, error)) (agentshare.CallOutput, error)
-	}
-	System interface {
-		Build(context.Context, agentshare.SystemPromptRequest) (string, error)
-	}
+	Caller        *Caller
+	PromptBuilder PromptBuilder
 }
 
-func NewLoop(deps LoopDeps) *Loop {
-	return &Loop{NewMessageID: deps.NewMessageID,
-		Identity: deps.Identity, SelectionForTurn: deps.SelectionForTurn,
-		NewToolTranscriptCommitter: deps.NewToolTranscriptCommitter,
-		Status:                     deps.Status,
-		Contexts:                   deps.Contexts,
-		Turns:                      deps.Turns,
-		View:                       deps.View,
-		Preparer:                   deps.Preparer,
-		Tools:                      deps.Tools,
-		Messages:                   deps.Messages,
-		Caller:                     &Caller{Calls: deps.Calls, Messages: deps.Messages, Preparer: deps.Preparer},
-		PromptBuilder:              PromptBuilder{System: deps.System},
-		compactor:                  &Compactor{ToolCalls: deps.ToolCalls, Models: deps.Models, Contexts: deps.Contexts, Loader: deps.Loader},
-	}
+func NewLoop(deps LoopDeps, compactor contextmgr.Compactor) *Loop {
+	return &Loop{LoopDeps: deps, compactor: compactor}
 }
 
 func (r *Loop) Compactor() contextmgr.Compactor    { return r.compactor }
