@@ -101,6 +101,26 @@ func TestRiskCallbacksKeepReplacementAndRejectStoppedApproval(t *testing.T) {
 	s.FinishAttempt("s", "a")
 }
 
+func TestRiskConfirmationAcceptsOnlyOneResponse(t *testing.T) {
+	s := NewSupervisor(testutil.IDSequence())
+	s.StartAttempt("s", Input{}, NewExecution("run"), "a")
+	s.StartToolPhase("s", "a")
+	wait := s.BeginRiskConfirmation("s", RiskConfirmation{ToolName: "call"}, "a")
+	first := RiskDecision{Action: RiskConfirm}
+	if !s.ResolveRiskConfirmation("s", first) {
+		t.Fatal("first response was not accepted")
+	}
+
+	// Model the wait goroutine receiving before it completes the lifecycle transition.
+	received := <-wait.wait.Response
+	if s.ResolveRiskConfirmation("s", RiskDecision{Action: RiskReject}) {
+		t.Fatal("second response was accepted after the first had been received")
+	}
+	if result := wait.wait.Complete(received, nil); string(result.Outcome) != string(RiskAnswered) || string(result.Decision.Action) != string(first.Action) {
+		t.Fatalf("first response result = %+v", result)
+	}
+}
+
 func TestAppendReservationSurvivesOldAttemptExit(t *testing.T) {
 	s := NewSupervisor(testutil.IDSequence())
 	e := NewExecution("run")

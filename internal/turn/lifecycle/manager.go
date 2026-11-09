@@ -22,6 +22,7 @@ type state struct {
 	pending       []Input
 	riskConfirm   *RiskConfirmation
 	riskResponse  chan RiskDecision
+	riskResponded bool
 	waitRefresh   chan struct{}
 	riskDone      chan struct{}
 	tools         map[string]int

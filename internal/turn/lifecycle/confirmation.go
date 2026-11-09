@@ -13,6 +13,7 @@ func (m *Manager) BeginRiskConfirmation(sessionID string, confirmation RiskConfi
 	turn.phase = PhaseAwaitRiskConfirm
 	turn.riskConfirm = &confirmation
 	turn.riskResponse = make(chan RiskDecision, 1)
+	turn.riskResponded = false
 	turn.waitRefresh = make(chan struct{}, 1)
 	turn.riskDone = make(chan struct{})
 	response := turn.riskResponse
@@ -20,7 +21,7 @@ func (m *Manager) BeginRiskConfirmation(sessionID string, confirmation RiskConfi
 		Expire: func() bool {
 			m.mu.Lock()
 			defer m.mu.Unlock()
-			if m.turns[sessionID] != turn || turn.phase != PhaseAwaitRiskConfirm || turn.riskResponse != response {
+			if m.turns[sessionID] != turn || turn.phase != PhaseAwaitRiskConfirm || turn.riskResponse != response || turn.riskResponded {
 				return false
 			}
 			select {
@@ -55,6 +56,7 @@ func (m *Manager) BeginRiskConfirmation(sessionID string, confirmation RiskConfi
 			}
 			turn.riskConfirm = nil
 			turn.riskResponse = nil
+			turn.riskResponded = false
 			turn.waitRefresh = nil
 			close(turn.riskDone)
 			turn.riskDone = nil
@@ -72,11 +74,12 @@ func (m *Manager) ResolveRiskConfirmation(sessionID string, decision RiskDecisio
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	turn, ok := m.turns[sessionID]
-	if !ok || turn.phase != PhaseAwaitRiskConfirm {
+	if !ok || turn.phase != PhaseAwaitRiskConfirm || turn.riskResponded {
 		return false
 	}
 	select {
 	case turn.riskResponse <- decision:
+		turn.riskResponded = true
 		return true
 	default:
 		return false
