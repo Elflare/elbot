@@ -76,6 +76,9 @@ func TestReadGitDiffLimitsOutput(t *testing.T) {
 }
 
 func TestReadGitStatusReturnsNonRepository(t *testing.T) {
+	t.Setenv("LANG", "zh_CN.UTF-8")
+	t.Setenv("LANGUAGE", "zh_CN:zh")
+	t.Setenv("LC_ALL", "")
 	status, err := ReadGitStatus(t.Context(), t.TempDir())
 	if err != nil || status.IsGit || len(status.Changes) != 0 {
 		t.Fatalf("status = %+v, %v", status, err)

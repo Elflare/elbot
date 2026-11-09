@@ -120,8 +120,22 @@ func gitOutput(ctx context.Context, dir string, args ...string) (string, error) 
 	return string(data), err
 }
 
-func gitBytes(ctx context.Context, dir string, args ...string) ([]byte, error) {
+func gitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	env := os.Environ()
+	for i, entry := range env {
+		if strings.HasPrefix(entry, "LC_ALL=") {
+			env[i] = "LC_ALL=C"
+			cmd.Env = env
+			return cmd
+		}
+	}
+	cmd.Env = append(env, "LC_ALL=C")
+	return cmd
+}
+
+func gitBytes(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	cmd := gitCommand(ctx, dir, args...)
 	data, err := cmd.Output()
 	if err == nil {
 		return data, nil
@@ -139,7 +153,7 @@ func gitBytes(ctx context.Context, dir string, args ...string) ([]byte, error) {
 func gitDiffOutput(ctx context.Context, dir string, args ...string) (string, error) {
 	stdout := &boundedBuffer{limit: maxGitDiffOutput}
 	var stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd := gitCommand(ctx, dir, args...)
 	cmd.Stdout = stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
