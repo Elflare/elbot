@@ -224,17 +224,20 @@ func (c *Client) StreamPrepared(ctx context.Context, prepared PreparedRequest) (
 	if len(prepared.body) == 0 {
 		return nil, fmt.Errorf("prepared response request is empty")
 	}
+	content, _ := json.Marshal(map[string]any{
+		"endpoint":      c.baseURL + "/responses",
+		"model":         prepared.model,
+		"input_items":   prepared.inputs,
+		"allowed_tools": len(prepared.allowedTools),
+		"request_bytes": len(prepared.body),
+	})
 	record := globalevents.LogRecord{
 		Category:  globalevents.LogCategoryLog,
 		Level:     slog.LevelDebug,
 		EventName: "responses_request",
 		Module:    "model",
 		Type:      globalevents.ContentJSON,
-		Content: fmt.Sprintf(
-			"endpoint=%q model=%q input_items=%d allowed_tools=%d request_bytes=%d",
-			c.baseURL+"/responses", prepared.model,
-			prepared.inputs, len(prepared.allowedTools), len(prepared.body),
-		),
+		Content:   string(content),
 	}
 	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	globalevents.Log(ctx, record)
