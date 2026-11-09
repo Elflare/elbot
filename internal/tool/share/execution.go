@@ -50,6 +50,7 @@ type RunnerDeps interface {
 	SendPreview(ctx context.Context, text ...string)
 	// SendOutputs delivers tool outputs and returns the original delivery error.
 	SendOutputs(ctx context.Context, outputs []delivery.Output) error
+	PublishToolResult(context.Context, string, delivery.ToolResult)
 	AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk RiskLevel, reason string)
 	AddToolUse(sessionID, toolName string)
 	ToolResultMessage(sessionID string, message llm.LLMMessage) storage.Message

@@ -29,12 +29,13 @@ func TestGitStatusAndDiffIncludeTrackedAndUntrackedChanges(t *testing.T) {
 	write("staged.txt", "staged\n")
 	gitTestCommand(t, root, "add", "staged.txt")
 	write("nested/untracked.txt", "new file\n")
+	write("empty.txt", "")
 
 	status, err := ReadGitStatus(t.Context(), root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.IsGit || status.Root != root || len(status.Changes) != 3 {
+	if !status.IsGit || status.Root != root || len(status.Changes) != 4 {
 		t.Fatalf("status = %+v", status)
 	}
 	byPath := map[string]GitChange{}
@@ -52,8 +53,25 @@ func TestGitStatusAndDiffIncludeTrackedAndUntrackedChanges(t *testing.T) {
 	if err != nil || !strings.Contains(untrackedDiff, "+new file") {
 		t.Fatalf("untracked diff = %q, %v", untrackedDiff, err)
 	}
+	emptyDiff, err := ReadGitDiff(t.Context(), root, "empty.txt")
+	if err != nil || !strings.Contains(emptyDiff, "new file mode 100644") || strings.Contains(emptyDiff, "@@") {
+		t.Fatalf("empty file diff = %q, %v", emptyDiff, err)
+	}
 	if _, err := ReadGitDiff(t.Context(), root, "../outside"); err == nil {
 		t.Fatal("outside path accepted")
+	}
+}
+
+func TestReadGitDiffLimitsOutput(t *testing.T) {
+	root := t.TempDir()
+	gitTestCommand(t, root, "init", "-q")
+	content := strings.Repeat("x", 2*maxGitDiffOutput)
+	if err := os.WriteFile(filepath.Join(root, "large.txt"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	diff, err := ReadGitDiff(t.Context(), root, "large.txt")
+	if err != nil || diff != largeGitDiffOutput {
+		t.Fatalf("diff=%q err=%v", diff, err)
 	}
 }
 

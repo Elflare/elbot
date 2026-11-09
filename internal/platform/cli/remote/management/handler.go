@@ -54,6 +54,7 @@ func NewHandler(options HandlerOptions) http.Handler {
 	mux.HandleFunc("GET /confirmation", h.currentConfirmation)
 	mux.HandleFunc("POST /confirmation/respond", h.respondConfirmation)
 	mux.HandleFunc("GET /tools", h.queryTools)
+	mux.HandleFunc("GET /tools/{name}/detail", h.toolDetail)
 	mux.HandleFunc("POST /skills/reload", h.reloadSkills)
 	mux.HandleFunc("DELETE /skills/{name}", h.removeSkill)
 	mux.HandleFunc("GET /rollbacks", h.listRollbacks)

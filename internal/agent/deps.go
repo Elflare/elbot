@@ -57,6 +57,7 @@ type ToolCapabilities interface {
 	Reload(context.Context) error
 	FilterSchemas(context.Context, []llm.ToolSchema) ([]llm.ToolSchema, error)
 	QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
+	LoadToolDetail(context.Context, string) (tool.DetailBlock, error)
 	ToolTags(context.Context) ([]string, error)
 	Schemas(context.Context, tool.Context, []tool.DiscoveredTool) ([]llm.ToolSchema, error)
 	Run(context.Context, tool.RunnerDeps, tool.RunRequest) tool.RunResult

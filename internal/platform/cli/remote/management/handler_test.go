@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"elbot/internal/control"
+	"elbot/internal/tool"
 	"elbot/internal/workspace"
 )
 
@@ -53,6 +54,9 @@ func (s *workspaceHandlerStub) WorkspaceGit(_ context.Context, req control.Works
 func (s *workspaceHandlerStub) WorkspaceGitDiff(_ context.Context, req control.WorkspaceGitRequest) (string, error) {
 	s.gitDiff = req
 	return "diff", nil
+}
+func (s *workspaceHandlerStub) LoadToolDetail(context.Context, control.ToolDetailRequest) (tool.DetailBlock, error) {
+	return tool.DetailBlock{Content: "# Detail", Format: "markdown"}, nil
 }
 
 func TestContinuationCallbackRunsAfterHTTPResponseIsWritten(t *testing.T) {
@@ -119,5 +123,19 @@ func TestWorkspaceManagementRoutesForwardRequests(t *testing.T) {
 	}
 	if stub.workspace.SessionID != "s1" || stub.directories.Path != "/home/user" || stub.userWorkspace.Path != "/home/user/project" || !stub.workspaceSync.AgentToUser || stub.workspaceSync.UserToAgent || stub.git.Side != "user" || stub.gitDiff.Side != "agent" || stub.gitDiff.Path != "main.go" {
 		t.Fatalf("forwarded requests: %+v", stub)
+	}
+}
+
+func TestToolDetailRouteReturnsCompleteDetail(t *testing.T) {
+	response := httptest.NewRecorder()
+	handler := NewHandler(HandlerOptions{
+		Control: &workspaceHandlerStub{},
+		Authenticate: func(ctx context.Context, _ *http.Request) (context.Context, bool, error) {
+			return ctx, true, nil
+		},
+	})
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/tools/guide/detail", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"content":"# Detail"`) || !strings.Contains(response.Body.String(), `"format":"markdown"`) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }

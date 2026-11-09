@@ -52,7 +52,7 @@ func ClassifyError(err error) error {
 		code, message = "file_changed", err.Error()
 	case errors.Is(err, fileops.ErrNotRegularFile):
 		code, message = "invalid_target", err.Error()
-	case errors.Is(err, tool.ErrSkillNotFound), errors.Is(err, fileops.ErrRollbackNotFound), errors.Is(err, fileops.ErrRollbackExpired), errors.Is(err, storage.ErrNotFound), errors.Is(err, fs.ErrNotExist):
+	case errors.Is(err, tool.ErrToolDetailNotFound), errors.Is(err, tool.ErrSkillNotFound), errors.Is(err, fileops.ErrRollbackNotFound), errors.Is(err, fileops.ErrRollbackExpired), errors.Is(err, storage.ErrNotFound), errors.Is(err, fs.ErrNotExist):
 		code, message = "not_found", "目标不存在"
 	case errors.Is(err, fs.ErrExist):
 		code, message = "file_changed", "目标文件已存在"

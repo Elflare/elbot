@@ -3,13 +3,15 @@ package tool
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/tool/share"
-	"encoding/json"
 )
 
 // BackgroundSelection 是授权前展开的工具名单，公开类型不依赖内部 share。
@@ -68,9 +70,11 @@ type ToolDefinition struct {
 }
 
 type DetailBlock struct {
-	Content string // 文档正文。
-	Format  string // markdown 或 elyph。
+	Content string `json:"content"` // 文档正文。
+	Format  string `json:"format"`  // markdown 或 elyph。
 }
+
+var ErrToolDetailNotFound = errors.New("tool detail not found")
 
 // PreparedCall 是外部实现准备好的操作；根部将其封装为固定参数的内部调用。
 type PreparedCall struct {
@@ -198,6 +202,7 @@ type RunnerDeps interface {
 	CompleteToolCall(context.Context, *storage.Session, llm.ToolCallRequest, string, []llm.MessageSegment, error) ([]llm.MessageSegment, error)
 	SendPreview(context.Context, ...string)
 	SendOutputs(context.Context, []delivery.Output) error
+	PublishToolResult(context.Context, string, delivery.ToolResult)
 	AuditToolDenied(context.Context, string, llm.ToolCallRequest, security.RiskLevel, string)
 	AddToolUse(string, string)
 	ToolResultMessage(string, llm.LLMMessage) storage.Message
@@ -249,7 +254,6 @@ type Result struct {
 	Data            json.RawMessage      // 发现结果的结构化数据。
 	Metadata        map[string]any       // 工具附加事实。
 	Outputs         []delivery.Output    // 需要发送给用户的内容。
-	FileChanges     []delivery.FileChange
 }
 
 func (r *Result) LLMSegments() []llm.MessageSegment { return toInternalResult(r).LLMSegments() }

@@ -848,7 +848,7 @@ func (m *tuiModel) appendAssistantContent(text string) {
 
 func (m *tuiModel) applyStreamEvent(msg tuiStreamMsg) {
 	event := msg.Event
-	if event.Type == delivery.StreamFileChanges {
+	if event.Type == delivery.StreamToolResult {
 		return
 	}
 	if event.Type == delivery.StreamFinish || event.Type == delivery.StreamReasoningDone {

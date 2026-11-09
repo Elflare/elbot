@@ -91,6 +91,7 @@ schemas:
         reply_to_platform_message_id: { type: string }
         reply_to_message_id: { type: string }
         tool_call_id: { type: string }
+        tool_name: { type: string }
         segments:
           type: array
           items:
@@ -252,6 +253,55 @@ schemas:
         Definition: { $ref: '#/schemas/ToolDefinitionInfo' }
         Parameters: { type: [object, 'null'], additionalProperties: true }
       required: [Definition, Parameters]
+    ToolDetail:
+      type: object
+      properties:
+        content: { type: string, description: Complete detail content without truncation. }
+        format: { type: string, description: Content format, such as markdown or elyph. }
+      required: [content, format]
+    Workspace:
+      type: object
+      properties:
+        session_id: { type: string }
+        agent_path: { type: string }
+        user_path: { type: string }
+        agent_to_user: { type: boolean }
+        user_to_agent: { type: boolean }
+      required: [session_id, agent_path, user_path, agent_to_user, user_to_agent]
+    WorkspaceDirectory:
+      type: object
+      properties:
+        name: { type: string }
+        path: { type: string }
+      required: [name, path]
+    WorkspaceDirectoryListing:
+      type: object
+      properties:
+        path: { type: string }
+        parent: { type: string }
+        directories: { type: array, items: { $ref: '#/schemas/WorkspaceDirectory' } }
+      required: [path, parent, directories]
+    WorkspaceGitChange:
+      type: object
+      properties:
+        path: { type: string }
+        status: { type: string, enum: [modified, added, deleted, renamed, untracked] }
+        staged: { type: boolean }
+        worktree: { type: boolean }
+      required: [path, status, staged, worktree]
+    WorkspaceGit:
+      type: object
+      properties:
+        is_git: { type: boolean }
+        path: { type: string }
+        root: { type: string }
+        changes: { type: array, items: { $ref: '#/schemas/WorkspaceGitChange' } }
+      required: [is_git, path, changes]
+    WorkspaceGitDiff:
+      type: object
+      properties:
+        diff: { type: string }
+      required: [diff]
     ToolDefinitionInfo:
       type: object
       properties:

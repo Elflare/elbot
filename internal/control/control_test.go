@@ -69,6 +69,12 @@ func TestMissingCapabilitiesAndIdentity(t *testing.T) {
 	}
 }
 
+func TestWorkspaceDirectoryBrowsingRequiresIdentityEvenWithExplicitPath(t *testing.T) {
+	m, _ := testSupervisor(t, SupervisorDeps{})
+	_, err := m.WorkspaceDirectories(context.Background(), WorkspaceDirectoriesRequest{Path: t.TempDir()})
+	requireCode(t, err, "permission_denied")
+}
+
 func TestCommandsFilterWithoutMutatingCatalog(t *testing.T) {
 	items := []CommandInfo{{Name: "new", Aliases: []string{"n"}, MinRole: contextinfo.RoleUser}, {Name: "doctor"}}
 	m, _ := testSupervisor(t, SupervisorDeps{Commands: func(context.Context) ([]CommandInfo, error) { return items, nil }})

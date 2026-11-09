@@ -217,12 +217,12 @@ func toPublicResult(result *share.Result) *Result {
 	if result == nil {
 		return nil
 	}
-	return &Result{Summary: result.Summary, NeedsElyphRules: result.NeedsElyphRules, DiscoveryText: (*DiscoveryText)(result.DiscoveryText), Content: result.Content, Segments: result.Segments, Warnings: result.Warnings, Data: result.Data, Metadata: result.Metadata, Outputs: result.Outputs, FileChanges: result.FileChanges}
+	return &Result{Summary: result.Summary, NeedsElyphRules: result.NeedsElyphRules, DiscoveryText: (*DiscoveryText)(result.DiscoveryText), Content: result.Content, Segments: result.Segments, Warnings: result.Warnings, Data: result.Data, Metadata: result.Metadata, Outputs: result.Outputs}
 }
 
 func toInternalResult(result *Result) *share.Result {
 	if result == nil {
 		return nil
 	}
-	return &share.Result{Summary: result.Summary, NeedsElyphRules: result.NeedsElyphRules, DiscoveryText: (*share.DiscoveryText)(result.DiscoveryText), Content: result.Content, Segments: result.Segments, Warnings: result.Warnings, Data: result.Data, Metadata: result.Metadata, Outputs: result.Outputs, FileChanges: result.FileChanges}
+	return &share.Result{Summary: result.Summary, NeedsElyphRules: result.NeedsElyphRules, DiscoveryText: (*share.DiscoveryText)(result.DiscoveryText), Content: result.Content, Segments: result.Segments, Warnings: result.Warnings, Data: result.Data, Metadata: result.Metadata, Outputs: result.Outputs}
 }

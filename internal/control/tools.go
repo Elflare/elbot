@@ -2,8 +2,9 @@ package control
 
 import (
 	"context"
-	"elbot/internal/tool"
 	"strings"
+
+	"elbot/internal/tool"
 )
 
 func (m *Supervisor) QueryTools(ctx context.Context, req tool.ToolQuery) ([]tool.ToolInfo, error) {
@@ -12,6 +13,17 @@ func (m *Supervisor) QueryTools(ctx context.Context, req tool.ToolQuery) ([]tool
 	}
 	items, err := m.deps.Tools.QueryTools(ctx, req)
 	return items, ClassifyError(err)
+}
+
+func (m *Supervisor) LoadToolDetail(ctx context.Context, req ToolDetailRequest) (tool.DetailBlock, error) {
+	if err := authorize(ctx, true, m.deps.Tools != nil); err != nil {
+		return tool.DetailBlock{}, err
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		return tool.DetailBlock{}, invalid("name 不能为空")
+	}
+	block, err := m.deps.Tools.LoadToolDetail(ctx, req.Name)
+	return block, ClassifyError(err)
 }
 func (m *Supervisor) ReloadSkills(ctx context.Context) error {
 	if err := authorize(ctx, true, m.deps.Skills != nil); err != nil {

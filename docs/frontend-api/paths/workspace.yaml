@@ -1,0 +1,105 @@
+/workspace:
+  get:
+    operationId: getWorkspace
+    summary: Get current session workspace settings
+    responses:
+      '200':
+        description: Agent and user workspace paths and sync directions.
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/schemas/Workspace' }
+      default: { $ref: '../components/transport.yaml#/responses/Error' }
+/workspace/directories:
+  get:
+    operationId: listWorkspaceDirectories
+    summary: Browse server directories
+    parameters:
+      - name: path
+        in: query
+        description: Directory to browse; defaults to the current Agent workspace, then the server user's home directory. Access follows the server process's filesystem permissions.
+        schema: { type: string }
+    responses:
+      '200':
+        description: Current directory and its child directories.
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/schemas/WorkspaceDirectoryListing' }
+      default: { $ref: '../components/transport.yaml#/responses/Error' }
+/workspace/user:
+  put:
+    operationId: setUserWorkspace
+    summary: Set user workspace path
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              path: { type: string }
+            required: [path]
+    responses:
+      '200':
+        description: Updated workspace settings.
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/schemas/Workspace' }
+      default: { $ref: '../components/transport.yaml#/responses/Error' }
+/workspace/sync:
+  put:
+    operationId: setWorkspaceSync
+    summary: Set workspace path synchronization directions
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              agent_to_user: { type: boolean }
+              user_to_agent: { type: boolean }
+            required: [agent_to_user, user_to_agent]
+    responses:
+      '200':
+        description: Updated workspace settings.
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/schemas/Workspace' }
+      default: { $ref: '../components/transport.yaml#/responses/Error' }
+/workspace/git:
+  get:
+    operationId: getWorkspaceGitStatus
+    summary: Get workspace Git changes
+    parameters:
+      - name: side
+        in: query
+        required: true
+        schema: { type: string, enum: [agent, user] }
+    responses:
+      '200':
+        description: Git status relative to HEAD, including staged, worktree, and untracked files.
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/schemas/WorkspaceGit' }
+      default: { $ref: '../components/transport.yaml#/responses/Error' }
+/workspace/git/diff:
+  get:
+    operationId: getWorkspaceGitDiff
+    summary: Get one changed file's Git diff
+    parameters:
+      - name: side
+        in: query
+        required: true
+        schema: { type: string, enum: [agent, user] }
+      - name: path
+        in: query
+        required: true
+        description: Repository-relative path from the Git status result.
+        schema: { type: string }
+    responses:
+      '200':
+        description: Complete diff, or an explicit omission notice when it exceeds the response limit.
+        content:
+          application/json:
+            schema: { $ref: '../components/schemas.yaml#/schemas/WorkspaceGitDiff' }
+      default: { $ref: '../components/transport.yaml#/responses/Error' }

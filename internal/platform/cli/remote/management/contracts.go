@@ -43,6 +43,7 @@ type ControlCapabilities interface {
 	CurrentConfirmation(context.Context, control.CurrentConfirmationRequest) (control.CurrentConfirmationResult, error)
 	RespondConfirmation(context.Context, control.RespondConfirmationRequest) (control.RespondConfirmationResult, error)
 	QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
+	LoadToolDetail(context.Context, control.ToolDetailRequest) (tool.DetailBlock, error)
 	ReloadSkills(context.Context) error
 	RemoveSkill(context.Context, control.RemoveSkillRequest) error
 	ListRollbacks(context.Context) ([]fileops.RollbackInfo, error)

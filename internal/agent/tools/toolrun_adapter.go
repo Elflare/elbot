@@ -123,8 +123,8 @@ func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output)
 	return err
 }
 
-func (d toolRunDeps) PublishFileChanges(ctx context.Context, toolCallID string, changes []delivery.FileChange) {
-	_, _ = d.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamFileChanges, ToolCallID: toolCallID, FileChanges: changes})
+func (d toolRunDeps) PublishToolResult(ctx context.Context, toolCallID string, result delivery.ToolResult) {
+	_, _ = d.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamToolResult, ToolCallID: toolCallID, ToolResult: &result})
 }
 
 func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk security.RiskLevel, reason string) {

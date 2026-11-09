@@ -8,8 +8,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 )
+
+const (
+	maxGitDiffOutput = 64 << 10
+)
+
+const largeGitDiffOutput = "[diff omitted: output exceeds 64 KiB]"
 
 type GitChange struct {
 	Path     string `json:"path"`
@@ -84,21 +91,26 @@ func ReadGitDiff(ctx context.Context, path, relative string) (string, error) {
 		if !info.Mode().IsRegular() {
 			return "", fmt.Errorf("Git path is not a regular file")
 		}
-		data, err := os.ReadFile(abs)
-		if err != nil {
-			return "", err
-		}
-		return untrackedDiff(relative, data), nil
+		return gitDiffOutput(ctx, status.Root, "diff", "--no-index", "--src-prefix=a/", "--dst-prefix=b/", "--", "/dev/null", relative)
 	}
 	if _, err := gitOutput(ctx, status.Root, "rev-parse", "--verify", "HEAD"); err != nil {
-		staged, err := gitOutput(ctx, status.Root, "diff", "--cached", "--", relative)
+		staged, err := gitDiffOutput(ctx, status.Root, "diff", "--cached", "--", relative)
 		if err != nil {
 			return "", err
 		}
-		worktree, err := gitOutput(ctx, status.Root, "diff", "--", relative)
-		return staged + worktree, err
+		if staged == largeGitDiffOutput {
+			return staged, nil
+		}
+		worktree, err := gitDiffOutput(ctx, status.Root, "diff", "--", relative)
+		if err != nil || worktree == largeGitDiffOutput {
+			return worktree, err
+		}
+		if len(staged)+len(worktree) > maxGitDiffOutput {
+			return largeGitDiffOutput, nil
+		}
+		return staged + worktree, nil
 	}
-	return gitOutput(ctx, status.Root, "diff", "HEAD", "--", relative)
+	return gitDiffOutput(ctx, status.Root, "diff", "HEAD", "--", relative)
 }
 
 var errNotGit = errors.New("not a Git repository")
@@ -123,6 +135,50 @@ func gitBytes(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	}
 	return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 }
+
+func gitDiffOutput(ctx context.Context, dir string, args ...string) (string, error) {
+	stdout := &boundedBuffer{limit: maxGitDiffOutput}
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd.Stdout = stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if stdout.exceeded {
+			return largeGitDiffOutput, nil
+		}
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && exit.ExitCode() == 1 && slices.Contains(args, "--no-index") {
+			return stdout.String(), nil
+		}
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.String(), nil
+}
+
+type boundedBuffer struct {
+	buffer   bytes.Buffer
+	limit    int
+	exceeded bool
+}
+
+func (b *boundedBuffer) Write(data []byte) (int, error) {
+	remaining := b.limit - b.buffer.Len()
+	if remaining <= 0 {
+		b.exceeded = true
+		return 0, fmt.Errorf("output limit exceeded")
+	}
+	if len(data) > remaining {
+		_, _ = b.buffer.Write(data[:remaining])
+		b.exceeded = true
+		return remaining, fmt.Errorf("output limit exceeded")
+	}
+	return b.buffer.Write(data)
+}
+
+func (b *boundedBuffer) String() string { return b.buffer.String() }
 
 func parseGitStatus(data []byte, root string) []GitChange {
 	changes := []GitChange{}
@@ -163,25 +219,6 @@ func gitChangeStatus(x, y byte) string {
 	default:
 		return "modified"
 	}
-}
-
-func untrackedDiff(path string, content []byte) string {
-	if bytes.IndexByte(content, 0) >= 0 {
-		return fmt.Sprintf("diff --git a/%s b/%s\nnew file mode 100644\nBinary files /dev/null and b/%s differ\n", path, path, path)
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "diff --git a/%s b/%s\nnew file mode 100644\n--- /dev/null\n+++ b/%s\n", path, path, path)
-	lines := strings.Split(strings.TrimSuffix(string(content), "\n"), "\n")
-	fmt.Fprintf(&b, "@@ -0,0 +1,%d @@\n", len(lines))
-	if len(content) == 0 {
-		return b.String()
-	}
-	for _, line := range lines {
-		b.WriteByte('+')
-		b.WriteString(line)
-		b.WriteByte('\n')
-	}
-	return b.String()
 }
 
 func untrackedSymlinkDiff(path, target string) string {

@@ -1,6 +1,10 @@
 package delivery
 
-import "context"
+import (
+	"context"
+
+	"elbot/internal/llm"
+)
 
 // StreamEventType describes a message's generation and delivery lifecycle.
 type StreamEventType string
@@ -13,22 +17,22 @@ const (
 	StreamFinish         StreamEventType = "finish"
 	StreamSend           StreamEventType = "send"
 	StreamSendExtras     StreamEventType = "send_extras"
-	StreamFileChanges    StreamEventType = "file_changes"
+	StreamToolResult     StreamEventType = "tool_result"
 )
 
-type FileChange struct {
-	Path   string `json:"path"`
-	Status string `json:"status"`
-	Diff   string `json:"diff"`
+type ToolResult struct {
+	Name     string               `json:"name"`     // Registered tool name.
+	Success  bool                 `json:"success"`  // Whether tool execution completed without error.
+	Segments []llm.MessageSegment `json:"segments"` // Complete result content, including multimodal parts.
 }
 
 type StreamEvent struct {
-	Type        StreamEventType `json:"type"`              // Operation on this logical message.
-	Text        string          `json:"text,omitempty"`    // Text/reasoning delta, or the final assistant text.
-	Actions     []Action        `json:"actions,omitempty"` // Actions accompanying final assistant text.
-	Outputs     []Output        `json:"outputs,omitempty"` // Independent content carried only by SendExtras.
-	ToolCallID  string          `json:"tool_call_id,omitempty"`
-	FileChanges []FileChange    `json:"file_changes,omitempty"`
+	Type       StreamEventType `json:"type"`                   // Operation on this logical message.
+	Text       string          `json:"text,omitempty"`         // Text/reasoning delta, or the final assistant text.
+	Actions    []Action        `json:"actions,omitempty"`      // Actions accompanying final assistant text.
+	Outputs    []Output        `json:"outputs,omitempty"`      // Independent content carried only by SendExtras.
+	ToolCallID string          `json:"tool_call_id,omitempty"` // Associates a result event with its tool call.
+	ToolResult *ToolResult     `json:"tool_result,omitempty"`  // Present on StreamToolResult.
 }
 
 // MessageStream belongs to one logical message. Reset clears its current preview

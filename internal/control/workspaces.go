@@ -17,12 +17,12 @@ func (m *Supervisor) Workspace(ctx context.Context) (WorkspaceResult, error) {
 }
 
 func (m *Supervisor) WorkspaceDirectories(ctx context.Context, req WorkspaceDirectoriesRequest) (WorkspaceDirectoriesResult, error) {
+	_, state, err := m.currentWorkspace(ctx)
+	if err != nil {
+		return WorkspaceDirectoriesResult{}, err
+	}
 	path := strings.TrimSpace(req.Path)
 	if path == "" {
-		_, state, err := m.currentWorkspace(ctx)
-		if err != nil {
-			return WorkspaceDirectoriesResult{}, err
-		}
 		path = state.Dir
 	}
 	result, err := workspace.ListDirectories(ctx, path)

@@ -102,6 +102,24 @@ func (m *Supervisor) QueryTools(ctx context.Context, query ToolQuery) ([]ToolInf
 	return infos, nil
 }
 
+func (m *Supervisor) LoadToolDetail(ctx context.Context, name string) (DetailBlock, error) {
+	ctx = toolPolicyContext(ctx)
+	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
+		return DetailBlock{}, err
+	}
+	definitions, err := m.catalog.registry.Query(ctx, share.ToolQuery{
+		Scope: share.QueryCatalog, Names: []string{name}, IncludeHidden: true, IncludeDiscover: true,
+	})
+	if err != nil {
+		return DetailBlock{}, err
+	}
+	if len(definitions) == 0 || definitions[0].LoadDetail == nil {
+		return DetailBlock{}, ErrToolDetailNotFound
+	}
+	block, err := definitions[0].LoadDetail(ctx)
+	return DetailBlock(block), err
+}
+
 func (m *Supervisor) ToolTags(ctx context.Context) ([]string, error) {
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
 		return nil, err

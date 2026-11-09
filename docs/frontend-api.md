@@ -105,19 +105,6 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 
 管理 API 的端点、请求和响应字段见[官网 API 文档](https://elfreese.github.io/elbot-landing/docs/api/)。权限、会话范围和文件范围由 Control 及其提供方裁决。配置文件写入只改磁盘内容，不热更新已装配的运行配置；重启前可调用配置诊断检查文件内容。
 
-工作目录管理接口以当前绑定的 Session 为目标：
-
-| 方法与路径 | 用途 |
-| --- | --- |
-| `GET /api/v1/workspace` | 读取 Agent 与用户 workspace 路径及同步开关 |
-| `GET /api/v1/workspace/directories?path=<目录>` | 浏览服务器目录；省略 `path` 时从 Agent workspace 开始，未设置时从用户主目录开始 |
-| `PUT /api/v1/workspace/user` | 设置用户 workspace，JSON：`{"path":"/path/to/project"}` |
-| `PUT /api/v1/workspace/sync` | 设置同步方向，JSON：`{"agent_to_user":true,"user_to_agent":false}` |
-| `GET /api/v1/workspace/git?side=agent` | 查询指定 workspace 相对 Git HEAD 的文件状态；`side` 为 `agent` 或 `user` |
-| `GET /api/v1/workspace/git/diff?side=agent&path=main.go` | 查询指定文件相对 Git HEAD 的 diff |
-
-目录浏览结果包含当前 `path`、`parent` 和 `directories`。传入的目录必须存在；可浏览范围由服务器进程的操作系统权限决定。同步开关只在对应 workspace 路径变化时复制路径：Agent→用户、用户→Agent，两个开关同时开启时双向保持路径一致。Git 查询包含暂存、未暂存和未跟踪文件；非 Git 目录返回 `is_git=false` 和空 `changes`。Git diff 返回 `{ "diff": "..." }`，`path` 必须是状态列表中的仓库相对文件路径。
-
 ## 客户端 → 服务端
 
 ### input — 发送消息
@@ -239,7 +226,7 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 
 `/messages` 默认读取第 1 页，每页 20 条。第 1 页最新，页码递增向更早历史读取；每页内按对话顺序排列。向上加载时将更早页面插到顶部，并按消息 ID 去重。页码查询期间有新消息时页面边界可以移动，不提供跨请求快照。空历史返回 `items=[]`、`total_pages=0`。
 
-成功的 `edit_file` 工具结果消息会包含 `tool_name` 和 `file_changes`；每项含文件 `path`、`status` 及 unified `diff`，用于恢复聊天中的可折叠文件改动展示。实时结果通过 `stream` 的 `file_changes` 事件发送。
+工具结果消息包含 `tool_call_id`、`tool_name` 和完整正文；实时 `tool_result` 事件包含调用 ID、工具名、成功状态及完整结果 segments。确认详情通过现有 confirmation 接口返回；自动确认的工具直接显示执行结果。
 
 `/status` 的 `context` 包含 `usage`、`context_window`、`compact_enabled`、`compact_trigger_ratio`。用量字段为 `prompt_tokens`、`completion_tokens`、`total_tokens`、`cache_hit_tokens`；null 表示未知，0 是已知零值。上下文比例使用已知 total/window，缓存命中率使用已知 cache/prompt，不推算缺失计数。此处阶段来自 Turn；实时 `status` 帧仍使用 Runtime 快照。
 
@@ -299,8 +286,8 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 | type | string | 事件类型，见下表 |
 | text | string | 正文／推理增量，或 `send` 的最终完整正文；空文本可能省略，按空字符串处理 |
 | actions | array | 可选的消息操作；元素字段为 `id`、`label`、`command`。前端可展示为按钮，点击后用 `input` 提交 `command`，仍由服务端校验权限 |
-| tool_call_id | string | 文件改动事件关联的工具调用 ID |
-| file_changes | array | 文件改动列表；元素包含 `path`、`status`、`diff` |
+| tool_call_id | string | 工具结果对应的调用 ID |
+| tool_result | object | 工具执行结果，含 `name`、`success` 和完整 `segments` |
 
 | event.type | 客户端处理 |
 |------------|------------|
@@ -310,7 +297,7 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 | reset | 删除该流当前的正文和推理预览；重试可继续使用相同 `stream_id` 生成新预览 |
 | finish | 本次生成结束，保留预览及其流关联，等待最终 `send` 或后续重试的 `reset` |
 | send | 用 `text` **整体替换**正文预览并提交消息，保留推理内容；移除活动流关联。没有预览时也直接创建完整消息 |
-| file_changes | `edit_file` 成功并提交后发送改动文件及 diff；可按 `tool_call_id` 关联工具调用，在聊天中折叠展示 |
+| tool_result | 工具结果持久化后发送；可按 `tool_call_id` 关联调用并在聊天中折叠展示。工具详情正文使用 `GET /api/v1/tools/{name}/detail` 完整读取 |
 
 例如，最终正文可能被 Hook 改写，因此必须使用 `send` 中的全文，而不能直接固定增量拼接结果：
 

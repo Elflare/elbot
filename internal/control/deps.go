@@ -137,6 +137,7 @@ type ContextData struct {
 
 type ToolCapabilities interface {
 	QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
+	LoadToolDetail(context.Context, string) (tool.DetailBlock, error)
 }
 type SkillCapabilities interface {
 	Reload(context.Context) error

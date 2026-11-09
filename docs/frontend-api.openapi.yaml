@@ -62,6 +62,8 @@ paths:
     $ref: './frontend-api/paths/runtime.yaml#/~1runtime~1restart'
   /tools:
     $ref: './frontend-api/paths/extensions.yaml#/~1tools'
+  /tools/{name}/detail:
+    $ref: './frontend-api/paths/extensions.yaml#/~1tools~1{name}~1detail'
   /skills/reload:
     $ref: './frontend-api/paths/extensions.yaml#/~1skills~1reload'
   /skills/{name}:
@@ -86,6 +88,18 @@ paths:
     $ref: './frontend-api/paths/files.yaml#/~1files'
   /files/content:
     $ref: './frontend-api/paths/files.yaml#/~1files~1content'
+  /workspace:
+    $ref: './frontend-api/paths/workspace.yaml#/~1workspace'
+  /workspace/directories:
+    $ref: './frontend-api/paths/workspace.yaml#/~1workspace~1directories'
+  /workspace/user:
+    $ref: './frontend-api/paths/workspace.yaml#/~1workspace~1user'
+  /workspace/sync:
+    $ref: './frontend-api/paths/workspace.yaml#/~1workspace~1sync'
+  /workspace/git:
+    $ref: './frontend-api/paths/workspace.yaml#/~1workspace~1git'
+  /workspace/git/diff:
+    $ref: './frontend-api/paths/workspace.yaml#/~1workspace~1git~1diff'
   /logs:
     $ref: './frontend-api/paths/diagnostics.yaml#/~1logs'
   /usage:

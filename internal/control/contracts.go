@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
@@ -53,19 +52,18 @@ type SessionData struct {
 	ForkFromMessageID string     `json:"fork_from_message_id"`
 }
 type MessageData struct {
-	ID                       string                `json:"id"`
-	SessionID                string                `json:"session_id"`
-	Role                     string                `json:"role"`
-	Content                  string                `json:"content"`
-	ParentMessageID          string                `json:"parent_message_id"`
-	ReplyToPlatformMessageID string                `json:"reply_to_platform_message_id"`
-	ReplyToMessageID         string                `json:"reply_to_message_id"`
-	ToolCallID               string                `json:"tool_call_id"`
-	Segments                 []llm.MessageSegment  `json:"segments"` // 保留原有顺序与媒体引用；出口自行处理展示与授权。
-	Metadata                 string                `json:"metadata"`
-	ToolName                 string                `json:"tool_name,omitempty"`
-	FileChanges              []delivery.FileChange `json:"file_changes,omitempty"`
-	CreatedAt                time.Time             `json:"created_at"`
+	ID                       string               `json:"id"`
+	SessionID                string               `json:"session_id"`
+	Role                     string               `json:"role"`
+	Content                  string               `json:"content"`
+	ParentMessageID          string               `json:"parent_message_id"`
+	ReplyToPlatformMessageID string               `json:"reply_to_platform_message_id"`
+	ReplyToMessageID         string               `json:"reply_to_message_id"`
+	ToolCallID               string               `json:"tool_call_id"`
+	Segments                 []llm.MessageSegment `json:"segments"` // 保留原有顺序与媒体引用；出口自行处理展示与授权。
+	Metadata                 string               `json:"metadata"`
+	ToolName                 string               `json:"tool_name,omitempty"`
+	CreatedAt                time.Time            `json:"created_at"`
 }
 type SessionSummaryData struct {
 	SessionData
@@ -184,6 +182,9 @@ type SetUserWorkspaceRequest struct {
 type SetWorkspaceSyncRequest struct {
 	AgentToUser bool `json:"agent_to_user"`
 	UserToAgent bool `json:"user_to_agent"`
+}
+type ToolDetailRequest struct {
+	Name string // 工具目录名称。
 }
 type WorkspaceGitRequest struct {
 	Side string

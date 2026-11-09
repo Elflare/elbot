@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 	"elbot/internal/testutil"
+	"errors"
 	"reflect"
 	"slices"
 	"testing"
@@ -49,6 +50,13 @@ func TestQueryToolsScopesTagsAndDescriptions(t *testing.T) {
 	}})
 	if _, err := m.RegisterTools(ctx, SourceBuiltin, ToolRegistrationScope{}, definitions); err != nil {
 		t.Fatal(err)
+	}
+	detail, err := m.LoadToolDetail(ctx, "guide")
+	if err != nil || detail.Content != "Plain instructions" || detail.Format != "" {
+		t.Fatalf("detail=%+v err=%v", detail, err)
+	}
+	if _, err := m.LoadToolDetail(ctx, "alpha"); !errors.Is(err, ErrToolDetailNotFound) {
+		t.Fatalf("tool without detail error=%v", err)
 	}
 	for _, tc := range []struct {
 		name  string

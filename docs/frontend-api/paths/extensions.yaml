@@ -37,6 +37,22 @@
                     items: { $ref: '../components/schemas.yaml#/schemas/ToolInfo' }
                 required: [items]
         default: { $ref: '../components/transport.yaml#/responses/Error' }
+  /tools/{name}/detail:
+    get:
+      operationId: getToolDetail
+      summary: Get complete tool detail
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Complete tool detail content.
+          content:
+            application/json:
+              schema: { $ref: '../components/schemas.yaml#/schemas/ToolDetail' }
+        default: { $ref: '../components/transport.yaml#/responses/Error' }
   /skills/reload:
     post:
       operationId: reloadSkills

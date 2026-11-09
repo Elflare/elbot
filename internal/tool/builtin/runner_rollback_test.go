@@ -90,6 +90,8 @@ func (d *runnerTestDeps) SendPreview(context.Context, ...string) {}
 func (d *runnerTestDeps) SendOutputs(context.Context, []delivery.Output) error {
 	return nil
 }
+
+func (d *runnerTestDeps) PublishToolResult(context.Context, string, delivery.ToolResult) {}
 func (d *runnerTestDeps) AuditToolDenied(context.Context, string, llm.ToolCallRequest, toolshare.RiskLevel, string) {
 }
 func (d *runnerTestDeps) AddToolUse(string, string) {}

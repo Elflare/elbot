@@ -34,6 +34,14 @@ func (h *handler) queryTools(w http.ResponseWriter, req *http.Request) {
 	}
 	writeAPIJSON(w, http.StatusOK, map[string]any{"items": items})
 }
+func (h *handler) toolDetail(w http.ResponseWriter, req *http.Request) {
+	result, err := h.control.LoadToolDetail(req.Context(), control.ToolDetailRequest{Name: req.PathValue("name")})
+	if err != nil {
+		writeControlError(w, err)
+		return
+	}
+	writeAPIJSON(w, http.StatusOK, result)
+}
 func (h *handler) reloadSkills(w http.ResponseWriter, req *http.Request) {
 	if err := h.control.ReloadSkills(req.Context()); err != nil {
 		writeControlError(w, err)
