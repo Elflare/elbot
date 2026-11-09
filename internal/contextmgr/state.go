@@ -41,10 +41,16 @@ func DecodeState(raw string) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
+	return decodeState(fields)
+}
+func decodeState(fields storage.SessionMetadata) (State, error) {
 	var state State
-	for key, target := range map[string]any{"last_usage": &state.LastUsage, "context_compact": &state.Compact} {
-		if value, ok := fields[key]; ok {
-			if err := json.Unmarshal(value, target); err != nil {
+	for key, target := range map[string]any{
+		"last_usage":      &state.LastUsage,
+		"context_compact": &state.Compact,
+	} {
+		if raw, ok := fields[key]; ok {
+			if err := json.Unmarshal(raw, target); err != nil {
 				return State{}, fmt.Errorf("decode context metadata %s: %w", key, err)
 			}
 		}
@@ -68,18 +74,19 @@ func PendingCompact(row *storage.Session) (*CompactState, error) {
 
 func (s *Service) ConsumeSeed(ctx context.Context, id string) (*storage.Session, error) {
 	return s.store.Sessions().Mutate(ctx, id, func(row *storage.Session) error {
-		state, err := DecodeState(row.Metadata)
+		fields, err := storage.DecodeSessionMetadata(row.Metadata)
+		if err != nil {
+			return err
+		}
+		state, err := decodeState(fields)
 		if err != nil {
 			return err
 		}
 		if state.Compact == nil || !state.Compact.Pending {
 			return nil
 		}
+
 		state.Compact.Pending = false
-		fields, err := storage.DecodeSessionMetadata(row.Metadata)
-		if err != nil {
-			return err
-		}
 		if err := fields.Set("context_compact", state.Compact); err != nil {
 			return err
 		}
@@ -93,11 +100,11 @@ func (s *Service) ConsumeSeed(ctx context.Context, id string) (*storage.Session,
 
 // CompactedMetadata carries the latest other-module fields into the new session.
 func CompactedMetadata(raw string, state *CompactState) (string, error) {
-	if _, err := DecodeState(raw); err != nil {
-		return "", err
-	}
 	fields, err := storage.DecodeSessionMetadata(raw)
 	if err != nil {
+		return "", err
+	}
+	if _, err := decodeState(fields); err != nil {
 		return "", err
 	}
 	if err := fields.Set("context_compact", state); err != nil {
