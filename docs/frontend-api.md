@@ -131,7 +131,7 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 {"type": "complete", "id": "c-1", "text": "/mod", "cursor": 4}
 ```
 
-请求当前输入文本的命令补全候选。`id` 用于匹配响应。`cursor` 为光标在 `text` 中的字节偏移，省略时取末尾。
+请求当前输入文本的补全候选。`id` 用于匹配响应。`cursor` 为光标在 `text` 中的字节偏移，省略时取末尾。
 
 服务端回复 `complete_result`。
 
@@ -348,7 +348,7 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 | Text | string | 插入的文本 |
 | Label | string | 展示标签 |
 | Description | string | 补充描述 |
-| Kind | string | 候选类型，如 `command`、`tool`、`fork` |
+| Kind | string | 候选类型，如 `command`、`tool`、`fork`、`workspace_file` |
 | ReplaceStart | int | 替换起始字节偏移 |
 | ReplaceEnd | int | 替换结束字节偏移 |
 

@@ -2,9 +2,7 @@ package share
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"strings"
 
 	"elbot/internal/completion"
 	"elbot/internal/delivery"
@@ -63,17 +61,6 @@ type ClientDisplay interface {
 }
 
 type ClientDisplayFactory func() ClientDisplay
-
-func FormatFileExpansion(path, content string) string {
-	fence := "```"
-	for strings.Contains(content, fence) {
-		fence += "`"
-	}
-	if content != "" && !strings.HasSuffix(content, "\n") {
-		content += "\n"
-	}
-	return fmt.Sprintf("[file: %s]\n%stext\n%s%s", path, fence, content, fence)
-}
 
 // Media 是远程 CLI 使用的最小归档与持有能力。
 type Media interface {

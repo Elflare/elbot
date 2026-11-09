@@ -2,9 +2,6 @@ package input
 
 import (
 	"context"
-	"elbot/internal/delivery"
-	"elbot/internal/tool"
-	"elbot/internal/workspace"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,18 +10,21 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/control"
+	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
 	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
-
+	"elbot/internal/tool"
 	"elbot/internal/turn"
+	"elbot/internal/workspace"
 )
 
 // InputCoordinator prepares input outside admission and delegates execution state
 // changes to ExecutionCoordinator and the existing Session/Turn services.
 type InputCoordinator struct {
-	commandText func(string, ...string) string
+	commandText    func(string, ...string) string
+	normalizeInput func(context.Context, string, []llm.MessageSegment) ([]llm.MessageSegment, error)
 	// NewWorkspaceStore binds workspace operations to the admitted session.
 	NewWorkspaceStore func(string) workspace.WorkspaceStore
 	sessions          interface {
@@ -108,7 +108,12 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 	facts.Mode = session.Mode
 	ctx = contextinfo.WithExecution(ctx, facts)
 	release()
-	segments, err := c.hooks.AgentInputPrepared(ctx,
+	segments, err := c.normalizeInput(ctx, session.ID, agentshare.InboundSegments(ctx, text))
+	if err != nil {
+		return ctx, err
+	}
+	ctx = agentshare.WithInboundSegments(ctx, segments)
+	segments, err = c.hooks.AgentInputPrepared(ctx,
 		agentshare.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status},
 		agentshare.Message{Role: string(llm.RoleUser), Segments: agentshare.InboundSegments(ctx, text)})
 	if err != nil {
@@ -162,10 +167,17 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 	return ctx, nil
 }
 
-// NewInputCoordinator initializes InputCoordinator without installing cross-service callbacks.
+// NewInputCoordinator initializes InputCoordinator; platform-specific normalization is optional.
 func NewInputCoordinator(deps InputCoordinatorDeps) *InputCoordinator {
+	normalizeInput := deps.NormalizeInput
+	if normalizeInput == nil {
+		normalizeInput = func(_ context.Context, _ string, segments []llm.MessageSegment) ([]llm.MessageSegment, error) {
+			return segments, nil
+		}
+	}
 	return &InputCoordinator{
 		commandText:       deps.CommandText,
+		normalizeInput:    normalizeInput,
 		sessions:          deps.Sessions,
 		NewWorkspaceStore: deps.NewWorkspaceStore,
 		turns:             deps.Turns,

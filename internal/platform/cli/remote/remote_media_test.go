@@ -26,6 +26,7 @@ import (
 	"elbot/internal/platform/share"
 	"elbot/internal/testutil"
 	"elbot/internal/testutil/mediatest"
+	"elbot/internal/workspace"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
@@ -340,7 +341,7 @@ func TestRemoteMediaInputNormalization(t *testing.T) {
 					t.Fatalf("input = %+v", input)
 				}
 				if tc.kind == share.SegmentText {
-					want := clishare.FormatFileExpansion(tc.name, string(tc.data))
+					want := workspace.FormatFileExpansion(tc.name, string(tc.data))
 					if text != want || input.Segments[0].Text != want {
 						t.Fatalf("expanded text = %q", text)
 					}

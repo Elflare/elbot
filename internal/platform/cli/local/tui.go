@@ -170,7 +170,6 @@ type tuiModel struct {
 	copyState       copyModeState
 	clipboard       clipboardWriter
 	completion      func(context.Context, completion.Request) ([]completion.Item, error)
-	localFiles      *localFileResolver
 	completionState completionState
 	content         []*tuiContentBlock
 	notices         []tuiNotice
@@ -212,7 +211,6 @@ func runTUI(m tuiModel, setProgram tuiProgramSetter) error {
 	}
 	m.input = newTUIInput()
 	m.clipboard = newClipboardWriter()
-	m.localFiles = newLocalFileResolver("")
 	program := tea.NewProgram(m, tea.WithMouseCellMotion(), tea.WithContext(context.WithoutCancel(m.ctx)), tea.WithoutSignalHandler())
 	// 使用正常退出消息，让 Bubble Tea 等待输入读取退出后再关闭 reader。
 	quitDone := make(chan struct{})
@@ -630,32 +628,11 @@ func (m tuiModel) completeInput(delta int) (tea.Model, tea.Cmd) {
 
 func (m tuiModel) complete(value string) ([]completion.Item, error) {
 	cursor := byteOffsetForRunePosition(value, textareaCursorRunePosition(m.input))
-	if resolver := m.localFileResolver(); resolver != nil {
-		items := resolver.Complete(m.ctx, completion.Request{Text: value, Cursor: cursor})
-		if len(items) > 0 {
-			return items, nil
-		}
-	}
 	if m.completion != nil {
 		return m.completion(m.ctx, completion.Request{Text: value, Cursor: cursor})
 	}
 
 	return nil, nil
-}
-
-func (m tuiModel) localFileResolver() *localFileResolver {
-	if m.localFiles != nil {
-		return m.localFiles
-	}
-	return newLocalFileResolver("")
-}
-
-func (m tuiModel) expandLocalFileReferences(text string) (string, error) {
-	resolver := m.localFileResolver()
-	if resolver == nil {
-		return text, nil
-	}
-	return resolver.expandReferences(text)
 }
 
 func (m *tuiModel) clearCompletion() {
@@ -796,18 +773,12 @@ func (m tuiModel) submitInput() (tea.Model, tea.Cmd) {
 	if text == "/exit" {
 		return m, m.exit()
 	}
-	sendText, err := m.expandLocalFileReferences(text)
-	if err != nil {
-		m.input.SetValue(m.input.Value())
-		m.appendNoticeLevel("local file reference: "+err.Error(), slog.LevelError)
-		return m, nil
-	}
 	m.history = append(m.history, text)
 	m.histPos = len(m.history)
 	m.clearInput()
 	m.appendUserContent(text)
 	go func() {
-		_ = m.handler(m.ctx, sendText)
+		_ = m.handler(m.ctx, text)
 	}()
 	return m, nil
 }

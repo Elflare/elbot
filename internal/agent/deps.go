@@ -75,8 +75,9 @@ type ToolCapabilities interface {
 	RollbackByID(context.Context, uint64) (fileops.RollbackResult, error)
 }
 
-// PlatformCapabilities supplies platform identity and delivery for Agent output.
+// PlatformCapabilities supplies platform-owned input normalization, identity, and delivery.
 type PlatformCapabilities interface {
+	NormalizeInput(context.Context, []llm.MessageSegment) ([]llm.MessageSegment, error)
 	SendCommandResult(context.Context, command.Request, *command.Result, *command.Error) (delivery.Receipt, error)
 	SessionIDCode(string, contextinfo.ChatType) (string, error)
 	RestoreMessageContext(context.Context, context.Context) context.Context

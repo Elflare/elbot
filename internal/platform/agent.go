@@ -6,14 +6,46 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 
 	"elbot/internal/agent"
+	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/platform/cli"
 	"elbot/internal/platform/share"
 	"elbot/internal/signal"
+	"elbot/internal/workspace"
 )
+
+// NormalizeInput applies source-platform input normalization after Session resolution.
+func (*Supervisor) NormalizeInput(ctx context.Context, segments []llm.MessageSegment) ([]llm.MessageSegment, error) {
+	info, ok := contextinfo.ConversationFromContext(ctx)
+	if !ok || info.Source.Platform != config.PlatformCLI {
+		return segments, nil
+	}
+	var root string
+	for i := range segments {
+		if segments[i].Type != llm.SegmentText || !strings.Contains(segments[i].Text, "#") {
+			continue
+		}
+		if root == "" {
+			var err error
+			root, err = workspace.CurrentWorkspaceDir(ctx)
+			if err != nil {
+				return nil, err
+			}
+		}
+		var err error
+		segments[i].Text, err = workspace.ExpandFileReferences(ctx, root, segments[i].Text)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return segments, nil
+}
 
 // ConnectAgent 在启动前一次性完成接线，子包只获得其实际使用的能力。
 func (m *Supervisor) ConnectAgent(source AgentCapabilities) error {

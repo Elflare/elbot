@@ -22,8 +22,8 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/media"
-	clishare "elbot/internal/platform/cli/share"
 	platformshare "elbot/internal/platform/share"
+	"elbot/internal/workspace"
 )
 
 type remoteMediaRef struct {
@@ -274,7 +274,7 @@ func (s *RemoteServer) prepareInputFiles(ctx context.Context, text string, files
 			}
 			if bytes.IndexByte(data, 0) < 0 && utf8.Valid(data) {
 				total += int64(len(data))
-				expanded := clishare.FormatFileExpansion(file.attachment.Name, string(data))
+				expanded := workspace.FormatFileExpansion(file.attachment.Name, string(data))
 				texts = append(texts, expanded)
 				segments = append(segments, platformshare.MessageSegment{Type: platformshare.SegmentText, Text: expanded})
 				continue

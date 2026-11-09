@@ -3,8 +3,6 @@ package local
 import (
 	"context"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -238,100 +236,53 @@ func TestCompletionUsesCursorInMultilineInput(t *testing.T) {
 	}
 }
 
-func TestLocalFileCompletionFuzzyMatchesRelativePaths(t *testing.T) {
-	root := t.TempDir()
-	mustWriteFile(t, root, "internal/app/app.go", "package app\n")
-	mustWriteFile(t, root, "README.md", "hello\n")
-	m := tuiModel{localFiles: newLocalFileResolver(root), input: newTUIInput(), width: 80, height: 20}
+func TestCompletionUsesServerWorkspaceFileCandidates(t *testing.T) {
+	service := completion.NewService(staticCompletionSource{{Text: "#internal/app/app.go", Label: "internal/app/app.go", Kind: "workspace_file", ReplaceStart: 0, ReplaceEnd: 4}})
+	m := tuiModel{completion: service.Complete, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("#iag")
 	m.input.CursorEnd()
 
 	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)
 	if got := m.input.Value(); got != "#internal/app/app.go" {
-		t.Fatalf("local file completion = %q", got)
+		t.Fatalf("workspace file completion = %q", got)
 	}
 }
 
-func TestLocalFileCompletionQuotesPathsWithSpaces(t *testing.T) {
-	root := t.TempDir()
-	mustWriteFile(t, root, "notes/a b.txt", "hello\n")
-	m := tuiModel{localFiles: newLocalFileResolver(root), input: newTUIInput(), width: 80, height: 20}
+func TestCompletionUsesServerWorkspaceQuotedCandidate(t *testing.T) {
+	service := completion.NewService(staticCompletionSource{{Text: "#\"notes/a b.txt\"", Label: "notes/a b.txt", Kind: "workspace_file", ReplaceStart: 0, ReplaceEnd: 4}})
+	m := tuiModel{completion: service.Complete, input: newTUIInput(), width: 80, height: 20}
 	m.input.SetValue("#\"ab")
 	m.input.CursorEnd()
 
 	updated, _ := m.completeInput(1)
 	m = updated.(tuiModel)
 	if got := m.input.Value(); got != "#\"notes/a b.txt\"" {
-		t.Fatalf("quoted local file completion = %q", got)
+		t.Fatalf("quoted workspace file completion = %q", got)
 	}
 }
 
-func TestEnterExpandsLocalFileReferencesBeforeSending(t *testing.T) {
-	root := t.TempDir()
-	mustWriteFile(t, root, "foo.txt", "hello\n")
+func TestEnterSendsWorkspaceReferenceForServerExpansion(t *testing.T) {
 	handler := capturingHandler{messages: make(chan string, 1)}
-	m := tuiModel{ctx: context.Background(), handler: handler.HandleMessage, output: make(chan tea.Msg, 1), localFiles: newLocalFileResolver(root), input: newTUIInput(), width: 80, height: 20}
-	m.input.SetValue("see #foo.txt")
+	m := tuiModel{ctx: context.Background(), handler: handler.HandleMessage, output: make(chan tea.Msg, 1), input: newTUIInput(), width: 80, height: 20}
+	m.input.SetValue("see #src/foo.txt")
 	m.input.CursorEnd()
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(tuiModel)
 	select {
 	case got := <-handler.messages:
-		if !strings.Contains(got, "[file: foo.txt]") || !strings.Contains(got, "hello\n") {
-			t.Fatalf("expanded message = %q", got)
+		if got != "see #src/foo.txt" {
+			t.Fatalf("submitted message = %q", got)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("message was not sent")
 	}
-	if len(m.history) != 1 || m.history[0] != "see #foo.txt" {
+	if len(m.history) != 1 || m.history[0] != "see #src/foo.txt" {
 		t.Fatalf("history = %#v", m.history)
 	}
-	if !strings.Contains(m.wrappedContent(), "see #foo.txt") {
+	if !strings.Contains(m.wrappedContent(), "see #src/foo.txt") {
 		t.Fatalf("transcript = %q", m.wrappedContent())
-	}
-}
-
-func TestEnterSendsMissingLocalFileReferenceAsLiteralText(t *testing.T) {
-	root := t.TempDir()
-	handler := capturingHandler{messages: make(chan string, 1)}
-	m := tuiModel{ctx: context.Background(), handler: handler.HandleMessage, output: make(chan tea.Msg, 1), localFiles: newLocalFileResolver(root), input: newTUIInput(), width: 80, height: 20}
-	m.input.SetValue("see #missing.txt")
-	m.input.CursorEnd()
-
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = updated.(tuiModel)
-	select {
-	case got := <-handler.messages:
-		if got != "see #missing.txt" {
-			t.Fatalf("message = %q", got)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("message was not sent")
-	}
-	if got := m.input.Value(); got != "" {
-		t.Fatalf("input after send = %q", got)
-	}
-	if len(m.history) != 1 || m.history[0] != "see #missing.txt" {
-		t.Fatalf("history = %#v", m.history)
-	}
-}
-
-func TestExpandReferencesExpandsExistingAndPreservesMissing(t *testing.T) {
-	root := t.TempDir()
-	mustWriteFile(t, root, "foo.txt", "hello\n")
-	resolver := newLocalFileResolver(root)
-
-	got, err := resolver.expandReferences("use #foo.txt and #missing.txt and #\"missing file.txt\"")
-	if err != nil {
-		t.Fatalf("expand references: %v", err)
-	}
-	if !strings.Contains(got, "[file: foo.txt]") || !strings.Contains(got, "hello\n") {
-		t.Fatalf("existing reference was not expanded: %q", got)
-	}
-	if !strings.Contains(got, "#missing.txt") || !strings.Contains(got, "#\"missing file.txt\"") {
-		t.Fatalf("missing references were not preserved: %q", got)
 	}
 }
 
@@ -503,14 +454,13 @@ func TestRuntimeStatusTickKeepsFinishedElapsedFixed(t *testing.T) {
 func TestMultilinePasteStaysInTextareaUntilEnter(t *testing.T) {
 	handler := capturingHandler{messages: make(chan string, 1)}
 	m := tuiModel{
-		ctx:        context.Background(),
-		handler:    handler.HandleMessage,
-		output:     make(chan tea.Msg, 1),
-		localFiles: newLocalFileResolver(t.TempDir()),
-		input:      newTUIInput(),
-		width:      80,
-		height:     20,
-		userName:   "user",
+		ctx:      context.Background(),
+		handler:  handler.HandleMessage,
+		output:   make(chan tea.Msg, 1),
+		input:    newTUIInput(),
+		width:    80,
+		height:   20,
+		userName: "user",
 	}
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("first\r\nsecond"), Paste: true})
@@ -689,17 +639,6 @@ type staticCompletionSource []completion.Item
 
 func (s staticCompletionSource) Complete(context.Context, completion.Request) ([]completion.Item, error) {
 	return s, nil
-}
-
-func mustWriteFile(t *testing.T, root, rel, content string) {
-	t.Helper()
-	path := filepath.Join(root, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestAppendUserContentAddsSeparatorBetweenTurns(t *testing.T) {

@@ -241,6 +241,10 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	})
 	input := agentinput.NewInputCoordinator(agentinput.InputCoordinatorDeps{
 		CommandText: commandText,
+		NormalizeInput: func(ctx context.Context, sessionID string, segments []llm.MessageSegment) ([]llm.MessageSegment, error) {
+			ctx = workspace.WithWorkspaceStore(ctx, m.sessions.WorkspaceStore(sessionID))
+			return deps.Platform.NormalizeInput(ctx, segments)
+		},
 		NewWorkspaceStore: func(id string) workspace.WorkspaceStore {
 			return m.sessions.WorkspaceStore(id)
 		},
@@ -271,6 +275,17 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		MediaRows: deps.Store.Media(),
 	})
 	m.completion = completion.NewService(
+		completion.WorkspaceFilesSource{Root: func(ctx context.Context) (string, error) {
+			ctx = contextinfo.WithActor(ctx, identity.Actor(ctx))
+			row, err := m.sessions.Current(ctx, identity.Scope(ctx))
+			if err != nil {
+				if !errors.Is(err, session.ErrNoCurrentSession) {
+					return "", err
+				}
+				return workspace.CurrentWorkspaceDir(ctx)
+			}
+			return workspace.CurrentWorkspaceDir(workspace.WithWorkspaceStore(ctx, m.sessions.WorkspaceStore(row.ID)))
+		}},
 		completion.RiskConfirmationSource{Router: m.commands, Control: deps.Control, CommandNames: agentconfirmation.RiskConfirmationCommandNames()},
 		completion.ForkMessageSource{Router: m.commands, Control: deps.Control, PageSize: cfg.View.SessionListPageSize},
 		completion.ToolDirectiveSource{

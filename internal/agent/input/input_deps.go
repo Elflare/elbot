@@ -2,6 +2,8 @@ package input
 
 import (
 	"context"
+	"log/slog"
+
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/control"
@@ -10,10 +12,8 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
-	"elbot/internal/workspace"
-	"log/slog"
-
 	"elbot/internal/turn"
+	"elbot/internal/workspace"
 )
 
 type InputIdentity interface {
@@ -41,6 +41,8 @@ type InputConfirmations interface {
 // InputCoordinatorDeps declares only the capabilities consumed by InputCoordinator.
 type InputCoordinatorDeps struct {
 	CommandText func(string, ...string) string // 根部绑定配置首个前缀的命令组装能力。
+	// NormalizeInput delegates source-specific normalization after Session selection.
+	NormalizeInput func(context.Context, string, []llm.MessageSegment) ([]llm.MessageSegment, error)
 	// NewWorkspaceStore binds workspace operations to the admitted session.
 	NewWorkspaceStore func(string) workspace.WorkspaceStore
 	Sessions          interface {
