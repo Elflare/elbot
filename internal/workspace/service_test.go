@@ -29,16 +29,16 @@ func (s *serviceTestStore) SetUserWorkspaceDir(_ context.Context, dir string) er
 	s.state.SetUserDir(dir)
 	return nil
 }
-func (s *serviceTestStore) SetWorkspaceSync(_ context.Context, agentToUser, userToAgent bool) (State, error) {
-	s.state.SetSync(agentToUser, userToAgent)
+func (s *serviceTestStore) SetWorkspaceSync(_ context.Context, agentToUser, userToAgent bool, agentDir string) (State, error) {
+	s.state.SetSync(agentToUser, userToAgent, agentDir)
 	return s.state, nil
 }
 
 func TestServiceReturnsDefaultWorkspaceWithoutPersistingIt(t *testing.T) {
 	store := &serviceTestStore{}
-	service := NewService(func(string) SessionStateStore { return store })
+	service := NewService(func(context.Context) (string, error) { return "session", nil }, func(string) SessionStateStore { return store })
 
-	state, err := service.GetSessionState(t.Context(), "session")
+	_, state, err := service.GetCurrentState(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,10 +54,27 @@ func TestServiceReturnsDefaultWorkspaceWithoutPersistingIt(t *testing.T) {
 func TestServiceReturnsSessionWorkspacePath(t *testing.T) {
 	dir := t.TempDir()
 	store := &serviceTestStore{state: State{Dir: dir}}
-	service := NewService(func(string) SessionStateStore { return store })
+	service := NewService(func(context.Context) (string, error) { return "session", nil }, func(string) SessionStateStore { return store })
 
-	state, err := service.GetSessionState(t.Context(), "session")
+	_, state, err := service.GetCurrentState(t.Context())
 	if err != nil || state.Dir != dir {
 		t.Fatalf("state=%+v err=%v", state, err)
+	}
+}
+
+func TestServiceSyncCopiesDefaultAgentPathWithoutPersistingIt(t *testing.T) {
+	store := &serviceTestStore{}
+	service := NewService(func(context.Context) (string, error) { return "session", nil }, func(string) SessionStateStore { return store })
+
+	_, state, err := service.SetSync(t.Context(), true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.UserDir != cwd || state.Dir != cwd || store.state.Dir != "" {
+		t.Fatalf("returned=%+v stored=%+v; want effective paths=%q and unset stored agent path", state, store.state, cwd)
 	}
 }

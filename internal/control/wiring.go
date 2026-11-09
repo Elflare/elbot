@@ -27,9 +27,9 @@ type AgentDeps struct {
 }
 
 type WorkspaceCapabilities interface {
-	GetSessionState(context.Context, string) (workspace.State, error)
-	SetUserDir(context.Context, string, string) (workspace.State, error)
-	SetSync(context.Context, string, bool, bool) (workspace.State, error)
+	GetCurrentState(context.Context) (string, workspace.State, error)
+	SetUserDir(context.Context, string) (string, workspace.State, error)
+	SetSync(context.Context, bool, bool) (string, workspace.State, error)
 }
 
 // ConnectAgent 仅用于启动前装配，能力不允许被后续构造替换。

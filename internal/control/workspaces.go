@@ -4,16 +4,15 @@ import (
 	"context"
 	"strings"
 
-	"elbot/internal/storage"
 	"elbot/internal/workspace"
 )
 
 func (m *Supervisor) Workspace(ctx context.Context) (WorkspaceResult, error) {
-	row, state, err := m.currentWorkspace(ctx)
+	sessionID, state, err := m.currentWorkspace(ctx)
 	if err != nil {
 		return WorkspaceResult{}, err
 	}
-	return workspaceResult(row.ID, state), nil
+	return workspaceResult(sessionID, state), nil
 }
 
 func (m *Supervisor) WorkspaceDirectories(ctx context.Context, req WorkspaceDirectoriesRequest) (WorkspaceDirectoriesResult, error) {
@@ -49,31 +48,29 @@ func (m *Supervisor) WorkspaceFiles(ctx context.Context, req WorkspaceFilesReque
 	return result, nil
 }
 func (m *Supervisor) SetUserWorkspace(ctx context.Context, req SetUserWorkspaceRequest) (WorkspaceResult, error) {
-	row, err := m.currentSession(ctx)
-	if err != nil {
+	if err := m.authorizeWorkspace(ctx); err != nil {
 		return WorkspaceResult{}, err
 	}
 	path, err := workspace.ValidateWorkspaceDir(req.Path)
 	if err != nil {
 		return WorkspaceResult{}, invalid(err.Error())
 	}
-	state, err := m.workspaces.SetUserDir(ctx, row.ID, path)
+	sessionID, state, err := m.workspaces.SetUserDir(ctx, path)
 	if err != nil {
 		return WorkspaceResult{}, ClassifyError(err)
 	}
-	return workspaceResult(row.ID, state), nil
+	return workspaceResult(sessionID, state), nil
 }
 
 func (m *Supervisor) SetWorkspaceSync(ctx context.Context, req SetWorkspaceSyncRequest) (WorkspaceResult, error) {
-	row, err := m.currentSession(ctx)
-	if err != nil {
+	if err := m.authorizeWorkspace(ctx); err != nil {
 		return WorkspaceResult{}, err
 	}
-	state, err := m.workspaces.SetSync(ctx, row.ID, req.AgentToUser, req.UserToAgent)
+	sessionID, state, err := m.workspaces.SetSync(ctx, req.AgentToUser, req.UserToAgent)
 	if err != nil {
 		return WorkspaceResult{}, ClassifyError(err)
 	}
-	return workspaceResult(row.ID, state), nil
+	return workspaceResult(sessionID, state), nil
 }
 
 func (m *Supervisor) WorkspaceGit(ctx context.Context, req WorkspaceGitRequest) (WorkspaceGitResult, error) {
@@ -108,27 +105,19 @@ func (m *Supervisor) WorkspaceGitDiff(ctx context.Context, req WorkspaceGitReque
 	return diff, ClassifyError(err)
 }
 
-func (m *Supervisor) currentSession(ctx context.Context) (*storage.Session, error) {
-	if err := authorize(ctx, false, m.deps.Sessions != nil && m.deps.Scope != nil); err != nil {
-		return nil, err
-	}
-	row, err := m.deps.Sessions.Current(ctx, m.deps.Scope(ctx))
-	if err != nil {
-		return nil, ClassifyError(err)
-	}
-	return row, nil
+func (m *Supervisor) authorizeWorkspace(ctx context.Context) error {
+	return authorize(ctx, false, m.workspaces != nil && m.deps.Scope != nil)
 }
 
-func (m *Supervisor) currentWorkspace(ctx context.Context) (*storage.Session, workspace.State, error) {
-	row, err := m.currentSession(ctx)
-	if err != nil {
-		return nil, workspace.State{}, err
+func (m *Supervisor) currentWorkspace(ctx context.Context) (string, workspace.State, error) {
+	if err := m.authorizeWorkspace(ctx); err != nil {
+		return "", workspace.State{}, err
 	}
-	state, err := m.workspaces.GetSessionState(ctx, row.ID)
+	sessionID, state, err := m.workspaces.GetCurrentState(ctx)
 	if err != nil {
-		return nil, workspace.State{}, ClassifyError(err)
+		return "", workspace.State{}, ClassifyError(err)
 	}
-	return row, state, nil
+	return sessionID, state, nil
 }
 
 func workspaceResult(sessionID string, state workspace.State) WorkspaceResult {

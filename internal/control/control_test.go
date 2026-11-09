@@ -101,16 +101,16 @@ func TestWorkspaceFilesUsesRequestedSideAndRelativePath(t *testing.T) {
 
 type workspaceCapabilitiesStub struct{ state workspace.State }
 
-func (s workspaceCapabilitiesStub) GetSessionState(context.Context, string) (workspace.State, error) {
-	return s.state, nil
+func (s workspaceCapabilitiesStub) GetCurrentState(context.Context) (string, workspace.State, error) {
+	return "current", s.state, nil
 }
-func (s workspaceCapabilitiesStub) SetUserDir(_ context.Context, _ string, dir string) (workspace.State, error) {
-	s.state.UserDir = dir
-	return s.state, nil
+func (s workspaceCapabilitiesStub) SetUserDir(_ context.Context, dir string) (string, workspace.State, error) {
+	s.state.SetUserDir(dir)
+	return "current", s.state, nil
 }
-func (s workspaceCapabilitiesStub) SetSync(_ context.Context, _ string, agentToUser, userToAgent bool) (workspace.State, error) {
-	s.state.SetSync(agentToUser, userToAgent)
-	return s.state, nil
+func (s workspaceCapabilitiesStub) SetSync(_ context.Context, agentToUser, userToAgent bool) (string, workspace.State, error) {
+	s.state.SetSync(agentToUser, userToAgent, s.state.Dir)
+	return "current", s.state, nil
 }
 
 func TestWorkspaceDirectoryBrowsingRequiresIdentityEvenWithExplicitPath(t *testing.T) {

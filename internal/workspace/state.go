@@ -154,15 +154,15 @@ func (s *State) SetUserDir(dir string) {
 	}
 }
 
-func (s *State) SetSync(agentToUser, userToAgent bool) {
+func (s *State) SetSync(agentToUser, userToAgent bool, agentDir string) {
 	newAgentToUser := agentToUser && !s.AgentToUser
 	newUserToAgent := userToAgent && !s.UserToAgent
 	s.AgentToUser, s.UserToAgent = agentToUser, userToAgent
-	switch {
-	case newUserToAgent:
+	if newAgentToUser {
+		s.UserDir = agentDir
+	}
+	if newUserToAgent {
 		s.Dir = s.UserDir
-	case newAgentToUser:
-		s.UserDir = s.Dir
 	}
 }
 

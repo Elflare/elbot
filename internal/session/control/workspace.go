@@ -80,10 +80,10 @@ func (s *Service) SetUserWorkspaceDir(ctx context.Context, id, dir string) error
 	return s.saveWorkspace(ctx, id, func(state *workspace.State) { state.SetUserDir(dir) })
 }
 
-func (s *Service) SetWorkspaceSync(ctx context.Context, id string, agentToUser, userToAgent bool) (workspace.State, error) {
+func (s *Service) SetWorkspaceSync(ctx context.Context, id string, agentToUser, userToAgent bool, agentDir string) (workspace.State, error) {
 	var result workspace.State
 	err := s.saveWorkspace(ctx, id, func(state *workspace.State) {
-		state.SetSync(agentToUser, userToAgent)
+		state.SetSync(agentToUser, userToAgent, agentDir)
 		result = *state
 	})
 	return result, err

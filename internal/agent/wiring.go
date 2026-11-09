@@ -221,7 +221,13 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Identity: identity,
 	})
 	controlAdapter := controlAdapter{supervisor: m, store: deps.Store, models: deps.Models, scope: identity.Scope, status: status}
-	workspaces := workspace.NewService(func(id string) workspace.SessionStateStore {
+	workspaces := workspace.NewService(func(ctx context.Context) (string, error) {
+		row, err := m.sessions.Current(ctx, identity.Scope(ctx))
+		if err != nil {
+			return "", err
+		}
+		return row.ID, nil
+	}, func(id string) workspace.SessionStateStore {
 		return m.sessions.WorkspaceStore(id)
 	})
 	if err := deps.Control.ConnectAgent(control.AgentDeps{Sessions: m.sessions, Workspaces: workspaces, History: controlAdapter, Requests: m.requests, Execution: controlAdapter, Confirmations: confirmations, Scope: identity.Scope, Status: controlAdapter.Status, Commands: controlAdapter.Commands, Tools: deps.Tools, Skills: deps.Tools, FileRollback: fileRollbackCapabilities{tools: deps.Tools}, PrepareFileContext: fileCommands.PrepareFileCommand}); err != nil {

@@ -102,7 +102,7 @@ func TestWorkspaceSyncDirectionsFollowTheChangedSide(t *testing.T) {
 	if err := f.s.SetUserWorkspaceDir(ctx, row.ID, "/user"); err != nil {
 		t.Fatal(err)
 	}
-	state, err := f.s.SetWorkspaceSync(ctx, row.ID, true, false)
+	state, err := f.s.SetWorkspaceSync(ctx, row.ID, true, false, "/agent")
 	if err != nil || state.Dir != "/agent" || state.UserDir != "/agent" {
 		t.Fatalf("enable agent-to-user = %+v, %v", state, err)
 	}
@@ -116,7 +116,7 @@ func TestWorkspaceSyncDirectionsFollowTheChangedSide(t *testing.T) {
 	if err != nil || state.Dir != "/agent-next" || state.UserDir != "/user-only" {
 		t.Fatalf("one-way state = %+v, %v", state, err)
 	}
-	state, err = f.s.SetWorkspaceSync(ctx, row.ID, true, true)
+	state, err = f.s.SetWorkspaceSync(ctx, row.ID, true, true, "/agent-next")
 	if err != nil || state.Dir != "/user-only" || state.UserDir != "/user-only" {
 		t.Fatalf("enable reverse direction = %+v, %v", state, err)
 	}
