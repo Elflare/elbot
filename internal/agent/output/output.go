@@ -122,7 +122,7 @@ func (o *OutputSender) StartStream(ctx context.Context) delivery.MessageStream {
 			return receipt, nil
 		}
 		buffered := agentshare.BufferAssistantOutput(ctx)
-		if buffered && event.Type != delivery.StreamSend && event.Type != delivery.StreamSendExtras {
+		if buffered && event.Type != delivery.StreamSend && event.Type != delivery.StreamSendExtras && event.Type != delivery.StreamFileChanges {
 			return receipt, nil
 		}
 		defer func() {

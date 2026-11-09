@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -412,6 +413,16 @@ func messageData(rows []storage.Message) ([]MessageData, error) {
 	result := make([]MessageData, 0, len(rows))
 	for _, row := range rows {
 		item := MessageData{ID: row.ID, SessionID: row.SessionID, Role: row.Role, Content: row.Content, ParentMessageID: row.ParentMessageID, ReplyToPlatformMessageID: row.ReplyToPlatformMessageID, ReplyToMessageID: row.ReplyToMessageID, ToolCallID: row.ToolCallID, Metadata: row.Metadata, CreatedAt: row.CreatedAt}
+		if row.Role == storage.RoleTool && row.Metadata != "" {
+			var metadata struct {
+				Name        string                `json:"name"`
+				FileChanges []delivery.FileChange `json:"file_changes"`
+			}
+			if json.Unmarshal([]byte(row.Metadata), &metadata) == nil {
+				item.ToolName = metadata.Name
+				item.FileChanges = metadata.FileChanges
+			}
+		}
 		var segments []llm.MessageSegment
 		if row.Segments != "" {
 			if err := json.Unmarshal([]byte(row.Segments), &segments); err != nil {

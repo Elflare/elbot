@@ -50,5 +50,11 @@ type ControlCapabilities interface {
 	ListFiles(context.Context, control.ListFilesRequest) (control.ListFilesResult, error)
 	ReadFile(context.Context, control.ReadFileRequest) (control.ReadFileResult, error)
 	WriteFile(context.Context, control.WriteFileRequest) (control.WriteFileResult, error)
+	Workspace(context.Context) (control.WorkspaceResult, error)
+	WorkspaceDirectories(context.Context, control.WorkspaceDirectoriesRequest) (control.WorkspaceDirectoriesResult, error)
+	SetUserWorkspace(context.Context, control.SetUserWorkspaceRequest) (control.WorkspaceResult, error)
+	SetWorkspaceSync(context.Context, control.SetWorkspaceSyncRequest) (control.WorkspaceResult, error)
+	WorkspaceGit(context.Context, control.WorkspaceGitRequest) (control.WorkspaceGitResult, error)
+	WorkspaceGitDiff(context.Context, control.WorkspaceGitRequest) (string, error)
 	RequestRestart(context.Context) (control.RequestRestartResult, error)
 }

@@ -848,6 +848,9 @@ func (m *tuiModel) appendAssistantContent(text string) {
 
 func (m *tuiModel) applyStreamEvent(msg tuiStreamMsg) {
 	event := msg.Event
+	if event.Type == delivery.StreamFileChanges {
+		return
+	}
 	if event.Type == delivery.StreamFinish || event.Type == delivery.StreamReasoningDone {
 		// Generation is finished; retain the preview's identity for the final Send.
 		return

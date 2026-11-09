@@ -13,13 +13,22 @@ const (
 	StreamFinish         StreamEventType = "finish"
 	StreamSend           StreamEventType = "send"
 	StreamSendExtras     StreamEventType = "send_extras"
+	StreamFileChanges    StreamEventType = "file_changes"
 )
 
+type FileChange struct {
+	Path   string `json:"path"`
+	Status string `json:"status"`
+	Diff   string `json:"diff"`
+}
+
 type StreamEvent struct {
-	Type    StreamEventType `json:"type"`              // Operation on this logical message.
-	Text    string          `json:"text,omitempty"`    // Text/reasoning delta, or the final assistant text.
-	Actions []Action        `json:"actions,omitempty"` // Actions accompanying final assistant text.
-	Outputs []Output        `json:"outputs,omitempty"` // Independent content carried only by SendExtras.
+	Type        StreamEventType `json:"type"`              // Operation on this logical message.
+	Text        string          `json:"text,omitempty"`    // Text/reasoning delta, or the final assistant text.
+	Actions     []Action        `json:"actions,omitempty"` // Actions accompanying final assistant text.
+	Outputs     []Output        `json:"outputs,omitempty"` // Independent content carried only by SendExtras.
+	ToolCallID  string          `json:"tool_call_id,omitempty"`
+	FileChanges []FileChange    `json:"file_changes,omitempty"`
 }
 
 // MessageStream belongs to one logical message. Reset clears its current preview

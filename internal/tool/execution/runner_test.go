@@ -53,6 +53,8 @@ func (*testToolCommitter) Flush(context.Context) error {
 type runnerTestDeps struct {
 	confirmed      bool
 	completed      int
+	fileChanges    []delivery.FileChange
+	fileChangeCall string
 	prepareContext func(context.Context, *storage.Session, llm.ToolCallRequest) context.Context
 	reject         bool
 }
@@ -97,6 +99,11 @@ func (d *runnerTestDeps) SendPreview(ctx context.Context, text ...string) {}
 
 func (d *runnerTestDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
 	return nil
+}
+
+func (d *runnerTestDeps) PublishFileChanges(_ context.Context, callID string, changes []delivery.FileChange) {
+	d.fileChangeCall = callID
+	d.fileChanges = changes
 }
 
 func (d *runnerTestDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk toolshare.RiskLevel, reason string) {
@@ -160,6 +167,48 @@ func (runnerContextPreflightTool) PrepareCall(ctx context.Context, req toolshare
 }
 
 type runnerImageTool struct{}
+
+type runnerFileChangeTool struct{}
+
+func (runnerFileChangeTool) Name() string { return "edit_file" }
+func (runnerFileChangeTool) Info() toolshare.Info {
+	return toolshare.Info{Name: "edit_file", Risk: toolshare.RiskLow}
+}
+func (runnerFileChangeTool) Schema() llm.ToolSchema {
+	return llm.ToolSchema{Name: "edit_file", Parameters: map[string]any{"type": "object"}}
+}
+func (t runnerFileChangeTool) Definition() toolshare.ToolDefinition {
+	return executionTestDefinition(t)
+}
+func (runnerFileChangeTool) PrepareCall(_ context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskLow}, "", func(context.Context) (*toolshare.Result, string, error) {
+		change := delivery.FileChange{Path: "/workspace/main.go", Status: "modified", Diff: "@@ -1 +1 @@\n-old\n+new\n"}
+		return &toolshare.Result{Content: "edited", FileChanges: []delivery.FileChange{change}}, "edited", nil
+	}), nil
+}
+
+func TestRunPersistsAndPublishesCommittedFileChanges(t *testing.T) {
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
+	if err := registerTestTools(registry, runnerFileChangeTool{}.Definition()); err != nil {
+		t.Fatal(err)
+	}
+	manager := newTestManager(registry, security.NewPermission("high", "high", nil))
+	deps := &runnerTestDeps{}
+	committer := &testToolCommitter{}
+	result := manager.Run(context.Background(), deps, toolshare.RunRequest{
+		Committer: committer, Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
+		Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call-edit", Name: "edit_file", Arguments: "{}"}},
+	})
+	if result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	if deps.fileChangeCall != "call-edit" || len(deps.fileChanges) != 1 || deps.fileChanges[0].Path != "/workspace/main.go" {
+		t.Fatalf("published changes: call=%q changes=%+v", deps.fileChangeCall, deps.fileChanges)
+	}
+	if len(committer.results) != 1 || !strings.Contains(committer.results[0].Metadata, `"file_changes"`) {
+		t.Fatalf("stored result metadata = %+v", committer.results)
+	}
+}
 
 func (runnerImageTool) Name() string { return "image_tool" }
 

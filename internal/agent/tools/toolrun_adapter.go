@@ -123,6 +123,10 @@ func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output)
 	return err
 }
 
+func (d toolRunDeps) PublishFileChanges(ctx context.Context, toolCallID string, changes []delivery.FileChange) {
+	_, _ = d.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamFileChanges, ToolCallID: toolCallID, FileChanges: changes})
+}
+
 func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk security.RiskLevel, reason string) {
 	content := map[string]any{"actor": d.identity.Actor(ctx)}
 	for key, value := range map[string]string{"tool": call.Name, "risk": string(risk), "reason": reason} {

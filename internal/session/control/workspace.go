@@ -29,6 +29,10 @@ func (s *Service) GetWorkspaceDir(ctx context.Context, id string) (string, error
 	return state.Dir, err
 }
 
+func (s *Service) GetWorkspaceState(ctx context.Context, id string) (workspace.State, error) {
+	return s.workspaceState(ctx, id)
+}
+
 func (s *Service) HasWorkspaceAgentNoticeDir(ctx context.Context, id, dir string) (bool, error) {
 	state, err := s.workspaceState(ctx, id)
 	return slices.Contains(state.AgentNoticeDirs, strings.TrimSpace(dir)), err
@@ -41,6 +45,9 @@ func (s *Service) SetWorkspaceDirWithAgentNotice(ctx context.Context, id, dir st
 	}
 	return s.saveWorkspace(ctx, id, func(state *workspace.State) {
 		state.Dir = dir
+		if state.AgentToUser {
+			state.UserDir = dir
+		}
 		if mark {
 			markWorkspaceNotice(state, dir)
 		}
@@ -50,6 +57,9 @@ func (s *Service) SetWorkspaceDirWithAgentNotice(ctx context.Context, id, dir st
 func (s *Service) ClearWorkspaceDirWithAgentNotice(ctx context.Context, id, dir string, mark bool) error {
 	return s.saveWorkspace(ctx, id, func(state *workspace.State) {
 		state.Dir = ""
+		if state.AgentToUser {
+			state.UserDir = ""
+		}
 		if mark {
 			markWorkspaceNotice(state, strings.TrimSpace(dir))
 		}
@@ -61,6 +71,9 @@ func (s *Service) ClearWorkspaceDirIfMatches(ctx context.Context, id, dir string
 	err := s.saveWorkspace(ctx, id, func(state *workspace.State) {
 		if state.Dir == dir {
 			state.Dir = ""
+			if state.AgentToUser {
+				state.UserDir = ""
+			}
 			cleared = true
 		}
 	})
@@ -79,8 +92,37 @@ func (s *Service) EnsureWorkspaceDir(ctx context.Context, id, dir string) error 
 	return s.saveWorkspace(ctx, id, func(state *workspace.State) {
 		if state.Dir == "" {
 			state.Dir = strings.TrimSpace(dir)
+			if state.AgentToUser {
+				state.UserDir = state.Dir
+			}
 		}
 	})
+}
+
+func (s *Service) SetUserWorkspaceDir(ctx context.Context, id, dir string) error {
+	return s.saveWorkspace(ctx, id, func(state *workspace.State) {
+		state.UserDir = strings.TrimSpace(dir)
+		if state.UserToAgent {
+			state.Dir = state.UserDir
+		}
+	})
+}
+
+func (s *Service) SetWorkspaceSync(ctx context.Context, id string, agentToUser, userToAgent bool) (workspace.State, error) {
+	var result workspace.State
+	err := s.saveWorkspace(ctx, id, func(state *workspace.State) {
+		newAgentToUser := agentToUser && !state.AgentToUser
+		newUserToAgent := userToAgent && !state.UserToAgent
+		state.AgentToUser, state.UserToAgent = agentToUser, userToAgent
+		switch {
+		case newUserToAgent:
+			state.Dir = state.UserDir
+		case newAgentToUser:
+			state.UserDir = state.Dir
+		}
+		result = *state
+	})
+	return result, err
 }
 
 func markWorkspaceNotice(state *workspace.State, dir string) {
@@ -109,6 +151,25 @@ func (s *Service) saveWorkspace(ctx context.Context, id string, update func(*wor
 			delete(fields, "workspace_dir")
 		} else if err := fields.Set("workspace_dir", state.Dir); err != nil {
 			return err
+		}
+		if state.UserDir == "" {
+			delete(fields, "user_workspace_dir")
+		} else if err := fields.Set("user_workspace_dir", state.UserDir); err != nil {
+			return err
+		}
+		if state.AgentToUser {
+			if err := fields.Set("workspace_agent_to_user", true); err != nil {
+				return err
+			}
+		} else {
+			delete(fields, "workspace_agent_to_user")
+		}
+		if state.UserToAgent {
+			if err := fields.Set("workspace_user_to_agent", true); err != nil {
+				return err
+			}
+		} else {
+			delete(fields, "workspace_user_to_agent")
 		}
 		if len(state.AgentNoticeDirs) == 0 {
 			delete(fields, "workspace_agent_notice_dirs")

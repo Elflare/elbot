@@ -111,3 +111,47 @@ func TestMalformedWorkspaceIsNotOverwritten(t *testing.T) {
 		})
 	}
 }
+
+func TestWorkspaceSyncDirectionsFollowTheChangedSide(t *testing.T) {
+	f := newFixture(t, IdleExpirationConfig{})
+	ctx := context.Background()
+	row := f.create(t, privateScope(), "one")
+	if err := f.s.SetWorkspaceDirWithAgentNotice(ctx, row.ID, "/agent", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.SetUserWorkspaceDir(ctx, row.ID, "/user"); err != nil {
+		t.Fatal(err)
+	}
+	state, err := f.s.SetWorkspaceSync(ctx, row.ID, true, false)
+	if err != nil || state.Dir != "/agent" || state.UserDir != "/agent" {
+		t.Fatalf("enable agent-to-user = %+v, %v", state, err)
+	}
+	if err := f.s.SetWorkspaceDirWithAgentNotice(ctx, row.ID, "/agent-next", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.SetUserWorkspaceDir(ctx, row.ID, "/user-only"); err != nil {
+		t.Fatal(err)
+	}
+	state, err = f.s.GetWorkspaceState(ctx, row.ID)
+	if err != nil || state.Dir != "/agent-next" || state.UserDir != "/user-only" {
+		t.Fatalf("one-way state = %+v, %v", state, err)
+	}
+	state, err = f.s.SetWorkspaceSync(ctx, row.ID, true, true)
+	if err != nil || state.Dir != "/user-only" || state.UserDir != "/user-only" {
+		t.Fatalf("enable reverse direction = %+v, %v", state, err)
+	}
+	if err := f.s.SetUserWorkspaceDir(ctx, row.ID, "/both-user"); err != nil {
+		t.Fatal(err)
+	}
+	state, err = f.s.GetWorkspaceState(ctx, row.ID)
+	if err != nil || state.Dir != "/both-user" || state.UserDir != "/both-user" {
+		t.Fatalf("user change = %+v, %v", state, err)
+	}
+	if err := f.s.SetWorkspaceDirWithAgentNotice(ctx, row.ID, "/both-agent", false); err != nil {
+		t.Fatal(err)
+	}
+	state, err = f.s.GetWorkspaceState(ctx, row.ID)
+	if err != nil || state.Dir != "/both-agent" || state.UserDir != "/both-agent" {
+		t.Fatalf("agent change = %+v, %v", state, err)
+	}
+}

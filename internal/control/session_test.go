@@ -72,6 +72,17 @@ func TestHistoryChecksScopeAndPreservesMessages(t *testing.T) {
 	requireCode(t, err, "invalid_arguments")
 }
 
+func TestMessageDataReturnsStructuredToolFileChanges(t *testing.T) {
+	rows := []storage.Message{{ID: "tool-result", Role: storage.RoleTool, ToolCallID: "call-1", Metadata: `{"name":"edit_file","file_changes":[{"path":"main.go","status":"modified","diff":"+new"}]}`}}
+	items, err := messageData(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ToolName != "edit_file" || items[0].ToolCallID != "call-1" || len(items[0].FileChanges) != 1 || items[0].FileChanges[0].Path != "main.go" || items[0].FileChanges[0].Diff != "+new" {
+		t.Fatalf("message data = %+v", items)
+	}
+}
+
 type managedSessionStub struct {
 	sessionStub
 	target  string

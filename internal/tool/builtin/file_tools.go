@@ -15,6 +15,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"elbot/internal/delivery"
 	"elbot/internal/fileops"
 	"elbot/internal/workspace"
 )
@@ -513,7 +514,11 @@ func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) 
 	if lease, _ := t.Rollback.EditSession(ctx); lease != nil && !result.RollbackAvailable {
 		warnings = append(warnings, "文件已编辑，但撤销备份因会话失效或容量限制未保留。")
 	}
-	return &toolshare.Result{Content: content, Warnings: warnings}, fmt.Sprintf("edited=%s created=%t dry_run=%t rollback_available=%t", result.Path, result.Created, result.DryRun, result.RollbackAvailable), nil
+	status := "modified"
+	if result.Created {
+		status = "added"
+	}
+	return &toolshare.Result{Content: content, Warnings: warnings, FileChanges: []delivery.FileChange{{Path: result.Path, Status: status, Diff: result.Diff}}}, fmt.Sprintf("edited=%s created=%t dry_run=%t rollback_available=%t", result.Path, result.Created, result.DryRun, result.RollbackAvailable), nil
 }
 
 func editServiceRequest(args editFileArgs) fileops.EditRequest {

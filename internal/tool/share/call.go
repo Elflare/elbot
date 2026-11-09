@@ -42,9 +42,10 @@ type Result struct {
 	// Data is reserved for discover_tool's DiscoveryResult, which Agent uses to
 	// inject discovered schemas as top-level tools. Normal tool call results must
 	// use Content or Segments instead.
-	Data     json.RawMessage
-	Metadata map[string]any
-	Outputs  []delivery.Output
+	Data        json.RawMessage
+	Metadata    map[string]any
+	Outputs     []delivery.Output
+	FileChanges []delivery.FileChange
 }
 
 // LogContent returns a log-only preview of the actual result and error, bounded

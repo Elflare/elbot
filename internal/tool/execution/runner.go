@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
 	"elbot/internal/elyph"
 	"elbot/internal/events"
 	"elbot/internal/llm"
@@ -113,6 +114,23 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			}
 		}
 		stored := deps.ToolResultMessage(sessionID, result.Message)
+		fileChanges := []delivery.FileChange(nil)
+		if result.Error == nil && result.Result != nil {
+			fileChanges = result.Result.FileChanges
+		}
+		if len(fileChanges) > 0 {
+			fields, err := storage.DecodeSessionMetadata(stored.Metadata)
+			if err != nil {
+				return err
+			}
+			if err := fields.Set("file_changes", fileChanges); err != nil {
+				return err
+			}
+			stored.Metadata, err = fields.Encode()
+			if err != nil {
+				return err
+			}
+		}
 		if ruleCard != "" {
 			fields, err := storage.DecodeSessionMetadata(stored.Metadata)
 			if err != nil {
@@ -125,6 +143,13 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 
 		if err != nil {
 			return err
+		}
+		if len(fileChanges) > 0 {
+			if publisher, ok := deps.(interface {
+				PublishFileChanges(context.Context, string, []delivery.FileChange)
+			}); ok {
+				publisher.PublishFileChanges(context.WithoutCancel(ctx), call.ID, fileChanges)
+			}
 		}
 		if ruleCard != "" {
 			elyphRulesShown = true

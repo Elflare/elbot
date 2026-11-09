@@ -249,6 +249,7 @@ type Result struct {
 	Data            json.RawMessage      // 发现结果的结构化数据。
 	Metadata        map[string]any       // 工具附加事实。
 	Outputs         []delivery.Output    // 需要发送给用户的内容。
+	FileChanges     []delivery.FileChange
 }
 
 func (r *Result) LLMSegments() []llm.MessageSegment { return toInternalResult(r).LLMSegments() }

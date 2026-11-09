@@ -70,6 +70,12 @@ func NewHandler(options HandlerOptions) http.Handler {
 	mux.HandleFunc("GET /files", h.listFiles)
 	mux.HandleFunc("GET /files/content", h.readFile)
 	mux.HandleFunc("PUT /files/content", h.writeFile)
+	mux.HandleFunc("GET /workspace", h.getWorkspace)
+	mux.HandleFunc("GET /workspace/directories", h.workspaceDirectories)
+	mux.HandleFunc("PUT /workspace/user", h.setUserWorkspace)
+	mux.HandleFunc("PUT /workspace/sync", h.setWorkspaceSync)
+	mux.HandleFunc("GET /workspace/git", h.workspaceGit)
+	mux.HandleFunc("GET /workspace/git/diff", h.workspaceGitDiff)
 	mux.HandleFunc("POST /runtime/restart", h.requestRestart)
 	return http.StripPrefix("/api/v1", normalizeManagementErrors(h.apiMiddleware(mux)))
 }
