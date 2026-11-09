@@ -263,7 +263,9 @@ schemas:
       type: object
       properties:
         session_id: { type: string }
-        agent_path: { type: string }
+        agent_path:
+          type: string
+          description: Effective Agent workspace path: the Session path when set, otherwise the Workspace default path.
         user_path: { type: string }
         agent_to_user: { type: boolean }
         user_to_agent: { type: boolean }

@@ -24,18 +24,6 @@ func (s *Supervisor) WorkspaceStore(sessionID string) *WorkspaceStore {
 	return &WorkspaceStore{control: s.control, sessionID: sessionID}
 }
 
-func (s *Supervisor) GetWorkspaceState(ctx context.Context, id string) (workspace.State, error) {
-	return s.WorkspaceStore(id).GetWorkspaceState(ctx)
-}
-
-func (s *Supervisor) SetUserWorkspaceDir(ctx context.Context, id, dir string) error {
-	return s.WorkspaceStore(id).SetUserWorkspaceDir(ctx, dir)
-}
-
-func (s *Supervisor) SetWorkspaceSync(ctx context.Context, id string, agentToUser, userToAgent bool) (workspace.State, error) {
-	return s.WorkspaceStore(id).SetWorkspaceSync(ctx, agentToUser, userToAgent)
-}
-
 func (s *WorkspaceStore) GetWorkspaceDir(ctx context.Context) (string, error) {
 	return s.control.GetWorkspaceDir(ctx, s.sessionID)
 }

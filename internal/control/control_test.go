@@ -78,13 +78,13 @@ func TestWorkspaceFilesUsesRequestedSideAndRelativePath(t *testing.T) {
 		}
 	}
 	sessions := &sessionStub{
-		current:        &storage.Session{ID: "current"},
-		workspaceState: workspace.State{Dir: agentRoot, UserDir: userRoot},
+		current: &storage.Session{ID: "current"},
 	}
 	m, _ := testSupervisor(t, SupervisorDeps{
 		Sessions: sessions,
 		Scope:    func(context.Context) session.Scope { return session.Scope{} },
 	})
+	m.workspaces = workspaceCapabilitiesStub{state: workspace.State{Dir: agentRoot, UserDir: userRoot}}
 	for side, want := range map[string]string{"agent": "agent.txt", "user": "user.txt"} {
 		result, err := m.WorkspaceFiles(testContext(false), WorkspaceFilesRequest{Side: side})
 		if err != nil || result.Side != side || result.Path != "." || len(result.Items) != 1 || result.Items[0].Name != want {
@@ -97,6 +97,20 @@ func TestWorkspaceFilesUsesRequestedSideAndRelativePath(t *testing.T) {
 	if err == nil {
 		t.Fatal("workspace traversal accepted")
 	}
+}
+
+type workspaceCapabilitiesStub struct{ state workspace.State }
+
+func (s workspaceCapabilitiesStub) GetSessionState(context.Context, string) (workspace.State, error) {
+	return s.state, nil
+}
+func (s workspaceCapabilitiesStub) SetUserDir(_ context.Context, _ string, dir string) (workspace.State, error) {
+	s.state.UserDir = dir
+	return s.state, nil
+}
+func (s workspaceCapabilitiesStub) SetSync(_ context.Context, _ string, agentToUser, userToAgent bool) (workspace.State, error) {
+	s.state.SetSync(agentToUser, userToAgent)
+	return s.state, nil
 }
 
 func TestWorkspaceDirectoryBrowsingRequiresIdentityEvenWithExplicitPath(t *testing.T) {
@@ -129,23 +143,19 @@ func TestCommandsFilterWithoutMutatingCatalog(t *testing.T) {
 
 type sessionStub struct {
 	SessionCapabilities
-	current        *storage.Session
-	workspaceState workspace.State
-	currentErr     error
-	resets         int
-	deletes        int
-	modeErr        error
-	resetErr       error
-	deleteErr      error
-	modeRequest    session.ActivateModeRequest
-	cleanupBefore  time.Time
+	current       *storage.Session
+	currentErr    error
+	resets        int
+	deletes       int
+	modeErr       error
+	resetErr      error
+	deleteErr     error
+	modeRequest   session.ActivateModeRequest
+	cleanupBefore time.Time
 }
 
 func (s *sessionStub) Current(context.Context, session.Scope) (*storage.Session, error) {
 	return s.current, s.currentErr
-}
-func (s *sessionStub) GetWorkspaceState(context.Context, string) (workspace.State, error) {
-	return s.workspaceState, nil
 }
 func (s *sessionStub) CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error) {
 	return s.current, nil, s.currentErr

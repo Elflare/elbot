@@ -65,37 +65,45 @@ func CurrentWorkspaceDir(ctx context.Context) (string, error) {
 		}
 	}
 	store, ok := WorkspaceStoreFromContext(ctx)
+	var dir string
+	if ok {
+		var err error
+		dir, err = store.GetWorkspaceDir(ctx)
+		if err != nil {
+			return "", fmt.Errorf("load workspace: %w", err)
+		}
+	}
+	return resolveWorkspaceDir(ctx, store, dir)
+}
+
+func resolveWorkspaceDir(ctx context.Context, store WorkspaceStore, dir string) (string, error) {
 	for {
-		var dir string
-		if ok {
-			var err error
-			dir, err = store.GetWorkspaceDir(ctx)
-			if err != nil {
-				return "", fmt.Errorf("load workspace: %w", err)
+		if strings.TrimSpace(dir) != "" {
+			resolved, err := ValidateWorkspaceDir(dir)
+			if err == nil {
+				return resolved, nil
 			}
-			if strings.TrimSpace(dir) != "" {
-				resolved, err := ValidateWorkspaceDir(dir)
-				if err == nil {
-					return resolved, nil
-				}
-				if !errors.Is(err, os.ErrNotExist) {
-					return "", err
-				}
+			if !errors.Is(err, os.ErrNotExist) {
+				return "", err
 			}
 		}
 		cwd, err := os.Getwd()
 		if err != nil {
 			return "", fmt.Errorf("resolve workspace: %w", err)
 		}
-		if strings.TrimSpace(dir) != "" {
-			cleared, err := store.ClearWorkspaceDirIfMatches(ctx, dir)
-			if err != nil {
-				return "", fmt.Errorf("clear missing workspace: %w", err)
-			}
-			if !cleared {
-				continue
-			}
+		if strings.TrimSpace(dir) == "" {
+			return filepath.Clean(cwd), nil
 		}
-		return filepath.Clean(cwd), nil
+		cleared, err := store.ClearWorkspaceDirIfMatches(ctx, dir)
+		if err != nil {
+			return "", fmt.Errorf("clear missing workspace: %w", err)
+		}
+		if cleared {
+			return filepath.Clean(cwd), nil
+		}
+		dir, err = store.GetWorkspaceDir(ctx)
+		if err != nil {
+			return "", fmt.Errorf("load workspace: %w", err)
+		}
 	}
 }

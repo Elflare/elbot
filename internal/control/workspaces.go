@@ -49,7 +49,7 @@ func (m *Supervisor) WorkspaceFiles(ctx context.Context, req WorkspaceFilesReque
 	return result, nil
 }
 func (m *Supervisor) SetUserWorkspace(ctx context.Context, req SetUserWorkspaceRequest) (WorkspaceResult, error) {
-	row, _, err := m.currentWorkspace(ctx)
+	row, err := m.currentSession(ctx)
 	if err != nil {
 		return WorkspaceResult{}, err
 	}
@@ -57,10 +57,7 @@ func (m *Supervisor) SetUserWorkspace(ctx context.Context, req SetUserWorkspaceR
 	if err != nil {
 		return WorkspaceResult{}, invalid(err.Error())
 	}
-	if err := m.deps.Sessions.SetUserWorkspaceDir(ctx, row.ID, path); err != nil {
-		return WorkspaceResult{}, ClassifyError(err)
-	}
-	state, err := m.deps.Sessions.GetWorkspaceState(ctx, row.ID)
+	state, err := m.workspaces.SetUserDir(ctx, row.ID, path)
 	if err != nil {
 		return WorkspaceResult{}, ClassifyError(err)
 	}
@@ -68,11 +65,11 @@ func (m *Supervisor) SetUserWorkspace(ctx context.Context, req SetUserWorkspaceR
 }
 
 func (m *Supervisor) SetWorkspaceSync(ctx context.Context, req SetWorkspaceSyncRequest) (WorkspaceResult, error) {
-	row, _, err := m.currentWorkspace(ctx)
+	row, err := m.currentSession(ctx)
 	if err != nil {
 		return WorkspaceResult{}, err
 	}
-	state, err := m.deps.Sessions.SetWorkspaceSync(ctx, row.ID, req.AgentToUser, req.UserToAgent)
+	state, err := m.workspaces.SetSync(ctx, row.ID, req.AgentToUser, req.UserToAgent)
 	if err != nil {
 		return WorkspaceResult{}, ClassifyError(err)
 	}
@@ -111,15 +108,23 @@ func (m *Supervisor) WorkspaceGitDiff(ctx context.Context, req WorkspaceGitReque
 	return diff, ClassifyError(err)
 }
 
-func (m *Supervisor) currentWorkspace(ctx context.Context) (*storage.Session, workspace.State, error) {
+func (m *Supervisor) currentSession(ctx context.Context) (*storage.Session, error) {
 	if err := authorize(ctx, false, m.deps.Sessions != nil && m.deps.Scope != nil); err != nil {
-		return nil, workspace.State{}, err
+		return nil, err
 	}
 	row, err := m.deps.Sessions.Current(ctx, m.deps.Scope(ctx))
 	if err != nil {
-		return nil, workspace.State{}, ClassifyError(err)
+		return nil, ClassifyError(err)
 	}
-	state, err := m.deps.Sessions.GetWorkspaceState(ctx, row.ID)
+	return row, nil
+}
+
+func (m *Supervisor) currentWorkspace(ctx context.Context) (*storage.Session, workspace.State, error) {
+	row, err := m.currentSession(ctx)
+	if err != nil {
+		return nil, workspace.State{}, err
+	}
+	state, err := m.workspaces.GetSessionState(ctx, row.ID)
 	if err != nil {
 		return nil, workspace.State{}, ClassifyError(err)
 	}

@@ -16,7 +16,6 @@ import (
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/turn"
-	"elbot/internal/workspace"
 )
 
 // SupervisorDeps 只借用能力，不取得提供方组件或生命周期。未接入的能力返回 not_configured。
@@ -61,9 +60,6 @@ type SessionCapabilities interface {
 	CleanupExpired(context.Context, time.Time) (int, error)
 	EnterBinding(context.Context, *session.Binding) (context.Context, func(), error)
 	EnterSessions(context.Context, ...string) (context.Context, func(), error)
-	GetWorkspaceState(context.Context, string) (workspace.State, error)
-	SetUserWorkspaceDir(context.Context, string, string) error
-	SetWorkspaceSync(context.Context, string, bool, bool) (workspace.State, error)
 }
 
 // HistoryCapabilities 由 Agent 根部适配自己的仓库与 Loader，不向 C 交付整个 Store。

@@ -15,6 +15,7 @@ import (
 // Supervisor 持有统一操作策略和文件访问范围，不拥有借用业务服务的生命周期。
 type Supervisor struct {
 	deps        SupervisorDeps
+	workspaces  WorkspaceCapabilities
 	roots       map[string]string // 逻辑目录到实际目录；构造后只读。
 	configFiles map[string]string // 固定逻辑配置名到实际文件，可引用配置目录之外的文件。
 	filesMu     sync.RWMutex      // 协调本总管的直接读写，防止读到本总管尚未写完的内容。

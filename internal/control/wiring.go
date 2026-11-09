@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"elbot/internal/session"
+	"elbot/internal/workspace"
 )
 
 // AgentDeps 由 Agent 根部在构造阶段接入；组件生命周期仍由 Agent 持有。
@@ -15,6 +16,7 @@ type AgentDeps struct {
 	PrepareFileContext func(context.Context, bool) (context.Context, error) // Agent 的原绑定与提交准入。
 
 	Sessions      SessionCapabilities                          // 会话裁决与绑定准入。
+	Workspaces    WorkspaceCapabilities                        // 工作区状态与路径解析。
 	History       HistoryCapabilities                          // 原始分支历史及会话快照。
 	Requests      RequestCapabilities                          // 请求状态与取消。
 	Execution     ExecutionCapabilities                        // 执行停止及压缩。
@@ -22,6 +24,12 @@ type AgentDeps struct {
 	Scope         func(context.Context) session.Scope          // 可信身份范围。
 	Status        func(context.Context) (StatusResult, error)  // 运行状态快照。
 	Commands      func(context.Context) ([]CommandInfo, error) // 最终命令目录。
+}
+
+type WorkspaceCapabilities interface {
+	GetSessionState(context.Context, string) (workspace.State, error)
+	SetUserDir(context.Context, string, string) (workspace.State, error)
+	SetSync(context.Context, string, bool, bool) (workspace.State, error)
 }
 
 // ConnectAgent 仅用于启动前装配，能力不允许被后续构造替换。
@@ -32,8 +40,12 @@ func (m *Supervisor) ConnectAgent(deps AgentDeps) error {
 	if deps.Scope == nil {
 		return fmt.Errorf("control: session Scope resolver is required")
 	}
+	if deps.Workspaces == nil {
+		return fmt.Errorf("control: Workspace capability is required")
+	}
 	m.deps.Tools, m.deps.Skills, m.deps.FileRollback, m.deps.PrepareFileContext = deps.Tools, deps.Skills, deps.FileRollback, deps.PrepareFileContext
 	m.deps.Sessions, m.deps.History, m.deps.Requests = deps.Sessions, deps.History, deps.Requests
+	m.workspaces = deps.Workspaces
 	m.deps.Execution, m.deps.Confirmations = deps.Execution, deps.Confirmations
 	m.deps.Scope, m.deps.Status, m.deps.Commands = deps.Scope, deps.Status, deps.Commands
 	return nil
