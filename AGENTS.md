@@ -74,6 +74,7 @@ rg -n "locator:agent-chat" AGENTS.md devdocs/*.md
 - `devdocs/` 只给维护者和 Agent 看，不参与自动翻译。
 - `AGENTS.md` 只保留操作规则；不要把架构详解、逐文件说明重新写回这里。
 - 只有changelog.md执行补丁式写作：描述从旧状态怎样变化到新状态；其他文档只描述现在正确的状态。
+- 有api改动修改openapi的yaml文档
 
 <!-- locator:testing -->
 ## 验证规则
