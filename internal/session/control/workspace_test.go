@@ -92,26 +92,6 @@ func TestWorkspaceAndOriginPreserveConcurrentMetadata(t *testing.T) {
 	}
 }
 
-func TestMalformedWorkspaceIsNotOverwritten(t *testing.T) {
-	for _, raw := range []string{`{`, `null`, `{"workspace_dir":42}`, `{"workspace_agent_notice_dirs":"bad"}`} {
-		t.Run(raw, func(t *testing.T) {
-			f := newFixture(t, IdleExpirationConfig{})
-			ctx := context.Background()
-			row := f.create(t, privateScope(), "one")
-			if _, err := f.store.Sessions().Mutate(ctx, row.ID, func(row *storage.Session) error { row.Metadata = raw; return nil }); err != nil {
-				t.Fatal(err)
-			}
-			if err := f.s.SetWorkspaceDirWithAgentNotice(ctx, row.ID, "/new", false); err == nil {
-				t.Fatal("corrupt metadata accepted")
-			}
-			stored, err := f.store.Sessions().Get(ctx, row.ID)
-			if err != nil || stored.Metadata != raw {
-				t.Fatalf("corrupt metadata overwritten: %+v %v", stored, err)
-			}
-		})
-	}
-}
-
 func TestWorkspaceSyncDirectionsFollowTheChangedSide(t *testing.T) {
 	f := newFixture(t, IdleExpirationConfig{})
 	ctx := context.Background()

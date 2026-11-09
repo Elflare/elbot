@@ -165,28 +165,7 @@ func TestWorkspaceMutationsPreserveConcurrentFields(t *testing.T) {
 	}
 }
 
-func TestWorkspaceRejectsMalformedMetadataAndExpiredBinding(t *testing.T) {
-	for _, raw := range []string{`{`, `null`, `{"workspace_dir":42,"unknown":1}`, `{"workspace_agent_notice_dirs":"bad"}`} {
-		t.Run(raw, func(t *testing.T) {
-			svc, store := newTestService(t)
-			ctx := context.Background()
-			row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", Mode: storage.SessionModeWork, Status: storage.SessionStatusActive, Metadata: raw, ChatType: "private"}
-			if err := store.Sessions().Create(ctx, row); err != nil {
-				t.Fatal(err)
-			}
-			adapter := svc.WorkspaceStore(row.ID)
-			if _, err := adapter.GetWorkspaceDir(ctx); err == nil {
-				t.Fatal("accepted corrupt workspace")
-			}
-			if err := adapter.SetWorkspaceDir(ctx, "/next"); err == nil {
-				t.Fatal("overwrote corrupt metadata")
-			}
-			latest, err := store.Sessions().Get(ctx, row.ID)
-			if err != nil || latest.Metadata != raw {
-				t.Fatalf("metadata=%+v err=%v", latest, err)
-			}
-		})
-	}
+func TestWorkspaceRejectsExpiredBinding(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
 	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}

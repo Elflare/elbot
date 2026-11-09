@@ -29,6 +29,25 @@ func (m *Supervisor) WorkspaceDirectories(ctx context.Context, req WorkspaceDire
 	return result, ClassifyError(err)
 }
 
+func (m *Supervisor) WorkspaceFiles(ctx context.Context, req WorkspaceFilesRequest) (WorkspaceFilesResult, error) {
+	_, state, err := m.currentWorkspace(ctx)
+	if err != nil {
+		return WorkspaceFilesResult{}, err
+	}
+	root, err := workspacePathForSide(state, req.Side)
+	if err != nil {
+		return WorkspaceFilesResult{}, err
+	}
+	if req.Path == "" {
+		req.Path = "."
+	}
+	result, err := workspace.ListWorkspaceFiles(ctx, root, req.Path)
+	if err != nil {
+		return WorkspaceFilesResult{}, ClassifyError(err)
+	}
+	result.Side = req.Side
+	return result, nil
+}
 func (m *Supervisor) SetUserWorkspace(ctx context.Context, req SetUserWorkspaceRequest) (WorkspaceResult, error) {
 	row, _, err := m.currentWorkspace(ctx)
 	if err != nil {

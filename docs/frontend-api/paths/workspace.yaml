@@ -25,6 +25,26 @@
           application/json:
             schema: { $ref: '../components/schemas.yaml#/schemas/WorkspaceDirectoryListing' }
       default: { $ref: '../components/transport.yaml#/responses/Error' }
+/workspace/files:
+  get:
+    operationId: listWorkspaceFiles
+    summary: List files and directories in the selected workspace
+    parameters:
+      - name: side
+        in: query
+        required: true
+        schema: { type: string, enum: [agent, user] }
+      - name: path
+        in: query
+        description: Relative directory path within the selected workspace; empty lists its root.
+        schema: { type: string, default: "" }
+    responses:
+      "200":
+        description: Files and directories in the selected workspace directory.
+        content:
+          application/json:
+            schema: { $ref: "../components/schemas.yaml#/schemas/WorkspaceFileListing" }
+      default: { $ref: "../components/transport.yaml#/responses/Error" }
 /workspace/user:
   put:
     operationId: setUserWorkspace

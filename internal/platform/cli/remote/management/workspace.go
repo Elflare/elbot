@@ -24,6 +24,18 @@ func (h *handler) workspaceDirectories(w http.ResponseWriter, req *http.Request)
 	writeAPIJSON(w, http.StatusOK, result)
 }
 
+func (h *handler) workspaceFiles(w http.ResponseWriter, req *http.Request) {
+	query := req.URL.Query()
+	result, err := h.control.WorkspaceFiles(req.Context(), control.WorkspaceFilesRequest{
+		Side: query.Get("side"),
+		Path: query.Get("path"),
+	})
+	if err != nil {
+		writeControlError(w, err)
+		return
+	}
+	writeAPIJSON(w, http.StatusOK, result)
+}
 func (h *handler) setUserWorkspace(w http.ResponseWriter, req *http.Request) {
 	body, ok := decodeAPIJSON[control.SetUserWorkspaceRequest](w, req)
 	if !ok {

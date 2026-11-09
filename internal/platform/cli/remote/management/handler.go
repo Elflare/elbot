@@ -72,6 +72,7 @@ func NewHandler(options HandlerOptions) http.Handler {
 	mux.HandleFunc("GET /files/content", h.readFile)
 	mux.HandleFunc("PUT /files/content", h.writeFile)
 	mux.HandleFunc("GET /workspace", h.getWorkspace)
+	mux.HandleFunc("GET /workspace/files", h.workspaceFiles)
 	mux.HandleFunc("GET /workspace/directories", h.workspaceDirectories)
 	mux.HandleFunc("PUT /workspace/user", h.setUserWorkspace)
 	mux.HandleFunc("PUT /workspace/sync", h.setWorkspaceSync)

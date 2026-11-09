@@ -176,6 +176,13 @@ type WorkspaceDirectoriesRequest struct {
 	Path string
 }
 type WorkspaceDirectoriesResult = workspace.DirectoryListing
+type WorkspaceFilesRequest struct {
+	// Side selects the user or Agent workspace.
+	Side string
+	// Path is relative to the selected workspace root; empty selects the root.
+	Path string
+}
+type WorkspaceFilesResult = workspace.WorkspaceFileListing
 type SetUserWorkspaceRequest struct {
 	Path string `json:"path"`
 }

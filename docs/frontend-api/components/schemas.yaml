@@ -281,6 +281,21 @@ schemas:
         parent: { type: string }
         directories: { type: array, items: { $ref: '#/schemas/WorkspaceDirectory' } }
       required: [path, parent, directories]
+    WorkspaceFile:
+      type: object
+      properties:
+        name: { type: string }
+        path: { type: string, description: Path relative to the selected workspace root. }
+        kind: { type: string, enum: [file, directory] }
+        size: { type: integer, format: int64, description: Entry size in bytes. }
+      required: [name, path, kind, size]
+    WorkspaceFileListing:
+      type: object
+      properties:
+        side: { type: string, enum: [agent, user] }
+        path: { type: string, description: Listed directory relative to the selected workspace root. }
+        items: { type: array, items: { $ref: "#/schemas/WorkspaceFile" } }
+      required: [side, path, items]
     WorkspaceGitChange:
       type: object
       properties:

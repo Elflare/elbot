@@ -52,6 +52,7 @@ type ControlCapabilities interface {
 	ReadFile(context.Context, control.ReadFileRequest) (control.ReadFileResult, error)
 	WriteFile(context.Context, control.WriteFileRequest) (control.WriteFileResult, error)
 	Workspace(context.Context) (control.WorkspaceResult, error)
+	WorkspaceFiles(context.Context, control.WorkspaceFilesRequest) (control.WorkspaceFilesResult, error)
 	WorkspaceDirectories(context.Context, control.WorkspaceDirectoriesRequest) (control.WorkspaceDirectoriesResult, error)
 	SetUserWorkspace(context.Context, control.SetUserWorkspaceRequest) (control.WorkspaceResult, error)
 	SetWorkspaceSync(context.Context, control.SetWorkspaceSyncRequest) (control.WorkspaceResult, error)

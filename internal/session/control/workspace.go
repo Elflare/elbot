@@ -4,7 +4,6 @@ package control
 
 import (
 	"context"
-	"slices"
 	"strings"
 
 	"elbot/internal/storage"
@@ -35,7 +34,7 @@ func (s *Service) GetWorkspaceState(ctx context.Context, id string) (workspace.S
 
 func (s *Service) HasWorkspaceAgentNoticeDir(ctx context.Context, id, dir string) (bool, error) {
 	state, err := s.workspaceState(ctx, id)
-	return slices.Contains(state.AgentNoticeDirs, strings.TrimSpace(dir)), err
+	return state.HasAgentNoticeDir(dir), err
 }
 
 func (s *Service) SetWorkspaceDirWithAgentNotice(ctx context.Context, id, dir string, mark bool) error {
@@ -44,38 +43,23 @@ func (s *Service) SetWorkspaceDirWithAgentNotice(ctx context.Context, id, dir st
 		return nil
 	}
 	return s.saveWorkspace(ctx, id, func(state *workspace.State) {
-		state.Dir = dir
-		if state.AgentToUser {
-			state.UserDir = dir
-		}
+		state.SetAgentDir(dir)
 		if mark {
-			markWorkspaceNotice(state, dir)
+			state.MarkAgentNoticeDir(dir)
 		}
 	})
 }
 
 func (s *Service) ClearWorkspaceDirWithAgentNotice(ctx context.Context, id, dir string, mark bool) error {
 	return s.saveWorkspace(ctx, id, func(state *workspace.State) {
-		state.Dir = ""
-		if state.AgentToUser {
-			state.UserDir = ""
-		}
-		if mark {
-			markWorkspaceNotice(state, strings.TrimSpace(dir))
-		}
+		state.ClearAgentDir(dir, mark)
 	})
 }
 
 func (s *Service) ClearWorkspaceDirIfMatches(ctx context.Context, id, dir string) (bool, error) {
 	cleared := false
 	err := s.saveWorkspace(ctx, id, func(state *workspace.State) {
-		if state.Dir == dir {
-			state.Dir = ""
-			if state.AgentToUser {
-				state.UserDir = ""
-			}
-			cleared = true
-		}
+		cleared = state.ClearAgentDirIfMatches(dir)
 	})
 	return cleared && err == nil, err
 }
@@ -85,50 +69,24 @@ func (s *Service) MarkWorkspaceAgentNoticeDir(ctx context.Context, id, dir strin
 	if dir == "" {
 		return nil
 	}
-	return s.saveWorkspace(ctx, id, func(state *workspace.State) { markWorkspaceNotice(state, dir) })
+	return s.saveWorkspace(ctx, id, func(state *workspace.State) { state.MarkAgentNoticeDir(dir) })
 }
 
 func (s *Service) EnsureWorkspaceDir(ctx context.Context, id, dir string) error {
-	return s.saveWorkspace(ctx, id, func(state *workspace.State) {
-		if state.Dir == "" {
-			state.Dir = strings.TrimSpace(dir)
-			if state.AgentToUser {
-				state.UserDir = state.Dir
-			}
-		}
-	})
+	return s.saveWorkspace(ctx, id, func(state *workspace.State) { state.EnsureAgentDir(dir) })
 }
 
 func (s *Service) SetUserWorkspaceDir(ctx context.Context, id, dir string) error {
-	return s.saveWorkspace(ctx, id, func(state *workspace.State) {
-		state.UserDir = strings.TrimSpace(dir)
-		if state.UserToAgent {
-			state.Dir = state.UserDir
-		}
-	})
+	return s.saveWorkspace(ctx, id, func(state *workspace.State) { state.SetUserDir(dir) })
 }
 
 func (s *Service) SetWorkspaceSync(ctx context.Context, id string, agentToUser, userToAgent bool) (workspace.State, error) {
 	var result workspace.State
 	err := s.saveWorkspace(ctx, id, func(state *workspace.State) {
-		newAgentToUser := agentToUser && !state.AgentToUser
-		newUserToAgent := userToAgent && !state.UserToAgent
-		state.AgentToUser, state.UserToAgent = agentToUser, userToAgent
-		switch {
-		case newUserToAgent:
-			state.Dir = state.UserDir
-		case newAgentToUser:
-			state.UserDir = state.Dir
-		}
+		state.SetSync(agentToUser, userToAgent)
 		result = *state
 	})
 	return result, err
-}
-
-func markWorkspaceNotice(state *workspace.State, dir string) {
-	if dir != "" && !slices.Contains(state.AgentNoticeDirs, dir) {
-		state.AgentNoticeDirs = append(state.AgentNoticeDirs, dir)
-	}
 }
 
 func (s *Service) saveWorkspace(ctx context.Context, id string, update func(*workspace.State)) error {
@@ -138,45 +96,7 @@ func (s *Service) saveWorkspace(ctx context.Context, id string, update func(*wor
 	}
 	defer release()
 	_, err = s.deps.Sessions.Mutate(ctx, id, func(row *storage.Session) error {
-		fields, err := storage.DecodeSessionMetadata(row.Metadata)
-		if err != nil {
-			return err
-		}
-		state, err := workspace.DecodeState(row.Metadata)
-		if err != nil {
-			return err
-		}
-		update(&state)
-		if state.Dir == "" {
-			delete(fields, "workspace_dir")
-		} else if err := fields.Set("workspace_dir", state.Dir); err != nil {
-			return err
-		}
-		if state.UserDir == "" {
-			delete(fields, "user_workspace_dir")
-		} else if err := fields.Set("user_workspace_dir", state.UserDir); err != nil {
-			return err
-		}
-		if state.AgentToUser {
-			if err := fields.Set("workspace_agent_to_user", true); err != nil {
-				return err
-			}
-		} else {
-			delete(fields, "workspace_agent_to_user")
-		}
-		if state.UserToAgent {
-			if err := fields.Set("workspace_user_to_agent", true); err != nil {
-				return err
-			}
-		} else {
-			delete(fields, "workspace_user_to_agent")
-		}
-		if len(state.AgentNoticeDirs) == 0 {
-			delete(fields, "workspace_agent_notice_dirs")
-		} else if err := fields.Set("workspace_agent_notice_dirs", state.AgentNoticeDirs); err != nil {
-			return err
-		}
-		encoded, err := fields.Encode()
+		encoded, err := workspace.UpdateState(row.Metadata, update)
 		if err != nil {
 			return err
 		}

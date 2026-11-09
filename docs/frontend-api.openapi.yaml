@@ -90,6 +90,8 @@ paths:
     $ref: './frontend-api/paths/files.yaml#/~1files~1content'
   /workspace:
     $ref: './frontend-api/paths/workspace.yaml#/~1workspace'
+  /workspace/files:
+    $ref: "./frontend-api/paths/workspace.yaml#/~1workspace~1files"
   /workspace/directories:
     $ref: './frontend-api/paths/workspace.yaml#/~1workspace~1directories'
   /workspace/user:

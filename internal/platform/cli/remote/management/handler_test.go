@@ -25,6 +25,7 @@ func (s handlerControlStub) RespondConfirmation(context.Context, control.Respond
 type workspaceHandlerStub struct {
 	ControlCapabilities
 	workspace     control.WorkspaceResult
+	files         control.WorkspaceFilesRequest
 	directories   control.WorkspaceDirectoriesRequest
 	git           control.WorkspaceGitRequest
 	gitDiff       control.WorkspaceGitRequest
@@ -34,6 +35,10 @@ type workspaceHandlerStub struct {
 
 func (s *workspaceHandlerStub) Workspace(context.Context) (control.WorkspaceResult, error) {
 	return s.workspace, nil
+}
+func (s *workspaceHandlerStub) WorkspaceFiles(_ context.Context, req control.WorkspaceFilesRequest) (control.WorkspaceFilesResult, error) {
+	s.files = req
+	return workspace.WorkspaceFileListing{Side: req.Side, Path: req.Path, Items: []workspace.WorkspaceFile{}}, nil
 }
 func (s *workspaceHandlerStub) WorkspaceDirectories(_ context.Context, req control.WorkspaceDirectoriesRequest) (control.WorkspaceDirectoriesResult, error) {
 	s.directories = req
@@ -101,6 +106,7 @@ func TestWorkspaceManagementRoutesForwardRequests(t *testing.T) {
 		body   string
 	}{
 		{method: http.MethodGet, path: "/api/v1/workspace"},
+		{method: http.MethodGet, path: "/api/v1/workspace/files?side=user&path=notes"},
 		{method: http.MethodGet, path: "/api/v1/workspace/directories?path=/home/user"},
 		{method: http.MethodPut, path: "/api/v1/workspace/user", body: `{"path":"/home/user/project"}`},
 		{method: http.MethodPut, path: "/api/v1/workspace/sync", body: `{"agent_to_user":true,"user_to_agent":false}`},
@@ -121,7 +127,7 @@ func TestWorkspaceManagementRoutesForwardRequests(t *testing.T) {
 			}
 		})
 	}
-	if stub.workspace.SessionID != "s1" || stub.directories.Path != "/home/user" || stub.userWorkspace.Path != "/home/user/project" || !stub.workspaceSync.AgentToUser || stub.workspaceSync.UserToAgent || stub.git.Side != "user" || stub.gitDiff.Side != "agent" || stub.gitDiff.Path != "main.go" {
+	if stub.workspace.SessionID != "s1" || stub.directories.Path != "/home/user" || stub.files.Side != "user" || stub.files.Path != "notes" || stub.userWorkspace.Path != "/home/user/project" || !stub.workspaceSync.AgentToUser || stub.workspaceSync.UserToAgent || stub.git.Side != "user" || stub.gitDiff.Side != "agent" || stub.gitDiff.Path != "main.go" {
 		t.Fatalf("forwarded requests: %+v", stub)
 	}
 }

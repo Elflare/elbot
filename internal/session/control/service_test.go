@@ -148,6 +148,15 @@ func TestCurrentModesManagementAndQueries(t *testing.T) {
 	if err != nil || row.Title != "first message" || row.Mode != storage.SessionModeWork {
 		t.Fatalf("create: %+v %v", row, err)
 	}
+	metadata, err := storage.DecodeSessionMetadata(row.Metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"workspace_dir", "user_workspace_dir", "workspace_agent_to_user", "workspace_user_to_agent", "workspace_agent_notice_dirs"} {
+		if _, ok := metadata[key]; ok {
+			t.Fatalf("new session initialized workspace metadata field %q", key)
+		}
+	}
 	original := f.s.CurrentBinding(scope)
 	if _, err := f.s.GetOrCreateCurrent(ctx, scope, "ignored"); err != nil {
 		t.Fatal(err)

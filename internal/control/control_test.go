@@ -16,6 +16,7 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
+	"elbot/internal/workspace"
 )
 
 func testContext(admin bool) context.Context {
@@ -69,6 +70,35 @@ func TestMissingCapabilitiesAndIdentity(t *testing.T) {
 	}
 }
 
+func TestWorkspaceFilesUsesRequestedSideAndRelativePath(t *testing.T) {
+	agentRoot, userRoot := t.TempDir(), t.TempDir()
+	for root, name := range map[string]string{agentRoot: "agent.txt", userRoot: "user.txt"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(name), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sessions := &sessionStub{
+		current:        &storage.Session{ID: "current"},
+		workspaceState: workspace.State{Dir: agentRoot, UserDir: userRoot},
+	}
+	m, _ := testSupervisor(t, SupervisorDeps{
+		Sessions: sessions,
+		Scope:    func(context.Context) session.Scope { return session.Scope{} },
+	})
+	for side, want := range map[string]string{"agent": "agent.txt", "user": "user.txt"} {
+		result, err := m.WorkspaceFiles(testContext(false), WorkspaceFilesRequest{Side: side})
+		if err != nil || result.Side != side || result.Path != "." || len(result.Items) != 1 || result.Items[0].Name != want {
+			t.Fatalf("side=%s result=%+v err=%v", side, result, err)
+		}
+	}
+	_, err := m.WorkspaceFiles(testContext(false), WorkspaceFilesRequest{Side: "invalid"})
+	requireCode(t, err, "invalid_arguments")
+	_, err = m.WorkspaceFiles(testContext(false), WorkspaceFilesRequest{Side: "agent", Path: "../outside"})
+	if err == nil {
+		t.Fatal("workspace traversal accepted")
+	}
+}
+
 func TestWorkspaceDirectoryBrowsingRequiresIdentityEvenWithExplicitPath(t *testing.T) {
 	m, _ := testSupervisor(t, SupervisorDeps{})
 	_, err := m.WorkspaceDirectories(context.Background(), WorkspaceDirectoriesRequest{Path: t.TempDir()})
@@ -99,19 +129,23 @@ func TestCommandsFilterWithoutMutatingCatalog(t *testing.T) {
 
 type sessionStub struct {
 	SessionCapabilities
-	current       *storage.Session
-	currentErr    error
-	resets        int
-	deletes       int
-	modeErr       error
-	resetErr      error
-	deleteErr     error
-	modeRequest   session.ActivateModeRequest
-	cleanupBefore time.Time
+	current        *storage.Session
+	workspaceState workspace.State
+	currentErr     error
+	resets         int
+	deletes        int
+	modeErr        error
+	resetErr       error
+	deleteErr      error
+	modeRequest    session.ActivateModeRequest
+	cleanupBefore  time.Time
 }
 
 func (s *sessionStub) Current(context.Context, session.Scope) (*storage.Session, error) {
 	return s.current, s.currentErr
+}
+func (s *sessionStub) GetWorkspaceState(context.Context, string) (workspace.State, error) {
+	return s.workspaceState, nil
 }
 func (s *sessionStub) CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error) {
 	return s.current, nil, s.currentErr
