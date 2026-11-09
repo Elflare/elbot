@@ -26,7 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 破坏性更新：不再为不支持视觉的模型专门进行回退处理
 - 精简用户提示信息和工具schema信息
 - 优化log、audit显示，日志文件名字改为`log*`
-`
 - 修改多处id格式
 - Hook 原生表情输出统一使用必填的 `name`，`text` 不再参与表情构造或降级；纯文本展示统一为 `[表情: 名称]`。
 - Hook 事件输出快照的投递信息从 `Meta` 改为 `Delivery` 对象，包含 `Timing`、`HookPoint`、`HookName`、`HookMode`；移除派生字段 `AltText`。
@@ -36,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 优化重试逻辑
 - `/resume` 不再使用编号
 - `/sessions`、`/archives` 关键词现在需要-k/--keyword
+- `#`选择文件现在使用agent workspace中的文件
 
 ### Fixed
 
