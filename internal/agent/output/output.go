@@ -144,17 +144,20 @@ func (o *OutputSender) StartStream(ctx context.Context) delivery.MessageStream {
 			return o.dispatcher.SendTo(ctx, target, event.Outputs)
 		case delivery.StreamSend:
 			defer func() { o.observeDelivery(ctx, "send_assistant_message", receipt) }()
-			event.Text, err = o.hooks.AgentOutputPrepared(ctx, event.Text)
-			if err != nil {
-				return receipt, err
+			// Text hooks cannot rewrite typed blocks without flattening their content.
+			if len(event.Blocks) == 0 {
+				event.Text, err = o.hooks.AgentOutputPrepared(ctx, event.Text)
+				if err != nil {
+					return receipt, err
+				}
 			}
 			defer func() {
-				if err == nil && strings.TrimSpace(event.Text) != "" {
+				if err == nil && len(event.Blocks) == 0 && strings.TrimSpace(event.Text) != "" {
 					o.hooks.PlatformMessageSent(ctx, event.Text)
 				}
 			}()
 			if buffered {
-				return o.dispatcher.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Actions: event.Actions}})
+				return o.dispatcher.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Blocks: event.Blocks, Actions: event.Actions}})
 			}
 		}
 		if platformStream == nil {

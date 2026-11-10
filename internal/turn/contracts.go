@@ -2,6 +2,7 @@
 package turn
 
 import (
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/turn/share"
 )
@@ -25,19 +26,15 @@ type RiskConfirmation struct {
 }
 
 // ConfirmationDetailKind classifies content stored with a pending confirmation.
-type ConfirmationDetailKind string
+type ConfirmationDetailKind = delivery.ContentBlockKind
+type ConfirmationDetailBlock = delivery.ContentBlock
 
 const (
-	ConfirmationDetailText      ConfirmationDetailKind = "text"
-	ConfirmationDetailDiff      ConfirmationDetailKind = "diff"
-	ConfirmationDetailArguments ConfirmationDetailKind = "arguments"
-	ConfirmationDetailMarkdown  ConfirmationDetailKind = "markdown"
+	ConfirmationDetailText      = delivery.ContentText
+	ConfirmationDetailDiff      = delivery.ContentDiff
+	ConfirmationDetailArguments = delivery.ContentArguments
+	ConfirmationDetailMarkdown  = delivery.ContentMarkdown
 )
-
-type ConfirmationDetailBlock struct {
-	Kind    ConfirmationDetailKind // Selects the content category.
-	Content any                    // Text or a JSON object, depending on Kind.
-}
 
 type Snapshot struct {
 	SessionID    string

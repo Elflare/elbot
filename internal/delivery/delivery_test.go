@@ -64,6 +64,19 @@ func TestFallbackTextForTextKeepsContent(t *testing.T) {
 	}
 }
 
+func TestContentBlocksTextPreservesDiffAndArguments(t *testing.T) {
+	got := ContentBlocksText([]ContentBlock{
+		{Kind: ContentText, Content: "edit_file [high]: confirm"},
+		{Kind: ContentDiff, Content: "-before\n+after"},
+		{Kind: ContentArguments, Content: map[string]any{"path": "notes.md"}},
+	})
+	for _, want := range []string{"edit_file [high]: confirm", "```diff\n-before\n+after\n```", "```json\n{\n  \"path\": \"notes.md\"\n}\n```"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("ContentBlocksText %q missing %q", got, want)
+		}
+	}
+}
+
 func TestWithDeliveryTimingResetsWithoutChangingOriginal(t *testing.T) {
 	for _, timing := range []string{DeliveryImmediate, "", "  "} {
 		t.Run(timing, func(t *testing.T) {

@@ -29,6 +29,7 @@ type ToolResult struct {
 type StreamEvent struct {
 	Type       StreamEventType `json:"type"`                   // Operation on this logical message.
 	Text       string          `json:"text,omitempty"`         // Text/reasoning delta, or the final assistant text.
+	Blocks     []ContentBlock  `json:"blocks,omitempty"`       // Typed final message content, rendered at the consumer boundary.
 	Actions    []Action        `json:"actions,omitempty"`      // Actions accompanying final assistant text.
 	Outputs    []Output        `json:"outputs,omitempty"`      // Independent content carried only by SendExtras.
 	ToolCallID string          `json:"tool_call_id,omitempty"` // Associates a result event with its tool call.

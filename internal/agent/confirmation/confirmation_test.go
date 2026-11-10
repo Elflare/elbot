@@ -145,9 +145,10 @@ type fixedWaitPolicy time.Duration
 func (p fixedWaitPolicy) WaitTimeout(context.Context) time.Duration { return time.Duration(p) }
 
 type confirmationOutput struct {
-	err   error
-	sent  chan []delivery.Action
-	texts chan string
+	err    error
+	sent   chan []delivery.Action
+	texts  chan string
+	blocks chan []delivery.ContentBlock
 }
 
 func (o confirmationOutput) Send(_ context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
@@ -156,6 +157,9 @@ func (o confirmationOutput) Send(_ context.Context, event delivery.StreamEvent) 
 	}
 	if o.sent != nil {
 		o.sent <- event.Actions
+	}
+	if o.blocks != nil {
+		o.blocks <- event.Blocks
 	}
 	if o.err != nil {
 		return delivery.Receipt{}, o.err
@@ -170,7 +174,7 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 		turns.StartAttempt("s", turn.Input{}, execution, "a")
 		turns.StartToolPhase("s", "a")
 		ctx := turn.WithAttempt(turn.WithExecution(t.Context(), execution), "a")
-		output := confirmationOutput{sent: make(chan []delivery.Action, 2), texts: make(chan string, 2)}
+		output := confirmationOutput{sent: make(chan []delivery.Action, 2), texts: make(chan string, 2), blocks: make(chan []delivery.ContentBlock, 2)}
 		commandText := func(name string, args ...string) string { return commandpkg.Format("!", name, args...) }
 		coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: commandText, Turns: turns, Output: output, Policy: fixedWaitPolicy(time.Second)})
 		result, err := coordinator.AwaitToolConfirmation(ctx, "s", llm.ToolCallRequest{ID: "call", Name: "shell", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, []toolshare.ConfirmationDetailBlock{{Kind: toolshare.ConfirmationDetailText, Content: "detail"}})
@@ -178,6 +182,10 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 			t.Fatalf("result=%+v err=%v", result, err)
 		}
 		actions := <-output.sent
+		blocks := <-output.blocks
+		if len(blocks) < 3 || blocks[0].Kind != delivery.ContentText || blocks[0].Content != "shell [high]: confirm" || blocks[1].Kind != delivery.ContentText || blocks[1].Content != "detail" || blocks[len(blocks)-1].Kind != delivery.ContentText {
+			t.Fatalf("confirmation blocks=%#v", blocks)
+		}
 		if len(output.texts) != 2 || len(output.sent) != 1 {
 			t.Fatal("confirmation prompt or timeout notice missing")
 		}
@@ -187,6 +195,9 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 		}
 		if got := <-output.sent; len(got) != 0 {
 			t.Fatalf("timeout notice acquired actions: %+v", got)
+		}
+		if got := <-output.blocks; len(got) != 0 {
+			t.Fatalf("timeout notice acquired blocks: %+v", got)
 		}
 		want := []string{"detail", "confirm", "confirmtool", "confirmall", "reject", "stop"}
 		if len(actions) != len(want) {
@@ -210,8 +221,8 @@ func TestConfirmationDetailsAppendsArgumentsObject(t *testing.T) {
 	if !ok || args["operation"] != "write" || args["count"] != json.Number("2") {
 		t.Fatalf("arguments content=%#v", details[1].Content)
 	}
-	if got := formatConfirmationPrompt("write", "high", details); got != "write [high]: confirm\npreview\n{\n  \"count\": 2,\n  \"operation\": \"write\"\n}" {
-		t.Fatalf("formatted confirmation=%q", got)
+	if got := delivery.ContentBlocksText(details); got != "preview\n\n```json\n{\n  \"count\": 2,\n  \"operation\": \"write\"\n}\n```" {
+		t.Fatalf("plain-text confirmation=%q", got)
 	}
 }
 

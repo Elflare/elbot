@@ -114,7 +114,7 @@ func readFileBuilder() *toolshare.Builder {
 		StringArray("glob", "仅grep目录搜索；语法同rg -g，如[\"*.go\",\"!**/*_test.go\"]；省略/[]=不过滤。").
 		Integer("index", "搜索结果编号，1-based；按返回编号重试查看该项。").
 		Integer("start_line", "read起始行，1-based，默认1。").
-		String("end_line", "read结束行(含)，数字字符串或\"end\"；默认/数字范围最多200行，end读至末尾。").
+		String("end_line", "read结束行(含)，数字字符串或\"end\"；默认200行，end读至末尾。").
 		Integer("context_lines", "grep/ast上下文行数；0/省略→2，负数→0，上限20。").
 		Integer("max_matches", "搜索结果上限；≤0/省略→20，最大100。")
 }

@@ -3,6 +3,7 @@ package share
 
 import (
 	"context"
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"errors"
 	"fmt"
@@ -69,21 +70,16 @@ type ToolDefinition struct {
 	Remote           *ELwispToolDeclaration                                    // 远端执行所需的可序列化声明；不与 Prepare 同时提供。
 }
 
-// ConfirmationDetailKind selects the renderer for a confirmation detail block.
-type ConfirmationDetailKind string
+type ConfirmationDetailKind = delivery.ContentBlockKind
 
 const (
-	ConfirmationDetailText      ConfirmationDetailKind = "text"
-	ConfirmationDetailDiff      ConfirmationDetailKind = "diff"
-	ConfirmationDetailArguments ConfirmationDetailKind = "arguments"
-	ConfirmationDetailMarkdown  ConfirmationDetailKind = "markdown"
+	ConfirmationDetailText      = delivery.ContentText
+	ConfirmationDetailDiff      = delivery.ContentDiff
+	ConfirmationDetailArguments = delivery.ContentArguments
+	ConfirmationDetailMarkdown  = delivery.ContentMarkdown
 )
 
-type ConfirmationDetailBlock struct {
-	Kind ConfirmationDetailKind `json:"kind"` // Selects the content category.
-	// Content is text for text, diff, and markdown; arguments carries a JSON object.
-	Content any `json:"content"`
-}
+type ConfirmationDetailBlock = delivery.ContentBlock
 
 func TextConfirmationDetail(content string) ConfirmationDetailBlock {
 	return ConfirmationDetailBlock{Kind: ConfirmationDetailText, Content: content}

@@ -134,7 +134,7 @@ func textOutputs(outputs []delivery.Output) (string, bool) {
 		if out.Kind != delivery.KindText {
 			return "", false
 		}
-		text.WriteString(out.Text)
+		text.WriteString(delivery.FallbackText(out))
 	}
 	return text.String(), true
 }
@@ -246,10 +246,14 @@ func outputSegments(sendFileMode string, outputs ...delivery.Output) ([]Segment,
 	for _, out := range outputs {
 		switch out.Kind {
 		case delivery.KindText:
-			segments = append(segments, Segment{Type: "text", Data: map[string]any{"text": out.Text}})
+			segments = append(segments, Segment{Type: "text", Data: map[string]any{"text": delivery.FallbackText(out)}})
 		case delivery.KindReply:
 			replyID := strings.TrimSpace(out.ReplyToPlatformMessageID)
-			segments = append(segments, Segment{Type: "reply", Data: map[string]any{"id": replyID}}, Segment{Type: "text", Data: map[string]any{"text": out.Text}})
+			text := out.Text
+			if len(out.Blocks) > 0 {
+				text = delivery.ContentBlocksText(out.Blocks)
+			}
+			segments = append(segments, Segment{Type: "reply", Data: map[string]any{"id": replyID}}, Segment{Type: "text", Data: map[string]any{"text": text}})
 		case delivery.KindEmoticon:
 			id := strings.TrimSpace(out.EmoticonID)
 			segments = append(segments, Segment{Type: "face", Data: map[string]any{"id": id}})

@@ -429,7 +429,11 @@ func (s localMessageStream) Send(ctx context.Context, event delivery.StreamEvent
 		if event.Type != delivery.StreamSend {
 			return delivery.Receipt{}, nil
 		}
-		_, err := fmt.Fprintln(os.Stdout, strings.TrimSuffix(event.Text, "\n"))
+		text := event.Text
+		if len(event.Blocks) > 0 {
+			text = delivery.ContentBlocksText(event.Blocks)
+		}
+		_, err := fmt.Fprintln(os.Stdout, strings.TrimSuffix(text, "\n"))
 		return delivery.Receipt{}, err
 	}
 	return delivery.Receipt{}, s.runtime.enqueue(ctx, tuiStreamMsg{ID: s.id, Event: event})

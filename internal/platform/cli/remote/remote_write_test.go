@@ -70,6 +70,14 @@ func TestRemoteWriteWaitingOnAnotherWriterRespectsContext(t *testing.T) {
 	}
 }
 
+func TestOutputMessageKeepsStructuredBlocks(t *testing.T) {
+	blocks := []delivery.ContentBlock{{Kind: delivery.ContentDiff, Content: "-old\n+new"}}
+	message := outputMessage(remoteMsgChat, delivery.Output{Kind: delivery.KindText, Blocks: blocks})
+	if message.Text != "" || len(message.Blocks) != 1 || message.Blocks[0] != blocks[0] {
+		t.Fatalf("output message = %+v", message)
+	}
+}
+
 func TestRemoteOutputWriteFailureDoesNotReturnToAgent(t *testing.T) {
 	accepted := make(chan *websocket.Conn, 1)
 	host := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -131,13 +139,13 @@ func TestRemoteStreamAndStatusFollowReconnectedClient(t *testing.T) {
 	newConn := dialTestRemote(t, server)
 	for _, event := range []delivery.StreamEvent{
 		{Type: delivery.StreamTextDelta, Text: "continued"},
-		{Type: delivery.StreamSend, Text: "complete"},
+		{Type: delivery.StreamSend, Blocks: []delivery.ContentBlock{{Kind: delivery.ContentDiff, Content: "-old\n+new"}}},
 	} {
 		if _, err := stream.Send(t.Context(), event); err != nil {
 			t.Fatal(err)
 		}
 		got := readTestRemote(t, newConn)
-		if got.Type != remoteMsgStream || got.Event == nil || got.Event.Type != event.Type || got.Event.Text != event.Text {
+		if got.Type != remoteMsgStream || got.Event == nil || got.Event.Type != event.Type || got.Event.Text != event.Text || len(got.Event.Blocks) != len(event.Blocks) || len(event.Blocks) > 0 && got.Event.Blocks[0] != event.Blocks[0] {
 			t.Fatalf("stream event = %+v, want %+v", got, event)
 		}
 	}

@@ -115,7 +115,7 @@ func (c *ConfirmationCoordinator) Current(ctx context.Context, req control.Curre
 			return control.CurrentConfirmationResult{}, err
 		}
 	}
-	return control.CurrentConfirmationResult{SessionID: row.ID, Kind: "tool", ToolName: pending.ToolName, Risk: pending.Risk, Detail: fromTurnConfirmationDetails(pending.Detail)}, nil
+	return control.CurrentConfirmationResult{SessionID: row.ID, Kind: "tool", ToolName: pending.ToolName, Risk: pending.Risk, Detail: fromTurnConfirmationDetails(pending.Detail), Actions: riskConfirmationActions(c.commandText).Actions}, nil
 }
 
 // Respond 只消费类型化决定，并作用于当前绑定 session 的等待项。
@@ -306,7 +306,13 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	if wait != nil && ctx.Err() == nil {
 		c.publishConfirmationWait(ctx, sessionID, call, assessment.Level, assessment.Reasons)
 		presentation := riskConfirmationActions(c.commandText)
-		if _, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: fmt.Sprintf("%s\n%s\n%s\n\n%s", formatConfirmationPrompt(call.Name, string(assessment.Level), detail), riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout, c.commandText), ""), Actions: presentation.Actions}); err != nil {
+		blocks := []delivery.ContentBlock{{Kind: delivery.ContentText, Content: fmt.Sprintf("%s [%s]: confirm", call.Name, assessment.Level)}}
+		blocks = append(blocks, detail...)
+		if reasons := riskReasonsText(assessment.Reasons); reasons != "" {
+			blocks = append(blocks, delivery.ContentBlock{Kind: delivery.ContentText, Content: reasons})
+		}
+		blocks = append(blocks, delivery.ContentBlock{Kind: delivery.ContentCommands, Content: riskConfirmationPromptText(timeout, c.commandText)})
+		if _, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Blocks: blocks, Actions: presentation.Actions}); err != nil {
 			resultStatus, level := events.ResultFailed, slog.LevelWarn
 			if events.LogStatus(err) == events.ResultCanceled {
 				resultStatus = events.ResultCanceled
@@ -405,34 +411,12 @@ func confirmationDetailsWithArguments(details []tool.ConfirmationDetailBlock, ar
 	return append(details, tool.ConfirmationDetailBlock{Kind: tool.ConfirmationDetailArguments, Content: value}), nil
 }
 
-func formatConfirmationPrompt(toolName, risk string, details []tool.ConfirmationDetailBlock) string {
-	parts := make([]string, 0, len(details))
-	for _, block := range details {
-		if block.Kind == tool.ConfirmationDetailArguments {
-			if encoded, err := json.MarshalIndent(block.Content, "", "  "); err == nil {
-				parts = append(parts, string(encoded))
-			}
-		} else if content, ok := block.Content.(string); ok {
-			parts = append(parts, content)
-		}
-	}
-	return fmt.Sprintf("%s [%s]: confirm\n%s", toolName, risk, strings.Join(parts, "\n"))
-}
-
 func toTurnConfirmationDetails(details []tool.ConfirmationDetailBlock) []turn.ConfirmationDetailBlock {
-	blocks := make([]turn.ConfirmationDetailBlock, len(details))
-	for i, block := range details {
-		blocks[i] = turn.ConfirmationDetailBlock{Kind: turn.ConfirmationDetailKind(block.Kind), Content: block.Content}
-	}
-	return blocks
+	return append([]turn.ConfirmationDetailBlock(nil), details...)
 }
 
 func fromTurnConfirmationDetails(details []turn.ConfirmationDetailBlock) []tool.ConfirmationDetailBlock {
-	blocks := make([]tool.ConfirmationDetailBlock, len(details))
-	for i, block := range details {
-		blocks[i] = tool.ConfirmationDetailBlock{Kind: tool.ConfirmationDetailKind(block.Kind), Content: block.Content}
-	}
-	return blocks
+	return append([]tool.ConfirmationDetailBlock(nil), details...)
 }
 
 // NewConfirmationCoordinator initializes ConfirmationCoordinator without installing cross-service callbacks.

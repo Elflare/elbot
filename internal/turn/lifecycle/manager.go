@@ -2,6 +2,7 @@
 package lifecycle
 
 import (
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/turn/share"
 	"sort"
@@ -111,8 +112,5 @@ type RiskConfirmation struct {
 	Detail   []ConfirmationDetailBlock // 当前待确认操作的有序内容块。
 }
 
-type ConfirmationDetailBlock struct {
-	Kind    string // Selects the content category.
-	Content any    // Text or a JSON object, depending on Kind.
-}
+type ConfirmationDetailBlock = delivery.ContentBlock
 type Execution interface{ Finish(error) }

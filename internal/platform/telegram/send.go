@@ -104,7 +104,7 @@ func (a *Adapter) telegramReceipt(receipt delivery.Receipt, target target, media
 func (a *Adapter) sendToTarget(ctx context.Context, t target, out delivery.Output) (delivery.Receipt, error) {
 	switch out.Kind {
 	case delivery.KindText:
-		return a.sendText(ctx, t, out.Text, 0, out.Actions)
+		return a.sendText(ctx, t, delivery.FallbackText(out), 0, out.Actions)
 	case delivery.KindReply:
 		replyID, err := strconv.ParseInt(strings.TrimSpace(out.ReplyToPlatformMessageID), 10, 64)
 		if err != nil {

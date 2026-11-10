@@ -847,6 +847,9 @@ func (m *tuiModel) applyStreamEvent(msg tuiStreamMsg) {
 		m.content = slices.DeleteFunc(m.content, func(block *tuiContentBlock) bool { return block == stream })
 	case delivery.StreamSend:
 		stream.text = event.Text
+		if len(event.Blocks) > 0 {
+			stream.text = delivery.ContentBlocksText(event.Blocks)
+		}
 		if stream.text == "" && stream.reasoning == "" {
 			m.content = slices.DeleteFunc(m.content, func(block *tuiContentBlock) bool { return block == stream })
 		}

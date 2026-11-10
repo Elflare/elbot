@@ -498,13 +498,11 @@ func (s *RemoteServer) validToken(clientID, token string) bool {
 }
 
 func outputMessage(kind string, out delivery.Output) remoteMessage {
-	text := ""
-	if out.Kind == delivery.KindText {
-		text = out.Text
-	} else {
+	text := out.Text
+	if len(out.Blocks) == 0 {
 		text = delivery.FallbackText(out)
 	}
-	return remoteMessage{Type: kind, Text: text}
+	return remoteMessage{Type: kind, Text: text, Blocks: out.Blocks}
 }
 
 type remoteCommandReply struct {

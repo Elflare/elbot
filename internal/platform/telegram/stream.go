@@ -49,7 +49,11 @@ func (s *messageStream) Send(ctx context.Context, event delivery.StreamEvent) (d
 	case delivery.StreamReset:
 		return delivery.Receipt{}, s.reset(ctx)
 	case delivery.StreamSend:
-		return s.sendFinal(ctx, event.Text, event.Actions)
+		text := event.Text
+		if len(event.Blocks) > 0 {
+			text = delivery.ContentBlocksText(event.Blocks)
+		}
+		return s.sendFinal(ctx, text, event.Actions)
 	}
 	// Finish and reasoning events do not submit a message or release its preview.
 	return delivery.Receipt{}, nil

@@ -29,25 +29,26 @@ const (
 )
 
 type remoteMessage struct {
-	RequestID  string                 `json:"request_id,omitempty"`
-	Command    command.Request        `json:"command,omitempty"`
-	Result     *command.Result        `json:"result,omitempty"`
-	Error      *command.Error         `json:"error,omitempty"`
-	MediaToken string                 `json:"media_token,omitempty"` // 当前 WS 连接的 HTTP 附件凭据，仅 hello_ok 返回。
-	APIToken   string                 `json:"api_token,omitempty"`   // 当前 WS 连接的管理 API 路由凭据，仅 hello_ok 返回。
-	FileIDs    []string               `json:"file_ids,omitempty"`    // input 引用的当前连接附件，顺序即输入顺序。
-	Attachment *remoteAttachment      `json:"attachment,omitempty"`  // attachment 输出的下载描述。
-	StreamID   uint64                 `json:"stream_id,omitempty"`   // Scope for ordered preview updates and reset.
-	Event      *delivery.StreamEvent  `json:"event,omitempty"`       // Message stream operation.
-	Type       string                 `json:"type"`
-	ID         string                 `json:"id,omitempty"`
-	ClientID   string                 `json:"client_id,omitempty"`
-	Token      string                 `json:"token,omitempty"`
-	Text       string                 `json:"text,omitempty"`
-	Level      string                 `json:"level,omitempty"`
-	Cursor     int                    `json:"cursor,omitempty"`
-	Items      []completion.Item      `json:"items,omitempty"`
-	Snapshot   runtimestatus.Snapshot `json:"snapshot,omitempty"`
+	RequestID  string                  `json:"request_id,omitempty"`
+	Command    command.Request         `json:"command,omitempty"`
+	Result     *command.Result         `json:"result,omitempty"`
+	Error      *command.Error          `json:"error,omitempty"`
+	MediaToken string                  `json:"media_token,omitempty"` // 当前 WS 连接的 HTTP 附件凭据，仅 hello_ok 返回。
+	APIToken   string                  `json:"api_token,omitempty"`   // 当前 WS 连接的管理 API 路由凭据，仅 hello_ok 返回。
+	FileIDs    []string                `json:"file_ids,omitempty"`    // input 引用的当前连接附件，顺序即输入顺序。
+	Attachment *remoteAttachment       `json:"attachment,omitempty"`  // attachment 输出的下载描述。
+	StreamID   uint64                  `json:"stream_id,omitempty"`   // Scope for ordered preview updates and reset.
+	Event      *delivery.StreamEvent   `json:"event,omitempty"`       // Message stream operation.
+	Type       string                  `json:"type"`
+	ID         string                  `json:"id,omitempty"`
+	ClientID   string                  `json:"client_id,omitempty"`
+	Token      string                  `json:"token,omitempty"`
+	Text       string                  `json:"text,omitempty"`
+	Blocks     []delivery.ContentBlock `json:"blocks,omitempty"`
+	Level      string                  `json:"level,omitempty"`
+	Cursor     int                     `json:"cursor,omitempty"`
+	Items      []completion.Item       `json:"items,omitempty"`
+	Snapshot   runtimestatus.Snapshot  `json:"snapshot,omitempty"`
 }
 
 // remoteAttachment 只暴露连接级附件身份，不向客户端交付 MediaID 或磁盘路径。

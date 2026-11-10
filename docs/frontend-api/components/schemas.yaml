@@ -229,7 +229,7 @@ schemas:
         platform: { type: string }
         chat_id: { type: string }
       required: [session, mode, model, phase, pending_count, message_count, last_user_content, last_assistant_content, requests, context, tool_usage, turn_tool_usage, errors, default_mode, compact_model, platform, chat_id]
-    ConfirmationDetailBlock:
+    ContentBlock:
       oneOf:
         - type: object
           properties:
@@ -251,6 +251,45 @@ schemas:
             kind: { const: arguments }
             content: { type: object, additionalProperties: true }
           required: [kind, content]
+    StreamEvent:
+      type: object
+      properties:
+        type: { type: string, enum: [text_delta, reasoning_delta, reasoning_done, reset, finish, send, send_extras, tool_result] }
+        text: { type: string }
+        blocks:
+          type: array
+          items: { $ref: '#/schemas/ContentBlock' }
+          description: Ordered typed final message body; used instead of text when present.
+        actions:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              label: { type: string }
+              command: { type: string }
+            required: [id, label, command]
+        tool_call_id: { type: string }
+        tool_result:
+          type: object
+          properties:
+            name: { type: string }
+            success: { type: boolean }
+            segments: { type: array, items: { type: object, additionalProperties: true } }
+          required: [name, success, segments]
+      required: [type]
+    ChatMessage:
+      type: object
+      properties:
+        type: { const: chat }
+        text: { type: string }
+        blocks:
+          type: array
+          items: { $ref: '#/schemas/ContentBlock' }
+          description: Ordered typed message body; used instead of text when present.
+      required: [type]
+    ConfirmationDetailBlock:
+      $ref: '#/schemas/ContentBlock'
     Confirmation:
       type: object
       properties:

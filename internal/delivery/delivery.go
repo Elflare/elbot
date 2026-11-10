@@ -80,8 +80,10 @@ type Action struct {
 }
 
 type Output struct {
-	Kind                     Kind
-	Text                     string
+	Kind Kind
+	Text string
+	// Blocks preserves typed message content until the receiving platform renders it.
+	Blocks                   []ContentBlock
 	Name                     string
 	EmoticonID               string
 	ReplyToPlatformMessageID string
@@ -322,6 +324,9 @@ func FallbackText(out Output) string {
 	var label string
 	switch out.Kind {
 	case KindText:
+		if len(out.Blocks) > 0 {
+			return ContentBlocksText(out.Blocks)
+		}
 		return out.Text
 	case KindEmoticon:
 		return fmt.Sprintf("[表情: %s]", strings.TrimSpace(out.Name))
@@ -333,10 +338,14 @@ func FallbackText(out Output) string {
 		return fmt.Sprintf("@%s", name)
 	case KindReply:
 		replyID := strings.TrimSpace(out.ReplyToPlatformMessageID)
-		if replyID == "" {
-			return out.Text
+		text := out.Text
+		if len(out.Blocks) > 0 {
+			text = ContentBlocksText(out.Blocks)
 		}
-		return fmt.Sprintf("[引用消息 %s]\n%s", replyID, out.Text)
+		if replyID == "" {
+			return text
+		}
+		return fmt.Sprintf("[引用消息 %s]\n%s", replyID, text)
 	case KindImage:
 		label = "图片"
 	case KindFile:

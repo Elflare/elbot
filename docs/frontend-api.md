@@ -143,7 +143,7 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 {"type": "chat", "text": "你好！有什么可以帮你的？"}
 ```
 
-独立的完整对话输出，包括非流式投递的正文、Hook 输出以及 Cron／Elnis 后台报告。后台报告也进入聊天区。通过 `stream` 的 `send` 事件提交的正文不会再以 `chat` 重复发送，客户端需同时处理两种消息。
+独立的完整对话输出，包括非流式投递的正文、Hook 输出以及 Cron／Elnis 后台报告。后台报告也进入聊天区。可选 `blocks` 与流事件使用相同结构，存在时优先于 `text`。通过 `stream` 的 `send` 事件提交的正文不会再以 `chat` 重复发送，客户端需同时处理两种消息。
 
 ### attachment — 文件或图片输出
 
@@ -298,6 +298,7 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 | type | string | 事件类型，见下表 |
 | text | string | 正文／推理增量，或 `send` 的最终完整正文；空文本可能省略，按空字符串处理 |
 | actions | array | 可选的消息操作；元素字段为 `id`、`label`、`command`。前端可展示为按钮，点击后用 `input` 提交 `command`，仍由服务端校验权限 |
+| blocks | array | 可选的有序结构化正文块；每项为 `kind` 和 `content`。存在时优先于 `text`；确认消息使用 `text`、`markdown`、`diff`、`arguments`，消费者按类型渲染；纯文本消费者在出口格式化 |
 | tool_call_id | string | 工具结果对应的调用 ID |
 | tool_result | object | 工具执行结果，含 `name`、`success` 和完整 `segments` |
 
@@ -308,7 +309,7 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 | reasoning_done | 结束本次推理生成，保留已收到的推理内容 |
 | reset | 删除该流当前的正文和推理预览；重试可继续使用相同 `stream_id` 生成新预览 |
 | finish | 本次生成结束，保留预览及其流关联，等待最终 `send` 或后续重试的 `reset` |
-| send | 用 `text` **整体替换**正文预览并提交消息，保留推理内容；移除活动流关联。没有预览时也直接创建完整消息 |
+| send | 用 `text` 或 `blocks` **整体替换**正文预览并提交消息，保留推理内容；移除活动流关联。没有预览时也直接创建完整消息 |
 | tool_result | 工具结果持久化后发送；可按 `tool_call_id` 关联调用并在聊天中折叠展示。工具详情正文使用 `GET /api/v1/tools/{name}/detail` 完整读取 |
 
 例如，最终正文可能被 Hook 改写，因此必须使用 `send` 中的全文，而不能直接固定增量拼接结果：
@@ -316,6 +317,12 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 ```json
 {"type": "stream", "stream_id": 1, "event": {"type": "finish"}}
 {"type": "stream", "stream_id": 1, "event": {"type": "send", "text": "你好！有什么可以帮你的？"}}
+```
+
+待确认工具消息使用有序 `blocks` 保留内容类型，`send` 同时携带独立的 `actions`：
+
+```json
+{"type":"stream","stream_id":2,"event":{"type":"send","blocks":[{"kind":"text","content":"edit_file [high]: confirm"},{"kind":"diff","content":"-before\n+after"},{"kind":"arguments","content":{"path":"notes.md"}}],"actions":[{"id":"confirm","label":"确认本次","command":"/confirm"}]}}
 ```
 
 `send` 的空正文也必须覆盖原预览，不能忽略；正文和推理都为空时可移除该消息。`finish` 不等于正式提交，不应在收到它时移除流关联，也不要要求每个 `send` 前必须有增量或 `finish`。

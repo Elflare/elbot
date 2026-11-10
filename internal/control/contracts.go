@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/logging"
@@ -295,6 +296,7 @@ type CurrentConfirmationResult struct {
 	SessionID string                         `json:"session_id"`
 	Kind      string                         `json:"kind"`   // tool 或 append。
 	Detail    []tool.ConfirmationDetailBlock `json:"detail"` // 当前待确认操作的有序内容块。
+	Actions   []delivery.Action               `json:"actions"` // 当前待确认操作可直接提交的动作。
 	ToolName  string                         `json:"tool_name"`
 	Risk      string                         `json:"risk"`
 }

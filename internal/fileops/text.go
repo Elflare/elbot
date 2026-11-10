@@ -77,10 +77,6 @@ func NormalizeReadRange(total, start int, endLine LineNumber) (int, int, bool, e
 	if end < start {
 		return 0, 0, false, fmt.Errorf("end_line must be >= start_line")
 	}
-	if !endLine.End && end-start+1 > DefaultReadLineLimit {
-		end = start + DefaultReadLineLimit - 1
-		truncated = true
-	}
 	return start, end, truncated, nil
 }
 
