@@ -146,13 +146,14 @@ func ForegroundNotice(row *storage.Session) (llm.LLMMessage, bool) {
 }
 
 type ReplyCommitInput struct {
-	Persistence  MessageCommitter
-	Session      *storage.Session
-	Text         string
-	RawText      string
-	PlatformText string
-	Stream       delivery.MessageStream
-	Outputs      []delivery.Output
+	Persistence      MessageCommitter
+	Session          *storage.Session
+	Text             string
+	RawText          string
+	ReasoningContent string
+	PlatformText     string
+	Stream           delivery.MessageStream
+	Outputs          []delivery.Output
 }
 
 // A failed commit can still have delivered or persisted a reply. Receipt covers
@@ -190,6 +191,10 @@ func NewToolBatch(ctx context.Context, allocate func(context.Context) (string, e
 	}
 	head.CreatedAt = storage.Now()
 	ids := make([]string, len(results))
+	head.ToolCalls = make([]storage.ToolCall, len(calls))
+	for i, call := range calls {
+		head.ToolCalls[i] = storage.ToolCall{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
+	}
 	for i, result := range results {
 		if err := storage.PrepareMessageID(ctx, allocate, result); err != nil {
 			return nil, err
@@ -201,8 +206,6 @@ func NewToolBatch(ctx context.Context, allocate func(context.Context) (string, e
 	if err != nil {
 		return nil, err
 	}
-	// Calls and IDs contain only strings; decoded metadata already contains valid JSON.
-	_ = fields.Set("tool_calls", calls)
 	_ = fields.Set(storage.ToolResultMessageKey, ids)
 	head.Metadata, _ = fields.Encode()
 	return &storage.ToolBatch{Call: head, Results: results}, nil
@@ -227,19 +230,15 @@ func MessageFromStorage(row storage.Message) (llm.LLMMessage, error) {
 	text := row.Content
 	switch row.Role {
 	case storage.RoleAssistant:
-		metadata, err := AssistantMessageMetadata(row.Metadata)
-		if err != nil {
-			return llm.LLMMessage{}, fmt.Errorf("message %s metadata: %w", row.ID, err)
+		if row.SourceContent != "" {
+			text = row.SourceContent
 		}
-		if metadata.RawText != "" {
-			text = metadata.RawText
+		message.ToolCalls = make([]llm.ToolCallRequest, len(row.ToolCalls))
+		for i, call := range row.ToolCalls {
+			message.ToolCalls[i] = llm.ToolCallRequest{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
 		}
-		message.ToolCalls = metadata.ToolCalls
 	case storage.RoleTool:
-		message.Name, err = ToolNameFromMetadata(row.Metadata)
-		if err != nil {
-			return llm.LLMMessage{}, fmt.Errorf("message %s metadata: %w", row.ID, err)
-		}
+		message.Name = row.ToolName
 	}
 	if len(segments) == 0 {
 		segments = llm.TextSegments(text)
@@ -297,18 +296,16 @@ func DecodeMaterials(raw string) ([]Material, error) {
 	return materials, nil
 }
 
-type AssistantMetadata struct {
-	ToolCalls []llm.ToolCallRequest `json:"tool_calls,omitempty"`
-	RawText   string                `json:"raw_text,omitempty"`
-}
-
-func ToolCallStorageMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest) storage.Message {
-	metadata := AssistantMetadata{ToolCalls: calls}
-	if rawText != "" && rawText != content {
-		metadata.RawText = rawText
+func ToolCallStorageMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest, reasoningContent string) storage.Message {
+	storedCalls := make([]storage.ToolCall, len(calls))
+	for i, call := range calls {
+		storedCalls[i] = storage.ToolCall{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
 	}
-	data, _ := json.Marshal(metadata)
-	return storage.Message{SessionID: sessionID, Role: storage.RoleAssistant, Content: content, Metadata: string(data)}
+	message := storage.Message{SessionID: sessionID, Role: storage.RoleAssistant, Content: content, ReasoningContent: reasoningContent, ToolCalls: storedCalls}
+	if rawText != content {
+		message.SourceContent = rawText
+	}
+	return message
 }
 
 func StoredMessageSegments(segments []llm.MessageSegment) string {
@@ -340,17 +337,9 @@ func ToolResultStorageMessage(sessionID string, message llm.LLMMessage) storage.
 		Role:       storage.RoleTool,
 		Content:    MessageContent(message.Segments),
 		ToolCallID: message.ToolCallID,
+		ToolName:   message.Name,
 		Segments:   StoredMessageSegments(message.Segments),
-		Metadata:   ToolNameMetadata(message.Name),
 	}
-}
-
-func ToolNameMetadata(name string) string {
-	if name == "" {
-		return ""
-	}
-	data, _ := json.Marshal(map[string]string{"name": name})
-	return string(data)
 }
 
 func MessageSegmentsFromStorage(raw string) ([]llm.MessageSegment, error) {
@@ -362,28 +351,6 @@ func MessageSegmentsFromStorage(raw string) ([]llm.MessageSegment, error) {
 		return nil, err
 	}
 	return segments, nil
-}
-
-func AssistantMessageMetadata(raw string) (AssistantMetadata, error) {
-	var value AssistantMetadata
-	if raw == "" {
-		return value, nil
-	}
-	err := json.Unmarshal([]byte(raw), &value)
-	return value, err
-}
-
-func ToolNameFromMetadata(raw string) (string, error) {
-	if raw == "" {
-		return "", nil
-	}
-	var value struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal([]byte(raw), &value); err != nil {
-		return "", err
-	}
-	return value.Name, nil
 }
 
 // MessageContent preserves pure text verbatim. Multimodal segments remain the
@@ -409,6 +376,7 @@ type CallInput struct {
 }
 type CallOutput struct {
 	Text, SourceText string
+	ReasoningContent string
 	Usage            *llm.Usage
 	ToolCalls        []llm.ToolCallRequest
 	Outputs          []delivery.Output

@@ -313,7 +313,7 @@ func TestPromptBuilderUsesAssistantRawTextFromMetadata(t *testing.T) {
 	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session: &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{
-			{Role: storage.RoleAssistant, Content: "visible text", Metadata: dialogue.AssistantRawTextMetadata("visible text", "raw [[smile]] text")},
+			{Role: storage.RoleAssistant, Content: "visible text", SourceContent: "raw [[smile]] text"},
 		},
 	})
 	if err != nil {
@@ -330,7 +330,10 @@ func TestPromptBuilderUsesAssistantRawTextFromMetadata(t *testing.T) {
 func TestPromptBuilderRestoresAssistantRawTextAndToolCalls(t *testing.T) {
 	builder := newTestPromptBuilder("SOUL")
 	calls := []llm.ToolCallRequest{{ID: "call-1", Name: "shell", Arguments: `{"cmd":"pwd"}`}}
-	stored := agentshare.ToolCallStorageMessage("session-1", "visible", "raw [[smile]]", calls)
+	stored := agentshare.ToolCallStorageMessage("session-1", "visible", "raw [[smile]]", calls, "inspect before calling")
+	if stored.SourceContent != "raw [[smile]]" || stored.ReasoningContent != "inspect before calling" || len(stored.ToolCalls) != 1 || stored.ToolCalls[0].ID != "call-1" {
+		t.Fatalf("stored transcript = %+v", stored)
+	}
 	messages, err := builder.Build(context.Background(), chatroute.PromptBuildRequest{
 		Session:  &storage.Session{Mode: storage.SessionModeWork},
 		Messages: []storage.Message{stored},
@@ -367,7 +370,7 @@ func TestStoredMessageSegmentsUsesStableLightweightJSON(t *testing.T) {
 
 func TestToolResultStorageMessageUsesContentFastPath(t *testing.T) {
 	pureText := agentshare.ToolResultStorageMessage("s1", llm.LLMMessage{Role: llm.RoleTool, Name: "shell", ToolCallID: "call_1", Segments: llm.TextSegments("done")})
-	if pureText.Content != "done" || pureText.Segments != "" {
+	if pureText.Content != "done" || pureText.Segments != "" || pureText.ToolName != "shell" {
 		t.Fatalf("pure text message = %#v", pureText)
 	}
 	multimodal := agentshare.ToolResultStorageMessage("s1", llm.LLMMessage{Role: llm.RoleTool, Name: "screenshot", ToolCallID: "call_2", Segments: []llm.MessageSegment{
@@ -421,7 +424,7 @@ func TestPromptBuilderRestoresToolSegmentsAndFallsBackToContent(t *testing.T) {
 				Content:    "截图完成 [图片]",
 				ToolCallID: "call_1",
 				Segments:   agentshare.StoredMessageSegments(toolSegments),
-				Metadata:   agentshare.ToolNameMetadata("screenshot"),
+				ToolName:   "screenshot",
 			},
 		},
 	})

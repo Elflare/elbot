@@ -21,15 +21,10 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 	r, s := p.route, p.state
 	for i := range p.materials.Loaded.Messages {
 		head := &p.materials.Loaded.Messages[i]
-		fields, err := storage.DecodeSessionMetadata(head.Metadata)
-		if err != nil {
-			return failedLoop(err)
-		}
-		if string(fields["tool_batch_status"]) != `"pending"` {
+		if head.ToolBatchStatus != "pending" {
 			continue
 		}
-		_ = fields.Set("tool_batch_status", "interrupted")
-		head.Metadata, _ = fields.Encode()
+		head.ToolBatchStatus = "interrupted"
 		if err := r.Messages.Commit(s.requestCtx, storage.DialogueCommit{SessionID: s.session.ID, ToolResult: &storage.ToolResultCommit{Call: head}}, "close_interrupted_tools"); err != nil {
 			return failedLoop(err)
 		}
@@ -44,6 +39,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 	}()
 	var finalRawText string
 	var platformFinalText string
+	var finalReasoningContent string
 	var stream delivery.MessageStream
 	var deferredOutputs []delivery.Output
 	toolRounds := 0
@@ -126,6 +122,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		}
 		assistantText := result.Text
 		assistantRawText := result.RawText
+		finalReasoningContent = result.ReasoningContent
 		if result.Usage != nil {
 			s.usage = result.Usage
 		}
@@ -170,7 +167,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			s.output.SendPreview(s.ctx, fmt.Sprintf("max_rounds_per_turn=%d → 跳过后续工具，生成总结", r.Tools.MaxRoundsPerTurn()))
 			skipped := skippedToolMessages(result.ToolCalls, r.Tools.MaxRoundsPerTurn())
 			committer := r.NewToolTranscriptCommitter()
-			head := agentshare.ToolCallStorageMessage(s.session.ID, assistantRawText, assistantRawText, result.ToolCalls)
+			head := agentshare.ToolCallStorageMessage(s.session.ID, assistantRawText, assistantRawText, result.ToolCalls, result.ReasoningContent)
 			if err := committer.Begin(s.requestCtx, &head); err != nil {
 				return failedLoop(err)
 			}
@@ -215,6 +212,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 			summaryText := summary.Text
 			summaryRawText := summary.RawText
+			finalReasoningContent = summary.ReasoningContent
 			if summaryText == "" {
 				summaryText = "工具调用轮次已达到上限，当前流程已停止。"
 				if summaryRawText == "" {
@@ -230,7 +228,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		}
 		toolRounds++
 		committer := r.NewToolTranscriptCommitter()
-		execution := r.Tools.ExecuteWithCommitter(s.requestCtx, s.session, result.ToolCalls, assistantRawText, assistantRawText, s.output, committer)
+		execution := r.Tools.ExecuteWithCommitter(s.requestCtx, s.session, result.ToolCalls, assistantRawText, assistantRawText, result.ReasoningContent, s.output, committer)
 		if execution.Err != nil {
 			return failedLoop(execution.Err)
 		}
@@ -267,13 +265,14 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 	return agentshare.LoopResult{
 		Outcome: agentshare.Completed,
 		Commit: agentshare.ReplyCommitInput{
-			Persistence:  r.Messages.Committer("append_assistant_message"),
-			Session:      s.session,
-			Text:         finalRawText,
-			RawText:      finalRawText,
-			PlatformText: platformFinalText,
-			Stream:       stream,
-			Outputs:      deferredOutputs,
+			Persistence:      r.Messages.Committer("append_assistant_message"),
+			Session:          s.session,
+			Text:             finalRawText,
+			RawText:          finalRawText,
+			ReasoningContent: finalReasoningContent,
+			PlatformText:     platformFinalText,
+			Stream:           stream,
+			Outputs:          deferredOutputs,
 		},
 	}
 }

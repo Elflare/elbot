@@ -28,6 +28,10 @@ import (
 
 type isolatedPlatformCapabilities struct{ *dispatch.Router }
 
+func (isolatedPlatformCapabilities) NormalizeInput(_ context.Context, segments []llm.MessageSegment) ([]llm.MessageSegment, error) {
+	return segments, nil
+}
+
 func (isolatedPlatformCapabilities) RestoreMessageContext(ctx, _ context.Context) context.Context {
 	return ctx
 }

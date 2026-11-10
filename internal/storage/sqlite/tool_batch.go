@@ -21,10 +21,7 @@ func validateToolBatch(commit storage.DialogueCommit) error {
 	if err != nil {
 		return err
 	}
-	var calls []struct{ ID string }
-	if err := json.Unmarshal(fields["tool_calls"], &calls); err != nil {
-		return err
-	}
+	calls := batch.Call.ToolCalls
 	var ids []string
 	if raw, ok := fields[storage.ToolResultMessageKey]; ok {
 		err = json.Unmarshal(raw, &ids)
@@ -57,11 +54,20 @@ func commitToolResult(ctx context.Context, tx *sql.Tx, commit storage.DialogueCo
 		if message == nil || message.SessionID != commit.SessionID {
 			return fmt.Errorf("tool result session mismatch")
 		}
-		key := "tool_result_status"
+		var query string
+		var args []any
 		if message == update.Call {
-			key = "tool_batch_status"
+			query = `UPDATE messages SET content=?,segments=?,metadata=?,tool_calls=?,tool_batch_status=? WHERE id=? AND session_id=? AND role=? AND COALESCE(tool_call_id,'')=? AND tool_batch_status='pending'`
+			calls, err := json.Marshal(message.ToolCalls)
+			if err != nil {
+				return err
+			}
+			args = []any{message.Content, nullString(message.Segments), message.Metadata, string(calls), message.ToolBatchStatus, message.ID, commit.SessionID, message.Role, message.ToolCallID}
+		} else {
+			query = `UPDATE messages SET content=?,segments=?,metadata=?,tool_name=?,tool_result_status=? WHERE id=? AND session_id=? AND role=? AND COALESCE(tool_call_id,'')=? AND tool_result_status='pending'`
+			args = []any{message.Content, nullString(message.Segments), message.Metadata, message.ToolName, message.ToolResultStatus, message.ID, commit.SessionID, message.Role, message.ToolCallID}
 		}
-		result, err := tx.ExecContext(ctx, `UPDATE messages SET content=?,segments=?,metadata=? WHERE id=? AND session_id=? AND role=? AND COALESCE(tool_call_id,'')=? AND json_extract(metadata, '$.' || ?)='pending'`, message.Content, nullString(message.Segments), message.Metadata, message.ID, commit.SessionID, message.Role, message.ToolCallID, key)
+		result, err := tx.ExecContext(ctx, query, args...)
 		if err != nil {
 			return err
 		}
@@ -77,7 +83,7 @@ func commitToolResult(ctx context.Context, tx *sql.Tx, commit storage.DialogueCo
 			return err
 		}
 		for _, id := range ids {
-			if _, err := tx.ExecContext(ctx, `UPDATE messages SET metadata=json_set(metadata,'$.tool_result_status','interrupted') WHERE id=? AND session_id=? AND json_extract(metadata,'$.tool_result_status')='pending'`, id, commit.SessionID); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE messages SET tool_result_status='interrupted' WHERE id=? AND session_id=? AND tool_result_status='pending'`, id, commit.SessionID); err != nil {
 				return err
 			}
 		}

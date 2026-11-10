@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -75,26 +74,13 @@ func (s *Compactor) Prepare(ctx context.Context, current *storage.Session, reaso
 	return &contextmgr.PreparedCompact{Title: title, State: seed}, nil
 }
 
-// Only the transcript fields consumed by compression are decoded here.
-func compactMessageMetadata(raw string) struct {
-	ToolCalls []llm.ToolCallRequest `json:"tool_calls"`
-	RawText   string                `json:"raw_text"`
-} {
-	var result struct {
-		ToolCalls []llm.ToolCallRequest `json:"tool_calls"`
-		RawText   string                `json:"raw_text"`
-	}
-	_ = json.Unmarshal([]byte(raw), &result)
-	return result
-}
-
 func (r *Compactor) CompactMessages(ctx context.Context, loaded *contextmgr.LoadedContext) ([]CompactMessage, error) {
 	callIDs := []string{}
 	for _, message := range loaded.Messages {
 		if message.Role != storage.RoleAssistant {
 			continue
 		}
-		for _, call := range compactMessageMetadata(message.Metadata).ToolCalls {
+		for _, call := range message.ToolCalls {
 			if call.ID != "" {
 				callIDs = append(callIDs, call.ID)
 			}
@@ -123,13 +109,12 @@ func (r *Compactor) CompactMessages(ctx context.Context, loaded *contextmgr.Load
 				out = append(out, CompactMessage{Role: storage.RoleUser, Content: content})
 			}
 		case storage.RoleAssistant:
-			metadata := compactMessageMetadata(message.Metadata)
 			content := message.Content
-			if metadata.RawText != "" {
-				content = metadata.RawText
+			if message.SourceContent != "" {
+				content = message.SourceContent
 			}
-			calls := make([]CompactToolCall, 0, len(metadata.ToolCalls))
-			for _, call := range metadata.ToolCalls {
+			calls := make([]CompactToolCall, 0, len(message.ToolCalls))
+			for _, call := range message.ToolCalls {
 				if !successful[call.ID] {
 					continue
 				}

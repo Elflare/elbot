@@ -229,7 +229,7 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 | --- | --- |
 | sessions | items、当前绑定、搜索词及分页；每个 item 含会话字段、消息数量、最近消息和用户／助手正文摘要 |
 | session | 操作目标、变更后的会话、当前绑定、实际变更数量及 resume/fork 已读取的最近消息 |
-| messages | session_id、items 及分页；消息正文完整，历史附件只提供名称 |
+| messages | session_id、items 及分页；包含正文、思考、工具调用和工具结果等结构化消息字段，历史附件只提供名称 |
 | status | 可空当前会话、模式、模型、Turn 阶段、请求、工具统计、最近用户／助手正文及 context |
 | models / model | 模型目录与逐提供方错误／实际提交的模型及目标 |
 | requests / stop | 请求快照／停止目标及实际接受取消数量 |
@@ -239,7 +239,7 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 
 `/messages` 默认读取第 1 页，每页 20 条。第 1 页最新，页码递增向更早历史读取；每页内按对话顺序排列。向上加载时将更早页面插到顶部，并按消息 ID 去重。页码查询期间有新消息时页面边界可以移动，不提供跨请求快照。空历史返回 `items=[]`、`total_pages=0`。
 
-工具结果消息包含 `tool_call_id`、`tool_name` 和完整正文；实时 `tool_result` 事件包含调用 ID、工具名、成功状态及完整结果 segments。确认详情通过现有 confirmation 接口返回；自动确认的工具直接显示执行结果。
+历史消息的 `reasoning_content` 返回已保存的思考文本；助手工具调用通过 `tool_calls` 数组返回，工具结果消息通过 `tool_call_id`、`tool_name` 和完整正文关联。工具调用及结果状态由 `tool_batch_status`、`tool_result_status` 表示。`source_content` 只在模型原文与 `content` 不同时返回。消息接口不返回内部 `metadata`。实时 `tool_result` 事件仍包含调用 ID、工具名、成功状态及完整结果 segments。确认详情通过现有 confirmation 接口返回；自动确认的工具直接显示执行结果。
 
 `/status` 的 `context` 包含 `usage`、`context_window`、`compact_enabled`、`compact_trigger_ratio`。用量字段为 `prompt_tokens`、`completion_tokens`、`total_tokens`、`cache_hit_tokens`；null 表示未知，0 是已知零值。上下文比例使用已知 total/window，缓存命中率使用已知 cache/prompt，不推算缺失计数。此处阶段来自 Turn；实时 `status` 帧仍使用 Runtime 快照。
 

@@ -11,6 +11,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/request"
+	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/turn"
 	"elbot/internal/workspace"
@@ -57,13 +58,17 @@ type MessageData struct {
 	SessionID                string               `json:"session_id"`
 	Role                     string               `json:"role"`
 	Content                  string               `json:"content"`
+	SourceContent            string               `json:"source_content,omitempty"`
+	ReasoningContent         string               `json:"reasoning_content"`
 	ParentMessageID          string               `json:"parent_message_id"`
 	ReplyToPlatformMessageID string               `json:"reply_to_platform_message_id"`
 	ReplyToMessageID         string               `json:"reply_to_message_id"`
 	ToolCallID               string               `json:"tool_call_id"`
 	Segments                 []llm.MessageSegment `json:"segments"` // 保留原有顺序与媒体引用；出口自行处理展示与授权。
-	Metadata                 string               `json:"metadata"`
+	ToolCalls                []storage.ToolCall   `json:"tool_calls"`
 	ToolName                 string               `json:"tool_name,omitempty"`
+	ToolBatchStatus          string               `json:"tool_batch_status,omitempty"`
+	ToolResultStatus         string               `json:"tool_result_status,omitempty"`
 	CreatedAt                time.Time            `json:"created_at"`
 }
 type SessionSummaryData struct {

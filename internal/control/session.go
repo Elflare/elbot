@@ -411,14 +411,9 @@ func sessionData(row *storage.Session) *SessionData {
 func messageData(rows []storage.Message) ([]MessageData, error) {
 	result := make([]MessageData, 0, len(rows))
 	for _, row := range rows {
-		item := MessageData{ID: row.ID, SessionID: row.SessionID, Role: row.Role, Content: row.Content, ParentMessageID: row.ParentMessageID, ReplyToPlatformMessageID: row.ReplyToPlatformMessageID, ReplyToMessageID: row.ReplyToMessageID, ToolCallID: row.ToolCallID, Metadata: row.Metadata, CreatedAt: row.CreatedAt}
-		if row.Role == storage.RoleTool && row.Metadata != "" {
-			var metadata struct {
-				Name string `json:"name"`
-			}
-			if json.Unmarshal([]byte(row.Metadata), &metadata) == nil {
-				item.ToolName = metadata.Name
-			}
+		item := MessageData{ID: row.ID, SessionID: row.SessionID, Role: row.Role, Content: row.Content, SourceContent: row.SourceContent, ReasoningContent: row.ReasoningContent, ParentMessageID: row.ParentMessageID, ReplyToPlatformMessageID: row.ReplyToPlatformMessageID, ReplyToMessageID: row.ReplyToMessageID, ToolCallID: row.ToolCallID, ToolCalls: row.ToolCalls, ToolName: row.ToolName, ToolBatchStatus: row.ToolBatchStatus, ToolResultStatus: row.ToolResultStatus, CreatedAt: row.CreatedAt}
+		if item.ToolCalls == nil {
+			item.ToolCalls = []storage.ToolCall{}
 		}
 		var segments []llm.MessageSegment
 		if row.Segments != "" {

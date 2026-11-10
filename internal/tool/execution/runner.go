@@ -47,7 +47,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		result     executionResult
 		finishedAt time.Time
 	}, len(req.Calls))
-	head := deps.ToolCallMessage(sessionID, req.AssistantText, req.AssistantRawText, req.Calls)
+	head := deps.ToolCallMessage(sessionID, req.AssistantText, req.AssistantRawText, req.ReasoningContent, req.Calls)
 	err = req.Committer.Begin(ctx, &head)
 
 	if err != nil {

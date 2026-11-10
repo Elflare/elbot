@@ -35,8 +35,7 @@ func TestRemoveUnusedIDsPreservesRecordsAndConstraints(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO sessions(id,owner_id,platform,platform_scope_id,mode,status,created_at,updated_at) VALUES('legacy','cli:local','cli','local','work','active','now','now')`); err != nil {
 		t.Fatal(err)
 	}
-	messages := &MessageRepository{db: db}
-	if err := messages.Append(t.Context(), &storage.Message{ID: "message", SessionID: "legacy", Role: "user"}); err != nil {
+	if _, err := db.Exec(`INSERT INTO messages(id,session_id,role,content,created_at) VALUES('message','legacy','user','','2026-01-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO platform_message_map VALUES('map-uuid','cli','local','platform-message','message','legacy','now');
@@ -47,6 +46,7 @@ func TestRemoveUnusedIDsPreservesRecordsAndConstraints(t *testing.T) {
 	if err := runMigrations(t.Context(), db); err != nil {
 		t.Fatal(err)
 	}
+	messages := &MessageRepository{db: db}
 	for _, table := range []string{"platform_message_map", "tool_call_records"} {
 		var count int
 		if err := db.QueryRow(`SELECT count(*) FROM pragma_table_info(?) WHERE name='id'`, table).Scan(&count); err != nil || count != 0 {

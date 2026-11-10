@@ -2,9 +2,9 @@ package llm
 
 // ToolCallRequest is the business view of a requested function call.
 type ToolCallRequest struct {
-	ID        string
-	Name      string
-	Arguments string
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
 }
 
 // ToolSchema describes an ElBot function without a protocol's JSON wrapper.

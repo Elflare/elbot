@@ -715,6 +715,27 @@ CREATE INDEX idx_tool_call_records_session_tool ON tool_call_records(session_id,
 CREATE INDEX idx_tool_call_records_session_created_at ON tool_call_records(session_id, created_at);
 `},
 	{version: 31, name: "structured_identity", apply: migrateStructuredIdentity},
+	{version: 32, name: "structured_message_content", sql: `
+ALTER TABLE messages ADD COLUMN source_content TEXT NOT NULL DEFAULT '';
+ALTER TABLE messages ADD COLUMN reasoning_content TEXT NOT NULL DEFAULT '';
+ALTER TABLE messages ADD COLUMN tool_calls TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE messages ADD COLUMN tool_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE messages ADD COLUMN tool_batch_status TEXT NOT NULL DEFAULT '';
+ALTER TABLE messages ADD COLUMN tool_result_status TEXT NOT NULL DEFAULT '';
+
+UPDATE messages SET
+ source_content=CASE WHEN role='assistant' AND json_type(metadata,'$.raw_text')='text' THEN json_extract(metadata,'$.raw_text') ELSE '' END,
+ tool_calls=CASE WHEN role='assistant' AND json_type(metadata,'$.tool_calls')='array' THEN json_extract(metadata,'$.tool_calls') ELSE '[]' END,
+ tool_name=CASE WHEN role='tool' AND json_type(metadata,'$.name')='text' THEN json_extract(metadata,'$.name') ELSE '' END,
+ tool_batch_status=CASE WHEN role='assistant' AND json_type(metadata,'$.tool_batch_status')='text' THEN json_extract(metadata,'$.tool_batch_status') ELSE '' END,
+ tool_result_status=CASE WHEN role='tool' AND json_type(metadata,'$.tool_result_status')='text' THEN json_extract(metadata,'$.tool_result_status') ELSE '' END,
+ metadata=CASE role
+  WHEN 'assistant' THEN NULLIF(json_remove(metadata,'$.raw_text','$.tool_calls','$.tool_batch_status'),'{}')
+  WHEN 'tool' THEN NULLIF(json_remove(metadata,'$.name','$.tool_result_status'),'{}')
+  ELSE metadata
+ END
+WHERE CASE WHEN json_valid(metadata) THEN json_type(metadata)='object' ELSE 0 END;
+`},
 }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {

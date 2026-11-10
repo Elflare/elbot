@@ -121,7 +121,7 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 		calls = nil
 		var callErr error
 		result, callErr = s.nativeCall(ctx, client, request, consumed, stream, observation)
-		final := agentshare.CallOutput{Text: outputText(result.Items), SourceText: outputText(result.Items)}
+		final := agentshare.CallOutput{Text: outputText(result.Items), SourceText: outputText(result.Items), ReasoningContent: result.ReasoningContent}
 		if result.Response != nil {
 			final.Usage = result.Response.TokenUsage()
 		}

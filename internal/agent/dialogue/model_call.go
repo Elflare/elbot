@@ -90,7 +90,7 @@ func (c *CallProcessor) Call(
 		}
 		return result, err
 	}
-	return c.CompleteCall(ctx, session, selection, result.SourceText, result.Usage, result.ToolCalls, time.Since(startedAt).Milliseconds())
+	return c.CompleteCall(ctx, session, selection, result.SourceText, result.ReasoningContent, result.Usage, result.ToolCalls, time.Since(startedAt).Milliseconds())
 }
 
 func (c *CallProcessor) Begin(sessionID string, selected modelmgr.Selection) agentshare.CallObservation {
@@ -268,7 +268,7 @@ func (c *CallProcessor) PrepareCall(ctx context.Context, session *storage.Sessio
 	return agentshare.CallInput{Messages: baseMessages, RequestMessages: requestMessages, Tools: tools}, nil
 }
 
-func (c *CallProcessor) CompleteCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, content string, usage *llm.Usage, toolCalls []llm.ToolCallRequest, elapsedMs int64) (agentshare.CallOutput, error) {
+func (c *CallProcessor) CompleteCall(ctx context.Context, session *storage.Session, selection modelmgr.Selection, content, reasoningContent string, usage *llm.Usage, toolCalls []llm.ToolCallRequest, elapsedMs int64) (agentshare.CallOutput, error) {
 	sessionID := session.ID
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
 	result, err := c.Hooks.LLMResponseReceived(ctx, agentshare.Session{ID: sessionID}, agentshare.LLMResponse{
@@ -288,7 +288,7 @@ func (c *CallProcessor) CompleteCall(ctx context.Context, session *storage.Sessi
 	if !toolsEnabled {
 		toolCalls = nil
 	}
-	return agentshare.CallOutput{Text: result.Text, SourceText: result.SourceText, Usage: usage, ToolCalls: toolCalls, Outputs: result.Outputs}, nil
+	return agentshare.CallOutput{Text: result.Text, SourceText: result.SourceText, ReasoningContent: reasoningContent, Usage: usage, ToolCalls: toolCalls, Outputs: result.Outputs}, nil
 }
 
 func (o *CallObservation) Event() *agentshare.ModelCallCompletedEvent { return &o.event }

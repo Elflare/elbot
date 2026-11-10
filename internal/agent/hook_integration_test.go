@@ -20,6 +20,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/hook"
+	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
 	platformshare "elbot/internal/platform/share"
@@ -36,6 +37,10 @@ import (
 type integrationPlatform struct {
 	mu      sync.Mutex
 	outputs []string
+}
+
+func (*integrationPlatform) NormalizeInput(_ context.Context, segments []llm.MessageSegment) ([]llm.MessageSegment, error) {
+	return segments, nil
 }
 
 func (*integrationPlatform) SessionIDCode(name string, _ contextinfo.ChatType) (string, error) {

@@ -32,12 +32,13 @@ type Caller struct {
 	}
 }
 type llmCallResult struct {
-	Text      string
-	RawText   string
-	Usage     *llm.Usage
-	ToolCalls []llm.ToolCallRequest
-	Outputs   []delivery.Output
-	Messages  []llm.LLMMessage
+	Text             string
+	RawText          string
+	ReasoningContent string
+	Usage            *llm.Usage
+	ToolCalls        []llm.ToolCallRequest
+	Outputs          []delivery.Output
+	Messages         []llm.LLMMessage
 }
 
 func (c *Caller) Call(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *agentshare.PendingUserMessage, stream delivery.MessageStream) (result llmCallResult, callErr error) {
@@ -60,7 +61,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 	attempt := func(ctx context.Context, observation agentshare.CallObservation) (agentshare.CallOutput, error) {
 		var err error
 		result, err = c.callOnce(ctx, client, req, observation, stream, toolsEnabled)
-		return agentshare.CallOutput{Text: result.RawText, SourceText: result.RawText, Usage: result.Usage, ToolCalls: result.ToolCalls}, err
+		return agentshare.CallOutput{Text: result.RawText, SourceText: result.RawText, ReasoningContent: result.ReasoningContent, Usage: result.Usage, ToolCalls: result.ToolCalls}, err
 	}
 	final, err := c.Calls.Call(ctx, session, selection, messages, tools, pending, c.Messages.Committer("append_pending_user_message"), stream, prepare, attempt)
 	result.Messages = baseMessages
@@ -71,6 +72,7 @@ func (c *Caller) Call(ctx context.Context, session *storage.Session, selection m
 		return llmCallResult{}, err
 	}
 	result.Text, result.Usage, result.ToolCalls, result.Outputs = final.Text, final.Usage, final.ToolCalls, final.Outputs
+	result.ReasoningContent = final.ReasoningContent
 	return result, nil
 }
 
@@ -100,6 +102,7 @@ func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, 
 		return llmCallResult{}, err
 	}
 	var assistant strings.Builder
+	var reasoning strings.Builder
 	var usage *llm.Usage
 	var toolCalls []llm.ToolCallRequest
 	for chunk := range ch {
@@ -110,17 +113,18 @@ func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, 
 			observation.LogRecord().ResultStatus = events.LogStatus(chunk.Error)
 			if ctx.Err() != nil && errors.Is(chunk.Error, ctx.Err()) {
 				content := assistant.String()
-				return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls}, chunk.Error
+				return llmCallResult{Text: content, RawText: content, ReasoningContent: reasoning.String(), Usage: usage, ToolCalls: toolCalls}, chunk.Error
 			}
 			completed.ProviderError, completed.Err = true, chunk.Error
 			observation.LogRecord().ResultStatus = events.ResultFailed
 			completed.ElapsedMS = elapsedMillis(startedAt)
-			return llmCallResult{Text: assistant.String(), RawText: assistant.String(), Usage: usage, ToolCalls: toolCalls}, chunk.Error
+			return llmCallResult{Text: assistant.String(), RawText: assistant.String(), ReasoningContent: reasoning.String(), Usage: usage, ToolCalls: toolCalls}, chunk.Error
 		}
 		if chunk.Usage != nil {
 			usage = chunk.Usage
 		}
 		if chunk.DeltaReasoningContent != "" {
+			reasoning.WriteString(chunk.DeltaReasoningContent)
 			_, _ = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReasoningDelta, Text: chunk.DeltaReasoningContent})
 		}
 		if toolsEnabled {
@@ -148,7 +152,7 @@ func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, 
 	if err := ctx.Err(); err != nil {
 		completed.Err = err
 		observation.LogRecord().ResultStatus = events.ResultCanceled
-		return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls}, err
+		return llmCallResult{Text: content, RawText: content, ReasoningContent: reasoning.String(), Usage: usage, ToolCalls: toolCalls}, err
 	}
 	_, err = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamFinish})
 	observation.LogRecord().ResultStatus = events.ResultSucceeded
@@ -156,7 +160,7 @@ func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, 
 		completed.Err = err
 		observation.LogRecord().ResultStatus = events.LogStatus(err)
 	}
-	return llmCallResult{Text: content, RawText: content, Usage: usage, ToolCalls: toolCalls}, err
+	return llmCallResult{Text: content, RawText: content, ReasoningContent: reasoning.String(), Usage: usage, ToolCalls: toolCalls}, err
 }
 
 func elapsedMillis(startedAt time.Time) int64 {

@@ -20,12 +20,13 @@ import (
 )
 
 type nativeCallResult struct {
-	Exchange      *storage.NativeExchange
-	Response      *api.Response
-	Items         []api.Item
-	OutputStarted bool
-	FactsSaved    bool
-	AllowedTools  []string
+	Exchange         *storage.NativeExchange
+	Response         *api.Response
+	Items            []api.Item
+	ReasoningContent string
+	OutputStarted    bool
+	FactsSaved       bool
+	AllowedTools     []string
 }
 
 // inputReference identifies one ordered input in an immutable record. Synthetic
@@ -262,6 +263,7 @@ func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request
 				}
 			case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
 				if event.Delta != "" {
+					result.ReasoningContent += event.Delta
 					_, _ = stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReasoningDelta, Text: event.Delta})
 				}
 			case "response.reasoning_summary_text.done", "response.reasoning_text.done":

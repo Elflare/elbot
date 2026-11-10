@@ -166,12 +166,6 @@ func toolBatch(t *testing.T, f *fixture, sessionID, suffix string, pending bool)
 		status = "pending"
 	}
 	fields := storage.SessionMetadata{}
-	if err := fields.Set("tool_batch_status", status); err != nil {
-		t.Fatal(err)
-	}
-	if err := fields.Set("tool_calls", []map[string]string{{"ID": suffix + "-one", "Name": "tool", "Arguments": "{}"}, {"ID": suffix + "-two", "Name": "tool", "Arguments": "{}"}}); err != nil {
-		t.Fatal(err)
-	}
 	if err := fields.Set(storage.ToolResultMessageKey, []string{suffix + "-r1", suffix + "-r2"}); err != nil {
 		t.Fatal(err)
 	}
@@ -179,9 +173,9 @@ func toolBatch(t *testing.T, f *fixture, sessionID, suffix string, pending bool)
 	if err != nil {
 		t.Fatal(err)
 	}
-	batch := &storage.ToolBatch{Call: &storage.Message{ID: suffix + "-head", SessionID: sessionID, Role: storage.RoleAssistant, Metadata: raw}, Results: []*storage.Message{
-		{ID: suffix + "-r1", SessionID: sessionID, Role: storage.RoleTool, ToolCallID: suffix + "-one", Content: "one"},
-		{ID: suffix + "-r2", SessionID: sessionID, Role: storage.RoleTool, ToolCallID: suffix + "-two", Content: "two"},
+	batch := &storage.ToolBatch{Call: &storage.Message{ID: suffix + "-head", SessionID: sessionID, Role: storage.RoleAssistant, Metadata: raw, ToolBatchStatus: status, ToolCalls: []storage.ToolCall{{ID: suffix + "-one", Name: "tool", Arguments: "{}"}, {ID: suffix + "-two", Name: "tool", Arguments: "{}"}}}, Results: []*storage.Message{
+		{ID: suffix + "-r1", SessionID: sessionID, Role: storage.RoleTool, ToolCallID: suffix + "-one", Content: "one", ToolResultStatus: "completed"},
+		{ID: suffix + "-r2", SessionID: sessionID, Role: storage.RoleTool, ToolCallID: suffix + "-two", Content: "two", ToolResultStatus: "completed"},
 	}}
 	if err := f.store.Dialogues().Commit(t.Context(), storage.DialogueCommit{SessionID: sessionID, ToolBatch: batch}); err != nil {
 		t.Fatal(err)

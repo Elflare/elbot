@@ -132,7 +132,7 @@ func TestToolTranscriptMirrorMatchesFullDatabaseFacts(t *testing.T) {
 	}
 	committer := &ToolTranscriptCommitter{Messages: &MessageStore{NewMessageID: testutil.IDSequence().MessageID, Dialogues: store.Dialogues(), Gate: &CommitGate{Sessions: newSessionSupervisor(t, store), Turns: turn.NewSupervisor(testutil.IDSequence()), View: ExecutionView{Sessions: store.Sessions()}}}}
 	calls := []llm.ToolCallRequest{{ID: "one", Name: "discover_tool", Arguments: `{"names":["one","two"]}`}, {ID: "two", Name: "large", Arguments: `{"all":true}`}}
-	head := agentshare.ToolCallStorageMessage(row.ID, "calling", "calling", calls)
+	head := agentshare.ToolCallStorageMessage(row.ID, "calling", "calling", calls, "")
 	if err := committer.Begin(t.Context(), &head); err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 	calls[0].Arguments = `{"media":"` + item.ID + `"}`
 	calls[1].Arguments = calls[0].Arguments
 	calls[2].Arguments = calls[0].Arguments
-	head := agentshare.ToolCallStorageMessage(row.ID, "", "", calls)
+	head := agentshare.ToolCallStorageMessage(row.ID, "", "", calls, "")
 	if err := committer.Begin(ctx, &head); err != nil {
 		t.Fatal(err)
 	}

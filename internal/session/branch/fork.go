@@ -163,7 +163,7 @@ func (s *Service) forkBoundary(ctx context.Context, sourceID string, message *st
 	if err != nil {
 		return "", err
 	}
-	if string(fields["tool_batch_status"]) == `"pending"` {
+	if message.ToolBatchStatus == "pending" {
 		return "", fmt.Errorf("cannot fork an unfinished tool batch")
 	}
 	var resultIDs []string

@@ -84,27 +84,22 @@ type ToolTranscriptCommitter struct {
 func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Message) (err error) {
 
 	c.head = head
-	metadata, err := agentshare.AssistantMessageMetadata(head.Metadata)
-	if err != nil {
-		return err
+	c.calls = make([]llm.ToolCallRequest, len(head.ToolCalls))
+	for i, call := range head.ToolCalls {
+		c.calls[i] = llm.ToolCallRequest{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
 	}
-	c.calls = metadata.ToolCalls
 	c.results = make([]*storage.Message, len(c.calls))
 	c.remaining = len(c.calls)
 	for i, call := range c.calls {
 		stored := agentshare.ToolResultStorageMessage(c.head.SessionID, llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool outcome is unknown: result has not been saved; do not assume success or retry automatically")})
-		fields, _ := storage.DecodeSessionMetadata(stored.Metadata)
-		_ = fields.Set("tool_result_status", "pending")
-		stored.Metadata, _ = fields.Encode()
+		stored.ToolResultStatus = "pending"
 		c.results[i] = &stored
 	}
 	batch, err := agentshare.NewToolBatch(ctx, c.Messages.NewMessageID, head, c.calls, c.results)
 	if err != nil {
 		return err
 	}
-	fields, _ := storage.DecodeSessionMetadata(head.Metadata)
-	_ = fields.Set("tool_batch_status", "pending")
-	head.Metadata, _ = fields.Encode()
+	head.ToolBatchStatus = "pending"
 	return c.Messages.Commit(ctx, storage.DialogueCommit{SessionID: c.head.SessionID, ToolBatch: batch}, "begin_tool_transcript")
 }
 func (c *ToolTranscriptCommitter) Prepared(context.Context, int, llm.ToolCallRequest) error {
@@ -123,15 +118,14 @@ func (c *ToolTranscriptCommitter) Result(ctx context.Context, index int, call ll
 	stored := update.Result
 	stored.ID, stored.CreatedAt = c.results[index].ID, c.results[index].CreatedAt
 	c.calls[index], c.results[index] = call, stored
-	fields, _ := storage.DecodeSessionMetadata(stored.Metadata)
-	_ = fields.Set("tool_result_status", "completed")
-	stored.Metadata, _ = fields.Encode()
-	fields, _ = storage.DecodeSessionMetadata(c.head.Metadata)
-	_ = fields.Set("tool_calls", c.calls)
-	if c.remaining == 1 {
-		_ = fields.Set("tool_batch_status", "completed")
+	stored.ToolResultStatus = "completed"
+	c.head.ToolCalls = make([]storage.ToolCall, len(c.calls))
+	for i, item := range c.calls {
+		c.head.ToolCalls[i] = storage.ToolCall{ID: item.ID, Name: item.Name, Arguments: item.Arguments}
 	}
-	c.head.Metadata, _ = fields.Encode()
+	if c.remaining == 1 {
+		c.head.ToolBatchStatus = "completed"
+	}
 	update.Call = c.head
 	err := c.Messages.Commit(context.WithoutCancel(ctx), commit, "save_tool_result")
 	if err == nil {

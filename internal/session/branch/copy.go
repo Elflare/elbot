@@ -144,7 +144,7 @@ func (s *Service) copyMessages(ctx context.Context, sessionID string, messages [
 		if err != nil {
 			return nil, err
 		}
-		if string(fields["tool_batch_status"]) == `"pending"` {
+		if msg.ToolBatchStatus == "pending" {
 			return nil, fmt.Errorf("cannot copy an unfinished tool batch")
 		}
 		var resultIDs []string

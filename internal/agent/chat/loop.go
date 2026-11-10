@@ -83,7 +83,7 @@ type LoopDeps struct {
 	Tools interface {
 		Schemas(context.Context, *storage.Session) ([]llm.ToolSchema, error)
 		MaxRoundsPerTurn() int
-		ExecuteWithCommitter(context.Context, *storage.Session, []llm.ToolCallRequest, string, string, agentshare.Output, tool.ToolCommitter) tool.RunResult
+		ExecuteWithCommitter(context.Context, *storage.Session, []llm.ToolCallRequest, string, string, string, agentshare.Output, tool.ToolCommitter) tool.RunResult
 	}
 	Messages interface {
 		Commit(context.Context, storage.DialogueCommit, string) error

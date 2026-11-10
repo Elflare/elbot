@@ -245,13 +245,14 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 			result.Outcome = agentshare.Completed
 			result.Commit = agentshare.ReplyCommitInput{
-				Persistence:  replyCommitter{state: s},
-				Session:      s.session,
-				Text:         s.sourceText,
-				RawText:      s.sourceText,
-				PlatformText: final.Text,
-				Stream:       stream,
-				Outputs:      later,
+				Persistence:      replyCommitter{state: s},
+				Session:          s.session,
+				Text:             s.sourceText,
+				RawText:          s.sourceText,
+				ReasoningContent: final.ReasoningContent,
+				PlatformText:     final.Text,
+				Stream:           stream,
+				Outputs:          later,
 			}
 			return result
 		}
@@ -263,7 +264,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		}
 		committer := &toolCommitter{state: s}
 		if rounds >= s.route.Tools.MaxRoundsPerTurn() {
-			head := agentshare.ToolCallStorageMessage(s.session.ID, s.sourceText, s.sourceText, s.calls)
+			head := agentshare.ToolCallStorageMessage(s.session.ID, s.sourceText, s.sourceText, s.calls, final.ReasoningContent)
 			if err := committer.Begin(s.requestCtx, &head); err != nil {
 				return fail(err)
 			}
@@ -317,13 +318,14 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			}
 			result.Outcome = agentshare.Completed
 			result.Commit = agentshare.ReplyCommitInput{
-				Persistence:  replyCommitter{state: s},
-				Session:      s.session,
-				Text:         s.sourceText,
-				RawText:      s.sourceText,
-				PlatformText: summary.Text,
-				Stream:       stream,
-				Outputs:      later,
+				Persistence:      replyCommitter{state: s},
+				Session:          s.session,
+				Text:             s.sourceText,
+				RawText:          s.sourceText,
+				ReasoningContent: summary.ReasoningContent,
+				PlatformText:     summary.Text,
+				Stream:           stream,
+				Outputs:          later,
 			}
 			return result
 		}
@@ -335,7 +337,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			toolPhase = true
 		}
 		rounds++
-		execution := s.route.Tools.ExecuteWithCommitter(s.requestCtx, s.session, s.calls, s.sourceText, s.sourceText, out, committer)
+		execution := s.route.Tools.ExecuteWithCommitter(s.requestCtx, s.session, s.calls, s.sourceText, s.sourceText, final.ReasoningContent, out, committer)
 		if execution.Err != nil {
 			return fail(execution.Err)
 		}

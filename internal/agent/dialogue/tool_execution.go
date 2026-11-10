@@ -32,7 +32,7 @@ type ToolExecutor struct {
 }
 
 func (r *ToolExecutor) MaxRoundsPerTurn() int { return r.MaxRounds }
-func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText string, out agentshare.Output, committer tool.ToolCommitter) tool.RunResult {
+func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storage.Session, calls []llm.ToolCallRequest, assistantText, assistantRawText, reasoningContent string, out agentshare.Output, committer tool.ToolCommitter) tool.RunResult {
 	if session == nil || (session.Mode != storage.SessionModeWork && session.Mode != storage.SessionModeBackground) {
 		return tool.RunResult{}
 	}
@@ -45,6 +45,7 @@ func (r *ToolExecutor) ExecuteWithCommitter(ctx context.Context, session *storag
 		Calls:            calls,
 		AssistantText:    assistantText,
 		AssistantRawText: assistantRawText,
+		ReasoningContent: reasoningContent,
 		DiscoveredTools:  discovered,
 		Actor:            r.Identity.Actor(ctx),
 		Committer:        committer,

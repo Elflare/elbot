@@ -10,8 +10,8 @@ import (
 func TestToolResultStatisticsFailureRollsBackSlots(t *testing.T) {
 	store, _ := nativeStorageFixture(t)
 	ctx := t.Context()
-	head := &storage.Message{ID: "head", SessionID: "s", Role: storage.RoleAssistant, Metadata: `{"tool_calls":[{"ID":"one"}],"tool_result_message_ids":["result"],"tool_batch_status":"pending"}`}
-	result := &storage.Message{ID: "result", SessionID: "s", Role: storage.RoleTool, ToolCallID: "one", Content: "unknown", Metadata: `{"tool_result_status":"pending"}`}
+	head := &storage.Message{ID: "head", SessionID: "s", Role: storage.RoleAssistant, ToolCalls: []storage.ToolCall{{ID: "one"}}, ToolBatchStatus: "pending", Metadata: `{"tool_result_message_ids":["result"]}`}
+	result := &storage.Message{ID: "result", SessionID: "s", Role: storage.RoleTool, ToolCallID: "one", Content: "unknown", ToolResultStatus: "pending"}
 	if err := store.Dialogues().Commit(ctx, storage.DialogueCommit{SessionID: "s", ToolBatch: &storage.ToolBatch{Call: head, Results: []*storage.Message{result}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -19,13 +19,13 @@ func TestToolResultStatisticsFailureRollsBackSlots(t *testing.T) {
 		t.Fatal(err)
 	}
 	head.Metadata = strings.ReplaceAll(head.Metadata, "pending", "completed")
-	result.Content, result.Metadata = "done", `{"tool_result_status":"completed"}`
+	result.Content, result.ToolResultStatus = "done", "completed"
 	commit := storage.DialogueCommit{SessionID: "s", ToolResult: &storage.ToolResultCommit{Call: head, Result: result, Record: &storage.ToolCallRecord{ToolCallID: "one", ToolName: "tool", Success: true, StartedAt: storage.Now(), FinishedAt: storage.Now()}}}
 	if err := store.Dialogues().Commit(ctx, commit); err == nil {
 		t.Fatal("expected statistics failure")
 	}
 	rows, err := store.Messages().ListBySession(ctx, "s")
-	if err != nil || len(rows) != 2 || rows[1].Content != "unknown" || !strings.Contains(rows[0].Metadata, `"tool_batch_status":"pending"`) {
+	if err != nil || len(rows) != 2 || rows[1].Content != "unknown" || rows[0].ToolBatchStatus != "pending" {
 		t.Fatalf("partially committed result: %+v %v", rows, err)
 	}
 	if _, err := store.db.ExecContext(ctx, `DROP TRIGGER reject_tool_statistics`); err != nil {
@@ -58,7 +58,7 @@ func TestNativeMessageSnapshotCommitsWithPairWithoutAdvancingCursor(t *testing.T
 				}
 			}
 			pair := &storage.ToolBatch{
-				Call:    &storage.Message{ID: "head", SessionID: "s", Role: storage.RoleAssistant, Metadata: `{"tool_calls":[{"ID":"one","Name":"tool","Arguments":"{}"}],"tool_result_message_ids":["result"]}`},
+				Call:    &storage.Message{ID: "head", SessionID: "s", Role: storage.RoleAssistant, ToolCalls: []storage.ToolCall{{ID: "one", Name: "tool", Arguments: "{}"}}, Metadata: `{"tool_result_message_ids":["result"]}`},
 				Results: []*storage.Message{{ID: "result", SessionID: "s", Role: storage.RoleTool, ToolCallID: "one", Content: "done"}},
 			}
 			call := initial.Native.Calls[0]

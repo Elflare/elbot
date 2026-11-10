@@ -30,7 +30,7 @@ func TestNativeToolPreparationReturnsInternalFailure(t *testing.T) {
 				calls:    []llm.ToolCallRequest{{ID: "call", Name: "tool"}},
 			}
 			committer := &toolCommitter{state: state}
-			head := agentshare.ToolCallStorageMessage("session", "", "", state.calls)
+			head := agentshare.ToolCallStorageMessage("session", "", "", state.calls, "")
 			if malformed {
 				head.Metadata = "{"
 			}

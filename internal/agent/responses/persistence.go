@@ -110,10 +110,7 @@ func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (err e
 	for i, call := range s.calls {
 		message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool outcome is unknown: result has not been saved; do not assume success or retry automatically")}
 		stored := agentshare.ToolResultStorageMessage(s.session.ID, message)
-
-		fields, _ := storage.DecodeSessionMetadata(stored.Metadata)
-		_ = fields.Set("tool_result_status", "pending")
-		stored.Metadata, _ = fields.Encode()
+		stored.ToolResultStatus = "pending"
 		c.results[i] = &stored
 
 	}
@@ -129,9 +126,7 @@ func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (err e
 		c.inputs[i] = input
 		c.calls = append(c.calls, storage.NativeCall{ExchangeID: s.exchange.ID, CallID: call.ID, Name: call.Name, Arguments: call.Arguments, Ordinal: i, Status: "pending", ResultInputID: input.ID})
 	}
-	fields, _ := storage.DecodeSessionMetadata(head.Metadata)
-	_ = fields.Set("tool_batch_status", "pending")
-	head.Metadata, _ = fields.Encode()
+	head.ToolBatchStatus = "pending"
 	for i := range c.inputs {
 		c.inputs[i].CreatedAt = head.CreatedAt
 	}
@@ -171,14 +166,10 @@ func (c *toolCommitter) Result(ctx context.Context, index int, _ llm.ToolCallReq
 	call.Status = "completed"
 	input.ID, input.CreatedAt = c.inputs[index].ID, c.inputs[index].CreatedAt
 	c.calls[index], c.results[index], c.inputs[index] = call, stored, input
-	fields, _ := storage.DecodeSessionMetadata(stored.Metadata)
-	_ = fields.Set("tool_result_status", "completed")
-	stored.Metadata, _ = fields.Encode()
+	stored.ToolResultStatus = "completed"
 	native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Inputs: []storage.NativeInput{input}, Calls: []storage.NativeCall{call}}
 	if c.remaining == 1 {
-		fields, _ := storage.DecodeSessionMetadata(c.head.Metadata)
-		_ = fields.Set("tool_batch_status", "completed")
-		c.head.Metadata, _ = fields.Encode()
+		c.head.ToolBatchStatus = "completed"
 		snapshot := *s.checkpoint
 		snapshot.ID, snapshot.MessageID, snapshot.CreatedAt = storage.NewID(), c.head.ID, c.head.CreatedAt
 		native.Snapshot = &snapshot
@@ -232,12 +223,7 @@ func (s *turnState) closeInterruptedCalls(ctx context.Context, messages []storag
 		if head.ID != s.checkpoint.MessageID {
 			continue
 		}
-		fields, err := storage.DecodeSessionMetadata(head.Metadata)
-		if err != nil {
-			return err
-		}
-		_ = fields.Set("tool_batch_status", "interrupted")
-		head.Metadata, _ = fields.Encode()
+		head.ToolBatchStatus = "interrupted"
 		snapshot := *s.checkpoint
 		snapshot.ID, snapshot.CreatedAt = storage.NewID(), storage.Now()
 		native := storage.NativeCommit{ExpectedCheckpointID: s.checkpointID(), Calls: pending, Snapshot: &snapshot}

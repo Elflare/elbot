@@ -192,7 +192,7 @@ func TestToolBatchLastResultFailureRollsBackEveryMessageAndMediaReference(t *tes
 				t.Fatal(err)
 			}
 			batch := &storage.ToolBatch{Call: &storage.Message{ID: "batch", SessionID: "s", Role: storage.RoleAssistant,
-				Metadata: `{"tool_calls":[{"ID":"A"},{"ID":"B"},{"ID":"C"}],"tool_result_message_ids":["result-A","result-B","result-C"]}`}}
+				ToolCalls: []storage.ToolCall{{ID: "A"}, {ID: "B"}, {ID: "C"}}, Metadata: `{"tool_result_message_ids":["result-A","result-B","result-C"]}`}}
 			for _, id := range []string{"A", "B", "C"} {
 				batch.Results = append(batch.Results, &storage.Message{ID: "result-" + id, SessionID: "s", Role: storage.RoleTool, ToolCallID: id, Content: id,
 					Segments: `[{"type":"image","media":"` + mediaID + `"}]`})
@@ -313,7 +313,7 @@ func TestDialogueToolPairIsAtomic(t *testing.T) {
 				}
 			}
 			pair := &storage.ToolBatch{
-				Call:    &storage.Message{ID: "head", SessionID: "s", Role: storage.RoleAssistant, Metadata: `{"tool_calls":[{"ID":"one","Name":"tool","Arguments":"{}"}],"tool_result_message_ids":["result"]}`},
+				Call:    &storage.Message{ID: "head", SessionID: "s", Role: storage.RoleAssistant, ToolCalls: []storage.ToolCall{{ID: "one", Name: "tool", Arguments: "{}"}}, Metadata: `{"tool_result_message_ids":["result"]}`},
 				Results: []*storage.Message{{ID: "result", SessionID: "s", Role: storage.RoleTool, ToolCallID: "one", Content: "done"}},
 			}
 			mediaID := "media:" + strings.Repeat("b", 64)

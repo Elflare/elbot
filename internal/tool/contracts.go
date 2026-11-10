@@ -217,7 +217,7 @@ type RunnerDeps interface {
 	AuditToolDenied(context.Context, string, llm.ToolCallRequest, security.RiskLevel, string)
 	AddToolUse(string, string)
 	ToolResultMessage(string, llm.LLMMessage) storage.Message
-	ToolCallMessage(string, string, string, []llm.ToolCallRequest) storage.Message
+	ToolCallMessage(string, string, string, string, []llm.ToolCallRequest) storage.Message
 }
 
 // ToolCommitter 由调用方实现，同步提交工具结果及其状态补丁，保持对话事务原子性。
@@ -234,6 +234,7 @@ type RunRequest struct {
 	Calls            []llm.ToolCallRequest // 按模型输出顺序排列的调用。
 	AssistantText    string                // 模型调用工具时的展示正文。
 	AssistantRawText string                // 模型原始正文。
+	ReasoningContent string                // 本轮助手思考文本。
 	DiscoveredTools  []DiscoveredTool      // 已提交的调用声明。
 	Actor            contextinfo.Actor     // 本次批次的身份事实。
 }

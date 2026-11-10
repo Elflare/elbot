@@ -13,14 +13,6 @@ import (
 	"elbot/internal/storage"
 )
 
-func AssistantRawTextMetadata(content, rawText string) string {
-	if rawText == "" || rawText == content {
-		return ""
-	}
-	data, _ := json.Marshal(agentshare.AssistantMetadata{RawText: rawText})
-	return string(data)
-}
-
 // MessageStore is the single dialogue-message write boundary.
 type MessageStore struct {
 	NewMessageID func(context.Context) (string, error) // 根部注入的消息发号能力。
@@ -40,12 +32,8 @@ func (s *MessageStore) Append(ctx context.Context, message *storage.Message, ope
 
 func (s *MessageStore) Commit(ctx context.Context, commit storage.DialogueCommit, operation string) (err error) {
 	if commit.ToolBatch != nil {
-		metadata, err := agentshare.AssistantMessageMetadata(commit.ToolBatch.Call.Metadata)
-		if err != nil {
-			return err
-		}
 		seen := map[string]bool{}
-		for _, call := range metadata.ToolCalls {
+		for _, call := range commit.ToolBatch.Call.ToolCalls {
 			for _, id := range media.ArgumentMediaIDs(call.Arguments) {
 				if seen[id] {
 					continue

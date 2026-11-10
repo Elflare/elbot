@@ -50,13 +50,25 @@ type Message struct {
 	SessionID                string
 	Role                     string
 	Content                  string
+	SourceContent            string
+	ReasoningContent         string
 	ParentMessageID          string
 	ReplyToPlatformMessageID string
 	ReplyToMessageID         string
 	ToolCallID               string
+	ToolCalls                []ToolCall
+	ToolName                 string
+	ToolBatchStatus          string
+	ToolResultStatus         string
 	Segments                 string
 	Metadata                 string
 	CreatedAt                time.Time
+}
+
+type ToolCall struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
 }
 
 type ContextSummary struct {

@@ -44,7 +44,7 @@ func TestHistoryChecksScopeAndPreservesMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	message := storage.Message{ID: "m", SessionID: "s", Role: "assistant", Content: "exact\n", ParentMessageID: "parent", ReplyToPlatformMessageID: "platform-message", ReplyToMessageID: "reply", ToolCallID: "tool-call", Metadata: `{"source":"test"}`, Segments: string(raw), CreatedAt: storage.Now()}
+	message := storage.Message{ID: "m", SessionID: "s", Role: "assistant", Content: "exact\n", SourceContent: "model source", ReasoningContent: "thought", ParentMessageID: "parent", ReplyToPlatformMessageID: "platform-message", ReplyToMessageID: "reply", ToolCallID: "tool-call", ToolCalls: []storage.ToolCall{{ID: "call-1", Name: "shell", Arguments: `{"command":"pwd"}`}}, ToolBatchStatus: "completed", Metadata: `{"internal":"must not be returned"}`, Segments: string(raw), CreatedAt: storage.Now()}
 	provider.messages = []storage.Message{message}
 	m, _ := testSupervisor(t, SupervisorDeps{History: provider, Scope: func(context.Context) session.Scope {
 		return session.Scope{Platform: "qq", ChatType: contextinfo.ChatPrivate, ChatID: "chat", Owner: contextinfo.ActorIdentity{Platform: "qq", ID: "user"}}
@@ -59,9 +59,21 @@ func TestHistoryChecksScopeAndPreservesMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := MessageData{ID: message.ID, SessionID: message.SessionID, Role: message.Role, Content: message.Content, ParentMessageID: message.ParentMessageID, ReplyToPlatformMessageID: message.ReplyToPlatformMessageID, ReplyToMessageID: message.ReplyToMessageID, ToolCallID: message.ToolCallID, Metadata: message.Metadata, Segments: segments, CreatedAt: message.CreatedAt}
+	want := MessageData{ID: message.ID, SessionID: message.SessionID, Role: message.Role, Content: message.Content, SourceContent: message.SourceContent, ReasoningContent: message.ReasoningContent, ParentMessageID: message.ParentMessageID, ReplyToPlatformMessageID: message.ReplyToPlatformMessageID, ReplyToMessageID: message.ReplyToMessageID, ToolCallID: message.ToolCallID, Segments: segments, ToolCalls: message.ToolCalls, ToolBatchStatus: message.ToolBatchStatus, CreatedAt: message.CreatedAt}
 	if !reflect.DeepEqual(result.Items, []MessageData{want}) {
 		t.Fatalf("history data: %+v", result)
+	}
+	encoded, err := json.Marshal(result.Items[0])
+	var fields map[string]json.RawMessage
+	if err == nil {
+		err = json.Unmarshal(encoded, &fields)
+	}
+	if _, hasMetadata := fields["metadata"]; err != nil || hasMetadata {
+		t.Fatalf("history JSON = %s, err=%v", encoded, err)
+	}
+	var gotCalls []storage.ToolCall
+	if err := json.Unmarshal(fields["tool_calls"], &gotCalls); err != nil || !reflect.DeepEqual(gotCalls, message.ToolCalls) {
+		t.Fatalf("tool calls JSON = %s, parsed=%+v, err=%v", fields["tool_calls"], gotCalls, err)
 	}
 	if provider.page != 1 || provider.pageSize != 250 || result.PageSize != 250 {
 		t.Fatal("caller-selected pagination was changed")
@@ -72,8 +84,8 @@ func TestHistoryChecksScopeAndPreservesMessages(t *testing.T) {
 	requireCode(t, err, "invalid_arguments")
 }
 
-func TestMessageDataReturnsToolNameFromMetadata(t *testing.T) {
-	rows := []storage.Message{{ID: "tool-result", Role: storage.RoleTool, ToolCallID: "call-1", Metadata: `{"name":"shell"}`}}
+func TestMessageDataReturnsToolNameFromStructuredField(t *testing.T) {
+	rows := []storage.Message{{ID: "tool-result", Role: storage.RoleTool, ToolCallID: "call-1", ToolName: "shell"}}
 	items, err := messageData(rows)
 	if err != nil {
 		t.Fatal(err)

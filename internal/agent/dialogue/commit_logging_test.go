@@ -16,7 +16,7 @@ func TestToolTranscriptPreparationReturnsInternalFailure(t *testing.T) {
 		t.Run(map[bool]string{false: "allocation", true: "metadata"}[malformed], func(t *testing.T) {
 			failure := errors.New("message ID database unavailable")
 			committer := &ToolTranscriptCommitter{Messages: &MessageStore{NewMessageID: func(context.Context) (string, error) { return "", failure }}}
-			head := agentshare.ToolCallStorageMessage("session", "", "", []llm.ToolCallRequest{{ID: "call", Name: "tool"}})
+			head := agentshare.ToolCallStorageMessage("session", "", "", []llm.ToolCallRequest{{ID: "call", Name: "tool"}}, "")
 			if malformed {
 				head.Metadata = "{"
 			}

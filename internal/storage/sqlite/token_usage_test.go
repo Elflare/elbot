@@ -75,6 +75,9 @@ func TestNullableTokenMigrationPreservesExistingDataAndConstraints(t *testing.T)
 	if _, err := db.Exec(`INSERT INTO sessions(id,owner_id,platform,platform_scope_id,mode,status,created_at,updated_at) VALUES(?,'cli:u','cli','local','work','active',?,?)`, session.ID, storage.FormatTime(storage.Now()), storage.FormatTime(storage.Now())); err != nil {
 		t.Fatal(err)
 	}
+	if err := applyMigration(ctx, db, migrations[31]); err != nil {
+		t.Fatal(err)
+	}
 	message := &storage.Message{ID: storage.NewID(), SessionID: session.ID, Role: storage.RoleUser, Content: "original"}
 	if err := messages.Append(ctx, message); err != nil {
 		t.Fatal(err)

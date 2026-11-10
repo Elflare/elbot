@@ -54,7 +54,7 @@ type RunnerDeps interface {
 	AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk RiskLevel, reason string)
 	AddToolUse(sessionID, toolName string)
 	ToolResultMessage(sessionID string, message llm.LLMMessage) storage.Message
-	ToolCallMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest) storage.Message
+	ToolCallMessage(sessionID, content, rawText, reasoningContent string, calls []llm.ToolCallRequest) storage.Message
 }
 
 type ConfirmResult struct {
@@ -81,6 +81,7 @@ type RunRequest struct {
 	Calls            []llm.ToolCallRequest
 	AssistantText    string
 	AssistantRawText string
+	ReasoningContent string
 	DiscoveredTools  []DiscoveredTool
 	Actor            contextinfo.Actor
 }

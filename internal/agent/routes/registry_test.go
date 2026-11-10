@@ -174,9 +174,8 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	if err != nil || len(rows) != 2 || rows[1].Content != "stored reply" {
 		t.Fatalf("common commit lost canonical reply: %+v / %v", rows, err)
 	}
-	metadata, err := agentshare.AssistantMessageMetadata(rows[1].Metadata)
-	if err != nil || metadata.RawText != "source reply" {
-		t.Fatal(metadata, err)
+	if rows[1].SourceContent != "source reply" {
+		t.Fatalf("source content = %q", rows[1].SourceContent)
 	}
 	// Source ownership chooses the compactor even when the target selection
 	// belongs to a different provider and wire protocol.

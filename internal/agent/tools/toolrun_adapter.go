@@ -160,8 +160,8 @@ func (d toolRunDeps) ToolResultMessage(sessionID string, message llm.LLMMessage)
 	return agentshare.ToolResultStorageMessage(sessionID, message)
 }
 
-func (d toolRunDeps) ToolCallMessage(sessionID, content, rawText string, calls []llm.ToolCallRequest) storage.Message {
-	return agentshare.ToolCallStorageMessage(sessionID, content, rawText, calls)
+func (d toolRunDeps) ToolCallMessage(sessionID, content, rawText, reasoningContent string, calls []llm.ToolCallRequest) storage.Message {
+	return agentshare.ToolCallStorageMessage(sessionID, content, rawText, calls, reasoningContent)
 }
 
 func (d toolRunDeps) RefreshExecution(ctx context.Context, row *storage.Session) (context.Context, error) {

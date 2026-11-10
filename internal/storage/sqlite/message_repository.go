@@ -34,12 +34,21 @@ func appendMessageTx(ctx context.Context, tx *sql.Tx, message *storage.Message) 
 	if message.CreatedAt.IsZero() {
 		message.CreatedAt = storage.Now()
 	}
+	calls := message.ToolCalls
+	if calls == nil {
+		calls = []storage.ToolCall{}
+	}
+	toolCalls, err := json.Marshal(calls)
+	if err != nil {
+		return err
+	}
 
-	_, err := tx.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 INSERT INTO messages (
     id, session_id, role, content, parent_message_id, reply_to_platform_message_id,
-    reply_to_message_id, tool_call_id, segments, metadata, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    reply_to_message_id, tool_call_id, segments, metadata, source_content, reasoning_content,
+    tool_calls, tool_name, tool_batch_status, tool_result_status, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		message.ID,
 		message.SessionID,
 		message.Role,
@@ -50,6 +59,12 @@ INSERT INTO messages (
 		nullString(message.ToolCallID),
 		nullString(message.Segments),
 		nullString(message.Metadata),
+		message.SourceContent,
+		message.ReasoningContent,
+		string(toolCalls),
+		message.ToolName,
+		message.ToolBatchStatus,
+		message.ToolResultStatus,
 		storage.FormatTime(message.CreatedAt),
 	)
 	if err != nil {
@@ -81,7 +96,7 @@ INSERT INTO messages (
 func (r *MessageRepository) Get(ctx context.Context, id string) (*storage.Message, error) {
 	row := r.db.QueryRowContext(ctx, `
 SELECT id, session_id, role, content, parent_message_id, reply_to_platform_message_id,
-       reply_to_message_id, tool_call_id, segments, metadata, created_at
+       reply_to_message_id, tool_call_id, segments, metadata, source_content, reasoning_content, tool_calls, tool_name, tool_batch_status, tool_result_status, created_at
 FROM messages
 WHERE id = ?`, id)
 
@@ -98,7 +113,7 @@ WHERE id = ?`, id)
 func (r *MessageRepository) ListBySession(ctx context.Context, sessionID string) ([]storage.Message, error) {
 	rows, err := r.db.QueryContext(ctx, `
 SELECT id, session_id, role, content, parent_message_id, reply_to_platform_message_id,
-       reply_to_message_id, tool_call_id, segments, metadata, created_at
+       reply_to_message_id, tool_call_id, segments, metadata, source_content, reasoning_content, tool_calls, tool_name, tool_batch_status, tool_result_status, created_at
 FROM messages
 WHERE session_id = ?
 ORDER BY created_at ASC, rowid ASC`, sessionID)
@@ -129,7 +144,7 @@ func (r *MessageRepository) ListBySessionUpTo(ctx context.Context, sessionID, to
 
 	rows, err := r.db.QueryContext(ctx, `
 SELECT id, session_id, role, content, parent_message_id, reply_to_platform_message_id,
-       reply_to_message_id, tool_call_id, segments, metadata, created_at
+       reply_to_message_id, tool_call_id, segments, metadata, source_content, reasoning_content, tool_calls, tool_name, tool_batch_status, tool_result_status, created_at
 FROM messages
 WHERE session_id = ? AND (created_at < ? OR (created_at = ? AND rowid <= ?))
 ORDER BY created_at ASC, rowid ASC`, sessionID, toCreatedAt, toCreatedAt, toRowID)
@@ -147,7 +162,7 @@ func (r *MessageRepository) ListBySessionAfter(ctx context.Context, sessionID, a
 
 	rows, err := r.db.QueryContext(ctx, `
 SELECT id, session_id, role, content, parent_message_id, reply_to_platform_message_id,
-       reply_to_message_id, tool_call_id, segments, metadata, created_at
+       reply_to_message_id, tool_call_id, segments, metadata, source_content, reasoning_content, tool_calls, tool_name, tool_batch_status, tool_result_status, created_at
 FROM messages
 WHERE session_id = ? AND (created_at > ? OR (created_at = ? AND rowid > ?))
 ORDER BY created_at ASC, rowid ASC`, sessionID, afterCreatedAt, afterCreatedAt, afterRowID)
@@ -169,7 +184,7 @@ func (r *MessageRepository) ListBySessionAfterUpTo(ctx context.Context, sessionI
 
 	rows, err := r.db.QueryContext(ctx, `
 SELECT id, session_id, role, content, parent_message_id, reply_to_platform_message_id,
-       reply_to_message_id, tool_call_id, segments, metadata, created_at
+       reply_to_message_id, tool_call_id, segments, metadata, source_content, reasoning_content, tool_calls, tool_name, tool_batch_status, tool_result_status, created_at
 FROM messages
 WHERE session_id = ?
   AND (created_at > ? OR (created_at = ? AND rowid > ?))
@@ -207,7 +222,8 @@ INSERT INTO platform_message_map (
 func (r *MessageRepository) FindByPlatformMessage(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, platformMessageID string) (*storage.Message, error) {
 	row := r.db.QueryRowContext(ctx, `
 SELECT m.id, m.session_id, m.role, m.content, m.parent_message_id, m.reply_to_platform_message_id,
-       m.reply_to_message_id, m.tool_call_id, m.segments, m.metadata, m.created_at
+       m.reply_to_message_id, m.tool_call_id, m.segments, m.metadata, m.source_content, m.reasoning_content,
+       m.tool_calls, m.tool_name, m.tool_batch_status, m.tool_result_status, m.created_at
 FROM platform_message_map p
 JOIN messages m ON m.id = p.message_id
 WHERE p.platform = ? AND p.chat_type = ? AND p.chat_id = ? AND p.platform_message_id = ?`, platform, conversationKind, scopeID, platformMessageID)
@@ -259,6 +275,7 @@ func scanMessages(rows *sql.Rows) ([]storage.Message, error) {
 func scanMessage(row interface{ Scan(dest ...any) error }) (*storage.Message, error) {
 	var message storage.Message
 	var parentMessageID, replyToPlatformMessageID, replyToMessageID, toolCallID, segments, metadata sql.NullString
+	var sourceContent, reasoningContent, toolCalls, toolName, toolBatchStatus, toolResultStatus sql.NullString
 	var createdAt string
 	if err := row.Scan(
 		&message.ID,
@@ -271,6 +288,12 @@ func scanMessage(row interface{ Scan(dest ...any) error }) (*storage.Message, er
 		&toolCallID,
 		&segments,
 		&metadata,
+		&sourceContent,
+		&reasoningContent,
+		&toolCalls,
+		&toolName,
+		&toolBatchStatus,
+		&toolResultStatus,
 		&createdAt,
 	); err != nil {
 		return nil, err
@@ -282,6 +305,16 @@ func scanMessage(row interface{ Scan(dest ...any) error }) (*storage.Message, er
 	message.ToolCallID = toolCallID.String
 	message.Segments = segments.String
 	message.Metadata = metadata.String
+	message.SourceContent = sourceContent.String
+	message.ReasoningContent = reasoningContent.String
+	message.ToolName = toolName.String
+	message.ToolBatchStatus = toolBatchStatus.String
+	message.ToolResultStatus = toolResultStatus.String
+	if toolCalls.Valid {
+		if err := json.Unmarshal([]byte(toolCalls.String), &message.ToolCalls); err != nil {
+			return nil, fmt.Errorf("decode tool calls: %w", err)
+		}
+	}
 
 	var err error
 	message.CreatedAt, err = storage.ParseTime(createdAt)
@@ -323,7 +356,7 @@ func (r *MessageRepository) ListConversationMessages(ctx context.Context, sessio
 		return nil, err
 	}
 	args = append(args, limit, offset)
-	rows, err := r.db.QueryContext(ctx, `SELECT id, session_id, role, content, parent_message_id, reply_to_platform_message_id, reply_to_message_id, tool_call_id, segments, metadata, created_at FROM messages WHERE `+where+" ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?", args...)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, session_id, role, content, parent_message_id, reply_to_platform_message_id, reply_to_message_id, tool_call_id, segments, metadata, source_content, reasoning_content, tool_calls, tool_name, tool_batch_status, tool_result_status, created_at FROM messages WHERE `+where+" ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?", args...)
 	if err != nil {
 		return nil, fmt.Errorf("page conversation messages: %w", err)
 	}

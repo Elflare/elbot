@@ -37,7 +37,7 @@ func TestCompactMessagesFiltersToolResultsAndFailedCalls(t *testing.T) {
 		{ID: "failed", Name: "web", Arguments: `{"q":"failed"}`},
 		{ID: "missing", Name: "shell", Arguments: `{"command":"missing"}`},
 	}
-	toolCall := agentshare.ToolCallStorageMessage(session.ID, "C", "C", calls)
+	toolCall := agentshare.ToolCallStorageMessage(session.ID, "C", "C", calls, "")
 	runtime := &chatroute.Compactor{ToolCalls: store.ToolCalls()}
 	messages, err := runtime.CompactMessages(ctx, &contextmgr.LoadedContext{
 		Summary: &storage.ContextSummary{Summary: "I"},

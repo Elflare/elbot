@@ -87,11 +87,24 @@ schemas:
         session_id: { type: string }
         role: { type: string }
         content: { type: string }
+        source_content: { type: string }
+        reasoning_content: { type: string }
         parent_message_id: { type: string }
         reply_to_platform_message_id: { type: string }
         reply_to_message_id: { type: string }
         tool_call_id: { type: string }
         tool_name: { type: string }
+        tool_calls:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              arguments: { type: string }
+            required: [id, name, arguments]
+        tool_batch_status: { type: string, enum: [pending, completed, interrupted, ''] }
+        tool_result_status: { type: string, enum: [pending, completed, interrupted, ''] }
         segments:
           type: array
           items:
@@ -104,9 +117,8 @@ schemas:
               mime_type: { type: string }
               name: { type: string }
             required: [type]
-        metadata: { type: string }
         created_at: { type: string, format: date-time }
-      required: [id, session_id, role, content, parent_message_id, reply_to_platform_message_id, reply_to_message_id, tool_call_id, segments, metadata, created_at]
+      required: [id, session_id, role, content, reasoning_content, parent_message_id, reply_to_platform_message_id, reply_to_message_id, tool_call_id, tool_calls, segments, created_at]
     MessageList:
       allOf:
         - { $ref: '#/schemas/Page' }

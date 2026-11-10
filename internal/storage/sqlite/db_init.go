@@ -7,7 +7,7 @@ import (
 )
 
 // createLatestDBSQL contains the final schema and applied-version baseline through
-// migration 31. Update both together when refreshing this snapshot.
+// migration 32. Update both together when refreshing this snapshot.
 const createLatestDBSQL = `
 CREATE TABLE schema_migrations (
     version INTEGER PRIMARY KEY,
@@ -58,6 +58,12 @@ CREATE TABLE messages (
     metadata TEXT NULL,
     created_at TEXT NOT NULL,
     segments TEXT NULL,
+    source_content TEXT NOT NULL DEFAULT '',
+    reasoning_content TEXT NOT NULL DEFAULT '',
+    tool_calls TEXT NOT NULL DEFAULT '[]',
+    tool_name TEXT NOT NULL DEFAULT '',
+    tool_batch_status TEXT NOT NULL DEFAULT '',
+    tool_result_status TEXT NOT NULL DEFAULT '',
     FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE,
     FOREIGN KEY(parent_message_id) REFERENCES messages(id) ON DELETE SET NULL,
     FOREIGN KEY(reply_to_message_id) REFERENCES messages(id) ON DELETE SET NULL
@@ -451,7 +457,8 @@ FROM (VALUES
     (28, 'session_sequence'),
     (29, 'shared_id_sequences'),
     (30, 'remove_unused_record_ids'),
-    (31, 'structured_identity')
+    (31, 'structured_identity'),
+    (32, 'structured_message_content')
 );
 `
 

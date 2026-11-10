@@ -32,7 +32,7 @@ func (c unenteredToolCommitter) Begin(context.Context, *storage.Message) error {
 func TestToolStateFailureStopsBeforeTranscript(t *testing.T) {
 	want := errors.New("tool state unavailable")
 	executor := &ToolExecutor{Manager: failingToolState{err: want}}
-	result := executor.ExecuteWithCommitter(t.Context(), &storage.Session{ID: "session", Mode: storage.SessionModeWork}, []llm.ToolCallRequest{{ID: "call", Name: "tool"}}, "", "", nil, unenteredToolCommitter{t: t})
+	result := executor.ExecuteWithCommitter(t.Context(), &storage.Session{ID: "session", Mode: storage.SessionModeWork}, []llm.ToolCallRequest{{ID: "call", Name: "tool"}}, "", "", "", nil, unenteredToolCommitter{t: t})
 	if result.Err != want {
 		t.Fatalf("preparation failure changed: %+v", result)
 	}

@@ -98,7 +98,7 @@ func (d *runnerTestDeps) AddToolUse(string, string) {}
 func (d *runnerTestDeps) ToolResultMessage(id string, message llm.LLMMessage) storage.Message {
 	return storage.Message{ID: storage.NewID(), SessionID: id, Role: storage.RoleTool, Content: llm.SegmentsContentText(message.Segments)}
 }
-func (d *runnerTestDeps) ToolCallMessage(id, content, _ string, _ []llm.ToolCallRequest) storage.Message {
+func (d *runnerTestDeps) ToolCallMessage(id, content, _, _ string, _ []llm.ToolCallRequest) storage.Message {
 	return storage.Message{ID: storage.NewID(), SessionID: id, Role: storage.RoleAssistant, Content: content}
 }
 
