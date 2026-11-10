@@ -142,9 +142,6 @@ type startupStep struct {
 func Run(ctx context.Context, opts Options) (err error) {
 	now := time.Now()
 	timing := startupTiming{startedAt: opts.StartedAt, stageStartedAt: now}
-	if timing.startedAt.IsZero() {
-		timing.startedAt = now
-	}
 	runCtx, cancel := context.WithCancel(ctx)
 	var (
 		lines      businessLines
@@ -153,7 +150,7 @@ func Run(ctx context.Context, opts Options) (err error) {
 	)
 	defer func() {
 		cancel()
-		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
+		if  errors.Is(err, ctx.Err()) {
 			err = nil
 		}
 		if closeErr := shutdown(ctx, lines, resources, configLock); closeErr != nil {

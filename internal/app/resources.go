@@ -27,9 +27,6 @@ type sharedResources struct {
 // prepareResources 只消费已定位路径；失败时返回部分结果，不自行清理。
 func prepareResources(ctx context.Context, resolvedConfigPath string) (*sharedResources, error) {
 	resources := &sharedResources{}
-	if err := ctx.Err(); err != nil {
-		return resources, err
-	}
 	cfg, err := config.Load(resolvedConfigPath)
 	if err != nil {
 		return resources, err
