@@ -28,11 +28,21 @@ func (s *Supervisor) Current(ctx context.Context, scope Scope) (*storage.Session
 }
 
 func (s *Supervisor) Resume(ctx context.Context, scope Scope, sessionID string) (*storage.Session, error) {
+	if scope.IsSuperadmin {
+		row, err := s.branches.CopyForeground(ctx, share.Scope(scope), sessionID)
+		if err != nil || row != nil {
+			return row, err
+		}
+	}
 	return s.control.Resume(ctx, share.Scope(scope), sessionID)
 }
 
-func (s *Supervisor) ResumeLast(ctx context.Context, scope Scope) (*storage.Session, error) {
-	return s.control.ResumeLast(ctx, share.Scope(scope))
+func (s *Supervisor) ResumeLast(ctx context.Context, scope Scope, allPlatforms bool) (*storage.Session, error) {
+	id, err := s.control.FindLast(ctx, share.Scope(scope), allPlatforms)
+	if err != nil {
+		return nil, err
+	}
+	return s.Resume(ctx, scope, id)
 }
 
 // ResetCurrent 只解除 current 绑定，下一条输入再创建会话。

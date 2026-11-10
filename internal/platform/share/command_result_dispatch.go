@@ -66,6 +66,9 @@ func FormatCommandResult(req command.Request, result *command.Result) string {
 				} else if d.Query != "" {
 					args += " -k " + d.Query
 				}
+				if strings.Contains(" "+strings.Join(fields, " ")+" ", " -a ") || strings.Contains(" "+strings.Join(fields, " ")+" ", " --all ") {
+					args += " --all"
+				}
 				return commandUsage(req, req.Name, args)
 			}
 			if d.Page.Page > 1 {

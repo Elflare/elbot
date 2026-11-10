@@ -226,8 +226,8 @@ func TestSessionIdleRenewsAllBindings(t *testing.T) {
 		ctx, scope := context.Background(), privateScope()
 		row := f.create(t, scope, "shared")
 		second, admin := scope, scope
-		second.ChatID, second.IsCLI = "cli:second", true
-		admin.Owner.ID, admin.IsCLI = "admin", true
+		second.ChatID, second.IsSuperadmin = "cli:second", true
+		admin.Owner.ID, admin.IsSuperadmin = "admin", true
 		for _, target := range []share.Scope{second, admin} {
 			if _, err := f.s.Resume(ctx, target, row.ID); err != nil {
 				t.Fatal(err)
@@ -304,7 +304,7 @@ func TestMultipleBindingsAndDisabledTTL(t *testing.T) {
 		ctx, scope := context.Background(), privateScope()
 		row := f.create(t, scope, "shared")
 		admin := scope
-		admin.Owner.ID, admin.IsCLI = "admin", true
+		admin.Owner.ID, admin.IsSuperadmin = "admin", true
 		if _, err := f.s.Resume(ctx, admin, row.ID); err != nil {
 			t.Fatal(err)
 		}

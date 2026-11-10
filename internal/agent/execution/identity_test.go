@@ -25,7 +25,7 @@ func TestPublicChatInfoConsumersAndSecurityPrecedence(t *testing.T) {
 		t.Fatalf("platform identity facts changed: %+v", actor)
 	}
 	scope := identity.Scope(ctx)
-	if scope.Platform != "qqonebot" || (scope.ChatType != "group" || scope.ChatID != "9") || scope.Owner != actor.ActorIdentity || scope.Owner.ID != actor.ID || scope.IsCLI {
+	if scope.Platform != "qqonebot" || (scope.ChatType != "group" || scope.ChatID != "9") || scope.Owner != actor.ActorIdentity || scope.Owner.ID != actor.ID || scope.IsSuperadmin {
 		t.Fatalf("scope = %+v", scope)
 	}
 	trusted := contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "456"}, Role: contextinfo.RoleSuperadmin}
@@ -43,7 +43,7 @@ func TestIdentityResolverDoesNotInventEntryDefaults(t *testing.T) {
 		Source:   contextinfo.Source{Platform: "cli", ChatID: "laptop", ChatType: "private"},
 		Identity: contextinfo.Identity{ID: "laptop"},
 	})
-	if actor, scope := identity.Actor(ctx), identity.Scope(ctx); actor.ID != "laptop" || actor.Role != contextinfo.RoleUser || scope.ChatID != "laptop" || scope.IsCLI {
+	if actor, scope := identity.Actor(ctx), identity.Scope(ctx); actor.ID != "laptop" || actor.Role != contextinfo.RoleUser || scope.ChatID != "laptop" || scope.IsSuperadmin {
 		t.Fatalf("remote user acquired local privileges: actor=%+v scope=%+v", actor, scope)
 	}
 }

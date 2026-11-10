@@ -158,7 +158,7 @@ func TestPublicBindingIdentityAndSynchronousRollbackRelease(t *testing.T) {
 			s := newTestSupervisor(t, store, func(_ *config.Config, deps *SupervisorDeps) {
 				deps.ReleaseBinding = func(b *Binding) { released = b; rollback.Forget(b) }
 			})
-			scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+			scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 			row, err := s.Create(t.Context(), scope, CreateRequest{})
 			if err != nil {
 				t.Fatal(err)
@@ -254,7 +254,7 @@ func TestPromotionCallbackPreservesResultAndBinding(t *testing.T) {
 	s := newTestSupervisor(t, store, func(_ *config.Config, deps *SupervisorDeps) {
 		deps.AdoptForeground = func(_ context.Context, _ *storage.Session, b *Binding) { observed = b }
 	})
-	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", IsCLI: true}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", IsSuperadmin: true}
 	row, err := s.PrepareBackground(t.Context(), scope, BackgroundRequest{TaskType: "cron"})
 	if err != nil {
 		t.Fatal(err)
@@ -319,7 +319,7 @@ func TestCloseWaitsNamingBeforeClosingBinding(t *testing.T) {
 		})
 	})
 	t.Cleanup(unblock)
-	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", IsCLI: true}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli"}
 	row, err := s.Create(t.Context(), scope, CreateRequest{})
 	if err != nil {
 		t.Fatal(err)

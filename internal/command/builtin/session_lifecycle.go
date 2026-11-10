@@ -250,27 +250,40 @@ func parseRenameArgs(args string) (string, string, bool) {
 	return fields[0], strings.Join(fields[1:], " "), true
 }
 
-func parseSessionsArgs(args string) (int, string, error) {
+func parseSessionsArgs(args string) (int, string, bool, error) {
 	fields := strings.Fields(args)
+	kept := fields[:0]
+	all := false
+	for _, field := range fields {
+		if field == "-a" || field == "--all" {
+			if all {
+				return 0, "", false, inputError(fmt.Errorf("duplicate -a/--all"))
+			}
+			all = true
+			continue
+		}
+		kept = append(kept, field)
+	}
+	fields = kept
 	if len(fields) == 0 {
-		return 0, "", nil
+		return 0, "", all, nil
 	}
 	page := 0
 	if fields[0] != "-k" && fields[0] != "--keyword" {
 		var err error
 		page, err = strconv.Atoi(fields[0])
 		if err != nil || page < 1 {
-			return 0, "", inputError(fmt.Errorf("expected page≥1 or -k/--keyword"))
+			return 0, "", false, inputError(fmt.Errorf("expected page≥1 or -k/--keyword"))
 		}
 		fields = fields[1:]
 	}
 	if len(fields) == 0 {
-		return page, "", nil
+		return page, "", all, nil
 	}
 	if (fields[0] != "-k" && fields[0] != "--keyword") || len(fields) < 2 {
-		return 0, "", inputError(fmt.Errorf("expected -k/--keyword <keyword>"))
+		return 0, "", false, inputError(fmt.Errorf("expected -k/--keyword <keyword>"))
 	}
-	return page, strings.Join(fields[1:], " "), nil
+	return page, strings.Join(fields[1:], " "), all, nil
 }
 
 func parseResumePageArg(args string) (int, error) {

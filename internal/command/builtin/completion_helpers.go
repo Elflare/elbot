@@ -21,7 +21,7 @@ func completeStringOptions(values []string, query string, start, end int, kind s
 }
 
 func completeSessionIDs(ctx context.Context, deps Deps, query string, archived bool, start, end int) []command.Completion {
-	sessions, err := listSessionPage(ctx, deps, "", 0, archived, false)
+	sessions, err := listSessionPage(ctx, deps, "", 0, archived, false, false)
 	if err != nil {
 		return nil
 	}

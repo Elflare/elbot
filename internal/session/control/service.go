@@ -77,6 +77,7 @@ type ListRequest struct {
 	ExcludeCurrent bool   // 排除当前绑定。
 	Page           int    // 0 表示第一页，其余从 1 开始。
 	PageSize       int    // 每页容量。
+	AllPlatforms   bool   // 显式查询所有平台；授权由调用方在控制边界确认。
 }
 
 type ListResult struct {

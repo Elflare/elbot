@@ -12,7 +12,7 @@ import (
 func TestOriginRegistrationPreservesHistoryAndOtherMetadata(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := t.Context()
-	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	row, err := svc.Create(ctx, scope, CreateRequest{Metadata: `{"unknown":9007199254740993,"workspace_dir":"/work"}`})
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestOriginRegistrationPreservesHistoryAndOtherMetadata(t *testing.T) {
 func TestOriginRegistrationRejectsStaleBindingAndKeepsPartialChat(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := t.Context()
-	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	row, err := svc.Create(ctx, scope, CreateRequest{Metadata: `{"llm_origin":{"protocol":"chat"},"unknown":true}`})
 	if err != nil {
 		t.Fatal(err)

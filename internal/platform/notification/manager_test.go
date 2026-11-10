@@ -284,7 +284,7 @@ func TestQueuedNotificationRejectsExpiredBinding(t *testing.T) {
 	}
 	defer store.Close()
 	sessions := newSessionSupervisor(t, store)
-	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "one"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "one"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	if _, err := sessions.Create(context.Background(), scope, session.CreateRequest{}); err != nil {
 		t.Fatal(err)
 	}

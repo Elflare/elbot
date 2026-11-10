@@ -56,7 +56,7 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = connection.Close(context.Background()) })
 			ctx := testutil.WithCLIConversation(t.Context())
-			scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+			scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 			if state == "after-new" {
 				if _, err := m.sessions.GetOrCreateCurrent(ctx, scope, "previous conversation"); err != nil {
 					t.Fatal(err)

@@ -23,15 +23,23 @@ func (s *Service) Resume(ctx context.Context, scope share.Scope, id string) (*st
 	return s.activateExisting(ctx, scope, id, false)
 }
 
-func (s *Service) ResumeLast(ctx context.Context, scope share.Scope) (*storage.Session, error) {
-	ctx, release, err := s.deps.Bindings.EnterScope(ctx, scope)
+func (s *Service) ResumeLast(ctx context.Context, scope share.Scope, allPlatforms bool) (*storage.Session, error) {
+	id, err := s.FindLast(ctx, scope, allPlatforms)
 	if err != nil {
 		return nil, err
+	}
+	return s.activateExisting(ctx, scope, id, false)
+}
+
+func (s *Service) FindLast(ctx context.Context, scope share.Scope, allPlatforms bool) (string, error) {
+	ctx, release, err := s.deps.Bindings.EnterScope(ctx, scope)
+	if err != nil {
+		return "", err
 	}
 	defer release()
 	query := storage.ListSessionsRequest{
 		Owner: scope.Owner, Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID,
-		IncludeAllPlatforms: scope.IsCLI, IncludeSamePlatformBackground: !scope.IsCLI && scope.ChatType == contextinfo.ChatPrivate,
+		IncludeAllPlatforms: allPlatforms, IncludeSamePlatformBackground: !allPlatforms && scope.ChatType == contextinfo.ChatPrivate,
 		RecentFirst: true, Limit: 1,
 	}
 	if binding := s.CurrentBinding(scope); binding != nil {
@@ -39,12 +47,12 @@ func (s *Service) ResumeLast(ctx context.Context, scope share.Scope) (*storage.S
 	}
 	rows, err := s.deps.Sessions.List(ctx, query)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	if len(rows) == 0 {
-		return nil, fmt.Errorf("没有其他可恢复会话: %w", storage.ErrNotFound)
+		return "", fmt.Errorf("没有其他可恢复会话: %w", storage.ErrNotFound)
 	}
-	return s.activateExisting(ctx, scope, rows[0].ID, false)
+	return rows[0].ID, nil
 }
 
 func (s *Service) activateExisting(ctx context.Context, scope share.Scope, id string, unarchive bool) (*storage.Session, error) {

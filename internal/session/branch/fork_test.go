@@ -17,13 +17,13 @@ import (
 
 func TestForkModesAndOwnership(t *testing.T) {
 	for _, mode := range []string{storage.SessionModeWork, storage.SessionModeChat, storage.SessionModeBackground} {
-		for _, entry := range []string{"owner", "other-user", "other-platform", "other-scope", "cli-owner", "cli-other", "group"} {
+		for _, entry := range []string{"owner", "other-user", "other-platform", "other-scope", "superadmin-owner", "superadmin-other", "group"} {
 			t.Run(mode+"/"+entry, func(t *testing.T) {
 				f := newFixture(t)
 				source := f.source(t, mode)
 				message := f.message(t, source.ID, storage.RoleAssistant)
 				target := scope()
-				allowed := entry == "owner" || entry == "cli-owner"
+				allowed := entry == "owner" || entry == "superadmin-owner"
 				switch entry {
 				case "other-user":
 					target.Owner.ID = "other"
@@ -32,10 +32,11 @@ func TestForkModesAndOwnership(t *testing.T) {
 				case "other-scope":
 					target.ChatID = "private:second"
 					allowed = mode == storage.SessionModeBackground
-				case "cli-owner":
-					target.IsCLI, target.Platform, target.ChatID = true, "cli", "local"
-				case "cli-other":
-					target.IsCLI, target.Owner.ID = true, "other"
+				case "superadmin-owner":
+					target.IsSuperadmin, target.Platform, target.ChatID = true, "cli", "local"
+				case "superadmin-other":
+					target.IsSuperadmin, target.Owner.ID = true, "other"
+					allowed = true
 				case "group":
 					target.ChatType = contextinfo.ChatGroup
 					allowed = false

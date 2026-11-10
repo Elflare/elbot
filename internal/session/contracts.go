@@ -22,13 +22,13 @@ var (
 
 // Scope 标识前台会话所属的用户和平台范围。
 type Scope struct {
-	TaskType string                    // 后台任务类型；前台聊天为空。
-	TaskID   string                    // 类型内的原生任务 ID。
-	ChatType contextinfo.ChatType      // 用于判断群聊、私聊等接入语义。
-	Owner    contextinfo.ActorIdentity // 会话所有者，独立于会话投递平台。
-	Platform string                    // 平台标识。
-	ChatID   string                    // 平台内的会话范围。
-	IsCLI    bool                      // 本地管理入口，可跨用户、平台和范围管理会话。
+	TaskType     string                    // 后台任务类型；前台聊天为空。
+	TaskID       string                    // 类型内的原生任务 ID。
+	ChatType     contextinfo.ChatType      // 用于判断群聊、私聊等接入语义。
+	Owner        contextinfo.ActorIdentity // 会话所有者，独立于会话投递平台。
+	Platform     string                    // 平台标识。
+	ChatID       string                    // 平台内的会话范围。
+	IsSuperadmin bool                      // 已解析的超级管理员角色，用于会话访问裁决。
 }
 
 // Key 返回 current 绑定的范围身份，不包含可变的会话状态。
@@ -65,6 +65,7 @@ type ListRequest struct {
 	ExcludeCurrent bool   // 排除当前绑定的会话。
 	Page           int    // 从 1 开始；0 表示最后一页。
 	PageSize       int    // 每页会话数量。
+	AllPlatforms   bool   // 经上层授权后查询所有平台的会话。
 }
 
 type ListResult struct {

@@ -17,7 +17,7 @@ import (
 func TestMissingWorkspaceFallbackPersistsAfterPromotion(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
-	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	missing := filepath.Join(t.TempDir(), "cron", "missing")
 	metadata, err := json.Marshal(map[string]any{
 		"background_kind":             "cron",
@@ -67,7 +67,7 @@ func TestMissingWorkspaceFallbackPersistsAfterPromotion(t *testing.T) {
 func TestConditionalWorkspaceClearPreservesNewSelection(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
-	row, err := svc.Create(ctx, Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", IsCLI: true}, CreateRequest{})
+	row, err := svc.Create(ctx, Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli"}, CreateRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestConditionalWorkspaceClearPreservesNewSelection(t *testing.T) {
 func TestWorkspaceMutationsPreserveConcurrentFields(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
-	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	row, err := svc.Create(ctx, scope, CreateRequest{Metadata: `{"unknown":9007199254740993,"workspace_dir":"/initial","updates":0}`})
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +168,7 @@ func TestWorkspaceMutationsPreserveConcurrentFields(t *testing.T) {
 func TestWorkspaceRejectsExpiredBinding(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
-	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	row, err := svc.Create(ctx, scope, CreateRequest{})
 	if err != nil {
 		t.Fatal(err)

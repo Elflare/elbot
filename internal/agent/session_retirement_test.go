@@ -43,7 +43,7 @@ func TestSessionRetirementWaitsForStoppingRequestAndIgnoresObserverFailure(t *te
 		if err := m.Start(); err != nil {
 			t.Fatal(err)
 		}
-		scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+		scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 		row, err := m.sessions.Create(t.Context(), scope, session.CreateRequest{})
 		if err != nil {
 			t.Fatal(err)
@@ -122,7 +122,7 @@ func TestSessionTimerRestartsAfterCanceledExecutionActuallyExits(t *testing.T) {
 			done <- m.HandleMessage(testutil.WithCLIConversation(ctx), MessageRequest{Text: "held execution"})
 		}()
 		<-started
-		scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+		scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 		row, binding, err := m.sessions.CurrentBound(t.Context(), scope)
 		if err != nil {
 			t.Fatal(err)
@@ -178,7 +178,7 @@ func TestAppendConfirmationExpiryRestartsSessionTimer(t *testing.T) {
 			done <- m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "original"})
 		}()
 		<-started
-		scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+		scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 		row, binding, err := m.sessions.CurrentBound(t.Context(), scope)
 		if err != nil {
 			t.Fatal(err)

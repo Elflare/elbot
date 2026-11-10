@@ -20,7 +20,7 @@ func (s *Service) ListPage(ctx context.Context, scope share.Scope, req ListReque
 	}
 	query := storage.ListSessionsRequest{
 		Owner: scope.Owner, Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID,
-		IncludeAllPlatforms: scope.IsCLI, IncludeSamePlatformBackground: !scope.IsCLI && scope.ChatType == contextinfo.ChatPrivate,
+		IncludeAllPlatforms: req.AllPlatforms, IncludeSamePlatformBackground: !req.AllPlatforms && scope.ChatType == contextinfo.ChatPrivate,
 		ArchivedOnly: req.ArchivedOnly, Query: req.Query, Limit: req.PageSize, MessageLimit: 5,
 	}
 	if req.ExcludeCurrent {

@@ -13,14 +13,14 @@ import (
 
 func NewSessions(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
-		Name: "sessions", Args: "[page] [-k|--keyword <keyword>]", Description: "会话列表/搜索", MinRole: contextinfo.RoleUser,
-		Help: "page≥1，默认第一页；前翻=页码-1\n置顶优先，其余按更新时间倒序；-k/--keyword 后为搜索词",
+		Name: "sessions", Args: "[page] [-k|--keyword <keyword>] [-a|--all]", Description: "会话列表/搜索", MinRole: contextinfo.RoleUser,
+		Help: "page≥1，默认第一页；前翻=页码-1\n置顶优先，其余按更新时间倒序；-k/--keyword 后为搜索词；-a/--all 查看所有平台（仅超管）",
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
-		page, query, err := parseSessionsArgs(req.Args)
+		page, query, all, err := parseSessionsArgs(req.Args)
 		if err != nil {
 			return nil, err
 		}
-		sessions, err := listSessionPage(ctx, deps, query, page, false, false)
+		sessions, err := listSessionPage(ctx, deps, query, page, false, false, all)
 		if err != nil {
 			return nil, err
 		}
@@ -34,30 +34,33 @@ type resumeCommand struct{ deps Deps }
 
 func (c resumeCommand) Info() command.Info {
 	return command.Info{
-		Name: "resume", Args: "[session_id|last|--page <page>]", Description: "恢复会话", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser,
-		Help: "省略=列表；默认第一页；--page≥1，前翻=页码-1\nlast=最近更新，排除当前，忽略置顶",
+		Name: "resume", Args: "[session_id|last|--page <page> [-a|--all]]", Description: "恢复会话", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser,
+		Help: "省略=列表；默认第一页；--page≥1，前翻=页码-1\nlast=最近更新，排除当前，忽略置顶；列表或 last 可加 -a/--all（仅超管）",
 	}
 }
 
 func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
 	deps := c.deps
 	arg := strings.TrimSpace(req.Args)
-	if strings.HasPrefix(arg, "--page") {
-		page, err := parseResumePageArg(arg)
-		if err != nil {
-			return nil, err
-		}
-		return resumePage(ctx, deps, page)
+	page, all, target, pageSet, err := parseResumeArgs(arg)
+	if err != nil {
+		return nil, err
 	}
-	if arg == "" {
-		return resumePage(ctx, deps, 0)
+	if pageSet {
+		return resumePage(ctx, deps, page, all)
 	}
-	data, err := deps.Control.ResumeSession(ctx, control.ResumeSessionRequest{SessionID: arg, MessageLimit: resumeHistoryTurns * 2})
+	if target == "" {
+		return resumePage(ctx, deps, 0, all)
+	}
+	if all && target != "last" {
+		return nil, inputError(fmt.Errorf("-a/--all is only valid for the resume list or last"))
+	}
+	data, err := deps.Control.ResumeSession(ctx, control.ResumeSessionRequest{SessionID: target, MessageLimit: resumeHistoryTurns * 2, AllPlatforms: all})
 	return sessionChange(data), err
 }
 
-func resumePage(ctx context.Context, deps Deps, page int) (*command.Result, error) {
-	sessions, err := listSessionPage(ctx, deps, "", page, false, true)
+func resumePage(ctx context.Context, deps Deps, page int, all bool) (*command.Result, error) {
+	sessions, err := listSessionPage(ctx, deps, "", page, false, true, all)
 	if err != nil {
 		return nil, err
 	}
@@ -67,10 +70,11 @@ func resumePage(ctx context.Context, deps Deps, page int) (*command.Result, erro
 func (c resumeCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
 	token := command.CurrentCompletionToken(req)
 	query := strings.TrimSpace(token.Text)
-	if query == "--page" || strings.HasPrefix(query, "--") {
-		return nil
+	if query == "--page" || strings.HasPrefix(query, "--") || query == "-a" {
+		return command.CompleteStaticOptions([]command.CompletionOption{{Text: "--all", Description: "查看所有平台会话（仅超管）"}}, query, token.Start, token.End, "option")
 	}
-	sessions, err := listSessionPage(ctx, c.deps, "", 0, false, true)
+	all := hasAllPlatformsFlag(req.Args)
+	sessions, err := listSessionPage(ctx, c.deps, "", 0, false, true, all)
 	if err != nil {
 		return nil
 	}
@@ -85,19 +89,67 @@ func (c resumeCommand) Complete(ctx context.Context, req command.CompletionReque
 
 func NewArchives(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
-		Name: "archives", Args: "[page] [-k|--keyword <keyword>]", Description: "归档列表/搜索", MinRole: contextinfo.RoleUser,
-		Help: "page≥1，默认第一页；前翻=页码-1\n置顶优先，其余按更新时间倒序；-k/--keyword 后为搜索词",
+		Name: "archives", Args: "[page] [-k|--keyword <keyword>] [-a|--all]", Description: "归档列表/搜索", MinRole: contextinfo.RoleUser,
+		Help: "page≥1，默认第一页；前翻=页码-1\n置顶优先，其余按更新时间倒序；-k/--keyword 后为搜索词；-a/--all 查看所有平台（仅超管）",
 	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
-		page, query, err := parseSessionsArgs(req.Args)
+		page, query, all, err := parseSessionsArgs(req.Args)
 		if err != nil {
 			return nil, err
 		}
-		sessions, err := listSessionPage(ctx, deps, query, page, true, false)
+		sessions, err := listSessionPage(ctx, deps, query, page, true, false, all)
 		if err != nil {
 			return nil, err
 		}
 		return sessionsResult(sessions), nil
 	})
+}
+
+func parseResumeArgs(args string) (page int, all bool, target string, pageSet bool, err error) {
+	fields := strings.Fields(args)
+	kept := fields[:0]
+	for _, field := range fields {
+		switch field {
+		case "-a", "--all":
+			if all {
+				return 0, false, "", false, inputError(fmt.Errorf("duplicate -a/--all"))
+			}
+			all = true
+		default:
+			kept = append(kept, field)
+		}
+	}
+	if len(kept) == 0 {
+		return 0, all, "", false, nil
+	}
+	if kept[0] == "--page" {
+		if len(kept) < 2 {
+			return 0, false, "", false, inputError(fmt.Errorf("expected --page <page>"))
+		}
+		page, err = parseResumePageArg(strings.Join(kept, " "))
+		if err != nil {
+			return 0, false, "", false, err
+		}
+		return page, all, "", true, nil
+	}
+	if strings.HasPrefix(kept[0], "--page") {
+		return 0, false, "", false, inputError(fmt.Errorf("expected --page <page>"))
+	}
+	if len(kept) != 1 {
+		return 0, false, "", false, inputError(fmt.Errorf("expected one session ID, last, or --page <page>"))
+	}
+	if all && kept[0] != "last" {
+		return 0, false, "", false, inputError(fmt.Errorf("-a/--all is only valid for the resume list or last"))
+	}
+	return 0, all, kept[0], false, nil
+}
+
+func hasAllPlatformsFlag(args string) bool {
+	for _, field := range strings.Fields(args) {
+		if field == "-a" || field == "--all" {
+			return true
+		}
+	}
+	return false
 }
 
 func NewMessages(deps Deps) command.Handler {

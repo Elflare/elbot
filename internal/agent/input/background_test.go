@@ -178,7 +178,7 @@ func TestBackgroundContinuationDoesNotPreload(t *testing.T) {
 		t.Fatalf("result=%+v preload=%d commit=%d run=%d", result, h.preloads, h.commits, h.executions)
 	}
 	actor, _ := contextinfo.ActorFromContext(h.runContext)
-	if actor != (contextinfo.Actor{}) || h.scope.Platform != "" || h.scope.IsCLI {
+	if actor != (contextinfo.Actor{}) || h.scope.Platform != "" || h.scope.IsSuperadmin {
 		t.Fatalf("background request acquired an identity: actor=%+v scope=%+v", actor, h.scope)
 	}
 }

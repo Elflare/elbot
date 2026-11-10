@@ -22,6 +22,103 @@ type BackgroundCopyRequest struct {
 	Metadata        storage.SessionMetadata // 调用方的业务字段，不由本方法原地修改。
 }
 
+// CopyForeground creates a foreground copy when a superadmin resumes a session from another platform.
+func (s *Service) CopyForeground(ctx context.Context, target share.Scope, sourceID string) (*storage.Session, error) {
+	if !target.IsSuperadmin {
+		return nil, share.ErrAccessDenied
+	}
+	source, err := s.deps.Sessions.Get(ctx, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	if source.Platform == target.Platform {
+		return nil, nil
+	}
+	origin, _, err := share.Origin(source)
+	if err != nil {
+		return nil, err
+	}
+	prepared, err := s.prepareMaterial(ctx, origin, source, nil)
+	if err != nil {
+		return nil, err
+	}
+	idOrigin := share.ForegroundIDOrigin(target)
+	nextID, err := s.deps.AllocateID(ctx, idOrigin)
+	if err != nil {
+		return nil, err
+	}
+	locked, release, err := s.deps.Bindings.EnterActivation(ctx, target, sourceID, nextID)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	current := s.deps.Bindings.CurrentBinding(target)
+	if original, ok := share.BindingFromContext(ctx); ok && original != current {
+		return nil, fmt.Errorf("session binding expired")
+	}
+	if current != nil {
+		if err := s.requireIdle(current.SessionID()); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.requireIdle(sourceID); err != nil {
+		return nil, err
+	}
+	latest, err := s.deps.Sessions.Get(locked, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	if latest.Platform == target.Platform {
+		return nil, fmt.Errorf("source session platform changed")
+	}
+	latestOrigin, _, err := share.Origin(latest)
+	if err != nil {
+		return nil, err
+	}
+	if origin != latestOrigin {
+		return nil, fmt.Errorf("source session origin changed")
+	}
+	messages, err := s.deps.Messages.ListBySession(locked, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	fields, err := storage.DecodeSessionMetadata(latest.Metadata)
+	if err != nil {
+		return nil, err
+	}
+	delete(fields, "llm_checkpoint")
+	delete(fields, "llm_seed")
+	if err := idOrigin.Save(fields); err != nil {
+		return nil, err
+	}
+	mode := latest.Mode
+	if share.IsBackground(latest) {
+		mode = storage.SessionModeWork
+		if err := fields.Set("foreground_origin", map[string]any{
+			"task_type": latest.TaskType, "task_id": latest.TaskID, "name": latest.TaskName,
+			"owner": latest.Owner, "platform": latest.Platform,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	metadata, err := fields.Encode()
+	if err != nil {
+		return nil, err
+	}
+	row := &storage.Session{ID: nextID, ParentSessionID: sourceID, Owner: target.Owner, Platform: target.Platform,
+		ChatType: target.ChatType, ChatID: target.ChatID, Mode: mode, Status: storage.SessionStatusActive,
+		Title: latest.Title, Metadata: metadata}
+	copies, err := s.copyMessages(ctx, row.ID, messages)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.deps.Sessions.CreateMaterial(locked, materialCreate(row, sourceID, prepared, copies)); err != nil {
+		return nil, err
+	}
+	s.deps.Bindings.SetCurrent(locked, target, row.ID)
+	return row, nil
+}
+
 // CopyBackground 从业务准入外调用；target 是副本归属，不代表来源访问者。
 func (s *Service) CopyBackground(ctx context.Context, target share.Scope, req BackgroundCopyRequest) (*storage.Session, error) {
 	var source *storage.Session

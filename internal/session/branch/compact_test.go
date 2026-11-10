@@ -17,19 +17,14 @@ func TestBackgroundCompactedRequiresExecutionOwnership(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		taskType string
-		cli      bool
 		mismatch string
 	}{
 		{name: "background entry", taskType: "cron"},
 		{name: "unknown entry", taskType: "", mismatch: "kind"},
 		{name: "group entry", taskType: "other", mismatch: "kind"},
-		{name: "CLI execution", taskType: "cron", cli: true},
 		{name: "other owner", taskType: "cron", mismatch: "owner"},
 		{name: "other platform", taskType: "cron", mismatch: "platform"},
 		{name: "other task", taskType: "cron", mismatch: "scope"},
-		{name: "CLI other owner", taskType: "cron", cli: true, mismatch: "owner"},
-		{name: "CLI other platform", taskType: "cron", cli: true, mismatch: "platform"},
-		{name: "CLI other task", taskType: "cron", cli: true, mismatch: "scope"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)
@@ -39,7 +34,7 @@ func TestBackgroundCompactedRequiresExecutionOwnership(t *testing.T) {
 			f.setBusy(source.ID)
 			target := scope()
 			target.ChatType, target.ChatID = "", ""
-			target.TaskType, target.TaskID, target.IsCLI = tc.taskType, source.TaskID, tc.cli
+			target.TaskType, target.TaskID = tc.taskType, source.TaskID
 			switch tc.mismatch {
 			case "owner":
 				target.Owner.ID = "other"

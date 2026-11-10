@@ -12,7 +12,7 @@ import (
 func TestPrepareBackgroundKeepsCurrentAndPreservesOtherFields(t *testing.T) {
 	s, store := newTestService(t)
 	ctx := context.Background()
-	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	current, err := s.Create(ctx, scope, CreateRequest{})
 	if err != nil {
 		t.Fatal(err)

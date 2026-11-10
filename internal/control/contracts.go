@@ -92,6 +92,7 @@ type ListSessionsRequest struct {
 	PageSize       int    `json:"page_size"`       // 每页数量，由调用方指定。
 	Archived       bool   `json:"archived"`        // true 仅归档；false 仅未归档。
 	ExcludeCurrent bool   `json:"exclude_current"` // 排除当前绑定的会话。
+	AllPlatforms   bool   `json:"all_platforms"`   // 超管显式查询所有平台会话。
 }
 type ListSessionsResult struct {
 	Page
@@ -127,6 +128,7 @@ type CleanSessionsRequest struct {
 type ResumeSessionRequest struct {
 	SessionID    string `json:"session_id"`
 	MessageLimit int    `json:"message_limit"` // 返回最近消息的数量；0 不查询。
+	AllPlatforms bool   `json:"all_platforms"` // 仅 last 查询可使用，超管显式查询所有平台。
 }
 type ForkSessionRequest struct {
 	SessionID    string `json:"session_id"`
@@ -294,9 +296,9 @@ type CurrentConfirmationRequest struct {
 }
 type CurrentConfirmationResult struct {
 	SessionID string                         `json:"session_id"`
-	Kind      string                         `json:"kind"`   // tool 或 append。
-	Detail    []tool.ConfirmationDetailBlock `json:"detail"` // 当前待确认操作的有序内容块。
-	Actions   []delivery.Action               `json:"actions"` // 当前待确认操作可直接提交的动作。
+	Kind      string                         `json:"kind"`    // tool 或 append。
+	Detail    []tool.ConfirmationDetailBlock `json:"detail"`  // 当前待确认操作的有序内容块。
+	Actions   []delivery.Action              `json:"actions"` // 当前待确认操作可直接提交的动作。
 	ToolName  string                         `json:"tool_name"`
 	Risk      string                         `json:"risk"`
 }

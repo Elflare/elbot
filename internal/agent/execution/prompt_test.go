@@ -64,7 +64,7 @@ func TestBackgroundPathsAreSystemPromptOnlyUntilTakeover(t *testing.T) {
 
 func TestResidentMemorySystemPromptSourceOmitsEmptyMemory(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	parts, err := (dialogue.ResidentMemorySystemPromptSource{Store: store}).Parts(context.Background(), agentshare.SystemPromptRequest{Scope: session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, IsCLI: true}})
+	parts, err := (dialogue.ResidentMemorySystemPromptSource{Store: store}).Parts(context.Background(), agentshare.SystemPromptRequest{Scope: session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}}})
 	if err != nil {
 		t.Fatalf("Parts: %v", err)
 	}
@@ -179,7 +179,7 @@ func (s tagPromptTestService) TagPrompts(ctx context.Context, tags []string) ([]
 
 func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
 	ctx := context.Background()
-	scope := session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, IsCLI: true}
+	scope := session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}}
 	memoryStore := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
 	if err := memoryStore.WriteCore(ctx, scope, "RESIDENT_ORDER"); err != nil {
 		t.Fatalf("WriteCore: %v", err)

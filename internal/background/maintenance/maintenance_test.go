@@ -78,7 +78,7 @@ func TestCleanupUsesInjectedLiveSessionService(t *testing.T) {
 			return nil
 		}
 	})
-	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	row, err := live.Create(ctx, scope, session.CreateRequest{})
 	if err != nil {
 		t.Fatal(err)

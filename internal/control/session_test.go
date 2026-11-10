@@ -278,3 +278,15 @@ func TestSessionListForwardsOptionsWithoutCaps(t *testing.T) {
 		t.Fatalf("request=%+v result=%+v", provider.request, result)
 	}
 }
+
+func TestSessionListRequiresSuperadminForAllPlatforms(t *testing.T) {
+	provider := &sessionListStub{sessionStub: sessionStub{currentErr: session.ErrNoCurrentSession}}
+	m, _ := testSupervisor(t, SupervisorDeps{Sessions: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }})
+	if _, err := m.ListSessions(testContext(false), ListSessionsRequest{Page: 1, PageSize: 10, AllPlatforms: true}); err == nil {
+		t.Fatal("non-superadmin all-platform query accepted")
+	}
+	result, err := m.ListSessions(testContext(true), ListSessionsRequest{Page: 1, PageSize: 10, AllPlatforms: true})
+	if err != nil || !provider.request.AllPlatforms || result.Page.Page != 1 {
+		t.Fatalf("request=%+v result=%+v err=%v", provider.request, result, err)
+	}
+}

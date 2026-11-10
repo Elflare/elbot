@@ -20,15 +20,15 @@ func (r *IdentityResolver) Scope(ctx context.Context) session.Scope {
 	info, _ := contextinfo.ConversationFromContext(ctx)
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
 	if facts.Mode == "background" {
-		return session.Scope{Owner: actor.ActorIdentity, Platform: actor.Platform, TaskType: facts.TaskType, TaskID: facts.TaskID}
+		return session.Scope{Owner: actor.ActorIdentity, Platform: actor.Platform, TaskType: facts.TaskType, TaskID: facts.TaskID, IsSuperadmin: actor.Role == contextinfo.RoleSuperadmin}
 	}
 	return session.Scope{
 		ChatType: info.Source.ChatType,
 		Owner:    actor.ActorIdentity,
 
-		Platform: info.Source.Platform,
-		ChatID:   info.Source.ChatID,
-		IsCLI:    info.Source.Platform == r.cliPlatformName && actor.Role == contextinfo.RoleSuperadmin,
+		Platform:     info.Source.Platform,
+		ChatID:       info.Source.ChatID,
+		IsSuperadmin: actor.Role == contextinfo.RoleSuperadmin,
 	}
 }
 

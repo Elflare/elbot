@@ -50,6 +50,20 @@ func TestFormatCommandResultUsesCallingOperation(t *testing.T) {
 	}
 }
 
+func TestSessionPaginationPreservesAllPlatformsFlag(t *testing.T) {
+	result := &command.Result{Kind: command.ResultKindSessions, Data: control.ListSessionsResult{
+		Page: control.Page{Page: 1, PageSize: 1, HasNext: true, TotalPages: 2},
+	}}
+	got := FormatCommandResult(command.Request{Name: "sessions", Prefix: "/", Args: "-a"}, result)
+	if !strings.Contains(got, "next: /sessions 2 --all") {
+		t.Fatalf("pagination dropped --all: %q", got)
+	}
+	resume := FormatCommandResult(command.Request{Name: "resume", Prefix: "/", Args: "--all"}, result)
+	if !strings.Contains(resume, "next: /resume --page 2 --all") {
+		t.Fatalf("resume pagination dropped --all: %q", resume)
+	}
+}
+
 func TestFormatDetailCommandCombinesStructuredBlocks(t *testing.T) {
 	result := &command.Result{Kind: command.ResultKindText, Data: control.CurrentConfirmationResult{
 		ToolName: "edit_file",

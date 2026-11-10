@@ -2,12 +2,13 @@ package control
 
 import (
 	"context"
-	"elbot/internal/events"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"strings"
 
+	"elbot/internal/contextinfo"
+	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -18,7 +19,11 @@ func (m *Supervisor) ListSessions(ctx context.Context, req ListSessionsRequest) 
 	if err := authorize(ctx, false, m.deps.Sessions != nil); err != nil {
 		return result, err
 	}
-	listed, err := m.deps.Sessions.ListPage(ctx, m.deps.Scope(ctx), session.ListRequest{Query: req.Query, Page: req.Page, PageSize: req.PageSize, ArchivedOnly: req.Archived, ExcludeCurrent: req.ExcludeCurrent})
+	actor, _ := contextinfo.ActorFromContext(ctx)
+	if req.AllPlatforms && actor.Role != contextinfo.RoleSuperadmin {
+		return result, &Error{Code: "permission_denied", Message: "仅超级管理员可查看所有平台会话"}
+	}
+	listed, err := m.deps.Sessions.ListPage(ctx, m.deps.Scope(ctx), session.ListRequest{Query: req.Query, Page: req.Page, PageSize: req.PageSize, ArchivedOnly: req.Archived, ExcludeCurrent: req.ExcludeCurrent, AllPlatforms: req.AllPlatforms})
 	if err != nil {
 		return result, ClassifyError(err)
 	}
@@ -203,9 +208,13 @@ func (m *Supervisor) ResumeSession(ctx context.Context, req ResumeSessionRequest
 	if strings.TrimSpace(req.SessionID) == "" {
 		return ResumeSessionResult{}, invalid("session_id 不能为空")
 	}
+	actor, _ := contextinfo.ActorFromContext(ctx)
+	if req.AllPlatforms && (actor.Role != contextinfo.RoleSuperadmin || req.SessionID != "last") {
+		return ResumeSessionResult{}, &Error{Code: "permission_denied", Message: "仅超级管理员可对 last 使用 -a/--all"}
+	}
 	var row *storage.Session
 	if req.SessionID == "last" {
-		row, err = m.deps.Sessions.ResumeLast(ctx, m.deps.Scope(ctx))
+		row, err = m.deps.Sessions.ResumeLast(ctx, m.deps.Scope(ctx), req.AllPlatforms)
 	} else {
 		row, err = m.deps.Sessions.Resume(ctx, m.deps.Scope(ctx), req.SessionID)
 	}
@@ -356,7 +365,8 @@ func (m *Supervisor) readSession(ctx context.Context, id string) (*storage.Sessi
 	if err != nil {
 		return nil, ClassifyError(err)
 	}
-	if !session.CanAccess(m.deps.Scope(ctx), row) {
+	actor, _ := contextinfo.ActorFromContext(ctx)
+	if actor.Role != contextinfo.RoleSuperadmin && !session.CanAccess(m.deps.Scope(ctx), row) {
 		return nil, ClassifyError(session.ErrAccessDenied)
 	}
 	return row, nil

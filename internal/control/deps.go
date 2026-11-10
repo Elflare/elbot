@@ -49,7 +49,7 @@ type SessionCapabilities interface {
 	ActivateMode(context.Context, session.Scope, session.ActivateModeRequest) (session.ActivateModeResult, error)
 	ListPage(context.Context, session.Scope, session.ListRequest) (session.ListResult, error)
 	Resume(context.Context, session.Scope, string) (*storage.Session, error)
-	ResumeLast(context.Context, session.Scope) (*storage.Session, error)
+	ResumeLast(context.Context, session.Scope, bool) (*storage.Session, error)
 	Fork(context.Context, session.Scope, string) (*storage.Session, error)
 	Rename(context.Context, session.Scope, string, string) (*storage.Session, error)
 	Archive(context.Context, session.Scope, string) (*storage.Session, error)

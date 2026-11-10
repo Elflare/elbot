@@ -46,7 +46,7 @@ func TestCleanupPreservesBusyPinnedArchivedAndPartialCount(t *testing.T) {
 		t.Fatal(err)
 	}
 	secondScope := scope
-	secondScope.ChatID, secondScope.IsCLI = "other", true
+	secondScope.ChatID, secondScope.IsSuperadmin = "other", true
 	if _, err := f.s.Resume(ctx, secondScope, "a-delete"); err != nil {
 		t.Fatal(err)
 	}

@@ -12,7 +12,7 @@ import (
 func TestListPageReturnsInvalidPageAndKeepsEmptyDefault(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
-	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 
 	empty, err := svc.ListPage(ctx, scope, ListRequest{PageSize: 1})
 	if err != nil || empty.Page != 1 || empty.TotalPages != 0 || len(empty.Items) != 0 {
@@ -33,10 +33,31 @@ func TestListPageReturnsInvalidPageAndKeepsEmptyDefault(t *testing.T) {
 	}
 }
 
+func TestCLIListDefaultsToCurrentPlatformUntilExplicitAllPlatforms(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+	current := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}, Platform: "cli", ChatID: "local", ChatType: contextinfo.ChatPrivate}
+	foreign := Scope{Owner: contextinfo.ActorIdentity{Platform: "telegram", ID: "user"}, Platform: "telegram", ChatID: "chat", ChatType: contextinfo.ChatPrivate}
+	if _, err := svc.Create(ctx, current, CreateRequest{Title: "cli"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Create(ctx, foreign, CreateRequest{Title: "telegram"}); err != nil {
+		t.Fatal(err)
+	}
+	local, err := svc.ListPage(ctx, current, ListRequest{PageSize: 10})
+	if err != nil || len(local.Items) != 1 || local.Items[0].Platform != "cli" {
+		t.Fatalf("default CLI list = %+v, %v", local, err)
+	}
+	all, err := svc.ListPage(ctx, current, ListRequest{PageSize: 10, AllPlatforms: true})
+	if err != nil || len(all.Items) != 2 {
+		t.Fatalf("all-platform list = %+v, %v", all, err)
+	}
+}
+
 func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
-	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 
 	first, err := svc.GetOrCreateCurrent(ctx, scope, "hello session")
 	if err != nil {
@@ -105,7 +126,7 @@ func TestServiceGetOrCreateCurrentCreatesNewWhenNoInMemoryCurrent(t *testing.T) 
 	ctx := context.Background()
 	store := newTestStore(t)
 
-	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	firstSvc := newTestSupervisor(t, store, nil)
 	first, err := firstSvc.Create(ctx, scope, CreateRequest{Title: "old session"})
 	if err != nil {
@@ -128,7 +149,7 @@ func TestServiceGetOrCreateCurrentCreatesNewWhenNoInMemoryCurrent(t *testing.T) 
 func TestServiceListPageUsesPinnedNonCurrentOrder(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
-	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	now := storage.Now()
 
 	older, err := svc.Create(ctx, scope, CreateRequest{Title: "older pinned"})

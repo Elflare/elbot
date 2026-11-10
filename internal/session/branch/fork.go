@@ -144,8 +144,8 @@ func (s *Service) Fork(ctx context.Context, scope share.Scope, fromMessageID str
 
 func checkForkAccess(scope share.Scope, row *storage.Session) error {
 	allowed := false
-	if scope.IsCLI {
-		allowed = row.Owner == scope.Owner
+	if scope.IsSuperadmin {
+		allowed = true
 	} else {
 		allowed = share.CanAccess(scope, row)
 	}

@@ -6,11 +6,11 @@ import (
 	"elbot/internal/control"
 )
 
-func listSessionPage(ctx context.Context, deps Deps, query string, page int, archivedOnly, excludeCurrent bool) (control.ListSessionsResult, error) {
+func listSessionPage(ctx context.Context, deps Deps, query string, page int, archivedOnly, excludeCurrent, allPlatforms bool) (control.ListSessionsResult, error) {
 	if page == 0 {
 		page = 1
 	}
-	return deps.Control.ListSessions(ctx, control.ListSessionsRequest{Query: query, Page: page, PageSize: deps.SessionListPageSize, Archived: archivedOnly, ExcludeCurrent: excludeCurrent})
+	return deps.Control.ListSessions(ctx, control.ListSessionsRequest{Query: query, Page: page, PageSize: deps.SessionListPageSize, Archived: archivedOnly, ExcludeCurrent: excludeCurrent, AllPlatforms: allPlatforms})
 }
 func sessionChange(data control.SessionChangeResult) *command.Result {
 	return &command.Result{Kind: command.ResultKindSession, Data: data, Continuation: data.Continuation}

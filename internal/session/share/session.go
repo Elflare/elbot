@@ -20,13 +20,13 @@ var (
 
 // Scope 标识 current 绑定的归属及调用入口的访问范围。
 type Scope struct {
-	TaskType string                    // 后台任务类型；前台聊天为空。
-	TaskID   string                    // 类型内的原生任务 ID。
-	ChatType contextinfo.ChatType      // 入口类型，与原生会话 ID 一起参与绑定身份。
-	Owner    contextinfo.ActorIdentity // 会话所有者，独立于会话投递平台。
-	Platform string                    // 平台标识。
-	ChatID   string                    // 平台内的会话范围。
-	IsCLI    bool                      // 本地管理入口，可跨用户、平台和范围访问会话。
+	TaskType     string                    // 后台任务类型；前台聊天为空。
+	TaskID       string                    // 类型内的原生任务 ID。
+	ChatType     contextinfo.ChatType      // 入口类型，与原生会话 ID 一起参与绑定身份。
+	Owner        contextinfo.ActorIdentity // 会话所有者，独立于会话投递平台。
+	Platform     string                    // 平台标识。
+	ChatID       string                    // 平台内的会话范围。
+	IsSuperadmin bool                      // 已解析的超级管理员角色。
 }
 
 // ScopeKey 仅包含稳定的归属和会话地址，不包含管理权限。
@@ -59,7 +59,7 @@ func WasPromoted(row *storage.Session) bool {
 
 // CanAccess 判断已取得的非 nil 会话是否属于调用入口的访问范围。
 func CanAccess(scope Scope, row *storage.Session) bool {
-	if scope.IsCLI {
+	if scope.IsSuperadmin {
 		return true
 	}
 	if row.Owner != scope.Owner || row.Platform != scope.Platform {

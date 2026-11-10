@@ -89,7 +89,7 @@ func (f *fixture) releaseCounts() (int, int) {
 func TestResumeLastUsesRecentAccessibleSession(t *testing.T) {
 	f := newFixture(t, IdleExpirationConfig{})
 	ctx, scope := t.Context(), privateScope()
-	if _, err := f.s.ResumeLast(ctx, scope); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := f.s.ResumeLast(ctx, scope, false); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("empty last: %v", err)
 	}
 	pinned := f.create(t, scope, "pinned")
@@ -111,12 +111,12 @@ func TestResumeLastUsesRecentAccessibleSession(t *testing.T) {
 		}
 	}
 	f.setBusy(current.ID)
-	if _, err := f.s.ResumeLast(ctx, scope); !errors.Is(err, share.ErrSessionBusy) {
+	if _, err := f.s.ResumeLast(ctx, scope, false); !errors.Is(err, share.ErrSessionBusy) {
 		t.Fatalf("busy last: %v", err)
 	}
 	f.setBusy()
 	for _, want := range []string{recent.ID, current.ID, recent.ID} {
-		row, err := f.s.ResumeLast(ctx, scope)
+		row, err := f.s.ResumeLast(ctx, scope, false)
 		if err != nil || row.ID != want {
 			t.Fatalf("last=%+v err=%v want=%s", row, err, want)
 		}
@@ -125,7 +125,7 @@ func TestResumeLastUsesRecentAccessibleSession(t *testing.T) {
 	if _, err := f.s.Rename(ctx, scope, pinned.ID, "active now"); err != nil {
 		t.Fatal(err)
 	}
-	row, err := f.s.ResumeLast(ctx, scope)
+	row, err := f.s.ResumeLast(ctx, scope, false)
 	if err != nil || row.ID != pinned.ID {
 		t.Fatalf("updated last=%+v err=%v", row, err)
 	}
@@ -135,7 +135,7 @@ func TestResumeLastUsesRecentAccessibleSession(t *testing.T) {
 	if err := f.s.ResetCurrent(ctx, scope); err != nil {
 		t.Fatal(err)
 	}
-	row, err = f.s.ResumeLast(ctx, scope)
+	row, err = f.s.ResumeLast(ctx, scope, false)
 	if err != nil || row.ID != pinned.ID {
 		t.Fatalf("unbound last=%+v err=%v", row, err)
 	}

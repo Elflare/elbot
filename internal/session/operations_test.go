@@ -11,7 +11,7 @@ import (
 func TestServiceLifecycleOperations(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
-	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 
 	session, err := svc.Create(ctx, scope, CreateRequest{Title: "lifecycle"})
 	if err != nil {

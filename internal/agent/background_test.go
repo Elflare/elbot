@@ -125,7 +125,7 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 		t.Fatalf("changed declarations: before=%+v after=%+v err=%v", before, after, err)
 	}
 
-	foregroundScope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+	foregroundScope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	foreground, err := m.sessions.Create(ctx, foregroundScope, session.CreateRequest{})
 	if err != nil {
 		t.Fatal(err)

@@ -3,13 +3,16 @@ package branch_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/session/branch"
 	"elbot/internal/session/control"
+	"elbot/internal/session/share"
 	"elbot/internal/storage"
 )
 
@@ -85,6 +88,59 @@ func TestBackgroundCopyHistoryAndMetadata(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCopyForegroundAcrossPlatformsPreservesSourceAndHistory(t *testing.T) {
+	f := newFixture(t)
+	source := f.source(t, storage.SessionModeWork)
+	first := f.message(t, source.ID, storage.RoleUser)
+	second := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: storage.RoleAssistant, Content: "answer", ParentMessageID: first.ID}
+	if err := f.store.Messages().Append(t.Context(), second); err != nil {
+		t.Fatal(err)
+	}
+	target := scope()
+	target.Owner = contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}
+	target.Platform, target.ChatID, target.IsSuperadmin = "cli", "local", true
+	copy, err := f.s.CopyForeground(t.Context(), target, source.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if copy.ID == source.ID || copy.ParentSessionID != source.ID || copy.Owner != target.Owner || copy.Platform != target.Platform || copy.ChatID != target.ChatID {
+		t.Fatalf("copy identity: %+v", copy)
+	}
+	copiedMessages, err := f.store.Messages().ListBySession(t.Context(), copy.ID)
+	if err != nil || len(copiedMessages) != 2 {
+		t.Fatalf("copied messages: %+v %v", copiedMessages, err)
+	}
+	if copiedMessages[0].ID == first.ID || copiedMessages[1].ID == second.ID || copiedMessages[1].ParentMessageID != "" {
+		t.Fatalf("message references were not copied independently: %+v", copiedMessages)
+	}
+	storedSource, err := f.store.Sessions().Get(t.Context(), source.ID)
+	if err != nil || storedSource.Platform != "test" {
+		t.Fatalf("source changed: %+v %v", storedSource, err)
+	}
+	if current := f.c.CurrentBinding(target); current == nil || current.SessionID() != copy.ID {
+		t.Fatal("copy was not activated for target scope")
+	}
+}
+
+func TestCopyForegroundDoesNotReplaceBusyCurrentSession(t *testing.T) {
+	f := newFixture(t)
+	target := scope()
+	target.Owner = contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}
+	target.Platform, target.ChatID, target.IsSuperadmin = "cli", "local", true
+	current, err := f.c.Create(t.Context(), target, control.CreateRequest{Title: "current"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := f.source(t, storage.SessionModeWork)
+	f.setBusy(current.ID)
+	if _, err := f.s.CopyForeground(t.Context(), target, source.ID); !errors.Is(err, share.ErrSessionBusy) {
+		t.Fatalf("copy replaced busy current session: %v", err)
+	}
+	if f.count(t) != 2 {
+		t.Fatal("copy created a session despite busy current binding")
 	}
 }
 

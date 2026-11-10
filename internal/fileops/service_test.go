@@ -37,7 +37,7 @@ func newFileFixture(t *testing.T) *fileFixture {
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}})
 	store := testutil.NewSQLiteStore(t)
 	sessions := newSessionSupervisor(t, store)
-	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}, Platform: "cli", ChatID: "local", IsCLI: true, ChatType: "private"}
+	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	row, err := sessions.Create(ctx, scope, session.CreateRequest{Title: "files"})
 	if err != nil {
 		t.Fatal(err)

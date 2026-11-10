@@ -19,9 +19,47 @@ func TestParseSessionsArgs(t *testing.T) {
 		{args: "-k", wantError: true},
 		{args: "--other value", wantError: true},
 	} {
-		page, query, err := parseSessionsArgs(tc.args)
-		if (err != nil) != tc.wantError || page != tc.page || query != tc.query {
-			t.Fatalf("parseSessionsArgs(%q) = (%d, %q, %v)", tc.args, page, query, err)
+		page, query, all, err := parseSessionsArgs(tc.args)
+		if (err != nil) != tc.wantError || page != tc.page || query != tc.query || all {
+			t.Fatalf("parseSessionsArgs(%q) = (%d, %q, %v, %v)", tc.args, page, query, all, err)
+		}
+	}
+}
+
+func TestParseSessionsArgsAllPlatforms(t *testing.T) {
+	for _, args := range []string{"-a", "--all", "2 -a", "-a 2 -k work now", "2 --keyword work --all"} {
+		page, query, all, err := parseSessionsArgs(args)
+		if err != nil || !all {
+			t.Fatalf("parseSessionsArgs(%q) = (%d, %q, %v, %v)", args, page, query, all, err)
+		}
+	}
+	if _, _, _, err := parseSessionsArgs("-a --all"); err == nil {
+		t.Fatal("duplicate all flag accepted")
+	}
+}
+
+func TestParseResumeArgs(t *testing.T) {
+	for _, tc := range []struct {
+		args      string
+		page      int
+		all       bool
+		target    string
+		pageSet   bool
+		wantError bool
+	}{
+		{args: "", target: ""},
+		{args: "session-id", target: "session-id"},
+		{args: "--all", all: true},
+		{args: "--page 2 -a", page: 2, all: true, pageSet: true},
+		{args: "last -a", all: true, target: "last"},
+		{args: "session-id -a", wantError: true},
+		{args: "--page 0", wantError: true},
+		{args: "--page", wantError: true},
+		{args: "one two", wantError: true},
+	} {
+		page, all, target, pageSet, err := parseResumeArgs(tc.args)
+		if (err != nil) != tc.wantError || page != tc.page || all != tc.all || target != tc.target || pageSet != tc.pageSet {
+			t.Fatalf("parseResumeArgs(%q) = (%d, %v, %q, %v, %v)", tc.args, page, all, target, pageSet, err)
 		}
 	}
 }
