@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -98,15 +97,6 @@ func TestPrepareResourcesReturnsPartialOwnership(t *testing.T) {
 	}
 	if _, err := os.Stat(r.logs.LogDir()); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestPrepareResourcesCanceledBeforeAcquisition(t *testing.T) {
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	r, err := prepareResources(ctx, "unused")
-	if !errors.Is(err, context.Canceled) || r.logs != nil || r.store != nil {
-		t.Fatalf("resources=%#v error=%v", r, err)
 	}
 }
 

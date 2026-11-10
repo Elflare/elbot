@@ -139,7 +139,11 @@ func runShutdownSteps(ctx context.Context, steps []shutdownStep) stopResult {
 
 // runShutdownStep 独立执行关闭调用，即使关闭方忽略取消，也按统一期限返回。
 // 结果缓冲允许超时后仍在运行的关闭调用自行结束，无需等待接收方。
+// 期限已过时不再启动关闭，避免释放可能仍被使用的依赖。
 func runShutdownStep(ctx context.Context, step shutdownStep) stopResult {
+	if err := ctx.Err(); err != nil {
+		return stopResult{kind: stopTimedOut, err: &lifecycleError{component: step.component, phase: step.phase, cause: err}}
+	}
 	result := make(chan error, 1)
 	go func() { result <- step.close(ctx) }()
 	select {

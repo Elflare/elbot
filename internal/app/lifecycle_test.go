@@ -309,33 +309,29 @@ func TestWaitBusinessLinesPreservesConcurrentIndependentFailures(t *testing.T) {
 	}
 }
 
-func TestWaitBusinessLinesExternalCancellationWithOrWithoutWaiters(t *testing.T) {
-	for _, hasWaiter := range []bool{false, true} {
-		t.Run(fmt.Sprint(hasWaiter), func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				lines := businessLines{{kind: componentTool, supervisor: &testLifecycle{}}}
-				if hasWaiter {
-					lines = append(lines, businessLine{kind: componentBackground, supervisor: &testWaitingLine{wait: func(ctx context.Context) error {
-						<-ctx.Done()
-						return ctx.Err()
-					}}})
-				}
-				ctx, cancel := context.WithCancel(t.Context())
-				result := make(chan error, 1)
-				go func() { result <- waitBusinessLines(ctx, lines) }()
-				synctest.Wait()
-				select {
-				case <-result:
-					t.Fatal("returned before cancellation")
-				default:
-				}
-				cancel()
-				if err := <-result; !errors.Is(err, context.Canceled) {
-					t.Fatal(err)
-				}
-			})
-		})
-	}
+func TestWaitBusinessLinesExternalCancellation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		lines := businessLines{
+			{kind: componentTool, supervisor: &testLifecycle{}},
+			{kind: componentBackground, supervisor: &testWaitingLine{wait: func(ctx context.Context) error {
+				<-ctx.Done()
+				return ctx.Err()
+			}}},
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		result := make(chan error, 1)
+		go func() { result <- waitBusinessLines(ctx, lines) }()
+		synctest.Wait()
+		select {
+		case <-result:
+			t.Fatal("returned before cancellation")
+		default:
+		}
+		cancel()
+		if err := <-result; !errors.Is(err, context.Canceled) {
+			t.Fatal(err)
+		}
+	})
 }
 
 func TestStopBusinessLinesPreservesIngressAndDependencyPhases(t *testing.T) {

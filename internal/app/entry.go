@@ -150,7 +150,7 @@ func Run(ctx context.Context, opts Options) (err error) {
 	)
 	defer func() {
 		cancel()
-		if  errors.Is(err, ctx.Err()) {
+		if errors.Is(err, ctx.Err()) {
 			err = nil
 		}
 		if closeErr := shutdown(ctx, lines, resources, configLock); closeErr != nil {
@@ -167,7 +167,7 @@ func Run(ctx context.Context, opts Options) (err error) {
 	var configPath string
 	steps := []startupStep{
 		{phase: phaseEnvironment, run: func() error {
-			configPath, configLock, err = prepareEnvironment(opts.ConfigPath, opts.Mode)
+			configPath, configLock, err = prepareEnvironment(opts.ConfigPath)
 			return err
 		}},
 		{phase: phaseResources, run: func() error {
@@ -222,6 +222,7 @@ func startBusinessLines(ctx context.Context, lines businessLines) error {
 
 // waitBusinessLines 将运行结果交回 Run，清理期限从统一退出流程开始计算。
 // Platform 继续解释 TUI／Service 的退出语义；Background 在故障时不等待清理。
+// 装配成功时 Platform 与 Background 必定注册观察者，首个结果总是存在。
 func waitBusinessLines(ctx context.Context, lines businessLines) error {
 	waitCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -230,21 +231,17 @@ func waitBusinessLines(ctx context.Context, lines businessLines) error {
 		err  error
 	}
 	results := make(chan result, len(lines))
-	waiting := 0
+	waiters := 0
 	for _, line := range lines {
 		if waiter, ok := line.supervisor.(Waiter); ok {
-			waiting++
+			waiters++
 			go func() { results <- result{line.kind, waiter.Wait(waitCtx)} }()
 		}
-	}
-	if waiting == 0 {
-		<-ctx.Done()
-		return ctx.Err()
 	}
 	received := <-results
 	cancel()
 	// 运行等待已结束；其余观察者只收尾，各自独立故障在这里处理。
-	for range waiting - 1 {
+	for range waiters - 1 {
 		other := <-results
 		if other.err != nil && !errors.Is(other.err, waitCtx.Err()) {
 			events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError,

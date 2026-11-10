@@ -4,7 +4,6 @@ package platform
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -23,12 +22,6 @@ import (
 )
 
 func (m *Supervisor) wire(cfg *config.Config, deps SupervisorDeps, entries []registration) error {
-	m.prepare = func() error {
-		if !m.agentConnected {
-			return errors.New("platform Agent is not connected")
-		}
-		return m.agentErr
-	}
 	m.registered = entries
 	if deps.Mode != "tui" {
 		adapter := headless.New(config.PlatformService)
