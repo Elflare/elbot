@@ -312,7 +312,8 @@ func (m *RollbackManager) lockTarget(ctx context.Context, target string) (func()
 
 type RollbackPreview struct {
 	RollbackInfo
-	Diff string
+	Diff          string
+	DiffAvailable bool // Diff 是否包含可展示的完整差异 hunk。
 }
 
 type RollbackResult struct {
@@ -329,14 +330,15 @@ func (s *RollbackSession) Preview(ctx context.Context, path string, expectedID u
 	}
 	defer unlock()
 	diff := omittedDiff(record.Path, "file exceeds detailed diff limit")
+	diffAvailable := false
 	if len(current) <= MaxFileSize && len(record.before) <= MaxFileSize {
 		newText, _, _, decodeErr := DecodeBytes(current, record.encoding)
 		oldText, _, _, oldErr := DecodeBytes(record.before, record.encoding)
 		if decodeErr == nil && oldErr == nil {
-			diff = editDiff(record.Path, NormalizeEditText(newText), NormalizeEditText(oldText), len(current), len(record.before), 3, MaxFileSize)
+			diff, diffAvailable = editDiff(record.Path, NormalizeEditText(newText), NormalizeEditText(oldText), len(current), len(record.before), 3, MaxFileSize)
 		}
 	}
-	return RollbackPreview{RollbackInfo: record.RollbackInfo, Diff: diff}, nil
+	return RollbackPreview{RollbackInfo: record.RollbackInfo, Diff: diff, DiffAvailable: diffAvailable}, nil
 }
 
 func (s *RollbackSession) Rollback(ctx context.Context, path string, expectedID uint64, checkWrite func(string) error) (RollbackResult, error) {

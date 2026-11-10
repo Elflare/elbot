@@ -135,7 +135,7 @@ func TestEditFileWithOptionsOmitsDetailedDiffAboveLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Diff, "diff omitted: file exceeds detailed diff limit 5 bytes") || !strings.Contains(result.Diff, "old 6 bytes") {
+	if result.DiffAvailable || !strings.Contains(result.Diff, "diff omitted: file exceeds detailed diff limit 5 bytes") || !strings.Contains(result.Diff, "old 6 bytes") {
 		t.Fatalf("unexpected omitted diff:\n%s", result.Diff)
 	}
 }

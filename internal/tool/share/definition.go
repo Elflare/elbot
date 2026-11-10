@@ -89,6 +89,14 @@ func TextConfirmationDetail(content string) ConfirmationDetailBlock {
 	return ConfirmationDetailBlock{Kind: ConfirmationDetailText, Content: content}
 }
 
+// FileDiffConfirmationDetail returns a diff block when complete, otherwise its text fallback.
+func FileDiffConfirmationDetail(diff string, available bool, fallback string) ConfirmationDetailBlock {
+	if available {
+		return ConfirmationDetailBlock{Kind: ConfirmationDetailDiff, Content: diff}
+	}
+	return TextConfirmationDetail(fallback)
+}
+
 // ToolRegistrationScope 标识一次完整替换的工具组；远端组仅属于指定会话和事件。
 type ToolRegistrationScope struct {
 	SessionID string // elwisp 组对应的会话。

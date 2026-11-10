@@ -36,6 +36,7 @@ type EditResult struct {
 	RevisionBefore string
 	RevisionAfter  string
 	Diff           string
+	DiffAvailable  bool // Diff 是否包含可展示的完整差异 hunk。
 	// NewBytes contains the edited file bytes; confirmation previews omit them.
 	NewBytes          []byte
 	RollbackAvailable bool

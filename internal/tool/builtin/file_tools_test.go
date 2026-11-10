@@ -48,7 +48,7 @@ func TestShellASTUsesShebangDialect(t *testing.T) {
 			for _, target := range []string{path, root} {
 				for _, mode := range []string{readFileModeAST, readFileModeASTFunction} {
 					args, _ := json.Marshal(map[string]any{"path": target, "mode": mode, "query": "Target"})
-					result, _, err := callTool(t.Context(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+					result, _, err := callTool(t.Context(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 					if err != nil {
 						t.Fatalf("%s %s: %v", target, mode, err)
 					}
@@ -131,7 +131,7 @@ func TestReadFileToolReturnsLineNumbersAndEndRange(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "start_line": 2, "end_line": "end"})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestReadFileToolAcceptsStringStartLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "start_line": "1", "end_line": "240"})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestReadFileToolAcceptsStringStartLine(t *testing.T) {
 
 func TestReadFileToolRejectsInvalidStringStartLine(t *testing.T) {
 	args := []byte(`{"path":"sample.txt","start_line":"end"}`)
-	_, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	_, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "start_line") || !strings.Contains(err.Error(), "integer string") {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestReadFileToolReadsLargeFileAndReturnsRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "start_line": 2, "end_line": "2"})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,11 +194,11 @@ func TestReadFileToolLargeFileDisablesASTButAllowsGrep(t *testing.T) {
 		t.Fatal(err)
 	}
 	astArgs, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "needle"})
-	if _, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: astArgs}); err == nil || !strings.Contains(err.Error(), "AST") && !strings.Contains(err.Error(), "ast mode") {
+	if _, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: astArgs}); err == nil || !strings.Contains(err.Error(), "AST") && !strings.Contains(err.Error(), "ast mode") {
 		t.Fatalf("expected large-file AST error, got %v", err)
 	}
 	grepArgs, _ := json.Marshal(map[string]any{"path": path, "mode": "grep", "query": "needle", "context_lines": 0})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: grepArgs})
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: grepArgs})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestReadFileToolRejectsFileAboveHardLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path})
-	_, _, err = callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	_, _, err = callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "file too large") {
 		t.Fatalf("expected hard-limit error, got %v", err)
 	}
@@ -233,7 +233,7 @@ func TestReadFileToolGrepReturnsMatchesWithContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "grep", "query": "beta", "context_lines": 1})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestReadFileToolASTSearchesGoIdentifiers(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "Target", "context_lines": 0})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func TestReadFileToolASTSearchesShellWordsAndParameters(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "target", "context_lines": 0})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func TestReadFileToolASTFunctionReturnsCompleteGoFunctions(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast_function", "query": "Run"})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func TestReadFileToolASTFunctionReturnsCompleteGoFunctions(t *testing.T) {
 		}
 	}
 	args, _ = json.Marshal(map[string]any{"path": path, "mode": "ast_function", "query": "Run", "index": 2})
-	result, _, err = callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	result, _, err = callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +315,7 @@ func TestReadFileToolASTFunctionReturnsCompleteShellFunction(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast_function", "query": "run"})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +332,7 @@ func TestReadFileToolASTFunctionRequiresQuery(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast_function"})
-	_, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	_, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "query is required when mode is ast_function") {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -347,7 +347,7 @@ func TestReadFileToolASTFunctionSearchesDirectoryAndSelectsIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": root, "mode": "ast_function", "query": "Run"})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +357,7 @@ func TestReadFileToolASTFunctionSearchesDirectoryAndSelectsIndex(t *testing.T) {
 		}
 	}
 	args, _ = json.Marshal(map[string]any{"path": root, "mode": "ast_function", "query": "Run", "index": 2})
-	result, _, err = callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	result, _, err = callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +374,7 @@ func TestReadFileToolDirectoryASTReportsSkippedLargeFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": root, "mode": "ast", "query": "Target"})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,7 +389,7 @@ func TestReadFileToolDirectoryASTCacheInvalidatesWhenFilesChange(t *testing.T) {
 	if err := os.WriteFile(path, []byte("package sample\n\nfunc Run() {}\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	readTool := NewReadFileTool(nil)
+	readTool := NewReadFileTool(FileGuard{})
 	args, _ := json.Marshal(map[string]any{"path": root, "mode": "ast_function", "query": "Run"})
 	if _, _, err := callTool(context.Background(), readTool.Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
 		t.Fatal(err)
@@ -641,7 +641,7 @@ func TestReadFileToolDirectoryGrepSelectsIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": root, "mode": "grep", "query": "needle", "index": 2})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -669,7 +669,7 @@ func TestReadFileToolDirectoryGrepSkipsFilesAboveHardLimit(t *testing.T) {
 	}
 
 	args, _ := json.Marshal(map[string]any{"path": root, "mode": "grep", "query": "needle"})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -685,7 +685,7 @@ func TestReadFileToolASTRejectsUnsupportedLanguage(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "target"})
-	_, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	_, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "only supports Go and Shell") {
 		t.Fatalf("expected unsupported language error, got %v", err)
 	}
@@ -741,7 +741,7 @@ func TestEditFileToolTruncatesLargeRiskDetailBlocks(t *testing.T) {
 		t.Fatal(err)
 	}
 	details := prepared.Details()
-	if len(details) != 2 || details[0].Kind != toolshare.ConfirmationDetailText || details[1].Kind != toolshare.ConfirmationDetailDiff {
+	if len(details) != 1 || details[0].Kind != toolshare.ConfirmationDetailText {
 		t.Fatalf("large confirmation details=%+v", details)
 	}
 	detail, ok := details[0].Content.(string)
@@ -1052,39 +1052,11 @@ func TestEditFileToolRiskDetailFormatsEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	details := prepared.Details()
-	if len(details) != 2 || details[0].Kind != toolshare.ConfirmationDetailText || details[1].Kind != toolshare.ConfirmationDetailDiff {
+	if len(details) != 1 || details[0].Kind != toolshare.ConfirmationDetailDiff {
 		t.Fatalf("structured confirmation details=%+v", details)
 	}
-	detail, ok := details[0].Content.(string)
-	if !ok {
-		t.Fatalf("text detail=%T", details[0].Content)
-	}
-	for _, want := range []string{
-		"文件：" + path,
-		"模式：确认后写入；确认前已自动预检",
-		"编码：utf-8",
-		"编辑数：2",
-		"编辑 1/2：按行号范围替换",
-		"原始位置：2-3",
-		"新内容：\n  new line 1\n  new line 2\n",
-		"编辑 2/2：在 anchor 行后插入",
-		"第几处匹配：2",
-		"匹配内容：\n  func main()\n",
-		"插入内容：\n  fmt.Println(\"hello\")",
-		"预检 diff:",
-	} {
-		if !strings.Contains(detail, want) {
-			t.Fatalf("detail missing %q:\n%s", want, detail)
-		}
-	}
-	if strings.Contains(detail, `new line 1\nnew line 2`) {
-		t.Fatalf("detail contains escaped newlines:\n%s", detail)
-	}
-	if diff := details[1].Content.(string); !strings.Contains(diff, "-old line") || !strings.Contains(diff, "+new line 1") || !strings.Contains(diff, "+fmt.Println(\"hello\")") {
+	if diff := details[0].Content.(string); !strings.Contains(diff, "-old line") || !strings.Contains(diff, "+new line 1") || !strings.Contains(diff, "+fmt.Println(\"hello\")") {
 		t.Fatalf("diff detail:\n%s", diff)
-	}
-	if !strings.Contains(details[1].Content.(string), "-old line") {
-		t.Fatalf("structured confirmation details=%+v", details)
 	}
 }
 
@@ -1263,7 +1235,7 @@ func TestReadFileToolSensitivePathRisk(t *testing.T) {
 		}
 	}
 	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
-	read := NewReadFileTool(nil)
+	read := NewReadFileTool(FileGuard{})
 	for _, tt := range []struct {
 		path string
 		risk toolshare.RiskLevel
@@ -1294,7 +1266,7 @@ func TestReadFileToolEmptyFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1567,10 +1539,10 @@ func TestEditFileToolMultiHunkDiff(t *testing.T) {
 }
 
 func TestFileToolsHaveFilesAndAgentTags(t *testing.T) {
-	if got := strings.Join(NewReadFileTool(nil).Definition().Definition.Tags, ","); got != "files,agent" {
+	if got := strings.Join(NewReadFileTool(FileGuard{}).Definition().Definition.Tags, ","); got != "files,agent" {
 		t.Fatalf("read_file tags = %q", got)
 	}
-	if !NewReadFileTool(nil).Definition().Definition.SuperadminOnly {
+	if !NewReadFileTool(FileGuard{}).Definition().Definition.SuperadminOnly {
 		t.Fatal("read_file should be superadmin-only")
 	}
 	if got := strings.Join((EditFileTool{Rollback: fileops.NewService(nil)}).Definition().Definition.Tags, ","); got != "files,agent" {
@@ -1761,7 +1733,7 @@ func TestReadFileToolUsesWorkspaceRelativePath(t *testing.T) {
 	}
 	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	args, _ := json.Marshal(map[string]any{"path": "sample.txt"})
-	result, _, err := callTool(ctx, (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(ctx, (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1802,7 +1774,7 @@ func TestReadFileToolWarnsForAbsolutePath(t *testing.T) {
 	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	result, _, err := callTool(context.Background(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": path})})
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": path})})
 	if err != nil {
 		t.Fatal(err)
 	}

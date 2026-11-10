@@ -121,10 +121,12 @@ func (t FinalizeElSkillTool) PrepareCall(ctx context.Context, req toolshare.Call
 	previewHeader := fmt.Sprintf("Finalize Skill：%s\n目录：%s\n校验、格式化、编译并重载", name, root)
 	details := []toolshare.ConfirmationDetailBlock{{Kind: toolshare.ConfirmationDetailText, Content: previewHeader}}
 	if prepared != nil {
-		details = []toolshare.ConfirmationDetailBlock{
-			{Kind: toolshare.ConfirmationDetailText, Content: previewHeader + "\ndiff:"},
-			{Kind: toolshare.ConfirmationDetailDiff, Content: prepared.Preview().Diff},
-		}
+		filePreview := prepared.Preview()
+		details = []toolshare.ConfirmationDetailBlock{toolshare.FileDiffConfirmationDetail(
+			filePreview.Diff,
+			filePreview.DiffAvailable,
+			previewHeader+"\ndiff:",
+		)}
 	}
 	content := report.String()
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (*toolshare.Result, string, error) {

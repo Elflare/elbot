@@ -207,10 +207,12 @@ func longMemoryUpdateRiskDetails(args longMemoryWriteArgs, preview longMemoryUpd
 		}
 	}
 	b.WriteString("预检 diff:")
-	return []toolshare.ConfirmationDetailBlock{
-		{Kind: toolshare.ConfirmationDetailText, Content: strings.TrimRight(b.String(), "\n")},
-		{Kind: toolshare.ConfirmationDetailDiff, Content: preview.File.Preview().Diff},
-	}
+	filePreview := preview.File.Preview()
+	return []toolshare.ConfirmationDetailBlock{toolshare.FileDiffConfirmationDetail(
+		filePreview.Diff,
+		filePreview.DiffAvailable,
+		strings.TrimRight(b.String(), "\n"),
+	)}
 }
 
 func longMemoryUpdateArgsFromWrite(args longMemoryWriteArgs) longMemoryUpdateArgs {

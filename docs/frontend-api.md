@@ -210,13 +210,12 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 
 客户端将 `command` 作为新的 `input.text` 提交；权限和目标状态仍由服务端校验，`id` 不是授权凭据。
 
-`GET /api/v1/confirmation` 的 `detail` 在待确认工具调用时是有序内容块数组，包含工具预览和末尾的完整参数对象。块的 `kind` 为 `text`、`diff`、`arguments` 或 `markdown`；`text`、`diff` 和 `markdown` 的 `content` 使用字符串，`arguments` 的 `content` 是 JSON 对象。追加确认时 `detail` 为空数组，没有待确认项时为 `null`。
+`GET /api/v1/confirmation` 的 `detail` 在待确认工具调用时是有序内容块数组，包含工具预览和末尾的完整参数对象。块的 `kind` 为 `text`、`diff`、`arguments` 或 `markdown`；`text`、`diff` 和 `markdown` 的 `content` 使用字符串，`arguments` 的 `content` 是 JSON 对象。文件变更预览仅在完整 diff 可用时返回 `diff` 块；diff 因大小或复杂度限制被省略时，返回工具提供的 `text` fallback。追加确认时 `detail` 为空数组，没有待确认项时为 `null`。
 
 ```json
 {
   "kind": "tool",
   "detail": [
-    {"kind":"text","content":"文件：notes.md\n预检 diff:"},
     {"kind":"diff","content":"--- a/notes.md\n+++ b/notes.md\n@@ -1 +1 @@\n-before\n+after"},
     {"kind":"arguments","content":{"path":"notes.md","edits":[]}}
   ]

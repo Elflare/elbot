@@ -26,7 +26,7 @@ const (
 )
 
 type ReadFileTool struct {
-	FileGuard *FileGuard
+	FileGuard FileGuard
 	astCache  *directoryASTCache
 }
 
@@ -80,7 +80,7 @@ type editFileArgs struct {
 	Edits            []fileops.Edit `json:"edits"`
 }
 
-func NewReadFileTool(fileGuard *FileGuard) ReadFileTool {
+func NewReadFileTool(fileGuard FileGuard) ReadFileTool {
 	return ReadFileTool{FileGuard: fileGuard, astCache: newDirectoryASTCache()}
 }
 
@@ -365,8 +365,7 @@ func editFileRiskDetails(args editFileArgs, preview fileops.EditResult) []toolsh
 	b.WriteString("\n预检 diff:")
 	text := strings.TrimRight(b.String(), "\n")
 	return []toolshare.ConfirmationDetailBlock{
-		{Kind: toolshare.ConfirmationDetailText, Content: text},
-		{Kind: toolshare.ConfirmationDetailDiff, Content: preview.Diff},
+		toolshare.FileDiffConfirmationDetail(preview.Diff, preview.DiffAvailable, text),
 	}
 }
 

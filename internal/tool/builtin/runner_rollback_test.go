@@ -166,7 +166,7 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 				Actor:   actor,
 				Calls:   []llm.ToolCallRequest{{ID: "rollback", Name: "rollback_file", Arguments: `{"path":"file"}`}},
 			})
-			if !deps.confirmed || !strings.Contains(rollbackConfirmationText(deps.detail), path) || !strings.Contains(rollbackConfirmationText(deps.detail), "恢复编辑前内容") {
+			if !deps.confirmed || !strings.Contains(rollbackConfirmationText(deps.detail), path) || !strings.Contains(rollbackConfirmationText(deps.detail), "--- ") {
 				t.Fatalf("confirmation lost context: %q", deps.detail)
 			}
 			data, _ := os.ReadFile(path)

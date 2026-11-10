@@ -19,7 +19,7 @@ func TestFileLogs(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path})
-	result, logContent, err := callTool(t.Context(), (NewReadFileTool(nil)).Definition(), toolshare.CallRequest{Arguments: args})
+	result, logContent, err := callTool(t.Context(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}

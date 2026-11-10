@@ -156,7 +156,7 @@ func TestAnalyzeBashShellAdviceWarnsForCat(t *testing.T) {
 	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), filepath.Dir(path), nil)
+	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), filepath.Dir(path), FileGuard{})
 	text := toolshare.AppendWarnings("", advice.warnings)
 	if !strings.Contains(text, "read_file") {
 		t.Fatalf("expected read_file warning, got:\n%s", text)
@@ -310,7 +310,7 @@ func TestAnalyzeBashShellAdviceWarnsForCommandPathArgument(t *testing.T) {
 	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), filepath.Dir(path), nil)
+	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), filepath.Dir(path), FileGuard{})
 	text := toolshare.AppendWarnings("", advice.warnings)
 	if !strings.Contains(text, warnUseWorkspace) {
 		t.Fatalf("expected path argument warning, got:\n%s", text)

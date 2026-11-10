@@ -10,11 +10,11 @@ const (
 	maxDiffOutputBytes = 64 * 1024
 )
 
-func editDiff(path, oldText, newText string, oldBytes, newBytes, contextLines int, detailedMaxBytes int64) string {
+func editDiff(path, oldText, newText string, oldBytes, newBytes, contextLines int, detailedMaxBytes int64) (string, bool) {
 	if detailedMaxBytes > 0 && (int64(oldBytes) > detailedMaxBytes || int64(newBytes) > detailedMaxBytes) {
-		return omittedDiff(path, fmt.Sprintf("file exceeds detailed diff limit %d bytes (old %d bytes, new %d bytes)", detailedMaxBytes, oldBytes, newBytes))
+		return omittedDiff(path, fmt.Sprintf("file exceeds detailed diff limit %d bytes (old %d bytes, new %d bytes)", detailedMaxBytes, oldBytes, newBytes)), false
 	}
-	return UnifiedDiff(path, SplitLines(oldText), SplitLines(newText), contextLines)
+	return unifiedDiff(path, SplitLines(oldText), SplitLines(newText), contextLines)
 }
 
 func omittedDiff(path, reason string) string {
@@ -28,13 +28,18 @@ type DiffHunk struct {
 }
 
 func UnifiedDiff(path string, oldLines, newLines []string, contextLines int) string {
+	diff, _ := unifiedDiff(path, oldLines, newLines, contextLines)
+	return diff
+}
+
+func unifiedDiff(path string, oldLines, newLines []string, contextLines int) (string, bool) {
 	if diffTooLarge(oldLines, newLines) {
-		return omittedDiff(path, fmt.Sprintf("too many line comparisons (%d x %d)", len(oldLines), len(newLines)))
+		return omittedDiff(path, fmt.Sprintf("too many line comparisons (%d x %d)", len(oldLines), len(newLines))), false
 	}
 	ops := diffLines(oldLines, newLines)
 	hunks := buildDiffHunks(ops, contextLines)
 	if diffOutputTooLarge(path, hunks) {
-		return omittedDiff(path, fmt.Sprintf("rendered diff exceeds %d bytes", maxDiffOutputBytes))
+		return omittedDiff(path, fmt.Sprintf("rendered diff exceeds %d bytes", maxDiffOutputBytes)), false
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "--- %s\n", path)
@@ -53,7 +58,7 @@ func UnifiedDiff(path string, oldLines, newLines []string, contextLines int) str
 			}
 		}
 	}
-	return b.String()
+	return b.String(), len(hunks) > 0
 }
 
 func diffTooLarge(oldLines, newLines []string) bool {

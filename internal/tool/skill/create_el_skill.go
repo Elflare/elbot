@@ -126,14 +126,19 @@ func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 		contents = append(contents, struct{ path, content string }{filepath.Join(root, "main.go"), args.GoSource}, struct{ path, content string }{filepath.Join(root, "go.mod"), goModContent(name, goVersion)})
 	}
 	header := fmt.Sprintf("创建 Skill：%s\n目录：%s", name, root)
-	details := []toolshare.ConfirmationDetailBlock{{Kind: toolshare.ConfirmationDetailText, Content: header}}
+	var details []toolshare.ConfirmationDetailBlock
 	for _, content := range contents {
 		file, err := fileops.PrepareFileWrite(ctx, content.path, content.content)
 		if err != nil {
 			return nil, err
 		}
 		files = append(files, file)
-		details = append(details, toolshare.ConfirmationDetailBlock{Kind: toolshare.ConfirmationDetailDiff, Content: file.Preview().Diff})
+		filePreview := file.Preview()
+		details = append(details, toolshare.FileDiffConfirmationDetail(
+			filePreview.Diff,
+			filePreview.DiffAvailable,
+			fmt.Sprintf("%s\n文件：%s\n%s", header, content.path, filePreview.Diff),
+		))
 	}
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (*toolshare.Result, string, error) {
 		t.manager.writeMu.Lock()

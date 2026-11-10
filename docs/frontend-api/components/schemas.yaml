@@ -259,7 +259,7 @@ schemas:
         detail:
           type: [array, 'null']
           items: { $ref: '#/schemas/ConfirmationDetailBlock' }
-          description: Ordered tool confirmation detail blocks; empty for append confirmation and null when no confirmation is pending.
+          description: Ordered tool confirmation detail blocks. File changes use diff blocks when complete diffs are available and text blocks as fallback when omitted; empty for append confirmation and null when no confirmation is pending.
         tool_name: { type: string }
         risk: { type: string }
       required: [session_id, kind, detail, tool_name, risk]

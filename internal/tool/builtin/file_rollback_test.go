@@ -113,7 +113,7 @@ func TestRollbackToolPreflightPinsRecordAndWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 	details := prepared.Details()
-	if len(details) != 2 || details[0].Kind != toolshare.ConfirmationDetailText || details[1].Kind != toolshare.ConfirmationDetailDiff || !strings.Contains(details[0].Content.(string), "删除本次新建文件") {
+	if len(details) != 1 || details[0].Kind != toolshare.ConfirmationDetailDiff || !strings.Contains(details[0].Content.(string), "file") {
 		t.Fatalf("details: %+v", details)
 	}
 	f.write(t, "file", "two")
@@ -191,7 +191,7 @@ func TestRollbackToolFileGuardChecksActualTarget(t *testing.T) {
 
 func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.NewPermission("critical", "critical", nil))
-	definitions := []toolshare.ToolDefinition{(WorkspaceTool{}).Definition(), NewReadFileTool(nil).Definition(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), (RollbackFileTool{Service: fileops.NewService(nil)}).Definition()}
+	definitions := []toolshare.ToolDefinition{(WorkspaceTool{}).Definition(), NewReadFileTool(FileGuard{}).Definition(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), (RollbackFileTool{Service: fileops.NewService(nil)}).Definition()}
 	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, definitions); err != nil {
 		t.Fatal(err)
 	}

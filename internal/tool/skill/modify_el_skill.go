@@ -72,10 +72,12 @@ func (t ModifyElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 	if err != nil {
 		return nil, err
 	}
-	details := []toolshare.ConfirmationDetailBlock{
-		{Kind: toolshare.ConfirmationDetailText, Content: fmt.Sprintf("技能：%s\n目标：%s\n文件：%s\n模式：确认后写入；确认前已自动预检\n预检 diff:", preview.Name, preview.Target, preview.Path)},
-		{Kind: toolshare.ConfirmationDetailDiff, Content: preview.File.Preview().Diff},
-	}
+	filePreview := preview.File.Preview()
+	details := []toolshare.ConfirmationDetailBlock{toolshare.FileDiffConfirmationDetail(
+		filePreview.Diff,
+		filePreview.DiffAvailable,
+		fmt.Sprintf("技能：%s\n目标：%s\n文件：%s\n模式：确认后写入；确认前已自动预检\n预检 diff:", preview.Name, preview.Target, preview.Path),
+	)}
 	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, preview)
 	}), nil

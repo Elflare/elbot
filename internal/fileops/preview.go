@@ -90,10 +90,11 @@ func PrepareFileWrite(ctx context.Context, path, content string) (*PreparedFile,
 		return nil, err
 	}
 	data := []byte(content)
+	diff, diffAvailable := editDiff(path, file.Text, content, len(file.Bytes), len(data), 3, MaxFileSize)
 	result := EditResult{
 		DryRun: true, Path: path, Created: created, Encoding: "utf-8",
 		RevisionBefore: ContentRevision(file.Bytes), RevisionAfter: ContentRevision(data),
-		Diff:     editDiff(path, file.Text, content, len(file.Bytes), len(data), 3, MaxFileSize),
+		Diff: diff, DiffAvailable: diffAvailable,
 		NewBytes: data,
 	}
 	if err := checkFileTarget(path, target, created); err != nil {
@@ -172,10 +173,11 @@ func prepareFileResult(file File, created bool, text string, contextLines int, o
 	if options.MaxOutputBytes > 0 && int64(len(newBytes)) > options.MaxOutputBytes {
 		return EditResult{}, fmt.Errorf("edited file too large: %d bytes exceeds %d", len(newBytes), options.MaxOutputBytes)
 	}
+	diff, diffAvailable := editDiff(file.Path, oldText, newText, len(file.Bytes), len(newBytes), NormalizeContextLines(contextLines), options.DetailedDiffMaxBytes)
 	return EditResult{
 		DryRun: true, Path: file.Path, Created: created, Encoding: file.Encoding,
 		RevisionBefore: ContentRevision(file.Bytes), RevisionAfter: ContentRevision(newBytes),
-		Diff:     editDiff(file.Path, oldText, newText, len(file.Bytes), len(newBytes), NormalizeContextLines(contextLines), options.DetailedDiffMaxBytes),
+		Diff: diff, DiffAvailable: diffAvailable,
 		NewBytes: newBytes,
 	}, nil
 }

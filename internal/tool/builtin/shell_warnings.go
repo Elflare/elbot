@@ -14,7 +14,7 @@ type shellAdvice struct {
 	blockErr error
 }
 
-func analyzeBashShellAdvice(file *syntax.File, workDir string, fileGuard *FileGuard) shellAdvice {
+func analyzeBashShellAdvice(file *syntax.File, workDir string, fileGuard FileGuard) shellAdvice {
 	advice := &shellAdvice{}
 	syntax.Walk(file, func(node syntax.Node) bool {
 		if advice.blockErr != nil {
@@ -33,7 +33,7 @@ func analyzeBashShellAdvice(file *syntax.File, workDir string, fileGuard *FileGu
 	return *advice
 }
 
-func (a *shellAdvice) inspectShellCall(call *syntax.CallExpr, workDir string, fileGuard *FileGuard) {
+func (a *shellAdvice) inspectShellCall(call *syntax.CallExpr, workDir string, fileGuard FileGuard) {
 	if len(call.Args) == 0 {
 		return
 	}
@@ -79,7 +79,7 @@ func (a *shellAdvice) inspectShellCall(call *syntax.CallExpr, workDir string, fi
 }
 
 // inspectShellRedirect 在重定向写入时给出提示；仅受管文件直接拒绝执行。
-func (a *shellAdvice) inspectShellRedirect(redir *syntax.Redirect, workDir string, fileGuard *FileGuard) {
+func (a *shellAdvice) inspectShellRedirect(redir *syntax.Redirect, workDir string, fileGuard FileGuard) {
 	// ">&"、"<&" 是 fd 复制；不含 ">" 的 heredoc、输入重定向都不写文件。
 	if op := redir.Op.String(); op == ">&" || op == "<&" || !strings.Contains(op, ">") {
 		return
@@ -109,7 +109,7 @@ func (a *shellAdvice) addPathArgWarning(workDir string, args []string) {
 	}
 }
 
-func (a *shellAdvice) addReadWarnings(fileGuard *FileGuard, workDir string, args []string) {
+func (a *shellAdvice) addReadWarnings(fileGuard FileGuard, workDir string, args []string) {
 	for _, arg := range args {
 		path, ok := resolveShellLiteralPath(workDir, arg)
 		if !ok {
@@ -121,7 +121,7 @@ func (a *shellAdvice) addReadWarnings(fileGuard *FileGuard, workDir string, args
 	}
 }
 
-func (a *shellAdvice) checkWriteArgs(fileGuard *FileGuard, workDir string, args []string) bool {
+func (a *shellAdvice) checkWriteArgs(fileGuard FileGuard, workDir string, args []string) bool {
 	for _, arg := range args {
 		path, ok := resolveShellLiteralPath(workDir, arg)
 		if !ok {

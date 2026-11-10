@@ -355,7 +355,7 @@ func TestDiscoverToolsResetsMissingWorkspace(t *testing.T) {
 			ctx := workspace.WithWorkspaceStore(context.Background(), store)
 			ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 			registry := toolregistry.NewRegistry(security.NewPermission("critical", "critical", nil))
-			definitions := []toolshare.ToolDefinition{(WorkspaceTool{}).Definition(), (ShellTool{ProcessEnv: processenv.Environment{}}).Definition(), NewReadFileTool(nil).Definition(), (RollbackFileTool{}).Definition()}
+			definitions := []toolshare.ToolDefinition{(WorkspaceTool{}).Definition(), (ShellTool{ProcessEnv: processenv.Environment{}}).Definition(), NewReadFileTool(FileGuard{}).Definition(), (RollbackFileTool{}).Definition()}
 			if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, definitions); err != nil {
 				t.Fatal(err)
 			}

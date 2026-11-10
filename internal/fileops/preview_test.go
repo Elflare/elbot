@@ -133,6 +133,9 @@ func TestPreparedFileWriteCreateAndConflict(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if scenario == "same" && prepared.Preview().DiffAvailable {
+				t.Fatal("unchanged file has no displayable diff")
+			}
 			if scenario != "same" && scenario != "changed" {
 				if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
 					t.Fatalf("prepare created parent: %v", err)

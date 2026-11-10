@@ -489,19 +489,10 @@ func TestLongMemoryUpdateContentEditsAndRiskDetail(t *testing.T) {
 		t.Fatal(err)
 	}
 	details := prepared.Details()
-	if len(details) != 2 || details[0].Kind != toolshare.ConfirmationDetailText || details[1].Kind != toolshare.ConfirmationDetailDiff {
+	if len(details) != 1 || details[0].Kind != toolshare.ConfirmationDetailDiff {
 		t.Fatalf("structured confirmation details=%+v", details)
 	}
-	detail, ok := details[0].Content.(string)
-	if !ok {
-		t.Fatalf("text detail=%T", details[0].Content)
-	}
-	for _, want := range []string{"操作：更新长期记忆", "字段变化：", "摘要：摘要 -> 新摘要", "正文编辑：content_edits"} {
-		if !strings.Contains(detail, want) {
-			t.Fatalf("risk detail missing %q:\n%s", want, detail)
-		}
-	}
-	if diff := details[1].Content.(string); !strings.Contains(diff, "-第二行") || !strings.Contains(diff, "+第二行已更新") {
+	if diff := details[0].Content.(string); !strings.Contains(diff, "-第二行") || !strings.Contains(diff, "+第二行已更新") {
 		t.Fatalf("diff detail: %s", diff)
 	}
 	if _, _, err := prepared.Call(ctx); err != nil {

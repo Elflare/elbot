@@ -30,7 +30,7 @@ const (
 
 type ShellTool struct {
 	Media      interface{ NewCall() toolshare.MediaCall }
-	FileGuard  *FileGuard
+	FileGuard  FileGuard
 	ProcessEnv processenv.Environment
 }
 
