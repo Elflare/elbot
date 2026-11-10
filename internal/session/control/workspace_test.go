@@ -96,6 +96,12 @@ func TestWorkspaceSyncDirectionsFollowTheChangedSide(t *testing.T) {
 	f := newFixture(t, IdleExpirationConfig{})
 	ctx := context.Background()
 	row := f.create(t, privateScope(), "one")
+	if _, err := f.store.Sessions().Mutate(ctx, row.ID, func(row *storage.Session) error {
+		row.Metadata = `{"workspace_agent_to_user":false}`
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err := f.s.SetWorkspaceDirWithAgentNotice(ctx, row.ID, "/agent", false); err != nil {
 		t.Fatal(err)
 	}

@@ -291,7 +291,7 @@ schemas:
           type: string
           description: Effective Agent workspace path: the Session path when set, otherwise the Workspace default path.
         user_path: { type: string }
-        agent_to_user: { type: boolean }
+        agent_to_user: { type: boolean, description: Defaults to true when the Session has no saved preference; false is persisted when disabled. }
         user_to_agent: { type: boolean }
       required: [session_id, agent_path, user_path, agent_to_user, user_to_agent]
     WorkspaceDirectory:

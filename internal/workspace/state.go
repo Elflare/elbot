@@ -22,24 +22,21 @@ type State struct {
 }
 
 func DecodeState(raw string) (State, error) {
-	if raw == "" {
-		return State{}, nil
-	}
 	fields := map[string]json.RawMessage{}
-	json.Unmarshal([]byte(raw), &fields)
+	if raw != "" {
+		json.Unmarshal([]byte(raw), &fields)
+	}
 	return decodeWorkspaceState(fields)
 }
 
 func UpdateState(raw string, update func(*State)) (string, error) {
 	fields := map[string]json.RawMessage{}
-	var state State
 	if raw != "" {
 		json.Unmarshal([]byte(raw), &fields)
-		var err error
-		state, err = decodeWorkspaceState(fields)
-		if err != nil {
-			return "", err
-		}
+	}
+	state, err := decodeWorkspaceState(fields)
+	if err != nil {
+		return "", err
 	}
 	before := state
 	update(&state)
@@ -52,7 +49,7 @@ func UpdateState(raw string, update func(*State)) (string, error) {
 }
 
 func decodeWorkspaceState(fields map[string]json.RawMessage) (State, error) {
-	var state State
+	state := State{AgentToUser: true}
 	for key, raw := range fields {
 		var target any
 		switch key {
@@ -86,7 +83,7 @@ func writeWorkspaceState(fields map[string]json.RawMessage, before, after State)
 		setString(fields, "user_workspace_dir", after.UserDir)
 	}
 	if before.AgentToUser != after.AgentToUser {
-		setBool(fields, "workspace_agent_to_user", after.AgentToUser)
+		fields["workspace_agent_to_user"], _ = json.Marshal(after.AgentToUser)
 	}
 	if before.UserToAgent != after.UserToAgent {
 		setBool(fields, "workspace_user_to_agent", after.UserToAgent)
