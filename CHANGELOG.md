@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 文件写入确认预览在完整 diff 可用时只返回 diff；diff 被省略时改用文字说明。
 - 命令返回从通知改为独立的结构化结果，统一提供业务数据、分类错误和确认操作；远程协议新增按输入 ID 关联的 `command_result`，执行失败与投递失败分别处理。
 - `/messages` 改为原始对话的有界分页：第 1 页最新、页内旧到新，结构化数据保留完整正文及附件名称，包含分支历史且不受压缩摘要影响。
 - 追加输入确认现在取消时只支持`/stop`
@@ -36,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/resume` 不再使用编号
 - `/sessions`、`/archives` 关键词现在需要-k/--keyword
 - `#`选择文件现在使用agent workspace中的文件
+- 优化shell工具的warn警告
 
 ### Fixed
 
