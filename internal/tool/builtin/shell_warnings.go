@@ -2,6 +2,7 @@
 package builtin
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -48,13 +49,18 @@ func (a *shellAdvice) inspectShellCall(call *syntax.CallExpr, workDir string, fi
 		a.addPathArgWarning(workDir, args)
 		a.addReadWarnings(fileGuard, workDir, args)
 	case "sed":
+		// 先看作用目标：命中受管文件直接拦截，不区分是否原地编辑。
+		if a.checkWriteArgs(fileGuard, workDir, args) {
+			return
+		}
 		if hasArg(args, "-i") {
-			if a.checkWriteArgs(fileGuard, workDir, args) {
-				return
-			}
 			a.addWarning(warnUseEditFile)
 			a.addPathArgWarning(workDir, args)
+			return
 		}
+		a.addWarning(warnUseReadFile)
+		a.addPathArgWarning(workDir, args)
+		a.addReadWarnings(fileGuard, workDir, args)
 	case "perl":
 		if hasArg(args, "-pi") || hasArg(args, "-pI") {
 			if a.checkWriteArgs(fileGuard, workDir, args) {
@@ -72,20 +78,24 @@ func (a *shellAdvice) inspectShellCall(call *syntax.CallExpr, workDir string, fi
 	}
 }
 
+// inspectShellRedirect 在重定向写入时给出提示；仅受管文件直接拒绝执行。
 func (a *shellAdvice) inspectShellRedirect(redir *syntax.Redirect, workDir string, fileGuard *FileGuard) {
-	op := redir.Op.String()
-	if !strings.Contains(op, ">") && !strings.Contains(op, "<>") {
+	// ">&"、"<&" 是 fd 复制；不含 ">" 的 heredoc、输入重定向都不写文件。
+	if op := redir.Op.String(); op == ">&" || op == "<&" || !strings.Contains(op, ">") {
 		return
 	}
 	path, ok := literalWord(redir.Word)
-	if ok {
-		if resolved, hit := resolveShellLiteralPath(workDir, path); hit {
-			a.addWarning(warnUseWorkspace)
-			if err := fileGuard.CheckWrite(resolved); err != nil {
-				a.blockErr = err
-				return
-			}
-		}
+	if !ok {
+		// 动态目标（如 mktemp 结果）无法确定归属，不判也不拦。
+		return
+	}
+	resolved, hit := resolveShellLiteralPath(workDir, path)
+	if !hit || resolved == os.DevNull {
+		return
+	}
+	if err := fileGuard.CheckWrite(resolved); err != nil {
+		a.blockErr = err
+		return
 	}
 	a.addWarning(warnUseEditFile)
 }
