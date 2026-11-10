@@ -172,6 +172,7 @@ type CronTrigger struct {
 }
 
 type CronTarget struct {
+	ID                  string `json:"id,omitempty"`          // 来源平台的私聊接收人 ID；空值沿用默认接收人。
 	AllEnabledPlatforms bool   `json:"all_enabled_platforms"` // 是否向全部启用平台投递。
 	SourcePlatform      string `json:"source_platform"`       // 非广播时的来源平台。
 }

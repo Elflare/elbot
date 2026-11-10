@@ -38,6 +38,7 @@ type CronCreateRequest struct {
 	ToolListNames       []string          // LLM 任务请求的工具、Skill 或标签名。
 	ModelProvider       string            // 可选的任务专用模型提供方。
 	Model               string            // 与提供方配对的模型名称。
+	TargetID            string            // 来源平台的私聊接收人 ID；空值沿用默认接收人。
 	AllEnabledPlatforms bool              // 是否向全部启用平台发送。
 	Enabled             bool              // 创建后的启用状态。
 	Actor               contextinfo.Actor // 发起管理操作的公共身份。
@@ -56,6 +57,7 @@ type CronUpdateRequest struct {
 	ToolListNames       *[]string         // 可选的工具名单；空切片清空名单。
 	ModelProvider       *string           // 可选模型提供方；与 Model 配对清空以恢复默认。
 	Model               *string           // 可选模型名称。
+	TargetID            *string           // 可选的私聊接收人 ID；空字符串恢复默认接收人。
 	AllEnabledPlatforms *bool             // 可选的广播设置。
 	Enabled             *bool             // 可选的启用状态。
 	Actor               contextinfo.Actor // 发起管理操作的公共身份。
@@ -73,6 +75,7 @@ type CronInfo struct {
 	ToolListNames       []string          `json:"tool_list_names,omitempty"` // 任务的工具名单。
 	ModelProvider       string            `json:"model_provider,omitempty"`  // 任务专用模型提供方。
 	Model               string            `json:"model,omitempty"`           // 任务专用模型名称。
+	TargetID            string            `json:"target_id,omitempty"`       // 显式私聊接收人 ID；空值使用默认接收人。
 	AllEnabledPlatforms bool              `json:"all_enabled_platforms"`     // 是否广播。
 	SourcePlatform      string            `json:"source_platform"`           // 来源平台。
 	CreatedBy           contextinfo.Actor `json:"created_by"`                // 任务创建者。
