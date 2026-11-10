@@ -163,7 +163,7 @@ func TestAnalyzeBashShellAdviceWarnsForCat(t *testing.T) {
 	}
 }
 
-func TestAnalyzeBashShellAdviceWarnsForCatElSkill(t *testing.T) {
+func TestAnalyzeBashShellAdviceRejectsCatElSkill(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "go", "reader", "SKILL.elyph")
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -173,12 +173,10 @@ func TestAnalyzeBashShellAdviceWarnsForCatElSkill(t *testing.T) {
 		t.Fatal(err)
 	}
 	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), root, FileGuard{NewElSkillFileGuardRule(root)})
-	text := toolshare.AppendWarnings("", advice.warnings)
-	if !strings.Contains(text, "read_file") || !strings.Contains(text, "read_el_skill") {
-		t.Fatalf("expected read_file and read_el_skill warnings, got:\n%s", text)
+	if advice.blockErr == nil || !strings.Contains(advice.blockErr.Error(), "modify_el_skill") {
+		t.Fatalf("expected modify_el_skill error, got %v", advice.blockErr)
 	}
 }
-
 func TestAnalyzeBashShellAdviceRejectsSedEditElSkill(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "go", "writer", "SKILL.elyph")
@@ -195,18 +193,16 @@ func TestAnalyzeBashShellAdviceRejectsSedEditElSkill(t *testing.T) {
 	}
 }
 
-func TestAnalyzeBashShellAdviceWarnsForCatResidentMemory(t *testing.T) {
+func TestAnalyzeBashShellAdviceRejectsCatResidentMemory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "memories.toml")
 	if err := os.WriteFile(path, []byte("[[resident_memories]]\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), filepath.Dir(path), FileGuard{NewResidentMemoryFileGuardRule(path)})
-	text := toolshare.AppendWarnings("", advice.warnings)
-	if !strings.Contains(text, "read_file") || !strings.Contains(text, "resident_memory_read") {
-		t.Fatalf("expected read_file and resident_memory_read warnings, got:\n%s", text)
+	if advice.blockErr == nil || !strings.Contains(advice.blockErr.Error(), "resident_memory_normal") {
+		t.Fatalf("expected resident memory error, got %v", advice.blockErr)
 	}
 }
-
 func TestAnalyzeBashShellAdviceRejectsRedirectToResidentMemory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "memories.toml")
 	original := "[[resident_memories]]\n"
