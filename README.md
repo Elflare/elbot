@@ -65,7 +65,7 @@ ElBot does not inject the full schema of all tools into every conversation round
 
 **Listening Hub**: Elnis is the listening hub, and Elwisp consists of external listeners distributed everywhere. External information such as system alerts, RSS updates, Webhooks, and game events are sent to Elnis via Elwisp, then processed and returned by ElBot. See [Elnis Listening Hub](docs.en/elnis.md) for details.
 
-### IV. Flexible Deployment and Enhanced Sessions
+### IV. Flexible Deployment and Comprehensive Sessions
 
 **Multi-platform and Rich Output Abstraction**: ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, QQ Official, and Telegram. The platform layer is extensible, and other platforms can be integrated via platform adapters.
 
@@ -78,7 +78,7 @@ ElBot does not inject the full schema of all tools into every conversation round
   <img src="https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-status.png" width="500" />
 </p>
 
-See more screenshots at [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend).
+For the complete frontend code and more screenshots, see [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend).
 
 **Sessions, Forking, and Context Compaction**: Built-in persistent Session service supporting features such as session recovery, archiving, pinning, forking, deletion, paginated viewing, platform isolation, and compaction.
 

@@ -1,5 +1,13 @@
 {
   "segments": {
+    "README.zh-CN.md:section:0a35105ffaaafc2d686568282870d6375d730c9ae5064c14c9c82e74a6050acc": {
+      "kind": "section",
+      "source": "### 四、灵活部署与完善会话\n\n**多平台与富输出抽象**： ElBot 抽象了平台层与输出层，目前支持 CLI、QQ OneBot、QQ Official 和 Telegram。平台层可扩展，其他平台按适配器接入。\n\n**CLI 客户端/服务端分离**： ElBot 既可作为客户端也可作为服务端。 **前端自由定制**：可自行制作任意形态的界面，下图仅作示意（除 TUI 外为概念性 mockup，不代表最终 UI）。\n\n<p align=\"center\">\n  <img src=\"https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-light.png\" width=\"500\" />\n  <img src=\"https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-dark.png\" width=\"500\" />\n  <br>\n  <img src=\"https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-status.png\" width=\"500\" />\n</p>\n\n完整前端代码及更多截图见 [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend)。\n\n**会话、Fork 与上下文压缩**： 内置持久化 Session 服务，支持会话恢复、归档、置顶、Fork、删除、分页查看、平台隔离、压缩等功能。\n\n",
+      "source_file": "README.zh-CN.md",
+      "source_hash": "6119182807d1666f151b6edb0307b37f78975f1ecd4c8dfbbcee4fa8ed5d121a",
+      "translation": "### 4. Flexible Deployment and Comprehensive Sessions\n\n**Multi-platform and Rich Output Abstraction**: ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, QQ Official, and Telegram. The platform layer is extensible, and other platforms can be integrated via platform adapters.\n\n**CLI Client/Server Separation**: ElBot can function as either a client or a server. **Customizable Frontend**: You can create interfaces in any form; the images below are for illustration purposes only (except for the TUI, these are conceptual mockups and do not represent the final UI).\n\n<p align=\"center\">\n  <img src=\"https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-light.png\" width=\"500\" />\n  <img src=\"https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-dark.png\" width=\"500\" />\n  <br>\n  <img src=\"https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-status.png\" width=\"500\" />\n</p>\n\nFor the complete frontend code and more screenshots, see [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend).\n\n**Sessions, Forking, and Context Compaction**: Built-in persistent Session service supporting features such as session recovery, archiving, pinning, forking, deletion, paginated viewing, platform isolation, and compaction.\n\n",
+      "updated_at": 1794276928
+    },
     "README.zh-CN.md:section:1db0c2474eff87ac65d88d6244e02cf580b3730b899612d0428c36284a5f2478": {
       "kind": "section",
       "source": "### 一、轻量高效\n\n**极致轻量的 Go 实现**：\n\n| 指标           | 数值                            |\n| -------------- | ------------------------------- |\n| 本地启动耗时   | ~10ms（N5105，SATA 固态上测试） |\n| 常驻内存       | ~50MB                           |\n| 二进制文件大小 | <30MB                           |\n\n**按需发现工具，节省 Token**： 多数用户把 LLM 当作搜索引擎、写作助手和倾听对象，频繁工具调用并非对话常态[^1][^2]。\n\nElBot 不在每轮对话中注入所有工具的完整 schema，只暴露 `discover_tool` 和当前可用工具名称；模型需要时再发现详情，由 Agent 注入对应 schema。\n\n**Chat / Work 双模式**：两种模式可独立配置模型，闲聊用低成本模型，复杂任务用强模型。\n\n| 模式   | 工具               | 适用场景                                 | 第一次请求 Token 消耗      |\n| ------ | ------------------ | ---------------------------------------- | -------------------------- |\n| `chat` | 不注入             | 闲聊、陪伴、轻量问答、低成本对话         | <500 （后续缓存命中98%+）  |\n| `work` | 启用工具发现与调用 | 搜索、文件、命令、Cron、Skill 等复杂任务 | <1000 （后续缓存命中95%+） |\n\n> 注：使用`Responses`协议后，发现工具使用`additional_tools`不再破坏缓存，后续缓存中命中会更高。\n\n**常驻记忆与长期记忆分层**： 常驻记忆只存短小稳定的每轮注入信息，内部区分需确认修改的 core 与可整理的 normal；更长记忆由 LLM 按需通过 `long_memory` 查询，底层用 Markdown 源数据和 SQLite FTS，兼顾透明与检索效率。\n\n",
@@ -15,14 +23,6 @@
       "source_hash": "0c7f76f1e2548ead33775befcf53248e9f39b2b94c30511e1dfa5770a42136f2",
       "translation": "## Development Status\n\nElBot is still under rapid development; interfaces, configurations, and internal implementations may continue to be adjusted. It is currently more suitable for exploration as a personal Agent/bot framework.\n\n[^1]: Chatterji et al., [_How People Use ChatGPT_](https://www.nber.org/papers/w34255), NBER Working Paper 34255, 2025.\n[^2]: Yan et al., [_ShareChat: A Dataset of Chatbot Conversations in the Wild_](https://arxiv.org/abs/2512.17843), arXiv:2512.17843, 2025.\n",
       "updated_at": 1793797283
-    },
-    "README.zh-CN.md:section:2ec17a0fc0e652172a9899aea42e870e46892a652674f6649820b3bacb957f59": {
-      "kind": "section",
-      "source": "### 四、灵活部署与完善会话\n\n**多平台与富输出抽象**： ElBot 抽象了平台层与输出层，目前支持 CLI、QQ OneBot、QQ Official 和 Telegram。平台层可扩展，其他平台按适配器接入。\n\n**CLI 客户端/服务端分离**： ElBot 既可作为客户端也可作为服务端。 **前端自由定制**：可自行制作任意形态的界面，下图仅作示意（除 TUI 外为概念性 mockup，不代表最终 UI）。\n\n<p align=\"center\">\n  <img src=\"https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-light.png\" width=\"500\" />\n  <img src=\"https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-dark.png\" width=\"500\" />\n  <br>\n  <img src=\"https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-status.png\" width=\"500\" />\n</p>\n\n更多截图见 [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend)。\n\n**会话、Fork 与上下文压缩**： 内置持久化 Session 服务，支持会话恢复、归档、置顶、Fork、删除、分页查看、平台隔离、压缩等功能。\n\n",
-      "source_file": "README.zh-CN.md",
-      "source_hash": "9f66e64310d93a3f926f309c9a7b7cde1eca70da6148e95a209725dd73e897f0",
-      "translation": "### IV. Flexible Deployment and Enhanced Sessions\n\n**Multi-platform and Rich Output Abstraction**: ElBot abstracts the platform and output layers, currently supporting CLI, QQ OneBot, QQ Official, and Telegram. The platform layer is extensible, and other platforms can be integrated via platform adapters.\n\n**CLI Client/Server Separation**: ElBot can function as either a client or a server. **Customizable Frontend**: You can create interfaces in any form; the images below are for illustration purposes only (except for the TUI, these are conceptual mockups and do not represent the final UI).\n\n<p align=\"center\">\n  <img src=\"https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-light.png\" width=\"500\" />\n  <img src=\"https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-dark.png\" width=\"500\" />\n  <br>\n  <img src=\"https://raw.githubusercontent.com/Elfreese/elbot-showcase/refs/heads/main/assets/frontend/web-status.png\" width=\"500\" />\n</p>\n\nSee more screenshots at [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend).\n\n**Sessions, Forking, and Context Compaction**: Built-in persistent Session service supporting features such as session recovery, archiving, pinning, forking, deletion, paginated viewing, platform isolation, and compaction.\n\n",
-      "updated_at": 1794067462
     },
     "README.zh-CN.md:section:3ced854f6659c934d9e3a0df45d6514bd0112a8acfffb37534ca2fedb89c0a96": {
       "kind": "section",
@@ -58,8 +58,8 @@
     }
   },
   "source": "README.zh-CN.md",
-  "source_hash": "ab7cff4dea3dc57e3431fa3f9f894bf731007dc17f0dde6d2a79b0db0b1a1f2e",
+  "source_hash": "fec86b0892eec3f4d842cea345013f7542462546ee2edc074b7a1af295275e76",
   "target": "README.md",
-  "updated_at": 1794067462,
+  "updated_at": 1794276929,
   "version": 3
 }
