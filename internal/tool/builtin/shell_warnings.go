@@ -45,36 +45,42 @@ func (a *shellAdvice) inspectShellCall(call *syntax.CallExpr, workDir string, fi
 	args := literalArgs(call.Args[1:])
 	switch name {
 	case "cat", "less", "more", "head", "tail", "grep", "rg":
+		// 无文件参数时只是从 stdin 读流，不涉文件读取。
+		if !a.addPathArgWarning(workDir, args) {
+			return
+		}
 		a.addWarning(warnUseReadFile)
-		a.addPathArgWarning(workDir, args)
 		a.addReadWarnings(fileGuard, workDir, args)
 	case "sed":
 		// 先看作用目标：命中受管文件直接拦截，不区分是否原地编辑。
 		if a.checkWriteArgs(fileGuard, workDir, args) {
 			return
 		}
+		if !a.addPathArgWarning(workDir, args) {
+			return
+		}
 		if hasArg(args, "-i") {
 			a.addWarning(warnUseEditFile)
-			a.addPathArgWarning(workDir, args)
 			return
 		}
 		a.addWarning(warnUseReadFile)
-		a.addPathArgWarning(workDir, args)
 		a.addReadWarnings(fileGuard, workDir, args)
 	case "perl":
 		if hasArg(args, "-pi") || hasArg(args, "-pI") {
 			if a.checkWriteArgs(fileGuard, workDir, args) {
 				return
 			}
-			a.addWarning(warnUseEditFile)
-			a.addPathArgWarning(workDir, args)
+			if a.addPathArgWarning(workDir, args) {
+				a.addWarning(warnUseEditFile)
+			}
 		}
 	case "tee":
 		if a.checkWriteArgs(fileGuard, workDir, args) {
 			return
 		}
-		a.addWarning(warnUseEditFile)
-		a.addPathArgWarning(workDir, args)
+		if a.addPathArgWarning(workDir, args) {
+			a.addWarning(warnUseEditFile)
+		}
 	}
 }
 
@@ -100,13 +106,15 @@ func (a *shellAdvice) inspectShellRedirect(redir *syntax.Redirect, workDir strin
 	a.addWarning(warnUseEditFile)
 }
 
-func (a *shellAdvice) addPathArgWarning(workDir string, args []string) {
+// addPathArgWarning 在参数命中字面路径时提示工作区归属，返回是否命中。
+func (a *shellAdvice) addPathArgWarning(workDir string, args []string) bool {
 	for _, arg := range args {
 		if _, ok := resolveShellLiteralPath(workDir, arg); ok {
 			a.addWarning(warnUseWorkspace)
-			return
+			return true
 		}
 	}
+	return false
 }
 
 func (a *shellAdvice) addReadWarnings(fileGuard FileGuard, workDir string, args []string) {
@@ -158,6 +166,14 @@ func resolveShellLiteralPath(workDir, raw string) (string, bool) {
 	}
 	if expanded, ok := msysPathToWindows(raw); ok {
 		raw = expanded
+	}
+	// "~" 不是绝对路径，不展开会 join 到 workDir 下，使受管文件规则永远不命中。
+	if raw == "~" || strings.HasPrefix(raw, "~/") || strings.HasPrefix(raw, `~\`) {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", false
+		}
+		raw = filepath.Join(home, raw[1:])
 	}
 	if filepath.IsAbs(raw) {
 		return filepath.Clean(raw), true
