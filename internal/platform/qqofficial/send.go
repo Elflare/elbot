@@ -96,7 +96,16 @@ func qqOfficialChatType(target sendTarget) contextinfo.ChatType {
 func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Output) (delivery.Receipt, error) {
 	switch out.Kind {
 	case delivery.KindText:
-		return a.sendText(ctx, t, delivery.FallbackText(out), out.Actions...)
+		if len(out.Blocks) == 0 {
+			return a.sendText(ctx, t, out.Text, out.Actions...)
+		}
+		blocks := make([]delivery.ContentBlock, 0, len(out.Blocks))
+		for _, block := range out.Blocks {
+			if block.Kind != delivery.ContentArguments {
+				blocks = append(blocks, block)
+			}
+		}
+		return a.sendText(ctx, t, delivery.ContentBlocksText(blocks), out.Actions...)
 	case delivery.KindReply:
 		text := delivery.FallbackText(out)
 		return a.sendText(ctx, t, text, out.Actions...)

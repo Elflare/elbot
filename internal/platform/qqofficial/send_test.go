@@ -121,18 +121,53 @@ func TestSendDetailCommandUsesRawBlocksAndActions(t *testing.T) {
 	result := &command.Result{Kind: command.ResultKindText, Data: control.CurrentConfirmationResult{
 		ToolName: "edit_file",
 		Risk:     "high",
-		Detail:   []delivery.ContentBlock{{Kind: delivery.ContentDiff, Content: "--- a/file\n+++ b/file\n-old\n+new"}},
-		Actions:  actions,
+		Detail: []delivery.ContentBlock{
+			{Kind: delivery.ContentDiff, Content: "--- a/file\n+++ b/file\n-old\n+new"},
+			{Kind: delivery.ContentArguments, Content: map[string]any{"path": "file", "content": "new"}},
+		},
+		Actions: actions,
 	}}
 	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformQQOfficial, ChatType: contextinfo.ChatGroup, ChatID: "1"}, PlatformMessageID: "incoming"})
 	if _, err := adapter.SendCommandResult(ctx, command.Request{Name: "detail"}, result, nil); err != nil {
 		t.Fatal(err)
 	}
-	if body.Markdown == nil || !strings.Contains(body.Markdown.Content, "-old\n+new") || strings.Contains(body.Markdown.Content, `"kind"`) {
+	if body.Markdown == nil || !strings.Contains(body.Markdown.Content, "-old\n+new") || strings.Contains(body.Markdown.Content, `"path"`) {
 		t.Fatalf("detail body did not render raw blocks: %#v", body)
 	}
 	if body.Keyboard == nil || body.Keyboard.Content.Rows[0].Buttons[0].Action.Data != "/confirm" {
 		t.Fatalf("detail actions were not rendered: %#v", body.Keyboard)
+	}
+}
+
+func TestSendConfirmationOmitsArgumentsAndKeepsText(t *testing.T) {
+	var body messageToCreate
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		_, _ = w.Write([]byte(`{"id":"sent"}`))
+	}))
+	defer server.Close()
+	adapter := newQQOfficialSendTestAdapter(t, server)
+	markdown, keyboard := true, true
+	adapter.cfg.MarkdownByDefault = &markdown
+	adapter.cfg.EnableKeyboard = &keyboard
+	commandText := `命令：pwd && date > test_file_$(date +%s).txt && ls -l | tail -n 5 && echo "---" && cat test_file_*.txt`
+	actions := []delivery.Action{{ID: "confirm", Label: "确认本次", Command: "/confirm"}}
+	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformQQOfficial, ChatType: "group", ChatID: "1"}, PlatformMessageID: "incoming"})
+	_, err := adapter.SendTo(ctx, delivery.Target{}, []delivery.Output{{
+		Kind:    delivery.KindText,
+		Blocks:  []delivery.ContentBlock{{Kind: delivery.ContentText, Content: commandText}, {Kind: delivery.ContentArguments, Content: map[string]any{"cmd": strings.TrimPrefix(commandText, "命令：")}}},
+		Actions: actions,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body.Markdown == nil || !strings.Contains(body.Markdown.Content, commandText) || strings.Contains(body.Markdown.Content, `"cmd"`) || strings.Contains(body.Markdown.Content, `\u0026`) {
+		t.Fatalf("confirmation text/arguments rendering mismatch: %#v", body.Markdown)
+	}
+	if body.Keyboard == nil || body.Keyboard.Content.Rows[0].Buttons[0].Action.Data != "/confirm" {
+		t.Fatalf("confirmation action was not rendered: %#v", body.Keyboard)
 	}
 }
 
