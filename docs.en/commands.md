@@ -46,9 +46,9 @@ Model selection takes effect globally by mode/slot and is saved to `state.toml`;
 | --- | --- |
 | `/new` | Create and switch to a new Session. |
 | `/status` | Current Session status. |
-| `/sessions [page] [-k\|--keyword <keyword>]` | List or search visible Sessions. |
-| `/resume [session_id\|last]` | Resume a historical Session. |
-| `/archives [page] [-k\|--keyword <keyword>]` | List of archived Sessions. |
+| `/sessions [page] [-k\|--keyword <keyword>] [-a\|--all]` | List or search Sessions on the current platform; superadmins can use `-a/--all` to view all platforms. |
+| `/resume [session_id\|last\|--page <page>] [-a\|--all]` | Resume a historical Session; the bare command lists Sessions on the current platform; superadmins can add `-a/--all` to the list or `last`. |
+| `/archives [page] [-k\|--keyword <keyword>] [-a\|--all]` | List of archived Sessions; defaults to the current platform; superadmins can use `-a/--all` to view all platforms. |
 | `/archive [session_id] --confirm` | Archive. |
 | `/unarchive [session_id]` | Unarchive. |
 | `/pin` / `/unpin [session_id]` | Pin / Unpin. |
@@ -56,11 +56,12 @@ Model selection takes effect globally by mode/slot and is saved to `state.toml`;
 | `/delete <session_id> --confirm` | Permanently delete. |
 | `/clean --confirm` | Delete expired Sessions that are neither archived nor pinned. |
 
-- When the target is omitted, `/archive`, `/unarchive`, `/pin`, and `/unpin` apply to the current Session; `/rename` uses the current title when the target is omitted, and `/delete` must provide a `session_id`. A bare `/resume` returns a list of resumable Sessions.
+- When the target is omitted, `/archive`, `/unarchive`, `/pin`, and `/unpin` apply to the current Session; `/rename` uses the current title when the target is omitted; `/delete` must provide a `session_id`. A bare `/resume` returns a list of resumable Sessions.
 - `/resume last` resumes the most recently updated Session other than the current one, ignoring pins.
-- CLI superadmins can view and manage Sessions across platforms; ordinary CLI users and messaging platform users follow their respective platforms and scopes. Cron/Elnis background Sessions can only be resumed via private chat on the same platform by the owner, or via the CLI management entry. Resuming will permanently transfer ownership to the foreground.
+- Superadmins can use `-a/--all` to view `/sessions`, `/resume` lists, and `/archives` across platforms.
+- When a superadmin resumes a Session from another platform across platforms, a complete history copy is created on the current platform, while the original Session is preserved.
 - Switching commands such as `/new`, `/resume`, `/fork`, `/chat`, and `/work` cannot be executed while the current Session is processing; `/stop` must be called first.
-- Deletion is a permanent operation and requires `--confirm`; Sessions currently executing cannot be deleted and will be skipped during automatic cleanup.
+- Deletion is a permanent operation and requires `--confirm`; Sessions currently executing cannot be deleted and will be skipped by automatic cleanup.
 
 ## Fork
 
