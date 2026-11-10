@@ -106,7 +106,7 @@ func TestShellPrepareAnalysisOrder(t *testing.T) {
 		t.Skip("Bash parser policy")
 	}
 	dir := t.TempDir()
-	guard := NewFileGuard(FileGuardRule{ExactPath: dir + "/protected", WriteError: "protected target"})
+	guard := FileGuard{FileGuardRule{ExactPath: dir + "/protected", WriteError: "protected target"}}
 	for _, tt := range []struct {
 		name       string
 		command    string

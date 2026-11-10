@@ -41,7 +41,7 @@ type Deps struct {
 }
 
 func NewTools(deps Deps) []share.ToolDefinition {
-	guard := NewFileGuard(NewElSkillFileGuardRule(deps.SkillRoot), NewResidentMemoryFileGuardRule(deps.ResidentMemoryPath), NewLongMemoryFileGuardRule(deps.LongMemoryDir))
+	guard := FileGuard{NewElSkillFileGuardRule(deps.SkillRoot), NewResidentMemoryFileGuardRule(deps.ResidentMemoryPath), NewLongMemoryFileGuardRule(deps.LongMemoryDir)}
 	deps.FileRollback.CheckWrite = guard.CheckWrite
 	definitions := []share.ToolDefinition{
 		(WorkspaceTool{}).Definition(),

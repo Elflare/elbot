@@ -1362,7 +1362,7 @@ func TestReadFileToolWarnsForElSkillFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(NewFileGuard(NewElSkillFileGuardRule(root)))).Definition(), toolshare.CallRequest{Arguments: args})
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{NewElSkillFileGuardRule(root)})).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1383,7 +1383,7 @@ func TestEditFileToolRejectsElSkillFileBeforeWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "overwrite", "new_text": "changed"}}})
-	edit := (EditFileTool{Rollback: fileops.NewService(NewFileGuard(NewElSkillFileGuardRule(root)).CheckWrite)})
+	edit := (EditFileTool{Rollback: fileops.NewService(FileGuard{NewElSkillFileGuardRule(root)}.CheckWrite)})
 	if _, err := edit.Definition().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
 		t.Fatalf("expected preflight modify_el_skill error, got %v", err)
 	}
@@ -1410,7 +1410,7 @@ func TestEditFileToolRejectsElSkillCodeSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "overwrite", "new_text": "func main() {}"}}})
-	_, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(NewFileGuard(NewElSkillFileGuardRule(root)).CheckWrite)}).Definition(), toolshare.CallRequest{Arguments: args})
+	_, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(FileGuard{NewElSkillFileGuardRule(root)}.CheckWrite)}).Definition(), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
 		t.Fatalf("expected modify_el_skill error, got %v", err)
 	}
@@ -1429,7 +1429,7 @@ func TestFileToolsProtectResidentMemoryFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	guard := NewFileGuard(NewResidentMemoryFileGuardRule(path))
+	guard := FileGuard{NewResidentMemoryFileGuardRule(path)}
 	readArgs, _ := json.Marshal(map[string]any{"path": path})
 	readResult, _, err := callTool(context.Background(), (NewReadFileTool(guard)).Definition(), toolshare.CallRequest{Arguments: readArgs})
 	if err != nil {
@@ -1465,7 +1465,7 @@ func TestFileToolsProtectLongMemoryMarkdown(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	guard := NewFileGuard(NewLongMemoryFileGuardRule(root))
+	guard := FileGuard{NewLongMemoryFileGuardRule(root)}
 	readArgs, _ := json.Marshal(map[string]any{"path": path})
 	readResult, _, err := callTool(context.Background(), (NewReadFileTool(guard)).Definition(), toolshare.CallRequest{Arguments: readArgs})
 	if err != nil {

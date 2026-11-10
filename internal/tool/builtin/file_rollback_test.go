@@ -33,7 +33,7 @@ type rollbackFixture struct {
 
 func newRollbackFixture(t *testing.T) *rollbackFixture {
 	t.Helper()
-	guard := NewFileGuard()
+	guard := FileGuard{}
 	service := fileops.NewService(guard.CheckWrite)
 	binding := newRollbackTestBinding()
 	workspace := &testWorkspaceStore{dir: t.TempDir()}
@@ -174,7 +174,7 @@ func TestRollbackToolFileGuardChecksActualTarget(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
-	guard := NewFileGuard(FileGuardRule{ExactPath: target, WriteError: "protected target"})
+	guard := FileGuard{FileGuardRule{ExactPath: target, WriteError: "protected target"}}
 	f.service.CheckWrite = guard.CheckWrite
 	if _, _, err := callTool(f.ctx(), (f.rollback).Definition(), rollbackRequest(link)); err == nil || !strings.Contains(err.Error(), "protected target") {
 		t.Fatalf("guard: %v", err)

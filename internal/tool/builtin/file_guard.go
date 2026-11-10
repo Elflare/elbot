@@ -21,9 +21,7 @@ const (
 	warnUseModifyLongMemory = "长期记忆文件请使用 long_memory_write 修改。"
 )
 
-type FileGuard struct {
-	rules []FileGuardRule
-}
+type FileGuard []FileGuardRule
 
 type FileGuardRule struct {
 	Root         string
@@ -33,13 +31,9 @@ type FileGuardRule struct {
 	Match        func(absPath, rel string) bool
 }
 
-func NewFileGuard(rules ...FileGuardRule) FileGuard {
-	return FileGuard{rules: rules}
-}
-
 func (g FileGuard) ReadWarnings(path string) []string {
 	warnings := []string{}
-	for _, rule := range g.rules {
+	for _, rule := range g {
 		if rule.matches(path) {
 			warnings = append(warnings, rule.ReadWarnings...)
 		}
@@ -48,7 +42,7 @@ func (g FileGuard) ReadWarnings(path string) []string {
 }
 
 func (g FileGuard) CheckWrite(path string) error {
-	for _, rule := range g.rules {
+	for _, rule := range g {
 		if rule.matches(path) {
 			return share.PolicyDeniedError(rule.WriteError)
 		}

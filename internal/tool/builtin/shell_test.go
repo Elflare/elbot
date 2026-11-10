@@ -172,7 +172,7 @@ func TestAnalyzeBashShellAdviceWarnsForCatElSkill(t *testing.T) {
 	if err := os.WriteFile(path, []byte("#skill reader - Reader.\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), root, NewFileGuard(NewElSkillFileGuardRule(root)))
+	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), root, FileGuard{NewElSkillFileGuardRule(root)})
 	text := toolshare.AppendWarnings("", advice.warnings)
 	if !strings.Contains(text, "read_file") || !strings.Contains(text, "read_el_skill") {
 		t.Fatalf("expected read_file and read_el_skill warnings, got:\n%s", text)
@@ -189,7 +189,7 @@ func TestAnalyzeBashShellAdviceRejectsSedEditElSkill(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	advice := analyzeBashShellAdvice(parseBashForTest(t, "sed -i 's/Writer/Changed/' "+filepath.ToSlash(path)), root, NewFileGuard(NewElSkillFileGuardRule(root)))
+	advice := analyzeBashShellAdvice(parseBashForTest(t, "sed -i 's/Writer/Changed/' "+filepath.ToSlash(path)), root, FileGuard{NewElSkillFileGuardRule(root)})
 	if advice.blockErr == nil || !strings.Contains(advice.blockErr.Error(), "modify_el_skill") {
 		t.Fatalf("expected modify_el_skill error, got %v", advice.blockErr)
 	}
@@ -200,7 +200,7 @@ func TestAnalyzeBashShellAdviceWarnsForCatResidentMemory(t *testing.T) {
 	if err := os.WriteFile(path, []byte("[[resident_memories]]\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), filepath.Dir(path), NewFileGuard(NewResidentMemoryFileGuardRule(path)))
+	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), filepath.Dir(path), FileGuard{NewResidentMemoryFileGuardRule(path)})
 	text := toolshare.AppendWarnings("", advice.warnings)
 	if !strings.Contains(text, "read_file") || !strings.Contains(text, "resident_memory_read") {
 		t.Fatalf("expected read_file and resident_memory_read warnings, got:\n%s", text)
@@ -213,7 +213,7 @@ func TestAnalyzeBashShellAdviceRejectsRedirectToResidentMemory(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0644); err != nil {
 		t.Fatal(err)
 	}
-	advice := analyzeBashShellAdvice(parseBashForTest(t, "echo changed > "+filepath.ToSlash(path)), filepath.Dir(path), NewFileGuard(NewResidentMemoryFileGuardRule(path)))
+	advice := analyzeBashShellAdvice(parseBashForTest(t, "echo changed > "+filepath.ToSlash(path)), filepath.Dir(path), FileGuard{NewResidentMemoryFileGuardRule(path)})
 	if advice.blockErr == nil || !strings.Contains(advice.blockErr.Error(), "resident_memory_normal") {
 		t.Fatalf("expected resident memory error, got %v", advice.blockErr)
 	}
