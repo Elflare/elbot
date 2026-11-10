@@ -133,7 +133,7 @@ Attachments must belong to the current connection. If preparing any attachment f
 {"type": "complete", "id": "c-1", "text": "/mod", "cursor": 4}
 ```
 
-Request command completion candidates for the current input text. `id` is used to match the response. `cursor` is the byte offset of the cursor in `text`, defaulting to the end if omitted.
+Request completion candidates for the current input text. The `id` is used to match the response. The `cursor` is the byte offset of the cursor within the `text`; if omitted, it defaults to the end.
 
 The server responds with `complete_result`.
 
@@ -195,14 +195,14 @@ Notifications are queued independently by platform and sent sequentially to the 
 
 | Field | Description |
 | --- | --- |
-| result.kind | Data structure category, explicitly specified by the server; different branches of the same command may vary |
-| result.data | Named business data corresponding to the category; for `kind=text`, it is `{content: string}` |
+| result.kind | Data structure category, explicitly specified by the server; different branches of the same command may differ |
+| result.data | Named business data corresponding to the category; when `kind=text`, it is `{content: string}` |
 | result.confirmation | Non-null indicates that confirmation is still pending and the target operation has not yet been executed; contains actions |
-| error | Independent categorized error; null on success |
+| error | Independent categorized error; null upon success |
 
-In case of complete failure, `result=null`; when partial results exist, both `result` and `error` can be returned simultaneously. Item-by-item failures in a list are preserved within the result data, without erasing successful items. Original internal server error chains and subsequent inputs are not included in the JSON.
+When a complete failure occurs, `result=null`; when partial results exist, both `result` and `error` can be returned simultaneously. Item-by-item failures in a list are preserved in the result data without erasing successful items. Internal server raw error chains and subsequent inputs are not included in the JSON.
 
-`error` contains `kind`, `code`, and `message`: `kind` is `input` (unknown command/parameter error), `rejected` (permission/busy status/target does not exist/confirmation expired), `internal` (internal failure), or `interrupted` (actual execution canceled/timeout). `code` provides the specific reason, such as `unknown_command`, `invalid_arguments`, `permission_denied`, `session_busy`, `confirmation_expired`, `canceled`, `timeout`. Client timeout or disconnection does not mean the backend execution has been canceled. `/stop` accepting a stop request is a normal result.
+`error` contains `kind`, `code`, and `message`: `kind` can be `input` (unknown command/argument error), `rejected` (permission/busy state/target does not exist/confirmation expired), `internal` (internal failure), or `interrupted` (actual execution canceled/timeout). `code` provides the specific reason, such as `unknown_command`, `invalid_arguments`, `permission_denied`, `session_busy`, `confirmation_expired`, `canceled`, `timeout`. A client timeout or disconnection does not mean the backend execution has been canceled. Accepting a stop request via `/stop` is a normal result.
 
 The structure of a confirmation operation is:
 
@@ -210,25 +210,40 @@ The structure of a confirmation operation is:
 {"actions":[{"id":"confirm","label":"Confirm Delete","command":"/delete s-1 --confirm"}]}
 ```
 
-The client submits the `command` as a new `input.text`; permissions and target status are still validated by the server, and the `id` is not an authorization credential.
+The client submits the `command` as a new `input.text`; permissions and target states are still validated by the server, and the `id` is not an authorization credential.
 
-Main data categories:
+The `detail` of `GET /api/v1/confirmation` is an ordered array of content blocks during a pending tool call, containing a tool preview and a complete parameter object at the end. The `kind` of a block is `text`, `diff`, `arguments`, or `markdown`; the `content` of `text`, `diff`, and `markdown` uses strings, while the `content` of `arguments` is a JSON object. During append confirmation, `detail` is an empty array; when there are no items pending confirmation, it is `null`.
+
+```json
+{
+  "kind": "tool",
+  "detail": [
+    {"kind":"text","content":"File: notes.md\nPre-check diff:"},
+    {"kind":"diff","content":"--- a/notes.md\n+++ b/notes.md\n@@ -1 +1 @@\n-before\n+after"},
+    {"kind":"arguments","content":{"path":"notes.md","edits":[]}}
+  ]
+}
+```
+
+Major data categories:
 
 | kind | data |
 | --- | --- |
 | sessions | items, current binding, search terms, and pagination; each item contains Session fields, message count, the most recent message, and summaries of user/assistant content |
 | session | operation target, the Session after changes, current binding, actual number of changes, and the most recent messages read by resume/fork |
-| messages | session_id, items, and pagination; message content is complete, while historical attachments only provide names |
-| status | nullable current Session, mode, model, Turn phase, request, tool statistics, most recent user/assistant content, and context |
-| models / model | model directory and errors per provider / the actual submitted model and target |
+| messages | session_id, items, and pagination; message bodies are complete, while historical attachments only provide names |
+| status | nullable current Session, mode, model, Turn phase, requests, tool statistics, most recent user/assistant content, and context |
+| models / model | model directory and errors per provider / the actually submitted model and target |
 | requests / stop | request snapshot / stop target and the actual number of accepted cancellations |
 | tools, rollbacks, rollback | tool directory and management target / rollback list and actual results |
 | logs, usage, doctor, hooks, compact, help | raw reports, statistics, or operation results for the corresponding domains |
 | text | text feedback without business data |
 
-`/messages` reads page 1 by default, with 20 items per page. Page 1 is the most recent, and increasing page numbers read further back into history; items within each page are ordered by conversation sequence. When loading upwards, earlier pages are inserted at the top and deduplicated by message ID. Page boundaries may shift if new messages arrive during page queries; cross-request snapshots are not provided. An empty history returns `items=[]` and `total_pages=0`.
+`/messages` reads page 1 by default, with 20 items per page. Page 1 is the newest, and increasing page numbers read further back into history; items within each page are ordered by conversation sequence. When loading upwards, earlier pages are inserted at the top and deduplicated by message ID. Page boundaries may shift if new messages arrive during page queries; cross-request snapshots are not provided. An empty history returns `items=[]` and `total_pages=0`.
 
-The `context` of `/status` contains `usage`, `context_window`, `compact_enabled`, and `compact_trigger_ratio`. Usage fields are `prompt_tokens`, `completion_tokens`, `total_tokens`, and `cache_hit_tokens`; null indicates unknown, and 0 is a known zero value. The context ratio uses known total/window, and the cache hit rate uses known cache/prompt; missing counts are not extrapolated. The phase here comes from the Turn; real-time `status` frames still use the Runtime snapshot.
+Tool result messages contain `tool_call_id`, `tool_name`, and the full body; real-time `tool_result` events contain the call ID, tool name, success status, and full result segments. Confirmation details are returned via the existing confirmation interface; tools with automatic confirmation directly display the execution results.
+
+The `context` of `/status` contains `usage`, `context_window`, `compact_enabled`, and `compact_trigger_ratio`. Usage fields are `prompt_tokens`, `completion_tokens`, `total_tokens`, and `cache_hit_tokens`; null indicates unknown, and 0 is a known zero value. The context ratio uses known total/window, and the cache hit rate uses known cache/prompt; missing counts are not extrapolated. The phase here comes from Turn; real-time `status` frames still use Runtime snapshots.
 
 
 ### status — Runtime Status
@@ -267,7 +282,7 @@ Runtime status snapshot, which the frontend can use for status bar display. The 
 | done | Done |
 | error | Error |
 
-### stream — Message Stream Events
+### stream — Message Stream Event
 
 ```json
 {
@@ -277,35 +292,38 @@ Runtime status snapshot, which the frontend can use for status bar display. The 
 }
 ```
 
-`stream_id` identifies a logical message, not a Session ID or Request ID. The client maintains the body and reasoning preview based on this identifier; do not append all deltas to a single global buffer. This identifier is only used for message association within the current connection and is not a cursor for recovering history after reconnection.
+`stream_id` identifies a logical message, not a Session ID or request ID. The client maintains the body and reasoning preview based on this identifier; do not append all increments to a single global buffer. The identifier is used only for message association within the current connection, not as a cursor for recovering history after reconnection.
 
 `event` field:
 
 | Field | Type | Description |
 |------|------|------|
 | type | string | Event type, see table below |
-| text | string | Body/reasoning delta, or the final complete body of a `send` event; empty text may be omitted and should be treated as an empty string |
-| actions | array | Optional message actions; element fields are `id`, `label`, and `command`. The frontend can display these as buttons; clicking them submits the `command` via `input`, which is still subject to server-side permission validation |
+| text | string | Body/reasoning increment, or the final complete body for `send`; empty text may be omitted and should be treated as an empty string |
+| actions | array | Optional message actions; element fields are `id`, `label`, and `command`. The frontend can display these as buttons; clicking them submits the `command` via `input`, with permissions still validated by the server |
+| tool_call_id | string | Call ID corresponding to the tool result |
+| tool_result | object | Tool execution result, containing `name`, `success`, and complete `segments` |
 
 | event.type | Client Handling |
 |------------|------------|
 | text_delta | Append `text` to the body preview of this stream |
 | reasoning_delta | Append `text` to the reasoning preview of this stream; the frontend may choose to show or hide it |
-| reasoning_done | End the current reasoning generation and retain the reasoning content received so far |
-| reset | Delete the current body and reasoning preview of this stream; retries can continue to use the same `stream_id` to generate a new preview |
+| reasoning_done | End the current reasoning generation and retain the reasoning content received |
+| reset | Delete the current body and reasoning preview for this stream; retries can continue using the same `stream_id` to generate a new preview |
 | finish | Generation ended; retain the preview and its stream association, awaiting the final `send` or a `reset` from a subsequent retry |
-| send | **Completely replace** the body preview with `text` and submit the message, retaining reasoning content; remove the active stream association. If no preview exists, create a complete message directly |
+| send | **Entirely replace** the body preview with `text` and submit the message, retaining the reasoning content; remove the active stream association. If no preview exists, create a complete message directly |
+| tool_result | Sent after the tool result is persisted; can be associated with the call via `tool_call_id` and displayed collapsed in the chat. The full body of the tool details should be read using `GET /api/v1/tools/{name}/detail` |
 
-For example, the final body may be rewritten by a Hook, so the full text in `send` must be used rather than directly relying on the concatenated result of deltas:
+For example, the final body may be rewritten by a Hook, so the full text in `send` must be used instead of simply concatenating the increments:
 
 ```json
 {"type": "stream", "stream_id": 1, "event": {"type": "finish"}}
 {"type": "stream", "stream_id": 1, "event": {"type": "send", "text": "Hello! How can I help you?"}}
 ```
 
-An empty body in `send` must also overwrite the original preview and cannot be ignored; the message may be removed if both the body and reasoning are empty. `finish` is not equivalent to a formal submission; the stream association should not be removed upon receiving it, nor should it be required that every `send` be preceded by deltas or a `finish`.
+An empty body in `send` must also overwrite the original preview and cannot be ignored; the message may be removed if both the body and reasoning are empty. `finish` is not equivalent to a formal submission; the stream association should not be removed upon receiving it, nor should it be required that every `send` be preceded by increments or a `finish`.
 
-Reasoning content consists of raw deltas without `[thinking]` or `[/thinking]` text markers; the display style is determined by the frontend. Message streams are delivered exclusively to the original connection and do not migrate to a new connection for the same user; once a background task takes over, only newly generated content is displayed, and reasoning deltas from before the takeover are not replayed.
+Reasoning content consists of raw increments without `[thinking]` or `[/thinking]` text markers; the display style is determined by the frontend. Message streams are delivered exclusively to the original connection and do not migrate to a new connection for the same user; after a background task takes over, only newly generated content is displayed, and reasoning increments from before the takeover are not replayed.
 
 Additional content is delivered separately by the Agent output layer and is not transmitted as `stream` events for the remote CLI.
 
@@ -345,7 +363,7 @@ An error that occurred during processing.
 | Text | string | Inserted text |
 | Label | string | Display label |
 | Description | string | Supplementary description |
-| Kind | string | Candidate type, such as `command`, `tool`, `fork` |
+| Kind | string | Candidate type, such as `command`, `tool`, `fork`, `workspace_file` |
 | ReplaceStart | int | Starting byte offset for replacement |
 | ReplaceEnd | int | Ending byte offset for replacement |
 
