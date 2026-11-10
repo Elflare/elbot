@@ -11,32 +11,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added attachment upload and download to the CLI remote protocol.
-- Added static frontend hosting to the CLI remote service: automatically recognizes `frontend/index.html` next to the main configuration.
+- CLI remote service now supports static frontend hosting: automatically detects `frontend/index.html` next to the main configuration.
+- Added a large number of CLI remote protocols.
 - Added a configuration file lock to prevent multiple instances from using the same configuration file.
 - Added `markdownnew` to web search.
 
 ### Changed
 
-- Command returns have changed from notifications to independent structured results, providing unified business data, categorized errors, and confirmation operations; the remote protocol now includes `command_result` associated by input ID, with execution failures and delivery failures handled separately.
-- `/messages` has been changed to bounded pagination of original conversations: page 1 is the newest, with items within the page ordered from oldest to newest; structured data retains the full body and attachment names, including branch history and remaining unaffected by context compaction summaries.
-- Additional input confirmation now only supports `/stop` when canceling.
-- `/status` now uses database statistics and no longer reads the full history for message counting.
+- Command returns have changed from notifications to independent structured results, providing unified business data, categorized errors, and confirmation operations; the remote protocol now includes `command_result` associated by input ID, handling execution failures and delivery failures separately.
+- `/messages` has been changed to bounded pagination of original conversations: page 1 is the newest, with items within the page ordered from oldest to newest; structured data retains the full body and attachment names, includes branch history, and is not affected by context compaction summaries.
+- Additional input confirmation now only supports `/stop` for cancellation.
+- `/status` now uses database statistics and no longer reads the full history for message counts.
 - Manually guided the AI to refactor the App to the business layer package-by-package, file-by-file, function-by-function, and field-by-field, further tightening boundaries, clarifying responsibilities, and streamlining code.
-- Breaking Change: Resident memory has been changed to TOML tables layered by platform and user ID; old files are automatically backed up and migrated upon first read. Migration compatibility code will be removed after the minor version has incremented twice following the introduction version.
+- Breaking Change: Resident memory has been changed to TOML tables layered by platform and user ID; old files are automatically backed up and migrated upon first read. Migration compatibility code will be removed after two minor version increments following the introduction version.
 - Breaking Change: Changed the hook protocol.
 - Breaking Change: No longer provides specific fallback handling for models that do not support vision.
 - Streamlined user prompt information and tool schema information.
-- Optimized log and audit display; log filenames have been changed to `log*`.
+- Optimized runtime log and audit log displays; log filenames have been changed to `log*`.
 - Modified ID formats in multiple locations.
-- Hook native emoji output now uniformly uses the required `name`; `text` is no longer used for emoji construction or fallback; plain text display is unified as `[Emoji: Name]`.
+- Hook native emoji output now uniformly uses the required `name` field; `text` is no longer used for emoji construction or fallback; plain text display is unified as `[Emoji: Name]`.
 - Delivery information for Hook event output snapshots has been changed from the `Meta` object to the `Delivery` object, containing `Timing`, `HookPoint`, `HookName`, and `HookMode`; the derived field `AltText` has been removed.
 - Active requests in `/status` no longer repeatedly display the Session title; this information is still retained when using `/requests` directly.
 - Modified the Elwisp protocol to uniformly use `platform`, `api`, and `params` to describe platform native API calls.
-- The `send_file` tool is now available to ordinary users, limited to media IDs and URLs.
+- The `send_file` tool is now available for ordinary users, limited to media IDs and URLs.
 - Optimized retry logic.
 - `/resume` no longer uses numbering.
 - Keywords for `/sessions` and `/archives` now require `-k/--keyword`.
+- Using `#` to select files now uses files within the agent workspace.
 
 ### Fixed
 
@@ -268,21 +269,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `[tool]` previews for multiple tool calls in the same round will be merged into a single message to reduce platform spam.
-- Elvena LLM events and LLM Cron now support `session_mode=chat|work` selecting background Session mode, with the default remaining `work`.
-- `/detail` high-risk tool call details now support custom plain text display for tools; When not customized, JSON parameters will still be formatted into a more readable multi-line display, and `\n` within strings will be displayed as actual line breaks.
-- High-risk confirmation details for `edit_file` now display operations such as replace, add, delete, and match by file, mode, and editing step.
-- `edit_file` no longer exposes the `dry_run` parameter to the LLM; the system will automatically pre-check and generate a diff before user confirmation, and if the pre-check fails, it will not proceed to confirmation or write to the file.
-- `modify_el_skill` now reuses the `edits` editing instructions and execution capabilities of `edit_file`, and pre-checks edits, ELyph syntax, and no-op modifications before confirmation, displaying the pre-check diff in the high-risk confirmation details.
-- Update `ELyph` version to v3
-- qq heartbeat ack and qqofficial gateway resumed are no longer logged
-- read_el_skill now depends on modify_el_skill to facilitate possible modifications
-- ELyph syntax is no longer validated during ElBot startup to avoid slowing down the startup speed.
-- Colons at the end of ELyph `**`/`~` text are now returned as warnings to `create_el_skill`/`finalize_el_skill`, and no longer block creation or finalization.
-- `modify_el_skill` no longer automatically reloads after modifying `SKILL.elyph`; `finalize_el_skill` must be called after modification to take effect.
-- Tool results now support unified `Warnings` output, used to prompt the LLM to prioritize more appropriate tools in the future.
-- `read_file`/`shell` will suggest using `read_el_skill` when reading EL Skill files; Direct modification of EL Skill files by `edit_file` or shell will be rejected before confirmation or execution; `modify_el_skill` should be used instead.
-- Source files for resident memory and long-term memory are now included in general FileGuard protection; reading will suggest using memory tools, and direct writing via general file tools or shell will be rejected.
-- Hook logs are no longer duplicated
+- Elvena LLM events and LLM Cron now support `session_mode=chat|work` to select the background Session mode, defaulting to `work`.
+- High-risk confirmation details for `edit_file` now display replace, add, delete, and match operations organized by file, mode, and editing step.
+- `edit_file` no longer exposes the `dry_run` parameter to the LLM; the system will automatically pre-check and generate a diff before user confirmation. If the pre-check fails, it will not proceed to confirmation or file writing.
+- `modify_el_skill` now reuses the `edits` descriptions and execution capabilities of `edit_file`, and pre-checks edits, ELyph syntax, and no-op modifications before confirmation, displaying the pre-check diff in the high-risk confirmation details.
+- Updated `ELyph` version to v3.
+- `qq heartbeat ack` and `qqofficial gateway resumed` are no longer logged.
+- `read_el_skill` now depends on `modify_el_skill` to facilitate potential modifications.
+- ELyph syntax is no longer validated during ElBot startup to avoid slowing down the boot process.
+- Colons at the end of `**`/`~` text in ELyph are now returned as warnings to `create_el_skill`/`finalize_el_skill` and no longer block creation or finalization.
+- `modify_el_skill` no longer automatically reloads after modifying `SKILL.elyph`; `finalize_el_skill` must be called after modifications to take effect.
+- Tool results now support unified `Warnings` output to prompt the LLM to prioritize more appropriate tools in the future.
+- `read_file`/`shell` will prompt to use `read_el_skill` when reading EL Skill files; direct modifications to EL Skill files via `edit_file` or shell will be rejected before confirmation or execution, requiring the use of `modify_el_skill`.
+- Resident memory and long-term memory source files are now included under general FileGuard protection; reading them will prompt the use of memory tools, and direct writes via general file tools or shell will be rejected.
+- Hook logs are no longer recorded redundantly.
 
 ### Fixed
 
