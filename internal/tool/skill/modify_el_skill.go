@@ -82,7 +82,14 @@ func (t ModifyElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 	if !strings.HasSuffix(preview.File.Preview().Diff, "\n") {
 		b.WriteString("\n")
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, strings.TrimRight(b.String(), "\n"), func(ctx context.Context) (*toolshare.Result, string, error) {
+	detail := strings.TrimRight(b.String(), "\n")
+	marker := "\n预检 diff:\n"
+	index := strings.Index(detail, marker)
+	details := []toolshare.ConfirmationDetailBlock{
+		{Kind: toolshare.ConfirmationDetailText, Content: detail[:index] + "\n预检 diff:"},
+		{Kind: toolshare.ConfirmationDetailDiff, Content: detail[index+len(marker):]},
+	}
+	return toolshare.NewPreparedCallWithDetails(req, toolshare.RiskAssessment{Level: info.Risk}, detail, details, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, preview)
 	}), nil
 }

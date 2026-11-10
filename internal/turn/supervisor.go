@@ -33,7 +33,7 @@ func (m *Supervisor) AppendPendingInput(sessionID string, input Input) bool {
 	return m.lifecycle.AppendPendingInput(sessionID, lifecycle.Input(input))
 }
 func (m *Supervisor) BeginRiskConfirmation(sessionID string, confirmation RiskConfirmation, attempt string) *RiskConfirmationWait {
-	w := m.lifecycle.BeginRiskConfirmation(sessionID, lifecycle.RiskConfirmation(confirmation), attempt)
+	w := m.lifecycle.BeginRiskConfirmation(sessionID, toLifecycleRiskConfirmation(confirmation), attempt)
 	if w == nil {
 		return nil
 	}
@@ -47,7 +47,23 @@ func (m *Supervisor) RefreshRiskConfirmation(sessionID string) bool {
 }
 func (m *Supervisor) PendingRiskConfirmation(sessionID string) (RiskConfirmation, bool) {
 	v, ok := m.lifecycle.PendingRiskConfirmation(sessionID)
-	return RiskConfirmation(v), ok
+	return fromLifecycleRiskConfirmation(v), ok
+}
+
+func toLifecycleRiskConfirmation(confirmation RiskConfirmation) lifecycle.RiskConfirmation {
+	detail := make([]lifecycle.ConfirmationDetailBlock, len(confirmation.Detail))
+	for i, block := range confirmation.Detail {
+		detail[i] = lifecycle.ConfirmationDetailBlock{Kind: string(block.Kind), Content: block.Content}
+	}
+	return lifecycle.RiskConfirmation{ToolName: confirmation.ToolName, Arguments: confirmation.Arguments, Risk: confirmation.Risk, Detail: detail}
+}
+
+func fromLifecycleRiskConfirmation(confirmation lifecycle.RiskConfirmation) RiskConfirmation {
+	detail := make([]ConfirmationDetailBlock, len(confirmation.Detail))
+	for i, block := range confirmation.Detail {
+		detail[i] = ConfirmationDetailBlock{Kind: ConfirmationDetailKind(block.Kind), Content: block.Content}
+	}
+	return RiskConfirmation{ToolName: confirmation.ToolName, Arguments: confirmation.Arguments, Risk: confirmation.Risk, Detail: detail}
 }
 func (m *Supervisor) StartToolPhase(sessionID, attempt string) bool {
 	return m.lifecycle.StartToolPhase(sessionID, attempt)

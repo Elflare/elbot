@@ -18,11 +18,17 @@ func FormatCommandResult(req command.Request, result *command.Result) string {
 	case command.ResultKindText:
 		if req.Name == "detail" {
 			return formatCommandData(result.Data, func(d control.CurrentConfirmationResult) string {
-				detail := d.Detail
-				if detail == "" {
-					detail = d.Arguments
+				parts := make([]string, 0, len(d.Detail))
+				for _, block := range d.Detail {
+					if block.Kind == "arguments" {
+						if data, err := json.MarshalIndent(block.Content, "", "  "); err == nil {
+							parts = append(parts, string(data))
+						}
+					} else if text, ok := block.Content.(string); ok {
+						parts = append(parts, text)
+					}
 				}
-				return fmt.Sprintf("%s [%s]\n%s", d.ToolName, d.Risk, detail)
+				return fmt.Sprintf("%s [%s]\n%s", d.ToolName, d.Risk, strings.Join(parts, "\n"))
 			})
 		}
 		if req.Name == "confirm" || req.Name == "confirmtool" || req.Name == "confirmall" || req.Name == "reject" {

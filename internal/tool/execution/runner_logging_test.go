@@ -281,7 +281,7 @@ func (d *loggingDeps) StartToolRequest(ctx context.Context, sessionID, toolName 
 	return d.runnerTestDeps.StartToolRequest(ctx, sessionID, toolName)
 }
 
-func (d *loggingDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment toolshare.RiskAssessment, detail string) (toolshare.ConfirmResult, error) {
+func (d *loggingDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (toolshare.ConfirmResult, error) {
 	if d.confirmErr != nil {
 		return toolshare.ConfirmResult{}, d.confirmErr
 	}

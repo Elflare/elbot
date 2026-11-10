@@ -104,17 +104,25 @@ func (d *runnerTestDeps) ToolCallMessage(id, content, _ string, _ []llm.ToolCall
 
 type rollbackConfirmDeps struct {
 	runnerTestDeps
-	detail             string
+	detail             []toolshare.ConfirmationDetailBlock
 	duringConfirmation func()
 }
 
-func (d *rollbackConfirmDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk toolshare.RiskAssessment, detail string) (toolshare.ConfirmResult, error) {
+func (d *rollbackConfirmDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (toolshare.ConfirmResult, error) {
 	d.confirmed = true
 	d.detail = detail
 	if d.duringConfirmation != nil {
 		d.duringConfirmation()
 	}
 	return toolshare.ConfirmResult{Allowed: true}, nil
+}
+
+func rollbackConfirmationText(details []toolshare.ConfirmationDetailBlock) string {
+	var text strings.Builder
+	for _, block := range details {
+		text.WriteString(fmt.Sprint(block.Content))
+	}
+	return text.String()
 }
 
 func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
@@ -158,7 +166,7 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 				Actor:   actor,
 				Calls:   []llm.ToolCallRequest{{ID: "rollback", Name: "rollback_file", Arguments: `{"path":"file"}`}},
 			})
-			if !deps.confirmed || !strings.Contains(deps.detail, path) || !strings.Contains(deps.detail, "恢复编辑前内容") {
+			if !deps.confirmed || !strings.Contains(rollbackConfirmationText(deps.detail), path) || !strings.Contains(rollbackConfirmationText(deps.detail), "恢复编辑前内容") {
 				t.Fatalf("confirmation lost context: %q", deps.detail)
 			}
 			data, _ := os.ReadFile(path)
@@ -215,7 +223,7 @@ func TestRunEditPreservesConfirmationSnapshot(t *testing.T) {
 				Session: &storage.Session{ID: "session", Mode: storage.SessionModeWork}, Actor: actor,
 				Calls: []llm.ToolCallRequest{{ID: "edit", Name: "edit_file", Arguments: `{"path":"file","edits":[{"operation":"replace_text","old_text":"before","new_text":"after"}]}`}},
 			})
-			if !deps.confirmed || !strings.Contains(deps.detail, "-before") || !strings.Contains(deps.detail, "+after") {
+			if !deps.confirmed || !strings.Contains(rollbackConfirmationText(deps.detail), "-before") || !strings.Contains(rollbackConfirmationText(deps.detail), "+after") {
 				t.Fatalf("confirmation=%q", deps.detail)
 			}
 			data, err := os.ReadFile(path)

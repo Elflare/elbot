@@ -132,7 +132,7 @@
           description: Refresh the pending confirmation timeout when reading details.
       responses:
         '200':
-          description: Confirmation detail.
+          description: Current confirmation; tool details are returned as ordered typed content blocks.
           content:
             application/json:
               schema: { $ref: '../components/schemas.yaml#/schemas/Confirmation' }

@@ -132,7 +132,14 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 		if err != nil {
 			return nil, err
 		}
-		return toolshare.NewPreparedCall(req, assessment, longMemoryUpdateRiskDetail(args, preview), func(ctx context.Context) (*toolshare.Result, string, error) {
+		detail := longMemoryUpdateRiskDetail(args, preview)
+		marker := "预检 diff:\n"
+		index := strings.Index(detail, marker)
+		details := []toolshare.ConfirmationDetailBlock{
+			{Kind: toolshare.ConfirmationDetailText, Content: detail[:index+len(marker)-1]},
+			{Kind: toolshare.ConfirmationDetailDiff, Content: detail[index+len(marker):]},
+		}
+		return toolshare.NewPreparedCallWithDetails(req, assessment, detail, details, func(ctx context.Context) (*toolshare.Result, string, error) {
 			record, err := t.store.update(ctx, preview)
 			if err != nil {
 				return nil, err.Error(), err

@@ -109,6 +109,11 @@ type RiskConfirmation struct {
 	ToolName  string
 	Arguments string
 	Risk      string
-	Detail    string
+	Detail    []ConfirmationDetailBlock // 当前待确认操作的有序内容块。
+}
+
+type ConfirmationDetailBlock struct {
+	Kind    string // Selects the content category.
+	Content any    // Text or a JSON object, depending on Kind.
 }
 type Execution interface{ Finish(error) }

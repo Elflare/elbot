@@ -97,7 +97,7 @@ func (b executionBridge) RefreshExecution(ctx context.Context, row *storage.Sess
 	return toolPolicyContext(ctx), err
 }
 
-func (b executionBridge) ConfirmToolCall(ctx context.Context, id string, call llm.ToolCallRequest, assessment share.RiskAssessment, detail string) (share.ConfirmResult, error) {
+func (b executionBridge) ConfirmToolCall(ctx context.Context, id string, call llm.ToolCallRequest, assessment share.RiskAssessment, detail []share.ConfirmationDetailBlock) (share.ConfirmResult, error) {
 	result, err := b.RunnerDeps.ConfirmToolCall(ctx, id, call, RiskAssessment(assessment), detail)
 	return share.ConfirmResult(result), err
 }

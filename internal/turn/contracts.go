@@ -22,7 +22,22 @@ type RiskConfirmation struct {
 	ToolName  string
 	Arguments string
 	Risk      string
-	Detail    string
+	Detail    []ConfirmationDetailBlock // 当前待确认操作的有序内容块。
+}
+
+// ConfirmationDetailKind classifies content stored with a pending confirmation.
+type ConfirmationDetailKind string
+
+const (
+	ConfirmationDetailText      ConfirmationDetailKind = "text"
+	ConfirmationDetailDiff      ConfirmationDetailKind = "diff"
+	ConfirmationDetailArguments ConfirmationDetailKind = "arguments"
+	ConfirmationDetailMarkdown  ConfirmationDetailKind = "markdown"
+)
+
+type ConfirmationDetailBlock struct {
+	Kind    ConfirmationDetailKind // Selects the content category.
+	Content any                    // Text or a JSON object, depending on Kind.
 }
 
 type Snapshot struct {

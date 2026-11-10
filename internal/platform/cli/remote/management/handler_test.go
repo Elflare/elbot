@@ -15,11 +15,16 @@ import (
 
 type handlerControlStub struct {
 	ControlCapabilities
-	result control.RespondConfirmationResult
+	result  control.RespondConfirmationResult
+	current control.CurrentConfirmationResult
 }
 
 func (s handlerControlStub) RespondConfirmation(context.Context, control.RespondConfirmationRequest) (control.RespondConfirmationResult, error) {
 	return s.result, nil
+}
+
+func (s handlerControlStub) CurrentConfirmation(context.Context, control.CurrentConfirmationRequest) (control.CurrentConfirmationResult, error) {
+	return s.current, nil
 }
 
 type workspaceHandlerStub struct {
@@ -142,6 +147,26 @@ func TestToolDetailRouteReturnsCompleteDetail(t *testing.T) {
 	})
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/tools/guide/detail", nil))
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"content":"# Detail"`) || !strings.Contains(response.Body.String(), `"format":"markdown"`) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestCurrentConfirmationRouteReturnsStructuredDetail(t *testing.T) {
+	response := httptest.NewRecorder()
+	handler := NewHandler(HandlerOptions{
+		Control: handlerControlStub{current: control.CurrentConfirmationResult{
+			Kind: "tool",
+			Detail: []tool.ConfirmationDetailBlock{
+				{Kind: tool.ConfirmationDetailDiff, Content: "-before\n+after"},
+				{Kind: tool.ConfirmationDetailArguments, Content: map[string]any{"operation": "write"}},
+			},
+		}},
+		Authenticate: func(ctx context.Context, _ *http.Request) (context.Context, bool, error) {
+			return ctx, true, nil
+		},
+	})
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/confirmation", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"kind":"diff"`) || !strings.Contains(response.Body.String(), `"content":{"operation":"write"}`) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }

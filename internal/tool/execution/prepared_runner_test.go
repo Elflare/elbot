@@ -17,7 +17,7 @@ type snapshotConfirmDeps struct {
 	change func()
 }
 
-func (d *snapshotConfirmDeps) ConfirmToolCall(context.Context, string, llm.ToolCallRequest, share.RiskAssessment, string) (share.ConfirmResult, error) {
+func (d *snapshotConfirmDeps) ConfirmToolCall(context.Context, string, llm.ToolCallRequest, share.RiskAssessment, []share.ConfirmationDetailBlock) (share.ConfirmResult, error) {
 	d.confirmed = true
 	d.change()
 	return share.ConfirmResult{Allowed: true}, nil

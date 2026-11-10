@@ -241,7 +241,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		}
 		var confirm toolshare.ConfirmResult
 		if waitErr := await(func() {
-			confirm, err = m.confirm(toolCtx, deps, actor, sessionID, call, resolved, assessment, prepared.Preview())
+			confirm, err = m.confirm(toolCtx, deps, actor, sessionID, call, resolved, assessment, prepared.ConfirmationDetails())
 		}); waitErr != nil {
 			return toolshare.RunResult{Err: waitErr}
 		}
@@ -325,7 +325,7 @@ func sendBatchToolPreview(ctx context.Context, deps toolshare.RunnerDeps, req to
 	return true
 }
 
-func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor contextinfo.Actor, sessionID string, call llm.ToolCallRequest, resolved resolvedTool, assessment toolshare.RiskAssessment, detail string) (toolshare.ConfirmResult, error) {
+func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor contextinfo.Actor, sessionID string, call llm.ToolCallRequest, resolved resolvedTool, assessment toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (toolshare.ConfirmResult, error) {
 	message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID}
 	if resolved.Source == toolshare.SourceKindELwisp {
 		return toolshare.ConfirmResult{Allowed: true}, nil

@@ -64,11 +64,23 @@ func riskConfirmationWaitingText(commandText func(string, ...string) string) str
 }
 
 func riskConfirmationDetailText(confirmation turn.RiskConfirmation) string {
-	detail := strings.TrimSpace(confirmation.Detail)
-	if detail == "" {
-		detail = formatRiskConfirmationArguments(confirmation.Arguments)
+	parts := make([]string, 0, len(confirmation.Detail))
+	for _, block := range confirmation.Detail {
+		var part string
+		switch block.Kind {
+		case turn.ConfirmationDetailArguments:
+			part = strings.TrimRight(renderRiskValue(block.Content, 0), "\n")
+		default:
+			part = fmt.Sprint(block.Content)
+		}
+		if part != "" {
+			parts = append(parts, part)
+		}
 	}
-	return fmt.Sprintf("%s [%s]\n%s", confirmation.ToolName, confirmation.Risk, detail)
+	if len(parts) == 0 {
+		parts = append(parts, formatRiskConfirmationArguments(confirmation.Arguments))
+	}
+	return fmt.Sprintf("%s [%s]\n%s", confirmation.ToolName, confirmation.Risk, strings.Join(parts, "\n"))
 }
 
 func formatRiskConfirmationArguments(args string) string {

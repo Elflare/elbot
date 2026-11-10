@@ -333,13 +333,26 @@ func (t EditFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 		return nil, err
 	}
 	detail := editFileRiskDetail(args, prepared.Preview())
+	details := editFileConfirmationDetails(detail)
 	assessment := toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"文件内容写入操作需要确认"}}
 	if scope, ok := workspace.PathScopeFromContext(ctx); ok && scope.Restricted {
 		assessment = toolshare.RiskAssessment{Level: toolshare.RiskMedium, Reasons: []string{"文件编辑限制在当前调用工作目录内"}}
 	}
-	return toolshare.NewPreparedCall(req, assessment, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCallWithDetails(req, assessment, detail, details, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, prepared)
 	}), nil
+}
+
+func editFileConfirmationDetails(detail string) []toolshare.ConfirmationDetailBlock {
+	const marker = "\n预检 diff:\n"
+	index := strings.Index(detail, marker)
+	if index < 0 {
+		return []toolshare.ConfirmationDetailBlock{{Kind: toolshare.ConfirmationDetailText, Content: detail}}
+	}
+	return []toolshare.ConfirmationDetailBlock{
+		{Kind: toolshare.ConfirmationDetailText, Content: detail[:index] + "\n预检 diff:"},
+		{Kind: toolshare.ConfirmationDetailDiff, Content: detail[index+len(marker):]},
+	}
 }
 
 func editFileRiskDetail(args editFileArgs, preview fileops.EditResult) string {

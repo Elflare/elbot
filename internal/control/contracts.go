@@ -11,6 +11,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/request"
+	"elbot/internal/tool"
 	"elbot/internal/turn"
 	"elbot/internal/workspace"
 )
@@ -279,12 +280,12 @@ type CurrentConfirmationRequest struct {
 	Refresh bool `json:"refresh"` // 读取详情时刷新原等待的超时，普通查询不刷新。
 }
 type CurrentConfirmationResult struct {
-	SessionID string `json:"session_id"`
-	Kind      string `json:"kind"` // tool 或 append。
-	Detail    string `json:"detail"`
-	ToolName  string `json:"tool_name"`
-	Arguments string `json:"arguments"`
-	Risk      string `json:"risk"`
+	SessionID string                         `json:"session_id"`
+	Kind      string                         `json:"kind"`   // tool 或 append。
+	Detail    []tool.ConfirmationDetailBlock `json:"detail"` // 当前待确认操作的有序内容块。
+	ToolName  string                         `json:"tool_name"`
+	Arguments string                         `json:"arguments"`
+	Risk      string                         `json:"risk"`
 }
 type RespondConfirmationRequest struct {
 	Decision string `json:"decision"` // approve 或 reject。

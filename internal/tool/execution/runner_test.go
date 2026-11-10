@@ -71,7 +71,7 @@ func (d *runnerTestDeps) ShouldSendPreview(context.Context, string) bool {
 	return false
 }
 
-func (d *runnerTestDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment toolshare.RiskAssessment, detail string) (toolshare.ConfirmResult, error) {
+func (d *runnerTestDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (toolshare.ConfirmResult, error) {
 	d.confirmed = true
 	if d.reject {
 		return toolshare.ConfirmResult{Message: toolMessage(call.Name, call.ID, "rejected")}, nil

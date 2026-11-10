@@ -10,6 +10,7 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil"
+	"encoding/json"
 	"errors"
 
 	"testing"
@@ -53,7 +54,7 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 
 			done := make(chan toolshare.ConfirmResult, 1)
 			go func() {
-				result, _ := coordinator.AwaitToolConfirmation(requestCtx, row.ID, llm.ToolCallRequest{ID: "call", Name: "danger", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, "detail")
+				result, _ := coordinator.AwaitToolConfirmation(requestCtx, row.ID, llm.ToolCallRequest{ID: "call", Name: "danger", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, []toolshare.ConfirmationDetailBlock{{Kind: toolshare.ConfirmationDetailText, Content: "detail"}})
 				done <- result
 			}()
 			deadline := time.Now().Add(time.Second)
@@ -126,7 +127,7 @@ func TestConfirmationTerminationAndPromptFailure(t *testing.T) {
 					output.err = errors.New("delivery failed")
 				}
 				coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: testCommandText, Turns: turns, Output: output, Policy: fixedWaitPolicy(time.Second)})
-				result, err := coordinator.AwaitToolConfirmation(ctx, "s", llm.ToolCallRequest{ID: "call", Name: "danger", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, "detail")
+				result, err := coordinator.AwaitToolConfirmation(ctx, "s", llm.ToolCallRequest{ID: "call", Name: "danger", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, []toolshare.ConfirmationDetailBlock{{Kind: toolshare.ConfirmationDetailText, Content: "detail"}})
 				if !result.Stopped || result.Allowed || !errors.Is(err, output.err) {
 					t.Fatalf("err=%v", err)
 				}
@@ -172,7 +173,7 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 		output := confirmationOutput{sent: make(chan []delivery.Action, 2), texts: make(chan string, 2)}
 		commandText := func(name string, args ...string) string { return commandpkg.Format("!", name, args...) }
 		coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: commandText, Turns: turns, Output: output, Policy: fixedWaitPolicy(time.Second)})
-		result, err := coordinator.AwaitToolConfirmation(ctx, "s", llm.ToolCallRequest{ID: "call", Name: "shell", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, "detail")
+		result, err := coordinator.AwaitToolConfirmation(ctx, "s", llm.ToolCallRequest{ID: "call", Name: "shell", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, []toolshare.ConfirmationDetailBlock{{Kind: toolshare.ConfirmationDetailText, Content: "detail"}})
 		if err != nil || !result.Stopped {
 			t.Fatalf("result=%+v err=%v", result, err)
 		}
@@ -235,6 +236,20 @@ func TestCronRiskConfirmationArgumentDetails(t *testing.T) {
 				t.Fatalf("detail:\n%s\nwant:\n%s", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestConfirmationDetailsDefaultsToArgumentsObject(t *testing.T) {
+	details := confirmationDetailsOrArguments(nil, `{"operation":"write","count":2}`)
+	if len(details) != 1 || details[0].Kind != toolshare.ConfirmationDetailArguments {
+		t.Fatalf("details=%+v", details)
+	}
+	args, ok := details[0].Content.(map[string]any)
+	if !ok || args["operation"] != "write" || args["count"] != json.Number("2") {
+		t.Fatalf("arguments content=%#v", details[0].Content)
+	}
+	if got := confirmationDetailsOrArguments(nil, "not-json"); len(got) != 1 || got[0].Kind != toolshare.ConfirmationDetailText || got[0].Content != "not-json" {
+		t.Fatalf("invalid arguments fallback=%+v", got)
 	}
 }
 

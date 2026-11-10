@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 	"sync"
@@ -99,7 +100,7 @@ func (c *ConfirmationCoordinator) Current(ctx context.Context, req control.Curre
 	defer func() { release() }()
 	snapshot := c.turns.Snapshot(row.ID)
 	if snapshot.Phase == turn.PhaseAwaitAppendConfirm {
-		return control.CurrentConfirmationResult{SessionID: row.ID, Kind: "append"}, nil
+		return control.CurrentConfirmationResult{SessionID: row.ID, Kind: "append", Detail: []tool.ConfirmationDetailBlock{}}, nil
 	}
 	pending, ok := c.turns.PendingRiskConfirmation(row.ID)
 	if !ok {
@@ -114,7 +115,7 @@ func (c *ConfirmationCoordinator) Current(ctx context.Context, req control.Curre
 			return control.CurrentConfirmationResult{}, err
 		}
 	}
-	return control.CurrentConfirmationResult{SessionID: row.ID, Kind: "tool", ToolName: pending.ToolName, Arguments: pending.Arguments, Risk: pending.Risk, Detail: pending.Detail}, nil
+	return control.CurrentConfirmationResult{SessionID: row.ID, Kind: "tool", ToolName: pending.ToolName, Arguments: pending.Arguments, Risk: pending.Risk, Detail: fromTurnConfirmationDetails(pending.Detail)}, nil
 }
 
 // Respond 只消费类型化决定，并作用于当前绑定 session 的等待项。
@@ -286,18 +287,19 @@ func (c *ConfirmationCoordinator) publishConfirmationResult(ctx context.Context,
 	})
 }
 
-func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail string) (tool.ConfirmResult, error) {
+func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail []tool.ConfirmationDetailBlock) (tool.ConfirmResult, error) {
 	if c.isSessionAutoConfirmed(sessionID) || c.isToolAutoConfirmed(sessionID, call.Name) {
 		return tool.ConfirmResult{Allowed: true}, nil
 	}
 	fullArgs := compactArguments(call.Arguments)
+	detail = confirmationDetailsOrArguments(detail, fullArgs)
 	previewArgs := previewArguments(fullArgs)
 	timeout := c.policy.WaitTimeout(ctx)
 	wait := c.turns.BeginRiskConfirmation(sessionID, turn.RiskConfirmation{
 		ToolName:  call.Name,
 		Arguments: fullArgs,
 		Risk:      string(assessment.Level),
-		Detail:    detail,
+		Detail:    toTurnConfirmationDetails(detail),
 	}, turn.AttemptFromContext(ctx))
 	defer wait.Cancel()
 	if wait != nil && ctx.Err() == nil {
@@ -383,6 +385,40 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	}
 	c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, action, resp.Extra, "", events.ResultSucceeded, slog.LevelInfo)
 	return tool.ConfirmResult{Allowed: true, Extra: resp.Extra}, nil
+}
+
+func confirmationDetailsOrArguments(details []tool.ConfirmationDetailBlock, argsText string) []tool.ConfirmationDetailBlock {
+	if len(details) > 0 {
+		return details
+	}
+	decoder := json.NewDecoder(strings.NewReader(argsText))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err == nil {
+		var trailing any
+		if err := decoder.Decode(&trailing); err == io.EOF {
+			if _, ok := value.(map[string]any); ok {
+				return []tool.ConfirmationDetailBlock{{Kind: tool.ConfirmationDetailArguments, Content: value}}
+			}
+		}
+	}
+	return []tool.ConfirmationDetailBlock{{Kind: tool.ConfirmationDetailText, Content: argsText}}
+}
+
+func toTurnConfirmationDetails(details []tool.ConfirmationDetailBlock) []turn.ConfirmationDetailBlock {
+	blocks := make([]turn.ConfirmationDetailBlock, len(details))
+	for i, block := range details {
+		blocks[i] = turn.ConfirmationDetailBlock{Kind: turn.ConfirmationDetailKind(block.Kind), Content: block.Content}
+	}
+	return blocks
+}
+
+func fromTurnConfirmationDetails(details []turn.ConfirmationDetailBlock) []tool.ConfirmationDetailBlock {
+	blocks := make([]tool.ConfirmationDetailBlock, len(details))
+	for i, block := range details {
+		blocks[i] = tool.ConfirmationDetailBlock{Kind: tool.ConfirmationDetailKind(block.Kind), Content: block.Content}
+	}
+	return blocks
 }
 
 // NewConfirmationCoordinator initializes ConfirmationCoordinator without installing cross-service callbacks.

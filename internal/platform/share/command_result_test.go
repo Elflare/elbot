@@ -4,6 +4,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/control"
 	"elbot/internal/llm"
+	"elbot/internal/tool"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -45,6 +46,24 @@ func TestFormatCommandResultUsesCallingOperation(t *testing.T) {
 	} {
 		if got := FormatCommandResult(tc.req, &tc.result); !strings.Contains(got, tc.want) {
 			t.Fatalf("got=%q want=%q", got, tc.want)
+		}
+	}
+}
+
+func TestFormatDetailCommandCombinesStructuredBlocks(t *testing.T) {
+	result := &command.Result{Kind: command.ResultKindText, Data: control.CurrentConfirmationResult{
+		ToolName: "edit_file",
+		Risk:     "high",
+		Detail: []tool.ConfirmationDetailBlock{
+			{Kind: tool.ConfirmationDetailText, Content: "文件：notes.md"},
+			{Kind: tool.ConfirmationDetailDiff, Content: "-before\n+after"},
+			{Kind: tool.ConfirmationDetailArguments, Content: map[string]any{"path": "notes.md"}},
+		},
+	}}
+	got := FormatCommandResult(command.Request{Name: "detail"}, result)
+	for _, want := range []string{"edit_file [high]", "文件：notes.md", "-before\n+after", `"path": "notes.md"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("detail output %q does not contain %q", got, want)
 		}
 	}
 }

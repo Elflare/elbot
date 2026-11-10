@@ -210,6 +210,18 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 
 客户端将 `command` 作为新的 `input.text` 提交；权限和目标状态仍由服务端校验，`id` 不是授权凭据。
 
+`GET /api/v1/confirmation` 的 `detail` 在待确认工具调用时是有序内容块数组。块的 `kind` 为 `text`、`diff`、`arguments` 或 `markdown`；`text`、`diff` 和 `markdown` 的 `content` 使用字符串，`arguments` 的 `content` 是 JSON 对象。追加确认时 `detail` 为空数组，没有待确认项时为 `null`。`/detail` 命令仍按块顺序输出可读文本。
+
+```json
+{
+  "kind": "tool",
+  "detail": [
+    {"kind":"text","content":"文件：notes.md\n预检 diff:"},
+    {"kind":"diff","content":"--- a/notes.md\n+++ b/notes.md\n@@ -1 +1 @@\n-before\n+after"}
+  ]
+}
+```
+
 主要数据类别：
 
 | kind | data |

@@ -32,7 +32,7 @@ type outcomeTestDeps struct {
 	confirmErr   error
 }
 
-func (d *outcomeTestDeps) ConfirmToolCall(context.Context, string, llm.ToolCallRequest, toolshare.RiskAssessment, string) (toolshare.ConfirmResult, error) {
+func (d *outcomeTestDeps) ConfirmToolCall(context.Context, string, llm.ToolCallRequest, toolshare.RiskAssessment, []toolshare.ConfirmationDetailBlock) (toolshare.ConfirmResult, error) {
 	d.confirmed = true
 	return d.confirmation, d.confirmErr
 }

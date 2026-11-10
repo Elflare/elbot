@@ -1072,6 +1072,10 @@ func TestEditFileToolRiskDetailFormatsEdits(t *testing.T) {
 	if strings.Contains(detail, `new line 1\nnew line 2`) {
 		t.Fatalf("detail contains escaped newlines:\n%s", detail)
 	}
+	details := prepared.ConfirmationDetails()
+	if len(details) != 2 || details[0].Kind != toolshare.ConfirmationDetailText || details[1].Kind != toolshare.ConfirmationDetailDiff || !strings.Contains(details[1].Content.(string), "-old line") {
+		t.Fatalf("structured confirmation details=%+v", details)
+	}
 }
 
 func TestEditFileToolSchemaExposesEditProtocol(t *testing.T) {

@@ -64,7 +64,7 @@ func (m *Supervisor) RegisterTools(ctx context.Context, source Source, scope Too
 				if prepared == nil || prepared.Run == nil {
 					return nil, fmt.Errorf("tool %q returned no prepared operation", req.Name)
 				}
-				return share.NewPreparedCall(req, share.RiskAssessment(prepared.Risk), prepared.Preview, func(ctx context.Context) (*share.Result, string, error) {
+				return share.NewPreparedCallWithDetails(req, share.RiskAssessment(prepared.Risk), prepared.Preview, prepared.Details, func(ctx context.Context) (*share.Result, string, error) {
 					result, logContent, err := prepared.Run(ctx)
 					return toInternalResult(result), logContent, err
 				}), nil

@@ -74,12 +74,24 @@ type DetailBlock struct {
 	Format  string `json:"format"`  // markdown 或 elyph。
 }
 
+type ConfirmationDetailKind = share.ConfirmationDetailKind
+
+const (
+	ConfirmationDetailText      = share.ConfirmationDetailText
+	ConfirmationDetailDiff      = share.ConfirmationDetailDiff
+	ConfirmationDetailArguments = share.ConfirmationDetailArguments
+	ConfirmationDetailMarkdown  = share.ConfirmationDetailMarkdown
+)
+
+type ConfirmationDetailBlock = share.ConfirmationDetailBlock
+
 var ErrToolDetailNotFound = errors.New("tool detail not found")
 
 // PreparedCall 是外部实现准备好的操作；根部将其封装为固定参数的内部调用。
 type PreparedCall struct {
 	Risk    RiskAssessment                                 // 本次操作风险。
 	Preview string                                         // 确认预览。
+	Details []ConfirmationDetailBlock                      // 确认预览的结构化内容；为空时使用 Preview 作为纯文本。
 	Run     func(context.Context) (*Result, string, error) // 确认后执行的操作。
 }
 
@@ -196,7 +208,7 @@ type RunnerDeps interface {
 	RefreshExecution(context.Context, *storage.Session) (context.Context, error)
 	PrepareToolCall(context.Context, *storage.Session, llm.ToolCallRequest) (llm.ToolCallRequest, error)
 	ShouldSendPreview(context.Context, string) bool
-	ConfirmToolCall(context.Context, string, llm.ToolCallRequest, RiskAssessment, string) (ConfirmResult, error)
+	ConfirmToolCall(context.Context, string, llm.ToolCallRequest, RiskAssessment, []ConfirmationDetailBlock) (ConfirmResult, error)
 	StartToolRequest(context.Context, string, string) (context.Context, func(), error)
 	PrepareToolContext(context.Context, *storage.Session, llm.ToolCallRequest) context.Context
 	CompleteToolCall(context.Context, *storage.Session, llm.ToolCallRequest, string, []llm.MessageSegment, error) ([]llm.MessageSegment, error)

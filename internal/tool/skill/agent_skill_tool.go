@@ -52,10 +52,18 @@ func (t AgentSkillTool) PrepareCall(ctx context.Context, req toolshare.CallReque
 		return nil, err
 	}
 	detail := fmt.Sprintf("读取 AgentSkill %s 的 %s", preview.Name, AgentSkillConfigFile)
+	var details []toolshare.ConfirmationDetailBlock
 	if preview.Action == "write" {
 		detail = fmt.Sprintf("写入 AgentSkill %s 的 %s\n文件：%s\ndiff:\n%s", preview.Name, AgentSkillConfigFile, preview.Path, preview.File.Preview().Diff)
+		details = []toolshare.ConfirmationDetailBlock{
+			{Kind: toolshare.ConfirmationDetailText, Content: fmt.Sprintf("写入 AgentSkill %s 的 %s\n文件：%s\ndiff:", preview.Name, AgentSkillConfigFile, preview.Path)},
+			{Kind: toolshare.ConfirmationDetailDiff, Content: preview.File.Preview().Diff},
+		}
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
+	if len(details) == 0 {
+		details = []toolshare.ConfirmationDetailBlock{{Kind: toolshare.ConfirmationDetailText, Content: detail}}
+	}
+	return toolshare.NewPreparedCallWithDetails(req, toolshare.RiskAssessment{Level: info.Risk}, detail, details, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, preview)
 	}), nil
 }

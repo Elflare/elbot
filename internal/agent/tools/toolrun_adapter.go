@@ -110,7 +110,7 @@ func (d toolRunDeps) ShouldSendPreview(ctx context.Context, assistantText string
 	return d.identity.IsCLI(ctx) || strings.TrimSpace(assistantText) == ""
 }
 
-func (d toolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail string) (tool.ConfirmResult, error) {
+func (d toolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail []tool.ConfirmationDetailBlock) (tool.ConfirmResult, error) {
 	return d.confirmations.AwaitToolConfirmation(ctx, sessionID, call, assessment, detail)
 }
 
@@ -175,7 +175,7 @@ type ToolIdentity interface {
 }
 
 type ToolConfirmations interface {
-	AwaitToolConfirmation(context.Context, string, llm.ToolCallRequest, tool.RiskAssessment, string) (tool.ConfirmResult, error)
+	AwaitToolConfirmation(context.Context, string, llm.ToolCallRequest, tool.RiskAssessment, []tool.ConfirmationDetailBlock) (tool.ConfirmResult, error)
 }
 
 // ToolRunDeps declares the application bridge consumed by ToolRun. Per-turn
