@@ -51,11 +51,11 @@ func (m *Supervisor) PendingRiskConfirmation(sessionID string) (RiskConfirmation
 }
 
 func toLifecycleRiskConfirmation(confirmation RiskConfirmation) lifecycle.RiskConfirmation {
-	return lifecycle.RiskConfirmation{ToolName: confirmation.ToolName, Risk: confirmation.Risk, Detail: append([]ConfirmationDetailBlock(nil), confirmation.Detail...)}
+	return lifecycle.RiskConfirmation{ToolName: confirmation.ToolName, Risk: confirmation.Risk, Reasons: append([]string(nil), confirmation.Reasons...), Detail: append([]ConfirmationDetailBlock(nil), confirmation.Detail...)}
 }
 
 func fromLifecycleRiskConfirmation(confirmation lifecycle.RiskConfirmation) RiskConfirmation {
-	return RiskConfirmation{ToolName: confirmation.ToolName, Risk: confirmation.Risk, Detail: append([]ConfirmationDetailBlock(nil), confirmation.Detail...)}
+	return RiskConfirmation{ToolName: confirmation.ToolName, Risk: confirmation.Risk, Reasons: append([]string(nil), confirmation.Reasons...), Detail: append([]ConfirmationDetailBlock(nil), confirmation.Detail...)}
 }
 func (m *Supervisor) StartToolPhase(sessionID, attempt string) bool {
 	return m.lifecycle.StartToolPhase(sessionID, attempt)

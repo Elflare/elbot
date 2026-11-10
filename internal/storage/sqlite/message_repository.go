@@ -325,7 +325,18 @@ func scanMessage(row interface{ Scan(dest ...any) error }) (*storage.Message, er
 }
 
 func (r *MessageRepository) conversationRange(ctx context.Context, sessionID, toMessageID string) (string, []any, error) {
-	where := "session_id = ? AND role IN ('user','assistant') AND (length(trim(content, char(9,10,11,12,13,32))) > 0 OR EXISTS (SELECT 1 FROM json_each(segments) WHERE json_extract(value, '$.type') IN ('image','file')))"
+	where := `session_id = ? AND (
+		(role IN ('user','assistant') AND (
+			length(trim(content, char(9,10,11,12,13,32))) > 0
+			OR EXISTS (SELECT 1 FROM json_each(segments) WHERE json_extract(value, '$.type') IN ('image','file'))
+		))
+		OR (role = 'assistant' AND (
+			length(trim(reasoning_content, char(9,10,11,12,13,32))) > 0
+			OR COALESCE(tool_calls, '[]') <> '[]'
+			OR tool_batch_status <> ''
+		))
+		OR (role = 'tool' AND tool_call_id <> '')
+	)`
 	args := []any{sessionID}
 	if toMessageID != "" {
 		at, rowID, err := r.messagePosition(ctx, sessionID, toMessageID)

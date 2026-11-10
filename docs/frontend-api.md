@@ -210,7 +210,7 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 
 客户端将 `command` 作为新的 `input.text` 提交；权限和目标状态仍由服务端校验，`id` 不是授权凭据。
 
-`GET /api/v1/confirmation` 的 `detail` 在待确认工具调用时是有序内容块数组，包含工具预览和末尾的完整参数对象。块的 `kind` 为 `text`、`diff`、`arguments` 或 `markdown`；`text`、`diff` 和 `markdown` 的 `content` 使用字符串，`arguments` 的 `content` 是 JSON 对象。文件变更预览仅在完整 diff 可用时返回 `diff` 块；diff 因大小或复杂度限制被省略时，返回工具提供的 `text` fallback。追加确认时 `detail` 为空数组，没有待确认项时为 `null`。
+`GET /api/v1/confirmation` 的待确认结果包含 `detail` 和 `actions`。`detail` 是有序内容块：`kind` 为 `text`、`diff`、`arguments`、`markdown` 或 `commands`；`text`、`diff`、`markdown` 和 `commands` 的 `content` 使用字符串，`arguments` 的 `content` 是 JSON 对象。文件变更预览仅在完整 diff 可用时返回 `diff` 块；diff 因大小或复杂度限制被省略时，返回工具提供的 `text` fallback。`actions` 是当前确认可用的按钮数据，客户端按 `id` 和 `label` 展示，并提交对应操作。追加确认时 `detail` 为空数组；没有待确认项时 `kind` 为空且 `detail` 为 `null`。
 
 ```json
 {
@@ -238,7 +238,7 @@ GET 使用 `Content-Disposition: attachment` 和 `X-Content-Type-Options: nosnif
 
 `/messages` 默认读取第 1 页，每页 20 条。第 1 页最新，页码递增向更早历史读取；每页内按对话顺序排列。向上加载时将更早页面插到顶部，并按消息 ID 去重。页码查询期间有新消息时页面边界可以移动，不提供跨请求快照。空历史返回 `items=[]`、`total_pages=0`。
 
-历史消息的 `reasoning_content` 返回已保存的思考文本；助手工具调用通过 `tool_calls` 数组返回，工具结果消息通过 `tool_call_id`、`tool_name` 和完整正文关联。工具调用及结果状态由 `tool_batch_status`、`tool_result_status` 表示。`source_content` 只在模型原文与 `content` 不同时返回。消息接口不返回内部 `metadata`。实时 `tool_result` 事件仍包含调用 ID、工具名、成功状态及完整结果 segments。确认详情通过现有 confirmation 接口返回；自动确认的工具直接显示执行结果。
+历史消息的 `reasoning_content` 返回已保存的思考文本；助手工具调用通过 `tool_calls` 数组返回，工具结果消息通过 `tool_call_id`、`tool_name` 和完整正文关联。工具调用及结果状态由 `tool_batch_status`、`tool_result_status` 表示。分页包含有正文/附件的普通对话消息，以及有推理、工具调用批次或工具调用 ID 的记录。`source_content` 只在模型原文与 `content` 不同时返回。消息接口不返回内部 `metadata`。实时 `tool_result` 事件仍包含调用 ID、工具名、成功状态及完整结果 segments。确认详情通过现有 confirmation 接口返回；自动确认的工具直接显示执行结果。
 
 `/status` 的 `context` 包含 `usage`、`context_window`、`compact_enabled`、`compact_trigger_ratio`。用量字段为 `prompt_tokens`、`completion_tokens`、`total_tokens`、`cache_hit_tokens`；null 表示未知，0 是已知零值。上下文比例使用已知 total/window，缓存命中率使用已知 cache/prompt，不推算缺失计数。此处阶段来自 Turn；实时 `status` 帧仍使用 Runtime 快照。
 

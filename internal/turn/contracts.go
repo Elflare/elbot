@@ -22,6 +22,7 @@ const (
 type RiskConfirmation struct {
 	ToolName string
 	Risk     string
+	Reasons  []string
 	Detail   []ConfirmationDetailBlock // 当前待确认操作的有序内容块。
 }
 

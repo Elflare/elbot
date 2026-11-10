@@ -81,6 +81,7 @@ const (
 	ConfirmationDetailDiff      = share.ConfirmationDetailDiff
 	ConfirmationDetailArguments = share.ConfirmationDetailArguments
 	ConfirmationDetailMarkdown  = share.ConfirmationDetailMarkdown
+	ConfirmationDetailCommands  = share.ConfirmationDetailCommands
 )
 
 type ConfirmationDetailBlock = share.ConfirmationDetailBlock

@@ -77,6 +77,7 @@ const (
 	ConfirmationDetailDiff      = delivery.ContentDiff
 	ConfirmationDetailArguments = delivery.ContentArguments
 	ConfirmationDetailMarkdown  = delivery.ContentMarkdown
+	ConfirmationDetailCommands  = delivery.ContentCommands
 )
 
 type ConfirmationDetailBlock = delivery.ContentBlock

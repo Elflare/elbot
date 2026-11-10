@@ -100,7 +100,7 @@ func (c *ConfirmationCoordinator) Current(ctx context.Context, req control.Curre
 	defer func() { release() }()
 	snapshot := c.turns.Snapshot(row.ID)
 	if snapshot.Phase == turn.PhaseAwaitAppendConfirm {
-		return control.CurrentConfirmationResult{SessionID: row.ID, Kind: "append", Detail: []tool.ConfirmationDetailBlock{}}, nil
+		return control.CurrentConfirmationResult{SessionID: row.ID, Kind: "append", Detail: []tool.ConfirmationDetailBlock{}, Actions: AppendConfirmationActions(c.commandText)}, nil
 	}
 	pending, ok := c.turns.PendingRiskConfirmation(row.ID)
 	if !ok {
@@ -115,7 +115,13 @@ func (c *ConfirmationCoordinator) Current(ctx context.Context, req control.Curre
 			return control.CurrentConfirmationResult{}, err
 		}
 	}
-	return control.CurrentConfirmationResult{SessionID: row.ID, Kind: "tool", ToolName: pending.ToolName, Risk: pending.Risk, Detail: fromTurnConfirmationDetails(pending.Detail), Actions: riskConfirmationActions(c.commandText).Actions}, nil
+	detail := []tool.ConfirmationDetailBlock{{Kind: tool.ConfirmationDetailText, Content: fmt.Sprintf("%s [%s]: confirm", pending.ToolName, pending.Risk)}}
+	detail = append(detail, fromTurnConfirmationDetails(pending.Detail)...)
+	if reasons := riskReasonsText(pending.Reasons); reasons != "" {
+		detail = append(detail, tool.ConfirmationDetailBlock{Kind: tool.ConfirmationDetailText, Content: reasons})
+	}
+	detail = append(detail, tool.ConfirmationDetailBlock{Kind: tool.ConfirmationDetailCommands, Content: riskConfirmationPromptText(c.policy.WaitTimeout(ctx), c.commandText)})
+	return control.CurrentConfirmationResult{SessionID: row.ID, Kind: "tool", ToolName: pending.ToolName, Risk: pending.Risk, Detail: detail, Actions: riskConfirmationActions(c.commandText).Actions}, nil
 }
 
 // Respond 只消费类型化决定，并作用于当前绑定 session 的等待项。
@@ -300,6 +306,7 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	wait := c.turns.BeginRiskConfirmation(sessionID, turn.RiskConfirmation{
 		ToolName: call.Name,
 		Risk:     string(assessment.Level),
+		Reasons:  append([]string(nil), assessment.Reasons...),
 		Detail:   toTurnConfirmationDetails(detail),
 	}, turn.AttemptFromContext(ctx))
 	defer wait.Cancel()

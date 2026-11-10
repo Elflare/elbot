@@ -251,6 +251,11 @@ schemas:
             kind: { const: arguments }
             content: { type: object, additionalProperties: true }
           required: [kind, content]
+        - type: object
+          properties:
+            kind: { const: commands }
+            content: { type: string }
+          required: [kind, content]
     StreamEvent:
       type: object
       properties:
@@ -299,9 +304,19 @@ schemas:
           type: [array, 'null']
           items: { $ref: '#/schemas/ConfirmationDetailBlock' }
           description: Ordered tool confirmation detail blocks. File changes use diff blocks when complete diffs are available and text blocks as fallback when omitted; empty for append confirmation and null when no confirmation is pending.
+        actions:
+          type: [array, 'null']
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              label: { type: string }
+              command: { type: string }
+            required: [id, label, command]
+          description: Available controls for the current pending confirmation.
         tool_name: { type: string }
         risk: { type: string }
-      required: [session_id, kind, detail, tool_name, risk]
+      required: [session_id, kind, detail, actions, tool_name, risk]
     Hook:
       type: object
       properties:

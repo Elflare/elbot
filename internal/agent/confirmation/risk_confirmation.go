@@ -54,10 +54,6 @@ func riskConfirmationPromptText(timeout time.Duration, commandText func(string, 
 	return text
 }
 
-func riskConfirmationWaitingText(commandText func(string, ...string) string) string {
-	return "待确认\n" + riskConfirmationCommandHelp(commandText)
-}
-
 func RiskConfirmationCommandNames() []string {
 	commands := riskConfirmationCommands()
 	names := make([]string, 0, len(commands)*2)
@@ -74,4 +70,11 @@ func riskConfirmationActions(commandText func(string, ...string) string) *delive
 		presentation.Actions = append(presentation.Actions, delivery.Action{ID: item.Name, Label: item.Description, Command: commandText(item.Name)})
 	}
 	return presentation
+}
+
+func AppendConfirmationActions(commandText func(string, ...string) string) []delivery.Action {
+	return []delivery.Action{
+		{ID: "append_confirm", Label: "继续发送", Command: commandText("confirm")},
+		{ID: "append_cancel", Label: "取消追加", Command: commandText("stop")},
+	}
 }

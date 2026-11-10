@@ -12,6 +12,7 @@ import (
 	"elbot/internal/testutil"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"testing"
 	"testing/synctest"
@@ -183,7 +184,7 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 		}
 		actions := <-output.sent
 		blocks := <-output.blocks
-		if len(blocks) < 3 || blocks[0].Kind != delivery.ContentText || blocks[0].Content != "shell [high]: confirm" || blocks[1].Kind != delivery.ContentText || blocks[1].Content != "detail" || blocks[len(blocks)-1].Kind != delivery.ContentText {
+		if len(blocks) < 3 || blocks[0].Kind != delivery.ContentText || blocks[0].Content != "shell [high]: confirm" || blocks[1].Kind != delivery.ContentText || blocks[1].Content != "detail" || blocks[len(blocks)-1].Kind != delivery.ContentCommands {
 			t.Fatalf("confirmation blocks=%#v", blocks)
 		}
 		if len(output.texts) != 2 || len(output.sent) != 1 {
@@ -210,6 +211,45 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 		}
 		turns.FinishAttempt("s", "a")
 	})
+}
+
+func TestAppendConfirmationActionsUseProvidedCommandPrefix(t *testing.T) {
+	actions := AppendConfirmationActions(func(name string, _ ...string) string { return "!" + name })
+	if len(actions) != 2 || actions[0].ID != "append_confirm" || actions[0].Command != "!confirm" || actions[1].ID != "append_cancel" || actions[1].Command != "!stop" {
+		t.Fatalf("append actions=%+v", actions)
+	}
+}
+
+func TestCurrentRiskConfirmationReturnsBlocksAndActions(t *testing.T) {
+	store, err := sqlite.New(t.Context(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	sessions := newSessionSupervisor(t, store)
+	t.Cleanup(func() { _ = sessions.Close(context.Background()) })
+	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})
+	row, err := sessions.Create(t.Context(), identity.Scope(testutil.WithCLIConversation(t.Context())), session.CreateRequest{Title: "confirmation"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turns := turn.NewSupervisor(testutil.IDSequence())
+	t.Cleanup(func() { turns.StopAll() })
+	execution := turn.NewExecution("run")
+	if !turns.StartAttempt(row.ID, turn.Input{}, execution, "attempt") || !turns.StartToolPhase(row.ID, "attempt") {
+		t.Fatal("start tool phase")
+	}
+	if turns.BeginRiskConfirmation(row.ID, turn.RiskConfirmation{ToolName: "shell", Risk: "high", Reasons: []string{"requires approval"}, Detail: []turn.ConfirmationDetailBlock{{Kind: turn.ConfirmationDetailDiff, Content: "-old\n+new"}}}, "attempt") == nil {
+		t.Fatal("begin risk confirmation")
+	}
+	coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: testCommandText, Sessions: sessions, Turns: turns, Identity: identity, Policy: fixedWaitPolicy(time.Minute)})
+	got, err := coordinator.Current(testutil.WithCLIConversation(t.Context()), control.CurrentConfirmationRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SessionID != row.ID || got.Kind != "tool" || len(got.Detail) != 4 || got.Detail[0].Content != "shell [high]: confirm" || !strings.Contains(got.Detail[2].Content.(string), "requires approval") || got.Detail[3].Kind != delivery.ContentCommands || len(got.Actions) != 6 {
+		t.Fatalf("confirmation snapshot=%+v", got)
+	}
 }
 
 func TestConfirmationDetailsAppendsArgumentsObject(t *testing.T) {

@@ -483,8 +483,8 @@ type MessageStats struct {
 
 type MessageRepository interface {
 	Stats(context.Context, string) (MessageStats, error)
-	CountConversationMessages(ctx context.Context, sessionID, toMessageID string) (int, error)                         // 对指定分支范围的用户与助手消息计数。
-	ListConversationMessages(ctx context.Context, sessionID, toMessageID string, limit, offset int) ([]Message, error) // 限量倒序读取原始对话，不应用压缩摘要。
+	CountConversationMessages(ctx context.Context, sessionID, toMessageID string) (int, error)                         // 对指定分支范围的对话及工具记录计数。
+	ListConversationMessages(ctx context.Context, sessionID, toMessageID string, limit, offset int) ([]Message, error) // 限量倒序读取原始对话及工具记录，不应用压缩摘要。
 	Append(ctx context.Context, message *Message) error
 	Get(ctx context.Context, id string) (*Message, error)
 	ListBySession(ctx context.Context, sessionID string) ([]Message, error)

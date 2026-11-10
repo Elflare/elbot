@@ -115,3 +115,38 @@ func TestMessagePageCutoffCanBelongToEarlierAncestor(t *testing.T) {
 		t.Fatalf("page=%+v read=%d", got, repo.read)
 	}
 }
+
+func TestMessagePageIncludesToolTranscriptWithoutAssistantText(t *testing.T) {
+	store, err := sqlite.New(t.Context(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	session := storage.Session{ID: "tools", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private"}
+	if err := store.Sessions().Create(t.Context(), &session); err != nil {
+		t.Fatal(err)
+	}
+	rows := []storage.Message{
+		{ID: "user", SessionID: session.ID, Role: storage.RoleUser, Content: "run tools"},
+		{ID: "call", SessionID: session.ID, Role: storage.RoleAssistant, ToolCalls: []storage.ToolCall{{ID: "call-1", Name: "shell", Arguments: `{"cmd":"pwd"}`}}, ToolBatchStatus: "interrupted"},
+		{ID: "result", SessionID: session.ID, Role: storage.RoleTool, ToolCallID: "call-1", ToolName: "shell", ToolResultStatus: "completed", Content: "done"},
+		{ID: "reasoning", SessionID: session.ID, Role: storage.RoleAssistant, ReasoningContent: "checking results"},
+	}
+	for i := range rows {
+		if err := store.Messages().Append(t.Context(), &rows[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := (Loader{Store: store}).LoadMessagePage(t.Context(), session.ID, 1, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.TotalPages != 1 || len(page.Messages) != len(rows) {
+		t.Fatalf("page=%+v", page)
+	}
+	for i, want := range []string{"user", "call", "result", "reasoning"} {
+		if page.Messages[i].ID != want {
+			t.Fatalf("messages[%d]=%q, want %q", i, page.Messages[i].ID, want)
+		}
+	}
+}
