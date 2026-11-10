@@ -411,9 +411,9 @@ func sessionData(row *storage.Session) *SessionData {
 func messageData(rows []storage.Message) ([]MessageData, error) {
 	result := make([]MessageData, 0, len(rows))
 	for _, row := range rows {
-		item := MessageData{ID: row.ID, SessionID: row.SessionID, Role: row.Role, Content: row.Content, SourceContent: row.SourceContent, ReasoningContent: row.ReasoningContent, ParentMessageID: row.ParentMessageID, ReplyToPlatformMessageID: row.ReplyToPlatformMessageID, ReplyToMessageID: row.ReplyToMessageID, ToolCallID: row.ToolCallID, ToolCalls: row.ToolCalls, ToolName: row.ToolName, ToolBatchStatus: row.ToolBatchStatus, ToolResultStatus: row.ToolResultStatus, CreatedAt: row.CreatedAt}
-		if item.ToolCalls == nil {
-			item.ToolCalls = []storage.ToolCall{}
+		item := MessageData{ID: row.ID, SessionID: row.SessionID, Role: row.Role, Content: row.Content, SourceContent: row.SourceContent, ReasoningContent: row.ReasoningContent, ParentMessageID: row.ParentMessageID, ReplyToPlatformMessageID: row.ReplyToPlatformMessageID, ReplyToMessageID: row.ReplyToMessageID, ToolCallID: row.ToolCallID, ToolCalls: make([]ToolCallData, len(row.ToolCalls)), ToolName: row.ToolName, ToolBatchStatus: row.ToolBatchStatus, ToolResultStatus: row.ToolResultStatus, CreatedAt: row.CreatedAt}
+		for i, call := range row.ToolCalls {
+			item.ToolCalls[i] = ToolCallData{ID: call.ID, Name: call.Name, Arguments: call.Arguments}
 		}
 		var segments []llm.MessageSegment
 		if row.Segments != "" {

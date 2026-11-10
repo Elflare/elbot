@@ -59,7 +59,7 @@ func TestHistoryChecksScopeAndPreservesMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := MessageData{ID: message.ID, SessionID: message.SessionID, Role: message.Role, Content: message.Content, SourceContent: message.SourceContent, ReasoningContent: message.ReasoningContent, ParentMessageID: message.ParentMessageID, ReplyToPlatformMessageID: message.ReplyToPlatformMessageID, ReplyToMessageID: message.ReplyToMessageID, ToolCallID: message.ToolCallID, Segments: segments, ToolCalls: message.ToolCalls, ToolBatchStatus: message.ToolBatchStatus, CreatedAt: message.CreatedAt}
+	want := MessageData{ID: message.ID, SessionID: message.SessionID, Role: message.Role, Content: message.Content, SourceContent: message.SourceContent, ReasoningContent: message.ReasoningContent, ParentMessageID: message.ParentMessageID, ReplyToPlatformMessageID: message.ReplyToPlatformMessageID, ReplyToMessageID: message.ReplyToMessageID, ToolCallID: message.ToolCallID, Segments: segments, ToolCalls: []ToolCallData{{ID: "call-1", Name: "shell", Arguments: `{"command":"pwd"}`}}, ToolBatchStatus: message.ToolBatchStatus, CreatedAt: message.CreatedAt}
 	if !reflect.DeepEqual(result.Items, []MessageData{want}) {
 		t.Fatalf("history data: %+v", result)
 	}
@@ -71,8 +71,8 @@ func TestHistoryChecksScopeAndPreservesMessages(t *testing.T) {
 	if _, hasMetadata := fields["metadata"]; err != nil || hasMetadata {
 		t.Fatalf("history JSON = %s, err=%v", encoded, err)
 	}
-	var gotCalls []storage.ToolCall
-	if err := json.Unmarshal(fields["tool_calls"], &gotCalls); err != nil || !reflect.DeepEqual(gotCalls, message.ToolCalls) {
+	var gotCalls []ToolCallData
+	if err := json.Unmarshal(fields["tool_calls"], &gotCalls); err != nil || !reflect.DeepEqual(gotCalls, want.ToolCalls) {
 		t.Fatalf("tool calls JSON = %s, parsed=%+v, err=%v", fields["tool_calls"], gotCalls, err)
 	}
 	if provider.page != 1 || provider.pageSize != 250 || result.PageSize != 250 {

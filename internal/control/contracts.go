@@ -11,7 +11,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/request"
-	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"elbot/internal/turn"
 	"elbot/internal/workspace"
@@ -65,12 +64,20 @@ type MessageData struct {
 	ReplyToMessageID         string               `json:"reply_to_message_id"`
 	ToolCallID               string               `json:"tool_call_id"`
 	Segments                 []llm.MessageSegment `json:"segments"` // 保留原有顺序与媒体引用；出口自行处理展示与授权。
-	ToolCalls                []storage.ToolCall   `json:"tool_calls"`
+	ToolCalls                []ToolCallData       `json:"tool_calls"`
 	ToolName                 string               `json:"tool_name,omitempty"`
 	ToolBatchStatus          string               `json:"tool_batch_status,omitempty"`
 	ToolResultStatus         string               `json:"tool_result_status,omitempty"`
 	CreatedAt                time.Time            `json:"created_at"`
 }
+
+// ToolCallData is the tool invocation shape exposed by the history API.
+type ToolCallData struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
 type SessionSummaryData struct {
 	SessionData
 	MessageCount         int           `json:"message_count"`
