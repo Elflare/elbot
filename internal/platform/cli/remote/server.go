@@ -304,8 +304,8 @@ type remoteMessageStream struct {
 }
 
 func (s remoteMessageStream) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
-	err := s.client.write(ctx, remoteMessage{Type: remoteMsgStream, StreamID: s.id, Event: &event})
-	return delivery.Receipt{}, err
+	_ = s.client.write(ctx, remoteMessage{Type: remoteMsgStream, StreamID: s.id, Event: &event})
+	return delivery.Receipt{}, nil
 }
 
 func (s *RemoteServer) messageContext(ctx context.Context, client *remoteClientConn) context.Context {

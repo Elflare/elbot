@@ -289,6 +289,8 @@ func (s *RemoteServer) prepareInputFiles(ctx context.Context, text string, files
 func (s *RemoteServer) sendOutputs(ctx context.Context, clients []*remoteClientConn, outputs []delivery.Output) error {
 	sent := 0
 	var failures []error
+
+clientLoop:
 	for _, client := range clients {
 		var sendErr error
 		for _, out := range outputs {
@@ -305,10 +307,11 @@ func (s *RemoteServer) sendOutputs(ctx context.Context, clients []*remoteClientC
 				}
 				msg = remoteMessage{Type: remoteMsgAttachment, Attachment: &file}
 			}
-			if sendErr = client.write(ctx, msg); sendErr != nil {
+			if err := client.write(ctx, msg); err != nil {
 				s.removeClient(client)
 				_ = client.conn.CloseNow()
-				break
+				delivery.LogSendResult(ctx, delivery.Target{Platform: s.name, ChatType: contextinfo.ChatPrivate, ChatID: client.id}, delivery.FallbackOutput(outputs), err)
+				continue clientLoop
 			}
 		}
 		if sendErr != nil {

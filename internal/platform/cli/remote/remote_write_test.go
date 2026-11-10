@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/delivery"
 	"github.com/coder/websocket"
 )
 
@@ -64,6 +65,45 @@ func TestRemoteWriteWaitingOnAnotherWriterRespectsContext(t *testing.T) {
 		_ = conn.CloseNow()
 		<-secondDone
 		t.Fatal("second write did not respect its context while another write was blocked")
+	}
+}
+
+func TestRemoteOutputWriteFailureDoesNotReturnToAgent(t *testing.T) {
+	accepted := make(chan *websocket.Conn, 1)
+	host := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.CloseNow()
+		accepted <- conn
+		<-r.Context().Done()
+	}))
+	defer host.Close()
+
+	peer, _, err := websocket.Dial(t.Context(), "ws"+strings.TrimPrefix(host.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.CloseNow()
+	conn := <-accepted
+	s := &RemoteServer{
+		name: testPlatformName, clients: map[string]map[*remoteClientConn]struct{}{},
+		mediaClients: map[string]*remoteClientConn{}, apiClients: map[string]*remoteClientConn{},
+	}
+	client := &remoteClientConn{id: "disconnected", conn: conn, server: s}
+	s.addClient(client)
+	if err := conn.CloseNow(); err != nil {
+		t.Fatal(err)
+	}
+
+	stream := remoteMessageStream{client: client, id: 1}
+	if _, err := stream.Send(t.Context(), delivery.StreamEvent{Type: delivery.StreamTextDelta, Text: "partial"}); err != nil {
+		t.Fatalf("stream write failure escaped to Agent: %v", err)
+	}
+	if err := s.sendOutputs(t.Context(), []*remoteClientConn{client}, []delivery.Output{delivery.Text("tool output")}); err != nil {
+		t.Fatalf("output write failure escaped to Agent: %v", err)
 	}
 }
 
