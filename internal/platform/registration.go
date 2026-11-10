@@ -65,7 +65,6 @@ func registrations(frontendDir string) []registration {
 				adapter.SetCompleter(source.Complete)
 				adapter.SetControlContinuation(source.ContinueControlInput)
 				ui, err := cli.ConnectUI(common.PlatformName, agentEvents{source})
-				m.ui = ui
 				if ui != nil {
 					m.agentCloseSteps = append(m.agentCloseSteps, closeStep{"cli UI", ui.Close})
 				}

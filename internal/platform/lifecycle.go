@@ -79,23 +79,21 @@ func (l *lifecycle) Start() error {
 		case <-l.ingressDone:
 		}
 	}()
-	if err == nil {
-		for _, runtime := range l.runtimes {
-			if l.ctx.Err() != nil {
-				err = l.parent.Err()
-				break
-			}
-			l.mu.Lock()
-			runtime.attempted = true
-			runtime.running = true
-			l.mu.Unlock()
-			startErr := runtime.start(l.ctx)
-			l.monitorWG.Add(1)
-			go l.observe(runtime)
-			if startErr != nil {
-				err = fmt.Errorf("start %s: %w", runtime.name, startErr)
-				break
-			}
+	for _, runtime := range l.runtimes {
+		if l.ctx.Err() != nil {
+			err = l.parent.Err()
+			break
+		}
+		l.mu.Lock()
+		runtime.attempted = true
+		runtime.running = true
+		l.mu.Unlock()
+		startErr := runtime.start(l.ctx)
+		l.monitorWG.Add(1)
+		go l.observe(runtime)
+		if startErr != nil {
+			err = fmt.Errorf("start %s: %w", runtime.name, startErr)
+			break
 		}
 	}
 	l.mu.Lock()
