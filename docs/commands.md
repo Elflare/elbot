@@ -44,9 +44,9 @@ slash 命令由 Agent Core 统一处理，CLI、QQ 等平台共享同一套语�
 | --- | --- |
 | `/new` | 创建并切换到新 Session。 |
 | `/status` | 当前 Session 状态。 |
-| `/sessions [页码] [-k\|--keyword <关键词>]` | 列出或搜索可见 Session。 |
-| `/resume [session_id\|last]` | 恢复历史 Session。 |
-| `/archives [页码] [-k\|--keyword <关键词>]` | 已归档 Session 列表。 |
+| `/sessions [页码] [-k\|--keyword <关键词>] [-a\|--all]` | 列出或搜索当前平台 Session；超管可用 `-a/--all` 查看所有平台。 |
+| `/resume [session_id\|last\|--page <页码>] [-a\|--all]` | 恢复历史 Session；裸命令列出当前平台会话，超管可为列表或 `last` 加 `-a/--all`。 |
+| `/archives [页码] [-k\|--keyword <关键词>] [-a\|--all]` | 已归档 Session 列表；默认当前平台，超管可用 `-a/--all` 查看所有平台。 |
 | `/archive [session_id] --confirm` | 归档。 |
 | `/unarchive [session_id]` | 取消归档。 |
 | `/pin` / `/unpin [session_id]` | 置顶 / 取消置顶。 |
@@ -56,7 +56,8 @@ slash 命令由 Agent Core 统一处理，CLI、QQ 等平台共享同一套语�
 
 - `/archive`、`/unarchive`、`/pin`、`/unpin` 省略目标时作用于当前 Session；`/rename` 省略目标时使用当前标题，`/delete` 必须提供 `session_id`。裸 `/resume` 返回可恢复列表。
 - `/resume last` 恢复最近更新的非当前 Session，忽略置顶。
-- CLI 超级管理员可跨平台查看和管理 Session；普通 CLI 用户与消息平台用户遵循各自的平台和作用域。Cron／Elnis 后台会话仅所属用户可同平台私聊恢复，或从 CLI 管理入口恢复。恢复会永久转为前台归属。
+- `/sessions`、`/resume` 列表及 `/archives` 超级管理员可使用 `-a/--all` 跨平台查看。
+- 超级管理员跨平台恢复其他平台的 Session 时会创建当前平台的完整历史副本，原 Session 保留。
 - 当前会话处理中时不能执行 `/new`、`/resume`、`/fork`、`/chat`、`/work` 等切换类命令，需要先 `/stop`。
 - 删除是永久操作且需要 `--confirm`；执行中的会话不能删除，自动清理也会跳过。
 
