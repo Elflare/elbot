@@ -184,7 +184,7 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 		}
 		actions := <-output.sent
 		blocks := <-output.blocks
-		if len(blocks) < 3 || blocks[0].Kind != delivery.ContentText || blocks[0].Content != "shell [high]: confirm" || blocks[1].Kind != delivery.ContentText || blocks[1].Content != "detail" || blocks[len(blocks)-1].Kind != delivery.ContentCommands {
+		if len(blocks) != 3 || blocks[0].Kind != delivery.ContentText || blocks[0].Content != "shell [high]: confirm" || blocks[1].Kind != delivery.ContentText || blocks[1].Content != "detail" || blocks[2].Kind != delivery.ContentArguments {
 			t.Fatalf("confirmation blocks=%#v", blocks)
 		}
 		if len(output.texts) != 2 || len(output.sent) != 1 {
@@ -247,7 +247,7 @@ func TestCurrentRiskConfirmationReturnsBlocksAndActions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.SessionID != row.ID || got.Kind != "tool" || len(got.Detail) != 4 || got.Detail[0].Content != "shell [high]: confirm" || !strings.Contains(got.Detail[2].Content.(string), "requires approval") || got.Detail[3].Kind != delivery.ContentCommands || len(got.Actions) != 6 {
+	if got.SessionID != row.ID || got.Kind != "tool" || len(got.Detail) != 3 || got.Detail[0].Content != "shell [high]: confirm" || !strings.Contains(got.Detail[2].Content.(string), "requires approval") || len(got.Actions) != 6 {
 		t.Fatalf("confirmation snapshot=%+v", got)
 	}
 }

@@ -120,7 +120,6 @@ func (c *ConfirmationCoordinator) Current(ctx context.Context, req control.Curre
 	if reasons := riskReasonsText(pending.Reasons); reasons != "" {
 		detail = append(detail, tool.ConfirmationDetailBlock{Kind: tool.ConfirmationDetailText, Content: reasons})
 	}
-	detail = append(detail, tool.ConfirmationDetailBlock{Kind: tool.ConfirmationDetailCommands, Content: riskConfirmationPromptText(c.policy.WaitTimeout(ctx), c.commandText)})
 	return control.CurrentConfirmationResult{SessionID: row.ID, Kind: "tool", ToolName: pending.ToolName, Risk: pending.Risk, Detail: detail, Actions: riskConfirmationActions(c.commandText).Actions}, nil
 }
 
@@ -318,7 +317,6 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 		if reasons := riskReasonsText(assessment.Reasons); reasons != "" {
 			blocks = append(blocks, delivery.ContentBlock{Kind: delivery.ContentText, Content: reasons})
 		}
-		blocks = append(blocks, delivery.ContentBlock{Kind: delivery.ContentCommands, Content: riskConfirmationPromptText(timeout, c.commandText)})
 		if _, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Blocks: blocks, Actions: presentation.Actions}); err != nil {
 			resultStatus, level := events.ResultFailed, slog.LevelWarn
 			if events.LogStatus(err) == events.ResultCanceled {

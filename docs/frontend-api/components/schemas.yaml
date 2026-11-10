@@ -251,11 +251,6 @@ schemas:
             kind: { const: arguments }
             content: { type: object, additionalProperties: true }
           required: [kind, content]
-        - type: object
-          properties:
-            kind: { const: commands }
-            content: { type: string }
-          required: [kind, content]
     StreamEvent:
       type: object
       properties:

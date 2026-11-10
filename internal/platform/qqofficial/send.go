@@ -9,6 +9,7 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
+	"elbot/internal/control"
 	"elbot/internal/delivery"
 	platformshare "elbot/internal/platform/share"
 )
@@ -17,6 +18,11 @@ func (a *Adapter) SendCommandResult(ctx context.Context, req command.Request, re
 	var outputs []delivery.Output
 	if result != nil {
 		out := delivery.Text(platformshare.FormatCommandResult(req, result))
+		if req.Name == "detail" {
+			if current, ok := result.Data.(control.CurrentConfirmationResult); ok {
+				out = delivery.Output{Kind: delivery.KindText, Blocks: current.Detail, Actions: current.Actions}
+			}
+		}
 		if result.Confirmation != nil {
 			out.Actions = result.Confirmation.Actions
 		}

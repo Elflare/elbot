@@ -23,6 +23,29 @@ func (s testSender) SendTo(ctx context.Context, noticeTarget delivery.Target, no
 	return s.send(ctx, noticeTarget, noticeOutputs)
 }
 
+func TestRouterStreamFallbackPreservesBlocksAndActions(t *testing.T) {
+	got := make(chan delivery.Output, 1)
+	sender := testSender{send: func(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+		got <- outputs[0]
+		return delivery.Receipt{}, nil
+	}}
+	router := New(Options{Primary: sender})
+	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: sender.Name(), ChatID: "chat"}})
+	stream, err := router.StartStream(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := []delivery.ContentBlock{{Kind: delivery.ContentText, Content: "确认预览"}, {Kind: delivery.ContentDiff, Content: "-before\n+after"}}
+	actions := []delivery.Action{{ID: "confirm", Label: "确认", Command: "/confirm"}}
+	if _, err := stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Blocks: blocks, Actions: actions}); err != nil {
+		t.Fatal(err)
+	}
+	output := <-got
+	if len(output.Blocks) != len(blocks) || output.Blocks[1].Kind != delivery.ContentDiff || output.Blocks[1].Content != "-before\n+after" || len(output.Actions) != 1 || output.Actions[0] != actions[0] {
+		t.Fatalf("fallback output lost structured content: %#v", output)
+	}
+}
+
 func TestRouterPreservesConcurrentSourceSnapshots(t *testing.T) {
 	var mu sync.Mutex
 	seen := map[string]contextinfo.Conversation{}

@@ -7,12 +7,15 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"elbot/internal/command"
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/control"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/signal"
@@ -98,6 +101,38 @@ func TestKeyboardUsesOnlyStructuredActions(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSendDetailCommandUsesRawBlocksAndActions(t *testing.T) {
+	var body messageToCreate
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		_, _ = w.Write([]byte(`{"id":"sent"}`))
+	}))
+	defer server.Close()
+	adapter := newQQOfficialSendTestAdapter(t, server)
+	markdown, keyboard := true, true
+	adapter.cfg.MarkdownByDefault = &markdown
+	adapter.cfg.EnableKeyboard = &keyboard
+	actions := []delivery.Action{{ID: "confirm", Label: "确认本次", Command: "/confirm"}}
+	result := &command.Result{Kind: command.ResultKindText, Data: control.CurrentConfirmationResult{
+		ToolName: "edit_file",
+		Risk:     "high",
+		Detail:   []delivery.ContentBlock{{Kind: delivery.ContentDiff, Content: "--- a/file\n+++ b/file\n-old\n+new"}},
+		Actions:  actions,
+	}}
+	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: config.PlatformQQOfficial, ChatType: contextinfo.ChatGroup, ChatID: "1"}, PlatformMessageID: "incoming"})
+	if _, err := adapter.SendCommandResult(ctx, command.Request{Name: "detail"}, result, nil); err != nil {
+		t.Fatal(err)
+	}
+	if body.Markdown == nil || !strings.Contains(body.Markdown.Content, "-old\n+new") || strings.Contains(body.Markdown.Content, `"kind"`) {
+		t.Fatalf("detail body did not render raw blocks: %#v", body)
+	}
+	if body.Keyboard == nil || body.Keyboard.Content.Rows[0].Buttons[0].Action.Data != "/confirm" {
+		t.Fatalf("detail actions were not rendered: %#v", body.Keyboard)
 	}
 }
 

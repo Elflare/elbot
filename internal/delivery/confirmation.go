@@ -19,7 +19,6 @@ const (
 	ContentDiff      ContentBlockKind = "diff"
 	ContentArguments ContentBlockKind = "arguments"
 	ContentMarkdown  ContentBlockKind = "markdown"
-	ContentCommands  ContentBlockKind = "commands"
 )
 
 // ContentBlocksText renders structured blocks for consumers that only accept text.
@@ -34,7 +33,7 @@ func ContentBlocksText(blocks []ContentBlock) string {
 				continue
 			}
 			content = "```json\n" + string(encoded) + "\n```"
-		case ContentText, ContentDiff, ContentMarkdown, ContentCommands:
+		case ContentText, ContentDiff, ContentMarkdown:
 			content, _ = block.Content.(string)
 		}
 		if block.Kind == ContentDiff {
