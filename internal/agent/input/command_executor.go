@@ -49,6 +49,9 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Cont
 		req.Name = "append"
 	}
 	failure := command.ClassifyError(err)
+	if failure != nil && failure.Code == command.CodePermissionDenied {
+		result = nil
+	}
 	if failure != nil {
 		e.logFailure(ctx, "command_failed", failure)
 	}

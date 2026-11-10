@@ -113,6 +113,52 @@ func TestConfirmationWithoutPendingItemReturnsShortNotice(t *testing.T) {
 	}
 }
 
+func TestCommandFailureResultHandling(t *testing.T) {
+	tests := []struct {
+		name       string
+		cause      error
+		wantResult bool
+		wantCode   string
+	}{
+		{
+			name:       "permission denied",
+			cause:      &control.Error{Code: command.CodePermissionDenied, Message: "无权执行该操作"},
+			wantResult: false,
+			wantCode:   command.CodePermissionDenied,
+		},
+		{
+			name:       "other failure",
+			cause:      errors.New("underlying failure"),
+			wantResult: true,
+			wantCode:   command.CodeInternalError,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			probe := &commandExecutorProbe{}
+			router := command.NewRouter([]string{"/"})
+			if err := router.Register(command.NewFunc(command.Info{Name: "restricted", MinRole: "user"}, func(context.Context, command.Request) (*command.Result, error) {
+				return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: "partial result"}}, tc.cause
+			})); err != nil {
+				t.Fatal(err)
+			}
+
+			executor := NewCommandExecutor(CommandExecutorDeps{Router: router, Sessions: probe, Identity: probe, Output: probe})
+			_, handled, err := executor.Handle(t.Context(), "/restricted")
+			if !handled || err == nil || probe.failure == nil {
+				t.Fatalf("handled=%v output error=%v failure=%+v", handled, err, probe.failure)
+			}
+			if got := probe.result != nil; got != tc.wantResult {
+				t.Fatalf("result sent=%v, want %v", got, tc.wantResult)
+			}
+			if probe.failure.Code != tc.wantCode {
+				t.Fatalf("failure code=%q, want %q", probe.failure.Code, tc.wantCode)
+			}
+		})
+	}
+}
+
 func TestCommandRequestIsPassedToOutput(t *testing.T) {
 	probe := &commandExecutorProbe{}
 	router := command.NewRouter([]string{"!"})
