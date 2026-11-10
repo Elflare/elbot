@@ -21,12 +21,7 @@ const (
 )
 
 // prepareEnvironment 定位配置文件并取得本地实例独占锁，由统一退出流程释放。
-func prepareEnvironment(configPath string, mode RunMode) (string, io.Closer, error) {
-	switch mode {
-	case RunModeTUI, RunModeService:
-	default:
-		return "", nil, fmt.Errorf("unknown run mode %q", mode)
-	}
+func prepareEnvironment(configPath string) (string, io.Closer, error) {
 	resolvedConfigPath, err := config.ResolvePath(configPath)
 	if err != nil {
 		return "", nil, fmt.Errorf("resolve config path: %w", err)

@@ -37,9 +37,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	m := &Supervisor{}
 	m.lifecycle.init(ctx)
 	err := m.wire(cfg, deps, registrations(filepath.Join(filepath.Dir(cfg.ConfigPath), "frontend")))
-	if err != nil {
-		m.prepare = func() error { return err }
-	}
 	m.configureCloseSteps()
 	return m, err
 }

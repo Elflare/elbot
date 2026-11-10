@@ -33,7 +33,6 @@ type lifecycle struct {
 	ctx              context.Context
 	cancel           context.CancelFunc
 	runtimes         []*platformLifecycle
-	prepare          func() error // Start 前检查根部接线；在 mu 内调用。
 	onFailure        func(string, error)
 	started, closing bool
 	startupDone      chan struct{} // Start 结果已发布，之后不再登记接入观察者。
@@ -72,9 +71,6 @@ func (l *lifecycle) Start() error {
 	}
 	l.started = true
 	var err error
-	if l.prepare != nil {
-		err = l.prepare()
-	}
 	l.mu.Unlock()
 	go func() {
 		select {
