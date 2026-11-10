@@ -49,7 +49,7 @@ func (a *shellAdvice) inspectShellCall(call *syntax.CallExpr, workDir string, fi
 	}
 
 	switch name {
-	case "cat", "less", "more", "head", "tail", "grep", "rg":
+	case "cat", "less", "more", "head", "tail", "grep":
 		if a.addPathArgWarning(workDir, args) {
 			a.addWarning(warnUseReadFile)
 		}

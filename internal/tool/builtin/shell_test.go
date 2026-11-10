@@ -163,6 +163,16 @@ func TestAnalyzeBashShellAdviceWarnsForCat(t *testing.T) {
 	}
 }
 
+func TestAnalyzeBashShellAdviceDoesNotWarnForRg(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.txt")
+	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	advice := analyzeBashShellAdvice(parseBashForTest(t, "rg alpha "+filepath.ToSlash(path)), filepath.Dir(path), FileGuard{})
+	if len(advice.warnings) != 0 {
+		t.Fatalf("expected no rg path warning, got: %v", advice.warnings)
+	}
+}
 func TestAnalyzeBashShellAdviceRejectsCatElSkill(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "go", "reader", "SKILL.elyph")
