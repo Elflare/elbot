@@ -17,6 +17,9 @@ func FormatCommandResult(req command.Request, result *command.Result) string {
 	switch result.Kind {
 	case command.ResultKindText:
 		if req.Name == "detail" {
+			if content, ok := confirmationTextData(result.Data); ok {
+				return content
+			}
 			return formatCommandData(result.Data, func(d control.CurrentConfirmationResult) string {
 				parts := make([]string, 0, len(d.Detail))
 				for _, block := range d.Detail {
@@ -32,6 +35,9 @@ func FormatCommandResult(req command.Request, result *command.Result) string {
 			})
 		}
 		if req.Name == "confirm" || req.Name == "confirmtool" || req.Name == "confirmall" || req.Name == "reject" {
+			if content, ok := confirmationTextData(result.Data); ok {
+				return content
+			}
 			return formatCommandData(result.Data, func(d control.RespondConfirmationResult) string {
 				if !d.Accepted {
 					return ""
@@ -136,6 +142,23 @@ func FormatCommandResult(req command.Request, result *command.Result) string {
 		return formatCommandData(result.Data, controlformat.Doctor)
 	}
 	return ""
+}
+
+func confirmationTextData(data any) (string, bool) {
+	if value, ok := data.(command.TextData); ok {
+		return value.Content, true
+	}
+	raw, ok := data.(json.RawMessage)
+	if !ok {
+		return "", false
+	}
+	var value struct {
+		Content *string `json:"content"`
+	}
+	if err := json.Unmarshal(raw, &value); err != nil || value.Content == nil {
+		return "", false
+	}
+	return *value.Content, true
 }
 
 // JSON 传输保持原始结构；这里只为文本出口解码，不修改 Result.Data。

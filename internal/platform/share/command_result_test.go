@@ -81,3 +81,20 @@ func TestFormatDetailCommandCombinesStructuredBlocks(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatConfirmationCommandsWithoutPendingConfirmation(t *testing.T) {
+	for _, name := range []string{"detail", "confirm", "confirmtool", "confirmall", "reject"} {
+		t.Run(name, func(t *testing.T) {
+			want := "无待确认"
+			for _, data := range []any{
+				command.TextData{Content: want},
+				json.RawMessage(`{"content":"无待确认"}`),
+			} {
+				result := &command.Result{Kind: command.ResultKindText, Data: data}
+				if got := FormatCommandResult(command.Request{Name: name}, result); got != want {
+					t.Fatalf("FormatCommandResult(%s, %T) = %q, want %q", name, data, got, want)
+				}
+			}
+		})
+	}
+}
