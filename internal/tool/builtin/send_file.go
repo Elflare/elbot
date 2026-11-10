@@ -76,7 +76,7 @@ func (t SendFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 		assessment = toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"发送本地文件"}}
 		source = resolved.Path
 	}
-	return toolshare.NewPreparedCall(req, assessment, fmt.Sprintf("发送文件：%s", source), func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, assessment, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("发送文件：%s", source))}, func(ctx context.Context) (*toolshare.Result, string, error) {
 		out, warnings, label, err := t.buildOutput(ctx, args, source, resolved)
 		if err != nil {
 			return nil, err.Error(), err

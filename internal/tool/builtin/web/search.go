@@ -115,7 +115,7 @@ func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 	// 请求结构仅包含字符串、整数、布尔和字符串切片。
 	body, _ := json.Marshal(payload)
 
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, fmt.Sprintf("搜索：%s", query), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("搜索：%s", query))}, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
 		logContent = fmt.Sprintf("source=tavily query=%q status=failed", query)
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, t.endpoint, bytes.NewReader(body))
 		if err != nil {

@@ -87,7 +87,7 @@ type partialResultTool struct {
 }
 
 func (p partialResultTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: p.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: p.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		{
 			result, callErr := &toolshare.Result{Content: "completed first action", Data: []byte(`{"partial":true}`)}, p.err
 			logContent := ""
@@ -165,7 +165,7 @@ func (segmentTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "segments"}
 }
 func (value segmentTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		{
 			result := &toolshare.Result{Segments: []llm.MessageSegment{
 				{Type: llm.SegmentText, Text: "image:"},

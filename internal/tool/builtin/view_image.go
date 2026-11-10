@@ -135,7 +135,7 @@ func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 	if path.Path != "" {
 		preview = fmt.Sprintf("查看图片：%s", path.Path)
 	}
-	return toolshare.NewPreparedCall(req, assessment, preview, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, assessment, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(preview)}, func(ctx context.Context) (*toolshare.Result, string, error) {
 		if args.Source == "" {
 			return t.viewMessages(ctx, args)
 		}

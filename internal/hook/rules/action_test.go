@@ -212,7 +212,7 @@ func (*hookActionTestTool) Schema() llm.ToolSchema {
 }
 
 func (t *hookActionTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		t.calls++
 		{
 			result, callErr := &toolshare.Result{Content: "called"}, t.err

@@ -37,7 +37,7 @@ func (loggingTool) Info() toolshare.Info {
 }
 func (loggingTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "logging_tool"} }
 func (t loggingTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.run(ctx, req)
 	}), nil
 }

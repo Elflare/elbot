@@ -218,15 +218,27 @@ schemas:
         chat_id: { type: string }
       required: [session, mode, model, phase, pending_count, message_count, last_user_content, last_assistant_content, requests, context, tool_usage, turn_tool_usage, errors, default_mode, compact_model, platform, chat_id]
     ConfirmationDetailBlock:
-      type: object
-      properties:
-        kind: { type: string, enum: [text, diff, arguments, markdown] }
-        content:
-          oneOf:
-            - { type: string }
-            - { type: object, additionalProperties: true }
-          description: Text content for text, diff, and markdown; a JSON object for arguments.
-      required: [kind, content]
+      oneOf:
+        - type: object
+          properties:
+            kind: { const: text }
+            content: { type: string }
+          required: [kind, content]
+        - type: object
+          properties:
+            kind: { const: diff }
+            content: { type: string }
+          required: [kind, content]
+        - type: object
+          properties:
+            kind: { const: markdown }
+            content: { type: string }
+          required: [kind, content]
+        - type: object
+          properties:
+            kind: { const: arguments }
+            content: { type: object, additionalProperties: true }
+          required: [kind, content]
     Confirmation:
       type: object
       properties:
@@ -237,9 +249,8 @@ schemas:
           items: { $ref: '#/schemas/ConfirmationDetailBlock' }
           description: Ordered tool confirmation detail blocks; empty for append confirmation and null when no confirmation is pending.
         tool_name: { type: string }
-        arguments: { type: string }
         risk: { type: string }
-      required: [session_id, kind, detail, tool_name, arguments, risk]
+      required: [session_id, kind, detail, tool_name, risk]
     Hook:
       type: object
       properties:

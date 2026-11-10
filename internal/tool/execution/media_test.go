@@ -30,7 +30,7 @@ func (t *mediaArgumentRecorder) Schema() llm.ToolSchema {
 	return toolshare.NewBuilder(t.Name()).BuildSchema()
 }
 func (t *mediaArgumentRecorder) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		t.received = string(req.Arguments)
 		{
 			result := &toolshare.Result{Content: "ok"}
@@ -49,7 +49,7 @@ func (failingMediaTool) Schema() llm.ToolSchema {
 	return toolshare.NewBuilder("failing_media").BuildSchema()
 }
 func (value failingMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		{
 			callErr := errors.New("tool failed")
 			return nil, callErr.Error(), callErr

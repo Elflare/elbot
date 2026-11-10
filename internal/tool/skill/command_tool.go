@@ -54,7 +54,7 @@ func (t commandTool) PrepareCall(ctx context.Context, req toolshare.CallRequest)
 		return nil, err
 	}
 	preview := fmt.Sprintf("命令：%v\n参数：%v\n工作目录：%s", t.manifest.Command, args, t.record.Root)
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.manifest.Risk}, preview, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.manifest.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(preview)}, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, raw, args, runMediaCommand)
 	}), nil
 }

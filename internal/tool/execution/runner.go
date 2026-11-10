@@ -241,7 +241,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		}
 		var confirm toolshare.ConfirmResult
 		if waitErr := await(func() {
-			confirm, err = m.confirm(toolCtx, deps, actor, sessionID, call, resolved, assessment, prepared.ConfirmationDetails())
+			confirm, err = m.confirm(toolCtx, deps, actor, sessionID, call, resolved, assessment, prepared.Details())
 		}); waitErr != nil {
 			return toolshare.RunResult{Err: waitErr}
 		}

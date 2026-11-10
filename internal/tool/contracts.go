@@ -90,8 +90,7 @@ var ErrToolDetailNotFound = errors.New("tool detail not found")
 // PreparedCall 是外部实现准备好的操作；根部将其封装为固定参数的内部调用。
 type PreparedCall struct {
 	Risk    RiskAssessment                                 // 本次操作风险。
-	Preview string                                         // 确认预览。
-	Details []ConfirmationDetailBlock                      // 确认预览的结构化内容；为空时使用 Preview 作为纯文本。
+	Details []ConfirmationDetailBlock                      // 确认预览的有序结构化内容。
 	Run     func(context.Context) (*Result, string, error) // 确认后执行的操作。
 }
 

@@ -139,7 +139,7 @@ func (t loggingTool) PrepareCall(ctx context.Context, req toolshare.CallRequest)
 	if t.prepareErr != nil {
 		return nil, t.prepareErr
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		if t.args != nil {
 			*t.args = string(req.Arguments)
 		}

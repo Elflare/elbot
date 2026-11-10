@@ -23,7 +23,7 @@ func TestPublicRegistrationAdaptsExecutionAndDocument(t *testing.T) {
 		Definition: Info{Name: "external", Description: "External", Risk: security.RiskLow, Source: SourceBuiltin},
 		Parameters: map[string]any{"type": "object", "properties": map[string]any{}},
 		Prepare: func(_ context.Context, req CallRequest) (*PreparedCall, error) {
-			return &PreparedCall{Risk: RiskAssessment{Level: security.RiskLow}, Preview: "approved", Run: func(context.Context) (*Result, string, error) {
+			return &PreparedCall{Risk: RiskAssessment{Level: security.RiskLow}, Details: []ConfirmationDetailBlock{{Kind: ConfirmationDetailText, Content: "approved"}}, Run: func(context.Context) (*Result, string, error) {
 				return &Result{Content: req.Name + " executed"}, "external log", nil
 			}}, nil
 		},

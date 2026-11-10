@@ -125,9 +125,7 @@ func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 	if strings.TrimSpace(args.GoSource) != "" {
 		contents = append(contents, struct{ path, content string }{filepath.Join(root, "main.go"), args.GoSource}, struct{ path, content string }{filepath.Join(root, "go.mod"), goModContent(name, goVersion)})
 	}
-	var preview strings.Builder
 	header := fmt.Sprintf("创建 Skill：%s\n目录：%s", name, root)
-	preview.WriteString(header + "\n")
 	details := []toolshare.ConfirmationDetailBlock{{Kind: toolshare.ConfirmationDetailText, Content: header}}
 	for _, content := range contents {
 		file, err := fileops.PrepareFileWrite(ctx, content.path, content.content)
@@ -135,10 +133,9 @@ func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 			return nil, err
 		}
 		files = append(files, file)
-		preview.WriteString(file.Preview().Diff)
 		details = append(details, toolshare.ConfirmationDetailBlock{Kind: toolshare.ConfirmationDetailDiff, Content: file.Preview().Diff})
 	}
-	return toolshare.NewPreparedCallWithDetails(req, toolshare.RiskAssessment{Level: info.Risk}, preview.String(), details, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (*toolshare.Result, string, error) {
 		t.manager.writeMu.Lock()
 		defer t.manager.writeMu.Unlock()
 		if _, exists := t.manager.registry.Get(name); exists {

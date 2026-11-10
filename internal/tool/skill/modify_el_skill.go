@@ -72,24 +72,11 @@ func (t ModifyElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 	if err != nil {
 		return nil, err
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "技能：%s\n", preview.Name)
-	fmt.Fprintf(&b, "目标：%s\n", preview.Target)
-	fmt.Fprintf(&b, "文件：%s\n", preview.Path)
-	b.WriteString("模式：确认后写入；确认前已自动预检\n")
-	b.WriteString("预检 diff:\n")
-	b.WriteString(preview.File.Preview().Diff)
-	if !strings.HasSuffix(preview.File.Preview().Diff, "\n") {
-		b.WriteString("\n")
-	}
-	detail := strings.TrimRight(b.String(), "\n")
-	marker := "\n预检 diff:\n"
-	index := strings.Index(detail, marker)
 	details := []toolshare.ConfirmationDetailBlock{
-		{Kind: toolshare.ConfirmationDetailText, Content: detail[:index] + "\n预检 diff:"},
-		{Kind: toolshare.ConfirmationDetailDiff, Content: detail[index+len(marker):]},
+		{Kind: toolshare.ConfirmationDetailText, Content: fmt.Sprintf("技能：%s\n目标：%s\n文件：%s\n模式：确认后写入；确认前已自动预检\n预检 diff:", preview.Name, preview.Target, preview.Path)},
+		{Kind: toolshare.ConfirmationDetailDiff, Content: preview.File.Preview().Diff},
 	}
-	return toolshare.NewPreparedCallWithDetails(req, toolshare.RiskAssessment{Level: info.Risk}, detail, details, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, preview)
 	}), nil
 }

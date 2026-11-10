@@ -56,7 +56,7 @@ func (t LongMemoryTool) Definition() toolshare.ToolDefinition {
 	return longMemoryBuilder(longMemoryToolName, "全局长期记忆入口；检索→long_memory_search，写入→long_memory_write。").DependsOn(longMemorySearchToolName, longMemoryWriteToolName).Build(t.PrepareCall)
 }
 func (t LongMemoryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (*toolshare.Result, string, error) {
 		result := &toolshare.Result{Content: strings.TrimSpace("long_memory 是长期记忆入口。请按需调用 long_memory_search 或 long_memory_write。long_memory_search 不传 keywords/category 时会返回分类目录。")}
 		return result, "long_memory guide returned", nil
 	}), nil
@@ -77,7 +77,7 @@ func (t LongMemorySearchTool) PrepareCall(ctx context.Context, req toolshare.Cal
 	if err := lmDecodeArgs(req.Arguments, &args, info.Name); err != nil {
 		return nil, err
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (*toolshare.Result, string, error) {
 		if strings.TrimSpace(args.Keywords) == "" && strings.TrimSpace(args.Category) == "" {
 			content, err := t.store.categories(ctx)
 			if err != nil {
@@ -118,8 +118,8 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 	switch strings.ToLower(strings.TrimSpace(args.Operation)) {
 	case "save":
 		record := longMemoryRecord{Category: cleanLongMemoryText(args.Category), Title: cleanLongMemoryText(args.Title), Summary: cleanLongMemoryText(args.Summary), Keywords: strings.Join(splitLongMemoryKeywords(args.Keywords), " "), Content: strings.TrimSpace(args.Content)}
-		detail := fmt.Sprintf("操作：新建长期记忆\n分类：%s\n标题：%s\n摘要：%s\n关键词：%s\n正文：\n%s", record.Category, record.Title, record.Summary, record.Keywords, record.Content)
-		return toolshare.NewPreparedCall(req, assessment, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
+		details := []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("操作：新建长期记忆\n分类：%s\n标题：%s\n摘要：%s\n关键词：%s\n正文：\n%s", record.Category, record.Title, record.Summary, record.Keywords, record.Content))}
+		return toolshare.NewPreparedCall(req, assessment, details, func(ctx context.Context) (*toolshare.Result, string, error) {
 			record, err := t.store.save(ctx, record)
 			if err != nil {
 				return nil, err.Error(), err
@@ -132,14 +132,8 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 		if err != nil {
 			return nil, err
 		}
-		detail := longMemoryUpdateRiskDetail(args, preview)
-		marker := "预检 diff:\n"
-		index := strings.Index(detail, marker)
-		details := []toolshare.ConfirmationDetailBlock{
-			{Kind: toolshare.ConfirmationDetailText, Content: detail[:index+len(marker)-1]},
-			{Kind: toolshare.ConfirmationDetailDiff, Content: detail[index+len(marker):]},
-		}
-		return toolshare.NewPreparedCallWithDetails(req, assessment, detail, details, func(ctx context.Context) (*toolshare.Result, string, error) {
+		details := longMemoryUpdateRiskDetails(args, preview)
+		return toolshare.NewPreparedCall(req, assessment, details, func(ctx context.Context) (*toolshare.Result, string, error) {
 			record, err := t.store.update(ctx, preview)
 			if err != nil {
 				return nil, err.Error(), err
@@ -182,7 +176,7 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 			record.Title, record.Category, record.Summary = parsed.Meta.Title, parsed.Meta.Category, parsed.Meta.Summary
 		}
 		detail := fmt.Sprintf("操作：永久删除长期记忆\nID：%d\n标题：%s\n分类：%s\n摘要：%s\n文件：%s", record.ID, record.Title, record.Category, record.Summary, record.FilePath)
-		return toolshare.NewPreparedCall(req, assessment, detail, func(ctx context.Context) (*toolshare.Result, string, error) {
+		return toolshare.NewPreparedCall(req, assessment, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(detail)}, func(ctx context.Context) (*toolshare.Result, string, error) {
 			path, err := t.store.delete(ctx, record, target, revision)
 			if err != nil {
 				return nil, err.Error(), err
@@ -195,7 +189,7 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 	}
 }
 
-func longMemoryUpdateRiskDetail(args longMemoryWriteArgs, preview longMemoryUpdatePreview) string {
+func longMemoryUpdateRiskDetails(args longMemoryWriteArgs, preview longMemoryUpdatePreview) []toolshare.ConfirmationDetailBlock {
 	var b strings.Builder
 	fmt.Fprintf(&b, "操作：更新长期记忆\n")
 	fmt.Fprintf(&b, "ID：%d\n", preview.After.ID)
@@ -212,12 +206,11 @@ func longMemoryUpdateRiskDetail(args longMemoryWriteArgs, preview longMemoryUpda
 			fmt.Fprintf(&b, "- %s\n", change)
 		}
 	}
-	b.WriteString("预检 diff:\n")
-	b.WriteString(preview.File.Preview().Diff)
-	if !strings.HasSuffix(preview.File.Preview().Diff, "\n") {
-		b.WriteString("\n")
+	b.WriteString("预检 diff:")
+	return []toolshare.ConfirmationDetailBlock{
+		{Kind: toolshare.ConfirmationDetailText, Content: strings.TrimRight(b.String(), "\n")},
+		{Kind: toolshare.ConfirmationDetailDiff, Content: preview.File.Preview().Diff},
 	}
-	return strings.TrimRight(b.String(), "\n")
 }
 
 func longMemoryUpdateArgsFromWrite(args longMemoryWriteArgs) longMemoryUpdateArgs {

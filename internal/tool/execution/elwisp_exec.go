@@ -48,7 +48,7 @@ func prepareELwispTool(call llm.ToolCallRequest, resolved resolvedTool) (*toolsh
 	return toolshare.NewPreparedCall(
 		toolshare.CallRequest{ID: call.ID, Name: call.Name, Arguments: json.RawMessage(call.Arguments)},
 		toolshare.RiskAssessment{Level: discovered.Risk},
-		"",
+		nil,
 		func(ctx context.Context) (*toolshare.Result, string, error) {
 			return executeELwispTool(ctx, req, timeout)
 		},

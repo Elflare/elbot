@@ -112,9 +112,9 @@ func TestRollbackToolPreflightPinsRecordAndWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	detail := prepared.Preview()
-	if !strings.Contains(detail, "删除本次新建文件") {
-		t.Fatalf("detail: %s", detail)
+	details := prepared.Details()
+	if len(details) != 2 || details[0].Kind != toolshare.ConfirmationDetailText || details[1].Kind != toolshare.ConfirmationDetailDiff || !strings.Contains(details[0].Content.(string), "删除本次新建文件") {
+		t.Fatalf("details: %+v", details)
 	}
 	f.write(t, "file", "two")
 	derived := f.service.WithBinding(context.WithValue(ctx, struct{}{}, "request"), f.binding)

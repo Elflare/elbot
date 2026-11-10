@@ -82,8 +82,8 @@ func TestCronWritePreparationUsesArgumentDetails(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := prepared.Preview(); got != "" {
-				t.Errorf("custom detail hides arguments: %q", got)
+			if got := prepared.Details(); len(got) != 0 {
+				t.Errorf("unexpected custom details: %+v", got)
 			}
 			if !prepared.Matches(req) || string(req.Arguments) != args {
 				t.Error("preparation changed call arguments")

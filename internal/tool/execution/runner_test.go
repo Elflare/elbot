@@ -152,7 +152,7 @@ func (runnerContextPreflightTool) PrepareCall(ctx context.Context, req toolshare
 	if ctx.Value(runnerContextKey{}) != "prepared" {
 		return nil, fmt.Errorf("missing prepared context")
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskLow}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskLow}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		if ctx.Value(runnerContextKey{}) != "prepared" {
 			{
 				callErr := fmt.Errorf("missing prepared context during call")
@@ -181,7 +181,7 @@ func (t runnerResultTool) Definition() toolshare.ToolDefinition {
 	return executionTestDefinition(t)
 }
 func (runnerResultTool) PrepareCall(_ context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskLow}, "", func(context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskLow}, nil, func(context.Context) (*toolshare.Result, string, error) {
 		return &toolshare.Result{Content: "@@ -1 +1 @@\n-old\n+new\n"}, "edited", nil
 	}), nil
 }
@@ -220,7 +220,7 @@ func (runnerImageTool) Schema() llm.ToolSchema {
 }
 
 func (value runnerImageTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		{
 			result := &toolshare.Result{Segments: []llm.MessageSegment{
 				{Type: llm.SegmentText, Text: "done"},
@@ -247,7 +247,7 @@ func (t runnerHighRiskTool) Schema() llm.ToolSchema {
 }
 
 func (value runnerHighRiskTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		{
 			result := &toolshare.Result{Content: "called"}
 			return result, result.Content, nil

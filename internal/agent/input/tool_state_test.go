@@ -134,7 +134,7 @@ func (t agentDetailTool) Info() toolshare.Info {
 func (t agentDetailTool) Schema() llm.ToolSchema { return llm.ToolSchema{} }
 
 func (t agentDetailTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		{
 			result := &toolshare.Result{Content: t.detail}
 			return result, result.Content, nil
@@ -165,7 +165,7 @@ func (t agentWrapperTool) Schema() llm.ToolSchema {
 }
 
 func (t agentWrapperTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		{
 			result := &toolshare.Result{Content: "ok"}
 			return result, result.Content, nil

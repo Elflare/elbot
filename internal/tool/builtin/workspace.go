@@ -73,7 +73,7 @@ func (t WorkspaceTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 			return nil, fmt.Errorf("parse workspace arguments: %w", err)
 		}
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, fmt.Sprintf("工作目录：%s\n重置：%t", args.Path, args.Reset), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("工作目录：%s\n重置：%t", args.Path, args.Reset))}, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
 		store, hasStore := workspace.WorkspaceStoreFromContext(ctx)
 		if args.Reset {
 			dir, err := defaultWorkspaceDir()

@@ -37,7 +37,7 @@ func (*bodyTestTool) Info() toolshare.Info {
 }
 func (*bodyTestTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "body_test"} }
 func (t *bodyTestTool) PrepareCall(ctx context.Context, call toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(call, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(call, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		if t.onCall != nil {
 			t.onCall()
 		}
@@ -125,7 +125,7 @@ func TestRulesToolPreExecutionFailuresUseSourceSummary(t *testing.T) {
 					if scenario == "prepare_error" {
 						return nil, prepareErr
 					}
-					return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskLow}, "", func(context.Context) (*toolshare.Result, string, error) {
+					return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskLow}, nil, func(context.Context) (*toolshare.Result, string, error) {
 						executed = true
 						return nil, "executed", nil
 					}), nil
@@ -266,7 +266,7 @@ func (*argumentLoggingTool) Info() toolshare.Info {
 }
 func (*argumentLoggingTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "argument_log"} }
 func (t *argumentLoggingTool) PrepareCall(ctx context.Context, call toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(call, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(call, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		t.got = string(call.Arguments)
 		return &toolshare.Result{Content: t.body}, t.body, nil
 	}), nil

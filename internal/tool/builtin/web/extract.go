@@ -114,7 +114,7 @@ func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 	if args.TimeoutMS > 0 {
 		timeout = time.Duration(args.TimeoutMS) * time.Millisecond
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, fmt.Sprintf("提取网页：%s", url), func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("提取网页：%s", url))}, func(ctx context.Context) (*toolshare.Result, string, error) {
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		entry, cached, err := cache.getOrFetch(ctx, key, args.ForceRefresh, func(fetchCtx context.Context) (cachedExtract, error) {

@@ -19,10 +19,9 @@ const (
 )
 
 type RiskConfirmation struct {
-	ToolName  string
-	Arguments string
-	Risk      string
-	Detail    []ConfirmationDetailBlock // 当前待确认操作的有序内容块。
+	ToolName string
+	Risk     string
+	Detail   []ConfirmationDetailBlock // 当前待确认操作的有序内容块。
 }
 
 // ConfirmationDetailKind classifies content stored with a pending confirmation.

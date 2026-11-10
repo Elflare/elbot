@@ -55,7 +55,7 @@ func toLifecycleRiskConfirmation(confirmation RiskConfirmation) lifecycle.RiskCo
 	for i, block := range confirmation.Detail {
 		detail[i] = lifecycle.ConfirmationDetailBlock{Kind: string(block.Kind), Content: block.Content}
 	}
-	return lifecycle.RiskConfirmation{ToolName: confirmation.ToolName, Arguments: confirmation.Arguments, Risk: confirmation.Risk, Detail: detail}
+	return lifecycle.RiskConfirmation{ToolName: confirmation.ToolName, Risk: confirmation.Risk, Detail: detail}
 }
 
 func fromLifecycleRiskConfirmation(confirmation lifecycle.RiskConfirmation) RiskConfirmation {
@@ -63,7 +63,7 @@ func fromLifecycleRiskConfirmation(confirmation lifecycle.RiskConfirmation) Risk
 	for i, block := range confirmation.Detail {
 		detail[i] = ConfirmationDetailBlock{Kind: ConfirmationDetailKind(block.Kind), Content: block.Content}
 	}
-	return RiskConfirmation{ToolName: confirmation.ToolName, Arguments: confirmation.Arguments, Risk: confirmation.Risk, Detail: detail}
+	return RiskConfirmation{ToolName: confirmation.ToolName, Risk: confirmation.Risk, Detail: detail}
 }
 func (m *Supervisor) StartToolPhase(sessionID, attempt string) bool {
 	return m.lifecycle.StartToolPhase(sessionID, attempt)

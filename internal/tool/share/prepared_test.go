@@ -11,7 +11,7 @@ import (
 func TestPreparedCallKeepsIndependentRequestAndRisk(t *testing.T) {
 	req := CallRequest{ID: "one", Name: "edit", Arguments: []byte(`{"value":1}`)}
 	assessment := RiskAssessment{Level: RiskHigh, Reasons: []string{"original reason"}}
-	prepared := NewPreparedCall(req, assessment, "original preview", nil)
+	prepared := NewPreparedCall(req, assessment, []ConfirmationDetailBlock{TextConfirmationDetail("original preview")}, nil)
 	req.Arguments[9] = '2'
 	assessment.Reasons[0] = "changed reason"
 
@@ -29,8 +29,8 @@ func TestPreparedCallKeepsIndependentRequestAndRisk(t *testing.T) {
 	if prepared.RiskAssessment().Reasons[0] != "original reason" {
 		t.Fatal("risk accessor exposed mutable reasons")
 	}
-	if prepared.Preview() != "original preview" {
-		t.Fatalf("preview=%q", prepared.Preview())
+	if got := prepared.Details(); len(got) != 1 || got[0].Kind != ConfirmationDetailText || got[0].Content != "original preview" {
+		t.Fatalf("details=%+v", got)
 	}
 }
 
@@ -38,11 +38,11 @@ func TestPreparedCallRunsOnlyOnExecution(t *testing.T) {
 	wantResult := &Result{Content: "partial result"}
 	wantErr := errors.New("operation failed")
 	var executionContext context.Context
-	prepared := NewPreparedCall(CallRequest{Name: "write"}, RiskAssessment{Level: RiskHigh}, "write preview", func(ctx context.Context) (*Result, string, error) {
+	prepared := NewPreparedCall(CallRequest{Name: "write"}, RiskAssessment{Level: RiskHigh}, []ConfirmationDetailBlock{TextConfirmationDetail("write preview")}, func(ctx context.Context) (*Result, string, error) {
 		executionContext = ctx
 		return wantResult, "independent log", wantErr
 	})
-	_ = prepared.Preview()
+	_ = prepared.Details()
 	_ = prepared.RiskAssessment()
 	if executionContext != nil {
 		t.Fatal("preparing or reading the preview executed the operation")
@@ -76,7 +76,7 @@ func TestPreparedCallBoundsOnlyLogContent(t *testing.T) {
 			if tt.result != nil {
 				wantContent = tt.result.Content
 			}
-			prepared := NewPreparedCall(CallRequest{}, RiskAssessment{}, "", func(context.Context) (*Result, string, error) {
+			prepared := NewPreparedCall(CallRequest{}, RiskAssessment{}, nil, func(context.Context) (*Result, string, error) {
 				return tt.result, tt.log, tt.err
 			})
 			result, logContent, err := prepared.Call(t.Context())

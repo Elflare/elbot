@@ -33,13 +33,3 @@ func compactArguments(args string) string {
 	}
 	return args
 }
-
-// previewArguments 截断已由 compactArguments 压缩的参数。
-func previewArguments(args string) string {
-	const maxPreviewRunes = 160
-	if len([]rune(args)) <= maxPreviewRunes {
-		return args
-	}
-	runes := []rune(args)
-	return string(runes[:maxPreviewRunes]) + "..."
-}

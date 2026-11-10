@@ -201,55 +201,25 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 	})
 }
 
-func TestCronRiskConfirmationArgumentDetails(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		args string
-		want string
-	}{
-		{
-			name: "create",
-			args: `{"operation":"create","name":"drink","schedule_mode":"once","run_after_minutes":10,"trigger_mode":"direct","message":"喝水\n起来活动一下"}`,
-			want: "cron_write [high]\nmessage: |\n  喝水\n  起来活动一下\nname: drink\noperation: create\nrun_after_minutes: 10\nschedule_mode: once\ntrigger_mode: direct",
-		},
-		{
-			name: "update",
-			args: `{"operation":"update","name":"drink","tool_list_names":[],"model_provider":"","model":"","enabled":false}`,
-			want: "cron_write [high]\nenabled: false\nmodel: \"\"\nmodel_provider: \"\"\nname: drink\noperation: update\ntool_list_names:\n  []",
-		},
-		{
-			name: "disable",
-			args: `{"operation":"disable","name":"drink"}`,
-			want: "cron_write [high]\nname: drink\noperation: disable",
-		},
-		{
-			name: "delete",
-			args: `{"operation":"delete","name":"drink"}`,
-			want: "cron_write [high]\nname: drink\noperation: delete",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got := riskConfirmationDetailText(turn.RiskConfirmation{
-				ToolName: "cron_write", Risk: "high", Arguments: tc.args,
-			})
-			if got != tc.want {
-				t.Fatalf("detail:\n%s\nwant:\n%s", got, tc.want)
-			}
-		})
+func TestConfirmationDetailsAppendsArgumentsObject(t *testing.T) {
+	details, err := confirmationDetailsWithArguments([]toolshare.ConfirmationDetailBlock{{Kind: toolshare.ConfirmationDetailText, Content: "preview"}}, `{"operation":"write","count":2}`)
+	if err != nil || len(details) != 2 || details[0].Kind != toolshare.ConfirmationDetailText || details[1].Kind != toolshare.ConfirmationDetailArguments {
+		t.Fatalf("details=%+v", details)
+	}
+	args, ok := details[1].Content.(map[string]any)
+	if !ok || args["operation"] != "write" || args["count"] != json.Number("2") {
+		t.Fatalf("arguments content=%#v", details[1].Content)
+	}
+	if got := formatConfirmationPrompt("write", "high", details); got != "write [high]: confirm\npreview\n{\n  \"count\": 2,\n  \"operation\": \"write\"\n}" {
+		t.Fatalf("formatted confirmation=%q", got)
 	}
 }
 
-func TestConfirmationDetailsDefaultsToArgumentsObject(t *testing.T) {
-	details := confirmationDetailsOrArguments(nil, `{"operation":"write","count":2}`)
-	if len(details) != 1 || details[0].Kind != toolshare.ConfirmationDetailArguments {
-		t.Fatalf("details=%+v", details)
-	}
-	args, ok := details[0].Content.(map[string]any)
-	if !ok || args["operation"] != "write" || args["count"] != json.Number("2") {
-		t.Fatalf("arguments content=%#v", details[0].Content)
-	}
-	if got := confirmationDetailsOrArguments(nil, "not-json"); len(got) != 1 || got[0].Kind != toolshare.ConfirmationDetailText || got[0].Content != "not-json" {
-		t.Fatalf("invalid arguments fallback=%+v", got)
+func TestConfirmationDetailsRejectInvalidArgumentJSON(t *testing.T) {
+	for _, args := range []string{"not-json", "[]", `{} {}`} {
+		if _, err := confirmationDetailsWithArguments(nil, args); err == nil {
+			t.Errorf("accepted invalid arguments %q", args)
+		}
 	}
 }
 

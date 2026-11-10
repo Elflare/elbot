@@ -29,7 +29,7 @@ func (foregroundOnlyTestTool) Schema() llm.ToolSchema {
 	return toolshare.NewBuilder("foreground_only").ForegroundOnly().BuildSchema()
 }
 func (value foregroundOnlyTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		{
 			result := &toolshare.Result{Content: "ok"}
 			return result, result.Content, nil

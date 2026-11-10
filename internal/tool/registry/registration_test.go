@@ -86,7 +86,7 @@ func TestQueryRetainsDefinitionAcrossRegistration(t *testing.T) {
 		d.Definition.Description = version
 		d.Parameters["properties"] = map[string]any{version: map[string]any{"type": "string"}}
 		d.Prepare = func(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
-			return share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskLow}, version, func(context.Context) (*share.Result, string, error) {
+			return share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskLow}, []share.ConfirmationDetailBlock{share.TextConfirmationDetail(version)}, func(context.Context) (*share.Result, string, error) {
 				return &share.Result{Content: version}, version, nil
 			}), nil
 		}

@@ -45,7 +45,7 @@ func (auditTestTool) Info() toolshare.Info {
 }
 func (auditTestTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "audit_test"} }
 func (a auditTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: a.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: a.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		if a.err != nil {
 			return nil, a.err.Error(), a.err
 		}

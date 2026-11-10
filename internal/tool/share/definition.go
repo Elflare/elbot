@@ -85,6 +85,10 @@ type ConfirmationDetailBlock struct {
 	Content any `json:"content"`
 }
 
+func TextConfirmationDetail(content string) ConfirmationDetailBlock {
+	return ConfirmationDetailBlock{Kind: ConfirmationDetailText, Content: content}
+}
+
 // ToolRegistrationScope 标识一次完整替换的工具组；远端组仅属于指定会话和事件。
 type ToolRegistrationScope struct {
 	SessionID string // elwisp 组对应的会话。

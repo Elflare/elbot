@@ -313,11 +313,21 @@ func TestModifyElSkillRiskDetailIncludesDiff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	detail := prepared.Preview()
-	for _, want := range []string{"技能：detailer", "目标：skill_elyph", "模式：确认后写入；确认前已自动预检", "预检 diff:\n", "-#skill detailer - Old.", "+#skill detailer - New."} {
+	details := prepared.Details()
+	if len(details) != 2 || details[0].Kind != toolshare.ConfirmationDetailText || details[1].Kind != toolshare.ConfirmationDetailDiff {
+		t.Fatalf("structured confirmation details=%+v", details)
+	}
+	detail, ok := details[0].Content.(string)
+	if !ok {
+		t.Fatalf("text detail=%T", details[0].Content)
+	}
+	for _, want := range []string{"技能：detailer", "目标：skill_elyph", "模式：确认后写入；确认前已自动预检"} {
 		if !strings.Contains(detail, want) {
 			t.Fatalf("detail missing %q:\n%s", want, detail)
 		}
+	}
+	if diff := details[1].Content.(string); !strings.Contains(diff, "-#skill detailer - Old.") || !strings.Contains(diff, "+#skill detailer - New.") {
+		t.Fatalf("diff detail: %s", diff)
 	}
 }
 

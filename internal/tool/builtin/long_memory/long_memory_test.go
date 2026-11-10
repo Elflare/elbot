@@ -63,8 +63,8 @@ func TestPreparedLongMemoryDeleteSnapshot(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, value := range []string{"永久删除", "ID：1", record.Title, record.Category, record.Summary, record.FilePath} {
-				if !strings.Contains(prepared.Preview(), value) {
-					t.Fatalf("missing %q: %s", value, prepared.Preview())
+				if details := prepared.Details(); len(details) != 1 || !strings.Contains(details[0].Content.(string), value) {
+					t.Fatalf("missing %q: %+v", value, details)
 				}
 			}
 			original, err := os.ReadFile(record.FilePath)
@@ -488,11 +488,21 @@ func TestLongMemoryUpdateContentEditsAndRiskDetail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	detail := prepared.Preview()
-	for _, want := range []string{"操作：更新长期记忆", "字段变化：", "摘要：摘要 -> 新摘要", "正文编辑：content_edits", "-第二行", "+第二行已更新"} {
+	details := prepared.Details()
+	if len(details) != 2 || details[0].Kind != toolshare.ConfirmationDetailText || details[1].Kind != toolshare.ConfirmationDetailDiff {
+		t.Fatalf("structured confirmation details=%+v", details)
+	}
+	detail, ok := details[0].Content.(string)
+	if !ok {
+		t.Fatalf("text detail=%T", details[0].Content)
+	}
+	for _, want := range []string{"操作：更新长期记忆", "字段变化：", "摘要：摘要 -> 新摘要", "正文编辑：content_edits"} {
 		if !strings.Contains(detail, want) {
 			t.Fatalf("risk detail missing %q:\n%s", want, detail)
 		}
+	}
+	if diff := details[1].Content.(string); !strings.Contains(diff, "-第二行") || !strings.Contains(diff, "+第二行已更新") {
+		t.Fatalf("diff detail: %s", diff)
 	}
 	if _, _, err := prepared.Call(ctx); err != nil {
 		t.Fatal(err)

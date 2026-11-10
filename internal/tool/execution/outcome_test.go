@@ -67,7 +67,7 @@ func TestRunnerReturnsOutcomesWithoutFailureNotices(t *testing.T) {
 					if tc.prepareErr != nil {
 						return nil, tc.prepareErr
 					}
-					return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskHigh}, "", func(context.Context) (*toolshare.Result, string, error) {
+					return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskHigh}, nil, func(context.Context) (*toolshare.Result, string, error) {
 						called = true
 						return nil, "execution outcome", tc.callErr
 					}), nil

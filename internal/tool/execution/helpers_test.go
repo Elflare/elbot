@@ -45,7 +45,7 @@ func (t fakeTool) Info() share.Info {
 }
 func (t fakeTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: t.name} }
 func (t fakeTool) PrepareCall(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
-	return share.NewPreparedCall(req, share.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*share.Result, string, error) {
+	return share.NewPreparedCall(req, share.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*share.Result, string, error) {
 		return &share.Result{Content: t.name}, t.name, nil
 	}), nil
 }

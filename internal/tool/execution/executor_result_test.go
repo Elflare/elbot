@@ -36,7 +36,7 @@ func TestExecutorPreparesHookInputWithoutLogging(t *testing.T) {
 				Content: "full result", NeedsElyphRules: tc.resultRules,
 				DiscoveryText: &share.DiscoveryText{Summary: "discovery summary", Details: "business details"},
 			}
-			prepared := share.NewPreparedCall(share.CallRequest{ID: call.ID, Name: call.Name, Arguments: []byte(call.Arguments)}, share.RiskAssessment{}, "", func(context.Context) (*share.Result, string, error) {
+			prepared := share.NewPreparedCall(share.CallRequest{ID: call.ID, Name: call.Name, Arguments: []byte(call.Arguments)}, share.RiskAssessment{}, nil, func(context.Context) (*share.Result, string, error) {
 				return body, "audit summary", tc.err
 			})
 			resolved := resolvedTool{Source: share.SourceKindNative, Native: &share.ToolDefinition{Definition: share.Info{NeedsElyphRules: tc.definitionRules}}}

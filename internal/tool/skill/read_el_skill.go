@@ -57,7 +57,8 @@ func (t ReadElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 	if err != nil {
 		return nil, err
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, fmt.Sprintf("读取 Skill：%s\n文件：%s", args.Name, path), func(ctx context.Context) (*toolshare.Result, string, error) {
+	details := []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("读取 Skill：%s\n文件：%s", args.Name, path))}
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (*toolshare.Result, string, error) {
 		file, err := fileops.ReadFile(path, "")
 		if err != nil {
 			return nil, err.Error(), err

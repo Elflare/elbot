@@ -261,7 +261,7 @@ func (t CronTool) Definition() toolshare.ToolDefinition {
 	return definition
 }
 func (t CronTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (*toolshare.Result, string, error) {
 		now := t.now().Format("2006-01-02 15:04:05")
 		result := &toolshare.Result{Content: strings.TrimSpace("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_query 或 cron_write。cron_query 不传 name 时列出 cron，传 name 时查询单个 cron。")}
 		return result, "cron guide returned; current_time=" + now, nil
@@ -288,7 +288,7 @@ func (t CronQueryTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 	if err := decodeArgs(req.Arguments, &args); err != nil {
 		return nil, err
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (*toolshare.Result, string, error) {
 		if strings.TrimSpace(args.Name) != "" {
 			view, err := t.service.GetCron(ctx, args.Name, actorFromContext(ctx))
 			if err != nil {
@@ -346,7 +346,7 @@ func (t CronWriteTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 	if err := decodeArgs(req.Arguments, &args); err != nil {
 		return nil, err
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		var result *toolshare.Result
 		var callErr error
 		switch strings.ToLower(strings.TrimSpace(args.Operation)) {

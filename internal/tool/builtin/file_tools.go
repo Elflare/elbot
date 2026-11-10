@@ -142,7 +142,7 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	if isSensitiveReadFile(path) {
 		assessment = toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"读取可能包含凭据的敏感文件，需要用户确认"}}
 	}
-	return toolshare.NewPreparedCall(req, assessment, fmt.Sprintf("读取：%s\n模式：%s", path, mode), func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, assessment, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("读取：%s\n模式：%s", path, mode))}, func(ctx context.Context) (*toolshare.Result, string, error) {
 		var warnings []string
 		if resolved.WasAbs {
 			warnings = append(warnings, toolshare.AbsolutePathWorkspaceWarning)
@@ -332,30 +332,17 @@ func (t EditFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	if err != nil {
 		return nil, err
 	}
-	detail := editFileRiskDetail(args, prepared.Preview())
-	details := editFileConfirmationDetails(detail)
+	details := editFileRiskDetails(args, prepared.Preview())
 	assessment := toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"文件内容写入操作需要确认"}}
 	if scope, ok := workspace.PathScopeFromContext(ctx); ok && scope.Restricted {
 		assessment = toolshare.RiskAssessment{Level: toolshare.RiskMedium, Reasons: []string{"文件编辑限制在当前调用工作目录内"}}
 	}
-	return toolshare.NewPreparedCallWithDetails(req, assessment, detail, details, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, assessment, details, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.call(ctx, prepared)
 	}), nil
 }
 
-func editFileConfirmationDetails(detail string) []toolshare.ConfirmationDetailBlock {
-	const marker = "\n预检 diff:\n"
-	index := strings.Index(detail, marker)
-	if index < 0 {
-		return []toolshare.ConfirmationDetailBlock{{Kind: toolshare.ConfirmationDetailText, Content: detail}}
-	}
-	return []toolshare.ConfirmationDetailBlock{
-		{Kind: toolshare.ConfirmationDetailText, Content: detail[:index] + "\n预检 diff:"},
-		{Kind: toolshare.ConfirmationDetailDiff, Content: detail[index+len(marker):]},
-	}
-}
-
-func editFileRiskDetail(args editFileArgs, preview fileops.EditResult) string {
+func editFileRiskDetails(args editFileArgs, preview fileops.EditResult) []toolshare.ConfirmationDetailBlock {
 	var b strings.Builder
 	fmt.Fprintf(&b, "文件：%s\n", strings.TrimSpace(args.Path))
 	b.WriteString("模式：确认后写入；确认前已自动预检\n")
@@ -375,12 +362,12 @@ func editFileRiskDetail(args editFileArgs, preview fileops.EditResult) string {
 		writeEditMatchDetail(&b, edit)
 		writeEditContentDetail(&b, edit)
 	}
-	b.WriteString("\n预检 diff:\n")
-	b.WriteString(preview.Diff)
-	if !strings.HasSuffix(preview.Diff, "\n") {
-		b.WriteString("\n")
+	b.WriteString("\n预检 diff:")
+	text := strings.TrimRight(b.String(), "\n")
+	return []toolshare.ConfirmationDetailBlock{
+		{Kind: toolshare.ConfirmationDetailText, Content: text},
+		{Kind: toolshare.ConfirmationDetailDiff, Content: preview.Diff},
 	}
-	return strings.TrimRight(b.String(), "\n")
 }
 
 func fileToolBoolText(value bool) string {

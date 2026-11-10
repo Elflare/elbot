@@ -740,9 +740,13 @@ func TestEditFileToolTruncatesLargeRiskDetailBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	detail := prepared.Preview()
-	if !strings.Contains(detail, "已省略；原文") || strings.Contains(detail, newText) {
-		t.Fatalf("large detail was not truncated:\n%s", detail)
+	details := prepared.Details()
+	if len(details) != 2 || details[0].Kind != toolshare.ConfirmationDetailText || details[1].Kind != toolshare.ConfirmationDetailDiff {
+		t.Fatalf("large confirmation details=%+v", details)
+	}
+	detail, ok := details[0].Content.(string)
+	if !ok || !strings.Contains(detail, "已省略；原文") || strings.Contains(detail, newText) {
+		t.Fatalf("large detail was not truncated: %v", details[0].Content)
 	}
 }
 
@@ -1047,7 +1051,14 @@ func TestEditFileToolRiskDetailFormatsEdits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	detail := prepared.Preview()
+	details := prepared.Details()
+	if len(details) != 2 || details[0].Kind != toolshare.ConfirmationDetailText || details[1].Kind != toolshare.ConfirmationDetailDiff {
+		t.Fatalf("structured confirmation details=%+v", details)
+	}
+	detail, ok := details[0].Content.(string)
+	if !ok {
+		t.Fatalf("text detail=%T", details[0].Content)
+	}
 	for _, want := range []string{
 		"文件：" + path,
 		"模式：确认后写入；确认前已自动预检",
@@ -1060,10 +1071,7 @@ func TestEditFileToolRiskDetailFormatsEdits(t *testing.T) {
 		"第几处匹配：2",
 		"匹配内容：\n  func main()\n",
 		"插入内容：\n  fmt.Println(\"hello\")",
-		"预检 diff:\n",
-		"-old line",
-		"+new line 1",
-		"+fmt.Println(\"hello\")",
+		"预检 diff:",
 	} {
 		if !strings.Contains(detail, want) {
 			t.Fatalf("detail missing %q:\n%s", want, detail)
@@ -1072,8 +1080,10 @@ func TestEditFileToolRiskDetailFormatsEdits(t *testing.T) {
 	if strings.Contains(detail, `new line 1\nnew line 2`) {
 		t.Fatalf("detail contains escaped newlines:\n%s", detail)
 	}
-	details := prepared.ConfirmationDetails()
-	if len(details) != 2 || details[0].Kind != toolshare.ConfirmationDetailText || details[1].Kind != toolshare.ConfirmationDetailDiff || !strings.Contains(details[1].Content.(string), "-old line") {
+	if diff := details[1].Content.(string); !strings.Contains(diff, "-old line") || !strings.Contains(diff, "+new line 1") || !strings.Contains(diff, "+fmt.Println(\"hello\")") {
+		t.Fatalf("diff detail:\n%s", diff)
+	}
+	if !strings.Contains(details[1].Content.(string), "-old line") {
 		t.Fatalf("structured confirmation details=%+v", details)
 	}
 }

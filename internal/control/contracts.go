@@ -284,7 +284,6 @@ type CurrentConfirmationResult struct {
 	Kind      string                         `json:"kind"`   // tool 或 append。
 	Detail    []tool.ConfirmationDetailBlock `json:"detail"` // 当前待确认操作的有序内容块。
 	ToolName  string                         `json:"tool_name"`
-	Arguments string                         `json:"arguments"`
 	Risk      string                         `json:"risk"`
 }
 type RespondConfirmationRequest struct {

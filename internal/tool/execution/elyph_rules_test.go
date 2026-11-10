@@ -39,7 +39,7 @@ func (t ruleDetailTool) LoadDetail(ctx context.Context) (toolshare.DetailBlock, 
 	return toolshare.DetailBlock{Content: "#skill " + t.name + " - body", Format: "elyph"}, nil
 }
 func (t ruleDetailTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return &toolshare.Result{Content: "#skill " + t.name + " - body", NeedsElyphRules: true}, "", nil
 	}), nil
 }

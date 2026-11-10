@@ -48,7 +48,7 @@ func (r GoRunner) PrepareCall(ctx context.Context, req toolshare.CallRequest, in
 		return nil, fmt.Errorf("go skill %q not found", args.SkillName)
 	}
 	preview := fmt.Sprintf("Go Skill：%s\n程序：%s\n工作目录：%s", record.Name, record.BinaryPath, record.Root)
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: record.Risk}, preview, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: record.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(preview)}, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return r.call(ctx, args, record, runMediaCommand)
 	}), nil
 }

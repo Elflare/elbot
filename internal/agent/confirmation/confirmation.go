@@ -115,7 +115,7 @@ func (c *ConfirmationCoordinator) Current(ctx context.Context, req control.Curre
 			return control.CurrentConfirmationResult{}, err
 		}
 	}
-	return control.CurrentConfirmationResult{SessionID: row.ID, Kind: "tool", ToolName: pending.ToolName, Arguments: pending.Arguments, Risk: pending.Risk, Detail: fromTurnConfirmationDetails(pending.Detail)}, nil
+	return control.CurrentConfirmationResult{SessionID: row.ID, Kind: "tool", ToolName: pending.ToolName, Risk: pending.Risk, Detail: fromTurnConfirmationDetails(pending.Detail)}, nil
 }
 
 // Respond 只消费类型化决定，并作用于当前绑定 session 的等待项。
@@ -292,20 +292,21 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 		return tool.ConfirmResult{Allowed: true}, nil
 	}
 	fullArgs := compactArguments(call.Arguments)
-	detail = confirmationDetailsOrArguments(detail, fullArgs)
-	previewArgs := previewArguments(fullArgs)
+	detail, err := confirmationDetailsWithArguments(detail, fullArgs)
+	if err != nil {
+		return tool.ConfirmResult{}, err
+	}
 	timeout := c.policy.WaitTimeout(ctx)
 	wait := c.turns.BeginRiskConfirmation(sessionID, turn.RiskConfirmation{
-		ToolName:  call.Name,
-		Arguments: fullArgs,
-		Risk:      string(assessment.Level),
-		Detail:    toTurnConfirmationDetails(detail),
+		ToolName: call.Name,
+		Risk:     string(assessment.Level),
+		Detail:   toTurnConfirmationDetails(detail),
 	}, turn.AttemptFromContext(ctx))
 	defer wait.Cancel()
 	if wait != nil && ctx.Err() == nil {
 		c.publishConfirmationWait(ctx, sessionID, call, assessment.Level, assessment.Reasons)
 		presentation := riskConfirmationActions(c.commandText)
-		if _, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: fmt.Sprintf("%s [%s]: confirm\n%s%s\n\n%s", call.Name, assessment.Level, previewArgs, riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout, c.commandText)), Actions: presentation.Actions}); err != nil {
+		if _, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: fmt.Sprintf("%s\n%s\n%s\n\n%s", formatConfirmationPrompt(call.Name, string(assessment.Level), detail), riskReasonsText(assessment.Reasons), riskConfirmationPromptText(timeout, c.commandText), ""), Actions: presentation.Actions}); err != nil {
 			resultStatus, level := events.ResultFailed, slog.LevelWarn
 			if events.LogStatus(err) == events.ResultCanceled {
 				resultStatus = events.ResultCanceled
@@ -387,22 +388,35 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	return tool.ConfirmResult{Allowed: true, Extra: resp.Extra}, nil
 }
 
-func confirmationDetailsOrArguments(details []tool.ConfirmationDetailBlock, argsText string) []tool.ConfirmationDetailBlock {
-	if len(details) > 0 {
-		return details
-	}
+func confirmationDetailsWithArguments(details []tool.ConfirmationDetailBlock, argsText string) ([]tool.ConfirmationDetailBlock, error) {
 	decoder := json.NewDecoder(strings.NewReader(argsText))
 	decoder.UseNumber()
 	var value any
-	if err := decoder.Decode(&value); err == nil {
-		var trailing any
-		if err := decoder.Decode(&trailing); err == io.EOF {
-			if _, ok := value.(map[string]any); ok {
-				return []tool.ConfirmationDetailBlock{{Kind: tool.ConfirmationDetailArguments, Content: value}}
+	if err := decoder.Decode(&value); err != nil {
+		return nil, fmt.Errorf("decode confirmation arguments: %w", err)
+	}
+	if _, ok := value.(map[string]any); !ok {
+		return nil, fmt.Errorf("confirmation arguments must be a JSON object")
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return nil, fmt.Errorf("confirmation arguments contain trailing data")
+	}
+	return append(details, tool.ConfirmationDetailBlock{Kind: tool.ConfirmationDetailArguments, Content: value}), nil
+}
+
+func formatConfirmationPrompt(toolName, risk string, details []tool.ConfirmationDetailBlock) string {
+	parts := make([]string, 0, len(details))
+	for _, block := range details {
+		if block.Kind == tool.ConfirmationDetailArguments {
+			if encoded, err := json.MarshalIndent(block.Content, "", "  "); err == nil {
+				parts = append(parts, string(encoded))
 			}
+		} else if content, ok := block.Content.(string); ok {
+			parts = append(parts, content)
 		}
 	}
-	return []tool.ConfirmationDetailBlock{{Kind: tool.ConfirmationDetailText, Content: argsText}}
+	return fmt.Sprintf("%s [%s]: confirm\n%s", toolName, risk, strings.Join(parts, "\n"))
 }
 
 func toTurnConfirmationDetails(details []tool.ConfirmationDetailBlock) []turn.ConfirmationDetailBlock {

@@ -13,34 +13,19 @@ type PreparedCall struct {
 	request CallRequest
 	// assessment 保存本次准备时确定的完整风险结果，不在确认或执行时重新评估。
 	assessment RiskAssessment
-	// preview 保存确认展示内容；自动确认只跳过展示，不跳过准备。
-	preview string
+	// details 保存确认展示内容；自动确认只跳过展示，不跳过准备。
 	details []ConfirmationDetailBlock
 	// run 使用准备好的业务数据执行，返回业务结果、未经截断的独立摘要和原始错误。
 	run func(context.Context) (*Result, string, error)
 }
 
-func NewPreparedCall(req CallRequest, assessment RiskAssessment, preview string, run func(context.Context) (*Result, string, error)) *PreparedCall {
+func NewPreparedCall(req CallRequest, assessment RiskAssessment, details []ConfirmationDetailBlock, run func(context.Context) (*Result, string, error)) *PreparedCall {
 	req.Arguments = bytes.Clone(req.Arguments)
 	assessment.Reasons = append([]string(nil), assessment.Reasons...)
-	var details []ConfirmationDetailBlock
-	if preview != "" {
-		details = []ConfirmationDetailBlock{{Kind: ConfirmationDetailText, Content: preview}}
-	}
-	return &PreparedCall{request: req, assessment: assessment, preview: preview, details: details, run: run}
+	return &PreparedCall{request: req, assessment: assessment, details: append([]ConfirmationDetailBlock(nil), details...), run: run}
 }
 
-func NewPreparedCallWithDetails(req CallRequest, assessment RiskAssessment, preview string, details []ConfirmationDetailBlock, run func(context.Context) (*Result, string, error)) *PreparedCall {
-	prepared := NewPreparedCall(req, assessment, preview, run)
-	if details != nil {
-		prepared.details = append([]ConfirmationDetailBlock(nil), details...)
-	}
-	return prepared
-}
-
-func (p *PreparedCall) Preview() string { return p.preview }
-
-func (p *PreparedCall) ConfirmationDetails() []ConfirmationDetailBlock {
+func (p *PreparedCall) Details() []ConfirmationDetailBlock {
 	return append([]ConfirmationDetailBlock(nil), p.details...)
 }
 

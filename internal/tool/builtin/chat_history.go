@@ -144,7 +144,7 @@ func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.Ca
 			return nil, fmt.Errorf("parse chat_id: %w", err)
 		}
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (*toolshare.Result, string, error) {
 		rows, err := t.history.Search(ctx, request)
 		if errors.Is(err, toolshare.ErrNoChatContext) {
 			return &toolshare.Result{Content: err.Error()}, err.Error(), nil
@@ -184,7 +184,7 @@ func (t GetChatHistoryAroundTool) PrepareCall(ctx context.Context, req toolshare
 			return nil, err
 		}
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (*toolshare.Result, string, error) {
 		messageID := parseChatHistoryMessageID(args.MessageID)
 		if messageID == "" {
 			result := &toolshare.Result{Content: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}
@@ -229,7 +229,7 @@ func (t ReplyToChatHistoryMessageTool) PrepareCall(ctx context.Context, req tool
 			return nil, err
 		}
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, fmt.Sprintf("引用消息：%s\n回复：%s", args.MessageID, args.Message), func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("引用消息：%s\n回复：%s", args.MessageID, args.Message))}, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
 		messageID := parseChatHistoryMessageID(args.MessageID)
 		if messageID == "" {
 			result := &toolshare.Result{Content: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}

@@ -43,7 +43,7 @@ func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest, in
 	if args.Name != "" {
 		names = append([]string{args.Name}, names...)
 	}
-	return share.NewPreparedCall(req, share.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (_ *share.Result, logContent string, _ error) {
+	return share.NewPreparedCall(req, share.RiskAssessment{Level: info.Risk}, []share.ConfirmationDetailBlock{share.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (_ *share.Result, logContent string, _ error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err.Error(), err
 		}

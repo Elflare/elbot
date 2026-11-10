@@ -29,7 +29,7 @@ func (concurrentTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "parallel", Parameters: map[string]any{"type": "object"}}
 }
 func (t concurrentTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		return t.run(ctx, req)
 	}), nil
 }

@@ -68,7 +68,7 @@ func (t ResidentMemoryTool) Definition() toolshare.ToolDefinition {
 	return builder.Build(t.PrepareCall)
 }
 func (t ResidentMemoryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (*toolshare.Result, string, error) {
 		result := &toolshare.Result{Content: "resident_memory 是常驻记忆管理入口。请调用 resident_memory_read、resident_memory_normal 或 resident_memory_core。"}
 		return result, "resident_memory guide returned", nil
 	}), nil
@@ -92,7 +92,7 @@ func (t ResidentMemoryReadTool) PrepareCall(ctx context.Context, req toolshare.C
 	if section != "all" && section != "core" && section != "normal" {
 		return nil, fmt.Errorf("section must be all, core or normal")
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, info.Description, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
 		memory, err := t.service.Read(ctx)
 		if err != nil {
 			return nil, err.Error(), err
@@ -128,7 +128,7 @@ func (t ResidentMemoryNormalTool) PrepareCall(ctx context.Context, req toolshare
 	if err := decodeMemoryArgs(req.Arguments, &args); err != nil {
 		return nil, err
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, fmt.Sprintf("操作：%s\n范围：普通常驻记忆", args.Action), func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("操作：%s\n范围：普通常驻记忆", args.Action))}, func(ctx context.Context) (*toolshare.Result, string, error) {
 		switch strings.ToLower(strings.TrimSpace(args.Action)) {
 		case "append":
 			if args.Content == nil {
@@ -177,7 +177,7 @@ func (t ResidentMemoryCoreTool) PrepareCall(ctx context.Context, req toolshare.C
 	if args.Content == nil {
 		return nil, fmt.Errorf("core content is required")
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, fmt.Sprintf("覆盖核心常驻记忆：\n%s", *args.Content), func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("覆盖核心常驻记忆：\n%s", *args.Content))}, func(ctx context.Context) (*toolshare.Result, string, error) {
 		if err := t.service.WriteCore(ctx, *args.Content); err != nil {
 			return nil, err.Error(), err
 		}

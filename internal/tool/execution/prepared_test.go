@@ -17,7 +17,7 @@ func TestPreparedExecutionBindsRequest(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			req := share.CallRequest{ID: "one", Name: "prepared", Arguments: []byte(`{"value":1}`)}
 			called := false
-			prepared := share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskHigh}, "approved detail", func(context.Context) (*share.Result, string, error) {
+			prepared := share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskHigh}, []share.ConfirmationDetailBlock{share.TextConfirmationDetail("approved detail")}, func(context.Context) (*share.Result, string, error) {
 				called = true
 				return &share.Result{Content: "approved result"}, "approved log", nil
 			})
@@ -66,7 +66,7 @@ func (s *snapshotTool) PrepareCall(ctx context.Context, req share.CallRequest) (
 	if s.prepare != nil {
 		return s.prepare(ctx, req)
 	}
-	return share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskHigh}, "original snapshot", func(context.Context) (*share.Result, string, error) {
+	return share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskHigh}, []share.ConfirmationDetailBlock{share.TextConfirmationDetail("original snapshot")}, func(context.Context) (*share.Result, string, error) {
 		s.calls++
 		return &share.Result{Content: "original"}, "original", nil
 	}), nil
@@ -90,7 +90,7 @@ func TestCallToolAlwaysPreparesAndChecksBeforeExecution(t *testing.T) {
 					if scenario == "changed_request" {
 						req.ID = "different"
 					}
-					return share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskHigh}, "snapshot", func(context.Context) (*share.Result, string, error) {
+					return share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskHigh}, []share.ConfirmationDetailBlock{share.TextConfirmationDetail("snapshot")}, func(context.Context) (*share.Result, string, error) {
 						tool.calls++
 						return &share.Result{Content: "original"}, "original", nil
 					}), nil

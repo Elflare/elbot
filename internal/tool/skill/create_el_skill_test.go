@@ -197,7 +197,7 @@ func (creatorExistingTool) Info() toolshare.Info {
 }
 func (creatorExistingTool) Schema() llm.ToolSchema { return llm.ToolSchema{} }
 func (value creatorExistingTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		{
 			result := &toolshare.Result{Content: "ok"}
 			return result, result.Content, nil

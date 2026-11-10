@@ -53,7 +53,7 @@ func (t availabilityTestTool) Definition() share.ToolDefinition {
 	return share.ToolDefinition{Definition: t.Info(), Parameters: t.Schema().Parameters, Prepare: t.PrepareCall}
 }
 func (value availabilityTestTool) PrepareCall(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
-	return share.NewPreparedCall(req, share.RiskAssessment{Level: value.Info().Risk}, "", func(ctx context.Context) (*share.Result, string, error) {
+	return share.NewPreparedCall(req, share.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (*share.Result, string, error) {
 		return &share.Result{}, "", nil
 	}), nil
 }

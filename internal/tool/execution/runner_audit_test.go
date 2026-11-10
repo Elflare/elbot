@@ -27,7 +27,7 @@ func (blockingAuditTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "audit_probe", Parameters: map[string]any{"type": "object"}}
 }
 func (b blockingAuditTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: b.Info().Risk}, "", func(ctx context.Context) (*toolshare.Result, string, error) {
+	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: b.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
 		close(b.entered)
 		select {
 		case <-b.release:

@@ -119,8 +119,8 @@ func TestPrepareELwispToolFixesRequestWithoutSending(t *testing.T) {
 	if calls.Load() != 0 {
 		t.Fatal("preparation sent a request")
 	}
-	if prepared.RiskAssessment().Level != toolshare.RiskLow || prepared.Preview() != "" {
-		t.Fatalf("risk=%+v preview=%q", prepared.RiskAssessment(), prepared.Preview())
+	if prepared.RiskAssessment().Level != toolshare.RiskLow || len(prepared.Details()) != 0 {
+		t.Fatalf("risk=%+v details=%+v", prepared.RiskAssessment(), prepared.Details())
 	}
 	resolved.Discovered.Name = "changed"
 	resolved.Discovered.EventKey = "changed/event"

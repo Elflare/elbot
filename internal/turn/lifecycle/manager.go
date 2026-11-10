@@ -106,10 +106,9 @@ type Snapshot struct {
 	Attempt     string    // Current attempt; empty during a continuation reservation.
 }
 type RiskConfirmation struct {
-	ToolName  string
-	Arguments string
-	Risk      string
-	Detail    []ConfirmationDetailBlock // 当前待确认操作的有序内容块。
+	ToolName string
+	Risk     string
+	Detail   []ConfirmationDetailBlock // 当前待确认操作的有序内容块。
 }
 
 type ConfirmationDetailBlock struct {
