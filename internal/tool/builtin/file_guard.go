@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"elbot/internal/elyph"
+	"elbot/internal/tool/share"
 )
 
 const (
@@ -32,25 +33,11 @@ type FileGuardRule struct {
 	Match        func(absPath, rel string) bool
 }
 
-func NewFileGuard(rules ...FileGuardRule) *FileGuard {
-	guard := &FileGuard{}
-	for _, rule := range rules {
-		guard.AddRule(rule)
-	}
-	return guard
+func NewFileGuard(rules ...FileGuardRule) FileGuard {
+	return FileGuard{rules: rules}
 }
 
-func (g *FileGuard) AddRule(rule FileGuardRule) {
-	if g == nil || strings.TrimSpace(rule.Root) == "" && strings.TrimSpace(rule.ExactPath) == "" {
-		return
-	}
-	g.rules = append(g.rules, rule)
-}
-
-func (g *FileGuard) ReadWarnings(path string) []string {
-	if g == nil {
-		return nil
-	}
+func (g FileGuard) ReadWarnings(path string) []string {
 	warnings := []string{}
 	for _, rule := range g.rules {
 		if rule.matches(path) {
@@ -60,15 +47,11 @@ func (g *FileGuard) ReadWarnings(path string) []string {
 	return warnings
 }
 
-func (g *FileGuard) CheckWrite(path string) error {
-	if g == nil {
-		return nil
-	}
+func (g FileGuard) CheckWrite(path string) error {
 	for _, rule := range g.rules {
-		if !rule.matches(path) || strings.TrimSpace(rule.WriteError) == "" {
-			continue
+		if rule.matches(path) {
+			return share.PolicyDeniedError(rule.WriteError)
 		}
-		return fmt.Errorf("%s", strings.TrimSpace(rule.WriteError))
 	}
 	return nil
 }
