@@ -141,3 +141,30 @@ func TestLocalRegularFileAndStartFailure(t *testing.T) {
 		}
 	})
 }
+
+func TestStartRacesBeginClose(t *testing.T) {
+	for range 12 {
+		runtime, _ := testLocalAdapter(t)
+		gate := make(chan struct{})
+		result := make(chan error, 1)
+		stopped := make(chan struct{})
+		go func() { <-gate; result <- runtime.Start(t.Context(), nil) }()
+		go func() { <-gate; runtime.BeginClose(); close(stopped) }()
+		close(gate)
+		err := <-result
+		if err != nil && !errors.Is(err, signal.ErrClosed) && !errors.Is(err, context.Canceled) {
+			t.Fatal(err)
+		}
+		<-stopped
+		deadline, cancel := context.WithTimeout(t.Context(), time.Second)
+		if err := runtime.Wait(deadline); err != nil {
+			cancel()
+			t.Fatal("stop became runtime failure", err)
+		}
+		if err := runtime.Close(deadline); err != nil {
+			cancel()
+			t.Fatal(err)
+		}
+		cancel()
+	}
+}
