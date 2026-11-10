@@ -182,15 +182,15 @@ Examples: `/log -w -n 10` · `/log --system` · `/audit --event tool_call_comple
 
 ## High-risk Tool Confirmation
 
-Available commands when triggering high-risk confirmation:
+Commands available when high-risk confirmation is triggered:
 
 | Command | Function |
 | --- | --- |
-| `/detail` | Details of the tool call awaiting confirmation; supports custom plain-text details defined by the tool; if not customized, formatted parameters are displayed. |
+| `/detail` | Details of the tool call awaiting confirmation; displays text, diff, parameters, or Markdown content in order. |
 | `/confirm` | Confirm the current tool call awaiting confirmation. |
 | `/confirmtool` | Confirm the current tool. |
-| `/confirmall` | Confirm all pending tools in the current batch. |
-| `/reject` | Reject the current pending tool call. |
+| `/confirmall` | Confirm all tool calls awaiting confirmation in the current batch. |
+| `/reject` | Reject the current tool call awaiting confirmation. |
 
-- Confirmation wait for ordinary users expires by default after 10 minutes of no valid operation; A shorter time limit is used if the Session TTL of the current group chat or private chat is shorter. Superadmins are not subject to the additional 10-minute limit, but still adhere to a Session TTL greater than 0. `/detail` will reset the timer; After expiration, the tool will not be executed, and current processing will stop.
-- `/stop` can also be used to stop the current request (see [Request Management](#请求管理)). Specific prompts are subject to the runtime output.
+- Confirmation for ordinary users expires by default after 10 minutes of inactivity; a shorter limit is used if the Session TTL of the current group or private chat is shorter. Superadmins are not subject to the additional 10-minute limit but still adhere to a Session TTL greater than 0. `/detail` will reset the timer; once expired, the tool will not be executed, and the current processing will stop.
+- `/stop` can also be used to stop the current request (see [Request Management](#请求管理)). Refer to the runtime output for specific prompts.

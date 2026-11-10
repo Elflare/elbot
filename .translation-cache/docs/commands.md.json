@@ -8,14 +8,6 @@
       "translation": "## Mode\n\n| Command | Function |\n| --- | --- |\n| `/chat [消息]` | Switch to chat mode or create a new chat Session, without injecting tools. |\n| `/work [消息]` | Switch to work mode or create a new work Session, enabling tool discovery and invocation. |\n\n- When a message is provided, it switches first and then sends it as the same user message; if the mode switch is rejected, the message is not sent (e.g., `/chat 随便聊聊`).\n- A work Session with existing history cannot be switched directly to chat; `/new` is required first.\n\n",
       "updated_at": 1793351491
     },
-    "docs/commands.md:section:1b869308dd80ab369fac2c6cce6270bd6385e25511b64db4e14d143f3eebaa9a": {
-      "kind": "section",
-      "source": "## 高风险工具确认\n\n触发高风险确认时可用的命令：\n\n| 命令 | 作用 |\n| --- | --- |\n| `/detail` | 待确认工具调用详情；支持工具自定义纯文本详情，未自定义时显示格式化后的参数。 |\n| `/confirm` | 确认当前待确认工具调用。 |\n| `/confirmtool` | 确认当前工具。 |\n| `/confirmall` | 确认当前批次全部待确认工具。 |\n| `/reject` | 拒绝当前待确认工具调用。 |\n\n- 普通用户的确认等待默认 10 分钟无有效操作后过期；当前群聊或私聊的 Session TTL 更短时用更短时限。超级管理员不受额外的 10 分钟限制，但仍遵守大于 0 的 Session TTL。`/detail` 会重新计时；过期后工具不执行，当前处理停止。\n- 也可用 `/stop` 停止当前请求（见[请求管理](#请求管理)）。具体提示以运行时输出为准。\n",
-      "source_file": "docs/commands.md",
-      "source_hash": "d1d69be2cc752dcdf23733b7370d4ee7abdefe72ce8a96d0fb6ccda160367f17",
-      "translation": "## High-risk Tool Confirmation\n\nAvailable commands when triggering high-risk confirmation:\n\n| Command | Function |\n| --- | --- |\n| `/detail` | Details of the tool call awaiting confirmation; supports custom plain-text details defined by the tool; if not customized, formatted parameters are displayed. |\n| `/confirm` | Confirm the current tool call awaiting confirmation. |\n| `/confirmtool` | Confirm the current tool. |\n| `/confirmall` | Confirm all pending tools in the current batch. |\n| `/reject` | Reject the current pending tool call. |\n\n- Confirmation wait for ordinary users expires by default after 10 minutes of no valid operation; A shorter time limit is used if the Session TTL of the current group chat or private chat is shorter. Superadmins are not subject to the additional 10-minute limit, but still adhere to a Session TTL greater than 0. `/detail` will reset the timer; After expiration, the tool will not be executed, and current processing will stop.\n- `/stop` can also be used to stop the current request (see [Request Management](#请求管理)). Specific prompts are subject to the runtime output.\n",
-      "updated_at": 1793351491
-    },
     "docs/commands.md:section:22929c773248be736329061e848db378484aa85ad7bad58e0d63984055f27ab9": {
       "kind": "section",
       "source": "## 上下文压缩\n\n| 命令 | 作用 |\n| --- | --- |\n| `/compact` | 手动压缩当前 Session 上下文。 |\n\n- 自动压缩由 `[context] compact_enabled` 和 `compact_trigger_ratio` 控制。\n- 压缩保留历史用户原话、忽略工具返回值，成功后创建并切换到独立的 `原标题 compacted-N` Session，旧 Session 不修改；可用 `/stop` 取消。\n\n",
@@ -111,11 +103,19 @@
       "source_hash": "596463abc481abaa332769e700849b9cda368b34140f7f97fcff875e030a4a3c",
       "translation": "## Session\n\n| Command | Description |\n| --- | --- |\n| `/new` | Create and switch to a new Session. |\n| `/status` | Current Session status. |\n| `/sessions [page] [-k\\|--keyword <keyword>]` | List or search visible Sessions. |\n| `/resume [session_id\\|last]` | Resume a historical Session. |\n| `/archives [page] [-k\\|--keyword <keyword>]` | List of archived Sessions. |\n| `/archive [session_id] --confirm` | Archive. |\n| `/unarchive [session_id]` | Unarchive. |\n| `/pin` / `/unpin [session_id]` | Pin / Unpin. |\n| `/rename [session_id\\|current_title] <new_title>` | Rename. |\n| `/delete <session_id> --confirm` | Permanently delete. |\n| `/clean --confirm` | Delete expired Sessions that are neither archived nor pinned. |\n\n- When the target is omitted, `/archive`, `/unarchive`, `/pin`, and `/unpin` apply to the current Session; `/rename` uses the current title when the target is omitted, and `/delete` must provide a `session_id`. A bare `/resume` returns a list of resumable Sessions.\n- `/resume last` resumes the most recently updated Session other than the current one, ignoring pins.\n- CLI superadmins can view and manage Sessions across platforms; ordinary CLI users and messaging platform users follow their respective platforms and scopes. Cron/Elnis background Sessions can only be resumed via private chat on the same platform by the owner, or via the CLI management entry. Resuming will permanently transfer ownership to the foreground.\n- Switching commands such as `/new`, `/resume`, `/fork`, `/chat`, and `/work` cannot be executed while the current Session is processing; `/stop` must be called first.\n- Deletion is a permanent operation and requires `--confirm`; Sessions currently executing cannot be deleted and will be skipped during automatic cleanup.\n\n",
       "updated_at": 1794153951
+    },
+    "docs/commands.md:section:f379d072cf0ef17d86a446e44d3c0797e8e5e6a6ad491cf78b0ca3d805e26889": {
+      "kind": "section",
+      "source": "## 高风险工具确认\n\n触发高风险确认时可用的命令：\n\n| 命令 | 作用 |\n| --- | --- |\n| `/detail` | 待确认工具调用详情；按顺序展示文字、diff、参数或 Markdown 内容。 |\n| `/confirm` | 确认当前待确认工具调用。 |\n| `/confirmtool` | 确认当前工具。 |\n| `/confirmall` | 确认当前批次全部待确认工具。 |\n| `/reject` | 拒绝当前待确认工具调用。 |\n\n- 普通用户的确认等待默认 10 分钟无有效操作后过期；当前群聊或私聊的 Session TTL 更短时用更短时限。超级管理员不受额外的 10 分钟限制，但仍遵守大于 0 的 Session TTL。`/detail` 会重新计时；过期后工具不执行，当前处理停止。\n- 也可用 `/stop` 停止当前请求（见[请求管理](#请求管理)）。具体提示以运行时输出为准。\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "78e97b03e4a5952692851b872521934ea6ced948806da7dd02e44b16a83daa4b",
+      "translation": "## High-risk Tool Confirmation\n\nCommands available when high-risk confirmation is triggered:\n\n| Command | Function |\n| --- | --- |\n| `/detail` | Details of the tool call awaiting confirmation; displays text, diff, parameters, or Markdown content in order. |\n| `/confirm` | Confirm the current tool call awaiting confirmation. |\n| `/confirmtool` | Confirm the current tool. |\n| `/confirmall` | Confirm all tool calls awaiting confirmation in the current batch. |\n| `/reject` | Reject the current tool call awaiting confirmation. |\n\n- Confirmation for ordinary users expires by default after 10 minutes of inactivity; a shorter limit is used if the Session TTL of the current group or private chat is shorter. Superadmins are not subject to the additional 10-minute limit but still adhere to a Session TTL greater than 0. `/detail` will reset the timer; once expired, the tool will not be executed, and the current processing will stop.\n- `/stop` can also be used to stop the current request (see [Request Management](#请求管理)). Refer to the runtime output for specific prompts.\n",
+      "updated_at": 1794275954
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "2413853a314212a073b456c49f306f2e193a62c99e522da2d83430578f9346c0",
+  "source_hash": "ef2203ad53a86252323c14686493ad9962113e6f7ba5a194221d997c1675c71a",
   "target": "docs.en/commands.md",
-  "updated_at": 1794153951,
+  "updated_at": 1794275954,
   "version": 3
 }
