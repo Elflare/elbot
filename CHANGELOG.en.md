@@ -18,26 +18,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Command returns have changed from notifications to independent structured results, providing unified business data, categorized errors, and confirmation operations; the remote protocol now includes `command_result` associated by input ID, handling execution failures and delivery failures separately.
-- `/messages` has been changed to bounded pagination of original conversations: page 1 is the newest, with items within the page ordered from oldest to newest; structured data retains the full body and attachment names, includes branch history, and is not affected by context compaction summaries.
-- Additional input confirmation now only supports `/stop` for cancellation.
+- File write confirmation previews now only return the diff when a full diff is available; otherwise, they use a text description when the diff is omitted.
+- Command returns have been changed from notifications to independent structured results, providing unified business data, categorized errors, and confirmation operations; the remote protocol now includes `command_result` associated by input ID, with execution failures and delivery failures handled separately.
+- `/messages` now uses bounded pagination for original conversations: page 1 is the newest, with messages ordered from oldest to newest within the page; structured data retains the full body and attachment names, includes branch history, and is unaffected by compaction summaries.
+- Additional input confirmations now only support `/stop` for cancellation.
 - `/status` now uses database statistics and no longer reads the full history for message counts.
 - Manually guided the AI to refactor the App to the business layer package-by-package, file-by-file, function-by-function, and field-by-field, further tightening boundaries, clarifying responsibilities, and streamlining code.
 - Breaking Change: Resident memory has been changed to TOML tables layered by platform and user ID; old files are automatically backed up and migrated upon first read. Migration compatibility code will be removed after two minor version increments following the introduction version.
 - Breaking Change: Changed the hook protocol.
-- Breaking Change: No longer provides specific fallback handling for models that do not support vision.
+- Breaking Change: No longer provides specialized fallback handling for models that do not support vision.
 - Streamlined user prompt information and tool schema information.
-- Optimized runtime log and audit log displays; log filenames have been changed to `log*`.
+- Optimized log and audit displays; log filenames have been changed to `log*`.
 - Modified ID formats in multiple locations.
 - Hook native emoji output now uniformly uses the required `name` field; `text` is no longer used for emoji construction or fallback; plain text display is unified as `[Emoji: Name]`.
 - Delivery information for Hook event output snapshots has been changed from the `Meta` object to the `Delivery` object, containing `Timing`, `HookPoint`, `HookName`, and `HookMode`; the derived field `AltText` has been removed.
 - Active requests in `/status` no longer repeatedly display the Session title; this information is still retained when using `/requests` directly.
 - Modified the Elwisp protocol to uniformly use `platform`, `api`, and `params` to describe platform native API calls.
-- The `send_file` tool is now available for ordinary users, limited to media IDs and URLs.
+- The `send_file` tool is now available to regular users, limited to media IDs and URLs.
 - Optimized retry logic.
 - `/resume` no longer uses numbering.
 - Keywords for `/sessions` and `/archives` now require `-k/--keyword`.
-- Using `#` to select files now uses files within the agent workspace.
+- File selection via `#` now uses files within the agent workspace.
+- Optimized warn warnings for the shell tool.
 
 ### Fixed
 
