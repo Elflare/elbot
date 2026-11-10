@@ -24,14 +24,6 @@
       "translation": "## Environment Requirements\n\n- Go 1.26 or a newer version.\n- An LLM service: compatible with either `/chat/completions` or the Responses API (e.g., DeepSeek, OpenAI).\n- At least one available API Key.\n\n",
       "updated_at": 1793375090
     },
-    "docs/getting-started.md:section:20fa9dbd86ac94970fc8a9b22cadc62397aa759d3e6758419d0cd0807e8b98db": {
-      "kind": "section",
-      "source": "## CLI TUI 按键\n\n| 按键 | 作用 |\n| --- | --- |\n| `PgUp` / `PgDn` / `Home` / `End` | 滚动聊天输出 |\n| `Ctrl+K` / `Ctrl+J` | 小幅滚动聊天输出 |\n| `Ctrl+U` / `Ctrl+D` | 滚动通知区 |\n| `Alt+h` / `Alt+l` | 进入聊天区 / 通知区 copy mode |\n| copy mode 中的 `h/j/k/l`、`w/e/b` | 移动 |\n| copy mode 中的 `v` / `V`、`y`、`/` | 选择、复制、搜索 |\n| copy mode 中的 `i` 或 `Esc` | 返回输入 |\n| `#<文件名>` | 补全并引用本地文件；文件不存在时保留原文，按普通 `#` 文本发送 |\n| 拖动聊天区与通知区之间的竖线 | 宽屏模式下调整两侧宽度，本次运行期间保留 |\n\n",
-      "source_file": "docs/getting-started.md",
-      "source_hash": "f2ed8247b9fa501a21a6eb4fb8677e605d4f4d25eb22c992729ebe46431c0530",
-      "translation": "## CLI TUI Keys\n\n| Key | Action |\n| --- | --- |\n| `PgUp` / `PgDn` / `Home` / `End` | Scroll chat output |\n| `Ctrl+K` / `Ctrl+J` | Scroll chat output slightly |\n| `Ctrl+U` / `Ctrl+D` | Scroll notification area |\n| `Alt+h` / `Alt+l` | Enter copy mode for chat area / notification area |\n| `h/j/k/l`, `w/e/b` in copy mode | Move |\n| `v` / `V`, `y`, `/` in copy mode | Select, copy, search |\n| `i` or `Esc` in copy mode | Return to input |\n| `#<文件名>` | Complete and reference local files; if the file does not exist, keep the original text and send it as plain `#` text |\n| Drag the vertical line between the chat area and the notification area | Adjust the width of both sides in widescreen mode; settings are preserved for the current run |\n\n",
-      "updated_at": 1793375090
-    },
     "docs/getting-started.md:section:4c7773320f9ac979985ecee5b5f6278f08a41fb35709dcc12f2b2aeb3a406b46": {
       "kind": "section",
       "source": "## 运行模式\n\n| 命令 | 行为 |\n| --- | --- |\n| `elbot` | 自动：优先连接 CLI 服务端，符合条件时回退本地启动 |\n| `elbot run` | 完整前台：本地 CLI 界面 + 已启用平台 + 后台任务 |\n| `elbot client [-c name]` | CLI 客户端，连接服务端 |\n| `elbot service run` | 无界面服务：已启用平台 + 后台任务，按配置提供 CLI 服务端 |\n\n- 自动模式未显式指定 `-c` 时，只有 CLI 被禁用、没有任何连接配置、或默认本机服务拨号失败才回退本地启动；配置、认证和握手错误直接报告。\n- service 模式不启动本地交互界面；没有配置消息平台、或全部平台均已退出时仍保持运行，直到外部停止。\n- 直接启动的交互 CLI 退出时会结束所属应用进程。\n- 同一份配置只能运行一个本地实例。锁文件位于实际配置旁（如 `app.toml.lock`），正常关闭或异常退出后自动释放，无需手动清理；运行期间不要删除，保存或替换配置文件不影响已取得的锁。\n- 正常退出是秒级；卡住时最多等 30 秒，到时强制关闭。\n\n",
@@ -64,6 +56,14 @@
       "translation": "## Configure Provider\n\nThe default configuration already includes DeepSeek and OpenAI:\n\n```toml\n[providers.deepseek]\nbase_url = \"https://api.deepseek.com\"\napi_key_env = \"DEEPSEEK_API_KEY\"\n\n[providers.openai]\nbase_url = \"https://api.openai.com/v1\"\napi_key_env = \"OPENAI_API_KEY\"\nmodels = [\"gpt-4o-mini\"]\n```\n\nPlace the keys in system environment variables, or copy the automatically generated `.env.example` to `.env` in the configuration directory and then fill it in; do not write them directly into `providers.toml`.\n\n```dotenv\nDEEPSEEK_API_KEY=your-api-key\nOPENAI_API_KEY=your-api-key\n```\n\n",
       "updated_at": 1793375090
     },
+    "docs/getting-started.md:section:8f3a5063f6100c9456c21740e8da3909fb58c37c80a3b60ac1f183a1e1a828b1": {
+      "kind": "section",
+      "source": "## CLI TUI 按键\n\n| 按键 | 作用 |\n| --- | --- |\n| `PgUp` / `PgDn` / `Home` / `End` | 滚动聊天输出 |\n| `Ctrl+K` / `Ctrl+J` | 小幅滚动聊天输出 |\n| `Ctrl+U` / `Ctrl+D` | 滚动通知区 |\n| `Alt+h` / `Alt+l` | 进入聊天区 / 通知区 copy mode |\n| copy mode 中的 `h/j/k/l`、`w/e/b` | 移动 |\n| copy mode 中的 `v` / `V`、`y`、`/` | 选择、复制、搜索 |\n| copy mode 中的 `i` 或 `Esc` | 返回输入 |\n| `#<文件名>` | 搜索并引用 Agent 当前 Workspace 文件；文本文件发送时展开内容，较大或非文本文件按路径引用 |\n| 拖动聊天区与通知区之间的竖线 | 宽屏模式下调整两侧宽度，本次运行期间保留 |\n\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "4ed6a6acfebc884cc469c0ad5b9f974c2842a9efdc313d666969639312313cec",
+      "translation": "## CLI TUI Keybindings\n\n| Key | Action |\n| --- | --- |\n| `PgUp` / `PgDn` / `Home` / `End` | Scroll chat output |\n| `Ctrl+K` / `Ctrl+J` | Scroll chat output slightly |\n| `Ctrl+U` / `Ctrl+D` | Scroll notification area |\n| `Alt+h` / `Alt+l` | Enter chat area / notification area copy mode |\n| `h/j/k/l`, `w/e/b` in copy mode | Move |\n| `v` / `V`, `y`, `/` in copy mode | Select, copy, search |\n| `i` or `Esc` in copy mode | Return to input |\n| `#<filename>` | Search for and reference files in the Agent's current Workspace; text files are expanded when sent, while larger or non-text files are referenced by path |\n| Drag the vertical line between the chat area and the notification area | Adjust the width of both sides in wide-screen mode; settings are preserved for the current session |\n\n",
+      "updated_at": 1794276746
+    },
     "docs/getting-started.md:section:d374eaae04a09a6eec84c3974203171a80cdb8a9d34652bc8cfbb7832aa16a54": {
       "kind": "section",
       "source": "## 第一次对话\n\n启动后直接输入消息即可。常用起步命令：\n\n| 命令 | 作用 |\n| --- | --- |\n| `/help` | 查看可用命令 |\n| `/status` | 当前 Session、模型、上下文和请求状态 |\n| `/models`（别名 `/checkmodel`） | 查看可用模型列表 |\n| `/model <编号或名称>` | 切换模型 |\n| `/chat` / `/work` | 切换低成本聊天模式 / 可使用工具的工作模式 |\n\n更多命令见 [命令速查](commands.md)。\n\n",
@@ -90,8 +90,8 @@
     }
   },
   "source": "docs/getting-started.md",
-  "source_hash": "c6c911f53d504e22b915ef47f1f69a0d99068570a85c3fee6665488cf30df073",
+  "source_hash": "497cadf05518a4a8c243b8b233e14423021e91894e5db9191319e3819d89524f",
   "target": "docs.en/getting-started.md",
-  "updated_at": 1793424312,
+  "updated_at": 1794276747,
   "version": 3
 }

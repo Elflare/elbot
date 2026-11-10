@@ -77,19 +77,19 @@ When changing the Provider, update `provider` and `model` simultaneously. `defau
 - Only one local instance can run with the same configuration. The lock file is located next to the actual configuration (e.g., `app.toml.lock`) and is automatically released after a normal shutdown or abnormal exit, requiring no manual cleanup; Do not delete it during operation; saving or replacing the configuration file does not affect the lock already acquired.
 - Normal exit takes seconds; if stuck, wait up to 30 seconds before forcing a shutdown.
 
-## CLI TUI Keys
+## CLI TUI Keybindings
 
 | Key | Action |
 | --- | --- |
 | `PgUp` / `PgDn` / `Home` / `End` | Scroll chat output |
 | `Ctrl+K` / `Ctrl+J` | Scroll chat output slightly |
 | `Ctrl+U` / `Ctrl+D` | Scroll notification area |
-| `Alt+h` / `Alt+l` | Enter copy mode for chat area / notification area |
+| `Alt+h` / `Alt+l` | Enter chat area / notification area copy mode |
 | `h/j/k/l`, `w/e/b` in copy mode | Move |
 | `v` / `V`, `y`, `/` in copy mode | Select, copy, search |
 | `i` or `Esc` in copy mode | Return to input |
-| `#<文件名>` | Complete and reference local files; if the file does not exist, keep the original text and send it as plain `#` text |
-| Drag the vertical line between the chat area and the notification area | Adjust the width of both sides in widescreen mode; settings are preserved for the current run |
+| `#<filename>` | Search for and reference files in the Agent's current Workspace; text files are expanded when sent, while larger or non-text files are referenced by path |
+| Drag the vertical line between the chat area and the notification area | Adjust the width of both sides in wide-screen mode; settings are preserved for the current session |
 
 ## Build and Shell Completion
 
