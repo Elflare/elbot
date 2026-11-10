@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"elbot/internal/delivery"
+	clishare "elbot/internal/platform/cli/share"
+	runtimestatus "elbot/internal/runtime"
 	"github.com/coder/websocket"
 )
 
@@ -98,12 +100,61 @@ func TestRemoteOutputWriteFailureDoesNotReturnToAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stream := remoteMessageStream{client: client, id: 1}
+	stream := remoteMessageStream{server: s, clientID: client.id, id: 1}
 	if _, err := stream.Send(t.Context(), delivery.StreamEvent{Type: delivery.StreamTextDelta, Text: "partial"}); err != nil {
 		t.Fatalf("stream write failure escaped to Agent: %v", err)
 	}
 	if err := s.sendOutputs(t.Context(), []*remoteClientConn{client}, []delivery.Output{delivery.Text("tool output")}); err != nil {
 		t.Fatalf("output write failure escaped to Agent: %v", err)
+	}
+}
+
+func TestRemoteStreamAndStatusFollowReconnectedClient(t *testing.T) {
+	server := testRemoteServer(t)
+	if err := server.Start(t.Context(), nil); err != nil {
+		t.Fatal(err)
+	}
+	oldConn := dialTestRemote(t, server)
+	clients, err := server.onlineClients(func(string) bool { return true })
+	if err != nil || len(clients) != 1 {
+		t.Fatalf("connected client = %v, error = %v", clients, err)
+	}
+	ctx := server.messageContext(t.Context(), clients[0])
+	stream, err := server.StartStream(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := oldConn.CloseNow(); err != nil {
+		t.Fatal(err)
+	}
+
+	newConn := dialTestRemote(t, server)
+	for _, event := range []delivery.StreamEvent{
+		{Type: delivery.StreamTextDelta, Text: "continued"},
+		{Type: delivery.StreamSend, Text: "complete"},
+	} {
+		if _, err := stream.Send(t.Context(), event); err != nil {
+			t.Fatal(err)
+		}
+		got := readTestRemote(t, newConn)
+		if got.Type != remoteMsgStream || got.Event == nil || got.Event.Type != event.Type || got.Event.Text != event.Text {
+			t.Fatalf("stream event = %+v, want %+v", got, event)
+		}
+	}
+	status := runtimestatus.Snapshot{SessionID: "session", Phase: runtimestatus.PhaseLLM}
+	if err := (remoteDisplayTarget{server: server, client: clients[0]}).PresentStatus(ctx, clishare.Status{Snapshot: status}); err != nil {
+		t.Fatal(err)
+	}
+	if got := readTestRemote(t, newConn); got.Type != remoteMsgStatus || got.Snapshot != status {
+		t.Fatalf("status = %+v", got)
+	}
+}
+
+func TestRemoteStreamSendWithoutConnectedClientSucceeds(t *testing.T) {
+	server := &RemoteServer{clients: map[string]map[*remoteClientConn]struct{}{}}
+	stream := remoteMessageStream{server: server, clientID: "disconnected", id: 1}
+	if _, err := stream.Send(t.Context(), delivery.StreamEvent{Type: delivery.StreamTextDelta, Text: "partial"}); err != nil {
+		t.Fatalf("stream send without connected client failed: %v", err)
 	}
 }
 

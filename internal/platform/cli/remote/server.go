@@ -293,18 +293,22 @@ func (s *RemoteServer) StartStream(ctx context.Context) (delivery.MessageStream,
 	if !ok {
 		return nil, fmt.Errorf("cli stream target missing")
 	}
-	return remoteMessageStream{client: client, id: remoteStreamID.Add(1)}, nil
+	return remoteMessageStream{server: s, clientID: client.id, id: remoteStreamID.Add(1)}, nil
 }
 
 var remoteStreamID atomic.Uint64
 
 type remoteMessageStream struct {
-	client *remoteClientConn
-	id     uint64 // Identifies one preview in the receiving TUI.
+	server   *RemoteServer
+	clientID string
+	id       uint64 // Identifies one preview in the receiving TUI.
 }
 
 func (s remoteMessageStream) Send(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
-	_ = s.client.write(ctx, remoteMessage{Type: remoteMsgStream, StreamID: s.id, Event: &event})
+	clients, err := s.server.onlineClients(func(clientID string) bool { return clientID == s.clientID })
+	if err == nil {
+		_ = s.server.writeClients(ctx, clients, remoteMessage{Type: remoteMsgStream, StreamID: s.id, Event: &event})
+	}
 	return delivery.Receipt{}, nil
 }
 
@@ -344,11 +348,15 @@ func (t remoteDisplayTarget) SendReply(ctx context.Context, outputs []delivery.O
 }
 
 func (t remoteDisplayTarget) StartStream(ctx context.Context) (delivery.MessageStream, error) {
-	return remoteMessageStream{client: t.client, id: remoteStreamID.Add(1)}, nil
+	return remoteMessageStream{server: t.server, clientID: t.client.id, id: remoteStreamID.Add(1)}, nil
 }
 
 func (t remoteDisplayTarget) PresentStatus(ctx context.Context, status clishare.Status) error {
-	return t.client.write(ctx, remoteMessage{Type: remoteMsgStatus, Snapshot: status.Snapshot})
+	clients, err := t.server.onlineClients(func(clientID string) bool { return clientID == t.client.id })
+	if err != nil {
+		return nil
+	}
+	return t.server.writeClients(ctx, clients, remoteMessage{Type: remoteMsgStatus, Snapshot: status.Snapshot})
 }
 
 func (s *RemoteServer) targetClients(ctx context.Context, target delivery.Target) ([]*remoteClientConn, error) {
