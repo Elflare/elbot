@@ -208,7 +208,11 @@ func (s *Service) resolveDeliveryTargets(meta Metadata) []delivery.Target {
 			return nil
 		}
 		platforms = []PlatformTarget{{Name: meta.Target.SourcePlatform}}
-		if id := strings.TrimSpace(meta.CreatedBy.ID); id != "" {
+		id := strings.TrimSpace(meta.Target.ID)
+		if id == "" {
+			id = strings.TrimSpace(meta.CreatedBy.ID)
+		}
+		if id != "" {
 			platforms[0].SuperadminIDs = []string{id}
 		}
 	}

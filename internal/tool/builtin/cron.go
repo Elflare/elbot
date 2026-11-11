@@ -48,6 +48,7 @@ type cronWriteArgs struct {
 	ToolListNames       []string `json:"tool_list_names"`
 	ModelProvider       *string  `json:"model_provider"`
 	Model               *string  `json:"model"`
+	TargetID            *string  `json:"target_id"`
 	AllEnabledPlatforms *bool    `json:"all_enabled_platforms"`
 	Enabled             *bool    `json:"enabled"`
 }
@@ -81,7 +82,7 @@ func (s *cronService) UpdateCron(ctx context.Context, patch CronUpdateRequest) (
 		RunAt: info.RunAt, CronExpr: info.CronExpr, TriggerMode: info.TriggerMode,
 		Message: info.Message, ToolListNames: info.ToolListNames,
 		ModelProvider: info.ModelProvider, Model: info.Model,
-		AllEnabledPlatforms: info.AllEnabledPlatforms, Enabled: info.Enabled,
+		TargetID: info.TargetID, AllEnabledPlatforms: info.AllEnabledPlatforms, Enabled: info.Enabled,
 		Actor: info.CreatedBy, SourcePlatform: info.SourcePlatform,
 	}
 	before := req
@@ -112,6 +113,9 @@ func (s *cronService) UpdateCron(ctx context.Context, patch CronUpdateRequest) (
 		}
 		req.ModelProvider, req.Model = strings.TrimSpace(*patch.ModelProvider), strings.TrimSpace(*patch.Model)
 	}
+	if patch.TargetID != nil {
+		req.TargetID = strings.TrimSpace(*patch.TargetID)
+	}
 	if patch.AllEnabledPlatforms != nil {
 		req.AllEnabledPlatforms = *patch.AllEnabledPlatforms
 	}
@@ -121,7 +125,7 @@ func (s *cronService) UpdateCron(ctx context.Context, patch CronUpdateRequest) (
 	reset := req.Enabled && ((patch.Enabled != nil && *patch.Enabled) ||
 		before.ScheduleMode != req.ScheduleMode || before.RunAt != req.RunAt || before.CronExpr != req.CronExpr ||
 		before.TriggerMode != req.TriggerMode || before.Message != req.Message ||
-		before.AllEnabledPlatforms != req.AllEnabledPlatforms ||
+		before.TargetID != req.TargetID || before.AllEnabledPlatforms != req.AllEnabledPlatforms ||
 		before.ModelProvider != req.ModelProvider || before.Model != req.Model ||
 		!slices.Equal(before.ToolListNames, req.ToolListNames))
 	return s.upsert(ctx, req, reset)
@@ -158,6 +162,7 @@ func (s *cronService) upsert(ctx context.Context, req CronCreateRequest, reset b
 	req.Message, req.SourcePlatform = strings.TrimSpace(req.Message), strings.TrimSpace(req.SourcePlatform)
 	req.RunAt, req.CronExpr = strings.TrimSpace(req.RunAt), strings.TrimSpace(req.CronExpr)
 	req.ModelProvider, req.Model = strings.TrimSpace(req.ModelProvider), strings.TrimSpace(req.Model)
+	req.TargetID = strings.TrimSpace(req.TargetID)
 	req.ToolListNames = normalizeCronToolNames(req.ToolListNames)
 	if req.Name == "" {
 		return CronInfo{}, fmt.Errorf("cron name is required")
@@ -179,6 +184,9 @@ func (s *cronService) upsert(ctx context.Context, req CronCreateRequest, reset b
 	}
 	if req.SourcePlatform == "" {
 		return CronInfo{}, fmt.Errorf("source platform is required")
+	}
+	if req.TargetID != "" && req.AllEnabledPlatforms {
+		return CronInfo{}, fmt.Errorf("target_id cannot be combined with all_enabled_platforms")
 	}
 	if req.ModelProvider != "" || req.Model != "" {
 		if req.ModelProvider == "" || req.Model == "" {
@@ -338,6 +346,7 @@ func (t CronWriteTool) Definition() toolshare.ToolDefinition {
 		StringArray("tool_list_names", "llm允许的工具/Skill/标签名，无需@；仅所选能力+必要依赖，无discover_tool；update: []→清空。").
 		String("model_provider", "与model同传；create省略→work模型；update两者同为\"\"→默认模型。").
 		String("model", "模型名，与model_provider成对。").
+		String("target_id", "来源平台的私聊接收人ID；create省略→默认接收人；update省略→保留，\"\"→恢复默认；不可与广播同时设置。").
 		Boolean("all_enabled_platforms", "true→广播到所有已启用平台的超级管理员；create默认false。").
 		Boolean("enabled", "create默认true；false→停用保留。").Build(t.PrepareCall)
 }
@@ -392,11 +401,15 @@ func (t CronWriteTool) create(ctx context.Context, args cronWriteArgs) (*toolsha
 	if args.AllEnabledPlatforms != nil {
 		allEnabledPlatforms = *args.AllEnabledPlatforms
 	}
+	targetID := ""
+	if args.TargetID != nil {
+		targetID = *args.TargetID
+	}
 	runAt, err := resolveRunAtAt(args.RunAt, relativeOffset{Minutes: args.RunAfterMinutes, Hours: args.RunAfterHours, Days: args.RunAfterDays, Weeks: args.RunAfterWeeks, Months: args.RunAfterMonths}, t.now())
 	if err != nil {
 		return nil, err
 	}
-	job, err := t.service.CreateCron(ctx, CronCreateRequest{Name: args.Name, Title: args.Title, ScheduleMode: args.ScheduleMode, RunAt: runAt, CronExpr: args.CronExpr, TriggerMode: args.TriggerMode, Message: args.Message, ToolListNames: args.ToolListNames, ModelProvider: provider, Model: model, AllEnabledPlatforms: allEnabledPlatforms, Enabled: enabled, Actor: actor, SourcePlatform: actor.Platform})
+	job, err := t.service.CreateCron(ctx, CronCreateRequest{Name: args.Name, Title: args.Title, ScheduleMode: args.ScheduleMode, RunAt: runAt, CronExpr: args.CronExpr, TriggerMode: args.TriggerMode, Message: args.Message, ToolListNames: args.ToolListNames, ModelProvider: provider, Model: model, TargetID: targetID, AllEnabledPlatforms: allEnabledPlatforms, Enabled: enabled, Actor: actor, SourcePlatform: actor.Platform})
 	if err != nil {
 		return nil, err
 	}
@@ -408,7 +421,7 @@ func (t CronWriteTool) update(ctx context.Context, args cronWriteArgs) (*toolsha
 	if err != nil {
 		return nil, err
 	}
-	patch := CronUpdateRequest{Name: args.Name, Title: stringPtrIfNotEmpty(args.Title), RunAt: runAt, CronExpr: stringPtrIfNotEmpty(args.CronExpr), Message: stringPtrIfNotEmpty(args.Message), ModelProvider: args.ModelProvider, Model: args.Model, AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: args.Enabled, Actor: actorFromContext(ctx)}
+	patch := CronUpdateRequest{Name: args.Name, Title: stringPtrIfNotEmpty(args.Title), RunAt: runAt, CronExpr: stringPtrIfNotEmpty(args.CronExpr), Message: stringPtrIfNotEmpty(args.Message), ModelProvider: args.ModelProvider, Model: args.Model, TargetID: args.TargetID, AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: args.Enabled, Actor: actorFromContext(ctx)}
 	if args.ScheduleMode != "" {
 		v := args.ScheduleMode
 		patch.ScheduleMode = &v
@@ -472,7 +485,7 @@ func resolveRunAtAt(runAt string, offset relativeOffset, now time.Time) (string,
 func cronWriteDescription() string {
 	return `写定时任务。
 create⇒schedule_mode,trigger_mode,message必填。
-update：省略→保持原值；普通字符串""→保持原值(model_provider/model除外)；false有效。
+update：省略→保持原值；普通字符串""→保持原值(model_provider/model/target_id除外)；false有效。
 时间=服务器local，分钟级；run_at与非零run_after_*至多选一。
 run_after_*≥0，可组合；用户给相对时间→优先对应字段，不自行换算run_at。
 once且enabled：早于当前分钟→error；当前分钟→下一分钟。`
@@ -509,10 +522,10 @@ func actorFromContext(ctx context.Context) contextinfo.Actor {
 
 func formatCronInfo(job CronInfo) string {
 	content := fmt.Sprintf(
-		"name:%s\ntitle:%s\nschedule_mode:%s\nrun_at:%s\ncron_expr:%s\ntrigger_mode:%s\ntool_list_names:%s\nmodel_provider:%s\nmodel:%s\nall_enabled_platforms:%t\nsource_platform:%s\ncreated_by:%+v\nenabled:%t\ncompleted:%t\nrun_count:%d\ncreated_at:%s\nupdated_at:%s",
+		"name:%s\ntitle:%s\nschedule_mode:%s\nrun_at:%s\ncron_expr:%s\ntrigger_mode:%s\ntool_list_names:%s\nmodel_provider:%s\nmodel:%s\ntarget_id:%s\nall_enabled_platforms:%t\nsource_platform:%s\ncreated_by:%+v\nenabled:%t\ncompleted:%t\nrun_count:%d\ncreated_at:%s\nupdated_at:%s",
 		job.Name, job.Title, job.ScheduleMode, job.RunAt, job.CronExpr, job.TriggerMode,
 		strings.Join(job.ToolListNames, ", "), job.ModelProvider, job.Model,
-		job.AllEnabledPlatforms, job.SourcePlatform, job.CreatedBy,
+		job.TargetID, job.AllEnabledPlatforms, job.SourcePlatform, job.CreatedBy,
 		job.Enabled, job.Completed, job.RunCount,
 		job.CreatedAt.Format(time.RFC3339Nano), job.UpdatedAt.Format(time.RFC3339Nano),
 	)
