@@ -10,7 +10,7 @@ import (
 )
 
 // AbsolutePathWorkspaceWarning 由工具在前台使用绝对路径时附加到结果。
-const AbsolutePathWorkspaceWarning = "使用绝对路径，不会改变 workspace。若多次在该目录工作，务必使用 workspace 工具切换。"
+const AbsolutePathWorkspaceWarning = "可临时使用绝对路径，不会改变 workspace。若多次在该目录工作，务必使用 workspace 工具切换。"
 
 // AbsolutePathWithinWorkspaceWarning 提示在当前 workspace 中使用相对路径。
 const AbsolutePathWithinWorkspaceWarning = "已在当前目录，务必使用相对路径。"
