@@ -1769,17 +1769,53 @@ func TestEditFileToolUsesWorkspaceRelativePath(t *testing.T) {
 	}
 }
 
-func TestReadFileToolWarnsForAbsolutePath(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sample.txt")
-	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
+func TestReadFileToolAbsolutePathWarnings(t *testing.T) {
+	workspaceDir := t.TempDir()
+	insidePath := filepath.Join(workspaceDir, "sample.txt")
+	if err := os.WriteFile(insidePath, []byte("alpha\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": path})})
+	outsidePath := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outsidePath, []byte("outside\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := workspacepath.WithWorkspaceStore(t.Context(), &testWorkspaceStore{dir: workspaceDir})
+	tool := NewReadFileTool(FileGuard{}).Definition()
+	for _, tc := range []struct {
+		name, path, warning string
+	}{
+		{name: "inside absolute", path: insidePath, warning: toolshare.AbsolutePathWithinWorkspaceWarning},
+		{name: "outside absolute", path: outsidePath, warning: toolshare.AbsolutePathWorkspaceWarning},
+		{name: "relative", path: "sample.txt", warning: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result, _, err := callTool(ctx, tool, toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": tc.path})})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.warning == "" && len(result.Warnings) != 0 {
+				t.Fatalf("warnings = %#v", result.Warnings)
+			}
+			if tc.warning != "" && (len(result.Warnings) == 0 || result.Warnings[0] != tc.warning) {
+				t.Fatalf("warnings = %#v, want %q", result.Warnings, tc.warning)
+			}
+		})
+	}
+
+	editPath := filepath.Join(workspaceDir, "edit.txt")
+	if err := os.WriteFile(editPath, []byte("alpha\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args := mustJSON(map[string]any{
+		"path":  editPath,
+		"edits": []map[string]any{{"operation": "replace_text", "old_text": "alpha", "new_text": "beta"}},
+	})
+	result, _, err := callTool(ctx, (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Warnings) == 0 || !strings.Contains(result.Warnings[0], "绝对路径") {
-		t.Fatalf("warnings = %#v", result.Warnings)
+	if len(result.Warnings) == 0 || result.Warnings[0] != toolshare.AbsolutePathWithinWorkspaceWarning {
+		t.Fatalf("edit warnings = %#v", result.Warnings)
 	}
 }
 

@@ -53,6 +53,26 @@ type ResolvedPath struct {
 	WasAbs bool
 }
 
+// IsWithinWorkspace 判断 Path 是否按路径位置位于 BaseDir 内，不解析符号链接。
+func (p ResolvedPath) IsWithinWorkspace() bool {
+	baseDir, err := filepath.Abs(p.BaseDir)
+	if err != nil {
+		return false
+	}
+	path, err := filepath.Abs(p.Path)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(baseDir, path)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return true
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
 // CurrentWorkspaceDir 优先使用调用级目录，其次读取 Session，最后回退进程目录。
 // 固定目录不在此创建或因缺失而回退，目录准备由建立调用范围的业务负责。
 func CurrentWorkspaceDir(ctx context.Context) (string, error) {

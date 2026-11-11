@@ -145,7 +145,11 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	return toolshare.NewPreparedCall(req, assessment, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("读取：%s\n模式：%s", path, mode))}, func(ctx context.Context) (*toolshare.Result, string, error) {
 		var warnings []string
 		if resolved.WasAbs {
-			warnings = append(warnings, toolshare.AbsolutePathWorkspaceWarning)
+			warning := toolshare.AbsolutePathWorkspaceWarning
+			if resolved.IsWithinWorkspace() {
+				warning = toolshare.AbsolutePathWithinWorkspaceWarning
+			}
+			warnings = append(warnings, warning)
 		}
 		info, err := os.Stat(path)
 		if err != nil {
@@ -504,7 +508,11 @@ func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) 
 	content += fmt.Sprintf("\nrollback_available: %t", result.RollbackAvailable)
 	var warnings []string
 	if resolved.WasAbs {
-		warnings = append(warnings, toolshare.AbsolutePathWorkspaceWarning)
+		warning := toolshare.AbsolutePathWorkspaceWarning
+		if resolved.IsWithinWorkspace() {
+			warning = toolshare.AbsolutePathWithinWorkspaceWarning
+		}
+		warnings = append(warnings, warning)
 	}
 	if result.RollbackEvicted > 0 {
 		warnings = append(warnings, fmt.Sprintf("撤销备份达到内存上限，已清理 %d 条最旧记录。", result.RollbackEvicted))

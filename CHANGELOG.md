@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/resume` 不再使用编号
 - `/sessions`、`/archives` 关键词现在需要-k/--keyword
 - `#`选择文件现在使用agent workspace中的文件
-- 优化shell工具的warn警告
+- 优化工具对agent的警告
 - 读文件不再限制200行（默认还是200）
 
 ### Fixed

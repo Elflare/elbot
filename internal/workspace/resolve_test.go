@@ -60,6 +60,30 @@ func TestResolveWorkspacePathChecksTargetAndCancellation(t *testing.T) {
 	}
 }
 
+func TestResolvedPathIsWithinWorkspace(t *testing.T) {
+	workspaceDir := t.TempDir()
+	insideDir := filepath.Join(workspaceDir, "nested")
+	if err := os.Mkdir(insideDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "root", path: workspaceDir, want: true},
+		{name: "nested", path: filepath.Join(insideDir, "file.txt"), want: true},
+		{name: "outside", path: t.TempDir(), want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := (ResolvedPath{Path: tc.path, BaseDir: workspaceDir}).IsWithinWorkspace()
+			if got != tc.want {
+				t.Fatalf("IsWithinWorkspace()=%t want %t", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestCurrentWorkspaceDirNormalizesRelativeDirectories(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "project")
