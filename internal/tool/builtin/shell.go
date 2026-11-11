@@ -120,7 +120,7 @@ func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, i
 	assessment := toolshare.RiskAssessment{Level: toolshare.RiskHigh}
 	switch {
 	case powerShell:
-		assessment.Reasons = []string{"PowerShell 环境无法用 bash AST 解析命令，需要用户确认"}
+		assessment.Reasons = []string{"PowerShell 环境无法用 bash AST 解析命令"}
 	case parseErr != nil:
 		assessment.Reasons = []string{"shell AST 解析失败，按高风险处理: " + parseErr.Error()}
 	default:
