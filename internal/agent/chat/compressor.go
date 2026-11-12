@@ -27,9 +27,8 @@ type CompactToolCall struct {
 }
 
 type CompactResult struct {
-	Summary          string
-	AssembledSummary string
-	Usage            *llm.Usage
+	Summary string
+	Usage   *llm.Usage
 }
 
 type Compressor struct {
@@ -63,5 +62,5 @@ func (c Compressor) Compact(ctx context.Context, req CompactRequest) (*CompactRe
 
 	summaryText := strings.TrimSpace(result.Text)
 
-	return &CompactResult{Summary: summaryText, AssembledSummary: assembleSummary(summaryText, req.UserInputs), Usage: result.Usage}, nil
+	return &CompactResult{Summary: summaryText, Usage: result.Usage}, nil
 }

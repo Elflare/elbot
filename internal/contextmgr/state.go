@@ -10,15 +10,17 @@ import (
 )
 
 type CompactState struct {
-	Pending         bool   `json:"pending,omitempty"`
-	Summary         string `json:"summary,omitempty"`
-	SeedID          string `json:"seed_id,omitempty"`
-	SourceSessionID string `json:"source_session_id,omitempty"`
-	FromMessageID   string `json:"from_message_id,omitempty"`
-	ToMessageID     string `json:"to_message_id,omitempty"`
-	Provider        string `json:"provider,omitempty"`
-	Model           string `json:"model,omitempty"`
-	TriggerReason   string `json:"trigger_reason,omitempty"`
+	Pending bool   `json:"pending,omitempty"`
+	Summary string `json:"summary,omitempty"`
+	// UserInputs retains original user messages separately from the generated summary.
+	UserInputs      []string `json:"user_inputs,omitempty"`
+	SeedID          string   `json:"seed_id,omitempty"`
+	SourceSessionID string   `json:"source_session_id,omitempty"`
+	FromMessageID   string   `json:"from_message_id,omitempty"`
+	ToMessageID     string   `json:"to_message_id,omitempty"`
+	Provider        string   `json:"provider,omitempty"`
+	Model           string   `json:"model,omitempty"`
+	TriggerReason   string   `json:"trigger_reason,omitempty"`
 	// SourceTokens is the compactor's reported input count; nil means unknown.
 	SourceTokens *int64 `json:"source_tokens,omitempty"`
 	// SummaryTokens is the reported output count; a non-nil zero is explicit zero.

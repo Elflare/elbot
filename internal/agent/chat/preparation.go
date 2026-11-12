@@ -102,6 +102,9 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 	}
 	s.messages = llm.SetLatestUserSegments(s.messages, promptUserSegments)
 	if compactSeedOnCurrentUser {
+		if err := setCompactUserInput(userMessage, agentshare.MessageContent(canonicalUserSegments)); err != nil {
+			return nil, err
+		}
 		userMessage.Content = agentshare.MessageContent(promptUserSegments)
 		userMessage.Segments = agentshare.StoredMessageSegments(promptUserSegments)
 	} else {

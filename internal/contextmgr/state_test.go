@@ -180,3 +180,26 @@ func TestSeedMutationOwnsOnlyContextFields(t *testing.T) {
 		}
 	}
 }
+
+func TestCompactStatePersistsSummaryAndUserInputsSeparately(t *testing.T) {
+	state := &CompactState{Summary: "context summary", UserInputs: []string{"first", "second"}}
+	metadata, err := CompactedMetadata("", state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := DecodeState(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Compact == nil || decoded.Compact.Summary != state.Summary {
+		t.Fatalf("summary state = %+v", decoded.Compact)
+	}
+	if len(decoded.Compact.UserInputs) != len(state.UserInputs) {
+		t.Fatalf("user inputs = %#v, want %#v", decoded.Compact.UserInputs, state.UserInputs)
+	}
+	for i, input := range state.UserInputs {
+		if decoded.Compact.UserInputs[i] != input {
+			t.Fatalf("user inputs = %#v, want %#v", decoded.Compact.UserInputs, state.UserInputs)
+		}
+	}
+}
