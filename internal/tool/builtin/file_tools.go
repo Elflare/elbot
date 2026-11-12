@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"elbot/internal/fileops"
+	"elbot/internal/operationresult"
 	"elbot/internal/workspace"
 )
 
@@ -119,23 +120,23 @@ func readFileBuilder() *toolshare.Builder {
 		Integer("max_matches", "搜索结果上限；≤0/省略→20，最大100。")
 }
 
-func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
 	var args readFileArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse read_file arguments: %w", err)
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse read_file arguments: %v", err)}, nil
 		}
 	}
 	mode, err := normalizeReadFileMode(args.Mode)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	if len(args.Glob) > 0 && mode != readFileModeGrep {
-		return nil, fmt.Errorf("glob requires grep directory search")
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "glob requires grep directory search"}, nil
 	}
 	resolved, err := workspace.ResolveWorkspacePath(ctx, args.Path, workspace.PathResolveOptions{AllowDirectory: mode != readFileModeRead})
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{}, err
 	}
 	path := resolved.Path
 	assessment := toolshare.RiskAssessment{Level: toolshare.RiskLow, Reasons: []string{"读取普通文本文件"}}
@@ -223,7 +224,7 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 			}
 		}
 		return result, fmt.Sprintf("file=%s mode=%s", path, mode), err
-	}), nil
+	})
 }
 
 func readFileGrepResult(ctx context.Context, file fileops.File, lines []string, grep string, contextLines, maxMatches, index int, warnings []string) (*toolshare.Result, error) {
@@ -325,25 +326,29 @@ func editFileBuilder() *toolshare.Builder {
 		ObjectArray("edits", "非空；定位基于编辑前原文。修改范围不重叠，插入点不在其内部；overwrite独占批次。", editProperties, []string{"operation"}, toolshare.Required())
 }
 
-func (t EditFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+func (t EditFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
 	var args editFileArgs
 	if len(req.Arguments) > 0 {
 		if err := decodeStrictFileArgs(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse edit_file arguments: %w", err)
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse edit_file arguments: %v", err)}, nil
 		}
 	}
 	prepared, err := t.Rollback.PrepareEdit(ctx, editServiceRequest(args))
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{}, err
 	}
-	details := editFileRiskDetails(args, prepared.Preview())
+	if prepared.Status != operationresult.Success {
+		return operationresult.Result[*toolshare.PreparedCall]{Status: prepared.Status, Message: prepared.Message}, nil
+	}
+	preparedEdit := prepared.Data
+	details := editFileRiskDetails(args, preparedEdit.Preview())
 	assessment := toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"文件内容写入操作需要确认"}}
 	if scope, ok := workspace.PathScopeFromContext(ctx); ok && scope.Restricted {
 		assessment = toolshare.RiskAssessment{Level: toolshare.RiskMedium, Reasons: []string{"文件编辑限制在当前调用工作目录内"}}
 	}
-	return toolshare.NewPreparedCall(req, assessment, details, func(ctx context.Context) (*toolshare.Result, string, error) {
-		return t.call(ctx, prepared)
-	}), nil
+	return toolshare.NewPreparedCall(req, assessment, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+		return t.call(ctx, preparedEdit)
+	})
 }
 
 func editFileRiskDetails(args editFileArgs, preview fileops.EditResult) []toolshare.ConfirmationDetailBlock {
@@ -499,12 +504,22 @@ func fileToolEditOptions() fileops.EditFileOptions {
 	}
 }
 
-func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) (*toolshare.Result, string, error) {
-	result, resolved, err := prepared.Commit(ctx)
+func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) (operationresult.Result[*toolshare.Result], string, error) {
+	committed, resolved, err := prepared.Commit(ctx)
 	if err != nil {
-		return nil, err.Error(), err
+		return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 	}
-	content := fmt.Sprintf("dry_run: %t\nedited: %s\ncreated: %t\nencoding: %s\nrevision_before: %s\nrevision_after: %s\ndiff:\n%s", result.DryRun, result.Path, result.Created, result.Encoding, result.RevisionBefore, result.RevisionAfter, result.Diff)
+	if committed.Status != operationresult.Success {
+		return operationresult.Result[*toolshare.Result]{Status: committed.Status, Message: committed.Message}, "file edit rejected: " + committed.Message, nil
+	}
+	result := committed.Data
+	content := fmt.Sprintf("edited: %s\nencoding: %s\nrevision_after: %s\ndiff:\n%s", result.Path, result.Encoding, result.RevisionAfter, result.Diff)
+	if result.Created {
+		content = "created: true\n" + content
+	}
+	if result.DryRun {
+		content = "dry_run: true\n" + content
+	}
 	content += fmt.Sprintf("\nrollback_available: %t", result.RollbackAvailable)
 	var warnings []string
 	if resolved.WasAbs {
@@ -520,7 +535,7 @@ func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) 
 	if lease, _ := t.Rollback.EditSession(ctx); lease != nil && !result.RollbackAvailable {
 		warnings = append(warnings, "文件已编辑，但撤销备份因会话失效或容量限制未保留。")
 	}
-	return &toolshare.Result{Content: content, Warnings: warnings}, fmt.Sprintf("edited=%s created=%t dry_run=%t rollback_available=%t", result.Path, result.Created, result.DryRun, result.RollbackAvailable), nil
+	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: content, Warnings: warnings}}, fmt.Sprintf("edited=%s created=%t dry_run=%t rollback_available=%t", result.Path, result.Created, result.DryRun, result.RollbackAvailable), nil
 }
 
 func editServiceRequest(args editFileArgs) fileops.EditRequest {
