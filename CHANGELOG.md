@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `#`选择文件现在使用agent workspace中的文件
 - 优化工具对agent的警告
 - 读文件不再限制200行（默认还是200）
+- 优化压缩逻辑
 
 ### Fixed
 
@@ -47,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 修复 `/resume` 忽略置顶的问题。
 - 在重构中修复一些可能会出现的bug。
 - 修复chat历史搜索工具bug。现在后台、前台都能搜了，且互不影响。
+- 修复多次压缩重复内容的bug
 
 ## [v0.6.0 - 2026-10-23]
 
