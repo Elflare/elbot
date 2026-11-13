@@ -2,6 +2,7 @@ package contextmgr
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
@@ -9,7 +10,7 @@ import (
 )
 
 type Compactor interface {
-	Prepare(context.Context, *storage.Session, string, modelmgr.Selection) (*PreparedCompact, error)
+	Prepare(context.Context, *storage.Session, string, modelmgr.Selection) (operationresult.Result[*PreparedCompact], error)
 }
 type CompactorResolver interface {
 	CompactorFor(llm.Origin) (Compactor, error)

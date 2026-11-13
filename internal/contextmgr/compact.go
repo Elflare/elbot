@@ -2,6 +2,7 @@ package contextmgr
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"fmt"
 	"strings"
 
@@ -13,21 +14,22 @@ import (
 type PreparedCompact struct {
 	Title                string
 	State                *CompactState
+	InitialMessage       string
 	Seed                 *storage.NativeSeed
 	ExpectedCheckpointID string
 }
 
-func (s *Service) Compact(ctx context.Context, current *storage.Session, reason string, fallback modelmgr.Selection) (*PreparedCompact, error) {
+func (s *Service) Compact(ctx context.Context, current *storage.Session, reason string, fallback modelmgr.Selection) (operationresult.Result[*PreparedCompact], error) {
 	origin, known, err := session.Origin(current)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*PreparedCompact]{}, err
 	}
 	if !known {
-		return nil, fmt.Errorf("source session origin is missing")
+		return operationresult.Result[*PreparedCompact]{Status: operationresult.Rejected, Message: "source session origin is missing"}, nil
 	}
 	compactor, err := s.compactors.CompactorFor(origin)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*PreparedCompact]{}, err
 	}
 	return compactor.Prepare(ctx, current, reason, fallback)
 }

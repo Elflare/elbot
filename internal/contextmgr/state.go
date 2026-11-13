@@ -1,7 +1,6 @@
 package contextmgr
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
@@ -10,11 +9,8 @@ import (
 )
 
 type CompactState struct {
-	Pending bool   `json:"pending,omitempty"`
-	Summary string `json:"summary,omitempty"`
-	// UserInputs retains original user messages separately from the generated summary.
-	UserInputs      []string `json:"user_inputs,omitempty"`
-	SeedID          string   `json:"seed_id,omitempty"`
+	// Inputs retains original user messages separately from the generated summary message.
+	Inputs          []string `json:"inputs,omitempty"`
 	SourceSessionID string   `json:"source_session_id,omitempty"`
 	FromMessageID   string   `json:"from_message_id,omitempty"`
 	ToMessageID     string   `json:"to_message_id,omitempty"`
@@ -58,46 +54,6 @@ func decodeState(fields storage.SessionMetadata) (State, error) {
 		}
 	}
 	return state, nil
-}
-
-func PendingCompact(row *storage.Session) (*CompactState, error) {
-	if row == nil {
-		return nil, nil
-	}
-	state, err := DecodeState(row.Metadata)
-	if err != nil {
-		return nil, err
-	}
-	if state.Compact == nil || !state.Compact.Pending || state.Compact.Summary == "" && state.Compact.SeedID == "" {
-		return nil, nil
-	}
-	return state.Compact, nil
-}
-
-func (s *Service) ConsumeSeed(ctx context.Context, id string) (*storage.Session, error) {
-	return s.store.Sessions().Mutate(ctx, id, func(row *storage.Session) error {
-		fields, err := storage.DecodeSessionMetadata(row.Metadata)
-		if err != nil {
-			return err
-		}
-		state, err := decodeState(fields)
-		if err != nil {
-			return err
-		}
-		if state.Compact == nil || !state.Compact.Pending {
-			return nil
-		}
-
-		state.Compact.Pending = false
-		if err := fields.Set("context_compact", state.Compact); err != nil {
-			return err
-		}
-		row.Metadata, err = fields.Encode()
-		if err == nil {
-			row.UpdatedAt = storage.Now()
-		}
-		return err
-	})
 }
 
 // CompactedMetadata carries the latest other-module fields into the new session.

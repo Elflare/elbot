@@ -14,7 +14,7 @@ import (
 )
 
 func TestCompactionResetsElyphRulesForNewSession(t *testing.T) {
-	raw, err := CompactedMetadata(`{"elyph_rules_shown":true,"tool_tags":["keep"],"unknown":9007199254740993}`, &CompactState{Pending: true, Summary: "summary"})
+	raw, err := CompactedMetadata(`{"elyph_rules_shown":true,"tool_tags":["keep"],"unknown":9007199254740993}`, &CompactState{Inputs: []string{"user input"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,50 +139,8 @@ func TestRecordTurnInvalidContextRollsBackActivityAndUsage(t *testing.T) {
 	}
 }
 
-func TestSeedMutationOwnsOnlyContextFields(t *testing.T) {
-	ctx := context.Background()
-	store, err := sqlite.New(ctx, t.TempDir()+"/seed.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	original := `{"context_compact":{"pending":true,"summary":"seed"},"last_usage":{"TotalTokens":40},"tool_tags":["t"],"unknown":9007199254740993,"title_source":"manual","workspace":{"dir":"work"}}`
-	row := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", Metadata: original, ChatType: "private"}
-	if err := store.Sessions().Create(ctx, row); err != nil {
-		t.Fatal(err)
-	}
-	service := New(Options{Store: store})
-	seed, err := PendingCompact(row)
-	if err != nil || seed == nil {
-		t.Fatalf("seed=%v err=%v", seed, err)
-	}
-	seed.Summary = "caller mutation"
-	saved, err := service.ConsumeSeed(ctx, row.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	state, err := DecodeState(saved.Metadata)
-	if err != nil || state.Compact.Pending || state.Compact.Summary != "seed" {
-		t.Fatalf("state=%+v err=%v", state, err)
-	}
-	for _, want := range []string{"9007199254740993", `"tool_tags":["t"]`, `"title_source":"manual"`, `"workspace":{"dir":"work"}`} {
-		if !strings.Contains(saved.Metadata, want) {
-			t.Fatalf("lost %s in %s", want, saved.Metadata)
-		}
-	}
-	next, err := CompactedMetadata(saved.Metadata, &CompactState{Pending: true, Summary: "new"})
-	if err != nil || strings.Contains(next, "last_usage") || !strings.Contains(next, "9007199254740993") {
-		t.Fatalf("handoff=%s err=%v", next, err)
-	}
-	for _, raw := range []string{`{"context_compact":"bad","tool_tags":["keep"]}`, `{"last_usage":"bad"}`, `{bad`} {
-		if _, err := CompactedMetadata(raw, &CompactState{Summary: "new"}); err == nil {
-			t.Fatalf("accepted bad metadata %s", raw)
-		}
-	}
-}
-
-func TestCompactStatePersistsSummaryAndUserInputsSeparately(t *testing.T) {
-	state := &CompactState{Summary: "context summary", UserInputs: []string{"first", "second"}}
+func TestCompactStatePersistsInputs(t *testing.T) {
+	state := &CompactState{Inputs: []string{"first", "second"}}
 	metadata, err := CompactedMetadata("", state)
 	if err != nil {
 		t.Fatal(err)
@@ -191,15 +149,15 @@ func TestCompactStatePersistsSummaryAndUserInputsSeparately(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decoded.Compact == nil || decoded.Compact.Summary != state.Summary {
-		t.Fatalf("summary state = %+v", decoded.Compact)
+	if decoded.Compact == nil {
+		t.Fatal("compact state missing")
 	}
-	if len(decoded.Compact.UserInputs) != len(state.UserInputs) {
-		t.Fatalf("user inputs = %#v, want %#v", decoded.Compact.UserInputs, state.UserInputs)
+	if len(decoded.Compact.Inputs) != len(state.Inputs) {
+		t.Fatalf("inputs = %#v, want %#v", decoded.Compact.Inputs, state.Inputs)
 	}
-	for i, input := range state.UserInputs {
-		if decoded.Compact.UserInputs[i] != input {
-			t.Fatalf("user inputs = %#v, want %#v", decoded.Compact.UserInputs, state.UserInputs)
+	for i, input := range state.Inputs {
+		if decoded.Compact.Inputs[i] != input {
+			t.Fatalf("inputs = %#v, want %#v", decoded.Compact.Inputs, state.Inputs)
 		}
 	}
 }
