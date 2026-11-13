@@ -4,20 +4,8 @@ package session
 
 import (
 	"elbot/internal/contextinfo"
-	"elbot/internal/session/control"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
-)
-
-var (
-	// ErrNoCurrentSession 表示当前 Scope 还未开始对话，与指定记录不存在区分。
-	ErrNoCurrentSession  = control.ErrNoCurrentSession
-	ErrAccessDenied      = share.ErrAccessDenied
-	ErrSessionBusy       = share.ErrSessionBusy
-	ErrForegroundSession = share.ErrForegroundSession
-	// ErrInvalidPage marks an explicitly requested session page beyond the available range.
-	ErrInvalidPage                  = share.ErrInvalidPage
-	ErrChatModeRequiresEmptySession = control.ErrChatModeRequiresEmptySession
 )
 
 // Scope 标识前台会话所属的用户和平台范围。
@@ -29,6 +17,12 @@ type Scope struct {
 	Platform     string                    // 平台标识。
 	ChatID       string                    // 平台内的会话范围。
 	IsSuperadmin bool                      // 已解析的超级管理员角色，用于会话访问裁决。
+}
+
+// CurrentBoundData 携带同一次准入读取的 Session 快照与绑定句柄。
+type CurrentBoundData struct {
+	Session *storage.Session
+	Binding *Binding
 }
 
 // Key 返回 current 绑定的范围身份，不包含可变的会话状态。
@@ -100,6 +94,7 @@ type CompactedRequest struct {
 	ID                   string              // 与源会话不同的预分配目标 ID。
 	Title                string              // 压缩后会话标题。
 	Metadata             string              // 待合并的会话元数据 JSON。
+	InitialMessage       string              // Chat 压缩后写入新会话的合成首条用户消息；Responses 留空。
 	Seed                 *storage.NativeSeed // 原生压缩材料；无原生材料时为 nil。
 	ExpectedCheckpointID string              // 提交时复核的源会话 checkpoint。
 }

@@ -9,161 +9,181 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"elbot/internal/operationresult"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
 )
 
-// ErrNoCurrentSession 表示当前 Scope 尚无有效会话，不等同于指定记录不存在。
-var ErrNoCurrentSession = errors.New("还未开始对话")
-var ErrChatModeRequiresEmptySession = errors.New("chat mode requires an empty work session")
-
 func (s *Service) DefaultMode() string { return s.cfg.DefaultMode }
 
-func (s *Service) GetOrCreateCurrent(ctx context.Context, scope share.Scope, firstMessage string) (*storage.Session, error) {
-	// 先只持有 Scope；确认需要创建后才一次取得全部 Session 准入。
+func (s *Service) GetOrCreateCurrent(ctx context.Context, scope share.Scope, firstMessage string) (operationresult.Result[*storage.Session], error) {
 	ctx, release, err := s.deps.Bindings.EnterScope(ctx, scope)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Session]{}, err
 	}
 	defer release()
-	row, err := s.Current(ctx, scope)
-	if err == nil {
-		return row, nil
+	current, err := s.Current(ctx, scope)
+	if err != nil {
+		return operationresult.Result[*storage.Session]{}, err
 	}
-	if !errors.Is(err, ErrNoCurrentSession) {
-		return nil, err
+	if current.Status == operationresult.NoCurrentSession {
+		return s.Create(ctx, scope, CreateRequest{Title: defaultTitle(firstMessage)})
 	}
-	return s.Create(ctx, scope, CreateRequest{Title: defaultTitle(firstMessage)})
+	return current, nil
 }
 
-func (s *Service) Create(ctx context.Context, scope share.Scope, req CreateRequest) (*storage.Session, error) {
+func (s *Service) Create(ctx context.Context, scope share.Scope, req CreateRequest) (operationresult.Result[*storage.Session], error) {
 	if req.Mode == "" {
 		req.Mode = s.cfg.DefaultMode
 	}
 	if err := validateMode(req.Mode); err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Session]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	return s.createCurrent(ctx, scope, req)
 }
 
 // createCurrent 接收入口已确定并校验的模式，负责创建及绑定提交。
-func (s *Service) createCurrent(ctx context.Context, scope share.Scope, req CreateRequest) (*storage.Session, error) {
+func (s *Service) createCurrent(ctx context.Context, scope share.Scope, req CreateRequest) (operationresult.Result[*storage.Session], error) {
 	origin := share.ForegroundIDOrigin(scope)
 	id, err := s.deps.AllocateID(ctx, origin)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Session]{}, err
 	}
 	ctx, release, err := s.EnterActivation(ctx, scope, id)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Session]{}, err
 	}
 	defer release()
-	if err := s.canReplaceCurrent(scope, ""); err != nil {
-		return nil, err
+	if s.currentBusy(scope, "") {
+		return operationresult.Result[*storage.Session]{Status: operationresult.Busy, Message: "会话正忙"}, nil
 	}
 	if strings.TrimSpace(req.Title) == "" {
 		req.Title = "New session"
 	}
 	fields, err := storage.DecodeSessionMetadata(req.Metadata)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Session]{}, err
 	}
 	if err := origin.Save(fields); err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Session]{}, err
 	}
 	metadata, err := fields.Encode()
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Session]{}, err
 	}
 	row := &storage.Session{ID: id, Owner: scope.Owner, Platform: scope.Platform,
 		ChatType: scope.ChatType, ChatID: scope.ChatID, Mode: req.Mode, Status: storage.SessionStatusActive,
 		Title: req.Title, Metadata: metadata}
 	if err := s.deps.Sessions.Create(ctx, row); err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Session]{}, err
 	}
 	s.SetCurrent(ctx, scope, row.ID)
-	return row, nil
+	return operationresult.Result[*storage.Session]{Status: operationresult.Success, Data: row}, nil
 }
 
-func (s *Service) Current(ctx context.Context, scope share.Scope) (*storage.Session, error) {
-	row, _, err := s.CurrentBound(ctx, scope)
-	return row, err
+func (s *Service) Current(ctx context.Context, scope share.Scope) (operationresult.Result[*storage.Session], error) {
+	bound, err := s.CurrentBound(ctx, scope)
+	if err != nil {
+		return operationresult.Result[*storage.Session]{}, err
+	}
+	if bound.Status != operationresult.Success {
+		return operationresult.Result[*storage.Session]{Status: bound.Status, Message: bound.Message}, nil
+	}
+	return operationresult.Result[*storage.Session]{Status: bound.Status, Message: bound.Message, Data: bound.Data.Session}, nil
 }
 
-func (s *Service) CurrentBound(ctx context.Context, scope share.Scope) (*storage.Session, *share.Binding, error) {
+type CurrentBoundData struct {
+	Session *storage.Session
+	Binding *share.Binding
+}
+
+func (s *Service) CurrentBound(ctx context.Context, scope share.Scope) (operationresult.Result[CurrentBoundData], error) {
 	ctx, release, err := s.EnterActivation(ctx, scope)
 	if err != nil {
-		return nil, nil, err
+		return operationresult.Result[CurrentBoundData]{}, err
 	}
 	defer release()
 	binding := s.CurrentBinding(scope)
 	if binding == nil {
-		return nil, nil, ErrNoCurrentSession
+		return operationresult.Result[CurrentBoundData]{Status: operationresult.NoCurrentSession, Message: "当前没有会话"}, nil
 	}
 	row, err := s.deps.Sessions.Get(ctx, binding.SessionID())
 	if errors.Is(err, storage.ErrNotFound) {
 		s.SetCurrent(ctx, scope, "")
-		return nil, nil, ErrNoCurrentSession
+		return operationresult.Result[CurrentBoundData]{Status: operationresult.NoCurrentSession, Message: "当前没有会话"}, nil
 	}
-	return row, binding, err
+	if err != nil {
+		return operationresult.Result[CurrentBoundData]{}, err
+	}
+	return operationresult.Result[CurrentBoundData]{Status: operationresult.Success, Data: CurrentBoundData{Session: row, Binding: binding}}, nil
 }
 
-func (s *Service) ResetCurrent(ctx context.Context, scope share.Scope) error {
+func (s *Service) ResetCurrent(ctx context.Context, scope share.Scope) (operationresult.Result[struct{}], error) {
 	ctx, release, err := s.EnterActivation(ctx, scope)
 	if err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
 	defer release()
-	if err := s.canReplaceCurrent(scope, ""); err != nil {
-		return err
+	if s.currentBusy(scope, "") {
+		return operationresult.Result[struct{}]{Status: operationresult.Busy, Message: "会话正忙"}, nil
 	}
 	s.SetCurrent(ctx, scope, "")
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
-func (s *Service) ActivateMode(ctx context.Context, scope share.Scope, req ActivateModeRequest) (ActivateModeResult, error) {
+func (s *Service) ActivateMode(ctx context.Context, scope share.Scope, req ActivateModeRequest) (operationresult.Result[ActivateModeResult], error) {
 	if err := validateMode(req.Mode); err != nil {
-		return ActivateModeResult{}, err
+		return operationresult.Result[ActivateModeResult]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	ctx, release, err := s.deps.Bindings.EnterScope(ctx, scope)
 	if err != nil {
-		return ActivateModeResult{}, err
+		return operationresult.Result[ActivateModeResult]{}, err
 	}
 	defer release()
 	locked, leave, err := s.EnterActivation(ctx, scope)
 	if err != nil {
-		return ActivateModeResult{}, err
+		return operationresult.Result[ActivateModeResult]{}, err
 	}
-	row, err := s.Current(locked, scope)
-	if errors.Is(err, ErrNoCurrentSession) {
+	current, err := s.Current(locked, scope)
+	if err != nil {
+		return operationresult.Result[ActivateModeResult]{}, err
+	}
+	if current.Status == operationresult.NoCurrentSession {
 		leave() // 释放旧 Session 准入，再创建新的目标。
-		row, err = s.createCurrent(ctx, scope, CreateRequest{Title: req.NewSessionTitle, Mode: req.Mode})
-		return ActivateModeResult{Session: row}, err
+		created, err := s.Create(ctx, scope, CreateRequest{Title: req.NewSessionTitle, Mode: req.Mode})
+		if err != nil {
+			return operationresult.Result[ActivateModeResult]{}, err
+		}
+		if created.Status != operationresult.Success {
+			return operationresult.Result[ActivateModeResult]{Status: created.Status, Message: created.Message}, nil
+		}
+		return operationresult.Result[ActivateModeResult]{Status: operationresult.Success, Data: ActivateModeResult{Session: created.Data}}, nil
 	}
 	defer leave()
-	if err != nil {
-		return ActivateModeResult{}, err
-	}
+	row := current.Data
 	if row.Mode == req.Mode {
-		return ActivateModeResult{Session: row, AlreadyActive: true}, nil
+		return operationresult.Result[ActivateModeResult]{Status: operationresult.Success, Data: ActivateModeResult{Session: row, AlreadyActive: true}}, nil
 	}
-	if err := s.requireIdle(row.ID); err != nil {
-		return ActivateModeResult{}, err
+	if s.sessionBusy(row.ID) {
+		return operationresult.Result[ActivateModeResult]{Status: operationresult.Busy, Message: "会话正忙"}, nil
 	}
 	if req.Mode == storage.SessionModeChat {
 		messages, err := s.deps.Messages.ListBySession(locked, row.ID)
 		if err != nil {
-			return ActivateModeResult{}, err
+			return operationresult.Result[ActivateModeResult]{}, err
 		}
 		if len(messages) != 0 {
-			return ActivateModeResult{}, ErrChatModeRequiresEmptySession
+			return operationresult.Result[ActivateModeResult]{Status: operationresult.Conflict, Message: "切换到 chat 模式需要空会话"}, nil
 		}
 	}
 	row, err = s.deps.Sessions.Mutate(locked, row.ID, func(row *storage.Session) error {
 		row.Mode, row.UpdatedAt = req.Mode, storage.Now()
 		return nil
 	})
-	return ActivateModeResult{Session: row}, err
+	if err != nil {
+		return operationresult.Result[ActivateModeResult]{}, err
+	}
+	return operationresult.Result[ActivateModeResult]{Status: operationresult.Success, Data: ActivateModeResult{Session: row}}, nil
 }
 
 // SetCurrent 的调用者持有 Scope 及源、目标 Session 准入。
@@ -186,11 +206,11 @@ func (s *Service) SetCurrent(ctx context.Context, scope share.Scope, id string) 
 	}
 }
 
-func (s *Service) canReplaceCurrent(scope share.Scope, target string) error {
+func (s *Service) currentBusy(scope share.Scope, target string) bool {
 	if current := s.CurrentBinding(scope); current != nil && current.SessionID() != target {
-		return s.requireIdle(current.SessionID())
+		return s.sessionBusy(current.SessionID())
 	}
-	return nil
+	return false
 }
 
 func validateMode(mode string) error {

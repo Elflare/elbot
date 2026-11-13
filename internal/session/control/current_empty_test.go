@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"errors"
 	"testing"
 
@@ -17,7 +18,11 @@ func TestNoCurrentSessionIsDistinctFromMissingRecord(t *testing.T) {
 				row := f.create(t, scope, "previous")
 				var err error
 				if state == "reset" {
-					err = f.s.ResetCurrent(ctx, scope)
+					result, resetErr := f.s.ResetCurrent(ctx, scope)
+					err = resetErr
+					if err == nil && result.Status != operationresult.Success {
+						t.Fatalf("reset: %+v", result)
+					}
 				} else {
 					err = f.store.Sessions().Delete(ctx, row.ID)
 				}
@@ -25,22 +30,22 @@ func TestNoCurrentSessionIsDistinctFromMissingRecord(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			row, binding, err := f.s.CurrentBound(ctx, scope)
-			if !errors.Is(err, ErrNoCurrentSession) || errors.Is(err, storage.ErrNotFound) || row != nil || binding != nil {
-				t.Fatalf("current: row=%+v binding=%v err=%v", row, binding, err)
+			current, err := f.s.CurrentBound(ctx, scope)
+			if err != nil || current.Status != operationresult.NoCurrentSession || current.Data.Session != nil || current.Data.Binding != nil {
+				t.Fatalf("current: %+v err=%v", current, err)
 			}
 			if f.s.CurrentBinding(scope) != nil {
 				t.Fatal("empty current retained a binding")
 			}
-			if _, err := f.s.Rename(ctx, scope, "", "title"); !errors.Is(err, ErrNoCurrentSession) {
-				t.Fatalf("default target: %v", err)
+			if result, err := f.s.Rename(ctx, scope, "", "title"); err != nil || result.Status != operationresult.NoCurrentSession {
+				t.Fatalf("default target: %+v %v", result, err)
 			}
-			if _, err := f.s.Pin(ctx, scope, "missing"); !errors.Is(err, storage.ErrNotFound) || errors.Is(err, ErrNoCurrentSession) {
-				t.Fatalf("explicit missing target: %v", err)
+			if result, err := f.s.Pin(ctx, scope, "missing"); err != nil || result.Status != operationresult.NotFound {
+				t.Fatalf("explicit missing target: %+v %v", result, err)
 			}
-			current, err := f.s.GetOrCreateCurrent(ctx, scope, "first message")
-			if err != nil || current == nil {
-				t.Fatalf("first message could not create a session: %v", err)
+			created, err := f.s.GetOrCreateCurrent(ctx, scope, "first message")
+			if err != nil || created.Status != operationresult.Success || created.Data == nil {
+				t.Fatalf("first message could not create a session: %+v %v", created, err)
 			}
 		})
 	}
@@ -62,10 +67,10 @@ func TestCurrentReadFailureIsNotEmptyConversation(t *testing.T) {
 	original := f.s.CurrentBinding(scope)
 	want := errors.New("database unavailable")
 	f.s.deps.Sessions = currentReadFailure{SessionRepository: f.store.Sessions(), err: want}
-	if _, _, err := f.s.CurrentBound(ctx, scope); !errors.Is(err, want) || errors.Is(err, ErrNoCurrentSession) {
-		t.Fatalf("current read error = %v", err)
+	if result, err := f.s.CurrentBound(ctx, scope); !errors.Is(err, want) || result.Status != "" {
+		t.Fatalf("current read error = %+v / %v", result, err)
 	}
-	if _, err := f.s.GetOrCreateCurrent(ctx, scope, "message"); !errors.Is(err, want) {
+	if result, err := f.s.GetOrCreateCurrent(ctx, scope, "message"); !errors.Is(err, want) || result.Status != "" {
 		t.Fatalf("get or create error = %v", err)
 	}
 	if f.s.CurrentBinding(scope) != original {
@@ -81,10 +86,10 @@ func TestActivateModeReplacesDeletedCurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := f.s.ActivateMode(ctx, scope, ActivateModeRequest{Mode: storage.SessionModeChat})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || result.Status != operationresult.Success {
+		t.Fatalf("activate mode: %+v %v", result, err)
 	}
-	if result.Session.ID == row.ID || result.Session.Mode != storage.SessionModeChat || result.AlreadyActive {
-		t.Fatalf("activation result = %+v", result)
+	if result.Data.Session.ID == row.ID || result.Data.Session.Mode != storage.SessionModeChat || result.Data.AlreadyActive {
+		t.Fatalf("activation result = %+v", result.Data)
 	}
 }

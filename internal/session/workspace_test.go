@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 	"elbot/internal/workspace"
 )
@@ -32,8 +33,8 @@ func TestMissingWorkspaceFallbackPersistsAfterPromotion(t *testing.T) {
 	if err := store.Sessions().Create(ctx, row); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Resume(ctx, scope, row.ID); err != nil {
-		t.Fatal(err)
+	if result, err := svc.Resume(ctx, scope, row.ID); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("resume: %+v %v", result, err)
 	}
 	adapter := svc.WorkspaceStore(row.ID)
 	cwd, err := os.Getwd()
@@ -67,10 +68,11 @@ func TestMissingWorkspaceFallbackPersistsAfterPromotion(t *testing.T) {
 func TestConditionalWorkspaceClearPreservesNewSelection(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
-	row, err := svc.Create(ctx, Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli"}, CreateRequest{})
-	if err != nil {
-		t.Fatal(err)
+	created, err := svc.Create(ctx, Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli"}, CreateRequest{})
+	if err != nil || created.Status != operationresult.Success {
+		t.Fatalf("create: %+v %v", created, err)
 	}
+	row := created.Data
 	adapter := svc.WorkspaceStore(row.ID)
 	if err := adapter.SetWorkspaceDir(ctx, "/old"); err != nil {
 		t.Fatal(err)
@@ -94,10 +96,11 @@ func TestWorkspaceMutationsPreserveConcurrentFields(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := context.Background()
 	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-	row, err := svc.Create(ctx, scope, CreateRequest{Metadata: `{"unknown":9007199254740993,"workspace_dir":"/initial","updates":0}`})
-	if err != nil {
-		t.Fatal(err)
+	created, err := svc.Create(ctx, scope, CreateRequest{Metadata: `{"unknown":9007199254740993,"workspace_dir":"/initial","updates":0}`})
+	if err != nil || created.Status != operationresult.Success {
+		t.Fatalf("create: %+v %v", created, err)
 	}
+	row := created.Data
 	adapter := svc.WorkspaceStore(row.ID)
 	const count = 16
 	failures := make(chan error, count*2)
@@ -169,21 +172,23 @@ func TestWorkspaceRejectsExpiredBinding(t *testing.T) {
 	svc, _ := newTestService(t)
 	ctx := context.Background()
 	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-	row, err := svc.Create(ctx, scope, CreateRequest{})
-	if err != nil {
-		t.Fatal(err)
+	created, err := svc.Create(ctx, scope, CreateRequest{})
+	if err != nil || created.Status != operationresult.Success {
+		t.Fatalf("create: %+v %v", created, err)
 	}
-	_, binding, err := svc.CurrentBound(ctx, scope)
-	if err != nil {
-		t.Fatal(err)
+	row := created.Data
+	current, err := svc.CurrentBound(ctx, scope)
+	if err != nil || current.Status != operationresult.Success {
+		t.Fatalf("current: %+v %v", current, err)
 	}
+	binding := current.Data.Binding
 	adapter := svc.WorkspaceStore(row.ID)
 	old := WithBinding(ctx, binding)
-	if _, err := svc.Create(ctx, scope, CreateRequest{}); err != nil {
-		t.Fatal(err)
+	if result, err := svc.Create(ctx, scope, CreateRequest{}); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("create: %+v %v", result, err)
 	}
-	if _, err := svc.Resume(ctx, scope, row.ID); err != nil {
-		t.Fatal(err)
+	if result, err := svc.Resume(ctx, scope, row.ID); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("resume: %+v %v", result, err)
 	}
 	if err := adapter.SetWorkspaceDir(old, "/stale"); err == nil {
 		t.Fatal("expired call changed workspace")
@@ -194,10 +199,11 @@ func TestWorkspaceRejectsExpiredBinding(t *testing.T) {
 	if cleared, err := adapter.ClearWorkspaceDirIfMatches(old, ""); err == nil || cleared {
 		t.Fatal("expired call conditionally cleared workspace")
 	}
-	_, fresh, err := svc.CurrentBound(ctx, scope)
-	if err != nil {
-		t.Fatal(err)
+	current, err = svc.CurrentBound(ctx, scope)
+	if err != nil || current.Status != operationresult.Success {
+		t.Fatalf("current: %+v %v", current, err)
 	}
+	fresh := current.Data.Binding
 	if err := adapter.SetWorkspaceDir(WithBinding(ctx, fresh), "/fresh"); err != nil {
 		t.Fatal(err)
 	}

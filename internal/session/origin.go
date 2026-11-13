@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
 )
@@ -13,6 +14,6 @@ import (
 // Origin 只解析会话保存的协议归属，不用当前模型配置重新解释历史。
 func Origin(row *storage.Session) (llm.Origin, bool, error) { return share.Origin(row) }
 
-func (s *Supervisor) RegisterOrigin(ctx context.Context, id string, target llm.Origin) (*storage.Session, error) {
+func (s *Supervisor) RegisterOrigin(ctx context.Context, id string, target llm.Origin) (operationresult.Result[*storage.Session], error) {
 	return s.control.RegisterOrigin(ctx, id, target)
 }

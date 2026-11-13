@@ -4,20 +4,21 @@ package session
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 
 	"elbot/internal/session/branch"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
 )
 
-func (s *Supervisor) Fork(ctx context.Context, scope Scope, fromMessageID string) (*storage.Session, error) {
+func (s *Supervisor) Fork(ctx context.Context, scope Scope, fromMessageID string) (operationresult.Result[*storage.Session], error) {
 	return s.branches.Fork(ctx, share.Scope(scope), fromMessageID)
 }
 
-func (s *Supervisor) CreateCompacted(ctx context.Context, scope Scope, sourceID string, req CompactedRequest) (*storage.Session, error) {
+func (s *Supervisor) CreateCompacted(ctx context.Context, scope Scope, sourceID string, req CompactedRequest) (operationresult.Result[*storage.Session], error) {
 	return s.branches.CreateCompacted(ctx, share.Scope(scope), sourceID, branch.CompactedRequest{
 		ID: req.ID, Title: req.Title, Metadata: req.Metadata,
-		Seed: req.Seed, ExpectedCheckpointID: req.ExpectedCheckpointID,
+		InitialMessage: req.InitialMessage, Seed: req.Seed, ExpectedCheckpointID: req.ExpectedCheckpointID,
 	})
 }
 
@@ -26,10 +27,10 @@ type DisplayMaterial struct{}
 
 var _ MaterialPreparer = DisplayMaterial{}
 
-func (DisplayMaterial) PrepareFork(context.Context, *storage.Session, *storage.Message) (*PreparedMaterial, error) {
-	return nil, nil
+func (DisplayMaterial) PrepareFork(context.Context, *storage.Session, *storage.Message) (operationresult.Result[*PreparedMaterial], error) {
+	return operationresult.Result[*PreparedMaterial]{Status: operationresult.Success}, nil
 }
 
-func (DisplayMaterial) PrepareCopy(context.Context, *storage.Session) (*PreparedMaterial, error) {
-	return nil, nil
+func (DisplayMaterial) PrepareCopy(context.Context, *storage.Session) (operationresult.Result[*PreparedMaterial], error) {
+	return operationresult.Result[*PreparedMaterial]{Status: operationresult.Success}, nil
 }

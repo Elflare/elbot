@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
 	"testing"
@@ -23,10 +24,11 @@ func (s cancelAfterPromotionCommit) Mutate(ctx context.Context, id string, updat
 func TestPromotionAdoptsAfterCommitDespiteCancellationAndBeginClose(t *testing.T) {
 	f := newFixture(t, IdleExpirationConfig{})
 	scope := privateScope()
-	row, err := f.s.PrepareBackground(t.Context(), scope, BackgroundRequest{TaskType: "cron"})
-	if err != nil {
-		t.Fatal(err)
+	prepared, err := f.s.PrepareBackground(t.Context(), scope, BackgroundRequest{TaskType: "cron"})
+	if err != nil || prepared.Status != operationresult.Success {
+		t.Fatalf("prepare: %+v %v", prepared, err)
 	}
+	row := prepared.Data
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	f.s.deps.Sessions = cancelAfterPromotionCommit{SessionRepository: f.store.Sessions(), cancel: func() { cancel(); f.s.BeginClose() }}
@@ -37,8 +39,8 @@ func TestPromotionAdoptsAfterCommitDespiteCancellationAndBeginClose(t *testing.T
 		}
 		adopted = true
 	}
-	if _, err := f.s.Resume(ctx, scope, row.ID); err != nil || !adopted {
-		t.Fatalf("adoption: %v, called=%v", err, adopted)
+	if result, err := f.s.Resume(ctx, scope, row.ID); err != nil || result.Status != operationresult.Success || !adopted {
+		t.Fatalf("adoption: %+v, %v, called=%v", result, err, adopted)
 	}
 	if err := f.s.Close(t.Context()); err != nil {
 		t.Fatal(err)

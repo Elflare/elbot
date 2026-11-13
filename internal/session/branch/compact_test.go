@@ -2,12 +2,12 @@ package branch_test
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
 
+	"elbot/internal/operationresult"
 	"elbot/internal/session/branch"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
@@ -43,13 +43,16 @@ func TestBackgroundCompactedRequiresExecutionOwnership(t *testing.T) {
 			case "scope":
 				target.TaskID = "other-task"
 			}
-			row, err := f.s.CreateCompacted(t.Context(), target, source.ID, branch.CompactedRequest{ID: "reserved"})
+			result, err := f.s.CreateCompacted(t.Context(), target, source.ID, branch.CompactedRequest{ID: "reserved"})
 			if tc.mismatch != "" {
-				if err == nil || f.count(t) != 2 {
-					t.Fatalf("foreign execution accepted: %+v, %v", row, err)
+				if err != nil || result.Status == operationresult.Success || f.count(t) != 2 {
+					t.Fatalf("foreign execution accepted: %+v, %v", result, err)
 				}
-			} else if err != nil || row.Mode != storage.SessionModeBackground || row.Owner != source.Owner || row.Platform != source.Platform || row.ChatID != source.ChatID || f.count(t) != 3 {
-				t.Fatalf("background handoff: %+v, %v", row, err)
+			} else {
+				row := result.Data
+				if err != nil || result.Status != operationresult.Success || row.Mode != storage.SessionModeBackground || row.Owner != source.Owner || row.Platform != source.Platform || row.ChatID != source.ChatID || f.count(t) != 3 {
+					t.Fatalf("background handoff: %+v, %v", result, err)
+				}
 			}
 			if f.c.CurrentBinding(scope()) != current || !current.Valid() {
 				t.Fatal("background compact changed foreground binding")
@@ -80,10 +83,11 @@ func TestCompactedInheritanceAndActivation(t *testing.T) {
 					target.ChatType, target.ChatID = "", ""
 					target.TaskType, target.TaskID = source.TaskType, source.TaskID
 				}
-				row, err := f.s.CreateCompacted(ctx, target, source.ID, req)
-				if err != nil {
-					t.Fatal(err)
+				result, err := f.s.CreateCompacted(ctx, target, source.ID, req)
+				if err != nil || result.Status != operationresult.Success {
+					t.Fatalf("compaction: %+v, %v", result, err)
 				}
+				row := result.Data
 				if row.ID != req.ID || row.Mode != mode || row.Owner != source.Owner || row.Platform != source.Platform || row.ChatID != source.ChatID {
 					t.Fatalf("inheritance: %+v", row)
 				}
@@ -125,6 +129,27 @@ func TestCompactedInheritanceAndActivation(t *testing.T) {
 	}
 }
 
+func TestCompactedStoresInitialMessageInNewSession(t *testing.T) {
+	f := newFixture(t)
+	source := f.source(t, storage.SessionModeWork)
+	f.setBusy(source.ID)
+
+	result, err := f.s.CreateCompacted(t.Context(), scope(), source.ID, branch.CompactedRequest{
+		ID: "reserved", Title: "compacted", Metadata: `{}`, InitialMessage: "summary + user inputs",
+	})
+	if err != nil || result.Status != operationresult.Success {
+		t.Fatalf("compaction: %+v, %v", result, err)
+	}
+	row := result.Data
+	messages, err := f.store.Messages().ListBySession(t.Context(), row.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || messages[0].Role != storage.RoleUser || messages[0].Content != "summary + user inputs" {
+		t.Fatalf("initial messages = %+v", messages)
+	}
+}
+
 func TestCompactedFailuresPreserveCurrent(t *testing.T) {
 	for _, failure := range []string{"empty-id", "same-id", "metadata", "binding", "missing", "foreign", "cancel", "save", "checkpoint"} {
 		t.Run(failure, func(t *testing.T) {
@@ -142,11 +167,11 @@ func TestCompactedFailuresPreserveCurrent(t *testing.T) {
 			case "metadata":
 				req.Metadata = "invalid"
 			case "binding":
-				if err := f.c.ResetCurrent(t.Context(), scope()); err != nil {
-					t.Fatal(err)
+				if result, err := f.c.ResetCurrent(t.Context(), scope()); err != nil || result.Status != operationresult.Success {
+					t.Fatalf("reset: %+v %v", result, err)
 				}
-				if _, err := f.c.Resume(t.Context(), scope(), source.ID); err != nil {
-					t.Fatal(err)
+				if result, err := f.c.Resume(t.Context(), scope(), source.ID); err != nil || result.Status != operationresult.Success {
+					t.Fatalf("resume: %+v %v", result, err)
 				}
 			case "missing":
 				sourceID = "missing"
@@ -162,7 +187,7 @@ func TestCompactedFailuresPreserveCurrent(t *testing.T) {
 				req.Seed, req.ExpectedCheckpointID = seed(), "stale"
 			}
 			before := f.c.CurrentBinding(scope())
-			if _, err := f.s.CreateCompacted(ctx, target, sourceID, req); err == nil {
+			if result, err := f.s.CreateCompacted(ctx, target, sourceID, req); err == nil && result.Status == operationresult.Success {
 				t.Fatal("invalid compact accepted")
 			}
 			if f.count(t) != 1 || f.c.CurrentBinding(scope()) != before || !before.Valid() {
@@ -186,13 +211,13 @@ func TestCompactedRejectsPromotionBeforeAdmission(t *testing.T) {
 	f := newFixture(t)
 	source := f.source(t, storage.SessionModeBackground)
 	f.deps.Bindings = promotionGate{BindingCoordinator: f.c, promote: func() {
-		if _, err := f.c.Resume(t.Context(), scope(), source.ID); err != nil {
-			t.Fatal(err)
+		if result, err := f.c.Resume(t.Context(), scope(), source.ID); err != nil || result.Status != operationresult.Success {
+			t.Fatalf("resume: %+v %v", result, err)
 		}
 	}}
 	f.s = branch.NewService(f.deps)
-	if _, err := f.s.CreateCompacted(t.Context(), scope(), source.ID, branch.CompactedRequest{ID: "reserved"}); !errors.Is(err, share.ErrForegroundSession) {
-		t.Fatalf("promotion: %v", err)
+	if result, err := f.s.CreateCompacted(t.Context(), scope(), source.ID, branch.CompactedRequest{ID: "reserved"}); err != nil || result.Status != operationresult.Conflict {
+		t.Fatalf("promotion: %+v %v", result, err)
 	}
 	if f.count(t) != 1 || f.c.CurrentBinding(scope()).SessionID() != source.ID {
 		t.Fatal("promotion overwritten")

@@ -8,6 +8,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
 )
@@ -38,16 +39,17 @@ func TestSessionIDFormatsShareOneSequence(t *testing.T) {
 	for i, tc := range cases {
 		t.Run(tc.prefix, func(t *testing.T) {
 			scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "", ID: "owner"}, Platform: tc.platform, ChatID: fmt.Sprint(i), ChatType: tc.kind}
-			var row *storage.Session
+			var result operationresult.Result[*storage.Session]
 			var err error
 			if tc.background == "" {
-				row, err = svc.Create(t.Context(), scope, CreateRequest{})
+				result, err = svc.Create(t.Context(), scope, CreateRequest{})
 			} else {
-				row, err = svc.PrepareBackground(t.Context(), scope, BackgroundRequest{TaskType: tc.background, TaskID: "task", TargetPlatforms: tc.targets})
+				result, err = svc.PrepareBackground(t.Context(), scope, BackgroundRequest{TaskType: tc.background, TaskID: "task", TargetPlatforms: tc.targets})
 			}
-			if err != nil {
-				t.Fatal(err)
+			if err != nil || result.Status != operationresult.Success {
+				t.Fatalf("create session: %+v %v", result, err)
 			}
+			row := result.Data
 			if want := fmt.Sprintf("%s%d", tc.prefix, i+1); row.ID != want {
 				t.Fatalf("ID=%q want %q", row.ID, want)
 			}
@@ -67,14 +69,15 @@ func TestSessionIDResetReservationAndCompaction(t *testing.T) {
 	svc, store := newTestService(t)
 	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "telegram", ID: "owner"}, Platform: "telegram", ChatID: "group", ChatType: contextinfo.ChatGroup}
 	for range 3 {
-		if err := svc.ResetCurrent(t.Context(), scope); err != nil {
-			t.Fatal(err)
+		if result, err := svc.ResetCurrent(t.Context(), scope); err != nil || result.Status != operationresult.Success {
+			t.Fatalf("reset: %+v %v", result, err)
 		}
 	}
-	row, err := svc.GetOrCreateCurrent(t.Context(), scope, "first")
-	if err != nil {
-		t.Fatal(err)
+	current, err := svc.GetOrCreateCurrent(t.Context(), scope, "first")
+	if err != nil || current.Status != operationresult.Success {
+		t.Fatalf("get or create: %+v %v", current, err)
 	}
+	row := current.Data
 	if row.ID != "TG1" {
 		t.Fatalf("/new consumed numbers: %q", row.ID)
 	}
@@ -94,10 +97,11 @@ func TestSessionIDResetReservationAndCompaction(t *testing.T) {
 	if err != nil || nextID != "TG3" {
 		t.Fatalf("reservation reused: %q %v", nextID, err)
 	}
-	next, err := svc.CreateCompacted(t.Context(), scope, row.ID, CompactedRequest{ID: nextID, Metadata: `{"unknown":9007199254740993}`})
-	if err != nil {
-		t.Fatal(err)
+	compacted, err := svc.CreateCompacted(t.Context(), scope, row.ID, CompactedRequest{ID: nextID, Metadata: `{"unknown":9007199254740993}`})
+	if err != nil || compacted.Status != operationresult.Success {
+		t.Fatalf("compact: %+v %v", compacted, err)
 	}
+	next := compacted.Data
 	if next.ID != "TG3" {
 		t.Fatal(next.ID)
 	}
@@ -109,25 +113,27 @@ func TestSessionIDResetReservationAndCompaction(t *testing.T) {
 func TestSessionIDForkCopyAndPromotion(t *testing.T) {
 	svc, store := newTestService(t)
 	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "owner"}, Platform: "qqonebot", ChatID: "private", ChatType: contextinfo.ChatPrivate}
-	source, err := svc.Create(t.Context(), scope, CreateRequest{})
-	if err != nil {
-		t.Fatal(err)
+	created, err := svc.Create(t.Context(), scope, CreateRequest{})
+	if err != nil || created.Status != operationresult.Success {
+		t.Fatalf("create: %+v %v", created, err)
 	}
+	source := created.Data
 	message := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: storage.RoleAssistant, Content: "answer"}
 	if err := store.Messages().Append(t.Context(), message); err != nil {
 		t.Fatal(err)
 	}
-	fork, err := svc.Fork(t.Context(), scope, message.ID)
-	if err != nil || fork.ID != "ob2" {
-		t.Fatalf("fork=%+v err=%v", fork, err)
+	forked, err := svc.Fork(t.Context(), scope, message.ID)
+	if err != nil || forked.Status != operationresult.Success || forked.Data.ID != "ob2" {
+		t.Fatalf("fork=%+v err=%v", forked, err)
 	}
 	if _, err := store.Sessions().Get(t.Context(), source.ID); err != nil {
 		t.Fatal(err)
 	}
-	background, err := svc.PrepareBackground(t.Context(), scope, BackgroundRequest{TaskType: "cron", TaskID: "task", TargetPlatforms: []string{"telegram", "qqonebot"}})
-	if err != nil {
-		t.Fatal(err)
+	backgroundResult, err := svc.PrepareBackground(t.Context(), scope, BackgroundRequest{TaskType: "cron", TaskID: "task", TargetPlatforms: []string{"telegram", "qqonebot"}})
+	if err != nil || backgroundResult.Status != operationresult.Success {
+		t.Fatalf("prepare background: %+v %v", backgroundResult, err)
 	}
+	background := backgroundResult.Data
 	if background.ID != "crmx3" {
 		t.Fatal(background.ID)
 	}
@@ -137,14 +143,14 @@ func TestSessionIDForkCopyAndPromotion(t *testing.T) {
 	}
 	copyScope := Scope{Owner: contextinfo.ActorIdentity{Platform: "telegram", ID: "owner"}, Platform: "telegram", ChatType: "cron", ChatID: "task"}
 	copy, err := svc.CopyBackground(t.Context(), copyScope, BackgroundCopyRequest{SourceSessionID: background.ID, TaskType: "cron", TaskID: "task"})
-	if err != nil || copy.ID != "crtg5" {
+	if err != nil || copy.Status != operationresult.Success || copy.Data.ID != "crtg5" {
 		t.Fatalf("copy=%+v err=%v", copy, err)
 	}
 	promoted, err := svc.Resume(t.Context(), scope, background.ID)
-	if err != nil || promoted.ID != background.ID || promoted.Mode != storage.SessionModeWork {
+	if err != nil || promoted.Status != operationresult.Success || promoted.Data.ID != background.ID || promoted.Data.Mode != storage.SessionModeWork {
 		t.Fatalf("promotion changed ID: %+v %v", promoted, err)
 	}
-	reserved, err = svc.AllocateID(t.Context(), promoted)
+	reserved, err = svc.AllocateID(t.Context(), promoted.Data)
 	if err != nil || reserved != "crmx6" {
 		t.Fatalf("promotion changed creation origin: %q %v", reserved, err)
 	}
@@ -166,9 +172,9 @@ func TestSessionIDQueryFailureDoesNotConsumeSequence(t *testing.T) {
 		t.Fatalf("unknown platform=%v", err)
 	}
 	scope.Platform = "future"
-	row, err := svc.Create(t.Context(), scope, CreateRequest{})
-	if err != nil || row.ID != "fx1" {
-		t.Fatalf("sequence consumed or code changed: row=%+v error=%v", row, err)
+	result, err := svc.Create(t.Context(), scope, CreateRequest{})
+	if err != nil || result.Status != operationresult.Success || result.Data.ID != "fx1" {
+		t.Fatalf("sequence consumed or code changed: row=%+v error=%v", result, err)
 	}
 }
 
@@ -180,8 +186,8 @@ func TestSessionIDMissingOriginDoesNotConsumeSequence(t *testing.T) {
 			t.Fatalf("accepted invalid origin: %s", metadata)
 		}
 	}
-	row, err := svc.Create(t.Context(), Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", ChatType: contextinfo.ChatPrivate}, CreateRequest{})
-	if err != nil || row.ID != "cl1" {
-		t.Fatalf("failed reservations consumed sequence: row=%+v error=%v", row, err)
+	result, err := svc.Create(t.Context(), Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "owner"}, Platform: "cli", ChatID: "local", ChatType: contextinfo.ChatPrivate}, CreateRequest{})
+	if err != nil || result.Status != operationresult.Success || result.Data.ID != "cl1" {
+		t.Fatalf("failed reservations consumed sequence: row=%+v error=%v", result, err)
 	}
 }

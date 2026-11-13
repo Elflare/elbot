@@ -43,7 +43,7 @@ type idleBinding struct {
 func (s *Service) trackBinding(binding *share.Binding) {
 	ttl := time.Duration(s.cfg.IdleExpiration.TTLMinutes(binding.Scope(), s.deps.IsSuperadmin(binding.Scope()))) * time.Minute
 	state := &idleBinding{ttl: ttl}
-	if s.requireIdle(binding.SessionID()) == nil {
+	if !s.sessionBusy(binding.SessionID()) {
 		state.deadline = time.Now().Add(ttl)
 	}
 	s.mu.Lock()
@@ -97,7 +97,7 @@ func (s *Service) expireBinding(binding *share.Binding, version uint64) {
 	}
 	state.timer = nil // 当前回调的退出由 defer 计数，不再由 Stop 处理。
 	s.mu.Unlock()
-	if s.requireIdle(binding.SessionID()) != nil {
+	if s.sessionBusy(binding.SessionID()) {
 		s.mu.Lock()
 		state.deadline = time.Time{}
 		s.mu.Unlock()
@@ -126,7 +126,7 @@ func (s *Service) RecordActivity(ctx context.Context, binding *share.Binding) er
 }
 
 func (s *Service) refreshBinding(binding *share.Binding) error {
-	busy := s.requireIdle(binding.SessionID()) != nil
+	busy := s.sessionBusy(binding.SessionID())
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -152,7 +152,7 @@ func (s *Service) SessionIdle(ctx context.Context, id string) error {
 		return err
 	}
 	defer release()
-	if err := s.requireIdle(id); err != nil {
+	if s.sessionBusy(id) {
 		return nil
 	}
 	s.mu.Lock()
@@ -194,7 +194,7 @@ func (s *Service) releaseSessionIfIdle(id string) {
 	s.mu.Lock()
 	bound := len(s.idle[id]) != 0
 	s.mu.Unlock()
-	if !bound && s.requireIdle(id) == nil {
+	if !bound && !s.sessionBusy(id) {
 		s.deps.ReleaseSession(id)
 	}
 }
@@ -224,7 +224,7 @@ func (s *Service) CleanupExpired(ctx context.Context, cutoff time.Time) (int, er
 		if err != nil {
 			return count, err
 		}
-		if s.requireIdle(id) != nil {
+		if s.sessionBusy(id) {
 			release()
 			continue
 		}

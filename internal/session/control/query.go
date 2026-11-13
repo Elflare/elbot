@@ -9,14 +9,15 @@ import (
 	"strings"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
 )
 
-func (s *Service) ListPage(ctx context.Context, scope share.Scope, req ListRequest) (ListResult, error) {
+func (s *Service) ListPage(ctx context.Context, scope share.Scope, req ListRequest) (operationresult.Result[ListResult], error) {
 	result := ListResult{Items: []storage.SessionSummary{}, Page: req.Page, PageSize: req.PageSize}
 	if req.Page < 0 || req.PageSize <= 0 {
-		return result, fmt.Errorf("invalid session pagination")
+		return operationresult.Result[ListResult]{Status: operationresult.InvalidArguments, Message: "invalid session pagination"}, nil
 	}
 	query := storage.ListSessionsRequest{
 		Owner: scope.Owner, Platform: scope.Platform, ChatType: scope.ChatType, ChatID: scope.ChatID,
@@ -31,7 +32,7 @@ func (s *Service) ListPage(ctx context.Context, scope share.Scope, req ListReque
 	var err error
 	result.TotalCount, err = s.deps.Sessions.Count(ctx, query)
 	if err != nil {
-		return result, err
+		return operationresult.Result[ListResult]{}, err
 	}
 	result.TotalPages = result.TotalCount / req.PageSize
 	if result.TotalCount%req.PageSize != 0 {
@@ -42,64 +43,70 @@ func (s *Service) ListPage(ctx context.Context, scope share.Scope, req ListReque
 	}
 	if result.TotalCount == 0 {
 		if req.Page > 1 {
-			return result, fmt.Errorf("%w: %d", share.ErrInvalidPage, req.Page)
+			return operationresult.Result[ListResult]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("invalid session page: %d", req.Page)}, nil
 		}
-		return result, nil
+		return operationresult.Result[ListResult]{Status: operationresult.Success, Data: result}, nil
 	}
 	if result.Page > result.TotalPages {
-		return result, fmt.Errorf("%w: %d", share.ErrInvalidPage, result.Page)
+		return operationresult.Result[ListResult]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("invalid session page: %d", result.Page)}, nil
 	}
 	query.Offset = (result.Page - 1) * req.PageSize
 	result.Items, err = s.deps.Sessions.List(ctx, query)
-	return result, err
+	if err != nil {
+		return operationresult.Result[ListResult]{}, err
+	}
+	return operationresult.Result[ListResult]{Status: operationresult.Success, Data: result}, nil
 }
 
-func (s *Service) Status(ctx context.Context, scope share.Scope) (*Status, error) {
+func (s *Service) Status(ctx context.Context, scope share.Scope) (operationresult.Result[*Status], error) {
 	ctx, release, err := s.EnterActivation(ctx, scope)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*Status]{}, err
 	}
 	defer release()
-	row, err := s.Current(ctx, scope)
+	current, err := s.Current(ctx, scope)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*Status]{}, err
 	}
+	if current.Status != operationresult.Success {
+		return operationresult.Result[*Status]{Status: current.Status, Message: current.Message}, nil
+	}
+	row := current.Data
 	stats, err := s.deps.Messages.Stats(ctx, row.ID)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*Status]{}, err
 	}
-	return &Status{Session: row, MessageCount: stats.Count, LastUserContent: stats.LastUserContent, LastAnswerContent: stats.LastAssistantContent}, nil
+	return operationresult.Result[*Status]{Status: operationresult.Success, Data: &Status{Session: row, MessageCount: stats.Count, LastUserContent: stats.LastUserContent, LastAnswerContent: stats.LastAnswerContent}}, nil
 }
 
 // enterTarget 先解析 Scope 内的空目标，再一次取得 current 和目标 Session 准入。
 // 仅解析 ID，不先读行／检查权限；写操作在 Mutate 的最新快照上检查一次。
-func (s *Service) enterTarget(ctx context.Context, scope share.Scope, id string) (context.Context, string, func(), error) {
+type EnterTargetData struct {
+	Context context.Context
+	ID      string
+	Release func()
+}
+
+func (s *Service) enterTarget(ctx context.Context, scope share.Scope, id string) (operationresult.Result[EnterTargetData], error) {
 	ctx, leaveScope, err := s.deps.Bindings.EnterScope(ctx, scope)
 	if err != nil {
-		return nil, "", nil, err
+		return operationresult.Result[EnterTargetData]{}, err
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
 		binding := s.CurrentBinding(scope)
 		if binding == nil {
 			leaveScope()
-			return nil, "", nil, ErrNoCurrentSession
+			return operationresult.Result[EnterTargetData]{Status: operationresult.NoCurrentSession, Message: "当前没有会话"}, nil
 		}
 		id = binding.SessionID()
 	}
 	ctx, leaveSessions, err := s.EnterActivation(ctx, scope, id)
 	if err != nil {
 		leaveScope()
-		return nil, "", nil, err
+		return operationresult.Result[EnterTargetData]{}, err
 	}
-	return ctx, id, func() { leaveSessions(); leaveScope() }, nil
-}
-
-func checkAccess(scope share.Scope, row *storage.Session) error {
-	if !share.CanAccess(scope, row) {
-		return fmt.Errorf("%w: session %s is not in current platform scope", share.ErrAccessDenied, row.ID)
-	}
-	return nil
+	return operationresult.Result[EnterTargetData]{Status: operationresult.Success, Data: EnterTargetData{Context: ctx, ID: id, Release: func() { leaveSessions(); leaveScope() }}}, nil
 }
 
 // ResolveReference 决定引用助手消息后的续接方式；准入时仍复核访问权限。

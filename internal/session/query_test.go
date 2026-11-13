@@ -3,8 +3,8 @@ package session
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
-	"errors"
 	"testing"
 	"time"
 )
@@ -15,21 +15,21 @@ func TestListPageReturnsInvalidPageAndKeepsEmptyDefault(t *testing.T) {
 	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 
 	empty, err := svc.ListPage(ctx, scope, ListRequest{PageSize: 1})
-	if err != nil || empty.Page != 1 || empty.TotalPages != 0 || len(empty.Items) != 0 {
+	if err != nil || empty.Status != operationresult.Success || empty.Data.Page != 1 || empty.Data.TotalPages != 0 || len(empty.Data.Items) != 0 {
 		t.Fatalf("empty default page=%+v err=%v", empty, err)
 	}
-	if _, err := svc.ListPage(ctx, scope, ListRequest{Page: 2, PageSize: 1}); !errors.Is(err, ErrInvalidPage) {
-		t.Fatalf("empty explicit page error=%v", err)
+	if result, err := svc.ListPage(ctx, scope, ListRequest{Page: 2, PageSize: 1}); err != nil || result.Status != operationresult.InvalidArguments {
+		t.Fatalf("empty explicit page=%+v err=%v", result, err)
 	}
-	if _, err := svc.Create(ctx, scope, CreateRequest{Title: "one"}); err != nil {
-		t.Fatal(err)
+	if result, err := svc.Create(ctx, scope, CreateRequest{Title: "one"}); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("create: %+v %v", result, err)
 	}
 	first, err := svc.ListPage(ctx, scope, ListRequest{PageSize: 1})
-	if err != nil || first.Page != 1 || len(first.Items) != 1 || first.Items[0].Title != "one" {
+	if err != nil || first.Status != operationresult.Success || first.Data.Page != 1 || len(first.Data.Items) != 1 || first.Data.Items[0].Title != "one" {
 		t.Fatalf("default page = %+v err=%v", first, err)
 	}
-	if _, err := svc.ListPage(ctx, scope, ListRequest{Page: 2, PageSize: 1}); !errors.Is(err, ErrInvalidPage) {
-		t.Fatalf("non-empty explicit page error=%v", err)
+	if result, err := svc.ListPage(ctx, scope, ListRequest{Page: 2, PageSize: 1}); err != nil || result.Status != operationresult.InvalidArguments {
+		t.Fatalf("non-empty explicit page=%+v err=%v", result, err)
 	}
 }
 
@@ -38,18 +38,18 @@ func TestCLIListDefaultsToCurrentPlatformUntilExplicitAllPlatforms(t *testing.T)
 	ctx := context.Background()
 	current := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}, Platform: "cli", ChatID: "local", ChatType: contextinfo.ChatPrivate}
 	foreign := Scope{Owner: contextinfo.ActorIdentity{Platform: "telegram", ID: "user"}, Platform: "telegram", ChatID: "chat", ChatType: contextinfo.ChatPrivate}
-	if _, err := svc.Create(ctx, current, CreateRequest{Title: "cli"}); err != nil {
-		t.Fatal(err)
+	if result, err := svc.Create(ctx, current, CreateRequest{Title: "cli"}); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("create local: %+v %v", result, err)
 	}
-	if _, err := svc.Create(ctx, foreign, CreateRequest{Title: "telegram"}); err != nil {
-		t.Fatal(err)
+	if result, err := svc.Create(ctx, foreign, CreateRequest{Title: "telegram"}); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("create foreign: %+v %v", result, err)
 	}
 	local, err := svc.ListPage(ctx, current, ListRequest{PageSize: 10})
-	if err != nil || len(local.Items) != 1 || local.Items[0].Platform != "cli" {
+	if err != nil || local.Status != operationresult.Success || len(local.Data.Items) != 1 || local.Data.Items[0].Platform != "cli" {
 		t.Fatalf("default CLI list = %+v, %v", local, err)
 	}
 	all, err := svc.ListPage(ctx, current, ListRequest{PageSize: 10, AllPlatforms: true})
-	if err != nil || len(all.Items) != 2 {
+	if err != nil || all.Status != operationresult.Success || len(all.Data.Items) != 2 {
 		t.Fatalf("all-platform list = %+v, %v", all, err)
 	}
 }
@@ -59,24 +59,26 @@ func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
 	ctx := context.Background()
 	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 
-	first, err := svc.GetOrCreateCurrent(ctx, scope, "hello session")
-	if err != nil {
-		t.Fatalf("GetOrCreateCurrent: %v", err)
+	firstResult, err := svc.GetOrCreateCurrent(ctx, scope, "hello session")
+	if err != nil || firstResult.Status != operationresult.Success {
+		t.Fatalf("GetOrCreateCurrent: %+v %v", firstResult, err)
 	}
+	first := firstResult.Data
 	if first.Title != "hello session" {
 		t.Fatalf("title = %q", first.Title)
 	}
 
-	second, err := svc.Create(ctx, scope, CreateRequest{Title: "second"})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
+	secondResult, err := svc.Create(ctx, scope, CreateRequest{Title: "second"})
+	if err != nil || secondResult.Status != operationresult.Success {
+		t.Fatalf("Create: %+v %v", secondResult, err)
 	}
+	second := secondResult.Data
 	current, err := svc.Current(ctx, scope)
-	if err != nil {
-		t.Fatalf("Current: %v", err)
+	if err != nil || current.Status != operationresult.Success {
+		t.Fatalf("Current: %+v %v", current, err)
 	}
-	if current.ID != second.ID {
-		t.Fatalf("current = %s, want %s", current.ID, second.ID)
+	if current.Data.ID != second.ID {
+		t.Fatalf("current = %s, want %s", current.Data.ID, second.ID)
 	}
 
 	aged := time.Now().Add(-time.Hour)
@@ -84,18 +86,18 @@ func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
 	if _, err := store.Sessions().Mutate(ctx, first.ID, func(latest *storage.Session) error { *latest = *first; return nil }); err != nil {
 		t.Fatalf("age first session: %v", err)
 	}
-	if _, err := svc.Resume(ctx, scope, first.ID); err != nil {
-		t.Fatalf("Resume: %v", err)
+	if result, err := svc.Resume(ctx, scope, first.ID); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("Resume: %+v %v", result, err)
 	}
 	current, err = svc.Current(ctx, scope)
-	if err != nil {
-		t.Fatalf("Current after resume: %v", err)
+	if err != nil || current.Status != operationresult.Success {
+		t.Fatalf("Current after resume: %+v %v", current, err)
 	}
-	if current.ID != first.ID {
-		t.Fatalf("current = %s, want %s", current.ID, first.ID)
+	if current.Data.ID != first.ID {
+		t.Fatalf("current = %s, want %s", current.Data.ID, first.ID)
 	}
-	if !current.UpdatedAt.After(aged) {
-		t.Fatalf("resumed updated_at = %v, want after %v", current.UpdatedAt, aged)
+	if !current.Data.UpdatedAt.After(aged) {
+		t.Fatalf("resumed updated_at = %v, want after %v", current.Data.UpdatedAt, aged)
 	}
 
 	if err := store.Messages().Append(ctx, &storage.Message{ID: storage.NewID(), SessionID: first.ID, Role: storage.RoleUser, Content: "hello"}); err != nil {
@@ -106,19 +108,19 @@ func TestServiceCreateCurrentResumeListStatus(t *testing.T) {
 	}
 
 	status, err := svc.Status(ctx, scope)
-	if err != nil {
-		t.Fatalf("Status: %v", err)
+	if err != nil || status.Status != operationresult.Success {
+		t.Fatalf("Status: %+v %v", status, err)
 	}
-	if status.MessageCount != 2 || status.LastUserContent != "hello" || status.LastAnswerContent != "hi" {
-		t.Fatalf("status = %#v", status)
+	if status.Data.MessageCount != 2 || status.Data.LastUserContent != "hello" || status.Data.LastAnswerContent != "hi" {
+		t.Fatalf("status = %#v", status.Data)
 	}
 
 	list, err := svc.List(ctx, scope, "hello", 20)
-	if err != nil {
-		t.Fatalf("List: %v", err)
+	if err != nil || list.Status != operationresult.Success {
+		t.Fatalf("List: %+v %v", list, err)
 	}
-	if len(list) != 1 || list[0].ID != first.ID {
-		t.Fatalf("list = %#v", list)
+	if len(list.Data) != 1 || list.Data[0].ID != first.ID {
+		t.Fatalf("list = %#v", list.Data)
 	}
 }
 
@@ -128,16 +130,18 @@ func TestServiceGetOrCreateCurrentCreatesNewWhenNoInMemoryCurrent(t *testing.T) 
 
 	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	firstSvc := newTestSupervisor(t, store, nil)
-	first, err := firstSvc.Create(ctx, scope, CreateRequest{Title: "old session"})
-	if err != nil {
-		t.Fatalf("create old session: %v", err)
+	firstResult, err := firstSvc.Create(ctx, scope, CreateRequest{Title: "old session"})
+	if err != nil || firstResult.Status != operationresult.Success {
+		t.Fatalf("create old session: %+v %v", firstResult, err)
 	}
+	first := firstResult.Data
 
 	secondSvc := newTestSupervisor(t, store, nil)
-	second, err := secondSvc.GetOrCreateCurrent(ctx, scope, "new message")
-	if err != nil {
-		t.Fatalf("GetOrCreateCurrent: %v", err)
+	secondResult, err := secondSvc.GetOrCreateCurrent(ctx, scope, "new message")
+	if err != nil || secondResult.Status != operationresult.Success {
+		t.Fatalf("GetOrCreateCurrent: %+v %v", secondResult, err)
 	}
+	second := secondResult.Data
 	if second.ID == first.ID {
 		t.Fatalf("GetOrCreateCurrent resumed old session %s", first.ID)
 	}
@@ -152,46 +156,50 @@ func TestServiceListPageUsesPinnedNonCurrentOrder(t *testing.T) {
 	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	now := storage.Now()
 
-	older, err := svc.Create(ctx, scope, CreateRequest{Title: "older pinned"})
-	if err != nil {
-		t.Fatalf("create older: %v", err)
+	olderResult, err := svc.Create(ctx, scope, CreateRequest{Title: "older pinned"})
+	if err != nil || olderResult.Status != operationresult.Success {
+		t.Fatalf("create older: %+v %v", olderResult, err)
 	}
+	older := olderResult.Data
 	older.UpdatedAt = now.Add(-2 * time.Hour)
 	older.PinnedAt = &now
 	if _, err := store.Sessions().Mutate(ctx, older.ID, func(latest *storage.Session) error { *latest = *older; return nil }); err != nil {
 		t.Fatalf("update older: %v", err)
 	}
-	recent, err := svc.Create(ctx, scope, CreateRequest{Title: "recent"})
-	if err != nil {
-		t.Fatalf("create recent: %v", err)
+	recentResult, err := svc.Create(ctx, scope, CreateRequest{Title: "recent"})
+	if err != nil || recentResult.Status != operationresult.Success {
+		t.Fatalf("create recent: %+v %v", recentResult, err)
 	}
+	recent := recentResult.Data
 	recent.UpdatedAt = now.Add(-time.Hour)
 	if _, err := store.Sessions().Mutate(ctx, recent.ID, func(latest *storage.Session) error { *latest = *recent; return nil }); err != nil {
 		t.Fatalf("update recent: %v", err)
 	}
-	current, err := svc.Create(ctx, scope, CreateRequest{Title: "current"})
-	if err != nil {
-		t.Fatalf("create current: %v", err)
+	currentResult, err := svc.Create(ctx, scope, CreateRequest{Title: "current"})
+	if err != nil || currentResult.Status != operationresult.Success {
+		t.Fatalf("create current: %+v %v", currentResult, err)
 	}
-	archived, err := svc.Create(ctx, scope, CreateRequest{Title: "archived"})
-	if err != nil {
-		t.Fatalf("create archived: %v", err)
+	current := currentResult.Data
+	archivedResult, err := svc.Create(ctx, scope, CreateRequest{Title: "archived"})
+	if err != nil || archivedResult.Status != operationresult.Success {
+		t.Fatalf("create archived: %+v %v", archivedResult, err)
 	}
-	if _, err := svc.Archive(ctx, scope, archived.ID); err != nil {
-		t.Fatalf("archive: %v", err)
+	archived := archivedResult.Data
+	if result, err := svc.Archive(ctx, scope, archived.ID); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("archive: %+v %v", result, err)
 	}
-	if _, err := svc.Resume(ctx, scope, current.ID); err != nil {
-		t.Fatalf("resume current: %v", err)
+	if result, err := svc.Resume(ctx, scope, current.ID); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("resume current: %+v %v", result, err)
 	}
-	if _, err := svc.Pin(ctx, scope, current.ID); err != nil {
-		t.Fatalf("pin current: %v", err)
+	if result, err := svc.Pin(ctx, scope, current.ID); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("pin current: %+v %v", result, err)
 	}
 
 	got, err := svc.ListPage(ctx, scope, ListRequest{PageSize: 10, ExcludeCurrent: true})
-	if err != nil {
-		t.Fatalf("ListPage: %v", err)
+	if err != nil || got.Status != operationresult.Success {
+		t.Fatalf("ListPage: %+v %v", got, err)
 	}
-	if len(got.Items) != 2 || got.Items[0].ID != older.ID || got.Items[1].ID != recent.ID || got.TotalCount != 2 {
-		t.Fatalf("resumable sessions = %#v", got)
+	if len(got.Data.Items) != 2 || got.Data.Items[0].ID != older.ID || got.Data.Items[1].ID != recent.ID || got.Data.TotalCount != 2 {
+		t.Fatalf("resumable sessions = %#v", got.Data)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"elbot/internal/operationresult"
 	"elbot/internal/session/share"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
@@ -41,11 +42,11 @@ type ServiceDeps struct {
 		EnterBinding(context.Context, *share.Binding) (context.Context, func(), error)
 		ClearSessionBindings(context.Context, string)
 	}
-	ActiveSessionIDs func() []string                               // Request／Turn 的真实活跃事实，包含收尾阶段。
-	CheckForeground  func(context.Context, *storage.Session) error // 准入内只读兼容性检查，不执行 I/O。
-	IsSuperadmin     func(share.Scope) bool                        // 按绑定身份查询权限，不持有权限管理器。
-	ReleaseSession   func(string)                                  // 准入内同步释放闲置会话状态；不得 I/O、等待或重新准入。
-	ReleaseBinding   func(*share.Binding)                          // 准入内释放原绑定状态；与 ReleaseSession 一样须幂等。
+	ActiveSessionIDs func() []string                                                                   // Request／Turn 的真实活跃事实，包含收尾阶段。
+	CheckForeground  func(context.Context, *storage.Session) (operationresult.Result[struct{}], error) // 准入内只读兼容性检查，不执行 I/O。
+	IsSuperadmin     func(share.Scope) bool                                                            // 按绑定身份查询权限，不持有权限管理器。
+	ReleaseSession   func(string)                                                                      // 准入内同步释放闲置会话状态；不得 I/O、等待或重新准入。
+	ReleaseBinding   func(*share.Binding)                                                              // 准入内释放原绑定状态；与 ReleaseSession 一样须幂等。
 }
 
 type CreateRequest struct {
@@ -201,13 +202,13 @@ func (s *Service) CurrentBinding(scope share.Scope) *share.Binding {
 	return s.deps.Bindings.CurrentBinding(scope)
 }
 
-func (s *Service) requireIdle(id string) error {
+func (s *Service) sessionBusy(id string) bool {
 	for _, active := range s.deps.ActiveSessionIDs() {
 		if active == id {
-			return share.ErrSessionBusy
+			return true
 		}
 	}
-	return nil
+	return false
 }
 
 // enterSession 使用上下文中的原绑定，或仅取 Session 准入；身份校验不在本层重复。

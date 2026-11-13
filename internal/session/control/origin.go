@@ -7,27 +7,32 @@ import (
 	"fmt"
 
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
 )
 
-func (s *Service) RegisterOrigin(ctx context.Context, id string, target llm.Origin) (*storage.Session, error) {
+func (s *Service) RegisterOrigin(ctx context.Context, id string, target llm.Origin) (operationresult.Result[*storage.Session], error) {
 	if target.APIType == "" || target.Provider == "" {
-		return nil, fmt.Errorf("dialogue origin requires a protocol and provider")
+		return operationresult.Result[*storage.Session]{Status: operationresult.InvalidArguments, Message: "dialogue origin requires a protocol and provider"}, nil
 	}
 	ctx, release, err := s.enterSession(ctx, id)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Session]{}, err
 	}
 	defer release()
-	return s.deps.Sessions.Mutate(ctx, id, func(row *storage.Session) error {
+	var rejected operationresult.Status
+	var message string
+	row, err := s.deps.Sessions.Mutate(ctx, id, func(row *storage.Session) error {
 		current, known, err := share.Origin(row)
 		if err != nil {
 			return err
 		}
 		if known {
 			if current.APIType != target.APIType {
-				return fmt.Errorf("source protocol %q cannot be reinterpreted as %q", current.APIType, target.APIType)
+				rejected = operationresult.Conflict
+				message = fmt.Sprintf("source protocol %q cannot be reinterpreted as %q", current.APIType, target.APIType)
+				return nil
 			}
 			if current.Provider != "" {
 				return nil
@@ -41,6 +46,17 @@ func (s *Service) RegisterOrigin(ctx context.Context, id string, target llm.Orig
 			return err
 		}
 		row.Metadata, err = fields.Encode()
-		return err
+		if err != nil {
+			return err
+		}
+		row.UpdatedAt = storage.Now()
+		return nil
 	})
+	if err != nil {
+		return operationresult.Result[*storage.Session]{}, err
+	}
+	if rejected != "" {
+		return operationresult.Result[*storage.Session]{Status: rejected, Message: message}, nil
+	}
+	return operationresult.Result[*storage.Session]{Status: operationresult.Success, Data: row}, nil
 }

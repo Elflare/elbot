@@ -6,8 +6,8 @@ import (
 	"context"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"elbot/internal/session/share"
-	"elbot/internal/storage"
 )
 
 // Binding 是一次激活的只读句柄；建立和失效由内部 binding 组件唯一负责。
@@ -35,9 +35,15 @@ func BindingFromContext(ctx context.Context) (*Binding, bool) {
 }
 
 // CurrentBound 在同一次准入中取得会话快照和原始绑定，切离后切回也不会复用旧句柄。
-func (s *Supervisor) CurrentBound(ctx context.Context, scope Scope) (*storage.Session, *Binding, error) {
-	row, binding, err := s.control.CurrentBound(ctx, share.Scope(scope))
-	return row, (*Binding)(binding), err
+func (s *Supervisor) CurrentBound(ctx context.Context, scope Scope) (operationresult.Result[CurrentBoundData], error) {
+	result, err := s.control.CurrentBound(ctx, share.Scope(scope))
+	if err != nil {
+		return operationresult.Result[CurrentBoundData]{}, err
+	}
+	if result.Status != operationresult.Success {
+		return operationresult.Result[CurrentBoundData]{Status: result.Status, Message: result.Message}, nil
+	}
+	return operationresult.Result[CurrentBoundData]{Status: result.Status, Message: result.Message, Data: CurrentBoundData{Session: result.Data.Session, Binding: (*Binding)(result.Data.Binding)}}, nil
 }
 
 // EnterScope 只用于短时会话操作，调用方必须释放返回的准入。

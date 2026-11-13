@@ -6,16 +6,17 @@ import (
 	"context"
 	"time"
 
+	"elbot/internal/operationresult"
 	"elbot/internal/session/control"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
 )
 
-func (s *Supervisor) GetOrCreateCurrent(ctx context.Context, scope Scope, firstMessage string) (*storage.Session, error) {
+func (s *Supervisor) GetOrCreateCurrent(ctx context.Context, scope Scope, firstMessage string) (operationresult.Result[*storage.Session], error) {
 	return s.control.GetOrCreateCurrent(ctx, share.Scope(scope), firstMessage)
 }
 
-func (s *Supervisor) Create(ctx context.Context, scope Scope, req CreateRequest) (*storage.Session, error) {
+func (s *Supervisor) Create(ctx context.Context, scope Scope, req CreateRequest) (operationresult.Result[*storage.Session], error) {
 	return s.control.Create(ctx, share.Scope(scope), control.CreateRequest{
 		Title: req.Title, Mode: req.Mode, Metadata: req.Metadata,
 	})
@@ -23,86 +24,116 @@ func (s *Supervisor) Create(ctx context.Context, scope Scope, req CreateRequest)
 
 func (s *Supervisor) DefaultMode() string { return s.control.DefaultMode() }
 
-func (s *Supervisor) Current(ctx context.Context, scope Scope) (*storage.Session, error) {
+func (s *Supervisor) Current(ctx context.Context, scope Scope) (operationresult.Result[*storage.Session], error) {
 	return s.control.Current(ctx, share.Scope(scope))
 }
 
-func (s *Supervisor) Resume(ctx context.Context, scope Scope, sessionID string) (*storage.Session, error) {
+func (s *Supervisor) Resume(ctx context.Context, scope Scope, sessionID string) (operationresult.Result[*storage.Session], error) {
 	if scope.IsSuperadmin {
-		row, err := s.branches.CopyForeground(ctx, share.Scope(scope), sessionID)
-		if err != nil || row != nil {
-			return row, err
+		copied, copiedSession, err := s.branches.CopyForeground(ctx, share.Scope(scope), sessionID)
+		if err != nil {
+			return operationresult.Result[*storage.Session]{}, err
+		}
+		if copied.Status != operationresult.Success {
+			return copied, nil
+		}
+		if copiedSession {
+			return copied, nil
 		}
 	}
 	return s.control.Resume(ctx, share.Scope(scope), sessionID)
 }
 
-func (s *Supervisor) ResumeLast(ctx context.Context, scope Scope, allPlatforms bool) (*storage.Session, error) {
-	id, err := s.control.FindLast(ctx, share.Scope(scope), allPlatforms)
+func (s *Supervisor) ResumeLast(ctx context.Context, scope Scope, allPlatforms bool) (operationresult.Result[*storage.Session], error) {
+	found, err := s.control.FindLast(ctx, share.Scope(scope), allPlatforms)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Session]{}, err
 	}
-	return s.Resume(ctx, scope, id)
+	if found.Status != operationresult.Success {
+		return operationresult.Result[*storage.Session]{Status: found.Status, Message: found.Message}, nil
+	}
+	return s.Resume(ctx, scope, found.Data)
 }
 
 // ResetCurrent 只解除 current 绑定，下一条输入再创建会话。
-func (s *Supervisor) ResetCurrent(ctx context.Context, scope Scope) error {
+func (s *Supervisor) ResetCurrent(ctx context.Context, scope Scope) (operationresult.Result[struct{}], error) {
 	return s.control.ResetCurrent(ctx, share.Scope(scope))
 }
 
-func (s *Supervisor) ActivateMode(ctx context.Context, scope Scope, req ActivateModeRequest) (ActivateModeResult, error) {
+func (s *Supervisor) ActivateMode(ctx context.Context, scope Scope, req ActivateModeRequest) (operationresult.Result[ActivateModeResult], error) {
 	result, err := s.control.ActivateMode(ctx, share.Scope(scope), control.ActivateModeRequest{
 		Mode: req.Mode, NewSessionTitle: req.NewSessionTitle,
 	})
-	return ActivateModeResult{Session: result.Session, AlreadyActive: result.AlreadyActive}, err
-}
-
-func (s *Supervisor) List(ctx context.Context, scope Scope, query string, limit int) ([]storage.SessionSummary, error) {
-	result, err := s.ListPage(ctx, scope, ListRequest{Query: query, Page: 1, PageSize: limit})
-	return result.Items, err
-}
-
-func (s *Supervisor) ListPage(ctx context.Context, scope Scope, req ListRequest) (ListResult, error) {
-	result, err := s.control.ListPage(ctx, share.Scope(scope), control.ListRequest(req))
-	return ListResult(result), err
-}
-
-func (s *Supervisor) Status(ctx context.Context, scope Scope) (*Status, error) {
-	result, err := s.control.Status(ctx, share.Scope(scope))
-	if result == nil {
-		return nil, err
+	if err != nil {
+		return operationresult.Result[ActivateModeResult]{}, err
 	}
-	return &Status{
-		Session: result.Session, MessageCount: result.MessageCount,
-		LastUserContent: result.LastUserContent, LastAnswerContent: result.LastAnswerContent,
-	}, err
+	if result.Status != operationresult.Success {
+		return operationresult.Result[ActivateModeResult]{Status: result.Status, Message: result.Message}, nil
+	}
+	return operationresult.Result[ActivateModeResult]{Status: result.Status, Message: result.Message, Data: ActivateModeResult{Session: result.Data.Session, AlreadyActive: result.Data.AlreadyActive}}, nil
 }
 
-func (s *Supervisor) Rename(ctx context.Context, scope Scope, sessionID, title string) (*storage.Session, error) {
+func (s *Supervisor) List(ctx context.Context, scope Scope, query string, limit int) (operationresult.Result[[]storage.SessionSummary], error) {
+	result, err := s.ListPage(ctx, scope, ListRequest{Query: query, Page: 1, PageSize: limit})
+	if err != nil {
+		return operationresult.Result[[]storage.SessionSummary]{}, err
+	}
+	if result.Status != operationresult.Success {
+		return operationresult.Result[[]storage.SessionSummary]{Status: result.Status, Message: result.Message}, nil
+	}
+	return operationresult.Result[[]storage.SessionSummary]{Status: result.Status, Message: result.Message, Data: result.Data.Items}, nil
+}
+
+func (s *Supervisor) ListPage(ctx context.Context, scope Scope, req ListRequest) (operationresult.Result[ListResult], error) {
+	result, err := s.control.ListPage(ctx, share.Scope(scope), control.ListRequest(req))
+	if err != nil {
+		return operationresult.Result[ListResult]{}, err
+	}
+	if result.Status != operationresult.Success {
+		return operationresult.Result[ListResult]{Status: result.Status, Message: result.Message}, nil
+	}
+	return operationresult.Result[ListResult]{Status: result.Status, Message: result.Message, Data: ListResult(result.Data)}, nil
+}
+
+func (s *Supervisor) Status(ctx context.Context, scope Scope) (operationresult.Result[*Status], error) {
+	result, err := s.control.Status(ctx, share.Scope(scope))
+	if err != nil {
+		return operationresult.Result[*Status]{}, err
+	}
+	if result.Status != operationresult.Success {
+		return operationresult.Result[*Status]{Status: result.Status, Message: result.Message}, nil
+	}
+	return operationresult.Result[*Status]{Status: result.Status, Message: result.Message, Data: &Status{
+		Session: result.Data.Session, MessageCount: result.Data.MessageCount,
+		LastUserContent: result.Data.LastUserContent, LastAnswerContent: result.Data.LastAnswerContent,
+	}}, nil
+}
+
+func (s *Supervisor) Rename(ctx context.Context, scope Scope, sessionID, title string) (operationresult.Result[*storage.Session], error) {
 	return s.control.Rename(ctx, share.Scope(scope), sessionID, title)
 }
 
-func (s *Supervisor) Archive(ctx context.Context, scope Scope, sessionID string) (*storage.Session, error) {
+func (s *Supervisor) Archive(ctx context.Context, scope Scope, sessionID string) (operationresult.Result[*storage.Session], error) {
 	return s.control.Archive(ctx, share.Scope(scope), sessionID)
 }
 
-func (s *Supervisor) Unarchive(ctx context.Context, scope Scope, sessionID string) (*storage.Session, error) {
+func (s *Supervisor) Unarchive(ctx context.Context, scope Scope, sessionID string) (operationresult.Result[*storage.Session], error) {
 	return s.control.Unarchive(ctx, share.Scope(scope), sessionID)
 }
 
-func (s *Supervisor) Pin(ctx context.Context, scope Scope, sessionID string) (*storage.Session, error) {
+func (s *Supervisor) Pin(ctx context.Context, scope Scope, sessionID string) (operationresult.Result[*storage.Session], error) {
 	return s.control.Pin(ctx, share.Scope(scope), sessionID)
 }
 
-func (s *Supervisor) Unpin(ctx context.Context, scope Scope, sessionID string) (*storage.Session, error) {
+func (s *Supervisor) Unpin(ctx context.Context, scope Scope, sessionID string) (operationresult.Result[*storage.Session], error) {
 	return s.control.Unpin(ctx, share.Scope(scope), sessionID)
 }
 
-func (s *Supervisor) Delete(ctx context.Context, scope Scope, sessionID string) error {
+func (s *Supervisor) Delete(ctx context.Context, scope Scope, sessionID string) (operationresult.Result[struct{}], error) {
 	return s.control.Delete(ctx, share.Scope(scope), sessionID)
 }
 
-// CleanupExpired 返回实际删除数量，包括后续出错前已完成的部分。
+// CleanupExpired 是内部维护扫描，返回实际删除数量和故障。
 func (s *Supervisor) CleanupExpired(ctx context.Context, cutoff time.Time) (int, error) {
 	return s.control.CleanupExpired(ctx, cutoff)
 }

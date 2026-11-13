@@ -5,20 +5,21 @@ package session
 import (
 	"context"
 
+	"elbot/internal/operationresult"
 	"elbot/internal/session/branch"
 	"elbot/internal/session/control"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
 )
 
-func (s *Supervisor) PrepareBackground(ctx context.Context, scope Scope, req BackgroundRequest) (*storage.Session, error) {
+func (s *Supervisor) PrepareBackground(ctx context.Context, scope Scope, req BackgroundRequest) (operationresult.Result[*storage.Session], error) {
 	return s.control.PrepareBackground(ctx, share.Scope(scope), control.BackgroundRequest{
 		TargetPlatforms: req.TargetPlatforms,
 		SessionID:       req.SessionID, TaskType: req.TaskType, TaskID: req.TaskID, Name: req.Name, Metadata: req.Metadata,
 	})
 }
 
-func (s *Supervisor) CopyBackground(ctx context.Context, target Scope, req BackgroundCopyRequest) (*storage.Session, error) {
+func (s *Supervisor) CopyBackground(ctx context.Context, target Scope, req BackgroundCopyRequest) (operationresult.Result[*storage.Session], error) {
 	return s.branches.CopyBackground(ctx, share.Scope(target), branch.BackgroundCopyRequest{
 		SourceSessionID: req.SourceSessionID, TaskType: req.TaskType, TaskID: req.TaskID,
 		Name: req.Name, Metadata: req.Metadata,

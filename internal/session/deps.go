@@ -4,6 +4,7 @@ package session
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
@@ -13,16 +14,16 @@ import (
 
 // SupervisorDeps 由 Agent 提供；所有资源均为借用，Session 不负责关闭。
 type SupervisorDeps struct {
-	AdoptForeground  func(context.Context, *storage.Session, *Binding)  // 提交后准入内同步更新执行内存；不得 I/O、等待或重新准入。
-	SessionIDCode    func(string, contextinfo.ChatType) (string, error) // Platform 根部按平台与会话类型查询已登记的短码。
-	Store            storage.Store                                      // 根部提取仓库能力，不向子包交付整个 Store。
-	Models           ModelCapabilities                                  // 仅提供命名选择，不交付模型管理操作。
-	ActiveSessionIDs func() []string                                    // 查询活跃会话事实，状态仍归 Agent 的执行组件。
-	CheckForeground  func(context.Context, *storage.Session) error      // 接管准入内的兼容性检查，不得执行 I/O 或再次获取准入。
-	Materials        MaterialResolver                                   // 构造时只接入，业务启动前由 Agent 完成协议路线注册。
-	IsSuperadmin     func(Scope) bool                                   // 根据绑定的范围身份查询权限。
-	ReleaseSession   func(string)                                       // 同步释放 Agent 自有闲置会话状态；不得 I/O、等待或重新准入。
-	ReleaseBinding   func(*Binding)                                     // 同步释放原绑定的撤销等状态；释放操作均须幂等。
+	AdoptForeground  func(context.Context, *storage.Session, *Binding)                                 // 提交后准入内同步更新执行内存；不得 I/O、等待或重新准入。
+	SessionIDCode    func(string, contextinfo.ChatType) (string, error)                                // Platform 根部按平台与会话类型查询已登记的短码。
+	Store            storage.Store                                                                     // 根部提取仓库能力，不向子包交付整个 Store。
+	Models           ModelCapabilities                                                                 // 仅提供命名选择，不交付模型管理操作。
+	ActiveSessionIDs func() []string                                                                   // 查询活跃会话事实，状态仍归 Agent 的执行组件。
+	CheckForeground  func(context.Context, *storage.Session) (operationresult.Result[struct{}], error) // 接管准入内的兼容性检查，不得执行 I/O 或再次获取准入。
+	Materials        MaterialResolver                                                                  // 构造时只接入，业务启动前由 Agent 完成协议路线注册。
+	IsSuperadmin     func(Scope) bool                                                                  // 根据绑定的范围身份查询权限。
+	ReleaseSession   func(string)                                                                      // 同步释放 Agent 自有闲置会话状态；不得 I/O、等待或重新准入。
+	ReleaseBinding   func(*Binding)                                                                    // 同步释放原绑定的撤销等状态；释放操作均须幂等。
 }
 
 // ModelCapabilities 固定命名任务所需的模型选择能力。
@@ -35,9 +36,9 @@ type MaterialResolver interface {
 	MaterialFor(llm.Origin) (MaterialPreparer, error)
 }
 
-// MaterialPreparer 在准入锁外准备分支快照；无原生材料时允许返回 nil。
+// MaterialPreparer 在准入锁外准备分支快照；无原生材料时返回成功空数据。
 // PreparedMaterial 的公开结果定义由 contracts.go 提供。
 type MaterialPreparer interface {
-	PrepareFork(context.Context, *storage.Session, *storage.Message) (*PreparedMaterial, error)
-	PrepareCopy(context.Context, *storage.Session) (*PreparedMaterial, error)
+	PrepareFork(context.Context, *storage.Session, *storage.Message) (operationresult.Result[*PreparedMaterial], error)
+	PrepareCopy(context.Context, *storage.Session) (operationresult.Result[*PreparedMaterial], error)
 }

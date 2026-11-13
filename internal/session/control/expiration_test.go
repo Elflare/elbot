@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"elbot/internal/session/binding"
 	"elbot/internal/session/share"
 	"elbot/internal/signal"
@@ -43,8 +44,8 @@ func TestIdleExpirationIgnoresMetadataAndPreservesHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 		time.Sleep(40 * time.Second)
-		if _, err := f.s.Rename(ctx, scope, row.ID, "late naming"); err != nil {
-			t.Fatal(err)
+		if result, err := f.s.Rename(ctx, scope, row.ID, "late naming"); err != nil || result.Status != operationresult.Success {
+			t.Fatalf("rename: %+v %v", result, err)
 		}
 		if err := f.s.SetWorkspaceDirWithAgentNotice(ctx, row.ID, "/tmp/work", true); err != nil {
 			t.Fatal(err)
@@ -64,7 +65,7 @@ func TestIdleExpirationIgnoresMetadataAndPreservesHistory(t *testing.T) {
 			t.Fatal("idle index retained expired binding")
 		}
 		next, err := f.s.GetOrCreateCurrent(ctx, scope, "new input")
-		if err != nil || next.ID == row.ID {
+		if err != nil || next.Status != operationresult.Success || next.Data.ID == row.ID {
 			t.Fatalf("next input: %+v %v", next, err)
 		}
 	})
@@ -229,8 +230,8 @@ func TestSessionIdleRenewsAllBindings(t *testing.T) {
 		second.ChatID, second.IsSuperadmin = "cli:second", true
 		admin.Owner.ID, admin.IsSuperadmin = "admin", true
 		for _, target := range []share.Scope{second, admin} {
-			if _, err := f.s.Resume(ctx, target, row.ID); err != nil {
-				t.Fatal(err)
+			if result, err := f.s.Resume(ctx, target, row.ID); err != nil || result.Status != operationresult.Success {
+				t.Fatalf("resume: %+v %v", result, err)
 			}
 		}
 		if err := f.s.Start(ctx); err != nil {
@@ -305,8 +306,8 @@ func TestMultipleBindingsAndDisabledTTL(t *testing.T) {
 		row := f.create(t, scope, "shared")
 		admin := scope
 		admin.Owner.ID, admin.IsSuperadmin = "admin", true
-		if _, err := f.s.Resume(ctx, admin, row.ID); err != nil {
-			t.Fatal(err)
+		if result, err := f.s.Resume(ctx, admin, row.ID); err != nil || result.Status != operationresult.Success {
+			t.Fatalf("resume: %+v %v", result, err)
 		}
 		if err := f.s.Start(ctx); err != nil {
 			t.Fatal(err)
@@ -319,8 +320,8 @@ func TestMultipleBindingsAndDisabledTTL(t *testing.T) {
 		if f.s.CurrentBinding(admin) == nil {
 			t.Fatal("disabled TTL expired")
 		}
-		if err := f.s.ResetCurrent(ctx, admin); err != nil {
-			t.Fatal(err)
+		if result, err := f.s.ResetCurrent(ctx, admin); err != nil || result.Status != operationresult.Success {
+			t.Fatalf("reset: %+v %v", result, err)
 		}
 		if sessions, bindings := f.releaseCounts(); sessions != 1 || bindings != 2 {
 			t.Fatalf("last binding release %d %d", sessions, bindings)
@@ -411,8 +412,8 @@ func TestUnstartedCloseAndChurn(t *testing.T) {
 	ctx, scope := context.Background(), privateScope()
 	for i := range 100 {
 		f.create(t, scope, fmt.Sprintf("s-%d", i))
-		if err := f.s.ResetCurrent(ctx, scope); err != nil {
-			t.Fatal(err)
+		if result, err := f.s.ResetCurrent(ctx, scope); err != nil || result.Status != operationresult.Success {
+			t.Fatalf("reset: %+v %v", result, err)
 		}
 	}
 	if len(f.s.idle) != 0 {

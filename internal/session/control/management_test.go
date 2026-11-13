@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 )
 
@@ -36,19 +37,19 @@ func TestCleanupPreservesBusyPinnedArchivedAndPartialCount(t *testing.T) {
 	for _, id := range []string{"a-delete", "b-busy", "c-failure", "d-pinned", "e-archived"} {
 		f.create(t, scope, id)
 	}
-	if _, err := f.s.Pin(ctx, scope, "d-pinned"); err != nil {
-		t.Fatal(err)
+	if result, err := f.s.Pin(ctx, scope, "d-pinned"); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("pin: %+v %v", result, err)
 	}
-	if _, err := f.s.Archive(ctx, scope, "e-archived"); err != nil {
-		t.Fatal(err)
+	if result, err := f.s.Archive(ctx, scope, "e-archived"); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("archive: %+v %v", result, err)
 	}
-	if _, err := f.s.Resume(ctx, scope, "a-delete"); err != nil {
-		t.Fatal(err)
+	if result, err := f.s.Resume(ctx, scope, "a-delete"); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("resume: %+v %v", result, err)
 	}
 	secondScope := scope
 	secondScope.ChatID, secondScope.IsSuperadmin = "other", true
-	if _, err := f.s.Resume(ctx, secondScope, "a-delete"); err != nil {
-		t.Fatal(err)
+	if result, err := f.s.Resume(ctx, secondScope, "a-delete"); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("resume second scope: %+v %v", result, err)
 	}
 	first, second := f.s.CurrentBinding(scope), f.s.CurrentBinding(secondScope)
 	for _, id := range []string{"a-delete", "b-busy", "c-failure", "d-pinned", "e-archived"} {

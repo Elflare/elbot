@@ -7,16 +7,18 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 )
 
 func TestOriginRegistrationPreservesHistoryAndOtherMetadata(t *testing.T) {
 	svc, store := newTestService(t)
 	ctx := t.Context()
 	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-	row, err := svc.Create(ctx, scope, CreateRequest{Metadata: `{"unknown":9007199254740993,"workspace_dir":"/work"}`})
-	if err != nil {
-		t.Fatal(err)
+	created, err := svc.Create(ctx, scope, CreateRequest{Metadata: `{"unknown":9007199254740993,"workspace_dir":"/work"}`})
+	if err != nil || created.Status != operationresult.Success {
+		t.Fatalf("create: %+v %v", created, err)
 	}
+	row := created.Data
 	if _, known, err := Origin(row); err != nil || known {
 		t.Fatalf("new session origin = %v, %v", known, err)
 	}
@@ -52,20 +54,24 @@ func TestOriginRegistrationRejectsStaleBindingAndKeepsPartialChat(t *testing.T) 
 	svc, store := newTestService(t)
 	ctx := t.Context()
 	scope := Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-	row, err := svc.Create(ctx, scope, CreateRequest{Metadata: `{"llm_origin":{"protocol":"chat"},"unknown":true}`})
-	if err != nil {
-		t.Fatal(err)
+	created, err := svc.Create(ctx, scope, CreateRequest{Metadata: `{"llm_origin":{"protocol":"chat"},"unknown":true}`})
+	if err != nil || created.Status != operationresult.Success {
+		t.Fatalf("create: %+v %v", created, err)
 	}
-	_, original, err := svc.CurrentBound(ctx, scope)
-	if err != nil {
-		t.Fatal(err)
+	row := created.Data
+	current, err := svc.CurrentBound(ctx, scope)
+	if err != nil || current.Status != operationresult.Success {
+		t.Fatalf("current: %+v %v", current, err)
 	}
+	original := current.Data.Binding
 	old := WithBinding(ctx, original)
-	if err := svc.ResetCurrent(ctx, scope); err != nil {
-		t.Fatal(err)
+	reset, err := svc.ResetCurrent(ctx, scope)
+	if err != nil || reset.Status != operationresult.Success {
+		t.Fatalf("reset: %+v %v", reset, err)
 	}
-	if _, err := svc.Resume(ctx, scope, row.ID); err != nil {
-		t.Fatal(err)
+	resumed, err := svc.Resume(ctx, scope, row.ID)
+	if err != nil || resumed.Status != operationresult.Success {
+		t.Fatalf("resume: %+v %v", resumed, err)
 	}
 	old = contextinfo.WithExecution(old, contextinfo.Execution{SessionID: row.ID, RunID: "fabricated", Attempt: "fabricated"})
 	target := llm.Origin{APIType: llm.APITypeChat, Provider: "actual", BaseURL: "https://actual.invalid"}
@@ -79,10 +85,11 @@ func TestOriginRegistrationRejectsStaleBindingAndKeepsPartialChat(t *testing.T) 
 	if origin, _, err := Origin(persisted); err != nil || origin.Provider != "" {
 		t.Fatalf("rejected registration fabricated a historical provider: %+v, %v", origin, err)
 	}
-	_, fresh, err := svc.CurrentBound(ctx, scope)
-	if err != nil {
-		t.Fatal(err)
+	current, err = svc.CurrentBound(ctx, scope)
+	if err != nil || current.Status != operationresult.Success {
+		t.Fatalf("current: %+v %v", current, err)
 	}
+	fresh := current.Data.Binding
 	row, err = svc.RegisterOrigin(WithBinding(ctx, fresh), row.ID, target)
 	if err != nil {
 		t.Fatal(err)

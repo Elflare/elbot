@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
 	"elbot/internal/workspace"
@@ -31,8 +32,8 @@ func TestWorkspaceAndOriginPreserveConcurrentMetadata(t *testing.T) {
 		})
 	}
 	workers.Go(func() {
-		if _, err := f.s.Rename(ctx, scope, row.ID, "renamed"); err != nil {
-			t.Error(err)
+		if result, err := f.s.Rename(ctx, scope, row.ID, "renamed"); err != nil || result.Status != operationresult.Success {
+			t.Errorf("rename: %+v %v", result, err)
 		}
 	})
 	workers.Go(func() {
