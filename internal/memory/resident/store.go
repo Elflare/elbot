@@ -3,6 +3,7 @@ package resident
 import (
 	"bytes"
 	"context"
+	"elbot/internal/operationresult"
 	"errors"
 	"fmt"
 	"maps"
@@ -25,8 +26,6 @@ const (
 	DefaultCoreMaxUnits   = 200
 	DefaultNormalMaxUnits = 300
 )
-
-var ErrNotFound = errors.New("resident memory not found")
 
 type Limits struct {
 	Core   int // 核心记忆允许的最大字数或单词数。
@@ -106,31 +105,31 @@ func (s *Store) Read(ctx context.Context, scope session.Scope) (Memory, error) {
 	}
 	memory, exists := file[scope.Owner.Platform][scope.Owner.ID]
 	if !exists {
-		return Memory{}, ErrNotFound
+		return Memory{}, nil
 	}
 	return Memory{Core: strings.TrimSpace(memory.Core), Normal: strings.TrimSpace(memory.Normal)}, nil
 }
 
-func (s *Store) WriteCore(ctx context.Context, scope session.Scope, content string) error {
-	return s.update(ctx, scope, func(memory *ResidentMemory) error {
+func (s *Store) WriteCore(ctx context.Context, scope session.Scope, content string) (operationresult.Result[struct{}], error) {
+	return s.update(ctx, scope, func(memory *ResidentMemory) operationresult.Result[struct{}] {
 		memory.Core = strings.TrimSpace(content)
 		return validatePart(memory.Core, s.Limits.Core, "core")
 	})
 }
 
-func (s *Store) WriteNormal(ctx context.Context, scope session.Scope, content string) error {
-	return s.update(ctx, scope, func(memory *ResidentMemory) error {
+func (s *Store) WriteNormal(ctx context.Context, scope session.Scope, content string) (operationresult.Result[struct{}], error) {
+	return s.update(ctx, scope, func(memory *ResidentMemory) operationresult.Result[struct{}] {
 		memory.Normal = strings.TrimSpace(content)
 		return validatePart(memory.Normal, s.Limits.Normal, "normal")
 	})
 }
 
-func (s *Store) AppendNormal(ctx context.Context, scope session.Scope, content string) error {
+func (s *Store) AppendNormal(ctx context.Context, scope session.Scope, content string) (operationresult.Result[struct{}], error) {
 	content = strings.TrimSpace(content)
 	if content == "" {
-		return fmt.Errorf("resident memory normal content is required")
+		return operationresult.Result[struct{}]{Status: operationresult.InvalidArguments, Message: "resident memory normal content is required"}, nil
 	}
-	return s.update(ctx, scope, func(memory *ResidentMemory) error {
+	return s.update(ctx, scope, func(memory *ResidentMemory) operationresult.Result[struct{}] {
 		if memory.Normal == "" {
 			memory.Normal = content
 		} else {
@@ -140,7 +139,7 @@ func (s *Store) AppendNormal(ctx context.Context, scope session.Scope, content s
 	})
 }
 
-func (s *Store) DeleteNormal(ctx context.Context, scope session.Scope) error {
+func (s *Store) DeleteNormal(ctx context.Context, scope session.Scope) (operationresult.Result[struct{}], error) {
 	return s.WriteNormal(ctx, scope, "")
 }
 
@@ -148,34 +147,34 @@ func (s *Store) LimitsOrDefault() Limits {
 	return s.Limits
 }
 
-func (s *Store) update(ctx context.Context, scope session.Scope, update func(*ResidentMemory) error) error {
+func (s *Store) update(ctx context.Context, scope session.Scope, update func(*ResidentMemory) operationresult.Result[struct{}]) (operationresult.Result[struct{}], error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	file, err := s.loadLocked()
 	if err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
 	now := storage.FormatTime(storage.Now())
 	memory, exists := file[scope.Owner.Platform][scope.Owner.ID]
 	before := memory
 	memory.Core = strings.TrimSpace(memory.Core)
 	memory.Normal = strings.TrimSpace(memory.Normal)
-	if err := update(&memory); err != nil {
-		return err
+	if checked := update(&memory); checked.Status != operationresult.Success {
+		return checked, nil
 	}
 	if memory.Core == "" && memory.Normal == "" {
 		if !exists {
-			return nil
+			return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 		}
 	} else {
 		if memory.CreatedAt == "" {
 			memory.CreatedAt = now
 		}
 		if memory == before {
-			return nil
+			return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 		}
 		memory.UpdatedAt = now
 	}
@@ -194,14 +193,17 @@ func (s *Store) update(ctx context.Context, scope session.Scope, update func(*Re
 	} else {
 		file[scope.Owner.Platform] = memories
 	}
-	return s.saveLocked(file)
+	if err := s.saveLocked(file); err != nil {
+		return operationresult.Result[struct{}]{}, err
+	}
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
-func validatePart(content string, limit int, part string) error {
+func validatePart(content string, limit int, part string) operationresult.Result[struct{}] {
 	if units := CountUnits(content); units > limit {
-		return fmt.Errorf("resident memory %s is too long: %d/%d units", part, units, limit)
+		return operationresult.Result[struct{}]{Status: operationresult.Rejected, Message: fmt.Sprintf("resident memory %s is too long: %d/%d units", part, units, limit)}
 	}
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}
 }
 
 func CountUnits(content string) int {
