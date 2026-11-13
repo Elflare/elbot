@@ -15,9 +15,12 @@ func NewCompact(deps Deps) command.Handler {
 		Description:   "压缩当前会话上下文",
 		SessionEffect: command.SessionEffectMutate,
 		MinRole:       contextinfo.RoleUser,
-	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	}, func(ctx context.Context, req command.Request) (command.Result, error) {
 		data, err := deps.Control.CompactSession(ctx, control.CompactSessionRequest{})
-		return &command.Result{Kind: command.ResultKindCompact, Data: data}, err
+		if err != nil {
+			return command.Result{}, err
+		}
+		return command.FromOperationResult(data, command.ResultKindCompact), nil
 	})
 }
 

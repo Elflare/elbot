@@ -5,6 +5,7 @@ import (
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/control"
+	"elbot/internal/operationresult"
 	"fmt"
 	"sort"
 	"strconv"
@@ -21,9 +22,12 @@ type requestNode struct {
 }
 
 func NewRequests(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "requests", Description: "运行中的请求", Help: "编号用于 " + deps.CommandText("stop") + "；子编号形如 1.1"}, func(ctx context.Context, req command.Request) (*command.Result, error) {
-		data, err := deps.Control.ListRequests(ctx)
-		return &command.Result{Kind: command.ResultKindRequests, Data: data}, err
+	return command.NewFunc(command.Info{Name: "requests", Description: "运行中的请求", Help: "编号用于 " + deps.CommandText("stop") + "；子编号形如 1.1"}, func(ctx context.Context, req command.Request) (command.Result, error) {
+		result, err := deps.Control.ListRequests(ctx)
+		if err != nil {
+			return command.Result{}, err
+		}
+		return command.FromOperationResult(result, command.ResultKindRequests), nil
 	})
 }
 func NewStop(deps Deps) command.Handler { return stopCommand{deps: deps} }
@@ -41,22 +45,31 @@ func (c stopCommand) Info() command.Info {
 	}
 }
 
-func (c stopCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+func (c stopCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	arg := strings.TrimSpace(req.Args)
 	if arg == "" {
-		data, err := c.deps.Control.StopSession(ctx)
-		return &command.Result{Kind: command.ResultKindStop, Data: data}, err
+		result, err := c.deps.Control.StopSession(ctx)
+		if err != nil {
+			return command.Result{}, err
+		}
+		return command.FromOperationResult(result, command.ResultKindStop), nil
 	}
 	items, err := stoppableRequests(ctx, c.deps)
 	if err != nil {
-		return nil, err
+		return command.Result{}, err
 	}
-	id, ok := resolveRequestArg(items, arg)
+	if items.Status != operationresult.Success {
+		return command.Result{Status: items.Status, Message: items.Message}, nil
+	}
+	id, ok := resolveRequestArg(items.Data, arg)
 	if !ok {
-		return nil, &command.Error{Kind: command.ErrorRejected, Code: command.CodeNotFound, Message: fmt.Sprintf("request not found: %s", arg)}
+		return command.Result{Status: operationresult.NotFound, Message: fmt.Sprintf("request not found: %s", arg)}, nil
 	}
-	data, err := c.deps.Control.StopRequest(ctx, control.StopRequestRequest{RequestID: id})
-	return &command.Result{Kind: command.ResultKindStop, Data: data}, err
+	result, err := c.deps.Control.StopRequest(ctx, control.StopRequestRequest{RequestID: id})
+	if err != nil {
+		return command.Result{}, err
+	}
+	return command.FromOperationResult(result, command.ResultKindStop), nil
 }
 func (c stopCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
 	token := command.CurrentCompletionToken(req)
@@ -64,25 +77,40 @@ func (c stopCommand) Complete(ctx context.Context, req command.CompletionRequest
 		return nil
 	}
 	items, err := stoppableRequests(ctx, c.deps)
-	if err != nil {
+	if err != nil || items.Status != operationresult.Success {
 		return nil
 	}
-	return completeRequestIDs(items, token.Text, token.Start, token.End)
+	return completeRequestIDs(items.Data, token.Text, token.Start, token.End)
 }
 func NewStopAll(deps Deps) command.Handler {
-	return command.NewFunc(command.Info{Name: "stopall", Description: "停止所有会话的请求"}, func(ctx context.Context, req command.Request) (*command.Result, error) {
-		data, err := deps.Control.StopAllRequests(ctx)
-		return &command.Result{Kind: command.ResultKindStop, Data: data}, err
+	return command.NewFunc(command.Info{Name: "stopall", Description: "停止所有会话的请求"}, func(ctx context.Context, req command.Request) (command.Result, error) {
+		result, err := deps.Control.StopAllRequests(ctx)
+		if err != nil {
+			return command.Result{}, err
+		}
+		return command.FromOperationResult(result, command.ResultKindStop), nil
 	})
 }
-func stoppableRequests(ctx context.Context, deps Deps) ([]control.RequestData, error) {
+func stoppableRequests(ctx context.Context, deps Deps) (operationresult.Result[[]control.RequestData], error) {
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	if actor.Role == contextinfo.RoleSuperadmin {
-		data, err := deps.Control.ListRequests(ctx)
-		return data.Items, err
+		result, err := deps.Control.ListRequests(ctx)
+		if err != nil {
+			return operationresult.Result[[]control.RequestData]{}, err
+		}
+		if result.Status != operationresult.Success {
+			return operationresult.Result[[]control.RequestData]{Status: result.Status, Message: result.Message}, nil
+		}
+		return operationresult.Result[[]control.RequestData]{Status: operationresult.Success, Data: result.Data.Items}, nil
 	}
 	data, err := deps.Control.Status(ctx)
-	return data.Requests, err
+	if err != nil {
+		return operationresult.Result[[]control.RequestData]{}, err
+	}
+	if data.Status != operationresult.Success {
+		return operationresult.Result[[]control.RequestData]{Status: data.Status, Message: data.Message}, nil
+	}
+	return operationresult.Result[[]control.RequestData]{Status: operationresult.Success, Data: data.Data.Requests}, nil
 }
 func resolveRequestArg(requests []control.RequestData, arg string) (string, bool) {
 	for _, req := range requests {

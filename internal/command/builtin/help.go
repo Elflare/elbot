@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"strings"
 
 	command "elbot/internal/command/share"
@@ -27,9 +28,12 @@ func (h helpCommand) Info() command.Info {
 	}
 }
 
-func (h helpCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+func (h helpCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	data, err := h.deps.Control.ListCommands(ctx, control.ListCommandsRequest{Name: strings.TrimSpace(req.Args)})
-	return &command.Result{Kind: command.ResultKindHelp, Data: data}, err
+	if err != nil {
+		return command.Result{}, err
+	}
+	return command.FromOperationResult(data, command.ResultKindHelp), nil
 }
 
 func (h helpCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -43,10 +47,10 @@ func (h helpCommand) Complete(ctx context.Context, req command.CompletionRequest
 	}
 	out := []command.Completion{}
 	data, err := h.deps.Control.ListCommands(ctx, control.ListCommandsRequest{})
-	if err != nil {
+	if err != nil || data.Status != operationresult.Success {
 		return nil
 	}
-	for _, info := range data.Items {
+	for _, info := range data.Data.Items {
 		name := strings.TrimSpace(info.Name)
 		if name == "" || !strings.HasPrefix(name, query) {
 			continue

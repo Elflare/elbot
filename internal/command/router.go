@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 )
 
 type Router struct {
@@ -74,20 +75,19 @@ func RegisterHandlers(registrar interface{ Register(Handler) error }, handlers .
 	return nil
 }
 
-func (r *Router) Dispatch(ctx context.Context, raw string) (*Result, error) {
+func (r *Router) Dispatch(ctx context.Context, raw string) (Result, error) {
 	parsed := r.Parse(raw)
 	if !parsed.OK {
-		return nil, &Error{Kind: ErrorInput, Code: CodeInvalidArguments, Message: "not a command"}
+		return Result{Status: operationresult.Rejected, Message: "not a command"}, nil
 	}
 	h, ok := r.handlers[parsed.Name]
 	if !ok {
-		return nil, &Error{Kind: ErrorInput, Code: CodeUnknownCommand, Message: fmt.Sprintf("unk command: %s%s\n%s", parsed.Prefix, parsed.Name, r.commandText("help"))}
+		return Result{
+			Status:  operationresult.Rejected,
+			Message: fmt.Sprintf("unk command: %s%s\n%s", parsed.Prefix, parsed.Name, r.commandText("help")),
+		}, nil
 	}
-	result, err := h.Handle(ctx, Request{Raw: raw, Prefix: parsed.Prefix, Name: parsed.Name, Args: parsed.Args})
-	if err != nil {
-		return result, ClassifyError(err)
-	}
-	return result, nil
+	return h.Handle(ctx, Request{Raw: raw, Prefix: parsed.Prefix, Name: parsed.Name, Args: parsed.Args})
 }
 
 func (r *Router) IsCommand(text string) bool {

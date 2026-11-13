@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"fmt"
 	"strconv"
 	"strings"
@@ -37,20 +38,23 @@ type usageCommand struct {
 
 func (c usageCommand) Info() command.Info { return usageInfo() }
 
-func (c usageCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+func (c usageCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	if wantsCommandHelp(req.Args) {
 		return formatCommandHelp(c.deps.CommandText, c.Info()), nil
 	}
 	query, groupBy, callRange, err := parseUsageQuery(req.Args)
 	if err != nil {
-		return nil, inputError(err)
+		return command.Result{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	first, last := 1, usageQueryLimit
 	if callRange != nil {
 		first, last = callRange.start, callRange.end
 	}
 	data, err := c.deps.Control.QueryUsage(ctx, control.QueryUsageRequest{Query: query, GroupBy: string(groupBy), First: first, Last: last})
-	return &command.Result{Kind: command.ResultKindUsage, Data: data}, err
+	if err != nil {
+		return command.Result{}, err
+	}
+	return command.FromOperationResult(data, command.ResultKindUsage), nil
 }
 
 func (c usageCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {

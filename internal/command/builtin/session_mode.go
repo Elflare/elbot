@@ -17,9 +17,12 @@ func NewWork(deps Deps) command.Handler {
 		Help:          "无会话→新建；message 在切换成功后发送",
 		SessionEffect: command.SessionEffectSwitchCurrent,
 		MinRole:       contextinfo.RoleUser,
-	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	}, func(ctx context.Context, req command.Request) (command.Result, error) {
 		data, err := deps.Control.SetMode(ctx, control.SetModeRequest{Mode: storage.SessionModeWork, Text: req.Args, NewSessionTitle: "New work session"})
-		return sessionChange(data), err
+		if err != nil {
+			return command.Result{}, err
+		}
+		return sessionChange(data), nil
 	})
 }
 
@@ -31,8 +34,11 @@ func NewChat(deps Deps) command.Handler {
 		Help:          "无会话→新建；message 在切换成功后发送\nwork 已有历史→先 " + deps.CommandText("new"),
 		SessionEffect: command.SessionEffectSwitchCurrent,
 		MinRole:       contextinfo.RoleUser,
-	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	}, func(ctx context.Context, req command.Request) (command.Result, error) {
 		data, err := deps.Control.SetMode(ctx, control.SetModeRequest{Mode: storage.SessionModeChat, Text: req.Args, NewSessionTitle: "New chat session"})
-		return sessionChange(data), err
+		if err != nil {
+			return command.Result{}, err
+		}
+		return sessionChange(data), nil
 	})
 }

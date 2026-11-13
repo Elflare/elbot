@@ -5,6 +5,7 @@ import (
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/control"
+	"elbot/internal/operationresult"
 )
 
 type confirmationCommand struct {
@@ -15,25 +16,29 @@ type confirmationCommand struct {
 }
 
 func (c confirmationCommand) Info() command.Info { return c.info }
-func (c confirmationCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+func (c confirmationCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	if c.info.Name == "detail" {
 		current, err := c.deps.Control.CurrentConfirmation(ctx, control.CurrentConfirmationRequest{Refresh: true})
 		if err != nil {
-			return nil, err
+			return command.Result{}, err
 		}
-		if current.Kind != "tool" {
-			return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: "无待确认"}}, nil
+		if current.Status != operationresult.Success {
+			return command.Result{Status: current.Status, Message: current.Message}, nil
 		}
-		return &command.Result{Kind: command.ResultKindText, Data: current}, nil
+		if current.Data.Kind != "tool" {
+			return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "无待确认"}}, nil
+		}
+		return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: current.Data}, nil
 	}
-	data, err := c.deps.Control.RespondConfirmation(ctx, control.RespondConfirmationRequest{Decision: c.decision, Scope: c.scope, Extra: req.Args})
+	result, err := c.deps.Control.RespondConfirmation(ctx, control.RespondConfirmationRequest{Decision: c.decision, Scope: c.scope, Extra: req.Args})
 	if err != nil {
-		return nil, err
+		return command.Result{}, err
 	}
-	if !data.Accepted {
-		return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: "无待确认"}}, nil
+	if result.Status != operationresult.Success {
+		return command.Result{Status: result.Status, Message: result.Message}, nil
 	}
-	return &command.Result{Kind: command.ResultKindText, Data: data, Continuation: data.Continuation}, err
+	data := result.Data
+	return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: data, Continuation: data.Continuation}, nil
 }
 
 type ConfirmationModule struct{}

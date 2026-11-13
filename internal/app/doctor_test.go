@@ -20,11 +20,13 @@ import (
 
 type doctorCommandReply struct{ text string }
 
-func (r *doctorCommandReply) SendCommandResult(_ context.Context, req command.Request, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
-	if failure != nil {
-		r.text = failure.Message
-	} else {
-		r.text = platformshare.FormatCommandResult(req, result)
+func (r *doctorCommandReply) SendCommandResult(_ context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
+	outputs, err := platformshare.CommandResultOutputs(req, result, failure)
+	if err != nil {
+		return delivery.Receipt{}, err
+	}
+	if len(outputs) > 0 {
+		r.text = outputs[0].Text
 	}
 	return delivery.Receipt{}, nil
 }

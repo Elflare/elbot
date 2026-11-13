@@ -9,6 +9,7 @@ import (
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/control"
+	"elbot/internal/operationresult"
 )
 
 type rollbackCommand struct{ deps Deps }
@@ -24,18 +25,24 @@ func (rollbackCommand) Info() command.Info {
 	}
 }
 
-func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+func (c rollbackCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	arg := strings.TrimSpace(req.Args)
 	if arg == "" {
 		data, err := c.deps.Control.ListRollbacks(ctx)
-		return &command.Result{Kind: command.ResultKindRollbacks, Data: data}, err
+		if err != nil {
+			return command.Result{}, err
+		}
+		return command.FromOperationResult(data, command.ResultKindRollbacks), nil
 	}
 	id, err := strconv.ParseUint(arg, 10, 64)
 	if err != nil || id == 0 {
-		return nil, inputError(fmt.Errorf("usage: %s", c.deps.CommandText("rollback", "[编号]")))
+		return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", c.deps.CommandText("rollback", "[编号]"))}, nil
 	}
-	data, err := c.deps.Control.RollbackByID(ctx, control.RollbackByIDRequest{ID: id})
-	return &command.Result{Kind: command.ResultKindRollback, Data: data}, err
+	result, err := c.deps.Control.RollbackByID(ctx, control.RollbackByIDRequest{ID: id})
+	if err != nil {
+		return command.Result{}, err
+	}
+	return command.FromOperationResult(result, command.ResultKindRollback), nil
 }
 
 func (c rollbackCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -44,11 +51,11 @@ func (c rollbackCommand) Complete(ctx context.Context, req command.CompletionReq
 		return nil
 	}
 	records, err := c.deps.Control.ListRollbacks(ctx)
-	if err != nil {
+	if err != nil || records.Status != operationresult.Success {
 		return nil
 	}
-	options := make([]command.CompletionOption, 0, len(records))
-	for _, record := range records {
+	options := make([]command.CompletionOption, 0, len(records.Data))
+	for _, record := range records.Data {
 		options = append(options, command.CompletionOption{Text: strconv.FormatUint(record.ID, 10), Description: record.Path})
 	}
 	return command.CompleteStaticOptions(options, token.Text, token.Start, token.End, "rollback_record")

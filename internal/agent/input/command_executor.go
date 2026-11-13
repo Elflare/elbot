@@ -72,6 +72,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Cont
 			return next, true, err
 		}
 		if continued.Status != operationresult.Success {
+			e.logFailure(next, "command_continuation_failed", command.Result{Status: continued.Status, Message: continued.Message}, nil)
 			result = command.Result{Status: continued.Status, Message: continued.Message}
 			if _, sendErr := e.output.SendCommandResult(session.WithBinding(context.WithoutCancel(origin), nil), req, result, nil); sendErr != nil {
 				e.logFailure(session.WithBinding(context.WithoutCancel(origin), nil), "command_send_failed", command.Result{}, sendErr)

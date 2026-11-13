@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"fmt"
 	"strings"
 
@@ -23,12 +24,15 @@ func (c doctorCommand) Info() command.Info {
 	}
 }
 
-func (c doctorCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+func (c doctorCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	if strings.TrimSpace(req.Args) != "" {
-		return nil, inputError(fmt.Errorf("usage: %s", c.deps.CommandText("doctor")))
+		return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", c.deps.CommandText("doctor"))}, nil
 	}
 	data, err := c.deps.Control.CheckConfiguration(ctx)
-	return &command.Result{Kind: command.ResultKindDoctor, Data: data}, err
+	if err != nil {
+		return command.Result{}, err
+	}
+	return command.FromOperationResult(data, command.ResultKindDoctor), nil
 }
 
 type DoctorModule struct{}

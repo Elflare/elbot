@@ -24,6 +24,7 @@ import (
 	"elbot/internal/control"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	clishare "elbot/internal/platform/cli/share"
 )
 
@@ -59,7 +60,7 @@ type ServerOptions struct {
 type RemoteServer struct {
 	media         clishare.Media // 借用附件能力，不管理 Media 的生命周期。
 	control       ControlCapabilities
-	continueInput func(context.Context, control.Continuation) (context.Context, error)
+	continueInput func(context.Context, control.Continuation) (context.Context, operationresult.Result[struct{}], error)
 	frontendDir   string // 用户静态前端目录，启动监听后异步检查。
 	name          string // 根部登记的平台名。
 	cfg           Config
@@ -148,7 +149,7 @@ func (s *RemoteServer) SetCompleter(completer func(context.Context, completion.R
 
 func (s *RemoteServer) Name() string { return s.name }
 
-func (s *RemoteServer) SetControlContinuation(continueInput func(context.Context, control.Continuation) (context.Context, error)) {
+func (s *RemoteServer) SetControlContinuation(continueInput func(context.Context, control.Continuation) (context.Context, operationresult.Result[struct{}], error)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.continueInput = continueInput
@@ -510,9 +511,14 @@ type remoteCommandReply struct {
 	requestID string
 }
 
-func (r remoteCommandReply) SendCommandResult(ctx context.Context, req command.Request, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
+func (r remoteCommandReply) SendCommandResult(ctx context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
 	writeCtx, cancel := context.WithTimeout(ctx, remoteWriteTimeout)
 	defer cancel()
-	err := wsjson.Write(writeCtx, r.client.conn, commandResultMessage{Type: remoteMsgCommandResult, RequestID: r.requestID, Command: req, Result: result, Error: failure})
+	var message *string
+	if failure != nil {
+		text := failure.Error()
+		message = &text
+	}
+	err := wsjson.Write(writeCtx, r.client.conn, commandResultMessage{Type: remoteMsgCommandResult, RequestID: r.requestID, Command: req, Result: result, Error: message})
 	return delivery.Receipt{}, err
 }

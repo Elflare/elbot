@@ -10,6 +10,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/control"
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 )
 
@@ -24,18 +25,18 @@ func NewArchive(deps Deps) command.Handler {
 		description: "归档会话",
 		help:        "省略目标=当前",
 		confirm:     true,
-		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
+		handle: func(ctx context.Context, deps Deps, req command.Request) (command.Result, error) {
 			target, confirmed := parseTargetConfirm(req.Args)
 			if !confirmed {
 				content, err := confirmCommandMessage(ctx, deps, "archive", target)
 				if err != nil {
-					return nil, err
+					return command.Result{}, err
 				}
 				return content, nil
 			}
 			session, err := deps.Control.SetSessionArchived(ctx, control.SetSessionArchivedRequest{SessionID: target, Archived: true, Confirmed: true})
 			if err != nil {
-				return nil, err
+				return command.Result{}, err
 			}
 			return sessionChange(session), nil
 		},
@@ -50,10 +51,10 @@ func NewUnarchive(deps Deps) command.Handler {
 		description: "取消归档",
 		help:        "省略目标=当前",
 		archived:    true,
-		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
+		handle: func(ctx context.Context, deps Deps, req command.Request) (command.Result, error) {
 			session, err := deps.Control.SetSessionArchived(ctx, control.SetSessionArchivedRequest{SessionID: req.Args, Archived: false})
 			if err != nil {
-				return nil, err
+				return command.Result{}, err
 			}
 			return sessionChange(session), nil
 		},
@@ -67,10 +68,10 @@ func NewPin(deps Deps) command.Handler {
 		args:        "[session_id]",
 		description: "置顶会话",
 		help:        "省略目标=当前",
-		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
+		handle: func(ctx context.Context, deps Deps, req command.Request) (command.Result, error) {
 			session, err := deps.Control.SetSessionPinned(ctx, control.SetSessionPinnedRequest{SessionID: req.Args, Pinned: true})
 			if err != nil {
-				return nil, err
+				return command.Result{}, err
 			}
 			return sessionChange(session), nil
 		},
@@ -84,10 +85,10 @@ func NewUnpin(deps Deps) command.Handler {
 		args:        "[session_id]",
 		description: "取消置顶",
 		help:        "省略目标=当前",
-		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
+		handle: func(ctx context.Context, deps Deps, req command.Request) (command.Result, error) {
 			session, err := deps.Control.SetSessionPinned(ctx, control.SetSessionPinnedRequest{SessionID: req.Args, Pinned: false})
 			if err != nil {
-				return nil, err
+				return command.Result{}, err
 			}
 			return sessionChange(session), nil
 		},
@@ -113,14 +114,14 @@ func (c renameCommand) Info() command.Info {
 	}
 }
 
-func (c renameCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+func (c renameCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	target, title, ok := parseRenameArgs(req.Args)
 	if !ok {
-		return nil, inputError(fmt.Errorf("usage: %s", c.deps.CommandText("rename", "[session_id|current_title]", "<title>")))
+		return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", c.deps.CommandText("rename", "[session_id|current_title]", "<title>"))}, nil
 	}
 	session, err := c.deps.Control.RenameSession(ctx, control.RenameSessionRequest{Target: target, Title: title, PageSize: c.deps.SessionListPageSize})
 	if err != nil {
-		return nil, err
+		return command.Result{}, err
 	}
 	return sessionChange(session), nil
 }
@@ -140,20 +141,23 @@ func NewDelete(deps Deps) command.Handler {
 		args:        "<session_id> [--confirm]",
 		description: "永久删除会话",
 		confirm:     true,
-		handle: func(ctx context.Context, deps Deps, req command.Request) (*command.Result, error) {
+		handle: func(ctx context.Context, deps Deps, req command.Request) (command.Result, error) {
 			target, confirmed := parseTargetConfirm(req.Args)
 			if target == "" {
-				return nil, inputError(fmt.Errorf("usage: %s", deps.CommandText("delete", "<session_id>", "--confirm")))
+				return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", deps.CommandText("delete", "<session_id>", "--confirm"))}, nil
 			}
 			if !confirmed {
 				content, err := confirmCommandMessage(ctx, deps, "delete", target)
 				if err != nil {
-					return nil, err
+					return command.Result{}, err
 				}
 				return content, nil
 			}
 			data, err := deps.Control.DeleteSession(ctx, control.DeleteSessionRequest{SessionID: target, Confirmed: true})
-			return sessionChange(data), err
+			if err != nil {
+				return command.Result{}, err
+			}
+			return sessionChange(data), nil
 		},
 	}
 }
@@ -176,13 +180,16 @@ func (c cleanCommand) Info() command.Info {
 	}
 }
 
-func (c cleanCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+func (c cleanCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	_, confirmed := parseTargetConfirm(req.Args)
 	if !confirmed {
-		return &command.Result{Kind: command.ResultKindSession, Data: control.CleanSessionsResult{}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认清理", Command: c.deps.CommandText("clean", "--confirm")}}}}, nil
+		return command.Result{Status: operationresult.Success, Kind: command.ResultKindSession, Data: control.CleanSessionsResult{}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认清理", Command: c.deps.CommandText("clean", "--confirm")}}}}, nil
 	}
 	data, err := c.deps.Control.CleanSessions(ctx, control.CleanSessionsRequest{Confirmed: true, Before: storage.Now().AddDate(0, 0, -cleanupRetentionDays(c.deps))})
-	return sessionChange(data), err
+	if err != nil {
+		return command.Result{}, err
+	}
+	return sessionChange(data), nil
 }
 
 func (c cleanCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -202,14 +209,14 @@ type sessionTargetCommand struct {
 	help        string // 命令的参数说明与必要规则，传入 Info.Help。
 	archived    bool
 	confirm     bool
-	handle      func(context.Context, Deps, command.Request) (*command.Result, error)
+	handle      func(context.Context, Deps, command.Request) (command.Result, error)
 }
 
 func (c sessionTargetCommand) Info() command.Info {
 	return command.Info{Name: c.name, Args: c.args, Description: c.description, Help: c.help, SessionEffect: command.SessionEffectMutate, MinRole: contextinfo.RoleUser}
 }
 
-func (c sessionTargetCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+func (c sessionTargetCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	return c.handle(ctx, c.deps, req)
 }
 
@@ -257,7 +264,7 @@ func parseSessionsArgs(args string) (int, string, bool, error) {
 	for _, field := range fields {
 		if field == "-a" || field == "--all" {
 			if all {
-				return 0, "", false, inputError(fmt.Errorf("duplicate -a/--all"))
+				return 0, "", false, fmt.Errorf("duplicate -a/--all")
 			}
 			all = true
 			continue
@@ -273,7 +280,7 @@ func parseSessionsArgs(args string) (int, string, bool, error) {
 		var err error
 		page, err = strconv.Atoi(fields[0])
 		if err != nil || page < 1 {
-			return 0, "", false, inputError(fmt.Errorf("expected page≥1 or -k/--keyword"))
+			return 0, "", false, fmt.Errorf("expected page≥1 or -k/--keyword")
 		}
 		fields = fields[1:]
 	}
@@ -281,7 +288,7 @@ func parseSessionsArgs(args string) (int, string, bool, error) {
 		return page, "", all, nil
 	}
 	if (fields[0] != "-k" && fields[0] != "--keyword") || len(fields) < 2 {
-		return 0, "", false, inputError(fmt.Errorf("expected -k/--keyword <keyword>"))
+		return 0, "", false, fmt.Errorf("expected -k/--keyword <keyword>")
 	}
 	return page, strings.Join(fields[1:], " "), all, nil
 }
@@ -289,11 +296,11 @@ func parseSessionsArgs(args string) (int, string, bool, error) {
 func parseResumePageArg(args string) (int, error) {
 	fields := strings.Fields(args)
 	if len(fields) != 2 || fields[0] != "--page" {
-		return 0, inputError(fmt.Errorf("expected --page <page>"))
+		return 0, fmt.Errorf("expected --page <page>")
 	}
 	page, err := strconv.Atoi(fields[1])
 	if err != nil || page < 1 {
-		return 0, inputError(fmt.Errorf("page must be a positive number"))
+		return 0, fmt.Errorf("page must be a positive number")
 	}
 	return page, nil
 }
@@ -312,13 +319,17 @@ func parseTargetConfirm(args string) (string, bool) {
 	return strings.Join(kept, " "), confirmed
 }
 
-func confirmCommandMessage(ctx context.Context, deps Deps, name, target string) (*command.Result, error) {
+func confirmCommandMessage(ctx context.Context, deps Deps, name, target string) (command.Result, error) {
 	row, err := deps.Control.GetSession(ctx, control.GetSessionRequest{SessionID: target})
 	if err != nil {
-		return nil, err
+		return command.Result{}, err
 	}
-	action := deps.CommandText(name, row.ID, "--confirm")
-	return &command.Result{Kind: command.ResultKindSession, Data: control.SessionChangeResult{Session: &row, SessionID: row.ID}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认", Command: action}}}}, nil
+	if row.Status != operationresult.Success {
+		return command.Result{Status: row.Status, Message: row.Message}, nil
+	}
+	data := row.Data
+	action := deps.CommandText(name, data.ID, "--confirm")
+	return command.Result{Status: operationresult.Success, Kind: command.ResultKindSession, Data: control.SessionChangeResult{Session: &data, SessionID: data.ID}, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认", Command: action}}}}, nil
 }
 
 func emptyTitle(title string) string {

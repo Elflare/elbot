@@ -22,10 +22,7 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (command.
 		if err != nil {
 			return command.Result{}, err
 		}
-		if data.Status != operationresult.Success {
-			return command.Result{Status: data.Status, Message: data.Message}, nil
-		}
-		return command.Result{Status: operationresult.Success, Kind: command.ResultKindHooks, Data: data.Data}, nil
+		return command.FromOperationResult(data, command.ResultKindHooks), nil
 	}
 	switch fields[0] {
 	case "reload":
@@ -36,10 +33,7 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (command.
 		if err != nil {
 			return command.Result{}, err
 		}
-		if data.Status != operationresult.Success {
-			return command.Result{Status: data.Status, Message: data.Message}, nil
-		}
-		return command.Result{Status: operationresult.Success, Kind: command.ResultKindHooks, Data: data.Data}, nil
+		return command.FromOperationResult(data, command.ResultKindHooks), nil
 	case "start", "stop", "restart":
 		if len(fields) != 2 {
 			return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", c.deps.CommandText("hooks", fields[0], "<id>"))}, nil
@@ -69,10 +63,7 @@ func (c hooksCommand) Handle(ctx context.Context, req command.Request) (command.
 		if err != nil {
 			return command.Result{}, err
 		}
-		if data.Status != operationresult.Success {
-			return command.Result{Status: data.Status, Message: data.Message}, nil
-		}
-		return command.Result{Status: operationresult.Success, Kind: command.ResultKindHooks, Data: data.Data}, nil
+		return command.FromOperationResult(data, command.ResultKindHooks), nil
 	}
 }
 func (c hooksCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {

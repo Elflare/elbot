@@ -9,20 +9,21 @@ import (
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/control"
+	"elbot/internal/operationresult"
 )
 
 func NewSessions(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name: "sessions", Args: "[page] [-k|--keyword <keyword>] [-a|--all]", Description: "会话列表/搜索", MinRole: contextinfo.RoleUser,
 		Help: "page≥1，默认第一页；前翻=页码-1\n置顶优先，其余按更新时间倒序；-k/--keyword 后为搜索词；-a/--all 查看所有平台（仅超管）",
-	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	}, func(ctx context.Context, req command.Request) (command.Result, error) {
 		page, query, all, err := parseSessionsArgs(req.Args)
 		if err != nil {
-			return nil, err
+			return command.Result{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
 		sessions, err := listSessionPage(ctx, deps, query, page, false, false, all)
 		if err != nil {
-			return nil, err
+			return command.Result{}, err
 		}
 		return sessionsResult(sessions), nil
 	})
@@ -39,12 +40,12 @@ func (c resumeCommand) Info() command.Info {
 	}
 }
 
-func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+func (c resumeCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	deps := c.deps
 	arg := strings.TrimSpace(req.Args)
 	page, all, target, pageSet, err := parseResumeArgs(arg)
 	if err != nil {
-		return nil, err
+		return command.Result{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	if pageSet {
 		return resumePage(ctx, deps, page, all)
@@ -53,16 +54,19 @@ func (c resumeCommand) Handle(ctx context.Context, req command.Request) (*comman
 		return resumePage(ctx, deps, 0, all)
 	}
 	if all && target != "last" {
-		return nil, inputError(fmt.Errorf("-a/--all is only valid for the resume list or last"))
+		return command.Result{Status: operationresult.InvalidArguments, Message: "-a/--all is only valid for the resume list or last"}, nil
 	}
 	data, err := deps.Control.ResumeSession(ctx, control.ResumeSessionRequest{SessionID: target, MessageLimit: resumeHistoryTurns * 2, AllPlatforms: all})
-	return sessionChange(data), err
+	if err != nil {
+		return command.Result{}, err
+	}
+	return sessionChange(data), nil
 }
 
-func resumePage(ctx context.Context, deps Deps, page int, all bool) (*command.Result, error) {
+func resumePage(ctx context.Context, deps Deps, page int, all bool) (command.Result, error) {
 	sessions, err := listSessionPage(ctx, deps, "", page, false, true, all)
 	if err != nil {
-		return nil, err
+		return command.Result{}, err
 	}
 	return sessionsResult(sessions), nil
 }
@@ -75,11 +79,11 @@ func (c resumeCommand) Complete(ctx context.Context, req command.CompletionReque
 	}
 	all := hasAllPlatformsFlag(req.Args)
 	sessions, err := listSessionPage(ctx, c.deps, "", 0, false, true, all)
-	if err != nil {
+	if err != nil || sessions.Status != operationresult.Success {
 		return nil
 	}
 	out := completeStringOptions([]string{"last"}, query, token.Start, token.End, "keyword")
-	for _, session := range sessions.Items {
+	for _, session := range sessions.Data.Items {
 		if query == "" || strings.HasPrefix(session.ID, query) {
 			out = append(out, command.Completion{Text: session.ID, Label: session.ID, Description: emptyTitle(session.Title), Kind: "session_id", ReplaceStart: token.Start, ReplaceEnd: token.End})
 		}
@@ -91,14 +95,14 @@ func NewArchives(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name: "archives", Args: "[page] [-k|--keyword <keyword>] [-a|--all]", Description: "归档列表/搜索", MinRole: contextinfo.RoleUser,
 		Help: "page≥1，默认第一页；前翻=页码-1\n置顶优先，其余按更新时间倒序；-k/--keyword 后为搜索词；-a/--all 查看所有平台（仅超管）",
-	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	}, func(ctx context.Context, req command.Request) (command.Result, error) {
 		page, query, all, err := parseSessionsArgs(req.Args)
 		if err != nil {
-			return nil, err
+			return command.Result{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
 		sessions, err := listSessionPage(ctx, deps, query, page, true, false, all)
 		if err != nil {
-			return nil, err
+			return command.Result{}, err
 		}
 		return sessionsResult(sessions), nil
 	})
@@ -111,7 +115,7 @@ func parseResumeArgs(args string) (page int, all bool, target string, pageSet bo
 		switch field {
 		case "-a", "--all":
 			if all {
-				return 0, false, "", false, inputError(fmt.Errorf("duplicate -a/--all"))
+				return 0, false, "", false, fmt.Errorf("duplicate -a/--all")
 			}
 			all = true
 		default:
@@ -123,7 +127,7 @@ func parseResumeArgs(args string) (page int, all bool, target string, pageSet bo
 	}
 	if kept[0] == "--page" {
 		if len(kept) < 2 {
-			return 0, false, "", false, inputError(fmt.Errorf("expected --page <page>"))
+			return 0, false, "", false, fmt.Errorf("expected --page <page>")
 		}
 		page, err = parseResumePageArg(strings.Join(kept, " "))
 		if err != nil {
@@ -132,13 +136,13 @@ func parseResumeArgs(args string) (page int, all bool, target string, pageSet bo
 		return page, all, "", true, nil
 	}
 	if strings.HasPrefix(kept[0], "--page") {
-		return 0, false, "", false, inputError(fmt.Errorf("expected --page <page>"))
+		return 0, false, "", false, fmt.Errorf("expected --page <page>")
 	}
 	if len(kept) != 1 {
-		return 0, false, "", false, inputError(fmt.Errorf("expected one session ID, last, or --page <page>"))
+		return 0, false, "", false, fmt.Errorf("expected one session ID, last, or --page <page>")
 	}
 	if all && kept[0] != "last" {
-		return 0, false, "", false, inputError(fmt.Errorf("-a/--all is only valid for the resume list or last"))
+		return 0, false, "", false, fmt.Errorf("-a/--all is only valid for the resume list or last")
 	}
 	return 0, all, kept[0], false, nil
 }
@@ -156,17 +160,20 @@ func NewMessages(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name: "messages", Args: "[page]", Description: "当前会话的用户与助手消息", MinRole: contextinfo.RoleUser,
 		Help: "page≥1，默认最新页；页码越大越早，页内旧到新；bot 消息 ID 可用于 " + deps.CommandText("fork"),
-	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	}, func(ctx context.Context, req command.Request) (command.Result, error) {
 		page := 1
 		if arg := strings.TrimSpace(req.Args); arg != "" {
 			parsed, err := strconv.Atoi(arg)
 			if err != nil || parsed < 1 {
-				return nil, inputError(fmt.Errorf("page must be a positive number"))
+				return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("page must be a positive number")}, nil
 			}
 			page = parsed
 		}
 		data, err := deps.Control.SessionMessages(ctx, control.SessionMessagesRequest{Page: page, PageSize: messageListPageSize})
-		return &command.Result{Kind: command.ResultKindMessages, Data: data}, err
+		if err != nil {
+			return command.Result{}, err
+		}
+		return command.FromOperationResult(data, command.ResultKindMessages), nil
 	})
 }
 
@@ -174,12 +181,15 @@ func NewFork(deps Deps) command.Handler {
 	return command.NewFunc(command.Info{
 		Name: "fork", Args: "<message_id>", Description: "从消息创建并切换到分支", SessionEffect: command.SessionEffectSwitchCurrent, MinRole: contextinfo.RoleUser,
 		Help: "message_id 见 " + deps.CommandText("messages") + "；原会话保留",
-	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	}, func(ctx context.Context, req command.Request) (command.Result, error) {
 		messageID := strings.TrimSpace(req.Args)
 		if messageID == "" {
-			return nil, inputError(fmt.Errorf("usage: %s", deps.CommandText("fork", "<message_id>")))
+			return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", deps.CommandText("fork", "<message_id>"))}, nil
 		}
 		data, err := deps.Control.ForkSession(ctx, control.ForkSessionRequest{MessageID: messageID, MessageLimit: resumeHistoryTurns * 2})
-		return sessionChange(data), err
+		if err != nil {
+			return command.Result{}, err
+		}
+		return sessionChange(data), nil
 	})
 }

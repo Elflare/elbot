@@ -56,15 +56,14 @@ func (p *integrationPlatform) SendTo(_ context.Context, _ delivery.Target, outpu
 	return operationresult.Result[delivery.Receipt]{Status: operationresult.Success}, nil
 }
 func (p *integrationPlatform) SendCommandResult(ctx context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
-	text, err := platformshare.FormatCommandResult(req, result)
+	outputs, err := platformshare.CommandResultOutputs(req, result, failure)
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
-	if failure != nil {
-		text = failure.Error()
-	}
 	p.mu.Lock()
-	p.outputs = append(p.outputs, text)
+	if len(outputs) > 0 {
+		p.outputs = append(p.outputs, delivery.FallbackOutput(outputs).Text)
+	}
 	p.mu.Unlock()
 	return delivery.Receipt{}, nil
 }

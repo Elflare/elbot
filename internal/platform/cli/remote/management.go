@@ -9,6 +9,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/control"
+	"elbot/internal/operationresult"
 	"elbot/internal/platform/cli/remote/management"
 )
 
@@ -99,26 +100,24 @@ func (s *RemoteServer) scheduleControlContinuation(source context.Context, conti
 	}
 }
 
-func (s *RemoteServer) runControlContinuation(source context.Context, continuation control.Continuation, continueInput func(context.Context, control.Continuation) (context.Context, error)) {
+func (s *RemoteServer) runControlContinuation(source context.Context, continuation control.Continuation, continueInput func(context.Context, control.Continuation) (context.Context, operationresult.Result[struct{}], error)) {
 	defer s.work.Done()
 	ctx, cancel := context.WithCancel(context.WithoutCancel(source))
 	stopWork := context.AfterFunc(s.workCtx, cancel)
 	defer func() { stopWork(); cancel() }()
-	_, err := continueInput(ctx, continuation)
-	if err == nil {
+	_, result, err := continueInput(ctx, continuation)
+	if err == nil && result.Status == operationresult.Success {
 		return
 	}
 	client, _ := source.Value(managementAPIClientContextKey{}).(*remoteClientConn)
 	if client == nil {
 		return
 	}
-	failure := control.ClassifyError(err)
-	var classified *control.Error
-	if errors.As(failure, &classified) {
-		_ = client.write(s.transportCtx, remoteMessage{Type: remoteMsgError, Text: classified.Message})
-	} else {
-		_ = client.write(s.transportCtx, remoteMessage{Type: remoteMsgError, Text: "操作执行失败"})
+	message := result.Message
+	if err != nil {
+		message = err.Error()
 	}
+	_ = client.write(s.transportCtx, remoteMessage{Type: remoteMsgError, Text: message})
 }
 
 func writeManagementStopping(w http.ResponseWriter) {

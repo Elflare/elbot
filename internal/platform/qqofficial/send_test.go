@@ -18,6 +18,7 @@ import (
 	"elbot/internal/control"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 	"log/slog"
 )
@@ -118,7 +119,7 @@ func TestSendDetailCommandUsesRawBlocksAndActions(t *testing.T) {
 	adapter.cfg.MarkdownByDefault = &markdown
 	adapter.cfg.EnableKeyboard = &keyboard
 	actions := []delivery.Action{{ID: "confirm", Label: "确认本次", Command: "/confirm"}}
-	result := &command.Result{Kind: command.ResultKindText, Data: control.CurrentConfirmationResult{
+	result := command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: control.CurrentConfirmationResult{
 		ToolName: "edit_file",
 		Risk:     "high",
 		Detail: []delivery.ContentBlock{

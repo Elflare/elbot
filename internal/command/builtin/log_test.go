@@ -8,6 +8,7 @@ import (
 
 	command "elbot/internal/command/share"
 	"elbot/internal/control"
+	"elbot/internal/operationresult"
 	"elbot/internal/tool"
 	toolshare "elbot/internal/tool/share"
 )
@@ -15,23 +16,23 @@ import (
 type logControlStub struct {
 	command.ControlCapabilities
 	request control.QueryLogsRequest
-	result  control.QueryLogsResult
+	result  operationresult.Result[control.QueryLogsResult]
 	infos   []tool.ToolInfo
 }
 
-func (s *logControlStub) QueryLogs(_ context.Context, req control.QueryLogsRequest) (control.QueryLogsResult, error) {
+func (s *logControlStub) QueryLogs(_ context.Context, req control.QueryLogsRequest) (operationresult.Result[control.QueryLogsResult], error) {
 	s.request = req
 	return s.result, nil
 }
-func (s *logControlStub) QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error) {
-	return s.infos, nil
+func (s *logControlStub) QueryTools(context.Context, tool.ToolQuery) (operationresult.Result[[]tool.ToolInfo], error) {
+	return operationresult.Result[[]tool.ToolInfo]{Status: operationresult.Success, Data: s.infos}, nil
 }
 
 func TestAuditCommandParsesFiltersAndReturnsRawControlResult(t *testing.T) {
 	want := control.QueryLogsResult{Items: []control.LogData{{EventName: "tool_call_completed", Content: []byte(`{"count":9007199254740993}`)}}}
-	service := &logControlStub{result: want}
+	service := &logControlStub{result: operationresult.Result[control.QueryLogsResult]{Status: operationresult.Success, Data: want}}
 	result, err := NewAudit(Deps{CommandText: testCommandText, Control: service}).Handle(t.Context(), command.Request{Args: "--event tool_call_completed --risk high --tool shell -n 3 --days 2 --raw"})
-	if err != nil || result == nil || !reflect.DeepEqual(result.Data, want) {
+	if err != nil || result.Status != operationresult.Success || !reflect.DeepEqual(result.Data, want) {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 	query := service.request
@@ -50,7 +51,7 @@ func TestLogCommandsUseCategoryDefaultsAndRejectInvalidFilters(t *testing.T) {
 		{name: "log", new: NewLog, cat: "log"},
 		{name: "elwisp", new: NewElwisp, cat: "elnis", args: "server-watchdog --source minecraft --mode llm"},
 	} {
-		service := &logControlStub{}
+		service := &logControlStub{result: operationresult.Result[control.QueryLogsResult]{Status: operationresult.Success}}
 		_, err := tc.new(Deps{CommandText: testCommandText, Control: service}).Handle(t.Context(), command.Request{Args: tc.args})
 		if err != nil {
 			t.Fatal(err)

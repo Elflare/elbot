@@ -148,8 +148,8 @@ func TestRouterSourceCompletesCommandArgs(t *testing.T) {
 type commandArgCompleter struct{}
 
 func (commandArgCompleter) Info() command.Info { return command.Info{Name: "help"} }
-func (commandArgCompleter) Handle(context.Context, command.Request) (*command.Result, error) {
-	return nil, nil
+func (commandArgCompleter) Handle(context.Context, command.Request) (command.Result, error) {
+	return command.Result{}, nil
 }
 func (commandArgCompleter) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
 	_ = ctx

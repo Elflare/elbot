@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"fmt"
 	"slices"
 	"strings"
@@ -29,29 +30,44 @@ func (c toolsCommand) Info() command.Info {
 	}
 }
 
-func (c toolsCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+func (c toolsCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	deps := c.deps
 	fields := strings.Fields(req.Args)
 	if len(fields) == 0 {
 		infos, err := deps.Control.QueryTools(ctx, tool.ToolQuery{Scope: tool.QueryCatalog, IncludeHidden: true, IncludeDiscover: true})
-		return &command.Result{Kind: command.ResultKindTools, Data: infos}, err
+		if err != nil {
+			return command.Result{}, err
+		}
+		return command.FromOperationResult(infos, command.ResultKindTools), nil
 	}
 	switch fields[0] {
 	case "reload":
-		err := deps.Control.ReloadSkills(ctx)
-		return &command.Result{Kind: command.ResultKindTools}, err
+		result, err := deps.Control.ReloadSkills(ctx)
+		if err != nil {
+			return command.Result{}, err
+		}
+		if result.Status != operationresult.Success {
+			return command.Result{Status: result.Status, Message: result.Message}, nil
+		}
+		return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "skills reloaded"}}, nil
 	case "uninstall", "remove":
 		if len(fields) < 2 {
-			return nil, inputError(fmt.Errorf("usage: %s", deps.CommandText("tools", "remove", "<name>", "--confirm")))
+			return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", deps.CommandText("tools", "remove", "<name>", "--confirm"))}, nil
 		}
 		name := fields[1]
 		if !slices.Contains(fields[2:], "--confirm") {
-			return &command.Result{Kind: command.ResultKindTools, Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认删除", Command: deps.CommandText("tools", "remove", name, "--confirm")}}}}, nil
+			return command.Result{Status: operationresult.Rejected, Message: "删除技能需要确认", Confirmation: &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认删除", Command: deps.CommandText("tools", "remove", name, "--confirm")}}}}, nil
 		}
-		err := deps.Control.RemoveSkill(ctx, control.RemoveSkillRequest{Name: name, Confirmed: true})
-		return &command.Result{Kind: command.ResultKindTools}, err
+		result, err := deps.Control.RemoveSkill(ctx, control.RemoveSkillRequest{Name: name, Confirmed: true})
+		if err != nil {
+			return command.Result{}, err
+		}
+		if result.Status != operationresult.Success {
+			return command.Result{Status: result.Status, Message: result.Message}, nil
+		}
+		return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "removed: " + name}}, nil
 	default:
-		return nil, inputError(fmt.Errorf("usage: %s", deps.CommandText("tools", c.Info().Args)))
+		return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", deps.CommandText("tools", c.Info().Args))}, nil
 	}
 }
 

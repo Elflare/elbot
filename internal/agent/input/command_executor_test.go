@@ -18,17 +18,19 @@ func testCommandText(name string, args ...string) string { return command.Format
 
 type commandExecutorProbe struct {
 	command.ControlCapabilities
-	row        *storage.Session
-	current    operationresult.Result[control.CurrentConfirmationResult]
-	currentErr error
-	respond    operationresult.Result[control.RespondConfirmationResult]
-	respondErr error
-	request    command.Request
-	result     *command.Result
-	failure    error
-	sendErr    error
-	continued  control.Continuation
-	order      []string
+	row            *storage.Session
+	current        operationresult.Result[control.CurrentConfirmationResult]
+	currentErr     error
+	respond        operationresult.Result[control.RespondConfirmationResult]
+	respondErr     error
+	request        command.Request
+	result         command.Result
+	sentResult     []command.Result
+	failure        error
+	sendErr        error
+	continued      control.Continuation
+	continueResult operationresult.Result[struct{}]
+	order          []string
 }
 
 func (p *commandExecutorProbe) CurrentBound(context.Context, session.Scope) (operationresult.Result[session.CurrentBoundData], error) {
@@ -40,7 +42,8 @@ func (p *commandExecutorProbe) CurrentBound(context.Context, session.Scope) (ope
 func (*commandExecutorProbe) Scope(context.Context) session.Scope { return session.Scope{} }
 func (p *commandExecutorProbe) SendCommandResult(_ context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
 	p.order = append(p.order, "send")
-	p.request, p.result, p.failure = req, &result, failure
+	p.request, p.result, p.failure = req, result, failure
+	p.sentResult = append(p.sentResult, result)
 	return delivery.Receipt{}, p.sendErr
 }
 func (p *commandExecutorProbe) CurrentConfirmation(context.Context, control.CurrentConfirmationRequest) (operationresult.Result[control.CurrentConfirmationResult], error) {
@@ -52,12 +55,12 @@ func (p *commandExecutorProbe) RespondConfirmation(context.Context, control.Resp
 func (p *commandExecutorProbe) ContinueCommandInput(ctx context.Context, continuation control.Continuation) (context.Context, operationresult.Result[struct{}], error) {
 	p.order = append(p.order, "continue")
 	p.continued = continuation
-	return ctx, operationresult.Result[struct{}]{Status: operationresult.Success}, nil
+	return ctx, p.continueResult, nil
 }
 
 func TestCommandContinuationRequiresSuccessfulDelivery(t *testing.T) {
 	for _, failSend := range []bool{false, true} {
-		probe := &commandExecutorProbe{}
+		probe := &commandExecutorProbe{continueResult: operationresult.Result[struct{}]{Status: operationresult.Success}}
 		if failSend {
 			probe.sendErr = errors.New("transport down")
 		}
@@ -86,9 +89,10 @@ func TestCommandContinuationRequiresSuccessfulDelivery(t *testing.T) {
 
 func TestAppendConfirmationUsesControlAndContinuesAfterDelivery(t *testing.T) {
 	probe := &commandExecutorProbe{
-		row:     &storage.Session{ID: "s"},
-		current: operationresult.Result[control.CurrentConfirmationResult]{Status: operationresult.Success, Data: control.CurrentConfirmationResult{Kind: "append"}},
-		respond: operationresult.Result[control.RespondConfirmationResult]{Status: operationresult.Success, Data: control.RespondConfirmationResult{Accepted: true, Continuation: &control.Continuation{Kind: "append", SessionID: "s"}}},
+		row:            &storage.Session{ID: "s"},
+		continueResult: operationresult.Result[struct{}]{Status: operationresult.Success},
+		current:        operationresult.Result[control.CurrentConfirmationResult]{Status: operationresult.Success, Data: control.CurrentConfirmationResult{Kind: "append"}},
+		respond:        operationresult.Result[control.RespondConfirmationResult]{Status: operationresult.Success, Data: control.RespondConfirmationResult{Accepted: true, Continuation: &control.Continuation{Kind: "append", SessionID: "s"}}},
 	}
 	router := command.NewRouter([]string{"/"})
 	if err := command.RegisterBuiltins(router, command.BuiltinDeps{Control: probe}); err != nil {
@@ -101,15 +105,37 @@ func TestAppendConfirmationUsesControlAndContinuesAfterDelivery(t *testing.T) {
 	}
 }
 
+func TestBusinessContinuationFailureIsSentAsResult(t *testing.T) {
+	probe := &commandExecutorProbe{continueResult: operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: "session disappeared"}}
+	router := command.NewRouter([]string{"/"})
+	continuation := control.Continuation{Kind: "input", SessionID: "missing", Text: "next"}
+	if err := router.Register(command.NewFunc(command.Info{Name: "go", MinRole: "user"}, func(context.Context, command.Request) (command.Result, error) {
+		return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "accepted"}, Continuation: &continuation}, nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+	executor := NewCommandExecutor(CommandExecutorDeps{Router: router, Sessions: probe, Identity: probe, Output: probe, Confirmations: probe, Input: probe})
+	_, handled, err := executor.Handle(t.Context(), "/go")
+	if !handled || err != nil || !reflect.DeepEqual(probe.order, []string{"execute", "send", "continue", "send"}) || len(probe.sentResult) != 2 {
+		t.Fatalf("handled=%v results=%+v order=%v err=%v", handled, probe.sentResult, probe.order, err)
+	}
+	if got := probe.sentResult[1]; got.Status != operationresult.NotFound || got.Message != "session disappeared" || got.Data != nil {
+		t.Fatalf("continuation result=%+v", got)
+	}
+}
+
 func TestConfirmationWithoutPendingItemReturnsShortNotice(t *testing.T) {
-	probe := &commandExecutorProbe{row: &storage.Session{ID: "s"}}
+	probe := &commandExecutorProbe{
+		row:     &storage.Session{ID: "s"},
+		current: operationresult.Result[control.CurrentConfirmationResult]{Status: operationresult.Success},
+	}
 	router := command.NewRouter([]string{"/"})
 	if err := command.RegisterBuiltins(router, command.BuiltinDeps{Control: probe}); err != nil {
 		t.Fatal(err)
 	}
 	executor := NewCommandExecutor(CommandExecutorDeps{Router: router, Sessions: probe, Identity: probe, Output: probe, Confirmations: probe, Input: probe})
 	_, handled, err := executor.Handle(t.Context(), "/confirm")
-	if !handled || err != nil || probe.failure != nil || !reflect.DeepEqual(probe.order, []string{"send"}) || probe.result == nil || probe.result.Data != (command.TextData{Content: "无待确认"}) {
+	if !handled || err != nil || probe.failure != nil || !reflect.DeepEqual(probe.order, []string{"send"}) || probe.result.Data != (command.TextData{Content: "无待确认"}) {
 		t.Fatalf("handled=%v result=%+v failure=%+v order=%v err=%v", handled, probe.result, probe.failure, probe.order, err)
 	}
 }
@@ -156,7 +182,7 @@ func TestCommandErrorsAndBusinessRejectionsStaySeparate(t *testing.T) {
 			} else if err != nil || probe.failure != nil {
 				t.Fatalf("business rejection became Go error: returned=%v sent=%v", err, probe.failure)
 			}
-			if probe.result == nil || probe.result.Status != tc.wantStatus {
+			if probe.result.Status != tc.wantStatus {
 				t.Fatalf("result=%+v, want status %q", probe.result, tc.wantStatus)
 			}
 		})

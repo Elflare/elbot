@@ -7,6 +7,7 @@ import (
 
 	command "elbot/internal/command/share"
 	"elbot/internal/control"
+	"elbot/internal/operationresult"
 	"strconv"
 )
 
@@ -35,7 +36,7 @@ func modelCommandInfo(commandText func(string, ...string) string) command.Info {
 	}
 }
 
-func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+func (c modelCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	info := c.Info()
 	deps := c.deps
 	if wantsCommandHelp(req.Args) {
@@ -43,28 +44,34 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 	}
 	args, target, err := parseModelArgs(req.Args)
 	if err != nil {
-		return nil, inputError(fmt.Errorf("%v\n%s", err, deps.CommandText(info.Name, info.Args)))
+		return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("%v\n%s", err, deps.CommandText(info.Name, info.Args))}, nil
 	}
 	listed, err := deps.Control.ListModels(ctx, control.ListModelsRequest{})
 	if err != nil {
-		return nil, err
+		return command.Result{}, err
+	}
+	if listed.Status != operationresult.Success {
+		return command.FromOperationResult(listed, command.ResultKindModel), nil
 	}
 	var selected *control.ModelData
 	index, indexErr := strconv.Atoi(args)
-	for i := range listed.Items {
-		item := &listed.Items[i]
+	for i := range listed.Data.Items {
+		item := &listed.Data.Items[i]
 		if (indexErr == nil && item.Index == index) || (indexErr != nil && (item.Model == args || item.Provider+"/"+item.Model == args)) {
 			if selected != nil {
-				return nil, inputError(fmt.Errorf("model %q matches multiple models; use provider/model", args))
+				return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("model %q matches multiple models; use provider/model", args)}, nil
 			}
 			selected = item
 		}
 	}
 	if selected == nil {
-		return nil, inputError(fmt.Errorf("model %q: not found", args))
+		return command.Result{Status: operationresult.NotFound, Message: fmt.Sprintf("model %q: not found", args)}, nil
 	}
-	data, err := deps.Control.SelectModel(ctx, control.SelectModelRequest{Target: string(target), Provider: selected.Provider, Model: selected.Model})
-	return &command.Result{Kind: command.ResultKindModel, Data: data}, err
+	result, err := deps.Control.SelectModel(ctx, control.SelectModelRequest{Target: string(target), Provider: selected.Provider, Model: selected.Model})
+	if err != nil {
+		return command.Result{}, err
+	}
+	return command.FromOperationResult(result, command.ResultKindModel), nil
 }
 
 func (c modelCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
@@ -78,10 +85,10 @@ func (c modelCommand) Complete(ctx context.Context, req command.CompletionReques
 		return nil
 	}
 	result, err := c.deps.Control.ListModels(ctx, control.ListModelsRequest{Query: query})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		return nil
 	}
-	items := result.Items
+	items := result.Data.Items
 	if len(items) == 0 {
 		items = c.fuzzyModelOptions(ctx, query)
 	}
@@ -104,10 +111,10 @@ func (c modelCommand) fuzzyModelOptions(ctx context.Context, query string) []con
 		return nil
 	}
 	result, err := c.deps.Control.ListModels(ctx, control.ListModelsRequest{})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		return nil
 	}
-	items := result.Items
+	items := result.Data.Items
 	out := make([]control.ModelData, 0, len(items))
 	for _, model := range items {
 		providerModel := strings.ToLower(model.Provider + "/" + model.Model)
@@ -159,16 +166,19 @@ func NewCheckModel(deps Deps) command.Handler {
 		Description: "模型列表/搜索",
 		Aliases:     []string{"models"},
 		Help:        "query=搜索词；省略=全部\n--fresh/--refresh：重载厂商配置并刷新列表",
-	}, func(ctx context.Context, req command.Request) (*command.Result, error) {
+	}, func(ctx context.Context, req command.Request) (command.Result, error) {
 		args, fresh := parseModelListArgs(req.Args)
-		var data control.ListModelsResult
+		var data operationresult.Result[control.ListModelsResult]
 		var err error
 		if fresh {
 			data, err = deps.Control.RefreshModels(ctx, control.ListModelsRequest{Query: args})
 		} else {
 			data, err = deps.Control.ListModels(ctx, control.ListModelsRequest{Query: args})
 		}
-		return &command.Result{Kind: command.ResultKindModels, Data: data}, err
+		if err != nil {
+			return command.Result{}, err
+		}
+		return command.FromOperationResult(data, command.ResultKindModels), nil
 	})
 }
 

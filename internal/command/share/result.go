@@ -43,6 +43,14 @@ type Result struct {
 	Continuation *control.Continuation  `json:"-"`                      // 结果成功交付后继续处理的输入，不下发给客户端。
 }
 
+// FromOperationResult maps a business result to its command result without reading failed data.
+func FromOperationResult[T any](result operationresult.Result[T], kind ResultKind) Result {
+	if result.Status != operationresult.Success {
+		return Result{Status: result.Status, Message: result.Message}
+	}
+	return Result{Status: operationresult.Success, Kind: kind, Data: result.Data}
+}
+
 // UnmarshalJSON 保留原始 JSON，具体业务结构由最终消费端按调用操作解码。
 func (r *Result) UnmarshalJSON(data []byte) error {
 	var raw struct {

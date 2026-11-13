@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"strings"
 
 	command "elbot/internal/command/share"
@@ -83,27 +84,27 @@ type logCommand struct {
 
 func (c logCommand) Info() command.Info { return c.info }
 
-func (c logCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+func (c logCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	if wantsCommandHelp(req.Args) {
 		return formatCommandHelp(c.deps.CommandText, c.info), nil
 	}
 	if c.audit {
 		query, err := parseAuditQuery(req.Args)
 		if err != nil {
-			return nil, inputError(err)
+			return command.Result{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
 		return queryLogs(ctx, c.deps, query, "audit")
 	}
 	if c.elwisp {
 		query, err := parseElwispLogQuery(req.Args)
 		if err != nil {
-			return nil, inputError(err)
+			return command.Result{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
 		return queryLogs(ctx, c.deps, query, "elnis")
 	}
 	query, err := parseLogQuery(req.Args)
 	if err != nil {
-		return nil, inputError(err)
+		return command.Result{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	return queryLogs(ctx, c.deps, query, "log")
 }
@@ -206,9 +207,12 @@ func previousLogToken(raw string, tokenStart int) string {
 	return fields[len(fields)-1]
 }
 
-func queryLogs(ctx context.Context, deps Deps, query logging.LogQuery, category string) (*command.Result, error) {
+func queryLogs(ctx context.Context, deps Deps, query logging.LogQuery, category string) (command.Result, error) {
 	data, err := deps.Control.QueryLogs(ctx, control.QueryLogsRequest{Category: category, Query: query})
-	return &command.Result{Kind: command.ResultKindLogs, Data: data}, err
+	if err != nil {
+		return command.Result{}, err
+	}
+	return command.FromOperationResult(data, command.ResultKindLogs), nil
 }
 
 type LogModule struct{}

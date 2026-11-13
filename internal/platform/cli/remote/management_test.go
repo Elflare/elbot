@@ -10,6 +10,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/control"
+	"elbot/internal/operationresult"
 	"elbot/internal/platform/cli/remote/management"
 	"elbot/internal/platform/share"
 )
@@ -19,10 +20,10 @@ type managementControlStub struct {
 	role contextinfo.Role
 }
 
-func (s *managementControlStub) Status(ctx context.Context) (control.StatusResult, error) {
+func (s *managementControlStub) Status(ctx context.Context) (operationresult.Result[control.StatusResult], error) {
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	s.role = actor.Role
-	return control.StatusResult{Mode: "work"}, nil
+	return operationresult.Result[control.StatusResult]{Status: operationresult.Success, Data: control.StatusResult{Mode: "work"}}, nil
 }
 
 func TestManagementAPIRequiresConfiguredTokenAndMapsRole(t *testing.T) {
@@ -121,10 +122,10 @@ func TestControlContinuationIsScheduledAsynchronously(t *testing.T) {
 	s := testRemoteServer(t)
 	s.workCtx = context.Background()
 	entered, release := make(chan struct{}), make(chan struct{})
-	s.SetControlContinuation(func(context.Context, control.Continuation) (context.Context, error) {
+	s.SetControlContinuation(func(context.Context, control.Continuation) (context.Context, operationresult.Result[struct{}], error) {
 		close(entered)
 		<-release
-		return context.Background(), nil
+		return context.Background(), operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	})
 	s.scheduleControlContinuation(context.Background(), control.Continuation{Kind: "append", SessionID: "s"})
 	select {

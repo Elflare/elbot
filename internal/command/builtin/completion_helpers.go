@@ -7,6 +7,7 @@ import (
 
 	command "elbot/internal/command/share"
 	"elbot/internal/control"
+	"elbot/internal/operationresult"
 )
 
 func completeStringOptions(values []string, query string, start, end int, kind string) []command.Completion {
@@ -22,11 +23,11 @@ func completeStringOptions(values []string, query string, start, end int, kind s
 
 func completeSessionIDs(ctx context.Context, deps Deps, query string, archived bool, start, end int) []command.Completion {
 	sessions, err := listSessionPage(ctx, deps, "", 0, archived, false, false)
-	if err != nil {
+	if err != nil || sessions.Status != operationresult.Success {
 		return nil
 	}
 	out := []command.Completion{}
-	for _, session := range sessions.Items {
+	for _, session := range sessions.Data.Items {
 		if !strings.HasPrefix(session.ID, query) {
 			continue
 		}
@@ -48,11 +49,11 @@ func completeRequestIDs(requests []control.RequestData, query string, start, end
 
 func completeToolNames(ctx context.Context, deps Deps, query string, start, end int) []command.Completion {
 	infos, err := deps.Control.QueryTools(ctx, tool.ToolQuery{Scope: tool.QueryCatalog, IncludeHidden: true, IncludeDiscover: true})
-	if err != nil {
+	if err != nil || infos.Status != operationresult.Success {
 		return nil
 	}
 	out := []command.Completion{}
-	for _, info := range infos {
+	for _, info := range infos.Data {
 		if !strings.HasPrefix(info.Definition.Name, query) {
 			continue
 		}

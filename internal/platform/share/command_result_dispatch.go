@@ -4,21 +4,51 @@ import (
 	command "elbot/internal/command"
 	"elbot/internal/control"
 	controlformat "elbot/internal/control/format"
+	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"fmt"
 	"strings"
 )
 
-func FormatCommandResult(req command.Request, result *command.Result) string {
-	if result == nil {
-		return ""
+// CommandResultOutputs converts a command result into the final text outputs for platform senders.
+// Empty formatted results are not outputs; failures remain explicit user-facing text.
+func CommandResultOutputs(req command.Request, result command.Result, failure error) ([]delivery.Output, error) {
+	if failure != nil {
+		return []delivery.Output{delivery.Text(failure.Error())}, nil
+	}
+	text, err := FormatCommandResult(req, result)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil, nil
+	}
+	out := delivery.Text(text)
+	if result.Status == operationresult.Success {
+		if current, ok := result.Data.(control.CurrentConfirmationResult); ok {
+			out = delivery.Output{Kind: delivery.KindText, Blocks: current.Detail, Actions: current.Actions}
+		}
+	}
+	if result.Confirmation != nil {
+		out.Actions = result.Confirmation.Actions
+	}
+	return []delivery.Output{out}, nil
+}
+
+func FormatCommandResult(req command.Request, result command.Result) (string, error) {
+	if result.Status != operationresult.Success {
+		return result.Message, nil
+	}
+	if result.Message != "" {
+		return result.Message, nil
 	}
 	fields := strings.Fields(req.Args)
 	switch result.Kind {
 	case command.ResultKindText:
 		if req.Name == "detail" {
 			if content, ok := confirmationTextData(result.Data); ok {
-				return content
+				return content, nil
 			}
 			return formatCommandData(result.Data, func(d control.CurrentConfirmationResult) string {
 				parts := make([]string, 0, len(d.Detail))
@@ -36,7 +66,7 @@ func FormatCommandResult(req command.Request, result *command.Result) string {
 		}
 		if req.Name == "confirm" || req.Name == "confirmtool" || req.Name == "confirmall" || req.Name == "reject" {
 			if content, ok := confirmationTextData(result.Data); ok {
-				return content
+				return content, nil
 			}
 			return formatCommandData(result.Data, func(d control.RespondConfirmationResult) string {
 				if !d.Accepted {
@@ -102,17 +132,6 @@ func FormatCommandResult(req command.Request, result *command.Result) string {
 	case command.ResultKindStop:
 		return formatCommandData(result.Data, controlformat.Stop)
 	case command.ResultKindTools:
-		if len(fields) > 0 {
-			switch fields[0] {
-			case "reload":
-				return "skills reloaded"
-			case "remove", "uninstall":
-				if result.Confirmation != nil {
-					return fmt.Sprintf("删除 %q 及目录？", fields[1])
-				}
-				return "removed: " + fields[1]
-			}
-		}
 		return formatCommandData(result.Data, controlformat.Tools)
 	case command.ResultKindRollback:
 		return formatCommandData(result.Data, controlformat.Rollback)
@@ -125,8 +144,6 @@ func FormatCommandResult(req command.Request, result *command.Result) string {
 			switch fields[0] {
 			case "reload":
 				return formatCommandData(result.Data, controlformat.HookReload)
-			case "start", "stop", "restart":
-				return fmt.Sprintf("hook %s: %s · OK", fields[0], fields[1])
 			default:
 				return formatCommandData(result.Data, controlformat.HookDetail)
 			}
@@ -141,7 +158,7 @@ func FormatCommandResult(req command.Request, result *command.Result) string {
 	case command.ResultKindDoctor:
 		return formatCommandData(result.Data, controlformat.Doctor)
 	}
-	return ""
+	return "", nil
 }
 
 func confirmationTextData(data any) (string, bool) {
@@ -162,21 +179,21 @@ func confirmationTextData(data any) (string, bool) {
 }
 
 // JSON 传输保持原始结构；这里只为文本出口解码，不修改 Result.Data。
-func formatCommandData[T any](data any, render func(T) string) string {
+func formatCommandData[T any](data any, render func(T) string) (string, error) {
 	if data == nil {
-		return ""
+		return "", nil
 	}
 	if value, ok := data.(T); ok {
-		return render(value)
+		return render(value), nil
 	}
 	if raw, ok := data.(json.RawMessage); ok {
 		var value T
 		if err := json.Unmarshal(raw, &value); err != nil {
-			return "读取命令结果失败: " + err.Error()
+			return "", fmt.Errorf("decode command result: %w", err)
 		}
-		return render(value)
+		return render(value), nil
 	}
-	return fmt.Sprintf("无法展示命令结果: %T", data)
+	return "", fmt.Errorf("unsupported command result data: %T", data)
 }
 func commandUsage(req command.Request, name, args string) string {
 	text := req.Prefix + name

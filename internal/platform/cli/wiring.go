@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"elbot/internal/control"
+	"elbot/internal/operationresult"
 	"elbot/internal/platform/cli/local"
 	"elbot/internal/platform/cli/remote"
 	clishare "elbot/internal/platform/cli/share"
@@ -48,9 +49,9 @@ func NewRemoteServer(opts RemoteServerOptions) (*Adapter, error) {
 
 }
 
-func (a *Adapter) SetControlContinuation(continueInput func(context.Context, control.Continuation) (context.Context, error)) {
+func (a *Adapter) SetControlContinuation(continueInput func(context.Context, control.Continuation) (context.Context, operationresult.Result[struct{}], error)) {
 	if runtime, ok := a.runtime.(interface {
-		SetControlContinuation(func(context.Context, control.Continuation) (context.Context, error))
+		SetControlContinuation(func(context.Context, control.Continuation) (context.Context, operationresult.Result[struct{}], error))
 	}); ok {
 		runtime.SetControlContinuation(continueInput)
 	}

@@ -9,27 +9,14 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
-	"elbot/internal/control"
 	"elbot/internal/delivery"
 	platformshare "elbot/internal/platform/share"
 )
 
-func (a *Adapter) SendCommandResult(ctx context.Context, req command.Request, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
-	var outputs []delivery.Output
-	if result != nil {
-		out := delivery.Text(platformshare.FormatCommandResult(req, result))
-		if req.Name == "detail" {
-			if current, ok := result.Data.(control.CurrentConfirmationResult); ok {
-				out = delivery.Output{Kind: delivery.KindText, Blocks: current.Detail, Actions: current.Actions}
-			}
-		}
-		if result.Confirmation != nil {
-			out.Actions = result.Confirmation.Actions
-		}
-		outputs = append(outputs, out)
-	}
-	if failure != nil {
-		outputs = append(outputs, delivery.Text(failure.Message))
+func (a *Adapter) SendCommandResult(ctx context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
+	outputs, err := platformshare.CommandResultOutputs(req, result, failure)
+	if err != nil {
+		return delivery.Receipt{}, err
 	}
 	return a.SendTo(ctx, delivery.Target{}, outputs)
 }

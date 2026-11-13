@@ -198,13 +198,19 @@ func (c *RemoteClient) readLoop(ctx context.Context) error {
 func (c *RemoteClient) handleServerMessage(msg remoteMessage) {
 	switch msg.Type {
 	case remoteMsgCommandResult:
+		if msg.Error != nil {
+			c.sendDisplay(clishare.DisplayEvent{Kind: clishare.DisplayNotice, Text: *msg.Error, Level: slog.LevelError.String()})
+			return
+		}
 		if msg.Result != nil {
-			if text := platformshare.FormatCommandResult(msg.Command, msg.Result); text != "" {
+			text, err := platformshare.FormatCommandResult(msg.Command, *msg.Result)
+			if err != nil {
+				c.sendDisplay(clishare.DisplayEvent{Kind: clishare.DisplayNotice, Text: err.Error(), Level: slog.LevelError.String()})
+				return
+			}
+			if text != "" {
 				c.sendDisplay(clishare.DisplayEvent{Kind: clishare.DisplayChat, Text: text})
 			}
-		}
-		if msg.Error != nil {
-			c.sendDisplay(clishare.DisplayEvent{Kind: clishare.DisplayNotice, Text: msg.Error.Message, Level: slog.LevelError.String()})
 		}
 	case remoteMsgChat:
 		c.sendDisplay(clishare.DisplayEvent{Kind: clishare.DisplayChat, Text: msg.Text})

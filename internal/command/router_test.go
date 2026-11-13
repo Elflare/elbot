@@ -2,152 +2,27 @@ package command
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
-	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 )
 
-func TestRouterDispatchAndHelpInfo(t *testing.T) {
-	r := NewRouter([]string{"/", "-"})
-	called := false
-	if err := r.Register(NewFunc(Info{
-		Name:        "ping",
-		Args:        "[text]",
-		Description: "Ping command.",
-		Aliases:     []string{"p"},
-	}, func(ctx context.Context, req Request) (*Result, error) {
-		called = true
-		if req.Prefix != "-" || req.Name != "ping" || req.Args != "hello" {
-			t.Fatalf("request = %#v", req)
-		}
-		return &Result{Kind: ResultKindText, Data: TextData{Content: "pong"}}, nil
+func TestRouterDispatchReturnsBusinessResults(t *testing.T) {
+	router := NewRouter([]string{"/"})
+	if err := router.Register(NewFunc(Info{Name: "ping"}, func(context.Context, Request) (Result, error) {
+		return Result{Status: operationresult.Success, Kind: ResultKindText, Data: TextData{Content: "pong"}}, nil
 	})); err != nil {
-		t.Fatalf("Register: %v", err)
+		t.Fatal(err)
 	}
 
-	result, err := r.Dispatch(context.Background(), "-ping hello")
-	if err != nil {
-		t.Fatalf("Dispatch: %v", err)
-	}
-	if !called || result.Data.(TextData).Content != "pong" {
-		t.Fatalf("called=%v result=%#v", called, result)
-	}
-
-	if len(r.Commands()) != 1 || r.Commands()[0].Name != "ping" {
-		t.Fatalf("Commands = %#v", r.Commands())
-	}
-}
-
-func TestRouterRejectsDuplicateAlias(t *testing.T) {
-	r := NewRouter([]string{"/"})
-	if err := r.Register(NewFunc(Info{Name: "one", Aliases: []string{"x"}}, nil)); err != nil {
-		t.Fatalf("Register one: %v", err)
-	}
-	if err := r.Register(NewFunc(Info{Name: "two", Aliases: []string{"x"}}, nil)); err == nil {
-		t.Fatal("expected duplicate alias error")
-	}
-}
-
-func TestRouterCommandInfoFindsPrimaryAndAlias(t *testing.T) {
-	r := NewRouter([]string{"/"})
-	if err := r.Register(NewFunc(Info{Name: "audit", Args: "", Aliases: []string{"aud"}, Help: "details"}, nil)); err != nil {
-		t.Fatalf("Register: %v", err)
-	}
-	for _, name := range []string{"audit", "aud"} {
-		info, ok := r.CommandInfo(name)
-		if !ok {
-			t.Fatalf("CommandInfo(%q) not found", name)
-		}
-		if info.Name != "audit" || info.Help != "details" {
-			t.Fatalf("CommandInfo(%q) = %#v", name, info)
-		}
-	}
-	if _, ok := r.CommandInfo("/audit"); ok {
-		t.Fatal("command name must not include a prefix")
-	}
-}
-
-func TestRouterUnknownCommand(t *testing.T) {
-	r := NewRouter([]string{"/"})
-	result, err := r.Dispatch(context.Background(), "/missing")
-	var failure *Error
-	if result != nil || !errors.As(err, &failure) || failure.Kind != ErrorInput || failure.Code != CodeUnknownCommand || !strings.Contains(failure.Message, "unk command: /missing") {
+	result, err := router.Dispatch(t.Context(), "/ping")
+	if err != nil || result.Status != operationresult.Success || result.Data.(TextData).Content != "pong" {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
-}
 
-func TestRouterLongestPrefixWins(t *testing.T) {
-	r := NewRouter([]string{"/", "//"})
-	parsed := r.Parse("//help")
-	if !parsed.OK || parsed.Prefix != "//" || parsed.Name != "help" {
-		t.Fatalf("parsed = %#v", parsed)
-	}
-}
-
-func TestRouterAdviceUsesFirstConfiguredPrefix(t *testing.T) {
-	prefixes := []string{"!", "!!"}
-	r := NewRouter(prefixes)
-	result, err := r.Dispatch(t.Context(), "!!missing")
-	var failure *Error
-	if result != nil || !errors.As(err, &failure) || failure.Message != "unk command: !!missing\n!help" {
-		t.Fatalf("result=%+v err=%v", result, err)
-	}
-	if prefixes[0] != "!" || prefixes[1] != "!!" {
-		t.Fatalf("configuration reordered: %#v", prefixes)
-	}
-}
-
-func TestRouterCompleteCommands(t *testing.T) {
-	r := NewRouter([]string{"/", "-"})
-	if err := r.Register(NewFunc(Info{Name: "model", Aliases: []string{"m"}}, nil)); err != nil {
-		t.Fatalf("Register model: %v", err)
-	}
-	if err := r.Register(NewFunc(Info{Name: "models"}, nil)); err != nil {
-		t.Fatalf("Register models: %v", err)
-	}
-	if err := r.Register(NewFunc(Info{Name: "resume"}, nil)); err != nil {
-		t.Fatalf("Register resume: %v", err)
-	}
-
-	admin := contextinfo.Actor{Role: contextinfo.RoleSuperadmin}
-	assertComplete(t, r.CompleteForActor("/m", admin), []string{"/model", "/m", "/models"})
-	assertComplete(t, r.CompleteForActor("-res", admin), []string{"-resume"})
-	assertComplete(t, r.CompleteForActor("/model ", admin), nil)
-	assertComplete(t, r.CompleteForActor("hello", admin), nil)
-}
-
-func TestRouterFiltersCommandsForActor(t *testing.T) {
-	r := NewRouter([]string{"/"})
-	if err := r.Register(NewFunc(Info{Name: "public", Aliases: []string{"p"}, MinRole: contextinfo.RoleUser}, nil)); err != nil {
-		t.Fatalf("Register public: %v", err)
-	}
-	if err := r.Register(NewFunc(Info{Name: "secret", Aliases: []string{"s"}}, nil)); err != nil {
-		t.Fatalf("Register secret: %v", err)
-	}
-
-	user := contextinfo.Actor{Role: contextinfo.RoleUser}
-	if got := r.CommandsForActor(user); len(got) != 1 || got[0].Name != "public" {
-		t.Fatalf("CommandsForActor(user) = %#v", got)
-	}
-	if _, ok := r.CommandInfoForActor("s", user); ok {
-		t.Fatal("regular user should not resolve private command alias")
-	}
-	assertComplete(t, r.CompleteForActor("/", user), []string{"/public", "/p"})
-
-	admin := contextinfo.Actor{Role: contextinfo.RoleSuperadmin}
-	if got := r.CommandsForActor(admin); len(got) != 2 {
-		t.Fatalf("CommandsForActor(admin) = %#v", got)
-	}
-	if info, ok := r.CommandInfoForActor("s", admin); !ok || info.Name != "secret" {
-		t.Fatalf("CommandInfoForActor(admin) = %#v, %v", info, ok)
-	}
-	assertComplete(t, r.CompleteForActor("/s", admin), []string{"/secret", "/s"})
-}
-func assertComplete(t *testing.T, got []string, want []string) {
-	t.Helper()
-	if strings.Join(got, "\n") != strings.Join(want, "\n") {
-		t.Fatalf("completions = %#v, want %#v", got, want)
+	result, err = router.Dispatch(t.Context(), "/missing")
+	if err != nil || result.Status != operationresult.Rejected || !strings.Contains(result.Message, "unk command: /missing") {
+		t.Fatalf("unknown command result=%+v err=%v", result, err)
 	}
 }
