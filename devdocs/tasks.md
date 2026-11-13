@@ -11,10 +11,10 @@ Handler、Router、业务生产端使用 Result 值；平台/API 边界只按结
 HTTP code、wire code 留在 API/management 适配层，不能塞进内部 Status。
 修改与验证纪律
 当前阶段只改业务代码；暂不写测试、不运行测试、不编译。
-一条链路一条链路做，每做完一条回查旧兼容层和 Go error / Result 分界。
 修改前说明范围；只做必要的手术式修改，不擅自扩大改造、不增加无契约依据的兜底。
 Go 文件修改后运行 gofmt；最终业务迁移完成后再做静态核对。
 注：若链路不涉及发往用户的通知或者消息，就没必要无脑全用operationresult，局部的普通error就够
+一条链路一条链路做，每做完一条回查旧兼容层和 Go error / Result 分界。
 
 
 
