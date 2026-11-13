@@ -13,6 +13,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"elbot/internal/fileops"
+	"elbot/internal/operationresult"
 )
 
 const EnvConfigFile = "ELBOT_CONFIG_FILE"
@@ -417,10 +418,14 @@ func SaveState(path string, state StateConfig) error {
 	}
 	// Resolve links before replacement; AtomicWriteFile preserves a link by
 	// writing in place, which is inappropriate for a state transaction.
-	target, err := fileops.ResolveFileTarget(path, true)
+	selected, err := fileops.ResolveFileTarget(path, true)
 	if err != nil {
 		return fmt.Errorf("resolve state config %q: %w", path, err)
 	}
+	if selected.Status != operationresult.Success {
+		return fmt.Errorf("resolve state config %q: %s", path, selected.Message)
+	}
+	target := selected.Data
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return fmt.Errorf("create state config dir %q: %w", filepath.Dir(path), err)
 	}
