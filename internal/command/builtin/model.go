@@ -45,7 +45,7 @@ func (c modelCommand) Handle(ctx context.Context, req command.Request) (*command
 	if err != nil {
 		return nil, inputError(fmt.Errorf("%v\n%s", err, deps.CommandText(info.Name, info.Args)))
 	}
-	listed, err := deps.Control.ListModels(ctx, control.ListModelsRequest{Query: args})
+	listed, err := deps.Control.ListModels(ctx, control.ListModelsRequest{})
 	if err != nil {
 		return nil, err
 	}
