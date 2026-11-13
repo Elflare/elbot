@@ -6,32 +6,37 @@ package elnis
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"strings"
 
 	"elbot/internal/delivery"
 )
 
 // runDirect coordinates direct execution; each operation owns its diagnostics.
-func (s *Service) runDirect(ctx context.Context, event Event, eventID string) error {
+func (s *Service) runDirect(ctx context.Context, event Event, eventID string) (operationresult.Result[struct{}], error) {
 	req := event.Request
 	resolved, err := decodeResolvedTargets(event.ResolvedTargets)
 	if err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
 	err = s.executeCalls(ctx, resolved, req.Calls)
 	if err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
 	if len(resolved) > 0 && (strings.TrimSpace(req.Content) != "" || len(req.Segments) > 0) {
 		outputs, err := s.directMediaOutputs(ctx, event, eventID)
 		if err != nil {
-			return err
+			return operationresult.Result[struct{}]{}, err
 		}
-		if err := s.sendOutputsToTargets(ctx, resolved, outputs); err != nil {
-			return err
+		if outputs.Status != operationresult.Success {
+			return operationresult.Result[struct{}]{Status: outputs.Status, Message: outputs.Message}, nil
+		}
+		sent, err := s.sendOutputsToTargets(ctx, resolved, outputs.Data)
+		if err != nil || sent.Status != operationresult.Success {
+			return sent, err
 		}
 	}
-	return s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusCompleted, "", "")
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusCompleted, "", "")
 }
 
 func (s *Service) executeCalls(ctx context.Context, targets []Target, calls []Call) error {
@@ -47,13 +52,16 @@ func (s *Service) executeCalls(ctx context.Context, targets []Target, calls []Ca
 	return nil
 }
 
-func (s *Service) sendOutputsToTargets(ctx context.Context, targets []Target, outputs []delivery.Output) error {
+func (s *Service) sendOutputsToTargets(ctx context.Context, targets []Target, outputs []delivery.Output) (operationresult.Result[struct{}], error) {
 	ctx = delivery.WithTemporaryConnection(ctx)
 	for _, target := range targets {
-		_, err := s.send(ctx, toDeliveryTarget(target), outputs)
+		sent, err := s.send(ctx, toDeliveryTarget(target), outputs)
 		if err != nil {
-			return err
+			return operationresult.Result[struct{}]{}, err
+		}
+		if sent.Status != operationresult.Success {
+			return operationresult.Result[struct{}]{Status: sent.Status, Message: sent.Message}, nil
 		}
 	}
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }

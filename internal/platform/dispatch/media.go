@@ -5,6 +5,7 @@ package dispatch
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"fmt"
 	"log/slog"
 	"time"
@@ -17,29 +18,29 @@ import (
 )
 
 // ResolveMedia 只使用指定平台，不沿用当前会话或默认发送平台。
-func (r *Router) ResolveMedia(ctx context.Context, name string, input share.MessageSegment, maxBytes int64) (delivery.Source, error) {
+func (r *Router) ResolveMedia(ctx context.Context, name string, input share.MessageSegment, maxBytes int64) (operationresult.Result[delivery.Source], error) {
 	r.mu.RLock()
 	sender := r.senders[name]
 	r.mu.RUnlock()
 	if sender == nil {
-		return delivery.Source{}, fmt.Errorf("target platform %q is not configured", name)
+		return operationresult.Result[delivery.Source]{Status: operationresult.Unavailable, Message: fmt.Sprintf("target platform %q is not configured", name)}, nil
 	}
 	resolver, ok := sender.(share.MediaResolver)
 	if !ok {
-		return delivery.Source{}, fmt.Errorf("platform %q does not support media resolution", name)
+		return operationresult.Result[delivery.Source]{Status: operationresult.Incompatible, Message: fmt.Sprintf("platform %q does not support media resolution", name)}, nil
 	}
 	return resolver.ResolveMedia(ctx, input, maxBytes)
 }
 
-func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, error) {
-	// The owning delivery.Manager validates outputs before entering rawSender.
+func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Output) (operationresult.Result[[]delivery.Output], error) {
+	// SendTo validates source outputs before media preparation.
 	prepared := append([]delivery.Output(nil), outputs...)
 	for i, out := range prepared {
 		if !isMediaOutputKind(out.Kind) {
 			continue
 		}
 		input := media.Input{Name: out.Name, MIMEType: out.Source.MIMEType}
-		var item media.MediaInfo
+		var item operationresult.Result[media.MediaInfo]
 		var err error
 		switch {
 		case out.Source.MediaID != "":
@@ -53,20 +54,23 @@ func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Out
 			item, err = a.media.ImportBytes(ctx, out.Source.Data, input, media.ImportLimits{})
 		}
 		if err != nil {
-			return nil, fmt.Errorf("prepare output media %d: %w", i, err)
+			return operationresult.Result[[]delivery.Output]{}, fmt.Errorf("prepare output media %d: %w", i, err)
 		}
-		prepared[i].Source = delivery.Source{MediaID: item.ID, MIMEType: item.MIMEType}
+		if item.Status != operationresult.Success {
+			return operationresult.Result[[]delivery.Output]{Status: item.Status, Message: item.Message}, nil
+		}
+		prepared[i].Source = delivery.Source{MediaID: item.Data.ID, MIMEType: item.Data.MIMEType}
 		if prepared[i].Name == "" {
-			prepared[i].Name = item.Name
+			prepared[i].Name = item.Data.Name
 		} else {
 			prepared[i].Name = media.SanitizeName(prepared[i].Name)
 		}
 	}
-	return prepared, nil
+	return operationresult.Result[[]delivery.Output]{Status: operationresult.Success, Data: prepared}, nil
 }
 
 // Resolve only the send copy; Hook events and queued outputs keep media IDs.
-func (a *Router) resolveMediaOutputs(ctx context.Context, outputs []delivery.Output) ([]delivery.Output, []media.UsageID, error) {
+func (a *Router) resolveMediaOutputs(ctx context.Context, outputs []delivery.Output) (operationresult.Result[[]delivery.Output], []media.UsageID, error) {
 	resolved := append([]delivery.Output(nil), outputs...)
 	var usages []media.UsageID
 	for i, out := range resolved {
@@ -78,28 +82,40 @@ func (a *Router) resolveMediaOutputs(ctx context.Context, outputs []delivery.Out
 			usages = append(usages, usageID)
 		}
 		if err != nil {
-			return nil, usages, err
+			return operationresult.Result[[]delivery.Output]{}, usages, err
 		}
-		resolved[i].Source = source
+		if source.Status != operationresult.Success {
+			return operationresult.Result[[]delivery.Output]{Status: source.Status, Message: source.Message}, usages, nil
+		}
+		resolved[i].Source = source.Data
 	}
-	return resolved, usages, nil
+	return operationresult.Result[[]delivery.Output]{Status: operationresult.Success, Data: resolved}, usages, nil
 }
 
-func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Output, send func([]delivery.Output) (delivery.Receipt, error)) (receipt delivery.Receipt, err error) {
+func (a *Router) sendPreparedMedia(ctx context.Context, outputs []delivery.Output, send func([]delivery.Output) (delivery.Receipt, error)) (operationresult.Result[delivery.Receipt], error) {
 	prepared, err := a.prepareMediaOutputs(ctx, outputs)
 	if err != nil {
-		return delivery.Receipt{}, err
+		return operationresult.Result[delivery.Receipt]{}, err
 	}
-	resolved, usages, err := a.resolveMediaOutputs(ctx, prepared)
+	if prepared.Status != operationresult.Success {
+		return operationresult.Result[delivery.Receipt]{Status: prepared.Status, Message: prepared.Message}, nil
+	}
+	resolved, usages, err := a.resolveMediaOutputs(ctx, prepared.Data)
 	if len(usages) != 0 {
 		defer a.publishUsageFinished(ctx, usages)
 	}
 	if err != nil {
-		return delivery.Receipt{}, err
+		return operationresult.Result[delivery.Receipt]{}, err
 	}
-	receipt, sendErr := send(resolved)
-	a.cacheMediaReceipt(ctx, prepared, receipt)
-	return receipt, sendErr
+	if resolved.Status != operationresult.Success {
+		return operationresult.Result[delivery.Receipt]{Status: resolved.Status, Message: resolved.Message}, nil
+	}
+	receipt, sendErr := send(resolved.Data)
+	if sendErr != nil {
+		return operationresult.Result[delivery.Receipt]{}, sendErr
+	}
+	a.cacheMediaReceipt(ctx, prepared.Data, receipt)
+	return operationresult.Result[delivery.Receipt]{Status: operationresult.Success, Data: receipt}, nil
 }
 
 func (a *Router) cacheMediaReceipt(ctx context.Context, outputs []delivery.Output, receipt delivery.Receipt) {

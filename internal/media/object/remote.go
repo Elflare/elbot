@@ -5,11 +5,9 @@ import (
 	"elbot/internal/events"
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"time"
 
-	"elbot/internal/media/share"
 	"elbot/internal/storage"
 )
 
@@ -38,18 +36,12 @@ func (m *Manager) presignMedia(ctx context.Context, id string) (string, error) {
 	// 每次读取当前副本事实，持有快照不随签名更新，允许多个读取同时使用。
 	metadata, err := m.media.Get(ctx, id)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return "", &share.UnavailableError{Err: err}
-		}
 		return "", err
 	}
 	if m.remote == nil {
 		return "", fmt.Errorf("remote media backend is unavailable")
 	}
 	if err := m.media.Touch(ctx, id, m.options.Now()); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return "", &share.UnavailableError{Err: err}
-		}
 		return "", err
 	}
 	if metadata.ObjectKey == "" {
@@ -58,9 +50,6 @@ func (m *Manager) presignMedia(ctx context.Context, id string) (string, error) {
 		}
 		reader, err := m.local.Open(ctx, metadata.LocalPath)
 		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				return "", &share.UnavailableError{Err: err}
-			}
 			return "", err
 		}
 		location, err := m.remote.Put(ctx, id, reader, metadata.Size, metadata.MIMEType)

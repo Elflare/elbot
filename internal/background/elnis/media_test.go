@@ -2,12 +2,14 @@ package elnis
 
 import (
 	"context"
-	"elbot/internal/delivery"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 )
 
 func TestReportMediaSurvivesWorkspaceRemovalAndRetry(t *testing.T) {
@@ -81,10 +83,10 @@ func TestDataURIBytesAndNamePassedToImporter(t *testing.T) {
 				t.Fatal(segment)
 			}
 			outputs, err := s.directMediaOutputs(context.Background(), Event{Segments: []delivery.Output{segment}}, "test")
-			if err != nil {
+			if err != nil || outputs.Status != operationresult.Success {
 				t.Fatal(err)
 			}
-			if outputs[0].Name != name || testMedia(s).inputs[0].Name != name || string(testMedia(s).data[outputs[0].Source.MediaID]) != "hello" {
+			if outputs.Data[0].Name != name || testMedia(s).inputs[0].Name != name || string(testMedia(s).data[outputs.Data[0].Source.MediaID]) != "hello" {
 				t.Fatal(outputs)
 			}
 		})

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 )
 
 func TestReportMappingUsesReceiptSourcesWithoutGuessing(t *testing.T) {
@@ -15,10 +16,10 @@ func TestReportMappingUsesReceiptSourcesWithoutGuessing(t *testing.T) {
 		{Platform: "telegram", ChatType: "private", ChatID: "2", PlatformMessageID: "same"},
 	}
 	receipt := delivery.Receipt{PlatformMessageIDs: []string{"same"}, SentMessages: sent}
-	svc := newTestCronService(t, Options{Store: store, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
-		return receipt, nil
+	svc := newTestCronService(t, Options{Store: store, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (receiptResult, error) {
+		return sentReceipt(receipt), nil
 	}})
-	if err := deliverTestReport(t, svc, "cli", "task", "report"); err != nil {
+	if result, err := deliverTestReport(t, svc, "cli", "task", "report"); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	if len(store.mappings) != len(sent) {

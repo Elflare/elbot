@@ -18,29 +18,42 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/elvena"
 	globalevents "elbot/internal/events"
+	"elbot/internal/operationresult"
 	"elbot/internal/security"
 	"elbot/internal/signal"
 	"elbot/internal/tool/preload"
 	"elbot/internal/tool/registry"
 )
 
+func acceptedResponse(t testing.TB, service *Service, req Request) Response {
+	t.Helper()
+	result, err := service.Handle(context.Background(), "secret", req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != operationresult.Success {
+		t.Fatalf("request rejected: %s: %s", result.Status, result.Message)
+	}
+	return result.Data
+}
+
+type backgroundRunResult = operationresult.Result[background.RunResult]
+
+func successfulBackgroundRun(result background.RunResult) backgroundRunResult {
+	return backgroundRunResult{Status: operationresult.Success, Data: result}
+}
+
 func TestHandleRecordCreatesEventAndRejectsDuplicate(t *testing.T) {
 	service, cleanup := newTestService(t, nil)
 	defer cleanup()
 
 	req := testRequest(ModeRecord)
-	resp, err := service.Handle(context.Background(), "secret", req)
-	if err != nil {
-		t.Fatalf("Handle record: %v", err)
-	}
+	resp := acceptedResponse(t, service, req)
 	if !resp.Accepted || resp.Duplicate || resp.Status != StatusCompleted {
 		t.Fatalf("response = %#v", resp)
 	}
 
-	resp, err = service.Handle(context.Background(), "secret", req)
-	if err != nil {
-		t.Fatalf("Handle duplicate: %v", err)
-	}
+	resp = acceptedResponse(t, service, req)
 	if !resp.Accepted || !resp.Duplicate || resp.Status != StatusDuplicate {
 		t.Fatalf("duplicate response = %#v", resp)
 	}
@@ -51,10 +64,11 @@ func TestEventLogContentIncludesTags(t *testing.T) {
 	defer cleanup()
 
 	req := testRequest(ModeRecord)
-	event, err := service.prepareEvent(elvena.Origin{Kind: elvena.OriginInternal, Name: "home"}, req)
-	if err != nil {
-		t.Fatalf("prepareEvent: %v", err)
+	prepared := service.prepareEvent(elvena.Origin{Kind: elvena.OriginInternal, Name: "home"}, req)
+	if prepared.Status != operationresult.Success {
+		t.Fatalf("prepareEvent: %+v", prepared)
 	}
+	event := prepared.Data
 	var records []globalevents.LogRecord
 	connection, err := globalevents.LogSubmitted.Observe(func(_ context.Context, record globalevents.LogRecord) {
 		if record.EventName == "elnis.recorded" {
@@ -85,12 +99,9 @@ func TestHandleRejectsUnauthorizedToken(t *testing.T) {
 	service, cleanup := newTestService(t, nil)
 	defer cleanup()
 
-	resp, err := service.Handle(context.Background(), "wrong", testRequest(ModeRecord))
-	if err == nil {
-		t.Fatal("expected unauthorized error")
-	}
-	if resp.Accepted || resp.Status != StatusFailed {
-		t.Fatalf("response = %#v", resp)
+	result, err := service.Handle(context.Background(), "wrong", testRequest(ModeRecord))
+	if err != nil || result.Status != operationresult.Forbidden || result.Message != "unauthorized" {
+		t.Fatalf("result = %#v, err=%v", result, err)
 	}
 }
 
@@ -100,10 +111,7 @@ func TestHandleAllowsUnconfiguredElwisp(t *testing.T) {
 
 	req := testRequest(ModeRecord)
 	req.Elwisp.Name = "unknown"
-	resp, err := service.Handle(context.Background(), "secret", req)
-	if err != nil {
-		t.Fatalf("Handle unconfigured elwisp: %v", err)
-	}
+	resp := acceptedResponse(t, service, req)
 	if !resp.Accepted || resp.Status != StatusCompleted {
 		t.Fatalf("response = %#v", resp)
 	}
@@ -115,10 +123,7 @@ func TestHandleAllowsConfiguredElwispWithoutEnabled(t *testing.T) {
 
 	req := testRequest(ModeRecord)
 	req.Elwisp.Name = "configured"
-	resp, err := service.Handle(context.Background(), "secret", req)
-	if err != nil {
-		t.Fatalf("Handle configured elwisp without enabled: %v", err)
-	}
+	resp := acceptedResponse(t, service, req)
 	if !resp.Accepted || resp.Status != StatusCompleted {
 		t.Fatalf("response = %#v", resp)
 	}
@@ -130,10 +135,7 @@ func TestHandleAllowsExplicitEnabledElwisp(t *testing.T) {
 
 	req := testRequest(ModeRecord)
 	req.Elwisp.Name = "enabled"
-	resp, err := service.Handle(context.Background(), "secret", req)
-	if err != nil {
-		t.Fatalf("Handle explicitly enabled elwisp: %v", err)
-	}
+	resp := acceptedResponse(t, service, req)
 	if !resp.Accepted || resp.Status != StatusCompleted {
 		t.Fatalf("response = %#v", resp)
 	}
@@ -145,12 +147,9 @@ func TestHandleRejectsDisabledElwisp(t *testing.T) {
 
 	req := testRequest(ModeRecord)
 	req.Elwisp.Name = "disabled"
-	resp, err := service.Handle(context.Background(), "secret", req)
-	if err == nil {
-		t.Fatal("expected disabled elwisp error")
-	}
-	if resp.Accepted || resp.Status != StatusFailed {
-		t.Fatalf("response = %#v", resp)
+	result, err := service.Handle(context.Background(), "secret", req)
+	if err != nil || result.Status != operationresult.Rejected || !strings.Contains(result.Message, "disabled") {
+		t.Fatalf("result = %#v, err=%v", result, err)
 	}
 }
 
@@ -159,12 +158,9 @@ func TestHandleRejectsTokenNotAllowedForElwisp(t *testing.T) {
 	defer cleanup()
 
 	req := testRequest(ModeRecord)
-	resp, err := service.Handle(context.Background(), "alt-secret", req)
-	if err == nil {
-		t.Fatal("expected token restriction error")
-	}
-	if resp.Accepted || resp.Status != StatusFailed {
-		t.Fatalf("response = %#v", resp)
+	result, err := service.Handle(context.Background(), "alt-secret", req)
+	if err != nil || result.Status != operationresult.Rejected || !strings.Contains(result.Message, "not allowed") {
+		t.Fatalf("result = %#v, err=%v", result, err)
 	}
 }
 
@@ -178,10 +174,7 @@ func TestHandleLLMQueuesEvent(t *testing.T) {
 	})
 
 	req := testRequest(ModeLLM)
-	resp, err := service.Handle(context.Background(), "secret", req)
-	if err != nil {
-		t.Fatalf("Handle llm: %v", err)
-	}
+	resp := acceptedResponse(t, service, req)
 	if resp.Status != StatusQueued || queued.EventID == "" || queued.Event.EventKey == "" {
 		t.Fatalf("response = %#v queued = %#v", resp, queued)
 	}
@@ -200,10 +193,7 @@ func TestHandleAllowsConfiguredInternalTool(t *testing.T) {
 
 	req := testRequest(ModeLLM)
 	req.ToolListNames = []string{"shell"}
-	resp, err := service.Handle(context.Background(), "secret", req)
-	if err != nil {
-		t.Fatalf("Handle allowed tool: %v", err)
-	}
+	resp := acceptedResponse(t, service, req)
 	if resp.Status != StatusQueued {
 		t.Fatalf("response = %#v", resp)
 	}
@@ -215,12 +205,9 @@ func TestHandleRejectsDisallowedInternalTool(t *testing.T) {
 
 	req := testRequest(ModeLLM)
 	req.ToolListNames = []string{"cron"}
-	resp, err := service.Handle(context.Background(), "secret", req)
-	if err == nil {
-		t.Fatal("expected disallowed internal tool error")
-	}
-	if resp.Accepted || !strings.Contains(resp.Error, "not allowed") {
-		t.Fatalf("response = %#v", resp)
+	result, err := service.Handle(context.Background(), "secret", req)
+	if err != nil || result.Status != operationresult.Rejected || !strings.Contains(result.Message, "not allowed") {
+		t.Fatalf("result = %#v, err=%v", result, err)
 	}
 }
 
@@ -230,10 +217,7 @@ func TestHandleAllowsExternalToolsByDefault(t *testing.T) {
 
 	req := testRequest(ModeLLM)
 	req.Tools = []tool.ELwispToolDeclaration{testExternalTool("server_status")}
-	resp, err := service.Handle(context.Background(), "secret", req)
-	if err != nil {
-		t.Fatalf("Handle external tool: %v", err)
-	}
+	resp := acceptedResponse(t, service, req)
 	if resp.Status != StatusQueued {
 		t.Fatalf("response = %#v", resp)
 	}
@@ -252,12 +236,9 @@ func TestHandleRejectsDisabledExternalTool(t *testing.T) {
 
 	req := testRequest(ModeLLM)
 	req.Tools = []tool.ELwispToolDeclaration{testExternalTool("danger_tool")}
-	resp, err := service.Handle(context.Background(), "secret", req)
-	if err == nil {
-		t.Fatal("expected disabled external tool error")
-	}
-	if resp.Accepted || !strings.Contains(resp.Error, "disabled") {
-		t.Fatalf("response = %#v", resp)
+	result, err := service.Handle(context.Background(), "secret", req)
+	if err != nil || result.Status != operationresult.Rejected || !strings.Contains(result.Message, "disabled") {
+		t.Fatalf("result = %#v, err=%v", result, err)
 	}
 }
 
@@ -341,12 +322,9 @@ func TestHandleRejectsInvalidModelSlot(t *testing.T) {
 
 	req := testRequest(ModeLLM)
 	req.ModelSlot = "chat"
-	resp, err := service.Handle(context.Background(), "secret", req)
-	if err == nil {
-		t.Fatal("expected invalid model_slot error")
-	}
-	if resp.Accepted || !strings.Contains(resp.Error, "unsupported model_slot") {
-		t.Fatalf("response = %#v", resp)
+	result, err := service.Handle(context.Background(), "secret", req)
+	if err != nil || result.Status != operationresult.InvalidArguments || !strings.Contains(result.Message, "unsupported model_slot") {
+		t.Fatalf("result = %#v, err=%v", result, err)
 	}
 }
 
@@ -356,12 +334,9 @@ func TestHandleRejectsElwispNameWithDot(t *testing.T) {
 
 	req := testRequest(ModeLLM)
 	req.Elwisp.Name = "foo.bar"
-	resp, err := service.Handle(context.Background(), "secret", req)
-	if err == nil {
-		t.Fatal("expected invalid elwisp.name error")
-	}
-	if resp.Accepted || !strings.Contains(resp.Error, "elwisp.name") {
-		t.Fatalf("response = %#v", resp)
+	result, err := service.Handle(context.Background(), "secret", req)
+	if err != nil || result.Status != operationresult.InvalidArguments || !strings.Contains(result.Message, "elwisp.name") {
+		t.Fatalf("result = %#v, err=%v", result, err)
 	}
 }
 
@@ -639,7 +614,7 @@ func TestRecoverReportsResetsInterruptedDeliveringEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 	prepared, err := service.prepareReport(context.Background(), queued.Event, queued.EventID, string(resultJSON), "bg-session", "bg-message", parsed)
-	if err != nil || !prepared {
+	if err != nil || prepared.Status != operationresult.Success || !prepared.Data {
 		t.Fatalf("prepareReport = %v, %v", prepared, err)
 	}
 	claimed, err := service.store.ClaimReport(context.Background(), queued.EventID, StatusResultReady, StatusDelivering)
@@ -682,7 +657,7 @@ func TestRecoverReportsDoesNotResendPersistedReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	prepared, err := service.prepareReport(context.Background(), queued.Event, queued.EventID, string(resultJSON), "bg-session", "bg-message", parsed)
-	if err != nil || !prepared {
+	if err != nil || prepared.Status != operationresult.Success || !prepared.Data {
 		t.Fatalf("prepareReport = %v, %v", prepared, err)
 	}
 	repo := service.store
@@ -823,12 +798,9 @@ func TestHandleRejectsMissingTargets(t *testing.T) {
 
 	req := testRequest(ModeDirect)
 	req.Targets = nil
-	resp, err := service.Handle(context.Background(), "secret", req)
-	if err == nil {
-		t.Fatal("expected missing targets error")
-	}
-	if resp.Accepted || !strings.Contains(resp.Error, "targets is required") {
-		t.Fatalf("response = %#v", resp)
+	result, err := service.Handle(context.Background(), "secret", req)
+	if err != nil || result.Status != operationresult.InvalidArguments || !strings.Contains(result.Message, "targets is required") {
+		t.Fatalf("result = %#v, err=%v", result, err)
 	}
 }
 
@@ -838,12 +810,9 @@ func TestHandleRejectsInvalidAllTarget(t *testing.T) {
 
 	req := testRequest(ModeDirect)
 	req.Targets = []Target{{Platform: "all", Type: "group", ID: "123"}}
-	resp, err := service.Handle(context.Background(), "secret", req)
-	if err == nil {
-		t.Fatal("expected invalid all target error")
-	}
-	if resp.Accepted || !strings.Contains(resp.Error, "platform all") {
-		t.Fatalf("response = %#v", resp)
+	result, err := service.Handle(context.Background(), "secret", req)
+	if err != nil || result.Status != operationresult.InvalidArguments || !strings.Contains(result.Message, "platform all") {
+		t.Fatalf("result = %#v, err=%v", result, err)
 	}
 }
 
@@ -901,10 +870,7 @@ func TestHandleDirectSendsToPrivateAndGroupTargets(t *testing.T) {
 	req.Content = "服务器异常"
 	req.Targets = []Target{{Platform: "telegram", Type: "private", ID: "123"}, {Platform: "qqonebot", Type: "group", ID: "456"}}
 	service.enabledPlatforms = append(service.enabledPlatforms, "telegram")
-	resp, err := service.Handle(context.Background(), "secret", req)
-	if err != nil {
-		t.Fatalf("Handle direct: %v", err)
-	}
+	resp := acceptedResponse(t, service, req)
 	if resp.Status != StatusCompleted {
 		t.Fatalf("response = %#v", resp)
 	}
@@ -932,10 +898,7 @@ func TestHandleDirectSendsToResolvedSuperadminTargets(t *testing.T) {
 	req.Content = "服务器异常"
 	req.Targets = []Target{{Platform: "cli"}, {Platform: "qqofficial"}}
 	service.enabledPlatforms = append(service.enabledPlatforms, "qqofficial")
-	resp, err := service.Handle(context.Background(), "secret", req)
-	if err != nil {
-		t.Fatalf("Handle direct: %v", err)
-	}
+	resp := acceptedResponse(t, service, req)
 	if resp.Status != StatusCompleted {
 		t.Fatalf("response = %#v", resp)
 	}
@@ -959,10 +922,7 @@ func TestHandleDirectCallsOnlyDoesNotSendOutput(t *testing.T) {
 	req.Content = ""
 	req.Title = ""
 	req.Calls = []Call{{Platform: "qqonebot", API: "custom_api", Params: map[string]any{"message_id": 42}}}
-	resp, err := service.Handle(context.Background(), "secret", req)
-	if err != nil {
-		t.Fatalf("Handle direct calls-only: %v", err)
-	}
+	resp := acceptedResponse(t, service, req)
 	if resp.Status != StatusCompleted {
 		t.Fatalf("response = %#v", resp)
 	}
@@ -975,11 +935,23 @@ func TestHandleDirectCallsOnlyDoesNotSendOutput(t *testing.T) {
 	}
 }
 
-func newTestService(t *testing.T, send SenderFunc) (*Service, func()) {
+type testSenderFunc func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
+
+func resultSender(send testSenderFunc) SenderFunc {
+	return func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
+		receipt, err := send(ctx, target, outputs)
+		if err != nil {
+			return operationresult.Result[delivery.Receipt]{}, err
+		}
+		return operationresult.Result[delivery.Receipt]{Status: operationresult.Success, Data: receipt}, nil
+	}
+}
+
+func newTestService(t *testing.T, send testSenderFunc) (*Service, func()) {
 	return newTestServiceWithRunner(t, nil, send)
 }
 
-func newTestServiceWithRunner(t *testing.T, runner background.Runner, send SenderFunc) (*Service, func()) {
+func newTestServiceWithRunner(t *testing.T, runner background.Runner, send testSenderFunc) (*Service, func()) {
 	t.Helper()
 	store := newFakeEventRepository()
 	if send == nil {
@@ -1003,7 +975,7 @@ func newTestServiceWithRunner(t *testing.T, runner background.Runner, send Sende
 		Store:            store,
 		SessionTakenOver: func(context.Context, string) (bool, error) { return false, nil },
 		ToolPreloader:    publicBackgroundSelections{preload.NewPreloadService(preload.PreloadOptions{Registry: registry.NewRegistry(security.DefaultPermission())})},
-		Send:             send,
+		Send:             resultSender(send),
 		Runner:           runner,
 		EnabledPlatforms: []string{"cli", "qqonebot"},
 		ResolveModel: func(slot string) config.ModelSelection {
@@ -1085,12 +1057,12 @@ func (r *failOnceReceiptRepository) MarkReportDeliveriesDelivered(ctx context.Co
 	return r.EventRepository.MarkReportDeliveriesDelivered(ctx, deliveryIDs, receipt, mappings)
 }
 
-func (r *fakeBackgroundRunner) RunBackground(ctx context.Context, req background.RunRequest) (context.Context, background.RunResult, error) {
+func (r *fakeBackgroundRunner) RunBackground(ctx context.Context, req background.RunRequest) (context.Context, backgroundRunResult, error) {
 	r.requests = append(r.requests, req)
 	if len(r.requests) <= len(r.errors) && r.errors[len(r.requests)-1] != nil {
-		return ctx, background.RunResult{SessionID: "bg-session"}, r.errors[len(r.requests)-1]
+		return ctx, backgroundRunResult{}, r.errors[len(r.requests)-1]
 	}
-	return ctx, background.RunResult{SessionID: "bg-session", MessageID: "bg-message", Text: r.text}, nil
+	return ctx, successfulBackgroundRun(background.RunResult{SessionID: "bg-session", MessageID: "bg-message", Text: r.text}), nil
 }
 
 func testRequest(mode string) Request {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"elbot/internal/media/object"
 	"elbot/internal/media/share"
-	"elbot/internal/signal"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"io"
 	"sort"
@@ -26,15 +26,18 @@ type HeldMedia struct {
 }
 
 // Hold 为单个媒体取得临时引用，与业务持久引用独立。
-func (m *MediaCenter) Hold(ctx context.Context, id string) (*HeldMedia, error) {
+func (m *MediaCenter) Hold(ctx context.Context, id string) (operationresult.Result[*HeldMedia], error) {
 	if m.closed.Load() {
-		return nil, signal.ErrClosed
+		return operationresult.Result[*HeldMedia]{Status: operationresult.Unavailable, Message: "media center is closed"}, nil
 	}
 	held, usageID, err := m.transfer.Hold(ctx, id)
-	if held == nil {
-		return nil, err
+	if err != nil {
+		return operationresult.Result[*HeldMedia]{}, err
 	}
-	return &HeldMedia{held: held, UsageID: UsageID(usageID)}, err
+	if held.Status != operationresult.Success {
+		return operationresult.Result[*HeldMedia]{Status: held.Status, Message: held.Message}, nil
+	}
+	return operationresult.Result[*HeldMedia]{Status: operationresult.Success, Data: &HeldMedia{held: held.Data, UsageID: UsageID(usageID)}}, nil
 }
 
 // Info 返回已持有媒体的通用信息快照。

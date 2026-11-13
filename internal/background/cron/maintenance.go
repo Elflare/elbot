@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"errors"
 
 	"elbot/internal/background/share"
@@ -9,8 +10,12 @@ import (
 
 // RegisterMaintenanceHandler 将无需任务记录的维护回调接入 Cron。
 func (m *Manager) RegisterMaintenanceHandler(name string, handler func(context.Context) error) {
-	m.RegisterHandler(name, func(ctx context.Context, _ Job) (context.Context, error) {
-		return ctx, handler(ctx)
+	m.RegisterHandler(name, func(ctx context.Context, _ Job) (context.Context, operationresult.Result[struct{}], error) {
+		err := handler(ctx)
+		if err != nil {
+			return ctx, operationresult.Result[struct{}]{}, err
+		}
+		return ctx, operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	})
 }
 

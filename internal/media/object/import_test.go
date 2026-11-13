@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"elbot/internal/media/share"
+	"elbot/internal/operationresult"
 )
 
 func TestImportURLAndFile(t *testing.T) {
@@ -34,10 +35,10 @@ func TestImportURLAndFile(t *testing.T) {
 	}))
 	defer server.Close()
 	item, err := m.ImportURL(t.Context(), server.URL+"/name%252Fpart.txt?token=secret", share.Input{}, share.ImportLimits{})
-	if err != nil || item.Name != "name%2Fpart.txt" || item.MIMEType != "text/plain" {
+	if err != nil || item.Status != operationresult.Success || item.Data.Name != "name%2Fpart.txt" || item.Data.MIMEType != "text/plain" {
 		t.Fatalf("download = %#v %v", item, err)
 	}
-	record, _ := m.media.Get(t.Context(), item.ID)
+	record, _ := m.media.Get(t.Context(), item.Data.ID)
 	if record.SourceURL != "" {
 		t.Fatalf("sensitive URL stored: %q", record.SourceURL)
 	}
@@ -45,18 +46,18 @@ func TestImportURLAndFile(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "secret") {
 		t.Fatalf("timeout = %v", err)
 	}
-	if _, err = m.ImportURL(t.Context(), server.URL+"/failed", share.Input{}, share.ImportLimits{}); err == nil {
+	if result, err := m.ImportURL(t.Context(), server.URL+"/failed", share.Input{}, share.ImportLimits{}); err != nil || result.Status != operationresult.Failed {
 		t.Fatal("HTTP failure accepted")
 	}
 	path := filepath.Join(t.TempDir(), "source.txt")
 	if err := os.WriteFile(path, []byte("file input"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	item, err = m.ImportFile(t.Context(), path, share.Input{}, share.ImportLimits{})
-	if err != nil || item.Name != "source.txt" {
+	file, err := m.ImportFile(t.Context(), path, share.Input{}, share.ImportLimits{})
+	if err != nil || file.Status != operationresult.Success || file.Data.Name != "source.txt" {
 		t.Fatalf("file = %#v %v", item, err)
 	}
-	if _, err := m.ImportFile(t.Context(), filepath.Dir(path), share.Input{}, share.ImportLimits{}); err == nil {
+	if result, err := m.ImportFile(t.Context(), filepath.Dir(path), share.Input{}, share.ImportLimits{}); err == nil && result.Status == operationresult.Success {
 		t.Fatal("directory accepted")
 	}
 }
@@ -76,40 +77,40 @@ func TestImageImportCompressionAndValidation(t *testing.T) {
 	m.options.Media.LLMImageMaxLength = 32
 	m.options.Media.LLMImageCompressionThresholdBytes = 16 * 1024
 	item, err := m.ImportBytes(t.Context(), input.Bytes(), share.Input{Name: "folder%252Fname.png", MIMEType: "application/octet-stream"}, share.ImportLimits{})
-	if err != nil || item.MIMEType != "image/jpeg" || item.Name != "folder%2Fname.jpg" {
+	if err != nil || item.Status != operationresult.Success || item.Data.MIMEType != "image/jpeg" || item.Data.Name != "folder%2Fname.jpg" {
 		t.Fatalf("compressed = %#v %v", item, err)
 	}
-	data, _, err := m.Read(t.Context(), item.ID)
-	if err != nil {
+	data, _, err := m.Read(t.Context(), item.Data.ID)
+	if err != nil || data.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	decoded, err := jpeg.Decode(bytes.NewReader(data))
+	decoded, err := jpeg.Decode(bytes.NewReader(data.Data))
 	if err != nil {
 		t.Fatal(err)
 	}
 	bounds := decoded.Bounds()
-	if len(data) >= 16*1024 || bounds.Dx() != 31 || bounds.Dy() != 15 {
-		t.Fatalf("compressed size=%d bounds=%v", len(data), bounds)
+	if len(data.Data) >= 16*1024 || bounds.Dx() != 31 || bounds.Dy() != 15 {
+		t.Fatalf("compressed size=%d bounds=%v", len(data.Data), bounds)
 	}
 	white := color.NRGBAModel.Convert(decoded.At(bounds.Max.X-2, bounds.Max.Y/2)).(color.NRGBA)
 	if white.R < 240 || white.G < 240 || white.B < 240 {
 		t.Fatalf("background = %#v", white)
 	}
-	if info, err := m.ValidateImage(t.Context(), item.ID); err != nil || info != item {
+	if info, err := m.ValidateImage(t.Context(), item.Data.ID); err != nil || info.Status != operationresult.Success || info.Data != item.Data {
 		t.Fatalf("validation = %#v %v", info, err)
 	}
 	invalid, err := m.ImportBytes(t.Context(), []byte("invalid image"), share.Input{MIMEType: "image/png"}, share.ImportLimits{})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || invalid.Status != operationresult.Success {
+		t.Fatal(invalid, err)
 	}
-	if _, err := m.ValidateImage(t.Context(), invalid.ID); err == nil {
+	if result, err := m.ValidateImage(t.Context(), invalid.Data.ID); err == nil && result.Status == operationresult.Success {
 		t.Fatal("invalid image accepted")
 	}
 	text := importTestMedia(t, m, "text")
-	if _, err := m.ValidateImage(t.Context(), text.ID); err == nil {
+	if result, err := m.ValidateImage(t.Context(), text.ID); err == nil && result.Status == operationresult.Success {
 		t.Fatal("text accepted")
 	}
-	if _, err := compressImage(input.Bytes(), 2, 2); err == nil {
+	if result, err := compressImage(input.Bytes(), 2, 2); err != nil || result.Status != operationresult.Rejected {
 		t.Fatal("impossible compression accepted")
 	}
 }

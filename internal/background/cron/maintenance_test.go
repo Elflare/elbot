@@ -21,7 +21,7 @@ func TestMaintenanceHandlerPreservesContextAndResult(t *testing.T) {
 		}
 		return boom
 	})
-	_, err := m.handlers["cleanup"](ctx, Job{})
+	_, _, err := m.handlers["cleanup"](ctx, Job{})
 	if err != boom {
 		t.Fatal(err)
 	}

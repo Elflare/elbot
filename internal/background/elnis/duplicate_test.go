@@ -5,6 +5,8 @@ import (
 	"errors"
 	"sync"
 	"testing"
+
+	"elbot/internal/operationresult"
 )
 
 type concurrentDuplicateRepository struct {
@@ -37,7 +39,7 @@ func TestConcurrentDuplicateAcceptedOnce(t *testing.T) {
 	repo := &concurrentDuplicateRepository{EventRepository: service.store}
 	repo.reads.Add(2)
 	service.store = repo
-	var responses [2]Response
+	var responses [2]operationresult.Result[Response]
 	var errs [2]error
 	var workers sync.WaitGroup
 	for i := range responses {
@@ -48,10 +50,10 @@ func TestConcurrentDuplicateAcceptedOnce(t *testing.T) {
 	workers.Wait()
 	duplicates := 0
 	for i, response := range responses {
-		if errs[i] != nil || !response.Accepted {
+		if errs[i] != nil || response.Status != operationresult.Success || !response.Data.Accepted {
 			t.Fatalf("response=%+v err=%v", response, errs[i])
 		}
-		if response.Duplicate {
+		if response.Data.Duplicate {
 			duplicates++
 		}
 	}

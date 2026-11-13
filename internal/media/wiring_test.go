@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"elbot/internal/config"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil"
@@ -165,7 +166,10 @@ func TestNewMediaCenterReconcilesHistoryAndRetainsBorrowedStores(t *testing.T) {
 			if state == "replaced" {
 				key.ID = "previous-history"
 			}
-			if err := seed.AssociateHistory(t.Context(), key, 1, "file", item.ID); err != nil {
+			if err != nil || item.Status != operationresult.Success {
+				t.Fatalf("import media=%+v err=%v", item, err)
+			}
+			if err := seed.AssociateHistory(t.Context(), key, 1, "file", item.Data.ID); err != nil {
 				t.Fatal(err)
 			}
 			if err := seed.Close(t.Context()); err != nil {
@@ -203,7 +207,7 @@ func TestNewMediaCenterReconcilesHistoryAndRetainsBorrowedStores(t *testing.T) {
 			if err := center.Close(t.Context()); err != nil {
 				t.Fatal("cannot close constructed or partial media", err)
 			}
-			if _, err := store.Media().Get(t.Context(), item.ID); err != nil {
+			if _, err := store.Media().Get(t.Context(), item.Data.ID); err != nil {
 				t.Fatal("Media closed borrowed media store", err)
 			}
 			_, err = history.Repository().GetByPlatformMessage(t.Context(), key.Platform, key.ChatType, key.ChatID, key.MessageID)

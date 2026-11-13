@@ -4,6 +4,7 @@ package platform
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"errors"
 	"slices"
 	"strings"
@@ -101,7 +102,7 @@ func messageRequest(text string, msg share.MessageContext) agent.MessageRequest 
 		request.Mentions = append(request.Mentions, agent.Mention{UserID: mention.UserID, Username: mention.Username, Text: mention.Text})
 	}
 	if resolver := msg.MediaResolver; resolver != nil {
-		request.ResolveMedia = func(ctx context.Context, input media.PlatformMedia, limit int64) (delivery.Source, error) {
+		request.ResolveMedia = func(ctx context.Context, input media.PlatformMedia, limit int64) (operationresult.Result[delivery.Source], error) {
 			return resolver.ResolveMedia(ctx, share.MessageSegment{Type: share.MessageSegmentType(input.Type), MediaID: input.MediaID, URL: input.URL, PlatformFileID: input.PlatformFileID, MIMEType: input.MIMEType, Name: input.Name, Size: input.Size}, limit)
 		}
 	}

@@ -18,6 +18,7 @@ import (
 	background "elbot/internal/background/share"
 	"elbot/internal/delivery"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 )
 
 type fakeEventMedia struct {
@@ -36,37 +37,43 @@ func enableMedia(t *testing.T, s *Service) {
 func testMedia(s *Service) *fakeEventMedia { return s.media.(*fakeEventMedia) }
 func (m *fakeEventMedia) importBytes(ctx context.Context, data []byte, input media.Input) (string, error) {
 	info, err := m.ImportBytes(ctx, data, input, media.ImportLimits{})
-	return info.ID, err
+	if err != nil {
+		return "", err
+	}
+	if info.Status != operationresult.Success {
+		return "", fmt.Errorf("%s", info.Message)
+	}
+	return info.Data.ID, nil
 }
-func (m *fakeEventMedia) ImportBytes(ctx context.Context, data []byte, input media.Input, limits media.ImportLimits) (media.MediaInfo, error) {
+func (m *fakeEventMedia) ImportBytes(ctx context.Context, data []byte, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
 	return m.ImportReader(ctx, bytes.NewReader(data), int64(len(data)), input, limits)
 }
-func (m *fakeEventMedia) ImportReader(ctx context.Context, reader io.Reader, size int64, input media.Input, limits media.ImportLimits) (media.MediaInfo, error) {
+func (m *fakeEventMedia) ImportReader(ctx context.Context, reader io.Reader, size int64, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
 	m.limits = append(m.limits, limits)
 	if m.materializeErr != nil {
-		return media.MediaInfo{}, m.materializeErr
+		return operationresult.Result[media.MediaInfo]{}, m.materializeErr
 	}
 	data, err := io.ReadAll(reader)
 	if err != nil {
-		return media.MediaInfo{}, err
+		return operationresult.Result[media.MediaInfo]{}, err
 	}
 	if int64(len(data)) != size {
-		return media.MediaInfo{}, fmt.Errorf("wrong file size")
+		return operationresult.Result[media.MediaInfo]{}, fmt.Errorf("wrong file size")
 	}
 	id := fmt.Sprintf("media:%x", sha256.Sum256(data))
 	m.data[id] = data
 	m.inputs = append(m.inputs, input)
-	return media.MediaInfo{ID: id, Name: input.Name, MIMEType: input.MIMEType, Size: size}, nil
+	return operationresult.Result[media.MediaInfo]{Status: operationresult.Success, Data: media.MediaInfo{ID: id, Name: input.Name, MIMEType: input.MIMEType, Size: size}}, nil
 }
-func (m *fakeEventMedia) ImportURL(ctx context.Context, url string, input media.Input, limits media.ImportLimits) (media.MediaInfo, error) {
+func (m *fakeEventMedia) ImportURL(ctx context.Context, url string, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
 	return m.ImportBytes(ctx, []byte(url), input, limits)
 }
-func (m *fakeEventMedia) Info(ctx context.Context, id string) (media.MediaInfo, error) {
+func (m *fakeEventMedia) Info(ctx context.Context, id string) (operationresult.Result[media.MediaInfo], error) {
 	data, ok := m.data[id]
 	if !ok {
-		return media.MediaInfo{}, fmt.Errorf("missing media %s", id)
+		return operationresult.Result[media.MediaInfo]{Status: operationresult.NotFound, Message: fmt.Sprintf("missing media %s", id)}, nil
 	}
-	return media.MediaInfo{ID: id, Size: int64(len(data))}, nil
+	return operationresult.Result[media.MediaInfo]{Status: operationresult.Success, Data: media.MediaInfo{ID: id, Size: int64(len(data))}}, nil
 }
 func (m *fakeEventMedia) AddEventReference(ctx context.Context, id, event, purpose string) error {
 	m.references = append(m.references, [3]string{id, event, purpose})
@@ -106,14 +113,14 @@ func TestRecordAndNoTargetDoNotMaterialize(t *testing.T) {
 	if _, err := s.Handle(t.Context(), "secret", req); err != nil {
 		t.Fatal(err)
 	}
-	_ = s.runDirect(t.Context(), Event{Request: Request{Segments: req.Segments}, ResolvedTargets: "[]"}, "synthetic")
+	_, _ = s.runDirect(t.Context(), Event{Request: Request{Segments: req.Segments}, ResolvedTargets: "[]"}, "synthetic")
 	req.Mode = ModeLLM
 	req.ID = "queued"
 	if _, err := s.Handle(t.Context(), "secret", req); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Handle(t.Context(), "invalid-token", req); err == nil {
-		t.Fatal("accepted invalid token")
+	if result, err := s.Handle(t.Context(), "invalid-token", req); err != nil || result.Status != operationresult.Forbidden {
+		t.Fatalf("invalid token result=%+v err=%v", result, err)
 	}
 	if len(testMedia(s).limits) != 0 {
 		t.Fatal("media eagerly materialized")
@@ -124,7 +131,7 @@ func TestRecordAndNoTargetDoNotMaterialize(t *testing.T) {
 		t.Fatal(err)
 	}
 	duplicate, err := s.Handle(t.Context(), "secret", req)
-	if err != nil || !duplicate.Duplicate || len(testMedia(s).limits) != 1 {
+	if err != nil || duplicate.Status != operationresult.Success || !duplicate.Data.Duplicate || len(testMedia(s).limits) != 1 {
 		t.Fatal(duplicate, err, testMedia(s).limits)
 	}
 }
@@ -142,8 +149,8 @@ func TestMediaFailureMarksEventFailed(t *testing.T) {
 			}
 			req := testRequest(ModeDirect)
 			req.Segments = []Segment{{Kind: SegmentKindFile, URL: "https://example.test/file"}}
-			if response, err := s.Handle(t.Context(), "secret", req); err != nil || response.Status != StatusFailed || !strings.Contains(response.Error, failure.Error()) {
-				t.Fatal(response, err)
+			if result, err := s.Handle(t.Context(), "secret", req); err != nil || result.Status != operationresult.Success || result.Data.Status != StatusFailed || !strings.Contains(result.Data.Error, failure.Error()) {
+				t.Fatal(result, err)
 			}
 			row, err := testRepo(s).snapshotByKey(t.Context(), req.Elwisp.Name, req.Source, req.ID)
 			if err != nil || row.Status != StatusFailed || !strings.Contains(row.Error, failure.Error()) {
@@ -160,17 +167,16 @@ func TestReportFileBoundary(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "input.png"), []byte("image"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	importFile := func(path string) error {
+	importFile := func(path string) (operationresult.Result[[]delivery.Output], error) {
 		raw, _ := json.Marshal(map[string]any{"report_segments": []map[string]string{{"type": "image", "url": path, "mime_type": "image/png"}}})
 		parsed, err := background.ParseJSONResult(string(raw))
 		if err != nil {
-			return err
+			return operationresult.Result[[]delivery.Output]{}, err
 		}
-		_, err = s.importReportSegments(t.Context(), parsed.ReportSegments, "event", dir)
-		return err
+		return s.importReportSegments(t.Context(), parsed.ReportSegments, "event", dir)
 	}
-	if err := importFile("input.png"); err != nil {
-		t.Fatal(err)
+	if result, err := importFile("input.png"); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("import report=%+v err=%v", result, err)
 	}
 	m := testMedia(s)
 	if len(m.inputs) != 1 || m.inputs[0].Name != "input.png" || m.inputs[0].MIMEType != "image/png" {
@@ -180,7 +186,7 @@ func TestReportFileBoundary(t *testing.T) {
 		t.Fatal(m.references)
 	}
 	for _, path := range []string{"../outside", `..\outside`, "/absolute", `C:\outside`, "~", "."} {
-		if err := importFile(path); err == nil {
+		if result, err := importFile(path); err == nil && result.Status == operationresult.Success {
 			t.Fatalf("accepted %q", path)
 		}
 	}
@@ -191,7 +197,7 @@ func TestReportFileBoundary(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(dir, "link")); err != nil {
 		t.Fatal(err)
 	}
-	if err := importFile("link/secret"); err == nil {
+	if result, err := importFile("link/secret"); err == nil && result.Status == operationresult.Success {
 		t.Fatal("symlink escaped root")
 	}
 	if len(m.inputs) != 1 {
@@ -203,8 +209,8 @@ func TestExistingReportMediaRequiresExistingObject(t *testing.T) {
 	s, close := newTestService(t, nil)
 	defer close()
 	id := "media:" + strings.Repeat("a", 64)
-	_, err := s.importReportSegments(t.Context(), []delivery.Output{{Kind: delivery.KindFile, Source: delivery.Source{MediaID: id}}}, "event", t.TempDir())
-	if err == nil || len(testMedia(s).references) != 0 {
-		t.Fatalf("missing reference validation: %v", err)
+	result, err := s.importReportSegments(t.Context(), []delivery.Output{{Kind: delivery.KindFile, Source: delivery.Source{MediaID: id}}}, "event", t.TempDir())
+	if err == nil && result.Status == operationresult.Success || len(testMedia(s).references) != 0 {
+		t.Fatalf("missing reference validation: result=%+v err=%v", result, err)
 	}
 }

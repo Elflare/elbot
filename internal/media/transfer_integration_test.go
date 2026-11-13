@@ -16,6 +16,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/testutil"
 )
 
@@ -83,15 +84,16 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 				t.Fatal(err)
 			}
 			info, err := m.ImportBytes(t.Context(), []byte("payload"), Input{Name: "report%2520.txt", MIMEType: "text/plain"}, ImportLimits{})
-			if err != nil || info.Name != "report%20.txt" {
+			if err != nil || info.Status != operationresult.Success || info.Data.Name != "report%20.txt" {
 				t.Fatalf("imported=%+v err=%v", info, err)
 			}
-			id := info.ID
-			segments := []llm.MessageSegment{{Type: llm.SegmentFile, MediaID: id, Name: info.Name, MIMEType: info.MIMEType}}
-			prepared, usageID, err := m.AcquireForLLM(t.Context(), []llm.LLMMessage{{Segments: append(segments, segments[0])}})
-			if err != nil {
+			id := info.Data.ID
+			segments := []llm.MessageSegment{{Type: llm.SegmentFile, MediaID: id, Name: info.Data.Name, MIMEType: info.Data.MIMEType}}
+			preparedResult, usageID, err := m.AcquireForLLM(t.Context(), []llm.LLMMessage{{Segments: append(segments, segments[0])}})
+			if err != nil || preparedResult.Status != operationresult.Success {
 				t.Fatal(err)
 			}
+			prepared := preparedResult.Data
 			refs, err := store.MediaReferences().ListMediaIDs(t.Context(), id)
 			if err != nil || len(refs) != 1 {
 				t.Fatalf("holds=%d %v", len(refs), err)
@@ -113,10 +115,10 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 				t.Fatal(err)
 			}
 			source, usageID, err := m.ResolveForOutput(t.Context(), id)
-			if err != nil {
+			if err != nil || source.Status != operationresult.Success {
 				t.Fatal(err)
 			}
-			data, err := os.ReadFile(source.Path)
+			data, err := os.ReadFile(source.Data.Path)
 			if err != nil || string(data) != "payload" {
 				t.Fatalf("output=%q %v", data, err)
 			}
@@ -133,7 +135,7 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 			if err != nil || len(refs) != 0 {
 				t.Fatalf("leaked holds=%d %v", len(refs), err)
 			}
-			if _, err := os.Stat(source.Path); !errors.Is(err, os.ErrNotExist) {
+			if _, err := os.Stat(source.Data.Path); !errors.Is(err, os.ErrNotExist) {
 				t.Fatal("output retained")
 			}
 			mu.Lock()
@@ -161,22 +163,22 @@ func TestMediaCenterHistoryAndBoundedImport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.ImportReader(t.Context(), strings.NewReader("body"), -1, Input{}, ImportLimits{MaxImportBytes: 3}); err == nil {
+	if result, err := m.ImportReader(t.Context(), strings.NewReader("body"), -1, Input{}, ImportLimits{MaxImportBytes: 3}); err != nil || result.Status != operationresult.Rejected {
 		t.Fatal("ignored decoded byte limit")
 	}
 	row := HistoryMessage{ID: "history", Platform: "p", ChatID: "s", MessageID: "m", Media: []PlatformMedia{{Type: "file", PlatformFileID: "native"}}}
 	calls := 0
-	resolver := func(context.Context, string, PlatformMedia, int64) (delivery.Source, error) {
+	resolver := func(context.Context, string, PlatformMedia, int64) (operationresult.Result[delivery.Source], error) {
 		calls++
-		return delivery.Source{Data: []byte("history content"), MIMEType: "text/plain"}, nil
+		return operationresult.Result[delivery.Source]{Status: operationresult.Success, Data: delivery.Source{Data: []byte("history content"), MIMEType: "text/plain"}}, nil
 	}
 	requests := []HistoryMediaRequest{{Message: row, Index: 1}, {Message: row, Index: 1}}
 	first, err := m.GetHistoryMediaBatch(t.Context(), requests, resolver, HistoryFetchOptions{MaxFetchAttempts: 1})
-	if err != nil || first[0].Err != nil || first[1].Media != first[0].Media || calls != 1 {
+	if err != nil || first[0].Err != nil || first[1].Err != nil || first[1].Media.Data.ID != first[0].Media.Data.ID || calls != 1 {
 		t.Fatalf("first=%+v err=%v calls=%d", first, err, calls)
 	}
 	again, err := m.GetHistoryMediaBatch(t.Context(), requests, resolver, HistoryFetchOptions{MaxFetchAttempts: 1})
-	if err != nil || again[0].Err != nil || again[0].Media != first[0].Media || calls != 1 {
+	if err != nil || again[0].Err != nil || again[0].Media.Data.ID != first[0].Media.Data.ID || calls != 1 {
 		t.Fatalf("again=%+v err=%v calls=%d", again, err, calls)
 	}
 }

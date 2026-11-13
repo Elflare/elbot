@@ -2,12 +2,12 @@ package cron
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	background "elbot/internal/background/share"
 	"elbot/internal/config"
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
 )
 
 type taskModels struct {
@@ -22,11 +22,11 @@ func (m *taskModels) ResolveMode(mode string) modelmgr.Selection {
 	m.resolutions++
 	return modelmgr.Selection{ModelSelection: m.current}
 }
-func (m *taskModels) ValidateSelection(s config.ModelSelection) error {
+func (m *taskModels) ValidateSelection(s config.ModelSelection) operationresult.Result[struct{}] {
 	if s.Provider != "provider" {
-		return fmt.Errorf("unknown provider")
+		return operationresult.Result[struct{}]{Status: operationresult.InvalidArguments, Message: "unknown provider"}
 	}
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}
 }
 
 type changingModelRunner struct {
@@ -34,7 +34,7 @@ type changingModelRunner struct {
 	models *taskModels
 }
 
-func (r *changingModelRunner) RunBackground(ctx context.Context, req background.RunRequest) (context.Context, background.RunResult, error) {
+func (r *changingModelRunner) RunBackground(ctx context.Context, req background.RunRequest) (context.Context, cronRunResult, error) {
 	r.models.current.Model = "changed"
 	return r.fakeCronRunner.RunBackground(ctx, req)
 }
@@ -73,9 +73,9 @@ func TestCronExecutionRejectsInvalidModelBeforeRunning(t *testing.T) {
 	for _, pair := range []config.ModelSelection{{Provider: "provider"}, {Model: "model"}, {Provider: "missing", Model: "model"}} {
 		runner := &fakeCronRunner{}
 		svc := newTestCronService(t, Options{Models: &taskModels{}, Runner: runner})
-		_, _, err := svc.runLLMReport(t.Context(), Job{Name: "model"}, Metadata{Target: CronTarget{SourcePlatform: "cli"}, LLM: CronLLMMetadata{ModelProvider: pair.Provider, Model: pair.Model}}, CronDeliveryState{})
-		if err == nil || runner.calls != 0 {
-			t.Fatalf("model=%#v err=%v calls=%d", pair, err, runner.calls)
+		_, state, err := svc.runLLMReport(t.Context(), Job{Name: "model"}, Metadata{Target: CronTarget{SourcePlatform: "cli"}, LLM: CronLLMMetadata{ModelProvider: pair.Provider, Model: pair.Model}}, CronDeliveryState{})
+		if err != nil || !state.ReportReady || state.Report == "" || runner.calls != 0 {
+			t.Fatalf("model=%#v state=%+v err=%v calls=%d", pair, state, err, runner.calls)
 		}
 	}
 }

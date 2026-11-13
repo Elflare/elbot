@@ -1,4 +1,4 @@
-// router_test.go 验证并发发送的来源快照隔离、显式目标优先及部分发送回执保留。
+// router_test.go 验证并发发送的来源快照隔离、显式目标优先及发送失败回执丢弃。
 
 package dispatch
 
@@ -11,6 +11,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 	"elbot/internal/platform/share"
 )
 
@@ -32,12 +33,12 @@ func TestRouterStreamFallbackPreservesBlocksAndActions(t *testing.T) {
 	router := New(Options{Primary: sender})
 	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: sender.Name(), ChatID: "chat"}})
 	stream, err := router.StartStream(ctx)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || stream.Status != operationresult.Success {
+		t.Fatalf("stream=%+v err=%v", stream, err)
 	}
 	blocks := []delivery.ContentBlock{{Kind: delivery.ContentText, Content: "确认预览"}, {Kind: delivery.ContentDiff, Content: "-before\n+after"}}
 	actions := []delivery.Action{{ID: "confirm", Label: "确认", Command: "/confirm"}}
-	if _, err := stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Blocks: blocks, Actions: actions}); err != nil {
+	if _, err := stream.Data.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Blocks: blocks, Actions: actions}); err != nil {
 		t.Fatal(err)
 	}
 	output := <-got
@@ -71,7 +72,7 @@ func TestRouterPreservesConcurrentSourceSnapshots(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			ctx := contextinfo.WithConversation(context.Background(), info)
-			if _, err := router.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(id)}); err != nil {
+			if result, err := router.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(id)}); err != nil || result.Status != operationresult.Success {
 				t.Error(err)
 			}
 		}()
@@ -87,7 +88,7 @@ func TestRouterPreservesConcurrentSourceSnapshots(t *testing.T) {
 	}
 }
 
-func TestRouterExplicitTargetOverridesSenderAndKeepsPartialReceipt(t *testing.T) {
+func TestRouterExplicitTargetOverridesSenderAndDiscardsPartialReceipt(t *testing.T) {
 	wantErr := errors.New("second output failed")
 	primaryCalls, overrideCalls := 0, 0
 	primary := testSender{send: func(_ context.Context, nTarget delivery.Target, nOutputs []delivery.Output) (delivery.Receipt, error) {
@@ -106,11 +107,11 @@ func TestRouterExplicitTargetOverridesSenderAndKeepsPartialReceipt(t *testing.T)
 	}}
 	router := New(Options{Primary: primary})
 	ctx := share.WithMessageContext(context.Background(), share.MessageContext{Sender: override})
-	if _, err := router.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("reply")}); err != nil {
-		t.Fatal(err)
+	if result, err := router.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("reply")}); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("default send result=%+v err=%v", result, err)
 	}
 	got, err := router.SendTo(ctx, delivery.Target{ChatType: "private", ChatID: "other"}, []delivery.Output{delivery.Text("explicit")})
-	if !errors.Is(err, wantErr) || len(got.PlatformMessageIDs) != 1 || primaryCalls != 1 || overrideCalls != 1 {
+	if !errors.Is(err, wantErr) || got.Status != "" || len(got.Data.PlatformMessageIDs) != 0 || primaryCalls != 1 || overrideCalls != 1 {
 		t.Fatalf("receipt=%#v error=%v calls=%d/%d", got, err, primaryCalls, overrideCalls)
 	}
 	cancelled, cancel := context.WithCancel(ctx)

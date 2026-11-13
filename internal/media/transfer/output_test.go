@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"elbot/internal/media/share"
+	"elbot/internal/operationresult"
 )
 
 func TestOutputPreparationFailureRetainedByMedia(t *testing.T) {
@@ -47,10 +48,12 @@ func TestOutputPreparationFailureRetainedByMedia(t *testing.T) {
 				return reader, nil
 			}
 			var records []events.LogRecord
-			m := NewManager(&fakeObjects{hold: func(context.Context, string) (share.HeldMedia, error) { return h, nil }}, Options{Log: func(_ context.Context, record events.LogRecord) { records = append(records, record) }})
-			_, usageID, err := m.ResolveForOutput(ctx, "one")
+			m := NewManager(&fakeObjects{hold: func(context.Context, string) (operationresult.Result[share.HeldMedia], error) {
+				return operationresult.Result[share.HeldMedia]{Status: operationresult.Success, Data: h}, nil
+			}}, Options{Log: func(_ context.Context, record events.LogRecord) { records = append(records, record) }})
+			result, usageID, err := m.ResolveForOutput(ctx, "one")
 			if stage == "close" {
-				if err != nil || usageID == "" || len(records) != 1 || records[0].Content != business.Error() {
+				if err != nil || result.Status != operationresult.Success || usageID == "" || len(records) != 1 || records[0].Content != business.Error() {
 					t.Fatalf("result=%s err=%v logs=%+v", usageID, err, records)
 				}
 				m.FinishUsages([]string{usageID})
@@ -87,12 +90,14 @@ func TestOutputRetriesDirectoryRemovalIndependently(t *testing.T) {
 		t.Skip("requires filesystem permissions")
 	}
 	h := &fakeHeld{info: share.MediaInfo{ID: "one"}}
-	m := NewManager(&fakeObjects{hold: func(context.Context, string) (share.HeldMedia, error) { return h, nil }}, Options{Log: func(context.Context, events.LogRecord) {}})
+	m := NewManager(&fakeObjects{hold: func(context.Context, string) (operationresult.Result[share.HeldMedia], error) {
+		return operationresult.Result[share.HeldMedia]{Status: operationresult.Success, Data: h}, nil
+	}}, Options{Log: func(context.Context, events.LogRecord) {}})
 	source, usageID, err := m.ResolveForOutput(t.Context(), "one")
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || source.Status != operationresult.Success {
+		t.Fatalf("source=%+v err=%v", source, err)
 	}
-	dir := filepath.Dir(source.Path)
+	dir := filepath.Dir(source.Data.Path)
 	t.Cleanup(func() { _ = os.Chmod(dir, 0700); _ = os.RemoveAll(dir) })
 	if err := os.Chmod(dir, 0500); err != nil {
 		t.Fatal(err)

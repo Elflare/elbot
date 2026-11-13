@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -13,9 +14,8 @@ import (
 	globalevents "elbot/internal/events"
 )
 
-// Handler supplies the execution result and independent diagnostic body. The
-// scheduler consumes these source facts without classifying the original error.
-type Handler func(ctx context.Context, job Job) (context.Context, error)
+// Handler returns the business outcome separately from execution faults.
+type Handler func(ctx context.Context, job Job) (context.Context, operationresult.Result[struct{}], error)
 
 type Manager struct {
 	repo JobRepository
@@ -394,12 +394,17 @@ func (m *Manager) runJob(name string) {
 		record.Identity = identity
 		globalevents.Log(ctx, record)
 	}
-	ctx, runErr := handler(ctx, *job)
+	ctx, result, runErr := handler(ctx, *job)
 	identity = globalevents.LogIdentityFromContext(ctx)
 	resultStatus := globalevents.ResultSucceeded
 	if runErr != nil {
 		resultStatus = globalevents.ResultFailed
 		if globalevents.LogStatus(runErr) == globalevents.ResultCanceled {
+			resultStatus = globalevents.ResultCanceled
+		}
+	} else if result.Status != operationresult.Success {
+		resultStatus = globalevents.ResultFailed
+		if result.Status == operationresult.Canceled {
 			resultStatus = globalevents.ResultCanceled
 		}
 	}
@@ -413,6 +418,8 @@ func (m *Manager) runJob(name string) {
 	}
 	if runErr != nil {
 		record.Content += "\n" + runErr.Error()
+	} else if result.Status != operationresult.Success {
+		record.Content += "\n" + result.Message
 	}
 
 	if resultStatus == globalevents.ResultFailed {

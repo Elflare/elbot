@@ -16,6 +16,7 @@ import (
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
 )
 
 const (
@@ -24,7 +25,7 @@ const (
 	timeLayout      = "2006-01-02 15:04:05"
 )
 
-type TargetSenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error)
+type TargetSenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (operationresult.Result[delivery.Receipt], error)
 
 type PlatformTarget struct {
 	Name          string
@@ -33,7 +34,7 @@ type PlatformTarget struct {
 
 type Models interface {
 	ResolveMode(string) modelmgr.Selection
-	ValidateSelection(config.ModelSelection) error
+	ValidateSelection(config.ModelSelection) operationresult.Result[struct{}]
 }
 
 type Service struct {
@@ -47,7 +48,7 @@ type Service struct {
 	runner           background.Runner
 	models           Models
 	media            background.ReportMedia
-	copyBackground   func(context.Context, agent.BackgroundCopyRequest) (string, error)
+	copyBackground   func(context.Context, agent.BackgroundCopyRequest) (operationresult.Result[string], error)
 	sessionTakenOver background.SessionTakenOver
 	enabledPlatforms []PlatformTarget
 	sandboxRoot      string
@@ -69,7 +70,7 @@ type Options struct {
 	Runner           background.Runner
 	Models           Models
 	Media            background.ReportMedia
-	CopyBackground   func(context.Context, agent.BackgroundCopyRequest) (string, error)
+	CopyBackground   func(context.Context, agent.BackgroundCopyRequest) (operationresult.Result[string], error)
 	SessionTakenOver background.SessionTakenOver
 	EnabledPlatforms []PlatformTarget
 	SandboxRoot      string
@@ -95,27 +96,27 @@ func NewService(opts Options) *Service {
 	return s
 }
 
-func (s *Service) Handler(ctx context.Context, job Job) (context.Context, error) {
+func (s *Service) Handler(ctx context.Context, job Job) (context.Context, operationresult.Result[struct{}], error) {
 	identity := globalevents.LogIdentityFromContext(ctx)
 
 	unlock, err := s.lockDeliveryJob(ctx, job.Name)
 	if err != nil {
-		return ctx, err
+		return ctx, operationresult.Result[struct{}]{}, err
 	}
 	defer unlock()
 
 	latest, err := s.store.GetByName(ctx, job.Name)
 	if err != nil {
-		return ctx, err
+		return ctx, operationresult.Result[struct{}]{}, err
 	}
 	if !latest.Enabled {
-		return ctx, nil
+		return ctx, operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}
 	job = *latest
 
 	meta, err := decodeMetadata(job.Metadata)
 	if err != nil {
-		return ctx, err
+		return ctx, operationresult.Result[struct{}]{}, err
 	}
 	{
 		content, _ := json.Marshal(map[string]any{"job": job.Name, "source_platform": meta.Target.SourcePlatform, "target_platforms": strings.Join(s.targetPlatformNames(meta), ","), "target_all_enabled_platforms": meta.Target.AllEnabledPlatforms, "trigger_mode": meta.Trigger.Mode, "schedule_mode": meta.Schedule.Mode})

@@ -4,6 +4,7 @@ package platform
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"errors"
 
 	"elbot/internal/command"
@@ -11,11 +12,11 @@ import (
 	"elbot/internal/platform/share"
 )
 
-func (m *Supervisor) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+func (m *Supervisor) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
 	return m.dispatcher.SendTo(ctx, target, outputs)
 }
 
-func (m *Supervisor) StartStream(ctx context.Context) (delivery.MessageStream, error) {
+func (m *Supervisor) StartStream(ctx context.Context) (operationresult.Result[delivery.MessageStream], error) {
 	return m.dispatcher.StartStream(ctx)
 }
 

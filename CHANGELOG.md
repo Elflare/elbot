@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 平台批量发送返回错误时不再使用部分回执建立媒体或报告消息关联；恢复投递可能重复该批次中已送达的片段。
 - `/sessions`、`/resume` 列表和 `/archives` 超管可用 `-a/--all` 查看全部平台。
 - 文件写入确认预览在完整 diff 可用时只返回 diff；diff 被省略时改用文字说明。
 - `/messages` 改为原始对话的有界分页：第 1 页最新、页内旧到新，结构化数据保留完整正文及附件名称，包含分支历史且不受压缩摘要影响。

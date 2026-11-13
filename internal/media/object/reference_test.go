@@ -3,6 +3,7 @@ package object
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 	"errors"
 	"io"
@@ -54,10 +55,7 @@ func TestReadReturnsOriginalErrorAndLogsCleanup(t *testing.T) {
 func TestHoldProtectsUntilLastRelease(t *testing.T) {
 	m, store, _ := newTestManager(t)
 	item := importTestMedia(t, m, "protected")
-	held, err := m.Hold(t.Context(), item.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	held := holdTestMedia(t, m, item.ID)
 	for range 2 {
 		reader, err := held.Open(t.Context())
 		if err != nil {
@@ -74,8 +72,8 @@ func TestHoldProtectsUntilLastRelease(t *testing.T) {
 	if err := m.Cleanup(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Info(t.Context(), item.ID); err != nil {
-		t.Fatal("held object deleted", err)
+	if info, err := m.Info(t.Context(), item.ID); err != nil || info.Status != operationresult.Success {
+		t.Fatal("held object deleted", info, err)
 	}
 	if err := held.Close(t.Context()); err != nil {
 		t.Fatal(err)
@@ -84,15 +82,15 @@ func TestHoldProtectsUntilLastRelease(t *testing.T) {
 	if err := m.Cleanup(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Info(t.Context(), item.ID); err != nil {
-		t.Fatal("grace period ignored", err)
+	if info, err := m.Info(t.Context(), item.ID); err != nil || info.Status != operationresult.Success {
+		t.Fatal("grace period ignored", info, err)
 	}
 	m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
 	if err := m.Cleanup(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Info(t.Context(), item.ID); !errors.Is(err, storage.ErrNotFound) {
-		t.Fatalf("orphan remains: %v", err)
+	if info, err := m.Info(t.Context(), item.ID); err != nil || info.Status == operationresult.Success {
+		t.Fatalf("orphan remains: result=%+v err=%v", info, err)
 	}
 	if _, err := held.Open(t.Context()); err == nil {
 		t.Fatal("released hold can read")

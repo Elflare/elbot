@@ -3,6 +3,7 @@ package object
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 	"errors"
 	"fmt"
@@ -33,10 +34,7 @@ func TestCleanupDeletesRemoteThenLocalAndRetries(t *testing.T) {
 	item := importTestMedia(t, m, "cleanup")
 	remote := &testBackend{}
 	m.remote = remote
-	held, err := m.Hold(t.Context(), item.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	held := holdTestMedia(t, m, item.ID)
 	if _, err := held.SignedURL(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +73,7 @@ func TestCleanupDeletesRemoteThenLocalAndRetries(t *testing.T) {
 	if err != nil || !record.Deleting {
 		t.Fatalf("retry state = %#v %v", record, err)
 	}
-	if _, err := m.Hold(t.Context(), item.ID); err == nil {
+	if held, err := m.Hold(t.Context(), item.ID); err == nil && held.Status == operationresult.Success {
 		t.Fatal("acquired deleting object")
 	}
 	if err := m.AddReference(t.Context(), Reference{MediaID: item.ID, OwnerType: "test", OwnerID: "late", Purpose: "content"}); err == nil {

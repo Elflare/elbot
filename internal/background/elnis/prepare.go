@@ -12,11 +12,15 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/elvena"
+	"elbot/internal/operationresult"
 )
 
 var elwispNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
-func (s *Service) prepareEvent(origin elvena.Origin, req Request) (Event, error) {
+func (s *Service) prepareEvent(origin elvena.Origin, req Request) operationresult.Result[Event] {
+	invalid := func(status operationresult.Status, err error) operationresult.Result[Event] {
+		return operationresult.Result[Event]{Status: status, Message: err.Error()}
+	}
 	req.Version = strings.TrimSpace(req.Version)
 	req.Elwisp.Name = strings.TrimSpace(req.Elwisp.Name)
 	req.Source = strings.TrimSpace(req.Source)
@@ -26,43 +30,43 @@ func (s *Service) prepareEvent(origin elvena.Origin, req Request) (Event, error)
 	req.ModelSlot = strings.TrimSpace(req.ModelSlot)
 	req.Content = strings.TrimSpace(req.Content)
 	if req.Version != elvena.VersionV2 && req.Version != elvena.VersionV3 {
-		return Event{}, fmt.Errorf("unsupported ELvena version %q", req.Version)
+		return invalid(operationresult.InvalidArguments, fmt.Errorf("unsupported ELvena version %q", req.Version))
 	}
 	if req.Elwisp.Name == "" {
-		return Event{}, fmt.Errorf("elwisp.name is required")
+		return invalid(operationresult.InvalidArguments, fmt.Errorf("elwisp.name is required"))
 	}
 	if !elwispNamePattern.MatchString(req.Elwisp.Name) {
-		return Event{}, fmt.Errorf("elwisp.name must use only letters, digits, _ or -")
+		return invalid(operationresult.InvalidArguments, fmt.Errorf("elwisp.name must use only letters, digits, _ or -"))
 	}
 	if req.Source == "" {
-		return Event{}, fmt.Errorf("source is required")
+		return invalid(operationresult.InvalidArguments, fmt.Errorf("source is required"))
 	}
 	if req.ID == "" {
-		return Event{}, fmt.Errorf("id is required")
+		return invalid(operationresult.InvalidArguments, fmt.Errorf("id is required"))
 	}
 	if req.Content == "" && len(req.Segments) == 0 && len(req.Calls) == 0 {
-		return Event{}, fmt.Errorf("content, segments or calls is required")
+		return invalid(operationresult.InvalidArguments, fmt.Errorf("content, segments or calls is required"))
 	}
 	if req.Format == "" {
 		req.Format = "text"
 	}
 	if req.Format != "text" && req.Format != "elyph" {
-		return Event{}, fmt.Errorf("unsupported format %q", req.Format)
+		return invalid(operationresult.InvalidArguments, fmt.Errorf("unsupported format %q", req.Format))
 	}
 	if req.Mode != ModeRecord && req.Mode != ModeDirect && req.Mode != ModeLLM {
-		return Event{}, fmt.Errorf("unsupported mode %q", req.Mode)
+		return invalid(operationresult.InvalidArguments, fmt.Errorf("unsupported mode %q", req.Mode))
 	}
 	if req.Mode == ModeLLM && req.Content == "" {
-		return Event{}, fmt.Errorf("content is required for llm mode")
+		return invalid(operationresult.InvalidArguments, fmt.Errorf("content is required for llm mode"))
 	}
 	if req.ModelSlot != "" && !isElnisModelSlot(req.ModelSlot) {
-		return Event{}, fmt.Errorf("unsupported model_slot %q", req.ModelSlot)
+		return invalid(operationresult.InvalidArguments, fmt.Errorf("unsupported model_slot %q", req.ModelSlot))
 	}
 	segments := make([]delivery.Output, 0, len(req.Segments))
 	for i, segment := range req.Segments {
 		output, err := validateMediaSegment(segment, s.cfg.Segment.MaxFileBytes)
 		if err != nil {
-			return Event{}, fmt.Errorf("segment %d: %w", i, err)
+			return invalid(operationresult.InvalidArguments, fmt.Errorf("segment %d: %w", i, err))
 		}
 		segments = append(segments, output)
 	}
@@ -70,27 +74,27 @@ func (s *Service) prepareEvent(origin elvena.Origin, req Request) (Event, error)
 	if strings.TrimSpace(req.CreatedAt) != "" {
 		parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(req.CreatedAt))
 		if err != nil {
-			return Event{}, fmt.Errorf("created_at must be RFC3339: %w", err)
+			return invalid(operationresult.InvalidArguments, fmt.Errorf("created_at must be RFC3339: %w", err))
 		}
 		createdAt = parsed
 	}
 	tagsJSON, _ := json.Marshal(trimStrings(req.Elwisp.Tags))
 	targets, err := normalizeTargets(req.Targets)
 	if err != nil {
-		return Event{}, err
+		return invalid(operationresult.InvalidArguments, err)
 	}
 	req.Targets = targets
 	requestedTargets, _ := json.Marshal(targets)
 	resolved, err := s.resolveTargets(req)
 	if err != nil {
-		return Event{}, err
+		return invalid(operationresult.Rejected, err)
 	}
 	resolvedTargets, _ := json.Marshal(resolved)
 	toolDeclarations, err := normalizedToolDeclarations(req.Tools)
 	if err != nil {
-		return Event{}, err
+		return invalid(operationresult.InvalidArguments, err)
 	}
-	return Event{
+	return operationresult.Result[Event]{Status: operationresult.Success, Data: Event{
 		Segments:         segments,
 		Request:          req,
 		Origin:           origin,
@@ -103,7 +107,7 @@ func (s *Service) prepareEvent(origin elvena.Origin, req Request) (Event, error)
 		ResolvedTargets:  string(resolvedTargets),
 		CreatedAt:        createdAt,
 		ReceivedAt:       time.Now(),
-	}, nil
+	}}
 }
 
 func normalizedToolDeclarations(tools []tool.ELwispToolDeclaration) (string, error) {

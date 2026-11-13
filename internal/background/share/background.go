@@ -4,6 +4,7 @@ import "elbot/internal/tool"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -18,7 +19,7 @@ const (
 )
 
 type Runner interface {
-	RunBackground(ctx context.Context, req RunRequest) (context.Context, RunResult, error)
+	RunBackground(ctx context.Context, req RunRequest) (context.Context, operationresult.Result[RunResult], error)
 }
 
 type RunRequest struct {

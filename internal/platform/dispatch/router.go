@@ -5,6 +5,7 @@ package dispatch
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"fmt"
 	"strings"
 	"sync"
@@ -25,11 +26,11 @@ type Options struct {
 	// SaveMediaOutput 关联实际发送消息与媒体，由根部注入借用的存储能力。
 	SaveMediaOutput func(context.Context, storage.MediaOutput) error
 	Media           interface {
-		Info(context.Context, string) (media.MediaInfo, error)
-		ImportURL(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
-		ImportFile(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
-		ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (media.MediaInfo, error)
-		ResolveForOutput(context.Context, string) (delivery.Source, media.UsageID, error)
+		Info(context.Context, string) (operationresult.Result[media.MediaInfo], error)
+		ImportURL(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+		ImportFile(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+		ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+		ResolveForOutput(context.Context, string) (operationresult.Result[delivery.Source], media.UsageID, error)
 	}
 	MediaRetentionDays int
 }
@@ -41,11 +42,11 @@ type Router struct {
 	senders              map[string]delivery.MessageSender
 	saveMediaOutput      func(context.Context, storage.MediaOutput) error
 	media                interface {
-		Info(context.Context, string) (media.MediaInfo, error)
-		ImportURL(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
-		ImportFile(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
-		ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (media.MediaInfo, error)
-		ResolveForOutput(context.Context, string) (delivery.Source, media.UsageID, error)
+		Info(context.Context, string) (operationresult.Result[media.MediaInfo], error)
+		ImportURL(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+		ImportFile(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+		ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+		ResolveForOutput(context.Context, string) (operationresult.Result[delivery.Source], media.UsageID, error)
 	}
 	mediaRetentionDays int
 }
@@ -67,10 +68,10 @@ func (r *Router) RegisterPlatform(sender interface {
 	r.mu.Unlock()
 }
 
-func (r *Router) sender(ctx context.Context, target delivery.Target) (delivery.MessageSender, error) {
+func (r *Router) sender(ctx context.Context, target delivery.Target) operationresult.Result[delivery.MessageSender] {
 	if target.Empty() {
 		if msg, ok := share.MessageContextFrom(ctx); ok && msg.Sender != nil {
-			return msg.Sender, nil
+			return operationresult.Result[delivery.MessageSender]{Status: operationresult.Success, Data: msg.Sender}
 		}
 	}
 	name := strings.TrimSpace(target.Platform)
@@ -86,42 +87,52 @@ func (r *Router) sender(ctx context.Context, target delivery.Target) (delivery.M
 	sender := r.senders[name]
 	r.mu.RUnlock()
 	if sender == nil {
-		return nil, fmt.Errorf("target platform %q is not configured", name)
+		return operationresult.Result[delivery.MessageSender]{Status: operationresult.Unavailable, Message: fmt.Sprintf("target platform %q is not configured", name)}
 	}
-	return sender, nil
+	return operationresult.Result[delivery.MessageSender]{Status: operationresult.Success, Data: sender}
 }
 
-func (r *Router) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-	return delivery.NewManager(rawSender{r}).SendTo(ctx, target, outputs)
-}
-
-type rawSender struct{ router *Router }
-
-func (s rawSender) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-	sender, err := s.router.sender(ctx, target)
-	if err != nil {
-		return delivery.Receipt{}, err
+func (r *Router) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
+	if err := ctx.Err(); err != nil {
+		return operationresult.Result[delivery.Receipt]{}, err
 	}
-	return s.router.sendPreparedMedia(ctx, outputs, func(resolved []delivery.Output) (delivery.Receipt, error) {
+	if len(outputs) == 0 {
+		return operationresult.Result[delivery.Receipt]{Status: operationresult.Success}, nil
+	}
+	if err := delivery.ValidateOutputs(outputs); err != nil {
+		return operationresult.Result[delivery.Receipt]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
+	}
+	selected := r.sender(ctx, target)
+	if selected.Status != operationresult.Success {
+		return operationresult.Result[delivery.Receipt]{Status: selected.Status, Message: selected.Message}, nil
+	}
+	sender := selected.Data
+	return r.sendPreparedMedia(ctx, outputs, func(resolved []delivery.Output) (delivery.Receipt, error) {
 		return sender.SendTo(ctx, target, resolved)
 	})
 }
 
-func (r *Router) StartStream(ctx context.Context) (delivery.MessageStream, error) {
+func (r *Router) StartStream(ctx context.Context) (operationresult.Result[delivery.MessageStream], error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return operationresult.Result[delivery.MessageStream]{}, err
 	}
-	sender, err := r.sender(ctx, delivery.Target{})
-	if err != nil {
-		return nil, err
+	selected := r.sender(ctx, delivery.Target{})
+	if selected.Status != operationresult.Success {
+		return operationresult.Result[delivery.MessageStream]{Status: selected.Status, Message: selected.Message}, nil
 	}
+	sender := selected.Data
 	if streaming, ok := sender.(delivery.StreamSender); ok {
-		return streaming.StartStream(ctx)
+		stream, err := streaming.StartStream(ctx)
+		if err != nil {
+			return operationresult.Result[delivery.MessageStream]{}, err
+		}
+		return operationresult.Result[delivery.MessageStream]{Status: operationresult.Success, Data: stream}, nil
 	}
-	return delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+	stream := delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
 		if event.Type != delivery.StreamSend {
 			return delivery.Receipt{}, nil
 		}
-		return r.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Blocks: event.Blocks, Actions: event.Actions}})
-	}), nil
+		return sender.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Blocks: event.Blocks, Actions: event.Actions}})
+	})
+	return operationresult.Result[delivery.MessageStream]{Status: operationresult.Success, Data: stream}, nil
 }

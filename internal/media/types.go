@@ -3,10 +3,10 @@ package media
 
 import (
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"time"
 
 	"elbot/internal/media/share"
-	"elbot/internal/media/transfer"
 )
 
 // IDPrefix 是内容寻址媒体标识的前缀。
@@ -72,20 +72,14 @@ type HistoryMediaRequest struct {
 
 // HistoryMediaResult 保留批量请求的逐项信息与错误。
 type HistoryMediaResult struct {
-	Media MediaInfo // 获取到的通用信息；调用方应先检查 Err。
-	Err   error     // 此位置的获取或关联错误。
+	Media operationresult.Result[MediaInfo] // 获取到的通用信息；调用方应先检查 Err。
+	Err   error                             // 此位置的获取或关联错误。
 }
 
 // HistoryFetchOptions 限制本次批量获取。
 type HistoryFetchOptions struct {
 	MaxFetchAttempts int // 未缓存位置的尝试上限，包含失败；非正数不限，缓存不计额度。
 }
-
-// ErrHistoryFetchLimit 表示本次未缓存媒体获取额度耗尽。
-var ErrHistoryFetchLimit = transfer.ErrHistoryFetchLimit
-
-// ErrHistoryMediaIndex 表示请求的媒体序号超出范围。
-var ErrHistoryMediaIndex = transfer.ErrHistoryMediaIndex
 
 // ValidID 只验证媒体标识格式，不查询对象。
 func ValidID(id string) bool { return share.ValidID(id) }

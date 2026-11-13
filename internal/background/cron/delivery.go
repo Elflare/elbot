@@ -15,6 +15,7 @@ import (
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/workspace"
 )
@@ -24,25 +25,24 @@ type deliveryGate struct {
 	refs  int           // 持有者与等待者的总数，由 Service.mu 保护。
 }
 
-func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, state CronDeliveryState, platformFilter string, recovery bool) (err error) {
+func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, state CronDeliveryState, platformFilter string, recovery bool) (operationresult.Result[struct{}], error) {
 	if !state.ReportReady {
-		return nil
+		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}
 	taken, err := s.sessionTakenOver(ctx, state.ReportSessionID)
 	if err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
 	state.TakenOver = state.TakenOver || taken
 	if state.TakenOver {
 		state.Report, state.ReportSegments = "", nil
 		if _, err := s.persistDeliveryState(ctx, job, state, nil); err != nil {
-
-			return err
+			return operationresult.Result[struct{}]{}, err
 		}
 		if meta.Schedule.Mode == ScheduleOnce {
-			return s.disableCompletedDelivery(ctx, job.Name, job.DeliveryToken)
+			return operationresult.Result[struct{}]{Status: operationresult.Success}, s.disableCompletedDelivery(ctx, job.Name, job.DeliveryToken)
 		}
-		return nil
+		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}
 	for _, resolved := range s.resolveDeliveryTargets(meta) {
 		if platformFilter != "" && resolved.Platform != platformFilter {
@@ -52,7 +52,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 		for index, outputID := range deliveryOutputIDs(state) {
 			taken, err := s.sessionTakenOver(ctx, state.ReportSessionID)
 			if err != nil {
-				return err
+				return operationresult.Result[struct{}]{}, err
 			}
 			if taken {
 				state.TakenOver = true
@@ -62,7 +62,7 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 			if deliveryStatusDone(outputState.Status) {
 				continue
 			}
-			var out delivery.Output
+			out := operationresult.Result[delivery.Output]{Status: operationresult.Success}
 			var buildErr error
 			status := DeliveryDelivered
 			segmentIndex := index
@@ -75,9 +75,9 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 				if recovery {
 					text = missedOnceReportText(meta.Title, text)
 				}
-				out = delivery.Text(text)
+				out.Data = delivery.Text(text)
 			case outputState.Status == DeliveryFallbackPending:
-				out, status = delivery.Text(outputState.FallbackText), DeliveryFallbackDelivered
+				out.Data, status = delivery.Text(outputState.FallbackText), DeliveryFallbackDelivered
 			default:
 				segment := state.ReportSegments[segmentIndex]
 				var scope workspace.PathScope
@@ -88,60 +88,53 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 					out, buildErr = background.BuildReportSegmentOutput(ctx, segment, scope, s.media, media.ImportLimits{})
 				}
 			}
-			var receipt delivery.Receipt
-			if buildErr == nil {
-
-				receipt, buildErr = s.sendDeliveryOutput(ctx, job.Name, resolved, out, state.ReportSessionID)
+			sent := operationresult.Result[delivery.Receipt]{Status: out.Status, Message: out.Message}
+			if buildErr == nil && out.Status == operationresult.Success {
+				sent, buildErr = s.sendDeliveryOutput(ctx, job.Name, resolved, out.Data, state.ReportSessionID)
 			}
-			if buildErr != nil && outputID != "text" && status != DeliveryFallbackDelivered && state.NeedReport && recovery && ctx.Err() == nil {
-
-				globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "cron_output_fallback", Module: "cron", Content: buildErr.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(buildErr)})
-				buildErr = nil
+			if (buildErr != nil || sent.Status != operationresult.Success) && outputID != "text" && status != DeliveryFallbackDelivered && state.NeedReport && recovery && ctx.Err() == nil {
+				message := sent.Message
+				if buildErr != nil {
+					message = buildErr.Error()
+				}
+				globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "cron_output_fallback", Module: "cron", Content: message, Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.ResultFailed})
 				outputState.Status = DeliveryFallbackPending
 				outputState.FallbackText = reportSegmentFallbackText(state.ReportSegments[segmentIndex])
-				active, saveErr := s.persistDeliveryState(ctx, job, state, background.MapReportReceipt(state.ReportSessionID, state.ReportMessageID, receipt))
+				active, saveErr := s.persistDeliveryState(ctx, job, state, nil)
 				if saveErr != nil {
-
-					return saveErr
+					return operationresult.Result[struct{}]{}, saveErr
 				}
 				if !active {
-					return buildErr
+					return operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "cron delivery changed during recovery"}, nil
 				}
-
-				receipt, buildErr = s.sendDeliveryOutput(ctx, job.Name, resolved, delivery.Text(outputState.FallbackText), state.ReportSessionID)
+				sent, buildErr = s.sendDeliveryOutput(ctx, job.Name, resolved, delivery.Text(outputState.FallbackText), state.ReportSessionID)
 				status = DeliveryFallbackDelivered
 			}
-			if buildErr == nil {
-				outputState.Status = status
-			}
-			if buildErr != nil && len(receipt.SentMessages) > 0 {
-				globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "cron_output_partial", Module: "cron", Content: buildErr.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(buildErr)})
-				buildErr = nil
-			}
-			if buildErr == nil || len(receipt.SentMessages) > 0 {
-				active, saveErr := s.persistDeliveryState(ctx, job, state, background.MapReportReceipt(state.ReportSessionID, state.ReportMessageID, receipt))
-				if saveErr != nil {
-
-					return saveErr
-				}
-				if !active {
-					return buildErr
-				}
-			}
 			if buildErr != nil {
-				return buildErr
+				return operationresult.Result[struct{}]{}, buildErr
+			}
+			if sent.Status != operationresult.Success {
+				return operationresult.Result[struct{}]{Status: sent.Status, Message: sent.Message}, nil
+			}
+			outputState.Status = status
+			active, saveErr := s.persistDeliveryState(ctx, job, state, background.MapReportReceipt(state.ReportSessionID, state.ReportMessageID, sent.Data))
+			if saveErr != nil {
+				return operationresult.Result[struct{}]{}, saveErr
+			}
+			if !active {
+				return operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "cron delivery changed while saving receipt"}, nil
 			}
 		}
 	}
 	if meta.Schedule.Mode == ScheduleOnce && s.deliveryComplete(meta, state) {
-		return s.disableCompletedDelivery(ctx, job.Name, job.DeliveryToken)
+		return operationresult.Result[struct{}]{Status: operationresult.Success}, s.disableCompletedDelivery(ctx, job.Name, job.DeliveryToken)
 	}
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
-func (s *Service) sendDeliveryOutput(ctx context.Context, jobName string, target delivery.Target, out delivery.Output, sessionID string) (delivery.Receipt, error) {
+func (s *Service) sendDeliveryOutput(ctx context.Context, jobName string, target delivery.Target, out delivery.Output, sessionID string) (operationresult.Result[delivery.Receipt], error) {
 	if err := ctx.Err(); err != nil {
-		return delivery.Receipt{}, err
+		return operationresult.Result[delivery.Receipt]{}, err
 	}
 	identity := globalevents.LogIdentityFromContext(ctx)
 	{
@@ -161,7 +154,10 @@ func (s *Service) sendDeliveryOutput(ctx context.Context, jobName string, target
 	}
 	receipt, err := s.sendTarget(ctx, target, []delivery.Output{out})
 	if err != nil {
-		return receipt, fmt.Errorf("send %s: %w", target.Platform, err)
+		return operationresult.Result[delivery.Receipt]{}, fmt.Errorf("send %s: %w", target.Platform, err)
+	}
+	if receipt.Status != operationresult.Success {
+		return receipt, nil
 	}
 	{
 		content, _ := json.Marshal(map[string]any{"job": jobName, "platform": target.Platform, "target": cronTargetLabel(target), "kind": out.Kind, "content": ""})
@@ -384,7 +380,7 @@ func cronTargetLabel(target delivery.Target) string {
 	return string(target.ChatType)
 }
 
-func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessionID string, meta Metadata, jobName string) error {
+func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessionID string, meta Metadata, jobName string) (operationresult.Result[struct{}], error) {
 	for _, target := range s.enabledPlatforms {
 		if target.Name == meta.Target.SourcePlatform {
 			continue
@@ -397,12 +393,15 @@ func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessi
 			encoded, _ := json.Marshal(value)
 			metadata[key] = encoded
 		}
-		copySession, err := s.copyBackground(ctx, agent.BackgroundCopyRequest{Scope: session.Scope{Owner: contextinfo.ActorIdentity{Platform: target.Name, ID: target.SuperadminIDs[0]}, Platform: target.Name, TaskType: "cron", TaskID: jobName}, SourceSessionID: sourceSessionID, TaskType: "cron", TaskID: jobName, Name: meta.Title, Metadata: metadata})
+		copyResult, err := s.copyBackground(ctx, agent.BackgroundCopyRequest{Scope: session.Scope{Owner: contextinfo.ActorIdentity{Platform: target.Name, ID: target.SuperadminIDs[0]}, Platform: target.Name, TaskType: "cron", TaskID: jobName}, SourceSessionID: sourceSessionID, TaskType: "cron", TaskID: jobName, Name: meta.Title, Metadata: metadata})
 		if err != nil {
-			return err
+			return operationresult.Result[struct{}]{}, err
+		}
+		if copyResult.Status != operationresult.Success {
+			return operationresult.Result[struct{}]{Status: copyResult.Status, Message: copyResult.Message}, nil
 		}
 		{
-			content, _ := json.Marshal(map[string]any{"job": jobName, "source_session_id": sourceSessionID, "target_session_id": copySession, "platform": target.Name})
+			content, _ := json.Marshal(map[string]any{"job": jobName, "source_session_id": sourceSessionID, "target_session_id": copyResult.Data, "platform": target.Name})
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogCategoryAudit,
 				Level:        slog.LevelInfo,
@@ -417,5 +416,5 @@ func (s *Service) copySessionToBroadcastTargets(ctx context.Context, sourceSessi
 			globalevents.Log(ctx, record)
 		}
 	}
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }

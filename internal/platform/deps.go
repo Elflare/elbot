@@ -11,6 +11,7 @@ import (
 	"elbot/internal/completion"
 	"elbot/internal/control"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/platform/cli"
 	"elbot/internal/session"
 	"elbot/internal/signal"
@@ -35,7 +36,7 @@ type SupervisorDeps struct {
 // AgentCapabilities 按目标 Agent 公开契约接线，不向子包交付完整总管。
 // MessageRequest 由 Agent 根部定义，平台内部状态在根部转换。
 type AgentCapabilities interface {
-	ContinueControlInput(context.Context, control.Continuation) (context.Context, error)
+	ContinueControlInput(context.Context, control.Continuation) (context.Context, operationresult.Result[struct{}], error)
 	ResolveReference(context.Context, session.Scope, storage.Message) (string, string, bool, error)
 	HandleMessage(context.Context, agent.MessageRequest) error
 	Complete(context.Context, completion.Request) ([]completion.Item, error)

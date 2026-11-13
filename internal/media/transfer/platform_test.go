@@ -10,6 +10,7 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/media/share"
+	"elbot/internal/operationresult"
 )
 
 func TestPlatformSourcesAndResolverContract(t *testing.T) {
@@ -62,7 +63,7 @@ func TestPlatformSourcesAndResolverContract(t *testing.T) {
 				segment.URL = "https://host/file"
 				segment.MIMEType = "text/plain"
 			}
-			resolver := func(ctx context.Context, s PlatformMedia, limit int64) (delivery.Source, error) {
+			resolver := func(ctx context.Context, s PlatformMedia, limit int64) (operationresult.Result[delivery.Source], error) {
 				calls++
 				if ctx != t.Context() || s != segment || limit != 100 {
 					t.Error("changed resolver input")
@@ -80,10 +81,10 @@ func TestPlatformSourcesAndResolverContract(t *testing.T) {
 				case "empty-bytes":
 					source.Data = []byte{}
 				}
-				return source, nil
+				return operationresult.Result[delivery.Source]{Status: operationresult.Success, Data: source}, nil
 			}
 			got, err := m.ImportPlatform(t.Context(), "platform", resolver, segment)
-			if err != nil || got != info {
+			if err != nil || got.Status != operationresult.Success || got.Data != info {
 				t.Fatalf("%+v %v", got, err)
 			}
 			if (kind == "existing" || kind == "url") && calls != 0 {
@@ -102,12 +103,12 @@ func TestPlatformSourcesAndResolverContract(t *testing.T) {
 func TestPlatformEarlyFailure(t *testing.T) {
 	fault := errors.New("resolve failed")
 	calls := 0
-	resolver := func(context.Context, PlatformMedia, int64) (delivery.Source, error) {
+	resolver := func(context.Context, PlatformMedia, int64) (operationresult.Result[delivery.Source], error) {
 		calls++
-		return delivery.Source{}, fault
+		return operationresult.Result[delivery.Source]{}, fault
 	}
 	m := NewManager(&fakeObjects{}, Options{Log: func(context.Context, events.LogRecord) {}, MaxImportBytes: 10})
-	if _, err := m.ImportPlatform(t.Context(), "p", resolver, PlatformMedia{Size: 11}); err == nil || calls != 0 {
+	if result, err := m.ImportPlatform(t.Context(), "p", resolver, PlatformMedia{Size: 11}); err != nil || result.Status != operationresult.Rejected || calls != 0 {
 		t.Fatal("size limit not applied before resolver")
 	}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -118,7 +119,7 @@ func TestPlatformEarlyFailure(t *testing.T) {
 	if _, err := m.ImportPlatform(t.Context(), "p", resolver, PlatformMedia{}); !errors.Is(err, fault) || calls != 1 {
 		t.Fatal(err)
 	}
-	if _, err := m.ImportPlatform(t.Context(), "p", nil, PlatformMedia{}); err == nil {
+	if result, err := m.ImportPlatform(t.Context(), "p", nil, PlatformMedia{}); err != nil || result.Status != operationresult.Unavailable {
 		t.Fatal("accepted absent source")
 	}
 }
@@ -148,26 +149,26 @@ func TestHistoryBatchBudgetDuplicatesAndAssociations(t *testing.T) {
 	for _, index := range []int{1, 1, 2, 2, 5, 3, 4, 0, 9} {
 		requests = append(requests, HistoryMediaRequest{Message: row, Index: index})
 	}
-	resolver := func(_ context.Context, p string, s PlatformMedia, limit int64) (delivery.Source, error) {
+	resolver := func(_ context.Context, p string, s PlatformMedia, limit int64) (operationresult.Result[delivery.Source], error) {
 		fetches++
 		if p != "p" || limit != 100 {
 			t.Error("resolver context")
 		}
 		if s.PlatformFileID == "fail" {
-			return delivery.Source{}, fault
+			return operationresult.Result[delivery.Source]{}, fault
 		}
-		return delivery.Source{Data: []byte(s.PlatformFileID)}, nil
+		return operationresult.Result[delivery.Source]{Status: operationresult.Success, Data: delivery.Source{Data: []byte(s.PlatformFileID)}}, nil
 	}
 	results, err := m.GetHistoryMediaBatch(t.Context(), requests, resolver, HistoryFetchOptions{MaxFetchAttempts: 2})
 	if err != nil || len(results) != len(requests) || loads != 1 || fetches != 2 || saves != 2 {
 		t.Fatalf("results=%+v err=%v loads/fetches/saves=%d/%d/%d", results, err, loads, fetches, saves)
 	}
-	if !errors.Is(results[0].Err, fault) || results[1].Err != results[0].Err || results[2].Media.ID != "two" || results[3] != results[2] || !errors.Is(results[4].Err, ErrHistoryFetchLimit) || results[5].Media.ID != "cached" || results[6].Media.ID != "output" {
+	if !errors.Is(results[0].Err, fault) || results[1].Err != results[0].Err || results[2].Media.Data.ID != "two" || results[3] != results[2] || results[4].Media.Status != operationresult.Rejected || results[5].Media.Data.ID != "cached" || results[6].Media.Data.ID != "output" {
 		t.Fatalf("results=%+v", results)
 	}
 	for _, i := range []int{7, 8} {
-		if !errors.Is(results[i].Err, ErrHistoryMediaIndex) {
-			t.Fatal(results[i].Err)
+		if results[i].Err != nil || results[i].Media.Status != operationresult.InvalidArguments {
+			t.Fatal(results[i])
 		}
 	}
 }
@@ -193,11 +194,11 @@ func TestHistoryBatchExistingIDAndIdentityIsolation(t *testing.T) {
 		requests = append(requests, HistoryMediaRequest{Message: HistoryMessage{ID: "history", Platform: p, ChatID: "s", MessageID: "m", Media: []PlatformMedia{{Type: "file", MediaID: p}}}, Index: 1})
 	}
 	results, err := m.GetHistoryMediaBatch(t.Context(), requests, nil, HistoryFetchOptions{MaxFetchAttempts: 1})
-	if err != nil || results[0].Media.ID != "a" || !errors.Is(results[1].Err, ErrHistoryFetchLimit) || len(keys) != 2 || keys[0] == keys[1] || !reflect.DeepEqual(ids, []string{"a"}) || saves != 1 {
+	if err != nil || results[0].Media.Data.ID != "a" || results[1].Media.Status != operationresult.Rejected || len(keys) != 2 || keys[0] == keys[1] || !reflect.DeepEqual(ids, []string{"a"}) || saves != 1 {
 		t.Fatalf("results=%+v keys=%+v ids=%v saves=%d err=%v", results, keys, ids, saves, err)
 	}
 	results, err = m.GetHistoryMediaBatch(t.Context(), requests[1:], nil, HistoryFetchOptions{MaxFetchAttempts: 1})
-	if err != nil || results[0].Media.ID != "b" {
+	if err != nil || results[0].Media.Data.ID != "b" {
 		t.Fatalf("budget leaked across calls: %+v %v", results, err)
 	}
 }

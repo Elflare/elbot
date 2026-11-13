@@ -28,9 +28,9 @@ func TestRecoveredReportUsesPersistedSources(t *testing.T) {
 	}
 	repo := newFakeCronRepo()
 	var sent []delivery.Output
-	svc := newTestCronService(t, Options{Store: repo, SandboxRoot: root, SendTarget: func(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	svc := newTestCronService(t, Options{Store: repo, SandboxRoot: root, SendTarget: func(_ context.Context, _ delivery.Target, outputs []delivery.Output) (receiptResult, error) {
 		sent = append(sent, outputs...)
-		return delivery.Receipt{}, nil
+		return sentReceipt(delivery.Receipt{}), nil
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 2, Title: "report", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})

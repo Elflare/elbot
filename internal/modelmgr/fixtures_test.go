@@ -4,6 +4,8 @@ import (
 	"context"
 	"elbot/internal/config"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
+	"errors"
 	"testing"
 )
 
@@ -48,8 +50,18 @@ func buildTestManager(t *testing.T, opts testModelOptions) (*ModelManager, error
 
 func selectTestModel(s *ModelManager, mode, arg string) (ModelOption, error) {
 	selected, err := s.PrepareModel(arg)
-	if err != nil {
-		return ModelOption{}, err
+	if err != nil || selected.Status != operationresult.Success {
+		if err != nil {
+			return ModelOption{}, err
+		}
+		return ModelOption{}, errors.New(selected.Message)
 	}
-	return s.CommitModelForMode(mode, selected)
+	committed, err := s.CommitModelForMode(mode, selected.Data)
+	if err != nil || committed.Status != operationresult.Success {
+		if err != nil {
+			return ModelOption{}, err
+		}
+		return ModelOption{}, errors.New(committed.Message)
+	}
+	return committed.Data, nil
 }

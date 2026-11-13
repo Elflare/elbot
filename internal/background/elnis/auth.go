@@ -10,6 +10,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/elvena"
+	"elbot/internal/operationresult"
 	"elbot/internal/security"
 )
 
@@ -26,44 +27,44 @@ func (s *Service) authenticate(token string) (string, bool) {
 	return "", false
 }
 
-func (s *Service) authorizeElwisp(event Event) error {
+func (s *Service) authorizeElwisp(event Event) operationresult.Result[struct{}] {
 	policy, ok := s.cfg.Elwisps[event.Request.Elwisp.Name]
 	if !ok {
-		return nil
+		return operationresult.Result[struct{}]{Status: operationresult.Success}
 	}
 	if policy.Enabled != nil && !*policy.Enabled {
-		return fmt.Errorf("elwisp %q is disabled", event.Request.Elwisp.Name)
+		return operationresult.Result[struct{}]{Status: operationresult.Rejected, Message: fmt.Sprintf("elwisp %q is disabled", event.Request.Elwisp.Name)}
 	}
 	allowedTokens := trimStrings(policy.AllowedTokens)
 	if len(allowedTokens) == 0 {
-		return nil
+		return operationresult.Result[struct{}]{Status: operationresult.Success}
 	}
 	if event.Origin.Kind != elvena.OriginHTTPToken {
-		return nil
+		return operationresult.Result[struct{}]{Status: operationresult.Success}
 	}
 	for _, token := range allowedTokens {
 		if token == event.Origin.Name {
-			return nil
+			return operationresult.Result[struct{}]{Status: operationresult.Success}
 		}
 	}
-	return fmt.Errorf("token %q is not allowed for elwisp %q", event.Origin.Name, event.Request.Elwisp.Name)
+	return operationresult.Result[struct{}]{Status: operationresult.Rejected, Message: fmt.Sprintf("token %q is not allowed for elwisp %q", event.Origin.Name, event.Request.Elwisp.Name)}
 }
 
-func (s *Service) authorizeInternalTools(ctx context.Context, event Event) error {
+func (s *Service) authorizeInternalTools(ctx context.Context, event Event) (operationresult.Result[struct{}], error) {
 	allowed := s.allowedInternalTools(event.Request.Elwisp.Name)
 	ctx = contextinfo.WithActor(ctx, elnisActor(event))
 	selections, err := s.toolPreloader.BackgroundSelections(ctx, event.Request.ToolListNames)
 	if err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
 	for _, selection := range selections {
 		for _, name := range selection.Names {
 			if !allowed[name] {
-				return fmt.Errorf("tool %q is not allowed for elwisp %q", name, event.Request.Elwisp.Name)
+				return operationresult.Result[struct{}]{Status: operationresult.Rejected, Message: fmt.Sprintf("tool %q is not allowed for elwisp %q", name, event.Request.Elwisp.Name)}, nil
 			}
 		}
 	}
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
 func (s *Service) allowedInternalTools(elwispName string) map[string]bool {
@@ -74,7 +75,7 @@ func (s *Service) allowedInternalTools(elwispName string) map[string]bool {
 	return setFromStrings(allowedTools)
 }
 
-func (s *Service) authorizeExternalTools(event Event) error {
+func (s *Service) authorizeExternalTools(event Event) operationresult.Result[struct{}] {
 	disabled := map[string]bool{}
 	if policy, ok := s.cfg.Elwisps[event.Request.Elwisp.Name]; ok {
 		disabled = setFromStrings(policy.DisabledExternalTools)
@@ -82,10 +83,10 @@ func (s *Service) authorizeExternalTools(event Event) error {
 	for _, declared := range event.Request.Tools {
 		name := strings.TrimSpace(declared.Name)
 		if disabled[name] {
-			return fmt.Errorf("external tool %q is disabled for elwisp %q", name, event.Request.Elwisp.Name)
+			return operationresult.Result[struct{}]{Status: operationresult.Rejected, Message: fmt.Sprintf("external tool %q is disabled for elwisp %q", name, event.Request.Elwisp.Name)}
 		}
 	}
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}
 }
 
 var elwispToolNameReplacer = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)

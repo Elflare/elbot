@@ -4,6 +4,7 @@ package elnis
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"encoding/base64"
 	"fmt"
 	"log/slog"
@@ -22,9 +23,9 @@ import (
 // Media 是事件输入和报告附件需要的归档与引用能力。
 type Media interface {
 	background.ReportMedia
-	Info(context.Context, string) (media.MediaInfo, error)
-	ImportURL(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
-	ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (media.MediaInfo, error)
+	Info(context.Context, string) (operationresult.Result[media.MediaInfo], error)
+	ImportURL(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
 	AddEventReference(ctx context.Context, mediaID, eventID, purpose string) error
 }
 
@@ -84,7 +85,7 @@ func validateMediaSegment(seg Segment, maxBytes int64) (delivery.Output, error) 
 	return out, nil
 }
 
-func (s *Service) materializeSegments(ctx context.Context, segments []delivery.Output, eventID string) (_ []llm.MessageSegment, err error) {
+func (s *Service) materializeSegments(ctx context.Context, segments []delivery.Output, eventID string) (_ operationresult.Result[[]llm.MessageSegment], err error) {
 	step, level := "import", slog.LevelWarn
 	defer func() {
 		if err == nil {
@@ -105,7 +106,7 @@ func (s *Service) materializeSegments(ctx context.Context, segments []delivery.O
 			continue
 		}
 		input := media.Input{Name: seg.Name, MIMEType: seg.Source.MIMEType}
-		var info media.MediaInfo
+		var info operationresult.Result[media.MediaInfo]
 		step, level = "import", slog.LevelWarn
 		switch {
 		case seg.Source.MediaID != "":
@@ -116,15 +117,18 @@ func (s *Service) materializeSegments(ctx context.Context, segments []delivery.O
 			info, err = s.media.ImportBytes(ctx, seg.Source.Data, input, limits)
 		}
 		if err != nil {
-			return nil, fmt.Errorf("segment %d: %w", i, err)
+			return operationresult.Result[[]llm.MessageSegment]{}, fmt.Errorf("segment %d: %w", i, err)
+		}
+		if info.Status != operationresult.Success {
+			return operationresult.Result[[]llm.MessageSegment]{Status: info.Status, Message: info.Message}, nil
 		}
 		step, level = "save_reference", slog.LevelError
-		if err := s.media.AddEventReference(ctx, info.ID, eventID, "input"); err != nil {
-			return nil, err
+		if err := s.media.AddEventReference(ctx, info.Data.ID, eventID, "input"); err != nil {
+			return operationresult.Result[[]llm.MessageSegment]{}, err
 		}
-		out = append(out, llm.MessageSegment{Type: llm.MessageSegmentType(seg.Kind), Text: seg.Text, MediaID: info.ID, Name: info.Name, MIMEType: info.MIMEType})
+		out = append(out, llm.MessageSegment{Type: llm.MessageSegmentType(seg.Kind), Text: seg.Text, MediaID: info.Data.ID, Name: info.Data.Name, MIMEType: info.Data.MIMEType})
 	}
-	return out, nil
+	return operationresult.Result[[]llm.MessageSegment]{Status: operationresult.Success, Data: out}, nil
 }
 
 func directText(req Request) string {
@@ -136,26 +140,29 @@ func directText(req Request) string {
 	return strings.Join(parts, "\n")
 }
 
-func (s *Service) directMediaOutputs(ctx context.Context, event Event, eventID string) ([]delivery.Output, error) {
+func (s *Service) directMediaOutputs(ctx context.Context, event Event, eventID string) (operationresult.Result[[]delivery.Output], error) {
 	segments, err := s.materializeSegments(ctx, event.Segments, eventID)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[[]delivery.Output]{}, err
 	}
-	if len(segments) == 0 {
-		return []delivery.Output{delivery.Text(directText(event.Request))}, nil
+	if segments.Status != operationresult.Success {
+		return operationresult.Result[[]delivery.Output]{Status: segments.Status, Message: segments.Message}, nil
 	}
-	outputs := make([]delivery.Output, 0, len(segments))
-	for _, seg := range segments {
+	if len(segments.Data) == 0 {
+		return operationresult.Result[[]delivery.Output]{Status: operationresult.Success, Data: []delivery.Output{delivery.Text(directText(event.Request))}}, nil
+	}
+	outputs := make([]delivery.Output, 0, len(segments.Data))
+	for _, seg := range segments.Data {
 		if seg.Type == llm.SegmentText {
 			outputs = append(outputs, delivery.Text(seg.Text))
 			continue
 		}
 		outputs = append(outputs, delivery.Output{Kind: delivery.Kind(seg.Type), Name: seg.Name, Source: delivery.Source{MediaID: seg.MediaID, MIMEType: seg.MIMEType}})
 	}
-	return outputs, nil
+	return operationresult.Result[[]delivery.Output]{Status: operationresult.Success, Data: outputs}, nil
 }
 
-func (s *Service) importReportSegments(ctx context.Context, segments []delivery.Output, eventID string, dir string) (_ []delivery.Output, err error) {
+func (s *Service) importReportSegments(ctx context.Context, segments []delivery.Output, eventID string, dir string) (_ operationresult.Result[[]delivery.Output], err error) {
 	step, level := "import", slog.LevelWarn
 	defer func() {
 		if err == nil {
@@ -173,24 +180,35 @@ func (s *Service) importReportSegments(ctx context.Context, segments []delivery.
 	for i, seg := range out {
 		step, level = "import", slog.LevelWarn
 		if seg.Source.Path != "" {
-			out[i], err = background.BuildReportSegmentOutput(ctx, seg, workspace.PathScope{Dir: dir, Restricted: true}, s.media, limits)
+			prepared, prepareErr := background.BuildReportSegmentOutput(ctx, seg, workspace.PathScope{Dir: dir, Restricted: true}, s.media, limits)
+			if prepareErr != nil {
+				err = prepareErr
+				return operationresult.Result[[]delivery.Output]{}, err
+			}
+			if prepared.Status != operationresult.Success {
+				return operationresult.Result[[]delivery.Output]{Status: prepared.Status, Message: prepared.Message}, nil
+			}
+			out[i] = prepared.Data
 		} else {
-			var info media.MediaInfo
+			var info operationresult.Result[media.MediaInfo]
 			if seg.Source.MediaID != "" {
 				info, err = s.media.Info(ctx, seg.Source.MediaID)
 			} else {
 				info, err = s.media.ImportURL(ctx, seg.Source.URL, media.Input{Name: seg.Name, MIMEType: seg.Source.MIMEType}, limits)
 			}
-			out[i].Source = delivery.Source{MediaID: info.ID, MIMEType: info.MIMEType}
-			out[i].Name = info.Name
-		}
-		if err != nil {
-			return nil, err
+			if err != nil {
+				return operationresult.Result[[]delivery.Output]{}, err
+			}
+			if info.Status != operationresult.Success {
+				return operationresult.Result[[]delivery.Output]{Status: info.Status, Message: info.Message}, nil
+			}
+			out[i].Source = delivery.Source{MediaID: info.Data.ID, MIMEType: info.Data.MIMEType}
+			out[i].Name = info.Data.Name
 		}
 		step, level = "save_reference", slog.LevelError
 		if err := s.media.AddEventReference(ctx, out[i].Source.MediaID, eventID, "report"); err != nil {
-			return nil, err
+			return operationresult.Result[[]delivery.Output]{}, err
 		}
 	}
-	return out, nil
+	return operationresult.Result[[]delivery.Output]{Status: operationresult.Success, Data: out}, nil
 }

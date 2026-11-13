@@ -19,10 +19,27 @@ import (
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/testutil"
 )
+
+type receiptResult = operationresult.Result[delivery.Receipt]
+type cronRunResult = operationresult.Result[background.RunResult]
+type jobResult = operationresult.Result[struct{}]
+
+func sentReceipt(receipt delivery.Receipt) receiptResult {
+	return receiptResult{Status: operationresult.Success, Data: receipt}
+}
+
+func successfulRun(data background.RunResult) cronRunResult {
+	return cronRunResult{Status: operationresult.Success, Data: data}
+}
+
+func successfulJob(ctx context.Context) (context.Context, jobResult, error) {
+	return ctx, jobResult{Status: operationresult.Success}, nil
+}
 
 func TestParseLLMResultAcceptsCodeFenceAndExtraText(t *testing.T) {
 	result, err := background.ParseJSONResult("前缀```json\n{\"completed\":true,\"need_report\":true,\"report\":\"ok\"}\n```后缀")
@@ -41,9 +58,9 @@ func TestPlatformConnectedDeliversMissedDirectCronPerPlatform(t *testing.T) {
 	svc := newTestCronService(t, Options{
 		Store:            store,
 		EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}},
-		SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+		SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (receiptResult, error) {
 			sent = append(sent, target.Platform+":"+outputs[0].Text)
-			return delivery.Receipt{}, nil
+			return sentReceipt(delivery.Receipt{}), nil
 		},
 	})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
@@ -85,9 +102,9 @@ func TestPlatformConnectedGeneratesLLMReportForFirstConnectedTarget(t *testing.T
 		Store:            store,
 		Runner:           runner,
 		EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}},
-		SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+		SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (receiptResult, error) {
 			sent = append(sent, target.Platform+":"+outputs[0].Text)
-			return delivery.Receipt{}, nil
+			return sentReceipt(delivery.Receipt{}), nil
 		},
 	})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
@@ -154,16 +171,16 @@ func TestRunLLMMapsReportNoticeToBackgroundMessage(t *testing.T) {
 		Store:            store,
 		Runner:           runner,
 		EnabledPlatforms: []PlatformTarget{{Name: "qq-onebot", SuperadminIDs: []string{"1001"}}},
-		SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+		SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (receiptResult, error) {
 			if target.Platform == "qq-onebot" && target.ChatID == "1001" {
-				return delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}, SentMessages: []delivery.SentMessage{{Platform: "qq-onebot", ChatType: "private", ChatID: "1001", PlatformMessageID: "notice-1"}}}, nil
+				return sentReceipt(delivery.Receipt{PlatformMessageIDs: []string{"notice-1"}, SentMessages: []delivery.SentMessage{{Platform: "qq-onebot", ChatType: "private", ChatID: "1001", PlatformMessageID: "notice-1"}}}), nil
 			}
-			return delivery.Receipt{}, nil
+			return sentReceipt(delivery.Receipt{}), nil
 		},
 	})
 	job := upsertTestCronJob(t, store, Metadata{Kind: metadataKind, Version: 1, Title: "总结", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
 	meta := mustDecodeTestMetadata(t, job.Metadata)
-	if _, err := svc.runTask(ctx, *job, meta); err != nil {
+	if _, result, err := svc.runTask(ctx, *job, meta); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("runTask: %v", err)
 	}
 	if len(store.mappings) != 1 || store.mappings[0] != (background.ReportMessageMap{Platform: "qq-onebot", ChatType: "private", ChatID: "1001", PlatformMessageID: "notice-1", SessionID: "cron-session", MessageID: "cron-message"}) {
@@ -173,12 +190,12 @@ func TestRunLLMMapsReportNoticeToBackgroundMessage(t *testing.T) {
 
 func TestCopyCronSessionUsesTaskSourceAndPreservesMetadata(t *testing.T) {
 	var copies []agent.BackgroundCopyRequest
-	svc := newTestCronService(t, Options{CopyBackground: func(_ context.Context, req agent.BackgroundCopyRequest) (string, error) {
+	svc := newTestCronService(t, Options{CopyBackground: func(_ context.Context, req agent.BackgroundCopyRequest) (operationresult.Result[string], error) {
 		copies = append(copies, req)
-		return "copy", nil
+		return operationresult.Result[string]{Status: operationresult.Success, Data: "copy"}, nil
 	}, EnabledPlatforms: []PlatformTarget{{Name: "qq-onebot", SuperadminIDs: []string{"1"}}, {Name: "telegram", SuperadminIDs: []string{"2"}}, {Name: "cli"}}})
 	meta := Metadata{Title: "cron", Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}}
-	if err := svc.copySessionToBroadcastTargets(context.Background(), "source", meta, "user.cron.test"); err != nil {
+	if result, err := svc.copySessionToBroadcastTargets(context.Background(), "source", meta, "user.cron.test"); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	if len(copies) != 2 {
@@ -205,16 +222,16 @@ func TestRunLLMSendsReportSegments(t *testing.T) {
 	}
 	runner := &fakeCronRunner{text: `{"completed":true,"need_report":true,"report":"见图","report_segments":[{"type":"image","url":"chart.png"}]}`}
 	sent := []delivery.Kind{}
-	svc := newTestCronService(t, Options{Store: repo, Runner: runner, SandboxRoot: root, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	svc := newTestCronService(t, Options{Store: repo, Runner: runner, SandboxRoot: root, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (receiptResult, error) {
 		sent = append(sent, outputs[0].Kind)
 		if outputs[0].Kind == delivery.KindImage && (outputs[0].Source.MediaID != "media:report" || outputs[0].Source.Path != "") {
 			t.Fatalf("image source = %#v", outputs[0].Source)
 		}
-		return delivery.Receipt{}, nil
+		return sentReceipt(delivery.Receipt{}), nil
 	}})
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
 	meta := mustDecodeTestMetadata(t, job.Metadata)
-	if _, err := svc.runTask(context.Background(), *job, meta); err != nil {
+	if _, result, err := svc.runTask(context.Background(), *job, meta); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("runTask: %v", err)
 	}
 	if len(sent) != 2 || sent[0] != delivery.KindText || sent[1] != delivery.KindImage {
@@ -229,9 +246,9 @@ func TestRunLLMSendsReportSegments(t *testing.T) {
 func TestMissedOnceFallsBackToTextWhenSandboxAttachmentIsMissing(t *testing.T) {
 	repo := newFakeCronRepo()
 	var sent []delivery.Output
-	svc := newTestCronService(t, Options{Store: repo, SandboxRoot: t.TempDir(), SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	svc := newTestCronService(t, Options{Store: repo, SandboxRoot: t.TempDir(), SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (receiptResult, error) {
 		sent = append(sent, outputs[0])
-		return delivery.Receipt{}, nil
+		return sentReceipt(delivery.Receipt{}), nil
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 2, Title: "日报", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
@@ -255,15 +272,15 @@ func TestMissedOnceFallsBackToTextWhenSandboxAttachmentIsMissing(t *testing.T) {
 func TestMissedOnceFallsBackToURLTextAfterRemoteMediaSendFails(t *testing.T) {
 	repo := newFakeCronRepo()
 	var sent []delivery.Output
-	svc := newTestCronService(t, Options{Store: repo, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	svc := newTestCronService(t, Options{Store: repo, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (receiptResult, error) {
 		sent = append(sent, outputs[0])
 		if outputs[0].Kind == delivery.KindImage {
 			{
 				err := errors.New("media rejected")
-				return delivery.Receipt{}, err
+				return receiptResult{}, err
 			}
 		}
-		return delivery.Receipt{}, nil
+		return sentReceipt(delivery.Receipt{}), nil
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 2, Title: "日报", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
@@ -286,26 +303,26 @@ func TestMissedOnceReconnectRetriesOnlyPendingFallbackText(t *testing.T) {
 	mediaSends := 0
 	fallbackSends := 0
 	const fallback = "url https://example.com/chart.png 发送失败"
-	svc := newTestCronService(t, Options{Store: repo, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	svc := newTestCronService(t, Options{Store: repo, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (receiptResult, error) {
 		switch {
 		case outputs[0].Kind == delivery.KindImage:
 			mediaSends++
 			{
 				err := errors.New("media rejected")
-				return delivery.Receipt{}, err
+				return receiptResult{}, err
 			}
 		case outputs[0].Text == fallback:
 			fallbackSends++
 			if fallbackSends == 1 {
 				{
 					err := errors.New("fallback rejected")
-					return delivery.Receipt{}, err
+					return receiptResult{}, err
 				}
 			}
 		case outputs[0].Text == "日报补发：\n\n正文":
 			reportSends++
 		}
-		return delivery.Receipt{}, nil
+		return sentReceipt(delivery.Receipt{}), nil
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 2, Title: "日报", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
@@ -326,8 +343,8 @@ func TestMissedOnceReconnectRetriesOnlyPendingFallbackText(t *testing.T) {
 func TestMissedOnceReusesReportWhenTaskCompletedIsFalse(t *testing.T) {
 	repo := newFakeCronRepo()
 	runner := &fakeCronRunner{text: `{"completed":false,"need_report":true,"report":"任务被阻塞"}`}
-	svc := newTestCronService(t, Options{Store: repo, Runner: runner, EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}}, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-		return delivery.Receipt{}, nil
+	svc := newTestCronService(t, Options{Store: repo, Runner: runner, EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}}, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (receiptResult, error) {
+		return sentReceipt(delivery.Receipt{}), nil
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 2, Title: "阻塞任务", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}})
@@ -350,8 +367,8 @@ func TestConcurrentPlatformConnectionsGenerateOnce(t *testing.T) {
 	ctx := context.Background()
 	store := newFakeCronRepo()
 	runner := &fakeCronRunner{text: `{"completed":true,"need_report":true,"report":"报告"}`}
-	svc := newTestCronService(t, Options{Store: store, Runner: runner, EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}}, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-		return delivery.Receipt{}, nil
+	svc := newTestCronService(t, Options{Store: store, Runner: runner, EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}}, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (receiptResult, error) {
+		return sentReceipt(delivery.Receipt{}), nil
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 	meta := Metadata{Kind: metadataKind, Version: 2, Title: "并发", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{AllEnabledPlatforms: true, SourcePlatform: "cli"}}
@@ -384,12 +401,12 @@ func TestDisableDuringMissedDeliveryDoesNotReenableJob(t *testing.T) {
 	store := newFakeCronRepo()
 	started := make(chan struct{})
 	release := make(chan struct{})
-	svc := newTestCronService(t, Options{Store: store, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	svc := newTestCronService(t, Options{Store: store, SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (receiptResult, error) {
 		if outputs[0].Text == "提醒补发：\n\n正文" {
 			close(started)
 			<-release
 		}
-		return delivery.Receipt{}, nil
+		return sentReceipt(delivery.Receipt{}), nil
 	}})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 	meta := Metadata{Kind: metadataKind, Version: 2, Title: "提醒", CreatedBy: CronActor{Platform: "cli", ID: "local"}, Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "正文"}, Target: CronTarget{SourcePlatform: "cli"}}
@@ -499,18 +516,18 @@ func TestRunLLMNeedReportOnlyControlsText(t *testing.T) {
 			failure := errors.New("attachment rejected")
 			fail := true
 			var sent []delivery.Output
-			svc := newTestCronService(t, Options{Store: repo, Runner: runner, SendTarget: func(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+			svc := newTestCronService(t, Options{Store: repo, Runner: runner, SendTarget: func(_ context.Context, _ delivery.Target, outputs []delivery.Output) (receiptResult, error) {
 				if outputs[0].Kind == delivery.KindImage && fail {
-					return delivery.Receipt{}, failure
+					return receiptResult{}, failure
 				}
 				sent = append(sent, outputs...)
-				return delivery.Receipt{}, nil
+				return sentReceipt(delivery.Receipt{}), nil
 			}})
 			svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
 			job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
-			_, err := svc.runTask(t.Context(), *job, mustDecodeTestMetadata(t, job.Metadata))
-			if tc.attachment && !errors.Is(err, failure) || !tc.attachment && err != nil {
-				t.Fatalf("runTask: %v", err)
+			_, result, err := svc.runTask(t.Context(), *job, mustDecodeTestMetadata(t, job.Metadata))
+			if tc.attachment && !errors.Is(err, failure) || !tc.attachment && (err != nil || result.Status != operationresult.Success) {
+				t.Fatalf("runTask: result=%+v err=%v", result, err)
 			}
 			state := mustDecodeTestDelivery(t, repo.jobs[job.Name].DeliveryState)
 			if state.Report != "保存正文" || state.NeedReport != tc.needReport || (len(state.ReportSegments) == 1) != tc.attachment {
@@ -578,15 +595,15 @@ func TestRunLLMSendsAdminNoticeWhenRetryStillInvalid(t *testing.T) {
 	svc := newTestCronService(t, Options{
 		Store:  repo,
 		Runner: runner,
-		SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+		SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (receiptResult, error) {
 			sent = append(sent, target.Platform+":"+outputs[0].Text)
-			return delivery.Receipt{}, nil
+			return sentReceipt(delivery.Receipt{}), nil
 		},
 	})
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "LLM", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
 
 	meta := mustDecodeTestMetadata(t, job.Metadata)
-	if _, err := svc.runTask(context.Background(), *job, meta); err != nil {
+	if _, result, err := svc.runTask(context.Background(), *job, meta); err != nil || result.Status != operationresult.Failed {
 		t.Fatalf("handled format failure escaped: %v", err)
 	}
 	if runner.calls != 2 {
@@ -603,9 +620,9 @@ func TestPlatformConnectedSkipsAlreadyDeliveredPlatform(t *testing.T) {
 	var sent []string
 	svc := newTestCronService(t, Options{
 		Store: store,
-		SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+		SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (receiptResult, error) {
 			sent = append(sent, target.Platform+":"+outputs[0].Text)
-			return delivery.Receipt{}, nil
+			return sentReceipt(delivery.Receipt{}), nil
 		},
 	})
 	svc.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
@@ -640,8 +657,8 @@ func TestCronSendAuditIncludesPlatform(t *testing.T) {
 	defer connection.Disconnect()
 	svc := newTestCronService(t, Options{
 		Store: newFakeCronRepo(),
-		SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-			return delivery.Receipt{}, nil
+		SendTarget: func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (receiptResult, error) {
+			return sentReceipt(delivery.Receipt{}), nil
 		},
 	})
 	if _, err := svc.sendDeliveryOutput(context.Background(), "user.cron.audit", delivery.Target{Platform: "cli", Superadmins: true}, delivery.Text("hello"), ""); err != nil {
@@ -668,16 +685,18 @@ func newTestCronService(t *testing.T, opts Options) *Service {
 		opts.Models = &taskModels{current: config.ModelSelection{Provider: "provider", Model: "model"}}
 	}
 	if opts.Media == nil {
-		opts.Media = cronReportMediaFunc(func(_ context.Context, reader io.Reader, _ int64, input media.Input, _ media.ImportLimits) (media.MediaInfo, error) {
+		opts.Media = cronReportMediaFunc(func(_ context.Context, reader io.Reader, _ int64, input media.Input, _ media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
 			_, err := io.Copy(io.Discard, reader)
-			return media.MediaInfo{ID: "media:report", Name: input.Name, MIMEType: input.MIMEType}, err
+			return operationresult.Result[media.MediaInfo]{Status: operationresult.Success, Data: media.MediaInfo{ID: "media:report", Name: input.Name, MIMEType: input.MIMEType}}, err
 		})
 	}
 	if opts.SessionTakenOver == nil {
 		opts.SessionTakenOver = func(context.Context, string) (bool, error) { return false, nil }
 	}
 	if opts.CopyBackground == nil {
-		opts.CopyBackground = func(context.Context, agent.BackgroundCopyRequest) (string, error) { return "copy", nil }
+		opts.CopyBackground = func(context.Context, agent.BackgroundCopyRequest) (operationresult.Result[string], error) {
+			return operationresult.Result[string]{Status: operationresult.Success, Data: "copy"}, nil
+		}
 	}
 	if opts.SandboxRoot == "" {
 		opts.SandboxRoot = t.TempDir()
@@ -692,9 +711,9 @@ func newTestCronService(t *testing.T, opts Options) *Service {
 	return s
 }
 
-type cronReportMediaFunc func(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (media.MediaInfo, error)
+type cronReportMediaFunc func(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
 
-func (f cronReportMediaFunc) ImportReader(ctx context.Context, reader io.Reader, size int64, input media.Input, limits media.ImportLimits) (media.MediaInfo, error) {
+func (f cronReportMediaFunc) ImportReader(ctx context.Context, reader io.Reader, size int64, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
 	return f(ctx, reader, size, input, limits)
 }
 
@@ -707,7 +726,7 @@ type fakeCronRunner struct {
 	requests   []background.RunRequest
 }
 
-func (r *fakeCronRunner) RunBackground(ctx context.Context, req background.RunRequest) (context.Context, background.RunResult, error) {
+func (r *fakeCronRunner) RunBackground(ctx context.Context, req background.RunRequest) (context.Context, cronRunResult, error) {
 	r.requests = append(r.requests, req)
 	text := r.text
 	if r.calls < len(r.texts) {
@@ -719,9 +738,9 @@ func (r *fakeCronRunner) RunBackground(ctx context.Context, req background.RunRe
 	}
 	r.calls++
 	if r.calls <= len(r.errors) && r.errors[r.calls-1] != nil {
-		return ctx, background.RunResult{SessionID: sessionID}, r.errors[r.calls-1]
+		return ctx, cronRunResult{}, r.errors[r.calls-1]
 	}
-	return ctx, background.RunResult{SessionID: sessionID, MessageID: "cron-message", Text: text}, nil
+	return ctx, successfulRun(background.RunResult{SessionID: sessionID, MessageID: "cron-message", Text: text}), nil
 }
 
 func testElyphTask(name string) string {
@@ -801,7 +820,7 @@ func mustParseTestTime(t *testing.T, value string) time.Time {
 	return parsed
 }
 
-func deliverTestReport(t *testing.T, s *Service, platform, sessionID, messageID string) error {
+func deliverTestReport(t *testing.T, s *Service, platform, sessionID, messageID string) (operationresult.Result[struct{}], error) {
 	t.Helper()
 	meta := Metadata{Kind: metadataKind, Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerDirect, Message: "report"}, Target: CronTarget{SourcePlatform: platform}}
 	job := upsertTestCronJob(t, s.store.(*fakeCronRepo), meta)

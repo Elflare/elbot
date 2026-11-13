@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"errors"
 	"fmt"
 	"io"
@@ -22,19 +23,19 @@ import (
 )
 
 // ImportBytes 复用统一导入链。
-func (m *Manager) ImportBytes(ctx context.Context, data []byte, input share.Input, limits share.ImportLimits) (share.MediaInfo, error) {
+func (m *Manager) ImportBytes(ctx context.Context, data []byte, input share.Input, limits share.ImportLimits) (operationresult.Result[share.MediaInfo], error) {
 	return m.ImportReader(ctx, bytes.NewReader(data), int64(len(data)), input, limits)
 }
 
 // ImportURL 下载内容，来源中的凭据不会进入持久化记录或下载错误。
-func (m *Manager) ImportURL(ctx context.Context, rawURL string, input share.Input, limits share.ImportLimits) (share.MediaInfo, error) {
+func (m *Manager) ImportURL(ctx context.Context, rawURL string, input share.Input, limits share.ImportLimits) (operationresult.Result[share.MediaInfo], error) {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return share.MediaInfo{}, fmt.Errorf("invalid media URL")
+		return operationresult.Result[share.MediaInfo]{Status: operationresult.InvalidArguments, Message: "invalid media URL"}, nil
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return share.MediaInfo{}, fmt.Errorf("create media request: %w", err)
+		return operationresult.Result[share.MediaInfo]{}, fmt.Errorf("create media request: %w", err)
 	}
 	if limits.DownloadTimeout <= 0 {
 		limits.DownloadTimeout = m.options.DownloadTimeout
@@ -45,11 +46,11 @@ func (m *Manager) ImportURL(ctx context.Context, rawURL string, input share.Inpu
 		if errors.As(err, &downloadError) {
 			err = downloadError.Err
 		}
-		return share.MediaInfo{}, fmt.Errorf("download media: %w", err)
+		return operationresult.Result[share.MediaInfo]{}, fmt.Errorf("download media: %w", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return share.MediaInfo{}, fmt.Errorf("download media: unexpected HTTP status %d", response.StatusCode)
+		return operationresult.Result[share.MediaInfo]{Status: operationresult.Failed, Message: fmt.Sprintf("download media: unexpected HTTP status %d", response.StatusCode)}, nil
 	}
 	if input.Source.URL == "" {
 		input.Source.URL = u.String()
@@ -64,18 +65,21 @@ func (m *Manager) ImportURL(ctx context.Context, rawURL string, input share.Inpu
 }
 
 // ImportFile 打开普通文件并归档，调用方负责其业务路径范围。
-func (m *Manager) ImportFile(ctx context.Context, path string, input share.Input, limits share.ImportLimits) (share.MediaInfo, error) {
+func (m *Manager) ImportFile(ctx context.Context, path string, input share.Input, limits share.ImportLimits) (operationresult.Result[share.MediaInfo], error) {
 	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return operationresult.Result[share.MediaInfo]{Status: operationresult.NotFound, Message: fmt.Sprintf("media source %q not found", path)}, nil
+	}
 	if err != nil {
-		return share.MediaInfo{}, fmt.Errorf("open media source: %w", err)
+		return operationresult.Result[share.MediaInfo]{}, fmt.Errorf("open media source: %w", err)
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
-		return share.MediaInfo{}, fmt.Errorf("stat media source: %w", err)
+		return operationresult.Result[share.MediaInfo]{}, fmt.Errorf("stat media source: %w", err)
 	}
 	if !info.Mode().IsRegular() {
-		return share.MediaInfo{}, fmt.Errorf("media source is not a regular file")
+		return operationresult.Result[share.MediaInfo]{Status: operationresult.InvalidTarget, Message: "media source is not a regular file"}, nil
 	}
 	if input.Name == "" {
 		input.Name = filepath.Base(path)
@@ -85,24 +89,24 @@ func (m *Manager) ImportFile(ctx context.Context, path string, input share.Input
 
 // ImportReader 在限制内读取、识别类型、按需压缩、生成内容 ID 并归档。
 // 输入由调用方关闭；同步读取在开始及进入对象提交阶段检查取消。
-func (m *Manager) ImportReader(ctx context.Context, input io.Reader, size int64, spec share.Input, limits share.ImportLimits) (share.MediaInfo, error) {
+func (m *Manager) ImportReader(ctx context.Context, input io.Reader, size int64, spec share.Input, limits share.ImportLimits) (operationresult.Result[share.MediaInfo], error) {
 	if err := ctx.Err(); err != nil {
-		return share.MediaInfo{}, err
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
 	maxBytes := m.options.MaxImportBytes
 	if limits.MaxImportBytes > 0 && limits.MaxImportBytes < maxBytes {
 		maxBytes = limits.MaxImportBytes
 	}
 	if size > maxBytes {
-		return share.MediaInfo{}, fmt.Errorf("media exceeds import limit of %d bytes", maxBytes)
+		return operationresult.Result[share.MediaInfo]{Status: operationresult.Rejected, Message: fmt.Sprintf("media exceeds import limit of %d bytes", maxBytes)}, nil
 	}
 	data, err := io.ReadAll(io.LimitReader(input, maxBytes+1))
 	if err != nil {
-		return share.MediaInfo{}, fmt.Errorf("read media: %w", err)
+		return operationresult.Result[share.MediaInfo]{}, fmt.Errorf("read media: %w", err)
 	}
 	size = int64(len(data))
 	if size > maxBytes {
-		return share.MediaInfo{}, fmt.Errorf("media exceeds import limit of %d bytes", maxBytes)
+		return operationresult.Result[share.MediaInfo]{Status: operationresult.Rejected, Message: fmt.Sprintf("media exceeds import limit of %d bytes", maxBytes)}, nil
 	}
 	spec = sanitizeInput(spec)
 	detected := http.DetectContentType(data)
@@ -117,16 +121,20 @@ func (m *Manager) ImportReader(ctx context.Context, input io.Reader, size int64,
 	}
 	spec.MIMEType, _, err = mime.ParseMediaType(spec.MIMEType)
 	if err != nil {
-		return share.MediaInfo{}, fmt.Errorf("invalid media MIME type: %w", err)
+		return operationresult.Result[share.MediaInfo]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("invalid media MIME type: %v", err)}, nil
 	}
 	if strings.HasPrefix(spec.MIMEType, "image/") && shouldCompressImage(data, m.options.Media) {
-		data, err = compressImage(data, m.options.Media.LLMImageCompressionThresholdBytes, m.options.Media.LLMImageMaxLength)
+		compressed, err := compressImage(data, m.options.Media.LLMImageCompressionThresholdBytes, m.options.Media.LLMImageMaxLength)
 		if err != nil {
-			return share.MediaInfo{}, fmt.Errorf("compress imported image: %w", err)
+			return operationresult.Result[share.MediaInfo]{}, fmt.Errorf("compress imported image: %w", err)
 		}
+		if compressed.Status != operationresult.Success {
+			return operationresult.Result[share.MediaInfo]{Status: compressed.Status, Message: compressed.Message}, nil
+		}
+		data = compressed.Data
 		size = int64(len(data))
 		if size > maxBytes {
-			return share.MediaInfo{}, fmt.Errorf("compressed media exceeds import limit of %d bytes", maxBytes)
+			return operationresult.Result[share.MediaInfo]{Status: operationresult.Rejected, Message: fmt.Sprintf("compressed media exceeds import limit of %d bytes", maxBytes)}, nil
 		}
 		spec.Name = compressedName(spec.Name)
 		spec.MIMEType = "image/jpeg"
@@ -135,27 +143,27 @@ func (m *Manager) ImportReader(ctx context.Context, input io.Reader, size int64,
 	id := fmt.Sprintf("%s%x", share.IDPrefix, sum)
 	unlock, err := m.objects.acquire(ctx, id)
 	if err != nil {
-		return share.MediaInfo{}, err
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
 	defer unlock()
 	if existing, err := m.media.Get(ctx, id); err == nil {
 		if err := m.media.Touch(ctx, id, m.options.Now()); err != nil {
-			return share.MediaInfo{}, err
+			return operationresult.Result[share.MediaInfo]{}, err
 		}
-		return mediaInfo(existing), nil
+		return operationresult.Result[share.MediaInfo]{Status: operationresult.Success, Data: mediaInfo(existing)}, nil
 	} else if !errors.Is(err, storage.ErrNotFound) {
-		return share.MediaInfo{}, err
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
 	now := m.options.Now()
 	item := &storage.Media{ID: id, Name: spec.Name, MIMEType: spec.MIMEType, Size: size, Backend: m.options.Backend,
 		SourcePlatform: spec.Source.Platform, SourceURL: spec.Source.URL, SourceFileID: spec.Source.FileID, CreatedAt: now, LastAccessedAt: now}
 	backend, err := m.backendForStoredMedia(item)
 	if err != nil {
-		return share.MediaInfo{}, err
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
 	location, err := backend.Put(ctx, id, bytes.NewReader(data), size, item.MIMEType)
 	if err != nil {
-		return share.MediaInfo{}, err
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
 	if item.Backend == "s3" {
 		item.ObjectKey = location
@@ -168,9 +176,9 @@ func (m *Manager) ImportReader(ctx context.Context, input io.Reader, size int64,
 		if cleanupErr := backend.Remove(cleanupCtx, location); cleanupErr != nil {
 			events.Log(cleanupCtx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_cleanup_failed", Module: "media", Content: cleanupErr.Error(), Identity: events.LogIdentityFromContext(cleanupCtx), ResultStatus: events.LogStatus(cleanupErr)})
 		}
-		return share.MediaInfo{}, err
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
-	return mediaInfo(item), nil
+	return operationresult.Result[share.MediaInfo]{Status: operationresult.Success, Data: mediaInfo(item)}, nil
 }
 
 // sanitizeInput 是展示名称与来源事实的唯一清理入口。

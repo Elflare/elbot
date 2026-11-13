@@ -2,6 +2,7 @@ package elnis
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,7 +16,7 @@ import (
 	"elbot/internal/tool"
 )
 
-type SenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error)
+type SenderFunc func(ctx context.Context, target delivery.Target, outputs []delivery.Output) (operationresult.Result[delivery.Receipt], error)
 
 type QueuedLLMEvent struct {
 	Event   Event
@@ -94,7 +95,7 @@ func (s *Service) SetLLMEnqueuer(enqueue EnqueueLLMFunc) {
 	s.enqueueLLM = enqueue
 }
 
-func (s *Service) Handle(ctx context.Context, token string, req Request) (Response, error) {
+func (s *Service) Handle(ctx context.Context, token string, req Request) (operationresult.Result[Response], error) {
 	tokenName, ok := s.authenticate(token)
 	if !ok {
 		content, _ := json.Marshal(map[string]any{"error": "unauthorized"})
@@ -109,55 +110,61 @@ func (s *Service) Handle(ctx context.Context, token string, req Request) (Respon
 		}
 		record.Identity = globalevents.LogIdentityFromContext(ctx)
 		globalevents.Log(ctx, record)
-		return Response{Accepted: false, Status: StatusFailed, Error: "unauthorized"}, fmt.Errorf("unauthorized")
+		return operationresult.Result[Response]{Status: operationresult.Forbidden, Message: "unauthorized"}, nil
 	}
 	return s.DispatchElvena(ctx, elvena.Origin{Kind: elvena.OriginHTTPToken, Name: tokenName}, req)
 }
 
-func (s *Service) DispatchElvena(ctx context.Context, origin elvena.Origin, req Request) (response Response, err error) {
+func (s *Service) DispatchElvena(ctx context.Context, origin elvena.Origin, req Request) (result operationresult.Result[Response], err error) {
 	defer func() {
-		if err == nil {
+		if err != nil {
+			content, _ := json.Marshal(map[string]any{"origin": origin, "elwisp_name": req.Elwisp.Name, "source": req.Source, "source_id": req.ID, "mode": req.Mode, "error": err.Error()})
+			record := globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelError, EventName: "elnis_event_save_failed", Module: "elnis", Type: globalevents.ContentJSON, Content: string(content), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)}
+			if record.ResultStatus == globalevents.ResultCanceled {
+				record.Level = slog.LevelInfo
+			}
+			globalevents.Log(ctx, record)
 			return
 		}
-		content, _ := json.Marshal(map[string]any{"origin": origin, "elwisp_name": req.Elwisp.Name, "source": req.Source, "source_id": req.ID, "event_key": response.EventKey, "mode": req.Mode, "error": err.Error()})
-		record := globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelError, EventName: "elnis_event_save_failed", Module: "elnis", Type: globalevents.ContentJSON, Content: string(content), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)}
-		if !response.Accepted && response.Error != "" {
-			record.Category, record.EventName = globalevents.LogCategoryAudit, "elnis.rejected"
-			record.Level, record.ResultStatus = slog.LevelWarn, globalevents.ResultRejected
-		} else if record.ResultStatus == globalevents.ResultCanceled {
-			record.Level = slog.LevelInfo
+		if result.Status != operationresult.Success {
+			content, _ := json.Marshal(map[string]any{"origin": origin, "elwisp_name": req.Elwisp.Name, "source": req.Source, "source_id": req.ID, "mode": req.Mode, "error": result.Message})
+			record := globalevents.LogRecord{Category: globalevents.LogCategoryAudit, Level: slog.LevelWarn, EventName: "elnis.rejected", Module: "elnis", Type: globalevents.ContentJSON, Content: string(content), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.ResultRejected}
+			globalevents.Log(ctx, record)
 		}
-		globalevents.Log(ctx, record)
 	}()
 	if err := origin.Validate(); err != nil {
-		return Response{Accepted: false, Status: StatusFailed, Error: err.Error()}, err
+		return operationresult.Result[Response]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
-	event, err := s.prepareEvent(origin, req)
-	if err != nil {
-		return Response{Accepted: false, Status: StatusFailed, Error: err.Error()}, err
+	prepared := s.prepareEvent(origin, req)
+	if prepared.Status != operationresult.Success {
+		return operationresult.Result[Response]{Status: prepared.Status, Message: prepared.Message}, nil
 	}
-	return s.handlePreparedEvent(ctx, event)
+	return s.handlePreparedEvent(ctx, prepared.Data)
 }
 
-func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Response, error) {
+func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (operationresult.Result[Response], error) {
 	identity := globalevents.LogIdentityFromContext(ctx)
 
 	req := event.Request
 
-	if err := s.authorizeElwisp(event); err != nil {
-		return Response{Accepted: false, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
+	if result := s.authorizeElwisp(event); result.Status != operationresult.Success {
+		return operationresult.Result[Response]{Status: result.Status, Message: result.Message}, nil
 	}
-	if err := s.authorizeInternalTools(ctx, event); err != nil {
-		return Response{Accepted: false, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
+	result, err := s.authorizeInternalTools(ctx, event)
+	if err != nil {
+		return operationresult.Result[Response]{}, err
 	}
-	if err := s.authorizeExternalTools(event); err != nil {
-		return Response{Accepted: false, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, err
+	if result.Status != operationresult.Success {
+		return operationresult.Result[Response]{Status: result.Status, Message: result.Message}, nil
+	}
+	if result := s.authorizeExternalTools(event); result.Status != operationresult.Success {
+		return operationresult.Result[Response]{Status: result.Status, Message: result.Message}, nil
 	}
 	if existing, err := s.store.GetByKey(ctx, req.Elwisp.Name, req.Source, req.ID); err == nil {
 		s.handleDuplicate(ctx, event, existing)
-		return Response{Accepted: true, Duplicate: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusDuplicate}, nil
+		return acceptedEventResult(event, StatusDuplicate, true, ""), nil
 	} else if !errors.Is(err, ErrEventNotFound) {
-		return Response{}, err
+		return operationresult.Result[Response]{}, err
 	}
 
 	status := StatusAccepted
@@ -195,9 +202,9 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 		// 并发请求可能在预查之后创建同键事件；只在确认存在时按重复处理。
 		if existing, lookupErr := s.store.GetByKey(ctx, req.Elwisp.Name, req.Source, req.ID); lookupErr == nil {
 			s.handleDuplicate(ctx, event, existing)
-			return Response{Accepted: true, Duplicate: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusDuplicate}, nil
+			return acceptedEventResult(event, StatusDuplicate, true, ""), nil
 		}
-		return Response{}, err
+		return operationresult.Result[Response]{}, err
 	}
 
 	{
@@ -219,7 +226,7 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 	switch req.Mode {
 	case ModeRecord:
 		if err := s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusCompleted, "", ""); err != nil {
-			return Response{}, err
+			return operationresult.Result[Response]{}, err
 		}
 		{
 			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID})
@@ -235,9 +242,9 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 			record.Identity = identity
 			globalevents.Log(ctx, record)
 		}
-		return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusCompleted}, nil
+		return acceptedEventResult(event, StatusCompleted, false, ""), nil
 	case ModeDirect:
-		err := s.runDirect(ctx, event, record.ID)
+		result, err := s.runDirect(ctx, event, record.ID)
 		if err != nil {
 			logRecord := globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelWarn, EventName: "elnis_direct_failed", Module: "elnis", Content: err.Error(), Identity: identity, ResultStatus: globalevents.LogStatus(err)}
 			if logRecord.ResultStatus == globalevents.ResultCanceled {
@@ -245,10 +252,21 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 			}
 			globalevents.Log(ctx, logRecord)
 			persistenceErr := s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusFailed, "", err.Error())
-			return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, persistenceErr
+			if persistenceErr != nil {
+				return operationresult.Result[Response]{}, persistenceErr
+			}
+			return acceptedEventResult(event, StatusFailed, false, err.Error()), nil
+		}
+		if result.Status != operationresult.Success {
+			globalevents.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelWarn, EventName: "elnis_direct_failed", Module: "elnis", Content: result.Message, Identity: identity, ResultStatus: globalevents.ResultFailed})
+			persistenceErr := s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusFailed, "", result.Message)
+			if persistenceErr != nil {
+				return operationresult.Result[Response]{}, persistenceErr
+			}
+			return acceptedEventResult(event, StatusFailed, false, result.Message), nil
 		}
 		{
-			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID, "result": fmt.Sprintf("%.2048v", err)})
+			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID})
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogCategoryAudit,
 				Level:        slog.LevelInfo,
@@ -261,7 +279,7 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 			record.Identity = identity
 			globalevents.Log(ctx, record)
 		}
-		return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusCompleted}, nil
+		return acceptedEventResult(event, StatusCompleted, false, ""), nil
 	case ModeLLM:
 		{
 			content, _ := json.Marshal(map[string]any{"origin": event.Origin, "elwisp_name": event.Request.Elwisp.Name, "source": event.Request.Source, "source_id": event.Request.ID, "event_key": event.EventKey, "mode": event.Request.Mode, "tags": event.Request.Elwisp.Tags, "event_id": record.ID})
@@ -299,11 +317,18 @@ func (s *Service) handlePreparedEvent(ctx context.Context, event Event) (Respons
 				globalevents.Log(ctx, record)
 			}
 			persistenceErr := s.completeEvent(ctx, record.ID, event.ResolvedTargets, StatusFailed, "", err.Error())
-			return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusFailed, Error: err.Error()}, persistenceErr
+			if persistenceErr != nil {
+				return operationresult.Result[Response]{}, persistenceErr
+			}
+			return acceptedEventResult(event, StatusFailed, false, err.Error()), nil
 		}
 
-		return Response{Accepted: true, EventKey: event.EventKey, Mode: req.Mode, Status: StatusQueued}, nil
+		return acceptedEventResult(event, StatusQueued, false, ""), nil
 	default:
-		return Response{}, fmt.Errorf("unsupported mode %q", req.Mode)
+		return operationresult.Result[Response]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("unsupported mode %q", req.Mode)}, nil
 	}
+}
+
+func acceptedEventResult(event Event, status string, duplicate bool, message string) operationresult.Result[Response] {
+	return operationresult.Result[Response]{Status: operationresult.Success, Data: Response{Accepted: true, Duplicate: duplicate, EventKey: event.EventKey, Mode: event.Request.Mode, Status: status, Error: message}}
 }

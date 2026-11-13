@@ -12,13 +12,24 @@ import (
 	background "elbot/internal/background/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/tool"
 	"elbot/internal/workspace"
 )
 
 type backgroundAgentFunc func(context.Context, agent.BackgroundRequest) (agent.BackgroundResult, error)
 
-func (f backgroundAgentFunc) RunBackground(ctx context.Context, req agent.BackgroundRequest) (context.Context, agent.BackgroundResult, error) {
+func (f backgroundAgentFunc) RunBackground(ctx context.Context, req agent.BackgroundRequest) (context.Context, operationresult.Result[agent.BackgroundResult], error) {
+	result, err := f(ctx, req)
+	if err != nil {
+		return ctx, operationresult.Result[agent.BackgroundResult]{}, err
+	}
+	return ctx, operationresult.Result[agent.BackgroundResult]{Status: operationresult.Success, Data: result}, nil
+}
+
+type backgroundAgentResultFunc func(context.Context, agent.BackgroundRequest) (operationresult.Result[agent.BackgroundResult], error)
+
+func (f backgroundAgentResultFunc) RunBackground(ctx context.Context, req agent.BackgroundRequest) (context.Context, operationresult.Result[agent.BackgroundResult], error) {
 	result, err := f(ctx, req)
 	return ctx, result, err
 }
@@ -98,12 +109,32 @@ func TestRunnerForwardsTaskAndPreservesExecutionResult(t *testing.T) {
 				}
 				return tc.result, tc.err
 			})})
-			_, got, err := runner.RunBackground(t.Context(), req)
+			_, outcome, err := runner.RunBackground(t.Context(), req)
+			if calls != 1 || !errors.Is(err, tc.err) {
+				t.Fatalf("calls=%d result=%+v err=%v", calls, outcome, err)
+			}
+			if tc.err != nil {
+				if outcome.Status != "" {
+					t.Fatalf("failed execution retained result: %+v", outcome)
+				}
+				return
+			}
 			wantResult := background.RunResult{RunID: tc.result.RunID, SessionID: tc.result.SessionID, MessageID: tc.result.MessageID, Text: tc.result.Text, TakenOver: tc.result.TakenOver, Outcome: tc.result.Outcome}
-			if calls != 1 || !errors.Is(err, tc.err) || !reflect.DeepEqual(got, wantResult) {
-				t.Fatalf("calls=%d result=%+v err=%v", calls, got, err)
+			if outcome.Status != operationresult.Success || !reflect.DeepEqual(outcome.Data, wantResult) {
+				t.Fatalf("result=%+v want=%+v", outcome, wantResult)
 			}
 		})
+	}
+}
+
+func TestRunnerPreservesNoCurrentSessionResult(t *testing.T) {
+	want := operationresult.Result[agent.BackgroundResult]{Status: operationresult.NoCurrentSession, Message: "当前没有会话"}
+	runner := NewBackgroundRunner(BackgroundRunnerDeps{SandboxRoot: t.TempDir(), Execution: backgroundAgentResultFunc(func(context.Context, agent.BackgroundRequest) (operationresult.Result[agent.BackgroundResult], error) {
+		return want, nil
+	})})
+	_, result, err := runner.RunBackground(t.Context(), background.RunRequest{SandboxSubdir: "task"})
+	if err != nil || result.Status != want.Status || result.Message != want.Message {
+		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }
 
@@ -121,9 +152,9 @@ func TestRunnerPreservesCallerCancellationAndValues(t *testing.T) {
 		}
 		return agent.BackgroundResult{SessionID: "prepared"}, ctx.Err()
 	})})
-	_, result, err := runner.RunBackground(ctx, background.RunRequest{SandboxSubdir: "task"})
-	if !errors.Is(err, context.Canceled) || result.SessionID != "prepared" {
-		t.Fatalf("result=%+v err=%v", result, err)
+	_, outcome, err := runner.RunBackground(ctx, background.RunRequest{SandboxSubdir: "task"})
+	if !errors.Is(err, context.Canceled) || outcome.Status != "" {
+		t.Fatalf("result=%+v err=%v", outcome, err)
 	}
 }
 
@@ -139,7 +170,7 @@ func TestRunnerRejectsWorkspaceFailureBeforeAgent(t *testing.T) {
 				return agent.BackgroundResult{}, nil
 			})})
 			_, result, err := runner.RunBackground(t.Context(), background.RunRequest{SandboxSubdir: subdir})
-			if err == nil || !reflect.DeepEqual(result, background.RunResult{}) {
+			if err == nil || result.Status != "" {
 				t.Fatalf("result=%+v err=%v", result, err)
 			}
 		})

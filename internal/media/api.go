@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 	"io"
 	"sync/atomic"
@@ -24,60 +25,102 @@ type MediaCenter struct {
 }
 
 // Info 查询通用信息，不读内容、不校验图片、不增加持有。
-func (m *MediaCenter) Info(ctx context.Context, id string) (MediaInfo, error) {
+func (m *MediaCenter) Info(ctx context.Context, id string) (operationresult.Result[MediaInfo], error) {
 	info, err := m.objects.Info(ctx, id)
-	return MediaInfo(info), err
+	if err != nil {
+		return operationresult.Result[MediaInfo]{}, err
+	}
+	if info.Status != operationresult.Success {
+		return operationresult.Result[MediaInfo]{Status: info.Status, Message: info.Message}, nil
+	}
+	return operationresult.Result[MediaInfo]{Status: operationresult.Success, Data: MediaInfo(info.Data)}, nil
 }
 
 // ValidateImage 验证图片可解码且 MIME 属于图片，返回通用信息。
 // 自有持有释放失败时保留错误，并由 Cleanup 重试释放。
-func (m *MediaCenter) ValidateImage(ctx context.Context, id string) (MediaInfo, error) {
+func (m *MediaCenter) ValidateImage(ctx context.Context, id string) (operationresult.Result[MediaInfo], error) {
 	info, err := m.objects.ValidateImage(ctx, id)
-	return MediaInfo(info), err
+	if err != nil {
+		return operationresult.Result[MediaInfo]{}, err
+	}
+	if info.Status != operationresult.Success {
+		return operationresult.Result[MediaInfo]{Status: info.Status, Message: info.Message}, nil
+	}
+	return operationresult.Result[MediaInfo]{Status: operationresult.Success, Data: MediaInfo(info.Data)}, nil
 }
 
 // ImportBytes 归档字节内容并返回通用信息。
-func (m *MediaCenter) ImportBytes(ctx context.Context, data []byte, input Input, limits ImportLimits) (MediaInfo, error) {
+func (m *MediaCenter) ImportBytes(ctx context.Context, data []byte, input Input, limits ImportLimits) (operationresult.Result[MediaInfo], error) {
 	info, err := m.objects.ImportBytes(ctx, data, share.Input{Name: input.Name, MIMEType: input.MIMEType, Source: share.Source(input.Source)}, share.ImportLimits(limits))
-	return MediaInfo(info), err
+	if err != nil {
+		return operationresult.Result[MediaInfo]{}, err
+	}
+	if info.Status != operationresult.Success {
+		return operationresult.Result[MediaInfo]{Status: info.Status, Message: info.Message}, nil
+	}
+	return operationresult.Result[MediaInfo]{Status: operationresult.Success, Data: MediaInfo(info.Data)}, nil
 }
 
 // ImportURL 按配置下载、归档内容并清理持久化来源中的敏感信息。
-func (m *MediaCenter) ImportURL(ctx context.Context, rawURL string, input Input, limits ImportLimits) (MediaInfo, error) {
+func (m *MediaCenter) ImportURL(ctx context.Context, rawURL string, input Input, limits ImportLimits) (operationresult.Result[MediaInfo], error) {
 	info, err := m.objects.ImportURL(ctx, rawURL, share.Input{Name: input.Name, MIMEType: input.MIMEType, Source: share.Source(input.Source)}, share.ImportLimits(limits))
-	return MediaInfo(info), err
+	if err != nil {
+		return operationresult.Result[MediaInfo]{}, err
+	}
+	if info.Status != operationresult.Success {
+		return operationresult.Result[MediaInfo]{Status: info.Status, Message: info.Message}, nil
+	}
+	return operationresult.Result[MediaInfo]{Status: operationresult.Success, Data: MediaInfo(info.Data)}, nil
 }
 
 // ImportFile 归档调用方已按其路径边界解析的普通文件。
-func (m *MediaCenter) ImportFile(ctx context.Context, path string, input Input, limits ImportLimits) (MediaInfo, error) {
+func (m *MediaCenter) ImportFile(ctx context.Context, path string, input Input, limits ImportLimits) (operationresult.Result[MediaInfo], error) {
 	info, err := m.objects.ImportFile(ctx, path, share.Input{Name: input.Name, MIMEType: input.MIMEType, Source: share.Source(input.Source)}, share.ImportLimits(limits))
-	return MediaInfo(info), err
+	if err != nil {
+		return operationresult.Result[MediaInfo]{}, err
+	}
+	if info.Status != operationresult.Success {
+		return operationresult.Result[MediaInfo]{Status: info.Status, Message: info.Message}, nil
+	}
+	return operationresult.Result[MediaInfo]{Status: operationresult.Success, Data: MediaInfo(info.Data)}, nil
 }
 
 // ImportReader 读取受限内容并归档，size 是调用方已知的长度。
-func (m *MediaCenter) ImportReader(ctx context.Context, input io.Reader, size int64, spec Input, limits ImportLimits) (MediaInfo, error) {
+func (m *MediaCenter) ImportReader(ctx context.Context, input io.Reader, size int64, spec Input, limits ImportLimits) (operationresult.Result[MediaInfo], error) {
 	info, err := m.objects.ImportReader(ctx, input, size, share.Input{Name: spec.Name, MIMEType: spec.MIMEType, Source: share.Source(spec.Source)}, share.ImportLimits(limits))
-	return MediaInfo(info), err
+	if err != nil {
+		return operationresult.Result[MediaInfo]{}, err
+	}
+	if info.Status != operationresult.Success {
+		return operationresult.Result[MediaInfo]{Status: info.Status, Message: info.Message}, nil
+	}
+	return operationresult.Result[MediaInfo]{Status: operationresult.Success, Data: MediaInfo(info.Data)}, nil
 }
 
 // Read 读取完整内容并结束本次读取持有，保留读取和清理错误。
 // 释放失败的自有持有交给 Cleanup 重试。
-func (m *MediaCenter) Read(ctx context.Context, id string) ([]byte, MediaInfo, error) {
+func (m *MediaCenter) Read(ctx context.Context, id string) (operationresult.Result[[]byte], MediaInfo, error) {
 	data, info, err := m.objects.Read(ctx, id)
 	return data, MediaInfo(info), err
 }
 
 // Export 写入调用方指定的目标文件，并结束本次读取持有。
 // 释放失败的自有持有交给 Cleanup 重试，原调用仍返回错误。
-func (m *MediaCenter) Export(ctx context.Context, id, destination string) (MediaInfo, error) {
+func (m *MediaCenter) Export(ctx context.Context, id, destination string) (operationresult.Result[MediaInfo], error) {
 	info, err := m.objects.Export(ctx, id, destination)
-	return MediaInfo(info), err
+	if err != nil {
+		return operationresult.Result[MediaInfo]{}, err
+	}
+	if info.Status != operationresult.Success {
+		return operationresult.Result[MediaInfo]{Status: info.Status, Message: info.Message}, nil
+	}
+	return operationresult.Result[MediaInfo]{Status: operationresult.Success, Data: MediaInfo(info.Data)}, nil
 }
 
 // AcquireForLLM 准备请求副本；实际请求结束后发布对应使用 ID。
-func (m *MediaCenter) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) ([]llm.LLMMessage, UsageID, error) {
+func (m *MediaCenter) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) (operationresult.Result[[]llm.LLMMessage], UsageID, error) {
 	if m.closed.Load() {
-		return nil, "", signal.ErrClosed
+		return operationresult.Result[[]llm.LLMMessage]{}, "", signal.ErrClosed
 	}
 	prepared, id, err := m.transfer.AcquireForLLM(ctx, messages)
 	return prepared, UsageID(id), err
@@ -85,9 +128,9 @@ func (m *MediaCenter) AcquireForLLM(ctx context.Context, messages []llm.LLMMessa
 
 // ResolveForOutput 准备发送所需临时文件，不生成模型使用的签名 URL。
 // 发送及回执处理结束后发布使用结束；失败资源仍归 Media。
-func (m *MediaCenter) ResolveForOutput(ctx context.Context, id string) (delivery.Source, UsageID, error) {
+func (m *MediaCenter) ResolveForOutput(ctx context.Context, id string) (operationresult.Result[delivery.Source], UsageID, error) {
 	if m.closed.Load() {
-		return delivery.Source{}, "", signal.ErrClosed
+		return operationresult.Result[delivery.Source]{Status: operationresult.Unavailable, Message: "media center is closed"}, "", nil
 	}
 	source, usage, err := m.transfer.ResolveForOutput(ctx, id)
 	return source, UsageID(usage), err
@@ -103,15 +146,21 @@ func (m *MediaCenter) Workspace(base string) (string, UsageID, error) {
 }
 
 // ImportPlatform 将平台来源交给内部交付组件物化，解析函数不参与持久化。
-func (m *MediaCenter) ImportPlatform(ctx context.Context, platformName string, resolver func(context.Context, PlatformMedia, int64) (delivery.Source, error), segment PlatformMedia) (MediaInfo, error) {
-	var resolve func(context.Context, transfer.PlatformMedia, int64) (delivery.Source, error)
+func (m *MediaCenter) ImportPlatform(ctx context.Context, platformName string, resolver func(context.Context, PlatformMedia, int64) (operationresult.Result[delivery.Source], error), segment PlatformMedia) (operationresult.Result[MediaInfo], error) {
+	var resolve func(context.Context, transfer.PlatformMedia, int64) (operationresult.Result[delivery.Source], error)
 	if resolver != nil {
-		resolve = func(ctx context.Context, segment transfer.PlatformMedia, limit int64) (delivery.Source, error) {
+		resolve = func(ctx context.Context, segment transfer.PlatformMedia, limit int64) (operationresult.Result[delivery.Source], error) {
 			return resolver(ctx, PlatformMedia(segment), limit)
 		}
 	}
 	info, err := m.transfer.ImportPlatform(ctx, platformName, resolve, transfer.PlatformMedia(segment))
-	return MediaInfo(info), err
+	if err != nil {
+		return operationresult.Result[MediaInfo]{}, err
+	}
+	if info.Status != operationresult.Success {
+		return operationresult.Result[MediaInfo]{Status: info.Status, Message: info.Message}, nil
+	}
+	return operationresult.Result[MediaInfo]{Status: operationresult.Success, Data: MediaInfo(info.Data)}, nil
 }
 
 // HistoryIDs 只查询有效历史关联和输出缓存，不下载媒体。
@@ -126,7 +175,7 @@ func (m *MediaCenter) AssociateHistory(ctx context.Context, row HistoryMessage, 
 
 // GetHistoryMediaBatch 保留输入顺序、重复位置、逐项错误及未缓存获取额度。
 // 根部转换公开与内部类型，不向调用方暴露存储记录。
-func (m *MediaCenter) GetHistoryMediaBatch(ctx context.Context, requests []HistoryMediaRequest, resolver func(context.Context, string, PlatformMedia, int64) (delivery.Source, error), opts HistoryFetchOptions) ([]HistoryMediaResult, error) {
+func (m *MediaCenter) GetHistoryMediaBatch(ctx context.Context, requests []HistoryMediaRequest, resolver func(context.Context, string, PlatformMedia, int64) (operationresult.Result[delivery.Source], error), opts HistoryFetchOptions) ([]HistoryMediaResult, error) {
 	batch := make([]transfer.HistoryMediaRequest, len(requests))
 	for i, request := range requests {
 		row := request.Message
@@ -137,9 +186,9 @@ func (m *MediaCenter) GetHistoryMediaBatch(ctx context.Context, requests []Histo
 		}
 		batch[i] = transfer.HistoryMediaRequest{Message: message, Index: request.Index}
 	}
-	var resolve func(context.Context, string, transfer.PlatformMedia, int64) (delivery.Source, error)
+	var resolve func(context.Context, string, transfer.PlatformMedia, int64) (operationresult.Result[delivery.Source], error)
 	if resolver != nil {
-		resolve = func(ctx context.Context, platform string, segment transfer.PlatformMedia, limit int64) (delivery.Source, error) {
+		resolve = func(ctx context.Context, platform string, segment transfer.PlatformMedia, limit int64) (operationresult.Result[delivery.Source], error) {
 			return resolver(ctx, platform, PlatformMedia(segment), limit)
 		}
 	}
@@ -149,7 +198,11 @@ func (m *MediaCenter) GetHistoryMediaBatch(ctx context.Context, requests []Histo
 		converted = make([]HistoryMediaResult, len(results))
 	}
 	for i, result := range results {
-		converted[i] = HistoryMediaResult{Media: MediaInfo(result.Media), Err: result.Err}
+		converted[i].Err = result.Err
+		converted[i].Media = operationresult.Result[MediaInfo]{Status: result.Media.Status, Message: result.Media.Message}
+		if result.Err == nil && result.Media.Status == operationresult.Success {
+			converted[i].Media.Data = MediaInfo(result.Media.Data)
+		}
 	}
 	return converted, err
 }

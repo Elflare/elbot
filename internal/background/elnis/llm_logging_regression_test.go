@@ -12,6 +12,7 @@ import (
 	background "elbot/internal/background/share"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 )
 
@@ -31,8 +32,8 @@ func (r failingReportReceiptRepository) MarkReportDeliveriesDelivered(context.Co
 	return r.err
 }
 
-func (r joinedFailureBackgroundRunner) RunBackground(ctx context.Context, _ background.RunRequest) (context.Context, background.RunResult, error) {
-	return ctx, background.RunResult{}, r.err
+func (r joinedFailureBackgroundRunner) RunBackground(ctx context.Context, _ background.RunRequest) (context.Context, backgroundRunResult, error) {
+	return ctx, backgroundRunResult{}, r.err
 }
 
 func TestElnisEventFailureDoesNotReclassifyDialogueError(t *testing.T) {
@@ -108,9 +109,9 @@ func TestElnisLogsSuccessfulRunSaveFailure(t *testing.T) {
 
 }
 
-func newElnisReportLoggingFixture(t *testing.T, send SenderFunc) (*Service, QueuedLLMEvent) {
+func newElnisReportLoggingFixture(t *testing.T, send testSenderFunc) (*Service, QueuedLLMEvent) {
 	t.Helper()
-	service, cleanup := newTestServiceWithRunner(t, &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"done"}`}, delivery.NewManager(elnisLoggingSender(send)).SendTo)
+	service, cleanup := newTestServiceWithRunner(t, &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"done"}`}, delivery.NewManager(elnisLoggingSender(resultSender(send))).SendTo)
 	t.Cleanup(cleanup)
 	ctx := t.Context()
 	var queued QueuedLLMEvent
@@ -144,12 +145,12 @@ func TestElnisDeliveryErrorAndBusinessState(t *testing.T) {
 					service, queued = newElnisReportLoggingFixture(t, send)
 				} else {
 					var cleanup func()
-					service, cleanup = newTestServiceWithRunner(t, nil, delivery.NewManager(elnisLoggingSender(send)).SendTo)
+					service, cleanup = newTestServiceWithRunner(t, nil, delivery.NewManager(elnisLoggingSender(resultSender(send))).SendTo)
 					t.Cleanup(cleanup)
 				}
 				var records []events.LogRecord
 				connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
-					if (record.Module == "elnis" || record.Module == "delivery") && (record.ResultStatus == events.ResultFailed || record.ResultStatus == events.ResultCanceled || record.EventName == "elnis.direct_completed" || record.EventName == "elnis.llm_completed") {
+				if (record.Module == "elnis" || record.Module == "delivery") && (record.ResultStatus == events.ResultFailed || record.ResultStatus == events.ResultCanceled || record.EventName == "elnis.direct_completed" || record.EventName == "elnis.llm_completed") {
 						records = append(records, record)
 					}
 
@@ -167,7 +168,7 @@ func TestElnisDeliveryErrorAndBusinessState(t *testing.T) {
 					req.Targets = []Target{{Platform: "qqonebot", Type: "private", ID: "1001"}}
 					response, runErr := service.Handle(t.Context(), "secret", req)
 					err = runErr
-					if tc.err == nil && (!response.Accepted || response.Status != StatusCompleted) {
+					if tc.err == nil && (response.Status != operationresult.Success || !response.Data.Accepted || response.Data.Status != StatusCompleted) {
 						t.Fatalf("business response changed: %#v", response)
 					}
 					row, getErr := testRepo(service).snapshotByKey(t.Context(), req.Elwisp.Name, req.Source, req.ID)
@@ -342,7 +343,14 @@ func TestElnisFormatFailuresAreHandledBeforeRetryAndStateSave(t *testing.T) {
 type elnisLoggingSender SenderFunc
 
 func (send elnisLoggingSender) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-	return send(ctx, target, outputs)
+	result, err := send(ctx, target, outputs)
+	if err != nil {
+		return delivery.Receipt{}, err
+	}
+	if result.Status != operationresult.Success {
+		return delivery.Receipt{}, fmt.Errorf("%s", result.Message)
+	}
+	return result.Data, nil
 }
 
 type failingReportCleanupRepository struct {

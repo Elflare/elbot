@@ -4,6 +4,8 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,7 +19,7 @@ import (
 
 // ReportMedia 只接收已在任务目录边界内打开的附件流。
 type ReportMedia interface {
-	ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (media.MediaInfo, error)
+	ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
 }
 
 type ReportMessageMap struct {
@@ -46,13 +48,13 @@ func PathInstruction() string {
 }
 
 // BuildReportSegmentOutput 在任务目录内打开本地附件，只向发送方交付媒体 ID。
-func BuildReportSegmentOutput(ctx context.Context, segment delivery.Output, scope workspace.PathScope, importer ReportMedia, limits media.ImportLimits) (out delivery.Output, err error) {
+func BuildReportSegmentOutput(ctx context.Context, segment delivery.Output, scope workspace.PathScope, importer ReportMedia, limits media.ImportLimits) (out operationresult.Result[delivery.Output], err error) {
 	if segment.Source.Path == "" {
-		return segment, nil
+		return operationresult.Result[delivery.Output]{Status: operationresult.Success, Data: segment}, nil
 	}
 	root, err := os.OpenRoot(scope.Dir)
 	if err != nil {
-		return delivery.Output{}, err
+		return operationresult.Result[delivery.Output]{}, err
 	}
 	defer func() {
 		if closeErr := root.Close(); closeErr != nil {
@@ -60,8 +62,11 @@ func BuildReportSegmentOutput(ctx context.Context, segment delivery.Output, scop
 		}
 	}()
 	file, err := root.Open(segment.Source.Path)
+	if errors.Is(err, os.ErrNotExist) {
+		return operationresult.Result[delivery.Output]{Status: operationresult.NotFound, Message: fmt.Sprintf("report media %q not found", segment.Source.Path)}, nil
+	}
 	if err != nil {
-		return delivery.Output{}, fmt.Errorf("open report media: %w", err)
+		return operationresult.Result[delivery.Output]{}, fmt.Errorf("open report media: %w", err)
 	}
 	defer func() {
 		if closeErr := file.Close(); closeErr != nil {
@@ -70,10 +75,10 @@ func BuildReportSegmentOutput(ctx context.Context, segment delivery.Output, scop
 	}()
 	stat, err := file.Stat()
 	if err != nil {
-		return delivery.Output{}, err
+		return operationresult.Result[delivery.Output]{}, err
 	}
 	if !stat.Mode().IsRegular() {
-		return delivery.Output{}, fmt.Errorf("report media must be a regular file")
+		return operationresult.Result[delivery.Output]{Status: operationresult.InvalidTarget, Message: "report media must be a regular file"}, nil
 	}
 	input := media.Input{Name: segment.Name, MIMEType: segment.Source.MIMEType}
 	if input.Name == "" {
@@ -81,9 +86,12 @@ func BuildReportSegmentOutput(ctx context.Context, segment delivery.Output, scop
 	}
 	info, err := importer.ImportReader(ctx, file, stat.Size(), input, limits)
 	if err != nil {
-		return delivery.Output{}, err
+		return operationresult.Result[delivery.Output]{}, err
 	}
-	segment.Source = delivery.Source{MediaID: info.ID, MIMEType: info.MIMEType}
-	segment.Name = info.Name
-	return segment, nil
+	if info.Status != operationresult.Success {
+		return operationresult.Result[delivery.Output]{Status: info.Status, Message: info.Message}, nil
+	}
+	segment.Source = delivery.Source{MediaID: info.Data.ID, MIMEType: info.Data.MIMEType}
+	segment.Name = info.Data.Name
+	return operationresult.Result[delivery.Output]{Status: operationresult.Success, Data: segment}, nil
 }

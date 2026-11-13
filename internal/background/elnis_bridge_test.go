@@ -20,6 +20,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 	"elbot/internal/testutil"
 	"elbot/internal/testutil/mediatest"
@@ -47,8 +48,8 @@ func newElnisBridgeService(t *testing.T, b elnisBridge, opts elnis.Options) *eln
 	opts.ToolPreloader = emptyElnisSelections{}
 	opts.ResolveModel = func(string) config.ModelSelection { return config.ModelSelection{Provider: "provider", Model: "model"} }
 	if opts.Send == nil {
-		opts.Send = func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
-			return delivery.Receipt{}, nil
+		opts.Send = func(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
+			return operationresult.Result[delivery.Receipt]{Status: operationresult.Success}, nil
 		}
 	}
 	svc, err := elnis.NewService(opts)
@@ -78,10 +79,10 @@ func TestElnisBridgeRecordsAndTerminalReferences(t *testing.T) {
 	b, store := newElnisBridgeFixture(t)
 	ctx := t.Context()
 	info, err := b.ImportReader(ctx, strings.NewReader("input"), 5, media.Input{Name: "input.txt"}, media.ImportLimits{})
-	id := info.ID
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || info.Status != operationresult.Success {
+		t.Fatalf("import input=%+v err=%v", info, err)
 	}
+	id := info.Data.ID
 	now := time.Now().UTC().Truncate(time.Second)
 	req := elnis.CreateEventRequest{MediaIDs: []string{id}, EventKey: "key", OriginKind: "http_token", OriginName: "token", ElwispName: "watcher", Source: "source", SourceID: "one", Tags: `["tag"]`, Mode: elnis.ModeLLM, ModelSlot: "slot", ContentHash: "hash", ToolDeclarations: "{opaque tools", ToolHash: "toolhash", RequestedTargets: "{opaque requested", ResolvedTargets: "{opaque resolved", Status: elnis.StatusQueued, ReceivedAt: now, CreatedAt: now.Add(-time.Second)}
 	row, err := b.Create(ctx, req)
@@ -152,10 +153,10 @@ func TestElnisBridgeReportTransactionsAndRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, err := b.ImportReader(ctx, strings.NewReader("report"), 6, media.Input{Name: "report.txt"}, media.ImportLimits{})
-	id := info.ID
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || info.Status != operationresult.Success {
+		t.Fatalf("import report=%+v err=%v", info, err)
 	}
+	id := info.Data.ID
 	if err := b.AddEventReference(ctx, id, row.ID, "report"); err != nil {
 		t.Fatal(err)
 	}
@@ -257,25 +258,25 @@ func TestElnisBridgeImportLimitsArePerCall(t *testing.T) {
 			case <-r.Context().Done():
 			}
 		}))
-		if _, err := b.ImportURL(t.Context(), server.URL, media.Input{Name: "file.txt"}, media.ImportLimits{MaxImportBytes: 3, DownloadTimeout: time.Second}); err == nil {
+		if result, err := b.ImportURL(t.Context(), server.URL, media.Input{Name: "file.txt"}, media.ImportLimits{MaxImportBytes: 3, DownloadTimeout: time.Second}); err == nil && result.Status == operationresult.Success {
 			t.Fatal("size limit ignored")
 		}
-		if _, err := b.ImportURL(t.Context(), server.URL, media.Input{Name: "file.txt"}, media.ImportLimits{MaxImportBytes: 4, DownloadTimeout: time.Second}); err != nil {
-			t.Fatal(err)
+		if result, err := b.ImportURL(t.Context(), server.URL, media.Input{Name: "file.txt"}, media.ImportLimits{MaxImportBytes: 4, DownloadTimeout: time.Second}); err != nil || result.Status != operationresult.Success {
+			t.Fatalf("import result=%+v err=%v", result, err)
 		}
-		if _, err := b.ImportURL(t.Context(), server.URL, media.Input{Name: "file.txt"}, media.ImportLimits{MaxImportBytes: 4, DownloadTimeout: time.Millisecond}); err == nil {
+		if result, err := b.ImportURL(t.Context(), server.URL, media.Input{Name: "file.txt"}, media.ImportLimits{MaxImportBytes: 4, DownloadTimeout: time.Millisecond}); err == nil && result.Status == operationresult.Success {
 			t.Fatal("timeout ignored")
 		}
-		if _, err := b.ImportURL(t.Context(), server.URL, media.Input{}, media.ImportLimits{}); err != nil {
-			t.Fatal("per-call limits changed default imports:", err)
+		if result, err := b.ImportURL(t.Context(), server.URL, media.Input{}, media.ImportLimits{}); err != nil || result.Status != operationresult.Success {
+			t.Fatalf("per-call limits changed default imports: result=%+v err=%v", result, err)
 		}
 	})
 }
 
 type elnisBridgeRunner struct{ result string }
 
-func (r elnisBridgeRunner) RunBackground(ctx context.Context, _ share.RunRequest) (context.Context, share.RunResult, error) {
-	return ctx, share.RunResult{SessionID: "session", MessageID: "message", Text: r.result}, nil
+func (r elnisBridgeRunner) RunBackground(ctx context.Context, _ share.RunRequest) (context.Context, operationresult.Result[share.RunResult], error) {
+	return ctx, operationresult.Result[share.RunResult]{Status: operationresult.Success, Data: share.RunResult{SessionID: "session", MessageID: "message", Text: r.result}}, nil
 }
 func TestElnisBridgeReportMediaSurvivesWorkspaceRemoval(t *testing.T) {
 	b, store := newElnisBridgeFixture(t)
@@ -290,8 +291,8 @@ func TestElnisBridgeReportMediaSurvivesWorkspaceRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 	sendErr := errors.New("offline")
-	svc := newElnisBridgeService(t, b, elnis.Options{SandboxRoot: root, Runner: elnisBridgeRunner{result: `{"completed":true,"need_report":true,"report":"result","report_segments":[{"type":"image","url":"chart.png"}]}`}, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
-		return delivery.Receipt{}, sendErr
+	svc := newElnisBridgeService(t, b, elnis.Options{SandboxRoot: root, Runner: elnisBridgeRunner{result: `{"completed":true,"need_report":true,"report":"result","report_segments":[{"type":"image","url":"chart.png"}]}`}, Send: func(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
+		return operationresult.Result[delivery.Receipt]{}, sendErr
 	}})
 	var queued elnis.QueuedLLMEvent
 	svc.SetLLMEnqueuer(func(_ context.Context, e elnis.QueuedLLMEvent) error { queued = e; return nil })
@@ -316,7 +317,7 @@ func TestElnisBridgeReportMediaSurvivesWorkspaceRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, _, err := b.media.Read(ctx, out.Source.MediaID)
-	if err != nil || string(data) != "report image" {
+	if err != nil || data.Status != operationresult.Success || string(data.Data) != "report image" {
 		t.Fatalf("lost report: %q %v", data, err)
 	}
 	refs, err := store.MediaReferences().ListMediaIDs(ctx, out.Source.MediaID)
@@ -338,17 +339,17 @@ func TestElnisBridgeReportMediaSurvivesWorkspaceRemoval(t *testing.T) {
 func TestElnisBridgeCancelledEnqueueReleasesInput(t *testing.T) {
 	b, store := newElnisBridgeFixture(t)
 	info, err := b.ImportReader(t.Context(), strings.NewReader("input"), 5, media.Input{Name: "input.txt"}, media.ImportLimits{})
-	id := info.ID
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || info.Status != operationresult.Success {
+		t.Fatalf("import input=%+v err=%v", info, err)
 	}
+	id := info.Data.ID
 	svc := newElnisBridgeService(t, b, elnis.Options{})
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	svc.SetLLMEnqueuer(func(ctx context.Context, _ elnis.QueuedLLMEvent) error { cancel(); return ctx.Err() })
 	req := elnisBridgeRequest(elnis.ModeLLM)
 	req.Segments = []elnis.Segment{{Kind: elnis.SegmentKindFile, URL: id}}
-	if response, err := svc.Handle(ctx, "secret", req); err != nil || response.Status != elnis.StatusFailed || response.Error != context.Canceled.Error() {
+	if response, err := svc.Handle(ctx, "secret", req); err != nil || response.Status != operationresult.Success || response.Data.Status != elnis.StatusFailed || response.Data.Error != context.Canceled.Error() {
 		t.Fatal(response, err)
 	}
 	row, err := store.ElnisEvents().GetByKey(t.Context(), "watcher", "source", "event")
@@ -366,12 +367,12 @@ func TestElnisBridgeURLImportAndReferenceValidation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "url media") }))
 	defer server.Close()
 	info, err := b.ImportURL(t.Context(), server.URL, media.Input{Name: "download.txt", MIMEType: "text/plain"}, media.ImportLimits{})
-	id := info.ID
-	if err != nil || !media.ValidID(id) {
-		t.Fatal(id, err)
+	if err != nil || info.Status != operationresult.Success || !media.ValidID(info.Data.ID) {
+		t.Fatal(info, err)
 	}
+	id := info.Data.ID
 	data, item, err := b.media.Read(t.Context(), id)
-	if err != nil || string(data) != "url media" || item.Name != "download.txt" {
+	if err != nil || data.Status != operationresult.Success || string(data.Data) != "url media" || item.Name != "download.txt" {
 		t.Fatal(item, err)
 	}
 	if err := b.AddEventReference(t.Context(), id, "event", "report"); err != nil {
@@ -384,7 +385,7 @@ func TestElnisBridgeURLImportAndReferenceValidation(t *testing.T) {
 	if err := b.AddEventReference(t.Context(), "media:"+strings.Repeat("f", 64), "event", "report"); err == nil {
 		t.Fatal("accepted missing media")
 	}
-	if _, err := b.ImportURL(t.Context(), "invalid", media.Input{}, media.ImportLimits{}); err == nil {
+	if result, err := b.ImportURL(t.Context(), "invalid", media.Input{}, media.ImportLimits{}); err == nil && result.Status == operationresult.Success {
 		t.Fatal("discarded import error")
 	}
 }
@@ -394,14 +395,14 @@ func TestElnisBridgeDirectCancellationReleasesImportedMedia(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	var id string
-	svc := newElnisBridgeService(t, b, elnis.Options{Send: func(ctx context.Context, _ delivery.Target, out []delivery.Output) (delivery.Receipt, error) {
+	svc := newElnisBridgeService(t, b, elnis.Options{Send: func(ctx context.Context, _ delivery.Target, out []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
 		id = out[0].Source.MediaID
 		cancel()
-		return delivery.Receipt{}, ctx.Err()
+		return operationresult.Result[delivery.Receipt]{}, ctx.Err()
 	}})
 	req := elnisBridgeRequest(elnis.ModeDirect)
 	req.Segments = []elnis.Segment{{Kind: elnis.SegmentKindFile, URL: "data:text/plain;base64,aGVsbG8=", Name: "input.txt"}}
-	if response, err := svc.Handle(ctx, "secret", req); err != nil || response.Status != elnis.StatusFailed || response.Error != context.Canceled.Error() {
+	if response, err := svc.Handle(ctx, "secret", req); err != nil || response.Status != operationresult.Success || response.Data.Status != elnis.StatusFailed || response.Data.Error != context.Canceled.Error() {
 		t.Fatal(response, err)
 	}
 	if !media.ValidID(id) {
@@ -417,9 +418,9 @@ func TestElnisBridgeServiceDeduplicatesAndPersistsReportMappings(t *testing.T) {
 	b, store := newElnisBridgeFixture(t)
 	seedElnisReportMessage(t, store)
 	sends := 0
-	svc := newElnisBridgeService(t, b, elnis.Options{SandboxRoot: t.TempDir(), Runner: elnisBridgeRunner{result: `{"completed":true,"need_report":true,"report":"done"}`}, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+	svc := newElnisBridgeService(t, b, elnis.Options{SandboxRoot: t.TempDir(), Runner: elnisBridgeRunner{result: `{"completed":true,"need_report":true,"report":"done"}`}, Send: func(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
 		sends++
-		return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "77"}, {Platform: "telegram", ChatType: "private", ChatID: "2", PlatformMessageID: "77"}}}, nil
+		return operationresult.Result[delivery.Receipt]{Status: operationresult.Success, Data: delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "77"}, {Platform: "telegram", ChatType: "private", ChatID: "2", PlatformMessageID: "77"}}}}, nil
 	}})
 	var queued elnis.QueuedLLMEvent
 	enqueues := 0
@@ -429,7 +430,7 @@ func TestElnisBridgeServiceDeduplicatesAndPersistsReportMappings(t *testing.T) {
 		t.Fatal(err)
 	}
 	duplicate, err := svc.Handle(t.Context(), "secret", req)
-	if err != nil || !duplicate.Duplicate || enqueues != 1 {
+	if err != nil || duplicate.Status != operationresult.Success || !duplicate.Data.Duplicate || enqueues != 1 {
 		t.Fatal(duplicate, err, enqueues)
 	}
 	if err := svc.RunLLMEvent(t.Context(), queued.Event, queued.EventID); err != nil {
@@ -521,22 +522,23 @@ func TestQueuedMediaReferencesRecoverAfterInterruption(t *testing.T) {
 	b, store := newElnisBridgeFixture(t)
 	s := newElnisBridgeService(t, b, elnis.Options{})
 	item, err := b.media.ImportBytes(ctx, []byte("queued"), media.Input{Name: "input.png"}, media.ImportLimits{})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || item.Status != operationresult.Success {
+		t.Fatalf("import media=%+v err=%v", item, err)
 	}
+	id := item.Data.ID
 	req := elnisBridgeRequest(elnis.ModeLLM)
-	req.Segments = []elnis.Segment{{Kind: elnis.SegmentKindImage, URL: item.ID}}
+	req.Segments = []elnis.Segment{{Kind: elnis.SegmentKindImage, URL: id}}
 	if _, err := s.Handle(ctx, "secret", req); err != nil {
 		t.Fatal(err)
 	}
-	refs, err := store.MediaReferences().ListMediaIDs(ctx, item.ID)
+	refs, err := store.MediaReferences().ListMediaIDs(ctx, id)
 	if err != nil || len(refs) != 1 {
 		t.Fatalf("queue refs %v %v", refs, err)
 	}
 	if err := store.Media().RecoverInterrupted(ctx); err != nil {
 		t.Fatal(err)
 	}
-	refs, err = store.MediaReferences().ListMediaIDs(ctx, item.ID)
+	refs, err = store.MediaReferences().ListMediaIDs(ctx, id)
 	if err != nil || len(refs) != 1 {
 		t.Fatalf("media cleanup changed event references: %v, %v", refs, err)
 	}
@@ -547,7 +549,7 @@ func TestQueuedMediaReferencesRecoverAfterInterruption(t *testing.T) {
 	if err := elnis.RecoverInterrupted(ctx, b); err != nil {
 		t.Fatal(err)
 	}
-	refs, err = store.MediaReferences().ListMediaIDs(ctx, item.ID)
+	refs, err = store.MediaReferences().ListMediaIDs(ctx, id)
 	if err != nil || len(refs) != 0 {
 		t.Fatalf("interrupted refs %v %v", refs, err)
 	}
@@ -555,10 +557,10 @@ func TestQueuedMediaReferencesRecoverAfterInterruption(t *testing.T) {
 
 type blockedElnisRunner struct{ entered, release chan struct{} }
 
-func (r blockedElnisRunner) RunBackground(ctx context.Context, _ share.RunRequest) (context.Context, share.RunResult, error) {
+func (r blockedElnisRunner) RunBackground(ctx context.Context, _ share.RunRequest) (context.Context, operationresult.Result[share.RunResult], error) {
 	close(r.entered)
 	<-r.release
-	return ctx, share.RunResult{}, ctx.Err()
+	return ctx, operationresult.Result[share.RunResult]{}, ctx.Err()
 }
 
 func TestRuntimeCloseCommitsInterruptedEventsAndPreservesOutbox(t *testing.T) {

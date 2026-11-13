@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -142,17 +143,28 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 			record.Identity = identity
 			globalevents.Log(ctx, record)
 		}
-		requestCtx, state, deliverErr := s.deliverMissedOnce(ctx, *latest, latestMeta, platformName)
+		requestCtx, state, delivered, deliverErr := s.deliverMissedOnce(ctx, *latest, latestMeta, platformName)
 		identity = globalevents.LogIdentityFromContext(requestCtx)
+		deliveryFailed := deliverErr != nil || delivered.Status != operationresult.Success
+		taskFailed := state.ReportReady && !state.TakenOver && !state.TaskCompleted
 		resultStatus := globalevents.ResultSucceeded
 		if deliverErr != nil {
 			resultStatus = globalevents.ResultFailed
 			if globalevents.LogStatus(deliverErr) == globalevents.ResultCanceled {
 				resultStatus = globalevents.ResultCanceled
 			}
+		} else if delivered.Status != operationresult.Success || taskFailed {
+			resultStatus = globalevents.ResultFailed
 		}
 		unlock()
-		if deliverErr != nil {
+		if deliveryFailed || taskFailed {
+			message := delivered.Message
+			if deliverErr != nil {
+				message = deliverErr.Error()
+			}
+			if !deliveryFailed {
+				message = state.Report
+			}
 			{
 				record := globalevents.LogRecord{
 					Category:     globalevents.LogCategoryLog,
@@ -165,7 +177,7 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 					ResultStatus: globalevents.ResultFailed,
 				}
 				record.ResultStatus = resultStatus
-				record.Content += "\nerror=" + deliverErr.Error()
+				record.Content += "\nerror=" + message
 
 				if resultStatus == globalevents.ResultCanceled {
 					record.Level = slog.LevelInfo
@@ -177,8 +189,8 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 			if ctx.Err() != nil {
 				return
 			}
-			if !state.ReportReady || state.NeedReport {
-				notice := globalevents.NewNotification(requestCtx, slog.LevelWarn, deliverErr.Error())
+			if deliveryFailed && (!state.ReportReady || state.NeedReport) {
+				notice := globalevents.NewNotification(requestCtx, slog.LevelWarn, message)
 				notice.Target = globalevents.NotificationTarget{Platform: s.cliPlatformName}
 				globalevents.Notify(requestCtx, notice)
 			}
@@ -217,12 +229,20 @@ func (s *Service) runMissedOnceForPlatform(ctx context.Context, platformName str
 	}
 }
 
-func (s *Service) deliverMissedOnce(ctx context.Context, job Job, meta Metadata, platformName string) (context.Context, CronDeliveryState, error) {
-	ctx, job, state, prepareErr := s.prepareDelivery(ctx, job, meta)
-	if prepareErr != nil || !state.ReportReady {
-		return ctx, state, prepareErr
+func (s *Service) deliverMissedOnce(ctx context.Context, job Job, meta Metadata, platformName string) (context.Context, CronDeliveryState, operationresult.Result[struct{}], error) {
+	ctx, job, prepared, prepareErr := s.prepareDelivery(ctx, job, meta)
+	if prepareErr != nil {
+		return ctx, CronDeliveryState{}, operationresult.Result[struct{}]{}, prepareErr
 	}
-	return ctx, state, s.deliverPrepared(ctx, job, meta, state, platformName, true)
+	if prepared.Status != operationresult.Success {
+		return ctx, CronDeliveryState{}, operationresult.Result[struct{}]{Status: prepared.Status, Message: prepared.Message}, nil
+	}
+	state := prepared.Data
+	if !state.ReportReady {
+		return ctx, state, operationresult.Result[struct{}]{Status: operationresult.Success}, nil
+	}
+	delivered, err := s.deliverPrepared(ctx, job, meta, state, platformName, true)
+	return ctx, state, delivered, err
 }
 
 func missedOnceReportText(title, report string) string {

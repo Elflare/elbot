@@ -4,6 +4,7 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -42,8 +43,8 @@ type HistoryMediaRequest struct {
 
 // HistoryMediaResult 保存逐位置的结果或错误。
 type HistoryMediaResult struct {
-	Media share.MediaInfo // 获取到的通用信息；先检查 Err。
-	Err   error           // 当前位置的获取或关联错误。
+	Media operationresult.Result[share.MediaInfo] // 单项业务结果；成功时才读取通用媒体信息。
+	Err   error                                   // 当前位置的真实获取或关联故障。
 }
 
 // HistoryFetchOptions 限制未缓存位置的获取次数。
@@ -51,31 +52,28 @@ type HistoryFetchOptions struct {
 	MaxFetchAttempts int // 包含失败尝试，非正数不限；缓存不占额度。
 }
 
-// ErrHistoryFetchLimit 表示获取额度耗尽，根部公开同一个错误值。
-var ErrHistoryFetchLimit = errors.New("history media fetch limit reached")
-
-// ErrHistoryMediaIndex 表示媒体序号越界，根部公开同一个错误值。
-var ErrHistoryMediaIndex = errors.New("history media index out of range")
-
 // ImportPlatform 解析平台来源并交给对象组件导入，不持久化传输凭据或路径。
 // 已有媒体标识直接查询信息，解析函数接收配置限定的最大字节数。
-func (m *Manager) ImportPlatform(ctx context.Context, platformName string, resolver func(context.Context, PlatformMedia, int64) (delivery.Source, error), segment PlatformMedia) (share.MediaInfo, error) {
+func (m *Manager) ImportPlatform(ctx context.Context, platformName string, resolver func(context.Context, PlatformMedia, int64) (operationresult.Result[delivery.Source], error), segment PlatformMedia) (operationresult.Result[share.MediaInfo], error) {
 	if segment.MediaID != "" {
 		return m.objects.Info(ctx, segment.MediaID)
 	}
 	if err := ctx.Err(); err != nil {
-		return share.MediaInfo{}, err
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
 	if segment.Size > m.options.MaxImportBytes {
-		return share.MediaInfo{}, fmt.Errorf("media exceeds import limit of %d bytes", m.options.MaxImportBytes)
+		return operationresult.Result[share.MediaInfo]{Status: operationresult.Rejected, Message: fmt.Sprintf("media exceeds import limit of %d bytes", m.options.MaxImportBytes)}, nil
 	}
 	source := delivery.Source{URL: strings.TrimSpace(segment.URL)}
-	var err error
 	if source.URL == "" && resolver != nil {
-		source, err = resolver(ctx, segment, m.options.MaxImportBytes)
-	}
-	if err != nil {
-		return share.MediaInfo{}, err
+		resolved, err := resolver(ctx, segment, m.options.MaxImportBytes)
+		if err != nil {
+			return operationresult.Result[share.MediaInfo]{}, err
+		}
+		if resolved.Status != operationresult.Success {
+			return operationresult.Result[share.MediaInfo]{Status: resolved.Status, Message: resolved.Message}, nil
+		}
+		source = resolved.Data
 	}
 	input := share.Input{Name: segment.Name, MIMEType: segment.MIMEType, Source: share.Source{Platform: platformName, URL: segment.URL, FileID: segment.PlatformFileID}}
 	if input.MIMEType == "" {
@@ -92,14 +90,14 @@ func (m *Manager) ImportPlatform(ctx context.Context, platformName string, resol
 	case source.Data != nil:
 		return m.objects.ImportBytes(ctx, source.Data, input, limits)
 	default:
-		return share.MediaInfo{}, fmt.Errorf("platform media source unavailable")
+		return operationresult.Result[share.MediaInfo]{Status: operationresult.Unavailable, Message: "platform media source unavailable"}, nil
 	}
 }
 
 // GetHistoryMediaBatch 查询对象关联及缓存，仅在未命中时解析平台来源。
 // 同次调用复用重复位置，保持输入顺序、逐项错误及未缓存获取额度。
 // 对象查询错误或取消中止本次批量；成功结果按需建立持久历史关联。
-func (m *Manager) GetHistoryMediaBatch(ctx context.Context, requests []HistoryMediaRequest, resolver func(context.Context, string, PlatformMedia, int64) (delivery.Source, error), opts HistoryFetchOptions) ([]HistoryMediaResult, error) {
+func (m *Manager) GetHistoryMediaBatch(ctx context.Context, requests []HistoryMediaRequest, resolver func(context.Context, string, PlatformMedia, int64) (operationresult.Result[delivery.Source], error), opts HistoryFetchOptions) ([]HistoryMediaResult, error) {
 	type position struct {
 		key   share.HistoryKey
 		index int
@@ -121,7 +119,7 @@ func (m *Manager) GetHistoryMediaBatch(ctx context.Context, requests []HistoryMe
 		}
 		var result HistoryMediaResult
 		if index < 1 || index > len(row.Media) {
-			result.Err = fmt.Errorf("%w: %d (message has %d media)", ErrHistoryMediaIndex, index, len(row.Media))
+			result.Media = operationresult.Result[share.MediaInfo]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("history media index %d out of range (message has %d media)", index, len(row.Media))}
 		} else {
 			entries, ok := known[key]
 			if !ok {
@@ -134,21 +132,21 @@ func (m *Manager) GetHistoryMediaBatch(ctx context.Context, requests []HistoryMe
 			}
 			entry, segment := entries[index], row.Media[index-1]
 			if entry.Media.ID != "" {
-				result.Media = entry.Media
+				result.Media = operationresult.Result[share.MediaInfo]{Status: operationresult.Success, Data: entry.Media}
 			} else if opts.MaxFetchAttempts > 0 && attempts >= opts.MaxFetchAttempts {
-				result.Err = ErrHistoryFetchLimit
+				result.Media = operationresult.Result[share.MediaInfo]{Status: operationresult.Rejected, Message: fmt.Sprintf("history media fetch limit reached (%d attempts)", opts.MaxFetchAttempts)}
 			} else {
 				attempts++
-				var resolve func(context.Context, PlatformMedia, int64) (delivery.Source, error)
+				var resolve func(context.Context, PlatformMedia, int64) (operationresult.Result[delivery.Source], error)
 				if resolver != nil {
-					resolve = func(ctx context.Context, input PlatformMedia, limit int64) (delivery.Source, error) {
+					resolve = func(ctx context.Context, input PlatformMedia, limit int64) (operationresult.Result[delivery.Source], error) {
 						return resolver(ctx, row.Platform, input, limit)
 					}
 				}
 				result.Media, result.Err = m.ImportPlatform(ctx, row.Platform, resolve, segment)
 			}
-			if result.Err == nil && (!entry.Associated || entry.Kind != segment.Type) {
-				result.Err = m.objects.AssociateHistory(ctx, key, index, segment.Type, result.Media.ID)
+			if result.Err == nil && result.Media.Status == operationresult.Success && (!entry.Associated || entry.Kind != segment.Type) {
+				result.Err = m.objects.AssociateHistory(ctx, key, index, segment.Type, result.Media.Data.ID)
 			}
 		}
 		if err := ctx.Err(); err != nil {

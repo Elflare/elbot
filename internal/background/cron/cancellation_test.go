@@ -119,12 +119,12 @@ func TestRecoveryCancellationDoesNotSendFailureNotice(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	captureLogs(t, slog.New(slog.NewTextHandler(&logs, nil)))
-	s := newTestCronService(t, Options{Store: repo, EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}}, SendTarget: func(_ context.Context, target delivery.Target, _ []delivery.Output) (delivery.Receipt, error) {
+	s := newTestCronService(t, Options{Store: repo, EnabledPlatforms: []PlatformTarget{{Name: "qqonebot"}}, SendTarget: func(_ context.Context, target delivery.Target, _ []delivery.Output) (receiptResult, error) {
 		targets = append(targets, target.Platform)
 		cancel()
 		{
 			err := context.Canceled
-			return delivery.Receipt{}, err
+			return receiptResult{}, err
 		}
 	}})
 	s.now = func() time.Time { return mustParseTestTime(t, "2026-01-02 03:05:00") }
@@ -142,11 +142,11 @@ func TestDeliveryKeepsMixedFailureBeforeErrorWrapping(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	failure := errors.New("real failure")
-	s := newTestCronService(t, Options{SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+	s := newTestCronService(t, Options{SendTarget: func(context.Context, delivery.Target, []delivery.Output) (receiptResult, error) {
 		cancel()
 		{
 			err := fmt.Errorf("mixed: %w", failure)
-			return delivery.Receipt{}, err
+			return receiptResult{}, err
 		}
 	}})
 	_, err := s.sendDeliveryOutput(ctx, "mixed", delivery.Target{Platform: "cli"}, delivery.Text("report"), "")

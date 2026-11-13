@@ -19,6 +19,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 )
 
 type testClient struct {
@@ -68,12 +69,12 @@ func TestValidateTaskSelectionDoesNotChangeSharedModels(t *testing.T) {
 	s := newTestService(t, testOptions())
 	before := s.ResolveMode("work")
 	for _, invalid := range []config.ModelSelection{{}, {Provider: "p"}, {Model: "a"}, {Provider: "missing", Model: "a"}} {
-		if err := s.ValidateSelection(invalid); err == nil {
+		if result := s.ValidateSelection(invalid); result.Status == operationresult.Success {
 			t.Fatalf("accepted %+v", invalid)
 		}
 	}
-	if err := s.ValidateSelection(config.ModelSelection{Provider: "q", Model: "custom-task-model"}); err != nil {
-		t.Fatal(err)
+	if result := s.ValidateSelection(config.ModelSelection{Provider: "q", Model: "custom-task-model"}); result.Status != operationresult.Success {
+		t.Fatal(result)
 	}
 	if got := s.ResolveMode("work"); got != before {
 		t.Fatalf("task choice mutated work: %+v", got)

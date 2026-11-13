@@ -30,8 +30,8 @@ func (r refreshRepo) ListEnabled(ctx context.Context) ([]Job, error) {
 
 func registerRefreshHandler(t *testing.T, m *Manager) {
 	t.Helper()
-	m.RegisterHandler("handler", func(ctx context.Context, _ Job) (context.Context, error) {
-		return ctx, nil
+	m.RegisterHandler("handler", func(ctx context.Context, _ Job) (context.Context, jobResult, error) {
+		return successfulJob(ctx)
 	})
 }
 
@@ -243,10 +243,10 @@ func TestFinishingOldRunDoesNotCountIntoRecreatedJob(t *testing.T) {
 	old := seedRefreshJob(t, base, "job")
 	started, release := make(chan struct{}), make(chan struct{})
 	m := NewManager(base)
-	m.RegisterHandler("handler", func(ctx context.Context, _ Job) (context.Context, error) {
+	m.RegisterHandler("handler", func(ctx context.Context, _ Job) (context.Context, jobResult, error) {
 		close(started)
 		<-release
-		return ctx, nil
+		return successfulJob(ctx)
 	})
 	if err := m.Start(t.Context()); err != nil {
 		t.Fatal(err)

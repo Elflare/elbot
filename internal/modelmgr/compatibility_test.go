@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 )
 
 func TestMaterialCompatibility(t *testing.T) {
@@ -23,8 +24,16 @@ func TestMaterialCompatibility(t *testing.T) {
 		{"unknown target", llm.Origin{}, llm.Origin{}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := CanSwitch(tc.source, tc.target); (err == nil) != tc.allowed {
-				t.Fatalf("allowed=%v, error=%v", tc.allowed, err)
+			result, err := CanSwitch(tc.source, tc.target)
+			want := operationresult.Incompatible
+			if tc.allowed {
+				want = operationresult.Success
+			}
+			if tc.name == "unknown target" {
+				want = operationresult.InvalidArguments
+			}
+			if err != nil || result.Status != want {
+				t.Fatalf("allowed=%v, result=%+v, error=%v", tc.allowed, result, err)
 			}
 		})
 	}

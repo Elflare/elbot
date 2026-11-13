@@ -2,24 +2,25 @@ package share
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"io"
 	"time"
 )
 
 // Objects 是交付组件需要的对象能力，不包含仓储或回收控制。
-// Info、Hold 对明确缺失或删除中的对象返回 UnavailableError。
+// 用户操作以 Result 表达业务拒绝，读取和释放持有仍保留原始 IO 故障。
 type Objects interface {
-	Info(ctx context.Context, id string) (MediaInfo, error)
-	Hold(ctx context.Context, id string) (HeldMedia, error)
-	ImportBytes(ctx context.Context, data []byte, input Input, limits ImportLimits) (MediaInfo, error)
-	ImportURL(ctx context.Context, rawURL string, input Input, limits ImportLimits) (MediaInfo, error)
-	ImportFile(ctx context.Context, path string, input Input, limits ImportLimits) (MediaInfo, error)
+	Info(ctx context.Context, id string) (operationresult.Result[MediaInfo], error)
+	Hold(ctx context.Context, id string) (operationresult.Result[HeldMedia], error)
+	ImportBytes(ctx context.Context, data []byte, input Input, limits ImportLimits) (operationresult.Result[MediaInfo], error)
+	ImportURL(ctx context.Context, rawURL string, input Input, limits ImportLimits) (operationresult.Result[MediaInfo], error)
+	ImportFile(ctx context.Context, path string, input Input, limits ImportLimits) (operationresult.Result[MediaInfo], error)
 	LoadHistoryMedia(ctx context.Context, key HistoryKey) (map[int]HistoryEntry, error)
 	AssociateHistory(ctx context.Context, key HistoryKey, index int, kind, id string) error
 }
 
 // HeldMedia 让交付组件在持有期间选择读取或远端 URL；记录留在 object。
-// Open、SignedURL 对确认缺失的已归档内容返回 UnavailableError；其他故障原样保留。
+// Open、SignedURL 的存储和传输故障原样返回。
 type HeldMedia interface {
 	Info() MediaInfo
 	Open(context.Context) (io.ReadCloser, error)

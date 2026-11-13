@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"elbot/internal/media/share"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 )
 
@@ -22,11 +23,7 @@ func TestConcurrentSigningSharesReplicaAndRefresh(t *testing.T) {
 	var workers sync.WaitGroup
 	for range 20 {
 		workers.Go(func() {
-			held, err := m.Hold(t.Context(), item.ID)
-			if err != nil {
-				t.Error(err)
-				return
-			}
+			held := holdTestMedia(t, m, item.ID)
 			defer func() {
 				if err := held.Close(t.Context()); err != nil {
 					t.Error(err)
@@ -41,10 +38,7 @@ func TestConcurrentSigningSharesReplicaAndRefresh(t *testing.T) {
 	if remote.puts != 1 || remote.signs != 1 {
 		t.Fatalf("puts=%d signs=%d", remote.puts, remote.signs)
 	}
-	held, err := m.Hold(t.Context(), item.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	held := holdTestMedia(t, m, item.ID)
 	defer held.Close(t.Context())
 	cached, _ := store.Media().GetSignedURL(t.Context(), item.ID)
 	now = cached.ExpiresAt.Add(-signedURLRefreshMargin - time.Nanosecond)
@@ -85,13 +79,10 @@ func TestS3PrimaryUsesStoredKey(t *testing.T) {
 	}
 	m.options.Backend = "local"
 	data, _, err := m.Read(t.Context(), item.ID)
-	if err != nil || string(data) != "remote primary" {
+	if err != nil || data.Status != operationresult.Success || string(data.Data) != "remote primary" {
 		t.Fatalf("stored backend ignored: %q %v", data, err)
 	}
-	held, err := m.Hold(t.Context(), item.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	held := holdTestMedia(t, m, item.ID)
 	defer held.Close(t.Context())
 	if _, err := held.SignedURL(t.Context()); err != nil {
 		t.Fatal(err)
@@ -106,10 +97,7 @@ func TestReplicaPersistenceFailureRollsBackAndPreservesErrors(t *testing.T) {
 	item := importTestMedia(t, m, "replica")
 	remote := &testBackend{}
 	m.remote = remote
-	held, err := m.Hold(t.Context(), item.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	held := holdTestMedia(t, m, item.ID)
 	defer held.Close(t.Context())
 	persistErr, closeErr, removeErr := errors.New("persist"), errors.New("close"), errors.New("remove")
 	reader, _ := local.Open(t.Context(), item.ID)
@@ -124,7 +112,7 @@ func TestReplicaPersistenceFailureRollsBackAndPreservesErrors(t *testing.T) {
 		return removeErr
 	}
 	logs := captureMediaLogs(t)
-	_, err = held.SignedURL(t.Context())
+	_, err := held.SignedURL(t.Context())
 	if err != persistErr {
 		t.Fatalf("persistence error=%v", err)
 	}
@@ -152,10 +140,7 @@ func TestSigningHoldsReferenceUntilUploadFinishes(t *testing.T) {
 		}
 	}
 	m.remote = remote
-	held, err := m.Hold(t.Context(), item.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	held := holdTestMedia(t, m, item.ID)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)

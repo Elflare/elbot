@@ -2,6 +2,7 @@ package object
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"errors"
 	"fmt"
 
@@ -32,11 +33,18 @@ func (m *Manager) LoadHistoryMedia(ctx context.Context, key share.HistoryKey) (m
 			return item, nil
 		}
 		item, err := m.Info(ctx, id)
-		if err != nil && !share.IsUnavailable(err) {
+		if err != nil {
 			return share.MediaInfo{}, err
 		}
-		mediaByID[id] = item
-		return item, nil
+		if item.Status == operationresult.NotFound {
+			mediaByID[id] = share.MediaInfo{}
+			return share.MediaInfo{}, nil
+		}
+		if item.Status != operationresult.Success {
+			return share.MediaInfo{}, fmt.Errorf("invalid cached media reference: %s", item.Message)
+		}
+		mediaByID[id] = item.Data
+		return item.Data, nil
 	}
 	associations, err := m.media.FindHistory(ctx, key.Platform, key.ChatType, key.ChatID, key.MessageID)
 	if err != nil {

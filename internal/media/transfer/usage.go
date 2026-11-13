@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"fmt"
 	"log/slog"
 	"os"
@@ -138,12 +139,15 @@ func (m *Manager) abortUsage(ctx context.Context, id string) {
 }
 
 // Hold 将显式持有登记到使用记录中，资源释放始终由 Media 负责。
-func (m *Manager) Hold(ctx context.Context, id string) (share.HeldMedia, string, error) {
+func (m *Manager) Hold(ctx context.Context, id string) (operationresult.Result[share.HeldMedia], string, error) {
 	held, err := m.objects.Hold(ctx, id)
 	if err != nil {
-		return nil, "", err
+		return operationresult.Result[share.HeldMedia]{}, "", err
 	}
-	return held, m.registerUsage(held, ""), nil
+	if held.Status != operationresult.Success {
+		return held, "", nil
+	}
+	return held, m.registerUsage(held.Data, ""), nil
 }
 
 // Workspace 创建并登记调用私有目录；base 的路径范围由消费方决定。

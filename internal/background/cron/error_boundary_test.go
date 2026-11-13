@@ -18,13 +18,13 @@ func TestFormatRetryExecutionFailureStopsTask(t *testing.T) {
 			repo := newFakeCronRepo()
 			runner := &fakeCronRunner{text: "invalid json", errors: []error{nil, failure}}
 			sent := 0
-			svc := newTestCronService(t, Options{Store: repo, Runner: runner, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+			svc := newTestCronService(t, Options{Store: repo, Runner: runner, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (receiptResult, error) {
 				sent++
-				return delivery.Receipt{}, nil
+				return sentReceipt(delivery.Receipt{}), nil
 			}})
 			meta := Metadata{Kind: metadataKind, Version: 1, Title: "retry", Schedule: CronSchedule{Mode: ScheduleCron}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("retry")}, Target: CronTarget{SourcePlatform: "cli"}}
 			job := upsertTestCronJob(t, repo, meta)
-			_, err := svc.runTask(t.Context(), *job, meta)
+			_, _, err := svc.runTask(t.Context(), *job, meta)
 			if err != failure || runner.calls != 2 || sent != 0 {
 				t.Fatalf("err=%v calls=%d sent=%d", err, runner.calls, sent)
 			}

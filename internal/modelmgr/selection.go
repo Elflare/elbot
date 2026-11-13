@@ -9,6 +9,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 )
 
 // Selection fixes both the model identity and its client for one operation.
@@ -49,14 +50,14 @@ func (s Selection) ContextWindow(ctx context.Context) int {
 }
 
 // ValidateSelection checks an explicit task choice without changing shared state.
-func (s *ModelManager) ValidateSelection(selected config.ModelSelection) error {
+func (s *ModelManager) ValidateSelection(selected config.ModelSelection) operationresult.Result[struct{}] {
 	if selected.Provider == "" || selected.Model == "" {
-		return fmt.Errorf("model provider/model must both be set")
+		return operationresult.Result[struct{}]{Status: operationresult.InvalidArguments, Message: "model provider/model must both be set"}
 	}
 	if s.providerSnapshot().clients[selected.Provider] == nil {
-		return fmt.Errorf("model provider %q not found", selected.Provider)
+		return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: fmt.Sprintf("model provider %q not found", selected.Provider)}
 	}
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}
 }
 
 func (s *ModelManager) ResolveMode(mode string) Selection {
@@ -101,74 +102,76 @@ func (s *ModelManager) CurrentCompactModel(mode string) ModelOption {
 }
 
 // PrepareModel resolves catalog input without changing any shared selection.
-func (s *ModelManager) PrepareModel(arg string) (ModelOption, error) {
+func (s *ModelManager) PrepareModel(arg string) (operationresult.Result[ModelOption], error) {
 	return s.selectModelOption(arg)
 }
 
-func (s *ModelManager) CommitModelForMode(mode string, selected ModelOption) (ModelOption, error) {
-	if err := s.ValidateSelection(config.ModelSelection{Provider: selected.Provider, Model: selected.Model}); err != nil {
-		return ModelOption{}, err
+func (s *ModelManager) CommitModelForMode(mode string, selected ModelOption) (operationresult.Result[ModelOption], error) {
+	if result := s.ValidateSelection(config.ModelSelection{Provider: selected.Provider, Model: selected.Model}); result.Status != operationresult.Success {
+		return operationresult.Result[ModelOption]{Status: result.Status, Message: result.Message}, nil
 	}
 	err := s.commit(func(state *runtimeState) {
 		state.modes[mode] = config.ModelSelection{Provider: selected.Provider, Model: selected.Model}
 		state.listProvider = selected.Provider
 	})
 	if err != nil {
-		return ModelOption{}, err
+		return operationresult.Result[ModelOption]{}, err
 	}
-	return selected, nil
+	return operationresult.Result[ModelOption]{Status: operationresult.Success, Data: selected}, nil
 }
 
-func (s *ModelManager) SelectCompactModel(arg string) (ModelOption, error) {
-	selected, err := s.selectModelOption(arg)
-	if err != nil {
-		return ModelOption{}, err
+func (s *ModelManager) SelectCompactModel(arg string) (operationresult.Result[ModelOption], error) {
+	result, err := s.selectModelOption(arg)
+	if err != nil || result.Status != operationresult.Success {
+		return result, err
 	}
+	selected := result.Data
 	err = s.commit(func(state *runtimeState) {
 		state.compact = config.ModelSelection{Provider: selected.Provider, Model: selected.Model}
 	})
 	if err != nil {
-		return ModelOption{}, err
+		return operationresult.Result[ModelOption]{}, err
 	}
 	selected.Compact = true
-	return selected, nil
+	return operationresult.Result[ModelOption]{Status: operationresult.Success, Data: selected}, nil
 }
 
-func (s *ModelManager) SelectNamingModel(arg string) (ModelOption, error) {
-	selected, err := s.selectModelOption(arg)
-	if err != nil {
-		return ModelOption{}, err
+func (s *ModelManager) SelectNamingModel(arg string) (operationresult.Result[ModelOption], error) {
+	result, err := s.selectModelOption(arg)
+	if err != nil || result.Status != operationresult.Success {
+		return result, err
 	}
+	selected := result.Data
 	err = s.commit(func(state *runtimeState) {
 		state.naming = config.ModelSelection{Provider: selected.Provider, Model: selected.Model}
 	})
 	if err != nil {
-		return ModelOption{}, err
+		return operationresult.Result[ModelOption]{}, err
 	}
 	selected.Naming = true
-	return selected, nil
+	return operationresult.Result[ModelOption]{Status: operationresult.Success, Data: selected}, nil
 }
 
-func (s *ModelManager) selectModelOption(arg string) (ModelOption, error) {
+func (s *ModelManager) selectModelOption(arg string) (operationresult.Result[ModelOption], error) {
 	name := strings.TrimSpace(arg)
 	if name == "" {
-		return ModelOption{}, &SelectionError{Message: "usage: /model <name or number>"}
+		return operationresult.Result[ModelOption]{Status: operationresult.InvalidArguments, Message: "usage: /model <name or number>"}, nil
 	}
 	catalog := s.ModelList("", ModelListOptions{})
 	models := catalog.Options
 	if len(models) == 0 {
 		for _, failure := range catalog.Errors {
 			if failure.Err != nil {
-				return ModelOption{}, fmt.Errorf("load model catalog %s: %w", failure.Provider, failure.Err)
+				return operationresult.Result[ModelOption]{}, fmt.Errorf("load model catalog %s: %w", failure.Provider, failure.Err)
 			}
 		}
-		return ModelOption{}, &SelectionError{Message: "no models available"}
+		return operationresult.Result[ModelOption]{Status: operationresult.Unavailable, Message: "no models available"}, nil
 	}
 	if idx, err := strconv.Atoi(name); err == nil {
 		if idx < 1 || idx > len(models) {
-			return ModelOption{}, &SelectionError{Message: fmt.Sprintf("model index %d out of range [1-%d]", idx, len(models))}
+			return operationresult.Result[ModelOption]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("model index %d out of range [1-%d]", idx, len(models))}, nil
 		}
-		return models[idx-1], nil
+		return operationresult.Result[ModelOption]{Status: operationresult.Success, Data: models[idx-1]}, nil
 	}
 	var matches []ModelOption
 	for _, m := range models {
@@ -185,21 +188,14 @@ func (s *ModelManager) selectModelOption(arg string) (ModelOption, error) {
 		}
 	}
 	if len(matches) == 1 {
-		return matches[0], nil
+		return operationresult.Result[ModelOption]{Status: operationresult.Success, Data: matches[0]}, nil
 	}
 	if len(matches) == 0 {
-		return ModelOption{}, &SelectionError{Message: fmt.Sprintf("model %q not found", name)}
+		return operationresult.Result[ModelOption]{Status: operationresult.NotFound, Message: fmt.Sprintf("model %q not found", name)}, nil
 	}
 	parts := make([]string, len(matches))
 	for i, m := range matches {
 		parts[i] = fmt.Sprintf("[%d] %s/%s", m.Index, m.Provider, m.Model)
 	}
-	return ModelOption{}, &SelectionError{Message: fmt.Sprintf("ambiguous model %q, matches: %s", name, strings.Join(parts, ", "))}
+	return operationresult.Result[ModelOption]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("ambiguous model %q, matches: %s", name, strings.Join(parts, ", "))}, nil
 }
-
-// SelectionError 表示用户提供的模型选择无法解析，不包含持久化或网络故障。
-type SelectionError struct {
-	Message string // 完整的选择错误说明。
-}
-
-func (e *SelectionError) Error() string { return e.Message }

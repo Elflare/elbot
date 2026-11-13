@@ -15,6 +15,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/media/share"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil"
@@ -96,10 +97,19 @@ func newTestManager(t *testing.T) (*Manager, *sqlite.Store, *testBackend) {
 func importTestMedia(t *testing.T, m *Manager, content string) share.MediaInfo {
 	t.Helper()
 	item, err := m.ImportBytes(t.Context(), []byte(content), share.Input{Name: "input.txt"}, share.ImportLimits{})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || item.Status != operationresult.Success {
+		t.Fatalf("import media=%+v err=%v", item, err)
 	}
-	return item
+	return item.Data
+}
+
+func holdTestMedia(t *testing.T, m *Manager, id string) share.HeldMedia {
+	t.Helper()
+	held, err := m.Hold(t.Context(), id)
+	if err != nil || held.Status != operationresult.Success {
+		t.Fatalf("hold media=%+v err=%v", held, err)
+	}
+	return held.Data
 }
 
 type testRepository struct {
@@ -131,10 +141,11 @@ func (r testRepository) RecoverInterrupted(ctx context.Context) error {
 func TestImportReadExportAndDeduplication(t *testing.T) {
 	m, store, backend := newTestManager(t)
 	input := share.Input{Name: "https://example.test/a%252Fb.txt?token=secret", Source: share.Source{Platform: "test", URL: "https://user:secret@example.test/file?token=secret", FileID: "/private/path"}}
-	item, err := m.ImportBytes(t.Context(), []byte("hello"), input, share.ImportLimits{})
-	if err != nil {
-		t.Fatal(err)
+	imported, err := m.ImportBytes(t.Context(), []byte("hello"), input, share.ImportLimits{})
+	if err != nil || imported.Status != operationresult.Success {
+		t.Fatalf("import media=%+v err=%v", imported, err)
 	}
+	item := imported.Data
 	if item.Name != "a%2Fb.txt" || item.MIMEType != "text/plain" || item.Size != 5 || !share.ValidID(item.ID) {
 		t.Fatalf("info = %#v", item)
 	}
@@ -144,20 +155,20 @@ func TestImportReadExportAndDeduplication(t *testing.T) {
 	}
 	again := importTestMedia(t, m, "hello")
 	info, err := m.Info(t.Context(), item.ID)
-	if err != nil || again != item || info != item || backend.puts != 1 {
+	if err != nil || info.Status != operationresult.Success || again != item || info.Data != item || backend.puts != 1 {
 		t.Fatalf("dedup/read changed metadata: %#v %#v %v", again, info, err)
 	}
 	data, got, err := m.Read(t.Context(), item.ID)
-	if err != nil || string(data) != "hello" || got != item {
+	if err != nil || data.Status != operationresult.Success || string(data.Data) != "hello" || got != item {
 		t.Fatalf("Read = %q %#v %v", data, got, err)
 	}
 	destination := filepath.Join(t.TempDir(), "export")
 	if _, err := m.Export(t.Context(), item.ID, destination); err != nil {
 		t.Fatal(err)
 	}
-	data, err = os.ReadFile(destination)
-	if err != nil || string(data) != "hello" {
-		t.Fatalf("export = %q %v", data, err)
+	exported, err := os.ReadFile(destination)
+	if err != nil || string(exported) != "hello" {
+		t.Fatalf("export = %q %v", exported, err)
 	}
 	if refs, err := store.MediaReferences().ListMediaIDs(t.Context(), item.ID); err != nil || len(refs) != 0 {
 		t.Fatalf("leaked refs: %#v %v", refs, err)
@@ -168,7 +179,7 @@ func TestImportLimitsAndRollback(t *testing.T) {
 	m, _, backend := newTestManager(t)
 	m.options.MaxImportBytes = 4
 	for _, limits := range []share.ImportLimits{{}, {MaxImportBytes: 100}, {MaxImportBytes: 2}} {
-		if _, err := m.ImportReader(t.Context(), strings.NewReader("12345"), -1, share.Input{}, limits); err == nil {
+		if result, err := m.ImportReader(t.Context(), strings.NewReader("12345"), -1, share.Input{}, limits); err == nil && result.Status == operationresult.Success {
 			t.Fatal("unbounded reader accepted")
 		}
 	}
@@ -195,10 +206,7 @@ func TestImportLimitsAndRollback(t *testing.T) {
 func TestRecoveryAndPartialConstruction(t *testing.T) {
 	m, store, _ := newTestManager(t)
 	item := importTestMedia(t, m, "recover")
-	held, err := m.Hold(t.Context(), item.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	held := holdTestMedia(t, m, item.ID)
 	ref := Reference{MediaID: item.ID, OwnerType: "test", OwnerID: "business", Purpose: "content"}
 	if err := m.AddReference(t.Context(), ref); err != nil {
 		t.Fatal(err)
@@ -224,8 +232,8 @@ func TestConcurrentImportsDeduplicate(t *testing.T) {
 	var workers sync.WaitGroup
 	for range 24 {
 		workers.Go(func() {
-			if _, err := m.ImportBytes(t.Context(), []byte("same content"), share.Input{}, share.ImportLimits{}); err != nil {
-				t.Error(err)
+			if result, err := m.ImportBytes(t.Context(), []byte("same content"), share.Input{}, share.ImportLimits{}); err != nil || result.Status != operationresult.Success {
+				t.Errorf("import result=%+v err=%v", result, err)
 			}
 		})
 	}

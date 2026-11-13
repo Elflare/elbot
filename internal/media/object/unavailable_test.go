@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"elbot/internal/media/share"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 )
 
-func TestUnavailableObjectAndStorageContracts(t *testing.T) {
+func TestMissingObjectReturnsBusinessStatus(t *testing.T) {
 	m, store, _ := newTestManager(t)
 	absent := share.IDPrefix + strings.Repeat("f", 64)
 	item := importTestMedia(t, m, "deleting content")
@@ -21,11 +22,11 @@ func TestUnavailableObjectAndStorageContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{absent, item.ID} {
-		if _, err := m.Info(t.Context(), id); !share.IsUnavailable(err) || !errors.Is(err, storage.ErrNotFound) {
-			t.Fatalf("Info: %v", err)
+		if result, err := m.Info(t.Context(), id); err != nil || result.Status != operationresult.NotFound || result.Message != "media unavailable" {
+			t.Fatalf("Info: %+v %v", result, err)
 		}
-		if _, err := m.Hold(t.Context(), id); !share.IsUnavailable(err) || !errors.Is(err, storage.ErrNotFound) {
-			t.Fatalf("Hold: %v", err)
+		if result, err := m.Hold(t.Context(), id); err != nil || result.Status != operationresult.NotFound || result.Message != "media unavailable" {
+			t.Fatalf("Hold: %+v %v", result, err)
 		}
 		if err := store.Media().Touch(t.Context(), id, time.Now()); !errors.Is(err, storage.ErrNotFound) {
 			t.Fatalf("Touch: %v", err)
@@ -45,23 +46,24 @@ func TestUnavailableObjectAndStorageContracts(t *testing.T) {
 	}
 }
 
-func TestUnavailableContentDoesNotHideOtherFaults(t *testing.T) {
+func TestStorageFaultsRemainErrors(t *testing.T) {
 	m, _, backend := newTestManager(t)
 	m.remote = &testBackend{}
 	item := importTestMedia(t, m, "content")
-	held, err := m.Hold(t.Context(), item.ID)
-	if err != nil {
+	result, err := m.Hold(t.Context(), item.ID)
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
+	held := result.Data
 	defer held.Close(t.Context())
 	for _, fault := range []error{os.ErrNotExist, os.ErrPermission, context.Canceled} {
 		backend.open = func(context.Context, string) (io.ReadCloser, error) { return nil, fault }
 		_, err := held.Open(t.Context())
-		if share.IsUnavailable(err) != errors.Is(fault, os.ErrNotExist) || !errors.Is(err, fault) {
+		if !errors.Is(err, fault) {
 			t.Fatalf("Open: %v", err)
 		}
 		_, err = held.SignedURL(t.Context())
-		if share.IsUnavailable(err) != errors.Is(fault, os.ErrNotExist) || !errors.Is(err, fault) {
+		if !errors.Is(err, fault) {
 			t.Fatalf("SignedURL: %v", err)
 		}
 	}

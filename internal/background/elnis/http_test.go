@@ -190,6 +190,47 @@ func TestElnisHTTPPreservesRoutesAuthAndBodyLimit(t *testing.T) {
 	}
 }
 
+type failingCreateEventRepository struct {
+	EventRepository
+	err error
+}
+
+func (r failingCreateEventRepository) Create(context.Context, CreateEventRequest) (*EventRecord, error) {
+	return nil, r.err
+}
+
+func TestElnisHTTPMapsPersistenceFaultToInternalServerError(t *testing.T) {
+	service, cleanup := newTestService(t, nil)
+	defer cleanup()
+	failure := errors.New("event storage unavailable")
+	service.store = failingCreateEventRepository{EventRepository: service.store, err: failure}
+	runtime := startTestRuntime(t, config.Default().Elnis.HTTP, service)
+	body, err := json.Marshal(validHTTPEvent("persistence-failure"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := serveElnisJSON(runtime, body)
+	if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), failure.Error()) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestElnisHTTPMapsBusinessRejectionToBadRequest(t *testing.T) {
+	service, cleanup := newTestService(t, nil)
+	defer cleanup()
+	runtime := startTestRuntime(t, config.Default().Elnis.HTTP, service)
+	event := validHTTPEvent("disabled-elwisp")
+	event["elwisp"] = map[string]any{"name": "disabled"}
+	body, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := serveElnisJSON(runtime, body)
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "disabled") {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func validHTTPEvent(id string) map[string]any {
 	return map[string]any{
 		"version": "elvena.v2",

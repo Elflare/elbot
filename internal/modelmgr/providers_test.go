@@ -4,6 +4,7 @@ import (
 	"context"
 	"elbot/internal/config"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"fmt"
 	"github.com/pelletier/go-toml/v2"
 	"net/http"
@@ -53,8 +54,8 @@ func TestReloadProvidersPublishesCompleteSnapshotAndRetainsSelection(t *testing.
 	if got := s.ResolveMode("chat"); got.Provider != "q" || got.Client != nil {
 		t.Fatal("removed selection changed")
 	}
-	if err := s.ValidateSelection(config.ModelSelection{Provider: "q", Model: "z"}); err == nil {
-		t.Fatal("removed provider accepted")
+	if result := s.ValidateSelection(config.ModelSelection{Provider: "q", Model: "z"}); result.Status != operationresult.NotFound {
+		t.Fatalf("removed provider status=%+v", result)
 	}
 	if got := s.ModelList("", ModelListOptions{}); len(got.Options) != 1 || got.Options[0].Model != "new" {
 		t.Fatal(got)

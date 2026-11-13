@@ -1,18 +1,13 @@
 // Package share 定义 Media 子包之间的协作契约，不作为跨业务包公开 API。
 package share
 
-import "elbot/internal/contextinfo"
-
-import "time"
+import (
+	"elbot/internal/contextinfo"
+	"time"
+)
 
 // IDPrefix 是内部内容寻址媒体标识的前缀。
 const IDPrefix = "media:"
-
-// UnavailableError 表示对象记录、持有资格或已归档内容不存在。
-// 只包装已确认的单项不可用原因，不包装包含其他故障的组合错误。
-type UnavailableError struct {
-	Err error // 原始缺失原因，保留供诊断；构造时必须提供。
-}
 
 // MediaInfo 是对象与交付组件交换的通用信息，不包含存储记录。
 type MediaInfo struct {

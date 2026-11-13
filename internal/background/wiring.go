@@ -3,6 +3,7 @@ package background
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"errors"
 	"fmt"
 	"io"
@@ -161,19 +162,19 @@ func reportMessageMaps(mappings []share.ReportMessageMap) []storage.PlatformMess
 	return rows
 }
 
-func (b elnisBridge) Info(ctx context.Context, id string) (media.MediaInfo, error) {
+func (b elnisBridge) Info(ctx context.Context, id string) (operationresult.Result[media.MediaInfo], error) {
 	return b.media.Info(ctx, id)
 }
 
-func (b elnisBridge) ImportURL(ctx context.Context, url string, input media.Input, limits media.ImportLimits) (media.MediaInfo, error) {
+func (b elnisBridge) ImportURL(ctx context.Context, url string, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
 	return b.media.ImportURL(ctx, url, input, limits)
 }
 
-func (b elnisBridge) ImportReader(ctx context.Context, reader io.Reader, size int64, input media.Input, limits media.ImportLimits) (media.MediaInfo, error) {
+func (b elnisBridge) ImportReader(ctx context.Context, reader io.Reader, size int64, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
 	return b.media.ImportReader(ctx, reader, size, input, limits)
 }
 
-func (b elnisBridge) ImportBytes(ctx context.Context, data []byte, input media.Input, limits media.ImportLimits) (media.MediaInfo, error) {
+func (b elnisBridge) ImportBytes(ctx context.Context, data []byte, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
 	return b.media.ImportBytes(ctx, data, input, limits)
 }
 

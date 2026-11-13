@@ -12,6 +12,7 @@ import (
 	"elbot/internal/logging"
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -35,14 +36,14 @@ type SupervisorDeps struct {
 // ModelCapabilities 只声明后台任务的模型选择与校验能力。
 type ModelCapabilities interface {
 	ResolveMode(string) modelmgr.Selection
-	ValidateSelection(config.ModelSelection) error
+	ValidateSelection(config.ModelSelection) operationresult.Result[struct{}]
 }
 
 // AgentCapabilities 只描述后台业务操作，不取得 Agent 的 Session、执行器或权限对象。
 // Agent 根包提供请求、结果及以下公开方法；会话准备、执行上下文和工具预载由 Agent 负责。
 type AgentCapabilities interface {
-	RunBackground(context.Context, agent.BackgroundRequest) (context.Context, agent.BackgroundResult, error)
-	CopyBackground(context.Context, agent.BackgroundCopyRequest) (string, error)
+	RunBackground(context.Context, agent.BackgroundRequest) (context.Context, operationresult.Result[agent.BackgroundResult], error)
+	CopyBackground(context.Context, agent.BackgroundCopyRequest) (operationresult.Result[string], error)
 	CleanupSessions(ctx context.Context, cutoff time.Time) (int, error)
 	SessionTakenOver(context.Context, string) (bool, error)
 }
@@ -56,6 +57,6 @@ type ToolCapabilities interface {
 // PlatformCapabilities 按平台公开能力接入。
 // App 注入 Platform 总管，Background 根部向内部组件交付所需的发送与原生 API 函数。
 type PlatformCapabilities interface {
-	SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
+	SendTo(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error)
 	CallPlatformAPI(ctx context.Context, platform, api string, params map[string]any) (json.RawMessage, error)
 }

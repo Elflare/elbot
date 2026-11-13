@@ -1,20 +1,10 @@
 package share
 
 import (
-	"errors"
 	"net/url"
 	"path"
 	"strings"
 )
-
-func (e *UnavailableError) Error() string { return "media unavailable: " + e.Err.Error() }
-func (e *UnavailableError) Unwrap() error { return e.Err }
-
-// IsUnavailable identifies the source-classified unavailable media error.
-func IsUnavailable(err error) bool {
-	var unavailable *UnavailableError
-	return errors.As(err, &unavailable)
-}
 
 // ValidID 只检查标识格式，不查询媒体。
 func ValidID(id string) bool {

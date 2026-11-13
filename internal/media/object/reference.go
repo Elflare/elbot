@@ -3,10 +3,10 @@ package object
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -34,31 +34,31 @@ type heldMedia struct {
 }
 
 // Hold 在对象变更边界内取得记录及临时引用，防止与回收竞争。
-func (m *Manager) Hold(ctx context.Context, id string) (share.HeldMedia, error) {
+func (m *Manager) Hold(ctx context.Context, id string) (operationresult.Result[share.HeldMedia], error) {
 	if !share.ValidID(id) {
-		return nil, fmt.Errorf("invalid media ID")
+		return operationresult.Result[share.HeldMedia]{Status: operationresult.InvalidArguments, Message: "invalid media ID"}, nil
 	}
 	unlock, err := m.objects.acquire(ctx, id)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[share.HeldMedia]{}, err
 	}
 	defer unlock()
 	item, err := m.media.Get(ctx, id)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return nil, &share.UnavailableError{Err: err}
+			return operationresult.Result[share.HeldMedia]{Status: operationresult.NotFound, Message: "media unavailable"}, nil
 		}
-		return nil, err
+		return operationresult.Result[share.HeldMedia]{}, err
 	}
 	ref := storage.MediaReference{MediaID: id, OwnerType: "request", OwnerID: storage.NewID(), Purpose: "temporary", CreatedAt: m.options.Now()}
 	// 存储原子拒绝对删除中对象添加引用，无需重复查询删除状态。
 	if err := m.references.Add(ctx, &ref); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return nil, &share.UnavailableError{Err: err}
+			return operationresult.Result[share.HeldMedia]{Status: operationresult.NotFound, Message: "media unavailable"}, nil
 		}
-		return nil, err
+		return operationresult.Result[share.HeldMedia]{}, err
 	}
-	return &heldMedia{manager: m, record: *item, reference: ref, mu: make(chan struct{}, 1)}, nil
+	return operationresult.Result[share.HeldMedia]{Status: operationresult.Success, Data: &heldMedia{manager: m, record: *item, reference: ref, mu: make(chan struct{}, 1)}}, nil
 }
 
 // Info 返回持有记录的通用信息快照。
@@ -74,9 +74,6 @@ func (h *heldMedia) Open(ctx context.Context) (io.ReadCloser, error) {
 		return nil, err
 	}
 	if err := h.manager.media.Touch(ctx, h.record.ID, h.manager.options.Now()); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, &share.UnavailableError{Err: err}
-		}
 		return nil, err
 	}
 	location := h.record.LocalPath
@@ -84,9 +81,6 @@ func (h *heldMedia) Open(ctx context.Context) (io.ReadCloser, error) {
 		location = h.record.ObjectKey
 	}
 	reader, err := backend.Open(ctx, location)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, &share.UnavailableError{Err: err}
-	}
 	return reader, err
 }
 

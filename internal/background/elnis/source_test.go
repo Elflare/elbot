@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"elbot/internal/elvena"
+	"elbot/internal/operationresult"
 )
 
 func TestEventClassifiesBeforeImportAndUsesClassifiedSource(t *testing.T) {
@@ -12,10 +13,11 @@ func TestEventClassifiesBeforeImportAndUsesClassifiedSource(t *testing.T) {
 	defer close()
 	req := testRequest(ModeDirect)
 	req.Segments = []Segment{{Kind: SegmentKindFile, URL: "HtTpS://example.test/A%2FB?token=Case"}}
-	event, err := s.prepareEvent(elvena.Origin{}, req)
-	if err != nil {
-		t.Fatal(err)
+	prepared := s.prepareEvent(elvena.Origin{}, req)
+	if prepared.Status != operationresult.Success {
+		t.Fatal(prepared)
 	}
+	event := prepared.Data
 	if len(testMedia(s).limits) != 0 {
 		t.Fatal("entry downloaded media")
 	}
@@ -24,10 +26,10 @@ func TestEventClassifiesBeforeImportAndUsesClassifiedSource(t *testing.T) {
 	}
 	event.Request.Segments[0].URL = "ftp://invalid/should-not-be-used"
 	outputs, err := s.directMediaOutputs(t.Context(), event, "event")
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || outputs.Status != operationresult.Success {
+		t.Fatal(outputs, err)
 	}
-	if got := string(testMedia(s).data[outputs[0].Source.MediaID]); got != "https://example.test/A%2FB?token=Case" {
+	if got := string(testMedia(s).data[outputs.Data[0].Source.MediaID]); got != "https://example.test/A%2FB?token=Case" {
 		t.Fatal(got)
 	}
 	segment, err := validateMediaSegment(Segment{Kind: SegmentKindFile, URL: "DATA:text/plain;BASE64,aGVsbG8="}, 10)

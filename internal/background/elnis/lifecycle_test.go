@@ -19,6 +19,7 @@ import (
 	background "elbot/internal/background/share"
 	"elbot/internal/config"
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 )
 
 func startTestRuntime(t *testing.T, cfg config.ElnisHTTPConfig, service *Service) *Runtime {
@@ -59,9 +60,12 @@ func (r lifecycleRepository) FailInterrupted(ctx context.Context, from []string,
 
 type lifecycleRunner func(context.Context, background.RunRequest) (background.RunResult, error)
 
-func (f lifecycleRunner) RunBackground(ctx context.Context, req background.RunRequest) (context.Context, background.RunResult, error) {
+func (f lifecycleRunner) RunBackground(ctx context.Context, req background.RunRequest) (context.Context, backgroundRunResult, error) {
 	result, err := f(ctx, req)
-	return ctx, result, err
+	if err != nil {
+		return ctx, backgroundRunResult{}, err
+	}
+	return ctx, successfulBackgroundRun(result), nil
 }
 
 func TestRuntimeStartPreservesPublishedFaultOnCancellation(t *testing.T) {
@@ -302,7 +306,7 @@ func TestRuntimeFaultPrecedesWorkerExitAndBulkCleanup(t *testing.T) {
 	}
 	third := first
 	third.ID = "full"
-	if response, err := s.Handle(t.Context(), "secret", third); err != nil || response.Status != StatusFailed || response.Error == "" {
+	if response, err := s.Handle(t.Context(), "secret", third); err != nil || response.Status != operationresult.Success || response.Data.Status != StatusFailed || response.Data.Error == "" {
 		t.Fatal("full queue failure was not recorded", response, err)
 	}
 	// Closing the listener externally is a real Serve failure, not a requested stop.

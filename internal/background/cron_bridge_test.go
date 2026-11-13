@@ -17,6 +17,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
 	"elbot/internal/security"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
@@ -81,12 +82,14 @@ type cronBridgeModels struct{}
 func (cronBridgeModels) ResolveMode(string) modelmgr.Selection {
 	return modelmgr.Selection{ModelSelection: config.ModelSelection{Provider: "provider", Model: "model"}}
 }
-func (cronBridgeModels) ValidateSelection(config.ModelSelection) error { return nil }
+func (cronBridgeModels) ValidateSelection(config.ModelSelection) operationresult.Result[struct{}] {
+	return operationresult.Result[struct{}]{Status: operationresult.Success}
+}
 
 type cronBridgeRunner struct{}
 
-func (cronBridgeRunner) RunBackground(ctx context.Context, _ share.RunRequest) (context.Context, share.RunResult, error) {
-	return ctx, share.RunResult{SessionID: "session", MessageID: "message", Text: `{"completed":true,"need_report":true,"report":"report"}`}, nil
+func (cronBridgeRunner) RunBackground(ctx context.Context, _ share.RunRequest) (context.Context, operationresult.Result[share.RunResult], error) {
+	return ctx, operationresult.Result[share.RunResult]{Status: operationresult.Success, Data: share.RunResult{SessionID: "session", MessageID: "message", Text: `{"completed":true,"need_report":true,"report":"report"}`}}, nil
 }
 
 func TestCronBridgeServicePersistsReportMappingAndCompletion(t *testing.T) {
@@ -113,18 +116,20 @@ func TestCronBridgeServicePersistsReportMappingAndCompletion(t *testing.T) {
 			return storage.IDSequence(store.NextIDSequence).ID(ctx, "run")
 		},
 		SessionTakenOver: func(context.Context, string) (bool, error) { return false, nil },
-		CopyBackground:   func(context.Context, agent.BackgroundCopyRequest) (string, error) { return "copy", nil },
+		CopyBackground: func(context.Context, agent.BackgroundCopyRequest) (operationresult.Result[string], error) {
+			return operationresult.Result[string]{Status: operationresult.Success, Data: "copy"}, nil
+		},
 		EnabledPlatforms: []elcron.PlatformTarget{{Name: "telegram", SuperadminIDs: []string{"1"}}},
-		SendTarget: func(_ context.Context, target delivery.Target, _ []delivery.Output) (delivery.Receipt, error) {
+		SendTarget: func(_ context.Context, target delivery.Target, _ []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
 
 			if target.Platform == "cli" {
-				return delivery.Receipt{}, nil
+				return operationresult.Result[delivery.Receipt]{Status: operationresult.Success}, nil
 			}
-			return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "notice"}}}, nil
+			return operationresult.Result[delivery.Receipt]{Status: operationresult.Success, Data: delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "telegram", ChatType: "private", ChatID: "1", PlatformMessageID: "notice"}}}}, nil
 		},
 	})
 	t.Cleanup(func() { _ = s.Close(context.Background()); <-m.Stop().Done() })
-	if _, err := s.Handler(ctx, *cronJob(row)); err != nil {
+	if _, _, err := s.Handler(ctx, *cronJob(row)); err != nil {
 		t.Fatal(err)
 	}
 	message, err := store.Messages().FindByPlatformMessage(ctx, "telegram", "private", "1", "notice")
@@ -159,8 +164,8 @@ func TestToolNotificationRefreshesCronThroughRealStorage(t *testing.T) {
 	}
 	b := cronBridge{repo: store.CronJobs()}
 	m := elcron.NewManager(b)
-	m.RegisterHandler(elcron.UserHandlerName, func(ctx context.Context, _ elcron.Job) (context.Context, error) {
-		return ctx, nil
+	m.RegisterHandler(elcron.UserHandlerName, func(ctx context.Context, _ elcron.Job) (context.Context, operationresult.Result[struct{}], error) {
+		return ctx, operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	})
 	connection, err := tools.ObserveCronChanged(func(event tool.CronChangedEvent) error {
 		m.RefreshJob(event.Name)

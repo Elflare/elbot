@@ -8,6 +8,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 	"elbot/internal/platform/share"
 )
 
@@ -26,10 +27,13 @@ type mediaRouteResolver struct {
 	err   error
 }
 
-func (r *mediaRouteResolver) ResolveMedia(_ context.Context, input share.MessageSegment, limit int64) (delivery.Source, error) {
+func (r *mediaRouteResolver) ResolveMedia(_ context.Context, input share.MessageSegment, limit int64) (operationresult.Result[delivery.Source], error) {
 	r.calls++
 	r.input, r.limit = input, limit
-	return delivery.Source{Data: []byte(r.name)}, r.err
+	if r.err != nil {
+		return operationresult.Result[delivery.Source]{}, r.err
+	}
+	return operationresult.Result[delivery.Source]{Status: operationresult.Success, Data: delivery.Source{Data: []byte(r.name)}}, nil
 }
 
 func TestResolveMediaUsesExplicitPlatform(t *testing.T) {
@@ -41,11 +45,11 @@ func TestResolveMediaUsesExplicitPlatform(t *testing.T) {
 	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{Platform: "primary"}})
 	input := share.MessageSegment{Type: share.SegmentImage, PlatformFileID: "file"}
 	source, err := router.ResolveMedia(ctx, "target", input, 42)
-	if err != nil || string(source.Data) != "target" || target.calls != 1 || primary.calls != 0 || target.input != input || target.limit != 42 {
+	if err != nil || source.Status != operationresult.Success || string(source.Data.Data) != "target" || target.calls != 1 || primary.calls != 0 || target.input != input || target.limit != 42 {
 		t.Fatalf("source=%+v target=%+v primary=%+v error=%v", source, target, primary, err)
 	}
 	for _, name := range []string{"", "unknown", "unsupported"} {
-		if _, err := router.ResolveMedia(ctx, name, input, 42); err == nil {
+		if result, err := router.ResolveMedia(ctx, name, input, 42); err == nil && result.Status == operationresult.Success {
 			t.Fatalf("accepted %q", name)
 		}
 	}

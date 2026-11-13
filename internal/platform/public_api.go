@@ -6,6 +6,7 @@ import (
 	"context"
 	"elbot/internal/delivery"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/platform/share"
 	"encoding/json"
 )
@@ -16,7 +17,7 @@ func (m *Supervisor) CallPlatformAPI(ctx context.Context, platform, api string, 
 }
 
 // ResolveMedia 使用历史消息所属平台的解析能力，不读取当前消息上下文。
-func (m *Supervisor) ResolveMedia(ctx context.Context, platform string, input media.PlatformMedia, maxBytes int64) (delivery.Source, error) {
+func (m *Supervisor) ResolveMedia(ctx context.Context, platform string, input media.PlatformMedia, maxBytes int64) (operationresult.Result[delivery.Source], error) {
 	return m.dispatcher.ResolveMedia(ctx, platform, share.MessageSegment{Type: share.MessageSegmentType(input.Type),
 		MediaID: input.MediaID, URL: input.URL, PlatformFileID: input.PlatformFileID, MIMEType: input.MIMEType, Name: input.Name, Size: input.Size}, maxBytes)
 }

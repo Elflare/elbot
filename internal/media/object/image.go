@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"fmt"
 	"image"
 	"image/color"
 	_ "image/gif"
 	"image/jpeg"
 	_ "image/png"
+	"io"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -20,16 +22,20 @@ import (
 
 // ValidateImage 验证可解码内容与图片 MIME，释放故障独立记录。
 // 释放失败的自有持有交给 Cleanup 重试。
-func (m *Manager) ValidateImage(ctx context.Context, id string) (info share.MediaInfo, err error) {
-	held, err := m.Hold(ctx, id)
+func (m *Manager) ValidateImage(ctx context.Context, id string) (operationresult.Result[share.MediaInfo], error) {
+	retained, err := m.Hold(ctx, id)
 	if err != nil {
-		return info, err
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
+	if retained.Status != operationresult.Success {
+		return operationresult.Result[share.MediaInfo]{Status: retained.Status, Message: retained.Message}, nil
+	}
+	held := retained.Data
 	defer m.releaseOwned(ctx, held)
-	info = held.Info()
+	info := held.Info()
 	reader, err := held.Open(ctx)
 	if err != nil {
-		return info, err
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
 	defer func() {
 		if closeErr := reader.Close(); closeErr != nil {
@@ -37,12 +43,19 @@ func (m *Manager) ValidateImage(ctx context.Context, id string) (info share.Medi
 		}
 	}()
 	if !strings.HasPrefix(info.MIMEType, "image/") {
-		return info, fmt.Errorf("媒体类型不是图片")
+		return operationresult.Result[share.MediaInfo]{Status: operationresult.InvalidTarget, Message: "媒体类型不是图片"}, nil
 	}
-	if _, _, err := image.Decode(reader); err != nil {
-		return info, fmt.Errorf("媒体不是有效或支持的图片: %w", err)
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
-	return info, ctx.Err()
+	if _, _, err := image.Decode(bytes.NewReader(data)); err != nil {
+		return operationresult.Result[share.MediaInfo]{Status: operationresult.InvalidTarget, Message: fmt.Sprintf("媒体不是有效或支持的图片: %v", err)}, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return operationresult.Result[share.MediaInfo]{}, err
+	}
+	return operationresult.Result[share.MediaInfo]{Status: operationresult.Success, Data: info}, nil
 }
 
 func imageDimensions(data []byte) (int, int, error) {
@@ -53,13 +66,13 @@ func imageDimensions(data []byte) (int, int, error) {
 	return config.Width, config.Height, nil
 }
 
-func compressImage(data []byte, maxBytes int64, maxLength int) ([]byte, error) {
+func compressImage(data []byte, maxBytes int64, maxLength int) (operationresult.Result[[]byte], error) {
 	if maxBytes <= 1 || maxLength <= 1 {
-		return nil, fmt.Errorf("image compression limits are too small")
+		return operationresult.Result[[]byte]{}, fmt.Errorf("image compression limits are too small")
 	}
 	source, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("decode image: %w", err)
+		return operationresult.Result[[]byte]{Status: operationresult.InvalidTarget, Message: fmt.Sprintf("decode image: %v", err)}, nil
 	}
 	bounds := source.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
@@ -75,10 +88,10 @@ func compressImage(data []byte, maxBytes int64, maxLength int) ([]byte, error) {
 		for quality := 92; quality >= 35; quality -= 5 {
 			encoded, err := encodeJPEG(candidate, quality)
 			if err != nil {
-				return nil, err
+				return operationresult.Result[[]byte]{}, err
 			}
 			if int64(len(encoded)) < maxBytes {
-				return encoded, nil
+				return operationresult.Result[[]byte]{Status: operationresult.Success, Data: encoded}, nil
 			}
 		}
 		if width == 1 && height == 1 {
@@ -87,7 +100,7 @@ func compressImage(data []byte, maxBytes int64, maxLength int) ([]byte, error) {
 		width = max(1, int(float64(width)*0.85))
 		height = max(1, int(float64(height)*0.85))
 	}
-	return nil, fmt.Errorf("compressed image still exceeds %d bytes", maxBytes)
+	return operationresult.Result[[]byte]{Status: operationresult.Rejected, Message: fmt.Sprintf("compressed image still exceeds %d bytes", maxBytes)}, nil
 }
 
 func encodeJPEG(img image.Image, quality int) ([]byte, error) {

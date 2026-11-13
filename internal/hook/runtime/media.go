@@ -229,7 +229,7 @@ func (b *mediaBridge) wakeExpiry() {
 }
 
 func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw json.RawMessage) (operationresult.Result[mediaResult], error) {
-	var metadata media.MediaInfo
+	var metadata operationresult.Result[media.MediaInfo]
 	var err error
 	switch method {
 	case "media.import":
@@ -267,7 +267,7 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 			}
 			root, openErr := os.OpenRoot(baseDir)
 			if openErr != nil {
-				return nil, fmt.Errorf("open plugin directory: %w", openErr)
+				return operationresult.Result[mediaResult]{}, fmt.Errorf("open plugin directory: %w", openErr)
 			}
 			defer root.Close()
 			file, openErr := root.Open(params.Path)
@@ -275,12 +275,12 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 				return operationresult.Result[mediaResult]{Status: operationresult.NotFound, Message: fmt.Sprintf("plugin media %q not found", params.Path)}, nil
 			}
 			if openErr != nil {
-				return nil, fmt.Errorf("open plugin media: %w", openErr)
+				return operationresult.Result[mediaResult]{}, fmt.Errorf("open plugin media: %w", openErr)
 			}
 			defer file.Close()
 			info, statErr := file.Stat()
 			if statErr != nil {
-				return nil, fmt.Errorf("stat plugin media: %w", statErr)
+				return operationresult.Result[mediaResult]{}, fmt.Errorf("stat plugin media: %w", statErr)
 			}
 			if !info.Mode().IsRegular() {
 				return operationresult.Result[mediaResult]{Status: operationresult.InvalidTarget, Message: "media.import requires a regular file"}, nil
@@ -309,24 +309,24 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 		}
 		metadata, err = b.api.Info(ctx, params.MediaID)
 	default:
-		return nil, fmt.Errorf("unsupported hook media method %q", method)
+		return operationresult.Result[mediaResult]{}, fmt.Errorf("unsupported hook media method %q", method)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("hook media operation failed: %w", err)
+		return operationresult.Result[mediaResult]{}, fmt.Errorf("hook media operation failed: %w", err)
 	}
 	if metadata.Status != operationresult.Success {
 		return operationresult.Result[mediaResult]{Status: metadata.Status, Message: metadata.Message}, nil
 	}
 	lease, err := b.retain(ctx, metadata.Data.ID)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[mediaResult]{}, err
 	}
 	defer b.release(lease)
 	result := mediaResult{MediaID: metadata.Data.ID, Name: metadata.Data.Name, MIMEType: metadata.Data.MIMEType, Size: metadata.Data.Size, ExpiresAt: lease.expires}
 	if method == "media.read" && metadata.Data.Size <= mediaInlineBytes {
 		data, _, err := b.api.Read(ctx, metadata.Data.ID)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[mediaResult]{}, err
 		}
 		if data.Status != operationresult.Success {
 			return operationresult.Result[mediaResult]{Status: data.Status, Message: data.Message}, nil
@@ -337,13 +337,13 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 			if lease.dir == "" {
 				lease.dir, err = os.MkdirTemp("", "elbot-hook-media-*")
 				if err != nil {
-					return nil, err
+					return operationresult.Result[mediaResult]{}, err
 				}
 			}
 			path := filepath.Join(lease.dir, "media")
 			exported, err := b.api.Export(ctx, metadata.Data.ID, path)
 			if err != nil {
-				return nil, err
+				return operationresult.Result[mediaResult]{}, err
 			}
 			if exported.Status != operationresult.Success {
 				return operationresult.Result[mediaResult]{Status: exported.Status, Message: exported.Message}, nil

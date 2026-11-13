@@ -7,6 +7,7 @@ import (
 	command "elbot/internal/command/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"maps"
 	"slices"
@@ -66,7 +67,7 @@ func AppendNonTextSegments(out []MessageSegment, segments []MessageSegment) []Me
 
 // MediaResolver 仅表达协议侧媒体来源解析，不负责媒体缓存。
 type MediaResolver interface {
-	ResolveMedia(context.Context, MessageSegment, int64) (delivery.Source, error)
+	ResolveMedia(context.Context, MessageSegment, int64) (operationresult.Result[delivery.Source], error)
 }
 
 type Identity struct {

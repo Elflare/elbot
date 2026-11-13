@@ -7,25 +7,26 @@ import (
 
 	background "elbot/internal/background/share"
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 )
 
 type takeoverRunner struct{ calls int }
 
-func (r *takeoverRunner) RunBackground(ctx context.Context, _ background.RunRequest) (context.Context, background.RunResult, error) {
+func (r *takeoverRunner) RunBackground(ctx context.Context, _ background.RunRequest) (context.Context, cronRunResult, error) {
 	r.calls++
-	return ctx, background.RunResult{RunID: "logical-run", SessionID: "adopted", MessageID: "actual-answer", Text: "ordinary foreground answer", TakenOver: true, Outcome: "completed"}, nil
+	return ctx, successfulRun(background.RunResult{RunID: "logical-run", SessionID: "adopted", MessageID: "actual-answer", Text: "ordinary foreground answer", TakenOver: true, Outcome: "completed"}), nil
 }
 
 func TestTakeoverSuppressesRepairAndDelivery(t *testing.T) {
 	repo := newFakeCronRepo()
 	runner := &takeoverRunner{}
 	sent := 0
-	svc := newTestCronService(t, Options{Store: repo, Runner: runner, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+	svc := newTestCronService(t, Options{Store: repo, Runner: runner, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (receiptResult, error) {
 		sent++
-		return delivery.Receipt{}, nil
+		return sentReceipt(delivery.Receipt{}), nil
 	}})
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Version: 1, Title: "takeover", Schedule: CronSchedule{Mode: ScheduleOnce, RunAt: "2026-01-02 03:04:00"}, Trigger: CronTrigger{Mode: TriggerLLM, Message: testElyphTask("test")}, Target: CronTarget{SourcePlatform: "cli"}})
-	if _, err := svc.runTask(context.Background(), *job, mustDecodeTestMetadata(t, job.Metadata)); err != nil {
+	if _, result, err := svc.runTask(context.Background(), *job, mustDecodeTestMetadata(t, job.Metadata)); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	state := mustDecodeTestDelivery(t, repo.jobs[job.Name].DeliveryState)
@@ -64,15 +65,15 @@ func TestInjectedTakeoverQuerySuppressesRepairAndSurfacesFailure(t *testing.T) {
 func TestInjectedTakeoverQueryStopsPreparedDelivery(t *testing.T) {
 	repo := newFakeCronRepo()
 	sent := 0
-	svc := newTestCronService(t, Options{Store: repo, SessionTakenOver: func(_ context.Context, id string) (bool, error) { return id == "adopted", nil }, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+	svc := newTestCronService(t, Options{Store: repo, SessionTakenOver: func(_ context.Context, id string) (bool, error) { return id == "adopted", nil }, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (receiptResult, error) {
 		sent++
-		return delivery.Receipt{}, nil
+		return sentReceipt(delivery.Receipt{}), nil
 	}})
 	job := upsertTestCronJob(t, repo, Metadata{Kind: metadataKind, Schedule: CronSchedule{Mode: ScheduleOnce}, Target: CronTarget{SourcePlatform: "cli"}})
 	state := CronDeliveryState{RunID: "run", ReportReady: true, NeedReport: true, Report: "unsent", ReportSessionID: "adopted"}
 	repo.jobs[job.Name].DeliveryToken = "run"
 	job.DeliveryToken = "run"
-	if err := svc.deliverPrepared(t.Context(), *job, mustDecodeTestMetadata(t, job.Metadata), state, "", false); err != nil {
+	if result, err := svc.deliverPrepared(t.Context(), *job, mustDecodeTestMetadata(t, job.Metadata), state, "", false); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	if sent != 0 {

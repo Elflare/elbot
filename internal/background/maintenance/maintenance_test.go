@@ -11,6 +11,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -79,14 +80,16 @@ func TestCleanupUsesInjectedLiveSessionService(t *testing.T) {
 		}
 	})
 	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-	row, err := live.Create(ctx, scope, session.CreateRequest{})
-	if err != nil {
+	created, err := live.Create(ctx, scope, session.CreateRequest{})
+	if err != nil || created.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	_, binding, err := live.CurrentBound(ctx, scope)
-	if err != nil {
+	row := created.Data
+	current, err := live.CurrentBound(ctx, scope)
+	if err != nil || current.Status != operationresult.Success {
 		t.Fatal(err)
 	}
+	binding := current.Data.Binding
 	_, err = store.Sessions().Mutate(ctx, row.ID, func(row *storage.Session) error { row.UpdatedAt = time.Now().AddDate(0, 0, -10); return nil })
 	if err != nil {
 		t.Fatal(err)

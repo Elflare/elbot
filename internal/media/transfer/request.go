@@ -2,6 +2,7 @@ package transfer
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -21,10 +22,10 @@ const requestUploadConcurrency = 8
 // AcquireForLLM 克隆请求、按 ID 复用持有，补齐信息并按总大小选择交付方式。
 // 内联使用 held.Open，远端使用 held.SignedURL，不接收存储记录。
 // 使用记录归 Media；准备失败在工作退出后收尾，失败资源由维护继续处理。
-func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) (_ []llm.LLMMessage, usageID string, err error) {
+func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) (result operationresult.Result[[]llm.LLMMessage], usageID string, err error) {
 	out := llm.CloneMessages(messages)
 	defer func() {
-		if err != nil {
+		if err != nil || result.Status != operationresult.Success {
 			m.abortUsage(ctx, usageID)
 			usageID = ""
 		}
@@ -35,20 +36,23 @@ func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) 
 	for i := range out {
 		for j, segment := range out[i].Segments {
 			if err := ctx.Err(); err != nil {
-				return nil, usageID, err
+				return operationresult.Result[[]llm.LLMMessage]{}, usageID, err
 			}
 			if (segment.Type != llm.SegmentImage && segment.Type != llm.SegmentFile) || segment.MediaID == "" {
 				continue
 			}
 			held, ok := mediaByID[segment.MediaID]
 			if !ok {
-				held, err = m.objects.Hold(ctx, segment.MediaID)
-				if err != nil && !share.IsUnavailable(err) {
-					return nil, usageID, err
+				retained, err := m.objects.Hold(ctx, segment.MediaID)
+				if err != nil {
+					return operationresult.Result[[]llm.LLMMessage]{}, usageID, err
 				}
-				if err == nil {
+				if retained.Status == operationresult.Success {
+					held = retained.Data
 					usageID = m.addHeld(usageID, held)
 					items = append(items, held)
+				} else if retained.Status != operationresult.NotFound {
+					return operationresult.Result[[]llm.LLMMessage]{Status: retained.Status, Message: retained.Message}, usageID, nil
 				}
 				mediaByID[segment.MediaID] = held
 			}
@@ -64,13 +68,13 @@ func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) 
 	}
 	remote := m.options.Backend == "s3" || (m.options.Backend == "hybrid" && total > m.options.MaxDirectBase64Bytes)
 	if !remote && total > m.options.MaxDirectBase64Bytes {
-		return nil, usageID, fmt.Errorf("media request is %d bytes, exceeds file_delivery.max_direct_base64_bytes=%d", total, m.options.MaxDirectBase64Bytes)
+		return operationresult.Result[[]llm.LLMMessage]{Status: operationresult.Rejected, Message: fmt.Sprintf("media request is %d bytes, exceeds file_delivery.max_direct_base64_bytes=%d", total, m.options.MaxDirectBase64Bytes)}, usageID, nil
 	}
 	urls := map[string]string{}
 	if remote {
 		urls, err = m.prepareRemoteURLs(ctx, items)
 		if err != nil {
-			return nil, usageID, err
+			return operationresult.Result[[]llm.LLMMessage]{}, usageID, err
 		}
 	}
 	for i := range out {
@@ -82,12 +86,10 @@ func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) 
 			value, ok := urls[segment.MediaID]
 			if !ok {
 				data, err := m.readMedia(ctx, held)
-				if err != nil && !share.IsUnavailable(err) {
-					return nil, usageID, err
+				if err != nil {
+					return operationresult.Result[[]llm.LLMMessage]{}, usageID, err
 				}
-				if err == nil {
-					value = "data:" + segment.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(data)
-				}
+				value = "data:" + segment.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(data)
 				urls[segment.MediaID] = value
 			}
 			if value == "" {
@@ -97,7 +99,10 @@ func (m *Manager) AcquireForLLM(ctx context.Context, messages []llm.LLMMessage) 
 			}
 		}
 	}
-	return out, usageID, ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return operationresult.Result[[]llm.LLMMessage]{}, usageID, err
+	}
+	return operationresult.Result[[]llm.LLMMessage]{Status: operationresult.Success, Data: out}, usageID, nil
 }
 
 // prepareRemoteURLs 并发处理去重后的持有句柄，全部 worker 退出后才返回。
@@ -117,9 +122,6 @@ func (m *Manager) prepareRemoteURLs(ctx context.Context, items []share.HeldMedia
 				}
 				value, err := items[i].SignedURL(workCtx)
 				if err != nil {
-					if share.IsUnavailable(err) {
-						continue
-					}
 					failureMu.Lock()
 					if workCtx.Err() == nil {
 						cancel(err)

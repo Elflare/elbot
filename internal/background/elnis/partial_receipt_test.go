@@ -8,7 +8,7 @@ import (
 	"elbot/internal/delivery"
 )
 
-func TestPartialReportMapsSuccessAndRemainsRetryable(t *testing.T) {
+func TestFailedReportSendDiscardsPartialReceiptAndRemainsRetryable(t *testing.T) {
 	ctx := context.Background()
 	wantErr := errors.New("later page failed")
 	calls := 0
@@ -31,7 +31,9 @@ func TestPartialReportMapsSuccessAndRemainsRetryable(t *testing.T) {
 	if err := s.RunLLMEvent(ctx, queued.Event, queued.EventID); !errors.Is(err, wantErr) {
 		t.Fatalf("send error=%v", err)
 	}
-	assertReportMapping(t, s, "qqonebot", "private", "1001", "partial")
+	if len(testRepo(s).mappings) != 0 {
+		t.Fatalf("failed send retained receipt mappings: %+v", testRepo(s).mappings)
+	}
 	event, err := testRepo(s).snapshot(ctx, queued.EventID)
 	if err != nil || event.Status != StatusResultReady {
 		t.Fatalf("event=%#v/%v", event, err)
@@ -41,4 +43,5 @@ func TestPartialReportMapsSuccessAndRemainsRetryable(t *testing.T) {
 	if err != nil || event.Status != StatusCompleted || calls != 2 {
 		t.Fatalf("recovery=%#v/%v calls=%d", event, err, calls)
 	}
+	assertReportMapping(t, s, "qqonebot", "private", "1001", "retry")
 }

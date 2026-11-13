@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"elbot/internal/media/share"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 )
 
@@ -18,10 +20,7 @@ func TestCloseDoesNotWaitForOtherHoldsObjectLock(t *testing.T) {
 	m, _, _ := newTestManager(t)
 	item := importTestMedia(t, m, "independent close")
 	for _, released := range []bool{false, true} {
-		held, err := m.Hold(t.Context(), item.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
+		held := holdTestMedia(t, m, item.ID)
 		if released {
 			if err := held.Close(t.Context()); err != nil {
 				t.Fatal(err)
@@ -43,10 +42,7 @@ func TestCloseDoesNotWaitForOtherHoldsObjectLock(t *testing.T) {
 func TestConcurrentCloseReleasesOnce(t *testing.T) {
 	m, store, _ := newTestManager(t)
 	item := importTestMedia(t, m, "concurrent close")
-	held, err := m.Hold(t.Context(), item.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	held := holdTestMedia(t, m, item.ID)
 	var calls atomic.Int32
 	m.references = testReferences{ReferenceRepository: m.references, remove: func(ctx context.Context, ref storage.MediaReference) error {
 		calls.Add(1)
@@ -74,9 +70,9 @@ func TestReaderCloseFailureDoesNotQueueReleasedHold(t *testing.T) {
 		return &testReader{Reader: strings.NewReader("reader close"), closeErr: failure}, nil
 	}
 	logs := captureMediaLogs(t)
-	_, _, err := m.Read(t.Context(), item.ID)
-	if err != nil {
-		t.Fatalf("read failed: %v", err)
+	result, _, err := m.Read(t.Context(), item.ID)
+	if err != nil || result.Status != operationresult.Success {
+		t.Fatalf("read failed: result=%+v err=%v", result, err)
 	}
 	requireMediaLog(t, logs, failure.Error())
 	if len(m.pendingReleases) != 0 {
@@ -91,10 +87,7 @@ func TestReaderCloseFailureDoesNotQueueReleasedHold(t *testing.T) {
 func TestHeldCloseWaitCancellation(t *testing.T) {
 	m, store, _ := newTestManager(t)
 	item := importTestMedia(t, m, "wait cancellation")
-	held, err := m.Hold(t.Context(), item.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	held := holdTestMedia(t, m, item.ID)
 	entered := make(chan struct{})
 	ctx, cancel := context.WithCancel(t.Context())
 	m.references = testReferences{ReferenceRepository: store.MediaReferences(), remove: func(ctx context.Context, ref storage.MediaReference) error {
@@ -122,10 +115,7 @@ func TestHeldCloseWaitCancellation(t *testing.T) {
 func TestExplicitHoldsAreNotReleasedByCleanup(t *testing.T) {
 	m, store, _ := newTestManager(t)
 	item := importTestMedia(t, m, "caller owns release")
-	held, err := m.Hold(t.Context(), item.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	held := holdTestMedia(t, m, item.ID)
 	failure := errors.New("release failed")
 	m.references = testReferences{ReferenceRepository: m.references, remove: func(context.Context, storage.MediaReference) error { return failure }}
 	if err := held.Close(t.Context()); !errors.Is(err, failure) {
@@ -151,7 +141,8 @@ func TestOwnedReleaseRetryFailureAllowsOtherCleanup(t *testing.T) {
 	orphan := importTestMedia(t, m, "other orphan")
 	failure := errors.New("release unavailable")
 	m.references = testReferences{ReferenceRepository: m.references, remove: func(context.Context, storage.MediaReference) error { return failure }}
-	if _, _, err := m.Read(t.Context(), item.ID); err != nil {
+	result, _, err := m.Read(t.Context(), item.ID)
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
@@ -173,15 +164,15 @@ func TestOwnedReleaseRetryFailureAllowsOtherCleanup(t *testing.T) {
 	if err := m.Cleanup(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Info(t.Context(), item.ID); err != nil {
-		t.Fatalf("released object ignored grace period: %v", err)
+	if result, err := m.Info(t.Context(), item.ID); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("released object ignored grace period: %+v %v", result, err)
 	}
 	m.options.Now = func() time.Time { return time.Now().Add(2 * OrphanGrace) }
 	if err := m.Cleanup(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Info(t.Context(), item.ID); !errors.Is(err, storage.ErrNotFound) {
-		t.Fatalf("released orphan survived: %v", err)
+	if result, err := m.Info(t.Context(), item.ID); err != nil || result.Status != operationresult.NotFound {
+		t.Fatalf("released orphan survived: %+v %v", result, err)
 	}
 }
 
@@ -195,7 +186,8 @@ func TestOwnedReleaseCancellationPreservesPendingAndNewItems(t *testing.T) {
 			failure := errors.New("release failed")
 			m.references = testReferences{ReferenceRepository: m.references, remove: func(context.Context, storage.MediaReference) error { return failure }}
 			for _, id := range []string{first.ID, second.ID} {
-				if _, _, err := m.Read(t.Context(), id); err != nil {
+				result, _, err := m.Read(t.Context(), id)
+				if err != nil || result.Status != operationresult.Success {
 					t.Fatal(err)
 				}
 			}
@@ -228,7 +220,8 @@ func TestOwnedReleaseCancellationPreservesPendingAndNewItems(t *testing.T) {
 			go func() { err := m.Cleanup(ctx, nil); done <- outcome{err} }()
 			awaitTest(t, entered)
 			// 当前批次正在重试时，另一个便捷调用登记新的失败释放。
-			if _, _, err := m.Read(t.Context(), third.ID); err != nil {
+			result, _, err := m.Read(t.Context(), third.ID)
+			if err != nil || result.Status != operationresult.Success {
 				t.Fatal(err)
 			}
 			cancel()
@@ -273,14 +266,30 @@ func TestOwnedReleaseFailureRecoveredByCleanup(t *testing.T) {
 			var err error
 			switch operation {
 			case "read":
-				_, _, err = m.Read(t.Context(), item.ID)
+				var result operationresult.Result[[]byte]
+				result, _, err = m.Read(t.Context(), item.ID)
+				if err == nil && result.Status != operationresult.Success {
+					err = errors.New(result.Message)
+				}
 			case "export":
-				_, err = m.Export(t.Context(), item.ID, filepath.Join(t.TempDir(), "export"))
+				var result operationresult.Result[share.MediaInfo]
+				result, err = m.Export(t.Context(), item.ID, filepath.Join(t.TempDir(), "export"))
+				if err == nil && result.Status != operationresult.Success {
+					err = errors.New(result.Message)
+				}
 			case "validate":
-				_, err = m.ValidateImage(t.Context(), item.ID)
+				var result operationresult.Result[share.MediaInfo]
+				result, err = m.ValidateImage(t.Context(), item.ID)
+				if err == nil && result.Status != operationresult.Success {
+					err = errors.New(result.Message)
+				}
 			case "open failure":
 				delete(backend.data, item.ID)
-				_, _, err = m.Read(t.Context(), item.ID)
+				var result operationresult.Result[[]byte]
+				result, _, err = m.Read(t.Context(), item.ID)
+				if err == nil && result.Status != operationresult.Success {
+					err = errors.New(result.Message)
+				}
 			}
 			if errors.Is(err, failure) {
 				t.Fatalf("handled release failure escaped: %v", err)

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"elbot/internal/config"
+	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -78,20 +79,21 @@ func drainUsageEvents(t *testing.T, m *MediaCenter) {
 	}
 }
 
+func requireMediaSuccess[T any](t *testing.T, result operationresult.Result[T], err error) T {
+	t.Helper()
+	if err != nil || result.Status != operationresult.Success {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	return result.Data
+}
 func TestUsageFailureRemainsOwnedAfterCanceledConsumerReturns(t *testing.T) {
 	m, store, refs := newUsageCenter(t)
-	item, err := m.ImportBytes(t.Context(), []byte("content"), Input{Name: "input"}, ImportLimits{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	a, err := m.Hold(t.Context(), item.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := m.Hold(t.Context(), item.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	itemResult, err := m.ImportBytes(t.Context(), []byte("content"), Input{Name: "input"}, ImportLimits{})
+	item := requireMediaSuccess(t, itemResult, err)
+	aResult, err := m.Hold(t.Context(), item.ID)
+	a := requireMediaSuccess(t, aResult, err)
+	bResult, err := m.Hold(t.Context(), item.ID)
+	b := requireMediaSuccess(t, bResult, err)
 	if a.UsageID == b.UsageID || a.UsageID == "" {
 		t.Fatal("usage IDs were shared")
 	}
@@ -138,18 +140,12 @@ func TestUsageFailureRemainsOwnedAfterCanceledConsumerReturns(t *testing.T) {
 func TestUsageQueueRejectionAndCloseTimeoutKeepResources(t *testing.T) {
 	m, store, refs := newUsageCenter(t)
 	refs.started, refs.unblock = make(chan struct{}), make(chan struct{})
-	item, err := m.ImportBytes(t.Context(), []byte("body"), Input{}, ImportLimits{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	a, err := m.Hold(t.Context(), item.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := m.Hold(t.Context(), item.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	itemResult, err := m.ImportBytes(t.Context(), []byte("body"), Input{}, ImportLimits{})
+	item := requireMediaSuccess(t, itemResult, err)
+	aResult, err := m.Hold(t.Context(), item.ID)
+	a := requireMediaSuccess(t, aResult, err)
+	bResult, err := m.Hold(t.Context(), item.ID)
+	b := requireMediaSuccess(t, bResult, err)
 	m.PublishUsageFinished(t.Context(), []UsageID{a.UsageID})
 	select {
 	case <-refs.started:
@@ -172,8 +168,8 @@ func TestUsageQueueRejectionAndCloseTimeoutKeepResources(t *testing.T) {
 	if err := m.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("close should wait: %v", err)
 	}
-	if _, err := m.Hold(t.Context(), item.ID); !errors.Is(err, signal.ErrClosed) {
-		t.Fatalf("accepted after close: %v", err)
+	if result, err := m.Hold(t.Context(), item.ID); err != nil || result.Status != operationresult.Unavailable {
+		t.Fatalf("accepted after close: result=%+v err=%v", result, err)
 	}
 	remaining, err := store.MediaReferences().ListMediaIDs(t.Context(), item.ID)
 	if err != nil || len(remaining) != 2 {
@@ -191,10 +187,8 @@ func TestUsageQueueRejectionAndCloseTimeoutKeepResources(t *testing.T) {
 
 func TestOutputFailureAndWorkspaceCleanupRemainInMedia(t *testing.T) {
 	m, store, refs := newUsageCenter(t)
-	item, err := m.ImportBytes(t.Context(), []byte("body"), Input{}, ImportLimits{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	itemResult, err := m.ImportBytes(t.Context(), []byte("body"), Input{}, ImportLimits{})
+	item := requireMediaSuccess(t, itemResult, err)
 	metadata, err := store.Media().Get(t.Context(), item.ID)
 	if err != nil {
 		t.Fatal(err)

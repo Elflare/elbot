@@ -1,20 +1,19 @@
 package cron
 
 import (
-	"fmt"
-
 	"elbot/internal/config"
+	"elbot/internal/operationresult"
 )
 
-func (s *Service) modelForTask(meta CronLLMMetadata) (config.ModelSelection, error) {
+func (s *Service) modelForTask(meta CronLLMMetadata) operationresult.Result[config.ModelSelection] {
 	if meta.ModelProvider == "" && meta.Model == "" {
-		return s.models.ResolveMode("work").ModelSelection, nil
+		return operationresult.Result[config.ModelSelection]{Status: operationresult.Success, Data: s.models.ResolveMode("work").ModelSelection}
 	}
 	if meta.ModelProvider == "" || meta.Model == "" {
-		return config.ModelSelection{}, fmt.Errorf("model_provider and model must both be set or cleared")
+		return operationresult.Result[config.ModelSelection]{Status: operationresult.InvalidArguments, Message: "model_provider and model must both be set or cleared"}
 	}
-	if err := s.models.ValidateSelection(config.ModelSelection{Provider: meta.ModelProvider, Model: meta.Model}); err != nil {
-		return config.ModelSelection{}, err
+	if result := s.models.ValidateSelection(config.ModelSelection{Provider: meta.ModelProvider, Model: meta.Model}); result.Status != operationresult.Success {
+		return operationresult.Result[config.ModelSelection]{Status: result.Status, Message: result.Message}
 	}
-	return config.ModelSelection{Provider: meta.ModelProvider, Model: meta.Model}, nil
+	return operationresult.Result[config.ModelSelection]{Status: operationresult.Success, Data: config.ModelSelection{Provider: meta.ModelProvider, Model: meta.Model}}
 }

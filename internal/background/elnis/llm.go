@@ -2,6 +2,7 @@ package elnis
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -9,6 +10,7 @@ import (
 
 	background "elbot/internal/background/share"
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/elyph"
 	globalevents "elbot/internal/events"
 )
@@ -56,6 +58,10 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		logFailure("task", err, slog.LevelError)
 		return s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", err.Error())
 	}
+	if segments.Status != operationresult.Success {
+		globalevents.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelWarn, EventName: "elnis_llm_failed", Module: "elnis", Content: segments.Message, Identity: identity, ResultStatus: globalevents.ResultFailed})
+		return s.completeEvent(ctx, eventID, event.ResolvedTargets, StatusFailed, "", segments.Message)
+	}
 	model := s.modelForEvent(event)
 	targets, err := decodeResolvedTargets(event.ResolvedTargets)
 	if err != nil {
@@ -74,7 +80,7 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		Actor:           elnisActor(event),
 		ModelProvider:   model.Provider,
 		Model:           model.Model,
-		PromptSegments:  segments,
+		PromptSegments:  segments.Data,
 		Prompt:          s.llmPrompt(event),
 		SandboxSubdir:   elnisSandboxSubdir(event.Request.Elwisp.Name),
 		Metadata: map[string]string{
@@ -91,14 +97,28 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 		runRequest.AllowedToolNames = append(runRequest.AllowedToolNames, name)
 	}
 
-	ctx, result, err := s.runner.RunBackground(ctx, runRequest)
+	ctx, outcome, err := s.runner.RunBackground(ctx, runRequest)
+	facts, _ := contextinfo.ExecutionFromContext(ctx)
+	identity.SessionID = facts.SessionID
+	if err != nil {
+		if facts.SessionID != "" {
+			if taken, lookupErr := s.sessionTakenOver(context.WithoutCancel(ctx), facts.SessionID); lookupErr != nil {
+				return lookupErr
+			} else if taken {
+				return s.completeTakeover(ctx, eventID, event.ResolvedTargets, background.RunResult{RunID: facts.RunID, SessionID: facts.SessionID, TakenOver: true, Outcome: "taken_over"}, err)
+			}
+		}
+		logFailure("run_model", err, slog.LevelError)
+		return s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, facts.SessionID, "", err.Error())
+	}
+	if outcome.Status != operationresult.Success {
+		globalevents.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelWarn, EventName: "elnis_llm_failed", Module: "elnis", Content: outcome.Message, Identity: identity, ResultStatus: globalevents.ResultFailed})
+		return s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, facts.SessionID, "", outcome.Message)
+	}
+	result := outcome.Data
 	identity.SessionID = result.SessionID
 	if result.TakenOver {
-		return s.completeTakeover(ctx, eventID, event.ResolvedTargets, result, err)
-	}
-	if err != nil {
-		logFailure("run_model", err, slog.LevelError)
-		return s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, result.Text, err.Error())
+		return s.completeTakeover(ctx, eventID, event.ResolvedTargets, result, nil)
 	}
 	if taken, lookupErr := s.sessionTakenOver(context.WithoutCancel(ctx), result.SessionID); lookupErr != nil {
 		return lookupErr
@@ -109,13 +129,24 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	parsed, parseErr := background.ParseJSONResult(result.Text)
 	if parseErr != nil {
 		logFailure("parse_result", parseErr, slog.LevelWarn)
-		ctx, result, err = s.retryLLMResultFormat(ctx, event, result.SessionID, model)
-		if result.TakenOver {
-			return s.completeTakeover(ctx, eventID, event.ResolvedTargets, result, err)
-		}
+		ctx, outcome, err = s.retryLLMResultFormat(ctx, event, result.SessionID, model)
 		if err != nil {
+			if taken, lookupErr := s.sessionTakenOver(context.WithoutCancel(ctx), result.SessionID); lookupErr != nil {
+				return lookupErr
+			} else if taken {
+				result.TakenOver = true
+				return s.completeTakeover(ctx, eventID, event.ResolvedTargets, result, err)
+			}
 			logFailure("run_model", err, slog.LevelError)
 			return s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, result.Text, err.Error())
+		}
+		if outcome.Status != operationresult.Success {
+			globalevents.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelWarn, EventName: "elnis_llm_failed", Module: "elnis", Content: outcome.Message, Identity: identity, ResultStatus: globalevents.ResultFailed})
+			return s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, "", outcome.Message)
+		}
+		result = outcome.Data
+		if result.TakenOver {
+			return s.completeTakeover(ctx, eventID, event.ResolvedTargets, result, nil)
 		}
 		parsed, parseErr = background.ParseJSONResult(result.Text)
 	}
@@ -131,8 +162,15 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 			logFailure("prepare_report", err, slog.LevelError)
 			return s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, string(resultJSON), err.Error())
 		}
-		if prepared {
-			ctx, err = s.deliverReport(ctx, eventID)
+		if prepared.Status != operationresult.Success {
+			globalevents.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelWarn, EventName: "elnis_llm_failed", Module: "elnis", Content: prepared.Message, Identity: identity, ResultStatus: globalevents.ResultFailed})
+			return s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusFailed, result.SessionID, string(resultJSON), prepared.Message)
+		}
+		if prepared.Data {
+			ctx, delivered, err := s.deliverReport(ctx, eventID)
+			if err == nil && delivered.Status != operationresult.Success {
+				globalevents.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryElnis, Level: slog.LevelWarn, EventName: "elnis_report_rejected", Module: "elnis", Content: delivered.Message, Identity: identity, ResultStatus: globalevents.ResultFailed})
+			}
 			return err
 		}
 	} else if err := s.completeEventWithSession(ctx, eventID, event.ResolvedTargets, StatusCompleted, result.SessionID, string(resultJSON), ""); err != nil {
@@ -159,10 +197,12 @@ func (s *Service) RunLLMEvent(ctx context.Context, event Event, eventID string) 
 	return nil
 }
 
-func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, sessionID string, model config.ModelSelection) (context.Context, background.RunResult, error) {
+func (s *Service) retryLLMResultFormat(ctx context.Context, event Event, sessionID string, model config.ModelSelection) (context.Context, operationresult.Result[background.RunResult], error) {
 
-	if taken, err := s.sessionTakenOver(ctx, sessionID); err != nil || taken {
-		return ctx, background.RunResult{SessionID: sessionID, TakenOver: taken, Outcome: "taken_over"}, err
+	if taken, err := s.sessionTakenOver(ctx, sessionID); err != nil {
+		return ctx, operationresult.Result[background.RunResult]{}, err
+	} else if taken {
+		return ctx, operationresult.Result[background.RunResult]{Status: operationresult.Success, Data: background.RunResult{SessionID: sessionID, TakenOver: true, Outcome: "taken_over"}}, nil
 	}
 	return s.runner.RunBackground(ctx, background.RunRequest{
 		TaskType:      background.KindElnis,

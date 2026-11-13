@@ -9,6 +9,7 @@ import (
 	background "elbot/internal/background/share"
 	"elbot/internal/llm"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 )
 
 func TestCancelledEnqueueCommitsTerminalState(t *testing.T) {
@@ -27,8 +28,8 @@ func TestCancelledEnqueueCommitsTerminalState(t *testing.T) {
 	})
 	req := testRequest(ModeLLM)
 	req.Segments = []Segment{{Kind: SegmentKindImage, URL: item}}
-	if response, err := s.Handle(ctx, "secret", req); err != nil || response.Status != StatusFailed || response.Error != context.Canceled.Error() {
-		t.Fatal("cancelled enqueue was not recorded", response, err)
+	if result, err := s.Handle(ctx, "secret", req); err != nil || result.Status != operationresult.Success || result.Data.Status != StatusFailed || result.Data.Error != context.Canceled.Error() {
+		t.Fatal("cancelled enqueue was not recorded", result, err)
 	}
 	record, err := testRepo(s).snapshotByKey(context.Background(), req.Elwisp.Name, req.Source, req.ID)
 	if err != nil || record.Status != StatusFailed {
@@ -58,10 +59,10 @@ func TestReportMediaJSONSources(t *testing.T) {
 			t.Fatal(err)
 		}
 		got, err := s.importReportSegments(ctx, parsed.ReportSegments, "report-json", t.TempDir())
-		if err != nil || len(got) != 1 || got[0].Source.MediaID != item || got[0].Source.URL != "" {
+		if err != nil || got.Status != operationresult.Success || len(got.Data) != 1 || got.Data[0].Source.MediaID != item || got.Data[0].Source.URL != "" {
 			t.Fatalf("normalize: %v %v", got, err)
 		}
-		raw, err := json.Marshal(background.JSONResult{ReportSegments: got})
+		raw, err := json.Marshal(background.JSONResult{ReportSegments: got.Data})
 		if err != nil || !strings.Contains(string(raw), `"media":"`+item+`"`) {
 			t.Fatalf("persisted JSON: %s %v", raw, err)
 		}

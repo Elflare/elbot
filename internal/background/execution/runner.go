@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"os"
 
 	"elbot/internal/agent"
@@ -15,13 +16,13 @@ type BackgroundRunner struct {
 	sandboxRoot string              // Configured root for restricted task directories.
 }
 
-func (r *BackgroundRunner) RunBackground(ctx context.Context, req background.RunRequest) (context.Context, background.RunResult, error) {
+func (r *BackgroundRunner) RunBackground(ctx context.Context, req background.RunRequest) (context.Context, operationresult.Result[background.RunResult], error) {
 	dir, err := workspace.SandboxDir(r.sandboxRoot, req.SandboxSubdir)
 	if err != nil {
-		return ctx, background.RunResult{}, err
+		return ctx, operationresult.Result[background.RunResult]{}, err
 	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return ctx, background.RunResult{}, err
+		return ctx, operationresult.Result[background.RunResult]{}, err
 	}
 	ctx = workspace.WithPathScope(ctx, workspace.PathScope{Dir: dir, Restricted: true})
 
@@ -34,10 +35,17 @@ func (r *BackgroundRunner) RunBackground(ctx context.Context, req background.Run
 		ToolListNames: req.ToolListNames, AllowedToolNames: req.AllowedToolNames,
 		ELwispTools: req.ELwispTools, Metadata: req.Metadata,
 	})
-	return ctx, background.RunResult{
-		RunID: result.RunID, SessionID: result.SessionID, MessageID: result.MessageID,
-		Text: result.Text, TakenOver: result.TakenOver, Outcome: result.Outcome,
-	}, err
+	if err != nil {
+		return ctx, operationresult.Result[background.RunResult]{}, err
+	}
+	if result.Status != operationresult.Success {
+		return ctx, operationresult.Result[background.RunResult]{Status: result.Status, Message: result.Message}, nil
+	}
+	data := result.Data
+	return ctx, operationresult.Result[background.RunResult]{Status: operationresult.Success, Data: background.RunResult{
+		RunID: data.RunID, SessionID: data.SessionID, MessageID: data.MessageID,
+		Text: data.Text, TakenOver: data.TakenOver, Outcome: data.Outcome,
+	}}, nil
 }
 
 // NewBackgroundRunner initializes BackgroundRunner without installing cross-service callbacks.

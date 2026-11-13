@@ -41,15 +41,15 @@ func TestBackgroundTagAuthorizationAndToolDeclarations(t *testing.T) {
 		req.Elwisp.Name = "configured"
 		req.ToolListNames = []string{"research"}
 		req.Tools = []tool.ELwispToolDeclaration{testExternalTool("external")}
-		_, err = service.Handle(context.Background(), "secret", req)
+		result, err := service.Handle(context.Background(), "secret", req)
 		if denied {
-			if err == nil || !strings.Contains(err.Error(), "web_extract") {
-				t.Fatalf("unauthorized tag member: %v", err)
+			if err != nil || result.Status != operationresult.Rejected || !strings.Contains(result.Message, "web_extract") {
+				t.Fatalf("unauthorized tag member: %+v %v", result, err)
 			}
 			continue
 		}
-		if err != nil {
-			t.Fatal(err)
+		if err != nil || result.Status != operationresult.Success {
+			t.Fatalf("request result=%+v err=%v", result, err)
 		}
 		if err := service.RunLLMEvent(context.Background(), queued.Event, queued.EventID); err != nil {
 			t.Fatal(err)

@@ -3,7 +3,6 @@ package dispatch
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +17,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/testutil"
@@ -58,7 +58,7 @@ func TestIncompleteMediaReceiptReportsStorageFailure(t *testing.T) {
 			t.Cleanup(connection.Disconnect)
 			router := New(Options{Primary: sender, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7, SaveMediaOutput: store.Media().SaveOutput})
 			got, err := router.SendTo(t.Context(), delivery.Target{}, []delivery.Output{{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("image")}}})
-			if err != nil || calls != 1 || !reflect.DeepEqual(got, want) {
+			if err != nil || got.Status != operationresult.Success || calls != 1 || !reflect.DeepEqual(got.Data, want) {
 				t.Fatal("send changed: receipt= result= err= calls=", got, err, calls)
 			}
 			select {
@@ -95,10 +95,10 @@ type releasingMedia struct {
 	failAt             int
 }
 
-func (m *releasingMedia) ResolveForOutput(ctx context.Context, id string) (delivery.Source, media.UsageID, error) {
+func (m *releasingMedia) ResolveForOutput(ctx context.Context, id string) (operationresult.Result[delivery.Source], media.UsageID, error) {
 	m.resolved++
 	if m.resolved == m.failAt {
-		return delivery.Source{}, "", errors.New("resolve failed")
+		return operationresult.Result[delivery.Source]{}, "", errors.New("resolve failed")
 	}
 	source, release, err := m.MediaCenter.ResolveForOutput(ctx, id)
 	return source, release, err
@@ -109,49 +109,36 @@ func (m *releasingMedia) PublishUsageFinished(ctx context.Context, ids []media.U
 	m.MediaCenter.PublishUsageFinished(ctx, ids)
 }
 
-func TestMediaReceiptCallbackPreservesPartialSendAndReleasesSources(t *testing.T) {
-	for _, cacheFails := range []bool{false, true} {
-		t.Run(map[bool]string{false: "saved", true: "cache failure"}[cacheFails], func(t *testing.T) {
-			store := testutil.NewSQLiteStore(t)
-			root := t.TempDir()
-			center := &releasingMedia{MediaCenter: mediatest.New(t, media.MediaCenterDeps{Store: store}, root)}
-			wantErr := errors.New("second message failed")
-			wantReceipt := delivery.Receipt{PlatformMessageIDs: []string{"sent"}, SentMessages: []delivery.SentMessage{
-				{Platform: "primary", ChatType: "group", ChatID: "9", PlatformMessageID: "sent", OutputIndexes: []int{0}},
-			}}
-			calls := 0
-			sender := testSender{send: func(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-				calls++
-				if len(outputs) != 2 || outputs[0].Source.Path == "" || center.released != 0 {
-					t.Fatalf("media unavailable during send: %#v", outputs)
-				}
-				return wantReceipt, wantErr
-			}}
-			var saved []storage.MediaOutput
-			router := New(Options{Primary: sender, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7,
-				SaveMediaOutput: func(_ context.Context, output storage.MediaOutput) error {
-					saved = append(saved, output)
-					if cacheFails {
-						return errors.New("cache unavailable")
-					}
-					return nil
-				},
-			})
-			outputs := []delivery.Output{
-				{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("first")}},
-				{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("second")}},
-			}
-			receipt, err := router.SendTo(t.Context(), delivery.Target{}, outputs)
-			if err != wantErr || !reflect.DeepEqual(receipt, wantReceipt) || calls != 1 {
-				t.Fatalf("send changed: %#v %v %d", receipt, err, calls)
-			}
-			if len(saved) != 1 || saved[0].Platform != "primary" || (saved[0].ChatType != "group" || saved[0].ChatID != "9") || saved[0].MessageID != "sent" || saved[0].SegmentIndex != 0 || !media.ValidID(saved[0].MediaID) {
-				t.Fatalf("actual receipt association lost: %#v", saved)
-			}
-			if center.released != 2 || outputs[0].Source.MediaID != "" {
-				t.Fatalf("release=%d original=%#v", center.released, outputs)
-			}
-		})
+func TestMediaSendFailureDiscardsPartialReceiptAndReleasesSources(t *testing.T) {
+	store := testutil.NewSQLiteStore(t)
+	root := t.TempDir()
+	center := &releasingMedia{MediaCenter: mediatest.New(t, media.MediaCenterDeps{Store: store}, root)}
+	wantErr := errors.New("second message failed")
+	wantReceipt := delivery.Receipt{PlatformMessageIDs: []string{"sent"}, SentMessages: []delivery.SentMessage{
+		{Platform: "primary", ChatType: "group", ChatID: "9", PlatformMessageID: "sent", OutputIndexes: []int{0}},
+	}}
+	calls := 0
+	sender := testSender{send: func(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+		calls++
+		if len(outputs) != 2 || outputs[0].Source.Path == "" || center.released != 0 {
+			t.Fatalf("media unavailable during send: %#v", outputs)
+		}
+		return wantReceipt, wantErr
+	}}
+	saved := 0
+	router := New(Options{Primary: sender, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7,
+		SaveMediaOutput: func(context.Context, storage.MediaOutput) error { saved++; return nil },
+	})
+	outputs := []delivery.Output{
+		{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("first")}},
+		{Kind: delivery.KindImage, Source: delivery.Source{Data: []byte("second")}},
+	}
+	receipt, err := router.SendTo(t.Context(), delivery.Target{}, outputs)
+	if err != wantErr || receipt.Status != "" || len(receipt.Data.PlatformMessageIDs) != 0 || calls != 1 || saved != 0 {
+		t.Fatalf("send result=%+v err=%v calls=%d saved=%d", receipt, err, calls, saved)
+	}
+	if center.released != 2 || outputs[0].Source.MediaID != "" {
+		t.Fatalf("release=%d original=%#v", center.released, outputs)
 	}
 }
 
@@ -229,8 +216,8 @@ func TestOutputMediaSourcesAreCanonicalAndReceiptOrderPersists(t *testing.T) {
 		{Kind: delivery.KindFile, Name: "local.txt", Source: delivery.Source{Path: path}},
 		{Kind: delivery.KindRecord, Name: "voice.ogg", Source: delivery.Source{Data: []byte("data"), MIMEType: "audio/ogg"}},
 	}
-	if _, err := dispatcher.SendTo(messageCtx, delivery.Target{}, outputs); err != nil {
-		t.Fatal(err)
+	if result, err := dispatcher.SendTo(messageCtx, delivery.Target{}, outputs); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("send result=%+v err=%v", result, err)
 	}
 	if got := strings.Join(sender.contents, ","); got != "url,path,data" {
 		t.Fatalf("sent contents = %q", got)
@@ -252,36 +239,34 @@ func TestOutputMediaSourcesAreCanonicalAndReceiptOrderPersists(t *testing.T) {
 	}
 }
 
-func TestMediaReceiptKeepsDuplicatesAndPartialSuccess(t *testing.T) {
+func TestMediaReceiptKeepsDuplicateOutputMappings(t *testing.T) {
 	ctx := context.Background()
 	store := testutil.NewSQLiteStore(t)
 	root := t.TempDir()
 	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	item, err := center.ImportBytes(ctx, []byte("same"), media.Input{Name: "same.png", MIMEType: "image/png"}, media.ImportLimits{})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || item.Status != operationresult.Success {
+		t.Fatalf("import result=%+v err=%v", item, err)
 	}
+	mediaID := item.Data.ID
 	outputs := []delivery.Output{
-		{Kind: delivery.KindImage, Source: delivery.Source{MediaID: item.ID}},
-		{Kind: delivery.KindImage, Source: delivery.Source{MediaID: item.ID}},
+		{Kind: delivery.KindImage, Source: delivery.Source{MediaID: mediaID}},
+		{Kind: delivery.KindImage, Source: delivery.Source{MediaID: mediaID}},
 	}
 	receipt := delivery.Receipt{
 		PlatformMessageIDs: []string{"sent"},
 		SentMessages:       []delivery.SentMessage{{PlatformMessageID: "sent", Platform: "qqonebot", ChatType: "group", ChatID: "1", OutputIndexes: []int{0, 1}}},
 	}
 	sender := mediaSendFunc(func([]delivery.Output) (delivery.Receipt, error) {
-		{
-			err := fmt.Errorf("later output failed")
-			return receipt, err
-		}
+		return receipt, nil
 	})
 	dispatcher := New(Options{Primary: sender, SaveMediaOutput: store.Media().SaveOutput, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7})
 	got, sendErr := dispatcher.SendTo(ctx, delivery.Target{}, outputs)
-	if sendErr == nil || len(got.PlatformMessageIDs) != 1 {
+	if sendErr != nil || got.Status != operationresult.Success || len(got.Data.PlatformMessageIDs) != 1 {
 		t.Fatalf("receipt/error = %#v/%v", got, sendErr)
 	}
 	cached, err := store.Media().FindOutputs(ctx, "qqonebot", "group", "1", "sent", time.Now())
-	if err != nil || len(cached) != 2 || cached[0].MediaID != item.ID || cached[1].MediaID != item.ID || cached[0].SegmentIndex != 0 || cached[1].SegmentIndex != 1 {
+	if err != nil || len(cached) != 2 || cached[0].MediaID != mediaID || cached[1].MediaID != mediaID || cached[0].SegmentIndex != 0 || cached[1].SegmentIndex != 1 {
 		t.Fatalf("cached duplicates = %#v %v", cached, err)
 	}
 }
@@ -296,9 +281,9 @@ func TestMediaReceiptDoesNotGuessFallbackOrRetryCacheFailure(t *testing.T) {
 	})
 	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	router := New(Options{Primary: sender, SaveMediaOutput: store.Media().SaveOutput, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7})
-	_, err := router.SendTo(ctx, delivery.Target{}, outputs)
-	if err != nil {
-		t.Fatal(err)
+	result, err := router.SendTo(ctx, delivery.Target{}, outputs)
+	if err != nil || result.Status != operationresult.Success {
+		t.Fatalf("send result=%+v err=%v", result, err)
 	}
 	cached, err := store.Media().FindOutputs(ctx, "telegram", "group", "9", "fallback", time.Now())
 	if err != nil || len(cached) != 0 {
@@ -314,7 +299,7 @@ func TestMediaReceiptDoesNotGuessFallbackOrRetryCacheFailure(t *testing.T) {
 	})
 	router = New(Options{Primary: sender, SaveMediaOutput: func(context.Context, storage.MediaOutput) error { return errors.New("cache unavailable") }, Media: center, PublishUsageFinished: center.PublishUsageFinished, MediaRetentionDays: 7})
 	receipt, err := router.SendTo(ctx, delivery.Target{}, outputs)
-	if err != nil || calls != 1 || len(receipt.PlatformMessageIDs) != 1 {
+	if err != nil || receipt.Status != operationresult.Success || calls != 1 || len(receipt.Data.PlatformMessageIDs) != 1 {
 		t.Fatalf("cache failure changed send result: %#v %d %v", receipt, calls, err)
 	}
 }

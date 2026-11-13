@@ -15,6 +15,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"elbot/internal/security"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
@@ -24,12 +25,12 @@ import (
 
 type backgroundExecutionStub struct{ request agent.BackgroundRequest }
 
-func (s *backgroundExecutionStub) RunBackground(ctx context.Context, req agent.BackgroundRequest) (context.Context, agent.BackgroundResult, error) {
+func (s *backgroundExecutionStub) RunBackground(ctx context.Context, req agent.BackgroundRequest) (context.Context, operationresult.Result[agent.BackgroundResult], error) {
 	s.request = req
-	return ctx, agent.BackgroundResult{SessionID: "borrowed", Text: "borrowed execution"}, nil
+	return ctx, operationresult.Result[agent.BackgroundResult]{Status: operationresult.Success, Data: agent.BackgroundResult{SessionID: "borrowed", Text: "borrowed execution"}}, nil
 }
-func (*backgroundExecutionStub) CopyBackground(context.Context, agent.BackgroundCopyRequest) (string, error) {
-	return "", nil
+func (*backgroundExecutionStub) CopyBackground(context.Context, agent.BackgroundCopyRequest) (operationresult.Result[string], error) {
+	return operationresult.Result[string]{Status: operationresult.Success}, nil
 }
 func (*backgroundExecutionStub) CleanupSessions(context.Context, time.Time) (int, error) {
 	return 0, nil
@@ -40,8 +41,8 @@ func (*backgroundExecutionStub) SessionTakenOver(context.Context, string) (bool,
 
 type backgroundPlatformStub struct{}
 
-func (backgroundPlatformStub) SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
-	return delivery.Receipt{}, nil
+func (backgroundPlatformStub) SendTo(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
+	return operationresult.Result[delivery.Receipt]{Status: operationresult.Success}, nil
 }
 func (backgroundPlatformStub) CallPlatformAPI(context.Context, string, string, map[string]any) (json.RawMessage, error) {
 	return nil, nil

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"elbot/internal/config"
+	"elbot/internal/operationresult"
 )
 
 func NewRuntime(cfg config.ElnisHTTPConfig, service *Service) *Runtime {
@@ -35,15 +36,20 @@ func NewRuntime(cfg config.ElnisHTTPConfig, service *Service) *Runtime {
 			writeJSON(w, http.StatusBadRequest, Response{Accepted: false, Status: StatusFailed, Error: fmt.Sprintf("invalid json: %v", err)})
 			return
 		}
-		resp, err := service.Handle(req.Context(), bearerToken(req), event)
-		status := http.StatusAccepted
-		if err != nil && !resp.Accepted {
-			status = http.StatusBadRequest
-			if resp.Error == "unauthorized" {
+		result, err := service.Handle(req.Context(), bearerToken(req), event)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, Response{Status: StatusFailed, Error: err.Error()})
+			return
+		}
+		if result.Status != operationresult.Success {
+			status := http.StatusBadRequest
+			if result.Status == operationresult.Forbidden {
 				status = http.StatusUnauthorized
 			}
+			writeJSON(w, status, Response{Accepted: false, Mode: event.Mode, Status: StatusFailed, Error: result.Message})
+			return
 		}
-		writeJSON(w, status, resp)
+		writeJSON(w, http.StatusAccepted, result.Data)
 	}
 	mux.HandleFunc("/elvena/v2/events", handler)
 	mux.HandleFunc("/elvena/v3/events", handler)
