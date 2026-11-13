@@ -5,9 +5,9 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 	toolshare "elbot/internal/tool/share"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 )
@@ -20,18 +20,18 @@ const (
 type SearchChatHistoryTool struct {
 	viewImageAvailable func(context.Context) bool
 	history            interface {
-		Search(context.Context, toolshare.SearchRequest) ([]toolshare.Message, error)
+		Search(context.Context, toolshare.SearchRequest) (operationresult.Result[[]toolshare.Message], error)
 	}
 }
 type GetChatHistoryAroundTool struct {
 	viewImageAvailable func(context.Context) bool
 	history            interface {
-		Around(context.Context, toolshare.AroundRequest) ([]toolshare.Message, error)
+		Around(context.Context, toolshare.AroundRequest) (operationresult.Result[[]toolshare.Message], error)
 	}
 }
 type ReplyToChatHistoryMessageTool struct {
 	history interface {
-		GetMessage(context.Context, string) (toolshare.Message, error)
+		GetMessage(context.Context, string) (operationresult.Result[toolshare.Message], error)
 	}
 }
 
@@ -114,12 +114,11 @@ func replyChatHistoryBuilder() *toolshare.Builder {
 		String("message", "回复正文。", toolshare.Required())
 }
 
-func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
 	var args searchChatHistoryArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			err = fmt.Errorf("parse search_chat_history arguments: %w", err)
-			return nil, err
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse search_chat_history arguments: %v", err)}, nil
 		}
 	}
 	request := toolshare.SearchRequest{
@@ -129,39 +128,39 @@ func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.Ca
 	if len(args.Platform) > 0 {
 		request.Platform = new(string)
 		if err := json.Unmarshal(args.Platform, request.Platform); err != nil {
-			return nil, fmt.Errorf("parse platform: %w", err)
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse platform: %v", err)}, nil
 		}
 	}
 	if len(args.ChatType) > 0 {
 		request.ChatType = new(contextinfo.ChatType)
 		if err := json.Unmarshal(args.ChatType, request.ChatType); err != nil {
-			return nil, fmt.Errorf("parse chat_type: %w", err)
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse chat_type: %v", err)}, nil
 		}
 	}
 	if len(args.ChatID) > 0 {
 		request.ChatID = new(string)
 		if err := json.Unmarshal(args.ChatID, request.ChatID); err != nil {
-			return nil, fmt.Errorf("parse chat_id: %w", err)
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse chat_id: %v", err)}, nil
 		}
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		rows, err := t.history.Search(ctx, request)
-		if errors.Is(err, toolshare.ErrNoChatContext) {
-			return &toolshare.Result{Content: err.Error()}, err.Error(), nil
-		}
 		if err != nil {
-			return nil, err.Error(), err
+			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
+		}
+		if rows.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.Result]{Status: rows.Status, Message: rows.Message}, rows.Message, nil
 		}
 		label := "当前聊天历史"
 		if request.Platform != nil {
 			label = fmt.Sprintf("聊天历史（platform=%s，chat_type=%s，chat_id=%s）", strings.TrimSpace(*request.Platform), *request.ChatType, strings.TrimSpace(*request.ChatID))
 		}
-		if len(rows) == 0 {
+		if len(rows.Data) == 0 {
 			result := &toolshare.Result{Content: "没有查到符合条件的" + label + "记录。"}
-			return result, fmt.Sprintf("scope=%q query=%q returned=0", label, args.Query), nil
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("scope=%q query=%q returned=0", label, args.Query), nil
 		}
-		lines := []string{fmt.Sprintf("%s查询结果：返回 %d 条。", label, len(rows))}
-		for _, row := range rows {
+		lines := []string{fmt.Sprintf("%s查询结果：返回 %d 条。", label, len(rows.Data))}
+		for _, row := range rows.Data {
 			line := formatChatHistoryMedia(row, "", args.Full)
 			lines = append(lines, line)
 		}
@@ -172,37 +171,31 @@ func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.Ca
 			}
 		}
 		result := &toolshare.Result{Content: chatHistoryResultLines(lines, "...[查询结果过长，已截断]")}
-		return result, fmt.Sprintf("scope=%q query=%q returned=%d", label, args.Query, len(rows)), nil
-	}), nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("scope=%q query=%q returned=%d", label, args.Query, len(rows.Data)), nil
+	})}, nil
 }
 
-func (t GetChatHistoryAroundTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+func (t GetChatHistoryAroundTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
 	var args aroundChatHistoryArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			err = fmt.Errorf("parse get_chat_history_around arguments: %w", err)
-			return nil, err
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse get_chat_history_around arguments: %v", err)}, nil
 		}
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		messageID := parseChatHistoryMessageID(args.MessageID)
 		if messageID == "" {
-			result := &toolshare.Result{Content: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}
-			return result, result.Content, nil
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}, "message_id invalid", nil
 		}
 		rows, err := t.history.Around(ctx, toolshare.AroundRequest{MessageID: messageID, Before: args.Before, After: args.After})
-		if errors.Is(err, toolshare.ErrNoChatContext) {
-			return &toolshare.Result{Content: err.Error()}, err.Error(), nil
-		}
-		if errors.Is(err, toolshare.ErrNotFound) {
-			result := &toolshare.Result{Content: fmt.Sprintf("没有在当前聊天找到 message_id 为 %s 的历史记录。", messageID)}
-			return result, fmt.Sprintf("message_id=%s returned=0", messageID), nil
-		}
 		if err != nil {
-			return nil, err.Error(), err
+			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 		}
-		lines := []string{fmt.Sprintf("当前聊天消息 #%s 附近上下文：返回 %d 条。", messageID, len(rows))}
-		for _, row := range rows {
+		if rows.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.Result]{Status: rows.Status, Message: rows.Message}, rows.Message, nil
+		}
+		lines := []string{fmt.Sprintf("当前聊天消息 #%s 附近上下文：返回 %d 条。", messageID, len(rows.Data))}
+		for _, row := range rows.Data {
 			line := formatChatHistoryMedia(row, messageID, args.Full)
 			lines = append(lines, line)
 		}
@@ -210,8 +203,8 @@ func (t GetChatHistoryAroundTool) PrepareCall(ctx context.Context, req toolshare
 			lines = append(lines, hint)
 		}
 		result := &toolshare.Result{Content: chatHistoryResultLines(lines, "...[查询结果过长，已截断]")}
-		return result, fmt.Sprintf("message_id=%s before=%d after=%d returned=%d", messageID, args.Before, args.After, len(rows)), nil
-	}), nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("message_id=%s before=%d after=%d returned=%d", messageID, args.Before, args.After, len(rows.Data)), nil
+	})}, nil
 }
 
 func viewImageHistoryHint(ctx context.Context, viewImageAvailable func(context.Context) bool) string {
@@ -221,43 +214,37 @@ func viewImageHistoryHint(ctx context.Context, viewImageAvailable func(context.C
 	return ""
 }
 
-func (t ReplyToChatHistoryMessageTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+func (t ReplyToChatHistoryMessageTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
 	var args replyChatHistoryArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			err = fmt.Errorf("parse reply_to_chat_history_message arguments: %w", err)
-			return nil, err
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse reply_to_chat_history_message arguments: %v", err)}, nil
 		}
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("引用消息：%s\n回复：%s", args.MessageID, args.Message))}, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("引用消息：%s\n回复：%s", args.MessageID, args.Message))}, func(ctx context.Context) (_ operationresult.Result[*toolshare.Result], logContent string, _ error) {
 		messageID := parseChatHistoryMessageID(args.MessageID)
 		if messageID == "" {
-			result := &toolshare.Result{Content: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}
-			return result, result.Content, nil
+			message := "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: message}, message, nil
 		}
 		replyText := strings.TrimSpace(args.Message)
 		if replyText == "" {
-			result := &toolshare.Result{Content: "回复内容不能为空。"}
-			return result, result.Content, nil
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "回复内容不能为空。"}, "reply content empty", nil
 		}
 		target, err := t.history.GetMessage(ctx, messageID)
-		if errors.Is(err, toolshare.ErrNoChatContext) {
-			return &toolshare.Result{Content: err.Error()}, err.Error(), nil
-		}
-		if errors.Is(err, toolshare.ErrNotFound) {
-			result := &toolshare.Result{Content: fmt.Sprintf("没有在当前聊天找到 message_id 为 %s 的历史记录。", messageID)}
-			return result, result.Content, nil
-		}
 		if err != nil {
-			return nil, err.Error(), err
+			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
+		}
+		if target.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.Result]{Status: target.Status, Message: target.Message}, target.Message, nil
 		}
 		result := &toolshare.Result{
-			Content: fmt.Sprintf("已引用回复 [#%s] %s(%s): %s\n回复内容已发送到当前聊天，请不要重复发送。", target.Key.MessageID, target.SenderName, target.SenderID, truncateChatHistoryMessage(target.Text, false, "...[单条消息过长，已截断]")),
+			Content: fmt.Sprintf("已引用回复 [#%s] %s(%s): %s\n回复内容已发送到当前聊天，请不要重复发送。", target.Data.Key.MessageID, target.Data.SenderName, target.Data.SenderID, truncateChatHistoryMessage(target.Data.Text, false, "...[单条消息过长，已截断]")),
 			Outputs: []delivery.Output{delivery.Reply(messageID, replyText)},
 		}
-		logContent = fmt.Sprintf("已引用回复 [#%s] %s(%s): %s\n回复内容已发送到当前聊天，请不要重复发送。", target.Key.MessageID, target.SenderName, target.SenderID, truncateChatHistoryMessage(target.Text, false, "…"))
-		return result, logContent, nil
-	}), nil
+		logContent = fmt.Sprintf("已引用回复 [#%s] %s(%s): %s\n回复内容已发送到当前聊天，请不要重复发送。", target.Data.Key.MessageID, target.Data.SenderName, target.Data.SenderID, truncateChatHistoryMessage(target.Data.Text, false, "…"))
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, logContent, nil
+	})}, nil
 }
 
 func parseChatHistoryMessageID(value string) string {

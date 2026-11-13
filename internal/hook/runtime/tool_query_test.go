@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"strings"
 	"testing"
 
@@ -18,9 +19,9 @@ func TestWorkerSchemasPreservesAllowOrderAndRejectsMissingOrDocument(t *testing.
 		definitions = append(definitions, toolshare.ToolDefinition{
 			Definition: toolshare.Info{Name: name, Description: name, Risk: toolshare.RiskLow, Hidden: true},
 			Parameters: map[string]any{"type": "object", "properties": map[string]any{}},
-			Prepare: func(context.Context, toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+			Prepare: func(context.Context, toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
 				t.Fatal("schema query entered execution")
-				return nil, nil
+				return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: nil}, nil
 			},
 		})
 	}

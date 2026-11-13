@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"elbot/internal/fileops"
+	"elbot/internal/operationresult"
 	"errors"
 	"fmt"
 	"os"
@@ -64,108 +65,127 @@ func newLongMemoryStore(rootDir string) *longMemoryStore {
 	return &longMemoryStore{rootDir: rootDir, memoriesDir: filepath.Join(rootDir, "memories"), indexPath: filepath.Join(rootDir, "index.db")}
 }
 
-func (s *longMemoryStore) save(ctx context.Context, record longMemoryRecord) (longMemoryRecord, error) {
+func (s *longMemoryStore) save(ctx context.Context, record longMemoryRecord) (operationresult.Result[longMemoryRecord], error) {
 	if err := ctx.Err(); err != nil {
-		return longMemoryRecord{}, err
+		return operationresult.Result[longMemoryRecord]{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.ensureLocked(ctx); err != nil {
-		return longMemoryRecord{}, err
+	ready, err := s.ensureLocked(ctx)
+	if err != nil {
+		return operationresult.Result[longMemoryRecord]{}, err
+	}
+	if ready.Status != operationresult.Success {
+		return operationresult.Result[longMemoryRecord]{Status: ready.Status, Message: ready.Message}, nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	id, err := s.nextIDLocked(ctx)
 	if err != nil {
-		return longMemoryRecord{}, err
+		return operationresult.Result[longMemoryRecord]{}, err
 	}
 	record.ID = id
 	record.CreatedAt = now
 	record.UpdatedAt = now
 	record.FilePath = filepath.Join(s.memoriesDir, fmt.Sprintf("%06d-%s.md", record.ID, slugLongMemoryTitle(record.Title)))
 	if err := validateLongMemoryRecord(record, true); err != nil {
-		return longMemoryRecord{}, err
+		return operationresult.Result[longMemoryRecord]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
-	if err := s.writeRecordFileLocked(ctx, record); err != nil {
-		return longMemoryRecord{}, err
+	written, err := s.writeRecordFileLocked(ctx, record)
+	if err != nil {
+		return operationresult.Result[longMemoryRecord]{}, err
+	}
+	if written.Status != operationresult.Success {
+		return operationresult.Result[longMemoryRecord]{Status: written.Status, Message: written.Message}, nil
 	}
 	info, err := os.Stat(record.FilePath)
 	if err != nil {
-		return longMemoryRecord{}, fmt.Errorf("stat long memory file %q: %w", record.FilePath, err)
+		return operationresult.Result[longMemoryRecord]{}, fmt.Errorf("stat long memory file %q: %w", record.FilePath, err)
 	}
 	record.FileMTimeNS, record.FileSize = info.ModTime().UnixNano(), info.Size()
 	if err := s.indexRecordLocked(ctx, record); err != nil {
-		return longMemoryRecord{}, err
+		return operationresult.Result[longMemoryRecord]{}, err
 	}
-	return record, nil
+	return operationresult.Result[longMemoryRecord]{Status: operationresult.Success, Data: record}, nil
 }
 
-func (s *longMemoryStore) update(ctx context.Context, preview longMemoryUpdatePreview) (longMemoryRecord, error) {
+func (s *longMemoryStore) update(ctx context.Context, preview longMemoryUpdatePreview) (operationresult.Result[longMemoryRecord], error) {
 	if err := ctx.Err(); err != nil {
-		return longMemoryRecord{}, err
+		return operationresult.Result[longMemoryRecord]{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	record, err := s.recordByIDLocked(ctx, preview.Before.ID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return operationresult.Result[longMemoryRecord]{Status: operationresult.NotFound, Message: fmt.Sprintf("未找到 ID 为 %d 的长期记忆", preview.Before.ID)}, nil
+	}
 	if err != nil {
-		return longMemoryRecord{}, err
+		return operationresult.Result[longMemoryRecord]{}, err
 	}
 	if record.FilePath != preview.Before.FilePath {
-		return longMemoryRecord{}, fmt.Errorf("memory target changed after preflight")
+		return operationresult.Result[longMemoryRecord]{Status: operationresult.Conflict, Message: "memory target changed after preflight"}, nil
 	}
-	if _, err := preview.File.Commit(ctx); err != nil {
-		return longMemoryRecord{}, err
+	committed, err := preview.File.Commit(ctx)
+	if err != nil {
+		return operationresult.Result[longMemoryRecord]{}, err
+	}
+	if committed.Status != operationresult.Success {
+		return operationresult.Result[longMemoryRecord]{Status: committed.Status, Message: committed.Message}, nil
 	}
 	info, err := os.Stat(preview.After.FilePath)
 	if err != nil {
-		return longMemoryRecord{}, fmt.Errorf("stat long memory file %q: %w", preview.After.FilePath, err)
+		return operationresult.Result[longMemoryRecord]{}, fmt.Errorf("stat long memory file %q: %w", preview.After.FilePath, err)
 	}
 	preview.After.FileMTimeNS, preview.After.FileSize = info.ModTime().UnixNano(), info.Size()
 	if err := s.indexRecordLocked(ctx, preview.After); err != nil {
-		return longMemoryRecord{}, err
+		return operationresult.Result[longMemoryRecord]{}, err
 	}
-	return preview.After, nil
+	return operationresult.Result[longMemoryRecord]{Status: operationresult.Success, Data: preview.After}, nil
 }
 
-func (s *longMemoryStore) previewUpdate(ctx context.Context, args longMemoryUpdateArgs) (longMemoryUpdatePreview, error) {
+func (s *longMemoryStore) previewUpdate(ctx context.Context, args longMemoryUpdateArgs) (operationresult.Result[longMemoryUpdatePreview], error) {
 	if err := ctx.Err(); err != nil {
-		return longMemoryUpdatePreview{}, err
+		return operationresult.Result[longMemoryUpdatePreview]{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.previewUpdateLocked(ctx, args)
 }
 
-func (s *longMemoryStore) previewUpdateLocked(ctx context.Context, args longMemoryUpdateArgs) (longMemoryUpdatePreview, error) {
+func (s *longMemoryStore) previewUpdateLocked(ctx context.Context, args longMemoryUpdateArgs) (operationresult.Result[longMemoryUpdatePreview], error) {
 	if args.ID <= 0 {
-		return longMemoryUpdatePreview{}, fmt.Errorf("id is required")
+		return operationresult.Result[longMemoryUpdatePreview]{Status: operationresult.InvalidArguments, Message: "id is required"}, nil
 	}
 	if args.Content != nil && len(args.ContentEdits) > 0 {
-		return longMemoryUpdatePreview{}, fmt.Errorf("content and content_edits cannot be used together")
+		return operationresult.Result[longMemoryUpdatePreview]{Status: operationresult.InvalidArguments, Message: "content and content_edits cannot be used together"}, nil
 	}
 	if !args.hasChanges() {
-		return longMemoryUpdatePreview{}, fmt.Errorf("update requires at least one changed field or content_edits")
+		return operationresult.Result[longMemoryUpdatePreview]{Status: operationresult.InvalidArguments, Message: "update requires at least one changed field or content_edits"}, nil
 	}
-	if err := s.ensureLocked(ctx); err != nil {
-		return longMemoryUpdatePreview{}, err
+	ready, err := s.ensureLocked(ctx)
+	if err != nil {
+		return operationresult.Result[longMemoryUpdatePreview]{}, err
+	}
+	if ready.Status != operationresult.Success {
+		return operationresult.Result[longMemoryUpdatePreview]{Status: ready.Status, Message: ready.Message}, nil
 	}
 	record, err := s.recordByIDLocked(ctx, args.ID)
 	if errors.Is(err, sql.ErrNoRows) {
 		if syncErr := s.syncLocked(ctx, true); syncErr != nil {
-			return longMemoryUpdatePreview{}, syncErr
+			return operationresult.Result[longMemoryUpdatePreview]{}, syncErr
 		}
 		record, err = s.recordByIDLocked(ctx, args.ID)
 	}
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return longMemoryUpdatePreview{}, fmt.Errorf("未找到 ID 为 %d 的长期记忆", args.ID)
+			return operationresult.Result[longMemoryUpdatePreview]{Status: operationresult.NotFound, Message: fmt.Sprintf("未找到 ID 为 %d 的长期记忆", args.ID)}, nil
 		}
-		return longMemoryUpdatePreview{}, err
+		return operationresult.Result[longMemoryUpdatePreview]{}, err
 	}
 	var preview longMemoryUpdatePreview
-	file, err := fileops.PrepareFile(ctx, record.FilePath, func(text string) (string, error) {
+	file, err := fileops.PrepareFile(ctx, record.FilePath, func(text string) (operationresult.Result[string], error) {
 		parsed, err := parseLongMemoryText(text)
 		if err != nil {
-			return "", fmt.Errorf("无法更新：记忆文件格式损坏，工具不会覆盖原文件。\n%s", longMemoryRepairAdvice(record.FilePath, err))
+			return operationresult.Result[string]{Status: operationresult.Rejected, Message: fmt.Sprintf("无法更新：记忆文件格式损坏，工具不会覆盖原文件。\n%s", longMemoryRepairAdvice(record.FilePath, err))}, nil
 		}
 		record = recordFromParsedFile(record.FilePath, parsed, record.FileMTimeNS, record.FileSize)
 		next := record
@@ -198,31 +218,34 @@ func (s *longMemoryStore) previewUpdateLocked(ctx context.Context, args longMemo
 		if len(args.ContentEdits) > 0 {
 			content, err := fileops.ApplyEdits(next.Content, args.ContentEdits)
 			if err != nil {
-				return "", err
+				return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 			}
 			old := next.Content
 			next.Content = strings.TrimSpace(content)
 			changes = appendLongMemoryChange(changes, "正文", old, next.Content)
 		}
 		if err := validateLongMemoryRecord(next, true); err != nil {
-			return "", err
+			return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
 		if len(changes) == 0 {
-			return "", fmt.Errorf("edit produced no changes")
+			return operationresult.Result[string]{Status: operationresult.Rejected, Message: "edit produced no changes"}, nil
 		}
 		next.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 		data, err := marshalLongMemoryFile(next)
 		if err != nil {
-			return "", err
+			return operationresult.Result[string]{}, err
 		}
 		preview.Before, preview.After, preview.Changes = record, next, changes
-		return string(data), nil
+		return operationresult.Result[string]{Status: operationresult.Success, Data: string(data)}, nil
 	})
 	if err != nil {
-		return longMemoryUpdatePreview{}, err
+		return operationresult.Result[longMemoryUpdatePreview]{}, err
 	}
-	preview.File = file
-	return preview, nil
+	if file.Status != operationresult.Success {
+		return operationresult.Result[longMemoryUpdatePreview]{Status: file.Status, Message: file.Message}, nil
+	}
+	preview.File = file.Data
+	return operationresult.Result[longMemoryUpdatePreview]{Status: operationresult.Success, Data: preview}, nil
 }
 
 func (args longMemoryUpdateArgs) hasChanges() bool {
@@ -244,38 +267,49 @@ func longMemoryInlineValue(value string) string {
 	return value
 }
 
-func (s *longMemoryStore) delete(ctx context.Context, approved longMemoryRecord, target, revision string) (string, error) {
+func (s *longMemoryStore) delete(ctx context.Context, approved longMemoryRecord, target, revision string) (operationresult.Result[string], error) {
 	if err := ctx.Err(); err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	record, err := s.recordByIDLocked(ctx, approved.ID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return operationresult.Result[string]{Status: operationresult.NotFound, Message: fmt.Sprintf("未找到 ID 为 %d 的长期记忆", approved.ID)}, nil
+	}
 	if err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
 	if record.FilePath != approved.FilePath {
-		return "", fmt.Errorf("memory target changed after preparation")
+		return operationresult.Result[string]{Status: operationresult.Conflict, Message: "memory target changed after preparation"}, nil
 	}
 	currentTarget, err := filepath.EvalSymlinks(record.FilePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return operationresult.Result[string]{Status: operationresult.NotFound, Message: "memory file no longer exists"}, nil
+	}
 	if err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
 	if currentTarget != target {
-		return "", fmt.Errorf("memory target changed after preparation")
+		return operationresult.Result[string]{Status: operationresult.Conflict, Message: "memory target changed after preparation"}, nil
 	}
 	data, err := os.ReadFile(record.FilePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return operationresult.Result[string]{Status: operationresult.NotFound, Message: "memory file no longer exists"}, nil
+	}
 	if err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
 	if fileops.ContentRevision(data) != revision {
-		return "", fmt.Errorf("memory changed after preparation")
+		return operationresult.Result[string]{Status: operationresult.Conflict, Message: "memory changed after preparation"}, nil
 	}
-	if err := os.Remove(record.FilePath); err != nil {
-		return "", fmt.Errorf("delete memory file %q: %w", record.FilePath, err)
+	if err := os.Remove(record.FilePath); errors.Is(err, os.ErrNotExist) {
+		return operationresult.Result[string]{Status: operationresult.NotFound, Message: "memory file no longer exists"}, nil
+	} else if err != nil {
+		return operationresult.Result[string]{}, fmt.Errorf("delete memory file %q: %w", record.FilePath, err)
 	}
 	if err := s.deleteIndexLocked(ctx, record.ID, record.FilePath); err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
-	return record.FilePath, nil
+	return operationresult.Result[string]{Status: operationresult.Success, Data: record.FilePath}, nil
 }

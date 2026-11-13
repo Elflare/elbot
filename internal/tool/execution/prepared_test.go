@@ -4,6 +4,7 @@ import (
 	"context"
 	"elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/security"
 	"elbot/internal/tool/registry"
 	"elbot/internal/tool/share"
@@ -17,9 +18,9 @@ func TestPreparedExecutionBindsRequest(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			req := share.CallRequest{ID: "one", Name: "prepared", Arguments: []byte(`{"value":1}`)}
 			called := false
-			prepared := share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskHigh}, []share.ConfirmationDetailBlock{share.TextConfirmationDetail("approved detail")}, func(context.Context) (*share.Result, string, error) {
+			prepared := share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskHigh}, []share.ConfirmationDetailBlock{share.TextConfirmationDetail("approved detail")}, func(context.Context) (operationresult.Result[*share.Result], string, error) {
 				called = true
-				return &share.Result{Content: "approved result"}, "approved log", nil
+				return operationresult.Result[*share.Result]{Status: operationresult.Success, Data: &share.Result{Content: "approved result"}}, "approved log", nil
 			})
 			req.Arguments[9] = '2'
 			call := llm.ToolCallRequest{ID: "one", Name: "prepared", Arguments: `{"value":1}`}
@@ -37,7 +38,7 @@ func TestPreparedExecutionBindsRequest(t *testing.T) {
 			}
 			result := (&Manager{ManagerDeps: ManagerDeps{Log: func(context.Context, events.LogRecord) {}}}).executePrepared(ctx, call, resolvedTool{Source: share.SourceKindNative}, prepared, nil)
 			if scenario == "success" {
-				if result.Error != nil || !called || !result.ExecutionStarted || result.Result.Content != "approved result" || result.Summary != "approved log" {
+				if result.Error != nil || !called || !result.ExecutionStarted || result.Result.Data.Content != "approved result" || result.Summary != "approved log" {
 					t.Fatalf("result=%+v called=%v", result, called)
 				}
 			} else if result.Error == nil || called || result.ExecutionStarted {
@@ -53,7 +54,7 @@ func TestPreparedExecutionBindsRequest(t *testing.T) {
 type snapshotTool struct {
 	assessments int
 	calls       int
-	prepare     func(context.Context, share.CallRequest) (*share.PreparedCall, error)
+	prepare     func(context.Context, share.CallRequest) (operationresult.Result[*share.PreparedCall], error)
 }
 
 func (*snapshotTool) Name() string { return "snapshot" }
@@ -61,15 +62,15 @@ func (*snapshotTool) Info() share.Info {
 	return share.Info{Name: "snapshot", Source: share.SourceSkill, Risk: share.RiskHigh}
 }
 func (*snapshotTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "snapshot"} }
-func (s *snapshotTool) PrepareCall(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
+func (s *snapshotTool) PrepareCall(ctx context.Context, req share.CallRequest) (operationresult.Result[*share.PreparedCall], error) {
 	s.assessments++
 	if s.prepare != nil {
 		return s.prepare(ctx, req)
 	}
-	return share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskHigh}, []share.ConfirmationDetailBlock{share.TextConfirmationDetail("original snapshot")}, func(context.Context) (*share.Result, string, error) {
+	return operationresult.Result[*share.PreparedCall]{Status: operationresult.Success, Data: share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskHigh}, []share.ConfirmationDetailBlock{share.TextConfirmationDetail("original snapshot")}, func(context.Context) (operationresult.Result[*share.Result], string, error) {
 		s.calls++
-		return &share.Result{Content: "original"}, "original", nil
-	}), nil
+		return operationresult.Result[*share.Result]{Status: operationresult.Success, Data: &share.Result{Content: "original"}}, "original", nil
+	})}, nil
 }
 
 func TestCallToolAlwaysPreparesAndChecksBeforeExecution(t *testing.T) {
@@ -80,9 +81,9 @@ func TestCallToolAlwaysPreparesAndChecksBeforeExecution(t *testing.T) {
 			tool := &snapshotTool{}
 			prepareErr := errors.New("prepare failed")
 			if scenario != "success" {
-				tool.prepare = func(_ context.Context, req share.CallRequest) (*share.PreparedCall, error) {
+				tool.prepare = func(_ context.Context, req share.CallRequest) (operationresult.Result[*share.PreparedCall], error) {
 					if scenario == "prepare_error" {
-						return nil, prepareErr
+						return operationresult.Result[*share.PreparedCall]{}, prepareErr
 					}
 					if scenario == "canceled_after" {
 						cancel()
@@ -90,10 +91,10 @@ func TestCallToolAlwaysPreparesAndChecksBeforeExecution(t *testing.T) {
 					if scenario == "changed_request" {
 						req.ID = "different"
 					}
-					return share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskHigh}, []share.ConfirmationDetailBlock{share.TextConfirmationDetail("snapshot")}, func(context.Context) (*share.Result, string, error) {
+					return operationresult.Result[*share.PreparedCall]{Status: operationresult.Success, Data: share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskHigh}, []share.ConfirmationDetailBlock{share.TextConfirmationDetail("snapshot")}, func(context.Context) (operationresult.Result[*share.Result], string, error) {
 						tool.calls++
-						return &share.Result{Content: "original"}, "original", nil
-					}), nil
+						return operationresult.Result[*share.Result]{Status: operationresult.Success, Data: &share.Result{Content: "original"}}, "original", nil
+					})}, nil
 				}
 			}
 			catalog := registry.NewRegistry(security.DefaultPermission())
@@ -105,12 +106,12 @@ func TestCallToolAlwaysPreparesAndChecksBeforeExecution(t *testing.T) {
 			}
 			result, logContent, err := (&Manager{ManagerDeps: ManagerDeps{Registry: catalog}}).CallTool(ctx, share.CallRequest{ID: "one", Name: tool.Name(), Arguments: []byte(`{}`)})
 			if scenario == "success" {
-				if err != nil || tool.assessments != 1 || tool.calls != 1 || result.Content != "original" || logContent != "original" {
+				if err != nil || tool.assessments != 1 || tool.calls != 1 || result.Data.Content != "original" || logContent != "original" {
 					t.Fatalf("tool=%+v result=%+v log=%q error=%v", tool, result, logContent, err)
 				}
 				return
 			}
-			if err == nil || result != nil || tool.calls != 0 {
+			if err == nil || result.Data != nil || tool.calls != 0 {
 				t.Fatalf("invalid call executed: tool=%+v result=%+v error=%v", tool, result, err)
 			}
 			if !strings.HasPrefix(logContent, "Tool execution not entered: ") || !strings.Contains(logContent, err.Error()) {

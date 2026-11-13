@@ -10,6 +10,7 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/hook/share"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/security"
 	"elbot/internal/signal"
 	tool "elbot/internal/tool/registry"
@@ -195,7 +196,7 @@ func (*hookActionTestTool) Name() string { return "hook_test_critical" }
 
 func registerHookTestTool(registry *tool.Registry, candidate interface {
 	Info() toolshare.Info
-	PrepareCall(context.Context, toolshare.CallRequest) (*toolshare.PreparedCall, error)
+	PrepareCall(context.Context, toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error)
 }) error {
 	info := candidate.Info()
 	info.Description = info.Name
@@ -211,24 +212,14 @@ func (*hookActionTestTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "hook_test_critical", Parameters: map[string]any{"type": "object"}}
 }
 
-func (t *hookActionTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
+func (t *hookActionTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		t.calls++
-		{
-			result, callErr := &toolshare.Result{Content: "called"}, t.err
-			logContent := ""
-			if result != nil {
-				logContent = result.Content
-			}
-			if callErr != nil {
-				if logContent != "" {
-					logContent += "\n"
-				}
-				logContent += callErr.Error()
-			}
-			return result, logContent, callErr
+		if t.err != nil {
+			return operationresult.Result[*toolshare.Result]{}, "", t.err
 		}
-	}), nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: "called"}}, "called", nil
+	})}, nil
 }
 
 func TestRuleToolAuditOutcome(t *testing.T) {
@@ -268,7 +259,7 @@ func TestRuleToolAuditOutcome(t *testing.T) {
 			if err := json.Unmarshal([]byte(records[0].Content), &fields); err != nil {
 				t.Fatal(err)
 			}
-			if fields["source"] != "rules" || records[0].ResultStatus.String() != tc.status || !strings.HasSuffix(fields["result"].(string), "called") || (tc.err != nil && !strings.Contains(fields["result"].(string), tc.err.Error())) {
+			if fields["source"] != "rules" || records[0].ResultStatus.String() != tc.status || (tc.err == nil && fields["result"] != "called") || (tc.err != nil && fields["result"] != tc.err.Error()) {
 				t.Fatal(fields)
 			}
 		})

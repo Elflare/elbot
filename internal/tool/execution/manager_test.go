@@ -1,6 +1,7 @@
 package execution
 
 import (
+	"elbot/internal/operationresult"
 	"errors"
 	"testing"
 
@@ -13,15 +14,15 @@ import (
 func TestCallToolPreservesDirectCallResult(t *testing.T) {
 	catalog := registry.NewRegistry(security.DefaultPermission())
 	failure := errors.New("partial failure")
-	if err := registerTestTools(catalog, (partialResultTool{err: failure}).Definition()); err != nil {
+	if err := registerTestTools(catalog, (loggingTool{runnerHighRiskTool: runnerHighRiskTool{name: "segments"}, err: failure}).Definition()); err != nil {
 		t.Fatal(err)
 	}
 	m := newTestManager(catalog, nil)
 	result, log, err := m.CallTool(t.Context(), share.CallRequest{Name: "segments", Arguments: []byte("{}")})
-	if err != failure || result == nil || string(result.Data) != `{"partial":true}` || log == "" {
+	if err != failure || result.Data != nil || log == "" {
 		t.Fatalf("result=%+v log=%q err=%v", result, log, err)
 	}
-	if result, log, err := m.CallTool(t.Context(), share.CallRequest{Name: "missing"}); err == nil || result != nil || log != `Tool execution not entered: tool "missing" not found` {
+	if result, log, err := m.CallTool(t.Context(), share.CallRequest{Name: "missing"}); err != nil || result.Status != operationresult.NotFound || result.Message != `tool "missing" not found` || log != "" {
 		t.Fatalf("missing tool: result=%+v log=%q err=%v", result, log, err)
 	}
 }
@@ -33,13 +34,13 @@ func TestRemoteResolutionUsesModelName(t *testing.T) {
 		{Name: "status", CanonicalName: "second_status", Source: share.SourceKindELwisp, Endpoint: "http://second.invalid", EventKey: "second"},
 	}
 	for _, item := range items {
-		got := m.resolve(t.Context(), item.CanonicalName, items, storage.SessionModeBackground)
-		if got.Error != nil || got.Discovered.Endpoint != item.Endpoint || got.Discovered.EventKey != item.EventKey {
+		got, err := m.resolve(t.Context(), item.CanonicalName, items, storage.SessionModeBackground)
+		if err != nil || got.Status != operationresult.Success || got.Data.Discovered.Endpoint != item.Endpoint || got.Data.Discovered.EventKey != item.EventKey {
 			t.Fatalf("resolved=%+v", got)
 		}
 	}
-	got := m.resolve(t.Context(), "status", items, storage.SessionModeBackground)
-	if got.Error == nil {
+	got, err := m.resolve(t.Context(), "status", items, storage.SessionModeBackground)
+	if err != nil || got.Status != operationresult.Forbidden {
 		t.Fatalf("ambiguous original name accepted: %+v", got)
 	}
 }

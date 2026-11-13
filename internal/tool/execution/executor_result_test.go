@@ -2,7 +2,7 @@ package execution
 
 import (
 	"context"
-	"errors"
+	"elbot/internal/operationresult"
 	"strings"
 	"testing"
 
@@ -16,19 +16,16 @@ import (
 )
 
 func TestExecutorPreparesHookInputWithoutLogging(t *testing.T) {
-	partialErr := errors.New("partial discovery")
 	for _, tc := range []struct {
 		name            string
 		definitionRules bool
 		resultRules     bool
 		remote          bool
-		err             error
 	}{
 		{name: "definition rules", definitionRules: true},
 		{name: "result rules", resultRules: true},
 		{name: "no rules"},
 		{name: "remote result", remote: true, resultRules: true},
-		{name: "partial result", definitionRules: true, err: partialErr},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			call := llm.ToolCallRequest{ID: "call", Name: "details", Arguments: "{}"}
@@ -36,15 +33,15 @@ func TestExecutorPreparesHookInputWithoutLogging(t *testing.T) {
 				Content: "full result", NeedsElyphRules: tc.resultRules,
 				DiscoveryText: &share.DiscoveryText{Summary: "discovery summary", Details: "business details"},
 			}
-			prepared := share.NewPreparedCall(share.CallRequest{ID: call.ID, Name: call.Name, Arguments: []byte(call.Arguments)}, share.RiskAssessment{}, nil, func(context.Context) (*share.Result, string, error) {
-				return body, "audit summary", tc.err
+			prepared := share.NewPreparedCall(share.CallRequest{ID: call.ID, Name: call.Name, Arguments: []byte(call.Arguments)}, share.RiskAssessment{}, nil, func(context.Context) (operationresult.Result[*share.Result], string, error) {
+				return operationresult.Result[*share.Result]{Status: operationresult.Success, Data: body}, "audit summary", nil
 			})
 			resolved := resolvedTool{Source: share.SourceKindNative, Native: &share.ToolDefinition{Definition: share.Info{NeedsElyphRules: tc.definitionRules}}}
 			if tc.remote {
 				resolved.Source, resolved.Native = share.SourceKindELwisp, nil
 			}
 			result := (&Manager{}).executePrepared(t.Context(), call, resolved, prepared, nil)
-			if result.Result != body || result.Error != tc.err || !result.ExecutionStarted {
+			if result.Result.Status != operationresult.Success || result.Result.Data != body || result.Error != nil || !result.ExecutionStarted {
 				t.Fatalf("execution result changed: %+v", result)
 			}
 			if body.NeedsElyphRules != (tc.definitionRules || tc.resultRules) {
@@ -65,8 +62,8 @@ type discoveryHookDeps struct {
 	input string
 }
 
-func (d *discoveryHookDeps) CompleteToolCall(_ context.Context, _ *storage.Session, _ llm.ToolCallRequest, _ string, segments []llm.MessageSegment, _ error) ([]llm.MessageSegment, error) {
-	d.input = llm.SegmentsContentText(segments)
+func (d *discoveryHookDeps) CompleteToolCall(_ context.Context, _ *storage.Session, _ llm.ToolCallRequest, _ string, result operationresult.Result[[]llm.MessageSegment], _ error) ([]llm.MessageSegment, error) {
+	d.input = llm.SegmentsContentText(result.Data)
 	return llm.TextSegments("hooked details"), nil
 }
 

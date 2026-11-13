@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 
+	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
 )
 
@@ -49,14 +50,14 @@ type extractProxyConfig struct {
 	cacheKey string
 }
 
-func (t *WebExtractTool) fetchJina(ctx context.Context, apiKey, targetURL, selector string, proxy extractProxyConfig) (cachedExtract, error) {
+func (t *WebExtractTool) fetchJina(ctx context.Context, apiKey, targetURL, selector string, proxy extractProxyConfig) (operationresult.Result[cachedExtract], error) {
 	readerURL, err := jinaReaderURL(t.endpoint, targetURL)
 	if err != nil {
-		return cachedExtract{}, err
+		return operationresult.Result[cachedExtract]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, readerURL, nil)
 	if err != nil {
-		return cachedExtract{}, fmt.Errorf("create Jina request: %w", err)
+		return operationresult.Result[cachedExtract]{}, fmt.Errorf("create Jina request: %w", err)
 	}
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 	httpReq.Header.Set("Accept", "application/json")
@@ -69,24 +70,24 @@ func (t *WebExtractTool) fetchJina(ctx context.Context, apiKey, targetURL, selec
 
 	resp, err := t.httpClient(proxy).Do(httpReq)
 	if err != nil {
-		return cachedExtract{}, fmt.Errorf("Jina request: %w", err)
+		return operationresult.Result[cachedExtract]{}, fmt.Errorf("Jina request: %w", err)
 	}
 	defer resp.Body.Close()
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return cachedExtract{}, fmt.Errorf("read Jina response: %w", err)
+		return operationresult.Result[cachedExtract]{}, fmt.Errorf("read Jina response: %w", err)
 	}
 	if resp.StatusCode == http.StatusPaymentRequired {
-		return cachedExtract{}, fmt.Errorf("Jina 账户余额不足，请告知用户需要充值；如需继续提取，可设置 method=direct 改用直接抓取，或 method=markdownnew 使用 markdown.new。Jina HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))
+		return operationresult.Result[cachedExtract]{Status: operationresult.Failed, Message: fmt.Sprintf("Jina 账户余额不足，请告知用户需要充值；如需继续提取，可设置 method=direct 改用直接抓取，或 method=markdownnew 使用 markdown.new。Jina HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))}, nil
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return cachedExtract{}, fmt.Errorf("Jina HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))
+		return operationresult.Result[cachedExtract]{Status: operationresult.Failed, Message: fmt.Sprintf("Jina HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))}, nil
 	}
 	var data jinaResponse
 	if err := json.Unmarshal(respBody, &data); err != nil {
-		return cachedExtract{}, fmt.Errorf("parse Jina response: %w", err)
+		return operationresult.Result[cachedExtract]{}, fmt.Errorf("parse Jina response: %w", err)
 	}
-	return normalizeJinaResponse(data, targetURL), nil
+	return operationresult.Result[cachedExtract]{Status: operationresult.Success, Data: normalizeJinaResponse(data, targetURL)}, nil
 }
 
 func normalizeJinaResponse(data jinaResponse, fallbackURL string) cachedExtract {
@@ -109,61 +110,64 @@ func jinaReaderURL(endpoint, targetURL string) (string, error) {
 	return strings.TrimRight(endpoint, "/") + "/http://" + parsed.Host + parsed.RequestURI(), nil
 }
 
-func (t *WebExtractTool) fetchDirect(ctx context.Context, targetURL string, proxy extractProxyConfig) (cachedExtract, error) {
+func (t *WebExtractTool) fetchDirect(ctx context.Context, targetURL string, proxy extractProxyConfig) (operationresult.Result[cachedExtract], error) {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
 	if err != nil {
-		return cachedExtract{}, fmt.Errorf("create direct extract request: %w", err)
+		return operationresult.Result[cachedExtract]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("create direct extract request: %v", err)}, nil
+	}
+	if httpReq.URL.Host == "" || (httpReq.URL.Scheme != "http" && httpReq.URL.Scheme != "https") {
+		return operationresult.Result[cachedExtract]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("invalid url: %s", targetURL)}, nil
 	}
 	httpReq.Header.Set("User-Agent", "ElBot-WebExtract/1.0")
 	resp, err := t.httpClient(proxy).Do(httpReq)
 	if err != nil {
-		return cachedExtract{}, fmt.Errorf("direct extract request: %w", err)
+		return operationresult.Result[cachedExtract]{}, fmt.Errorf("direct extract request: %w", err)
 	}
 	defer resp.Body.Close()
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return cachedExtract{}, fmt.Errorf("read direct extract response: %w", err)
+		return operationresult.Result[cachedExtract]{}, fmt.Errorf("read direct extract response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return cachedExtract{}, fmt.Errorf("direct extract HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))
+		return operationresult.Result[cachedExtract]{Status: operationresult.Failed, Message: fmt.Sprintf("direct extract HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))}, nil
 	}
 	title, content := extractSimpleHTMLText(string(respBody), resp.Request.URL)
-	return cachedExtract{url: targetURL, title: title, source: "direct", content: content}, nil
+	return operationresult.Result[cachedExtract]{Status: operationresult.Success, Data: cachedExtract{url: targetURL, title: title, source: "direct", content: content}}, nil
 }
 
-func (t *WebExtractTool) fetchMarkdownNew(ctx context.Context, targetURL string, proxy extractProxyConfig) (cachedExtract, error) {
+func (t *WebExtractTool) fetchMarkdownNew(ctx context.Context, targetURL string, proxy extractProxyConfig) (operationresult.Result[cachedExtract], error) {
 	// 字符串映射始终可序列化。
 	body, _ := json.Marshal(map[string]string{"url": targetURL})
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, defaultMarkdownNewEndpoint, bytes.NewReader(body))
 	if err != nil {
-		return cachedExtract{}, fmt.Errorf("create markdown.new request: %w", err)
+		return operationresult.Result[cachedExtract]{}, fmt.Errorf("create markdown.new request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("User-Agent", "ElBot-WebExtract/1.0")
 	httpReq.Header.Set("Accept", "application/json")
 	resp, err := t.httpClient(proxy).Do(httpReq)
 	if err != nil {
-		return cachedExtract{}, fmt.Errorf("markdown.new request: %w", err)
+		return operationresult.Result[cachedExtract]{}, fmt.Errorf("markdown.new request: %w", err)
 	}
 	defer resp.Body.Close()
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return cachedExtract{}, fmt.Errorf("read markdown.new response: %w", err)
+		return operationresult.Result[cachedExtract]{}, fmt.Errorf("read markdown.new response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return cachedExtract{}, fmt.Errorf("markdown.new HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))
+		return operationresult.Result[cachedExtract]{Status: operationresult.Failed, Message: fmt.Sprintf("markdown.new HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))}, nil
 	}
 	var data markdownNewResponse
 	if err := json.Unmarshal(respBody, &data); err != nil {
-		return cachedExtract{}, fmt.Errorf("parse markdown.new response: %w", err)
+		return operationresult.Result[cachedExtract]{}, fmt.Errorf("parse markdown.new response: %w", err)
 	}
 	if !data.Success {
-		return cachedExtract{}, fmt.Errorf("markdown.new extraction failed: %s", truncateHTTPBody(respBody))
+		return operationresult.Result[cachedExtract]{Status: operationresult.Failed, Message: fmt.Sprintf("markdown.new extraction failed: %s", truncateHTTPBody(respBody))}, nil
 	}
 	if data.URL == "" {
 		data.URL = targetURL
 	}
-	return cachedExtract{url: data.URL, title: data.Title, source: "markdownnew", content: data.Content}, nil
+	return operationresult.Result[cachedExtract]{Status: operationresult.Success, Data: cachedExtract{url: data.URL, title: data.Title, source: "markdownnew", content: data.Content}}, nil
 }
 
 func (t *WebExtractTool) httpClient(proxy extractProxyConfig) *http.Client {

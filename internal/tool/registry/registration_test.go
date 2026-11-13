@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"reflect"
 	"testing"
 
@@ -85,10 +86,10 @@ func TestQueryRetainsDefinitionAcrossRegistration(t *testing.T) {
 		d := (fakeTool{name: "versioned", tags: []string{version}}).Definition()
 		d.Definition.Description = version
 		d.Parameters["properties"] = map[string]any{version: map[string]any{"type": "string"}}
-		d.Prepare = func(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
-			return share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskLow}, []share.ConfirmationDetailBlock{share.TextConfirmationDetail(version)}, func(context.Context) (*share.Result, string, error) {
-				return &share.Result{Content: version}, version, nil
-			}), nil
+		d.Prepare = func(ctx context.Context, req share.CallRequest) (operationresult.Result[*share.PreparedCall], error) {
+			return operationresult.Result[*share.PreparedCall]{Status: operationresult.Success, Data: share.NewPreparedCall(req, share.RiskAssessment{Level: share.RiskLow}, []share.ConfirmationDetailBlock{share.TextConfirmationDetail(version)}, func(context.Context) (operationresult.Result[*share.Result], string, error) {
+				return operationresult.Result[*share.Result]{Status: operationresult.Success, Data: &share.Result{Content: version}}, version, nil
+			})}, nil
 		}
 		if _, err := r.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, []share.ToolDefinition{d}); err != nil {
 			t.Fatal(err)
@@ -122,11 +123,11 @@ func TestQueryRetainsDefinitionAcrossRegistration(t *testing.T) {
 			t.Fatalf("changed selected definition: %+v, schema=%v", info, properties)
 		}
 		prepared, err := tc.definition.PrepareCall(t.Context(), share.CallRequest{Name: "versioned"})
-		if err != nil {
+		if err != nil || prepared.Status != operationresult.Success {
 			t.Fatal(err)
 		}
-		result, _, err := prepared.Call(t.Context())
-		if err != nil || result.Content != tc.version {
+		result, _, err := prepared.Data.Call(t.Context())
+		if err != nil || result.Status != operationresult.Success || result.Data.Content != tc.version {
 			t.Fatalf("changed selected execution: %+v, %v", result, err)
 		}
 	}

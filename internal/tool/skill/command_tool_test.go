@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -12,21 +13,9 @@ import (
 	"testing"
 )
 
-func TestCommandArgumentsBuildsFlagArgs(t *testing.T) {
-	manifest := AgentSkillManifest{Args: map[string]string{"input": "--input", "mode": "--mode"}, Parameters: map[string]any{"type": "object", "required": []any{"input"}, "properties": map[string]any{"input": map[string]any{"type": "string"}, "mode": map[string]any{"type": "string"}}}}
-	args, err := commandArguments(manifest, json.RawMessage(`{"input":"hello","mode":"fast"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := strings.Join(args, " ")
-	if got != "--input hello --mode fast" {
-		t.Fatalf("args = %q", got)
-	}
-}
-
 func TestCommandArgumentsBuildsComplexFlagArgs(t *testing.T) {
 	manifest := AgentSkillManifest{
-		Args: map[string]string{"items": "--items", "options": "--options"},
+		Args: map[string]string{"items": "--items", "options": "--options", "text": "--text", "number": "--number", "boolean": "--boolean"},
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -35,11 +24,11 @@ func TestCommandArgumentsBuildsComplexFlagArgs(t *testing.T) {
 			},
 		},
 	}
-	args, err := commandArguments(manifest, json.RawMessage(`{"options": {"width": 1024, "nested": {"enabled": true}}, "items": ["a", "b"]}`))
+	args, err := commandArguments(manifest, json.RawMessage(`{"options": {"width": 1024, "nested": {"enabled": true}}, "items": ["a", "b"], "text":"a \n b", "number":9007199254740993, "boolean":true}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"--items", `["a","b"]`, "--options", `{"width":1024,"nested":{"enabled":true}}`}
+	want := []string{"--boolean", "true", "--items", `["a","b"]`, "--number", "9007199254740993", "--options", `{"width":1024,"nested":{"enabled":true}}`, "--text", "a \n b"}
 	if len(args) != len(want) {
 		t.Fatalf("args = %#v, want %#v", args, want)
 	}
@@ -60,11 +49,11 @@ func TestCommandToolRunsCommandAndReturnsText(t *testing.T) {
 	}
 	cmd := commandTool{media: newTestMediaRuntime(t), record: record{Name: "echo_skill", Description: "echo", Kind: KindAgent, Root: root}, manifest: AgentSkillManifest{TimeoutSeconds: 30, Risk: toolshare.RiskLow, Command: []string{"sh", "echo.sh"}, Args: map[string]string{"input": "--input"}, Parameters: map[string]any{"type": "object", "required": []any{"input"}, "properties": map[string]any{"input": map[string]any{"type": "string"}}}}}
 	result, _, err := callTool(context.Background(), cmd.Definition(), toolshare.CallRequest{Name: "echo_skill", Arguments: json.RawMessage(`{"input":"hello"}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(result.Content) != "input=hello" {
-		t.Fatalf("content = %q", result.Content)
+	if strings.TrimSpace(result.Data.Content) != "input=hello" {
+		t.Fatalf("content = %q", result.Data.Content)
 	}
 }
 
@@ -78,10 +67,10 @@ func TestCommandToolRunsCommandAndParsesJSONContent(t *testing.T) {
 	}
 	cmd := commandTool{media: newTestMediaRuntime(t), record: record{Name: "json_skill", Description: "json", Kind: KindAgent, Root: root}, manifest: AgentSkillManifest{TimeoutSeconds: 30, Risk: toolshare.RiskLow, Command: []string{"sh", "json.sh"}, Args: map[string]string{"input": "--input"}, Parameters: map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "string"}}}}}
 	result, _, err := callTool(context.Background(), cmd.Definition(), toolshare.CallRequest{Name: "json_skill", Arguments: json.RawMessage(`{"input":"hello"}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if result.Content != "ok" {
-		t.Fatalf("content = %q", result.Content)
+	if result.Data.Content != "ok" {
+		t.Fatalf("content = %q", result.Data.Content)
 	}
 }

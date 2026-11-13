@@ -6,18 +6,20 @@ import (
 	"path/filepath"
 	"strings"
 
+	"elbot/internal/operationresult"
+
 	"mvdan.cc/sh/v3/syntax"
 )
 
 type shellAdvice struct {
 	warnings []string
-	blockErr error
+	blocked  operationresult.Result[struct{}]
 }
 
 func analyzeBashShellAdvice(file *syntax.File, workDir string, fileGuard FileGuard) shellAdvice {
-	var advice shellAdvice
+	advice := shellAdvice{blocked: operationresult.Result[struct{}]{Status: operationresult.Success, Data: struct{}{}}}
 	syntax.Walk(file, func(node syntax.Node) bool {
-		if advice.blockErr != nil {
+		if advice.blocked.Status != operationresult.Success {
 			return false
 		}
 		switch n := node.(type) {
@@ -90,8 +92,9 @@ func (a *shellAdvice) inspectShellRedirect(redir *syntax.Redirect, workDir strin
 	if !ok || resolved == os.DevNull {
 		return
 	}
-	if err := fileGuard.CheckWrite(resolved); err != nil {
-		a.blockErr = err
+	checked := fileGuard.CheckWrite(resolved)
+	if checked.Status != operationresult.Success {
+		a.blocked = checked
 		return
 	}
 	if strings.Contains(op, ">") {
@@ -107,8 +110,9 @@ func (a *shellAdvice) checkProtectedPaths(fileGuard FileGuard, workDir string, a
 		if !ok {
 			continue
 		}
-		if err := fileGuard.CheckWrite(path); err != nil {
-			a.blockErr = err
+		checked := fileGuard.CheckWrite(path)
+		if checked.Status != operationresult.Success {
+			a.blocked = checked
 			return true
 		}
 	}

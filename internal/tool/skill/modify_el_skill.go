@@ -1,7 +1,10 @@
 // 实现 Skill 修改工具，准备并提交修改内容。
 package skill
 
-import toolshare "elbot/internal/tool/share"
+import (
+	"elbot/internal/operationresult"
+	toolshare "elbot/internal/tool/share"
+)
 
 import (
 	"bytes"
@@ -67,51 +70,63 @@ func (t ModifyElSkillTool) Definition() toolshare.ToolDefinition {
 	return definition
 }
 
-func (t ModifyElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
-	preview, err := t.preview(ctx, req)
+func (t ModifyElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
+	prepared, err := t.preview(ctx, req)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{}, err
 	}
+	if prepared.Status != operationresult.Success {
+		return operationresult.Result[*toolshare.PreparedCall]{Status: prepared.Status, Message: prepared.Message}, nil
+	}
+	preview := prepared.Data
 	filePreview := preview.File.Preview()
 	details := []toolshare.ConfirmationDetailBlock{toolshare.FileDiffConfirmationDetail(
 		filePreview.Diff,
 		filePreview.DiffAvailable,
 		fmt.Sprintf("技能：%s\n目标：%s\n文件：%s\n模式：确认后写入；确认前已自动预检\n预检 diff:", preview.Name, preview.Target, preview.Path),
 	)}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		return t.call(ctx, preview)
-	}), nil
+	})}, nil
 }
 
-func (t ModifyElSkillTool) preview(ctx context.Context, req toolshare.CallRequest) (modifyElSkillPreview, error) {
+func (t ModifyElSkillTool) preview(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[modifyElSkillPreview], error) {
 	if err := ctx.Err(); err != nil {
-		return modifyElSkillPreview{}, err
+		return operationresult.Result[modifyElSkillPreview]{}, err
 	}
 	var args modifyElSkillArgs
 	if len(req.Arguments) > 0 {
 		if err := decodeModifyElSkillArgs(req.Arguments, &args); err != nil {
-			return modifyElSkillPreview{}, fmt.Errorf("parse modify_el_skill arguments: %w", err)
+			return operationresult.Result[modifyElSkillPreview]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse modify_el_skill arguments: %v", err)}, nil
 		}
 	}
 	name := strings.TrimSpace(args.Name)
-	path, target, err := elSkillTargetPath(t.manager, name, strings.TrimSpace(args.Target))
+	selected, target, err := elSkillTargetPath(t.manager, name, strings.TrimSpace(args.Target))
 	if err != nil {
-		return modifyElSkillPreview{}, err
+		return operationresult.Result[modifyElSkillPreview]{}, err
 	}
+	if selected.Status != operationresult.Success {
+		return operationresult.Result[modifyElSkillPreview]{Status: selected.Status, Message: selected.Message}, nil
+	}
+	path := selected.Data
 	if len(args.Edits) == 0 {
-		return modifyElSkillPreview{}, fmt.Errorf("edits is required")
+		return operationresult.Result[modifyElSkillPreview]{Status: operationresult.InvalidArguments, Message: "edits is required"}, nil
 	}
-	file, err := fileops.PrepareFileEdit(ctx, fileops.EditRequest{Path: path, Encoding: args.Encoding, ExpectedRevision: args.ExpectedRevision, ContextLines: args.ContextLines, Edits: args.Edits}, func(next string) error {
+	file, err := fileops.PrepareFileEdit(ctx, fileops.EditRequest{Path: path, Encoding: args.Encoding, ExpectedRevision: args.ExpectedRevision, ContextLines: args.ContextLines, Edits: args.Edits}, func(next string) (operationresult.Result[struct{}], error) {
 		if target == elSkillTargetElyph {
-			_, _, err := elyph.ValidateSkill(next, name)
-			return err
+			if _, _, err := elyph.ValidateSkill(next, name); err != nil {
+				return operationresult.Result[struct{}]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
+			}
 		}
-		return nil
+		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	})
 	if err != nil {
-		return modifyElSkillPreview{}, err
+		return operationresult.Result[modifyElSkillPreview]{}, err
 	}
-	return modifyElSkillPreview{Name: name, Target: target, Path: path, File: file}, nil
+	if file.Status != operationresult.Success {
+		return operationresult.Result[modifyElSkillPreview]{Status: file.Status, Message: file.Message}, nil
+	}
+	return operationresult.Result[modifyElSkillPreview]{Status: operationresult.Success, Data: modifyElSkillPreview{Name: name, Target: target, Path: path, File: file.Data}}, nil
 }
 
 func decodeModifyElSkillArgs(raw json.RawMessage, args *modifyElSkillArgs) error {
@@ -120,9 +135,9 @@ func decodeModifyElSkillArgs(raw json.RawMessage, args *modifyElSkillArgs) error
 	return dec.Decode(args)
 }
 
-func elSkillTargetPath(manager *Manager, name, target string) (string, string, error) {
+func elSkillTargetPath(manager *Manager, name, target string) (operationresult.Result[string], string, error) {
 	if err := validateSkillName(name); err != nil {
-		return "", "", err
+		return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: err.Error()}, "", nil
 	}
 	if target == "" {
 		target = elSkillTargetElyph
@@ -134,28 +149,32 @@ func elSkillTargetPath(manager *Manager, name, target string) (string, string, e
 	case elSkillTargetCodeSource:
 		filename = "main.go"
 	default:
-		return "", "", fmt.Errorf("invalid target %q; use %q or %q", target, elSkillTargetElyph, elSkillTargetCodeSource)
+		return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("invalid target %q; use %q or %q", target, elSkillTargetElyph, elSkillTargetCodeSource)}, "", nil
 	}
 	path := filepath.Join(manager.root, "go", name, filename)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return "", "", fmt.Errorf("EL skill %s %q not found", target, name)
+		return operationresult.Result[string]{Status: operationresult.NotFound, Message: fmt.Sprintf("EL skill %s %q not found", target, name)}, "", nil
 	} else if err != nil {
-		return "", "", fmt.Errorf("stat %s: %w", filename, err)
+		return operationresult.Result[string]{}, "", fmt.Errorf("stat %s: %w", filename, err)
 	}
-	return path, target, nil
+	return operationresult.Result[string]{Status: operationresult.Success, Data: path}, target, nil
 }
 
-func (t ModifyElSkillTool) call(ctx context.Context, preview modifyElSkillPreview) (*toolshare.Result, string, error) {
+func (t ModifyElSkillTool) call(ctx context.Context, preview modifyElSkillPreview) (operationresult.Result[*toolshare.Result], string, error) {
 	t.manager.writeMu.Lock()
 	defer t.manager.writeMu.Unlock()
-	result, err := preview.File.Commit(ctx)
+	committed, err := preview.File.Commit(ctx)
 	if err != nil {
-		return nil, err.Error(), err
+		return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 	}
+	if committed.Status != operationresult.Success {
+		return operationresult.Result[*toolshare.Result]{Status: committed.Status, Message: committed.Message}, "skill edit rejected: " + committed.Message, nil
+	}
+	result := committed.Data
 	message := "源码已写入但尚未格式化/编译；完成修改后调用 finalize_el_skill。"
 	if preview.Target == elSkillTargetElyph {
 		message = "SKILL.elyph 已写入但尚未 reload；完成修改后调用 finalize_el_skill。"
 	}
 	content := fmt.Sprintf("modified EL skill %s target %s\nrevision_after: %s\ndiff:\n%s\n\n%s", preview.Name, preview.Target, result.RevisionAfter, result.Diff, message)
-	return &toolshare.Result{Content: content, NeedsElyphRules: preview.Target == elSkillTargetElyph}, fmt.Sprintf("modified=%s target=%s revision_after=%s", preview.Name, preview.Target, result.RevisionAfter), nil
+	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: content, NeedsElyphRules: preview.Target == elSkillTargetElyph}}, fmt.Sprintf("modified=%s target=%s revision_after=%s", preview.Name, preview.Target, result.RevisionAfter), nil
 }

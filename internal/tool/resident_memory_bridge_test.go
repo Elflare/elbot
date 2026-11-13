@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -25,30 +26,30 @@ func TestResidentMemoryToolsUseActorScope(t *testing.T) {
 	readTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[1]
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "1"}, Role: contextinfo.RoleUser})
 
-	if _, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{"content":"用户喜欢被称为娅娅。"}`)}); err != nil {
+	if result, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{"content":"用户喜欢被称为娅娅。"}`)}); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("write core: %v", err)
 	}
-	if _, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"write","content":"用户喜欢短回复。"}`)}); err != nil {
+	if result, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"write","content":"用户喜欢短回复。"}`)}); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("write normal: %v", err)
 	}
 	result, logContent, err := callTool(ctx, readTool, toolshare.CallRequest{Arguments: raw(`{"section":"all"}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatalf("read: %v", err)
 	}
-	if !strings.Contains(result.Content, "用户喜欢被称为娅娅。") || !strings.Contains(result.Content, "用户喜欢短回复。") {
-		t.Fatalf("content = %q", result.Content)
+	if !strings.Contains(result.Data.Content, "用户喜欢被称为娅娅。") || !strings.Contains(result.Data.Content, "用户喜欢短回复。") {
+		t.Fatalf("content = %q", result.Data.Content)
 	}
-	if !strings.HasPrefix(logContent, "section=all core_bytes=") || result.LogContent(err) != toolshare.TruncateLogContent(result.Content, 1024) {
+	if !strings.HasPrefix(logContent, "section=all core_bytes=") || result.Data.LogContent() != toolshare.TruncateLogContent(result.Data.Content, 1024) {
 		t.Fatalf("memory read should log returned content: %q", logContent)
 	}
 
 	otherCtx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "2"}, Role: contextinfo.RoleUser})
 	result, _, err = callTool(otherCtx, readTool, toolshare.CallRequest{Arguments: raw(`{"section":"all"}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatalf("read other: %v", err)
 	}
-	if strings.Contains(result.Content, "用户喜欢短回复。") {
-		t.Fatalf("other content = %q", result.Content)
+	if strings.Contains(result.Data.Content, "用户喜欢短回复。") {
+		t.Fatalf("other content = %q", result.Data.Content)
 	}
 }
 
@@ -58,28 +59,28 @@ func TestResidentMemoryNormalAppendWriteDelete(t *testing.T) {
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})
 
 	result, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"append","content":"第一条"}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatalf("append empty: %v", err)
 	}
-	if result.Content != "已追加普通常驻记忆。" {
-		t.Fatalf("append empty content = %q", result.Content)
+	if result.Data.Content != "已追加普通常驻记忆。" {
+		t.Fatalf("append empty content = %q", result.Data.Content)
 	}
 	memory, err := store.Read(ctx, resident.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin}))
 	if err != nil || memory.Normal != "第一条" {
 		t.Fatalf("memory = %#v err=%v", memory, err)
 	}
 
-	if _, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"append","content":"第二条"}`)}); err != nil {
+	if result, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"append","content":"第二条"}`)}); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("append existing: %v", err)
 	}
 	memory, err = store.Read(ctx, resident.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin}))
 	if err != nil || memory.Normal != "第一条 第二条" {
 		t.Fatalf("memory = %#v err=%v", memory, err)
 	}
-	if _, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"delete"}`)}); err != nil {
+	if result, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"delete"}`)}); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("delete: %v", err)
 	}
-	if _, err := store.Read(ctx, resident.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})); err != resident.ErrNotFound {
+	if memory, err := store.Read(ctx, resident.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})); err != nil || !memory.Empty() {
 		t.Fatalf("expected empty after delete, err=%v", err)
 	}
 }
@@ -89,16 +90,16 @@ func TestResidentMemoryCoreAllowsEmptyString(t *testing.T) {
 	coreTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[3]
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})
 
-	if _, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{"content":"核心"}`)}); err != nil {
+	if result, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{"content":"核心"}`)}); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("write core: %v", err)
 	}
-	if _, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{"content":""}`)}); err != nil {
+	if result, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{"content":""}`)}); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("clear core: %v", err)
 	}
-	if _, err := store.Read(ctx, resident.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})); err != resident.ErrNotFound {
+	if memory, err := store.Read(ctx, resident.ActorScope(contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})); err != nil || !memory.Empty() {
 		t.Fatalf("expected empty after clear, err=%v", err)
 	}
-	if _, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{}`)}); err == nil {
+	if result, _, err := callTool(ctx, coreTool, toolshare.CallRequest{Arguments: raw(`{}`)}); err != nil || result.Status == operationresult.Success {
 		t.Fatalf("expected missing content error")
 	}
 }
@@ -146,13 +147,13 @@ func TestResidentMemoryValidation(t *testing.T) {
 	normalTool := builtin.NewResidentMemoryTools(residentMemoryBridge{store: store})[2]
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin})
 
-	if _, _, err := callTool(context.Background(), readTool, toolshare.CallRequest{Arguments: raw(`{"section":"all"}`)}); err == nil {
+	if result, _, err := callTool(context.Background(), readTool, toolshare.CallRequest{Arguments: raw(`{"section":"all"}`)}); err != nil || result.Status == operationresult.Success {
 		t.Fatalf("expected missing actor error")
 	}
-	if _, _, err := callTool(ctx, readTool, toolshare.CallRequest{Arguments: raw(`{"section":"bad"}`)}); err == nil {
+	if result, _, err := callTool(ctx, readTool, toolshare.CallRequest{Arguments: raw(`{"section":"bad"}`)}); err != nil || result.Status == operationresult.Success {
 		t.Fatalf("expected invalid section error")
 	}
-	if _, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"append"}`)}); err == nil {
+	if result, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: raw(`{"action":"append"}`)}); err != nil || result.Status == operationresult.Success {
 		t.Fatalf("expected missing content error")
 	}
 	for _, action := range []string{"unknown", "add", "set", "update", "clear"} {
@@ -160,7 +161,7 @@ func TestResidentMemoryValidation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: arguments}); err == nil {
+		if result, _, err := callTool(ctx, normalTool, toolshare.CallRequest{Arguments: arguments}); err != nil || result.Status == operationresult.Success {
 			t.Fatalf("expected invalid action error for %q", action)
 		}
 	}

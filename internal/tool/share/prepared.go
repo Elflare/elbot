@@ -4,6 +4,8 @@ package share
 import (
 	"bytes"
 	"context"
+
+	"elbot/internal/operationresult"
 )
 
 // PreparedCall 保存一次调用的完整准备结果，不持有准备阶段的 context 或锁。
@@ -16,10 +18,10 @@ type PreparedCall struct {
 	// details 保存确认展示内容；自动确认只跳过展示，不跳过准备。
 	details []ConfirmationDetailBlock
 	// run 使用准备好的业务数据执行，返回业务结果、未经截断的独立摘要和原始错误。
-	run func(context.Context) (*Result, string, error)
+	run func(context.Context) (operationresult.Result[*Result], string, error)
 }
 
-func NewPreparedCall(req CallRequest, assessment RiskAssessment, details []ConfirmationDetailBlock, run func(context.Context) (*Result, string, error)) *PreparedCall {
+func NewPreparedCall(req CallRequest, assessment RiskAssessment, details []ConfirmationDetailBlock, run func(context.Context) (operationresult.Result[*Result], string, error)) *PreparedCall {
 	req.Arguments = bytes.Clone(req.Arguments)
 	assessment.Reasons = append([]string(nil), assessment.Reasons...)
 	return &PreparedCall{request: req, assessment: assessment, details: append([]ConfirmationDetailBlock(nil), details...), run: run}
@@ -37,7 +39,7 @@ func (p *PreparedCall) RiskAssessment() RiskAssessment {
 
 // Call executes the prepared operation and preserves its result, untruncated
 // independent summary and original error. Audit result previews are separate.
-func (p *PreparedCall) Call(ctx context.Context) (*Result, string, error) {
+func (p *PreparedCall) Call(ctx context.Context) (operationresult.Result[*Result], string, error) {
 	return p.run(ctx)
 }
 

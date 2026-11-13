@@ -31,7 +31,7 @@ func TestExternalElwispForwardsArguments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := manager.executePrepared(ctx, call, resolved, prepared, nil)
+	result := manager.executePrepared(ctx, call, resolved, prepared.Data, nil)
 	if result.Error != nil {
 		t.Fatal(result.Error)
 	}

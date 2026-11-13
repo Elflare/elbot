@@ -3,6 +3,7 @@ package runtime
 import (
 	"bufio"
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -569,10 +570,10 @@ func TestStandaloneToolKeepsIndependentTimeout(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		registry := tool.NewRegistry(security.DefaultPermission())
 		entered := make(chan context.Context, 1)
-		if err := registerHookTestTool(registry, loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
+		if err := registerHookTestTool(registry, loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (operationresult.Result[*toolshare.Result], string, error) {
 			entered <- ctx
 			<-ctx.Done()
-			return nil, "", ctx.Err()
+			return operationresult.Result[*toolshare.Result]{}, "", ctx.Err()
 		}}); err != nil {
 			t.Fatal(err)
 		}

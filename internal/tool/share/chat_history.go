@@ -3,15 +3,8 @@ package share
 
 import (
 	"elbot/internal/contextinfo"
-	"errors"
+	"elbot/internal/operationresult"
 	"time"
-)
-
-var (
-	ErrNotFound      = errors.New("chat history message not found")
-	ErrNoChatContext = errors.New("当前上下文没有平台聊天信息，无法自动确定要查询哪个聊天。")
-	ErrMediaIndex    = errors.New("history media index out of range")
-	ErrFetchLimit    = errors.New("history media fetch limit reached")
 )
 
 // MaxFetchAttempts 是一次历史媒体调用允许的未缓存获取尝试数。
@@ -72,9 +65,9 @@ type MediaRequest struct {
 }
 
 type MediaResult struct {
-	MessageID string    // 请求对应的消息 ID。
-	Index     int       // 对应媒体序号；消息不存在时为 0。
-	IsImage   bool      // 成功选中的媒体是否为图片。
-	Media     MediaInfo // 获取成功后的通用信息。
-	Err       error     // 此项的消息、序号或获取错误。
+	MessageID string                            // 请求对应的消息 ID。
+	Index     int                               // 对应媒体序号；消息不存在时为 0。
+	IsImage   bool                              // 成功选中的媒体是否为图片。
+	Media     operationresult.Result[MediaInfo] // 单项业务结果，成功时读取媒体信息。
+	Err       error                             // 此项消息查询或媒体获取的真实故障。
 }

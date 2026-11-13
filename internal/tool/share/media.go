@@ -4,6 +4,7 @@ package share
 import (
 	"bytes"
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 )
 
@@ -40,16 +41,16 @@ type MediaImportOptions struct {
 
 // HistoryMediaResult 保留历史媒体请求的顺序及逐项错误。
 type HistoryMediaResult struct {
-	Media MediaInfo // 成功取得的媒体；失败时为零值。
-	Err   error     // 此项查询或获取失败的原因。
+	Media operationresult.Result[MediaInfo] // 单项业务结果，成功时读取通用媒体信息。
+	Err   error                             // 此项查询或获取的真实故障。
 }
 
 // MediaCall 是 Builtin 与 Skill 共用的单次媒体资源契约；Close 发布本次使用结束。
 type MediaCall interface {
-	Retain(context.Context, string) (MediaInfo, error)
+	Retain(context.Context, string) (operationresult.Result[MediaInfo], error)
 	Workspace(string) (string, error)
-	Export(context.Context, string, string) (string, MediaInfo, error)
-	Import(context.Context, string, string, MediaImportOptions) (MediaInfo, error)
-	CachedExport(context.Context, string) (string, error)
+	Export(context.Context, string, string) (string, operationresult.Result[MediaInfo], error)
+	Import(context.Context, string, string, MediaImportOptions) (operationresult.Result[MediaInfo], error)
+	CachedExport(context.Context, string) (operationresult.Result[string], error)
 	Close()
 }

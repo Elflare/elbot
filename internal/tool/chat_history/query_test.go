@@ -2,6 +2,7 @@ package chat_history
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"elbot/internal/tool/share"
 	"errors"
 	"reflect"
@@ -18,10 +19,10 @@ func TestChatHistoryUsesPublicSource(t *testing.T) {
 		Identity: contextinfo.Identity{ID: "user"},
 	})
 	chat, err := currentChatHistoryContext(ctx)
-	if err != nil || chat.Platform != "qqofficial" || (chat.ChatType != "group" || chat.ChatID != "openid") {
+	if err != nil || chat.Status != operationresult.Success || chat.Data.Platform != "qqofficial" || (chat.Data.ChatType != "group" || chat.Data.ChatID != "openid") {
 		t.Fatalf("chat = %+v, err = %v", chat, err)
 	}
-	if _, err := currentChatHistoryContext(context.Background()); err == nil {
+	if result, err := currentChatHistoryContext(context.Background()); err != nil || result.Status != operationresult.NoCurrentSession {
 		t.Fatal("missing source must not invent a history scope")
 	}
 }
@@ -34,37 +35,37 @@ type queryBackend struct {
 	calls  int
 }
 
-func (b *queryBackend) Search(_ context.Context, q SearchQuery) ([]share.Message, error) {
+func (b *queryBackend) Search(_ context.Context, q SearchQuery) (operationresult.Result[[]share.Message], error) {
 	b.calls++
 	b.search = q
-	return []share.Message{{Text: "search result"}}, nil
+	return operationresult.Result[[]share.Message]{Status: operationresult.Success, Data: []share.Message{{Text: "search result"}}}, nil
 }
 
-func (b *queryBackend) Around(_ context.Context, q AroundQuery) ([]share.Message, error) {
+func (b *queryBackend) Around(_ context.Context, q AroundQuery) (operationresult.Result[[]share.Message], error) {
 	b.calls++
 	b.around = q
-	return nil, nil
+	return operationresult.Result[[]share.Message]{Status: operationresult.Success, Data: nil}, nil
 }
 
-func (b *queryBackend) GetMessage(_ context.Context, key share.MessageKey) (share.Message, error) {
+func (b *queryBackend) GetMessage(_ context.Context, key share.MessageKey) (operationresult.Result[share.Message], error) {
 	b.calls++
 	b.key = key
-	return share.Message{}, share.ErrNotFound
+	return operationresult.Result[share.Message]{Status: operationresult.NotFound, Message: "not found"}, nil
 }
 
 func TestManagerQueriesStayInConversation(t *testing.T) {
 	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.Local)
 	backend := &queryBackend{}
-	m := NewManager(backend, func() time.Time { return now }, func(ctx context.Context, _ share.SearchRequest) (contextinfo.Source, error) {
+	m := NewManager(backend, func() time.Time { return now }, func(ctx context.Context, _ share.SearchRequest) (operationresult.Result[contextinfo.Source], error) {
 		info, _ := contextinfo.ConversationFromContext(ctx)
-		return info.Source, nil
+		return operationresult.Result[contextinfo.Source]{Status: operationresult.Success, Data: info.Source}, nil
 	})
 	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{
 		Source:   contextinfo.Source{Platform: "qqofficial", ChatType: "group", ChatID: "one"},
 		Identity: contextinfo.Identity{ID: "user"},
 	})
 	rows, err := m.Search(ctx, share.SearchRequest{Query: " ice,火，snow | wind ", QueryMode: "or", User: "我", Hours: 2, Days: 7, Limit: 100})
-	if err != nil || len(rows) != 1 || rows[0].Text != "search result" {
+	if err != nil || rows.Status != operationresult.Success || len(rows.Data) != 1 || rows.Data[0].Text != "search result" {
 		t.Fatalf("Search = %+v, %v", rows, err)
 	}
 	q := backend.search
@@ -79,41 +80,42 @@ func TestManagerQueriesStayInConversation(t *testing.T) {
 	if err != nil || backend.around != (AroundQuery{Key: wantKey, Before: 0, After: 50}) {
 		t.Fatalf("Around = %+v, %v", backend.around, err)
 	}
-	if _, err = m.GetMessage(ctx, "42"); !errors.Is(err, share.ErrNotFound) || backend.key != wantKey {
+	if result, err := m.GetMessage(ctx, "42"); err != nil || result.Status != operationresult.NotFound || backend.key != wantKey {
 		t.Fatalf("GetMessage = %+v, %v", backend.key, err)
 	}
 }
 
 func TestManagerRejectsMissingContextBeforeBackend(t *testing.T) {
 	backend := &queryBackend{}
-	m := NewManager(backend, time.Now, func(ctx context.Context, _ share.SearchRequest) (contextinfo.Source, error) {
+	m := NewManager(backend, time.Now, func(ctx context.Context, _ share.SearchRequest) (operationresult.Result[contextinfo.Source], error) {
 		if err := ctx.Err(); err != nil {
-			return contextinfo.Source{}, err
+			return operationresult.Result[contextinfo.Source]{}, err
 		}
 		info, ok := contextinfo.ConversationFromContext(ctx)
 		if !ok {
-			return contextinfo.Source{}, share.ErrNoChatContext
+			return operationresult.Result[contextinfo.Source]{Status: operationresult.NoCurrentSession, Message: "missing chat context"}, nil
 		}
-		return info.Source, nil
+		return operationresult.Result[contextinfo.Source]{Status: operationresult.Success, Data: info.Source}, nil
 	})
 	canceled, cancel := context.WithCancel(t.Context())
 	cancel()
 	for _, tc := range []struct {
-		name string
-		ctx  context.Context
-		want error
+		name   string
+		ctx    context.Context
+		want   error
+		status operationresult.Status
 	}{
-		{"missing", t.Context(), share.ErrNoChatContext},
-		{"canceled", canceled, context.Canceled},
+		{"missing", t.Context(), nil, operationresult.NoCurrentSession},
+		{"canceled", canceled, context.Canceled, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := m.Search(tc.ctx, share.SearchRequest{}); !errors.Is(err, tc.want) {
+			if result, err := m.Search(tc.ctx, share.SearchRequest{}); !errors.Is(err, tc.want) || result.Status != tc.status {
 				t.Fatal(err)
 			}
-			if _, err := m.Around(tc.ctx, share.AroundRequest{MessageID: "42"}); !errors.Is(err, tc.want) {
+			if result, err := m.Around(tc.ctx, share.AroundRequest{MessageID: "42"}); !errors.Is(err, tc.want) || result.Status != tc.status {
 				t.Fatal(err)
 			}
-			if _, err := m.GetMessage(tc.ctx, "42"); !errors.Is(err, tc.want) {
+			if result, err := m.GetMessage(tc.ctx, "42"); !errors.Is(err, tc.want) || result.Status != tc.status {
 				t.Fatal(err)
 			}
 		})
@@ -125,12 +127,12 @@ func TestManagerRejectsMissingContextBeforeBackend(t *testing.T) {
 
 func TestSearchOpaqueUserIDIsNotOnlyNickname(t *testing.T) {
 	backend := &queryBackend{}
-	m := NewManager(backend, time.Now, func(ctx context.Context, _ share.SearchRequest) (contextinfo.Source, error) {
+	m := NewManager(backend, time.Now, func(ctx context.Context, _ share.SearchRequest) (operationresult.Result[contextinfo.Source], error) {
 		info, ok := contextinfo.ConversationFromContext(ctx)
 		if !ok {
-			return contextinfo.Source{}, share.ErrNoChatContext
+			return operationresult.Result[contextinfo.Source]{Status: operationresult.NoCurrentSession, Message: "missing chat context"}, nil
 		}
-		return info.Source, nil
+		return operationresult.Result[contextinfo.Source]{Status: operationresult.Success, Data: info.Source}, nil
 	})
 	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{
 		Source: contextinfo.Source{Platform: "qqofficial", ChatType: "private", ChatID: "AB12_OPENID"},
@@ -145,12 +147,12 @@ func TestSearchOpaqueUserIDIsNotOnlyNickname(t *testing.T) {
 
 func TestSearchUserIsAlwaysLiteral(t *testing.T) {
 	backend := &queryBackend{}
-	m := NewManager(backend, time.Now, func(ctx context.Context, _ share.SearchRequest) (contextinfo.Source, error) {
+	m := NewManager(backend, time.Now, func(ctx context.Context, _ share.SearchRequest) (operationresult.Result[contextinfo.Source], error) {
 		info, ok := contextinfo.ConversationFromContext(ctx)
 		if !ok {
-			return contextinfo.Source{}, share.ErrNoChatContext
+			return operationresult.Result[contextinfo.Source]{Status: operationresult.NoCurrentSession, Message: "missing chat context"}, nil
 		}
-		return info.Source, nil
+		return operationresult.Result[contextinfo.Source]{Status: operationresult.Success, Data: info.Source}, nil
 	})
 	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{
 		Source:   contextinfo.Source{Platform: "qqofficial", ChatType: "private", ChatID: "AB12_OPENID"},

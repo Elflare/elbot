@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"slices"
 	"strings"
@@ -47,18 +48,18 @@ func TestChatHistoryFullParameter(t *testing.T) {
 			for _, full := range []string{"", `,"full":false`, `,"full":true`} {
 				t.Run(caller.Definition.Name+"/"+full+"/reference="+row.ReplyToPlatformMessageID, func(t *testing.T) {
 					result, logContent, err := callTool(ctx, caller, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"42"` + full + `}`)})
-					if err != nil {
+					if err != nil || result.Status != operationresult.Success {
 						t.Fatal(err)
 					}
 					if full == `,"full":true` {
-						if !strings.Contains(result.Content, body) || strings.Contains(result.Content, "已截断") || reference && !strings.Contains(result.Content, "REFERENCE_TAIL") {
-							t.Fatalf("incomplete full result: %q", result.Content)
+						if !strings.Contains(result.Data.Content, body) || strings.Contains(result.Data.Content, "已截断") || reference && !strings.Contains(result.Data.Content, "REFERENCE_TAIL") {
+							t.Fatalf("incomplete full result: %q", result.Data.Content)
 						}
-					} else if !strings.Contains(result.Content, "...[单条消息过长，已截断]") || strings.Contains(result.Content, "MESSAGE_TAIL") {
-						t.Fatalf("missing default truncation: %q", result.Content)
+					} else if !strings.Contains(result.Data.Content, "...[单条消息过长，已截断]") || strings.Contains(result.Data.Content, "MESSAGE_TAIL") {
+						t.Fatalf("missing default truncation: %q", result.Data.Content)
 					}
-					preview := result.LogContent(err)
-					if !strings.Contains(logContent, "returned=1") || preview != toolshare.TruncateLogContent(result.Content, 1024) || utf8.RuneCountInString(preview) > 1024 || !utf8.ValidString(preview) {
+					preview := result.Data.LogContent()
+					if !strings.Contains(logContent, "returned=1") || preview != toolshare.TruncateLogContent(result.Data.Content, 1024) || utf8.RuneCountInString(preview) > 1024 || !utf8.ValidString(preview) {
 						t.Fatalf("invalid log preview: %q", logContent)
 					}
 				})
@@ -76,17 +77,17 @@ func TestChatHistoryFullStillBoundsTotalResult(t *testing.T) {
 		repo := historyResultRepository{rows: rows}
 		for _, caller := range []toolshare.ToolDefinition{builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: newHistoryTestManager(repo)}), builtinTestTool(t, "get_chat_history_around", builtin.Deps{ChatHistory: newHistoryTestManager(repo)})} {
 			result, logContent, err := callTool(ctx, caller, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"42","full":true}`)})
-			if err != nil {
+			if err != nil || result.Status != operationresult.Success {
 				t.Fatal(err)
 			}
-			if !strings.HasSuffix(result.Content, "\n...[查询结果过长，已截断]") || strings.Contains(result.Content, "单条消息过长") || strings.Contains(result.Content, rows[len(rows)-1].Text) {
-				t.Fatalf("total limit lost: %q", result.Content)
+			if !strings.HasSuffix(result.Data.Content, "\n...[查询结果过长，已截断]") || strings.Contains(result.Data.Content, "单条消息过长") || strings.Contains(result.Data.Content, rows[len(rows)-1].Text) {
+				t.Fatalf("total limit lost: %q", result.Data.Content)
 			}
-			if len(rows) > 1 && !strings.Contains(result.Content, rows[0].Text) {
+			if len(rows) > 1 && !strings.Contains(result.Data.Content, rows[0].Text) {
 				t.Fatal("complete first message was lost")
 			}
-			preview := result.LogContent(err)
-			if !strings.Contains(logContent, "returned=") || preview != toolshare.TruncateLogContent(result.Content, 1024) || utf8.RuneCountInString(preview) > 1024 {
+			preview := result.Data.LogContent()
+			if !strings.Contains(logContent, "returned=") || preview != toolshare.TruncateLogContent(result.Data.Content, 1024) || utf8.RuneCountInString(preview) > 1024 {
 				t.Fatalf("invalid log preview: %q", logContent)
 			}
 		}
@@ -99,7 +100,7 @@ func TestChatHistoryPreservesLiteralTruncationText(t *testing.T) {
 	repo := historyResultRepository{rows: []storage.ChatMessage{{PlatformMessageID: "42", Text: body}}}
 	for _, caller := range []toolshare.ToolDefinition{builtinTestTool(t, "search_chat_history", builtin.Deps{ChatHistory: newHistoryTestManager(repo)}), builtinTestTool(t, "get_chat_history_around", builtin.Deps{ChatHistory: newHistoryTestManager(repo)}), builtinTestTool(t, "reply_to_chat_history_message", builtin.Deps{ChatHistory: newHistoryTestManager(repo)})} {
 		result, _, err := callTool(ctx, caller, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"42","message":"回复"}`)})
-		if err != nil || !strings.Contains(result.Content, body) {
+		if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data.Content, body) {
 			t.Fatalf("%s changed original message: result=%+v err=%v", caller.Definition.Name, result, err)
 		}
 	}
@@ -110,10 +111,10 @@ func TestChatHistoryReplySeparatesLogPreview(t *testing.T) {
 	repo := historyResultRepository{rows: []storage.ChatMessage{{PlatformMessageID: "42", Text: strings.Repeat("雪🔥", 200)}}}
 	caller := builtinTestTool(t, "reply_to_chat_history_message", builtin.Deps{ChatHistory: newHistoryTestManager(repo)})
 	result, logContent, err := callTool(ctx, caller, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":"42","message":"回复"}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "...[单条消息过长，已截断]") || result.LogContent(err) != toolshare.TruncateLogContent(result.Content, 1024) || !strings.HasPrefix(logContent, "已引用回复") || len(result.Outputs) != 1 {
+	if !strings.Contains(result.Data.Content, "...[单条消息过长，已截断]") || result.Data.LogContent() != toolshare.TruncateLogContent(result.Data.Content, 1024) || !strings.HasPrefix(logContent, "已引用回复") || len(result.Data.Outputs) != 1 {
 		t.Fatalf("result=%+v log=%q", result, logContent)
 	}
 }

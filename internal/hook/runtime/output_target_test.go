@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"reflect"
 	"testing"
@@ -30,18 +31,18 @@ func TestToolOutputResolvesTargetBeforeSending(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			reg := registry.NewRegistry(security.DefaultPermission())
-			if err := registerHookTestTool(reg, loggingTool{run: func(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
-				return &toolshare.Result{Outputs: tc.outputs}, "", nil
+			if err := registerHookTestTool(reg, loggingTool{run: func(context.Context, toolshare.CallRequest) (operationresult.Result[*toolshare.Result], string, error) {
+				return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Outputs: tc.outputs}}, "", nil
 			}}); err != nil {
 				t.Fatal(err)
 			}
 			calls := 0
-			manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Tools: testTools{reg}, Send: func(_ context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+			manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Tools: testTools{reg}, Send: func(_ context.Context, target delivery.Target, outputs []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
 				calls++
 				if target != tc.want || !reflect.DeepEqual(outputs, tc.outputs) {
 					t.Fatalf("target=%+v outputs=%+v", target, outputs)
 				}
-				return delivery.Receipt{}, nil
+				return operationresult.Result[delivery.Receipt]{Status: operationresult.Success, Data: delivery.Receipt{}}, nil
 			}})
 			if err != nil {
 				t.Fatal(err)
@@ -53,12 +54,12 @@ func TestToolOutputResolvesTargetBeforeSending(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = w.callTool(params)
+			outcome, err := w.callTool(params)
 			if tc.conflict {
-				if err == nil || calls != 0 {
+				if err != nil || outcome.(operationresult.Result[map[string]any]).Status != operationresult.InvalidArguments || calls != 0 {
 					t.Fatalf("conflict sent: calls=%d err=%v", calls, err)
 				}
-			} else if err != nil || calls != 1 {
+			} else if err != nil || outcome.(operationresult.Result[map[string]any]).Status != operationresult.Success || calls != 1 {
 				t.Fatalf("calls=%d err=%v", calls, err)
 			}
 		})

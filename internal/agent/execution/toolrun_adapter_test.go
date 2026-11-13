@@ -6,6 +6,7 @@ import (
 	agentshare "elbot/internal/agent/share"
 	agenttools "elbot/internal/agent/tools"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 	"testing"
 )
@@ -16,11 +17,11 @@ func TestCompleteToolCallExposesNameAndAcceptsMultimodalSegments(t *testing.T) {
 			if facts.Session.ID != "s1" || result.Call.Name != "screenshot" || result.Call.ID != "call_1" {
 				t.Fatalf("facts=%+v result=%+v", facts, result)
 			}
-			return append(result.Segments, llm.MessageSegment{Type: llm.SegmentImage, URL: "https://example.com/result.png"}), nil
+			return append(result.Result.Data, llm.MessageSegment{Type: llm.SegmentImage, URL: "https://example.com/result.png"}), nil
 		},
 	})
 	deps := agenttools.NewToolRunDeps(agenttools.ToolRunDeps{Hooks: bridge}).ForTurn(nil, "")
-	segments, err := deps.CompleteToolCall(t.Context(), &storage.Session{ID: "s1"}, llm.ToolCallRequest{ID: "call_1", Name: "screenshot", Arguments: "{}"}, "low", llm.TextSegments("done"), nil)
+	segments, err := deps.CompleteToolCall(t.Context(), &storage.Session{ID: "s1"}, llm.ToolCallRequest{ID: "call_1", Name: "screenshot", Arguments: "{}"}, "low", operationresult.Result[[]llm.MessageSegment]{Status: operationresult.Success, Data: llm.TextSegments("done")}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

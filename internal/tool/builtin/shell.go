@@ -5,8 +5,12 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/events"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -16,6 +20,7 @@ import (
 
 	"mvdan.cc/sh/v3/syntax"
 
+	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
 	"elbot/internal/workspace"
 )
@@ -89,11 +94,11 @@ func shellBuilder() *toolshare.Builder {
 		ObjectArray("media_inputs", "第i项媒体→路径环境变量ELBOT_MEDIA_i，i从1开始；按当前shell语法引用。", map[string]any{"media": map[string]any{"type": "string", "pattern": "^media:[0-9a-f]{64}$"}}, []string{"media"})
 }
 
-func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
 
 	args, cmdText, err := decodeShellArgs(req)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 
 	timeout := defaultShellTimeout
@@ -108,13 +113,13 @@ func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, i
 		file, parseErr = syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(cmdText), "")
 		if parseErr == nil {
 			if err := rejectBashShellDirectoryChange(file); err != nil {
-				return nil, err
+				return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Forbidden, Message: err.Error()}, nil
 			}
 		}
 	}
 	workDir, err := workspace.CurrentWorkspaceDir(ctx)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{}, err
 	}
 	var advice shellAdvice
 	assessment := toolshare.RiskAssessment{Level: toolshare.RiskHigh}
@@ -125,8 +130,8 @@ func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, i
 		assessment.Reasons = []string{"shell AST 解析失败，按高风险处理: " + parseErr.Error()}
 	default:
 		advice = analyzeBashShellAdvice(file, workDir, t.FileGuard)
-		if advice.blockErr != nil {
-			return nil, advice.blockErr
+		if advice.blocked.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.PreparedCall]{Status: advice.blocked.Status, Message: advice.blocked.Message}, nil
 		}
 		assessment = classifyBashShellCommand(file)
 	}
@@ -139,7 +144,7 @@ func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, i
 		}
 	}
 	details := []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("命令：%s\n工作目录：%s\n超时：%s", cmdText, workDir, timeout))}
-	return toolshare.NewPreparedCall(req, assessment, details, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, assessment, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		runCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		environment := t.ProcessEnv
@@ -151,9 +156,12 @@ func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, i
 				path, err := mediaCall.CachedExport(runCtx, input.MediaID)
 				if err != nil {
 					callErr := fmt.Errorf("prepare shell media: %w", err)
-					return nil, callErr.Error(), callErr
+					return operationresult.Result[*toolshare.Result]{}, callErr.Error(), callErr
 				}
-				variables[fmt.Sprintf("ELBOT_MEDIA_%d", i+1)] = path
+				if path.Status != operationresult.Success {
+					return operationresult.Result[*toolshare.Result]{Status: path.Status, Message: path.Message}, path.Message, nil
+				}
+				variables[fmt.Sprintf("ELBOT_MEDIA_%d", i+1)] = path.Data
 			}
 			environment = environment.Overlay(variables)
 		}
@@ -163,18 +171,49 @@ func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, i
 		var stderr shellOutputBuffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
+		cancelCommand := cmd.Cancel
+		cancelRequested := make(chan error, 1)
+		cmd.Cancel = func() error {
+			err := cancelCommand()
+			cancelRequested <- err
+			return err
+		}
 		err := cmd.Run()
+		select {
+		case cancelErr := <-cancelRequested:
+			if cancelErr != nil {
+				if !errors.Is(cancelErr, os.ErrProcessDone) && !errors.Is(err, cancelErr) {
+					events.AsyncLog(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "shell_process_cleanup_failed", Module: "tool", Content: cancelErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(cancelErr)})
+				}
+			} else if processenv.ExitCanceled(cmd, true) {
+				err = runCtx.Err()
+			}
+		default:
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			message := fmt.Sprintf("shell timed out: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Timeout, Message: message}, message, nil
+		}
+		if errors.Is(err, context.Canceled) {
+			message := fmt.Sprintf("shell canceled: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Canceled, Message: message}, message, nil
+		}
 		exitCode := 0
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() >= 0 {
 			exitCode = exitErr.ExitCode()
 		} else if err != nil {
 			callErr := fmt.Errorf("run shell: %w", err)
-			return nil, callErr.Error(), callErr
+			return operationresult.Result[*toolshare.Result]{}, callErr.Error(), callErr
 		}
 		data := shellData{Stdout: stdout.String(), Stderr: stderr.String(), ExitCode: exitCode}
-		result := &toolshare.Result{Content: formatShellContent(data), Warnings: advice.warnings}
-		return result, fmt.Sprintf("exit_code=%d", exitCode), nil
-	}), nil
+		content := formatShellContent(data)
+		result := &toolshare.Result{Content: content, Warnings: advice.warnings}
+		if exitCode != 0 {
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Failed, Message: content}, fmt.Sprintf("exit_code=%d", exitCode), nil
+		}
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("exit_code=%d", exitCode), nil
+	})}, nil
 }
 
 func decodeShellArgs(req toolshare.CallRequest) (shellArgs, string, error) {

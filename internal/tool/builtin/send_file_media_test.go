@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
 	"path/filepath"
@@ -29,13 +30,13 @@ func TestSendFileMediaIDBuildsLocalOutput(t *testing.T) {
 	}
 
 	toolValue := (SendFileTool{media: toolmedia.NewMediaRuntime(center, root, center.PublishUsageFinished)})
-	arguments, _ := json.Marshal(map[string]string{"source": resource.ID})
+	arguments, _ := json.Marshal(map[string]string{"source": resource.Data.ID})
 	result, _, err := callTool(ctx, toolValue.Definition(), toolshare.CallRequest{Arguments: arguments})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatalf("call send_file: %v", err)
 	}
-	if len(result.Outputs) != 1 || result.Outputs[0].Source.MediaID != resource.ID || result.Outputs[0].Source.Path != "" || result.Outputs[0].Name != resource.Name {
-		t.Fatalf("outputs = %#v", result.Outputs)
+	if len(result.Data.Outputs) != 1 || result.Data.Outputs[0].Source.MediaID != resource.Data.ID || result.Data.Outputs[0].Source.Path != "" || result.Data.Outputs[0].Name != resource.Data.Name {
+		t.Fatalf("outputs = %#v", result.Data.Outputs)
 	}
 }
 

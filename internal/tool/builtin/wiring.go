@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"elbot/internal/fileops"
+	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
 	"elbot/internal/tool/builtin/long_memory"
 	"elbot/internal/tool/builtin/web"
@@ -13,30 +14,30 @@ import (
 )
 
 type Deps struct {
-	ResidentMemory      ResidentMemoryService       // 当前用户的常驻记忆能力。
-	ResidentMemoryPath  string                      // 常驻记忆文件保护范围。
-	LongMemoryDir       string                      // 长期记忆资产与索引目录。
-	SkillRoot           string                      // 技能资产保护范围。
-	FileRollback        *fileops.Service            // 与总管共享的编辑和回滚服务。
-	ProcessEnv          processenv.Environment      // 已合并配置的子进程环境。
-	ElwispCreatorConfig ElwispCreatorConfigProvider // 创建指引所需的配置摘要。
-	Cron                CronRepository              // 已适配的任务存储能力。
-	ValidateModel       func(string, string) error  // Cron 模型选择校验。
-	Now                 func() time.Time            // Cron 时钟。
-	ViewImageAvailable  func(context.Context) bool  // 当前调用上下文的看图资格。
+	ResidentMemory      ResidentMemoryService                                 // 当前用户的常驻记忆能力。
+	ResidentMemoryPath  string                                                // 常驻记忆文件保护范围。
+	LongMemoryDir       string                                                // 长期记忆资产与索引目录。
+	SkillRoot           string                                                // 技能资产保护范围。
+	FileRollback        *fileops.Service                                      // 与总管共享的编辑和回滚服务。
+	ProcessEnv          processenv.Environment                                // 已合并配置的子进程环境。
+	ElwispCreatorConfig ElwispCreatorConfigProvider                           // 创建指引所需的配置摘要。
+	Cron                CronRepository                                        // 已适配的任务存储能力。
+	ValidateModel       func(string, string) operationresult.Result[struct{}] // Cron 模型选择校验。
+	Now                 func() time.Time                                      // Cron 时钟。
+	ViewImageAvailable  func(context.Context) bool                            // 当前调用上下文的看图资格。
 	Media               interface {
-		ValidateImage(context.Context, string) (share.MediaInfo, error)
-		ImportURL(context.Context, string, share.MediaImportOptions) (share.MediaInfo, error)
-		ImportFile(context.Context, string, share.MediaImportOptions) (share.MediaInfo, error)
-		Metadata(context.Context, string) (share.MediaInfo, error)
+		ValidateImage(context.Context, string) (operationresult.Result[share.MediaInfo], error)
+		ImportURL(context.Context, string, share.MediaImportOptions) (operationresult.Result[share.MediaInfo], error)
+		ImportFile(context.Context, string, share.MediaImportOptions) (operationresult.Result[share.MediaInfo], error)
+		Metadata(context.Context, string) (operationresult.Result[share.MediaInfo], error)
 		NewCall() share.MediaCall
 	} // 媒体工具实际使用的能力。
 	ChatHistory interface {
-		Search(context.Context, share.SearchRequest) ([]share.Message, error)
-		Around(context.Context, share.AroundRequest) ([]share.Message, error)
-		GetMessage(context.Context, string) (share.Message, error)
-		GetImages(context.Context, share.MediaRequest) ([]share.MediaResult, error)
-		GetMedia(context.Context, share.MediaRequest) ([]share.MediaResult, error)
+		Search(context.Context, share.SearchRequest) (operationresult.Result[[]share.Message], error)
+		Around(context.Context, share.AroundRequest) (operationresult.Result[[]share.Message], error)
+		GetMessage(context.Context, string) (operationresult.Result[share.Message], error)
+		GetImages(context.Context, share.MediaRequest) (operationresult.Result[[]share.MediaResult], error)
+		GetMedia(context.Context, share.MediaRequest) (operationresult.Result[[]share.MediaResult], error)
 	} // 聊天历史工具实际使用的能力。
 }
 

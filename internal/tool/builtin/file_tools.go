@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -134,16 +135,20 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	if len(args.Glob) > 0 && mode != readFileModeGrep {
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "glob requires grep directory search"}, nil
 	}
-	resolved, err := workspace.ResolveWorkspacePath(ctx, args.Path, workspace.PathResolveOptions{AllowDirectory: mode != readFileModeRead})
+	selected, err := workspace.ResolveWorkspacePath(ctx, args.Path, workspace.PathResolveOptions{AllowDirectory: mode != readFileModeRead})
 	if err != nil {
 		return operationresult.Result[*toolshare.PreparedCall]{}, err
 	}
+	if selected.Status != operationresult.Success {
+		return operationresult.Result[*toolshare.PreparedCall]{Status: selected.Status, Message: selected.Message}, nil
+	}
+	resolved := selected.Data
 	path := resolved.Path
 	assessment := toolshare.RiskAssessment{Level: toolshare.RiskLow, Reasons: []string{"读取普通文本文件"}}
 	if isSensitiveReadFile(path) {
 		assessment = toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"读取可能包含凭据的敏感文件，需要用户确认"}}
 	}
-	return toolshare.NewPreparedCall(req, assessment, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("读取：%s\n模式：%s", path, mode))}, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, assessment, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("读取：%s\n模式：%s", path, mode))}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		var warnings []string
 		if resolved.WasAbs {
 			warning := toolshare.AbsolutePathWorkspaceWarning
@@ -153,35 +158,42 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 			warnings = append(warnings, warning)
 		}
 		info, err := os.Stat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			message := fmt.Sprintf("file %q not found", path)
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.NotFound, Message: message}, message, nil
+		}
 		if err != nil {
-			return nil, err.Error(), err
+			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 		}
 		if len(args.Glob) > 0 && !info.IsDir() {
-			callErr := fmt.Errorf("glob requires grep directory search")
-			return nil, callErr.Error(), callErr
+			message := "glob requires grep directory search"
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: message}, message, nil
 		}
-		var result *toolshare.Result
+		var result operationresult.Result[*toolshare.Result]
 		if info.IsDir() {
 			if mode == readFileModeRead {
-				callErr := fmt.Errorf("read mode requires a file path")
-				return nil, callErr.Error(), callErr
+				message := "read mode requires a file path"
+				return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: message}, message, nil
 			}
 			result, err = readFileDirectorySearch(ctx, path, mode, args, warnings, t.astCache)
 		} else {
 			if info.Size() > fileToolMaxBytes {
-				callErr := fmt.Errorf("file too large: %d bytes exceeds %d", info.Size(), fileToolMaxBytes)
-				return nil, callErr.Error(), callErr
+				message := fmt.Sprintf("file too large: %d bytes exceeds %d", info.Size(), fileToolMaxBytes)
+				return operationresult.Result[*toolshare.Result]{Status: operationresult.Rejected, Message: message}, message, nil
 			}
 			largeFile := info.Size() > fileToolDetailedMaxBytes
 			if largeFile && (mode == readFileModeAST || mode == readFileModeASTFunction) {
-				callErr := fmt.Errorf("%s mode is disabled for this %d-byte file; use read or grep mode", mode, info.Size())
-				return nil, callErr.Error(), callErr
+				message := fmt.Sprintf("%s mode is disabled for this %d-byte file; use read or grep mode", mode, info.Size())
+				return operationresult.Result[*toolshare.Result]{Status: operationresult.Rejected, Message: message}, message, nil
 			}
-			var file fileops.File
-			file, err = fileops.ReadFileWithLimit(path, args.Encoding, fileToolMaxBytes)
-			if err != nil {
-				return nil, err.Error(), err
+			loaded, loadErr := fileops.ReadFileWithLimit(path, args.Encoding, fileToolMaxBytes)
+			if loadErr != nil {
+				return operationresult.Result[*toolshare.Result]{}, loadErr.Error(), loadErr
 			}
+			if loaded.Status != operationresult.Success {
+				return operationresult.Result[*toolshare.Result]{Status: loaded.Status, Message: loaded.Message}, loaded.Message, nil
+			}
+			file := loaded.Data
 			lines := fileops.SplitLines(file.Text)
 			warnings = append(warnings, t.FileGuard.ReadWarnings(path)...)
 			if largeFile {
@@ -197,7 +209,7 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 			case readFileModeRead:
 				start, end, truncated, err := fileops.NormalizeReadRange(len(lines), int(args.StartLine), args.EndLine)
 				if err != nil {
-					return nil, err.Error(), err
+					return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: err.Error()}, err.Error(), nil
 				}
 				var b strings.Builder
 				fmt.Fprintf(&b, "file: %s\n", file.Path)
@@ -209,7 +221,7 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 					fmt.Fprintf(&b, "truncated: %t\n", truncated)
 					b.WriteString("content:\n")
 					result := &toolshare.Result{Content: b.String(), Warnings: warnings}
-					return result, fmt.Sprintf("file=%s mode=%s lines=0/0 empty=true", file.Path, mode), nil
+					return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("file=%s mode=%s lines=0/0 empty=true", file.Path, mode), nil
 				}
 
 				fmt.Fprintf(&b, "lines: %d-%d/%d\n", start, end, len(lines))
@@ -220,28 +232,34 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 					fmt.Fprintf(&b, "%*d | %s\n", width, i, lines[i-1])
 				}
 				result := &toolshare.Result{Content: b.String(), Warnings: warnings}
-				return result, fmt.Sprintf("file=%s mode=%s lines=%d-%d/%d truncated=%t", file.Path, mode, start, end, len(lines), truncated), nil
+				return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("file=%s mode=%s lines=%d-%d/%d truncated=%t", file.Path, mode, start, end, len(lines), truncated), nil
 			}
 		}
-		return result, fmt.Sprintf("file=%s mode=%s", path, mode), err
-	})
+		if err != nil {
+			return operationresult.Result[*toolshare.Result]{}, fmt.Sprintf("file=%s mode=%s", path, mode), err
+		}
+		return result, fmt.Sprintf("file=%s mode=%s", path, mode), nil
+	})}, nil
 }
 
-func readFileGrepResult(ctx context.Context, file fileops.File, lines []string, grep string, contextLines, maxMatches, index int, warnings []string) (*toolshare.Result, error) {
+func readFileGrepResult(ctx context.Context, file fileops.File, lines []string, grep string, contextLines, maxMatches, index int, warnings []string) (operationresult.Result[*toolshare.Result], error) {
 	query := strings.TrimSpace(grep)
 	if query == "" {
-		return nil, fmt.Errorf("grep is required")
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "grep is required"}, nil
+	}
+	if index < 0 {
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "index must be positive when provided"}, nil
 	}
 	pattern, err := regexp.Compile(query)
 	if err != nil {
-		return nil, fmt.Errorf("invalid grep regex: %w", err)
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("invalid grep regex: %v", err)}, nil
 	}
 	contextLines = fileops.NormalizeGrepContextLines(contextLines)
 	maxMatches = fileops.NormalizeMaxMatches(maxMatches)
 	matches := make([]int, 0)
 	for i, line := range lines {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return operationresult.Result[*toolshare.Result]{}, err
 		}
 		if pattern.MatchString(line) {
 			matches = append(matches, i+1)
@@ -252,7 +270,7 @@ func readFileGrepResult(ctx context.Context, file fileops.File, lines []string, 
 	}
 	if index > 0 {
 		if index > len(matches) {
-			return nil, fmt.Errorf("index %d is out of range; found %d matches", index, len(matches))
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("index %d is out of range; found %d matches", index, len(matches))}, nil
 		}
 		matches = matches[index-1 : index]
 	}
@@ -268,7 +286,7 @@ func readFileGrepResult(ctx context.Context, file fileops.File, lines []string, 
 	fmt.Fprintf(&b, "context_lines: %d\n", contextLines)
 	b.WriteString("content:\n")
 	if len(matches) == 0 || len(lines) == 0 {
-		return &toolshare.Result{Content: b.String(), Warnings: warnings}, nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}, nil
 	}
 	width := len(fmt.Sprintf("%d", len(lines)))
 	lastPrinted := 0
@@ -297,7 +315,7 @@ func readFileGrepResult(ctx context.Context, file fileops.File, lines []string, 
 		}
 		lastPrinted = end
 	}
-	return &toolshare.Result{Content: b.String(), Warnings: warnings}, nil
+	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}, nil
 }
 
 func (t EditFileTool) Definition() toolshare.ToolDefinition {
@@ -346,9 +364,9 @@ func (t EditFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	if scope, ok := workspace.PathScopeFromContext(ctx); ok && scope.Restricted {
 		assessment = toolshare.RiskAssessment{Level: toolshare.RiskMedium, Reasons: []string{"文件编辑限制在当前调用工作目录内"}}
 	}
-	return toolshare.NewPreparedCall(req, assessment, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, assessment, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		return t.call(ctx, preparedEdit)
-	})
+	})}, nil
 }
 
 func editFileRiskDetails(args editFileArgs, preview fileops.EditResult) []toolshare.ConfirmationDetailBlock {
@@ -505,6 +523,13 @@ func fileToolEditOptions() fileops.EditFileOptions {
 }
 
 func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) (operationresult.Result[*toolshare.Result], string, error) {
+	lease, err := t.Rollback.EditSession(ctx)
+	if err != nil {
+		return operationresult.Result[*toolshare.Result]{}, err.Error(), err
+	}
+	if lease.Status != operationresult.Success {
+		return operationresult.Result[*toolshare.Result]{Status: lease.Status, Message: lease.Message}, lease.Message, nil
+	}
 	committed, resolved, err := prepared.Commit(ctx)
 	if err != nil {
 		return operationresult.Result[*toolshare.Result]{}, err.Error(), err
@@ -532,7 +557,7 @@ func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) 
 	if result.RollbackEvicted > 0 {
 		warnings = append(warnings, fmt.Sprintf("撤销备份达到内存上限，已清理 %d 条最旧记录。", result.RollbackEvicted))
 	}
-	if lease, _ := t.Rollback.EditSession(ctx); lease != nil && !result.RollbackAvailable {
+	if lease.Data != nil && !result.RollbackAvailable {
 		warnings = append(warnings, "文件已编辑，但撤销备份因会话失效或容量限制未保留。")
 	}
 	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: content, Warnings: warnings}}, fmt.Sprintf("edited=%s created=%t dry_run=%t rollback_available=%t", result.Path, result.Created, result.DryRun, result.RollbackAvailable), nil

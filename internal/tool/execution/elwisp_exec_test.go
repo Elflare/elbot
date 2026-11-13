@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -23,7 +24,7 @@ func executePreparedELwispTestCall(t *testing.T, call llm.ToolCallRequest, resol
 	if err != nil {
 		t.Fatal(err)
 	}
-	return manager.executePrepared(t.Context(), call, resolved, prepared, nil)
+	return manager.executePrepared(t.Context(), call, resolved, prepared.Data, nil)
 }
 
 func TestExecuteELwispToolPostsArguments(t *testing.T) {
@@ -61,38 +62,24 @@ func TestExecuteELwispToolReturnsHTTPError(t *testing.T) {
 
 	call := llm.ToolCallRequest{ID: "call-1", Name: "elwisp_watcher_server_status", Arguments: `{}`}
 	result := executePreparedELwispTestCall(t, call, resolvedTool{Discovered: &toolshare.DiscoveredTool{Name: "server_status", CanonicalName: call.Name, Source: toolshare.SourceKindELwisp, Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}})
-	if result.Error == nil {
+	if result.Error != nil || result.Result.Status != operationresult.Failed {
 		t.Fatal("expected HTTP error")
 	}
-	if !result.ExecutionStarted || result.Error == nil {
+	if !result.ExecutionStarted || result.Error != nil {
 		t.Fatalf("send facts = %#v", result)
 	}
 }
 
-func TestExecuteELwispToolKeepsPartialResult(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"content":"first action saved","error":"second action failed"}`))
-	}))
-	defer server.Close()
-	result := executePreparedELwispTestCall(t, llm.ToolCallRequest{Name: "remote", Arguments: `{}`}, resolvedTool{Discovered: &toolshare.DiscoveredTool{Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}})
-	if result.Error == nil || !result.ExecutionStarted || result.Result == nil || result.Result.Content != "first action saved" {
-		t.Fatalf("partial facts = %#v", result)
-	}
-}
-
-func TestELwispLogKeepsErrorAheadOfLongPartialResult(t *testing.T) {
+func TestELwispFailureMessageKeepsCompletedActions(t *testing.T) {
 	body := strings.Repeat("雪🔥", 700) + "BUSINESS_TAIL"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(elwispToolResponse{Content: body, Error: "second action failed"})
 	}))
 	defer server.Close()
-	result := executePreparedELwispTestCall(t, llm.ToolCallRequest{Name: "remote", Arguments: `{}`}, resolvedTool{Discovered: &toolshare.DiscoveredTool{Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}})
-	if result.Error == nil || result.Result == nil || result.Result.Content != body || llm.SegmentsContentText(result.Message.Segments) != body {
-		t.Fatalf("partial business result changed: %+v", result)
-	}
-	preview := result.Result.LogContent(result.Error)
-	if result.Summary != "" || !strings.HasPrefix(preview, "ELwisp tool error: second action failed\n") || strings.Count(preview, "ELwisp tool error:") != 1 || len([]rune(preview)) != 1024 || !strings.HasSuffix(preview, "…") {
-		t.Fatalf("log=%q", result.Summary)
+	result := executePreparedELwispTestCall(t, llm.ToolCallRequest{Name: "remote", Arguments: "{}"}, resolvedTool{Discovered: &toolshare.DiscoveredTool{Endpoint: server.URL, TimeoutSeconds: 10, Risk: toolshare.RiskLow}})
+	want := "ELwisp tool error: second action failed\n" + body
+	if result.Error != nil || !result.ExecutionStarted || result.Result.Status != operationresult.Failed || result.Result.Data != nil || result.Result.Message != want || llm.SegmentsContentText(result.Message.Segments) != want || result.Summary != "" {
+		t.Fatalf("lost failure context: %+v", result)
 	}
 }
 
@@ -119,16 +106,16 @@ func TestPrepareELwispToolFixesRequestWithoutSending(t *testing.T) {
 	if calls.Load() != 0 {
 		t.Fatal("preparation sent a request")
 	}
-	if prepared.RiskAssessment().Level != toolshare.RiskLow || len(prepared.Details()) != 0 {
-		t.Fatalf("risk=%+v details=%+v", prepared.RiskAssessment(), prepared.Details())
+	if prepared.Data.RiskAssessment().Level != toolshare.RiskLow || len(prepared.Data.Details()) != 0 {
+		t.Fatalf("risk=%+v details=%+v", prepared.Data.RiskAssessment(), prepared.Data.Details())
 	}
 	resolved.Discovered.Name = "changed"
 	resolved.Discovered.EventKey = "changed/event"
 	resolved.Discovered.Endpoint = "http://invalid.invalid"
 	resolved.Discovered.TimeoutSeconds = 1
 	started := false
-	result := manager.executePrepared(t.Context(), call, resolved, prepared, func() { started = true })
-	if result.Error != nil || !result.ExecutionStarted || !started || calls.Load() != 1 || result.Result.Content != "original endpoint" {
+	result := manager.executePrepared(t.Context(), call, resolved, prepared.Data, func() { started = true })
+	if result.Error != nil || !result.ExecutionStarted || !started || calls.Load() != 1 || result.Result.Data.Content != "original endpoint" {
 		t.Fatalf("result=%+v started=%v calls=%d", result, started, calls.Load())
 	}
 	if received.Tool != "original" || received.EventKey != "original/event" || string(received.Arguments) != `{"value":1}` {
@@ -150,7 +137,7 @@ func TestPrepareELwispToolRejectsInvalidRequestBeforeSending(t *testing.T) {
 				resolved.Discovered.Endpoint = "http://[invalid"
 			}
 			prepared, err := prepareELwispTool(call, resolved)
-			if err == nil || prepared != nil || calls.Load() != 0 {
+			if (scenario == "endpoint" && err == nil) || (scenario == "arguments" && (err != nil || prepared.Status != operationresult.InvalidArguments)) || prepared.Data != nil || calls.Load() != 0 {
 				t.Fatalf("prepared=%v error=%v calls=%d", prepared, err, calls.Load())
 			}
 		})
@@ -176,7 +163,7 @@ func TestPreparedELwispCallChecksRequestAndCancellationBeforeSending(t *testing.
 			} else {
 				cancel()
 			}
-			result := (&Manager{ManagerDeps: ManagerDeps{Log: func(context.Context, events.LogRecord) {}}}).executePrepared(ctx, call, resolved, prepared, nil)
+			result := (&Manager{ManagerDeps: ManagerDeps{Log: func(context.Context, events.LogRecord) {}}}).executePrepared(ctx, call, resolved, prepared.Data, nil)
 			if result.Error == nil || result.ExecutionStarted || calls.Load() != 0 {
 				t.Fatalf("result=%+v calls=%d", result, calls.Load())
 			}

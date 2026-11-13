@@ -1,15 +1,16 @@
 // 实现原生 Skill 创建工具，组织技能文档、Go 源码与初始编译。
 package skill
 
-import toolshare "elbot/internal/tool/share"
+import (
+	"elbot/internal/operationresult"
+	toolshare "elbot/internal/tool/share"
+)
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -63,61 +64,52 @@ stdout={content?,segments?}；text segment={type:"text",text}；image/file segme
 	return definition
 }
 
-func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
 	var args createElSkillArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			{
-				callErr := fmt.Errorf("parse create_el_skill arguments: %w", err)
-				return nil, callErr
-			}
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse create_el_skill arguments: %v", err)}, nil
 		}
 	}
 	name := strings.TrimSpace(args.Name)
 	if err := validateSkillName(name); err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	if args.Description = strings.TrimSpace(args.Description); args.Description == "" {
-		{
-			callErr := fmt.Errorf("description is required")
-			return nil, callErr
-		}
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "description is required"}, nil
 	}
 	if _, err := parseRisk(args.Risk); err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	goVersion := ""
 	if strings.TrimSpace(args.GoSource) != "" {
 		if err := validateGoSource(args.GoSource); err != nil {
-			return nil, err
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
-		var err error
-		goVersion, err = detectGoModVersion(ctx, t.manager.processEnv)
+		version, err := detectGoModVersion(ctx, t.manager.processEnv)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[*toolshare.PreparedCall]{}, err
 		}
+		if version.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.PreparedCall]{Status: version.Status, Message: version.Message}, nil
+		}
+		goVersion = version.Data
 	}
 	_, diagnostics, err := elyph.ValidateSkill(args.Elyph, name)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	args.Elyph = withElyphMetadata(args.Elyph, args.Description, args.Risk)
 	if _, exists := t.manager.registry.Get(name); exists {
-		{
-			callErr := fmt.Errorf("tool or skill %q already exists", name)
-			return nil, callErr
-		}
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Conflict, Message: fmt.Sprintf("tool or skill %q already exists", name)}, nil
 	}
 	root := filepath.Join(t.manager.root, "go", name)
 	if _, err := os.Stat(root); err == nil {
-		{
-			callErr := fmt.Errorf("skill directory %q already exists", root)
-			return nil, callErr
-		}
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Conflict, Message: fmt.Sprintf("skill directory %q already exists", root)}, nil
 	} else if err != nil && !os.IsNotExist(err) {
 		{
 			callErr := fmt.Errorf("stat skill directory: %w", err)
-			return nil, callErr
+			return operationresult.Result[*toolshare.PreparedCall]{}, callErr
 		}
 	}
 	files := make([]*fileops.PreparedFile, 0, 3)
@@ -130,48 +122,49 @@ func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 	for _, content := range contents {
 		file, err := fileops.PrepareFileWrite(ctx, content.path, content.content)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[*toolshare.PreparedCall]{}, err
 		}
-		files = append(files, file)
-		filePreview := file.Preview()
+		if file.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.PreparedCall]{Status: file.Status, Message: file.Message}, nil
+		}
+		files = append(files, file.Data)
+		filePreview := file.Data.Preview()
 		details = append(details, toolshare.FileDiffConfirmationDetail(
 			filePreview.Diff,
 			filePreview.DiffAvailable,
 			fmt.Sprintf("%s\n文件：%s\n%s", header, content.path, filePreview.Diff),
 		))
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		t.manager.writeMu.Lock()
 		defer t.manager.writeMu.Unlock()
 		if _, exists := t.manager.registry.Get(name); exists {
-			err := fmt.Errorf("tool or skill %q already exists", name)
-			return nil, err.Error(), err
+			message := fmt.Sprintf("tool or skill %q already exists", name)
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Conflict, Message: message}, message, nil
 		}
 		if _, err := os.Stat(root); !os.IsNotExist(err) {
 			if err == nil {
-				err = fmt.Errorf("skill directory %q appeared after preparation", root)
+				return operationresult.Result[*toolshare.Result]{Status: operationresult.Conflict, Message: fmt.Sprintf("skill directory %q appeared after preparation", root)}, "skill directory appeared after preparation", nil
 			}
-			return nil, err.Error(), err
+			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 		}
 		for _, file := range files {
-			if _, err := file.Commit(ctx); err != nil {
-				return nil, err.Error(), err
+			committed, err := file.Commit(ctx)
+			if err != nil {
+				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
+			}
+			if committed.Status != operationresult.Success {
+				return operationresult.Result[*toolshare.Result]{Status: committed.Status, Message: committed.Message}, "skill file write rejected: " + committed.Message, nil
 			}
 		}
 		summary := fmt.Sprintf("skill=%s build=skipped", name)
 		if strings.TrimSpace(args.GoSource) != "" {
 			build, err := runGoBuild(ctx, root, name, args.TimeoutMS, t.manager.processEnv)
-			if err == nil {
-				err = build.Err
-			}
 			if err != nil {
-				callErr := fmt.Errorf("go build failed: %w\nstdout:\n%s\nstderr:\n%s", err, truncateOutput(build.Stdout), truncateOutput(build.Stderr))
-				summary := fmt.Sprintf("skill=%s build=failed", name)
-				var exitErr *exec.ExitError
-				if errors.As(err, &exitErr) && exitErr.ExitCode() >= 0 {
-					summary += fmt.Sprintf(" exit_code=%d", exitErr.ExitCode())
-				}
-				return nil, summary, callErr
+				return operationresult.Result[*toolshare.Result]{}, fmt.Sprintf("skill=%s build=failed", name), err
+			}
+			if build.Status != operationresult.Success {
+				return operationresult.Result[*toolshare.Result]{Status: build.Status, Message: build.Message}, fmt.Sprintf("skill=%s build=%s", name, build.Status), nil
 			}
 			summary = fmt.Sprintf("skill=%s build=ok exit_code=0", name)
 		}
@@ -179,11 +172,11 @@ func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 		t.manager.setReloadResult(err)
 		if err != nil {
 			callErr := fmt.Errorf("ELyph skill written but reload failed: %w", err)
-			return nil, summary + " reload=failed", callErr
+			return operationresult.Result[*toolshare.Result]{}, summary + " reload=failed", callErr
 		}
 		result := &toolshare.Result{Content: appendElyphWarnings(fmt.Sprintf("created ELyph skill %s", name), diagnostics)}
-		return result, summary + " reload=ok", nil
-	}), nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, summary + " reload=ok", nil
+	})}, nil
 }
 
 func validateSkillName(name string) error {

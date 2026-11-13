@@ -1,6 +1,7 @@
 package skill
 
 import (
+	"elbot/internal/operationresult"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -51,10 +52,10 @@ func TestCreateUsesSameGoForVersionAndBuild(t *testing.T) {
 			creator := CreateElSkillTool{manager: NewManager(root, catalog, nil, processenv.New(env))}
 			args := []byte(`{"name":"compiler_probe","description":"Compiler selection.","risk":"low","elyph":"#skill compiler_probe - Compiler selection.\n<- $text:str!\n-> $result:str\n","go_source":"package main\nfunc main() {}"}`)
 			result, summary, err := callTool(t.Context(), creator.Definition(), share.CallRequest{Arguments: args})
-			if err == nil || result != nil || summary != "skill=compiler_probe build=failed exit_code=7" {
+			if err != nil || result.Status != operationresult.Failed || result.Data != nil || summary != "skill=compiler_probe build=failed" {
 				t.Fatalf("build failure changed: result=%+v summary=%q err=%v", result, summary, err)
 			}
-			if text := err.Error(); !strings.Contains(text, "go build failed:") || !strings.Contains(text, selection+" stdout") || !strings.Contains(text, selection+" stderr") {
+			if text := result.Message; !strings.Contains(text, "go build failed:") || !strings.Contains(text, selection+" stdout") || !strings.Contains(text, selection+" stderr") {
 				t.Fatalf("wrong compiler or missing diagnostics: %v", err)
 			}
 			goMod, err := os.ReadFile(filepath.Join(root, "go", "compiler_probe", "go.mod"))

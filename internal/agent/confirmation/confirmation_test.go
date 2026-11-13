@@ -7,6 +7,7 @@ import (
 	commandpkg "elbot/internal/command"
 	"elbot/internal/control"
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 	"elbot/internal/security"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil"
@@ -48,24 +49,24 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 			ctx := testutil.WithCLIConversation(t.Context())
 			execution := turn.NewExecution("confirmation")
 			requestCtx := turn.WithAttempt(turn.WithExecution(ctx, execution), "attempt")
-			if !turns.StartAttempt(row.ID, turn.Input{Text: "hello"}, execution, "attempt") || !turns.StartToolPhase(row.ID, "attempt") {
+			if !turns.StartAttempt(row.Data.ID, turn.Input{Text: "hello"}, execution, "attempt") || !turns.StartToolPhase(row.Data.ID, "attempt") {
 				t.Fatal("start tools")
 			}
 			coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: testCommandText, Sessions: sessions, Requests: request.NewManager(testutil.IDSequence()), Turns: turns, Identity: identity, Output: confirmationOutput{}, Policy: NewConfirmationPolicy(ConfirmationPolicyDeps{Identity: identity, UserConfirmationTimeout: time.Second})})
 
-			done := make(chan toolshare.ConfirmResult, 1)
+			done := make(chan operationresult.Result[toolshare.ConfirmResult], 1)
 			go func() {
-				result, _ := coordinator.AwaitToolConfirmation(requestCtx, row.ID, llm.ToolCallRequest{ID: "call", Name: "danger", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, []toolshare.ConfirmationDetailBlock{{Kind: toolshare.ConfirmationDetailText, Content: "detail"}})
+				result, _ := coordinator.AwaitToolConfirmation(requestCtx, row.Data.ID, llm.ToolCallRequest{ID: "call", Name: "danger", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, []toolshare.ConfirmationDetailBlock{{Kind: toolshare.ConfirmationDetailText, Content: "detail"}})
 				done <- result
 			}()
 			deadline := time.Now().Add(time.Second)
-			for turns.Snapshot(row.ID).Phase != turn.PhaseAwaitRiskConfirm && time.Now().Before(deadline) {
+			for turns.Snapshot(row.Data.ID).Phase != turn.PhaseAwaitRiskConfirm && time.Now().Before(deadline) {
 				time.Sleep(time.Millisecond)
 			}
-			if turns.Snapshot(row.ID).Phase != turn.PhaseAwaitRiskConfirm {
+			if turns.Snapshot(row.Data.ID).Phase != turn.PhaseAwaitRiskConfirm {
 				t.Fatal("confirmation not pending")
 			}
-			if _, ok := turns.PendingRiskConfirmation(row.ID); !ok {
+			if _, ok := turns.PendingRiskConfirmation(row.Data.ID); !ok {
 				t.Fatal("risk confirmation missing")
 			}
 			scope, decision, extra := "current", "approve", "extra"
@@ -80,11 +81,11 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !response.Accepted {
+			if response.Status != operationresult.Success || !response.Data.Accepted {
 				t.Fatalf("confirmation response=%+v", response)
 			}
 			duplicate, err := coordinator.Respond(ctx, control.RespondConfirmationRequest{Decision: decision, Scope: scope, Extra: extra})
-			if err != nil || duplicate.Accepted {
+			if err != nil || duplicate.Status != operationresult.NotFound {
 				t.Fatalf("duplicate confirmation response=%+v error=%v", duplicate, err)
 			}
 			select {
@@ -94,16 +95,16 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 				if !allowed {
 					wantExtra = ""
 				}
-				if result.Allowed != allowed || result.Stopped || (allowed && result.Extra != wantExtra) {
+				if (result.Status == operationresult.Success) != allowed || (allowed && result.Data.Extra != wantExtra) {
 					t.Fatalf("confirmation result=%+v", result)
 				}
 			case <-time.After(time.Second):
 				t.Fatal("confirmation did not finish")
 			}
-			if coordinator.isSessionAutoConfirmed(row.ID) != (command == "/confirmall extra") || coordinator.isToolAutoConfirmed(row.ID, "danger") != (command == "/confirmtool extra") {
+			if coordinator.isSessionAutoConfirmed(row.Data.ID) != (command == "/confirmall extra") || coordinator.isToolAutoConfirmed(row.Data.ID, "danger") != (command == "/confirmtool extra") {
 				t.Fatal("wrong automatic confirmation scope")
 			}
-			if coordinator.isSessionAutoConfirmed("another-session") || coordinator.isToolAutoConfirmed("another-session", "danger") || coordinator.isToolAutoConfirmed(row.ID, "another-tool") {
+			if coordinator.isSessionAutoConfirmed("another-session") || coordinator.isToolAutoConfirmed("another-session", "danger") || coordinator.isToolAutoConfirmed(row.Data.ID, "another-tool") {
 				t.Fatal("automatic confirmation escaped its scope")
 			}
 		})
@@ -129,7 +130,14 @@ func TestConfirmationTerminationAndPromptFailure(t *testing.T) {
 				}
 				coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: testCommandText, Turns: turns, Output: output, Policy: fixedWaitPolicy(time.Second)})
 				result, err := coordinator.AwaitToolConfirmation(ctx, "s", llm.ToolCallRequest{ID: "call", Name: "danger", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, []toolshare.ConfirmationDetailBlock{{Kind: toolshare.ConfirmationDetailText, Content: "detail"}})
-				if !result.Stopped || result.Allowed || !errors.Is(err, output.err) {
+				want := operationresult.Timeout
+				if mode == "canceled" {
+					want = operationresult.Canceled
+				}
+				if mode == "prompt_failed" {
+					want = ""
+				}
+				if result.Status != want || !errors.Is(err, output.err) {
 					t.Fatalf("err=%v", err)
 				}
 				if turns.Snapshot("s").Phase != turn.PhaseStopping {
@@ -152,7 +160,8 @@ type confirmationOutput struct {
 	blocks chan []delivery.ContentBlock
 }
 
-func (o confirmationOutput) Send(_ context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+func (o confirmationOutput) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
+	event := outputs[0]
 	if o.texts != nil {
 		o.texts <- event.Text
 	}
@@ -163,9 +172,9 @@ func (o confirmationOutput) Send(_ context.Context, event delivery.StreamEvent) 
 		o.blocks <- event.Blocks
 	}
 	if o.err != nil {
-		return delivery.Receipt{}, o.err
+		return operationresult.Result[delivery.Receipt]{}, o.err
 	}
-	return delivery.Receipt{}, nil
+	return operationresult.Result[delivery.Receipt]{Status: operationresult.Success}, nil
 }
 
 func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
@@ -179,7 +188,7 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 		commandText := func(name string, args ...string) string { return commandpkg.Format("!", name, args...) }
 		coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: commandText, Turns: turns, Output: output, Policy: fixedWaitPolicy(time.Second)})
 		result, err := coordinator.AwaitToolConfirmation(ctx, "s", llm.ToolCallRequest{ID: "call", Name: "shell", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, []toolshare.ConfirmationDetailBlock{{Kind: toolshare.ConfirmationDetailText, Content: "detail"}})
-		if err != nil || !result.Stopped {
+		if err != nil || result.Status != operationresult.Timeout {
 			t.Fatalf("result=%+v err=%v", result, err)
 		}
 		actions := <-output.sent
@@ -236,10 +245,10 @@ func TestCurrentRiskConfirmationReturnsBlocksAndActions(t *testing.T) {
 	turns := turn.NewSupervisor(testutil.IDSequence())
 	t.Cleanup(func() { turns.StopAll() })
 	execution := turn.NewExecution("run")
-	if !turns.StartAttempt(row.ID, turn.Input{}, execution, "attempt") || !turns.StartToolPhase(row.ID, "attempt") {
+	if !turns.StartAttempt(row.Data.ID, turn.Input{}, execution, "attempt") || !turns.StartToolPhase(row.Data.ID, "attempt") {
 		t.Fatal("start tool phase")
 	}
-	if turns.BeginRiskConfirmation(row.ID, turn.RiskConfirmation{ToolName: "shell", Risk: "high", Reasons: []string{"requires approval"}, Detail: []turn.ConfirmationDetailBlock{{Kind: turn.ConfirmationDetailDiff, Content: "-old\n+new"}}}, "attempt") == nil {
+	if turns.BeginRiskConfirmation(row.Data.ID, turn.RiskConfirmation{ToolName: "shell", Risk: "high", Reasons: []string{"requires approval"}, Detail: []turn.ConfirmationDetailBlock{{Kind: turn.ConfirmationDetailDiff, Content: "-old\n+new"}}}, "attempt") == nil {
 		t.Fatal("begin risk confirmation")
 	}
 	coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: testCommandText, Sessions: sessions, Turns: turns, Identity: identity, Policy: fixedWaitPolicy(time.Minute)})
@@ -247,7 +256,7 @@ func TestCurrentRiskConfirmationReturnsBlocksAndActions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.SessionID != row.ID || got.Kind != "tool" || len(got.Detail) != 3 || got.Detail[0].Content != "shell [high]: confirm" || !strings.Contains(got.Detail[2].Content.(string), "requires approval") || len(got.Actions) != 6 {
+	if got.Data.SessionID != row.Data.ID || got.Data.Kind != "tool" || len(got.Data.Detail) != 3 || got.Data.Detail[0].Content != "shell [high]: confirm" || !strings.Contains(got.Data.Detail[2].Content.(string), "requires approval") || len(got.Data.Actions) != 6 {
 		t.Fatalf("confirmation snapshot=%+v", got)
 	}
 }
@@ -295,7 +304,7 @@ func TestMissingRiskConfirmationReturnsRejection(t *testing.T) {
 	t.Cleanup(turns.StopAll)
 	c := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{Sessions: sessions, Turns: turns, Identity: identity})
 	result, err := c.Respond(ctx, control.RespondConfirmationRequest{Decision: "approve", Scope: "current"})
-	if err != nil || result.Accepted {
+	if err != nil || result.Status != operationresult.NotFound {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }

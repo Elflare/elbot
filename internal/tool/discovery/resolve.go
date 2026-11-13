@@ -3,7 +3,6 @@ package discovery
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"elbot/internal/elyph"
@@ -111,14 +110,7 @@ func (r *Resolver) addDiscoveryDetail(ctx context.Context, target share.ToolDefi
 	if loader := target.LoadDetail; loader != nil {
 		block, err := loader(ctx)
 		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return err
-			}
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			result.Errors = append(result.Errors, share.DiscoveryError{Name: name, Reason: err.Error()})
-			return nil
+			return err
 		}
 		discovered.DetailBlock = block
 		discovered.Detail = share.RenderDetailBlocks([]share.DetailBlock{block})

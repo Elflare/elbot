@@ -2,6 +2,7 @@ package skill
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -114,11 +115,11 @@ func TestManagerLoadsMarkdownDetailOnDemand(t *testing.T) {
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Updated DOCX")
 	args, _ := json.Marshal(map[string]string{"name": "docx"})
 	result, _, err := callTool(context.Background(), discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "# Updated DOCX") || strings.Contains(result.Content, "# Initial DOCX") {
-		t.Fatalf("discovery should read current SKILL.md: %q", result.Content)
+	if !strings.Contains(result.Data.Content, "# Updated DOCX") || strings.Contains(result.Data.Content, "# Initial DOCX") {
+		t.Fatalf("discovery should read current SKILL.md: %q", result.Data.Content)
 	}
 }
 
@@ -148,11 +149,11 @@ input = "--input"
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Updated callable DOCX")
 	args, _ := json.Marshal(map[string]string{"name": "docx"})
 	result, _, err := callTool(context.Background(), discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "# Updated callable DOCX") {
-		t.Fatalf("callable discovery should read current SKILL.md: %q", result.Content)
+	if !strings.Contains(result.Data.Content, "# Updated callable DOCX") {
+		t.Fatalf("callable discovery should read current SKILL.md: %q", result.Data.Content)
 	}
 }
 
@@ -192,14 +193,14 @@ func TestPolicyOnlyAgentSkillHiddenFromNormalUserDiscovery(t *testing.T) {
 	ctx := contextinfo.WithActor(context.Background(), actor)
 	discover := discovery.NewDiscoverTool(discovery.NewResolver(registry))
 	result, _, err := callTool(ctx, discover, toolshare.CallRequest{})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(result.Data), "private_doc") {
-		t.Fatalf("private skill should be hidden from normal user: %s", result.Data)
+	if strings.Contains(string(result.Data.Data), "private_doc") {
+		t.Fatalf("private skill should be hidden from normal user: %s", result.Data.Data)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "private_doc"})
-	if _, _, err := callTool(ctx, discover, toolshare.CallRequest{Arguments: args}); err == nil {
+	if result, _, err := callTool(ctx, discover, toolshare.CallRequest{Arguments: args}); err != nil || result.Status == operationresult.Success {
 		t.Fatal("expected normal user detail query to be denied")
 	}
 }
@@ -222,11 +223,11 @@ superadmin_only = true
 	ctx := contextinfo.WithActor(context.Background(), superadmin)
 	args, _ := json.Marshal(map[string]string{"name": "private_doc"})
 	result, _, err := callTool(ctx, discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "# Private") {
-		t.Fatalf("superadmin should see skill detail: %q", result.Content)
+	if !strings.Contains(result.Data.Content, "# Private") {
+		t.Fatalf("superadmin should see skill detail: %q", result.Data.Content)
 	}
 }
 
@@ -334,7 +335,7 @@ func TestManagerRemoveDeletesDirectoryAndReloads(t *testing.T) {
 	if err := manager.Reload(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.Remove(context.Background(), "docx"); err != nil {
+	if result, err := manager.Remove(context.Background(), "docx"); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
@@ -367,17 +368,17 @@ func TestAgentSkillCreatorNoticeDiscovery(t *testing.T) {
 				ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: role})
 			}
 			result, _, err := callTool(ctx, discover, toolshare.CallRequest{Arguments: json.RawMessage(`{"name":"docx"}`)})
-			if err != nil {
+			if err != nil || result.Status != operationresult.Success {
 				t.Fatal(err)
 			}
 			var discovery toolshare.DiscoveryResult
-			if err := json.Unmarshal(result.Data, &discovery); err != nil {
+			if err := json.Unmarshal(result.Data.Data, &discovery); err != nil {
 				t.Fatal(err)
 			}
 			if len(discovery.Tools) != 1 || discovery.Tools[0].Schema != nil {
 				t.Fatalf("discovered tools = %#v", discovery.Tools)
 			}
-			for _, content := range []string{result.Content, discovery.Tools[0].Detail} {
+			for _, content := range []string{result.Data.Content, discovery.Tools[0].Detail} {
 				if !strings.Contains(content, "# DOCX") {
 					t.Fatalf("missing skill body: %q", content)
 				}

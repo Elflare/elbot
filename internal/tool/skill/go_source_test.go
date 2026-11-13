@@ -1,6 +1,7 @@
 package skill
 
 import (
+	"elbot/internal/operationresult"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,7 +26,7 @@ func TestResolveGoExecutableReadsSharedEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if path != fakeGo {
+	if path.Status != operationresult.Success || path.Data != fakeGo {
 		t.Fatalf("go path = %q, want %q", path, fakeGo)
 	}
 }
@@ -45,7 +46,7 @@ func TestResolveGoExecutableUsesGOROOT(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if path != fakeGo {
+	if path.Status != operationresult.Success || path.Data != fakeGo {
 		t.Fatalf("go path = %q, want %q", path, fakeGo)
 	}
 }
@@ -53,11 +54,11 @@ func TestResolveGoExecutableUsesGOROOT(t *testing.T) {
 func TestResolveGoExecutableReportsInvalidConfiguredPath(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "missing-go")
 
-	_, err := resolveGoExecutable(processenv.New([]string{goBinaryEnv + "=" + missing}))
-	if err == nil {
+	result, err := resolveGoExecutable(processenv.New([]string{goBinaryEnv + "=" + missing}))
+	if err != nil || result.Status != operationresult.Unavailable {
 		t.Fatal("expected error")
 	}
-	if text := err.Error(); !strings.Contains(text, goBinaryEnv) || !strings.Contains(text, missing) {
+	if text := result.Message; !strings.Contains(text, goBinaryEnv) || !strings.Contains(text, missing) {
 		t.Fatalf("err = %v", err)
 	}
 }

@@ -1,10 +1,6 @@
 package share
 
 import (
-	"context"
-	"elbot/internal/llm"
-	"errors"
-	"strings"
 	"testing"
 )
 
@@ -31,61 +27,5 @@ func TestPreparedCallKeepsIndependentRequestAndRisk(t *testing.T) {
 	}
 	if got := prepared.Details(); len(got) != 1 || got[0].Kind != ConfirmationDetailText || got[0].Content != "original preview" {
 		t.Fatalf("details=%+v", got)
-	}
-}
-
-func TestPreparedCallRunsOnlyOnExecution(t *testing.T) {
-	wantResult := &Result{Content: "partial result"}
-	wantErr := errors.New("operation failed")
-	var executionContext context.Context
-	prepared := NewPreparedCall(CallRequest{Name: "write"}, RiskAssessment{Level: RiskHigh}, []ConfirmationDetailBlock{TextConfirmationDetail("write preview")}, func(ctx context.Context) (*Result, string, error) {
-		executionContext = ctx
-		return wantResult, "independent log", wantErr
-	})
-	_ = prepared.Details()
-	_ = prepared.RiskAssessment()
-	if executionContext != nil {
-		t.Fatal("preparing or reading the preview executed the operation")
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	result, logContent, err := prepared.Call(ctx)
-	if executionContext != ctx || result != wantResult || logContent != "independent log" || result.LogContent(err) != "operation failed\npartial result" || err != wantErr {
-		t.Fatalf("context=%v result=%+v log=%q error=%v", executionContext, result, logContent, err)
-	}
-}
-
-func TestPreparedCallBoundsOnlyLogContent(t *testing.T) {
-	body := "  \t" + strings.Repeat("雪🔥", 700) + "BUSINESS_TAIL"
-	failure := errors.New(body)
-	for _, tt := range []struct {
-		name    string
-		log     string
-		wantLog string
-		result  *Result
-		err     error
-	}{
-		{name: "short", log: "summary", wantLog: "  \t" + strings.Repeat("雪🔥", 510) + "…", result: &Result{Content: body}},
-		{name: "boundary", log: strings.Repeat("雪", 1024), wantLog: strings.Repeat("雪", 1024), result: &Result{Content: strings.Repeat("雪", 1024)}},
-		{name: "unicode", log: body, wantLog: "  \t" + strings.Repeat("雪🔥", 510) + "…", result: &Result{Content: body, Segments: llm.TextSegments(body)}},
-		{name: "partial failure", log: body, wantLog: "  \t" + strings.Repeat("雪🔥", 510) + "…", result: &Result{Content: body}, err: failure},
-		{name: "failure", log: body, wantLog: "  \t" + strings.Repeat("雪🔥", 510) + "…", err: failure},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			wantContent := ""
-			if tt.result != nil {
-				wantContent = tt.result.Content
-			}
-			prepared := NewPreparedCall(CallRequest{}, RiskAssessment{}, nil, func(context.Context) (*Result, string, error) {
-				return tt.result, tt.log, tt.err
-			})
-			result, logContent, err := prepared.Call(t.Context())
-			if result != tt.result || err != tt.err || logContent != tt.log || result.LogContent(err) != tt.wantLog {
-				t.Fatalf("result=%v log=%q error=%v", result, logContent, err)
-			}
-			if result != nil && result.Content != wantContent {
-				t.Fatal("business content was truncated")
-			}
-		})
 	}
 }

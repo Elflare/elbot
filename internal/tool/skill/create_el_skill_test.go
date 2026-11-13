@@ -8,6 +8,7 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"elbot/internal/tool/discovery"
 	"encoding/json"
 	"os"
@@ -43,11 +44,11 @@ func TestCreateElSkillCreatesBuildsAndReloads(t *testing.T) {
 		"go_source":   goSource,
 	})
 	result, _, err := callTool(context.Background(), creator.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "hello_skill") {
-		t.Fatalf("content = %q", result.Content)
+	if !strings.Contains(result.Data.Content, "hello_skill") {
+		t.Fatalf("content = %q", result.Data.Content)
 	}
 	binary := filepath.Join(root, "go", "hello_skill", "hello_skill")
 	if runtime.GOOS == "windows" {
@@ -101,11 +102,11 @@ func TestCreateElSkillReturnsElyphWarnings(t *testing.T) {
 		"elyph":       "#skill warn_skill - Warn workflow.\n** 清单：\n",
 	})
 	result, _, err := callTool(context.Background(), creator.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "created ELyph skill warn_skill") || !strings.Contains(result.Content, "Warnings:") || !strings.Contains(result.Content, "line 2:") {
-		t.Fatalf("content = %q", result.Content)
+	if !strings.Contains(result.Data.Content, "created ELyph skill warn_skill") || !strings.Contains(result.Data.Content, "Warnings:") || !strings.Contains(result.Data.Content, "line 2:") {
+		t.Fatalf("content = %q", result.Data.Content)
 	}
 }
 
@@ -120,7 +121,7 @@ func TestCreateElSkillCanCreateTextOnlySkill(t *testing.T) {
 		"risk":        "low",
 		"elyph":       "#skill workflow - Reusable workflow.\n<- $text:str!\n-> $result:str\n",
 	})
-	if _, _, err := callTool(context.Background(), creator.Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(context.Background(), creator.Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "go", "workflow", "main.go")); !os.IsNotExist(err) {
@@ -143,7 +144,7 @@ func TestCreateElSkillRejectsInvalidInputs(t *testing.T) {
 		`{"name":"bad","description":"x","risk":"low","elyph":"#skill bad","go_source":"package nope"}`,
 	}
 	for _, raw := range cases {
-		if _, _, err := callTool(context.Background(), creator.Definition(), toolshare.CallRequest{Arguments: []byte(raw)}); err == nil {
+		if result, _, err := callTool(context.Background(), creator.Definition(), toolshare.CallRequest{Arguments: []byte(raw)}); err != nil || result.Status == operationresult.Success {
 			t.Fatalf("expected error for %s", raw)
 		}
 	}
@@ -156,7 +157,7 @@ func TestCreateElSkillDoesNotOverwriteExistingDirectory(t *testing.T) {
 	}
 	creator := CreateElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 	args := `{"name":"exists","description":"x","risk":"low","elyph":"#skill exists","go_source":"package main\nfunc main(){}"}`
-	if _, _, err := callTool(context.Background(), creator.Definition(), toolshare.CallRequest{Arguments: []byte(args)}); err == nil {
+	if result, _, err := callTool(context.Background(), creator.Definition(), toolshare.CallRequest{Arguments: []byte(args)}); err != nil || result.Status == operationresult.Success {
 		t.Fatal("expected existing directory error")
 	}
 }
@@ -196,13 +197,13 @@ func (creatorExistingTool) Info() toolshare.Info {
 	return toolshare.Info{Name: "dup", Description: "dup", Source: toolshare.SourceBuiltin, Risk: toolshare.RiskLow}
 }
 func (creatorExistingTool) Schema() llm.ToolSchema { return llm.ToolSchema{} }
-func (value creatorExistingTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
-		{
-			result := &toolshare.Result{Content: "ok"}
-			return result, result.Content, nil
-		}
-	}), nil
+func (value creatorExistingTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+
+		result := &toolshare.Result{Content: "ok"}
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
+
+	})}, nil
 }
 
 func TestCreateElSkillDoesNotOverwriteRegistryTool(t *testing.T) {
@@ -212,7 +213,7 @@ func TestCreateElSkillDoesNotOverwriteRegistryTool(t *testing.T) {
 	}
 	creator := CreateElSkillTool{manager: NewManager(t.TempDir(), registry, nil, processenv.Environment{})}
 	args := `{"name":"dup","description":"x","risk":"low","elyph":"#skill dup","go_source":"package main\nfunc main(){}"}`
-	if _, _, err := callTool(context.Background(), creator.Definition(), toolshare.CallRequest{Arguments: []byte(args)}); err == nil {
+	if result, _, err := callTool(context.Background(), creator.Definition(), toolshare.CallRequest{Arguments: []byte(args)}); err != nil || result.Status == operationresult.Success {
 		t.Fatal("expected registry conflict error")
 	}
 }

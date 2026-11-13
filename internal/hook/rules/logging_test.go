@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,14 +37,14 @@ func (*bodyTestTool) Info() toolshare.Info {
 	return toolshare.Info{Name: "body_test", Risk: toolshare.RiskLow}
 }
 func (*bodyTestTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "body_test"} }
-func (t *bodyTestTool) PrepareCall(ctx context.Context, call toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(call, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
+func (t *bodyTestTool) PrepareCall(ctx context.Context, call toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(call, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		if t.onCall != nil {
 			t.onCall()
 		}
 		t.ids = append(t.ids, call.ID)
-		return &toolshare.Result{Segments: llm.TextSegments("business segments")}, "日志正文：9007199254740993", errors.New("business result")
-	}), nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Failed, Message: "business result\nbusiness segments"}, "日志正文：9007199254740993", nil
+	})}, nil
 }
 
 func TestRuleToolStartPrecedesBodyAndEndHasElapsed(t *testing.T) {
@@ -69,8 +70,8 @@ func (failedProtocolWriter) Write([]byte) (int, error) {
 
 func TestExecProtocolKeepsSendCancellationAndIndependentWriteFailure(t *testing.T) {
 	for _, failWrite := range []bool{false, true} {
-		module := Module{Opts: Options{Log: testLog, Notify: testNotify, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
-			return delivery.Receipt{}, fmt.Errorf("wrapped send: %w", context.Canceled)
+		module := Module{Opts: Options{Log: testLog, Notify: testNotify, Send: func(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
+			return operationresult.Result[delivery.Receipt]{}, fmt.Errorf("wrapped send: %w", context.Canceled)
 		}}}
 		reader := bufio.NewReader(strings.NewReader("{\"type\":\"request\",\"id\":\"plugin:send\",\"method\":\"output.send\",\"params\":{\"outputs\":[{\"kind\":\"text\",\"text\":\"message\"}]}}\n"))
 		var writer io.Writer = &bytes.Buffer{}
@@ -120,15 +121,15 @@ func TestRulesToolPreExecutionFailuresUseSourceSummary(t *testing.T) {
 			d := toolshare.ToolDefinition{
 				Definition: toolshare.Info{Name: "registered", Description: "registered", Risk: toolshare.RiskLow},
 				Parameters: map[string]any{"type": "object", "properties": map[string]any{}},
-				Prepare: func(_ context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+				Prepare: func(_ context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
 					prepared = true
 					if scenario == "prepare_error" {
-						return nil, prepareErr
+						return operationresult.Result[*toolshare.PreparedCall]{}, prepareErr
 					}
-					return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskLow}, nil, func(context.Context) (*toolshare.Result, string, error) {
+					return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskLow}, nil, func(context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 						executed = true
-						return nil, "executed", nil
-					}), nil
+						return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: nil}, "executed", nil
+					})}, nil
 				},
 			}
 			if _, err := registry.RegisterTools(ctx, toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{d}); err != nil {
@@ -143,14 +144,17 @@ func TestRulesToolPreExecutionFailuresUseSourceSummary(t *testing.T) {
 			}
 			var records []events.LogRecord
 			module := Module{Opts: Options{Tools: testTools{registry}, Log: func(_ context.Context, record events.LogRecord) { records = append(records, record) }}}
-			_, err := module.callTool(ctx, share.Event{}, Action{Tool: name, Arguments: `{}`}, state{})
-			if err == nil || executed || prepared != (scenario == "prepare_error") {
+			outcome, err := module.callTool(ctx, share.Event{}, Action{Tool: name, Arguments: `{}`}, state{})
+			if (scenario == "missing" && (err != nil || outcome.Status != operationresult.NotFound) || scenario != "missing" && err == nil) || executed || prepared != (scenario == "prepare_error") {
 				t.Fatalf("prepared=%v executed=%v err=%v", prepared, executed, err)
 			}
 			if scenario == "prepare_error" && !errors.Is(err, prepareErr) || scenario == "canceled" && !errors.Is(err, context.Canceled) {
 				t.Fatalf("original error lost: %v", err)
 			}
 			wantStatus := events.ResultFailed
+			if scenario == "missing" {
+				wantStatus = events.ResultRejected
+			}
 			if scenario == "canceled" {
 				wantStatus = events.ResultCanceled
 			}
@@ -182,8 +186,8 @@ func TestRulesToolRecordsUseIndependentBodyUniqueIDAndActor(t *testing.T) {
 		{},
 	}
 	for _, event := range eventsToCall {
-		_, err := module.callTool(ctx, event, Action{Tool: "body_test"}, state{})
-		if err == nil {
+		outcome, err := module.callTool(ctx, event, Action{Tool: "body_test"}, state{})
+		if err != nil || outcome.Status != operationresult.Failed {
 			t.Fatal("outcome= err=", err)
 		}
 	}
@@ -214,8 +218,8 @@ func TestRulesToolRecordsUseIndependentBodyUniqueIDAndActor(t *testing.T) {
 func TestRulesOutputSendRecordsPartialReceipt(t *testing.T) {
 	for _, callID := range []string{"", "actual-call"} {
 		records := collectRecords(t)
-		module := Module{Opts: Options{Log: testLog, Notify: testNotify, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
-			return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "cli", PlatformMessageID: "partial"}}}, nil
+		module := Module{Opts: Options{Log: testLog, Notify: testNotify, Send: func(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
+			return operationresult.Result[delivery.Receipt]{Status: operationresult.Success, Data: delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "cli", PlatformMessageID: "partial"}}}}, nil
 		}}}
 		actor := share.ActorContext{}
 		if callID != "" {
@@ -248,9 +252,9 @@ func TestRulesOutputSendRecordsPartialReceipt(t *testing.T) {
 
 func TestRulesOutputPreparationFailureDoesNotInvokeSender(t *testing.T) {
 	records := collectRecords(t)
-	module := Module{Opts: Options{Log: testLog, Notify: testNotify, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify, Send: func(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
 		t.Fatal("sender entered")
-		return delivery.Receipt{}, nil
+		return operationresult.Result[delivery.Receipt]{Status: operationresult.Success, Data: delivery.Receipt{}}, nil
 	}}}
 	_, err := module.handleProtocolRequest(t.Context(), share.Event{}, Action{}, state{}, "output.send", json.RawMessage(`{"outputs":false}`))
 	if err == nil || len(*records) != 1 || (*records)[0].ResultStatus != events.ResultFailed || !strings.Contains((*records)[0].Content, "invalid field") {
@@ -265,11 +269,11 @@ func (*argumentLoggingTool) Info() toolshare.Info {
 	return toolshare.Info{Name: "argument_log", Risk: toolshare.RiskLow}
 }
 func (*argumentLoggingTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "argument_log"} }
-func (t *argumentLoggingTool) PrepareCall(ctx context.Context, call toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(call, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
+func (t *argumentLoggingTool) PrepareCall(ctx context.Context, call toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(call, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		t.got = string(call.Arguments)
-		return &toolshare.Result{Content: t.body}, t.body, nil
-	}), nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: t.body}}, t.body, nil
+	})}, nil
 }
 
 func TestRulesJSONTruncationPreservesUnicodeMarkerAndBusinessData(t *testing.T) {
@@ -318,11 +322,11 @@ func TestRulesSendLogTruncationKeepsFullSourceTextResult(t *testing.T) {
 	for _, character := range []string{"雪", "\x00"} {
 		body := strings.Repeat(character, 4096)
 		records := collectRecords(t)
-		module := Module{Opts: Options{Log: testLog, Notify: testNotify, Send: func(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+		module := Module{Opts: Options{Log: testLog, Notify: testNotify, Send: func(_ context.Context, _ delivery.Target, outputs []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
 			if outputs[0].Text != body {
 				t.Fatal("business output truncated")
 			}
-			return delivery.Receipt{PlatformMessageIDs: []string{"actual-message"}}, errors.New(body)
+			return operationresult.Result[delivery.Receipt]{}, errors.New(body)
 		}}}
 		params, _ := json.Marshal(map[string]any{"outputs": []map[string]any{{"kind": "text", "text": body}}})
 		_, err := module.handleProtocolRequest(t.Context(), share.Event{}, Action{}, state{}, "output.send", params)
@@ -333,15 +337,15 @@ func TestRulesSendLogTruncationKeepsFullSourceTextResult(t *testing.T) {
 		json.Unmarshal([]byte((*records)[0].Content), &content)
 		var got string
 		json.Unmarshal(content["result"], &got)
-		if got != strings.Repeat(character, 2047)+"…" || !strings.Contains((*records)[0].Content, "actual-message") {
+		if got != strings.Repeat(character, 2047)+"…" || strings.Contains((*records)[0].Content, "actual-message") {
 			t.Fatal((*records)[0])
 		}
 	}
 }
 
 func TestExecProtocolFailureKeepsFullTextDiagnostic(t *testing.T) {
-	module := Module{Opts: Options{Log: testLog, Notify: testNotify, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
-		return delivery.Receipt{}, context.Canceled
+	module := Module{Opts: Options{Log: testLog, Notify: testNotify, Send: func(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
+		return operationresult.Result[delivery.Receipt]{}, context.Canceled
 	}}}
 	reader := bufio.NewReader(strings.NewReader("{\"type\":\"request\",\"id\":\"plugin:send\",\"method\":\"output.send\",\"params\":{\"outputs\":[{\"kind\":\"text\",\"text\":\"message\"}]}}\n"))
 	_, err := module.readV2Response(t.Context(), reader, failedProtocolWriter{}, share.Event{}, Action{}, state{}, "host:event")
@@ -392,8 +396,8 @@ func TestRuleLogsPreserveOptionalIdentityAndEventSession(t *testing.T) {
 			module := Module{Opts: Options{
 				Tools: testTools{registry},
 				Log:   func(_ context.Context, record events.LogRecord) { records = append(records, record) },
-				Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
-					return delivery.Receipt{}, nil
+				Send: func(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
+					return operationresult.Result[delivery.Receipt]{Status: operationresult.Success, Data: delivery.Receipt{}}, nil
 				},
 				CallPlatformAPI: func(context.Context, string, string, map[string]any) (json.RawMessage, error) {
 					return json.RawMessage("{}"), nil

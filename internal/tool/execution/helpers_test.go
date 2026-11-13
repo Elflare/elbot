@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 
 	"elbot/internal/events"
 	"elbot/internal/llm"
@@ -44,31 +45,36 @@ func (t fakeTool) Info() share.Info {
 	return share.Info{Name: t.name, Description: t.name, Source: t.source, Risk: risk, SuperadminOnly: t.superadminOnly}
 }
 func (t fakeTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: t.name} }
-func (t fakeTool) PrepareCall(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
-	return share.NewPreparedCall(req, share.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*share.Result, string, error) {
-		return &share.Result{Content: t.name}, t.name, nil
-	}), nil
+func (t fakeTool) PrepareCall(ctx context.Context, req share.CallRequest) (operationresult.Result[*share.PreparedCall], error) {
+	return operationresult.Result[*share.PreparedCall]{Status: operationresult.Success, Data: share.NewPreparedCall(req, share.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*share.Result], string, error) {
+		return operationresult.Result[*share.Result]{Status: operationresult.Success, Data: &share.Result{Content: t.name}}, t.name, nil
+	})}, nil
 }
 
 func executeTestCall(catalog *registry.Registry, call llm.ToolCallRequest) executionResult {
 	m := newTestManager(catalog, nil)
 	ctx := context.Background()
-	resolved := m.resolve(ctx, call.Name, nil, storage.SessionModeWork)
-	var prepared *share.PreparedCall
-	if resolved.Native != nil {
-		var err error
-		prepared, err = m.prepareCall(ctx, resolved, call)
-		if err != nil {
-			panic(err)
-		}
+	resolved, err := m.resolve(ctx, call.Name, nil, storage.SessionModeWork)
+	if err != nil {
+		return executionError(call, err)
 	}
-	return m.executePrepared(ctx, call, resolved, prepared, nil)
+	if resolved.Status != operationresult.Success {
+		return executionResult{Message: toolMessage(call.Name, call.ID, resolved.Message), Result: operationresult.Result[*share.Result]{Status: resolved.Status, Message: resolved.Message}}
+	}
+	prepared, err := m.prepareCall(ctx, resolved.Data, call)
+	if err != nil {
+		return executionError(call, err)
+	}
+	if prepared.Status != operationresult.Success {
+		return executionResult{Message: toolMessage(call.Name, call.ID, prepared.Message), Result: operationresult.Result[*share.Result]{Status: prepared.Status, Message: prepared.Message}}
+	}
+	return m.executePrepared(ctx, call, resolved.Data, prepared.Data, nil)
 }
 
 // 测试夹具使用空参数对象，只保留各场景的执行与权限行为。
 func executionTestDefinition(candidate interface {
 	Info() share.Info
-	PrepareCall(context.Context, share.CallRequest) (*share.PreparedCall, error)
+	PrepareCall(context.Context, share.CallRequest) (operationresult.Result[*share.PreparedCall], error)
 }) share.ToolDefinition {
 	info := candidate.Info()
 	info.Description = info.Name
@@ -84,7 +90,6 @@ func (t runnerContextPreflightTool) Definition() share.ToolDefinition {
 func (t runnerImageTool) Definition() share.ToolDefinition        { return executionTestDefinition(t) }
 func (t runnerHighRiskTool) Definition() share.ToolDefinition     { return executionTestDefinition(t) }
 func (t loggingTool) Definition() share.ToolDefinition            { return executionTestDefinition(t) }
-func (t partialResultTool) Definition() share.ToolDefinition      { return executionTestDefinition(t) }
 func (t segmentTool) Definition() share.ToolDefinition            { return executionTestDefinition(t) }
 func (t countingCommitTool) Definition() share.ToolDefinition     { return executionTestDefinition(t) }
 func (t *mediaArgumentRecorder) Definition() share.ToolDefinition { return executionTestDefinition(t) }

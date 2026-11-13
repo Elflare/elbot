@@ -4,7 +4,7 @@ package chat_history
 
 import (
 	"context"
-	"errors"
+	"elbot/internal/operationresult"
 	"fmt"
 
 	"elbot/internal/tool/share"
@@ -19,21 +19,24 @@ type MediaQuery struct {
 	Index int              // 从 1 开始的媒体序号。
 }
 
-func (m *Manager) GetMedia(ctx context.Context, req share.MediaRequest) ([]share.MediaResult, error) {
+func (m *Manager) GetMedia(ctx context.Context, req share.MediaRequest) (operationresult.Result[[]share.MediaResult], error) {
 	return m.getMedia(ctx, req, false)
 }
 
-func (m *Manager) GetImages(ctx context.Context, req share.MediaRequest) ([]share.MediaResult, error) {
+func (m *Manager) GetImages(ctx context.Context, req share.MediaRequest) (operationresult.Result[[]share.MediaResult], error) {
 	return m.getMedia(ctx, req, true)
 }
 
-func (m *Manager) getMedia(ctx context.Context, req share.MediaRequest, imagesOnly bool) ([]share.MediaResult, error) {
+func (m *Manager) getMedia(ctx context.Context, req share.MediaRequest, imagesOnly bool) (operationresult.Result[[]share.MediaResult], error) {
 	chat, err := currentChatHistoryContext(ctx)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[[]share.MediaResult]{}, err
+	}
+	if chat.Status != operationresult.Success {
+		return operationresult.Result[[]share.MediaResult]{Status: chat.Status, Message: chat.Message}, nil
 	}
 	type lookup struct {
-		message share.Message
+		message operationresult.Result[share.Message]
 		err     error
 	}
 	known := make(map[string]lookup)
@@ -42,25 +45,25 @@ func (m *Manager) getMedia(ctx context.Context, req share.MediaRequest, imagesOn
 	var positions []int
 	for i, id := range req.MessageIDs {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return operationresult.Result[[]share.MediaResult]{}, err
 		}
 		entry, ok := known[id]
 		if !ok {
-			key := share.MessageKey{Platform: chat.Platform, ChatID: chat.ChatID, MessageID: id, ChatType: chat.ChatType}
+			key := share.MessageKey{Platform: chat.Data.Platform, ChatID: chat.Data.ChatID, MessageID: id, ChatType: chat.Data.ChatType}
 			entry.message, entry.err = m.backend.GetMessage(ctx, key)
 			known[id] = entry
 		}
-		if errors.Is(entry.err, share.ErrNotFound) {
+		if entry.err != nil {
+			return operationresult.Result[[]share.MediaResult]{}, entry.err
+		}
+		if entry.message.Status != operationresult.Success {
 			if imagesOnly {
-				return nil, fmt.Errorf("[#%s] 当前聊天没有该消息", id)
+				return operationresult.Result[[]share.MediaResult]{Status: entry.message.Status, Message: entry.message.Message}, nil
 			}
-			results = append(results, share.MediaResult{MessageID: id, Err: entry.err})
+			results = append(results, share.MediaResult{MessageID: id, Media: operationresult.Result[share.MediaInfo]{Status: entry.message.Status, Message: entry.message.Message}})
 			continue
 		}
-		if entry.err != nil {
-			return nil, entry.err
-		}
-		message := entry.message
+		message := entry.message.Data
 		indexes := []int{1}
 		var images []int
 		if imagesOnly {
@@ -70,7 +73,7 @@ func (m *Manager) getMedia(ctx context.Context, req share.MediaRequest, imagesOn
 				}
 			}
 			if len(images) == 0 {
-				return nil, fmt.Errorf("[#%s] 没有图片", id)
+				return operationresult.Result[[]share.MediaResult]{Status: operationresult.NotFound, Message: fmt.Sprintf("[#%s] 没有图片", id)}, nil
 			}
 			indexes = images[:1]
 		}
@@ -78,16 +81,16 @@ func (m *Manager) getMedia(ctx context.Context, req share.MediaRequest, imagesOn
 			indexes = req.MediaIndex[i]
 		}
 		for _, index := range indexes {
-			result := share.MediaResult{MessageID: id, Index: index}
+			result := share.MediaResult{MessageID: id, Index: index, Media: operationresult.Result[share.MediaInfo]{Status: operationresult.Success}}
 			if index > len(message.Media) {
-				result.Err = share.ErrMediaIndex
+				result.Media = operationresult.Result[share.MediaInfo]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("[#%s] 媒体序号 %d 越界，消息共有 %d 项媒体。", id, index, len(message.Media))}
 			} else {
 				result.IsImage = message.Media[index-1].IsImage
 			}
-			if imagesOnly && (result.Err != nil || !result.IsImage) {
-				return nil, fmt.Errorf("[#%s] 序号 %d 不是图片；可选图片序号：%v", id, index, images)
+			if imagesOnly && (result.Media.Status != operationresult.Success || !result.IsImage) {
+				return operationresult.Result[[]share.MediaResult]{Status: operationresult.InvalidTarget, Message: fmt.Sprintf("[#%s] 序号 %d 不是图片；可选图片序号：%v", id, index, images)}, nil
 			}
-			if result.Err == nil {
+			if result.Media.Status == operationresult.Success {
 				positions = append(positions, len(results))
 				queries = append(queries, MediaQuery{Key: message.Key, Index: index})
 			}
@@ -95,15 +98,15 @@ func (m *Manager) getMedia(ctx context.Context, req share.MediaRequest, imagesOn
 		}
 	}
 	if len(queries) == 0 {
-		return results, nil
+		return operationresult.Result[[]share.MediaResult]{Status: operationresult.Success, Data: results}, nil
 	}
 	fetched, err := m.backend.FetchMedia(ctx, queries, share.MaxFetchAttempts)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[[]share.MediaResult]{}, err
 	}
 	for i, item := range fetched {
 		result := &results[positions[i]]
 		result.Media, result.Err = item.Media, item.Err
 	}
-	return results, nil
+	return operationresult.Result[[]share.MediaResult]{Status: operationresult.Success, Data: results}, nil
 }

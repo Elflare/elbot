@@ -12,6 +12,7 @@ import (
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/memory/resident"
+	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
@@ -94,12 +95,22 @@ type executionBridge struct{ RunnerDeps }
 
 func (b executionBridge) RefreshExecution(ctx context.Context, row *storage.Session) (context.Context, error) {
 	ctx, err := b.RunnerDeps.RefreshExecution(ctx, row)
-	return toolPolicyContext(ctx), err
+	if err != nil {
+		return ctx, err
+	}
+	return toolPolicyContext(ctx), nil
 }
 
-func (b executionBridge) ConfirmToolCall(ctx context.Context, id string, call llm.ToolCallRequest, assessment share.RiskAssessment, detail []share.ConfirmationDetailBlock) (share.ConfirmResult, error) {
+func (b executionBridge) ConfirmToolCall(ctx context.Context, id string, call llm.ToolCallRequest, assessment share.RiskAssessment, detail []share.ConfirmationDetailBlock) (operationresult.Result[share.ConfirmResult], error) {
 	result, err := b.RunnerDeps.ConfirmToolCall(ctx, id, call, RiskAssessment(assessment), detail)
-	return share.ConfirmResult(result), err
+	if err != nil {
+		return operationresult.Result[share.ConfirmResult]{}, err
+	}
+	adapted := operationresult.Result[share.ConfirmResult]{Status: result.Status, Message: result.Message}
+	if result.Status == operationresult.Success {
+		adapted.Data = share.ConfirmResult(result.Data)
+	}
+	return adapted, err
 }
 
 func toInternalToolQuery(query ToolQuery) share.ToolQuery {

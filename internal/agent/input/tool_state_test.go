@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/operationresult"
 	"elbot/internal/testutil"
 	"elbot/internal/tool"
 	"elbot/internal/tool/discovery"
@@ -133,13 +134,13 @@ func (t agentDetailTool) Info() toolshare.Info {
 
 func (t agentDetailTool) Schema() llm.ToolSchema { return llm.ToolSchema{} }
 
-func (t agentDetailTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
-		{
-			result := &toolshare.Result{Content: t.detail}
-			return result, result.Content, nil
-		}
-	}), nil
+func (t agentDetailTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+
+		result := &toolshare.Result{Content: t.detail}
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
+
+	})}, nil
 }
 
 func (t agentDetailTool) LoadDetail(context.Context) (toolshare.DetailBlock, error) {
@@ -164,13 +165,13 @@ func (t agentWrapperTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}
 }
 
-func (t agentWrapperTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
-		{
-			result := &toolshare.Result{Content: "ok"}
-			return result, result.Content, nil
-		}
-	}), nil
+func (t agentWrapperTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+
+		result := &toolshare.Result{Content: "ok"}
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
+
+	})}, nil
 }
 
 func toolNames(schemas []llm.ToolSchema) string {

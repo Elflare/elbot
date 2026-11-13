@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"elbot/internal/fileops"
+	"elbot/internal/operationresult"
 )
 
 type AgentSkillTool struct {
@@ -46,11 +47,15 @@ func agentSkillToolDescription() string {
 	return "读或写 AgentSkill 的 ELBOT_SKILL.toml。"
 }
 
-func (t AgentSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
-	preview, err := t.preview(ctx, req)
+func (t AgentSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
+	prepared, err := t.preview(ctx, req)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{}, err
 	}
+	if prepared.Status != operationresult.Success {
+		return operationresult.Result[*toolshare.PreparedCall]{Status: prepared.Status, Message: prepared.Message}, nil
+	}
+	preview := prepared.Data
 	details := []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("读取 AgentSkill %s 的 %s", preview.Name, AgentSkillConfigFile))}
 	if preview.Action == "write" {
 		filePreview := preview.File.Preview()
@@ -60,36 +65,38 @@ func (t AgentSkillTool) PrepareCall(ctx context.Context, req toolshare.CallReque
 			fmt.Sprintf("写入 AgentSkill %s 的 %s\n文件：%s\ndiff:", preview.Name, AgentSkillConfigFile, preview.Path),
 		)}
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		return t.call(ctx, preview)
-	}), nil
+	})}, nil
 }
 
-func (t AgentSkillTool) call(ctx context.Context, preview agentSkillPreview) (*toolshare.Result, string, error) {
+func (t AgentSkillTool) call(ctx context.Context, preview agentSkillPreview) (operationresult.Result[*toolshare.Result], string, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err.Error(), err
+		return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 	}
 	if preview.Action == "read" {
 		record, ok := t.manager.catalog.Get(preview.Name)
 		if !ok || record.Kind != KindAgent || AgentSkillConfigPath(record.Root) != preview.Path {
-			err := fmt.Errorf("AgentSkill target changed after preflight")
-			return nil, err.Error(), err
+			message := "AgentSkill target changed after preflight"
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Conflict, Message: message}, message, nil
 		}
-		{
-			result := &toolshare.Result{Content: readAgentSkillConfig(record, preview.Path)}
-			return result, fmt.Sprintf("action=read skill=%s path=%s", preview.Name, preview.Path), nil
+		content, err := readAgentSkillConfig(record, preview.Path)
+		if err != nil {
+			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 		}
+		result := &toolshare.Result{Content: content}
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("action=read skill=%s path=%s", preview.Name, preview.Path), nil
 	}
-	if err := t.manager.commitAgentSkillConfig(ctx, preview.Name, preview.Path, preview.File); err != nil {
-		{
-			callErr := fmt.Errorf("write %s for AgentSkill %s: %w", AgentSkillConfigFile, preview.Name, err)
-			return nil, callErr.Error(), callErr
-		}
+	committed, err := t.manager.commitAgentSkillConfig(ctx, preview.Name, preview.Path, preview.File)
+	if err != nil {
+		callErr := fmt.Errorf("write %s for AgentSkill %s: %w", AgentSkillConfigFile, preview.Name, err)
+		return operationresult.Result[*toolshare.Result]{}, callErr.Error(), callErr
 	}
-	{
-		result := &toolshare.Result{Content: fmt.Sprintf("wrote %s for AgentSkill %s and reloaded skills", AgentSkillConfigFile, preview.Name)}
-		return result, result.Content, nil
+	if committed.Status != operationresult.Success {
+		return operationresult.Result[*toolshare.Result]{Status: committed.Status, Message: committed.Message}, committed.Message, nil
 	}
+	result := &toolshare.Result{Content: fmt.Sprintf("wrote %s for AgentSkill %s and reloaded skills", AgentSkillConfigFile, preview.Name)}
+	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
 }
 
 type agentSkillPreview struct {
@@ -99,47 +106,50 @@ type agentSkillPreview struct {
 	File   *fileops.PreparedFile // 配置写入的批准内容与文件修订。
 }
 
-func (t AgentSkillTool) preview(ctx context.Context, req toolshare.CallRequest) (agentSkillPreview, error) {
+func (t AgentSkillTool) preview(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[agentSkillPreview], error) {
 	if err := ctx.Err(); err != nil {
-		return agentSkillPreview{}, err
+		return operationresult.Result[agentSkillPreview]{}, err
 	}
 	var args agentSkillArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return agentSkillPreview{}, fmt.Errorf("parse agent_skill arguments: %w", err)
+			return operationresult.Result[agentSkillPreview]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse agent_skill arguments: %v", err)}, nil
 		}
 	}
 	name := strings.TrimSpace(args.Name)
 	if err := validateSkillName(name); err != nil {
-		return agentSkillPreview{}, err
+		return operationresult.Result[agentSkillPreview]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	record, ok := t.manager.catalog.Get(name)
 	if !ok || record.Kind != KindAgent {
-		return agentSkillPreview{}, fmt.Errorf("AgentSkill %q not found", name)
+		return operationresult.Result[agentSkillPreview]{Status: operationresult.NotFound, Message: fmt.Sprintf("AgentSkill %q not found", name)}, nil
 	}
 	path := AgentSkillConfigPath(record.Root)
 	action := strings.TrimSpace(args.Action)
 	switch action {
 	case "read":
-		return agentSkillPreview{Action: action, Name: name, Path: path}, nil
+		return operationresult.Result[agentSkillPreview]{Status: operationresult.Success, Data: agentSkillPreview{Action: action, Name: name, Path: path}}, nil
 	case "write":
 		if strings.TrimSpace(args.Toml) == "" {
-			return agentSkillPreview{}, fmt.Errorf("toml is required for write")
+			return operationresult.Result[agentSkillPreview]{Status: operationresult.InvalidArguments, Message: "toml is required for write"}, nil
 		}
 		if _, err := ParseAgentSkillManifest([]byte(args.Toml)); err != nil {
-			return agentSkillPreview{}, err
+			return operationresult.Result[agentSkillPreview]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
 		file, err := fileops.PrepareFileWrite(ctx, path, args.Toml)
 		if err != nil {
-			return agentSkillPreview{}, err
+			return operationresult.Result[agentSkillPreview]{}, err
 		}
-		return agentSkillPreview{Action: action, Name: name, Path: path, File: file}, nil
+		if file.Status != operationresult.Success {
+			return operationresult.Result[agentSkillPreview]{Status: file.Status, Message: file.Message}, nil
+		}
+		return operationresult.Result[agentSkillPreview]{Status: operationresult.Success, Data: agentSkillPreview{Action: action, Name: name, Path: path, File: file.Data}}, nil
 	default:
-		return agentSkillPreview{}, fmt.Errorf("invalid action %q; use read or write", args.Action)
+		return operationresult.Result[agentSkillPreview]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("invalid action %q; use read or write", args.Action)}, nil
 	}
 }
 
-func readAgentSkillConfig(record record, path string) string {
+func readAgentSkillConfig(record record, path string) (string, error) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "AgentSkill: %s\n", record.Name)
 	fmt.Fprintf(&b, "Config file: %s\n", AgentSkillConfigFile)
@@ -158,8 +168,10 @@ func readAgentSkillConfig(record record, path string) string {
 		}
 	} else if os.IsNotExist(err) {
 		b.WriteString("\nNo current TOML.\n")
+	} else {
+		return "", err
 	}
 	b.WriteString("\nFormat:\n")
 	b.WriteString("# 文档型 Skill 只限制可见性时，可以只写：\nrisk = \"high\"\nsuperadmin_only = true\n\n# 注册成普通工具时，补齐命令和 schema：\nrisk = \"medium\"\nsuperadmin_only = false\ntags = [\"doc\"]\ncommand = [\"python\", \"foo.py\"]\ntimeout_seconds = 30\nexpose_root = false\n\nparameters = '''\n{\n  \"type\": \"object\",\n  \"required\": [\"input\"],\n  \"properties\": {\n    \"input\": {\"type\": \"string\", \"description\": \"输入文本\"},\n    \"mode\": {\"type\": \"string\", \"description\": \"处理模式\"}\n  }\n}\n'''\n\n[args]\ninput = \"--input\"\nmode = \"--mode\"\n")
-	return strings.TrimRight(b.String(), "\n")
+	return strings.TrimRight(b.String(), "\n"), nil
 }

@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -45,7 +46,7 @@ func TestCronBridgeStorageAndNotifications(t *testing.T) {
 	}
 	write := func(args string) {
 		t.Helper()
-		if _, _, err := callTool(ctx, tools[2], share.CallRequest{Arguments: json.RawMessage(args)}); err != nil {
+		if result, _, err := callTool(ctx, tools[2], share.CallRequest{Arguments: json.RawMessage(args)}); err != nil || result.Status != operationresult.Success {
 			t.Fatal(err)
 		}
 	}
@@ -65,15 +66,15 @@ func TestCronBridgeStorageAndNotifications(t *testing.T) {
 		t.Fatal(ok, err)
 	}
 	info, err := bridge.GetByName(ctx, "reminder")
-	if err != nil || !info.Completed || info.CreatedBy.ActorIdentity != owner.ActorIdentity {
+	if err != nil || !info.Data.Completed || info.Data.CreatedBy.ActorIdentity != owner.ActorIdentity {
 		t.Fatalf("read = %+v %v", info, err)
 	}
 	result, _, err := callTool(ctx, tools[1], share.CallRequest{})
-	if err != nil || result.Content != "没有符合条件的定时任务。" {
+	if err != nil || result.Status != operationresult.Success || result.Data.Content != "没有符合条件的定时任务。" {
 		t.Fatalf("filtered = %+v %v", result, err)
 	}
 	result, _, err = callTool(ctx, tools[1], share.CallRequest{Arguments: json.RawMessage(`{"include_completed":true}`)})
-	if err != nil || !result.NeedsElyphRules || strings.Contains(result.Content, "delivery_complete") {
+	if err != nil || result.Status != operationresult.Success || !result.Data.NeedsElyphRules || strings.Contains(result.Data.Content, "delivery_complete") {
 		t.Fatalf("query = %+v %v", result, err)
 	}
 	write(`{"operation":"update","name":"reminder","title":"renamed"}`)
@@ -88,7 +89,7 @@ func TestCronBridgeStorageAndNotifications(t *testing.T) {
 	}
 	write(`{"operation":"disable","name":"reminder"}`)
 	info, err = bridge.GetByName(ctx, "reminder")
-	if err != nil || info.Enabled || info.NextRunAt != nil {
+	if err != nil || info.Data.Enabled || info.Data.NextRunAt != nil {
 		t.Fatalf("disabled = %+v %v", info, err)
 	}
 	write(`{"operation":"delete","name":"reminder"}`)
@@ -100,7 +101,7 @@ func TestCronBridgeStorageAndNotifications(t *testing.T) {
 			t.Fatal(event)
 		}
 	}
-	if err := bridge.DisableByName(ctx, "missing"); !errors.Is(err, storage.ErrNotFound) {
+	if result, err := bridge.DisableByName(ctx, "missing"); err != nil || result.Status != operationresult.NotFound {
 		t.Fatal(err)
 	}
 	canceled, cancel := context.WithCancel(ctx)
@@ -125,7 +126,7 @@ func TestCronBridgeFiltersStorageRecordsAndReportsCommittedNotifyFailure(t *test
 		t.Fatal(err)
 	}
 	items, err := bridge.List(t.Context(), true)
-	if err != nil || len(items) != 0 {
+	if err != nil || items.Status != operationresult.Success || len(items.Data) != 0 {
 		t.Fatal(items, err)
 	}
 	if err := changed.Close(context.Background()); err != nil {

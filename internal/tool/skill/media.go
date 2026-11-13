@@ -14,21 +14,22 @@ import (
 	"strings"
 
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 )
 
 // prepareGoMedia changes only the stdin copy and only an explicit media_inputs field.
-func prepareGoMedia(ctx context.Context, raw json.RawMessage, call toolshare.MediaCall, base string) (json.RawMessage, error) {
+func prepareGoMedia(ctx context.Context, raw json.RawMessage, call toolshare.MediaCall, base string) (operationresult.Result[json.RawMessage], error) {
 	var payload map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		return nil, err
+		return operationresult.Result[json.RawMessage]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	value, ok := payload["media_inputs"]
 	if !ok {
-		return raw, nil
+		return operationresult.Result[json.RawMessage]{Status: operationresult.Success, Data: raw}, nil
 	}
 	var inputs []toolshare.MediaInput
 	if err := json.Unmarshal(value, &inputs); err != nil {
-		return nil, fmt.Errorf("media_inputs: %w", err)
+		return operationresult.Result[json.RawMessage]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("media_inputs: %v", err)}, nil
 	}
 	type preparedInput struct {
 		MediaID  string `json:"media"`
@@ -43,20 +44,23 @@ func prepareGoMedia(ctx context.Context, raw json.RawMessage, call toolshare.Med
 	for _, input := range inputs {
 		if entry, ok := preparedByID[input.MediaID]; ok {
 			if err := ctx.Err(); err != nil {
-				return nil, err
+				return operationresult.Result[json.RawMessage]{}, err
 			}
 			prepared = append(prepared, entry)
 			continue
 		}
 		path, metadata, err := call.Export(ctx, input.MediaID, base)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[json.RawMessage]{}, err
 		}
-		entry := preparedInput{MediaID: input.MediaID, Path: filepath.ToSlash(path), Name: metadata.Name, MIMEType: metadata.MIMEType, Size: metadata.Size}
-		if metadata.Size <= 1024*1024 {
+		if metadata.Status != operationresult.Success {
+			return operationresult.Result[json.RawMessage]{Status: metadata.Status, Message: metadata.Message}, nil
+		}
+		entry := preparedInput{MediaID: input.MediaID, Path: filepath.ToSlash(path), Name: metadata.Data.Name, MIMEType: metadata.Data.MIMEType, Size: metadata.Data.Size}
+		if metadata.Data.Size <= 1024*1024 {
 			data, err := os.ReadFile(filepath.Join(base, path))
 			if err != nil {
-				return nil, err
+				return operationresult.Result[json.RawMessage]{}, err
 			}
 			entry.Base64 = base64.StdEncoding.EncodeToString(data)
 		}
@@ -65,21 +69,25 @@ func prepareGoMedia(ctx context.Context, raw json.RawMessage, call toolshare.Med
 	}
 	workspace, err := call.Workspace(base)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[json.RawMessage]{}, err
 	}
 	payload["media_inputs"], _ = json.Marshal(prepared)
 	payload["media_workspace"], _ = json.Marshal(filepath.ToSlash(workspace))
-	return json.Marshal(payload)
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return operationresult.Result[json.RawMessage]{}, err
+	}
+	return operationresult.Result[json.RawMessage]{Status: operationresult.Success, Data: data}, nil
 }
 
-func prepareCommandMedia(ctx context.Context, raw json.RawMessage, manifest AgentSkillManifest, call toolshare.MediaCall, base string) (json.RawMessage, error) {
+func prepareCommandMedia(ctx context.Context, raw json.RawMessage, manifest AgentSkillManifest, call toolshare.MediaCall, base string) (operationresult.Result[json.RawMessage], error) {
 	properties, _ := manifest.Parameters["properties"].(map[string]any)
 	if !schemaContainsMedia(manifest.Parameters) || len(bytes.TrimSpace(raw)) == 0 {
-		return raw, nil
+		return operationresult.Result[json.RawMessage]{Status: operationresult.Success, Data: raw}, nil
 	}
 	values := map[string]json.RawMessage{}
 	if err := json.Unmarshal(raw, &values); err != nil {
-		return nil, err
+		return operationresult.Result[json.RawMessage]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	for name, property := range properties {
 		value, ok := values[name]
@@ -88,11 +96,18 @@ func prepareCommandMedia(ctx context.Context, raw json.RawMessage, manifest Agen
 		}
 		prepared, err := prepareMediaValue(ctx, value, property, call, base, name)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[json.RawMessage]{}, err
 		}
-		values[name] = prepared
+		if prepared.Status != operationresult.Success {
+			return prepared, nil
+		}
+		values[name] = prepared.Data
 	}
-	return json.Marshal(values)
+	data, err := json.Marshal(values)
+	if err != nil {
+		return operationresult.Result[json.RawMessage]{}, err
+	}
+	return operationresult.Result[json.RawMessage]{Status: operationresult.Success, Data: data}, nil
 }
 
 func schemaContainsMedia(value any) bool {
@@ -116,39 +131,53 @@ func schemaContainsMedia(value any) bool {
 	return false
 }
 
-func prepareMediaValue(ctx context.Context, raw json.RawMessage, schemaValue any, call toolshare.MediaCall, base, name string) (json.RawMessage, error) {
+func prepareMediaValue(ctx context.Context, raw json.RawMessage, schemaValue any, call toolshare.MediaCall, base, name string) (operationresult.Result[json.RawMessage], error) {
 	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
-		return nil, fmt.Errorf("media argument %s must not be null", name)
+		return operationresult.Result[json.RawMessage]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("media argument %s must not be null", name)}, nil
 	}
 	schema, _ := schemaValue.(map[string]any)
 	switch schema["type"] {
 	case "media":
 		var id string
 		if err := json.Unmarshal(raw, &id); err != nil {
-			return nil, fmt.Errorf("media argument %s must be a media ID", name)
+			return operationresult.Result[json.RawMessage]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("media argument %s must be a media ID", name)}, nil
 		}
-		path, _, err := call.Export(ctx, id, base)
+		path, metadata, err := call.Export(ctx, id, base)
 		if err != nil {
-			return nil, fmt.Errorf("media argument %s: %w", name, err)
+			return operationresult.Result[json.RawMessage]{}, fmt.Errorf("media argument %s: %w", name, err)
 		}
-		return json.Marshal(filepath.ToSlash(path))
+		if metadata.Status != operationresult.Success {
+			return operationresult.Result[json.RawMessage]{Status: metadata.Status, Message: metadata.Message}, nil
+		}
+		data, err := json.Marshal(filepath.ToSlash(path))
+		if err != nil {
+			return operationresult.Result[json.RawMessage]{}, err
+		}
+		return operationresult.Result[json.RawMessage]{Status: operationresult.Success, Data: data}, nil
 	case "array":
 		var items []json.RawMessage
 		if err := json.Unmarshal(raw, &items); err != nil {
-			return nil, fmt.Errorf("media argument %s must be an array", name)
+			return operationresult.Result[json.RawMessage]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("media argument %s must be an array", name)}, nil
 		}
 		for i, item := range items {
 			prepared, err := prepareMediaValue(ctx, item, schema["items"], call, base, fmt.Sprintf("%s[%d]", name, i))
 			if err != nil {
-				return nil, err
+				return operationresult.Result[json.RawMessage]{}, err
 			}
-			items[i] = prepared
+			if prepared.Status != operationresult.Success {
+				return prepared, nil
+			}
+			items[i] = prepared.Data
 		}
-		return json.Marshal(items)
+		data, err := json.Marshal(items)
+		if err != nil {
+			return operationresult.Result[json.RawMessage]{}, err
+		}
+		return operationresult.Result[json.RawMessage]{Status: operationresult.Success, Data: data}, nil
 	case "object":
 		var fields map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &fields); err != nil {
-			return nil, fmt.Errorf("media argument %s must be an object", name)
+			return operationresult.Result[json.RawMessage]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("media argument %s must be an object", name)}, nil
 		}
 		properties, _ := schema["properties"].(map[string]any)
 		for field, property := range properties {
@@ -158,77 +187,99 @@ func prepareMediaValue(ctx context.Context, raw json.RawMessage, schemaValue any
 			}
 			prepared, err := prepareMediaValue(ctx, value, property, call, base, name+"."+field)
 			if err != nil {
-				return nil, err
+				return operationresult.Result[json.RawMessage]{}, err
 			}
-			fields[field] = prepared
+			if prepared.Status != operationresult.Success {
+				return prepared, nil
+			}
+			fields[field] = prepared.Data
 		}
-		return json.Marshal(fields)
+		data, err := json.Marshal(fields)
+		if err != nil {
+			return operationresult.Result[json.RawMessage]{}, err
+		}
+		return operationresult.Result[json.RawMessage]{Status: operationresult.Success, Data: data}, nil
 	default:
-		return raw, nil
+		return operationresult.Result[json.RawMessage]{Status: operationresult.Success, Data: raw}, nil
 	}
 }
 
-func resultFromStdoutWithMedia(ctx context.Context, out string, call toolshare.MediaCall, base string) (*toolshare.Result, error) {
+func resultFromStdoutWithMedia(ctx context.Context, out string, call toolshare.MediaCall, base string) (operationresult.Result[*toolshare.Result], error) {
 	trimmed := strings.TrimSpace(out)
-	var structured struct {
-		Content  string `json:"content"`
-		Segments []struct {
-			Type     llm.MessageSegmentType `json:"type"`
-			Text     string                 `json:"text"`
-			MediaID  string                 `json:"media"`
-			Path     string                 `json:"path"`
-			Name     string                 `json:"name"`
-			MIMEType string                 `json:"mime_type"`
-		} `json:"segments"`
-	}
-	if err := json.Unmarshal([]byte(trimmed), &structured); err != nil || (structured.Content == "" && len(structured.Segments) == 0) {
+	var structured map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(trimmed), &structured); err != nil || (structured["content"] == nil && structured["segments"] == nil) {
 		if trimmed == "" {
-			return &toolshare.Result{}, nil
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{}}, nil
 		}
-		return &toolshare.Result{Content: truncateOutput(out)}, nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: truncateOutput(out)}}, nil
 	}
-	result := &toolshare.Result{Content: truncateOutput(structured.Content)}
-	if len(structured.Segments) == 0 {
-		return result, nil
+	result := &toolshare.Result{}
+	if raw, ok := structured["content"]; ok {
+		if err := json.Unmarshal(raw, &result.Content); err != nil {
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Failed, Message: err.Error()}, nil
+		}
+	}
+	var segments []struct {
+		Type     llm.MessageSegmentType `json:"type"`
+		Text     string                 `json:"text"`
+		MediaID  string                 `json:"media"`
+		Path     string                 `json:"path"`
+		Name     string                 `json:"name"`
+		MIMEType string                 `json:"mime_type"`
+	}
+	if raw, ok := structured["segments"]; ok {
+		if err := json.Unmarshal(raw, &segments); err != nil {
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Failed, Message: err.Error()}, nil
+		}
+	}
+	result.Content = truncateOutput(result.Content)
+	if len(segments) == 0 {
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, nil
 	}
 	result.Segments = llm.TextSegments(result.Content)
-	for _, segment := range structured.Segments {
+	for _, segment := range segments {
 		if segment.Type == llm.SegmentText {
 			if segment.MediaID != "" || segment.Path != "" {
-				return nil, fmt.Errorf("text segment cannot contain media")
+				return operationresult.Result[*toolshare.Result]{Status: operationresult.Failed, Message: "text segment cannot contain media"}, nil
 			}
 			result.Segments = append(result.Segments, llm.MessageSegment{Type: llm.SegmentText, Text: segment.Text})
 			continue
 		}
 		if segment.Type != llm.SegmentImage && segment.Type != llm.SegmentFile {
-			return nil, fmt.Errorf("unsupported skill segment type %q", segment.Type)
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Failed, Message: fmt.Sprintf("unsupported skill segment type %q", segment.Type)}, nil
 		}
 		if (segment.MediaID == "") == (segment.Path == "") {
-			return nil, fmt.Errorf("media segment requires exactly one of media or path")
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Failed, Message: "media segment requires exactly one of media or path"}, nil
 		}
 		if call == nil {
-			return nil, fmt.Errorf("skill media runtime is not configured")
+			return operationresult.Result[*toolshare.Result]{}, fmt.Errorf("skill media runtime is not configured")
 		}
 		id := segment.MediaID
 		if segment.Path != "" {
 			metadata, err := call.Import(ctx, base, segment.Path, toolshare.MediaImportOptions{Name: segment.Name, MIMEType: segment.MIMEType})
 			if err != nil {
-				return nil, err
+				return operationresult.Result[*toolshare.Result]{}, err
 			}
-			id = metadata.ID
+			if metadata.Status != operationresult.Success {
+				return operationresult.Result[*toolshare.Result]{Status: metadata.Status, Message: metadata.Message}, nil
+			}
+			id = metadata.Data.ID
 		}
 		metadata, err := call.Retain(ctx, id)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[*toolshare.Result]{}, err
+		}
+		if metadata.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.Result]{Status: metadata.Status, Message: metadata.Message}, nil
 		}
 		name, mimeType := segment.Name, segment.MIMEType
 		if name == "" {
-			name = metadata.Name
+			name = metadata.Data.Name
 		}
 		if mimeType == "" {
-			mimeType = metadata.MIMEType
+			mimeType = metadata.Data.MIMEType
 		}
 		result.Segments = append(result.Segments, llm.MessageSegment{Type: segment.Type, Text: segment.Text, MediaID: id, Name: name, MIMEType: mimeType})
 	}
-	return result, nil
+	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, nil
 }

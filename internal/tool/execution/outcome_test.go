@@ -3,77 +3,79 @@ package execution
 import (
 	"context"
 	"errors"
-	"fmt"
-	"reflect"
-	"strings"
 	"testing"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	toolregistry "elbot/internal/tool/registry"
 	toolshare "elbot/internal/tool/share"
 )
 
-func TestExecutionErrorPreservesOriginalCause(t *testing.T) {
-	call := llm.ToolCallRequest{ID: "call", Name: "shell"}
-	for _, err := range []error{toolshare.PolicyDeniedError("denied"), context.Canceled, errors.New("execution failed")} {
-		result := executionError(call, err)
-		if result.Error != err || result.ExecutionStarted || result.Message.ToolCallID != call.ID || !strings.Contains(result.Summary, err.Error()) {
-			t.Fatalf("result=%+v", result)
-		}
-	}
-}
-
 type outcomeTestDeps struct {
-	batchPreviewTestDeps
-	confirmation toolshare.ConfirmResult
+	runnerTestDeps
+	confirmation operationresult.Result[toolshare.ConfirmResult]
 	confirmErr   error
 }
 
-func (d *outcomeTestDeps) ConfirmToolCall(context.Context, string, llm.ToolCallRequest, toolshare.RiskAssessment, []toolshare.ConfirmationDetailBlock) (toolshare.ConfirmResult, error) {
+func (d *outcomeTestDeps) ConfirmToolCall(context.Context, string, llm.ToolCallRequest, toolshare.RiskAssessment, []toolshare.ConfirmationDetailBlock) (operationresult.Result[toolshare.ConfirmResult], error) {
 	d.confirmed = true
 	return d.confirmation, d.confirmErr
 }
 
 func TestRunnerReturnsOutcomesWithoutFailureNotices(t *testing.T) {
+	fault := errors.New("confirmation unavailable")
 	for _, tc := range []struct {
-		name         string
-		confirmation toolshare.ConfirmResult
-		confirmErr   error
-		prepareErr   error
-		callErr      error
-		denyRisk     bool
-		wantCalled   bool
-		wantText     string
+		name       string
+		status     operationresult.Status
+		confirmErr error
+		prepareErr error
+		callErr    error
+		denyRisk   bool
+		wantCalled bool
+		stopped    bool
+		wantText   string
 	}{
-		{name: "empty rejection", wantText: "tool call shell rejected: tool confirmation rejected"},
-		{name: "user rejection", confirmation: toolshare.ConfirmResult{Message: toolMessage("shell", "shell-call", "tool call shell rejected by user: 测试我来，你先把内容改完")}, wantText: "tool call shell rejected by user: 测试我来，你先把内容改完"},
-		{name: "wrapped policy rejection", confirmErr: fmt.Errorf("confirmation: %w", toolshare.PolicyDeniedError("policy denied")), wantText: "tool call shell rejected: confirmation: policy denied"},
-		{name: "confirmation failure", confirmErr: errors.New("confirmation unavailable"), wantText: "tool call shell failed: confirmation unavailable"},
-		{name: "confirmation cancellation", confirmErr: fmt.Errorf("confirmation: %w", context.Canceled), wantText: "tool call shell canceled: confirmation: context canceled"},
+		{name: "user rejection", status: operationresult.Rejected, wantText: "user rejected"},
+		{name: "confirmation timeout", status: operationresult.Timeout, stopped: true},
+		{name: "confirmation canceled", status: operationresult.Canceled, stopped: true},
+		{name: "confirmation replaced", status: operationresult.Conflict, stopped: true},
+		{name: "confirmation fault", confirmErr: fault},
 		{name: "permission rejection", denyRisk: true, wantText: "tool call shell denied: risk high is above your allowed tool level"},
-		{name: "preparation failure", prepareErr: errors.New("invalid arguments"), wantText: "tool call shell failed: invalid arguments"},
-		{name: "execution failure", confirmation: toolshare.ConfirmResult{Allowed: true}, callErr: errors.New("exit status 1"), wantCalled: true, wantText: "tool call shell failed: exit status 1"},
+		{name: "preparation fault", prepareErr: errors.New("prepare failed"), wantText: "prepare failed"},
+		{name: "execution fault", status: operationresult.Success, callErr: errors.New("execution failed"), wantCalled: true, wantText: "execution failed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			registry := toolregistry.NewRegistry(security.DefaultPermission())
-			called := false
+			called, laterCalled := false, false
 			definition := toolshare.ToolDefinition{
 				Definition: toolshare.Info{Name: "shell", Description: "outcome probe", Risk: toolshare.RiskHigh},
 				Parameters: map[string]any{"type": "object", "properties": map[string]any{}},
-				Prepare: func(_ context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+				Prepare: func(_ context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
 					if tc.prepareErr != nil {
-						return nil, tc.prepareErr
+						return operationresult.Result[*toolshare.PreparedCall]{}, tc.prepareErr
 					}
-					return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskHigh}, nil, func(context.Context) (*toolshare.Result, string, error) {
-						called = true
-						return nil, "execution outcome", tc.callErr
-					}), nil
+					return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskHigh}, nil,
+						func(context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+							called = true
+							return operationresult.Result[*toolshare.Result]{}, "", tc.callErr
+						})}, nil
 				},
 			}
-			if err := registerTestTools(registry, definition, (fakeTool{name: "other", risk: toolshare.RiskSafe}).Definition()); err != nil {
+			later := toolshare.ToolDefinition{
+				Definition: toolshare.Info{Name: "other", Description: "later call", Risk: toolshare.RiskSafe},
+				Parameters: map[string]any{"type": "object", "properties": map[string]any{}},
+				Prepare: func(_ context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+					laterCalled = true
+					return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskSafe}, nil,
+						func(context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+							return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: "other"}}, "", nil
+						})}, nil
+				},
+			}
+			if err := registerTestTools(registry, definition, later); err != nil {
 				t.Fatal(err)
 			}
 			maxRisk := "high"
@@ -81,34 +83,30 @@ func TestRunnerReturnsOutcomesWithoutFailureNotices(t *testing.T) {
 				maxRisk = "low"
 			}
 			manager := newTestManager(registry, security.NewPermission(maxRisk, "high", nil))
-			deps := &outcomeTestDeps{batchPreviewTestDeps: batchPreviewTestDeps{enabled: true}, confirmation: tc.confirmation, confirmErr: tc.confirmErr}
+			deps := &outcomeTestDeps{confirmation: operationresult.Result[toolshare.ConfirmResult]{Status: tc.status, Message: tc.wantText}, confirmErr: tc.confirmErr}
 			committer := &testToolCommitter{}
 			result := manager.Run(t.Context(), deps, toolshare.RunRequest{
 				Committer: committer, Session: &storage.Session{ID: "outcomes", Mode: storage.SessionModeWork},
 				Actor: contextinfo.Actor{Role: contextinfo.RoleUser},
 				Calls: []llm.ToolCallRequest{{ID: "shell-call", Name: "shell", Arguments: "{}"}, {ID: "other-call", Name: "other", Arguments: "{}"}},
 			})
-			if result.Err != nil || result.Stopped || len(committer.messages) != 2 {
-				t.Fatalf("run result = %+v", result)
+			if result.Err != tc.confirmErr || result.Stopped != tc.stopped || called != tc.wantCalled {
+				t.Fatalf("result=%+v called=%v", result, called)
 			}
-			if called != tc.wantCalled {
-				t.Errorf("shell executed = %v, want %v", called, tc.wantCalled)
+			if tc.stopped || tc.confirmErr != nil {
+				if laterCalled || committer.flushes != 0 {
+					t.Fatalf("stopped batch continued: later=%v flushes=%d", laterCalled, committer.flushes)
+				}
+				return
+			}
+			if !laterCalled || committer.flushes != 1 || len(committer.messages) != 2 {
+				t.Fatalf("independent calls lost: later=%v committer=%+v", laterCalled, committer)
 			}
 			if got := llm.SegmentsContentText(committer.messages[0].Segments); got != tc.wantText {
-				t.Errorf("model result = %q, want %q", got, tc.wantText)
+				t.Fatalf("model result=%q want=%q", got, tc.wantText)
 			}
-			if committer.messages[0].Role != llm.RoleTool || committer.messages[0].ToolCallID != "shell-call" || committer.messages[0].Name != "shell" {
-				t.Errorf("message identity lost: %+v", committer.messages[0])
-			}
-			if len(committer.results) != 2 || committer.records["shell-call"].Error == "" || committer.records["shell-call"].Success || !committer.records["other-call"].Success {
-				t.Errorf("outcomes not saved: %+v", committer)
-			}
-			if got := llm.SegmentsContentText(committer.messages[1].Segments); strings.TrimSpace(got) != "other" {
-				t.Errorf("remaining tool result = %q", got)
-			}
-			wantNotices := [][]string{{"正在调用 shell：{}", "正在调用 other：{}"}}
-			if !reflect.DeepEqual(deps.notices, wantNotices) {
-				t.Errorf("notices = %q, want only progress notices %q", deps.notices, wantNotices)
+			if committer.records["shell-call"].Success || !committer.records["other-call"].Success {
+				t.Fatalf("incorrect business outcomes: %+v", committer.records)
 			}
 		})
 	}

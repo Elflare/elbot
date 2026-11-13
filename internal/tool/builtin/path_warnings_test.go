@@ -1,6 +1,7 @@
 package builtin
 
 import (
+	"elbot/internal/operationresult"
 	workspacepath "elbot/internal/workspace"
 	"encoding/json"
 	"os"
@@ -20,12 +21,12 @@ func TestSendFileAbsoluteWarningAndRestrictedPath(t *testing.T) {
 	tool := (SendFileTool{})
 	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	result, _, err := callTool(ctx, tool.Definition(), share.CallRequest{Arguments: args})
-	if err != nil || len(result.Warnings) != 1 || result.Warnings[0] != share.AbsolutePathWorkspaceWarning {
+	if err != nil || result.Status != operationresult.Success || len(result.Data.Warnings) != 1 || result.Data.Warnings[0] != share.AbsolutePathWorkspaceWarning {
 		t.Fatalf("foreground=%+v err=%v", result, err)
 	}
 	ctx = workspacepath.WithPathScope(ctx, workspacepath.PathScope{Dir: filepath.Dir(path), Restricted: true})
 	result, _, err = callTool(ctx, tool.Definition(), share.CallRequest{Arguments: args})
-	if err == nil {
+	if err != nil || result.Status == operationresult.Success {
 		t.Fatalf("background=%+v err=%v", result, err)
 	}
 }

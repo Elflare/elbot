@@ -5,6 +5,7 @@ package chat_history
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 
 	"elbot/internal/tool/share"
 	"time"
@@ -12,20 +13,20 @@ import (
 
 // Backend 由 Tool 根部适配实现，只传递本组件及 Share 的数据。
 type Backend interface {
-	Search(context.Context, SearchQuery) ([]share.Message, error)
-	Around(context.Context, AroundQuery) ([]share.Message, error)
-	GetMessage(context.Context, share.MessageKey) (share.Message, error)
+	Search(context.Context, SearchQuery) (operationresult.Result[[]share.Message], error)
+	Around(context.Context, AroundQuery) (operationresult.Result[[]share.Message], error)
+	GetMessage(context.Context, share.MessageKey) (operationresult.Result[share.Message], error)
 	// FetchMedia 保持请求顺序及重复项，逐项返回获取错误；未缓存项的尝试受上限约束。
 	FetchMedia(ctx context.Context, queries []MediaQuery, maxFetchAttempts int) ([]share.HistoryMediaResult, error)
 }
 
 // Manager 持有只读依赖；查询范围、选择状态及消息复用均限定在单次调用内。
 type Manager struct {
-	backend     Backend                                                                // 根部适配后的历史查询及媒体获取能力。
-	resolveChat func(context.Context, share.SearchRequest) (contextinfo.Source, error) // 根部裁决查询范围。
-	now         func() time.Time                                                       // 查询相对时间使用的时钟。
+	backend     Backend                                                                                        // 根部适配后的历史查询及媒体获取能力。
+	resolveChat func(context.Context, share.SearchRequest) (operationresult.Result[contextinfo.Source], error) // 根部裁决查询范围。
+	now         func() time.Time                                                                               // 查询相对时间使用的时钟。
 }
 
-func NewManager(backend Backend, now func() time.Time, resolveChat func(context.Context, share.SearchRequest) (contextinfo.Source, error)) *Manager {
+func NewManager(backend Backend, now func() time.Time, resolveChat func(context.Context, share.SearchRequest) (operationresult.Result[contextinfo.Source], error)) *Manager {
 	return &Manager{backend: backend, now: now, resolveChat: resolveChat}
 }

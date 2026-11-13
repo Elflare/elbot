@@ -4,13 +4,13 @@ package execution
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	toolshare "elbot/internal/tool/share"
 )
 
@@ -18,10 +18,6 @@ func newRunRecord(ctx context.Context, sessionID, eventName string, err error) e
 	level, status, content := slog.LevelInfo, events.ResultSucceeded, ""
 	if err != nil {
 		level, status, content = slog.LevelWarn, events.ResultFailed, err.Error()
-		var denied toolshare.PolicyDeniedError
-		if errors.As(err, &denied) {
-			status = events.ResultRejected
-		}
 		if events.LogStatus(err) == events.ResultCanceled {
 			level, status = slog.LevelInfo, events.ResultCanceled
 		}
@@ -61,14 +57,32 @@ func (m *Manager) recordCallCompleted(ctx context.Context, sessionID string, cal
 		Actor:      actor,
 		ElapsedMS:  time.Since(startedAt).Milliseconds(),
 		Summary:    result.Summary,
-		Result:     result.Result.LogContent(result.Error),
+		Result:     "",
 		Risk:       toolshare.TruncateLogContent(risk, 2048),
 		RunSource:  toolshare.TruncateLogContent(runSource, 2048),
 		Source:     toolshare.TruncateLogContent(string(source), 2048),
 		ToolCallID: toolshare.TruncateLogContent(call.ID, 2048),
 	}
+	if result.Error != nil {
+		content.Result = toolshare.TruncateLogContent(result.Error.Error(), 1024)
+	} else if result.Result.Status != operationresult.Success {
+		content.Result = toolshare.TruncateLogContent(result.Result.Message, 1024)
+	} else if result.Result.Data != nil {
+		content.Result = result.Result.Data.LogContent()
+	}
 	data, _ := json.Marshal(content)
 	record := newRunRecord(ctx, sessionID, "tool_call_completed", result.Error)
+	if result.Error == nil {
+		switch result.Result.Status {
+		case operationresult.Failed, operationresult.Timeout:
+			record.ResultStatus = events.ResultFailed
+		case operationresult.Canceled:
+			record.ResultStatus = events.ResultCanceled
+		case operationresult.Success:
+		default:
+			record.ResultStatus = events.ResultRejected
+		}
+	}
 	record.Category, record.Type, record.ContentLimit, record.Content = events.LogCategoryAudit, events.ContentJSON, 0, string(data)
 	m.Log(ctx, record)
 }

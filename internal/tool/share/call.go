@@ -50,22 +50,14 @@ type Result struct {
 	Outputs  []delivery.Output
 }
 
-// LogContent returns a log-only preview of the actual result and error, bounded
-// to 1024 Unicode characters including the ellipsis. Nil means no result; tool
-// warnings and the independent summary are not part of this preview.
-func (r *Result) LogContent(err error) string {
+// LogContent returns a log-only preview of the successful result, bounded to
+// 1024 Unicode characters. Warnings and the independent summary are excluded.
+func (r *Result) LogContent() string {
 	body := ""
 	if r != nil {
 		body = r.Content
 		if len(r.Segments) > 0 {
 			body = llm.SegmentsRawContentText(r.Segments)
-		}
-	}
-	if err != nil {
-		if body != "" {
-			body = err.Error() + "\n" + body
-		} else {
-			body = err.Error()
 		}
 	}
 	return TruncateLogContent(body, 1024)

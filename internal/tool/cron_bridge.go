@@ -4,12 +4,14 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/tool/builtin"
@@ -38,11 +40,11 @@ type cronBridge struct {
 	changed *signal.Signal[CronChangedEvent, signal.Empty] // Tool 实例拥有的任务定义变更信号。
 }
 
-func (b cronBridge) Upsert(ctx context.Context, req builtin.CronSaveRequest) (builtin.CronInfo, error) {
+func (b cronBridge) Upsert(ctx context.Context, req builtin.CronSaveRequest) (operationresult.Result[builtin.CronInfo], error) {
 	definition := req.Definition
 	name := normalizeCronName(definition.Name)
 	if name == "" {
-		return builtin.CronInfo{}, fmt.Errorf("cron name is required")
+		return operationresult.Result[builtin.CronInfo]{Status: operationresult.InvalidArguments, Message: "cron name is required"}, nil
 	}
 	meta := storage.CronMetadata{
 		Kind: storage.CronMetadataKind, Version: 2, Title: definition.Title,
@@ -54,7 +56,7 @@ func (b cronBridge) Upsert(ctx context.Context, req builtin.CronSaveRequest) (bu
 	}
 	data, err := json.Marshal(meta)
 	if err != nil {
-		return builtin.CronInfo{}, err
+		return operationresult.Result[builtin.CronInfo]{}, err
 	}
 	job, err := b.repo.Upsert(ctx, storage.UpsertCronJobRequest{
 		Name: name, Handler: storage.CronHandlerName, Schedule: req.Schedule,
@@ -62,26 +64,29 @@ func (b cronBridge) Upsert(ctx context.Context, req builtin.CronSaveRequest) (bu
 		ResetDelivery: req.ResetDelivery,
 	})
 	if err != nil {
-		return builtin.CronInfo{}, err
+		return operationresult.Result[builtin.CronInfo]{}, err
 	}
 	if err := b.notify(ctx, job.Name); err != nil {
-		return builtin.CronInfo{}, err
+		return operationresult.Result[builtin.CronInfo]{}, err
 	}
 	return cronInfo(*job)
 }
 
-func (b cronBridge) GetByName(ctx context.Context, name string) (builtin.CronInfo, error) {
+func (b cronBridge) GetByName(ctx context.Context, name string) (operationresult.Result[builtin.CronInfo], error) {
 	job, err := b.repo.GetByName(ctx, normalizeCronName(name))
+	if errors.Is(err, storage.ErrNotFound) {
+		return operationresult.Result[builtin.CronInfo]{Status: operationresult.NotFound, Message: fmt.Sprintf("定时任务 %q 不存在", name)}, nil
+	}
 	if err != nil {
-		return builtin.CronInfo{}, err
+		return operationresult.Result[builtin.CronInfo]{}, err
 	}
 	return cronInfo(*job)
 }
 
-func (b cronBridge) List(ctx context.Context, includeDisabled bool) ([]builtin.CronInfo, error) {
+func (b cronBridge) List(ctx context.Context, includeDisabled bool) (operationresult.Result[[]builtin.CronInfo], error) {
 	jobs, err := b.repo.List(ctx, includeDisabled)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[[]builtin.CronInfo]{}, err
 	}
 	result := []builtin.CronInfo{}
 	for _, job := range jobs {
@@ -90,30 +95,45 @@ func (b cronBridge) List(ctx context.Context, includeDisabled bool) ([]builtin.C
 		}
 		info, err := cronInfo(job)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[[]builtin.CronInfo]{}, err
 		}
-		result = append(result, info)
+		if info.Status != operationresult.Success {
+			return operationresult.Result[[]builtin.CronInfo]{Status: info.Status, Message: info.Message}, nil
+		}
+		result = append(result, info.Data)
 	}
-	return result, nil
+	return operationresult.Result[[]builtin.CronInfo]{Status: operationresult.Success, Data: result}, nil
 }
 
-func (b cronBridge) DisableByName(ctx context.Context, name string) error {
+func (b cronBridge) DisableByName(ctx context.Context, name string) (operationresult.Result[struct{}], error) {
 	name = normalizeCronName(name)
 	if err := b.repo.DisableByName(ctx, name); err != nil {
-		return err
+		if errors.Is(err, storage.ErrNotFound) {
+			return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: fmt.Sprintf("定时任务 %q 不存在", name)}, nil
+		}
+		return operationresult.Result[struct{}]{}, err
 	}
-	return b.notify(ctx, name)
+	if err := b.notify(ctx, name); err != nil {
+		return operationresult.Result[struct{}]{}, err
+	}
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
-func (b cronBridge) DeleteByName(ctx context.Context, name string) error {
+func (b cronBridge) DeleteByName(ctx context.Context, name string) (operationresult.Result[struct{}], error) {
 	name = normalizeCronName(name)
 	if err := b.repo.DeleteByName(ctx, name); err != nil {
-		return err
+		if errors.Is(err, storage.ErrNotFound) {
+			return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: fmt.Sprintf("定时任务 %q 不存在", name)}, nil
+		}
+		return operationresult.Result[struct{}]{}, err
 	}
-	return b.notify(ctx, name)
+	if err := b.notify(ctx, name); err != nil {
+		return operationresult.Result[struct{}]{}, err
+	}
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
-func (b cronBridge) ValidateSelection(provider, model string) error {
+func (b cronBridge) ValidateSelection(provider, model string) operationresult.Result[struct{}] {
 	return b.models.ValidateSelection(config.ModelSelection{Provider: provider, Model: model})
 }
 
@@ -127,28 +147,28 @@ func normalizeCronName(name string) string {
 	return "user.cron." + name
 }
 
-func cronInfo(job storage.CronJob) (builtin.CronInfo, error) {
+func cronInfo(job storage.CronJob) (operationresult.Result[builtin.CronInfo], error) {
 	var meta storage.CronMetadata
 	if err := json.Unmarshal([]byte(job.Metadata), &meta); err != nil {
-		return builtin.CronInfo{}, err
+		return operationresult.Result[builtin.CronInfo]{}, err
 	}
 	if job.Handler != storage.CronHandlerName || meta.Kind != storage.CronMetadataKind {
-		return builtin.CronInfo{}, fmt.Errorf("unsupported cron task %q", job.Name)
+		return operationresult.Result[builtin.CronInfo]{Status: operationresult.Incompatible, Message: fmt.Sprintf("unsupported cron task %q", job.Name)}, nil
 	}
 	var status storage.CronTaskStatus
 	if job.DeliveryState != "" {
 		if err := json.Unmarshal([]byte(job.DeliveryState), &status); err != nil {
-			return builtin.CronInfo{}, err
+			return operationresult.Result[builtin.CronInfo]{}, err
 		}
 	}
-	return builtin.CronInfo{
+	return operationresult.Result[builtin.CronInfo]{Status: operationresult.Success, Data: builtin.CronInfo{
 		Name: job.Name, Title: meta.Title, ScheduleMode: string(meta.Schedule.Mode), RunAt: meta.Schedule.RunAt, CronExpr: meta.Schedule.CronExpr,
 		TriggerMode: string(meta.Trigger.Mode), Message: meta.Trigger.Message, ToolListNames: meta.LLM.ToolListNames, ModelProvider: meta.LLM.ModelProvider, Model: meta.LLM.Model,
 		TargetID: meta.Target.ID, AllEnabledPlatforms: meta.Target.AllEnabledPlatforms, SourcePlatform: meta.Target.SourcePlatform,
 		CreatedBy: contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: meta.CreatedBy.Platform, ID: meta.CreatedBy.ID}, Name: meta.CreatedBy.Name},
 		Enabled:   job.Enabled, Completed: meta.Schedule.Mode == storage.CronScheduleOnce && (!job.Enabled || status.DeliveryComplete),
 		RunCount: job.RunCount, LastRunAt: job.LastRunAt, NextRunAt: job.NextRunAt, CreatedAt: job.CreatedAt, UpdatedAt: job.UpdatedAt,
-	}, nil
+	}}, nil
 }
 
 func (b cronBridge) notify(ctx context.Context, name string) error {

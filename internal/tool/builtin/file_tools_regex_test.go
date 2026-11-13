@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"errors"
 	"fmt"
 	"os"
@@ -41,11 +42,11 @@ func TestReadFileRegexSemantics(t *testing.T) {
 		t.Run(tc.query, func(t *testing.T) {
 			for _, target := range []string{path, root} {
 				result, _, err := callTool(t.Context(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": target, "mode": "grep", "query": tc.query})})
-				if err != nil {
+				if err != nil || result.Status != operationresult.Success {
 					t.Fatalf("%s: %v", target, err)
 				}
-				if !strings.Contains(result.Content, fmt.Sprintf("matches: %d\n", tc.count)) {
-					t.Fatalf("%s: %s", target, result.Content)
+				if !strings.Contains(result.Data.Content, fmt.Sprintf("matches: %d\n", tc.count)) {
+					t.Fatalf("%s: %s", target, result.Data.Content)
 				}
 			}
 		})
@@ -59,8 +60,8 @@ func TestReadFileInvalidRegex(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, target := range []string{path, root} {
-		_, _, err := callTool(t.Context(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": target, "mode": "grep", "query": "["})})
-		if err == nil || !strings.Contains(err.Error(), "invalid grep regex") {
+		result, _, err := callTool(t.Context(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": target, "mode": "grep", "query": "["})})
+		if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "invalid grep regex") {
 			t.Fatalf("%s: %v", target, err)
 		}
 	}
@@ -107,15 +108,15 @@ func TestDirectoryGrepGlob(t *testing.T) {
 		{[]string{"**/*", ".git/**", "vendor/**", "node_modules/**"}, 3},
 	} {
 		result, _, err := callTool(t.Context(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": root, "mode": "grep", "query": "needle", "glob": tc.glob})})
-		if err != nil {
+		if err != nil || result.Status != operationresult.Success {
 			t.Fatalf("%v: %v", tc.glob, err)
 		}
-		if !strings.Contains(result.Content, fmt.Sprintf("matches: %d\n", tc.want)) {
-			t.Fatalf("%v: %s", tc.glob, result.Content)
+		if !strings.Contains(result.Data.Content, fmt.Sprintf("matches: %d\n", tc.want)) {
+			t.Fatalf("%v: %s", tc.glob, result.Data.Content)
 		}
 	}
-	_, _, err := callTool(t.Context(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": root, "mode": "grep", "query": "needle", "glob": []string{"["}})})
-	if err == nil || !strings.Contains(err.Error(), "enumerate ripgrep files") {
+	result, _, err := callTool(t.Context(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": root, "mode": "grep", "query": "needle", "glob": []string{"["}})})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "enumerate ripgrep files") {
 		t.Fatalf("invalid glob: %v", err)
 	}
 }
@@ -127,8 +128,8 @@ func TestReadFileGlobRequiresDirectoryGrep(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ path, mode string }{{path, "read"}, {path, "grep"}, {root, "ast"}, {root, "ast_function"}} {
-		_, _, err := callTool(t.Context(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": tc.path, "mode": tc.mode, "query": "needle", "glob": []string{"*.go"}})})
-		if err == nil || !strings.Contains(err.Error(), "glob requires grep directory search") {
+		result, _, err := callTool(t.Context(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": tc.path, "mode": tc.mode, "query": "needle", "glob": []string{"*.go"}})})
+		if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "glob requires grep directory search") {
 			t.Fatalf("%+v: %v", tc, err)
 		}
 	}

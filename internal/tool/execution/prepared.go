@@ -4,11 +4,12 @@ package execution
 import (
 	"context"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/tool/share"
 	"encoding/json"
 )
 
-func (m *Manager) prepareCall(ctx context.Context, resolved resolvedTool, call llm.ToolCallRequest) (*share.PreparedCall, error) {
+func (m *Manager) prepareCall(ctx context.Context, resolved resolvedTool, call llm.ToolCallRequest) (operationresult.Result[*share.PreparedCall], error) {
 	if resolved.Source == share.SourceKindELwisp {
 		return prepareELwispTool(call, resolved)
 	}

@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -24,6 +25,7 @@ type testToolCommitter struct {
 	messages map[int]llm.LLMMessage
 	results  []storage.Message
 	records  map[string]storage.ToolCallRecord
+	flushes  int
 }
 
 func (c *testToolCommitter) Begin(_ context.Context, head *storage.Message) error {
@@ -46,7 +48,8 @@ func (c *testToolCommitter) Result(_ context.Context, index int, _ llm.ToolCallR
 	return nil
 }
 
-func (*testToolCommitter) Flush(context.Context) error {
+func (c *testToolCommitter) Flush(context.Context) error {
+	c.flushes++
 	return nil
 }
 
@@ -71,12 +74,12 @@ func (d *runnerTestDeps) ShouldSendPreview(context.Context, string) bool {
 	return false
 }
 
-func (d *runnerTestDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (toolshare.ConfirmResult, error) {
+func (d *runnerTestDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (operationresult.Result[toolshare.ConfirmResult], error) {
 	d.confirmed = true
 	if d.reject {
-		return toolshare.ConfirmResult{Message: toolMessage(call.Name, call.ID, "rejected")}, nil
+		return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Rejected, Message: "rejected"}, nil
 	}
-	return toolshare.ConfirmResult{Allowed: true}, nil
+	return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Success}, nil
 }
 
 func (d *runnerTestDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, func(), error) {
@@ -90,15 +93,21 @@ func (d *runnerTestDeps) PrepareToolContext(ctx context.Context, session *storag
 	return ctx
 }
 
-func (d *runnerTestDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error) {
+func (d *runnerTestDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, result operationresult.Result[[]llm.MessageSegment], callErr error) ([]llm.MessageSegment, error) {
 	d.completed++
-	return segments, nil
+	if callErr != nil {
+		return llm.TextSegments(callErr.Error()), nil
+	}
+	if result.Status != operationresult.Success {
+		return llm.TextSegments(result.Message), nil
+	}
+	return result.Data, nil
 }
 
 func (d *runnerTestDeps) SendPreview(ctx context.Context, text ...string) {}
 
-func (d *runnerTestDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
-	return nil
+func (d *runnerTestDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) (operationresult.Result[struct{}], error) {
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
 func (d *runnerTestDeps) PublishToolResult(_ context.Context, callID string, result delivery.ToolResult) {
@@ -132,8 +141,8 @@ func (runnerPreflightTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "preflight_tool", Parameters: map[string]any{"type": "object"}}
 }
 
-func (runnerPreflightTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return nil, fmt.Errorf("preflight rejected")
+func (runnerPreflightTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Rejected, Message: "preflight rejected"}, nil
 }
 
 type runnerContextPreflightTool struct{}
@@ -148,22 +157,22 @@ func (runnerContextPreflightTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "context_preflight", Parameters: map[string]any{"type": "object"}}
 }
 
-func (runnerContextPreflightTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (runnerContextPreflightTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
 	if ctx.Value(runnerContextKey{}) != "prepared" {
-		return nil, fmt.Errorf("missing prepared context")
+		return operationresult.Result[*toolshare.PreparedCall]{}, fmt.Errorf("missing prepared context")
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskLow}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskLow}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		if ctx.Value(runnerContextKey{}) != "prepared" {
 			{
 				callErr := fmt.Errorf("missing prepared context during call")
-				return nil, callErr.Error(), callErr
+				return operationresult.Result[*toolshare.Result]{}, callErr.Error(), callErr
 			}
 		}
-		{
-			result := &toolshare.Result{Content: "called"}
-			return result, result.Content, nil
-		}
-	}), nil
+
+		result := &toolshare.Result{Content: "called"}
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
+
+	})}, nil
 }
 
 type runnerImageTool struct{}
@@ -180,10 +189,10 @@ func (runnerResultTool) Schema() llm.ToolSchema {
 func (t runnerResultTool) Definition() toolshare.ToolDefinition {
 	return executionTestDefinition(t)
 }
-func (runnerResultTool) PrepareCall(_ context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskLow}, nil, func(context.Context) (*toolshare.Result, string, error) {
-		return &toolshare.Result{Content: "@@ -1 +1 @@\n-old\n+new\n"}, "edited", nil
-	}), nil
+func (runnerResultTool) PrepareCall(_ context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: toolshare.RiskLow}, nil, func(context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: "@@ -1 +1 @@\n-old\n+new\n"}}, "edited", nil
+	})}, nil
 }
 
 func TestRunPersistsAndPublishesCommittedToolResult(t *testing.T) {
@@ -219,16 +228,16 @@ func (runnerImageTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "image_tool", Parameters: map[string]any{"type": "object"}}
 }
 
-func (value runnerImageTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
-		{
-			result := &toolshare.Result{Segments: []llm.MessageSegment{
-				{Type: llm.SegmentText, Text: "done"},
-				{Type: llm.SegmentImage, URL: "https://example.com/a.png"},
-			}}
-			return result, result.Content, nil
-		}
-	}), nil
+func (value runnerImageTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+
+		result := &toolshare.Result{Segments: []llm.MessageSegment{
+			{Type: llm.SegmentText, Text: "done"},
+			{Type: llm.SegmentImage, URL: "https://example.com/a.png"},
+		}}
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
+
+	})}, nil
 }
 
 type runnerHighRiskTool struct {
@@ -246,13 +255,13 @@ func (t runnerHighRiskTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: t.name, Parameters: map[string]any{"type": "object"}}
 }
 
-func (value runnerHighRiskTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
-		{
-			result := &toolshare.Result{Content: "called"}
-			return result, result.Content, nil
-		}
-	}), nil
+func (value runnerHighRiskTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+
+		result := &toolshare.Result{Content: "called"}
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
+
+	})}, nil
 }
 
 func TestRunConfirmsOnlyAuthorizedHighRiskToolsForRegularUsers(t *testing.T) {
@@ -339,7 +348,7 @@ func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {
 		t.Fatalf("result = %+v, messages = %d", result, len(committer.messages))
 	}
 	text := llm.SegmentsContentText(committer.messages[0].Segments)
-	if !strings.Contains(text, "tool call preflight_tool failed") || !strings.Contains(text, "preflight rejected") {
+	if text != "preflight rejected" {
 		t.Fatalf("unexpected tool message: %s", text)
 	}
 	if len(committer.records) != 1 || committer.records["call-1"].Success {

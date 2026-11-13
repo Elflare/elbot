@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -26,16 +27,16 @@ func (blockingAuditTool) Info() toolshare.Info {
 func (blockingAuditTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "audit_probe", Parameters: map[string]any{"type": "object"}}
 }
-func (b blockingAuditTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: b.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
+func (b blockingAuditTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: b.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		close(b.entered)
 		select {
 		case <-b.release:
 		case <-ctx.Done():
-			return nil, "cancelled", ctx.Err()
+			return operationresult.Result[*toolshare.Result]{}, "cancelled", ctx.Err()
 		}
-		return &toolshare.Result{Content: "finished"}, "finished", nil
-	}), nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: "finished"}}, "finished", nil
+	})}, nil
 }
 
 func TestAuditShowsStartBeforeToolReturns(t *testing.T) {

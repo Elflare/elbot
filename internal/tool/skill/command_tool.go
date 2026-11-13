@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"elbot/internal/config"
+	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
 )
 
@@ -47,24 +48,24 @@ func (t commandTool) ActivateTools() []string {
 	return []string{AgentSkillManagerName, t.record.Name}
 }
 
-func (t commandTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t commandTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
 	raw := bytes.Clone(req.Arguments)
 	args, err := commandArguments(t.manifest, raw)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	preview := fmt.Sprintf("命令：%v\n参数：%v\n工作目录：%s", t.manifest.Command, args, t.record.Root)
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.manifest.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(preview)}, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.manifest.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(preview)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		return t.call(ctx, raw, args, runMediaCommand)
-	}), nil
+	})}, nil
 }
 
-func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []string, run func(context.Context, string, *exec.Cmd, toolshare.MediaCall) (*toolshare.Result, error)) (*toolshare.Result, string, error) {
+func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []string, run func(context.Context, string, *exec.Cmd, toolshare.MediaCall) (operationresult.Result[*toolshare.Result], error)) (operationresult.Result[*toolshare.Result], string, error) {
 
 	dotEnv, err := config.LoadEnvFile(filepath.Join(t.record.Root, ".env"))
 	if err != nil {
 		callErr := fmt.Errorf("load AgentSkill environment: %w", err)
-		return nil, callErr.Error(), callErr
+		return operationresult.Result[*toolshare.Result]{}, callErr.Error(), callErr
 	}
 	environment := t.processEnv.Overlay(dotEnv)
 
@@ -76,11 +77,14 @@ func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []strin
 	if schemaContainsMedia(t.manifest.Parameters) {
 		prepared, err := prepareCommandMedia(runCtx, raw, t.manifest, mediaCall, t.record.Root)
 		if err != nil {
-			return nil, err.Error(), err
+			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 		}
-		args, err = commandArguments(t.manifest, prepared)
+		if prepared.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.Result]{Status: prepared.Status, Message: prepared.Message}, prepared.Message, nil
+		}
+		args, err = commandArguments(t.manifest, prepared.Data)
 		if err != nil {
-			return nil, err.Error(), err
+			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 		}
 	}
 	command := append([]string(nil), t.manifest.Command...)
@@ -88,7 +92,10 @@ func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []strin
 	cmd := environment.CommandContext(runCtx, command[0], command[1:]...)
 	cmd.Dir = t.record.Root
 	result, callErr := run(runCtx, "AgentSkill command", cmd, mediaCall)
-	return result, "", callErr
+	if callErr != nil {
+		return operationresult.Result[*toolshare.Result]{}, "", callErr
+	}
+	return result, "", nil
 }
 
 func commandArguments(manifest AgentSkillManifest, raw json.RawMessage) ([]string, error) {
@@ -114,44 +121,20 @@ func commandArguments(manifest AgentSkillManifest, raw json.RawMessage) ([]strin
 		if !ok || string(value) == "null" {
 			continue
 		}
-		text, err := argumentText(value)
-		if err != nil {
-			return nil, fmt.Errorf("argument %s: %w", name, err)
-		}
+		text := argumentText(value)
 		out = append(out, manifest.Args[name], text)
 	}
 	return out, nil
 }
 
-func argumentText(raw json.RawMessage) (string, error) {
-	var text string
-	if err := json.Unmarshal(raw, &text); err == nil {
-		return text, nil
+// argumentText 接收 commandArguments 已解析且排除 null 的参数值。
+func argumentText(raw json.RawMessage) string {
+	if raw[0] == '"' {
+		var text string
+		_ = json.Unmarshal(raw, &text)
+		return text
 	}
-	var number json.Number
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	if err := decoder.Decode(&number); err == nil {
-		return number.String(), nil
-	}
-	var boolean bool
-	if err := json.Unmarshal(raw, &boolean); err == nil {
-		if boolean {
-			return "true", nil
-		}
-		return "false", nil
-	}
-	var complex any
-	decoder = json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	if err := decoder.Decode(&complex); err == nil {
-		switch complex.(type) {
-		case []any, map[string]any:
-			var compact bytes.Buffer
-			if err := json.Compact(&compact, raw); err == nil {
-				return compact.String(), nil
-			}
-		}
-	}
-	return "", fmt.Errorf("must be string, number, boolean, array, or object")
+	var compact bytes.Buffer
+	_ = json.Compact(&compact, raw)
+	return compact.String()
 }

@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"strings"
 	"testing"
 
@@ -22,10 +23,10 @@ func TestPublicRegistrationAdaptsExecutionAndDocument(t *testing.T) {
 		// 来源故意与注册参数不同，最终必须以 RegisterTools 的 SourceSkill 为准。
 		Definition: Info{Name: "external", Description: "External", Risk: security.RiskLow, Source: SourceBuiltin},
 		Parameters: map[string]any{"type": "object", "properties": map[string]any{}},
-		Prepare: func(_ context.Context, req CallRequest) (*PreparedCall, error) {
-			return &PreparedCall{Risk: RiskAssessment{Level: security.RiskLow}, Details: []ConfirmationDetailBlock{{Kind: ConfirmationDetailText, Content: "approved"}}, Run: func(context.Context) (*Result, string, error) {
-				return &Result{Content: req.Name + " executed"}, "external log", nil
-			}}, nil
+		Prepare: func(_ context.Context, req CallRequest) (operationresult.Result[*PreparedCall], error) {
+			return operationresult.Result[*PreparedCall]{Status: operationresult.Success, Data: &PreparedCall{Risk: RiskAssessment{Level: security.RiskLow}, Details: []ConfirmationDetailBlock{{Kind: ConfirmationDetailText, Content: "approved"}}, Run: func(context.Context) (operationresult.Result[*Result], string, error) {
+				return operationresult.Result[*Result]{Status: operationresult.Success, Data: &Result{Content: req.Name + " executed"}}, "external log", nil
+			}}}, nil
 		},
 		DiscoveryContent: func(context.Context) (string, bool, error) { return "custom instructions", false, nil },
 	}
@@ -37,7 +38,7 @@ func TestPublicRegistrationAdaptsExecutionAndDocument(t *testing.T) {
 		t.Fatal(update, err)
 	}
 	result, logContent, err := m.CallTool(ctx, CallRequest{Name: "external"})
-	if err != nil || result.Content != "external executed" || logContent != "external log" {
+	if err != nil || result.Data.Content != "external executed" || logContent != "external log" {
 		t.Fatal(result, logContent, err)
 	}
 	prepared, err := m.PrepareSkills(ctx, "session", []string{"guide"})

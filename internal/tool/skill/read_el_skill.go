@@ -4,6 +4,7 @@ package skill
 import (
 	"context"
 	"elbot/internal/fileops"
+	"elbot/internal/operationresult"
 	toolshare "elbot/internal/tool/share"
 	"encoding/json"
 	"fmt"
@@ -43,26 +44,31 @@ func (t ReadElSkillTool) Definition() toolshare.ToolDefinition {
 	return definition
 }
 
-func (t ReadElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+func (t ReadElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
 	var args readElSkillArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			{
-				callErr := fmt.Errorf("parse read_el_skill arguments: %w", err)
-				return nil, callErr
-			}
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse read_el_skill arguments: %v", err)}, nil
 		}
 	}
-	path, target, err := elSkillTargetPath(t.manager, strings.TrimSpace(args.Name), strings.TrimSpace(args.Target))
+	selected, target, err := elSkillTargetPath(t.manager, strings.TrimSpace(args.Name), strings.TrimSpace(args.Target))
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{}, err
 	}
+	if selected.Status != operationresult.Success {
+		return operationresult.Result[*toolshare.PreparedCall]{Status: selected.Status, Message: selected.Message}, nil
+	}
+	path := selected.Data
 	details := []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("读取 Skill：%s\n文件：%s", args.Name, path))}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (*toolshare.Result, string, error) {
-		file, err := fileops.ReadFile(path, "")
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+		loaded, err := fileops.ReadFile(path, "")
 		if err != nil {
-			return nil, err.Error(), err
+			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 		}
+		if loaded.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.Result]{Status: loaded.Status, Message: loaded.Message}, loaded.Message, nil
+		}
+		file := loaded.Data
 		lines := fileops.SplitLines(file.Text)
 		start := args.StartLine
 		if start <= 0 {
@@ -74,8 +80,8 @@ func (t ReadElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 		}
 		if start > end+1 || start > len(lines)+1 {
 			{
-				callErr := fmt.Errorf("start_line %d is out of range", args.StartLine)
-				return nil, callErr.Error(), callErr
+				message := fmt.Sprintf("start_line %d is out of range", args.StartLine)
+				return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: message}, message, nil
 			}
 		}
 		var b strings.Builder
@@ -85,7 +91,7 @@ func (t ReadElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 		}
 		{
 			result := &toolshare.Result{Content: strings.TrimRight(b.String(), "\n"), NeedsElyphRules: target == elSkillTargetElyph}
-			return result, fmt.Sprintf("skill=%s target=%s lines=%d-%d/%d", args.Name, args.Target, start, end, len(lines)), nil
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("skill=%s target=%s lines=%d-%d/%d", args.Name, args.Target, start, end, len(lines)), nil
 		}
-	}), nil
+	})}, nil
 }

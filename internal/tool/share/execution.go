@@ -6,6 +6,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 )
 
@@ -23,12 +24,6 @@ type ELwispToolDeclaration struct {
 	ForegroundOnly bool           `json:"foreground_only,omitempty"`
 }
 
-// PolicyDeniedError identifies an expected authorization or confirmation refusal.
-// Its text remains the user-facing reason; logging does not affect authorization.
-type PolicyDeniedError string
-
-func (e PolicyDeniedError) Error() string { return string(e) }
-
 type Context struct {
 	Mode  string
 	Actor contextinfo.Actor
@@ -39,17 +34,17 @@ type RunnerDeps interface {
 	// Hook sources publish their own records; Runner consumes only the business return.
 	PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error)
 	ShouldSendPreview(ctx context.Context, assistantText string) bool
-	ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment RiskAssessment, detail []ConfirmationDetailBlock) (ConfirmResult, error)
+	ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment RiskAssessment, detail []ConfirmationDetailBlock) (operationresult.Result[ConfirmResult], error)
 	// StartToolRequest registers the request and returns its context and cleanup.
 	StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, func(), error)
 	PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context
 	// CompleteToolCall applies the Hook to the result segments.
-	CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error)
+	CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, result operationresult.Result[[]llm.MessageSegment], callErr error) ([]llm.MessageSegment, error)
 	// SendPreview takes one complete notice per tool call, including multiline
 	// bodies. Pass batch notices separately so each receives one display prefix.
 	SendPreview(ctx context.Context, text ...string)
 	// SendOutputs delivers tool outputs and returns the original delivery error.
-	SendOutputs(ctx context.Context, outputs []delivery.Output) error
+	SendOutputs(ctx context.Context, outputs []delivery.Output) (operationresult.Result[struct{}], error)
 	PublishToolResult(context.Context, string, delivery.ToolResult)
 	AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk RiskLevel, reason string)
 	AddToolUse(sessionID, toolName string)
@@ -58,15 +53,12 @@ type RunnerDeps interface {
 }
 
 type ConfirmResult struct {
-	Allowed bool
-	Extra   string
-	Message llm.LLMMessage
-	Stopped bool
+	Extra string // 用户批准调用时补充的输入。
 }
 
 // ToolCommitter is synchronous persistence owned by the consuming dialogue.
 // Begin reserves slots; Result persists one outcome; Flush publishes the projection.
-// Each operation returns its original business error;
+// Each operation returns its original persistence fault;
 // phases without an actual write return nil.
 type ToolCommitter interface {
 	Begin(context.Context, *storage.Message) error

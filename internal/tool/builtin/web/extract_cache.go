@@ -3,6 +3,8 @@ package web
 
 import (
 	"context"
+
+	"elbot/internal/operationresult"
 	"sync"
 )
 
@@ -31,7 +33,7 @@ type extractFlight struct {
 	// waiters counts callers still waiting for this unfinished fetch.
 	waiters int
 	// entry and err hold the completed fetch outcome, published through done.
-	entry cachedExtract
+	entry operationresult.Result[cachedExtract]
 	err   error
 }
 
@@ -39,11 +41,11 @@ func newExtractCache() *extractCache {
 	return &extractCache{values: map[string]cachedExtract{}, inflight: map[string]*extractFlight{}}
 }
 
-func (c *extractCache) getOrFetch(ctx context.Context, key string, forceRefresh bool, fetch func(context.Context) (cachedExtract, error)) (cachedExtract, bool, error) {
+func (c *extractCache) getOrFetch(ctx context.Context, key string, forceRefresh bool, fetch func(context.Context) (operationresult.Result[cachedExtract], error)) (operationresult.Result[cachedExtract], bool, error) {
 	c.mu.Lock()
 	if entry, ok := c.values[key]; ok && !forceRefresh {
 		c.mu.Unlock()
-		return entry, true, nil
+		return operationresult.Result[cachedExtract]{Status: operationresult.Success, Data: entry}, true, nil
 	}
 	flight, exists := c.inflight[key]
 	if !exists {
@@ -58,8 +60,8 @@ func (c *extractCache) getOrFetch(ctx context.Context, key string, forceRefresh 
 			flight.entry, flight.err = entry, err
 			// A canceled flight may finish after a replacement has already started.
 			if c.inflight[key] == flight {
-				if err == nil {
-					c.setLocked(key, entry)
+				if err == nil && entry.Status == operationresult.Success {
+					c.setLocked(key, entry.Data)
 				}
 				delete(c.inflight, key)
 			}
@@ -77,10 +79,10 @@ func (c *extractCache) getOrFetch(ctx context.Context, key string, forceRefresh 
 			flight.cancel()
 		}
 		c.mu.Unlock()
-		return cachedExtract{}, false, ctx.Err()
+		return operationresult.Result[cachedExtract]{}, false, ctx.Err()
 	case <-flight.done:
 		if err := ctx.Err(); err != nil {
-			return cachedExtract{}, false, err
+			return operationresult.Result[cachedExtract]{}, false, err
 		}
 		return flight.entry, false, flight.err
 	}

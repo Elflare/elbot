@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"elbot/internal/testutil"
 	"encoding/json"
 	"errors"
@@ -135,11 +136,11 @@ func TestRunnerDeclaresRunSourceAndFixesItBeforeHandoff(t *testing.T) {
 	}
 }
 
-func (t loggingTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
+func (t loggingTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
 	if t.prepareErr != nil {
-		return nil, t.prepareErr
+		return operationresult.Result[*toolshare.PreparedCall]{}, t.prepareErr
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		if t.args != nil {
 			*t.args = string(req.Arguments)
 		}
@@ -148,10 +149,10 @@ func (t loggingTool) PrepareCall(ctx context.Context, req toolshare.CallRequest)
 			t.cancel()
 		}
 		if t.err != nil {
-			logContent += "\n" + t.err.Error()
+			return operationresult.Result[*toolshare.Result]{}, logContent, t.err
 		}
-		return &toolshare.Result{Content: "partial-result"}, logContent, t.err
-	}), nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: "partial-result"}}, logContent, nil
+	})}, nil
 }
 
 func TestRunnerWritesOnlyAuditWithBoundedArgumentPreview(t *testing.T) {
@@ -243,7 +244,7 @@ func TestRunnerRecordsInvocationBeforeCancellationStopsLaterOperations(t *testin
 	t.Cleanup(connection.Disconnect)
 	deps := &runnerTestDeps{}
 	result := manager.Run(ctx, deps, toolshare.RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "cancel-during-call", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "logging_tool", Arguments: "{}"}}})
-	if !result.Stopped || deps.completed != 0 || len(calls) != 1 || calls[0].ResultStatus != events.ResultCanceled || calls[0].Level != slog.LevelInfo || !strings.Contains(calls[0].Content, "partial-result") || !strings.Contains(calls[0].Content, "context canceled") {
+	if !result.Stopped || deps.completed != 0 || len(calls) != 1 || calls[0].ResultStatus != events.ResultCanceled || calls[0].Level != slog.LevelInfo || !strings.Contains(calls[0].Content, "context canceled") {
 		t.Fatalf("result=%#v completed=%d invocation logs=%#v", result, deps.completed, calls)
 	}
 }
@@ -263,7 +264,7 @@ func TestRunnerRecordsUnenteredCallFailure(t *testing.T) {
 	t.Cleanup(connection.Disconnect)
 	deps := &runnerTestDeps{}
 	manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: &testToolCommitter{}, Session: &storage.Session{ID: "missing", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call", Name: "missing", Arguments: "{}"}}})
-	if len(calls) != 1 || calls[0].ResultStatus != events.ResultFailed || calls[0].Level != slog.LevelWarn || !strings.Contains(calls[0].Content, "missing") || deps.completed != 0 {
+	if len(calls) != 1 || calls[0].ResultStatus != events.ResultRejected || calls[0].Level != slog.LevelInfo || !strings.Contains(calls[0].Content, "missing") || deps.completed != 0 {
 		t.Fatalf("invocation logs=%#v completed=%d", calls, deps.completed)
 	}
 }
@@ -281,9 +282,9 @@ func (d *loggingDeps) StartToolRequest(ctx context.Context, sessionID, toolName 
 	return d.runnerTestDeps.StartToolRequest(ctx, sessionID, toolName)
 }
 
-func (d *loggingDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (toolshare.ConfirmResult, error) {
+func (d *loggingDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (operationresult.Result[toolshare.ConfirmResult], error) {
 	if d.confirmErr != nil {
-		return toolshare.ConfirmResult{}, d.confirmErr
+		return operationresult.Result[toolshare.ConfirmResult]{}, d.confirmErr
 	}
 	return d.runnerTestDeps.ConfirmToolCall(ctx, sessionID, call, assessment, detail)
 }

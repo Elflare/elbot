@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -21,28 +22,37 @@ type cronRepositoryStub struct {
 	err             error
 }
 
-func (s *cronRepositoryStub) Upsert(_ context.Context, req CronSaveRequest) (CronInfo, error) {
+func (s *cronRepositoryStub) Upsert(_ context.Context, req CronSaveRequest) (operationresult.Result[CronInfo], error) {
 	s.saved = append(s.saved, req)
-	return s.info, s.err
+	if s.err != nil {
+		if s.err != nil {
+			return operationresult.Result[CronInfo]{}, s.err
+		}
+		return operationresult.Result[CronInfo]{Status: operationresult.Success, Data: s.info}, nil
+	}
+	return operationresult.Result[CronInfo]{Status: operationresult.Success, Data: s.info}, nil
 }
-func (s *cronRepositoryStub) GetByName(_ context.Context, name string) (CronInfo, error) {
+func (s *cronRepositoryStub) GetByName(_ context.Context, name string) (operationresult.Result[CronInfo], error) {
 	s.name = name
-	return s.info, s.err
+	return operationresult.Result[CronInfo]{}, s.err
 }
-func (s *cronRepositoryStub) List(_ context.Context, disabled bool) ([]CronInfo, error) {
+func (s *cronRepositoryStub) List(_ context.Context, disabled bool) (operationresult.Result[[]CronInfo], error) {
 	s.includeDisabled = disabled
-	return s.items, s.err
+	if s.err != nil {
+		return operationresult.Result[[]CronInfo]{}, s.err
+	}
+	return operationresult.Result[[]CronInfo]{Status: operationresult.Success, Data: s.items}, nil
 }
-func (s *cronRepositoryStub) DisableByName(_ context.Context, name string) error {
+func (s *cronRepositoryStub) DisableByName(_ context.Context, name string) (operationresult.Result[struct{}], error) {
 	s.name = name
-	return s.err
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, s.err
 }
-func (s *cronRepositoryStub) DeleteByName(_ context.Context, name string) error {
+func (s *cronRepositoryStub) DeleteByName(_ context.Context, name string) (operationresult.Result[struct{}], error) {
 	s.name = name
-	return s.err
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, s.err
 }
 
-func cronTestTools(repo *cronRepositoryStub, validate func(string, string) error) []share.ToolDefinition {
+func cronTestTools(repo *cronRepositoryStub, validate func(string, string) operationresult.Result[struct{}]) []share.ToolDefinition {
 	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.Local)
 	return NewCronTools(repo, validate, func() time.Time { return now })
 }
@@ -52,8 +62,8 @@ func TestCronCreateAndPatchUseOnlyInternalRequests(t *testing.T) {
 	tools := cronTestTools(repo, nil)
 	owner := contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qq", ID: "owner"}, Role: contextinfo.RoleSuperadmin}
 	ctx := contextinfo.WithActor(t.Context(), owner)
-	_, _, err := callTool(ctx, tools[2], share.CallRequest{Arguments: json.RawMessage(`{"operation":"create","name":"reminder","schedule_mode":"once","run_after_minutes":10,"trigger_mode":"direct","message":"hello","tool_list_names":["a","a"]}`)})
-	if err != nil {
+	result, _, err := callTool(ctx, tools[2], share.CallRequest{Arguments: json.RawMessage(`{"operation":"create","name":"reminder","schedule_mode":"once","run_after_minutes":10,"trigger_mode":"direct","message":"hello","tool_list_names":["a","a"]}`)})
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	req := repo.saved[0]
@@ -63,8 +73,8 @@ func TestCronCreateAndPatchUseOnlyInternalRequests(t *testing.T) {
 	repo.info = CronInfo{Name: "reminder", CreatedBy: owner, SourcePlatform: "qq", Enabled: true, ScheduleMode: "cron", CronExpr: "* * * * *", TriggerMode: "direct", Message: "hello", ToolListNames: []string{"a"}}
 	// 修改者不覆盖原创建者；空字段清空，省略字段保留。
 	ctx = contextinfo.WithActor(t.Context(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qq", ID: "another-admin"}, Role: contextinfo.RoleSuperadmin})
-	_, _, err = callTool(ctx, tools[2], share.CallRequest{Arguments: json.RawMessage(`{"operation":"update","name":"reminder","tool_list_names":[],"model_provider":"","model":"","enabled":false}`)})
-	if err != nil {
+	result, _, err = callTool(ctx, tools[2], share.CallRequest{Arguments: json.RawMessage(`{"operation":"update","name":"reminder","tool_list_names":[],"model_provider":"","model":"","enabled":false}`)})
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	req = repo.saved[1]
@@ -79,8 +89,8 @@ func TestCronCreateAndPatchUseOnlyInternalRequests(t *testing.T) {
 		{`{"operation":"update","name":"reminder","enabled":true}`, true},
 		{`{"operation":"update","name":"reminder","message":"changed"}`, true},
 	} {
-		_, _, err = callTool(ctx, tools[2], share.CallRequest{Arguments: json.RawMessage(tc.args)})
-		if err != nil {
+		result, _, err = callTool(ctx, tools[2], share.CallRequest{Arguments: json.RawMessage(tc.args)})
+		if err != nil || result.Status != operationresult.Success {
 			t.Fatal(err)
 		}
 		if req := repo.saved[len(repo.saved)-1]; req.ResetDelivery != tc.reset {
@@ -93,7 +103,10 @@ func TestCronValidationRejectsBeforeBridgeWrite(t *testing.T) {
 	repo := &cronRepositoryStub{}
 	modelErr := errors.New("unknown model")
 	var provider, model string
-	tools := cronTestTools(repo, func(p, m string) error { provider, model = p, m; return modelErr })
+	tools := cronTestTools(repo, func(p, m string) operationresult.Result[struct{}] {
+		provider, model = p, m
+		return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: modelErr.Error()}
+	})
 	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qq"}})
 	for _, args := range []string{
 		`{"operation":"create","name":"bad","schedule_mode":"once","run_at":"2026-10-25 11:59:00","trigger_mode":"direct","message":"hello"}`,
@@ -101,12 +114,12 @@ func TestCronValidationRejectsBeforeBridgeWrite(t *testing.T) {
 		`{"operation":"create","name":"bad","schedule_mode":"cron","cron_expr":"* * * * *","trigger_mode":"llm","message":"plain text"}`,
 		`{"operation":"create","name":"bad","schedule_mode":"cron","cron_expr":"* * * * *","trigger_mode":"direct","message":"hello","model_provider":"p"}`,
 	} {
-		if _, _, err := callTool(ctx, tools[2], share.CallRequest{Arguments: json.RawMessage(args)}); err == nil {
+		if result, _, err := callTool(ctx, tools[2], share.CallRequest{Arguments: json.RawMessage(args)}); err != nil || result.Status == operationresult.Success {
 			t.Fatalf("accepted %s", args)
 		}
 	}
-	_, _, err := callTool(ctx, tools[2], share.CallRequest{Arguments: json.RawMessage(`{"operation":"create","name":"bad","schedule_mode":"cron","cron_expr":"* * * * *","trigger_mode":"direct","message":"hello","model_provider":"p","model":"m"}`)})
-	if !errors.Is(err, modelErr) || provider != "p" || model != "m" {
+	result, _, err := callTool(ctx, tools[2], share.CallRequest{Arguments: json.RawMessage(`{"operation":"create","name":"bad","schedule_mode":"cron","cron_expr":"* * * * *","trigger_mode":"direct","message":"hello","model_provider":"p","model":"m"}`)})
+	if err != nil || result.Status != operationresult.NotFound || result.Message != modelErr.Error() || provider != "p" || model != "m" {
 		t.Fatalf("model validation = %v, %s/%s", err, provider, model)
 	}
 	if len(repo.saved) != 0 {
@@ -119,30 +132,30 @@ func TestCronQueryConsumesManagementResult(t *testing.T) {
 	repo := &cronRepositoryStub{info: info, items: []CronInfo{info}}
 	tools := cronTestTools(repo, nil)
 	result, _, err := callTool(t.Context(), tools[1], share.CallRequest{Arguments: json.RawMessage(`{"name":"done"}`)})
-	if err != nil || !result.NeedsElyphRules || repo.name != "done" {
+	if err != nil || result.Status != operationresult.Success || !result.Data.NeedsElyphRules || repo.name != "done" {
 		t.Fatalf("query = %+v %v", result, err)
 	}
 	for _, text := range []string{"name:done", "trigger_mode:llm", "completed:true", "enabled:true", "message:\n" + info.Message} {
-		if !strings.Contains(result.Content, text) {
-			t.Fatalf("missing %q: %s", text, result.Content)
+		if !strings.Contains(result.Data.Content, text) {
+			t.Fatalf("missing %q: %s", text, result.Data.Content)
 		}
 	}
 	for _, key := range []string{"job", "execution", "delivery", "delivery_state", "metadata"} {
-		if strings.Contains(result.Content, "\n"+key+":") {
+		if strings.Contains(result.Data.Content, "\n"+key+":") {
 			t.Fatalf("internal field leaked: %s", key)
 		}
 	}
 	result, _, err = callTool(t.Context(), tools[1], share.CallRequest{})
-	if err != nil || result.Content != "没有符合条件的定时任务。" {
+	if err != nil || result.Status != operationresult.Success || result.Data.Content != "没有符合条件的定时任务。" {
 		t.Fatalf("completed filter = %+v %v", result, err)
 	}
 	result, _, err = callTool(t.Context(), tools[1], share.CallRequest{Arguments: json.RawMessage(`{"include_completed":true,"include_disabled":true}`)})
-	if err != nil || !repo.includeDisabled || !result.NeedsElyphRules {
+	if err != nil || result.Status != operationresult.Success || !repo.includeDisabled || !result.Data.NeedsElyphRules {
 		t.Fatalf("include completed = %+v %v", result, err)
 	}
 	repo.items = append(repo.items, CronInfo{Name: "second", TriggerMode: "direct", Message: "other task", Enabled: true})
 	result, _, err = callTool(t.Context(), tools[1], share.CallRequest{Arguments: json.RawMessage(`{"include_completed":true}`)})
-	if err != nil || !result.NeedsElyphRules || !strings.Contains(result.Content, info.Message+"\n\nname:second\n") || !strings.HasSuffix(result.Content, "message:\nother task") {
+	if err != nil || result.Status != operationresult.Success || !result.Data.NeedsElyphRules || !strings.Contains(result.Data.Content, info.Message+"\n\nname:second\n") || !strings.HasSuffix(result.Data.Content, "message:\nother task") {
 		t.Fatalf("multiple tasks = %+v %v", result, err)
 	}
 	repo.err = errors.New("bridge unavailable")
@@ -160,8 +173,8 @@ func TestCronScheduleRoundsCurrentMinute(t *testing.T) {
 	}
 	repo := &cronRepositoryStub{info: CronInfo{Name: "reminder", SourcePlatform: "qq", Enabled: true, ScheduleMode: "once", RunAt: "2026-10-25 12:00:20", TriggerMode: "direct", Message: "hello"}}
 	tools := cronTestTools(repo, nil)
-	_, _, err = callTool(t.Context(), tools[2], share.CallRequest{Arguments: json.RawMessage(`{"operation":"update","name":"reminder","title":"renamed"}`)})
-	if err != nil {
+	result, _, err := callTool(t.Context(), tools[2], share.CallRequest{Arguments: json.RawMessage(`{"operation":"update","name":"reminder","title":"renamed"}`)})
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	if saved := repo.saved[0]; !saved.ResetDelivery || saved.Definition.RunAt != "2026-10-25 12:01:00" {
@@ -184,23 +197,23 @@ func TestCronWriteResultsAndErrors(t *testing.T) {
 				ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qq"}})
 				result, _, err := callTool(ctx, cronTestTools(repo, nil)[2], share.CallRequest{Arguments: args})
 				if fail {
-					if result != nil || err != repo.err {
+					if result.Data != nil || err != repo.err {
 						t.Fatalf("result=%+v error=%v", result, err)
 					}
 					return
 				}
-				if err != nil || result == nil {
+				if err != nil || result.Data == nil {
 					t.Fatalf("result=%+v error=%v", result, err)
 				}
 				want := map[string]string{"create": "已创建", "update": "已更新", "disable": "已停用", "delete": "已删除"}[operation] + "定时任务：reminder"
-				if !strings.HasPrefix(result.Content, want) {
+				if !strings.HasPrefix(result.Data.Content, want) {
 					t.Fatalf("result=%+v want prefix=%q", result, want)
 				}
 				if operation == "create" || operation == "update" {
-					if !strings.Contains(result.Content, "\nname:reminder\n") || !strings.Contains(result.Content, "cron_expr:* * * * *") || !strings.HasSuffix(result.Content, "message:\nhello") || len(repo.saved) != 1 {
+					if !strings.Contains(result.Data.Content, "\nname:reminder\n") || !strings.Contains(result.Data.Content, "cron_expr:* * * * *") || !strings.HasSuffix(result.Data.Content, "message:\nhello") || len(repo.saved) != 1 {
 						t.Fatalf("result=%+v saved=%+v", result, repo.saved)
 					}
-				} else if result.Content != want || repo.name != "reminder" {
+				} else if result.Data.Content != want || repo.name != "reminder" {
 					t.Fatalf("result=%+v target=%q", result, repo.name)
 				}
 			})

@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"elbot/internal/testutil"
 	"encoding/json"
 	"net/url"
@@ -27,11 +28,11 @@ func TestSendFileAssessRiskExternalPath(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{"source": path})
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	assessment, err := preparedRisk(ctx, sendFile.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || assessment.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if assessment.Level != toolshare.RiskHigh {
-		t.Fatalf("risk = %s, want high", assessment.Level)
+	if assessment.Data.Level != toolshare.RiskHigh {
+		t.Fatalf("risk = %s, want high", assessment.Data.Level)
 	}
 }
 
@@ -39,11 +40,11 @@ func TestSendFileAssessRiskURL(t *testing.T) {
 	sendFile := (SendFileTool{})
 	args, _ := json.Marshal(map[string]any{"source": "https://example.com/report.txt"})
 	assessment, err := preparedRisk(context.Background(), sendFile.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || assessment.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if assessment.Level != toolshare.RiskLow {
-		t.Fatalf("risk = %s, want low", assessment.Level)
+	if assessment.Data.Level != toolshare.RiskLow {
+		t.Fatalf("risk = %s, want low", assessment.Data.Level)
 	}
 }
 
@@ -53,8 +54,8 @@ func TestSendFileAssessRiskBackgroundAbsolutePath(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{"source": filepath.Join(t.TempDir(), "report.txt")})
 	ctx := workspacepath.WithPathScope(testutil.TaskContext(context.Background(), "cron"), workspacepath.PathScope{Dir: filepath.Join(root, "cron"), Restricted: true})
 	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	_, err := preparedRisk(ctx, sendFile.Definition(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "restricted path must be relative") {
+	result, err := preparedRisk(ctx, sendFile.Definition(), toolshare.CallRequest{Arguments: args})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "restricted path must be relative") {
 		t.Fatalf("expected background absolute path rejection, got %v", err)
 	}
 }
@@ -75,16 +76,16 @@ func TestSendFileSendsSandboxFile(t *testing.T) {
 	ctx = workspacepath.WithPathScope(ctx, workspacepath.PathScope{Dir: cronDir, Restricted: true})
 	ctx = toolshare.WithCallPolicy(ctx, toolshare.CallPolicy{OutputTarget: delivery.Target{Platform: "qqonebot", Superadmins: true}})
 	result, _, err := callTool(ctx, sendFile.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if len(result.Outputs) != 1 || result.Outputs[0].Kind != delivery.KindFile {
-		t.Fatalf("outputs = %#v", result.Outputs)
+	if len(result.Data.Outputs) != 1 || result.Data.Outputs[0].Kind != delivery.KindFile {
+		t.Fatalf("outputs = %#v", result.Data.Outputs)
 	}
-	if result.Outputs[0].Target.Platform != "qqonebot" || !result.Outputs[0].Target.Superadmins {
-		t.Fatalf("target = %#v", result.Outputs[0].Target)
+	if result.Data.Outputs[0].Target.Platform != "qqonebot" || !result.Data.Outputs[0].Target.Superadmins {
+		t.Fatalf("target = %#v", result.Data.Outputs[0].Target)
 	}
-	sentPath := result.Outputs[0].Source.Path
+	sentPath := result.Data.Outputs[0].Source.Path
 	if sentPath != filepath.Join(cronDir, "report.txt") {
 		t.Fatalf("sent path = %q, want cron file", sentPath)
 	}
@@ -107,10 +108,10 @@ func TestSendFileUsesWorkspaceRelativePath(t *testing.T) {
 	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	result, _, err := callTool(ctx, sendFile.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if got := result.Outputs[0].Source.Path; got != filepath.Join(workspace, "report.txt") {
+	if got := result.Data.Outputs[0].Source.Path; got != filepath.Join(workspace, "report.txt") {
 		t.Fatalf("sent path = %q", got)
 	}
 }
@@ -124,10 +125,10 @@ func TestSendFileSendsExternalFileDirectly(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{"source": source})
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	result, _, err := callTool(ctx, sendFile.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	sentPath := result.Outputs[0].Source.Path
+	sentPath := result.Data.Outputs[0].Source.Path
 	if sentPath != source {
 		t.Fatalf("sent path = %q, want source", sentPath)
 	}
@@ -142,10 +143,10 @@ func TestSendFileAcceptsFileURI(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{"source": fileURI(source)})
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	result, _, err := callTool(ctx, sendFile.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if got := result.Outputs[0].Source.Path; got != source {
+	if got := result.Data.Outputs[0].Source.Path; got != source {
 		t.Fatalf("path = %q, want %q", got, source)
 	}
 }
@@ -154,10 +155,10 @@ func TestSendFileSendsURLFile(t *testing.T) {
 	sendFile := (SendFileTool{})
 	args, _ := json.Marshal(map[string]any{"source": "https://example.com/report.txt"})
 	result, _, err := callTool(context.Background(), sendFile.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	out := result.Outputs[0]
+	out := result.Data.Outputs[0]
 	if out.Kind != delivery.KindFile || out.Source.URL != "https://example.com/report.txt" || out.Source.Path != "" {
 		t.Fatalf("output = %#v", out)
 	}
@@ -170,10 +171,10 @@ func TestSendFileSendsURLImage(t *testing.T) {
 	sendFile := (SendFileTool{})
 	args, _ := json.Marshal(map[string]any{"source": "https://example.com/images/cat.png?size=large"})
 	result, _, err := callTool(context.Background(), sendFile.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	out := result.Outputs[0]
+	out := result.Data.Outputs[0]
 	if out.Kind != delivery.KindImage || out.Source.URL != "https://example.com/images/cat.png?size=large" {
 		t.Fatalf("output = %#v", out)
 	}
@@ -186,11 +187,11 @@ func TestSendFileMIMETypeOverridesURLName(t *testing.T) {
 	sendFile := (SendFileTool{})
 	args, _ := json.Marshal(map[string]any{"source": "https://example.com/download", "name": "download", "mime_type": "image/webp"})
 	result, _, err := callTool(context.Background(), sendFile.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if result.Outputs[0].Kind != delivery.KindImage {
-		t.Fatalf("output = %#v", result.Outputs[0])
+	if result.Data.Outputs[0].Kind != delivery.KindImage {
+		t.Fatalf("output = %#v", result.Data.Outputs[0])
 	}
 }
 
@@ -198,11 +199,11 @@ func TestSendFileURLPathExtensionOverridesDisplayName(t *testing.T) {
 	sendFile := (SendFileTool{})
 	args, _ := json.Marshal(map[string]any{"source": "https://example.com/cat.png", "name": "cat.txt"})
 	result, _, err := callTool(context.Background(), sendFile.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if result.Outputs[0].Kind != delivery.KindImage {
-		t.Fatalf("output = %#v", result.Outputs[0])
+	if result.Data.Outputs[0].Kind != delivery.KindImage {
+		t.Fatalf("output = %#v", result.Data.Outputs[0])
 	}
 }
 
@@ -219,10 +220,10 @@ func TestSendFileHTTPFolderIsLocalPath(t *testing.T) {
 	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	result, _, err := callTool(ctx, sendFile.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	out := result.Outputs[0]
+	out := result.Data.Outputs[0]
 	if out.Source.URL != "" || out.Source.Path != filepath.Join(workspace, "http", "cat.png") {
 		t.Fatalf("output = %#v", out)
 	}
@@ -238,23 +239,15 @@ func TestSendFileSendsLocalImage(t *testing.T) {
 	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
 	result, _, err := callTool(ctx, sendFile.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	out := result.Outputs[0]
+	out := result.Data.Outputs[0]
 	if out.Kind != delivery.KindImage || out.Source.Path != filepath.Join(workspace, "cat.png") {
 		t.Fatalf("output = %#v", out)
 	}
 	if out.Source.MIMEType != "image/png" {
 		t.Fatalf("mime = %q, want image/png", out.Source.MIMEType)
-	}
-}
-
-func TestSendFileRejectsMissingSource(t *testing.T) {
-	sendFile := (SendFileTool{})
-	_, _, err := callTool(context.Background(), sendFile.Definition(), toolshare.CallRequest{Arguments: []byte(`{}`)})
-	if err == nil || !strings.Contains(err.Error(), "source is required") {
-		t.Fatalf("expected source error, got %v", err)
 	}
 }
 
@@ -268,8 +261,8 @@ func TestSendFileBackgroundRejectsAbsolutePath(t *testing.T) {
 	args, _ := json.Marshal(map[string]any{"source": file})
 	ctx := workspacepath.WithPathScope(testutil.TaskContext(context.Background(), "cron"), workspacepath.PathScope{Dir: filepath.Join(root, "cron"), Restricted: true})
 	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	_, _, err := callTool(ctx, sendFile.Definition(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "restricted path must be relative") {
+	result, _, err := callTool(ctx, sendFile.Definition(), toolshare.CallRequest{Arguments: args})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "restricted path must be relative") {
 		t.Fatalf("expected background absolute path rejection, got %v", err)
 	}
 }

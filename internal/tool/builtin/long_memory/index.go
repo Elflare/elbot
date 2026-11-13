@@ -4,6 +4,7 @@ package long_memory
 import (
 	"context"
 	"database/sql"
+	"elbot/internal/operationresult"
 	"fmt"
 	_ "modernc.org/sqlite"
 	"os"
@@ -36,24 +37,24 @@ func (s *longMemoryStore) close() error {
 	return err
 }
 
-func (s *longMemoryStore) ensureLocked(ctx context.Context) error {
+func (s *longMemoryStore) ensureLocked(ctx context.Context) (operationresult.Result[struct{}], error) {
 	if s.initialized {
-		return nil
+		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}
 	if strings.TrimSpace(s.rootDir) == "" {
-		return fmt.Errorf("long memory directory is not configured")
+		return operationresult.Result[struct{}]{Status: operationresult.Unavailable, Message: "long memory directory is not configured"}, nil
 	}
 	if err := os.MkdirAll(s.memoriesDir, 0o755); err != nil {
-		return fmt.Errorf("create long memory directory %q: %w", s.memoriesDir, err)
+		return operationresult.Result[struct{}]{}, fmt.Errorf("create long memory directory %q: %w", s.memoriesDir, err)
 	}
 	db, err := sql.Open("sqlite", s.indexPath)
 	if err != nil {
-		return fmt.Errorf("open long memory index: %w", err)
+		return operationresult.Result[struct{}]{}, fmt.Errorf("open long memory index: %w", err)
 	}
 	db.SetMaxOpenConns(1)
 	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
 		_ = db.Close()
-		return fmt.Errorf("enable long memory foreign keys: %w", err)
+		return operationresult.Result[struct{}]{}, fmt.Errorf("enable long memory foreign keys: %w", err)
 	}
 	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS memory_files (
 		id INTEGER PRIMARY KEY,
@@ -68,7 +69,7 @@ func (s *longMemoryStore) ensureLocked(ctx context.Context) error {
 		file_size INTEGER NOT NULL
 	)`); err != nil {
 		_ = db.Close()
-		return fmt.Errorf("create long memory metadata table: %w", err)
+		return operationresult.Result[struct{}]{}, fmt.Errorf("create long memory metadata table: %w", err)
 	}
 	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS memory_invalid_files (
 		file_path TEXT PRIMARY KEY,
@@ -78,15 +79,15 @@ func (s *longMemoryStore) ensureLocked(ctx context.Context) error {
 		file_size INTEGER NOT NULL
 	)`); err != nil {
 		_ = db.Close()
-		return fmt.Errorf("create long memory invalid table: %w", err)
+		return operationresult.Result[struct{}]{}, fmt.Errorf("create long memory invalid table: %w", err)
 	}
 	if _, err := db.ExecContext(ctx, `CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(category, title, summary, keywords, content_tokens, content_id UNINDEXED)`); err != nil {
 		_ = db.Close()
-		return fmt.Errorf("create long memory FTS table: %w", err)
+		return operationresult.Result[struct{}]{}, fmt.Errorf("create long memory FTS table: %w", err)
 	}
 	s.db = db
 	s.initialized = true
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
 func (s *longMemoryStore) syncLocked(ctx context.Context, force bool) error {

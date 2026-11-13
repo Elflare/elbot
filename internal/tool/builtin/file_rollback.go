@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"elbot/internal/fileops"
+	"elbot/internal/operationresult"
 )
 
 type RollbackFileTool struct {
@@ -53,16 +54,20 @@ func decodeRollbackArgs(req toolshare.CallRequest) (rollbackFileArgs, error) {
 	return args, nil
 }
 
-func (t RollbackFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+func (t RollbackFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
 	args, err := decodeRollbackArgs(req)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	prepared, err := t.Service.PrepareRollback(ctx, args.Path)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{}, err
 	}
-	preview := prepared.Preview()
+	if prepared.Status != operationresult.Success {
+		return operationresult.Result[*toolshare.PreparedCall]{Status: prepared.Status, Message: prepared.Message}, nil
+	}
+	preparedRollback := prepared.Data
+	preview := preparedRollback.Preview()
 	action := "恢复编辑前内容"
 	if preview.Created {
 		action = "删除本次新建文件（保留父目录）"
@@ -72,20 +77,24 @@ func (t RollbackFileTool) PrepareCall(ctx context.Context, req toolshare.CallReq
 		preview.DiffAvailable,
 		fmt.Sprintf("文件：%s\n操作：%s\n预检 diff:", preview.Path, action),
 	)}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (*toolshare.Result, string, error) {
-		return t.call(ctx, prepared)
-	}), nil
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+		return t.call(ctx, preparedRollback)
+	})}, nil
 }
 
-func (t RollbackFileTool) call(ctx context.Context, prepared *fileops.PreparedRollback) (*toolshare.Result, string, error) {
+func (t RollbackFileTool) call(ctx context.Context, prepared *fileops.PreparedRollback) (operationresult.Result[*toolshare.Result], string, error) {
 	result, err := prepared.Commit(ctx)
 	if err != nil {
-		return nil, err.Error(), err
+		return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 	}
+	if result.Status != operationresult.Success {
+		return operationresult.Result[*toolshare.Result]{Status: result.Status, Message: result.Message}, "rollback rejected: " + result.Message, nil
+	}
+	data := result.Data
 	action := "restored"
-	if result.Deleted {
+	if data.Deleted {
 		action = "deleted_created_file"
 	}
-	content := fmt.Sprintf("rolled_back: %s\naction: %s\nrevision: %s", result.Path, action, result.Revision)
-	return &toolshare.Result{Content: content}, content, nil
+	content := fmt.Sprintf("rolled_back: %s\naction: %s\nrevision: %s", data.Path, action, data.Revision)
+	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: content}}, content, nil
 }

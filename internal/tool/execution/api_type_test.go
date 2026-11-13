@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"elbot/internal/testutil"
 	"testing"
 
@@ -29,16 +30,16 @@ func (t availabilityTestTool) Info() toolshare.Info {
 func (t availabilityTestTool) Schema() llm.ToolSchema {
 	return toolshare.NewBuilder(t.name).BuildSchema()
 }
-func (t availabilityTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
+func (t availabilityTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		if t.calls != nil {
 			*t.calls++
 		}
-		{
-			result := &toolshare.Result{Content: "image"}
-			return result, result.Content, nil
-		}
-	}), nil
+
+		result := &toolshare.Result{Content: "image"}
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
+
+	})}, nil
 }
 
 func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
@@ -75,7 +76,7 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 				if err != nil || len(schemas) != boolInt(want)+boolInt(mode == storage.SessionModeWork) {
 					t.Fatalf("%s schemas=%v err=%v", mode, schemas, err)
 				}
-				if got := manager.resolve(ctx, "image", cache, mode); (got.Error == nil) != want {
+				if got, err := manager.resolve(ctx, "image", cache, mode); err != nil || (got.Status == operationresult.Success) != want {
 					t.Fatalf("resolved=%+v", got)
 				}
 			}
@@ -88,16 +89,19 @@ func TestAPITypeAvailabilityAcrossDiscoveryCacheAndExecution(t *testing.T) {
 				t.Fatalf("roots=%+v", roots)
 			}
 			call := llm.ToolCallRequest{Name: "image", Arguments: `{}`}
-			resolved := manager.resolve(ctx, "image", nil, storage.SessionModeWork)
-			var preparedCall *toolshare.PreparedCall
-			if want {
-				preparedCall, err = manager.prepareCall(ctx, resolved, call)
-				if err != nil {
-					t.Fatal(err)
-				}
+			resolved, err := manager.resolve(ctx, "image", nil, storage.SessionModeWork)
+			if err != nil {
+				t.Fatal(err)
 			}
-			executed := manager.executePrepared(ctx, call, resolved, preparedCall, nil)
-			if (executed.Error == nil) != want {
+			if !want {
+				return
+			}
+			preparedCall, err := manager.prepareCall(ctx, resolved.Data, call)
+			if err != nil || preparedCall.Status != operationresult.Success {
+				t.Fatalf("prepare=%+v err=%v", preparedCall, err)
+			}
+			executed := manager.executePrepared(ctx, call, resolved.Data, preparedCall.Data, nil)
+			if executed.Error != nil || executed.Result.Status != operationresult.Success {
 				t.Fatalf("execute=%+v", executed)
 			}
 		})

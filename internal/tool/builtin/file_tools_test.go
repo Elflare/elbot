@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"elbot/internal/testutil"
 	"encoding/json"
 	"errors"
@@ -49,11 +50,11 @@ func TestShellASTUsesShebangDialect(t *testing.T) {
 				for _, mode := range []string{readFileModeAST, readFileModeASTFunction} {
 					args, _ := json.Marshal(map[string]any{"path": target, "mode": mode, "query": "Target"})
 					result, _, err := callTool(t.Context(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-					if err != nil {
+					if err != nil || result.Status != operationresult.Success {
 						t.Fatalf("%s %s: %v", target, mode, err)
 					}
-					if !strings.Contains(result.Content, "matches: 1") || strings.Contains(result.Content, "解析") {
-						t.Fatalf("%s %s: %s", target, mode, result.Content)
+					if !strings.Contains(result.Data.Content, "matches: 1") || strings.Contains(result.Data.Content, "解析") {
+						t.Fatalf("%s %s: %s", target, mode, result.Data.Content)
 					}
 				}
 			}
@@ -132,16 +133,16 @@ func TestReadFileToolReturnsLineNumbersAndEndRange(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "start_line": 2, "end_line": "end"})
 	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "2 | beta") || !strings.Contains(result.Content, "3 | gamma") {
-		t.Fatalf("unexpected read_file content:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "2 | beta") || !strings.Contains(result.Data.Content, "3 | gamma") {
+		t.Fatalf("unexpected read_file content:\n%s", result.Data.Content)
 	}
-	if !strings.Contains(result.Content, "truncated: false") {
-		t.Fatalf("expected untruncated result:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "truncated: false") {
+		t.Fatalf("expected untruncated result:\n%s", result.Data.Content)
 	}
-	assertFileRevision(t, result.Content, []byte("alpha\nbeta\ngamma\n"))
+	assertFileRevision(t, result.Data.Content, []byte("alpha\nbeta\ngamma\n"))
 }
 
 func TestReadFileToolAcceptsStringStartLine(t *testing.T) {
@@ -151,18 +152,18 @@ func TestReadFileToolAcceptsStringStartLine(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "start_line": "1", "end_line": "240"})
 	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "1 | alpha") || !strings.Contains(result.Content, "3 | gamma") {
-		t.Fatalf("unexpected read_file content:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "1 | alpha") || !strings.Contains(result.Data.Content, "3 | gamma") {
+		t.Fatalf("unexpected read_file content:\n%s", result.Data.Content)
 	}
 }
 
 func TestReadFileToolRejectsInvalidStringStartLine(t *testing.T) {
 	args := []byte(`{"path":"sample.txt","start_line":"end"}`)
-	_, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "start_line") || !strings.Contains(err.Error(), "integer string") {
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "start_line") || !strings.Contains(result.Message, "integer string") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -175,15 +176,15 @@ func TestReadFileToolReadsLargeFileAndReturnsRevision(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "start_line": 2, "end_line": "2"})
 	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "2 | needle") {
-		t.Fatalf("unexpected large read output:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "2 | needle") {
+		t.Fatalf("unexpected large read output:\n%s", result.Data.Content)
 	}
-	assertFileRevision(t, result.Content, content)
-	if len(result.Warnings) == 0 || !strings.Contains(strings.Join(result.Warnings, "\n"), "ast and ast_function modes are disabled") {
-		t.Fatalf("expected large-file warning, got %#v", result.Warnings)
+	assertFileRevision(t, result.Data.Content, content)
+	if len(result.Data.Warnings) == 0 || !strings.Contains(strings.Join(result.Data.Warnings, "\n"), "ast and ast_function modes are disabled") {
+		t.Fatalf("expected large-file warning, got %#v", result.Data.Warnings)
 	}
 }
 
@@ -194,16 +195,16 @@ func TestReadFileToolLargeFileDisablesASTButAllowsGrep(t *testing.T) {
 		t.Fatal(err)
 	}
 	astArgs, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "needle"})
-	if _, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: astArgs}); err == nil || !strings.Contains(err.Error(), "AST") && !strings.Contains(err.Error(), "ast mode") {
+	if result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: astArgs}); err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "AST") && !strings.Contains(result.Message, "ast mode") {
 		t.Fatalf("expected large-file AST error, got %v", err)
 	}
 	grepArgs, _ := json.Marshal(map[string]any{"path": path, "mode": "grep", "query": "needle", "context_lines": 0})
 	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: grepArgs})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "> 2 | needle") {
-		t.Fatalf("unexpected large grep output:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "> 2 | needle") {
+		t.Fatalf("unexpected large grep output:\n%s", result.Data.Content)
 	}
 }
 
@@ -221,8 +222,8 @@ func TestReadFileToolRejectsFileAboveHardLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path})
-	_, _, err = callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "file too large") {
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "file too large") {
 		t.Fatalf("expected hard-limit error, got %v", err)
 	}
 }
@@ -234,13 +235,13 @@ func TestReadFileToolGrepReturnsMatchesWithContext(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "grep", "query": "beta", "context_lines": 1})
 	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "grep: \"beta\"") || !strings.Contains(result.Content, "> 5 | beta") || !strings.Contains(result.Content, "  4 | three") || !strings.Contains(result.Content, "  6 | four") {
-		t.Fatalf("unexpected grep output:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "grep: \"beta\"") || !strings.Contains(result.Data.Content, "> 5 | beta") || !strings.Contains(result.Data.Content, "  4 | three") || !strings.Contains(result.Data.Content, "  6 | four") {
+		t.Fatalf("unexpected grep output:\n%s", result.Data.Content)
 	}
-	assertFileRevision(t, result.Content, []byte(content))
+	assertFileRevision(t, result.Data.Content, []byte(content))
 }
 
 func TestReadFileToolASTSearchesGoIdentifiers(t *testing.T) {
@@ -251,13 +252,13 @@ func TestReadFileToolASTSearchesGoIdentifiers(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "Target", "context_lines": 0})
 	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "language: go") || !strings.Contains(result.Content, "[identifier]") || strings.Count(result.Content, "match:") != 3 {
-		t.Fatalf("unexpected AST content:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "language: go") || !strings.Contains(result.Data.Content, "[identifier]") || strings.Count(result.Data.Content, "match:") != 3 {
+		t.Fatalf("unexpected AST content:\n%s", result.Data.Content)
 	}
-	assertFileRevision(t, result.Content, []byte(content))
+	assertFileRevision(t, result.Data.Content, []byte(content))
 }
 
 func TestReadFileToolASTSearchesShellWordsAndParameters(t *testing.T) {
@@ -268,11 +269,11 @@ func TestReadFileToolASTSearchesShellWordsAndParameters(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "target", "context_lines": 0})
 	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "language: shell") || strings.Count(result.Content, "match:") != 2 || !strings.Contains(result.Content, "[parameter]") {
-		t.Fatalf("unexpected AST content:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "language: shell") || strings.Count(result.Data.Content, "match:") != 2 || !strings.Contains(result.Data.Content, "[parameter]") {
+		t.Fatalf("unexpected AST content:\n%s", result.Data.Content)
 	}
 }
 
@@ -284,28 +285,28 @@ func TestReadFileToolASTFunctionReturnsCompleteGoFunctions(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast_function", "query": "Run"})
 	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	for _, expected := range []string{"ast_function: \"Run\"", "matches: 2", "selection_required: true", "1. Run -", "2. (*Worker).Run -"} {
-		if !strings.Contains(result.Content, expected) {
-			t.Fatalf("expected %q in AST function candidates:\n%s", expected, result.Content)
+		if !strings.Contains(result.Data.Content, expected) {
+			t.Fatalf("expected %q in AST function candidates:\n%s", expected, result.Data.Content)
 		}
 	}
 	args, _ = json.Marshal(map[string]any{"path": path, "mode": "ast_function", "query": "Run", "index": 2})
 	result, _, err = callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	for _, expected := range []string{"index: 2", "match: 11-13 [method] (*Worker).Run", " 12 | \tthird()", " 13 | }"} {
-		if !strings.Contains(result.Content, expected) {
-			t.Fatalf("expected %q in selected AST function output:\n%s", expected, result.Content)
+		if !strings.Contains(result.Data.Content, expected) {
+			t.Fatalf("expected %q in selected AST function output:\n%s", expected, result.Data.Content)
 		}
 	}
-	if strings.Contains(result.Content, "Run documentation") {
-		t.Fatalf("function output must not include doc comments:\n%s", result.Content)
+	if strings.Contains(result.Data.Content, "Run documentation") {
+		t.Fatalf("function output must not include doc comments:\n%s", result.Data.Content)
 	}
-	assertFileRevision(t, result.Content, []byte(content))
+	assertFileRevision(t, result.Data.Content, []byte(content))
 }
 
 func TestReadFileToolASTFunctionReturnsCompleteShellFunction(t *testing.T) {
@@ -316,12 +317,12 @@ func TestReadFileToolASTFunctionReturnsCompleteShellFunction(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast_function", "query": "run"})
 	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	for _, expected := range []string{"language: shell", "match: 3-6 [function] run", " 4 |   echo one", " 6 | }"} {
-		if !strings.Contains(result.Content, expected) {
-			t.Fatalf("expected %q in AST function output:\n%s", expected, result.Content)
+		if !strings.Contains(result.Data.Content, expected) {
+			t.Fatalf("expected %q in AST function output:\n%s", expected, result.Data.Content)
 		}
 	}
 }
@@ -332,8 +333,8 @@ func TestReadFileToolASTFunctionRequiresQuery(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast_function"})
-	_, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "query is required when mode is ast_function") {
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "query is required when mode is ast_function") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -348,21 +349,21 @@ func TestReadFileToolASTFunctionSearchesDirectoryAndSelectsIndex(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]any{"path": root, "mode": "ast_function", "query": "Run"})
 	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	for _, expected := range []string{"selection_required: true", "1. Run - first.go:3-5", "2. Run - second.go:3-5"} {
-		if !strings.Contains(result.Content, expected) {
-			t.Fatalf("expected %q in directory candidates:\n%s", expected, result.Content)
+		if !strings.Contains(result.Data.Content, expected) {
+			t.Fatalf("expected %q in directory candidates:\n%s", expected, result.Data.Content)
 		}
 	}
 	args, _ = json.Marshal(map[string]any{"path": root, "mode": "ast_function", "query": "Run", "index": 2})
 	result, _, err = callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "match: second.go:3-5 [function] Run") || !strings.Contains(result.Content, " 4 | \tsecond()") {
-		t.Fatalf("unexpected selected directory function:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "match: second.go:3-5 [function] Run") || !strings.Contains(result.Data.Content, " 4 | \tsecond()") {
+		t.Fatalf("unexpected selected directory function:\n%s", result.Data.Content)
 	}
 }
 
@@ -375,12 +376,12 @@ func TestReadFileToolDirectoryASTReportsSkippedLargeFiles(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]any{"path": root, "mode": "ast", "query": "Target"})
 	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	warnings := strings.Join(result.Warnings, "\n")
+	warnings := strings.Join(result.Data.Warnings, "\n")
 	if !strings.Contains(warnings, "large.go") || !strings.Contains(warnings, "bytes") || !strings.Contains(warnings, "skipped") {
-		t.Fatalf("expected skipped-large-file warning, got %#v", result.Warnings)
+		t.Fatalf("expected skipped-large-file warning, got %#v", result.Data.Warnings)
 	}
 }
 func TestReadFileToolDirectoryASTCacheInvalidatesWhenFilesChange(t *testing.T) {
@@ -391,18 +392,18 @@ func TestReadFileToolDirectoryASTCacheInvalidatesWhenFilesChange(t *testing.T) {
 	}
 	readTool := NewReadFileTool(FileGuard{})
 	args, _ := json.Marshal(map[string]any{"path": root, "mode": "ast_function", "query": "Run"})
-	if _, _, err := callTool(context.Background(), readTool.Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(context.Background(), readTool.Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte("package sample\n\nfunc Run() {}\n\nfunc Run() {}\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	result, _, err := callTool(context.Background(), readTool.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "matches: 2") || !strings.Contains(result.Content, "selection_required: true") {
-		t.Fatalf("cache was not invalidated after file change:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "matches: 2") || !strings.Contains(result.Data.Content, "selection_required: true") {
+		t.Fatalf("cache was not invalidated after file change:\n%s", result.Data.Content)
 	}
 	added := filepath.Join(root, "added.go")
 	if err := os.WriteFile(added, []byte("package sample\nfunc Run() {}\n"), 0644); err != nil {
@@ -420,7 +421,7 @@ func TestReadFileToolDirectoryASTCacheInvalidatesWhenFilesChange(t *testing.T) {
 			}
 		}
 		result, _, err := callTool(t.Context(), readTool.Definition(), toolshare.CallRequest{Arguments: args})
-		if err != nil || !strings.Contains(result.Content, fmt.Sprintf("matches: %d\n", want)) {
+		if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data.Content, fmt.Sprintf("matches: %d\n", want)) {
 			t.Fatalf("after add/remove: result=%+v err=%v", result, err)
 		}
 	}
@@ -642,11 +643,11 @@ func TestReadFileToolDirectoryGrepSelectsIndex(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]any{"path": root, "mode": "grep", "query": "needle", "index": 2})
 	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "index: 2") || !strings.Contains(result.Content, "match: second.txt:1-1 [grep]") || !strings.Contains(result.Content, " 1 | needle two") {
-		t.Fatalf("unexpected selected directory grep:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "index: 2") || !strings.Contains(result.Data.Content, "match: second.txt:1-1 [grep]") || !strings.Contains(result.Data.Content, " 1 | needle two") {
+		t.Fatalf("unexpected selected directory grep:\n%s", result.Data.Content)
 	}
 }
 
@@ -670,12 +671,12 @@ func TestReadFileToolDirectoryGrepSkipsFilesAboveHardLimit(t *testing.T) {
 
 	args, _ := json.Marshal(map[string]any{"path": root, "mode": "grep", "query": "needle"})
 	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	warnings := strings.Join(result.Warnings, "\n")
+	warnings := strings.Join(result.Data.Warnings, "\n")
 	if !strings.Contains(warnings, "too-large.txt") || !strings.Contains(warnings, "grep skipped") {
-		t.Fatalf("expected skipped-large-file warning, got %#v", result.Warnings)
+		t.Fatalf("expected skipped-large-file warning, got %#v", result.Data.Warnings)
 	}
 }
 
@@ -685,8 +686,8 @@ func TestReadFileToolASTRejectsUnsupportedLanguage(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "target"})
-	_, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "only supports Go and Shell") {
+	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "only supports Go and Shell") {
 		t.Fatalf("expected unsupported language error, got %v", err)
 	}
 }
@@ -707,11 +708,11 @@ func TestEditFileToolEditsLargeFileAndOmitsDiff(t *testing.T) {
 		}},
 	})
 	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "diff omitted: file exceeds detailed diff limit") {
-		t.Fatalf("expected omitted diff, got:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "diff omitted: file exceeds detailed diff limit") {
+		t.Fatalf("expected omitted diff, got:\n%s", result.Data.Content)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -737,10 +738,10 @@ func TestEditFileToolTruncatesLargeRiskDetailBlocks(t *testing.T) {
 		}},
 	})
 	prepared, err := (EditFileTool{Rollback: fileops.NewService(nil)}).Definition().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || prepared.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	details := prepared.Details()
+	details := prepared.Data.Details()
 	if len(details) != 1 || details[0].Kind != toolshare.ConfirmationDetailText {
 		t.Fatalf("large confirmation details=%+v", details)
 	}
@@ -771,8 +772,8 @@ func TestEditFileToolRejectsFileAboveHardLimit(t *testing.T) {
 			"new_text":  "TARGET",
 		}},
 	})
-	_, _, err = callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "file too large") {
+	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "file too large") {
 		t.Fatalf("expected hard-limit error, got %v", err)
 	}
 }
@@ -783,8 +784,8 @@ func TestEditFileToolRequiresEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path})
-	_, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "edits is required") {
+	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "edits is required") {
 		t.Fatalf("expected edits error, got %v", err)
 	}
 }
@@ -805,7 +806,7 @@ func TestEditFileToolBatchReplacesLinesAndReturnsDiff(t *testing.T) {
 		}},
 	})
 	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -815,11 +816,11 @@ func TestEditFileToolBatchReplacesLinesAndReturnsDiff(t *testing.T) {
 	if got := string(content); got != "alpha\nBETA\nDELTA\ngamma\n" {
 		t.Fatalf("file content = %q", got)
 	}
-	if !strings.Contains(result.Content, "dry_run: false") || !strings.Contains(result.Content, "-beta") || !strings.Contains(result.Content, "+BETA") || !strings.Contains(result.Content, "+DELTA") {
-		t.Fatalf("unexpected diff:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "dry_run: false") || !strings.Contains(result.Data.Content, "-beta") || !strings.Contains(result.Data.Content, "+BETA") || !strings.Contains(result.Data.Content, "+DELTA") {
+		t.Fatalf("unexpected diff:\n%s", result.Data.Content)
 	}
-	if !strings.Contains(result.Content, "revision_before: ") || !strings.Contains(result.Content, "revision_after: ") {
-		t.Fatalf("unexpected revision output:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "revision_before: ") || !strings.Contains(result.Data.Content, "revision_after: ") {
+		t.Fatalf("unexpected revision output:\n%s", result.Data.Content)
 	}
 }
 
@@ -836,7 +837,7 @@ func TestEditFileToolRejectsStringLineNumbers(t *testing.T) {
 			"new_text":  "BETA",
 		}},
 	})
-	if _, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "cannot unmarshal string") {
+	if result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "cannot unmarshal string") {
 		t.Fatalf("expected integer line error, got %v", err)
 	}
 }
@@ -855,7 +856,7 @@ func TestEditFileToolAllMatches(t *testing.T) {
 			"all_matches": true,
 		}},
 	})
-	if _, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -881,8 +882,8 @@ func TestEditFileToolMissingTextTargetDoesNotWrite(t *testing.T) {
 			"new_text":  "BETA",
 		}},
 	})
-	_, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "old_text not found") {
+	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "old_text not found") {
 		t.Fatalf("expected missing target error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
@@ -909,7 +910,7 @@ func TestEditFileToolDeletesLineRange(t *testing.T) {
 			"end_line":  3,
 		}},
 	})
-	if _, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -934,7 +935,7 @@ func TestEditFileToolReplaceMatch(t *testing.T) {
 			"new_text":  "BETA\nGAMMA",
 		}},
 	})
-	if _, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -960,8 +961,8 @@ func TestEditFileToolReplaceMatchRequiresUniqueMatch(t *testing.T) {
 			"new_text":  "BETA",
 		}},
 	})
-	_, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "matched multiple locations") && !strings.Contains(err.Error(), "matched 2 locations") {
+	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "matched multiple locations") && !strings.Contains(result.Message, "matched 2 locations") {
 		t.Fatalf("expected duplicate match error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
@@ -986,7 +987,7 @@ func TestEditFileToolDeleteMatch(t *testing.T) {
 			"new_text":  "",
 		}},
 	})
-	if _, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1010,7 +1011,7 @@ func TestEditFileToolInsertBeforeAfterMatch(t *testing.T) {
 			{"operation": "insert_after", "anchor": "gamma", "new_text": "delta"},
 		},
 	})
-	if _, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1048,10 +1049,10 @@ func TestEditFileToolRiskDetailFormatsEdits(t *testing.T) {
 		},
 	})
 	prepared, err := (EditFileTool{Rollback: fileops.NewService(nil)}).Definition().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || prepared.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	details := prepared.Details()
+	details := prepared.Data.Details()
 	if len(details) != 1 || details[0].Kind != toolshare.ConfirmationDetailDiff {
 		t.Fatalf("structured confirmation details=%+v", details)
 	}
@@ -1116,8 +1117,8 @@ func TestEditFileToolPreflightRejectsInvalidEdits(t *testing.T) {
 			"new_text":  "MISSING",
 		}},
 	})
-	_, err := (EditFileTool{Rollback: fileops.NewService(nil)}).Definition().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "preflight edit_file") || !strings.Contains(err.Error(), "old_text not found") {
+	result, err := (EditFileTool{Rollback: fileops.NewService(nil)}).Definition().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "old_text not found") {
 		t.Fatalf("expected preflight match error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
@@ -1142,8 +1143,8 @@ func TestEditFileToolBatchFailureIsAtomic(t *testing.T) {
 			{"operation": "replace_text", "old_text": "missing", "new_text": "MISSING"},
 		},
 	})
-	_, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "old_text not found") {
+	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "old_text not found") {
 		t.Fatalf("expected missing match error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
@@ -1171,14 +1172,14 @@ func TestEditFileToolContextLinesAndHunkHeader(t *testing.T) {
 		}},
 	})
 	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "@@ -3,3 +3,3 @@") {
-		t.Fatalf("expected real hunk header, got:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "@@ -3,3 +3,3 @@") {
+		t.Fatalf("expected real hunk header, got:\n%s", result.Data.Content)
 	}
-	if strings.Contains(result.Content, " one\n") || strings.Contains(result.Content, " six\n") {
-		t.Fatalf("diff context was not trimmed:\n%s", result.Content)
+	if strings.Contains(result.Data.Content, " one\n") || strings.Contains(result.Data.Content, " six\n") {
+		t.Fatalf("diff context was not trimmed:\n%s", result.Data.Content)
 	}
 }
 
@@ -1203,13 +1204,13 @@ func TestEditFileToolCronRiskAndSandbox(t *testing.T) {
 		}},
 	})
 	assessment, err := preparedRisk(ctx, (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || assessment.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if assessment.Level != toolshare.RiskMedium {
-		t.Fatalf("risk = %s", assessment.Level)
+	if assessment.Data.Level != toolshare.RiskMedium {
+		t.Fatalf("risk = %s", assessment.Data.Level)
 	}
-	if _, _, err := callTool(ctx, (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(ctx, (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1222,7 +1223,7 @@ func TestEditFileToolCronRiskAndSandbox(t *testing.T) {
 
 	outside := filepath.Join(t.TempDir(), "outside.txt")
 	outsideArgs, _ := json.Marshal(map[string]any{"path": outside, "edits": []map[string]any{{"operation": "delete", "line": 1}}})
-	if _, err := preparedRisk(ctx, (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: outsideArgs}); err == nil {
+	if result, err := preparedRisk(ctx, (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: outsideArgs}); err != nil || result.Status == operationresult.Success {
 		t.Fatal("expected sandbox escape error")
 	}
 }
@@ -1250,11 +1251,11 @@ func TestReadFileToolSensitivePathRisk(t *testing.T) {
 		t.Run(tt.path, func(t *testing.T) {
 			args, _ := json.Marshal(map[string]any{"path": tt.path})
 			assessment, err := preparedRisk(ctx, read.Definition(), toolshare.CallRequest{Arguments: args})
-			if err != nil {
+			if err != nil || assessment.Status != operationresult.Success {
 				t.Fatal(err)
 			}
-			if assessment.Level != tt.risk {
-				t.Fatalf("risk = %s, want %s", assessment.Level, tt.risk)
+			if assessment.Data.Level != tt.risk {
+				t.Fatalf("risk = %s, want %s", assessment.Data.Level, tt.risk)
 			}
 		})
 	}
@@ -1267,11 +1268,11 @@ func TestReadFileToolEmptyFile(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]any{"path": path})
 	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "lines: 0/0") || !strings.Contains(result.Content, "empty: true") {
-		t.Fatalf("unexpected empty file output:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "lines: 0/0") || !strings.Contains(result.Data.Content, "empty: true") {
+		t.Fatalf("unexpected empty file output:\n%s", result.Data.Content)
 	}
 }
 
@@ -1286,11 +1287,11 @@ func TestEditFileToolCreateAndOverwrite(t *testing.T) {
 		}},
 	})
 	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "created: true") {
-		t.Fatalf("expected created result, got:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "created: true") {
+		t.Fatalf("expected created result, got:\n%s", result.Data.Content)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -1312,11 +1313,11 @@ func TestEditFileToolCreateAndOverwriteCreatesParentDirectory(t *testing.T) {
 		}},
 	})
 	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "created: true") {
-		t.Fatalf("expected created result, got:\n%s", result.Content)
+	if !strings.Contains(result.Data.Content, "created: true") {
+		t.Fatalf("expected created result, got:\n%s", result.Data.Content)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -1335,8 +1336,8 @@ func TestEditFileToolCreateWithExpectedRevisionRequiresExistingFile(t *testing.T
 		"expected_revision": "deadbeefdeadbeef",
 		"edits":             []map[string]any{{"operation": "overwrite", "new_text": "alpha"}},
 	})
-	_, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "stat file") {
+	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
+	if err != nil || result.Status != operationresult.NotFound || !strings.Contains(result.Message, "not found") {
 		t.Fatalf("expected stat error, got %v", err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
@@ -1363,10 +1364,10 @@ func TestReadFileToolWarnsForElSkillFile(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]any{"path": path})
 	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{NewElSkillFileGuardRule(root)})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	text := toolshare.AppendWarnings(result.Content, result.Warnings)
+	text := toolshare.AppendWarnings(result.Data.Content, result.Data.Warnings)
 	if !strings.Contains(text, "Warnings:") || !strings.Contains(text, "read_el_skill") {
 		t.Fatalf("expected read_el_skill warning, got:\n%s", text)
 	}
@@ -1384,10 +1385,10 @@ func TestEditFileToolRejectsElSkillFileBeforeWrite(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "overwrite", "new_text": "changed"}}})
 	edit := (EditFileTool{Rollback: fileops.NewService(FileGuard{NewElSkillFileGuardRule(root)}.CheckWrite)})
-	if _, err := edit.Definition().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
+	if result, err := edit.Definition().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "modify_el_skill") {
 		t.Fatalf("expected preflight modify_el_skill error, got %v", err)
 	}
-	if _, _, err := callTool(context.Background(), edit.Definition(), toolshare.CallRequest{Arguments: args}); err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
+	if result, _, err := callTool(context.Background(), edit.Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "modify_el_skill") {
 		t.Fatalf("expected call modify_el_skill error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
@@ -1410,8 +1411,8 @@ func TestEditFileToolRejectsElSkillCodeSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "overwrite", "new_text": "func main() {}"}}})
-	_, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(FileGuard{NewElSkillFileGuardRule(root)}.CheckWrite)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "modify_el_skill") {
+	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(FileGuard{NewElSkillFileGuardRule(root)}.CheckWrite)}).Definition(), toolshare.CallRequest{Arguments: args})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "modify_el_skill") {
 		t.Fatalf("expected modify_el_skill error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
@@ -1432,18 +1433,18 @@ func TestFileToolsProtectResidentMemoryFile(t *testing.T) {
 	guard := FileGuard{NewResidentMemoryFileGuardRule(path)}
 	readArgs, _ := json.Marshal(map[string]any{"path": path})
 	readResult, _, err := callTool(context.Background(), (NewReadFileTool(guard)).Definition(), toolshare.CallRequest{Arguments: readArgs})
-	if err != nil {
+	if err != nil || readResult.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if text := toolshare.AppendWarnings(readResult.Content, readResult.Warnings); !strings.Contains(text, "resident_memory_read") {
+	if text := toolshare.AppendWarnings(readResult.Data.Content, readResult.Data.Warnings); !strings.Contains(text, "resident_memory_read") {
 		t.Fatalf("expected resident_memory_read warning, got:\n%s", text)
 	}
 	editArgs, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "overwrite", "new_text": "changed"}}})
 	edit := (EditFileTool{Rollback: fileops.NewService(guard.CheckWrite)})
-	if _, err := edit.Definition().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: editArgs}); err == nil || !strings.Contains(err.Error(), "resident_memory_normal") {
+	if result, err := edit.Definition().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: editArgs}); err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "resident_memory_normal") {
 		t.Fatalf("expected resident memory preflight error, got %v", err)
 	}
-	if _, _, err := callTool(context.Background(), edit.Definition(), toolshare.CallRequest{Arguments: editArgs}); err == nil || !strings.Contains(err.Error(), "resident_memory_normal") {
+	if result, _, err := callTool(context.Background(), edit.Definition(), toolshare.CallRequest{Arguments: editArgs}); err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "resident_memory_normal") {
 		t.Fatalf("expected resident memory call error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
@@ -1468,15 +1469,15 @@ func TestFileToolsProtectLongMemoryMarkdown(t *testing.T) {
 	guard := FileGuard{NewLongMemoryFileGuardRule(root)}
 	readArgs, _ := json.Marshal(map[string]any{"path": path})
 	readResult, _, err := callTool(context.Background(), (NewReadFileTool(guard)).Definition(), toolshare.CallRequest{Arguments: readArgs})
-	if err != nil {
+	if err != nil || readResult.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if text := toolshare.AppendWarnings(readResult.Content, readResult.Warnings); !strings.Contains(text, "long_memory_search") {
+	if text := toolshare.AppendWarnings(readResult.Data.Content, readResult.Data.Warnings); !strings.Contains(text, "long_memory_search") {
 		t.Fatalf("expected long_memory_search warning, got:\n%s", text)
 	}
 	editArgs, _ := json.Marshal(map[string]any{"path": path, "edits": []map[string]any{{"operation": "overwrite", "new_text": "changed"}}})
-	_, _, err = callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(guard.CheckWrite)}).Definition(), toolshare.CallRequest{Arguments: editArgs})
-	if err == nil || !strings.Contains(err.Error(), "long_memory_write") {
+	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(guard.CheckWrite)}).Definition(), toolshare.CallRequest{Arguments: editArgs})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "long_memory_write") {
 		t.Fatalf("expected long_memory_write error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
@@ -1503,7 +1504,7 @@ func TestEditFileToolInsertLineAvoidsJoinedLines(t *testing.T) {
 			"new_text":  "beta",
 		}},
 	})
-	if _, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1530,11 +1531,11 @@ func TestEditFileToolMultiHunkDiff(t *testing.T) {
 		},
 	})
 	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if strings.Count(result.Content, "@@ ") != 2 {
-		t.Fatalf("expected two diff hunks, got:\n%s", result.Content)
+	if strings.Count(result.Data.Content, "@@ ") != 2 {
+		t.Fatalf("expected two diff hunks, got:\n%s", result.Data.Content)
 	}
 }
 
@@ -1563,7 +1564,7 @@ func TestEditFileToolLineModeReplacePrefix(t *testing.T) {
 			"new_text":  "BETA",
 		}},
 	})
-	if _, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1589,7 +1590,7 @@ func TestEditFileToolLineModeToleratesIndent(t *testing.T) {
 			"new_text":  "\tbeta := 10",
 		}},
 	})
-	if _, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1614,7 +1615,7 @@ func TestEditFileToolLineModeMultiLineContentExpand(t *testing.T) {
 			"new_text":  "BETA1\nBETA2",
 		}},
 	})
-	if _, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1640,7 +1641,7 @@ func TestEditFileToolLineModeMultipleMatchesWithIndex(t *testing.T) {
 			"index":     2,
 		}},
 	})
-	if _, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1666,11 +1667,11 @@ func TestEditFileToolLineModeMultipleMatchesNoIndexError(t *testing.T) {
 			"new_text":  "BETA",
 		}},
 	})
-	_, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "matched 2 locations") {
+	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "matched 2 locations") {
 		t.Fatalf("expected matched 2 locations error, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "#1") || !strings.Contains(err.Error(), "#2") {
+	if !strings.Contains(result.Message, "#1") || !strings.Contains(result.Message, "#2") {
 		t.Fatalf("expected index hints in error, got %v", err)
 	}
 	content, err := os.ReadFile(path)
@@ -1694,7 +1695,7 @@ func TestEditFileToolLineModeDeleteAndInsert(t *testing.T) {
 			{"operation": "insert_after", "anchor": "ga", "new_text": "delta"},
 		},
 	})
-	if _, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1720,8 +1721,8 @@ func TestEditFileToolLineModeNeedleWithNewlineFails(t *testing.T) {
 			"new_text":  "X",
 		}},
 	})
-	_, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "single-line prefix") {
+	result, _, err := callTool(context.Background(), (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "single-line prefix") {
 		t.Fatalf("expected single-line prefix error, got %v", err)
 	}
 }
@@ -1734,11 +1735,11 @@ func TestReadFileToolUsesWorkspaceRelativePath(t *testing.T) {
 	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	args, _ := json.Marshal(map[string]any{"path": "sample.txt"})
 	result, _, err := callTool(ctx, (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "workspace") {
-		t.Fatalf("content = %s", result.Content)
+	if !strings.Contains(result.Data.Content, "workspace") {
+		t.Fatalf("content = %s", result.Data.Content)
 	}
 }
 
@@ -1757,7 +1758,7 @@ func TestEditFileToolUsesWorkspaceRelativePath(t *testing.T) {
 			"new_text":  "beta",
 		}},
 	})
-	if _, _, err := callTool(ctx, (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(ctx, (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
@@ -1790,14 +1791,14 @@ func TestReadFileToolAbsolutePathWarnings(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			result, _, err := callTool(ctx, tool, toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": tc.path})})
-			if err != nil {
+			if err != nil || result.Status != operationresult.Success {
 				t.Fatal(err)
 			}
-			if tc.warning == "" && len(result.Warnings) != 0 {
-				t.Fatalf("warnings = %#v", result.Warnings)
+			if tc.warning == "" && len(result.Data.Warnings) != 0 {
+				t.Fatalf("warnings = %#v", result.Data.Warnings)
 			}
-			if tc.warning != "" && (len(result.Warnings) == 0 || result.Warnings[0] != tc.warning) {
-				t.Fatalf("warnings = %#v, want %q", result.Warnings, tc.warning)
+			if tc.warning != "" && (len(result.Data.Warnings) == 0 || result.Data.Warnings[0] != tc.warning) {
+				t.Fatalf("warnings = %#v, want %q", result.Data.Warnings, tc.warning)
 			}
 		})
 	}
@@ -1811,11 +1812,11 @@ func TestReadFileToolAbsolutePathWarnings(t *testing.T) {
 		"edits": []map[string]any{{"operation": "replace_text", "old_text": "alpha", "new_text": "beta"}},
 	})
 	result, _, err := callTool(ctx, (EditFileTool{Rollback: fileops.NewService(nil)}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if len(result.Warnings) == 0 || result.Warnings[0] != toolshare.AbsolutePathWithinWorkspaceWarning {
-		t.Fatalf("edit warnings = %#v", result.Warnings)
+	if len(result.Data.Warnings) == 0 || result.Data.Warnings[0] != toolshare.AbsolutePathWithinWorkspaceWarning {
+		t.Fatalf("edit warnings = %#v", result.Data.Warnings)
 	}
 }
 

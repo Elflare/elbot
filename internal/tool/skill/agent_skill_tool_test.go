@@ -7,6 +7,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	toolregistry "elbot/internal/tool/registry"
 	"encoding/json"
 	"errors"
@@ -27,21 +28,21 @@ func TestPreparedAgentSkillReadUsesExecutionContent(t *testing.T) {
 	}
 	reader := AgentSkillTool{manager: manager}
 	prepared, err := reader.Definition().PrepareCall(t.Context(), toolshare.CallRequest{Arguments: []byte(`{"action":"read","name":"docx"}`)})
-	if err != nil {
+	if err != nil || prepared.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	writeAgentSkillConfig(t, dir, "risk = \"high\"\n")
-	result, _, err := prepared.Call(t.Context())
-	if err != nil || !strings.Contains(result.Content, "risk = \"high\"") {
+	result, _, err := prepared.Data.Call(t.Context())
+	if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data.Content, "risk = \"high\"") {
 		t.Fatalf("read = %+v, %v", result, err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, _, err := prepared.Call(ctx); !errors.Is(err, context.Canceled) {
+	if _, _, err := prepared.Data.Call(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancel = %v", err)
 	}
 	manager.catalog.Replace(nil)
-	if _, _, err := prepared.Call(t.Context()); err == nil {
+	if result, _, err := prepared.Data.Call(t.Context()); err != nil || result.Status == operationresult.Success {
 		t.Fatal("removed target was accepted")
 	}
 }
@@ -116,7 +117,7 @@ func TestAgentSkillWriteCommitsConfigAndReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := callTool(context.Background(), (AgentSkillTool{manager: manager}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(context.Background(), (AgentSkillTool{manager: manager}).Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(AgentSkillConfigPath(dir))

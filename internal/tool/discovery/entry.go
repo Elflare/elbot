@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"elbot/internal/operationresult"
 	"elbot/internal/tool/share"
 )
 
@@ -31,30 +32,33 @@ func NewDiscoverTool(resolver *Resolver) share.ToolDefinition {
 		StringArray("names", "批量工具/Skill名称。").Build(t.PrepareCall)
 }
 
-func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest, info share.Info) (*share.PreparedCall, error) {
+func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest, info share.Info) (operationresult.Result[*share.PreparedCall], error) {
 	var args discoverArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			callErr := fmt.Errorf("parse discover_tool arguments: %w", err)
-			return nil, callErr
+			return operationresult.Result[*share.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse discover_tool arguments: %v", err)}, nil
 		}
 	}
 	names := append([]string{}, args.Names...)
 	if args.Name != "" {
 		names = append([]string{args.Name}, names...)
 	}
-	return share.NewPreparedCall(req, share.RiskAssessment{Level: info.Risk}, []share.ConfirmationDetailBlock{share.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (_ *share.Result, logContent string, _ error) {
+	return operationresult.Result[*share.PreparedCall]{Status: operationresult.Success, Data: share.NewPreparedCall(req, share.RiskAssessment{Level: info.Risk}, []share.ConfirmationDetailBlock{share.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (outcome operationresult.Result[*share.Result], logContent string, _ error) {
 		if err := ctx.Err(); err != nil {
-			return nil, err.Error(), err
+			return operationresult.Result[*share.Result]{}, err.Error(), err
 		}
 		result, targets, err := t.resolver.discover(ctx, names)
 		if err != nil {
-			return nil, err.Error(), err
+			return operationresult.Result[*share.Result]{}, err.Error(), err
 		}
-		// 单个目标失败作为工具调用错误返回；批量发现保留逐项结果。
-		if len(result.Tools) == 0 && len(result.Errors) == 1 {
-			callErr := fmt.Errorf("discover tool %q: %s", result.Errors[0].Name, result.Errors[0].Reason)
-			return nil, callErr.Error(), callErr
+		// 全部目标被拒绝时返回拒绝；部分成功保留逐项发现结果。
+		if len(result.Tools) == 0 && len(result.Errors) > 0 {
+			messages := make([]string, 0, len(result.Errors))
+			for _, failure := range result.Errors {
+				messages = append(messages, fmt.Sprintf("discover tool %q: %s", failure.Name, failure.Reason))
+			}
+			message := strings.Join(messages, "\n")
+			return operationresult.Result[*share.Result]{Status: operationresult.Rejected, Message: message}, message, nil
 		}
 		activateTools := []string{}
 		for _, discovered := range result.Tools {
@@ -66,7 +70,7 @@ func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest, in
 		data, err := marshalJSONNoEscape(result)
 		if err != nil {
 			callErr := fmt.Errorf("marshal discovery result: %w", err)
-			return nil, callErr.Error(), callErr
+			return operationresult.Result[*share.Result]{}, callErr.Error(), callErr
 		}
 		metadata := map[string]any{}
 		activateTools = normalizeNames(activateTools)
@@ -75,7 +79,7 @@ func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest, in
 		}
 		details, err := discoveryContent(ctx, targets, result)
 		if err != nil {
-			return nil, err.Error(), err
+			return operationresult.Result[*share.Result]{}, err.Error(), err
 		}
 		needsElyphRules := false
 		for _, discovered := range result.Tools {
@@ -83,11 +87,11 @@ func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest, in
 		}
 		// schema 通过 Data 交给工具状态流程，正文只保留发现说明。
 		logContent = fmt.Sprintf("found=%d errors=%d", len(result.Tools), len(result.Errors))
-		return &share.Result{
+		return operationresult.Result[*share.Result]{Status: operationresult.Success, Data: &share.Result{
 			Content:       strings.TrimSpace(details.Summary + "\n\n" + details.Details),
 			DiscoveryText: &details, NeedsElyphRules: needsElyphRules, Data: data, Metadata: metadata,
-		}, logContent, nil
-	}), nil
+		}}, logContent, nil
+	})}, nil
 }
 
 func marshalJSONNoEscape(value any) ([]byte, error) {

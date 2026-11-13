@@ -6,6 +6,7 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	toolregistry "elbot/internal/tool/registry"
@@ -46,19 +47,19 @@ func (countingCommitTool) Info() toolshare.Info {
 func (countingCommitTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "count", Parameters: map[string]any{"type": "object"}}
 }
-func (c countingCommitTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: c.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
+func (c countingCommitTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: c.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		c.count.Add(1)
 		if c.wait != nil {
 			select {
 			case <-c.wait:
 			case <-ctx.Done():
-				return nil, "", ctx.Err()
+				return operationresult.Result[*toolshare.Result]{}, "", ctx.Err()
 			}
 		}
 		result := &toolshare.Result{Content: "done"}
-		return result, result.Content, nil
-	}), nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
+	})}, nil
 }
 
 func TestToolCommitFailureStopsOnlyOnPersistenceError(t *testing.T) {

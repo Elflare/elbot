@@ -8,6 +8,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 )
@@ -24,11 +25,11 @@ type SupervisorDeps struct {
 		GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
 	} // 只借用历史查询能力，数据库由 App 持有。
 	Platform interface {
-		ResolveMedia(context.Context, string, media.PlatformMedia, int64) (delivery.Source, error)
+		ResolveMedia(context.Context, string, media.PlatformMedia, int64) (operationresult.Result[delivery.Source], error)
 	} // 只借用媒体来源解析能力，不取得适配器。
 }
 
 // ModelCapabilities 只声明 Cron 任务模型选择的校验能力。
 type ModelCapabilities interface {
-	ValidateSelection(config.ModelSelection) error
+	ValidateSelection(config.ModelSelection) operationresult.Result[struct{}]
 }

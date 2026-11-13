@@ -4,6 +4,7 @@ package skill
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"fmt"
 	"log/slog"
 	"os"
@@ -145,43 +146,53 @@ func (m *Manager) EnsureLoaded(ctx context.Context) error {
 	return m.lastErr
 }
 
-func (m *Manager) Remove(ctx context.Context, name string) (err error) {
+func (m *Manager) Remove(ctx context.Context, name string) (result operationresult.Result[struct{}], err error) {
 	m.writeMu.Lock()
 	defer m.writeMu.Unlock()
 	defer func() { m.setReloadResult(err) }()
 	if err := ctx.Err(); err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
 	record, ok := m.catalog.Get(name)
 	if !ok {
-		return fmt.Errorf("external skill %q not found: %w", name, toolshare.ErrSkillNotFound)
+		return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: fmt.Sprintf("external skill %q not found", name)}, nil
 	}
 	if record.Root == "" {
-		return fmt.Errorf("external skill %q has no root directory", name)
+		return operationresult.Result[struct{}]{}, fmt.Errorf("external skill %q has no root directory", name)
 	}
 	if err := os.RemoveAll(record.Root); err != nil {
-		return fmt.Errorf("remove skill directory %q: %w", record.Root, err)
+		return operationresult.Result[struct{}]{}, fmt.Errorf("remove skill directory %q: %w", record.Root, err)
 	}
-	return m.reloadLocked(ctx)
+	if err := m.reloadLocked(ctx); err != nil {
+		return operationresult.Result[struct{}]{}, err
+	}
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
 // commitAgentSkillConfig 提交已准备的配置；重载失败时由 Skill 恢复原文件。
-func (m *Manager) commitAgentSkillConfig(ctx context.Context, name, path string, prepared *fileops.PreparedFile) error {
+func (m *Manager) commitAgentSkillConfig(ctx context.Context, name, path string, prepared *fileops.PreparedFile) (operationresult.Result[struct{}], error) {
 	m.writeMu.Lock()
 	defer m.writeMu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
 	record, ok := m.catalog.Get(name)
-	if !ok || record.Kind != KindAgent || AgentSkillConfigPath(record.Root) != path {
-		return fmt.Errorf("AgentSkill %q not found", name)
+	if !ok {
+		return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: fmt.Sprintf("AgentSkill %q not found", name)}, nil
+	}
+	if record.Kind != KindAgent || AgentSkillConfigPath(record.Root) != path {
+		return operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "AgentSkill target changed after preflight"}, nil
 	}
 	previous, err := captureFile(path)
 	if err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
-	if _, err := prepared.Commit(ctx); err != nil {
-		return err
+	committed, err := prepared.Commit(ctx)
+	if err != nil {
+		return operationresult.Result[struct{}]{}, err
+	}
+	if committed.Status != operationresult.Success {
+		return operationresult.Result[struct{}]{Status: committed.Status, Message: committed.Message}, nil
 	}
 	if err := m.reloadLocked(ctx); err != nil {
 		if rollbackErr := previous.restore(path); rollbackErr != nil {
@@ -189,10 +200,10 @@ func (m *Manager) commitAgentSkillConfig(ctx context.Context, name, path string,
 				EventName: "skill_rollback_failed", Module: "skill", Content: rollbackErr.Error(),
 				Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(rollbackErr)})
 		}
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
 	m.setReloadResult(nil)
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
 type fileSnapshot struct {

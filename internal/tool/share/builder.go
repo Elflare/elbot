@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 )
 
 type Builder struct {
@@ -128,9 +129,9 @@ func (b *Builder) BuildInfo() Info {
 	return Info{Name: b.name, NeedsElyphRules: b.needsElyphRules, APITypes: append([]llm.APIType(nil), b.apiTypes...), Description: b.description, Risk: b.risk, SuperadminOnly: b.superadminOnly, Hidden: b.hidden, OwnerScoped: b.ownerScoped, ForegroundOnly: b.foregroundOnly, Tags: append([]string(nil), b.tags...), DependsOn: append([]string(nil), b.dependsOn...)}
 }
 
-func (b *Builder) Build(prepare func(context.Context, CallRequest, Info) (*PreparedCall, error)) ToolDefinition {
+func (b *Builder) Build(prepare func(context.Context, CallRequest, Info) (operationresult.Result[*PreparedCall], error)) ToolDefinition {
 	info := b.BuildInfo()
-	return ToolDefinition{Definition: info, Parameters: b.BuildSchema().Parameters, Prepare: func(ctx context.Context, req CallRequest) (*PreparedCall, error) {
+	return ToolDefinition{Definition: info, Parameters: b.BuildSchema().Parameters, Prepare: func(ctx context.Context, req CallRequest) (operationresult.Result[*PreparedCall], error) {
 		return prepare(ctx, req, info)
 	}}
 }

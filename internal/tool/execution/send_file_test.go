@@ -1,6 +1,7 @@
 package execution
 
 import (
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"net/url"
 	"os"
@@ -64,9 +65,9 @@ func TestSendFileSourcePermissionsAndConfirmation(t *testing.T) {
 	}{
 		{name: "user HTTP", source: "http://example.com/report.txt", role: contextinfo.RoleUser},
 		{name: "user HTTPS", source: "https://example.com/report.txt", role: contextinfo.RoleUser},
-		{name: "user media ID with local storage", source: item.ID, role: contextinfo.RoleUser},
+		{name: "user media ID with local storage", source: item.Data.ID, role: contextinfo.RoleUser},
 		{name: "superadmin URL", source: "https://example.com/report.txt", role: contextinfo.RoleSuperadmin},
-		{name: "superadmin media ID", source: item.ID, role: contextinfo.RoleSuperadmin},
+		{name: "superadmin media ID", source: item.Data.ID, role: contextinfo.RoleSuperadmin},
 		{name: "user relative path", source: "report.txt", role: contextinfo.RoleUser, wantError: "发送本地文件需要超级管理员权限"},
 		{name: "user absolute path", source: path, role: contextinfo.RoleUser, wantError: "发送本地文件需要超级管理员权限"},
 		{name: "user file URI", source: fileURI, role: contextinfo.RoleUser, wantError: "发送本地文件需要超级管理员权限"},
@@ -128,8 +129,8 @@ func TestSendFileDirectCallRejectsLocalForRegularUser(t *testing.T) {
 	}
 	manager := newTestManager(registry, permission)
 	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleUser})
-	_, _, err := manager.CallTool(ctx, share.CallRequest{Name: "send_file", Arguments: json.RawMessage(`{"source":"missing.txt"}`)})
-	if err == nil || !strings.Contains(err.Error(), "发送本地文件需要超级管理员权限") {
+	result, _, err := manager.CallTool(ctx, share.CallRequest{Name: "send_file", Arguments: json.RawMessage(`{"source":"missing.txt"}`)})
+	if err != nil || result.Status != operationresult.Forbidden || !strings.Contains(result.Message, "发送本地文件需要超级管理员权限") {
 		t.Fatalf("direct local call error = %v", err)
 	}
 }

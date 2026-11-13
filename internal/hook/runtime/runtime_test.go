@@ -7,6 +7,7 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"bufio"
 	"context"
+	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
 	"encoding/json"
 	"errors"
@@ -31,7 +32,7 @@ type auditTestTool struct{ err error }
 
 func registerHookTestTool(registry *tool.Registry, candidate interface {
 	Info() toolshare.Info
-	PrepareCall(context.Context, toolshare.CallRequest) (*toolshare.PreparedCall, error)
+	PrepareCall(context.Context, toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error)
 }) error {
 	info := candidate.Info()
 	info.Description = info.Name
@@ -44,13 +45,13 @@ func (auditTestTool) Info() toolshare.Info {
 	return toolshare.Info{Name: "audit_test", Risk: toolshare.RiskLow}
 }
 func (auditTestTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "audit_test"} }
-func (a auditTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: a.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
+func (a auditTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: a.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		if a.err != nil {
-			return nil, a.err.Error(), a.err
+			return operationresult.Result[*toolshare.Result]{}, a.err.Error(), a.err
 		}
-		return nil, "tool completed", nil
-	}), nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: nil}, "tool completed", nil
+	})}, nil
 }
 
 func TestPluginToolAuditOutcome(t *testing.T) {

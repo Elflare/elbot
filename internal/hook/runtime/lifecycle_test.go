@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"errors"
 	"fmt"
 	"strings"
@@ -51,10 +52,10 @@ func TestRuntimeCloseJoinsPluginToolRequests(t *testing.T) {
 			release := make(chan struct{})
 			unblock := sync.OnceFunc(func() { close(release) })
 			registry := tool.NewRegistry(security.DefaultPermission())
-			if err := registerHookTestTool(registry, loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
+			if err := registerHookTestTool(registry, loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (operationresult.Result[*toolshare.Result], string, error) {
 				entered <- ctx
 				<-release // Deliberately ignore cancellation until the test releases us.
-				return nil, "tool exited", ctx.Err()
+				return operationresult.Result[*toolshare.Result]{}, "tool exited", ctx.Err()
 			}}); err != nil {
 				t.Fatal(err)
 			}

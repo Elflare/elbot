@@ -6,6 +6,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,7 +29,7 @@ import (
 )
 
 type loggingTool struct {
-	run func(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error)
+	run func(context.Context, toolshare.CallRequest) (operationresult.Result[*toolshare.Result], string, error)
 }
 
 func (loggingTool) Name() string { return "logging_tool" }
@@ -36,10 +37,10 @@ func (loggingTool) Info() toolshare.Info {
 	return toolshare.Info{Name: "logging_tool", Risk: toolshare.RiskLow}
 }
 func (loggingTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: "logging_tool"} }
-func (t loggingTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
+func (t loggingTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		return t.run(ctx, req)
-	}), nil
+	})}, nil
 }
 
 func captureHookRecords(t *testing.T, includeStarts ...bool) *[]events.LogRecord {
@@ -65,11 +66,11 @@ func captureHookRecords(t *testing.T, includeStarts ...bool) *[]events.LogRecord
 func TestPluginToolStartPrecedesBodyAndEndHasElapsed(t *testing.T) {
 	records := captureHookRecords(t, true)
 	registry := tool.NewRegistry(security.DefaultPermission())
-	_ = registerHookTestTool(registry, loggingTool{run: func(context.Context, toolshare.CallRequest) (*toolshare.Result, string, error) {
+	_ = registerHookTestTool(registry, loggingTool{run: func(context.Context, toolshare.CallRequest) (operationresult.Result[*toolshare.Result], string, error) {
 		if len(*records) != 1 || (*records)[0].EventName != "hook_tool_call_prepared" || strings.Contains((*records)[0].Content, `"result"`) {
 			t.Fatalf("start=%+v", *records)
 		}
-		return &toolshare.Result{Content: "business"}, "summary", nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: "business"}}, "summary", nil
 	}})
 	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Tools: testTools{registry}})
 	if err != nil {
@@ -100,17 +101,17 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 			records := captureHookRecords(t)
 			registry := tool.NewRegistry(security.DefaultPermission())
 			var callID string
-			if err := registerHookTestTool(registry, loggingTool{run: func(_ context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
+			if err := registerHookTestTool(registry, loggingTool{run: func(_ context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.Result], string, error) {
 				callID = req.ID
-				return &toolshare.Result{Content: "business body", Segments: llm.TextSegments("business segments"), Outputs: []delivery.Output{delivery.Text("output")}}, "独立日志正文", nil
+				return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: "business body", Segments: llm.TextSegments("business segments"), Outputs: []delivery.Output{delivery.Text("output")}}}, "独立日志正文", nil
 			}}); err != nil {
 				t.Fatal(err)
 			}
-			manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Tools: testTools{registry}, Send: func(_ context.Context, _ delivery.Target, _ []delivery.Output) (delivery.Receipt, error) {
+			manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Tools: testTools{registry}, Send: func(_ context.Context, _ delivery.Target, _ []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
 				if len(*records) != 1 || (*records)[0].EventName != "hook_tool_call_completed" {
 					t.Fatalf("call record was delayed until send: %+v", *records)
 				}
-				return delivery.Receipt{SentMessages: []delivery.SentMessage{{Platform: "cli", PlatformMessageID: "delivered"}}}, tc.err
+				return operationresult.Result[delivery.Receipt]{}, tc.err
 			}})
 			if err != nil {
 				t.Fatal(err)
@@ -148,9 +149,9 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 					if record.ResultStatus != events.ResultSucceeded || record.Level != slog.LevelInfo || body != "business segments" || summary != "独立日志正文" {
 						t.Fatal(record)
 					}
-				} else if record.EventName != "hook_tool_log" || record.ResultStatus != tc.status || body != tc.err.Error() || !strings.Contains(record.Content, "delivered") {
+				} else if record.EventName != "hook_tool_log" || record.ResultStatus != tc.status || body != tc.err.Error() || strings.Contains(record.Content, "delivered") {
 					t.Fatal(record)
-				} else if content["arguments"] != nil || content["summary"] != nil || content["elapsed_ms"] != nil || string(content["output_count"]) != "1" {
+				} else if content["arguments"] != nil || content["summary"] != nil || content["elapsed_ms"] != nil || content["output_count"] != nil {
 					t.Fatalf("send fields changed: %s", record.Content)
 				}
 			}
@@ -162,11 +163,11 @@ func TestPluginToolArgumentPreviewDoesNotChangeInvocation(t *testing.T) {
 	records := captureHookRecords(t, true)
 	args, _ := json.Marshal(map[string]string{"value": strings.Repeat("雪🔥", 400)})
 	registry := tool.NewRegistry(security.DefaultPermission())
-	if err := registerHookTestTool(registry, loggingTool{run: func(_ context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
+	if err := registerHookTestTool(registry, loggingTool{run: func(_ context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.Result], string, error) {
 		if string(req.Arguments) != string(args) {
 			t.Error("execution arguments were truncated")
 		}
-		return &toolshare.Result{Content: "business result"}, "source summary", nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: "business result"}}, "source summary", nil
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -212,13 +213,13 @@ func TestToolAuditUsesTriggerActorAndKeepsEnteredCancellation(t *testing.T) {
 			ctx, cancel := context.WithCancel(contextinfo.WithActor(t.Context(), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "context"}}))
 			ctx = contextinfo.WithExecution(ctx, contextinfo.Execution{SessionID: tc.contextSession})
 			registry := tool.NewRegistry(security.DefaultPermission())
-			if err := registerHookTestTool(registry, loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
+			if err := registerHookTestTool(registry, loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (operationresult.Result[*toolshare.Result], string, error) {
 				actor, _ := contextinfo.ActorFromContext(ctx)
 				if actor.ID != tc.sessionActor {
 					t.Fatalf("permission actor changed: %+v", actor)
 				}
 				cancel()
-				return nil, "工具已进入；业务返回取消", context.Canceled
+				return operationresult.Result[*toolshare.Result]{}, "工具已进入；业务返回取消", context.Canceled
 			}}); err != nil {
 				t.Fatal(err)
 			}
@@ -262,14 +263,11 @@ func TestUnenteredToolCallRecordsFailureOrRejection(t *testing.T) {
 		if allowed {
 			worker.config.Tools.BackgroundAllow = []string{"missing"}
 		}
-		_, err = worker.callTool(json.RawMessage(`{"name":"missing","background":true,"target":{"platform":"cli"}}`))
-		if err == nil || len(*records) != 1 || !strings.Contains((*records)[0].Content, "not entered") {
+		outcome, err := worker.callTool(json.RawMessage(`{"name":"missing","background":true,"target":{"platform":"cli"}}`))
+		if err != nil || outcome.(operationresult.Result[map[string]any]).Status == operationresult.Success || len(*records) != 1 || !strings.Contains((*records)[0].Content, "not entered") {
 			t.Fatalf("err=%v records=%+v", err, *records)
 		}
 		want := events.ResultRejected
-		if allowed {
-			want = events.ResultFailed
-		}
 		if (*records)[0].ResultStatus != want {
 			t.Fatal((*records)[0])
 		}
@@ -315,7 +313,7 @@ func TestWorkerRequestKeepsKnownFaultWhenCanceled(t *testing.T) {
 func TestToolWithoutOutputsDoesNotInvokeSenderOrLogSend(t *testing.T) {
 	records := captureHookRecords(t)
 	registry := tool.NewRegistry(security.DefaultPermission())
-	if err := registerHookTestTool(registry, loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (*toolshare.Result, string, error) {
+	if err := registerHookTestTool(registry, loggingTool{run: func(ctx context.Context, _ toolshare.CallRequest) (operationresult.Result[*toolshare.Result], string, error) {
 		if actor, _ := contextinfo.ActorFromContext(ctx); actor != (contextinfo.Actor{}) {
 			t.Fatalf("fabricated actor: %+v", actor)
 		}
@@ -325,13 +323,13 @@ func TestToolWithoutOutputsDoesNotInvokeSenderOrLogSend(t *testing.T) {
 		if _, ok := contextinfo.ConversationFromContext(ctx); ok {
 			t.Fatal("fabricated chat")
 		}
-		return &toolshare.Result{Content: "business only"}, "tool body", nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: "business only"}}, "tool body", nil
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Tools: testTools{registry}, Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+	manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Tools: testTools{registry}, Send: func(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
 		t.Fatal("unneeded send entered")
-		return delivery.Receipt{}, nil
+		return operationresult.Result[delivery.Receipt]{Status: operationresult.Success, Data: delivery.Receipt{}}, nil
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -342,7 +340,7 @@ func TestToolWithoutOutputsDoesNotInvokeSenderOrLogSend(t *testing.T) {
 	if err != nil || result == nil || len(*records) != 1 || (*records)[0].EventName != "hook_tool_call_completed" {
 		t.Fatalf("result=%v err=%v records=%+v", result, err, *records)
 	}
-	if result.(map[string]any)["content"] != "business only" {
+	if result.(operationresult.Result[map[string]any]).Data["content"] != "business only" {
 		t.Fatalf("RPC lost result: %v", result)
 	}
 }
@@ -383,17 +381,17 @@ func TestInvalidToolParametersAreInfoCallRecords(t *testing.T) {
 	for _, raw := range []string{"{", `{"name":42}`, `{"name":"  "}`} {
 		t.Run(raw, func(t *testing.T) {
 			records := captureHookRecords(t)
-			manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+			manager, err := NewManager(Options{Log: testLog, Notify: testNotify, SharedDir: t.TempDir(), Send: func(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
 				t.Fatal("invalid call entered sender")
-				return delivery.Receipt{}, nil
+				return operationresult.Result[delivery.Receipt]{Status: operationresult.Success, Data: delivery.Receipt{}}, nil
 			}})
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer manager.Close(context.Background())
 			worker := newWorker(manager, share.RuntimeConfig{ID: "invalid"})
-			_, err = worker.callTool(json.RawMessage(raw))
-			if err == nil || len(*records) != 1 {
+			outcome, err := worker.callTool(json.RawMessage(raw))
+			if err != nil || outcome.(operationresult.Result[map[string]any]).Status != operationresult.InvalidArguments || len(*records) != 1 {
 				t.Fatalf("err=%v records=%+v", err, *records)
 			}
 			record := (*records)[0]

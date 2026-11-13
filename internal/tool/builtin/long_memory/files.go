@@ -4,6 +4,7 @@ package long_memory
 import (
 	"context"
 	"elbot/internal/fileops"
+	"elbot/internal/operationresult"
 	"fmt"
 	"github.com/pelletier/go-toml/v2"
 	"os"
@@ -27,28 +28,38 @@ type parsedLongMemoryFile struct {
 	Content string
 }
 
-func (s *longMemoryStore) writeRecordFileLocked(ctx context.Context, record longMemoryRecord) error {
+func (s *longMemoryStore) writeRecordFileLocked(ctx context.Context, record longMemoryRecord) (operationresult.Result[struct{}], error) {
 	if err := os.MkdirAll(filepath.Dir(record.FilePath), 0o755); err != nil {
-		return fmt.Errorf("create long memory file dir: %w", err)
+		return operationresult.Result[struct{}]{}, fmt.Errorf("create long memory file dir: %w", err)
 	}
 	data, err := marshalLongMemoryFile(record)
 	if err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
 	prepared, err := fileops.PrepareFileWrite(ctx, record.FilePath, string(data))
 	if err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
-	_, err = prepared.Commit(ctx)
-	return err
+	if prepared.Status != operationresult.Success {
+		return operationresult.Result[struct{}]{Status: prepared.Status, Message: prepared.Message}, nil
+	}
+	committed, err := prepared.Data.Commit(ctx)
+	if err != nil {
+		return operationresult.Result[struct{}]{}, err
+	}
+	return operationresult.Result[struct{}]{Status: committed.Status, Message: committed.Message}, nil
 }
 
-func parseLongMemoryFile(path string) (parsedLongMemoryFile, error) {
+func parseLongMemoryFile(path string) (operationresult.Result[parsedLongMemoryFile], error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return parsedLongMemoryFile{}, fmt.Errorf("read file: %w", err)
+		return operationresult.Result[parsedLongMemoryFile]{}, fmt.Errorf("read file: %w", err)
 	}
-	return parseLongMemoryText(string(data))
+	parsed, err := parseLongMemoryText(string(data))
+	if err != nil {
+		return operationresult.Result[parsedLongMemoryFile]{Status: operationresult.InvalidTarget, Message: longMemoryRepairAdvice(path, err)}, nil
+	}
+	return operationresult.Result[parsedLongMemoryFile]{Status: operationresult.Success, Data: parsed}, nil
 }
 
 func parseLongMemoryText(text string) (parsedLongMemoryFile, error) {

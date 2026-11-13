@@ -12,6 +12,7 @@ import (
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/memory/resident"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/tool/execution"
@@ -56,18 +57,27 @@ func (m *Supervisor) RegisterTools(ctx context.Context, source Source, scope Too
 			}
 		}
 		if definition.Prepare != nil {
-			value.Prepare = func(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
+			value.Prepare = func(ctx context.Context, req share.CallRequest) (operationresult.Result[*share.PreparedCall], error) {
 				prepared, err := definition.Prepare(ctx, CallRequest(req))
 				if err != nil {
-					return nil, err
+					return operationresult.Result[*share.PreparedCall]{}, err
 				}
-				if prepared == nil || prepared.Run == nil {
-					return nil, fmt.Errorf("tool %q returned no prepared operation", req.Name)
+				if prepared.Status != operationresult.Success {
+					return operationresult.Result[*share.PreparedCall]{Status: prepared.Status, Message: prepared.Message}, nil
 				}
-				return share.NewPreparedCall(req, share.RiskAssessment(prepared.Risk), prepared.Details, func(ctx context.Context) (*share.Result, string, error) {
-					result, logContent, err := prepared.Run(ctx)
-					return toInternalResult(result), logContent, err
-				}), nil
+				if prepared.Data == nil || prepared.Data.Run == nil {
+					return operationresult.Result[*share.PreparedCall]{}, fmt.Errorf("tool %q returned no prepared operation", req.Name)
+				}
+				return operationresult.Result[*share.PreparedCall]{Status: operationresult.Success, Data: share.NewPreparedCall(req, share.RiskAssessment(prepared.Data.Risk), prepared.Data.Details, func(ctx context.Context) (operationresult.Result[*share.Result], string, error) {
+					result, logContent, err := prepared.Data.Run(ctx)
+					if err != nil {
+						return operationresult.Result[*share.Result]{}, logContent, err
+					}
+					if result.Status != operationresult.Success {
+						return operationresult.Result[*share.Result]{Status: result.Status, Message: result.Message}, logContent, nil
+					}
+					return operationresult.Result[*share.Result]{Status: operationresult.Success, Data: toInternalResult(result.Data)}, logContent, nil
+				})}, nil
 			}
 		}
 		internal = append(internal, value)
@@ -102,22 +112,25 @@ func (m *Supervisor) QueryTools(ctx context.Context, query ToolQuery) ([]ToolInf
 	return infos, nil
 }
 
-func (m *Supervisor) LoadToolDetail(ctx context.Context, name string) (DetailBlock, error) {
+func (m *Supervisor) LoadToolDetail(ctx context.Context, name string) (operationresult.Result[DetailBlock], error) {
 	ctx = toolPolicyContext(ctx)
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
-		return DetailBlock{}, err
+		return operationresult.Result[DetailBlock]{}, err
 	}
 	definitions, err := m.catalog.registry.Query(ctx, share.ToolQuery{
 		Scope: share.QueryCatalog, Names: []string{name}, IncludeHidden: true, IncludeDiscover: true,
 	})
 	if err != nil {
-		return DetailBlock{}, err
+		return operationresult.Result[DetailBlock]{}, err
 	}
 	if len(definitions) == 0 || definitions[0].LoadDetail == nil {
-		return DetailBlock{}, ErrToolDetailNotFound
+		return operationresult.Result[DetailBlock]{Status: operationresult.NotFound, Message: fmt.Sprintf("tool %q detail not found", name)}, nil
 	}
 	block, err := definitions[0].LoadDetail(ctx)
-	return DetailBlock(block), err
+	if err != nil {
+		return operationresult.Result[DetailBlock]{}, err
+	}
+	return operationresult.Result[DetailBlock]{Status: operationresult.Success, Data: DetailBlock(block)}, nil
 }
 
 func (m *Supervisor) ToolTags(ctx context.Context) ([]string, error) {
@@ -201,9 +214,9 @@ func (m *Supervisor) TagPrompts(ctx context.Context, tags []string) ([]TagPrompt
 	prompts, err := m.preloader.TagPrompts(ctx, tags)
 	return toPublicTagPrompts(prompts), err
 }
-func (m *Supervisor) Remove(ctx context.Context, name string) error {
+func (m *Supervisor) Remove(ctx context.Context, name string) (operationresult.Result[struct{}], error) {
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
 	return m.catalog.skillManager.Remove(ctx, name)
 }
@@ -215,20 +228,26 @@ func (m *Supervisor) WithBinding(ctx context.Context, binding fileops.Binding, a
 	return m.catalog.fileRollback.WithBinding(ctx, binding, admission...)
 }
 func (m *Supervisor) Forget(binding fileops.Binding) { m.catalog.fileRollback.Manager.Forget(binding) }
-func (m *Supervisor) ListRollbacks(ctx context.Context) ([]fileops.RollbackInfo, error) {
+func (m *Supervisor) ListRollbacks(ctx context.Context) (operationresult.Result[[]fileops.RollbackInfo], error) {
 	return m.catalog.fileRollback.List(ctx)
 }
-func (m *Supervisor) RollbackByID(ctx context.Context, id uint64) (fileops.RollbackResult, error) {
+func (m *Supervisor) RollbackByID(ctx context.Context, id uint64) (operationresult.Result[fileops.RollbackResult], error) {
 	return m.catalog.fileRollback.RollbackByID(ctx, id)
 }
 
-func (m *Supervisor) CallTool(ctx context.Context, req CallRequest) (*Result, string, error) {
+func (m *Supervisor) CallTool(ctx context.Context, req CallRequest) (operationresult.Result[*Result], string, error) {
 	ctx = toolPolicyContext(ctx)
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
-		return nil, "Tool execution not entered: " + err.Error(), err
+		return operationresult.Result[*Result]{}, "Tool execution not entered: " + err.Error(), err
 	}
 	result, logContent, err := m.engine.CallTool(ctx, toInternalCallRequest(req))
-	return toPublicResult(result), logContent, err
+	if err != nil {
+		return operationresult.Result[*Result]{}, logContent, err
+	}
+	if result.Status != operationresult.Success {
+		return operationresult.Result[*Result]{Status: result.Status, Message: result.Message}, logContent, nil
+	}
+	return operationresult.Result[*Result]{Status: operationresult.Success, Data: toPublicResult(result.Data)}, logContent, nil
 }
 
 // toolPolicyContext 在 Tool 边界解释执行事实，内部只接收所需策略。

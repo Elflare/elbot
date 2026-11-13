@@ -2,6 +2,7 @@ package media
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"errors"
 	"fmt"
 	"os"
@@ -35,9 +36,12 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	for range 8 {
 		go func() {
 			call := runtime.NewCall()
-			path, err := call.CachedExport(ctx, item.ID)
-			if err == nil {
-				data, readErr := os.ReadFile(path)
+			path, err := call.CachedExport(ctx, item.Data.ID)
+			if err == nil && path.Status != operationresult.Success {
+				t.Errorf("export=%+v", path)
+			}
+			if err == nil && path.Status == operationresult.Success {
+				data, readErr := os.ReadFile(path.Data)
 				err = readErr
 				if err == nil && string(data) != "hello" {
 					err = fmt.Errorf("incomplete cache: %q", data)
@@ -56,15 +60,15 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	call := runtime.NewCall()
-	path, err := call.CachedExport(ctx, item.ID)
+	path, err := call.CachedExport(ctx, item.Data.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Dir(path) != filepath.Join(runtime.sandboxRoot, "media-inputs") {
+	if filepath.Dir(path.Data) != filepath.Join(runtime.sandboxRoot, "media-inputs") {
 		t.Fatalf("cache followed the invocation workspace: %s", path)
 	}
 	old := time.Now().Add(-30 * 24 * time.Hour)
-	if err := os.Chtimes(path, old, old); err != nil {
+	if err := os.Chtimes(path.Data, old, old); err != nil {
 		t.Fatal(err)
 	}
 	call.Close()
@@ -73,15 +77,15 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	}
 	call = runtime.NewCall()
 	t.Cleanup(func() { call.Close() })
-	again, err := call.CachedExport(workspace.WithPathScope(ctx, workspace.PathScope{Dir: t.TempDir()}), item.ID)
-	if err != nil || again != path {
+	again, err := call.CachedExport(workspace.WithPathScope(ctx, workspace.PathScope{Dir: t.TempDir()}), item.Data.ID)
+	if err != nil || again.Status != operationresult.Success || again.Data != path.Data {
 		t.Fatalf("cache path %s: %v", again, err)
 	}
-	info, err := os.Stat(path)
+	info, err := os.Stat(path.Data)
 	if err != nil || info.ModTime().Before(time.Now().Add(-time.Minute)) {
 		t.Fatalf("cache not touched: %v %v", info, err)
 	}
-	refs, err := store.MediaReferences().ListMediaIDs(ctx, item.ID)
+	refs, err := store.MediaReferences().ListMediaIDs(ctx, item.Data.ID)
 	if err != nil || len(refs) != 1 {
 		t.Fatalf("refs %v %v", refs, err)
 	}
@@ -89,22 +93,22 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	if err := center.Cleanup(ctx); err != nil {
 		t.Fatal(err)
 	}
-	refs, err = store.MediaReferences().ListMediaIDs(ctx, item.ID)
+	refs, err = store.MediaReferences().ListMediaIDs(ctx, item.Data.ID)
 	if err != nil || len(refs) != 0 {
 		t.Fatalf("refs after close %v %v", refs, err)
 	}
-	if data, err := os.ReadFile(path); err != nil || string(data) != "hello" {
+	if data, err := os.ReadFile(path.Data); err != nil || string(data) != "hello" {
 		t.Fatalf("cache removed: %q %v", data, err)
 	}
 	private := runtime.NewCall()
 	base := t.TempDir()
-	relative, _, err := private.Export(ctx, item.ID, base)
+	relative, _, err := private.Export(ctx, item.Data.ID, base)
 	if err != nil || filepath.IsAbs(relative) {
 		t.Fatalf("export %q %v", relative, err)
 	}
-	again, metadata, err := private.Export(ctx, item.ID, base)
-	if err != nil || again != relative || metadata.Name != item.Name || metadata.Size != item.Size {
-		t.Fatalf("repeated export %q %#v %v", again, metadata, err)
+	relativeAgain, metadata, err := private.Export(ctx, item.Data.ID, base)
+	if err != nil || relativeAgain != relative || metadata.Status != operationresult.Success || metadata.Data.Name != item.Data.Name || metadata.Data.Size != item.Data.Size {
+		t.Fatalf("repeated export %q %#v %v", relativeAgain, metadata, err)
 	}
 	if data, err := os.ReadFile(filepath.Join(base, relative)); err != nil || string(data) != "hello" {
 		t.Fatalf("private content %q %v", data, err)
@@ -117,7 +121,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	refs, err = store.MediaReferences().ListMediaIDs(ctx, imported.ID)
+	refs, err = store.MediaReferences().ListMediaIDs(ctx, imported.Data.ID)
 	if err != nil || len(refs) == 0 || refs[0].OwnerType != "request" {
 		t.Fatalf("output is not held by the invocation: %v %v", refs, err)
 	}
@@ -125,7 +129,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	if err := center.Cleanup(ctx); err != nil {
 		t.Fatal(err)
 	}
-	refs, err = store.MediaReferences().ListMediaIDs(ctx, imported.ID)
+	refs, err = store.MediaReferences().ListMediaIDs(ctx, imported.Data.ID)
 	if err != nil || len(refs) != 0 {
 		t.Fatalf("import references survived close: %v %v", refs, err)
 	}
@@ -133,7 +137,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 		t.Fatalf("private export survived: %v", err)
 	}
 	for _, path := range []string{"../escape", "/absolute", `C:\escape`, `..\escape`} {
-		if _, err := runtime.NewCall().Import(ctx, base, path, share.MediaImportOptions{}); err == nil {
+		if result, err := runtime.NewCall().Import(ctx, base, path, share.MediaImportOptions{}); err != nil || result.Status == operationresult.Success {
 			t.Fatalf("accepted %s", path)
 		}
 	}
@@ -142,7 +146,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(outside, filepath.Join(base, "link.txt")); err == nil {
-		if _, err := runtime.NewCall().Import(ctx, base, "link.txt", share.MediaImportOptions{}); err == nil {
+		if result, err := runtime.NewCall().Import(ctx, base, "link.txt", share.MediaImportOptions{}); err != nil || result.Status == operationresult.Success {
 			t.Fatal("accepted escaped symlink")
 		}
 	}
@@ -171,14 +175,22 @@ func TestMediaExportFailureCanBeRetriedAndCanceled(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			destination := filepath.Join(base, workspace, mediaFilename(mediaInfo(item)))
-			export := func(ctx context.Context) (string, error) {
-				path, _, err := call.Export(ctx, item.ID, base)
-				return filepath.Join(base, path), err
+			destination := filepath.Join(base, workspace, mediaFilename(mediaInfo(item.Data)))
+			export := func(ctx context.Context) (operationresult.Result[string], error) {
+				path, result, err := call.Export(ctx, item.Data.ID, base)
+				if err != nil {
+					return operationresult.Result[string]{}, err
+				}
+				if result.Status != operationresult.Success {
+					return operationresult.Result[string]{Status: result.Status, Message: result.Message}, nil
+				}
+				return operationresult.Result[string]{Status: operationresult.Success, Data: filepath.Join(base, path)}, nil
 			}
 			if shared {
-				destination = filepath.Join(runtime.sandboxRoot, "media-inputs", mediaFilename(mediaInfo(item)))
-				export = func(ctx context.Context) (string, error) { return call.CachedExport(ctx, item.ID) }
+				destination = filepath.Join(runtime.sandboxRoot, "media-inputs", mediaFilename(mediaInfo(item.Data)))
+				export = func(ctx context.Context) (operationresult.Result[string], error) {
+					return call.CachedExport(ctx, item.Data.ID)
+				}
 			}
 			if err := os.MkdirAll(destination, 0700); err != nil {
 				t.Fatal(err)
@@ -196,7 +208,7 @@ func TestMediaExportFailureCanBeRetriedAndCanceled(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if data, err := os.ReadFile(path); err != nil || string(data) != "complete content" {
+			if data, err := os.ReadFile(path.Data); err != nil || string(data) != "complete content" {
 				t.Fatalf("retried export %q %v", data, err)
 			}
 			canceled, cancel := context.WithCancel(ctx)
@@ -208,7 +220,7 @@ func TestMediaExportFailureCanBeRetriedAndCanceled(t *testing.T) {
 			if err := center.Cleanup(ctx); err != nil {
 				t.Fatal(err)
 			}
-			refs, err := store.MediaReferences().ListMediaIDs(ctx, item.ID)
+			refs, err := store.MediaReferences().ListMediaIDs(ctx, item.Data.ID)
 			if err != nil || len(refs) != 0 {
 				t.Fatalf("export references survived close: %v %v", refs, err)
 			}

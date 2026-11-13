@@ -2,8 +2,8 @@ package tool
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"elbot/internal/testutil"
-	"errors"
 	"reflect"
 	"slices"
 	"testing"
@@ -33,10 +33,10 @@ func TestQueryToolsScopesTagsAndDescriptions(t *testing.T) {
 		definitions = append(definitions, ToolDefinition{
 			Definition: Info{Name: name, Description: name + " description", Risk: security.RiskLow},
 			Parameters: map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string"}}},
-			Prepare: func(context.Context, CallRequest) (*PreparedCall, error) {
-				return &PreparedCall{Risk: RiskAssessment{Level: security.RiskLow}, Run: func(context.Context) (*Result, string, error) {
-					return &Result{Content: "ok"}, "ok", nil
-				}}, nil
+			Prepare: func(context.Context, CallRequest) (operationresult.Result[*PreparedCall], error) {
+				return operationresult.Result[*PreparedCall]{Status: operationresult.Success, Data: &PreparedCall{Risk: RiskAssessment{Level: security.RiskLow}, Run: func(context.Context) (operationresult.Result[*Result], string, error) {
+					return operationresult.Result[*Result]{Status: operationresult.Success, Data: &Result{Content: "ok"}}, "ok", nil
+				}}}, nil
 			},
 		})
 	}
@@ -52,10 +52,10 @@ func TestQueryToolsScopesTagsAndDescriptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	detail, err := m.LoadToolDetail(ctx, "guide")
-	if err != nil || detail.Content != "Plain instructions" || detail.Format != "" {
+	if err != nil || detail.Data.Content != "Plain instructions" || detail.Format != "" {
 		t.Fatalf("detail=%+v err=%v", detail, err)
 	}
-	if _, err := m.LoadToolDetail(ctx, "alpha"); !errors.Is(err, ErrToolDetailNotFound) {
+	if result, err := m.LoadToolDetail(ctx, "alpha"); err != nil || result.Status != operationresult.NotFound {
 		t.Fatalf("tool without detail error=%v", err)
 	}
 	for _, tc := range []struct {

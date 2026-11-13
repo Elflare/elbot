@@ -10,6 +10,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 )
@@ -24,7 +25,7 @@ type ManagerDeps struct {
 		CheckTool(contextinfo.Actor, string, security.RiskLevel, bool, bool, bool) security.ToolPermissionResult
 	} // 当前调用的授权与确认判定。
 	Media interface {
-		Metadata(context.Context, string) (toolshare.MediaInfo, error)
+		Metadata(context.Context, string) (operationresult.Result[toolshare.MediaInfo], error)
 	} // 参数引用的媒体查询。
 	Log                       func(context.Context, events.LogRecord)                                 // 执行记录发布。
 	InfoAvailableInContext    func(context.Context, toolshare.Info) bool                              // schema 上下文资格。
@@ -38,22 +39,17 @@ type ManagerDeps struct {
 type Manager struct{ ManagerDeps }
 
 type resolvedTool struct {
-	// Source identifies the selected provider; empty means no provider was found.
-	Source toolshare.SourceKind
-	// Native is the selected native implementation, nil for remote or unavailable tools.
-	Native *toolshare.ToolDefinition
-	// Discovered 是本次选中的已发现工具声明；直接解析的前台工具没有此声明。
+	Source     toolshare.SourceKind
+	Native     *toolshare.ToolDefinition
 	Discovered *toolshare.DiscoveredTool
-	// Error retains the resolution error, including typed permission denial; nil does not declare success.
-	Error error
 }
 
 func NewManager(deps ManagerDeps) *Manager { return &Manager{ManagerDeps: deps} }
 
-func (m *Manager) resolve(ctx context.Context, name string, discovered []toolshare.DiscoveredTool, mode string) resolvedTool {
+func (m *Manager) resolve(ctx context.Context, name string, discovered []toolshare.DiscoveredTool, mode string) (operationresult.Result[resolvedTool], error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return resolvedTool{Error: fmt.Errorf("tool name is empty")}
+		return operationresult.Result[resolvedTool]{Status: operationresult.InvalidArguments, Message: "tool name is empty"}, nil
 	}
 	for _, discoveredTool := range discovered {
 		modelName := discoveredTool.CanonicalName
@@ -67,56 +63,59 @@ func (m *Manager) resolve(ctx context.Context, name string, discovered []toolsha
 			continue
 		}
 		if mode != storage.SessionModeBackground && !m.InfoAvailableInContext(ctx, toolshare.Info{ForegroundOnly: discoveredTool.ForegroundOnly}) {
-			return resolvedTool{Source: discoveredTool.Source, Discovered: &discoveredTool, Error: toolshare.PolicyDeniedError("tool is unavailable in this context")}
+			return operationresult.Result[resolvedTool]{Status: operationresult.Forbidden, Message: "tool is unavailable in this context"}, nil
 		}
 		source := discoveredTool.Source
 		if source == toolshare.SourceKindELwisp {
 			if discoveredTool.Endpoint == "" {
-				return resolvedTool{Source: source, Discovered: &discoveredTool, Error: fmt.Errorf("ELwisp tool endpoint is missing")}
+				return operationresult.Result[resolvedTool]{}, fmt.Errorf("ELwisp tool endpoint is missing")
 			}
-			return resolvedTool{Source: source, Discovered: &discoveredTool}
+			return operationresult.Result[resolvedTool]{Status: operationresult.Success, Data: resolvedTool{Source: source, Discovered: &discoveredTool}}, nil
 		}
 		if nativeTool, ok := m.Registry.Get(discoveredTool.Name); ok {
 			if reason := m.UnavailableReason(ctx, nativeTool.Definition); reason != "" {
-				return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Discovered: &discoveredTool, Error: toolshare.PolicyDeniedError(reason)}
+				return operationresult.Result[resolvedTool]{Status: operationresult.Forbidden, Message: reason}, nil
 			}
-			return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Discovered: &discoveredTool}
+			return operationresult.Result[resolvedTool]{Status: operationresult.Success, Data: resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Discovered: &discoveredTool}}, nil
 		}
-		return resolvedTool{Source: toolshare.SourceKindNative, Discovered: &discoveredTool, Error: fmt.Errorf("native tool is no longer available")}
+		return operationresult.Result[resolvedTool]{Status: operationresult.Unavailable, Message: "native tool is no longer available"}, nil
 	}
 	if mode == storage.SessionModeBackground {
-		return resolvedTool{Error: toolshare.PolicyDeniedError("tool is not allowed in this background task")}
+		return operationresult.Result[resolvedTool]{Status: operationresult.Forbidden, Message: "tool is not allowed in this background task"}, nil
 	}
 	if nativeTool, ok := m.Registry.Get(name); ok {
 		if reason := m.UnavailableReason(ctx, nativeTool.Definition); reason != "" {
-			return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool, Error: toolshare.PolicyDeniedError(reason)}
+			return operationresult.Result[resolvedTool]{Status: operationresult.Forbidden, Message: reason}, nil
 		}
-		return resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool}
+		return operationresult.Result[resolvedTool]{Status: operationresult.Success, Data: resolvedTool{Source: toolshare.SourceKindNative, Native: &nativeTool}}, nil
 	}
-	return resolvedTool{Error: fmt.Errorf("tool %q not found", name)}
+	return operationresult.Result[resolvedTool]{Status: operationresult.NotFound, Message: fmt.Sprintf("tool %q not found", name)}, nil
 }
 
 // CallTool 供已由调用方授权的原生调用使用；仍先准备，再执行同一结果。
 // 此入口不进入模型批次或交互确认。
-func (m *Manager) CallTool(ctx context.Context, req toolshare.CallRequest) (*toolshare.Result, string, error) {
+func (m *Manager) CallTool(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.Result], string, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, "Tool execution not entered: " + err.Error(), err
+		return operationresult.Result[*toolshare.Result]{}, "Tool execution not entered: " + err.Error(), err
 	}
 	candidate, ok := m.Registry.Get(req.Name)
 	if !ok {
-		err := fmt.Errorf("tool %q not found", req.Name)
-		return nil, "Tool execution not entered: " + err.Error(), err
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.NotFound, Message: fmt.Sprintf("tool %q not found", req.Name)}, "", nil
 	}
 	prepared, err := candidate.PrepareCall(ctx, req)
 	if err != nil {
-		return nil, "Tool execution not entered: " + err.Error(), err
+		return operationresult.Result[*toolshare.Result]{}, "Tool execution not entered: " + err.Error(), err
+	}
+	if prepared.Status != operationresult.Success {
+		return operationresult.Result[*toolshare.Result]{Status: prepared.Status, Message: prepared.Message}, prepared.Message, nil
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, "Tool execution not entered: " + err.Error(), err
+		return operationresult.Result[*toolshare.Result]{}, "Tool execution not entered: " + err.Error(), err
 	}
-	if !prepared.Matches(req) {
+	preparedCall := prepared.Data
+	if !preparedCall.Matches(req) {
 		err := fmt.Errorf("tool call changed after preparation")
-		return nil, "Tool execution not entered: " + err.Error(), err
+		return operationresult.Result[*toolshare.Result]{}, "Tool execution not entered: " + err.Error(), err
 	}
-	return prepared.Call(ctx)
+	return preparedCall.Call(ctx)
 }

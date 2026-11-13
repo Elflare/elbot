@@ -6,6 +6,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,16 +33,16 @@ func TestPreparedGoRunnerKeepsSelectedRecordAndArguments(t *testing.T) {
 	runner := GoRunner{manager: &Manager{media: newTestMediaRuntime(t), catalog: catalog, processEnv: processenv.New([]string{"ELBOT_SKILL_TEST_HELPER=payload"})}}
 	raw := []byte(`{"skill_name":"frozen","payload":{"input":"approved"}}`)
 	prepared, err := runner.Definition().PrepareCall(t.Context(), toolshare.CallRequest{Arguments: raw})
-	if err != nil {
+	if err != nil || prepared.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	for i := range raw {
 		raw[i] = ' '
 	}
 	catalog.Replace([]record{{Name: "frozen", Kind: KindGo, Root: t.TempDir(), BinaryPath: "missing", Risk: toolshare.RiskSafe}})
-	result, _, err := prepared.Call(t.Context())
-	if err != nil || result.Content != "approved" || prepared.RiskAssessment().Level != toolshare.RiskHigh {
-		t.Fatalf("result=%+v risk=%+v err=%v", result, prepared.RiskAssessment(), err)
+	result, _, err := prepared.Data.Call(t.Context())
+	if err != nil || result.Status != operationresult.Success || result.Data.Content != "approved" || prepared.Data.RiskAssessment().Level != toolshare.RiskHigh {
+		t.Fatalf("result=%+v risk=%+v err=%v", result, prepared.Data.RiskAssessment(), err)
 	}
 }
 
@@ -57,7 +58,7 @@ func TestRunMediaCommandOutputLimits(t *testing.T) {
 			defer cancel()
 			ready := filepath.Join(t.TempDir(), "ready")
 			type outcome struct {
-				result *toolshare.Result
+				result operationresult.Result[*toolshare.Result]
 				err    error
 			}
 			done := make(chan outcome, 1)
@@ -76,7 +77,7 @@ func TestRunMediaCommandOutputLimits(t *testing.T) {
 			out := <-done
 			switch mode {
 			case "plain exact", "json exact":
-				if out.err != nil || out.result.Content != strings.Repeat("x", maxRunnerOutput)+"\n... output truncated ...\n" {
+				if out.err != nil || out.result.Status != operationresult.Success || out.result.Data.Content != strings.Repeat("x", maxRunnerOutput)+"\n... output truncated ...\n" {
 					t.Fatalf("exact limit result: %v", out.err)
 				}
 			case "stderr overflow":
@@ -84,25 +85,29 @@ func TestRunMediaCommandOutputLimits(t *testing.T) {
 					t.Fatalf("stderr changed success: %#v, %v", out.result, out.err)
 				}
 			case "plain overflow", "json overflow":
-				if out.result != nil || out.err == nil || !strings.Contains(out.err.Error(), "stdout exceeds 1048576 byte limit") {
+				if out.err != nil || out.result.Status != operationresult.Failed || !strings.Contains(out.result.Message, "stdout exceeds 1048576 byte limit") {
 					t.Fatalf("overflow result: %#v, %v", out.result, out.err)
 				}
 			default:
-				if out.err == nil {
-					t.Fatal("expected process error")
+				if out.err != nil {
+					t.Fatal(out.err)
 				}
-				if mode == "canceled" && !errors.Is(out.err, context.Canceled) {
-					t.Fatalf("cancellation classification: %v", out.err)
+				want := operationresult.Failed
+				if mode == "canceled" {
+					want = operationresult.Canceled
+				}
+				if out.result.Status != want {
+					t.Fatalf("outcome=%+v", out.result)
 				}
 				for _, want := range []string{"stdout-prefix", "stderr-prefix", "output truncated"} {
-					if !strings.Contains(out.err.Error(), want) {
+					if !strings.Contains(out.result.Message, want) {
 						t.Fatalf("diagnostics missing %q", want)
 					}
 				}
-				if mode == "failure" && !strings.Contains(out.err.Error(), "exit code 7") {
-					t.Fatalf("exit error: %v", out.err)
+				if mode == "failure" && !strings.Contains(out.result.Message, "exit status 7") {
+					t.Fatalf("exit outcome=%+v", out.result)
 				}
-				if len(out.err.Error()) > 2*maxRunnerOutput+512 {
+				if len(out.result.Message) > 2*maxRunnerOutput+512 {
 					t.Fatal("diagnostic output exceeded display budget")
 				}
 			}
@@ -151,14 +156,14 @@ func TestSkillDeadlineSelection(t *testing.T) {
 					}
 					want := time.Now().Add(tc.want)
 					calls := 0
-					execute := func(ctx context.Context, _ string, _ *exec.Cmd, _ toolshare.MediaCall) (*toolshare.Result, error) {
+					execute := func(ctx context.Context, _ string, _ *exec.Cmd, _ toolshare.MediaCall) (operationresult.Result[*toolshare.Result], error) {
 						calls++
 						deadline, ok := ctx.Deadline()
 						if !ok || !deadline.Equal(want) || ctx.Err() != nil {
 							t.Fatalf("deadline=%v want=%v err=%v", deadline, want, ctx.Err())
 						}
 						<-ctx.Done()
-						return nil, ctx.Err()
+						return operationresult.Result[*toolshare.Result]{}, ctx.Err()
 					}
 					dir := t.TempDir()
 					var err error
@@ -192,11 +197,11 @@ func TestGoRunnerPassesPayloadJSONToBinary(t *testing.T) {
 	args := []byte(`{"skill_name":"echo","payload":{"input":"hello"}}`)
 	environment := processenv.Environment{}.Overlay(map[string]string{"ELBOT_SKILL_TEST_HELPER": "payload"})
 	result, _, err := callTool(context.Background(), (GoRunner{manager: &Manager{media: newTestMediaRuntime(t), catalog: catalog, processEnv: environment}}).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if result.Content != "hello" {
-		t.Fatalf("content = %q", result.Content)
+	if result.Data.Content != "hello" {
+		t.Fatalf("content = %q", result.Data.Content)
 	}
 }
 
@@ -210,11 +215,11 @@ func TestGoRunnerUsesSharedProcessEnvironment(t *testing.T) {
 	catalog.Replace([]record{{Name: "environment", Kind: KindGo, Root: dir, BinaryPath: binary}})
 	runner := GoRunner{manager: &Manager{media: newTestMediaRuntime(t), catalog: catalog, processEnv: processenv.New([]string{"ELBOT_GO_SKILL_ENV_TEST=from-shared", "ELBOT_SKILL_TEST_HELPER=shared-env"})}}
 	result, _, err := callTool(context.Background(), runner.Definition(), toolshare.CallRequest{Arguments: []byte(`{"skill_name":"environment","payload":{}}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if result.Content != "from-shared" {
-		t.Fatalf("content = %q", result.Content)
+	if result.Data.Content != "from-shared" {
+		t.Fatalf("content = %q", result.Data.Content)
 	}
 }
 
@@ -225,28 +230,36 @@ func TestGoRunnerRejectsMissingPayload(t *testing.T) {
 	}
 }
 
-func TestCommandErrorIncludesSkillOutput(t *testing.T) {
-	err := commandError("go skill", &exec.ExitError{}, "bad stdout", "bad stderr")
-	text := err.Error()
-	for _, want := range []string{"go skill process failed", "stdout:\nbad stdout", "stderr:\nbad stderr"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("error %q missing %q", text, want)
-		}
-	}
-}
-
-func resultFromStdout(out string) (*toolshare.Result, error) {
+func resultFromStdout(out string) (operationresult.Result[*toolshare.Result], error) {
 	return resultFromStdoutWithMedia(context.Background(), out, nil, "")
 }
 
 func TestResultFromStdoutHandlesTextAndJSON(t *testing.T) {
-	plain, err := resultFromStdout("ok")
-	if err != nil || plain.Content != "ok" || len(plain.Data) != 0 {
-		t.Fatalf("plain=%#v err=%v", plain, err)
-	}
-	structured, err := resultFromStdout(`{"content":"done","data":{"path":"out.txt"}}`)
-	if err != nil || structured.Content != "done" || len(structured.Data) != 0 {
-		t.Fatalf("structured=%#v err=%v", structured, err)
+	for _, tc := range []struct {
+		stdout, content string
+		status          operationresult.Status
+	}{
+		{"ok", "ok", operationresult.Success},
+		{"", "", operationresult.Success},
+		{"{\"content\":\"done\",\"data\":{\"path\":\"out.txt\"}}", "done", operationresult.Success},
+		{"{\"content\":\"\"}", "", operationresult.Success},
+		{"{\"segments\":[]}", "", operationresult.Success},
+		{"{\"content\":\"\",\"segments\":[]}", "", operationresult.Success},
+		{"{\"other\":true}", "{\"other\":true}", operationresult.Success},
+		{"{\"content\":42}", "", operationresult.Failed},
+		{"{\"segments\":\"invalid\"}", "", operationresult.Failed},
+	} {
+		result, err := resultFromStdout(tc.stdout)
+		if err != nil || result.Status != tc.status {
+			t.Fatalf("stdout=%q result=%+v err=%v", tc.stdout, result, err)
+		}
+		if tc.status == operationresult.Success {
+			if result.Data.Content != tc.content || len(result.Data.Data) != 0 {
+				t.Fatalf("result=%+v", result.Data)
+			}
+		} else if result.Message == "" || result.Data != nil {
+			t.Fatalf("failure=%+v", result)
+		}
 	}
 }
 
@@ -303,11 +316,11 @@ func TestSkillExecutionEnvironment(t *testing.T) {
 			check := func(caller toolshare.ToolDefinition, req toolshare.CallRequest, root, common, local, empty, path string) {
 				t.Helper()
 				result, _, err := callTool(context.Background(), caller, req)
-				if err != nil {
+				if err != nil || result.Status != operationresult.Success {
 					t.Fatal(err)
 				}
 				var got map[string]string
-				if err := json.Unmarshal([]byte(result.Content), &got); err != nil {
+				if err := json.Unmarshal([]byte(result.Data.Content), &got); err != nil {
 					t.Fatal(err)
 				}
 				want := map[string]string{"cwd": root, "ELBOT_SKILL_ENV_TEST": common, "ELBOT_SKILL_CONFIG_ONLY": "config", "ELBOT_SKILL_PROCESS_ONLY": "process", "ELBOT_SKILL_LOCAL_ONLY": local, "ELBOT_SKILL_EMPTY_TEST": empty, "PATH": path}
@@ -366,7 +379,7 @@ func TestSkillExecutionEnvironment(t *testing.T) {
 		}
 		caller := commandTool{record: record{Name: "environment", Root: root}, manifest: AgentSkillManifest{Command: []string{filepath.Base(binary)}, TimeoutSeconds: 30}, media: newTestMediaRuntime(t)}
 		caller.processEnv = processenv.Environment{}.Overlay(map[string]string{"ELBOT_SKILL_TEST_HELPER": "environment"})
-		if _, _, err := callTool(context.Background(), caller.Definition(), toolshare.CallRequest{}); err != nil {
+		if result, _, err := callTool(context.Background(), caller.Definition(), toolshare.CallRequest{}); err != nil || result.Status != operationresult.Success {
 			t.Fatalf("resolve command through skill PATH: %v", err)
 		}
 	})

@@ -17,6 +17,7 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 
 	"elbot/internal/fileops"
+	"elbot/internal/operationresult"
 )
 
 const (
@@ -46,14 +47,14 @@ func normalizeReadFileMode(value string) (string, error) {
 	}
 }
 
-func readFileASTResult(file fileops.File, query string, contextLines, maxMatches, index int, warnings []string) (*toolshare.Result, error) {
+func readFileASTResult(file fileops.File, query string, contextLines, maxMatches, index int, warnings []string) (operationresult.Result[*toolshare.Result], error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
-		return nil, fmt.Errorf("query is required when mode is ast")
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "query is required when mode is ast"}, nil
 	}
 	language, variant, err := detectASTLanguage(file.Path, file.Text)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidTarget, Message: err.Error()}, nil
 	}
 	var matches []astMatch
 	var parseWarning string
@@ -63,7 +64,7 @@ func readFileASTResult(file fileops.File, query string, contextLines, maxMatches
 		matches, parseWarning, err = findShellASTMatches(file.Text, query, variant)
 	}
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidTarget, Message: err.Error()}, nil
 	}
 	if parseWarning != "" {
 		warnings = append(warnings, parseWarning)
@@ -78,14 +79,14 @@ type astFunctionMatch struct {
 	Name      string
 }
 
-func readFileASTFunctionResult(file fileops.File, query string, maxMatches, index int, warnings []string) (*toolshare.Result, error) {
+func readFileASTFunctionResult(file fileops.File, query string, maxMatches, index int, warnings []string) (operationresult.Result[*toolshare.Result], error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
-		return nil, fmt.Errorf("query is required when mode is ast_function")
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "query is required when mode is ast_function"}, nil
 	}
 	language, variant, err := detectASTLanguage(file.Path, file.Text)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidTarget, Message: err.Error()}, nil
 	}
 	var matches []astFunctionMatch
 	var parseWarning string
@@ -95,7 +96,7 @@ func readFileASTFunctionResult(file fileops.File, query string, maxMatches, inde
 		matches, parseWarning, err = findShellASTFunctions(file.Text, query, variant)
 	}
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidTarget, Message: err.Error()}, nil
 	}
 	if parseWarning != "" {
 		warnings = append(warnings, parseWarning)
@@ -309,7 +310,7 @@ func shellASTContainer(stack []syntax.Node) string {
 	return "file"
 }
 
-func formatASTMatches(file fileops.File, query, language string, matches []astMatch, contextLines, maxMatches, index int, warnings []string) *toolshare.Result {
+func formatASTMatches(file fileops.File, query, language string, matches []astMatch, contextLines, maxMatches, index int, warnings []string) operationresult.Result[*toolshare.Result] {
 	contextLines = fileops.NormalizeGrepContextLines(contextLines)
 	maxMatches = fileops.NormalizeMaxMatches(maxMatches)
 	sort.Slice(matches, func(i, j int) bool {
@@ -320,10 +321,10 @@ func formatASTMatches(file fileops.File, query, language string, matches []astMa
 	})
 	matchCount := len(matches)
 	truncated := matchCount > maxMatches
+	if index < 0 || index > matchCount {
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("index %d is out of range; found %d matches", index, matchCount)}
+	}
 	if index > 0 {
-		if index > matchCount {
-			return &toolshare.Result{Content: fmt.Sprintf("index %d is out of range; found %d matches", index, matchCount), Warnings: warnings}
-		}
 		matches = matches[index-1 : index]
 		truncated = false
 	} else if truncated {
@@ -352,17 +353,17 @@ func formatASTMatches(file fileops.File, query, language string, matches []astMa
 			fmt.Fprintf(&b, "%s %*d | %s\n", marker, width, line, lines[line-1])
 		}
 	}
-	return &toolshare.Result{Content: b.String(), Warnings: warnings}
+	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}
 }
 
-func formatASTFunctionMatches(file fileops.File, query, language string, matches []astFunctionMatch, maxMatches, index int, warnings []string) *toolshare.Result {
+func formatASTFunctionMatches(file fileops.File, query, language string, matches []astFunctionMatch, maxMatches, index int, warnings []string) operationresult.Result[*toolshare.Result] {
 	maxMatches = fileops.NormalizeMaxMatches(maxMatches)
 	matchCount := len(matches)
 	truncated := matchCount > maxMatches
+	if index < 0 || index > matchCount {
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("index %d is out of range; found %d matches", index, matchCount)}
+	}
 	if index > 0 {
-		if index > matchCount {
-			return &toolshare.Result{Content: fmt.Sprintf("index %d is out of range; found %d matches", index, matchCount), Warnings: warnings}
-		}
 		matches = matches[index-1 : index]
 		truncated = false
 	} else if truncated {
@@ -375,7 +376,7 @@ func formatASTFunctionMatches(file fileops.File, query, language string, matches
 		for matchIndex, match := range matches {
 			fmt.Fprintf(&b, "%d. %s - %s:%d-%d\n", matchIndex+1, match.Name, file.Path, match.StartLine, match.EndLine)
 		}
-		return &toolshare.Result{Content: b.String(), Warnings: warnings}
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}
 	}
 	if index > 0 {
 		fmt.Fprintf(&b, "index: %d\n", index)
@@ -389,5 +390,5 @@ func formatASTFunctionMatches(file fileops.File, query, language string, matches
 			fmt.Fprintf(&b, "  %*d | %s\n", width, line, lines[line-1])
 		}
 	}
-	return &toolshare.Result{Content: b.String(), Warnings: warnings}
+	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}
 }

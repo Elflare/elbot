@@ -17,12 +17,13 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/workspace"
 )
 
 type SendFileTool struct {
 	media interface {
-		Metadata(context.Context, string) (toolshare.MediaInfo, error)
+		Metadata(context.Context, string) (operationresult.Result[toolshare.MediaInfo], error)
 	}
 }
 
@@ -45,59 +46,69 @@ func sendFileBuilder() *toolshare.Builder {
 		String("mime_type", "MIME类型；省略时按扩展名推断。")
 }
 
-func (t SendFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+func (t SendFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
 	args, err := parseSendFileArgs(req)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	source := args.source()
 	if source == "" {
-		return nil, fmt.Errorf("source is required")
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "source is required"}, nil
 	}
 	assessment := toolshare.RiskAssessment{Level: info.Risk}
 	var resolved workspace.ResolvedPath
 	if strings.HasPrefix(source, media.IDPrefix) {
 		if !media.ValidID(source) {
-			return nil, fmt.Errorf("invalid media ID")
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "invalid media ID"}, nil
 		}
 	} else if !delivery.IsHTTPMediaSource(source) {
 		actor, ok := contextinfo.ActorFromContext(ctx)
 		if !ok || actor.Role != contextinfo.RoleSuperadmin {
-			return nil, fmt.Errorf("发送本地文件需要超级管理员权限")
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Forbidden, Message: "发送本地文件需要超级管理员权限"}, nil
 		}
 		localSource, err := localSourcePath(source)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidTarget, Message: err.Error()}, nil
 		}
-		resolved, err = workspace.ResolveWorkspacePath(ctx, localSource, workspace.PathResolveOptions{RequireRegularFile: true})
+		selected, err := workspace.ResolveWorkspacePath(ctx, localSource, workspace.PathResolveOptions{RequireRegularFile: true})
 		if err != nil {
-			return nil, err
+			return operationresult.Result[*toolshare.PreparedCall]{}, err
 		}
+		if selected.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.PreparedCall]{Status: selected.Status, Message: selected.Message}, nil
+		}
+		resolved = selected.Data
 		assessment = toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"发送本地文件"}}
 		source = resolved.Path
 	}
-	return toolshare.NewPreparedCall(req, assessment, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("发送文件：%s", source))}, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, assessment, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("发送文件：%s", source))}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		out, warnings, label, err := t.buildOutput(ctx, args, source, resolved)
 		if err != nil {
-			return nil, err.Error(), err
+			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 		}
-		out.Target = toolshare.PolicyFromContext(ctx).OutputTarget
-		result := &toolshare.Result{Content: fmt.Sprintf("已发送文件：%s", label), Warnings: warnings, Outputs: []delivery.Output{out}}
-		return result, fmt.Sprintf("file output prepared: %s", label), nil
-	}), nil
+		if out.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.Result]{Status: out.Status, Message: out.Message}, out.Message, nil
+		}
+		out.Data.Target = toolshare.PolicyFromContext(ctx).OutputTarget
+		result := &toolshare.Result{Content: fmt.Sprintf("已发送文件：%s", label), Warnings: warnings, Outputs: []delivery.Output{out.Data}}
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, fmt.Sprintf("file output prepared: %s", label), nil
+	})}, nil
 }
 
-func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source string, resolved workspace.ResolvedPath) (delivery.Output, []string, string, error) {
+func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source string, resolved workspace.ResolvedPath) (operationresult.Result[delivery.Output], []string, string, error) {
 	if strings.HasPrefix(source, media.IDPrefix) {
 		item, err := t.media.Metadata(ctx, source)
 		if err != nil {
-			return delivery.Output{}, nil, "", err
+			return operationresult.Result[delivery.Output]{}, nil, "", err
 		}
-		name := safeFileName(firstNonEmptyString(args.Name, item.Name))
-		out := outputForMediaType(item.MIMEType, "")
+		if item.Status != operationresult.Success {
+			return operationresult.Result[delivery.Output]{Status: item.Status, Message: item.Message}, nil, "", nil
+		}
+		name := safeFileName(firstNonEmptyString(args.Name, item.Data.Name))
+		out := outputForMediaType(item.Data.MIMEType, "")
 		out.Name = name
-		out.Source = delivery.Source{MediaID: item.ID, MIMEType: item.MIMEType}
-		return out, nil, name, nil
+		out.Source = delivery.Source{MediaID: item.Data.ID, MIMEType: item.Data.MIMEType}
+		return operationresult.Result[delivery.Output]{Status: operationresult.Success, Data: out}, nil, name, nil
 	}
 	if delivery.IsHTTPMediaSource(source) {
 		urlName := fileNameFromURL(source)
@@ -107,7 +118,7 @@ func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source
 		out.Source.URL = source
 		out.Source.MIMEType = mimeType
 		out.Name = name
-		return out, nil, name, nil
+		return operationresult.Result[delivery.Output]{Status: operationresult.Success, Data: out}, nil, name, nil
 	}
 	name := safeFileName(firstNonEmptyString(args.Name, filepath.Base(resolved.Path)))
 	mimeType := firstNonEmptyString(args.MIMEType, mime.TypeByExtension(filepath.Ext(name)))
@@ -118,7 +129,7 @@ func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source
 	if resolved.WasAbs {
 		warnings = append(warnings, toolshare.AbsolutePathWorkspaceWarning)
 	}
-	return out, warnings, name, nil
+	return operationresult.Result[delivery.Output]{Status: operationresult.Success, Data: out}, warnings, name, nil
 }
 
 func safeFileName(name string) string {

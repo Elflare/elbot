@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"testing"
 
 	"elbot/internal/llm"
@@ -40,11 +41,11 @@ func (t fakeTool) Definition() toolshare.ToolDefinition {
 	return toolshare.ToolDefinition{Definition: t.Info(), Parameters: t.Schema().Parameters, Prepare: t.PrepareCall}
 }
 
-func (t fakeTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
+func (t fakeTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		result := &toolshare.Result{Content: "ok"}
-		return result, result.Content, nil
-	}), nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
+	})}, nil
 }
 
 func TestRegistryRegisterList(t *testing.T) {

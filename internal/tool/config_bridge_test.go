@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"errors"
 	"os"
 	"path/filepath"
@@ -48,7 +49,7 @@ token_env = ["ELNIS_HOME_TOKEN"]
 `)
 
 	result, _, err := callTool(context.Background(), builtinTestTool(t, "elwisp_creator", builtin.Deps{ElwispCreatorConfig: configBridge{configPath: appPath}}), toolshare.CallRequest{})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
@@ -56,8 +57,8 @@ token_env = ["ELNIS_HOME_TOKEN"]
 		"token_env: [ELNIS_HOME_TOKEN]",
 		"allowed_tools: [web_extract, web_search]",
 	} {
-		if !strings.Contains(result.Content, want) {
-			t.Fatalf("guide missing %q: %s", want, result.Content)
+		if !strings.Contains(result.Data.Content, want) {
+			t.Fatalf("guide missing %q: %s", want, result.Data.Content)
 		}
 	}
 }
@@ -70,11 +71,11 @@ func TestElwispCreatorGuideWarnsWhenConfigMissing(t *testing.T) {
 	}
 
 	result, _, err := callTool(context.Background(), builtinTestTool(t, "elwisp_creator", builtin.Deps{ElwispCreatorConfig: configBridge{configPath: appPath}}), toolshare.CallRequest{})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "读取 ElBot 配置失败") || !strings.Contains(result.Content, "修复配置") {
-		t.Fatalf("guide missing config warning: %s", result.Content)
+	if !strings.Contains(result.Data.Content, "读取 ElBot 配置失败") || !strings.Contains(result.Data.Content, "修复配置") {
+		t.Fatalf("guide missing config warning: %s", result.Data.Content)
 	}
 }
 
@@ -112,7 +113,7 @@ models = ["model"]
 	}
 	tool := builtinTestTool(t, "elwisp_creator", builtin.Deps{ElwispCreatorConfig: bridge})
 	result, _, err := callTool(t.Context(), tool, toolshare.CallRequest{})
-	if err != nil || strings.Contains(result.Content, "dummy-private-token") {
+	if err != nil || result.Status != operationresult.Success || strings.Contains(result.Data.Content, "dummy-private-token") {
 		t.Fatalf("guide = %+v, %v", result, err)
 	}
 }

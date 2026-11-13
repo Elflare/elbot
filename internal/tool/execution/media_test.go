@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"elbot/internal/security"
 	"encoding/json"
 	"errors"
@@ -29,14 +30,14 @@ func (t *mediaArgumentRecorder) Info() toolshare.Info {
 func (t *mediaArgumentRecorder) Schema() llm.ToolSchema {
 	return toolshare.NewBuilder(t.Name()).BuildSchema()
 }
-func (t *mediaArgumentRecorder) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
+func (t *mediaArgumentRecorder) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		t.received = string(req.Arguments)
-		{
-			result := &toolshare.Result{Content: "ok"}
-			return result, result.Content, nil
-		}
-	}), nil
+
+		result := &toolshare.Result{Content: "ok"}
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
+
+	})}, nil
 }
 
 type failingMediaTool struct{}
@@ -48,13 +49,13 @@ func (failingMediaTool) Info() toolshare.Info {
 func (failingMediaTool) Schema() llm.ToolSchema {
 	return toolshare.NewBuilder("failing_media").BuildSchema()
 }
-func (value failingMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
+func (value failingMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		{
 			callErr := errors.New("tool failed")
-			return nil, callErr.Error(), callErr
+			return operationresult.Result[*toolshare.Result]{}, callErr.Error(), callErr
 		}
-	}), nil
+	})}, nil
 }
 
 func TestRunValidatesExactMediaArguments(t *testing.T) {
@@ -89,13 +90,13 @@ func TestRunValidatesExactMediaArguments(t *testing.T) {
 	}
 
 	recorder := &mediaArgumentRecorder{}
-	arguments := `{"nested":{"media":"` + item.ID + `"},"text":"prefix ` + item.ID + `"}`
+	arguments := `{"nested":{"media":"` + item.Data.ID + `"},"text":"prefix ` + item.Data.ID + `"}`
 	run(t, recorder.Definition(), arguments)
 	if recorder.received != arguments {
 		t.Fatalf("tool arguments = %q", recorder.received)
 	}
 
-	committer := run(t, (failingMediaTool{}).Definition(), `{"media":"`+item.ID+`"}`)
+	committer := run(t, (failingMediaTool{}).Definition(), `{"media":"`+item.Data.ID+`"}`)
 	if len(committer.messages) != 1 || !strings.Contains(llm.SegmentsContentText(committer.messages[0].Segments), "tool failed") {
 		t.Fatalf("failed tool result = %#v", committer.messages)
 	}
@@ -122,7 +123,7 @@ func TestRunRejectsMissingMediaBeforeExecution(t *testing.T) {
 		Session: missingSession, Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
 		Calls: []llm.ToolCallRequest{{ID: "call-2", Name: recorder.Name(), Arguments: `{"media":"` + missingID + `"}`}},
 	})
-	if result.Err != nil || recorder.received != "" || len(committer.messages) != 1 || !strings.Contains(llm.SegmentsContentText(committer.messages[0].Segments), "retain media arguments") {
+	if result.Err != nil || recorder.received != "" || len(committer.messages) != 1 || llm.SegmentsContentText(committer.messages[0].Segments) != "media unavailable" {
 		t.Fatalf("missing media execution = %q, result = %+v, messages = %#v", recorder.received, result, committer.messages)
 	}
 }
@@ -145,7 +146,7 @@ func TestMediaArgumentsRemainExplicit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := manager.executePrepared(context.Background(), call, resolved, prepared, nil)
+	result := manager.executePrepared(context.Background(), call, resolved, prepared.Data, nil)
 	if result.Error != nil {
 		t.Fatal(result.Error)
 	}

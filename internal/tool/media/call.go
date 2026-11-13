@@ -3,6 +3,7 @@ package media
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 
 	"elbot/internal/media"
 	"elbot/internal/tool/share"
@@ -27,16 +28,22 @@ func (r *MediaRuntime) NewCall() share.MediaCall {
 }
 
 // Retain 持有媒体到 Close，仅将通用信息交给工具。
-func (c *MediaCall) Retain(ctx context.Context, id string) (share.MediaInfo, error) {
+func (c *MediaCall) Retain(ctx context.Context, id string) (operationresult.Result[share.MediaInfo], error) {
+	if err := ctx.Err(); err != nil {
+		return operationresult.Result[share.MediaInfo]{}, err
+	}
 	if item, ok := c.mediaByID[id]; ok {
-		return mediaInfo(item.held.Info()), ctx.Err()
+		return operationresult.Result[share.MediaInfo]{Status: operationresult.Success, Data: mediaInfo(item.held.Info())}, nil
 	}
 	held, err := c.runtime.center.Hold(ctx, id)
 	if err != nil {
-		return share.MediaInfo{}, err
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
-	c.mediaByID[id] = &retainedMedia{held: held}
-	return mediaInfo(held.Info()), nil
+	if held.Status != operationresult.Success {
+		return operationresult.Result[share.MediaInfo]{Status: held.Status, Message: held.Message}, nil
+	}
+	c.mediaByID[id] = &retainedMedia{held: held.Data}
+	return operationresult.Result[share.MediaInfo]{Status: operationresult.Success, Data: mediaInfo(held.Data.Info())}, nil
 }
 
 func (c *MediaCall) Close() {

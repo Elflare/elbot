@@ -7,6 +7,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	toolregistry "elbot/internal/tool/registry"
 	"encoding/json"
 	"os"
@@ -23,11 +24,11 @@ func TestFinalizeElSkillTextOnlyReloads(t *testing.T) {
 	finalizer := FinalizeElSkillTool{manager: NewManager(root, registry, nil, processenv.Environment{})}
 
 	result, _, err := callTool(context.Background(), finalizer.Definition(), toolshare.CallRequest{Arguments: []byte(`{"name":"textonly"}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "Go source: not found") || !strings.Contains(result.Content, "reload: ok") {
-		t.Fatalf("result = %q", result.Content)
+	if !strings.Contains(result.Data.Content, "Go source: not found") || !strings.Contains(result.Data.Content, "reload: ok") {
+		t.Fatalf("result = %q", result.Data.Content)
 	}
 	if registered, ok := registry.Get("textonly"); !ok || registered.Definition.Risk != toolshare.RiskLow {
 		t.Fatalf("registered=%#v ok=%v", registered, ok)
@@ -40,11 +41,11 @@ func TestFinalizeElSkillReturnsElyphWarnings(t *testing.T) {
 	finalizer := FinalizeElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 
 	result, _, err := callTool(context.Background(), finalizer.Definition(), toolshare.CallRequest{Arguments: []byte(`{"name":"warn_finalize"}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "ELyph: ok") || !strings.Contains(result.Content, "ELyph warnings:") || !strings.Contains(result.Content, "line 2:") {
-		t.Fatalf("result = %q", result.Content)
+	if !strings.Contains(result.Data.Content, "ELyph: ok") || !strings.Contains(result.Data.Content, "ELyph warnings:") || !strings.Contains(result.Data.Content, "line 2:") {
+		t.Fatalf("result = %q", result.Data.Content)
 	}
 }
 
@@ -56,11 +57,11 @@ func TestFinalizeElSkillFormatsBuildsAndReloads(t *testing.T) {
 	finalizer := FinalizeElSkillTool{manager: NewManager(root, registry, nil, processenv.Environment{})}
 
 	result, _, err := callTool(context.Background(), finalizer.Definition(), toolshare.CallRequest{Arguments: []byte(`{"name":"finalize"}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "gofmt: changed") || !strings.Contains(result.Content, "go build: ok") || !strings.Contains(result.Content, "reload: ok") {
-		t.Fatalf("result = %q", result.Content)
+	if !strings.Contains(result.Data.Content, "gofmt: changed") || !strings.Contains(result.Data.Content, "go build: ok") || !strings.Contains(result.Data.Content, "reload: ok") {
+		t.Fatalf("result = %q", result.Data.Content)
 	}
 	if got := readTestGoSource(t, root, "finalize"); got != "package main\n\nfunc main() { println(\"ok\") }\n" {
 		t.Fatalf("formatted source = %q", got)
@@ -84,11 +85,11 @@ func TestFinalizeElSkillReturnsBuildFailure(t *testing.T) {
 	finalizer := FinalizeElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 
 	result, _, err := callTool(context.Background(), finalizer.Definition(), toolshare.CallRequest{Arguments: []byte(`{"name":"broken"}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "go build: failed") || !strings.Contains(result.Content, "stderr:") || !strings.Contains(result.Content, "missing") {
-		t.Fatalf("result = %q", result.Content)
+	if !strings.Contains(result.Data.Content, "go build: failed") || !strings.Contains(result.Data.Content, "stderr:") || !strings.Contains(result.Data.Content, "missing") {
+		t.Fatalf("result = %q", result.Data.Content)
 	}
 }
 
@@ -98,11 +99,11 @@ func TestFinalizeElSkillReturnsGofmtFailure(t *testing.T) {
 	finalizer := FinalizeElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 
 	result, _, err := callTool(context.Background(), finalizer.Definition(), toolshare.CallRequest{Arguments: []byte(`{"name":"badfmt"}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "gofmt: failed") {
-		t.Fatalf("result = %q", result.Content)
+	if !strings.Contains(result.Data.Content, "gofmt: failed") {
+		t.Fatalf("result = %q", result.Data.Content)
 	}
 }
 
@@ -119,11 +120,11 @@ func TestFinalizeElSkillReturnsElyphFailure(t *testing.T) {
 	args, _ := json.Marshal(map[string]string{"name": "badelyph"})
 
 	result, _, err := callTool(context.Background(), finalizer.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "ELyph: failed") {
-		t.Fatalf("result = %q", result.Content)
+	if !strings.Contains(result.Data.Content, "ELyph: failed") {
+		t.Fatalf("result = %q", result.Data.Content)
 	}
 }
 
@@ -140,7 +141,7 @@ func TestPreparedFinalizeRejectsChangedSourcesBeforeBuild(t *testing.T) {
 			registry := toolregistry.NewRegistry(security.DefaultPermission())
 			finalizer := FinalizeElSkillTool{manager: NewManager(root, registry, nil, processenv.Environment{})}
 			prepared, err := finalizer.Definition().PrepareCall(t.Context(), toolshare.CallRequest{Arguments: []byte(`{"name":"snapshot"}`)})
-			if err != nil {
+			if err != nil || prepared.Status != operationresult.Success {
 				t.Fatal(err)
 			}
 			dir := filepath.Join(root, "go", name)
@@ -155,7 +156,7 @@ func TestPreparedFinalizeRejectsChangedSourcesBeforeBuild(t *testing.T) {
 			if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err := prepared.Call(t.Context()); err == nil {
+			if result, _, err := prepared.Data.Call(t.Context()); err != nil || result.Status == operationresult.Success {
 				t.Fatal("accepted changed source")
 			}
 			data, err := os.ReadFile(path)

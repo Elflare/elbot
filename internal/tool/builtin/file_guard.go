@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"elbot/internal/elyph"
-	"elbot/internal/tool/share"
+	"elbot/internal/operationresult"
 )
 
 const (
@@ -41,13 +41,13 @@ func (g FileGuard) ReadWarnings(path string) []string {
 	return warnings
 }
 
-func (g FileGuard) CheckWrite(path string) error {
+func (g FileGuard) CheckWrite(path string) operationresult.Result[struct{}] {
 	for _, rule := range g {
 		if rule.matches(path) {
-			return share.PolicyDeniedError(rule.WriteError)
+			return operationresult.Result[struct{}]{Status: operationresult.Forbidden, Message: rule.WriteError}
 		}
 	}
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success, Data: struct{}{}}
 }
 
 func (r FileGuardRule) matches(path string) bool {

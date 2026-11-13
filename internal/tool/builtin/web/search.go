@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
 )
 
@@ -96,31 +97,31 @@ func webSearchBuilder() *toolshare.Builder {
 		Boolean("exact_match", "true→精确匹配query中的引号短语。")
 }
 
-func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
 	var args webSearchArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse web_search arguments: %w", err)
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse web_search arguments: %v", err)}, nil
 		}
 	}
 	query := strings.TrimSpace(args.Query)
 	if query == "" {
-		return nil, fmt.Errorf("query is required")
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "query is required"}, nil
 	}
 	apiKey, ok := t.processEnv.Lookup(tavilyAPIKeyEnv)
 	if !ok || strings.TrimSpace(apiKey) == "" {
-		return nil, fmt.Errorf("%s is required; set it in environment or config .env", tavilyAPIKeyEnv)
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Unavailable, Message: fmt.Sprintf("%s is required; set it in environment or config .env", tavilyAPIKeyEnv)}, nil
 	}
 	payload := normalizeTavilyRequest(args, query)
 	// 请求结构仅包含字符串、整数、布尔和字符串切片。
 	body, _ := json.Marshal(payload)
 
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("搜索：%s", query))}, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("搜索：%s", query))}, func(ctx context.Context) (_ operationresult.Result[*toolshare.Result], logContent string, _ error) {
 		logContent = fmt.Sprintf("source=tavily query=%q status=failed", query)
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, t.endpoint, bytes.NewReader(body))
 		if err != nil {
 			callErr := fmt.Errorf("create Tavily request: %w", err)
-			return nil, logContent, callErr
+			return operationresult.Result[*toolshare.Result]{}, logContent, callErr
 		}
 		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 		httpReq.Header.Set("Content-Type", "application/json")
@@ -128,27 +129,27 @@ func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 		resp, err := t.client.Do(httpReq)
 		if err != nil {
 			callErr := fmt.Errorf("Tavily request: %w", err)
-			return nil, logContent, callErr
+			return operationresult.Result[*toolshare.Result]{}, logContent, callErr
 		}
 		defer resp.Body.Close()
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
 			callErr := fmt.Errorf("read Tavily response: %w", err)
-			return nil, logContent, callErr
+			return operationresult.Result[*toolshare.Result]{}, logContent, callErr
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			callErr := fmt.Errorf("Tavily HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))
-			return nil, fmt.Sprintf("%s http_status=%d", logContent, resp.StatusCode), callErr
+			message := fmt.Sprintf("Tavily HTTP %d: %s", resp.StatusCode, truncateHTTPBody(respBody))
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Failed, Message: message}, fmt.Sprintf("%s http_status=%d", logContent, resp.StatusCode), nil
 		}
 		var data tavilyResponse
 		if err := json.Unmarshal(respBody, &data); err != nil {
 			callErr := fmt.Errorf("parse Tavily response: %w", err)
-			return nil, logContent, callErr
+			return operationresult.Result[*toolshare.Result]{}, logContent, callErr
 		}
 		result := &toolshare.Result{Content: formatTavilyContent(data)}
 		logContent = fmt.Sprintf("query=%q results=%d", query, len(data.Results))
-		return result, logContent, nil
-	}), nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, logContent, nil
+	})}, nil
 }
 
 func normalizeTavilyRequest(args webSearchArgs, query string) tavilyRequest {

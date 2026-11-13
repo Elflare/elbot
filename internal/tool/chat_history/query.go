@@ -4,6 +4,7 @@ package chat_history
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"elbot/internal/tool/share"
 	"regexp"
 	"strings"
@@ -35,38 +36,50 @@ type AroundQuery struct {
 	After  int              // 已应用默认值和上限的向后数量。
 }
 
-func (m *Manager) Search(ctx context.Context, req share.SearchRequest) ([]share.Message, error) {
+func (m *Manager) Search(ctx context.Context, req share.SearchRequest) (operationresult.Result[[]share.Message], error) {
 	chat, err := m.resolveChat(ctx, req)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[[]share.Message]{}, err
 	}
+	if chat.Status != operationresult.Success {
+		return operationresult.Result[[]share.Message]{Status: chat.Status, Message: chat.Message}, nil
+	}
+
 	since, until := chatHistoryTimeRangeAt(req.Since, req.Until, req.Hours, req.Days, m.now())
 	return m.backend.Search(ctx, SearchQuery{
-		Platform: chat.Platform, ChatID: chat.ChatID,
+		Platform: chat.Data.Platform, ChatID: chat.Data.ChatID,
 		QueryTerms: splitChatHistoryTerms(req.Query), QueryMode: req.QueryMode,
 		SenderQuery: strings.TrimSpace(req.User),
-		Since:       since, Until: until, Limit: clampChatHistoryLimit(req.Limit), ChatType: chat.ChatType,
+		Since:       since, Until: until, Limit: clampChatHistoryLimit(req.Limit), ChatType: chat.Data.ChatType,
 	})
 }
 
-func (m *Manager) Around(ctx context.Context, req share.AroundRequest) ([]share.Message, error) {
+func (m *Manager) Around(ctx context.Context, req share.AroundRequest) (operationresult.Result[[]share.Message], error) {
 	chat, err := currentChatHistoryContext(ctx)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[[]share.Message]{}, err
 	}
+	if chat.Status != operationresult.Success {
+		return operationresult.Result[[]share.Message]{Status: chat.Status, Message: chat.Message}, nil
+	}
+
 	return m.backend.Around(ctx, AroundQuery{
-		Key:    share.MessageKey{Platform: chat.Platform, ChatID: chat.ChatID, MessageID: req.MessageID, ChatType: chat.ChatType},
+		Key:    share.MessageKey{Platform: chat.Data.Platform, ChatID: chat.Data.ChatID, MessageID: req.MessageID, ChatType: chat.Data.ChatType},
 		Before: clampChatHistoryWindow(req.Before), After: clampChatHistoryWindow(req.After),
 	})
 }
 
 // GetMessage 接收工具已规范化且检查为非空的消息 ID。
-func (m *Manager) GetMessage(ctx context.Context, messageID string) (share.Message, error) {
+func (m *Manager) GetMessage(ctx context.Context, messageID string) (operationresult.Result[share.Message], error) {
 	chat, err := currentChatHistoryContext(ctx)
 	if err != nil {
-		return share.Message{}, err
+		return operationresult.Result[share.Message]{}, err
 	}
-	return m.backend.GetMessage(ctx, share.MessageKey{Platform: chat.Platform, ChatID: chat.ChatID, MessageID: messageID, ChatType: chat.ChatType})
+	if chat.Status != operationresult.Success {
+		return operationresult.Result[share.Message]{Status: chat.Status, Message: chat.Message}, nil
+	}
+
+	return m.backend.GetMessage(ctx, share.MessageKey{Platform: chat.Data.Platform, ChatID: chat.Data.ChatID, MessageID: messageID, ChatType: chat.Data.ChatType})
 }
 
 type chatHistoryContext struct {
@@ -75,15 +88,15 @@ type chatHistoryContext struct {
 	ChatID   string
 }
 
-func currentChatHistoryContext(ctx context.Context) (chatHistoryContext, error) {
+func currentChatHistoryContext(ctx context.Context) (operationresult.Result[chatHistoryContext], error) {
 	if err := ctx.Err(); err != nil {
-		return chatHistoryContext{}, err
+		return operationresult.Result[chatHistoryContext]{}, err
 	}
 	info, ok := contextinfo.ConversationFromContext(ctx)
 	if !ok || info.Source.Platform == "" || info.Source.ChatID == "" {
-		return chatHistoryContext{}, share.ErrNoChatContext
+		return operationresult.Result[chatHistoryContext]{Status: operationresult.NoCurrentSession, Message: "当前上下文没有平台聊天信息，无法自动确定要查询哪个聊天。"}, nil
 	}
-	return chatHistoryContext{Platform: info.Source.Platform, ChatID: info.Source.ChatID, ChatType: info.Source.ChatType}, nil
+	return operationresult.Result[chatHistoryContext]{Status: operationresult.Success, Data: chatHistoryContext{Platform: info.Source.Platform, ChatID: info.Source.ChatID, ChatType: info.Source.ChatType}}, nil
 }
 
 func chatHistoryTimeRangeAt(sinceRaw, untilRaw string, hours, days int, now time.Time) (*time.Time, *time.Time) {

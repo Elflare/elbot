@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -12,11 +13,11 @@ import (
 
 func TestCronToolCallReturnsCurrentTimeHint(t *testing.T) {
 	result, _, err := callTool(context.Background(), NewCronTools(nil, nil, time.Now)[0], toolshare.CallRequest{})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatalf("Call: %v", err)
 	}
-	if !strings.Contains(result.Content, "当前本地时间") {
-		t.Fatalf("content = %q", result.Content)
+	if !strings.Contains(result.Data.Content, "当前本地时间") {
+		t.Fatalf("content = %q", result.Data.Content)
 	}
 }
 
@@ -79,13 +80,13 @@ func TestCronWritePreparationUsesArgumentDetails(t *testing.T) {
 			tool := cronTestTools(repo, nil)[2]
 			req := toolshare.CallRequest{ID: "call", Name: tool.Definition.Name, Arguments: json.RawMessage(args)}
 			prepared, err := tool.PrepareCall(t.Context(), req)
-			if err != nil {
+			if err != nil || prepared.Status != operationresult.Success {
 				t.Fatal(err)
 			}
-			if got := prepared.Details(); len(got) != 0 {
+			if got := prepared.Data.Details(); len(got) != 0 {
 				t.Errorf("unexpected custom details: %+v", got)
 			}
-			if !prepared.Matches(req) || string(req.Arguments) != args {
+			if !prepared.Data.Matches(req) || string(req.Arguments) != args {
 				t.Error("preparation changed call arguments")
 			}
 			if len(repo.saved) != 0 || repo.name != "" {

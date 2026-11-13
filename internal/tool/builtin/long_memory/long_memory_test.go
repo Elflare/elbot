@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"database/sql"
+	"elbot/internal/operationresult"
 	"errors"
 	"fmt"
 	"os"
@@ -22,10 +23,10 @@ func TestPreparedLongMemorySavesAllocateAtExecution(t *testing.T) {
 	var calls []*toolshare.PreparedCall
 	for range 8 {
 		prepared, err := writer.Definition().PrepareCall(t.Context(), toolshare.CallRequest{Arguments: []byte(`{"operation":"save","category":"test","title":"title","summary":"summary","content":"approved"}`)})
-		if err != nil {
+		if err != nil || prepared.Status != operationresult.Success {
 			t.Fatal(err)
 		}
-		calls = append(calls, prepared)
+		calls = append(calls, prepared.Data)
 	}
 	if _, err := os.Stat(store.rootDir); !os.IsNotExist(err) {
 		t.Fatalf("prepare initialized storage: %v", err)
@@ -58,16 +59,16 @@ func TestPreparedLongMemoryDeleteSnapshot(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			prepared, err := (LongMemoryWriteTool{store: store}).Definition().PrepareCall(t.Context(), toolshare.CallRequest{Arguments: []byte(fmt.Sprintf(`{"operation":"delete","id":%d}`, record.ID))})
-			if err != nil {
+			prepared, err := (LongMemoryWriteTool{store: store}).Definition().PrepareCall(t.Context(), toolshare.CallRequest{Arguments: []byte(fmt.Sprintf(`{"operation":"delete","id":%d}`, record.Data.ID))})
+			if err != nil || prepared.Status != operationresult.Success {
 				t.Fatal(err)
 			}
-			for _, value := range []string{"永久删除", "ID：1", record.Title, record.Category, record.Summary, record.FilePath} {
-				if details := prepared.Details(); len(details) != 1 || !strings.Contains(details[0].Content.(string), value) {
+			for _, value := range []string{"永久删除", "ID：1", record.Data.Title, record.Data.Category, record.Data.Summary, record.Data.FilePath} {
+				if details := prepared.Data.Details(); len(details) != 1 || !strings.Contains(details[0].Content.(string), value) {
 					t.Fatalf("missing %q: %+v", value, details)
 				}
 			}
-			original, err := os.ReadFile(record.FilePath)
+			original, err := os.ReadFile(record.Data.FilePath)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -75,7 +76,7 @@ func TestPreparedLongMemoryDeleteSnapshot(t *testing.T) {
 			defer cancel()
 			switch scenario {
 			case "changed":
-				if err := os.WriteFile(record.FilePath, append(original, []byte("external")...), 0600); err != nil {
+				if err := os.WriteFile(record.Data.FilePath, append(original, []byte("external")...), 0600); err != nil {
 					t.Fatal(err)
 				}
 			case "retarget":
@@ -83,21 +84,21 @@ func TestPreparedLongMemoryDeleteSnapshot(t *testing.T) {
 				if err := os.WriteFile(other, original, 0600); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.Remove(record.FilePath); err != nil {
+				if err := os.Remove(record.Data.FilePath); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.Symlink(other, record.FilePath); err != nil {
+				if err := os.Symlink(other, record.Data.FilePath); err != nil {
 					t.Fatal(err)
 				}
 			case "cancel":
 				cancel()
 			}
-			_, _, err = prepared.Call(ctx)
-			if (err == nil) != (scenario == "unchanged") {
+			result, _, err := prepared.Data.Call(ctx)
+			if (err == nil && result.Status == operationresult.Success) != (scenario == "unchanged") {
 				t.Fatalf("delete = %v", err)
 			}
-			_, statErr := os.Lstat(record.FilePath)
-			_, indexErr := store.recordByIDLocked(t.Context(), record.ID)
+			_, statErr := os.Lstat(record.Data.FilePath)
+			_, indexErr := store.recordByIDLocked(t.Context(), record.Data.ID)
 			if scenario == "unchanged" {
 				if !os.IsNotExist(statErr) || !errors.Is(indexErr, sql.ErrNoRows) {
 					t.Fatalf("file=%v index=%v", statErr, indexErr)
@@ -128,7 +129,7 @@ func TestLongMemorySyncFileIdentityChanges(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			store := newLongMemoryStore(t.TempDir())
 			t.Cleanup(func() { _ = store.close() })
-			if err := store.ensureLocked(t.Context()); err != nil {
+			if result, err := store.ensureLocked(t.Context()); err != nil || result.Status != operationresult.Success {
 				t.Fatal(err)
 			}
 			path := writeSyncMemory(t, store, "b.md", 1, "oldtoken")
@@ -200,7 +201,7 @@ func TestLongMemorySyncFileIdentityChanges(t *testing.T) {
 func TestLongMemorySyncInvalidRecoveryAndRestart(t *testing.T) {
 	store := newLongMemoryStore(t.TempDir())
 	t.Cleanup(func() { _ = store.close() })
-	if err := store.ensureLocked(t.Context()); err != nil {
+	if result, err := store.ensureLocked(t.Context()); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	first := writeSyncMemory(t, store, "a.md", 1, "firsttoken")
@@ -250,7 +251,7 @@ func TestLongMemorySyncInvalidRecoveryAndRestart(t *testing.T) {
 func TestLongMemorySyncFailureCanRetry(t *testing.T) {
 	store := newLongMemoryStore(t.TempDir())
 	t.Cleanup(func() { _ = store.close() })
-	if err := store.ensureLocked(t.Context()); err != nil {
+	if result, err := store.ensureLocked(t.Context()); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	if _, err := store.categories(t.Context()); err != nil {
@@ -288,7 +289,7 @@ func TestLongMemorySyncDuplicateOwnerBecomesInvalid(t *testing.T) {
 		t.Run(scenario, func(t *testing.T) {
 			store := newLongMemoryStore(t.TempDir())
 			t.Cleanup(func() { _ = store.close() })
-			if err := store.ensureLocked(t.Context()); err != nil {
+			if result, err := store.ensureLocked(t.Context()); err != nil || result.Status != operationresult.Success {
 				t.Fatal(err)
 			}
 			first := writeSyncMemory(t, store, "a.md", 1, "firsttoken")
@@ -349,10 +350,10 @@ func TestPreparedLongMemoryUpdatePreservesConfirmation(t *testing.T) {
 				t.Fatal(err)
 			}
 			prepared, err := writer.Definition().PrepareCall(t.Context(), toolshare.CallRequest{Arguments: []byte(`{"operation":"update","id":1,"content":"已确认正文"}`)})
-			if err != nil {
+			if err != nil || prepared.Status != operationresult.Success {
 				t.Fatal(err)
 			}
-			original, err := os.ReadFile(record.FilePath)
+			original, err := os.ReadFile(record.Data.FilePath)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -362,14 +363,14 @@ func TestPreparedLongMemoryUpdatePreservesConfirmation(t *testing.T) {
 			switch scenario {
 			case "external edit":
 				want = strings.ReplaceAll(want, "原文", "外部")
-				if err := os.WriteFile(record.FilePath, []byte(want), 0600); err != nil {
+				if err := os.WriteFile(record.Data.FilePath, []byte(want), 0600); err != nil {
 					t.Fatal(err)
 				}
 			case "newer update":
-				if _, _, err := callTool(ctx, writer.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"update","id":1,"content":"其他调用写入"}`)}); err != nil {
+				if result, _, err := callTool(ctx, writer.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"update","id":1,"content":"其他调用写入"}`)}); err != nil || result.Status != operationresult.Success {
 					t.Fatal(err)
 				}
-				current, err := os.ReadFile(record.FilePath)
+				current, err := os.ReadFile(record.Data.FilePath)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -377,11 +378,11 @@ func TestPreparedLongMemoryUpdatePreservesConfirmation(t *testing.T) {
 			case "canceled":
 				cancel()
 			}
-			_, _, err = prepared.Call(ctx)
-			if (err == nil) != (scenario == "unchanged") {
+			result, _, err := prepared.Data.Call(ctx)
+			if (err == nil && result.Status == operationresult.Success) != (scenario == "unchanged") {
 				t.Fatalf("commit = %v", err)
 			}
-			current, err := os.ReadFile(record.FilePath)
+			current, err := os.ReadFile(record.Data.FilePath)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -428,47 +429,47 @@ func TestLongMemorySearchAndWriteTools(t *testing.T) {
 	writeTool := LongMemoryWriteTool{store: store}
 
 	result, _, err := callTool(context.Background(), searchTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "长期记忆库为空") {
-		t.Fatalf("empty categories = %q", result.Content)
+	if !strings.Contains(result.Data.Content, "长期记忆库为空") {
+		t.Fatalf("empty categories = %q", result.Data.Content)
 	}
 
-	_, _, err = callTool(context.Background(), writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"save","category":"测试","title":"测试记忆","summary":"摘要","keywords":"alpha beta","content":"完整内容 alpha"}`)})
-	if err != nil {
+	result, _, err = callTool(context.Background(), writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"save","category":"测试","title":"测试记忆","summary":"摘要","keywords":"alpha beta","content":"完整内容 alpha"}`)})
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	result, _, err = callTool(context.Background(), searchTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"keywords":"alpha","brief_only":true}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "测试记忆") {
-		t.Fatalf("search result = %q", result.Content)
+	if !strings.Contains(result.Data.Content, "测试记忆") {
+		t.Fatalf("search result = %q", result.Data.Content)
 	}
 
-	_, _, err = callTool(context.Background(), writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"update","id":1,"summary":"新摘要"}`)})
-	if err != nil {
+	result, _, err = callTool(context.Background(), writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"update","id":1,"summary":"新摘要"}`)})
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	result, _, err = callTool(context.Background(), searchTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"keywords":"alpha","brief_only":true}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "新摘要") {
-		t.Fatalf("updated search result = %q", result.Content)
+	if !strings.Contains(result.Data.Content, "新摘要") {
+		t.Fatalf("updated search result = %q", result.Data.Content)
 	}
 
-	_, _, err = callTool(context.Background(), writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"delete","id":1}`)})
-	if err != nil {
+	result, _, err = callTool(context.Background(), writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"delete","id":1}`)})
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	result, _, err = callTool(context.Background(), searchTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "长期记忆库为空") {
-		t.Fatalf("categories after delete = %q", result.Content)
+	if !strings.Contains(result.Data.Content, "长期记忆库为空") {
+		t.Fatalf("categories after delete = %q", result.Data.Content)
 	}
 }
 
@@ -479,32 +480,32 @@ func TestLongMemoryUpdateContentEditsAndRiskDetail(t *testing.T) {
 	searchTool := LongMemorySearchTool{store: store}
 	ctx := context.Background()
 
-	_, _, err := callTool(ctx, writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"save","category":"测试","title":"测试记忆","summary":"摘要","keywords":"alpha beta","content":"第一行\n第二行\n第三行"}`)})
-	if err != nil {
+	result, _, err := callTool(ctx, writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"save","category":"测试","title":"测试记忆","summary":"摘要","keywords":"alpha beta","content":"第一行\n第二行\n第三行"}`)})
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	args := []byte(`{"operation":"update","id":1,"summary":"新摘要","content_edits":[{"operation":"replace","line":2,"new_text":"第二行已更新\n"}]}`)
 	prepared, err := writeTool.Definition().PrepareCall(ctx, toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || prepared.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	details := prepared.Details()
+	details := prepared.Data.Details()
 	if len(details) != 1 || details[0].Kind != toolshare.ConfirmationDetailDiff {
 		t.Fatalf("structured confirmation details=%+v", details)
 	}
 	if diff := details[0].Content.(string); !strings.Contains(diff, "-第二行") || !strings.Contains(diff, "+第二行已更新") {
 		t.Fatalf("diff detail: %s", diff)
 	}
-	if _, _, err := prepared.Call(ctx); err != nil {
+	if result, _, err := prepared.Data.Call(ctx); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	result, _, err := callTool(ctx, searchTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"keywords":"已更新","brief_only":false}`)})
-	if err != nil {
+	result, _, err = callTool(ctx, searchTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"keywords":"已更新","brief_only":false}`)})
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"新摘要", "2 | 第二行已更新", "正文行号从 1 开始"} {
-		if !strings.Contains(result.Content, want) {
-			t.Fatalf("search result missing %q:\n%s", want, result.Content)
+		if !strings.Contains(result.Data.Content, want) {
+			t.Fatalf("search result missing %q:\n%s", want, result.Data.Content)
 		}
 	}
 }
@@ -516,20 +517,20 @@ func TestLongMemoryUpdateContentReplacesWholeBody(t *testing.T) {
 	searchTool := LongMemorySearchTool{store: store}
 	ctx := context.Background()
 
-	_, _, err := callTool(ctx, writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"save","category":"测试","title":"测试记忆","summary":"摘要","keywords":"alpha","content":"旧正文"}`)})
-	if err != nil {
+	result, _, err := callTool(ctx, writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"save","category":"测试","title":"测试记忆","summary":"摘要","keywords":"alpha","content":"旧正文"}`)})
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if _, _, err := callTool(ctx, writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"update","id":1,"content":"新正文\n第二行"}`)}); err != nil {
+	if result, _, err := callTool(ctx, writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"update","id":1,"content":"新正文\n第二行"}`)}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	result, _, err := callTool(ctx, searchTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"keywords":"新正文","brief_only":false}`)})
-	if err != nil {
+	result, _, err = callTool(ctx, searchTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"keywords":"新正文","brief_only":false}`)})
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"1 | 新正文", "2 | 第二行"} {
-		if !strings.Contains(result.Content, want) {
-			t.Fatalf("search result missing %q:\n%s", want, result.Content)
+		if !strings.Contains(result.Data.Content, want) {
+			t.Fatalf("search result missing %q:\n%s", want, result.Data.Content)
 		}
 	}
 }
@@ -540,12 +541,12 @@ func TestLongMemoryUpdateRejectsNoChanges(t *testing.T) {
 	writeTool := LongMemoryWriteTool{store: store}
 	ctx := context.Background()
 
-	_, _, err := callTool(ctx, writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"save","category":"测试","title":"测试记忆","summary":"摘要","keywords":"alpha","content":"正文"}`)})
-	if err != nil {
+	result, _, err := callTool(ctx, writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"save","category":"测试","title":"测试记忆","summary":"摘要","keywords":"alpha","content":"正文"}`)})
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	_, err = writeTool.Definition().PrepareCall(ctx, toolshare.CallRequest{Arguments: []byte(`{"operation":"update","id":1,"summary":"摘要"}`)})
-	if err == nil || !strings.Contains(err.Error(), "edit produced no changes") {
+	prepared, err := writeTool.Definition().PrepareCall(ctx, toolshare.CallRequest{Arguments: []byte(`{"operation":"update","id":1,"summary":"摘要"}`)})
+	if err != nil || prepared.Status == operationresult.Success || !strings.Contains(prepared.Message, "edit produced no changes") {
 		t.Fatalf("expected no-op error, got %v", err)
 	}
 }
@@ -556,13 +557,13 @@ func TestLongMemoryUpdateRejectsContentAndContentEditsTogether(t *testing.T) {
 	writeTool := LongMemoryWriteTool{store: store}
 	ctx := context.Background()
 
-	_, _, err := callTool(ctx, writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"save","category":"测试","title":"测试记忆","summary":"摘要","keywords":"alpha","content":"正文"}`)})
-	if err != nil {
+	result, _, err := callTool(ctx, writeTool.Definition(), toolshare.CallRequest{Arguments: []byte(`{"operation":"save","category":"测试","title":"测试记忆","summary":"摘要","keywords":"alpha","content":"正文"}`)})
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	args := []byte(`{"operation":"update","id":1,"content":"整段正文","content_edits":[{"operation":"insert","line":2,"new_text":"追加"}]}`)
-	_, err = writeTool.Definition().PrepareCall(ctx, toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), "content and content_edits cannot be used together") {
+	prepared, err := writeTool.Definition().PrepareCall(ctx, toolshare.CallRequest{Arguments: args})
+	if err != nil || prepared.Status == operationresult.Success || !strings.Contains(prepared.Message, "content and content_edits cannot be used together") {
 		t.Fatalf("expected conflict error, got %v", err)
 	}
 }

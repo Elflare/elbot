@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"slices"
 	"strings"
 	"testing"
@@ -77,10 +78,10 @@ func (t backgroundDeclarationTool) Info() toolshare.Info {
 	return toolshare.Info{Name: t.name, Risk: toolshare.RiskLow}
 }
 func (t backgroundDeclarationTool) Schema() llm.ToolSchema { return llm.ToolSchema{Name: t.name} }
-func (value backgroundDeclarationTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
-		return &toolshare.Result{}, "", nil
-	}), nil
+func (value backgroundDeclarationTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{}}, "", nil
+	})}, nil
 }
 
 // publicBackgroundSelections keeps real selector expansion behind the public consumer contract.

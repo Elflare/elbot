@@ -4,6 +4,7 @@ package long_memory
 import (
 	"context"
 	"elbot/internal/fileops"
+	"elbot/internal/operationresult"
 	"fmt"
 	"strings"
 	"unicode"
@@ -14,14 +15,14 @@ const (
 	longMemoryMaxLimit     = 10
 )
 
-func (s *longMemoryStore) search(ctx context.Context, args longMemorySearchArgs) (string, error) {
+func (s *longMemoryStore) search(ctx context.Context, args longMemorySearchArgs) (operationresult.Result[string], error) {
 	if err := ctx.Err(); err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
 	keywords := strings.TrimSpace(args.Keywords)
 	category := cleanLongMemoryText(args.Category)
 	if keywords == "" && category == "" {
-		return "", fmt.Errorf("keywords 和 category 不能同时为空")
+		return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: "keywords 和 category 不能同时为空"}, nil
 	}
 	briefOnly := true
 	if args.BriefOnly != nil {
@@ -32,56 +33,67 @@ func (s *longMemoryStore) search(ctx context.Context, args longMemorySearchArgs)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.ensureLocked(ctx); err != nil {
-		return "", err
+	ready, err := s.ensureLocked(ctx)
+	if err != nil {
+		return operationresult.Result[string]{}, err
+	}
+	if ready.Status != operationresult.Success {
+		return operationresult.Result[string]{Status: ready.Status, Message: ready.Message}, nil
 	}
 	if err := s.syncLocked(ctx, false); err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
 	invalids, err := s.invalidFilesLocked(ctx, 5)
 	if err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
 	overview, err := s.categoryOverviewLocked(ctx)
 	if err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
 	records, err := s.searchFTSLocked(ctx, keywords, category, matchMode, limit)
 	if err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
 	return formatSearchResult(invalids, overview, records, briefOnly)
 }
 
-func (s *longMemoryStore) categories(ctx context.Context) (string, error) {
+func (s *longMemoryStore) categories(ctx context.Context) (operationresult.Result[string], error) {
 	if err := ctx.Err(); err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.ensureLocked(ctx); err != nil {
-		return "", err
+	ready, err := s.ensureLocked(ctx)
+	if err != nil {
+		return operationresult.Result[string]{}, err
+	}
+	if ready.Status != operationresult.Success {
+		return operationresult.Result[string]{Status: ready.Status, Message: ready.Message}, nil
 	}
 	if err := s.syncLocked(ctx, false); err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
-	invalids, _ := s.invalidFilesLocked(ctx, 5)
+	invalids, err := s.invalidFilesLocked(ctx, 5)
+	if err != nil {
+		return operationresult.Result[string]{}, err
+	}
 	overview, err := s.categoryOverviewLocked(ctx)
 	if err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
 	var out strings.Builder
 	writeInvalidLongMemoryWarning(&out, invalids)
 	if strings.TrimSpace(overview) == "" {
 		out.WriteString("当前长期记忆库为空，尚未建立任何分类。你可以自由创建新的分类。")
-		return out.String(), nil
+		return operationresult.Result[string]{Status: operationresult.Success, Data: out.String()}, nil
 	}
 	out.WriteString("当前可用的长期记忆分类目录\n")
 	out.WriteString(overview)
-	return strings.TrimSpace(out.String()), nil
+	return operationresult.Result[string]{Status: operationresult.Success, Data: strings.TrimSpace(out.String())}, nil
 }
 
-func formatSearchResult(invalids []longMemoryInvalidFile, overview string, records []longMemoryRecord, briefOnly bool) (string, error) {
+func formatSearchResult(invalids []longMemoryInvalidFile, overview string, records []longMemoryRecord, briefOnly bool) (operationresult.Result[string], error) {
 	var out strings.Builder
 	writeInvalidLongMemoryWarning(&out, invalids)
 	if overview == "" {
@@ -95,7 +107,7 @@ func formatSearchResult(invalids []longMemoryInvalidFile, overview string, recor
 	out.WriteString("\n")
 	if len(records) == 0 {
 		out.WriteString("长期记忆库中未找到相关内容。建议检查关键词是否过于严格，尝试 match_mode=OR，或参考分类概览调整分类。")
-		return strings.TrimSpace(out.String()), nil
+		return operationresult.Result[string]{Status: operationresult.Success, Data: strings.TrimSpace(out.String())}, nil
 	}
 	out.WriteString(fmt.Sprintf("成功检索到%d条记录\n", len(records)))
 	invalidSet := map[string]bool{}
@@ -114,13 +126,16 @@ func formatSearchResult(invalids []longMemoryInvalidFile, overview string, recor
 			}
 			parsed, err := parseLongMemoryFile(record.FilePath)
 			if err != nil {
-				return "", err
+				return operationresult.Result[string]{}, err
+			}
+			if parsed.Status != operationresult.Success {
+				return operationresult.Result[string]{Status: parsed.Status, Message: parsed.Message}, nil
 			}
 			out.WriteString("详细内容（正文行号从 1 开始，可用于 content_edits）：\n")
-			writeNumberedLongMemoryContent(&out, parsed.Content)
+			writeNumberedLongMemoryContent(&out, parsed.Data.Content)
 		}
 	}
-	return strings.TrimSpace(out.String()), nil
+	return operationresult.Result[string]{Status: operationresult.Success, Data: strings.TrimSpace(out.String())}, nil
 }
 
 func writeNumberedLongMemoryContent(out *strings.Builder, content string) {

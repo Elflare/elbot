@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
 )
 
@@ -73,20 +74,20 @@ func webExtractBuilder() *toolshare.Builder {
 		Boolean("force_refresh", "true→绕过缓存重新获取；默认false。")
 }
 
-func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
 	var args webExtractArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse web_extract arguments: %w", err)
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse web_extract arguments: %v", err)}, nil
 		}
 	}
 	url := strings.TrimSpace(args.URL)
 	if url == "" {
-		return nil, fmt.Errorf("url is required")
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "url is required"}, nil
 	}
 	proxy, err := resolveExtractProxy(t.processEnv, args.Proxy)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	cache := t.cache
 	method := strings.TrimSpace(args.Method)
@@ -104,20 +105,20 @@ func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 		}
 		apiKey, _ = t.processEnv.Lookup(jinaAPIKeyEnv)
 		if strings.TrimSpace(apiKey) == "" {
-			return nil, fmt.Errorf("%s is required for method=jina; set it in environment or config .env", jinaAPIKeyEnv)
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Unavailable, Message: fmt.Sprintf("%s is required for method=jina; set it in environment or config .env", jinaAPIKeyEnv)}, nil
 		}
 	default:
-		return nil, fmt.Errorf("invalid web_extract method: %s; expected direct, jina, or markdownnew", method)
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("invalid web_extract method: %s; expected direct, jina, or markdownnew", method)}, nil
 	}
 	key := extractCacheKey(method, url, selector, proxy)
 	timeout := defaultExtractTimeout
 	if args.TimeoutMS > 0 {
 		timeout = time.Duration(args.TimeoutMS) * time.Millisecond
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("提取网页：%s", url))}, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("提取网页：%s", url))}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
-		entry, cached, err := cache.getOrFetch(ctx, key, args.ForceRefresh, func(fetchCtx context.Context) (cachedExtract, error) {
+		entry, cached, err := cache.getOrFetch(ctx, key, args.ForceRefresh, func(fetchCtx context.Context) (operationresult.Result[cachedExtract], error) {
 			switch method {
 			case "jina":
 				return t.fetchJina(fetchCtx, apiKey, url, selector, proxy)
@@ -128,12 +129,15 @@ func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 			}
 		})
 		if err != nil {
-			return nil, fmt.Sprintf("url=%s source=%s status=failed", url, method), err
+			return operationresult.Result[*toolshare.Result]{}, fmt.Sprintf("url=%s source=%s status=failed", url, method), err
 		}
-		data := sliceExtract(entry, args.Offset, args.MaxChars, cached)
+		if entry.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.Result]{Status: entry.Status, Message: entry.Message}, fmt.Sprintf("url=%s source=%s status=%s", url, method, entry.Status), nil
+		}
+		data := sliceExtract(entry.Data, args.Offset, args.MaxChars, cached)
 		summary := fmt.Sprintf("url=%s range=%d-%d/%d cached=%t source=%s title=%s", data.URL, data.Offset, data.Offset+data.ReturnedChars, data.TotalChars, data.Cached, data.Source, strings.Join(strings.Fields(data.Title), " "))
-		return &toolshare.Result{Summary: summary, Content: data.Content}, summary, nil
-	}), nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Summary: summary, Content: data.Content}}, summary, nil
+	})}, nil
 }
 
 func sliceExtract(entry cachedExtract, offset, maxChars int, cached bool) webExtractData {

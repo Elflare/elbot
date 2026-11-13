@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/rand"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -41,62 +43,71 @@ func mediaFilename(metadata share.MediaInfo) string {
 }
 
 // Export 将持有的媒体写入调用私有目录，返回相对 base 的路径和通用信息。
-func (c *MediaCall) Export(ctx context.Context, id, base string) (string, share.MediaInfo, error) {
+func (c *MediaCall) Export(ctx context.Context, id, base string) (string, operationresult.Result[share.MediaInfo], error) {
 	metadata, err := c.Retain(ctx, id)
 	if err != nil {
-		return "", share.MediaInfo{}, err
+		return "", operationresult.Result[share.MediaInfo]{}, err
+	}
+	if metadata.Status != operationresult.Success {
+		return "", metadata, nil
 	}
 	relative, err := c.Workspace(base)
 	if err != nil {
-		return "", share.MediaInfo{}, err
+		return "", operationresult.Result[share.MediaInfo]{}, err
 	}
-	name := mediaFilename(metadata)
+	name := mediaFilename(metadata.Data)
 	if c.mediaByID[id].exported {
 		return filepath.Join(relative, name), metadata, nil
 	}
 	root, err := os.OpenRoot(c.dir)
 	if err != nil {
-		return "", share.MediaInfo{}, err
+		return "", operationresult.Result[share.MediaInfo]{}, err
 	}
 	defer root.Close()
 	if err := write(ctx, root, name, c.mediaByID[id].held); err != nil {
-		return "", share.MediaInfo{}, err
+		return "", operationresult.Result[share.MediaInfo]{}, err
 	}
 	c.mediaByID[id].exported = true
 	return filepath.Join(relative, name), metadata, nil
 }
 
 // Import 规范化受限相对路径，再通过 os.Root 打开普通文件并持有导入结果。
-func (c *MediaCall) Import(ctx context.Context, base, path string, input share.MediaImportOptions) (share.MediaInfo, error) {
+func (c *MediaCall) Import(ctx context.Context, base, path string, input share.MediaImportOptions) (operationresult.Result[share.MediaInfo], error) {
 	path, err := workspace.NormalizeRestrictedPath(path)
 	if err != nil {
-		return share.MediaInfo{}, err
+		return operationresult.Result[share.MediaInfo]{Status: operationresult.InvalidTarget, Message: err.Error()}, nil
 	}
 	root, err := os.OpenRoot(base)
 	if err != nil {
-		return share.MediaInfo{}, err
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
 	defer root.Close()
 	file, err := root.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return operationresult.Result[share.MediaInfo]{Status: operationresult.NotFound, Message: fmt.Sprintf("media file %q not found", path)}, nil
+	}
 	if err != nil {
-		return share.MediaInfo{}, fmt.Errorf("open media file: %w", err)
+		return operationresult.Result[share.MediaInfo]{}, fmt.Errorf("open media file: %w", err)
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
-		return share.MediaInfo{}, err
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
 	if !info.Mode().IsRegular() {
-		return share.MediaInfo{}, fmt.Errorf("media must be a regular file")
+		return operationresult.Result[share.MediaInfo]{Status: operationresult.InvalidTarget, Message: "media must be a regular file"}, nil
 	}
 	if input.Name == "" {
 		input.Name = filepath.Base(path)
 	}
 	metadata, err := c.runtime.center.ImportReader(ctx, file, info.Size(), mediaInput(input), media.ImportLimits{})
 	if err != nil {
-		return share.MediaInfo{}, err
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
-	return c.Retain(ctx, metadata.ID)
+	if metadata.Status != operationresult.Success {
+		return operationresult.Result[share.MediaInfo]{Status: metadata.Status, Message: metadata.Message}, nil
+	}
+	return c.Retain(ctx, metadata.Data.ID)
 }
 
 func write(ctx context.Context, root *os.Root, name string, held *media.HeldMedia) (err error) {

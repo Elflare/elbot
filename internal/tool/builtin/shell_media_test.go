@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
 	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
@@ -53,13 +54,13 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 				cancel()
 				runCtx = canceled
 			}
-			raw, _ := json.Marshal(map[string]any{"cmd": test.cmd, "timeout_ms": test.timeout, "media_inputs": []toolshare.MediaInput{{MediaID: item.ID}, {MediaID: item.ID}}})
+			raw, _ := json.Marshal(map[string]any{"cmd": test.cmd, "timeout_ms": test.timeout, "media_inputs": []toolshare.MediaInput{{MediaID: item.Data.ID}, {MediaID: item.Data.ID}}})
 			original := string(raw)
 			result, _, err := callTool(runCtx, shell.Definition(), toolshare.CallRequest{Arguments: raw})
-			if test.name == "success" && (err != nil || strings.Count(result.Content, "shell-media-content") != 2) {
+			if test.name == "success" && (err != nil || result.Status != operationresult.Success || strings.Count(result.Data.Content, "shell-media-content") != 2) {
 				t.Fatalf("result %#v %v", result, err)
 			}
-			if test.name == "failure" && (err != nil || !strings.Contains(result.Content, "exit_code: 7")) {
+			if test.name == "failure" && (err != nil || !strings.Contains(result.Data.Content, "exit_code: 7")) {
 				t.Fatalf("failure %#v %v", result, err)
 			}
 			if string(raw) != original {
@@ -68,7 +69,7 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 			if err := center.Cleanup(ctx); err != nil {
 				t.Fatal(err)
 			}
-			refs, refErr := store.MediaReferences().ListMediaIDs(ctx, item.ID)
+			refs, refErr := store.MediaReferences().ListMediaIDs(ctx, item.Data.ID)
 			if refErr != nil || len(refs) != 0 {
 				t.Fatalf("leaked refs %v %v", refs, refErr)
 			}
@@ -77,8 +78,8 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "started")
 	cmd := `echo started > "` + filepath.ToSlash(marker) + `"`
 	for _, id := range []string{"", "bad", "media:" + strings.Repeat("f", 64)} {
-		raw, _ := json.Marshal(map[string]any{"cmd": cmd, "media_inputs": []map[string]string{{"media": item.ID}, {"media": id}}})
-		if _, _, err := callTool(ctx, shell.Definition(), toolshare.CallRequest{Arguments: raw}); err == nil {
+		raw, _ := json.Marshal(map[string]any{"cmd": cmd, "media_inputs": []map[string]string{{"media": item.Data.ID}, {"media": id}}})
+		if result, _, err := callTool(ctx, shell.Definition(), toolshare.CallRequest{Arguments: raw}); err != nil || result.Status == operationresult.Success {
 			t.Fatalf("accepted %s", id)
 		}
 		if _, err := os.Stat(marker); !os.IsNotExist(err) {
@@ -87,7 +88,7 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 		if err := center.Cleanup(ctx); err != nil {
 			t.Fatal(err)
 		}
-		refs, _ := store.MediaReferences().ListMediaIDs(ctx, item.ID)
+		refs, _ := store.MediaReferences().ListMediaIDs(ctx, item.Data.ID)
 		if len(refs) != 0 {
 			t.Fatal("partial preparation leaked references")
 		}

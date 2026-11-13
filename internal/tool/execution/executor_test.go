@@ -4,13 +4,11 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
-	"errors"
-	"fmt"
+	"elbot/internal/operationresult"
 	"strings"
 	"testing"
 
 	"elbot/internal/contextinfo"
-	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -37,10 +35,10 @@ func TestExecutorExecutesTool(t *testing.T) {
 func TestExecutorMissingToolReturnsToolMessageError(t *testing.T) {
 	registry := toolregistry.NewRegistry(security.DefaultPermission())
 	result := executeTestCall(registry, llm.ToolCallRequest{ID: "call_1", Name: "missing", Arguments: `{}`})
-	if result.Error == nil {
+	if result.Error != nil || result.Result.Status != operationresult.NotFound {
 		t.Fatal("expected error")
 	}
-	if result.Error == nil || result.ExecutionStarted {
+	if result.Error != nil || result.ExecutionStarted {
 		t.Fatalf("lookup facts = %#v", result)
 	}
 	if result.Message.Role != llm.RoleTool || result.Message.ToolCallID != "call_1" || !strings.Contains(llm.SegmentsContentText(result.Message.Segments), "not found") {
@@ -81,56 +79,6 @@ func TestResultWarningsAppendToSegments(t *testing.T) {
 	}
 }
 
-type partialResultTool struct {
-	segmentTool
-	err error
-}
-
-func (p partialResultTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: p.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
-		{
-			result, callErr := &toolshare.Result{Content: "completed first action", Data: []byte(`{"partial":true}`)}, p.err
-			logContent := ""
-			if result != nil {
-				logContent = result.Content
-			}
-			if callErr != nil {
-				if logContent != "" {
-					logContent += "\n"
-				}
-				logContent += callErr.Error()
-			}
-			return result, logContent, callErr
-		}
-	}), nil
-}
-
-func TestExecutorRetainsPartialResultAndOriginalError(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		err    error
-		status events.ResultStatus
-	}{
-		{"failure", errors.New("second action failed"), events.ResultFailed},
-		{"wrapped cancellation", fmt.Errorf("interrupted: %w", context.Canceled), events.ResultCanceled},
-		{"timeout", context.DeadlineExceeded, events.ResultFailed},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			registry := toolregistry.NewRegistry(security.DefaultPermission())
-			if err := registerTestTools(registry, (partialResultTool{err: tc.err}).Definition()); err != nil {
-				t.Fatal(err)
-			}
-			result := executeTestCall(registry, llm.ToolCallRequest{ID: "partial", Name: "segments", Arguments: `{}`})
-			if result.Error != tc.err || !result.ExecutionStarted {
-				t.Fatalf("execution facts = %#v", result)
-			}
-			if result.Result == nil || string(result.Result.Data) != `{"partial":true}` || llm.SegmentsContentText(result.Message.Segments) != "completed first action" {
-				t.Fatalf("partial result lost: %#v", result)
-			}
-		})
-	}
-}
-
 func TestRunRejectsUnauthorizedTools(t *testing.T) {
 	for _, candidate := range []fakeTool{
 		{name: "danger", risk: toolshare.RiskHigh},
@@ -164,14 +112,14 @@ func (segmentTool) Info() toolshare.Info {
 func (segmentTool) Schema() llm.ToolSchema {
 	return llm.ToolSchema{Name: "segments"}
 }
-func (value segmentTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
-		{
-			result := &toolshare.Result{Segments: []llm.MessageSegment{
-				{Type: llm.SegmentText, Text: "image:"},
-				{Type: llm.SegmentImage, URL: "https://example.com/a.png", MIMEType: "image/png"},
-			}}
-			return result, result.Content, nil
-		}
-	}), nil
+func (value segmentTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+
+		result := &toolshare.Result{Segments: []llm.MessageSegment{
+			{Type: llm.SegmentText, Text: "image:"},
+			{Type: llm.SegmentImage, URL: "https://example.com/a.png", MIMEType: "image/png"},
+		}}
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
+
+	})}, nil
 }

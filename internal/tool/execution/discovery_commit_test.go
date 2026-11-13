@@ -30,7 +30,7 @@ func (c *discoveryCommitter) Result(ctx context.Context, index int, call llm.Too
 	if c.session.Metadata != c.before {
 		c.t.Fatal("session state changed before result commit")
 	}
-	if commit.Result == nil || commit.Record == nil || len(commit.Metadata) == 0 {
+	if commit.Result.Data == nil || commit.Record == nil || len(commit.Metadata) == 0 {
 		c.t.Fatalf("discovery not submitted with result: %+v", commit)
 	}
 	c.patch = commit.Metadata

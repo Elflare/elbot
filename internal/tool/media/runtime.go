@@ -3,6 +3,7 @@ package media
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"io"
 
 	"elbot/internal/delivery"
@@ -21,73 +22,85 @@ func ValidID(id string) bool {
 // MediaRuntime 由 Tool 装配共享；媒体中心及其存储细节不向工具开放。
 type MediaRuntime struct {
 	center interface {
-		Info(context.Context, string) (media.MediaInfo, error)
-		ValidateImage(context.Context, string) (media.MediaInfo, error)
-		ImportURL(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
-		ImportFile(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
-		ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (media.MediaInfo, error)
-		Hold(context.Context, string) (*media.HeldMedia, error)
+		Info(context.Context, string) (operationresult.Result[media.MediaInfo], error)
+		ValidateImage(context.Context, string) (operationresult.Result[media.MediaInfo], error)
+		ImportURL(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+		ImportFile(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+		ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+		Hold(context.Context, string) (operationresult.Result[*media.HeldMedia], error)
 		Workspace(string) (string, media.UsageID, error)
 		HistoryIDs(context.Context, media.HistoryMessage) (map[int]string, error)
-		GetHistoryMediaBatch(context.Context, []media.HistoryMediaRequest, func(context.Context, string, media.PlatformMedia, int64) (delivery.Source, error), media.HistoryFetchOptions) ([]media.HistoryMediaResult, error)
+		GetHistoryMediaBatch(context.Context, []media.HistoryMediaRequest, func(context.Context, string, media.PlatformMedia, int64) (operationresult.Result[delivery.Source], error), media.HistoryFetchOptions) ([]media.HistoryMediaResult, error)
 	} // 借用的媒体中心，生命周期由 App 持有。
 	sandboxRoot          string                                 // 媒体缓存根目录，不随调用工作目录变化。
 	publishUsageFinished func(context.Context, []media.UsageID) // 根部注入的使用结束信号发布。
 }
 
 func NewMediaRuntime(center interface {
-	Info(context.Context, string) (media.MediaInfo, error)
-	ValidateImage(context.Context, string) (media.MediaInfo, error)
-	ImportURL(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
-	ImportFile(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
-	ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (media.MediaInfo, error)
-	Hold(context.Context, string) (*media.HeldMedia, error)
+	Info(context.Context, string) (operationresult.Result[media.MediaInfo], error)
+	ValidateImage(context.Context, string) (operationresult.Result[media.MediaInfo], error)
+	ImportURL(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	ImportFile(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	Hold(context.Context, string) (operationresult.Result[*media.HeldMedia], error)
 	Workspace(string) (string, media.UsageID, error)
 	HistoryIDs(context.Context, media.HistoryMessage) (map[int]string, error)
-	GetHistoryMediaBatch(context.Context, []media.HistoryMediaRequest, func(context.Context, string, media.PlatformMedia, int64) (delivery.Source, error), media.HistoryFetchOptions) ([]media.HistoryMediaResult, error)
+	GetHistoryMediaBatch(context.Context, []media.HistoryMediaRequest, func(context.Context, string, media.PlatformMedia, int64) (operationresult.Result[delivery.Source], error), media.HistoryFetchOptions) ([]media.HistoryMediaResult, error)
 }, sandboxRoot string, publishUsageFinished func(context.Context, []media.UsageID)) *MediaRuntime {
 	return &MediaRuntime{center: center, sandboxRoot: sandboxRoot, publishUsageFinished: publishUsageFinished}
 }
 
-func (r *MediaRuntime) Metadata(ctx context.Context, id string) (share.MediaInfo, error) {
+func (r *MediaRuntime) Metadata(ctx context.Context, id string) (operationresult.Result[share.MediaInfo], error) {
 	record, err := r.center.Info(ctx, id)
 	if err != nil {
-		return share.MediaInfo{}, err
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
-	return mediaInfo(record), nil
+	if record.Status != operationresult.Success {
+		return operationresult.Result[share.MediaInfo]{Status: record.Status, Message: record.Message}, nil
+	}
+	return operationresult.Result[share.MediaInfo]{Status: operationresult.Success, Data: mediaInfo(record.Data)}, nil
 }
 
 // ValidateImage 验证图片内容及 MIME，返回通用媒体信息，不返回图片内部属性。
-func (r *MediaRuntime) ValidateImage(ctx context.Context, id string) (share.MediaInfo, error) {
+func (r *MediaRuntime) ValidateImage(ctx context.Context, id string) (operationresult.Result[share.MediaInfo], error) {
 	record, err := r.center.ValidateImage(ctx, id)
 	if err != nil {
-		return share.MediaInfo{}, err
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
-	return mediaInfo(record), nil
+	if record.Status != operationresult.Success {
+		return operationresult.Result[share.MediaInfo]{Status: record.Status, Message: record.Message}, nil
+	}
+	return operationresult.Result[share.MediaInfo]{Status: operationresult.Success, Data: mediaInfo(record.Data)}, nil
 }
 
-func (r *MediaRuntime) ImportURL(ctx context.Context, url string, input share.MediaImportOptions) (share.MediaInfo, error) {
+func (r *MediaRuntime) ImportURL(ctx context.Context, url string, input share.MediaImportOptions) (operationresult.Result[share.MediaInfo], error) {
 	record, err := r.center.ImportURL(ctx, url, mediaInput(input), media.ImportLimits{})
 	if err != nil {
-		return share.MediaInfo{}, err
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
-	return mediaInfo(record), nil
+	if record.Status != operationresult.Success {
+		return operationresult.Result[share.MediaInfo]{Status: record.Status, Message: record.Message}, nil
+	}
+	return operationresult.Result[share.MediaInfo]{Status: operationresult.Success, Data: mediaInfo(record.Data)}, nil
 }
 
 // ImportFile 接收调用方已按其路径范围解析的本地文件。
-func (r *MediaRuntime) ImportFile(ctx context.Context, path string, input share.MediaImportOptions) (share.MediaInfo, error) {
+func (r *MediaRuntime) ImportFile(ctx context.Context, path string, input share.MediaImportOptions) (operationresult.Result[share.MediaInfo], error) {
 	record, err := r.center.ImportFile(ctx, path, mediaInput(input), media.ImportLimits{})
 	if err != nil {
-		return share.MediaInfo{}, err
+		return operationresult.Result[share.MediaInfo]{}, err
 	}
-	return mediaInfo(record), nil
+	if record.Status != operationresult.Success {
+		return operationresult.Result[share.MediaInfo]{Status: record.Status, Message: record.Message}, nil
+	}
+	return operationresult.Result[share.MediaInfo]{Status: operationresult.Success, Data: mediaInfo(record.Data)}, nil
 }
 
 func (r *MediaRuntime) HistoryIDs(ctx context.Context, row media.HistoryMessage) (map[int]string, error) {
 	return r.center.HistoryIDs(ctx, row)
 }
 
-func (r *MediaRuntime) GetHistoryMediaBatch(ctx context.Context, requests []media.HistoryMediaRequest, resolver func(context.Context, string, media.PlatformMedia, int64) (delivery.Source, error), opts media.HistoryFetchOptions) ([]share.HistoryMediaResult, error) {
+func (r *MediaRuntime) GetHistoryMediaBatch(ctx context.Context, requests []media.HistoryMediaRequest, resolver func(context.Context, string, media.PlatformMedia, int64) (operationresult.Result[delivery.Source], error), opts media.HistoryFetchOptions) ([]share.HistoryMediaResult, error) {
 	results, err := r.center.GetHistoryMediaBatch(ctx, requests, resolver, opts)
 	if err != nil {
 		return nil, err
@@ -95,8 +108,9 @@ func (r *MediaRuntime) GetHistoryMediaBatch(ctx context.Context, requests []medi
 	output := make([]share.HistoryMediaResult, len(results))
 	for i, result := range results {
 		output[i].Err = result.Err
-		if result.Err == nil {
-			output[i].Media = mediaInfo(result.Media)
+		output[i].Media = operationresult.Result[share.MediaInfo]{Status: result.Media.Status, Message: result.Media.Message}
+		if result.Err == nil && result.Media.Status == operationresult.Success {
+			output[i].Media.Data = mediaInfo(result.Media.Data)
 		}
 	}
 	return output, nil

@@ -3,6 +3,7 @@ package skill
 import toolshare "elbot/internal/tool/share"
 
 import (
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -38,13 +39,19 @@ func TestSkillTruncationSeparatesModelAndLog(t *testing.T) {
 		for _, caller := range callers {
 			result, logContent, err := callTool(t.Context(), caller, toolshare.CallRequest{Arguments: json.RawMessage(`{"skill_name":"output","payload":{}}`)})
 			if fail {
-				if err == nil || !strings.Contains(err.Error(), "output truncated") || !strings.Contains(err.Error(), "exit code 7") {
+				if err != nil || result.Status != operationresult.Failed || !strings.Contains(result.Message, "output truncated") || !strings.Contains(result.Message, "exit status 7") {
 					t.Fatalf("%s lost model error details: %v", caller.Definition.Name, err)
 				}
-			} else if err != nil || result == nil || !strings.HasSuffix(result.Content, "\n... output truncated ...\n") {
+			} else if err != nil || result.Status != operationresult.Success || result.Data == nil || !strings.HasSuffix(result.Data.Content, "\n... output truncated ...\n") {
 				t.Fatalf("%s lost model truncation notice: %v", caller.Definition.Name, err)
 			}
-			preview := result.LogContent(err)
+			if fail {
+				if logContent != "" {
+					t.Fatalf("unexpected summary: %q", logContent)
+				}
+				continue
+			}
+			preview := result.Data.LogContent()
 			if logContent != "" || strings.Contains(preview, "output truncated") || !strings.HasSuffix(preview, "…") || utf8.RuneCountInString(preview) != 1024 || !utf8.ValidString(preview) {
 				t.Fatalf("%s summary=%q preview=%q", caller.Definition.Name, logContent, preview)
 			}

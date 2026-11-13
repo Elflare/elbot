@@ -2,6 +2,7 @@ package tool
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"elbot/internal/testutil"
 	"encoding/json"
 	"errors"
@@ -86,7 +87,7 @@ func TestSupervisorInitialSkillPreloadUsesRealStartup(t *testing.T) {
 			if !slices.Equal(names, []string{"startup_skill"}) || !strings.Contains(content, "Use the startup instructions.") {
 				t.Fatalf("names=%v content=%q", names, content)
 			}
-			if err := m.Remove(ctx, "startup_skill"); err != nil {
+			if result, err := m.Remove(ctx, "startup_skill"); err != nil || result.Status != operationresult.Success {
 				t.Fatal(err)
 			}
 			if _, err := os.Stat(filepath.Join(root, "skills", "agent", "startup_skill")); !errors.Is(err, os.ErrNotExist) {

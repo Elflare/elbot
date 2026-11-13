@@ -7,16 +7,17 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 )
 
 // CronRepository 是工具内部的任务读写契约，由根部 bridge 实现。
 // 请求和结果只包含工具业务信息，不暴露存储记录、编码格式或外部服务类型。
 type CronRepository interface {
-	Upsert(context.Context, CronSaveRequest) (CronInfo, error)
-	GetByName(context.Context, string) (CronInfo, error)
-	List(context.Context, bool) ([]CronInfo, error)
-	DisableByName(context.Context, string) error
-	DeleteByName(context.Context, string) error
+	Upsert(context.Context, CronSaveRequest) (operationresult.Result[CronInfo], error)
+	GetByName(context.Context, string) (operationresult.Result[CronInfo], error)
+	List(context.Context, bool) (operationresult.Result[[]CronInfo], error)
+	DisableByName(context.Context, string) (operationresult.Result[struct{}], error)
+	DeleteByName(context.Context, string) (operationresult.Result[struct{}], error)
 }
 
 // CronSaveRequest 是完成业务校验后的完整任务定义；更新时已合并未修改字段。

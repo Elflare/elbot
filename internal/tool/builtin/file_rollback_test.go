@@ -4,8 +4,8 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -58,11 +58,11 @@ func (f *rollbackFixture) write(t *testing.T, path, text string) {
 	}
 	raw, _ := json.Marshal(args)
 	result, _, err := callTool(f.ctx(), (f.edit).Definition(), toolshare.CallRequest{Arguments: raw})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "rollback_available: true") {
-		t.Fatalf("result: %s", result.Content)
+	if !strings.Contains(result.Data.Content, "rollback_available: true") {
+		t.Fatalf("result: %s", result.Data.Content)
 	}
 }
 
@@ -82,20 +82,20 @@ func TestRollbackToolPathOnlyAndWorkspace(t *testing.T) {
 		t.Fatalf("schema: %#v", params)
 	}
 	for _, raw := range []string{`{}`, `{"path":"file","id":1}`, `{"path":"file","action":"rollback"}`} {
-		if _, _, err := callTool(f.ctx(), (f.rollback).Definition(), toolshare.CallRequest{Arguments: json.RawMessage(raw)}); err == nil {
+		if result, _, err := callTool(f.ctx(), (f.rollback).Definition(), toolshare.CallRequest{Arguments: json.RawMessage(raw)}); err != nil || result.Status == operationresult.Success {
 			t.Fatalf("accepted %s", raw)
 		}
 	}
 	f.workspace.dir = t.TempDir()
-	if _, _, err := callTool(f.ctx(), (f.rollback).Definition(), rollbackRequest("file")); err == nil {
+	if result, _, err := callTool(f.ctx(), (f.rollback).Definition(), rollbackRequest("file")); err != nil || result.Status == operationresult.Success {
 		t.Fatal("relative path ignored current workspace")
 	}
 	result, _, err := callTool(f.ctx(), (f.rollback).Definition(), rollbackRequest(filepath.Join(firstDir, "file")))
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "action: restored") {
-		t.Fatalf("result: %s", result.Content)
+	if !strings.Contains(result.Data.Content, "action: restored") {
+		t.Fatalf("result: %s", result.Data.Content)
 	}
 	data, _ := os.ReadFile(filepath.Join(firstDir, "file"))
 	if string(data) != "original" {
@@ -109,16 +109,16 @@ func TestRollbackToolPreflightPinsRecordAndWorkspace(t *testing.T) {
 	ctx := f.ctx()
 	req := rollbackRequest("file")
 	prepared, err := f.rollback.Definition().PrepareCall(ctx, req)
-	if err != nil {
+	if err != nil || prepared.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	details := prepared.Details()
+	details := prepared.Data.Details()
 	if len(details) != 1 || details[0].Kind != toolshare.ConfirmationDetailDiff || !strings.Contains(details[0].Content.(string), "file") {
 		t.Fatalf("details: %+v", details)
 	}
 	f.write(t, "file", "two")
 	derived := f.service.WithBinding(context.WithValue(ctx, struct{}{}, "request"), f.binding)
-	if _, _, err := prepared.Call(derived); !errors.Is(err, fileops.ErrRollbackNotFound) {
+	if result, _, err := prepared.Data.Call(derived); err != nil || result.Status != operationresult.NotFound {
 		t.Fatalf("stale preflight: %v", err)
 	}
 	data, _ := os.ReadFile(filepath.Join(f.workspace.dir, "file"))
@@ -127,12 +127,12 @@ func TestRollbackToolPreflightPinsRecordAndWorkspace(t *testing.T) {
 	}
 	ctx = f.ctx()
 	prepared, err = f.rollback.Definition().PrepareCall(ctx, req)
-	if err != nil {
+	if err != nil || prepared.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	f.workspace.dir = t.TempDir()
 	f.write(t, "file", "other")
-	if _, _, err := prepared.Call(ctx); err == nil {
+	if result, _, err := prepared.Data.Call(ctx); err != nil || result.Status == operationresult.Success {
 		t.Fatal("workspace switch silently changed target")
 	}
 }
@@ -142,22 +142,22 @@ func TestRollbackToolPermissionsAndSessionExpiry(t *testing.T) {
 	f.write(t, "file", "new")
 	ctx := f.ctx()
 	userCtx := contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleUser, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "user"}})
-	if _, _, err := callTool(userCtx, (f.rollback).Definition(), rollbackRequest("file")); err == nil || !strings.Contains(err.Error(), "superadmin") {
+	if result, _, err := callTool(userCtx, (f.rollback).Definition(), rollbackRequest("file")); err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "superadmin") {
 		t.Fatalf("user: %v", err)
 	}
 	background := workspacepath.WithPathScope(contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin}), workspacepath.PathScope{Dir: f.workspace.dir, Restricted: true})
-	if _, _, err := callTool(background, (f.rollback).Definition(), rollbackRequest("file")); err == nil {
+	if result, _, err := callTool(background, (f.rollback).Definition(), rollbackRequest("file")); err != nil || result.Status == operationresult.Success {
 		t.Fatal("background rollback allowed")
 	}
-	if session, err := f.service.EditSession(background); err != nil || session != nil {
+	if session, err := f.service.EditSession(background); err != nil || session.Status != operationresult.Success || session.Data != nil {
 		t.Fatalf("background recording: %v %v", session, err)
 	}
 	f.binding.valid.Store(false)
 	f.binding = newRollbackTestBinding()
-	if _, _, err := callTool(f.service.WithBinding(ctx, f.binding), (f.rollback).Definition(), rollbackRequest("file")); !errors.Is(err, fileops.ErrRollbackExpired) {
+	if result, _, err := callTool(f.service.WithBinding(ctx, f.binding), (f.rollback).Definition(), rollbackRequest("file")); err != nil || result.Status != operationresult.Conflict {
 		t.Fatalf("lease revived: %v", err)
 	}
-	if _, _, err := callTool(f.ctx(), (f.rollback).Definition(), rollbackRequest("file")); !errors.Is(err, fileops.ErrRollbackNotFound) {
+	if result, _, err := callTool(f.ctx(), (f.rollback).Definition(), rollbackRequest("file")); err != nil || result.Status != operationresult.NotFound {
 		t.Fatalf("record revived: %v", err)
 	}
 }
@@ -176,15 +176,15 @@ func TestRollbackToolFileGuardChecksActualTarget(t *testing.T) {
 	}
 	guard := FileGuard{FileGuardRule{ExactPath: target, WriteError: "protected target"}}
 	f.service.CheckWrite = guard.CheckWrite
-	if _, _, err := callTool(f.ctx(), (f.rollback).Definition(), rollbackRequest(link)); err == nil || !strings.Contains(err.Error(), "protected target") {
+	if result, _, err := callTool(f.ctx(), (f.rollback).Definition(), rollbackRequest(link)); err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "protected target") {
 		t.Fatalf("guard: %v", err)
 	}
 	raw, _ := json.Marshal(map[string]any{"path": link, "expected_revision": fileops.ContentRevision([]byte("two")), "edits": []map[string]any{{"operation": "overwrite", "new_text": "three"}}})
-	if _, _, err := callTool(f.ctx(), (f.edit).Definition(), toolshare.CallRequest{Arguments: raw}); err == nil || !strings.Contains(err.Error(), "protected target") {
+	if result, _, err := callTool(f.ctx(), (f.edit).Definition(), toolshare.CallRequest{Arguments: raw}); err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "protected target") {
 		t.Fatalf("edit guard: %v", err)
 	}
 	records, _ := f.service.List(f.ctx())
-	if len(records) != 1 {
+	if records.Status != operationresult.Success || len(records.Data) != 1 {
 		t.Fatal("denial consumed record")
 	}
 }

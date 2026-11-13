@@ -2,17 +2,21 @@ package discovery
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"elbot/internal/tool/share"
 )
 
 // callTool 让业务用例经过真实的准备入口，不保留旧 Tool.Call 契约。
-func callTool(ctx context.Context, tool share.ToolDefinition, req share.CallRequest) (*share.Result, string, error) {
+func callTool(ctx context.Context, tool share.ToolDefinition, req share.CallRequest) (operationresult.Result[*share.Result], string, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err.Error(), err
+		return operationresult.Result[*share.Result]{}, err.Error(), err
 	}
 	prepared, err := tool.PrepareCall(ctx, req)
 	if err != nil {
-		return nil, share.TruncateLogContent(err.Error(), 1024), err
+		return operationresult.Result[*share.Result]{}, share.TruncateLogContent(err.Error(), 1024), err
 	}
-	return prepared.Call(ctx)
+	if prepared.Status != operationresult.Success {
+		return operationresult.Result[*share.Result]{Status: prepared.Status, Message: prepared.Message}, prepared.Message, nil
+	}
+	return prepared.Data.Call(ctx)
 }

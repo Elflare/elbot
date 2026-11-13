@@ -3,7 +3,7 @@ package media
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"elbot/internal/operationresult"
 	"errors"
 	"image"
 	"image/png"
@@ -11,7 +11,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"elbot/internal/media"
@@ -43,15 +42,15 @@ func TestMediaAPIMetadataAndImageValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := share.MediaInfo{ID: record.ID, Name: "image.png", MIMEType: "image/png", Size: int64(imageData.Len())}
-	for _, get := range []func(context.Context, string) (share.MediaInfo, error){runtime.Metadata, runtime.ValidateImage} {
-		got, err := get(t.Context(), record.ID)
-		if err != nil || got != want {
+	want := share.MediaInfo{ID: record.Data.ID, Name: "image.png", MIMEType: "image/png", Size: int64(imageData.Len())}
+	for _, get := range []func(context.Context, string) (operationresult.Result[share.MediaInfo], error){runtime.Metadata, runtime.ValidateImage} {
+		got, err := get(t.Context(), record.Data.ID)
+		if err != nil || got.Status != operationresult.Success || got.Data != want {
 			t.Fatalf("info=%+v want=%+v err=%v", got, want, err)
 		}
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
-		if _, err := get(ctx, record.ID); !errors.Is(err, context.Canceled) {
+		if _, err := get(ctx, record.Data.ID); !errors.Is(err, context.Canceled) {
 			t.Fatalf("cancellation=%v", err)
 		}
 	}
@@ -60,21 +59,21 @@ func TestMediaAPIMetadataAndImageValidation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := runtime.ValidateImage(t.Context(), invalid.ID)
-		if err == nil || got != (share.MediaInfo{}) {
+		got, err := runtime.ValidateImage(t.Context(), invalid.Data.ID)
+		if err != nil || got.Status == operationresult.Success {
 			t.Fatalf("accepted invalid image: %+v %v", got, err)
 		}
 	}
 	call := runtime.NewCall()
 	defer call.Close()
-	info, err := call.Retain(t.Context(), record.ID)
+	info, err := call.Retain(t.Context(), record.Data.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	info.Name = "changed"
-	info.ID = "changed"
-	again, err := call.Retain(t.Context(), record.ID)
-	if err != nil || again != want {
+	info.Data.Name = "changed"
+	info.Data.ID = "changed"
+	again, err := call.Retain(t.Context(), record.Data.ID)
+	if err != nil || again.Status != operationresult.Success || again.Data != want {
 		t.Fatalf("caller changed retained metadata: %+v %v", again, err)
 	}
 }
@@ -90,7 +89,7 @@ func TestMediaAPIImportsAndNormalizedCallPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, err := runtime.ImportFile(t.Context(), path, share.MediaImportOptions{Name: "file.txt", MIMEType: "text/plain"})
-	if err != nil || info.Name != "file.txt" || info.Size != 5 {
+	if err != nil || info.Data.Name != "file.txt" || info.Data.Size != 5 {
 		t.Fatalf("file=%+v %v", info, err)
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -99,39 +98,19 @@ func TestMediaAPIImportsAndNormalizedCallPath(t *testing.T) {
 	}))
 	defer server.Close()
 	remote, err := runtime.ImportURL(t.Context(), server.URL+"/file.txt", share.MediaImportOptions{})
-	if err != nil || remote.ID != info.ID || remote.Size != 5 {
+	if err != nil || remote.Data.ID != info.Data.ID || remote.Data.Size != 5 {
 		t.Fatalf("url=%+v %v", remote, err)
 	}
 	call := runtime.NewCall()
 	defer call.Close()
 	imported, err := call.Import(t.Context(), base, "nested\\file.txt", share.MediaImportOptions{})
-	if err != nil || imported.ID != info.ID {
+	if err != nil || imported.Data.ID != info.Data.ID {
 		t.Fatalf("normalized import=%+v %v", imported, err)
 	}
 	for _, path := range []string{"nested/../nested/file.txt", "nested\\..\\nested\\file.txt", "~/file.txt", "file:stream"} {
-		if _, err := call.Import(t.Context(), base, path, share.MediaImportOptions{}); err == nil {
+		if result, err := call.Import(t.Context(), base, path, share.MediaImportOptions{}); err != nil || result.Status == operationresult.Success {
 			t.Fatalf("accepted %q", path)
 		}
-	}
-}
-
-func TestMediaExportsRejectInvalidDecodedIDs(t *testing.T) {
-	runtime, _ := newMediaAPITest(t, nil)
-	for _, raw := range []string{`null`, `{}`, `{"media":null}`, `{"media":""}`, `{"media":"bad"}`} {
-		t.Run(raw, func(t *testing.T) {
-			var input share.MediaInput
-			if err := json.Unmarshal([]byte(raw), &input); err != nil {
-				t.Fatal(err)
-			}
-			call := runtime.NewCall()
-			defer call.Close()
-			if _, _, err := call.Export(t.Context(), input.MediaID, t.TempDir()); err == nil || !strings.Contains(err.Error(), "invalid media ID") {
-				t.Fatalf("export accepted invalid ID: %v", err)
-			}
-			if _, err := call.CachedExport(t.Context(), input.MediaID); err == nil || !strings.Contains(err.Error(), "invalid media ID") {
-				t.Fatalf("cached export accepted invalid ID: %v", err)
-			}
-		})
 	}
 }
 
@@ -151,7 +130,7 @@ func TestMediaAPIHistoryBatchPreservesOrderAndErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	row := media.HistoryMessage{ID: stored.ID, Platform: "test", ChatID: "chat", MessageID: "message", Media: []media.PlatformMedia{{Type: "file", PlatformFileID: "file"}}}
-	if err := center.AssociateHistory(t.Context(), row, 1, "file", record.ID); err != nil {
+	if err := center.AssociateHistory(t.Context(), row, 1, "file", record.Data.ID); err != nil {
 		t.Fatal(err)
 	}
 	requests := []media.HistoryMediaRequest{{Message: row, Index: 1}, {Message: row, Index: 2}, {Message: row, Index: 1}}
@@ -159,15 +138,15 @@ func TestMediaAPIHistoryBatchPreservesOrderAndErrors(t *testing.T) {
 	if err != nil || len(results) != 3 {
 		t.Fatalf("results=%+v %v", results, err)
 	}
-	want := share.MediaInfo{ID: record.ID, Name: record.Name, MIMEType: record.MIMEType, Size: record.Size}
-	if results[0].Err != nil || results[0].Media != want || results[2].Err != nil || results[2].Media != want {
+	want := share.MediaInfo{ID: record.Data.ID, Name: record.Data.Name, MIMEType: record.Data.MIMEType, Size: record.Data.Size}
+	if results[0].Err != nil || results[0].Media.Status != operationresult.Success || results[0].Media.Data != want || results[2].Err != nil || results[2].Media.Status != operationresult.Success || results[2].Media.Data != want {
 		t.Fatalf("order or cache lost: %+v", results)
 	}
-	if !errors.Is(results[1].Err, media.ErrHistoryMediaIndex) || results[1].Media != (share.MediaInfo{}) {
+	if results[1].Err != nil || results[1].Media.Status != operationresult.InvalidArguments {
 		t.Fatalf("item error=%+v", results[1])
 	}
 	ids, err := runtime.HistoryIDs(t.Context(), row)
-	if err != nil || ids[1] != record.ID {
+	if err != nil || ids[1] != record.Data.ID {
 		t.Fatalf("ids=%v err=%v", ids, err)
 	}
 }

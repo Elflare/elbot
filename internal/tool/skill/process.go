@@ -4,6 +4,7 @@ package skill
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
 	toolshare "elbot/internal/tool/share"
 	"errors"
@@ -56,7 +57,7 @@ func runnerTimeout(timeoutMS int) time.Duration {
 	return defaultRunnerTimeout
 }
 
-func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall toolshare.MediaCall) (*toolshare.Result, error) {
+func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall toolshare.MediaCall) (operationresult.Result[*toolshare.Result], error) {
 	stdout := limitedOutput{limit: maxRunnerStdout}
 	stderr := limitedOutput{limit: maxRunnerOutput}
 	cmd.Stdout = &stdout
@@ -85,25 +86,27 @@ func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall
 	if err != nil {
 		out := truncateOutput(stdout.String())
 		errText := stderr.String()
-		return nil, commandError(label, err, out, errText)
+		callErr := commandError(label, err, out, errText)
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Timeout, Message: callErr.Error()}, nil
+		case errors.Is(err, context.Canceled):
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Canceled, Message: callErr.Error()}, nil
+		}
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() >= 0 {
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Failed, Message: callErr.Error()}, nil
+		}
+		return operationresult.Result[*toolshare.Result]{}, callErr
 	}
 	if stdout.truncated {
-		return nil, fmt.Errorf("%s stdout exceeds %d byte limit%s", label, maxRunnerStdout, commandOutputSuffix("", stderr.String()))
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Failed, Message: fmt.Sprintf("%s stdout exceeds %d byte limit%s", label, maxRunnerStdout, commandOutputSuffix("", stderr.String()))}, nil
 	}
 	return resultFromStdoutWithMedia(ctx, stdout.String(), mediaCall, cmd.Dir)
 }
 
 func commandError(label string, err error, stdout, stderr string) error {
-	var exitErr *exec.ExitError
-	if errors.Is(err, context.DeadlineExceeded) {
-		return fmt.Errorf("%s timed out: %w%s", label, err, commandOutputSuffix(stdout, stderr))
-	} else if errors.Is(err, context.Canceled) {
-		return fmt.Errorf("%s canceled: %w%s", label, err, commandOutputSuffix(stdout, stderr))
-	}
-	if errors.As(err, &exitErr) {
-		return fmt.Errorf("%s process failed with exit code %d: %w%s", label, exitErr.ExitCode(), err, commandOutputSuffix(stdout, stderr))
-	}
-	return fmt.Errorf("start %s failed: %w%s", label, err, commandOutputSuffix(stdout, stderr))
+	return fmt.Errorf("%s failed: %w%s", label, err, commandOutputSuffix(stdout, stderr))
 }
 
 func commandOutputSuffix(stdout, stderr string) string {
@@ -129,48 +132,40 @@ func truncateOutput(text string) string {
 
 const goBinaryEnv = "ELBOT_GO_BINARY"
 
-func resolveGoExecutable(environment processenv.Environment) (string, error) {
+func resolveGoExecutable(environment processenv.Environment) (operationresult.Result[string], error) {
 	if value, ok := environment.Lookup(goBinaryEnv); ok && strings.TrimSpace(value) != "" {
 		return validateGoExecutable(value, goBinaryEnv)
 	}
 	if goroot, ok := environment.Lookup("GOROOT"); ok && strings.TrimSpace(goroot) != "" {
 		candidate := filepath.Join(goroot, "bin", executableName("go"))
-		if path, ok := existingExecutable(candidate); ok {
-			return path, nil
-		}
-		return "", fmt.Errorf("GOROOT is set but go executable is unavailable at %q; set %s=/path/to/go in system environment or config .env", candidate, goBinaryEnv)
+		return validateGoExecutable(candidate, "GOROOT")
 	}
-	if goPath, err := environment.LookPath("go"); err == nil {
-		return goPath, nil
+	goPath, err := environment.LookPath("go")
+	if errors.Is(err, exec.ErrNotFound) {
+		return operationresult.Result[string]{Status: operationresult.Unavailable, Message: fmt.Sprintf("go executable not found in ElBot service PATH; set %s=/path/to/go in system environment or config .env, or configure service PATH/GOROOT, then restart ElBot", goBinaryEnv)}, nil
 	}
-	return "", fmt.Errorf("go executable not found in ElBot service PATH; set %s=/path/to/go in system environment or config .env, or configure service PATH/GOROOT, then restart ElBot", goBinaryEnv)
+	if err != nil {
+		return operationresult.Result[string]{}, err
+	}
+	return operationresult.Result[string]{Status: operationresult.Success, Data: goPath}, nil
 }
 
-func validateGoExecutable(path, source string) (string, error) {
+func validateGoExecutable(path, source string) (operationresult.Result[string], error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return "", fmt.Errorf("%s is empty", source)
+		return operationresult.Result[string]{Status: operationresult.Unavailable, Message: fmt.Sprintf("%s is empty", source)}, nil
 	}
 	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return operationresult.Result[string]{Status: operationresult.Unavailable, Message: fmt.Sprintf("%s points to unavailable go executable %q: %v", source, path, err)}, nil
+	}
 	if err != nil {
-		return "", fmt.Errorf("%s points to unavailable go executable %q: %w", source, path, err)
+		return operationresult.Result[string]{}, fmt.Errorf("%s points to unavailable go executable %q: %w", source, path, err)
 	}
 	if info.IsDir() {
-		return "", fmt.Errorf("%s points to a directory, not go executable: %q", source, path)
+		return operationresult.Result[string]{Status: operationresult.Unavailable, Message: fmt.Sprintf("%s points to a directory, not go executable: %q", source, path)}, nil
 	}
-	return path, nil
-}
-
-func existingExecutable(path string) (string, bool) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return "", false
-	}
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
-		return "", false
-	}
-	return path, true
+	return operationresult.Result[string]{Status: operationresult.Success, Data: path}, nil
 }
 
 func executableName(name string) string {
@@ -181,15 +176,17 @@ func executableName(name string) string {
 }
 
 type goBuildResult struct {
-	Stdout string
-	Stderr string
-	Err    error
+	Stdout string // 编译成功时收集的标准输出。
+	Stderr string // 编译成功时收集的标准错误输出。
 }
 
-func runGoBuild(ctx context.Context, root, name string, timeoutMS int, environment processenv.Environment) (goBuildResult, error) {
+func runGoBuild(ctx context.Context, root, name string, timeoutMS int, environment processenv.Environment) (operationresult.Result[goBuildResult], error) {
 	goPath, err := resolveGoExecutable(environment)
 	if err != nil {
-		return goBuildResult{}, err
+		return operationresult.Result[goBuildResult]{}, err
+	}
+	if goPath.Status != operationresult.Success {
+		return operationresult.Result[goBuildResult]{Status: goPath.Status, Message: goPath.Message}, nil
 	}
 	binary := name
 	if runtime.GOOS == "windows" {
@@ -201,32 +198,74 @@ func runGoBuild(ctx context.Context, root, name string, timeoutMS int, environme
 	}
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := environment.CommandContext(runCtx, goPath, "build", "-o", binary, ".")
+	cmd := environment.CommandContext(runCtx, goPath.Data, "build", "-o", binary, ".")
 	cmd.Dir = root
 	stdout := limitedOutput{limit: maxRunnerStdout}
 	stderr := limitedOutput{limit: maxRunnerOutput}
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	cancelCommand := cmd.Cancel
+	cancelRequested := make(chan error, 1)
+	cmd.Cancel = func() error {
+		err := cancelCommand()
+		cancelRequested <- err
+		return err
+	}
 	err = cmd.Run()
-	return goBuildResult{Stdout: stdout.String(), Stderr: stderr.String(), Err: err}, nil
+	select {
+	case cancelErr := <-cancelRequested:
+		if cancelErr != nil {
+			if !errors.Is(cancelErr, os.ErrProcessDone) && !errors.Is(err, cancelErr) {
+				events.AsyncLog(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn,
+					EventName: "skill_process_cleanup_failed", Module: "skill", Content: cancelErr.Error(),
+					Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(cancelErr)})
+			}
+		} else if processenv.ExitCanceled(cmd, true) {
+			err = runCtx.Err()
+		}
+	default:
+	}
+	if err != nil {
+		callErr := commandError("go build", err, truncateOutput(stdout.String()), stderr.String())
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			return operationresult.Result[goBuildResult]{Status: operationresult.Timeout, Message: callErr.Error()}, nil
+		case errors.Is(err, context.Canceled):
+			return operationresult.Result[goBuildResult]{Status: operationresult.Canceled, Message: callErr.Error()}, nil
+		}
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() >= 0 {
+			return operationresult.Result[goBuildResult]{Status: operationresult.Failed, Message: callErr.Error()}, nil
+		}
+		return operationresult.Result[goBuildResult]{}, callErr
+	}
+	return operationresult.Result[goBuildResult]{Status: operationresult.Success, Data: goBuildResult{Stdout: stdout.String(), Stderr: stderr.String()}}, nil
 }
 
-func detectGoModVersion(ctx context.Context, environment processenv.Environment) (string, error) {
+func detectGoModVersion(ctx context.Context, environment processenv.Environment) (operationresult.Result[string], error) {
 	goPath, err := resolveGoExecutable(environment)
 	if err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
-	cmd := environment.CommandContext(ctx, goPath, "env", "GOVERSION")
+	if goPath.Status != operationresult.Success {
+		return goPath, nil
+	}
+	cmd := environment.CommandContext(ctx, goPath.Data, "env", "GOVERSION")
 	stdout := limitedOutput{limit: maxRunnerStdout}
 	stderr := limitedOutput{limit: maxRunnerOutput}
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("detect go version: %w\nstderr:\n%s", err, truncateOutput(stderr.String()))
+		callErr := fmt.Errorf("detect go version: %w\nstderr:\n%s", err, truncateOutput(stderr.String()))
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() >= 0 {
+			return operationresult.Result[string]{Status: operationresult.Failed, Message: callErr.Error()}, nil
+		}
+		return operationresult.Result[string]{}, callErr
 	}
 	version, err := parseGoModVersion(stdout.String())
 	if err != nil {
-		return "", err
+		return operationresult.Result[string]{Status: operationresult.Incompatible, Message: err.Error()}, nil
 	}
-	return version, nil
+	return operationresult.Result[string]{Status: operationresult.Success, Data: version}, nil
 }

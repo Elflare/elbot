@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"testing"
 
 	"elbot/internal/contextinfo"
@@ -17,10 +18,10 @@ type snapshotConfirmDeps struct {
 	change func()
 }
 
-func (d *snapshotConfirmDeps) ConfirmToolCall(context.Context, string, llm.ToolCallRequest, share.RiskAssessment, []share.ConfirmationDetailBlock) (share.ConfirmResult, error) {
+func (d *snapshotConfirmDeps) ConfirmToolCall(context.Context, string, llm.ToolCallRequest, share.RiskAssessment, []share.ConfirmationDetailBlock) (operationresult.Result[share.ConfirmResult], error) {
 	d.confirmed = true
 	d.change()
-	return share.ConfirmResult{Allowed: true}, nil
+	return operationresult.Result[share.ConfirmResult]{Status: operationresult.Success}, nil
 }
 
 func TestRunKeepsSelectedObjectAcrossCatalogChanges(t *testing.T) {

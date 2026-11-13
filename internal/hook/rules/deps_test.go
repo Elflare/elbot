@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"elbot/internal/tool"
 	"elbot/internal/tool/execution"
 	"elbot/internal/tool/registry"
@@ -20,15 +21,21 @@ func testNotify(ctx context.Context, notice events.Notification) {
 
 type testTools struct{ *registry.Registry }
 
-func (t testTools) CallTool(ctx context.Context, call tool.CallRequest) (*tool.Result, string, error) {
+func (t testTools) CallTool(ctx context.Context, call tool.CallRequest) (operationresult.Result[*tool.Result], string, error) {
 	m := execution.Manager{ManagerDeps: execution.ManagerDeps{Registry: t.Registry}}
 	result, log, err := m.CallTool(ctx, toolshare.CallRequest{ID: call.ID, Name: call.Name, Arguments: call.Arguments})
-	if result == nil {
-		return nil, log, err
+	if err != nil {
+		return operationresult.Result[*tool.Result]{}, log, err
 	}
-	out := &tool.Result{NeedsElyphRules: result.NeedsElyphRules, Content: result.Content, Segments: result.Segments, Warnings: result.Warnings, Data: result.Data, Metadata: result.Metadata, Outputs: result.Outputs}
-	if result.DiscoveryText != nil {
-		out.DiscoveryText = &tool.DiscoveryText{Summary: result.DiscoveryText.Summary, Details: result.DiscoveryText.Details}
+	outcome := operationresult.Result[*tool.Result]{Status: result.Status, Message: result.Message}
+	if result.Status != operationresult.Success || result.Data == nil {
+		return outcome, log, nil
 	}
-	return out, log, err
+	value := result.Data
+	out := &tool.Result{NeedsElyphRules: value.NeedsElyphRules, Content: value.Content, Segments: value.Segments, Warnings: value.Warnings, Data: value.Data, Metadata: value.Metadata, Outputs: value.Outputs}
+	if value.DiscoveryText != nil {
+		out.DiscoveryText = &tool.DiscoveryText{Summary: value.DiscoveryText.Summary, Details: value.DiscoveryText.Details}
+	}
+	outcome.Data = out
+	return outcome, log, nil
 }

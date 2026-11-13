@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"elbot/internal/operationresult"
 	"elbot/internal/workspace"
 )
 
@@ -66,19 +67,19 @@ func workspaceBuilder() *toolshare.Builder {
 		Boolean("reset", "true→重置默认目录并忽略path。")
 }
 
-func (t WorkspaceTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+func (t WorkspaceTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
 	var args workspaceArgs
 	if len(req.Arguments) > 0 {
 		if err := json.Unmarshal(req.Arguments, &args); err != nil {
-			return nil, fmt.Errorf("parse workspace arguments: %w", err)
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse workspace arguments: %v", err)}, nil
 		}
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("工作目录：%s\n重置：%t", args.Path, args.Reset))}, func(ctx context.Context) (_ *toolshare.Result, logContent string, _ error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("工作目录：%s\n重置：%t", args.Path, args.Reset))}, func(ctx context.Context) (_ operationresult.Result[*toolshare.Result], logContent string, _ error) {
 		store, hasStore := workspace.WorkspaceStoreFromContext(ctx)
 		if args.Reset {
 			dir, err := defaultWorkspaceDir()
 			if err != nil {
-				return nil, err.Error(), err
+				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 			}
 			content := fmt.Sprintf("workspace reset.\ncurrent workspace: %s", dir)
 			logContent = content
@@ -86,42 +87,46 @@ func (t WorkspaceTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 				if noticeStore, ok := store.(workspace.WorkspaceAgentNoticeStore); ok {
 					instructions, markNotice, err := workspaceAgentInstructions(ctx, noticeStore, dir)
 					if err != nil {
-						return nil, err.Error(), err
+						return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 					}
 					if instructions != "" {
 						content += "\n\n" + instructions
 					}
 					if err := noticeStore.ClearWorkspaceDirWithAgentNotice(ctx, dir, markNotice); err != nil {
 						callErr := fmt.Errorf("reset workspace: %w", err)
-						return nil, callErr.Error(), callErr
+						return operationresult.Result[*toolshare.Result]{}, callErr.Error(), callErr
 					}
 					result := &toolshare.Result{Content: content}
-					return result, logContent, nil
+					return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, logContent, nil
 				}
 				if err := store.ClearWorkspaceDir(ctx); err != nil {
 					callErr := fmt.Errorf("reset workspace: %w", err)
-					return nil, callErr.Error(), callErr
+					return operationresult.Result[*toolshare.Result]{}, callErr.Error(), callErr
 				}
 			}
 			result := &toolshare.Result{Content: content}
-			return result, logContent, nil
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, logContent, nil
 		}
 		if path := strings.TrimSpace(args.Path); path != "" {
 			if !hasStore {
-				callErr := fmt.Errorf("workspace is unavailable in this context")
-				return nil, callErr.Error(), callErr
+				message := "workspace is unavailable in this context"
+				return operationresult.Result[*toolshare.Result]{Status: operationresult.Unavailable, Message: message}, message, nil
 			}
-			dir, err := workspace.ValidateWorkspaceDir(path)
+			checked, err := workspace.ValidateWorkspaceDir(path)
 			if err != nil {
-				return nil, err.Error(), err
+				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 			}
+			if checked.Status != operationresult.Success {
+				return operationresult.Result[*toolshare.Result]{Status: checked.Status, Message: checked.Message}, checked.Message, nil
+			}
+			dir := checked.Data
 			content := fmt.Sprintf("workspace set.\ncurrent workspace: %s", dir)
 			logContent = content
 			markNotice := false
 			if noticeStore, ok := store.(workspace.WorkspaceAgentNoticeStore); ok {
 				instructions, mark, err := workspaceAgentInstructions(ctx, noticeStore, dir)
 				if err != nil {
-					return nil, err.Error(), err
+					return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 				}
 				markNotice = mark
 				if instructions != "" {
@@ -129,25 +134,25 @@ func (t WorkspaceTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 				}
 				if err := noticeStore.SetWorkspaceDirWithAgentNotice(ctx, dir, markNotice); err != nil {
 					callErr := fmt.Errorf("set workspace: %w", err)
-					return nil, callErr.Error(), callErr
+					return operationresult.Result[*toolshare.Result]{}, callErr.Error(), callErr
 				}
 				result := &toolshare.Result{Content: content}
-				return result, logContent, nil
+				return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, logContent, nil
 			}
 			if err := store.SetWorkspaceDir(ctx, dir); err != nil {
 				callErr := fmt.Errorf("set workspace: %w", err)
-				return nil, callErr.Error(), callErr
+				return operationresult.Result[*toolshare.Result]{}, callErr.Error(), callErr
 			}
 			result := &toolshare.Result{Content: content}
-			return result, logContent, nil
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, logContent, nil
 		}
 		dir, err := workspace.CurrentWorkspaceDir(ctx)
 		if err != nil {
-			return nil, err.Error(), err
+			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 		}
 		result := &toolshare.Result{Content: fmt.Sprintf("current workspace: %s", dir)}
-		return result, result.Content, nil
-	}), nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
+	})}, nil
 }
 
 func defaultWorkspaceDir() (string, error) {

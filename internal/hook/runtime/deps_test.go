@@ -6,7 +6,9 @@ import (
 	"context"
 	"elbot/internal/events"
 	"elbot/internal/hook/share"
+	"elbot/internal/operationresult"
 	"elbot/internal/tool"
+	"elbot/internal/tool/execution"
 	"elbot/internal/tool/registry"
 	"testing"
 	"time"
@@ -47,19 +49,21 @@ func (t testTools) QueryTools(ctx context.Context, query tool.ToolQuery) ([]tool
 	return infos, nil
 }
 
-func (t testTools) CallTool(ctx context.Context, call tool.CallRequest) (*tool.Result, string, error) {
-	value, _ := t.Get(call.Name)
-	prepared, err := value.PrepareCall(ctx, toolshare.CallRequest{ID: call.ID, Name: call.Name, Arguments: call.Arguments})
+func (t testTools) CallTool(ctx context.Context, call tool.CallRequest) (operationresult.Result[*tool.Result], string, error) {
+	m := execution.Manager{ManagerDeps: execution.ManagerDeps{Registry: t.Registry}}
+	result, log, err := m.CallTool(ctx, toolshare.CallRequest{ID: call.ID, Name: call.Name, Arguments: call.Arguments})
 	if err != nil {
-		return nil, "", err
+		return operationresult.Result[*tool.Result]{}, log, err
 	}
-	result, log, err := prepared.Call(ctx)
-	if result == nil {
-		return nil, log, err
+	outcome := operationresult.Result[*tool.Result]{Status: result.Status, Message: result.Message}
+	if result.Status != operationresult.Success || result.Data == nil {
+		return outcome, log, nil
 	}
-	out := &tool.Result{NeedsElyphRules: result.NeedsElyphRules, Content: result.Content, Segments: result.Segments, Warnings: result.Warnings, Data: result.Data, Metadata: result.Metadata, Outputs: result.Outputs}
-	if result.DiscoveryText != nil {
-		out.DiscoveryText = &tool.DiscoveryText{Summary: result.DiscoveryText.Summary, Details: result.DiscoveryText.Details}
+	value := result.Data
+	out := &tool.Result{NeedsElyphRules: value.NeedsElyphRules, Content: value.Content, Segments: value.Segments, Warnings: value.Warnings, Data: value.Data, Metadata: value.Metadata, Outputs: value.Outputs}
+	if value.DiscoveryText != nil {
+		out.DiscoveryText = &tool.DiscoveryText{Summary: value.DiscoveryText.Summary, Details: value.DiscoveryText.Details}
 	}
-	return out, log, err
+	outcome.Data = out
+	return outcome, log, nil
 }

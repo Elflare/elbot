@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/fileops"
+	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
 	"encoding/json"
 	"errors"
@@ -55,24 +56,24 @@ func TestElwispCreatorToolSchemaHasNoParameters(t *testing.T) {
 
 func TestElwispCreatorToolCallReturnsGuide(t *testing.T) {
 	result, _, err := callTool(context.Background(), (ElwispCreatorTool{config: elwispCreatorConfigStub{}}).Definition(), toolshare.CallRequest{})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if result == nil || !strings.Contains(result.Content, "#task create_elwisp") || !strings.Contains(result.Content, "Elvena v3") || !result.NeedsElyphRules {
+	if result.Data == nil || !strings.Contains(result.Data.Content, "#task create_elwisp") || !strings.Contains(result.Data.Content, "Elvena v3") || !result.Data.NeedsElyphRules {
 		t.Fatalf("unexpected guide content: %#v", result)
 	}
-	if _, err := elyph.ParseTask(result.Content, "create_elwisp"); err != nil {
-		t.Fatalf("guide is not valid ELyph: %v\n%s", err, result.Content)
+	if _, err := elyph.ParseTask(result.Data.Content, "create_elwisp"); err != nil {
+		t.Fatalf("guide is not valid ELyph: %v\n%s", err, result.Data.Content)
 	}
-	if !strings.Contains(result.Content, "token 值请设置到系统环境变量或配置目录 .env") {
-		t.Fatalf("guide missing token setup hint: %s", result.Content)
+	if !strings.Contains(result.Data.Content, "token 值请设置到系统环境变量或配置目录 .env") {
+		t.Fatalf("guide missing token setup hint: %s", result.Data.Content)
 	}
 	for _, forbidden := range []string{"~ 硬编码 token", "~ 记录 token", "~ 编造 endpoint/token"} {
-		if !strings.Contains(result.Content, forbidden) {
-			t.Fatalf("guide missing forbidden rule %q: %s", forbidden, result.Content)
+		if !strings.Contains(result.Data.Content, forbidden) {
+			t.Fatalf("guide missing forbidden rule %q: %s", forbidden, result.Data.Content)
 		}
 	}
-	_, example, found := strings.Cut(result.Content, "// minimal_direct_calls_payload: ")
+	_, example, found := strings.Cut(result.Data.Content, "// minimal_direct_calls_payload: ")
 	if !found {
 		t.Fatal("guide missing direct calls example")
 	}
@@ -96,7 +97,7 @@ func TestElwispCreatorToolCallReturnsGuide(t *testing.T) {
 	if !reflect.DeepEqual(payload.Calls[0], wantCall) {
 		t.Fatalf("native recall example = %#v, want %#v", payload.Calls[0], wantCall)
 	}
-	_, example, found = strings.Cut(result.Content, "// minimal_llm_payload: ")
+	_, example, found = strings.Cut(result.Data.Content, "// minimal_llm_payload: ")
 	if !found {
 		t.Fatal("guide missing llm example")
 	}
@@ -168,15 +169,15 @@ func TestElwispCreatorConfigWarningsBelongToGuide(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tool := (ElwispCreatorTool{config: elwispCreatorConfigStub{config: tc.config, err: tc.err}})
 			result, _, err := callTool(t.Context(), tool.Definition(), toolshare.CallRequest{})
-			if err != nil {
+			if err != nil || result.Status != operationresult.Success {
 				t.Fatal(err)
 			}
-			if strings.Count(result.Content, "// warning:") != len(tc.warnings) {
-				t.Fatalf("unexpected warnings: %s", result.Content)
+			if strings.Count(result.Data.Content, "// warning:") != len(tc.warnings) {
+				t.Fatalf("unexpected warnings: %s", result.Data.Content)
 			}
 			for _, warning := range tc.warnings {
-				if !strings.Contains(result.Content, warning) {
-					t.Fatalf("missing %q: %s", warning, result.Content)
+				if !strings.Contains(result.Data.Content, warning) {
+					t.Fatalf("missing %q: %s", warning, result.Data.Content)
 				}
 			}
 		})

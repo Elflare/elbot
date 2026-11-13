@@ -5,6 +5,7 @@ import (
 	"context"
 	"elbot/internal/contextinfo"
 	"elbot/internal/elyph"
+	"elbot/internal/operationresult"
 	toolshare "elbot/internal/tool/share"
 	"encoding/json"
 	"fmt"
@@ -53,7 +54,7 @@ type cronWriteArgs struct {
 	Enabled             *bool    `json:"enabled"`
 }
 
-func NewCronTools(repo CronRepository, validateModel func(provider, model string) error, now func() time.Time) []toolshare.ToolDefinition {
+func NewCronTools(repo CronRepository, validateModel func(provider, model string) operationresult.Result[struct{}], now func() time.Time) []toolshare.ToolDefinition {
 	service := &cronService{repo: repo, validateModel: validateModel, now: now}
 	return []toolshare.ToolDefinition{(CronTool{now: now}).Definition(), (CronQueryTool{service: service}).Definition(), (CronWriteTool{service: service, now: now}).Definition()}
 }
@@ -61,22 +62,23 @@ func NewCronTools(repo CronRepository, validateModel func(provider, model string
 // cronService 只处理任务规则；读写和模型校验均通过根部注入的能力完成。
 type cronService struct {
 	repo          CronRepository
-	validateModel func(provider, model string) error // 根部桥接的模型选择校验，不依赖模型服务类型。
+	validateModel func(provider, model string) operationresult.Result[struct{}] // 根部桥接的模型选择校验，不依赖模型服务类型。
 	now           func() time.Time
 }
 
-func (s *cronService) CreateCron(ctx context.Context, req CronCreateRequest) (CronInfo, error) {
+func (s *cronService) CreateCron(ctx context.Context, req CronCreateRequest) (operationresult.Result[CronInfo], error) {
 	if strings.TrimSpace(req.SourcePlatform) == "" {
 		req.SourcePlatform = req.Actor.Platform
 	}
 	return s.upsert(ctx, req, true)
 }
 
-func (s *cronService) UpdateCron(ctx context.Context, patch CronUpdateRequest) (CronInfo, error) {
-	info, err := s.repo.GetByName(ctx, patch.Name)
-	if err != nil {
-		return CronInfo{}, err
+func (s *cronService) UpdateCron(ctx context.Context, patch CronUpdateRequest) (operationresult.Result[CronInfo], error) {
+	result, err := s.repo.GetByName(ctx, patch.Name)
+	if err != nil || result.Status != operationresult.Success {
+		return result, err
 	}
+	info := result.Data
 	req := CronCreateRequest{
 		Name: info.Name, Title: info.Title, ScheduleMode: info.ScheduleMode,
 		RunAt: info.RunAt, CronExpr: info.CronExpr, TriggerMode: info.TriggerMode,
@@ -109,7 +111,7 @@ func (s *cronService) UpdateCron(ctx context.Context, patch CronUpdateRequest) (
 	}
 	if patch.ModelProvider != nil || patch.Model != nil {
 		if patch.ModelProvider == nil || patch.Model == nil {
-			return CronInfo{}, fmt.Errorf("model_provider and model must be updated together")
+			return operationresult.Result[CronInfo]{Status: operationresult.InvalidArguments, Message: "model_provider and model must be updated together"}, nil
 		}
 		req.ModelProvider, req.Model = strings.TrimSpace(*patch.ModelProvider), strings.TrimSpace(*patch.Model)
 	}
@@ -131,33 +133,33 @@ func (s *cronService) UpdateCron(ctx context.Context, patch CronUpdateRequest) (
 	return s.upsert(ctx, req, reset)
 }
 
-func (s *cronService) GetCron(ctx context.Context, name string, _ contextinfo.Actor) (CronInfo, error) {
+func (s *cronService) GetCron(ctx context.Context, name string, _ contextinfo.Actor) (operationresult.Result[CronInfo], error) {
 	return s.repo.GetByName(ctx, name)
 }
 
-func (s *cronService) ListCrons(ctx context.Context, includeDisabled, includeCompleted bool, _ contextinfo.Actor) ([]CronInfo, error) {
+func (s *cronService) ListCrons(ctx context.Context, includeDisabled, includeCompleted bool, _ contextinfo.Actor) (operationresult.Result[[]CronInfo], error) {
 	jobs, err := s.repo.List(ctx, includeDisabled)
-	if err != nil {
-		return nil, err
+	if err != nil || jobs.Status != operationresult.Success {
+		return jobs, err
 	}
 	result := []CronInfo{}
-	for _, job := range jobs {
+	for _, job := range jobs.Data {
 		if includeCompleted || !job.Completed {
 			result = append(result, job)
 		}
 	}
-	return result, nil
+	return operationresult.Result[[]CronInfo]{Status: operationresult.Success, Data: result}, nil
 }
 
-func (s *cronService) DisableCron(ctx context.Context, name string, _ contextinfo.Actor) error {
+func (s *cronService) DisableCron(ctx context.Context, name string, _ contextinfo.Actor) (operationresult.Result[struct{}], error) {
 	return s.repo.DisableByName(ctx, name)
 }
 
-func (s *cronService) DeleteCron(ctx context.Context, name string, _ contextinfo.Actor) error {
+func (s *cronService) DeleteCron(ctx context.Context, name string, _ contextinfo.Actor) (operationresult.Result[struct{}], error) {
 	return s.repo.DeleteByName(ctx, name)
 }
 
-func (s *cronService) upsert(ctx context.Context, req CronCreateRequest, reset bool) (CronInfo, error) {
+func (s *cronService) upsert(ctx context.Context, req CronCreateRequest, reset bool) (operationresult.Result[CronInfo], error) {
 	req.Name, req.Title = strings.TrimSpace(req.Name), strings.TrimSpace(req.Title)
 	req.Message, req.SourcePlatform = strings.TrimSpace(req.Message), strings.TrimSpace(req.SourcePlatform)
 	req.RunAt, req.CronExpr = strings.TrimSpace(req.RunAt), strings.TrimSpace(req.CronExpr)
@@ -165,41 +167,41 @@ func (s *cronService) upsert(ctx context.Context, req CronCreateRequest, reset b
 	req.TargetID = strings.TrimSpace(req.TargetID)
 	req.ToolListNames = normalizeCronToolNames(req.ToolListNames)
 	if req.Name == "" {
-		return CronInfo{}, fmt.Errorf("cron name is required")
+		return operationresult.Result[CronInfo]{Status: operationresult.InvalidArguments, Message: "cron name is required"}, nil
 	}
 	if req.Title == "" {
 		req.Title = req.Name
 	}
 	if req.Message == "" {
-		return CronInfo{}, fmt.Errorf("message is required")
+		return operationresult.Result[CronInfo]{Status: operationresult.InvalidArguments, Message: "message is required"}, nil
 	}
 	switch req.TriggerMode {
 	case "direct":
 	case "llm":
 		if _, err := elyph.ParseTask(req.Message, ""); err != nil {
-			return CronInfo{}, err
+			return operationresult.Result[CronInfo]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
 	default:
-		return CronInfo{}, fmt.Errorf("unsupported trigger mode %q", req.TriggerMode)
+		return operationresult.Result[CronInfo]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("unsupported trigger mode %q", req.TriggerMode)}, nil
 	}
 	if req.SourcePlatform == "" {
-		return CronInfo{}, fmt.Errorf("source platform is required")
+		return operationresult.Result[CronInfo]{Status: operationresult.InvalidArguments, Message: "source platform is required"}, nil
 	}
 	if req.TargetID != "" && req.AllEnabledPlatforms {
-		return CronInfo{}, fmt.Errorf("target_id cannot be combined with all_enabled_platforms")
+		return operationresult.Result[CronInfo]{Status: operationresult.InvalidArguments, Message: "target_id cannot be combined with all_enabled_platforms"}, nil
 	}
 	if req.ModelProvider != "" || req.Model != "" {
 		if req.ModelProvider == "" || req.Model == "" {
-			return CronInfo{}, fmt.Errorf("model_provider and model must both be set or cleared")
+			return operationresult.Result[CronInfo]{Status: operationresult.InvalidArguments, Message: "model_provider and model must both be set or cleared"}, nil
 		}
-		if err := s.validateModel(req.ModelProvider, req.Model); err != nil {
-			return CronInfo{}, err
+		if result := s.validateModel(req.ModelProvider, req.Model); result.Status != operationresult.Success {
+			return operationresult.Result[CronInfo]{Status: result.Status, Message: result.Message}, nil
 		}
 	}
 	runAt := req.RunAt
 	expr, next, err := cronSchedule(&req, s.now())
 	if err != nil {
-		return CronInfo{}, err
+		return operationresult.Result[CronInfo]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	// 当前分钟的一次性计划会顺延；这同样改变了执行计划，需要开启新一轮。
 	reset = reset || req.RunAt != runAt
@@ -268,12 +270,12 @@ func (t CronTool) Definition() toolshare.ToolDefinition {
 	}
 	return definition
 }
-func (t CronTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (*toolshare.Result, string, error) {
+func (t CronTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		now := t.now().Format("2006-01-02 15:04:05")
 		result := &toolshare.Result{Content: strings.TrimSpace("cron 是定时任务管理入口。当前本地时间：" + now + "。请调用 cron_query 或 cron_write。cron_query 不传 name 时列出 cron，传 name 时查询单个 cron。")}
-		return result, "cron guide returned; current_time=" + now, nil
-	}), nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, "cron guide returned; current_time=" + now, nil
+	})}, nil
 }
 
 // DiscoveryContent appends the current local time to the discover_tool text.
@@ -291,25 +293,33 @@ func (t CronQueryTool) Definition() toolshare.ToolDefinition {
 		Boolean("include_disabled", "列表包含停用项，默认false。").
 		Boolean("include_completed", "列表包含已完成项，默认false。").Build(t.PrepareCall)
 }
-func (t CronQueryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+func (t CronQueryTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
 	var args cronQueryArgs
 	if err := decodeArgs(req.Arguments, &args); err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (*toolshare.Result, string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		if strings.TrimSpace(args.Name) != "" {
-			view, err := t.service.GetCron(ctx, args.Name, actorFromContext(ctx))
+			queried, err := t.service.GetCron(ctx, args.Name, actorFromContext(ctx))
 			if err != nil {
-				return nil, err.Error(), err
+				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 			}
+			if queried.Status != operationresult.Success {
+				return operationresult.Result[*toolshare.Result]{Status: queried.Status, Message: queried.Message}, queried.Message, nil
+			}
+			view := queried.Data
 			result := &toolshare.Result{Content: formatCronInfo(view), NeedsElyphRules: view.TriggerMode == "llm"}
 			logContent := fmt.Sprintf("name=%s enabled=%t completed=%t", view.Name, view.Enabled, view.Completed)
-			return result, logContent, nil
+			return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, logContent, nil
 		}
-		views, err := t.service.ListCrons(ctx, args.IncludeDisabled, args.IncludeCompleted, actorFromContext(ctx))
+		listed, err := t.service.ListCrons(ctx, args.IncludeDisabled, args.IncludeCompleted, actorFromContext(ctx))
 		if err != nil {
-			return nil, err.Error(), err
+			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 		}
+		if listed.Status != operationresult.Success {
+			return operationresult.Result[*toolshare.Result]{Status: listed.Status, Message: listed.Message}, listed.Message, nil
+		}
+		views := listed.Data
 		result := &toolshare.Result{Content: "没有符合条件的定时任务。"}
 		logContent := fmt.Sprintf("returned=%d", len(views))
 		var content []string
@@ -322,8 +332,8 @@ func (t CronQueryTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 		if len(content) > 0 {
 			result.Content = strings.Join(content, "\n\n")
 		}
-		return result, logContent, nil
-	}), nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, logContent, nil
+	})}, nil
 }
 
 func (t CronWriteTool) Definition() toolshare.ToolDefinition {
@@ -350,43 +360,55 @@ func (t CronWriteTool) Definition() toolshare.ToolDefinition {
 		Boolean("all_enabled_platforms", "true→广播到所有已启用平台的超级管理员；create默认false。").
 		Boolean("enabled", "create默认true；false→停用保留。").Build(t.PrepareCall)
 }
-func (t CronWriteTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (*toolshare.PreparedCall, error) {
+func (t CronWriteTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
 	var args cronWriteArgs
 	if err := decodeArgs(req.Arguments, &args); err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
-		var result *toolshare.Result
+	operation := strings.ToLower(strings.TrimSpace(args.Operation))
+	if operation != "create" && operation != "update" && operation != "disable" && operation != "delete" {
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "operation must be create, update, disable, or delete"}, nil
+	}
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+		var result operationresult.Result[*toolshare.Result]
 		var callErr error
-		switch strings.ToLower(strings.TrimSpace(args.Operation)) {
+		switch operation {
 		case "create":
 			result, callErr = t.create(ctx, args)
 		case "update":
 			result, callErr = t.update(ctx, args)
 		case "disable":
-			if err := t.service.DisableCron(ctx, args.Name, actorFromContext(ctx)); err != nil {
-				return nil, err.Error(), err
+			disabled, err := t.service.DisableCron(ctx, args.Name, actorFromContext(ctx))
+			if err != nil {
+				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 			}
-			result = &toolshare.Result{Content: fmt.Sprintf("已停用定时任务：%s", args.Name)}
+			if disabled.Status != operationresult.Success {
+				return operationresult.Result[*toolshare.Result]{Status: disabled.Status, Message: disabled.Message}, disabled.Message, nil
+			}
+			result = operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: fmt.Sprintf("已停用定时任务：%s", args.Name)}}
 		case "delete":
-			if err := t.service.DeleteCron(ctx, args.Name, actorFromContext(ctx)); err != nil {
-				return nil, err.Error(), err
+			deleted, err := t.service.DeleteCron(ctx, args.Name, actorFromContext(ctx))
+			if err != nil {
+				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 			}
-			result = &toolshare.Result{Content: fmt.Sprintf("已删除定时任务：%s", args.Name)}
-		default:
-			callErr = fmt.Errorf("operation must be create, update, disable, or delete")
+			if deleted.Status != operationresult.Success {
+				return operationresult.Result[*toolshare.Result]{Status: deleted.Status, Message: deleted.Message}, deleted.Message, nil
+			}
+			result = operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: fmt.Sprintf("已删除定时任务：%s", args.Name)}}
 		}
-		status := "ok"
 		if callErr != nil {
-			status = "failed"
+			return operationresult.Result[*toolshare.Result]{}, fmt.Sprintf("operation=%s name=%s status=failed", operation, args.Name), callErr
 		}
-		return result, fmt.Sprintf("operation=%s name=%s status=%s", args.Operation, args.Name, status), callErr
-	}), nil
+		if result.Status != operationresult.Success {
+			return result, result.Message, nil
+		}
+		return result, fmt.Sprintf("operation=%s name=%s status=ok", operation, args.Name), nil
+	})}, nil
 }
 
-func (t CronWriteTool) create(ctx context.Context, args cronWriteArgs) (*toolshare.Result, error) {
+func (t CronWriteTool) create(ctx context.Context, args cronWriteArgs) (operationresult.Result[*toolshare.Result], error) {
 	if (args.ModelProvider == nil) != (args.Model == nil) {
-		return nil, fmt.Errorf("model_provider and model must be provided together")
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "model_provider and model must be provided together"}, nil
 	}
 	provider, model := "", ""
 	if args.ModelProvider != nil {
@@ -407,19 +429,22 @@ func (t CronWriteTool) create(ctx context.Context, args cronWriteArgs) (*toolsha
 	}
 	runAt, err := resolveRunAtAt(args.RunAt, relativeOffset{Minutes: args.RunAfterMinutes, Hours: args.RunAfterHours, Days: args.RunAfterDays, Weeks: args.RunAfterWeeks, Months: args.RunAfterMonths}, t.now())
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	job, err := t.service.CreateCron(ctx, CronCreateRequest{Name: args.Name, Title: args.Title, ScheduleMode: args.ScheduleMode, RunAt: runAt, CronExpr: args.CronExpr, TriggerMode: args.TriggerMode, Message: args.Message, ToolListNames: args.ToolListNames, ModelProvider: provider, Model: model, TargetID: targetID, AllEnabledPlatforms: allEnabledPlatforms, Enabled: enabled, Actor: actor, SourcePlatform: actor.Platform})
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.Result]{}, err
 	}
-	return &toolshare.Result{Content: "已创建定时任务：" + job.Name + "\n" + formatCronInfo(job)}, nil
+	if job.Status != operationresult.Success {
+		return operationresult.Result[*toolshare.Result]{Status: job.Status, Message: job.Message}, nil
+	}
+	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: "已创建定时任务：" + job.Data.Name + "\n" + formatCronInfo(job.Data)}}, nil
 }
 
-func (t CronWriteTool) update(ctx context.Context, args cronWriteArgs) (*toolshare.Result, error) {
+func (t CronWriteTool) update(ctx context.Context, args cronWriteArgs) (operationresult.Result[*toolshare.Result], error) {
 	runAt, err := resolveUpdateRunAtAt(stringPtrIfNotEmpty(args.RunAt), relativeOffset{Minutes: args.RunAfterMinutes, Hours: args.RunAfterHours, Days: args.RunAfterDays, Weeks: args.RunAfterWeeks, Months: args.RunAfterMonths}, t.now())
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	patch := CronUpdateRequest{Name: args.Name, Title: stringPtrIfNotEmpty(args.Title), RunAt: runAt, CronExpr: stringPtrIfNotEmpty(args.CronExpr), Message: stringPtrIfNotEmpty(args.Message), ModelProvider: args.ModelProvider, Model: args.Model, TargetID: args.TargetID, AllEnabledPlatforms: args.AllEnabledPlatforms, Enabled: args.Enabled, Actor: actorFromContext(ctx)}
 	if args.ScheduleMode != "" {
@@ -435,9 +460,12 @@ func (t CronWriteTool) update(ctx context.Context, args cronWriteArgs) (*toolsha
 	}
 	job, err := t.service.UpdateCron(ctx, patch)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*toolshare.Result]{}, err
 	}
-	return &toolshare.Result{Content: "已更新定时任务：" + job.Name + "\n" + formatCronInfo(job)}, nil
+	if job.Status != operationresult.Success {
+		return operationresult.Result[*toolshare.Result]{Status: job.Status, Message: job.Message}, nil
+	}
+	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: "已更新定时任务：" + job.Data.Name + "\n" + formatCronInfo(job.Data)}}, nil
 }
 
 func resolveUpdateRunAtAt(runAt *string, offset relativeOffset, now time.Time) (*string, error) {

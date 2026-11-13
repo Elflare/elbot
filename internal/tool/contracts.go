@@ -4,11 +4,11 @@ package tool
 import (
 	"context"
 	"encoding/json"
-	"errors"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/security"
 	"elbot/internal/storage"
 	"elbot/internal/tool/share"
@@ -60,13 +60,13 @@ type ToolRegistrationScope struct {
 
 // ToolDefinition 由提供方声明，注册入口统一确定来源与默认值。
 type ToolDefinition struct {
-	Definition       Info                                                      // 名称、说明、风险及可见性；Source 由注册入口赋值。
-	Parameters       map[string]any                                            // 可调用项的参数 schema。
-	Prepare          func(context.Context, CallRequest) (*PreparedCall, error) // 本地工具的准备能力。
-	LoadDetail       func(context.Context) (DetailBlock, error)                // 可选的文档加载能力。
-	ActivateTools    []string                                                  // 展示文档后激活的工具。
-	DiscoveryContent func(context.Context) (string, bool, error)               // 动态发现说明及是否替换普通说明。
-	Remote           *ELwispToolDeclaration                                    // 远端声明，与本地 Prepare 互斥。
+	Definition       Info                                                                              // 名称、说明、风险及可见性；Source 由注册入口赋值。
+	Parameters       map[string]any                                                                    // 可调用项的参数 schema。
+	Prepare          func(context.Context, CallRequest) (operationresult.Result[*PreparedCall], error) // 本地工具的准备能力。
+	LoadDetail       func(context.Context) (DetailBlock, error)                                        // 可选的文档加载能力。
+	ActivateTools    []string                                                                          // 展示文档后激活的工具。
+	DiscoveryContent func(context.Context) (string, bool, error)                                       // 动态发现说明及是否替换普通说明。
+	Remote           *ELwispToolDeclaration                                                            // 远端声明，与本地 Prepare 互斥。
 }
 
 type DetailBlock struct {
@@ -85,13 +85,11 @@ const (
 
 type ConfirmationDetailBlock = share.ConfirmationDetailBlock
 
-var ErrToolDetailNotFound = errors.New("tool detail not found")
-
 // PreparedCall 是外部实现准备好的操作；根部将其封装为固定参数的内部调用。
 type PreparedCall struct {
-	Risk    RiskAssessment                                 // 本次操作风险。
-	Details []ConfirmationDetailBlock                      // 确认预览的有序结构化内容。
-	Run     func(context.Context) (*Result, string, error) // 确认后执行的操作。
+	Risk    RiskAssessment                                                         // 本次操作风险。
+	Details []ConfirmationDetailBlock                                              // 确认预览的有序结构化内容。
+	Run     func(context.Context) (operationresult.Result[*Result], string, error) // 确认后执行的操作。
 }
 
 // Info 是公开目录元数据，不携带可执行工具对象。
@@ -196,10 +194,7 @@ type RiskAssessment struct {
 }
 
 type ConfirmResult struct {
-	Allowed bool           // 是否批准本次调用。
-	Extra   string         // 用户补充输入。
-	Message llm.LLMMessage // 拒绝或停止时应提交的工具结果。
-	Stopped bool           // 是否停止后续批次处理。
+	Extra string // 用户批准调用时补充的输入。
 }
 
 // RunnerDeps 是批次执行期间向调用方请求的能力；只在该次 Run 中借用。
@@ -207,12 +202,12 @@ type RunnerDeps interface {
 	RefreshExecution(context.Context, *storage.Session) (context.Context, error)
 	PrepareToolCall(context.Context, *storage.Session, llm.ToolCallRequest) (llm.ToolCallRequest, error)
 	ShouldSendPreview(context.Context, string) bool
-	ConfirmToolCall(context.Context, string, llm.ToolCallRequest, RiskAssessment, []ConfirmationDetailBlock) (ConfirmResult, error)
+	ConfirmToolCall(context.Context, string, llm.ToolCallRequest, RiskAssessment, []ConfirmationDetailBlock) (operationresult.Result[ConfirmResult], error)
 	StartToolRequest(context.Context, string, string) (context.Context, func(), error)
 	PrepareToolContext(context.Context, *storage.Session, llm.ToolCallRequest) context.Context
-	CompleteToolCall(context.Context, *storage.Session, llm.ToolCallRequest, string, []llm.MessageSegment, error) ([]llm.MessageSegment, error)
+	CompleteToolCall(context.Context, *storage.Session, llm.ToolCallRequest, string, operationresult.Result[[]llm.MessageSegment], error) ([]llm.MessageSegment, error)
 	SendPreview(context.Context, ...string)
-	SendOutputs(context.Context, []delivery.Output) error
+	SendOutputs(context.Context, []delivery.Output) (operationresult.Result[struct{}], error)
 	PublishToolResult(context.Context, string, delivery.ToolResult)
 	AuditToolDenied(context.Context, string, llm.ToolCallRequest, security.RiskLevel, string)
 	AddToolUse(string, string)
@@ -272,7 +267,4 @@ func (r *Result) LLMSegments() []llm.MessageSegment { return toInternalResult(r)
 
 // LogContent returns the actual result/error preview for audit, capped at 1024
 // Unicode characters. The separately returned tool summary remains untruncated.
-func (r *Result) LogContent(err error) string { return toInternalResult(r).LogContent(err) }
-
-// ErrSkillNotFound 表示外部 Skill 管理目标不存在。
-var ErrSkillNotFound = share.ErrSkillNotFound
+func (r *Result) LogContent() string { return toInternalResult(r).LogContent() }

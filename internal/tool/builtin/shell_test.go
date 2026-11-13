@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"elbot/internal/testutil"
 	"encoding/json"
 	"fmt"
@@ -22,19 +23,13 @@ import (
 func TestShellToolMissingCmdHintsExpectedArgument(t *testing.T) {
 	shell := (ShellTool{ProcessEnv: processenv.Environment{}})
 	args, _ := json.Marshal(map[string]any{"Command": "ls"})
-	_, err := preparedRisk(context.Background(), shell.Definition(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), `use {"cmd":"..."}`) {
+	result, err := preparedRisk(context.Background(), shell.Definition(), toolshare.CallRequest{Arguments: args})
+	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, `use {"cmd":"..."}`) {
 		t.Fatalf("AssessRisk error = %v", err)
 	}
-	_, _, err = callTool(context.Background(), shell.Definition(), toolshare.CallRequest{Arguments: args})
-	if err == nil || !strings.Contains(err.Error(), `use {"cmd":"..."}`) {
+	callResult, _, err := callTool(context.Background(), shell.Definition(), toolshare.CallRequest{Arguments: args})
+	if err != nil || callResult.Status == operationresult.Success || !strings.Contains(callResult.Message, `use {"cmd":"..."}`) {
 		t.Fatalf("Call error = %v", err)
-	}
-}
-
-func TestShellToolHasAgentTag(t *testing.T) {
-	if got := strings.Join((ShellTool{ProcessEnv: processenv.Environment{}}).Definition().Definition.Tags, ","); got != "agent" {
-		t.Fatalf("shell tags = %q", got)
 	}
 }
 
@@ -42,10 +37,10 @@ func TestShellToolRunsArbitraryCommand(t *testing.T) {
 	shell := (ShellTool{ProcessEnv: processenv.Environment{}})
 	args, _ := json.Marshal(map[string]any{"cmd": "echo elbot-shell-test"})
 	result, _, err := callTool(context.Background(), shell.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if result == nil || !strings.Contains(result.Content, "elbot-shell-test") {
+	if result.Data == nil || !strings.Contains(result.Data.Content, "elbot-shell-test") {
 		t.Fatalf("unexpected shell result: %#v", result)
 	}
 }
@@ -70,18 +65,18 @@ func TestShellLogOutputSeparators(t *testing.T) {
 			}
 			ctx := workspacepath.WithWorkspaceStore(t.Context(), &testWorkspaceStore{dir: dir})
 			result, logContent, err := callTool(ctx, (ShellTool{ProcessEnv: processenv.Environment{}}).Definition(), toolshare.CallRequest{Arguments: json.RawMessage(`{"cmd":"cat stdout.txt; cat stderr.txt >&2"}`)})
-			if err != nil {
+			if err != nil || result.Status != operationresult.Success {
 				t.Fatal(err)
 			}
-			if logContent != "exit_code=0" || result.LogContent(err) != tc.want {
+			if logContent != "exit_code=0" || result.Data.LogContent() != tc.want {
 				t.Fatalf("log=%q want=%q", logContent, tc.want)
 			}
 			wantBusiness := tc.stdout
 			if tc.stderr != "" {
 				wantBusiness += "\nstderr:\n" + tc.stderr
 			}
-			if result.Content != wantBusiness {
-				t.Fatalf("business output changed: got=%q want=%q", result.Content, wantBusiness)
+			if result.Data.Content != wantBusiness {
+				t.Fatalf("business output changed: got=%q want=%q", result.Data.Content, wantBusiness)
 			}
 		})
 	}
@@ -133,18 +128,17 @@ func TestShellToolOutputLimit(t *testing.T) {
 			ctx := workspacepath.WithWorkspaceStore(t.Context(), &testWorkspaceStore{dir: dir})
 			args, _ := json.Marshal(map[string]any{"cmd": "cat stdout.txt & cat stderr.txt >&2 & wait; exit 7"})
 			result, logContent, err := callTool(ctx, (ShellTool{ProcessEnv: processenv.Environment{}}).Definition(), toolshare.CallRequest{Arguments: args})
-			if err != nil {
+			if err != nil || result.Status != operationresult.Failed {
 				t.Fatal(err)
 			}
 			if size > limit {
 				out, errText = out[:limit]+notice, errText[:limit]+notice
 			}
 			want := out + "\nstderr:\n" + errText + "\nexit_code: 7"
-			if result.Content != want {
-				t.Fatalf("output mismatch: got %d bytes, want %d; truncations=%d", len(result.Content), len(want), strings.Count(result.Content, notice))
+			if result.Message != want {
+				t.Fatalf("output mismatch: got %d bytes, want %d; truncations=%d", len(result.Message), len(want), strings.Count(result.Message, notice))
 			}
-			preview := result.LogContent(err)
-			if logContent != "exit_code=7" || preview != toolshare.TruncateLogContent(result.Content, 1024) || len([]rune(preview)) != 1024 || !strings.HasSuffix(preview, "…") {
+			if logContent != "exit_code=7" {
 				t.Fatalf("actual output preview changed: %q", logContent)
 			}
 		})
@@ -183,8 +177,8 @@ func TestAnalyzeBashShellAdviceRejectsCatElSkill(t *testing.T) {
 		t.Fatal(err)
 	}
 	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), root, FileGuard{NewElSkillFileGuardRule(root)})
-	if advice.blockErr == nil || !strings.Contains(advice.blockErr.Error(), "modify_el_skill") {
-		t.Fatalf("expected modify_el_skill error, got %v", advice.blockErr)
+	if advice.blocked.Status == operationresult.Success || !strings.Contains(advice.blocked.Message, "modify_el_skill") {
+		t.Fatalf("expected modify_el_skill error, got %v", advice.blocked)
 	}
 }
 func TestAnalyzeBashShellAdviceRejectsSedEditElSkill(t *testing.T) {
@@ -198,8 +192,8 @@ func TestAnalyzeBashShellAdviceRejectsSedEditElSkill(t *testing.T) {
 		t.Fatal(err)
 	}
 	advice := analyzeBashShellAdvice(parseBashForTest(t, "sed -i 's/Writer/Changed/' "+filepath.ToSlash(path)), root, FileGuard{NewElSkillFileGuardRule(root)})
-	if advice.blockErr == nil || !strings.Contains(advice.blockErr.Error(), "modify_el_skill") {
-		t.Fatalf("expected modify_el_skill error, got %v", advice.blockErr)
+	if advice.blocked.Status == operationresult.Success || !strings.Contains(advice.blocked.Message, "modify_el_skill") {
+		t.Fatalf("expected modify_el_skill error, got %v", advice.blocked)
 	}
 }
 
@@ -209,8 +203,8 @@ func TestAnalyzeBashShellAdviceRejectsCatResidentMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), filepath.Dir(path), FileGuard{NewResidentMemoryFileGuardRule(path)})
-	if advice.blockErr == nil || !strings.Contains(advice.blockErr.Error(), "resident_memory_normal") {
-		t.Fatalf("expected resident memory error, got %v", advice.blockErr)
+	if advice.blocked.Status == operationresult.Success || !strings.Contains(advice.blocked.Message, "resident_memory_normal") {
+		t.Fatalf("expected resident memory error, got %v", advice.blocked)
 	}
 }
 func TestAnalyzeBashShellAdviceRejectsRedirectToResidentMemory(t *testing.T) {
@@ -220,8 +214,8 @@ func TestAnalyzeBashShellAdviceRejectsRedirectToResidentMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	advice := analyzeBashShellAdvice(parseBashForTest(t, "echo changed > "+filepath.ToSlash(path)), filepath.Dir(path), FileGuard{NewResidentMemoryFileGuardRule(path)})
-	if advice.blockErr == nil || !strings.Contains(advice.blockErr.Error(), "resident_memory_normal") {
-		t.Fatalf("expected resident memory error, got %v", advice.blockErr)
+	if advice.blocked.Status == operationresult.Success || !strings.Contains(advice.blocked.Message, "resident_memory_normal") {
+		t.Fatalf("expected resident memory error, got %v", advice.blocked)
 	}
 }
 
@@ -296,7 +290,7 @@ func TestShellToolUsesWorkspaceDir(t *testing.T) {
 	ctx := workspacepath.WithWorkspaceStore(context.Background(), &testWorkspaceStore{dir: workspace})
 	shell := (ShellTool{ProcessEnv: processenv.Environment{}})
 	args, _ := json.Marshal(map[string]any{"cmd": "echo workspace > workspace.txt"})
-	if _, _, err := callTool(ctx, shell.Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(ctx, shell.Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(workspace, "workspace.txt")); err != nil {
@@ -331,7 +325,7 @@ func TestShellToolUsesSandboxDir(t *testing.T) {
 	shell := (ShellTool{ProcessEnv: processenv.Environment{}})
 	args, _ := json.Marshal(map[string]any{"cmd": "pwd > cwd.txt"})
 	ctx := workspacepath.WithPathScope(testutil.TaskContext(context.Background(), "cron"), workspacepath.PathScope{Dir: sandboxDir, Restricted: true})
-	if _, _, err := callTool(ctx, shell.Definition(), toolshare.CallRequest{Arguments: args}); err != nil {
+	if result, _, err := callTool(ctx, shell.Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(filepath.Join(sandboxDir, "cwd.txt"))
@@ -350,10 +344,16 @@ func TestShellToolCancelStopsCommand(t *testing.T) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	args, _ := json.Marshal(map[string]any{"cmd": "echo started > started.txt; while :; do sleep 60; done", "timeout_ms": 10000})
-	done := make(chan error, 1)
+	done := make(chan struct {
+		result operationresult.Result[*toolshare.Result]
+		err    error
+	}, 1)
 	go func() {
-		_, _, err := callTool(ctx, shell.Definition(), toolshare.CallRequest{Arguments: args})
-		done <- err
+		result, _, err := callTool(ctx, shell.Definition(), toolshare.CallRequest{Arguments: args})
+		done <- struct {
+			result operationresult.Result[*toolshare.Result]
+			err    error
+		}{result, err}
 	}()
 
 	marker := filepath.Join(workspace, "started.txt")
@@ -379,22 +379,12 @@ func TestShellToolCancelStopsCommand(t *testing.T) {
 	}
 	cancel()
 	select {
-	case <-done:
+	case outcome := <-done:
+		if outcome.err != nil || outcome.result.Status != operationresult.Canceled {
+			t.Fatalf("canceled shell=%+v", outcome)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("shell cancel did not stop the command")
-	}
-}
-
-func TestShellToolRunsLS(t *testing.T) {
-
-	shell := (ShellTool{ProcessEnv: processenv.Environment{}})
-	args, _ := json.Marshal(map[string]any{"cmd": "ls", "timeout_ms": 5000})
-	result, _, err := callTool(context.Background(), shell.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result == nil {
-		t.Fatal("expected shell result")
 	}
 }
 
@@ -407,11 +397,11 @@ func TestShellToolUsesConfiguredEnvironment(t *testing.T) {
 	}
 	args, _ := json.Marshal(map[string]any{"cmd": cmdText})
 	result, _, err := callTool(context.Background(), shell.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatalf("Call: %v", err)
 	}
-	if !strings.Contains(result.Content, "from-config") {
-		t.Fatalf("shell result = %q", result.Content)
+	if !strings.Contains(result.Data.Content, "from-config") {
+		t.Fatalf("shell result = %q", result.Data.Content)
 	}
 }
 

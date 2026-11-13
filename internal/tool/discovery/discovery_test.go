@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,10 +28,10 @@ func (t testTool) Schema() llm.ToolSchema {
 func (t testTool) Definition() share.ToolDefinition {
 	return share.ToolDefinition{Definition: t.info, Parameters: t.Schema().Parameters, Prepare: t.PrepareCall}
 }
-func (value testTool) PrepareCall(ctx context.Context, req share.CallRequest) (*share.PreparedCall, error) {
-	return share.NewPreparedCall(req, share.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (*share.Result, string, error) {
-		return &share.Result{}, "", nil
-	}), nil
+func (value testTool) PrepareCall(ctx context.Context, req share.CallRequest) (operationresult.Result[*share.PreparedCall], error) {
+	return operationresult.Result[*share.PreparedCall]{Status: operationresult.Success, Data: share.NewPreparedCall(req, share.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*share.Result], string, error) {
+		return operationresult.Result[*share.Result]{Status: operationresult.Success, Data: &share.Result{}}, "", nil
+	})}, nil
 }
 
 type testSkill struct {
@@ -224,24 +225,24 @@ func TestDiscoverToolContentAndActivationMetadata(t *testing.T) {
 		(testDynamicTool{testTool: plainTool("override"), content: "独立说明", override: true}).Definition(), skill.Definition(),
 	)
 	result, log, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"names":["append","override","skill","absent"]}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	for _, text := range []string{"已发现：append、override、skill", "追加说明", "独立说明", skill.block.Content, "未发现工具：absent"} {
-		if !strings.Contains(result.Content, text) {
-			t.Fatalf("missing %q in %q", text, result.Content)
+		if !strings.Contains(result.Data.Content, text) {
+			t.Fatalf("missing %q in %q", text, result.Data.Content)
 		}
 	}
-	if !result.NeedsElyphRules || strings.Contains(string(result.Data), `\u003c`) {
+	if !result.Data.NeedsElyphRules || strings.Contains(string(result.Data.Data), `\u003c`) {
 		t.Fatalf("skill result = %+v", result)
 	}
-	if got := strings.Join(metadataToolNames(result.Metadata[share.MetadataActivateTools]), ","); got != "wrapper" {
+	if got := strings.Join(metadataToolNames(result.Data.Metadata[share.MetadataActivateTools]), ","); got != "wrapper" {
 		t.Fatalf("activation = %q", got)
 	}
 	if log != "found=3 errors=1" {
 		t.Fatalf("log = %q", log)
 	}
-	if _, _, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"absent"}`)}); err == nil {
+	if result, _, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"absent"}`)}); err != nil || result.Status == operationresult.Success {
 		t.Fatal("single missing target should fail")
 	}
 }
@@ -326,14 +327,14 @@ func TestDiscoveryKeepsQueriedObjectAcrossReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, _, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"versioned"}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "original content") || strings.Contains(result.Content, "replacement content") {
-		t.Fatalf("used replacement content: %q", result.Content)
+	if !strings.Contains(result.Data.Content, "original content") || strings.Contains(result.Data.Content, "replacement content") {
+		t.Fatalf("used replacement content: %q", result.Data.Content)
 	}
 	var discovered share.DiscoveryResult
-	if err := json.Unmarshal(result.Data, &discovered); err != nil {
+	if err := json.Unmarshal(result.Data.Data, &discovered); err != nil {
 		t.Fatal(err)
 	}
 	if len(discovered.Tools) != 1 || discovered.Tools[0].Schema == nil || discovered.Tools[0].Schema.Description != "original description" {
@@ -361,10 +362,10 @@ func TestDiscoveryKeepsSkillActivationDeclaration(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, _, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"skill"}`)})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if got := strings.Join(metadataToolNames(result.Metadata[share.MetadataActivateTools]), ","); got != "original_wrapper" {
+	if got := strings.Join(metadataToolNames(result.Data.Metadata[share.MetadataActivateTools]), ","); got != "original_wrapper" {
 		t.Fatalf("activation declaration changed to %q", got)
 	}
 }

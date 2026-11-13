@@ -5,10 +5,10 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"elbot/internal/tool/discovery"
 	"elbot/internal/tool/execution"
 	"elbot/internal/tool/state"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,7 +45,7 @@ func (s *rollbackWorkspace) ClearWorkspaceDirIfMatches(_ context.Context, dir st
 
 type runnerTestDeps struct {
 	confirmed      bool
-	recorded       []struct{ err error }
+	recorded       []storage.ToolCallRecord
 	prepareContext func(context.Context, *storage.Session, llm.ToolCallRequest) context.Context
 }
 
@@ -59,11 +59,7 @@ func (*runnerTestDeps) Prepared(context.Context, int, llm.ToolCallRequest) error
 	return nil
 }
 func (d *runnerTestDeps) Result(_ context.Context, _ int, _ llm.ToolCallRequest, _ llm.LLMMessage, update *storage.ToolResultCommit) error {
-	var err error
-	if update.Record.Error != "" {
-		err = errors.New(update.Record.Error)
-	}
-	d.recorded = append(d.recorded, struct{ err error }{err})
+	d.recorded = append(d.recorded, *update.Record)
 	return nil
 }
 
@@ -83,12 +79,18 @@ func (d *runnerTestDeps) StartToolRequest(ctx context.Context, _, _ string) (con
 func (d *runnerTestDeps) PrepareToolContext(ctx context.Context, s *storage.Session, c llm.ToolCallRequest) context.Context {
 	return d.prepareContext(ctx, s, c)
 }
-func (d *runnerTestDeps) CompleteToolCall(_ context.Context, _ *storage.Session, _ llm.ToolCallRequest, _ string, segments []llm.MessageSegment, _ error) ([]llm.MessageSegment, error) {
-	return segments, nil
+func (d *runnerTestDeps) CompleteToolCall(_ context.Context, _ *storage.Session, _ llm.ToolCallRequest, _ string, result operationresult.Result[[]llm.MessageSegment], callErr error) ([]llm.MessageSegment, error) {
+	if callErr != nil {
+		return llm.TextSegments(callErr.Error()), nil
+	}
+	if result.Status != operationresult.Success {
+		return llm.TextSegments(result.Message), nil
+	}
+	return result.Data, nil
 }
 func (d *runnerTestDeps) SendPreview(context.Context, ...string) {}
-func (d *runnerTestDeps) SendOutputs(context.Context, []delivery.Output) error {
-	return nil
+func (d *runnerTestDeps) SendOutputs(context.Context, []delivery.Output) (operationresult.Result[struct{}], error) {
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
 func (d *runnerTestDeps) PublishToolResult(context.Context, string, delivery.ToolResult) {}
@@ -108,13 +110,13 @@ type rollbackConfirmDeps struct {
 	duringConfirmation func()
 }
 
-func (d *rollbackConfirmDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (toolshare.ConfirmResult, error) {
+func (d *rollbackConfirmDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (operationresult.Result[toolshare.ConfirmResult], error) {
 	d.confirmed = true
 	d.detail = detail
 	if d.duringConfirmation != nil {
 		d.duringConfirmation()
 	}
-	return toolshare.ConfirmResult{Allowed: true}, nil
+	return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Success}, nil
 }
 
 func rollbackConfirmationText(details []toolshare.ConfirmationDetailBlock) string {
@@ -177,7 +179,7 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 			if string(data) != want {
 				t.Fatalf("data=%q want=%q", data, want)
 			}
-			if len(deps.recorded) != 1 || (deps.recorded[0].err != nil) != changed {
+			if len(deps.recorded) != 1 || (deps.recorded[0].Error != "") != changed {
 				t.Fatalf("recorded=%+v result=%+v", deps.recorded, result)
 			}
 		})
@@ -237,7 +239,7 @@ func TestRunEditPreservesConfirmationSnapshot(t *testing.T) {
 			if string(data) != want {
 				t.Fatalf("file=%q want=%q", data, want)
 			}
-			if len(deps.recorded) != 1 || (deps.recorded[0].err != nil) != changed {
+			if len(deps.recorded) != 1 || (deps.recorded[0].Error != "") != changed {
 				t.Fatalf("recorded=%+v", deps.recorded)
 			}
 		})

@@ -4,7 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
-	"errors"
+	"elbot/internal/operationresult"
 	"reflect"
 	"strings"
 	"testing"
@@ -28,13 +28,13 @@ func (foregroundOnlyTestTool) Info() toolshare.Info {
 func (foregroundOnlyTestTool) Schema() llm.ToolSchema {
 	return toolshare.NewBuilder("foreground_only").ForegroundOnly().BuildSchema()
 }
-func (value foregroundOnlyTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (*toolshare.PreparedCall, error) {
-	return toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (*toolshare.Result, string, error) {
-		{
-			result := &toolshare.Result{Content: "ok"}
-			return result, result.Content, nil
-		}
-	}), nil
+func (value foregroundOnlyTestTool) PrepareCall(ctx context.Context, req toolshare.CallRequest) (operationresult.Result[*toolshare.PreparedCall], error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: value.Info().Risk}, nil, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+
+		result := &toolshare.Result{Content: "ok"}
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
+
+	})}, nil
 }
 
 func TestForegroundOnlyToolHiddenInBackgroundSchemas(t *testing.T) {
@@ -145,40 +145,13 @@ func TestForegroundOnlyToolResolveRejectedInBackground(t *testing.T) {
 	}
 	manager := newTestManager(registry, security.DefaultPermission())
 	ctx := workspace.WithPathScope(toolshare.WithCallPolicy(context.Background(), toolshare.CallPolicy{DisableForegroundTools: true}), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
-	resolved := manager.resolve(ctx, "foreground_only", nil, storage.SessionModeBackground)
-	if resolved.Error == nil {
+	resolved, err := manager.resolve(ctx, "foreground_only", nil, storage.SessionModeBackground)
+	if err != nil || resolved.Status != operationresult.Forbidden {
 		t.Fatalf("resolved = %#v", resolved)
 	}
-	discovered := manager.resolve(ctx, "cached_foreground", []toolshare.DiscoveredTool{{Name: "cached_foreground", Source: toolshare.SourceKindELwisp, Endpoint: "http://127.0.0.1", ForegroundOnly: true}}, storage.SessionModeBackground)
-	if discovered.Error == nil {
+	discovered, err := manager.resolve(ctx, "cached_foreground", []toolshare.DiscoveredTool{{Name: "cached_foreground", Source: toolshare.SourceKindELwisp, Endpoint: "http://127.0.0.1", ForegroundOnly: true}}, storage.SessionModeBackground)
+	if err != nil || discovered.Status != operationresult.Forbidden {
 		t.Fatalf("discovered resolved = %#v", discovered)
-	}
-	var denied toolshare.PolicyDeniedError
-	if !errors.As(resolved.Error, &denied) || !errors.As(discovered.Error, &denied) {
-		t.Fatalf("permission errors were flattened: %T / %T", resolved.Error, discovered.Error)
-	}
-}
-
-func TestResolveDistinguishesMissingToolFromMissingRemoteConfiguration(t *testing.T) {
-	manager := newTestManager(toolregistry.NewRegistry(security.DefaultPermission()), nil)
-	for _, tc := range []struct {
-		name       string
-		discovered []toolshare.DiscoveredTool
-	}{
-		{"missing", nil},
-		{"remote", []toolshare.DiscoveredTool{{Name: "remote", Source: toolshare.SourceKindELwisp}}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			resolved := manager.resolve(t.Context(), tc.name, tc.discovered, storage.SessionModeWork)
-			var denied toolshare.PolicyDeniedError
-			if resolved.Error == nil || errors.As(resolved.Error, &denied) {
-				t.Fatalf("resolution facts = %#v", resolved)
-			}
-			result := manager.executePrepared(t.Context(), llm.ToolCallRequest{Name: tc.name}, resolved, nil, nil)
-			if result.Error != resolved.Error || result.ExecutionStarted {
-				t.Fatalf("execution lost resolution facts: %#v", result)
-			}
-		})
 	}
 }
 

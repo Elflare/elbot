@@ -5,7 +5,7 @@ import (
 	"context"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
-	"errors"
+	"elbot/internal/operationresult"
 	"fmt"
 	"slices"
 	"strings"
@@ -61,13 +61,13 @@ type Info struct {
 
 // ToolDefinition 是目录唯一的定义来源；文档条目只提供 LoadDetail，不伪造调用入口。
 type ToolDefinition struct {
-	Definition       Info                                                      // 工具或文档的目录元数据。
-	Parameters       map[string]any                                            // 可调用工具的参数对象 schema；文档条目为 nil。
-	Prepare          func(context.Context, CallRequest) (*PreparedCall, error) // 本地实现的准备入口。
-	LoadDetail       func(context.Context) (DetailBlock, error)                // 可选的技能正文加载能力。
-	ActivateTools    []string                                                  // 加载正文时激活的工具名称。
-	DiscoveryContent func(context.Context) (string, bool, error)               // 可选的动态发现说明。
-	Remote           *ELwispToolDeclaration                                    // 远端执行所需的可序列化声明；不与 Prepare 同时提供。
+	Definition       Info                                                                              // 工具或文档的目录元数据。
+	Parameters       map[string]any                                                                    // 可调用工具的参数对象 schema；文档条目为 nil。
+	Prepare          func(context.Context, CallRequest) (operationresult.Result[*PreparedCall], error) // 本地实现的准备入口。
+	LoadDetail       func(context.Context) (DetailBlock, error)                                        // 可选的技能正文加载能力。
+	ActivateTools    []string                                                                          // 加载正文时激活的工具名称。
+	DiscoveryContent func(context.Context) (string, bool, error)                                       // 可选的动态发现说明。
+	Remote           *ELwispToolDeclaration                                                            // 远端执行所需的可序列化声明；不与 Prepare 同时提供。
 }
 
 type ConfirmationDetailKind = delivery.ContentBlockKind
@@ -106,9 +106,9 @@ func (d ToolDefinition) Schema() llm.ToolSchema {
 	}
 	return llm.ToolSchema{Name: d.Definition.Name, Description: d.Definition.Description, Parameters: d.Parameters}
 }
-func (d ToolDefinition) PrepareCall(ctx context.Context, req CallRequest) (*PreparedCall, error) {
+func (d ToolDefinition) PrepareCall(ctx context.Context, req CallRequest) (operationresult.Result[*PreparedCall], error) {
 	if d.Prepare == nil {
-		return nil, fmt.Errorf("tool %q has no local execution entry", d.Definition.Name)
+		return operationresult.Result[*PreparedCall]{Status: operationresult.Incompatible, Message: fmt.Sprintf("tool %q has no local execution entry", d.Definition.Name)}, nil
 	}
 	return d.Prepare(ctx, req)
 }
@@ -139,6 +139,3 @@ func NormalizeToolTag(tag string) string {
 	}
 	return tag
 }
-
-// ErrSkillNotFound 表示待管理的外部 Skill 未注册。
-var ErrSkillNotFound = errors.New("Skill 不存在")
