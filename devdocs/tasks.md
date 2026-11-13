@@ -15,9 +15,23 @@ HTTP code、wire code 留在 API/management 适配层，不能塞进内部 Statu
 Go 文件修改后运行 gofmt；最终业务迁移完成后再做静态核对。
 注：若链路不涉及发往用户的通知或者消息，就没必要无脑全用operationresult，局部的普通error就够
 一条链路一条链路做，每做完一条回查旧兼容层和 Go error / Result 分界。
-本次更新不改用户文档
 
-
+以上已完成。现在开始review。看看是否符合架构原则、边界职责是否清晰，有没过度防御、有没旧逻辑代码或者强行兼容. 特别是过度防御：1. try :
+xxx
+except a:
+xx
+except b:
+xx
+...
+以上是最蠢的，注意这种情况，可以直接改成：
+Try：
+xxx
+except 大的：
+return traceback.format_exc() #go类似方法可以直接把err内容返回，能让知道是什么错
+2. 若链路不涉及发往用户的通知或者消息，就没必要无脑全用operationresult，局部的普通error就够
+3. 逻辑上不会出错的禁止防御性编程。
+review目标：1. 旧测试删或者改造。2. 新测试指测必要且复杂功能或者容易出现竞态问题的地方，简单、无意义测试都删。
+3. 减少代码，越精简越好，用最少代码完成功能，只留必要防御，多余防御全删
 
 - [ ] 前端显示正在调用工具名字和参数，结束后直接原地改写结果，保留名字和参数，内容和之前一样。需要同步改后端api，平台消息如[tool]xxx统一成control操作，raw提供原始内容，消息平台裁剪为文本，参考command_result_dispatch.go逻辑，给一个共享函数裁剪，也可直接拿raw blocks
 - [ ] 加入phase压缩中
