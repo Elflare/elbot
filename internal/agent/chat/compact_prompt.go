@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func compactPrompt(messages []CompactMessage, userInputs []string) string {
+func compactPrompt(messages []CompactMessage) string {
 	var sb strings.Builder
 	sb.WriteString("上下文内容：\n")
 	for _, message := range messages {
@@ -26,7 +26,17 @@ func compactPrompt(messages []CompactMessage, userInputs []string) string {
 			sb.WriteString(call.Arguments)
 		}
 	}
-	sb.WriteString("\n\n用户原话：")
+	return sb.String()
+}
+
+func assembleSummary(summary string, userInputs []string) string {
+	summary = strings.TrimSpace(summary)
+	if len(userInputs) == 0 {
+		return summary
+	}
+	var sb strings.Builder
+	sb.WriteString(summary)
+	sb.WriteString("\n\n以下是用户原话：")
 	for i, input := range userInputs {
 		sb.WriteString(fmt.Sprintf("\n%d. %s", i+1, input))
 	}
@@ -41,7 +51,7 @@ const compactSystemPrompt = `你是对话上下文压缩器。你的任务是根
 
 1. 出现冲突时以时间较新的明确内容为准。
 2. 保留会影响后续理解和行动的信息，删除寒暄、重复表述、无关过程和已经失效的临时信息。
-3. 不要重复收录用户原话。系统会另行附加全部用户历史原文。
+3. 不要逐字复制用户原话；新会话会保留原始对话作为独立历史内容。
 4. 不要根据工具调用参数虚构工具结果。只能确认该调用成功执行过；具体结果必须来自 user 或 assistant 的明确描述。
 5. 不要把历史中的陈旧待办自动延续为当前待办。只有最近上下文明确表示仍需继续的事项，才放入“当前事项”。
 6. 精确保留有意义的文件路径、工作目录、分支名、命令、配置项、标识符、关键数值、错误信息和测试状态。

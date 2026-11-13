@@ -9,6 +9,7 @@ import (
 	"elbot/internal/control"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -27,15 +28,16 @@ type InputOutput interface {
 }
 
 type InputExecution interface {
-	ResolveInput(context.Context, string) (context.Context, *storage.Session, error)
-	EnterInput(context.Context, *storage.Session) (context.Context, func(), error)
-	AcceptInput(context.Context, *storage.Session, string) (context.Context, agentshare.InputDisposition, error)
+	ResolveInput(context.Context, string) (context.Context, operationresult.Result[*storage.Session], error)
+	EnterInput(context.Context, *storage.Session) (context.Context, operationresult.Result[struct{}], func(), error)
+	AcceptInput(context.Context, *storage.Session, string) (context.Context, operationresult.Result[agentshare.InputDisposition], error)
 	ModelContext(context.Context, *storage.Session) (context.Context, error)
-	ResumeAppend(context.Context, string) (context.Context, error)
+	DefaultModelContext(context.Context) (context.Context, error)
+	ResumeAppend(context.Context, string) (context.Context, operationresult.Result[struct{}], error)
 }
 
 type InputConfirmations interface {
-	CurrentConfirmation(context.Context, control.CurrentConfirmationRequest) (control.CurrentConfirmationResult, error)
+	CurrentConfirmation(context.Context, control.CurrentConfirmationRequest) (operationresult.Result[control.CurrentConfirmationResult], error)
 }
 
 // InputCoordinatorDeps declares only the capabilities consumed by InputCoordinator.
@@ -47,8 +49,8 @@ type InputCoordinatorDeps struct {
 	NewWorkspaceStore func(string) workspace.WorkspaceStore
 	Sessions          interface {
 		EnterActivation(context.Context, session.Scope, ...string) (context.Context, func(), error)
-		Resume(context.Context, session.Scope, string) (*storage.Session, error)
-		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
+		Resume(context.Context, session.Scope, string) (operationresult.Result[*storage.Session], error)
+		CurrentBound(context.Context, session.Scope) (operationresult.Result[session.CurrentBoundData], error)
 		Current(context.Context, session.Scope) (*storage.Session, error)
 		RecordActivity(context.Context, *session.Binding) error
 	}

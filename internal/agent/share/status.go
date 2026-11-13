@@ -19,6 +19,7 @@ type ModelCallCompletedEvent struct {
 	Execution                         contextinfo.Execution // Identity of the execution that produced this call result.
 	Provider, Model, Text, SourceText string
 	ToolCallCount                     int
+	ToolCalls                         []llm.ToolCallRequest // 已接收的调用事实，仅供观察与错误 Hook 使用，不用于执行。
 	ElapsedMS                         int64
 	Usage                             *llm.Usage
 	Err                               error

@@ -12,6 +12,7 @@ import (
 	"elbot/internal/contextmgr"
 	"elbot/internal/control"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"elbot/internal/request"
 	"elbot/internal/session"
 	"elbot/internal/signal"
@@ -47,9 +48,9 @@ type Supervisor struct {
 }
 
 // ContinueControlInput resumes work requested by a Control operation after its result was delivered.
-func (m *Supervisor) ContinueControlInput(ctx context.Context, continuation control.Continuation) (context.Context, error) {
+func (m *Supervisor) ContinueControlInput(ctx context.Context, continuation control.Continuation) (context.Context, operationresult.Result[struct{}], error) {
 	if m.input == nil {
-		return ctx, errors.New("agent input coordinator is not connected")
+		return ctx, operationresult.Result[struct{}]{}, errors.New("agent input coordinator is not connected")
 	}
 	return m.input.ContinueCommandInput(ctx, continuation)
 }
@@ -67,7 +68,7 @@ func (m *Supervisor) HandleMessage(ctx context.Context, req MessageRequest) erro
 		msg.Mentions = append(msg.Mentions, agentshare.Mention{UserID: mention.UserID, Username: mention.Username, Text: mention.Text})
 	}
 	ctx, commandHandled, err := m.handler.HandleMessage(agentshare.WithMessageContext(ctx, msg), req.Text)
-	if err != nil && !commandHandled && !errors.Is(err, agentshare.ErrSessionBindingChanged) {
+	if err != nil && !commandHandled {
 		record := events.LogRecord{
 			Category: events.LogCategoryLog, Level: slog.LevelWarn,
 			EventName: "dialogue_failed", Module: "dialogue", Type: events.ContentText,

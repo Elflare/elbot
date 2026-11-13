@@ -2,6 +2,7 @@ package chat
 
 import (
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/operationresult"
 
 	"context"
 	"fmt"
@@ -17,7 +18,7 @@ import (
 	"elbot/internal/turn"
 )
 
-func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (result agentshare.LoopResult) {
+func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (result operationresult.Result[agentshare.LoopResult], runErr error) {
 	r, s := p.route, p.state
 	for i := range p.materials.Loaded.Messages {
 		head := &p.materials.Loaded.Messages[i]
@@ -29,13 +30,10 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			return failedLoop(err)
 		}
 	}
-	if p.compactSeedOnCurrentUser {
-		if err := r.consumeContextCompactSeed(s.requestCtx, s.session); err != nil {
-			return failedLoop(err)
-		}
-	}
 	defer func() {
-		result.Usage, result.Selection = s.usage, s.selection
+		if result.Status == operationresult.Success {
+			result.Data.Usage, result.Data.Selection = s.usage, s.selection
+		}
 	}()
 	var finalRawText string
 	var platformFinalText string
@@ -55,8 +53,8 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		if sessionpkg.WasPromoted(s.session) && !foregroundPrepared {
 			foregroundPrepared = true
 			s.selection = r.SelectionForTurn(s.requestCtx, s.session)
-			if err := r.CheckSelection(s.selection); err != nil {
-				return failedLoop(err)
+			if checked := r.CheckSelection(s.selection); checked.Status != operationresult.Success {
+				return operationresult.Result[agentshare.LoopResult]{Status: checked.Status, Message: checked.Message}, nil
 			}
 			var modelErr error
 			s.requestCtx, modelErr = r.View.WithModel(s.requestCtx, s.selection)
@@ -88,8 +86,12 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 				return failedLoop(err)
 			}
 		}
-		if err := r.View.CheckSelection(s.session, s.selection); err != nil {
+		compatible, err := r.View.CheckSelection(s.session, s.selection)
+		if err != nil {
 			return failedLoop(err)
+		}
+		if compatible.Status != operationresult.Success {
+			return operationresult.Result[agentshare.LoopResult]{Status: compatible.Status, Message: compatible.Message}, nil
 		}
 		var pending *agentshare.PendingUserMessage
 		if inToolPhase {
@@ -110,15 +112,19 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			StageStartedAt: llmStageStartedAt,
 			Usage:          s.usage,
 		})
-		result, err := r.Caller.Call(s.requestCtx, s.session, s.selection, s.messages, s.tools, pending, stream)
-		if len(result.Messages) > 0 {
-			s.messages = result.Messages
-		}
+		called, err := r.Caller.Call(s.requestCtx, s.session, s.selection, s.messages, s.tools, pending, stream)
 		if err != nil {
 			return failedLoop(err)
 		}
+		if called.Status != operationresult.Success {
+			return operationresult.Result[agentshare.LoopResult]{Status: called.Status, Message: called.Message}, nil
+		}
+		result := called.Data
+		if len(result.Messages) > 0 {
+			s.messages = result.Messages
+		}
 		if err := s.requestCtx.Err(); err != nil {
-			return agentshare.LoopResult{Outcome: agentshare.Canceled, Err: err, QuietCancellation: true}
+			return failedLoop(err)
 		}
 		assistantText := result.Text
 		assistantRawText := result.RawText
@@ -159,7 +165,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		}
 		if !inToolPhase {
 			if !r.Turns.StartToolPhase(s.session.ID, turn.AttemptFromContext(s.ctx)) {
-				return agentshare.LoopResult{Outcome: agentshare.Stopped}
+				return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: agentshare.LoopResult{Outcome: agentshare.Stopped}}, nil
 			}
 			inToolPhase = true
 		}
@@ -197,10 +203,14 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			s.messages = append(s.messages, projected)
 			s.tools = nil
 			stream = s.output.StartStream(s.requestCtx)
-			summary, err := r.Caller.Call(s.requestCtx, s.session, s.selection, s.messages, s.tools, summaryPending, stream)
+			summarized, err := r.Caller.Call(s.requestCtx, s.session, s.selection, s.messages, s.tools, summaryPending, stream)
 			if err != nil {
 				return failedLoop(err)
 			}
+			if summarized.Status != operationresult.Success {
+				return operationresult.Result[agentshare.LoopResult]{Status: summarized.Status, Message: summarized.Message}, nil
+			}
+			summary := summarized.Data
 			if len(summary.ToolCalls) > 0 {
 				// TODO: 后续支持强制 tool_choice=none；当前总结请求已不传 tools，若仍返回工具调用则忽略。
 				s.output.SendPreview(s.ctx, "总结中的工具调用已忽略")
@@ -234,9 +244,9 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		}
 		if execution.Stopped {
 			if err := s.requestCtx.Err(); err != nil {
-				return agentshare.LoopResult{Outcome: agentshare.Canceled, Err: err, QuietCancellation: true}
+				return failedLoop(err)
 			}
-			return agentshare.LoopResult{Outcome: agentshare.Stopped}
+			return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: agentshare.LoopResult{Outcome: agentshare.Stopped}}, nil
 		}
 		s.messages = append(s.messages, committer.Committed()...)
 		s.tools, err = r.Tools.Schemas(s.ctx, s.session)
@@ -259,10 +269,10 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		}
 	}
 	if err := s.requestCtx.Err(); err != nil {
-		return agentshare.LoopResult{Outcome: agentshare.Canceled, Err: err, QuietCancellation: true}
+		return failedLoop(err)
 	}
 
-	return agentshare.LoopResult{
+	return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: agentshare.LoopResult{
 		Outcome: agentshare.Completed,
 		Commit: agentshare.ReplyCommitInput{
 			Persistence:      r.Messages.Committer("append_assistant_message"),
@@ -274,9 +284,9 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			Stream:           stream,
 			Outputs:          deferredOutputs,
 		},
-	}
+	}}, nil
 }
 
-func failedLoop(err error) agentshare.LoopResult {
-	return agentshare.LoopResult{Outcome: agentshare.Failed, Err: err}
+func failedLoop(err error) (operationresult.Result[agentshare.LoopResult], error) {
+	return operationresult.Result[agentshare.LoopResult]{}, err
 }

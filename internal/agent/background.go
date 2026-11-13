@@ -7,6 +7,7 @@ import (
 	agentinput "elbot/internal/agent/input"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 )
@@ -32,15 +33,15 @@ func (m *Supervisor) backgroundContext(ctx context.Context) (context.Context, fu
 
 // RunBackground prepares and executes a task without activating a foreground session.
 // The caller supplies its prepared workspace scope and background source in ctx.
-func (m *Supervisor) RunBackground(ctx context.Context, req BackgroundRequest) (context.Context, BackgroundResult, error) {
+func (m *Supervisor) RunBackground(ctx context.Context, req BackgroundRequest) (context.Context, operationresult.Result[BackgroundResult], error) {
 	prepared, done, err := m.backgroundContext(ctx)
 	if err != nil {
-		return ctx, BackgroundResult{}, err
+		return ctx, operationresult.Result[BackgroundResult]{}, err
 	}
 	defer done()
 	prepared = m.restoreMessageContext(prepared, context.Background())
 	prepared = agentshare.WithMessageContext(prepared, agentshare.MessageContext{RestoreMessageContext: m.restoreMessageContext})
-	prepared, result := m.background.RunBackground(prepared, agentinput.BackgroundRequest(req))
+	prepared, result, err := m.background.RunBackground(prepared, agentinput.BackgroundRequest(req))
 	// Export task facts without exporting this call's canceled child lifetime.
 	ctx = m.restoreMessageContext(ctx, prepared)
 	facts, _ := contextinfo.ExecutionFromContext(prepared)
@@ -55,27 +56,37 @@ func (m *Supervisor) RunBackground(ctx context.Context, req BackgroundRequest) (
 	if conversation, ok := contextinfo.ConversationFromContext(prepared); ok {
 		ctx = contextinfo.WithConversation(ctx, conversation)
 	}
-	return ctx, BackgroundResult{
-		RunID: result.RunID, SessionID: result.SessionID, MessageID: result.MessageID,
-		Text: result.Text, TakenOver: result.TakenOver, Outcome: result.Outcome,
-	}, result.Err
+	if err != nil {
+		return ctx, operationresult.Result[BackgroundResult]{}, err
+	}
+	if result.Status != operationresult.Success {
+		return ctx, operationresult.Result[BackgroundResult]{Status: result.Status, Message: result.Message}, nil
+	}
+	data := result.Data
+	return ctx, operationresult.Result[BackgroundResult]{Status: operationresult.Success, Data: BackgroundResult{
+		RunID: data.RunID, SessionID: data.SessionID, MessageID: data.MessageID,
+		Text: data.Text, TakenOver: data.TakenOver, Outcome: data.Outcome,
+	}}, nil
 }
 
 // CopyBackground copies committed task history without activating a foreground binding.
-func (m *Supervisor) CopyBackground(ctx context.Context, req BackgroundCopyRequest) (string, error) {
+func (m *Supervisor) CopyBackground(ctx context.Context, req BackgroundCopyRequest) (operationresult.Result[string], error) {
 	ctx, done, err := m.backgroundContext(ctx)
 	if err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
 	defer done()
-	row, err := m.sessions.CopyBackground(ctx, req.Scope, session.BackgroundCopyRequest{
+	result, err := m.sessions.CopyBackground(ctx, req.Scope, session.BackgroundCopyRequest{
 		SourceSessionID: req.SourceSessionID, TaskType: req.TaskType, TaskID: req.TaskID,
 		Name: req.Name, Metadata: storage.SessionMetadata(req.Metadata),
 	})
 	if err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
-	return row.ID, nil
+	if result.Status != operationresult.Success {
+		return operationresult.Result[string]{Status: result.Status, Message: result.Message}, nil
+	}
+	return operationresult.Result[string]{Status: result.Status, Message: result.Message, Data: result.Data.ID}, nil
 }
 
 // CleanupSessions removes expired idle sessions and returns the count completed before any error.

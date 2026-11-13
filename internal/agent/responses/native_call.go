@@ -58,9 +58,6 @@ func requestAudit(parameters json.RawMessage, refs []inputReference) (string, er
 // Each actual HTTP attempt gets its own immutable request and terminal facts.
 // Local hooks/inputs are prepared by the caller once, outside recovery retries.
 func (s *turnState) nativeCall(ctx context.Context, client api.Streamer, request api.Request, consumed []string, stream delivery.MessageStream, observation agentshare.CallObservation) (result nativeCallResult, err error) {
-	if err := s.route.View.CheckSelection(s.session, s.selection); err != nil {
-		return result, err
-	}
 	prepared, err := client.PrepareRequest(request)
 	if err != nil {
 		return result, err

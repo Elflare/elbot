@@ -5,6 +5,7 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -49,26 +50,28 @@ func (c *CallProcessor) Call(
 	messages []llm.LLMMessage, tools []llm.ToolSchema,
 	pending *agentshare.PendingUserMessage, persistence agentshare.MessageCommitter,
 	stream delivery.MessageStream,
-	prepare func(context.Context, agentshare.CallInput) error,
-	attempt func(context.Context, agentshare.CallObservation) (agentshare.CallOutput, error),
-) (agentshare.CallOutput, error) {
+	prepare func(context.Context, agentshare.CallInput) (operationresult.Result[struct{}], error),
+	attempt func(context.Context, agentshare.CallObservation) (operationresult.Result[agentshare.CallOutput], error),
+) (operationresult.Result[agentshare.CallOutput], error) {
 	startedAt := time.Now()
 	observation := c.Begin(session.ID, selection)
 	input, err := c.PrepareCall(ctx, session, selection, messages, tools, pending, persistence)
 	if err != nil {
 		observation.Publish(ctx, err)
-		return agentshare.CallOutput{}, err
+		return operationresult.Result[agentshare.CallOutput]{}, err
 	}
-	if err := prepare(ctx, input); err != nil {
+	prepared, err := prepare(ctx, input)
+	if err != nil {
 		observation.Publish(ctx, err)
-		return agentshare.CallOutput{}, err
+		return operationresult.Result[agentshare.CallOutput]{}, err
 	}
-
+	if prepared.Status != operationresult.Success {
+		observation.LogRecord().ResultStatus = events.ResultRejected
+		observation.Publish(ctx, nil)
+		return operationresult.Result[agentshare.CallOutput]{Status: prepared.Status, Message: prepared.Message}, nil
+	}
 	retrying := false
-	result, err := llm.Retry(ctx, selection.Client, func(
-		ctx context.Context,
-		selection modelmgr.Selection,
-	) (result agentshare.CallOutput, err error) {
+	result, err := llm.Retry(ctx, selection.Client, func(ctx context.Context, selection modelmgr.Selection) (result operationresult.Result[agentshare.CallOutput], err error) {
 		observation = c.Begin(session.ID, selection)
 		if retrying {
 			if _, err := stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReset}); err != nil {
@@ -82,15 +85,20 @@ func (c *CallProcessor) Call(
 	if err != nil {
 		completed := observation.Event()
 		if completed.ProviderError && !(ctx.Err() != nil && errors.Is(err, ctx.Err())) {
-			c.NotifyError(ctx, session.ID, agentshare.LLMResponse{
-				Provider: selection.Provider, Model: selection.Model,
-				Text: completed.Text, SourceText: completed.SourceText,
-				ToolCalls: result.ToolCalls, Usage: completed.Usage, ElapsedMS: completed.ElapsedMS,
-			}, err)
+			// Provider faults retain their source-owned observation; failed Result.Data is not consumed.
+			c.NotifyError(ctx, session.ID, agentshare.LLMResponse{Provider: selection.Provider, Model: selection.Model, Text: completed.Text, SourceText: completed.SourceText, ToolCalls: completed.ToolCalls, Usage: completed.Usage, ElapsedMS: completed.ElapsedMS}, err)
 		}
-		return result, err
+		return operationresult.Result[agentshare.CallOutput]{}, err
 	}
-	return c.CompleteCall(ctx, session, selection, result.SourceText, result.ReasoningContent, result.Usage, result.ToolCalls, time.Since(startedAt).Milliseconds())
+	if result.Status != operationresult.Success {
+		return result, nil
+	}
+	data := result.Data
+	final, err := c.CompleteCall(ctx, session, selection, data.SourceText, data.ReasoningContent, data.Usage, data.ToolCalls, time.Since(startedAt).Milliseconds())
+	if err != nil {
+		return operationresult.Result[agentshare.CallOutput]{}, err
+	}
+	return operationresult.Result[agentshare.CallOutput]{Status: operationresult.Success, Data: final}, nil
 }
 
 func (c *CallProcessor) Begin(sessionID string, selected modelmgr.Selection) agentshare.CallObservation {

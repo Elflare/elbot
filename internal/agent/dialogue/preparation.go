@@ -9,6 +9,7 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
 	"encoding/json"
@@ -23,7 +24,7 @@ type Preparer struct {
 		Load(context.Context, string) (*contextmgr.LoadedContext, error)
 	}
 	Media interface {
-		AcquireForLLM(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error)
+		AcquireForLLM(context.Context, []llm.LLMMessage) (operationresult.Result[[]llm.LLMMessage], media.UsageID, error)
 	}
 	Hooks interface {
 		LLMTurnPrepared(context.Context, agentshare.Session, agentshare.LLMInput) (agentshare.LLMInputResult, error)

@@ -6,12 +6,12 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	platformshare "elbot/internal/platform/share"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/testutil"
-	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -19,16 +19,21 @@ import (
 
 type capturedCommandReply struct {
 	request command.Request
-	result  *command.Result
-	failure *command.Error
+	result  command.Result
+	failure error
+	outputs []delivery.Output
 }
 type commandCapturePlatform struct {
 	PlatformCapabilities
 	replies []capturedCommandReply
 }
 
-func (p *commandCapturePlatform) SendCommandResult(ctx context.Context, req command.Request, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
-	p.replies = append(p.replies, capturedCommandReply{req, result, failure})
+func (p *commandCapturePlatform) SendCommandResult(ctx context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
+	outputs, err := platformshare.CommandResultOutputs(req, result, failure)
+	if err != nil {
+		return delivery.Receipt{}, err
+	}
+	p.replies = append(p.replies, capturedCommandReply{request: req, result: result, failure: failure, outputs: outputs})
 	return p.PlatformCapabilities.SendCommandResult(ctx, req, result, failure)
 }
 
@@ -58,8 +63,8 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 			ctx := testutil.WithCLIConversation(t.Context())
 			scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 			if state == "after-new" {
-				if _, err := m.sessions.GetOrCreateCurrent(ctx, scope, "previous conversation"); err != nil {
-					t.Fatal(err)
+				if result, err := m.sessions.GetOrCreateCurrent(ctx, scope, "previous conversation"); err != nil || result.Status != operationresult.Success {
+					t.Fatalf("create previous session: %+v %v", result, err)
 				}
 				if err := m.HandleMessage(ctx, MessageRequest{Text: "-new"}); err != nil {
 					t.Fatal(err)
@@ -73,14 +78,15 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 				t.Run(text, func(t *testing.T) {
 					prior := len(platform.replies)
 					err := m.HandleMessage(ctx, MessageRequest{Text: text})
-					var failure *command.Error
-					if !errors.As(err, &failure) || failure.Kind != command.ErrorRejected || !errors.Is(err, session.ErrNoCurrentSession) {
+					if err != nil || len(platform.replies) != prior+1 {
 						t.Fatalf("error=%v", err)
 					}
-					if len(platform.replies) != prior+1 || platform.replies[prior].failure != failure {
+					reply := platform.replies[prior]
+					if reply.result.Status == operationresult.Success || reply.result.Message == "" || reply.failure != nil || len(reply.outputs) != 1 || reply.outputs[0].Text != reply.result.Message || reply.outputs[0].Text == "nil" {
 						t.Fatalf("replies=%+v", platform.replies)
 					}
-					if _, binding, _ := m.sessions.CurrentBound(ctx, scope); binding != nil {
+					current, _ := m.sessions.CurrentBound(ctx, scope)
+					if current.Status != operationresult.NoCurrentSession {
 						t.Fatal("created a conversation")
 					}
 					after, err := deps.Store.Sessions().List(ctx, storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 100})
@@ -90,16 +96,23 @@ func TestSessionCommandsWithoutCurrentConversation(t *testing.T) {
 				})
 			}
 			for _, text := range []string{"-pin missing-session", "-fork missing-message"} {
+				prior := len(platform.replies)
 				err := m.HandleMessage(ctx, MessageRequest{Text: text})
-				var failure *command.Error
+				if err != nil || len(platform.replies) != prior+1 {
+					t.Fatalf("error=%v replies=%+v", err, platform.replies)
+				}
+				reply := platform.replies[prior]
+				if len(reply.outputs) != 1 || reply.outputs[0].Text != reply.result.Message || reply.outputs[0].Text == "nil" {
+					t.Fatalf("unexpected command output: %+v", reply.outputs)
+				}
 				if text == "-fork missing-message" {
-					if !errors.As(err, &failure) || failure.Code != "no_current_session" || !errors.Is(err, session.ErrNoCurrentSession) {
-						t.Fatalf("error=%v", err)
+					if reply.result.Status != operationresult.NoCurrentSession {
+						t.Fatalf("result=%+v", reply.result)
 					}
 					continue
 				}
-				if !errors.As(err, &failure) || failure.Code != command.CodeNotFound || !errors.Is(err, storage.ErrNotFound) {
-					t.Fatalf("error=%v", err)
+				if reply.result.Status != operationresult.NotFound {
+					t.Fatalf("result=%+v", reply.result)
 				}
 			}
 			if _, err := events.NotificationRequested.Emit(ctx, events.Notification{Text: "barrier"}); err != nil {
@@ -127,7 +140,10 @@ func TestCommandTextWiringUsesConfigurationFirstPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	reply := platform.replies[0]
-	text := platformshare.FormatCommandResult(reply.request, reply.result)
+	text, err := platformshare.FormatCommandResult(reply.request, reply.result)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if reply.request.Name != "help" || reply.result.Kind != command.ResultKindHelp || !strings.Contains(text, "!!stop [request_id|number]") || !strings.Contains(text, "!!help <command>") || strings.Contains(text, "/help") {
 		t.Fatalf("reply=%+v formatted=%q", reply, text)
 	}

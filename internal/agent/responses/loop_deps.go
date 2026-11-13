@@ -6,6 +6,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/tool"
 
@@ -49,12 +50,12 @@ type LoopDeps struct {
 		Context(context.Context) context.Context
 		RefreshSession(context.Context, *storage.Session) (context.Context, error)
 		WithModel(context.Context, modelmgr.Selection) (context.Context, error)
-		CheckSelection(*storage.Session, modelmgr.Selection) error
+		CheckSelection(*storage.Session, modelmgr.Selection) (operationresult.Result[struct{}], error)
 	}
 	Preparer interface {
 		PrepareInput(context.Context, agentshare.LoopInput, *storage.Message, string, []llm.MessageSegment, []llm.LLMMessage, []llm.ToolSchema, bool) ([]llm.MessageSegment, []llm.ToolSchema, error)
 		ArchiveMaterials(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, error)
-		PrepareMaterials(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error)
+		PrepareMaterials(context.Context, []llm.LLMMessage) (operationresult.Result[[]llm.LLMMessage], media.UsageID, error)
 		FinishMaterials(context.Context, media.UsageID)
 	}
 	Tools interface {
@@ -67,8 +68,8 @@ type LoopDeps struct {
 	}
 	Calls interface {
 		Call(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingUserMessage, agentshare.MessageCommitter, delivery.MessageStream,
-			func(context.Context, agentshare.CallInput) error,
-			func(context.Context, agentshare.CallObservation) (agentshare.CallOutput, error)) (agentshare.CallOutput, error)
+			func(context.Context, agentshare.CallInput) (operationresult.Result[struct{}], error),
+			func(context.Context, agentshare.CallObservation) (operationresult.Result[agentshare.CallOutput], error)) (operationresult.Result[agentshare.CallOutput], error)
 	}
 	System interface {
 		Build(context.Context, agentshare.SystemPromptRequest) (string, error)

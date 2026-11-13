@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"elbot/internal/testutil"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"elbot/internal/llm/chatcompletions"
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
 	"elbot/internal/platform/dispatch"
 	"elbot/internal/security"
 	"elbot/internal/storage"
@@ -197,17 +199,26 @@ func TestAgentConstructionDoesNotSubscribeToModelRetries(t *testing.T) {
 	}
 }
 
-func (p isolatedPlatformCapabilities) SendCommandResult(ctx context.Context, req command.Request, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
+func (p isolatedPlatformCapabilities) SendCommandResult(ctx context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
 	var outputs []delivery.Output
-	if result != nil {
-		out := delivery.Text(platformshare.FormatCommandResult(req, result))
-		if result.Confirmation != nil {
-			out.Actions = result.Confirmation.Actions
-		}
-		outputs = append(outputs, out)
+	text, err := platformshare.FormatCommandResult(req, result)
+	if err != nil {
+		return delivery.Receipt{}, err
 	}
+	out := delivery.Text(text)
+	if result.Confirmation != nil {
+		out.Actions = result.Confirmation.Actions
+	}
+	outputs = append(outputs, out)
 	if failure != nil {
-		outputs = append(outputs, delivery.Text(failure.Message))
+		outputs = append(outputs, delivery.Text(failure.Error()))
 	}
-	return p.SendTo(ctx, delivery.Target{}, outputs)
+	sent, err := p.SendTo(ctx, delivery.Target{}, outputs)
+	if err != nil {
+		return delivery.Receipt{}, err
+	}
+	if sent.Status != operationresult.Success {
+		return delivery.Receipt{}, errors.New(sent.Message)
+	}
+	return sent.Data, nil
 }

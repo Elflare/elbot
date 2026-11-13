@@ -3,6 +3,7 @@ package dialogue
 import (
 	"context"
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/operationresult"
 	"fmt"
 
 	"elbot/internal/config"
@@ -21,10 +22,10 @@ type ExecutionView struct {
 	}
 }
 
-func (v ExecutionView) CheckSelection(row *storage.Session, selection modelmgr.Selection) error {
+func (v ExecutionView) CheckSelection(row *storage.Session, selection modelmgr.Selection) (operationresult.Result[struct{}], error) {
 	source, _, err := session.Origin(row)
 	if err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
 	return modelmgr.CanSwitch(source, selection.Origin)
 }

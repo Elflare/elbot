@@ -10,6 +10,7 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/security"
@@ -62,7 +63,9 @@ type usageTestDialogue struct {
 	stopping <-chan struct{}
 }
 
-func (usageTestDialogue) CheckSelection(modelmgr.Selection) error { return nil }
+func (usageTestDialogue) CheckSelection(modelmgr.Selection) operationresult.Result[struct{}] {
+	return operationresult.Result[struct{}]{Status: operationresult.Success}
+}
 
 func (d usageTestDialogue) PrepareTurn(context.Context, agentshare.TurnInput) (agentshare.PreparedTurn, error) {
 	if d.stopping == nil {
@@ -126,7 +129,7 @@ func TestExecutionRestoresUsageBeforeCancellationAndCleansUpFailure(t *testing.T
 				},
 			})
 			defer c.Close(context.Background())
-			_, err = c.Run(testutil.WithCLIConversation(t.Context()), row, "input", backgroundTurnOutput{})
+			_, _, err = c.Run(testutil.WithCLIConversation(t.Context()), row, "input", backgroundTurnOutput{})
 			if tc.cancel {
 				usage := recorder.Snapshot(row.ID).Usage
 				if usage == nil || usage.TotalTokens == nil || *usage.TotalTokens != 42 {

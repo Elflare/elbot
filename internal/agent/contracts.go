@@ -10,6 +10,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 	"elbot/internal/tool"
@@ -17,20 +18,20 @@ import (
 
 // MessageRequest 是一次平台输入；会话与来源事实通过 contextinfo 提供。
 type MessageRequest struct {
-	Text                  string                                                                     // 交给 Agent 处理的正文。
-	RawText               string                                                                     // 平台原始正文。
-	GroupRole             contextinfo.GroupRole                                                      // 平台群身份，用于行为者权限解析。
-	BufferAssistantOutput bool                                                                       // 是否等待整段助手输出后发送。
-	ForkFromMessageID     string                                                                     // 可选分叉来源。
-	ResumeSessionID       string                                                                     // 可选恢复会话。
-	Segments              []MessageSegment                                                           // 当前输入片段。
-	ContextText           string                                                                     // 引用与当前输入组合的正文。
-	ContextSegments       []MessageSegment                                                           // 有序上下文片段。
-	Reply                 ReplyContext                                                               // 原始引用事实。
-	Bot                   Identity                                                                   // 当前平台机器人身份。
-	Mentions              []Mention                                                                  // 输入中的提及事实。
-	TriggerKeywords       []string                                                                   // 此平台的唤醒词。
-	ResolveMedia          func(context.Context, media.PlatformMedia, int64) (delivery.Source, error) // 延迟解析媒体来源，不在输入转换时下载。
+	Text                  string                                                                                             // 交给 Agent 处理的正文。
+	RawText               string                                                                                             // 平台原始正文。
+	GroupRole             contextinfo.GroupRole                                                                              // 平台群身份，用于行为者权限解析。
+	BufferAssistantOutput bool                                                                                               // 是否等待整段助手输出后发送。
+	ForkFromMessageID     string                                                                                             // 可选分叉来源。
+	ResumeSessionID       string                                                                                             // 可选恢复会话。
+	Segments              []MessageSegment                                                                                   // 当前输入片段。
+	ContextText           string                                                                                             // 引用与当前输入组合的正文。
+	ContextSegments       []MessageSegment                                                                                   // 有序上下文片段。
+	Reply                 ReplyContext                                                                                       // 原始引用事实。
+	Bot                   Identity                                                                                           // 当前平台机器人身份。
+	Mentions              []Mention                                                                                          // 输入中的提及事实。
+	TriggerKeywords       []string                                                                                           // 此平台的唤醒词。
+	ResolveMedia          func(context.Context, media.PlatformMedia, int64) (operationresult.Result[delivery.Source], error) // 延迟解析媒体来源，不在输入转换时下载。
 }
 
 type MessageSegment struct {
@@ -136,6 +137,3 @@ type BackgroundCopyRequest struct {
 	Name            string                     // 目标标题。
 	Metadata        map[string]json.RawMessage // 目标来源元数据，保留各字段的 JSON 值类型。
 }
-
-// ErrForegroundSession 表示后台复制的来源已不再允许后台操作。
-var ErrForegroundSession = session.ErrForegroundSession

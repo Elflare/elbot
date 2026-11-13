@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 )
 
 type backgroundDeliveryProbe struct {
@@ -16,11 +17,11 @@ type backgroundDeliveryProbe struct {
 	outputs []delivery.Output
 }
 
-func (p *backgroundDeliveryProbe) SendTo(_ context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+func (p *backgroundDeliveryProbe) SendTo(_ context.Context, target delivery.Target, outputs []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
 	p.calls++
 	p.target = target
 	p.outputs = outputs
-	return delivery.Receipt{}, nil
+	return operationresult.Result[delivery.Receipt]{Status: operationresult.Success}, nil
 }
 
 func TestAssistantActionsSurviveTextHook(t *testing.T) {
@@ -41,13 +42,18 @@ func TestAssistantActionsSurviveTextHook(t *testing.T) {
 		t.Fatal("plain text acquired actions")
 	}
 }
-func (p *backgroundDeliveryProbe) StartStream(context.Context) (delivery.MessageStream, error) {
-	return delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+func (p *backgroundDeliveryProbe) StartStream(context.Context) (operationresult.Result[delivery.MessageStream], error) {
+	stream := delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
 		if event.Type != delivery.StreamSend {
 			return delivery.Receipt{}, nil
 		}
-		return p.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Actions: event.Actions}})
-	}), nil
+		sent, err := p.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Actions: event.Actions}})
+		if err != nil {
+			return delivery.Receipt{}, err
+		}
+		return sent.Data, nil
+	})
+	return operationresult.Result[delivery.MessageStream]{Status: operationresult.Success, Data: stream}, nil
 }
 
 func TestBackgroundOutputIsSilentExceptExplicitDelivery(t *testing.T) {
@@ -61,8 +67,8 @@ func TestBackgroundOutputIsSilentExceptExplicitDelivery(t *testing.T) {
 	if _, err := out.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "assistant"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := out.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("default")}); err != nil {
-		t.Fatal(err)
+	if sent, err := out.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text("default")}); err != nil || sent.Status != operationresult.Success {
+		t.Fatalf("default send: %+v %v", sent, err)
 	}
 	out.Preview(ctx, "preview")
 	out.Notify(ctx, slog.LevelInfo, "notice")
@@ -70,8 +76,8 @@ func TestBackgroundOutputIsSilentExceptExplicitDelivery(t *testing.T) {
 		t.Fatal("background output escaped", probe.calls, hooks.calls)
 	}
 	target := delivery.Target{Platform: "test", ChatType: "group", ChatID: "destination"}
-	if err := out.SendTo(ctx, target, []delivery.Output{delivery.Text("explicit")}); err != nil {
-		t.Fatal(err)
+	if sent, err := out.SendTo(ctx, target, []delivery.Output{delivery.Text("explicit")}); err != nil || sent.Status != operationresult.Success {
+		t.Fatalf("explicit send: %+v %v", sent, err)
 	}
 	if probe.calls != 1 || probe.target != target {
 		t.Fatal("explicit delivery suppressed", probe)

@@ -2,14 +2,13 @@ package input
 
 import (
 	"context"
-	"fmt"
 
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
+	"elbot/internal/operationresult"
 	"elbot/internal/request"
 	"elbot/internal/session"
-	"elbot/internal/storage"
 	"elbot/internal/turn"
 	"elbot/internal/workspace"
 )
@@ -19,7 +18,7 @@ type FileCommandPreparer struct {
 		WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context
 	}
 	sessions interface {
-		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
+		CurrentBound(context.Context, session.Scope) (operationresult.Result[session.CurrentBoundData], error)
 		EnterBinding(context.Context, *session.Binding) (context.Context, func(), error)
 		EnterSessions(context.Context, ...string) (context.Context, func(), error)
 	}
@@ -36,31 +35,35 @@ type FileCommandPreparer struct {
 
 // PrepareFileCommand captures the original binding and execution admission for
 // file commands. The file service owns record lookup and the actual operation.
-func (p *FileCommandPreparer) PrepareFileCommand(ctx context.Context, idleOnly bool) (context.Context, error) {
+func (p *FileCommandPreparer) PrepareFileCommand(ctx context.Context, idleOnly bool) (operationresult.Result[context.Context], error) {
 	if p.identity.Actor(ctx).Role != contextinfo.RoleSuperadmin {
-		return ctx, fmt.Errorf("rollback requires superadmin role")
+		return operationresult.Result[context.Context]{Status: operationresult.Forbidden, Message: "rollback requires superadmin role"}, nil
 	}
-	row, binding, err := p.sessions.CurrentBound(ctx, p.identity.Scope(ctx))
+	current, err := p.sessions.CurrentBound(ctx, p.identity.Scope(ctx))
 	if err != nil {
-		return ctx, err
+		return operationresult.Result[context.Context]{}, err
 	}
+	if current.Status != operationresult.Success {
+		return operationresult.Result[context.Context]{Status: current.Status, Message: current.Message}, nil
+	}
+	row, binding := current.Data.Session, current.Data.Binding
 	if agentshare.IsBackgroundSession(row) {
 		if !idleOnly {
-			return ctx, storage.ErrNotFound
+			return operationresult.Result[context.Context]{Status: operationresult.NotFound, Message: "目标不存在"}, nil
 		}
-		return ctx, fmt.Errorf("rollback is only available in foreground sessions")
+		return operationresult.Result[context.Context]{Status: operationresult.InvalidTarget, Message: "rollback is only available in foreground sessions"}, nil
 	}
 	if original, ok := session.BindingFromContext(ctx); ok && original != binding {
-		return ctx, fileops.ErrRollbackExpired
+		return operationresult.Result[context.Context]{Status: operationresult.Conflict, Message: "rollback session expired"}, nil
 	}
 	if idleOnly && (p.turns.Snapshot(row.ID).Phase != turn.PhaseIdle || agentshare.CompactActive(p.turns, p.requests, row.ID)) {
-		return ctx, session.ErrSessionBusy
+		return operationresult.Result[context.Context]{Status: operationresult.Busy, Message: "会话正忙"}, nil
 	}
 	ctx = session.WithBinding(contextinfo.WithActor(ctx, p.identity.Actor(ctx)), binding)
 	// Listing never enters commit admission, but a reused command context must
 	// still reject a write if a Turn begins while it waits for the target lock.
 	ctx = agentshare.FileRollbackContext(ctx, p.service, p.sessions, p.turns, p.requests, p.identity, row, true)
-	return workspace.WithWorkspaceStore(ctx, p.NewWorkspaceStore(row.ID)), nil
+	return operationresult.Result[context.Context]{Status: operationresult.Success, Data: workspace.WithWorkspaceStore(ctx, p.NewWorkspaceStore(row.ID))}, nil
 }
 
 // FileCommandPreparerDeps declares only the capabilities consumed by FileCommandPreparer.
@@ -69,7 +72,7 @@ type FileCommandPreparerDeps struct {
 		WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context
 	}
 	Sessions interface {
-		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
+		CurrentBound(context.Context, session.Scope) (operationresult.Result[session.CurrentBoundData], error)
 		EnterBinding(context.Context, *session.Binding) (context.Context, func(), error)
 		EnterSessions(context.Context, ...string) (context.Context, func(), error)
 	}

@@ -4,41 +4,26 @@ import (
 	agentshare "elbot/internal/agent/share"
 
 	"context"
+	"elbot/internal/operationresult"
 
-	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/storage"
 )
 
-func (r *Loop) PrepareTurn(ctx context.Context, materials agentshare.TurnMaterials) (agentshare.PreparedLoop, error) {
-	session, loaded := materials.Session, materials.Loaded
+func (r *Loop) PrepareTurn(ctx context.Context, materials agentshare.TurnMaterials) (operationresult.Result[agentshare.PreparedLoop], error) {
+	loaded := materials.Loaded
 	hasUserHistory := hasStorageUserMessage(loaded.Messages)
-	compactSeedOnCurrentUser := false
-	seed, err := contextmgr.PendingCompact(session)
-	if err != nil {
-		return nil, err
-	}
-	if seed != nil {
-		if !hasUserHistory {
-			loaded.Summary = &storage.ContextSummary{Summary: seed.Summary}
-			compactSeedOnCurrentUser = true
-		} else {
-			if err := r.consumeContextCompactSeed(ctx, session); err != nil {
-				return nil, err
-			}
-		}
-	}
-	summaryOnCurrentUser := loaded.Summary != nil && !hasUserHistory && !compactSeedOnCurrentUser
+	summaryOnCurrentUser := loaded.Summary != nil && !hasUserHistory
 
-	return &preparedLoop{route: r, materials: materials, compactSeedOnCurrentUser: compactSeedOnCurrentUser, summaryOnCurrentUser: summaryOnCurrentUser}, nil
+	return operationresult.Result[agentshare.PreparedLoop]{Status: operationresult.Success, Data: &preparedLoop{route: r, materials: materials, summaryOnCurrentUser: summaryOnCurrentUser}}, nil
 }
 
 func (p *preparedLoop) InputCommitter() agentshare.MessageCommitter {
 	return p.route.Messages.Committer("append_user_message")
 }
 
-func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (*storage.Message, error) {
+func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (operationresult.Result[*storage.Message], error) {
 	r := p.route
 	s := &chatTurnState{
 		ctx:        ctx,
@@ -52,11 +37,11 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 	p.state = s
 	ctx = s.requestCtx
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Message]{}, err
 	}
 	userMessage, userSegments, loaded := p.materials.UserMessage, p.materials.Input.Segments, p.materials.Loaded
 	messages := append(append([]storage.Message{}, loaded.Messages...), *userMessage)
-	compactSeedOnCurrentUser, summaryOnCurrentUser := p.compactSeedOnCurrentUser, p.summaryOnCurrentUser
+	summaryOnCurrentUser := p.summaryOnCurrentUser
 	r.Status.Record(s.ctx, runtimestatus.Snapshot{
 		SessionID:      s.session.ID,
 		Phase:          runtimestatus.PhasePreparing,
@@ -70,21 +55,21 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 	var err error
 	s.messages, err = r.PromptBuilder.Build(ctx, PromptBuildRequest{Session: s.session, Scope: scope, Messages: messages, Summary: loaded.Summary})
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Message]{}, err
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Message]{}, err
 	}
 	s.tools, err = r.Tools.Schemas(ctx, s.session)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Message]{}, err
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Message]{}, err
 	}
 	canonicalUserSegments, tools, err := r.Preparer.PrepareInput(ctx, in, userMessage, p.materials.Input.PlatformText, userSegments, s.messages, s.tools, p.materials.Input.NeedsElyphRules)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Message]{}, err
 	}
 	s.tools = tools
 	r.Status.Record(s.ctx, runtimestatus.Snapshot{
@@ -97,24 +82,16 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 		StageStartedAt: s.startedAt,
 	})
 	promptUserSegments := canonicalUserSegments
-	if compactSeedOnCurrentUser || summaryOnCurrentUser {
+	if summaryOnCurrentUser {
 		promptUserSegments = llm.PrependSegmentText(promptUserSegments, summaryUserPrefix(loaded.Summary.Summary))
 	}
 	s.messages = llm.SetLatestUserSegments(s.messages, promptUserSegments)
-	if compactSeedOnCurrentUser {
-		if err := setCompactUserInput(userMessage, agentshare.MessageContent(canonicalUserSegments)); err != nil {
-			return nil, err
-		}
-		userMessage.Content = agentshare.MessageContent(promptUserSegments)
-		userMessage.Segments = agentshare.StoredMessageSegments(promptUserSegments)
-	} else {
-		userMessage.Content = agentshare.MessageContent(canonicalUserSegments)
-		userMessage.Segments = agentshare.StoredMessageSegments(canonicalUserSegments)
-	}
+	userMessage.Content = agentshare.MessageContent(canonicalUserSegments)
+	userMessage.Segments = agentshare.StoredMessageSegments(canonicalUserSegments)
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Message]{}, err
 	}
-	return userMessage, nil
+	return operationresult.Result[*storage.Message]{Status: operationresult.Success, Data: userMessage}, nil
 }
 
 func hasStorageUserMessage(messages []storage.Message) bool {

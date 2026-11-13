@@ -9,10 +9,9 @@ import (
 )
 
 type CompactRequest struct {
-	Provider   string
-	Model      string
-	Messages   []CompactMessage
-	UserInputs []string
+	Provider string
+	Model    string
+	Messages []CompactMessage
 }
 
 type CompactMessage struct {
@@ -50,7 +49,7 @@ func (c Compressor) Compact(ctx context.Context, req CompactRequest) (*CompactRe
 	request := llm.TextRequest{
 		Model:        req.Model,
 		Instructions: compactSystemPrompt,
-		Input:        compactPrompt(req.Messages, req.UserInputs),
+		Input:        compactPrompt(req.Messages),
 	}
 	result, err := llm.Retry(ctx, client, client.GenerateText, request)
 	if err == nil && strings.TrimSpace(result.Text) == "" {

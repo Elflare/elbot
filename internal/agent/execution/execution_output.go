@@ -2,6 +2,7 @@ package execution
 
 import (
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/operationresult"
 
 	"context"
 	"log/slog"
@@ -57,4 +58,9 @@ func (o executionTurnOutput) Notify(ctx context.Context, l slog.Level, text stri
 func (o executionTurnOutput) SendPreview(ctx context.Context, text ...string) {
 	ctx, out := o.target(ctx)
 	out.SendPreview(ctx, text...)
+}
+
+func (o executionTurnOutput) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
+	ctx, out := o.target(ctx)
+	return out.SendTo(ctx, target, outputs)
 }

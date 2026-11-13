@@ -6,7 +6,6 @@ import (
 	"elbot/internal/security"
 	"elbot/internal/tool"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -20,6 +19,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 
@@ -36,7 +36,7 @@ type ConfirmationPolicy struct {
 type ConfirmationCoordinator struct {
 	commandText func(string, ...string) string
 	sessions    interface {
-		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
+		CurrentBound(context.Context, session.Scope) (operationresult.Result[session.CurrentBoundData], error)
 		EnterActivation(context.Context, session.Scope, ...string) (context.Context, func(), error)
 		RecordActivity(context.Context, *session.Binding) error
 	}
@@ -89,30 +89,34 @@ func (p *ConfirmationPolicy) WaitTimeout(ctx context.Context) time.Duration {
 }
 
 // Current 读取原等待快照；显式刷新只作用于同一风险等待。
-func (c *ConfirmationCoordinator) Current(ctx context.Context, req control.CurrentConfirmationRequest) (control.CurrentConfirmationResult, error) {
-	ctx, row, release, err := c.confirmationContext(ctx)
+func (c *ConfirmationCoordinator) Current(ctx context.Context, req control.CurrentConfirmationRequest) (operationresult.Result[control.CurrentConfirmationResult], error) {
+	ctx, current, release, err := c.confirmationContext(ctx)
 	if err != nil {
-		return control.CurrentConfirmationResult{}, err
+		return operationresult.Result[control.CurrentConfirmationResult]{}, err
 	}
-	if row == nil {
-		return control.CurrentConfirmationResult{}, nil
+	if current.Status == operationresult.NoCurrentSession {
+		return operationresult.Result[control.CurrentConfirmationResult]{Status: operationresult.Success}, nil
 	}
+	if current.Status != operationresult.Success {
+		return operationresult.Result[control.CurrentConfirmationResult]{Status: current.Status, Message: current.Message}, nil
+	}
+	row := current.Data
 	defer func() { release() }()
 	snapshot := c.turns.Snapshot(row.ID)
 	if snapshot.Phase == turn.PhaseAwaitAppendConfirm {
-		return control.CurrentConfirmationResult{SessionID: row.ID, Kind: "append", Detail: []tool.ConfirmationDetailBlock{}, Actions: AppendConfirmationActions(c.commandText)}, nil
+		return operationresult.Result[control.CurrentConfirmationResult]{Status: operationresult.Success, Data: control.CurrentConfirmationResult{SessionID: row.ID, Kind: "append", Detail: []tool.ConfirmationDetailBlock{}, Actions: AppendConfirmationActions(c.commandText)}}, nil
 	}
 	pending, ok := c.turns.PendingRiskConfirmation(row.ID)
 	if !ok {
-		return control.CurrentConfirmationResult{}, nil
+		return operationresult.Result[control.CurrentConfirmationResult]{Status: operationresult.Success}, nil
 	}
 	if req.Refresh {
 		if !c.turns.RefreshRiskConfirmation(row.ID) {
-			return control.CurrentConfirmationResult{}, nil
+			return operationresult.Result[control.CurrentConfirmationResult]{Status: operationresult.Success}, nil
 		}
 		binding, _ := session.BindingFromContext(ctx)
 		if err := c.sessions.RecordActivity(ctx, binding); err != nil {
-			return control.CurrentConfirmationResult{}, err
+			return operationresult.Result[control.CurrentConfirmationResult]{}, err
 		}
 	}
 	detail := []tool.ConfirmationDetailBlock{{Kind: tool.ConfirmationDetailText, Content: fmt.Sprintf("%s [%s]: confirm", pending.ToolName, pending.Risk)}}
@@ -120,29 +124,30 @@ func (c *ConfirmationCoordinator) Current(ctx context.Context, req control.Curre
 	if reasons := riskReasonsText(pending.Reasons); reasons != "" {
 		detail = append(detail, tool.ConfirmationDetailBlock{Kind: tool.ConfirmationDetailText, Content: reasons})
 	}
-	return control.CurrentConfirmationResult{SessionID: row.ID, Kind: "tool", ToolName: pending.ToolName, Risk: pending.Risk, Detail: detail, Actions: riskConfirmationActions(c.commandText).Actions}, nil
+	return operationresult.Result[control.CurrentConfirmationResult]{Status: operationresult.Success, Data: control.CurrentConfirmationResult{SessionID: row.ID, Kind: "tool", ToolName: pending.ToolName, Risk: pending.Risk, Detail: detail, Actions: riskConfirmationActions(c.commandText).Actions}}, nil
 }
 
 // Respond 只消费类型化决定，并作用于当前绑定 session 的等待项。
-func (c *ConfirmationCoordinator) Respond(ctx context.Context, req control.RespondConfirmationRequest) (control.RespondConfirmationResult, error) {
-	ctx, row, release, err := c.confirmationContext(ctx)
+func (c *ConfirmationCoordinator) Respond(ctx context.Context, req control.RespondConfirmationRequest) (operationresult.Result[control.RespondConfirmationResult], error) {
+	ctx, current, release, err := c.confirmationContext(ctx)
 	if err != nil {
-		return control.RespondConfirmationResult{}, err
+		return operationresult.Result[control.RespondConfirmationResult]{}, err
 	}
-	if row == nil {
-		return control.RespondConfirmationResult{}, nil
+	if current.Status != operationresult.Success {
+		return operationresult.Result[control.RespondConfirmationResult]{Status: current.Status, Message: current.Message}, nil
 	}
+	row := current.Data
 	defer func() { release() }()
 	snapshot := c.turns.Snapshot(row.ID)
 	if snapshot.Phase == turn.PhaseAwaitAppendConfirm {
 		if req.Decision != "approve" || req.Scope != "current" {
-			return control.RespondConfirmationResult{}, nil
+			return operationresult.Result[control.RespondConfirmationResult]{Status: operationresult.Incompatible, Message: "该确认项只支持确认当前追加输入"}, nil
 		}
-		return control.RespondConfirmationResult{Accepted: true, Continuation: &control.Continuation{Kind: "append", SessionID: row.ID}}, nil
+		return operationresult.Result[control.RespondConfirmationResult]{Status: operationresult.Success, Data: control.RespondConfirmationResult{Accepted: true, Continuation: &control.Continuation{Kind: "append", SessionID: row.ID}}}, nil
 	}
 	pending, ok := c.turns.PendingRiskConfirmation(row.ID)
 	if !ok {
-		return control.RespondConfirmationResult{}, nil
+		return operationresult.Result[control.RespondConfirmationResult]{Status: operationresult.NotFound, Message: "当前没有待确认操作"}, nil
 	}
 	decision := turn.RiskDecision{Action: turn.RiskConfirm, Extra: req.Extra}
 	action := "confirm"
@@ -161,36 +166,41 @@ func (c *ConfirmationCoordinator) Respond(ctx context.Context, req control.Respo
 	}
 	binding, _ := session.BindingFromContext(ctx)
 	if err := c.sessions.RecordActivity(ctx, binding); err != nil {
-		return control.RespondConfirmationResult{}, err
+		return operationresult.Result[control.RespondConfirmationResult]{}, err
 	}
 	if !c.turns.ResolveRiskConfirmation(row.ID, decision) {
-		return control.RespondConfirmationResult{}, nil
+		return operationresult.Result[control.RespondConfirmationResult]{Status: operationresult.Conflict, Message: "待确认操作已变化，请刷新后重试"}, nil
 	}
 	observed := confirmationAction(ctx, row.ID, action, pending, req.Extra)
 	release()
 	release = func() {}
 	events.Log(context.WithoutCancel(ctx), *observed)
-	return control.RespondConfirmationResult{Accepted: true}, nil
+	return operationresult.Result[control.RespondConfirmationResult]{Status: operationresult.Success, Data: control.RespondConfirmationResult{Accepted: true}}, nil
 }
 
-func (c *ConfirmationCoordinator) confirmationContext(ctx context.Context) (context.Context, *storage.Session, func(), error) {
-	row, _, err := c.sessions.CurrentBound(ctx, c.identity.Scope(ctx))
-	if errors.Is(err, session.ErrNoCurrentSession) {
-		return ctx, nil, nil, nil
-	}
+func (c *ConfirmationCoordinator) confirmationContext(ctx context.Context) (context.Context, operationresult.Result[*storage.Session], func(), error) {
+	current, err := c.sessions.CurrentBound(ctx, c.identity.Scope(ctx))
 	if err != nil {
-		return ctx, nil, nil, err
+		return ctx, operationresult.Result[*storage.Session]{}, nil, err
 	}
+	if current.Status != operationresult.Success {
+		return ctx, operationresult.Result[*storage.Session]{Status: current.Status, Message: current.Message}, nil, nil
+	}
+	row := current.Data.Session
 	locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), row.ID)
 	if err != nil {
-		return ctx, nil, nil, err
+		return ctx, operationresult.Result[*storage.Session]{}, nil, err
 	}
-	locked, err = agentshare.CaptureSessionBinding(locked, c.sessions, c.identity, row)
+	locked, captured, err := agentshare.CaptureSessionBinding(locked, c.sessions, c.identity, row)
 	if err != nil {
 		release()
-		return ctx, nil, nil, err
+		return ctx, operationresult.Result[*storage.Session]{}, nil, err
 	}
-	return locked, row, release, nil
+	if captured.Status != operationresult.Success {
+		release()
+		return ctx, operationresult.Result[*storage.Session]{Status: captured.Status, Message: captured.Message}, nil, nil
+	}
+	return locked, operationresult.Result[*storage.Session]{Status: operationresult.Success, Data: row}, release, nil
 }
 
 func confirmationAction(ctx context.Context, sessionID, action string, confirmation turn.RiskConfirmation, extra string) *events.LogRecord {
@@ -292,14 +302,14 @@ func (c *ConfirmationCoordinator) publishConfirmationResult(ctx context.Context,
 	})
 }
 
-func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail []tool.ConfirmationDetailBlock) (tool.ConfirmResult, error) {
+func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail []tool.ConfirmationDetailBlock) (operationresult.Result[tool.ConfirmResult], error) {
 	if c.isSessionAutoConfirmed(sessionID) || c.isToolAutoConfirmed(sessionID, call.Name) {
-		return tool.ConfirmResult{Allowed: true}, nil
+		return operationresult.Result[tool.ConfirmResult]{Status: operationresult.Success, Data: tool.ConfirmResult{}}, nil
 	}
 	fullArgs := compactArguments(call.Arguments)
 	detail, err := confirmationDetailsWithArguments(detail, fullArgs)
 	if err != nil {
-		return tool.ConfirmResult{}, err
+		return operationresult.Result[tool.ConfirmResult]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	timeout := c.policy.WaitTimeout(ctx)
 	wait := c.turns.BeginRiskConfirmation(sessionID, turn.RiskConfirmation{
@@ -308,8 +318,12 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 		Reasons:  append([]string(nil), assessment.Reasons...),
 		Detail:   toTurnConfirmationDetails(detail),
 	}, turn.AttemptFromContext(ctx))
+	if wait == nil {
+		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "skip", "", "confirmation wait is no longer current", events.ResultSkipped, slog.LevelInfo)
+		return operationresult.Result[tool.ConfirmResult]{Status: operationresult.Conflict, Message: "确认等待已变化，请重试"}, nil
+	}
 	defer wait.Cancel()
-	if wait != nil && ctx.Err() == nil {
+	if ctx.Err() == nil {
 		c.publishConfirmationWait(ctx, sessionID, call, assessment.Level, assessment.Reasons)
 		presentation := riskConfirmationActions(c.commandText)
 		blocks := []delivery.ContentBlock{{Kind: delivery.ContentText, Content: fmt.Sprintf("%s [%s]: confirm", call.Name, assessment.Level)}}
@@ -317,53 +331,45 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 		if reasons := riskReasonsText(assessment.Reasons); reasons != "" {
 			blocks = append(blocks, delivery.ContentBlock{Kind: delivery.ContentText, Content: reasons})
 		}
-		if _, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Blocks: blocks, Actions: presentation.Actions}); err != nil {
+		sent, err := c.output.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Blocks: blocks, Actions: presentation.Actions}})
+		if err != nil {
 			resultStatus, level := events.ResultFailed, slog.LevelWarn
 			if events.LogStatus(err) == events.ResultCanceled {
 				resultStatus = events.ResultCanceled
 				level = slog.LevelInfo
 			}
 			c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "prompt_failed", "", "send risk confirmation:\n"+err.Error(), resultStatus, level)
-			return tool.ConfirmResult{Stopped: true}, fmt.Errorf("send risk confirmation: %w", err)
+			return operationresult.Result[tool.ConfirmResult]{}, fmt.Errorf("send risk confirmation: %w", err)
+		}
+		if sent.Status != operationresult.Success {
+			c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "prompt_rejected", "", sent.Message, events.ResultRejected, slog.LevelWarn)
+			return operationresult.Result[tool.ConfirmResult]{Status: sent.Status, Message: sent.Message}, nil
 		}
 	}
 	result := wait.Wait(ctx, timeout)
 	resp := result.Decision
-	if result.Outcome == turn.RiskExpired {
+	if result.Outcome == turn.RiskExpired || result.Err == context.DeadlineExceeded {
 		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "expire", resp.Extra, "confirmation wait expired", events.ResultFailed, slog.LevelInfo)
-		_, err := c.output.Send(context.WithoutCancel(ctx), delivery.StreamEvent{Type: delivery.StreamSend, Text: "confirm timeout → stopped"})
-		return tool.ConfirmResult{
-			Allowed: false,
-			Extra:   resp.Extra,
-			Message: llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s confirmation expired", call.Name))},
-			Stopped: true,
-		}, err
+		sent, err := c.output.SendTo(context.WithoutCancel(ctx), delivery.Target{}, []delivery.Output{delivery.Text("confirm timeout → stopped")})
+		if err != nil {
+			return operationresult.Result[tool.ConfirmResult]{}, err
+		}
+		if sent.Status != operationresult.Success {
+			return operationresult.Result[tool.ConfirmResult]{Status: sent.Status, Message: sent.Message}, nil
+		}
+		return operationresult.Result[tool.ConfirmResult]{Status: operationresult.Timeout, Message: "确认等待已超时"}, nil
 	}
 	if result.Outcome != turn.RiskAnswered {
-		resultStatus := events.ResultSkipped
 		if result.Outcome == turn.RiskCanceled {
-			resultStatus = events.ResultCanceled
-			if result.Err == context.DeadlineExceeded {
-				resultStatus = events.ResultFailed
+			reason := "confirmation wait stopped"
+			if err := ctx.Err(); err != nil {
+				reason = err.Error()
 			}
+			c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "stop", resp.Extra, reason, events.ResultCanceled, slog.LevelInfo)
+			return operationresult.Result[tool.ConfirmResult]{Status: operationresult.Canceled, Message: "确认已取消"}, nil
 		}
-		action, reason := "skip", "confirmation wait is no longer current"
-		switch resultStatus {
-		case events.ResultCanceled:
-			action, reason = "stop", "confirmation wait stopped"
-		case events.ResultFailed:
-			action, reason = "timeout", "confirmation wait timed out"
-		}
-		if err := ctx.Err(); err != nil {
-			reason = err.Error()
-		}
-		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, action, resp.Extra, reason, resultStatus, slog.LevelInfo)
-		return tool.ConfirmResult{
-			Allowed: false,
-			Extra:   resp.Extra,
-			Message: llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments(fmt.Sprintf("tool call %s stopped by user", call.Name))},
-			Stopped: true,
-		}, nil
+		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "skip", resp.Extra, "confirmation wait is no longer current", events.ResultSkipped, slog.LevelInfo)
+		return operationresult.Result[tool.ConfirmResult]{Status: operationresult.Conflict, Message: "确认等待已失效"}, nil
 	}
 	if resp.Action == turn.RiskConfirmTool {
 		c.setToolAutoConfirmed(sessionID, call.Name)
@@ -377,16 +383,7 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 			reason = "user rejected"
 		}
 		c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, "reject", resp.Extra, reason, events.ResultRejected, slog.LevelInfo)
-		return tool.ConfirmResult{
-			Allowed: false,
-			Extra:   resp.Extra,
-			Message: llm.LLMMessage{
-				Role:       llm.RoleTool,
-				Name:       call.Name,
-				ToolCallID: call.ID,
-				Segments:   llm.TextSegments(fmt.Sprintf("tool call %s rejected by user: %s", call.Name, reason)),
-			},
-		}, nil
+		return operationresult.Result[tool.ConfirmResult]{Status: operationresult.Rejected, Message: fmt.Sprintf("tool call %s rejected by user: %s", call.Name, reason)}, nil
 	}
 	action := "confirm"
 	if resp.Action == turn.RiskConfirmTool {
@@ -396,7 +393,7 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 		action = "confirmall"
 	}
 	c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, action, resp.Extra, "", events.ResultSucceeded, slog.LevelInfo)
-	return tool.ConfirmResult{Allowed: true, Extra: resp.Extra}, nil
+	return operationresult.Result[tool.ConfirmResult]{Status: operationresult.Success, Data: tool.ConfirmResult{Extra: resp.Extra}}, nil
 }
 
 func confirmationDetailsWithArguments(details []tool.ConfirmationDetailBlock, argsText string) ([]tool.ConfirmationDetailBlock, error) {

@@ -14,6 +14,7 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 )
 
@@ -35,17 +36,22 @@ func readDeliveryLog(t *testing.T, record events.LogRecord) deliveryLogContent {
 
 type outputSendFunc func([]delivery.Output) (delivery.Receipt, error)
 
-func (f outputSendFunc) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
-	return f(outputs)
+func (f outputSendFunc) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
+	receipt, err := f(outputs)
+	if err != nil {
+		return operationresult.Result[delivery.Receipt]{}, err
+	}
+	return operationresult.Result[delivery.Receipt]{Status: operationresult.Success, Data: receipt}, nil
 }
 
-func (f outputSendFunc) StartStream(context.Context) (delivery.MessageStream, error) {
-	return delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+func (f outputSendFunc) StartStream(context.Context) (operationresult.Result[delivery.MessageStream], error) {
+	stream := delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
 		if event.Type != delivery.StreamSend {
 			return delivery.Receipt{}, nil
 		}
 		return f([]delivery.Output{{Kind: delivery.KindText, Text: event.Text, Actions: event.Actions}})
-	}), nil
+	})
+	return operationresult.Result[delivery.MessageStream]{Status: operationresult.Success, Data: stream}, nil
 }
 
 func TestAssistantSendFailureReturnsWithoutLowerReport(t *testing.T) {

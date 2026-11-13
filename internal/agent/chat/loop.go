@@ -2,6 +2,7 @@ package chat
 
 import (
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/tool"
 
@@ -24,19 +25,18 @@ type Loop struct {
 }
 
 type preparedLoop struct {
-	route                    *Loop
-	materials                agentshare.TurnMaterials
-	state                    *chatTurnState
-	compactSeedOnCurrentUser bool
-	summaryOnCurrentUser     bool
+	route                *Loop
+	materials            agentshare.TurnMaterials
+	state                *chatTurnState
+	summaryOnCurrentUser bool
 }
 
 // CheckSelection validates the native capability before any turn input is saved.
-func (r *Loop) CheckSelection(selection modelmgr.Selection) error {
+func (r *Loop) CheckSelection(selection modelmgr.Selection) operationresult.Result[struct{}] {
 	if _, ok := selection.Client.(chatcompletions.Streamer); !ok {
-		return fmt.Errorf("provider %q does not provide the Chat streaming capability", selection.Provider)
+		return operationresult.Result[struct{}]{Status: operationresult.Incompatible, Message: fmt.Sprintf("provider %q does not provide the Chat streaming capability", selection.Provider)}
 	}
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}
 }
 
 type chatTurnState struct {
@@ -64,9 +64,6 @@ type LoopDeps struct {
 	Status interface {
 		Record(context.Context, runtimestatus.Snapshot)
 	}
-	Contexts interface {
-		ConsumeSeed(context.Context, string) (*storage.Session, error)
-	}
 	Turns interface {
 		StartToolPhase(string, string) bool
 		DrainMergedInput(string, string) turn.Input
@@ -75,7 +72,7 @@ type LoopDeps struct {
 		Context(context.Context) context.Context
 		RefreshSession(context.Context, *storage.Session) (context.Context, error)
 		WithModel(context.Context, modelmgr.Selection) (context.Context, error)
-		CheckSelection(*storage.Session, modelmgr.Selection) error
+		CheckSelection(*storage.Session, modelmgr.Selection) (operationresult.Result[struct{}], error)
 	}
 	Preparer interface {
 		PrepareInput(context.Context, agentshare.LoopInput, *storage.Message, string, []llm.MessageSegment, []llm.LLMMessage, []llm.ToolSchema, bool) ([]llm.MessageSegment, []llm.ToolSchema, error)

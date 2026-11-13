@@ -4,7 +4,6 @@ import (
 	agentshare "elbot/internal/agent/share"
 
 	"context"
-	"errors"
 	"strconv"
 	"strings"
 
@@ -82,9 +81,6 @@ type ResidentMemorySystemPromptSource struct {
 
 func (s ResidentMemorySystemPromptSource) Parts(ctx context.Context, req agentshare.SystemPromptRequest) ([]SystemPromptPart, error) {
 	memory, err := s.Store.Read(ctx, req.Scope)
-	if errors.Is(err, resident.ErrNotFound) {
-		return nil, nil
-	}
 	if err != nil {
 		return nil, err
 	}

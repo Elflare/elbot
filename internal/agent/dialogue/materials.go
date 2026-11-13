@@ -3,6 +3,7 @@ package dialogue
 import (
 	"context"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -34,18 +35,21 @@ func (p *Preparer) ArchiveMaterials(ctx context.Context, messages []llm.LLMMessa
 // Callers supply all material in one actual request, including replay/continuation
 // prefixes, so the media manager chooses one delivery policy for the whole request.
 // Its usage belongs to the complete model call, including retries.
-func (p *Preparer) PrepareMaterials(ctx context.Context, messages []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error) {
+func (p *Preparer) PrepareMaterials(ctx context.Context, messages []llm.LLMMessage) (operationresult.Result[[]llm.LLMMessage], media.UsageID, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, "", err
+		return operationresult.Result[[]llm.LLMMessage]{}, "", err
 	}
 	resolved, usageID, err := p.Media.AcquireForLLM(ctx, messages)
 	if err != nil {
-		return nil, usageID, fmt.Errorf("准备模型媒体: %w", err)
+		return operationresult.Result[[]llm.LLMMessage]{}, usageID, fmt.Errorf("准备模型媒体: %w", err)
+	}
+	if resolved.Status != operationresult.Success {
+		return resolved, usageID, nil
 	}
 	missing := map[string]bool{}
 	for i, message := range messages {
 		for j, segment := range message.Segments {
-			if segment.MediaID != "" && resolved[i].Segments[j].Type == llm.SegmentText {
+			if segment.MediaID != "" && resolved.Data[i].Segments[j].Type == llm.SegmentText {
 				missing[segment.MediaID] = true
 			}
 		}

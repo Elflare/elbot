@@ -4,6 +4,7 @@ import (
 	"context"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"errors"
 	"strings"
 	"time"
@@ -22,13 +23,13 @@ type Caller struct {
 		Committer(string) agentshare.MessageCommitter
 	}
 	Preparer interface {
-		PrepareMaterials(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error)
+		PrepareMaterials(context.Context, []llm.LLMMessage) (operationresult.Result[[]llm.LLMMessage], media.UsageID, error)
 		FinishMaterials(context.Context, media.UsageID)
 	}
 	Calls interface {
 		Call(context.Context, *storage.Session, modelmgr.Selection, []llm.LLMMessage, []llm.ToolSchema, *agentshare.PendingUserMessage, agentshare.MessageCommitter, delivery.MessageStream,
-			func(context.Context, agentshare.CallInput) error,
-			func(context.Context, agentshare.CallObservation) (agentshare.CallOutput, error)) (agentshare.CallOutput, error)
+			func(context.Context, agentshare.CallInput) (operationresult.Result[struct{}], error),
+			func(context.Context, agentshare.CallObservation) (operationresult.Result[agentshare.CallOutput], error)) (operationresult.Result[agentshare.CallOutput], error)
 	}
 }
 type llmCallResult struct {
@@ -41,44 +42,55 @@ type llmCallResult struct {
 	Messages         []llm.LLMMessage
 }
 
-func (c *Caller) Call(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *agentshare.PendingUserMessage, stream delivery.MessageStream) (result llmCallResult, callErr error) {
+func (c *Caller) Call(ctx context.Context, session *storage.Session, selection modelmgr.Selection, messages []llm.LLMMessage, tools []llm.ToolSchema, pending *agentshare.PendingUserMessage, stream delivery.MessageStream) (operationresult.Result[llmCallResult], error) {
 	client := selection.Client.(chatcompletions.Streamer)
 	toolsEnabled := session.Mode == storage.SessionModeWork || session.Mode == storage.SessionModeBackground
 	var req chatcompletions.Request
 	var usageID media.UsageID
 	var baseMessages []llm.LLMMessage
+	var result llmCallResult
 	defer func() { c.Preparer.FinishMaterials(ctx, usageID) }()
-	prepare := func(ctx context.Context, input agentshare.CallInput) error {
+	prepare := func(ctx context.Context, input agentshare.CallInput) (operationresult.Result[struct{}], error) {
 		baseMessages = input.Messages
 		requestMessages, id, err := c.Preparer.PrepareMaterials(ctx, input.RequestMessages)
 		usageID = id
 		if err != nil {
-			return err
+			return operationresult.Result[struct{}]{}, err
 		}
-		req = chatcompletions.Request{Model: selection.Model, SessionID: session.ID, Messages: requestMessages, Tools: input.Tools}
-		return nil
+		if requestMessages.Status != operationresult.Success {
+			return operationresult.Result[struct{}]{Status: requestMessages.Status, Message: requestMessages.Message}, nil
+		}
+		req = chatcompletions.Request{Model: selection.Model, SessionID: session.ID, Messages: requestMessages.Data, Tools: input.Tools}
+		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}
-	attempt := func(ctx context.Context, observation agentshare.CallObservation) (agentshare.CallOutput, error) {
+	attempt := func(ctx context.Context, observation agentshare.CallObservation) (operationresult.Result[agentshare.CallOutput], error) {
 		var err error
 		result, err = c.callOnce(ctx, client, req, observation, stream, toolsEnabled)
-		return agentshare.CallOutput{Text: result.RawText, SourceText: result.RawText, ReasoningContent: result.ReasoningContent, Usage: result.Usage, ToolCalls: result.ToolCalls}, err
+		if err != nil {
+			return operationresult.Result[agentshare.CallOutput]{}, err
+		}
+		return operationresult.Result[agentshare.CallOutput]{Status: operationresult.Success, Data: agentshare.CallOutput{Text: result.RawText, SourceText: result.RawText, ReasoningContent: result.ReasoningContent, Usage: result.Usage, ToolCalls: result.ToolCalls}}, nil
 	}
 	final, err := c.Calls.Call(ctx, session, selection, messages, tools, pending, c.Messages.Committer("append_pending_user_message"), stream, prepare, attempt)
-	result.Messages = baseMessages
 	if err != nil {
-		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
-			return result, nil
-		}
-		return llmCallResult{}, err
+		return operationresult.Result[llmCallResult]{}, err
 	}
-	result.Text, result.Usage, result.ToolCalls, result.Outputs = final.Text, final.Usage, final.ToolCalls, final.Outputs
-	result.ReasoningContent = final.ReasoningContent
-	return result, nil
+	if final.Status != operationresult.Success {
+		return operationresult.Result[llmCallResult]{Status: final.Status, Message: final.Message}, nil
+	}
+	result.Messages = baseMessages
+	data := final.Data
+	result.Text, result.Usage, result.ToolCalls, result.Outputs = data.Text, data.Usage, data.ToolCalls, data.Outputs
+	result.ReasoningContent = data.ReasoningContent
+	return operationresult.Result[llmCallResult]{Status: operationresult.Success, Data: result}, nil
 }
 
 func (c *Caller) callOnce(ctx context.Context, client chatcompletions.Streamer, req chatcompletions.Request, observation agentshare.CallObservation, stream delivery.MessageStream, toolsEnabled bool) (result llmCallResult, callErr error) {
 	startedAt := time.Now()
 	completed := observation.Event()
+	defer func() {
+		completed.ToolCalls = append([]llm.ToolCallRequest(nil), result.ToolCalls...)
+	}()
 	observation.LogRecord().EventName = "llm_usage"
 	observation.LogRecord().ResultStatus = events.ResultCanceled
 	callCtx, cancel := context.WithCancel(ctx)

@@ -7,9 +7,8 @@ import (
 	"elbot/internal/control"
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
-	"elbot/internal/storage"
-	"errors"
 	"log/slog"
 )
 
@@ -18,10 +17,10 @@ type CommandExecutor struct {
 		IsCommand(string) bool
 		Parse(string) command.Parsed
 		CommandInfo(string) (command.Info, bool)
-		Dispatch(context.Context, string) (*command.Result, error)
+		Dispatch(context.Context, string) (command.Result, error)
 	}
 	sessions interface {
-		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
+		CurrentBound(context.Context, session.Scope) (operationresult.Result[session.CurrentBoundData], error)
 	}
 	identity interface {
 		Scope(context.Context) session.Scope
@@ -48,96 +47,117 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Cont
 	if !parsed.OK {
 		req.Name = "append"
 	}
-	failure := command.ClassifyError(err)
-	if failure != nil && failure.Code == command.CodePermissionDenied {
-		result = nil
-	}
-	if failure != nil {
-		e.logFailure(ctx, "command_failed", failure)
+	if err != nil || result.Status != operationresult.Success {
+		e.logFailure(ctx, "command_failed", result, err)
 	}
 	sendCtx := session.WithBinding(context.WithoutCancel(origin), nil)
-	if _, err := e.output.SendCommandResult(sendCtx, req, result, failure); err != nil {
-		e.logFailure(sendCtx, "command_send_failed", err)
+	if _, sendErr := e.output.SendCommandResult(sendCtx, req, result, err); sendErr != nil {
+		e.logFailure(sendCtx, "command_send_failed", command.Result{}, sendErr)
+		return ctx, true, sendErr
+	}
+	if err != nil {
 		return ctx, true, err
 	}
-	if failure != nil {
-		return ctx, true, failure
+	if result.Status != operationresult.Success {
+		return ctx, true, nil
 	}
-	if result != nil && result.Continuation != nil {
-		next, err := e.input.ContinueCommandInput(ctx, *result.Continuation)
+	if result.Continuation != nil {
+		next, continued, err := e.input.ContinueCommandInput(ctx, *result.Continuation)
 		if err != nil {
-			e.logFailure(next, "command_continuation_failed", err)
+			e.logFailure(next, "command_continuation_failed", command.Result{}, err)
 			globalevents.Notify(session.WithBinding(context.WithoutCancel(next), nil), globalevents.NewNotification(next, slog.LevelWarn, err.Error()))
 			if result.Continuation.Kind == "append" {
 				return next, true, nil
 			}
+			return next, true, err
 		}
-		return next, true, err
+		if continued.Status != operationresult.Success {
+			result = command.Result{Status: continued.Status, Message: continued.Message}
+			if _, sendErr := e.output.SendCommandResult(session.WithBinding(context.WithoutCancel(origin), nil), req, result, nil); sendErr != nil {
+				e.logFailure(session.WithBinding(context.WithoutCancel(origin), nil), "command_send_failed", command.Result{}, sendErr)
+				return next, true, sendErr
+			}
+			return next, true, nil
+		}
+		return next, true, nil
 	}
 	return ctx, true, nil
 }
-func (e *CommandExecutor) execute(ctx context.Context, text string, isCommand bool) (context.Context, *command.Result, bool, error) {
-	_, binding, err := e.sessions.CurrentBound(ctx, e.identity.Scope(ctx))
-	if err != nil && !errors.Is(err, session.ErrNoCurrentSession) {
-		return ctx, nil, true, err
+func (e *CommandExecutor) execute(ctx context.Context, text string, isCommand bool) (context.Context, command.Result, bool, error) {
+	current, err := e.sessions.CurrentBound(ctx, e.identity.Scope(ctx))
+	if err != nil {
+		return ctx, command.Result{}, true, err
 	}
-	if err == nil {
-		ctx = session.WithBinding(ctx, binding)
+	if current.Status == operationresult.Success {
+		ctx = session.WithBinding(ctx, current.Data.Binding)
+	} else if current.Status != operationresult.NoCurrentSession {
+		return ctx, command.Result{Status: current.Status, Message: current.Message}, true, nil
 	}
 	if !isCommand {
 		current, err := e.confirmations.CurrentConfirmation(ctx, control.CurrentConfirmationRequest{})
-		if err != nil || current.Kind != "append" {
-			return ctx, nil, false, nil
-		}
-		data, err := e.confirmations.RespondConfirmation(ctx, control.RespondConfirmationRequest{Decision: "approve", Scope: "current"})
 		if err != nil {
-			return ctx, nil, true, err
+			return ctx, command.Result{}, true, err
 		}
-		if !data.Accepted {
-			return ctx, nil, false, nil
+		if current.Status != operationresult.Success {
+			return ctx, command.Result{Status: current.Status, Message: current.Message}, true, nil
 		}
-		return ctx, &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: "追加输入已接受"}, Continuation: data.Continuation}, true, err
+		if current.Data.Kind != "append" {
+			return ctx, command.Result{}, false, nil
+		}
+		result, err := e.confirmations.RespondConfirmation(ctx, control.RespondConfirmationRequest{Decision: "approve", Scope: "current"})
+		if err != nil {
+			return ctx, command.Result{}, true, err
+		}
+		if result.Status != operationresult.Success {
+			return ctx, command.Result{Status: result.Status, Message: result.Message}, true, nil
+		}
+		data := result.Data
+		return ctx, command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "追加输入已接受"}, Continuation: data.Continuation}, true, nil
 	}
 	result, err := e.router.Dispatch(ctx, text)
 	return ctx, result, true, err
 }
-func (e *CommandExecutor) logFailure(ctx context.Context, event string, err error) {
-	level := slog.LevelWarn
-	if errors.Is(err, context.Canceled) {
+func (e *CommandExecutor) logFailure(ctx context.Context, event string, result command.Result, err error) {
+	level, status, content := slog.LevelWarn, globalevents.ResultFailed, result.Message
+	if err != nil {
+		content = err.Error()
+		status = globalevents.LogStatus(err)
+	} else {
+		switch result.Status {
+		case operationresult.Canceled:
+			status = globalevents.ResultCanceled
+		case operationresult.Failed, operationresult.Timeout:
+		default:
+			status = globalevents.ResultRejected
+		}
+	}
+	if status == globalevents.ResultCanceled {
 		level = slog.LevelInfo
 	}
-	content := err.Error()
-	var failure *command.Error
-	if errors.As(err, &failure) && failure.Cause != nil {
-		content += ": " + failure.Cause.Error()
-	}
-	record := globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: level, EventName: event, Module: "command", Content: content, ContentLimit: 4096, ResultStatus: globalevents.LogStatus(err)}
+	record := globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: level, EventName: event, Module: "command", Content: content, ContentLimit: 4096, ResultStatus: status}
 	record.Identity = globalevents.LogIdentityFromContext(ctx)
-	if failure != nil && (failure.Kind == command.ErrorInput || failure.Kind == command.ErrorRejected) {
-		record.ResultStatus = globalevents.ResultRejected
-	}
 	globalevents.Log(context.WithoutCancel(ctx), record)
 }
 
 type CommandOutput interface {
-	SendCommandResult(context.Context, command.Request, *command.Result, *command.Error) (delivery.Receipt, error)
+	SendCommandResult(context.Context, command.Request, command.Result, error) (delivery.Receipt, error)
 }
 type CommandConfirmations interface {
-	CurrentConfirmation(context.Context, control.CurrentConfirmationRequest) (control.CurrentConfirmationResult, error)
-	RespondConfirmation(context.Context, control.RespondConfirmationRequest) (control.RespondConfirmationResult, error)
+	CurrentConfirmation(context.Context, control.CurrentConfirmationRequest) (operationresult.Result[control.CurrentConfirmationResult], error)
+	RespondConfirmation(context.Context, control.RespondConfirmationRequest) (operationresult.Result[control.RespondConfirmationResult], error)
 }
 type CommandInput interface {
-	ContinueCommandInput(context.Context, control.Continuation) (context.Context, error)
+	ContinueCommandInput(context.Context, control.Continuation) (context.Context, operationresult.Result[struct{}], error)
 }
 type CommandExecutorDeps struct {
 	Router interface {
 		IsCommand(string) bool
 		Parse(string) command.Parsed
 		CommandInfo(string) (command.Info, bool)
-		Dispatch(context.Context, string) (*command.Result, error)
+		Dispatch(context.Context, string) (command.Result, error)
 	}
 	Sessions interface {
-		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
+		CurrentBound(context.Context, session.Scope) (operationresult.Result[session.CurrentBoundData], error)
 	}
 	Identity interface {
 		Scope(context.Context) session.Scope

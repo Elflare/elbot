@@ -2,7 +2,6 @@ package input
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -29,9 +29,8 @@ type InputCoordinator struct {
 	NewWorkspaceStore func(string) workspace.WorkspaceStore
 	sessions          interface {
 		EnterActivation(context.Context, sessionpkg.Scope, ...string) (context.Context, func(), error)
-		Resume(context.Context, sessionpkg.Scope, string) (*storage.Session, error)
-		CurrentBound(context.Context, sessionpkg.Scope) (*storage.Session, *sessionpkg.Binding, error)
-		Current(context.Context, sessionpkg.Scope) (*storage.Session, error)
+		Resume(context.Context, sessionpkg.Scope, string) (operationresult.Result[*storage.Session], error)
+		CurrentBound(context.Context, sessionpkg.Scope) (operationresult.Result[sessionpkg.CurrentBoundData], error)
 		RecordActivity(context.Context, *sessionpkg.Binding) error
 	}
 	turns    interface{ Snapshot(string) turn.Snapshot }
@@ -51,56 +50,99 @@ type InputCoordinator struct {
 	}
 }
 
+func (c *InputCoordinator) CompletionWorkspaceRoot(ctx context.Context) (string, error) {
+	ctx = contextinfo.WithActor(ctx, c.identity.Actor(ctx))
+	current, err := c.sessions.CurrentBound(ctx, c.identity.Scope(ctx))
+	if err != nil {
+		return "", err
+	}
+	switch current.Status {
+	case operationresult.NoCurrentSession:
+		return workspace.CurrentWorkspaceDir(ctx)
+	case operationresult.Success:
+		return workspace.CurrentWorkspaceDir(workspace.WithWorkspaceStore(ctx, c.NewWorkspaceStore(current.Data.Session.ID)))
+	default:
+		return "", fmt.Errorf("%s", current.Message)
+	}
+}
+
+func (c *InputCoordinator) ToolCompletionContext(ctx context.Context) (context.Context, error) {
+	ctx = contextinfo.WithActor(ctx, c.identity.Actor(ctx))
+	current, err := c.sessions.CurrentBound(ctx, c.identity.Scope(ctx))
+	if err != nil {
+		return ctx, err
+	}
+	switch current.Status {
+	case operationresult.NoCurrentSession:
+		return c.execution.DefaultModelContext(ctx)
+	case operationresult.Success:
+		return c.execution.ModelContext(ctx, current.Data.Session)
+	default:
+		return ctx, fmt.Errorf("%s", current.Message)
+	}
+}
+
 func compactCommandBlockedText(text string, commandText func(string, ...string) string) string {
 	return fmt.Sprintf("%s: compacting · 等待或 %s", text, commandText("stop"))
 }
 
 func (c *InputCoordinator) HandleInput(ctx context.Context, text string) (context.Context, error) {
-	ctx, session, err := c.execution.ResolveInput(ctx, text)
+	ctx, result, err := c.execution.ResolveInput(ctx, text)
 	if err != nil {
-		if errors.Is(err, sessionpkg.ErrSessionBusy) {
-			globalevents.Notify(sessionpkg.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, fmt.Sprintf("%v，请等待完成，或先用 %s 停止任务。", err, c.commandText("stop"))))
-			return ctx, nil
-		}
 		return ctx, err
 	}
-	return c.handleSessionInput(ctx, session, text)
+	if result.Status != operationresult.Success {
+		globalevents.Notify(sessionpkg.WithBinding(context.WithoutCancel(ctx), nil), globalevents.NewNotification(ctx, slog.LevelWarn, result.Message))
+		return ctx, nil
+	}
+	return c.handleSessionInput(ctx, result.Data, text)
 }
 
-func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuation control.Continuation) (context.Context, error) {
+func (c *InputCoordinator) ContinueCommandInput(ctx context.Context, continuation control.Continuation) (context.Context, operationresult.Result[struct{}], error) {
 	if continuation.Kind == "append" {
 		return c.execution.ResumeAppend(ctx, continuation.SessionID)
 	}
 	locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), continuation.SessionID)
 	if err != nil {
-		return ctx, err
+		return ctx, operationresult.Result[struct{}]{}, err
 	}
-	row, err := c.sessions.Resume(locked, c.identity.Scope(ctx), continuation.SessionID)
-	if err == nil {
-		_, binding, bindErr := c.sessions.CurrentBound(locked, c.identity.Scope(ctx))
-		err = bindErr
-		ctx = sessionpkg.WithBinding(locked, binding)
-	}
-	release()
+	resumed, err := c.sessions.Resume(locked, c.identity.Scope(ctx), continuation.SessionID)
 	if err != nil {
-		return ctx, err
+		release()
+		return ctx, operationresult.Result[struct{}]{}, err
 	}
+	if resumed.Status != operationresult.Success {
+		release()
+		return ctx, operationresult.Result[struct{}]{Status: resumed.Status, Message: resumed.Message}, nil
+	}
+	row := resumed.Data
+	current, err := c.sessions.CurrentBound(locked, c.identity.Scope(ctx))
+	if err != nil {
+		release()
+		return ctx, operationresult.Result[struct{}]{}, err
+	}
+	if current.Status != operationresult.Success {
+		release()
+		return ctx, operationresult.Result[struct{}]{Status: current.Status, Message: current.Message}, nil
+	}
+	ctx = sessionpkg.WithBinding(locked, current.Data.Binding)
+	release()
 	segments := agentshare.ReplaceInboundTextSegments(ctx, continuation.Text)
 	ctx = agentshare.WithInboundSegments(ctx, segments)
-	return c.handleSessionInput(ctx, row, continuation.Text)
+	next, err := c.handleSessionInput(ctx, row, continuation.Text)
+	if err != nil {
+		return next, operationresult.Result[struct{}]{}, err
+	}
+	return next, operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
 func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *storage.Session, text string) (context.Context, error) {
-	locked, release, err := c.execution.EnterInput(ctx, session)
-	if errors.Is(err, agentshare.ErrInputCompacting) {
-		_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: fmt.Sprintf("%v · 等待或 %s", err, c.commandText("stop"))})
-		return ctx, err
-	}
-	if errors.Is(err, agentshare.ErrInputArchived) {
-		_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: fmt.Sprintf("%v · %s 后可继续", err, c.commandText("unarchive"))})
-		return ctx, err
-	}
+	locked, admitted, release, err := c.execution.EnterInput(ctx, session)
 	if err != nil {
+		return ctx, err
+	}
+	if admitted.Status != operationresult.Success {
+		_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: admitted.Message})
 		return ctx, err
 	}
 	ctx = locked
@@ -124,10 +166,15 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 
 	snapshot := c.turns.Snapshot(session.ID)
 	if snapshot.Phase != turn.PhaseAwaitRiskConfirm {
-		directives, skillDirectives, err := c.applyInputDirectives(ctx, session, text)
+		prepared, skillDirectives, err := c.applyInputDirectives(ctx, session, text)
 		if err != nil {
 			return ctx, err
 		}
+		if prepared.Status != operationresult.Success {
+			_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: prepared.Message})
+			return ctx, err
+		}
+		directives := prepared.Data
 		if err := c.notifyToolDirectiveResult(ctx, directives); err != nil {
 			return ctx, err
 		}
@@ -152,13 +199,21 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 	if err != nil {
 		return ctx, err
 	}
-	if disposition == agentshare.InputRiskConfirmation {
+	if disposition.Status != operationresult.Success {
+		_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: disposition.Message})
+		return ctx, err
+	}
+	if disposition.Data == agentshare.InputRiskConfirmation {
 		current, err := c.confirmations.CurrentConfirmation(ctx, control.CurrentConfirmationRequest{})
 		if err != nil {
 			return ctx, err
 		}
+		if current.Status != operationresult.Success {
+			_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: current.Message})
+			return ctx, err
+		}
 		text := "无待确认"
-		if current.Kind == "tool" {
+		if current.Data.Kind == "tool" {
 			text = "待确认\n" + c.commandText("detail") + ": 详情 · " + c.commandText("confirm") + ": 确认 · " + c.commandText("reject") + ": 拒绝 · " + c.commandText("stop") + ": 停止"
 		}
 		_, err = c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: text})

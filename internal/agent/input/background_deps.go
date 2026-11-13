@@ -5,6 +5,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -34,14 +35,15 @@ type BackgroundRequest struct {
 // BackgroundHandlerDeps contains only capabilities needed to prepare a task turn.
 type BackgroundHandlerDeps struct {
 	Sessions interface {
-		PrepareBackground(context.Context, session.Scope, session.BackgroundRequest) (*storage.Session, error)
+		PrepareBackground(context.Context, session.Scope, session.BackgroundRequest) (operationresult.Result[*storage.Session], error)
+		SessionTakenOver(context.Context, string) (bool, error)
 	} // Creates or resumes a task session without activating a foreground binding.
 	Identity interface {
 		IsCLI(context.Context) bool
 	} // 根据当前请求来源识别 CLI 平台。
 	Execution interface {
 		ModelContext(context.Context, *storage.Session) (context.Context, error)
-		RunBackground(context.Context, *storage.Session, string) (context.Context, turn.Result)
+		RunBackground(context.Context, *storage.Session, string) (context.Context, operationresult.Result[turn.Result], error)
 	} // Resolves model context and executes through the existing coordinator.
 	Preloader interface {
 		PrepareBackground(context.Context, tool.BackgroundPreloadRequest) (tool.BackgroundPreload, error)

@@ -9,12 +9,12 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
-	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -97,12 +97,15 @@ type PreparedTurn struct {
 }
 
 // CheckSelection validates route availability before compaction or input writes.
-func (r *Runner) CheckSelection(selection modelmgr.Selection) error {
+func (r *Runner) CheckSelection(selection modelmgr.Selection) (operationresult.Result[struct{}], error) {
+	if selection.Client == nil {
+		return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: fmt.Sprintf("model provider %q not found", selection.Provider)}, nil
+	}
 	loop, err := r.Routes.LoopFor(selection.Origin.APIType)
 	if err != nil {
-		return fmt.Errorf("provider %q 主对话尚未接入或接线无效：%w", selection.Provider, err)
+		return operationresult.Result[struct{}]{}, fmt.Errorf("provider %q 主对话尚未接入或接线无效：%w", selection.Provider, err)
 	}
-	return loop.CheckSelection(selection)
+	return loop.CheckSelection(selection), nil
 }
 
 func (r *Runner) PrepareTurn(ctx context.Context, in agentshare.TurnInput) (agentshare.PreparedTurn, error) {
@@ -117,30 +120,27 @@ func (r *Runner) PrepareTurn(ctx context.Context, in agentshare.TurnInput) (agen
 	return &PreparedTurn{route: route, input: in, preparer: r.Preparer}, nil
 }
 
-func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInput, out agentshare.Output) (requestContext context.Context, result agentshare.TurnResult) {
+func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInput, out agentshare.Output) (requestContext context.Context, operation operationresult.Result[agentshare.TurnResult], runErr error) {
+	var result agentshare.TurnResult
 	streamOutput := &attemptOutput{Output: out}
 	out = streamOutput
 	result.StartedAt = storage.Now()
 	result.Selection = in.Selection
 	defer func() {
-		if result.Err != nil && requestCtx.Err() != nil {
-			result.QuietCancellation = errors.Is(result.Err, requestCtx.Err())
-			if result.QuietCancellation {
-				result.Outcome = agentshare.Canceled
+		if result.Outcome != agentshare.Completed {
+			current := r.Turns.Snapshot(in.Session.ID)
+			execution := current.Execution
+			if execution != nil && execution == turn.ExecutionFromContext(ctx) && current.Attempt == turn.AttemptFromContext(ctx) && current.Phase == turn.PhaseAwaitAppendConfirm {
+				if err := streamOutput.reset(ctx); err != nil {
+					slog.WarnContext(context.WithoutCancel(ctx), "reset interrupted reply stream", "session_id", in.Session.ID, "error", err)
+				}
+				result.Outcome = agentshare.Paused
+			} else if execution != nil && current.Attempt != turn.AttemptFromContext(ctx) {
+				result.Outcome = agentshare.Superseded
 			}
 		}
-		if result.Outcome == agentshare.Completed {
-			return
-		}
-		current := r.Turns.Snapshot(in.Session.ID)
-		execution := current.Execution
-		if execution != nil && execution == turn.ExecutionFromContext(ctx) && current.Attempt == turn.AttemptFromContext(ctx) && current.Phase == turn.PhaseAwaitAppendConfirm {
-			if err := streamOutput.reset(ctx); err != nil {
-				slog.WarnContext(context.WithoutCancel(ctx), "reset interrupted reply stream", "session_id", in.Session.ID, "error", err)
-			}
-			result.Outcome = agentshare.Paused
-		} else if execution != nil && current.Attempt != turn.AttemptFromContext(ctx) {
-			result.Outcome = agentshare.Superseded
+		if operation.Status == operationresult.Success {
+			operation.Data = result
 		}
 	}()
 	var err error
@@ -149,47 +149,61 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 		requestCtx, err = r.View.WithModel(requestCtx, in.Selection)
 	}
 	if err != nil {
-		result.Outcome, result.Err = agentshare.Failed, err
-		return requestCtx, result
+		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
 	}
 	loopIn := agentshare.LoopInput{Session: in.Session, Selection: in.Selection, RequestID: in.RequestID, StartedAt: result.StartedAt}
-	prepared, err := in.Prepared.PrepareTurn(requestCtx)
-	var user *storage.Message
-	if err == nil {
-		user, err = prepared.PrepareInput(ctx, requestCtx, loopIn, out)
-	}
-	if err == nil {
-		err = requestCtx.Err()
-	}
-	if err == nil {
-		err = prepared.InputCommitter().Commit(requestCtx, user, nil)
-	}
+	preparation, err := in.Prepared.PrepareTurn(requestCtx)
 	if err != nil {
-		result.Outcome, result.Err = agentshare.Failed, err
-		return requestCtx, result
+		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
+	}
+	if preparation.Status != operationresult.Success {
+		result.Outcome = agentshare.Failed
+		return requestCtx, operationresult.Result[agentshare.TurnResult]{Status: preparation.Status, Message: preparation.Message}, nil
+	}
+	prepared := preparation.Data
+	input, err := prepared.PrepareInput(ctx, requestCtx, loopIn, out)
+	if err != nil {
+		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
+	}
+	if input.Status != operationresult.Success {
+		result.Outcome = agentshare.Failed
+		return requestCtx, operationresult.Result[agentshare.TurnResult]{Status: input.Status, Message: input.Message}, nil
+	}
+	user := input.Data
+	if err := requestCtx.Err(); err != nil {
+		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
+	}
+	if err := prepared.InputCommitter().Commit(requestCtx, user, nil); err != nil {
+		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
 	}
 	if user != nil {
 		fields, _ := storage.DecodeSessionMetadata(user.Metadata)
 		if string(fields["elyph_rules_shown"]) == "true" {
 			fields, err := storage.DecodeSessionMetadata(in.Session.Metadata)
 			if err != nil {
-				result.Outcome, result.Err = agentshare.Failed, err
-				return requestCtx, result
+				return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
 			}
 			_ = fields.Set("elyph_rules_shown", true)
 			in.Session.Metadata, _ = fields.Encode()
 		}
 	}
-	loop := prepared.RunLoop(ctx, requestCtx, loopIn, out)
-	result.Outcome, result.Err, result.QuietCancellation = loop.Outcome, loop.Err, loop.QuietCancellation
+	executed, err := prepared.RunLoop(ctx, requestCtx, loopIn, out)
+	if err != nil {
+		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
+	}
+	if executed.Status != operationresult.Success {
+		result.Outcome = agentshare.Failed
+		return requestCtx, operationresult.Result[agentshare.TurnResult]{Status: executed.Status, Message: executed.Message}, nil
+	}
+	loop := executed.Data
+	result.Outcome = loop.Outcome
 	result.Usage, result.Selection = loop.Usage, loop.Selection
 	if loop.Outcome != agentshare.Completed {
-		return requestCtx, result
+		return requestCtx, operationresult.Result[agentshare.TurnResult]{Status: operationresult.Success, Data: result}, nil
 	}
 	requestCtx, err = r.View.RefreshSession(requestCtx, in.Session)
 	if err != nil {
-		result.Outcome, result.Err = agentshare.Failed, err
-		return requestCtx, result
+		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
 	}
 	ctx = r.View.Context(ctx)
 	ctx, err = r.View.WithModel(ctx, result.Selection)
@@ -197,17 +211,16 @@ func (r *Runner) RunTurn(ctx, requestCtx context.Context, in agentshare.TurnInpu
 		requestCtx, err = r.View.WithModel(requestCtx, result.Selection)
 	}
 	if err != nil {
-		result.Outcome, result.Err = agentshare.Failed, err
-		return requestCtx, result
+		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
 	}
 	r.Status.Record(ctx, runtimestatus.Snapshot{SessionID: in.Session.ID, Phase: runtimestatus.PhaseSending,
 		Provider: result.Selection.Provider, Model: result.Selection.Model, Mode: in.Session.Mode, RequestID: in.RequestID,
 		Kind: request.KindTurn, Label: "chat", TurnStartedAt: result.StartedAt, StageStartedAt: storage.Now()})
 	result.Committed, err = r.Replies.Commit(ctx, requestCtx, loop.Commit, out)
 	if err != nil {
-		result.Outcome, result.Err = agentshare.Failed, err
+		return requestCtx, operationresult.Result[agentshare.TurnResult]{}, err
 	}
-	return requestCtx, result
+	return requestCtx, operationresult.Result[agentshare.TurnResult]{Status: operationresult.Success, Data: result}, nil
 }
 
 // RunnerDeps contains external capabilities needed to build the common single-turn collaborators.
@@ -232,7 +245,7 @@ type RunnerDeps struct {
 		Load(context.Context, string) (*contextmgr.LoadedContext, error)
 	}
 	Media interface {
-		AcquireForLLM(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error)
+		AcquireForLLM(context.Context, []llm.LLMMessage) (operationresult.Result[[]llm.LLMMessage], media.UsageID, error)
 	}
 	PublishUsageFinished func(context.Context, media.UsageID) // 根部连接 Media 的结束信号。
 	Identity             interface {
@@ -291,10 +304,10 @@ func NewRunner(deps RunnerDeps) *Runner {
 }
 
 // PrepareTurn delays material loading until the execution attempt is admitted.
-func (p *PreparedTurn) PrepareTurn(ctx context.Context) (agentshare.PreparedLoop, error) {
+func (p *PreparedTurn) PrepareTurn(ctx context.Context) (operationresult.Result[agentshare.PreparedLoop], error) {
 	materials, err := p.preparer.LoadMaterials(ctx, p.input)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[agentshare.PreparedLoop]{}, err
 	}
 	return p.route.PrepareTurn(ctx, materials)
 }

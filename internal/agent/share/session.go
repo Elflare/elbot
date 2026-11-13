@@ -2,7 +2,7 @@ package share
 
 import (
 	"context"
-	"errors"
+	"elbot/internal/operationresult"
 
 	"elbot/internal/request"
 	"elbot/internal/session"
@@ -10,28 +10,30 @@ import (
 	"elbot/internal/turn"
 )
 
-var ErrSessionBindingChanged = errors.New("当前会话已切换，请重新发送消息")
-
 // Existing execution contexts keep their original binding across confirmation.
 func CaptureSessionBinding(ctx context.Context, sessions interface {
-	CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
+	CurrentBound(context.Context, session.Scope) (operationresult.Result[session.CurrentBoundData], error)
 }, identity interface {
 	Scope(context.Context) session.Scope
-}, row *storage.Session) (context.Context, error) {
-	current, binding, err := sessions.CurrentBound(ctx, identity.Scope(ctx))
+}, row *storage.Session) (context.Context, operationresult.Result[struct{}], error) {
+	current, err := sessions.CurrentBound(ctx, identity.Scope(ctx))
 	if err != nil {
-		return ctx, err
+		return ctx, operationresult.Result[struct{}]{}, err
 	}
-	if current.ID != row.ID {
-		return ctx, ErrSessionBindingChanged
+	if current.Status != operationresult.Success {
+		return ctx, operationresult.Result[struct{}]{Status: current.Status, Message: current.Message}, nil
+	}
+	binding := current.Data.Binding
+	if current.Data.Session.ID != row.ID {
+		return ctx, operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "当前会话已切换，请重新发送消息"}, nil
 	}
 	if original, ok := session.BindingFromContext(ctx); ok {
 		if original != binding || !original.Valid() {
-			return ctx, ErrSessionBindingChanged
+			return ctx, operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "当前会话已切换，请重新发送消息"}, nil
 		}
-		return ctx, nil
+		return ctx, operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}
-	return session.WithBinding(ctx, binding), nil
+	return session.WithBinding(ctx, binding), operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
 func CompactActive(turns interface {

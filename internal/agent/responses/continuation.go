@@ -14,17 +14,13 @@ import (
 
 // A branch's continuation is the suffix added after its response checkpoint.
 // Keep it unresolved until pending inputs join it; earlier media belongs to the server chain.
-func (c *Context) resolveContinuation(seed *storage.NativeSeed) (*nativeWindow, error) {
-	var continuation, items []api.Item
+func (c *Context) resolveContinuation(seed *storage.NativeSeed, items []api.Item) (*nativeWindow, error) {
+	var continuation []api.Item
 	if err := json.Unmarshal([]byte(seed.ContinuationJSON), &continuation); err != nil {
 		return nil, err
 	}
 	if len(continuation) == 0 {
 		return &nativeWindow{}, nil
-	}
-	items, err := decodeSeedInputs(seed)
-	if err != nil {
-		return nil, err
 	}
 	start := len(items) - len(continuation)
 	if start < 0 {

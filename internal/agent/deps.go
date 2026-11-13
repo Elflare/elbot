@@ -14,6 +14,7 @@ import (
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -44,10 +45,10 @@ type ModelCapabilities interface {
 	ReloadProviders(context.Context) error
 	CurrentModelForMode(mode string) modelmgr.ModelOption
 	CurrentCompactModel(mode string) modelmgr.ModelOption
-	PrepareModel(arg string) (modelmgr.ModelOption, error)
-	CommitModelForMode(mode string, selected modelmgr.ModelOption) (modelmgr.ModelOption, error)
-	SelectCompactModel(arg string) (modelmgr.ModelOption, error)
-	SelectNamingModel(arg string) (modelmgr.ModelOption, error)
+	PrepareModel(arg string) (operationresult.Result[modelmgr.ModelOption], error)
+	CommitModelForMode(mode string, selected modelmgr.ModelOption) (operationresult.Result[modelmgr.ModelOption], error)
+	SelectCompactModel(arg string) (operationresult.Result[modelmgr.ModelOption], error)
+	SelectNamingModel(arg string) (operationresult.Result[modelmgr.ModelOption], error)
 	ModelList(query string, opts modelmgr.ModelListOptions) modelmgr.ModelListResult
 }
 
@@ -57,7 +58,7 @@ type ToolCapabilities interface {
 	Reload(context.Context) error
 	FilterSchemas(context.Context, []llm.ToolSchema) ([]llm.ToolSchema, error)
 	QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
-	LoadToolDetail(context.Context, string) (tool.DetailBlock, error)
+	LoadToolDetail(context.Context, string) (operationresult.Result[tool.DetailBlock], error)
 	ToolTags(context.Context) ([]string, error)
 	Schemas(context.Context, tool.Context, []tool.DiscoveredTool) ([]llm.ToolSchema, error)
 	Run(context.Context, tool.RunnerDeps, tool.RunRequest) tool.RunResult
@@ -71,16 +72,16 @@ type ToolCapabilities interface {
 	Read(context.Context, session.Scope) (resident.Memory, error)
 	WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context
 	Forget(fileops.Binding)
-	ListRollbacks(context.Context) ([]fileops.RollbackInfo, error)
-	RollbackByID(context.Context, uint64) (fileops.RollbackResult, error)
+	ListRollbacks(context.Context) (operationresult.Result[[]fileops.RollbackInfo], error)
+	RollbackByID(context.Context, uint64) (operationresult.Result[fileops.RollbackResult], error)
 }
 
 // PlatformCapabilities supplies platform-owned input normalization, identity, and delivery.
 type PlatformCapabilities interface {
 	NormalizeInput(context.Context, []llm.MessageSegment) ([]llm.MessageSegment, error)
-	SendCommandResult(context.Context, command.Request, *command.Result, *command.Error) (delivery.Receipt, error)
+	SendCommandResult(context.Context, command.Request, command.Result, error) (delivery.Receipt, error)
 	SessionIDCode(string, contextinfo.ChatType) (string, error)
 	RestoreMessageContext(context.Context, context.Context) context.Context
-	SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
-	StartStream(context.Context) (delivery.MessageStream, error)
+	SendTo(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error)
+	StartStream(context.Context) (operationresult.Result[delivery.MessageStream], error)
 }

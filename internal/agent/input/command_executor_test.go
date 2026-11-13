@@ -9,6 +9,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/control"
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 )
@@ -18,40 +19,40 @@ func testCommandText(name string, args ...string) string { return command.Format
 type commandExecutorProbe struct {
 	command.ControlCapabilities
 	row        *storage.Session
-	current    control.CurrentConfirmationResult
+	current    operationresult.Result[control.CurrentConfirmationResult]
 	currentErr error
-	respond    control.RespondConfirmationResult
+	respond    operationresult.Result[control.RespondConfirmationResult]
 	respondErr error
 	request    command.Request
 	result     *command.Result
-	failure    *command.Error
+	failure    error
 	sendErr    error
 	continued  control.Continuation
 	order      []string
 }
 
-func (p *commandExecutorProbe) CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error) {
+func (p *commandExecutorProbe) CurrentBound(context.Context, session.Scope) (operationresult.Result[session.CurrentBoundData], error) {
 	if p.row == nil {
-		return nil, nil, session.ErrNoCurrentSession
+		return operationresult.Result[session.CurrentBoundData]{Status: operationresult.NoCurrentSession, Message: "当前没有会话"}, nil
 	}
-	return p.row, nil, nil
+	return operationresult.Result[session.CurrentBoundData]{Status: operationresult.Success, Data: session.CurrentBoundData{Session: p.row}}, nil
 }
 func (*commandExecutorProbe) Scope(context.Context) session.Scope { return session.Scope{} }
-func (p *commandExecutorProbe) SendCommandResult(_ context.Context, req command.Request, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
+func (p *commandExecutorProbe) SendCommandResult(_ context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
 	p.order = append(p.order, "send")
-	p.request, p.result, p.failure = req, result, failure
+	p.request, p.result, p.failure = req, &result, failure
 	return delivery.Receipt{}, p.sendErr
 }
-func (p *commandExecutorProbe) CurrentConfirmation(context.Context, control.CurrentConfirmationRequest) (control.CurrentConfirmationResult, error) {
+func (p *commandExecutorProbe) CurrentConfirmation(context.Context, control.CurrentConfirmationRequest) (operationresult.Result[control.CurrentConfirmationResult], error) {
 	return p.current, p.currentErr
 }
-func (p *commandExecutorProbe) RespondConfirmation(context.Context, control.RespondConfirmationRequest) (control.RespondConfirmationResult, error) {
+func (p *commandExecutorProbe) RespondConfirmation(context.Context, control.RespondConfirmationRequest) (operationresult.Result[control.RespondConfirmationResult], error) {
 	return p.respond, p.respondErr
 }
-func (p *commandExecutorProbe) ContinueCommandInput(ctx context.Context, continuation control.Continuation) (context.Context, error) {
+func (p *commandExecutorProbe) ContinueCommandInput(ctx context.Context, continuation control.Continuation) (context.Context, operationresult.Result[struct{}], error) {
 	p.order = append(p.order, "continue")
 	p.continued = continuation
-	return ctx, nil
+	return ctx, operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
 func TestCommandContinuationRequiresSuccessfulDelivery(t *testing.T) {
@@ -62,9 +63,9 @@ func TestCommandContinuationRequiresSuccessfulDelivery(t *testing.T) {
 		}
 		router := command.NewRouter([]string{"/"})
 		continuation := control.Continuation{Kind: "input", SessionID: "s", Text: "next"}
-		if err := router.Register(command.NewFunc(command.Info{Name: "go", MinRole: "user"}, func(context.Context, command.Request) (*command.Result, error) {
+		if err := router.Register(command.NewFunc(command.Info{Name: "go", MinRole: "user"}, func(context.Context, command.Request) (command.Result, error) {
 			probe.order = append(probe.order, "execute")
-			return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: "accepted"}, Continuation: &continuation}, nil
+			return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "accepted"}, Continuation: &continuation}, nil
 		})); err != nil {
 			t.Fatal(err)
 		}
@@ -86,8 +87,8 @@ func TestCommandContinuationRequiresSuccessfulDelivery(t *testing.T) {
 func TestAppendConfirmationUsesControlAndContinuesAfterDelivery(t *testing.T) {
 	probe := &commandExecutorProbe{
 		row:     &storage.Session{ID: "s"},
-		current: control.CurrentConfirmationResult{Kind: "append"},
-		respond: control.RespondConfirmationResult{Accepted: true, Continuation: &control.Continuation{Kind: "append", SessionID: "s"}},
+		current: operationresult.Result[control.CurrentConfirmationResult]{Status: operationresult.Success, Data: control.CurrentConfirmationResult{Kind: "append"}},
+		respond: operationresult.Result[control.RespondConfirmationResult]{Status: operationresult.Success, Data: control.RespondConfirmationResult{Accepted: true, Continuation: &control.Continuation{Kind: "append", SessionID: "s"}}},
 	}
 	router := command.NewRouter([]string{"/"})
 	if err := command.RegisterBuiltins(router, command.BuiltinDeps{Control: probe}); err != nil {
@@ -113,24 +114,23 @@ func TestConfirmationWithoutPendingItemReturnsShortNotice(t *testing.T) {
 	}
 }
 
-func TestCommandFailureResultHandling(t *testing.T) {
+func TestCommandErrorsAndBusinessRejectionsStaySeparate(t *testing.T) {
 	tests := []struct {
 		name       string
+		result     command.Result
 		cause      error
-		wantResult bool
-		wantCode   string
+		wantStatus operationresult.Status
 	}{
 		{
-			name:       "permission denied",
-			cause:      &control.Error{Code: command.CodePermissionDenied, Message: "无权执行该操作"},
-			wantResult: false,
-			wantCode:   command.CodePermissionDenied,
+			name:       "business rejection",
+			result:     command.Result{Status: operationresult.Forbidden, Message: "无权执行该操作"},
+			wantStatus: operationresult.Forbidden,
 		},
 		{
-			name:       "other failure",
+			name:       "program failure",
+			result:     command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "partial result"}},
 			cause:      errors.New("underlying failure"),
-			wantResult: true,
-			wantCode:   command.CodeInternalError,
+			wantStatus: operationresult.Success,
 		},
 	}
 
@@ -138,22 +138,26 @@ func TestCommandFailureResultHandling(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			probe := &commandExecutorProbe{}
 			router := command.NewRouter([]string{"/"})
-			if err := router.Register(command.NewFunc(command.Info{Name: "restricted", MinRole: "user"}, func(context.Context, command.Request) (*command.Result, error) {
-				return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: "partial result"}}, tc.cause
+			if err := router.Register(command.NewFunc(command.Info{Name: "restricted", MinRole: "user"}, func(context.Context, command.Request) (command.Result, error) {
+				return tc.result, tc.cause
 			})); err != nil {
 				t.Fatal(err)
 			}
 
 			executor := NewCommandExecutor(CommandExecutorDeps{Router: router, Sessions: probe, Identity: probe, Output: probe})
 			_, handled, err := executor.Handle(t.Context(), "/restricted")
-			if !handled || err == nil || probe.failure == nil {
-				t.Fatalf("handled=%v output error=%v failure=%+v", handled, err, probe.failure)
+			if !handled {
+				t.Fatal("command was not handled")
 			}
-			if got := probe.result != nil; got != tc.wantResult {
-				t.Fatalf("result sent=%v, want %v", got, tc.wantResult)
+			if tc.cause != nil {
+				if err == nil || probe.failure == nil || !errors.Is(err, tc.cause) || !errors.Is(probe.failure, tc.cause) {
+					t.Fatalf("program failure was not preserved: returned=%v sent=%v", err, probe.failure)
+				}
+			} else if err != nil || probe.failure != nil {
+				t.Fatalf("business rejection became Go error: returned=%v sent=%v", err, probe.failure)
 			}
-			if probe.failure.Code != tc.wantCode {
-				t.Fatalf("failure code=%q, want %q", probe.failure.Code, tc.wantCode)
+			if probe.result == nil || probe.result.Status != tc.wantStatus {
+				t.Fatalf("result=%+v, want status %q", probe.result, tc.wantStatus)
 			}
 		})
 	}
@@ -162,8 +166,8 @@ func TestCommandFailureResultHandling(t *testing.T) {
 func TestCommandRequestIsPassedToOutput(t *testing.T) {
 	probe := &commandExecutorProbe{}
 	router := command.NewRouter([]string{"!"})
-	if err := router.Register(command.NewFunc(command.Info{Name: "echo", Aliases: []string{"e"}, MinRole: "user"}, func(context.Context, command.Request) (*command.Result, error) {
-		return &command.Result{Kind: command.ResultKindText, Data: command.TextData{Content: "ok"}}, nil
+	if err := router.Register(command.NewFunc(command.Info{Name: "echo", Aliases: []string{"e"}, MinRole: "user"}, func(context.Context, command.Request) (command.Result, error) {
+		return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "ok"}}, nil
 	})); err != nil {
 		t.Fatal(err)
 	}

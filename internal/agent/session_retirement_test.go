@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"elbot/internal/testutil"
 	"testing"
 	"testing/synctest"
@@ -48,10 +49,11 @@ func TestSessionRetirementWaitsForStoppingRequestAndIgnoresObserverFailure(t *te
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, binding, err := m.sessions.CurrentBound(t.Context(), scope)
-		if err != nil {
-			t.Fatal(err)
+		current, err := m.sessions.CurrentBound(t.Context(), scope)
+		if err != nil || current.Status != operationresult.Success {
+			t.Fatalf("current: %+v %v", current, err)
 		}
+		binding := current.Data.Binding
 		_, err = m.sessions.ObserveBindingChanged(func(context.Context, session.BindingChangedEvent) {}, signal.ConnectOptions{})
 		if err != nil {
 			t.Fatal(err)
@@ -87,7 +89,8 @@ func TestSessionRetirementWaitsForStoppingRequestAndIgnoresObserverFailure(t *te
 		if _, err := m.sessions.Resume(t.Context(), scope, row.ID); err != nil {
 			t.Fatal(err)
 		}
-		_, next, _ := m.sessions.CurrentBound(t.Context(), scope)
+		current, _ := m.sessions.CurrentBound(t.Context(), scope)
+		next := current.Data.Binding
 		if next == binding || !next.Valid() || binding.Valid() {
 			t.Fatal("resume reused retired activation")
 		}
@@ -123,10 +126,11 @@ func TestSessionTimerRestartsAfterCanceledExecutionActuallyExits(t *testing.T) {
 		}()
 		<-started
 		scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-		row, binding, err := m.sessions.CurrentBound(t.Context(), scope)
-		if err != nil {
-			t.Fatal(err)
+		current, err := m.sessions.CurrentBound(t.Context(), scope)
+		if err != nil || current.Status != operationresult.Success {
+			t.Fatalf("current: %+v %v", current, err)
 		}
+		row, binding := current.Data.Session, current.Data.Binding
 		time.Sleep(2 * time.Minute)
 		cancel()
 		synctest.Wait()
@@ -179,10 +183,11 @@ func TestAppendConfirmationExpiryRestartsSessionTimer(t *testing.T) {
 		}()
 		<-started
 		scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-		row, binding, err := m.sessions.CurrentBound(t.Context(), scope)
-		if err != nil {
-			t.Fatal(err)
+		current, err := m.sessions.CurrentBound(t.Context(), scope)
+		if err != nil || current.Status != operationresult.Success {
+			t.Fatalf("current: %+v %v", current, err)
 		}
+		row, binding := current.Data.Session, current.Data.Binding
 		time.Sleep(2 * time.Minute)
 		if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "append"}); err != nil {
 			t.Fatal(err)

@@ -2,7 +2,7 @@ package share
 
 import (
 	"context"
-	"errors"
+	"elbot/internal/operationresult"
 	"strings"
 
 	"elbot/internal/contextinfo"
@@ -13,20 +13,20 @@ import (
 
 // MessageContext 只保存 Agent 输入和运行选择；会话事实始终从 contextinfo 读取。
 type MessageContext struct {
-	RawText               string                                                                     // 平台原始正文。
-	GroupRole             contextinfo.GroupRole                                                      // 输入行为者的群身份。
-	BufferAssistantOutput bool                                                                       // 是否缓冲完整助手输出。
-	ForkFromMessageID     string                                                                     // 分叉来源消息。
-	ResumeSessionID       string                                                                     // 恢复的会话。
-	Segments              []MessageSegment                                                           // 当前输入片段。
-	ContextText           string                                                                     // 引用上下文正文。
-	ContextSegments       []MessageSegment                                                           // 引用上下文片段。
-	Reply                 ReplyContext                                                               // 原始引用事实。
-	Bot                   Identity                                                                   // 平台机器人身份。
-	Mentions              []Mention                                                                  // 提及事实。
-	TriggerKeywords       []string                                                                   // 平台配置的唤醒词。
-	ResolveMedia          func(context.Context, media.PlatformMedia, int64) (delivery.Source, error) // 延迟媒体解析。
-	RestoreMessageContext func(context.Context, context.Context) context.Context                     // 根部注入的平台上下文恢复，内部不解释平台值。
+	RawText               string                                                                                             // 平台原始正文。
+	GroupRole             contextinfo.GroupRole                                                                              // 输入行为者的群身份。
+	BufferAssistantOutput bool                                                                                               // 是否缓冲完整助手输出。
+	ForkFromMessageID     string                                                                                             // 分叉来源消息。
+	ResumeSessionID       string                                                                                             // 恢复的会话。
+	Segments              []MessageSegment                                                                                   // 当前输入片段。
+	ContextText           string                                                                                             // 引用上下文正文。
+	ContextSegments       []MessageSegment                                                                                   // 引用上下文片段。
+	Reply                 ReplyContext                                                                                       // 原始引用事实。
+	Bot                   Identity                                                                                           // 平台机器人身份。
+	Mentions              []Mention                                                                                          // 提及事实。
+	TriggerKeywords       []string                                                                                           // 平台配置的唤醒词。
+	ResolveMedia          func(context.Context, media.PlatformMedia, int64) (operationresult.Result[delivery.Source], error) // 延迟媒体解析。
+	RestoreMessageContext func(context.Context, context.Context) context.Context                                             // 根部注入的平台上下文恢复，内部不解释平台值。
 }
 
 type MessageSegment struct {
@@ -110,10 +110,6 @@ const (
 	InputHandled InputDisposition = iota
 	InputRiskConfirmation
 )
-
-var ErrInputCompacting = errors.New("compacting")
-
-var ErrInputArchived = errors.New("会话已归档")
 
 func StripWakeupPrefix(ctx context.Context, text string) string {
 	if msg, ok := MessageContextFrom(ctx); ok {

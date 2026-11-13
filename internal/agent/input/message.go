@@ -2,6 +2,7 @@ package input
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"log/slog"
 	"reflect"
 	"strings"
@@ -25,7 +26,7 @@ type MessageHandler struct {
 	commands MessageCommands
 	input    MessageInput
 	media    interface {
-		ImportPlatform(context.Context, string, func(context.Context, media.PlatformMedia, int64) (delivery.Source, error), media.PlatformMedia) (media.MediaInfo, error)
+		ImportPlatform(context.Context, string, func(context.Context, media.PlatformMedia, int64) (operationresult.Result[delivery.Source], error), media.PlatformMedia) (operationresult.Result[media.MediaInfo], error)
 		AssociateHistory(context.Context, media.HistoryMessage, int, string, string) error
 	}
 	messages interface {
@@ -134,7 +135,7 @@ type MessageHandlerDeps struct {
 	Commands MessageCommands
 	Input    MessageInput
 	Media    interface {
-		ImportPlatform(context.Context, string, func(context.Context, media.PlatformMedia, int64) (delivery.Source, error), media.PlatformMedia) (media.MediaInfo, error)
+		ImportPlatform(context.Context, string, func(context.Context, media.PlatformMedia, int64) (operationresult.Result[delivery.Source], error), media.PlatformMedia) (operationresult.Result[media.MediaInfo], error)
 		AssociateHistory(context.Context, media.HistoryMessage, int, string, string) error
 	}
 	Messages interface {

@@ -2,6 +2,7 @@ package responses
 
 import (
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/operationresult"
 
 	"context"
 	"encoding/json"
@@ -34,43 +35,51 @@ type Compactor struct {
 	}
 }
 
-func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason string, selection modelmgr.Selection) (prepared *contextmgr.PreparedCompact, err error) {
+func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason string, selection modelmgr.Selection) (prepared operationresult.Result[*contextmgr.PreparedCompact], err error) {
 	target := selection.Origin
 	source, _, err := session.Origin(row)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
-	if err := modelmgr.CanSwitch(source, target); err != nil {
-		return nil, err
+	compatible, err := modelmgr.CanSwitch(source, target)
+	if err != nil {
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
+	}
+	if compatible.Status != operationresult.Success {
+		return operationresult.Result[*contextmgr.PreparedCompact]{Status: compatible.Status, Message: compatible.Message}, nil
 	}
 	client, ok := selection.Client.(api.Compactor)
 	if !ok {
-		return nil, fmt.Errorf("当前 Responses 模型不支持原生压缩")
+		return operationresult.Result[*contextmgr.PreparedCompact]{Status: operationresult.Incompatible, Message: "当前 Responses 模型不支持原生压缩"}, nil
 	}
 	ctx, err = c.View.WithModel(ctx, selection)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
 	cp, err := c.Context.Repository.CurrentCheckpoint(ctx, row.ID)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
 	records, err := c.Context.Repository.LoadNativeWindow(ctx, row, cp)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
-	w, err := c.Context.Load(ctx, row, cp, records)
+	loaded, err := c.Context.Load(ctx, row, cp, records)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
+	if loaded.Status != operationresult.Success {
+		return operationresult.Result[*contextmgr.PreparedCompact]{Status: loaded.Status, Message: loaded.Message}, nil
+	}
+	w := loaded.Data
 	pending, err := c.Context.Repository.PendingInputs(ctx, row.ID)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
 	for _, input := range pending {
 		item, segments, err := decodeQueuedInput(input)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 		}
 		if item.Type != "additional_tools" {
 			w.Materials = append(w.Materials, material{Index: len(w.Items), MessageID: input.MessageID, Segments: segments})
@@ -81,27 +90,30 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 	if cp != nil {
 		calls, err := c.Context.Repository.Calls(ctx, cp.ExchangeID)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 		}
 		if _, err := closeBranchCalls(w, calls); err != nil {
-			return nil, err
+			return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 		}
 	}
 	if err := validateCallLinks(w.Items, false); err != nil {
-		return nil, err
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
 	items, usageID, err := c.Context.Resolve(ctx, w)
 	defer c.Context.Preparer.FinishMaterials(ctx, usageID)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
+	}
+	if items.Status != operationresult.Success {
+		return operationresult.Result[*contextmgr.PreparedCompact]{Status: items.Status, Message: items.Message}, nil
 	}
 	instructions, err := c.System.Build(ctx, agentshare.SystemPromptRequest{Mode: row.Mode, Session: row, Scope: c.Identity.Scope(ctx)})
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
-	request, err := client.PrepareCompact(api.CompactRequest{Model: selection.Model, Instructions: instructions, Input: items})
+	request, err := client.PrepareCompact(api.CompactRequest{Model: selection.Model, Instructions: instructions, Input: items.Data})
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
 	checkpointID := ""
 	if cp != nil {
@@ -110,36 +122,34 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 	refs := append(append([]inputReference(nil), w.References...), inputReference{Kind: "synthetic", Item: json.RawMessage(`{"type":"compaction_trigger"}`)})
 	audit, err := requestAudit(request.ParametersJSON(), refs)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
 	result, err := llm.Retry(ctx, selection.Client, func(ctx context.Context, request api.PreparedCompactRequest) (*api.CompactResult, error) {
 		return c.compactOnce(ctx, row, selection, client, request, checkpointID, audit)
 	}, request)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
 	nextWindow := &nativeWindow{Items: []api.Item{result.Compaction}, Origin: target, Checkpoint: cp, RetainedMediaIDs: w.mediaIDs()}
 	if err := validateCallLinks(nextWindow.Items, false); err != nil {
-		return nil, err
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
 	if err := c.Context.Validate(ctx, nextWindow); err != nil {
-		return nil, err
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
 	seed, err := nextWindow.Seed(nil, nil, "")
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
 	state, err := contextmgr.DecodeState(row.Metadata)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
 	title, generation, base := contextmgr.NextCompactedTitle(row, state.Compact)
 	compact := &contextmgr.CompactState{
-		Pending:         true,
-		SeedID:          seed.ID,
 		SourceSessionID: row.ID,
 		Provider:        selection.Provider,
 		Model:           selection.Model,
@@ -150,7 +160,7 @@ func (c *Compactor) Prepare(ctx context.Context, row *storage.Session, reason st
 	if usage := result.TokenUsage(); usage != nil {
 		compact.SourceTokens, compact.SummaryTokens, compact.TotalTokens, compact.CacheHitTokens = usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens, usage.CacheHitTokens
 	}
-	return &contextmgr.PreparedCompact{Title: title, State: compact, Seed: seed, ExpectedCheckpointID: checkpointID}, nil
+	return operationresult.Result[*contextmgr.PreparedCompact]{Status: operationresult.Success, Data: &contextmgr.PreparedCompact{Title: title, State: compact, Seed: seed, ExpectedCheckpointID: checkpointID}}, nil
 }
 
 func (c *Compactor) compactOnce(ctx context.Context, row *storage.Session, selection modelmgr.Selection, client api.Compactor, request api.PreparedCompactRequest, checkpointID, audit string) (result *api.CompactResult, err error) {

@@ -13,6 +13,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/security"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -64,7 +65,9 @@ func TestSuccessfulPureDirectivesRenewOriginalBinding(t *testing.T) {
 				sessions, err := session.NewSupervisor(t.Context(), cfg, session.SupervisorDeps{
 					SessionIDCode: func(name string, _ contextinfo.ChatType) (string, error) { return name, nil },
 					Store:         store, Models: sessionTestModels{}, Materials: sessionTestMaterials{},
-					ActiveSessionIDs: func() []string { return nil }, CheckForeground: func(context.Context, *storage.Session) error { return nil },
+					ActiveSessionIDs: func() []string { return nil }, CheckForeground: func(context.Context, *storage.Session) (operationresult.Result[struct{}], error) {
+						return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
+					},
 					IsSuperadmin: func(session.Scope) bool { return false }, ReleaseSession: func(string) {}, ReleaseBinding: func(*session.Binding) {},
 				})
 				if err != nil {
@@ -79,10 +82,11 @@ func TestSuccessfulPureDirectivesRenewOriginalBinding(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				_, binding, err := sessions.CurrentBound(t.Context(), identity.Scope(testutil.WithCLIConversation(t.Context())))
-				if err != nil {
-					t.Fatal(err)
+				current, err := sessions.CurrentBound(t.Context(), identity.Scope(testutil.WithCLIConversation(t.Context())))
+				if err != nil || current.Status != operationresult.Success {
+					t.Fatalf("current: %+v %v", current, err)
 				}
+				binding := current.Data.Binding
 				ctx := session.WithBinding(testutil.WithCLIConversation(t.Context()), binding)
 				coordinator := NewInputCoordinator(InputCoordinatorDeps{CommandText: testCommandText,
 					Sessions: sessions, Identity: identity,

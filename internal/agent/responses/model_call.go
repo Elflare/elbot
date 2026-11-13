@@ -8,6 +8,7 @@ import (
 	"elbot/internal/llm"
 	api "elbot/internal/llm/responses"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 	"encoding/json"
 	"errors"
@@ -18,7 +19,7 @@ import (
 	"strings"
 )
 
-func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMessage, stream delivery.MessageStream) (final agentshare.CallOutput, err error) {
+func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMessage, stream delivery.MessageStream) (final operationresult.Result[agentshare.CallOutput], err error) {
 	client := s.selection.Client.(api.Streamer)
 	ctx = agentshare.WithReadOnlyCalls(ctx)
 	var request api.Request
@@ -29,20 +30,20 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 	var calls []llm.ToolCallRequest
 	origin := s.selection.Origin
 	defer func() { s.route.Preparer.FinishMaterials(ctx, usageID) }()
-	prepare := func(ctx context.Context, projection agentshare.CallInput) error {
+	prepare := func(ctx context.Context, projection agentshare.CallInput) (operationresult.Result[struct{}], error) {
 		s.projection, s.tools = projection.Messages, projection.Tools
 		var err error
 		inputs, err = s.route.Repository.PendingInputs(ctx, s.session.ID)
 		if err != nil {
-			return err
+			return operationresult.Result[struct{}]{}, err
 		}
 		inputs, err = s.queueForegroundNotice(ctx, inputs)
 		if err != nil {
-			return err
+			return operationresult.Result[struct{}]{}, err
 		}
 		inputs, err = s.queueToolDefinitions(ctx, inputs)
 		if err != nil {
-			return err
+			return operationresult.Result[struct{}]{}, err
 		}
 		sort.SliceStable(inputs, func(i, j int) bool { return inputOrder(inputs[i]) < inputOrder(inputs[j]) })
 		w := &nativeWindow{}
@@ -53,11 +54,11 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 		}
 		instructions, err := s.instructions(ctx)
 		if err != nil {
-			return err
+			return operationresult.Result[struct{}]{}, err
 		}
 		store, err := client.StoreForModel(s.selection.Model)
 		if err != nil {
-			return err
+			return operationresult.Result[struct{}]{}, err
 		}
 		request = api.Request{
 			Model:        s.selection.Model,
@@ -76,7 +77,7 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 			baseURL = exchange.BaseURL
 			state, err := exchangeStorage(exchange)
 			if err != nil {
-				return err
+				return operationresult.Result[struct{}]{}, err
 			}
 			if !state.Available {
 				if store && state.Requested {
@@ -98,9 +99,9 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 		} else if s.seed != nil {
 			request.PreviousResponseID, baseURL = s.seed.ResponseID, s.seed.BaseURL
 			if store && request.PreviousResponseID != "" && baseURL == origin.BaseURL {
-				w, err = s.route.Context.resolveContinuation(s.seed)
+				w, err = s.route.Context.resolveContinuation(s.seed, s.window.Items)
 				if err != nil {
-					return err
+					return operationresult.Result[struct{}]{}, err
 				}
 				var refs []inputReference
 				for i := range w.Items {
@@ -111,13 +112,36 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 		}
 		replay := !store && (s.checkpoint != nil || s.seed != nil) || request.PreviousResponseID == "" && s.seed != nil || request.PreviousResponseID != "" && baseURL != origin.BaseURL
 		if replay {
-			request, usageID, err = s.replayRequest(ctx, request, inputs, consumed, origin)
+			var replayed operationresult.Result[api.Request]
+			replayed, usageID, err = s.replayRequest(ctx, request, inputs, consumed, origin)
+			if err != nil {
+				return operationresult.Result[struct{}]{}, err
+			}
+			if replayed.Status != operationresult.Success {
+				return operationresult.Result[struct{}]{Status: replayed.Status, Message: replayed.Message}, nil
+			}
+			request = replayed.Data
 		} else {
-			request.Input, usageID, err = s.resolveInputs(ctx, inputs, w)
+			resolved, id, err := s.resolveInputs(ctx, inputs, w)
+			usageID = id
+			if err != nil {
+				return operationresult.Result[struct{}]{}, err
+			}
+			if resolved.Status != operationresult.Success {
+				return operationresult.Result[struct{}]{Status: resolved.Status, Message: resolved.Message}, nil
+			}
+			request.Input = resolved.Data
 		}
-		return err
+		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}
-	attempt := func(ctx context.Context, observation agentshare.CallObservation) (agentshare.CallOutput, error) {
+	attempt := func(ctx context.Context, observation agentshare.CallObservation) (operationresult.Result[agentshare.CallOutput], error) {
+		compatible, err := s.route.View.CheckSelection(s.session, s.selection)
+		if err != nil {
+			return operationresult.Result[agentshare.CallOutput]{}, err
+		}
+		if compatible.Status != operationresult.Success {
+			return operationresult.Result[agentshare.CallOutput]{Status: compatible.Status, Message: compatible.Message}, nil
+		}
 		calls = nil
 		var callErr error
 		result, callErr = s.nativeCall(ctx, client, request, consumed, stream, observation)
@@ -129,16 +153,23 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 			// Partial output is retained as a fact, never as executable tool calls.
 			var failure *llm.CallError
 			if request.PreviousResponseID == "" || result.OutputStarted || !result.FactsSaved || !errors.As(callErr, &failure) || failure.Kind != llm.ErrorPreviousResponseUnavailable {
-				return final, callErr
+				return operationresult.Result[agentshare.CallOutput]{}, callErr
 			}
 			s.route.Preparer.FinishMaterials(ctx, usageID)
 			var err error
-			request, usageID, err = s.replayRequest(ctx, request, inputs, consumed, origin)
+			var replayed operationresult.Result[api.Request]
+			replayed, usageID, err = s.replayRequest(ctx, request, inputs, consumed, origin)
+			if err == nil && replayed.Status != operationresult.Success {
+				return operationresult.Result[agentshare.CallOutput]{Status: replayed.Status, Message: replayed.Message}, nil
+			}
+			if err == nil {
+				request = replayed.Data
+			}
 			if err != nil {
-				return final, err
+				return operationresult.Result[agentshare.CallOutput]{}, err
 			}
 			// replayRequest clears PreviousResponseID; recovery can happen only once.
-			return final, &llm.CallError{Kind: failure.Kind, Retryable: true, Cause: failure.Cause}
+			return operationresult.Result[agentshare.CallOutput]{}, &llm.CallError{Kind: failure.Kind, Retryable: true, Cause: failure.Cause}
 		}
 		seen := map[string]bool{}
 		for _, item := range result.Items {
@@ -146,46 +177,57 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 				continue
 			}
 			if item.CallID == "" || item.Name == "" || seen[item.CallID] {
-				return final, fmt.Errorf("invalid or duplicate Responses function call")
+				return operationresult.Result[agentshare.CallOutput]{}, fmt.Errorf("invalid or duplicate Responses function call")
 			}
 			if !slices.Contains(result.AllowedTools, item.Name) {
-				return final, fmt.Errorf("Responses returned unavailable function %q", item.Name)
+				return operationresult.Result[agentshare.CallOutput]{}, fmt.Errorf("Responses returned unavailable function %q", item.Name)
 			}
 			seen[item.CallID] = true
 			calls = append(calls, llm.ToolCallRequest{ID: item.CallID, Name: item.Name, Arguments: item.Arguments})
 		}
 		if s.session.Mode == storage.SessionModeChat && len(calls) > 0 {
-			return final, fmt.Errorf("unexpected function call with tools disabled")
+			return operationresult.Result[agentshare.CallOutput]{}, fmt.Errorf("unexpected function call with tools disabled")
 		}
 		final.ToolCalls = calls
-		return final, nil
+		return operationresult.Result[agentshare.CallOutput]{Status: operationresult.Success, Data: final}, nil
 	}
 	final, err = s.route.Calls.Call(ctx, s.session, s.selection, s.projection, s.tools, pending, inputCommitter{state: s}, stream, prepare, attempt)
 	s.sourceText = outputText(result.Items)
 	if err != nil {
-		return final, err
+		return operationresult.Result[agentshare.CallOutput]{}, err
+	}
+	if final.Status != operationresult.Success {
+		return final, nil
 	}
 	s.exchange, s.response, s.consumed, s.calls = result.Exchange, result.Response, consumed, calls
 	return final, nil
 }
 
-func (s *turnState) replayRequest(ctx context.Context, request api.Request, inputs []storage.NativeInput, consumed []string, target llm.Origin) (api.Request, media.UsageID, error) {
+func (s *turnState) replayRequest(ctx context.Context, request api.Request, inputs []storage.NativeInput, consumed []string, target llm.Origin) (operationresult.Result[api.Request], media.UsageID, error) {
 	if s.window == nil {
 		records, err := s.route.Repository.LoadNativeWindow(ctx, s.session, s.checkpoint)
 		if err != nil {
-			return request, "", err
+			return operationresult.Result[api.Request]{}, "", err
 		}
-		s.window, err = s.route.Context.Load(ctx, s.session, s.checkpoint, records)
+		loaded, err := s.route.Context.Load(ctx, s.session, s.checkpoint, records)
 		if err != nil {
-			return request, "", err
+			return operationresult.Result[api.Request]{}, "", err
 		}
+		if loaded.Status != operationresult.Success {
+			return operationresult.Result[api.Request]{Status: loaded.Status, Message: loaded.Message}, "", nil
+		}
+		s.window = loaded.Data
 	}
 	// resolveInputs appends pending inputs; preserve the cached committed prefix.
 	w := *s.window
 	w.Items = append([]api.Item(nil), w.Items...)
 	w.Materials = append([]material(nil), w.Materials...)
-	if err := checkWindowTarget(&w, target); err != nil {
-		return request, "", err
+	compatible, err := checkWindowTarget(&w, target)
+	if err != nil {
+		return operationresult.Result[api.Request]{}, "", err
+	}
+	if compatible.Status != operationresult.Success {
+		return operationresult.Result[api.Request]{Status: compatible.Status, Message: compatible.Message}, "", nil
 	}
 	request.PreviousResponseID = ""
 	// A retry replaces the actual-input manifest while the consumed-input list
@@ -195,16 +237,18 @@ func (s *turnState) replayRequest(ctx context.Context, request api.Request, inpu
 		refs = append(refs, inputReference{Kind: "input", ID: id})
 	}
 	s.requestReferences = refs
-	var usageID media.UsageID
-	var err error
-	request.Input, usageID, err = s.resolveInputs(ctx, inputs, &w)
+	resolved, usageID, err := s.resolveInputs(ctx, inputs, &w)
 	if err != nil {
-		return request, usageID, err
+		return operationresult.Result[api.Request]{}, usageID, err
 	}
+	if resolved.Status != operationresult.Success {
+		return operationresult.Result[api.Request]{Status: resolved.Status, Message: resolved.Message}, usageID, nil
+	}
+	request.Input = resolved.Data
 	if err := validateCallLinks(request.Input, false); err != nil {
-		return request, usageID, err
+		return operationresult.Result[api.Request]{}, usageID, err
 	}
-	return request, usageID, nil
+	return operationresult.Result[api.Request]{Status: operationresult.Success, Data: request}, usageID, nil
 }
 
 func outputItems(response *api.Response, completed map[int]api.Item) []api.Item {

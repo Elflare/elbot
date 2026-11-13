@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"log/slog"
 
 	"elbot/internal/delivery"
@@ -35,3 +36,7 @@ func (o backgroundTurnOutput) Send(ctx context.Context, event delivery.StreamEve
 func (o backgroundTurnOutput) Notify(ctx context.Context, level slog.Level, text string) {}
 
 func (o backgroundTurnOutput) SendPreview(ctx context.Context, text ...string) {}
+
+func (o backgroundTurnOutput) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
+	return operationresult.Result[delivery.Receipt]{Status: operationresult.Success}, nil
+}

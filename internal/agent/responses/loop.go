@@ -3,6 +3,7 @@ package responses
 import (
 	"context"
 	agentshare "elbot/internal/agent/share"
+	"elbot/internal/operationresult"
 	"fmt"
 	"strings"
 
@@ -29,11 +30,11 @@ type preparedLoop struct {
 }
 
 // CheckSelection validates the native capability before any turn input is saved.
-func (r *Loop) CheckSelection(selection modelmgr.Selection) error {
+func (r *Loop) CheckSelection(selection modelmgr.Selection) operationresult.Result[struct{}] {
 	if _, ok := selection.Client.(api.Streamer); !ok {
-		return fmt.Errorf("provider %q does not provide Responses streaming", selection.Provider)
+		return operationresult.Result[struct{}]{Status: operationresult.Incompatible, Message: fmt.Sprintf("provider %q does not provide Responses streaming", selection.Provider)}
 	}
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}
 }
 
 type turnState struct {
@@ -57,78 +58,90 @@ type turnState struct {
 	calls      []llm.ToolCallRequest
 }
 
-func (r *Loop) PrepareTurn(ctx context.Context, materials agentshare.TurnMaterials) (agentshare.PreparedLoop, error) {
+func (r *Loop) PrepareTurn(ctx context.Context, materials agentshare.TurnMaterials) (operationresult.Result[agentshare.PreparedLoop], error) {
 	checkpoint, err := r.Repository.CurrentCheckpoint(ctx, materials.Session.ID)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[agentshare.PreparedLoop]{}, err
 	}
 	records, err := r.Repository.LoadNativeWindow(ctx, materials.Session, checkpoint)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[agentshare.PreparedLoop]{}, err
 	}
 	seed := records.Seed
 	if checkpoint == nil && seed == nil {
-		if err := r.validateInitialInputs(ctx, materials.Session, materials.Loaded.Messages); err != nil {
-			return nil, err
-		}
 		if len(materials.Loaded.Messages) > 0 {
-			if err := checkInputFormat(materials.Session); err != nil {
-				return nil, err
+			checked, err := checkInputFormat(materials.Session)
+			if err != nil {
+				return operationresult.Result[agentshare.PreparedLoop]{}, err
 			}
+			if checked.Status != operationresult.Success {
+				return operationresult.Result[agentshare.PreparedLoop]{Status: checked.Status, Message: checked.Message}, nil
+			}
+		}
+		if err := r.validateInitialInputs(ctx, materials.Session, materials.Loaded.Messages); err != nil {
+			return operationresult.Result[agentshare.PreparedLoop]{}, err
 		}
 	}
 	if checkpoint == nil && seed != nil && seed.Consumed {
-		return nil, fmt.Errorf("原生 seed 已消费但缺少 checkpoint")
+		return operationresult.Result[agentshare.PreparedLoop]{}, fmt.Errorf("原生 seed 已消费但缺少 checkpoint")
 	}
 	if seed != nil {
 		origin, known, err := session.Origin(materials.Session)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[agentshare.PreparedLoop]{}, err
 		}
 		if !known || seed.APIType != string(origin.APIType) || seed.Provider != origin.Provider {
-			return nil, fmt.Errorf("原生 seed 厂商或协议不匹配")
+			return operationresult.Result[agentshare.PreparedLoop]{}, fmt.Errorf("原生 seed 厂商或协议不匹配")
 		}
 	}
 	if checkpoint != nil && ((seed == nil && checkpoint.SeedID != "") || (seed != nil && checkpoint.SeedID != seed.ID)) {
-		return nil, fmt.Errorf("原生 checkpoint 的根材料不匹配")
+		return operationresult.Result[agentshare.PreparedLoop]{}, fmt.Errorf("原生 checkpoint 的根材料不匹配")
 	}
 	definitions := toolDefinitions{}
 	var window *nativeWindow
 	if checkpoint != nil || seed != nil {
-		window, err = r.Context.Load(ctx, materials.Session, checkpoint, records)
+		loaded, err := r.Context.Load(ctx, materials.Session, checkpoint, records)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[agentshare.PreparedLoop]{}, err
 		}
+		if loaded.Status != operationresult.Success {
+			return operationresult.Result[agentshare.PreparedLoop]{Status: loaded.Status, Message: loaded.Message}, nil
+		}
+		window = loaded.Data
 		definitions, err = definitionsIn(window.Items)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[agentshare.PreparedLoop]{}, err
 		}
 	}
-	return &preparedLoop{materials: materials, state: &turnState{route: r, session: materials.Session, checkpoint: checkpoint, seed: seed, window: window, definitions: definitions}}, nil
+	return operationresult.Result[agentshare.PreparedLoop]{Status: operationresult.Success, Data: &preparedLoop{materials: materials, state: &turnState{route: r, session: materials.Session, checkpoint: checkpoint, seed: seed, window: window, definitions: definitions}}}, nil
 }
 
 func (p *preparedLoop) InputCommitter() agentshare.MessageCommitter {
 	return inputCommitter{state: p.state}
 }
 
-func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (*storage.Message, error) {
+func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (operationresult.Result[*storage.Message], error) {
 	s := p.state
 	s.ctx, s.requestCtx, s.selection, s.output = ctx, agentshare.WithReadOnlyCalls(requestCtx), in.Selection, out
 	if err := s.requestCtx.Err(); err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Message]{}, err
 	}
-	if err := s.ensureInputFormat(s.requestCtx); err != nil {
-		return nil, err
+	checked, err := s.ensureInputFormat(s.requestCtx)
+	if err != nil {
+		return operationresult.Result[*storage.Message]{}, err
+	}
+	if checked.Status != operationresult.Success {
+		return operationresult.Result[*storage.Message]{Status: checked.Status, Message: checked.Message}, nil
 	}
 	instructions, err := s.instructions(s.requestCtx)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Message]{}, err
 	}
 	s.projection = []llm.LLMMessage{{Role: llm.RoleSystem, Segments: llm.TextSegments(instructions)}}
 	for _, row := range p.materials.Loaded.Messages {
 		projected, err := agentshare.MessageFromStorage(row)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[*storage.Message]{}, err
 		}
 		s.projection = append(s.projection, projected)
 	}
@@ -136,16 +149,16 @@ func (p *preparedLoop) PrepareInput(ctx, requestCtx context.Context, in agentsha
 	s.projection = append(s.projection, llm.LLMMessage{Role: llm.RoleUser, Segments: p.materials.Input.Segments})
 	s.tools, err = s.route.Tools.Schemas(s.requestCtx, s.session)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Message]{}, err
 	}
 	segments, tools, err := s.route.Preparer.PrepareInput(s.requestCtx, in, user, p.materials.Input.PlatformText, p.materials.Input.Segments, s.projection, s.tools, p.materials.Input.NeedsElyphRules)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*storage.Message]{}, err
 	}
 	s.tools = tools
 	user.Content, user.Segments = agentshare.MessageContent(segments), agentshare.StoredMessageSegments(segments)
 	s.projection[len(s.projection)-1].Segments = segments
-	return user, nil
+	return operationresult.Result[*storage.Message]{Status: operationresult.Success, Data: user}, nil
 }
 
 func (s *turnState) instructions(ctx context.Context) (string, error) {
@@ -159,14 +172,12 @@ func (s *turnState) instructions(ctx context.Context) (string, error) {
 	return text, nil
 }
 
-func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) agentshare.LoopResult {
+func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (operationresult.Result[agentshare.LoopResult], error) {
 	s := p.state
 	s.ctx, s.requestCtx = ctx, agentshare.WithReadOnlyCalls(requestCtx)
 	result := agentshare.LoopResult{Selection: in.Selection}
-	fail := func(err error) agentshare.LoopResult {
-		result.Outcome = agentshare.Failed
-		result.Err = err
-		return result
+	fail := func(err error) (operationresult.Result[agentshare.LoopResult], error) {
+		return operationresult.Result[agentshare.LoopResult]{}, err
 	}
 	if err := s.closeInterruptedCalls(s.requestCtx, p.materials.Loaded.Messages); err != nil {
 		return fail(err)
@@ -183,8 +194,8 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 		if session.WasPromoted(s.session) && !foregroundPrepared {
 			foregroundPrepared = true
 			s.selection = s.route.SelectionForTurn(s.requestCtx, s.session)
-			if err := s.route.CheckSelection(s.selection); err != nil {
-				return fail(err)
+			if checked := s.route.CheckSelection(s.selection); checked.Status != operationresult.Success {
+				return operationresult.Result[agentshare.LoopResult]{Status: checked.Status, Message: checked.Message}, nil
 			}
 			s.requestCtx, err = s.route.View.WithModel(s.requestCtx, s.selection)
 			if err == nil {
@@ -210,8 +221,12 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			s.projection = updated
 		}
 		result.Selection = s.selection
-		if err := s.route.View.CheckSelection(s.session, s.selection); err != nil {
+		compatible, err := s.route.View.CheckSelection(s.session, s.selection)
+		if err != nil {
 			return fail(err)
+		}
+		if compatible.Status != operationresult.Success {
+			return operationresult.Result[agentshare.LoopResult]{Status: compatible.Status, Message: compatible.Message}, nil
 		}
 		var pending *agentshare.PendingUserMessage
 		if toolPhase {
@@ -233,10 +248,14 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			StageStartedAt: storage.Now(),
 			Usage:          result.Usage,
 		})
-		final, err := s.call(s.requestCtx, pending, stream)
+		called, err := s.call(s.requestCtx, pending, stream)
 		if err != nil {
 			return fail(err)
 		}
+		if called.Status != operationresult.Success {
+			return operationresult.Result[agentshare.LoopResult]{Status: called.Status, Message: called.Message}, nil
+		}
+		final := called.Data
 		result.Usage = final.Usage
 		immediate, later := delivery.SplitByDeliveryTiming(final.Outputs)
 		if len(s.calls) == 0 {
@@ -254,7 +273,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 				Stream:           stream,
 				Outputs:          later,
 			}
-			return result
+			return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: result}, nil
 		}
 		if _, err := stream.Send(s.requestCtx, delivery.StreamEvent{Type: delivery.StreamSend, Text: final.Text}); err != nil {
 			return fail(err)
@@ -304,10 +323,14 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 			// The next request retains all calls and their explicit skip outputs.
 			// It sends no tools, so another function call is a provider error.
 			stream = out.StartStream(s.requestCtx)
-			summary, err := s.call(s.requestCtx, pending, stream)
+			summarized, err := s.call(s.requestCtx, pending, stream)
 			if err != nil {
 				return fail(err)
 			}
+			if summarized.Status != operationresult.Success {
+				return operationresult.Result[agentshare.LoopResult]{Status: summarized.Status, Message: summarized.Message}, nil
+			}
+			summary := summarized.Data
 			if len(s.calls) > 0 {
 				return fail(fmt.Errorf("summary response returned function calls with no tools"))
 			}
@@ -327,12 +350,12 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 				Stream:           stream,
 				Outputs:          later,
 			}
-			return result
+			return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: result}, nil
 		}
 		if !toolPhase {
 			if !s.route.Turns.StartToolPhase(s.session.ID, turn.AttemptFromContext(s.ctx)) {
 				result.Outcome = agentshare.Stopped
-				return result
+				return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: result}, nil
 			}
 			toolPhase = true
 		}
@@ -346,7 +369,7 @@ func (p *preparedLoop) RunLoop(ctx, requestCtx context.Context, in agentshare.Lo
 				return fail(err)
 			}
 			result.Outcome = agentshare.Stopped
-			return result
+			return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: result}, nil
 		}
 		if execution.ConfirmationExtra != "" {
 			message := &storage.Message{SessionID: s.session.ID, Role: storage.RoleUser, Content: "补充：" + execution.ConfirmationExtra}

@@ -8,9 +8,9 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 
 	"elbot/internal/session"
-	"elbot/internal/storage"
 	"elbot/internal/turn"
 )
 
@@ -20,14 +20,14 @@ type ConfirmationIdentity interface {
 }
 
 type ConfirmationOutput interface {
-	Send(context.Context, delivery.StreamEvent) (delivery.Receipt, error)
+	SendTo(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error)
 }
 
 // ConfirmationCoordinatorDeps declares only the capabilities consumed by ConfirmationCoordinator.
 type ConfirmationCoordinatorDeps struct {
 	CommandText func(string, ...string) string // 根部绑定配置首个前缀的命令组装能力。
 	Sessions    interface {
-		CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
+		CurrentBound(context.Context, session.Scope) (operationresult.Result[session.CurrentBoundData], error)
 		EnterActivation(context.Context, session.Scope, ...string) (context.Context, func(), error)
 		RecordActivity(context.Context, *session.Binding) error
 	}

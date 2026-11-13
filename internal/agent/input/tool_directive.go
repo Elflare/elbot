@@ -3,6 +3,7 @@ package input
 import (
 	"context"
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 	"elbot/internal/tool"
 	"sort"
 	"strings"
@@ -176,37 +177,43 @@ func sortedUnique(values []string) []string {
 	return out
 }
 
-func (c *InputCoordinator) applyInputDirectives(ctx context.Context, row *storage.Session, text string) (toolDirectiveResult, skillDirectiveResult, error) {
-	locked, release, err := c.execution.EnterInput(ctx, row)
+func (c *InputCoordinator) applyInputDirectives(ctx context.Context, row *storage.Session, text string) (operationresult.Result[toolDirectiveResult], skillDirectiveResult, error) {
+	locked, admitted, release, err := c.execution.EnterInput(ctx, row)
 	if err != nil {
-		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err
+		return operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, err
+	}
+	if admitted.Status != operationresult.Success {
+		return operationresult.Result[toolDirectiveResult]{Status: admitted.Status, Message: admitted.Message}, skillDirectiveResult{}, nil
 	}
 	ctx = locked
 	release()
 	ctx, err = c.execution.ModelContext(ctx, row)
 	if err != nil {
-		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err
+		return operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, err
 	}
 	tools := c.prepareToolDirectives(ctx, row, text)
 	if tools.Err != nil {
-		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, tools.Err
+		return operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, tools.Err
 	}
 	skills := c.prepareSkillDirectives(ctx, row, tools.Text)
 	if skills.Err != nil {
-		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, skills.Err
+		return operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, skills.Err
 	}
 	update := tool.StateUpdate{
 		Tools: append(append([]tool.DiscoveredTool(nil), tools.update.Tools...), skills.update.Tools...),
 		Tags:  tools.update.Tags,
 	}
-	locked, release, err = c.execution.EnterInput(ctx, row)
+	locked, admitted, release, err = c.execution.EnterInput(ctx, row)
 	if err != nil {
-		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err
+		return operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, err
+	}
+	if admitted.Status != operationresult.Success {
+		return operationresult.Result[toolDirectiveResult]{Status: admitted.Status, Message: admitted.Message}, skillDirectiveResult{}, nil
 	}
 	committed, err := agentshare.CommitToolState(locked, c.toolState, row, update)
 	release()
 	if err != nil {
-		return toolDirectiveResult{Text: text}, skillDirectiveResult{Text: text}, err
+		return operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, err
 	}
 	toolNames := map[string]bool{}
 	skillNames := map[string]bool{}
@@ -236,5 +243,5 @@ func (c *InputCoordinator) applyInputDirectives(ctx context.Context, row *storag
 			skills.ExistingWrappers = append(skills.ExistingWrappers, name)
 		}
 	}
-	return tools, skills, nil
+	return operationresult.Result[toolDirectiveResult]{Status: operationresult.Success, Data: tools}, skills, nil
 }

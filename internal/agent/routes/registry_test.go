@@ -18,6 +18,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
 	"elbot/internal/session"
@@ -45,9 +46,11 @@ type testLoop struct {
 	ran      int
 }
 
-func (*testLoop) CheckSelection(modelmgr.Selection) error { return nil }
+func (*testLoop) CheckSelection(modelmgr.Selection) operationresult.Result[struct{}] {
+	return operationresult.Result[struct{}]{Status: operationresult.Success}
+}
 
-func (l *testLoop) PrepareTurn(ctx context.Context, materials agentshare.TurnMaterials) (agentshare.PreparedLoop, error) {
+func (l *testLoop) PrepareTurn(ctx context.Context, materials agentshare.TurnMaterials) (operationresult.Result[agentshare.PreparedLoop], error) {
 	if contextinfo.RootRequestIDFromContext(ctx) == "" {
 		l.t.Fatal("materials loaded without request registration")
 	}
@@ -55,7 +58,7 @@ func (l *testLoop) PrepareTurn(ctx context.Context, materials agentshare.TurnMat
 		l.t.Fatalf("preparation model facts = %+v, %v", model, ok)
 	}
 	l.prepared++
-	return &testPrepared{loop: l, user: materials.UserMessage}, nil
+	return operationresult.Result[agentshare.PreparedLoop]{Status: operationresult.Success, Data: &testPrepared{loop: l, user: materials.UserMessage}}, nil
 }
 
 type testPrepared struct {
@@ -67,18 +70,18 @@ func (p *testPrepared) InputCommitter() agentshare.MessageCommitter {
 	return p.loop.messages.Committer("append_user_message")
 }
 
-func (p *testPrepared) PrepareInput(_, requestCtx context.Context, in agentshare.LoopInput, _ agentshare.Output) (*storage.Message, error) {
+func (p *testPrepared) PrepareInput(_, requestCtx context.Context, in agentshare.LoopInput, _ agentshare.Output) (operationresult.Result[*storage.Message], error) {
 	if contextinfo.RootRequestIDFromContext(requestCtx) != in.RequestID {
 		p.loop.t.Fatal("preparation lost parent request")
 	}
 	p.user.Content = "canonical input"
-	return p.user, nil
+	return operationresult.Result[*storage.Message]{Status: operationresult.Success, Data: p.user}, nil
 }
 
-func (p *testPrepared) RunLoop(_, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) agentshare.LoopResult {
+func (p *testPrepared) RunLoop(_, requestCtx context.Context, in agentshare.LoopInput, out agentshare.Output) (operationresult.Result[agentshare.LoopResult], error) {
 	p.loop.ran++
-	return agentshare.LoopResult{Outcome: agentshare.Completed, Selection: in.Selection, Usage: &llm.Usage{TotalTokens: func() *int64 { n := int64(7); return &n }()},
-		Commit: agentshare.ReplyCommitInput{Stream: out.StartStream(requestCtx), Session: in.Session, Text: "stored reply", RawText: "source reply", PlatformText: "visible reply"}}
+	return operationresult.Result[agentshare.LoopResult]{Status: operationresult.Success, Data: agentshare.LoopResult{Outcome: agentshare.Completed, Selection: in.Selection, Usage: &llm.Usage{TotalTokens: func() *int64 { n := int64(7); return &n }()},
+		Commit: agentshare.ReplyCommitInput{Stream: out.StartStream(requestCtx), Session: in.Session, Text: "stored reply", RawText: "source reply", PlatformText: "visible reply"}}}, nil
 }
 
 type testCompactor struct{ calls int }
@@ -113,6 +116,9 @@ func (o *testOutput) Send(ctx context.Context, event delivery.StreamEvent) (deli
 	}
 	o.sent = append(o.sent, event.Text)
 	return delivery.Receipt{}, nil
+}
+func (*testOutput) SendTo(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
+	return operationresult.Result[delivery.Receipt]{Status: operationresult.Success}, nil
 }
 func (*testOutput) Notify(context.Context, slog.Level, string) {}
 func (*testOutput) SendPreview(context.Context, ...string)     {}
@@ -163,7 +169,11 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	info, requestCtx, done, _ := requests.Start(ctx, request.StartRequest{SessionID: row.ID, Kind: request.KindTurn})
 	defer done()
 	in.RequestID = info.ID
-	_, result := runner.RunTurn(ctx, requestCtx, in, out)
+	_, operation, err := runner.RunTurn(ctx, requestCtx, in, out)
+	if err != nil || operation.Status != operationresult.Success {
+		t.Fatalf("common execution failed: %+v / %v", operation, err)
+	}
+	result := operation.Data
 	if result.Outcome != agentshare.Completed || result.Committed.MessageID == "" || result.Usage == nil || (result.Usage.TotalTokens == nil || *result.Usage.TotalTokens != 7) {
 		t.Fatalf("common execution failed: %+v", result)
 	}

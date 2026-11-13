@@ -3,7 +3,6 @@ package input
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"strings"
 
@@ -14,6 +13,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -26,10 +26,10 @@ type BackgroundHandler struct {
 	BackgroundHandlerDeps // Borrowed preparation capabilities, wired by the Agent root.
 }
 
-func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundRequest) (context.Context, turn.Result) {
+func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundRequest) (context.Context, operationresult.Result[turn.Result], error) {
 	actor := req.Actor
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	facts.Mode, facts.TaskType, facts.TaskID = storage.SessionModeBackground, req.TaskType, req.TaskID
+	facts.Mode, facts.TaskType, facts.TaskID, facts.SessionID = storage.SessionModeBackground, req.TaskType, req.TaskID, req.SessionID
 	ctx = contextinfo.WithExecution(ctx, facts)
 	ctx = contextinfo.WithoutConversation(ctx)
 	previous, _ := agentshare.MessageContextFrom(ctx)
@@ -43,28 +43,38 @@ func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundReq
 	}
 
 	sessionScope := session.Scope{Owner: actor.ActorIdentity, Platform: actor.Platform, TaskType: req.TaskType, TaskID: req.TaskID}
-	bgSession, err := r.Sessions.PrepareBackground(ctx, sessionScope, session.BackgroundRequest{TargetPlatforms: req.TargetPlatforms, SessionID: req.SessionID, TaskType: string(req.TaskType), TaskID: req.TaskID, Name: req.Name, Metadata: req.Metadata})
+	prepared, err := r.Sessions.PrepareBackground(ctx, sessionScope, session.BackgroundRequest{TargetPlatforms: req.TargetPlatforms, SessionID: req.SessionID, TaskType: string(req.TaskType), TaskID: req.TaskID, Name: req.Name, Metadata: req.Metadata})
 	if err != nil {
-		if errors.Is(err, session.ErrForegroundSession) {
-			return ctx, turn.Result{SessionID: req.SessionID, TakenOver: true, Outcome: "taken_over"}
-		}
-		return ctx, turn.Result{Err: err}
+		return ctx, operationresult.Result[turn.Result]{}, err
 	}
+	if prepared.Status != operationresult.Success {
+		if prepared.Status == operationresult.Conflict {
+			takenOver, err := r.Sessions.SessionTakenOver(ctx, req.SessionID)
+			if err != nil {
+				return ctx, operationresult.Result[turn.Result]{}, err
+			}
+			if takenOver {
+				return ctx, operationresult.Result[turn.Result]{Status: operationresult.Success, Data: turn.Result{SessionID: req.SessionID, TakenOver: true, Outcome: "taken_over"}}, nil
+			}
+		}
+		return ctx, operationresult.Result[turn.Result]{Status: prepared.Status, Message: prepared.Message}, nil
+	}
+	bgSession := prepared.Data
 	facts.SessionID = bgSession.ID
 	ctx = contextinfo.WithExecution(ctx, facts)
 	if err := r.EnsureWorkspaceDir(ctx, bgSession.ID, scope.Dir); err != nil {
-		return ctx, turn.Result{SessionID: bgSession.ID, Err: err}
+		return ctx, operationresult.Result[turn.Result]{}, err
 	}
 	var preloaded backgroundPreloadResult
 	if req.SessionID == "" {
 		ctx, err = r.Execution.ModelContext(ctx, bgSession)
 		if err != nil {
-			return ctx, turn.Result{SessionID: bgSession.ID, Err: err}
+			return ctx, operationresult.Result[turn.Result]{}, err
 		}
 		preloaded = r.preloadBackgroundResources(ctx, bgSession, req.ToolListNames, req.ELwispTools, req.AllowedToolNames)
 	}
 	if preloaded.Err != nil {
-		return ctx, turn.Result{SessionID: bgSession.ID, Err: preloaded.Err}
+		return ctx, operationresult.Result[turn.Result]{}, preloaded.Err
 	}
 	record := globalevents.LogRecord{
 		Category:     globalevents.LogCategoryAudit,

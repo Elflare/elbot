@@ -7,6 +7,7 @@ import (
 	commandpkg "elbot/internal/command"
 	"elbot/internal/control"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/operationresult"
 	"elbot/internal/security"
 	"elbot/internal/storage/sqlite"
@@ -25,6 +26,7 @@ import (
 
 	"elbot/internal/request"
 	"elbot/internal/session"
+	"elbot/internal/signal"
 
 	"elbot/internal/turn"
 )
@@ -152,6 +154,48 @@ func TestConfirmationTerminationAndPromptFailure(t *testing.T) {
 type fixedWaitPolicy time.Duration
 
 func (p fixedWaitPolicy) WaitTimeout(context.Context) time.Duration { return time.Duration(p) }
+
+func TestStaleConfirmationAttemptLogsSkippedWait(t *testing.T) {
+	var records []events.LogRecord
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
+		if record.EventName == "risk_confirmation_result" {
+			records = append(records, record)
+		}
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
+
+	turns := turn.NewSupervisor(testutil.IDSequence())
+	defer turns.StopAll()
+	output := confirmationOutput{texts: make(chan string, 1)}
+	coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{
+		CommandText: testCommandText,
+		Turns:       turns,
+		Output:      output,
+		Policy:      fixedWaitPolicy(time.Second),
+	})
+	result, err := coordinator.AwaitToolConfirmation(context.Background(), "stale", llm.ToolCallRequest{ID: "call", Name: "danger", Arguments: "{}"}, toolshare.RiskAssessment{Level: security.RiskHigh}, nil)
+	if err != nil || result.Status != operationresult.Conflict {
+		t.Fatalf("result=%+v error=%v", result, err)
+	}
+	if len(output.texts) != 0 {
+		t.Fatalf("stale confirmation sent a prompt: %q", <-output.texts)
+	}
+
+	if len(records) != 1 {
+		t.Fatalf("stale confirmation audit records=%+v", records)
+	}
+	record := records[0]
+	var content map[string]string
+	if err := json.Unmarshal([]byte(record.Content), &content); err != nil {
+		t.Fatal(err)
+	}
+	if record.ResultStatus != events.ResultSkipped || content["action"] != "skip" || content["reason"] != "confirmation wait is no longer current" {
+		t.Fatalf("stale confirmation record=%+v content=%v", record, content)
+	}
+}
 
 type confirmationOutput struct {
 	err    error

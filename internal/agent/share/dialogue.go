@@ -3,6 +3,7 @@ package share
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 
 	"elbot/internal/contextmgr"
 	"elbot/internal/delivery"
@@ -56,37 +57,34 @@ type LoopInput struct {
 
 // Each prepared loop keeps its own typed protocol state for this turn.
 type Loop interface {
-	CheckSelection(modelmgr.Selection) error
-	PrepareTurn(context.Context, TurnMaterials) (PreparedLoop, error)
+	CheckSelection(modelmgr.Selection) operationresult.Result[struct{}]
+	PrepareTurn(context.Context, TurnMaterials) (operationresult.Result[PreparedLoop], error)
 }
 type PreparedLoop interface {
 	InputCommitter() MessageCommitter
-	PrepareInput(context.Context, context.Context, LoopInput, Output) (*storage.Message, error)
-	RunLoop(context.Context, context.Context, LoopInput, Output) LoopResult
+	PrepareInput(context.Context, context.Context, LoopInput, Output) (operationresult.Result[*storage.Message], error)
+	RunLoop(context.Context, context.Context, LoopInput, Output) (operationresult.Result[LoopResult], error)
 }
 type LoopResolver interface {
 	LoopFor(llm.APIType) (Loop, error)
 }
 
 type LoopResult struct {
-	Outcome           Outcome
-	Err               error
-	QuietCancellation bool
-	Commit            ReplyCommitInput
-	Usage             *llm.Usage
-	Selection         modelmgr.Selection
+	Outcome   Outcome
+	Commit    ReplyCommitInput
+	Usage     *llm.Usage
+	Selection modelmgr.Selection
 }
 type TurnResult struct {
-	Outcome           Outcome
-	Err               error
-	QuietCancellation bool
-	Committed         ReplyCommitResult
-	Usage             *llm.Usage
-	Selection         modelmgr.Selection
-	StartedAt         time.Time
+	Outcome   Outcome
+	Committed ReplyCommitResult
+	Usage     *llm.Usage
+	Selection modelmgr.Selection
+	StartedAt time.Time
 }
 
 type Output interface {
+	SendTo(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error)
 	StartStream(ctx context.Context) delivery.MessageStream
 	Send(context.Context, delivery.StreamEvent) (delivery.Receipt, error)
 	// Notify publishes a business fact to its captured conversation; callers
@@ -367,7 +365,7 @@ func MessageContent(segments []llm.MessageSegment) string {
 }
 
 type PreparedTurn interface {
-	PrepareTurn(context.Context) (PreparedLoop, error)
+	PrepareTurn(context.Context) (operationresult.Result[PreparedLoop], error)
 }
 
 type CallInput struct {

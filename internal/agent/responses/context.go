@@ -3,6 +3,7 @@ package responses
 import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 
 	"context"
 	"encoding/json"
@@ -27,7 +28,7 @@ type Context struct {
 		Calls(context.Context, string) ([]storage.NativeCall, error)
 	}
 	Preparer interface {
-		PrepareMaterials(context.Context, []llm.LLMMessage) ([]llm.LLMMessage, media.UsageID, error)
+		PrepareMaterials(context.Context, []llm.LLMMessage) (operationresult.Result[[]llm.LLMMessage], media.UsageID, error)
 		FinishMaterials(context.Context, media.UsageID)
 	}
 }
@@ -47,27 +48,31 @@ type nativeWindow struct {
 }
 
 // Load reconstructs protocol state from one batch of raw storage records.
-func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *storage.NativeCheckpoint, records *storage.NativeWindowRecords) (*nativeWindow, error) {
+func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *storage.NativeCheckpoint, records *storage.NativeWindowRecords) (operationresult.Result[*nativeWindow], error) {
 	origin, known, err := session.Origin(row)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*nativeWindow]{}, err
 	}
 	if !known || origin.APIType != llm.APITypeResponse || origin.Provider == "" {
-		return nil, fmt.Errorf("Responses 原生归属不完整")
+		return operationresult.Result[*nativeWindow]{}, fmt.Errorf("Responses 原生归属不完整")
 	}
 	w := &nativeWindow{Origin: origin, Checkpoint: checkpoint}
 	seed := records.Seed
 	if seed != nil {
 		if seed.APIType != string(origin.APIType) || seed.Provider != origin.Provider {
-			return nil, fmt.Errorf("原生 seed 厂商或协议不匹配")
+			return operationresult.Result[*nativeWindow]{}, fmt.Errorf("原生 seed 厂商或协议不匹配")
 		}
-		w.Items, err = decodeSeedInputs(seed)
+		decoded, err := decodeSeedInputs(seed)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[*nativeWindow]{}, err
 		}
+		if decoded.Status != operationresult.Success {
+			return operationresult.Result[*nativeWindow]{Status: decoded.Status, Message: decoded.Message}, nil
+		}
+		w.Items = decoded.Data
 		w.Materials, err = agentshare.DecodeMaterials(seed.MaterialsJSON)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[*nativeWindow]{}, err
 		}
 		for i := range w.Items {
 			w.References = append(w.References, inputReference{Kind: "seed", ID: seed.ID, Index: i})
@@ -75,25 +80,29 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		w.RetainedMediaIDs = append([]string(nil), seed.MediaIDs...)
 		w.Origin.BaseURL = seed.BaseURL
 	} else if checkpoint != nil {
-		if err := checkInputFormat(row); err != nil {
-			return nil, err
+		checked, err := checkInputFormat(row)
+		if err != nil {
+			return operationresult.Result[*nativeWindow]{}, err
+		}
+		if checked.Status != operationresult.Success {
+			return operationresult.Result[*nativeWindow]{Status: checked.Status, Message: checked.Message}, nil
 		}
 	}
 	if checkpoint == nil {
 		if seed == nil {
-			return nil, fmt.Errorf("缺少完整原生 checkpoint 或 seed")
+			return operationresult.Result[*nativeWindow]{}, fmt.Errorf("缺少完整原生 checkpoint 或 seed")
 		}
-		return w, nil
+		return operationresult.Result[*nativeWindow]{Status: operationresult.Success, Data: w}, nil
 	}
 	var path []*storage.NativeCheckpoint
 	seen := map[string]bool{}
 	for cp := checkpoint; cp != nil; {
 		if cp.SessionID != row.ID || seen[cp.ID] {
-			return nil, fmt.Errorf("原生 checkpoint 链不完整或循环")
+			return operationresult.Result[*nativeWindow]{}, fmt.Errorf("原生 checkpoint 链不完整或循环")
 		}
 		seen[cp.ID] = true
 		if (seed == nil && cp.SeedID != "") || (seed != nil && cp.SeedID != seed.ID) {
-			return nil, fmt.Errorf("原生 checkpoint 的根材料不匹配")
+			return operationresult.Result[*nativeWindow]{}, fmt.Errorf("原生 checkpoint 的根材料不匹配")
 		}
 		path = append(path, cp)
 		if cp.ParentID == "" {
@@ -101,7 +110,7 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		}
 		parent, ok := records.Checkpoints[cp.ParentID]
 		if !ok {
-			return nil, fmt.Errorf("原生 checkpoint 前序缺失: %w", storage.ErrNotFound)
+			return operationresult.Result[*nativeWindow]{}, fmt.Errorf("原生 checkpoint 前序缺失: %w", storage.ErrNotFound)
 		}
 		cp = &parent
 	}
@@ -116,38 +125,38 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		cp := path[i]
 		exchange, ok := records.Exchanges[cp.ExchangeID]
 		if !ok {
-			return nil, storage.ErrNotFound
+			return operationresult.Result[*nativeWindow]{}, storage.ErrNotFound
 		}
 		if exchange.SessionID != row.ID || exchange.Status != "completed" || exchange.PreviousCheckpointID != cp.ParentID || exchange.APIType != string(origin.APIType) || exchange.Provider != origin.Provider {
-			return nil, fmt.Errorf("原生 checkpoint 的已提交响应不完整")
+			return operationresult.Result[*nativeWindow]{}, fmt.Errorf("原生 checkpoint 的已提交响应不完整")
 		}
 		var response api.Response
 		if err := json.Unmarshal([]byte(exchange.ResponseJSON), &response); err != nil {
-			return nil, err
+			return operationresult.Result[*nativeWindow]{}, err
 		}
 		if response.ID != cp.ResponseID || response.Status != "completed" {
-			return nil, fmt.Errorf("原生响应终态与 checkpoint 不匹配")
+			return operationresult.Result[*nativeWindow]{}, fmt.Errorf("原生响应终态与 checkpoint 不匹配")
 		}
 		var ids []string
 		if err := json.Unmarshal([]byte(exchange.InputIDsJSON), &ids); err != nil {
-			return nil, err
+			return operationresult.Result[*nativeWindow]{}, err
 		}
 		inputs := consumed[exchange.ID]
 		if len(ids) != len(inputs) {
-			return nil, fmt.Errorf("native input manifest is incomplete")
+			return operationresult.Result[*nativeWindow]{}, fmt.Errorf("native input manifest is incomplete")
 		}
 		for _, id := range ids {
 			input, ok := inputs[id]
 			if !ok {
-				return nil, fmt.Errorf("native input manifest has an absent or duplicate input")
+				return operationresult.Result[*nativeWindow]{}, fmt.Errorf("native input manifest has an absent or duplicate input")
 			}
 			delete(inputs, id)
 			if input.SessionID != row.ID || input.ConsumedBy != exchange.ID {
-				return nil, fmt.Errorf("原生输入关联不完整")
+				return operationresult.Result[*nativeWindow]{}, fmt.Errorf("原生输入关联不完整")
 			}
 			item, segments, err := decodeQueuedInput(input)
 			if err != nil {
-				return nil, err
+				return operationresult.Result[*nativeWindow]{}, err
 			}
 			w.References = append(w.References, inputReference{Kind: "input", ID: input.ID})
 			if item.Type == "additional_tools" {
@@ -159,17 +168,17 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 				Role   string `json:"role"`
 			}
 			if err := json.Unmarshal(item.Raw, &header); err != nil {
-				return nil, err
+				return operationresult.Result[*nativeWindow]{}, err
 			}
 			if (input.CallID != "" && (item.Type != "function_call_output" || input.CallID != header.CallID)) || (input.CallID == "" && (item.Type != "message" || header.Role != "user")) {
-				return nil, fmt.Errorf("原生输入顺序或调用关联不匹配")
+				return operationresult.Result[*nativeWindow]{}, fmt.Errorf("原生输入顺序或调用关联不匹配")
 			}
 			w.Materials = append(w.Materials, material{Index: len(w.Items), MessageID: input.MessageID, Segments: segments})
 			w.Items = append(w.Items, item)
 		}
 		var output []api.Item
 		if err := json.Unmarshal([]byte(exchange.ItemsJSON), &output); err != nil {
-			return nil, err
+			return operationresult.Result[*nativeWindow]{}, err
 		}
 		w.Items = append(w.Items, output...)
 		for i := range output {
@@ -181,7 +190,7 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 	var calls []storage.NativeCall
 	if checkpoint.CallsJSON != "" {
 		if err := json.Unmarshal([]byte(checkpoint.CallsJSON), &calls); err != nil {
-			return nil, err
+			return operationresult.Result[*nativeWindow]{}, err
 		}
 	}
 	for _, call := range calls {
@@ -190,25 +199,25 @@ func (c *Context) Load(ctx context.Context, row *storage.Session, checkpoint *st
 		}
 		input, ok := records.Inputs[call.ResultInputID]
 		if !ok {
-			return nil, storage.ErrNotFound
+			return operationresult.Result[*nativeWindow]{}, storage.ErrNotFound
 		}
 		if input.SessionID != row.ID || input.ExchangeID != checkpoint.ExchangeID || input.CallID != call.CallID {
-			return nil, fmt.Errorf("原生分支结果关联不匹配")
+			return operationresult.Result[*nativeWindow]{}, fmt.Errorf("原生分支结果关联不匹配")
 		}
 		item, err := api.ParseItem([]byte(input.ItemJSON))
 		if err != nil {
-			return nil, err
+			return operationresult.Result[*nativeWindow]{}, err
 		}
 		segments, err := inputSegments(input)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[*nativeWindow]{}, err
 		}
 		w.Materials = append(w.Materials, material{Index: len(w.Items), MessageID: input.MessageID, Segments: segments})
 		w.Items = append(w.Items, item)
 		w.References = append(w.References, inputReference{Kind: "input", ID: input.ID})
 		w.completedOutputs = append(w.completedOutputs, item)
 	}
-	return w, nil
+	return operationresult.Result[*nativeWindow]{Status: operationresult.Success, Data: w}, nil
 }
 
 func (c *Context) Validate(ctx context.Context, w *nativeWindow) error {
@@ -379,9 +388,9 @@ func (w *nativeWindow) mediaIDs() []string {
 
 // Resolve obtains protocol-neutral prepared material before assembling input
 // items. Native outputs/reasoning remain opaque and are never media-scanned.
-func (c *Context) Resolve(ctx context.Context, w *nativeWindow) ([]api.Item, media.UsageID, error) {
+func (c *Context) Resolve(ctx context.Context, w *nativeWindow) (operationresult.Result[[]api.Item], media.UsageID, error) {
 	if err := c.Validate(ctx, w); err != nil {
-		return nil, "", err
+		return operationresult.Result[[]api.Item]{}, "", err
 	}
 	messages := make([]llm.LLMMessage, len(w.Materials))
 	for i, material := range w.Materials {
@@ -389,27 +398,30 @@ func (c *Context) Resolve(ctx context.Context, w *nativeWindow) ([]api.Item, med
 	}
 	prepared, usageID, err := c.Preparer.PrepareMaterials(ctx, messages)
 	if err != nil {
-		return nil, usageID, err
+		return operationresult.Result[[]api.Item]{}, usageID, err
+	}
+	if prepared.Status != operationresult.Success {
+		return operationresult.Result[[]api.Item]{Status: prepared.Status, Message: prepared.Message}, usageID, nil
 	}
 	items := append([]api.Item(nil), w.Items...)
 	for i, material := range w.Materials {
 		original := items[material.Index]
 		var fields map[string]json.RawMessage
 		if err := json.Unmarshal(original.Raw, &fields); err != nil {
-			return nil, usageID, err
+			return operationresult.Result[[]api.Item]{}, usageID, err
 		}
 		var callID string
 		if original.Type == "function_call_output" {
 			if err := json.Unmarshal(fields["call_id"], &callID); err != nil {
-				return nil, usageID, err
+				return operationresult.Result[[]api.Item]{}, usageID, err
 			}
 		}
-		items[material.Index], err = nativeItem(callID, prepared[i].Segments)
+		items[material.Index], err = nativeItem(callID, prepared.Data[i].Segments)
 		if err != nil {
-			return nil, usageID, err
+			return operationresult.Result[[]api.Item]{}, usageID, err
 		}
 	}
-	return items, usageID, nil
+	return operationresult.Result[[]api.Item]{Status: operationresult.Success, Data: items}, usageID, nil
 }
 
 func checkpointCalls(cp *storage.NativeCheckpoint) ([]storage.NativeCall, error) {
@@ -482,6 +494,6 @@ func (w *nativeWindow) Seed(continuation []api.Item, calls []storage.NativeCall,
 	}, nil
 }
 
-func checkWindowTarget(w *nativeWindow, target llm.Origin) error {
+func checkWindowTarget(w *nativeWindow, target llm.Origin) (operationresult.Result[struct{}], error) {
 	return modelmgr.CanSwitch(w.Origin, target)
 }
