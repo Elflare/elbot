@@ -15,6 +15,7 @@ HTTP code、wire code 留在 API/management 适配层，不能塞进内部 Statu
 Go 文件修改后运行 gofmt；最终业务迁移完成后再做静态核对。
 注：若链路不涉及发往用户的通知或者消息，就没必要无脑全用operationresult，局部的普通error就够
 一条链路一条链路做，每做完一条回查旧兼容层和 Go error / Result 分界。
+本次更新不改用户文档
 
 
 
