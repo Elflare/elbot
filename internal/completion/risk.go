@@ -6,6 +6,7 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/control"
+	"elbot/internal/operationresult"
 )
 
 const KindRiskConfirmation = "risk_confirmation"
@@ -13,7 +14,7 @@ const KindRiskConfirmation = "risk_confirmation"
 type RiskConfirmationSource struct {
 	Router  *command.Router
 	Control interface {
-		CurrentConfirmation(context.Context, control.CurrentConfirmationRequest) (control.CurrentConfirmationResult, error)
+		CurrentConfirmation(context.Context, control.CurrentConfirmationRequest) (operationresult.Result[control.CurrentConfirmationResult], error)
 	}
 	CommandNames []string
 }
@@ -23,7 +24,7 @@ func (s RiskConfirmationSource) Complete(ctx context.Context, req Request) ([]It
 		return nil, nil
 	}
 	current, err := s.Control.CurrentConfirmation(ctx, control.CurrentConfirmationRequest{})
-	if err != nil || current.Kind != "tool" {
+	if err != nil || current.Status != operationresult.Success || current.Data.Kind != "tool" {
 		return nil, nil
 	}
 	parsed := s.Router.Parse(req.Text)

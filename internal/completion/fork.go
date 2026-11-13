@@ -6,6 +6,7 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/control"
+	"elbot/internal/operationresult"
 )
 
 const KindForkMessage = "fork_message"
@@ -13,7 +14,7 @@ const KindForkMessage = "fork_message"
 type ForkMessageSource struct {
 	Router  *command.Router
 	Control interface {
-		SessionMessages(context.Context, control.SessionMessagesRequest) (control.SessionMessagesResult, error)
+		SessionMessages(context.Context, control.SessionMessagesRequest) (operationresult.Result[control.SessionMessagesResult], error)
 	}
 	PageSize int
 }
@@ -32,11 +33,14 @@ func (s ForkMessageSource) Complete(ctx context.Context, req Request) ([]Item, e
 	for page := 1; ; page++ {
 		loaded, err := s.Control.SessionMessages(ctx, control.SessionMessagesRequest{SessionID: sessionID, Page: page, PageSize: s.PageSize})
 		if err != nil {
+			return nil, err
+		}
+		if loaded.Status != operationresult.Success {
 			return nil, nil
 		}
-		sessionID = loaded.SessionID
-		pages = append(pages, loaded.Items)
-		if !loaded.HasNext {
+		sessionID = loaded.Data.SessionID
+		pages = append(pages, loaded.Data.Items)
+		if !loaded.Data.HasNext {
 			break
 		}
 	}
