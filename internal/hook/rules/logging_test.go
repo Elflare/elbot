@@ -256,9 +256,10 @@ func TestRulesOutputPreparationFailureDoesNotInvokeSender(t *testing.T) {
 		t.Fatal("sender entered")
 		return operationresult.Result[delivery.Receipt]{Status: operationresult.Success, Data: delivery.Receipt{}}, nil
 	}}}
-	_, err := module.handleProtocolRequest(t.Context(), share.Event{}, Action{}, state{}, "output.send", json.RawMessage(`{"outputs":false}`))
-	if err == nil || len(*records) != 1 || (*records)[0].ResultStatus != events.ResultFailed || !strings.Contains((*records)[0].Content, "invalid field") {
-		t.Fatalf("err=%v records=%+v", err, *records)
+	value, err := module.handleProtocolRequest(t.Context(), share.Event{}, Action{}, state{}, "output.send", json.RawMessage(`{"outputs":false}`))
+	result := value.(operationresult.Result[map[string]any])
+	if err != nil || result.Status != operationresult.InvalidArguments || len(*records) != 1 || (*records)[0].ResultStatus != events.ResultRejected || !strings.Contains((*records)[0].Content, "invalid field") {
+		t.Fatalf("result=%+v err=%v records=%+v", result, err, *records)
 	}
 }
 

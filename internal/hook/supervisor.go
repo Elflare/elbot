@@ -4,6 +4,7 @@ package hook
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"sync"
 
 	"elbot/internal/delivery"
@@ -28,11 +29,11 @@ type Supervisor struct {
 		HookReload() (share.ReloadReport, error)
 		HookList() []share.Info
 		StatefulHooks() []share.RuntimeInfo
-		StartStatefulHook(string) error
-		StopHook(context.Context, string) (bool, error)
-		RestartStatefulHook(context.Context, string) error
+		StartStatefulHook(string) (operationresult.Result[struct{}], error)
+		StopHook(context.Context, string) (operationresult.Result[struct{}], error)
+		RestartStatefulHook(context.Context, string) (operationresult.Result[struct{}], error)
 	}
-	send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
+	send func(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error)
 
 	parent         context.Context // Construction context, used for startup and platform subscription ownership.
 	ctx            context.Context // Hook-owned cancellation for admitted boundary calls; canceled only by Close.

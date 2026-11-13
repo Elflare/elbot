@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 )
 
 func TestSingleProviderDetachAndReplace(t *testing.T) {
@@ -74,7 +75,7 @@ func TestPartialProviderPreservesUnregisteredValues(t *testing.T) {
 	if args, err := h.ToolCallPrepared(ctx, session, response.ToolCalls[0]); err != nil || args != "{}" {
 		t.Fatal(args, err)
 	}
-	if got, err := h.ToolCallCompleted(ctx, session, agentshare.ToolResult{Segments: segments}); err != nil || !reflect.DeepEqual(got, segments) {
+	if got, err := h.ToolCallCompleted(ctx, session, agentshare.ToolResult{Result: operationresult.Result[[]llm.MessageSegment]{Status: operationresult.Success, Data: segments}}); err != nil || !reflect.DeepEqual(got, segments) {
 		t.Fatal(got, err)
 	}
 	if got, err := h.AgentTurnOutputPrepared(ctx, "display"); err != nil || got != "display" {

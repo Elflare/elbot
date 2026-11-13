@@ -15,6 +15,7 @@ import (
 	"elbot/internal/hook/pipeline"
 	"elbot/internal/hook/share"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/platform"
 )
 
@@ -136,7 +137,7 @@ func TestAgentBridgeToolResultTextPreservesMediaAndSegmentEditsWin(t *testing.T)
 		t.Run(map[bool]string{false: "text", true: "segments"}[editSegments], func(t *testing.T) {
 			m, _ := newBridgeTestSupervisor(t)
 			m.manager = bridgeTestPipeline{run: func(_ context.Context, event share.Event, _ pipeline.CallOptions) (share.Event, error) {
-				event.Tool.Result = "text edit"
+				event.Tool.Result.Data = "text edit"
 				if editSegments {
 					event.Message.Segments[0].Text = "segment edit"
 				}
@@ -147,7 +148,7 @@ func TestAgentBridgeToolResultTextPreservesMediaAndSegmentEditsWin(t *testing.T)
 				t.Fatal(err)
 			}
 			original := []llm.MessageSegment{{Type: llm.SegmentText, Text: "original"}, {Type: llm.SegmentImage, MediaID: "image-id"}}
-			got, err := agent.points.ToolCallCompleted(t.Context(), agenthooks.Facts{}, agenthooks.ToolResult{Segments: original})
+			got, err := agent.points.ToolCallCompleted(t.Context(), agenthooks.Facts{}, agenthooks.ToolResult{Result: operationresult.Result[[]llm.MessageSegment]{Status: operationresult.Success, Data: original}})
 			want := "text edit"
 			if editSegments {
 				want = "segment edit"

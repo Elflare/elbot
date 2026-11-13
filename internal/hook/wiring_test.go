@@ -14,13 +14,14 @@ import (
 	"elbot/internal/control"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 )
 
 type wiringTestPlatform struct{}
 
-func (wiringTestPlatform) SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
-	return delivery.Receipt{}, nil
+func (wiringTestPlatform) SendTo(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
+	return operationresult.Result[delivery.Receipt]{Status: operationresult.Success}, nil
 }
 
 func (wiringTestPlatform) CallPlatformAPI(context.Context, string, string, map[string]any) (json.RawMessage, error) {

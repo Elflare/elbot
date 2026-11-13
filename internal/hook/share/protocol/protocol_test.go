@@ -8,6 +8,7 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/hook/share"
+	"elbot/internal/operationresult"
 )
 
 func TestFrameRoundTripAndIDValidation(t *testing.T) {
@@ -71,5 +72,41 @@ func TestEventOutputDeliveryInfo(t *testing.T) {
 		if _, exists := output[key]; exists {
 			t.Fatalf("unexpected field %s in output", key)
 		}
+	}
+}
+
+func TestEventToolResultKeepsWireTextShape(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		tool   share.ToolPayload
+		result string
+		err    string
+	}{
+		{name: "success", tool: share.ToolPayload{Result: operationresult.Result[string]{Status: operationresult.Success, Data: "done"}}, result: `"done"`},
+		{name: "rejected", tool: share.ToolPayload{Result: operationresult.Result[string]{Status: operationresult.Rejected, Message: "tool unavailable"}}, result: `"tool unavailable"`},
+		{name: "go error", tool: share.ToolPayload{Error: "internal failure"}, result: `"internal failure"`, err: `"internal failure"`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			data, err := json.Marshal(share.Event{Tool: test.tool})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var decoded struct {
+				Tool json.RawMessage `json:"tool"`
+			}
+			if err := json.Unmarshal(data, &decoded); err != nil {
+				t.Fatal(err)
+			}
+			var tool map[string]json.RawMessage
+			if err := json.Unmarshal(decoded.Tool, &tool); err != nil {
+				t.Fatal(err)
+			}
+			if string(tool["result"]) != test.result || string(tool["error"]) != test.err {
+				t.Fatalf("tool payload = %s", decoded.Tool)
+			}
+			if _, ok := tool["status"]; ok {
+				t.Fatalf("internal status leaked to wire: %s", decoded.Tool)
+			}
+		})
 	}
 }

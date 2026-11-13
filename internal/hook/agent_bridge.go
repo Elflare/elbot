@@ -4,6 +4,7 @@ package hook
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"fmt"
 	"reflect"
 
@@ -146,19 +147,34 @@ func (m *Supervisor) agentPoints(agent interface {
 		},
 		ToolCallCompleted: func(ctx context.Context, facts agenthooks.Facts, value agenthooks.ToolResult) ([]llm.MessageSegment, error) {
 			event := eventFor(facts, share.PointToolCallCompleted)
-			original := append([]llm.MessageSegment(nil), value.Segments...)
+			var original []llm.MessageSegment
+			if value.Err != nil {
+				original = llm.TextSegments(value.Err.Error())
+			} else if value.Result.Status != operationresult.Success {
+				original = llm.TextSegments(value.Result.Message)
+			} else {
+				original = append([]llm.MessageSegment(nil), value.Result.Data...)
+			}
 			text := llm.SegmentsTextOnly(original)
 			event.Message = share.MessagePayload{Role: string(llm.RoleTool), Segments: append([]llm.MessageSegment(nil), original...)}
-			event.Tool = share.ToolPayload{ID: value.Call.ID, Name: value.Call.Name, Arguments: value.Call.Arguments, Risk: value.Risk, Result: text, Error: value.Err}
+			event.Tool = share.ToolPayload{ID: value.Call.ID, Name: value.Call.Name, Arguments: value.Call.Arguments, Risk: value.Risk, Result: operationresult.Result[string]{Status: value.Result.Status, Message: value.Result.Message}}
+			if value.Err != nil {
+				event.Tool.Error = value.Err.Error()
+			} else if value.Result.Status == operationresult.Success {
+				event.Tool.Result.Data = text
+			}
 			updated, err := m.run(ctx, event, m.callOptions(facts, agent))
 			if err != nil {
 				return nil, err
 			}
+			if updated.Tool.Result.Status != event.Tool.Result.Status {
+				return nil, fmt.Errorf("hook cannot change tool business status")
+			}
 			if !reflect.DeepEqual(updated.Message.Segments, original) {
 				return updated.Message.Segments, nil
 			}
-			if updated.Tool.Result != text {
-				return llm.SetSegmentText(original, updated.Tool.Result), nil
+			if updated := share.FieldValue(updated, "tool.result"); updated != text {
+				return llm.SetSegmentText(original, updated), nil
 			}
 			return original, nil
 		},

@@ -3,6 +3,7 @@ package management
 import (
 	"context"
 	"elbot/internal/control"
+	"elbot/internal/operationresult"
 	"elbot/internal/tool"
 	"net/http"
 )
@@ -29,22 +30,35 @@ func (h *handler) queryTools(w http.ResponseWriter, req *http.Request) {
 	}
 	items, err := h.control.QueryTools(req.Context(), tool.ToolQuery{Scope: scope, Tag: q.Get("tag"), Kind: q.Get("kind"), Names: q["name"], IncludeHidden: hidden, IncludeDiscover: discover})
 	if err != nil {
-		writeControlError(w, err)
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
-	writeAPIJSON(w, http.StatusOK, map[string]any{"items": items})
+	if items.Status != operationresult.Success {
+		writeOperationResultError(w, items.Status, items.Message)
+		return
+	}
+	writeAPIJSON(w, http.StatusOK, map[string]any{"items": items.Data})
 }
 func (h *handler) toolDetail(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.LoadToolDetail(req.Context(), control.ToolDetailRequest{Name: req.PathValue("name")})
 	if err != nil {
-		writeControlError(w, err)
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
-	writeAPIJSON(w, http.StatusOK, result)
+	if result.Status != operationresult.Success {
+		writeOperationResultError(w, result.Status, result.Message)
+		return
+	}
+	writeAPIJSON(w, http.StatusOK, result.Data)
 }
 func (h *handler) reloadSkills(w http.ResponseWriter, req *http.Request) {
-	if err := h.control.ReloadSkills(req.Context()); err != nil {
-		writeControlError(w, err)
+	result, err := h.control.ReloadSkills(req.Context())
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	if result.Status != operationresult.Success {
+		writeOperationResultError(w, result.Status, result.Message)
 		return
 	}
 	writeAPIJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -56,8 +70,13 @@ func (h *handler) removeSkill(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		return
 	}
-	if err := h.control.RemoveSkill(req.Context(), control.RemoveSkillRequest{Name: req.PathValue("name"), Confirmed: body.Confirmed}); err != nil {
-		writeControlError(w, err)
+	result, err := h.control.RemoveSkill(req.Context(), control.RemoveSkillRequest{Name: req.PathValue("name"), Confirmed: body.Confirmed})
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	if result.Status != operationresult.Success {
+		writeOperationResultError(w, result.Status, result.Message)
 		return
 	}
 	writeAPIJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -65,26 +84,38 @@ func (h *handler) removeSkill(w http.ResponseWriter, req *http.Request) {
 func (h *handler) listHooks(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.ListHooks(req.Context())
 	if err != nil {
-		writeControlError(w, err)
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
-	writeAPIJSON(w, http.StatusOK, result)
+	if result.Status != operationresult.Success {
+		writeOperationResultError(w, result.Status, result.Message)
+		return
+	}
+	writeAPIJSON(w, http.StatusOK, result.Data)
 }
 func (h *handler) getHook(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.GetHook(req.Context(), control.GetHookRequest{HookID: req.PathValue("hook_id")})
 	if err != nil {
-		writeControlError(w, err)
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
-	writeAPIJSON(w, http.StatusOK, result)
+	if result.Status != operationresult.Success {
+		writeOperationResultError(w, result.Status, result.Message)
+		return
+	}
+	writeAPIJSON(w, http.StatusOK, result.Data)
 }
 func (h *handler) reloadHooks(w http.ResponseWriter, req *http.Request) {
 	result, err := h.control.ReloadHooks(req.Context())
 	if err != nil {
-		writeControlError(w, err)
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
-	writeAPIJSON(w, http.StatusOK, result)
+	if result.Status != operationresult.Success {
+		writeOperationResultError(w, result.Status, result.Message)
+		return
+	}
+	writeAPIJSON(w, http.StatusOK, result.Data)
 }
 func (h *handler) startHook(w http.ResponseWriter, req *http.Request) {
 	h.hookAction(w, req, h.control.StartHook)
@@ -95,9 +126,14 @@ func (h *handler) stopHook(w http.ResponseWriter, req *http.Request) {
 func (h *handler) restartHook(w http.ResponseWriter, req *http.Request) {
 	h.hookAction(w, req, h.control.RestartHook)
 }
-func (h *handler) hookAction(w http.ResponseWriter, req *http.Request, action func(context.Context, control.GetHookRequest) error) {
-	if err := action(req.Context(), control.GetHookRequest{HookID: req.PathValue("hook_id")}); err != nil {
-		writeControlError(w, err)
+func (h *handler) hookAction(w http.ResponseWriter, req *http.Request, action func(context.Context, control.GetHookRequest) (operationresult.Result[struct{}], error)) {
+	result, err := action(req.Context(), control.GetHookRequest{HookID: req.PathValue("hook_id")})
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	if result.Status != operationresult.Success {
+		writeOperationResultError(w, result.Status, result.Message)
 		return
 	}
 	writeAPIJSON(w, http.StatusOK, map[string]bool{"ok": true})

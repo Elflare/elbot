@@ -5,6 +5,7 @@ package rules
 import (
 	"bufio"
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -164,12 +165,33 @@ func writeV2Request(w io.Writer, id, method string, params any) error {
 }
 
 func writeV2Response(w io.Writer, id string, result any, sourceErr error) error {
-	response := map[string]any{"type": "response", "id": id, "ok": sourceErr == nil}
+	ok := sourceErr == nil
+	response := map[string]any{"type": "response", "id": id, "ok": ok}
 	if sourceErr != nil {
 		response["error"] = sourceErr.Error()
 	} else {
-		response["result"] = result
+		var body any
+		switch value := result.(type) {
+		case operationresult.Result[map[string]any]:
+			if value.Status != operationresult.Success {
+				ok, response["error"] = false, value.Message
+			} else {
+				body = value.Data
+			}
+		case operationresult.Result[json.RawMessage]:
+			if value.Status != operationresult.Success {
+				ok, response["error"] = false, value.Message
+			} else {
+				body = value.Data
+			}
+		default:
+			body = result
+		}
+		if ok {
+			response["result"] = body
+		}
 	}
+	response["ok"] = ok
 	return writeProtocolFrame(w, response)
 }
 
@@ -276,7 +298,11 @@ func (m Module) v2EventResult(ctx context.Context, event share.Event, action Act
 		}
 		event.Message.Segments = segments
 		if event.Point == share.PointToolCallCompleted {
-			event.Tool.Result = llm.SegmentsTextOnly(segments)
+			if event.Tool.Result.Status == operationresult.Success {
+				event.Tool.Result.Data = llm.SegmentsTextOnly(segments)
+			} else {
+				event.Tool.Result.Message = llm.SegmentsTextOnly(segments)
+			}
 		}
 	} else if payload.Message != nil && payload.Message.Text != nil {
 		field := strings.TrimSpace(action.Field)
@@ -403,7 +429,11 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 		}
 		return string(resp), nil
 	case "output.send":
-		logHook := func(outputs []delivery.Output, receipt delivery.Receipt, err error) {
+		logHook := func(outputs []delivery.Output, sent operationresult.Result[delivery.Receipt], err error) {
+			var receipt delivery.Receipt
+			if err == nil && sent.Status == operationresult.Success {
+				receipt = sent.Data
+			}
 			content := map[string]any{"source": "rules", "rule": firstNonEmpty(action.source.FinalName, action.ActionName), "point": string(event.Point), "tool": event.Tool.Name, "output_count": len(outputs), "platform_message_ids": receipt.PlatformMessageIDs, "result": ""}
 			content["sent_messages"] = []map[string]any{}
 			for _, sent := range receipt.SentMessages {
@@ -418,6 +448,15 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 				record.Level, record.ResultStatus = slog.LevelWarn, globalevents.ResultFailed
 				if globalevents.LogStatus(err) == globalevents.ResultCanceled {
 					record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
+				}
+			}
+			if err == nil && sent.Status != operationresult.Success {
+				content["result"] = sent.Message
+				record.ResultStatus = globalevents.ResultRejected
+				if sent.Status == operationresult.Failed || sent.Status == operationresult.Timeout {
+					record.Level, record.ResultStatus = slog.LevelWarn, globalevents.ResultFailed
+				} else if sent.Status == operationresult.Canceled {
+					record.ResultStatus = globalevents.ResultCanceled
 				}
 			}
 			record.Identity = globalevents.LogIdentityFromContext(ctx)
@@ -435,27 +474,30 @@ func (m Module) handleProtocolRequest(ctx context.Context, event share.Event, ac
 		paramsMap, err := rawObject(params)
 		if err != nil {
 
-			logHook(nil, delivery.Receipt{}, err)
-			return nil, err
+			logHook(nil, operationresult.Result[delivery.Receipt]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil)
+			return operationresult.Result[map[string]any]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
 		outputs, err := protocolOutputsFromMap(paramsMap, action, renderedActionTarget(action, event, state), render(action.Timing, event, state), "params.outputs")
 		if err != nil {
 
-			logHook(nil, delivery.Receipt{}, err)
-			return nil, err
+			logHook(nil, operationresult.Result[delivery.Receipt]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil)
+			return operationresult.Result[map[string]any]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
 		target, err := delivery.ValidateOutputsTarget(outputs)
 		if err != nil {
 
-			logHook(outputs, delivery.Receipt{}, err)
-			return nil, err
+			logHook(outputs, operationresult.Result[delivery.Receipt]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil)
+			return operationresult.Result[map[string]any]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
-		receipt, err := m.Opts.Send(ctx, target, outputs)
-		logHook(outputs, receipt, err)
+		sent, err := m.Opts.Send(ctx, target, outputs)
+		logHook(outputs, sent, err)
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"sent": len(outputs), "receipts": []delivery.Receipt{receipt}}, nil
+		if sent.Status != operationresult.Success {
+			return operationresult.Result[map[string]any]{Status: sent.Status, Message: sent.Message}, nil
+		}
+		return operationresult.Result[map[string]any]{Status: operationresult.Success, Data: map[string]any{"sent": len(outputs), "receipts": []delivery.Receipt{sent.Data}}}, nil
 	case "message.get_reply":
 		return map[string]any{"message_id": event.Chat.ReplyToMessageID, "available": event.Chat.ReplyToMessageID != ""}, nil
 	case "message.get":

@@ -4,6 +4,7 @@ package hook
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -93,15 +94,25 @@ func (m *Supervisor) handlePlatformConnected(ctx context.Context, platformName s
 	if err != nil || len(event.Outputs) == 0 {
 		return
 	}
+	var sent operationresult.Result[delivery.Receipt]
 	target, err := delivery.ValidateOutputsTarget(event.Outputs)
 	if err == nil {
-		_, err = m.send(ctx, target, event.Outputs)
+		sent, err = m.send(ctx, target, event.Outputs)
 	}
 	record := events.LogRecord{Category: events.LogCategoryLog, Module: "hook", EventName: "hook_output", Level: slog.LevelInfo, ContentLimit: 4096, Content: fmt.Sprintf("platform=%s", platformName), ResultStatus: events.ResultSucceeded}
 	if err != nil {
 		record.Level, record.ResultStatus = slog.LevelWarn, events.ResultFailed
 		record.Content += "\n" + err.Error()
 		if events.LogStatus(err) == events.ResultCanceled {
+			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
+		}
+	}
+	if err == nil && sent.Status != operationresult.Success {
+		record.Level, record.ResultStatus = slog.LevelWarn, events.ResultRejected
+		record.Content += "\n" + sent.Message
+		if sent.Status == operationresult.Failed || sent.Status == operationresult.Timeout {
+			record.ResultStatus = events.ResultFailed
+		} else if sent.Status == operationresult.Canceled {
 			record.Level, record.ResultStatus = slog.LevelInfo, events.ResultCanceled
 		}
 	}

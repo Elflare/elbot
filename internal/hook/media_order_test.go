@@ -17,9 +17,20 @@ import (
 	"elbot/internal/hook/share"
 	hookoutput "elbot/internal/hook/share/output"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/testutil"
 	"elbot/internal/testutil/mediatest"
 )
+
+func adaptHandler(fn func(context.Context, share.Event, bool) (share.Event, error)) share.HandlerFunc {
+	return func(ctx context.Context, event share.Event, readOnly bool) (operationresult.Result[share.Event], error) {
+		updated, err := fn(ctx, event, readOnly)
+		if err != nil {
+			return operationresult.Result[share.Event]{}, err
+		}
+		return operationresult.Result[share.Event]{Status: operationresult.Success, Data: updated}, nil
+	}
+}
 
 func TestMediaImportKeepsPipelinePriorityAndResultDependency(t *testing.T) {
 	center := mediatest.New(t, media.MediaCenterDeps{Store: testutil.NewSQLiteStore(t)}, t.TempDir())
@@ -51,7 +62,7 @@ func TestMediaImportKeepsPipelinePriorityAndResultDependency(t *testing.T) {
 	p := pipeline.NewManager(log, nil)
 	var order []string
 	register := func(name string, priority int, download bool) {
-		p.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: name, Priority: priority, Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, error) {
+		p.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: name, Priority: priority, Match: share.Always(), Handler: adaptHandler(func(ctx context.Context, event share.Event, _ bool) (share.Event, error) {
 			if event.ID == "other" {
 				return event, nil
 			}

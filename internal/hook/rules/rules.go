@@ -9,6 +9,7 @@ import (
 	"elbot/internal/hook/share"
 	hookoutput "elbot/internal/hook/share/output"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
 	"elbot/internal/tool"
 	"encoding/json"
@@ -25,12 +26,12 @@ type Options struct {
 	BuildMessageSegments func(context.Context, []hookoutput.MessageSegment, string) ([]llm.MessageSegment, error) // 借用运行时的媒体归档与租约能力。
 	ConfigDir            string
 	Tools                interface {
-		CallTool(context.Context, tool.CallRequest) (*tool.Result, string, error)
+		CallTool(context.Context, tool.CallRequest) (operationresult.Result[*tool.Result], string, error)
 	} // 只借用工具调用能力，工具查找和执行由 Tool 负责。
 
 	Notices *[]string // Optional reload report collector; never a sending dependency.
 	// Send returns business receipts and the original delivery error.
-	Send            func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
+	Send            func(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error)
 	CallPlatformAPI func(context.Context, string, string, map[string]any) (json.RawMessage, error)
 	// Runtime borrows execution capabilities without exposing owned components.
 	Runtime    share.RuntimeCaller
@@ -216,7 +217,7 @@ func (m Module) RegisterHooks(registrar share.Registrar) {
 			Match:       share.Match{Conditions: rule.Match},
 			Block:       rule.source.Block,
 			Wakeup:      rule.Wakeup,
-			Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, readOnlyCalls bool) (share.Event, error) {
+			Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, readOnlyCalls bool) (operationresult.Result[share.Event], error) {
 				return m.runRule(ctx, rule, event, readOnlyCalls)
 			}),
 		})

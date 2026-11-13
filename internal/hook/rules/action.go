@@ -18,6 +18,7 @@ import (
 	"elbot/internal/hook/share"
 	hookoutput "elbot/internal/hook/share/output"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 )
 
@@ -32,36 +33,46 @@ type actionResult struct {
 	PassThrough *bool
 }
 
-func (m Module) runAction(ctx context.Context, event share.Event, action Action, state state) (share.Event, actionResult, error) {
+func (m Module) runAction(ctx context.Context, event share.Event, action Action, state state) (share.Event, operationresult.Result[actionResult], error) {
 
 	switch strings.TrimSpace(action.Type) {
 	case "prepend", "append", "replace", "delete":
 		updated, err := applyTextAction(event, action, state)
-		return updated, actionResult{}, err
+		if err != nil {
+			return event, operationresult.Result[actionResult]{}, err
+		}
+		return updated, operationresult.Result[actionResult]{Status: operationresult.Success}, nil
 	case "send":
 		outputs, err := makeOutputs(action, event, state)
 		if err != nil {
-			return event, actionResult{}, err
+			return event, operationresult.Result[actionResult]{}, err
 		}
 		event.Outputs = append(event.Outputs, outputs...)
 
-		return event, actionResult{}, nil
+		return event, operationresult.Result[actionResult]{Status: operationresult.Success}, nil
 	case "exec":
 		updated, result, err := m.runExec(ctx, event, action, state)
 		key := firstNonEmpty(strings.TrimSpace(action.ActionName), "exec")
 		state.Actions[key] = result
-		return updated, result, err
+		if err != nil {
+			return event, operationresult.Result[actionResult]{}, err
+		}
+		return updated, operationresult.Result[actionResult]{Status: operationresult.Success, Data: result}, nil
 	case "tool":
 		result, err := m.callTool(ctx, event, action, state)
-		// The invocation has its own audit record; the rule reports only its action stage.
-		key := firstNonEmpty(strings.TrimSpace(action.ActionName), strings.TrimSpace(action.Tool))
-		if key != "" {
-			state.Actions[key] = result
+		if err != nil {
+			return event, operationresult.Result[actionResult]{}, err
 		}
-		return event, result, err
+		if result.Status == operationresult.Success {
+			key := firstNonEmpty(strings.TrimSpace(action.ActionName), strings.TrimSpace(action.Tool))
+			if key != "" {
+				state.Actions[key] = result.Data
+			}
+		}
+		return event, result, nil
 	default:
 		err := fmt.Errorf("unsupported action type %q", action.Type)
-		return event, actionResult{}, err
+		return event, operationresult.Result[actionResult]{}, err
 	}
 }
 
@@ -102,7 +113,11 @@ func prependTextField(event share.Event, field, value string) share.Event {
 		event.Tool.Arguments = value + event.Tool.Arguments
 	case "tool.result":
 		event.Message.Segments = llm.PrependSegmentText(toolResultSegments(event), value)
-		event.Tool.Result = llm.SegmentsTextOnly(event.Message.Segments)
+		if event.Tool.Result.Status == operationresult.Success {
+			event.Tool.Result.Data = llm.SegmentsTextOnly(event.Message.Segments)
+		} else {
+			event.Tool.Result.Message = llm.SegmentsTextOnly(event.Message.Segments)
+		}
 	}
 	return event
 }
@@ -117,7 +132,11 @@ func appendTextField(event share.Event, field, value string) share.Event {
 		event.Tool.Arguments += value
 	case "tool.result":
 		event.Message.Segments = llm.AppendSegmentText(toolResultSegments(event), value)
-		event.Tool.Result = llm.SegmentsTextOnly(event.Message.Segments)
+		if event.Tool.Result.Status == operationresult.Success {
+			event.Tool.Result.Data = llm.SegmentsTextOnly(event.Message.Segments)
+		} else {
+			event.Tool.Result.Message = llm.SegmentsTextOnly(event.Message.Segments)
+		}
 	}
 	return event
 }
@@ -132,7 +151,11 @@ func replaceTextField(event share.Event, field string, pattern *regexp.Regexp, r
 		event.Tool.Arguments = replaceString(event.Tool.Arguments, pattern, replacement, all)
 	case "tool.result":
 		event.Message.Segments = llm.ReplaceSegmentText(toolResultSegments(event), pattern, replacement, all)
-		event.Tool.Result = llm.SegmentsTextOnly(event.Message.Segments)
+		if event.Tool.Result.Status == operationresult.Success {
+			event.Tool.Result.Data = llm.SegmentsTextOnly(event.Message.Segments)
+		} else {
+			event.Tool.Result.Message = llm.SegmentsTextOnly(event.Message.Segments)
+		}
 	}
 	return event
 }
@@ -152,7 +175,7 @@ func toolResultSegments(event share.Event) []llm.MessageSegment {
 	if len(event.Message.Segments) > 0 {
 		return event.Message.Segments
 	}
-	return llm.TextSegments(event.Tool.Result)
+	return llm.TextSegments(share.FieldValue(event, "tool.result"))
 }
 
 func allowField(event share.Event, field string) error {
@@ -212,7 +235,7 @@ func makeOutputs(action Action, event share.Event, state state) ([]delivery.Outp
 
 // callTool invokes a registered tool without Agent risk or confirmation gates.
 // Hook authors own authorization and risk decisions for Hook-triggered calls.
-func (m Module) callTool(ctx context.Context, event share.Event, action Action, state state) (actionResult, error) {
+func (m Module) callTool(ctx context.Context, event share.Event, action Action, state state) (operationresult.Result[actionResult], error) {
 	name := strings.TrimSpace(action.Tool)
 	arguments := render(action.Arguments, event, state)
 	call := storage.NewID()
@@ -239,13 +262,13 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 	record.Identity.SessionID = event.Session.ID
 	summary := ""
 	record.ResultStatus = globalevents.ResultSucceeded
-	var toolResult *tool.Result
+	var callResult operationresult.Result[*tool.Result]
 	var err error
 	switch {
 	case name == "":
-		err = fmt.Errorf("tool is required")
-		summary = "Tool.Call not entered: " + err.Error()
-		record.Level, record.ResultStatus = slog.LevelWarn, globalevents.ResultFailed
+		callResult = operationresult.Result[*tool.Result]{Status: operationresult.InvalidArguments, Message: "tool is required"}
+		summary = "Tool.Call not entered: " + callResult.Message
+		record.ResultStatus = globalevents.ResultRejected
 	default:
 		started := time.Now()
 		data, _ := json.Marshal(content)
@@ -253,10 +276,18 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 		// 此记录表示开始调用 Tool 服务，不代表工具已准备或执行成功。
 		start.EventName, start.Content, start.ResultStatus = "hook_tool_call_prepared", string(data), globalevents.ResultSucceeded
 		m.Opts.Log(ctx, start)
-		toolResult, summary, err = m.Opts.Tools.CallTool(ctx, tool.CallRequest{ID: call, Name: name, Arguments: json.RawMessage(arguments)})
+		callResult, summary, err = m.Opts.Tools.CallTool(ctx, tool.CallRequest{ID: call, Name: name, Arguments: json.RawMessage(arguments)})
 		if err != nil {
 			record.ResultStatus = globalevents.ResultFailed
 			if globalevents.LogStatus(err) == globalevents.ResultCanceled {
+				record.ResultStatus = globalevents.ResultCanceled
+			}
+		} else if callResult.Status != operationresult.Success {
+			record.ResultStatus = globalevents.ResultRejected
+			switch callResult.Status {
+			case operationresult.Failed, operationresult.Timeout:
+				record.ResultStatus = globalevents.ResultFailed
+			case operationresult.Canceled:
 				record.ResultStatus = globalevents.ResultCanceled
 			}
 		}
@@ -267,19 +298,32 @@ func (m Module) callTool(ctx context.Context, event share.Event, action Action, 
 		record.Level = slog.LevelWarn
 	}
 	content.Summary = &summary
-	body := toolResult.LogContent(err)
+	body := ""
+	if err != nil {
+		body = err.Error()
+	} else if callResult.Status == operationresult.Success {
+		if callResult.Data != nil {
+			body = callResult.Data.LogContent()
+		}
+	} else {
+		body = callResult.Message
+	}
 	content.Result = &body
 	content.Arguments = ""
 	data, _ := json.Marshal(content)
 	record.Content = string(data)
 	m.Opts.Log(ctx, record)
 	if err != nil {
-		return actionResult{Error: err.Error()}, err
+		return operationresult.Result[actionResult]{}, err
 	}
-	if toolResult != nil {
-		return actionResult{Result: llm.SegmentsContentText(toolResult.LLMSegments())}, nil
+	if callResult.Status != operationresult.Success {
+		return operationresult.Result[actionResult]{Status: callResult.Status, Message: callResult.Message}, nil
 	}
-	return actionResult{}, nil
+	result := actionResult{}
+	if callResult.Data != nil {
+		result.Result = llm.SegmentsContentText(callResult.Data.LLMSegments())
+	}
+	return operationresult.Result[actionResult]{Status: operationresult.Success, Data: result}, nil
 }
 
 func render(text string, event share.Event, state state) string {
@@ -342,7 +386,11 @@ func setTextField(event share.Event, field, value string) (share.Event, error) {
 	case "tool.arguments":
 		event.Tool.Arguments = value
 	case "tool.result":
-		event.Tool.Result = value
+		if event.Tool.Result.Status == operationresult.Success {
+			event.Tool.Result.Data = value
+		} else {
+			event.Tool.Result.Message = value
+		}
 		event.Message.Segments = llm.SetSegmentText(toolResultSegments(event), value)
 	}
 	return event, nil

@@ -2,12 +2,11 @@ package hook
 
 import (
 	"context"
-	"errors"
+	"elbot/internal/operationresult"
 	"slices"
 	"strings"
 
 	"elbot/internal/control"
-	"elbot/internal/hook/share"
 )
 
 // management 将根部准入与内部管理能力接到统一操作，不暴露运行组件。
@@ -43,37 +42,27 @@ func (a management) Reload(ctx context.Context) (control.ReloadHooksResult, erro
 	report, err := a.supervisor.control.HookReload()
 	return control.ReloadHooksResult{Notices: slices.Clone(report.Notices)}, err
 }
-func (a management) Start(ctx context.Context, id string) error {
+func (a management) Start(ctx context.Context, id string) (operationresult.Result[struct{}], error) {
 	_, done, err := a.supervisor.beginCall(ctx)
 	if err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
 	defer done()
-	return managementError(a.supervisor.control.StartStatefulHook(id))
+	return a.supervisor.control.StartStatefulHook(id)
 }
-func (a management) Stop(ctx context.Context, id string) error {
+func (a management) Stop(ctx context.Context, id string) (operationresult.Result[struct{}], error) {
 	ctx, done, err := a.supervisor.beginCall(ctx)
 	if err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
 	defer done()
-	found, err := a.supervisor.control.StopHook(ctx, id)
-	if err == nil && !found {
-		err = share.ErrHookNotFound
-	}
-	return managementError(err)
+	return a.supervisor.control.StopHook(ctx, id)
 }
-func (a management) Restart(ctx context.Context, id string) error {
+func (a management) Restart(ctx context.Context, id string) (operationresult.Result[struct{}], error) {
 	ctx, done, err := a.supervisor.beginCall(ctx)
 	if err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
 	defer done()
-	return managementError(a.supervisor.control.RestartStatefulHook(ctx, id))
-}
-func managementError(err error) error {
-	if errors.Is(err, share.ErrHookNotFound) {
-		return &control.Error{Code: "not_found", Message: "Hook 不存在", Cause: err}
-	}
-	return err
+	return a.supervisor.control.RestartStatefulHook(ctx, id)
 }

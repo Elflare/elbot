@@ -4,6 +4,7 @@ package control
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"fmt"
 	"strings"
 	"sync"
@@ -111,26 +112,28 @@ func (s *Service) StatefulHooks() []share.RuntimeInfo {
 	return s.runtime.List()
 }
 
-func (s *Service) StartStatefulHook(id string) error {
+func (s *Service) StartStatefulHook(id string) (operationresult.Result[struct{}], error) {
 	s.reloadMu.Lock()
 	defer s.reloadMu.Unlock()
 	return s.runtime.Start(id)
 }
 
-func (s *Service) StopHook(ctx context.Context, id string) (bool, error) {
+func (s *Service) StopHook(ctx context.Context, id string) (operationresult.Result[struct{}], error) {
 	s.reloadMu.Lock()
 	defer s.reloadMu.Unlock()
 	matched := s.manager.Matches(id)
 	stopped := s.manager.Stop(id)
 	runtimeStopped, err := s.runtime.Stop(ctx, id)
-	if err != nil && (runtimeStopped || !matched) {
-		return matched || runtimeStopped || stopped > 0, err
+	if err != nil {
+		return operationresult.Result[struct{}]{}, err
 	}
-	matched = matched || runtimeStopped
-	return matched || stopped > 0, nil
+	if runtimeStopped.Status == operationresult.NotFound && (matched || stopped > 0) {
+		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
+	}
+	return runtimeStopped, nil
 }
 
-func (s *Service) RestartStatefulHook(ctx context.Context, id string) error {
+func (s *Service) RestartStatefulHook(ctx context.Context, id string) (operationresult.Result[struct{}], error) {
 	s.reloadMu.Lock()
 	defer s.reloadMu.Unlock()
 	return s.runtime.Restart(ctx, id)

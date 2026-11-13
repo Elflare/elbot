@@ -12,6 +12,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/hook/share"
+	"elbot/internal/operationresult"
 )
 
 func validateExecAction(action Action) error {
@@ -159,31 +160,38 @@ func (r *Rule) normalizeRoles() error {
 	return nil
 }
 
-func (m Module) runRule(ctx context.Context, rule Rule, event share.Event, readOnlyCalls bool) (share.Event, error) {
+func (m Module) runRule(ctx context.Context, rule Rule, event share.Event, readOnlyCalls bool) (operationresult.Result[share.Event], error) {
 	if !rule.matchRoles(event) {
-		return event, nil
+		return operationresult.Result[share.Event]{Status: operationresult.Success, Data: event}, nil
 	}
 	if rule.source.RuntimeID != "" {
-		return m.Opts.Runtime.Handle(ctx, rule.source.RuntimeID, event, share.Control{
+		updated, err := m.Opts.Runtime.Handle(ctx, rule.source.RuntimeID, event, share.Control{
 			Consume: rule.Consume, StopPropagation: rule.StopPropagation,
 		})
+		if err != nil {
+			return operationresult.Result[share.Event]{}, err
+		}
+		return operationresult.Result[share.Event]{Status: operationresult.Success, Data: updated}, nil
 	}
 	before := share.SnapshotCalls(event)
 	state := state{Actions: map[string]actionResult{}}
 	var passThrough *bool
-	var err error
 
 	for index, action := range rule.Actions {
-		var result actionResult
-		event, result, err = m.runAction(ctx, event, action, state)
-		if err == nil {
-			err = validateCalls(readOnlyCalls, before, event)
-		}
+		updated, outcome, err := m.runAction(ctx, event, action, state)
 		if err != nil {
-			return event, fmt.Errorf("rule %q action %d %s: %w", rule.Name, index+1, action.Type, err)
+			return operationresult.Result[share.Event]{}, fmt.Errorf("rule %q action %d %s: %w", rule.Name, index+1, action.Type, err)
 		}
+		if outcome.Status != operationresult.Success {
+			return operationresult.Result[share.Event]{Status: outcome.Status, Message: outcome.Message}, nil
+		}
+		event = updated
+		if err := validateCalls(readOnlyCalls, before, event); err != nil {
+			return operationresult.Result[share.Event]{}, fmt.Errorf("rule %q action %d %s: %w", rule.Name, index+1, action.Type, err)
+		}
+		result := outcome.Data
 		if result.Matched != nil && !*result.Matched {
-			return before, nil
+			return operationresult.Result[share.Event]{Status: operationresult.Success, Data: before}, nil
 		}
 		if result.PassThrough != nil {
 			passThrough = result.PassThrough
@@ -204,7 +212,7 @@ func (m Module) runRule(ctx context.Context, rule Rule, event share.Event, readO
 			event.Control.StopPropagation = true
 		}
 	}
-	return event, nil
+	return operationresult.Result[share.Event]{Status: operationresult.Success, Data: event}, nil
 }
 
 func (r Rule) matchRoles(event share.Event) bool {

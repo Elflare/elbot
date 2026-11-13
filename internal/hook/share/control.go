@@ -3,6 +3,7 @@ package share
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 )
 
@@ -19,14 +20,14 @@ type RuntimeControl interface {
 	ValidatePlugin(RuntimeConfig) error
 	ReplacePlugin(string, *RuntimeConfig, func()) error
 	List() []RuntimeInfo
-	Start(string) error
-	Stop(context.Context, string) (bool, error)
-	Restart(context.Context, string) error
+	Start(string) (operationresult.Result[struct{}], error)
+	Stop(context.Context, string) (operationresult.Result[struct{}], error)
+	Restart(context.Context, string) (operationresult.Result[struct{}], error)
 }
 
 // RuntimeCaller 供 rules 发起插件处理、媒体请求和共享状态请求。
 type RuntimeCaller interface {
 	Handle(context.Context, string, Event, Control) (Event, error)
-	MediaRequest(context.Context, string, string, json.RawMessage) (any, error)
+	MediaRequest(context.Context, string, string, json.RawMessage) (operationresult.Result[json.RawMessage], error)
 	SharedRequest(string, json.RawMessage) (any, error)
 }

@@ -4,6 +4,7 @@ package hook
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"io"
 
 	"elbot/internal/media"
@@ -12,13 +13,13 @@ import (
 // MediaAPI is the host-only media capability. It is never serialized to hook.v2.
 // Go hooks share the center rather than accessing its storage implementation.
 type MediaAPI interface {
-	ImportURL(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
-	ImportFile(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
-	ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (media.MediaInfo, error)
-	ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (media.MediaInfo, error)
-	Read(context.Context, string) ([]byte, media.MediaInfo, error)
-	Export(context.Context, string, string) (media.MediaInfo, error)
-	Info(context.Context, string) (media.MediaInfo, error)
+	ImportURL(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	ImportFile(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	Read(context.Context, string) (operationresult.Result[[]byte], media.MediaInfo, error)
+	Export(context.Context, string, string) (operationresult.Result[media.MediaInfo], error)
+	Info(context.Context, string) (operationresult.Result[media.MediaInfo], error)
 	AddReference(context.Context, media.Reference) error
 	RemoveReference(context.Context, media.Reference) error
 }

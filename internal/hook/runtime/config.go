@@ -15,6 +15,7 @@ import (
 
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 )
 
 type Status string
@@ -33,11 +34,11 @@ type Options struct {
 	Media mediaAPI // Borrowed media center; runtime owns only its own leases.
 	Tools interface {
 		QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
-		CallTool(context.Context, tool.CallRequest) (*tool.Result, string, error)
+		CallTool(context.Context, tool.CallRequest) (operationresult.Result[*tool.Result], string, error)
 	} // Metadata, schema and invocation without exposing Tool objects.
 
 	// Send returns delivered receipts, including partial delivery on error.
-	Send      func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
+	Send      func(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error)
 	SharedDir string
 	Log       func(context.Context, events.LogRecord)    // Publishes the source-owned record.
 	Notify    func(context.Context, events.Notification) // Publishes the source-owned notice without affecting the business result.

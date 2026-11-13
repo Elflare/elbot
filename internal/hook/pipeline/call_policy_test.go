@@ -14,7 +14,7 @@ func TestInvocationReleasesContext(t *testing.T) {
 			var captured context.Context
 			done := 0
 			failure := errors.New("handler failed")
-			manager.Register(share.Registration{Point: share.PointToolCallPrepared, Name: "cleanup", Match: share.Always(), Handler: share.HandlerFunc(func(ctx context.Context, event share.Event, _ bool) (share.Event, error) {
+			manager.Register(share.Registration{Point: share.PointToolCallPrepared, Name: "cleanup", Match: share.Always(), Handler: adaptHandler(func(ctx context.Context, event share.Event, _ bool) (share.Event, error) {
 				captured = ctx
 				if manager.List()[0].Active != 1 {
 					t.Error("handler not active")
@@ -45,7 +45,7 @@ func TestInvokeCleanupOnPanic(t *testing.T) {
 	for _, stage := range []string{"observe", "handler", "done"} {
 		manager := newTestManager()
 		var captured context.Context
-		reg := registration{name: "panic", handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
+		reg := registration{name: "panic", handler: adaptHandler(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 			if stage == "handler" {
 				panic(stage)
 			}
@@ -80,7 +80,7 @@ func TestReadOnlyCallsReachesRunAndNotifyHandlers(t *testing.T) {
 		for _, notify := range []bool{false, true} {
 			manager := newTestManager()
 			calls := 0
-			manager.Register(share.Registration{Point: share.PointToolCallPrepared, Name: "policy", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, got bool) (share.Event, error) {
+			manager.Register(share.Registration{Point: share.PointToolCallPrepared, Name: "policy", Match: share.Always(), Handler: adaptHandler(func(_ context.Context, event share.Event, got bool) (share.Event, error) {
 				calls++
 				if got != readOnly {
 					t.Errorf("read-only policy=%v, want %v", got, readOnly)

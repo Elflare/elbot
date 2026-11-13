@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -429,7 +430,11 @@ func (w *worker) handle(ctx context.Context, event share.Event, continuation boo
 			event.Message.Segments = llm.SetSegmentText(event.Message.Segments, *result.Message.Text)
 		}
 		if event.Point == share.PointToolCallCompleted {
-			event.Tool.Result = llm.SegmentsTextOnly(event.Message.Segments)
+			if event.Tool.Result.Status == operationresult.Success {
+				event.Tool.Result.Data = llm.SegmentsTextOnly(event.Message.Segments)
+			} else {
+				event.Tool.Result.Message = llm.SegmentsTextOnly(event.Message.Segments)
+			}
 		}
 	}
 	consume := defaults.Consume
@@ -748,7 +753,23 @@ func (w *worker) handlePluginRequest(value frame) {
 	if err != nil {
 		response.Error = err.Error()
 	} else {
-		response.Result = mustJSON(result)
+		switch value := result.(type) {
+		case operationresult.Result[map[string]any]:
+			if value.Status != operationresult.Success {
+				ok, response.Error = false, value.Message
+			} else {
+				response.Result = mustJSON(value.Data)
+			}
+		case operationresult.Result[json.RawMessage]:
+			if value.Status != operationresult.Success {
+				ok, response.Error = false, value.Message
+			} else {
+				response.Result = value.Data
+			}
+		default:
+			response.Result = mustJSON(result)
+		}
+		response.OK = &ok
 	}
 	ctx, cancel := context.WithTimeout(w.manager.rootCtx, w.eventTimeout)
 	writeErr := w.write(ctx, response)

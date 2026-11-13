@@ -13,7 +13,7 @@ func (toolOnlyHooks) ToolCallPrepared(_ context.Context, _ agentshare.Session, c
 }
 
 func (toolOnlyHooks) ToolCallCompleted(_ context.Context, _ agentshare.Session, result agentshare.ToolResult) ([]llm.MessageSegment, error) {
-	return result.Segments, nil
+	return result.Result.Data, nil
 }
 
 // Compile-time contracts: tool execution must not require input, model or output callbacks.

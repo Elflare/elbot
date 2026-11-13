@@ -5,6 +5,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 )
 
 // Points is one provider's callbacks. Nil callbacks preserve the original value
@@ -85,10 +86,10 @@ type LLMResponseResult struct {
 }
 
 type ToolResult struct {
-	Call     llm.ToolCallRequest  // Executed call; identity and arguments are facts here.
-	Risk     string               // Execution risk classification.
-	Segments []llm.MessageSegment // Editable result, including non-text segments.
-	Err      error                // Actual execution error, independent of result display.
+	Call   llm.ToolCallRequest                          // Executed call; identity and arguments are facts here.
+	Risk   string                                       // Execution risk classification.
+	Result operationresult.Result[[]llm.MessageSegment] // 工具业务结果；仅成功时读取可编辑的媒体片段。
+	Err    error                                        // Actual execution error, independent of result display.
 }
 
 type wakeupKey struct{}

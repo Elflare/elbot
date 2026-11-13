@@ -13,6 +13,7 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/hook/pipeline"
 	"elbot/internal/hook/share"
+	"elbot/internal/operationresult"
 )
 
 type startTestControl struct {
@@ -20,11 +21,17 @@ type startTestControl struct {
 }
 
 func (c startTestControl) HookReload() (share.ReloadReport, error) { return c.reload() }
-func (startTestControl) HookList() []share.Info                   { return nil }
+func (startTestControl) HookList() []share.Info                    { return nil }
 func (startTestControl) StatefulHooks() []share.RuntimeInfo        { return nil }
-func (startTestControl) StartStatefulHook(string) error            { return nil }
-func (startTestControl) StopHook(context.Context, string) (bool, error) { return true, nil }
-func (startTestControl) RestartStatefulHook(context.Context, string) error { return nil }
+func (startTestControl) StartStatefulHook(string) (operationresult.Result[struct{}], error) {
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
+}
+func (startTestControl) StopHook(context.Context, string) (operationresult.Result[struct{}], error) {
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
+}
+func (startTestControl) RestartStatefulHook(context.Context, string) (operationresult.Result[struct{}], error) {
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
+}
 
 func TestSupervisorConcurrentStartWaitsForPlatformSubscription(t *testing.T) {
 

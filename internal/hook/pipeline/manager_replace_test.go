@@ -60,7 +60,7 @@ func TestManagerReplaceSwapsHandlersAndKeepsRuntimeIntegrations(t *testing.T) {
 		return event, false, nil
 	})
 	candidate := newTestManager()
-	candidate.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "replacement", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
+	candidate.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "replacement", Match: share.Always(), Handler: adaptHandler(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 		runs++
 		return event, nil
 	})})
@@ -91,7 +91,7 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 		Point: share.PointAgentInputPrepared,
 		Name:  "old.blocking",
 		Match: share.Always(),
-		Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
+		Handler: adaptHandler(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 			close(entered)
 			<-release
 			runs <- "old.blocking"
@@ -102,7 +102,7 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 		Point: share.PointAgentInputPrepared,
 		Name:  "old.second",
 		Match: share.Always(),
-		Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
+		Handler: adaptHandler(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 			runs <- "old.second"
 			return event, nil
 		}),
@@ -121,7 +121,7 @@ func TestManagerReplaceKeepsInFlightSnapshot(t *testing.T) {
 		Point: share.PointAgentInputPrepared,
 		Name:  "new",
 		Match: share.Always(),
-		Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
+		Handler: adaptHandler(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 			runs <- "new"
 			return event, nil
 		}),
@@ -156,7 +156,7 @@ func TestManagerReplacePluginLeavesOtherRegistrationsUntouched(t *testing.T) {
 			PluginID: pluginID,
 			Name:     name,
 			Match:    share.Always(),
-			Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
+			Handler: adaptHandler(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 				runs = append(runs, name)
 				return event, nil
 			}),

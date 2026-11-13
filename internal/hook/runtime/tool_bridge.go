@@ -19,6 +19,7 @@ import (
 	"elbot/internal/delivery"
 	globalevents "elbot/internal/events"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 )
 
 func (w *worker) pluginRequest(value frame) (any, error) {
@@ -122,16 +123,15 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		record.Identity = logIdentity(callCtx, sessionID)
 		w.manager.opts.Log(callCtx, record)
 	}
-	failCall := func(status globalevents.ResultStatus, err error) (any, error) {
-		logHook("hook_tool_call_completed", status, "Tool.Call not entered: "+err.Error())
-		return nil, err
+	failCall := func(status operationresult.Status, message string) (any, error) {
+		logHook("hook_tool_call_completed", globalevents.ResultRejected, "Tool.Call not entered: "+message)
+		return operationresult.Result[map[string]any]{Status: status, Message: message}, nil
 	}
 	if err != nil {
-		logHook("hook_tool_call_completed", globalevents.ResultRejected, "Tool.Call not entered; invalid parameters: "+err.Error())
-		return nil, err
+		return failCall(operationresult.InvalidArguments, err.Error())
 	}
 	if name == "" {
-		return failCall(globalevents.ResultRejected, fmt.Errorf("tool.call requires name"))
+		return failCall(operationresult.InvalidArguments, "tool.call requires name")
 	}
 	call.ID = randomID("plugin")
 	content.ToolCallID = call.ID
@@ -140,22 +140,23 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		allowed = slices.Contains(w.config.Tools.BackgroundAllow, name)
 	}
 	if !allowed {
-		return failCall(globalevents.ResultRejected, fmt.Errorf("tool %q is not allowed for hook %q", name, w.config.ID))
+		return failCall(operationresult.Forbidden, fmt.Sprintf("tool %q is not allowed for hook %q", name, w.config.ID))
 	}
 	infos, err := w.manager.opts.Tools.QueryTools(callCtx, tool.ToolQuery{Scope: tool.QueryCatalog, Names: []string{name}, IncludeHidden: true, IncludeDiscover: true})
-	if err == nil && len(infos) == 0 {
-		err = fmt.Errorf("tool %q not found", name)
-	}
 	if err != nil {
-		return failCall(globalevents.ResultFailed, err)
+		logHook("hook_tool_call_completed", globalevents.ResultFailed, err.Error())
+		return nil, err
+	}
+	if len(infos) == 0 {
+		return failCall(operationresult.NotFound, fmt.Sprintf("tool %q not found", name))
 	}
 	if infos[0].Definition.ForegroundOnly && params.Background {
-		return failCall(globalevents.ResultRejected, fmt.Errorf("tool %q is foreground-only", name))
+		return failCall(operationresult.Forbidden, fmt.Sprintf("tool %q is foreground-only", name))
 	}
 	if !params.Background || strings.TrimSpace(params.Origin) != "" {
 		contextValue, ok := w.manager.takeToolContext(invocation, w)
 		if !ok {
-			return failCall(globalevents.ResultRejected, fmt.Errorf("invalid, expired or exhausted hook context"))
+			return failCall(operationresult.Conflict, "invalid, expired or exhausted hook context")
 		}
 		callCtx = contextValue.Context
 		callCtx = contextinfo.WithActor(callCtx, actor)
@@ -170,30 +171,45 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
 			status = globalevents.ResultCanceled
 		}
-		return failCall(status, err)
+		logHook("hook_tool_call_completed", status, err.Error())
+		return nil, err
 	}
 	started := time.Now()
 	logHook("hook_tool_call_prepared", globalevents.ResultSucceeded, "")
-	result, summary, err := w.manager.opts.Tools.CallTool(callCtx, call)
+	callResult, summary, err := w.manager.opts.Tools.CallTool(callCtx, call)
 	elapsedMS := time.Since(started).Milliseconds()
 	content.ElapsedMS = &elapsedMS
 	content.Summary = &summary
-	status := globalevents.ResultSucceeded
 	if err != nil {
-		status = globalevents.ResultFailed
+		status := globalevents.ResultFailed
 		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
 			status = globalevents.ResultCanceled
 		}
-	}
-	logHook("hook_tool_call_completed", status, result.LogContent(err))
-	if err != nil {
+		logHook("hook_tool_call_completed", status, err.Error())
 		return nil, err
 	}
+	if callResult.Status != operationresult.Success {
+		status := globalevents.ResultRejected
+		switch callResult.Status {
+		case operationresult.Failed, operationresult.Timeout:
+			status = globalevents.ResultFailed
+		case operationresult.Canceled:
+			status = globalevents.ResultCanceled
+		}
+		logHook("hook_tool_call_completed", status, callResult.Message)
+		return operationresult.Result[map[string]any]{Status: callResult.Status, Message: callResult.Message}, nil
+	}
+	result := callResult.Data
+	logContent := ""
+	if result != nil {
+		logContent = result.LogContent()
+	}
+	logHook("hook_tool_call_completed", globalevents.ResultSucceeded, logContent)
 	if result == nil {
-		return map[string]any{"content": "", "segments": []llm.MessageSegment{}, "warnings": []string{}, "receipts": []delivery.Receipt{}}, nil
+		return operationresult.Result[map[string]any]{Status: operationresult.Success, Data: map[string]any{"content": "", "segments": []llm.MessageSegment{}, "warnings": []string{}, "receipts": []delivery.Receipt{}}}, nil
 	}
 	if len(result.Outputs) == 0 {
-		return map[string]any{"content": result.Content, "segments": result.Segments, "warnings": result.Warnings, "receipts": []delivery.Receipt{}}, nil
+		return operationresult.Result[map[string]any]{Status: operationresult.Success, Data: map[string]any{"content": result.Content, "segments": result.Segments, "warnings": result.Warnings, "receipts": []delivery.Receipt{}}}, nil
 	}
 	content.Summary = nil
 	content.ElapsedMS = nil
@@ -201,10 +217,27 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	if target.Empty() {
 		target, err = delivery.ValidateOutputsTarget(result.Outputs)
 	}
-	var receipt delivery.Receipt
-	if err == nil {
-		receipt, err = w.manager.opts.Send(callCtx, target, result.Outputs)
+	if err != nil {
+		logHook("hook_tool_log", globalevents.ResultRejected, err.Error())
+		return operationresult.Result[map[string]any]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
+	sent, err := w.manager.opts.Send(callCtx, target, result.Outputs)
+	if err != nil {
+		logHook("hook_tool_log", globalevents.ResultFailed, err.Error())
+		return nil, err
+	}
+	if sent.Status != operationresult.Success {
+		status := globalevents.ResultRejected
+		switch sent.Status {
+		case operationresult.Failed, operationresult.Timeout:
+			status = globalevents.ResultFailed
+		case operationresult.Canceled:
+			status = globalevents.ResultCanceled
+		}
+		logHook("hook_tool_log", status, sent.Message)
+		return operationresult.Result[map[string]any]{Status: sent.Status, Message: sent.Message}, nil
+	}
+	receipt := sent.Data
 	content.PlatformMessageIDs = &receipt.PlatformMessageIDs
 	sentMessages := []map[string]any{}
 	for _, sent := range receipt.SentMessages {
@@ -213,18 +246,8 @@ func (w *worker) callTool(raw json.RawMessage) (any, error) {
 	content.SentMessages = &sentMessages
 	outputCount := len(result.Outputs)
 	content.OutputCount = &outputCount
-	status, body := globalevents.ResultSucceeded, ""
-	if err != nil {
-		status, body = globalevents.ResultFailed, err.Error()
-		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
-			status = globalevents.ResultCanceled
-		}
-	}
-	logHook("hook_tool_log", status, body)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]any{"content": result.Content, "segments": result.Segments, "warnings": result.Warnings, "receipts": []delivery.Receipt{receipt}}, nil
+	logHook("hook_tool_log", globalevents.ResultSucceeded, "")
+	return operationresult.Result[map[string]any]{Status: operationresult.Success, Data: map[string]any{"content": result.Content, "segments": result.Segments, "warnings": result.Warnings, "receipts": []delivery.Receipt{receipt}}}, nil
 }
 
 func (w *worker) schemas(ctx context.Context) ([]llm.ToolSchema, error) {

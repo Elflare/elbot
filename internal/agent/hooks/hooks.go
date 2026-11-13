@@ -5,6 +5,7 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"fmt"
 	"sync"
 )
@@ -195,7 +196,15 @@ func (h *HookBridge) ToolCallPrepared(ctx context.Context, session agentshare.Se
 }
 
 func (h *HookBridge) ToolCallCompleted(ctx context.Context, session agentshare.Session, value agentshare.ToolResult) ([]llm.MessageSegment, error) {
-	return invoke(h, ctx, Facts{Session: session}, value, value.Segments, func(p *Points) func(context.Context, Facts, agentshare.ToolResult) ([]llm.MessageSegment, error) {
+	var segments []llm.MessageSegment
+	if value.Err != nil {
+		segments = llm.TextSegments(value.Err.Error())
+	} else if value.Result.Status != operationresult.Success {
+		segments = llm.TextSegments(value.Result.Message)
+	} else {
+		segments = value.Result.Data
+	}
+	return invoke(h, ctx, Facts{Session: session}, value, segments, func(p *Points) func(context.Context, Facts, agentshare.ToolResult) ([]llm.MessageSegment, error) {
 		return p.ToolCallCompleted
 	})
 }

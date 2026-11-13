@@ -59,7 +59,8 @@ type Completer interface {
 	Complete(ctx context.Context, req CompletionRequest) []Completion
 }
 
+// Handler 执行命令；业务状态由 Result 表达，error 只表示程序错误。
 type Handler interface {
 	Info() Info
-	Handle(ctx context.Context, req Request) (*Result, error)
+	Handle(ctx context.Context, req Request) (Result, error)
 }

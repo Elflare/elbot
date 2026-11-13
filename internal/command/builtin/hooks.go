@@ -4,6 +4,7 @@ import (
 	"context"
 	command "elbot/internal/command/share"
 	"elbot/internal/control"
+	"elbot/internal/operationresult"
 	"fmt"
 	"strings"
 )
@@ -14,48 +15,70 @@ func NewHooks(deps Deps) command.Handler { return hooksCommand{deps: deps} }
 func (c hooksCommand) Info() command.Info {
 	return command.Info{Name: "hooks", Args: "[reload|<name>|start <id>|stop <id>|restart <id>]", Description: "Hook 管理", Help: "省略=列表；name=插件名/Hook 名，查看详情\nreload=重载配置；start/restart=启动/重启 persistent Worker\nstop=取消在途调用并停止 Worker（如有）\nid=插件 ID；stop 也支持 Hook 名"}
 }
-func (c hooksCommand) Handle(ctx context.Context, req command.Request) (*command.Result, error) {
+func (c hooksCommand) Handle(ctx context.Context, req command.Request) (command.Result, error) {
 	fields := strings.Fields(req.Args)
 	if len(fields) == 0 {
 		data, err := c.deps.Control.ListHooks(ctx)
-		return &command.Result{Kind: command.ResultKindHooks, Data: data}, err
+		if err != nil {
+			return command.Result{}, err
+		}
+		if data.Status != operationresult.Success {
+			return command.Result{Status: data.Status, Message: data.Message}, nil
+		}
+		return command.Result{Status: operationresult.Success, Kind: command.ResultKindHooks, Data: data.Data}, nil
 	}
 	switch fields[0] {
 	case "reload":
 		if len(fields) != 1 {
-			return nil, inputError(fmt.Errorf("usage: %s", c.deps.CommandText("hooks", "reload")))
+			return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", c.deps.CommandText("hooks", "reload"))}, nil
 		}
 		data, err := c.deps.Control.ReloadHooks(ctx)
-		return &command.Result{Kind: command.ResultKindHooks, Data: data}, err
+		if err != nil {
+			return command.Result{}, err
+		}
+		if data.Status != operationresult.Success {
+			return command.Result{Status: data.Status, Message: data.Message}, nil
+		}
+		return command.Result{Status: operationresult.Success, Kind: command.ResultKindHooks, Data: data.Data}, nil
 	case "start", "stop", "restart":
 		if len(fields) != 2 {
-			return nil, inputError(fmt.Errorf("usage: %s", c.deps.CommandText("hooks", fields[0], "<id>")))
+			return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", c.deps.CommandText("hooks", fields[0], "<id>"))}, nil
 		}
+		var result operationresult.Result[struct{}]
 		var err error
 		switch fields[0] {
 		case "start":
-			err = c.deps.Control.StartHook(ctx, control.StartHookRequest{HookID: fields[1]})
+			result, err = c.deps.Control.StartHook(ctx, control.StartHookRequest{HookID: fields[1]})
 		case "stop":
-			err = c.deps.Control.StopHook(ctx, control.StopHookRequest{HookID: fields[1]})
+			result, err = c.deps.Control.StopHook(ctx, control.StopHookRequest{HookID: fields[1]})
 		case "restart":
-			err = c.deps.Control.RestartHook(ctx, control.RestartHookRequest{HookID: fields[1]})
+			result, err = c.deps.Control.RestartHook(ctx, control.RestartHookRequest{HookID: fields[1]})
 		}
 		if err != nil {
-			return nil, err
+			return command.Result{}, err
 		}
-		return &command.Result{Kind: command.ResultKindHooks}, nil
+		if result.Status != operationresult.Success {
+			return command.Result{Status: result.Status, Message: result.Message}, nil
+		}
+		return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: fmt.Sprintf("hook %s: %s · OK", fields[0], fields[1])}}, nil
 	default:
 		if len(fields) != 1 {
-			return nil, inputError(fmt.Errorf("usage: %s", c.deps.CommandText("hooks", c.Info().Args)))
+			return command.Result{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("usage: %s", c.deps.CommandText("hooks", c.Info().Args))}, nil
 		}
 		data, err := c.deps.Control.GetHook(ctx, control.GetHookRequest{HookID: fields[0]})
-		return &command.Result{Kind: command.ResultKindHooks, Data: data}, err
+		if err != nil {
+			return command.Result{}, err
+		}
+		if data.Status != operationresult.Success {
+			return command.Result{Status: data.Status, Message: data.Message}, nil
+		}
+		return command.Result{Status: operationresult.Success, Kind: command.ResultKindHooks, Data: data.Data}, nil
 	}
 }
 func (c hooksCommand) Complete(ctx context.Context, req command.CompletionRequest) []command.Completion {
 	token := command.CurrentCompletionToken(req)
 	data, err := c.deps.Control.ListHooks(ctx)
-	if err != nil {
+	if err != nil || data.Status != operationresult.Success {
 		return nil
 	}
 	options := []command.CompletionOption{}
@@ -63,7 +86,7 @@ func (c hooksCommand) Complete(ctx context.Context, req command.CompletionReques
 		options = []command.CompletionOption{{Text: "reload", Description: "重载 Hook"}, {Text: "start", Description: "启动 Hook"}, {Text: "stop", Description: "停止 Hook"}, {Text: "restart", Description: "重启 Hook"}}
 	}
 	seen := map[string]bool{}
-	for _, item := range data.Items {
+	for _, item := range data.Data.Items {
 		name := item.ID
 		if name == "" {
 			name = item.Name

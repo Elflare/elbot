@@ -23,6 +23,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/media"
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
 	platformshare "elbot/internal/platform/share"
 	"elbot/internal/security"
 	"elbot/internal/signal"
@@ -48,26 +49,40 @@ func (*integrationPlatform) SessionIDCode(name string, _ contextinfo.ChatType) (
 }
 
 func (*integrationPlatform) RestoreMessageContext(ctx, _ context.Context) context.Context { return ctx }
-func (p *integrationPlatform) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+func (p *integrationPlatform) SendTo(_ context.Context, _ delivery.Target, outputs []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.outputs = append(p.outputs, delivery.FallbackOutput(outputs).Text)
+	return operationresult.Result[delivery.Receipt]{Status: operationresult.Success}, nil
+}
+func (p *integrationPlatform) SendCommandResult(ctx context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
+	text, err := platformshare.FormatCommandResult(req, result)
+	if err != nil {
+		return delivery.Receipt{}, err
+	}
+	if failure != nil {
+		text = failure.Error()
+	}
+	p.mu.Lock()
+	p.outputs = append(p.outputs, text)
+	p.mu.Unlock()
 	return delivery.Receipt{}, nil
 }
-func (p *integrationPlatform) SendCommandResult(ctx context.Context, req command.Request, result *command.Result, failure *command.Error) (delivery.Receipt, error) {
-	text := platformshare.FormatCommandResult(req, result)
-	if failure != nil {
-		text = failure.Message
-	}
-	return p.SendTo(ctx, delivery.Target{}, []delivery.Output{delivery.Text(text)})
-}
-func (p *integrationPlatform) StartStream(context.Context) (delivery.MessageStream, error) {
-	return delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+func (p *integrationPlatform) StartStream(context.Context) (operationresult.Result[delivery.MessageStream], error) {
+	stream := delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
 		if event.Type != delivery.StreamSend {
 			return delivery.Receipt{}, nil
 		}
-		return p.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Actions: event.Actions}})
-	}), nil
+		sent, err := p.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Actions: event.Actions}})
+		if err != nil {
+			return delivery.Receipt{}, err
+		}
+		if sent.Status != operationresult.Success {
+			return delivery.Receipt{}, fmt.Errorf("%s", sent.Message)
+		}
+		return sent.Data, nil
+	})
+	return operationresult.Result[delivery.MessageStream]{Status: operationresult.Success, Data: stream}, nil
 }
 func (*integrationPlatform) CallPlatformAPI(context.Context, string, string, map[string]any) (json.RawMessage, error) {
 	return nil, nil

@@ -4,6 +4,7 @@ package runtime
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -415,33 +416,37 @@ func (m *Manager) List() []share.RuntimeInfo {
 	return items
 }
 
-func (m *Manager) Start(id string) error {
+func (m *Manager) Start(id string) (operationresult.Result[struct{}], error) {
 	if m.isClosed() {
-		return ErrClosed
+		return operationresult.Result[struct{}]{Status: operationresult.Unavailable, Message: "Hook runtime is closed"}, nil
 	}
 	worker := m.worker(id)
 	if worker == nil {
-		return fmt.Errorf("persistent hook %q not found: %w", id, share.ErrHookNotFound)
+		return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: fmt.Sprintf("persistent hook %q not found", id)}, nil
 	}
 	if err := worker.start(); err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
-	err := worker.waitReady(context.Background())
-	return err
+	if err := worker.waitReady(context.Background()); err != nil {
+		return operationresult.Result[struct{}]{}, err
+	}
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
-func (m *Manager) Stop(ctx context.Context, id string) (bool, error) {
+func (m *Manager) Stop(ctx context.Context, id string) (operationresult.Result[struct{}], error) {
 	id = strings.TrimSpace(id)
 	persistent := m.worker(id)
 	if persistent != nil {
-		stopErr := persistent.stop(ctx)
-		return true, stopErr
+		if err := persistent.stop(ctx); err != nil {
+			return operationresult.Result[struct{}]{}, err
+		}
+		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}
 	m.mu.Lock()
 	config, ok := m.configs[id]
 	if !ok || config.ModeOrOnce() != share.RuntimeModeTransient {
 		m.mu.Unlock()
-		return false, fmt.Errorf("hook worker %q not found: %w", id, share.ErrHookNotFound)
+		return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: fmt.Sprintf("hook worker %q not found", id)}, nil
 	}
 	workers := make([]*worker, 0)
 	for key, transient := range m.transient {
@@ -451,12 +456,16 @@ func (m *Manager) Stop(ctx context.Context, id string) (bool, error) {
 		}
 	}
 	m.mu.Unlock()
-	return true, m.stopWorkers(ctx, workers)
+	if err := m.stopWorkers(ctx, workers); err != nil {
+		return operationresult.Result[struct{}]{}, err
+	}
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
-func (m *Manager) Restart(ctx context.Context, id string) error {
-	if _, err := m.Stop(ctx, id); err != nil {
-		return err
+func (m *Manager) Restart(ctx context.Context, id string) (operationresult.Result[struct{}], error) {
+	stopped, err := m.Stop(ctx, id)
+	if err != nil || stopped.Status != operationresult.Success {
+		return stopped, err
 	}
 	return m.Start(id)
 }

@@ -3,6 +3,7 @@
 package share
 
 import (
+	"elbot/internal/operationresult"
 	"fmt"
 	"regexp"
 	"strings"
@@ -337,7 +338,13 @@ func FieldValue(event Event, field string) string {
 	case "tool.arguments":
 		return event.Tool.Arguments
 	case "tool.result":
-		return event.Tool.Result
+		if event.Tool.Error != "" {
+			return event.Tool.Error
+		}
+		if event.Tool.Result.Status != operationresult.Success {
+			return event.Tool.Result.Message
+		}
+		return event.Tool.Result.Data
 	case "tool.risk":
 		return event.Tool.Risk
 	case "actor.platform":

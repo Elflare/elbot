@@ -24,8 +24,10 @@ import (
 	globalevents "elbot/internal/events"
 	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/hook/share"
+	hookprotocol "elbot/internal/hook/share/protocol"
 	"elbot/internal/llm"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 	"elbot/internal/testutil"
 	"elbot/internal/testutil/mediatest"
@@ -40,6 +42,41 @@ func TestExecActionDefaultStdinIncludesEvent(t *testing.T) {
 	}
 	if len(got.Outputs) != 1 || !strings.Contains(got.Outputs[0].Text, `"type":"request"`) || !strings.Contains(got.Outputs[0].Text, `"method":"event.handle"`) || !strings.Contains(got.Outputs[0].Text, `"id":"alice"`) || !strings.Contains(got.Outputs[0].Text, `"platform_message":[{"type":"json"}]`) {
 		t.Fatalf("outputs = %#v", got.Outputs)
+	}
+}
+
+func TestV2ResponseMapsBusinessResultAndGoError(t *testing.T) {
+	tests := []struct {
+		name       string
+		result     any
+		failure    error
+		wantOK     bool
+		wantResult string
+		wantError  string
+	}{
+		{name: "success", result: operationresult.Result[map[string]any]{Status: operationresult.Success, Data: map[string]any{"sent": 1}}, wantOK: true, wantResult: `{"sent":1}`},
+		{name: "rejected", result: operationresult.Result[map[string]any]{Status: operationresult.Forbidden, Message: "not allowed"}, wantError: "not allowed"},
+		{name: "media success", result: operationresult.Result[json.RawMessage]{Status: operationresult.Success, Data: json.RawMessage(`{"media":"id"}`)}, wantOK: true, wantResult: `{"media":"id"}`},
+		{name: "media rejected", result: operationresult.Result[json.RawMessage]{Status: operationresult.NotFound, Message: "media missing"}, wantError: "media missing"},
+		{name: "go error", failure: fmt.Errorf("disk failed"), wantError: "disk failed"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			if err := writeV2Response(&output, "plugin:test", test.result, test.failure); err != nil {
+				t.Fatal(err)
+			}
+			response, err := hookprotocol.DecodeFrame(bytes.TrimSpace(output.Bytes()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if response.OK == nil || *response.OK != test.wantOK || response.Error != test.wantError {
+				t.Fatalf("response = %+v", response)
+			}
+			if test.wantOK && string(response.Result) != test.wantResult {
+				t.Fatalf("result = %s", response.Result)
+			}
+		})
 	}
 }
 
@@ -236,7 +273,7 @@ func TestExecDoneSegmentsReplacesToolResultContent(t *testing.T) {
 	event := share.Event{
 		Point:   share.PointToolCallCompleted,
 		Message: share.MessagePayload{Role: string(llm.RoleTool), Segments: llm.TextSegments("old")},
-		Tool:    share.ToolPayload{Name: "screenshot", Result: "old"},
+		Tool:    share.ToolPayload{Name: "screenshot", Result: operationresult.Result[string]{Status: operationresult.Success, Data: "old"}},
 	}
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
 		{Type: "exec", Command: execHelperCommand("done-segments"), Field: "tool.result"},
@@ -247,8 +284,8 @@ func TestExecDoneSegmentsReplacesToolResultContent(t *testing.T) {
 	if len(got.Message.Segments) != 2 || got.Message.Segments[1].Type != llm.SegmentImage || got.Message.Segments[1].MediaID == "" || got.Message.Segments[1].URL != "" {
 		t.Fatalf("segments = %#v", got.Message.Segments)
 	}
-	if got.Tool.Result != "截图完成" {
-		t.Fatalf("tool.result = %q", got.Tool.Result)
+	if got.Tool.Result.Data != "截图完成" {
+		t.Fatalf("tool.result = %q", got.Tool.Result.Data)
 	}
 }
 

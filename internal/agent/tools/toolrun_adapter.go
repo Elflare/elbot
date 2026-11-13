@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"elbot/internal/tool"
 	"encoding/json"
 	"log/slog"
@@ -39,7 +40,7 @@ type toolRunDeps struct {
 	identity ToolIdentity
 	runtime  *ToolRuntimeState
 	sessions interface {
-		CurrentBound(context.Context, sessionstate.Scope) (*storage.Session, *sessionstate.Binding, error)
+		CurrentBound(context.Context, sessionstate.Scope) (operationresult.Result[sessionstate.CurrentBoundData], error)
 		EnterBinding(context.Context, *sessionstate.Binding) (context.Context, func(), error)
 		EnterSessions(context.Context, ...string) (context.Context, func(), error)
 	}
@@ -67,11 +68,13 @@ func (d toolRunDeps) PrepareToolCall(ctx context.Context, session *storage.Sessi
 	return call, nil
 }
 
-func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, segments []llm.MessageSegment, callErr error) ([]llm.MessageSegment, error) {
-	original := append([]llm.MessageSegment(nil), segments...)
+func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, result operationresult.Result[[]llm.MessageSegment], callErr error) ([]llm.MessageSegment, error) {
+	if callErr == nil && result.Status == operationresult.Success {
+		result.Data = append([]llm.MessageSegment(nil), result.Data...)
+	}
 	updated, err := d.hooks.ToolCallCompleted(ctx,
 		agentshare.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status},
-		agentshare.ToolResult{Call: call, Risk: risk, Segments: original, Err: callErr})
+		agentshare.ToolResult{Call: call, Risk: risk, Result: result, Err: callErr})
 	if err != nil {
 		return nil, err
 	}
@@ -96,9 +99,6 @@ func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName s
 }
 
 func (d toolRunDeps) PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
-	if session == nil {
-		return ctx
-	}
 	ctx = agentshare.FileRollbackContext(ctx, d.runtime.fileRollback, d.sessions, d.turns, d.requests, d.identity, session)
 	if agentshare.IsBackgroundSession(session) {
 		return ctx
@@ -110,7 +110,7 @@ func (d toolRunDeps) ShouldSendPreview(ctx context.Context, assistantText string
 	return d.identity.IsCLI(ctx) || strings.TrimSpace(assistantText) == ""
 }
 
-func (d toolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail []tool.ConfirmationDetailBlock) (tool.ConfirmResult, error) {
+func (d toolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail []tool.ConfirmationDetailBlock) (operationresult.Result[tool.ConfirmResult], error) {
 	return d.confirmations.AwaitToolConfirmation(ctx, sessionID, call, assessment, detail)
 }
 
@@ -118,11 +118,17 @@ func (d toolRunDeps) SendPreview(ctx context.Context, text ...string) {
 	d.output.SendPreview(ctx, text...)
 }
 
-func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) error {
-	_, err := d.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: outputs})
-	return err
+func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) (operationresult.Result[struct{}], error) {
+	target, err := delivery.ValidateOutputsTarget(outputs)
+	if err != nil {
+		return operationresult.Result[struct{}]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
+	}
+	sent, err := d.output.SendTo(ctx, target, outputs)
+	if err != nil {
+		return operationresult.Result[struct{}]{}, err
+	}
+	return operationresult.Result[struct{}]{Status: sent.Status, Message: sent.Message}, nil
 }
-
 func (d toolRunDeps) PublishToolResult(ctx context.Context, toolCallID string, result delivery.ToolResult) {
 	_, _ = d.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamToolResult, ToolCallID: toolCallID, ToolResult: &result})
 }
@@ -175,7 +181,7 @@ type ToolIdentity interface {
 }
 
 type ToolConfirmations interface {
-	AwaitToolConfirmation(context.Context, string, llm.ToolCallRequest, tool.RiskAssessment, []tool.ConfirmationDetailBlock) (tool.ConfirmResult, error)
+	AwaitToolConfirmation(context.Context, string, llm.ToolCallRequest, tool.RiskAssessment, []tool.ConfirmationDetailBlock) (operationresult.Result[tool.ConfirmResult], error)
 }
 
 // ToolRunDeps declares the application bridge consumed by ToolRun. Per-turn
@@ -197,7 +203,7 @@ type ToolRunDeps struct {
 	Identity ToolIdentity
 	Runtime  *ToolRuntimeState
 	Sessions interface {
-		CurrentBound(context.Context, sessionstate.Scope) (*storage.Session, *sessionstate.Binding, error)
+		CurrentBound(context.Context, sessionstate.Scope) (operationresult.Result[sessionstate.CurrentBoundData], error)
 		EnterBinding(context.Context, *sessionstate.Binding) (context.Context, func(), error)
 		EnterSessions(context.Context, ...string) (context.Context, func(), error)
 	}

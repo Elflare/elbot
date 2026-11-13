@@ -11,6 +11,7 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/logging"
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
 	"elbot/internal/request"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -18,45 +19,45 @@ import (
 	"elbot/internal/turn"
 )
 
-// SupervisorDeps 只借用能力，不取得提供方组件或生命周期。未接入的能力返回 not_configured。
+// SupervisorDeps 只借用能力，不取得提供方组件或生命周期。
 type SupervisorDeps struct {
-	Tools              ToolCapabilities                                     // 原始工具目录查询。
-	Skills             SkillCapabilities                                    // 技能重载与删除。
-	FileRollback       FileRollbackCapabilities                             // 原始备份记录与撤销。
-	PrepareFileContext func(context.Context, bool) (context.Context, error) // Agent 提供绑定与提交准入，bool 表示写入。
+	Tools              ToolCapabilities                                                             // 原始工具目录查询。
+	Skills             SkillCapabilities                                                            // 技能重载与删除。
+	FileRollback       FileRollbackCapabilities                                                     // 原始备份记录与撤销。
+	PrepareFileContext func(context.Context, bool) (operationresult.Result[context.Context], error) // Agent 提供绑定与提交准入，bool 表示写入。
 
-	Sessions      SessionCapabilities                          // 会话业务裁决，包含其自身的写入准入。
-	History       HistoryCapabilities                          // 会话快照和分支原始消息读取。
-	Requests      RequestCapabilities                          // 请求查询与取消，不负责实际退出。
-	Execution     ExecutionCapabilities                        // Agent 的执行事实、压缩与停止。
-	Models        ModelCapabilities                            // 模型目录、协议检查和选择提交。
-	Confirmations ConfirmationCapabilities                     // 复用原有确认等待对象，不建立第二套确认状态。
-	Hooks         HookCapabilities                             // Hook 根包适配后的管理能力。
-	Logs          LogCapabilities                              // 结构化日志查询。
-	Doctor        DoctorCapabilities                           // 当前磁盘配置只读检查。
-	Runtime       RuntimeCapabilities                          // 预留重启请求，实际关闭和重建由宿主负责。
-	Commands      func(context.Context) ([]CommandInfo, error) // 提供命令元数据，C 按角色过滤。
-	Scope         func(context.Context) session.Scope          // 从可信调用上下文确定会话范围，不从请求字段构造。
-	Status        func(context.Context) (StatusResult, error)  // Agent 提供的一致状态快照。
-	LogDir        string                                       // 运行中日志中心的实际目录；为空则不开放原始日志根。
+	Sessions      SessionCapabilities                                                 // 会话业务裁决，包含其自身的写入准入。
+	History       HistoryCapabilities                                                 // 会话快照和分支原始消息读取。
+	Requests      RequestCapabilities                                                 // 请求查询与取消，不负责实际退出。
+	Execution     ExecutionCapabilities                                               // Agent 的执行事实、压缩与停止。
+	Models        ModelCapabilities                                                   // 模型目录、协议检查和选择提交。
+	Confirmations ConfirmationCapabilities                                            // 复用原有确认等待对象，不建立第二套确认状态。
+	Hooks         HookCapabilities                                                    // Hook 根包适配后的管理能力。
+	Logs          LogCapabilities                                                     // 结构化日志查询。
+	Doctor        DoctorCapabilities                                                  // 当前磁盘配置只读检查。
+	Runtime       RuntimeCapabilities                                                 // 预留重启请求，实际关闭和重建由宿主负责。
+	Commands      func(context.Context) ([]CommandInfo, error)                        // 提供命令元数据，C 按角色过滤。
+	Scope         func(context.Context) session.Scope                                 // 从可信调用上下文确定会话范围，不从请求字段构造。
+	Status        func(context.Context) (operationresult.Result[StatusResult], error) // Agent 提供的一致状态快照。
+	LogDir        string                                                              // 运行中日志中心的实际目录；为空则不开放原始日志根。
 }
 
 type SessionCapabilities interface {
-	ResetCurrent(context.Context, session.Scope) error
-	Current(context.Context, session.Scope) (*storage.Session, error)
-	CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error)
+	ResetCurrent(context.Context, session.Scope) (operationresult.Result[struct{}], error)
+	Current(context.Context, session.Scope) (operationresult.Result[*storage.Session], error)
+	CurrentBound(context.Context, session.Scope) (operationresult.Result[session.CurrentBoundData], error)
 	DefaultMode() string
-	ActivateMode(context.Context, session.Scope, session.ActivateModeRequest) (session.ActivateModeResult, error)
-	ListPage(context.Context, session.Scope, session.ListRequest) (session.ListResult, error)
-	Resume(context.Context, session.Scope, string) (*storage.Session, error)
-	ResumeLast(context.Context, session.Scope, bool) (*storage.Session, error)
-	Fork(context.Context, session.Scope, string) (*storage.Session, error)
-	Rename(context.Context, session.Scope, string, string) (*storage.Session, error)
-	Archive(context.Context, session.Scope, string) (*storage.Session, error)
-	Unarchive(context.Context, session.Scope, string) (*storage.Session, error)
-	Pin(context.Context, session.Scope, string) (*storage.Session, error)
-	Unpin(context.Context, session.Scope, string) (*storage.Session, error)
-	Delete(context.Context, session.Scope, string) error
+	ActivateMode(context.Context, session.Scope, session.ActivateModeRequest) (operationresult.Result[session.ActivateModeResult], error)
+	ListPage(context.Context, session.Scope, session.ListRequest) (operationresult.Result[session.ListResult], error)
+	Resume(context.Context, session.Scope, string) (operationresult.Result[*storage.Session], error)
+	ResumeLast(context.Context, session.Scope, bool) (operationresult.Result[*storage.Session], error)
+	Fork(context.Context, session.Scope, string) (operationresult.Result[*storage.Session], error)
+	Rename(context.Context, session.Scope, string, string) (operationresult.Result[*storage.Session], error)
+	Archive(context.Context, session.Scope, string) (operationresult.Result[*storage.Session], error)
+	Unarchive(context.Context, session.Scope, string) (operationresult.Result[*storage.Session], error)
+	Pin(context.Context, session.Scope, string) (operationresult.Result[*storage.Session], error)
+	Unpin(context.Context, session.Scope, string) (operationresult.Result[*storage.Session], error)
+	Delete(context.Context, session.Scope, string) (operationresult.Result[struct{}], error)
 	CleanupExpired(context.Context, time.Time) (int, error)
 	EnterBinding(context.Context, *session.Binding) (context.Context, func(), error)
 	EnterSessions(context.Context, ...string) (context.Context, func(), error)
@@ -77,32 +78,32 @@ type RequestCapabilities interface {
 
 type ExecutionCapabilities interface {
 	SnapshotAll() []turn.Snapshot
-	CompactCurrent(context.Context, string) (*storage.Session, error)
+	CompactCurrent(context.Context, string) (operationresult.Result[*storage.Session], error)
 	StopSession(string)
 }
 
 type ModelCapabilities interface {
 	Resolve(config.ModelSelection) modelmgr.Selection
 	ReloadProviders(context.Context) error
-	PrepareModel(string) (modelmgr.ModelOption, error)
-	CommitModelForMode(string, modelmgr.ModelOption) (modelmgr.ModelOption, error)
-	SelectCompactModel(string) (modelmgr.ModelOption, error)
-	SelectNamingModel(string) (modelmgr.ModelOption, error)
+	PrepareModel(string) (operationresult.Result[modelmgr.ModelOption], error)
+	CommitModelForMode(string, modelmgr.ModelOption) (operationresult.Result[modelmgr.ModelOption], error)
+	SelectCompactModel(string) (operationresult.Result[modelmgr.ModelOption], error)
+	SelectNamingModel(string) (operationresult.Result[modelmgr.ModelOption], error)
 	ModelList(string, modelmgr.ModelListOptions) modelmgr.ModelListResult
 }
 
 // ConfirmationCapabilities 查询并响应当前确认等待项。
 type ConfirmationCapabilities interface {
-	Current(context.Context, CurrentConfirmationRequest) (CurrentConfirmationResult, error)
-	Respond(context.Context, RespondConfirmationRequest) (RespondConfirmationResult, error)
+	Current(context.Context, CurrentConfirmationRequest) (operationresult.Result[CurrentConfirmationResult], error)
+	Respond(context.Context, RespondConfirmationRequest) (operationresult.Result[RespondConfirmationResult], error)
 }
 
 type HookCapabilities interface {
 	List(context.Context) ([]HookInfo, error)
 	Reload(context.Context) (ReloadHooksResult, error)
-	Start(context.Context, string) error
-	Stop(context.Context, string) error
-	Restart(context.Context, string) error
+	Start(context.Context, string) (operationresult.Result[struct{}], error)
+	Stop(context.Context, string) (operationresult.Result[struct{}], error)
+	Restart(context.Context, string) (operationresult.Result[struct{}], error)
 }
 
 type LogCapabilities interface {
@@ -115,7 +116,7 @@ type DoctorCapabilities interface {
 // PrepareRestart 只校验并预留一次重启，不停止接入；结果交付后由调用方执行 Commit，否则 Cancel。
 // 提供方负责拒绝重复预留，以及等待旧实例真实退出后重建运行实例。
 type RuntimeCapabilities interface {
-	PrepareRestart(context.Context) (RestartPreparation, error)
+	PrepareRestart(context.Context) (operationresult.Result[RestartPreparation], error)
 }
 
 type RestartPreparation struct {
@@ -133,13 +134,13 @@ type ContextData struct {
 
 type ToolCapabilities interface {
 	QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
-	LoadToolDetail(context.Context, string) (tool.DetailBlock, error)
+	LoadToolDetail(context.Context, string) (operationresult.Result[tool.DetailBlock], error)
 }
 type SkillCapabilities interface {
 	Reload(context.Context) error
-	Remove(context.Context, string) error
+	Remove(context.Context, string) (operationresult.Result[struct{}], error)
 }
 type FileRollbackCapabilities interface {
-	List(context.Context) ([]fileops.RollbackInfo, error)
-	RollbackByID(context.Context, uint64) (fileops.RollbackResult, error)
+	List(context.Context) (operationresult.Result[[]fileops.RollbackInfo], error)
+	RollbackByID(context.Context, uint64) (operationresult.Result[fileops.RollbackResult], error)
 }

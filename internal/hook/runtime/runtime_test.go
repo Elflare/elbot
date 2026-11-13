@@ -229,14 +229,27 @@ func TestManagerBuildsCanonicalRuntimeMessageSegments(t *testing.T) {
 		Point:   share.PointToolCallCompleted,
 		Actor:   share.ActorContext{Platform: "test", ID: "message"},
 		Message: share.MessagePayload{Role: "tool"},
-		Tool:    share.ToolPayload{Name: "screenshot"},
+		Tool:    share.ToolPayload{Name: "screenshot", Result: operationresult.Result[string]{Status: operationresult.Success}},
 	}
 	got, err := manager.Handle(context.Background(), "demo", event, share.Control{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Message.Segments) != 2 || got.Message.Segments[1].MediaID == "" || got.Message.Segments[1].URL != "" || got.Tool.Result != "截图完成" {
+	if len(got.Message.Segments) != 2 || got.Message.Segments[1].MediaID == "" || got.Message.Segments[1].URL != "" || got.Tool.Result.Data != "截图完成" {
 		t.Fatalf("event = %#v", got)
+	}
+}
+
+func TestWorkerMediaRejectionUsesProtocolError(t *testing.T) {
+	manager, _, dir, _ := testMediaRuntime(t)
+	worker := newWorker(manager, share.RuntimeConfig{ID: "media", Dir: dir, EventTimeoutSeconds: 2})
+	var response frame
+	worker.stdin = protocolTestWriter{write: func(data []byte) error {
+		return json.Unmarshal(data, &response)
+	}}
+	worker.handlePluginRequest(frame{ID: "plugin:media", Method: "media.import", Params: json.RawMessage(`{}`)})
+	if response.OK == nil || *response.OK || response.Error != "media.import requires exactly one of url, path or base64" || len(response.Result) != 0 {
+		t.Fatalf("response = %+v", response)
 	}
 }
 

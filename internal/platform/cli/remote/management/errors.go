@@ -2,12 +2,9 @@ package management
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"strings"
-
-	"elbot/internal/control"
 )
 
 func normalizeManagementErrors(next http.Handler) http.Handler {
@@ -54,21 +51,20 @@ func (w *managementErrorWriter) Write(body []byte) (int, error) {
 	return w.ResponseWriter.Write(body)
 }
 
-func (w *managementErrorWriter) flush() {
+func (w *managementErrorWriter) flush() error {
 	if w.errorStatus != 0 {
-		return
+		return nil
 	}
 	if !w.wroteHeader {
 		w.WriteHeader(http.StatusOK)
 	}
-	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
-		flusher.Flush()
-	}
+	return http.NewResponseController(w.ResponseWriter).Flush()
 }
 
 type managementFlushWriter struct{ *managementErrorWriter }
 
-func (w managementFlushWriter) Flush()                       { w.flush() }
+func (w managementFlushWriter) Flush()                       { _ = w.flush() }
+func (w managementFlushWriter) FlushError() error            { return w.flush() }
 func (w *managementErrorWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func writeAPIError(w http.ResponseWriter, status int, code, message string) {
@@ -80,38 +76,6 @@ func writeAPIJSON(w http.ResponseWriter, status int, value any) error {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	return json.NewEncoder(w).Encode(value)
-}
-
-func writeControlError(w http.ResponseWriter, err error) {
-	var failure *control.Error
-	if errors.As(err, &failure) {
-		status := http.StatusInternalServerError
-		switch failure.Code {
-		case "invalid_arguments":
-			status = http.StatusBadRequest
-		case "permission_denied":
-			status = http.StatusForbidden
-		case "not_found", "no_current_session":
-			status = http.StatusNotFound
-		case "session_busy", "mode_conflict", "file_changed", "binding_changed", "confirmation_required", "confirmation_expired":
-			status = http.StatusConflict
-		case "timeout":
-			status = http.StatusGatewayTimeout
-		case "canceled":
-			status = http.StatusRequestTimeout
-		case "not_configured":
-			status = http.StatusServiceUnavailable
-		}
-		writeAPIError(w, status, failure.Code, failure.Message)
-		return
-	}
-	classified := control.ClassifyError(err)
-	var classifiedFailure *control.Error
-	if errors.As(classified, &classifiedFailure) {
-		writeControlError(w, classifiedFailure)
-		return
-	}
-	writeAPIError(w, http.StatusInternalServerError, "internal_error", "操作执行失败")
 }
 
 func decodeAPIJSON[T any](w http.ResponseWriter, req *http.Request) (T, bool) {

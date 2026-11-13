@@ -18,6 +18,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/hook/share"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 )
@@ -47,10 +48,13 @@ func testMediaRuntime(t *testing.T, configure ...func(*config.Config)) (*Manager
 func mediaCall(t *testing.T, m *Manager, dir, method string, params any) mediaResult {
 	t.Helper()
 	value, err := m.MediaRequest(context.Background(), dir, method, mustJSON(params))
-	if err != nil {
+	if err != nil || value.Status != operationresult.Success {
+		t.Fatalf("media request status=%s message=%q err=%v", value.Status, value.Message, err)
+	}
+	var result mediaResult
+	if err := json.Unmarshal(value.Data, &result); err != nil {
 		t.Fatal(err)
 	}
-	result := value.(mediaResult)
 	return result
 }
 
@@ -135,21 +139,25 @@ func TestMediaProtocolURLAndInvalidInputs(t *testing.T) {
 		{"media.delete", `{}`}, {"media.import", `{"base64":"YQ==","object_key":"secret"}`},
 	}
 	for _, test := range tests {
-		if _, err := m.MediaRequest(context.Background(), dir, test.method, json.RawMessage(test.params)); err == nil {
+		result, err := m.MediaRequest(context.Background(), dir, test.method, json.RawMessage(test.params))
+		if err == nil && result.Status == operationresult.Success {
 			t.Fatalf("accepted %s %s", test.method, test.params)
 		}
 	}
-	if _, err := m.MediaRequest(context.Background(), dir, "media.import", mustJSON(map[string]string{"path": filepath.Join(t.TempDir(), "secret")})); err == nil {
+	result, err := m.MediaRequest(context.Background(), dir, "media.import", mustJSON(map[string]string{"path": filepath.Join(t.TempDir(), "secret")}))
+	if err == nil && result.Status == operationresult.Success {
 		t.Fatal("accepted absolute path")
 	}
-	if _, err := m.MediaRequest(context.Background(), dir, "media.import", mustJSON(map[string]string{"base64": strings.Repeat("A", 14*1024*1024)})); err == nil {
+	result, err = m.MediaRequest(context.Background(), dir, "media.import", mustJSON(map[string]string{"base64": strings.Repeat("A", 14*1024*1024)}))
+	if err == nil && result.Status == operationresult.Success {
 		t.Fatal("accepted oversized base64")
 	}
 	m, _, dir, _ = testMediaRuntime(t, func(cfg *config.Config) { cfg.PlatformFiles.MaxReceiveFileBytes = 2 })
 	if err := os.WriteFile(filepath.Join(dir, "oversized"), []byte("large"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.MediaRequest(context.Background(), dir, "media.import", mustJSON(map[string]string{"path": "oversized"})); err == nil {
+	result, err = m.MediaRequest(context.Background(), dir, "media.import", mustJSON(map[string]string{"path": "oversized"}))
+	if err == nil && result.Status == operationresult.Success {
 		t.Fatal("bypassed center import limit")
 	}
 }
@@ -163,7 +171,8 @@ func TestMediaProtocolRejectsSymlinkEscape(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(dir, "escape")); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
-	if _, err := m.MediaRequest(context.Background(), dir, "media.import", mustJSON(map[string]string{"path": "escape"})); err == nil {
+	result, err := m.MediaRequest(context.Background(), dir, "media.import", mustJSON(map[string]string{"path": "escape"}))
+	if err == nil && result.Status == operationresult.Success {
 		t.Fatal("accepted escaping symlink")
 	}
 }
@@ -188,7 +197,15 @@ func TestWorkerMediaDispatch(t *testing.T) {
 	m, _, dir, _ := testMediaRuntime(t)
 	w := newWorker(m, share.RuntimeConfig{Dir: dir, EventTimeoutSeconds: 5})
 	value, err := w.pluginRequest(frame{Method: "media.import", Params: mustJSON(map[string]string{"base64": "YQ=="})})
-	if err != nil || !media.ValidID(value.(mediaResult).MediaID) {
-		t.Fatalf("dispatch: %#v %v", value, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := value.(operationresult.Result[json.RawMessage])
+	var data mediaResult
+	if err := json.Unmarshal(result.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != operationresult.Success || !media.ValidID(data.MediaID) {
+		t.Fatalf("dispatch: %#v", value)
 	}
 }

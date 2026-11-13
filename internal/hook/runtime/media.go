@@ -4,6 +4,7 @@ package runtime
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -50,13 +51,13 @@ type mediaLease struct {
 
 // mediaAPI is runtime's borrowed media capability, limited to plugin RPC and leases.
 type mediaAPI interface {
-	ImportFile(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
-	ImportURL(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
-	ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (media.MediaInfo, error)
-	ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (media.MediaInfo, error)
-	Info(context.Context, string) (media.MediaInfo, error)
-	Read(context.Context, string) ([]byte, media.MediaInfo, error)
-	Export(context.Context, string, string) (media.MediaInfo, error)
+	ImportFile(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	ImportURL(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	ImportBytes(context.Context, []byte, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	Info(context.Context, string) (operationresult.Result[media.MediaInfo], error)
+	Read(context.Context, string) (operationresult.Result[[]byte], media.MediaInfo, error)
+	Export(context.Context, string, string) (operationresult.Result[media.MediaInfo], error)
 	AddReference(context.Context, media.Reference) error
 	RemoveReference(context.Context, media.Reference) error
 }
@@ -75,13 +76,24 @@ func newMediaBridge(api mediaAPI) *mediaBridge {
 }
 
 // MediaRequest is shared by once-exec and Worker Hook RPC dispatchers.
-func (m *Manager) MediaRequest(ctx context.Context, baseDir, method string, raw json.RawMessage) (any, error) {
+func (m *Manager) MediaRequest(ctx context.Context, baseDir, method string, raw json.RawMessage) (operationresult.Result[json.RawMessage], error) {
 	ctx, finish, err := m.beginMediaCall(ctx)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[json.RawMessage]{}, err
 	}
 	defer finish()
-	return m.media.request(ctx, baseDir, method, raw)
+	result, err := m.media.request(ctx, baseDir, method, raw)
+	if err != nil {
+		return operationresult.Result[json.RawMessage]{}, err
+	}
+	if result.Status != operationresult.Success {
+		return operationresult.Result[json.RawMessage]{Status: result.Status, Message: result.Message}, nil
+	}
+	data, err := json.Marshal(result.Data)
+	if err != nil {
+		return operationresult.Result[json.RawMessage]{}, err
+	}
+	return operationresult.Result[json.RawMessage]{Status: operationresult.Success, Data: data}, nil
 }
 
 // BuildMessageSegments 归档已分类来源，租约由运行时持有。
@@ -107,7 +119,7 @@ func (m *Manager) BuildMessageSegments(ctx context.Context, specs []hookoutput.M
 		}
 		input := media.Input{Name: out.Name, MIMEType: out.Source.MIMEType}
 		limits := media.ImportLimits{MaxImportBytes: hookoutput.MaxBase64Bytes}
-		var metadata media.MediaInfo
+		var metadata operationresult.Result[media.MediaInfo]
 		switch {
 		case out.Source.MediaID != "":
 			metadata, err = b.api.Info(ctx, out.Source.MediaID)
@@ -121,15 +133,18 @@ func (m *Manager) BuildMessageSegments(ctx context.Context, specs []hookoutput.M
 		if err != nil {
 			return nil, fmt.Errorf("message.segments[%d]: %w", i, err)
 		}
-		if !strings.HasPrefix(metadata.MIMEType, "image/") {
+		if metadata.Status != operationresult.Success {
+			return nil, fmt.Errorf("hook generated unusable message.segments[%d]: %s", i, metadata.Message)
+		}
+		if !strings.HasPrefix(metadata.Data.MIMEType, "image/") {
 			return nil, fmt.Errorf("message.segments[%d]: media must be an image", i)
 		}
-		lease, err := b.retain(ctx, metadata.ID)
+		lease, err := b.retain(ctx, metadata.Data.ID)
 		if err != nil {
 			return nil, err
 		}
 		b.release(lease)
-		segments = append(segments, llm.MessageSegment{Type: llm.SegmentImage, Text: out.Text, MediaID: metadata.ID, Name: metadata.Name, MIMEType: metadata.MIMEType})
+		segments = append(segments, llm.MessageSegment{Type: llm.SegmentImage, Text: out.Text, MediaID: metadata.Data.ID, Name: metadata.Data.Name, MIMEType: metadata.Data.MIMEType})
 	}
 	return segments, ctx.Err()
 }
@@ -213,7 +228,7 @@ func (b *mediaBridge) wakeExpiry() {
 	}
 }
 
-func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw json.RawMessage) (any, error) {
+func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw json.RawMessage) (operationresult.Result[mediaResult], error) {
 	var metadata media.MediaInfo
 	var err error
 	switch method {
@@ -226,7 +241,7 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 			MIMEType string  `json:"mime_type"`
 		}
 		if err := hookoutput.DecodeJSON(raw, &params); err != nil {
-			return nil, err
+			return operationresult.Result[mediaResult]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
 		count := 0
 		if params.URL != "" {
@@ -239,7 +254,7 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 			count++
 		}
 		if count != 1 {
-			return nil, fmt.Errorf("media.import requires exactly one of url, path or base64")
+			return operationresult.Result[mediaResult]{Status: operationresult.InvalidArguments, Message: "media.import requires exactly one of url, path or base64"}, nil
 		}
 		input := media.Input{Name: params.Name, MIMEType: params.MIMEType}
 		switch {
@@ -248,7 +263,7 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 		case params.Path != "":
 			// os.Root rejects traversal and symlinks escaping the plugin directory.
 			if !filepath.IsLocal(params.Path) {
-				return nil, fmt.Errorf("media.import path must be plugin-relative")
+				return operationresult.Result[mediaResult]{Status: operationresult.InvalidArguments, Message: "media.import path must be plugin-relative"}, nil
 			}
 			root, openErr := os.OpenRoot(baseDir)
 			if openErr != nil {
@@ -256,6 +271,9 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 			}
 			defer root.Close()
 			file, openErr := root.Open(params.Path)
+			if errors.Is(openErr, os.ErrNotExist) {
+				return operationresult.Result[mediaResult]{Status: operationresult.NotFound, Message: fmt.Sprintf("plugin media %q not found", params.Path)}, nil
+			}
 			if openErr != nil {
 				return nil, fmt.Errorf("open plugin media: %w", openErr)
 			}
@@ -265,7 +283,7 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 				return nil, fmt.Errorf("stat plugin media: %w", statErr)
 			}
 			if !info.Mode().IsRegular() {
-				return nil, fmt.Errorf("media.import requires a regular file")
+				return operationresult.Result[mediaResult]{Status: operationresult.InvalidTarget, Message: "media.import requires a regular file"}, nil
 			}
 			if input.Name == "" {
 				input.Name = filepath.Base(params.Path)
@@ -273,20 +291,21 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 			metadata, err = b.api.ImportReader(ctx, file, info.Size(), input, media.ImportLimits{})
 		default:
 			if base64.StdEncoding.DecodedLen(len(*params.Base64)) > hookoutput.MaxBase64Bytes {
-				return nil, fmt.Errorf("media.import base64 exceeds 10 MiB decoded limit")
+				return operationresult.Result[mediaResult]{Status: operationresult.Rejected, Message: "media.import base64 exceeds 10 MiB decoded limit"}, nil
 			}
 			var data []byte
 			data, err = base64.StdEncoding.DecodeString(*params.Base64)
-			if err == nil {
-				metadata, err = b.api.ImportBytes(ctx, data, input, media.ImportLimits{MaxImportBytes: hookoutput.MaxBase64Bytes})
+			if err != nil {
+				return operationresult.Result[mediaResult]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 			}
+			metadata, err = b.api.ImportBytes(ctx, data, input, media.ImportLimits{MaxImportBytes: hookoutput.MaxBase64Bytes})
 		}
 	case "media.read", "media.export", "media.metadata":
 		var params struct {
 			MediaID string `json:"media"`
 		}
 		if err := hookoutput.DecodeJSON(raw, &params); err != nil {
-			return nil, err
+			return operationresult.Result[mediaResult]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
 		metadata, err = b.api.Info(ctx, params.MediaID)
 	default:
@@ -295,18 +314,24 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 	if err != nil {
 		return nil, fmt.Errorf("hook media operation failed: %w", err)
 	}
-	lease, err := b.retain(ctx, metadata.ID)
+	if metadata.Status != operationresult.Success {
+		return operationresult.Result[mediaResult]{Status: metadata.Status, Message: metadata.Message}, nil
+	}
+	lease, err := b.retain(ctx, metadata.Data.ID)
 	if err != nil {
 		return nil, err
 	}
 	defer b.release(lease)
-	result := mediaResult{MediaID: metadata.ID, Name: metadata.Name, MIMEType: metadata.MIMEType, Size: metadata.Size, ExpiresAt: lease.expires}
-	if method == "media.read" && metadata.Size <= mediaInlineBytes {
-		data, _, err := b.api.Read(ctx, metadata.ID)
+	result := mediaResult{MediaID: metadata.Data.ID, Name: metadata.Data.Name, MIMEType: metadata.Data.MIMEType, Size: metadata.Data.Size, ExpiresAt: lease.expires}
+	if method == "media.read" && metadata.Data.Size <= mediaInlineBytes {
+		data, _, err := b.api.Read(ctx, metadata.Data.ID)
 		if err != nil {
 			return nil, err
 		}
-		result.Base64 = base64.StdEncoding.EncodeToString(data)
+		if data.Status != operationresult.Success {
+			return operationresult.Result[mediaResult]{Status: data.Status, Message: data.Message}, nil
+		}
+		result.Base64 = base64.StdEncoding.EncodeToString(data.Data)
 	} else if method == "media.export" || method == "media.read" {
 		if lease.path == "" {
 			if lease.dir == "" {
@@ -316,14 +341,18 @@ func (b *mediaBridge) request(ctx context.Context, baseDir, method string, raw j
 				}
 			}
 			path := filepath.Join(lease.dir, "media")
-			if _, err := b.api.Export(ctx, metadata.ID, path); err != nil {
+			exported, err := b.api.Export(ctx, metadata.Data.ID, path)
+			if err != nil {
 				return nil, err
+			}
+			if exported.Status != operationresult.Success {
+				return operationresult.Result[mediaResult]{Status: exported.Status, Message: exported.Message}, nil
 			}
 			lease.path = path
 		}
 		result.Path = lease.path
 	}
-	return result, nil
+	return operationresult.Result[mediaResult]{Status: operationresult.Success, Data: result}, nil
 }
 
 func (b *mediaBridge) prune(ctx context.Context, now time.Time, closeAll bool, log func(events.LogRecord)) {

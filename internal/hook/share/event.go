@@ -6,6 +6,7 @@ package share
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"strings"
 	"time"
@@ -150,23 +151,41 @@ type LLMPayload struct {
 }
 
 type ToolPayload struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Arguments string `json:"arguments,omitempty"`
-	Risk      string `json:"risk,omitempty"`
-	Result    string `json:"result,omitempty"`
-	Error     error  `json:"error,omitempty"`
+	ID        string                         `json:"id"`
+	Name      string                         `json:"name"`
+	Arguments string                         `json:"arguments,omitempty"`
+	Risk      string                         `json:"risk,omitempty"`
+	Result    operationresult.Result[string] `json:"-"` // 工具业务结果；失败展示 Message，成功展示 Data。
+	Error     string                         `json:"-"` // Go 故障的 Error() 文本，独立于业务结果。
+}
+
+func (p ToolPayload) MarshalJSON() ([]byte, error) {
+	result := p.Result.Message
+	if p.Result.Status == operationresult.Success {
+		result = p.Result.Data
+	}
+	if result == "" {
+		result = p.Error
+	}
+	return json.Marshal(struct {
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		Arguments string `json:"arguments,omitempty"`
+		Risk      string `json:"risk,omitempty"`
+		Result    string `json:"result,omitempty"`
+		Error     string `json:"error,omitempty"`
+	}{p.ID, p.Name, p.Arguments, p.Risk, result, p.Error})
 }
 
 // Handler returns business changes and the original operation error.
 // readOnlyCalls is enforced by rules after each action that may change call data.
 type Handler interface {
-	HandleHook(ctx context.Context, event Event, readOnlyCalls bool) (Event, error)
+	HandleHook(ctx context.Context, event Event, readOnlyCalls bool) (operationresult.Result[Event], error)
 }
 
-type HandlerFunc func(ctx context.Context, event Event, readOnlyCalls bool) (Event, error)
+type HandlerFunc func(ctx context.Context, event Event, readOnlyCalls bool) (operationresult.Result[Event], error)
 
-func (fn HandlerFunc) HandleHook(ctx context.Context, event Event, readOnlyCalls bool) (Event, error) {
+func (fn HandlerFunc) HandleHook(ctx context.Context, event Event, readOnlyCalls bool) (operationresult.Result[Event], error) {
 	return fn(ctx, event, readOnlyCalls)
 }
 

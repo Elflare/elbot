@@ -28,7 +28,7 @@ func TestManagerLogsOperationErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var records []events.LogRecord
 			manager := NewManager(func(_ context.Context, r events.LogRecord) { records = append(records, r) }, nil)
-			manager.Register(share.Registration{Name: "source", Point: share.PointAgentInputPrepared, Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) { return event, tc.err })})
+			manager.Register(share.Registration{Name: "source", Point: share.PointAgentInputPrepared, Match: share.Always(), Handler: adaptHandler(func(_ context.Context, event share.Event, _ bool) (share.Event, error) { return event, tc.err })})
 			_, err := manager.Run(t.Context(), share.Event{Point: share.PointAgentInputPrepared}, CallOptions{Woken: true})
 			if err != nil || len(records) != 1 || records[0].ResultStatus != tc.status || records[0].Level != tc.level {
 				t.Fatalf("err=%v records=%+v", err, records)

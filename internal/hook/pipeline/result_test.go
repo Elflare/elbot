@@ -13,7 +13,7 @@ func TestNotifyPreservesIndependentFailuresAndCancellation(t *testing.T) {
 	var records []events.LogRecord
 	manager := NewManager(func(_ context.Context, r events.LogRecord) { records = append(records, r) }, nil)
 	for i, cause := range []error{context.Canceled, fault, nil} {
-		manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Priority: i, Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) { return event, cause })})
+		manager.Register(share.Registration{Point: share.PointAgentInputPrepared, Priority: i, Match: share.Always(), Handler: adaptHandler(func(_ context.Context, event share.Event, _ bool) (share.Event, error) { return event, cause })})
 	}
 	err := manager.Notify(t.Context(), share.Event{Point: share.PointAgentInputPrepared}, CallOptions{Woken: true})
 	if err != nil || len(records) != 3 {

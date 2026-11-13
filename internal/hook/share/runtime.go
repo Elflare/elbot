@@ -2,11 +2,6 @@
 
 package share
 
-import "errors"
-
-// ErrHookNotFound 表示管理目标不存在，区别于 Worker 启动或停止失败。
-var ErrHookNotFound = errors.New("Hook 不存在")
-
 type RuntimeInfo struct {
 	ID          string // Plugin identifier used by management commands.
 	Description string // User-facing plugin description.

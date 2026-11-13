@@ -26,7 +26,7 @@ func TestContinuationRunsBeforeRulesAndCanStopPropagation(t *testing.T) {
 				event.Control.StopPropagation, event.Control.Consume = stop, true
 				return event, true, nil
 			})
-			manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "ordinary", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
+			manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "ordinary", Match: share.Always(), Handler: adaptHandler(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 				order = append(order, "rules")
 				if llm.SegmentsTextOnly(event.Message.Segments) != "resumed" {
 					t.Fatal("ordinary rules lost continuation changes")
@@ -60,12 +60,12 @@ func TestPipelineFailureNotifiesOnceAndPreservesOriginalFailure(t *testing.T) {
 				event.Message.Segments = llm.TextSegments("failed route edit")
 				return event, true, original
 			})
-			manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "failure", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
+			manager.Register(share.Registration{Point: share.PointPlatformMessageReceived, Name: "failure", Match: share.Always(), Handler: adaptHandler(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 				ordinary++
 				event.Message.Segments = llm.TextSegments("failed rule edit")
 				return event, original
 			})})
-			manager.Register(share.Registration{Point: share.PointErrorOccurred, Name: "error", Match: share.Always(), Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
+			manager.Register(share.Registration{Point: share.PointErrorOccurred, Name: "error", Match: share.Always(), Handler: adaptHandler(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 				notified++
 				if !errors.Is(event.Error, original) {
 					t.Errorf("lost source error: %v", event.Error)

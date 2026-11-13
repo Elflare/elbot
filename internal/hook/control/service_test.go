@@ -10,7 +10,18 @@ import (
 
 	"elbot/internal/hook/pipeline"
 	"elbot/internal/hook/share"
+	"elbot/internal/operationresult"
 )
+
+func adaptHandler(fn func(context.Context, share.Event, bool) (share.Event, error)) share.HandlerFunc {
+	return func(ctx context.Context, event share.Event, readOnly bool) (operationresult.Result[share.Event], error) {
+		updated, err := fn(ctx, event, readOnly)
+		if err != nil {
+			return operationresult.Result[share.Event]{}, err
+		}
+		return operationresult.Result[share.Event]{Status: operationresult.Success, Data: updated}, nil
+	}
+}
 
 type fakeRuntime struct {
 	infos     []share.RuntimeInfo
@@ -50,17 +61,17 @@ func (r *fakeRuntime) ReplacePlugin(id string, config *share.RuntimeConfig, comm
 }
 
 func (r *fakeRuntime) List() []share.RuntimeInfo { return r.infos }
-func (r *fakeRuntime) Start(id string) error {
+func (r *fakeRuntime) Start(id string) (operationresult.Result[struct{}], error) {
 	r.started = id
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
-func (r *fakeRuntime) Stop(_ context.Context, id string) (bool, error) {
+func (r *fakeRuntime) Stop(_ context.Context, id string) (operationresult.Result[struct{}], error) {
 	r.stopped = id
-	return true, nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
-func (r *fakeRuntime) Restart(_ context.Context, id string) error {
+func (r *fakeRuntime) Restart(_ context.Context, id string) (operationresult.Result[struct{}], error) {
 	r.restarted = id
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
 func TestReloadKeepsActiveHooksWhenLoaderFails(t *testing.T) {
@@ -118,13 +129,13 @@ func TestServiceDelegatesStatefulLifecycle(t *testing.T) {
 	if infos := service.StatefulHooks(); len(infos) != 1 || infos[0].ID != "demo" {
 		t.Fatalf("StatefulHooks = %#v", infos)
 	}
-	if err := service.StartStatefulHook("start"); err != nil {
+	if result, err := service.StartStatefulHook("start"); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if matched, err := service.StopHook(context.Background(), "stop"); err != nil || !matched {
-		t.Fatalf("StopHook = %v, %v", matched, err)
+	if result, err := service.StopHook(context.Background(), "stop"); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("StopHook = %+v, %v", result, err)
 	}
-	if err := service.RestartStatefulHook(context.Background(), "restart"); err != nil {
+	if result, err := service.RestartStatefulHook(context.Background(), "restart"); err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	if runtime.started != "start" || runtime.stopped != "stop" || runtime.restarted != "restart" {
@@ -138,7 +149,7 @@ func registerTestHook(t *testing.T, registrar share.Registrar, name string) {
 		Point: share.PointAgentInputPrepared,
 		Name:  name,
 		Match: share.Always(),
-		Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
+		Handler: adaptHandler(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 			return event, nil
 		}),
 	})
@@ -195,7 +206,7 @@ func registerPluginTestHook(t *testing.T, registrar share.Registrar, pluginID, n
 		PluginID: pluginID,
 		Name:     name,
 		Match:    share.Always(),
-		Handler: share.HandlerFunc(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
+		Handler: adaptHandler(func(_ context.Context, event share.Event, _ bool) (share.Event, error) {
 			return event, nil
 		}),
 	})

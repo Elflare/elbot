@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -79,7 +80,7 @@ func TestWorkerMessagePatchPreservesToolResult(t *testing.T) {
 				event := share.Event{
 					Point:   point,
 					Message: share.MessagePayload{Segments: []llm.MessageSegment{{Type: llm.SegmentText, Text: "before"}}},
-					Tool:    share.ToolPayload{Result: "original"},
+					Tool:    share.ToolPayload{Result: operationresult.Result[string]{Status: operationresult.Success, Data: "original"}},
 				}
 				got, err := w.handle(t.Context(), event, false, "", share.Control{})
 				if err != nil {
@@ -89,7 +90,7 @@ func TestWorkerMessagePatchPreservesToolResult(t *testing.T) {
 				if point != share.PointToolCallCompleted {
 					wantResult = "original"
 				}
-				if llm.SegmentsTextOnly(got.Message.Segments) != test.wantText || got.Tool.Result != wantResult {
+				if llm.SegmentsTextOnly(got.Message.Segments) != test.wantText || got.Tool.Result.Data != wantResult {
 					t.Fatalf("point=%s message=%#v tool=%#v", point, got.Message, got.Tool)
 				}
 			}

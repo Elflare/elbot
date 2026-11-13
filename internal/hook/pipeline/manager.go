@@ -7,6 +7,7 @@ import (
 	globalevents "elbot/internal/events"
 	"elbot/internal/hook/share"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -116,22 +117,29 @@ func (m *Manager) run(ctx context.Context, event share.Event, options CallOption
 		}
 		event.Metadata["match"] = matchResult.Context
 		before := share.SnapshotCalls(event)
-		runCtx, updated, err := m.invoke(ctx, reg, event, options)
+		runCtx, result, err := m.invoke(ctx, reg, event, options)
 		delete(event.Metadata, "match")
 
 		if err != nil {
 			if ctx.Err() != nil {
 				return before, err
 			}
-			m.logHook(runCtx, "run", reg, before, before, err)
+			m.logHook(runCtx, "run", reg, before, result, err)
 			globalevents.Notify(ctx, globalevents.NewNotification(ctx, slog.LevelWarn, err.Error()))
 			m.notifyError(ctx, before, options, err)
 			event = before
 			continue
 		}
+		if result.Status != operationresult.Success {
+			m.logHook(runCtx, "run", reg, before, result, nil)
+			globalevents.Notify(ctx, globalevents.NewNotification(ctx, slog.LevelWarn, result.Message))
+			event = before
+			continue
+		}
+		updated := result.Data
 		markHookOutputs(updated, len(before.Outputs), reg, "run")
 		event = share.PrepareEvent(updated)
-		m.logHook(runCtx, "run", reg, before, event, err)
+		m.logHook(runCtx, "run", reg, before, result, nil)
 
 		if event.Control.StopPropagation {
 			break
@@ -155,13 +163,13 @@ func (m *Manager) notify(ctx context.Context, event share.Event, options CallOpt
 		}
 		event.Metadata["match"] = matchResult.Context
 		before := share.SnapshotCalls(event)
-		runCtx, updated, err := m.invoke(ctx, reg, event, options)
+		runCtx, result, err := m.invoke(ctx, reg, event, options)
 		delete(event.Metadata, "match")
 		if err != nil {
 			if ctx.Err() != nil {
 				return err
 			}
-			m.logHook(runCtx, "notify", reg, before, before, err)
+			m.logHook(runCtx, "notify", reg, before, result, err)
 			if event.Point != share.PointErrorOccurred {
 				globalevents.Notify(ctx, globalevents.NewNotification(ctx, slog.LevelWarn, err.Error()))
 				m.notifyError(ctx, before, options, err)
@@ -169,8 +177,17 @@ func (m *Manager) notify(ctx context.Context, event share.Event, options CallOpt
 			event = before
 			continue
 		}
+		if result.Status != operationresult.Success {
+			m.logHook(runCtx, "notify", reg, before, result, nil)
+			if event.Point != share.PointErrorOccurred {
+				globalevents.Notify(ctx, globalevents.NewNotification(ctx, slog.LevelWarn, result.Message))
+			}
+			event = before
+			continue
+		}
+		updated := result.Data
 		markHookOutputs(updated, len(before.Outputs), reg, "notify")
-		m.logHook(runCtx, "notify", reg, before, before, err)
+		m.logHook(runCtx, "notify", reg, before, result, nil)
 		if updated.Control.StopPropagation {
 			break
 		}
@@ -198,14 +215,14 @@ func skipForWakeup(woken bool, reg registration) bool {
 	}
 }
 
-func (m *Manager) invoke(ctx context.Context, reg registration, event share.Event, options CallOptions) (context.Context, share.Event, error) {
+func (m *Manager) invoke(ctx context.Context, reg registration, event share.Event, options CallOptions) (context.Context, operationresult.Result[share.Event], error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	activeID := m.startActive(reg, cancel)
 	defer m.finishActive(activeID)
 	runCtx, done, err := observe(ctx, reg, options)
 	if err != nil {
-		return runCtx, event, err
+		return runCtx, operationresult.Result[share.Event]{}, err
 	}
 	defer done()
 	updated, err := reg.handler.HandleHook(runCtx, event, options.ReadOnlyCalls)
@@ -392,13 +409,24 @@ func markHookOutputs(event share.Event, start int, reg registration, mode string
 	}
 }
 
-func (m *Manager) logHook(ctx context.Context, mode string, reg registration, before, after share.Event, err error) {
+func (m *Manager) logHook(ctx context.Context, mode string, reg registration, before share.Event, result operationresult.Result[share.Event], err error) {
 	level, name, status, detail := slog.LevelInfo, "hook_triggered", globalevents.ResultSucceeded, ""
+	after := before
 	if err != nil {
 		level, name, status, detail = slog.LevelWarn, "hook_error", globalevents.ResultFailed, err.Error()
 		if globalevents.LogStatus(err) == globalevents.ResultCanceled {
 			level, name, status = slog.LevelInfo, "hook_canceled", globalevents.ResultCanceled
 		}
+	} else if result.Status != operationresult.Success {
+		status, detail = globalevents.ResultRejected, result.Message
+		switch result.Status {
+		case operationresult.Failed, operationresult.Timeout:
+			level, status = slog.LevelWarn, globalevents.ResultFailed
+		case operationresult.Canceled:
+			status = globalevents.ResultCanceled
+		}
+	} else {
+		after = result.Data
 	}
 	beforeText := eventText(before)
 	content := map[string]any{
@@ -444,8 +472,8 @@ func eventText(event share.Event) string {
 	switch {
 	case text != "":
 		return text
-	case event.Tool.Result != "":
-		return event.Tool.Result
+	case share.FieldValue(event, "tool.result") != "":
+		return share.FieldValue(event, "tool.result")
 	case event.Tool.Arguments != "":
 		return event.Tool.Arguments
 	default:

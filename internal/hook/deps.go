@@ -2,7 +2,10 @@
 
 package hook
 
-import "elbot/internal/tool"
+import (
+	"elbot/internal/operationresult"
+	"elbot/internal/tool"
+)
 
 import (
 	"context"
@@ -19,10 +22,10 @@ type SupervisorDeps struct {
 	Media   MediaAPI            // Shared media center; runtime owns only its own media leases.
 	Tools   interface {
 		QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
-		CallTool(context.Context, tool.CallRequest) (*tool.Result, string, error)
+		CallTool(context.Context, tool.CallRequest) (operationresult.Result[*tool.Result], string, error)
 	} // Tool metadata, schema and invocation, without exposing callable Tool objects.
 	Platform interface {
-		SendTo(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
+		SendTo(context.Context, delivery.Target, []delivery.Output) (operationresult.Result[delivery.Receipt], error)
 		CallPlatformAPI(context.Context, string, string, map[string]any) (json.RawMessage, error)
 	} // Delivery and named-platform API calls; platform adapters stay private.
 }
