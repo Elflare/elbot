@@ -201,26 +201,6 @@ func (r *DialogueRepository) Commit(ctx context.Context, commit storage.Dialogue
 			if n != 1 {
 				return fmt.Errorf("native seed already consumed or absent")
 			}
-			if raw, ok := fields["context_compact"]; ok {
-				var state storage.SessionMetadata
-				if err := json.Unmarshal(raw, &state); err != nil {
-					return err
-				}
-				var id string
-				if raw, ok := state["seed_id"]; ok {
-					if err := json.Unmarshal(raw, &id); err != nil {
-						return err
-					}
-				}
-				if id == native.ConsumeSeedID {
-					if err := state.Set("pending", false); err != nil {
-						return err
-					}
-					if err := fields.Set("context_compact", state); err != nil {
-						return err
-					}
-				}
-			}
 		}
 	}
 	if commit.ElyphRulesShown {

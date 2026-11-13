@@ -132,7 +132,11 @@ WHERE id = ?`,
 	if err != nil {
 		return fmt.Errorf("update cron job next run: %w", err)
 	}
-	if n, err := res.RowsAffected(); err == nil && n == 0 {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("disable cron job rows: %w", err)
+	}
+	if n == 0 {
 		return storage.ErrNotFound
 	}
 	return nil
@@ -150,7 +154,11 @@ WHERE id = ?`,
 	if err != nil {
 		return fmt.Errorf("update cron job run state: %w", err)
 	}
-	if n, err := res.RowsAffected(); err == nil && n == 0 {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete cron job rows: %w", err)
+	}
+	if n == 0 {
 		return storage.ErrNotFound
 	}
 	return nil
