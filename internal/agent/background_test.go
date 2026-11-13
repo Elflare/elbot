@@ -17,6 +17,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -71,14 +72,15 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 		ELwispTools:   []tool.ELwispToolDeclaration{{Name: "remote", CanonicalName: "event_remote", Description: "Remote", Risk: security.RiskLow, Schema: map[string]any{"type": "object", "properties": map[string]any{}}, EventKey: "event", Endpoint: "https://example.invalid"}},
 	}
 	returnedCtx, result, err := m.RunBackground(ctx, req)
-	if err != nil || result.SessionID == "" || result.RunID == "" || result.MessageID == "" || result.Text != "isolated answer" || result.Outcome != "completed" {
+	if err != nil || result.Status != operationresult.Success || result.Data.SessionID == "" || result.Data.RunID == "" || result.Data.MessageID == "" || result.Data.Text != "isolated answer" || result.Data.Outcome != "completed" {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
+	data := result.Data
 	facts, _ := contextinfo.ExecutionFromContext(returnedCtx)
-	if returnedCtx.Err() != nil || facts.SessionID != result.SessionID || facts.RunID != result.RunID || facts.RequestID == "" {
+	if returnedCtx.Err() != nil || facts.SessionID != data.SessionID || facts.RunID != data.RunID || facts.RequestID == "" {
 		t.Fatalf("returned task context lost facts or inherited completed request cancellation: %+v %v", facts, returnedCtx.Err())
 	}
-	row, err := deps.Store.Sessions().Get(ctx, result.SessionID)
+	row, err := deps.Store.Sessions().Get(ctx, data.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +101,7 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 		t.Fatalf("missing committed declaration: %+v", before)
 	}
 	messages, err := deps.Store.Messages().ListBySession(ctx, row.ID)
-	if err != nil || len(messages) != 2 || !strings.Contains(messages[0].Content, "KEEP_BACKGROUND_GUIDANCE") || messages[1].ID != result.MessageID {
+	if err != nil || len(messages) != 2 || !strings.Contains(messages[0].Content, "KEEP_BACKGROUND_GUIDANCE") || messages[1].ID != result.Data.MessageID {
 		t.Fatalf("history=%+v err=%v", messages, err)
 	}
 	saved := m.sessions.WorkspaceStore(row.ID)
@@ -113,7 +115,7 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 	req.ELwispTools = []tool.ELwispToolDeclaration{{Name: "changed", CanonicalName: "changed"}}
 	req.Prompt = "continue"
 	_, continued, err := m.RunBackground(returnedCtx, req)
-	if err != nil || continued.SessionID != row.ID {
+	if err != nil || continued.Status != operationresult.Success || continued.Data.SessionID != row.ID {
 		t.Fatalf("continuation=%+v err=%v", continued, err)
 	}
 	latest, err := deps.Store.Sessions().Get(ctx, row.ID)
@@ -126,22 +128,23 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 	}
 
 	foregroundScope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-	foreground, err := m.sessions.Create(ctx, foregroundScope, session.CreateRequest{})
-	if err != nil {
-		t.Fatal(err)
+	foregroundResult, err := m.sessions.Create(ctx, foregroundScope, session.CreateRequest{})
+	if err != nil || foregroundResult.Status != operationresult.Success {
+		t.Fatalf("create foreground: %+v %v", foregroundResult, err)
 	}
+	foreground := foregroundResult.Data
 	metadata := map[string]json.RawMessage{
 		"cron_broadcast_copy": json.RawMessage("true"),
 		"sequence":            json.RawMessage("9007199254740993"),
 		"nested":              json.RawMessage(`{"keep":true}`),
 	}
-	copyID, err := m.CopyBackground(ctx, BackgroundCopyRequest{
+	copy, err := m.CopyBackground(ctx, BackgroundCopyRequest{
 		SourceSessionID: row.ID, Scope: foregroundScope, TaskType: "cron", TaskID: "copy", Metadata: metadata,
 	})
-	if err != nil || copyID == row.ID {
-		t.Fatalf("copy=%q err=%v", copyID, err)
+	if err != nil || copy.Status != operationresult.Success || copy.Data == row.ID {
+		t.Fatalf("copy=%+v err=%v", copy, err)
 	}
-	copied, err := deps.Store.Sessions().Get(ctx, copyID)
+	copied, err := deps.Store.Sessions().Get(ctx, copy.Data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,20 +157,20 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 		t.Fatalf("copied execution state=%+v err=%v", copyState, err)
 	}
 	current, err := m.sessions.Current(ctx, foregroundScope)
-	if err != nil || current.ID != foreground.ID {
+	if err != nil || current.Status != operationresult.Success || current.Data.ID != foreground.ID {
 		t.Fatalf("foreground=%+v err=%v", current, err)
 	}
-	if _, err := m.CopyBackground(ctx, BackgroundCopyRequest{SourceSessionID: foreground.ID, Scope: foregroundScope}); !errors.Is(err, session.ErrForegroundSession) {
-		t.Fatalf("foreground source accepted: %v", err)
+	if result, err := m.CopyBackground(ctx, BackgroundCopyRequest{SourceSessionID: foreground.ID, Scope: foregroundScope}); err != nil || result.Status != operationresult.Conflict {
+		t.Fatalf("foreground source accepted: %+v %v", result, err)
 	}
-	if _, err := m.CopyBackground(ctx, BackgroundCopyRequest{SourceSessionID: row.ID, Scope: foregroundScope, Metadata: map[string]json.RawMessage{"bad": json.RawMessage("invalid")}}); err == nil {
+	if result, err := m.CopyBackground(ctx, BackgroundCopyRequest{SourceSessionID: row.ID, Scope: foregroundScope, Metadata: map[string]json.RawMessage{"bad": json.RawMessage("invalid")}}); err == nil && result.Status == operationresult.Success {
 		t.Fatal("invalid JSON accepted")
 	}
-	if _, err := m.sessions.Resume(ctx, foregroundScope, row.ID); err != nil {
-		t.Fatal(err)
+	if result, err := m.sessions.Resume(ctx, foregroundScope, row.ID); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("resume: %+v %v", result, err)
 	}
 	_, taken, err := m.RunBackground(ctx, req)
-	if err != nil || !taken.TakenOver || taken.Outcome != "taken_over" {
+	if err != nil || taken.Status != operationresult.Success || !taken.Data.TakenOver || taken.Data.Outcome != "taken_over" {
 		t.Fatalf("takeover=%+v err=%v", taken, err)
 	}
 }
@@ -199,11 +202,7 @@ func TestBackgroundCancellationDuringPreparation(t *testing.T) {
 			defer cancel()
 			results := make(chan error, 1)
 			go func() {
-				_, result, err := m.RunBackground(ctx, BackgroundRequest{TaskType: "cron", TaskID: "cancel", Prompt: "run"})
-				if result.SessionID == "" {
-					results <- errors.New("lost prepared session ID")
-					return
-				}
+				_, _, err := m.RunBackground(ctx, BackgroundRequest{TaskType: "cron", TaskID: "cancel", Prompt: "run"})
 				results <- err
 			}()
 			select {
@@ -306,12 +305,10 @@ func TestBackgroundCancellationDuringExecution(t *testing.T) {
 			ctx := workspace.WithPathScope(t.Context(), workspace.PathScope{Dir: t.TempDir(), Restricted: true})
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
-			results := make(chan BackgroundResult, 1)
-			errors := make(chan error, 1)
+			finished := make(chan error, 1)
 			go func() {
-				_, result, err := m.RunBackground(ctx, BackgroundRequest{TaskType: "cron", TaskID: "cancel", Prompt: "run"})
-				results <- result
-				errors <- err
+				_, _, err := m.RunBackground(ctx, BackgroundRequest{TaskType: "cron", TaskID: "cancel", Prompt: "run"})
+				finished <- err
 			}()
 			select {
 			case <-client.entered:
@@ -324,14 +321,15 @@ func TestBackgroundCancellationDuringExecution(t *testing.T) {
 				cancel()
 			}
 			select {
-			case result := <-results:
-				if result.SessionID == "" || result.Outcome != "cancelled" {
-					t.Fatal(result)
+			case err := <-finished:
+				if !errors.Is(err, context.Canceled) {
+					t.Fatal(err)
 				}
-				if err := <-errors; err == nil {
-					t.Fatal("cancellation returned success")
+				rows, err := deps.Store.Sessions().List(t.Context(), storage.ListSessionsRequest{IncludeAllPlatforms: true, Limit: 10})
+				if err != nil || len(rows) != 1 {
+					t.Fatalf("rows=%+v err=%v", rows, err)
 				}
-				if requests := m.requests.ListBySession(result.SessionID); len(requests) != 0 {
+				if requests := m.requests.ListBySession(rows[0].ID); len(requests) != 0 {
 					t.Fatalf("requests remained: %+v", requests)
 				}
 			case <-time.After(3 * time.Second):

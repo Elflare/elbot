@@ -3,6 +3,7 @@ package execution
 import (
 	"context"
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 	"errors"
 	"log/slog"
@@ -21,6 +22,25 @@ func (c *ExecutionCoordinator) AdoptForeground(ctx context.Context, row *storage
 		ctx = contextinfo.WithActor(ctx, c.identity.Actor(ctx))
 		execution.Adopt(session.WithBinding(ctx, binding), *row)
 	}
+}
+
+func (c *ExecutionCoordinator) ActiveSessionIDs() []string {
+	active := make(map[string]struct{})
+	for _, snapshot := range c.turns.SnapshotAll() {
+		if snapshot.Phase != turn.PhaseIdle {
+			active[snapshot.SessionID] = struct{}{}
+		}
+	}
+	for _, req := range c.requests.List() {
+		if req.SessionID != "" {
+			active[req.SessionID] = struct{}{}
+		}
+	}
+	ids := make([]string, 0, len(active))
+	for id := range active {
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 // ExecutionCoordinator owns cross-turn admission and handoffs; domain managers
@@ -46,20 +66,18 @@ type ExecutionCoordinator struct {
 	responseTimeout  time.Duration
 }
 
-func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, text string, out agentshare.Output) (requestCtx context.Context, runErr error) {
+func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, text string, out agentshare.Output) (requestCtx context.Context, operation operationresult.Result[struct{}], runErr error) {
 	execution := turn.ExecutionFromContext(ctx)
 	if execution == nil {
 		var err error
 		execution, err = c.turns.NewExecution(ctx)
 		if err != nil {
-			return ctx, err
+			return ctx, operationresult.Result[struct{}]{}, err
 		}
 		ctx = turn.WithExecution(ctx, execution)
 	}
 	defer func() {
-		// An error before StartAttempt must also retire a reservation inherited
-		// from append confirmation or compaction. Never stop another execution.
-		if runErr != nil {
+		if runErr != nil || operation.Status != operationresult.Success {
 			_, release, err := c.sessions.EnterSessions(context.WithoutCancel(ctx), row.ID)
 			if err == nil {
 				current := c.turns.Snapshot(row.ID)
@@ -81,29 +99,39 @@ func (c *ExecutionCoordinator) Run(ctx context.Context, row *storage.Session, te
 		row = next
 		if err != nil {
 			execution.Finish(err)
-			return requestCtx, err
+			return requestCtx, operationresult.Result[struct{}]{}, err
 		}
-		if pending.Text == "" && len(pending.Segments) == 0 {
+		if pending.Status != operationresult.Success {
+			execution.Finish(nil)
+			return requestCtx, operationresult.Result[struct{}]{Status: pending.Status, Message: pending.Message}, nil
+		}
+		input := pending.Data
+		if input.Text == "" && len(input.Segments) == 0 {
 			if c.turns.Snapshot(next.ID).Execution != execution {
 				execution.Finish(nil)
 			}
-			return requestCtx, nil
+			return requestCtx, operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 		}
 		ctx = c.view.Context(ctx)
 		if next.ID != previousID && !agentshare.IsBackgroundSession(next) {
-			_, binding, err := c.sessions.CurrentBound(ctx, c.identity.Scope(ctx))
+			current, err := c.sessions.CurrentBound(ctx, c.identity.Scope(ctx))
 			if err != nil {
 				execution.Finish(err)
-				return requestCtx, err
+				return requestCtx, operationresult.Result[struct{}]{}, err
 			}
+			if current.Status != operationresult.Success {
+				execution.Finish(nil)
+				return requestCtx, operationresult.Result[struct{}]{Status: current.Status, Message: current.Message}, nil
+			}
+			binding := current.Data.Binding
 			if binding.SessionID() != next.ID {
-				execution.Finish(agentshare.ErrSessionBindingChanged)
-				return requestCtx, agentshare.ErrSessionBindingChanged
+				execution.Finish(nil)
+				return requestCtx, operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "当前会话已切换，请重新发送消息"}, nil
 			}
 			ctx = session.WithBinding(ctx, binding)
 		}
-		text = pending.Text
-		ctx = agentshare.WithInboundTurnInput(ctx, pending)
+		text = input.Text
+		ctx = agentshare.WithInboundTurnInput(ctx, input)
 	}
 }
 
@@ -115,14 +143,14 @@ func (c *ExecutionCoordinator) sessionIdle(ctx context.Context, id string) {
 	}
 }
 
-func (c *ExecutionCoordinator) RunBackground(ctx context.Context, row *storage.Session, text string) (context.Context, turn.Result) {
+func (c *ExecutionCoordinator) RunBackground(ctx context.Context, row *storage.Session, text string) (context.Context, operationresult.Result[turn.Result], error) {
 	execution, err := c.turns.NewExecution(ctx)
 	if err != nil {
-		return ctx, turn.Result{SessionID: row.ID, Err: err, Outcome: "failed"}
+		return ctx, operationresult.Result[turn.Result]{}, err
 	}
 	execution.SetResult(row.ID, "", "")
 	ctx = turn.WithExecution(ctx, execution)
-	requestCtx, err := c.Run(ctx, row, text, backgroundTurnOutput{})
+	requestCtx, operation, err := c.Run(ctx, row, text, backgroundTurnOutput{})
 	if err != nil {
 		execution.Finish(err)
 	}
@@ -140,7 +168,13 @@ func (c *ExecutionCoordinator) RunBackground(ctx context.Context, row *storage.S
 			release()
 		}
 	}
-	return requestCtx, result
+	if result.Err != nil {
+		return requestCtx, operationresult.Result[turn.Result]{}, result.Err
+	}
+	if operation.Status != operationresult.Success {
+		return requestCtx, operationresult.Result[turn.Result]{Status: operation.Status, Message: operation.Message}, nil
+	}
+	return requestCtx, operationresult.Result[turn.Result]{Status: operationresult.Success, Data: result}, nil
 }
 
 // NewExecutionCoordinator initializes ExecutionCoordinator without installing cross-service callbacks.

@@ -13,6 +13,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool"
@@ -23,6 +24,7 @@ import (
 type backgroundHarness struct {
 	scope                             session.Scope
 	prepareErr, preloadErr, commitErr error
+	prepareStatus                     operationresult.Status
 	preloads, commits, executions     int
 	preload                           tool.BackgroundPreload
 	input                             turn.Input
@@ -35,13 +37,17 @@ func (h *backgroundHarness) IsCLI(ctx context.Context) bool {
 	info, _ := contextinfo.ConversationFromContext(ctx)
 	return info.Source.Platform == "cli"
 }
-func (h *backgroundHarness) PrepareBackground(ctx context.Context, scope session.Scope, req session.BackgroundRequest) (*storage.Session, error) {
+func (h *backgroundHarness) PrepareBackground(ctx context.Context, scope session.Scope, req session.BackgroundRequest) (operationresult.Result[*storage.Session], error) {
 	h.scope = scope
 	if h.prepareErr != nil {
-		return nil, h.prepareErr
+		return operationresult.Result[*storage.Session]{}, h.prepareErr
 	}
-	return &storage.Session{ID: "session", Metadata: "{}"}, nil
+	if h.prepareStatus != "" {
+		return operationresult.Result[*storage.Session]{Status: h.prepareStatus, Message: "session unavailable"}, nil
+	}
+	return operationresult.Result[*storage.Session]{Status: operationresult.Success, Data: &storage.Session{ID: "session", Metadata: "{}"}}, nil
 }
+func (*backgroundHarness) SessionTakenOver(context.Context, string) (bool, error) { return true, nil }
 
 type backgroundPreloaderStub struct{ h *backgroundHarness }
 
@@ -56,11 +62,11 @@ func (h *backgroundHarness) Commit(context.Context, string, tool.StateUpdate) (t
 func (h *backgroundHarness) ModelContext(ctx context.Context, row *storage.Session) (context.Context, error) {
 	return ctx, nil
 }
-func (h *backgroundHarness) RunBackground(ctx context.Context, row *storage.Session, text string) (context.Context, turn.Result) {
+func (h *backgroundHarness) RunBackground(ctx context.Context, row *storage.Session, text string) (context.Context, operationresult.Result[turn.Result], error) {
 	h.executions++
 	h.input = agentshare.InboundTurnInput(ctx, text)
 	h.runContext = ctx
-	return ctx, h.result
+	return ctx, operationresult.Result[turn.Result]{Status: operationresult.Success, Data: h.result}, nil
 }
 func newBackgroundHarness(t *testing.T) (*backgroundHarness, *BackgroundHandler, context.Context) {
 	t.Helper()
@@ -87,9 +93,9 @@ func TestBackgroundPreparationKeepsContextAndMultimodalSkillMaterial(t *testing.
 			{Type: llm.SegmentText, Text: "after"},
 		},
 	}
-	_, result := handler.RunBackground(ctx, req)
-	if !reflect.DeepEqual(result, h.result) {
-		t.Fatal(result)
+	_, result, err := handler.RunBackground(ctx, req)
+	if err != nil || result.Status != operationresult.Success || !reflect.DeepEqual(result.Data, h.result) {
+		t.Fatalf("result=%+v err=%v", result, err)
 	}
 	if h.scope.Platform != "qq" || h.scope.Owner.ID != "native-owner" || (h.scope.TaskType != "cron" || h.scope.TaskID != "task") {
 		t.Fatal(h.scope)
@@ -150,22 +156,19 @@ func TestBackgroundPreparationStopsBeforeExecutionOnFailure(t *testing.T) {
 			case "commit":
 				h.commitErr = failure
 			case "taken_over":
-				h.prepareErr = session.ErrForegroundSession
+				h.prepareStatus = operationresult.Conflict
 				req.SessionID = "existing"
 			}
-			_, result := handler.RunBackground(ctx, req)
+			_, result, err := handler.RunBackground(ctx, req)
 			if h.executions != 0 {
 				t.Fatal("executed after preparation failure")
 			}
 			if stage == "taken_over" {
-				if result.Err != nil || !result.TakenOver || result.SessionID != "existing" || result.Outcome != "taken_over" {
-					t.Fatal(result)
+				if err != nil || result.Status != operationresult.Success || !result.Data.TakenOver || result.Data.SessionID != "existing" || result.Data.Outcome != "taken_over" {
+					t.Fatalf("result=%+v err=%v", result, err)
 				}
-			} else if !errors.Is(result.Err, failure) {
-				t.Fatal(result)
-			}
-			if stage != "session" && stage != "taken_over" && result.SessionID != "session" {
-				t.Fatal("lost prepared session", result)
+			} else if !errors.Is(err, failure) {
+				t.Fatalf("result=%+v err=%v", result, err)
 			}
 		})
 	}
@@ -173,8 +176,8 @@ func TestBackgroundPreparationStopsBeforeExecutionOnFailure(t *testing.T) {
 
 func TestBackgroundContinuationDoesNotPreload(t *testing.T) {
 	h, handler, ctx := newBackgroundHarness(t)
-	_, result := handler.RunBackground(ctx, BackgroundRequest{TaskType: "cron", SessionID: "session", ToolListNames: []string{"ignored"}, Prompt: "continue"})
-	if result.Err != nil || h.preloads != 0 || h.commits != 0 || h.executions != 1 {
+	_, result, err := handler.RunBackground(ctx, BackgroundRequest{TaskType: "cron", SessionID: "session", ToolListNames: []string{"ignored"}, Prompt: "continue"})
+	if err != nil || result.Status != operationresult.Success || h.preloads != 0 || h.commits != 0 || h.executions != 1 {
 		t.Fatalf("result=%+v preload=%d commit=%d run=%d", result, h.preloads, h.commits, h.executions)
 	}
 	actor, _ := contextinfo.ActorFromContext(h.runContext)

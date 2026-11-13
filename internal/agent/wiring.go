@@ -4,10 +4,10 @@ import (
 	"context"
 	"elbot/internal/delivery"
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/workspace"
-	"errors"
 	"fmt"
 	"time"
 
@@ -65,25 +65,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		},
 		SessionIDCode: deps.Platform.SessionIDCode,
 		Store:         deps.Store, Models: deps.Models, Materials: m.routes,
-		ActiveSessionIDs: func() []string {
-			active := make(map[string]struct{})
-			for _, snapshot := range m.turns.SnapshotAll() {
-				if snapshot.Phase != turn.PhaseIdle {
-					active[snapshot.SessionID] = struct{}{}
-				}
-			}
-			for _, request := range m.requests.List() {
-				if request.SessionID != "" {
-					active[request.SessionID] = struct{}{}
-				}
-			}
-			ids := make([]string, 0, len(active))
-			for id := range active {
-				ids = append(ids, id)
-			}
-			return ids
-		},
-		CheckForeground: func(_ context.Context, source *storage.Session) error {
+		ActiveSessionIDs: func() []string { return m.execution.ActiveSessionIDs() },
+		CheckForeground: func(_ context.Context, source *storage.Session) (operationresult.Result[struct{}], error) {
 			return view.CheckSelection(source, deps.Models.ResolveMode(storage.SessionModeWork))
 		},
 		IsSuperadmin: func(scope session.Scope) bool {
@@ -156,7 +139,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 			return &dialogue.ToolTranscriptCommitter{Messages: runner.Messages}
 		},
 		Status:   status,
-		Contexts: m.contexts,
 		Turns:    m.turns,
 		View:     view,
 		Preparer: runner.Preparer,
@@ -169,7 +151,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	}, &chatroute.Compactor{
 		ToolCalls: deps.Store.ToolCalls(),
 		Models:    deps.Models,
-		Contexts:  m.contexts,
 		Loader:    contextmgr.Loader{Store: deps.Store},
 	})
 	response := responseroute.NewLoop(responseroute.LoopDeps{
@@ -221,12 +202,15 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Identity: identity,
 	})
 	controlAdapter := controlAdapter{supervisor: m, store: deps.Store, models: deps.Models, scope: identity.Scope, status: status}
-	workspaces := workspace.NewService(func(ctx context.Context) (string, error) {
-		row, err := m.sessions.Current(ctx, identity.Scope(ctx))
+	workspaces := workspace.NewService(func(ctx context.Context) (operationresult.Result[string], error) {
+		current, err := m.sessions.Current(ctx, identity.Scope(ctx))
 		if err != nil {
-			return "", err
+			return operationresult.Result[string]{}, err
 		}
-		return row.ID, nil
+		if current.Status != operationresult.Success {
+			return operationresult.Result[string]{Status: current.Status, Message: current.Message}, nil
+		}
+		return operationresult.Result[string]{Status: operationresult.Success, Data: current.Data.ID}, nil
 	}, func(id string) workspace.SessionStateStore {
 		return m.sessions.WorkspaceStore(id)
 	})
@@ -275,30 +259,10 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		MediaRows: deps.Store.Media(),
 	})
 	m.completion = completion.NewService(
-		completion.WorkspaceFilesSource{Root: func(ctx context.Context) (string, error) {
-			ctx = contextinfo.WithActor(ctx, identity.Actor(ctx))
-			row, err := m.sessions.Current(ctx, identity.Scope(ctx))
-			if err != nil {
-				if !errors.Is(err, session.ErrNoCurrentSession) {
-					return "", err
-				}
-				return workspace.CurrentWorkspaceDir(ctx)
-			}
-			return workspace.CurrentWorkspaceDir(workspace.WithWorkspaceStore(ctx, m.sessions.WorkspaceStore(row.ID)))
-		}},
+		completion.WorkspaceFilesSource{Root: input.CompletionWorkspaceRoot},
 		completion.RiskConfirmationSource{Router: m.commands, Control: deps.Control, CommandNames: agentconfirmation.RiskConfirmationCommandNames()},
 		completion.ForkMessageSource{Router: m.commands, Control: deps.Control, PageSize: cfg.View.SessionListPageSize},
-		completion.ToolDirectiveSource{
-			Context: func(ctx context.Context) (context.Context, error) {
-				ctx = contextinfo.WithActor(ctx, identity.Actor(ctx))
-				row, err := m.sessions.Current(ctx, identity.Scope(ctx))
-				if err != nil && !errors.Is(err, session.ErrNoCurrentSession) {
-					return ctx, err
-				}
-				return execution.ModelContext(ctx, row)
-			},
-			Tools: deps.Tools,
-		},
+		completion.ToolDirectiveSource{Context: input.ToolCompletionContext, Tools: deps.Tools},
 		completion.RouterSource{Router: m.commands, Actor: identity.Actor},
 	)
 	m.handler = handler
@@ -317,16 +281,16 @@ func wireCommands(router *command.Router, deps agentinput.CommandExecutorDeps, m
 // fileRollbackCapabilities adapts the command's List name to Tool's rollback operation.
 type fileRollbackCapabilities struct {
 	tools interface {
-		ListRollbacks(context.Context) ([]fileops.RollbackInfo, error)
-		RollbackByID(context.Context, uint64) (fileops.RollbackResult, error)
+		ListRollbacks(context.Context) (operationresult.Result[[]fileops.RollbackInfo], error)
+		RollbackByID(context.Context, uint64) (operationresult.Result[fileops.RollbackResult], error)
 	}
 }
 
-func (c fileRollbackCapabilities) List(ctx context.Context) ([]fileops.RollbackInfo, error) {
+func (c fileRollbackCapabilities) List(ctx context.Context) (operationresult.Result[[]fileops.RollbackInfo], error) {
 	return c.tools.ListRollbacks(ctx)
 }
 
-func (c fileRollbackCapabilities) RollbackByID(ctx context.Context, id uint64) (fileops.RollbackResult, error) {
+func (c fileRollbackCapabilities) RollbackByID(ctx context.Context, id uint64) (operationresult.Result[fileops.RollbackResult], error) {
 	return c.tools.RollbackByID(ctx, id)
 }
 
