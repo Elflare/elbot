@@ -184,7 +184,7 @@ func TestBuildBusinessLinesPreservesPartialPlatform(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.config.Platform["cli"] = map[string]any{"enabled": "invalid boolean"}
-	lines, err := buildBusinessLines(t.Context(), r, RunModeService)
+	lines, err := buildBusinessLines(t.Context(), r, RunModeService, &runtimeControl{})
 	t.Cleanup(func() {
 		if result := stopBusinessLines(context.Background(), lines); result.err != nil {
 			t.Error(result.err)
@@ -202,7 +202,7 @@ func TestBuildBusinessLinesRegistersProductionOrderAndIngress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lines, err := buildBusinessLines(t.Context(), r, RunModeService)
+	lines, err := buildBusinessLines(t.Context(), r, RunModeService, &runtimeControl{})
 	t.Cleanup(func() {
 		if result := stopBusinessLines(context.Background(), lines); result.err != nil {
 			t.Error(result.err)

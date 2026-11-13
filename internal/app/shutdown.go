@@ -3,6 +3,7 @@ package app
 import (
 	"cmp"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"slices"
@@ -47,18 +48,20 @@ func shutdown(ctx context.Context, lines businessLines, resources *sharedResourc
 	if result.kind == stopTimedOut {
 		return result.err
 	}
+	failure := result.err
 	result = closeSharedResources(ctx, resources)
 	if result.kind == stopTimedOut {
-		return result.err
+		return errors.Join(failure, result.err)
 	}
+	failure = errors.Join(failure, result.err)
 	if configLock != nil {
 		result = runShutdownStep(ctx, shutdownStep{
 			component: componentConfigLock, phase: phaseClose,
 			close: func(context.Context) error { return configLock.Close() },
 		})
-		return result.err
+		return errors.Join(failure, result.err)
 	}
-	return nil
+	return failure
 }
 
 // stopBusinessLines 先停止新工作，再按使用方到依赖方的顺序关闭。
@@ -79,7 +82,19 @@ func stopBusinessLines(ctx context.Context, lines businessLines) stopResult {
 			})
 		}
 		steps = append(steps, shutdownStep{
-			component: line.kind, phase: phaseClose, order: line.closeOrder, close: line.supervisor.Close,
+			component: line.kind, phase: phaseClose, order: line.closeOrder,
+			close: func(ctx context.Context) error {
+				err := line.supervisor.Close(ctx)
+				if err == nil {
+					return nil
+				}
+				select {
+				case <-line.supervisor.Done():
+					return err
+				case <-ctx.Done():
+					return errors.Join(err, ctx.Err())
+				}
+			},
 		})
 	}
 	slices.SortStableFunc(steps, func(a, b shutdownStep) int {
@@ -115,14 +130,16 @@ func closeSharedResources(ctx context.Context, resources *sharedResources) stopR
 	return runShutdownSteps(ctx, steps)
 }
 
-// runShutdownSteps 按顺序执行关闭步骤，普通错误就地记录，超时停止后续清理。
+// runShutdownSteps 按顺序清理并保留故障，超时停止后续清理；故障阻止宿主重建。
 func runShutdownSteps(ctx context.Context, steps []shutdownStep) stopResult {
+	var failure error
 	for _, step := range steps {
 		result := runShutdownStep(ctx, step)
 		switch result.kind {
 		case stopCompleted:
 			continue
 		case stopFailed:
+			failure = errors.Join(failure, result.err)
 			if step.component == componentLogs || step.component == componentConfigLock {
 				signal.ReportDiagnostic("shutdown step failed", slog.Any("error", result.err))
 			} else {
@@ -131,8 +148,12 @@ func runShutdownSteps(ctx context.Context, steps []shutdownStep) stopResult {
 					ResultStatus: events.LogStatus(result.err)})
 			}
 		case stopTimedOut:
+			result.err = errors.Join(failure, result.err)
 			return result
 		}
+	}
+	if failure != nil {
+		return stopResult{kind: stopFailed, err: failure}
 	}
 	return stopResult{kind: stopCompleted}
 }

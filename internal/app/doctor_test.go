@@ -65,7 +65,7 @@ func TestDoctorThroughProductionWiring(t *testing.T) {
 			os.Stdin = stdin
 			_ = input.Close()
 		})
-		lines, err := buildBusinessLines(t.Context(), resources, RunModeTUI)
+		lines, err := buildBusinessLines(t.Context(), resources, RunModeTUI, &runtimeControl{})
 		t.Cleanup(func() {
 			if result := stopBusinessLines(context.Background(), lines); result.err != nil {
 				t.Error(result.err)

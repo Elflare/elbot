@@ -8,9 +8,12 @@ import (
 	"io"
 	"log/slog"
 	"slices"
+	"sync"
 	"time"
 
+	"elbot/internal/control"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 )
 
@@ -22,11 +25,12 @@ type Options struct {
 	Mode       RunMode   // 调用方明确选定的 TUI 或 Service 模式。
 }
 
-// Lifecycle 是 App 消费的总管生命周期；实现方不需要依赖 App。
+// Lifecycle 是 App 消费的总管生命周期；Done 表示自有工作真实退出。
 type Lifecycle interface {
 	Start() error
 	BeginClose()
 	Close(context.Context) error
+	Done() <-chan struct{}
 }
 
 // Waiter 是可选的运行观察能力。故障及时返回，实际收尾由 Close 等待。
@@ -137,60 +141,118 @@ type startupStep struct {
 	run   func() error   // 先保存本阶段取得的资源，再交回错误。
 }
 
+// runtimeControl 为当前实例预留重启；提交仅取消运行等待，由 Run 完成退出和重建。
+type runtimeControl struct {
+	mu        sync.Mutex         // 保护预留和提交状态。
+	ctx       context.Context    // 当前实例的运行上下文；取消后不再接纳重启。
+	cancel    context.CancelFunc // 由已交付的重启提交触发退出。
+	reserved  bool               // 当前已有尚未取消的重启预留。
+	committed bool               // 已提交重启，旧实例退出后才允许重建。
+}
+
+func (r *runtimeControl) PrepareRestart(ctx context.Context) (operationresult.Result[control.RestartPreparation], error) {
+	if err := ctx.Err(); err != nil {
+		return operationresult.Result[control.RestartPreparation]{}, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.ctx.Err() != nil {
+		return operationresult.Result[control.RestartPreparation]{Status: operationresult.Unavailable, Message: "运行实例正在退出"}, nil
+	}
+	if r.reserved {
+		return operationresult.Result[control.RestartPreparation]{Status: operationresult.Conflict, Message: "已有待处理的重启请求"}, nil
+	}
+	r.reserved = true
+	return operationresult.Result[control.RestartPreparation]{Status: operationresult.Success, Data: control.RestartPreparation{
+		Commit: func(context.Context) error {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			if err := r.ctx.Err(); err != nil {
+				r.reserved = false
+				return err
+			}
+			r.committed = true
+			r.cancel()
+			return nil
+		},
+		Cancel: func() {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			if !r.committed {
+				r.reserved = false
+			}
+		},
+	}}, nil
+}
+
 // Run 组织完整运行；正常外部取消返回 nil，必要清理不覆盖运行错误。
 // 即使下层关闭不响应取消，也在统一退出期限到达后返回给 main。
 func Run(ctx context.Context, opts Options) (err error) {
-	now := time.Now()
-	timing := startupTiming{startedAt: opts.StartedAt, stageStartedAt: now}
-	runCtx, cancel := context.WithCancel(ctx)
-	var (
-		lines      businessLines
-		resources  *sharedResources
-		configLock io.Closer
-	)
-	defer func() {
-		cancel()
-		if errors.Is(err, ctx.Err()) {
-			err = nil
-		}
-		if closeErr := shutdown(ctx, lines, resources, configLock); closeErr != nil {
-			if err == nil {
-				err = closeErr
-			} else {
-				signal.ReportDiagnostic("shutdown failed", slog.Any("error", closeErr))
+	for {
+		runtime := &runtimeControl{}
+		restarting := false
+		err = func() (err error) {
+			now := time.Now()
+			timing := startupTiming{startedAt: opts.StartedAt, stageStartedAt: now}
+			runCtx, cancel := context.WithCancel(ctx)
+			runtime.ctx, runtime.cancel = runCtx, cancel
+			var (
+				lines      businessLines
+				resources  *sharedResources
+				configLock io.Closer
+			)
+			defer func() {
+				runtime.mu.Lock()
+				cancel()
+				restarting = runtime.committed
+				runtime.mu.Unlock()
+				if errors.Is(err, ctx.Err()) || (restarting && errors.Is(err, runCtx.Err())) {
+					err = nil
+				}
+				if closeErr := shutdown(ctx, lines, resources, configLock); closeErr != nil {
+					if err == nil {
+						err = closeErr
+					} else {
+						signal.ReportDiagnostic("shutdown failed", slog.Any("error", closeErr))
+					}
+				}
+				flushCtx, stop := context.WithTimeout(context.Background(), time.Second)
+				defer stop()
+				_ = signal.FlushDiagnostics(flushCtx)
+			}()
+			var configPath string
+			steps := []startupStep{
+				{phase: phaseEnvironment, run: func() error {
+					configPath, configLock, err = prepareEnvironment(opts.ConfigPath)
+					opts.ConfigPath = configPath
+					return err
+				}},
+				{phase: phaseResources, run: func() error {
+					resources, err = prepareResources(runCtx, configPath)
+					return err
+				}},
+				{phase: phaseWiring, run: func() error {
+					lines, err = buildBusinessLines(runCtx, resources, opts.Mode, runtime)
+					return err
+				}},
+				{phase: phaseStart, run: func() error { return startBusinessLines(runCtx, lines) }},
 			}
+			if err = runStartupSteps(runCtx, steps, &timing); err != nil {
+				return err
+			}
+			events.Log(runCtx, events.LogRecord{
+				Category: events.LogCategoryLog, Module: "app", Level: slog.LevelInfo,
+				EventName: "elbot_started", Type: events.ContentText,
+				Content:      fmt.Sprintf("version=%s\nmode=%s\nconfig_path=%s", opts.Version, opts.Mode, configPath),
+				ResultStatus: events.ResultSucceeded,
+			})
+			timing.log(runCtx)
+			return waitBusinessLines(runCtx, lines)
+		}()
+		if err != nil || !restarting || ctx.Err() != nil {
+			return err
 		}
-		flushCtx, stop := context.WithTimeout(context.Background(), time.Second)
-		defer stop()
-		_ = signal.FlushDiagnostics(flushCtx)
-	}()
-	var configPath string
-	steps := []startupStep{
-		{phase: phaseEnvironment, run: func() error {
-			configPath, configLock, err = prepareEnvironment(opts.ConfigPath)
-			return err
-		}},
-		{phase: phaseResources, run: func() error {
-			resources, err = prepareResources(runCtx, configPath)
-			return err
-		}},
-		{phase: phaseWiring, run: func() error {
-			lines, err = buildBusinessLines(runCtx, resources, opts.Mode)
-			return err
-		}},
-		{phase: phaseStart, run: func() error { return startBusinessLines(runCtx, lines) }},
 	}
-	if err = runStartupSteps(runCtx, steps, &timing); err != nil {
-		return err
-	}
-	events.Log(runCtx, events.LogRecord{
-		Category: events.LogCategoryLog, Module: "app", Level: slog.LevelInfo,
-		EventName: "elbot_started", Type: events.ContentText,
-		Content:      fmt.Sprintf("version=%s\nmode=%s\nconfig_path=%s", opts.Version, opts.Mode, configPath),
-		ResultStatus: events.ResultSucceeded,
-	})
-	timing.log(runCtx)
-	return waitBusinessLines(runCtx, lines)
 }
 
 // runStartupSteps 统一执行阶段；任一阶段失败后保留已取得的资源，交给 Run 清理。

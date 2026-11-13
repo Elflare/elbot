@@ -16,7 +16,7 @@ import (
 
 // buildBusinessLines 构造业务服务并交付公开能力；失败时保留部分结果。
 // 每条线接收完整 cfg，在内部拆分配置、构造组件，禁止在 App 展开其内部装配。
-func buildBusinessLines(ctx context.Context, resources *sharedResources, mode RunMode) (businessLines, error) {
+func buildBusinessLines(ctx context.Context, resources *sharedResources, mode RunMode, runtime *runtimeControl) (businessLines, error) {
 	lines := businessLines{}
 	cfg := resources.config
 	definitions := append(platform.ConfigDefinitions(), hook.ConfigDefinitions()...)
@@ -25,7 +25,7 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 	if err != nil {
 		return lines, err
 	}
-	controller, err := control.NewSupervisor(cfg, control.SupervisorDeps{Models: resources.models, Logs: logging.Reader{Dir: resources.logs.LogDir()}, Doctor: doctorService, LogDir: resources.logs.LogDir()})
+	controller, err := control.NewSupervisor(cfg, control.SupervisorDeps{Runtime: runtime, Models: resources.models, Logs: logging.Reader{Dir: resources.logs.LogDir()}, Doctor: doctorService, LogDir: resources.logs.LogDir()})
 	if err != nil {
 		return lines, err
 	}
