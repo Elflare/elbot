@@ -648,10 +648,15 @@ func TestToolCallRepositoryUsageBySession(t *testing.T) {
 	if err := store.Sessions().Create(ctx, session); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
+	other := &storage.Session{ID: storage.NewID()}
+	if err := store.Sessions().Create(ctx, other); err != nil {
+		t.Fatalf("create other session: %v", err)
+	}
 	for _, record := range []*storage.ToolCallRecord{
 		{SessionID: session.ID, ToolCallID: "call_1", ToolName: "shell", Actor: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, RiskLevel: "low", Success: true},
 		{SessionID: session.ID, ToolCallID: "call_2", ToolName: "shell", Actor: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, RiskLevel: "low", Success: false, Error: "boom"},
 		{SessionID: session.ID, ToolCallID: "call_3", ToolName: "web_search", Actor: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, RiskLevel: "low", Success: true},
+		{SessionID: other.ID, ToolCallID: "call_2", ToolName: "shell", Actor: contextinfo.ActorIdentity{Platform: "cli", ID: "u1"}, RiskLevel: "low", Success: true},
 	} {
 		if err := store.ToolCalls().Create(ctx, record); err != nil {
 			t.Fatalf("create tool call: %v", err)
@@ -666,12 +671,16 @@ func TestToolCallRepositoryUsageBySession(t *testing.T) {
 		t.Fatalf("usage = %#v", usage)
 	}
 
-	successful, err := store.ToolCalls().SuccessfulIDs(ctx, []string{"call_1", "call_2", "call_3", "missing", "call_1"})
+	successful, err := store.ToolCalls().SuccessfulIDs(ctx, session.ID, []string{"call_1", "call_2", "call_3", "missing", "call_1"})
 	if err != nil {
 		t.Fatalf("successful ids: %v", err)
 	}
 	if len(successful) != 2 || !successful["call_1"] || !successful["call_3"] || successful["call_2"] {
 		t.Fatalf("successful ids = %#v", successful)
+	}
+	otherSuccessful, err := store.ToolCalls().SuccessfulIDs(ctx, other.ID, []string{"call_2"})
+	if err != nil || len(otherSuccessful) != 1 || !otherSuccessful["call_2"] {
+		t.Fatalf("other session successful ids = %#v, %v", otherSuccessful, err)
 	}
 }
 

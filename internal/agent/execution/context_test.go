@@ -1,68 +1,52 @@
 package execution
 
 import (
-	agentshare "elbot/internal/agent/share"
-	"elbot/internal/contextinfo"
-
 	"context"
-
 	"strings"
 	"testing"
 
 	chatroute "elbot/internal/agent/chat"
-
-	"elbot/internal/contextmgr"
-	"elbot/internal/llm"
-
 	"elbot/internal/storage"
 )
 
-func TestCompactMessagesFiltersToolResultsAndFailedCalls(t *testing.T) {
+func TestCompactMessagesScopesToolCallResultsBySession(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
-	session := &storage.Session{ID: storage.NewID(), Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, Platform: "cli", ChatID: "local", Title: "compact", ChatType: "private"}
-	if err := store.Sessions().Create(ctx, session); err != nil {
-		t.Fatalf("create session: %v", err)
+	session := &storage.Session{ID: storage.NewID()}
+	parent := &storage.Session{ID: storage.NewID()}
+	for _, row := range []*storage.Session{session, parent} {
+		if err := store.Sessions().Create(ctx, row); err != nil {
+			t.Fatalf("create session: %v", err)
+		}
 	}
 	for _, record := range []*storage.ToolCallRecord{
-		{SessionID: session.ID, ToolCallID: "ok", ToolName: "shell", Actor: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, RiskLevel: "low", Success: true},
-		{SessionID: session.ID, ToolCallID: "failed", ToolName: "web", Actor: contextinfo.ActorIdentity{Platform: "cli", ID: "u"}, RiskLevel: "low", Success: false, Error: "boom"},
+		{SessionID: session.ID, ToolCallID: "same", ToolName: "shell", Success: true},
+		{SessionID: session.ID, ToolCallID: "missing", ToolName: "web", Success: false},
+		{SessionID: parent.ID, ToolCallID: "same", ToolName: "failed-parent", Success: false},
+		{SessionID: parent.ID, ToolCallID: "missing", ToolName: "inherited", Success: true},
 	} {
 		if err := store.ToolCalls().Create(ctx, record); err != nil {
 			t.Fatalf("create tool call: %v", err)
 		}
 	}
-	calls := []llm.ToolCallRequest{
-		{ID: "ok", Name: "shell", Arguments: `{"command":"go test ./..."}`},
-		{ID: "failed", Name: "web", Arguments: `{"q":"failed"}`},
-		{ID: "missing", Name: "shell", Arguments: `{"command":"missing"}`},
+	messages := []storage.Message{
+		{SessionID: parent.ID, Role: storage.RoleAssistant, Content: "P", ToolCalls: []storage.ToolCall{{ID: "same", Name: "failed-parent"}, {ID: "missing", Name: "inherited"}}},
+		{SessionID: session.ID, Role: storage.RoleUser, Content: "J"},
+		{SessionID: session.ID, Role: storage.RoleAssistant, Content: "C", SourceContent: "C", ToolCalls: []storage.ToolCall{{ID: "same", Name: "shell", Arguments: `{"command":"safe"}`}, {ID: "missing", Name: "web", Arguments: `{"q":"missing"}`}}},
+		{SessionID: session.ID, Role: storage.RoleTool, Content: "secret tool result", ToolCallID: "same"},
+		{SessionID: session.ID, Role: storage.RoleAssistant, Content: "H"},
 	}
-	toolCall := agentshare.ToolCallStorageMessage(session.ID, "C", "C", calls, "")
 	runtime := &chatroute.Compactor{ToolCalls: store.ToolCalls()}
-	messages, err := runtime.CompactMessages(ctx, &contextmgr.LoadedContext{
-		Summary: &storage.ContextSummary{Summary: "I"},
-		Messages: []storage.Message{
-			{Role: storage.RoleUser, Content: "J"},
-			toolCall,
-			{Role: storage.RoleTool, Content: "secret tool result", ToolCallID: "ok"},
-			{Role: storage.RoleAssistant, Content: "H"},
-		},
-	})
+	compacted, err := runtime.CompactMessages(ctx, messages)
 	if err != nil {
 		t.Fatalf("compact messages: %v", err)
 	}
-	if len(messages) != 3 {
-		t.Fatalf("messages = %#v", messages)
+	if len(compacted) != 4 || len(compacted[0].ToolCalls) != 1 || compacted[0].ToolCalls[0].Name != "inherited" || len(compacted[2].ToolCalls) != 1 || compacted[2].ToolCalls[0].Name != "shell" {
+		t.Fatalf("session-scoped calls = %#v", compacted)
 	}
-	if messages[0].Role != storage.RoleUser || messages[0].Content != "I\n\n当前用户输入：\nJ" {
-		t.Fatalf("first message = %#v", messages[0])
-	}
-	if len(messages[1].ToolCalls) != 1 || messages[1].ToolCalls[0].Name != "shell" || !strings.Contains(messages[1].ToolCalls[0].Arguments, "go test") {
-		t.Fatalf("tool calls = %#v", messages[1].ToolCalls)
-	}
-	for _, message := range messages {
+	for _, message := range compacted {
 		if strings.Contains(message.Content, "secret tool result") {
-			t.Fatalf("tool result leaked into compact messages: %#v", messages)
+			t.Fatalf("tool result leaked into compact messages: %#v", compacted)
 		}
 	}
 }

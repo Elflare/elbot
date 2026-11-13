@@ -536,7 +536,8 @@ type MediaReferenceRepository interface {
 
 type ToolCallRepository interface {
 	Create(ctx context.Context, record *ToolCallRecord) error
-	SuccessfulIDs(ctx context.Context, toolCallIDs []string) (map[string]bool, error)
+	ListBySession(ctx context.Context, sessionID string) ([]ToolCallRecord, error)
+	SuccessfulIDs(ctx context.Context, sessionID string, toolCallIDs []string) (map[string]bool, error)
 	UsageBySession(ctx context.Context, sessionID string) ([]ToolUsageSummary, error)
 }
 

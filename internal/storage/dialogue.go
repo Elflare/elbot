@@ -98,6 +98,7 @@ type NativeWindowRecords struct {
 type SessionMaterialCreate struct {
 	Session              *Session
 	Messages             []*Message
+	ToolCallRecords      []ToolCallRecord // 复制的调用记录，与新 Session 一并原子提交。
 	Seed                 *NativeSeed
 	SourceSessionID      string
 	ExpectedCheckpointID string

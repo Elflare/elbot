@@ -3,16 +3,15 @@ package branch_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"elbot/internal/session/branch"
 	"elbot/internal/session/control"
-	"elbot/internal/session/share"
 	"elbot/internal/storage"
 )
 
@@ -20,8 +19,8 @@ func TestBackgroundCopyHistoryAndMetadata(t *testing.T) {
 	for _, native := range []bool{false, true} {
 		t.Run(fmt.Sprint(native), func(t *testing.T) {
 			f := newFixture(t)
-			if _, err := f.c.Create(t.Context(), scope(), control.CreateRequest{}); err != nil {
-				t.Fatal(err)
+			if result, err := f.c.Create(t.Context(), scope(), control.CreateRequest{}); err != nil || result.Status != operationresult.Success {
+				t.Fatalf("create: %+v %v", result, err)
 			}
 			current := f.c.CurrentBinding(scope())
 			source := f.source(t, storage.SessionModeBackground)
@@ -31,6 +30,14 @@ func TestBackgroundCopyHistoryAndMetadata(t *testing.T) {
 				t.Fatal(err)
 			}
 			batch := toolBatch(t, f, source.ID, "batch", false)
+			for _, record := range []storage.ToolCallRecord{
+				{SessionID: source.ID, ToolCallID: batch.Call.ToolCalls[0].ID, ToolName: "tool", Success: true},
+				{SessionID: source.ID, ToolCallID: batch.Call.ToolCalls[1].ID, ToolName: "tool", Success: false, Error: "failed"},
+			} {
+				if err := f.store.ToolCalls().Create(t.Context(), &record); err != nil {
+					t.Fatal(err)
+				}
+			}
 			mediaID := "media:" + strings.Repeat("a", 64)
 			if native {
 				if err := f.store.Media().Upsert(t.Context(), &storage.Media{ID: mediaID, Backend: "local", MIMEType: "image/png"}); err != nil {
@@ -45,10 +52,11 @@ func TestBackgroundCopyHistoryAndMetadata(t *testing.T) {
 			target := scope()
 			target.Owner.ID, target.Platform, target.ChatID = "recipient", "other", "cron:copy"
 			metadata := storage.SessionMetadata{"unknown": json.RawMessage(`9007199254740993`), "nested": json.RawMessage(`{"keep":true}`), "title_source": json.RawMessage(`"wrong"`)}
-			row, err := f.s.CopyBackground(t.Context(), target, branch.BackgroundCopyRequest{SourceSessionID: source.ID, TaskType: "cron", TaskID: "copy", Metadata: metadata})
-			if err != nil {
-				t.Fatal(err)
+			copied, err := f.s.CopyBackground(t.Context(), target, branch.BackgroundCopyRequest{SourceSessionID: source.ID, TaskType: "cron", TaskID: "copy", Metadata: metadata})
+			if err != nil || copied.Status != operationresult.Success {
+				t.Fatalf("copy: %+v %v", copied, err)
 			}
+			row := copied.Data
 			if row.Mode != storage.SessionModeBackground || row.Owner != target.Owner || row.Platform != target.Platform || row.Title != "Cron: copy" {
 				t.Fatalf("copy: %+v", row)
 			}
@@ -73,6 +81,14 @@ func TestBackgroundCopyHistoryAndMetadata(t *testing.T) {
 			}
 			if len(ids) != 2 || ids[0] != rows[3].ID || ids[1] != rows[4].ID || ids[0] == batch.Results[0].ID || rows[3].ToolCallID != batch.Results[0].ToolCallID {
 				t.Fatal("tool result links not remapped")
+			}
+			records, err := f.store.ToolCalls().ListBySession(t.Context(), row.ID)
+			if err != nil || len(records) != 2 || records[0].SessionID != row.ID || records[1].SessionID != row.ID || records[0].ToolCallID != batch.Call.ToolCalls[0].ID || records[0].Success != true || records[1].ToolCallID != batch.Call.ToolCalls[1].ID || records[1].Success || records[1].Error != "failed" {
+				t.Fatalf("copied tool call records: %+v %v", records, err)
+			}
+			originalRecords, err := f.store.ToolCalls().ListBySession(t.Context(), source.ID)
+			if err != nil || len(originalRecords) != 2 || originalRecords[0].SessionID != source.ID || originalRecords[1].SessionID != source.ID {
+				t.Fatalf("source tool call records changed: %+v %v", originalRecords, err)
 			}
 			if f.c.CurrentBinding(scope()) != current || !current.Valid() {
 				t.Fatal("copy changed current")
@@ -102,10 +118,11 @@ func TestCopyForegroundAcrossPlatformsPreservesSourceAndHistory(t *testing.T) {
 	target := scope()
 	target.Owner = contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}
 	target.Platform, target.ChatID, target.IsSuperadmin = "cli", "local", true
-	copy, err := f.s.CopyForeground(t.Context(), target, source.ID)
-	if err != nil {
-		t.Fatal(err)
+	copyResult, created, err := f.s.CopyForeground(t.Context(), target, source.ID)
+	if err != nil || copyResult.Status != operationresult.Success || !created {
+		t.Fatalf("copy: %+v %v", copyResult, err)
 	}
+	copy := copyResult.Data
 	if copy.ID == source.ID || copy.ParentSessionID != source.ID || copy.Owner != target.Owner || copy.Platform != target.Platform || copy.ChatID != target.ChatID {
 		t.Fatalf("copy identity: %+v", copy)
 	}
@@ -130,14 +147,15 @@ func TestCopyForegroundDoesNotReplaceBusyCurrentSession(t *testing.T) {
 	target := scope()
 	target.Owner = contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}
 	target.Platform, target.ChatID, target.IsSuperadmin = "cli", "local", true
-	current, err := f.c.Create(t.Context(), target, control.CreateRequest{Title: "current"})
-	if err != nil {
-		t.Fatal(err)
+	currentResult, err := f.c.Create(t.Context(), target, control.CreateRequest{Title: "current"})
+	if err != nil || currentResult.Status != operationresult.Success {
+		t.Fatalf("create current: %+v %v", currentResult, err)
 	}
+	current := currentResult.Data
 	source := f.source(t, storage.SessionModeWork)
 	f.setBusy(current.ID)
-	if _, err := f.s.CopyForeground(t.Context(), target, source.ID); !errors.Is(err, share.ErrSessionBusy) {
-		t.Fatalf("copy replaced busy current session: %v", err)
+	if result, created, err := f.s.CopyForeground(t.Context(), target, source.ID); err != nil || result.Status != operationresult.Busy || created {
+		t.Fatalf("copy replaced busy current session: %+v %v", result, err)
 	}
 	if f.count(t) != 2 {
 		t.Fatal("copy created a session despite busy current binding")
@@ -212,7 +230,7 @@ func TestCopyRechecksAfterUnlockedPreparation(t *testing.T) {
 				}
 				return prepared, nil
 			}
-			if _, err := f.s.CopyBackground(ctx, scope(), branch.BackgroundCopyRequest{SourceSessionID: source.ID, TaskType: "cron"}); err == nil {
+			if result, err := f.s.CopyBackground(ctx, scope(), branch.BackgroundCopyRequest{SourceSessionID: source.ID, TaskType: "cron"}); err == nil && result.Status == operationresult.Success {
 				t.Fatal("invalid copy committed")
 			}
 			if f.count(t) != wantCount {
@@ -230,7 +248,7 @@ func TestCopyRechecksAfterUnlockedPreparation(t *testing.T) {
 }
 
 func TestCopyRejectsUnsealedAndMalformedHistory(t *testing.T) {
-	for _, failure := range []string{"pending", "missing-result", "metadata", "foreground"} {
+	for _, failure := range []string{"pending", "missing-result", "non-tool-result", "metadata", "foreground"} {
 		t.Run(failure, func(t *testing.T) {
 			f := newFixture(t)
 			mode := storage.SessionModeBackground
@@ -239,20 +257,28 @@ func TestCopyRejectsUnsealedAndMalformedHistory(t *testing.T) {
 			}
 			source := f.source(t, mode)
 			req := branch.BackgroundCopyRequest{SourceSessionID: source.ID, TaskType: "cron"}
+			wantStatus, wantError := operationresult.Conflict, false
 			switch failure {
 			case "pending":
 				toolBatch(t, f, source.ID, "unfinished", true)
-			case "missing-result":
-				message := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: storage.RoleAssistant, Metadata: `{"tool_result_message_ids":["absent"]}`}
+			case "missing-result", "non-tool-result":
+				resultID := "absent"
+				if failure == "non-tool-result" {
+					resultID = f.message(t, source.ID, storage.RoleAssistant).ID
+				}
+				message := &storage.Message{ID: storage.NewID(), SessionID: source.ID, Role: storage.RoleAssistant, Metadata: `{"tool_result_message_ids":["` + resultID + `"]}`}
 				if err := f.store.Messages().Append(t.Context(), message); err != nil {
 					t.Fatal(err)
 				}
+				wantError = true
 			case "metadata":
 				req.Metadata = storage.SessionMetadata{"bad": json.RawMessage(`invalid`)}
+				wantError = true
 			}
 			before := f.c.CurrentBinding(scope())
-			if _, err := f.s.CopyBackground(t.Context(), scope(), req); err == nil {
-				t.Fatal("invalid copy accepted")
+			result, err := f.s.CopyBackground(t.Context(), scope(), req)
+			if (wantError && err == nil) || (!wantError && (err != nil || result.Status != wantStatus)) {
+				t.Fatalf("copy result: %+v %v", result, err)
 			}
 			if f.count(t) != 1 || f.c.CurrentBinding(scope()) != before {
 				t.Fatal("failed copy changed state")

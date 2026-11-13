@@ -84,6 +84,15 @@ func (r *SessionRepository) CreateMaterial(ctx context.Context, req storage.Sess
 			return err
 		}
 	}
+	for i := range req.ToolCallRecords {
+		record := &req.ToolCallRecords[i]
+		if record.SessionID != req.Session.ID {
+			return fmt.Errorf("copied tool call session mismatch")
+		}
+		if err := insertToolCallRecord(ctx, tx, record); err != nil {
+			return err
+		}
+	}
 	if seed := req.Seed; seed != nil {
 		if seed.APIType == "" || seed.Provider == "" || seed.Consumed {
 			return fmt.Errorf("invalid native seed identity")

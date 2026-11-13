@@ -5,6 +5,7 @@ package session
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 
 	"elbot/internal/config"
 	"elbot/internal/llm"
@@ -64,6 +65,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		AllocateID:       s.allocateID,
 		Sessions:         sessions,
 		Messages:         messages,
+		ToolCalls:        deps.Store.ToolCalls(),
 		Dialogues:        deps.Store.Dialogues(),
 		Bindings:         s.control,
 		ActiveSessionIDs: deps.ActiveSessionIDs,
@@ -95,17 +97,29 @@ type materialPreparer struct {
 	source MaterialPreparer
 }
 
-func (p materialPreparer) PrepareFork(ctx context.Context, row *storage.Session, message *storage.Message) (*branch.PreparedMaterial, error) {
+func (p materialPreparer) PrepareFork(ctx context.Context, row *storage.Session, message *storage.Message) (operationresult.Result[*branch.PreparedMaterial], error) {
 	prepared, err := p.source.PrepareFork(ctx, row, message)
-	return internalMaterial(prepared), err
+	if err != nil {
+		return operationresult.Result[*branch.PreparedMaterial]{}, err
+	}
+	if prepared.Status != operationresult.Success {
+		return operationresult.Result[*branch.PreparedMaterial]{Status: prepared.Status, Message: prepared.Message}, nil
+	}
+	return operationresult.Result[*branch.PreparedMaterial]{Status: operationresult.Success, Data: internalMaterial(prepared.Data)}, nil
 }
 
-func (p materialPreparer) PrepareCopy(ctx context.Context, row *storage.Session) (*branch.PreparedMaterial, error) {
+func (p materialPreparer) PrepareCopy(ctx context.Context, row *storage.Session) (operationresult.Result[*branch.PreparedMaterial], error) {
 	prepared, err := p.source.PrepareCopy(ctx, row)
-	return internalMaterial(prepared), err
+	if err != nil {
+		return operationresult.Result[*branch.PreparedMaterial]{}, err
+	}
+	if prepared.Status != operationresult.Success {
+		return operationresult.Result[*branch.PreparedMaterial]{Status: prepared.Status, Message: prepared.Message}, nil
+	}
+	return operationresult.Result[*branch.PreparedMaterial]{Status: operationresult.Success, Data: internalMaterial(prepared.Data)}, nil
 }
 
-// internalMaterial 保留无原生材料的 nil 语义，不丢弃伴随错误返回的部分结果。
+// internalMaterial 保留成功时无原生材料的空数据。
 func internalMaterial(prepared *PreparedMaterial) *branch.PreparedMaterial {
 	if prepared == nil {
 		return nil

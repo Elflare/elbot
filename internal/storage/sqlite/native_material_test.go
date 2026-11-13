@@ -92,7 +92,7 @@ func TestNativeSessionMaterialCreateRollsBackSessionMessagesAndMedia(t *testing.
 	}
 	seed := materialSeed("root")
 	seed.MediaIDs = []string{id}
-	req := storage.SessionMaterialCreate{Session: &storage.Session{ID: "child", Metadata: `{"llm_origin":{"protocol":"response","provider":"p"}}`}, SourceSessionID: "s", Seed: seed, Messages: []*storage.Message{{ID: "copy", SessionID: "child", Role: storage.RoleAssistant, Segments: `[{"type":"image","media":"` + id + `"}]`}}}
+	req := storage.SessionMaterialCreate{Session: &storage.Session{ID: "child", Metadata: `{"llm_origin":{"protocol":"response","provider":"p"}}`}, SourceSessionID: "s", Seed: seed, Messages: []*storage.Message{{ID: "copy", SessionID: "child", Role: storage.RoleAssistant, Segments: `[{"type":"image","media":"` + id + `"}]`}}, ToolCallRecords: []storage.ToolCallRecord{{SessionID: "child", ToolCallID: "copy-call", ToolName: "tool", Success: true}}}
 	if err := store.Sessions().CreateMaterial(ctx, req); err == nil {
 		t.Fatal("seed failure committed")
 	}
@@ -101,6 +101,10 @@ func TestNativeSessionMaterialCreateRollsBackSessionMessagesAndMedia(t *testing.
 	}
 	if messages, err := store.Messages().ListBySession(ctx, "child"); err != nil || len(messages) != 0 {
 		t.Fatalf("partial messages=%+v %v", messages, err)
+	}
+	toolCalls, err := store.ToolCalls().ListBySession(ctx, "child")
+	if err != nil || len(toolCalls) != 0 {
+		t.Fatalf("partial tool calls=%+v %v", toolCalls, err)
 	}
 	for _, owner := range []struct{ kind, id string }{{"message", "copy"}, {"native_seed", "root"}} {
 		refs, err := store.MediaReferences().ListByOwner(ctx, owner.kind, owner.id)
@@ -114,7 +118,7 @@ func TestNativeSeedConsumptionIsAtomicWithFirstCheckpoint(t *testing.T) {
 	store, _ := nativeStorageFixture(t)
 	ctx := t.Context()
 	seed := materialSeed("root")
-	row := &storage.Session{ID: "child", Metadata: `{"llm_origin":{"protocol":"response","provider":"p"},"unknown":9007199254740993,"context_compact":{"pending":true,"seed_id":"root","keep":true}}`}
+	row := &storage.Session{ID: "child", Metadata: `{"llm_origin":{"protocol":"response","provider":"p"},"unknown":9007199254740993,"context_compact":{"keep":true}}`}
 	if err := store.Sessions().CreateMaterial(ctx, storage.SessionMaterialCreate{Session: row, Seed: seed}); err != nil {
 		t.Fatal(err)
 	}

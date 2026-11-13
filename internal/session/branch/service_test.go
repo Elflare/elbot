@@ -12,6 +12,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/session/binding"
 	"elbot/internal/session/branch"
 	"elbot/internal/session/control"
@@ -35,11 +36,19 @@ type fixture struct {
 
 type preparer struct{ f *fixture }
 
-func (p preparer) PrepareFork(ctx context.Context, source *storage.Session, message *storage.Message) (*branch.PreparedMaterial, error) {
-	return p.f.material(ctx, source, message)
+func (p preparer) PrepareFork(ctx context.Context, source *storage.Session, message *storage.Message) (operationresult.Result[*branch.PreparedMaterial], error) {
+	prepared, err := p.f.material(ctx, source, message)
+	if err != nil {
+		return operationresult.Result[*branch.PreparedMaterial]{}, err
+	}
+	return operationresult.Result[*branch.PreparedMaterial]{Status: operationresult.Success, Data: prepared}, nil
 }
-func (p preparer) PrepareCopy(ctx context.Context, source *storage.Session) (*branch.PreparedMaterial, error) {
-	return p.f.material(ctx, source, nil)
+func (p preparer) PrepareCopy(ctx context.Context, source *storage.Session) (operationresult.Result[*branch.PreparedMaterial], error) {
+	prepared, err := p.f.material(ctx, source, nil)
+	if err != nil {
+		return operationresult.Result[*branch.PreparedMaterial]{}, err
+	}
+	return operationresult.Result[*branch.PreparedMaterial]{Status: operationresult.Success, Data: prepared}, nil
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -56,12 +65,14 @@ func newFixture(t *testing.T) *fixture {
 	f.c = control.NewService(control.Config{DefaultMode: storage.SessionModeWork, IdleExpiration: control.IdleExpirationConfig{PrivateUserTTLMinutes: 1}}, control.ServiceDeps{
 		AllocateID: func(ctx context.Context, _ share.IDOrigin) (string, error) { return storage.NewID(), ctx.Err() },
 		Sessions:   store.Sessions(), Messages: store.Messages(), Bindings: f.b, ActiveSessionIDs: active,
-		CheckForeground: func(context.Context, *storage.Session) error { return nil }, IsSuperadmin: func(share.Scope) bool { return false },
+		CheckForeground: func(context.Context, *storage.Session) (operationresult.Result[struct{}], error) {
+			return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
+		}, IsSuperadmin: func(share.Scope) bool { return false },
 		AdoptForeground: func(context.Context, *storage.Session, *share.Binding) {},
 		ReleaseSession:  func(id string) { f.mu.Lock(); defer f.mu.Unlock(); f.released = append(f.released, id) },
 		ReleaseBinding:  func(b *share.Binding) { f.mu.Lock(); defer f.mu.Unlock(); f.bindings = append(f.bindings, b) },
 	})
-	f.deps = branch.ServiceDeps{NewMessageID: testutil.IDSequence().MessageID, Sessions: store.Sessions(), Messages: store.Messages(), Dialogues: store.Dialogues(),
+	f.deps = branch.ServiceDeps{NewMessageID: testutil.IDSequence().MessageID, Sessions: store.Sessions(), Messages: store.Messages(), ToolCalls: store.ToolCalls(), Dialogues: store.Dialogues(),
 		AllocateID: func(ctx context.Context, _ share.IDOrigin) (string, error) { return storage.NewID(), ctx.Err() },
 		Bindings:   f.c, ActiveSessionIDs: active, MaterialFor: func(llm.Origin) (branch.MaterialPreparer, error) { return preparer{f}, nil }}
 	f.s = branch.NewService(f.deps)
@@ -87,16 +98,17 @@ func scope() share.Scope {
 
 func (f *fixture) source(t *testing.T, mode string) *storage.Session {
 	t.Helper()
-	var row *storage.Session
+	var result operationresult.Result[*storage.Session]
 	var err error
 	if mode == storage.SessionModeBackground {
-		row, err = f.c.PrepareBackground(t.Context(), scope(), control.BackgroundRequest{TaskType: "cron", TaskID: "job"})
+		result, err = f.c.PrepareBackground(t.Context(), scope(), control.BackgroundRequest{TaskType: "cron", TaskID: "job"})
 	} else {
-		row, err = f.c.Create(t.Context(), scope(), control.CreateRequest{Mode: mode, Title: "source"})
+		result, err = f.c.Create(t.Context(), scope(), control.CreateRequest{Mode: mode, Title: "source"})
 	}
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || result.Status != operationresult.Success {
+		t.Fatalf("create source: %+v %v", result, err)
 	}
+	row := result.Data
 	row, err = f.store.Sessions().Mutate(t.Context(), row.ID, func(row *storage.Session) error {
 		fields, err := storage.DecodeSessionMetadata(row.Metadata)
 		if err != nil {
@@ -220,18 +232,18 @@ func TestNativeMaterialAtomicCommit(t *testing.T) {
 				repo := &recordingSessions{SessionRepository: f.store.Sessions()}
 				f.deps.Sessions = repo
 				f.s = branch.NewService(f.deps)
-				var row *storage.Session
+				var result operationresult.Result[*storage.Session]
 				var err error
 				switch operation {
 				case "fork":
-					row, err = f.s.Fork(t.Context(), scope(), message.ID)
+					result, err = f.s.Fork(t.Context(), scope(), message.ID)
 				case "copy":
-					row, err = f.s.CopyBackground(t.Context(), scope(), branch.BackgroundCopyRequest{SourceSessionID: source.ID, TaskType: "cron"})
+					result, err = f.s.CopyBackground(t.Context(), scope(), branch.BackgroundCopyRequest{SourceSessionID: source.ID, TaskType: "cron"})
 				case "compact":
-					row, err = f.s.CreateCompacted(t.Context(), scope(), source.ID, branch.CompactedRequest{ID: "reserved", Seed: material})
+					result, err = f.s.CreateCompacted(t.Context(), scope(), source.ID, branch.CompactedRequest{ID: "reserved", Seed: material})
 				}
-				if (err != nil) != fail {
-					t.Fatalf("result: %+v %v", row, err)
+				if (fail && err == nil && result.Status == operationresult.Success) || (!fail && (err != nil || result.Status != operationresult.Success)) {
+					t.Fatalf("result: %+v %v", result, err)
 				}
 				if repo.req.Session == nil {
 					t.Fatal("did not use atomic material create")
@@ -271,16 +283,16 @@ func TestMaterialSelectionAndStaleContext(t *testing.T) {
 	source := f.source(t, storage.SessionModeWork)
 	message := f.message(t, source.ID, storage.RoleAssistant)
 	original := f.c.CurrentBinding(scope())
-	if err := f.c.ResetCurrent(t.Context(), scope()); err != nil {
-		t.Fatal(err)
+	if result, err := f.c.ResetCurrent(t.Context(), scope()); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("reset: %+v %v", result, err)
 	}
-	if _, err := f.c.Resume(t.Context(), scope(), source.ID); err != nil {
-		t.Fatal(err)
+	if result, err := f.c.Resume(t.Context(), scope(), source.ID); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("resume: %+v %v", result, err)
 	}
 	calls := 0
 	f.deps.MaterialFor = func(llm.Origin) (branch.MaterialPreparer, error) { calls++; return nil, errSave }
 	f.s = branch.NewService(f.deps)
-	if _, err := f.s.Fork(share.WithBinding(t.Context(), original), scope(), message.ID); err == nil || calls != 0 {
+	if result, err := f.s.Fork(share.WithBinding(t.Context(), original), scope(), message.ID); err != nil || result.Status == operationresult.Success || calls != 0 {
 		t.Fatalf("stale binding reached preparation: %v calls=%d", err, calls)
 	}
 	if _, err := f.s.Fork(t.Context(), scope(), message.ID); !errors.Is(err, errSave) || calls != 1 {
@@ -292,8 +304,8 @@ func TestMaterialSelectionAndStaleContext(t *testing.T) {
 	if _, err := f.store.Sessions().Mutate(t.Context(), source.ID, func(row *storage.Session) error { row.Metadata = `{}`; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	row, err := f.s.Fork(t.Context(), scope(), message.ID)
-	if err != nil || calls != 1 || strings.Contains(row.Metadata, "llm_origin") {
-		t.Fatalf("unknown origin inferred route: %+v %v calls=%d", row, err, calls)
+	result, err := f.s.Fork(t.Context(), scope(), message.ID)
+	if err != nil || result.Status != operationresult.Success || calls != 1 || strings.Contains(result.Data.Metadata, "llm_origin") {
+		t.Fatalf("unknown origin inferred route: %+v %v calls=%d", result, err, calls)
 	}
 }

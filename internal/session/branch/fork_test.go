@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"elbot/internal/session/branch"
 	"elbot/internal/session/control"
 	"elbot/internal/session/share"
@@ -46,16 +47,17 @@ func TestForkModesAndOwnership(t *testing.T) {
 					calls++
 					return nil, nil
 				}
-				row, err := f.s.Fork(t.Context(), target, message.ID)
+				result, err := f.s.Fork(t.Context(), target, message.ID)
 				if !allowed {
-					if err == nil || calls != 0 || f.count(t) != 1 {
-						t.Fatalf("unauthorized fork: %+v %v calls=%d", row, err, calls)
+					if err != nil || result.Status == operationresult.Success || calls != 0 || f.count(t) != 1 {
+						t.Fatalf("unauthorized fork: %+v %v calls=%d", result, err, calls)
 					}
 					return
 				}
-				if err != nil {
-					t.Fatal(err)
+				if err != nil || result.Status != operationresult.Success {
+					t.Fatalf("fork: %+v %v", result, err)
 				}
+				row := result.Data
 				wantMode := mode
 				if mode == storage.SessionModeBackground {
 					wantMode = storage.SessionModeWork
@@ -82,22 +84,23 @@ func TestForkMessageAndToolBoundaries(t *testing.T) {
 	f := newFixture(t)
 	source := f.source(t, storage.SessionModeWork)
 	user := f.message(t, source.ID, storage.RoleUser)
-	if _, err := f.s.Fork(t.Context(), scope(), user.ID); err == nil {
+	if result, err := f.s.Fork(t.Context(), scope(), user.ID); err != nil || result.Status == operationresult.Success {
 		t.Fatal("user message accepted")
 	}
-	if _, err := f.s.Fork(t.Context(), scope(), " "); err == nil {
+	if result, err := f.s.Fork(t.Context(), scope(), " "); err != nil || result.Status == operationresult.Success {
 		t.Fatal("empty id accepted")
 	}
 	pending := toolBatch(t, f, source.ID, "pending", true)
-	if _, err := f.s.Fork(t.Context(), scope(), pending.Call.ID); err == nil {
+	if result, err := f.s.Fork(t.Context(), scope(), pending.Call.ID); err != nil || result.Status == operationresult.Success {
 		t.Fatal("pending batch accepted")
 	}
 	sealed := toolBatch(t, f, source.ID, "sealed", false)
 	later := f.message(t, source.ID, storage.RoleAssistant)
-	row, err := f.s.Fork(t.Context(), scope(), sealed.Call.ID)
-	if err != nil {
-		t.Fatal(err)
+	forked, err := f.s.Fork(t.Context(), scope(), sealed.Call.ID)
+	if err != nil || forked.Status != operationresult.Success {
+		t.Fatalf("fork: %+v %v", forked, err)
 	}
+	row := forked.Data
 	if row.ForkFromMessageID != sealed.Results[1].ID {
 		t.Fatalf("boundary: %+v", row)
 	}
@@ -174,7 +177,11 @@ func TestForkRechecksAfterUnlockedPreparation(t *testing.T) {
 				}
 				return nil, nil
 			}
-			if _, err := f.s.Fork(ctx, scope(), message.ID); err == nil {
+			result, err := f.s.Fork(ctx, scope(), message.ID)
+			if change == "delete" && (err != nil || result.Status != operationresult.NotFound) {
+				t.Fatalf("deleted source status = %s, err = %v", result.Status, err)
+			}
+			if err == nil && result.Status == operationresult.Success {
 				t.Fatal("stale fork committed")
 			}
 			if f.count(t) != wantCount || f.c.CurrentBinding(scope()) != wantBinding {
@@ -194,10 +201,11 @@ func TestForkControlTimerAndRelease(t *testing.T) {
 			t.Fatal(err)
 		}
 		time.Sleep(40 * time.Second)
-		row, err := f.s.Fork(context.Background(), scope(), message.ID)
-		if err != nil {
-			t.Fatal(err)
+		result, err := f.s.Fork(context.Background(), scope(), message.ID)
+		if err != nil || result.Status != operationresult.Success {
+			t.Fatalf("fork: %+v %v", result, err)
 		}
+		row := result.Data
 		if original.Valid() {
 			t.Fatal("source handle retained")
 		}

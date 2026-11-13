@@ -5,6 +5,7 @@ package branch
 import (
 	"context"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/session/share"
 	"elbot/internal/storage"
 )
@@ -21,6 +22,9 @@ type ServiceDeps struct {
 		Get(context.Context, string) (*storage.Message, error)
 		ListBySession(context.Context, string) ([]storage.Message, error)
 	}
+	ToolCalls interface {
+		ListBySession(context.Context, string) ([]storage.ToolCallRecord, error)
+	}
 	Dialogues interface {
 		PendingInputs(context.Context, string) ([]storage.NativeInput, error)
 	}
@@ -30,8 +34,8 @@ type ServiceDeps struct {
 }
 
 type MaterialPreparer interface {
-	PrepareFork(context.Context, *storage.Session, *storage.Message) (*PreparedMaterial, error)
-	PrepareCopy(context.Context, *storage.Session) (*PreparedMaterial, error)
+	PrepareFork(context.Context, *storage.Session, *storage.Message) (operationresult.Result[*PreparedMaterial], error)
+	PrepareCopy(context.Context, *storage.Session) (operationresult.Result[*PreparedMaterial], error)
 }
 
 type PreparedMaterial struct {
@@ -45,13 +49,13 @@ type Service struct{ deps ServiceDeps }
 func NewService(deps ServiceDeps) *Service { return &Service{deps: deps} }
 
 // prepareMaterial 只在业务准入外调用；没有保存协议归属时不推断路线。
-func (s *Service) prepareMaterial(ctx context.Context, origin llm.Origin, source *storage.Session, message *storage.Message) (*PreparedMaterial, error) {
+func (s *Service) prepareMaterial(ctx context.Context, origin llm.Origin, source *storage.Session, message *storage.Message) (operationresult.Result[*PreparedMaterial], error) {
 	if origin.APIType == "" {
-		return nil, nil
+		return operationresult.Result[*PreparedMaterial]{Status: operationresult.Success}, nil
 	}
 	preparer, err := s.deps.MaterialFor(origin)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*PreparedMaterial]{}, err
 	}
 	if message != nil {
 		return preparer.PrepareFork(ctx, source, message)
@@ -59,19 +63,10 @@ func (s *Service) prepareMaterial(ctx context.Context, origin llm.Origin, source
 	return preparer.PrepareCopy(ctx, source)
 }
 
-func materialCreate(row *storage.Session, sourceID string, prepared *PreparedMaterial, messages []*storage.Message) storage.SessionMaterialCreate {
-	req := storage.SessionMaterialCreate{Session: row, Messages: messages}
+func materialCreate(row *storage.Session, sourceID string, prepared *PreparedMaterial) storage.SessionMaterialCreate {
+	req := storage.SessionMaterialCreate{Session: row}
 	if prepared != nil {
 		req.Seed, req.SourceSessionID, req.ExpectedCheckpointID = prepared.Seed, sourceID, prepared.ExpectedCheckpointID
 	}
 	return req
-}
-
-func (s *Service) requireIdle(id string) error {
-	for _, active := range s.deps.ActiveSessionIDs() {
-		if active == id {
-			return share.ErrSessionBusy
-		}
-	}
-	return nil
 }

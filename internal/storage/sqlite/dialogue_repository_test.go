@@ -60,7 +60,7 @@ func TestSuccessfulIDsBatchBoundaries(t *testing.T) {
 		if size > 0 {
 			input = append(input, ids[0], " ")
 		}
-		got, err := store.ToolCalls().SuccessfulIDs(t.Context(), input)
+		got, err := store.ToolCalls().SuccessfulIDs(t.Context(), "s", input)
 		if err != nil || len(got) != size {
 			t.Fatalf("size=%d results=%d err=%v", size, len(got), err)
 		}

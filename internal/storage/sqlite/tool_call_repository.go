@@ -52,7 +52,44 @@ INSERT INTO tool_call_records (
 	return nil
 }
 
-func (r *ToolCallRepository) SuccessfulIDs(ctx context.Context, toolCallIDs []string) (map[string]bool, error) {
+func (r *ToolCallRepository) ListBySession(ctx context.Context, sessionID string) ([]storage.ToolCallRecord, error) {
+	rows, err := r.db.QueryContext(ctx, `
+SELECT session_id, tool_call_id, tool_name, actor_platform, actor_id, risk_level, success, error,
+       started_at, finished_at, created_at
+FROM tool_call_records WHERE session_id=? ORDER BY created_at,rowid`, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("query tool calls: %w", err)
+	}
+	defer rows.Close()
+
+	var records []storage.ToolCallRecord
+	for rows.Next() {
+		var record storage.ToolCallRecord
+		var errorText sql.NullString
+		var startedAt, finishedAt, createdAt string
+		if err := rows.Scan(&record.SessionID, &record.ToolCallID, &record.ToolName, &record.Actor.Platform, &record.Actor.ID,
+			&record.RiskLevel, &record.Success, &errorText, &startedAt, &finishedAt, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan tool call: %w", err)
+		}
+		record.Error = errorText.String
+		if record.StartedAt, err = storage.ParseTime(startedAt); err != nil {
+			return nil, err
+		}
+		if record.FinishedAt, err = storage.ParseTime(finishedAt); err != nil {
+			return nil, err
+		}
+		if record.CreatedAt, err = storage.ParseTime(createdAt); err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate tool calls: %w", err)
+	}
+	return records, nil
+}
+
+func (r *ToolCallRepository) SuccessfulIDs(ctx context.Context, sessionID string, toolCallIDs []string) (map[string]bool, error) {
 	const batchSize = 500
 
 	unique := make([]string, 0, len(toolCallIDs))
@@ -69,14 +106,15 @@ func (r *ToolCallRepository) SuccessfulIDs(ctx context.Context, toolCallIDs []st
 	successful := map[string]bool{}
 	for batch := range slices.Chunk(unique, batchSize) {
 		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(batch)), ",")
-		args := make([]any, len(batch))
+		args := make([]any, 1, len(batch)+1)
+		args[0] = sessionID
 		for i, id := range batch {
-			args[i] = id
+			args = append(args, id)
 		}
 		rows, err := r.db.QueryContext(ctx, `
 SELECT DISTINCT tool_call_id
 FROM tool_call_records
-WHERE success = 1 AND tool_call_id IN (`+placeholders+`)`, args...)
+WHERE session_id=? AND success = 1 AND tool_call_id IN (`+placeholders+`)`, args...)
 		if err != nil {
 			return nil, fmt.Errorf("query successful tool calls: %w", err)
 		}

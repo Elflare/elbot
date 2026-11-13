@@ -2,8 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"strings"
 
 	"elbot/internal/contextmgr"
@@ -15,13 +13,10 @@ import (
 
 type Compactor struct {
 	ToolCalls interface {
-		SuccessfulIDs(context.Context, []string) (map[string]bool, error)
+		SuccessfulIDs(context.Context, string, []string) (map[string]bool, error)
 	}
 	Models interface {
 		ResolveCompact(modelmgr.Selection) modelmgr.Selection
-	}
-	Contexts interface {
-		Load(context.Context, string) (*contextmgr.LoadedContext, error)
 	}
 	Loader interface {
 		LoadRawMessages(context.Context, string) ([]storage.Message, error)
@@ -34,22 +29,15 @@ func (s *Compactor) Prepare(ctx context.Context, current *storage.Session, reaso
 	if err != nil {
 		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
-	loaded, err := s.Contexts.Load(ctx, current.ID)
-	if err != nil {
-		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
-	}
-	if len(loaded.Messages) == 0 {
-		return operationresult.Result[*contextmgr.PreparedCompact]{Status: operationresult.Rejected, Message: "无可压缩历史"}, nil
-	}
 	raw, err := s.Loader.LoadRawMessages(ctx, current.ID)
 	if err != nil {
 		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
-	userInputs, err := compactUserInputs(raw, state.Compact)
-	if err != nil {
-		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
+	if len(raw) == 0 {
+		return operationresult.Result[*contextmgr.PreparedCompact]{Status: operationresult.Rejected, Message: "无可压缩历史"}, nil
 	}
-	messages, err := s.CompactMessages(ctx, loaded)
+	userInputs := compactUserInputs(raw, state.Compact, state.Compact != nil && state.Compact.Generation > 0)
+	messages, err := s.CompactMessages(ctx, raw)
 	if err != nil {
 		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
@@ -57,19 +45,16 @@ func (s *Compactor) Prepare(ctx context.Context, current *storage.Session, reaso
 		return operationresult.Result[*contextmgr.PreparedCompact]{Status: operationresult.Unavailable, Message: "压缩模型未配置"}, nil
 	}
 	compressor := Compressor{ClientFor: func(string) llm.Client { return selection.Client }}
-	result, err := compressor.Compact(ctx, CompactRequest{Provider: selection.Provider, Model: selection.Model, Messages: messages, UserInputs: userInputs})
+	result, err := compressor.Compact(ctx, CompactRequest{Provider: selection.Provider, Model: selection.Model, Messages: messages})
 	if err != nil {
 		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[*contextmgr.PreparedCompact]{}, err
 	}
-	from := loaded.Messages[0].ID
-	if loaded.Summary != nil && loaded.Summary.FromMessageID != "" {
-		from = loaded.Summary.FromMessageID
-	}
+	from := raw[0].ID
 	title, generation, base := contextmgr.NextCompactedTitle(current, state.Compact)
-	seed := &contextmgr.CompactState{Pending: true, Summary: result.Summary, UserInputs: userInputs, SourceSessionID: current.ID, FromMessageID: from, ToMessageID: loaded.Messages[len(loaded.Messages)-1].ID,
+	seed := &contextmgr.CompactState{Inputs: userInputs, SourceSessionID: current.ID, FromMessageID: from, ToMessageID: raw[len(raw)-1].ID,
 		Provider: selection.Provider, Model: selection.Model, TriggerReason: reason, Generation: generation, BaseTitle: base}
 	if result.Usage != nil {
 		seed.SourceTokens = result.Usage.PromptTokens
@@ -77,40 +62,35 @@ func (s *Compactor) Prepare(ctx context.Context, current *storage.Session, reaso
 		seed.TotalTokens = result.Usage.TotalTokens
 		seed.CacheHitTokens = result.Usage.CacheHitTokens
 	}
-	return operationresult.Result[*contextmgr.PreparedCompact]{Status: operationresult.Success, Data: &contextmgr.PreparedCompact{Title: title, State: seed}}, nil
+	return operationresult.Result[*contextmgr.PreparedCompact]{Status: operationresult.Success, Data: &contextmgr.PreparedCompact{Title: title, State: seed, InitialMessage: assembleSummary(result.Summary, userInputs)}}, nil
 }
 
-func (r *Compactor) CompactMessages(ctx context.Context, loaded *contextmgr.LoadedContext) ([]CompactMessage, error) {
-	callIDs := []string{}
-	for _, message := range loaded.Messages {
+func (r *Compactor) CompactMessages(ctx context.Context, history []storage.Message) ([]CompactMessage, error) {
+	callIDs := map[string][]string{}
+	for _, message := range history {
 		if message.Role != storage.RoleAssistant {
 			continue
 		}
 		for _, call := range message.ToolCalls {
 			if call.ID != "" {
-				callIDs = append(callIDs, call.ID)
+				callIDs[message.SessionID] = append(callIDs[message.SessionID], call.ID)
 			}
 		}
 	}
-	successful := map[string]bool{}
-	if len(callIDs) > 0 {
-		var err error
-		successful, err = r.ToolCalls.SuccessfulIDs(ctx, callIDs)
+	successful := map[string]map[string]bool{}
+	for sessionID, ids := range callIDs {
+		idsForSession, err := r.ToolCalls.SuccessfulIDs(ctx, sessionID, ids)
 		if err != nil {
 			return nil, err
 		}
+		successful[sessionID] = idsForSession
 	}
 
-	out := make([]CompactMessage, 0, len(loaded.Messages))
-	summaryInjected := false
-	for _, message := range loaded.Messages {
+	out := make([]CompactMessage, 0, len(history))
+	for _, message := range history {
 		switch message.Role {
 		case storage.RoleUser:
 			content := message.Content
-			if loaded.Summary != nil && !summaryInjected {
-				content = strings.TrimSpace(loaded.Summary.Summary) + "\n\n当前用户输入：\n" + content
-				summaryInjected = true
-			}
 			if strings.TrimSpace(content) != "" {
 				out = append(out, CompactMessage{Role: storage.RoleUser, Content: content})
 			}
@@ -121,7 +101,7 @@ func (r *Compactor) CompactMessages(ctx context.Context, loaded *contextmgr.Load
 			}
 			calls := make([]CompactToolCall, 0, len(message.ToolCalls))
 			for _, call := range message.ToolCalls {
-				if !successful[call.ID] {
+				if !successful[message.SessionID][call.ID] {
 					continue
 				}
 				calls = append(calls, CompactToolCall{Name: call.Name, Arguments: call.Arguments})
@@ -131,58 +111,25 @@ func (r *Compactor) CompactMessages(ctx context.Context, loaded *contextmgr.Load
 			}
 		}
 	}
-	if loaded.Summary != nil && !summaryInjected && strings.TrimSpace(loaded.Summary.Summary) != "" {
-		out = append([]CompactMessage{{Role: storage.RoleUser, Content: loaded.Summary.Summary}}, out...)
-	}
 	return out, nil
 }
 
-const compactUserInputMetadataKey = "context_compact_user_input"
-
-func setCompactUserInput(message *storage.Message, input string) error {
-	fields, err := storage.DecodeSessionMetadata(message.Metadata)
-	if err != nil {
-		return err
-	}
-	if err := fields.Set(compactUserInputMetadataKey, input); err != nil {
-		return err
-	}
-	message.Metadata, err = fields.Encode()
-	return err
-}
-
-func compactUserInput(message storage.Message) (string, error) {
-	fields, err := storage.DecodeSessionMetadata(message.Metadata)
-	if err != nil {
-		return "", err
-	}
-	raw, ok := fields[compactUserInputMetadataKey]
-	if !ok {
-		return message.Content, nil
-	}
-	var input string
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return "", fmt.Errorf("decode compacted user input metadata: %w", err)
-	}
-	return input, nil
-}
-
-func compactUserInputs(messages []storage.Message, previous *contextmgr.CompactState) ([]string, error) {
+func compactUserInputs(messages []storage.Message, previous *contextmgr.CompactState, skipFirstUser bool) []string {
 	inputs := []string{}
 	if previous != nil {
-		inputs = append(inputs, previous.UserInputs...)
+		inputs = append(inputs, previous.Inputs...)
 	}
 	for _, message := range messages {
 		if message.Role != storage.RoleUser {
 			continue
 		}
-		input, err := compactUserInput(message)
-		if err != nil {
-			return nil, fmt.Errorf("read user input from message %s: %w", message.ID, err)
+		if skipFirstUser {
+			skipFirstUser = false
+			continue
 		}
-		if strings.TrimSpace(input) != "" {
-			inputs = append(inputs, input)
+		if strings.TrimSpace(message.Content) != "" {
+			inputs = append(inputs, message.Content)
 		}
 	}
-	return inputs, nil
+	return inputs
 }
