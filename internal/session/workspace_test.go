@@ -52,10 +52,7 @@ func TestMissingWorkspaceFallbackPersistsAfterPromotion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state, err := workspace.DecodeState(latest.Metadata)
-	if err != nil {
-		t.Fatal(err)
-	}
+	state := workspace.DecodeState(latest.Metadata)
 	if _, exists := fields["workspace_dir"]; exists || !WasPromoted(latest) || string(fields["unknown"]) != "\"preserved\"" || len(state.AgentNoticeDirs) != 1 || state.AgentNoticeDirs[0] != missing {
 		t.Fatalf("metadata changed incorrectly: %s", latest.Metadata)
 	}
@@ -149,10 +146,7 @@ func TestWorkspaceMutationsPreserveConcurrentFields(t *testing.T) {
 	if string(fields["unknown"]) != "9007199254740993" || string(fields["updates"]) != "16" {
 		t.Fatalf("lost unrelated fields: %s", latest.Metadata)
 	}
-	state, err := workspace.DecodeState(latest.Metadata)
-	if err != nil {
-		t.Fatal(err)
-	}
+	state := workspace.DecodeState(latest.Metadata)
 	if state.Dir != "/initial" || len(state.AgentNoticeDirs) != count {
 		t.Fatalf("workspace=%+v", state)
 	}

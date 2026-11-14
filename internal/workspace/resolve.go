@@ -3,6 +3,7 @@ package workspace
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,73 +11,85 @@ import (
 	"strings"
 )
 
-func ResolveWorkspacePath(ctx context.Context, rawPath string, opts PathResolveOptions) (ResolvedPath, error) {
+func ResolveWorkspacePath(ctx context.Context, rawPath string, opts PathResolveOptions) (operationresult.Result[ResolvedPath], error) {
 	if err := ctx.Err(); err != nil {
-		return ResolvedPath{}, err
+		return operationresult.Result[ResolvedPath]{}, err
 	}
 	if scope, ok := PathScopeFromContext(ctx); ok && scope.Restricted {
-		path, err := ResolveSandboxRelativePath(scope, rawPath)
+		relative, err := NormalizeRestrictedPath(rawPath)
 		if err != nil {
-			return ResolvedPath{}, err
+			return operationresult.Result[ResolvedPath]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
-		if err := validateResolvedPath(path, opts); err != nil {
-			return ResolvedPath{}, err
-		}
-		baseDir, err := filepath.Abs(strings.TrimSpace(scope.Dir))
+		baseDir, err := CurrentWorkspaceDir(ctx)
 		if err != nil {
-			return ResolvedPath{}, err
+			return operationresult.Result[ResolvedPath]{}, err
 		}
-		return ResolvedPath{Path: path, BaseDir: baseDir}, nil
+		path := filepath.Join(baseDir, relative)
+		checked, err := validateResolvedPath(path, opts)
+		if err != nil {
+			return operationresult.Result[ResolvedPath]{}, err
+		}
+		if checked.Status != operationresult.Success {
+			return operationresult.Result[ResolvedPath]{Status: checked.Status, Message: checked.Message}, nil
+		}
+		return operationresult.Result[ResolvedPath]{Status: operationresult.Success, Data: ResolvedPath{Path: path, BaseDir: baseDir}}, nil
 	}
 	rawPath = strings.TrimSpace(rawPath)
 	if rawPath == "" {
-		return ResolvedPath{}, fmt.Errorf("path is required")
+		return operationresult.Result[ResolvedPath]{Status: operationresult.InvalidArguments, Message: "path is required"}, nil
 	}
 	expandedPath, err := expandWorkspacePath(rawPath)
 	if err != nil {
-		return ResolvedPath{}, err
+		return operationresult.Result[ResolvedPath]{}, err
 	}
 	path := normalizeWorkspaceLocalPath(expandedPath)
 	wasAbs := filepath.IsAbs(path)
 	baseDir, err := CurrentWorkspaceDir(ctx)
 	if err != nil {
-		return ResolvedPath{}, err
+		return operationresult.Result[ResolvedPath]{}, err
 	}
 	if !wasAbs {
 		path = filepath.Join(baseDir, path)
 	}
 	path = filepath.Clean(path)
-	if err := validateResolvedPath(path, opts); err != nil {
-		return ResolvedPath{}, err
+	checked, err := validateResolvedPath(path, opts)
+	if err != nil {
+		return operationresult.Result[ResolvedPath]{}, err
 	}
-	return ResolvedPath{Path: path, BaseDir: baseDir, WasAbs: wasAbs}, nil
+	if checked.Status != operationresult.Success {
+		return operationresult.Result[ResolvedPath]{Status: checked.Status, Message: checked.Message}, nil
+	}
+	return operationresult.Result[ResolvedPath]{Status: operationresult.Success, Data: ResolvedPath{Path: path, BaseDir: baseDir, WasAbs: wasAbs}}, nil
 }
 
-func ValidateWorkspaceDir(path string) (string, error) {
+func ValidateWorkspaceDir(path string) (operationresult.Result[string], error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return "", fmt.Errorf("workspace path is required")
+		return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: "workspace path is required"}, nil
 	}
 	expandedPath, err := expandWorkspacePath(path)
 	if err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
 	path = filepath.Clean(normalizeWorkspaceLocalPath(expandedPath))
 	if path == "" || path == "." {
-		return "", fmt.Errorf("workspace path is required")
+		return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: "workspace path is required"}, nil
 	}
 	path, err = filepath.Abs(path)
 	if err != nil {
-		return "", fmt.Errorf("resolve workspace path: %w", err)
+		return operationresult.Result[string]{}, fmt.Errorf("resolve workspace path: %w", err)
 	}
 	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return operationresult.Result[string]{Status: operationresult.NotFound, Message: fmt.Sprintf("workspace path not found: %s", path)}, nil
+	}
 	if err != nil {
-		return "", fmt.Errorf("resolve workspace path: %w", err)
+		return operationresult.Result[string]{}, fmt.Errorf("resolve workspace path: %w", err)
 	}
 	if !info.IsDir() {
-		return "", fmt.Errorf("workspace path is not a directory: %s", path)
+		return operationresult.Result[string]{Status: operationresult.InvalidTarget, Message: fmt.Sprintf("workspace path is not a directory: %s", path)}, nil
 	}
-	return path, nil
+	return operationresult.Result[string]{Status: operationresult.Success, Data: path}, nil
 }
 
 func expandWorkspacePath(path string) (string, error) {
@@ -103,21 +116,24 @@ func expandWorkspacePath(path string) (string, error) {
 	return filepath.Join(home, path[len(prefix)+1:]), nil
 }
 
-func validateResolvedPath(path string, opts PathResolveOptions) error {
+func validateResolvedPath(path string, opts PathResolveOptions) (operationresult.Result[struct{}], error) {
 	info, err := os.Stat(path)
-	if err != nil {
-		if opts.AllowCreate && os.IsNotExist(err) {
-			return nil
+	if os.IsNotExist(err) {
+		if opts.AllowCreate {
+			return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 		}
-		return fmt.Errorf("stat file: %w", err)
+		return operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: fmt.Sprintf("path not found: %s", path)}, nil
+	}
+	if err != nil {
+		return operationresult.Result[struct{}]{}, fmt.Errorf("stat file: %w", err)
 	}
 	if info.IsDir() && !opts.AllowDirectory {
-		return fmt.Errorf("path is a directory")
+		return operationresult.Result[struct{}]{Status: operationresult.InvalidTarget, Message: "path is a directory"}, nil
 	}
 	if opts.RequireRegularFile && !info.Mode().IsRegular() {
-		return fmt.Errorf("path is not a regular file")
+		return operationresult.Result[struct{}]{Status: operationresult.InvalidTarget, Message: "path is not a regular file"}, nil
 	}
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
 func normalizeWorkspaceLocalPath(path string) string {

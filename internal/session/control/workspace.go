@@ -20,7 +20,7 @@ func (s *Service) workspaceState(ctx context.Context, id string) (workspace.Stat
 	if err != nil {
 		return workspace.State{}, err
 	}
-	return workspace.DecodeState(row.Metadata)
+	return workspace.DecodeState(row.Metadata), nil
 }
 
 func (s *Service) GetWorkspaceDir(ctx context.Context, id string) (string, error) {
@@ -96,10 +96,7 @@ func (s *Service) saveWorkspace(ctx context.Context, id string, update func(*wor
 	}
 	defer release()
 	_, err = s.deps.Sessions.Mutate(ctx, id, func(row *storage.Session) error {
-		encoded, err := workspace.UpdateState(row.Metadata, update)
-		if err != nil {
-			return err
-		}
+		encoded := workspace.UpdateState(row.Metadata, update)
 		if row.Metadata != encoded {
 			row.Metadata, row.UpdatedAt = encoded, storage.Now()
 		}

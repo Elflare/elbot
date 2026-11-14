@@ -3,6 +3,7 @@ package workspace
 import (
 	"bytes"
 	"context"
+	"elbot/internal/operationresult"
 	"errors"
 	"fmt"
 	"os"
@@ -32,38 +33,46 @@ type GitStatus struct {
 	Changes []GitChange `json:"changes"`
 }
 
-func ReadGitStatus(ctx context.Context, path string) (GitStatus, error) {
-	path, err := ValidateWorkspaceDir(path)
+func ReadGitStatus(ctx context.Context, path string) (operationresult.Result[GitStatus], error) {
+	checked, err := ValidateWorkspaceDir(path)
 	if err != nil {
-		return GitStatus{}, err
+		return operationresult.Result[GitStatus]{}, err
 	}
+	if checked.Status != operationresult.Success {
+		return operationresult.Result[GitStatus]{Status: checked.Status, Message: checked.Message}, nil
+	}
+	path = checked.Data
 	root, err := gitOutput(ctx, path, "rev-parse", "--show-toplevel")
 	if err != nil {
 		if errors.Is(err, errNotGit) {
-			return GitStatus{Path: path, Changes: []GitChange{}}, nil
+			return operationresult.Result[GitStatus]{Status: operationresult.Success, Data: GitStatus{Path: path, Changes: []GitChange{}}}, nil
 		}
-		return GitStatus{}, err
+		return operationresult.Result[GitStatus]{}, err
 	}
 	root = strings.TrimSpace(root)
 	output, err := gitBytes(ctx, root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--renames")
 	if err != nil {
-		return GitStatus{}, err
+		return operationresult.Result[GitStatus]{}, err
 	}
 	changes := parseGitStatus(output, root)
-	return GitStatus{IsGit: true, Path: path, Root: root, Changes: changes}, nil
+	return operationresult.Result[GitStatus]{Status: operationresult.Success, Data: GitStatus{IsGit: true, Path: path, Root: root, Changes: changes}}, nil
 }
 
-func ReadGitDiff(ctx context.Context, path, relative string) (string, error) {
-	status, err := ReadGitStatus(ctx, path)
+func ReadGitDiff(ctx context.Context, path, relative string) (operationresult.Result[string], error) {
+	loaded, err := ReadGitStatus(ctx, path)
 	if err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
+	if loaded.Status != operationresult.Success {
+		return operationresult.Result[string]{Status: loaded.Status, Message: loaded.Message}, nil
+	}
+	status := loaded.Data
 	if !status.IsGit {
-		return "", fmt.Errorf("workspace is not a Git repository")
+		return operationresult.Result[string]{Status: operationresult.InvalidTarget, Message: "workspace is not a Git repository"}, nil
 	}
 	relative = filepath.Clean(filepath.FromSlash(strings.TrimSpace(relative)))
 	if !filepath.IsLocal(relative) || relative == "." {
-		return "", fmt.Errorf("invalid Git path")
+		return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: "invalid Git path"}, nil
 	}
 	var change *GitChange
 	for i := range status.Changes {
@@ -73,44 +82,59 @@ func ReadGitDiff(ctx context.Context, path, relative string) (string, error) {
 		}
 	}
 	if change == nil {
-		return "", fmt.Errorf("Git path has no changes")
+		return operationresult.Result[string]{Status: operationresult.NotFound, Message: "Git path has no changes"}, nil
 	}
 	if change.Status == "untracked" {
 		abs := filepath.Join(status.Root, relative)
 		info, err := os.Lstat(abs)
 		if err != nil {
-			return "", err
+			return operationresult.Result[string]{}, err
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
 			target, err := os.Readlink(abs)
 			if err != nil {
-				return "", err
+				return operationresult.Result[string]{}, err
 			}
-			return untrackedSymlinkDiff(relative, target), nil
+			return operationresult.Result[string]{Status: operationresult.Success, Data: untrackedSymlinkDiff(relative, target)}, nil
 		}
 		if !info.Mode().IsRegular() {
-			return "", fmt.Errorf("Git path is not a regular file")
+			return operationresult.Result[string]{Status: operationresult.InvalidTarget, Message: "Git path is not a regular file"}, nil
 		}
-		return gitDiffOutput(ctx, status.Root, "diff", "--no-index", "--src-prefix=a/", "--dst-prefix=b/", "--", "/dev/null", relative)
+		diff, err := gitDiffOutput(ctx, status.Root, "diff", "--no-index", "--src-prefix=a/", "--dst-prefix=b/", "--", "/dev/null", relative)
+		if err != nil {
+			return operationresult.Result[string]{}, err
+		}
+		return operationresult.Result[string]{Status: operationresult.Success, Data: diff}, nil
 	}
-	if _, err := gitOutput(ctx, status.Root, "rev-parse", "--verify", "HEAD"); err != nil {
+	head, err := gitOutput(ctx, status.Root, "status", "--porcelain=v2", "--branch", "--untracked-files=no")
+	if err != nil {
+		return operationresult.Result[string]{}, err
+	}
+	if slices.Contains(strings.Split(head, "\n"), "# branch.oid (initial)") {
 		staged, err := gitDiffOutput(ctx, status.Root, "diff", "--cached", "--", relative)
 		if err != nil {
-			return "", err
+			return operationresult.Result[string]{}, err
 		}
 		if staged == largeGitDiffOutput {
-			return staged, nil
+			return operationresult.Result[string]{Status: operationresult.Success, Data: staged}, nil
 		}
 		worktree, err := gitDiffOutput(ctx, status.Root, "diff", "--", relative)
-		if err != nil || worktree == largeGitDiffOutput {
-			return worktree, err
+		if err != nil {
+			return operationresult.Result[string]{}, err
+		}
+		if worktree == largeGitDiffOutput {
+			return operationresult.Result[string]{Status: operationresult.Success, Data: worktree}, nil
 		}
 		if len(staged)+len(worktree) > maxGitDiffOutput {
-			return largeGitDiffOutput, nil
+			return operationresult.Result[string]{Status: operationresult.Success, Data: largeGitDiffOutput}, nil
 		}
-		return staged + worktree, nil
+		return operationresult.Result[string]{Status: operationresult.Success, Data: staged + worktree}, nil
 	}
-	return gitDiffOutput(ctx, status.Root, "diff", "HEAD", "--", relative)
+	diff, err := gitDiffOutput(ctx, status.Root, "diff", "HEAD", "--", relative)
+	if err != nil {
+		return operationresult.Result[string]{}, err
+	}
+	return operationresult.Result[string]{Status: operationresult.Success, Data: diff}, nil
 }
 
 var errNotGit = errors.New("not a Git repository")
@@ -147,6 +171,9 @@ func gitBytes(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
+	if exit != nil {
+		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(exit.Stderr)))
+	}
 	return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 }
 
@@ -157,15 +184,15 @@ func gitDiffOutput(ctx context.Context, dir string, args ...string) (string, err
 	cmd.Stdout = stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 		if stdout.exceeded {
 			return largeGitDiffOutput, nil
 		}
 		var exit *exec.ExitError
 		if errors.As(err, &exit) && exit.ExitCode() == 1 && slices.Contains(args, "--no-index") {
 			return stdout.String(), nil
-		}
-		if ctx.Err() != nil {
-			return "", ctx.Err()
 		}
 		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}

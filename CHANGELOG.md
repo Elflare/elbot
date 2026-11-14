@@ -44,6 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- 修复 workspace 清理失效目录或并发切换后仍返回旧目录状态，以及 Git diff 输出超限时吞掉取消错误的问题。
+- 文件引用的格式、越界和目标类型拒绝现在显示业务原因并结束输入处理，不再作为程序故障传播。
 - 修复首次进入或 `/new` 后，一些命令因没有当前 Session 而报 `not found` 的问题。
 - 修复 `/resume` 忽略置顶的问题。
 - 在重构中修复一些可能会出现的bug。

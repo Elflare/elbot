@@ -9,6 +9,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/control"
 	"elbot/internal/delivery"
+	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
@@ -201,5 +202,47 @@ func TestCommandRequestIsPassedToOutput(t *testing.T) {
 	_, handled, err := executor.Handle(t.Context(), "!e keep this")
 	if err != nil || !handled || probe.request.Name != "echo" || probe.request.Args != "keep this" || probe.request.Raw != "!e keep this" || probe.request.Prefix != "!" {
 		t.Fatalf("request=%+v handled=%v err=%v", probe.request, handled, err)
+	}
+}
+
+type normalizationProbe struct {
+	InputExecution
+	InputOutput
+	released bool
+	messages []string
+}
+
+func (p *normalizationProbe) EnterInput(ctx context.Context, _ *storage.Session) (context.Context, operationresult.Result[struct{}], func(), error) {
+	return ctx, operationresult.Result[struct{}]{Status: operationresult.Success}, func() { p.released = true }, nil
+}
+
+func (p *normalizationProbe) Send(_ context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+	p.messages = append(p.messages, event.Text)
+	return delivery.Receipt{}, nil
+}
+
+func TestInputNormalizationStopsAtBusinessRejectionOrFault(t *testing.T) {
+	failure := errors.New("read workspace: disk failure")
+	for _, fault := range []bool{false, true} {
+		probe := &normalizationProbe{}
+		coordinator := NewInputCoordinator(InputCoordinatorDeps{Execution: probe, Output: probe,
+			NormalizeInput: func(context.Context, string, []llm.MessageSegment) (operationresult.Result[[]llm.MessageSegment], error) {
+				if !probe.released {
+					t.Fatal("normalization holds input admission")
+				}
+				if fault {
+					return operationresult.Result[[]llm.MessageSegment]{}, failure
+				}
+				return operationresult.Result[[]llm.MessageSegment]{Status: operationresult.InvalidArguments, Message: "invalid workspace reference"}, nil
+			},
+		})
+		_, err := coordinator.handleSessionInput(t.Context(), &storage.Session{ID: "session"}, "input")
+		if fault {
+			if !errors.Is(err, failure) || len(probe.messages) != 0 {
+				t.Fatalf("fault: err=%v messages=%v", err, probe.messages)
+			}
+		} else if err != nil || !reflect.DeepEqual(probe.messages, []string{"invalid workspace reference"}) {
+			t.Fatalf("rejection: err=%v messages=%v", err, probe.messages)
+		}
 	}
 }

@@ -114,7 +114,7 @@ systemd 两个坑：
 
 work 模式下，超级管理员可让 LLM 调用 `workspace` 工具切换当前 Session 的共享工作目录。切换后 `read_file`、`edit_file`、`rollback_file`、`send_file` 和前台 `shell` 等路径类工具按该目录解析相对路径。
 
-- 未设置 workspace 时沿用进程工作目录。
+- 未设置 workspace 时沿用进程工作目录。已保存目录不存在时，清空失效选择；开启 Agent → 前端同步时也清空前端目录选择，查询返回清理后的状态。权限及其他 IO 错误保留原选择并报错。
 - 目标目录根部有 `AGENTS.md` 或 `AGENT.md` 时，首次发现、注入或首次切换到该目录会自动把内容附带给 LLM。文件名主体必须大写 `AGENTS` / `AGENT`，`.md` 后缀大小写不限，`AGENTS.md` 优先。
 - 附带上限 64 KiB。超限不读取、不标记已附带，工具结果提示缩短或拆分后重新切换。
 - 编辑撤销备份按目标绝对路径保存：切换 workspace 不清空备份，但相同相对路径按新 workspace 解析；撤销原目录文件可切回或传绝对路径。见[文件编辑撤销](commands.md#文件编辑撤销)。

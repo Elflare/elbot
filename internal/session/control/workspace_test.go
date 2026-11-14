@@ -37,8 +37,8 @@ func TestWorkspaceAndOriginPreserveConcurrentMetadata(t *testing.T) {
 		}
 	})
 	workers.Go(func() {
-		if _, err := f.s.RegisterOrigin(ctx, row.ID, llm.Origin{APIType: "protocol", Provider: "original"}); err != nil {
-			t.Error(err)
+		if result, err := f.s.RegisterOrigin(ctx, row.ID, llm.Origin{APIType: "protocol", Provider: "original"}); err != nil || result.Status != operationresult.Success {
+			t.Errorf("register origin: %+v %v", result, err)
 		}
 	})
 	workers.Wait()
@@ -50,9 +50,9 @@ func TestWorkspaceAndOriginPreserveConcurrentMetadata(t *testing.T) {
 	if err != nil || string(fields["unknown"]) != "9007199254740993" || string(fields["title_renamed"]) != "true" {
 		t.Fatalf("lost metadata: %s %v", stored.Metadata, err)
 	}
-	state, err := workspace.DecodeState(stored.Metadata)
-	if err != nil || len(state.AgentNoticeDirs) != 16 {
-		t.Fatalf("workspace state: %+v %v", state, err)
+	state := workspace.DecodeState(stored.Metadata)
+	if len(state.AgentNoticeDirs) != 16 {
+		t.Fatalf("workspace state: %+v", state)
 	}
 	if err := f.s.SetWorkspaceDirWithAgentNotice(ctx, row.ID, "/selected", true); err != nil {
 		t.Fatal(err)
@@ -69,14 +69,14 @@ func TestWorkspaceAndOriginPreserveConcurrentMetadata(t *testing.T) {
 	if noticed, err := f.s.HasWorkspaceAgentNoticeDir(ctx, row.ID, "/selected"); err != nil || !noticed {
 		t.Fatalf("notice: %v %v", noticed, err)
 	}
-	if _, err := f.s.RegisterOrigin(ctx, row.ID, llm.Origin{APIType: "other", Provider: "new"}); err == nil {
-		t.Fatal("historical protocol reinterpreted")
+	if result, err := f.s.RegisterOrigin(ctx, row.ID, llm.Origin{APIType: "other", Provider: "new"}); err != nil || result.Status != operationresult.Conflict {
+		t.Fatalf("historical protocol: %+v %v", result, err)
 	}
-	stored, err = f.s.RegisterOrigin(ctx, row.ID, llm.Origin{APIType: "protocol", Provider: "new"})
-	if err != nil {
-		t.Fatal(err)
+	result, err := f.s.RegisterOrigin(ctx, row.ID, llm.Origin{APIType: "protocol", Provider: "new"})
+	if err != nil || result.Status != operationresult.Success {
+		t.Fatalf("register origin: %+v %v", result, err)
 	}
-	origin, _, err := share.Origin(stored)
+	origin, _, err := share.Origin(result.Data)
 	if err != nil || origin.Provider != "original" {
 		t.Fatalf("historical provider replaced: %+v %v", origin, err)
 	}

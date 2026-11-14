@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"os"
 	"path/filepath"
 	"testing"
@@ -28,17 +29,17 @@ func TestResolveWorkspacePathRequiresRegularFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	opts := PathResolveOptions{RequireRegularFile: true, AllowDirectory: true}
-	if _, err := ResolveWorkspacePath(ctx, "file", opts); err != nil {
-		t.Fatal(err)
+	if result, err := ResolveWorkspacePath(ctx, "file", opts); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("regular file: %+v %v", result, err)
 	}
 	for _, path := range []string{".", "missing"} {
-		if _, err := ResolveWorkspacePath(ctx, path, opts); err == nil {
-			t.Fatalf("accepted %s as regular file", path)
+		if result, err := ResolveWorkspacePath(ctx, path, opts); err != nil || result.Status == operationresult.Success || result.Message == "" {
+			t.Fatalf("regular file %s: %+v %v", path, result, err)
 		}
 	}
 	if info, err := os.Stat(os.DevNull); err == nil && !info.Mode().IsRegular() {
-		if err := validateResolvedPath(os.DevNull, opts); err == nil {
-			t.Fatal("accepted a device as regular file")
+		if result, err := validateResolvedPath(os.DevNull, opts); err != nil || result.Status != operationresult.InvalidTarget {
+			t.Fatalf("device: %+v %v", result, err)
 		}
 	}
 }

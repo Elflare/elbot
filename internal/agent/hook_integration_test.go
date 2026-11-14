@@ -40,8 +40,8 @@ type integrationPlatform struct {
 	outputs []string
 }
 
-func (*integrationPlatform) NormalizeInput(_ context.Context, segments []llm.MessageSegment) ([]llm.MessageSegment, error) {
-	return segments, nil
+func (*integrationPlatform) NormalizeInput(_ context.Context, segments []llm.MessageSegment) (operationresult.Result[[]llm.MessageSegment], error) {
+	return operationresult.Result[[]llm.MessageSegment]{Status: operationresult.Success, Data: segments}, nil
 }
 
 func (*integrationPlatform) SessionIDCode(name string, _ contextinfo.ChatType) (string, error) {

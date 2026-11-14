@@ -3,7 +3,6 @@ package workspace
 
 import (
 	"encoding/json"
-	"fmt"
 	"slices"
 	"strings"
 )
@@ -21,34 +20,27 @@ type State struct {
 	AgentNoticeDirs []string `json:"workspace_agent_notice_dirs,omitempty"`
 }
 
-func DecodeState(raw string) (State, error) {
+func DecodeState(raw string) State {
 	fields := map[string]json.RawMessage{}
-	if raw != "" {
-		json.Unmarshal([]byte(raw), &fields)
-	}
+	json.Unmarshal([]byte(raw), &fields)
 	return decodeWorkspaceState(fields)
 }
 
-func UpdateState(raw string, update func(*State)) (string, error) {
+func UpdateState(raw string, update func(*State)) string {
 	fields := map[string]json.RawMessage{}
-	if raw != "" {
-		json.Unmarshal([]byte(raw), &fields)
-	}
-	state, err := decodeWorkspaceState(fields)
-	if err != nil {
-		return "", err
-	}
+	json.Unmarshal([]byte(raw), &fields)
+	state := decodeWorkspaceState(fields)
 	before := state
 	update(&state)
 	writeWorkspaceState(fields, before, state)
 	if len(fields) == 0 {
-		return "", nil
+		return ""
 	}
 	encoded, _ := json.Marshal(fields)
-	return string(encoded), nil
+	return string(encoded)
 }
 
-func decodeWorkspaceState(fields map[string]json.RawMessage) (State, error) {
+func decodeWorkspaceState(fields map[string]json.RawMessage) State {
 	state := State{AgentToUser: true}
 	for key, raw := range fields {
 		var target any
@@ -66,13 +58,11 @@ func decodeWorkspaceState(fields map[string]json.RawMessage) (State, error) {
 		default:
 			continue
 		}
-		if err := json.Unmarshal(raw, target); err != nil {
-			return State{}, fmt.Errorf("decode workspace field %s: %w", key, err)
-		}
+		json.Unmarshal(raw, target)
 	}
 	state.Dir = strings.TrimSpace(state.Dir)
 	state.UserDir = strings.TrimSpace(state.UserDir)
-	return state, nil
+	return state
 }
 
 func writeWorkspaceState(fields map[string]json.RawMessage, before, after State) {

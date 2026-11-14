@@ -30,8 +30,8 @@ import (
 
 type isolatedPlatformCapabilities struct{ *dispatch.Router }
 
-func (isolatedPlatformCapabilities) NormalizeInput(_ context.Context, segments []llm.MessageSegment) ([]llm.MessageSegment, error) {
-	return segments, nil
+func (isolatedPlatformCapabilities) NormalizeInput(_ context.Context, segments []llm.MessageSegment) (operationresult.Result[[]llm.MessageSegment], error) {
+	return operationresult.Result[[]llm.MessageSegment]{Status: operationresult.Success, Data: segments}, nil
 }
 
 func (isolatedPlatformCapabilities) RestoreMessageContext(ctx, _ context.Context) context.Context {

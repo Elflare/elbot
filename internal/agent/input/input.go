@@ -24,7 +24,7 @@ import (
 // changes to ExecutionCoordinator and the existing Session/Turn services.
 type InputCoordinator struct {
 	commandText    func(string, ...string) string
-	normalizeInput func(context.Context, string, []llm.MessageSegment) ([]llm.MessageSegment, error)
+	normalizeInput func(context.Context, string, []llm.MessageSegment) (operationresult.Result[[]llm.MessageSegment], error)
 	// NewWorkspaceStore binds workspace operations to the admitted session.
 	NewWorkspaceStore func(string) workspace.WorkspaceStore
 	sessions          interface {
@@ -150,12 +150,16 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 	facts.Mode = session.Mode
 	ctx = contextinfo.WithExecution(ctx, facts)
 	release()
-	segments, err := c.normalizeInput(ctx, session.ID, agentshare.InboundSegments(ctx, text))
+	result, err := c.normalizeInput(ctx, session.ID, agentshare.InboundSegments(ctx, text))
 	if err != nil {
 		return ctx, err
 	}
-	ctx = agentshare.WithInboundSegments(ctx, segments)
-	segments, err = c.hooks.AgentInputPrepared(ctx,
+	if result.Status != operationresult.Success {
+		_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: result.Message})
+		return ctx, err
+	}
+	ctx = agentshare.WithInboundSegments(ctx, result.Data)
+	segments, err := c.hooks.AgentInputPrepared(ctx,
 		agentshare.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status},
 		agentshare.Message{Role: string(llm.RoleUser), Segments: agentshare.InboundSegments(ctx, text)})
 	if err != nil {
@@ -226,8 +230,8 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 func NewInputCoordinator(deps InputCoordinatorDeps) *InputCoordinator {
 	normalizeInput := deps.NormalizeInput
 	if normalizeInput == nil {
-		normalizeInput = func(_ context.Context, _ string, segments []llm.MessageSegment) ([]llm.MessageSegment, error) {
-			return segments, nil
+		normalizeInput = func(_ context.Context, _ string, segments []llm.MessageSegment) (operationresult.Result[[]llm.MessageSegment], error) {
+			return operationresult.Result[[]llm.MessageSegment]{Status: operationresult.Success, Data: segments}, nil
 		}
 	}
 	return &InputCoordinator{

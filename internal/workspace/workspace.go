@@ -3,7 +3,7 @@ package workspace
 
 import (
 	"context"
-	"errors"
+	"elbot/internal/operationresult"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -100,11 +100,14 @@ func resolveWorkspaceDir(ctx context.Context, store WorkspaceStore, dir string) 
 	for {
 		if strings.TrimSpace(dir) != "" {
 			resolved, err := ValidateWorkspaceDir(dir)
-			if err == nil {
-				return resolved, nil
-			}
-			if !errors.Is(err, os.ErrNotExist) {
+			if err != nil {
 				return "", err
+			}
+			if resolved.Status == operationresult.Success {
+				return resolved.Data, nil
+			}
+			if resolved.Status != operationresult.NotFound {
+				return "", fmt.Errorf("invalid stored workspace directory: %s", resolved.Message)
 			}
 		}
 		cwd, err := os.Getwd()

@@ -13,6 +13,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"elbot/internal/operationresult"
 )
 
 const (
@@ -175,13 +177,13 @@ func hasUnescapedQuote(value string) bool {
 	return false
 }
 
-func ExpandFileReferences(ctx context.Context, rootPath, text string) (string, error) {
+func ExpandFileReferences(ctx context.Context, rootPath, text string) (operationresult.Result[string], error) {
 	if !strings.Contains(text, "#") {
-		return text, nil
+		return operationresult.Result[string]{Status: operationresult.Success, Data: text}, nil
 	}
 	root, err := os.OpenRoot(rootPath)
 	if err != nil {
-		return "", err
+		return operationresult.Result[string]{}, err
 	}
 	defer root.Close()
 
@@ -189,7 +191,7 @@ func ExpandFileReferences(ctx context.Context, rootPath, text string) (string, e
 	var total int64
 	for i := 0; i < len(text); {
 		if err := ctx.Err(); err != nil {
-			return "", err
+			return operationresult.Result[string]{}, err
 		}
 		if text[i] != '#' {
 			r, size := utf8.DecodeRuneInString(text[i:])
@@ -204,29 +206,29 @@ func ExpandFileReferences(ctx context.Context, rootPath, text string) (string, e
 		}
 		path, end, ok, err := parseFileReference(text, i)
 		if err != nil {
-			return "", err
+			return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
 		if !ok {
 			out.WriteByte(text[i])
 			i++
 			continue
 		}
-		replacement, expanded, err := expandFileReference(root, path, &total)
-		if errors.Is(err, fs.ErrNotExist) {
+		replacement, err := expandFileReference(root, path, &total)
+		if err != nil {
+			return operationresult.Result[string]{}, err
+		}
+		if replacement.Status == operationresult.NotFound {
 			out.WriteString(text[i:end])
 			i = end
 			continue
 		}
-		if err != nil {
-			return "", err
+		if replacement.Status != operationresult.Success {
+			return replacement, nil
 		}
-		if !expanded {
-			replacement = path
-		}
-		out.WriteString(replacement)
+		out.WriteString(replacement.Data)
 		i = end
 	}
-	return out.String(), nil
+	return operationresult.Result[string]{Status: operationresult.Success, Data: out.String()}, nil
 }
 
 func FormatFileExpansion(path, content string) string {
@@ -327,35 +329,38 @@ func parseFileReference(text string, start int) (string, int, bool, error) {
 	return text[start+1 : end], end, true, nil
 }
 
-func expandFileReference(root *os.Root, path string, total *int64) (string, bool, error) {
+func expandFileReference(root *os.Root, path string, total *int64) (operationresult.Result[string], error) {
 	clean := filepath.Clean(filepath.FromSlash(path))
 	if clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", false, fmt.Errorf("workspace file reference %q is outside the workspace", path)
+		return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("workspace file reference %q is outside the workspace", path)}, nil
 	}
 	file, err := root.Open(clean)
+	if errors.Is(err, fs.ErrNotExist) {
+		return operationresult.Result[string]{Status: operationresult.NotFound, Message: err.Error()}, nil
+	}
 	if err != nil {
-		return "", false, fmt.Errorf("read workspace file reference %q: %w", path, err)
+		return operationresult.Result[string]{}, fmt.Errorf("read workspace file reference %q: %w", path, err)
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
-		return "", false, fmt.Errorf("read workspace file reference %q: %w", path, err)
+		return operationresult.Result[string]{}, fmt.Errorf("read workspace file reference %q: %w", path, err)
 	}
 	if !info.Mode().IsRegular() {
-		return "", false, fmt.Errorf("workspace file reference %q is not a regular file", path)
+		return operationresult.Result[string]{Status: operationresult.InvalidTarget, Message: fmt.Sprintf("workspace file reference %q is not a regular file", path)}, nil
 	}
 	if info.Size() > maxReferencedBytes || *total+info.Size() > maxReferencesBytes {
-		return path, false, nil
+		return operationresult.Result[string]{Status: operationresult.Success, Data: path}, nil
 	}
 	data, err := io.ReadAll(io.LimitReader(file, maxReferencedBytes+1))
 	if err != nil {
-		return "", false, fmt.Errorf("read workspace file reference %q: %w", path, err)
+		return operationresult.Result[string]{}, fmt.Errorf("read workspace file reference %q: %w", path, err)
 	}
 	if int64(len(data)) > maxReferencedBytes || *total+int64(len(data)) > maxReferencesBytes || bytes.IndexByte(data, 0) >= 0 || !utf8.Valid(data) {
-		return path, false, nil
+		return operationresult.Result[string]{Status: operationresult.Success, Data: path}, nil
 	}
 	*total += int64(len(data))
-	return FormatFileExpansion(filepath.ToSlash(path), string(data)), true, nil
+	return operationresult.Result[string]{Status: operationresult.Success, Data: FormatFileExpansion(filepath.ToSlash(path), string(data))}, nil
 }
 
 func referenceBoundary(text string, start int) bool {

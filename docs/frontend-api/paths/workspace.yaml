@@ -13,6 +13,7 @@
   get:
     operationId: listWorkspaceDirectories
     summary: Browse server directories
+    description: Invalid paths or non-directory targets return 400; missing directories return 404. Filesystem faults return 500 with the original error text.
     parameters:
       - name: path
         in: query
@@ -29,6 +30,7 @@
   get:
     operationId: listWorkspaceFiles
     summary: List files and directories in the selected workspace
+    description: Non-local relative paths and non-directory targets return 400; missing child directories return 404; an unset workspace returns 503. Filesystem faults return 500 with the original error text. Files are opened within the selected workspace root.
     parameters:
       - name: side
         in: query

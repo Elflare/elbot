@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"elbot/internal/operationresult"
 )
 
 func TestSearchWorkspaceFilesMatchesPathsAndSkipsIgnoredDirectories(t *testing.T) {
@@ -68,25 +70,39 @@ func TestExpandFileReferences(t *testing.T) {
 	writeWorkspaceFile(t, root, "fenced.txt", "```\n")
 
 	got, err := ExpandFileReferences(t.Context(), root, `read #"notes/a b.txt" and #binary.bin and #large.txt and #fenced.txt and #missing.txt`)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || got.Status != operationresult.Success {
+		t.Fatalf("expand: %+v %v", got, err)
 	}
 	for _, want := range []string{
 		"[file: notes/a b.txt]", "text\nhello\n```", "binary.bin", "large.txt",
 		"````text", "#missing.txt",
 	} {
-		if !strings.Contains(got, want) {
+		if !strings.Contains(got.Data, want) {
 			t.Errorf("expanded text %q does not contain %q", got, want)
 		}
 	}
-	if strings.Contains(got, strings.Repeat("x", 100)) {
+	if strings.Contains(got.Data, strings.Repeat("x", 100)) {
 		t.Fatal("large file content was expanded")
 	}
 }
 
-func TestExpandFileReferencesRejectsWorkspaceEscape(t *testing.T) {
-	if _, err := ExpandFileReferences(t.Context(), t.TempDir(), "read #../outside.txt"); err == nil {
-		t.Fatal("workspace escape was accepted")
+func TestExpandFileReferencesBusinessRejections(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "directory"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		text   string
+		status operationresult.Status
+	}{
+		{"read #../outside.txt", operationresult.InvalidArguments},
+		{"read #\"unterminated", operationresult.InvalidArguments},
+		{"read #directory", operationresult.InvalidTarget},
+	} {
+		result, err := ExpandFileReferences(t.Context(), root, tc.text)
+		if err != nil || result.Status != tc.status || result.Message == "" {
+			t.Errorf("%q: %+v %v", tc.text, result, err)
+		}
 	}
 }
 

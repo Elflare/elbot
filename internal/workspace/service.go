@@ -1,6 +1,12 @@
 package workspace
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"elbot/internal/operationresult"
+)
 
 type SessionStateStore interface {
 	WorkspaceStore
@@ -10,7 +16,12 @@ type SessionStateStore interface {
 }
 
 type SessionStateStoreFactory func(sessionID string) SessionStateStore
-type CurrentSessionID func(context.Context) (string, error)
+type CurrentSessionID func(context.Context) (operationresult.Result[string], error)
+
+type CurrentState struct {
+	SessionID string
+	State     State
+}
 
 type Service struct {
 	currentSessionID CurrentSessionID
@@ -21,56 +32,93 @@ func NewService(currentSessionID CurrentSessionID, storeForSession SessionStateS
 	return &Service{currentSessionID: currentSessionID, storeForSession: storeForSession}
 }
 
-func (s *Service) GetCurrentState(ctx context.Context) (string, State, error) {
-	sessionID, err := s.currentSessionID(ctx)
+func (s *Service) GetCurrentState(ctx context.Context) (operationresult.Result[CurrentState], error) {
+	current, err := s.currentSessionID(ctx)
 	if err != nil {
-		return "", State{}, err
+		return operationresult.Result[CurrentState]{}, err
 	}
-	state, err := s.getSessionState(ctx, sessionID)
-	return sessionID, state, err
+	if current.Status != operationresult.Success {
+		return operationresult.Result[CurrentState]{Status: current.Status, Message: current.Message}, nil
+	}
+	state, err := s.getSessionState(ctx, current.Data)
+	if err != nil {
+		return operationresult.Result[CurrentState]{}, err
+	}
+	return operationresult.Result[CurrentState]{Status: operationresult.Success, Data: CurrentState{SessionID: current.Data, State: state}}, nil
 }
 
 func (s *Service) getSessionState(ctx context.Context, sessionID string) (State, error) {
 	store := s.storeForSession(sessionID)
-	state, err := store.GetWorkspaceState(ctx)
-	if err != nil {
-		return State{}, err
+	for {
+		state, err := store.GetWorkspaceState(ctx)
+		if err != nil {
+			return State{}, err
+		}
+		if state.Dir == "" {
+			state.Dir, err = os.Getwd()
+			return state, err
+		}
+		resolved, err := ValidateWorkspaceDir(state.Dir)
+		if err != nil {
+			return State{}, err
+		}
+		if resolved.Status == operationresult.Success {
+			state.Dir = resolved.Data
+			return state, nil
+		}
+		if resolved.Status != operationresult.NotFound {
+			return State{}, fmt.Errorf("invalid stored workspace directory: %s", resolved.Message)
+		}
+		if _, err := os.Getwd(); err != nil {
+			return State{}, fmt.Errorf("resolve workspace: %w", err)
+		}
+		if _, err := store.ClearWorkspaceDirIfMatches(ctx, state.Dir); err != nil {
+			return State{}, fmt.Errorf("clear missing workspace: %w", err)
+		}
+		// Reload all fields after clearing or a concurrent selection.
 	}
-	state.Dir, err = resolveWorkspaceDir(ctx, store, state.Dir)
-	return state, err
 }
 
-func (s *Service) SetUserDir(ctx context.Context, dir string) (string, State, error) {
-	sessionID, err := s.currentSessionID(ctx)
+func (s *Service) SetUserDir(ctx context.Context, dir string) (operationresult.Result[CurrentState], error) {
+	current, err := s.currentSessionID(ctx)
 	if err != nil {
-		return "", State{}, err
+		return operationresult.Result[CurrentState]{}, err
 	}
+	if current.Status != operationresult.Success {
+		return operationresult.Result[CurrentState]{Status: current.Status, Message: current.Message}, nil
+	}
+	sessionID := current.Data
 	store := s.storeForSession(sessionID)
 	if err := store.SetUserWorkspaceDir(ctx, dir); err != nil {
-		return "", State{}, err
+		return operationresult.Result[CurrentState]{}, err
 	}
 	state, err := s.getSessionState(ctx, sessionID)
-	return sessionID, state, err
+	if err != nil {
+		return operationresult.Result[CurrentState]{}, err
+	}
+	return operationresult.Result[CurrentState]{Status: operationresult.Success, Data: CurrentState{SessionID: sessionID, State: state}}, nil
 }
 
-func (s *Service) SetSync(ctx context.Context, agentToUser, userToAgent bool) (string, State, error) {
-	sessionID, err := s.currentSessionID(ctx)
+func (s *Service) SetSync(ctx context.Context, agentToUser, userToAgent bool) (operationresult.Result[CurrentState], error) {
+	current, err := s.currentSessionID(ctx)
 	if err != nil {
-		return "", State{}, err
+		return operationresult.Result[CurrentState]{}, err
 	}
+	if current.Status != operationresult.Success {
+		return operationresult.Result[CurrentState]{Status: current.Status, Message: current.Message}, nil
+	}
+	sessionID := current.Data
 	store := s.storeForSession(sessionID)
-	state, err := store.GetWorkspaceState(ctx)
+	state, err := s.getSessionState(ctx, sessionID)
 	if err != nil {
-		return "", State{}, err
+		return operationresult.Result[CurrentState]{}, err
 	}
-	agentDir, err := resolveWorkspaceDir(ctx, store, state.Dir)
+	if _, err := store.SetWorkspaceSync(ctx, agentToUser, userToAgent, state.Dir); err != nil {
+		return operationresult.Result[CurrentState]{}, err
+	}
+	state, err = s.getSessionState(ctx, sessionID)
 	if err != nil {
-		return "", State{}, err
+		return operationresult.Result[CurrentState]{}, err
 	}
-	state, err = store.SetWorkspaceSync(ctx, agentToUser, userToAgent, agentDir)
-	if err != nil {
-		return "", State{}, err
-	}
-	state.Dir, err = resolveWorkspaceDir(ctx, store, state.Dir)
-	return sessionID, state, err
+	return operationresult.Result[CurrentState]{Status: operationresult.Success, Data: CurrentState{SessionID: sessionID, State: state}}, nil
 }

@@ -22,10 +22,10 @@ import (
 )
 
 // NormalizeInput applies source-platform input normalization after Session resolution.
-func (*Supervisor) NormalizeInput(ctx context.Context, segments []llm.MessageSegment) ([]llm.MessageSegment, error) {
+func (*Supervisor) NormalizeInput(ctx context.Context, segments []llm.MessageSegment) (operationresult.Result[[]llm.MessageSegment], error) {
 	info, ok := contextinfo.ConversationFromContext(ctx)
 	if !ok || info.Source.Platform != config.PlatformCLI {
-		return segments, nil
+		return operationresult.Result[[]llm.MessageSegment]{Status: operationresult.Success, Data: segments}, nil
 	}
 	var root string
 	for i := range segments {
@@ -36,16 +36,19 @@ func (*Supervisor) NormalizeInput(ctx context.Context, segments []llm.MessageSeg
 			var err error
 			root, err = workspace.CurrentWorkspaceDir(ctx)
 			if err != nil {
-				return nil, err
+				return operationresult.Result[[]llm.MessageSegment]{}, err
 			}
 		}
-		var err error
-		segments[i].Text, err = workspace.ExpandFileReferences(ctx, root, segments[i].Text)
+		result, err := workspace.ExpandFileReferences(ctx, root, segments[i].Text)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[[]llm.MessageSegment]{}, err
 		}
+		if result.Status != operationresult.Success {
+			return operationresult.Result[[]llm.MessageSegment]{Status: result.Status, Message: result.Message}, nil
+		}
+		segments[i].Text = result.Data
 	}
-	return segments, nil
+	return operationresult.Result[[]llm.MessageSegment]{Status: operationresult.Success, Data: segments}, nil
 }
 
 // ConnectAgent 在启动前一次性完成接线，子包只获得其实际使用的能力。

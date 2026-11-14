@@ -44,7 +44,7 @@ type InputConfirmations interface {
 type InputCoordinatorDeps struct {
 	CommandText func(string, ...string) string // 根部绑定配置首个前缀的命令组装能力。
 	// NormalizeInput delegates source-specific normalization after Session selection.
-	NormalizeInput func(context.Context, string, []llm.MessageSegment) ([]llm.MessageSegment, error)
+	NormalizeInput func(context.Context, string, []llm.MessageSegment) (operationresult.Result[[]llm.MessageSegment], error)
 	// NewWorkspaceStore binds workspace operations to the admitted session.
 	NewWorkspaceStore func(string) workspace.WorkspaceStore
 	Sessions          interface {

@@ -225,7 +225,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	})
 	input := agentinput.NewInputCoordinator(agentinput.InputCoordinatorDeps{
 		CommandText: commandText,
-		NormalizeInput: func(ctx context.Context, sessionID string, segments []llm.MessageSegment) ([]llm.MessageSegment, error) {
+		NormalizeInput: func(ctx context.Context, sessionID string, segments []llm.MessageSegment) (operationresult.Result[[]llm.MessageSegment], error) {
 			ctx = workspace.WithWorkspaceStore(ctx, m.sessions.WorkspaceStore(sessionID))
 			return deps.Platform.NormalizeInput(ctx, segments)
 		},

@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"elbot/internal/testutil"
 	"errors"
 	"os"
@@ -21,19 +22,19 @@ func TestResolveWorkspacePathUsesScopeAndKeepsSessionSelection(t *testing.T) {
 	// A restricted path scope does not require or imply a background source.
 	scoped := WithPathScope(ctx, PathScope{Dir: taskDir, Restricted: true})
 	result, err := ResolveWorkspacePath(scoped, "file.txt", PathResolveOptions{})
-	if err != nil || result.Path != filepath.Join(taskDir, "file.txt") || result.BaseDir != taskDir || result.WasAbs {
+	if err != nil || result.Status != operationresult.Success || result.Data.Path != filepath.Join(taskDir, "file.txt") || result.Data.BaseDir != taskDir || result.Data.WasAbs {
 		t.Fatalf("scoped result=%+v err=%v", result, err)
 	}
 	if (testutil.ExecutionMode(scoped) == "background") || store.dir != sessionDir {
 		t.Fatal("path scope changed execution identity or session selection")
 	}
 	result, err = ResolveWorkspacePath(WithoutPathScope(scoped), "file.txt", PathResolveOptions{})
-	if err != nil || result.Path != filepath.Join(sessionDir, "file.txt") {
+	if err != nil || result.Status != operationresult.Success || result.Data.Path != filepath.Join(sessionDir, "file.txt") {
 		t.Fatalf("restored result=%+v err=%v", result, err)
 	}
 	// Source identity alone must not install a path restriction.
 	result, err = ResolveWorkspacePath(testutil.TaskContext(ctx, "cron"), filepath.Join(taskDir, "file.txt"), PathResolveOptions{})
-	if err != nil || !result.WasAbs {
+	if err != nil || result.Status != operationresult.Success || !result.Data.WasAbs {
 		t.Fatalf("absolute result=%+v err=%v", result, err)
 	}
 }
@@ -41,17 +42,17 @@ func TestResolveWorkspacePathUsesScopeAndKeepsSessionSelection(t *testing.T) {
 func TestResolveWorkspacePathChecksTargetAndCancellation(t *testing.T) {
 	dir := t.TempDir()
 	ctx := WithPathScope(t.Context(), PathScope{Dir: dir, Restricted: true})
-	if _, err := ResolveWorkspacePath(ctx, "missing", PathResolveOptions{}); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("missing file accepted: %v", err)
+	if result, err := ResolveWorkspacePath(ctx, "missing", PathResolveOptions{}); err != nil || result.Status != operationresult.NotFound || result.Message == "" {
+		t.Fatalf("missing file: %+v %v", result, err)
 	}
-	if _, err := ResolveWorkspacePath(ctx, "missing", PathResolveOptions{AllowCreate: true}); err != nil {
-		t.Fatal(err)
+	if result, err := ResolveWorkspacePath(ctx, "missing", PathResolveOptions{AllowCreate: true}); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("create path: %+v %v", result, err)
 	}
-	if _, err := ResolveWorkspacePath(ctx, ".", PathResolveOptions{}); err == nil {
-		t.Fatal("directory accepted as a file")
+	if result, err := ResolveWorkspacePath(ctx, ".", PathResolveOptions{}); err != nil || result.Status != operationresult.InvalidTarget {
+		t.Fatalf("directory as file: %+v %v", result, err)
 	}
-	if _, err := ResolveWorkspacePath(ctx, ".", PathResolveOptions{AllowDirectory: true}); err != nil {
-		t.Fatal(err)
+	if result, err := ResolveWorkspacePath(ctx, ".", PathResolveOptions{AllowDirectory: true}); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("directory: %+v %v", result, err)
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	cancel()

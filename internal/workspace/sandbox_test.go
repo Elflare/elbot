@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"elbot/internal/operationresult"
 	"errors"
 	"os"
 	"path/filepath"
@@ -33,8 +34,8 @@ func TestRestrictedPathRejectsOutsideAndAbsoluteInputs(t *testing.T) {
 				t.Fatalf("accepted restricted path %q", path)
 			}
 			ctx := WithPathScope(t.Context(), scope)
-			if _, err := ResolveWorkspacePath(ctx, path, PathResolveOptions{AllowCreate: true}); err == nil {
-				t.Fatalf("unified resolver accepted restricted path %q", path)
+			if result, err := ResolveWorkspacePath(ctx, path, PathResolveOptions{AllowCreate: true}); err != nil || result.Status != operationresult.InvalidArguments || result.Message == "" {
+				t.Fatalf("restricted path %q: %+v %v", path, result, err)
 			}
 		})
 	}

@@ -49,10 +49,7 @@ func TestSessionWorkspaceStorePersistsWithoutDroppingMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state, err := workspace.DecodeState(latest.Metadata)
-	if err != nil {
-		t.Fatal(err)
-	}
+	state := workspace.DecodeState(latest.Metadata)
 	if state.Dir != "C:/work/project" {
 		t.Fatalf("workspace dir = %q", state.Dir)
 	}
@@ -87,10 +84,7 @@ func TestSessionWorkspaceStoreClear(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state, err := workspace.DecodeState(latest.Metadata)
-	if err != nil {
-		t.Fatal(err)
-	}
+	state := workspace.DecodeState(latest.Metadata)
 	if state.Dir != "" {
 		t.Fatalf("workspace dir = %q", state.Dir)
 	}
@@ -119,10 +113,7 @@ func TestSessionWorkspaceStoreMarksNoticeWithoutChangingWorkspace(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	state, err := workspace.DecodeState(latest.Metadata)
-	if err != nil {
-		t.Fatal(err)
-	}
+	state := workspace.DecodeState(latest.Metadata)
 	if state.Dir != "C:/work/project" {
 		t.Fatalf("workspace dir changed: %q", state.Dir)
 	}
