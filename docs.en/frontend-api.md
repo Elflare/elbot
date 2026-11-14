@@ -52,9 +52,9 @@ The `api_token` is used only to route actions back to the current connection aft
 
 Messages are in JSON format. See the corresponding sections for fields of each type; `id` is used to associate inputs with completion responses, and the `request_id` in command results returns the input ID.
 
-## HTTP Attachment Interface
+## HTTP Attachment Interfaces
 
-All interfaces require the `media_token` of the current WebSocket connection, regardless of whether the static page exists:
+All interfaces require the `media_token` of the current WebSocket connection, regardless of whether a static page exists:
 
 | Interface | Request & Response |
 |------|------------|
@@ -62,9 +62,9 @@ All interfaces require the `media_token` of the current WebSocket connection, re
 | `GET /cli/v1/files/{id}` | Returns file content; HEAD returns the same metadata without the body |
 | `DELETE /cli/v1/files/{id}` | Revokes attachment authorization for the current connection; returns 204 on success |
 
-The upload response is identical to the `attachment` description; each POST request uploads only one `file`, and multiple files must be uploaded separately. Browsers can use `fetch` with authentication headers to obtain a Blob for previewing or downloading. GET responses use `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`, and `Cache-Control: no-store`.
+The upload response is identical to the `attachment` description; a single POST request uploads only one `file`, and multiple files must be uploaded separately. Browsers can use `fetch` with authentication headers to obtain a Blob for previewing or downloading. GET responses use `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`, and `Cache-Control: no-store`.
 
-Deletion or disconnection will revoke the attachment authorization for the current connection; files must be re-uploaded after disconnection. Returns 401 on authentication failure; 404 if the attachment does not exist or does not belong to the current connection; 400 for incorrect request format; 503 if the service has stopped accepting connections; and 500 with the unified message "Attachment processing failed" on media processing failure.
+Deletion or disconnection will revoke the attachment authorization for the current connection; files must be re-uploaded after disconnection. Authentication failure returns 401; if the attachment does not exist or does not belong to the current connection, 404 is returned; request format errors, business rejections, or invalid targets return 400; permission denied returns 403; conflicts return 409; service access suspension or unavailable capabilities return 503; media business failures and internal faults return 500; cancellations return 408, and timeouts return 504. Business errors return `Result.Message`, and Go errors return `err.Error()`.
 
 ## HTTP Management API
 
@@ -78,17 +78,19 @@ For the endpoints, request, and response fields of the Management API, please re
 {"type": "input", "text": "Hello"}
 ```
 
-Passes text as user input to the Agent for processing. The server does not send a confirmation; processing results are returned asynchronously via chat/stream and other messages.
+Passes text as user input to the Agent for processing. The server does not send a confirmation reply; processing results are returned asynchronously via chat/stream and other messages.
 
-After uploading attachments, place the returned IDs in `file_ids`. Pure attachment messages without a body are also supported:
+`#file_path` or `#"file path with spaces"` in the body are expanded according to the Agent workspace. If a quote is not closed, the path is out of bounds, or the target is not a regular file, the reason for rejection is displayed and the current input processing is terminated. Non-existent references are kept as original text; oversized or binary files retain their paths and their content is not expanded.
+
+After uploading attachments, place the returned IDs into `file_ids`. Pure attachment messages without a body are also supported:
 
 ```json
-{"type":"input","id":"m-1","text":"Take a look at this file","file_ids":["attachment-id"]}
+{"type":"input","id":"m-1","text":"Check out this file","file_ids":["attachment-id"]}
 ```
 
 The server processes the body first, then processes attachments in the order of `file_ids`. Images are converted to image inputs; other files are expanded as text with filenames and code fences if they are valid UTF-8, contain no NUL characters, and are within 256 KiB per file and 1 MiB total expansion. Otherwise, they are treated as file inputs. This quota only controls text expansion; upload size limits reuse the Media configuration.
 
-Attachments must belong to the current connection. If preparing any attachment fails, the partial input will not be submitted; instead, an `error` and the `id` of the original input will be returned, with the body "Attachment processing failed". Attachments are not automatically released upon sending input; the client may call DELETE when they are no longer needed.
+Attachments must belong to the current connection. If preparing any attachment fails, the partial input is not submitted; instead, an `error` and the original input `id` are returned, with the body containing the raw text of Result.Message or a Go error. Attachments are not automatically released upon sending input; the client can call DELETE when they are no longer needed.
 
 ### complete — Request Completion
 
@@ -131,12 +133,14 @@ Notifications are queued separately by platform and sent in target order; they a
 ### command_result — Command Result
 
 ```json
-{"type":"command_result","request_id":"m-1","command":"help","result":{"kind":"text","data":{"content":"Command list"},"confirmation":null},"error":null}
+{"type":"command_result","request_id":"m-1","command":{"raw":"/detail","prefix":"/","Name":"detail","args":""},"result":{"status":"success","kind":"text","data":{"content":"Nothing to confirm"}}}
 ```
 
-`request_id` is associated with `input.id` as-is, and results are sent only to the original connection; command results are not returned via `notice`. Use `command="append"` to append confirmation receipts. Confirmation actions are submitted via a new `input.text`; permissions and target states are still validated by the server, and the action ID is not an authorization credential.
+`request_id` is associated with `input.id` as-is, and the result is sent only to the original connection; command results are not returned via `notice`. `command` preserves the original call context; the `command.Name` for appending a confirmation receipt is `append`. Confirmation actions are submitted via a new `input.text`; permissions and target states are still validated by the server, and the action ID is not an authorization credential.
 
-When successful, `error` is `null`; when failed, it contains `kind`, `code`, and `message`, and for complete failures, `result` is `null`. Partial results may contain both `result` and `error`. Client timeouts or disconnections do not mean that backend execution has been canceled.
+`result.status` expresses the business status of the command; read `data` only when it is `success`, and display `result.message` upon rejection or failure. `kind` describes the structure of the successful data, and `confirmation` provides the confirmation action. `status` is an internal business status, not an HTTP status or protocol error code.
+
+Program or IO failures pass original descriptions via the `error` string; when this field exists, it should be displayed with priority, and `result.data` should not be read. Omit `error` when there are no failures. Client timeouts or disconnections do not mean that backend execution has been cancelled.
 
 ### status — Runtime Status
 
