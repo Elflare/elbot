@@ -73,11 +73,10 @@ type ToolDefinition struct {
 type ConfirmationDetailKind = delivery.ContentBlockKind
 
 const (
-	ConfirmationDetailText     = delivery.ContentText
-	ConfirmationDetailDiff     = delivery.ContentDiff
-	ConfirmationDetailFields   = delivery.ContentFields
-	ConfirmationDetailCode     = delivery.ContentCode
-	ConfirmationDetailMarkdown = delivery.ContentMarkdown
+	ConfirmationDetailText   = delivery.ContentText
+	ConfirmationDetailDiff   = delivery.ContentDiff
+	ConfirmationDetailFields = delivery.ContentFields
+	ConfirmationDetailCode   = delivery.ContentCode
 )
 
 type ConfirmationDetailBlock = delivery.ContentBlock

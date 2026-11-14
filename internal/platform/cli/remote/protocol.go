@@ -45,6 +45,7 @@ type remoteMessage struct {
 	Token      string                  `json:"token,omitempty"`
 	Text       string                  `json:"text,omitempty"`
 	Blocks     []delivery.ContentBlock `json:"blocks,omitempty"`
+	Actions    []delivery.Action       `json:"actions,omitempty"` // 与 chat 正文绑定的操作，由业务统一生成。
 	Level      string                  `json:"level,omitempty"`
 	Cursor     int                     `json:"cursor,omitempty"`
 	Items      []completion.Item       `json:"items,omitempty"`

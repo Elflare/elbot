@@ -77,11 +77,10 @@ type DetailBlock struct {
 type ConfirmationDetailKind = share.ConfirmationDetailKind
 
 const (
-	ConfirmationDetailText     = share.ConfirmationDetailText
-	ConfirmationDetailDiff     = share.ConfirmationDetailDiff
-	ConfirmationDetailFields   = share.ConfirmationDetailFields
-	ConfirmationDetailCode     = share.ConfirmationDetailCode
-	ConfirmationDetailMarkdown = share.ConfirmationDetailMarkdown
+	ConfirmationDetailText   = share.ConfirmationDetailText
+	ConfirmationDetailDiff   = share.ConfirmationDetailDiff
+	ConfirmationDetailFields = share.ConfirmationDetailFields
+	ConfirmationDetailCode   = share.ConfirmationDetailCode
 )
 
 type ConfirmationDetailBlock = share.ConfirmationDetailBlock

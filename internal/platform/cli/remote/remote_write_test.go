@@ -5,9 +5,11 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/signal"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -72,10 +74,47 @@ func TestRemoteWriteWaitingOnAnotherWriterRespectsContext(t *testing.T) {
 }
 
 func TestOutputMessageKeepsStructuredBlocks(t *testing.T) {
-	blocks := []delivery.ContentBlock{{Kind: delivery.ContentDiff, Content: "-old\n+new"}}
-	message := outputMessage(remoteMsgChat, delivery.Output{Kind: delivery.KindText, Blocks: blocks})
-	if message.Text != "" || len(message.Blocks) != 1 || message.Blocks[0] != blocks[0] {
-		t.Fatalf("output message = %+v", message)
+	blocks := []delivery.ContentBlock{
+		{Kind: delivery.ContentText, Content: "shell: confirm"},
+		{Kind: delivery.ContentFields, Content: []delivery.ContentField{
+			{Key: "timeout_ms", Label: "超时（ms）", Value: int64(60000)},
+			{Key: "enabled", Label: "启用", Value: false},
+		}},
+		{Kind: delivery.ContentCode, Content: delivery.CodeContent{Language: "bash", Content: "echo '<value>'"}},
+		{Kind: delivery.ContentDiff, Content: "-old\n+new"},
+	}
+	actions := []delivery.Action{{ID: "confirm", Label: "确认本次", Command: "/confirm"}, {ID: "reject", Label: "拒绝", Command: "/reject"}}
+	for _, tc := range []struct {
+		name string
+		out  delivery.Output
+	}{
+		{name: "confirmation", out: delivery.Output{Kind: delivery.KindText, Blocks: blocks, Actions: actions}},
+		{name: "actions only", out: delivery.Output{Kind: delivery.KindText, Actions: actions}},
+		{name: "ordinary text", out: delivery.Text("hello")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			message := outputMessage(remoteMsgChat, tc.out)
+			if message.Text != tc.out.Text || !reflect.DeepEqual(message.Blocks, tc.out.Blocks) || !reflect.DeepEqual(message.Actions, tc.out.Actions) {
+				t.Fatalf("output message = %+v", message)
+			}
+			encoded, err := json.Marshal(message)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var wire map[string]json.RawMessage
+			if err := json.Unmarshal(encoded, &wire); err != nil {
+				t.Fatal(err)
+			}
+			if _, present := wire["actions"]; present != (len(tc.out.Actions) > 0) {
+				t.Fatalf("wire actions presence = %t: %s", present, encoded)
+			}
+			if len(tc.out.Actions) > 0 {
+				var got []delivery.Action
+				if err := json.Unmarshal(wire["actions"], &got); err != nil || !reflect.DeepEqual(got, tc.out.Actions) {
+					t.Fatalf("wire actions = %+v, error = %v", got, err)
+				}
+			}
+		})
 	}
 }
 

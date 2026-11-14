@@ -519,7 +519,7 @@ func outputMessage(kind string, out delivery.Output) remoteMessage {
 	if len(out.Blocks) == 0 {
 		text = delivery.FallbackText(out)
 	}
-	return remoteMessage{Type: kind, Text: text, Blocks: out.Blocks}
+	return remoteMessage{Type: kind, Text: text, Blocks: out.Blocks, Actions: out.Actions}
 }
 
 type remoteCommandReply struct {

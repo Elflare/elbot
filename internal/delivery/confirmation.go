@@ -17,11 +17,10 @@ type ContentBlock struct {
 }
 
 const (
-	ContentText     ContentBlockKind = "text"
-	ContentDiff     ContentBlockKind = "diff"
-	ContentFields   ContentBlockKind = "fields"
-	ContentCode     ContentBlockKind = "code"
-	ContentMarkdown ContentBlockKind = "markdown"
+	ContentText   ContentBlockKind = "text"
+	ContentDiff   ContentBlockKind = "diff"
+	ContentFields ContentBlockKind = "fields"
+	ContentCode   ContentBlockKind = "code"
 )
 
 // ContentField is an independently renderable confirmation field.
@@ -52,7 +51,7 @@ func (b *ContentBlock) UnmarshalJSON(data []byte) error {
 		target = new([]ContentField)
 	case ContentCode:
 		target = new(CodeContent)
-	case ContentText, ContentMarkdown, ContentDiff:
+	case ContentText, ContentDiff:
 		target = new(string)
 	default:
 		return fmt.Errorf("unsupported content block kind %q", raw.Kind)
@@ -99,7 +98,7 @@ func ContentBlocksText(blocks []ContentBlock) string {
 		case ContentCode:
 			code := block.Content.(CodeContent)
 			content = "```" + code.Language + "\n" + code.Content + "\n```"
-		case ContentText, ContentMarkdown:
+		case ContentText:
 			content = block.Content.(string)
 		case ContentDiff:
 			content = "```diff\n" + block.Content.(string) + "\n```"
