@@ -161,7 +161,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `internal/delivery/delivery.go`：输出、目标、回执与发送契约。
 - `internal/delivery/stream.go`：消息流事件与消费契约。
 - `internal/platform/dispatch/`：`router.go` 发送路由；`media.go` 媒体准备；`calls.go` 原生 API。
-- `internal/platform/notification/manager.go`、`internal/notification/rules/`：通知队列、提示规则。
+- `internal/platform/notification/manager.go`：通知队列。
 - `internal/agent/output/output.go`、`internal/agent/dialogue/reply_commit.go`：输出 Hook、回复提交。
 - `internal/agent/execution/`：`turn_output.go` 单轮输出；`execution_output.go` 跨轮输出。
 - `internal/platform/{cli,qq-onebot,qqofficial,telegram}/notifications.go`：平台通知。

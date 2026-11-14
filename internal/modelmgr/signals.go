@@ -4,9 +4,10 @@ import (
 	"context"
 	"elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/notification/rules"
 	"elbot/internal/signal"
+	"fmt"
 	"log/slog"
+	"time"
 )
 
 // ModelRetryingEvent uses the complete operation's context across attempts.
@@ -39,7 +40,7 @@ func (s *ModelManager) connectRetrySignals() error {
 		if ctx.Err() != nil {
 			return
 		}
-		text := rules.ModelRetry(e.Provider, e.Retry)
+		text := modelRetryText(e.Provider, e.Retry)
 		if text == "" {
 			return
 		}
@@ -51,4 +52,14 @@ func (s *ModelManager) connectRetrySignals() error {
 	}
 	s.connections = append(s.connections, connection)
 	return nil
+}
+
+func modelRetryText(provider string, event llm.RetryEvent) string {
+	if event.Err == nil {
+		return ""
+	}
+	if provider != "" {
+		return fmt.Sprintf("LLM retry %d/%d · %s · %s 后: %v", event.Attempt, event.MaxRetries, provider, event.Delay.Round(time.Millisecond), event.Err)
+	}
+	return fmt.Sprintf("LLM retry %d/%d · %s 后: %v", event.Attempt, event.MaxRetries, event.Delay.Round(time.Millisecond), event.Err)
 }
