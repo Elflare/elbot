@@ -20,7 +20,7 @@ type ToolCapabilities interface {
 }
 
 type ToolDirectiveSource struct {
-	Context func(context.Context) (context.Context, error) // 准备查询所需身份、权限与模型上下文。
+	Context func(context.Context) (context.Context, error) // 必填：准备查询所需身份、权限与模型上下文。
 	Tools   ToolCapabilities                               // 只借用工具、技能及标签查询能力。
 }
 
@@ -31,12 +31,9 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item,
 	if !skillToken.OK && !token.OK {
 		return nil, nil
 	}
-	if s.Context != nil {
-		var err error
-		ctx, err = s.Context(ctx)
-		if err != nil {
-			return nil, err
-		}
+	ctx, err := s.Context(ctx)
+	if err != nil {
+		return nil, err
 	}
 	if skillToken.OK {
 		return s.completeSkills(ctx, skillToken, cursor)
@@ -44,14 +41,16 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item,
 	if token.PrefixOnly {
 		return []Item{{Text: token.Prefix, Label: token.Prefix, Kind: KindToolDirective, ReplaceStart: token.Start, ReplaceEnd: cursor}}, nil
 	}
-	tags, err := s.matchingTags(ctx, token.Query)
+	tags, err := s.Tools.ToolTags(ctx)
 	if err != nil {
 		return nil, err
 	}
-	infos, err := s.matchingTools(ctx, token.Query)
+	infos, err := s.Tools.QueryTools(ctx, tool.ToolQuery{Kind: "tool"})
 	if err != nil {
 		return nil, err
 	}
+	tags = matchCandidates(tags, token.Query, func(tag string) string { return tag })
+	infos = matchCandidates(infos, token.Query, func(info tool.ToolInfo) string { return info.Definition.Name })
 	out := make([]Item, 0, len(tags)+len(infos))
 	seenText := map[string]bool{}
 	for _, tag := range tags {
@@ -71,17 +70,17 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item,
 		out = append(out, Item{Text: text, Label: info.Definition.Name, Description: info.Definition.Description, Kind: KindToolDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
 	}
 	return out, nil
-
 }
 
 func (s ToolDirectiveSource) completeSkills(ctx context.Context, token directive.SkillCompletionToken, cursor int) ([]Item, error) {
 	if token.PrefixOnly {
 		return []Item{{Text: token.Prefix, Label: token.Prefix, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor}}, nil
 	}
-	infos, err := s.matchingSkills(ctx, token.Query)
+	infos, err := s.Tools.QueryTools(ctx, tool.ToolQuery{Kind: "skill"})
 	if err != nil {
 		return nil, err
 	}
+	infos = matchCandidates(infos, token.Query, func(info tool.ToolInfo) string { return info.Definition.Name })
 	out := make([]Item, 0, len(infos))
 	for _, info := range infos {
 		out = append(out, Item{Text: token.Prefix + info.Definition.Name, Label: info.Definition.Name, Description: info.Definition.Description, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
@@ -89,66 +88,29 @@ func (s ToolDirectiveSource) completeSkills(ctx context.Context, token directive
 	return out, nil
 }
 
-func (s ToolDirectiveSource) matchingTags(ctx context.Context, query string) ([]string, error) {
-	candidates, err := s.Tools.ToolTags(ctx)
-	return matchStrings(candidates, query), err
-}
-
-func (s ToolDirectiveSource) matchingTools(ctx context.Context, query string) ([]tool.ToolInfo, error) {
-	infos, err := s.Tools.QueryTools(ctx, tool.ToolQuery{Kind: "tool"})
-	return matchInfos(infos, query), err
-}
-
-func (s ToolDirectiveSource) matchingSkills(ctx context.Context, query string) ([]tool.ToolInfo, error) {
-	infos, err := s.Tools.QueryTools(ctx, tool.ToolQuery{Kind: "skill"})
-	return matchInfos(infos, query), err
-}
-
-func matchInfos(candidates []tool.ToolInfo, query string) []tool.ToolInfo {
-	if query == "" {
-		return candidates
-	}
-	prefix := []tool.ToolInfo{}
-	fuzzy := []tool.ToolInfo{}
-	for _, info := range candidates {
-		if strings.HasPrefix(info.Definition.Name, query) {
-			prefix = append(prefix, info)
-			continue
-		}
-		if fuzzyMatch(info.Definition.Name, query) {
-			fuzzy = append(fuzzy, info)
-		}
-	}
-	if len(prefix) > 0 {
-		return prefix
-	}
-	return fuzzy
-}
-
 func (s ToolDirectiveSource) tagDescription(ctx context.Context, tag string) (string, error) {
-	names, err := s.Tools.QueryTools(ctx, tool.ToolQuery{Tag: tag, Kind: "tool"})
+	infos, err := s.Tools.QueryTools(ctx, tool.ToolQuery{Tag: tag, Kind: "tool"})
 	if err != nil {
 		return "", err
 	}
-	count := len(names)
-	if count == 1 {
+	if len(infos) == 1 {
 		return "1 tool", nil
 	}
-	return strconv.Itoa(count) + " tools", nil
+	return strconv.Itoa(len(infos)) + " tools", nil
 }
 
-func matchStrings(candidates []string, query string) []string {
+func matchCandidates[T any](candidates []T, query string, name func(T) string) []T {
 	if query == "" {
 		return candidates
 	}
-	prefix := []string{}
-	fuzzy := []string{}
+	var prefix, fuzzy []T
 	for _, candidate := range candidates {
-		if strings.HasPrefix(candidate, query) {
+		value := name(candidate)
+		if strings.HasPrefix(value, query) {
 			prefix = append(prefix, candidate)
 			continue
 		}
-		if fuzzyMatch(candidate, query) {
+		if fuzzyMatch(value, query) {
 			fuzzy = append(fuzzy, candidate)
 		}
 	}

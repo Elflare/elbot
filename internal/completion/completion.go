@@ -34,13 +34,7 @@ type Service struct {
 }
 
 func NewService(sources ...Source) *Service {
-	out := make([]Source, 0, len(sources))
-	for _, source := range sources {
-		if source != nil {
-			out = append(out, source)
-		}
-	}
-	return &Service{sources: out}
+	return &Service{sources: sources}
 }
 
 func (s *Service) Complete(ctx context.Context, req Request) ([]Item, error) {

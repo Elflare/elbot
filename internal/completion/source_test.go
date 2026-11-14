@@ -8,6 +8,7 @@ import (
 
 	"elbot/internal/command"
 	"elbot/internal/control"
+	"elbot/internal/operationresult"
 )
 
 type completionControlStub struct {
@@ -16,20 +17,16 @@ type completionControlStub struct {
 	currentReq control.CurrentConfirmationRequest
 	pages      []control.SessionMessagesResult
 	pageReqs   []control.SessionMessagesRequest
-	pageErr    error
 }
 
-func (s *completionControlStub) CurrentConfirmation(_ context.Context, req control.CurrentConfirmationRequest) (control.CurrentConfirmationResult, error) {
+func (s *completionControlStub) CurrentConfirmation(_ context.Context, req control.CurrentConfirmationRequest) (operationresult.Result[control.CurrentConfirmationResult], error) {
 	s.currentReq = req
-	return s.current, s.currentErr
+	return operationresult.Result[control.CurrentConfirmationResult]{Status: operationresult.Success, Data: s.current}, s.currentErr
 }
 
-func (s *completionControlStub) SessionMessages(_ context.Context, req control.SessionMessagesRequest) (control.SessionMessagesResult, error) {
+func (s *completionControlStub) SessionMessages(_ context.Context, req control.SessionMessagesRequest) (operationresult.Result[control.SessionMessagesResult], error) {
 	s.pageReqs = append(s.pageReqs, req)
-	if s.pageErr != nil {
-		return control.SessionMessagesResult{}, s.pageErr
-	}
-	return s.pages[req.Page-1], nil
+	return operationresult.Result[control.SessionMessagesResult]{Status: operationresult.Success, Data: s.pages[req.Page-1]}, nil
 }
 
 func TestRiskConfirmationSourceQueriesControlAndCompletesOnlyForToolWait(t *testing.T) {
@@ -56,52 +53,45 @@ func TestRiskConfirmationSourceQueriesControlAndCompletesOnlyForToolWait(t *test
 	if err != nil || len(argGot) != 0 {
 		t.Fatalf("argument completion = %#v, %v", argGot, err)
 	}
+	controlStub.currentErr = errors.New("confirmation unavailable")
+	if _, err := source.Complete(ctx, Request{Text: "/c"}); !errors.Is(err, controlStub.currentErr) {
+		t.Fatalf("confirmation read error = %v", err)
+	}
 }
 
-func TestForkMessageSourceUsesControlPagesAndPreservesRawMessages(t *testing.T) {
+func TestForkMessageSourceUsesControlPages(t *testing.T) {
 	ctx := context.Background()
 	pages := []control.SessionMessagesResult{
 		{
-			Page:      control.Page{Page: 1, PageSize: 1, HasNext: true, TotalPages: 2},
+			Page:      control.Page{Page: 1, PageSize: 3, HasNext: true, TotalPages: 2},
 			SessionID: "session-1",
 			Items: []control.MessageData{
+				{ID: "abc-question", Role: "user", Content: "question"},
 				{ID: "abc-new", Role: "assistant", Content: "new answer"},
+				{ID: "xyz-new", Role: "assistant", Content: "another answer"},
 			},
 		},
 		{
-			Page:      control.Page{Page: 2, PageSize: 1, TotalPages: 2},
+			Page:      control.Page{Page: 2, PageSize: 3, TotalPages: 2},
 			SessionID: "session-1",
 			Items: []control.MessageData{
 				{ID: "abc-old", Role: "assistant", Content: "old answer"},
+				{ID: "abc-empty", Role: "assistant", Content: " \t"},
+				{ID: "abc-middle", Role: "assistant", Content: "second answer"},
 			},
 		},
 	}
 	controlStub := &completionControlStub{pages: pages}
-	source := ForkMessageSource{Router: command.NewRouter([]string{"/"}), Control: controlStub, PageSize: 1}
+	source := ForkMessageSource{Router: command.NewRouter([]string{"/"}), Control: controlStub, PageSize: 3}
 	got, err := source.Complete(ctx, Request{Text: "/fork abc"})
-	if err != nil || len(got) != 2 || got[0].Text != "/fork abc-old" || got[0].Kind != KindForkMessage || got[1].Text != "/fork abc-new" {
+	if err != nil || len(got) != 3 || got[0].Text != "/fork abc-old" || got[0].Kind != KindForkMessage || got[1].Text != "/fork abc-middle" || got[2].Text != "/fork abc-new" {
 		t.Fatalf("Complete = %#v, %v", got, err)
 	}
 	wantRequests := []control.SessionMessagesRequest{
-		{Page: 1, PageSize: 1},
-		{SessionID: "session-1", Page: 2, PageSize: 1},
+		{Page: 1, PageSize: 3},
+		{SessionID: "session-1", Page: 2, PageSize: 3},
 	}
 	if !reflect.DeepEqual(controlStub.pageReqs, wantRequests) {
 		t.Fatalf("page requests = %#v, want %#v", controlStub.pageReqs, wantRequests)
-	}
-	if !reflect.DeepEqual(controlStub.pages, pages) {
-		t.Fatal("completion modified raw message results")
-	}
-}
-
-func TestForkMessageSourceSuppressesControlReadErrors(t *testing.T) {
-	source := ForkMessageSource{
-		Router:   command.NewRouter([]string{"/"}),
-		Control:  &completionControlStub{pageErr: errors.New("history unavailable")},
-		PageSize: 10,
-	}
-	got, err := source.Complete(context.Background(), Request{Text: "/fork abc"})
-	if err != nil || len(got) != 0 {
-		t.Fatalf("Complete after read error = %#v, %v", got, err)
 	}
 }

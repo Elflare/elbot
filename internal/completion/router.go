@@ -12,7 +12,7 @@ const KindCommand = "command"
 
 type RouterSource struct {
 	Router *command.Router
-	Actor  func(context.Context) contextinfo.Actor
+	Actor  func(context.Context) contextinfo.Actor // 必填：提供当前请求的身份及权限。
 }
 
 func (s RouterSource) completeArgs(ctx context.Context, req Request, actor contextinfo.Actor) []Item {
@@ -39,29 +39,15 @@ func (s RouterSource) completeArgs(ctx context.Context, req Request, actor conte
 	return out
 }
 
-func (s RouterSource) actor(ctx context.Context) contextinfo.Actor {
-	if s.Actor != nil {
-		return s.Actor(ctx)
-	}
-	actor, _ := contextinfo.ActorFromContext(ctx)
-	return actor
-}
 func (s RouterSource) Complete(ctx context.Context, req Request) ([]Item, error) {
-	if s.Router == nil {
-		return nil, nil
-	}
-	actor := s.actor(ctx)
+	actor := s.Actor(ctx)
 	if items := s.completeArgs(ctx, req, actor); len(items) > 0 {
 		return items, nil
 	}
 	texts := s.Router.CompleteForActor(req.Text, actor)
-	if len(texts) == 0 {
-		return nil, nil
-	}
 	items := make([]Item, 0, len(texts))
 	for _, text := range texts {
 		items = append(items, Item{Text: text, Label: strings.TrimLeft(text, "/-"), Kind: KindCommand})
 	}
 	return items, nil
-
 }

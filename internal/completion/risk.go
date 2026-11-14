@@ -20,15 +20,15 @@ type RiskConfirmationSource struct {
 }
 
 func (s RiskConfirmationSource) Complete(ctx context.Context, req Request) ([]Item, error) {
-	if s.Router == nil || s.Control == nil || len(s.CommandNames) == 0 {
-		return nil, nil
-	}
 	current, err := s.Control.CurrentConfirmation(ctx, control.CurrentConfirmationRequest{})
-	if err != nil || current.Status != operationresult.Success || current.Data.Kind != "tool" {
+	if err != nil {
+		return nil, err
+	}
+	if current.Status != operationresult.Success || current.Data.Kind != "tool" {
 		return nil, nil
 	}
 	parsed := s.Router.Parse(req.Text)
-	if !parsed.OK || hasAnyCommandArgs(req.Text, parsed.Prefix) {
+	if !parsed.OK || parsed.Args != "" {
 		return nil, nil
 	}
 	out := []Item{}
@@ -38,14 +38,4 @@ func (s RiskConfirmationSource) Complete(ctx context.Context, req Request) ([]It
 		}
 	}
 	return out, nil
-}
-
-func hasAnyCommandArgs(text, prefix string) bool {
-	text = strings.TrimLeft(text, " \t")
-	if !strings.HasPrefix(text, prefix) {
-		return false
-	}
-	rest := strings.TrimSpace(strings.TrimPrefix(text, prefix))
-	_, args, ok := strings.Cut(rest, " ")
-	return ok && strings.TrimSpace(args) != ""
 }

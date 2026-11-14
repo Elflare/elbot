@@ -98,7 +98,7 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 
 请求当前输入文本的补全候选。`id` 用于匹配响应。`cursor` 为光标在 `text` 中的字节偏移，省略时取末尾。
 
-服务端回复 `complete_result`。
+查询成功时服务端回复 `complete_result`，没有候选时列表为空；查询失败时回复 `error`，携带原请求的 `id` 和错误原因。
 
 ## 服务端 → 客户端
 
