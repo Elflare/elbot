@@ -112,22 +112,22 @@ Two systemd pitfalls:
 - `plugins/.env`, plugin `.env`: reread during startup and `/hooks reload`; reload rebuilds Workers based on the new environment.
 - If the file does not exist, it is treated as an empty configuration.
 
-## Workspace Tools
+## Workspace Tool
 
 In work mode, the superadmin can allow the LLM to call the `workspace` tool to switch the shared working directory of the current Session. After switching, path-related tools such as `read_file`, `edit_file`, `rollback_file`, `send_file`, and the foreground `shell` will resolve relative paths based on this directory.
 
-- When no workspace is set, the process working directory is used.
-- When `AGENTS.md` or `AGENT.md` is present at the root of the target directory, the content will be automatically attached to the LLM upon first discovery, injection, or first switch to that directory. The main part of the filename must be uppercase `AGENTS` / `AGENT`, the case of the `.md` suffix is unrestricted, and `AGENTS.md` takes priority.
-- The attachment limit is 64 KiB. If the limit is exceeded, the content will not be read or marked as attached, and the tool result will prompt to shorten or split the content before switching again.
-- Edit undo backups are saved by the target absolute path: switching the workspace does not clear backups, but the same relative path will be resolved according to the new workspace; To undo files in the original directory, you can switch back or provide the absolute path. See [Undo File Edit](commands.md#文件编辑撤销).
+- When no workspace is set, the process working directory is used. If the saved directory does not exist, the invalid selection is cleared; when Agent → Frontend synchronization is enabled, the frontend directory selection is also cleared, and queries return the cleaned state. Permission and other IO errors retain the original selection and report an error.
+- If `AGENTS.md` or `AGENT.md` exists at the root of the target directory, its content will be automatically attached to the LLM upon first discovery, injection, or first switch to that directory. The filename body must be uppercase `AGENTS` / `AGENT`, the `.md` extension is case-insensitive, and `AGENTS.md` takes priority.
+- The attachment limit is 64 KiB. If this limit is exceeded, the file will not be read or marked as attached, and the tool result will prompt to shorten or split the content before switching again.
+- Edit undo backups are saved by the target absolute path: switching the workspace does not clear backups, but the same relative path will be resolved according to the new workspace; to undo files in the original directory, you can switch back or provide the absolute path. See [File Edit Undo](commands.md#文件编辑撤销).
 
 `read_file` tool description:
 
-- `ast` / `ast_function` modes support single file and directory queries.
-- Dialect determination: `.go` follows Go, `.mksh` follows mksh; Others are determined by the first-line Shell shebang (including `env`, `env -S`, and `env --split-string` syntax).
-- `.sh`, `.bash`, and `.bats` default to Bash when no recognizable shebang is found.
+- `ast` / `ast_function` modes support single-file and directory queries.
+- Dialect determination: `.go` is treated as Go, `.mksh` as mksh; others are determined by the first-line Shell shebang (including `env`, `env -S`, and `env --split-string` syntax).
+- `.sh`, `.bash`, and `.bats` are treated as Bash when no recognizable shebang is present.
 
-`edit_file` generates the edit result and a diff preview before confirmation, and submits the same result after confirmation; if the file content or target changes during the waiting period, the submission will be rejected and must be prepared again.
+`edit_file` generates the edit result and a diff preview before confirmation; once confirmed, the same result is submitted. If the file content or target changes during the waiting period, the submission will be rejected, and the process must be prepared again.
 
 ## Resident Memory Configuration
 
