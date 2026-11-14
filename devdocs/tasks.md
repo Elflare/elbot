@@ -31,6 +31,31 @@ review目标：1. 旧测试删或者改造。2. 新测试指测必要且复杂�
 - [ ] 前端显示正在调用工具名字和参数，结束后直接原地改写结果，保留名字和参数，内容和之前一样。需要同步改后端api，平台消息如[tool]xxx统一成control操作，raw提供原始内容，消息平台裁剪为文本，参考command_result_dispatch.go逻辑，给一个共享函数裁剪，也可直接拿raw blocks
 - [ ] 加入phase压缩中
 - [ ] notifyf，调用工具私聊场景应该发出正在调用xx。建议逻辑链路：工具调用时发送notify通知（带有参数是否同时llm在说话），发给Delivery，来判断当前消息平台是群聊私聊，群聊就不管，私聊且llm没有说话时，就显示[tool]正在调用xxx之类的，普通消息平台还顺便截断。而如果是web端，就转为api发往（看看是http还是ws），而且是完整的内容，带有工具名字、参数
+
+
+## 代码精简
+
+目标：精简所有过度防御、无用（或者多余）变量、重复逻辑、过度抽象
+构造的无意义、强行找茬测试均删
+防御代码：只对竞态、io、网络等不可控地方进行防御，内部代码逻辑都假定不可能出错，真出错就交给报错方便排查
+每次看一个包时，列举所有if err之类的判断
+- [ ] dialogue包
+- [ ] platform包
+- [ ] tool包
+- [ ] hook 包
+- [ ] background包
+- [ ] completion包
+- [ ] fileops包
+- [ ] workspace包
+- [ ] llm包
+- [ ] media包
+- [ ] storage包
+- [ ] session包
+- [ ] command包
+- [ ] control包
+- [ ] delivery包
+
+
 ## 不一定实现
 
 - [ ] CLI TUI 支持 Markdown 渲染。
