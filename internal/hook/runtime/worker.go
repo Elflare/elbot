@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -43,6 +44,7 @@ type worker struct {
 	manualStop   bool
 	restartDelay time.Duration
 	done         chan struct{}
+	stdoutDone   chan struct{}
 	active       int
 	reload       func() error
 	reloadArmed  bool
@@ -136,11 +138,13 @@ func (w *worker) run() {
 		w.startFailed(err)
 		return
 	}
-	stdout, err := cmd.StdoutPipe()
+	stdout, stdoutWriter, err := os.Pipe()
 	if err != nil {
+		_ = stdin.Close()
 		w.startFailed(err)
 		return
 	}
+	cmd.Stdout = stdoutWriter
 	cmd.Stderr = stderrLogger{hookID: w.config.ID, Log: w.manager.opts.Log}
 	w.manager.mu.RLock()
 	w.mu.Lock()
@@ -148,12 +152,18 @@ func (w *worker) run() {
 		w.starting = false
 		w.mu.Unlock()
 		w.manager.mu.RUnlock()
+		_ = stdin.Close()
+		_ = stdout.Close()
+		_ = stdoutWriter.Close()
 		w.setStatus(StatusStopped, "")
 		return
 	}
 	if err := cmd.Start(); err != nil {
 		w.mu.Unlock()
 		w.manager.mu.RUnlock()
+		_ = stdin.Close()
+		_ = stdout.Close()
+		_ = stdoutWriter.Close()
 		w.startFailed(err)
 		return
 	}
@@ -161,14 +171,23 @@ func (w *worker) run() {
 	w.stdin = stdin
 	w.starting = false
 	w.pending = map[string]chan frame{}
+	w.stdoutDone = make(chan struct{})
 	w.mu.Unlock()
-	// Both loops belong to this admitted startup, even if Close begins next.
+	_ = stdoutWriter.Close()
+	// The owned pipe stays open across Wait, allowing stdout to drain all final frames.
 	w.manager.workWG.Go(func() {
+		defer close(w.stdoutDone)
 		w.readLoop(stdout)
+		w.mu.Lock()
+		stopping := w.stopping || w.manualStop
+		degraded := w.status == StatusDegraded || w.status == StatusFailed
+		w.mu.Unlock()
+		if !stopping && !degraded {
+			w.setStatus(StatusDegraded, "hook stdout closed")
+			w.kill()
+		}
 	})
-	w.manager.workWG.Go(func() {
-		w.waitLoop(cmd)
-	})
+	w.manager.workWG.Go(func() { w.waitLoop(cmd) })
 	w.manager.mu.RUnlock()
 
 	ctx, cancel := context.WithTimeout(w.manager.rootCtx, time.Duration(w.config.StartupTimeoutSeconds)*time.Second)
@@ -208,6 +227,7 @@ func (w *worker) startFailed(err error) {
 func (w *worker) waitLoop(cmd *exec.Cmd) {
 	err := cmd.Wait()
 	w.mu.Lock()
+	stdoutDone := w.stdoutDone
 	stopping := w.stopping
 	manualStop := w.manualStop
 	// Publish exit facts under the same lock before waking pending requests.
@@ -227,10 +247,6 @@ func (w *worker) waitLoop(cmd *exec.Cmd) {
 	exitDetail := w.detail
 	w.cmd = nil
 	w.stdin = nil
-	for id, pending := range w.pending {
-		delete(w.pending, id)
-		close(pending)
-	}
 	close(w.done)
 	w.mu.Unlock()
 	if !stopping && !manualStop {
@@ -246,8 +262,16 @@ func (w *worker) waitLoop(cmd *exec.Cmd) {
 		if w.shouldRestart() {
 			w.restartLater()
 		}
-		return
 	}
+	if stdoutDone != nil {
+		<-stdoutDone
+	}
+	w.mu.Lock()
+	for id, pending := range w.pending {
+		delete(w.pending, id)
+		close(pending)
+	}
+	w.mu.Unlock()
 }
 
 func (w *worker) shouldRestart() bool {
@@ -312,7 +336,7 @@ func (w *worker) stop(ctx context.Context) (err error) {
 	defer cancel()
 	_, err = w.request(shutdownCtx, "system.shutdown", map[string]any{})
 	if err != nil {
-		w.manager.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "hook_worker_shutdown_request_failed", Module: "hook", Content: err.Error(), ResultStatus: globalevents.LogStatus(err)})
+		w.manager.opts.Log(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "hook_worker_shutdown_request_failed", Module: "hook", Content: fmt.Sprintf("hook=%s error=%v", w.config.ID, err), ResultStatus: globalevents.LogStatus(err)})
 	}
 	graceful := true
 	select {
@@ -674,7 +698,7 @@ func (w *worker) write(ctx context.Context, value frame) error {
 	return ctx.Err()
 }
 
-func (w *worker) readLoop(reader io.Reader) {
+func (w *worker) readLoop(reader io.Reader) error {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 64*1024), share.MaxProtocolFrameBytes)
 	for scanner.Scan() {
@@ -686,7 +710,7 @@ func (w *worker) readLoop(reader io.Reader) {
 		if err != nil {
 			w.setStatus(StatusDegraded, "invalid hook.v2 stdout frame: "+err.Error())
 			w.kill()
-			return
+			return err
 		}
 		switch value.Type {
 		case "response":
@@ -695,7 +719,7 @@ func (w *worker) readLoop(reader io.Reader) {
 			if hookprotocol.ValidateID(value.ID, "plugin:") != nil || strings.TrimSpace(value.Method) == "" {
 				w.setStatus(StatusDegraded, "invalid hook request frame")
 				w.kill()
-				return
+				return fmt.Errorf("invalid hook request frame")
 			}
 			if err := w.manager.startTask(func() { w.handlePluginRequest(value) }); err != nil {
 				ok := false
@@ -708,12 +732,15 @@ func (w *worker) readLoop(reader io.Reader) {
 		default:
 			w.setStatus(StatusDegraded, "unsupported hook.v2 frame type "+value.Type)
 			w.kill()
-			return
+			return fmt.Errorf("unsupported hook.v2 frame type %s", value.Type)
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		w.setStatus(StatusDegraded, "read hook stdout: "+err.Error())
+		w.kill()
+		return err
 	}
+	return nil
 }
 
 func (w *worker) deliverResponse(value frame) {

@@ -16,6 +16,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"elbot/internal/events"
 	"elbot/internal/hook/share"
 	"elbot/internal/security"
 	tool "elbot/internal/tool/registry"
@@ -46,6 +47,13 @@ func TestRuntimeBehaviorHelper(t *testing.T) {
 					time.Sleep(time.Hour)
 				}
 			}
+			if mode == "stdout-close" {
+				time.Sleep(20 * time.Millisecond)
+				_ = os.Stdout.Close()
+				for {
+					time.Sleep(time.Hour)
+				}
+			}
 		case "event.handle":
 			if mode == "cancel-block" {
 				fmt.Fprintln(os.Stdout, `{"type":"event","method":"hook.log","params":{}}`)
@@ -55,6 +63,9 @@ func TestRuntimeBehaviorHelper(t *testing.T) {
 			}
 			writeHelperResponse(request.ID, map[string]any{"status": "completed"})
 		case "system.shutdown":
+			if mode == "shutdown-no-response" {
+				os.Exit(0)
+			}
 			if mode == "shutdown-delay" {
 				time.Sleep(60 * time.Millisecond)
 				writeHelperResponse(request.ID, map[string]any{})
@@ -71,8 +82,12 @@ func TestRuntimeBehaviorHelper(t *testing.T) {
 }
 
 func behaviorWorker(t *testing.T, mode string, timeout time.Duration) (*Manager, *worker) {
+	return behaviorWorkerWithLog(t, mode, timeout, testLog)
+}
+
+func behaviorWorkerWithLog(t *testing.T, mode string, timeout time.Duration, log func(context.Context, events.LogRecord)) (*Manager, *worker) {
 	t.Helper()
-	m, err := NewManager(Options{SharedDir: t.TempDir(), Log: testLog, Notify: testNotify})
+	m, err := NewManager(Options{SharedDir: t.TempDir(), Log: log, Notify: testNotify})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,6 +194,59 @@ func TestShutdownUsesSingleBudget(t *testing.T) {
 				t.Fatal("worker has not exited")
 			}
 		})
+	}
+}
+
+func TestShutdownResponseBeforeExitIsNotLoggedAsFailure(t *testing.T) {
+	logs := make(chan events.LogRecord, 8)
+	_, w := behaviorWorkerWithLog(t, "ack", 100*time.Millisecond, func(_ context.Context, record events.LogRecord) {
+		logs <- record
+	})
+	if err := w.stop(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		select {
+		case record := <-logs:
+			if record.EventName == "hook_worker_shutdown_request_failed" {
+				t.Fatalf("acknowledged shutdown logged as failure: %+v", record)
+			}
+		default:
+			return
+		}
+	}
+}
+
+func TestShutdownExitWithoutResponseLogsHookID(t *testing.T) {
+	logs := make(chan events.LogRecord, 8)
+	_, w := behaviorWorkerWithLog(t, "shutdown-no-response", time.Second, func(_ context.Context, record events.LogRecord) {
+		logs <- record
+	})
+	if err := w.stop(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		select {
+		case record := <-logs:
+			if record.EventName == "hook_worker_shutdown_request_failed" {
+				if !strings.Contains(record.Content, "hook=shutdown-no-response") || !strings.Contains(record.Content, "process exited while waiting for system.shutdown") {
+					t.Fatalf("shutdown diagnostic = %+v", record)
+				}
+				return
+			}
+		default:
+			t.Fatal("missing shutdown failure diagnostic")
+		}
+	}
+}
+
+func TestWorkerKillsProcessAfterUnexpectedStdoutClose(t *testing.T) {
+	_, w := behaviorWorker(t, "stdout-close", time.Second)
+	select {
+	case <-w.done:
+	case <-time.After(time.Second):
+		w.kill()
+		t.Fatal("worker did not exit after stdout closed")
 	}
 }
 
