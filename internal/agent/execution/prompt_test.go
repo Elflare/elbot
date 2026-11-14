@@ -17,6 +17,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 	"elbot/internal/memory/resident"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/tool/preload"
@@ -28,11 +29,11 @@ import (
 func TestResidentMemorySystemPromptSource(t *testing.T) {
 	store := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
 	scope := session.Scope{Platform: "qqonebot", Owner: contextinfo.ActorIdentity{Platform: "qqonebot", ID: "1"}}
-	if err := store.WriteCore(context.Background(), scope, "用户喜欢被称为娅娅。"); err != nil {
-		t.Fatalf("WriteCore: %v", err)
+	if result, err := store.WriteCore(context.Background(), scope, "用户喜欢被称为娅娅。"); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("WriteCore: %+v %v", result, err)
 	}
-	if err := store.WriteNormal(context.Background(), scope, "用户喜欢简短回答。"); err != nil {
-		t.Fatalf("WriteNormal: %v", err)
+	if result, err := store.WriteNormal(context.Background(), scope, "用户喜欢简短回答。"); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("WriteNormal: %+v %v", result, err)
 	}
 	parts, err := (dialogue.ResidentMemorySystemPromptSource{Store: store}).Parts(context.Background(), agentshare.SystemPromptRequest{Scope: scope})
 	if err != nil {
@@ -181,8 +182,8 @@ func TestSystemPromptSourcesKeepRegistrationAndToolTagOrder(t *testing.T) {
 	ctx := context.Background()
 	scope := session.Scope{Platform: "cli", Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}}
 	memoryStore := resident.NewStore(filepath.Join(t.TempDir(), "memories.toml"))
-	if err := memoryStore.WriteCore(ctx, scope, "RESIDENT_ORDER"); err != nil {
-		t.Fatalf("WriteCore: %v", err)
+	if result, err := memoryStore.WriteCore(ctx, scope, "RESIDENT_ORDER"); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("WriteCore: %+v %v", result, err)
 	}
 	tagSource := dialogue.ToolTagsSystemPromptSource{Preloader: tagPromptTestService{preload.NewPreloadService(preload.PreloadOptions{Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
 		"alpha": {Prompt: "TAG_ALPHA"},

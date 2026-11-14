@@ -12,6 +12,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 )
 
@@ -99,11 +100,14 @@ func TestCallRetryStreamBoundary(t *testing.T) {
 			calls := 0
 			result, err := processor.Call(ctx, &storage.Session{ID: "s"}, modelmgr.Selection{Client: client},
 				nil, nil, nil, nil, stream,
-				func(context.Context, agentshare.CallInput) error { steps = append(steps, "prepare"); return nil },
-				func(context.Context, agentshare.CallObservation) (agentshare.CallOutput, error) {
+				func(context.Context, agentshare.CallInput) (operationresult.Result[struct{}], error) {
+					steps = append(steps, "prepare")
+					return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
+				},
+				func(context.Context, agentshare.CallObservation) (operationresult.Result[agentshare.CallOutput], error) {
 					calls++
 					steps = append(steps, "attempt")
-					out := agentshare.CallOutput{SourceText: "text"}
+					out := operationresult.Result[agentshare.CallOutput]{Status: operationresult.Success, Data: agentshare.CallOutput{SourceText: "text"}}
 					switch tc.name {
 					case "success":
 						return out, nil
@@ -122,7 +126,7 @@ func TestCallRetryStreamBoundary(t *testing.T) {
 			if !errors.Is(err, tc.wantErr) || !reflect.DeepEqual(steps, tc.wantSteps) {
 				t.Fatalf("steps=%v error=%v", steps, err)
 			}
-			if err == nil && result.Text != "text" {
+			if err == nil && (result.Status != operationresult.Success || result.Data.Text != "text") {
 				t.Fatalf("result=%+v", result)
 			}
 		})

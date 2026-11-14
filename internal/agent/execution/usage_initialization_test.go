@@ -63,8 +63,8 @@ type usageTestDialogue struct {
 	stopping <-chan struct{}
 }
 
-func (usageTestDialogue) CheckSelection(modelmgr.Selection) operationresult.Result[struct{}] {
-	return operationresult.Result[struct{}]{Status: operationresult.Success}
+func (usageTestDialogue) CheckSelection(modelmgr.Selection) (operationresult.Result[struct{}], error) {
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
 func (d usageTestDialogue) PrepareTurn(context.Context, agentshare.TurnInput) (agentshare.PreparedTurn, error) {
@@ -115,10 +115,11 @@ func TestExecutionRestoresUsageBeforeCancellationAndCleansUpFailure(t *testing.T
 				}
 			}
 			identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})
-			row, err := sessions.Create(t.Context(), identity.Scope(testutil.WithCLIConversation(t.Context())), session.CreateRequest{Metadata: tc.metadata})
-			if err != nil {
-				t.Fatal(err)
+			created, err := sessions.Create(t.Context(), identity.Scope(testutil.WithCLIConversation(t.Context())), session.CreateRequest{Metadata: tc.metadata})
+			if err != nil || created.Status != operationresult.Success {
+				t.Fatalf("create: %+v %v", created, err)
 			}
+			row := created.Data
 			c := NewExecutionCoordinator(t.Context(), ExecutionCoordinatorDeps{
 				Sessions: sessions, SessionRows: store.Sessions(), Turns: turns, Requests: requests,
 				Identity: identity, View: view,

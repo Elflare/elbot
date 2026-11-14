@@ -156,6 +156,9 @@ func TestReplyCommitFailureKeepsFactsAndDoesNotRetry(t *testing.T) {
 					wantErr = mapErr
 					wantPersisted = false
 				}
+				if buffered && f.platform.sendErr != nil {
+					wantReceipt = false
+				}
 				got, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
 				if !errors.Is(err, wantErr) || (got.MessageID != "") != wantPersisted || (len(got.Receipt.PlatformMessageIDs) > 0 || len(got.Receipt.SentMessages) > 0) != wantReceipt {
 					t.Fatalf("result=%+v err=%v events=%v", got, err, f.events)

@@ -108,7 +108,7 @@ func (r *ToolCallRepository) SuccessfulIDs(ctx context.Context, sessionID string
 		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(batch)), ",")
 		args := make([]any, 1, len(batch)+1)
 		args[0] = sessionID
-		for i, id := range batch {
+		for _, id := range batch {
 			args = append(args, id)
 		}
 		rows, err := r.db.QueryContext(ctx, `

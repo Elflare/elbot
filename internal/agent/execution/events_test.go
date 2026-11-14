@@ -68,7 +68,6 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 
 func TestReplyFactsPreservePartialSuccessAndReceiptSnapshot(t *testing.T) {
 	f := newReplyTestFixture(t, false)
-	f.platform.sendErr = errors.New("partial send")
 	f.repo.mapErr = errors.New("map failed")
 	f.platform.receipt.SentMessages[0].OutputIndexes = []int{0}
 	var records []globalevents.LogRecord

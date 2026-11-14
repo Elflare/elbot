@@ -25,7 +25,6 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/completion"
 	"elbot/internal/config"
-	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	"elbot/internal/control"
 	"elbot/internal/fileops"

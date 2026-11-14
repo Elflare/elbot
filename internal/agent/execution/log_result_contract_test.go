@@ -79,18 +79,18 @@ func TestAssistantSendFailureReturnsWithoutLowerReport(t *testing.T) {
 	}
 	defer connection.Disconnect()
 	receipt, err := f.out.Send(f.ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "message"})
-	if !errors.Is(err, want) || len(receipt.PlatformMessageIDs) != 1 || counts["delivery"] != 0 || counts["agent"] != 1 {
+	if !errors.Is(err, want) || len(receipt.PlatformMessageIDs) != 1 || len(counts) != 0 {
 		t.Fatal("receipt= result= err= logs=", receipt, err, counts)
 	}
 }
 
-func TestBufferedSendFailureKeepsReceipt(t *testing.T) {
+func TestBufferedSendFailureDoesNotUseResultData(t *testing.T) {
 	for _, sendErr := range []error{errors.New("send failed"), context.Canceled} {
 		t.Run(sendErr.Error(), func(t *testing.T) {
 			f := newReplyTestFixture(t, true)
 			f.platform.sendErr = sendErr
 			result, err := f.committer.Commit(f.ctx, f.requestCtx, f.in, f.out)
-			if err != nil || result.MessageID == "" || len(result.Receipt.SentMessages) != 1 {
+			if err != nil || result.MessageID == "" || len(result.Receipt.SentMessages) != 0 || len(result.Receipt.PlatformMessageIDs) != 0 {
 				t.Fatalf("result=%+v err=%v", result, err)
 			}
 		})
@@ -99,14 +99,12 @@ func TestBufferedSendFailureKeepsReceipt(t *testing.T) {
 
 func TestSendOutputsRecordsReceiptsAndReturnsFailure(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		status events.ResultStatus
-		err    error
-		level  slog.Level
+		name string
+		err  error
 	}{
-		{"success", events.ResultSucceeded, nil, slog.LevelDebug},
-		{"wrapped_cancellation", events.ResultCanceled, fmt.Errorf("transport: %w", context.Canceled), slog.LevelInfo},
-		{"mixed_failure", events.ResultFailed, errors.New("independent send failure"), slog.LevelWarn},
+		{"success", nil},
+		{"wrapped_cancellation", fmt.Errorf("transport: %w", context.Canceled)},
+		{"mixed_failure", errors.New("independent send failure")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var records []events.LogRecord
@@ -132,6 +130,12 @@ func TestSendOutputsRecordsReceiptsAndReturnsFailure(t *testing.T) {
 			_, err = sender.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSendExtras, Outputs: []delivery.Output{delivery.Text("business text")}})
 			if err != tc.err {
 				t.Fatal("error:", err)
+			}
+			if tc.err != nil {
+				if len(records) != 0 {
+					t.Fatalf("failure logged as delivery success: %+v", records)
+				}
+				return
 			}
 			if len(records) != 1 || records[0].ResultStatus != events.ResultSucceeded || records[0].Level != slog.LevelDebug {
 				t.Fatalf("records=%#v", records)
@@ -183,12 +187,20 @@ func TestReplyCommitReportsSendFailureSeparatelyFromReceipts(t *testing.T) {
 				}
 				t.Cleanup(connection.Disconnect)
 				result, err := fixture.committer.Commit(fixture.ctx, fixture.requestCtx, fixture.in, fixture.out)
-				if err != nil || len(result.Receipt.PlatformMessageIDs) != 1 || len(records) != 1 {
+				wantReceipt := mode == "direct" || sendErr == nil
+				if err != nil || (len(result.Receipt.PlatformMessageIDs) == 1) != wantReceipt {
 					t.Fatalf("result=%+v err=%v records=%+v", result, err, records)
 				}
-				content := readDeliveryLog(t, records[0])
-				if records[0].ResultStatus != events.ResultSucceeded || records[0].Level != slog.LevelDebug || content.Operation != "send_assistant_message" || !slices.Contains(content.PlatformMessageIDs, "sent") || content.Detail != "" {
-					t.Fatalf("reply facts changed: %+v", records[0])
+				if sendErr == nil {
+					if len(records) != 1 {
+						t.Fatalf("missing delivery fact: %+v", records)
+					}
+					content := readDeliveryLog(t, records[0])
+					if records[0].ResultStatus != events.ResultSucceeded || records[0].Level != slog.LevelDebug || content.Operation != "send_assistant_message" || !slices.Contains(content.PlatformMessageIDs, "sent") || content.Detail != "" {
+						t.Fatalf("reply facts changed: %+v", records[0])
+					}
+				} else if len(records) != 0 {
+					t.Fatalf("failure logged as delivery success: %+v", records)
 				}
 				if sendErr != nil {
 					select {

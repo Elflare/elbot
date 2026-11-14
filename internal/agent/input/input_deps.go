@@ -51,7 +51,6 @@ type InputCoordinatorDeps struct {
 		EnterActivation(context.Context, session.Scope, ...string) (context.Context, func(), error)
 		Resume(context.Context, session.Scope, string) (operationresult.Result[*storage.Session], error)
 		CurrentBound(context.Context, session.Scope) (operationresult.Result[session.CurrentBoundData], error)
-		Current(context.Context, session.Scope) (*storage.Session, error)
 		RecordActivity(context.Context, *session.Binding) error
 	}
 	Turns    interface{ Snapshot(string) turn.Snapshot }

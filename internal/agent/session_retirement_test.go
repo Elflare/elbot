@@ -45,10 +45,11 @@ func TestSessionRetirementWaitsForStoppingRequestAndIgnoresObserverFailure(t *te
 			t.Fatal(err)
 		}
 		scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-		row, err := m.sessions.Create(t.Context(), scope, session.CreateRequest{})
-		if err != nil {
-			t.Fatal(err)
+		created, err := m.sessions.Create(t.Context(), scope, session.CreateRequest{})
+		if err != nil || created.Status != operationresult.Success {
+			t.Fatalf("create: %+v %v", created, err)
 		}
+		row := created.Data
 		current, err := m.sessions.CurrentBound(t.Context(), scope)
 		if err != nil || current.Status != operationresult.Success {
 			t.Fatalf("current: %+v %v", current, err)
@@ -86,10 +87,13 @@ func TestSessionRetirementWaitsForStoppingRequestAndIgnoresObserverFailure(t *te
 		if _, err := deps.Store.Sessions().Get(t.Context(), row.ID); err != nil {
 			t.Fatal("expiry deleted history", err)
 		}
-		if _, err := m.sessions.Resume(t.Context(), scope, row.ID); err != nil {
-			t.Fatal(err)
+		if resumed, err := m.sessions.Resume(t.Context(), scope, row.ID); err != nil || resumed.Status != operationresult.Success {
+			t.Fatalf("resume: %+v %v", resumed, err)
 		}
-		current, _ := m.sessions.CurrentBound(t.Context(), scope)
+		current, err = m.sessions.CurrentBound(t.Context(), scope)
+		if err != nil || current.Status != operationresult.Success {
+			t.Fatalf("current: %+v %v", current, err)
+		}
 		next := current.Data.Binding
 		if next == binding || !next.Valid() || binding.Valid() {
 			t.Fatal("resume reused retired activation")

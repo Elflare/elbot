@@ -12,10 +12,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -34,10 +36,11 @@ func TestMaterialsKeepCanonicalOriginalAndMissingPlaceholder(t *testing.T) {
 	preparer := &Preparer{NewMessageID: testutil.IDSequence().MessageID, Media: center, PublishUsageFinished: func(ctx context.Context, id media.UsageID) {
 		center.PublishUsageFinished(ctx, []media.UsageID{id})
 	}}
-	info, err := center.ImportBytes(t.Context(), []byte("image"), media.Input{Name: "image.png", MIMEType: "image/png"}, media.ImportLimits{})
-	if err != nil {
-		t.Fatal(err)
+	imported, err := center.ImportBytes(t.Context(), []byte("image"), media.Input{Name: "image.png", MIMEType: "image/png"}, media.ImportLimits{})
+	if err != nil || imported.Status != operationresult.Success {
+		t.Fatalf("import: %+v %v", imported, err)
 	}
+	info := imported.Data
 	input := []llm.LLMMessage{{Role: llm.RoleUser, Segments: []llm.MessageSegment{{Type: llm.SegmentImage, MediaID: info.ID, URL: "stale-request-url", Name: info.Name, MIMEType: info.MIMEType}}}}
 	canonical, err := preparer.ArchiveMaterials(t.Context(), input)
 	if err != nil {
@@ -50,14 +53,14 @@ func TestMaterialsKeepCanonicalOriginalAndMissingPlaceholder(t *testing.T) {
 	canonical = append(canonical, llm.CloneMessages(canonical)...)
 	original := llm.CloneMessages(canonical)
 	prepared, release, err := preparer.PrepareMaterials(t.Context(), canonical)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || prepared.Status != operationresult.Success {
+		t.Fatalf("prepare: %+v %v", prepared, err)
 	}
 	preparer.FinishMaterials(t.Context(), release)
 	if err := center.Cleanup(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if prepared[0].Segments[0].URL != "data:image/png;base64,aW1hZ2U=" || !reflect.DeepEqual(canonical, original) {
+	if prepared.Data[0].Segments[0].URL != "data:image/png;base64,aW1hZ2U=" || !reflect.DeepEqual(canonical, original) {
 		t.Fatal("prepared content or canonical copy changed")
 	}
 	metadata, err := store.Media().Get(t.Context(), segment.MediaID)
@@ -68,9 +71,16 @@ func TestMaterialsKeepCanonicalOriginalAndMissingPlaceholder(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Existing references archive without opening entities, even after deletion.
-	archived, err := preparer.ArchiveMaterials(t.Context(), prepared)
+	archived, err := preparer.ArchiveMaterials(t.Context(), prepared.Data)
 	if err != nil || !reflect.DeepEqual(archived, canonical) {
 		t.Fatalf("archive re-read existing media: %v", err)
+	}
+	if _, usageID, err := preparer.PrepareMaterials(t.Context(), canonical); !errors.Is(err, os.ErrNotExist) || usageID != "" {
+		t.Fatalf("missing file must remain an IO error and release usage: %q %v", usageID, err)
+	}
+	// A retired media record is a business absence, unlike an unreadable entity.
+	if _, err := store.Media().ClaimOrphans(t.Context(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
 	}
 	logs := 0
 	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
@@ -87,14 +97,14 @@ func TestMaterialsKeepCanonicalOriginalAndMissingPlaceholder(t *testing.T) {
 	}
 	defer connection.Disconnect()
 	prepared, release, err = preparer.PrepareMaterials(t.Context(), canonical)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || prepared.Status != operationresult.Success {
+		t.Fatalf("prepare missing: %+v %v", prepared, err)
 	}
 	preparer.FinishMaterials(t.Context(), release)
 	if err := center.Cleanup(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if logs != 1 || prepared[0].Segments[0].Type != llm.SegmentText || !reflect.DeepEqual(canonical, original) {
+	if logs != 1 || prepared.Data[0].Segments[0].Type != llm.SegmentText || !reflect.DeepEqual(canonical, original) {
 		t.Fatalf("missing handling: logs=%d", logs)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -214,11 +224,11 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 	root := t.TempDir()
 	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	item, err := center.ImportBytes(ctx, []byte("tool input"), media.Input{Name: "input.bin"}, media.ImportLimits{})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || item.Status != operationresult.Success {
+		t.Fatalf("import: %+v %v", item, err)
 	}
 	calls := []llm.ToolCallRequest{{ID: "A", Name: "a", Arguments: "{}"}, {ID: "B", Name: "b", Arguments: "{}"}, {ID: "C", Name: "c", Arguments: "{}"}}
-	calls[0].Arguments = `{"media":"` + item.ID + `"}`
+	calls[0].Arguments = `{"media":"` + item.Data.ID + `"}`
 	calls[1].Arguments = calls[0].Arguments
 	calls[2].Arguments = calls[0].Arguments
 	head := agentshare.ToolCallStorageMessage(row.ID, "", "", calls, "")
@@ -230,14 +240,14 @@ func TestToolBatchSlotsAreVisibleAndUpdatedInOriginalOrder(t *testing.T) {
 		t.Fatalf("initial=%+v error=%v", initial, err)
 	}
 	refs, err := store.MediaReferences().ListByOwner(ctx, "session_tool", row.ID)
-	if err != nil || len(refs) != 1 || refs[0].MediaID != item.ID {
+	if err != nil || len(refs) != 1 || refs[0].MediaID != item.Data.ID {
 		t.Fatalf("initial media references=%+v error=%v", refs, err)
 	}
 	item, err = center.ImportBytes(ctx, []byte("prepared tool input"), media.Input{Name: "prepared.bin"}, media.ImportLimits{})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || item.Status != operationresult.Success {
+		t.Fatalf("import prepared: %+v %v", item, err)
 	}
-	calls[1].Arguments = `{"media":"` + item.ID + `","previous":` + calls[0].Arguments + `}`
+	calls[1].Arguments = `{"media":"` + item.Data.ID + `","previous":` + calls[0].Arguments + `}`
 	if err := committer.Prepared(ctx, 1, calls[1]); err != nil {
 		t.Fatal(err)
 	}

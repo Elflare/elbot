@@ -9,6 +9,7 @@ import (
 	agentoutput "elbot/internal/agent/output"
 	agenttools "elbot/internal/agent/tools"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 )
 
@@ -18,7 +19,10 @@ func TestHookAdaptersPreserveBusinessResults(t *testing.T) {
 			return call.Arguments, nil
 		},
 		ToolCallCompleted: func(_ context.Context, _ agenthooks.Facts, result agentshare.ToolResult) ([]llm.MessageSegment, error) {
-			return result.Segments, nil
+			if result.Result.Status != operationresult.Success {
+				t.Fatalf("tool result: %+v", result.Result)
+			}
+			return result.Result.Data, nil
 		},
 		AgentTurnOutputPrepared: func(_ context.Context, _ agenthooks.Facts, text string) (string, error) {
 			return text, nil
@@ -31,7 +35,7 @@ func TestHookAdaptersPreserveBusinessResults(t *testing.T) {
 	if err != nil || prepared != call {
 		t.Fatal("prepared= result= err=", prepared, err)
 	}
-	segments, err := deps.CompleteToolCall(t.Context(), session, call, "low", llm.TextSegments("business body"), nil)
+	segments, err := deps.CompleteToolCall(t.Context(), session, call, "low", operationresult.Result[[]llm.MessageSegment]{Status: operationresult.Success, Data: llm.TextSegments("business body")}, nil)
 	if err != nil || llm.SegmentsTextOnly(segments) != "business body" {
 		t.Fatal("segments= result= err=", segments, err)
 	}

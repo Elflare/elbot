@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 )
 
@@ -50,7 +51,7 @@ func TestContextLoadPreservesManifestOrderAndRejectsBrokenRecords(t *testing.T) 
 				}
 				return
 			}
-			if err != nil || len(window.Items) != 2 || !strings.Contains(string(window.Items[0].Raw), "second") || !strings.Contains(string(window.Items[1].Raw), "first") {
+			if err != nil || window.Status != operationresult.Success || len(window.Data.Items) != 2 || !strings.Contains(string(window.Data.Items[0].Raw), "second") || !strings.Contains(string(window.Data.Items[1].Raw), "first") {
 				t.Fatalf("window=%+v error=%v", window, err)
 			}
 		})

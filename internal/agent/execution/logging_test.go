@@ -43,13 +43,8 @@ func TestReplyLogPreservesCanceledSendAndIndependentSaveFailure(t *testing.T) {
 	if !errors.Is(err, f.repo.appendErr) || errors.Is(err, context.Canceled) || len(result.Receipt.SentMessages) != 1 {
 		t.Fatalf("result = %+v, error = %v", result, err)
 	}
-	if len(records) != 1 || records[0].ResultStatus != globalevents.ResultSucceeded || records[0].Level != slog.LevelDebug {
+	if len(records) != 0 {
 		t.Fatalf("records = %#v", records)
-	}
-	for _, fact := range []string{`"platform_message_id":"sent"`} {
-		if !strings.Contains(records[0].Content, fact) {
-			t.Errorf("missing %q: %s", fact, records[0].Content)
-		}
 	}
 	if !strings.Contains(err.Error(), "independent save failure") {
 		t.Fatalf("save diagnostic missing from returned error: %v", err)

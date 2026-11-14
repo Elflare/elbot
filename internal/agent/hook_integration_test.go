@@ -163,7 +163,7 @@ data: [DONE]
 	commandCtx := testutil.WithCLIConversation(t.Context())
 	commandCtx = contextinfo.WithActor(commandCtx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}})
 	commands, err := controller.ListCommands(commandCtx, control.ListCommandsRequest{Name: "hooks"})
-	if err != nil || len(commands.Items) != 1 || commands.Items[0].Name != "hooks" {
+	if err != nil || commands.Status != operationresult.Success || len(commands.Data.Items) != 1 || commands.Data.Items[0].Name != "hooks" {
 		t.Fatalf("Hook command missing from control catalog: %+v err=%v", commands, err)
 	}
 	items, err := a.Complete(testutil.WithCLIConversation(t.Context()), completion.Request{Text: "/hooks integration", Cursor: len("/hooks integration")})

@@ -249,25 +249,25 @@ func TestBackgroundCancellationDuringPreparation(t *testing.T) {
 func TestBackgroundCleanupSkipsBusySessions(t *testing.T) {
 	m, deps, _, ctx := newBackgroundAgent(t)
 	idle, err := m.sessions.PrepareBackground(ctx, session.Scope{Platform: "cli"}, session.BackgroundRequest{TaskType: "cron", TaskID: "idle"})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || idle.Status != operationresult.Success {
+		t.Fatalf("idle: %+v %v", idle, err)
 	}
 	busy, err := m.sessions.PrepareBackground(ctx, session.Scope{Platform: "cli"}, session.BackgroundRequest{TaskType: "cron", TaskID: "busy"})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || busy.Status != operationresult.Success {
+		t.Fatalf("busy: %+v %v", busy, err)
 	}
-	if !m.turns.StartAttempt(busy.ID, turn.Input{Text: "work"}, turn.NewExecution("busy"), "attempt") {
+	if !m.turns.StartAttempt(busy.Data.ID, turn.Input{Text: "work"}, turn.NewExecution("busy"), "attempt") {
 		t.Fatal("could not mark busy")
 	}
-	defer m.turns.StopSession(busy.ID)
+	defer m.turns.StopSession(busy.Data.ID)
 	count, err := m.CleanupSessions(ctx, time.Now().Add(time.Hour))
 	if err != nil || count != 1 {
 		t.Fatalf("count=%d err=%v", count, err)
 	}
-	if _, err := deps.Store.Sessions().Get(ctx, idle.ID); !errors.Is(err, storage.ErrNotFound) {
+	if _, err := deps.Store.Sessions().Get(ctx, idle.Data.ID); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatal(err)
 	}
-	if _, err := deps.Store.Sessions().Get(ctx, busy.ID); err != nil {
+	if _, err := deps.Store.Sessions().Get(ctx, busy.Data.ID); err != nil {
 		t.Fatal(err)
 	}
 }

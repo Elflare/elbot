@@ -86,12 +86,12 @@ func (p *testPrepared) RunLoop(_, requestCtx context.Context, in agentshare.Loop
 
 type testCompactor struct{ calls int }
 
-func (c *testCompactor) Prepare(_ context.Context, row *storage.Session, reason string, selection modelmgr.Selection) (*contextmgr.PreparedCompact, error) {
+func (c *testCompactor) Prepare(_ context.Context, row *storage.Session, reason string, selection modelmgr.Selection) (operationresult.Result[*contextmgr.PreparedCompact], error) {
 	c.calls++
-	return &contextmgr.PreparedCompact{
+	return operationresult.Result[*contextmgr.PreparedCompact]{Status: operationresult.Success, Data: &contextmgr.PreparedCompact{
 		Title: "compacted test",
-		State: &contextmgr.CompactState{SourceSessionID: row.ID, TriggerReason: reason, Provider: selection.Provider, Model: selection.Model, Summary: "test seed"},
-	}, nil
+		State: &contextmgr.CompactState{SourceSessionID: row.ID, TriggerReason: reason, Provider: selection.Provider, Model: selection.Model},
+	}}, nil
 }
 
 type testOutput struct {
@@ -146,10 +146,11 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	client := &testClient{}
 	registry.Register(routes.Binding{APIType: testProtocol, Loop: loop, Compactor: compactor})
 	registry.Register(routes.Binding{APIType: llm.APITypeChat, Loop: &testLoop{t: t}})
-	row, err = sessions.RegisterOrigin(ctx, row.ID, origin)
-	if err != nil {
-		t.Fatal(err)
+	registered, err := sessions.RegisterOrigin(ctx, row.ID, origin)
+	if err != nil || registered.Status != operationresult.Success {
+		t.Fatalf("register origin: %+v %v", registered, err)
 	}
+	row = registered.Data
 	contexts := contextmgr.New(contextmgr.Options{Store: store, Compactors: registry})
 	out := &testOutput{t: t, messages: store.Messages()}
 	runner := &dialogue.Runner{Status: testStatus{}, Routes: registry, Preparer: &dialogue.Preparer{NewMessageID: testutil.IDSequence().MessageID, Contexts: contexts, Media: mediatest.New(t, media.MediaCenterDeps{Store: store}, t.TempDir())},
@@ -190,7 +191,7 @@ func TestRegisteredProtocolUsesCommonTurnAndCompaction(t *testing.T) {
 	// Source ownership chooses the compactor even when the target selection
 	// belongs to a different provider and wire protocol.
 	compressed, err := contexts.Compact(ctx, row, "manual", modelmgr.Selection{ModelSelection: config.ModelSelection{Provider: "other", Model: "m"}, Client: &testClient{}})
-	if err != nil || compactor.calls != 1 || compressed.State.SourceSessionID != row.ID || compressed.State.TriggerReason != "manual" {
+	if err != nil || compressed.Status != operationresult.Success || compactor.calls != 1 || compressed.Data.State.SourceSessionID != row.ID || compressed.Data.State.TriggerReason != "manual" {
 		t.Fatalf("wrong compaction route: %+v / %v", compressed, err)
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/modelmgr"
+	"elbot/internal/operationresult"
 	"elbot/internal/request"
 	"elbot/internal/security"
 	"elbot/internal/signal"
@@ -53,10 +54,11 @@ func TestWorkflowNoticeFailureIsLoggedAndHandled(t *testing.T) {
 				sessions := newSessionSupervisor(t, store)
 				identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})
 				ctx := testutil.WithCLIConversation(t.Context())
-				row, err := sessions.GetOrCreateCurrent(ctx, identity.Scope(ctx), "notice")
-				if err != nil {
-					t.Fatal(err)
+				current, err := sessions.GetOrCreateCurrent(ctx, identity.Scope(ctx), "notice")
+				if err != nil || current.Status != operationresult.Success {
+					t.Fatalf("current: %+v %v", current, err)
 				}
+				row := current.Data
 				turns := turn.NewSupervisor(testutil.IDSequence())
 				execution := turn.NewExecution("run")
 				ctx = turn.WithAttempt(turn.WithExecution(ctx, execution), "attempt")
