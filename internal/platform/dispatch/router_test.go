@@ -8,15 +8,31 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/operationresult"
 	"elbot/internal/platform/share"
+	"elbot/internal/signal"
 )
 
 type testSender struct {
 	send func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error)
+}
+
+type structuredStreamSender struct {
+	testSender
+	events chan delivery.StreamEvent
+}
+
+func (s structuredStreamSender) SupportsToolCallEvents() bool { return true }
+func (s structuredStreamSender) StartStream(context.Context) (delivery.MessageStream, error) {
+	return delivery.StreamFunc(func(_ context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+		s.events <- event
+		return delivery.Receipt{}, nil
+	}), nil
 }
 
 func (s testSender) Name() string { return "primary" }
@@ -44,6 +60,83 @@ func TestRouterStreamFallbackPreservesBlocksAndActions(t *testing.T) {
 	output := <-got
 	if len(output.Blocks) != len(blocks) || output.Blocks[1].Kind != delivery.ContentDiff || output.Blocks[1].Content != "-before\n+after" || len(output.Actions) != 1 || output.Actions[0] != actions[0] {
 		t.Fatalf("fallback output lost structured content: %#v", output)
+	}
+}
+
+func TestRouterNotifiesOnlyPrivateCallsWithoutAssistantText(t *testing.T) {
+	notifications := make(chan events.Notification, 4)
+	connection, err := events.NotificationRequested.Observe(func(_ context.Context, notice events.Notification) {
+		notifications <- notice
+	}, signal.ConnectOptions{Shutdown: signal.Drain})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Disconnect()
+
+	sender := testSender{send: func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+		t.Fatal("tool notice bypassed notification routing")
+		return delivery.Receipt{}, nil
+	}}
+	router := New(Options{Primary: sender})
+	for _, tc := range []struct {
+		name     string
+		chatType contextinfo.ChatType
+		speaking bool
+	}{
+		{name: "group", chatType: contextinfo.ChatGroup},
+		{name: "assistant already speaking", chatType: contextinfo.ChatPrivate, speaking: true},
+		{name: "private", chatType: contextinfo.ChatPrivate},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{
+				Platform: sender.Name(), ChatType: tc.chatType, ChatID: "chat",
+			}})
+			stream, err := router.StartStream(ctx)
+			if err != nil || stream.Status != operationresult.Success {
+				t.Fatalf("stream=%+v err=%v", stream, err)
+			}
+			_, err = stream.Data.Send(ctx, delivery.StreamEvent{
+				Type: delivery.StreamToolCall, ToolCallID: "call",
+				ToolCall:          &delivery.ToolCall{Name: "shell", Arguments: `{"cmd":"pwd"}`},
+				AssistantSpeaking: tc.speaking,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.name != "private" {
+				return
+			}
+			select {
+			case got := <-notifications:
+				if got.Text != `[tool] 正在调用 shell：{"cmd":"pwd"}` || got.Origin == nil || got.Origin.Source.ChatType != contextinfo.ChatPrivate {
+					t.Fatalf("notification = %+v", got)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("private tool call notification was not emitted")
+			}
+		})
+	}
+}
+
+func TestRouterForwardsStructuredToolCallsForGroupConversation(t *testing.T) {
+	sender := structuredStreamSender{testSender: testSender{}, events: make(chan delivery.StreamEvent, 1)}
+	router := New(Options{Primary: sender})
+	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{
+		Platform: sender.Name(), ChatType: contextinfo.ChatGroup, ChatID: "group",
+	}})
+	stream, err := router.StartStream(ctx)
+	if err != nil || stream.Status != operationresult.Success {
+		t.Fatalf("stream=%+v err=%v", stream, err)
+	}
+	event := delivery.StreamEvent{
+		Type: delivery.StreamToolCall, ToolCallID: "call",
+		ToolCall: &delivery.ToolCall{Name: "shell", Arguments: `{"cmd":"pwd"}`},
+	}
+	if _, err := stream.Data.Send(ctx, event); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-sender.events; got.ToolCallID != event.ToolCallID || got.ToolCall == nil || *got.ToolCall != *event.ToolCall {
+		t.Fatalf("structured tool call = %+v, want %+v", got, event)
 	}
 }
 

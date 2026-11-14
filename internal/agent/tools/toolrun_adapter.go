@@ -6,7 +6,6 @@ import (
 	"elbot/internal/tool"
 	"encoding/json"
 	"log/slog"
-	"strings"
 
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
@@ -106,16 +105,15 @@ func (d toolRunDeps) PrepareToolContext(ctx context.Context, session *storage.Se
 	return workspace.WithWorkspaceStore(ctx, d.NewWorkspaceStore(session.ID))
 }
 
-func (d toolRunDeps) ShouldSendPreview(ctx context.Context, assistantText string) bool {
-	return d.identity.IsCLI(ctx) || strings.TrimSpace(assistantText) == ""
-}
-
 func (d toolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail []tool.ConfirmationDetailBlock) (operationresult.Result[tool.ConfirmResult], error) {
 	return d.confirmations.AwaitToolConfirmation(ctx, sessionID, call, assessment, detail)
 }
 
-func (d toolRunDeps) SendPreview(ctx context.Context, text ...string) {
-	d.output.SendPreview(ctx, text...)
+func (d toolRunDeps) PublishToolCall(ctx context.Context, call llm.ToolCallRequest, assistantSpeaking bool) {
+	_, _ = d.output.Send(ctx, delivery.StreamEvent{
+		Type: delivery.StreamToolCall, ToolCallID: call.ID,
+		ToolCall: &delivery.ToolCall{Name: call.Name, Arguments: call.Arguments}, AssistantSpeaking: assistantSpeaking,
+	})
 }
 
 func (d toolRunDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) (operationresult.Result[struct{}], error) {
@@ -177,7 +175,6 @@ func (d toolRunDeps) RefreshExecution(ctx context.Context, row *storage.Session)
 type ToolIdentity interface {
 	Scope(context.Context) sessionstate.Scope
 	Actor(context.Context) contextinfo.Actor
-	IsCLI(context.Context) bool
 }
 
 type ToolConfirmations interface {

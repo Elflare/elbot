@@ -201,12 +201,11 @@ type ConfirmResult struct {
 type RunnerDeps interface {
 	RefreshExecution(context.Context, *storage.Session) (context.Context, error)
 	PrepareToolCall(context.Context, *storage.Session, llm.ToolCallRequest) (llm.ToolCallRequest, error)
-	ShouldSendPreview(context.Context, string) bool
+	PublishToolCall(context.Context, llm.ToolCallRequest, bool)
 	ConfirmToolCall(context.Context, string, llm.ToolCallRequest, RiskAssessment, []ConfirmationDetailBlock) (operationresult.Result[ConfirmResult], error)
 	StartToolRequest(context.Context, string, string) (context.Context, func(), error)
 	PrepareToolContext(context.Context, *storage.Session, llm.ToolCallRequest) context.Context
 	CompleteToolCall(context.Context, *storage.Session, llm.ToolCallRequest, string, operationresult.Result[[]llm.MessageSegment], error) ([]llm.MessageSegment, error)
-	SendPreview(context.Context, ...string)
 	SendOutputs(context.Context, []delivery.Output) (operationresult.Result[struct{}], error)
 	PublishToolResult(context.Context, string, delivery.ToolResult)
 	AuditToolDenied(context.Context, string, llm.ToolCallRequest, security.RiskLevel, string)

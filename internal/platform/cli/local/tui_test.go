@@ -8,14 +8,49 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 
 	"elbot/internal/completion"
+	"elbot/internal/delivery"
 	"elbot/internal/llm"
 	runtimestatus "elbot/internal/runtime"
 )
+
+func TestTUIToolCallStreamUpdatesExistingCard(t *testing.T) {
+	m := tuiModel{viewport: viewport.New(80, 24)}
+	m.applyStreamEvent(tuiStreamMsg{ID: 2, Event: delivery.StreamEvent{
+		Type: delivery.StreamToolCall, ToolCallID: "call-1",
+		ToolCall: &delivery.ToolCall{Name: "shell", Arguments: `{"cmd":"pwd"}`},
+	}})
+	if len(m.content) != 1 || m.content[0].toolStatus != "正在调用" || m.content[0].toolCall.Name != "shell" {
+		t.Fatalf("started tool card = %#v", m.content)
+	}
+	card := m.content[0]
+	m.applyStreamEvent(tuiStreamMsg{ID: 1, Event: delivery.StreamEvent{
+		Type: delivery.StreamToolResult, ToolCallID: "call-1",
+		ToolResult: &delivery.ToolResult{Success: true, Segments: llm.TextSegments("/work")},
+	}})
+	if len(m.content) != 1 || m.content[0] != card || card.toolStatus != "完成" || card.toolCall.Arguments != `{"cmd":"pwd"}` || card.text != "/work" {
+		t.Fatalf("updated tool card = %#v", m.content)
+	}
+	m.applyStreamEvent(tuiStreamMsg{ID: 3, Event: delivery.StreamEvent{
+		Type: delivery.StreamToolResult, ToolCallID: "missing",
+		ToolResult: &delivery.ToolResult{Success: true, Segments: llm.TextSegments("ignored")},
+	}})
+	if len(m.content) != 1 {
+		t.Fatalf("unmatched tool result created a card: %#v", m.content)
+	}
+	m.applyStreamEvent(tuiStreamMsg{ID: 4, Event: delivery.StreamEvent{
+		Type: delivery.StreamToolCall, ToolCallID: "call-1",
+		ToolCall: &delivery.ToolCall{Name: "shell", Arguments: `{"cmd":"date"}`},
+	}})
+	if len(m.content) != 2 || m.content[1] == card || m.content[1].toolCall.Arguments != `{"cmd":"date"}` {
+		t.Fatalf("reused tool call ID reused old card: %#v", m.content)
+	}
+}
 
 type fakeCompletingHandler struct{}
 

@@ -15,6 +15,7 @@ const (
 	PhaseLLM       Phase = "llm"
 	PhaseTool      Phase = "tool"
 	PhaseSending   Phase = "sending"
+	PhaseCompact   Phase = "compact"
 	PhaseDone      Phase = "done"
 	PhaseError     Phase = "error"
 	PhaseStopping  Phase = "stopping"

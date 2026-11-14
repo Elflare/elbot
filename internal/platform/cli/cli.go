@@ -51,3 +51,8 @@ func (a *Adapter) StartStream(ctx context.Context) (delivery.MessageStream, erro
 	}
 	return streamRuntime.StartStream(ctx)
 }
+
+func (a *Adapter) SupportsToolCallEvents() bool {
+	runtime, ok := a.runtime.(clishare.ToolCallEventRuntime)
+	return ok && runtime.SupportsToolCallEvents()
+}

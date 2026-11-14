@@ -146,7 +146,7 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 {"type":"status","snapshot":{"Phase":"llm","Provider":"openai","Model":"gpt-4o"}}
 ```
 
-快照用于展示当前运行状态。状态更新可能合并；取消后仍可能收到已提交的终态。`Phase` 为 `idle`、`preparing`、`llm`、`tool`、`sending`、`done` 或 `error`。
+快照用于展示当前运行状态。状态更新可能合并；取消后仍可能收到已提交的终态。`Phase` 为 `idle`、`preparing`、`llm`、`tool`、`compact`、`sending`、`done` 或 `error`；`compact` 表示上下文压缩中。
 
 ### stream — 消息流事件
 
@@ -160,7 +160,9 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 
 `stream_id` 标识当前连接中的单条逻辑消息，用于分别维护正文和推理预览；它不是请求 ID，也不能用于重连恢复。
 
-事件可包含 `text`、`actions`、`blocks` 或工具结果字段。`blocks` 是有序的 `{kind, content}` 列表；`actions` 含 `id`、`label`、`command`，客户端可将命令作为新的 `input.text` 提交。
+事件可包含 `text`、`actions`、`blocks`、工具调用或工具结果字段。`blocks` 是有序的 `{kind, content}` 列表；`actions` 含 `id`、`label`、`command`，客户端可将命令作为新的 `input.text` 提交。
+
+工具事件通过 `tool_call_id` 关联；工具调用与结果可能位于不同 `stream_id`，客户端应按活动调用 ID 在原卡片更新结果，保留调用事件中的名称和完整参数，并在结果抵达后结束该 ID 的活动映射。`tool_call` 携带模型给出的完整原始参数；`tool_result` 只携带成功状态和完整原始 segments。远程前端通过 WebSocket 获取完整结构；文本消息平台只收到私聊且助手尚未发言时的裁剪文本提示。
 
 | event.type | 客户端处理 |
 |------------|------------|
@@ -169,7 +171,8 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 | reset | 清除该流的正文和推理预览；重试可复用 `stream_id` |
 | finish | 当前生成结束，但保留预览和流关联，等待 `send` 或重试 |
 | send | 用最终 `text` 或 `blocks` 整体替换正文预览并提交；保留推理内容并结束流关联 |
-| tool_result | 工具结果持久化后发送，可通过 `tool_call_id` 关联；详情见 `GET /api/v1/tools/{name}/detail` |
+| tool_call | 模型发起调用时发送，含 `tool_call_id` 与 `{name, arguments}`；arguments 保留完整原文 |
+| tool_result | 工具结果提交后发送，可通过 `tool_call_id` 更新同一调用卡片；segments 保留原始结构 |
 
 ### complete_result — 补全结果
 

@@ -4,6 +4,7 @@ package local
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"runtime"
 	"slices"
@@ -19,6 +20,7 @@ import (
 
 	"elbot/internal/completion"
 	"elbot/internal/delivery"
+	"elbot/internal/llm"
 	runtimestatus "elbot/internal/runtime"
 )
 
@@ -39,12 +41,15 @@ const (
 	tuiContentAssistant
 	tuiContentNotice
 	tuiContentSeparator
+	tuiContentTool
 )
 
 type tuiContentBlock struct {
 	kind            tuiContentKind // Determines presentation without interpreting text.
 	text, reasoning string         // Body and independent reasoning of this message.
 	level           slog.Level     // Severity of an inline notice.
+	toolCall        delivery.ToolCall
+	toolStatus      string
 }
 type tuiStatusMsg runtimestatus.Snapshot
 type tuiStatusTickMsg time.Time
@@ -178,6 +183,7 @@ type tuiModel struct {
 	userName        string
 	assistantName   string
 	streams         map[uint64]*tuiContentBlock // Only uncommitted message previews.
+	toolCalls       map[string]*tuiContentBlock // Active calls, removed when their result arrives.
 	runtimeStatus   runtimestatus.Snapshot
 	statusNow       time.Time
 	viewport        viewport.Model
@@ -819,7 +825,40 @@ func (m *tuiModel) appendAssistantContent(text string) {
 
 func (m *tuiModel) applyStreamEvent(msg tuiStreamMsg) {
 	event := msg.Event
+	if event.Type == delivery.StreamToolCall {
+		if event.ToolCall == nil {
+			return
+		}
+		if m.toolCalls == nil {
+			m.toolCalls = make(map[string]*tuiContentBlock)
+		}
+		block := m.toolCalls[event.ToolCallID]
+		if block == nil {
+			block = &tuiContentBlock{kind: tuiContentTool}
+			m.toolCalls[event.ToolCallID] = block
+			m.content = append(m.content, block)
+		}
+		block.toolCall = *event.ToolCall
+		block.toolStatus = "正在调用"
+		block.text = ""
+		m.refreshContent()
+		return
+	}
 	if event.Type == delivery.StreamToolResult {
+		if event.ToolResult == nil {
+			return
+		}
+		block := m.toolCalls[event.ToolCallID]
+		if block == nil {
+			return
+		}
+		block.toolStatus = "完成"
+		if !event.ToolResult.Success {
+			block.toolStatus = "失败"
+		}
+		block.text = llm.SegmentsRawContentText(event.ToolResult.Segments)
+		delete(m.toolCalls, event.ToolCallID)
+		m.refreshContent()
 		return
 	}
 	if event.Type == delivery.StreamFinish || event.Type == delivery.StreamReasoningDone {
@@ -988,6 +1027,12 @@ func (m tuiModel) renderContent(styled bool) string {
 			content.WriteString(render("[notice] "+block.text, tuiNoticeLevelStyle(block.level)))
 		case tuiContentSeparator:
 			content.WriteString("\n" + render(block.text, tuiSeparatorStyle) + "\n")
+		case tuiContentTool:
+			header := fmt.Sprintf("🔧 %s %s · %s", block.toolCall.Name, block.toolCall.Arguments, block.toolStatus)
+			content.WriteString("\n" + render(header, tuiStatusStyle))
+			if block.text != "" {
+				content.WriteString("\n" + render(block.text, tuiAssistantStyle))
+			}
 		}
 	}
 	if content.Len() == 0 && styled {

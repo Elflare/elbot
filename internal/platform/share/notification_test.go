@@ -68,6 +68,17 @@ func (s notificationSender) SendTo(ctx context.Context, target delivery.Target, 
 	return s.send(ctx, target, outputs)
 }
 
+func TestFormatToolCallNoticeCompactsAndTruncatesArguments(t *testing.T) {
+	got := FormatToolCallNotice(delivery.ToolCall{Name: "shell", Arguments: `{ "cmd" : "pwd" }`})
+	if got != `[tool] 正在调用 shell：{"cmd":"pwd"}` {
+		t.Fatalf("notice = %q", got)
+	}
+	long := FormatToolCallNotice(delivery.ToolCall{Name: "shell", Arguments: strings.Repeat("界", 161)})
+	if !strings.HasSuffix(long, strings.Repeat("界", 160)+"...") {
+		t.Fatalf("long notice was not rune-truncated: %q", long)
+	}
+}
+
 func TestConnectNotifications(t *testing.T) {
 	sendErr := errors.New("partial send failed")
 	target := events.NotificationTarget{Platform: "telegram", ChatType: contextinfo.ChatGroup, ID: "chat"}

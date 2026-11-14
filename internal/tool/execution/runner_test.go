@@ -56,6 +56,10 @@ func (c *testToolCommitter) Flush(context.Context) error {
 type runnerTestDeps struct {
 	confirmed      bool
 	completed      int
+	toolCalls      []llm.ToolCallRequest
+	assistantSaid  []bool
+	eventOrder     []string
+	confirmStatus  operationresult.Status
 	toolResult     delivery.ToolResult
 	toolResultCall string
 	prepareContext func(context.Context, *storage.Session, llm.ToolCallRequest) context.Context
@@ -70,14 +74,19 @@ func (d *runnerTestDeps) PrepareToolCall(ctx context.Context, session *storage.S
 	return call, nil
 }
 
-func (d *runnerTestDeps) ShouldSendPreview(context.Context, string) bool {
-	return false
+func (d *runnerTestDeps) PublishToolCall(_ context.Context, call llm.ToolCallRequest, assistantSpeaking bool) {
+	d.toolCalls = append(d.toolCalls, call)
+	d.assistantSaid = append(d.assistantSaid, assistantSpeaking)
+	d.eventOrder = append(d.eventOrder, "call:"+call.ID)
 }
 
 func (d *runnerTestDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (operationresult.Result[toolshare.ConfirmResult], error) {
 	d.confirmed = true
 	if d.reject {
 		return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Rejected, Message: "rejected"}, nil
+	}
+	if d.confirmStatus != "" {
+		return operationresult.Result[toolshare.ConfirmResult]{Status: d.confirmStatus, Message: "confirmation ended"}, nil
 	}
 	return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Success}, nil
 }
@@ -104,13 +113,12 @@ func (d *runnerTestDeps) CompleteToolCall(ctx context.Context, session *storage.
 	return result.Data, nil
 }
 
-func (d *runnerTestDeps) SendPreview(ctx context.Context, text ...string) {}
-
 func (d *runnerTestDeps) SendOutputs(ctx context.Context, outputs []delivery.Output) (operationresult.Result[struct{}], error) {
 	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
 func (d *runnerTestDeps) PublishToolResult(_ context.Context, callID string, result delivery.ToolResult) {
+	d.eventOrder = append(d.eventOrder, "result:"+callID)
 	d.toolResultCall = callID
 	d.toolResult = result
 }
@@ -205,13 +213,17 @@ func TestRunPersistsAndPublishesCommittedToolResult(t *testing.T) {
 	committer := &testToolCommitter{}
 	result := manager.Run(context.Background(), deps, toolshare.RunRequest{
 		Committer: committer, Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
-		Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, Calls: []llm.ToolCallRequest{{ID: "call-edit", Name: "edit_file", Arguments: "{}"}},
+		Actor: contextinfo.Actor{Role: contextinfo.RoleSuperadmin}, AssistantText: "我先检查文件。",
+		Calls: []llm.ToolCallRequest{{ID: "call-edit", Name: "edit_file", Arguments: "{}"}},
 	})
 	if result.Err != nil {
 		t.Fatal(result.Err)
 	}
-	if deps.toolResultCall != "call-edit" || deps.toolResult.Name != "edit_file" || !deps.toolResult.Success || len(deps.toolResult.Segments) != 1 || deps.toolResult.Segments[0].Text != "@@ -1 +1 @@\n-old\n+new\n" {
+	if deps.toolResultCall != "call-edit" || !deps.toolResult.Success || len(deps.toolResult.Segments) != 1 || deps.toolResult.Segments[0].Text != "@@ -1 +1 @@\n-old\n+new\n" {
 		t.Fatalf("published result: call=%q result=%+v", deps.toolResultCall, deps.toolResult)
+	}
+	if len(deps.toolCalls) != 1 || deps.toolCalls[0] != (llm.ToolCallRequest{ID: "call-edit", Name: "edit_file", Arguments: "{}"}) || !deps.assistantSaid[0] {
+		t.Fatalf("published calls = %+v, assistant speaking = %+v", deps.toolCalls, deps.assistantSaid)
 	}
 	if len(committer.results) != 1 {
 		t.Fatalf("stored result metadata = %+v", committer.results)
@@ -302,6 +314,27 @@ func TestRunConfirmsOnlyAuthorizedHighRiskToolsForRegularUsers(t *testing.T) {
 				t.Fatalf("called = %v, want %v; messages = %#v", gotCalled, tt.wantCalled, committer.messages)
 			}
 		})
+	}
+}
+
+func TestRunPublishesTerminalResultWhenConfirmationIsCanceled(t *testing.T) {
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
+	toolName := "high_risk_canceled"
+	if err := registerTestTools(registry, (runnerHighRiskTool{name: toolName}).Definition()); err != nil {
+		t.Fatal(err)
+	}
+	manager := newTestManager(registry, security.NewPermission("high", "high", nil))
+	deps := &runnerTestDeps{confirmStatus: operationresult.Canceled}
+	result := manager.Run(context.Background(), deps, toolshare.RunRequest{
+		Committer: &testToolCommitter{}, Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
+		Actor: contextinfo.Actor{Role: contextinfo.RoleUser},
+		Calls: []llm.ToolCallRequest{{ID: "call-canceled", Name: toolName, Arguments: `{"path":"x"}`}},
+	})
+	if result.Err != nil || !result.Stopped {
+		t.Fatalf("run result = %+v", result)
+	}
+	if deps.toolResultCall != "call-canceled" || deps.toolResult.Success || llm.SegmentsContentText(deps.toolResult.Segments) != "tool call was not executed" {
+		t.Fatalf("terminal tool result = %+v / %q", deps.toolResult, deps.toolResultCall)
 	}
 }
 func TestRunPreservesMultimodalToolSegments(t *testing.T) {

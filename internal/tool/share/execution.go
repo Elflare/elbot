@@ -33,16 +33,13 @@ type RunnerDeps interface {
 	RefreshExecution(context.Context, *storage.Session) (context.Context, error)
 	// Hook sources publish their own records; Runner consumes only the business return.
 	PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error)
-	ShouldSendPreview(ctx context.Context, assistantText string) bool
+	PublishToolCall(context.Context, llm.ToolCallRequest, bool)
 	ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment RiskAssessment, detail []ConfirmationDetailBlock) (operationresult.Result[ConfirmResult], error)
 	// StartToolRequest registers the request and returns its context and cleanup.
 	StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, func(), error)
 	PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context
 	// CompleteToolCall applies the Hook to the result segments.
 	CompleteToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest, risk string, result operationresult.Result[[]llm.MessageSegment], callErr error) ([]llm.MessageSegment, error)
-	// SendPreview takes one complete notice per tool call, including multiline
-	// bodies. Pass batch notices separately so each receives one display prefix.
-	SendPreview(ctx context.Context, text ...string)
 	// SendOutputs delivers tool outputs and returns the original delivery error.
 	SendOutputs(ctx context.Context, outputs []delivery.Output) (operationresult.Result[struct{}], error)
 	PublishToolResult(context.Context, string, delivery.ToolResult)

@@ -436,9 +436,9 @@ func closeBranchCalls(w *nativeWindow, calls []storage.NativeCall) ([]api.Item, 
 		if call.ResultInputID != "" {
 			continue
 		}
-		text := "tool call was not executed in this branch; do not assume it succeeded"
+		text := "tool call was not executed in this branch"
 		if call.Status == "started" {
-			text = "tool call outcome is unknown at this branch point; do not assume it succeeded"
+			text = "tool call outcome is unknown at this branch point"
 		}
 		raw, _ := json.Marshal(text)
 		item, err := api.FunctionCallOutput(call.CallID, raw)

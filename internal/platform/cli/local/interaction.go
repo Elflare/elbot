@@ -387,6 +387,8 @@ func (r *Runtime) StartStream(context.Context) (delivery.MessageStream, error) {
 	return localMessageStream{runtime: r, id: nextStreamID.Add(1)}, nil
 }
 
+func (r *Runtime) SupportsToolCallEvents() bool { return r.interactive }
+
 func (r *Runtime) PresentStatus(ctx context.Context, status clishare.Status) error {
 	if !r.interactive {
 		_, err := fmt.Fprintln(os.Stdout, FormatCompact(status.Snapshot, time.Now(), 0))

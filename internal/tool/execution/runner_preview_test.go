@@ -1,40 +1,37 @@
 package execution
 
-import toolshare "elbot/internal/tool/share"
-
 import (
 	"context"
-	"slices"
 	"testing"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
+	"elbot/internal/security"
+	"elbot/internal/storage"
+	toolregistry "elbot/internal/tool/registry"
+	"elbot/internal/tool/share"
 )
 
-type batchPreviewTestDeps struct {
-	runnerTestDeps
-	enabled bool
-	notices [][]string
-}
-
-func (d *batchPreviewTestDeps) ShouldSendPreview(context.Context, string) bool {
-	return d.enabled
-}
-
-func (d *batchPreviewTestDeps) SendPreview(_ context.Context, text ...string) {
-	d.notices = append(d.notices, slices.Clone(text))
-}
-
-func TestBatchPreviewPreservesToolBoundaries(t *testing.T) {
-	deps := &batchPreviewTestDeps{enabled: true}
-	req := toolshare.RunRequest{Calls: []llm.ToolCallRequest{
-		{Name: "shell", Arguments: "{}"},
-		{Name: "read_file", Arguments: "{}"},
-	}}
-	if !sendBatchToolPreview(context.Background(), deps, req) {
-		t.Fatal("batch preview was not sent")
+func TestRunPublishesBatchCallsBeforeAnyResults(t *testing.T) {
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
+	if err := registerTestTools(registry, runnerResultTool{}.Definition()); err != nil {
+		t.Fatal(err)
 	}
-	want := []string{"正在调用 shell：{}", "正在调用 read_file：{}"}
-	if len(deps.notices) != 1 || !slices.Equal(deps.notices[0], want) {
-		t.Fatalf("batch notices = %q, want one call with %q", deps.notices, want)
+	manager := newTestManager(registry, security.NewPermission("high", "high", nil))
+	deps := &runnerTestDeps{}
+	result := manager.Run(context.Background(), deps, share.RunRequest{
+		Committer: &testToolCommitter{},
+		Session:   &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
+		Actor:     contextinfo.Actor{Role: contextinfo.RoleSuperadmin},
+		Calls: []llm.ToolCallRequest{
+			{ID: "call-1", Name: "edit_file", Arguments: `{"path":"one"}`},
+			{ID: "call-2", Name: "edit_file", Arguments: `{"path":"two"}`},
+		},
+	})
+	if result.Err != nil {
+		t.Fatal(result.Err)
+	}
+	if len(deps.eventOrder) < 4 || deps.eventOrder[0] != "call:call-1" || deps.eventOrder[1] != "call:call-2" {
+		t.Fatalf("tool event order = %v", deps.eventOrder)
 	}
 }

@@ -7,11 +7,13 @@ import (
 	"context"
 	"elbot/internal/operationresult"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/media"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
@@ -121,12 +123,14 @@ func (r *Router) StartStream(ctx context.Context) (operationresult.Result[delive
 		return operationresult.Result[delivery.MessageStream]{Status: selected.Status, Message: selected.Message}, nil
 	}
 	sender := selected.Data
+	toolCallEvents, structuredToolCalls := sender.(delivery.ToolCallEventSender)
+	structuredToolCalls = structuredToolCalls && toolCallEvents.SupportsToolCallEvents()
 	if streaming, ok := sender.(delivery.StreamSender); ok {
 		stream, err := streaming.StartStream(ctx)
 		if err != nil {
 			return operationresult.Result[delivery.MessageStream]{}, err
 		}
-		return operationresult.Result[delivery.MessageStream]{Status: operationresult.Success, Data: stream}, nil
+		return operationresult.Result[delivery.MessageStream]{Status: operationresult.Success, Data: r.routeToolCallEvents(ctx, stream, structuredToolCalls)}, nil
 	}
 	stream := delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
 		if event.Type != delivery.StreamSend {
@@ -134,5 +138,28 @@ func (r *Router) StartStream(ctx context.Context) (operationresult.Result[delive
 		}
 		return sender.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Blocks: event.Blocks, Actions: event.Actions}})
 	})
-	return operationresult.Result[delivery.MessageStream]{Status: operationresult.Success, Data: stream}, nil
+	return operationresult.Result[delivery.MessageStream]{Status: operationresult.Success, Data: r.routeToolCallEvents(ctx, stream, structuredToolCalls)}, nil
+}
+
+func (r *Router) routeToolCallEvents(ctx context.Context, stream delivery.MessageStream, structured bool) delivery.MessageStream {
+	return delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+		if event.Type == delivery.StreamToolCall {
+			if structured {
+				return stream.Send(ctx, event)
+			}
+			conversation, ok := contextinfo.ConversationFromContext(ctx)
+			if !ok || conversation.Source.ChatType == contextinfo.ChatGroup {
+				return delivery.Receipt{}, nil
+			}
+			if conversation.Source.ChatType != contextinfo.ChatPrivate || event.AssistantSpeaking || event.ToolCall == nil {
+				return delivery.Receipt{}, nil
+			}
+			events.Notify(ctx, events.NewNotification(ctx, slog.LevelDebug, share.FormatToolCallNotice(*event.ToolCall)))
+			return delivery.Receipt{}, nil
+		}
+		if event.Type == delivery.StreamToolResult && !structured {
+			return delivery.Receipt{}, nil
+		}
+		return stream.Send(ctx, event)
+	})
 }

@@ -17,7 +17,9 @@ func FormatCompact(s runtimestatus.Snapshot, now time.Time, width int) string {
 	if phase == "" {
 		phase = string(runtimestatus.PhaseIdle)
 	}
-	if s.Phase == runtimestatus.PhaseTool && s.ToolName != "" {
+	if s.Phase == runtimestatus.PhaseCompact {
+		phase = "压缩中"
+	} else if s.Phase == runtimestatus.PhaseTool && s.ToolName != "" {
 		phase += " " + s.ToolName
 	} else if s.Phase == runtimestatus.PhaseError && s.Error != "" {
 		phase += " " + shortText(s.Error, 40)

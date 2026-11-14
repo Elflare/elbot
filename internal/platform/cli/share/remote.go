@@ -37,6 +37,12 @@ type StreamRuntime interface {
 	StartStream(context.Context) (delivery.MessageStream, error)
 }
 
+// ToolCallEventRuntime identifies runtimes that deliver complete structured
+// tool-call updates to the active CLI client.
+type ToolCallEventRuntime interface {
+	SupportsToolCallEvents() bool
+}
+
 // DisplayEvent 是 remote client 接收并交给终端呈现的业务事件。
 type DisplayEvent struct {
 	Kind     DisplayEventKind

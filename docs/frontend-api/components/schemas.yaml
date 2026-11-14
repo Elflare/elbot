@@ -214,7 +214,7 @@ schemas:
         session: { oneOf: [{ $ref: '#/schemas/Session' }, { type: 'null' }] }
         mode: { type: string }
         model: { $ref: '#/schemas/Model' }
-        phase: { type: string }
+        phase: { type: string, description: Turn phase; includes compact while context compression is running. }
         pending_count: { type: integer }
         message_count: { type: integer }
         last_user_content: { type: string }
@@ -254,7 +254,7 @@ schemas:
     StreamEvent:
       type: object
       properties:
-        type: { type: string, enum: [text_delta, reasoning_delta, reasoning_done, reset, finish, send, send_extras, tool_result] }
+        type: { type: string, enum: [text_delta, reasoning_delta, reasoning_done, reset, finish, send, send_extras, tool_call, tool_result] }
         text: { type: string }
         blocks:
           type: array
@@ -270,13 +270,18 @@ schemas:
               command: { type: string }
             required: [id, label, command]
         tool_call_id: { type: string }
-        tool_result:
+        tool_call:
           type: object
           properties:
             name: { type: string }
+            arguments: { type: string, description: Complete original arguments supplied by the model. }
+          required: [name, arguments]
+        tool_result:
+          type: object
+          properties:
             success: { type: boolean }
             segments: { type: array, items: { type: object, additionalProperties: true } }
-          required: [name, success, segments]
+          required: [success, segments]
       required: [type]
     ChatMessage:
       type: object

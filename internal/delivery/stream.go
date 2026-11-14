@@ -17,23 +17,30 @@ const (
 	StreamFinish         StreamEventType = "finish"
 	StreamSend           StreamEventType = "send"
 	StreamSendExtras     StreamEventType = "send_extras"
+	StreamToolCall       StreamEventType = "tool_call"
 	StreamToolResult     StreamEventType = "tool_result"
 )
 
+type ToolCall struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
 type ToolResult struct {
-	Name     string               `json:"name"`     // Registered tool name.
 	Success  bool                 `json:"success"`  // Whether tool execution completed without error.
 	Segments []llm.MessageSegment `json:"segments"` // Complete result content, including multimodal parts.
 }
 
 type StreamEvent struct {
-	Type       StreamEventType `json:"type"`                   // Operation on this logical message.
-	Text       string          `json:"text,omitempty"`         // Text/reasoning delta, or the final assistant text.
-	Blocks     []ContentBlock  `json:"blocks,omitempty"`       // Typed final message content, rendered at the consumer boundary.
-	Actions    []Action        `json:"actions,omitempty"`      // Actions accompanying final assistant text.
-	Outputs    []Output        `json:"outputs,omitempty"`      // Independent content carried only by SendExtras.
-	ToolCallID string          `json:"tool_call_id,omitempty"` // Associates a result event with its tool call.
-	ToolResult *ToolResult     `json:"tool_result,omitempty"`  // Present on StreamToolResult.
+	Type              StreamEventType `json:"type"`                   // Operation on this logical message.
+	Text              string          `json:"text,omitempty"`         // Text/reasoning delta, or the final assistant text.
+	Blocks            []ContentBlock  `json:"blocks,omitempty"`       // Typed final message content, rendered at the consumer boundary.
+	Actions           []Action        `json:"actions,omitempty"`      // Actions accompanying final assistant text.
+	Outputs           []Output        `json:"outputs,omitempty"`      // Independent content carried only by SendExtras.
+	ToolCallID        string          `json:"tool_call_id,omitempty"` // Associates a result event with its tool call.
+	ToolCall          *ToolCall       `json:"tool_call,omitempty"`    // Present on StreamToolCall; keeps original arguments structured.
+	ToolResult        *ToolResult     `json:"tool_result,omitempty"`  // Present on StreamToolResult.
+	AssistantSpeaking bool            `json:"-"`                      // Internal hint used to suppress duplicate progress notices.
 }
 
 // MessageStream belongs to one logical message. Reset clears its current preview
@@ -48,6 +55,13 @@ type MessageStream interface {
 
 type StreamSender interface {
 	StartStream(context.Context) (MessageStream, error)
+}
+
+// ToolCallEventSender keeps full tool-call events structured for clients that
+// can update a tool card instead of receiving a text-only progress notice.
+type ToolCallEventSender interface {
+	StreamSender
+	SupportsToolCallEvents() bool
 }
 
 // StreamFunc adapts an event consumer without a separate forwarding object.

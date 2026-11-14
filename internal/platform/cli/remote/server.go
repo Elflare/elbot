@@ -149,6 +149,8 @@ func (s *RemoteServer) SetCompleter(completer func(context.Context, completion.R
 
 func (s *RemoteServer) Name() string { return s.name }
 
+func (*RemoteServer) SupportsToolCallEvents() bool { return true }
+
 func (s *RemoteServer) SetControlContinuation(continueInput func(context.Context, control.Continuation) (context.Context, operationresult.Result[struct{}], error)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

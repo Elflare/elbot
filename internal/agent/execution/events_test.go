@@ -66,6 +66,23 @@ func TestStatusRejectsOldAttemptsAndCopiesUsage(t *testing.T) {
 	}
 }
 
+func TestStatusPublishesCompactPhaseAndCompletion(t *testing.T) {
+	turns := turn.NewSupervisor(testutil.IDSequence())
+	r := NewStatusRecorder(StatusRecorderDeps{View: dialogue.ExecutionView{}, Turns: turns})
+	if !turns.StartCompactRun("s", "compact-attempt", nil) {
+		t.Fatal("start compact run")
+	}
+	ctx := turn.WithAttempt(context.Background(), "compact-attempt")
+	r.Record(ctx, runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseCompact})
+	if got := r.Snapshot("s").Phase; got != runtimestatus.PhaseCompact {
+		t.Fatalf("compact phase = %q", got)
+	}
+	r.Record(context.WithoutCancel(ctx), runtimestatus.Snapshot{SessionID: "s", Phase: runtimestatus.PhaseDone})
+	if got := r.Snapshot("s").Phase; got != runtimestatus.PhaseDone {
+		t.Fatalf("terminal phase = %q", got)
+	}
+}
+
 func TestReplyFactsPreservePartialSuccessAndReceiptSnapshot(t *testing.T) {
 	f := newReplyTestFixture(t, false)
 	f.repo.mapErr = errors.New("map failed")

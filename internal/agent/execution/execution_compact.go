@@ -3,13 +3,16 @@ package execution
 import (
 	"context"
 	"elbot/internal/delivery"
+	"errors"
 	"fmt"
+	"time"
 
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextmgr"
 	"elbot/internal/modelmgr"
 	"elbot/internal/operationresult"
 	"elbot/internal/request"
+	runtimestatus "elbot/internal/runtime"
 	sessionpkg "elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
@@ -35,7 +38,7 @@ func (c *ExecutionCoordinator) compactSession(ctx context.Context, current *stor
 	return next, fmt.Sprintf("compacted → %s", next.Data.ID), nil
 }
 
-func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.Session, scope sessionpkg.Scope, triggerReason string, selection modelmgr.Selection) (operationresult.Result[*storage.Session], error) {
+func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.Session, scope sessionpkg.Scope, triggerReason string, selection modelmgr.Selection) (result operationresult.Result[*storage.Session], runErr error) {
 	entered, scope, release, err := c.enterCompact(ctx, current, scope)
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, err
@@ -69,7 +72,36 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 	}
 	reqCtx = turn.WithAttempt(reqCtx, info.ID)
 	release()
-	defer func() { done(); c.turns.CompleteCompactRun(current.ID, info.ID); c.sessionIdle(ctx, current.ID) }()
+	status := c.status.Snapshot(current.ID)
+	status.SessionID, status.Phase = current.ID, runtimestatus.PhaseCompact
+	status.Provider, status.Model, status.Mode = selection.Provider, selection.Model, current.Mode
+	status.RequestID, status.Kind, status.Label = info.ID, info.Kind, info.Label
+	status.ToolName, status.Error, status.FinishedAt = "", "", time.Time{}
+	if status.TurnStartedAt.IsZero() {
+		status.TurnStartedAt = info.StartedAt
+	}
+	status.StageStartedAt = info.StartedAt
+	c.status.Record(reqCtx, status)
+	defer func() {
+		status := c.status.Snapshot(current.ID)
+		status.Phase = runtimestatus.PhaseDone
+		status.RequestID, status.Kind, status.Label, status.ToolName = "", "", "", ""
+		status.StageStartedAt = status.TurnStartedAt
+		status.FinishedAt = storage.Now()
+		status.Error = ""
+		if runErr != nil && !errors.Is(runErr, context.Canceled) && !errors.Is(runErr, context.DeadlineExceeded) {
+			status.Phase, status.Error = runtimestatus.PhaseError, runErr.Error()
+		} else if result.Status != "" && result.Status != operationresult.Success && result.Status != operationresult.Canceled {
+			status.Phase, status.Error = runtimestatus.PhaseError, result.Message
+			if status.Error == "" {
+				status.Error = string(result.Status)
+			}
+		}
+		c.status.Record(context.WithoutCancel(reqCtx), status)
+		done()
+		c.turns.CompleteCompactRun(current.ID, info.ID)
+		c.sessionIdle(ctx, current.ID)
+	}()
 	stopObserver := c.observeRequestStop(reqCtx, current.ID, info.ID)
 	defer stopObserver()
 	if err := reqCtx.Err(); err != nil {

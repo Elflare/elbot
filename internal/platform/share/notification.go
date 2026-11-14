@@ -3,10 +3,13 @@
 package share
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
@@ -14,6 +17,25 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/signal"
 )
+
+// FormatToolCallNotice creates the text-only tool progress shown by messaging platforms.
+// The structured stream remains unmodified for clients that can render tool cards.
+func FormatToolCallNotice(call delivery.ToolCall) string {
+	arguments := strings.TrimSpace(call.Arguments)
+	if arguments == "" {
+		arguments = "{}"
+	} else {
+		var compact bytes.Buffer
+		if err := json.Compact(&compact, []byte(arguments)); err == nil {
+			arguments = compact.String()
+		}
+	}
+	runes := []rune(arguments)
+	if len(runes) > 160 {
+		arguments = string(runes[:160]) + "..."
+	}
+	return fmt.Sprintf("[tool] 正在调用 %s：%s", call.Name, arguments)
+}
 
 // NotificationReceiver 连接通知发送端；调度归 Signal，连接由根部持有和释放。
 type NotificationReceiver interface {

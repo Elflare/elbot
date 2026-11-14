@@ -108,7 +108,7 @@ func (c *toolCommitter) Begin(ctx context.Context, head *storage.Message) (err e
 	c.remaining = len(s.calls)
 	native := s.advance("")
 	for i, call := range s.calls {
-		message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool outcome is unknown: result has not been saved; do not assume success or retry automatically")}
+		message := llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool outcome is unknown: result has not been saved")}
 		stored := agentshare.ToolResultStorageMessage(s.session.ID, message)
 		stored.ToolResultStatus = "pending"
 		c.results[i] = &stored

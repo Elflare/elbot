@@ -70,9 +70,7 @@ func (*runnerTestDeps) Flush(context.Context) error {
 func (d *runnerTestDeps) PrepareToolCall(_ context.Context, _ *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error) {
 	return call, nil
 }
-func (d *runnerTestDeps) ShouldSendPreview(context.Context, string) bool {
-	return false
-}
+func (*runnerTestDeps) PublishToolCall(context.Context, llm.ToolCallRequest, bool) {}
 func (d *runnerTestDeps) StartToolRequest(ctx context.Context, _, _ string) (context.Context, func(), error) {
 	return ctx, func() {}, nil
 }
@@ -88,7 +86,6 @@ func (d *runnerTestDeps) CompleteToolCall(_ context.Context, _ *storage.Session,
 	}
 	return result.Data, nil
 }
-func (d *runnerTestDeps) SendPreview(context.Context, ...string) {}
 func (d *runnerTestDeps) SendOutputs(context.Context, []delivery.Output) (operationresult.Result[struct{}], error) {
 	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }

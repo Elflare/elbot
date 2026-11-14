@@ -46,6 +46,13 @@ func TestFormatCompact(t *testing.T) {
 	}
 }
 
+func TestFormatCompactShowsCompression(t *testing.T) {
+	got := FormatCompact(runtimestatus.Snapshot{Phase: runtimestatus.PhaseCompact}, time.Time{}, 80)
+	if !strings.HasPrefix(got, "压缩中") {
+		t.Fatalf("status = %q, want compression phase", got)
+	}
+}
+
 func TestFormatCompactTruncates(t *testing.T) {
 	s := runtimestatus.Snapshot{Phase: runtimestatus.PhaseError, Error: strings.Repeat("x", 80)}
 	got := FormatCompact(s, time.Now(), 16)

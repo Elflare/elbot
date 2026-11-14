@@ -91,7 +91,7 @@ func (c *ToolTranscriptCommitter) Begin(ctx context.Context, head *storage.Messa
 	c.results = make([]*storage.Message, len(c.calls))
 	c.remaining = len(c.calls)
 	for i, call := range c.calls {
-		stored := agentshare.ToolResultStorageMessage(c.head.SessionID, llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool outcome is unknown: result has not been saved; do not assume success or retry automatically")})
+		stored := agentshare.ToolResultStorageMessage(c.head.SessionID, llm.LLMMessage{Role: llm.RoleTool, Name: call.Name, ToolCallID: call.ID, Segments: llm.TextSegments("tool outcome is unknown: result has not been saved")})
 		stored.ToolResultStatus = "pending"
 		c.results[i] = &stored
 	}

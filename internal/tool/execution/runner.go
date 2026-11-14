@@ -4,7 +4,6 @@ package execution
 import toolshare "elbot/internal/tool/share"
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -38,9 +37,6 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 	preparedCalls := append([]llm.ToolCallRequest(nil), req.Calls...)
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
-	defer func() { cancel(); workers.Wait() }()
-	// The coordinator owns session state; workers return independent outcomes
-	// through a shared completion queue.
 	tasks := make([]struct {
 		risk       string
 		actor      contextinfo.Actor
@@ -48,6 +44,37 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		result     executionResult
 		finishedAt time.Time
 	}, len(req.Calls))
+	toolCallStarted := make([]bool, len(req.Calls))
+	toolCallFinished := make([]bool, len(req.Calls))
+	defer func() {
+		cancel()
+		workers.Wait()
+		for i, call := range preparedCalls {
+			if !toolCallStarted[i] || toolCallFinished[i] {
+				continue
+			}
+			segments := tasks[i].result.Message.Segments
+			if tasks[i].result.ExecutionStarted {
+				segments = llm.TextSegments("tool outcome is unknown: result has not been saved")
+			} else if len(segments) == 0 {
+				message := tasks[i].result.Result.Message
+				if message == "" {
+					message = "tool call was not executed"
+				}
+				segments = llm.TextSegments(message)
+			}
+			deps.PublishToolResult(context.WithoutCancel(ctx), call.ID, delivery.ToolResult{
+				Success:  false,
+				Segments: segments,
+			})
+		}
+	}()
+	publishResult := func(index int, call llm.ToolCallRequest, result delivery.ToolResult) {
+		deps.PublishToolResult(context.WithoutCancel(ctx), call.ID, result)
+		toolCallFinished[index] = true
+	}
+	// The coordinator owns session state; workers return independent outcomes
+	// through a shared completion queue.
 	head := deps.ToolCallMessage(sessionID, req.AssistantText, req.AssistantRawText, req.ReasoningContent, req.Calls)
 	err = req.Committer.Begin(ctx, &head)
 
@@ -141,8 +168,8 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		if err != nil {
 			return err
 		}
-		deps.PublishToolResult(context.WithoutCancel(ctx), call.ID, delivery.ToolResult{
-			Name: call.Name, Success: result.Error == nil && result.Result.Status == operationresult.Success, Segments: result.Message.Segments,
+		publishResult(index, call, delivery.ToolResult{
+			Success: result.Error == nil && result.Result.Status == operationresult.Success, Segments: result.Message.Segments,
 		})
 		if ruleCard != "" {
 			elyphRulesShown = true
@@ -182,7 +209,6 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		}
 	}
 	var confirmationExtra string
-	batchPreviewSent := sendBatchToolPreview(ctx, deps, req)
 prepare:
 	for index, original := range req.Calls {
 		if ctx.Err() != nil {
@@ -193,6 +219,8 @@ prepare:
 			return toolshare.RunResult{Err: err}
 		}
 		ctx = updated
+		deps.PublishToolCall(ctx, original, strings.TrimSpace(req.AssistantText) != "")
+		toolCallStarted[index] = true
 		actor := req.Actor
 		if current, ok := contextinfo.ActorFromContext(ctx); ok {
 			actor = current
@@ -262,10 +290,6 @@ prepare:
 		riskText := string(assessment.Level)
 		task.risk = riskText
 		deps.AddToolUse(sessionID, call.Name)
-		// 调用进度提示独立于需要交互确认时展示的准备结果。
-		if !batchPreviewSent && deps.ShouldSendPreview(ctx, req.AssistantText) {
-			deps.SendPreview(ctx, fmt.Sprintf("正在调用 %s：%s", call.Name, previewArguments(call.Arguments)))
-		}
 		var confirmation operationresult.Result[toolshare.ConfirmResult]
 		if waitErr := await(func() {
 			confirmation, err = m.confirm(toolCtx, deps, actor, sessionID, call, resolvedTool, assessment, preparedCall.Details())
@@ -340,18 +364,6 @@ prepare:
 	return toolshare.RunResult{ConfirmationExtra: confirmationExtra, Err: err}
 }
 
-func sendBatchToolPreview(ctx context.Context, deps toolshare.RunnerDeps, req toolshare.RunRequest) bool {
-	if len(req.Calls) <= 1 || !deps.ShouldSendPreview(ctx, req.AssistantText) {
-		return false
-	}
-	lines := make([]string, 0, len(req.Calls))
-	for _, call := range req.Calls {
-		lines = append(lines, fmt.Sprintf("正在调用 %s：%s", call.Name, previewArguments(call.Arguments)))
-	}
-	deps.SendPreview(ctx, lines...)
-	return true
-}
-
 func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor contextinfo.Actor, sessionID string, call llm.ToolCallRequest, resolvedTool resolvedTool, assessment toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (operationresult.Result[toolshare.ConfirmResult], error) {
 	if resolvedTool.Source == toolshare.SourceKindELwisp {
 		return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Success, Data: toolshare.ConfirmResult{}}, nil
@@ -395,28 +407,6 @@ func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor 
 
 func toolMessage(name, id, content string) llm.LLMMessage {
 	return llm.LLMMessage{Role: llm.RoleTool, Name: name, ToolCallID: id, Segments: llm.TextSegments(content)}
-}
-
-func previewArguments(args string) string {
-	args = compactArguments(args)
-	const maxPreviewRunes = 160
-	if len([]rune(args)) <= maxPreviewRunes {
-		return args
-	}
-	runes := []rune(args)
-	return string(runes[:maxPreviewRunes]) + "..."
-}
-
-func compactArguments(args string) string {
-	args = strings.TrimSpace(args)
-	if args == "" {
-		return "{}"
-	}
-	var compact bytes.Buffer
-	if err := json.Compact(&compact, []byte(args)); err == nil {
-		return compact.String()
-	}
-	return args
 }
 
 func joinAssistantText(first, second string) string {

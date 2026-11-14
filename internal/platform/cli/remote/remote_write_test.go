@@ -3,6 +3,7 @@ package remote
 import (
 	"context"
 	"elbot/internal/events"
+	"elbot/internal/llm"
 	"elbot/internal/signal"
 	"errors"
 	"net/http"
@@ -139,14 +140,22 @@ func TestRemoteStreamAndStatusFollowReconnectedClient(t *testing.T) {
 	newConn := dialTestRemote(t, server)
 	for _, event := range []delivery.StreamEvent{
 		{Type: delivery.StreamTextDelta, Text: "continued"},
+		{Type: delivery.StreamToolCall, ToolCallID: "call-1", ToolCall: &delivery.ToolCall{Name: "shell", Arguments: `{"cmd":"pwd"}`}},
+		{Type: delivery.StreamToolResult, ToolCallID: "call-1", ToolResult: &delivery.ToolResult{Success: true, Segments: llm.TextSegments("raw result")}},
 		{Type: delivery.StreamSend, Blocks: []delivery.ContentBlock{{Kind: delivery.ContentDiff, Content: "-old\n+new"}}},
 	} {
 		if _, err := stream.Send(t.Context(), event); err != nil {
 			t.Fatal(err)
 		}
 		got := readTestRemote(t, newConn)
-		if got.Type != remoteMsgStream || got.Event == nil || got.Event.Type != event.Type || got.Event.Text != event.Text || len(got.Event.Blocks) != len(event.Blocks) || len(event.Blocks) > 0 && got.Event.Blocks[0] != event.Blocks[0] {
+		if got.Type != remoteMsgStream || got.Event == nil || got.Event.Type != event.Type || got.Event.Text != event.Text || len(got.Event.Blocks) != len(event.Blocks) || len(event.Blocks) > 0 && got.Event.Blocks[0] != event.Blocks[0] || got.Event.ToolCallID != event.ToolCallID {
 			t.Fatalf("stream event = %+v, want %+v", got, event)
+		}
+		if event.ToolCall != nil && (got.Event.ToolCall == nil || *got.Event.ToolCall != *event.ToolCall) {
+			t.Fatalf("tool call = %+v, want %+v", got.Event.ToolCall, event.ToolCall)
+		}
+		if event.ToolResult != nil && (got.Event.ToolResult == nil || got.Event.ToolResult.Success != event.ToolResult.Success || len(got.Event.ToolResult.Segments) != len(event.ToolResult.Segments) || len(event.ToolResult.Segments) > 0 && got.Event.ToolResult.Segments[0] != event.ToolResult.Segments[0]) {
+			t.Fatalf("tool result = %+v, want %+v", got.Event.ToolResult, event.ToolResult)
 		}
 	}
 	status := runtimestatus.Snapshot{SessionID: "session", Phase: runtimestatus.PhaseLLM}
