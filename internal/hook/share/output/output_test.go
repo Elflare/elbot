@@ -60,29 +60,17 @@ func TestBuildGroupMediaSources(t *testing.T) {
 }
 
 func TestBuildGroupNativeEmoticon(t *testing.T) {
-	for _, name := range []string{"微笑", "", " \t "} {
-		t.Run(name, func(t *testing.T) {
-			outputs, err := BuildGroup(Group{Outputs: []Segment{{Kind: "emoticon", EmoticonID: "14", Name: name, Text: "不作为名称"}}}, BuildOptions{})
-			if err != nil {
-				t.Fatal(err)
-			}
-			out := outputs[0]
-			if out.Kind != delivery.KindEmoticon || out.EmoticonID != "14" || out.Name != strings.TrimSpace(name) || out.Text != "" || out.Source.Path != "" || out.Source.URL != "" || len(out.Source.Data) != 0 {
-				t.Fatalf("output = %#v", out)
-			}
-			err = delivery.ValidateOutputs(outputs)
-			if strings.TrimSpace(name) == "" {
-				if err == nil || !strings.Contains(err.Error(), "requires a name") {
-					t.Fatalf("missing name: %v", err)
-				}
-			} else if err != nil {
-				t.Fatal(err)
-			}
-		})
+	outputs, err := BuildGroup(Group{Outputs: []Segment{{Kind: "emoticon", EmoticonID: "14", Name: " 微笑 ", Text: "不作为名称"}}}, BuildOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := outputs[0]
+	if out.Kind != delivery.KindEmoticon || out.EmoticonID != "14" || out.Name != "微笑" || out.Text != "" {
+		t.Fatalf("output = %#v", out)
 	}
 }
 
-func TestBuildGroupRejectsInvalidSources(t *testing.T) {
+func TestBuildGroupRejectsInvalidOutputs(t *testing.T) {
 	tests := []struct {
 		name string
 		spec Segment
@@ -97,6 +85,11 @@ func TestBuildGroupRejectsInvalidSources(t *testing.T) {
 		{name: "multiple record", spec: Segment{Kind: "record", Path: "voice.mp3", Base64: "dm9pY2U="}, want: "exactly one"},
 		{name: "media emoticon", spec: Segment{Kind: "emoticon", EmoticonID: "14", Base64: "YQ=="}, want: "base64"},
 		{name: "missing emoticon id", spec: Segment{Kind: "emoticon", Name: "微笑"}, want: "emoticon_id"},
+		{name: "missing emoticon name", spec: Segment{Kind: "emoticon", EmoticonID: "14"}, want: "name"},
+		{name: "blank emoticon name", spec: Segment{Kind: "emoticon", EmoticonID: "14", Name: " \t "}, want: "name"},
+		{name: "missing at user", spec: Segment{Kind: "at"}, want: "user_id"},
+		{name: "missing reply message", spec: Segment{Kind: "reply"}, want: "message_id"},
+		{name: "unknown kind", spec: Segment{Kind: "unknown"}, want: "unsupported output kind"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -115,6 +108,9 @@ func TestBuildGroupTargetAndTiming(t *testing.T) {
 	}
 	if outputs[0].Target.Platform != "qqonebot" || outputs[0].Target.ChatType != "group" || outputs[0].Target.ChatID != "1" || delivery.DeliveryTiming(outputs[0]) != delivery.DeliveryAfterAssistant {
 		t.Fatalf("output = %#v", outputs[0])
+	}
+	if _, err := BuildGroup(Group{Outputs: []Segment{{Text: "hi"}}, Timing: "invalid"}, BuildOptions{}); err == nil {
+		t.Fatal("invalid timing accepted")
 	}
 }
 

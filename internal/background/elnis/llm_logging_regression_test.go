@@ -111,7 +111,7 @@ func TestElnisLogsSuccessfulRunSaveFailure(t *testing.T) {
 
 func newElnisReportLoggingFixture(t *testing.T, send testSenderFunc) (*Service, QueuedLLMEvent) {
 	t.Helper()
-	service, cleanup := newTestServiceWithRunner(t, &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"done"}`}, delivery.NewManager(elnisLoggingSender(resultSender(send))).SendTo)
+	service, cleanup := newTestServiceWithRunner(t, &fakeBackgroundRunner{text: `{"completed":true,"need_report":true,"report":"done"}`}, elnisLoggingSender(resultSender(send)).SendTo)
 	t.Cleanup(cleanup)
 	ctx := t.Context()
 	var queued QueuedLLMEvent
@@ -145,12 +145,12 @@ func TestElnisDeliveryErrorAndBusinessState(t *testing.T) {
 					service, queued = newElnisReportLoggingFixture(t, send)
 				} else {
 					var cleanup func()
-					service, cleanup = newTestServiceWithRunner(t, nil, delivery.NewManager(elnisLoggingSender(resultSender(send))).SendTo)
+					service, cleanup = newTestServiceWithRunner(t, nil, elnisLoggingSender(resultSender(send)).SendTo)
 					t.Cleanup(cleanup)
 				}
 				var records []events.LogRecord
 				connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
-				if (record.Module == "elnis" || record.Module == "delivery") && (record.ResultStatus == events.ResultFailed || record.ResultStatus == events.ResultCanceled || record.EventName == "elnis.direct_completed" || record.EventName == "elnis.llm_completed") {
+					if (record.Module == "elnis" || record.Module == "delivery") && (record.ResultStatus == events.ResultFailed || record.ResultStatus == events.ResultCanceled || record.EventName == "elnis.direct_completed" || record.EventName == "elnis.llm_completed") {
 						records = append(records, record)
 					}
 

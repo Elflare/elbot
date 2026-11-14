@@ -167,6 +167,18 @@ func TestSendFileSendsURLFile(t *testing.T) {
 	}
 }
 
+func TestSendFileRejectsInvalidURL(t *testing.T) {
+	for _, source := range []string{"https://", "https:///report.txt", "https://example.com/%zz"} {
+		t.Run(source, func(t *testing.T) {
+			args, _ := json.Marshal(map[string]any{"source": source})
+			result, _, err := callTool(t.Context(), (SendFileTool{}).Definition(), toolshare.CallRequest{Arguments: args})
+			if err != nil || result.Status != operationresult.InvalidArguments || !strings.Contains(result.Message, "HTTP(S)") {
+				t.Fatalf("invalid URL result = %#v, err = %v", result, err)
+			}
+		})
+	}
+}
+
 func TestSendFileSendsURLImage(t *testing.T) {
 	sendFile := (SendFileTool{})
 	args, _ := json.Marshal(map[string]any{"source": "https://example.com/images/cat.png?size=large"})

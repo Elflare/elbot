@@ -33,7 +33,7 @@ func (r *Router) ResolveMedia(ctx context.Context, name string, input share.Mess
 }
 
 func (a *Router) prepareMediaOutputs(ctx context.Context, outputs []delivery.Output) (operationresult.Result[[]delivery.Output], error) {
-	// SendTo validates source outputs before media preparation.
+	// 输出构造入口已完成格式校验；这里只准备媒体。
 	prepared := append([]delivery.Output(nil), outputs...)
 	for i, out := range prepared {
 		if !isMediaOutputKind(out.Kind) {

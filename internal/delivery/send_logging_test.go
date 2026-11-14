@@ -14,7 +14,7 @@ import (
 	"elbot/internal/signal"
 )
 
-func TestSendLoggingKeepsSourceResultAndPartialReceipt(t *testing.T) {
+func TestSendLoggingKeepsSourceResult(t *testing.T) {
 	logs := make(chan events.LogRecord, 4)
 	c, err := events.LogSubmitted.Observe(func(_ context.Context, r events.LogRecord) {
 		if r.Module == "delivery" {
@@ -36,19 +36,11 @@ func TestSendLoggingKeepsSourceResultAndPartialReceipt(t *testing.T) {
 			return events.LogRecord{}
 		}
 	}
-	want := errors.New("partial send failed")
-	sender := &independentChatSender{fakeSender: fakeSender{err: want}}
+	want := errors.New("send failed")
 	facts := contextinfo.Execution{SessionID: "session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}
 	ctx := contextinfo.WithExecution(t.Context(), facts)
 	out := Text("notice")
 	out.Delivery = DeliveryInfo{HookName: " notify ", HookPoint: " point ", HookMode: " run "}
-	receipt, err := NewManager(sender).SendTo(ctx, Target{Platform: "test"}, []Output{out})
-	if !errors.Is(err, want) || len(receipt.PlatformMessageIDs) != 1 {
-		t.Fatal(receipt, err, len(logs))
-	}
-	if len(logs) != 0 {
-		t.Fatal("SendTo reported an error it returns to its caller")
-	}
 	LogSendResult(ctx, Target{Platform: "test"}, out, want)
 	record := nextLog()
 	if record.Level != slog.LevelWarn || record.ResultStatus != events.ResultFailed {

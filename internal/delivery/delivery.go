@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"strings"
 
 	"elbot/internal/contextinfo"
@@ -116,11 +115,7 @@ func ValidateDeliveryTiming(timing string) error {
 }
 
 func SplitByDeliveryTiming(outputs []Output) ([]Output, []Output) {
-	if len(outputs) == 0 {
-		return nil, nil
-	}
-	immediate := make([]Output, 0, len(outputs))
-	deferred := make([]Output, 0)
+	var immediate, deferred []Output
 	for _, out := range outputs {
 		if DeliveryTiming(out) == DeliveryAfterAssistant {
 			deferred = append(deferred, out)
@@ -180,28 +175,6 @@ type MessageSender interface {
 	SendTo(ctx context.Context, target Target, outputs []Output) (Receipt, error)
 }
 
-type Manager struct {
-	Sender MessageSender
-}
-
-func NewManager(sender MessageSender) Manager {
-	return Manager{Sender: sender}
-}
-
-func (m Manager) SendTo(ctx context.Context, target Target, outputs []Output) (Receipt, error) {
-	if err := ctx.Err(); err != nil {
-		return Receipt{}, err
-	}
-	if len(outputs) == 0 {
-		return Receipt{}, nil
-	}
-	if err := ValidateOutputs(outputs); err != nil {
-		return Receipt{}, err
-	}
-	receipt, err := m.Sender.SendTo(ctx, target, outputs)
-	return receipt, wrapOutputSourceError(outputs[0], err)
-}
-
 // LogSendResult asynchronously publishes a chat output's source-owned failure.
 func LogSendResult(ctx context.Context, target Target, out Output, err error) {
 	if err == nil {
@@ -218,16 +191,6 @@ func LogSendResult(ctx context.Context, target Target, out Output, err error) {
 		record.Level, record.ResultStatus = slog.LevelInfo, globalevents.ResultCanceled
 	}
 	globalevents.AsyncLog(ctx, record)
-}
-
-func wrapOutputSourceError(out Output, err error) error {
-	if err == nil {
-		return nil
-	}
-	if hookName := strings.TrimSpace(firstNonEmpty(out.Delivery.HookName, out.Delivery.HookPoint)); hookName != "" {
-		return fmt.Errorf("hook %s output: %w", hookName, err)
-	}
-	return err
 }
 
 func FallbackOutput(outputs []Output) Output {
@@ -259,67 +222,6 @@ func ValidateOutputsTarget(outputs []Output) (Target, error) {
 	return target, nil
 }
 
-func ValidateOutputs(outputs []Output) error {
-	for i, out := range outputs {
-		if err := ValidateDeliveryTiming(DeliveryTiming(out)); err != nil {
-			return fmt.Errorf("outputs[%d]: %w", i, err)
-		}
-		sourceCount := 0
-		if strings.TrimSpace(out.Source.Path) != "" {
-			sourceCount++
-		}
-		if strings.TrimSpace(out.Source.MediaID) != "" {
-			sourceCount++
-		}
-		if strings.TrimSpace(out.Source.URL) != "" {
-			sourceCount++
-		}
-		if len(out.Source.Data) > 0 {
-			sourceCount++
-		}
-		switch out.Kind {
-		case KindText:
-			if sourceCount != 0 {
-				return fmt.Errorf("outputs[%d]: text output cannot have a media source", i)
-			}
-		case KindImage, KindFile, KindRecord:
-			if sourceCount != 1 {
-				return fmt.Errorf("outputs[%d]: image/file/record output must have exactly one media source", i)
-			}
-			if path := strings.TrimSpace(out.Source.Path); strings.Contains(path, "://") {
-				return fmt.Errorf("outputs[%d]: media path must be a filesystem path, not a URI", i)
-			}
-			if value := strings.TrimSpace(out.Source.URL); value != "" {
-				u, err := url.Parse(value)
-				if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-					return fmt.Errorf("outputs[%d]: media URL must be an absolute HTTP(S) URL", i)
-				}
-			}
-		case KindEmoticon:
-			if sourceCount != 0 {
-				return fmt.Errorf("outputs[%d]: emoticon output cannot have a media source", i)
-			}
-			if strings.TrimSpace(out.EmoticonID) == "" {
-				return fmt.Errorf("outputs[%d]: emoticon output requires an emoticon ID", i)
-			}
-			if strings.TrimSpace(out.Name) == "" {
-				return fmt.Errorf("outputs[%d]: emoticon output requires a name", i)
-			}
-		case KindAt:
-			if strings.TrimSpace(out.Name) == "" {
-				return fmt.Errorf("outputs[%d]: at output requires a user ID", i)
-			}
-		case KindReply:
-			if strings.TrimSpace(out.ReplyToPlatformMessageID) == "" {
-				return fmt.Errorf("outputs[%d]: reply output requires a message ID", i)
-			}
-		default:
-			return fmt.Errorf("outputs[%d]: unsupported output kind %q", i, out.Kind)
-		}
-	}
-	return nil
-}
-
 func FallbackText(out Output) string {
 	var label string
 	switch out.Kind {
@@ -331,21 +233,13 @@ func FallbackText(out Output) string {
 	case KindEmoticon:
 		return fmt.Sprintf("[表情: %s]", strings.TrimSpace(out.Name))
 	case KindAt:
-		name := strings.TrimSpace(firstNonEmpty(out.Name, out.Text))
-		if name == "" {
-			return ""
-		}
-		return fmt.Sprintf("@%s", name)
+		return fmt.Sprintf("@%s", strings.TrimSpace(out.Name))
 	case KindReply:
-		replyID := strings.TrimSpace(out.ReplyToPlatformMessageID)
 		text := out.Text
 		if len(out.Blocks) > 0 {
 			text = ContentBlocksText(out.Blocks)
 		}
-		if replyID == "" {
-			return text
-		}
-		return fmt.Sprintf("[引用消息 %s]\n%s", replyID, text)
+		return fmt.Sprintf("[引用消息 %s]\n%s", strings.TrimSpace(out.ReplyToPlatformMessageID), text)
 	case KindImage:
 		label = "图片"
 	case KindFile:
