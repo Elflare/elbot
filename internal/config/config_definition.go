@@ -24,6 +24,12 @@ func CoreDefinitions() []Definition {
 				return nil
 			},
 			BindPath: func(c *Config, path string) { c.ConfigPath = path },
+			Validate: func(ctx ValidationContext) []Issue {
+				if !ctx.Ready("app.toml") {
+					return nil
+				}
+				return ctx.Config.Security.Validate()
+			},
 		},
 		{
 			Asset: "providers.toml", New: func() any { return &Config{} },
@@ -192,6 +198,23 @@ func (c *Config) ValidateModelProviders(modes ...string) []Issue {
 		}
 		if _, exists := c.Providers[selection.Provider]; !exists {
 			issues = append(issues, Issue{Field: []string{"mode_models", mode, "provider"}, Level: LevelError, Message: fmt.Sprintf("mode_models.%s 引用的 provider %q 不存在于 %s。", mode, selection.Provider, c.ProvidersConfigPath)})
+		}
+	}
+	return issues
+}
+
+// Validate 检查已应用默认值的安全配置，供启动加载与只读诊断共用。
+func (c SecurityConfig) Validate() []Issue {
+	var issues []Issue
+	for _, field := range []struct{ name, value string }{
+		{"user_max_tool_risk", c.UserMaxToolRisk},
+		{"superadmin_confirm_risk", c.SuperadminConfirmRisk},
+	} {
+		if !slices.Contains([]string{"safe", "low", "medium", "high", "critical"}, field.value) {
+			issues = append(issues, Issue{
+				Field: []string{"security", field.name}, Level: LevelError,
+				Message: fmt.Sprintf("security.%s 必须为 safe、low、medium、high 或 critical，当前为 %q。", field.name, field.value),
+			})
 		}
 	}
 	return issues

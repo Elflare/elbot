@@ -1,7 +1,9 @@
 package config
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -759,6 +761,57 @@ func TestLoadDotEnvReturnsReadError(t *testing.T) {
 	}
 	if _, err := LoadDotEnv(dir); err == nil {
 		t.Fatal("LoadDotEnv succeeded for a directory")
+	}
+}
+
+func TestSecurityRiskConfiguration(t *testing.T) {
+	cases := []struct {
+		name, userRisk, adminRisk, wantUser, wantAdmin string
+		invalidFields                                  []string
+	}{
+		{name: "defaults", wantUser: "low", wantAdmin: "high"},
+		{name: "whitespace defaults", userRisk: "  ", adminRisk: "\t", wantUser: "low", wantAdmin: "high"},
+		{name: "normalized", userRisk: " MeDiuM ", adminRisk: " CRITICAL ", wantUser: "medium", wantAdmin: "critical"},
+		{name: "safe", userRisk: "safe", adminRisk: "safe", wantUser: "safe", wantAdmin: "safe"},
+		{name: "invalid user risk", userRisk: "unknown", adminRisk: "high", invalidFields: []string{"security.user_max_tool_risk"}},
+		{name: "invalid confirmation risk", userRisk: "low", adminRisk: "unknown", invalidFields: []string{"security.superadmin_confirm_risk"}},
+		{name: "both invalid", userRisk: "unknown", adminRisk: "unknown", invalidFields: []string{"security.user_max_tool_risk", "security.superadmin_confirm_risk"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "app.toml")
+			writeFile(t, path, fmt.Sprintf("[security]\nuser_max_tool_risk = %q\nsuperadmin_confirm_risk = %q\n", tc.userRisk, tc.adminRisk))
+			writeFile(t, filepath.Join(root, "providers.toml"), "[providers.test]\nbase_url = 'https://example.invalid'\nmodels = ['model']\n")
+			writeFile(t, filepath.Join(root, "state.toml"), "[mode_models.work]\nprovider = 'test'\nmodel = 'model'\n[mode_models.chat]\nprovider = 'test'\nmodel = 'model'\n")
+			cfg, err := Load(path)
+			if len(tc.invalidFields) == 0 {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if cfg.Security.UserMaxToolRisk != tc.wantUser || cfg.Security.SuperadminConfirmRisk != tc.wantAdmin {
+					t.Fatalf("security=%+v", cfg.Security)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tc.invalidFields[0]) || !strings.Contains(err.Error(), "unknown") {
+				t.Fatalf("Load error=%v, want field %s and invalid value", err, tc.invalidFields[0])
+			}
+			inspection, err := NewInspector().Inspect(context.Background(), path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var invalidFields []string
+			for _, issue := range inspection.Issues {
+				if issue.Level == LevelError && len(issue.Field) > 0 && issue.Field[0] == "security" {
+					invalidFields = append(invalidFields, strings.Join(issue.Field, "."))
+					if issue.Path != path || !strings.Contains(issue.Message, "unknown") {
+						t.Fatalf("security issue=%+v", issue)
+					}
+				}
+			}
+			if !reflect.DeepEqual(invalidFields, tc.invalidFields) {
+				t.Fatalf("inspection fields=%v, want %v", invalidFields, tc.invalidFields)
+			}
+		})
 	}
 }
 

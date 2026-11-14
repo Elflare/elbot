@@ -1,7 +1,7 @@
 package security
 
 import (
-	"strings"
+	"fmt"
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
@@ -49,10 +49,11 @@ func (p *Permission) CheckTool(actor contextinfo.Actor, name string, risk RiskLe
 	return ToolPermissionResult{Allowed: true, NeedsConfirmation: p.NeedsToolConfirmation(actor, risk)}
 }
 
+// NewPermission 接收 Config 已规范化并校验的风险等级，不重复提供默认值。
 func NewPermission(userMaxToolRisk, superadminConfirmRisk string, superadmins map[string][]string) *Permission {
 	p := &Permission{
-		UserMaxToolRisk:       ParseRisk(userMaxToolRisk, RiskLow),
-		SuperadminConfirmRisk: ParseRisk(superadminConfirmRisk, RiskHigh),
+		UserMaxToolRisk:       RiskLevel(userMaxToolRisk),
+		SuperadminConfirmRisk: RiskLevel(superadminConfirmRisk),
 		Superadmins:           map[string]map[string]bool{},
 	}
 	for platform, ids := range superadmins {
@@ -66,15 +67,6 @@ func NewPermission(userMaxToolRisk, superadminConfirmRisk string, superadmins ma
 
 func DefaultPermission() *Permission {
 	return NewPermission("low", "high", map[string][]string{config.PlatformCLI: {"local"}})
-}
-
-func ParseRisk(value string, fallback RiskLevel) RiskLevel {
-	switch RiskLevel(normalize(value)) {
-	case RiskSafe, RiskLow, RiskMedium, RiskHigh, RiskCritical:
-		return RiskLevel(normalize(value))
-	default:
-		return fallback
-	}
 }
 
 // Actor 按平台和原生用户 ID 解析权限，不从关联 ID 恢复身份。
@@ -91,13 +83,7 @@ func (p *Permission) IsSuperadmin(platform, platformUserID string) bool {
 }
 
 func (p *Permission) CanUseTool(actor contextinfo.Actor, risk RiskLevel, ownerScoped bool) bool {
-	if actor.Role == contextinfo.RoleSuperadmin {
-		return true
-	}
-	if ownerScoped {
-		return true
-	}
-	return CompareRisk(risk, p.UserMaxToolRisk) <= 0
+	return actor.Role == contextinfo.RoleSuperadmin || ownerScoped || CompareRisk(risk, p.UserMaxToolRisk) <= 0
 }
 
 func (p *Permission) NeedsToolConfirmation(actor contextinfo.Actor, risk RiskLevel) bool {
@@ -125,10 +111,6 @@ func riskRank(risk RiskLevel) int {
 	case RiskCritical:
 		return 4
 	default:
-		return 3
+		panic(fmt.Sprintf("invalid risk level %q", risk))
 	}
-}
-
-func normalize(value string) string {
-	return strings.ToLower(strings.TrimSpace(value))
 }

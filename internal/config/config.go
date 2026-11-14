@@ -377,6 +377,9 @@ func Load(path string) (*Config, error) {
 	if err := state.readCore(context.Background(), false); err != nil {
 		return nil, err
 	}
+	if err := FirstError(state.cfg.Security.Validate()); err != nil {
+		return nil, err
+	}
 	if err := FirstError(state.cfg.ValidateProviders()); err != nil {
 		return nil, err
 	}
@@ -541,6 +544,8 @@ func (c *Config) applyAppDefaults() {
 	if c.View.SessionListPageSize <= 0 {
 		c.View.SessionListPageSize = 10
 	}
+	c.Security.UserMaxToolRisk = strings.ToLower(strings.TrimSpace(c.Security.UserMaxToolRisk))
+	c.Security.SuperadminConfirmRisk = strings.ToLower(strings.TrimSpace(c.Security.SuperadminConfirmRisk))
 	if c.Security.UserMaxToolRisk == "" {
 		c.Security.UserMaxToolRisk = "low"
 	}

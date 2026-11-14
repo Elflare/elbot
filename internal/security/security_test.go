@@ -17,7 +17,7 @@ func TestPolicyActorKeepsDistinctNativeIdentities(t *testing.T) {
 		{" local ", contextinfo.RoleUser},
 	} {
 		actor := permission.Actor("cli", tt.userID, "User")
-		if actor.ActorIdentity != (contextinfo.ActorIdentity{Platform: "cli", ID: tt.userID}) || actor.ID != tt.userID || actor.Role != tt.role {
+		if actor.ActorIdentity != (contextinfo.ActorIdentity{Platform: "cli", ID: tt.userID}) || actor.Role != tt.role {
 			t.Fatalf("native ID %q resolved to %+v", tt.userID, actor)
 		}
 	}
@@ -60,12 +60,10 @@ func TestCheckToolKeepsPermissionBeforeBackgroundConfirmation(t *testing.T) {
 	}{
 		{name: "foreground high needs confirmation", role: contextinfo.RoleSuperadmin, tool: "shell", risk: RiskHigh, want: ToolPermissionResult{Allowed: true, NeedsConfirmation: true}},
 		{name: "cron high skips confirmation", role: contextinfo.RoleSuperadmin, tool: "shell", risk: RiskHigh, autoConfirmShell: true, want: ToolPermissionResult{Allowed: true, Reason: "background_shell_auto_confirmed"}},
-		{name: "elnis high skips confirmation", role: contextinfo.RoleSuperadmin, tool: "shell", risk: RiskHigh, autoConfirmShell: true, want: ToolPermissionResult{Allowed: true, Reason: "background_shell_auto_confirmed"}},
 		{name: "critical cron shell rejected", role: contextinfo.RoleSuperadmin, tool: "shell", risk: RiskCritical, autoConfirmShell: true, want: ToolPermissionResult{Reason: "background_shell_rejected"}},
 		{name: "automatic confirmation grants no permission", role: contextinfo.RoleUser, tool: "shell", risk: RiskHigh, autoConfirmShell: true, want: ToolPermissionResult{Reason: "tool_risk_above_allowed_level"}},
 		{name: "owner scope does not bypass superadmin requirement", role: contextinfo.RoleUser, tool: "shell", risk: RiskLow, ownerScoped: true, superadminOnly: true, autoConfirmShell: true, want: ToolPermissionResult{Reason: "tool_requires_superadmin"}},
 		{name: "another tool keeps normal confirmation", role: contextinfo.RoleSuperadmin, tool: "send_file", risk: RiskHigh, autoConfirmShell: true, want: ToolPermissionResult{Allowed: true, NeedsConfirmation: true}},
-		{name: "another background kind keeps normal confirmation", role: contextinfo.RoleSuperadmin, tool: "shell", risk: RiskHigh, autoConfirmShell: false, want: ToolPermissionResult{Allowed: true, NeedsConfirmation: true}},
 		{name: "ordinary low risk allowed", role: contextinfo.RoleUser, tool: "read_file", risk: RiskLow, want: ToolPermissionResult{Allowed: true}},
 	}
 	for _, tt := range tests {

@@ -342,7 +342,7 @@ func TestRunPreservesMultimodalToolSegments(t *testing.T) {
 	if err := registerTestTools(registry, (runnerImageTool{}).Definition()); err != nil {
 		t.Fatal(err)
 	}
-	manager := newTestManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
+	manager := newTestManager(registry, security.DefaultPermission())
 	committer := &testToolCommitter{}
 	result := manager.Run(context.Background(), &runnerTestDeps{}, toolshare.RunRequest{Committer: committer,
 		Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
@@ -359,7 +359,7 @@ func TestRunSkipsConfirmationWhenPreflightFails(t *testing.T) {
 	if err := registerTestTools(registry, (runnerPreflightTool{}).Definition()); err != nil {
 		t.Fatal(err)
 	}
-	manager := newTestManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
+	manager := newTestManager(registry, security.DefaultPermission())
 	deps := &runnerTestDeps{}
 	committer := &testToolCommitter{}
 	result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: committer,
@@ -394,7 +394,7 @@ func TestRunPreparesToolContextBeforePreflightAndExecution(t *testing.T) {
 	if err := registerTestTools(registry, (runnerContextPreflightTool{}).Definition()); err != nil {
 		t.Fatal(err)
 	}
-	manager := newTestManager(registry, security.NewPermission("low", "high", map[string][]string{"cli": {"local"}}))
+	manager := newTestManager(registry, security.DefaultPermission())
 	deps := &runnerTestDeps{prepareContext: func(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
 		return context.WithValue(ctx, runnerContextKey{}, "prepared")
 	}}
