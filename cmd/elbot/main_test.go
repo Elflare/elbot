@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -186,5 +187,38 @@ func TestEntryServiceStartsStopsAndReleasesLock(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(filepath.Dir(path), name)); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestEntryStartupFailureExitsAndReleasesLock(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		platform string
+		blocked  string
+		want     string
+	}{
+		{name: "storage", blocked: "sessions.db", want: "storage build:"},
+		{name: "history", blocked: "history.db", want: "chat history build:"},
+		{name: "platform", platform: "[platform.cli]\nenabled = 'invalid boolean'\n", want: "platform build:"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			path := entryConfig(t, tt.platform)
+			if tt.blocked != "" {
+				if err := os.Mkdir(filepath.Join(filepath.Dir(path), tt.blocked), 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, done, output := startEntry(t, "service", "run", "--config", path)
+			err := <-done
+			var exit *exec.ExitError
+			if !errors.As(err, &exit) || exit.ExitCode() != 1 || !strings.Contains(output.String(), tt.want) {
+				t.Fatalf("exit=%v output=%s; want exit 1 and %q", err, output, tt.want)
+			}
+			lock := flock.New(path + ".lock")
+			defer lock.Close()
+			if locked, err := lock.TryLock(); err != nil || !locked {
+				t.Fatalf("failed process retained lock: locked=%v err=%v", locked, err)
+			}
+		})
 	}
 }

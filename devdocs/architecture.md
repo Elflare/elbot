@@ -38,7 +38,7 @@ flowchart TD
 
 App 持有配置、共享资源及业务总管，负责装配和启停；业务包自行管理内部组件，不关闭借用资源。媒体与模型服务自行解释完整配置。
 
-- 启动：Tool → Agent → Hook → Platform → Background；构造失败也清理已取得资源。
+- 启动：Tool → Agent → Hook → Platform → Background；任一启动阶段失败直接返回 main 退出进程，不执行部分实例清理。只有完整启动的实例参与关闭与同进程重启。
 - 关闭：停止接入 → 等待在途工作 → 释放依赖；发送、Media、存储保留到消费者退出。`cancel / Close 超时 ≠ exited`，Done 只表示真实退出。
 - main 管信号和退出码，Launcher 管参数解析。相同配置独占运行；仅默认入口可按 Platform 的明确回退信号进入 TUI。
 

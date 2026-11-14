@@ -30,7 +30,7 @@ type Supervisor struct {
 	agentErr        error
 }
 
-// NewSupervisor 接收完整配置；部分构造失败仍返回总管，由 App 统一清理。
+// NewSupervisor 接收完整配置；启动失败交由 App 返回错误并退出进程。
 func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps) (*Supervisor, error) {
 	m := &Supervisor{}
 	m.lifecycle.init(ctx)

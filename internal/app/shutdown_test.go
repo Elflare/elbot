@@ -2,18 +2,16 @@ package app
 
 import (
 	"context"
-	"elbot/internal/events"
-	"elbot/internal/signal"
 	"errors"
-	"path/filepath"
 	"slices"
 	"testing"
 	"testing/synctest"
 	"time"
 
+	"elbot/internal/events"
 	"elbot/internal/logging"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
-	"elbot/internal/storage/sqlite"
 )
 
 func TestShutdownStepDeadlineDoesNotWaitForUncooperativeCloser(t *testing.T) {
@@ -22,66 +20,21 @@ func TestShutdownStepDeadlineDoesNotWaitForUncooperativeCloser(t *testing.T) {
 		defer cancel()
 		release := make(chan struct{})
 		defer close(release)
-		result := runShutdownStep(ctx, shutdownStep{component: componentAgent, phase: phaseClose, close: func(context.Context) error { <-release; return nil }})
-		requireLifecycleError(t, result.err, componentAgent, phaseClose)
+		result := runShutdownStep(ctx, nil, shutdownStep{component: componentMedia, phase: phaseClose, close: func(context.Context) error { <-release; return nil }})
 		if result.kind != stopTimedOut || !errors.Is(result.err, context.DeadlineExceeded) {
 			t.Fatalf("result=%+v", result)
 		}
 		called := false
-		result = runShutdownStep(ctx, shutdownStep{component: componentTool, phase: phaseClose, close: func(context.Context) error { called = true; return nil }})
-		requireLifecycleError(t, result.err, componentTool, phaseClose)
-		if result.kind != stopTimedOut || !errors.Is(result.err, context.DeadlineExceeded) || called {
+		result = runShutdownStep(ctx, nil, shutdownStep{component: componentStorage, phase: phaseClose, close: func(context.Context) error { called = true; return nil }})
+		if result.kind != stopTimedOut || called {
 			t.Fatalf("started a dependency after deadline: result=%+v called=%v", result, called)
-		}
-	})
-}
-
-func TestShutdownBeginCloseHonorsSharedDeadline(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		release := make(chan struct{})
-		closed := false
-		lines := businessLines{
-			{kind: componentPlatform, beginOrder: 1,
-				supervisor:  &testLifecycle{begin: func() { time.Sleep(10 * time.Second) }},
-				waitIngress: func(context.Context) error { closed = true; return nil },
-			},
-			{kind: componentBackground, beginOrder: 2, supervisor: &testLifecycle{
-				begin: func() { <-release },
-				close: func(context.Context) error { closed = true; return nil },
-			}},
-		}
-		started := time.Now()
-		result := make(chan error, 1)
-		var elapsed time.Duration
-		go func() {
-			err := shutdown(t.Context(), lines, nil, nil)
-			elapsed = time.Since(started)
-			result <- err
-		}()
-		time.Sleep(shutdownTimeout + time.Second)
-		synctest.Wait()
-		select {
-		case err := <-result:
-			requireLifecycleError(t, err, componentBackground, phaseBeginClose)
-			if !errors.Is(err, context.DeadlineExceeded) {
-				t.Errorf("timeout cause = %v", err)
-			}
-			if elapsed != shutdownTimeout || closed {
-				t.Errorf("elapsed=%s later step ran=%v", elapsed, closed)
-			}
-			close(release)
-		default:
-			t.Error("shutdown did not return at its deadline while BeginClose blocked")
-			close(release)
-			<-result
 		}
 	})
 }
 
 func TestShutdownStepPreservesTypedCause(t *testing.T) {
 	for _, cause := range []error{errors.New("close failed"), context.DeadlineExceeded} {
-		result := runShutdownStep(t.Context(), shutdownStep{component: componentModels, phase: phaseClose, close: func(context.Context) error { return cause }})
-		requireLifecycleError(t, result.err, componentModels, phaseClose)
+		result := runShutdownStep(t.Context(), nil, shutdownStep{component: componentModels, phase: phaseClose, close: func(context.Context) error { return cause }})
 		if result.kind != stopFailed || !errors.Is(result.err, cause) {
 			t.Fatalf("result=%+v", result)
 		}
@@ -89,61 +42,21 @@ func TestShutdownStepPreservesTypedCause(t *testing.T) {
 }
 
 func TestShutdownStepsPreservesOrderAndErrors(t *testing.T) {
-	first := errors.New("first failure")
-	last := errors.New("last failure")
-	for _, tt := range []struct {
-		name   string
-		errors []error
-		kind   stopKind
-	}{
-		{name: "success", errors: []error{nil, nil, nil}, kind: stopCompleted},
-		{name: "ordinary failures", errors: []error{first, nil, last}, kind: stopCompleted},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			records := make(chan events.LogRecord, 3)
-			connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
-				records <- record
-
-			}, signal.ConnectOptions{Shutdown: signal.Drain})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer connection.Close(context.Background())
-			var order []int
-			var steps []shutdownStep
-			for i, err := range tt.errors {
-				steps = append(steps, shutdownStep{component: componentMedia, phase: phaseClose, close: func(context.Context) error {
-					order = append(order, i)
-					return err
-				}})
-			}
-			result := runShutdownSteps(t.Context(), steps)
-			if err := connection.Close(t.Context()); err != nil {
-				t.Fatal(err)
-			}
-			if result.kind != tt.kind || !slices.Equal(order, []int{0, 1, 2}) {
-				t.Fatalf("result=%+v order=%v", result, order)
-			}
-			if tt.kind == stopCompleted && result.err != nil {
-				t.Fatal(result.err)
-			}
-			var want []string
-			for _, err := range tt.errors {
-				if err != nil {
-					want = append(want, (&lifecycleError{component: componentMedia, phase: phaseClose, cause: err}).Error())
-				}
-			}
-			var got []string
-			close(records)
-			for record := range records {
-				got = append(got, record.Content)
-			}
-			slices.Sort(got)
-			slices.Sort(want)
-			if !slices.Equal(got, want) {
-				t.Fatalf("logs=%v want=%v", got, want)
-			}
-		})
+	first, last := errors.New("first failure"), errors.New("last failure")
+	var order []int
+	var steps []shutdownStep
+	for i, err := range []error{first, nil, last} {
+		steps = append(steps, shutdownStep{component: componentMedia, phase: phaseClose, close: func(context.Context) error {
+			order = append(order, i)
+			return err
+		}})
+	}
+	result := runShutdownSteps(t.Context(), nil, steps)
+	if result.kind != stopFailed || !errors.Is(result.err, first) || !errors.Is(result.err, last) {
+		t.Fatalf("result=%+v", result)
+	}
+	if !slices.Equal(order, []int{0, 1, 2}) {
+		t.Fatalf("order=%v", order)
 	}
 }
 
@@ -156,27 +69,20 @@ func TestShutdownStepsSharesDeadlineAndStopsDependencies(t *testing.T) {
 		cause := errors.New("earlier failure")
 		called := false
 		started := time.Now()
-		result := runShutdownSteps(ctx, []shutdownStep{
-			{component: componentAgent, phase: phaseClose, close: func(context.Context) error {
+		result := runShutdownSteps(ctx, nil, []shutdownStep{
+			{component: componentMedia, phase: phaseClose, close: func(context.Context) error {
 				time.Sleep(600 * time.Millisecond)
 				return cause
 			}},
-			{component: componentTool, phase: phaseClose, close: func(context.Context) error {
-				<-release
-				return nil
-			}},
-			{component: componentPlatform, phase: phaseClose, close: func(context.Context) error {
-				called = true
-				return nil
-			}},
+			{component: componentStorage, phase: phaseClose, close: func(context.Context) error { <-release; return nil }},
+			{component: componentLogs, phase: phaseClose, close: func(context.Context) error { called = true; return nil }},
 		})
-		if result.kind != stopTimedOut || errors.Is(result.err, cause) || !errors.Is(result.err, context.DeadlineExceeded) {
+		if result.kind != stopTimedOut || !errors.Is(result.err, cause) || !errors.Is(result.err, context.DeadlineExceeded) {
 			t.Fatalf("result=%+v", result)
 		}
 		if called || time.Since(started) != time.Second {
 			t.Fatalf("called=%v elapsed=%s", called, time.Since(started))
 		}
-		requireLifecycleError(t, result.err, componentTool, phaseClose)
 	})
 }
 
@@ -187,15 +93,16 @@ func TestShutdownReportingDoesNotWaitForBlockedLogConsumer(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { close(release); _ = connection.Close(context.Background()) }()
+	cause := errors.New("cleanup failed")
 	done := make(chan stopResult, 1)
 	go func() {
-		done <- runShutdownSteps(t.Context(), []shutdownStep{
-			{component: componentMedia, phase: phaseClose, close: func(context.Context) error { return errors.New("cleanup failed") }},
+		done <- runShutdownSteps(t.Context(), nil, []shutdownStep{
+			{component: componentMedia, phase: phaseClose, close: func(context.Context) error { return cause }},
 		})
 	}()
 	select {
 	case result := <-done:
-		if result.kind != stopCompleted || result.err != nil {
+		if result.kind != stopFailed || !errors.Is(result.err, cause) {
 			t.Fatal(result)
 		}
 	case <-time.After(time.Second):
@@ -209,111 +116,113 @@ type failingResourceStore struct {
 }
 
 func (s failingResourceStore) Close() error {
-	if err := s.Store.Close(); err != nil {
-		return err
-	}
-	return s.cause
-}
-
-func TestCloseSharedResourcesContinuesAfterOrdinaryError(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sessions.db")
-	logs, err := logging.NewManager("debug", path, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = logs.Close(context.Background()) })
-	store, err := sqlite.New(t.Context(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-
-	cause := errors.New("injected storage close failure")
-	r := &sharedResources{logs: logs, store: failingResourceStore{Store: store, cause: cause}}
-	result := closeSharedResources(t.Context(), r)
-	if result.kind != stopCompleted || result.err != nil {
-		t.Fatalf("result=%+v", result)
-	}
-	// 存储关闭失败后仍须释放日志所有权，才能创建下一实例。
-	next, err := logging.NewManager("debug", path, 1)
-	if err != nil {
-		t.Fatal("log owner remained occupied", err)
-	}
-	t.Cleanup(func() { _ = next.Close(context.Background()) })
-}
-
-func TestShutdownOwnsHistoryUntilUsersClose(t *testing.T) {
-	for _, partial := range []bool{false, true} {
-		t.Run(map[bool]string{false: "running", true: "partial construction"}[partial], func(t *testing.T) {
-			history, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = history.Close() })
-			row := &storage.ChatMessage{Platform: "test", ChatID: "scope", PlatformMessageID: "message"}
-			if err := history.Repository().Append(t.Context(), row); err != nil {
-				t.Fatal(err)
-			}
-			closed := false
-			cause := errors.New("partial owner close failed")
-			user := &testLifecycle{close: func(ctx context.Context) error {
-				if _, err := history.Repository().GetByPlatformMessage(ctx, "test", "", "scope", "message"); err != nil {
-					t.Error("history closed before user", err)
-				}
-				closed = true
-				if partial {
-					return cause
-				}
-				return nil
-			}}
-			err = shutdown(t.Context(), businessLines{{kind: componentTool, supervisor: user}}, &sharedResources{historyStore: history}, nil)
-			if !closed || err != nil {
-				t.Fatal(closed, err)
-			}
-			if _, err := history.Repository().GetByPlatformMessage(t.Context(), "test", "", "scope", "message"); err == nil {
-				t.Fatal("App did not close history")
-			}
-		})
-	}
+	return errors.Join(s.Store.Close(), s.cause)
 }
 
 type testConfigLock struct{ closed bool }
 
 func (l *testConfigLock) Close() error { l.closed = true; return nil }
 
-func TestShutdownTimeoutRetainsHistoryForUnfinishedUser(t *testing.T) {
-	history, err := sqlite.NewChatHistory(t.Context(), filepath.Join(t.TempDir(), "history.db"))
+func TestShutdownPreservesIngressAndDependencyPhases(t *testing.T) {
+	r, err := prepareResources(t.Context(), appConfigFixture(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer history.Close()
+	cleanupAppResources(t, r)
+	var order []string
+	lines := testBusinessLines()
+	for kind, line := range lines {
+		line.supervisor.(*testLifecycle).begin = func() { order = append(order, kind.String()+" begin") }
+		line.supervisor.(*testLifecycle).close = func(ctx context.Context) error {
+			order = append(order, kind.String()+" close")
+			_, err := r.historyStore.Repository().GetByPlatformMessage(ctx, "test", "", "scope", "message")
+			return err
+		}
+	}
 	row := &storage.ChatMessage{Platform: "test", ChatID: "scope", PlatformMessageID: "message"}
-	if err := history.Repository().Append(t.Context(), row); err != nil {
+	if err := r.historyStore.Repository().Append(t.Context(), row); err != nil {
 		t.Fatal(err)
 	}
-	for _, phase := range []lifecyclePhase{phaseBeginClose, phaseClose} {
-		t.Run(phase.String(), func(t *testing.T) {
+	line := lines[componentPlatform]
+	line.waitIngress = func(context.Context) error { order = append(order, "platform ingress"); return nil }
+	lines[componentPlatform] = line
+	lock := &testConfigLock{}
+	if err := shutdown(t.Context(), lines, r, lock); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"platform begin", "background begin", "agent begin", "hook begin", "tool begin",
+		"platform ingress",
+		"background close", "agent close", "hook close", "tool close", "platform close",
+	}
+	if !slices.Equal(order, want) || !lock.closed {
+		t.Fatalf("order=%v lock closed=%v", order, lock.closed)
+	}
+	if _, err := r.historyStore.Repository().GetByPlatformMessage(t.Context(), "test", "", "scope", "message"); err == nil {
+		t.Fatal("App did not close history")
+	}
+}
+
+func TestShutdownContinuesAfterOrdinaryError(t *testing.T) {
+	path := appConfigFixture(t)
+	r, err := prepareResources(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleanupAppResources(t, r)
+	cause := errors.New("storage close failure")
+	r.store = failingResourceStore{Store: r.store, cause: cause}
+	lock := &testConfigLock{}
+	if err := shutdown(t.Context(), testBusinessLines(), r, lock); !errors.Is(err, cause) || !lock.closed {
+		t.Fatalf("shutdown error=%v lock closed=%v", err, lock.closed)
+	}
+	next, err := logging.NewManager("debug", r.config.Storage.SessionsSQLitePath, 1)
+	if err != nil {
+		t.Fatal("log owner remained occupied", err)
+	}
+	if err := next.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// Restore the closed underlying store so test cleanup does not inject another failure.
+	r.store = r.store.(failingResourceStore).Store
+}
+
+func TestShutdownTimeoutRetainsHistoryForUnfinishedUser(t *testing.T) {
+	for _, phase := range []string{"begin", "close", "done"} {
+		t.Run(phase, func(t *testing.T) {
+			r, err := prepareResources(t.Context(), appConfigFixture(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cleanupAppResources(t, r)
+			row := &storage.ChatMessage{Platform: "test", ChatID: "scope", PlatformMessageID: "message"}
+			if err := r.historyStore.Repository().Append(t.Context(), row); err != nil {
+				t.Fatal(err)
+			}
 			synctest.Test(t, func(t *testing.T) {
 				release := make(chan struct{})
 				defer close(release)
-				user := &testLifecycle{}
-				if phase == phaseBeginClose {
+				lines := testBusinessLines()
+				user := lines[componentBackground].supervisor.(*testLifecycle)
+				switch phase {
+				case "begin":
 					user.begin = func() { <-release }
-				} else {
-					user.begin = func() { time.Sleep(10 * time.Second) }
+				case "close":
 					user.close = func(context.Context) error { <-release; return nil }
+				case "done":
+					user.close = func(context.Context) error { return errors.New("close failed before exit") }
+					user.done = release
 				}
 				lock := &testConfigLock{}
 				started := time.Now()
-				err := shutdown(t.Context(), businessLines{{kind: componentTool, supervisor: user}}, &sharedResources{historyStore: history}, lock)
-				requireLifecycleError(t, err, componentTool, phase)
+				err := shutdown(t.Context(), lines, r, lock)
 				if !errors.Is(err, context.DeadlineExceeded) || time.Since(started) != shutdownTimeout {
 					t.Fatalf("elapsed=%s error=%v", time.Since(started), err)
 				}
 				if lock.closed {
 					t.Fatal("timeout released config lock")
 				}
-				if _, err := history.Repository().GetByPlatformMessage(t.Context(), "test", "", "scope", "message"); err != nil {
+				if _, err := r.historyStore.Repository().GetByPlatformMessage(t.Context(), "test", "", "scope", "message"); err != nil {
 					t.Fatal("timeout released dependency", err)
 				}
 			})

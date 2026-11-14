@@ -52,7 +52,6 @@ func TestDoctorThroughProductionWiring(t *testing.T) {
 			t.Fatal(err)
 		}
 		resources, err := prepareResources(t.Context(), customPath)
-		cleanupAppResources(t, resources)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -68,23 +67,15 @@ func TestDoctorThroughProductionWiring(t *testing.T) {
 			_ = input.Close()
 		})
 		lines, err := buildBusinessLines(t.Context(), resources, RunModeTUI, &runtimeControl{})
-		t.Cleanup(func() {
-			if result := stopBusinessLines(context.Background(), lines); result.err != nil {
-				t.Error(result.err)
-			}
-		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		var supervisor *agent.Supervisor
-		for _, line := range lines {
-			if line.kind == componentAgent {
-				supervisor = line.supervisor.(*agent.Supervisor)
+		t.Cleanup(func() {
+			if err := shutdown(context.Background(), lines, resources, &testConfigLock{}); err != nil {
+				t.Error(err)
 			}
-		}
-		if supervisor == nil {
-			t.Fatal("Agent was not constructed")
-		}
+		})
+		supervisor := lines[componentAgent].supervisor.(*agent.Supervisor)
 
 		// Change files after assembly: diagnosis must reread disk using the selected
 		// path and module schemas without reloading or starting their runtimes.

@@ -182,7 +182,7 @@ func (b elnisBridge) AddEventReference(ctx context.Context, mediaID, eventID, pu
 	return b.media.AddReference(ctx, media.Reference{MediaID: mediaID, OwnerType: "elnis_event", OwnerID: eventID, Purpose: purpose})
 }
 
-// NewSupervisor 只构造与接线；失败仍返回已取得的总管，由 App 统一清理。
+// NewSupervisor 只构造与接线；启动失败交由 App 返回错误并退出进程。
 func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps) (*Supervisor, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	m := &Supervisor{ctx: ctx, cancel: cancel, cfg: cfg, failed: make(chan struct{}), done: make(chan struct{})}

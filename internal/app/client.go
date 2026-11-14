@@ -39,11 +39,8 @@ func TryRunClient(ctx context.Context, opts ClientOptions) error {
 	// Platform 仅将默认连接未配置、被禁用或本机服务拨号失败归为 ClientFallback。
 	// 指定连接、远端失败、配置、认证、握手及取消均不归为可回退；App 不重复判断。
 	result := platform.RunClient(ctx, cfg, opts.ClientName)
-	switch result.Kind {
-	case platform.ClientFallback:
+	if result.Kind == platform.ClientFallback {
 		return ErrClientFallback
-	default:
-		// ClientCompleted 返回 nil，ClientFailed 返回原始错误。
-		return result.Err
 	}
+	return result.Err
 }

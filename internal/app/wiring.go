@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 
 	"elbot/internal/agent"
 	"elbot/internal/background"
@@ -14,58 +15,41 @@ import (
 	"elbot/internal/tool"
 )
 
-// buildBusinessLines 构造业务服务并交付公开能力；失败时保留部分结果。
+// buildBusinessLines 构造并连接全部业务服务；失败直接交给进程退出。
 // 每条线接收完整 cfg，在内部拆分配置、构造组件，禁止在 App 展开其内部装配。
 func buildBusinessLines(ctx context.Context, resources *sharedResources, mode RunMode, runtime *runtimeControl) (businessLines, error) {
-	lines := businessLines{}
 	cfg := resources.config
 	definitions := append(platform.ConfigDefinitions(), hook.ConfigDefinitions()...)
 	inspector := config.NewInspector(definitions...)
 	doctorService, err := doctor.New(cfg.ConfigPath, inspector)
 	if err != nil {
-		return lines, err
+		return nil, err
 	}
 	controller, err := control.NewSupervisor(cfg, control.SupervisorDeps{Runtime: runtime, Models: resources.models, Logs: logging.Reader{Dir: resources.logs.LogDir()}, Doctor: doctorService, LogDir: resources.logs.LogDir()})
 	if err != nil {
-		return lines, err
+		return nil, err
 	}
 	// 历史库由 App 持有，各线只借用实际使用的能力。
 	history := resources.historyStore.Repository()
 	platformSupervisor, err := platform.NewSupervisor(ctx, cfg, platform.SupervisorDeps{
 		Mode: string(mode), Store: resources.store, Media: resources.media, ChatHistory: history, Control: controller,
 	})
-	if platformSupervisor != nil {
-		lines = append(lines, businessLine{
-			kind: componentPlatform, supervisor: platformSupervisor,
-			startOrder: 4, beginOrder: 1, closeOrder: 5, waitIngress: platformSupervisor.WaitIngress,
-		})
-	}
 	if err != nil {
-		return lines, &lifecycleError{component: componentPlatform, phase: phaseBuild, cause: err}
+		return nil, fmt.Errorf("platform build: %w", err)
 	}
 	toolSupervisor, err := tool.NewSupervisor(ctx, cfg, tool.SupervisorDeps{
 		Store: resources.store, Models: resources.models, Media: resources.media, Permission: resources.permission,
 		Platform: platformSupervisor, ChatHistory: history,
 	})
-	if toolSupervisor != nil {
-		lines = append(lines, businessLine{
-			kind: componentTool, supervisor: toolSupervisor, startOrder: 1, beginOrder: 5, closeOrder: 4,
-		})
-	}
 	if err != nil {
-		return lines, &lifecycleError{component: componentTool, phase: phaseBuild, cause: err}
+		return nil, fmt.Errorf("tool build: %w", err)
 	}
 	hookSupervisor, err := hook.NewSupervisor(ctx, cfg, hook.SupervisorDeps{
 		Control: controller,
 		Media:   resources.media, Tools: toolSupervisor, Platform: platformSupervisor,
 	})
-	if hookSupervisor != nil {
-		lines = append(lines, businessLine{
-			kind: componentHook, supervisor: hookSupervisor, startOrder: 3, beginOrder: 4, closeOrder: 3,
-		})
-	}
 	if err != nil {
-		return lines, &lifecycleError{component: componentHook, phase: phaseBuild, cause: err}
+		return nil, fmt.Errorf("hook build: %w", err)
 	}
 
 	agentSupervisor, err := agent.NewSupervisor(ctx, cfg, agent.SupervisorDeps{
@@ -74,13 +58,8 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 		Permission: resources.permission, Logs: resources.logs,
 		Tools: toolSupervisor, Platform: platformSupervisor, ChatHistory: history,
 	})
-	if agentSupervisor != nil {
-		lines = append(lines, businessLine{
-			kind: componentAgent, supervisor: agentSupervisor, startOrder: 2, beginOrder: 3, closeOrder: 2,
-		})
-	}
 	if err != nil {
-		return lines, &lifecycleError{component: componentAgent, phase: phaseBuild, cause: err}
+		return nil, fmt.Errorf("agent build: %w", err)
 	}
 
 	// Background 自行管理后台执行与调度，只借用各总管公开能力。
@@ -89,22 +68,23 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 		Logs:  resources.logs,
 		Agent: agentSupervisor, Tools: toolSupervisor, Platform: platformSupervisor, ChatHistory: history,
 	})
-	if backgroundSupervisor != nil {
-		lines = append(lines, businessLine{
-			kind: componentBackground, supervisor: backgroundSupervisor, startOrder: 5, beginOrder: 2, closeOrder: 1,
-		})
-	}
 	if err != nil {
-		return lines, &lifecycleError{component: componentBackground, phase: phaseBuild, cause: err}
+		return nil, fmt.Errorf("background build: %w", err)
 	}
 	// 具体类型只用于装配；连接及订阅由接收方持有和释放。
 	// Hook 注册 Points 并登记实际 handler；Platform 接入消息、命令及快照订阅。
 	if err := hookSupervisor.ConnectAgent(agentSupervisor); err != nil {
-		return lines, &lifecycleError{component: componentHook, phase: phaseConnect, cause: err}
+		return nil, fmt.Errorf("hook connect: %w", err)
 	}
 	if err := platformSupervisor.ConnectAgent(agentSupervisor); err != nil {
-		return lines, &lifecycleError{component: componentPlatform, phase: phaseConnect, cause: err}
+		return nil, fmt.Errorf("platform connect: %w", err)
 	}
 	// App 只交付总管，不取得内部 Registry、Manager、Session 或执行协调器。
-	return lines, nil
+	return businessLines{
+		componentPlatform:   {supervisor: platformSupervisor, waitIngress: platformSupervisor.WaitIngress},
+		componentTool:       {supervisor: toolSupervisor},
+		componentHook:       {supervisor: hookSupervisor},
+		componentAgent:      {supervisor: agentSupervisor},
+		componentBackground: {supervisor: backgroundSupervisor},
+	}, nil
 }

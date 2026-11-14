@@ -1,13 +1,11 @@
 package app
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"slices"
 	"sync"
 	"time"
 
@@ -33,7 +31,7 @@ type Lifecycle interface {
 	Done() <-chan struct{}
 }
 
-// Waiter 是可选的运行观察能力。故障及时返回，实际收尾由 Close 等待。
+// Waiter 是 Platform 和 Background 的运行观察能力，实际收尾由 Close 等待。
 // Wait 必须响应传入上下文的取消；取消等待不等于关闭业务线。
 type Waiter interface {
 	Wait(context.Context) error
@@ -43,8 +41,7 @@ type Waiter interface {
 type componentKind uint8
 
 const (
-	componentApp componentKind = iota
-	componentTool
+	componentTool componentKind = iota
 	componentAgent
 	componentHook
 	componentPlatform
@@ -59,24 +56,21 @@ const (
 
 func (kind componentKind) String() string {
 	return [...]string{
-		componentApp: "app", componentTool: "tool", componentAgent: "agent",
+		componentTool: "tool", componentAgent: "agent",
 		componentHook: "hook", componentPlatform: "platform", componentBackground: "background",
 		componentModels: "models", componentMedia: "media", componentChatHistory: "chat history",
 		componentStorage: "storage", componentLogs: "logs", componentConfigLock: "config lock",
 	}[kind]
 }
 
-// lifecyclePhase 标识编排阶段；关闭阶段按停止请求、接入退出、最终关闭排列。
+// lifecyclePhase 标识启动计时、错误及关闭步骤所属阶段。
 type lifecyclePhase uint8
 
 const (
 	phaseEnvironment lifecyclePhase = iota
 	phaseResources
 	phaseWiring
-	phaseBuild
-	phaseConnect
 	phaseStart
-	phaseWait
 	phaseBeginClose
 	phaseWaitIngress
 	phaseClose
@@ -85,44 +79,18 @@ const (
 func (phase lifecyclePhase) String() string {
 	return [...]string{
 		phaseEnvironment: "environment", phaseResources: "resources", phaseWiring: "wiring",
-		phaseBuild: "build", phaseConnect: "connect", phaseStart: "start", phaseWait: "wait",
+		phaseStart:      "start",
 		phaseBeginClose: "begin close", phaseWaitIngress: "wait ingress", phaseClose: "close",
 	}[phase]
 }
 
-// lifecycleError 保留组件、阶段与原始错误链；仅在展示时组合文本。
-type lifecycleError struct {
-	component componentKind  // 失败步骤所属的组件。
-	phase     lifecyclePhase // 失败步骤的编排阶段。
-	cause     error          // 当前阶段的原始错误，供 errors.Is/As 解包。
-}
-
-func (err *lifecycleError) Error() string {
-	return fmt.Sprintf("%s %s: %v", err.component, err.phase, err.cause)
-}
-
-func (err *lifecycleError) Unwrap() error {
-	return err.cause
-}
-
 type businessLine struct {
-	kind        componentKind               // 日志及错误所属的业务线。
-	supervisor  Lifecycle                   // 已取得的非 nil 总管，包含部分构造结果。
-	startOrder  int                         // 启动次序，与构造及关闭次序独立。
-	beginOrder  int                         // 发起停止的次序，所有停止请求先于接入等待。
-	closeOrder  int                         // 最终关闭次序，使用方先于依赖方。
-	waitIngress func(context.Context) error // 可选的接入退出等待；期间保留输出能力。
+	supervisor  Lifecycle                   // 已成功构造的总管。
+	waitIngress func(context.Context) error // Platform 接入退出等待；期间保留输出能力。
 }
 
-// businessLines 是唯一的总管登记表，只保存装配阶段已取得的总管。
-type businessLines []businessLine
-
-// inStartOrder 返回按登记的启动次序排序的副本，不改变原登记顺序。
-func (lines businessLines) inStartOrder() []businessLine {
-	ordered := slices.Clone(lines)
-	slices.SortStableFunc(ordered, func(a, b businessLine) int { return cmp.Compare(a.startOrder, b.startOrder) })
-	return ordered
-}
+// businessLines 按组件身份保存全部装配成功的业务线。
+type businessLines map[componentKind]businessLine
 
 // startupTiming 记录总起点及四个入口阶段。
 type startupTiming struct {
@@ -134,11 +102,6 @@ type startupTiming struct {
 type startupStage struct {
 	phase    lifecyclePhase // 环境、资源、装配或启动阶段。
 	duration time.Duration  // 当前阶段耗时。
-}
-
-type startupStep struct {
-	phase lifecyclePhase // 阶段身份，用于错误归属及完成耗时。
-	run   func() error   // 先保存本阶段取得的资源，再交回错误。
 }
 
 // runtimeControl 为当前实例预留重启；提交仅取消运行等待，由 Run 完成退出和重建。
@@ -185,98 +148,78 @@ func (r *runtimeControl) PrepareRestart(ctx context.Context) (operationresult.Re
 	}}, nil
 }
 
-// Run 组织完整运行；正常外部取消返回 nil，必要清理不覆盖运行错误。
-// 即使下层关闭不响应取消，也在统一退出期限到达后返回给 main。
+// Run 启动失败直接返回，调用方必须退出进程；成功运行后才关闭完整实例。
+// 运行期间正常外部取消返回 nil；关闭错误阻止重启，不覆盖已有运行错误。
 func Run(ctx context.Context, opts Options) (err error) {
 	for {
-		runtime := &runtimeControl{}
-		restarting := false
-		err = func() (err error) {
-			now := time.Now()
-			timing := startupTiming{startedAt: opts.StartedAt, stageStartedAt: now}
-			runCtx, cancel := context.WithCancel(ctx)
-			runtime.ctx, runtime.cancel = runCtx, cancel
-			var (
-				lines      businessLines
-				resources  *sharedResources
-				configLock io.Closer
-			)
-			defer func() {
-				runtime.mu.Lock()
-				cancel()
-				restarting = runtime.committed
-				runtime.mu.Unlock()
-				if errors.Is(err, ctx.Err()) || (restarting && errors.Is(err, runCtx.Err())) {
-					err = nil
-				}
-				if closeErr := shutdown(ctx, lines, resources, configLock); closeErr != nil {
-					if err == nil {
-						err = closeErr
-					} else {
-						signal.ReportDiagnostic("shutdown failed", slog.Any("error", closeErr))
-					}
-				}
-				flushCtx, stop := context.WithTimeout(context.Background(), time.Second)
-				defer stop()
-				_ = signal.FlushDiagnostics(flushCtx)
-			}()
-			var configPath string
-			steps := []startupStep{
-				{phase: phaseEnvironment, run: func() error {
-					configPath, configLock, err = prepareEnvironment(opts.ConfigPath)
-					opts.ConfigPath = configPath
-					return err
-				}},
-				{phase: phaseResources, run: func() error {
-					resources, err = prepareResources(runCtx, configPath)
-					return err
-				}},
-				{phase: phaseWiring, run: func() error {
-					lines, err = buildBusinessLines(runCtx, resources, opts.Mode, runtime)
-					return err
-				}},
-				{phase: phaseStart, run: func() error { return startBusinessLines(runCtx, lines) }},
+		if ctx.Err() != nil {
+			return nil
+		}
+		timing := startupTiming{startedAt: opts.StartedAt, stageStartedAt: time.Now()}
+		var configLock io.Closer
+		opts.ConfigPath, configLock, err = prepareEnvironment(opts.ConfigPath)
+		if err != nil {
+			return fmt.Errorf("app environment: %w", err)
+		}
+		timing.markStage(phaseEnvironment)
+		runCtx, cancel := context.WithCancel(ctx)
+		runtime := &runtimeControl{ctx: runCtx, cancel: cancel}
+		resources, err := prepareResources(runCtx, opts.ConfigPath)
+		if err != nil {
+			cancel()
+			return fmt.Errorf("app resources: %w", err)
+		}
+		timing.markStage(phaseResources)
+		lines, err := buildBusinessLines(runCtx, resources, opts.Mode, runtime)
+		if err != nil {
+			cancel()
+			return fmt.Errorf("app wiring: %w", err)
+		}
+		timing.markStage(phaseWiring)
+		if err := startBusinessLines(runCtx, lines); err != nil {
+			cancel()
+			return fmt.Errorf("app start: %w", err)
+		}
+		timing.markStage(phaseStart)
+		events.Log(runCtx, events.LogRecord{
+			Category: events.LogCategoryLog, Module: "app", Level: slog.LevelInfo,
+			EventName: "elbot_started", Type: events.ContentText,
+			Content:      fmt.Sprintf("version=%s\nmode=%s\nconfig_path=%s", opts.Version, opts.Mode, opts.ConfigPath),
+			ResultStatus: events.ResultSucceeded,
+		})
+		timing.log(runCtx)
+		err = waitBusinessLines(runCtx, lines)
+		runtime.mu.Lock()
+		cancel()
+		restarting := runtime.committed
+		runtime.mu.Unlock()
+		if errors.Is(err, ctx.Err()) || (restarting && errors.Is(err, runCtx.Err())) {
+			err = nil
+		}
+		if closeErr := shutdown(ctx, lines, resources, configLock); closeErr != nil {
+			if err == nil {
+				err = closeErr
+			} else {
+				signal.ReportDiagnostic("shutdown failed", slog.Any("error", closeErr))
 			}
-			if err = runStartupSteps(runCtx, steps, &timing); err != nil {
-				return err
-			}
-			events.Log(runCtx, events.LogRecord{
-				Category: events.LogCategoryLog, Module: "app", Level: slog.LevelInfo,
-				EventName: "elbot_started", Type: events.ContentText,
-				Content:      fmt.Sprintf("version=%s\nmode=%s\nconfig_path=%s", opts.Version, opts.Mode, configPath),
-				ResultStatus: events.ResultSucceeded,
-			})
-			timing.log(runCtx)
-			return waitBusinessLines(runCtx, lines)
-		}()
+		}
+		flushCtx, stop := context.WithTimeout(context.Background(), time.Second)
+		_ = signal.FlushDiagnostics(flushCtx)
+		stop()
 		if err != nil || !restarting || ctx.Err() != nil {
 			return err
 		}
 	}
 }
 
-// runStartupSteps 统一执行阶段；任一阶段失败后保留已取得的资源，交给 Run 清理。
-func runStartupSteps(ctx context.Context, steps []startupStep, timing *startupTiming) error {
-	for _, step := range steps {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := step.run(); err != nil {
-			return &lifecycleError{component: componentApp, phase: step.phase, cause: err}
-		}
-		timing.markStage(step.phase)
-	}
-	return ctx.Err()
-}
-
 // startBusinessLines 在全部构造和接线完成后按依赖顺序启动。
 func startBusinessLines(ctx context.Context, lines businessLines) error {
-	for _, line := range lines.inStartOrder() {
+	for _, kind := range []componentKind{componentTool, componentAgent, componentHook, componentPlatform, componentBackground} {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := line.supervisor.Start(); err != nil {
-			return &lifecycleError{component: line.kind, phase: phaseStart, cause: err}
+		if err := lines[kind].supervisor.Start(); err != nil {
+			return fmt.Errorf("%s start: %w", kind, err)
 		}
 	}
 	return ctx.Err()
@@ -284,7 +227,6 @@ func startBusinessLines(ctx context.Context, lines businessLines) error {
 
 // waitBusinessLines 将运行结果交回 Run，清理期限从统一退出流程开始计算。
 // Platform 继续解释 TUI／Service 的退出语义；Background 在故障时不等待清理。
-// 装配成功时 Platform 与 Background 必定注册观察者，首个结果总是存在。
 func waitBusinessLines(ctx context.Context, lines businessLines) error {
 	waitCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -292,28 +234,21 @@ func waitBusinessLines(ctx context.Context, lines businessLines) error {
 		kind componentKind
 		err  error
 	}
-	results := make(chan result, len(lines))
-	waiters := 0
-	for _, line := range lines {
-		if waiter, ok := line.supervisor.(Waiter); ok {
-			waiters++
-			go func() { results <- result{line.kind, waiter.Wait(waitCtx)} }()
-		}
+	results := make(chan result, 2)
+	for _, kind := range []componentKind{componentPlatform, componentBackground} {
+		go func() { results <- result{kind, lines[kind].supervisor.(Waiter).Wait(waitCtx)} }()
 	}
 	received := <-results
 	cancel()
-	// 运行等待已结束；其余观察者只收尾，各自独立故障在这里处理。
-	for range waiters - 1 {
-		other := <-results
-		if other.err != nil && !errors.Is(other.err, waitCtx.Err()) {
-			events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError,
-				EventName: "runtime_failed", Module: "app",
-				Content:      (&lifecycleError{component: other.kind, phase: phaseWait, cause: other.err}).Error(),
-				ResultStatus: events.LogStatus(other.err)})
-		}
+	other := <-results
+	if other.err != nil && !errors.Is(other.err, waitCtx.Err()) {
+		events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError,
+			EventName: "runtime_failed", Module: "app",
+			Content:      fmt.Sprintf("%s wait: %v", other.kind, other.err),
+			ResultStatus: events.LogStatus(other.err)})
 	}
 	if received.err != nil {
-		return &lifecycleError{component: received.kind, phase: phaseWait, cause: received.err}
+		return fmt.Errorf("%s wait: %w", received.kind, received.err)
 	}
 	return ctx.Err()
 }

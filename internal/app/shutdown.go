@@ -1,12 +1,11 @@
 package app
 
 import (
-	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
-	"slices"
 	"time"
 
 	"elbot/internal/events"
@@ -31,110 +30,45 @@ type stopResult struct {
 	err  error    // 当前终止步骤的错误详情。
 }
 
-// shutdownStep 描述一个关闭步骤；业务线按阶段和次序排序，共享资源按声明顺序执行。
+// shutdownStep 按声明顺序执行；业务线从登记表取总管，共享资源提供关闭函数。
 type shutdownStep struct {
 	component componentKind               // 步骤所属的业务线或资源。
-	close     func(context.Context) error // 关闭自有资源或等待已请求停止的任务。
+	close     func(context.Context) error // 共享资源的关闭函数。
 	phase     lifecyclePhase              // 停止请求、接入退出或最终关闭阶段。
-	order     int                         // 业务线在当前阶段的执行次序。
 }
 
-// shutdown 在运行取消后继续清理；一旦超时，不释放可能仍被使用的依赖。
+// shutdown 只接收启动成功的完整实例；超时后不释放可能仍被使用的依赖。
 func shutdown(ctx context.Context, lines businessLines, resources *sharedResources, configLock io.Closer) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 	defer cancel()
 
-	result := stopBusinessLines(ctx, lines)
-	if result.kind == stopTimedOut {
-		return result.err
+	steps := []shutdownStep{
+		{component: componentPlatform, phase: phaseBeginClose},
+		{component: componentBackground, phase: phaseBeginClose},
+		{component: componentAgent, phase: phaseBeginClose},
+		{component: componentHook, phase: phaseBeginClose},
+		{component: componentTool, phase: phaseBeginClose},
+		{component: componentPlatform, phase: phaseWaitIngress},
+		{component: componentBackground, phase: phaseClose},
+		{component: componentAgent, phase: phaseClose},
+		{component: componentHook, phase: phaseClose},
+		{component: componentTool, phase: phaseClose},
+		{component: componentPlatform, phase: phaseClose},
+		{component: componentModels, phase: phaseClose, close: resources.models.Close},
+		{component: componentMedia, phase: phaseClose, close: resources.media.Close},
+		{component: componentChatHistory, phase: phaseClose, close: func(context.Context) error { return resources.historyStore.Close() }},
+		{component: componentStorage, phase: phaseClose, close: func(context.Context) error { return resources.store.Close() }},
+		{component: componentLogs, phase: phaseClose, close: resources.logs.Close},
+		{component: componentConfigLock, phase: phaseClose, close: func(context.Context) error { return configLock.Close() }},
 	}
-	failure := result.err
-	result = closeSharedResources(ctx, resources)
-	if result.kind == stopTimedOut {
-		return errors.Join(failure, result.err)
-	}
-	failure = errors.Join(failure, result.err)
-	if configLock != nil {
-		result = runShutdownStep(ctx, shutdownStep{
-			component: componentConfigLock, phase: phaseClose,
-			close: func(context.Context) error { return configLock.Close() },
-		})
-		return errors.Join(failure, result.err)
-	}
-	return failure
-}
-
-// stopBusinessLines 先停止新工作，再按使用方到依赖方的顺序关闭。
-func stopBusinessLines(ctx context.Context, lines businessLines) stopResult {
-	var steps []shutdownStep
-	for _, line := range lines {
-		steps = append(steps, shutdownStep{
-			component: line.kind, phase: phaseBeginClose, order: line.beginOrder,
-			close: func(context.Context) error {
-				line.supervisor.BeginClose()
-				return nil
-			},
-		})
-		if line.waitIngress != nil {
-			steps = append(steps, shutdownStep{
-				component: line.kind, phase: phaseWaitIngress, order: line.beginOrder,
-				close: line.waitIngress,
-			})
-		}
-		steps = append(steps, shutdownStep{
-			component: line.kind, phase: phaseClose, order: line.closeOrder,
-			close: func(ctx context.Context) error {
-				err := line.supervisor.Close(ctx)
-				if err == nil {
-					return nil
-				}
-				select {
-				case <-line.supervisor.Done():
-					return err
-				case <-ctx.Done():
-					return errors.Join(err, ctx.Err())
-				}
-			},
-		})
-	}
-	slices.SortStableFunc(steps, func(a, b shutdownStep) int {
-		if phase := cmp.Compare(a.phase, b.phase); phase != 0 {
-			return phase
-		}
-		return cmp.Compare(a.order, b.order)
-	})
-	return runShutdownSteps(ctx, steps)
-}
-
-// closeSharedResources 在使用方退出后排空媒体通知，再关闭借用存储。
-func closeSharedResources(ctx context.Context, resources *sharedResources) stopResult {
-	if resources == nil {
-		return stopResult{kind: stopCompleted}
-	}
-	var steps []shutdownStep
-	if resources.models != nil {
-		steps = append(steps, shutdownStep{component: componentModels, phase: phaseClose, close: resources.models.Close})
-	}
-	if resources.media != nil {
-		steps = append(steps, shutdownStep{component: componentMedia, phase: phaseClose, close: resources.media.Close})
-	}
-	if resources.historyStore != nil {
-		steps = append(steps, shutdownStep{component: componentChatHistory, phase: phaseClose, close: func(context.Context) error { return resources.historyStore.Close() }})
-	}
-	if resources.store != nil {
-		steps = append(steps, shutdownStep{component: componentStorage, phase: phaseClose, close: func(context.Context) error { return resources.store.Close() }})
-	}
-	if resources.logs != nil {
-		steps = append(steps, shutdownStep{component: componentLogs, phase: phaseClose, close: resources.logs.Close})
-	}
-	return runShutdownSteps(ctx, steps)
+	return runShutdownSteps(ctx, lines, steps).err
 }
 
 // runShutdownSteps 按顺序清理并保留故障，超时停止后续清理；故障阻止宿主重建。
-func runShutdownSteps(ctx context.Context, steps []shutdownStep) stopResult {
+func runShutdownSteps(ctx context.Context, lines businessLines, steps []shutdownStep) stopResult {
 	var failure error
 	for _, step := range steps {
-		result := runShutdownStep(ctx, step)
+		result := runShutdownStep(ctx, lines, step)
 		switch result.kind {
 		case stopCompleted:
 			continue
@@ -161,12 +95,36 @@ func runShutdownSteps(ctx context.Context, steps []shutdownStep) stopResult {
 // runShutdownStep 独立执行关闭调用，即使关闭方忽略取消，也按统一期限返回。
 // 结果缓冲允许超时后仍在运行的关闭调用自行结束，无需等待接收方。
 // 期限已过时不再启动关闭，避免释放可能仍被使用的依赖。
-func runShutdownStep(ctx context.Context, step shutdownStep) stopResult {
+func runShutdownStep(ctx context.Context, lines businessLines, step shutdownStep) stopResult {
 	if err := ctx.Err(); err != nil {
-		return stopResult{kind: stopTimedOut, err: &lifecycleError{component: step.component, phase: step.phase, cause: err}}
+		return stopResult{kind: stopTimedOut, err: fmt.Errorf("%s %s: %w", step.component, step.phase, err)}
 	}
 	result := make(chan error, 1)
-	go func() { result <- step.close(ctx) }()
+	go func() {
+		var err error
+		switch step.phase {
+		case phaseBeginClose:
+			lines[step.component].supervisor.BeginClose()
+		case phaseWaitIngress:
+			err = lines[step.component].waitIngress(ctx)
+		case phaseClose:
+			switch step.component {
+			case componentPlatform, componentBackground, componentAgent, componentHook, componentTool:
+				line := lines[step.component]
+				err = line.supervisor.Close(ctx)
+				if err != nil {
+					select {
+					case <-line.supervisor.Done():
+					case <-ctx.Done():
+						err = errors.Join(err, ctx.Err())
+					}
+				}
+			default:
+				err = step.close(ctx)
+			}
+		}
+		result <- err
+	}()
 	select {
 	case err := <-result:
 		// 关闭完成与期限到达可能同时发生；统一在这里分类，保留关闭错误。
@@ -174,13 +132,13 @@ func runShutdownStep(ctx context.Context, step shutdownStep) stopResult {
 			if err == nil {
 				err = ctx.Err()
 			}
-			return stopResult{kind: stopTimedOut, err: &lifecycleError{component: step.component, phase: step.phase, cause: err}}
+			return stopResult{kind: stopTimedOut, err: fmt.Errorf("%s %s: %w", step.component, step.phase, err)}
 		}
 		if err != nil {
-			return stopResult{kind: stopFailed, err: &lifecycleError{component: step.component, phase: step.phase, cause: err}}
+			return stopResult{kind: stopFailed, err: fmt.Errorf("%s %s: %w", step.component, step.phase, err)}
 		}
 		return stopResult{kind: stopCompleted}
 	case <-ctx.Done():
-		return stopResult{kind: stopTimedOut, err: &lifecycleError{component: step.component, phase: step.phase, cause: ctx.Err()}}
+		return stopResult{kind: stopTimedOut, err: fmt.Errorf("%s %s: %w", step.component, step.phase, ctx.Err())}
 	}
 }
