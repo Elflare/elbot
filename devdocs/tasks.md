@@ -31,7 +31,7 @@
 - [ ] media包
 - [ ] storage包
 - [ ] session包
-- [ ] command包
+- [x] command包
 - [ ] control包
 - [ ] delivery包
 
