@@ -240,17 +240,17 @@ QQ OneBot, QQ Official, and Telegram support restoring associated media in quote
 | `elwisp.tags` | No | Elwisp tags, used for logs and statistics. |
 | `source` | Yes | Specific event source, such as service name, script name, or RSS name. |
 | `id` | Yes | Unique event ID within the source. |
-| `created_at` | No | Occurrence time of the external event; the reception time is used if missing. |
+| `created_at` | No | Timestamp of the external event; if missing, the reception time is used. |
 | `mode` | Yes | `record`, `direct`, or `llm`. |
 | `title` | No | Event title, used for notifications and background Session titles. |
 | `format` | No | `text` or `elyph`, defaults to `text`. |
-| `content` | No | Event body. Required for llm mode, ELyph `#task` is recommended; can be empty for direct/record, but at least one of `content`, `segments`, or `calls` must be provided. |
-| `model_slot` | No | Only `elwisp1`, `elwisp2`, `elwisp3`; falls back to `work` if not filled or the corresponding slot is not configured. |
-| `tool_list_names` | No | Internal tool names or Skill names preloaded for background tasks; ordinary tools inject the schema, while Skills inject descriptions and automatically inject the runner; must be within the Elnis `allowed_tools` range; `discover_tool` is ignored. |
-| `tools` | No | External tools declared by Elwisp with the event; allowed by default, rejected when hitting the `disabled_external_tools` of that Elwisp. |
-| `targets` | Yes | Array of expected delivery targets, see [Delivery Targets](#投递目标与安全边界) for semantics; ultimately decided by Elnis. |
-| `calls` | No | Array of platform native API calls. Each item contains `platform`, `api`, and `params`; if `platform` is omitted, the platform of the first resolved target is used. For direct requests, if only `calls` are present without `content`/`segments`, only the API is executed and no message is sent. |
-| `meta` | No | Original supplementary data, used only for recording and prompt appending. |
+| `content` | No | Event body. Required in `llm` mode, where ELyph `#task` is recommended; can be empty in `direct`/`record` modes, but at least one of `content`, `segments`, or `calls` must be provided. |
+| `model_slot` | No | Only `elwisp1`, `elwisp2`, or `elwisp3`; falls back to `work` if left blank or if the corresponding slot is not configured. |
+| `tool_list_names` | No | Internal tool or Skill names preloaded for background tasks; ordinary tools inject the schema, while Skills inject descriptions and automatically inject the runner; must be within the Elnis `allowed_tools` range; `discover_tool` is ignored. |
+| `tools` | No | External tools declared by Elwisp along with the event; allowed by default, rejected if they match the `disabled_external_tools` of that Elwisp. |
+| `targets` | Yes | Array of desired delivery targets, see [Delivery Targets](#投递目标与安全边界) for semantics; final decision is made by Elnis. |
+| `calls` | No | Array of platform-native API calls. Each item contains `platform`, `api`, and `params`; if `platform` is omitted, the platform of the first resolved target is used. For `direct` requests, if only `calls` are present without `content`/`segments`, only the API is executed and no message is sent. |
+| `meta` | No | Original supplementary data, used only for records and prompt appending. |
 
 The HTTP response only indicates whether Elnis has accepted or rejected the request, without waiting for the LLM to complete:
 
@@ -264,7 +264,9 @@ The HTTP response only indicates whether Elnis has accepted or rejected the requ
 }
 ```
 
-Each request body must contain one and only one JSON value; trailing whitespace is allowed; a second JSON value or illegal content will return `400`. Unknown fields are ignored and do not participate in protocol semantics, normalization, event `content_hash`, or auditing; fields requiring formal semantics should be added to the corresponding protocol version.
+Each request body must contain exactly one JSON value; trailing whitespace is allowed. A second JSON value or invalid content will return `400`. Business rejections return `400`, authentication rejections return `401`, and internal or IO failures during reception return `500`. Unknown fields are ignored and do not participate in protocol semantics, normalization, event `content_hash`, or auditing; fields requiring formal semantics should be added to the corresponding protocol version.
+
+If a platform transmission returns an error after partial success, the failure receipt is not used to associate messages or recover delivery; reporting a retry may duplicate fragments that have already been delivered. Other deliveries that have been separately confirmed as successful and persisted will still be skipped.
 
 ## Delivery Targets and Security Boundaries
 
