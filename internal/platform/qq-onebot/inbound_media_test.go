@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -50,10 +51,10 @@ func TestOutputReferenceDoesNotFetchPlatform(t *testing.T) {
 	root := t.TempDir()
 	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	item, err := center.ImportBytes(ctx, []byte("image"), media.Input{Name: "image.png", MIMEType: "image/png"}, media.ImportLimits{})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || item.Status != operationresult.Success {
+		t.Fatalf("import image: %+v %v", item, err)
 	}
-	if err := store.Media().SaveOutput(ctx, storage.MediaOutput{Platform: "qqonebot", ChatType: "group", ChatID: "9", MessageID: "sent", Kind: "image", MediaID: item.ID, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+	if err := store.Media().SaveOutput(ctx, storage.MediaOutput{Platform: "qqonebot", ChatType: "group", ChatID: "9", MessageID: "sent", Kind: "image", MediaID: item.Data.ID, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
 	a := newTestAdapter(t, Config{}, store, nil)
@@ -63,7 +64,7 @@ func TestOutputReferenceDoesNotFetchPlatform(t *testing.T) {
 		}
 		return share.ReferenceResult{
 			Text:              opts.Text,
-			ReferenceSegments: []share.MessageSegment{{Type: share.SegmentImage, MediaID: item.ID}},
+			ReferenceSegments: []share.MessageSegment{{Type: share.SegmentImage, MediaID: item.Data.ID}},
 			Reply:             share.ReplyContext{MessageID: "sent"},
 		}, nil
 	}
@@ -74,7 +75,7 @@ func TestOutputReferenceDoesNotFetchPlatform(t *testing.T) {
 	handler := &captureHandler{}
 	a.handleEvent(ctx, handler.HandleMessage, Event{MessageType: "group", SelfID: 1000, UserID: 1, GroupID: 9, MessageID: 2, Message: []byte(`[{"type":"reply","data":{"id":"sent"}},{"type":"text","data":{"text":"看看"}}]`)})
 	msg, ok := share.MessageContextFrom(handler.ctx)
-	if !ok || msg.ReplyToSenderID != "1000" || len(msg.ContextSegments) != 2 || msg.ContextSegments[1].MediaID != item.ID {
+	if !ok || msg.ReplyToSenderID != "1000" || len(msg.ContextSegments) != 2 || msg.ContextSegments[1].MediaID != item.Data.ID {
 		t.Fatalf("output reference = %#v", msg)
 	}
 }

@@ -78,10 +78,11 @@ func TestSuccessfulPureDirectivesRenewOriginalBinding(t *testing.T) {
 					t.Fatal(err)
 				}
 				identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})
-				row, err := sessions.Create(t.Context(), identity.Scope(testutil.WithCLIConversation(t.Context())), session.CreateRequest{})
-				if err != nil {
-					t.Fatal(err)
+				created, err := sessions.Create(t.Context(), identity.Scope(testutil.WithCLIConversation(t.Context())), session.CreateRequest{})
+				if err != nil || created.Status != operationresult.Success {
+					t.Fatalf("create session: %+v %v", created, err)
 				}
+				row := created.Data
 				current, err := sessions.CurrentBound(t.Context(), identity.Scope(testutil.WithCLIConversation(t.Context())))
 				if err != nil || current.Status != operationresult.Success {
 					t.Fatalf("current: %+v %v", current, err)

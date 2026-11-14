@@ -5,6 +5,7 @@ package telegram
 import (
 	"context"
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -203,24 +204,30 @@ func cleanText(text string) string {
 	return strings.TrimSpace(strings.Join(strings.Fields(text), " "))
 }
 
-func (a *Adapter) ResolveMedia(ctx context.Context, segment share.MessageSegment, maxBytes int64) (delivery.Source, error) {
+func (a *Adapter) ResolveMedia(ctx context.Context, segment share.MessageSegment, maxBytes int64) (operationresult.Result[delivery.Source], error) {
 	ctx, finish, err := a.beginOperation(ctx)
 	if err != nil {
-		return delivery.Source{}, err
+		return operationresult.Result[delivery.Source]{}, err
 	}
 	defer finish()
 	file, err := a.client.getFile(ctx, segment.PlatformFileID)
 	if err != nil {
-		return delivery.Source{}, err
+		return operationresult.Result[delivery.Source]{}, err
 	}
 	if strings.TrimSpace(file.FilePath) == "" {
-		return delivery.Source{}, fmt.Errorf("telegram file path is empty")
+		return operationresult.Result[delivery.Source]{Status: operationresult.Unavailable, Message: "telegram file path is empty"}, nil
 	}
 	if file.FileSize > maxBytes {
-		return delivery.Source{}, fmt.Errorf("telegram media exceeds import limit of %d bytes", maxBytes)
+		return operationresult.Result[delivery.Source]{Status: operationresult.Rejected, Message: fmt.Sprintf("telegram media exceeds import limit of %d bytes", maxBytes)}, nil
 	}
 	data, err := a.client.downloadFile(ctx, file.FilePath, maxBytes)
-	return delivery.Source{Data: data, MIMEType: segment.MIMEType}, err
+	if err != nil {
+		return operationresult.Result[delivery.Source]{}, err
+	}
+	if data.Status != operationresult.Success {
+		return operationresult.Result[delivery.Source]{Status: data.Status, Message: data.Message}, nil
+	}
+	return operationresult.Result[delivery.Source]{Status: operationresult.Success, Data: delivery.Source{Data: data.Data, MIMEType: segment.MIMEType}}, nil
 }
 
 func firstNonEmpty(values ...string) string {

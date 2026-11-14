@@ -76,7 +76,7 @@ func (s *Service) Status(ctx context.Context, scope share.Scope) (operationresul
 	if err != nil {
 		return operationresult.Result[*Status]{}, err
 	}
-	return operationresult.Result[*Status]{Status: operationresult.Success, Data: &Status{Session: row, MessageCount: stats.Count, LastUserContent: stats.LastUserContent, LastAnswerContent: stats.LastAnswerContent}}, nil
+	return operationresult.Result[*Status]{Status: operationresult.Success, Data: &Status{Session: row, MessageCount: stats.Count, LastUserContent: stats.LastUserContent, LastAnswerContent: stats.LastAssistantContent}}, nil
 }
 
 // enterTarget 先解析 Scope 内的空目标，再一次取得 current 和目标 Session 准入。

@@ -16,6 +16,7 @@ import (
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/events"
+	"elbot/internal/operationresult"
 	"elbot/internal/platform/share"
 	"elbot/internal/session"
 	"elbot/internal/signal"
@@ -285,21 +286,24 @@ func TestQueuedNotificationRejectsExpiredBinding(t *testing.T) {
 	defer store.Close()
 	sessions := newSessionSupervisor(t, store)
 	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "one"}, Platform: "cli", ChatID: "local", ChatType: "private"}
-	if _, err := sessions.Create(context.Background(), scope, session.CreateRequest{}); err != nil {
-		t.Fatal(err)
+	created, err := sessions.Create(context.Background(), scope, session.CreateRequest{})
+	if err != nil || created.Status != operationresult.Success {
+		t.Fatalf("create session: %+v %v", created, err)
 	}
-	_, binding, err := sessions.CurrentBound(context.Background(), scope)
-	if err != nil {
-		t.Fatal(err)
+	current, err := sessions.CurrentBound(context.Background(), scope)
+	if err != nil || current.Status != operationresult.Success {
+		t.Fatalf("current binding: %+v %v", current, err)
 	}
+	binding := current.Data.Binding
 	n := events.Notification{Target: events.NotificationTarget{Platform: "cli"}, Text: "block"}
 	s.EmitAsync(context.Background(), n)
 	<-started
 	n.Text = "old"
 	ctx := session.WithBinding(context.Background(), binding)
 	s.EmitAsync(ctx, n)
-	if _, err := sessions.Create(context.Background(), scope, session.CreateRequest{}); err != nil {
-		t.Fatal(err)
+	created, err = sessions.Create(context.Background(), scope, session.CreateRequest{})
+	if err != nil || created.Status != operationresult.Success {
+		t.Fatalf("replace current session: %+v %v", created, err)
 	}
 	close(release)
 	deadline, cancel := context.WithTimeout(context.Background(), time.Second)

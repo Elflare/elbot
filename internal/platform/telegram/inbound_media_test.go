@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"elbot/internal/config"
+	"elbot/internal/operationresult"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -59,13 +60,15 @@ func TestInboundMediaHistoryAndDeferredResolver(t *testing.T) {
 		t.Fatalf("history = %#v", row)
 	}
 	source, err := a.ResolveMedia(ctx, captured.Segments[0], 10)
-	if err != nil || string(source.Data) != "image" || calls != 2 || source.URL != "" {
+	if err != nil || source.Status != operationresult.Success || string(source.Data.Data) != "image" || calls != 2 || source.Data.URL != "" {
 		t.Fatalf("resolved = %#v, calls=%d, err=%v", source, calls, err)
 	}
-	if _, err = a.ResolveMedia(ctx, captured.Segments[0], 3); err == nil || calls != 3 {
-		t.Fatalf("declared limit: calls=%d err=%v", calls, err)
+	oversized, err := a.ResolveMedia(ctx, captured.Segments[0], 3)
+	if err != nil || oversized.Status != operationresult.Rejected || calls != 3 {
+		t.Fatalf("declared limit: result=%+v calls=%d err=%v", oversized, calls, err)
 	}
-	if _, err = a.client.downloadFile(ctx, "photos/a.jpg", 3); err == nil {
-		t.Fatal("actual body limit not enforced")
+	download, err := a.client.downloadFile(ctx, "photos/a.jpg", 3)
+	if err != nil || download.Status != operationresult.Rejected {
+		t.Fatalf("actual body limit result = %+v, err=%v", download, err)
 	}
 }

@@ -239,11 +239,17 @@ func (s *RemoteServer) handleClientMessage(ctx context.Context, handler platform
 				s.inputMediaError(ctx, client, msg.ID, err)
 				return
 			}
-			defer s.releaseFiles(ctx, files)
+			if files.Status != operationresult.Success {
+				if err := client.write(s.transportCtx, remoteMessage{Type: remoteMsgError, ID: msg.ID, Text: files.Message}); err != nil {
+					s.logMediaError(ctx, err)
+				}
+				return
+			}
+			defer s.releaseFiles(ctx, files.Data)
 			input, _ := platformshare.MessageContextFrom(ctx)
 			input.RawText = msg.Text
 			input.CommandReply = remoteCommandReply{client: client, requestID: msg.ID}
-			text, input.Segments, err = s.prepareInputFiles(ctx, text, files)
+			text, input.Segments, err = s.prepareInputFiles(ctx, text, files.Data)
 			if err != nil {
 				s.inputMediaError(ctx, client, msg.ID, err)
 				return

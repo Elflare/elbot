@@ -5,6 +5,7 @@ package telegram
 import (
 	"bytes"
 	"context"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -111,30 +112,30 @@ func (c *apiClient) fileURL(filePath string) string {
 	return strings.TrimRight(c.cfg.FileBaseURL, "/") + "/bot" + c.token + "/" + strings.TrimLeft(filePath, "/")
 }
 
-func (c *apiClient) downloadFile(ctx context.Context, filePath string, maxBytes int64) ([]byte, error) {
+func (c *apiClient) downloadFile(ctx context.Context, filePath string, maxBytes int64) (operationresult.Result[[]byte], error) {
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithTimeout(ctx, c.cfg.apiTimeout())
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.fileURL(filePath), nil)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[[]byte]{}, err
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, redactTelegramError(err, c.token)
+		return operationresult.Result[[]byte]{}, redactTelegramError(err, c.token)
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
-		return nil, err
+		return operationresult.Result[[]byte]{}, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("telegram file download failed: http %d", resp.StatusCode)
+		return operationresult.Result[[]byte]{Status: operationresult.Failed, Message: fmt.Sprintf("telegram file download failed: http %d", resp.StatusCode)}, nil
 	}
 	if int64(len(data)) > maxBytes {
-		return nil, fmt.Errorf("telegram media exceeds import limit of %d bytes", maxBytes)
+		return operationresult.Result[[]byte]{Status: operationresult.Rejected, Message: fmt.Sprintf("telegram media exceeds import limit of %d bytes", maxBytes)}, nil
 	}
-	return data, nil
+	return operationresult.Result[[]byte]{Status: operationresult.Success, Data: data}, nil
 }
 
 func (c *apiClient) sendPhoto(ctx context.Context, chatID int64, source mediaSource, replyTo int64) (sentMessage, error) {

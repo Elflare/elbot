@@ -3,6 +3,7 @@ package control
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"elbot/internal/config"
+	"elbot/internal/operationresult"
 )
 
 func TestFilesSaveExactContentAndPreservePermissions(t *testing.T) {
@@ -23,10 +25,10 @@ func TestFilesSaveExactContentAndPreservePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if read.Content != string(before) || read.Revision != fileRevision(before) {
+	if read.Status != operationresult.Success || read.Data.Content != string(before) || read.Data.Revision != fileRevision(before) {
 		t.Fatalf("read metadata: %+v", read)
 	}
-	result, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "config", Path: "app.toml", Content: "new\nline\n", ExpectedRevision: read.Revision})
+	result, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "config", Path: "app.toml", Content: "new\nline\n", ExpectedRevision: read.Data.Revision})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,19 +37,28 @@ func TestFilesSaveExactContentAndPreservePermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []byte("new\nline\n")
-	if !bytes.Equal(after, want) || result.Revision != fileRevision(want) {
+	if result.Status != operationresult.Success || !bytes.Equal(after, want) || result.Data.Revision != fileRevision(want) {
 		t.Fatalf("after = %q", after)
 	}
 	info, err := os.Stat(path)
 	if err != nil || info.Mode().Perm() != 0o640 {
 		t.Fatalf("permissions: %v %v", info, err)
 	}
-	_, err = m.WriteFile(testContext(true), WriteFileRequest{Root: "config", Path: "app.toml", Content: "stale", ExpectedRevision: read.Revision})
-	requireCode(t, err, "file_changed")
-	_, err = m.WriteFile(testContext(true), WriteFileRequest{Root: "config", Path: "app.toml", Content: "missing revision"})
-	requireCode(t, err, "invalid_arguments")
-	_, err = m.WriteFile(testContext(true), WriteFileRequest{Root: "config", Path: "app.toml", Content: "overwrite", Create: true})
-	requireCode(t, err, "file_changed")
+	conflict, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "config", Path: "app.toml", Content: "stale", ExpectedRevision: read.Data.Revision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, conflict, operationresult.Conflict)
+	invalid, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "config", Path: "app.toml", Content: "missing revision"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, invalid, operationresult.InvalidArguments)
+	conflict, err = m.WriteFile(testContext(true), WriteFileRequest{Root: "config", Path: "app.toml", Content: "overwrite", Create: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, conflict, operationresult.Conflict)
 }
 
 func TestCreateAndConcurrentSave(t *testing.T) {
@@ -56,7 +67,7 @@ func TestCreateAndConcurrentSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !created.Created {
+	if created.Status != operationresult.Success || !created.Data.Created {
 		t.Fatal("create result did not identify new file")
 	}
 	info, err := os.Stat(filepath.Join(dir, "skills/agent/new/SKILL.md"))
@@ -64,32 +75,41 @@ func TestCreateAndConcurrentSave(t *testing.T) {
 		t.Fatalf("new file mode: %v %v", info, err)
 	}
 	start := make(chan struct{})
-	results := make(chan error, 2)
+	type outcome struct {
+		status operationresult.Status
+		err    error
+	}
+	results := make(chan outcome, 2)
 	var wg sync.WaitGroup
 	for _, content := range []string{"first\n", "second\n"} {
 		wg.Go(func() {
 			<-start
-			_, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "skills", Path: "agent/new/SKILL.md", Content: content, ExpectedRevision: created.Revision})
-			results <- err
+			result, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "skills", Path: "agent/new/SKILL.md", Content: content, ExpectedRevision: created.Data.Revision})
+			results <- outcome{status: result.Status, err: err}
 		})
 	}
 	close(start)
 	wg.Wait()
 	close(results)
 	success, conflicts := 0, 0
-	for err := range results {
-		if err == nil {
+	for outcome := range results {
+		if outcome.err != nil {
+			t.Fatal(outcome.err)
+		}
+		if outcome.status == operationresult.Success {
 			success++
-		} else {
-			requireCode(t, err, "file_changed")
+		} else if outcome.status == operationresult.Conflict {
 			conflicts++
+		} else {
+			t.Fatalf("unexpected save result: %+v", outcome)
 		}
 	}
 	if success != 1 || conflicts != 1 {
 		t.Fatalf("success=%d conflicts=%d", success, conflicts)
 	}
-	if _, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "config", Path: ".env", Content: "KEY=value\n", Create: true}); err != nil {
-		t.Fatal(err)
+	createdEnv, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "config", Path: ".env", Content: "KEY=value\n", Create: true})
+	if err != nil || createdEnv.Status != operationresult.Success {
+		t.Fatalf("create .env: %+v %v", createdEnv, err)
 	}
 }
 
@@ -104,7 +124,7 @@ func TestExternalConfigAndManagedCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	read, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "config", Path: "providers.toml"})
-	if err != nil || read.Content != "provider = true\n" {
+	if err != nil || read.Status != operationresult.Success || read.Data.Content != "provider = true\n" {
 		t.Fatalf("external config: %+v %v", read, err)
 	}
 	listed, err := m.ListFiles(testContext(true), ListFilesRequest{Root: "config"})
@@ -112,7 +132,7 @@ func TestExternalConfigAndManagedCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	found := false
-	for _, item := range listed.Items {
+	for _, item := range listed.Data.Items {
 		if item.Name == "providers.toml" {
 			found = item.Exists
 		}
@@ -120,10 +140,16 @@ func TestExternalConfigAndManagedCatalog(t *testing.T) {
 	if !found {
 		t.Fatal("external config missing from logical catalog")
 	}
-	_, err = m.ReadFile(testContext(true), ReadFileRequest{Root: "config", Path: provider})
-	requireCode(t, err, "invalid_arguments")
-	_, err = m.ReadFile(testContext(true), ReadFileRequest{Root: "memory", Path: "other.toml"})
-	requireCode(t, err, "invalid_target")
+	invalid, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "config", Path: provider})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, invalid, operationresult.InvalidArguments)
+	invalid, err = m.ReadFile(testContext(true), ReadFileRequest{Root: "memory", Path: "other.toml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, invalid, operationresult.InvalidTarget)
 }
 
 func TestFileBoundaryRejectsTraversalAndSymlinks(t *testing.T) {
@@ -139,10 +165,12 @@ func TestFileBoundaryRejectsTraversalAndSymlinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, path := range []string{"../custom.toml", "escape/secret.md"} {
-		if _, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "skills", Path: path}); err == nil {
+		result, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "skills", Path: path})
+		if err == nil && result.Status == operationresult.Success {
 			t.Fatalf("read escaped through %q", path)
 		}
-		if _, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "skills", Path: path, Create: true, Content: "replace"}); err == nil {
+		resultWrite, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "skills", Path: path, Create: true, Content: "replace"})
+		if err == nil && resultWrite.Status == operationresult.Success {
 			t.Fatalf("write escaped through %q", path)
 		}
 	}
@@ -150,7 +178,8 @@ func TestFileBoundaryRejectsTraversalAndSymlinks(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(dir, "frontend")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "frontend", Path: "secret.md"}); err == nil {
+	result, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "frontend", Path: "secret.md"})
+	if err == nil && result.Status == operationresult.Success {
 		t.Fatal("root directory symlink escaped the configuration tree")
 	}
 	data, err := os.ReadFile(filepath.Join(outside, "secret.md"))
@@ -167,40 +196,43 @@ func TestLogReadRangesAndReadOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	listed, err := m.ListFiles(testContext(true), ListFilesRequest{Root: "logs"})
-	if err != nil || len(listed.Items) != 1 || listed.Items[0].Writable {
+	if err != nil || listed.Status != operationresult.Success || len(listed.Data.Items) != 1 || listed.Data.Items[0].Writable {
 		t.Fatalf("log catalog: %+v %v", listed, err)
 	}
 	first, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "logs", Path: "runtime.log", Limit: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Content != content[:4] || !first.Truncated || first.NextOffset != 4 {
+	if first.Status != operationresult.Success || first.Data.Content != content[:4] || !first.Data.Truncated || first.Data.NextOffset != 4 {
 		t.Fatalf("first chunk: %+v", first)
 	}
-	second, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "logs", Path: "runtime.log", Offset: first.NextOffset, Limit: 4})
-	if err != nil || second.Content != content[4:8] || second.NextOffset != 8 {
+	second, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "logs", Path: "runtime.log", Offset: first.Data.NextOffset, Limit: 4})
+	if err != nil || second.Status != operationresult.Success || second.Data.Content != content[4:8] || second.Data.NextOffset != 8 {
 		t.Fatalf("second chunk: %+v %v", second, err)
 	}
 	part, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "logs", Path: "runtime.log", Offset: 1, Limit: 1})
-	if err != nil || part.Content != content[1:2] || part.NextOffset != 2 {
+	if err != nil || part.Status != operationresult.Success || part.Data.Content != content[1:2] || part.Data.NextOffset != 2 {
 		t.Fatalf("exact byte range: %+v %v", part, err)
 	}
-	rest, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "logs", Path: "runtime.log", Offset: second.NextOffset})
-	if err != nil || rest.Content != content[8:] || rest.NextOffset != int64(len(content)) || rest.Truncated {
+	rest, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "logs", Path: "runtime.log", Offset: second.Data.NextOffset})
+	if err != nil || rest.Status != operationresult.Success || rest.Data.Content != content[8:] || rest.Data.NextOffset != int64(len(content)) || rest.Data.Truncated {
 		t.Fatalf("read to end: %+v %v", rest, err)
 	}
-	_, err = m.WriteFile(testContext(true), WriteFileRequest{Root: "logs", Path: "runtime.log", Content: "clear", ExpectedRevision: first.Revision})
-	requireCode(t, err, "permission_denied")
+	forbidden, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "logs", Path: "runtime.log", Content: "clear", ExpectedRevision: first.Data.Revision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, forbidden, operationresult.Forbidden)
 }
 
 func TestRegularFilesSupportCallerReadRanges(t *testing.T) {
 	m, _ := testSupervisor(t, SupervisorDeps{})
 	part, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "config", Path: "app.toml", Offset: 1, Limit: 2})
-	if err != nil || part.Content != "ni" || part.Offset != 1 || part.NextOffset != 3 || part.Size != 8 || !part.Truncated {
+	if err != nil || part.Status != operationresult.Success || part.Data.Content != "ni" || part.Data.Offset != 1 || part.Data.NextOffset != 3 || part.Data.Size != 8 || !part.Data.Truncated {
 		t.Fatalf("partial read: %+v %v", part, err)
 	}
 	rest, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "config", Path: "app.toml", Offset: 3})
-	if err != nil || rest.Content != "tial\n" || rest.NextOffset != 8 || rest.Truncated {
+	if err != nil || rest.Status != operationresult.Success || rest.Data.Content != "tial\n" || rest.Data.NextOffset != 8 || rest.Data.Truncated {
 		t.Fatalf("read to end: %+v %v", rest, err)
 	}
 }
@@ -210,7 +242,9 @@ func TestFileWriteCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(testContext(true))
 	cancel()
 	_, err := m.WriteFile(ctx, WriteFileRequest{Root: "skills", Path: "cancel/SKILL.md", Content: "x", Create: true})
-	requireCode(t, err, "canceled")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("write cancellation error = %v", err)
+	}
 	if _, err := os.Stat(filepath.Join(dir, "skills")); !os.IsNotExist(err) {
 		t.Fatal("canceled request created files or directories")
 	}
@@ -238,8 +272,11 @@ func TestLogReadOnlyCannotBeBypassedThroughAnotherRoot(t *testing.T) {
 		{Root: "skills", Path: "logs/runtime.log", Content: "overwrite", ExpectedRevision: fileRevision(content)},
 		{Root: "memory", Path: "memories.toml", Content: "overwrite", ExpectedRevision: fileRevision(content)},
 	} {
-		_, err := m.WriteFile(testContext(true), req)
-		requireCode(t, err, "permission_denied")
+		result, err := m.WriteFile(testContext(true), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		requireStatus(t, result, operationresult.Forbidden)
 	}
 	after, err := os.ReadFile(logpath)
 	if err != nil || !bytes.Equal(after, content) {
@@ -251,21 +288,21 @@ func TestManagedFilesHaveNoTwoMiBSizeLimit(t *testing.T) {
 	m, _ := testSupervisor(t, SupervisorDeps{})
 	content := strings.Repeat("x", 3<<20)
 	created, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "skills", Path: "large/SKILL.md", Content: content, Create: true})
-	if err != nil {
+	if err != nil || created.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	read, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "skills", Path: "large/SKILL.md"})
-	if err != nil {
+	if err != nil || read.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if read.Content != content || read.Truncated {
+	if read.Data.Content != content || read.Data.Truncated {
 		t.Fatal("large file was truncated")
 	}
-	updated, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "skills", Path: "large/SKILL.md", Content: content + "updated", ExpectedRevision: created.Revision})
-	if err != nil {
+	updated, err := m.WriteFile(testContext(true), WriteFileRequest{Root: "skills", Path: "large/SKILL.md", Content: content + "updated", ExpectedRevision: created.Data.Revision})
+	if err != nil || updated.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if updated.Created || updated.Revision == created.Revision {
+	if updated.Data.Created || updated.Data.Revision == created.Data.Revision {
 		t.Fatalf("large update failed: %+v", updated)
 	}
 }
@@ -278,10 +315,10 @@ func TestLogReadCanRequestMoreThanTwoMiB(t *testing.T) {
 		t.Fatal(err)
 	}
 	read, err := m.ReadFile(testContext(true), ReadFileRequest{Root: "logs", Path: "large.log", Limit: 1<<63 - 1})
-	if err != nil {
+	if err != nil || read.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if read.Content != content || read.Truncated {
+	if read.Data.Content != content || read.Data.Truncated {
 		t.Fatal("large log request was capped or overflowed")
 	}
 }

@@ -2,6 +2,8 @@ package control
 
 import (
 	"context"
+	"elbot/internal/control/share"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"maps"
 	"math"
@@ -13,19 +15,23 @@ import (
 	"elbot/internal/logging"
 )
 
-func (m *Supervisor) QueryLogs(ctx context.Context, req QueryLogsRequest) (QueryLogsResult, error) {
+func (m *Supervisor) QueryLogs(ctx context.Context, req QueryLogsRequest) (operationresult.Result[QueryLogsResult], error) {
 	result := QueryLogsResult{Items: []LogData{}, DamagedLines: []string{}}
-	if err := authorize(ctx, true, m.deps.Logs != nil); err != nil {
-		return result, err
+	authorized, err := share.Authorize(ctx, true)
+	if err != nil {
+		return operationresult.Result[QueryLogsResult]{}, err
+	}
+	if authorized.Status != operationresult.Success {
+		return operationresult.Result[QueryLogsResult]{Status: authorized.Status, Message: authorized.Message}, nil
 	}
 	if !slices.Contains([]string{"log", "audit", "elnis"}, req.Category) {
-		return result, invalid("category 必须是 log、audit 或 elnis")
+		return operationresult.Result[QueryLogsResult]{Status: operationresult.InvalidArguments, Message: "category 必须是 log、audit 或 elnis"}, nil
 	}
 	query := req.Query
 	query.Prefix = req.Category
 	listed, err := m.deps.Logs.Query(ctx, query)
 	if err != nil {
-		return result, ClassifyError(err)
+		return operationresult.Result[QueryLogsResult]{}, err
 	}
 	result.DamagedCount = listed.DamagedCount
 	if query.Raw {
@@ -43,19 +49,23 @@ func (m *Supervisor) QueryLogs(ctx context.Context, req QueryLogsRequest) (Query
 		}
 		result.Items = append(result.Items, item)
 	}
-	return result, nil
+	return operationresult.Result[QueryLogsResult]{Status: operationresult.Success, Data: result}, nil
 }
 
-func (m *Supervisor) QueryUsage(ctx context.Context, req QueryUsageRequest) (QueryUsageResult, error) {
+func (m *Supervisor) QueryUsage(ctx context.Context, req QueryUsageRequest) (operationresult.Result[QueryUsageResult], error) {
 	result := QueryUsageResult{Items: []UsageBucket{}}
-	if err := authorize(ctx, true, m.deps.Logs != nil); err != nil {
-		return result, err
+	authorized, err := share.Authorize(ctx, true)
+	if err != nil {
+		return operationresult.Result[QueryUsageResult]{}, err
+	}
+	if authorized.Status != operationresult.Success {
+		return operationresult.Result[QueryUsageResult]{Status: authorized.Status, Message: authorized.Message}, nil
 	}
 	if !slices.Contains([]string{"model", "day", "session"}, req.GroupBy) {
-		return result, invalid("group_by 必须是 model、day 或 session")
+		return operationresult.Result[QueryUsageResult]{Status: operationresult.InvalidArguments, Message: "group_by 必须是 model、day 或 session"}, nil
 	}
 	if req.First < 1 || req.Last < req.First {
-		return result, invalid("调用区间必须满足 1 <= first <= last")
+		return operationresult.Result[QueryUsageResult]{Status: operationresult.InvalidArguments, Message: "调用区间必须满足 1 <= first <= last"}, nil
 	}
 	query := req.Query
 	query.Prefix = "audit"
@@ -68,7 +78,7 @@ func (m *Supervisor) QueryUsage(ctx context.Context, req QueryUsageRequest) (Que
 	query.Events = nil
 	listed, err := m.deps.Logs.Query(ctx, query)
 	if err != nil {
-		return result, ClassifyError(err)
+		return operationresult.Result[QueryUsageResult]{}, err
 	}
 	result.GroupBy = req.GroupBy
 	result.DamagedCount = listed.DamagedCount
@@ -97,7 +107,7 @@ func (m *Supervisor) QueryUsage(ctx context.Context, req QueryUsageRequest) (Que
 		result.Items = append(result.Items, buckets[key].result(key))
 	}
 	result.Total = grand.result("total")
-	return result, nil
+	return operationresult.Result[QueryUsageResult]{Status: operationresult.Success, Data: result}, nil
 }
 
 type usageAccumulator struct {

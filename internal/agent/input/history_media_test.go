@@ -7,6 +7,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
@@ -48,10 +49,10 @@ func TestInboundMediaAssociatesHistoryPositions(t *testing.T) {
 	if err != nil || len(ids) != 1 || ids[2] != resolved.Segments[2].Media.MediaID {
 		t.Fatalf("position association = %#v %v", ids, err)
 	}
-	items, err := center.GetHistoryMediaBatch(ctx, []media.HistoryMediaRequest{{Message: historyMessage, Index: 2}}, func(ctx context.Context, _ string, source media.PlatformMedia, limit int64) (delivery.Source, error) {
+	items, err := center.GetHistoryMediaBatch(ctx, []media.HistoryMediaRequest{{Message: historyMessage, Index: 2}}, func(ctx context.Context, _ string, source media.PlatformMedia, limit int64) (operationresult.Result[delivery.Source], error) {
 		return resolver.ResolveMedia(ctx, source, limit)
 	}, media.HistoryFetchOptions{MaxFetchAttempts: 1})
-	if err != nil || len(items) != 1 || items[0].Err != nil || items[0].Media.ID != ids[2] || resolver.calls != 1 {
+	if err != nil || len(items) != 1 || items[0].Err != nil || items[0].Media.Status != operationresult.Success || items[0].Media.Data.ID != ids[2] || resolver.calls != 1 {
 		t.Fatalf("reimport = %#v %v calls %d", items, err, resolver.calls)
 	}
 	original, err := history.Repository().GetByPlatformMessage(ctx, "p", "", "s", "1")

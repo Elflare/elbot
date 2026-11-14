@@ -128,9 +128,12 @@ responses:
     description: >-
       Structured API error. Statuses include 400 invalid arguments, 401
       authentication failure, 403 permission denied, 404 missing target or
-      route, 405 unsupported method, 408 cancellation, 409 conflict, 500
-      internal error, 503 unavailable capability or stopping service, and
-      504 timeout.
+      route, 405 unsupported method, 408 cancellation, 409 conflict, busy or
+      incompatible target, 500 operation failure or internal fault, 503
+      unavailable capability or stopping service, and 504 timeout. Business
+      failures use operation_failed; internal faults use internal_error and
+      preserve the original error text. Business rejections use
+      operation_rejected with the operation message.
     content:
       application/json:
         schema: { $ref: './schemas.yaml#/schemas/ErrorEnvelope' }

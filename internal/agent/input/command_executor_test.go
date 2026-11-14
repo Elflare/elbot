@@ -117,7 +117,7 @@ func TestBusinessContinuationFailureIsSentAsResult(t *testing.T) {
 	}
 	executor := NewCommandExecutor(CommandExecutorDeps{Router: router, Sessions: probe, Identity: probe, Output: probe, Confirmations: probe, Input: probe})
 	_, handled, err := executor.Handle(t.Context(), "/go")
-	if !handled || err != nil || !reflect.DeepEqual(probe.order, []string{"execute", "send", "continue", "send"}) || len(probe.sentResult) != 2 {
+	if !handled || err != nil || !reflect.DeepEqual(probe.order, []string{"send", "continue", "send"}) || len(probe.sentResult) != 2 {
 		t.Fatalf("handled=%v results=%+v order=%v err=%v", handled, probe.sentResult, probe.order, err)
 	}
 	if got := probe.sentResult[1]; got.Status != operationresult.NotFound || got.Message != "session disappeared" || got.Data != nil {
@@ -135,7 +135,7 @@ func TestConfirmationWithoutPendingItemReturnsShortNotice(t *testing.T) {
 		t.Fatal(err)
 	}
 	executor := NewCommandExecutor(CommandExecutorDeps{Router: router, Sessions: probe, Identity: probe, Output: probe, Confirmations: probe, Input: probe})
-	_, handled, err := executor.Handle(t.Context(), "/confirm")
+	_, handled, err := executor.Handle(t.Context(), "/detail")
 	if !handled || err != nil || probe.failure != nil || !reflect.DeepEqual(probe.order, []string{"send"}) || probe.result.Data != (command.TextData{Content: "无待确认"}) {
 		t.Fatalf("handled=%v result=%+v failure=%+v order=%v err=%v", handled, probe.result, probe.failure, probe.order, err)
 	}

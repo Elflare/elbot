@@ -17,6 +17,7 @@ import (
 	"elbot/internal/command"
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -283,16 +284,16 @@ func TestHandleEventMediaRemainsRaw(t *testing.T) {
 
 func TestResolveMediaUsesPlatformOnlyOnDemand(t *testing.T) {
 	for _, tc := range []struct {
-		name      string
-		kind      share.MessageSegmentType
-		data      string
-		url, path string
-		limit     int64
-		wantErr   bool
+		name       string
+		kind       share.MessageSegmentType
+		data       string
+		url, path  string
+		limit      int64
+		wantStatus operationresult.Status
 	}{
 		{name: "file URL preferred", kind: share.SegmentFile, data: `{"file":"C:/remote.txt","url":"https://example.com/file","file_size":"9"}`, url: "https://example.com/file", limit: 10},
 		{name: "file path", kind: share.SegmentFile, data: `{"file":"C:/remote.txt","file_size":"9"}`, path: "C:/remote.txt", limit: 10},
-		{name: "file oversized", kind: share.SegmentFile, data: `{"file":"C:/remote.txt","file_size":"11"}`, limit: 10, wantErr: true},
+		{name: "file oversized", kind: share.SegmentFile, data: `{"file":"C:/remote.txt","file_size":"11"}`, limit: 10, wantStatus: operationresult.Rejected},
 		{name: "image URL preferred", kind: share.SegmentImage, data: `{"file":"C:/remote.png","url":"https://example.com/image"}`, url: "https://example.com/image", limit: 10},
 		{name: "image path", kind: share.SegmentImage, data: `{"file":"C:/remote.png"}`, path: "C:/remote.png", limit: 10},
 	} {
@@ -311,8 +312,15 @@ func TestResolveMediaUsesPlatformOnlyOnDemand(t *testing.T) {
 				return response{Status: "ok", Data: []byte(tc.data), Echo: req.Echo}
 			})
 			got, err := adapter.ResolveMedia(context.Background(), share.MessageSegment{Type: share.MessageSegmentType(tc.kind), PlatformFileID: "id-1", Name: "display-name"}, tc.limit)
-			if (err != nil) != tc.wantErr || calls != 1 || got.URL != tc.url || got.Path != tc.path {
+			if err != nil || calls != 1 {
 				t.Fatalf("source/calls/error = %#v/%d/%v", got, calls, err)
+			}
+			wantStatus := tc.wantStatus
+			if wantStatus == "" {
+				wantStatus = operationresult.Success
+			}
+			if got.Status != wantStatus || (wantStatus == operationresult.Success && (got.Data.URL != tc.url || got.Data.Path != tc.path)) {
+				t.Fatalf("source = %+v, want status %s and source %q/%q", got, wantStatus, tc.url, tc.path)
 			}
 		})
 	}

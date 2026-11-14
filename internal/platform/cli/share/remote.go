@@ -2,6 +2,7 @@ package share
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"io"
 
 	"elbot/internal/completion"
@@ -64,8 +65,8 @@ type ClientDisplayFactory func() ClientDisplay
 
 // Media 是远程 CLI 使用的最小归档与持有能力。
 type Media interface {
-	ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (media.MediaInfo, error)
-	Hold(context.Context, string) (*media.HeldMedia, error)
+	ImportReader(context.Context, io.Reader, int64, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	Hold(context.Context, string) (operationresult.Result[*media.HeldMedia], error)
 	PublishUsageFinished(context.Context, []media.UsageID)
 }
 

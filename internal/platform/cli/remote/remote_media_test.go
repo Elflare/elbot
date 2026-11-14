@@ -22,6 +22,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/delivery"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	clishare "elbot/internal/platform/cli/share"
 	"elbot/internal/platform/share"
 	"elbot/internal/testutil"
@@ -40,11 +41,11 @@ type trackedRemoteMedia struct {
 	finished chan media.UsageID
 }
 
-func (m *trackedRemoteMedia) Hold(ctx context.Context, id string) (*media.HeldMedia, error) {
+func (m *trackedRemoteMedia) Hold(ctx context.Context, id string) (operationresult.Result[*media.HeldMedia], error) {
 	held, err := m.MediaCenter.Hold(ctx, id)
-	if err == nil {
+	if err == nil && held.Status == operationresult.Success {
 		m.mu.Lock()
-		m.active[held.UsageID] = id
+		m.active[held.Data.UsageID] = id
 		m.mu.Unlock()
 	}
 	return held, err
@@ -244,7 +245,7 @@ func TestRemoteMediaFailedUploadsLeaveNoGrants(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			payload, wantStatus := "too large", http.StatusInternalServerError
+			payload, wantStatus := "too large", http.StatusBadRequest
 			if extraPart {
 				payload, wantStatus = "small", http.StatusBadRequest
 			}
@@ -260,7 +261,7 @@ func TestRemoteMediaFailedUploadsLeaveNoGrants(t *testing.T) {
 				t.Fatal(err)
 			}
 			response, data := requestRemoteMedia(t, s, client.mediaToken, http.MethodPost, "/cli/v1/files", writer.FormDataContentType(), &body)
-			if response.StatusCode != wantStatus || (!extraPart && string(data) != "附件处理失败\n") {
+			if response.StatusCode != wantStatus || (!extraPart && !strings.Contains(string(data), "media exceeds import limit")) {
 				t.Fatalf("upload = %d, %s", response.StatusCode, data)
 			}
 			s.mu.Lock()
@@ -271,6 +272,44 @@ func TestRemoteMediaFailedUploadsLeaveNoGrants(t *testing.T) {
 			}
 			m.assertActive(t, 0)
 		})
+	}
+}
+
+func TestRemoteMediaHTTPErrorMapsResultAndGoError(t *testing.T) {
+	tests := []struct {
+		status operationresult.Status
+		http   int
+	}{
+		{operationresult.Rejected, http.StatusBadRequest},
+		{operationresult.InvalidArguments, http.StatusBadRequest},
+		{operationresult.InvalidTarget, http.StatusBadRequest},
+		{operationresult.NotFound, http.StatusNotFound},
+		{operationresult.Forbidden, http.StatusForbidden},
+		{operationresult.Conflict, http.StatusConflict},
+		{operationresult.Busy, http.StatusConflict},
+		{operationresult.Incompatible, http.StatusConflict},
+		{operationresult.Unavailable, http.StatusServiceUnavailable},
+		{operationresult.Failed, http.StatusInternalServerError},
+		{operationresult.Timeout, http.StatusGatewayTimeout},
+		{operationresult.Canceled, http.StatusRequestTimeout},
+		{"unknown", http.StatusInternalServerError},
+	}
+	for _, test := range tests {
+		t.Run(string(test.status), func(t *testing.T) {
+			response := httptest.NewRecorder()
+			s := &RemoteServer{}
+			s.mediaError(t.Context(), response, operationresult.Result[struct{}]{Status: test.status, Message: "operation message"}, nil)
+			if response.Code != test.http || response.Body.String() != "operation message\n" {
+				t.Fatalf("response = %d %q", response.Code, response.Body.String())
+			}
+		})
+	}
+
+	response := httptest.NewRecorder()
+	s := &RemoteServer{}
+	s.mediaError(t.Context(), response, operationresult.Result[struct{}]{}, fmt.Errorf("media IO failed"))
+	if response.Code != http.StatusInternalServerError || response.Body.String() != "media IO failed\n" {
+		t.Fatalf("Go error response = %d %q", response.Code, response.Body.String())
 	}
 }
 
@@ -370,7 +409,7 @@ func TestRemoteMediaInputTotalLimitAndInvalidIDs(t *testing.T) {
 			t.Fatal(err)
 		}
 		msg := readTestRemote(t, conn)
-		if msg.Type != remoteMsgError || msg.ID != "bad" || msg.Text != "附件处理失败" {
+		if msg.Type != remoteMsgError || msg.ID != "bad" || msg.Text != "附件不存在或不属于当前连接" {
 			t.Fatalf("invalid input response = %+v", msg)
 		}
 		m.assertActive(t, 6)
@@ -445,16 +484,16 @@ func TestRemoteMediaOutputKeepsOrderAndOutlivesSendFiles(t *testing.T) {
 	one, first := dialRemoteMedia(t, s)
 	two, second := dialRemoteMedia(t, s)
 	info, err := m.ImportReader(t.Context(), strings.NewReader("output"), 6, media.Input{Name: "output.txt"}, media.ImportLimits{})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || info.Status != operationresult.Success {
+		t.Fatalf("import output: %+v %v", info, err)
 	}
-	source, usage, err := m.ResolveForOutput(t.Context(), info.ID)
-	if err != nil || source.MediaID != info.ID {
+	source, usage, err := m.ResolveForOutput(t.Context(), info.Data.ID)
+	if err != nil || source.Status != operationresult.Success || source.Data.MediaID != info.Data.ID {
 		t.Fatalf("resolved source = %+v, error = %v", source, err)
 	}
 	defer m.MediaCenter.PublishUsageFinished(t.Context(), []media.UsageID{usage})
 	_, err = s.SendTo(t.Context(), delivery.Target{ChatID: "user"}, []delivery.Output{
-		delivery.Text("before"), {Kind: delivery.KindFile, Name: "named.txt", Source: source}, delivery.Text("after"),
+		delivery.Text("before"), {Kind: delivery.KindFile, Name: "named.txt", Source: source.Data}, delivery.Text("after"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -463,7 +502,7 @@ func TestRemoteMediaOutputKeepsOrderAndOutlivesSendFiles(t *testing.T) {
 	if err := m.Cleanup(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(source.Path); !os.IsNotExist(err) {
+	if _, err := os.Stat(source.Data.Path); !os.IsNotExist(err) {
 		t.Fatalf("temporary delivery file still exists: %v", err)
 	}
 	var ids []string
@@ -505,7 +544,7 @@ type enteringRemoteMedia struct {
 	entered chan struct{}
 }
 
-func (m enteringRemoteMedia) ImportReader(ctx context.Context, r io.Reader, size int64, spec media.Input, limits media.ImportLimits) (media.MediaInfo, error) {
+func (m enteringRemoteMedia) ImportReader(ctx context.Context, r io.Reader, size int64, spec media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
 	close(m.entered)
 	return m.Media.ImportReader(ctx, r, size, spec, limits)
 }
@@ -549,12 +588,12 @@ func TestRemoteMediaCloseInterruptsSlowDownload(t *testing.T) {
 	_, client := dialRemoteMedia(t, s)
 	payload := bytes.Repeat([]byte{0}, 16*1024*1024)
 	info, err := m.ImportReader(t.Context(), bytes.NewReader(payload), int64(len(payload)), media.Input{Name: "large.bin"}, media.ImportLimits{})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || info.Status != operationresult.Success {
+		t.Fatalf("import: %+v %v", info, err)
 	}
-	file, err := s.grantFile(t.Context(), client, info.ID, "", "")
-	if err != nil {
-		t.Fatal(err)
+	file, err := s.grantFile(t.Context(), client, info.Data.ID, "", "")
+	if err != nil || file.Status != operationresult.Success {
+		t.Fatalf("grant: %+v %v", file, err)
 	}
 	conn, err := net.DialTCP("tcp", nil, s.listener.Addr().(*net.TCPAddr))
 	if err != nil {
@@ -567,7 +606,7 @@ func TestRemoteMediaCloseInterruptsSlowDownload(t *testing.T) {
 	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fmt.Fprintf(conn, "GET /cli/v1/files/%s HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer %s\r\n\r\n", file.ID, client.mediaToken); err != nil {
+	if _, err := fmt.Fprintf(conn, "GET /cli/v1/files/%s HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer %s\r\n\r\n", file.Data.ID, client.mediaToken); err != nil {
 		t.Fatal(err)
 	}
 	reader := bufio.NewReader(conn)

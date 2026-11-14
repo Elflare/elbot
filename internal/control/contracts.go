@@ -273,7 +273,7 @@ type ListModelsRequest struct {
 }
 type ItemError struct {
 	ID    string `json:"id"`
-	Error *Error `json:"error"`
+	Error string `json:"error"`
 }
 type ListModelsResult struct {
 	Query  string      `json:"query"`

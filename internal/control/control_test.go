@@ -13,6 +13,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
@@ -41,32 +42,35 @@ func testSupervisor(t *testing.T, deps SupervisorDeps) (*Supervisor, string) {
 	return m, dir
 }
 
-func requireCode(t *testing.T, err error, code string) {
+func requireStatus[T any](t *testing.T, result operationresult.Result[T], status operationresult.Status) {
 	t.Helper()
-	var failure *Error
-	if !errors.As(err, &failure) || failure.Code != code {
-		t.Fatalf("error = %#v; want code %s", err, code)
+	if result.Status != status {
+		t.Fatalf("status = %q; want %q", result.Status, status)
 	}
 }
 
-func TestMissingCapabilitiesAndIdentity(t *testing.T) {
+func TestIdentityAndCancellation(t *testing.T) {
 	m, _ := testSupervisor(t, SupervisorDeps{})
-	_, err := m.ListCommands(testContext(true), ListCommandsRequest{})
-	requireCode(t, err, "not_configured")
-	_, err = m.Status(testContext(true))
-	requireCode(t, err, "not_configured")
-	_, err = m.ListHooks(context.Background())
-	requireCode(t, err, "permission_denied")
-	_, err = m.ListFiles(testContext(false), ListFilesRequest{})
-	requireCode(t, err, "permission_denied")
-	_, err = m.WriteFile(testContext(false), WriteFileRequest{Root: "skills", Path: "new/SKILL.md", Content: "x", Create: true})
-	requireCode(t, err, "permission_denied")
+	result, err := m.ListHooks(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, result, operationresult.Forbidden)
+	listedFiles, err := m.ListFiles(testContext(false), ListFilesRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, listedFiles, operationresult.Forbidden)
+	resultWrite, err := m.WriteFile(testContext(false), WriteFileRequest{Root: "skills", Path: "new/SKILL.md", Content: "x", Create: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, resultWrite, operationresult.Forbidden)
 	ctx, cancel := context.WithCancel(testContext(true))
 	cancel()
 	_, err = m.ListFiles(ctx, ListFilesRequest{})
-	requireCode(t, err, "canceled")
-	if ClassifyError(nil) != nil {
-		t.Fatal("nil error became a non-nil interface")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled request error = %v", err)
 	}
 }
 
@@ -87,36 +91,42 @@ func TestWorkspaceFilesUsesRequestedSideAndRelativePath(t *testing.T) {
 	m.workspaces = workspaceCapabilitiesStub{state: workspace.State{Dir: agentRoot, UserDir: userRoot}}
 	for side, want := range map[string]string{"agent": "agent.txt", "user": "user.txt"} {
 		result, err := m.WorkspaceFiles(testContext(false), WorkspaceFilesRequest{Side: side})
-		if err != nil || result.Side != side || result.Path != "." || len(result.Items) != 1 || result.Items[0].Name != want {
+		if err != nil || result.Status != operationresult.Success || result.Data.Side != side || result.Data.Path != "." || len(result.Data.Items) != 1 || result.Data.Items[0].Name != want {
 			t.Fatalf("side=%s result=%+v err=%v", side, result, err)
 		}
 	}
-	_, err := m.WorkspaceFiles(testContext(false), WorkspaceFilesRequest{Side: "invalid"})
-	requireCode(t, err, "invalid_arguments")
-	_, err = m.WorkspaceFiles(testContext(false), WorkspaceFilesRequest{Side: "agent", Path: "../outside"})
-	if err == nil {
+	invalid, err := m.WorkspaceFiles(testContext(false), WorkspaceFilesRequest{Side: "invalid"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, invalid, operationresult.InvalidArguments)
+	traversal, err := m.WorkspaceFiles(testContext(false), WorkspaceFilesRequest{Side: "agent", Path: "../outside"})
+	if err != nil || traversal.Status != operationresult.InvalidArguments {
 		t.Fatal("workspace traversal accepted")
 	}
 }
 
 type workspaceCapabilitiesStub struct{ state workspace.State }
 
-func (s workspaceCapabilitiesStub) GetCurrentState(context.Context) (string, workspace.State, error) {
-	return "current", s.state, nil
+func (s workspaceCapabilitiesStub) GetCurrentState(context.Context) (operationresult.Result[workspace.CurrentState], error) {
+	return operationresult.Result[workspace.CurrentState]{Status: operationresult.Success, Data: workspace.CurrentState{SessionID: "current", State: s.state}}, nil
 }
-func (s workspaceCapabilitiesStub) SetUserDir(_ context.Context, dir string) (string, workspace.State, error) {
+func (s workspaceCapabilitiesStub) SetUserDir(_ context.Context, dir string) (operationresult.Result[workspace.CurrentState], error) {
 	s.state.SetUserDir(dir)
-	return "current", s.state, nil
+	return operationresult.Result[workspace.CurrentState]{Status: operationresult.Success, Data: workspace.CurrentState{SessionID: "current", State: s.state}}, nil
 }
-func (s workspaceCapabilitiesStub) SetSync(_ context.Context, agentToUser, userToAgent bool) (string, workspace.State, error) {
+func (s workspaceCapabilitiesStub) SetSync(_ context.Context, agentToUser, userToAgent bool) (operationresult.Result[workspace.CurrentState], error) {
 	s.state.SetSync(agentToUser, userToAgent, s.state.Dir)
-	return "current", s.state, nil
+	return operationresult.Result[workspace.CurrentState]{Status: operationresult.Success, Data: workspace.CurrentState{SessionID: "current", State: s.state}}, nil
 }
 
 func TestWorkspaceDirectoryBrowsingRequiresIdentityEvenWithExplicitPath(t *testing.T) {
 	m, _ := testSupervisor(t, SupervisorDeps{})
-	_, err := m.WorkspaceDirectories(context.Background(), WorkspaceDirectoriesRequest{Path: t.TempDir()})
-	requireCode(t, err, "permission_denied")
+	result, err := m.WorkspaceDirectories(context.Background(), WorkspaceDirectoriesRequest{Path: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, result, operationresult.Forbidden)
 }
 
 func TestCommandsFilterWithoutMutatingCatalog(t *testing.T) {
@@ -126,17 +136,20 @@ func TestCommandsFilterWithoutMutatingCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Items) != 1 {
-		t.Fatalf("items: %+v", listed.Items)
+	if listed.Status != operationresult.Success || len(listed.Data.Items) != 1 {
+		t.Fatalf("items: %+v", listed)
 	}
-	listed.Items[0].Aliases[0] = "changed"
+	listed.Data.Items[0].Aliases[0] = "changed"
 	if items[0].Aliases[0] != "n" {
 		t.Fatal("catalog aliases were mutated")
 	}
-	_, err = m.ListCommands(testContext(false), ListCommandsRequest{Name: "doctor"})
-	requireCode(t, err, "not_found")
+	missing, err := m.ListCommands(testContext(false), ListCommandsRequest{Name: "doctor"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, missing, operationresult.NotFound)
 	listed, err = m.ListCommands(testContext(true), ListCommandsRequest{Name: "n"})
-	if err != nil || len(listed.Items) != 1 {
+	if err != nil || listed.Status != operationresult.Success || len(listed.Data.Items) != 1 {
 		t.Fatalf("alias lookup: %+v %v", listed, err)
 	}
 }
@@ -144,41 +157,54 @@ func TestCommandsFilterWithoutMutatingCatalog(t *testing.T) {
 type sessionStub struct {
 	SessionCapabilities
 	current       *storage.Session
-	currentErr    error
+	currentStatus operationresult.Status
 	resets        int
 	deletes       int
-	modeErr       error
-	resetErr      error
-	deleteErr     error
+	resetStatus   operationresult.Status
+	deleteStatus  operationresult.Status
+	modeStatus    operationresult.Status
 	modeRequest   session.ActivateModeRequest
 	cleanupBefore time.Time
 }
 
-func (s *sessionStub) Current(context.Context, session.Scope) (*storage.Session, error) {
-	return s.current, s.currentErr
+func (s *sessionStub) currentResult() (operationresult.Result[*storage.Session], error) {
+	if s.currentStatus != "" && s.currentStatus != operationresult.Success {
+		return operationresult.Result[*storage.Session]{Status: s.currentStatus}, nil
+	}
+	return operationresult.Result[*storage.Session]{Status: operationresult.Success, Data: s.current}, nil
 }
-func (s *sessionStub) CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error) {
-	return s.current, nil, s.currentErr
+func (s *sessionStub) Current(context.Context, session.Scope) (operationresult.Result[*storage.Session], error) {
+	return s.currentResult()
+}
+func (s *sessionStub) CurrentBound(context.Context, session.Scope) (operationresult.Result[session.CurrentBoundData], error) {
+	current, err := s.currentResult()
+	if err != nil || current.Status != operationresult.Success {
+		return operationresult.Result[session.CurrentBoundData]{Status: current.Status, Message: current.Message}, err
+	}
+	return operationresult.Result[session.CurrentBoundData]{Status: operationresult.Success, Data: session.CurrentBoundData{Session: current.Data}}, nil
 }
 func (s *sessionStub) DefaultMode() string { return "work" }
-func (s *sessionStub) ResetCurrent(context.Context, session.Scope) error {
+func (s *sessionStub) ResetCurrent(context.Context, session.Scope) (operationresult.Result[struct{}], error) {
 	s.resets++
-	if s.resetErr != nil {
-		return s.resetErr
+	if s.resetStatus != "" && s.resetStatus != operationresult.Success {
+		return operationresult.Result[struct{}]{Status: s.resetStatus, Message: "session operation rejected"}, nil
 	}
-	s.current, s.currentErr = nil, session.ErrNoCurrentSession
-	return nil
+	s.current, s.currentStatus = nil, operationresult.NoCurrentSession
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
-func (s *sessionStub) ActivateMode(_ context.Context, _ session.Scope, req session.ActivateModeRequest) (session.ActivateModeResult, error) {
+func (s *sessionStub) ActivateMode(_ context.Context, _ session.Scope, req session.ActivateModeRequest) (operationresult.Result[session.ActivateModeResult], error) {
 	s.modeRequest = req
-	if s.modeErr != nil {
-		return session.ActivateModeResult{}, s.modeErr
+	if s.modeStatus != "" && s.modeStatus != operationresult.Success {
+		return operationresult.Result[session.ActivateModeResult]{Status: s.modeStatus, Message: "mode rejected"}, nil
 	}
-	return session.ActivateModeResult{Session: &storage.Session{ID: "mode", Mode: req.Mode}, AlreadyActive: true}, nil
+	return operationresult.Result[session.ActivateModeResult]{Status: operationresult.Success, Data: session.ActivateModeResult{Session: &storage.Session{ID: "mode", Mode: req.Mode}, AlreadyActive: true}}, nil
 }
-func (s *sessionStub) Delete(context.Context, session.Scope, string) error {
+func (s *sessionStub) Delete(context.Context, session.Scope, string) (operationresult.Result[struct{}], error) {
 	s.deletes++
-	return s.deleteErr
+	if s.deleteStatus != "" && s.deleteStatus != operationresult.Success {
+		return operationresult.Result[struct{}]{Status: s.deleteStatus, Message: "delete rejected"}, nil
+	}
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 func (s *sessionStub) CleanupExpired(_ context.Context, before time.Time) (int, error) {
 	s.cleanupBefore = before
@@ -199,30 +225,33 @@ func (s *executionStub) SnapshotAll() []turn.Snapshot { return nil }
 func TestSessionAdmissionAndContinuation(t *testing.T) {
 	sessions := &sessionStub{current: &storage.Session{ID: "old", Mode: "work"}}
 	m, _ := testSupervisor(t, SupervisorDeps{Sessions: sessions, Scope: func(context.Context) session.Scope { return session.Scope{} }})
-	sessions.resetErr = session.ErrSessionBusy
-	_, err := m.NewSession(testContext(false))
-	requireCode(t, err, "session_busy")
-	if !errors.Is(err, session.ErrSessionBusy) || sessions.resets != 1 {
+	sessions.resetStatus = operationresult.Busy
+	reset, err := m.NewSession(testContext(false))
+	requireStatus(t, reset, operationresult.Busy)
+	if err != nil || sessions.resets != 1 {
 		t.Fatal("session provider did not decide creation admission")
 	}
-	sessions.deleteErr = session.ErrSessionBusy
-	_, err = m.DeleteSession(testContext(false), DeleteSessionRequest{SessionID: "old", Confirmed: true})
-	requireCode(t, err, "session_busy")
-	if !errors.Is(err, session.ErrSessionBusy) || sessions.deletes != 1 {
+	sessions.deleteStatus = operationresult.Busy
+	deleted, err := m.DeleteSession(testContext(false), DeleteSessionRequest{SessionID: "old", Confirmed: true})
+	requireStatus(t, deleted, operationresult.Busy)
+	if err != nil || sessions.deletes != 1 {
 		t.Fatal("session provider did not decide deletion admission")
 	}
-	_, err = m.DeleteSession(testContext(false), DeleteSessionRequest{SessionID: "old"})
-	requireCode(t, err, "confirmation_required")
+	unconfirmed, err := m.DeleteSession(testContext(false), DeleteSessionRequest{SessionID: "old"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, unconfirmed, operationresult.Rejected)
 	if sessions.deletes != 1 {
 		t.Fatal("unconfirmed deletion reached provider")
 	}
 	text := "  exact input\n"
 	result, err := m.SetMode(testContext(false), SetModeRequest{Mode: "chat", Text: text, NewSessionTitle: "chosen title"})
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if result.Continuation == nil || result.Continuation.Text != text || result.Continuation.SessionID != "mode" {
-		t.Fatalf("continuation = %+v", result.Continuation)
+	if result.Data.Continuation == nil || result.Data.Continuation.Text != text || result.Data.Continuation.SessionID != "mode" {
+		t.Fatalf("continuation = %+v", result.Data.Continuation)
 	}
 	if sessions.modeRequest.NewSessionTitle != "chosen title" {
 		t.Fatal("caller-selected title was not forwarded")
@@ -234,18 +263,24 @@ func TestSessionAdmissionAndContinuation(t *testing.T) {
 	if strings.Contains(string(wire), "exact input") {
 		t.Fatal("internal continuation leaked onto wire")
 	}
-	sessions.modeErr = session.ErrChatModeRequiresEmptySession
+	sessions.modeStatus = operationresult.Conflict
 	failed, err := m.SetMode(testContext(false), SetModeRequest{Mode: "chat", Text: "never send"})
-	requireCode(t, err, "mode_conflict")
-	if failed.Continuation != nil {
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, failed, operationresult.Conflict)
+	if failed.Data.Continuation != nil {
 		t.Fatal("failed switch returned a continuation")
 	}
-	_, err = m.CleanSessions(testContext(false), CleanSessionsRequest{Confirmed: true})
-	requireCode(t, err, "permission_denied")
+	unauthorized, err := m.CleanSessions(testContext(false), CleanSessionsRequest{Confirmed: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, unauthorized, operationresult.Forbidden)
 	before := time.Date(2026, 9, 1, 10, 30, 0, 0, time.UTC)
-	partial, err := m.CleanSessions(testContext(true), CleanSessionsRequest{Confirmed: true, Before: before})
-	if err == nil || partial.AffectedCount != 2 {
-		t.Fatalf("lost partial result: %+v %v", partial, err)
+	_, err = m.CleanSessions(testContext(true), CleanSessionsRequest{Confirmed: true, Before: before})
+	if err == nil || !strings.Contains(err.Error(), "partial cleanup") {
+		t.Fatalf("cleanup error = %v", err)
 	}
 	if !sessions.cleanupBefore.Equal(before) {
 		t.Fatal("caller-selected cleanup cutoff was not forwarded")
@@ -259,54 +294,64 @@ type restartStub struct {
 	cancels  int
 }
 
-func (s *restartStub) PrepareRestart(context.Context) (RestartPreparation, error) {
+func (s *restartStub) PrepareRestart(context.Context) (operationresult.Result[RestartPreparation], error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.reserved {
-		return RestartPreparation{}, &Error{Code: "restart_pending", Message: "重启已预留"}
+		return operationresult.Result[RestartPreparation]{Status: operationresult.Busy, Message: "重启已预留"}, nil
 	}
 	s.reserved = true
-	return RestartPreparation{Commit: func(context.Context) error { s.mu.Lock(); defer s.mu.Unlock(); s.commits++; return nil }, Cancel: func() { s.mu.Lock(); defer s.mu.Unlock(); s.cancels++; s.reserved = false }}, nil
+	return operationresult.Result[RestartPreparation]{Status: operationresult.Success, Data: RestartPreparation{Commit: func(context.Context) error { s.mu.Lock(); defer s.mu.Unlock(); s.commits++; return nil }, Cancel: func() { s.mu.Lock(); defer s.mu.Unlock(); s.cancels++; s.reserved = false }}}, nil
 }
 
 func TestRestartDeliveryOwnsCommit(t *testing.T) {
 	provider := &restartStub{}
 	m, _ := testSupervisor(t, SupervisorDeps{Runtime: provider})
-	_, err := m.RequestRestart(testContext(false))
-	requireCode(t, err, "permission_denied")
-	result, err := m.RequestRestart(testContext(true))
+	forbidden, err := m.RequestRestart(testContext(false))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Accepted || provider.commits != 0 {
+	requireStatus(t, forbidden, operationresult.Forbidden)
+	result, err := m.RequestRestart(testContext(true))
+	if err != nil || result.Status != operationresult.Success {
+		t.Fatal(err)
+	}
+	data := result.Data
+	if !data.Accepted || provider.commits != 0 {
 		t.Fatal("prepare restarted before delivery")
 	}
-	_, err = m.RequestRestart(testContext(true))
-	requireCode(t, err, "restart_pending")
-	result.Cancel()
-	result.Cancel()
-	requireCode(t, result.Commit(testContext(true)), "canceled")
+	busy, err := m.RequestRestart(testContext(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, busy, operationresult.Busy)
+	data.Cancel()
+	data.Cancel()
+	if err := data.Commit(testContext(true)); err != nil {
+		t.Fatalf("commit after cancellation: %v", err)
+	}
 	if provider.commits != 0 || provider.cancels != 1 {
 		t.Fatalf("cancel counts: %+v", provider)
 	}
 	result, err = m.RequestRestart(testContext(true))
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
+	data = result.Data
 	var wg sync.WaitGroup
 	for range 10 {
 		wg.Go(func() {
-			if err := result.Commit(testContext(true)); err != nil {
+			if err := data.Commit(testContext(true)); err != nil {
 				t.Error(err)
 			}
 		})
 	}
 	wg.Wait()
-	result.Cancel()
+	data.Cancel()
 	if provider.commits != 1 || provider.cancels != 1 {
 		t.Fatalf("commit counts: %+v", provider)
 	}
-	wire, err := json.Marshal(result)
+	wire, err := json.Marshal(data)
 	if err != nil || string(wire) != "{\"accepted\":true}" {
 		t.Fatalf("restart wire: %s %v", wire, err)
 	}

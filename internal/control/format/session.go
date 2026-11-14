@@ -114,7 +114,7 @@ func Sessions(d control.ListSessionsResult, opts SessionsOptions) string {
 
 func Messages(d control.SessionMessagesResult, opts MessagesOptions) string {
 	if len(d.Items) == 0 {
-		return "nil"
+		return ""
 	}
 	var out strings.Builder
 	fmt.Fprintf(&out, "page=%d/%d\n", d.Page.Page, d.TotalPages)
@@ -153,13 +153,6 @@ func preview(text string, n int) string {
 		return string(runes[:n]) + "..."
 	}
 	return text
-}
-
-func previewOrNil(text string, n int) string {
-	if text == "" {
-		return "nil"
-	}
-	return preview(text, n)
 }
 
 func statusPreviewOrNil(text string, n int) string {

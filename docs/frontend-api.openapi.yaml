@@ -5,7 +5,12 @@ info:
   description: >-
     Static contract for the management endpoints served under /api/v1. All
     successful responses are JSON. The API delegates business operations to
-    Control and does not accept command text.
+    Control and does not accept command text. Successful operations expose their
+    data directly. Business rejections and failures are mapped to HTTP responses
+    with an error code and the operation message; internal operation statuses are
+    not HTTP statuses or wire codes. Execution and IO faults use internal_error
+    with the original error message. Optional per-item faults in successful
+    responses are plain strings.
 servers:
   - url: /api/v1
 security:

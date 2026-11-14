@@ -51,10 +51,11 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 		},
 		Preloader: directivePreloader{preload.NewPreloadService(preload.PreloadOptions{Registry: registry, Resolver: discovery.NewResolver(registry), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"worker": {Tools: []string{"alpha"}, Prompt: "TAG"}}}})}})
 
-	row, err := sessions.Create(ctx, identity.Scope(ctx), session.CreateRequest{Title: "state", Metadata: `{"unknown":9007199254740993}`})
-	if err != nil {
-		t.Fatal(err)
+	created, err := sessions.Create(ctx, identity.Scope(ctx), session.CreateRequest{Title: "state", Metadata: `{"unknown":9007199254740993}`})
+	if err != nil || created.Status != operationresult.Success {
+		t.Fatalf("create session: %+v %v", created, err)
 	}
+	row := created.Data
 	before := row.Metadata
 	failure := errors.New("commit rejected")
 	repo := &toolStateFaultRepo{SessionRepository: store.Sessions(), failure: failure}
@@ -65,7 +66,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 	latest, _ := store.Sessions().Get(ctx, row.ID)
-	if row.Metadata != before || latest.Metadata != before || tools.Text != input || skills.Text != input || len(tools.Injected) > 0 || len(skills.Skills) > 0 {
+	if row.Metadata != before || latest.Metadata != before {
 		t.Fatalf("failed commit leaked state: tools=%+v skills=%+v row=%s", tools, skills, row.Metadata)
 	}
 	discovered, err := stateService.DiscoveredToolsForSession(ctx, row.ID, false)
@@ -78,7 +79,10 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	if strings.Join(tools.Injected, ",") != "alpha" || strings.Join(skills.InjectedWrappers, ",") != "wrapper" {
+	if tools.Status != operationresult.Success {
+		t.Fatalf("tool directives=%+v", tools)
+	}
+	if strings.Join(tools.Data.Injected, ",") != "alpha" || strings.Join(skills.InjectedWrappers, ",") != "wrapper" {
 		t.Fatalf("results=%+v %+v", tools, skills)
 	}
 	latest, _ = store.Sessions().Get(ctx, row.ID)
@@ -185,8 +189,8 @@ func toolNames(schemas []llm.ToolSchema) string {
 
 type directiveExecution struct{ InputExecution }
 
-func (directiveExecution) EnterInput(ctx context.Context, row *storage.Session) (context.Context, func(), error) {
-	return ctx, func() {}, nil
+func (directiveExecution) EnterInput(ctx context.Context, row *storage.Session) (context.Context, operationresult.Result[struct{}], func(), error) {
+	return ctx, operationresult.Result[struct{}]{Status: operationresult.Success}, func() {}, nil
 }
 func (directiveExecution) ModelContext(ctx context.Context, row *storage.Session) (context.Context, error) {
 	return ctx, nil

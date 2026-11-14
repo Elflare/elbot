@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,19 +32,20 @@ type remoteMediaRef struct {
 	held       *media.HeldMedia // 连接授权或单次使用独立取得的 Media 持有。
 }
 
-var errRemoteAttachmentNotFound = errors.New("CLI attachment not found")
-
 const (
 	maxInlineAttachmentBytes = 256 * 1024
 	maxInlineAttachmentsSize = 1024 * 1024
 )
 
-func (s *RemoteServer) grantFile(ctx context.Context, client *remoteClientConn, mediaID, name, kind string) (remoteAttachment, error) {
+func (s *RemoteServer) grantFile(ctx context.Context, client *remoteClientConn, mediaID, name, kind string) (operationresult.Result[remoteAttachment], error) {
 	held, err := s.media.Hold(ctx, mediaID)
 	if err != nil {
-		return remoteAttachment{}, err
+		return operationresult.Result[remoteAttachment]{}, err
 	}
-	info := held.Info()
+	if held.Status != operationresult.Success {
+		return operationresult.Result[remoteAttachment]{Status: held.Status, Message: held.Message}, nil
+	}
+	info := held.Data.Info()
 	if name == "" {
 		name = info.Name
 	}
@@ -57,26 +59,26 @@ func (s *RemoteServer) grantFile(ctx context.Context, client *remoteClientConn, 
 	s.mu.Lock()
 	_, online := s.clients[client.id][client]
 	if online {
-		client.files[file.ID] = &remoteMediaRef{attachment: file, held: held}
+		client.files[file.ID] = &remoteMediaRef{attachment: file, held: held.Data}
 	}
 	s.mu.Unlock()
 	if !online {
-		s.media.PublishUsageFinished(ctx, []media.UsageID{held.UsageID})
-		return remoteAttachment{}, fmt.Errorf("CLI connection closed")
+		s.media.PublishUsageFinished(ctx, []media.UsageID{held.Data.UsageID})
+		return operationresult.Result[remoteAttachment]{}, fmt.Errorf("CLI connection closed")
 	}
-	return file, nil
+	return operationresult.Result[remoteAttachment]{Status: operationresult.Success, Data: file}, nil
 }
 
 // borrowFiles 检查连接授权后取得独立 Media 持有，后续使用不依赖连接继续在线。
 // Media 调用在锁外执行，避免对象锁或存储延迟阻塞整个远程服务。
-func (s *RemoteServer) borrowFiles(ctx context.Context, client *remoteClientConn, ids []string) ([]*remoteMediaRef, error) {
+func (s *RemoteServer) borrowFiles(ctx context.Context, client *remoteClientConn, ids []string) (operationresult.Result[[]*remoteMediaRef], error) {
 	s.mu.Lock()
 	files := make([]*remoteMediaRef, 0, len(ids))
 	for _, id := range ids {
 		file := client.files[id]
 		if file == nil {
 			s.mu.Unlock()
-			return nil, errRemoteAttachmentNotFound
+			return operationresult.Result[[]*remoteMediaRef]{Status: operationresult.NotFound, Message: "附件不存在或不属于当前连接"}, nil
 		}
 		files = append(files, file)
 	}
@@ -85,11 +87,15 @@ func (s *RemoteServer) borrowFiles(ctx context.Context, client *remoteClientConn
 		held, err := s.media.Hold(ctx, file.held.Info().ID)
 		if err != nil {
 			s.releaseFiles(ctx, files[:i])
-			return nil, err
+			return operationresult.Result[[]*remoteMediaRef]{}, err
 		}
-		files[i] = &remoteMediaRef{attachment: file.attachment, held: held}
+		if held.Status != operationresult.Success {
+			s.releaseFiles(ctx, files[:i])
+			return operationresult.Result[[]*remoteMediaRef]{Status: held.Status, Message: held.Message}, nil
+		}
+		files[i] = &remoteMediaRef{attachment: file.attachment, held: held.Data}
 	}
-	return files, nil
+	return operationresult.Result[[]*remoteMediaRef]{Status: operationresult.Success, Data: files}, nil
 }
 
 func (s *RemoteServer) releaseFiles(ctx context.Context, files []*remoteMediaRef) {
@@ -161,15 +167,15 @@ func (s *RemoteServer) handleMedia(w http.ResponseWriter, req *http.Request) {
 	}
 	files, err := s.borrowFiles(ctx, client, []string{req.PathValue("id")})
 	if err != nil {
-		if errors.Is(err, errRemoteAttachmentNotFound) {
-			http.NotFound(w, req)
-		} else {
-			s.mediaError(ctx, w, err)
-		}
+		s.mediaError(ctx, w, operationresult.Result[struct{}]{}, err)
 		return
 	}
-	defer s.releaseFiles(ctx, files)
-	s.downloadFile(ctx, files[0], w, req)
+	if files.Status != operationresult.Success {
+		s.mediaError(ctx, w, operationresult.Result[struct{}]{Status: files.Status, Message: files.Message}, nil)
+		return
+	}
+	defer s.releaseFiles(ctx, files.Data)
+	s.downloadFile(ctx, files.Data[0], w, req)
 }
 
 func (s *RemoteServer) uploadFile(ctx context.Context, client *remoteClientConn, w http.ResponseWriter, req *http.Request) {
@@ -187,7 +193,11 @@ func (s *RemoteServer) uploadFile(ctx context.Context, client *remoteClientConn,
 		Name: part.FileName(), MIMEType: part.Header.Get("Content-Type"), Source: media.Source{Platform: s.name},
 	}, media.ImportLimits{})
 	if err != nil {
-		s.mediaError(ctx, w, err)
+		s.mediaError(ctx, w, operationresult.Result[struct{}]{}, err)
+		return
+	}
+	if info.Status != operationresult.Success {
+		s.mediaError(ctx, w, operationresult.Result[struct{}]{Status: info.Status, Message: info.Message}, nil)
 		return
 	}
 	// 单文件接口不吞掉额外字段或文件，也不调用会排空超大剩余内容的 Part.Close。
@@ -195,18 +205,22 @@ func (s *RemoteServer) uploadFile(ctx context.Context, client *remoteClientConn,
 		http.Error(w, "附件请求格式错误", http.StatusBadRequest)
 		return
 	}
-	file, err := s.grantFile(ctx, client, info.ID, "", "")
+	file, err := s.grantFile(ctx, client, info.Data.ID, "", "")
 	if err != nil {
-		s.mediaError(ctx, w, err)
+		s.mediaError(ctx, w, operationresult.Result[struct{}]{}, err)
+		return
+	}
+	if file.Status != operationresult.Success {
+		s.mediaError(ctx, w, operationresult.Result[struct{}]{Status: file.Status, Message: file.Message}, nil)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(file); err != nil {
+	if err := json.NewEncoder(w).Encode(file.Data); err != nil {
 		// 客户端未收到 ID 时不能主动释放，立即撤销这次授权。
 		s.mu.Lock()
-		ref := client.files[file.ID]
-		delete(client.files, file.ID)
+		ref := client.files[file.Data.ID]
+		delete(client.files, file.Data.ID)
 		s.mu.Unlock()
 		if ref != nil {
 			s.releaseFiles(ctx, []*remoteMediaRef{ref})
@@ -235,7 +249,7 @@ func openMediaReader(ctx context.Context, file *remoteMediaRef) (io.ReadCloser, 
 func (s *RemoteServer) downloadFile(ctx context.Context, file *remoteMediaRef, w http.ResponseWriter, req *http.Request) {
 	reader, finish, err := openMediaReader(ctx, file)
 	if err != nil {
-		s.mediaError(ctx, w, err)
+		s.mediaError(ctx, w, operationresult.Result[struct{}]{}, err)
 		return
 	}
 	w.Header().Set("Content-Type", file.attachment.MIMEType)
@@ -305,7 +319,11 @@ clientLoop:
 					sendErr = err
 					break
 				}
-				msg = remoteMessage{Type: remoteMsgAttachment, Attachment: &file}
+				if file.Status != operationresult.Success {
+					sendErr = fmt.Errorf("CLI output lost prepared media: %s", file.Message)
+					break
+				}
+				msg = remoteMessage{Type: remoteMsgAttachment, Attachment: &file.Data}
 			}
 			if err := client.write(ctx, msg); err != nil {
 				s.removeClient(client)
@@ -333,14 +351,37 @@ func (s *RemoteServer) logMediaError(ctx context.Context, err error) {
 		Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
 }
 
-func (s *RemoteServer) mediaError(ctx context.Context, w http.ResponseWriter, err error) {
-	s.logMediaError(ctx, err)
-	http.Error(w, "附件处理失败", http.StatusInternalServerError)
+func (s *RemoteServer) mediaError(ctx context.Context, w http.ResponseWriter, result operationresult.Result[struct{}], err error) {
+	if err != nil {
+		s.logMediaError(ctx, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	status := http.StatusInternalServerError
+	switch result.Status {
+	case operationresult.Rejected, operationresult.InvalidArguments, operationresult.InvalidTarget:
+		status = http.StatusBadRequest
+	case operationresult.NotFound:
+		status = http.StatusNotFound
+	case operationresult.Forbidden:
+		status = http.StatusForbidden
+	case operationresult.Conflict, operationresult.Busy, operationresult.Incompatible:
+		status = http.StatusConflict
+	case operationresult.Unavailable:
+		status = http.StatusServiceUnavailable
+	case operationresult.Failed:
+		status = http.StatusInternalServerError
+	case operationresult.Timeout:
+		status = http.StatusGatewayTimeout
+	case operationresult.Canceled:
+		status = http.StatusRequestTimeout
+	}
+	http.Error(w, result.Message, status)
 }
 
 func (s *RemoteServer) inputMediaError(ctx context.Context, client *remoteClientConn, id string, err error) {
 	s.logMediaError(ctx, err)
-	if err := client.write(s.transportCtx, remoteMessage{Type: remoteMsgError, ID: id, Text: "附件处理失败"}); err != nil {
+	if err := client.write(s.transportCtx, remoteMessage{Type: remoteMsgError, ID: id, Text: err.Error()}); err != nil {
 		s.logMediaError(ctx, err)
 	}
 }

@@ -151,7 +151,7 @@ schemas:
       type: object
       properties:
         id: { type: string }
-        error: { oneOf: [{ $ref: '#/schemas/Error' }, { type: 'null' }] }
+        error: { type: string, description: Original fault message for this item. }
       required: [id, error]
     ModelList:
       type: object

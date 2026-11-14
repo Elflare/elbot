@@ -2,7 +2,7 @@ package control
 
 import (
 	"context"
-	"elbot/internal/contextinfo"
+	"elbot/internal/control/share"
 	globalevents "elbot/internal/events"
 	"elbot/internal/fileops"
 	"elbot/internal/operationresult"
@@ -12,12 +12,12 @@ import (
 )
 
 func (m *Supervisor) ListRollbacks(ctx context.Context) (operationresult.Result[[]fileops.RollbackInfo], error) {
-	if err := ctx.Err(); err != nil {
+	authorized, err := share.Authorize(ctx, true)
+	if err != nil {
 		return operationresult.Result[[]fileops.RollbackInfo]{}, err
 	}
-	actorInfo, ok := contextinfo.ActorFromContext(ctx)
-	if !ok || actorInfo.Role != contextinfo.RoleSuperadmin {
-		return operationresult.Result[[]fileops.RollbackInfo]{Status: operationresult.Forbidden, Message: "无权执行该操作"}, nil
+	if authorized.Status != operationresult.Success {
+		return operationresult.Result[[]fileops.RollbackInfo]{Status: authorized.Status, Message: authorized.Message}, nil
 	}
 	prepared, err := m.deps.PrepareFileContext(ctx, false)
 	if err != nil {
@@ -29,12 +29,12 @@ func (m *Supervisor) ListRollbacks(ctx context.Context) (operationresult.Result[
 	return m.deps.FileRollback.List(prepared.Data), nil
 }
 func (m *Supervisor) RollbackByID(ctx context.Context, req RollbackByIDRequest) (operationresult.Result[fileops.RollbackResult], error) {
-	if err := ctx.Err(); err != nil {
+	authorized, err := share.Authorize(ctx, true)
+	if err != nil {
 		return operationresult.Result[fileops.RollbackResult]{}, err
 	}
-	actorInfo, ok := contextinfo.ActorFromContext(ctx)
-	if !ok || actorInfo.Role != contextinfo.RoleSuperadmin {
-		return operationresult.Result[fileops.RollbackResult]{Status: operationresult.Forbidden, Message: "无权执行该操作"}, nil
+	if authorized.Status != operationresult.Success {
+		return operationresult.Result[fileops.RollbackResult]{Status: authorized.Status, Message: authorized.Message}, nil
 	}
 	if req.ID == 0 {
 		return operationresult.Result[fileops.RollbackResult]{Status: operationresult.InvalidArguments, Message: "id 必须为正数"}, nil
@@ -55,14 +55,13 @@ func (m *Supervisor) RollbackByID(ctx context.Context, req RollbackByIDRequest) 
 		return operationresult.Result[fileops.RollbackResult]{Status: rolledBack.Status, Message: rolledBack.Message}, nil
 	}
 	result := rolledBack.Data
-	actor, _ := contextinfo.ActorFromContext(ctx)
 	binding, _ := session.BindingFromContext(ctx)
 	if result.Path != "" {
 		sessionID := ""
 		if binding != nil {
 			sessionID = binding.SessionID()
 		}
-		content := map[string]any{"actor": actor, "path": result.Path, "deleted": result.Deleted}
+		content := map[string]any{"actor": authorized.Data, "path": result.Path, "deleted": result.Deleted}
 		record := globalevents.LogRecord{Category: globalevents.LogCategoryAudit, Module: "control", Level: slog.LevelInfo, EventName: "file_rollback", Type: globalevents.ContentJSON, ResultStatus: globalevents.ResultSucceeded}
 		record.Identity = globalevents.LogIdentityFromContext(ctx)
 		record.Identity.SessionID = sessionID

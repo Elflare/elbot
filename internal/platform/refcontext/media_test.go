@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -20,9 +21,10 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 	root := t.TempDir()
 	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	item, err := center.ImportBytes(ctx, []byte("image"), media.Input{Name: "image.png", MIMEType: "image/png"}, media.ImportLimits{})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || item.Status != operationresult.Success {
+		t.Fatalf("import image: %+v %v", item, err)
 	}
+	imageID := item.Data.ID
 	history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +37,7 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 		}
 	}
 	for i, kind := range []string{"image", "file", "image"} {
-		if err := store.Media().SaveOutput(ctx, storage.MediaOutput{Platform: "telegram", ChatType: "group", ChatID: "9", MessageID: "output", SegmentIndex: i, Kind: kind, MediaID: item.ID, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		if err := store.Media().SaveOutput(ctx, storage.MediaOutput{Platform: "telegram", ChatType: "group", ChatID: "9", MessageID: "output", SegmentIndex: i, Kind: kind, MediaID: imageID, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -50,7 +52,7 @@ func TestReferenceMediaOutputHistoryAndFallbackPriority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 0 || len(got.ReferenceSegments) != 3 || got.ReferenceSegments[0].MediaID != item.ID || got.ReferenceSegments[1].Type != share.SegmentFile || got.ReferenceSegments[2].MediaID != item.ID {
+	if calls != 0 || len(got.ReferenceSegments) != 3 || got.ReferenceSegments[0].MediaID != imageID || got.ReferenceSegments[1].Type != share.SegmentFile || got.ReferenceSegments[2].MediaID != imageID {
 		t.Fatalf("output priority = %#v, calls=%d", got, calls)
 	}
 	opts.ReplyID = "history"
@@ -116,13 +118,14 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 	root := t.TempDir()
 	center := mediatest.New(t, media.MediaCenterDeps{Store: store}, root)
 	image, err := center.ImportBytes(ctx, []byte("image body"), media.Input{Name: "image.png", MIMEType: "image/png"}, media.ImportLimits{})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || image.Status != operationresult.Success {
+		t.Fatalf("import image: %+v %v", image, err)
 	}
 	file, err := center.ImportBytes(ctx, []byte("file body"), media.Input{Name: "file.txt", MIMEType: "text/plain"}, media.ImportLimits{})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || file.Status != operationresult.Success {
+		t.Fatalf("import file: %+v %v", file, err)
 	}
+	imageID, fileID := image.Data.ID, file.Data.ID
 	history, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -148,10 +151,10 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, association := range []storage.HistoryMedia{
-		{HistoryID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, MediaIndex: 1, Kind: "image", MediaID: image.ID, ChatType: row.ChatType},
-		{HistoryID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, MediaIndex: 2, Kind: "file", MediaID: file.ID, ChatType: row.ChatType},
-		{HistoryID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, MediaIndex: 3, Kind: "image", MediaID: image.ID, ChatType: row.ChatType},
-		{HistoryID: "replaced-history-row", Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, MediaIndex: 4, Kind: "file", MediaID: file.ID, ChatType: row.ChatType},
+		{HistoryID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, MediaIndex: 1, Kind: "image", MediaID: imageID, ChatType: row.ChatType},
+		{HistoryID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, MediaIndex: 2, Kind: "file", MediaID: fileID, ChatType: row.ChatType},
+		{HistoryID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, MediaIndex: 3, Kind: "image", MediaID: imageID, ChatType: row.ChatType},
+		{HistoryID: "replaced-history-row", Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, MediaIndex: 4, Kind: "file", MediaID: fileID, ChatType: row.ChatType},
 	} {
 		if err := store.Media().SaveHistory(ctx, association); err != nil {
 			t.Fatal(err)
@@ -160,7 +163,7 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 	// An association with the same message ID in another scope must not leak in.
 	if err := store.Media().SaveHistory(ctx, storage.HistoryMedia{
 		HistoryID: "other-row", Platform: row.Platform, ChatType: "group", ChatID: "other",
-		MessageID: row.PlatformMessageID, MediaIndex: 1, Kind: "image", MediaID: file.ID,
+		MessageID: row.PlatformMessageID, MediaIndex: 1, Kind: "image", MediaID: fileID,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -181,9 +184,9 @@ func TestReferenceHistoryRestoresStableMediaAssociations(t *testing.T) {
 		t.Fatalf("segments = %#v", got.ReferenceSegments)
 	}
 	if got.ReferenceSegments[0].Type != share.SegmentText ||
-		got.ReferenceSegments[1].MediaID != image.ID ||
-		got.ReferenceSegments[2].MediaID != file.ID ||
-		got.ReferenceSegments[3].MediaID != image.ID {
+		got.ReferenceSegments[1].MediaID != imageID ||
+		got.ReferenceSegments[2].MediaID != fileID ||
+		got.ReferenceSegments[3].MediaID != imageID {
 		t.Fatalf("restored segments = %#v", got.ReferenceSegments)
 	}
 	if got.ReferenceSegments[4].MediaID != "" || got.ReferenceSegments[4].PlatformFileID != "stale-file-id" {

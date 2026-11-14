@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
 	"elbot/internal/platform/share"
 )
 
@@ -33,10 +34,10 @@ func TestPublicMessageProjectionCopiesFacts(t *testing.T) {
 	}
 }
 
-func (r *testMediaResolver) ResolveMedia(_ context.Context, segment share.MessageSegment, limit int64) (delivery.Source, error) {
+func (r *testMediaResolver) ResolveMedia(_ context.Context, segment share.MessageSegment, limit int64) (operationresult.Result[delivery.Source], error) {
 	r.calls++
 	r.segment, r.limit = segment, limit
-	return delivery.Source{URL: "resolved"}, nil
+	return operationresult.Result[delivery.Source]{Status: operationresult.Success, Data: delivery.Source{URL: "resolved"}}, nil
 }
 
 func TestMessageRequestKeepsMediaLazyAndPreservesInput(t *testing.T) {
@@ -64,7 +65,7 @@ func TestMessageRequestKeepsMediaLazyAndPreservesInput(t *testing.T) {
 		t.Fatal("request aliases input keywords")
 	}
 	source, err := req.ResolveMedia(context.Background(), req.Segments[0].Media, 456)
-	if err != nil || source.URL != "resolved" || resolver.calls != 1 || resolver.limit != 456 || resolver.segment != segment {
+	if err != nil || source.Status != operationresult.Success || source.Data.URL != "resolved" || resolver.calls != 1 || resolver.limit != 456 || resolver.segment != segment {
 		t.Fatalf("lazy resolve: %+v %v", resolver, err)
 	}
 }

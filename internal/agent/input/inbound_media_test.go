@@ -12,6 +12,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/testutil/mediatest"
 )
 
@@ -23,20 +24,29 @@ func TestPlatformMediaUnavailableAndMetadata(t *testing.T) {
 	resolver := &inboundMediaResolver{}
 	msg := agentshare.MessageContext{ResolveMedia: resolver.ResolveMedia}
 	segment := agentshare.MessageSegment{Type: "image", Media: media.PlatformMedia{Type: "image", PlatformFileID: "image"}}
-	got := a.materializePlatformSegment(context.Background(), msg, segment)
+	got, err := a.materializePlatformSegment(context.Background(), msg, segment)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !media.ValidID(got.Media.MediaID) || got.Media.MIMEType != "image/png" || got.Media.Size != 5 || got.Media.PlatformFileID != "" || got.Media.URL != "" {
 		t.Fatalf("materialized metadata = %#v", got)
 	}
 	segment.Media.Size = config.Default().PlatformFiles.MaxReceiveFileBytes + 1
 	segment.Media.Name = "https://example.com/private/photo.png?rkey=name-secret"
-	got = a.materializePlatformSegment(context.Background(), msg, segment)
-	if got.Type != "text" || got.Text != "[媒体不可用；photo.png]" || resolver.calls != 1 {
+	got, err = a.materializePlatformSegment(context.Background(), msg, segment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != "text" || !strings.HasPrefix(got.Text, "[媒体不可用；photo.png]：") || !strings.Contains(got.Text, "media exceeds import limit") || resolver.calls != 1 {
 		t.Fatalf("oversized media = %#v, calls = %d", got, resolver.calls)
 	}
 	msg.ResolveMedia = nil
 	segment.Media.Size = 0
-	got = a.materializePlatformSegment(context.Background(), msg, segment)
-	if got.Type != "text" || got.Text != "[媒体不可用；photo.png]" || strings.Contains(got.Text, "name-secret") {
+	got, err = a.materializePlatformSegment(context.Background(), msg, segment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != "text" || !strings.HasPrefix(got.Text, "[媒体不可用；photo.png]：") || !strings.Contains(got.Text, "platform media source unavailable") || strings.Contains(got.Text, "name-secret") {
 		t.Fatalf("missing media = %#v", got)
 	}
 }
@@ -71,10 +81,10 @@ func TestPlatformMediaCopiesShareResolutionWithoutDroppingPositions(t *testing.T
 		}
 	}
 	stored, _, err := center.Read(context.Background(), id)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || stored.Status != operationresult.Success {
+		t.Fatalf("read stored media: %+v %v", stored, err)
 	}
-	cfg, format, err := image.DecodeConfig(bytes.NewReader(stored))
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(stored.Data))
 	if err != nil || format != "jpeg" || cfg.Width >= 32 || cfg.Height >= 32 {
 		t.Fatalf("stored image = %#v, %s, %v", cfg, format, err)
 	}
@@ -88,10 +98,10 @@ type inboundMediaResolver struct {
 	data  []byte
 }
 
-func (r *inboundMediaResolver) ResolveMedia(context.Context, media.PlatformMedia, int64) (delivery.Source, error) {
+func (r *inboundMediaResolver) ResolveMedia(context.Context, media.PlatformMedia, int64) (operationresult.Result[delivery.Source], error) {
 	r.calls++
 	if r.data != nil {
-		return delivery.Source{Data: r.data, MIMEType: "image/png"}, nil
+		return operationresult.Result[delivery.Source]{Status: operationresult.Success, Data: delivery.Source{Data: r.data, MIMEType: "image/png"}}, nil
 	}
-	return delivery.Source{Data: []byte("image"), MIMEType: "image/png"}, nil
+	return operationresult.Result[delivery.Source]{Status: operationresult.Success, Data: delivery.Source{Data: []byte("image"), MIMEType: "image/png"}}, nil
 }

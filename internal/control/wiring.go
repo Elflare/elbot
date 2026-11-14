@@ -4,32 +4,33 @@ import (
 	"context"
 	"fmt"
 
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/workspace"
 )
 
 // AgentDeps 由 Agent 根部在构造阶段接入；组件生命周期仍由 Agent 持有。
 type AgentDeps struct {
-	Tools              ToolCapabilities                                     // 工具目录。
-	Skills             SkillCapabilities                                    // 技能管理。
-	FileRollback       FileRollbackCapabilities                             // 文件编辑撤销。
-	PrepareFileContext func(context.Context, bool) (context.Context, error) // Agent 的原绑定与提交准入。
+	Tools              ToolCapabilities                                                             // 工具目录。
+	Skills             SkillCapabilities                                                            // 技能管理。
+	FileRollback       FileRollbackCapabilities                                                     // 文件编辑撤销。
+	PrepareFileContext func(context.Context, bool) (operationresult.Result[context.Context], error) // Agent 的原绑定与提交准入。
 
-	Sessions      SessionCapabilities                          // 会话裁决与绑定准入。
-	Workspaces    WorkspaceCapabilities                        // 工作区状态与路径解析。
-	History       HistoryCapabilities                          // 原始分支历史及会话快照。
-	Requests      RequestCapabilities                          // 请求状态与取消。
-	Execution     ExecutionCapabilities                        // 执行停止及压缩。
-	Confirmations ConfirmationCapabilities                     // 原有等待对象的类型化操作。
-	Scope         func(context.Context) session.Scope          // 可信身份范围。
-	Status        func(context.Context) (StatusResult, error)  // 运行状态快照。
-	Commands      func(context.Context) ([]CommandInfo, error) // 最终命令目录。
+	Sessions      SessionCapabilities                                                 // 会话裁决与绑定准入。
+	Workspaces    WorkspaceCapabilities                                               // 工作区状态与路径解析。
+	History       HistoryCapabilities                                                 // 原始分支历史及会话快照。
+	Requests      RequestCapabilities                                                 // 请求状态与取消。
+	Execution     ExecutionCapabilities                                               // 执行停止及压缩。
+	Confirmations ConfirmationCapabilities                                            // 原有等待对象的类型化操作。
+	Scope         func(context.Context) session.Scope                                 // 可信身份范围。
+	Status        func(context.Context) (operationresult.Result[StatusResult], error) // 运行状态快照。
+	Commands      func(context.Context) ([]CommandInfo, error)                        // 最终命令目录。
 }
 
 type WorkspaceCapabilities interface {
-	GetCurrentState(context.Context) (string, workspace.State, error)
-	SetUserDir(context.Context, string) (string, workspace.State, error)
-	SetSync(context.Context, bool, bool) (string, workspace.State, error)
+	GetCurrentState(context.Context) (operationresult.Result[workspace.CurrentState], error)
+	SetUserDir(context.Context, string) (operationresult.Result[workspace.CurrentState], error)
+	SetSync(context.Context, bool, bool) (operationresult.Result[workspace.CurrentState], error)
 }
 
 // ConnectAgent 仅用于启动前装配，能力不允许被后续构造替换。

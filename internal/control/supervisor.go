@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"elbot/internal/operationresult"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -10,6 +11,7 @@ import (
 
 	"elbot/internal/config"
 	"elbot/internal/contextinfo"
+	"elbot/internal/control/share"
 )
 
 // Supervisor 持有统一操作策略和文件访问范围，不拥有借用业务服务的生命周期。
@@ -52,31 +54,20 @@ func NewSupervisor(cfg *config.Config, deps SupervisorDeps) (*Supervisor, error)
 	return m, nil
 }
 
-// authorize 是每条操作链唯一的身份/角色入口；提供方仍负责自己持有状态的业务裁决。
-func authorize(ctx context.Context, admin bool, configured bool) error {
-	if err := ctx.Err(); err != nil {
-		return ClassifyError(err)
+func (m *Supervisor) ListCommands(ctx context.Context, req ListCommandsRequest) (operationresult.Result[ListCommandsResult], error) {
+	authorized, err := share.Authorize(ctx, false)
+	if err != nil {
+		return operationresult.Result[ListCommandsResult]{}, err
 	}
-	actor, ok := contextinfo.ActorFromContext(ctx)
-	if !ok || (actor.Role != contextinfo.RoleUser && actor.Role != contextinfo.RoleSuperadmin) || (admin && actor.Role != contextinfo.RoleSuperadmin) {
-		return &Error{Code: "permission_denied", Message: "无权执行该操作"}
+	if authorized.Status != operationresult.Success {
+		return operationresult.Result[ListCommandsResult]{Status: authorized.Status, Message: authorized.Message}, nil
 	}
-	if !configured {
-		return &Error{Code: "not_configured", Message: "该操作尚未接入业务能力"}
-	}
-	return nil
-}
-
-func (m *Supervisor) ListCommands(ctx context.Context, req ListCommandsRequest) (ListCommandsResult, error) {
+	actor := authorized.Data
 	result := ListCommandsResult{Items: []CommandInfo{}}
-	if err := authorize(ctx, false, m.deps.Commands != nil); err != nil {
-		return result, err
-	}
 	items, err := m.deps.Commands(ctx)
 	if err != nil {
-		return result, ClassifyError(err)
+		return operationresult.Result[ListCommandsResult]{}, err
 	}
-	actor, _ := contextinfo.ActorFromContext(ctx)
 	for _, item := range items {
 		if item.MinRole != contextinfo.RoleUser && actor.Role != contextinfo.RoleSuperadmin {
 			continue
@@ -88,15 +79,18 @@ func (m *Supervisor) ListCommands(ctx context.Context, req ListCommandsRequest) 
 		result.Items = append(result.Items, item)
 	}
 	if req.Name != "" && len(result.Items) == 0 {
-		return result, &Error{Code: "not_found", Message: "命令不存在或不可用"}
+		return operationresult.Result[ListCommandsResult]{Status: operationresult.NotFound, Message: "命令不存在或不可用"}, nil
 	}
-	return result, nil
+	return operationresult.Result[ListCommandsResult]{Status: operationresult.Success, Data: result}, nil
 }
 
-func (m *Supervisor) Status(ctx context.Context) (StatusResult, error) {
-	if err := authorize(ctx, false, m.deps.Status != nil); err != nil {
-		return StatusResult{}, err
+func (m *Supervisor) Status(ctx context.Context) (operationresult.Result[StatusResult], error) {
+	authorized, err := share.Authorize(ctx, false)
+	if err != nil {
+		return operationresult.Result[StatusResult]{}, err
 	}
-	result, err := m.deps.Status(ctx)
-	return result, ClassifyError(err)
+	if authorized.Status != operationresult.Success {
+		return operationresult.Result[StatusResult]{Status: authorized.Status, Message: authorized.Message}, nil
+	}
+	return m.deps.Status(ctx)
 }

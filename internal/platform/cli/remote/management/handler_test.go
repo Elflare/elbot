@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"elbot/internal/control"
+	"elbot/internal/operationresult"
 	"elbot/internal/tool"
 	"elbot/internal/workspace"
 )
@@ -19,12 +20,12 @@ type handlerControlStub struct {
 	current control.CurrentConfirmationResult
 }
 
-func (s handlerControlStub) RespondConfirmation(context.Context, control.RespondConfirmationRequest) (control.RespondConfirmationResult, error) {
-	return s.result, nil
+func (s handlerControlStub) RespondConfirmation(context.Context, control.RespondConfirmationRequest) (operationresult.Result[control.RespondConfirmationResult], error) {
+	return operationresult.Result[control.RespondConfirmationResult]{Status: operationresult.Success, Data: s.result}, nil
 }
 
-func (s handlerControlStub) CurrentConfirmation(context.Context, control.CurrentConfirmationRequest) (control.CurrentConfirmationResult, error) {
-	return s.current, nil
+func (s handlerControlStub) CurrentConfirmation(context.Context, control.CurrentConfirmationRequest) (operationresult.Result[control.CurrentConfirmationResult], error) {
+	return operationresult.Result[control.CurrentConfirmationResult]{Status: operationresult.Success, Data: s.current}, nil
 }
 
 type workspaceHandlerStub struct {
@@ -38,35 +39,93 @@ type workspaceHandlerStub struct {
 	workspaceSync control.SetWorkspaceSyncRequest
 }
 
-func (s *workspaceHandlerStub) Workspace(context.Context) (control.WorkspaceResult, error) {
-	return s.workspace, nil
+func (s *workspaceHandlerStub) Workspace(context.Context) (operationresult.Result[control.WorkspaceResult], error) {
+	return operationresult.Result[control.WorkspaceResult]{Status: operationresult.Success, Data: s.workspace}, nil
 }
-func (s *workspaceHandlerStub) WorkspaceFiles(_ context.Context, req control.WorkspaceFilesRequest) (control.WorkspaceFilesResult, error) {
+func (s *workspaceHandlerStub) WorkspaceFiles(_ context.Context, req control.WorkspaceFilesRequest) (operationresult.Result[control.WorkspaceFilesResult], error) {
 	s.files = req
-	return workspace.WorkspaceFileListing{Side: req.Side, Path: req.Path, Items: []workspace.WorkspaceFile{}}, nil
+	return operationresult.Result[control.WorkspaceFilesResult]{Status: operationresult.Success, Data: workspace.WorkspaceFileListing{Side: req.Side, Path: req.Path, Items: []workspace.WorkspaceFile{}}}, nil
 }
-func (s *workspaceHandlerStub) WorkspaceDirectories(_ context.Context, req control.WorkspaceDirectoriesRequest) (control.WorkspaceDirectoriesResult, error) {
+func (s *workspaceHandlerStub) WorkspaceDirectories(_ context.Context, req control.WorkspaceDirectoriesRequest) (operationresult.Result[control.WorkspaceDirectoriesResult], error) {
 	s.directories = req
-	return workspace.DirectoryListing{Path: req.Path, Directories: []workspace.Directory{}}, nil
+	return operationresult.Result[control.WorkspaceDirectoriesResult]{Status: operationresult.Success, Data: workspace.DirectoryListing{Path: req.Path, Directories: []workspace.Directory{}}}, nil
 }
-func (s *workspaceHandlerStub) SetUserWorkspace(_ context.Context, req control.SetUserWorkspaceRequest) (control.WorkspaceResult, error) {
+func (s *workspaceHandlerStub) SetUserWorkspace(_ context.Context, req control.SetUserWorkspaceRequest) (operationresult.Result[control.WorkspaceResult], error) {
 	s.userWorkspace = req
-	return s.workspace, nil
+	return operationresult.Result[control.WorkspaceResult]{Status: operationresult.Success, Data: s.workspace}, nil
 }
-func (s *workspaceHandlerStub) SetWorkspaceSync(_ context.Context, req control.SetWorkspaceSyncRequest) (control.WorkspaceResult, error) {
+func (s *workspaceHandlerStub) SetWorkspaceSync(_ context.Context, req control.SetWorkspaceSyncRequest) (operationresult.Result[control.WorkspaceResult], error) {
 	s.workspaceSync = req
-	return s.workspace, nil
+	return operationresult.Result[control.WorkspaceResult]{Status: operationresult.Success, Data: s.workspace}, nil
 }
-func (s *workspaceHandlerStub) WorkspaceGit(_ context.Context, req control.WorkspaceGitRequest) (control.WorkspaceGitResult, error) {
+func (s *workspaceHandlerStub) WorkspaceGit(_ context.Context, req control.WorkspaceGitRequest) (operationresult.Result[control.WorkspaceGitResult], error) {
 	s.git = req
-	return control.WorkspaceGitResult{IsGit: true, Changes: []workspace.GitChange{}}, nil
+	return operationresult.Result[control.WorkspaceGitResult]{Status: operationresult.Success, Data: control.WorkspaceGitResult{IsGit: true, Changes: []workspace.GitChange{}}}, nil
 }
-func (s *workspaceHandlerStub) WorkspaceGitDiff(_ context.Context, req control.WorkspaceGitRequest) (string, error) {
+func (s *workspaceHandlerStub) WorkspaceGitDiff(_ context.Context, req control.WorkspaceGitRequest) (operationresult.Result[string], error) {
 	s.gitDiff = req
-	return "diff", nil
+	return operationresult.Result[string]{Status: operationresult.Success, Data: "diff"}, nil
 }
-func (s *workspaceHandlerStub) LoadToolDetail(context.Context, control.ToolDetailRequest) (tool.DetailBlock, error) {
-	return tool.DetailBlock{Content: "# Detail", Format: "markdown"}, nil
+func (s *workspaceHandlerStub) LoadToolDetail(context.Context, control.ToolDetailRequest) (operationresult.Result[tool.DetailBlock], error) {
+	return operationresult.Result[tool.DetailBlock]{Status: operationresult.Success, Data: tool.DetailBlock{Content: "# Detail", Format: "markdown"}}, nil
+}
+
+func TestWriteControlResultErrorMapsBusinessStatuses(t *testing.T) {
+	tests := []struct {
+		status operationresult.Status
+		http   int
+		code   string
+	}{
+		{operationresult.Rejected, http.StatusBadRequest, "operation_rejected"},
+		{operationresult.Failed, http.StatusInternalServerError, "operation_failed"},
+		{operationresult.InvalidArguments, http.StatusBadRequest, "invalid_arguments"},
+		{operationresult.Forbidden, http.StatusForbidden, "permission_denied"},
+		{operationresult.NoCurrentSession, http.StatusNotFound, "no_current_session"},
+		{operationresult.NotFound, http.StatusNotFound, "not_found"},
+		{operationresult.Conflict, http.StatusConflict, "conflict"},
+		{operationresult.Unavailable, http.StatusServiceUnavailable, "unavailable"},
+		{operationresult.Busy, http.StatusConflict, "busy"},
+		{operationresult.Timeout, http.StatusGatewayTimeout, "timeout"},
+		{operationresult.Canceled, http.StatusRequestTimeout, "canceled"},
+		{operationresult.InvalidTarget, http.StatusBadRequest, "invalid_target"},
+		{operationresult.Incompatible, http.StatusConflict, "incompatible"},
+	}
+	for _, test := range tests {
+		t.Run(string(test.status), func(t *testing.T) {
+			response := httptest.NewRecorder()
+			handled := writeControlResultError(response, operationresult.Result[struct{}]{Status: test.status, Message: "business message"}, nil)
+			if !handled || response.Code != test.http {
+				t.Fatalf("handled/status = %v/%d, want true/%d", handled, response.Code, test.http)
+			}
+			var body map[string]map[string]string
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if body["error"]["code"] != test.code || body["error"]["message"] != "business message" {
+				t.Fatalf("error = %+v", body["error"])
+			}
+		})
+	}
+}
+
+func TestWriteControlResultErrorPreservesGoErrorAndRejectsUnknownStatus(t *testing.T) {
+	response := httptest.NewRecorder()
+	if !writeControlResultError(response, operationresult.Result[struct{}]{Status: operationresult.Success}, context.DeadlineExceeded) {
+		t.Fatal("Go error was not handled")
+	}
+	if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), context.DeadlineExceeded.Error()) {
+		t.Fatalf("Go error response = %d %s", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	handled := writeControlResultError(response, operationresult.Result[struct{}]{Status: "unknown", Message: "ignored"}, nil)
+	var body map[string]map[string]string
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if !handled || response.Code != http.StatusInternalServerError || body["error"]["code"] != "internal_error" {
+		t.Fatalf("unknown status response = handled:%v status:%d body:%s", handled, response.Code, response.Body.String())
+	}
 }
 
 func TestContinuationCallbackRunsAfterHTTPResponseIsWritten(t *testing.T) {

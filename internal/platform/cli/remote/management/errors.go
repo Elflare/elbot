@@ -1,11 +1,57 @@
 package management
 
 import (
+	"elbot/internal/operationresult"
 	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
 )
+
+func writeControlResultError[T any](w http.ResponseWriter, result operationresult.Result[T], err error) bool {
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		return true
+	}
+	if result.Status != operationresult.Success {
+		writeOperationResultError(w, result.Status, result.Message)
+		return true
+	}
+	return false
+}
+
+func writeOperationResultError(w http.ResponseWriter, status operationresult.Status, message string) {
+	switch status {
+	case operationresult.Rejected:
+		writeAPIError(w, http.StatusBadRequest, "operation_rejected", message)
+	case operationresult.Failed:
+		writeAPIError(w, http.StatusInternalServerError, "operation_failed", message)
+	case operationresult.InvalidArguments:
+		writeAPIError(w, http.StatusBadRequest, "invalid_arguments", message)
+	case operationresult.Forbidden:
+		writeAPIError(w, http.StatusForbidden, "permission_denied", message)
+	case operationresult.NoCurrentSession:
+		writeAPIError(w, http.StatusNotFound, "no_current_session", message)
+	case operationresult.NotFound:
+		writeAPIError(w, http.StatusNotFound, "not_found", message)
+	case operationresult.Conflict:
+		writeAPIError(w, http.StatusConflict, "conflict", message)
+	case operationresult.Unavailable:
+		writeAPIError(w, http.StatusServiceUnavailable, "unavailable", message)
+	case operationresult.Busy:
+		writeAPIError(w, http.StatusConflict, "busy", message)
+	case operationresult.Timeout:
+		writeAPIError(w, http.StatusGatewayTimeout, "timeout", message)
+	case operationresult.Canceled:
+		writeAPIError(w, http.StatusRequestTimeout, "canceled", message)
+	case operationresult.InvalidTarget:
+		writeAPIError(w, http.StatusBadRequest, "invalid_target", message)
+	case operationresult.Incompatible:
+		writeAPIError(w, http.StatusConflict, "incompatible", message)
+	default:
+		writeAPIError(w, http.StatusInternalServerError, "internal_error", "unknown operation result status")
+	}
+}
 
 func normalizeManagementErrors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

@@ -2,68 +2,88 @@ package control
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/control/share"
+	"elbot/internal/operationresult"
 	"elbot/internal/request"
 	"elbot/internal/session"
+	"elbot/internal/storage"
 )
 
-func (m *Supervisor) ListRequests(ctx context.Context) (ListRequestsResult, error) {
-	if err := authorize(ctx, true, m.deps.Requests != nil); err != nil {
-		return ListRequestsResult{}, err
+func (m *Supervisor) ListRequests(ctx context.Context) (operationresult.Result[ListRequestsResult], error) {
+	authorized, err := share.Authorize(ctx, true)
+	if err != nil {
+		return operationresult.Result[ListRequestsResult]{}, err
+	}
+	if authorized.Status != operationresult.Success {
+		return operationresult.Result[ListRequestsResult]{Status: authorized.Status, Message: authorized.Message}, nil
 	}
 	result := ListRequestsResult{Items: requestData(m.deps.Requests.List())}
-	if m.deps.History != nil {
-		for i := range result.Items {
-			if row, err := m.deps.History.GetSession(ctx, result.Items[i].SessionID); err == nil {
-				result.Items[i].SessionTitle = row.Title
-			}
+	for i := range result.Items {
+		if result.Items[i].SessionID == "" {
+			continue
 		}
+		row, err := m.deps.History.GetSession(ctx, result.Items[i].SessionID)
+		if errors.Is(err, storage.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return operationresult.Result[ListRequestsResult]{}, err
+		}
+		result.Items[i].SessionTitle = row.Title
 	}
-	return result, nil
+	return operationresult.Result[ListRequestsResult]{Status: operationresult.Success, Data: result}, nil
 }
 
-func (m *Supervisor) StopRequest(ctx context.Context, req StopRequestRequest) (StopRequestResult, error) {
+func (m *Supervisor) StopRequest(ctx context.Context, req StopRequestRequest) (operationresult.Result[StopRequestResult], error) {
 	result := StopRequestResult{RequestID: req.RequestID, SessionIDs: []string{}, State: "stopped"}
-	if err := m.requestReady(ctx, false); err != nil {
-		return result, err
+	ready, err := share.Authorize(ctx, false)
+	if err != nil {
+		return operationresult.Result[StopRequestResult]{}, err
+	}
+	if ready.Status != operationresult.Success {
+		return operationresult.Result[StopRequestResult]{Status: ready.Status, Message: ready.Message}, nil
 	}
 	if strings.TrimSpace(req.RequestID) == "" {
-		return result, invalid("request_id 不能为空")
+		return operationresult.Result[StopRequestResult]{Status: operationresult.InvalidArguments, Message: "request_id 不能为空"}, nil
 	}
-	actor, _ := contextinfo.ActorFromContext(ctx)
 	var binding *session.Binding
-	if actor.Role != contextinfo.RoleSuperadmin {
-		_, bound, err := m.deps.Sessions.CurrentBound(ctx, m.deps.Scope(ctx))
+	if ready.Data.Role != contextinfo.RoleSuperadmin {
+		current, err := m.deps.Sessions.CurrentBound(ctx, m.deps.Scope(ctx))
 		if err != nil {
-			return result, ClassifyError(err)
+			return operationresult.Result[StopRequestResult]{}, err
 		}
+		if current.Status != operationresult.Success {
+			return operationresult.Result[StopRequestResult]{Status: current.Status, Message: current.Message}, nil
+		}
+		bound := current.Data.Binding
 		if original, ok := session.BindingFromContext(ctx); ok && (original != bound || !original.Valid()) {
-			return result, &Error{Code: "binding_changed", Message: "原会话绑定已经失效"}
+			return operationresult.Result[StopRequestResult]{Status: operationresult.Conflict, Message: "原会话绑定已经失效"}, nil
 		}
 		binding = bound
 	}
 	active, ok := m.deps.Requests.Get(req.RequestID)
 	if !ok || (binding != nil && active.SessionID != binding.SessionID()) {
-		return result, &Error{Code: "not_found", Message: "请求不存在或不可访问"}
+		return operationresult.Result[StopRequestResult]{Status: operationresult.NotFound, Message: "请求不存在或不可访问"}, nil
 	}
 	var release func()
-	var err error
 	if binding != nil {
 		ctx, release, err = m.deps.Sessions.EnterBinding(ctx, binding)
 	} else {
 		ctx, release, err = m.deps.Sessions.EnterSessions(ctx, active.SessionID)
 	}
 	if err != nil {
-		return result, ClassifyError(err)
+		return operationresult.Result[StopRequestResult]{}, err
 	}
 	defer release()
 	result.SessionIDs = []string{active.SessionID}
 	latest, ok := m.deps.Requests.Get(req.RequestID)
 	if !ok || latest.SessionID != active.SessionID {
-		return result, nil
+		return operationresult.Result[StopRequestResult]{Status: operationresult.NotFound, Message: "请求不存在或不可访问"}, nil
 	}
 	result.State = "stopping"
 	if latest.Kind == request.KindTurn {
@@ -72,32 +92,44 @@ func (m *Supervisor) StopRequest(ctx context.Context, req StopRequestRequest) (S
 	} else if !latest.Stopping && m.deps.Requests.Cancel(req.RequestID) {
 		result.AcceptedCount = 1
 	}
-	return result, nil
+	return operationresult.Result[StopRequestResult]{Status: operationresult.Success, Data: result}, nil
 }
 
-func (m *Supervisor) StopSession(ctx context.Context) (StopSessionResult, error) {
-	if err := m.requestReady(ctx, false); err != nil {
-		return StopSessionResult{}, err
-	}
-	_, binding, err := m.deps.Sessions.CurrentBound(ctx, m.deps.Scope(ctx))
+func (m *Supervisor) StopSession(ctx context.Context) (operationresult.Result[StopSessionResult], error) {
+	ready, err := share.Authorize(ctx, false)
 	if err != nil {
-		return StopSessionResult{}, ClassifyError(err)
+		return operationresult.Result[StopSessionResult]{}, err
 	}
+	if ready.Status != operationresult.Success {
+		return operationresult.Result[StopSessionResult]{Status: ready.Status, Message: ready.Message}, nil
+	}
+	current, err := m.deps.Sessions.CurrentBound(ctx, m.deps.Scope(ctx))
+	if err != nil {
+		return operationresult.Result[StopSessionResult]{}, err
+	}
+	if current.Status != operationresult.Success {
+		return operationresult.Result[StopSessionResult]{Status: current.Status, Message: current.Message}, nil
+	}
+	binding := current.Data.Binding
 	if original, ok := session.BindingFromContext(ctx); ok && (original != binding || !original.Valid()) {
-		return StopSessionResult{}, &Error{Code: "binding_changed", Message: "原会话绑定已经失效"}
+		return operationresult.Result[StopSessionResult]{Status: operationresult.Conflict, Message: "原会话绑定已经失效"}, nil
 	}
 	ctx, release, err := m.deps.Sessions.EnterBinding(ctx, binding)
 	if err != nil {
-		return StopSessionResult{}, ClassifyError(err)
+		return operationresult.Result[StopSessionResult]{}, err
 	}
 	defer release()
 	m.deps.Execution.StopSession(binding.SessionID())
-	return StopSessionResult{SessionIDs: []string{binding.SessionID()}, AcceptedCount: m.deps.Requests.CancelSession(binding.SessionID()), State: "stopping"}, nil
+	return operationresult.Result[StopSessionResult]{Status: operationresult.Success, Data: StopSessionResult{SessionIDs: []string{binding.SessionID()}, AcceptedCount: m.deps.Requests.CancelSession(binding.SessionID()), State: "stopping"}}, nil
 }
 
-func (m *Supervisor) StopAllRequests(ctx context.Context) (StopAllRequestsResult, error) {
-	if err := m.requestReady(ctx, true); err != nil {
-		return StopAllRequestsResult{}, err
+func (m *Supervisor) StopAllRequests(ctx context.Context) (operationresult.Result[StopAllRequestsResult], error) {
+	ready, err := share.Authorize(ctx, true)
+	if err != nil {
+		return operationresult.Result[StopAllRequestsResult]{}, err
+	}
+	if ready.Status != operationresult.Success {
+		return operationresult.Result[StopAllRequestsResult]{Status: ready.Status, Message: ready.Message}, nil
 	}
 	seen := map[string]bool{}
 	for _, item := range m.deps.Requests.List() {
@@ -113,7 +145,7 @@ func (m *Supervisor) StopAllRequests(ctx context.Context) (StopAllRequestsResult
 	slices.Sort(ids)
 	_, release, err := m.deps.Sessions.EnterSessions(ctx, ids...)
 	if err != nil {
-		return StopAllRequestsResult{}, ClassifyError(err)
+		return operationresult.Result[StopAllRequestsResult]{}, err
 	}
 	defer release()
 	result := StopAllRequestsResult{SessionIDs: ids, State: "stopping"}
@@ -121,17 +153,7 @@ func (m *Supervisor) StopAllRequests(ctx context.Context) (StopAllRequestsResult
 		m.deps.Execution.StopSession(id)
 		result.AcceptedCount += m.deps.Requests.CancelSession(id)
 	}
-	return result, nil
-}
-
-func (m *Supervisor) requestReady(ctx context.Context, admin bool) error {
-	if err := authorize(ctx, admin, m.deps.Requests != nil); err != nil {
-		return err
-	}
-	if m.deps.Sessions == nil || m.deps.Execution == nil {
-		return &Error{Code: "not_configured", Message: "请求停止所需的会话准入尚未接入"}
-	}
-	return nil
+	return operationresult.Result[StopAllRequestsResult]{Status: operationresult.Success, Data: result}, nil
 }
 
 func requestData(items []request.Request) []RequestData {

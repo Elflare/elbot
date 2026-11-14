@@ -13,6 +13,7 @@ import (
 
 	"elbot/internal/events"
 	"elbot/internal/logging"
+	"elbot/internal/operationresult"
 )
 
 type logStub struct {
@@ -54,7 +55,7 @@ func TestQueryLogsReadsCategoryFiles(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(result.Items) != 1 || result.Items[0].EventName != "category_log" {
+			if result.Status != operationresult.Success || len(result.Data.Items) != 1 || result.Data.Items[0].EventName != "category_log" {
 				t.Fatalf("category %s did not read its log file: %+v", item.category, result)
 			}
 		})
@@ -67,8 +68,11 @@ func TestLogJSONPrecisionAndRawSelection(t *testing.T) {
 		{Type: events.ContentText, Content: "plain text", Raw: "raw-text"},
 	}, DamagedCount: 1, DamagedLines: []string{"damaged"}}}
 	m, _ := testSupervisor(t, SupervisorDeps{Logs: provider})
-	_, err := m.QueryLogs(testContext(false), QueryLogsRequest{Category: "audit"})
-	requireCode(t, err, "permission_denied")
+	forbidden, err := m.QueryLogs(testContext(false), QueryLogsRequest{Category: "audit"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, forbidden, operationresult.Forbidden)
 	if provider.calls != 0 {
 		t.Fatal("unauthorized read reached log provider")
 	}
@@ -76,7 +80,7 @@ func TestLogJSONPrecisionAndRawSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if provider.query.Prefix != "audit" || len(result.DamagedLines) != 0 || result.Items[0].Raw != "" {
+	if result.Status != operationresult.Success || provider.query.Prefix != "audit" || len(result.Data.DamagedLines) != 0 || result.Data.Items[0].Raw != "" {
 		t.Fatalf("query/result: %+v %+v", provider.query, result)
 	}
 	data, err := json.Marshal(result)
@@ -90,11 +94,14 @@ func TestLogJSONPrecisionAndRawSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Items[0].Raw != "raw-json" || len(result.DamagedLines) != 1 {
+	if result.Status != operationresult.Success || result.Data.Items[0].Raw != "raw-json" || len(result.Data.DamagedLines) != 1 {
 		t.Fatalf("raw data missing: %+v", result)
 	}
-	_, err = m.QueryLogs(testContext(true), QueryLogsRequest{Category: "../../outside"})
-	requireCode(t, err, "invalid_arguments")
+	invalid, err := m.QueryLogs(testContext(true), QueryLogsRequest{Category: "../../outside"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, invalid, operationresult.InvalidArguments)
 }
 
 func usageEntry(model, prompt, total string) logging.LogEntry {
@@ -112,30 +119,30 @@ func TestUsageUnknownAndOverflowRemainNull(t *testing.T) {
 	if fields["event"] != "wrong" || provider.query.Fields["event"] != "llm_usage" || provider.query.Prefix != "audit" {
 		t.Fatal("usage query mutated input or failed to fix event")
 	}
-	if result.Total.Calls != 3 || result.Total.PromptTokens != nil || result.Total.TotalTokens != nil || result.DamagedCount != 2 || result.RangeTruncated {
+	if result.Status != operationresult.Success || result.Data.Total.Calls != 3 || result.Data.Total.PromptTokens != nil || result.Data.Total.TotalTokens != nil || result.Data.DamagedCount != 2 || result.Data.RangeTruncated {
 		t.Fatalf("totals: %+v", result)
 	}
-	if result.Total.CompletionTokens == nil || *result.Total.CompletionTokens != 0 {
+	if result.Data.Total.CompletionTokens == nil || *result.Data.Total.CompletionTokens != 0 {
 		t.Fatal("explicit zero became unknown")
 	}
-	if len(result.Items) != 2 || result.Items[0].PromptTokens != nil || result.Items[0].TotalTokens == nil || *result.Items[0].TotalTokens != 30 {
-		t.Fatalf("buckets: %+v", result.Items)
+	if len(result.Data.Items) != 2 || result.Data.Items[0].PromptTokens != nil || result.Data.Items[0].TotalTokens == nil || *result.Data.Items[0].TotalTokens != 30 {
+		t.Fatalf("buckets: %+v", result.Data.Items)
 	}
-	if result.Items[1].TotalTokens == nil || *result.Items[1].TotalTokens != math.MaxInt64 {
+	if result.Data.Items[1].TotalTokens == nil || *result.Data.Items[1].TotalTokens != math.MaxInt64 {
 		t.Fatal("maximum valid count was lost")
 	}
 	selected, err := m.QueryUsage(testContext(true), QueryUsageRequest{GroupBy: "model", First: 1, Last: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if selected.Total.PromptTokens == nil || *selected.Total.PromptTokens != 3 || selected.Total.Calls != 1 {
+	if selected.Status != operationresult.Success || selected.Data.Total.PromptTokens == nil || *selected.Data.Total.PromptTokens != 3 || selected.Data.Total.Calls != 1 {
 		t.Fatalf("selected range: %+v", selected)
 	}
-	if provider.query.Limit != 1 || selected.AvailableCalls != 1 || selected.RangeTruncated {
+	if provider.query.Limit != 1 || selected.Data.AvailableCalls != 1 || selected.Data.RangeTruncated {
 		t.Fatal("single-call range queried more than one entry")
 	}
 	selected, err = m.QueryUsage(testContext(true), QueryUsageRequest{First: 2, Last: 5, GroupBy: "day"})
-	if err != nil || !selected.RangeTruncated || selected.Total.Calls != 2 {
+	if err != nil || selected.Status != operationresult.Success || !selected.Data.RangeTruncated || selected.Data.Total.Calls != 2 {
 		t.Fatalf("truncation: %+v %v", selected, err)
 	}
 }

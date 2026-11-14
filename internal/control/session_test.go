@@ -11,6 +11,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 )
@@ -49,8 +50,11 @@ func TestHistoryChecksScopeAndPreservesMessages(t *testing.T) {
 	m, _ := testSupervisor(t, SupervisorDeps{History: provider, Scope: func(context.Context) session.Scope {
 		return session.Scope{Platform: "qq", ChatType: contextinfo.ChatPrivate, ChatID: "chat", Owner: contextinfo.ActorIdentity{Platform: "qq", ID: "user"}}
 	}})
-	_, err = m.SessionMessages(testContext(false), SessionMessagesRequest{SessionID: "s", Page: 1, PageSize: 250})
-	requireCode(t, err, "permission_denied")
+	forbidden, err := m.SessionMessages(testContext(false), SessionMessagesRequest{SessionID: "s", Page: 1, PageSize: 250})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, forbidden, operationresult.Forbidden)
 	if provider.reads != 0 {
 		t.Fatal("foreign session history loaded before access check")
 	}
@@ -60,10 +64,10 @@ func TestHistoryChecksScopeAndPreservesMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := MessageData{ID: message.ID, SessionID: message.SessionID, Role: message.Role, Content: message.Content, SourceContent: message.SourceContent, ReasoningContent: message.ReasoningContent, ParentMessageID: message.ParentMessageID, ReplyToPlatformMessageID: message.ReplyToPlatformMessageID, ReplyToMessageID: message.ReplyToMessageID, ToolCallID: message.ToolCallID, Segments: segments, ToolCalls: []ToolCallData{{ID: "call-1", Name: "shell", Arguments: `{"command":"pwd"}`}}, ToolBatchStatus: message.ToolBatchStatus, CreatedAt: message.CreatedAt}
-	if !reflect.DeepEqual(result.Items, []MessageData{want}) {
+	if result.Status != operationresult.Success || !reflect.DeepEqual(result.Data.Items, []MessageData{want}) {
 		t.Fatalf("history data: %+v", result)
 	}
-	encoded, err := json.Marshal(result.Items[0])
+	encoded, err := json.Marshal(result.Data.Items[0])
 	var fields map[string]json.RawMessage
 	if err == nil {
 		err = json.Unmarshal(encoded, &fields)
@@ -75,42 +79,44 @@ func TestHistoryChecksScopeAndPreservesMessages(t *testing.T) {
 	if err := json.Unmarshal(fields["tool_calls"], &gotCalls); err != nil || !reflect.DeepEqual(gotCalls, want.ToolCalls) {
 		t.Fatalf("tool calls JSON = %s, parsed=%+v, err=%v", fields["tool_calls"], gotCalls, err)
 	}
-	if provider.page != 1 || provider.pageSize != 250 || result.PageSize != 250 {
+	if provider.page != 1 || provider.pageSize != 250 || result.Data.PageSize != 250 {
 		t.Fatal("caller-selected pagination was changed")
 	}
-	_, err = m.SessionMessages(testContext(false), SessionMessagesRequest{SessionID: "s", Page: 2, PageSize: 250})
-	requireCode(t, err, "invalid_arguments")
-	_, err = m.SessionMessages(testContext(false), SessionMessagesRequest{SessionID: "s", Page: 1})
-	requireCode(t, err, "invalid_arguments")
-}
-
-func TestMessageDataReturnsToolNameFromStructuredField(t *testing.T) {
-	rows := []storage.Message{{ID: "tool-result", Role: storage.RoleTool, ToolCallID: "call-1", ToolName: "shell"}}
-	items, err := messageData(rows)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(items) != 1 || items[0].ToolName != "shell" || items[0].ToolCallID != "call-1" {
-		t.Fatalf("message data = %+v", items)
+	for _, req := range []SessionMessagesRequest{
+		{SessionID: "s", Page: 2, PageSize: 250},
+		{SessionID: "s", Page: 1},
+	} {
+		invalid, err := m.SessionMessages(testContext(false), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		requireStatus(t, invalid, operationresult.InvalidArguments)
 	}
 }
 
 type managedSessionStub struct {
 	sessionStub
-	target  string
-	title   string
-	failure error
-	rows    map[string]*storage.Session
-	listed  []storage.SessionSummary
-	queries []session.ListRequest
+	target        string
+	title         string
+	failure       error
+	failureStatus operationresult.Status
+	rows          map[string]*storage.Session
+	listed        []storage.SessionSummary
+	queries       []session.ListRequest
 }
 
-func (*managedSessionStub) CurrentBound(context.Context, session.Scope) (*storage.Session, *session.Binding, error) {
+func (*managedSessionStub) CurrentBound(context.Context, session.Scope) (operationresult.Result[session.CurrentBoundData], error) {
 	panic("management operation inspected the current binding")
 }
-func (s *managedSessionStub) Rename(_ context.Context, _ session.Scope, id, title string) (*storage.Session, error) {
+func (s *managedSessionStub) Rename(_ context.Context, _ session.Scope, id, title string) (operationresult.Result[*storage.Session], error) {
 	s.target, s.title = id, title
-	return &storage.Session{ID: id}, s.failure
+	if s.failure != nil {
+		return operationresult.Result[*storage.Session]{}, s.failure
+	}
+	if s.failureStatus != "" && s.failureStatus != operationresult.Success {
+		return operationresult.Result[*storage.Session]{Status: s.failureStatus, Message: "session operation rejected"}, nil
+	}
+	return operationresult.Result[*storage.Session]{Status: operationresult.Success, Data: &storage.Session{ID: id, Title: title}}, nil
 }
 func (s *managedSessionStub) GetSession(_ context.Context, id string) (*storage.Session, error) {
 	if row := s.rows[id]; row != nil {
@@ -121,7 +127,7 @@ func (s *managedSessionStub) GetSession(_ context.Context, id string) (*storage.
 func (*managedSessionStub) LoadMessagePage(context.Context, string, int, int) (contextmgr.MessagePage, error) {
 	return contextmgr.MessagePage{}, nil
 }
-func (s *managedSessionStub) ListPage(_ context.Context, _ session.Scope, req session.ListRequest) (session.ListResult, error) {
+func (s *managedSessionStub) ListPage(_ context.Context, _ session.Scope, req session.ListRequest) (operationresult.Result[session.ListResult], error) {
 	s.queries = append(s.queries, req)
 	filtered := make([]storage.SessionSummary, 0, len(s.listed))
 	for _, row := range s.listed {
@@ -140,76 +146,89 @@ func (s *managedSessionStub) ListPage(_ context.Context, _ session.Scope, req se
 	if total%req.PageSize != 0 {
 		pages++
 	}
-	return session.ListResult{Items: items, Page: req.Page, PageSize: req.PageSize, TotalPages: pages}, nil
+	return operationresult.Result[session.ListResult]{Status: operationresult.Success, Data: session.ListResult{Items: items, Page: req.Page, PageSize: req.PageSize, TotalPages: pages}}, nil
 }
-func (s *managedSessionStub) Archive(ctx context.Context, scope session.Scope, id string) (*storage.Session, error) {
+func (s *managedSessionStub) Archive(ctx context.Context, scope session.Scope, id string) (operationresult.Result[*storage.Session], error) {
 	return s.Rename(ctx, scope, id, "")
 }
-func (s *managedSessionStub) Unarchive(ctx context.Context, scope session.Scope, id string) (*storage.Session, error) {
+func (s *managedSessionStub) Unarchive(ctx context.Context, scope session.Scope, id string) (operationresult.Result[*storage.Session], error) {
 	return s.Rename(ctx, scope, id, "")
 }
-func (s *managedSessionStub) Pin(ctx context.Context, scope session.Scope, id string) (*storage.Session, error) {
+func (s *managedSessionStub) Pin(ctx context.Context, scope session.Scope, id string) (operationresult.Result[*storage.Session], error) {
 	return s.Rename(ctx, scope, id, "")
 }
-func (s *managedSessionStub) Unpin(ctx context.Context, scope session.Scope, id string) (*storage.Session, error) {
+func (s *managedSessionStub) Unpin(ctx context.Context, scope session.Scope, id string) (operationresult.Result[*storage.Session], error) {
 	return s.Rename(ctx, scope, id, "")
 }
-func (s *managedSessionStub) Delete(_ context.Context, _ session.Scope, id string) error {
+func (s *managedSessionStub) Delete(_ context.Context, _ session.Scope, id string) (operationresult.Result[struct{}], error) {
 	s.target = id
-	return s.failure
+	if s.failure != nil {
+		return operationresult.Result[struct{}]{}, s.failure
+	}
+	if s.failureStatus != "" && s.failureStatus != operationresult.Success {
+		return operationresult.Result[struct{}]{Status: s.failureStatus, Message: "session operation rejected"}, nil
+	}
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }
 
 func TestSessionManagementUsesExplicitTargetAndProviderAdmission(t *testing.T) {
 	provider := &managedSessionStub{sessionStub: sessionStub{current: &storage.Session{ID: "current"}}, rows: map[string]*storage.Session{"target": {ID: "target"}}}
 	m, _ := testSupervisor(t, SupervisorDeps{Sessions: provider, History: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }})
-	operations := map[string]func() error{
-		"rename": func() error {
-			_, err := m.RenameSession(testContext(false), RenameSessionRequest{Target: "target", Title: "title", PageSize: 10})
-			return err
+	operations := map[string]func() (operationresult.Status, error){
+		"rename": func() (operationresult.Status, error) {
+			result, err := m.RenameSession(testContext(false), RenameSessionRequest{Target: "target", Title: "title", PageSize: 10})
+			return result.Status, err
 		},
-		"archive": func() error {
-			_, err := m.SetSessionArchived(testContext(false), SetSessionArchivedRequest{SessionID: "target", Archived: true, Confirmed: true})
-			return err
+		"archive": func() (operationresult.Status, error) {
+			result, err := m.SetSessionArchived(testContext(false), SetSessionArchivedRequest{SessionID: "target", Archived: true, Confirmed: true})
+			return result.Status, err
 		},
-		"unarchive": func() error {
-			_, err := m.SetSessionArchived(testContext(false), SetSessionArchivedRequest{SessionID: "target"})
-			return err
+		"unarchive": func() (operationresult.Status, error) {
+			result, err := m.SetSessionArchived(testContext(false), SetSessionArchivedRequest{SessionID: "target"})
+			return result.Status, err
 		},
-		"pin": func() error {
-			_, err := m.SetSessionPinned(testContext(false), SetSessionPinnedRequest{SessionID: "target", Pinned: true})
-			return err
+		"pin": func() (operationresult.Status, error) {
+			result, err := m.SetSessionPinned(testContext(false), SetSessionPinnedRequest{SessionID: "target", Pinned: true})
+			return result.Status, err
 		},
-		"unpin": func() error {
-			_, err := m.SetSessionPinned(testContext(false), SetSessionPinnedRequest{SessionID: "target"})
-			return err
+		"unpin": func() (operationresult.Status, error) {
+			result, err := m.SetSessionPinned(testContext(false), SetSessionPinnedRequest{SessionID: "target"})
+			return result.Status, err
 		},
-		"delete": func() error {
-			_, err := m.DeleteSession(testContext(false), DeleteSessionRequest{SessionID: "target", Confirmed: true})
-			return err
+		"delete": func() (operationresult.Status, error) {
+			result, err := m.DeleteSession(testContext(false), DeleteSessionRequest{SessionID: "target", Confirmed: true})
+			return result.Status, err
 		},
 	}
 	for name, operation := range operations {
 		t.Run(name, func(t *testing.T) {
-			provider.target, provider.failure = "", nil
-			if err := operation(); err != nil || provider.target != "target" {
+			provider.target, provider.failure, provider.failureStatus = "", nil, ""
+			status, err := operation()
+			if err != nil || status != operationresult.Success || provider.target != "target" {
 				t.Fatalf("target=%q error=%v", provider.target, err)
 			}
-			provider.failure = session.ErrSessionBusy
-			err := operation()
-			requireCode(t, err, "session_busy")
-			if !errors.Is(err, session.ErrSessionBusy) {
+			provider.failureStatus = operationresult.Busy
+			status, err = operation()
+			if err != nil || status != operationresult.Busy {
 				t.Fatal("provider admission error lost")
 			}
 		})
 	}
-	provider.target, provider.failure = "", nil
-	if _, err := m.SetSessionPinned(testContext(false), SetSessionPinnedRequest{Pinned: true}); err != nil || provider.target != "current" {
+	provider.target, provider.failure, provider.failureStatus = "", nil, ""
+	pinned, err := m.SetSessionPinned(testContext(false), SetSessionPinnedRequest{Pinned: true})
+	if err != nil || pinned.Status != operationresult.Success || provider.target != "current" {
 		t.Fatalf("current session target=%q error=%v", provider.target, err)
 	}
-	provider.failure = errors.New("provider title validation")
-	_, err := m.RenameSession(testContext(false), RenameSessionRequest{Title: ""})
-	if !errors.Is(err, provider.failure) || provider.title != "" {
+	provider.failureStatus = operationresult.InvalidArguments
+	renamed, err := m.RenameSession(testContext(false), RenameSessionRequest{Title: ""})
+	if err != nil || renamed.Status != operationresult.InvalidArguments || provider.title != "" {
 		t.Fatal("control repeated provider title validation")
+	}
+	provider.failureStatus = ""
+	provider.failure = errors.New("session store failure")
+	_, err = m.RenameSession(testContext(false), RenameSessionRequest{Title: "title"})
+	if !errors.Is(err, provider.failure) {
+		t.Fatalf("provider error = %v", err)
 	}
 }
 
@@ -223,8 +242,9 @@ func TestRenameSessionResolvesUniqueTitleAcrossPages(t *testing.T) {
 		},
 	}
 	m, _ := testSupervisor(t, SupervisorDeps{Sessions: provider, History: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }})
-	if _, err := m.RenameSession(testContext(false), RenameSessionRequest{Target: "known title", Title: "new title", PageSize: 1}); err != nil {
-		t.Fatal(err)
+	renamed, err := m.RenameSession(testContext(false), RenameSessionRequest{Target: "known title", Title: "new title", PageSize: 1})
+	if err != nil || renamed.Status != operationresult.Success {
+		t.Fatalf("rename: %+v %v", renamed, err)
 	}
 	if provider.target != "target" || provider.title != "new title" || len(provider.queries) != 2 {
 		t.Fatalf("target=%q title=%q queries=%+v", provider.target, provider.title, provider.queries)
@@ -241,15 +261,19 @@ func TestRenameSessionRejectsDuplicateTitleAndFallsBackForMissingTitle(t *testin
 		},
 	}
 	m, _ := testSupervisor(t, SupervisorDeps{Sessions: provider, History: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }})
-	_, err := m.RenameSession(testContext(false), RenameSessionRequest{Target: "shared title", Title: "replacement", PageSize: 1})
-	requireCode(t, err, "invalid_arguments")
+	duplicate, err := m.RenameSession(testContext(false), RenameSessionRequest{Target: "shared title", Title: "replacement", PageSize: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, duplicate, operationresult.InvalidArguments)
 	if provider.target != "" {
 		t.Fatalf("duplicate title reached provider: %+v", provider)
 	}
 	provider.listed = nil
 	provider.queries = nil
-	if _, err := m.RenameSession(testContext(false), RenameSessionRequest{Target: "new current", Title: "title", PageSize: 1}); err != nil {
-		t.Fatal(err)
+	renamed, err := m.RenameSession(testContext(false), RenameSessionRequest{Target: "new current", Title: "title", PageSize: 1})
+	if err != nil || renamed.Status != operationresult.Success {
+		t.Fatalf("fallback rename: %+v %v", renamed, err)
 	}
 	if provider.target != "current" || provider.title != "new current title" {
 		t.Fatalf("fallback target=%q title=%q", provider.target, provider.title)
@@ -261,32 +285,48 @@ type sessionListStub struct {
 	request session.ListRequest
 }
 
-func (s *sessionListStub) ListPage(_ context.Context, _ session.Scope, req session.ListRequest) (session.ListResult, error) {
+func (s *sessionListStub) ListPage(_ context.Context, _ session.Scope, req session.ListRequest) (operationresult.Result[session.ListResult], error) {
 	s.request = req
-	return session.ListResult{Page: req.Page, PageSize: req.PageSize, TotalPages: 8}, nil
+	return operationresult.Result[session.ListResult]{Status: operationresult.Success, Data: session.ListResult{Page: req.Page, PageSize: req.PageSize, TotalPages: 8}}, nil
 }
 
 func TestSessionListForwardsOptionsWithoutCaps(t *testing.T) {
-	provider := &sessionListStub{sessionStub: sessionStub{currentErr: session.ErrNoCurrentSession}}
+	provider := &sessionListStub{sessionStub: sessionStub{currentStatus: operationresult.NoCurrentSession}}
 	m, _ := testSupervisor(t, SupervisorDeps{Sessions: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }})
 	result, err := m.ListSessions(testContext(false), ListSessionsRequest{Query: "chosen", Page: 3, PageSize: 250, Archived: true, ExcludeCurrent: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := session.ListRequest{Query: "chosen", Page: 3, PageSize: 250, ArchivedOnly: true, ExcludeCurrent: true}
-	if provider.request != want || result.PageSize != 250 || result.Page.Page != 3 {
+	if result.Status != operationresult.Success || provider.request != want || result.Data.PageSize != 250 || result.Data.Page.Page != 3 {
 		t.Fatalf("request=%+v result=%+v", provider.request, result)
 	}
 }
 
 func TestSessionListRequiresSuperadminForAllPlatforms(t *testing.T) {
-	provider := &sessionListStub{sessionStub: sessionStub{currentErr: session.ErrNoCurrentSession}}
+	provider := &sessionListStub{sessionStub: sessionStub{currentStatus: operationresult.NoCurrentSession}}
 	m, _ := testSupervisor(t, SupervisorDeps{Sessions: provider, Scope: func(context.Context) session.Scope { return session.Scope{} }})
-	if _, err := m.ListSessions(testContext(false), ListSessionsRequest{Page: 1, PageSize: 10, AllPlatforms: true}); err == nil {
+	forbidden, err := m.ListSessions(testContext(false), ListSessionsRequest{Page: 1, PageSize: 10, AllPlatforms: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if forbidden.Status != operationresult.Forbidden {
 		t.Fatal("non-superadmin all-platform query accepted")
 	}
 	result, err := m.ListSessions(testContext(true), ListSessionsRequest{Page: 1, PageSize: 10, AllPlatforms: true})
-	if err != nil || !provider.request.AllPlatforms || result.Page.Page != 1 {
+	if err != nil || result.Status != operationresult.Success || !provider.request.AllPlatforms || result.Data.Page.Page != 1 {
 		t.Fatalf("request=%+v result=%+v err=%v", provider.request, result, err)
+	}
+}
+
+func TestResumeAndForkAuthorizeBeforeMessageLimitValidation(t *testing.T) {
+	m, _ := testSupervisor(t, SupervisorDeps{})
+	resumed, err := m.ResumeSession(context.Background(), ResumeSessionRequest{MessageLimit: -1})
+	if err != nil || resumed.Status != operationresult.Forbidden {
+		t.Fatalf("resume result=%+v err=%v", resumed, err)
+	}
+	forked, err := m.ForkSession(context.Background(), ForkSessionRequest{MessageLimit: -1})
+	if err != nil || forked.Status != operationresult.Forbidden {
+		t.Fatalf("fork result=%+v err=%v", forked, err)
 	}
 }

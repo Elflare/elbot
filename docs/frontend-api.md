@@ -62,7 +62,7 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 
 上传响应与 `attachment` 描述相同；一次 POST 只上传一个 `file`，多文件须分别上传。浏览器可用带认证头的 `fetch` 获取 Blob 并自行预览或下载。GET 响应使用 `Content-Disposition: attachment`、`X-Content-Type-Options: nosniff` 和 `Cache-Control: no-store`。
 
-删除或断连会撤销当前连接的附件授权；断连后需重新上传。认证失败返回 401；附件不存在或不属于当前连接返回 404；请求格式错误返回 400；服务停止接入返回 503；媒体处理失败返回 500 和统一文案“附件处理失败”。
+删除或断连会撤销当前连接的附件授权；断连后需重新上传。认证失败返回 401；附件不存在或不属于当前连接返回 404；请求格式错误、业务拒绝或无效目标返回 400；权限拒绝返回 403；冲突返回 409；服务停止接入或能力不可用返回 503；媒体业务失败和内部故障返回 500；取消返回 408，超时返回 504。业务错误返回 Result.Message，Go error 返回 err.Error()。
 
 ## HTTP 管理 API
 
@@ -88,7 +88,7 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 
 服务端先处理正文，再按 `file_ids` 顺序处理附件。图片转为图片输入；其他文件在单文件 256 KiB、累计展开 1 MiB 内，有效 UTF-8 且不含 NUL 时按文件名和代码围栏展开为文本，其余作为文件输入。该额度只控制文本展开，上传大小限制复用 Media 配置。
 
-附件必须属于当前连接；准备任一附件失败时，不提交部分输入，而是返回 `error` 和原输入的 `id`，正文为“附件处理失败”。附件不会因发送输入自动释放，客户端可在不再需要时调用 DELETE。
+附件必须属于当前连接；准备任一附件失败时，不提交部分输入，而是返回 `error` 和原输入的 `id`，正文使用 Result.Message 或 Go error 的原始文本。附件不会因发送输入自动释放，客户端可在不再需要时调用 DELETE。
 
 ### complete — 请求补全
 
@@ -131,12 +131,14 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 ### command_result — 命令结果
 
 ```json
-{"type":"command_result","request_id":"m-1","command":"help","result":{"kind":"text","data":{"content":"命令列表"},"confirmation":null},"error":null}
+{"type":"command_result","request_id":"m-1","command":{"raw":"/detail","prefix":"/","Name":"detail","args":""},"result":{"status":"success","kind":"text","data":{"content":"无待确认"}}}
 ```
 
-`request_id` 原样关联 `input.id`，结果只发给原连接；命令结果不通过 `notice` 返回。追加确认回执使用 `command="append"`。确认动作以新的 `input.text` 提交，权限和目标状态仍由服务端校验，动作 ID 不是授权凭据。
+`request_id` 原样关联 `input.id`，结果只发给原连接；命令结果不通过 `notice` 返回。`command` 保留原始调用上下文，追加确认回执的 `command.Name` 为 `append`。确认动作以新的 `input.text` 提交，权限和目标状态仍由服务端校验，动作 ID 不是授权凭据。
 
-成功时 `error` 为 `null`；失败时包含 `kind`、`code`、`message`，完整失败的 `result` 为 `null`。部分结果可同时带 `result` 和 `error`。客户端超时或断线不代表后端执行已取消。
+`result.status` 表达命令业务状态；仅 `success` 时读取 `data`，拒绝或失败展示 `result.message`。`kind` 描述成功数据的结构，`confirmation` 提供确认动作。`status` 是内部业务状态，不是 HTTP 状态或协议错误码。
+
+程序或 IO 故障通过 `error` 字符串传递原始说明；此字段存在时优先展示它，不读取 `result.data`。没有故障时省略 `error`。客户端超时或断线不代表后端执行已取消。
 
 ### status — 运行状态
 

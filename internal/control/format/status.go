@@ -157,8 +157,8 @@ func appendStatusContext(out *strings.Builder, data control.ContextData) {
 
 func appendStatusErrors(out *strings.Builder, errors []control.ItemError) {
 	for _, failure := range errors {
-		if failure.Error != nil {
-			fmt.Fprintf(out, "warn: %s: %s\n", failure.ID, failure.Error.Message)
+		if failure.Error != "" {
+			fmt.Fprintf(out, "warn: %s: %s\n", failure.ID, failure.Error)
 		}
 	}
 }

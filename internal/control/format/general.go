@@ -89,8 +89,8 @@ func Models(d control.ListModelsResult) string {
 		out.WriteString("\nproviders err:")
 	}
 	for _, failure := range d.Errors {
-		if failure.Error != nil {
-			fmt.Fprintf(&out, "\n  - %s: %s", failure.ID, failure.Error.Message)
+		if failure.Error != "" {
+			fmt.Fprintf(&out, "\n  - %s: %s", failure.ID, failure.Error)
 		}
 	}
 	return strings.TrimRight(out.String(), "\n")
