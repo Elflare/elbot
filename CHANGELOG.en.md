@@ -18,37 +18,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `/sessions`, `/resume` lists, and `/archives` now allow superadmins to view all platforms using `-a/--all`.
-- File write confirmation previews now only return the diff when a full diff is available; otherwise, a text description is used when the diff is omitted.
-- Command returns have changed from notifications to independent structured results, providing unified business data, categorized errors, and confirmation operations; the remote protocol now includes `command_result` associated by input ID, handling execution failures and delivery failures separately.
-- `/messages` has been changed to bounded pagination of original conversations: page 1 is the newest, with messages ordered from oldest to newest within the page; structured data retains the full body and attachment names, includes branch history, and is unaffected by context compaction summaries.
-- Additional input confirmations now only support `/stop` for cancellation.
+- `/sessions`, `/resume` lists, and `/archives` now allow superadmins to use `-a/--all` to view all platforms.
+- File write confirmation previews now only return the diff when a full diff is available; text descriptions are used when the diff is omitted.
+- `/messages` now uses bounded pagination for original conversations: page 1 is the newest, and messages within a page are ordered from oldest to newest. Structured data retains the full body and attachment names, includes branch history, and is unaffected by context compaction summaries.
+- Append input confirmation now only supports `/stop` for cancellation.
 - `/status` now uses database statistics and no longer reads the full history for message counts.
 - Manually guided the AI to refactor the App to the business layer package-by-package, file-by-file, function-by-function, and field-by-field, further tightening boundaries, clarifying responsibilities, and streamlining code.
-- Breaking Change: Resident memory has been changed to TOML tables layered by platform and user ID; old files are automatically backed up and migrated upon first read. Migration compatibility code will be removed after two minor version increments following the introduction version.
+- Breaking Change: Resident memory has been changed to TOML tables layered by platform and user ID. Old files are automatically backed up and migrated upon first read. Compatibility code for migration will be removed after two minor version increments following this release.
 - Breaking Change: Updated the hook protocol.
-- Breaking Change: No longer provides specific fallback handling for models that do not support vision.
+- Breaking Change: Removed specialized fallback handling for models that do not support vision.
 - Streamlined user prompt information and tool schema information.
-- Optimized log and audit display; log filenames have been changed to `log*`.
+- Optimized runtime log and audit log displays; log filenames have been changed to `log*`.
 - Modified ID formats in multiple locations.
-- Hook native emoji output now uniformly uses the required `name`; `text` is no longer used for emoji construction or fallback; plain text display is unified as `[Emoji: Name]`.
-- Delivery information for Hook event output snapshots has been changed from the `Meta` object to the `Delivery` object, containing `Timing`, `HookPoint`, `HookName`, and `HookMode`; the derived field `AltText` has been removed.
-- Active requests in `/status` no longer repeatedly display Session titles; this information is still retained when using `/requests` directly.
+- Hook native emoji output now uniformly uses the required `name` field; `text` is no longer used for emoji construction or fallback. Plain text display is now unified as `[Emoji: Name]`.
+- Delivery information for Hook event output snapshots has been changed from the `Meta` object to the `Delivery` object, containing `Timing`, `HookPoint`, `HookName`, and `HookMode`. The derived field `AltText` has been removed.
+- Active requests in `/status` no longer repeatedly display the Session title; this information is still retained when using `/requests` directly.
 - Modified the Elwisp protocol to uniformly use `platform`, `api`, and `params` to describe platform native API calls.
 - The `send_file` tool is now available to ordinary users, limited to media IDs and URLs.
 - Optimized retry logic.
 - `/resume` no longer uses numbering.
 - Keywords for `/sessions` and `/archives` now require `-k/--keyword`.
-- Using `#` to select files now uses files within the agent workspace.
-- Optimized warnings for the shell tool.
-- Reading files is no longer limited to 200 lines (default remains 200).
+- File selection via `#` now uses files within the agent workspace.
+- Optimized tool warnings for the agent.
+- Reading files is no longer limited to 200 lines (though the default remains 200).
+- Optimized compaction logic.
 
 ### Fixed
 
-- Fixed the issue where some commands reported `not found` due to the absence of a current Session after first entry or `/new`.
-- Fixed the issue where `/resume` ignored pinning.
-- Fixed some potential bugs during refactoring.
-- Fixed the chat history search tool bug. Now both background and foreground can perform searches without affecting each other.
+- Fixed issues where workspace cleanup of invalid directories or concurrent switching still returned the old directory state, and where cancellation errors were swallowed when Git diff output exceeded the limit.
+- File reference format errors, out-of-bounds errors, and target type rejections now display the business reason and terminate input processing, rather than propagating as program failures.
+- Fixed an issue where some commands reported `not found` due to the absence of a current Session upon first entry or after `/new`.
+- Fixed an issue where `/resume` ignored pinned items.
+- Fixed several potential bugs during refactoring.
+- Fixed a bug in the chat history search tool. Searching now works in both the background and foreground without interfering with each other.
+- Fixed a bug where duplicate content was compressed multiple times.
 
 ## [v0.6.0 - 2026-10-23]
 
