@@ -47,12 +47,8 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Cont
 	if !parsed.OK {
 		req.Name = "append"
 	}
-	if err != nil || result.Status != operationresult.Success {
-		e.logFailure(ctx, "command_failed", result, err)
-	}
 	sendCtx := session.WithBinding(context.WithoutCancel(origin), nil)
 	if _, sendErr := e.output.SendCommandResult(sendCtx, req, result, err); sendErr != nil {
-		e.logFailure(sendCtx, "command_send_failed", command.Result{}, sendErr)
 		return ctx, true, sendErr
 	}
 	if err != nil {
@@ -64,7 +60,6 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Cont
 	if result.Continuation != nil {
 		next, continued, err := e.input.ContinueCommandInput(ctx, *result.Continuation)
 		if err != nil {
-			e.logFailure(next, "command_continuation_failed", command.Result{}, err)
 			globalevents.Notify(session.WithBinding(context.WithoutCancel(next), nil), globalevents.NewNotification(next, slog.LevelWarn, err.Error()))
 			if result.Continuation.Kind == "append" {
 				return next, true, nil
@@ -72,10 +67,8 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Cont
 			return next, true, err
 		}
 		if continued.Status != operationresult.Success {
-			e.logFailure(next, "command_continuation_failed", command.Result{Status: continued.Status, Message: continued.Message}, nil)
 			result = command.Result{Status: continued.Status, Message: continued.Message}
 			if _, sendErr := e.output.SendCommandResult(session.WithBinding(context.WithoutCancel(origin), nil), req, result, nil); sendErr != nil {
-				e.logFailure(session.WithBinding(context.WithoutCancel(origin), nil), "command_send_failed", command.Result{}, sendErr)
 				return next, true, sendErr
 			}
 			return next, true, nil
@@ -117,27 +110,6 @@ func (e *CommandExecutor) execute(ctx context.Context, text string, isCommand bo
 	}
 	result, err := e.router.Dispatch(ctx, text)
 	return ctx, result, true, err
-}
-func (e *CommandExecutor) logFailure(ctx context.Context, event string, result command.Result, err error) {
-	level, status, content := slog.LevelWarn, globalevents.ResultFailed, result.Message
-	if err != nil {
-		content = err.Error()
-		status = globalevents.LogStatus(err)
-	} else {
-		switch result.Status {
-		case operationresult.Canceled:
-			status = globalevents.ResultCanceled
-		case operationresult.Failed, operationresult.Timeout:
-		default:
-			status = globalevents.ResultRejected
-		}
-	}
-	if status == globalevents.ResultCanceled {
-		level = slog.LevelInfo
-	}
-	record := globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: level, EventName: event, Module: "command", Content: content, ContentLimit: 4096, ResultStatus: status}
-	record.Identity = globalevents.LogIdentityFromContext(ctx)
-	globalevents.Log(context.WithoutCancel(ctx), record)
 }
 
 type CommandOutput interface {

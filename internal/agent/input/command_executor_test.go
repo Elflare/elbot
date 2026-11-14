@@ -5,13 +5,16 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"elbot/internal/command"
 	"elbot/internal/control"
 	"elbot/internal/delivery"
+	"elbot/internal/events"
 	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 	"elbot/internal/session"
+	"elbot/internal/signal"
 	"elbot/internal/storage"
 )
 
@@ -29,8 +32,10 @@ type commandExecutorProbe struct {
 	sentResult     []command.Result
 	failure        error
 	sendErr        error
+	sendErrAfter   int
 	continued      control.Continuation
 	continueResult operationresult.Result[struct{}]
+	continueErr    error
 	order          []string
 }
 
@@ -45,7 +50,10 @@ func (p *commandExecutorProbe) SendCommandResult(_ context.Context, req command.
 	p.order = append(p.order, "send")
 	p.request, p.result, p.failure = req, result, failure
 	p.sentResult = append(p.sentResult, result)
-	return delivery.Receipt{}, p.sendErr
+	if len(p.sentResult) > p.sendErrAfter {
+		return delivery.Receipt{}, p.sendErr
+	}
+	return delivery.Receipt{}, nil
 }
 func (p *commandExecutorProbe) CurrentConfirmation(context.Context, control.CurrentConfirmationRequest) (operationresult.Result[control.CurrentConfirmationResult], error) {
 	return p.current, p.currentErr
@@ -56,10 +64,24 @@ func (p *commandExecutorProbe) RespondConfirmation(context.Context, control.Resp
 func (p *commandExecutorProbe) ContinueCommandInput(ctx context.Context, continuation control.Continuation) (context.Context, operationresult.Result[struct{}], error) {
 	p.order = append(p.order, "continue")
 	p.continued = continuation
-	return ctx, p.continueResult, nil
+	return ctx, p.continueResult, p.continueErr
+}
+
+func assertNoCommandLogs(t *testing.T) {
+	t.Helper()
+	connection, err := events.LogSubmitted.Observe(func(_ context.Context, record events.LogRecord) {
+		if record.Module == "command" {
+			t.Errorf("unexpected command log: %+v", record)
+		}
+	}, signal.ConnectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(connection.Disconnect)
 }
 
 func TestCommandContinuationRequiresSuccessfulDelivery(t *testing.T) {
+	assertNoCommandLogs(t)
 	for _, failSend := range []bool{false, true} {
 		probe := &commandExecutorProbe{continueResult: operationresult.Result[struct{}]{Status: operationresult.Success}}
 		if failSend {
@@ -106,22 +128,62 @@ func TestAppendConfirmationUsesControlAndContinuesAfterDelivery(t *testing.T) {
 	}
 }
 
-func TestBusinessContinuationFailureIsSentAsResult(t *testing.T) {
-	probe := &commandExecutorProbe{continueResult: operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: "session disappeared"}}
-	router := command.NewRouter([]string{"/"})
-	continuation := control.Continuation{Kind: "input", SessionID: "missing", Text: "next"}
-	if err := router.Register(command.NewFunc(command.Info{Name: "go", MinRole: "user"}, func(context.Context, command.Request) (command.Result, error) {
-		return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "accepted"}, Continuation: &continuation}, nil
-	})); err != nil {
+func TestCommandContinuationReportsWithoutLogging(t *testing.T) {
+	assertNoCommandLogs(t)
+	notices := make(chan events.Notification, 1)
+	connection, err := events.NotificationRequested.Observe(func(_ context.Context, notice events.Notification) {
+		notices <- notice
+	}, signal.ConnectOptions{})
+	if err != nil {
 		t.Fatal(err)
 	}
-	executor := NewCommandExecutor(CommandExecutorDeps{Router: router, Sessions: probe, Identity: probe, Output: probe, Confirmations: probe, Input: probe})
-	_, handled, err := executor.Handle(t.Context(), "/go")
-	if !handled || err != nil || !reflect.DeepEqual(probe.order, []string{"send", "continue", "send"}) || len(probe.sentResult) != 2 {
-		t.Fatalf("handled=%v results=%+v order=%v err=%v", handled, probe.sentResult, probe.order, err)
-	}
-	if got := probe.sentResult[1]; got.Status != operationresult.NotFound || got.Message != "session disappeared" || got.Data != nil {
-		t.Fatalf("continuation result=%+v", got)
+	t.Cleanup(func() { _ = connection.Close(context.Background()) })
+	fault, sendErr := errors.New("continuation fault"), errors.New("transport down")
+	for _, tc := range []struct {
+		name, kind  string
+		continueErr error
+		sendErr     error
+	}{
+		{name: "business rejection", kind: "input"},
+		{name: "rejection delivery fault", kind: "input", sendErr: sendErr},
+		{name: "input fault", kind: "input", continueErr: fault},
+		{name: "append fault", kind: "append", continueErr: fault},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			probe := &commandExecutorProbe{continueResult: operationresult.Result[struct{}]{Status: operationresult.NotFound, Message: "session disappeared"}, continueErr: tc.continueErr, sendErr: tc.sendErr, sendErrAfter: 1}
+			router := command.NewRouter([]string{"/"})
+			continuation := control.Continuation{Kind: tc.kind, SessionID: "missing", Text: "next"}
+			if err := router.Register(command.NewFunc(command.Info{Name: "go", MinRole: "user"}, func(context.Context, command.Request) (command.Result, error) {
+				return command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "accepted"}, Continuation: &continuation}, nil
+			})); err != nil {
+				t.Fatal(err)
+			}
+			executor := NewCommandExecutor(CommandExecutorDeps{Router: router, Sessions: probe, Identity: probe, Output: probe, Input: probe})
+			_, handled, err := executor.Handle(t.Context(), "/go")
+			wantErr, wantOrder := tc.sendErr, []string{"send", "continue", "send"}
+			if tc.continueErr != nil {
+				wantOrder = wantOrder[:2]
+				if tc.kind != "append" {
+					wantErr = tc.continueErr
+				}
+				select {
+				case notice := <-notices:
+					if notice.Text != tc.continueErr.Error() {
+						t.Fatalf("notice=%+v", notice)
+					}
+				case <-time.After(time.Second):
+					t.Fatal("continuation fault was not sent to user")
+				}
+			}
+			if !handled || !errors.Is(err, wantErr) || !reflect.DeepEqual(probe.order, wantOrder) || probe.continued != continuation {
+				t.Fatalf("handled=%v results=%+v order=%v err=%v", handled, probe.sentResult, probe.order, err)
+			}
+			if tc.continueErr == nil {
+				if got := probe.sentResult[1]; got.Status != operationresult.NotFound || got.Message != "session disappeared" || got.Data != nil {
+					t.Fatalf("continuation result=%+v", got)
+				}
+			}
+		})
 	}
 }
 
@@ -142,6 +204,7 @@ func TestConfirmationWithoutPendingItemReturnsShortNotice(t *testing.T) {
 }
 
 func TestCommandErrorsAndBusinessRejectionsStaySeparate(t *testing.T) {
+	assertNoCommandLogs(t)
 	tests := []struct {
 		name       string
 		result     command.Result
