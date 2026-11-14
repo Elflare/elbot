@@ -101,9 +101,6 @@ func (r *Router) SendTo(ctx context.Context, target delivery.Target, outputs []d
 	if len(outputs) == 0 {
 		return operationresult.Result[delivery.Receipt]{Status: operationresult.Success}, nil
 	}
-	if err := delivery.ValidateOutputs(outputs); err != nil {
-		return operationresult.Result[delivery.Receipt]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
-	}
 	selected := r.sender(ctx, target)
 	if selected.Status != operationresult.Success {
 		return operationresult.Result[delivery.Receipt]{Status: selected.Status, Message: selected.Message}, nil
@@ -154,7 +151,7 @@ func (r *Router) routeToolCallEvents(ctx context.Context, stream delivery.Messag
 			if conversation.Source.ChatType != contextinfo.ChatPrivate || event.AssistantSpeaking || event.ToolCall == nil {
 				return delivery.Receipt{}, nil
 			}
-			events.Notify(ctx, events.NewNotification(ctx, slog.LevelDebug, share.FormatToolCallNotice(*event.ToolCall)))
+			events.Notify(context.WithoutCancel(ctx), events.NewNotification(ctx, slog.LevelDebug, share.FormatToolCallNotice(*event.ToolCall)))
 			return delivery.Receipt{}, nil
 		}
 		if event.Type == delivery.StreamToolResult && !structured {
