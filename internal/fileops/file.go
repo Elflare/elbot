@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"elbot/internal/operationresult"
 )
 
 const MaxFileSize = 2 * 1024 * 1024
@@ -16,7 +18,7 @@ type EditFileOptions struct {
 	MaxInputBytes        int64
 	MaxOutputBytes       int64
 	DetailedDiffMaxBytes int64
-	beforeWrite          func(File, bool, os.FileMode) error
+	beforeWrite          func(File, bool, os.FileMode) (operationresult.Result[struct{}], error) // 写入前的业务准入与最终复核。
 }
 
 type File struct {
@@ -43,135 +45,153 @@ type EditResult struct {
 	RollbackEvicted   int
 }
 
-func ReadFile(path, requestedEncoding string) (File, error) {
+func ReadFile(path, requestedEncoding string) (operationresult.Result[File], error) {
 	return ReadFileWithLimit(path, requestedEncoding, MaxFileSize)
 }
 
-func ReadFileWithLimit(path, requestedEncoding string, maxBytes int64) (File, error) {
+func ReadFileWithLimit(path, requestedEncoding string, maxBytes int64) (operationresult.Result[File], error) {
 	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return operationresult.Result[File]{Status: operationresult.NotFound, Message: fmt.Sprintf("file %q not found", path)}, nil
+	}
 	if err != nil {
-		return File{}, fmt.Errorf("stat file: %w", err)
+		return operationresult.Result[File]{}, fmt.Errorf("stat file: %w", err)
 	}
 	if info.IsDir() {
-		return File{}, fmt.Errorf("path is a directory")
+		return operationresult.Result[File]{Status: operationresult.InvalidTarget, Message: "path is a directory"}, nil
 	}
 	if maxBytes > 0 && info.Size() > maxBytes {
-		return File{}, fmt.Errorf("file too large: %d bytes exceeds %d", info.Size(), maxBytes)
+		return operationresult.Result[File]{Status: operationresult.Rejected, Message: fmt.Sprintf("file too large: %d bytes exceeds %d", info.Size(), maxBytes)}, nil
 	}
 	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return operationresult.Result[File]{Status: operationresult.NotFound, Message: fmt.Sprintf("file %q not found", path)}, nil
+	}
 	if err != nil {
-		return File{}, fmt.Errorf("read file: %w", err)
+		return operationresult.Result[File]{}, fmt.Errorf("read file: %w", err)
 	}
 	text, encName, bom, err := DecodeBytes(data, requestedEncoding)
 	if err != nil {
-		return File{}, err
+		return operationresult.Result[File]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
 	if isUTF8Encoding(encName) && LooksBinaryUTF8(text) {
-		return File{}, fmt.Errorf("file appears to be binary")
+		return operationresult.Result[File]{Status: operationresult.InvalidTarget, Message: "file appears to be binary"}, nil
 	}
-	return File{Path: path, Bytes: data, Text: text, Encoding: encName, BOM: bom, LineEnding: DetectLineEnding(text)}, nil
+	return operationresult.Result[File]{Status: operationresult.Success, Data: File{Path: path, Bytes: data, Text: text, Encoding: encName, BOM: bom, LineEnding: DetectLineEnding(text)}}, nil
 }
 
-func ReadOrCreateFile(path, requestedEncoding string, create bool, hasExpectedRevision bool) (File, bool, error) {
+func ReadOrCreateFile(path, requestedEncoding string, create bool, hasExpectedRevision bool) (operationresult.Result[File], bool, error) {
 	return ReadOrCreateFileWithLimit(path, requestedEncoding, create, hasExpectedRevision, MaxFileSize)
 }
 
-func ReadOrCreateFileWithLimit(path, requestedEncoding string, create bool, hasExpectedRevision bool, maxBytes int64) (File, bool, error) {
+func ReadOrCreateFileWithLimit(path, requestedEncoding string, create bool, hasExpectedRevision bool, maxBytes int64) (operationresult.Result[File], bool, error) {
 	file, err := ReadFileWithLimit(path, requestedEncoding, maxBytes)
-	if err == nil {
+	if err != nil {
+		return operationresult.Result[File]{}, false, err
+	}
+	if file.Status == operationresult.Success {
 		return file, false, nil
 	}
-	if !create || hasExpectedRevision || !errors.Is(err, os.ErrNotExist) {
-		return File{}, false, err
+	if !create || hasExpectedRevision || file.Status != operationresult.NotFound {
+		return file, false, nil
 	}
 	encodingName := strings.ToLower(strings.TrimSpace(requestedEncoding))
 	if encodingName == "" || encodingName == "auto" || encodingName == "utf8" {
 		encodingName = "utf-8"
 	}
 	if encodingName == "utf-8-bom" {
-		return File{Path: path, Encoding: "utf-8-bom", BOM: []byte{0xEF, 0xBB, 0xBF}, LineEnding: "\n"}, true, nil
+		return operationresult.Result[File]{Status: operationresult.Success, Data: File{Path: path, Encoding: "utf-8-bom", BOM: []byte{0xEF, 0xBB, 0xBF}, LineEnding: "\n"}}, true, nil
 	}
 	if encodingName != "utf-8" {
 		if _, err := LookupEncoding(encodingName); err != nil {
-			return File{}, false, err
+			return operationresult.Result[File]{Status: operationresult.InvalidArguments, Message: err.Error()}, false, nil
 		}
 	}
-	return File{Path: path, Encoding: encodingName, LineEnding: "\n"}, true, nil
+	return operationresult.Result[File]{Status: operationresult.Success, Data: File{Path: path, Encoding: encodingName, LineEnding: "\n"}}, true, nil
 }
 
-func EditFile(path, requestedEncoding, expectedRevision string, create, dryRun bool, contextLines int, edits []Edit) (EditResult, error) {
+func EditFile(path, requestedEncoding, expectedRevision string, create, dryRun bool, contextLines int, edits []Edit) (operationresult.Result[EditResult], error) {
 	return EditFileWithOptions(path, requestedEncoding, expectedRevision, create, dryRun, contextLines, edits, EditFileOptions{MaxInputBytes: MaxFileSize})
 }
 
-func EditFileWithOptions(path, requestedEncoding, expectedRevision string, create, dryRun bool, contextLines int, edits []Edit, options EditFileOptions) (EditResult, error) {
+func EditFileWithOptions(path, requestedEncoding, expectedRevision string, create, dryRun bool, contextLines int, edits []Edit, options EditFileOptions) (operationresult.Result[EditResult], error) {
 	return editFileWithResult(path, requestedEncoding, expectedRevision, create, dryRun, contextLines, edits, options, nil)
 }
 
-// editFileWithResult shares file reads and writes with ordinary edits, while a
-// prepared result supplies the approved output without repeating its calculation.
-func editFileWithResult(path, requestedEncoding, expectedRevision string, create, dryRun bool, contextLines int, edits []Edit, options EditFileOptions, prepared *EditResult) (EditResult, error) {
+// editFileWithResult uses the approved bytes when prepared is non-nil.
+func editFileWithResult(path, requestedEncoding, expectedRevision string, create, dryRun bool, contextLines int, edits []Edit, options EditFileOptions, prepared *EditResult) (operationresult.Result[EditResult], error) {
 	expectedRevision = strings.TrimSpace(expectedRevision)
 	if prepared == nil && expectedRevision != "" {
 		if len(expectedRevision) != contentRevisionBytes*2 {
-			return EditResult{}, fmt.Errorf("expected_revision must be %d hexadecimal characters", contentRevisionBytes*2)
+			return operationresult.Result[EditResult]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("expected_revision must be %d hexadecimal characters", contentRevisionBytes*2)}, nil
 		}
 		if _, err := hex.DecodeString(expectedRevision); err != nil {
-			return EditResult{}, fmt.Errorf("expected_revision must be %d hexadecimal characters", contentRevisionBytes*2)
+			return operationresult.Result[EditResult]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("expected_revision must be %d hexadecimal characters", contentRevisionBytes*2)}, nil
 		}
 	}
-	file, created, err := ReadOrCreateFileWithLimit(path, requestedEncoding, create, expectedRevision != "", options.MaxInputBytes)
+	loaded, created, err := ReadOrCreateFileWithLimit(path, requestedEncoding, create, expectedRevision != "", options.MaxInputBytes)
 	if err != nil {
-		return EditResult{}, err
+		return operationresult.Result[EditResult]{}, err
 	}
+	if loaded.Status != operationresult.Success {
+		return operationresult.Result[EditResult]{Status: loaded.Status, Message: loaded.Message}, nil
+	}
+	file := loaded.Data
 	oldRevision := ContentRevision(file.Bytes)
 	var result EditResult
 	if prepared != nil {
 		if prepared.Created != created || prepared.RevisionBefore != oldRevision {
-			return EditResult{}, fmt.Errorf("file changed after preflight")
+			return operationresult.Result[EditResult]{Status: operationresult.Conflict, Message: "file changed after preflight"}, nil
 		}
 		result = *prepared
 	} else {
 		if expectedRevision != "" && !strings.EqualFold(expectedRevision, oldRevision) {
-			return EditResult{}, fmt.Errorf("file revision mismatch: current %s", oldRevision)
+			return operationresult.Result[EditResult]{Status: operationresult.Conflict, Message: fmt.Sprintf("file revision mismatch: current %s", oldRevision)}, nil
 		}
 		if !created && expectedRevision == "" && editsRequireRevision(edits) {
-			return EditResult{}, fmt.Errorf("expected_revision is required for replace, insert, delete, and overwrite on existing files")
+			return operationresult.Result[EditResult]{Status: operationresult.InvalidArguments, Message: "expected_revision is required for replace, insert, delete, and overwrite on existing files"}, nil
 		}
 		newText, err := ApplyEdits(file.Text, edits)
 		if err != nil {
-			return EditResult{}, err
+			return operationresult.Result[EditResult]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
-		result, err = prepareFileResult(file, created, newText, contextLines, options)
-		if err != nil {
-			return EditResult{}, err
+		prepared := prepareFileResult(file, created, newText, contextLines, options)
+		if prepared.Status != operationresult.Success {
+			return prepared, nil
 		}
+		result = prepared.Data
 	}
 	result.DryRun = dryRun
 	if dryRun {
-		return result, nil
+		return operationresult.Result[EditResult]{Status: operationresult.Success, Data: result}, nil
 	}
 	mode := os.FileMode(0644)
 	if info, err := os.Stat(path); err == nil {
 		mode = info.Mode()
-	} else if !created {
-		return EditResult{}, fmt.Errorf("stat file: %w", err)
+	} else if !created && errors.Is(err, os.ErrNotExist) {
+		return operationresult.Result[EditResult]{Status: operationresult.NotFound, Message: fmt.Sprintf("file %q not found", path)}, nil
+	} else if !created || !errors.Is(err, os.ErrNotExist) {
+		return operationresult.Result[EditResult]{}, fmt.Errorf("stat file: %w", err)
 	}
-
 	if created {
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-			return EditResult{}, fmt.Errorf("create parent directory: %w", err)
+			return operationresult.Result[EditResult]{}, fmt.Errorf("create parent directory: %w", err)
 		}
 	}
-	if err := atomicWriteFile(path, result.NewBytes, mode, func() error {
+	commit, err := atomicWriteFileResult(path, result.NewBytes, mode, func() (operationresult.Result[struct{}], error) {
 		if options.beforeWrite != nil {
 			return options.beforeWrite(file, created, mode)
 		}
-		return nil
-	}); err != nil {
-		return EditResult{}, fmt.Errorf("write file: %w", err)
+		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
+	})
+	if err != nil {
+		return operationresult.Result[EditResult]{}, fmt.Errorf("write file: %w", err)
+	}
+	if commit.Status != operationresult.Success {
+		return operationresult.Result[EditResult]{Status: commit.Status, Message: commit.Message}, nil
 	}
 	if prepared != nil {
 		result.NewBytes = bytes.Clone(result.NewBytes)
 	}
-	return result, nil
+	return operationresult.Result[EditResult]{Status: operationresult.Success, Data: result}, nil
 }

@@ -149,8 +149,8 @@ func TestRollbackToolPermissionsAndSessionExpiry(t *testing.T) {
 	if result, _, err := callTool(background, (f.rollback).Definition(), rollbackRequest("file")); err != nil || result.Status == operationresult.Success {
 		t.Fatal("background rollback allowed")
 	}
-	if session, err := f.service.EditSession(background); err != nil || session.Status != operationresult.Success || session.Data != nil {
-		t.Fatalf("background recording: %v %v", session, err)
+	if session := f.service.EditSession(background); session.Status != operationresult.Success || session.Data != nil {
+		t.Fatalf("background recording: %+v", session)
 	}
 	f.binding.valid.Store(false)
 	f.binding = newRollbackTestBinding()
@@ -183,9 +183,18 @@ func TestRollbackToolFileGuardChecksActualTarget(t *testing.T) {
 	if result, _, err := callTool(f.ctx(), (f.edit).Definition(), toolshare.CallRequest{Arguments: raw}); err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "protected target") {
 		t.Fatalf("edit guard: %v", err)
 	}
-	records, _ := f.service.List(f.ctx())
+	records := f.service.List(f.ctx())
 	if records.Status != operationresult.Success || len(records.Data) != 1 {
 		t.Fatal("denial consumed record")
+	}
+	path := filepath.Join(f.workspace.dir, "protected", "new")
+	f.service.CheckWrite = FileGuard{{ExactPath: path, WriteError: "protected target"}}.CheckWrite
+	result, _, err := f.service.Edit(f.ctx(), fileops.EditRequest{Path: path, Create: true, Edits: []fileops.Edit{{Operation: "overwrite", NewText: new("new")}}})
+	if err != nil || result.Status != operationresult.Forbidden || result.Message != "protected target" {
+		t.Fatalf("direct edit guard: %+v %v", result, err)
+	}
+	if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
+		t.Fatalf("denied edit created parent directory: %v", err)
 	}
 }
 

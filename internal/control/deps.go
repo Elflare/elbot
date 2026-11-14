@@ -141,6 +141,6 @@ type SkillCapabilities interface {
 	Remove(context.Context, string) (operationresult.Result[struct{}], error)
 }
 type FileRollbackCapabilities interface {
-	List(context.Context) (operationresult.Result[[]fileops.RollbackInfo], error)
+	List(context.Context) operationresult.Result[[]fileops.RollbackInfo]
 	RollbackByID(context.Context, uint64) (operationresult.Result[fileops.RollbackResult], error)
 }

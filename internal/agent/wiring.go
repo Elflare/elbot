@@ -281,12 +281,12 @@ func wireCommands(router *command.Router, deps agentinput.CommandExecutorDeps, m
 // fileRollbackCapabilities adapts the command's List name to Tool's rollback operation.
 type fileRollbackCapabilities struct {
 	tools interface {
-		ListRollbacks(context.Context) (operationresult.Result[[]fileops.RollbackInfo], error)
+		ListRollbacks(context.Context) operationresult.Result[[]fileops.RollbackInfo]
 		RollbackByID(context.Context, uint64) (operationresult.Result[fileops.RollbackResult], error)
 	}
 }
 
-func (c fileRollbackCapabilities) List(ctx context.Context) (operationresult.Result[[]fileops.RollbackInfo], error) {
+func (c fileRollbackCapabilities) List(ctx context.Context) operationresult.Result[[]fileops.RollbackInfo] {
 	return c.tools.ListRollbacks(ctx)
 }
 

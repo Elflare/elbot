@@ -4,28 +4,38 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"elbot/internal/operationresult"
 )
 
 func AtomicWriteFile(path string, data []byte, mode os.FileMode) error {
-	return atomicWriteFile(path, data, mode, nil)
+	_, err := atomicWriteFileResult(path, data, mode, nil)
+	return err
 }
 
 // beforeCommit runs after temporary output is ready, immediately before the
 // destination is changed. Symlink writes preserve the existing in-place rule.
-func atomicWriteFile(path string, data []byte, mode os.FileMode, beforeCommit func() error) error {
+func atomicWriteFileResult(path string, data []byte, mode os.FileMode, beforeCommit func() (operationresult.Result[struct{}], error)) (operationresult.Result[struct{}], error) {
 	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
 		if beforeCommit != nil {
-			if err := beforeCommit(); err != nil {
-				return err
+			result, err := beforeCommit()
+			if err != nil {
+				return operationresult.Result[struct{}]{}, err
+			}
+			if result.Status != operationresult.Success {
+				return result, nil
 			}
 		}
-		return os.WriteFile(path, data, mode)
+		if err := os.WriteFile(path, data, mode); err != nil {
+			return operationresult.Result[struct{}]{}, err
+		}
+		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}
 	dir := filepath.Dir(path)
 	base := filepath.Base(path)
 	tmp, err := os.CreateTemp(dir, "."+base+".tmp-*")
 	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
+		return operationresult.Result[struct{}]{}, fmt.Errorf("create temp file: %w", err)
 	}
 	tmpPath := tmp.Name()
 	cleanup := true
@@ -36,27 +46,31 @@ func atomicWriteFile(path string, data []byte, mode os.FileMode, beforeCommit fu
 	}()
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf("write temp file: %w", err)
+		return operationresult.Result[struct{}]{}, fmt.Errorf("write temp file: %w", err)
 	}
 	if err := tmp.Chmod(mode); err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf("chmod temp file: %w", err)
+		return operationresult.Result[struct{}]{}, fmt.Errorf("chmod temp file: %w", err)
 	}
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf("sync temp file: %w", err)
+		return operationresult.Result[struct{}]{}, fmt.Errorf("sync temp file: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp file: %w", err)
+		return operationresult.Result[struct{}]{}, fmt.Errorf("close temp file: %w", err)
 	}
 	if beforeCommit != nil {
-		if err := beforeCommit(); err != nil {
-			return err
+		result, err := beforeCommit()
+		if err != nil {
+			return operationresult.Result[struct{}]{}, err
+		}
+		if result.Status != operationresult.Success {
+			return result, nil
 		}
 	}
 	if err := replaceFileAtomic(tmpPath, path); err != nil {
-		return err
+		return operationresult.Result[struct{}]{}, err
 	}
 	cleanup = false
-	return nil
+	return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 }

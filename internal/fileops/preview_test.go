@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"elbot/internal/fileops"
+	"elbot/internal/operationresult"
 )
 
 func TestPreparedFileFreezesContentAndPreservesEncoding(t *testing.T) {
@@ -20,6 +21,7 @@ func TestPreparedFileFreezesContentAndPreservesEncoding(t *testing.T) {
 		{"utf8", "utf-8", "\n", nil},
 		{"utf8-bom-crlf", "utf-8-bom", "\r\n", []byte{0xEF, 0xBB, 0xBF}},
 		{"utf16-crlf", "utf-16le", "\r\n", []byte{0xFF, 0xFE}},
+		{"utf16be", "utf-16be", "\n", []byte{0xFE, 0xFF}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "memory.md")
@@ -31,14 +33,14 @@ func TestPreparedFileFreezesContentAndPreservesEncoding(t *testing.T) {
 				t.Fatal(err)
 			}
 			calls, replacement := 0, "after"
-			prepared, err := fileops.PrepareFile(context.Background(), path, func(text string) (string, error) {
+			prepared, err := fileops.PrepareFile(context.Background(), path, func(text string) (operationresult.Result[string], error) {
 				calls++
-				return strings.ReplaceAll(text, "before", replacement), nil
+				return operationresult.Result[string]{Status: operationresult.Success, Data: strings.ReplaceAll(text, "before", replacement)}, nil
 			})
-			if err != nil {
-				t.Fatal(err)
+			if err != nil || prepared.Status != operationresult.Success {
+				t.Fatalf("prepare: %+v %v", prepared, err)
 			}
-			preview := prepared.Preview()
+			preview := prepared.Data.Preview()
 			if !preview.DryRun || preview.NewBytes != nil || !strings.Contains(preview.Diff, "+after") {
 				t.Fatalf("preview = %+v", preview)
 			}
@@ -46,9 +48,9 @@ func TestPreparedFileFreezesContentAndPreservesEncoding(t *testing.T) {
 			changed := preview
 			changed.Path = filepath.Join(t.TempDir(), "other")
 			changed.NewBytes = []byte("unapproved")
-			result, err := prepared.Commit(context.Background())
-			if err != nil {
-				t.Fatal(err)
+			result, err := prepared.Data.Commit(context.Background())
+			if err != nil || result.Status != operationresult.Success {
+				t.Fatalf("commit: %+v %v", result, err)
 			}
 			written, err := os.ReadFile(path)
 			if err != nil {
@@ -58,7 +60,7 @@ func TestPreparedFileFreezesContentAndPreservesEncoding(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if calls != 1 || !bytes.Equal(written, want) || result.DryRun || result.RevisionAfter != preview.RevisionAfter || fileops.ContentRevision(written) != preview.RevisionAfter || result.Diff != preview.Diff {
+			if calls != 1 || !bytes.Equal(written, want) || result.Data.DryRun || result.Data.RevisionAfter != preview.RevisionAfter || fileops.ContentRevision(written) != preview.RevisionAfter || result.Data.Diff != preview.Diff {
 				t.Fatalf("calls=%d written=%x want=%x result=%+v preview=%+v", calls, written, want, result, preview)
 			}
 			if _, err := os.Stat(changed.Path); !errors.Is(err, os.ErrNotExist) {
@@ -81,9 +83,11 @@ func TestPreparedFileRejectsChangedTargetOrRevisionAndCancellation(t *testing.T)
 			if err := os.Symlink(original, path); err != nil {
 				t.Fatal(err)
 			}
-			prepared, err := fileops.PrepareFile(context.Background(), path, func(string) (string, error) { return "after", nil })
-			if err != nil {
-				t.Fatal(err)
+			prepared, err := fileops.PrepareFile(context.Background(), path, func(string) (operationresult.Result[string], error) {
+				return operationresult.Result[string]{Status: operationresult.Success, Data: "after"}, nil
+			})
+			if err != nil || prepared.Status != operationresult.Success {
+				t.Fatalf("prepare: %+v %v", prepared, err)
 			}
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -104,8 +108,13 @@ func TestPreparedFileRejectsChangedTargetOrRevisionAndCancellation(t *testing.T)
 			case "cancel":
 				cancel()
 			}
-			if _, err := prepared.Commit(ctx); err == nil {
-				t.Fatal("commit accepted invalid snapshot")
+			result, err := prepared.Data.Commit(ctx)
+			if operation == "cancel" {
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("cancel: %v", err)
+				}
+			} else if err != nil || result.Status != operationresult.Conflict || result.Message == "" {
+				t.Fatalf("invalid snapshot: %+v %v", result, err)
 			}
 			for name, expected := range map[string]string{original: want, other: "before"} {
 				data, err := os.ReadFile(name)
@@ -130,10 +139,10 @@ func TestPreparedFileWriteCreateAndConflict(t *testing.T) {
 				}
 			}
 			prepared, err := fileops.PrepareFileWrite(t.Context(), path, "approved\n")
-			if err != nil {
-				t.Fatal(err)
+			if err != nil || prepared.Status != operationresult.Success {
+				t.Fatalf("prepare: %+v %v", prepared, err)
 			}
-			if scenario == "same" && prepared.Preview().DiffAvailable {
+			if scenario == "same" && prepared.Data.Preview().DiffAvailable {
 				t.Fatal("unchanged file has no displayable diff")
 			}
 			if scenario != "same" && scenario != "changed" {
@@ -153,10 +162,14 @@ func TestPreparedFileWriteCreateAndConflict(t *testing.T) {
 			} else if scenario == "canceled" {
 				cancel()
 			}
-			_, err = prepared.Commit(ctx)
+			result, err := prepared.Data.Commit(ctx)
 			wantSuccess := scenario == "new" || scenario == "same"
-			if (err == nil) != wantSuccess {
-				t.Fatalf("commit = %v", err)
+			if scenario == "canceled" {
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("cancel: %v", err)
+				}
+			} else if err != nil || (result.Status == operationresult.Success) != wantSuccess || !wantSuccess && (result.Status != operationresult.Conflict || result.Message == "") {
+				t.Fatalf("commit = %+v %v", result, err)
 			}
 			data, readErr := os.ReadFile(path)
 			if scenario == "canceled" {

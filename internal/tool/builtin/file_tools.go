@@ -523,10 +523,7 @@ func fileToolEditOptions() fileops.EditFileOptions {
 }
 
 func (t EditFileTool) call(ctx context.Context, prepared *fileops.PreparedEdit) (operationresult.Result[*toolshare.Result], string, error) {
-	lease, err := t.Rollback.EditSession(ctx)
-	if err != nil {
-		return operationresult.Result[*toolshare.Result]{}, err.Error(), err
-	}
+	lease := t.Rollback.EditSession(ctx)
 	if lease.Status != operationresult.Success {
 		return operationresult.Result[*toolshare.Result]{Status: lease.Status, Message: lease.Message}, lease.Message, nil
 	}

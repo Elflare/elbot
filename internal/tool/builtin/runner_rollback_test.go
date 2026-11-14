@@ -132,7 +132,7 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 		t.Run(fmt.Sprint(changed), func(t *testing.T) {
 			service := fileops.NewService(nil)
 			binding := runnerRollbackBinding{}
-			lease, _ := service.Manager.Session(binding)
+			ctx := service.WithBinding(context.Background(), binding)
 			dir := t.TempDir()
 			path := filepath.Join(dir, "file")
 			if err := os.WriteFile(path, []byte("before"), 0600); err != nil {
@@ -140,9 +140,9 @@ func TestRunRollbackPreservesPreflightThroughConfirmation(t *testing.T) {
 			}
 			edit := func(before, after string) {
 				t.Helper()
-				_, err := lease.EditFile(context.Background(), path, "", fileops.ContentRevision([]byte(before)), false, 3, []fileops.Edit{{Operation: "overwrite", NewText: &after}}, fileops.EditFileOptions{}, nil)
-				if err != nil {
-					t.Fatal(err)
+				result, _, err := service.Edit(ctx, fileops.EditRequest{Path: path, ExpectedRevision: fileops.ContentRevision([]byte(before)), Edits: []fileops.Edit{{Operation: "overwrite", NewText: &after}}})
+				if err != nil || result.Status != operationresult.Success {
+					t.Fatalf("edit: %+v %v", result, err)
 				}
 			}
 			edit("before", "after")

@@ -227,8 +227,8 @@ func (m *Supervisor) Read(ctx context.Context, scope session.Scope) (resident.Me
 func (m *Supervisor) WithBinding(ctx context.Context, binding fileops.Binding, admission ...fileops.CommitAdmission) context.Context {
 	return m.catalog.fileRollback.WithBinding(ctx, binding, admission...)
 }
-func (m *Supervisor) Forget(binding fileops.Binding) { m.catalog.fileRollback.Manager.Forget(binding) }
-func (m *Supervisor) ListRollbacks(ctx context.Context) (operationresult.Result[[]fileops.RollbackInfo], error) {
+func (m *Supervisor) Forget(binding fileops.Binding) { m.catalog.fileRollback.Forget(binding) }
+func (m *Supervisor) ListRollbacks(ctx context.Context) operationresult.Result[[]fileops.RollbackInfo] {
 	return m.catalog.fileRollback.List(ctx)
 }
 func (m *Supervisor) RollbackByID(ctx context.Context, id uint64) (operationresult.Result[fileops.RollbackResult], error) {

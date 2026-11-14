@@ -4,9 +4,12 @@ package fileops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"elbot/internal/operationresult"
 )
 
 // PreparedFile 保存一次文件预览的目标和批准内容，不持有业务锁或调用上下文。
@@ -17,90 +20,127 @@ type PreparedFile struct {
 
 // PrepareFile 为业务生成的文本准备文件更新；路径由调用方确定，不引入工作目录或撤销策略。
 // transform 只处理文件文本，编码、换行、diff 和修订由公共文件层统一处理。
-func PrepareFile(ctx context.Context, path string, transform func(string) (string, error)) (*PreparedFile, error) {
+func PrepareFile(ctx context.Context, path string, transform func(string) (operationresult.Result[string], error)) (operationresult.Result[*PreparedFile], error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return operationresult.Result[*PreparedFile]{}, err
 	}
 	target, err := ResolveFileTarget(path, false)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*PreparedFile]{}, err
+	}
+	if target.Status != operationresult.Success {
+		return operationresult.Result[*PreparedFile]{Status: target.Status, Message: target.Message}, nil
 	}
 	file, err := ReadFile(path, "")
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*PreparedFile]{}, err
 	}
-	text, err := transform(file.Text)
+	if file.Status != operationresult.Success {
+		return operationresult.Result[*PreparedFile]{Status: file.Status, Message: file.Message}, nil
+	}
+	text, err := transform(file.Data.Text)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*PreparedFile]{}, err
 	}
-	result, err := prepareFileResult(file, false, text, 3, EditFileOptions{})
+	if text.Status != operationresult.Success {
+		return operationresult.Result[*PreparedFile]{Status: text.Status, Message: text.Message}, nil
+	}
+	result := prepareFileResult(file.Data, false, text.Data, 3, EditFileOptions{})
+	if result.Status != operationresult.Success {
+		return operationresult.Result[*PreparedFile]{Status: result.Status, Message: result.Message}, nil
+	}
+	checked, err := checkFileTarget(path, target.Data, false)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*PreparedFile]{}, err
 	}
-	if err := checkFileTarget(path, target, false); err != nil {
-		return nil, err
+	if checked.Status != operationresult.Success {
+		return operationresult.Result[*PreparedFile]{Status: checked.Status, Message: checked.Message}, nil
 	}
-	return &PreparedFile{target: target, result: result}, nil
+	return operationresult.Result[*PreparedFile]{Status: operationresult.Success, Data: &PreparedFile{target: target.Data, result: result.Data}}, nil
 }
 
 // PrepareFileEdit 复用编辑协议准备业务文件；不附加工作目录、会话或撤销策略。
 // validate 只验证已经计算出的文本，不重新读取文件或执行写入。
-func PrepareFileEdit(ctx context.Context, req EditRequest, validate func(string) error) (*PreparedFile, error) {
+func PrepareFileEdit(ctx context.Context, req EditRequest, validate func(string) (operationresult.Result[struct{}], error)) (operationresult.Result[*PreparedFile], error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return operationresult.Result[*PreparedFile]{}, err
 	}
 	target, err := ResolveFileTarget(req.Path, req.Create)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*PreparedFile]{}, err
+	}
+	if target.Status != operationresult.Success {
+		return operationresult.Result[*PreparedFile]{Status: target.Status, Message: target.Message}, nil
 	}
 	if req.Options.MaxInputBytes == 0 {
 		req.Options.MaxInputBytes = MaxFileSize
 	}
 	result, err := EditFileWithOptions(req.Path, req.Encoding, req.ExpectedRevision, req.Create, true, req.ContextLines, req.Edits, req.Options)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*PreparedFile]{}, err
 	}
+	if result.Status != operationresult.Success {
+		return operationresult.Result[*PreparedFile]{Status: result.Status, Message: result.Message}, nil
+	}
+	data := result.Data
 	if validate != nil {
-		text, _, _, err := DecodeBytes(result.NewBytes, result.Encoding)
+		text, _, _, err := DecodeBytes(data.NewBytes, data.Encoding)
 		if err != nil {
-			return nil, err
+			return operationresult.Result[*PreparedFile]{}, err
 		}
-		if err := validate(text); err != nil {
-			return nil, err
+		checked, err := validate(text)
+		if err != nil {
+			return operationresult.Result[*PreparedFile]{}, err
+		}
+		if checked.Status != operationresult.Success {
+			return operationresult.Result[*PreparedFile]{Status: checked.Status, Message: checked.Message}, nil
 		}
 	}
-	if err := checkFileTarget(req.Path, target, result.Created); err != nil {
-		return nil, err
+	checked, err := checkFileTarget(req.Path, target.Data, data.Created)
+	if err != nil {
+		return operationresult.Result[*PreparedFile]{}, err
 	}
-	return &PreparedFile{target: target, result: result}, nil
+	if checked.Status != operationresult.Success {
+		return operationresult.Result[*PreparedFile]{Status: checked.Status, Message: checked.Message}, nil
+	}
+	return operationresult.Result[*PreparedFile]{Status: operationresult.Success, Data: &PreparedFile{target: target.Data, result: data}}, nil
 }
 
 // PrepareFileWrite 固定业务生成的完整 UTF-8 文本，支持已有文件和新建文件。
 // 相同内容仍可提交，使调用方能够继续执行配置重载等业务操作。
-func PrepareFileWrite(ctx context.Context, path, content string) (*PreparedFile, error) {
+func PrepareFileWrite(ctx context.Context, path, content string) (operationresult.Result[*PreparedFile], error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return operationresult.Result[*PreparedFile]{}, err
 	}
 	target, err := ResolveFileTarget(path, true)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*PreparedFile]{}, err
+	}
+	if target.Status != operationresult.Success {
+		return operationresult.Result[*PreparedFile]{Status: target.Status, Message: target.Message}, nil
 	}
 	file, created, err := ReadOrCreateFile(path, "", true, false)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*PreparedFile]{}, err
+	}
+	if file.Status != operationresult.Success {
+		return operationresult.Result[*PreparedFile]{Status: file.Status, Message: file.Message}, nil
 	}
 	data := []byte(content)
-	diff, diffAvailable := editDiff(path, file.Text, content, len(file.Bytes), len(data), 3, MaxFileSize)
+	diff, diffAvailable := editDiff(path, file.Data.Text, content, len(file.Data.Bytes), len(data), 3, MaxFileSize)
 	result := EditResult{
 		DryRun: true, Path: path, Created: created, Encoding: "utf-8",
-		RevisionBefore: ContentRevision(file.Bytes), RevisionAfter: ContentRevision(data),
-		Diff: diff, DiffAvailable: diffAvailable,
-		NewBytes: data,
+		RevisionBefore: ContentRevision(file.Data.Bytes), RevisionAfter: ContentRevision(data),
+		Diff: diff, DiffAvailable: diffAvailable, NewBytes: data,
 	}
-	if err := checkFileTarget(path, target, created); err != nil {
-		return nil, err
+	checked, err := checkFileTarget(path, target.Data, created)
+	if err != nil {
+		return operationresult.Result[*PreparedFile]{}, err
 	}
-	return &PreparedFile{target: target, result: result}, nil
+	if checked.Status != operationresult.Success {
+		return operationresult.Result[*PreparedFile]{Status: checked.Status, Message: checked.Message}, nil
+	}
+	return operationresult.Result[*PreparedFile]{Status: operationresult.Success, Data: &PreparedFile{target: target.Data, result: result}}, nil
 }
 
 // Preview 返回只读展示数据，不泄漏批准写入的字节。
@@ -111,73 +151,92 @@ func (p *PreparedFile) Preview() EditResult {
 }
 
 // Commit 复核真实目标与原修订，只提交准备时确定的内容，不重新执行业务转换。
-func (p *PreparedFile) Commit(ctx context.Context) (EditResult, error) {
+func (p *PreparedFile) Commit(ctx context.Context) (operationresult.Result[EditResult], error) {
 	if err := ctx.Err(); err != nil {
-		return EditResult{}, err
+		return operationresult.Result[EditResult]{}, err
 	}
 	path, created := p.result.Path, p.result.Created
-	if err := checkFileTarget(path, p.target, created); err != nil {
-		return EditResult{}, err
+	checked, err := checkFileTarget(path, p.target, created)
+	if err != nil {
+		return operationresult.Result[EditResult]{}, err
+	}
+	if checked.Status != operationresult.Success {
+		return operationresult.Result[EditResult]{Status: checked.Status, Message: checked.Message}, nil
 	}
 	var previous os.FileInfo
 	mode := os.FileMode(0o644)
 	if created {
-		if err := checkFileState(path, true, nil); err != nil {
-			return EditResult{}, err
+		checked, err := checkFileState(path, true, nil)
+		if err != nil {
+			return operationresult.Result[EditResult]{}, err
+		}
+		if checked.Status != operationresult.Success {
+			return operationresult.Result[EditResult]{Status: checked.Status, Message: checked.Message}, nil
 		}
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return EditResult{}, err
+			return operationresult.Result[EditResult]{}, err
 		}
 	} else {
 		info, err := os.Stat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			return operationresult.Result[EditResult]{Status: operationresult.NotFound, Message: fmt.Sprintf("file %q not found", path)}, nil
+		}
 		if err != nil {
-			return EditResult{}, err
+			return operationresult.Result[EditResult]{}, err
 		}
 		if info.Size() > MaxFileSize {
-			return EditResult{}, fmt.Errorf("file too large: %d bytes exceeds %d", info.Size(), MaxFileSize)
+			return operationresult.Result[EditResult]{Status: operationresult.Rejected, Message: fmt.Sprintf("file too large: %d bytes exceeds %d", info.Size(), MaxFileSize)}, nil
 		}
-		previous, err = inspectFileState(path, false, p.result.RevisionBefore, info.Size())
+		inspected, err := inspectFileState(path, false, p.result.RevisionBefore, info.Size())
 		if err != nil {
-			return EditResult{}, err
+			return operationresult.Result[EditResult]{}, err
 		}
+		if inspected.Status != operationresult.Success {
+			return operationresult.Result[EditResult]{Status: inspected.Status, Message: inspected.Message}, nil
+		}
+		previous = inspected.Data
 		mode = previous.Mode()
 	}
-	if err := atomicWriteFile(path, p.result.NewBytes, mode, func() error {
+	committed, err := atomicWriteFileResult(path, p.result.NewBytes, mode, func() (operationresult.Result[struct{}], error) {
 		if err := ctx.Err(); err != nil {
-			return err
+			return operationresult.Result[struct{}]{}, err
 		}
-		if err := checkFileTarget(path, p.target, created); err != nil {
-			return err
+		checked, err := checkFileTarget(path, p.target, created)
+		if err != nil || checked.Status != operationresult.Success {
+			return checked, err
 		}
 		return checkFileState(path, created, previous)
-	}); err != nil {
-		return EditResult{}, err
+	})
+	if err != nil {
+		return operationresult.Result[EditResult]{}, err
+	}
+	if committed.Status != operationresult.Success {
+		return operationresult.Result[EditResult]{Status: committed.Status, Message: committed.Message}, nil
 	}
 	result := p.Preview()
 	result.DryRun = false
-	return result, nil
+	return operationresult.Result[EditResult]{Status: operationresult.Success, Data: result}, nil
 }
 
 // prepareFileResult 为普通编辑和业务文本更新共用编码、修订与差异计算。
-func prepareFileResult(file File, created bool, text string, contextLines int, options EditFileOptions) (EditResult, error) {
+func prepareFileResult(file File, created bool, text string, contextLines int, options EditFileOptions) operationresult.Result[EditResult] {
 	oldText := NormalizeEditText(file.Text)
 	newText := NormalizeEditText(text)
 	if newText == oldText {
-		return EditResult{}, fmt.Errorf("edit produced no changes")
+		return operationresult.Result[EditResult]{Status: operationresult.Rejected, Message: "edit produced no changes"}
 	}
 	outputText := RestoreLineEndings(newText, file.LineEnding)
 	newBytes, err := EncodeText(outputText, file.Encoding, file.BOM)
 	if err != nil {
-		return EditResult{}, err
+		return operationresult.Result[EditResult]{Status: operationresult.InvalidArguments, Message: err.Error()}
 	}
 	if options.MaxOutputBytes > 0 && int64(len(newBytes)) > options.MaxOutputBytes {
-		return EditResult{}, fmt.Errorf("edited file too large: %d bytes exceeds %d", len(newBytes), options.MaxOutputBytes)
+		return operationresult.Result[EditResult]{Status: operationresult.Rejected, Message: fmt.Sprintf("edited file too large: %d bytes exceeds %d", len(newBytes), options.MaxOutputBytes)}
 	}
 	diff, diffAvailable := editDiff(file.Path, oldText, newText, len(file.Bytes), len(newBytes), NormalizeContextLines(contextLines), options.DetailedDiffMaxBytes)
-	return EditResult{
+	return operationresult.Result[EditResult]{Status: operationresult.Success, Data: EditResult{
 		DryRun: true, Path: file.Path, Created: created, Encoding: file.Encoding,
 		RevisionBefore: ContentRevision(file.Bytes), RevisionAfter: ContentRevision(newBytes),
-		Diff: diff, DiffAvailable: diffAvailable,
-		NewBytes: newBytes,
-	}, nil
+		Diff: diff, DiffAvailable: diffAvailable, NewBytes: newBytes,
+	}}
 }

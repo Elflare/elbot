@@ -10,6 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"elbot/internal/operationresult"
 )
 
 func rollbackTestSession(t *testing.T) (*testRollbackManager, *RollbackSession) {
@@ -31,10 +33,10 @@ func rollbackTestEdit(t *testing.T, s *RollbackSession, path, text string, creat
 	}
 	result, err := s.EditFile(context.Background(), path, "", revision, create, 3,
 		[]Edit{{Operation: "overwrite", NewText: &text}}, EditFileOptions{MaxInputBytes: MaxFileSize}, nil)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || result.Status != operationresult.Success {
+		t.Fatalf("edit: %+v %v", result, err)
 	}
-	return result
+	return result.Data
 }
 
 func TestRollbackRestoresBytesAndPermissions(t *testing.T) {
@@ -54,14 +56,14 @@ func TestRollbackRestoresBytesAndPermissions(t *testing.T) {
 				t.Fatal("backup unavailable")
 			}
 			preview, err := s.Preview(context.Background(), path, 0, nil)
-			if err != nil || preview.Diff == "" {
+			if err != nil || preview.Status != operationresult.Success || preview.Data.Diff == "" {
 				t.Fatalf("preview: %+v %v", preview, err)
 			}
-			result, err := s.Rollback(context.Background(), path, preview.ID, nil)
-			if err != nil {
-				t.Fatal(err)
+			result, err := s.Rollback(context.Background(), path, preview.Data.ID, nil)
+			if err != nil || result.Status != operationresult.Success {
+				t.Fatalf("rollback: %+v %v", result, err)
 			}
-			if result.Deleted || result.Revision != ContentRevision(original) {
+			if result.Data.Deleted || result.Data.Revision != ContentRevision(original) {
 				t.Fatalf("result: %+v", result)
 			}
 			got, err := os.ReadFile(path)
@@ -75,8 +77,8 @@ func TestRollbackRestoresBytesAndPermissions(t *testing.T) {
 			if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 				t.Fatalf("mode: %v", info.Mode())
 			}
-			if _, err := s.Rollback(context.Background(), path, 0, nil); !errors.Is(err, ErrRollbackNotFound) {
-				t.Fatalf("second rollback: %v", err)
+			if result, err := s.Rollback(context.Background(), path, 0, nil); err != nil || result.Status != operationresult.NotFound || result.Message == "" {
+				t.Fatalf("second rollback: %+v %v", result, err)
 			}
 		})
 	}
@@ -87,25 +89,28 @@ func TestRollbackLatestEditAndStableIDs(t *testing.T) {
 	dir := t.TempDir()
 	path, other := filepath.Join(dir, "one"), filepath.Join(dir, "two")
 	rollbackTestEdit(t, s, path, "one", true)
-	first, _ := s.List()
+	first := s.List()
 	rollbackTestEdit(t, s, other, "other", true)
 	rollbackTestEdit(t, s, path, "two", false)
-	if _, err := s.Rollback(context.Background(), path, first[0].ID, nil); !errors.Is(err, ErrRollbackNotFound) {
-		t.Fatalf("stale ID: %v", err)
+	if first.Status != operationresult.Success {
+		t.Fatalf("list: %+v", first)
 	}
-	if _, err := s.Rollback(context.Background(), path, 0, nil); err != nil {
-		t.Fatal(err)
+	if result, err := s.Rollback(context.Background(), path, first.Data[0].ID, nil); err != nil || result.Status != operationresult.NotFound {
+		t.Fatalf("stale ID: %+v %v", result, err)
+	}
+	if result, err := s.Rollback(context.Background(), path, 0, nil); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("rollback: %+v %v", result, err)
 	}
 	data, _ := os.ReadFile(path)
 	if string(data) != "one" {
 		t.Fatalf("restored %q", data)
 	}
-	remaining, _ := s.List()
-	if len(remaining) != 1 || remaining[0].Path != other {
+	remaining := s.List()
+	if remaining.Status != operationresult.Success || len(remaining.Data) != 1 || remaining.Data[0].Path != other {
 		t.Fatalf("remaining: %+v", remaining)
 	}
-	if _, err := s.Rollback(context.Background(), other, 0, nil); err != nil {
-		t.Fatal(err)
+	if result, err := s.Rollback(context.Background(), other, 0, nil); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("rollback: %+v %v", result, err)
 	}
 	if _, err := os.Stat(other); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("created file still exists: %v", err)
@@ -119,26 +124,26 @@ func TestRollbackPreviewAndFailedEditsPreserveBackup(t *testing.T) {
 	_, s := rollbackTestSession(t)
 	path := filepath.Join(t.TempDir(), "file")
 	rollbackTestEdit(t, s, path, "one", true)
-	before, _ := s.List()
+	before := s.List()
 	same := "one"
-	_, err := s.EditFile(context.Background(), path, "", ContentRevision([]byte("one")), false, 3, []Edit{{Operation: "overwrite", NewText: &same}}, EditFileOptions{}, nil)
-	if err == nil {
-		t.Fatal("no-op accepted")
+	result, err := s.EditFile(context.Background(), path, "", ContentRevision([]byte("one")), false, 3, []Edit{{Operation: "overwrite", NewText: &same}}, EditFileOptions{}, nil)
+	if err != nil || result.Status != operationresult.Rejected || result.Message != "edit produced no changes" {
+		t.Fatalf("no-op: %+v %v", result, err)
 	}
 	next := "two"
-	if _, err := EditFile(path, "", ContentRevision([]byte("one")), false, true, 3, []Edit{{Operation: "overwrite", NewText: &next}}); err != nil {
-		t.Fatal(err)
+	if result, err := EditFile(path, "", ContentRevision([]byte("one")), false, true, 3, []Edit{{Operation: "overwrite", NewText: &next}}); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("preview: %+v %v", result, err)
 	}
-	_, err = s.EditFile(context.Background(), path, "", ContentRevision([]byte("one")), false, 3, []Edit{{Operation: "overwrite", NewText: &next}}, EditFileOptions{MaxOutputBytes: 1}, nil)
-	if err == nil {
-		t.Fatal("oversized output accepted")
+	result, err = s.EditFile(context.Background(), path, "", ContentRevision([]byte("one")), false, 3, []Edit{{Operation: "overwrite", NewText: &next}}, EditFileOptions{MaxOutputBytes: 1}, nil)
+	if err != nil || result.Status != operationresult.Rejected || result.Message == "" {
+		t.Fatalf("oversized output: %+v %v", result, err)
 	}
-	after, _ := s.List()
-	if len(after) != 1 || after[0].ID != before[0].ID {
+	after := s.List()
+	if before.Status != operationresult.Success || after.Status != operationresult.Success || len(after.Data) != 1 || after.Data[0].ID != before.Data[0].ID {
 		t.Fatalf("backup changed: %+v", after)
 	}
-	if _, err := s.Rollback(context.Background(), path, 0, nil); err != nil {
-		t.Fatal(err)
+	if result, err := s.Rollback(context.Background(), path, 0, nil); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("rollback: %+v %v", result, err)
 	}
 	if err := os.WriteFile(path, []byte("before"), 0600); err != nil {
 		t.Fatal(err)
@@ -150,8 +155,8 @@ func TestRollbackPreviewAndFailedEditsPreserveBackup(t *testing.T) {
 	if err := os.Mkdir(path, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Rollback(context.Background(), path, 0, nil); !errors.Is(err, ErrNotRegularFile) {
-		t.Fatalf("non-regular target classification: %v", err)
+	if result, err := s.Rollback(context.Background(), path, 0, nil); err != nil || result.Status != operationresult.InvalidTarget {
+		t.Fatalf("non-regular target: %+v %v", result, err)
 	}
 }
 
@@ -163,29 +168,29 @@ func TestRollbackConflictsAndGuardKeepRecord(t *testing.T) {
 		if err := os.WriteFile(path, []byte(changed), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.Rollback(context.Background(), path, 0, nil); !errors.Is(err, ErrFileChanged) {
-			t.Fatalf("external edit classification: %v", err)
+		if result, err := s.Rollback(context.Background(), path, 0, nil); err != nil || result.Status != operationresult.Conflict || result.Message == "" {
+			t.Fatalf("external edit: %+v %v", result, err)
 		}
 	}
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Rollback(context.Background(), path, 0, nil); !errors.Is(err, ErrRollbackNotFound) {
-		t.Fatalf("missing target classification: %v", err)
+	if result, err := s.Rollback(context.Background(), path, 0, nil); err != nil || result.Status != operationresult.NotFound {
+		t.Fatalf("missing target: %+v %v", result, err)
 	}
 	if err := os.WriteFile(path, []byte("one"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	denied := errors.New("write denied")
-	if _, err := s.Rollback(context.Background(), path, 0, func(string) error { return denied }); !errors.Is(err, denied) {
-		t.Fatalf("guard: %v", err)
+	denied := operationresult.Result[struct{}]{Status: operationresult.Forbidden, Message: "write denied"}
+	if result, err := s.Rollback(context.Background(), path, 0, func(string) operationresult.Result[struct{}] { return denied }); err != nil || result.Status != denied.Status || result.Message != denied.Message {
+		t.Fatalf("guard: %+v %v", result, err)
 	}
-	records, _ := s.List()
-	if len(records) != 1 {
+	records := s.List()
+	if records.Status != operationresult.Success || len(records.Data) != 1 {
 		t.Fatalf("record lost: %+v", records)
 	}
-	if _, err := s.Rollback(context.Background(), path, 0, nil); err != nil {
-		t.Fatal(err)
+	if result, err := s.Rollback(context.Background(), path, 0, nil); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("rollback: %+v %v", result, err)
 	}
 }
 
@@ -206,31 +211,31 @@ func TestRollbackScopeInvalidationAndEviction(t *testing.T) {
 	if result.RollbackEvicted != 1 {
 		t.Fatalf("evicted: %d", result.RollbackEvicted)
 	}
-	if _, err := s.Rollback(context.Background(), filepath.Join(dir, "a"), 0, nil); !errors.Is(err, ErrRollbackNotFound) {
-		t.Fatalf("oldest not evicted: %v", err)
+	if result, err := s.Rollback(context.Background(), filepath.Join(dir, "a"), 0, nil); err != nil || result.Status != operationresult.NotFound {
+		t.Fatalf("oldest not evicted: %+v %v", result, err)
 	}
-	if records, _ := other.List(); len(records) != 1 {
+	if records := other.List(); records.Status != operationresult.Success || len(records.Data) != 1 {
 		t.Fatal("other scope lost")
 	}
 	m.SetCurrent("user", "session") // Same current session is not a switch.
-	if records, _ := s.List(); len(records) != 1 {
+	if records := s.List(); records.Status != operationresult.Success || len(records.Data) != 1 {
 		t.Fatal("same session cleared")
 	}
 	m.SetCurrent("user", "next")
 	m.SetCurrent("user", "session")
-	if _, err := s.List(); !errors.Is(err, ErrRollbackExpired) {
-		t.Fatalf("old lease revived: %v", err)
+	if records := s.List(); records.Status != operationresult.Conflict || records.Message == "" {
+		t.Fatalf("old lease revived: %+v", records)
 	}
 	current, _ := m.Session("user", "session")
-	if records, _ := current.List(); len(records) != 0 {
+	if records := current.List(); records.Status != operationresult.Success || len(records.Data) != 0 {
 		t.Fatal("records revived")
 	}
-	if records, _ := other.List(); len(records) != 1 {
+	if records := other.List(); records.Status != operationresult.Success || len(records.Data) != 1 {
 		t.Fatal("other scope cleared")
 	}
 	text := "late"
-	if _, err := s.EditFile(context.Background(), filepath.Join(dir, "late"), "", "", true, 3, []Edit{{Operation: "overwrite", NewText: &text}}, EditFileOptions{}, nil); !errors.Is(err, ErrRollbackExpired) {
-		t.Fatalf("stale edit: %v", err)
+	if result, err := s.EditFile(context.Background(), filepath.Join(dir, "late"), "", "", true, 3, []Edit{{Operation: "overwrite", NewText: &text}}, EditFileOptions{}, nil); err != nil || result.Status != operationresult.Conflict {
+		t.Fatalf("stale edit: %+v %v", result, err)
 	}
 	m.SetCurrent("other", "")
 	if m.bytes != 0 || len(m.records) != 0 {
@@ -268,8 +273,8 @@ func TestRollbackSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	rollbackTestEdit(t, s, link, "after", false)
-	if _, err := s.Rollback(context.Background(), link, 0, nil); err != nil {
-		t.Fatal(err)
+	if result, err := s.Rollback(context.Background(), link, 0, nil); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("rollback: %+v %v", result, err)
 	}
 	info, _ := os.Lstat(link)
 	if info.Mode()&os.ModeSymlink == 0 {
@@ -285,11 +290,11 @@ func TestRollbackSymlink(t *testing.T) {
 	if err := os.Symlink(other, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Rollback(context.Background(), link, 0, nil); err == nil {
-		t.Fatal("retargeted link accepted")
+	if result, err := s.Rollback(context.Background(), link, 0, nil); err != nil || result.Status != operationresult.Conflict {
+		t.Fatalf("retargeted link: %+v %v", result, err)
 	}
-	if _, err := s.Rollback(context.Background(), path, 0, nil); err == nil {
-		t.Fatal("original path retargeting ignored")
+	if result, err := s.Rollback(context.Background(), path, 0, nil); err != nil || result.Status != operationresult.Conflict {
+		t.Fatalf("original path retargeting: %+v %v", result, err)
 	}
 }
 
@@ -298,17 +303,26 @@ func TestRollbackConcurrentCallsConsumeOnce(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "file")
 	rollbackTestEdit(t, s, path, "created", true)
 	var wg sync.WaitGroup
-	results := make(chan error, 8)
+	results := make(chan operationresult.Status, 8)
 	for i := 0; i < 8; i++ {
 		wg.Add(1)
-		go func() { defer wg.Done(); _, err := s.Rollback(context.Background(), path, 0, nil); results <- err }()
+		go func() {
+			defer wg.Done()
+			result, err := s.Rollback(context.Background(), path, 0, nil)
+			if err != nil {
+				t.Error(err)
+			}
+			results <- result.Status
+		}()
 	}
 	wg.Wait()
 	close(results)
 	success := 0
-	for err := range results {
-		if err == nil {
+	for status := range results {
+		if status == operationresult.Success {
 			success++
+		} else if status != operationresult.NotFound {
+			t.Errorf("unexpected rollback status: %s", status)
 		}
 	}
 	if success != 1 {
@@ -330,7 +344,7 @@ func TestRollbackWriteFailuresKeepPreviousBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	rollbackTestEdit(t, s, path, "edited", false)
-	records, _ := s.List()
+	records := s.List()
 	if err := os.Chmod(dir, 0500); err != nil {
 		t.Fatal(err)
 	}
@@ -349,15 +363,15 @@ func TestRollbackWriteFailuresKeepPreviousBackup(t *testing.T) {
 	if _, err := s.Rollback(context.Background(), path, 0, nil); err == nil {
 		t.Fatal("rollback unexpectedly succeeded")
 	}
-	remaining, _ := s.List()
-	if len(remaining) != 1 || remaining[0].ID != records[0].ID {
+	remaining := s.List()
+	if records.Status != operationresult.Success || remaining.Status != operationresult.Success || len(remaining.Data) != 1 || remaining.Data[0].ID != records.Data[0].ID {
 		t.Fatal("failed writes consumed backup")
 	}
 	if err := os.Chmod(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Rollback(context.Background(), path, 0, nil); err != nil {
-		t.Fatal(err)
+	if result, err := s.Rollback(context.Background(), path, 0, nil); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("rollback: %+v %v", result, err)
 	}
 	data, _ := os.ReadFile(path)
 	if string(data) != "original" {
@@ -370,19 +384,19 @@ func TestRollbackLateWriteCannotRepopulateExpiredScope(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "file")
 	text := "late"
 	result, err := s.EditFile(context.Background(), path, "", "", true, 3,
-		[]Edit{{Operation: "overwrite", NewText: &text}}, EditFileOptions{}, func(string) error {
+		[]Edit{{Operation: "overwrite", NewText: &text}}, EditFileOptions{}, func(string) operationresult.Result[struct{}] {
 			m.SetCurrent("user", "next")
-			return nil
+			return operationresult.Result[struct{}]{Status: operationresult.Success}
 		})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || result.Status != operationresult.Success {
+		t.Fatalf("edit: %+v %v", result, err)
 	}
-	if result.RollbackAvailable || len(m.records) != 0 || m.bytes != 0 {
+	if result.Data.RollbackAvailable || len(m.records) != 0 || m.bytes != 0 {
 		t.Fatal("late write republished backup")
 	}
 	m.SetCurrent("user", "session")
 	current, _ := m.Session("user", "session")
-	if records, _ := current.List(); len(records) != 0 {
+	if records := current.List(); records.Status != operationresult.Success || len(records.Data) != 0 {
 		t.Fatal("backup revived after resume")
 	}
 }
@@ -393,30 +407,35 @@ func TestRollbackConcurrentEditsPreserveWinningSnapshot(t *testing.T) {
 	if err := os.WriteFile(path, []byte("original"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	results := make(chan error, 2)
+	results := make(chan operationresult.Status, 2)
 	var wg sync.WaitGroup
 	for _, text := range []string{"first", "second"} {
 		wg.Add(1)
 		go func(text string) {
 			defer wg.Done()
-			_, err := s.EditFile(context.Background(), path, "", ContentRevision([]byte("original")), false, 3,
+			result, err := s.EditFile(context.Background(), path, "", ContentRevision([]byte("original")), false, 3,
 				[]Edit{{Operation: "overwrite", NewText: &text}}, EditFileOptions{}, nil)
-			results <- err
+			if err != nil {
+				t.Error(err)
+			}
+			results <- result.Status
 		}(text)
 	}
 	wg.Wait()
 	close(results)
 	successes := 0
-	for err := range results {
-		if err == nil {
+	for status := range results {
+		if status == operationresult.Success {
 			successes++
+		} else if status != operationresult.Conflict {
+			t.Errorf("unexpected edit status: %s", status)
 		}
 	}
 	if successes != 1 {
 		t.Fatalf("successful edits: %d", successes)
 	}
-	if _, err := s.Rollback(context.Background(), path, 0, nil); err != nil {
-		t.Fatal(err)
+	if result, err := s.Rollback(context.Background(), path, 0, nil); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("rollback: %+v %v", result, err)
 	}
 	data, _ := os.ReadFile(path)
 	if string(data) != "original" {

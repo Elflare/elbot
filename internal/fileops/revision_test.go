@@ -1,17 +1,12 @@
 package fileops
 
 import (
+	"elbot/internal/operationresult"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
-
-func TestContentRevision(t *testing.T) {
-	if got, want := ContentRevision([]byte("alpha\n")), "b6a98d9ce9a2d914"; got != want {
-		t.Fatalf("ContentRevision() = %q, want %q", got, want)
-	}
-}
 
 func TestEditFileRevisionGuard(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
@@ -21,16 +16,16 @@ func TestEditFileRevisionGuard(t *testing.T) {
 	}
 	originalRevision := ContentRevision(original)
 	result, err := EditFile(path, "", strings.ToUpper(originalRevision), false, false, 3, []Edit{{Operation: "insert", Line: 2, NewText: textPtr("beta")}})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || result.Status != operationresult.Success {
+		t.Fatalf("edit: %+v %v", result, err)
 	}
-	if result.RevisionBefore != originalRevision || len(result.RevisionAfter) != 16 {
-		t.Fatalf("unexpected revisions: before=%q after=%q", result.RevisionBefore, result.RevisionAfter)
+	if result.Data.RevisionBefore != originalRevision || result.Data.RevisionAfter != ContentRevision([]byte("alpha\nbeta\n")) {
+		t.Fatalf("unexpected revisions: %+v", result.Data)
 	}
 
-	_, err = EditFile(path, "", originalRevision, false, false, 3, []Edit{{Operation: "insert", Line: 3, NewText: textPtr("gamma")}})
-	if err == nil || !strings.Contains(err.Error(), "file revision mismatch: current "+result.RevisionAfter) {
-		t.Fatalf("expected revision mismatch, got %v", err)
+	rejected, err := EditFile(path, "", originalRevision, false, false, 3, []Edit{{Operation: "insert", Line: 3, NewText: textPtr("gamma")}})
+	if err != nil || rejected.Status != operationresult.Conflict || !strings.Contains(rejected.Message, "file revision mismatch: current "+result.Data.RevisionAfter) {
+		t.Fatalf("expected revision mismatch, got %+v %v", rejected, err)
 	}
 	data, readErr := os.ReadFile(path)
 	if readErr != nil {
@@ -52,9 +47,9 @@ func TestEditFileRequiresRevisionForPositionalEdits(t *testing.T) {
 		{Operation: "delete", Line: 1},
 		{Operation: "overwrite", NewText: textPtr("beta")},
 	} {
-		_, err := EditFile(path, "", "", false, false, 3, []Edit{edit})
-		if err == nil || !strings.Contains(err.Error(), "expected_revision is required") {
-			t.Fatalf("expected revision requirement for %q, got %v", edit.Operation, err)
+		result, err := EditFile(path, "", "", false, false, 3, []Edit{edit})
+		if err != nil || result.Status != operationresult.InvalidArguments || !strings.Contains(result.Message, "expected_revision is required") {
+			t.Fatalf("expected revision requirement for %q, got %+v %v", edit.Operation, result, err)
 		}
 	}
 }
@@ -69,10 +64,10 @@ func TestEditFileInsertsIntoEmptyExistingFile(t *testing.T) {
 		Line:      1,
 		NewText:   textPtr("alpha"),
 	}})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || result.Status != operationresult.Success {
+		t.Fatalf("insert: %+v %v", result, err)
 	}
-	if result.Created {
+	if result.Data.Created {
 		t.Fatal("existing empty file should not be reported as created")
 	}
 	data, err := os.ReadFile(path)
@@ -90,9 +85,9 @@ func TestEditFileRejectsMalformedRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, revision := range []string{"deadbeef", "zzzzzzzzzzzzzzzz"} {
-		_, err := EditFile(path, "", revision, false, false, 3, []Edit{{Operation: "insert", Line: 2, NewText: textPtr("beta")}})
-		if err == nil || !strings.Contains(err.Error(), "expected_revision must be 16 hexadecimal characters") {
-			t.Fatalf("expected malformed revision error for %q, got %v", revision, err)
+		result, err := EditFile(path, "", revision, false, false, 3, []Edit{{Operation: "insert", Line: 2, NewText: textPtr("beta")}})
+		if err != nil || result.Status != operationresult.InvalidArguments || !strings.Contains(result.Message, "expected_revision must be 16 hexadecimal characters") {
+			t.Fatalf("expected malformed revision for %q, got %+v %v", revision, result, err)
 		}
 	}
 }
@@ -104,13 +99,13 @@ func TestEditFileWithOptionsEnforcesInputAndOutputLimits(t *testing.T) {
 		t.Fatal(err)
 	}
 	edit := []Edit{{Operation: "replace_text", OldText: "alpha", NewText: textPtr("beta-long")}}
-	_, err := EditFileWithOptions(path, "", "", false, false, 3, edit, EditFileOptions{MaxInputBytes: 3})
-	if err == nil || !strings.Contains(err.Error(), "file too large") {
-		t.Fatalf("expected input limit error, got %v", err)
+	result, err := EditFileWithOptions(path, "", "", false, false, 3, edit, EditFileOptions{MaxInputBytes: 3})
+	if err != nil || result.Status != operationresult.Rejected || !strings.Contains(result.Message, "file too large") {
+		t.Fatalf("expected input limit rejection, got %+v %v", result, err)
 	}
-	_, err = EditFileWithOptions(path, "", "", false, false, 3, edit, EditFileOptions{MaxInputBytes: 1024, MaxOutputBytes: 5})
-	if err == nil || !strings.Contains(err.Error(), "edited file too large") {
-		t.Fatalf("expected output limit error, got %v", err)
+	result, err = EditFileWithOptions(path, "", "", false, false, 3, edit, EditFileOptions{MaxInputBytes: 1024, MaxOutputBytes: 5})
+	if err != nil || result.Status != operationresult.Rejected || !strings.Contains(result.Message, "edited file too large") {
+		t.Fatalf("expected output limit rejection, got %+v %v", result, err)
 	}
 	data, readErr := os.ReadFile(path)
 	if readErr != nil {
@@ -132,11 +127,11 @@ func TestEditFileWithOptionsOmitsDetailedDiffAboveLimit(t *testing.T) {
 		MaxOutputBytes:       1024,
 		DetailedDiffMaxBytes: 5,
 	})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || result.Status != operationresult.Success {
+		t.Fatalf("preview: %+v %v", result, err)
 	}
-	if result.DiffAvailable || !strings.Contains(result.Diff, "diff omitted: file exceeds detailed diff limit 5 bytes") || !strings.Contains(result.Diff, "old 6 bytes") {
-		t.Fatalf("unexpected omitted diff:\n%s", result.Diff)
+	if result.Data.DiffAvailable || !strings.Contains(result.Data.Diff, "diff omitted: file exceeds detailed diff limit 5 bytes") || !strings.Contains(result.Data.Diff, "old 6 bytes") {
+		t.Fatalf("unexpected omitted diff:\n%s", result.Data.Diff)
 	}
 }
 

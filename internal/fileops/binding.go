@@ -2,9 +2,9 @@ package fileops
 
 import (
 	"context"
-	"fmt"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/operationresult"
 )
 
 type fileBindingContextKey struct{}
@@ -24,7 +24,7 @@ func (s *Service) WithBinding(ctx context.Context, binding Binding, admission ..
 	if previous, ok := ctx.Value(fileBindingContextKey{}).(*fileBinding); ok && previous.service == s {
 		return ctx
 	}
-	lease, _ := s.Manager.Session(binding)
+	lease, _ := s.manager.Session(binding)
 	var enter CommitAdmission
 	if len(admission) > 0 {
 		enter = admission[0]
@@ -34,42 +34,46 @@ func (s *Service) WithBinding(ctx context.Context, binding Binding, admission ..
 
 // EditSession returns the captured rollback lease, or nil for unrecorded edits.
 // Writes validate the lease and enter the caller's commit admission before committing.
-func (s *Service) EditSession(ctx context.Context) (*RollbackSession, error) {
+func (s *Service) EditSession(ctx context.Context) operationresult.Result[*RollbackSession] {
 	binding, ok := ctx.Value(fileBindingContextKey{}).(*fileBinding)
 	if !ok {
-		return nil, nil
+		return operationresult.Result[*RollbackSession]{Status: operationresult.Success}
 	}
 	if binding.service != s {
-		return nil, ErrRollbackExpired
+		return operationresult.Result[*RollbackSession]{Status: operationresult.Conflict, Message: "rollback session expired"}
 	}
-	return binding.session, nil
+	return operationresult.Result[*RollbackSession]{Status: operationresult.Success, Data: binding.session}
 }
 
-func (s *Service) editBinding(ctx context.Context) (*fileBinding, *RollbackSession, error) {
+func (s *Service) editBinding(ctx context.Context) (operationresult.Result[*fileBinding], *RollbackSession, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, nil, err
+		return operationresult.Result[*fileBinding]{}, nil, err
 	}
 	binding, _ := ctx.Value(fileBindingContextKey{}).(*fileBinding)
-	lease, err := s.EditSession(ctx)
-	if err != nil {
-		return nil, nil, err
+	lease := s.EditSession(ctx)
+	if lease.Status != operationresult.Success {
+		return operationresult.Result[*fileBinding]{Status: lease.Status, Message: lease.Message}, nil, nil
 	}
-	if lease != nil {
-		if err := lease.check(ctx); err != nil {
-			return nil, nil, err
+	if lease.Data != nil {
+		checked, err := lease.Data.check(ctx)
+		if err != nil {
+			return operationresult.Result[*fileBinding]{}, nil, err
+		}
+		if checked.Status != operationresult.Success {
+			return operationresult.Result[*fileBinding]{Status: checked.Status, Message: checked.Message}, nil, nil
 		}
 	}
-	return binding, lease, nil
+	return operationresult.Result[*fileBinding]{Status: operationresult.Success, Data: binding}, lease.Data, nil
 }
 
-func (s *Service) rollbackBinding(ctx context.Context) (*fileBinding, error) {
+func (s *Service) rollbackBinding(ctx context.Context) operationresult.Result[*fileBinding] {
 	actor, ok := contextinfo.ActorFromContext(ctx)
 	if !ok || actor.Role != contextinfo.RoleSuperadmin {
-		return nil, fmt.Errorf("rollback requires superadmin role")
+		return operationresult.Result[*fileBinding]{Status: operationresult.Forbidden, Message: "rollback requires superadmin role"}
 	}
 	binding, ok := ctx.Value(fileBindingContextKey{}).(*fileBinding)
 	if !ok || binding.service != s || binding.session == nil {
-		return nil, ErrRollbackExpired
+		return operationresult.Result[*fileBinding]{Status: operationresult.Conflict, Message: "rollback session expired"}
 	}
-	return binding, nil
+	return operationresult.Result[*fileBinding]{Status: operationresult.Success, Data: binding}
 }

@@ -2,8 +2,8 @@ package fileops
 
 import (
 	"context"
-	"fmt"
 
+	"elbot/internal/operationresult"
 	"elbot/internal/workspace"
 )
 
@@ -18,56 +18,68 @@ type PreparedRollback struct {
 	preview RollbackPreview
 }
 
-func (s *Service) PrepareRollback(ctx context.Context, rawPath string) (*PreparedRollback, error) {
-	binding, err := s.rollbackBinding(ctx)
-	if err != nil {
-		return nil, err
+func (s *Service) PrepareRollback(ctx context.Context, rawPath string) (operationresult.Result[*PreparedRollback], error) {
+	binding := s.rollbackBinding(ctx)
+	if binding.Status != operationresult.Success {
+		return operationresult.Result[*PreparedRollback]{Status: binding.Status, Message: binding.Message}, nil
 	}
 	resolved, err := workspace.ResolveWorkspacePath(ctx, rawPath, workspace.PathResolveOptions{})
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*PreparedRollback]{}, err
 	}
-	preview, err := binding.session.Preview(ctx, resolved.Path, 0, s.CheckWrite)
+	if resolved.Status != operationresult.Success {
+		return operationresult.Result[*PreparedRollback]{Status: resolved.Status, Message: resolved.Message}, nil
+	}
+	preview, err := binding.Data.session.Preview(ctx, resolved.Data.Path, 0, s.CheckWrite)
 	if err != nil {
-		return nil, err
+		return operationresult.Result[*PreparedRollback]{}, err
 	}
-	return &PreparedRollback{service: s, binding: binding, rawPath: rawPath, preview: preview}, nil
+	if preview.Status != operationresult.Success {
+		return operationresult.Result[*PreparedRollback]{Status: preview.Status, Message: preview.Message}, nil
+	}
+	return operationresult.Result[*PreparedRollback]{Status: operationresult.Success, Data: &PreparedRollback{service: s, binding: binding.Data, rawPath: rawPath, preview: preview.Data}}, nil
 }
 
 func (p *PreparedRollback) Preview() RollbackPreview { return p.preview }
 
-func (p *PreparedRollback) Commit(ctx context.Context) (RollbackResult, error) {
+func (p *PreparedRollback) Commit(ctx context.Context) (operationresult.Result[RollbackResult], error) {
 	return p.service.rollback(ctx, p.rawPath, p.preview.ID, p)
 }
 
-func (s *Service) Rollback(ctx context.Context, rawPath string, expectedID uint64) (RollbackResult, error) {
+func (s *Service) Rollback(ctx context.Context, rawPath string, expectedID uint64) (operationresult.Result[RollbackResult], error) {
 	return s.rollback(ctx, rawPath, expectedID, nil)
 }
 
-func (s *Service) rollback(ctx context.Context, rawPath string, expectedID uint64, prepared *PreparedRollback) (RollbackResult, error) {
-	binding, err := s.rollbackBinding(ctx)
-	if err != nil {
-		return RollbackResult{}, err
+func (s *Service) rollback(ctx context.Context, rawPath string, expectedID uint64, prepared *PreparedRollback) (operationresult.Result[RollbackResult], error) {
+	binding := s.rollbackBinding(ctx)
+	if binding.Status != operationresult.Success {
+		return operationresult.Result[RollbackResult]{Status: binding.Status, Message: binding.Message}, nil
 	}
 	if prepared != nil {
-		binding = prepared.binding
+		binding.Data = prepared.binding
 	}
 	resolved, err := workspace.ResolveWorkspacePath(ctx, rawPath, workspace.PathResolveOptions{})
 	if err != nil {
-		return RollbackResult{}, err
+		return operationresult.Result[RollbackResult]{}, err
 	}
-	if prepared != nil && resolved.Path != prepared.preview.Path {
-		return RollbackResult{}, fmt.Errorf("rollback path changed after preflight")
+	if resolved.Status != operationresult.Success {
+		return operationresult.Result[RollbackResult]{Status: resolved.Status, Message: resolved.Message}, nil
 	}
-	guard := commitGuard{admission: binding.admission, validate: func(locked context.Context) error {
+	if prepared != nil && resolved.Data.Path != prepared.preview.Path {
+		return operationresult.Result[RollbackResult]{Status: operationresult.Conflict, Message: "rollback path changed after preflight"}, nil
+	}
+	guard := commitGuard{admission: binding.Data.admission, validate: func(locked context.Context) (operationresult.Result[struct{}], error) {
 		latest, err := workspace.ResolveWorkspacePath(locked, rawPath, workspace.PathResolveOptions{})
 		if err != nil {
-			return err
+			return operationresult.Result[struct{}]{}, err
 		}
-		if latest.Path != resolved.Path {
-			return fmt.Errorf("rollback path changed before commit")
+		if latest.Status != operationresult.Success {
+			return operationresult.Result[struct{}]{Status: latest.Status, Message: latest.Message}, nil
 		}
-		return nil
+		if latest.Data.Path != resolved.Data.Path {
+			return operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "rollback path changed before commit"}, nil
+		}
+		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}}
-	return binding.session.rollback(ctx, resolved.Path, expectedID, s.CheckWrite, guard)
+	return binding.Data.session.rollback(ctx, resolved.Data.Path, expectedID, s.CheckWrite, guard)
 }

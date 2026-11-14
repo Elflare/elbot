@@ -7,6 +7,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"elbot/internal/security"
 	"elbot/internal/testutil"
 	"elbot/internal/tool"
@@ -54,11 +55,11 @@ func TestSupervisorRollbackAndBindingInvalidation(t *testing.T) {
 		if err != nil || string(data) != "after" {
 			t.Fatal(string(data), err)
 		}
-		records, err := files.ListRollbacks(files.bindingCtx)
-		if err != nil || len(records) != 1 {
-			t.Fatalf("records=%+v err=%v", records, err)
+		records := files.ListRollbacks(files.bindingCtx)
+		if records.Status != operationresult.Success || len(records.Data) != 1 {
+			t.Fatalf("records=%+v", records)
 		}
-		return records[0].ID
+		return records.Data[0].ID
 	}
 	id := edit()
 	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: fmt.Sprintf("/rollback %d", id)}); err != nil {
@@ -73,11 +74,11 @@ func TestSupervisorRollbackAndBindingInvalidation(t *testing.T) {
 	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: "/new"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := files.ListRollbacks(oldCtx); err == nil {
-		t.Fatal("old binding still permits rollback access")
+	if records := files.ListRollbacks(oldCtx); records.Status != operationresult.Conflict {
+		t.Fatalf("old binding: %+v", records)
 	}
-	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: fmt.Sprintf("/rollback %d", oldID)}); err == nil {
-		t.Fatal("rollback should reject a new session without a conversation")
+	if err := m.HandleMessage(testutil.WithCLIConversation(t.Context()), MessageRequest{Text: fmt.Sprintf("/rollback %d", oldID)}); err != nil {
+		t.Fatal(err)
 	}
 	data, err = os.ReadFile(path)
 	if err != nil || string(data) != "after" {

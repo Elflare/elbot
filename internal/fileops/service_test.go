@@ -7,13 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/fileops"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 	"elbot/internal/testutil"
@@ -39,14 +39,14 @@ func newFileFixture(t *testing.T) *fileFixture {
 	sessions := newSessionSupervisor(t, store)
 	scope := session.Scope{Owner: contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}, Platform: "cli", ChatID: "local", ChatType: "private"}
 	row, err := sessions.Create(ctx, scope, session.CreateRequest{Title: "files"})
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || row.Status != operationresult.Success {
+		t.Fatalf("create session: %+v %v", row, err)
 	}
-	_, binding, err := sessions.CurrentBound(ctx, scope)
-	if err != nil {
-		t.Fatal(err)
+	current, err := sessions.CurrentBound(ctx, scope)
+	if err != nil || current.Status != operationresult.Success {
+		t.Fatalf("current binding: %+v %v", current, err)
 	}
-	work := sessions.WorkspaceStore(row.ID)
+	work := sessions.WorkspaceStore(row.Data.ID)
 	dir := t.TempDir()
 	if err := work.SetWorkspaceDir(ctx, dir); err != nil {
 		t.Fatal(err)
@@ -55,13 +55,18 @@ func newFileFixture(t *testing.T) *fileFixture {
 	if err := os.WriteFile(path, []byte("before"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	return &fileFixture{ctx: ctx, sessions: sessions, files: fileops.NewService(nil), binding: binding, row: row, scope: scope, work: work, dir: dir, path: path}
+	return &fileFixture{ctx: ctx, sessions: sessions, files: fileops.NewService(nil), binding: current.Data.Binding, row: row.Data, scope: scope, work: work, dir: dir, path: path}
+}
+func (f *fileFixture) admit(ctx context.Context) (operationresult.Result[fileops.CommitAdmissionData], error) {
+	locked, release, err := f.sessions.EnterBinding(ctx, f.binding)
+	if err != nil {
+		return operationresult.Result[fileops.CommitAdmissionData]{}, err
+	}
+	return operationresult.Result[fileops.CommitAdmissionData]{Status: operationresult.Success, Data: fileops.CommitAdmissionData{Context: locked, Release: release}}, nil
 }
 func (f *fileFixture) call(ctx context.Context, admission fileops.CommitAdmission) context.Context {
 	if admission == nil {
-		admission = func(ctx context.Context) (context.Context, func(), error) {
-			return f.sessions.EnterBinding(ctx, f.binding)
-		}
+		admission = f.admit
 	}
 	ctx = session.WithBinding(ctx, f.binding)
 	ctx = workspace.WithWorkspaceStore(ctx, f.work)
@@ -85,26 +90,32 @@ func waitSignal(t *testing.T, ch <-chan struct{}) {
 		t.Fatal("barrier timed out")
 	}
 }
-func waitError(t *testing.T, ch <-chan error) error {
+
+type fileOutcome struct {
+	status operationresult.Status
+	err    error
+}
+
+func waitOutcome(t *testing.T, ch <-chan fileOutcome) fileOutcome {
 	t.Helper()
 	select {
-	case err := <-ch:
-		return err
+	case result := <-ch:
+		return result
 	case <-time.After(3 * time.Second):
 		t.Fatal("operation timed out")
-		return nil
+		return fileOutcome{}
 	}
 }
 
 func TestEditRejectsBindingExpiredBeforeCaptureAtCommit(t *testing.T) {
 	f := newFileFixture(t)
-	if _, err := f.sessions.Create(f.ctx, f.scope, session.CreateRequest{Title: "next"}); err != nil {
-		t.Fatal(err)
+	if result, err := f.sessions.Create(f.ctx, f.scope, session.CreateRequest{Title: "next"}); err != nil || result.Status != operationresult.Success {
+		t.Fatalf("switch: %+v %v", result, err)
 	}
 	entered := false
-	ctx := f.call(workspace.WithPathScope(f.ctx, workspace.PathScope{Dir: f.dir, Restricted: true}), func(ctx context.Context) (context.Context, func(), error) {
+	ctx := f.call(workspace.WithPathScope(f.ctx, workspace.PathScope{Dir: f.dir, Restricted: true}), func(ctx context.Context) (operationresult.Result[fileops.CommitAdmissionData], error) {
 		entered = true
-		return f.sessions.EnterBinding(ctx, f.binding)
+		return f.admit(ctx)
 	})
 	if _, _, err := f.files.Edit(ctx, editRequest("file", "before", "after")); err == nil || !entered {
 		t.Fatalf("expired binding: err=%v entered=%t", err, entered)
@@ -113,7 +124,7 @@ func TestEditRejectsBindingExpiredBeforeCaptureAtCommit(t *testing.T) {
 }
 
 func TestEditConfirmationPinsState(t *testing.T) {
-	for _, scenario := range []string{"unchanged", "content", "workspace", "absolute", "roundtrip", "parameters", "appeared", "binding", "symlink"} {
+	for _, scenario := range []string{"unchanged", "content", "workspace", "absolute", "roundtrip", "parameters", "appeared", "binding", "symlink", "policy"} {
 		t.Run(scenario, func(t *testing.T) {
 			f := newFileFixture(t)
 			ctx := f.call(f.ctx, nil)
@@ -138,10 +149,10 @@ func TestEditConfirmationPinsState(t *testing.T) {
 				}
 			}
 			prepared, err := f.files.PrepareEdit(ctx, req)
-			if err != nil {
-				t.Fatal(err)
+			if err != nil || prepared.Status != operationresult.Success {
+				t.Fatalf("prepare: %+v %v", prepared, err)
 			}
-			first := prepared.Preview()
+			first := prepared.Data.Preview()
 			if first.NewBytes != nil {
 				t.Fatal("confirmation preview includes file bytes")
 			}
@@ -171,6 +182,11 @@ func TestEditConfirmationPinsState(t *testing.T) {
 				}
 			case "parameters":
 				*req.Edits[0].NewText = "different"
+			case "policy":
+				f.files.CheckWrite = func(string) operationresult.Result[struct{}] {
+					return operationresult.Result[struct{}]{Status: operationresult.Forbidden, Message: "write denied"}
+				}
+				want, refuse = "before", true
 			case "appeared":
 				if err := os.WriteFile(f.path, nil, 0600); err != nil {
 					t.Fatal(err)
@@ -189,25 +205,25 @@ func TestEditConfirmationPinsState(t *testing.T) {
 				}
 				want, refuse = "before", true
 			case "binding":
-				if _, err := f.sessions.Create(f.ctx, f.scope, session.CreateRequest{Title: "next"}); err != nil {
-					t.Fatal(err)
+				if result, err := f.sessions.Create(f.ctx, f.scope, session.CreateRequest{Title: "next"}); err != nil || result.Status != operationresult.Success {
+					t.Fatalf("switch: %+v %v", result, err)
 				}
-				if _, err := f.sessions.Resume(f.ctx, f.scope, f.row.ID); err != nil {
-					t.Fatal(err)
+				if result, err := f.sessions.Resume(f.ctx, f.scope, f.row.ID); err != nil || result.Status != operationresult.Success {
+					t.Fatalf("resume: %+v %v", result, err)
 				}
 				want, refuse = "before", true
 			}
 			// Derived request contexts cannot refresh a pinned preflight.
 			derived := f.files.WithBinding(context.WithValue(ctx, struct{}{}, true), f.binding)
-			preview := prepared.Preview()
+			preview := prepared.Data.Preview()
 			if preview.Diff != first.Diff {
 				t.Fatal("confirmation diff changed")
 			}
-			result, _, err := prepared.Commit(derived)
-			if (err != nil) != refuse {
-				t.Fatalf("edit err=%v refuse=%t", err, refuse)
+			result, _, err := prepared.Data.Commit(derived)
+			if err != nil || (result.Status != operationresult.Success) != refuse || refuse && result.Message == "" {
+				t.Fatalf("edit=%+v err=%v refuse=%t", result, err, refuse)
 			}
-			if !refuse && (result.DryRun || result.Diff != first.Diff || result.RevisionAfter != first.RevisionAfter || result.RevisionBefore != first.RevisionBefore) {
+			if !refuse && (result.Data.DryRun || result.Data.Diff != first.Diff || result.Data.RevisionAfter != first.RevisionAfter || result.Data.RevisionBefore != first.RevisionBefore) {
 				t.Fatalf("commit differs from preview: result=%+v preview=%+v", result, first)
 			}
 			readContent(t, f.path, want)
@@ -246,14 +262,15 @@ func TestPreparedEditPreservesEncodingAndRollback(t *testing.T) {
 				t.Fatal(err)
 			}
 			prepared, err := f.files.PrepareEdit(ctx, req)
-			if err != nil {
-				t.Fatal(err)
+			if err != nil || prepared.Status != operationresult.Success {
+				t.Fatalf("prepare: %+v %v", prepared, err)
 			}
-			preview := prepared.Preview()
-			result, _, err := prepared.Commit(ctx)
-			if err != nil {
-				t.Fatal(err)
+			preview := prepared.Data.Preview()
+			committed, _, err := prepared.Data.Commit(ctx)
+			if err != nil || committed.Status != operationresult.Success {
+				t.Fatalf("commit: %+v %v", committed, err)
 			}
+			result := committed.Data
 			want, err := fileops.EncodeText("after"+tc.ending, tc.encoding, tc.bom)
 			if err != nil {
 				t.Fatal(err)
@@ -265,8 +282,8 @@ func TestPreparedEditPreservesEncodingAndRollback(t *testing.T) {
 			if preview.RevisionAfter != fileops.ContentRevision(written) || preview.Diff != result.Diff || !result.RollbackAvailable || result.Created != tc.create {
 				t.Fatalf("commit=%+v preview=%+v", result, preview)
 			}
-			if _, err := f.files.Rollback(ctx, "file", 0); err != nil {
-				t.Fatal(err)
+			if result, err := f.files.Rollback(ctx, "file", 0); err != nil || result.Status != operationresult.Success {
+				t.Fatalf("rollback: %+v %v", result, err)
 			}
 			if tc.create {
 				if _, err := os.Stat(f.path); !os.IsNotExist(err) {
@@ -308,43 +325,45 @@ func TestFileCommitSerializesSessionTransitions(t *testing.T) {
 								text := "after"
 								req = fileops.EditRequest{Path: "file", Create: true, Edits: []fileops.Edit{{Operation: "overwrite", NewText: &text}}}
 							}
-							if _, _, err := f.files.Edit(f.call(f.ctx, nil), req); err != nil {
-								t.Fatal(err)
+							if result, _, err := f.files.Edit(f.call(f.ctx, nil), req); err != nil || result.Status != operationresult.Success {
+								t.Fatalf("edit: %+v %v", result, err)
 							}
 						}
 						base, cancel := context.WithCancel(f.ctx)
 						defer cancel()
 						reached, allow := make(chan struct{}), make(chan struct{})
-						admission := func(ctx context.Context) (context.Context, func(), error) {
+						admission := func(ctx context.Context) (operationresult.Result[fileops.CommitAdmissionData], error) {
 							if !commitFirst {
 								close(reached)
 								<-allow
 							}
-							locked, release, err := f.sessions.EnterBinding(ctx, f.binding)
+							admitted, err := f.admit(ctx)
 							if err != nil {
-								return ctx, nil, err
+								return admitted, err
 							}
 							if commitFirst {
 								close(reached)
 								<-allow
 							}
-							return locked, release, nil
+							return admitted, nil
 						}
 						ctx := f.call(base, admission)
-						done := make(chan error, 1)
+						done := make(chan fileOutcome, 1)
 						go func() {
 							if operation == "prepared" {
 								prepared, err := f.files.PrepareEdit(ctx, editRequest("file", "before", "after"))
-								if err == nil {
-									_, _, err = prepared.Commit(ctx)
+								if err != nil || prepared.Status != operationresult.Success {
+									done <- fileOutcome{prepared.Status, err}
+									return
 								}
-								done <- err
+								result, _, err := prepared.Data.Commit(ctx)
+								done <- fileOutcome{result.Status, err}
 							} else if operation == "edit" {
-								_, _, err := f.files.Edit(ctx, editRequest("file", "before", "after"))
-								done <- err
+								result, _, err := f.files.Edit(ctx, editRequest("file", "before", "after"))
+								done <- fileOutcome{result.Status, err}
 							} else {
-								_, err := f.files.Rollback(ctx, "file", 0)
-								done <- err
+								result, err := f.files.Rollback(ctx, "file", 0)
+								done <- fileOutcome{result.Status, err}
 							}
 						}()
 						waitSignal(t, reached)
@@ -357,10 +376,17 @@ func TestFileCommitSerializesSessionTransitions(t *testing.T) {
 						transitionCall := func(ctx context.Context) error {
 							switch transition {
 							case "switch":
-								_, err := f.sessions.Create(ctx, f.scope, session.CreateRequest{Title: "next"})
+								result, err := f.sessions.Create(ctx, f.scope, session.CreateRequest{Title: "next"})
+								if err == nil && result.Status != operationresult.Success {
+									t.Fatalf("switch: %+v", result)
+								}
 								return err
 							case "delete":
-								return f.sessions.Delete(ctx, f.scope, f.row.ID)
+								result, err := f.sessions.Delete(ctx, f.scope, f.row.ID)
+								if err == nil && result.Status != operationresult.Success {
+									t.Fatalf("delete: %+v", result)
+								}
+								return err
 							default:
 								_, release, err := f.sessions.EnterSessions(ctx, f.row.ID)
 								if err != nil {
@@ -382,9 +408,9 @@ func TestFileCommitSerializesSessionTransitions(t *testing.T) {
 							t.Fatal(err)
 						}
 						close(allow)
-						err := waitError(t, done)
-						if (err == nil) != commitFirst {
-							t.Fatalf("commit first=%t error=%v", commitFirst, err)
+						result := waitOutcome(t, done)
+						if (result.err == nil && result.status == operationresult.Success) != commitFirst {
+							t.Fatalf("commit first=%t result=%+v", commitFirst, result)
 						}
 						if commitFirst {
 							if err := transitionCall(f.ctx); err != nil {
@@ -425,37 +451,43 @@ func TestFileCommitSerializesSessionTransitions(t *testing.T) {
 func TestBackgroundEditUsesSharedTargetLockAndCancellation(t *testing.T) {
 	f := newFileFixture(t)
 	reached, allow := make(chan struct{}), make(chan struct{})
-	ctx := f.call(f.ctx, func(ctx context.Context) (context.Context, func(), error) {
-		locked, release, err := f.sessions.EnterBinding(ctx, f.binding)
+	ctx := f.call(f.ctx, func(ctx context.Context) (operationresult.Result[fileops.CommitAdmissionData], error) {
+		admitted, err := f.admit(ctx)
 		if err != nil {
-			return ctx, nil, err
+			return admitted, err
 		}
 		close(reached)
 		<-allow
-		return locked, release, nil
+		return admitted, nil
 	})
-	first := make(chan error, 1)
-	go func() { _, _, err := f.files.Edit(ctx, editRequest("file", "before", "after")); first <- err }()
+	first := make(chan fileOutcome, 1)
+	go func() {
+		result, _, err := f.files.Edit(ctx, editRequest("file", "before", "after"))
+		first <- fileOutcome{result.Status, err}
+	}()
 	waitSignal(t, reached)
 	bg, cancel := context.WithCancel(workspace.WithPathScope(testutil.TaskContext(f.ctx, ""), workspace.PathScope{Dir: f.dir, Restricted: true}))
 	bg = f.files.WithBinding(bg, nil)
-	waiting := make(chan error, 1)
-	go func() { _, _, err := f.files.Edit(bg, editRequest("file", "before", "other")); waiting <- err }()
+	waiting := make(chan fileOutcome, 1)
+	go func() {
+		result, _, err := f.files.Edit(bg, editRequest("file", "before", "other"))
+		waiting <- fileOutcome{result.Status, err}
+	}()
 	cancel()
-	if err := waitError(t, waiting); !errors.Is(err, context.Canceled) {
-		t.Fatalf("background wait=%v", err)
+	if result := waitOutcome(t, waiting); !errors.Is(result.err, context.Canceled) {
+		t.Fatalf("background wait=%+v", result)
 	}
 	close(allow)
-	if err := waitError(t, first); err != nil {
-		t.Fatal(err)
+	if result := waitOutcome(t, first); result.err != nil || result.status != operationresult.Success {
+		t.Fatalf("edit: %+v", result)
 	}
 	readContent(t, f.path, "after")
 	bg = workspace.WithPathScope(testutil.TaskContext(f.ctx, ""), workspace.PathScope{Dir: f.dir, Restricted: true})
 	result, _, err := f.files.Edit(f.files.WithBinding(bg, nil), editRequest("file", "after", "background"))
-	if err != nil || result.RollbackAvailable {
+	if err != nil || result.Status != operationresult.Success || result.Data.RollbackAvailable {
 		t.Fatalf("background result=%+v err=%v", result, err)
 	}
-	if _, err := f.files.Rollback(f.call(f.ctx, nil), "file", 0); err == nil || !strings.Contains(err.Error(), "changed") {
-		t.Fatalf("stale foreground backup=%v", err)
+	if result, err := f.files.Rollback(f.call(f.ctx, nil), "file", 0); err != nil || result.Status != operationresult.Conflict || result.Message == "" {
+		t.Fatalf("stale foreground backup=%+v %v", result, err)
 	}
 }

@@ -72,7 +72,7 @@ type ToolCapabilities interface {
 	Read(context.Context, session.Scope) (resident.Memory, error)
 	WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context
 	Forget(fileops.Binding)
-	ListRollbacks(context.Context) (operationresult.Result[[]fileops.RollbackInfo], error)
+	ListRollbacks(context.Context) operationresult.Result[[]fileops.RollbackInfo]
 	RollbackByID(context.Context, uint64) (operationresult.Result[fileops.RollbackResult], error)
 }
 

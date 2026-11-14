@@ -1,41 +1,44 @@
 package fileops
 
-import "context"
+import (
+	"context"
+
+	"elbot/internal/operationresult"
+)
 
 // Service shares path policy and memory backups between tools and commands.
 // Session binding is supplied by Agent, not by model arguments.
 type Service struct {
-	Manager    *RollbackManager
-	CheckWrite func(string) error
+	manager    *RollbackManager
+	CheckWrite func(string) operationresult.Result[struct{}]
 }
 
-func NewService(checkWrite func(string) error) *Service {
-	return &Service{Manager: NewRollbackManager(), CheckWrite: checkWrite}
+func NewService(checkWrite func(string) operationresult.Result[struct{}]) *Service {
+	return &Service{manager: NewRollbackManager(), CheckWrite: checkWrite}
 }
 
-func (s *Service) List(ctx context.Context) ([]RollbackInfo, error) {
-	binding, err := s.rollbackBinding(ctx)
-	if err != nil {
-		return nil, err
+// Forget releases the backups owned by this binding.
+func (s *Service) Forget(binding Binding) { s.manager.Forget(binding) }
+
+func (s *Service) List(ctx context.Context) operationresult.Result[[]RollbackInfo] {
+	binding := s.rollbackBinding(ctx)
+	if binding.Status != operationresult.Success {
+		return operationresult.Result[[]RollbackInfo]{Status: binding.Status, Message: binding.Message}
 	}
-	return binding.session.List()
+	return binding.Data.session.List()
 }
 
 // RollbackByID resolves a human-facing backup number through the same lease and
 // commit checks as tool rollback. Failed records retain their path for auditing.
-func (s *Service) RollbackByID(ctx context.Context, id uint64) (RollbackResult, error) {
-	records, err := s.List(ctx)
-	if err != nil {
-		return RollbackResult{}, err
+func (s *Service) RollbackByID(ctx context.Context, id uint64) (operationresult.Result[RollbackResult], error) {
+	records := s.List(ctx)
+	if records.Status != operationresult.Success {
+		return operationresult.Result[RollbackResult]{Status: records.Status, Message: records.Message}, nil
 	}
-	for _, record := range records {
+	for _, record := range records.Data {
 		if record.ID == id {
-			result, err := s.Rollback(ctx, record.Path, id)
-			if err != nil {
-				return RollbackResult{Path: record.Path}, err
-			}
-			return result, nil
+			return s.Rollback(ctx, record.Path, id)
 		}
 	}
-	return RollbackResult{}, ErrRollbackNotFound
+	return operationresult.Result[RollbackResult]{Status: operationresult.NotFound, Message: "no rollback record: it may have been consumed, replaced, or evicted"}, nil
 }

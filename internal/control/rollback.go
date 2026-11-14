@@ -5,40 +5,56 @@ import (
 	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/fileops"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
-	"elbot/internal/storage"
 	"encoding/json"
-	"errors"
 	"log/slog"
 )
 
-func (m *Supervisor) ListRollbacks(ctx context.Context) ([]fileops.RollbackInfo, error) {
-	if err := authorize(ctx, true, m.deps.FileRollback != nil && m.deps.PrepareFileContext != nil); err != nil {
-		return nil, err
+func (m *Supervisor) ListRollbacks(ctx context.Context) (operationresult.Result[[]fileops.RollbackInfo], error) {
+	if err := ctx.Err(); err != nil {
+		return operationresult.Result[[]fileops.RollbackInfo]{}, err
+	}
+	actorInfo, ok := contextinfo.ActorFromContext(ctx)
+	if !ok || actorInfo.Role != contextinfo.RoleSuperadmin {
+		return operationresult.Result[[]fileops.RollbackInfo]{Status: operationresult.Forbidden, Message: "无权执行该操作"}, nil
 	}
 	prepared, err := m.deps.PrepareFileContext(ctx, false)
-	if errors.Is(err, storage.ErrNotFound) {
-		return []fileops.RollbackInfo{}, nil
-	}
 	if err != nil {
-		return nil, ClassifyError(err)
+		return operationresult.Result[[]fileops.RollbackInfo]{}, err
 	}
-	items, err := m.deps.FileRollback.List(prepared)
-	return items, ClassifyError(err)
+	if prepared.Status != operationresult.Success {
+		return operationresult.Result[[]fileops.RollbackInfo]{Status: prepared.Status, Message: prepared.Message}, nil
+	}
+	return m.deps.FileRollback.List(prepared.Data), nil
 }
-func (m *Supervisor) RollbackByID(ctx context.Context, req RollbackByIDRequest) (fileops.RollbackResult, error) {
-	if err := authorize(ctx, true, m.deps.FileRollback != nil && m.deps.PrepareFileContext != nil); err != nil {
-		return fileops.RollbackResult{}, err
+func (m *Supervisor) RollbackByID(ctx context.Context, req RollbackByIDRequest) (operationresult.Result[fileops.RollbackResult], error) {
+	if err := ctx.Err(); err != nil {
+		return operationresult.Result[fileops.RollbackResult]{}, err
+	}
+	actorInfo, ok := contextinfo.ActorFromContext(ctx)
+	if !ok || actorInfo.Role != contextinfo.RoleSuperadmin {
+		return operationresult.Result[fileops.RollbackResult]{Status: operationresult.Forbidden, Message: "无权执行该操作"}, nil
 	}
 	if req.ID == 0 {
-		return fileops.RollbackResult{}, invalid("id 必须为正数")
+		return operationresult.Result[fileops.RollbackResult]{Status: operationresult.InvalidArguments, Message: "id 必须为正数"}, nil
 	}
 	prepared, err := m.deps.PrepareFileContext(ctx, true)
 	if err != nil {
-		return fileops.RollbackResult{}, ClassifyError(err)
+		return operationresult.Result[fileops.RollbackResult]{}, err
 	}
-	ctx = prepared
-	result, err := m.deps.FileRollback.RollbackByID(ctx, req.ID)
+	if prepared.Status != operationresult.Success {
+		return operationresult.Result[fileops.RollbackResult]{Status: prepared.Status, Message: prepared.Message}, nil
+	}
+	ctx = prepared.Data
+	rolledBack, err := m.deps.FileRollback.RollbackByID(ctx, req.ID)
+	if err != nil {
+		return operationresult.Result[fileops.RollbackResult]{}, err
+	}
+	if rolledBack.Status != operationresult.Success {
+		return operationresult.Result[fileops.RollbackResult]{Status: rolledBack.Status, Message: rolledBack.Message}, nil
+	}
+	result := rolledBack.Data
 	actor, _ := contextinfo.ActorFromContext(ctx)
 	binding, _ := session.BindingFromContext(ctx)
 	if result.Path != "" {
@@ -48,16 +64,6 @@ func (m *Supervisor) RollbackByID(ctx context.Context, req RollbackByIDRequest) 
 		}
 		content := map[string]any{"actor": actor, "path": result.Path, "deleted": result.Deleted}
 		record := globalevents.LogRecord{Category: globalevents.LogCategoryAudit, Module: "control", Level: slog.LevelInfo, EventName: "file_rollback", Type: globalevents.ContentJSON, ResultStatus: globalevents.ResultSucceeded}
-		if err != nil {
-			content["error"] = err.Error()
-			record.EventName = "file_rollback_failed"
-			record.Level = slog.LevelError
-			record.ResultStatus = globalevents.ResultFailed
-			if errors.Is(err, context.Canceled) {
-				record.Level = slog.LevelInfo
-				record.ResultStatus = globalevents.ResultCanceled
-			}
-		}
 		record.Identity = globalevents.LogIdentityFromContext(ctx)
 		record.Identity.SessionID = sessionID
 		data, _ := json.Marshal(content)
@@ -65,5 +71,5 @@ func (m *Supervisor) RollbackByID(ctx context.Context, req RollbackByIDRequest) 
 		globalevents.Log(ctx, record)
 	}
 
-	return result, ClassifyError(err)
+	return operationresult.Result[fileops.RollbackResult]{Status: operationresult.Success, Data: result}, nil
 }
