@@ -142,11 +142,11 @@ func TestConnectNotifications(t *testing.T) {
 			if tt.err != nil {
 				select {
 				case record := <-logs:
-					status, level := events.ResultFailed, slog.LevelWarn
+					status := events.ResultFailed
 					if errors.Is(tt.err, context.Canceled) {
-						status, level = events.ResultCanceled, slog.LevelInfo
+						status = events.ResultCanceled
 					}
-					if record.EventName != "notification_send_failed" || record.Module != "notification" || record.ResultStatus != status || record.Level != level || record.Identity.RequestID != "request" || !strings.Contains(record.Content, tt.err.Error()) || strings.Contains(record.Content, "hook=") {
+					if record.EventName != "notification_send_failed" || record.Module != "notification" || record.ResultStatus != status || record.Level != slog.LevelWarn || record.Identity.RequestID != "request" || !strings.Contains(record.Content, tt.err.Error()) || strings.Contains(record.Content, "hook=") {
 						t.Fatal("notification failure lost its source facts", record)
 					}
 				case <-time.After(time.Second):
