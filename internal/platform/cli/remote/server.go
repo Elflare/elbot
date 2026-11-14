@@ -3,9 +3,11 @@
 package remote
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	platformshare "elbot/internal/platform/share"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -429,7 +431,13 @@ func (s *RemoteServer) writeClients(ctx context.Context, clients []*remoteClient
 func (c *remoteClientConn) write(ctx context.Context, msg remoteMessage) error {
 	writeCtx, cancel := context.WithTimeout(ctx, remoteWriteTimeout)
 	defer cancel()
-	return wsjson.Write(writeCtx, c.conn, msg)
+	var data bytes.Buffer
+	encoder := json.NewEncoder(&data)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(msg); err != nil {
+		return err
+	}
+	return c.conn.Write(writeCtx, websocket.MessageText, data.Bytes())
 }
 
 func (s *RemoteServer) addClient(client *remoteClientConn) bool {

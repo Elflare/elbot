@@ -77,13 +77,16 @@ type DetailBlock struct {
 type ConfirmationDetailKind = share.ConfirmationDetailKind
 
 const (
-	ConfirmationDetailText      = share.ConfirmationDetailText
-	ConfirmationDetailDiff      = share.ConfirmationDetailDiff
-	ConfirmationDetailArguments = share.ConfirmationDetailArguments
-	ConfirmationDetailMarkdown  = share.ConfirmationDetailMarkdown
+	ConfirmationDetailText     = share.ConfirmationDetailText
+	ConfirmationDetailDiff     = share.ConfirmationDetailDiff
+	ConfirmationDetailFields   = share.ConfirmationDetailFields
+	ConfirmationDetailCode     = share.ConfirmationDetailCode
+	ConfirmationDetailMarkdown = share.ConfirmationDetailMarkdown
 )
 
 type ConfirmationDetailBlock = share.ConfirmationDetailBlock
+type ConfirmationField = share.ConfirmationField
+type ConfirmationCode = delivery.CodeContent
 
 // PreparedCall 是外部实现准备好的操作；根部将其封装为固定参数的内部调用。
 type PreparedCall struct {

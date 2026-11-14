@@ -56,14 +56,16 @@ func (t AgentSkillTool) PrepareCall(ctx context.Context, req toolshare.CallReque
 		return operationresult.Result[*toolshare.PreparedCall]{Status: prepared.Status, Message: prepared.Message}, nil
 	}
 	preview := prepared.Data
-	details := []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("读取 AgentSkill %s 的 %s", preview.Name, AgentSkillConfigFile))}
+	details := []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "action", Label: "操作", Value: preview.Action},
+		toolshare.ConfirmationField{Key: "name", Label: "AgentSkill", Value: preview.Name},
+		toolshare.ConfirmationField{Key: "path", Label: "文件", Value: preview.Path},
+	)}
 	if preview.Action == "write" {
 		filePreview := preview.File.Preview()
-		details = []toolshare.ConfirmationDetailBlock{toolshare.FileDiffConfirmationDetail(
-			filePreview.Diff,
-			filePreview.DiffAvailable,
-			fmt.Sprintf("写入 AgentSkill %s 的 %s\n文件：%s\ndiff:", preview.Name, AgentSkillConfigFile, preview.Path),
-		)}
+		details = append(details,
+			toolshare.FileDiffConfirmationDetail(filePreview.Diff),
+		)
 	}
 	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		return t.call(ctx, preview)

@@ -1,10 +1,6 @@
 package confirmation
 
-import (
-	"bytes"
-	"encoding/json"
-	"strings"
-)
+import "strings"
 
 func riskReasonsText(reasons []string) string {
 	if len(reasons) == 0 {
@@ -20,16 +16,4 @@ func riskReasonsText(reasons []string) string {
 		}
 	}
 	return sb.String()
-}
-
-func compactArguments(args string) string {
-	args = strings.TrimSpace(args)
-	if args == "" {
-		return "{}"
-	}
-	var compact bytes.Buffer
-	if err := json.Compact(&compact, []byte(args)); err == nil {
-		return compact.String()
-	}
-	return args
 }

@@ -248,8 +248,27 @@ schemas:
           required: [kind, content]
         - type: object
           properties:
-            kind: { const: arguments }
-            content: { type: object, additionalProperties: true }
+            kind: { const: fields }
+            content:
+              type: array
+              items:
+                type: object
+                properties:
+                  key: { type: string, description: Stable machine-readable field name. }
+                  label: { type: string, description: Human-readable field label. }
+                  value:
+                    description: Structured value; preserves strings, numbers, booleans, null, arrays and objects.
+                required: [key, label, value]
+          required: [kind, content]
+        - type: object
+          properties:
+            kind: { const: code }
+            content:
+              type: object
+              properties:
+                language: { type: string }
+                content: { type: string, description: Complete source or command text. }
+              required: [language, content]
           required: [kind, content]
     StreamEvent:
       type: object
@@ -303,7 +322,7 @@ schemas:
         detail:
           type: [array, 'null']
           items: { $ref: '#/schemas/ConfirmationDetailBlock' }
-          description: Ordered tool confirmation detail blocks. File changes use diff blocks when complete diffs are available and text blocks as fallback when omitted; empty for append confirmation and null when no confirmation is pending.
+          description: Ordered tool-provided confirmation detail blocks. Fields and code preserve prepared operation data. A diff block is included only when both file versions are at most 8 MiB and have changes; larger files remain editable without a diff block. No arguments block or alternate text fallback is added. Empty for append confirmation and null when no confirmation is pending.
         actions:
           type: [array, 'null']
           items:

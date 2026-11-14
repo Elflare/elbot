@@ -19,17 +19,9 @@ func (s *longMemoryStore) search(ctx context.Context, args longMemorySearchArgs)
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[string]{}, err
 	}
-	keywords := strings.TrimSpace(args.Keywords)
-	category := cleanLongMemoryText(args.Category)
-	if keywords == "" && category == "" {
+	if args.Keywords == "" && args.Category == "" {
 		return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: "keywords 和 category 不能同时为空"}, nil
 	}
-	briefOnly := true
-	if args.BriefOnly != nil {
-		briefOnly = *args.BriefOnly
-	}
-	limit := normalizeLongMemoryLimit(args.Limit)
-	matchMode := normalizeLongMemoryMatchMode(args.MatchMode)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -51,11 +43,11 @@ func (s *longMemoryStore) search(ctx context.Context, args longMemorySearchArgs)
 	if err != nil {
 		return operationresult.Result[string]{}, err
 	}
-	records, err := s.searchFTSLocked(ctx, keywords, category, matchMode, limit)
+	records, err := s.searchFTSLocked(ctx, args.Keywords, args.Category, args.MatchMode, args.Limit)
 	if err != nil {
 		return operationresult.Result[string]{}, err
 	}
-	return formatSearchResult(invalids, overview, records, briefOnly)
+	return formatSearchResult(invalids, overview, records, args.BriefOnly)
 }
 
 func (s *longMemoryStore) categories(ctx context.Context) (operationresult.Result[string], error) {

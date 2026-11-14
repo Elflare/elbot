@@ -138,15 +138,20 @@ func (t FinalizeElSkillTool) PrepareCall(ctx context.Context, req toolshare.Call
 			}
 		}
 	}
-	previewHeader := fmt.Sprintf("Finalize Skill：%s\n目录：%s\n校验、格式化、编译并重载", name, root)
-	details := []toolshare.ConfirmationDetailBlock{{Kind: toolshare.ConfirmationDetailText, Content: previewHeader}}
+	if args.TimeoutMS <= 0 {
+		args.TimeoutMS = 60000
+	}
+	details := []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "name", Label: "Finalize Skill", Value: name},
+		toolshare.ConfirmationField{Key: "work_dir", Label: "目录", Value: root},
+		toolshare.ConfirmationField{Key: "action", Label: "操作", Value: "校验、格式化、编译并重载"},
+		toolshare.ConfirmationField{Key: "timeout_ms", Label: "编译超时（ms）", Value: args.TimeoutMS},
+	)}
 	if prepared != nil {
 		filePreview := prepared.Preview()
-		details = []toolshare.ConfirmationDetailBlock{toolshare.FileDiffConfirmationDetail(
-			filePreview.Diff,
-			filePreview.DiffAvailable,
-			previewHeader+"\ndiff:",
-		)}
+		details = append(details,
+			toolshare.FileDiffConfirmationDetail(filePreview.Diff),
+		)
 	}
 	content := report.String()
 	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {

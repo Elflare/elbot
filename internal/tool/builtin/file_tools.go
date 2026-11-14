@@ -14,7 +14,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"elbot/internal/fileops"
 	"elbot/internal/operationresult"
@@ -24,7 +23,6 @@ import (
 const (
 	fileToolDetailedMaxBytes = int64(fileops.MaxFileSize)
 	fileToolMaxBytes         = 100 * 1024 * 1024
-	editDetailMaxBytes       = 4 * 1024
 )
 
 type ReadFileTool struct {
@@ -135,6 +133,21 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	if len(args.Glob) > 0 && mode != readFileModeGrep {
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "glob requires grep directory search"}, nil
 	}
+	args.StartLine = readFileInteger(max(1, int(args.StartLine)))
+	defaultEnd := !args.EndLine.End && args.EndLine.Value <= 0
+	if defaultEnd {
+		args.EndLine.Value = int(args.StartLine) + fileops.DefaultReadLineLimit - 1
+	}
+	var endLine any = args.EndLine.Value
+	if args.EndLine.End {
+		endLine = "end"
+	}
+	args.Query = strings.TrimSpace(args.Query)
+	args.ContextLines = fileops.NormalizeGrepContextLines(args.ContextLines)
+	args.MaxMatches = fileops.NormalizeMaxMatches(args.MaxMatches)
+	if strings.TrimSpace(args.Encoding) == "" {
+		args.Encoding = "auto"
+	}
 	selected, err := workspace.ResolveWorkspacePath(ctx, args.Path, workspace.PathResolveOptions{AllowDirectory: mode != readFileModeRead})
 	if err != nil {
 		return operationresult.Result[*toolshare.PreparedCall]{}, err
@@ -148,7 +161,18 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	if isSensitiveReadFile(path) {
 		assessment = toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"读取可能包含凭据的敏感文件，需要用户确认"}}
 	}
-	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, assessment, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("读取：%s\n模式：%s", path, mode))}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, assessment, []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "path", Label: "读取路径", Value: path},
+		toolshare.ConfirmationField{Key: "mode", Label: "模式", Value: mode},
+		toolshare.ConfirmationField{Key: "encoding", Label: "编码", Value: args.Encoding},
+		toolshare.ConfirmationField{Key: "start_line", Label: "起始行", Value: args.StartLine},
+		toolshare.ConfirmationField{Key: "end_line", Label: "结束行", Value: endLine},
+		toolshare.ConfirmationField{Key: "query", Label: "查询", Value: args.Query},
+		toolshare.ConfirmationField{Key: "glob", Label: "路径过滤", Value: args.Glob},
+		toolshare.ConfirmationField{Key: "context_lines", Label: "上下文行数", Value: args.ContextLines},
+		toolshare.ConfirmationField{Key: "max_matches", Label: "最大匹配数", Value: args.MaxMatches},
+		toolshare.ConfirmationField{Key: "index", Label: "结果编号", Value: args.Index},
+	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		var warnings []string
 		if resolved.WasAbs {
 			warning := toolshare.AbsolutePathWorkspaceWarning
@@ -207,7 +231,8 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 			case readFileModeASTFunction:
 				result, err = readFileASTFunctionResult(file, args.Query, args.MaxMatches, args.Index, warnings)
 			case readFileModeRead:
-				start, end, truncated, err := fileops.NormalizeReadRange(len(lines), int(args.StartLine), args.EndLine)
+				start, end, err := fileops.NormalizeReadRange(len(lines), int(args.StartLine), args.EndLine)
+				truncated := defaultEnd && end < len(lines)
 				if err != nil {
 					return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: err.Error()}, err.Error(), nil
 				}
@@ -243,7 +268,7 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 }
 
 func readFileGrepResult(ctx context.Context, file fileops.File, lines []string, grep string, contextLines, maxMatches, index int, warnings []string) (operationresult.Result[*toolshare.Result], error) {
-	query := strings.TrimSpace(grep)
+	query := grep
 	if query == "" {
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "grep is required"}, nil
 	}
@@ -254,8 +279,6 @@ func readFileGrepResult(ctx context.Context, file fileops.File, lines []string, 
 	if err != nil {
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("invalid grep regex: %v", err)}, nil
 	}
-	contextLines = fileops.NormalizeGrepContextLines(contextLines)
-	maxMatches = fileops.NormalizeMaxMatches(maxMatches)
 	matches := make([]int, 0)
 	for i, line := range lines {
 		if err := ctx.Err(); err != nil {
@@ -370,155 +393,21 @@ func (t EditFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 }
 
 func editFileRiskDetails(args editFileArgs, preview fileops.EditResult) []toolshare.ConfirmationDetailBlock {
-	var b strings.Builder
-	fmt.Fprintf(&b, "文件：%s\n", strings.TrimSpace(args.Path))
-	b.WriteString("模式：确认后写入；确认前已自动预检\n")
-	fmt.Fprintf(&b, "创建文件：%s\n", fileToolBoolText(args.Create))
-	if strings.TrimSpace(args.Encoding) != "" {
-		fmt.Fprintf(&b, "编码：%s\n", strings.TrimSpace(args.Encoding))
-	} else {
-		b.WriteString("编码：auto\n")
-	}
-	fmt.Fprintf(&b, "编辑数：%d\n", len(args.Edits))
-	if strings.TrimSpace(args.ExpectedRevision) != "" {
-		b.WriteString("文件 revision 校验：有\n")
-	}
-	for i, edit := range args.Edits {
-		fmt.Fprintf(&b, "\n编辑 %d/%d：%s\n", i+1, len(args.Edits), editOperationTitle(edit.Operation))
-		writeEditLocation(&b, edit)
-		writeEditMatchDetail(&b, edit)
-		writeEditContentDetail(&b, edit)
-	}
-	b.WriteString("\n预检 diff:")
-	text := strings.TrimRight(b.String(), "\n")
 	return []toolshare.ConfirmationDetailBlock{
-		toolshare.FileDiffConfirmationDetail(preview.Diff, preview.DiffAvailable, text),
+		toolshare.FieldsConfirmationDetail(
+			toolshare.ConfirmationField{Key: "path", Label: "文件", Value: preview.Path},
+			toolshare.ConfirmationField{Key: "created", Label: "创建文件", Value: preview.Created},
+			toolshare.ConfirmationField{Key: "expected_revision", Label: "校验版本", Value: args.ExpectedRevision},
+			toolshare.ConfirmationField{Key: "encoding", Label: "编码", Value: preview.Encoding},
+		),
+		toolshare.FileDiffConfirmationDetail(preview.Diff),
 	}
-}
-
-func fileToolBoolText(value bool) string {
-	if value {
-		return "是"
-	}
-	return "否"
-}
-
-func editOperationTitle(operation string) string {
-	switch operation {
-	case "replace_text":
-		return "精确文本替换"
-	case "replace":
-		return "按行号范围替换"
-	case "insert":
-		return "按行间位置插入"
-	case "delete":
-		return "按行号删除"
-	case "insert_before":
-		return "在 anchor 行前插入"
-	case "insert_after":
-		return "在 anchor 行后插入"
-	case "replace_line":
-		return "替换 anchor 行"
-	case "delete_line":
-		return "删除 anchor 行"
-	case "overwrite":
-		return "覆盖整个文件"
-	default:
-		if strings.TrimSpace(operation) == "" {
-			return "未知操作"
-		}
-		return operation
-	}
-}
-
-func writeEditLocation(b *strings.Builder, edit fileops.Edit) {
-	switch edit.Operation {
-	case "insert":
-		if edit.Line > 0 {
-			fmt.Fprintf(b, "原始行间位置：%d\n", edit.Line)
-		}
-	case "replace", "delete":
-		if edit.Line > 0 {
-			fmt.Fprintf(b, "原始位置：%s\n", editLineRangeText(edit.Line, edit.EndLine))
-		}
-	}
-}
-
-func editLineRangeText(start, end int) string {
-	if end <= 0 || end == start {
-		return fmt.Sprintf("%d", start)
-	}
-	return fmt.Sprintf("%d-%d", start, end)
-}
-
-func writeEditMatchDetail(b *strings.Builder, edit fileops.Edit) {
-	var matchText string
-	switch edit.Operation {
-	case "replace_text":
-		matchText = edit.OldText
-	case "insert_before", "insert_after", "replace_line", "delete_line":
-		matchText = edit.Anchor
-	default:
-		return
-	}
-	if edit.Index != nil {
-		fmt.Fprintf(b, "第几处匹配：%d\n", *edit.Index)
-	}
-	if edit.AllMatches {
-		b.WriteString("匹配范围：全部\n")
-	}
-	writeIndentedBlock(b, "匹配内容：", matchText)
-}
-
-func writeEditContentDetail(b *strings.Builder, edit fileops.Edit) {
-	if edit.NewText == nil {
-		return
-	}
-	switch edit.Operation {
-	case "insert", "insert_before", "insert_after":
-		writeIndentedBlock(b, "插入内容：", *edit.NewText)
-	case "overwrite":
-		writeIndentedBlock(b, "文件新内容：", *edit.NewText)
-	default:
-		writeIndentedBlock(b, "新内容：", *edit.NewText)
-	}
-}
-
-func writeIndentedBlock(b *strings.Builder, title, text string) {
-	b.WriteString(title + "\n")
-	text = strings.ReplaceAll(text, "\r\n", "\n")
-	text = strings.ReplaceAll(text, "\r", "\n")
-	if text == "" {
-		b.WriteString("  (空)\n")
-		return
-	}
-	originalBytes := len(text)
-	originalLines := strings.Count(text, "\n") + 1
-	displayed, truncated := truncateUTF8Bytes(text, editDetailMaxBytes)
-	for _, line := range strings.Split(displayed, "\n") {
-		b.WriteString("  " + line + "\n")
-	}
-	if truncated {
-		fmt.Fprintf(b, "  ...（已省略；原文 %d 字节，%d 行）\n", originalBytes, originalLines)
-	}
-}
-
-func truncateUTF8Bytes(text string, maxBytes int) (string, bool) {
-	if maxBytes <= 0 || len(text) <= maxBytes {
-		return text, false
-	}
-	end := maxBytes
-	for end > 0 && !utf8.RuneStart(text[end]) {
-		end--
-	}
-	return text[:end], true
 }
 
 func fileToolEditOptions() fileops.EditFileOptions {
 	return fileops.EditFileOptions{
-		MaxInputBytes:        fileToolMaxBytes,
-		MaxOutputBytes:       fileToolMaxBytes,
-		DetailedDiffMaxBytes: fileToolDetailedMaxBytes,
+		MaxInputBytes:  fileToolMaxBytes,
+		MaxOutputBytes: fileToolMaxBytes,
 	}
 }
 

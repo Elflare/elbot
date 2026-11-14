@@ -115,31 +115,3 @@ func TestEditFileWithOptionsEnforcesInputAndOutputLimits(t *testing.T) {
 		t.Fatalf("file changed after rejected edits: %q", data)
 	}
 }
-
-func TestEditFileWithOptionsOmitsDetailedDiffAboveLimit(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sample.txt")
-	original := []byte("alpha\n")
-	if err := os.WriteFile(path, original, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	result, err := EditFileWithOptions(path, "", "", false, true, 3, []Edit{{Operation: "replace_text", OldText: "alpha", NewText: textPtr("beta")}}, EditFileOptions{
-		MaxInputBytes:        1024,
-		MaxOutputBytes:       1024,
-		DetailedDiffMaxBytes: 5,
-	})
-	if err != nil || result.Status != operationresult.Success {
-		t.Fatalf("preview: %+v %v", result, err)
-	}
-	if result.Data.DiffAvailable || !strings.Contains(result.Data.Diff, "diff omitted: file exceeds detailed diff limit 5 bytes") || !strings.Contains(result.Data.Diff, "old 6 bytes") {
-		t.Fatalf("unexpected omitted diff:\n%s", result.Data.Diff)
-	}
-}
-
-func TestUnifiedDiffOmitsOversizedOutput(t *testing.T) {
-	oldLine := strings.Repeat("a", maxDiffOutputBytes)
-	newLine := strings.Repeat("b", maxDiffOutputBytes)
-	diff := UnifiedDiff("sample.txt", []string{oldLine}, []string{newLine}, 3)
-	if !strings.Contains(diff, "diff omitted: rendered diff exceeds") || strings.Contains(diff, oldLine) {
-		t.Fatalf("unexpected oversized diff result: %d bytes\n%s", len(diff), diff)
-	}
-}

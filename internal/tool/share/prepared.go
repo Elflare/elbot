@@ -4,6 +4,7 @@ package share
 import (
 	"bytes"
 	"context"
+	"slices"
 
 	"elbot/internal/operationresult"
 )
@@ -24,7 +25,10 @@ type PreparedCall struct {
 func NewPreparedCall(req CallRequest, assessment RiskAssessment, details []ConfirmationDetailBlock, run func(context.Context) (operationresult.Result[*Result], string, error)) *PreparedCall {
 	req.Arguments = bytes.Clone(req.Arguments)
 	assessment.Reasons = append([]string(nil), assessment.Reasons...)
-	return &PreparedCall{request: req, assessment: assessment, details: append([]ConfirmationDetailBlock(nil), details...), run: run}
+	details = slices.DeleteFunc(slices.Clone(details), func(block ConfirmationDetailBlock) bool {
+		return block.Kind == ConfirmationDetailDiff && block.Content.(string) == ""
+	})
+	return &PreparedCall{request: req, assessment: assessment, details: details, run: run}
 }
 
 func (p *PreparedCall) Details() []ConfirmationDetailBlock {

@@ -15,10 +15,9 @@ import (
 const MaxFileSize = 2 * 1024 * 1024
 
 type EditFileOptions struct {
-	MaxInputBytes        int64
-	MaxOutputBytes       int64
-	DetailedDiffMaxBytes int64
-	beforeWrite          func(File, bool, os.FileMode) (operationresult.Result[struct{}], error) // 写入前的业务准入与最终复核。
+	MaxInputBytes  int64
+	MaxOutputBytes int64
+	beforeWrite    func(File, bool, os.FileMode) (operationresult.Result[struct{}], error) // 写入前的业务准入与最终复核。
 }
 
 type File struct {
@@ -38,7 +37,6 @@ type EditResult struct {
 	RevisionBefore string
 	RevisionAfter  string
 	Diff           string
-	DiffAvailable  bool // Diff 是否包含可展示的完整差异 hunk。
 	// NewBytes contains the edited file bytes; confirmation previews omit them.
 	NewBytes          []byte
 	RollbackAvailable bool

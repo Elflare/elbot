@@ -4,6 +4,7 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"elbot/internal/operationresult"
 	"encoding/json"
 	"strings"
@@ -68,7 +69,7 @@ func TestResolveUpdateRunAtReturnsPointerForRelativeOffset(t *testing.T) {
 	}
 }
 
-func TestCronWritePreparationUsesArgumentDetails(t *testing.T) {
+func TestCronWritePreparationUsesPreparedDetails(t *testing.T) {
 	for _, args := range []string{
 		`{"operation":"create","name":"drink","schedule_mode":"once","run_after_minutes":10,"trigger_mode":"direct","message":"喝水\n起来活动一下"}`,
 		`{"operation":"update","name":"drink","tool_list_names":[],"model_provider":"","model":"","enabled":false}`,
@@ -76,21 +77,23 @@ func TestCronWritePreparationUsesArgumentDetails(t *testing.T) {
 		`{"operation":"delete","name":"drink"}`,
 	} {
 		t.Run(args, func(t *testing.T) {
-			repo := &cronRepositoryStub{}
+			owner := contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "qq", ID: "owner"}}
+			ctx := contextinfo.WithActor(t.Context(), owner)
+			repo := &cronRepositoryStub{info: CronInfo{Name: "drink", Title: "drink", CreatedBy: owner, SourcePlatform: "qq", Enabled: true, ScheduleMode: "cron", CronExpr: "* * * * *", TriggerMode: "direct", Message: "original"}}
 			tool := cronTestTools(repo, nil)[2]
 			req := toolshare.CallRequest{ID: "call", Name: tool.Definition.Name, Arguments: json.RawMessage(args)}
-			prepared, err := tool.PrepareCall(t.Context(), req)
+			prepared, err := tool.PrepareCall(ctx, req)
 			if err != nil || prepared.Status != operationresult.Success {
 				t.Fatal(err)
 			}
-			if got := prepared.Data.Details(); len(got) != 0 {
-				t.Errorf("unexpected custom details: %+v", got)
+			if got := prepared.Data.Details(); len(got) == 0 || got[0].Kind != toolshare.ConfirmationDetailFields {
+				t.Errorf("missing structured details: %+v", got)
 			}
 			if !prepared.Data.Matches(req) || string(req.Arguments) != args {
 				t.Error("preparation changed call arguments")
 			}
-			if len(repo.saved) != 0 || repo.name != "" {
-				t.Fatal("preparation accessed the repository")
+			if len(repo.saved) != 0 {
+				t.Fatal("preparation wrote the repository")
 			}
 		})
 	}

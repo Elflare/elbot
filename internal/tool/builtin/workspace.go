@@ -74,7 +74,10 @@ func (t WorkspaceTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse workspace arguments: %v", err)}, nil
 		}
 	}
-	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("工作目录：%s\n重置：%t", args.Path, args.Reset))}, func(ctx context.Context) (_ operationresult.Result[*toolshare.Result], logContent string, _ error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "path", Label: "工作目录", Value: args.Path},
+		toolshare.ConfirmationField{Key: "reset", Label: "重置", Value: args.Reset},
+	)}, func(ctx context.Context) (_ operationresult.Result[*toolshare.Result], logContent string, _ error) {
 		store, hasStore := workspace.WorkspaceStoreFromContext(ctx)
 		if args.Reset {
 			dir, err := defaultWorkspaceDir()

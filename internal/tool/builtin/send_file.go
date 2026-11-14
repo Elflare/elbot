@@ -81,7 +81,11 @@ func (t SendFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 		assessment = toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"发送本地文件"}}
 		source = resolved.Path
 	}
-	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, assessment, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("发送文件：%s", source))}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, assessment, []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "source", Label: "发送文件", Value: source},
+		toolshare.ConfirmationField{Key: "name", Label: "展示名称", Value: args.Name},
+		toolshare.ConfirmationField{Key: "mime_type", Label: "MIME 类型", Value: args.MIMEType},
+	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		out, warnings, label, err := t.buildOutput(ctx, args, source, resolved)
 		if err != nil {
 			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
@@ -111,7 +115,10 @@ func (t SendFileTool) buildOutput(ctx context.Context, args sendFileArgs, source
 		return operationresult.Result[delivery.Output]{Status: operationresult.Success, Data: out}, nil, name, nil
 	}
 	if delivery.IsHTTPMediaSource(source) {
-		urlName := fileNameFromURL(source)
+		urlName, err := fileNameFromURL(source)
+		if err != nil {
+			return operationresult.Result[delivery.Output]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil, "", nil
+		}
 		name := safeFileName(firstNonEmptyString(args.Name, urlName))
 		mimeType := firstNonEmptyString(args.MIMEType, mimeTypeFromName(urlName), mimeTypeFromName(name))
 		out := outputForMediaType(mimeType, "")
@@ -164,12 +171,15 @@ func mimeTypeFromName(name string) string {
 	return mime.TypeByExtension(filepath.Ext(strings.TrimSpace(name)))
 }
 
-func fileNameFromURL(value string) string {
+func fileNameFromURL(value string) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(value))
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("parse HTTP(S) URL: %w", err)
 	}
-	return urlpath.Base(u.Path)
+	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", fmt.Errorf("source must be an absolute HTTP(S) URL")
+	}
+	return urlpath.Base(u.Path), nil
 }
 
 func localSourcePath(source string) (string, error) {

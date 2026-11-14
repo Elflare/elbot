@@ -579,8 +579,8 @@ func mustParseURL(t *testing.T, raw string) *url.URL {
 	return parsed
 }
 
-func TestWebExtractToolCapsMaxChars(t *testing.T) {
-	data := sliceExtract(cachedExtract{url: "u", content: strings.Repeat("x", maxExtractChars+100)}, 0, maxExtractChars+999, true)
+func TestWebExtractToolSlicesPreparedMaxChars(t *testing.T) {
+	data := sliceExtract(cachedExtract{url: "u", content: strings.Repeat("x", maxExtractChars+100)}, 0, maxExtractChars, true)
 	if data.ReturnedChars != maxExtractChars || data.TotalChars != maxExtractChars+100 {
 		t.Fatalf("data = %#v", data)
 	}

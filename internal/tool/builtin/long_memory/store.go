@@ -26,10 +26,9 @@ type longMemoryUpdateArgs struct {
 }
 
 type longMemoryUpdatePreview struct {
-	Before  longMemoryRecord
-	After   longMemoryRecord
-	File    *fileops.PreparedFile // 公共文件层保存批准内容与原修订，提交时统一复核。
-	Changes []string
+	Before longMemoryRecord
+	After  longMemoryRecord
+	File   *fileops.PreparedFile // 公共文件层保存批准内容与原修订，提交时统一复核。
 }
 
 type longMemoryRecord struct {
@@ -189,45 +188,32 @@ func (s *longMemoryStore) previewUpdateLocked(ctx context.Context, args longMemo
 		}
 		record = recordFromParsedFile(record.FilePath, parsed, record.FileMTimeNS, record.FileSize)
 		next := record
-		changes := []string{}
 		if args.Category != nil {
-			old := next.Category
 			next.Category = cleanLongMemoryText(*args.Category)
-			changes = appendLongMemoryChange(changes, "分类", old, next.Category)
 		}
 		if args.Title != nil {
-			old := next.Title
 			next.Title = cleanLongMemoryText(*args.Title)
-			changes = appendLongMemoryChange(changes, "标题", old, next.Title)
 		}
 		if args.Summary != nil {
-			old := next.Summary
 			next.Summary = cleanLongMemoryText(*args.Summary)
-			changes = appendLongMemoryChange(changes, "摘要", old, next.Summary)
 		}
 		if args.Keywords != nil {
-			old := next.Keywords
 			next.Keywords = strings.Join(splitLongMemoryKeywords(*args.Keywords), " ")
-			changes = appendLongMemoryChange(changes, "关键词", old, next.Keywords)
 		}
 		if args.Content != nil {
-			old := next.Content
 			next.Content = strings.TrimSpace(*args.Content)
-			changes = appendLongMemoryChange(changes, "正文", old, next.Content)
 		}
 		if len(args.ContentEdits) > 0 {
 			content, err := fileops.ApplyEdits(next.Content, args.ContentEdits)
 			if err != nil {
 				return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 			}
-			old := next.Content
 			next.Content = strings.TrimSpace(content)
-			changes = appendLongMemoryChange(changes, "正文", old, next.Content)
 		}
 		if err := validateLongMemoryRecord(next, true); err != nil {
 			return operationresult.Result[string]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
-		if len(changes) == 0 {
+		if next.Category == record.Category && next.Title == record.Title && next.Summary == record.Summary && next.Keywords == record.Keywords && next.Content == record.Content {
 			return operationresult.Result[string]{Status: operationresult.Rejected, Message: "edit produced no changes"}, nil
 		}
 		next.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
@@ -235,7 +221,7 @@ func (s *longMemoryStore) previewUpdateLocked(ctx context.Context, args longMemo
 		if err != nil {
 			return operationresult.Result[string]{}, err
 		}
-		preview.Before, preview.After, preview.Changes = record, next, changes
+		preview.Before, preview.After = record, next
 		return operationresult.Result[string]{Status: operationresult.Success, Data: string(data)}, nil
 	})
 	if err != nil {
@@ -250,21 +236,6 @@ func (s *longMemoryStore) previewUpdateLocked(ctx context.Context, args longMemo
 
 func (args longMemoryUpdateArgs) hasChanges() bool {
 	return args.Category != nil || args.Title != nil || args.Summary != nil || args.Keywords != nil || args.Content != nil || len(args.ContentEdits) > 0
-}
-
-func appendLongMemoryChange(changes []string, label, oldValue, newValue string) []string {
-	if oldValue == newValue {
-		return changes
-	}
-	return append(changes, fmt.Sprintf("%s：%s -> %s", label, longMemoryInlineValue(oldValue), longMemoryInlineValue(newValue)))
-}
-
-func longMemoryInlineValue(value string) string {
-	value = cleanLongMemoryText(value)
-	if value == "" {
-		return "(空)"
-	}
-	return value
 }
 
 func (s *longMemoryStore) delete(ctx context.Context, approved longMemoryRecord, target, revision string) (operationresult.Result[string], error) {

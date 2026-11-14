@@ -96,16 +96,16 @@ func TestFormatDetailCommandCombinesStructuredBlocks(t *testing.T) {
 		ToolName: "edit_file",
 		Risk:     "high",
 		Detail: []tool.ConfirmationDetailBlock{
-			{Kind: tool.ConfirmationDetailText, Content: "文件：notes.md"},
+			{Kind: tool.ConfirmationDetailText, Content: "edit_file [high]: confirm"},
+			{Kind: tool.ConfirmationDetailFields, Content: []tool.ConfirmationField{{Key: "path", Label: "文件", Value: "notes.md"}}},
 			{Kind: tool.ConfirmationDetailDiff, Content: "-before\n+after"},
-			{Kind: tool.ConfirmationDetailArguments, Content: map[string]any{"path": "notes.md"}},
 		},
 	}}
 	got, err := FormatCommandResult(command.Request{Name: "detail"}, result)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"edit_file [high]", "文件：notes.md", "-before\n+after", `"path": "notes.md"`} {
+	for _, want := range []string{"edit_file [high]", "文件：notes.md", "-before\n+after"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("detail output %q does not contain %q", got, want)
 		}

@@ -31,10 +31,11 @@ type ConfirmationDetailKind = delivery.ContentBlockKind
 type ConfirmationDetailBlock = delivery.ContentBlock
 
 const (
-	ConfirmationDetailText      = delivery.ContentText
-	ConfirmationDetailDiff      = delivery.ContentDiff
-	ConfirmationDetailArguments = delivery.ContentArguments
-	ConfirmationDetailMarkdown  = delivery.ContentMarkdown
+	ConfirmationDetailText     = delivery.ContentText
+	ConfirmationDetailDiff     = delivery.ContentDiff
+	ConfirmationDetailFields   = delivery.ContentFields
+	ConfirmationDetailCode     = delivery.ContentCode
+	ConfirmationDetailMarkdown = delivery.ContentMarkdown
 )
 
 type Snapshot struct {

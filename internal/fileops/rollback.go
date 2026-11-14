@@ -319,8 +319,7 @@ func (m *RollbackManager) lockTarget(ctx context.Context, target string) (func()
 
 type RollbackPreview struct {
 	RollbackInfo
-	Diff          string
-	DiffAvailable bool // Diff 是否包含可展示的完整差异 hunk。
+	Diff string
 }
 
 type RollbackResult struct {
@@ -340,16 +339,22 @@ func (s *RollbackSession) Preview(ctx context.Context, path string, expectedID u
 	}
 	defer unlock()
 	record := prepared.Data
-	diff := omittedDiff(record.Path, "file exceeds detailed diff limit")
-	diffAvailable := false
-	if len(current) <= MaxFileSize && len(record.before) <= MaxFileSize {
-		newText, _, _, decodeErr := DecodeBytes(current, record.encoding)
-		oldText, _, _, oldErr := DecodeBytes(record.before, record.encoding)
-		if decodeErr == nil && oldErr == nil {
-			diff, diffAvailable = editDiff(record.Path, NormalizeEditText(newText), NormalizeEditText(oldText), len(current), len(record.before), 3, MaxFileSize)
-		}
+	if !displayFileDiff(len(current), len(record.before)) {
+		return operationresult.Result[RollbackPreview]{Status: operationresult.Success, Data: RollbackPreview{RollbackInfo: record.RollbackInfo}}, nil
 	}
-	return operationresult.Result[RollbackPreview]{Status: operationresult.Success, Data: RollbackPreview{RollbackInfo: record.RollbackInfo, Diff: diff, DiffAvailable: diffAvailable}}, nil
+	newText, _, _, err := DecodeBytes(current, record.encoding)
+	if err != nil {
+		return operationresult.Result[RollbackPreview]{Status: operationresult.Rejected, Message: fmt.Sprintf("无法预览撤销：当前文件解码失败：%v", err)}, nil
+	}
+	oldText, _, _, err := DecodeBytes(record.before, record.encoding)
+	if err != nil {
+		return operationresult.Result[RollbackPreview]{}, err
+	}
+	diff, err := editDiff(record.Path, NormalizeEditText(newText), NormalizeEditText(oldText), 3)
+	if err != nil {
+		return operationresult.Result[RollbackPreview]{}, err
+	}
+	return operationresult.Result[RollbackPreview]{Status: operationresult.Success, Data: RollbackPreview{RollbackInfo: record.RollbackInfo, Diff: diff}}, nil
 }
 
 func (s *RollbackSession) Rollback(ctx context.Context, path string, expectedID uint64, checkWrite func(string) operationresult.Result[struct{}]) (operationresult.Result[RollbackResult], error) {

@@ -7,7 +7,6 @@ import (
 	"elbot/internal/tool"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"strings"
 	"sync"
@@ -306,11 +305,6 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	if c.isSessionAutoConfirmed(sessionID) || c.isToolAutoConfirmed(sessionID, call.Name) {
 		return operationresult.Result[tool.ConfirmResult]{Status: operationresult.Success, Data: tool.ConfirmResult{}}, nil
 	}
-	fullArgs := compactArguments(call.Arguments)
-	detail, err := confirmationDetailsWithArguments(detail, fullArgs)
-	if err != nil {
-		return operationresult.Result[tool.ConfirmResult]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
-	}
 	timeout := c.policy.WaitTimeout(ctx)
 	wait := c.turns.BeginRiskConfirmation(sessionID, turn.RiskConfirmation{
 		ToolName: call.Name,
@@ -394,23 +388,6 @@ func (c *ConfirmationCoordinator) AwaitToolConfirmation(ctx context.Context, ses
 	}
 	c.publishConfirmationResult(ctx, sessionID, call, assessment.Level, action, resp.Extra, "", events.ResultSucceeded, slog.LevelInfo)
 	return operationresult.Result[tool.ConfirmResult]{Status: operationresult.Success, Data: tool.ConfirmResult{Extra: resp.Extra}}, nil
-}
-
-func confirmationDetailsWithArguments(details []tool.ConfirmationDetailBlock, argsText string) ([]tool.ConfirmationDetailBlock, error) {
-	decoder := json.NewDecoder(strings.NewReader(argsText))
-	decoder.UseNumber()
-	var value any
-	if err := decoder.Decode(&value); err != nil {
-		return nil, fmt.Errorf("decode confirmation arguments: %w", err)
-	}
-	if _, ok := value.(map[string]any); !ok {
-		return nil, fmt.Errorf("confirmation arguments must be a JSON object")
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		return nil, fmt.Errorf("confirmation arguments contain trailing data")
-	}
-	return append(details, tool.ConfirmationDetailBlock{Kind: tool.ConfirmationDetailArguments, Content: value}), nil
 }
 
 func toTurnConfirmationDetails(details []tool.ConfirmationDetailBlock) []turn.ConfirmationDetailBlock {

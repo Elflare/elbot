@@ -227,16 +227,16 @@ func TestSkillMediaBridge(t *testing.T) {
 	}
 	call := mediaRuntime.NewCall()
 	defer call.Close()
-	raw := json.RawMessage(fmt.Sprintf(`{ "text":%q }`, item.Data.ID))
+	raw := map[string]any{"text": item.Data.ID}
 	unchanged, err := prepareGoMedia(ctx, raw, call, dir)
-	if err != nil || unchanged.Status != operationresult.Success || string(unchanged.Data) != string(raw) {
-		t.Fatalf("ordinary Go payload changed: %s %v", unchanged, err)
+	if err != nil || unchanged.Status != operationresult.Success || unchanged.Data["text"] != raw["text"] {
+		t.Fatalf("ordinary Go payload changed: %v %v", unchanged, err)
 	}
 	large, err := center.ImportBytes(ctx, []byte(strings.Repeat("x", 1024*1024+1)), media.Input{Name: "large.bin"}, media.ImportLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	largeRaw, _ := json.Marshal(map[string]any{"media_inputs": []toolshare.MediaInput{{MediaID: large.Data.ID}, {MediaID: item.Data.ID}, {MediaID: large.Data.ID}, {MediaID: item.Data.ID}}})
+	largeRaw := map[string]any{"media_inputs": []any{map[string]any{"media": large.Data.ID}, map[string]any{"media": item.Data.ID}, map[string]any{"media": large.Data.ID}, map[string]any{"media": item.Data.ID}}}
 	prepared, err := prepareGoMedia(ctx, largeRaw, call, dir)
 	if err != nil {
 		t.Fatal(err)
@@ -251,7 +251,11 @@ func TestSkillMediaBridge(t *testing.T) {
 			Size     int64  `json:"size"`
 		} `json:"media_inputs"`
 	}
-	if err := json.Unmarshal(prepared.Data, &payload); err != nil {
+	encoded, err := json.Marshal(prepared.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(encoded, &payload); err != nil {
 		t.Fatal(err)
 	}
 	if len(payload.Inputs) != 4 || payload.Inputs[0] != payload.Inputs[2] || payload.Inputs[1] != payload.Inputs[3] {
@@ -299,6 +303,11 @@ func TestSkillMediaBridge(t *testing.T) {
 		raw := json.RawMessage(`{"inputs":` + value + `}`)
 		if result, err := prepareCommandMedia(ctx, raw, manifest, call, dir); err != nil || result.Status == operationresult.Success {
 			t.Fatalf("accepted media array %s", value)
+		}
+	}
+	for _, value := range []any{nil, "bad", []any{42}, []any{map[string]any{"media": 42}}} {
+		if result, err := prepareGoMedia(ctx, map[string]any{"media_inputs": value}, call, dir); err != nil || result.Status != operationresult.InvalidArguments {
+			t.Fatalf("accepted invalid media_inputs: %#v, result=%+v err=%v", value, result, err)
 		}
 	}
 	for _, out := range []string{`{"segments":[{"type":"file"}]}`, `{"segments":[{"type":"file","path":"../escape"}]}`, `{"segments":[{"type":"file","path":"x","media":"bad"}]}`} {

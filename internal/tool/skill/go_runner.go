@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"elbot/internal/config"
 	"elbot/internal/operationresult"
@@ -21,9 +22,9 @@ type GoRunner struct {
 }
 
 type goRunnerArgs struct {
-	SkillName string          `json:"skill_name"`
-	TimeoutMS int             `json:"timeout_ms"`
-	Payload   json.RawMessage `json:"-"`
+	SkillName string         `json:"skill_name"`
+	TimeoutMS int            `json:"timeout_ms"`
+	Payload   map[string]any `json:"-"`
 }
 
 func (t GoRunner) Definition() toolshare.ToolDefinition {
@@ -48,8 +49,14 @@ func (r GoRunner) PrepareCall(ctx context.Context, req toolshare.CallRequest, in
 	if !ok || record.Kind != KindGo || record.BinaryPath == "" {
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.NotFound, Message: fmt.Sprintf("go skill %q not found", args.SkillName)}, nil
 	}
-	preview := fmt.Sprintf("Go Skill：%s\n程序：%s\n工作目录：%s", record.Name, record.BinaryPath, record.Root)
-	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: record.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(preview)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+	details := []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "skill_name", Label: "Go Skill", Value: record.Name},
+		toolshare.ConfirmationField{Key: "program", Label: "程序", Value: record.BinaryPath},
+		toolshare.ConfirmationField{Key: "work_dir", Label: "工作目录", Value: record.Root},
+		toolshare.ConfirmationField{Key: "timeout_ms", Label: "超时（ms）", Value: args.TimeoutMS},
+		toolshare.ConfirmationField{Key: "payload", Label: "业务参数", Value: args.Payload},
+	)}
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: record.Risk}, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		return r.call(ctx, args, record, runMediaCommand)
 	})}, nil
 }
@@ -62,7 +69,7 @@ func (r GoRunner) call(ctx context.Context, args goRunnerArgs, record record, ru
 		return operationresult.Result[*toolshare.Result]{}, callErr.Error(), callErr
 	}
 	environment := r.manager.processEnv.Overlay(dotEnv)
-	timeout := runnerTimeout(args.TimeoutMS)
+	timeout := time.Duration(args.TimeoutMS) * time.Millisecond
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	mediaCall := r.manager.media.NewCall()
@@ -77,7 +84,13 @@ func (r GoRunner) call(ctx context.Context, args goRunnerArgs, record record, ru
 	}
 	cmd := environment.CommandContext(runCtx, record.BinaryPath)
 	cmd.Dir = record.Root
-	cmd.Stdin = bytes.NewReader(payload.Data)
+	var stdin bytes.Buffer
+	encoder := json.NewEncoder(&stdin)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(payload.Data); err != nil {
+		return operationresult.Result[*toolshare.Result]{}, "", err
+	}
+	cmd.Stdin = &stdin
 	result, callErr := run(runCtx, "go skill", cmd, mediaCall)
 	if callErr != nil {
 		return operationresult.Result[*toolshare.Result]{}, "", callErr
@@ -105,13 +118,18 @@ func parseGoRunnerArgs(data json.RawMessage) (goRunnerArgs, error) {
 	if len(value) == 0 {
 		return goRunnerArgs{}, fmt.Errorf("payload is required")
 	}
-	var payload map[string]json.RawMessage
-	if err := json.Unmarshal(value, &payload); err != nil {
+	var payload map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(value))
+	decoder.UseNumber()
+	if err := decoder.Decode(&payload); err != nil {
 		return goRunnerArgs{}, fmt.Errorf("payload must be object: %w", err)
 	}
 	if payload == nil {
 		return goRunnerArgs{}, fmt.Errorf("payload must be object")
 	}
-	args.Payload = json.RawMessage(value)
+	args.Payload = payload
+	if args.TimeoutMS <= 0 {
+		args.TimeoutMS = int(defaultRunnerTimeout / time.Millisecond)
+	}
 	return args, nil
 }

@@ -48,7 +48,6 @@ func normalizeReadFileMode(value string) (string, error) {
 }
 
 func readFileASTResult(file fileops.File, query string, contextLines, maxMatches, index int, warnings []string) (operationresult.Result[*toolshare.Result], error) {
-	query = strings.TrimSpace(query)
 	if query == "" {
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "query is required when mode is ast"}, nil
 	}
@@ -80,7 +79,6 @@ type astFunctionMatch struct {
 }
 
 func readFileASTFunctionResult(file fileops.File, query string, maxMatches, index int, warnings []string) (operationresult.Result[*toolshare.Result], error) {
-	query = strings.TrimSpace(query)
 	if query == "" {
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "query is required when mode is ast_function"}, nil
 	}
@@ -311,8 +309,6 @@ func shellASTContainer(stack []syntax.Node) string {
 }
 
 func formatASTMatches(file fileops.File, query, language string, matches []astMatch, contextLines, maxMatches, index int, warnings []string) operationresult.Result[*toolshare.Result] {
-	contextLines = fileops.NormalizeGrepContextLines(contextLines)
-	maxMatches = fileops.NormalizeMaxMatches(maxMatches)
 	sort.Slice(matches, func(i, j int) bool {
 		if matches[i].Line == matches[j].Line {
 			return matches[i].Column < matches[j].Column
@@ -357,7 +353,6 @@ func formatASTMatches(file fileops.File, query, language string, matches []astMa
 }
 
 func formatASTFunctionMatches(file fileops.File, query, language string, matches []astFunctionMatch, maxMatches, index int, warnings []string) operationresult.Result[*toolshare.Result] {
-	maxMatches = fileops.NormalizeMaxMatches(maxMatches)
 	matchCount := len(matches)
 	truncated := matchCount > maxMatches
 	if index < 0 || index > matchCount {

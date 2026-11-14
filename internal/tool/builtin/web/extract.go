@@ -110,12 +110,26 @@ func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 	default:
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("invalid web_extract method: %s; expected direct, jina, or markdownnew", method)}, nil
 	}
+	args.Offset = max(0, args.Offset)
+	if args.MaxChars <= 0 {
+		args.MaxChars = defaultExtractChars
+	}
+	args.MaxChars = min(args.MaxChars, maxExtractChars)
 	key := extractCacheKey(method, url, selector, proxy)
 	timeout := defaultExtractTimeout
 	if args.TimeoutMS > 0 {
 		timeout = time.Duration(args.TimeoutMS) * time.Millisecond
 	}
-	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("提取网页：%s", url))}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "url", Label: "提取网页", Value: url},
+		toolshare.ConfirmationField{Key: "method", Label: "提取方式", Value: method},
+		toolshare.ConfirmationField{Key: "offset", Label: "偏移", Value: args.Offset},
+		toolshare.ConfirmationField{Key: "max_chars", Label: "最大字符数", Value: args.MaxChars},
+		toolshare.ConfirmationField{Key: "remove_selector", Label: "移除选择器", Value: selector},
+		toolshare.ConfirmationField{Key: "proxy", Label: "代理", Value: proxy},
+		toolshare.ConfirmationField{Key: "timeout_ms", Label: "超时（ms）", Value: timeout.Milliseconds()},
+		toolshare.ConfirmationField{Key: "force_refresh", Label: "强制刷新", Value: args.ForceRefresh},
+	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		entry, cached, err := cache.getOrFetch(ctx, key, args.ForceRefresh, func(fetchCtx context.Context) (operationresult.Result[cachedExtract], error) {
@@ -141,15 +155,6 @@ func (t *WebExtractTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 }
 
 func sliceExtract(entry cachedExtract, offset, maxChars int, cached bool) webExtractData {
-	if offset < 0 {
-		offset = 0
-	}
-	if maxChars <= 0 {
-		maxChars = defaultExtractChars
-	}
-	if maxChars > maxExtractChars {
-		maxChars = maxExtractChars
-	}
 	contentRunes := []rune(entry.content)
 	total := len(contentRunes)
 	if offset > total {

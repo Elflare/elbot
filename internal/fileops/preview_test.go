@@ -142,7 +142,7 @@ func TestPreparedFileWriteCreateAndConflict(t *testing.T) {
 			if err != nil || prepared.Status != operationresult.Success {
 				t.Fatalf("prepare: %+v %v", prepared, err)
 			}
-			if scenario == "same" && prepared.Data.Preview().DiffAvailable {
+			if scenario == "same" && prepared.Data.Preview().Diff != "" {
 				t.Fatal("unchanged file has no displayable diff")
 			}
 			if scenario != "same" && scenario != "changed" {

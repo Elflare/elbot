@@ -143,7 +143,14 @@ func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, i
 			assessment = applyBashShellSandboxRisk(file, assessment)
 		}
 	}
-	details := []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("命令：%s\n工作目录：%s\n超时：%s", cmdText, workDir, timeout))}
+	details := []toolshare.ConfirmationDetailBlock{
+		toolshare.CodeConfirmationDetail(currentShellDesc(), cmdText),
+		toolshare.FieldsConfirmationDetail(
+			toolshare.ConfirmationField{Key: "work_dir", Label: "工作目录", Value: workDir},
+			toolshare.ConfirmationField{Key: "timeout_ms", Label: "超时（ms）", Value: timeout.Milliseconds()},
+			toolshare.ConfirmationField{Key: "media_inputs", Label: "输入媒体", Value: args.MediaInputs},
+		),
+	}
 	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, assessment, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		runCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()

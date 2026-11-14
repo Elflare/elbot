@@ -72,11 +72,13 @@ func (t RollbackFileTool) PrepareCall(ctx context.Context, req toolshare.CallReq
 	if preview.Created {
 		action = "删除本次新建文件（保留父目录）"
 	}
-	details := []toolshare.ConfirmationDetailBlock{toolshare.FileDiffConfirmationDetail(
-		preview.Diff,
-		preview.DiffAvailable,
-		fmt.Sprintf("文件：%s\n操作：%s\n预检 diff:", preview.Path, action),
-	)}
+	details := []toolshare.ConfirmationDetailBlock{
+		toolshare.FieldsConfirmationDetail(
+			toolshare.ConfirmationField{Key: "path", Label: "文件", Value: preview.Path},
+			toolshare.ConfirmationField{Key: "action", Label: "操作", Value: action},
+		),
+		toolshare.FileDiffConfirmationDetail(preview.Diff),
+	}
 	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		return t.call(ctx, preparedRollback)
 	})}, nil

@@ -117,8 +117,14 @@ func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 	if strings.TrimSpace(args.GoSource) != "" {
 		contents = append(contents, struct{ path, content string }{filepath.Join(root, "main.go"), args.GoSource}, struct{ path, content string }{filepath.Join(root, "go.mod"), goModContent(name, goVersion)})
 	}
-	header := fmt.Sprintf("创建 Skill：%s\n目录：%s", name, root)
-	var details []toolshare.ConfirmationDetailBlock
+	if args.TimeoutMS <= 0 {
+		args.TimeoutMS = 60000
+	}
+	details := []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "name", Label: "创建 Skill", Value: name},
+		toolshare.ConfirmationField{Key: "work_dir", Label: "目录", Value: root},
+		toolshare.ConfirmationField{Key: "timeout_ms", Label: "编译超时（ms）", Value: args.TimeoutMS},
+	)}
 	for _, content := range contents {
 		file, err := fileops.PrepareFileWrite(ctx, content.path, content.content)
 		if err != nil {
@@ -129,11 +135,12 @@ func (t CreateElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRe
 		}
 		files = append(files, file.Data)
 		filePreview := file.Data.Preview()
-		details = append(details, toolshare.FileDiffConfirmationDetail(
-			filePreview.Diff,
-			filePreview.DiffAvailable,
-			fmt.Sprintf("%s\n文件：%s\n%s", header, content.path, filePreview.Diff),
-		))
+		details = append(details,
+			toolshare.FieldsConfirmationDetail(
+				toolshare.ConfirmationField{Key: "path", Label: "文件", Value: content.path},
+			),
+			toolshare.FileDiffConfirmationDetail(filePreview.Diff),
+		)
 	}
 	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		t.manager.writeMu.Lock()

@@ -217,7 +217,7 @@ func TestCurrentConfirmationRouteReturnsStructuredDetail(t *testing.T) {
 			Kind: "tool",
 			Detail: []tool.ConfirmationDetailBlock{
 				{Kind: tool.ConfirmationDetailDiff, Content: "-before\n+after"},
-				{Kind: tool.ConfirmationDetailArguments, Content: map[string]any{"operation": "write"}},
+				{Kind: tool.ConfirmationDetailFields, Content: []tool.ConfirmationField{{Key: "command", Label: "命令", Value: "a>b && c<d"}}},
 			},
 		}},
 		Authenticate: func(ctx context.Context, _ *http.Request) (context.Context, bool, error) {
@@ -225,7 +225,7 @@ func TestCurrentConfirmationRouteReturnsStructuredDetail(t *testing.T) {
 		},
 	})
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/confirmation", nil))
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"kind":"diff"`) || !strings.Contains(response.Body.String(), `"content":{"operation":"write"}`) {
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"kind":"diff"`) || strings.Contains(response.Body.String(), `\u003`) || strings.Contains(response.Body.String(), `\u0026`) || !strings.Contains(response.Body.String(), `"content":[{"key":"command","label":"命令","value":"a>b && c<d"}]`) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }

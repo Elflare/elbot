@@ -116,7 +116,17 @@ func (t WebSearchTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 	// 请求结构仅包含字符串、整数、布尔和字符串切片。
 	body, _ := json.Marshal(payload)
 
-	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("搜索：%s", query))}, func(ctx context.Context) (_ operationresult.Result[*toolshare.Result], logContent string, _ error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "query", Label: "搜索", Value: payload.Query},
+		toolshare.ConfirmationField{Key: "search_depth", Label: "搜索深度", Value: payload.SearchDepth},
+		toolshare.ConfirmationField{Key: "max_results", Label: "最大结果数", Value: payload.MaxResults},
+		toolshare.ConfirmationField{Key: "topic", Label: "主题", Value: payload.Topic},
+		toolshare.ConfirmationField{Key: "time_range", Label: "时间范围", Value: payload.TimeRange},
+		toolshare.ConfirmationField{Key: "include_domains", Label: "包含域名", Value: payload.IncludeDomains},
+		toolshare.ConfirmationField{Key: "exclude_domains", Label: "排除域名", Value: payload.ExcludeDomains},
+		toolshare.ConfirmationField{Key: "country", Label: "国家", Value: payload.Country},
+		toolshare.ConfirmationField{Key: "exact_match", Label: "精确匹配", Value: payload.ExactMatch},
+	)}, func(ctx context.Context) (_ operationresult.Result[*toolshare.Result], logContent string, _ error) {
 		logContent = fmt.Sprintf("source=tavily query=%q status=failed", query)
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, t.endpoint, bytes.NewReader(body))
 		if err != nil {

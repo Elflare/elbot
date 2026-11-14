@@ -113,7 +113,7 @@ func TestRollbackToolPreflightPinsRecordAndWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 	details := prepared.Data.Details()
-	if len(details) != 1 || details[0].Kind != toolshare.ConfirmationDetailDiff || !strings.Contains(details[0].Content.(string), "file") {
+	if len(details) != 2 || details[0].Kind != toolshare.ConfirmationDetailFields || details[1].Kind != toolshare.ConfirmationDetailDiff || !strings.Contains(details[1].Content.(string), "file") {
 		t.Fatalf("details: %+v", details)
 	}
 	f.write(t, "file", "two")

@@ -172,7 +172,11 @@ func TestSkillDeadlineSelection(t *testing.T) {
 						catalog.Replace([]record{{Name: "deadline", Kind: KindGo, Root: dir, BinaryPath: binary}})
 						runner := GoRunner{manager: &Manager{media: newTestMediaRuntime(t), catalog: catalog}}
 						record, _ := catalog.Get("deadline")
-						_, _, err = runner.call(ctx, goRunnerArgs{SkillName: "deadline", TimeoutMS: tc.value * 1000, Payload: json.RawMessage(`{}`)}, record, execute)
+						args, parseErr := parseGoRunnerArgs([]byte(fmt.Sprintf(`{"skill_name":"deadline","timeout_ms":%d,"payload":{}}`, tc.value*1000)))
+						if parseErr != nil {
+							t.Fatal(parseErr)
+						}
+						_, _, err = runner.call(ctx, args, record, execute)
 					} else {
 						command := commandTool{record: record{Root: dir}, manifest: AgentSkillManifest{Command: []string{binary}, TimeoutSeconds: int(tc.want.Seconds())}, media: newTestMediaRuntime(t)}
 						_, _, err = command.call(ctx, nil, nil, execute)

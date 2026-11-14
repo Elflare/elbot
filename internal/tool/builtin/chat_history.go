@@ -143,7 +143,30 @@ func (t SearchChatHistoryTool) PrepareCall(ctx context.Context, req toolshare.Ca
 			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse chat_id: %v", err)}, nil
 		}
 	}
-	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+	var platform, chatType, chatID any
+	if request.Platform != nil {
+		platform = *request.Platform
+	}
+	if request.ChatType != nil {
+		chatType = string(*request.ChatType)
+	}
+	if request.ChatID != nil {
+		chatID = *request.ChatID
+	}
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "platform", Label: "平台", Value: platform},
+		toolshare.ConfirmationField{Key: "chat_type", Label: "会话类型", Value: chatType},
+		toolshare.ConfirmationField{Key: "chat_id", Label: "会话 ID", Value: chatID},
+		toolshare.ConfirmationField{Key: "query", Label: "查询", Value: args.Query},
+		toolshare.ConfirmationField{Key: "query_mode", Label: "查询模式", Value: args.QueryMode},
+		toolshare.ConfirmationField{Key: "user", Label: "用户", Value: args.User},
+		toolshare.ConfirmationField{Key: "since", Label: "开始时间", Value: args.Since},
+		toolshare.ConfirmationField{Key: "until", Label: "结束时间", Value: args.Until},
+		toolshare.ConfirmationField{Key: "hours", Label: "最近小时数", Value: args.Hours},
+		toolshare.ConfirmationField{Key: "days", Label: "最近天数", Value: args.Days},
+		toolshare.ConfirmationField{Key: "limit", Label: "条数", Value: args.Limit},
+		toolshare.ConfirmationField{Key: "full", Label: "完整正文", Value: args.Full},
+	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		rows, err := t.history.Search(ctx, request)
 		if err != nil {
 			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
@@ -182,7 +205,12 @@ func (t GetChatHistoryAroundTool) PrepareCall(ctx context.Context, req toolshare
 			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse get_chat_history_around arguments: %v", err)}, nil
 		}
 	}
-	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "message_id", Label: "消息", Value: args.MessageID},
+		toolshare.ConfirmationField{Key: "before", Label: "前文条数", Value: args.Before},
+		toolshare.ConfirmationField{Key: "after", Label: "后文条数", Value: args.After},
+		toolshare.ConfirmationField{Key: "full", Label: "完整正文", Value: args.Full},
+	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		messageID := parseChatHistoryMessageID(args.MessageID)
 		if messageID == "" {
 			return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"}, "message_id invalid", nil
@@ -221,7 +249,10 @@ func (t ReplyToChatHistoryMessageTool) PrepareCall(ctx context.Context, req tool
 			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("parse reply_to_chat_history_message arguments: %v", err)}, nil
 		}
 	}
-	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("引用消息：%s\n回复：%s", args.MessageID, args.Message))}, func(ctx context.Context) (_ operationresult.Result[*toolshare.Result], logContent string, _ error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "message_id", Label: "引用消息", Value: args.MessageID},
+		toolshare.ConfirmationField{Key: "message", Label: "回复", Value: args.Message},
+	)}, func(ctx context.Context) (_ operationresult.Result[*toolshare.Result], logContent string, _ error) {
 		messageID := parseChatHistoryMessageID(args.MessageID)
 		if messageID == "" {
 			message := "message_id 必须是 search_chat_history 返回的 #message_id 或纯平台消息 ID。"

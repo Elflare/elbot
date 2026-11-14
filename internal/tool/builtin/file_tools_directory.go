@@ -135,7 +135,7 @@ func (c *directoryASTCache) store(root, mode, query string, matches []directoryS
 }
 
 func readFileDirectorySearch(ctx context.Context, root, mode string, args readFileArgs, warnings []string, astCache *directoryASTCache) (operationresult.Result[*toolshare.Result], error) {
-	query := strings.TrimSpace(args.Query)
+	query := args.Query
 	if query == "" {
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("query is required when mode is %s", mode)}, nil
 	}
@@ -144,7 +144,7 @@ func readFileDirectorySearch(ctx context.Context, root, mode string, args readFi
 	var err error
 	switch mode {
 	case readFileModeGrep:
-		keep := fileops.NormalizeMaxMatches(args.MaxMatches)
+		keep := args.MaxMatches
 		if args.Index > 0 {
 			keep = args.Index
 		}
@@ -551,7 +551,6 @@ func directoryASTFilesMatch(root string, cached []directoryASTFileState) bool {
 }
 
 func formatDirectorySearchMatches(root, mode, query string, matches []directorySearchMatch, total, contextLines, maxMatches, index int, warnings []string) (operationresult.Result[*toolshare.Result], error) {
-	maxMatches = fileops.NormalizeMaxMatches(maxMatches)
 	if index > total || index < 0 {
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("index %d is out of range; found %d matches", index, total)}, nil
 	}
@@ -613,7 +612,6 @@ func formatDirectorySearchSelection(b *strings.Builder, root, mode string, match
 	}
 	start, end := match.Line, match.EndLine
 	if mode != readFileModeASTFunction {
-		contextLines = fileops.NormalizeGrepContextLines(contextLines)
 		start, end = max(1, match.Line-contextLines), min(len(lines), match.Line+contextLines)
 	}
 	fmt.Fprintf(b, "match: %s:%d-%d [%s] %s\n", match.Path, match.Line, match.EndLine, match.Kind, match.Label)

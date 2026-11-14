@@ -50,13 +50,6 @@ func (out *limitedOutput) String() string {
 	return text
 }
 
-func runnerTimeout(timeoutMS int) time.Duration {
-	if timeoutMS > 0 {
-		return time.Duration(timeoutMS) * time.Millisecond
-	}
-	return defaultRunnerTimeout
-}
-
 func runMediaCommand(ctx context.Context, label string, cmd *exec.Cmd, mediaCall toolshare.MediaCall) (operationresult.Result[*toolshare.Result], error) {
 	stdout := limitedOutput{limit: maxRunnerStdout}
 	stderr := limitedOutput{limit: maxRunnerOutput}
@@ -192,10 +185,7 @@ func runGoBuild(ctx context.Context, root, name string, timeoutMS int, environme
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
-	timeout := 60 * time.Second
-	if timeoutMS > 0 {
-		timeout = time.Duration(timeoutMS) * time.Millisecond
-	}
+	timeout := time.Duration(timeoutMS) * time.Millisecond
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := environment.CommandContext(runCtx, goPath.Data, "build", "-o", binary, ".")

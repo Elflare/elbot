@@ -134,11 +134,13 @@ func (t ViewImageTool) PrepareCall(ctx context.Context, req toolshare.CallReques
 	if path.Data.Path != "" && isSensitiveReadFile(path.Data.Path) {
 		assessment = toolshare.RiskAssessment{Level: toolshare.RiskHigh, Reasons: []string{"读取可能包含凭据的敏感文件，需要用户确认"}}
 	}
-	preview := fmt.Sprintf("查看图片：%s\n消息：%v", args.Source, args.MessageIDs)
-	if path.Data.Path != "" {
-		preview = fmt.Sprintf("查看图片：%s", path.Data.Path)
-	}
-	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, assessment, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(preview)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+	details := []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "source", Label: "图片来源", Value: args.Source},
+		toolshare.ConfirmationField{Key: "path", Label: "本地路径", Value: path.Data.Path},
+		toolshare.ConfirmationField{Key: "message_id", Label: "消息", Value: args.MessageIDs},
+		toolshare.ConfirmationField{Key: "media_index", Label: "媒体编号", Value: args.MediaIndex},
+	)}
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, assessment, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		if args.Source == "" {
 			return t.viewMessages(ctx, args)
 		}

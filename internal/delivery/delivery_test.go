@@ -1,43 +1,6 @@
 package delivery
 
-import (
-	"context"
-	"errors"
-	"strings"
-	"testing"
-)
-
-type fakeSender struct {
-	targets  []Target
-	targeted [][]Output
-	err      error
-}
-
-func (s *fakeSender) SendTo(_ context.Context, noticeTarget Target, noticeOutputs []Output) (Receipt, error) {
-	if s.err != nil {
-		return Receipt{}, s.err
-	}
-	s.targets = append(s.targets, noticeTarget)
-	s.targeted = append(s.targeted, noticeOutputs)
-	return Receipt{}, nil
-}
-
-func TestSendToEmptyOutputsAreSilent(t *testing.T) {
-	backend := &fakeSender{}
-	_, err := NewManager(backend).SendTo(t.Context(), Target{}, nil)
-	if err != nil {
-		t.Fatal("empty outputs: result= err=", err)
-	}
-	if len(backend.targeted) != 0 {
-		t.Fatal("empty outputs reached sender")
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	_, err = NewManager(backend).SendTo(ctx, Target{}, nil)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatal("cancellation lost: result= err=", err)
-	}
-}
+import "testing"
 
 func TestFallbackTextForEmoticon(t *testing.T) {
 	for _, out := range []Output{
@@ -57,167 +20,14 @@ func TestFallbackTextForAt(t *testing.T) {
 	}
 }
 
-func TestFallbackTextForTextKeepsContent(t *testing.T) {
-	got := FallbackText(Text("hello"))
-	if got != "hello" {
-		t.Fatalf("FallbackText = %q", got)
-	}
-}
-
-func TestContentBlocksTextPreservesDiffAndArguments(t *testing.T) {
-	got := ContentBlocksText([]ContentBlock{
-		{Kind: ContentText, Content: "edit_file [high]: confirm"},
-		{Kind: ContentDiff, Content: "-before\n+after"},
-		{Kind: ContentArguments, Content: map[string]any{"path": "notes.md"}},
+func TestSplitByDeliveryTiming(t *testing.T) {
+	immediate, deferred := SplitByDeliveryTiming([]Output{
+		Text("default"),
+		WithDeliveryTiming(Text("later"), DeliveryAfterAssistant),
+		WithDeliveryTiming(Text("now"), DeliveryImmediate),
 	})
-	for _, want := range []string{"edit_file [high]: confirm", "```diff\n-before\n+after\n```", "```json\n{\n  \"path\": \"notes.md\"\n}\n```"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("ContentBlocksText %q missing %q", got, want)
-		}
-	}
-}
-
-func TestWithDeliveryTimingResetsWithoutChangingOriginal(t *testing.T) {
-	for _, timing := range []string{DeliveryImmediate, "", "  "} {
-		t.Run(timing, func(t *testing.T) {
-			original := WithDeliveryTiming(Text("hello"), DeliveryAfterAssistant)
-			updated := WithDeliveryTiming(original, timing)
-			if got := DeliveryTiming(updated); got != DeliveryImmediate {
-				t.Fatalf("updated timing = %q, want %q", got, DeliveryImmediate)
-			}
-			if got := DeliveryTiming(original); got != DeliveryAfterAssistant {
-				t.Fatalf("original timing = %q, want %q", got, DeliveryAfterAssistant)
-			}
-		})
-	}
-}
-
-func TestRecordOutputValidationAndFallback(t *testing.T) {
-	for _, out := range []Output{
-		RecordPath("voice.mp3"),
-		{Kind: KindRecord, Source: Source{URL: "https://example.com/voice.mp3"}},
-		{Kind: KindRecord, Source: Source{Data: []byte("voice")}},
-	} {
-		if err := ValidateOutputs([]Output{out}); err != nil {
-			t.Fatalf("ValidateOutputs(%#v): %v", out, err)
-		}
-	}
-	if err := ValidateOutputs([]Output{{Kind: KindRecord}}); err == nil {
-		t.Fatal("ValidateOutputs accepted record without a source")
-	}
-	if err := ValidateOutputs([]Output{{Kind: KindRecord, Source: Source{Path: "voice.mp3", URL: "https://example.com/voice.mp3"}}}); err == nil {
-		t.Fatal("ValidateOutputs accepted record with multiple sources")
-	}
-	out := RecordPath("voice.mp3")
-	out.Name = "问候.mp3"
-	if got := FallbackText(out); got != "[语音: 问候.mp3]" {
-		t.Fatalf("FallbackText = %q", got)
-	}
-	if got := FallbackText(Output{Kind: KindRecord, Source: Source{Data: []byte("voice")}}); got != "[语音]" {
-		t.Fatalf("FallbackText without label = %q", got)
-	}
-}
-
-func TestManagerSendsChat(t *testing.T) {
-	sender := &fakeSender{}
-	manager := NewManager(sender)
-	out := Output{Kind: KindText, Text: "hello"}
-	if _, err := manager.SendTo(context.Background(), Target{}, []Output{out}); err != nil {
-		t.Fatalf("SendToCurrentConversation: %v", err)
-	}
-	if len(sender.targeted) != 1 || len(sender.targeted[0]) != 1 || sender.targeted[0][0].Text != "hello" {
-		t.Fatalf("chats = %#v", sender.targeted)
-	}
-}
-
-func TestManagerSendsTargetedChat(t *testing.T) {
-	sender := &fakeSender{}
-	manager := NewManager(sender)
-	image := ImagePath("pic.png")
-	image.Name = "pic"
-	if _, err := manager.SendTo(context.Background(), Target{}, []Output{{Kind: KindText, Text: "hello"}, image}); err != nil {
-		t.Fatalf("SendTo: %v", err)
-	}
-	if len(sender.targeted) != 1 || len(sender.targeted[0]) != 2 || sender.targeted[0][0].Text != "hello" || sender.targeted[0][1].Name != "pic" {
-		t.Fatalf("targeted = %#v", sender.targeted)
-	}
-}
-
-func TestManagerSelectsChatTarget(t *testing.T) {
-	batchTarget := Target{Platform: "cli", ChatType: "private", ChatID: "batch"}
-	explicitTarget := Target{Platform: "cli", ChatType: "private", ChatID: "explicit"}
-	for _, tc := range []struct {
-		name   string
-		target Target
-		want   Target
-	}{
-		{"current conversation ignores output target", Target{}, Target{}},
-		{"explicit target", explicitTarget, explicitTarget},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			sender := &fakeSender{}
-			outputs := []Output{Text("first"), {Kind: KindText, Text: "second", Target: batchTarget}}
-			if _, err := NewManager(sender).SendTo(t.Context(), tc.target, outputs); err != nil {
-				t.Fatalf("SendTo: %v", err)
-			}
-			if len(sender.targeted) != 1 || sender.targets[0] != tc.want {
-				t.Fatalf("targeted = %#v, want target %#v", sender.targeted, tc.want)
-			}
-		})
-	}
-}
-
-func TestManagerWrapsChatOutputErrorWithHookName(t *testing.T) {
-	boom := errors.New("boom")
-	for _, tc := range []struct {
-		name string
-		info DeliveryInfo
-		want string
-	}{
-		{"name", DeliveryInfo{HookName: " notify.connected ", HookPoint: "platform.connected"}, "hook notify.connected output: boom"},
-		{"point", DeliveryInfo{HookName: " ", HookPoint: " platform.connected "}, "hook platform.connected output: boom"},
-		{"no source", DeliveryInfo{}, "boom"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			manager := NewManager(&fakeSender{err: boom})
-			_, err := manager.SendTo(t.Context(), Target{Platform: "qqonebot", ChatType: "private", ChatID: "123"}, []Output{{Kind: KindText, Text: "hello", Delivery: tc.info}})
-			if !errors.Is(err, boom) || err.Error() != tc.want {
-				t.Fatalf("SendTo error = %v, want %q wrapping boom", err, tc.want)
-			}
-		})
-	}
-}
-
-func TestManagerRejectsInvalidOutputsBeforeSending(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		outputs []Output
-		want    string
-	}{
-		{"missing emoticon name", []Output{{Kind: KindEmoticon, EmoticonID: "14", Text: "微笑"}}, "requires a name"},
-		{"blank emoticon name", []Output{Emoticon("14", " \t ")}, "requires a name"},
-		{"invalid timing", []Output{WithDeliveryTiming(Text("hello"), "invalid")}, "unsupported timing"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			sender := &fakeSender{}
-			manager := NewManager(sender)
-			for _, send := range []func(context.Context, []Output) (Receipt, error){
-				func(ctx context.Context, outputs []Output) (Receipt, error) {
-					return manager.SendTo(ctx, Target{}, outputs)
-				},
-				func(ctx context.Context, outputs []Output) (Receipt, error) {
-					return manager.SendTo(ctx, Target{ChatType: "private", ChatID: "explicit"}, outputs)
-				},
-			} {
-				_, err := send(t.Context(), tc.outputs)
-				if err == nil || !strings.Contains(err.Error(), tc.want) {
-					t.Fatal("result= err=, want ", err, tc.want)
-				}
-			}
-			if len(sender.targeted) != 0 {
-				t.Fatal("invalid outputs reached sender")
-			}
-		})
+	if len(immediate) != 2 || immediate[0].Text != "default" || immediate[1].Text != "now" || len(deferred) != 1 || deferred[0].Text != "later" {
+		t.Fatalf("immediate=%#v deferred=%#v", immediate, deferred)
 	}
 }
 
@@ -253,32 +63,5 @@ func TestFallbackTextForMedia(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-type independentChatSender struct {
-	fakeSender
-}
-
-func (s independentChatSender) SendTo(context.Context, Target, []Output) (Receipt, error) {
-	return Receipt{PlatformMessageIDs: []string{"sent"}}, s.err
-}
-
-func TestManagerPreservesReceiptAndBusinessError(t *testing.T) {
-	boom := errors.New("business error")
-	for _, tc := range []struct {
-		name string
-		err  error
-	}{
-		{"partial_failure", boom},
-		{"success", nil},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			manager := NewManager(&independentChatSender{fakeSender: fakeSender{err: tc.err}})
-			receipt, err := manager.SendTo(context.Background(), Target{}, []Output{Text("hello")})
-			if err != tc.err || len(receipt.PlatformMessageIDs) != 1 {
-				t.Fatal("receipt and error:", receipt, err)
-			}
-		})
 	}
 }

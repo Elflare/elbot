@@ -73,10 +73,11 @@ type ToolDefinition struct {
 type ConfirmationDetailKind = delivery.ContentBlockKind
 
 const (
-	ConfirmationDetailText      = delivery.ContentText
-	ConfirmationDetailDiff      = delivery.ContentDiff
-	ConfirmationDetailArguments = delivery.ContentArguments
-	ConfirmationDetailMarkdown  = delivery.ContentMarkdown
+	ConfirmationDetailText     = delivery.ContentText
+	ConfirmationDetailDiff     = delivery.ContentDiff
+	ConfirmationDetailFields   = delivery.ContentFields
+	ConfirmationDetailCode     = delivery.ContentCode
+	ConfirmationDetailMarkdown = delivery.ContentMarkdown
 )
 
 type ConfirmationDetailBlock = delivery.ContentBlock
@@ -85,12 +86,18 @@ func TextConfirmationDetail(content string) ConfirmationDetailBlock {
 	return ConfirmationDetailBlock{Kind: ConfirmationDetailText, Content: content}
 }
 
-// FileDiffConfirmationDetail returns a diff block when complete, otherwise its text fallback.
-func FileDiffConfirmationDetail(diff string, available bool, fallback string) ConfirmationDetailBlock {
-	if available {
-		return ConfirmationDetailBlock{Kind: ConfirmationDetailDiff, Content: diff}
-	}
-	return TextConfirmationDetail(fallback)
+type ConfirmationField = delivery.ContentField
+
+func FieldsConfirmationDetail(fields ...ConfirmationField) ConfirmationDetailBlock {
+	return ConfirmationDetailBlock{Kind: ConfirmationDetailFields, Content: fields}
+}
+
+func CodeConfirmationDetail(language, content string) ConfirmationDetailBlock {
+	return ConfirmationDetailBlock{Kind: ConfirmationDetailCode, Content: delivery.CodeContent{Language: language, Content: content}}
+}
+
+func FileDiffConfirmationDetail(diff string) ConfirmationDetailBlock {
+	return ConfirmationDetailBlock{Kind: ConfirmationDetailDiff, Content: diff}
 }
 
 // ToolRegistrationScope 标识一次完整替换的工具组；远端组仅属于指定会话和事件。

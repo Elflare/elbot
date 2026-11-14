@@ -34,7 +34,10 @@ func (s *cronRepositoryStub) Upsert(_ context.Context, req CronSaveRequest) (ope
 }
 func (s *cronRepositoryStub) GetByName(_ context.Context, name string) (operationresult.Result[CronInfo], error) {
 	s.name = name
-	return operationresult.Result[CronInfo]{}, s.err
+	if s.err != nil {
+		return operationresult.Result[CronInfo]{}, s.err
+	}
+	return operationresult.Result[CronInfo]{Status: operationresult.Success, Data: s.info}, nil
 }
 func (s *cronRepositoryStub) List(_ context.Context, disabled bool) (operationresult.Result[[]CronInfo], error) {
 	s.includeDisabled = disabled

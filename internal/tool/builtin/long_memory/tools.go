@@ -29,7 +29,7 @@ type longMemorySearchArgs struct {
 	Keywords  string `json:"keywords"`
 	Category  string `json:"category"`
 	MatchMode string `json:"match_mode"`
-	BriefOnly *bool  `json:"brief_only"`
+	BriefOnly bool   `json:"brief_only"`
 	Limit     int    `json:"limit"`
 }
 
@@ -74,12 +74,22 @@ func (t LongMemorySearchTool) Definition() toolshare.ToolDefinition {
 		Integer("limit", "默认3，上限10。").Build(t.PrepareCall)
 }
 func (t LongMemorySearchTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
-	var args longMemorySearchArgs
+	args := longMemorySearchArgs{BriefOnly: true}
 	if err := lmDecodeArgs(req.Arguments, &args, info.Name); err != nil {
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
-	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
-		if strings.TrimSpace(args.Keywords) == "" && strings.TrimSpace(args.Category) == "" {
+	args.Keywords = strings.TrimSpace(args.Keywords)
+	args.Category = cleanLongMemoryText(args.Category)
+	args.MatchMode = normalizeLongMemoryMatchMode(args.MatchMode)
+	args.Limit = normalizeLongMemoryLimit(args.Limit)
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "keywords", Label: "关键词", Value: args.Keywords},
+		toolshare.ConfirmationField{Key: "category", Label: "分类", Value: args.Category},
+		toolshare.ConfirmationField{Key: "match_mode", Label: "匹配方式", Value: args.MatchMode},
+		toolshare.ConfirmationField{Key: "brief_only", Label: "仅摘要", Value: args.BriefOnly},
+		toolshare.ConfirmationField{Key: "limit", Label: "条数", Value: args.Limit},
+	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+		if args.Keywords == "" && args.Category == "" {
 			content, err := t.store.categories(ctx)
 			if err != nil {
 				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
@@ -126,7 +136,14 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 	switch operation {
 	case "save":
 		record := longMemoryRecord{Category: cleanLongMemoryText(args.Category), Title: cleanLongMemoryText(args.Title), Summary: cleanLongMemoryText(args.Summary), Keywords: strings.Join(splitLongMemoryKeywords(args.Keywords), " "), Content: strings.TrimSpace(args.Content)}
-		details := []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("操作：新建长期记忆\n分类：%s\n标题：%s\n摘要：%s\n关键词：%s\n正文：\n%s", record.Category, record.Title, record.Summary, record.Keywords, record.Content))}
+		details := []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+			toolshare.ConfirmationField{Key: "operation", Label: "操作", Value: "save"},
+			toolshare.ConfirmationField{Key: "category", Label: "分类", Value: record.Category},
+			toolshare.ConfirmationField{Key: "title", Label: "标题", Value: record.Title},
+			toolshare.ConfirmationField{Key: "summary", Label: "摘要", Value: record.Summary},
+			toolshare.ConfirmationField{Key: "keywords", Label: "关键词", Value: record.Keywords},
+			toolshare.ConfirmationField{Key: "content", Label: "正文", Value: record.Content},
+		)}
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, assessment, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 			saved, err := t.store.save(ctx, record)
 			if err != nil {
@@ -148,7 +165,7 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 			return operationresult.Result[*toolshare.PreparedCall]{Status: prepared.Status, Message: prepared.Message}, nil
 		}
 		preview := prepared.Data
-		details := longMemoryUpdateRiskDetails(args, preview)
+		details := longMemoryUpdateRiskDetails(preview)
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, assessment, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 			updated, err := t.store.update(ctx, preview)
 			if err != nil {
@@ -199,8 +216,15 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 		if parsed, err := parseLongMemoryText(string(data)); err == nil {
 			record.Title, record.Category, record.Summary = parsed.Meta.Title, parsed.Meta.Category, parsed.Meta.Summary
 		}
-		detail := fmt.Sprintf("操作：永久删除长期记忆\nID：%d\n标题：%s\n分类：%s\n摘要：%s\n文件：%s", record.ID, record.Title, record.Category, record.Summary, record.FilePath)
-		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, assessment, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(detail)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+		details := []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+			toolshare.ConfirmationField{Key: "operation", Label: "操作", Value: "delete"},
+			toolshare.ConfirmationField{Key: "id", Label: "ID", Value: record.ID},
+			toolshare.ConfirmationField{Key: "title", Label: "标题", Value: record.Title},
+			toolshare.ConfirmationField{Key: "category", Label: "分类", Value: record.Category},
+			toolshare.ConfirmationField{Key: "summary", Label: "摘要", Value: record.Summary},
+			toolshare.ConfirmationField{Key: "path", Label: "文件", Value: record.FilePath},
+		)}
+		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, assessment, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 			path, err := t.store.delete(ctx, record, target, revision)
 			if err != nil {
 				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
@@ -216,32 +240,17 @@ func (t LongMemoryWriteTool) PrepareCall(ctx context.Context, req toolshare.Call
 	}
 }
 
-func longMemoryUpdateRiskDetails(args longMemoryWriteArgs, preview longMemoryUpdatePreview) []toolshare.ConfirmationDetailBlock {
-	var b strings.Builder
-	fmt.Fprintf(&b, "操作：更新长期记忆\n")
-	fmt.Fprintf(&b, "ID：%d\n", preview.After.ID)
-	fmt.Fprintf(&b, "文件：%s\n", preview.After.FilePath)
-	fmt.Fprintf(&b, "分类：%s\n", preview.After.Category)
-	fmt.Fprintf(&b, "标题：%s\n", preview.After.Title)
-	b.WriteString("模式：确认后写入；确认前已自动预检\n")
-	if len(args.ContentEdits) > 0 {
-		b.WriteString("正文编辑：content_edits 只作用于正文；所有目标均基于更新前正文解析\n")
-	}
-	if len(preview.Changes) > 0 {
-		b.WriteString("字段变化：\n")
-		for _, change := range preview.Changes {
-			fmt.Fprintf(&b, "- %s\n", change)
-		}
-	}
-	b.WriteString("预检 diff:")
+func longMemoryUpdateRiskDetails(preview longMemoryUpdatePreview) []toolshare.ConfirmationDetailBlock {
 	filePreview := preview.File.Preview()
-	return []toolshare.ConfirmationDetailBlock{toolshare.FileDiffConfirmationDetail(
-		filePreview.Diff,
-		filePreview.DiffAvailable,
-		strings.TrimRight(b.String(), "\n"),
-	)}
+	return []toolshare.ConfirmationDetailBlock{
+		toolshare.FieldsConfirmationDetail(
+			toolshare.ConfirmationField{Key: "operation", Label: "操作", Value: "update"},
+			toolshare.ConfirmationField{Key: "id", Label: "ID", Value: preview.After.ID},
+			toolshare.ConfirmationField{Key: "path", Label: "文件", Value: preview.After.FilePath},
+		),
+		toolshare.FileDiffConfirmationDetail(filePreview.Diff),
+	}
 }
-
 func longMemoryUpdateArgsFromWrite(args longMemoryWriteArgs) longMemoryUpdateArgs {
 	update := longMemoryUpdateArgs{ID: args.ID, ContentEdits: args.ContentEdits}
 	if args.Category != "" {

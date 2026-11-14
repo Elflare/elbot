@@ -93,7 +93,7 @@ func (t ResidentMemoryReadTool) PrepareCall(ctx context.Context, req toolshare.C
 	if section != "all" && section != "core" && section != "normal" {
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "section must be all, core or normal"}, nil
 	}
-	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (result operationresult.Result[*toolshare.Result], logContent string, _ error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(toolshare.ConfirmationField{Key: "section", Label: "读取范围", Value: section})}, func(ctx context.Context) (result operationresult.Result[*toolshare.Result], logContent string, _ error) {
 		loaded, err := t.service.Read(ctx)
 		if err != nil {
 			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
@@ -140,10 +140,18 @@ func (t ResidentMemoryNormalTool) PrepareCall(ctx context.Context, req toolshare
 	if action != "delete" && args.Content == nil {
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "normal content is required"}, nil
 	}
-	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("操作：%s\n范围：普通常驻记忆", args.Action))}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+	content := ""
+	if action != "delete" {
+		content = *args.Content
+	}
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "action", Label: "操作", Value: action},
+		toolshare.ConfirmationField{Key: "section", Label: "范围", Value: "normal"},
+		toolshare.ConfirmationField{Key: "content", Label: "正文", Value: content},
+	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		switch action {
 		case "append":
-			written, err := t.service.AppendNormal(ctx, *args.Content)
+			written, err := t.service.AppendNormal(ctx, content)
 			if err != nil {
 				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 			}
@@ -153,7 +161,7 @@ func (t ResidentMemoryNormalTool) PrepareCall(ctx context.Context, req toolshare
 			result := &toolshare.Result{Content: "已追加普通常驻记忆。"}
 			return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: result}, result.Content, nil
 		case "write":
-			written, err := t.service.WriteNormal(ctx, *args.Content)
+			written, err := t.service.WriteNormal(ctx, content)
 			if err != nil {
 				return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 			}
@@ -192,7 +200,11 @@ func (t ResidentMemoryCoreTool) PrepareCall(ctx context.Context, req toolshare.C
 	if args.Content == nil {
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: "core content is required"}, nil
 	}
-	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("覆盖核心常驻记忆：\n%s", *args.Content))}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "action", Label: "操作", Value: "write"},
+		toolshare.ConfirmationField{Key: "section", Label: "范围", Value: "core"},
+		toolshare.ConfirmationField{Key: "content", Label: "正文", Value: *args.Content},
+	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		written, err := t.service.WriteCore(ctx, *args.Content)
 		if err != nil {
 			return operationresult.Result[*toolshare.Result]{}, err.Error(), err

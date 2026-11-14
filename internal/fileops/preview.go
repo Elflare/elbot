@@ -127,11 +127,17 @@ func PrepareFileWrite(ctx context.Context, path, content string) (operationresul
 		return operationresult.Result[*PreparedFile]{Status: file.Status, Message: file.Message}, nil
 	}
 	data := []byte(content)
-	diff, diffAvailable := editDiff(path, file.Data.Text, content, len(file.Data.Bytes), len(data), 3, MaxFileSize)
+	var diff string
+	if displayFileDiff(len(file.Data.Bytes), len(data)) {
+		diff, err = editDiff(path, file.Data.Text, content, 3)
+		if err != nil {
+			return operationresult.Result[*PreparedFile]{}, err
+		}
+	}
 	result := EditResult{
 		DryRun: true, Path: path, Created: created, Encoding: "utf-8",
 		RevisionBefore: ContentRevision(file.Data.Bytes), RevisionAfter: ContentRevision(data),
-		Diff: diff, DiffAvailable: diffAvailable, NewBytes: data,
+		Diff: diff, NewBytes: data,
 	}
 	checked, err := checkFileTarget(path, target.Data, created)
 	if err != nil {
@@ -233,10 +239,16 @@ func prepareFileResult(file File, created bool, text string, contextLines int, o
 	if options.MaxOutputBytes > 0 && int64(len(newBytes)) > options.MaxOutputBytes {
 		return operationresult.Result[EditResult]{Status: operationresult.Rejected, Message: fmt.Sprintf("edited file too large: %d bytes exceeds %d", len(newBytes), options.MaxOutputBytes)}
 	}
-	diff, diffAvailable := editDiff(file.Path, oldText, newText, len(file.Bytes), len(newBytes), NormalizeContextLines(contextLines), options.DetailedDiffMaxBytes)
+	var diff string
+	if displayFileDiff(len(file.Bytes), len(newBytes)) {
+		diff, err = editDiff(file.Path, oldText, newText, NormalizeContextLines(contextLines))
+		if err != nil {
+			return operationresult.Result[EditResult]{Status: operationresult.InvalidArguments, Message: err.Error()}
+		}
+	}
 	return operationresult.Result[EditResult]{Status: operationresult.Success, Data: EditResult{
 		DryRun: true, Path: file.Path, Created: created, Encoding: file.Encoding,
 		RevisionBefore: ContentRevision(file.Bytes), RevisionAfter: ContentRevision(newBytes),
-		Diff: diff, DiffAvailable: diffAvailable, NewBytes: newBytes,
+		Diff: diff, NewBytes: newBytes,
 	}}
 }

@@ -315,10 +315,10 @@ func TestModifyElSkillRiskDetailIncludesDiff(t *testing.T) {
 		t.Fatal(err)
 	}
 	details := prepared.Data.Details()
-	if len(details) != 1 || details[0].Kind != toolshare.ConfirmationDetailDiff {
+	if len(details) != 2 || details[0].Kind != toolshare.ConfirmationDetailFields || details[1].Kind != toolshare.ConfirmationDetailDiff {
 		t.Fatalf("structured confirmation details=%+v", details)
 	}
-	if diff := details[0].Content.(string); !strings.Contains(diff, "-#skill detailer - Old.") || !strings.Contains(diff, "+#skill detailer - New.") {
+	if diff := details[1].Content.(string); !strings.Contains(diff, "-#skill detailer - Old.") || !strings.Contains(diff, "+#skill detailer - New.") {
 		t.Fatalf("diff detail: %s", diff)
 	}
 }

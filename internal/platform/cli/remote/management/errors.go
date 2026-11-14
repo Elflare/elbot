@@ -121,7 +121,9 @@ func writeAPIJSON(w http.ResponseWriter, status int, value any) error {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
-	return json.NewEncoder(w).Encode(value)
+	encoder := json.NewEncoder(w)
+	encoder.SetEscapeHTML(false)
+	return encoder.Encode(value)
 }
 
 func decodeAPIJSON[T any](w http.ResponseWriter, req *http.Request) (T, bool) {

@@ -59,7 +59,13 @@ func (t ReadElSkillTool) PrepareCall(ctx context.Context, req toolshare.CallRequ
 		return operationresult.Result[*toolshare.PreparedCall]{Status: selected.Status, Message: selected.Message}, nil
 	}
 	path := selected.Data
-	details := []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("读取 Skill：%s\n文件：%s", args.Name, path))}
+	details := []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "name", Label: "读取 Skill", Value: args.Name},
+		toolshare.ConfirmationField{Key: "path", Label: "文件", Value: path},
+		toolshare.ConfirmationField{Key: "target", Label: "目标", Value: target},
+		toolshare.ConfirmationField{Key: "start_line", Label: "起始行", Value: args.StartLine},
+		toolshare.ConfirmationField{Key: "end_line", Label: "结束行", Value: args.EndLine},
+	)}
 	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		loaded, err := fileops.ReadFile(path, "")
 		if err != nil {

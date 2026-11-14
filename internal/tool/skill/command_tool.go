@@ -54,8 +54,14 @@ func (t commandTool) PrepareCall(ctx context.Context, req toolshare.CallRequest)
 	if err != nil {
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
-	preview := fmt.Sprintf("命令：%v\n参数：%v\n工作目录：%s", t.manifest.Command, args, t.record.Root)
-	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.manifest.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(preview)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+	details := []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "skill_name", Label: "技能", Value: t.record.Name},
+		toolshare.ConfirmationField{Key: "command", Label: "命令", Value: t.manifest.Command},
+		toolshare.ConfirmationField{Key: "args", Label: "命令行参数", Value: args},
+		toolshare.ConfirmationField{Key: "work_dir", Label: "工作目录", Value: t.record.Root},
+		toolshare.ConfirmationField{Key: "timeout_ms", Label: "超时（ms）", Value: int64(t.manifest.TimeoutSeconds) * 1000},
+	)}
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.manifest.Risk}, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		return t.call(ctx, raw, args, runMediaCommand)
 	})}, nil
 }

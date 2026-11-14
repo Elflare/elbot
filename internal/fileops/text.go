@@ -53,31 +53,22 @@ func (n *LineNumber) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func NormalizeReadRange(total, start int, endLine LineNumber) (int, int, bool, error) {
+// NormalizeReadRange bounds the prepared one-based range by the current file length.
+func NormalizeReadRange(total, start int, endLine LineNumber) (int, int, error) {
 	if total == 0 {
-		return 1, 0, false, nil
-	}
-	if start <= 0 {
-		start = 1
+		return 1, 0, nil
 	}
 	if start > total {
-		return 0, 0, false, fmt.Errorf("start_line %d exceeds total lines %d", start, total)
+		return 0, 0, fmt.Errorf("start_line %d exceeds total lines %d", start, total)
 	}
-	truncated := false
-	end := endLine.Value
+	end := min(endLine.Value, total)
 	if endLine.End {
-		end = total
-	} else if end <= 0 {
-		end = start + DefaultReadLineLimit - 1
-		truncated = end < total
-	}
-	if end > total {
 		end = total
 	}
 	if end < start {
-		return 0, 0, false, fmt.Errorf("end_line must be >= start_line")
+		return 0, 0, fmt.Errorf("end_line must be >= start_line")
 	}
-	return start, end, truncated, nil
+	return start, end, nil
 }
 
 func EnsureTrailingNewline(text string) string {

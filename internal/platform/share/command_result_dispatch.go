@@ -17,6 +17,11 @@ func CommandResultOutputs(req command.Request, result command.Result, failure er
 	if failure != nil {
 		return []delivery.Output{delivery.Text(failure.Error())}, nil
 	}
+	if result.Status == operationresult.Success {
+		if current, ok := result.Data.(control.CurrentConfirmationResult); ok {
+			return []delivery.Output{{Kind: delivery.KindText, Blocks: current.Detail, Actions: current.Actions}}, nil
+		}
+	}
 	text, err := FormatCommandResult(req, result)
 	if err != nil {
 		return nil, err
@@ -25,11 +30,6 @@ func CommandResultOutputs(req command.Request, result command.Result, failure er
 		return nil, nil
 	}
 	out := delivery.Text(text)
-	if result.Status == operationresult.Success {
-		if current, ok := result.Data.(control.CurrentConfirmationResult); ok {
-			out = delivery.Output{Kind: delivery.KindText, Blocks: current.Detail, Actions: current.Actions}
-		}
-	}
 	if result.Confirmation != nil {
 		out.Actions = result.Confirmation.Actions
 	}
@@ -51,17 +51,7 @@ func FormatCommandResult(req command.Request, result command.Result) (string, er
 				return content, nil
 			}
 			return formatCommandData(result.Data, func(d control.CurrentConfirmationResult) string {
-				parts := make([]string, 0, len(d.Detail))
-				for _, block := range d.Detail {
-					if block.Kind == "arguments" {
-						if data, err := json.MarshalIndent(block.Content, "", "  "); err == nil {
-							parts = append(parts, string(data))
-						}
-					} else if text, ok := block.Content.(string); ok {
-						parts = append(parts, text)
-					}
-				}
-				return fmt.Sprintf("%s [%s]\n%s", d.ToolName, d.Risk, strings.Join(parts, "\n"))
+				return delivery.ContentBlocksText(d.Detail)
 			})
 		}
 		if req.Name == "confirm" || req.Name == "confirmtool" || req.Name == "confirmall" || req.Name == "reject" {

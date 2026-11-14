@@ -43,7 +43,7 @@ func (t discoverTool) PrepareCall(ctx context.Context, req share.CallRequest, in
 	if args.Name != "" {
 		names = append([]string{args.Name}, names...)
 	}
-	return operationresult.Result[*share.PreparedCall]{Status: operationresult.Success, Data: share.NewPreparedCall(req, share.RiskAssessment{Level: info.Risk}, []share.ConfirmationDetailBlock{share.TextConfirmationDetail(info.Description)}, func(ctx context.Context) (outcome operationresult.Result[*share.Result], logContent string, _ error) {
+	return operationresult.Result[*share.PreparedCall]{Status: operationresult.Success, Data: share.NewPreparedCall(req, share.RiskAssessment{Level: info.Risk}, []share.ConfirmationDetailBlock{share.FieldsConfirmationDetail(share.ConfirmationField{Key: "names", Label: "发现工具", Value: names})}, func(ctx context.Context) (outcome operationresult.Result[*share.Result], logContent string, _ error) {
 		if err := ctx.Err(); err != nil {
 			return operationresult.Result[*share.Result]{}, err.Error(), err
 		}

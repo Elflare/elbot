@@ -692,7 +692,7 @@ func TestReadFileToolASTRejectsUnsupportedLanguage(t *testing.T) {
 	}
 }
 
-func TestEditFileToolEditsLargeFileAndOmitsDiff(t *testing.T) {
+func TestEditFileToolEditsLargeFileWithDiff(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "large.txt")
 	original := []byte(strings.Repeat("x", fileops.MaxFileSize) + "\ntarget\n")
 	if err := os.WriteFile(path, original, 0644); err != nil {
@@ -711,8 +711,8 @@ func TestEditFileToolEditsLargeFileAndOmitsDiff(t *testing.T) {
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Data.Content, "diff omitted: file exceeds detailed diff limit") {
-		t.Fatalf("expected omitted diff, got:\n%s", result.Data.Content)
+	if !strings.Contains(result.Data.Content, "-target\n+TARGET") {
+		t.Fatalf("expected complete diff, got:\n%s", result.Data.Content)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -720,34 +720,6 @@ func TestEditFileToolEditsLargeFileAndOmitsDiff(t *testing.T) {
 	}
 	if !strings.HasSuffix(string(content), "\nTARGET\n") {
 		t.Fatalf("large file was not edited correctly")
-	}
-}
-
-func TestEditFileToolTruncatesLargeRiskDetailBlocks(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sample.txt")
-	if err := os.WriteFile(path, []byte("target\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	newText := strings.Repeat("界", 30*1024)
-	args, _ := json.Marshal(map[string]any{
-		"path": path,
-		"edits": []map[string]any{{
-			"operation": "replace_text",
-			"old_text":  "target",
-			"new_text":  newText,
-		}},
-	})
-	prepared, err := (EditFileTool{Rollback: fileops.NewService(nil)}).Definition().PrepareCall(context.Background(), toolshare.CallRequest{Arguments: args})
-	if err != nil || prepared.Status != operationresult.Success {
-		t.Fatal(err)
-	}
-	details := prepared.Data.Details()
-	if len(details) != 1 || details[0].Kind != toolshare.ConfirmationDetailText {
-		t.Fatalf("large confirmation details=%+v", details)
-	}
-	detail, ok := details[0].Content.(string)
-	if !ok || !strings.Contains(detail, "已省略；原文") || strings.Contains(detail, newText) {
-		t.Fatalf("large detail was not truncated: %v", details[0].Content)
 	}
 }
 
@@ -1053,10 +1025,10 @@ func TestEditFileToolRiskDetailFormatsEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	details := prepared.Data.Details()
-	if len(details) != 1 || details[0].Kind != toolshare.ConfirmationDetailDiff {
+	if len(details) != 2 || details[0].Kind != toolshare.ConfirmationDetailFields || details[1].Kind != toolshare.ConfirmationDetailDiff {
 		t.Fatalf("structured confirmation details=%+v", details)
 	}
-	if diff := details[0].Content.(string); !strings.Contains(diff, "-old line") || !strings.Contains(diff, "+new line 1") || !strings.Contains(diff, "+fmt.Println(\"hello\")") {
+	if diff := details[1].Content.(string); !strings.Contains(diff, "-old line") || !strings.Contains(diff, "+new line 1") || !strings.Contains(diff, "+fmt.Println(\"hello\")") {
 		t.Fatalf("diff detail:\n%s", diff)
 	}
 }

@@ -237,7 +237,7 @@ func TestConfirmationPromptCarriesExecutableActions(t *testing.T) {
 		}
 		actions := <-output.sent
 		blocks := <-output.blocks
-		if len(blocks) != 3 || blocks[0].Kind != delivery.ContentText || blocks[0].Content != "shell [high]: confirm" || blocks[1].Kind != delivery.ContentText || blocks[1].Content != "detail" || blocks[2].Kind != delivery.ContentArguments {
+		if len(blocks) != 2 || blocks[0].Kind != delivery.ContentText || blocks[0].Content != "shell [high]: confirm" || blocks[1].Kind != delivery.ContentText || blocks[1].Content != "detail" {
 			t.Fatalf("confirmation blocks=%#v", blocks)
 		}
 		if len(output.texts) != 2 || len(output.sent) != 1 {
@@ -302,28 +302,6 @@ func TestCurrentRiskConfirmationReturnsBlocksAndActions(t *testing.T) {
 	}
 	if got.Data.SessionID != row.Data.ID || got.Data.Kind != "tool" || len(got.Data.Detail) != 3 || got.Data.Detail[0].Content != "shell [high]: confirm" || !strings.Contains(got.Data.Detail[2].Content.(string), "requires approval") || len(got.Data.Actions) != 6 {
 		t.Fatalf("confirmation snapshot=%+v", got)
-	}
-}
-
-func TestConfirmationDetailsAppendsArgumentsObject(t *testing.T) {
-	details, err := confirmationDetailsWithArguments([]toolshare.ConfirmationDetailBlock{{Kind: toolshare.ConfirmationDetailText, Content: "preview"}}, `{"operation":"write","count":2}`)
-	if err != nil || len(details) != 2 || details[0].Kind != toolshare.ConfirmationDetailText || details[1].Kind != toolshare.ConfirmationDetailArguments {
-		t.Fatalf("details=%+v", details)
-	}
-	args, ok := details[1].Content.(map[string]any)
-	if !ok || args["operation"] != "write" || args["count"] != json.Number("2") {
-		t.Fatalf("arguments content=%#v", details[1].Content)
-	}
-	if got := delivery.ContentBlocksText(details); got != "preview\n\n```json\n{\n  \"count\": 2,\n  \"operation\": \"write\"\n}\n```" {
-		t.Fatalf("plain-text confirmation=%q", got)
-	}
-}
-
-func TestConfirmationDetailsRejectInvalidArgumentJSON(t *testing.T) {
-	for _, args := range []string{"not-json", "[]", `{} {}`} {
-		if _, err := confirmationDetailsWithArguments(nil, args); err == nil {
-			t.Errorf("accepted invalid arguments %q", args)
-		}
 	}
 }
 

@@ -66,7 +66,10 @@ func (t GetMediaTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 			}
 		}
 	}
-	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.TextConfirmationDetail(fmt.Sprintf("获取消息媒体：%s", strings.Join(args.MessageIDs, ", ")))}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
+	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: info.Risk}, []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
+		toolshare.ConfirmationField{Key: "message_id", Label: "消息", Value: args.MessageIDs},
+		toolshare.ConfirmationField{Key: "media_index", Label: "媒体编号", Value: args.MediaIndex},
+	)}, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
 		results, err := t.history.GetMedia(ctx, toolshare.MediaRequest{MessageIDs: args.MessageIDs, MediaIndex: args.MediaIndex})
 		if err != nil {
 			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
