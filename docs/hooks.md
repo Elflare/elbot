@@ -309,7 +309,7 @@ target.id = "123456"
 
 进程 Hook 使用 `hook.v2` JSON Lines。stdin 和 stdout 每行一个 JSON 帧；stdout 只能写协议，日志写 stderr。Host request ID 使用 `host:*`，Hook request ID 使用 `plugin:*`，response 必须复用 request ID。
 
-Host 先发送 `system.init`，成功后发送 `event.handle`。一次性 exec Hook 处理一次事件后退出；请求被 `/stop`、超时或上游 context 取消时，Host 会结束该次 exec 的完整进程树。Worker Hook 可处理多次事件，并接收 `system.shutdown`。协议帧完整发送后等待响应时，普通取消会异步尝试发送 `event.cancel`，Persistent Worker 保持运行；实际写入期间取消、超时或写入失败时，Host 会关闭该进程的 stdin 并结束其完整进程树，避免继续使用不完整的协议流。等待写权限也可取消，不影响占用写权限的调用。
+Host 先发送 `system.init`，成功后发送 `event.handle`。一次性 exec Hook 处理一次事件后退出；请求被 `/stop`、超时或上游 context 取消时，Host 会结束该次 exec 的完整进程树。Worker Hook 可处理多次事件，并接收 `system.shutdown`；收到该请求后先返回复用 request ID 的 response，再退出。协议帧完整发送后等待响应时，普通取消会异步尝试发送 `event.cancel`，Persistent Worker 保持运行；实际写入期间取消、超时或写入失败时，Host 会关闭该进程的 stdin 并结束其完整进程树，避免继续使用不完整的协议流。等待写权限也可取消，不影响占用写权限的调用。
 
 ### 完整交互示例
 
