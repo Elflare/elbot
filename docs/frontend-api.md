@@ -66,7 +66,7 @@ Token 在 `[platform.cli.server.tokens]` 中按 `client_id` 映射到环境变�
 
 ## HTTP 管理 API
 
-管理 API 的端点、请求和响应字段见 [OpenAPI 文档](frontend-api.openapi.yaml)；在线版见[官网 API 文档](https://elfreese.github.io/elbot-landing/docs/api/)。
+管理 API 的端点、请求和响应字段见 [OpenAPI 文档](../docs/frontend-api.openapi.yaml)；在线版见[官网 API 文档](https://elfreese.github.io/elbot-landing/docs/api/)。
 
 ## 客户端 → 服务端
 
