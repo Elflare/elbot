@@ -31,7 +31,7 @@ func TestRunPublishesBatchCallsBeforeAnyResults(t *testing.T) {
 	if result.Err != nil {
 		t.Fatal(result.Err)
 	}
-	if len(deps.eventOrder) < 4 || deps.eventOrder[0] != "call:call-1" || deps.eventOrder[1] != "call:call-2" {
+	if deps.toolBatches != 1 || len(deps.toolCalls) != 2 || len(deps.eventOrder) != 4 || deps.eventOrder[0] != "call:call-1" || deps.eventOrder[1] != "call:call-2" {
 		t.Fatalf("tool event order = %v", deps.eventOrder)
 	}
 }

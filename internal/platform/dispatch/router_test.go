@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"sync"
 	"testing"
-	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	"elbot/internal/llm"
 	"elbot/internal/operationresult"
 	"elbot/internal/platform/share"
 	"elbot/internal/signal"
@@ -64,7 +64,7 @@ func TestRouterStreamFallbackPreservesBlocksAndActions(t *testing.T) {
 }
 
 func TestRouterNotifiesOnlyPrivateCallsWithoutAssistantText(t *testing.T) {
-	notifications := make(chan events.Notification, 4)
+	notifications := make(chan events.Notification, 16)
 	connection, err := events.NotificationRequested.Observe(func(_ context.Context, notice events.Notification) {
 		notifications <- notice
 	}, signal.ConnectOptions{Shutdown: signal.Drain})
@@ -78,14 +78,24 @@ func TestRouterNotifiesOnlyPrivateCallsWithoutAssistantText(t *testing.T) {
 		return delivery.Receipt{}, nil
 	}}
 	router := New(Options{Primary: sender})
+	calls := []llm.ToolCallRequest{
+		{ID: "call-1", Name: "shell", Arguments: `{"cmd":"pwd"}`},
+		{ID: "call-2", Name: "read_file", Arguments: `{"path":"one"}`},
+		{ID: "call-3", Name: "read_file", Arguments: `{"path":"two"}`},
+	}
 	for _, tc := range []struct {
 		name     string
 		chatType contextinfo.ChatType
 		speaking bool
+		count    int
+		want     string
 	}{
-		{name: "group", chatType: contextinfo.ChatGroup},
-		{name: "assistant already speaking", chatType: contextinfo.ChatPrivate, speaking: true},
-		{name: "private", chatType: contextinfo.ChatPrivate},
+		{name: "group", chatType: contextinfo.ChatGroup, count: 3},
+		{name: "assistant already speaking", chatType: contextinfo.ChatPrivate, speaking: true, count: 3},
+		{name: "private", chatType: contextinfo.ChatPrivate, count: 1, want: `[tool] 正在调用 shell：{"cmd":"pwd"}`},
+		{name: "private batch", chatType: contextinfo.ChatPrivate, count: 3, want: `[tool] 正在调用 shell：{"cmd":"pwd"}
+[tool] 正在调用 read_file：{"path":"one"}
+[tool] 正在调用 read_file：{"path":"two"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{
@@ -95,31 +105,47 @@ func TestRouterNotifiesOnlyPrivateCallsWithoutAssistantText(t *testing.T) {
 			if err != nil || stream.Status != operationresult.Success {
 				t.Fatalf("stream=%+v err=%v", stream, err)
 			}
-			_, err = stream.Data.Send(ctx, delivery.StreamEvent{
-				Type: delivery.StreamToolCall, ToolCallID: "call",
-				ToolCall:          &delivery.ToolCall{Name: "shell", Arguments: `{"cmd":"pwd"}`},
-				AssistantSpeaking: tc.speaking,
-			})
-			if err != nil {
+			// 两个连续批次各发一条，不因使用同一流而互相合并。
+			for range 2 {
+				_, err = stream.Data.Send(ctx, delivery.StreamEvent{
+					Type: delivery.StreamToolCalls, ToolCalls: calls[:tc.count], AssistantSpeaking: tc.speaking,
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := events.NotificationRequested.Emit(ctx, events.Notification{Text: "barrier"}); err != nil {
 				t.Fatal(err)
 			}
-			if tc.name != "private" {
-				return
-			}
-			select {
-			case got := <-notifications:
-				if got.Text != `[tool] 正在调用 shell：{"cmd":"pwd"}` || got.Origin == nil || got.Origin.Source.ChatType != contextinfo.ChatPrivate {
+			count := 0
+			for len(notifications) > 0 {
+				got := <-notifications
+				if got.Text == "barrier" {
+					continue
+				}
+				count++
+				if tc.want == "" || got.Text != tc.want || got.Origin == nil || got.Origin.Source.ChatType != contextinfo.ChatPrivate {
 					t.Fatalf("notification = %+v", got)
 				}
-			case <-time.After(time.Second):
-				t.Fatal("private tool call notification was not emitted")
+			}
+			want := 0
+			if tc.want != "" {
+				want = 2
+			}
+			if count != want {
+				t.Fatalf("notifications = %d, want %d", count, want)
 			}
 		})
 	}
 }
 
 func TestRouterForwardsStructuredToolCallsForGroupConversation(t *testing.T) {
-	sender := structuredStreamSender{testSender: testSender{}, events: make(chan delivery.StreamEvent, 1)}
+	calls := []llm.ToolCallRequest{
+		{ID: "call-1", Name: "shell", Arguments: ` { "cmd": "pwd" } `},
+		{ID: "call-2", Name: "read_file", Arguments: `{"path":"one"}`},
+		{ID: "call-3", Name: "read_file", Arguments: `{"path":"two"}`},
+	}
+	sender := structuredStreamSender{testSender: testSender{}, events: make(chan delivery.StreamEvent, len(calls))}
 	router := New(Options{Primary: sender})
 	ctx := contextinfo.WithConversation(t.Context(), contextinfo.Conversation{Source: contextinfo.Source{
 		Platform: sender.Name(), ChatType: contextinfo.ChatGroup, ChatID: "group",
@@ -128,15 +154,17 @@ func TestRouterForwardsStructuredToolCallsForGroupConversation(t *testing.T) {
 	if err != nil || stream.Status != operationresult.Success {
 		t.Fatalf("stream=%+v err=%v", stream, err)
 	}
-	event := delivery.StreamEvent{
-		Type: delivery.StreamToolCall, ToolCallID: "call",
-		ToolCall: &delivery.ToolCall{Name: "shell", Arguments: `{"cmd":"pwd"}`},
-	}
-	if _, err := stream.Data.Send(ctx, event); err != nil {
+	if _, err := stream.Data.Send(ctx, delivery.StreamEvent{Type: delivery.StreamToolCalls, ToolCalls: calls, AssistantSpeaking: true}); err != nil {
 		t.Fatal(err)
 	}
-	if got := <-sender.events; got.ToolCallID != event.ToolCallID || got.ToolCall == nil || *got.ToolCall != *event.ToolCall {
-		t.Fatalf("structured tool call = %+v, want %+v", got, event)
+	if len(sender.events) != len(calls) {
+		t.Fatalf("structured events = %d, want %d", len(sender.events), len(calls))
+	}
+	for _, call := range calls {
+		got := <-sender.events
+		if got.Type != delivery.StreamToolCall || got.ToolCallID != call.ID || got.ToolCall == nil || *got.ToolCall != (delivery.ToolCall{Name: call.Name, Arguments: call.Arguments}) || len(got.ToolCalls) != 0 {
+			t.Fatalf("structured tool call = %+v, want %+v", got, call)
+		}
 	}
 }
 

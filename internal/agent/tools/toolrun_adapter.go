@@ -109,10 +109,9 @@ func (d toolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string, call
 	return d.confirmations.AwaitToolConfirmation(ctx, sessionID, call, assessment, detail)
 }
 
-func (d toolRunDeps) PublishToolCall(ctx context.Context, call llm.ToolCallRequest, assistantSpeaking bool) {
+func (d toolRunDeps) PublishToolCalls(ctx context.Context, calls []llm.ToolCallRequest, assistantSpeaking bool) {
 	_, _ = d.output.Send(ctx, delivery.StreamEvent{
-		Type: delivery.StreamToolCall, ToolCallID: call.ID,
-		ToolCall: &delivery.ToolCall{Name: call.Name, Arguments: call.Arguments}, AssistantSpeaking: assistantSpeaking,
+		Type: delivery.StreamToolCalls, ToolCalls: calls, AssistantSpeaking: assistantSpeaking,
 	})
 }
 

@@ -201,7 +201,7 @@ type ConfirmResult struct {
 type RunnerDeps interface {
 	RefreshExecution(context.Context, *storage.Session) (context.Context, error)
 	PrepareToolCall(context.Context, *storage.Session, llm.ToolCallRequest) (llm.ToolCallRequest, error)
-	PublishToolCall(context.Context, llm.ToolCallRequest, bool)
+	PublishToolCalls(context.Context, []llm.ToolCallRequest, bool)
 	ConfirmToolCall(context.Context, string, llm.ToolCallRequest, RiskAssessment, []ConfirmationDetailBlock) (operationresult.Result[ConfirmResult], error)
 	StartToolRequest(context.Context, string, string) (context.Context, func(), error)
 	PrepareToolContext(context.Context, *storage.Session, llm.ToolCallRequest) context.Context

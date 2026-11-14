@@ -56,6 +56,7 @@ func (c *testToolCommitter) Flush(context.Context) error {
 type runnerTestDeps struct {
 	confirmed      bool
 	completed      int
+	toolBatches    int
 	toolCalls      []llm.ToolCallRequest
 	assistantSaid  []bool
 	eventOrder     []string
@@ -74,10 +75,13 @@ func (d *runnerTestDeps) PrepareToolCall(ctx context.Context, session *storage.S
 	return call, nil
 }
 
-func (d *runnerTestDeps) PublishToolCall(_ context.Context, call llm.ToolCallRequest, assistantSpeaking bool) {
-	d.toolCalls = append(d.toolCalls, call)
-	d.assistantSaid = append(d.assistantSaid, assistantSpeaking)
-	d.eventOrder = append(d.eventOrder, "call:"+call.ID)
+func (d *runnerTestDeps) PublishToolCalls(_ context.Context, calls []llm.ToolCallRequest, assistantSpeaking bool) {
+	d.toolBatches++
+	for _, call := range calls {
+		d.toolCalls = append(d.toolCalls, call)
+		d.assistantSaid = append(d.assistantSaid, assistantSpeaking)
+		d.eventOrder = append(d.eventOrder, "call:"+call.ID)
+	}
 }
 
 func (d *runnerTestDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (operationresult.Result[toolshare.ConfirmResult], error) {
@@ -328,12 +332,18 @@ func TestRunPublishesTerminalResultWhenConfirmationIsCanceled(t *testing.T) {
 	result := manager.Run(context.Background(), deps, toolshare.RunRequest{
 		Committer: &testToolCommitter{}, Session: &storage.Session{ID: "s1", Mode: storage.SessionModeWork},
 		Actor: contextinfo.Actor{Role: contextinfo.RoleUser},
-		Calls: []llm.ToolCallRequest{{ID: "call-canceled", Name: toolName, Arguments: `{"path":"x"}`}},
+		Calls: []llm.ToolCallRequest{
+			{ID: "call-canceled", Name: toolName, Arguments: `{"path":"x"}`},
+			{ID: "call-unstarted", Name: toolName, Arguments: `{"path":"y"}`},
+		},
 	})
 	if result.Err != nil || !result.Stopped {
 		t.Fatalf("run result = %+v", result)
 	}
-	if deps.toolResultCall != "call-canceled" || deps.toolResult.Success || llm.SegmentsContentText(deps.toolResult.Segments) != "tool call was not executed" {
+	if deps.toolBatches != 1 || strings.Join(deps.eventOrder, ",") != "call:call-canceled,call:call-unstarted,result:call-canceled,result:call-unstarted" {
+		t.Fatalf("batch or terminal event order = %d / %v", deps.toolBatches, deps.eventOrder)
+	}
+	if deps.toolResultCall != "call-unstarted" || deps.toolResult.Success || llm.SegmentsContentText(deps.toolResult.Segments) != "tool call was not executed" {
 		t.Fatalf("terminal tool result = %+v / %q", deps.toolResult, deps.toolResultCall)
 	}
 }

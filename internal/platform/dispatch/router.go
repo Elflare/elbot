@@ -140,21 +140,32 @@ func (r *Router) StartStream(ctx context.Context) (operationresult.Result[delive
 
 func (r *Router) routeToolCallEvents(ctx context.Context, stream delivery.MessageStream, structured bool) delivery.MessageStream {
 	return delivery.StreamFunc(func(ctx context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
-		if event.Type == delivery.StreamToolCall {
+		if event.Type == delivery.StreamToolCalls {
 			if structured {
-				return stream.Send(ctx, event)
+				for _, call := range event.ToolCalls {
+					_, err := stream.Send(ctx, delivery.StreamEvent{
+						Type: delivery.StreamToolCall, ToolCallID: call.ID,
+						ToolCall:          &delivery.ToolCall{Name: call.Name, Arguments: call.Arguments},
+						AssistantSpeaking: event.AssistantSpeaking,
+					})
+					if err != nil {
+						return delivery.Receipt{}, err
+					}
+				}
+				return delivery.Receipt{}, nil
 			}
 			conversation, ok := contextinfo.ConversationFromContext(ctx)
-			if !ok || conversation.Source.ChatType == contextinfo.ChatGroup {
+			if !ok || conversation.Source.ChatType != contextinfo.ChatPrivate || event.AssistantSpeaking || len(event.ToolCalls) == 0 {
 				return delivery.Receipt{}, nil
 			}
-			if conversation.Source.ChatType != contextinfo.ChatPrivate || event.AssistantSpeaking || event.ToolCall == nil {
-				return delivery.Receipt{}, nil
+			lines := make([]string, 0, len(event.ToolCalls))
+			for _, call := range event.ToolCalls {
+				lines = append(lines, share.FormatToolCallNotice(delivery.ToolCall{Name: call.Name, Arguments: call.Arguments}))
 			}
-			events.Notify(context.WithoutCancel(ctx), events.NewNotification(ctx, slog.LevelDebug, share.FormatToolCallNotice(*event.ToolCall)))
+			events.Notify(context.WithoutCancel(ctx), events.NewNotification(ctx, slog.LevelDebug, strings.Join(lines, "\n")))
 			return delivery.Receipt{}, nil
 		}
-		if event.Type == delivery.StreamToolResult && !structured {
+		if (event.Type == delivery.StreamToolCall || event.Type == delivery.StreamToolResult) && !structured {
 			return delivery.Receipt{}, nil
 		}
 		return stream.Send(ctx, event)

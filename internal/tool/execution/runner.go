@@ -219,8 +219,12 @@ prepare:
 			return toolshare.RunResult{Err: err}
 		}
 		ctx = updated
-		deps.PublishToolCall(ctx, original, strings.TrimSpace(req.AssistantText) != "")
-		toolCallStarted[index] = true
+		if index == 0 {
+			deps.PublishToolCalls(ctx, req.Calls, strings.TrimSpace(req.AssistantText) != "")
+			for i := range toolCallStarted {
+				toolCallStarted[i] = true
+			}
+		}
 		actor := req.Actor
 		if current, ok := contextinfo.ActorFromContext(ctx); ok {
 			actor = current

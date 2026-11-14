@@ -17,6 +17,7 @@ const (
 	StreamFinish         StreamEventType = "finish"
 	StreamSend           StreamEventType = "send"
 	StreamSendExtras     StreamEventType = "send_extras"
+	StreamToolCalls      StreamEventType = "tool_calls" // Internal batch; routing expands it into per-call client events.
 	StreamToolCall       StreamEventType = "tool_call"
 	StreamToolResult     StreamEventType = "tool_result"
 )
@@ -32,15 +33,16 @@ type ToolResult struct {
 }
 
 type StreamEvent struct {
-	Type              StreamEventType `json:"type"`                   // Operation on this logical message.
-	Text              string          `json:"text,omitempty"`         // Text/reasoning delta, or the final assistant text.
-	Blocks            []ContentBlock  `json:"blocks,omitempty"`       // Typed final message content, rendered at the consumer boundary.
-	Actions           []Action        `json:"actions,omitempty"`      // Actions accompanying final assistant text.
-	Outputs           []Output        `json:"outputs,omitempty"`      // Independent content carried only by SendExtras.
-	ToolCallID        string          `json:"tool_call_id,omitempty"` // Associates a result event with its tool call.
-	ToolCall          *ToolCall       `json:"tool_call,omitempty"`    // Present on StreamToolCall; keeps original arguments structured.
-	ToolResult        *ToolResult     `json:"tool_result,omitempty"`  // Present on StreamToolResult.
-	AssistantSpeaking bool            `json:"-"`                      // Internal hint used to suppress duplicate progress notices.
+	Type              StreamEventType       `json:"type"`                   // Operation on this logical message.
+	Text              string                `json:"text,omitempty"`         // Text/reasoning delta, or the final assistant text.
+	Blocks            []ContentBlock        `json:"blocks,omitempty"`       // Typed final message content, rendered at the consumer boundary.
+	Actions           []Action              `json:"actions,omitempty"`      // Actions accompanying final assistant text.
+	Outputs           []Output              `json:"outputs,omitempty"`      // Independent content carried only by SendExtras.
+	ToolCalls         []llm.ToolCallRequest `json:"-"`                      // Complete ordered batch, consumed internally before platform serialization.
+	ToolCallID        string                `json:"tool_call_id,omitempty"` // Associates a result event with its tool call.
+	ToolCall          *ToolCall             `json:"tool_call,omitempty"`    // Present on StreamToolCall; keeps original arguments structured.
+	ToolResult        *ToolResult           `json:"tool_result,omitempty"`  // Present on StreamToolResult.
+	AssistantSpeaking bool                  `json:"-"`                      // Internal hint used to suppress duplicate progress notices.
 }
 
 // MessageStream belongs to one logical message. Reset clears its current preview
