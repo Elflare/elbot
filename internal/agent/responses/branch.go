@@ -2,9 +2,14 @@ package responses
 
 import (
 	"context"
-	"elbot/internal/operationresult"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"sort"
 
+	"elbot/internal/llm"
+	api "elbot/internal/llm/responses"
+	"elbot/internal/operationresult"
 	"elbot/internal/session"
 	"elbot/internal/storage"
 )
@@ -74,50 +79,61 @@ func (c *Context) PrepareCopy(ctx context.Context, source *storage.Session) (ope
 	if err != nil {
 		return operationresult.Result[*session.PreparedMaterial]{}, err
 	}
-	if len(pending) > 0 {
-		if cp == nil || cp.MessageID == "" {
-			return operationresult.Result[*session.PreparedMaterial]{Status: operationresult.Conflict, Message: "后台副本需要完整提交的原生窗口"}, nil
-		}
-		snapshot, err := c.Repository.CheckpointForMessage(ctx, source.ID, cp.MessageID)
-		if err != nil {
-			return operationresult.Result[*session.PreparedMaterial]{}, err
-		}
-		calls, err := checkpointCalls(snapshot)
-		if err != nil {
-			return operationresult.Result[*session.PreparedMaterial]{}, err
-		}
-		ids := map[string]bool{}
-		for _, call := range calls {
-			if call.Status == "pending" {
-				return operationresult.Result[*session.PreparedMaterial]{Status: operationresult.Conflict, Message: "后台副本不能包含未封存的工具批次"}, nil
-			}
-			ids[call.ResultInputID] = true
-		}
-		for _, input := range pending {
-			if !ids[input.ID] {
-				return operationresult.Result[*session.PreparedMaterial]{Status: operationresult.Conflict, Message: "后台副本需要完整提交的原生窗口"}, nil
+	expected := ""
+	if cp != nil {
+		expected = cp.ID
+		if len(pending) > 0 && cp.MessageID != "" {
+			// Tool results are frozen at the message snapshot without advancing the live cursor.
+			cp, err = c.Repository.CheckpointForMessage(ctx, source.ID, cp.MessageID)
+			if err != nil {
+				return operationresult.Result[*session.PreparedMaterial]{}, err
 			}
 		}
-		return c.PrepareFork(ctx, source, &storage.Message{ID: cp.MessageID})
 	}
 	records, err := c.Repository.LoadNativeWindow(ctx, source, cp)
 	if err != nil {
 		return operationresult.Result[*session.PreparedMaterial]{}, err
 	}
-	loaded, err := c.Load(ctx, source, cp, records)
-	if err != nil {
-		return operationresult.Result[*session.PreparedMaterial]{}, err
+	var w *nativeWindow
+	if cp == nil && records.Seed == nil && len(pending) > 0 {
+		checked, err := checkInputFormat(source)
+		if err != nil {
+			return operationresult.Result[*session.PreparedMaterial]{}, err
+		}
+		if checked.Status != operationresult.Success {
+			return operationresult.Result[*session.PreparedMaterial]{Status: checked.Status, Message: checked.Message}, nil
+		}
+		origin, known, err := session.Origin(source)
+		if err != nil {
+			return operationresult.Result[*session.PreparedMaterial]{}, err
+		}
+		if !known || origin.APIType != llm.APITypeResponse || origin.Provider == "" {
+			return operationresult.Result[*session.PreparedMaterial]{}, fmt.Errorf("Responses 原生归属不完整")
+		}
+		// A stopped first request has durable input but no committed response yet.
+		w = &nativeWindow{Origin: origin}
+	} else {
+		loaded, err := c.Load(ctx, source, cp, records)
+		if err != nil {
+			return operationresult.Result[*session.PreparedMaterial]{}, err
+		}
+		if loaded.Status != operationresult.Success {
+			return operationresult.Result[*session.PreparedMaterial]{Status: loaded.Status, Message: loaded.Message}, nil
+		}
+		w = loaded.Data
 	}
-	if loaded.Status != operationresult.Success {
-		return operationresult.Result[*session.PreparedMaterial]{Status: loaded.Status, Message: loaded.Message}, nil
-	}
-	w := loaded.Data
 	var calls []storage.NativeCall
-	responseID, expected := "", ""
+	var continuation []api.Item
+	responseID := ""
 	if cp != nil {
 		calls, err = checkpointCalls(cp)
 		if err != nil {
 			return operationresult.Result[*session.PreparedMaterial]{}, err
+		}
+		for _, call := range calls {
+			if call.Status == "pending" {
+				return operationresult.Result[*session.PreparedMaterial]{Status: operationresult.Conflict, Message: "会话副本不能包含未封存的工具批次"}, nil
+			}
 		}
 		state, err := exchangeStorage(w.exchange)
 		if err != nil {
@@ -126,11 +142,42 @@ func (c *Context) PrepareCopy(ctx context.Context, source *storage.Session) (ope
 		if state.Available {
 			responseID = cp.ResponseID
 		}
-		expected = cp.ID
+		continuation, err = closeBranchCalls(w, calls)
+		if err != nil {
+			return operationresult.Result[*session.PreparedMaterial]{}, err
+		}
+	} else if records.Seed != nil {
+		loaded, err := c.resolveContinuation(records.Seed, w.Items)
+		if err != nil {
+			return operationresult.Result[*session.PreparedMaterial]{}, err
+		}
+		continuation = loaded.Items
+		responseID = records.Seed.ResponseID
+		if err := json.Unmarshal([]byte(records.Seed.CallsJSON), &calls); err != nil {
+			return operationresult.Result[*session.PreparedMaterial]{}, err
+		}
 	}
-	continuation, err := closeBranchCalls(w, calls)
-	if err != nil {
-		return operationresult.Result[*session.PreparedMaterial]{}, err
+	ids := map[string]bool{}
+	for _, call := range calls {
+		if call.ResultInputID != "" {
+			ids[call.ResultInputID] = true
+		}
+	}
+	// Match model-call input order; completed results already loaded above stay single.
+	sort.SliceStable(pending, func(i, j int) bool { return inputOrder(pending[i]) < inputOrder(pending[j]) })
+	for _, input := range pending {
+		if ids[input.ID] {
+			continue
+		}
+		item, segments, err := decodeQueuedInput(input)
+		if err != nil {
+			return operationresult.Result[*session.PreparedMaterial]{}, err
+		}
+		if item.Type != "additional_tools" {
+			w.Materials = append(w.Materials, material{Index: len(w.Items), MessageID: input.MessageID, Segments: segments})
+		}
+		w.Items = append(w.Items, item)
+		continuation = append(continuation, item)
 	}
 	if err := validateCallLinks(w.Items, false); err != nil {
 		return operationresult.Result[*session.PreparedMaterial]{}, err

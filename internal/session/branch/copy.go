@@ -43,6 +43,10 @@ func (s *Service) CopyForeground(ctx context.Context, target share.Scope, source
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, false, err
 	}
+	pending, err := s.deps.Dialogues.PendingInputs(ctx, sourceID)
+	if err != nil {
+		return operationresult.Result[*storage.Session]{}, false, err
+	}
 	prepared, err := s.prepareMaterial(ctx, origin, source, nil)
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, false, err
@@ -86,6 +90,13 @@ func (s *Service) CopyForeground(ctx context.Context, target share.Scope, source
 	}
 	if origin != latestOrigin {
 		return operationresult.Result[*storage.Session]{Status: operationresult.Conflict, Message: "source session origin changed"}, false, nil
+	}
+	latestPending, err := s.deps.Dialogues.PendingInputs(locked, sourceID)
+	if err != nil {
+		return operationresult.Result[*storage.Session]{}, false, err
+	}
+	if !slices.Equal(pending, latestPending) {
+		return operationresult.Result[*storage.Session]{Status: operationresult.Conflict, Message: "source pending inputs changed"}, false, nil
 	}
 	messages, err := s.deps.Messages.ListBySession(locked, sourceID)
 	if err != nil {
