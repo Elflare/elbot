@@ -27,7 +27,7 @@
 - [ ] completion包
 - [ ] fileops包
 - [ ] workspace包
-- [ ] llm包
+- [x] llm包
 - [ ] media包
 - [ ] storage包
 - [ ] session包
