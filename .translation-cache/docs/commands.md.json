@@ -8,14 +8,6 @@
       "translation": "## Mode\n\n| Command | Function |\n| --- | --- |\n| `/chat [消息]` | Switch to chat mode or create a new chat Session, without injecting tools. |\n| `/work [消息]` | Switch to work mode or create a new work Session, enabling tool discovery and invocation. |\n\n- When a message is provided, it switches first and then sends it as the same user message; if the mode switch is rejected, the message is not sent (e.g., `/chat 随便聊聊`).\n- A work Session with existing history cannot be switched directly to chat; `/new` is required first.\n\n",
       "updated_at": 1793351491
     },
-    "docs/commands.md:section:21da7279e60524254997c82f62b1fa0e8bf1faa70b2f5157b95f79d751ca4b9b": {
-      "kind": "section",
-      "source": "## 高风险工具确认\n\n触发高风险确认时可用的命令：\n\n| 命令 | 作用 |\n| --- | --- |\n| `/detail` | 待确认工具调用详情；文件变更有完整 diff 时只展示 diff，diff 被省略时展示文字说明；其他内容按块类型展示。 |\n| `/confirm` | 确认当前待确认工具调用。 |\n| `/confirmtool` | 确认当前工具。 |\n| `/confirmall` | 确认当前批次全部待确认工具。 |\n| `/reject` | 拒绝当前待确认工具调用。 |\n\n- 普通用户的确认等待默认 10 分钟无有效操作后过期；当前群聊或私聊的 Session TTL 更短时用更短时限。超级管理员不受额外的 10 分钟限制，但仍遵守大于 0 的 Session TTL。`/detail` 会重新计时；过期后工具不执行，当前处理停止。\n- 也可用 `/stop` 停止当前请求（见[请求管理](#请求管理)）。具体提示以运行时输出为准。\n",
-      "source_file": "docs/commands.md",
-      "source_hash": "57bbbd038ee0dd849bb34689b9893aa2b04c2863db646dc996945b19ebc8310d",
-      "translation": "## High-risk Tool Confirmation\n\nCommands available when high-risk confirmation is triggered:\n\n| Command | Effect |\n| --- | --- |\n| `/detail` | Details of the tool call awaiting confirmation; if file changes have a complete diff, only the diff is shown; if the diff is omitted, a text description is shown; other content is displayed according to the block type. |\n| `/confirm` | Confirm the current tool call awaiting confirmation. |\n| `/confirmtool` | Confirm the current tool. |\n| `/confirmall` | Confirm all tools awaiting confirmation in the current batch. |\n| `/reject` | Reject the current tool call awaiting confirmation. |\n\n- Confirmation for ordinary users expires by default after 10 minutes without valid action; a shorter limit is used if the Session TTL of the current group or private chat is shorter. Superadmins are not subject to the additional 10-minute limit but still adhere to a Session TTL greater than 0. `/detail` resets the timer; once expired, the tool will not be executed and current processing stops.\n- You can also use `/stop` to stop the current request (see [Request Management](#请求管理)). Refer to the runtime output for specific prompts.\n",
-      "updated_at": 1794292224
-    },
     "docs/commands.md:section:22929c773248be736329061e848db378484aa85ad7bad58e0d63984055f27ab9": {
       "kind": "section",
       "source": "## 上下文压缩\n\n| 命令 | 作用 |\n| --- | --- |\n| `/compact` | 手动压缩当前 Session 上下文。 |\n\n- 自动压缩由 `[context] compact_enabled` 和 `compact_trigger_ratio` 控制。\n- 压缩保留历史用户原话、忽略工具返回值，成功后创建并切换到独立的 `原标题 compacted-N` Session，旧 Session 不修改；可用 `/stop` 取消。\n\n",
@@ -88,6 +80,14 @@
       "translation": "## Additional Input\n\nNew input received while the LLM is processing will stop the current request and enter an append-wait state; consecutive inputs will accumulate. Send `y` or `/confirm` to continue, and the accumulated inputs will be merged and executed using the original Session; send `/stop` to cancel the current processing.\n\n",
       "updated_at": 1794064547
     },
+    "docs/commands.md:section:9a55da2ed696a90b97d2ed8d9e7687e02c21bf44d5926b8b2a1d87c8bdf2f966": {
+      "kind": "section",
+      "source": "## 高风险工具确认\n\n触发高风险确认时可用的命令：\n\n| 命令 | 作用 |\n| --- | --- |\n| `/detail` | 待确认工具调用详情；展示工具提供的结构化字段、命令和预检 diff，不额外追加参数 JSON。文件前后均不超过 8 MiB 时显示完整 diff，超过则不显示 diff、不影响操作，也不切换兜底正文。 |\n| `/confirm` | 确认当前待确认工具调用。 |\n| `/confirmtool` | 确认当前工具。 |\n| `/confirmall` | 确认当前批次全部待确认工具。 |\n| `/reject` | 拒绝当前待确认工具调用。 |\n\n- 普通用户的确认等待默认 10 分钟无有效操作后过期；当前群聊或私聊的 Session TTL 更短时用更短时限。超级管理员不受额外的 10 分钟限制，但仍遵守大于 0 的 Session TTL。`/detail` 会重新计时；过期后工具不执行，当前处理停止。\n- 也可用 `/stop` 停止当前请求（见[请求管理](#请求管理)）。具体提示以运行时输出为准。\n",
+      "source_file": "docs/commands.md",
+      "source_hash": "a52474dbaa6c86acdd264922aed692b2cc82c170fcf29f682d007b8be670058c",
+      "translation": "## High-risk Tool Confirmation\n\nCommands available when high-risk confirmation is triggered:\n\n| Command | Function |\n| --- | --- |\n| `/detail` | Details of the tool call awaiting confirmation; displays structured fields, commands, and pre-check diffs provided by the tool, without appending additional parameter JSON. Full diffs are shown if both the before and after versions of the file are within 8 MiB; otherwise, diffs are not displayed, which does not affect operation or switch to fallback text. |\n| `/confirm` | Confirm the current tool call awaiting confirmation. |\n| `/confirmtool` | Confirm the current tool. |\n| `/confirmall` | Confirm all tool calls awaiting confirmation in the current batch. |\n| `/reject` | Reject the current tool call awaiting confirmation. |\n\n- Confirmation for ordinary users expires by default after 10 minutes of inactivity; a shorter limit is used if the Session TTL for the current group or private chat is shorter. Superadmins are not subject to the additional 10-minute limit but still adhere to a Session TTL greater than 0. `/detail` resets the timer; once expired, the tool will not be executed and the current processing will stop.\n- You can also use `/stop` to stop the current request (see [请求管理](#请求管理)). Refer to the runtime output for specific prompts.\n",
+      "updated_at": 1794708567
+    },
     "docs/commands.md:section:9fe6b351ed415d3736a422887a2ee2ff6b6b893ad2144700a693d235c12d6145": {
       "kind": "section",
       "source": "## 模型\n\n| 命令 | 作用 |\n| --- | --- |\n| `/checkmodel [关键词]`（别名 `/models`） | 查看或搜索模型。 |\n| `/models --fresh` / `--refresh` | 重载厂商配置并强制刷新模型列表。 |\n| `/model <编号或名称>` | 切换当前 Session 模式使用的模型。 |\n| `/model --chat <模型>` / `--work <模型>` | 切换 chat / work 模式模型。 |\n| `/model --elwisp<1\\|2\\|3> <模型>` | 切换 Elnis elwisp1/2/3 模型槽位。 |\n| `/model --compact <模型>` | 切换 Chat 文字摘要模型；Responses 原生压缩使用当前对话模型。 |\n| `/model --naming <模型>` | 切换 Session 自动命名模型。 |\n\n模型参数可以是列表编号、模型名或 `provider/model`，例如 `/model --work deepseek/deepseek-chat`。\n\n模型选择按模式／槽位全局生效并保存到 `state.toml`；`/model` 未指定目标时使用当前 Session 的模式，无当前 Session 时使用默认模式。\n\n",
@@ -114,8 +114,8 @@
     }
   },
   "source": "docs/commands.md",
-  "source_hash": "b973e4745a0fff4d0413c948683a1f01b991f8539955ab6a06749e1ecaf13976",
+  "source_hash": "49bda107a7ae597f23735846f1e64549c19f83979593c1ae0b987c90188f5765",
   "target": "docs.en/commands.md",
-  "updated_at": 1794323698,
+  "updated_at": 1794708567,
   "version": 3
 }
