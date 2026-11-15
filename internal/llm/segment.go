@@ -90,7 +90,7 @@ func SegmentsRawContentText(segments []MessageSegment) string {
 
 // ImageReferenceText returns the text label paired with one image in an LLM request.
 func ImageReferenceText(segment MessageSegment, index int) string {
-	if segment.Type != SegmentImage || index < 1 || (strings.TrimSpace(segment.URL) == "" && segment.MediaID == "") {
+	if strings.TrimSpace(segment.URL) == "" && segment.MediaID == "" {
 		return ""
 	}
 	parts := []string{fmt.Sprintf("图片 %d", index)}
@@ -154,9 +154,6 @@ func AppendSegmentText(segments []MessageSegment, suffix string) []MessageSegmen
 }
 
 func ReplaceSegmentText(segments []MessageSegment, pattern *regexp.Regexp, replacement string, all bool) []MessageSegment {
-	if pattern == nil {
-		return segments
-	}
 	out := append([]MessageSegment(nil), segments...)
 	for i := range out {
 		if out[i].Type != SegmentText {

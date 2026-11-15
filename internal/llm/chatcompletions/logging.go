@@ -41,7 +41,8 @@ func (a *Client) logChatRequest(ctx context.Context, req Request) {
 }
 
 func (a *Client) logFirstSystemMessage(ctx context.Context, req Request) {
-	if firstSystemText(req.Messages) == "" {
+	content := firstSystemText(req.Messages)
+	if content == "" {
 		return
 	}
 	a.loggedSystemMu.Lock()
@@ -56,7 +57,7 @@ func (a *Client) logFirstSystemMessage(ctx context.Context, req Request) {
 		Level:     slog.LevelInfo,
 		EventName: "system_message",
 		Module:    "model",
-		Content:   "system prompt: " + firstSystemText(req.Messages) + "\nmodel=" + req.Model,
+		Content:   "system prompt: " + content + "\nmodel=" + req.Model,
 	}
 	record.Identity = globalevents.LogIdentityFromContext(ctx)
 	record.Identity.SessionID = req.SessionID

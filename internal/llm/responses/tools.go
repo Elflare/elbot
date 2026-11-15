@@ -19,11 +19,7 @@ func AdditionalTools(tools []FunctionTool) (Item, error) {
 	if err != nil {
 		return Item{}, err
 	}
-	item, err := ParseItem(raw)
-	if err == nil {
-		_, err = AdditionalToolDefinitions(item)
-	}
-	return item, err
+	return ParseItem(raw)
 }
 
 // AdditionalToolDefinitions reads the ElBot function definitions retained in a
@@ -43,23 +39,20 @@ func AdditionalToolDefinitions(item Item) ([]FunctionTool, error) {
 	tools := make([]FunctionTool, 0, len(header.Tools))
 	seen := map[string]bool{}
 	for _, raw := range header.Tools {
-		var kind struct {
+		var tool struct {
 			Type string `json:"type"`
+			FunctionTool
 		}
-		if err := json.Unmarshal(raw, &kind); err != nil {
-			return nil, err
-		}
-		var tool FunctionTool
 		decoder := json.NewDecoder(bytes.NewReader(raw))
 		decoder.UseNumber()
 		if err := decoder.Decode(&tool); err != nil {
 			return nil, err
 		}
-		if kind.Type != "function" || strings.TrimSpace(tool.Name) == "" || seen[tool.Name] {
+		if tool.Type != "function" || strings.TrimSpace(tool.Name) == "" || seen[tool.Name] {
 			return nil, fmt.Errorf("invalid or duplicate additional function %q", tool.Name)
 		}
 		seen[tool.Name] = true
-		tools = append(tools, tool)
+		tools = append(tools, tool.FunctionTool)
 	}
 	return tools, nil
 }
@@ -80,9 +73,6 @@ type allowedToolChoice struct {
 func restrictToolChoice(configured any, names []string) (any, []string, error) {
 	allowed := make(map[string]bool, len(names))
 	for _, name := range names {
-		if strings.TrimSpace(name) == "" {
-			return nil, nil, fmt.Errorf("allowed function name is empty")
-		}
 		allowed[name] = true
 	}
 	mode := "auto"

@@ -131,7 +131,7 @@ func TestUserNamedExamplesCanBeRemovedOrReplaced(t *testing.T) {
 		delete(cli["server"].(map[string]any), "tokens")
 	})
 	changeTOML(t, filepath.Join(dir, "providers.toml"), func(raw map[string]any) {
-		raw["providers"] = map[string]any{"custom": map[string]any{"models": []string{"mine"}}}
+		raw["providers"] = map[string]any{"custom": map[string]any{"base_url": "https://example.invalid/v1", "models": []string{"mine"}}}
 	})
 	changeTOML(t, filepath.Join(dir, "state.toml"), func(raw map[string]any) {
 		for _, selection := range raw["mode_models"].(map[string]any) {

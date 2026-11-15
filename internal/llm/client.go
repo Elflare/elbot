@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"elbot/internal/events"
+	"elbot/internal/llm/share"
 )
 
 // Client exposes independent operations, not a particular conversation protocol.
@@ -46,19 +47,16 @@ type Usage struct {
 }
 
 // CacheHitPercent returns cached/input*100 without rounding. Nil means either
-// count is unknown/invalid or input is zero; aggregate overflow is invalid too.
+// count is unknown or input is zero. Protocol decoders supply nonnegative counts.
 func (u *Usage) CacheHitPercent() *float64 {
-	if u == nil || u.PromptTokens == nil || u.CacheHitTokens == nil || *u.PromptTokens <= 0 || *u.CacheHitTokens < 0 {
+	if u == nil || u.PromptTokens == nil || u.CacheHitTokens == nil || *u.PromptTokens == 0 {
 		return nil
 	}
 	percent := 100 * float64(*u.CacheHitTokens) / float64(*u.PromptTokens)
 	return &percent
 }
 
-type ModelMetadata struct {
-	ID            string
-	ContextWindow int
-}
+type ModelMetadata = share.ModelMetadata
 
 type ModelMetadataProvider interface {
 	ListModelMetadata(ctx context.Context) ([]ModelMetadata, error)

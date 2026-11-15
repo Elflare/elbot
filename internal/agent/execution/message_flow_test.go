@@ -75,13 +75,9 @@ func TestDynamicProviderClientPublishesRequestLog(t *testing.T) {
 		storage.SessionModeWork: {Provider: "deepseek", Model: "deepseek-chat"},
 		storage.SessionModeChat: {Provider: "zhipu", Model: "glm-4-flash"},
 	}
-	zhipu, err := chatcompletions.New(srv.URL, "secret-key", nil, nil, chatcompletions.RequestOptions{})
-	if err != nil {
-		t.Fatalf("create zhipu client: %v", err)
-	}
 	captureLogs(t, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	models := newTestModels(t, testModelOptions{
-		Clients:     map[string]llm.Client{"deepseek": &fakeLLM{}, "zhipu": zhipu},
+		Clients:     map[string]llm.Client{"deepseek": &fakeLLM{}},
 		ModeModels:  modeModels,
 		Providers:   providers,
 		DefaultMode: storage.SessionModeWork,

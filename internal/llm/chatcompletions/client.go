@@ -51,17 +51,8 @@ func (a *Client) SetRetryNotifier(f func(context.Context, llm.RetryEvent)) {
 	a.retryOptions.OnRetry = f
 }
 func (a *Client) endpoint() string { return a.baseURL + "/chat/completions" }
-func (a *Client) validateBaseURL() error {
-	if strings.TrimSpace(a.baseURL) == "" {
-		return errors.New("chat base_url is required")
-	}
-	return nil
-}
 
 func (a *Client) Stream(ctx context.Context, req Request) (<-chan Chunk, error) {
-	if err := a.validateBaseURL(); err != nil {
-		return nil, err
-	}
 	body := map[string]any{"model": req.Model, "messages": toOpenAIMessages(req.Messages), "stream": true, "stream_options": map[string]any{"include_usage": true}}
 	if req.Temperature > 0 {
 		body["temperature"] = req.Temperature

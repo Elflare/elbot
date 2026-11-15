@@ -11,7 +11,7 @@ import (
 )
 
 func TestSSEFramesMultilineDataAndComments(t *testing.T) {
-	client, err := New(Options{})
+	client, err := New(Options{FirstChunkTimeout: time.Second, StreamIdleTimeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestSSECancellationWakesBlockedConsumerAndClosesBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client, _ := New(Options{})
+	client, _ := New(Options{FirstChunkTimeout: time.Second, StreamIdleTimeout: time.Second})
 	sse, err := client.OpenSSE(ctx, resp)
 	if err != nil {
 		t.Fatal(err)

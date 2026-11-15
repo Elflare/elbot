@@ -19,7 +19,7 @@ func TestLoadProvidersUsesSelectedFileAndReloadsConfigEnv(t *testing.T) {
 	}
 	write(filepath.Join(dir, "app.toml"), "invalid main config = [")
 	write(filepath.Join(dir, "state.toml"), "invalid state = [")
-	write(path, "[providers.p]\napi_key_env='ELBOT_RELOAD_TEST_KEY'\nmodels=['m']\n[providers.p.model_configs.m]\ncontext_window=123\n[model_metadata]\ndefault_context_window=456\n")
+	write(path, "[providers.p]\nbase_url='https://example.invalid/v1'\napi_key_env='ELBOT_RELOAD_TEST_KEY'\nmodels=['m']\n[providers.p.model_configs.m]\ncontext_window=123\n[model_metadata]\ndefault_context_window=456\n")
 	t.Setenv("ELBOT_RELOAD_TEST_KEY", "")
 	for _, key := range []string{"first", "second"} {
 		write(filepath.Join(dir, ".env"), "ELBOT_RELOAD_TEST_KEY="+key)
@@ -56,6 +56,31 @@ func TestLoadProvidersUsesSelectedFileAndReloadsConfigEnv(t *testing.T) {
 	}
 }
 
+func TestProviderBaseURLValidationAtStartupAndReload(t *testing.T) {
+	for _, mode := range []string{"chat", "response"} {
+		for _, baseURL := range []string{"", "  ", "https://example.invalid/v1"} {
+			t.Run(mode+"/"+baseURL, func(t *testing.T) {
+				dir := t.TempDir()
+				main := filepath.Join(dir, "app.toml")
+				provider := filepath.Join(dir, "providers.toml")
+				if err := os.WriteFile(main, []byte("[mode_models.work]\nprovider='p'\nmodel='m'\n[mode_models.chat]\nprovider='p'\nmodel='m'\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(provider, []byte("[providers.p]\napi_mode='"+mode+"'\nbase_url='"+baseURL+"'\nmodels=['m']\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				_, startupErr := Load(main)
+				_, reloadErr := LoadProviders(provider, dir)
+				for _, err := range []error{startupErr, reloadErr} {
+					if (err != nil) != (strings.TrimSpace(baseURL) == "") || err != nil && !strings.Contains(err.Error(), "base_url") {
+						t.Fatalf("startup=%v reload=%v", startupErr, reloadErr)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestResponsesStoreValidationAtStartupAndReload(t *testing.T) {
 	for _, test := range []struct {
 		name, payload string
@@ -74,7 +99,7 @@ func TestResponsesStoreValidationAtStartupAndReload(t *testing.T) {
 			if err := os.WriteFile(main, []byte("[mode_models.work]\nprovider='p'\nmodel='m'\n[mode_models.chat]\nprovider='p'\nmodel='m'\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(provider, []byte("[providers.p]\napi_mode='response'\nmodels=['m']\n"+test.payload), 0600); err != nil {
+			if err := os.WriteFile(provider, []byte("[providers.p]\nbase_url='https://example.invalid/v1'\napi_mode='response'\nmodels=['m']\n"+test.payload), 0600); err != nil {
 				t.Fatal(err)
 			}
 			_, startupErr := Load(main)

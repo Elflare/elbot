@@ -2,7 +2,6 @@ package responses
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"elbot/internal/llm"
 )
@@ -70,9 +69,6 @@ func InputMessage(role string, content []InputContent) (Item, error) {
 }
 
 func FunctionCallOutput(callID string, output json.RawMessage) (Item, error) {
-	if callID == "" {
-		return Item{}, fmt.Errorf("function output requires call_id")
-	}
 	raw, err := json.Marshal(struct {
 		Type   string          `json:"type"`
 		CallID string          `json:"call_id"`

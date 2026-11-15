@@ -108,9 +108,6 @@ func firstJSONInt(raw map[string]json.RawMessage, names ...string) *int64 {
 
 func firstNestedJSONInt(raw map[string]json.RawMessage, paths ...[]string) *int64 {
 	for _, path := range paths {
-		if len(path) == 0 {
-			continue
-		}
 		current := raw[path[0]]
 		for _, key := range path[1:] {
 			var object map[string]json.RawMessage

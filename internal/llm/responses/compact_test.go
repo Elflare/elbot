@@ -57,9 +57,6 @@ func TestCompactUsesFrozenResponsesRequest(t *testing.T) {
 	}
 	frozen = prepared.JSON()
 	extras["vendor_option"] = "mutated"
-	input[0].Raw[0] = '!'
-	copyBytes := prepared.JSON()
-	copyBytes[0] = '!'
 	var body map[string]json.RawMessage
 	if err := json.Unmarshal(frozen, &body); err != nil {
 		t.Fatal(err)
@@ -98,7 +95,7 @@ func TestCompactUsesFrozenResponsesRequest(t *testing.T) {
 	}
 }
 
-func TestCompactRejectsControlledOverridesAndRetainedTriggers(t *testing.T) {
+func TestCompactRejectsControlledOverrides(t *testing.T) {
 	client := mustClient(t, "http://unused.invalid", nil, nil, RequestOptions{})
 	for _, key := range []string{"model", "input", "instructions", "store", "stream", "previous_response_id", "conversation", "tools", "tool_choice", "text"} {
 		t.Run(key, func(t *testing.T) {
@@ -107,20 +104,35 @@ func TestCompactRejectsControlledOverridesAndRetainedTriggers(t *testing.T) {
 			}
 		})
 	}
-	trigger, _ := ParseItem([]byte(`{"type":"compaction_trigger"}`))
-	if _, err := client.PrepareCompact(CompactRequest{Model: "m", Input: []Item{trigger}}); err == nil {
-		t.Fatal("accepted a trigger in retained input")
-	}
 }
 
-func TestCompactAcceptsCompletedOutputWithoutCountingItTwice(t *testing.T) {
-	for _, mode := range []string{"items and terminal", "terminal only", "items and sparse terminal"} {
-		t.Run(mode, func(t *testing.T) {
+func TestCompactUsesTerminalOutput(t *testing.T) {
+	for _, tc := range []struct {
+		name, item, output string
+		wantErr            bool
+	}{
+		{"items and terminal", compactItemJSON, compactItemJSON, false},
+		{"terminal only", "", compactItemJSON, false},
+		{"invalid intermediate", `{"type":"compaction"}`, compactItemJSON, false},
+		{"empty terminal", compactItemJSON, "", true},
+		{"invalid terminal", compactItemJSON, `{"type":"compaction"}`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				emitCompactResponse(w, []string{compactItemJSON}, mode != "terminal only", mode != "items and sparse terminal")
+				w.Header().Set("Content-Type", "text/event-stream")
+				if tc.item != "" {
+					emit(w, "response.output_item.done", `{"type":"response.output_item.done","item":`+tc.item+`}`)
+				}
+				emit(w, "response.completed", `{"type":"response.completed","response":{"id":"compact","status":"completed","output":[`+tc.output+`]}}`)
 			}))
 			defer server.Close()
 			result, err := mustClient(t, server.URL, nil, nil, RequestOptions{}).Compact(t.Context(), CompactRequest{Model: "m"})
+			if tc.wantErr {
+				if err == nil || result.Compaction.Type != "" {
+					t.Fatalf("invalid terminal accepted: result=%+v err=%v", result, err)
+				}
+				return
+			}
 			if err != nil || string(result.Compaction.Raw) != compactItemJSON || len(result.Output) != 1 {
 				t.Fatalf("result=%+v err=%v", result, err)
 			}

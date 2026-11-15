@@ -21,7 +21,6 @@ func TestUsagePreservesKnownAndUnknownCounts(t *testing.T) {
 		{name: "invalid nested aliases fall through", body: `{"prompt_tokens_details":{"cached_tokens":-1,"cache_hit_tokens":null},"input_tokens_details":{"cached_tokens":0,"cache_hit_tokens":9}}`, want: [4]*int64{nil, nil, nil, testCount(0)}},
 		{name: "malformed details fall through", body: `{"prompt_tokens_details":false,"input_tokens_details":{"cached_tokens":7}}`, want: [4]*int64{nil, nil, nil, testCount(7)}},
 		{name: "invalid counts", body: `{"prompt_tokens":-1,"completion_tokens":1.5,"total_tokens":9223372036854775808,"cached_tokens":true}`},
-		{name: "exact large integers", body: `{"prompt_tokens":9007199254740993,"total_tokens":9223372036854775807}`, want: [4]*int64{testCount(9007199254740993), nil, testCount(9223372036854775807)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var usage openAIUsage

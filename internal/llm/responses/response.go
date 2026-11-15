@@ -56,7 +56,7 @@ func ParseItem(raw []byte) (Item, error) {
 }
 
 func (i *Item) UnmarshalJSON(raw []byte) error {
-	if !json.Valid(raw) || !bytes.HasPrefix(bytes.TrimSpace(raw), []byte("{")) {
+	if !bytes.HasPrefix(bytes.TrimSpace(raw), []byte("{")) {
 		return fmt.Errorf("response item must be a JSON object")
 	}
 	var header struct {
@@ -84,9 +84,6 @@ func (i *Item) UnmarshalJSON(raw []byte) error {
 }
 
 func (i Item) MarshalJSON() ([]byte, error) {
-	if !json.Valid(i.Raw) || !bytes.HasPrefix(bytes.TrimSpace(i.Raw), []byte("{")) {
-		return nil, fmt.Errorf("response item requires its native JSON object")
-	}
 	return i.Raw, nil
 }
 
@@ -170,9 +167,6 @@ func (r *Response) UnmarshalJSON(raw []byte) error {
 }
 
 func (r Response) MarshalJSON() ([]byte, error) {
-	if !json.Valid(r.Raw) {
-		return nil, fmt.Errorf("response requires its native JSON")
-	}
 	return r.Raw, nil
 }
 

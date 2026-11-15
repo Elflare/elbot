@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"elbot/internal/llm"
+	"elbot/internal/llm/httpclient"
 )
 
 // Opt in with ELBOT_LIVE_RESPONSES_BASE_URL, ELBOT_LIVE_RESPONSES_API_KEY and
@@ -19,7 +20,7 @@ func TestCompactLive(t *testing.T) {
 	if baseURL == "" || model == "" {
 		t.Skip("live Responses endpoint/model not configured")
 	}
-	client, err := New(baseURL, os.Getenv("ELBOT_LIVE_RESPONSES_API_KEY"), map[string]any{"reasoning": map[string]any{"effort": "low"}}, nil, RequestOptions{})
+	client, err := New(baseURL, os.Getenv("ELBOT_LIVE_RESPONSES_API_KEY"), map[string]any{"reasoning": map[string]any{"effort": "low"}}, nil, RequestOptions{Options: httpclient.Options{FirstChunkTimeout: time.Minute, StreamIdleTimeout: time.Minute}})
 	if err != nil {
 		t.Fatal(err)
 	}

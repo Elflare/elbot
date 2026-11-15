@@ -55,7 +55,7 @@ data: [DONE]
 	}))
 	t.Cleanup(server.Close)
 	p := &retryNoticePlatform{retryNotices: make(chan string, 5)}
-	models, err := modelmgr.NewModelManager(t.Context(), &config.Config{Providers: map[string]config.ProviderConfig{"p": {BaseURL: server.URL, Models: []string{"m"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}, LLMRequest: config.LLMRequestConfig{MaxRetries: 1, RetryInitialDelaySeconds: 1}})
+	models, err := modelmgr.NewModelManager(t.Context(), &config.Config{Providers: map[string]config.ProviderConfig{"p": {BaseURL: server.URL, Models: []string{"m"}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}, LLMRequest: config.LLMRequestConfig{FirstChunkTimeoutSeconds: 60, StreamIdleTimeoutSeconds: 60, MaxRetries: 1, RetryInitialDelaySeconds: 1}})
 	if err != nil {
 		t.Fatal(err)
 	}

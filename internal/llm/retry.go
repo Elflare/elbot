@@ -23,7 +23,7 @@ type RetryOptions struct {
 func Retry[Q, R any](ctx context.Context, client Client, call func(context.Context, Q) (R, error), request Q) (result R, err error) {
 	opts := client.RetryOptions()
 	delay := opts.RetryInitialDelay
-	for attempt := 0; attempt <= opts.MaxRetries; attempt++ {
+	for attempt := 0; ; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
@@ -48,10 +48,6 @@ func Retry[Q, R any](ctx context.Context, client Client, call func(context.Conte
 			return result, ctx.Err()
 		case <-timer.C:
 		}
-		// Saturate instead of overflowing into a negative wait for large budgets.
-		if delay <= time.Duration(1<<63-1)/2 {
-			delay *= 2
-		}
+		delay *= 2
 	}
-	return result, err
 }

@@ -154,9 +154,6 @@ func toOpenAIContent(segments []llm.MessageSegment) any {
 }
 
 func toOpenAIToolCalls(calls []llm.ToolCallRequest) []openAIToolCall {
-	if len(calls) == 0 {
-		return nil
-	}
 	out := make([]openAIToolCall, 0, len(calls))
 	for _, call := range calls {
 		out = append(out, openAIToolCall{
@@ -174,9 +171,8 @@ func toOpenAIToolCalls(calls []llm.ToolCallRequest) []openAIToolCall {
 func toOpenAITools(tools []llm.ToolSchema) []map[string]any {
 	out := make([]map[string]any, 0, len(tools))
 	for _, tool := range tools {
-		toolType := "function"
 		out = append(out, map[string]any{
-			"type": toolType,
+			"type": "function",
 			"function": map[string]any{
 				"name":        tool.Name,
 				"description": tool.Description,

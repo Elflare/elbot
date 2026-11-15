@@ -56,10 +56,7 @@ func (s *turnState) call(ctx context.Context, pending *agentshare.PendingUserMes
 		if err != nil {
 			return operationresult.Result[struct{}]{}, err
 		}
-		store, err := client.StoreForModel(s.selection.Model)
-		if err != nil {
-			return operationresult.Result[struct{}]{}, err
-		}
+		store := client.StoreForModel(s.selection.Model)
 		request = api.Request{
 			Model:        s.selection.Model,
 			Instructions: instructions,

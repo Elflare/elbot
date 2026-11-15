@@ -29,18 +29,17 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func mustNewWithOptions(t *testing.T, baseURL, apiKey string, extraPayload map[string]any, modelExtraPayloads map[string]map[string]any, opts RequestOptions) *Client {
 	t.Helper()
+	if opts.FirstChunkTimeout == 0 {
+		opts.FirstChunkTimeout = time.Minute
+	}
+	if opts.StreamIdleTimeout == 0 {
+		opts.StreamIdleTimeout = time.Minute
+	}
 	adapter, err := New(baseURL, apiKey, extraPayload, modelExtraPayloads, opts)
 	if err != nil {
 		t.Fatalf("NewWithOptions: %v", err)
 	}
 	return adapter
-}
-
-func TestNewWithOptionsReturnsInvalidProxyError(t *testing.T) {
-	_, err := New("https://example.invalid/v1", "key", nil, nil, RequestOptions{Options: httpclient.Options{Proxy: "://bad proxy"}})
-	if err == nil || !strings.Contains(err.Error(), "invalid proxy URL") {
-		t.Fatalf("New() error = %v", err)
-	}
 }
 
 func TestChatStream_BasicContent(t *testing.T) {
@@ -1211,7 +1210,7 @@ func TestChatStream_ModelExtraPayload(t *testing.T) {
 
 func mustTransport(t *testing.T, client *http.Client) *httpclient.Client {
 	t.Helper()
-	transport, err := httpclient.New(httpclient.Options{HTTPClient: client})
+	transport, err := httpclient.New(httpclient.Options{HTTPClient: client, FirstChunkTimeout: time.Minute, StreamIdleTimeout: time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}

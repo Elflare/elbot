@@ -13,6 +13,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/llm"
 	"elbot/internal/llm/chatcompletions"
+	"elbot/internal/llm/httpclient"
 	"elbot/internal/llm/responses"
 	"elbot/internal/modelmgr"
 )
@@ -47,9 +48,9 @@ func TestGenerateTitleRetryBudget(t *testing.T) {
 				var client llm.Client
 				var err error
 				if protocol == "chat" {
-					client, err = chatcompletions.New(server.URL, "key", nil, nil, chatcompletions.RequestOptions{RetryOptions: opts})
+					client, err = chatcompletions.New(server.URL, "key", nil, nil, chatcompletions.RequestOptions{Options: httpclient.Options{FirstChunkTimeout: time.Minute, StreamIdleTimeout: time.Minute}, RetryOptions: opts})
 				} else {
-					client, err = responses.New(server.URL, "key", nil, nil, responses.RequestOptions{RetryOptions: opts})
+					client, err = responses.New(server.URL, "key", nil, nil, responses.RequestOptions{Options: httpclient.Options{FirstChunkTimeout: time.Minute, StreamIdleTimeout: time.Minute}, RetryOptions: opts})
 				}
 				if err != nil {
 					t.Fatal(err)

@@ -22,6 +22,12 @@ import (
 
 func mustClient(t *testing.T, url string, extras map[string]any, modelExtras map[string]map[string]any, opts RequestOptions) *Client {
 	t.Helper()
+	if opts.FirstChunkTimeout == 0 {
+		opts.FirstChunkTimeout = time.Minute
+	}
+	if opts.StreamIdleTimeout == 0 {
+		opts.StreamIdleTimeout = time.Minute
+	}
 	client, err := New(url, "secret-key", extras, modelExtras, opts)
 	if err != nil {
 		t.Fatal(err)
@@ -178,7 +184,7 @@ func TestResponseExtrasCannotReplaceOwnedFieldsOrEachOther(t *testing.T) {
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1) }))
 	defer srv.Close()
-	for _, field := range []string{"model", "input", "instructions", "tools", "stream", "previous_response_id", "conversation", "store"} {
+	for _, field := range []string{"model", "input", "instructions", "tools", "stream", "previous_response_id", "conversation"} {
 		t.Run(field, func(t *testing.T) {
 			client := mustClient(t, srv.URL, map[string]any{field: "override"}, nil, RequestOptions{})
 			if _, err := client.Stream(context.Background(), Request{Model: "m"}); err == nil || !strings.Contains(err.Error(), field) {

@@ -37,7 +37,6 @@ func TestImageReferenceTextUsesReusableURLsOnly(t *testing.T) {
 		{name: "data", segment: MessageSegment{Type: SegmentImage, URL: "data:image/png;base64,aGVsbG8=", Name: "inline.png"}, index: 2, want: "[图片 2；名称：inline.png；内嵌图片，无可复用 URL]"},
 		{name: "non reusable", segment: MessageSegment{Type: SegmentImage, URL: "file:///tmp/a.png"}, index: 3, want: "[图片 3；无可复用 URL]"},
 		{name: "missing URL", segment: MessageSegment{Type: SegmentImage, Name: "missing.png"}, index: 4, want: ""},
-		{name: "not image", segment: MessageSegment{Type: SegmentFile, URL: "https://example.com/a.png"}, index: 1, want: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

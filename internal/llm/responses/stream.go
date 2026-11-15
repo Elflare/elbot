@@ -68,9 +68,6 @@ func knownEvent(kind string) bool {
 }
 
 func (e Event) MarshalJSON() ([]byte, error) {
-	if !json.Valid(e.Raw) {
-		return nil, fmt.Errorf("event requires its native JSON")
-	}
 	return e.Raw, nil
 }
 

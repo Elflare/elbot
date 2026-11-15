@@ -11,21 +11,13 @@ import (
 )
 
 type Options struct {
+	// FirstChunkTimeout is supplied by configuration and bounds headers and the first stream data.
 	FirstChunkTimeout time.Duration
+	// StreamIdleTimeout bounds the wait between stream data after the first chunk.
 	StreamIdleTimeout time.Duration
 	Proxy             string
 	// HTTPClient optionally supplies a transport, for embedding and tests.
 	HTTPClient *http.Client
-}
-
-func (o Options) withDefaults() Options {
-	if o.FirstChunkTimeout <= 0 {
-		o.FirstChunkTimeout = 180 * time.Second
-	}
-	if o.StreamIdleTimeout <= 0 {
-		o.StreamIdleTimeout = 60 * time.Second
-	}
-	return o
 }
 
 type Client struct {
@@ -34,19 +26,18 @@ type Client struct {
 }
 
 func New(opts Options) (*Client, error) {
-	opts = opts.withDefaults()
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	transport.ResponseHeaderTimeout = opts.FirstChunkTimeout
-	if opts.Proxy != "" {
-		proxy, err := url.Parse(opts.Proxy)
-		if err != nil {
-			return nil, fmt.Errorf("invalid proxy URL %q: %w", opts.Proxy, err)
-		}
-		transport.Proxy = http.ProxyURL(proxy)
-	}
 	client := opts.HTTPClient
 	if client == nil {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.Proxy = nil
+		transport.ResponseHeaderTimeout = opts.FirstChunkTimeout
+		if opts.Proxy != "" {
+			proxy, err := url.Parse(opts.Proxy)
+			if err != nil {
+				return nil, fmt.Errorf("invalid proxy URL %q: %w", opts.Proxy, err)
+			}
+			transport.Proxy = http.ProxyURL(proxy)
+		}
 		client = &http.Client{Transport: transport}
 	}
 	return &Client{http: client, options: opts}, nil

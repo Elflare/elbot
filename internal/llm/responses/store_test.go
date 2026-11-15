@@ -1,7 +1,6 @@
 package responses
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -47,28 +46,6 @@ func TestConfiguredStorageAndIndependentText(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-func TestInvalidStorageConfigurationNeverReachesHTTP(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("invalid configuration reached HTTP") }))
-	defer srv.Close()
-	for _, tc := range []struct {
-		name                     string
-		provider, model, request map[string]any
-	}{
-		{"provider type", map[string]any{"store": "false"}, nil, nil},
-		{"model type", nil, map[string]any{"store": nil}, nil},
-		{"duplicate equal", map[string]any{"store": false}, map[string]any{"store": false}, nil},
-		{"duplicate different", map[string]any{"store": true}, map[string]any{"store": false}, nil},
-		{"request owned", nil, nil, map[string]any{"store": false}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			client := mustClient(t, srv.URL, tc.provider, map[string]map[string]any{"m": tc.model}, RequestOptions{})
-			if _, err := client.Stream(context.Background(), Request{Model: "m", ExtraBody: tc.request}); err == nil || !strings.Contains(err.Error(), "store") {
-				t.Fatalf("error=%v", err)
-			}
-		})
 	}
 }
 

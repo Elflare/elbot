@@ -56,6 +56,7 @@ func TestTitleGeneratorUsesConfiguredOrContextModelProtocol(t *testing.T) {
 			}))
 			defer srv.Close()
 			opts := config.Config{
+				LLMRequest: config.LLMRequestConfig{FirstChunkTimeoutSeconds: 60, StreamIdleTimeoutSeconds: 60},
 				Providers: map[string]config.ProviderConfig{
 					"chat":     {BaseURL: srv.URL, Models: []string{"dialogue-chat", "title-chat"}},
 					"response": {BaseURL: srv.URL, APIMode: "response", Models: []string{"work-response", "dialogue-response", "title-response"}},
@@ -145,6 +146,7 @@ func TestNamingFallbackUsesSnapshotAcrossSelectionAndReload(t *testing.T) {
 	defer unblock()
 	dir := t.TempDir()
 	cfg := &config.Config{ConfigPath: filepath.Join(dir, "config.toml"), ProvidersConfigPath: filepath.Join(dir, "providers.toml"), StateConfigPath: filepath.Join(dir, "state.toml"),
+		LLMRequest: config.LLMRequestConfig{FirstChunkTimeoutSeconds: 60, StreamIdleTimeoutSeconds: 60},
 		Providers: map[string]config.ProviderConfig{
 			"naming": {BaseURL: srv.URL + "/naming", Models: []string{"title"}},
 			"old":    {BaseURL: srv.URL + "/old", Models: []string{"first"}},

@@ -7,7 +7,6 @@ import (
 	"elbot/internal/llm"
 	"elbot/internal/llm/httpclient"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -24,13 +23,14 @@ type RequestOptions struct {
 
 type Streamer interface {
 	llm.Client
-	StoreForModel(string) (bool, error)
+	StoreForModel(string) bool
 	Stream(context.Context, Request) (<-chan Event, error)
 	PrepareRequest(Request) (PreparedRequest, error)
 	StreamPrepared(context.Context, PreparedRequest) (<-chan Event, error)
 }
 
 // PreparedRequest freezes the fully merged native body without credentials.
+// Slices returned by its accessors are read-only views.
 type PreparedRequest struct {
 	body         []byte
 	parameters   []byte
@@ -39,14 +39,14 @@ type PreparedRequest struct {
 	allowedTools []string
 }
 
-func (p PreparedRequest) JSON() json.RawMessage { return append(json.RawMessage(nil), p.body...) }
+func (p PreparedRequest) JSON() json.RawMessage { return p.body }
 
 // ParametersJSON is the frozen request configuration without conversation input.
 // The dialogue owner records ordered durable input references separately.
 func (p PreparedRequest) ParametersJSON() json.RawMessage {
-	return append(json.RawMessage(nil), p.parameters...)
+	return p.parameters
 }
-func (p PreparedRequest) AllowedTools() []string { return append([]string(nil), p.allowedTools...) }
+func (p PreparedRequest) AllowedTools() []string { return p.allowedTools }
 
 type Client struct {
 	baseURL            string
@@ -71,13 +71,6 @@ func (c *Client) SetRetryNotifier(f func(context.Context, llm.RetryEvent)) {
 	c.retryOptions.OnRetry = f
 }
 
-func (c *Client) validateBaseURL() error {
-	if strings.TrimSpace(c.baseURL) == "" {
-		return errors.New("response base_url is required")
-	}
-	return nil
-}
-
 func (c *Client) Stream(ctx context.Context, req Request) (<-chan Event, error) {
 	prepared, err := c.PrepareRequest(req)
 	if err != nil {
@@ -91,13 +84,7 @@ func (c *Client) PrepareRequest(req Request) (PreparedRequest, error) {
 }
 
 func (c *Client) prepareRequest(req Request, compact bool) (PreparedRequest, error) {
-	if strings.TrimSpace(c.baseURL) == "" {
-		return PreparedRequest{}, errors.New("response base_url is required")
-	}
-	store, err := c.StoreForModel(req.Model)
-	if err != nil {
-		return PreparedRequest{}, err
-	}
+	store := c.StoreForModel(req.Model)
 	input := req.Input
 	if input == nil {
 		input = []Item{}
@@ -131,7 +118,7 @@ func (c *Client) prepareRequest(req Request, compact bool) (PreparedRequest, err
 		body["tool_choice"] = "none"
 		reserved = append(reserved, "text", "tool_choice")
 	}
-	body, err = llm.AddExtraFields(body, reserved,
+	body, err := llm.AddExtraFields(body, reserved,
 		llm.ExtraFields{Source: "provider extra_payload", Fields: providerExtra},
 		llm.ExtraFields{Source: "model extra_payload", Fields: modelExtra},
 		llm.ExtraFields{Source: "request ExtraBody", Fields: req.ExtraBody})
@@ -163,26 +150,14 @@ func (c *Client) prepareRequest(req Request, compact bool) (PreparedRequest, err
 
 // StoreForModel exposes the configured preference to the native dialogue loop.
 // Per-call Store still takes precedence for independent text and stateless replay.
-func (c *Client) StoreForModel(model string) (bool, error) {
-	store, source := true, ""
-	for _, extra := range []llm.ExtraFields{
-		{Source: "provider extra_payload", Fields: c.extraPayload},
-		{Source: "model extra_payload", Fields: c.modelExtraPayloads[model]},
-	} {
-		value, exists := extra.Fields["store"]
-		if !exists {
-			continue
-		}
-		if source != "" {
-			return false, fmt.Errorf("extra field %q from %s conflicts with %s; extra parameters cannot override existing fields", "store", extra.Source, source)
-		}
-		configured, ok := value.(bool)
-		if !ok {
-			return false, fmt.Errorf("store from %s must be a boolean", extra.Source)
-		}
-		store, source = configured, extra.Source
+func (c *Client) StoreForModel(model string) bool {
+	if value, exists := c.modelExtraPayloads[model]["store"]; exists {
+		return value.(bool)
 	}
-	return store, nil
+	if value, exists := c.extraPayload["store"]; exists {
+		return value.(bool)
+	}
+	return true
 }
 
 func withoutStore(fields map[string]any) map[string]any {
@@ -197,7 +172,7 @@ func mergeInclude(body map[string]any, required []string) error {
 	var configured []string
 	if value, ok := body["include"]; ok {
 		raw, err := json.Marshal(value)
-		if err != nil || len(raw) == 0 || raw[0] != '[' || json.Unmarshal(raw, &configured) != nil {
+		if err != nil || raw[0] != '[' || json.Unmarshal(raw, &configured) != nil {
 			return fmt.Errorf("include must be an array of strings")
 		}
 	}
@@ -221,9 +196,6 @@ func mergeInclude(body map[string]any, required []string) error {
 }
 
 func (c *Client) StreamPrepared(ctx context.Context, prepared PreparedRequest) (<-chan Event, error) {
-	if len(prepared.body) == 0 {
-		return nil, fmt.Errorf("prepared response request is empty")
-	}
 	content, _ := json.Marshal(map[string]any{
 		"endpoint":      c.baseURL + "/responses",
 		"model":         prepared.model,
@@ -288,9 +260,6 @@ func (c *Client) GenerateText(ctx context.Context, req llm.TextRequest) (llm.Tex
 	}
 	if err := ctx.Err(); err != nil {
 		return llm.TextResult{}, err
-	}
-	if result == nil {
-		return llm.TextResult{}, errors.New("response stream ended without a completed response")
 	}
 	for _, item := range result.Output {
 		if item.Type == "function_call" {

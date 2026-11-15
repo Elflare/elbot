@@ -104,7 +104,6 @@ func TestFormatTokensCachePercentage(t *testing.T) {
 		{"full cache", &input, &input, &total, "tokens=90 · cache=30 (100.0%)"},
 		{"unknown input", nil, &cache, &total, "tokens=90 · cache=10"},
 		{"zero input", &zero, &zero, &total, "tokens=90 · cache=0"},
-		{"negative input", &negative, &cache, &total, "tokens=90 · cache=10"},
 		{"unknown cache", &input, nil, &total, "tokens=90 · cache=unk"},
 		{"negative cache", &input, &negative, &total, "tokens=90 · cache=unk"},
 		{"unknown total", &input, &cache, nil, "tokens=unk · cache=10 (33.3%)"},

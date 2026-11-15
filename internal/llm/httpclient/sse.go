@@ -75,15 +75,6 @@ func scanStreamLines(ctx context.Context, body io.ReadCloser, lines chan<- strea
 	}
 }
 
-func resetTimer(timer *time.Timer, timeout time.Duration) {
-	if !timer.Stop() {
-		select {
-		case <-timer.C:
-		default:
-		}
-	}
-	timer.Reset(timeout)
-}
 func prepareStreamBody(ctx context.Context, resp *http.Response, timeout time.Duration) (io.ReadCloser, error) {
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
 	mediaType, _, _ := strings.Cut(contentType, ";")
@@ -99,33 +90,29 @@ func prepareStreamBody(ctx context.Context, resp *http.Response, timeout time.Du
 	result := make(chan readResult, 1)
 	go func() {
 		prefix, err := reader.ReadSlice('\n')
-		result <- readResult{prefix: append([]byte(nil), prefix...), err: err}
+		result <- readResult{prefix: prefix, err: err}
 	}()
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	var read readResult
 	select {
 	case <-ctx.Done():
-		_ = resp.Body.Close()
 		return nil, ctx.Err()
 	case <-timer.C:
-		_ = resp.Body.Close()
 		return nil, fmt.Errorf("LLM first stream chunk timeout after %s", timeout)
 	case read = <-result:
 	}
 	if read.err != nil && read.err != io.EOF && read.err != bufio.ErrBufferFull {
 		return nil, fmt.Errorf("read upstream response prefix: %w", read.err)
 	}
-	prefix := read.prefix
-
-	if looksLikeHTML(prefix) {
+	if looksLikeHTML(read.prefix) {
 		return nil, errors.New("上游返回 HTML 而不是 API 响应，请检查 API Base URL、代理或网关")
 	}
-	isSSE := looksLikeSSE(prefix) || (len(bytes.TrimSpace(prefix)) == 0 && mediaType == "text/event-stream")
+	isSSE := looksLikeSSE(read.prefix) || (len(bytes.TrimSpace(read.prefix)) == 0 && mediaType == "text/event-stream")
 	if !isSSE {
-		return nil, fmt.Errorf("上游返回非 SSE API 响应（Content-Type=%q）：%s", contentType, responseSummary(prefix))
+		return nil, fmt.Errorf("上游返回非 SSE API 响应（Content-Type=%q）：%s", contentType, responseSummary(read.prefix))
 	}
-	return &prefixedReadCloser{Reader: io.MultiReader(bytes.NewReader(prefix), reader), closer: resp.Body}, nil
+	return &prefixedReadCloser{Reader: io.MultiReader(bytes.NewReader(read.prefix), reader), closer: resp.Body}, nil
 }
 
 func looksLikeHTML(prefix []byte) bool {
@@ -249,7 +236,7 @@ func readFrames(ctx context.Context, body io.ReadCloser, out chan<- Frame, optio
 				}
 				data = append(data, value)
 				seenData = true
-				resetTimer(timer, options.StreamIdleTimeout)
+				timer.Reset(options.StreamIdleTimeout)
 			}
 		}
 	}

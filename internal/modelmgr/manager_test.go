@@ -44,6 +44,7 @@ func TestConfiguredManagerBuildsProtocolClientsAndPayloads(t *testing.T) {
 			}))
 			defer server.Close()
 			cfg := &config.Config{Providers: map[string]config.ProviderConfig{"p": {APIMode: mode, BaseURL: server.URL, APIKey: "secret", ExtraPayload: map[string]any{"service_tier": "default"}, ModelConfigs: map[string]config.ModelConfig{"m": {ExtraPayload: map[string]any{"top_p": 0.7}}}}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}}
+			cfg.LLMRequest = config.LLMRequestConfig{FirstChunkTimeoutSeconds: 60, StreamIdleTimeoutSeconds: 60}
 			manager, err := NewModelManager(t.Context(), cfg)
 			if err != nil {
 				t.Fatal(err)
@@ -100,7 +101,7 @@ func TestManagerReloadUsesMainConfigCredentialsAndKeepsOldClient(t *testing.T) {
 	}
 }
 
-func TestManagerConstructionCancellationAndPartialCleanup(t *testing.T) {
+func TestManagerConstructionFailureReturnsNoInstance(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if m, err := NewModelManager(ctx, nil); m != nil || !errors.Is(err, context.Canceled) {
@@ -108,14 +109,8 @@ func TestManagerConstructionCancellationAndPartialCleanup(t *testing.T) {
 	}
 	cfg := &config.Config{Providers: map[string]config.ProviderConfig{"p": {Proxy: "://bad"}}, ModeModels: map[string]config.ModelSelection{"work": {Provider: "p", Model: "m"}}}
 	m, err := NewModelManager(t.Context(), cfg)
-	if err == nil || m == nil {
-		t.Fatal("missing partial result", m, err)
-	}
-	if err := m.Close(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := m.ObserveModelRetrying(func(context.Context, ModelRetryingEvent) {}, signal.ConnectOptions{}); !errors.Is(err, signal.ErrClosed) {
-		t.Fatal(err)
+	if err == nil || m != nil {
+		t.Fatal("failed construction returned an instance", m, err)
 	}
 }
 

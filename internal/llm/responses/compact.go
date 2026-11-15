@@ -34,17 +34,8 @@ type CompactResult struct {
 
 func (c *Client) PrepareCompact(req CompactRequest) (PreparedCompactRequest, error) {
 	input := make([]Item, 0, len(req.Input)+1)
-	for _, item := range req.Input {
-		if item.Type == "compaction_trigger" {
-			return PreparedCompactRequest{}, fmt.Errorf("compaction_trigger must not appear in retained context")
-		}
-		input = append(input, item)
-	}
-	trigger, err := ParseItem([]byte(`{"type":"compaction_trigger"}`))
-	if err != nil {
-		return PreparedCompactRequest{}, err
-	}
-	input = append(input, trigger)
+	input = append(input, req.Input...)
+	input = append(input, Item{Type: "compaction_trigger", Raw: json.RawMessage(`{"type":"compaction_trigger"}`)})
 	store := false
 	prepared, err := c.prepareRequest(Request{
 		Model: req.Model, Instructions: req.Instructions, Input: input,
@@ -70,43 +61,29 @@ func (c *Client) CompactPrepared(ctx context.Context, prepared PreparedCompactRe
 	}
 	result := &CompactResult{Response: &Response{}}
 	var completedItems []Item
-	completed := false
 	for event := range events {
 		if event.Response != nil {
 			result.Response = event.Response
 		}
 		if event.Error != nil {
-			if len(result.Output) == 0 {
-				result.Output = completedItems
-			}
-			return result, event.Error
+			err = event.Error
+			break
 		}
-		switch event.Type {
-		case "response.output_item.done":
-			if event.Item == nil {
-				return result, fmt.Errorf("compact output_item.done is missing item")
-			}
+		if event.Type == "response.output_item.done" && event.Item != nil {
 			completedItems = append(completedItems, *event.Item)
-		case "response.completed":
-			completed = true
 		}
 	}
-	if len(result.Output) == 0 {
-		result.Output = completedItems
+	if err == nil {
+		err = ctx.Err()
 	}
-	if err := ctx.Err(); err != nil {
+	if err != nil {
+		if len(result.Output) == 0 {
+			result.Output = completedItems
+		}
 		return result, err
 	}
-	if !completed {
-		return result, fmt.Errorf("compact stream closed before response.completed")
-	}
-	// A terminal output array repeats output_item.done; it is not another set of
-	// items. Validate each representation separately rather than counting twice.
-	if len(completedItems) > 0 {
-		if _, err := compactOutput(completedItems); err != nil {
-			return result, err
-		}
-	}
+	// Only the terminal response can supply the next context root. Intermediate
+	// done items are retained solely for auditing failed or canceled attempts.
 	result.Compaction, err = compactOutput(result.Output)
 	return result, err
 }

@@ -112,7 +112,7 @@ func TestInspectionAndLoadShareDefaultsAndOverrides(t *testing.T) {
 	main := filepath.Join(dir, "custom.toml")
 	files := map[string]string{
 		"custom.toml":  "[config_files]\nproviders='vendor.toml'\nstate='choices.toml'\n[session]\ndefault_mode='chat'\n[naming_model]\nprovider='custom'\nmodel='title'\n[mode_models.work]\nprovider='custom'\nmodel='main'\n[mode_models.chat]\nprovider='custom'\nmodel='chat'\n",
-		"vendor.toml":  "[providers.custom]\nmodels=['main','state','chat']\n",
+		"vendor.toml":  "[providers.custom]\nbase_url='https://example.invalid/v1'\nmodels=['main','state','chat']\n",
 		"choices.toml": "[mode_models.work]\nprovider='custom'\nmodel='state'\n",
 	}
 	for name, content := range files {

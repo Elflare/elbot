@@ -29,7 +29,8 @@ type ModelManager struct {
 	connections   []*signal.Connection
 }
 
-// NewModelManager 接收已加载的完整配置；部分构造结果由 App 统一关闭。
+// NewModelManager 接收已加载的完整配置；失败直接返回错误，由进程退出回收资源。
+// 只有完整构造成功的实例才交给 App 关闭。
 func NewModelManager(ctx context.Context, cfg *config.Config) (*ModelManager, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -64,10 +65,10 @@ func NewModelManager(ctx context.Context, cfg *config.Config) (*ModelManager, er
 	var err error
 	s.providers, err = s.newProviderSet(ctx, config.ProviderFile{Providers: cfg.Providers, ModelMetadata: cfg.ModelMetadata})
 	if err != nil {
-		return s, err
+		return nil, err
 	}
 	if err := s.connectRetrySignals(); err != nil {
-		return s, err
+		return nil, err
 	}
 	return s, nil
 }

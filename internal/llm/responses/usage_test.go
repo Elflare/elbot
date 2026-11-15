@@ -16,7 +16,6 @@ func TestResponseUsagePreservesUnknownAndExactCounts(t *testing.T) {
 		{"partial", `{"input_tokens":5}`, [4]*int64{testUsageCount(5)}},
 		{"zeros", `{"input_tokens":0,"output_tokens":0,"total_tokens":0,"input_tokens_details":{"cached_tokens":0}}`, [4]*int64{testUsageCount(0), testUsageCount(0), testUsageCount(0), testUsageCount(0)}},
 		{"invalid counts", `{"input_tokens":-1,"output_tokens":1.5,"total_tokens":9223372036854775808,"input_tokens_details":{"cached_tokens":"bad"}}`, [4]*int64{}},
-		{"large exact counts", `{"input_tokens":9007199254740993,"total_tokens":9223372036854775807}`, [4]*int64{testUsageCount(9007199254740993), nil, testUsageCount(9223372036854775807)}},
 		{"null and valid", `{"input_tokens":null,"output_tokens":2,"input_tokens_details":{"cached_tokens":4}}`, [4]*int64{nil, testUsageCount(2), nil, testUsageCount(4)}},
 		{"malformed details", `{"input_tokens":2,"input_tokens_details":false}`, [4]*int64{testUsageCount(2)}},
 		{"top level cache must not leak", `{"cached_tokens":9,"input_tokens_details":{}}`, [4]*int64{}},

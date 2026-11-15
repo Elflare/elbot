@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestPreparedRequestSendsRecordedBytesAndCannotBeMutated(t *testing.T) {
+func TestPreparedRequestSendsFrozenBytes(t *testing.T) {
 	var received []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		received, _ = io.ReadAll(r.Body)
@@ -24,8 +24,6 @@ func TestPreparedRequestSendsRecordedBytesAndCannotBeMutated(t *testing.T) {
 		t.Fatal(err)
 	}
 	recorded := prepared.JSON()
-	mutated := prepared.JSON()
-	mutated[0] = '!'
 	extra["seed"] = 99
 	events, err := client.StreamPrepared(t.Context(), prepared)
 	if err != nil {

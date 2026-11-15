@@ -33,6 +33,7 @@ func testModelConfig(t *testing.T, opts testModelOptions) *config.Config {
 		opts.Metadata.DefaultContextWindow = config.DefaultContextWindow
 	}
 	cfg := &config.Config{Providers: make(map[string]config.ProviderConfig), ModeModels: opts.ModeModels, CompactModel: opts.CompactModel, NamingModel: opts.NamingModel, Session: config.SessionConfig{DefaultMode: opts.DefaultMode}, ModelMetadata: opts.Metadata}
+	cfg.LLMRequest = config.LLMRequestConfig{FirstChunkTimeoutSeconds: 60, StreamIdleTimeoutSeconds: 60}
 	dir := t.TempDir()
 	cfg.ConfigPath = filepath.Join(dir, "app.toml")
 	cfg.ProvidersConfigPath = filepath.Join(dir, "providers.toml")

@@ -211,6 +211,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 
 - `internal/modelmgr/`：`manager.go` 总管；`client.go` 客户端装配；`providers.go` 厂商快照；`selection.go` 模型选择；`context_window.go` 窗口。
 - `internal/llm/`：公共模型、消息、工具与用量契约。
+- `internal/llm/share/`：模型目录解码与元数据类型。
 - `internal/llm/httpclient/`：单次 HTTP、SSE 与超时。
 - `internal/llm/chatcompletions/`：Chat 协议。
 - `internal/llm/responses/`：`client.go` 请求；`tools.go` 工具；`compact.go` 压缩；`stream.go` 流；`error.go` 错误；`response.go` 响应解析。
