@@ -127,7 +127,7 @@ func TestReadFileGlobRequiresDirectoryGrep(t *testing.T) {
 	if err := os.WriteFile(path, []byte("needle\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	for _, tc := range []struct{ path, mode string }{{path, "read"}, {path, "grep"}, {root, "ast"}, {root, "ast_function"}} {
+	for _, tc := range []struct{ path, mode string }{{path, "read"}, {path, "grep"}, {root, "ast"}, {path, "ast"}} {
 		result, _, err := callTool(t.Context(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": tc.path, "mode": tc.mode, "query": "needle", "glob": []string{"*.go"}})})
 		if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "glob requires grep directory search") {
 			t.Fatalf("%+v: %v", tc, err)

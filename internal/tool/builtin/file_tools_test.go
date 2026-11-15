@@ -3,12 +3,17 @@ package builtin
 import toolshare "elbot/internal/tool/share"
 
 import (
+	"bytes"
 	"context"
 	"elbot/internal/operationresult"
 	"elbot/internal/testutil"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/format"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,112 +24,9 @@ import (
 	"testing"
 	"time"
 
-	"mvdan.cc/sh/v3/syntax"
-
 	"elbot/internal/fileops"
 	workspacepath "elbot/internal/workspace"
 )
-
-func TestShellASTUsesShebangDialect(t *testing.T) {
-	for _, tc := range []struct{ name, shebang string }{
-		{"direct.sh", "#!/bin/mksh"},
-		{"env.bash", "#!/usr/bin/env mksh"},
-		{"split.bats", "#!/usr/bin/env -S mksh -e"},
-		{"long-split.sh", "#!/usr/bin/env --split-string mksh -e"},
-		{"script", "#!/bin/mksh"},
-		{"script.txt", "#!/bin/mksh"},
-		{"script.mksh", ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			root := t.TempDir()
-			path := filepath.Join(root, tc.name)
-			source := tc.shebang + "\nTarget() { echo $((# 1 + 2)); }\n"
-			if err := os.WriteFile(path, []byte(source), 0644); err != nil {
-				t.Fatal(err)
-			}
-			language, variant, err := detectASTLanguage(path, source)
-			if err != nil || language != "shell" || variant != syntax.LangMirBSDKorn {
-				t.Fatalf("language=%q variant=%s err=%v", language, variant, err)
-			}
-			for _, target := range []string{path, root} {
-				for _, mode := range []string{readFileModeAST, readFileModeASTFunction} {
-					args, _ := json.Marshal(map[string]any{"path": target, "mode": mode, "query": "Target"})
-					result, _, err := callTool(t.Context(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-					if err != nil || result.Status != operationresult.Success {
-						t.Fatalf("%s %s: %v", target, mode, err)
-					}
-					if !strings.Contains(result.Data.Content, "matches: 1") || strings.Contains(result.Data.Content, "解析") {
-						t.Fatalf("%s %s: %s", target, mode, result.Data.Content)
-					}
-				}
-			}
-		})
-	}
-}
-
-func TestDirectoryASTLanguageDetection(t *testing.T) {
-	for _, tc := range []struct {
-		name, source, language string
-	}{
-		{"code.GO", "package p\nfunc Target() {}\n", "go"},
-		{"code.sh", "Target() { echo ok; }\n", "shell"},
-		{"code.bash", "Target() { echo ok; }\n", "shell"},
-		{"code.bats", "Target() { echo ok; }\n", "shell"},
-		{"code.mksh", "Target() { echo ok; }\n", "shell"},
-		{"direct", "#!/bin/sh\nTarget() { echo ok; }\n", "shell"},
-		{"env", "#!/usr/bin/env bash\nTarget() { echo ok; }\n", "shell"},
-		{"split.txt", "#!/usr/bin/env -S bash -eu\nTarget() { echo ok; }\n", "shell"},
-		{"long-split", "#!/usr/bin/env --split-string dash -e\nTarget() { echo ok; }\n", "shell"},
-		{"ash", "#!/bin/ash\nTarget() { echo ok; }\n", "shell"},
-		{"korn", "#!/bin/mksh\nTarget() { echo ok; }\n", "shell"},
-		{"plain.txt", "# mentions mksh\nTarget() { echo ok; }\n", ""},
-		{"fake", "#!/bin/bashful\nTarget() { echo ok; }\n", ""},
-		{"relative", "#!bash\nTarget() { echo ok; }\n", ""},
-		{"indented", " #!/bin/bash\nTarget() { echo ok; }\n", ""},
-		{"python", "#!/usr/bin/env python\nTarget()\n", ""},
-		{"empty", "", ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			root := t.TempDir()
-			path := filepath.Join(root, tc.name)
-			if err := os.WriteFile(path, []byte(tc.source), 0644); err != nil {
-				t.Fatal(err)
-			}
-			language, variant, err := detectASTLanguage(path, tc.source)
-			if language != tc.language || (err != nil) != (tc.language == "") {
-				t.Fatalf("language=%q err=%v", language, err)
-			}
-			if language == "shell" {
-				want := syntax.LangBash
-				if tc.name == "code.mksh" || tc.name == "korn" {
-					want = syntax.LangMirBSDKorn
-				}
-				if variant != want {
-					t.Fatalf("variant=%s want=%s", variant, want)
-				}
-			}
-			for _, mode := range []string{readFileModeAST, readFileModeASTFunction} {
-				matches, _, err := findDirectoryASTMatches(root, "Target", mode)
-				if err != nil {
-					t.Fatal(err)
-				}
-				want := 1
-				if tc.language == "" {
-					want = 0
-				}
-				if len(matches) != want {
-					t.Fatalf("%s matches=%+v", mode, matches)
-				}
-			}
-			if tc.language != "" {
-				source, err := readDirectoryASTSource(path)
-				if err != nil || source.Status != operationresult.Success || string(source.Data) != tc.source {
-					t.Fatalf("source=%+v err=%v", source, err)
-				}
-			}
-		})
-	}
-}
 
 func TestReadFileToolReturnsLineNumbersAndEndRange(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.txt")
@@ -183,7 +85,7 @@ func TestReadFileToolReadsLargeFileAndReturnsRevision(t *testing.T) {
 		t.Fatalf("unexpected large read output:\n%s", result.Data.Content)
 	}
 	assertFileRevision(t, result.Data.Content, content)
-	if len(result.Data.Warnings) == 0 || !strings.Contains(strings.Join(result.Data.Warnings, "\n"), "ast and ast_function modes are disabled") {
+	if len(result.Data.Warnings) == 0 || !strings.Contains(strings.Join(result.Data.Warnings, "\n"), "ast mode is disabled") {
 		t.Fatalf("expected large-file warning, got %#v", result.Data.Warnings)
 	}
 }
@@ -194,7 +96,7 @@ func TestReadFileToolLargeFileDisablesASTButAllowsGrep(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
-	astArgs, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "needle"})
+	astArgs, _ := json.Marshal(map[string]any{"path": path, "mode": "ast"})
 	if result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: astArgs}); err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "AST") && !strings.Contains(result.Message, "ast mode") {
 		t.Fatalf("expected large-file AST error, got %v", err)
 	}
@@ -244,189 +146,6 @@ func TestReadFileToolGrepReturnsMatchesWithContext(t *testing.T) {
 	assertFileRevision(t, result.Data.Content, []byte(content))
 }
 
-func TestReadFileToolASTSearchesGoIdentifiers(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sample.go")
-	content := "package sample\n\n// Target must not match in comments.\ntype Target struct{}\nfunc (Target) Run() { _ = Target{} }\nvar _ = \"Target\"\n"
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		t.Fatal(err)
-	}
-	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "Target", "context_lines": 0})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil || result.Status != operationresult.Success {
-		t.Fatal(err)
-	}
-	if !strings.Contains(result.Data.Content, "language: go") || !strings.Contains(result.Data.Content, "[identifier]") || strings.Count(result.Data.Content, "match:") != 3 {
-		t.Fatalf("unexpected AST content:\n%s", result.Data.Content)
-	}
-	assertFileRevision(t, result.Data.Content, []byte(content))
-}
-
-func TestReadFileToolASTSearchesShellWordsAndParameters(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sample.sh")
-	content := "#!/usr/bin/env bash\nfn() { echo target; echo \"target $target\"; }\n# target\n"
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		t.Fatal(err)
-	}
-	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "target", "context_lines": 0})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil || result.Status != operationresult.Success {
-		t.Fatal(err)
-	}
-	if !strings.Contains(result.Data.Content, "language: shell") || strings.Count(result.Data.Content, "match:") != 2 || !strings.Contains(result.Data.Content, "[parameter]") {
-		t.Fatalf("unexpected AST content:\n%s", result.Data.Content)
-	}
-}
-
-func TestReadFileToolASTFunctionReturnsCompleteGoFunctions(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sample.go")
-	content := "package sample\n\n// Run documentation must not be included.\nfunc Run() {\n\tfirst()\n\tsecond()\n}\n\ntype Worker struct{}\n\nfunc (*Worker) Run() {\n\tthird()\n}\n"
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		t.Fatal(err)
-	}
-	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast_function", "query": "Run"})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil || result.Status != operationresult.Success {
-		t.Fatal(err)
-	}
-	for _, expected := range []string{"ast_function: \"Run\"", "matches: 2", "selection_required: true", "1. Run -", "2. (*Worker).Run -"} {
-		if !strings.Contains(result.Data.Content, expected) {
-			t.Fatalf("expected %q in AST function candidates:\n%s", expected, result.Data.Content)
-		}
-	}
-	args, _ = json.Marshal(map[string]any{"path": path, "mode": "ast_function", "query": "Run", "index": 2})
-	result, _, err = callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil || result.Status != operationresult.Success {
-		t.Fatal(err)
-	}
-	for _, expected := range []string{"index: 2", "match: 11-13 [method] (*Worker).Run", " 12 | \tthird()", " 13 | }"} {
-		if !strings.Contains(result.Data.Content, expected) {
-			t.Fatalf("expected %q in selected AST function output:\n%s", expected, result.Data.Content)
-		}
-	}
-	if strings.Contains(result.Data.Content, "Run documentation") {
-		t.Fatalf("function output must not include doc comments:\n%s", result.Data.Content)
-	}
-	assertFileRevision(t, result.Data.Content, []byte(content))
-}
-
-func TestReadFileToolASTFunctionReturnsCompleteShellFunction(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sample.sh")
-	content := "#!/usr/bin/env bash\n\nrun() {\n  echo one\n  echo two\n}\n"
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		t.Fatal(err)
-	}
-	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast_function", "query": "run"})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil || result.Status != operationresult.Success {
-		t.Fatal(err)
-	}
-	for _, expected := range []string{"language: shell", "match: 3-6 [function] run", " 4 |   echo one", " 6 | }"} {
-		if !strings.Contains(result.Data.Content, expected) {
-			t.Fatalf("expected %q in AST function output:\n%s", expected, result.Data.Content)
-		}
-	}
-}
-
-func TestReadFileToolASTFunctionRequiresQuery(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sample.go")
-	if err := os.WriteFile(path, []byte("package sample\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast_function"})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "query is required when mode is ast_function") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestReadFileToolASTFunctionSearchesDirectoryAndSelectsIndex(t *testing.T) {
-	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "first.go"), []byte("package sample\n\nfunc Run() {\n\tfirst()\n}\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "second.go"), []byte("package sample\n\nfunc Run() {\n\tsecond()\n}\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	args, _ := json.Marshal(map[string]any{"path": root, "mode": "ast_function", "query": "Run"})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil || result.Status != operationresult.Success {
-		t.Fatal(err)
-	}
-	for _, expected := range []string{"selection_required: true", "1. Run - first.go:3-5", "2. Run - second.go:3-5"} {
-		if !strings.Contains(result.Data.Content, expected) {
-			t.Fatalf("expected %q in directory candidates:\n%s", expected, result.Data.Content)
-		}
-	}
-	args, _ = json.Marshal(map[string]any{"path": root, "mode": "ast_function", "query": "Run", "index": 2})
-	result, _, err = callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil || result.Status != operationresult.Success {
-		t.Fatal(err)
-	}
-	if !strings.Contains(result.Data.Content, "match: second.go:3-5 [function] Run") || !strings.Contains(result.Data.Content, " 4 | \tsecond()") {
-		t.Fatalf("unexpected selected directory function:\n%s", result.Data.Content)
-	}
-}
-
-func TestReadFileToolDirectoryASTReportsSkippedLargeFiles(t *testing.T) {
-	root := t.TempDir()
-	path := filepath.Join(root, "large.go")
-	content := "package sample\n" + strings.Repeat("x", fileops.MaxFileSize)
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		t.Fatal(err)
-	}
-	args, _ := json.Marshal(map[string]any{"path": root, "mode": "ast", "query": "Target"})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil || result.Status != operationresult.Success {
-		t.Fatal(err)
-	}
-	warnings := strings.Join(result.Data.Warnings, "\n")
-	if !strings.Contains(warnings, "large.go") || !strings.Contains(warnings, "bytes") || !strings.Contains(warnings, "skipped") {
-		t.Fatalf("expected skipped-large-file warning, got %#v", result.Data.Warnings)
-	}
-}
-func TestReadFileToolDirectoryASTCacheInvalidatesWhenFilesChange(t *testing.T) {
-	root := t.TempDir()
-	path := filepath.Join(root, "sample.go")
-	if err := os.WriteFile(path, []byte("package sample\n\nfunc Run() {}\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	readTool := NewReadFileTool(FileGuard{})
-	args, _ := json.Marshal(map[string]any{"path": root, "mode": "ast_function", "query": "Run"})
-	if result, _, err := callTool(context.Background(), readTool.Definition(), toolshare.CallRequest{Arguments: args}); err != nil || result.Status != operationresult.Success {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("package sample\n\nfunc Run() {}\n\nfunc Run() {}\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	result, _, err := callTool(context.Background(), readTool.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil || result.Status != operationresult.Success {
-		t.Fatal(err)
-	}
-	if !strings.Contains(result.Data.Content, "matches: 2") || !strings.Contains(result.Data.Content, "selection_required: true") {
-		t.Fatalf("cache was not invalidated after file change:\n%s", result.Data.Content)
-	}
-	added := filepath.Join(root, "added.go")
-	if err := os.WriteFile(added, []byte("package sample\nfunc Run() {}\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []int{3, 1, 0} {
-		if want == 1 {
-			if err := os.Remove(path); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if want == 0 {
-			if err := os.Remove(added); err != nil {
-				t.Fatal(err)
-			}
-		}
-		result, _, err := callTool(t.Context(), readTool.Definition(), toolshare.CallRequest{Arguments: args})
-		if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data.Content, fmt.Sprintf("matches: %d\n", want)) {
-			t.Fatalf("after add/remove: result=%+v err=%v", result, err)
-		}
-	}
-}
-
 func TestDirectoryGrepOrderingCountsAndSelection(t *testing.T) {
 	if _, err := exec.LookPath("rg"); err != nil {
 		t.Skip("ripgrep is required")
@@ -450,7 +169,7 @@ func TestDirectoryGrepOrderingCountsAndSelection(t *testing.T) {
 	}
 	slices.Sort(names)
 	total := len(names) * 2
-	result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle", MaxMatches: 3}, nil, nil)
+	result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "needle", MaxMatches: 3}, nil)
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
@@ -463,7 +182,7 @@ func TestDirectoryGrepOrderingCountsAndSelection(t *testing.T) {
 		t.Fatalf("unexpected extra results: %s", result.Data.Content)
 	}
 	for _, index := range []int{1, 201, total} {
-		result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle", MaxMatches: 1, Index: index}, nil, nil)
+		result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "needle", MaxMatches: 1, Index: index}, nil)
 		if err != nil || result.Status != operationresult.Success {
 			t.Fatal(err)
 		}
@@ -474,7 +193,7 @@ func TestDirectoryGrepOrderingCountsAndSelection(t *testing.T) {
 		}
 	}
 	for _, index := range []int{-1, total + 1} {
-		result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle", Index: index}, nil, nil)
+		result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "needle", Index: index}, nil)
 		if err != nil || result.Status != operationresult.InvalidArguments || !strings.Contains(result.Message, fmt.Sprintf("found %d matches", total)) {
 			t.Fatalf("index %d: %v", index, err)
 		}
@@ -492,12 +211,12 @@ func TestDirectoryGrepLongLinesAndEmptyResults(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "absent", MaxMatches: 10}, nil, nil)
+		result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "absent", MaxMatches: 10}, nil)
 		if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data.Content, "matches: 0\ntruncated: false") {
 			t.Fatalf("result=%+v err=%v", result, err)
 		}
 	}
-	result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle", MaxMatches: 10}, nil, nil)
+	result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "needle", MaxMatches: 10}, nil)
 	if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data.Content, "long.txt:1:70001") {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
@@ -534,7 +253,7 @@ func TestDirectoryGrepWarningsRespectSearchScope(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle", MaxMatches: 10}, nil, nil)
+	result, err := readFileDirectorySearch(t.Context(), root, readFileArgs{Query: "needle", MaxMatches: 10}, nil)
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
@@ -682,18 +401,6 @@ func TestReadFileToolDirectoryGrepSkipsFilesAboveHardLimit(t *testing.T) {
 	warnings := strings.Join(result.Data.Warnings, "\n")
 	if !strings.Contains(warnings, "too-large.txt") || !strings.Contains(warnings, "grep skipped") {
 		t.Fatalf("expected skipped-large-file warning, got %#v", result.Data.Warnings)
-	}
-}
-
-func TestReadFileToolASTRejectsUnsupportedLanguage(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sample.py")
-	if err := os.WriteFile(path, []byte("target = 1\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	args, _ := json.Marshal(map[string]any{"path": path, "mode": "ast", "query": "target"})
-	result, _, err := callTool(context.Background(), (NewReadFileTool(FileGuard{})).Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil || result.Status == operationresult.Success || !strings.Contains(result.Message, "only supports Go and Shell") {
-		t.Fatalf("expected unsupported language error, got %v", err)
 	}
 }
 
@@ -1800,4 +1507,274 @@ func TestReadFileToolAbsolutePathWarnings(t *testing.T) {
 func mustJSON(value any) json.RawMessage {
 	data, _ := json.Marshal(value)
 	return data
+}
+
+func TestReadFileASTIndex(t *testing.T) {
+	source := `package sample
+import (
+ alias "fmt"
+ _ "net/http/pprof"
+ . "strings"
+)
+const A, B int = 1, 2
+var secret = "INITIALIZER_MUST_NOT_APPEAR"
+type Embedded struct{}
+type Pair[T any] struct {
+ Left, Right T
+ *Embedded
+ Nested struct { Hidden string }
+}
+type Service interface {
+ Run(ctx alias.Stringer, args ...string) (result int, err error)
+ alias.Stringer
+ ~int | ~string
+}
+type Alias[T any] = Pair[T]
+// Run documents this method.
+func (p *Pair[T]) Run(args ...T) (n int, err error) {
+ panic("BODY_MUST_NOT_APPEAR")
+}
+func Map[T, R any](v T, fn func(T) R) R { return fn(v) }
+`
+	path := filepath.Join(t.TempDir(), "sample.go")
+	if err := os.WriteFile(path, []byte(source), 0644); err != nil {
+		t.Fatal(err)
+	}
+	result, _, err := callTool(t.Context(), NewReadFileTool(FileGuard{}).Definition(), toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": path, "mode": "ast"})})
+	if err != nil || result.Status != operationresult.Success {
+		t.Fatalf("ast failed: %v %#v", err, result)
+	}
+	content := result.Data.Content
+	for _, want := range []string{
+		"mode: ast\nlanguage: go", "matches: 11\ntotal: 11\ntruncated: false",
+		`1. alias "fmt"`, `2. _ "net/http/pprof"`, `3. . "strings"`,
+		"4. const A, B int", "5. var secret", "Pair[T any] struct",
+		"Left, Right T", "*Embedded", "Nested struct { } [nested details omitted]", "Service interface",
+		"Run(ctx alias.Stringer, args ...string) (result int, err error)",
+		"alias.Stringer", "~int | ~string", "Alias[T any] = Pair[T]",
+		"10. func (p *Pair[T]) Run(args ...T) (n int, err error) [21-24]",
+		"11. func Map[T, R any](v T, fn func(T) R) R [25-25]",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("missing %q in:\n%s", want, content)
+		}
+	}
+	for _, hidden := range []string{"INITIALIZER_MUST_NOT_APPEAR", "BODY_MUST_NOT_APPEAR", "Hidden", "Run documents", "return fn"} {
+		if strings.Contains(content, hidden) {
+			t.Errorf("unexpected implementation %q in:\n%s", hidden, content)
+		}
+	}
+	assertFileRevision(t, content, []byte(source))
+	if !strings.Contains(content, "encoding: utf-8") || len(result.Data.Warnings) == 0 {
+		t.Fatalf("missing encoding or absolute-path warning: %#v", result.Data)
+	}
+}
+
+func TestReadFileASTIndexSelection(t *testing.T) {
+	var source strings.Builder
+	source.WriteString("package sample\ntype Config struct {\n")
+	for i := 0; i < 10; i++ {
+		fmt.Fprintf(&source, "Field%d string\n", i)
+	}
+	source.WriteString("}\ntype Service interface {\n")
+	for i := 0; i < 10; i++ {
+		fmt.Fprintf(&source, "Method%d()\n", i)
+	}
+	source.WriteString("}\n")
+	for i := 0; i < 105; i++ {
+		fmt.Fprintf(&source, "func F%d() {}\n", i)
+	}
+	path := filepath.Join(t.TempDir(), "sample.go")
+	if err := os.WriteFile(path, []byte(source.String()), 0644); err != nil {
+		t.Fatal(err)
+	}
+	read := func(args map[string]any) operationresult.Result[*toolshare.Result] {
+		t.Helper()
+		args["path"], args["mode"] = path, "ast"
+		result, _, err := callTool(t.Context(), NewReadFileTool(FileGuard{}).Definition(), toolshare.CallRequest{Arguments: mustJSON(args)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	result := read(map[string]any{})
+	if result.Status != operationresult.Success {
+		t.Fatal(result.Message)
+	}
+	for _, want := range []string{"matches: 20\ntotal: 107\ntruncated: true", "2 more members; use index=1", "2 more members; use index=2", "20. func F17()"} {
+		if !strings.Contains(result.Data.Content, want) {
+			t.Errorf("missing %q in %s", want, result.Data.Content)
+		}
+	}
+	if strings.Contains(result.Data.Content, "Field8") || strings.Contains(result.Data.Content, "Method8") {
+		t.Fatal("member summary was not limited")
+	}
+	limited := read(map[string]any{"max_matches": 1})
+	if limited.Status != operationresult.Success || !strings.Contains(limited.Data.Content, "matches: 1\ntotal: 107") || !strings.Contains(limited.Data.Content, "1. Config struct") {
+		t.Fatalf("unexpected limited index: %#v", limited)
+	}
+	maximum := read(map[string]any{"max_matches": 1000})
+	if maximum.Status != operationresult.Success || !strings.Contains(maximum.Data.Content, "matches: 100\n") || !strings.Contains(maximum.Data.Content, "100. func F97()") {
+		t.Fatalf("unexpected maximum index: %#v", maximum)
+	}
+	for _, tc := range []struct {
+		index int
+		want  string
+	}{{1, "Field9 string"}, {2, "Method9()"}, {107, "107. func F104()"}} {
+		selected := read(map[string]any{"index": tc.index, "max_matches": 1})
+		if selected.Status != operationresult.Success || !strings.Contains(selected.Data.Content, tc.want) || !strings.Contains(selected.Data.Content, "truncated: false") || strings.Contains(selected.Data.Content, "more members") {
+			t.Errorf("unexpected selection %d: %#v", tc.index, selected)
+		}
+	}
+	for _, index := range []int{-1, 108} {
+		if got := read(map[string]any{"index": index}); got.Status != operationresult.InvalidArguments {
+			t.Errorf("index %d should fail: %#v", index, got)
+		}
+	}
+	withQuery := read(map[string]any{"query": "nonexistent", "context_lines": 20, "start_line": 50})
+	if withQuery.Status != operationresult.Success || withQuery.Data.Content != result.Data.Content {
+		t.Fatal("search/read parameters changed ast index output")
+	}
+}
+
+func TestReadFileASTTargetsAndParseErrors(t *testing.T) {
+	root := t.TempDir()
+	for _, tc := range []struct {
+		name, mode, source string
+		status             operationresult.Status
+		warning            bool
+	}{
+		{"empty.go", "ast", "", operationresult.Success, false},
+		{"package.go", "ast", "package sample\n", operationresult.Success, false},
+		{"partial.go", "ast", "package sample\nfunc Good() {}\nfunc Broken(\n", operationresult.Success, true},
+		{"invalid.go", "ast", "this is not Go", operationresult.InvalidTarget, false},
+		{"script.sh", "ast", "#!/bin/bash\nrun() { true; }\n", operationresult.InvalidTarget, false},
+		{"old.go", "ast_function", "package sample\n", operationresult.InvalidArguments, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(root, tc.name)
+			if err := os.WriteFile(path, []byte(tc.source), 0644); err != nil {
+				t.Fatal(err)
+			}
+			result, _, err := callTool(t.Context(), NewReadFileTool(FileGuard{}).Definition(), toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": path, "mode": tc.mode})})
+			if err != nil || result.Status != tc.status {
+				t.Fatalf("unexpected result: err=%v result=%#v", err, result)
+			}
+			if tc.warning && !strings.Contains(strings.Join(result.Data.Warnings, "\n"), "结果可能不完整") {
+				t.Fatal("missing partial-parse warning")
+			}
+			if tc.warning && !strings.Contains(result.Data.Content, "func Good()") {
+				t.Fatal("partial parse lost valid declaration")
+			}
+			if tc.status == operationresult.Success && !tc.warning && !strings.Contains(result.Data.Content, "matches: 0\ntotal: 0\ntruncated: false") {
+				t.Fatalf("unexpected empty index: %s", result.Data.Content)
+			}
+		})
+	}
+	result, _, err := callTool(t.Context(), NewReadFileTool(FileGuard{}).Definition(), toolshare.CallRequest{Arguments: mustJSON(map[string]any{"path": root, "mode": "ast"})})
+	if err != nil || result.Status == operationresult.Success {
+		t.Fatalf("directory should be rejected: %v %#v", err, result)
+	}
+}
+
+func TestGoFileIndexPreservesPhysicalLinesAndLiterals(t *testing.T) {
+	source := "package sample\n//line generated.go:900\nfunc Run() {}\ntype A [len(\"a  b\")]byte\ntype B [len(`a  b`)]byte\ntype Config struct { Callback func() error }\nfunc Accept(v [len(\"a  b\")]byte) {}\n"
+	entries, warning, err := buildGoFileIndex("sample.go", source)
+	if err != nil || warning != "" {
+		t.Fatalf("index failed: %v %s", err, warning)
+	}
+	for _, want := range []string{`A [len("a  b")]byte`, "B [len(`a  b`)]byte", `func Accept(v [len("a  b")]byte)`} {
+		found := false
+		for _, entry := range entries {
+			found = found || entry.Text == want
+		}
+		if !found {
+			t.Errorf("missing preserved literal in %q: %#v", want, entries)
+		}
+	}
+	for _, entry := range entries {
+		if entry.Text == "func Run()" && (entry.StartLine != 2 || entry.EndLine != 3) {
+			t.Errorf("expected physical lines 2-3, got %#v", entry)
+		}
+		if entry.Text == "Config struct" && (len(entry.Members) != 1 || entry.Members[0] != "Callback func() error") {
+			t.Errorf("function-valued field was rendered as method: %#v", entry)
+		}
+	}
+}
+
+func TestGoIndexProjectionPreservesAST(t *testing.T) {
+	source := `package sample
+func Run(v *map[string][]struct{ Hidden string }, fn func() interface{ Hidden() }) [len(func() string { return "body" }())]byte { panic("body") }
+`
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "sample.go", source, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := file.Decls[0].(*ast.FuncDecl)
+	var before bytes.Buffer
+	if err := format.Node(&before, fset, original); err != nil {
+		t.Fatal(err)
+	}
+	projected, omitted := projectGoIndexNode(original)
+	if !omitted || projected == original {
+		t.Fatal("expected an independent, abbreviated projection")
+	}
+	var after, display bytes.Buffer
+	if err := format.Node(&after, fset, original); err != nil {
+		t.Fatal(err)
+	}
+	if before.String() != after.String() || original.Body == nil {
+		t.Fatal("projection mutated the source AST")
+	}
+	if err := format.Node(&display, fset, projected); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(display.String(), "Hidden") || strings.Contains(display.String(), "body") || strings.Contains(display.String(), "nested details omitted") {
+		t.Fatalf("projection mixed original details or presentation hints: %s", display.String())
+	}
+}
+
+func TestGoFileIndexTypeParametersAndOmission(t *testing.T) {
+	source := `package sample
+type Pointer[T *int,] struct{}
+type Alias[T *int,] = []T
+type Pair[A, B any] struct{}
+type Constraint[T interface { ~int | ~string }] struct { Value T }
+type Service interface {
+ Run(v struct { Hidden string }) interface { Hidden() }
+}
+type Holder struct { Callback func(v struct { Hidden string }) interface { Hidden() } }
+func Use[T interface { ~int }](v struct { Hidden string }) interface { Hidden() } { panic("body") }
+`
+	entries, warning, err := buildGoFileIndex("sample.go", source)
+	if err != nil || warning != "" {
+		t.Fatalf("index failed: %v %s", err, warning)
+	}
+	for _, want := range []string{"Pointer[T *int,] struct", "Alias[T *int,] = []T", "Pair[A, B any] struct", "Constraint[T interface { }] struct [nested details omitted]"} {
+		found := false
+		for _, entry := range entries {
+			found = found || entry.Text == want
+		}
+		if !found {
+			t.Errorf("missing %q: %#v", want, entries)
+		}
+	}
+	for _, entry := range entries {
+		values := append([]string{entry.Text}, entry.Members...)
+		for _, value := range values {
+			if strings.Contains(value, "Hidden") || strings.Contains(value, "body") {
+				t.Errorf("implementation escaped projection: %s", value)
+			}
+			if strings.Contains(value, "[nested details omitted]") && (!strings.HasSuffix(value, " [nested details omitted]") || strings.Count(value, "[nested details omitted]") != 1) {
+				t.Errorf("omission hint is not final: %s", value)
+			}
+		}
+		if entry.Text == "Service interface" && (len(entry.Members) != 1 || !strings.HasPrefix(entry.Members[0], "Run(v struct") || !strings.HasSuffix(entry.Members[0], " [nested details omitted]")) {
+			t.Errorf("incorrect interface signature: %#v", entry)
+		}
+		if entry.Text == "Holder struct" && (len(entry.Members) != 1 || !strings.HasPrefix(entry.Members[0], "Callback func(v struct")) {
+			t.Errorf("incorrect function field signature: %#v", entry)
+		}
+	}
 }

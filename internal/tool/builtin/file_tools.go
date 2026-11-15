@@ -27,7 +27,6 @@ const (
 
 type ReadFileTool struct {
 	FileGuard FileGuard
-	astCache  *directoryASTCache
 }
 
 type EditFileTool struct {
@@ -81,7 +80,7 @@ type editFileArgs struct {
 }
 
 func NewReadFileTool(fileGuard FileGuard) ReadFileTool {
-	return ReadFileTool{FileGuard: fileGuard, astCache: newDirectoryASTCache()}
+	return ReadFileTool{FileGuard: fileGuard}
 }
 
 func (t ReadFileTool) Definition() toolshare.ToolDefinition {
@@ -102,21 +101,21 @@ func isSensitiveReadFile(path string) bool {
 
 func readFileBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("read_file").
-		Description("读文本→行号+revision；搜索文件/目录→匹配位置，可按index查看。").
+		Description("读文本→行号+revision；grep搜索文本；ast查看Go文件声明骨架，再按行范围read实现。").
 		Risk(toolshare.RiskLow).
 		SuperadminOnly().
 		Tags("files", "agent").
 		DependsOn("workspace", "rollback_file").
-		String("path", "read仅文件；搜索可递归目录。", toolshare.Required()).
+		String("path", "read/ast仅文件；grep可递归目录。", toolshare.Required()).
 		String("encoding", "文件编码，默认auto。").
-		String("mode", "默认read；ast/ast_function仅Go、Shell。", toolshare.Enum("read", "grep", "ast", "ast_function")).
-		String("query", "搜索必填，首尾空白忽略。grep=逐行Go regex；ast/ast_function=名称精确匹配。").
+		String("mode", "默认read；grep文本搜索；ast仅Go单文件结构索引，无需query。", toolshare.Enum("read", "grep", "ast")).
+		String("query", "仅grep必填，逐行Go regex，首尾空白忽略。").
 		StringArray("glob", "仅grep目录搜索；语法同rg -g，如[\"*.go\",\"!**/*_test.go\"]；省略/[]=不过滤。").
-		Integer("index", "搜索结果编号，1-based；按返回编号重试查看该项。").
+		Integer("index", "grep匹配/ast声明编号，1-based；ast选中类型时展开全部成员，不返回函数体。").
 		Integer("start_line", "read起始行，1-based，默认1。").
 		String("end_line", "read结束行(含)，数字字符串或\"end\"；默认200行，end读至末尾。").
-		Integer("context_lines", "grep/ast上下文行数；0/省略→2，负数→0，上限20。").
-		Integer("max_matches", "搜索结果上限；≤0/省略→20，最大100。")
+		Integer("context_lines", "仅grep上下文行数；0/省略→2，负数→0，上限20。").
+		Integer("max_matches", "grep匹配/ast顶层声明上限；≤0/省略→20，最大100；ast类型成员默认展示8条。")
 }
 
 func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, info toolshare.Info) (operationresult.Result[*toolshare.PreparedCall], error) {
@@ -148,7 +147,7 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 	if strings.TrimSpace(args.Encoding) == "" {
 		args.Encoding = "auto"
 	}
-	selected, err := workspace.ResolveWorkspacePath(ctx, args.Path, workspace.PathResolveOptions{AllowDirectory: mode != readFileModeRead})
+	selected, err := workspace.ResolveWorkspacePath(ctx, args.Path, workspace.PathResolveOptions{AllowDirectory: mode == readFileModeGrep})
 	if err != nil {
 		return operationresult.Result[*toolshare.PreparedCall]{}, err
 	}
@@ -195,18 +194,18 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 		}
 		var result operationresult.Result[*toolshare.Result]
 		if info.IsDir() {
-			if mode == readFileModeRead {
-				message := "read mode requires a file path"
+			if mode != readFileModeGrep {
+				message := fmt.Sprintf("%s mode requires a file path", mode)
 				return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: message}, message, nil
 			}
-			result, err = readFileDirectorySearch(ctx, path, mode, args, warnings, t.astCache)
+			result, err = readFileDirectorySearch(ctx, path, args, warnings)
 		} else {
 			if info.Size() > fileToolMaxBytes {
 				message := fmt.Sprintf("file too large: %d bytes exceeds %d", info.Size(), fileToolMaxBytes)
 				return operationresult.Result[*toolshare.Result]{Status: operationresult.Rejected, Message: message}, message, nil
 			}
 			largeFile := info.Size() > fileToolDetailedMaxBytes
-			if largeFile && (mode == readFileModeAST || mode == readFileModeASTFunction) {
+			if largeFile && mode == readFileModeAST {
 				message := fmt.Sprintf("%s mode is disabled for this %d-byte file; use read or grep mode", mode, info.Size())
 				return operationresult.Result[*toolshare.Result]{Status: operationresult.Rejected, Message: message}, message, nil
 			}
@@ -221,15 +220,13 @@ func (t ReadFileTool) PrepareCall(ctx context.Context, req toolshare.CallRequest
 			lines := fileops.SplitLines(file.Text)
 			warnings = append(warnings, t.FileGuard.ReadWarnings(path)...)
 			if largeFile {
-				warnings = append(warnings, fmt.Sprintf("large file: %d bytes; ast and ast_function modes are disabled", info.Size()))
+				warnings = append(warnings, fmt.Sprintf("large file: %d bytes; ast mode is disabled", info.Size()))
 			}
 			switch mode {
 			case readFileModeGrep:
 				result, err = readFileGrepResult(ctx, file, lines, args.Query, args.ContextLines, args.MaxMatches, args.Index, warnings)
 			case readFileModeAST:
-				result, err = readFileASTResult(file, args.Query, args.ContextLines, args.MaxMatches, args.Index, warnings)
-			case readFileModeASTFunction:
-				result, err = readFileASTFunctionResult(file, args.Query, args.MaxMatches, args.Index, warnings)
+				result, err = readFileASTResult(file, args.MaxMatches, args.Index, warnings)
 			case readFileModeRead:
 				start, end, err := fileops.NormalizeReadRange(len(lines), int(args.StartLine), args.EndLine)
 				truncated := defaultEnd && end < len(lines)

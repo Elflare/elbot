@@ -1,4 +1,4 @@
-// 枚举和搜索目录内容，维护候选目录及相关缓存。
+// 枚举目录文件并搜索文本内容。
 package builtin
 
 import toolshare "elbot/internal/tool/share"
@@ -16,8 +16,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
-	"time"
 
 	"elbot/internal/fileops"
 	"elbot/internal/operationresult"
@@ -25,164 +23,36 @@ import (
 )
 
 type directorySearchMatch struct {
-	Path    string
-	Line    int
-	Column  int
-	EndLine int
-	Kind    string
-	Label   string
+	Path   string
+	Line   int
+	Column int
 }
 
-const (
-	directoryASTCacheTTL     = time.Minute
-	directoryASTCacheMaxSize = 64
-)
-
-type directoryASTCacheKey struct {
-	Root  string
-	Mode  string
-	Query string
-}
-
-type directoryASTFileState struct {
-	Path    string
-	Size    int64
-	ModTime int64
-}
-
-func directoryLargeASTWarnings(files []directoryASTFileState, mode string) []string {
-	const previewLimit = 5
-	large := make([]string, 0, previewLimit)
-	count := 0
-	for _, file := range files {
-		if file.Size <= fileToolDetailedMaxBytes {
-			continue
-		}
-		count++
-		if len(large) < previewLimit {
-			large = append(large, fmt.Sprintf("%s (%d bytes)", file.Path, file.Size))
-		}
-	}
-	if count == 0 {
-		return nil
-	}
-	extra := ""
-	if count > len(large) {
-		extra = fmt.Sprintf("; %d more", count-len(large))
-	}
-	return []string{fmt.Sprintf("%s skipped %d large files: %s%s", mode, count, strings.Join(large, ", "), extra)}
-}
-
-type directoryASTCacheEntry struct {
-	Matches   []directorySearchMatch
-	Files     []directoryASTFileState
-	ExpiresAt time.Time
-	UsedAt    time.Time
-}
-
-type directoryASTCache struct {
-	mu      sync.Mutex
-	entries map[directoryASTCacheKey]directoryASTCacheEntry
-}
-
-func newDirectoryASTCache() *directoryASTCache {
-	return &directoryASTCache{entries: make(map[directoryASTCacheKey]directoryASTCacheEntry)}
-}
-
-func (c *directoryASTCache) load(root, mode, query string) ([]directorySearchMatch, []string, bool) {
-	if c == nil {
-		return nil, nil, false
-	}
-	key := directoryASTCacheKey{Root: root, Mode: mode, Query: query}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	entry, ok := c.entries[key]
-	if !ok || time.Now().After(entry.ExpiresAt) {
-		delete(c.entries, key)
-		return nil, nil, false
-	}
-	if !directoryASTFilesMatch(root, entry.Files) {
-		delete(c.entries, key)
-		return nil, nil, false
-	}
-	entry.UsedAt = time.Now()
-	c.entries[key] = entry
-	return append([]directorySearchMatch(nil), entry.Matches...), directoryLargeASTWarnings(entry.Files, mode), true
-}
-
-func (c *directoryASTCache) store(root, mode, query string, matches []directorySearchMatch, files []directoryASTFileState) {
-	if c == nil {
-		return
-	}
-	key := directoryASTCacheKey{Root: root, Mode: mode, Query: query}
-	now := time.Now()
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if _, exists := c.entries[key]; !exists {
-		for len(c.entries) >= directoryASTCacheMaxSize {
-			var oldestKey directoryASTCacheKey
-			var oldestTime time.Time
-			for candidateKey, entry := range c.entries {
-				if oldestTime.IsZero() || entry.UsedAt.Before(oldestTime) {
-					oldestKey, oldestTime = candidateKey, entry.UsedAt
-				}
-			}
-			delete(c.entries, oldestKey)
-		}
-	}
-	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
-	c.entries[key] = directoryASTCacheEntry{Matches: append([]directorySearchMatch(nil), matches...), Files: append([]directoryASTFileState(nil), files...), ExpiresAt: now.Add(directoryASTCacheTTL), UsedAt: now}
-}
-
-func readFileDirectorySearch(ctx context.Context, root, mode string, args readFileArgs, warnings []string, astCache *directoryASTCache) (operationresult.Result[*toolshare.Result], error) {
+func readFileDirectorySearch(ctx context.Context, root string, args readFileArgs, warnings []string) (operationresult.Result[*toolshare.Result], error) {
 	query := args.Query
 	if query == "" {
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("query is required when mode is %s", mode)}, nil
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "query is required when mode is grep"}, nil
 	}
-	var matches []directorySearchMatch
-	total := 0
-	var err error
-	switch mode {
-	case readFileModeGrep:
-		keep := args.MaxMatches
-		if args.Index > 0 {
-			keep = args.Index
-		}
-		found, count, grepWarnings, err := findDirectoryGrepMatches(ctx, root, query, keep, args.Glob)
-		if err != nil {
-			return operationresult.Result[*toolshare.Result]{}, err
-		}
-		if found.Status != operationresult.Success {
-			return operationresult.Result[*toolshare.Result]{Status: found.Status, Message: found.Message}, nil
-		}
-		matches, total = found.Data, count
-		warnings = append(warnings, grepWarnings...)
-	case readFileModeAST, readFileModeASTFunction:
-		if cached, cachedWarnings, ok := astCache.load(root, mode, query); ok {
-			matches = cached
-			warnings = append(warnings, cachedWarnings...)
-		} else {
-			var files []directoryASTFileState
-			matches, files, err = findDirectoryASTMatches(root, query, mode)
-			if err == nil {
-				astCache.store(root, mode, query, matches, files)
-				warnings = append(warnings, directoryLargeASTWarnings(files, mode)...)
-			}
-		}
+	keep := args.MaxMatches
+	if args.Index > 0 {
+		keep = args.Index
 	}
+	found, total, grepWarnings, err := findDirectoryGrepMatches(ctx, root, query, keep, args.Glob)
 	if err != nil {
 		return operationresult.Result[*toolshare.Result]{}, err
 	}
-	if mode != readFileModeGrep {
-		total = len(matches)
+	if found.Status != operationresult.Success {
+		return operationresult.Result[*toolshare.Result]{Status: found.Status, Message: found.Message}, nil
 	}
+	matches := found.Data
+	warnings = append(warnings, grepWarnings...)
 	sort.Slice(matches, func(i, j int) bool {
 		if matches[i].Path == matches[j].Path {
 			return matches[i].Line < matches[j].Line
 		}
 		return matches[i].Path < matches[j].Path
 	})
-	return formatDirectorySearchMatches(root, mode, query, matches, total, args.ContextLines, args.MaxMatches, args.Index, warnings)
+	return formatDirectorySearchMatches(root, query, matches, total, args.ContextLines, args.MaxMatches, args.Index, warnings)
 }
 
 // directoryMatchHeap keeps the last match in path/line order at the root,
@@ -382,7 +252,7 @@ func scanDirectoryGrepBatch(ctx context.Context, root string, query *regexp.Rege
 					}
 					count++
 					if len(candidates) < keep {
-						candidates = append(candidates, directorySearchMatch{Path: rel, Line: lineNumber, Column: location[0] + 1, EndLine: lineNumber, Kind: "grep"})
+						candidates = append(candidates, directorySearchMatch{Path: rel, Line: lineNumber, Column: location[0] + 1})
 					}
 				}
 			}
@@ -407,150 +277,7 @@ func scanDirectoryGrepBatch(ctx context.Context, root string, query *regexp.Rege
 	return operationresult.Result[int]{Status: operationresult.Success, Data: total}, nil
 }
 
-// readDirectoryASTSource reads unsupported extensions only far enough to identify
-// a shell shebang, retaining the same reader when the remaining source is needed.
-func readDirectoryASTSource(path string) (operationresult.Result[[]byte], error) {
-	if _, _, err := detectASTLanguage(path, ""); err == nil {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return operationresult.Result[[]byte]{}, err
-		}
-		return operationresult.Result[[]byte]{Status: operationresult.Success, Data: data}, nil
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return operationresult.Result[[]byte]{}, err
-	}
-	defer file.Close()
-	reader := bufio.NewReader(file)
-	prefix, err := reader.Peek(2)
-	if err != nil && err != io.EOF {
-		return operationresult.Result[[]byte]{}, err
-	}
-	if string(prefix) != "#!" {
-		return operationresult.Result[[]byte]{Status: operationresult.InvalidTarget, Message: "AST search only supports Go and Shell files"}, nil
-	}
-	firstLine, err := reader.ReadString('\n')
-	if err != nil && err != io.EOF {
-		return operationresult.Result[[]byte]{}, err
-	}
-	if _, _, err := detectASTLanguage(path, firstLine); err != nil {
-		return operationresult.Result[[]byte]{Status: operationresult.InvalidTarget, Message: err.Error()}, nil
-	}
-	text, err := io.ReadAll(reader)
-	if err != nil {
-		return operationresult.Result[[]byte]{}, err
-	}
-	return operationresult.Result[[]byte]{Status: operationresult.Success, Data: append([]byte(firstLine), text...)}, nil
-}
-
-func findDirectoryASTMatches(root, query, mode string) ([]directorySearchMatch, []directoryASTFileState, error) {
-	matches := make([]directorySearchMatch, 0)
-	files := make([]directoryASTFileState, 0)
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			switch entry.Name() {
-			case ".git", "node_modules", "vendor":
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		files = append(files, directoryASTFileState{Path: filepath.ToSlash(rel), Size: info.Size(), ModTime: info.ModTime().UnixNano()})
-		if info.Size() > fileToolDetailedMaxBytes {
-			return nil
-		}
-		loaded, err := readDirectoryASTSource(path)
-		if err != nil {
-			return err
-		}
-		if loaded.Status != operationresult.Success {
-			return nil
-		}
-		text := loaded.Data
-		language, variant, err := detectASTLanguage(path, string(text))
-		if err != nil {
-			return nil
-		}
-		if mode == readFileModeASTFunction {
-			var functions []astFunctionMatch
-			if language == "go" {
-				functions, _, err = findGoASTFunctions(path, string(text), query)
-			} else {
-				functions, _, err = findShellASTFunctions(string(text), query, variant)
-			}
-			if err != nil {
-				return nil
-			}
-			for _, function := range functions {
-				matches = append(matches, directorySearchMatch{Path: filepath.ToSlash(rel), Line: function.StartLine, EndLine: function.EndLine, Kind: function.Kind, Label: function.Name})
-			}
-			return nil
-		}
-		var identifiers []astMatch
-		if language == "go" {
-			identifiers, _, err = findGoASTMatches(path, string(text), query)
-		} else {
-			identifiers, _, err = findShellASTMatches(string(text), query, variant)
-		}
-		if err != nil {
-			return nil
-		}
-		for _, identifier := range identifiers {
-			matches = append(matches, directorySearchMatch{Path: filepath.ToSlash(rel), Line: identifier.Line, Column: identifier.Column, EndLine: identifier.Line, Kind: identifier.Kind, Label: identifier.Container})
-		}
-		return nil
-	})
-	return matches, files, err
-}
-
-func directoryASTFilesMatch(root string, cached []directoryASTFileState) bool {
-	current := make([]directoryASTFileState, 0)
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			switch entry.Name() {
-			case ".git", "node_modules", "vendor":
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return nil
-		}
-		current = append(current, directoryASTFileState{Path: filepath.ToSlash(rel), Size: info.Size(), ModTime: info.ModTime().UnixNano()})
-		return nil
-	})
-	if err != nil || len(current) != len(cached) {
-		return false
-	}
-	sort.Slice(current, func(i, j int) bool { return current[i].Path < current[j].Path })
-	for i, file := range current {
-		if file != cached[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func formatDirectorySearchMatches(root, mode, query string, matches []directorySearchMatch, total, contextLines, maxMatches, index int, warnings []string) (operationresult.Result[*toolshare.Result], error) {
+func formatDirectorySearchMatches(root, query string, matches []directorySearchMatch, total, contextLines, maxMatches, index int, warnings []string) (operationresult.Result[*toolshare.Result], error) {
 	if index > total || index < 0 {
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("index %d is out of range; found %d matches", index, total)}, nil
 	}
@@ -562,40 +289,25 @@ func formatDirectorySearchMatches(root, mode, query string, matches []directoryS
 		shown = matches[:maxMatches]
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "path: %s\nmode: %s\nquery: %q\nmatches: %d\ntruncated: %t\n", root, mode, query, total, truncated)
+	fmt.Fprintf(&b, "path: %s\nmode: %s\nquery: %q\nmatches: %d\ntruncated: %t\n", root, readFileModeGrep, query, total, truncated)
 	if len(matches) == 0 {
 		b.WriteString("content:\n")
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}, nil
 	}
 	if index > 0 {
 		fmt.Fprintf(&b, "index: %d\ncontent:\n", index)
-		return formatDirectorySearchSelection(&b, root, mode, shown[0], contextLines, warnings)
-	}
-	if len(matches) > 1 || mode != readFileModeASTFunction {
-		if mode == readFileModeASTFunction && len(matches) > 1 {
-			b.WriteString("selection_required: true\n")
-		}
-		b.WriteString("content:\n")
-		for i, match := range shown {
-			if mode == readFileModeASTFunction {
-				fmt.Fprintf(&b, "%d. %s - %s:%d-%d\n", i+1, match.Label, match.Path, match.Line, match.EndLine)
-			} else {
-				fmt.Fprintf(&b, "%d. %s:%d:%d [%s] %s\n", i+1, match.Path, match.Line, match.Column, match.Kind, match.Label)
-			}
-		}
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}, nil
+		return formatDirectorySearchSelection(&b, root, shown[0], contextLines, warnings)
 	}
 	b.WriteString("content:\n")
-	return formatDirectorySearchSelection(&b, root, mode, shown[0], contextLines, warnings)
+	for i, match := range shown {
+		fmt.Fprintf(&b, "%d. %s:%d:%d [grep] \n", i+1, match.Path, match.Line, match.Column)
+	}
+	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}, nil
 }
 
-func formatDirectorySearchSelection(b *strings.Builder, root, mode string, match directorySearchMatch, contextLines int, warnings []string) (operationresult.Result[*toolshare.Result], error) {
+func formatDirectorySearchSelection(b *strings.Builder, root string, match directorySearchMatch, contextLines int, warnings []string) (operationresult.Result[*toolshare.Result], error) {
 	path := filepath.Join(root, filepath.FromSlash(match.Path))
-	maxBytes := int64(fileops.MaxFileSize)
-	if mode == readFileModeGrep {
-		maxBytes = fileToolMaxBytes
-	}
-	loaded, err := fileops.ReadFileWithLimit(path, "", maxBytes)
+	loaded, err := fileops.ReadFileWithLimit(path, "", fileToolMaxBytes)
 	if err != nil {
 		return operationresult.Result[*toolshare.Result]{}, err
 	}
@@ -604,17 +316,14 @@ func formatDirectorySearchSelection(b *strings.Builder, root, mode string, match
 	}
 	file := loaded.Data
 	lines := fileops.SplitLines(file.Text)
-	if match.Line < 1 || match.Line > len(lines) || match.EndLine > len(lines) {
+	if match.Line < 1 || match.Line > len(lines) {
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.Conflict, Message: "file changed after directory search"}, nil
 	}
 	if int64(len(file.Bytes)) > fileToolDetailedMaxBytes {
-		warnings = append(warnings, fmt.Sprintf("large file: %d bytes; ast and ast_function modes are disabled", len(file.Bytes)))
+		warnings = append(warnings, fmt.Sprintf("large file: %d bytes; ast mode is disabled", len(file.Bytes)))
 	}
-	start, end := match.Line, match.EndLine
-	if mode != readFileModeASTFunction {
-		start, end = max(1, match.Line-contextLines), min(len(lines), match.Line+contextLines)
-	}
-	fmt.Fprintf(b, "match: %s:%d-%d [%s] %s\n", match.Path, match.Line, match.EndLine, match.Kind, match.Label)
+	start, end := max(1, match.Line-contextLines), min(len(lines), match.Line+contextLines)
+	fmt.Fprintf(b, "match: %s:%d-%d [grep] \n", match.Path, match.Line, match.Line)
 	width := len(fmt.Sprintf("%d", len(lines)))
 	for line := start; line <= end; line++ {
 		fmt.Fprintf(b, "  %*d | %s\n", width, line, lines[line-1])

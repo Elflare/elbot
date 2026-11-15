@@ -1,7 +1,4 @@
-// 识别文件语法结构，为文件读取和定位提供 AST 信息。
 package builtin
-
-import toolshare "elbot/internal/tool/share"
 
 import (
 	"bytes"
@@ -9,29 +6,28 @@ import (
 	"go/ast"
 	"go/format"
 	"go/parser"
+	"go/scanner"
 	"go/token"
 	"path/filepath"
-	"sort"
 	"strings"
-
-	"mvdan.cc/sh/v3/syntax"
 
 	"elbot/internal/fileops"
 	"elbot/internal/operationresult"
+	toolshare "elbot/internal/tool/share"
 )
 
 const (
-	readFileModeRead        = "read"
-	readFileModeGrep        = "grep"
-	readFileModeAST         = "ast"
-	readFileModeASTFunction = "ast_function"
+	readFileModeRead = "read"
+	readFileModeGrep = "grep"
+	readFileModeAST  = "ast"
 )
 
-type astMatch struct {
-	Line      int
-	Column    int
-	Kind      string
-	Container string
+type fileIndexEntry struct {
+	Section   string   // 骨架分组，决定顶层条目的编号顺序。
+	Text      string   // 不包含函数体或初始化值的声明摘要。
+	StartLine int      // 声明起始行，包含关联的前置文档注释。
+	EndLine   int      // 声明结束行，闭区间。
+	Members   []string // 类型的字段或接口成员，展示时按需限制数量。
 }
 
 func normalizeReadFileMode(value string) (string, error) {
@@ -40,350 +36,361 @@ func normalizeReadFileMode(value string) (string, error) {
 		return readFileModeRead, nil
 	}
 	switch mode {
-	case readFileModeRead, readFileModeGrep, readFileModeAST, readFileModeASTFunction:
+	case readFileModeRead, readFileModeGrep, readFileModeAST:
 		return mode, nil
 	default:
-		return "", fmt.Errorf("read_file mode must be read, grep, ast, or ast_function")
+		return "", fmt.Errorf("read_file mode must be read, grep, or ast")
 	}
 }
 
-func readFileASTResult(file fileops.File, query string, contextLines, maxMatches, index int, warnings []string) (operationresult.Result[*toolshare.Result], error) {
-	if query == "" {
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "query is required when mode is ast"}, nil
+func readFileASTResult(file fileops.File, maxMatches, index int, warnings []string) (operationresult.Result[*toolshare.Result], error) {
+	if !strings.EqualFold(filepath.Ext(file.Path), ".go") {
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidTarget, Message: "ast mode only supports Go files; use read or grep mode"}, nil
 	}
-	language, variant, err := detectASTLanguage(file.Path, file.Text)
+	entries, warning, err := buildGoFileIndex(file.Path, file.Text)
 	if err != nil {
 		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidTarget, Message: err.Error()}, nil
 	}
-	var matches []astMatch
-	var parseWarning string
-	if language == "go" {
-		matches, parseWarning, err = findGoASTMatches(file.Path, file.Text, query)
-	} else {
-		matches, parseWarning, err = findShellASTMatches(file.Text, query, variant)
+	if warning != "" {
+		warnings = append(warnings, warning)
 	}
-	if err != nil {
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidTarget, Message: err.Error()}, nil
+	if index < 0 || index > len(entries) {
+		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("index %d is out of range; found %d entries", index, len(entries))}, nil
 	}
-	if parseWarning != "" {
-		warnings = append(warnings, parseWarning)
+	start, end := 0, min(maxMatches, len(entries))
+	if index > 0 {
+		start, end = index-1, index
 	}
-	return formatASTMatches(file, query, language, matches, contextLines, maxMatches, index, warnings), nil
+	truncated := index == 0 && end < len(entries)
+	var b strings.Builder
+	fmt.Fprintf(&b, "file: %s\nencoding: %s\nrevision: %s\nmode: ast\nlanguage: go\nmatches: %d\ntotal: %d\ntruncated: %t\n", file.Path, file.Encoding, fileops.ContentRevision(file.Bytes), end-start, len(entries), truncated)
+	if index > 0 {
+		fmt.Fprintf(&b, "index: %d\n", index)
+	}
+	b.WriteString("content:\n")
+	section := ""
+	for i := start; i < end; i++ {
+		entry := entries[i]
+		if section != entry.Section {
+			section = entry.Section
+			fmt.Fprintf(&b, "%s:\n", section)
+		}
+		fmt.Fprintf(&b, "  %d. %s [%d-%d]\n", i+1, entry.Text, entry.StartLine, entry.EndLine)
+		memberCount := len(entry.Members)
+		if index == 0 {
+			memberCount = min(memberCount, 8)
+		}
+		for _, member := range entry.Members[:memberCount] {
+			fmt.Fprintf(&b, "    %s\n", member)
+		}
+		if memberCount < len(entry.Members) {
+			fmt.Fprintf(&b, "    [%d more members; use index=%d to expand]\n", len(entry.Members)-memberCount, i+1)
+		}
+	}
+	if truncated {
+		b.WriteString("[more entries omitted; increase max_matches (up to 100) or select an entry with index]\n")
+	}
+	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}, nil
 }
 
-type astFunctionMatch struct {
-	StartLine int
-	EndLine   int
-	Kind      string
-	Name      string
-}
-
-func readFileASTFunctionResult(file fileops.File, query string, maxMatches, index int, warnings []string) (operationresult.Result[*toolshare.Result], error) {
-	if query == "" {
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: "query is required when mode is ast_function"}, nil
-	}
-	language, variant, err := detectASTLanguage(file.Path, file.Text)
-	if err != nil {
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidTarget, Message: err.Error()}, nil
-	}
-	var matches []astFunctionMatch
-	var parseWarning string
-	if language == "go" {
-		matches, parseWarning, err = findGoASTFunctions(file.Path, file.Text, query)
-	} else {
-		matches, parseWarning, err = findShellASTFunctions(file.Text, query, variant)
-	}
-	if err != nil {
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidTarget, Message: err.Error()}, nil
-	}
-	if parseWarning != "" {
-		warnings = append(warnings, parseWarning)
-	}
-	return formatASTFunctionMatches(file, query, language, matches, maxMatches, index, warnings), nil
-}
-
-func findGoASTFunctions(path, source, query string) ([]astFunctionMatch, string, error) {
+func buildGoFileIndex(path, source string) ([]fileIndexEntry, string, error) {
 	if strings.TrimSpace(source) == "" {
 		return nil, "", nil
 	}
 	fset := token.NewFileSet()
-	file, parseErr := parser.ParseFile(fset, path, source, parser.AllErrors)
-	if file == nil {
+	file, parseErr := parser.ParseFile(fset, path, source, parser.AllErrors|parser.ParseComments)
+	if file == nil || file.Name == nil || file.Name.Name == "" {
 		return nil, "", fmt.Errorf("parse Go source: %w", parseErr)
 	}
-	matches := make([]astFunctionMatch, 0)
+	groups := make(map[string][]fileIndexEntry)
+	var formatErr error
+	text := func(node ast.Node) (string, bool) {
+		node, omitted := projectGoIndexNode(node)
+		var b bytes.Buffer
+		if err := format.Node(&b, fset, node); err != nil {
+			formatErr = err
+		}
+		formatted := b.String()
+		var scan scanner.Scanner
+		positions := token.NewFileSet()
+		scanFile := positions.AddFile("", -1, len(formatted))
+		scan.Init(scanFile, []byte(formatted), nil, 0)
+		var compact strings.Builder
+		gap := func(value string) {
+			if strings.TrimLeft(value, " \t\r\n") != value {
+				compact.WriteByte(' ')
+			}
+			compact.WriteString(strings.Join(strings.Fields(value), " "))
+			if strings.TrimSpace(value) != "" && strings.TrimRight(value, " \t\r\n") != value {
+				compact.WriteByte(' ')
+			}
+		}
+		start := 0
+		for {
+			pos, kind, literal := scan.Scan()
+			if kind == token.EOF {
+				break
+			}
+			if kind != token.STRING && kind != token.CHAR {
+				continue
+			}
+			offset := scanFile.Offset(pos)
+			gap(formatted[start:offset])
+			compact.WriteString(literal)
+			start = offset + len(literal)
+		}
+		gap(formatted[start:])
+		return strings.TrimSpace(compact.String()), omitted
+	}
+	names := func(ids []*ast.Ident) string {
+		values := make([]string, len(ids))
+		for i, id := range ids {
+			values[i] = id.Name
+		}
+		return strings.Join(values, ", ")
+	}
+	members := func(fields *ast.FieldList, isInterface bool) []string {
+		var result []string
+		for _, field := range fields.List {
+			value, omitted := text(field.Type)
+			if len(field.Names) > 0 {
+				if _, method := field.Type.(*ast.FuncType); method && isInterface {
+					value = names(field.Names) + strings.TrimPrefix(value, "func")
+				} else {
+					value = names(field.Names) + " " + value
+				}
+			}
+			if omitted {
+				value += " [nested details omitted]"
+			}
+			result = append(result, value)
+		}
+		return result
+	}
+	add := func(section, value string, omitted bool, node ast.Node, doc *ast.CommentGroup, children []string) {
+		if omitted {
+			value += " [nested details omitted]"
+		}
+		start := node.Pos()
+		if doc != nil {
+			start = doc.Pos()
+		}
+		groups[section] = append(groups[section], fileIndexEntry{Section: section, Text: value, StartLine: fset.PositionFor(start, false).Line, EndLine: fset.PositionFor(node.End(), false).Line, Members: children})
+	}
 	for _, decl := range file.Decls {
-		function, ok := decl.(*ast.FuncDecl)
-		if !ok || function.Name == nil || function.Name.Name != query {
-			continue
-		}
-		start := fset.Position(function.Pos()).Line
-		end := fset.Position(function.End()).Line
-		kind, name := "function", function.Name.Name
-		if function.Recv != nil {
-			kind, name = "method", goASTFunctionName(fset, function)
-		}
-		matches = append(matches, astFunctionMatch{StartLine: start, EndLine: end, Kind: kind, Name: name})
-	}
-	if parseErr != nil {
-		return matches, "Go AST 解析存在错误，结果可能不完整：" + parseErr.Error(), nil
-	}
-	return matches, "", nil
-}
-
-func goASTFunctionName(fset *token.FileSet, function *ast.FuncDecl) string {
-	if function.Recv == nil || len(function.Recv.List) == 0 {
-		return function.Name.Name
-	}
-	var receiver bytes.Buffer
-	if err := format.Node(&receiver, fset, function.Recv.List[0].Type); err != nil {
-		return function.Name.Name
-	}
-	return "(" + receiver.String() + ")." + function.Name.Name
-}
-
-func findShellASTFunctions(source, query string, variant syntax.LangVariant) ([]astFunctionMatch, string, error) {
-	parser := syntax.NewParser(syntax.Variant(variant))
-	file, parseErr := parser.Parse(strings.NewReader(source), "")
-	warning := ""
-	if parseErr != nil {
-		file, parseErr = syntax.NewParser(syntax.Variant(variant), syntax.RecoverErrors(10)).Parse(strings.NewReader(source), "")
-		if parseErr != nil || file == nil {
-			return nil, "", fmt.Errorf("parse Shell source: %w", parseErr)
-		}
-		warning = "Shell AST 解析已恢复错误，结果可能不完整。"
-	}
-	matches := make([]astFunctionMatch, 0)
-	syntax.Walk(file, func(node syntax.Node) bool {
-		function, ok := node.(*syntax.FuncDecl)
-		if !ok || function.Name == nil || function.Name.Value != query {
-			return true
-		}
-		matches = append(matches, astFunctionMatch{StartLine: int(function.Pos().Line()), EndLine: int(function.End().Line()), Kind: "function", Name: function.Name.Value})
-		return true
-	})
-	return matches, warning, nil
-}
-
-func detectASTLanguage(path, text string) (string, syntax.LangVariant, error) {
-	ext := strings.ToLower(filepath.Ext(path))
-	switch ext {
-	case ".go":
-		return "go", 0, nil
-	case ".mksh":
-		return "shell", syntax.LangMirBSDKorn, nil
-	}
-	firstLine, _, _ := strings.Cut(text, "\n")
-	if strings.HasPrefix(firstLine, "#!") {
-		fields := strings.Fields(firstLine[2:])
-		if len(fields) > 0 && !strings.HasPrefix(fields[0], "/") {
-			fields = nil
-		}
-		if len(fields) > 0 && filepath.Base(fields[0]) == "env" {
-			fields = fields[1:]
-			if len(fields) > 0 && (fields[0] == "-S" || fields[0] == "--split-string") {
-				fields = fields[1:]
+		switch decl := decl.(type) {
+		case *ast.GenDecl:
+			for i, spec := range decl.Specs {
+				doc := decl.Doc
+				if i > 0 {
+					doc = nil
+				}
+				switch spec := spec.(type) {
+				case *ast.ImportSpec:
+					value := spec.Path.Value
+					if spec.Name != nil {
+						value = spec.Name.Name + " " + value
+					}
+					if spec.Doc != nil {
+						doc = spec.Doc
+					}
+					add("imports", value, false, spec, doc, nil)
+				case *ast.ValueSpec:
+					value := decl.Tok.String() + " " + names(spec.Names)
+					omitted := false
+					if spec.Type != nil {
+						var typ string
+						typ, omitted = text(spec.Type)
+						value += " " + typ
+					}
+					if spec.Doc != nil {
+						doc = spec.Doc
+					}
+					add("consts", value, omitted, spec, doc, nil)
+				case *ast.TypeSpec:
+					projection := *spec
+					projection.Doc, projection.Comment = nil, nil
+					var children []string
+					switch typ := spec.Type.(type) {
+					case *ast.StructType:
+						projection.Type = ast.NewIdent("struct")
+						children = members(typ.Fields, false)
+					case *ast.InterfaceType:
+						projection.Type = ast.NewIdent("interface")
+						children = members(typ.Methods, true)
+					}
+					value, omitted := text(&ast.GenDecl{Tok: token.TYPE, Specs: []ast.Spec{&projection}})
+					value = strings.TrimPrefix(value, "type ")
+					if spec.Doc != nil {
+						doc = spec.Doc
+					}
+					add("types", value, omitted, spec, doc, children)
+				}
 			}
-		}
-		if len(fields) > 0 {
-			switch filepath.Base(fields[0]) {
-			case "mksh":
-				return "shell", syntax.LangMirBSDKorn, nil
-			case "sh", "bash", "dash", "ash":
-				return "shell", syntax.LangBash, nil
-			}
-		}
-	}
-	switch ext {
-	case ".sh", ".bash", ".bats":
-		return "shell", syntax.LangBash, nil
-	}
-	return "", 0, fmt.Errorf("AST search only supports Go and Shell files")
-}
-
-func findGoASTMatches(path, source, query string) ([]astMatch, string, error) {
-	if strings.TrimSpace(source) == "" {
-		return nil, "", nil
-	}
-	fset := token.NewFileSet()
-	file, parseErr := parser.ParseFile(fset, path, source, parser.AllErrors)
-	if file == nil {
-		return nil, "", fmt.Errorf("parse Go source: %w", parseErr)
-	}
-	matches := []astMatch{}
-	stack := []ast.Node{}
-	ast.Inspect(file, func(node ast.Node) bool {
-		if node == nil {
-			stack = stack[:len(stack)-1]
-			return true
-		}
-		stack = append(stack, node)
-		ident, ok := node.(*ast.Ident)
-		if !ok || ident.Name != query {
-			return true
-		}
-		position := fset.Position(ident.Pos())
-		matches = append(matches, astMatch{Line: position.Line, Column: position.Column, Kind: "identifier", Container: goASTContainer(stack)})
-		return true
-	})
-	if parseErr != nil {
-		return matches, "Go AST 解析存在错误，结果可能不完整：" + parseErr.Error(), nil
-	}
-	return matches, "", nil
-}
-
-func goASTContainer(stack []ast.Node) string {
-	for i := len(stack) - 1; i >= 0; i-- {
-		switch node := stack[i].(type) {
 		case *ast.FuncDecl:
-			return "function " + node.Name.Name
-		case *ast.TypeSpec:
-			return "type " + node.Name.Name
+			section := "fns"
+			if decl.Recv != nil {
+				section = "impls"
+			}
+			signature := *decl
+			signature.Doc, signature.Body = nil, nil
+			value, omitted := text(&signature)
+			add(section, value, omitted, decl, decl.Doc, nil)
 		}
 	}
-	return "file"
-}
-
-func findShellASTMatches(source, query string, variant syntax.LangVariant) ([]astMatch, string, error) {
-	parser := syntax.NewParser(syntax.Variant(variant))
-	file, parseErr := parser.Parse(strings.NewReader(source), "")
+	if formatErr != nil {
+		return nil, "", fmt.Errorf("format Go index: %w", formatErr)
+	}
+	var entries []fileIndexEntry
+	for _, section := range []string{"imports", "consts", "types", "impls", "fns"} {
+		entries = append(entries, groups[section]...)
+	}
 	warning := ""
 	if parseErr != nil {
-		file, parseErr = syntax.NewParser(syntax.Variant(variant), syntax.RecoverErrors(10)).Parse(strings.NewReader(source), "")
-		if parseErr != nil || file == nil {
-			return nil, "", fmt.Errorf("parse Shell source: %w", parseErr)
-		}
-		warning = "Shell AST 解析已恢复错误，结果可能不完整。"
+		warning = "Go AST 解析存在错误，结果可能不完整：" + parseErr.Error()
 	}
-	matches := []astMatch{}
-	stack := []syntax.Node{}
-	syntax.Walk(file, func(node syntax.Node) bool {
-		if node == nil {
-			stack = stack[:len(stack)-1]
-			return true
-		}
-		stack = append(stack, node)
-		lit, ok := node.(*syntax.Lit)
-		if !ok || lit.Value != query || shellQuotedLiteral(stack, lit) {
-			return true
-		}
-		kind := "word"
-		if shellParameterLiteral(stack, lit) {
-			kind = "parameter"
-		}
-		matches = append(matches, astMatch{Line: int(lit.Pos().Line()), Column: int(lit.Pos().Col()), Kind: kind, Container: shellASTContainer(stack)})
-		return true
-	})
-	return matches, warning, nil
+	return entries, warning, nil
 }
 
-func shellQuotedLiteral(stack []syntax.Node, lit *syntax.Lit) bool {
-	if shellParameterLiteral(stack, lit) {
-		return false
-	}
-	for _, node := range stack {
-		if _, ok := node.(*syntax.DblQuoted); ok {
-			return true
+func projectGoIndexNode(node ast.Node) (ast.Node, bool) {
+	omitted := false
+	expr := func(value ast.Expr) ast.Expr {
+		if value == nil {
+			return nil
 		}
+		projected, hidden := projectGoIndexNode(value)
+		omitted = omitted || hidden
+		return projected.(ast.Expr)
 	}
-	return false
-}
-
-func shellParameterLiteral(stack []syntax.Node, lit *syntax.Lit) bool {
-	for i := len(stack) - 2; i >= 0; i-- {
-		param, ok := stack[i].(*syntax.ParamExp)
-		if ok {
-			return param.Param == lit
+	exprs := func(values []ast.Expr) []ast.Expr {
+		result := make([]ast.Expr, len(values))
+		for i, value := range values {
+			result[i] = expr(value)
 		}
+		return result
 	}
-	return false
-}
-
-func shellASTContainer(stack []syntax.Node) string {
-	for i := len(stack) - 1; i >= 0; i-- {
-		if function, ok := stack[i].(*syntax.FuncDecl); ok && function.Name != nil {
-			return "function " + function.Name.Value
+	fields := func(value *ast.FieldList) *ast.FieldList {
+		if value == nil {
+			return nil
 		}
+		projected, hidden := projectGoIndexNode(value)
+		omitted = omitted || hidden
+		return projected.(*ast.FieldList)
 	}
-	return "file"
-}
-
-func formatASTMatches(file fileops.File, query, language string, matches []astMatch, contextLines, maxMatches, index int, warnings []string) operationresult.Result[*toolshare.Result] {
-	sort.Slice(matches, func(i, j int) bool {
-		if matches[i].Line == matches[j].Line {
-			return matches[i].Column < matches[j].Column
+	switch node := node.(type) {
+	case *ast.StructType:
+		copy := *node
+		copy.Fields = &ast.FieldList{}
+		return &copy, len(node.Fields.List) > 0
+	case *ast.InterfaceType:
+		copy := *node
+		copy.Methods = &ast.FieldList{}
+		return &copy, len(node.Methods.List) > 0
+	case *ast.FuncLit:
+		copy := *node
+		copy.Type = &ast.FuncType{Func: node.Type.Func, TypeParams: fields(node.Type.TypeParams), Params: fields(node.Type.Params), Results: fields(node.Type.Results)}
+		copy.Body = &ast.BlockStmt{}
+		return &copy, true
+	case *ast.FieldList:
+		copy := *node
+		copy.List = make([]*ast.Field, len(node.List))
+		for i, field := range node.List {
+			member := *field
+			member.Doc, member.Comment = nil, nil
+			member.Type = expr(field.Type)
+			copy.List[i] = &member
 		}
-		return matches[i].Line < matches[j].Line
-	})
-	matchCount := len(matches)
-	truncated := matchCount > maxMatches
-	if index < 0 || index > matchCount {
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("index %d is out of range; found %d matches", index, matchCount)}
-	}
-	if index > 0 {
-		matches = matches[index-1 : index]
-		truncated = false
-	} else if truncated {
-		matches = matches[:maxMatches]
-	}
-	lines := fileops.SplitLines(file.Text)
-	var b strings.Builder
-	fmt.Fprintf(&b, "file: %s\nencoding: %s\nrevision: %s\nast: %q\nlanguage: %s\nmatches: %d\ntruncated: %t\n", file.Path, file.Encoding, fileops.ContentRevision(file.Bytes), query, language, len(matches), truncated)
-	if index > 0 {
-		fmt.Fprintf(&b, "index: %d\n", index)
-	}
-	b.WriteString("content:\n")
-	width := len(fmt.Sprintf("%d", len(lines)))
-	for index, match := range matches {
-		if index > 0 {
-			b.WriteString("--\n")
+		return &copy, omitted
+	case *ast.FuncType:
+		copy := *node
+		copy.TypeParams, copy.Params, copy.Results = fields(node.TypeParams), fields(node.Params), fields(node.Results)
+		return &copy, omitted
+	case *ast.FuncDecl:
+		copy := *node
+		copy.Doc, copy.Body = nil, nil
+		copy.Recv = fields(node.Recv)
+		copy.Type = expr(node.Type).(*ast.FuncType)
+		return &copy, omitted
+	case *ast.GenDecl:
+		copy := *node
+		copy.Doc = nil
+		copy.Specs = make([]ast.Spec, len(node.Specs))
+		for i, spec := range node.Specs {
+			projected, hidden := projectGoIndexNode(spec)
+			omitted = omitted || hidden
+			copy.Specs[i] = projected.(ast.Spec)
 		}
-		fmt.Fprintf(&b, "%d. match: %d:%d [%s] in %s\n", index+1, match.Line, match.Column, match.Kind, match.Container)
-		start := max(1, match.Line-contextLines)
-		end := min(len(lines), match.Line+contextLines)
-		for line := start; line <= end; line++ {
-			marker := " "
-			if line == match.Line {
-				marker = ">"
-			}
-			fmt.Fprintf(&b, "%s %*d | %s\n", marker, width, line, lines[line-1])
-		}
+		return &copy, omitted
+	case *ast.TypeSpec:
+		copy := *node
+		copy.Doc, copy.Comment = nil, nil
+		copy.TypeParams, copy.Type = fields(node.TypeParams), expr(node.Type)
+		return &copy, omitted
+	case *ast.ArrayType:
+		copy := *node
+		copy.Len, copy.Elt = expr(node.Len), expr(node.Elt)
+		return &copy, omitted
+	case *ast.MapType:
+		copy := *node
+		copy.Key, copy.Value = expr(node.Key), expr(node.Value)
+		return &copy, omitted
+	case *ast.ChanType:
+		copy := *node
+		copy.Value = expr(node.Value)
+		return &copy, omitted
+	case *ast.StarExpr:
+		copy := *node
+		copy.X = expr(node.X)
+		return &copy, omitted
+	case *ast.Ellipsis:
+		copy := *node
+		copy.Elt = expr(node.Elt)
+		return &copy, omitted
+	case *ast.ParenExpr:
+		copy := *node
+		copy.X = expr(node.X)
+		return &copy, omitted
+	case *ast.UnaryExpr:
+		copy := *node
+		copy.X = expr(node.X)
+		return &copy, omitted
+	case *ast.BinaryExpr:
+		copy := *node
+		copy.X, copy.Y = expr(node.X), expr(node.Y)
+		return &copy, omitted
+	case *ast.CallExpr:
+		copy := *node
+		copy.Fun, copy.Args = expr(node.Fun), exprs(node.Args)
+		return &copy, omitted
+	case *ast.IndexExpr:
+		copy := *node
+		copy.X, copy.Index = expr(node.X), expr(node.Index)
+		return &copy, omitted
+	case *ast.IndexListExpr:
+		copy := *node
+		copy.X, copy.Indices = expr(node.X), exprs(node.Indices)
+		return &copy, omitted
+	case *ast.SelectorExpr:
+		copy := *node
+		copy.X = expr(node.X)
+		return &copy, omitted
+	case *ast.SliceExpr:
+		copy := *node
+		copy.X, copy.Low, copy.High, copy.Max = expr(node.X), expr(node.Low), expr(node.High), expr(node.Max)
+		return &copy, omitted
+	case *ast.TypeAssertExpr:
+		copy := *node
+		copy.X, copy.Type = expr(node.X), expr(node.Type)
+		return &copy, omitted
+	case *ast.CompositeLit:
+		copy := *node
+		copy.Type, copy.Elts = expr(node.Type), exprs(node.Elts)
+		return &copy, omitted
+	case *ast.KeyValueExpr:
+		copy := *node
+		copy.Key, copy.Value = expr(node.Key), expr(node.Value)
+		return &copy, omitted
+	default:
+		return node, false
 	}
-	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}
-}
-
-func formatASTFunctionMatches(file fileops.File, query, language string, matches []astFunctionMatch, maxMatches, index int, warnings []string) operationresult.Result[*toolshare.Result] {
-	matchCount := len(matches)
-	truncated := matchCount > maxMatches
-	if index < 0 || index > matchCount {
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.InvalidArguments, Message: fmt.Sprintf("index %d is out of range; found %d matches", index, matchCount)}
-	}
-	if index > 0 {
-		matches = matches[index-1 : index]
-		truncated = false
-	} else if truncated {
-		matches = matches[:maxMatches]
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "file: %s\nencoding: %s\nrevision: %s\nast_function: %q\nlanguage: %s\nmatches: %d\ntruncated: %t\n", file.Path, file.Encoding, fileops.ContentRevision(file.Bytes), query, language, len(matches), truncated)
-	if len(matches) > 1 && index == 0 {
-		b.WriteString("selection_required: true\ncontent:\n")
-		for matchIndex, match := range matches {
-			fmt.Fprintf(&b, "%d. %s - %s:%d-%d\n", matchIndex+1, match.Name, file.Path, match.StartLine, match.EndLine)
-		}
-		return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}
-	}
-	if index > 0 {
-		fmt.Fprintf(&b, "index: %d\n", index)
-	}
-	b.WriteString("content:\n")
-	lines := fileops.SplitLines(file.Text)
-	width := len(fmt.Sprintf("%d", len(lines)))
-	for _, match := range matches {
-		fmt.Fprintf(&b, "match: %d-%d [%s] %s\n", match.StartLine, match.EndLine, match.Kind, match.Name)
-		for line := match.StartLine; line <= match.EndLine; line++ {
-			fmt.Fprintf(&b, "  %*d | %s\n", width, line, lines[line-1])
-		}
-	}
-	return operationresult.Result[*toolshare.Result]{Status: operationresult.Success, Data: &toolshare.Result{Content: b.String(), Warnings: warnings}}
 }

@@ -119,14 +119,6 @@ work 模式下，超级管理员可让 LLM 调用 `workspace` 工具切换当前
 - 附带上限 64 KiB。超限不读取、不标记已附带，工具结果提示缩短或拆分后重新切换。
 - 编辑撤销备份按目标绝对路径保存：切换 workspace 不清空备份，但相同相对路径按新 workspace 解析；撤销原目录文件可切回或传绝对路径。见[文件编辑撤销](commands.md#文件编辑撤销)。
 
-`read_file` 工具说明：
-
-- `ast` / `ast_function` 模式支持单文件和目录查询。
-- 方言判定：`.go` 按 Go，`.mksh` 按 mksh；其余看首行 Shell shebang（含 `env`、`env -S`、`env --split-string` 写法）。
-- `.sh`、`.bash`、`.bats` 无可识别 shebang 时按 Bash。
-
-`edit_file` 确认前生成编辑结果和差异预览，确认后提交同一份结果；等待期间文件内容或目标变化会拒绝提交，需重新准备。
-
 ## 常驻记忆配置
 
 常驻记忆存放在配置目录的 `memories.toml`，按平台和原生用户 ID 分层。
