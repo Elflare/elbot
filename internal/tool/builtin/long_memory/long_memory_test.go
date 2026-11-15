@@ -269,19 +269,19 @@ func TestLongMemorySyncFailureCanRetry(t *testing.T) {
 	}
 	writeSyncMemory(t, store, "a.md", 1, "recovered")
 	result, err := store.categories(t.Context())
-	if err != nil || !strings.Contains(result, "sync（共1条记录）") {
-		t.Fatalf("retry result = %q, %v", result, err)
+	if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data, "sync（共1条记录）") {
+		t.Fatalf("retry result = %+v, %v", result, err)
 	}
 	// Reading within the cooldown uses the existing index; the next eligible read refreshes it.
 	writeSyncMemory(t, store, "b.md", 2, "next")
 	result, err = store.categories(t.Context())
-	if err != nil || !strings.Contains(result, "sync（共1条记录）") {
-		t.Fatalf("cooldown result = %q, %v", result, err)
+	if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data, "sync（共1条记录）") {
+		t.Fatalf("cooldown result = %+v, %v", result, err)
 	}
 	store.lastSync = time.Now().Add(-longMemorySyncCooldown)
 	result, err = store.categories(t.Context())
-	if err != nil || !strings.Contains(result, "sync（共2条记录）") {
-		t.Fatalf("refreshed result = %q, %v", result, err)
+	if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data, "sync（共2条记录）") {
+		t.Fatalf("refreshed result = %+v, %v", result, err)
 	}
 }
 

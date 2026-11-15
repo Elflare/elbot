@@ -85,11 +85,11 @@ func TestFinalizeElSkillReturnsBuildFailure(t *testing.T) {
 	finalizer := FinalizeElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 
 	result, _, err := callTool(context.Background(), finalizer.Definition(), toolshare.CallRequest{Arguments: []byte(`{"name":"broken"}`)})
-	if err != nil || result.Status != operationresult.Success {
-		t.Fatal(err)
+	if err != nil || result.Status != operationresult.Failed {
+		t.Fatalf("result=%+v err=%v", result, err)
 	}
-	if !strings.Contains(result.Data.Content, "go build: failed") || !strings.Contains(result.Data.Content, "stderr:") || !strings.Contains(result.Data.Content, "missing") {
-		t.Fatalf("result = %q", result.Data.Content)
+	if !strings.Contains(result.Message, "go build: failed") || !strings.Contains(result.Message, "stderr:") || !strings.Contains(result.Message, "missing") {
+		t.Fatalf("result = %q", result.Message)
 	}
 }
 
@@ -99,11 +99,11 @@ func TestFinalizeElSkillReturnsGofmtFailure(t *testing.T) {
 	finalizer := FinalizeElSkillTool{manager: NewManager(root, toolregistry.NewRegistry(security.DefaultPermission()), nil, processenv.Environment{})}
 
 	result, _, err := callTool(context.Background(), finalizer.Definition(), toolshare.CallRequest{Arguments: []byte(`{"name":"badfmt"}`)})
-	if err != nil || result.Status != operationresult.Success {
-		t.Fatal(err)
+	if err != nil || result.Status != operationresult.Failed {
+		t.Fatalf("result=%+v err=%v", result, err)
 	}
-	if !strings.Contains(result.Data.Content, "gofmt: failed") {
-		t.Fatalf("result = %q", result.Data.Content)
+	if !strings.Contains(result.Message, "gofmt: failed") {
+		t.Fatalf("result = %q", result.Message)
 	}
 }
 
@@ -120,11 +120,11 @@ func TestFinalizeElSkillReturnsElyphFailure(t *testing.T) {
 	args, _ := json.Marshal(map[string]string{"name": "badelyph"})
 
 	result, _, err := callTool(context.Background(), finalizer.Definition(), toolshare.CallRequest{Arguments: args})
-	if err != nil || result.Status != operationresult.Success {
+	if err != nil || result.Status != operationresult.Failed {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Data.Content, "ELyph: failed") {
-		t.Fatalf("result = %q", result.Data.Content)
+	if !strings.Contains(result.Message, "ELyph: failed") {
+		t.Fatalf("result = %q", result.Message)
 	}
 }
 

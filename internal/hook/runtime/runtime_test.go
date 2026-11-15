@@ -715,8 +715,8 @@ func TestManagerCloseRejectsNewStartsAndIsIdempotent(t *testing.T) {
 	if err := manager.Apply(nil, func(string) {}); !errors.Is(err, ErrClosed) {
 		t.Fatalf("Apply after Close = %v, want ErrClosed", err)
 	}
-	if err := manager.Start("missing"); !errors.Is(err, ErrClosed) {
-		t.Fatalf("Start after Close = %v, want ErrClosed", err)
+	if result, err := manager.Start("missing"); err != nil || result.Status != operationresult.Unavailable {
+		t.Fatalf("Start after Close = %+v, %v", result, err)
 	}
 }
 

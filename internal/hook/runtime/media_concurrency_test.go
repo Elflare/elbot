@@ -10,19 +10,20 @@ import (
 
 	hookoutput "elbot/internal/hook/share/output"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 )
 
 type mediaProbe struct {
 	mediaAPI
-	importURL func(context.Context, string, media.Input, media.ImportLimits) (media.MediaInfo, error)
-	export    func(context.Context, string, string) (media.MediaInfo, error)
+	importURL func(context.Context, string, media.Input, media.ImportLimits) (operationresult.Result[media.MediaInfo], error)
+	export    func(context.Context, string, string) (operationresult.Result[media.MediaInfo], error)
 	remove    func(context.Context, media.Reference) error
 }
 
-func (p mediaProbe) ImportURL(ctx context.Context, url string, input media.Input, limits media.ImportLimits) (media.MediaInfo, error) {
+func (p mediaProbe) ImportURL(ctx context.Context, url string, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
 	return p.importURL(ctx, url, input, limits)
 }
-func (p mediaProbe) Export(ctx context.Context, id, path string) (media.MediaInfo, error) {
+func (p mediaProbe) Export(ctx context.Context, id, path string) (operationresult.Result[media.MediaInfo], error) {
 	return p.export(ctx, id, path)
 }
 func (p mediaProbe) RemoveReference(ctx context.Context, ref media.Reference) error {
@@ -46,7 +47,7 @@ func awaitMediaResult(t *testing.T, done <-chan error) error {
 func TestSlowMediaImportDoesNotBlockTextAndCancellation(t *testing.T) {
 	m, center, dir, _ := testMediaRuntime(t)
 	started, unblock := make(chan struct{}), make(chan struct{})
-	m.media.api = mediaProbe{mediaAPI: center, importURL: func(ctx context.Context, _ string, input media.Input, limits media.ImportLimits) (media.MediaInfo, error) {
+	m.media.api = mediaProbe{mediaAPI: center, importURL: func(ctx context.Context, _ string, input media.Input, limits media.ImportLimits) (operationresult.Result[media.MediaInfo], error) {
 		close(started)
 		<-unblock
 		return center.ImportBytes(ctx, []byte("image"), media.Input{MIMEType: "image/png"}, limits)
@@ -89,11 +90,11 @@ func TestSlowMediaImportDoesNotBlockTextAndCancellation(t *testing.T) {
 func TestLeaseWaitCancellationPruneAndCloseDuringExport(t *testing.T) {
 	m, center, dir, store := testMediaRuntime(t)
 	item, err := center.ImportBytes(t.Context(), []byte("content"), media.Input{}, media.ImportLimits{})
-	if err != nil {
+	if err != nil || item.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	started, unblock := make(chan struct{}), make(chan struct{})
-	m.media.api = mediaProbe{mediaAPI: center, export: func(ctx context.Context, id, path string) (media.MediaInfo, error) {
+	m.media.api = mediaProbe{mediaAPI: center, export: func(ctx context.Context, id, path string) (operationresult.Result[media.MediaInfo], error) {
 		close(started)
 		<-unblock
 		// 模拟已进入不可中断 I/O；Close 必须等真实调用退出。
@@ -108,13 +109,13 @@ func TestLeaseWaitCancellationPruneAndCloseDuringExport(t *testing.T) {
 	})
 	done := make(chan error, 1)
 	go func() {
-		_, err := m.MediaRequest(t.Context(), dir, "media.export", mustJSON(map[string]string{"media": item.ID}))
+		_, err := m.MediaRequest(t.Context(), dir, "media.export", mustJSON(map[string]string{"media": item.Data.ID}))
 		done <- err
 	}()
 	<-started
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 	defer cancel()
-	if _, err := m.MediaRequest(ctx, dir, "media.export", mustJSON(map[string]string{"media": item.ID})); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := m.MediaRequest(ctx, dir, "media.export", mustJSON(map[string]string{"media": item.Data.ID})); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal("same-lease wait ignored cancellation", err)
 	}
 	pruneMediaForTest(t.Context(), m.media, time.Now().Add(2*mediaLeaseTTL), false)
@@ -151,14 +152,14 @@ func TestLeaseWaitCancellationPruneAndCloseDuringExport(t *testing.T) {
 func TestLeaseCleanupBlocksOnlySameLeaseAndReacquiresAfterRemoval(t *testing.T) {
 	m, center, dir, _ := testMediaRuntime(t)
 	a, err := center.ImportBytes(t.Context(), []byte("a"), media.Input{}, media.ImportLimits{})
-	if err != nil {
+	if err != nil || a.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	b, err := center.ImportBytes(t.Context(), []byte("b"), media.Input{}, media.ImportLimits{})
-	if err != nil {
+	if err != nil || b.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	first := mediaCall(t, m, dir, "media.export", map[string]string{"media": a.ID})
+	first := mediaCall(t, m, dir, "media.export", map[string]string{"media": a.Data.ID})
 	started, unblock := make(chan struct{}), make(chan struct{})
 	var removals atomic.Int32
 	m.media.api = mediaProbe{mediaAPI: center, export: center.Export, remove: func(ctx context.Context, ref media.Reference) error {
@@ -183,12 +184,12 @@ func TestLeaseCleanupBlocksOnlySameLeaseAndReacquiresAfterRemoval(t *testing.T) 
 	<-started
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 	defer cancel()
-	if _, err := m.MediaRequest(ctx, dir, "media.export", mustJSON(map[string]string{"media": a.ID})); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := m.MediaRequest(ctx, dir, "media.export", mustJSON(map[string]string{"media": a.Data.ID})); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err)
 	}
 	other := make(chan error, 1)
 	go func() {
-		_, err := m.MediaRequest(t.Context(), dir, "media.metadata", mustJSON(map[string]string{"media": b.ID}))
+		_, err := m.MediaRequest(t.Context(), dir, "media.metadata", mustJSON(map[string]string{"media": b.Data.ID}))
 		other <- err
 	}()
 	if err := awaitMediaResult(t, other); err != nil {
@@ -201,7 +202,7 @@ func TestLeaseCleanupBlocksOnlySameLeaseAndReacquiresAfterRemoval(t *testing.T) 
 	if _, err := os.Stat(first.Path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("expired file survived", err)
 	}
-	second := mediaCall(t, m, dir, "media.export", map[string]string{"media": a.ID})
+	second := mediaCall(t, m, dir, "media.export", map[string]string{"media": a.Data.ID})
 	if second.Path == first.Path {
 		t.Fatal("used removed lease")
 	}
@@ -213,10 +214,10 @@ func TestLeaseCleanupBlocksOnlySameLeaseAndReacquiresAfterRemoval(t *testing.T) 
 func TestCloseRetryRetainsFailedLease(t *testing.T) {
 	m, center, dir, _ := testMediaRuntime(t)
 	item, err := center.ImportBytes(t.Context(), []byte("a"), media.Input{}, media.ImportLimits{})
-	if err != nil {
+	if err != nil || item.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	mediaCall(t, m, dir, "media.metadata", map[string]string{"media": item.ID})
+	mediaCall(t, m, dir, "media.metadata", map[string]string{"media": item.Data.ID})
 	var fail atomic.Bool
 	fail.Store(true)
 	var attempts atomic.Int32

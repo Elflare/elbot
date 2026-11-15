@@ -8,6 +8,7 @@ import (
 	"elbot/internal/operationresult"
 	"elbot/internal/testutil"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/png"
 	"net/http"
@@ -81,7 +82,7 @@ func TestViewImageMessageSelectionAndPrevalidation(t *testing.T) {
 		t.Fatal("cross-chat lookup allowed")
 	}
 	result, err = call(`{"message_id":["1"],"media_index":[[1,2,3,4,5,6]]}`)
-	if err != nil || result.Status != operationresult.Success || imageCount(result.Data) != 5 || !strings.Contains(llm.SegmentsTextOnly(result.Data.Segments), "5 个下载") {
+	if err != nil || result.Status != operationresult.Success || imageCount(result.Data) != 5 || !strings.Contains(llm.SegmentsTextOnly(result.Data.Segments), "history media fetch limit reached (5 attempts)") {
 		t.Fatalf("budget=%+v err=%v", result, err)
 	}
 }
@@ -157,8 +158,8 @@ func TestViewImageSourcesAndPermissions(t *testing.T) {
 	}
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
-	if result, err := call(canceled, server.URL); err != nil || result.Status == operationresult.Success {
-		t.Fatal("ignored cancellation")
+	if result, err := call(canceled, server.URL); !errors.Is(err, context.Canceled) || result.Status == operationresult.Success {
+		t.Fatalf("cancellation result=%+v err=%v", result, err)
 	}
 }
 

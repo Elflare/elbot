@@ -52,7 +52,7 @@ func TestQueryToolsScopesTagsAndDescriptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	detail, err := m.LoadToolDetail(ctx, "guide")
-	if err != nil || detail.Data.Content != "Plain instructions" || detail.Format != "" {
+	if err != nil || detail.Status != operationresult.Success || detail.Data.Content != "Plain instructions" || detail.Data.Format != "" {
 		t.Fatalf("detail=%+v err=%v", detail, err)
 	}
 	if result, err := m.LoadToolDetail(ctx, "alpha"); err != nil || result.Status != operationresult.NotFound {

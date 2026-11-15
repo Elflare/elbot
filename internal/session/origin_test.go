@@ -23,15 +23,17 @@ func TestOriginRegistrationPreservesHistoryAndOtherMetadata(t *testing.T) {
 		t.Fatalf("new session origin = %v, %v", known, err)
 	}
 	target := llm.Origin{APIType: llm.APITypeChat, Provider: "first", BaseURL: "https://first.invalid/v1"}
-	row, err = svc.RegisterOrigin(ctx, row.ID, target)
-	if err != nil {
-		t.Fatal(err)
+	registered, err := svc.RegisterOrigin(ctx, row.ID, target)
+	if err != nil || registered.Status != operationresult.Success {
+		t.Fatalf("register: %+v, %v", registered, err)
 	}
+	row = registered.Data
 	changed := llm.Origin{APIType: llm.APITypeChat, Provider: "second", BaseURL: "https://second.invalid/v1"}
-	row, err = svc.RegisterOrigin(ctx, row.ID, changed)
-	if err != nil {
-		t.Fatal(err)
+	registered, err = svc.RegisterOrigin(ctx, row.ID, changed)
+	if err != nil || registered.Status != operationresult.Success {
+		t.Fatalf("register changed provider: %+v, %v", registered, err)
 	}
+	row = registered.Data
 	if origin, known, err := Origin(row); err != nil || !known || origin != target {
 		t.Fatalf("historical origin overwritten: %+v, %v, %v", origin, known, err)
 	}
@@ -41,7 +43,7 @@ func TestOriginRegistrationPreservesHistoryAndOtherMetadata(t *testing.T) {
 		}
 	}
 	before := row.Metadata
-	if _, err := svc.RegisterOrigin(ctx, row.ID, llm.Origin{APIType: llm.APITypeResponse, Provider: "other"}); err == nil {
+	if result, err := svc.RegisterOrigin(ctx, row.ID, llm.Origin{APIType: llm.APITypeResponse, Provider: "other"}); err != nil || result.Status != operationresult.Conflict {
 		t.Fatal("existing material was silently reinterpreted")
 	}
 	persisted, err := store.Sessions().Get(ctx, row.ID)
@@ -90,10 +92,11 @@ func TestOriginRegistrationRejectsStaleBindingAndKeepsPartialChat(t *testing.T) 
 		t.Fatalf("current: %+v %v", current, err)
 	}
 	fresh := current.Data.Binding
-	row, err = svc.RegisterOrigin(WithBinding(ctx, fresh), row.ID, target)
-	if err != nil {
-		t.Fatal(err)
+	registered, err := svc.RegisterOrigin(WithBinding(ctx, fresh), row.ID, target)
+	if err != nil || registered.Status != operationresult.Success {
+		t.Fatalf("register fresh binding: %+v, %v", registered, err)
 	}
+	row = registered.Data
 	if origin, _, err := Origin(row); err != nil || origin != target {
 		t.Fatalf("partial Chat origin was not completed: %+v, %v", origin, err)
 	}

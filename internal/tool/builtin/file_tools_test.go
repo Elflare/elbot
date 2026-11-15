@@ -118,8 +118,8 @@ func TestDirectoryASTLanguageDetection(t *testing.T) {
 			}
 			if tc.language != "" {
 				source, err := readDirectoryASTSource(path)
-				if err != nil || string(source) != tc.source {
-					t.Fatalf("source=%q err=%v", source, err)
+				if err != nil || source.Status != operationresult.Success || string(source.Data) != tc.source {
+					t.Fatalf("source=%+v err=%v", source, err)
 				}
 			}
 		})
@@ -451,31 +451,31 @@ func TestDirectoryGrepOrderingCountsAndSelection(t *testing.T) {
 	slices.Sort(names)
 	total := len(names) * 2
 	result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle", MaxMatches: 3}, nil, nil)
-	if err != nil {
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
 	for _, expected := range []string{fmt.Sprintf("matches: %d\n", total), "truncated: true", "1. a+:1:1", "2. a+:2:1", "3. a/b:1:1"} {
-		if !strings.Contains(result.Content, expected) {
-			t.Fatalf("missing %q: %s", expected, result.Content)
+		if !strings.Contains(result.Data.Content, expected) {
+			t.Fatalf("missing %q: %s", expected, result.Data.Content)
 		}
 	}
-	if strings.Contains(result.Content, "4. ") {
-		t.Fatalf("unexpected extra results: %s", result.Content)
+	if strings.Contains(result.Data.Content, "4. ") {
+		t.Fatalf("unexpected extra results: %s", result.Data.Content)
 	}
 	for _, index := range []int{1, 201, total} {
 		result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle", MaxMatches: 1, Index: index}, nil, nil)
-		if err != nil {
+		if err != nil || result.Status != operationresult.Success {
 			t.Fatal(err)
 		}
 		line := (index-1)%2 + 1
 		want := fmt.Sprintf("match: %s:%d-%d [grep]", names[(index-1)/2], line, line)
-		if !strings.Contains(result.Content, want) || !strings.Contains(result.Content, fmt.Sprintf("matches: %d\n", total)) || !strings.Contains(result.Content, "truncated: false") {
-			t.Fatalf("selection %d: %s", index, result.Content)
+		if !strings.Contains(result.Data.Content, want) || !strings.Contains(result.Data.Content, fmt.Sprintf("matches: %d\n", total)) || !strings.Contains(result.Data.Content, "truncated: false") {
+			t.Fatalf("selection %d: %s", index, result.Data.Content)
 		}
 	}
 	for _, index := range []int{-1, total + 1} {
-		_, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle", Index: index}, nil, nil)
-		if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("found %d matches", total)) {
+		result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle", Index: index}, nil, nil)
+		if err != nil || result.Status != operationresult.InvalidArguments || !strings.Contains(result.Message, fmt.Sprintf("found %d matches", total)) {
 			t.Fatalf("index %d: %v", index, err)
 		}
 	}
@@ -492,13 +492,13 @@ func TestDirectoryGrepLongLinesAndEmptyResults(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "absent"}, nil, nil)
-		if err != nil || !strings.Contains(result.Content, "matches: 0\ntruncated: false") {
+		result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "absent", MaxMatches: 10}, nil, nil)
+		if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data.Content, "matches: 0\ntruncated: false") {
 			t.Fatalf("result=%+v err=%v", result, err)
 		}
 	}
-	result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle"}, nil, nil)
-	if err != nil || !strings.Contains(result.Content, "long.txt:1:70001") {
+	result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle", MaxMatches: 10}, nil, nil)
+	if err != nil || result.Status != operationresult.Success || !strings.Contains(result.Data.Content, "long.txt:1:70001") {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }
@@ -534,12 +534,12 @@ func TestDirectoryGrepWarningsRespectSearchScope(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle"}, nil, nil)
-	if err != nil {
+	result, err := readFileDirectorySearch(t.Context(), root, readFileModeGrep, readFileArgs{Query: "needle", MaxMatches: 10}, nil, nil)
+	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "matches: 1\n") || !strings.Contains(result.Content, "visible.txt") {
-		t.Fatal(result.Content)
+	if !strings.Contains(result.Data.Content, "matches: 1\n") || !strings.Contains(result.Data.Content, "visible.txt") {
+		t.Fatal(result.Data.Content)
 	}
 	want := "grep skipped 7 large files: "
 	for i, name := range []string{"a.bin", "b.bin", "c.bin", "d.bin", "e.bin"} {
@@ -549,8 +549,8 @@ func TestDirectoryGrepWarningsRespectSearchScope(t *testing.T) {
 		want += fmt.Sprintf("%s (%d bytes)", name, fileToolMaxBytes+1)
 	}
 	want += "; 2 more"
-	if !slices.Equal(result.Warnings, []string{want}) {
-		t.Fatalf("warnings=%q want=%q", result.Warnings, want)
+	if !slices.Equal(result.Data.Warnings, []string{want}) {
+		t.Fatalf("warnings=%q want=%q", result.Data.Warnings, want)
 	}
 }
 
@@ -595,10 +595,14 @@ func TestDirectoryGrepCancellationAndProcessFailures(t *testing.T) {
 			}
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
-			done := make(chan error, 1)
+			type outcome struct {
+				result operationresult.Result[[]string]
+				err    error
+			}
+			done := make(chan outcome, 1)
 			go func() {
-				_, _, err := directoryGrepFiles(ctx, path, root, nil)
-				done <- err
+				result, _, err := directoryGrepFiles(ctx, path, root, nil)
+				done <- outcome{result, err}
 			}()
 			if tc.name == "canceled" {
 				ticker := time.NewTicker(time.Millisecond)
@@ -610,8 +614,8 @@ func TestDirectoryGrepCancellationAndProcessFailures(t *testing.T) {
 						t.Fatal(err)
 					}
 					select {
-					case err := <-done:
-						t.Fatalf("process exited before reporting ready: %v", err)
+					case out := <-done:
+						t.Fatalf("process exited before reporting ready: %+v", out)
 					case <-t.Context().Done():
 						t.Fatal("test canceled before process reported ready")
 					case <-ticker.C:
@@ -619,12 +623,13 @@ func TestDirectoryGrepCancellationAndProcessFailures(t *testing.T) {
 				}
 				cancel()
 			}
-			err := <-done
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("err=%v want=%q", err, tc.want)
-			}
-			if tc.name == "canceled" && !errors.Is(err, context.Canceled) {
-				t.Fatalf("lost process cancellation: %v", err)
+			out := <-done
+			if tc.name == "failed" {
+				if out.err != nil || out.result.Status != operationresult.Failed || !strings.Contains(out.result.Message, tc.want) {
+					t.Fatalf("result=%+v err=%v want=%q", out.result, out.err, tc.want)
+				}
+			} else if !errors.Is(out.err, context.Canceled) {
+				t.Fatalf("lost process cancellation: %v", out.err)
 			}
 		})
 	}
@@ -788,10 +793,10 @@ func TestEditFileToolBatchReplacesLinesAndReturnsDiff(t *testing.T) {
 	if got := string(content); got != "alpha\nBETA\nDELTA\ngamma\n" {
 		t.Fatalf("file content = %q", got)
 	}
-	if !strings.Contains(result.Data.Content, "dry_run: false") || !strings.Contains(result.Data.Content, "-beta") || !strings.Contains(result.Data.Content, "+BETA") || !strings.Contains(result.Data.Content, "+DELTA") {
+	if !strings.Contains(result.Data.Content, "-beta") || !strings.Contains(result.Data.Content, "+BETA") || !strings.Contains(result.Data.Content, "+DELTA") {
 		t.Fatalf("unexpected diff:\n%s", result.Data.Content)
 	}
-	if !strings.Contains(result.Data.Content, "revision_before: ") || !strings.Contains(result.Data.Content, "revision_after: ") {
+	if !strings.Contains(result.Data.Content, "revision_after: "+fileops.ContentRevision(content)) {
 		t.Fatalf("unexpected revision output:\n%s", result.Data.Content)
 	}
 }

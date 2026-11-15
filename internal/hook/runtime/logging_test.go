@@ -111,6 +111,9 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 				if len(*records) != 1 || (*records)[0].EventName != "hook_tool_call_completed" {
 					t.Fatalf("call record was delayed until send: %+v", *records)
 				}
+				if tc.status == events.ResultCanceled {
+					return operationresult.Result[delivery.Receipt]{Status: operationresult.Canceled, Message: tc.err.Error()}, nil
+				}
 				return operationresult.Result[delivery.Receipt]{}, tc.err
 			}})
 			if err != nil {
@@ -121,9 +124,17 @@ func TestToolCallAndSendHaveIndependentRecords(t *testing.T) {
 			ctx := contextinfo.WithActor(contextinfo.WithExecution(t.Context(), contextinfo.Execution{SessionID: "context-session", RunID: "run", Attempt: "attempt", RequestID: "request", RootRequestID: "root"}), contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "context-actor"}})
 			token := testToolContext(t, worker, ctx, share.Event{Session: share.SessionContext{ID: "trigger-session"}, Actor: share.ActorContext{Platform: "cli", ID: "trigger-actor"}})
 			raw, _ := json.Marshal(map[string]any{"name": "logging_tool", "tool_context": token})
-			_, err = worker.callTool(raw)
-			if !errors.Is(err, tc.err) || len(*records) != 2 {
-				t.Fatalf("err=%v records=%+v", err, *records)
+			response, err := worker.callTool(raw)
+			if tc.status == events.ResultCanceled {
+				result, ok := response.(operationresult.Result[map[string]any])
+				if err != nil || !ok || result.Status != operationresult.Canceled || result.Message != tc.err.Error() {
+					t.Fatalf("cancellation response=%+v err=%v", response, err)
+				}
+			} else if !errors.Is(err, tc.err) {
+				t.Fatalf("send error changed: %v", err)
+			}
+			if len(*records) != 2 {
+				t.Fatalf("records=%+v", *records)
 			}
 			for i, record := range *records {
 				if !strings.HasPrefix(record.Content, `{"tool":"logging_tool",`) {

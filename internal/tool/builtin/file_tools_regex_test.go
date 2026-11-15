@@ -76,8 +76,8 @@ func TestDirectoryRegexEmptyFiles(t *testing.T) {
 		}
 		matches := directoryMatchHeap{}
 		count, err := scanDirectoryGrepBatch(t.Context(), root, regexp.MustCompile("^"), []string{path}, 1, &matches)
-		if err != nil || count != 0 || len(matches) != 0 {
-			t.Fatalf("content=%q count=%d matches=%v err=%v", content, count, matches, err)
+		if err != nil || count.Status != operationresult.Success || count.Data != 0 || len(matches) != 0 {
+			t.Fatalf("content=%q count=%+v matches=%v err=%v", content, count, matches, err)
 		}
 	}
 }
@@ -147,8 +147,8 @@ func TestDirectoryGrepBinaryAndByteColumns(t *testing.T) {
 	}
 	matches := directoryMatchHeap{}
 	count, err := scanDirectoryGrepBatch(t.Context(), root, regexp.MustCompile("needle"), []string{binary, text}, 1, &matches)
-	if err != nil || count != 1 || len(matches) != 1 || matches[0].Path != "text" || matches[0].Column != 4 {
-		t.Fatalf("count=%d matches=%+v err=%v", count, matches, err)
+	if err != nil || count.Status != operationresult.Success || count.Data != 1 || len(matches) != 1 || matches[0].Path != "text" || matches[0].Column != 4 {
+		t.Fatalf("count=%+v matches=%+v err=%v", count, matches, err)
 	}
 	if _, err := scanDirectoryGrepBatch(t.Context(), root, regexp.MustCompile("needle"), []string{filepath.Join(root, "missing")}, 1, &matches); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("missing file: %v", err)
@@ -175,8 +175,8 @@ func BenchmarkDirectoryGrepRegex(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		matches, total, _, err := findDirectoryGrepMatches(b.Context(), root, `^func\s+(New|Get)\w+`, 20, []string{"*.go"})
-		if err != nil || total != 128*1600 || len(matches) != 20 {
-			b.Fatalf("matches=%d total=%d err=%v", len(matches), total, err)
+		if err != nil || matches.Status != operationresult.Success || total != 128*1600 || len(matches.Data) != 20 {
+			b.Fatalf("matches=%d total=%d err=%v", len(matches.Data), total, err)
 		}
 	}
 }

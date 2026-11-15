@@ -86,10 +86,6 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 			if response.Status != operationresult.Success || !response.Data.Accepted {
 				t.Fatalf("confirmation response=%+v", response)
 			}
-			duplicate, err := coordinator.Respond(ctx, control.RespondConfirmationRequest{Decision: decision, Scope: scope, Extra: extra})
-			if err != nil || duplicate.Status != operationresult.NotFound {
-				t.Fatalf("duplicate confirmation response=%+v error=%v", duplicate, err)
-			}
 			select {
 			case result := <-done:
 				allowed := command != "/reject reason"
@@ -102,6 +98,10 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 				}
 			case <-time.After(time.Second):
 				t.Fatal("confirmation did not finish")
+			}
+			duplicate, err := coordinator.Respond(ctx, control.RespondConfirmationRequest{Decision: decision, Scope: scope, Extra: extra})
+			if err != nil || duplicate.Status != operationresult.NotFound {
+				t.Fatalf("duplicate confirmation response=%+v error=%v", duplicate, err)
 			}
 			if coordinator.isSessionAutoConfirmed(row.Data.ID) != (command == "/confirmall extra") || coordinator.isToolAutoConfirmed(row.Data.ID, "danger") != (command == "/confirmtool extra") {
 				t.Fatal("wrong automatic confirmation scope")

@@ -263,8 +263,8 @@ func TestPublicBindingIdentityAndSynchronousRollbackRelease(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := lease.List(); !errors.Is(err, fileops.ErrRollbackExpired) {
-				t.Fatalf("rollback survived %s: %v", action, err)
+			if result := lease.List(); result.Status != operationresult.Conflict {
+				t.Fatalf("rollback survived %s: %+v", action, result)
 			}
 			select {
 			case <-observed:

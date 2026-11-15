@@ -32,7 +32,7 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 	}
 	runtime := NewMediaRuntime(center, t.TempDir(), center.PublishUsageFinished)
 	ctx = workspace.WithPathScope(ctx, workspace.PathScope{Dir: t.TempDir(), Restricted: true})
-	errors := make(chan error, 8)
+	errs := make(chan error, 8)
 	for range 8 {
 		go func() {
 			call := runtime.NewCall()
@@ -48,11 +48,11 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 				}
 			}
 			call.Close()
-			errors <- err
+			errs <- err
 		}()
 	}
 	for range 8 {
-		if err := <-errors; err != nil {
+		if err := <-errs; err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -146,8 +146,12 @@ func TestMediaCacheReuseRefreshAndRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(outside, filepath.Join(base, "link.txt")); err == nil {
-		if result, err := runtime.NewCall().Import(ctx, base, "link.txt", share.MediaImportOptions{}); err != nil || result.Status == operationresult.Success {
-			t.Fatal("accepted escaped symlink")
+		call := runtime.NewCall()
+		defer call.Close()
+		result, err := call.Import(ctx, base, "link.txt", share.MediaImportOptions{})
+		var pathErr *os.PathError
+		if !errors.As(err, &pathErr) || result.Status == operationresult.Success {
+			t.Fatalf("escaped symlink: %+v, %v", result, err)
 		}
 	}
 }

@@ -118,7 +118,7 @@ func newHistoryMediaToolTest(t *testing.T, configure ...func(*config.Config)) (c
 func TestGetMediaLimitCacheDefaultsAndTextOnly(t *testing.T) {
 	ctx, tools, resolver := newHistoryMediaToolTest(t)
 	result, _, err := callTool(ctx, (tools).ToolDefinition, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"],"media_index":[[1,2,3,4,5,6,1]]}`)})
-	if err != nil || result.Status != operationresult.Success || resolver.calls != 5 || len(result.Data.Segments) != 0 || len(result.Data.Outputs) != 0 || !strings.Contains(result.Data.Content, "达到本次") {
+	if err != nil || result.Status != operationresult.Success || resolver.calls != 5 || len(result.Data.Segments) != 0 || len(result.Data.Outputs) != 0 || !strings.Contains(result.Data.Content, "history media fetch limit reached (5 attempts)") {
 		t.Fatalf("result = %#v err=%v calls=%d", result, err, resolver.calls)
 	}
 	result, _, err = callTool(ctx, (tools).ToolDefinition, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["#1","2"]}`)})
@@ -126,7 +126,7 @@ func TestGetMediaLimitCacheDefaultsAndTextOnly(t *testing.T) {
 		t.Fatalf("defaults = %#v %v calls=%d", result, err, resolver.calls)
 	}
 	result, _, err = callTool(ctx, (tools).ToolDefinition, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"],"media_index":[[1,2,3,4,5,6,7]]}`)})
-	if err != nil || result.Status != operationresult.Success || resolver.calls != 8 || strings.Contains(result.Data.Content, "上限") {
+	if err != nil || result.Status != operationresult.Success || resolver.calls != 8 || strings.Contains(result.Data.Content, "fetch limit reached") {
 		t.Fatalf("cache counted = %#v %v calls=%d", result, err, resolver.calls)
 	}
 }
@@ -143,12 +143,12 @@ func TestGetMediaValidationAndFailureBudget(t *testing.T) {
 	}
 	resolver.fail = true
 	result, _, err := callTool(ctx, (tools).ToolDefinition, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"],"media_index":[[1,1,2,3,4,5,6,100]]}`)})
-	if err != nil || result.Status != operationresult.Success || resolver.calls != 5 || !strings.Contains(result.Data.Content, "https://secret-token/private") || !strings.Contains(result.Data.Content, "序号越界") || !strings.Contains(result.Data.Content, "达到本次") {
+	if err != nil || result.Status != operationresult.Failed || resolver.calls != 5 || !strings.Contains(result.Message, "https://secret-token/private") || !strings.Contains(result.Message, "媒体序号 100 越界") || !strings.Contains(result.Message, "history media fetch limit reached (5 attempts)") {
 		t.Fatalf("failure result = %#v %v calls=%d", result, err, resolver.calls)
 	}
 	other := contextinfo.WithConversation(ctx, contextinfo.Conversation{Source: contextinfo.Source{Platform: "p", ChatID: "other"}})
 	result, _, err = callTool(other, (tools).ToolDefinition, toolshare.CallRequest{Arguments: json.RawMessage(`{"message_id":["1"]}`)})
-	if err != nil || result.Status != operationresult.Success || resolver.calls != 5 || !strings.Contains(result.Data.Content, "没有该消息") {
+	if err != nil || result.Status != operationresult.Failed || resolver.calls != 5 || !strings.Contains(result.Message, "没有该消息") {
 		t.Fatalf("scope leaked: %#v %v", result, err)
 	}
 }
@@ -204,10 +204,10 @@ func TestGetMediaReturnsCompressedHistoryID(t *testing.T) {
 		t.Fatal(err)
 	}
 	stored, item, err := tools.mediaCenter.Read(ctx, ids[1])
-	if err != nil {
+	if err != nil || stored.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	cfg, format, err := image.DecodeConfig(bytes.NewReader(stored))
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(stored.Data))
 	if err != nil || format != "jpeg" || cfg.Width >= 32 || cfg.Height >= 32 || item.MIMEType != "image/jpeg" || !strings.Contains(first.Data.Content, ids[1]) || len(first.Data.Segments) != 0 {
 		t.Fatalf("compressed result = %#v, media %#v, dimensions %#v, %v", first, item, cfg, err)
 	}

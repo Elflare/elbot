@@ -135,7 +135,7 @@ func TestStateCommitFailureKeepsAllFields(t *testing.T) {
 
 func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 	ctx := context.Background()
-	store, row := stateTestStore(t, `{"unknown":9007199254740993,"context_compact":{"pending":true,"summary":"seed"}}`)
+	store, row := stateTestStore(t, `{"unknown":9007199254740993,"context_compact":{"generation":1,"base_title":"seed"}}`)
 	service := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
 	contexts := contextmgr.New(contextmgr.Options{Store: store})
 	const count = 24
@@ -182,7 +182,7 @@ func TestStateConcurrentUpdatesPreserveOtherOwners(t *testing.T) {
 	}
 	latest, _ := store.Sessions().Get(ctx, row.ID)
 	contextsState, err := contextmgr.DecodeState(latest.Metadata)
-	if err != nil || contextsState.LastUsage == nil || contextsState.Compact == nil || contextsState.Compact.Summary != "seed" {
+	if err != nil || contextsState.LastUsage == nil || contextsState.Compact == nil || contextsState.Compact.BaseTitle != "seed" || contextsState.Compact.Generation != 1 {
 		t.Fatalf("context=%+v err=%v", contextsState, err)
 	}
 	if !strings.Contains(latest.Metadata, "9007199254740993") {

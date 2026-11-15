@@ -86,7 +86,13 @@ func TestSendFileSourcePermissionsAndConfirmation(t *testing.T) {
 			if tc.role != "" {
 				callCtx = contextinfo.WithActor(callCtx, actor)
 			}
-			permission := security.NewPermission(tc.userMaxRisk, tc.confirmRisk, nil)
+			permission := security.DefaultPermission()
+			if tc.userMaxRisk != "" {
+				permission.UserMaxToolRisk = security.RiskLevel(tc.userMaxRisk)
+			}
+			if tc.confirmRisk != "" {
+				permission.SuperadminConfirmRisk = security.RiskLevel(tc.confirmRisk)
+			}
 			manager := newTestManager(registry, permission, center)
 			args, err := json.Marshal(map[string]string{"source": tc.source})
 			if err != nil {

@@ -8,6 +8,7 @@ import (
 	"elbot/internal/processenv"
 	toolmedia "elbot/internal/tool/media"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,8 +61,14 @@ func TestShellMediaInputsAndCleanup(t *testing.T) {
 			if test.name == "success" && (err != nil || result.Status != operationresult.Success || strings.Count(result.Data.Content, "shell-media-content") != 2) {
 				t.Fatalf("result %#v %v", result, err)
 			}
-			if test.name == "failure" && (err != nil || !strings.Contains(result.Data.Content, "exit_code: 7")) {
+			if test.name == "failure" && (err != nil || result.Status != operationresult.Failed || !strings.Contains(result.Message, "exit_code: 7")) {
 				t.Fatalf("failure %#v %v", result, err)
+			}
+			if test.name == "timeout" && (err != nil || result.Status != operationresult.Timeout) {
+				t.Fatalf("timeout %#v %v", result, err)
+			}
+			if test.name == "cancel" && (!errors.Is(err, context.Canceled) || result.Data != nil) {
+				t.Fatalf("cancel %#v %v", result, err)
 			}
 			if string(raw) != original {
 				t.Fatal("arguments changed")

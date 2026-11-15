@@ -158,7 +158,7 @@ func TestResidentMigrationEmptyLegacyFiles(t *testing.T) {
 	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewStore(path).Read(t.Context(), session.Scope{}); !errors.Is(err, ErrNotFound) {
+	if memory, err := NewStore(path).Read(t.Context(), session.Scope{}); err != nil || !memory.Empty() {
 		t.Fatalf("Read empty legacy = %v", err)
 	}
 	backup, err := os.ReadFile(path + ".bak")

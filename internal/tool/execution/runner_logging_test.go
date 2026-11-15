@@ -370,7 +370,7 @@ func TestRunnerUsesSourceSaveResult(t *testing.T) {
 	}
 }
 
-func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
+func TestRunnerLogsOutcomeBeforePersistence(t *testing.T) {
 	for _, tc := range []struct {
 		name                                               string
 		callErr, prepareErr, saveErr, confirmErr, startErr error
@@ -421,7 +421,7 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 			}
 			defer connection.Disconnect()
 			result := manager.Run(context.Background(), deps, toolshare.RunRequest{Committer: committer, Session: &storage.Session{ID: "session-log", Mode: storage.SessionModeWork}, Actor: contextinfo.Actor{Role: contextinfo.RoleUser}, Calls: []llm.ToolCallRequest{{ID: "call-log", Name: "logging_tool", Arguments: "{}"}}})
-			if tc.reject || tc.confirmErr != nil || tc.startErr != nil {
+			if tc.confirmErr != nil || tc.startErr != nil {
 				if len(calls) != 0 {
 					t.Fatalf("tool never entered, invocation logs = %#v", calls)
 				}
@@ -431,6 +431,9 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 					callErr = tc.prepareErr
 				}
 				status := events.ResultSucceeded
+				if tc.reject {
+					status = events.ResultRejected
+				}
 				if callErr != nil {
 					status = events.ResultFailed
 					if errors.Is(callErr, context.Canceled) {
@@ -449,8 +452,11 @@ func TestRunnerLogsFinalPersistenceAndPartialResult(t *testing.T) {
 					t.Fatal(err)
 				}
 				want := "partial-result"
+				if tc.reject {
+					want = "rejected"
+				}
 				if tc.callErr != nil {
-					want = tc.callErr.Error() + "\n" + want
+					want = tc.callErr.Error()
 				}
 				if tc.prepareErr != nil {
 					want = tc.prepareErr.Error()

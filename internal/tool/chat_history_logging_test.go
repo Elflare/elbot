@@ -59,8 +59,14 @@ func TestHistoryQueryLogIncludesResult(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			result, logContent, err := callTool(ctx, tc.value, toolshare.CallRequest{Arguments: json.RawMessage(tc.args)})
+			if tc.name == "empty_around" {
+				if err != nil || result.Status != operationresult.NotFound || result.Data != nil || logContent != result.Message || !strings.Contains(result.Message, "没有该消息") {
+					t.Fatalf("missing history: %+v, log=%q, err=%v", result, logContent, err)
+				}
+				return
+			}
 			if err != nil || result.Status != operationresult.Success {
-				t.Fatal(err)
+				t.Fatalf("result=%+v err=%v", result, err)
 			}
 			preview := result.Data.LogContent()
 			if !strings.Contains(logContent, tc.summary) || preview != toolshare.TruncateLogContent(result.Data.Content, 1024) {
@@ -78,11 +84,22 @@ func TestGetMediaLogSummarizesResults(t *testing.T) {
 		t.Run(args, func(t *testing.T) {
 			ctx, value, _ := newHistoryMediaToolTest(t)
 			result, logContent, err := callTool(ctx, (value).ToolDefinition, toolshare.CallRequest{Arguments: json.RawMessage(args)})
-			if err != nil || result.Status != operationresult.Success {
-				t.Fatal(err)
+			want := operationresult.Success
+			if args == `{"message_id":["missing"]}` {
+				want = operationresult.Failed
 			}
-			if !strings.HasPrefix(logContent, "requested_messages=") || strings.Contains(logContent, "\n") || result.Data.LogContent() != toolshare.TruncateLogContent(result.Data.Content, 1024) {
-				t.Fatalf("log=%q result=%q", logContent, result.Data.Content)
+			if err != nil || result.Status != want {
+				t.Fatalf("result=%+v err=%v", result, err)
+			}
+			if !strings.HasPrefix(logContent, "requested_messages=") || strings.Contains(logContent, "\n") {
+				t.Fatalf("log=%q result=%+v", logContent, result)
+			}
+			if want == operationresult.Success {
+				if result.Data.LogContent() != toolshare.TruncateLogContent(result.Data.Content, 1024) {
+					t.Fatalf("result/log budget: %+v", result)
+				}
+			} else if result.Data != nil || !strings.Contains(result.Message, "没有该消息") {
+				t.Fatalf("missing media: %+v", result)
 			}
 		})
 	}

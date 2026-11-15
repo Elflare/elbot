@@ -38,7 +38,7 @@ func TestFileLogs(t *testing.T) {
 		t.Fatalf("business edit changed: err=%v result=%+v", err, result)
 	}
 	preview = result.Data.LogContent()
-	if !strings.Contains(logContent, "edited=") || strings.Contains(logContent, "diff:") || !strings.Contains(preview, "diff:") || !strings.Contains(preview, "revision_before") || !strings.HasSuffix(preview, "…") || !utf8.ValidString(preview) || utf8.RuneCountInString(preview) != 1024 {
+	if !strings.Contains(logContent, "edited=") || strings.Contains(logContent, "diff:") || !strings.Contains(preview, "diff:") || !strings.Contains(preview, "revision_after") || !strings.HasSuffix(preview, "…") || !utf8.ValidString(preview) || utf8.RuneCountInString(preview) != 1024 {
 		t.Fatalf("edit log=%q", logContent)
 	}
 }

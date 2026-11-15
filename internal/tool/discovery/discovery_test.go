@@ -5,7 +5,6 @@ import (
 	"elbot/internal/operationresult"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -190,19 +189,22 @@ func TestDiscoverDependenciesAndPartialFailure(t *testing.T) {
 
 func TestDiscoverSkillDetailsFailuresAndCancellation(t *testing.T) {
 	skill := testSkill{testTool: plainTool("skill"), block: share.DetailBlock{Content: "#skill demo\n<- $text:string!", Format: "elyph"}}
+	loadErr := errors.New("detail unavailable")
 	failed := testLazySkill{testSkill: testSkill{testTool: plainTool("failed")}, load: func(context.Context) (share.DetailBlock, error) {
-		return share.DetailBlock{}, fmt.Errorf("detail unavailable")
+		return share.DetailBlock{}, loadErr
 	}}
 	canceled := testLazySkill{testSkill: testSkill{testTool: plainTool("canceled")}, load: func(context.Context) (share.DetailBlock, error) {
 		return share.DetailBlock{}, context.Canceled
 	}}
 	resolver, _ := newTestResolver(t, skill.Definition(), failed.Definition(), canceled.Definition())
-	result, err := resolver.DiscoverDetails(context.Background(), []string{"failed", "skill"})
-	if err != nil {
-		t.Fatal(err)
+	for _, names := range [][]string{{"failed", "skill"}, {"skill", "failed"}} {
+		if result, err := resolver.DiscoverDetails(context.Background(), names); !errors.Is(err, loadErr) || result != nil {
+			t.Fatalf("failed load %v = %+v, %v", names, result, err)
+		}
 	}
-	if discoveredNames(result) != "skill" || len(result.Errors) != 1 || result.Errors[0].Name != "failed" {
-		t.Fatalf("result = %+v", result)
+	result, err := resolver.DiscoverDetails(context.Background(), []string{"skill"})
+	if err != nil || discoveredNames(result) != "skill" || len(result.Errors) != 0 {
+		t.Fatalf("skill result = %+v, %v", result, err)
 	}
 	item := result.Tools[0]
 	if item.Schema != nil || item.Detail != skill.block.Content || !item.NeedsElyphRules {

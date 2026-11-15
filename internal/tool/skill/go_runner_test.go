@@ -81,7 +81,7 @@ func TestRunMediaCommandOutputLimits(t *testing.T) {
 					t.Fatalf("exact limit result: %v", out.err)
 				}
 			case "stderr overflow":
-				if out.err != nil || out.result.Content != "done" {
+				if out.err != nil || out.result.Status != operationresult.Success || out.result.Data.Content != "done" {
 					t.Fatalf("stderr changed success: %#v, %v", out.result, out.err)
 				}
 			case "plain overflow", "json overflow":

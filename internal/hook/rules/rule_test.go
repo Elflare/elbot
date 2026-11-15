@@ -8,6 +8,7 @@ import (
 	"elbot/internal/hook/pipeline"
 	"elbot/internal/hook/share"
 	"elbot/internal/llm"
+	"elbot/internal/operationresult"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -212,21 +213,21 @@ func TestRuleRoleGatesAndControl(t *testing.T) {
 		StopPropagation: true,
 		Actions:         []Action{{Type: "append", Field: "message.text", Text: "!"}},
 	}, event, false)
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
+	if err != nil || got.Status != operationresult.Success {
+		t.Fatalf("runRule: %+v, %v", got, err)
 	}
-	if text := llm.SegmentsTextOnly(got.Message.Segments); text != "hello!" {
+	if text := llm.SegmentsTextOnly(got.Data.Message.Segments); text != "hello!" {
 		t.Fatalf("text = %q", text)
 	}
-	if !got.Control.Consume || !got.Control.StopPropagation {
-		t.Fatalf("control = %#v", got.Control)
+	if !got.Data.Control.Consume || !got.Data.Control.StopPropagation {
+		t.Fatalf("control = %#v", got.Data.Control)
 	}
 
 	blocked, err := module.runRule(context.Background(), Rule{GroupRoles: []string{"owner"}, Actions: []Action{{Type: "append", Field: "message.text", Text: "?"}}}, event, false)
-	if err != nil {
-		t.Fatalf("blocked runRule: %v", err)
+	if err != nil || blocked.Status != operationresult.Success {
+		t.Fatalf("blocked runRule: %+v, %v", blocked, err)
 	}
-	if text := llm.SegmentsTextOnly(blocked.Message.Segments); text != "hello" {
+	if text := llm.SegmentsTextOnly(blocked.Data.Message.Segments); text != "hello" {
 		t.Fatalf("blocked text = %q", text)
 	}
 }

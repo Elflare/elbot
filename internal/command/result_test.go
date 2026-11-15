@@ -1,6 +1,7 @@
 package command
 
 import (
+	commandshare "elbot/internal/command/share"
 	"elbot/internal/control"
 	"elbot/internal/delivery"
 	"elbot/internal/llm"
@@ -12,7 +13,7 @@ import (
 
 func TestCommandResultWireKeepsDataAndExcludesExecutionInternals(t *testing.T) {
 	zero := int64(0)
-	result := FromOperationResult(operationresult.Result[control.StatusResult]{Status: operationresult.Success, Data: control.StatusResult{Context: control.ContextData{Usage: &llm.Usage{TotalTokens: &zero}}}}, ResultKindStatus)
+	result := commandshare.FromOperationResult(operationresult.Result[control.StatusResult]{Status: operationresult.Success, Data: control.StatusResult{Context: control.ContextData{Usage: &llm.Usage{TotalTokens: &zero}}}}, ResultKindStatus)
 	result.Confirmation = &delivery.Confirmation{Actions: []delivery.Action{{ID: "confirm", Label: "确认", Command: "/delete s --confirm"}}}
 	result.Continuation = &control.Continuation{Kind: "input", Text: "private continuation", SessionID: "s"}
 	raw, err := json.Marshal(result)
@@ -28,7 +29,7 @@ func TestCommandResultWireKeepsDataAndExcludesExecutionInternals(t *testing.T) {
 	if strings.Contains(text, "private continuation") {
 		t.Fatal("continuation leaked")
 	}
-	failure := FromOperationResult(operationresult.Result[control.StatusResult]{Status: operationresult.Forbidden, Message: "not allowed", Data: control.StatusResult{}}, ResultKindStatus)
+	failure := commandshare.FromOperationResult(operationresult.Result[control.StatusResult]{Status: operationresult.Forbidden, Message: "not allowed", Data: control.StatusResult{}}, ResultKindStatus)
 	raw, err = json.Marshal(failure)
 	if err != nil {
 		t.Fatal(err)

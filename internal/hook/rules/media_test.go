@@ -11,6 +11,7 @@ import (
 	hookruntime "elbot/internal/hook/runtime"
 	"elbot/internal/hook/share"
 	"elbot/internal/media"
+	"elbot/internal/operationresult"
 	"elbot/internal/storage/sqlite"
 	"elbot/internal/testutil/mediatest"
 )
@@ -31,14 +32,14 @@ func TestExecMediaProtocolRoundTrip(t *testing.T) {
 	defer runtime.Close(ctx)
 	module := Module{Opts: Options{Log: testLog, Notify: testNotify, Runtime: runtime, BuildMessageSegments: runtime.BuildMessageSegments}}
 	got, err := module.runRule(ctx, Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("media")}}}, share.Event{Point: share.PointAgentInputPrepared}, false)
-	if err != nil {
+	if err != nil || got.Status != operationresult.Success {
 		t.Fatal(err)
 	}
-	if len(got.Message.Segments) != 1 || !media.ValidID(got.Message.Segments[0].MediaID) || got.Message.Segments[0].URL != "" {
-		t.Fatalf("message=%#v", got.Message)
+	if len(got.Data.Message.Segments) != 1 || !media.ValidID(got.Data.Message.Segments[0].MediaID) || got.Data.Message.Segments[0].URL != "" {
+		t.Fatalf("message=%#v", got.Data.Message)
 	}
-	if len(got.Outputs) != 1 || got.Outputs[0].Source.MediaID != got.Message.Segments[0].MediaID {
-		t.Fatalf("outputs=%#v", got.Outputs)
+	if len(got.Data.Outputs) != 1 || got.Data.Outputs[0].Source.MediaID != got.Data.Message.Segments[0].MediaID {
+		t.Fatalf("outputs=%#v", got.Data.Outputs)
 	}
 }
 
@@ -49,7 +50,7 @@ func TestRuleSendMediaID(t *testing.T) {
 		{Type: "send", Outputs: []SegmentSpec{{Kind: "image", URL: id}}},
 	} {
 		got, err := (Module{Opts: Options{Log: testLog, Notify: testNotify}}).runRule(context.Background(), Rule{Actions: []Action{action}}, share.Event{}, false)
-		if err != nil || len(got.Outputs) != 1 || got.Outputs[0].Source.MediaID != id {
+		if err != nil || got.Status != operationresult.Success || len(got.Data.Outputs) != 1 || got.Data.Outputs[0].Source.MediaID != id {
 			t.Fatalf("got=%#v err=%v", got, err)
 		}
 	}

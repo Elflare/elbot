@@ -37,11 +37,11 @@ func TestExecActionDefaultStdinIncludesEvent(t *testing.T) {
 	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
 	event := share.Event{Point: share.PointAgentInputPrepared, Actor: share.ActorContext{ID: "alice"}, Message: share.MessagePayload{PlatformMessage: []byte(`[{"type":"json"}]`)}}
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("stdin")}}}, event, false)
-	if err != nil {
+	if err != nil || got.Status != operationresult.Success {
 		t.Fatalf("runRule: %v", err)
 	}
-	if len(got.Outputs) != 1 || !strings.Contains(got.Outputs[0].Text, `"type":"request"`) || !strings.Contains(got.Outputs[0].Text, `"method":"event.handle"`) || !strings.Contains(got.Outputs[0].Text, `"id":"alice"`) || !strings.Contains(got.Outputs[0].Text, `"platform_message":[{"type":"json"}]`) {
-		t.Fatalf("outputs = %#v", got.Outputs)
+	if len(got.Data.Outputs) != 1 || !strings.Contains(got.Data.Outputs[0].Text, `"type":"request"`) || !strings.Contains(got.Data.Outputs[0].Text, `"method":"event.handle"`) || !strings.Contains(got.Data.Outputs[0].Text, `"id":"alice"`) || !strings.Contains(got.Data.Outputs[0].Text, `"platform_message":[{"type":"json"}]`) {
+		t.Fatalf("outputs = %#v", got.Data.Outputs)
 	}
 }
 
@@ -84,14 +84,14 @@ func TestExecCommandPreservesArgvAndRendersEachArgument(t *testing.T) {
 	event := share.Event{Message: share.MessagePayload{Segments: []llm.MessageSegment{{Type: llm.SegmentText, Text: "上海 天气"}}}}
 	command := execHelperCommand("argv", "{{message.text}}", "", `C:\hook dir\`, `"quoted"`)
 	got, err := (Module{Opts: Options{Log: testLog, Notify: testNotify}}).runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: command}}}, event, false)
-	if err != nil {
+	if err != nil || got.Status != operationresult.Success {
 		t.Fatalf("runRule: %v", err)
 	}
-	if len(got.Outputs) != 1 {
-		t.Fatalf("outputs = %#v", got.Outputs)
+	if len(got.Data.Outputs) != 1 {
+		t.Fatalf("outputs = %#v", got.Data.Outputs)
 	}
 	var args []string
-	if err := json.Unmarshal([]byte(got.Outputs[0].Text), &args); err != nil {
+	if err := json.Unmarshal([]byte(got.Data.Outputs[0].Text), &args); err != nil {
 		t.Fatalf("decode argv: %v", err)
 	}
 	want := []string{"上海 天气", "", `C:\hook dir\`, `"quoted"`}
@@ -110,11 +110,11 @@ func TestExecCommandUsesConfiguredProcessEnvironment(t *testing.T) {
 	}
 	rule.Actions[0].source = rule.source
 	got, err := module.runRule(context.Background(), rule, share.Event{}, false)
-	if err != nil {
+	if err != nil || got.Status != operationresult.Success {
 		t.Fatalf("runRule: %v", err)
 	}
-	if len(got.Outputs) != 1 || got.Outputs[0].Text != "from-dotenv" {
-		t.Fatalf("outputs = %#v", got.Outputs)
+	if len(got.Data.Outputs) != 1 || got.Data.Outputs[0].Text != "from-dotenv" {
+		t.Fatalf("outputs = %#v", got.Data.Outputs)
 	}
 }
 
@@ -159,14 +159,14 @@ func TestExecOutputFrameLargerThanScannerDefaultSucceeds(t *testing.T) {
 	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
 	const decodedSize = 70 * 1024
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "exec", Command: execHelperCommand("base64-output", fmt.Sprint(decodedSize))}}}, share.Event{}, false)
-	if err != nil {
+	if err != nil || got.Status != operationresult.Success {
 		t.Fatalf("runRule: %v", err)
 	}
-	if len(got.Outputs) != 1 {
-		t.Fatalf("outputs = %#v", got.Outputs)
+	if len(got.Data.Outputs) != 1 {
+		t.Fatalf("outputs = %#v", got.Data.Outputs)
 	}
-	if got.Outputs[0].Kind != delivery.KindImage || len(got.Outputs[0].Source.Data) != decodedSize {
-		t.Fatalf("output = %#v, data len %d", got.Outputs[0], len(got.Outputs[0].Source.Data))
+	if got.Data.Outputs[0].Kind != delivery.KindImage || len(got.Data.Outputs[0].Source.Data) != decodedSize {
+		t.Fatalf("output = %#v, data len %d", got.Data.Outputs[0], len(got.Data.Outputs[0].Source.Data))
 	}
 }
 
@@ -234,14 +234,14 @@ func TestExecDoneMessageWritesConfiguredFieldAndResult(t *testing.T) {
 		{ActionName: "script", Type: "exec", Command: execHelperCommand("done-message"), Field: "llm.text"},
 		{Type: "send", Text: "{{actions.script.result}}"},
 	}}, event, false)
-	if err != nil {
+	if err != nil || got.Status != operationresult.Success {
 		t.Fatalf("runRule: %v", err)
 	}
-	if got.LLM.Text != "clean" {
-		t.Fatalf("llm.text = %q, want clean", got.LLM.Text)
+	if got.Data.LLM.Text != "clean" {
+		t.Fatalf("llm.text = %q, want clean", got.Data.LLM.Text)
 	}
-	if len(got.Outputs) != 1 || got.Outputs[0].Text != "ok" {
-		t.Fatalf("outputs = %#v", got.Outputs)
+	if len(got.Data.Outputs) != 1 || got.Data.Outputs[0].Text != "ok" {
+		t.Fatalf("outputs = %#v", got.Data.Outputs)
 	}
 }
 
@@ -251,11 +251,11 @@ func TestExecDoneEmptyMessageClearsConfiguredField(t *testing.T) {
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
 		{Type: "exec", Command: execHelperCommand("done-empty-message"), Field: "llm.text"},
 	}}, event, false)
-	if err != nil {
+	if err != nil || got.Status != operationresult.Success {
 		t.Fatalf("runRule: %v", err)
 	}
-	if got.LLM.Text != "" {
-		t.Fatalf("llm.text = %q, want empty", got.LLM.Text)
+	if got.Data.LLM.Text != "" {
+		t.Fatalf("llm.text = %q, want empty", got.Data.LLM.Text)
 	}
 }
 
@@ -278,14 +278,14 @@ func TestExecDoneSegmentsReplacesToolResultContent(t *testing.T) {
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
 		{Type: "exec", Command: execHelperCommand("done-segments"), Field: "tool.result"},
 	}}, event, false)
-	if err != nil {
+	if err != nil || got.Status != operationresult.Success {
 		t.Fatalf("runRule: %v", err)
 	}
-	if len(got.Message.Segments) != 2 || got.Message.Segments[1].Type != llm.SegmentImage || got.Message.Segments[1].MediaID == "" || got.Message.Segments[1].URL != "" {
-		t.Fatalf("segments = %#v", got.Message.Segments)
+	if len(got.Data.Message.Segments) != 2 || got.Data.Message.Segments[1].Type != llm.SegmentImage || got.Data.Message.Segments[1].MediaID == "" || got.Data.Message.Segments[1].URL != "" {
+		t.Fatalf("segments = %#v", got.Data.Message.Segments)
 	}
-	if got.Tool.Result.Data != "截图完成" {
-		t.Fatalf("tool.result = %q", got.Tool.Result.Data)
+	if got.Data.Tool.Result.Data != "截图完成" {
+		t.Fatalf("tool.result = %q", got.Data.Tool.Result.Data)
 	}
 }
 
@@ -296,14 +296,14 @@ func TestExecDoneUnmatchedRollsBackAndSkipsRemainingActions(t *testing.T) {
 		{Type: "exec", Command: execHelperCommand("unmatched"), Field: "llm.text"},
 		{Type: "send", Text: "after"},
 	}}, event, false)
-	if err != nil {
+	if err != nil || got.Status != operationresult.Success {
 		t.Fatalf("runRule: %v", err)
 	}
-	if got.LLM.Text != "old" {
-		t.Fatalf("llm.text = %q, want old", got.LLM.Text)
+	if got.Data.LLM.Text != "old" {
+		t.Fatalf("llm.text = %q, want old", got.Data.LLM.Text)
 	}
-	if len(got.Outputs) != 0 {
-		t.Fatalf("outputs = %#v", got.Outputs)
+	if len(got.Data.Outputs) != 0 {
+		t.Fatalf("outputs = %#v", got.Data.Outputs)
 	}
 }
 
@@ -395,11 +395,11 @@ func TestExecPassThroughOverridesRuleControl(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := (Module{Opts: Options{Log: testLog, Notify: testNotify}}).runRule(context.Background(), Rule{Name: "pass", Consume: tc.consume, StopPropagation: tc.stop, Actions: []Action{{Type: "exec", Command: execHelperCommand(tc.mode)}}}, share.Event{}, false)
-			if err != nil {
+			if err != nil || got.Status != operationresult.Success {
 				t.Fatal(err)
 			}
-			if got.Control != tc.wantControl {
-				t.Fatalf("control = %#v, want %#v", got.Control, tc.wantControl)
+			if got.Data.Control != tc.wantControl {
+				t.Fatalf("control = %#v, want %#v", got.Data.Control, tc.wantControl)
 			}
 		})
 	}
@@ -411,11 +411,11 @@ func TestExecActionsRunSynchronouslyInOrder(t *testing.T) {
 		{ActionName: "first", Type: "exec", Command: execHelperCommand("done-result", "one")},
 		{Type: "send", Text: "{{actions.first.result}}"},
 	}}, share.Event{Point: share.PointLLMResponseReceived}, false)
-	if err != nil {
+	if err != nil || got.Status != operationresult.Success {
 		t.Fatalf("runRule: %v", err)
 	}
-	if len(got.Outputs) != 1 || got.Outputs[0].Text != "one" {
-		t.Fatalf("outputs = %#v, want result from completed first exec", got.Outputs)
+	if len(got.Data.Outputs) != 1 || got.Data.Outputs[0].Text != "one" {
+		t.Fatalf("outputs = %#v, want result from completed first exec", got.Data.Outputs)
 	}
 }
 

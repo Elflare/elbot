@@ -28,13 +28,13 @@ func TestSendActionSetsDeliveryTiming(t *testing.T) {
 	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
 	event := share.Event{Point: share.PointLLMResponseReceived, LLM: share.LLMPayload{Text: "done"}}
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "send", Text: "later", Timing: delivery.DeliveryAfterAssistant}}}, event, false)
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
+	if err != nil || got.Status != operationresult.Success {
+		t.Fatalf("runRule: %+v, %v", got, err)
 	}
-	if len(got.Outputs) != 1 || got.Outputs[0].Text != "later" {
-		t.Fatalf("outputs = %#v", got.Outputs)
+	if len(got.Data.Outputs) != 1 || got.Data.Outputs[0].Text != "later" {
+		t.Fatalf("outputs = %#v", got.Data.Outputs)
 	}
-	if timing := delivery.DeliveryTiming(got.Outputs[0]); timing != delivery.DeliveryAfterAssistant {
+	if timing := delivery.DeliveryTiming(got.Data.Outputs[0]); timing != delivery.DeliveryAfterAssistant {
 		t.Fatalf("timing = %q, want %q", timing, delivery.DeliveryAfterAssistant)
 	}
 }
@@ -43,10 +43,10 @@ func TestTurnOutputPreparedAllowsMessageText(t *testing.T) {
 	module := Module{Opts: Options{Log: testLog, Notify: testNotify}}
 	event := share.Event{Point: share.PointAgentTurnOutputPrepared, Message: share.MessagePayload{Role: string(llm.RoleAssistant), Segments: llm.TextSegments("猫")}}
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "replace", Field: "message.text", Pattern: "猫", Replace: "狗", All: true}}}, event, false)
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
+	if err != nil || got.Status != operationresult.Success {
+		t.Fatalf("runRule: %+v, %v", got, err)
 	}
-	if text := llm.SegmentsTextOnly(got.Message.Segments); text != "狗" {
+	if text := llm.SegmentsTextOnly(got.Data.Message.Segments); text != "狗" {
 		t.Fatalf("text = %q", text)
 	}
 }
@@ -67,10 +67,10 @@ func TestTextActionsKeepMediaSegmentsInPlace(t *testing.T) {
 		{Type: "replace", Field: "message.text", Pattern: "cat", Replace: "dog"},
 	}}
 	got, err := module.runRule(context.Background(), rule, event, false)
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
+	if err != nil || got.Status != operationresult.Success {
+		t.Fatalf("runRule: %+v, %v", got, err)
 	}
-	segments := got.Message.Segments
+	segments := got.Data.Message.Segments
 	if segments[0].Type != llm.SegmentImage || segments[2].Type != llm.SegmentFile {
 		t.Fatalf("media moved: %#v", segments)
 	}
@@ -98,11 +98,11 @@ func TestSendActionRendersMessagePlatformTextAndReplyFields(t *testing.T) {
 		Type: "send",
 		Text: "{{message.platform_text}}/{{message.reply.message_id}}/{{message.reply.sender_id}}/{{message.reply.text}}/{{message.reply.display_text}}",
 	}}}, event, false)
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
+	if err != nil || got.Status != operationresult.Success {
+		t.Fatalf("runRule: %+v, %v", got, err)
 	}
-	if len(got.Outputs) != 1 || got.Outputs[0].Text != "撤回/notice-1/bot/通知/通知" {
-		t.Fatalf("outputs = %#v", got.Outputs)
+	if len(got.Data.Outputs) != 1 || got.Data.Outputs[0].Text != "撤回/notice-1/bot/通知/通知" {
+		t.Fatalf("outputs = %#v", got.Data.Outputs)
 	}
 }
 
@@ -117,18 +117,18 @@ func TestReplaceActionFirstAndAllAcrossTextSegments(t *testing.T) {
 		}},
 	}
 	first, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "replace", Field: "message.text", Pattern: "cat", Replace: "dog"}}}, event, false)
-	if err != nil {
-		t.Fatalf("first replace: %v", err)
+	if err != nil || first.Status != operationresult.Success {
+		t.Fatalf("first replace: %+v, %v", first, err)
 	}
-	if first.Message.Segments[0].Text != "dog one cat" || first.Message.Segments[2].Text != "cat two" {
-		t.Fatalf("first replace segments = %#v", first.Message.Segments)
+	if first.Data.Message.Segments[0].Text != "dog one cat" || first.Data.Message.Segments[2].Text != "cat two" {
+		t.Fatalf("first replace segments = %#v", first.Data.Message.Segments)
 	}
 	all, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "replace", Field: "message.text", Pattern: "cat", Replace: "dog", All: true}}}, event, false)
-	if err != nil {
-		t.Fatalf("all replace: %v", err)
+	if err != nil || all.Status != operationresult.Success {
+		t.Fatalf("all replace: %+v, %v", all, err)
 	}
-	if all.Message.Segments[0].Text != "dog one dog" || all.Message.Segments[2].Text != "dog two" {
-		t.Fatalf("all replace segments = %#v", all.Message.Segments)
+	if all.Data.Message.Segments[0].Text != "dog one dog" || all.Data.Message.Segments[2].Text != "dog two" {
+		t.Fatalf("all replace segments = %#v", all.Data.Message.Segments)
 	}
 }
 
@@ -139,11 +139,11 @@ func TestLLMResponseSourceTextCanMatchButCannotBeEdited(t *testing.T) {
 		Match:   []share.Condition{{Field: "llm.source_text", Op: share.MatchContains, Value: "raw"}},
 		Actions: []Action{{Type: "append", Field: "llm.text", Text: " output"}},
 	}, event, false)
-	if err != nil {
-		t.Fatalf("runRule match source_text: %v", err)
+	if err != nil || matched.Status != operationresult.Success {
+		t.Fatalf("runRule match source_text: %+v, %v", matched, err)
 	}
-	if matched.LLM.Text != "visible output" || matched.LLM.SourceText != "raw token" {
-		t.Fatalf("matched event = %#v", matched.LLM)
+	if matched.Data.LLM.Text != "visible output" || matched.Data.LLM.SourceText != "raw token" {
+		t.Fatalf("matched event = %#v", matched.Data.LLM)
 	}
 
 	_, err = module.runRule(context.Background(), Rule{Actions: []Action{{Type: "append", Field: "llm.source_text", Text: " changed"}}}, event, false)
@@ -168,22 +168,22 @@ func TestRenderRegexCapture(t *testing.T) {
 		Metadata: map[string]any{"match": match},
 	}
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "send", Text: "{{match.regex.0.target}}/{{match.regex.0.group.2}}"}}}, event, false)
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
+	if err != nil || got.Status != operationresult.Success {
+		t.Fatalf("runRule: %+v, %v", got, err)
 	}
-	if len(got.Outputs) != 1 || got.Outputs[0].Text != "alice/10" {
-		t.Fatalf("outputs = %#v", got.Outputs)
+	if len(got.Data.Outputs) != 1 || got.Data.Outputs[0].Text != "alice/10" {
+		t.Fatalf("outputs = %#v", got.Data.Outputs)
 	}
 }
 
 func TestRenderErrorMessage(t *testing.T) {
 	event := share.Event{Point: share.PointErrorOccurred, Error: fmt.Errorf("hook failed")}
 	got, err := Module{Opts: Options{Log: testLog, Notify: testNotify}}.runRule(context.Background(), Rule{Actions: []Action{{Type: "send", Text: "err={{error.message}}"}}}, event, false)
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
+	if err != nil || got.Status != operationresult.Success {
+		t.Fatalf("runRule: %+v, %v", got, err)
 	}
-	if len(got.Outputs) != 1 || got.Outputs[0].Text != "err=hook failed" {
-		t.Fatalf("outputs = %#v", got.Outputs)
+	if len(got.Data.Outputs) != 1 || got.Data.Outputs[0].Text != "err=hook failed" {
+		t.Fatalf("outputs = %#v", got.Data.Outputs)
 	}
 }
 
@@ -277,14 +277,14 @@ func TestRuleToolActionLeavesRiskAndAuthorizationToHook(t *testing.T) {
 		{ActionName: "critical", Type: "tool", Tool: "hook_test_critical", Arguments: `{}`},
 		{Type: "send", Text: "{{actions.critical.result}}"},
 	}}, share.Event{Point: share.PointLLMResponseReceived, Actor: share.ActorContext{Role: "user"}}, false)
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
+	if err != nil || got.Status != operationresult.Success {
+		t.Fatalf("runRule: %+v, %v", got, err)
 	}
 	if testTool.calls != 1 {
 		t.Fatalf("tool calls = %d, want 1", testTool.calls)
 	}
-	if len(got.Outputs) != 1 || got.Outputs[0].Text != "called" {
-		t.Fatalf("outputs = %#v", got.Outputs)
+	if len(got.Data.Outputs) != 1 || got.Data.Outputs[0].Text != "called" {
+		t.Fatalf("outputs = %#v", got.Data.Outputs)
 	}
 }
 
@@ -299,14 +299,14 @@ func TestLatestUserTextActionWritesBoundMessage(t *testing.T) {
 		}},
 	}
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{{Type: "prepend", Field: "llm.latest_user_text", Text: "pre "}}}, event, false)
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
+	if err != nil || got.Status != operationresult.Success {
+		t.Fatalf("runRule: %+v, %v", got, err)
 	}
-	segments := got.Message.Segments
+	segments := got.Data.Message.Segments
 	if segments[0].Type != llm.SegmentImage || segments[1].Text != "pre hello" {
 		t.Fatalf("bound user segments = %#v", segments)
 	}
-	if text := llm.SegmentsTextOnly(got.LLM.Messages[1].Segments); text != "history" {
+	if text := llm.SegmentsTextOnly(got.Data.LLM.Messages[1].Segments); text != "history" {
 		t.Fatalf("history = %q, want unchanged", text)
 	}
 }
@@ -331,22 +331,22 @@ func TestSendActionWithOutputs(t *testing.T) {
 			{Kind: "emoticon", Name: "微笑", EmoticonID: "14"},
 		}},
 	}}, event, false)
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
+	if err != nil || got.Status != operationresult.Success {
+		t.Fatalf("runRule: %+v, %v", got, err)
 	}
-	if len(got.Outputs) != 3 {
-		t.Fatalf("outputs len = %d, want 3", len(got.Outputs))
+	if len(got.Data.Outputs) != 3 {
+		t.Fatalf("outputs len = %d, want 3", len(got.Data.Outputs))
 	}
-	if got.Outputs[0].Kind != delivery.KindText || got.Outputs[0].Text != "检测到关键词" {
-		t.Fatalf("output[0] = %#v", got.Outputs[0])
+	if got.Data.Outputs[0].Kind != delivery.KindText || got.Data.Outputs[0].Text != "检测到关键词" {
+		t.Fatalf("output[0] = %#v", got.Data.Outputs[0])
 	}
-	if got.Outputs[1].Kind != delivery.KindImage || got.Outputs[1].Source.Path != "alert.png" {
-		t.Fatalf("output[1] = %#v", got.Outputs[1])
+	if got.Data.Outputs[1].Kind != delivery.KindImage || got.Data.Outputs[1].Source.Path != "alert.png" {
+		t.Fatalf("output[1] = %#v", got.Data.Outputs[1])
 	}
-	if got.Outputs[2].Kind != delivery.KindEmoticon || got.Outputs[2].Name != "微笑" || got.Outputs[2].EmoticonID != "14" {
-		t.Fatalf("output[2] = %#v", got.Outputs[2])
+	if got.Data.Outputs[2].Kind != delivery.KindEmoticon || got.Data.Outputs[2].Name != "微笑" || got.Data.Outputs[2].EmoticonID != "14" {
+		t.Fatalf("output[2] = %#v", got.Data.Outputs[2])
 	}
-	for i, out := range got.Outputs {
+	for i, out := range got.Data.Outputs {
 		if timing := delivery.DeliveryTiming(out); timing != delivery.DeliveryAfterAssistant {
 			t.Fatalf("output[%d] timing = %q, want %q", i, timing, delivery.DeliveryAfterAssistant)
 		}
@@ -361,14 +361,14 @@ func TestSendActionWithOutputsBase64(t *testing.T) {
 			{Kind: "image", Base64: "aGVsbG8="},
 		}},
 	}}, event, false)
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
+	if err != nil || got.Status != operationresult.Success {
+		t.Fatalf("runRule: %+v, %v", got, err)
 	}
-	if len(got.Outputs) != 1 || got.Outputs[0].Kind != delivery.KindImage {
-		t.Fatalf("outputs = %#v", got.Outputs)
+	if len(got.Data.Outputs) != 1 || got.Data.Outputs[0].Kind != delivery.KindImage {
+		t.Fatalf("outputs = %#v", got.Data.Outputs)
 	}
-	if string(got.Outputs[0].Source.Data) != "hello" {
-		t.Fatalf("base64 data = %q, want %q", string(got.Outputs[0].Source.Data), "hello")
+	if string(got.Data.Outputs[0].Source.Data) != "hello" {
+		t.Fatalf("base64 data = %q, want %q", string(got.Data.Outputs[0].Source.Data), "hello")
 	}
 }
 
@@ -401,11 +401,11 @@ func TestSendActionFallbackToSingleOutput(t *testing.T) {
 	got, err := module.runRule(context.Background(), Rule{Actions: []Action{
 		{Type: "send", Kind: "text", Text: "fallback"},
 	}}, event, false)
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
+	if err != nil || got.Status != operationresult.Success {
+		t.Fatalf("runRule: %+v, %v", got, err)
 	}
-	if len(got.Outputs) != 1 || got.Outputs[0].Text != "fallback" {
-		t.Fatalf("outputs = %#v", got.Outputs)
+	if len(got.Data.Outputs) != 1 || got.Data.Outputs[0].Text != "fallback" {
+		t.Fatalf("outputs = %#v", got.Data.Outputs)
 	}
 }
 

@@ -42,7 +42,7 @@ func TestModelCommandPassesSelectionToControlAndReturnsRawData(t *testing.T) {
 	if err != nil || result.Status != operationresult.Success || !reflect.DeepEqual(result.Data, controlStub.selected.Data) {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
-	if controlStub.listReq.Query != "p/m" || controlStub.selectReq != (control.SelectModelRequest{Target: "work", Provider: "p", Model: "m"}) {
+	if controlStub.listReq != (control.ListModelsRequest{}) || controlStub.selectReq != (control.SelectModelRequest{Target: "work", Provider: "p", Model: "m"}) {
 		t.Fatalf("list=%+v select=%+v", controlStub.listReq, controlStub.selectReq)
 	}
 }

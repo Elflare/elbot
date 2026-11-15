@@ -8,6 +8,7 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/hook/pipeline"
 	"elbot/internal/hook/share"
+	"elbot/internal/operationresult"
 )
 
 func TestPlatformConnectedResolvesOutputTarget(t *testing.T) {
@@ -24,12 +25,12 @@ func TestPlatformConnectedResolvesOutputTarget(t *testing.T) {
 				return event, nil
 			}}
 			calls := 0
-			m.send = func(_ context.Context, target delivery.Target, sent []delivery.Output) (delivery.Receipt, error) {
+			m.send = func(_ context.Context, target delivery.Target, sent []delivery.Output) (operationresult.Result[delivery.Receipt], error) {
 				calls++
 				if target != admins || !reflect.DeepEqual(sent, outputs) {
 					t.Fatalf("target=%+v outputs=%+v", target, sent)
 				}
-				return delivery.Receipt{}, nil
+				return operationresult.Result[delivery.Receipt]{Status: operationresult.Success}, nil
 			}
 			m.handlePlatformConnected(t.Context(), "telegram")
 			want := 1

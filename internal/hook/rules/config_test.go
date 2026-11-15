@@ -13,6 +13,7 @@ import (
 	"elbot/internal/events"
 	"elbot/internal/hook/pipeline"
 	"elbot/internal/hook/share"
+	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
 
 	"github.com/pelletier/go-toml/v2"
@@ -145,12 +146,12 @@ path = "assets/pic.png"
 		t.Fatalf("rules = %#v", cfg.Rules)
 	}
 	got, err := Module{Opts: Options{Log: testLog, Notify: testNotify}}.runRule(context.Background(), cfg.Rules[0], share.Event{Point: share.PointLLMResponseReceived}, false)
-	if err != nil {
-		t.Fatalf("runRule: %v", err)
+	if err != nil || got.Status != operationresult.Success {
+		t.Fatalf("runRule: %+v, %v", got, err)
 	}
 	wantPath := filepath.Join(pluginDir, "assets", "pic.png")
-	if len(got.Outputs) != 1 || got.Outputs[0].Source.Path != wantPath {
-		t.Fatalf("outputs = %#v, want path %q", got.Outputs, wantPath)
+	if len(got.Data.Outputs) != 1 || got.Data.Outputs[0].Source.Path != wantPath {
+		t.Fatalf("outputs = %#v, want path %q", got.Data.Outputs, wantPath)
 	}
 }
 
