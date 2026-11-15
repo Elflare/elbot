@@ -24,14 +24,6 @@
       "translation": "## Environment Requirements\n\n- Go 1.26 or a newer version.\n- An LLM service: compatible with either `/chat/completions` or the Responses API (e.g., DeepSeek, OpenAI).\n- At least one available API Key.\n\n",
       "updated_at": 1793375090
     },
-    "docs/getting-started.md:section:4c7773320f9ac979985ecee5b5f6278f08a41fb35709dcc12f2b2aeb3a406b46": {
-      "kind": "section",
-      "source": "## 运行模式\n\n| 命令 | 行为 |\n| --- | --- |\n| `elbot` | 自动：优先连接 CLI 服务端，符合条件时回退本地启动 |\n| `elbot run` | 完整前台：本地 CLI 界面 + 已启用平台 + 后台任务 |\n| `elbot client [-c name]` | CLI 客户端，连接服务端 |\n| `elbot service run` | 无界面服务：已启用平台 + 后台任务，按配置提供 CLI 服务端 |\n\n- 自动模式未显式指定 `-c` 时，只有 CLI 被禁用、没有任何连接配置、或默认本机服务拨号失败才回退本地启动；配置、认证和握手错误直接报告。\n- service 模式不启动本地交互界面；没有配置消息平台、或全部平台均已退出时仍保持运行，直到外部停止。\n- 直接启动的交互 CLI 退出时会结束所属应用进程。\n- 同一份配置只能运行一个本地实例。锁文件位于实际配置旁（如 `app.toml.lock`），正常关闭或异常退出后自动释放，无需手动清理；运行期间不要删除，保存或替换配置文件不影响已取得的锁。\n- 正常退出是秒级；卡住时最多等 30 秒，到时强制关闭。\n\n",
-      "source_file": "docs/getting-started.md",
-      "source_hash": "d212698acde6ae8e25704ff40294e57ec06cb257db49d9abffeb6950b423a052",
-      "translation": "## Runtime Mode\n\n| Command | Behavior |\n| --- | --- |\n| `elbot` | Auto: Prioritize connecting to the CLI server, fallback to local startup when conditions are met |\n| `elbot run` | Full Foreground: Local CLI interface + enabled platforms + background tasks |\n| `elbot client [-c name]` | CLI client, connects to the server |\n| `elbot service run` | Headless Service: Enabled platforms + background tasks, provides CLI server based on configuration |\n\n- In auto mode, when `-c` is not explicitly specified, it will only fall back to local startup if the CLI is disabled, there are no connection configurations, or the default local service dialing fails; configuration, authentication, and handshake errors are reported directly.\n- service mode does not start the local interactive interface; it remains running even if no messaging platforms are configured or all platforms have exited, until stopped externally.\n- When the directly started interactive CLI exits, the associated application process will terminate.\n- Only one local instance can run with the same configuration. The lock file is located next to the actual configuration (e.g., `app.toml.lock`) and is automatically released after a normal shutdown or abnormal exit, requiring no manual cleanup; Do not delete it during operation; saving or replacing the configuration file does not affect the lock already acquired.\n- Normal exit takes seconds; if stuck, wait up to 30 seconds before forcing a shutdown.\n\n",
-      "updated_at": 1793375090
-    },
     "docs/getting-started.md:section:4f57d90251308528338d1cd0c96234892db70d7ff59a5e5e4bc5ff44b685e8ea": {
       "kind": "section",
       "source": "# 快速开始\n\n目标：配好 API Key，启动 CLI，完成第一次对话。\n\n",
@@ -64,6 +56,14 @@
       "translation": "## CLI TUI Keybindings\n\n| Key | Action |\n| --- | --- |\n| `PgUp` / `PgDn` / `Home` / `End` | Scroll chat output |\n| `Ctrl+K` / `Ctrl+J` | Scroll chat output slightly |\n| `Ctrl+U` / `Ctrl+D` | Scroll notification area |\n| `Alt+h` / `Alt+l` | Enter chat area / notification area copy mode |\n| `h/j/k/l`, `w/e/b` in copy mode | Move |\n| `v` / `V`, `y`, `/` in copy mode | Select, copy, search |\n| `i` or `Esc` in copy mode | Return to input |\n| `#<filename>` | Search for and reference files in the Agent's current Workspace; text files are expanded when sent, while larger or non-text files are referenced by path |\n| Drag the vertical line between the chat area and the notification area | Adjust the width of both sides in wide-screen mode; settings are preserved for the current session |\n\n",
       "updated_at": 1794276746
     },
+    "docs/getting-started.md:section:9a762ecdfc1c9e3ad0147ae8b5c2adfd335cba4e79c2f4b214ccbf31f3da78be": {
+      "kind": "section",
+      "source": "## 运行模式\n\n| 命令 | 行为 |\n| --- | --- |\n| `elbot` | 自动：优先连接 CLI 服务端，符合条件时回退本地启动 |\n| `elbot run` | 完整前台：本地 CLI 界面 + 已启用平台 + 后台任务 |\n| `elbot client [-c name]` | CLI 客户端，连接服务端 |\n| `elbot service run` | 无界面服务：已启用平台 + 后台任务，按配置提供 CLI 服务端 |\n\n- 自动模式未显式指定 `-c` 时，只有 CLI 被禁用、没有任何连接配置、或默认本机服务拨号失败才回退本地启动；配置、认证和握手错误直接报告。\n- service 模式不启动本地交互界面；没有配置消息平台、或全部平台均已退出时仍保持运行，直到外部停止。\n- 直接启动的交互 CLI 退出时会结束所属应用进程。\n- 启动失败会直接报告错误并退出进程；修正配置或运行环境后重新启动。\n- 同一份配置只能运行一个本地实例。锁文件位于实际配置旁（如 `app.toml.lock`），正常关闭或异常退出后自动释放，无需手动清理；运行期间不要删除，保存或替换配置文件不影响已取得的锁。\n- 正常退出是秒级；卡住时最多等 30 秒，到时强制关闭。\n\n",
+      "source_file": "docs/getting-started.md",
+      "source_hash": "0eb6c1b435470a8c287870bb0da00273e39b0937883ce672bf7e31925ae920b2",
+      "translation": "## Running Modes\n\n| Command | Behavior |\n| --- | --- |\n| `elbot` | Automatic: Prioritizes connecting to the CLI server, falls back to local startup when conditions are met |\n| `elbot run` | Full Foreground: Local CLI interface + enabled platforms + background tasks |\n| `elbot client [-c name]` | CLI client, connects to the server |\n| `elbot service run` | Headless service: Enabled platforms + background tasks, provides CLI server based on configuration |\n\n- In automatic mode, if `-c` is not explicitly specified, it will only fall back to local startup if the CLI is disabled, there are no connection configurations, or the default local service dial fails; configuration, authentication, and handshake errors are reported directly.\n- Service mode does not start a local interactive interface; it remains running even if no messaging platforms are configured or all platforms have exited, until stopped externally.\n- Exiting an interactively started CLI will terminate the associated application process.\n- Startup failure will report the error directly and exit the process; restart after correcting the configuration or runtime environment.\n- Only one local instance can run per configuration. The lock file is located next to the actual configuration (e.g., `app.toml.lock`) and is automatically released after a normal shutdown or abnormal exit, requiring no manual cleanup; do not delete it during operation; saving or replacing the configuration file does not affect the acquired lock.\n- Normal exit takes seconds; if stuck, it will wait for a maximum of 30 seconds before forcing a shutdown.\n\n",
+      "updated_at": 1794708972
+    },
     "docs/getting-started.md:section:d374eaae04a09a6eec84c3974203171a80cdb8a9d34652bc8cfbb7832aa16a54": {
       "kind": "section",
       "source": "## 第一次对话\n\n启动后直接输入消息即可。常用起步命令：\n\n| 命令 | 作用 |\n| --- | --- |\n| `/help` | 查看可用命令 |\n| `/status` | 当前 Session、模型、上下文和请求状态 |\n| `/models`（别名 `/checkmodel`） | 查看可用模型列表 |\n| `/model <编号或名称>` | 切换模型 |\n| `/chat` / `/work` | 切换低成本聊天模式 / 可使用工具的工作模式 |\n\n更多命令见 [命令速查](commands.md)。\n\n",
@@ -90,8 +90,8 @@
     }
   },
   "source": "docs/getting-started.md",
-  "source_hash": "497cadf05518a4a8c243b8b233e14423021e91894e5db9191319e3819d89524f",
+  "source_hash": "797e49820b8986af6c0fc61b66540d45dac354ab4b91469358084a3c8c6cc7ce",
   "target": "docs.en/getting-started.md",
-  "updated_at": 1794276747,
+  "updated_at": 1794708973,
   "version": 3
 }

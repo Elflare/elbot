@@ -62,20 +62,21 @@ model = "deepseek-chat"
 
 When changing the Provider, update `provider` and `model` simultaneously. `default_mode` can only be modified manually; other settings can be configured using commands in the CLI.
 
-## Runtime Mode
+## Running Modes
 
 | Command | Behavior |
 | --- | --- |
-| `elbot` | Auto: Prioritize connecting to the CLI server, fallback to local startup when conditions are met |
+| `elbot` | Automatic: Prioritizes connecting to the CLI server, falls back to local startup when conditions are met |
 | `elbot run` | Full Foreground: Local CLI interface + enabled platforms + background tasks |
 | `elbot client [-c name]` | CLI client, connects to the server |
-| `elbot service run` | Headless Service: Enabled platforms + background tasks, provides CLI server based on configuration |
+| `elbot service run` | Headless service: Enabled platforms + background tasks, provides CLI server based on configuration |
 
-- In auto mode, when `-c` is not explicitly specified, it will only fall back to local startup if the CLI is disabled, there are no connection configurations, or the default local service dialing fails; configuration, authentication, and handshake errors are reported directly.
-- service mode does not start the local interactive interface; it remains running even if no messaging platforms are configured or all platforms have exited, until stopped externally.
-- When the directly started interactive CLI exits, the associated application process will terminate.
-- Only one local instance can run with the same configuration. The lock file is located next to the actual configuration (e.g., `app.toml.lock`) and is automatically released after a normal shutdown or abnormal exit, requiring no manual cleanup; Do not delete it during operation; saving or replacing the configuration file does not affect the lock already acquired.
-- Normal exit takes seconds; if stuck, wait up to 30 seconds before forcing a shutdown.
+- In automatic mode, if `-c` is not explicitly specified, it will only fall back to local startup if the CLI is disabled, there are no connection configurations, or the default local service dial fails; configuration, authentication, and handshake errors are reported directly.
+- Service mode does not start a local interactive interface; it remains running even if no messaging platforms are configured or all platforms have exited, until stopped externally.
+- Exiting an interactively started CLI will terminate the associated application process.
+- Startup failure will report the error directly and exit the process; restart after correcting the configuration or runtime environment.
+- Only one local instance can run per configuration. The lock file is located next to the actual configuration (e.g., `app.toml.lock`) and is automatically released after a normal shutdown or abnormal exit, requiring no manual cleanup; do not delete it during operation; saving or replacing the configuration file does not affect the acquired lock.
+- Normal exit takes seconds; if stuck, it will wait for a maximum of 30 seconds before forcing a shutdown.
 
 ## CLI TUI Keybindings
 
