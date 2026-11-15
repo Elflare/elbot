@@ -68,7 +68,7 @@ Deletion or disconnection will revoke the attachment authorization for the curre
 
 ## HTTP Management API
 
-For the endpoints, request, and response fields of the Management API, please refer to the [OpenAPI documentation](frontend-api.openapi.yaml); the online version is available in the [Official API Documentation](https://elfreese.github.io/elbot-landing/docs/api/).
+For the endpoints, request, and response fields of the Management API, please refer to the [OpenAPI documentation](../docs/frontend-api.openapi.yaml); the online version is available at the [Official API Documentation](https://elfreese.github.io/elbot-landing/docs/api/).
 
 ## Client → Server
 
@@ -98,9 +98,9 @@ Attachments must belong to the current connection. If preparing any attachment f
 {"type": "complete", "id": "c-1", "text": "/mod", "cursor": 4}
 ```
 
-Request completion candidates for the current input text. The `id` is used to match the response. The `cursor` is the byte offset of the cursor within the `text`; if omitted, it defaults to the end.
+Request completion candidates for the current input text. `id` is used to match the response. `cursor` is the byte offset of the cursor in `text`; if omitted, it defaults to the end.
 
-The server responds with `complete_result`.
+Upon a successful query, the server replies with `complete_result`, with an empty list if there are no candidates; if the query fails, it replies with `error`, containing the `id` of the original request and the reason for the error.
 
 ## Server → Client
 
@@ -136,11 +136,13 @@ Notifications are queued separately by platform and sent in target order; they a
 {"type":"command_result","request_id":"m-1","command":{"raw":"/detail","prefix":"/","Name":"detail","args":""},"result":{"status":"success","kind":"text","data":{"content":"Nothing to confirm"}}}
 ```
 
-`request_id` is associated with `input.id` as-is, and the result is sent only to the original connection; command results are not returned via `notice`. `command` preserves the original call context; the `command.Name` for appending a confirmation receipt is `append`. Confirmation actions are submitted via a new `input.text`; permissions and target states are still validated by the server, and the action ID is not an authorization credential.
+`request_id` is associated with `input.id` as-is, and results are sent only to the original connection; command results are not returned via `notice`. `command` preserves the original call context; the `command.Name` for appending confirmation receipts is `append`. Confirmation actions are submitted via a new `input.text`; permissions and target states are still validated by the server, and action IDs are not authorization credentials.
 
-`result.status` expresses the business status of the command; read `data` only when it is `success`, and display `result.message` upon rejection or failure. `kind` describes the structure of the successful data, and `confirmation` provides the confirmation action. `status` is an internal business status, not an HTTP status or protocol error code.
+Tool confirmation details are generated during the tool preparation phase and provided via `data.detail` in the `/detail` result and `blocks` in sent events; the same content will no longer automatically append original parameters. The `content` of `fields` is an array of `{key, label, value}`, where `key` is for program identification, `label` is for display, and `value` preserves the JSON type; the `content` of `code` is `{language, content}`; the `content` of `diff` is the diff text. A full `diff` block is provided when both pre-edit and post-edit files are under 8 MiB and a difference exists; there are no longer limits on the product of line counts or the diff output length. Operations are still allowed if limits are exceeded, but no `diff` block is provided, nor is there a fallback to text or parameters. Messaging platforms render content blocks into text at the output; the API preserves the structure, and the frontend does not need to parse strings for display. Details and execution share the values determined during the preparation phase; Cron updates display the merged task definition; relative time is fixed during the preparation phase. HTTP API and WebSocket outputs do not perform HTML escaping for `<`, `>`, and `&`.
 
-Program or IO failures pass original descriptions via the `error` string; when this field exists, it should be displayed with priority, and `result.data` should not be read. Omit `error` when there are no failures. Client timeouts or disconnections do not mean that backend execution has been cancelled.
+`result.status` expresses the command's business status; `data` should only be read when the status is `success`, while `result.message` should be displayed upon rejection or failure. `kind` describes the structure of the successful data, and `confirmation` provides the confirmation action. `status` is an internal business status, not an HTTP status or protocol error code.
+
+Program or IO failures pass the original description via the `error` string; if this field exists, it should be displayed with priority, and `result.data` should not be read. `error` is omitted when there is no failure. Client timeouts or disconnections do not mean the backend execution has been cancelled.
 
 ### status — Runtime Status
 
@@ -148,9 +150,9 @@ Program or IO failures pass original descriptions via the `error` string; when t
 {"type":"status","snapshot":{"Phase":"llm","Provider":"openai","Model":"gpt-4o"}}
 ```
 
-The snapshot is used to display the current runtime status. Status updates may be merged; final states that have already been submitted may still be received after cancellation. `Phase` can be `idle`, `preparing`, `llm`, `tool`, `sending`, `done`, or `error`.
+The snapshot is used to display the current runtime status. Status updates may be merged; final states that have already been submitted may still be received after cancellation. `Phase` can be `idle`, `preparing`, `llm`, `tool`, `compact`, `sending`, `done`, or `error`; `compact` indicates that context compaction is in progress.
 
-### stream — Message Stream Event
+### stream — Message Stream Events
 
 ```json
 {
@@ -162,16 +164,19 @@ The snapshot is used to display the current runtime status. Status updates may b
 
 `stream_id` identifies a single logical message within the current connection, used to separately maintain the main body and reasoning preview; it is not a request ID and cannot be used for reconnection recovery.
 
-Events may contain `text`, `actions`, `blocks`, or tool result fields. `blocks` is an ordered list of `{kind, content}`; `actions` contains `id`, `label`, and `command`, which the client can submit as a new `input.text`.
+Events may contain `text`, `actions`, `blocks`, tool calls, or tool result fields. `blocks` is an ordered list of `{kind, content}`; `actions` contains `id`, `label`, and `command`, which the client can submit as a new `input.text`.
+
+Tool events are associated via `tool_call_id`; tool calls and results may reside in different `stream_id`s. The client should update the result on the original card based on the active call ID, preserving the name and full parameters from the call event, and terminate the active mapping for that ID once the result arrives. `tool_call` carries the full raw parameters provided by the model; `tool_result` only carries the success status and full raw segments. Remote frontends receive the full structure via WebSocket; text-based messaging platforms only receive cropped text prompts during private chats when the assistant has not yet spoken.
 
 | event.type | Client Handling |
 |------------|-----------------|
-| text_delta / reasoning_delta | Append the delta to the main body/reasoning preview of the stream |
+| text_delta / reasoning_delta | Append the delta to the main body / reasoning preview of the stream |
 | reasoning_done | End reasoning generation and preserve existing content |
 | reset | Clear the main body and reasoning preview of the stream; `stream_id` can be reused for retries |
-| finish | Current generation has ended, but preserve the preview and stream association, waiting for `send` or a retry |
+| finish | Current generation ends, but preserve the preview and stream association, awaiting `send` or retry |
 | send | Replace the main body preview entirely with the final `text` or `blocks` and submit; preserve reasoning content and end the stream association |
-| tool_result | Sent after the tool result is persisted, associated via `tool_call_id`; see `GET /api/v1/tools/{name}/detail` for details |
+| tool_call | Sent when the model initiates a call, containing `tool_call_id` and `{name, arguments}`; arguments preserve the full original text |
+| tool_result | Sent after the tool result is submitted; the same call card can be updated via `tool_call_id`; segments preserve the original structure |
 
 ### complete_result — Completion Result
 

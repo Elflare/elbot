@@ -8,14 +8,6 @@
       "translation": "### attachment — File or Image Output\n\n```json\n{\"type\":\"attachment\",\"attachment\":{\"id\":\"attachment-id\",\"name\":\"report.pdf\",\"mime_type\":\"application/pdf\",\"size\":2048,\"kind\":\"file\"}}\n```\n\n`kind` is `image` or `file`; the `id` in the description is the attachment ID of the current connection, not a MediaID or disk path. Mixed outputs send `chat` and `attachment` in their original order. The client retrieves attachment content via HTTP; `send_file` uses the same set of protocols, regardless of whether it is a web page or TUI.\n\n",
       "updated_at": 1794065757
     },
-    "docs/frontend-api.md:section:13ea332917ce2ac3e5b68688d0117eb49f9f6037491128dbf91da4f9802d55b7": {
-      "kind": "section",
-      "source": "### stream — 消息流事件\n\n```json\n{\n  \"type\": \"stream\",\n  \"stream_id\": 1,\n  \"event\": {\"type\": \"text_delta\", \"text\": \"你好\"}\n}\n```\n\n`stream_id` 标识当前连接中的单条逻辑消息，用于分别维护正文和推理预览；它不是请求 ID，也不能用于重连恢复。\n\n事件可包含 `text`、`actions`、`blocks` 或工具结果字段。`blocks` 是有序的 `{kind, content}` 列表；`actions` 含 `id`、`label`、`command`，客户端可将命令作为新的 `input.text` 提交。\n\n| event.type | 客户端处理 |\n|------------|------------|\n| text_delta / reasoning_delta | 将增量追加到该流的正文／推理预览 |\n| reasoning_done | 结束推理生成，保留已有内容 |\n| reset | 清除该流的正文和推理预览；重试可复用 `stream_id` |\n| finish | 当前生成结束，但保留预览和流关联，等待 `send` 或重试 |\n| send | 用最终 `text` 或 `blocks` 整体替换正文预览并提交；保留推理内容并结束流关联 |\n| tool_result | 工具结果持久化后发送，可通过 `tool_call_id` 关联；详情见 `GET /api/v1/tools/{name}/detail` |\n\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "d41b9ca002601892ae277e6fff8d02a02b31ae8d00a417d871905b396459d283",
-      "translation": "### stream — Message Stream Event\n\n```json\n{\n  \"type\": \"stream\",\n  \"stream_id\": 1,\n  \"event\": {\"type\": \"text_delta\", \"text\": \"Hello\"}\n}\n```\n\n`stream_id` identifies a single logical message within the current connection, used to separately maintain the main body and reasoning preview; it is not a request ID and cannot be used for reconnection recovery.\n\nEvents may contain `text`, `actions`, `blocks`, or tool result fields. `blocks` is an ordered list of `{kind, content}`; `actions` contains `id`, `label`, and `command`, which the client can submit as a new `input.text`.\n\n| event.type | Client Handling |\n|------------|-----------------|\n| text_delta / reasoning_delta | Append the delta to the main body/reasoning preview of the stream |\n| reasoning_done | End reasoning generation and preserve existing content |\n| reset | Clear the main body and reasoning preview of the stream; `stream_id` can be reused for retries |\n| finish | Current generation has ended, but preserve the preview and stream association, waiting for `send` or a retry |\n| send | Replace the main body preview entirely with the final `text` or `blocks` and submit; preserve reasoning content and end the stream association |\n| tool_result | Sent after the tool result is persisted, associated via `tool_call_id`; see `GET /api/v1/tools/{name}/detail` for details |\n\n",
-      "updated_at": 1794307134
-    },
     "docs/frontend-api.md:section:2584d10016957b6f6c0e23f6ae7ffe431b9ca12058da0b2aaa88f90586822897": {
       "kind": "section",
       "source": "## 连接\n\n```\nws://<host>:<port>/cli/v1/ws\n```\n\n默认地址 `ws://127.0.0.1:32172/cli/v1/ws`。地址和端口在 `[platform.cli]` 配置中修改。\n\n",
@@ -39,6 +31,14 @@
       "source_hash": "ffaa46a4472123821a6118dd8446918ff86d6acbde0d6e1084fb4272bc75d2db",
       "translation": "### complete_result — Completion Result\n\n```json\n{\n  \"type\": \"complete_result\",\n  \"id\": \"c-1\",\n  \"items\": [\n    {\n      \"Text\": \"/model\",\n      \"Label\": \"/model\",\n      \"Description\": \"Switch or view model\",\n      \"Kind\": \"command\",\n      \"ReplaceStart\": 0,\n      \"ReplaceEnd\": 4\n    }\n  ]\n}\n```\n\nThe `id` of the completion candidates corresponds to the request ID; `ReplaceStart` and `ReplaceEnd` are byte offsets in the original input text.\n\n",
       "updated_at": 1794307171
+    },
+    "docs/frontend-api.md:section:3470dab46c651e300534e3b641ba46612b96749ce5b1f8077f474d3cd0667426": {
+      "kind": "section",
+      "source": "### stream — 消息流事件\n\n```json\n{\n  \"type\": \"stream\",\n  \"stream_id\": 1,\n  \"event\": {\"type\": \"text_delta\", \"text\": \"你好\"}\n}\n```\n\n`stream_id` 标识当前连接中的单条逻辑消息，用于分别维护正文和推理预览；它不是请求 ID，也不能用于重连恢复。\n\n事件可包含 `text`、`actions`、`blocks`、工具调用或工具结果字段。`blocks` 是有序的 `{kind, content}` 列表；`actions` 含 `id`、`label`、`command`，客户端可将命令作为新的 `input.text` 提交。\n\n工具事件通过 `tool_call_id` 关联；工具调用与结果可能位于不同 `stream_id`，客户端应按活动调用 ID 在原卡片更新结果，保留调用事件中的名称和完整参数，并在结果抵达后结束该 ID 的活动映射。`tool_call` 携带模型给出的完整原始参数；`tool_result` 只携带成功状态和完整原始 segments。远程前端通过 WebSocket 获取完整结构；文本消息平台只收到私聊且助手尚未发言时的裁剪文本提示。\n\n| event.type | 客户端处理 |\n|------------|------------|\n| text_delta / reasoning_delta | 将增量追加到该流的正文／推理预览 |\n| reasoning_done | 结束推理生成，保留已有内容 |\n| reset | 清除该流的正文和推理预览；重试可复用 `stream_id` |\n| finish | 当前生成结束，但保留预览和流关联，等待 `send` 或重试 |\n| send | 用最终 `text` 或 `blocks` 整体替换正文预览并提交；保留推理内容并结束流关联 |\n| tool_call | 模型发起调用时发送，含 `tool_call_id` 与 `{name, arguments}`；arguments 保留完整原文 |\n| tool_result | 工具结果提交后发送，可通过 `tool_call_id` 更新同一调用卡片；segments 保留原始结构 |\n\n",
+      "source_file": "docs/frontend-api.md",
+      "source_hash": "64439ffd2eca5b96e497380df7ebfb927bbd588d05ef35924356f308911463d0",
+      "translation": "### stream — Message Stream Events\n\n```json\n{\n  \"type\": \"stream\",\n  \"stream_id\": 1,\n  \"event\": {\"type\": \"text_delta\", \"text\": \"Hello\"}\n}\n```\n\n`stream_id` identifies a single logical message within the current connection, used to separately maintain the main body and reasoning preview; it is not a request ID and cannot be used for reconnection recovery.\n\nEvents may contain `text`, `actions`, `blocks`, tool calls, or tool result fields. `blocks` is an ordered list of `{kind, content}`; `actions` contains `id`, `label`, and `command`, which the client can submit as a new `input.text`.\n\nTool events are associated via `tool_call_id`; tool calls and results may reside in different `stream_id`s. The client should update the result on the original card based on the active call ID, preserving the name and full parameters from the call event, and terminate the active mapping for that ID once the result arrives. `tool_call` carries the full raw parameters provided by the model; `tool_result` only carries the success status and full raw segments. Remote frontends receive the full structure via WebSocket; text-based messaging platforms only receive cropped text prompts during private chats when the assistant has not yet spoken.\n\n| event.type | Client Handling |\n|------------|-----------------|\n| text_delta / reasoning_delta | Append the delta to the main body / reasoning preview of the stream |\n| reasoning_done | End reasoning generation and preserve existing content |\n| reset | Clear the main body and reasoning preview of the stream; `stream_id` can be reused for retries |\n| finish | Current generation ends, but preserve the preview and stream association, awaiting `send` or retry |\n| send | Replace the main body preview entirely with the final `text` or `blocks` and submit; preserve reasoning content and end the stream association |\n| tool_call | Sent when the model initiates a call, containing `tool_call_id` and `{name, arguments}`; arguments preserve the full original text |\n| tool_result | Sent after the tool result is submitted; the same call card can be updated via `tool_call_id`; segments preserve the original structure |\n\n",
+      "updated_at": 1794708899
     },
     "docs/frontend-api.md:section:4d94435746d07430dc2bc87577ca9a04d4709d25375911e2c3682f3355dc95f9": {
       "kind": "section",
@@ -64,6 +64,14 @@
       "translation": "## Configuration\n\nFor CLI listening, authentication, and environment variable configuration, see [CLI Remote Configuration](configuration.md#cli-远程配置).\n\nFor more frontend examples, see [elbot-showcase/frontend](https://github.com/Elfreese/elbot-showcase/tree/main/frontend).\n",
       "updated_at": 1794307161
     },
+    "docs/frontend-api.md:section:7b04df83ab214d90c1ad15990283b37902601980c54ac5e5632d51ebf40aa208": {
+      "kind": "section",
+      "source": "## HTTP 管理 API\n\n管理 API 的端点、请求和响应字段见 [OpenAPI 文档](../docs/frontend-api.openapi.yaml)；在线版见[官网 API 文档](https://elfreese.github.io/elbot-landing/docs/api/)。\n\n",
+      "source_file": "docs/frontend-api.md",
+      "source_hash": "d28cd62d1e0c55cb2a1acf5590f50f9260c0ff76a88a08dead076198866e3218",
+      "translation": "## HTTP Management API\n\nFor the endpoints, request, and response fields of the Management API, please refer to the [OpenAPI documentation](../docs/frontend-api.openapi.yaml); the online version is available at the [Official API Documentation](https://elfreese.github.io/elbot-landing/docs/api/).\n\n",
+      "updated_at": 1794708602
+    },
     "docs/frontend-api.md:section:8389f2f1370c09e6820a95fd0881062606c76888bef886877e8c72ff59b0be2b": {
       "kind": "section",
       "source": "## 客户端 → 服务端\n\n",
@@ -71,6 +79,14 @@
       "source_hash": "598315b931a0658e4cc216180bf65c23fe985356284cc19aaa450907fab35dc4",
       "translation": "## Client → Server\n\n",
       "updated_at": 1782901460
+    },
+    "docs/frontend-api.md:section:83e3ddfc6d52182a91a7b157ef73ab809519780e4732c720c7cc93f448712e25": {
+      "kind": "section",
+      "source": "### command_result — 命令结果\n\n```json\n{\"type\":\"command_result\",\"request_id\":\"m-1\",\"command\":{\"raw\":\"/detail\",\"prefix\":\"/\",\"Name\":\"detail\",\"args\":\"\"},\"result\":{\"status\":\"success\",\"kind\":\"text\",\"data\":{\"content\":\"无待确认\"}}}\n```\n\n`request_id` 原样关联 `input.id`，结果只发给原连接；命令结果不通过 `notice` 返回。`command` 保留原始调用上下文，追加确认回执的 `command.Name` 为 `append`。确认动作以新的 `input.text` 提交，权限和目标状态仍由服务端校验，动作 ID 不是授权凭据。\n\n工具确认详情由工具准备阶段生成，通过 `/detail` 结果的 `data.detail` 和发送事件的 `blocks` 提供，同一份内容不再自动追加原始参数。`fields` 的 `content` 是 `{key, label, value}` 数组，`key` 用于程序识别，`label` 用于展示，`value` 保留 JSON 类型；`code` 的 `content` 是 `{language, content}`；`diff` 的 `content` 是差异文本。编辑前、编辑后的文件均不超过 8 MiB 且存在差异时提供完整 `diff` 块，不再限制行数乘积或 diff 输出长度；超限仍允许操作，但不提供 `diff` 块，也不切换文字或参数兜底。消息平台在出口将内容块渲染成文本，API 保留结构，前端无需解析展示字符串。详情和执行共用准备阶段确定的值，Cron 更新展示合并后的任务定义；相对时间在准备阶段固定。HTTP API 和 WebSocket 输出不对 `<`、`>`、`&` 做 HTML 转义。\n\n`result.status` 表达命令业务状态；仅 `success` 时读取 `data`，拒绝或失败展示 `result.message`。`kind` 描述成功数据的结构，`confirmation` 提供确认动作。`status` 是内部业务状态，不是 HTTP 状态或协议错误码。\n\n程序或 IO 故障通过 `error` 字符串传递原始说明；此字段存在时优先展示它，不读取 `result.data`。没有故障时省略 `error`。客户端超时或断线不代表后端执行已取消。\n\n",
+      "source_file": "docs/frontend-api.md",
+      "source_hash": "4700dadec19e77219c25475612d077e2c8ce2aee180612b3997a1687bc491139",
+      "translation": "### command_result — Command Result\n\n```json\n{\"type\":\"command_result\",\"request_id\":\"m-1\",\"command\":{\"raw\":\"/detail\",\"prefix\":\"/\",\"Name\":\"detail\",\"args\":\"\"},\"result\":{\"status\":\"success\",\"kind\":\"text\",\"data\":{\"content\":\"Nothing to confirm\"}}}\n```\n\n`request_id` is associated with `input.id` as-is, and results are sent only to the original connection; command results are not returned via `notice`. `command` preserves the original call context; the `command.Name` for appending confirmation receipts is `append`. Confirmation actions are submitted via a new `input.text`; permissions and target states are still validated by the server, and action IDs are not authorization credentials.\n\nTool confirmation details are generated during the tool preparation phase and provided via `data.detail` in the `/detail` result and `blocks` in sent events; the same content will no longer automatically append original parameters. The `content` of `fields` is an array of `{key, label, value}`, where `key` is for program identification, `label` is for display, and `value` preserves the JSON type; the `content` of `code` is `{language, content}`; the `content` of `diff` is the diff text. A full `diff` block is provided when both pre-edit and post-edit files are under 8 MiB and a difference exists; there are no longer limits on the product of line counts or the diff output length. Operations are still allowed if limits are exceeded, but no `diff` block is provided, nor is there a fallback to text or parameters. Messaging platforms render content blocks into text at the output; the API preserves the structure, and the frontend does not need to parse strings for display. Details and execution share the values determined during the preparation phase; Cron updates display the merged task definition; relative time is fixed during the preparation phase. HTTP API and WebSocket outputs do not perform HTML escaping for `<`, `>`, and `&`.\n\n`result.status` expresses the command's business status; `data` should only be read when the status is `success`, while `result.message` should be displayed upon rejection or failure. `kind` describes the structure of the successful data, and `confirmation` provides the confirmation action. `status` is an internal business status, not an HTTP status or protocol error code.\n\nProgram or IO failures pass the original description via the `error` string; if this field exists, it should be displayed with priority, and `result.data` should not be read. `error` is omitted when there is no failure. Client timeouts or disconnections do not mean the backend execution has been cancelled.\n\n",
+      "updated_at": 1794708713
     },
     "docs/frontend-api.md:section:86238f06c33476a5759705eb4182e698b928331cedc698e63aecbbffc0410b3d": {
       "kind": "section",
@@ -80,22 +96,6 @@
       "translation": "# Frontend API\n\nElBot uses a decoupled frontend and backend architecture. The CLI remote protocol exchanges JSON messages via WebSocket, and uses HTTP interfaces on the same port to send and receive attachments and invoke structured management operations. TUI, Web, mobile clients, and scripts share the same protocol, with clients handling their own display and download interactions.\n\n",
       "updated_at": 1794127350
     },
-    "docs/frontend-api.md:section:8812181bfe41e5198f8efefc3d1c711ddf1d765c1063a5fe44dee09b69b888af": {
-      "kind": "section",
-      "source": "### complete — 请求补全\n\n```json\n{\"type\": \"complete\", \"id\": \"c-1\", \"text\": \"/mod\", \"cursor\": 4}\n```\n\n请求当前输入文本的补全候选。`id` 用于匹配响应。`cursor` 为光标在 `text` 中的字节偏移，省略时取末尾。\n\n服务端回复 `complete_result`。\n\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "bf8d0e9a3bd4db981553a429acc19d7d3aa21328757de338ec98b9224c40a540",
-      "translation": "### complete — Request Completion\n\n```json\n{\"type\": \"complete\", \"id\": \"c-1\", \"text\": \"/mod\", \"cursor\": 4}\n```\n\nRequest completion candidates for the current input text. The `id` is used to match the response. The `cursor` is the byte offset of the cursor within the `text`; if omitted, it defaults to the end.\n\nThe server responds with `complete_result`.\n\n",
-      "updated_at": 1794276114
-    },
-    "docs/frontend-api.md:section:92e815ac90140b4016cc270b5a2acd7085a59aad515c90c68f801551d38b5433": {
-      "kind": "section",
-      "source": "## HTTP 管理 API\n\n管理 API 的端点、请求和响应字段见 [OpenAPI 文档](frontend-api.openapi.yaml)；在线版见[官网 API 文档](https://elfreese.github.io/elbot-landing/docs/api/)。\n\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "1b4af9135ad4b9650d8e3c9d30121016bd54f3750d83d62b82adbfc40d6f40a7",
-      "translation": "## HTTP Management API\n\nFor the endpoints, request, and response fields of the Management API, please refer to the [OpenAPI documentation](frontend-api.openapi.yaml); the online version is available in the [Official API Documentation](https://elfreese.github.io/elbot-landing/docs/api/).\n\n",
-      "updated_at": 1794306907
-    },
     "docs/frontend-api.md:section:97917a0a22d845566840e5ae686ad09a82d4c87b203ac45c74881f3fcdc6a51d": {
       "kind": "section",
       "source": "## HTTP 附件接口\n\n所有接口都需要当前 WebSocket 连接的 `media_token`，与静态页面是否存在无关：\n\n| 接口 | 请求与响应 |\n|------|------------|\n| `POST /cli/v1/files` | `multipart/form-data`，单个文件字段 `file`；成功返回 201 和附件描述 |\n| `GET /cli/v1/files/{id}` | 返回文件内容；HEAD 返回相同元信息而不返回正文 |\n| `DELETE /cli/v1/files/{id}` | 撤销当前连接的附件授权，成功返回 204 |\n\n上传响应与 `attachment` 描述相同；一次 POST 只上传一个 `file`，多文件须分别上传。浏览器可用带认证头的 `fetch` 获取 Blob 并自行预览或下载。GET 响应使用 `Content-Disposition: attachment`、`X-Content-Type-Options: nosniff` 和 `Cache-Control: no-store`。\n\n删除或断连会撤销当前连接的附件授权；断连后需重新上传。认证失败返回 401；附件不存在或不属于当前连接返回 404；请求格式错误、业务拒绝或无效目标返回 400；权限拒绝返回 403；冲突返回 409；服务停止接入或能力不可用返回 503；媒体业务失败和内部故障返回 500；取消返回 408，超时返回 504。业务错误返回 Result.Message，Go error 返回 err.Error()。\n\n",
@@ -104,13 +104,13 @@
       "translation": "## HTTP Attachment Interfaces\n\nAll interfaces require the `media_token` of the current WebSocket connection, regardless of whether a static page exists:\n\n| Interface | Request & Response |\n|------|------------|\n| `POST /cli/v1/files` | `multipart/form-data`, single file field `file`; returns 201 and attachment description on success |\n| `GET /cli/v1/files/{id}` | Returns file content; HEAD returns the same metadata without the body |\n| `DELETE /cli/v1/files/{id}` | Revokes attachment authorization for the current connection; returns 204 on success |\n\nThe upload response is identical to the `attachment` description; a single POST request uploads only one `file`, and multiple files must be uploaded separately. Browsers can use `fetch` with authentication headers to obtain a Blob for previewing or downloading. GET responses use `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`, and `Cache-Control: no-store`.\n\nDeletion or disconnection will revoke the attachment authorization for the current connection; files must be re-uploaded after disconnection. Authentication failure returns 401; if the attachment does not exist or does not belong to the current connection, 404 is returned; request format errors, business rejections, or invalid targets return 400; permission denied returns 403; conflicts return 409; service access suspension or unavailable capabilities return 503; media business failures and internal faults return 500; cancellations return 408, and timeouts return 504. Business errors return `Result.Message`, and Go errors return `err.Error()`.\n\n",
       "updated_at": 1794631028
     },
-    "docs/frontend-api.md:section:aa482b7e75ccf5594a82c5318526e3933e76229f337014eeff6cfcc3fa9c804d": {
+    "docs/frontend-api.md:section:a3f47a279e7a24a92588432492795ce4c40629fc4bf4f2ef69dcb84fdaba823b": {
       "kind": "section",
-      "source": "### command_result — 命令结果\n\n```json\n{\"type\":\"command_result\",\"request_id\":\"m-1\",\"command\":{\"raw\":\"/detail\",\"prefix\":\"/\",\"Name\":\"detail\",\"args\":\"\"},\"result\":{\"status\":\"success\",\"kind\":\"text\",\"data\":{\"content\":\"无待确认\"}}}\n```\n\n`request_id` 原样关联 `input.id`，结果只发给原连接；命令结果不通过 `notice` 返回。`command` 保留原始调用上下文，追加确认回执的 `command.Name` 为 `append`。确认动作以新的 `input.text` 提交，权限和目标状态仍由服务端校验，动作 ID 不是授权凭据。\n\n`result.status` 表达命令业务状态；仅 `success` 时读取 `data`，拒绝或失败展示 `result.message`。`kind` 描述成功数据的结构，`confirmation` 提供确认动作。`status` 是内部业务状态，不是 HTTP 状态或协议错误码。\n\n程序或 IO 故障通过 `error` 字符串传递原始说明；此字段存在时优先展示它，不读取 `result.data`。没有故障时省略 `error`。客户端超时或断线不代表后端执行已取消。\n\n",
+      "source": "### status — 运行状态\n\n```json\n{\"type\":\"status\",\"snapshot\":{\"Phase\":\"llm\",\"Provider\":\"openai\",\"Model\":\"gpt-4o\"}}\n```\n\n快照用于展示当前运行状态。状态更新可能合并；取消后仍可能收到已提交的终态。`Phase` 为 `idle`、`preparing`、`llm`、`tool`、`compact`、`sending`、`done` 或 `error`；`compact` 表示上下文压缩中。\n\n",
       "source_file": "docs/frontend-api.md",
-      "source_hash": "9772aba3c211cb145fb61269d208df7e17ebe52473c703a7eb83d6173572c39b",
-      "translation": "### command_result — Command Result\n\n```json\n{\"type\":\"command_result\",\"request_id\":\"m-1\",\"command\":{\"raw\":\"/detail\",\"prefix\":\"/\",\"Name\":\"detail\",\"args\":\"\"},\"result\":{\"status\":\"success\",\"kind\":\"text\",\"data\":{\"content\":\"Nothing to confirm\"}}}\n```\n\n`request_id` is associated with `input.id` as-is, and the result is sent only to the original connection; command results are not returned via `notice`. `command` preserves the original call context; the `command.Name` for appending a confirmation receipt is `append`. Confirmation actions are submitted via a new `input.text`; permissions and target states are still validated by the server, and the action ID is not an authorization credential.\n\n`result.status` expresses the business status of the command; read `data` only when it is `success`, and display `result.message` upon rejection or failure. `kind` describes the structure of the successful data, and `confirmation` provides the confirmation action. `status` is an internal business status, not an HTTP status or protocol error code.\n\nProgram or IO failures pass original descriptions via the `error` string; when this field exists, it should be displayed with priority, and `result.data` should not be read. Omit `error` when there are no failures. Client timeouts or disconnections do not mean that backend execution has been cancelled.\n\n",
-      "updated_at": 1794631091
+      "source_hash": "c887419c29e33a7dd894d257736a9e241d5fe0905ef515994e946d8fb8fa5a73",
+      "translation": "### status — Runtime Status\n\n```json\n{\"type\":\"status\",\"snapshot\":{\"Phase\":\"llm\",\"Provider\":\"openai\",\"Model\":\"gpt-4o\"}}\n```\n\nThe snapshot is used to display the current runtime status. Status updates may be merged; final states that have already been submitted may still be received after cancellation. `Phase` can be `idle`, `preparing`, `llm`, `tool`, `compact`, `sending`, `done`, or `error`; `compact` indicates that context compaction is in progress.\n\n",
+      "updated_at": 1794708756
     },
     "docs/frontend-api.md:section:c4a86c590885ce17ad8c15f3909f5540180a34bc9453b6f31eba62b49b50b57a": {
       "kind": "section",
@@ -119,6 +119,14 @@
       "source_hash": "571825380d1243eed970f5d40e39b9feaa78fe8962612a8205b561e6dd8f08a9",
       "translation": "### error — Error\n\n```json\n{\"type\": \"error\", \"text\": \"context deadline exceeded\"}\n```\n\nAn error that occurred during processing.\n\n",
       "updated_at": 1782901460
+    },
+    "docs/frontend-api.md:section:c7b406737dd402dd0c3fd8b0e33e3412135d62b27aabdead17dc6709a094774d": {
+      "kind": "section",
+      "source": "### complete — 请求补全\n\n```json\n{\"type\": \"complete\", \"id\": \"c-1\", \"text\": \"/mod\", \"cursor\": 4}\n```\n\n请求当前输入文本的补全候选。`id` 用于匹配响应。`cursor` 为光标在 `text` 中的字节偏移，省略时取末尾。\n\n查询成功时服务端回复 `complete_result`，没有候选时列表为空；查询失败时回复 `error`，携带原请求的 `id` 和错误原因。\n\n",
+      "source_file": "docs/frontend-api.md",
+      "source_hash": "3be38210445a33daf1948edba9859d05bdae216cd87166c02e84281713e32b69",
+      "translation": "### complete — Request Completion\n\n```json\n{\"type\": \"complete\", \"id\": \"c-1\", \"text\": \"/mod\", \"cursor\": 4}\n```\n\nRequest completion candidates for the current input text. `id` is used to match the response. `cursor` is the byte offset of the cursor in `text`; if omitted, it defaults to the end.\n\nUpon a successful query, the server replies with `complete_result`, with an empty list if there are no candidates; if the query fails, it replies with `error`, containing the `id` of the original request and the reason for the error.\n\n",
+      "updated_at": 1794708632
     },
     "docs/frontend-api.md:section:cabd98e793967ce605b46ed81e8a9d31036eb87693cca642295434dd80b5cc88": {
       "kind": "section",
@@ -151,19 +159,11 @@
       "source_hash": "c40a32af35d40a986929ab9d791786759a69a889b11526a65cd9a7cce2ed3b0c",
       "translation": "## Static Frontend Hosting\n\nAfter enabling the CLI remote service, place `frontend/index.html` in the main configuration directory to access it via `http://<host>:<port>/`. Static pages share `server.listen` with WebSocket, and no built-in templates are provided.\n\n- `frontend/index.html` is recognized when the service starts; a restart is required after adding the entry point for the first time. `/` returns this entry point, and directory URLs can read the `index.html` within them, but directory listings or SPA path fallbacks are not provided.\n- Files are served only from within `frontend/`; path traversal and symbolic link escapes are prohibited. Static files do not require authentication, but `hello` authentication is still required before operating ElBot.\n\nThe frontend connects to `/cli/v1/ws` based on the page protocol: `ws:` for HTTP and `wss:` for HTTPS; TLS is provided by the deployment environment.\n\n",
       "updated_at": 1794306768
-    },
-    "docs/frontend-api.md:section:e92a932f02d8cc6108f2a596e20d2901101f4be2c7752753bffa294c48a0584f": {
-      "kind": "section",
-      "source": "### status — 运行状态\n\n```json\n{\"type\":\"status\",\"snapshot\":{\"Phase\":\"llm\",\"Provider\":\"openai\",\"Model\":\"gpt-4o\"}}\n```\n\n快照用于展示当前运行状态。状态更新可能合并；取消后仍可能收到已提交的终态。`Phase` 为 `idle`、`preparing`、`llm`、`tool`、`sending`、`done` 或 `error`。\n\n",
-      "source_file": "docs/frontend-api.md",
-      "source_hash": "45857153fe9b8f5f542cfdfa78a2fca78238942c0674d4bf24bb5e577f43fc63",
-      "translation": "### status — Runtime Status\n\n```json\n{\"type\":\"status\",\"snapshot\":{\"Phase\":\"llm\",\"Provider\":\"openai\",\"Model\":\"gpt-4o\"}}\n```\n\nThe snapshot is used to display the current runtime status. Status updates may be merged; final states that have already been submitted may still be received after cancellation. `Phase` can be `idle`, `preparing`, `llm`, `tool`, `sending`, `done`, or `error`.\n\n",
-      "updated_at": 1794307112
     }
   },
   "source": "docs/frontend-api.md",
-  "source_hash": "850fec098146b553af338b30a1acefb84b3c6c4d646bc25fa366057436fdc7e9",
+  "source_hash": "ee4fd19e768c40a2ac6f57177c3da55da05bc968f9d2a3c4c4620c837b5848b3",
   "target": "docs.en/frontend-api.md",
-  "updated_at": 1794631091,
+  "updated_at": 1794708899,
   "version": 3
 }
