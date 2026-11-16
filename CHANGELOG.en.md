@@ -6,7 +6,10 @@
 
 ### Added
 
-- CLI remote service now supports static frontend hosting: automatically detects `frontend/index.html` next to the main configuration.
+- AgentSkill TOML now supports `depends_on`; Skill tags now participate in `@t:` tool group completion and preloading.
+- Added `use_workspace` to AgentSkill TOML; when enabled, commands and media paths are relative to the current workspace.
+- AgentSkill TOML tools now support passing positional arguments in a specified order via the `positional` array, which can be used in combination with `[args]` flag parameters.
+- Added static frontend hosting to the CLI remote service: automatically recognizes `frontend/index.html` located next to the main configuration.
 - Added a large number of CLI remote protocols.
 - Added a configuration file lock to prevent multiple instances from using the same configuration file.
 - Added `markdownnew` to web search.
@@ -41,12 +44,13 @@
 
 ### Fixed
 
-- Fixed issues where workspace cleanup of invalid directories or concurrent switching still returned the old directory state, and where cancellation errors were swallowed when Git diff output exceeded the limit.
+- Fixed an issue where Shell incorrectly reported ordinary file path parameters as changing the working directory.
+- Fixed issues where workspace still returned the old directory status after cleaning invalid directories or concurrent switching, and where cancellation errors were swallowed when Git diff output exceeded the limit.
 - File reference format errors, out-of-bounds errors, and target type rejections now display the business reason and terminate input processing, rather than propagating as program failures.
-- Fixed an issue where some commands reported `not found` due to the absence of a current Session upon first entry or after `/new`.
+- Fixed an issue where some commands reported `not found` due to the absence of a current Session after the first entry or using `/new`.
 - Fixed an issue where `/resume` ignored pinned items.
 - Fixed several potential bugs during refactoring.
-- Fixed a bug in the chat history search tool. Searching now works in both the background and foreground without interfering with each other.
+- Fixed a bug in the chat history search tool. Now both background and foreground can be searched without affecting each other.
 - Fixed a bug where duplicate content was compressed multiple times.
 
 ## See releases for historical change logs
