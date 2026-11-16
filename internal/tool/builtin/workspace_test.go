@@ -210,6 +210,7 @@ func TestDiscoverWorkspaceLoadsCurrentAgentInstructions(t *testing.T) {
 	if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, []toolshare.ToolDefinition{(WorkspaceTool{}).Definition()}); err != nil {
 		t.Fatal(err)
 	}
+	ctx = withBuiltinToolAvailability(t, ctx, registry)
 	args, _ := json.Marshal(map[string]string{"name": "workspace"})
 	result, _, err := callTool(ctx, discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
 	if err != nil || result.Status != operationresult.Success {
@@ -354,6 +355,7 @@ func TestDiscoverToolsResetsMissingWorkspace(t *testing.T) {
 			if _, err := registry.RegisterTools(t.Context(), toolshare.SourceBuiltin, toolshare.ToolRegistrationScope{}, definitions); err != nil {
 				t.Fatal(err)
 			}
+			ctx = withBuiltinToolAvailability(t, ctx, registry)
 			args, _ := json.Marshal(map[string]string{"name": name})
 			result, _, err := callTool(ctx, discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
 			if err != nil || result.Status != operationresult.Success {

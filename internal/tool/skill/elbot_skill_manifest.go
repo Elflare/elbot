@@ -20,6 +20,7 @@ type AgentSkillManifest struct {
 	Risk           toolshare.RiskLevel
 	SuperadminOnly bool
 	Tags           []string
+	DependsOn      []string
 	Command        []string
 	TimeoutSeconds int
 	ExposeRoot     bool
@@ -34,6 +35,7 @@ type agentSkillManifestFile struct {
 	Risk           string            `toml:"risk"`
 	SuperadminOnly bool              `toml:"superadmin_only"`
 	Tags           []string          `toml:"tags"`
+	DependsOn      []string          `toml:"depends_on"`
 	Command        []string          `toml:"command"`
 	TimeoutSeconds int               `toml:"timeout_seconds"`
 	ExposeRoot     bool              `toml:"expose_root"`
@@ -68,7 +70,7 @@ func ParseAgentSkillManifest(data []byte) (AgentSkillManifest, error) {
 	if err := toml.Unmarshal(data, &raw); err != nil {
 		return AgentSkillManifest{}, fmt.Errorf("parse %s: %w", AgentSkillConfigFile, err)
 	}
-	allowed := map[string]bool{"risk": true, "superadmin_only": true, "tags": true, "command": true, "timeout_seconds": true, "expose_root": true, "use_workspace": true, "parameters": true, "args": true, "positional": true}
+	allowed := map[string]bool{"risk": true, "superadmin_only": true, "tags": true, "depends_on": true, "command": true, "timeout_seconds": true, "expose_root": true, "use_workspace": true, "parameters": true, "args": true, "positional": true}
 	keys := make([]string, 0, len(raw))
 	for key := range raw {
 		if !allowed[key] {
@@ -97,7 +99,7 @@ func validateAgentSkillManifest(file agentSkillManifestFile) (AgentSkillManifest
 		if file.TimeoutSeconds < 0 {
 			return AgentSkillManifest{}, fmt.Errorf("timeout_seconds must be >= 0")
 		}
-		return AgentSkillManifest{Risk: risk, SuperadminOnly: file.SuperadminOnly, Tags: file.Tags, TimeoutSeconds: file.TimeoutSeconds, ExposeRoot: file.ExposeRoot, UseWorkspace: file.UseWorkspace, Positional: append([]string(nil), file.Positional...)}, nil
+		return AgentSkillManifest{Risk: risk, SuperadminOnly: file.SuperadminOnly, Tags: file.Tags, DependsOn: file.DependsOn, TimeoutSeconds: file.TimeoutSeconds, ExposeRoot: file.ExposeRoot, UseWorkspace: file.UseWorkspace, Positional: append([]string(nil), file.Positional...)}, nil
 	}
 	if len(file.Command) == 0 {
 		return AgentSkillManifest{}, fmt.Errorf("command is required")
@@ -162,7 +164,7 @@ func validateAgentSkillManifest(file agentSkillManifestFile) (AgentSkillManifest
 	if file.TimeoutSeconds == 0 {
 		file.TimeoutSeconds = int(defaultRunnerTimeout.Seconds())
 	}
-	return AgentSkillManifest{Risk: risk, SuperadminOnly: file.SuperadminOnly, Tags: file.Tags, Command: append([]string(nil), file.Command...), TimeoutSeconds: file.TimeoutSeconds, ExposeRoot: file.ExposeRoot, UseWorkspace: file.UseWorkspace, Parameters: parameters, Args: copyStringMap(file.Args), Positional: append([]string(nil), file.Positional...), Callable: true}, nil
+	return AgentSkillManifest{Risk: risk, SuperadminOnly: file.SuperadminOnly, Tags: file.Tags, DependsOn: file.DependsOn, Command: append([]string(nil), file.Command...), TimeoutSeconds: file.TimeoutSeconds, ExposeRoot: file.ExposeRoot, UseWorkspace: file.UseWorkspace, Parameters: parameters, Args: copyStringMap(file.Args), Positional: append([]string(nil), file.Positional...), Callable: true}, nil
 }
 
 func agentSkillManifestCallable(file agentSkillManifestFile) bool {

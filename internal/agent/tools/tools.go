@@ -2,10 +2,8 @@ package tools
 
 import (
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/contextinfo"
 
 	"context"
-	"elbot/internal/tool"
 
 	"elbot/internal/fileops"
 )
@@ -19,12 +17,6 @@ type ToolRuntimeState struct {
 
 // ToolRuntimeStateDeps declares only the capabilities consumed by ToolRuntimeState.
 type ToolRuntimeStateDeps struct {
-	Identity interface {
-		Actor(context.Context) contextinfo.Actor
-	}
-	Manager interface {
-		QueryTools(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
-	}
 	FileRollback interface {
 		WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context
 	}
@@ -35,7 +27,7 @@ func NewToolRuntimeState(deps ToolRuntimeStateDeps) *ToolRuntimeState {
 	runtime := &ToolRuntimeState{
 		fileRollback: deps.FileRollback,
 	}
-	runtime.provider = toolRunPromptProvider{tools: deps.Manager, identity: deps.Identity}
+	runtime.provider = toolRunPromptProvider{}
 	return runtime
 }
 

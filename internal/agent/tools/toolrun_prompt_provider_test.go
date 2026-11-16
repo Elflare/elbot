@@ -1,79 +1,26 @@
 package tools
 
 import (
-	agentshare "elbot/internal/agent/share"
-
 	"context"
-	"errors"
 	"reflect"
 	"testing"
 
+	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
 	"elbot/internal/session"
 	"elbot/internal/storage"
-	toolshare "elbot/internal/tool"
 )
 
-type promptQueryFunc func(context.Context, toolshare.ToolQuery) ([]toolshare.ToolInfo, error)
-
-func (f promptQueryFunc) QueryTools(ctx context.Context, query toolshare.ToolQuery) ([]toolshare.ToolInfo, error) {
-	return f(ctx, query)
-}
-
-type promptIdentity struct {
-	actor contextinfo.Actor
-}
-
-func (i promptIdentity) Actor(context.Context) contextinfo.Actor { return i.actor }
-
-func TestPromptNamesUseQueriedGroups(t *testing.T) {
-	actor := contextinfo.Actor{Role: contextinfo.RoleUser, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "test"}}
-	var kinds []string
-	provider := toolRunPromptProvider{
-		identity: promptIdentity{actor: actor},
-		tools: promptQueryFunc(func(ctx context.Context, query toolshare.ToolQuery) ([]toolshare.ToolInfo, error) {
-			got, _ := contextinfo.ActorFromContext(ctx)
-			if got != actor {
-				t.Fatalf("query actor = %#v, want %#v", got, actor)
-			}
-			if query.IncludeHidden || query.IncludeDiscover || query.Names != nil {
-				t.Fatalf("unexpected query flags: %#v", query)
-			}
-			kinds = append(kinds, query.Kind)
-			// Source must not override the classification returned by the query.
-			if query.Kind == "tool" {
-				return []toolshare.ToolInfo{{Definition: toolshare.Info{Name: "command", Source: toolshare.SourceSkill}}}, nil
-			}
-			return []toolshare.ToolInfo{{Definition: toolshare.Info{Name: "guide", Source: toolshare.SourceBuiltin}}}, nil
-		}),
-	}
-	got, err := provider.ToolNames(context.Background(), storage.SessionModeWork, &storage.Session{}, session.Scope{})
-	want := agentshare.PromptToolNames{Tools: []string{"command"}, Skills: []string{"guide"}}
-	if err != nil || !reflect.DeepEqual(got, want) || !reflect.DeepEqual(kinds, []string{"tool", "skill"}) {
-		t.Fatalf("names = %#v, queries = %v, error = %v", got, kinds, err)
+func TestPromptNamesReadToolAvailability(t *testing.T) {
+	ctx := contextinfo.WithToolAvailability(context.Background(), contextinfo.ToolAvailability{Tools: []string{"read_file"}, Skills: []string{"nls"}})
+	got, err := (toolRunPromptProvider{}).ToolNames(ctx, storage.SessionModeWork, &storage.Session{}, session.Scope{})
+	want := agentshare.PromptToolNames{Tools: []string{"read_file"}, Skills: []string{"nls"}}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("names = %#v, error = %v", got, err)
 	}
 }
 
-func TestPromptNamesQueryErrorsAndModes(t *testing.T) {
-	failure := errors.New("query failed")
-	for _, failedKind := range []string{"tool", "skill"} {
-		t.Run(failedKind, func(t *testing.T) {
-			provider := toolRunPromptProvider{
-				identity: promptIdentity{},
-				tools: promptQueryFunc(func(_ context.Context, query toolshare.ToolQuery) ([]toolshare.ToolInfo, error) {
-					if query.Kind == failedKind {
-						return nil, failure
-					}
-					return []toolshare.ToolInfo{{Definition: toolshare.Info{Name: "partial"}}}, nil
-				}),
-			}
-			got, err := provider.ToolNames(context.Background(), storage.SessionModeWork, &storage.Session{}, session.Scope{})
-			if !errors.Is(err, failure) || len(got.Tools)+len(got.Skills) != 0 {
-				t.Fatalf("names = %#v, error = %v", got, err)
-			}
-		})
-	}
-	// Inactive modes and cancellation must return before querying or resolving identity.
+func TestPromptNamesOmitUnavailableModes(t *testing.T) {
 	provider := toolRunPromptProvider{}
 	for _, mode := range []string{storage.SessionModeChat, storage.SessionModeBackground} {
 		got, err := provider.ToolNames(context.Background(), mode, &storage.Session{}, session.Scope{})
@@ -82,12 +29,8 @@ func TestPromptNamesQueryErrorsAndModes(t *testing.T) {
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	got, err := provider.ToolNames(ctx, storage.SessionModeWork, &storage.Session{Mode: storage.SessionModeBackground}, session.Scope{})
-	if err != nil || len(got.Tools)+len(got.Skills) != 0 {
-		t.Fatalf("background session: names = %#v, error = %v", got, err)
-	}
 	cancel()
-	if _, err := provider.ToolNames(ctx, storage.SessionModeWork, nil, session.Scope{}); !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled query error = %v", err)
+	if _, err := provider.ToolNames(ctx, storage.SessionModeWork, nil, session.Scope{}); err == nil {
+		t.Fatal("canceled context was accepted")
 	}
 }

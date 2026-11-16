@@ -12,7 +12,7 @@ const KindCommand = "command"
 
 type RouterSource struct {
 	Router *command.Router
-	Actor  func(context.Context) contextinfo.Actor // 必填：提供当前请求的身份及权限。
+	Actor  func(context.Context) contextinfo.Actor // 已由 Agent 入口写入 context；不在 source 中调用。
 }
 
 func (s RouterSource) completeArgs(ctx context.Context, req Request, actor contextinfo.Actor) []Item {
@@ -31,7 +31,7 @@ func (s RouterSource) completeArgs(ctx context.Context, req Request, actor conte
 	if !ok {
 		return nil
 	}
-	items := completer.Complete(contextinfo.WithActor(ctx, actor), command.CompletionRequest{Raw: req.Text, Prefix: parsed.Prefix, Name: parsed.Name, Args: parsed.Args, Cursor: req.CursorOrEnd()})
+	items := completer.Complete(ctx, command.CompletionRequest{Raw: req.Text, Prefix: parsed.Prefix, Name: parsed.Name, Args: parsed.Args, Cursor: req.CursorOrEnd()})
 	out := make([]Item, 0, len(items))
 	for _, item := range items {
 		out = append(out, Item{Text: item.Text, Label: item.Label, Description: item.Description, Kind: item.Kind, ReplaceStart: item.ReplaceStart, ReplaceEnd: item.ReplaceEnd})
@@ -40,7 +40,7 @@ func (s RouterSource) completeArgs(ctx context.Context, req Request, actor conte
 }
 
 func (s RouterSource) Complete(ctx context.Context, req Request) ([]Item, error) {
-	actor := s.Actor(ctx)
+	actor, _ := contextinfo.ActorFromContext(ctx)
 	if items := s.completeArgs(ctx, req, actor); len(items) > 0 {
 		return items, nil
 	}

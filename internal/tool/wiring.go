@@ -31,6 +31,7 @@ import (
 // runtime 保存装配出的组件，供总管转接能力，不承担执行流程。
 type runtime struct {
 	registry            *toolregistry.Registry
+	resolver            *discovery.Resolver
 	residentMemoryStore *resident.Store
 	skillManager        *skill.Manager
 	fileRollback        *fileops.Service
@@ -47,6 +48,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	}
 	environment := processenv.New(os.Environ()).Fill(dotEnv)
 	registry := toolregistry.NewRegistry(deps.Permission)
+	resolver := discovery.NewResolver(registry)
 	residentStore := resident.NewStoreWithLimits(filepath.Join(configDir, "memories.toml"), resident.Limits{
 		Core:   cfg.ResidentMemory.CoreMaxUnits,
 		Normal: cfg.ResidentMemory.NormalMaxUnits,
@@ -57,6 +59,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	chatHistory := chat_history.NewManager(&chatHistoryBridge{history: deps.ChatHistory, platform: deps.Platform, media: mediaRuntime}, time.Now, resolveHistoryChat)
 	m.catalog = &runtime{
 		registry:            registry,
+		resolver:            resolver,
 		residentMemoryStore: residentStore,
 		skillManager:        skillManager,
 		fileRollback:        fileops.NewService(nil),
@@ -74,14 +77,14 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		},
 	})
 	definitions = append(definitions, skill.NewTools(skillManager)...)
-	definitions = append(definitions, discovery.NewDiscoverTool(discovery.NewResolver(registry)))
+	definitions = append(definitions, discovery.NewDiscoverTool(resolver))
 	if _, err := registry.RegisterTools(ctx, share.SourceBuiltin, share.ToolRegistrationScope{}, definitions); err != nil {
 		return m, fmt.Errorf("register tools: %w", err)
 	}
-	m.engine = execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: deps.Permission, Media: mediaRuntime, Log: logTool, InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: toolstate.DecodeState, PrepareUpdate: toolstate.PrepareUpdate, DiscoveryStateUpdate: discovery.NewResolver(registry).DiscoveryStateUpdate})
+	m.engine = execution.NewManager(execution.ManagerDeps{Registry: registry, Permission: deps.Permission, Media: mediaRuntime, Log: logTool, InfoAvailableInContext: toolregistry.InfoAvailableInContext, UnavailableReason: toolregistry.UnavailableReason, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools, DecodeState: toolstate.DecodeState, PrepareUpdate: toolstate.PrepareUpdate, DiscoveryStateUpdate: resolver.DiscoveryStateUpdate})
 	m.preloader = preload.NewPreloadService(preload.PreloadOptions{
 		RegisterTools: registry.RegisterTools,
-		Resolver:      discovery.NewResolver(registry), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools,
+		Resolver:      resolver, NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, BackgroundDiscoveredTools: toolregistry.BackgroundDiscoveredTools,
 		Registry: registry,
 		TagsPath: cfg.ToolTagsConfigPath,
 		Tags:     cfg.ToolTags,

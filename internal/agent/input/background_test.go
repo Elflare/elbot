@@ -51,6 +51,10 @@ func (*backgroundHarness) SessionTakenOver(context.Context, string) (bool, error
 
 type backgroundPreloaderStub struct{ h *backgroundHarness }
 
+func (backgroundPreloaderStub) PrepareAvailabilityContext(ctx context.Context) (context.Context, error) {
+	return ctx, nil
+}
+
 func (p backgroundPreloaderStub) PrepareBackground(ctx context.Context, req tool.BackgroundPreloadRequest) (tool.BackgroundPreload, error) {
 	p.h.preloads++
 	return p.h.preload, p.h.preloadErr

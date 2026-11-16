@@ -51,7 +51,7 @@ func hookMessageEntry(t *testing.T, p *entryProbe, points hooks.Points) *Message
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = bridge.Close(context.Background()) })
-	return NewMessageHandler(MessageHandlerDeps{Identity: identity, Hooks: bridge, Commands: p, Input: p, Output: p})
+	return NewMessageHandler(MessageHandlerDeps{Hooks: bridge, Commands: p, Input: p, Output: p})
 }
 
 func TestInboundCallbackOutputPrecedesConsumeAndDispatch(t *testing.T) {

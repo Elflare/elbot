@@ -6,7 +6,14 @@ type conversationKey struct{}
 type actorKey struct{}
 type executionKey struct{}
 type modelKey struct{}
+type toolAvailabilityKey struct{}
 type absent struct{}
+
+type ToolAvailability struct {
+	Tools   []string            // 通过权限及依赖筛选的普通工具名称。
+	Skills  []string            // 通过权限及依赖筛选的 Skill 名称。
+	Allowed map[string]struct{} // 可用名称集合（含隐藏依赖）；写入后只读。
+}
 
 func WithConversation(ctx context.Context, value Conversation) context.Context {
 	return context.WithValue(ctx, conversationKey{}, value)
@@ -58,4 +65,16 @@ func ModelFromContext(ctx context.Context) (Model, bool) {
 
 func WithoutModel(ctx context.Context) context.Context {
 	return context.WithValue(ctx, modelKey{}, absent{})
+}
+
+func WithToolAvailability(ctx context.Context, value ToolAvailability) context.Context {
+	return context.WithValue(ctx, toolAvailabilityKey{}, value)
+}
+
+func ToolAvailabilityFromContext(ctx context.Context) (ToolAvailability, bool) {
+	value, ok := ctx.Value(toolAvailabilityKey{}).(ToolAvailability)
+	if !ok {
+		return ToolAvailability{}, false
+	}
+	return value, true
 }

@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/contextinfo"
 	"elbot/internal/directive"
 	"elbot/internal/storage"
 
@@ -37,10 +36,6 @@ type skillDirectiveResult struct {
 	Invalid          []string
 }
 
-func (c *InputCoordinator) preloadContext(ctx context.Context) context.Context {
-	return contextinfo.WithActor(ctx, c.identity.Actor(ctx))
-}
-
 func (c *InputCoordinator) prepareToolDirectives(ctx context.Context, row *storage.Session, text string) toolDirectiveResult {
 	result := toolDirectiveResult{Text: text}
 	if row == nil || row.Mode != storage.SessionModeWork || !containsAny(text, directive.ToolPrefix, directive.ToolFullPrefix, directive.ToolShortPrefix, directive.ToolShortFull) {
@@ -57,13 +52,13 @@ func (c *InputCoordinator) prepareToolDirectives(ctx context.Context, row *stora
 	for i, match := range matches {
 		names[i] = match.Name
 	}
-	prepared, err := c.preloader.PrepareTools(c.preloadContext(ctx), names)
+	prepared, err := c.preloader.PrepareTools(ctx, names)
 	if err != nil {
 		result.Err = err
 		return result
 	}
 	result.Invalid = prepared.Invalid
-	if len(prepared.Update.Tools) == 0 {
+	if len(prepared.Update.Tools) == 0 && prepared.Content == "" {
 		return result
 	}
 	result.update = prepared.Update
@@ -88,7 +83,6 @@ func (c *InputCoordinator) prepareSkillDirectives(ctx context.Context, row *stor
 	if len(matches) == 0 {
 		return result
 	}
-	ctx = c.preloadContext(ctx)
 	names := make([]string, len(matches))
 	for i, match := range matches {
 		names[i] = match.Name
@@ -188,6 +182,10 @@ func (c *InputCoordinator) applyInputDirectives(ctx context.Context, row *storag
 	ctx = locked
 	release()
 	ctx, err = c.execution.ModelContext(ctx, row)
+	if err != nil {
+		return operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, err
+	}
+	ctx, err = c.preloader.PrepareAvailabilityContext(ctx)
 	if err != nil {
 		return operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, err
 	}

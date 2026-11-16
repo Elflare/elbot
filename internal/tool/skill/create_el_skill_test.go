@@ -225,6 +225,7 @@ func TestCreateElSkillDiscoversMaintenanceTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	ctx = withSkillAvailability(t, ctx, registry)
 	discovered, err := discovery.NewResolver(registry).DiscoverDetails(ctx, []string{CreateElSkillName})
 	if err != nil || len(discovered.Errors) > 0 {
 		t.Fatalf("discovery = %#v, %v", discovered, err)

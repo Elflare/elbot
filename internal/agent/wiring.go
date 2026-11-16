@@ -50,6 +50,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	view := dialogue.ExecutionView{Sessions: deps.Store.Sessions()}
 	m.restoreMessageContext = deps.Platform.RestoreMessageContext
 	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: config.PlatformCLI, Permission: deps.Permission})
+	m.identity = identity
 	bridge := agenthooks.NewHookBridge(agenthooks.HookBridgeDeps{
 		Identity: identity,
 	})
@@ -91,7 +92,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Output:      output,
 		Policy:      policy,
 	})
-	toolRuntime := agenttools.NewToolRuntimeState(agenttools.ToolRuntimeStateDeps{Manager: deps.Tools, FileRollback: deps.Tools, Identity: identity})
+	toolRuntime := agenttools.NewToolRuntimeState(agenttools.ToolRuntimeStateDeps{FileRollback: deps.Tools})
 	toolDeps := agenttools.NewToolRunDeps(agenttools.ToolRunDeps{
 		NewWorkspaceStore: func(id string) workspace.WorkspaceStore {
 			return m.sessions.WorkspaceStore(id)
@@ -248,7 +249,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	}
 	handler := agentinput.NewMessageHandler(agentinput.MessageHandlerDeps{
 		History:   deps.ChatHistory,
-		Identity:  identity,
 		Hooks:     bridge,
 		Output:    output,
 		Commands:  commands,
@@ -262,7 +262,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		completion.RiskConfirmationSource{Router: m.commands, Control: deps.Control, CommandNames: agentconfirmation.RiskConfirmationCommandNames()},
 		completion.ForkMessageSource{Router: m.commands, Control: deps.Control, PageSize: cfg.View.SessionListPageSize},
 		completion.ToolDirectiveSource{Context: input.ToolCompletionContext, Tools: deps.Tools},
-		completion.RouterSource{Router: m.commands, Actor: identity.Actor},
+		completion.RouterSource{Router: m.commands},
 	)
 	m.handler = handler
 	return m, nil

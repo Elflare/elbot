@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/directive"
 	"elbot/internal/tool"
 )
@@ -45,13 +46,10 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item,
 	if err != nil {
 		return nil, err
 	}
-	infos, err := s.Tools.QueryTools(ctx, tool.ToolQuery{Kind: "tool"})
-	if err != nil {
-		return nil, err
-	}
+	availability, _ := contextinfo.ToolAvailabilityFromContext(ctx)
 	tags = matchCandidates(tags, token.Query, func(tag string) string { return tag })
-	infos = matchCandidates(infos, token.Query, func(info tool.ToolInfo) string { return info.Definition.Name })
-	out := make([]Item, 0, len(tags)+len(infos))
+	toolNames := matchCandidates(availability.Tools, token.Query, func(name string) string { return name })
+	out := make([]Item, 0, len(tags)+len(toolNames))
 	seenText := map[string]bool{}
 	for _, tag := range tags {
 		text := token.Prefix + tag
@@ -60,14 +58,17 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item,
 		if err != nil {
 			return nil, err
 		}
+		if description == "" {
+			continue
+		}
 		out = append(out, Item{Text: text, Label: tag + " <tag>", Description: description, Kind: KindToolTagDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
 	}
-	for _, info := range infos {
-		text := token.Prefix + info.Definition.Name
+	for _, name := range toolNames {
+		text := token.Prefix + name
 		if seenText[text] {
 			continue
 		}
-		out = append(out, Item{Text: text, Label: info.Definition.Name, Description: info.Definition.Description, Kind: KindToolDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
+		out = append(out, Item{Text: text, Label: name, Kind: KindToolDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
 	}
 	return out, nil
 }
@@ -76,27 +77,27 @@ func (s ToolDirectiveSource) completeSkills(ctx context.Context, token directive
 	if token.PrefixOnly {
 		return []Item{{Text: token.Prefix, Label: token.Prefix, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor}}, nil
 	}
-	infos, err := s.Tools.QueryTools(ctx, tool.ToolQuery{Kind: "skill"})
-	if err != nil {
-		return nil, err
-	}
-	infos = matchCandidates(infos, token.Query, func(info tool.ToolInfo) string { return info.Definition.Name })
-	out := make([]Item, 0, len(infos))
-	for _, info := range infos {
-		out = append(out, Item{Text: token.Prefix + info.Definition.Name, Label: info.Definition.Name, Description: info.Definition.Description, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
+	availability, _ := contextinfo.ToolAvailabilityFromContext(ctx)
+	names := matchCandidates(availability.Skills, token.Query, func(name string) string { return name })
+	out := make([]Item, 0, len(names))
+	for _, name := range names {
+		out = append(out, Item{Text: token.Prefix + name, Label: name, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
 	}
 	return out, nil
 }
 
 func (s ToolDirectiveSource) tagDescription(ctx context.Context, tag string) (string, error) {
-	infos, err := s.Tools.QueryTools(ctx, tool.ToolQuery{Tag: tag, Kind: "tool"})
+	infos, err := s.Tools.QueryTools(ctx, tool.ToolQuery{Tag: tag})
 	if err != nil {
 		return "", err
 	}
-	if len(infos) == 1 {
-		return "1 tool", nil
+	if len(infos) == 0 {
+		return "", nil
 	}
-	return strconv.Itoa(len(infos)) + " tools", nil
+	if len(infos) == 1 {
+		return "1 item", nil
+	}
+	return strconv.Itoa(len(infos)) + " items", nil
 }
 
 func matchCandidates[T any](candidates []T, query string, name func(T) string) []T {

@@ -45,6 +45,7 @@ func (r *Registry) Query(ctx context.Context, query share.ToolQuery) ([]share.To
 		return nil, err
 	}
 	actor, _ := contextinfo.ActorFromContext(ctx)
+	availability, hasAvailability := contextinfo.ToolAvailabilityFromContext(ctx)
 	r.mu.RLock()
 	var candidates []share.ToolDefinition
 	if query.Names == nil {
@@ -76,8 +77,14 @@ func (r *Registry) Query(ctx context.Context, query share.ToolQuery) ([]share.To
 		if (query.Kind == "tool" && skill) || (query.Kind == "skill" && !skill) {
 			continue
 		}
-		if query.Scope == share.QueryAvailable && (!InfoAvailableInContext(ctx, info) || !CanAccessTool(actor, r.permission, info)) {
-			continue
+		if query.Scope == share.QueryAvailable {
+			if hasAvailability {
+				if _, ok := availability.Allowed[info.Name]; !ok {
+					continue
+				}
+			} else if !InfoAvailableInContext(ctx, info) || !CanAccessTool(actor, r.permission, info) {
+				continue
+			}
 		}
 		tools = append(tools, candidate)
 	}

@@ -4,12 +4,22 @@ import toolshare "elbot/internal/tool/share"
 
 import (
 	"context"
+	"elbot/internal/contextinfo"
 	"elbot/internal/security"
 	"elbot/internal/tool/discovery"
 	toolregistry "elbot/internal/tool/registry"
 	"slices"
 	"testing"
 )
+
+func withBuiltinToolAvailability(t *testing.T, ctx context.Context, registry *toolregistry.Registry) context.Context {
+	t.Helper()
+	availability, err := discovery.NewResolver(registry).Availability(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return contextinfo.WithToolAvailability(ctx, availability)
+}
 
 func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
 	tools := []toolshare.ToolDefinition{
@@ -33,7 +43,8 @@ func TestChatHistoryToolsMutuallyDiscoverable(t *testing.T) {
 					t.Fatalf("unexpected dependency on %s: %#v", other.Definition.Name, info.DependsOn)
 				}
 			}
-			details, err := discovery.NewResolver(registry).DiscoverDetails(context.Background(), []string{value.Definition.Name})
+			ctx := withBuiltinToolAvailability(t, context.Background(), registry)
+			details, err := discovery.NewResolver(registry).DiscoverDetails(ctx, []string{value.Definition.Name})
 			if err != nil {
 				t.Fatal(err)
 			}

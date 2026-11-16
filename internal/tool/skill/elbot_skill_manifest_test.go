@@ -6,6 +6,7 @@ func TestParseAgentSkillManifestValid(t *testing.T) {
 	manifest, err := ParseAgentSkillManifest([]byte(`risk = "medium"
 superadmin_only = true
 tags = ["doc", "doc", "convert"]
+depends_on = ["read_file", "nls"]
 command = ["python", "foo.py"]
 timeout_seconds = 30
 expose_root = true
@@ -26,6 +27,9 @@ mode = "--mode"
 	}
 	if len(manifest.Tags) != 3 || manifest.Tags[0] != "doc" || manifest.Tags[2] != "convert" {
 		t.Fatalf("tags = %#v", manifest.Tags)
+	}
+	if len(manifest.DependsOn) != 2 || manifest.DependsOn[0] != "read_file" || manifest.DependsOn[1] != "nls" {
+		t.Fatalf("depends_on = %#v", manifest.DependsOn)
 	}
 }
 

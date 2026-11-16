@@ -20,7 +20,6 @@ type MessageHandler struct {
 	History interface {
 		GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
 	}
-	identity MessageIdentity
 	hooks    MessageHooks
 	output   MessageOutput
 	commands MessageCommands
@@ -39,8 +38,6 @@ type MessageHandler struct {
 
 // HandleMessage dispatches commands and chat messages.
 func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (context.Context, bool, error) {
-	actor := h.identity.Actor(ctx)
-	ctx = contextinfo.WithActor(ctx, actor)
 	segments := agentshare.InboundSegments(ctx, text)
 	woken := h.messageWakeup(ctx, llm.SegmentsTextOnly(segments))
 	ctx = agentshare.WithWakeup(ctx, woken)
@@ -100,10 +97,6 @@ func (h *MessageHandler) HandleMessage(ctx context.Context, text string) (contex
 	return next, false, err
 }
 
-type MessageIdentity interface {
-	Actor(context.Context) contextinfo.Actor
-}
-
 type MessageHooks interface {
 	CancelRoute(context.Context, agentshare.Message) bool
 	HasRoute(context.Context, agentshare.Message) bool
@@ -129,7 +122,6 @@ type MessageHandlerDeps struct {
 	History interface {
 		GetByPlatformMessage(context.Context, string, contextinfo.ChatType, string, string) (*storage.ChatMessage, error)
 	}
-	Identity MessageIdentity
 	Hooks    MessageHooks
 	Output   MessageOutput
 	Commands MessageCommands
@@ -149,7 +141,6 @@ type MessageHandlerDeps struct {
 // NewMessageHandler initializes MessageHandler without installing cross-service callbacks.
 func NewMessageHandler(deps MessageHandlerDeps) *MessageHandler {
 	return &MessageHandler{
-		identity:  deps.Identity,
 		History:   deps.History,
 		hooks:     deps.Hooks,
 		output:    deps.Output,

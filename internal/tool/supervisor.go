@@ -92,7 +92,11 @@ func (m *Supervisor) QueryTools(ctx context.Context, query ToolQuery) ([]ToolInf
 	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
 		return nil, err
 	}
-	definitions, err := m.catalog.registry.Query(ctx, toInternalToolQuery(query))
+	internalQuery := toInternalToolQuery(query)
+	if query.Tag != "" {
+		internalQuery.Scope, internalQuery.Kind = share.QueryCatalog, ""
+	}
+	definitions, err := m.catalog.registry.Query(ctx, internalQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -138,6 +142,17 @@ func (m *Supervisor) ToolTags(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	return m.preloader.Tags(ctx)
+}
+
+func (m *Supervisor) PrepareAvailabilityContext(ctx context.Context) (context.Context, error) {
+	if err := m.catalog.skillManager.EnsureLoaded(ctx); err != nil {
+		return ctx, err
+	}
+	availability, err := m.catalog.resolver.Availability(ctx)
+	if err != nil {
+		return ctx, err
+	}
+	return contextinfo.WithToolAvailability(ctx, availability), nil
 }
 
 func (m *Supervisor) DiscoveredToolsForSession(ctx context.Context, id string, background bool) ([]DiscoveredTool, error) {

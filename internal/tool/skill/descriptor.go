@@ -28,6 +28,7 @@ func (t descriptor) Definition() toolshare.ToolDefinition {
 		Risk:           t.record.Risk,
 		SuperadminOnly: t.record.SuperadminOnly,
 		Tags:           t.record.Tags,
+		DependsOn:      t.record.Manifest.DependsOn,
 	}, LoadDetail: t.LoadDetail, ActivateTools: t.ActivateTools()}
 }
 

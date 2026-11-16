@@ -71,6 +71,10 @@ func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundReq
 		if err != nil {
 			return ctx, operationresult.Result[turn.Result]{}, err
 		}
+		ctx, err = r.Preloader.PrepareAvailabilityContext(ctx)
+		if err != nil {
+			return ctx, operationresult.Result[turn.Result]{}, err
+		}
 		preloaded = r.preloadBackgroundResources(ctx, bgSession, req.ToolListNames, req.ELwispTools, req.AllowedToolNames)
 	}
 	if preloaded.Err != nil {

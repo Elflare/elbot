@@ -59,6 +59,7 @@ func TestPreloadAuditIdentityAndResult(t *testing.T) {
 					}
 					t.Cleanup(connection.Disconnect)
 					s := newTestPreloader(PreloadOptions{Registry: r})
+					ctx = withPreloadAvailability(t, ctx, r)
 					if tc.name == "background" {
 						_, err = s.PrepareBackground(ctx, share.BackgroundPreloadRequest{SessionID: sessionID, Names: []string{"guide"}, AllowedToolNames: []string{}})
 					} else {

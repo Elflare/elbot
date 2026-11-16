@@ -114,7 +114,8 @@ func TestManagerLoadsMarkdownDetailOnDemand(t *testing.T) {
 
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Updated DOCX")
 	args, _ := json.Marshal(map[string]string{"name": "docx"})
-	result, _, err := callTool(context.Background(), discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
+	ctx := withSkillAvailability(t, context.Background(), registry)
+	result, _, err := callTool(ctx, discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
@@ -148,7 +149,8 @@ input = "--input"
 
 	writeSkill(t, dir, "---\nname: docx\ndescription: DOCX skill\n---\n\n# Updated callable DOCX")
 	args, _ := json.Marshal(map[string]string{"name": "docx"})
-	result, _, err := callTool(context.Background(), discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
+	ctx := withSkillAvailability(t, context.Background(), registry)
+	result, _, err := callTool(ctx, discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
@@ -170,7 +172,8 @@ func TestMarkdownDetailReadFailureReturnsDiscoveryError(t *testing.T) {
 		t.Fatal(err)
 	}
 	args, _ := json.Marshal(map[string]string{"name": "docx"})
-	_, _, err := callTool(context.Background(), discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
+	ctx := withSkillAvailability(t, context.Background(), registry)
+	_, _, err := callTool(ctx, discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
 	if err == nil || !strings.Contains(err.Error(), "read SKILL.md") {
 		t.Fatalf("discovery error = %v, want SKILL.md read failure", err)
 	}
@@ -190,7 +193,7 @@ func TestPolicyOnlyAgentSkillHiddenFromNormalUserDiscovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	actor := contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "guest"}, Role: contextinfo.RoleUser}
-	ctx := contextinfo.WithActor(context.Background(), actor)
+	ctx := withSkillAvailability(t, contextinfo.WithActor(context.Background(), actor), registry)
 	discover := discovery.NewDiscoverTool(discovery.NewResolver(registry))
 	result, _, err := callTool(ctx, discover, toolshare.CallRequest{})
 	if err != nil || result.Status != operationresult.Success {
@@ -220,7 +223,7 @@ superadmin_only = true
 		t.Fatal(err)
 	}
 	superadmin := contextinfo.Actor{ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "local"}, Role: contextinfo.RoleSuperadmin}
-	ctx := contextinfo.WithActor(context.Background(), superadmin)
+	ctx := withSkillAvailability(t, contextinfo.WithActor(context.Background(), superadmin), registry)
 	args, _ := json.Marshal(map[string]string{"name": "private_doc"})
 	result, _, err := callTool(ctx, discovery.NewDiscoverTool(discovery.NewResolver(registry)), toolshare.CallRequest{Arguments: args})
 	if err != nil || result.Status != operationresult.Success {
@@ -367,6 +370,7 @@ func TestAgentSkillCreatorNoticeDiscovery(t *testing.T) {
 			if role != "" {
 				ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: role})
 			}
+			ctx = withSkillAvailability(t, ctx, registry)
 			result, _, err := callTool(ctx, discover, toolshare.CallRequest{Arguments: json.RawMessage(`{"name":"docx"}`)})
 			if err != nil || result.Status != operationresult.Success {
 				t.Fatal(err)

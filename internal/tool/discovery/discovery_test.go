@@ -91,7 +91,8 @@ func TestResolvePreservesSelectedRootsAndDependencies(t *testing.T) {
 	if _, err := r.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, []share.ToolDefinition{replacement.Definition()}); err != nil {
 		t.Fatal(err)
 	}
-	result, targets, err := resolver.Resolve(t.Context(), selected)
+	ctx := withAvailability(t, resolver, t.Context())
+	result, targets, err := resolver.Resolve(ctx, selected)
 	if err != nil || discoveredNames(result) != "first,second" || len(targets) != 2 {
 		t.Fatalf("result=%+v targets=%v err=%v", result, targets, err)
 	}
@@ -107,6 +108,15 @@ func newTestResolver(t *testing.T, tools ...share.ToolDefinition) (*Resolver, *r
 		t.Fatal(err)
 	}
 	return NewResolver(r), r
+}
+
+func withAvailability(t *testing.T, resolver *Resolver, ctx context.Context) context.Context {
+	t.Helper()
+	availability, err := resolver.Availability(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return contextinfo.WithToolAvailability(ctx, availability)
 }
 
 func discoveredNames(result *share.DiscoveryResult) string {
@@ -132,8 +142,9 @@ func TestDiscoverListUsesRegistryQualification(t *testing.T) {
 	if _, err := r.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, []share.ToolDefinition{NewDiscoverTool(resolver)}); err != nil {
 		t.Fatal(err)
 	}
-	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser})
-	ctx = share.WithCallPolicy(ctx, share.CallPolicy{DisableForegroundTools: true})
+	base := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser})
+	base = share.WithCallPolicy(base, share.CallPolicy{DisableForegroundTools: true})
+	ctx := withAvailability(t, resolver, base)
 	result, err := resolver.Discover(ctx, []string{" "})
 	if err != nil {
 		t.Fatal(err)
@@ -150,7 +161,7 @@ func TestDiscoverListUsesRegistryQualification(t *testing.T) {
 	if err != nil || len(empty.Tools) != 0 || len(empty.Errors) != 0 {
 		t.Fatalf("empty details = %+v, %v", empty, err)
 	}
-	ctx = contextinfo.WithModel(ctx, contextinfo.Model{APIType: string(llm.APITypeResponse)})
+	ctx = withAvailability(t, resolver, contextinfo.WithModel(base, contextinfo.Model{APIType: string(llm.APITypeResponse)}))
 	result, err = resolver.DiscoverDetails(ctx, []string{"api"})
 	if err != nil || discoveredNames(result) != "api" {
 		t.Fatalf("model details = %+v, %v", result, err)
@@ -166,14 +177,15 @@ func TestDiscoverDependenciesAndPartialFailure(t *testing.T) {
 	blocked := plainTool("blocked")
 	blocked.info.SuperadminOnly = true
 	resolver, _ := newTestResolver(t, main.Definition(), hidden.Definition(), blocked.Definition())
-	result, err := resolver.DiscoverDetails(context.Background(), []string{" main ", "main", "absent"})
+	ctx := withAvailability(t, resolver, contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser}))
+	result, err := resolver.DiscoverDetails(ctx, []string{" main ", "main", "absent"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := discoveredNames(result); got != "main,hidden" {
+	if got := discoveredNames(result); got != "" {
 		t.Fatalf("details = %q", got)
 	}
-	if len(result.Errors) != 1 || result.Errors[0].Name != "absent" {
+	if len(result.Errors) != 2 || result.Errors[0].Name != "main" || result.Errors[1].Name != "absent" {
 		t.Fatalf("errors = %+v", result.Errors)
 	}
 	for _, item := range result.Tools {
@@ -181,7 +193,7 @@ func TestDiscoverDependenciesAndPartialFailure(t *testing.T) {
 			t.Fatalf("missing schema for %s", item.Info.Name)
 		}
 	}
-	result, err = resolver.DiscoverDetails(context.Background(), []string{"hidden"})
+	result, err = resolver.DiscoverDetails(ctx, []string{"hidden"})
 	if err != nil || len(result.Tools) != 0 || len(result.Errors) != 1 {
 		t.Fatalf("hidden root = %+v, %v", result, err)
 	}
@@ -197,12 +209,13 @@ func TestDiscoverSkillDetailsFailuresAndCancellation(t *testing.T) {
 		return share.DetailBlock{}, context.Canceled
 	}}
 	resolver, _ := newTestResolver(t, skill.Definition(), failed.Definition(), canceled.Definition())
+	ctx := withAvailability(t, resolver, context.Background())
 	for _, names := range [][]string{{"failed", "skill"}, {"skill", "failed"}} {
-		if result, err := resolver.DiscoverDetails(context.Background(), names); !errors.Is(err, loadErr) || result != nil {
+		if result, err := resolver.DiscoverDetails(ctx, names); !errors.Is(err, loadErr) || result != nil {
 			t.Fatalf("failed load %v = %+v, %v", names, result, err)
 		}
 	}
-	result, err := resolver.DiscoverDetails(context.Background(), []string{"skill"})
+	result, err := resolver.DiscoverDetails(ctx, []string{"skill"})
 	if err != nil || discoveredNames(result) != "skill" || len(result.Errors) != 0 {
 		t.Fatalf("skill result = %+v, %v", result, err)
 	}
@@ -210,7 +223,7 @@ func TestDiscoverSkillDetailsFailuresAndCancellation(t *testing.T) {
 	if item.Schema != nil || item.Detail != skill.block.Content || !item.NeedsElyphRules {
 		t.Fatalf("skill = %+v", item)
 	}
-	if result, err := resolver.DiscoverDetails(context.Background(), []string{"skill", "canceled"}); !errors.Is(err, context.Canceled) || result != nil {
+	if result, err := resolver.DiscoverDetails(ctx, []string{"skill", "canceled"}); !errors.Is(err, context.Canceled) || result != nil {
 		t.Fatalf("canceled load = %+v, %v", result, err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -226,7 +239,8 @@ func TestDiscoverToolContentAndActivationMetadata(t *testing.T) {
 		(testDynamicTool{testTool: plainTool("append"), content: "追加说明"}).Definition(),
 		(testDynamicTool{testTool: plainTool("override"), content: "独立说明", override: true}).Definition(), skill.Definition(),
 	)
-	result, log, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"names":["append","override","skill","absent"]}`)})
+	ctx := withAvailability(t, resolver, context.Background())
+	result, log, err := callTool(ctx, NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"names":["append","override","skill","absent"]}`)})
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
@@ -244,7 +258,7 @@ func TestDiscoverToolContentAndActivationMetadata(t *testing.T) {
 	if log != "found=3 errors=1" {
 		t.Fatalf("log = %q", log)
 	}
-	if result, _, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"absent"}`)}); err != nil || result.Status == operationresult.Success {
+	if result, _, err := callTool(ctx, NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"absent"}`)}); err != nil || result.Status == operationresult.Success {
 		t.Fatal("single missing target should fail")
 	}
 }
@@ -252,7 +266,8 @@ func TestDiscoverToolContentAndActivationMetadata(t *testing.T) {
 func TestDiscoverDynamicContentFailure(t *testing.T) {
 	want := errors.New("dynamic content failed")
 	resolver, _ := newTestResolver(t, (testDynamicTool{testTool: plainTool("dynamic"), err: want}).Definition())
-	if _, _, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"dynamic"}`)}); !errors.Is(err, want) {
+	ctx := withAvailability(t, resolver, context.Background())
+	if _, _, err := callTool(ctx, NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"dynamic"}`)}); !errors.Is(err, want) {
 		t.Fatalf("content error = %v", err)
 	}
 }
@@ -269,7 +284,8 @@ func TestDiscoveryStateUpdateFiltersActivation(t *testing.T) {
 	api := plainTool("api")
 	api.info.APITypes = []llm.APIType{llm.APITypeResponse}
 	resolver, _ := newTestResolver(t, hidden.Definition(), admin.Definition(), foreground.Definition(), high.Definition(), api.Definition())
-	ctx := share.WithCallPolicy(context.Background(), share.CallPolicy{DisableForegroundTools: true})
+	base := share.WithCallPolicy(context.Background(), share.CallPolicy{DisableForegroundTools: true})
+	ctx := withAvailability(t, resolver, base)
 	result := &share.Result{
 		Data:     json.RawMessage(`{"tools":[{"info":{"name":"base"},"schema":{"name":"base","parameters":{"type":"object"}}}]}`),
 		Metadata: map[string]any{share.MetadataActivateTools: []any{"hidden", 42, "admin", "foreground", "high", "api", "missing", "hidden"}},
@@ -281,7 +297,7 @@ func TestDiscoveryStateUpdateFiltersActivation(t *testing.T) {
 	if len(update.Tools) != 2 || update.Tools[0].Name != "base" || update.Tools[1].Name != "hidden" {
 		t.Fatalf("update = %+v", update)
 	}
-	ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	ctx = withAvailability(t, resolver, contextinfo.WithActor(base, contextinfo.Actor{Role: contextinfo.RoleSuperadmin}))
 	update, err = resolver.DiscoveryStateUpdate(ctx, &share.Result{Metadata: map[string]any{share.MetadataActivateTools: []string{"admin"}}})
 	if err != nil || len(update.Tools) != 1 || update.Tools[0].Name != "admin" {
 		t.Fatalf("admin update = %+v, %v", update, err)
@@ -328,7 +344,8 @@ func TestDiscoveryKeepsQueriedObjectAcrossReplacement(t *testing.T) {
 	if _, err := r.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, []share.ToolDefinition{definition}); err != nil {
 		t.Fatal(err)
 	}
-	result, _, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"versioned"}`)})
+	ctx := withAvailability(t, resolver, context.Background())
+	result, _, err := callTool(ctx, NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"versioned"}`)})
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}
@@ -363,7 +380,8 @@ func TestDiscoveryKeepsSkillActivationDeclaration(t *testing.T) {
 	if _, err := r.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, []share.ToolDefinition{original.Definition()}); err != nil {
 		t.Fatal(err)
 	}
-	result, _, err := callTool(context.Background(), NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"skill"}`)})
+	ctx := withAvailability(t, resolver, context.Background())
+	result, _, err := callTool(ctx, NewDiscoverTool(resolver), share.CallRequest{Arguments: json.RawMessage(`{"name":"skill"}`)})
 	if err != nil || result.Status != operationresult.Success {
 		t.Fatal(err)
 	}

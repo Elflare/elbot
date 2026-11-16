@@ -42,6 +42,7 @@ type InputCoordinator struct {
 	execution     InputExecution
 	confirmations InputConfirmations
 	preloader     interface {
+		PrepareAvailabilityContext(context.Context) (context.Context, error)
 		PrepareTools(context.Context, []string) (tool.ToolPreload, error)
 		PrepareSkills(context.Context, string, []string) (tool.SkillPreload, error)
 	}
@@ -51,7 +52,6 @@ type InputCoordinator struct {
 }
 
 func (c *InputCoordinator) CompletionWorkspaceRoot(ctx context.Context) (string, error) {
-	ctx = contextinfo.WithActor(ctx, c.identity.Actor(ctx))
 	current, err := c.sessions.CurrentBound(ctx, c.identity.Scope(ctx))
 	if err != nil {
 		return "", err
@@ -67,19 +67,22 @@ func (c *InputCoordinator) CompletionWorkspaceRoot(ctx context.Context) (string,
 }
 
 func (c *InputCoordinator) ToolCompletionContext(ctx context.Context) (context.Context, error) {
-	ctx = contextinfo.WithActor(ctx, c.identity.Actor(ctx))
 	current, err := c.sessions.CurrentBound(ctx, c.identity.Scope(ctx))
 	if err != nil {
 		return ctx, err
 	}
 	switch current.Status {
 	case operationresult.NoCurrentSession:
-		return c.execution.DefaultModelContext(ctx)
+		ctx, err = c.execution.DefaultModelContext(ctx)
 	case operationresult.Success:
-		return c.execution.ModelContext(ctx, current.Data.Session)
+		ctx, err = c.execution.ModelContext(ctx, current.Data.Session)
 	default:
 		return ctx, fmt.Errorf("%s", current.Message)
 	}
+	if err != nil {
+		return ctx, err
+	}
+	return c.preloader.PrepareAvailabilityContext(ctx)
 }
 
 func compactCommandBlockedText(text string, commandText func(string, ...string) string) string {

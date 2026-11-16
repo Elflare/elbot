@@ -213,6 +213,7 @@ func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 		t.Fatalf("info: %+v", info)
 	}
 	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "admin"}})
+	ctx = withBuiltinToolAvailability(t, ctx, registry)
 	resolver := discovery.NewResolver(registry)
 	list, err := resolver.Discover(ctx, nil)
 	if err != nil {
@@ -255,7 +256,7 @@ func TestRollbackToolHiddenDependencyDiscovery(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("duplicate dependencies: %d", count)
 	}
-	userCtx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "user"}})
+	userCtx := withBuiltinToolAvailability(t, contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "user"}}), registry)
 	details, err = resolver.DiscoverDetails(userCtx, []string{"edit_file"})
 	if err != nil {
 		t.Fatal(err)

@@ -285,6 +285,7 @@ superadmin_only = true
 risk = "medium"
 superadmin_only = false
 tags = ["doc"]
+depends_on = ["read_file"]
 command = ["python", "foo.py"]
 timeout_seconds = 30
 expose_root = false
@@ -309,6 +310,7 @@ input = "--input"
 | `risk` | 注册成工具时必填 | `safe`、`low`、`medium`、`high`、`critical`；文档型未写按 `safe` 处理。 |
 | `superadmin_only` | 否 | `true` 时只有超级管理员能发现、预载或调用。 |
 | `tags` | 否 | 工具分类，用于 `@tool:<tag>` 预载。 |
+| `depends_on` | 否 | 发现或预载该 Skill 时必须同时可用的工具/Skill 名称。 |
 | `command` | 工具化必填 | 命令数组，不用 shell 字符串。 |
 | `parameters` | 工具化必填 | JSON object schema，决定 LLM 看到的参数。 |
 | `positional` | 否 | 参数名数组，按声明顺序作为位置参数传入；每项必须对应 `parameters.properties`。 |

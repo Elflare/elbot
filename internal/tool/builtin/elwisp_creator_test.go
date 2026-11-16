@@ -130,7 +130,7 @@ func TestElwispCreatorDependencyDiscovery(t *testing.T) {
 	if got := strings.Join(registered.Definition.DependsOn, ","); got != "read_file,edit_file,shell" {
 		t.Fatalf("depends_on = %q", got)
 	}
-	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	ctx := withBuiltinToolAvailability(t, contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin}), registry)
 	details, err := discovery.NewResolver(registry).DiscoverDetails(ctx, []string{ElwispCreatorName})
 	if err != nil || len(details.Errors) > 0 {
 		t.Fatalf("discover = %+v, %v", details, err)

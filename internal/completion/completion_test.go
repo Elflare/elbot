@@ -30,7 +30,7 @@ func TestRouterSourceCompletesCommands(t *testing.T) {
 	if err := router.Register(command.NewFunc(command.Info{Name: "models", MinRole: contextinfo.RoleUser}, nil)); err != nil {
 		t.Fatalf("register models: %v", err)
 	}
-	items, _ := RouterSource{Router: router, Actor: func(context.Context) contextinfo.Actor { return contextinfo.Actor{Role: contextinfo.RoleUser} }}.Complete(context.Background(), Request{Text: "/m"})
+	items, _ := RouterSource{Router: router}.Complete(contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser}), Request{Text: "/m"})
 	if len(items) != 3 || items[0].Text != "/model" || items[1].Text != "/m" || items[2].Text != "/models" {
 		t.Fatalf("Complete = %#v", items)
 	}
@@ -53,28 +53,32 @@ func TestRouterSourceFiltersCommandsByActor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	userSource := RouterSource{Router: router, Actor: func(context.Context) contextinfo.Actor { return contextinfo.Actor{Role: contextinfo.RoleUser} }}
-	items, _ := userSource.Complete(context.Background(), Request{Text: "/"})
+	userSource := RouterSource{Router: router}
+	userCtx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleUser})
+	items, _ := userSource.Complete(userCtx, Request{Text: "/"})
 	if len(items) != 2 || items[0].Text != "/public" || items[1].Text != "/p" {
 		t.Fatalf("user command completions = %#v", items)
 	}
-	if got, _ := userSource.Complete(context.Background(), Request{Text: "/s"}); len(got) != 0 {
+	if got, _ := userSource.Complete(userCtx, Request{Text: "/s"}); len(got) != 0 {
 		t.Fatalf("user private command completions = %#v", got)
 	}
-	if got, _ := userSource.Complete(context.Background(), Request{Text: "/help mo", Cursor: len("/help mo")}); len(got) != 0 {
+	if got, _ := userSource.Complete(userCtx, Request{Text: "/help mo", Cursor: len("/help mo")}); len(got) != 0 {
 		t.Fatalf("user private argument completions = %#v", got)
 	}
 
-	adminSource := RouterSource{Router: router, Actor: func(context.Context) contextinfo.Actor { return contextinfo.Actor{Role: contextinfo.RoleSuperadmin} }}
-	if got, _ := adminSource.Complete(context.Background(), Request{Text: "/s"}); len(got) != 2 || got[0].Text != "/secret" || got[1].Text != "/s" {
+	adminSource := RouterSource{Router: router}
+	adminCtx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	if got, _ := adminSource.Complete(adminCtx, Request{Text: "/s"}); len(got) != 2 || got[0].Text != "/secret" || got[1].Text != "/s" {
 		t.Fatalf("admin private command completions = %#v", got)
 	}
-	if got, _ := adminSource.Complete(context.Background(), Request{Text: "/help mo", Cursor: len("/help mo")}); len(got) != 1 || got[0].Text != "model" {
+	if got, _ := adminSource.Complete(adminCtx, Request{Text: "/help mo", Cursor: len("/help mo")}); len(got) != 1 || got[0].Text != "model" {
 		t.Fatalf("admin private argument completions = %#v", got)
 	}
 }
 func TestToolDirectiveSourceCompletesOnlyPlainTools(t *testing.T) {
-	source := ToolDirectiveSource{Context: func(ctx context.Context) (context.Context, error) { return ctx, nil }, Tools: completionCatalog{tools: []tool.Info{{Name: "web_extract"}, {Name: "web_search"}, {Name: "my_web"}, {Name: "shell"}}, skills: []tool.Info{{Name: "docx"}}, tags: []string{"web", "new_web"}, names: []string{"web_extract", "web_search"}}}
+	source := ToolDirectiveSource{Context: func(ctx context.Context) (context.Context, error) {
+		return withCompletionNames(ctx, []string{"web_extract", "web_search", "my_web", "shell"}, []string{"docx"}), nil
+	}, Tools: completionCatalog{tools: []tool.Info{{Name: "web_extract"}, {Name: "web_search"}, {Name: "my_web"}, {Name: "shell"}}, skills: []tool.Info{{Name: "docx"}}, tags: []string{"web", "new_web"}, names: []string{"web_extract", "web_search"}}}
 
 	items, _ := source.Complete(context.Background(), Request{Text: "查 @tool:we", Cursor: len("查 @tool:we")})
 	if len(items) != 3 || items[0].Text != "@tool:web" || items[0].Label != "web <tag>" || items[0].Kind != KindToolTagDirective || items[1].Text != "@tool:web_extract" || items[2].Text != "@tool:web_search" || items[0].ReplaceStart != len("查 ") || items[0].ReplaceEnd != len("查 @tool:we") {
@@ -102,7 +106,9 @@ func TestToolDirectiveSourceCompletesOnlyPlainTools(t *testing.T) {
 }
 
 func TestToolDirectiveSourceCompletesSkillsSeparately(t *testing.T) {
-	source := ToolDirectiveSource{Context: func(ctx context.Context) (context.Context, error) { return ctx, nil }, Tools: completionCatalog{tools: []tool.Info{{Name: "doc_tool"}}, skills: []tool.Info{{Name: "docx"}}}}
+	source := ToolDirectiveSource{Context: func(ctx context.Context) (context.Context, error) {
+		return withCompletionNames(ctx, []string{"doc_tool"}, []string{"docx"}), nil
+	}, Tools: completionCatalog{tools: []tool.Info{{Name: "doc_tool"}}, skills: []tool.Info{{Name: "docx"}}}}
 
 	items, _ := source.Complete(context.Background(), Request{Text: "查 @skill:do", Cursor: len("查 @skill:do")})
 	if len(items) != 1 || items[0].Text != "@skill:docx" || items[0].Kind != KindSkillDirective || items[0].ReplaceStart != len("查 ") || items[0].ReplaceEnd != len("查 @skill:do") {
@@ -126,10 +132,12 @@ func TestToolDirectiveSourceCompletesSkillsSeparately(t *testing.T) {
 }
 
 func TestToolDirectiveSourceCompletesConfiguredTags(t *testing.T) {
-	source := ToolDirectiveSource{Context: func(ctx context.Context) (context.Context, error) { return ctx, nil }, Tools: completionCatalog{tools: []tool.Info{{Name: "alpha"}}, tags: []string{"agent"}, names: []string{"alpha"}}}
+	source := ToolDirectiveSource{Context: func(ctx context.Context) (context.Context, error) {
+		return withCompletionNames(ctx, []string{"alpha"}, nil), nil
+	}, Tools: completionCatalog{tools: []tool.Info{{Name: "alpha"}}, tags: []string{"agent"}, names: []string{"alpha"}}}
 
 	items, _ := source.Complete(context.Background(), Request{Text: "@tool:ag", Cursor: len("@tool:ag")})
-	if len(items) != 1 || items[0].Text != "@tool:agent" || items[0].Description != "1 tool" {
+	if len(items) != 1 || items[0].Text != "@tool:agent" || items[0].Description != "1 item" {
 		t.Fatalf("Complete configured tag = %#v", items)
 	}
 }
@@ -139,7 +147,8 @@ func TestRouterSourceCompletesCommandArgs(t *testing.T) {
 	if err := router.Register(commandArgCompleter{}); err != nil {
 		t.Fatal(err)
 	}
-	items, _ := RouterSource{Router: router, Actor: func(context.Context) contextinfo.Actor { return contextinfo.Actor{Role: contextinfo.RoleSuperadmin} }}.Complete(context.Background(), Request{Text: "/help mo", Cursor: len("/help mo")})
+	ctx := contextinfo.WithActor(context.Background(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	items, _ := RouterSource{Router: router}.Complete(ctx, Request{Text: "/help mo", Cursor: len("/help mo")})
 	if len(items) != 1 || items[0].Text != "model" || items[0].ReplaceStart != len("/help ") || items[0].ReplaceEnd != len("/help mo") {
 		t.Fatalf("Complete = %#v", items)
 	}
@@ -167,8 +176,8 @@ func (c completionCatalog) QueryTools(ctx context.Context, q tool.ToolQuery) ([]
 		return c.query(ctx, q)
 	}
 	if q.Tag != "" {
-		if q.Kind != "tool" {
-			return nil, errors.New("tag query must select tools")
+		if q.Kind != "" {
+			return nil, errors.New("tag query must include tools and skills")
 		}
 		var infos []tool.ToolInfo
 		for _, name := range c.names {
@@ -187,16 +196,29 @@ func (c completionCatalog) QueryTools(ctx context.Context, q tool.ToolQuery) ([]
 	return infos, nil
 }
 func (c completionCatalog) ToolTags(context.Context) ([]string, error) { return c.tags, nil }
+
+func withCompletionNames(ctx context.Context, tools, skills []string) context.Context {
+	allowed := make(map[string]struct{}, len(tools)+len(skills))
+	for _, name := range append(tools, skills...) {
+		allowed[name] = struct{}{}
+	}
+	return contextinfo.WithToolAvailability(ctx, contextinfo.ToolAvailability{Tools: tools, Skills: skills, Allowed: allowed})
+}
+
 func TestToolCompletionPreservesPreparedContextAndReplacementRange(t *testing.T) {
 	ctx := contextinfo.WithModel(t.Context(), contextinfo.Model{APIType: "chat"})
 	source := ToolDirectiveSource{
 		Context: func(ctx context.Context) (context.Context, error) {
-			return contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleUser, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "user"}}), nil
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleUser, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "user"}})
+			return withCompletionNames(ctx, []string{"visible"}, nil), nil
 		},
 		Tools: completionCatalog{query: func(ctx context.Context, q tool.ToolQuery) ([]tool.ToolInfo, error) {
 			actor, _ := contextinfo.ActorFromContext(ctx)
 			model, _ := contextinfo.ModelFromContext(ctx)
-			if actor.ID != "user" || model.APIType != "chat" || q.Kind != "tool" {
+			if actor.ID != "user" || model.APIType != "chat" || q.Kind != "" {
 				t.Fatalf("context or query lost: %+v %+v %+v", actor, model, q)
 			}
 			if err := ctx.Err(); err != nil {

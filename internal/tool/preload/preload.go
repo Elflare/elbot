@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"elbot/internal/config"
-	"elbot/internal/elyph"
+	"elbot/internal/contextinfo"
 	globalevents "elbot/internal/events"
 	"elbot/internal/tool/share"
 )
@@ -48,6 +48,9 @@ func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (shar
 	seen := map[string]bool{}
 	var content []string
 	for i, name := range names {
+		if definition, ok := s.Registry.Get(strings.TrimSpace(name)); ok && definition.LoadDetail != nil {
+			continue
+		}
 		details, targets, tag, err := s.discoverDirective(ctx, name)
 		if err != nil {
 			return share.ToolPreload{}, err
@@ -63,10 +66,16 @@ func (s *PreloadService) PrepareTools(ctx context.Context, names []string) (shar
 		if strings.TrimSpace(text) != "" {
 			content = append(content, text)
 		}
-		result.Update.Tools = append(result.Update.Tools, s.NativeDiscoveredToolsFromDiscovery(details)...)
-		for _, item := range details.Tools {
-			result.NeedsElyphRules = result.NeedsElyphRules || item.NeedsElyphRules
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		blocks, tools, needsElyph, err := s.preloadDetails(ctx, facts.SessionID, details, targets, share.PolicyFromContext(ctx).DisableForegroundTools)
+		if err != nil {
+			return share.ToolPreload{}, err
 		}
+		if text := share.RenderDetailBlocks(blocks); text != "" {
+			content = append(content, text)
+		}
+		result.Update.Tools = append(result.Update.Tools, tools...)
+		result.NeedsElyphRules = result.NeedsElyphRules || needsElyph
 		if tag != "" {
 			result.Update.Tags = append(result.Update.Tags, tag)
 		}
@@ -86,34 +95,35 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 		targets[candidate.Definition.Name] = candidate
 	}
 	result := share.SkillPreload{Accepted: make([]bool, len(names))}
+	var roots []share.ToolDefinition
 	seen := map[string]bool{}
-	var blocks []share.DetailBlock
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if root, ok := targets[name]; ok && !seen[name] {
+			seen[name] = true
+			roots = append(roots, root)
+		}
+	}
+	details, targets, err := s.Resolver.Resolve(ctx, roots)
+	if err != nil {
+		return share.SkillPreload{}, err
+	}
+	blocks, tools, needsElyph, err := s.preloadDetails(ctx, sessionID, details, targets, share.PolicyFromContext(ctx).DisableForegroundTools)
+	if err != nil {
+		return share.SkillPreload{}, err
+	}
+	result.Update.Tools = append(result.Update.Tools, tools...)
+	result.NeedsElyphRules = needsElyph
+	for _, item := range details.Tools {
+		if item.DetailBlock.Content != "" {
+			result.Names = append(result.Names, item.Info.Name)
+		}
+	}
 	for i, name := range names {
 		name = strings.TrimSpace(name)
-		candidate, ok := targets[name]
-		if !ok {
+		if _, ok := targets[name]; !ok {
 			result.Invalid = append(result.Invalid, name)
 			continue
-		}
-		if !seen[name] {
-			block, err := candidate.LoadDetail(ctx)
-			if err == nil {
-				err = ctx.Err()
-			}
-			if err != nil {
-				return share.SkillPreload{}, err
-			}
-			seen[name] = true
-			result.Names = append(result.Names, name)
-			blocks = append(blocks, block)
-			result.NeedsElyphRules = result.NeedsElyphRules || (block.Format == elyph.Format && strings.TrimSpace(block.Content) != "")
-			for _, wrapper := range candidate.ActivateTools {
-				tools, err := s.preloadWrapper(ctx, sessionID, wrapper, share.PolicyFromContext(ctx).DisableForegroundTools)
-				if err != nil {
-					return share.SkillPreload{}, err
-				}
-				result.Update.Tools = append(result.Update.Tools, tools...)
-			}
 		}
 		result.Accepted[i] = true
 	}
@@ -121,42 +131,53 @@ func (s *PreloadService) PrepareSkills(ctx context.Context, sessionID string, na
 	return result, nil
 }
 
+func (s *PreloadService) preloadDetails(ctx context.Context, sessionID string, details *share.DiscoveryResult, targets map[string]share.ToolDefinition, background bool) ([]share.DetailBlock, []share.DiscoveredTool, bool, error) {
+	var blocks []share.DetailBlock
+	needsElyph := false
+	var tools []share.DiscoveredTool
+	for _, item := range details.Tools {
+		needsElyph = needsElyph || item.NeedsElyphRules
+		if item.DetailBlock.Content != "" {
+			blocks = append(blocks, item.DetailBlock)
+		}
+		for _, wrapper := range targets[item.Info.Name].ActivateTools {
+			activated, err := s.preloadWrapper(ctx, sessionID, wrapper, background)
+			if err != nil {
+				return nil, nil, false, err
+			}
+			tools = append(tools, activated...)
+		}
+	}
+	tools = append(tools, s.NativeDiscoveredToolsFromDiscovery(details)...)
+	return blocks, tools, needsElyph, nil
+}
+
 func (s *PreloadService) discoverDirective(ctx context.Context, name string) (*share.DiscoveryResult, map[string]share.ToolDefinition, string, error) {
 	name = strings.TrimSpace(name)
-	query, tag := share.ToolQuery{Names: []string{name}, Kind: "tool"}, ""
+	query, tag := share.ToolQuery{Scope: share.QueryAvailable, Names: []string{name}, IncludeHidden: true, IncludeDiscover: true}, ""
 	if _, exists := s.Registry.Get(name); !exists {
 		tag = share.NormalizeToolTag(name)
-		query.Names = nil
+		query.Scope, query.Names = share.QueryCatalog, nil
+		candidates, err := s.Registry.Query(ctx, query)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		names, err := s.NamesByTag(ctx, tag, candidates)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		candidates = slices.DeleteFunc(candidates, func(candidate share.ToolDefinition) bool {
+			return !slices.Contains(names, candidate.Definition.Name)
+		})
+		result, targets, err := s.Resolver.Resolve(ctx, candidates)
+		return result, targets, tag, err
 	}
 	candidates, err := s.Registry.Query(ctx, query)
 	if err != nil {
 		return nil, nil, "", err
 	}
-	if query.Names == nil {
-		names, err := s.NamesByTag(ctx, tag, candidates)
-		if err != nil {
-			return nil, nil, "", err
-		}
-		candidates = slices.DeleteFunc(candidates, func(definition share.ToolDefinition) bool {
-			return !slices.Contains(names, definition.Definition.Name)
-		})
-	}
-	result, targets, err := s.discoverNames(ctx, candidates)
+	result, targets, err := s.Resolver.Resolve(ctx, candidates)
 	return result, targets, tag, err
-}
-
-func (s *PreloadService) discoverNames(ctx context.Context, candidates []share.ToolDefinition) (*share.DiscoveryResult, map[string]share.ToolDefinition, error) {
-	details, targets, err := s.Resolver.Resolve(ctx, candidates)
-	if err != nil {
-		return nil, nil, err
-	}
-	result := &share.DiscoveryResult{Errors: details.Errors}
-	for _, item := range details.Tools {
-		if item.Schema != nil && item.Info.Name != "" && item.Detail == "" {
-			result.Tools = append(result.Tools, item)
-		}
-	}
-	return result, targets, nil
 }
 
 func (s *PreloadService) discoveryContent(ctx context.Context, details *share.DiscoveryResult, targets map[string]share.ToolDefinition, seen map[string]bool) (string, error) {
@@ -215,7 +236,7 @@ func (s *PreloadService) preloadWrapper(ctx context.Context, sessionID, name str
 	// 可执行 Skill 的文档和自身 schema 分开提供，激活时直接读取所选对象的 schema。
 	skill := candidate.LoadDetail != nil
 	if background && !info.Hidden && !skill {
-		result, _, err := s.discoverNames(ctx, candidates)
+		result, _, err := s.Resolver.Resolve(ctx, candidates)
 		if err != nil {
 			return nil, err
 		}

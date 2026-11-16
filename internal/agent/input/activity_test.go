@@ -39,6 +39,10 @@ func (activityTestOutput) Notify(context.Context, slog.Level, string) {}
 
 type activityTestPreloader struct{}
 
+func (activityTestPreloader) PrepareAvailabilityContext(ctx context.Context) (context.Context, error) {
+	return ctx, nil
+}
+
 func (activityTestPreloader) PrepareTools(_ context.Context, names []string) (tool.ToolPreload, error) {
 	return tool.ToolPreload{Accepted: []bool{true}, Update: tool.StateUpdate{Tools: []tool.DiscoveredTool{{Name: "alpha", CanonicalName: "alpha", Source: tool.SourceKindNative}}}}, nil
 }

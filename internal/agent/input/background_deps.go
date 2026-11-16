@@ -46,6 +46,7 @@ type BackgroundHandlerDeps struct {
 		RunBackground(context.Context, *storage.Session, string) (context.Context, operationresult.Result[turn.Result], error)
 	} // Resolves model context and executes through the existing coordinator.
 	Preloader interface {
+		PrepareAvailabilityContext(context.Context) (context.Context, error)
 		PrepareBackground(context.Context, tool.BackgroundPreloadRequest) (tool.BackgroundPreload, error)
 	} // Prepares declarations and Skill content for a new task session.
 	ToolState interface {

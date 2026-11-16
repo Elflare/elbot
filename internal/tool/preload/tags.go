@@ -14,6 +14,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/tool/share"
 )
 
@@ -54,7 +55,15 @@ func (s *PreloadService) NamesByTag(ctx context.Context, tag string, definitions
 			names = append(names, definition.Definition.Name)
 		}
 	}
-	return uniqueNames(names), nil
+	names = uniqueNames(names)
+	if availability, ok := contextinfo.ToolAvailabilityFromContext(ctx); ok {
+		for _, name := range names {
+			if _, ok := availability.Allowed[name]; !ok {
+				return nil, nil
+			}
+		}
+	}
+	return names, nil
 }
 
 func (s *toolTagConfigSource) load(ctx context.Context) (config.ToolTagsConfig, error) {
@@ -139,7 +148,7 @@ func (s *PreloadService) Tags(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	definitions, err := s.Registry.Query(ctx, share.ToolQuery{Kind: "tool"})
+	definitions, err := s.Registry.Query(ctx, share.ToolQuery{})
 	if err != nil {
 		return nil, err
 	}

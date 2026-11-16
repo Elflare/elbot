@@ -36,7 +36,7 @@ func (r *Resolver) activatedTools(ctx context.Context, metadata map[string]any) 
 		return nil, nil
 	}
 	tools, err := r.registry.Query(ctx, share.ToolQuery{
-		Names: names, IncludeHidden: true, IncludeDiscover: true,
+		Scope: share.QueryAvailable, Names: names, IncludeHidden: true, IncludeDiscover: true,
 	})
 	if err != nil {
 		return nil, err

@@ -33,6 +33,7 @@ func TestTagExpansionAndEmptyQueries(t *testing.T) {
 	s := newTestPreloader(PreloadOptions{Registry: r, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{
 		"group": {Tools: []string{" configured ", "built_in", "configured"}, Prompt: "  instructions  "},
 	}}})
+	ctx := withPreloadAvailability(t, t.Context(), r)
 	for _, tag := range []string{" GROUP ", "missing", "", "bad/tag"} {
 		want := ""
 		if tag == " GROUP " {
@@ -42,7 +43,7 @@ func TestTagExpansionAndEmptyQueries(t *testing.T) {
 		if err != nil || strings.Join(names, ",") != want {
 			t.Fatalf("tag=%q names=%v err=%v", tag, names, err)
 		}
-		prepared, err := s.PrepareTools(t.Context(), []string{tag})
+		prepared, err := s.PrepareTools(ctx, []string{tag})
 		if err != nil || prepared.Accepted[0] != (want != "") || len(prepared.Update.Tools) != len(names) {
 			t.Fatalf("tag=%q preload=%+v err=%v", tag, prepared, err)
 		}

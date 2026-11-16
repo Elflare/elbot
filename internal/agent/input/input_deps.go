@@ -62,6 +62,7 @@ type InputCoordinatorDeps struct {
 	Execution     InputExecution
 	Confirmations InputConfirmations
 	Preloader     interface {
+		PrepareAvailabilityContext(context.Context) (context.Context, error)
 		PrepareTools(context.Context, []string) (tool.ToolPreload, error)
 		PrepareSkills(context.Context, string, []string) (tool.SkillPreload, error)
 	}

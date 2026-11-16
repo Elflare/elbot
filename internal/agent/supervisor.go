@@ -9,6 +9,7 @@ import (
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/command"
 	"elbot/internal/completion"
+	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
 	"elbot/internal/control"
 	"elbot/internal/events"
@@ -26,24 +27,27 @@ import (
 
 // Supervisor owns foreground and background execution and its independently managed Session, Request and Turn state.
 type Supervisor struct {
-	statusChanged         *signal.Signal[agentexecution.StatusChangedEvent, signal.Empty] // Closed after internal producers finish.
-	ctx                   context.Context
-	cancel                context.CancelFunc
-	sessions              *session.Supervisor
-	requests              *request.Manager
-	turns                 *turn.Supervisor
-	routes                *routes.Registry
-	contexts              *contextmgr.Service
-	commands              *command.Router
-	background            *agentinput.BackgroundHandler // Prepares task input using owned Session and execution capabilities.
-	handler               *agentinput.MessageHandler
-	input                 *agentinput.InputCoordinator
-	completion            *completion.Service
-	execution             *agentexecution.ExecutionCoordinator
-	bridge                *agenthooks.HookBridge
-	mu                    sync.Mutex
-	started, closed       bool
-	done                  chan struct{}
+	statusChanged   *signal.Signal[agentexecution.StatusChangedEvent, signal.Empty] // Closed after internal producers finish.
+	ctx             context.Context
+	cancel          context.CancelFunc
+	sessions        *session.Supervisor
+	requests        *request.Manager
+	turns           *turn.Supervisor
+	routes          *routes.Registry
+	contexts        *contextmgr.Service
+	commands        *command.Router
+	background      *agentinput.BackgroundHandler // Prepares task input using owned Session and execution capabilities.
+	handler         *agentinput.MessageHandler
+	input           *agentinput.InputCoordinator
+	completion      *completion.Service
+	execution       *agentexecution.ExecutionCoordinator
+	bridge          *agenthooks.HookBridge
+	mu              sync.Mutex
+	started, closed bool
+	done            chan struct{}
+	identity        interface {
+		Actor(context.Context) contextinfo.Actor
+	}
 	restoreMessageContext func(context.Context, context.Context) context.Context // 注入的平台上下文恢复能力，不读取平台内部值。
 }
 
@@ -56,6 +60,7 @@ func (m *Supervisor) ContinueControlInput(ctx context.Context, continuation cont
 }
 
 func (m *Supervisor) HandleMessage(ctx context.Context, req MessageRequest) error {
+	ctx = contextinfo.WithActor(ctx, m.identity.Actor(ctx))
 	msg := agentshare.MessageContext{
 		RawText: req.RawText, GroupRole: req.GroupRole, BufferAssistantOutput: req.BufferAssistantOutput,
 		ForkFromMessageID: req.ForkFromMessageID, ResumeSessionID: req.ResumeSessionID,
@@ -98,6 +103,7 @@ func messageSegments(input []MessageSegment) []agentshare.MessageSegment {
 }
 
 func (m *Supervisor) Complete(ctx context.Context, req completion.Request) ([]completion.Item, error) {
+	ctx = contextinfo.WithActor(ctx, m.identity.Actor(ctx))
 	return m.completion.Complete(ctx, req)
 }
 

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -95,8 +96,10 @@ func TestBackgroundPreloadIncludesToolContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	preloader := newTestPreloader(PreloadOptions{Registry: registry, Tags: config.ToolTagsConfig{Tags: map[string]config.ToolTagConfig{"tasks": {Tools: []string{"task_tool"}}}}})
-	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
-	ctx = testutil.TaskContext(ctx, "")
+	base := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	base = testutil.TaskContext(base, "")
+	ctx := withPreloadAvailability(t, base, registry)
+	ctx = withPreloadAvailability(t, ctx, registry)
 	prepared, err := preloader.PrepareBackground(ctx, share.BackgroundPreloadRequest{SessionID: "session", Names: []string{"task_tool", "tasks", "task_tool"}})
 	if err != nil {
 		t.Fatal(err)
@@ -120,6 +123,7 @@ func TestBackgroundPreloadIncludesToolContent(t *testing.T) {
 	if _, err := registry.RegisterTools(t.Context(), share.SourceSkill, share.ToolRegistrationScope{}, []share.ToolDefinition{(&preloadSkill{availabilityTestTool: availabilityTestTool{name: "broken"}, err: errors.New("detail failed")}).Definition()}); err != nil {
 		t.Fatal(err)
 	}
+	ctx = withPreloadAvailability(t, base, registry)
 	prepared, err = preloader.PrepareBackground(ctx, share.BackgroundPreloadRequest{SessionID: "session", Names: []string{"tasks", "broken"}})
 	if err == nil || len(prepared.Update.Tools) != 0 || len(prepared.Update.Tags) != 0 || prepared.SkillPrompt != "" {
 		t.Fatalf("skill failure leaked tool preparation: %+v err=%v", prepared, err)
@@ -173,6 +177,7 @@ func TestBackgroundPreloadLocalAndELwisp(t *testing.T) {
 	}
 	s := newTestPreloader(PreloadOptions{Registry: r})
 	ctx := testutil.TaskContext(t.Context(), "")
+	ctx = withPreloadAvailability(t, ctx, r)
 	schema := map[string]any{"type": "object", "properties": map[string]any{"x": map[string]any{"type": "string"}}}
 	req := share.BackgroundPreloadRequest{SessionID: "session", Names: []string{"guide", "guide"}, ELwispTools: []share.ELwispToolDeclaration{
 		{Name: "remote", CanonicalName: "source_remote", Description: "remote", Risk: share.RiskLow, EventKey: "event", Endpoint: "https://example.invalid", TimeoutSeconds: 9, Schema: schema},
@@ -228,8 +233,9 @@ func TestSelectionsExpandBeforeRuntimeQualification(t *testing.T) {
 	if err != nil || len(selections) != 1 || strings.Join(selections[0].Names, ",") != "admin,api,guide,hidden,normal" {
 		t.Fatalf("selections=%+v err=%v", selections, err)
 	}
-	prepared, err := s.PrepareTools(t.Context(), []string{"group"})
-	if err != nil || len(prepared.Update.Tools) != 1 || prepared.Update.Tools[0].Name != "normal" {
+	ctx := withPreloadAvailability(t, t.Context(), r)
+	prepared, err := s.PrepareTools(ctx, []string{"group"})
+	if err != nil || len(prepared.Update.Tools) != 0 || !reflect.DeepEqual(prepared.Invalid, []string{"group"}) {
 		t.Fatalf("runtime qualification: %+v err=%v", prepared, err)
 	}
 }
@@ -246,7 +252,8 @@ func TestPreloadKeepsSelectedObjectAfterReplacement(t *testing.T) {
 	if _, err := r.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, []share.ToolDefinition{original.Definition()}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := newTestPreloader(PreloadOptions{Registry: r}).PrepareTools(t.Context(), []string{"dynamic"})
+	ctx := withPreloadAvailability(t, t.Context(), r)
+	got, err := newTestPreloader(PreloadOptions{Registry: r}).PrepareTools(ctx, []string{"dynamic"})
 	if err != nil || len(got.Update.Tools) != 1 || got.Update.Tools[0].Schema.Description != "old" || original.calls != 1 || replacement.calls != 0 {
 		t.Fatalf("got=%+v original=%d replacement=%d err=%v", got, original.calls, replacement.calls, err)
 	}
@@ -260,6 +267,7 @@ func TestPrepareToolsCancellationDuringContent(t *testing.T) {
 	if _, err := r.RegisterTools(t.Context(), share.SourceBuiltin, share.ToolRegistrationScope{}, []share.ToolDefinition{candidate.Definition()}); err != nil {
 		t.Fatal(err)
 	}
+	ctx = withPreloadAvailability(t, ctx, r)
 	got, err := newTestPreloader(PreloadOptions{Registry: r}).PrepareTools(ctx, []string{"cancel"})
 	if !errors.Is(err, context.Canceled) || len(got.Update.Tools) != 0 || got.Content != "" {
 		t.Fatalf("got=%+v err=%v", got, err)
@@ -272,4 +280,13 @@ func newTestPreloader(opts PreloadOptions) *PreloadService {
 	opts.BackgroundDiscoveredTools = registry.BackgroundDiscoveredTools
 	opts.RegisterTools = opts.Registry.(*registry.Registry).RegisterTools
 	return NewPreloadService(opts)
+}
+
+func withPreloadAvailability(t *testing.T, ctx context.Context, r *registry.Registry) context.Context {
+	t.Helper()
+	availability, err := discovery.NewResolver(r).Availability(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return contextinfo.WithToolAvailability(ctx, availability)
 }

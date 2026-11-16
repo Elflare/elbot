@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"elbot/internal/config"
+	"elbot/internal/contextinfo"
 	"elbot/internal/llm"
 
 	"elbot/internal/security"
@@ -208,6 +209,14 @@ func (s directiveState) Commit(ctx context.Context, id string, update tool.State
 }
 
 type directivePreloader struct{ *preload.PreloadService }
+
+func (p directivePreloader) PrepareAvailabilityContext(ctx context.Context) (context.Context, error) {
+	availability, err := discovery.NewResolver(p.Registry).Availability(ctx)
+	if err != nil {
+		return ctx, err
+	}
+	return contextinfo.WithToolAvailability(ctx, availability), nil
+}
 
 func (p directivePreloader) PrepareTools(ctx context.Context, names []string) (tool.ToolPreload, error) {
 	v, err := p.PreloadService.PrepareTools(ctx, names)

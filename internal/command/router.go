@@ -81,7 +81,8 @@ func (r *Router) Dispatch(ctx context.Context, raw string) (Result, error) {
 		return Result{Status: operationresult.Rejected, Message: "not a command"}, nil
 	}
 	h, ok := r.handlers[parsed.Name]
-	if !ok {
+	actor, _ := contextinfo.ActorFromContext(ctx)
+	if !ok || !CanAccess(h.Info(), actor) {
 		return Result{
 			Status:  operationresult.Rejected,
 			Message: fmt.Sprintf("unk command: %s%s\n%s", parsed.Prefix, parsed.Name, r.commandText("help")),
