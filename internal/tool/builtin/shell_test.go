@@ -202,7 +202,7 @@ func TestAnalyzeBashShellAdviceRejectsCatResidentMemory(t *testing.T) {
 	if err := os.WriteFile(path, []byte("[[resident_memories]]\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), filepath.Dir(path), FileGuard{NewResidentMemoryFileGuardRule(path)})
+	advice := analyzeBashShellAdvice(parseBashForTest(t, "echo ok && cat "+filepath.ToSlash(path)), filepath.Dir(path), FileGuard{NewResidentMemoryFileGuardRule(path)})
 	if advice.blocked.Status == operationresult.Success || !strings.Contains(advice.blocked.Message, "resident_memory_normal") {
 		t.Fatalf("expected resident memory error, got %v", advice.blocked)
 	}
@@ -299,22 +299,47 @@ func TestShellToolUsesWorkspaceDir(t *testing.T) {
 }
 
 func TestRejectBashShellDirectoryChangeCommand(t *testing.T) {
-	err := rejectBashShellDirectoryChange(parseBashForTest(t, "cd internal && pwd"))
+	err := rejectBashShellDirectoryChange(parseBashForTest(t, "echo ok && cd internal && pwd"))
 	if err == nil || !strings.Contains(err.Error(), "workspace") {
 		t.Fatalf("expected cd rejection, got %v", err)
 	}
 }
 
-func TestAnalyzeBashShellAdviceDoesNotWarnWorkspaceForPathArguments(t *testing.T) {
+func TestAnalyzeBashShellAdviceSuggestsForFirstCommand(t *testing.T) {
 	workDir := t.TempDir()
-	for _, cmd := range []string{
-		"cat sample.txt",
-		`grep -rn "func (c \*ExecutionCoordinator) enterTurn\|func (c \*ExecutionCoordinator) EnterInput" -A 40 --include=*.go internal/agent/execution | head -80`,
+	for _, tc := range []struct {
+		cmd  string
+		want string
+	}{
+		{"cat sample.txt", warnUseReadFile},
+		{"cat", warnUseReadFile},
+		{"less sample.txt", warnUseReadFile},
+		{"more sample.txt", warnUseReadFile},
+		{"head -10 sample.txt | grep alpha", warnUseReadFile},
+		{"tail sample.txt", warnUseReadFile},
+		{"sed 's/a/b/'", warnUseReadFile},
+		{"sed -i 's/a/b/' sample.txt", warnUseEditFile},
+		{"perl -pi 's/a/b/' sample.txt", warnUseEditFile},
+		{"perl -e 'print 1'", ""},
+		{"tee sample.txt", warnUseEditFile},
+		{"ps -eo pid,ppid,etimes,args | grep -E '[n]vim' | cut -c1-180", ""},
+		{"grep alpha sample.txt", ""},
+		{`grep -rn "func (c \*ExecutionCoordinator) enterTurn\|func (c \*ExecutionCoordinator) EnterInput" -A 40 --include=*.go internal/agent/execution | head -80`, ""},
+		{"echo ok && cat sample.txt", ""},
+		{"printf alpha | head -10", ""},
+		{"printf alpha | tee sample.txt", ""},
+		{"echo ok; sed -i 's/a/b/' sample.txt", ""},
+		{"echo ok; cat < sample.txt", warnUseReadFile},
+		{"echo ok; echo alpha > sample.txt", warnUseEditFile},
 	} {
-		t.Run(cmd, func(t *testing.T) {
-			advice := analyzeBashShellAdvice(parseBashForTest(t, cmd), workDir, FileGuard{})
-			if len(advice.warnings) != 1 || advice.warnings[0] != warnUseReadFile {
-				t.Fatalf("expected only read_file warning, got: %v", advice.warnings)
+		t.Run(tc.cmd, func(t *testing.T) {
+			advice := analyzeBashShellAdvice(parseBashForTest(t, tc.cmd), workDir, FileGuard{})
+			if tc.want == "" {
+				if len(advice.warnings) != 0 {
+					t.Fatalf("expected no warnings, got: %v", advice.warnings)
+				}
+			} else if len(advice.warnings) != 1 || advice.warnings[0] != tc.want {
+				t.Fatalf("expected only %q, got: %v", tc.want, advice.warnings)
 			}
 		})
 	}

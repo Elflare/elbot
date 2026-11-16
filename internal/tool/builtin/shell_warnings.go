@@ -18,13 +18,15 @@ type shellAdvice struct {
 
 func analyzeBashShellAdvice(file *syntax.File, workDir string, fileGuard FileGuard) shellAdvice {
 	advice := shellAdvice{blocked: operationresult.Result[struct{}]{Status: operationresult.Success, Data: struct{}{}}}
+	firstCall := true
 	syntax.Walk(file, func(node syntax.Node) bool {
 		if advice.blocked.Status != operationresult.Success {
 			return false
 		}
 		switch n := node.(type) {
 		case *syntax.CallExpr:
-			advice.inspectShellCall(n, workDir, fileGuard)
+			advice.inspectShellCall(n, workDir, fileGuard, firstCall)
+			firstCall = false
 		case *syntax.Redirect:
 			advice.inspectShellRedirect(n, workDir, fileGuard)
 		}
@@ -33,7 +35,7 @@ func analyzeBashShellAdvice(file *syntax.File, workDir string, fileGuard FileGua
 	return advice
 }
 
-func (a *shellAdvice) inspectShellCall(call *syntax.CallExpr, workDir string, fileGuard FileGuard) {
+func (a *shellAdvice) inspectShellCall(call *syntax.CallExpr, workDir string, fileGuard FileGuard, suggest bool) {
 	if len(call.Args) == 0 {
 		return
 	}
@@ -49,18 +51,14 @@ func (a *shellAdvice) inspectShellCall(call *syntax.CallExpr, workDir string, fi
 	if a.checkProtectedPaths(fileGuard, workDir, literalArgs(call.Args)) {
 		return
 	}
+	if !suggest {
+		return
+	}
 
 	switch name {
-	case "cat", "less", "more", "head", "tail", "grep":
-		if a.addPathArgWarning(workDir, args) {
-			a.addWarning(warnUseReadFile)
-		}
+	case "cat", "less", "more", "head", "tail":
+		a.addWarning(warnUseReadFile)
 	case "sed":
-		// sed takes a script before optional file operands; require another
-		// argument after it so a script alone is not mistaken for a file.
-		if len(args) < 2 || !a.addPathArgWarning(workDir, args[1:]) {
-			return
-		}
 		if hasArg(args, "-i") {
 			a.addWarning(warnUseEditFile)
 		} else {
@@ -68,14 +66,10 @@ func (a *shellAdvice) inspectShellCall(call *syntax.CallExpr, workDir string, fi
 		}
 	case "perl":
 		if hasArg(args, "-pi") || hasArg(args, "-pI") {
-			if a.addPathArgWarning(workDir, args) {
-				a.addWarning(warnUseEditFile)
-			}
-		}
-	case "tee":
-		if a.addPathArgWarning(workDir, args) {
 			a.addWarning(warnUseEditFile)
 		}
+	case "tee":
+		a.addWarning(warnUseEditFile)
 	}
 }
 
@@ -113,16 +107,6 @@ func (a *shellAdvice) checkProtectedPaths(fileGuard FileGuard, workDir string, a
 		checked := fileGuard.CheckWrite(path)
 		if checked.Status != operationresult.Success {
 			a.blocked = checked
-			return true
-		}
-	}
-	return false
-}
-
-// addPathArgWarning treats literal non-option arguments as file candidates.
-func (a *shellAdvice) addPathArgWarning(workDir string, args []string) bool {
-	for _, arg := range args {
-		if _, ok := resolveShellLiteralPath(workDir, arg); ok {
 			return true
 		}
 	}
