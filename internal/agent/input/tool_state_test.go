@@ -3,6 +3,8 @@ package input
 import toolshare "elbot/internal/tool/share"
 
 import (
+	chatroute "elbot/internal/agent/chat"
+	"elbot/internal/agent/dialogue"
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/operationresult"
 	"elbot/internal/testutil"
@@ -25,7 +27,63 @@ import (
 	"elbot/internal/tool/preload"
 	toolregistry "elbot/internal/tool/registry"
 	toolstate "elbot/internal/tool/state"
+	"elbot/internal/turn"
 )
+
+type promptProbeExecution struct {
+	directiveExecution
+	prompt string
+}
+
+func (e *promptProbeExecution) AcceptInput(ctx context.Context, row *storage.Session, _ string) (context.Context, operationresult.Result[agentshare.InputDisposition], error) {
+	messages, err := (chatroute.PromptBuilder{System: dialogue.NewSystemPromptManager(
+		dialogue.SoulSystemPromptSource{Soul: dialogue.StaticSoulProvider{Prompt: "BASE SOUL"}},
+		dialogue.ToolNamesSystemPromptSource{Tools: contextToolNameProvider{}},
+	)}).Build(ctx, chatroute.PromptBuildRequest{Session: row})
+	if err != nil {
+		return ctx, operationresult.Result[agentshare.InputDisposition]{}, err
+	}
+	e.prompt = llm.SegmentsContentText(messages[0].Segments)
+	return ctx, operationresult.Result[agentshare.InputDisposition]{Status: operationresult.Success, Data: agentshare.InputHandled}, nil
+}
+
+type contextToolNameProvider struct{}
+
+func (contextToolNameProvider) ToolNames(ctx context.Context, _ string, _ *storage.Session, _ session.Scope) (agentshare.PromptToolNames, error) {
+	availability, _ := contextinfo.ToolAvailabilityFromContext(ctx)
+	return agentshare.PromptToolNames{Tools: availability.Tools, Skills: availability.Skills}, nil
+}
+
+type promptAvailabilityPreloader struct{}
+
+func (promptAvailabilityPreloader) PrepareAvailabilityContext(ctx context.Context) (context.Context, error) {
+	return contextinfo.WithToolAvailability(ctx, contextinfo.ToolAvailability{Tools: []string{"shell"}, Skills: []string{"weather"}}), nil
+}
+
+func (promptAvailabilityPreloader) PrepareTools(context.Context, []string) (tool.ToolPreload, error) {
+	return tool.ToolPreload{}, nil
+}
+
+func (promptAvailabilityPreloader) PrepareSkills(context.Context, string, []string) (tool.SkillPreload, error) {
+	return tool.SkillPreload{}, nil
+}
+
+func TestHandleSessionInputIncludesToolsAndSkillsInSystemPrompt(t *testing.T) {
+	execution := &promptProbeExecution{}
+	coordinator := NewInputCoordinator(InputCoordinatorDeps{
+		Turns: turn.NewSupervisor(testutil.IDSequence()), Execution: execution,
+		Hooks: activityTestHooks{}, Output: activityTestOutput{}, Preloader: promptAvailabilityPreloader{},
+	})
+	row := &storage.Session{ID: "session", Mode: storage.SessionModeWork}
+	if _, err := coordinator.handleSessionInput(testutil.WithCLIConversation(t.Context()), row, "question"); err != nil {
+		t.Fatalf("handleSessionInput: %v", err)
+	}
+	for _, want := range []string{"tools: shell.", "skills: weather."} {
+		if !strings.Contains(execution.prompt, want) {
+			t.Errorf("system prompt %q does not contain %q", execution.prompt, want)
+		}
+	}
+}
 
 func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	ctx := testutil.WithCLIConversation(t.Context())
@@ -62,7 +120,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	repo := &toolStateFaultRepo{SessionRepository: store.Sessions(), failure: failure}
 	*stateService = *toolstate.NewStateService(repo, toolregistry.BackgroundDiscoveredTools)
 	input := "question @tool:worker @skill:doc"
-	tools, skills, err := coordinator.applyInputDirectives(ctx, row, input)
+	_, tools, skills, err := coordinator.applyInputDirectives(ctx, row, input)
 	if !errors.Is(err, failure) {
 		t.Fatalf("err=%v", err)
 	}
@@ -76,7 +134,7 @@ func TestDirectiveCommitPublishesAllStateOnlyAfterSuccess(t *testing.T) {
 	}
 
 	repo.failure = nil
-	tools, skills, err = coordinator.applyInputDirectives(ctx, row, input)
+	_, tools, skills, err = coordinator.applyInputDirectives(ctx, row, input)
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}

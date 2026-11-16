@@ -173,10 +173,11 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 
 	snapshot := c.turns.Snapshot(session.ID)
 	if snapshot.Phase != turn.PhaseAwaitRiskConfirm {
-		prepared, skillDirectives, err := c.applyInputDirectives(ctx, session, text)
+		nextCtx, prepared, skillDirectives, err := c.applyInputDirectives(ctx, session, text)
 		if err != nil {
-			return ctx, err
+			return nextCtx, err
 		}
+		ctx = nextCtx
 		if prepared.Status != operationresult.Success {
 			_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: prepared.Message})
 			return ctx, err
