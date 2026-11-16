@@ -66,6 +66,7 @@ type ToolCapabilities interface {
 	DecodeState(string) (tool.State, error)
 	Commit(context.Context, string, tool.StateUpdate) (tool.StateCommit, error)
 	PrepareBackground(context.Context, tool.BackgroundPreloadRequest) (tool.BackgroundPreload, error)
+	PrepareAvailabilityContext(context.Context) (context.Context, error)
 	PrepareTools(context.Context, []string) (tool.ToolPreload, error)
 	PrepareSkills(context.Context, string, []string) (tool.SkillPreload, error)
 	TagPrompts(context.Context, []string) ([]tool.TagPrompt, error)
