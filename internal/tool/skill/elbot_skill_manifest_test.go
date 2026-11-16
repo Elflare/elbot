@@ -9,6 +9,7 @@ tags = ["doc", "doc", "convert"]
 command = ["python", "foo.py"]
 timeout_seconds = 30
 expose_root = true
+use_workspace = true
 parameters = '''
 {"type":"object","required":["input"],"properties":{"input":{"type":"string"},"mode":{"type":"string"}}}
 '''
@@ -20,7 +21,7 @@ mode = "--mode"
 	if err != nil {
 		t.Fatalf("ParseAgentSkillManifest: %v", err)
 	}
-	if manifest.Risk != "medium" || !manifest.SuperadminOnly || len(manifest.Command) != 2 || !manifest.ExposeRoot || manifest.Args["mode"] != "--mode" || len(manifest.Positional) != 1 || manifest.Positional[0] != "input" || !manifest.Callable {
+	if manifest.Risk != "medium" || !manifest.SuperadminOnly || len(manifest.Command) != 2 || !manifest.ExposeRoot || !manifest.UseWorkspace || manifest.Args["mode"] != "--mode" || len(manifest.Positional) != 1 || manifest.Positional[0] != "input" || !manifest.Callable {
 		t.Fatalf("manifest = %#v", manifest)
 	}
 	if len(manifest.Tags) != 3 || manifest.Tags[0] != "doc" || manifest.Tags[2] != "convert" {

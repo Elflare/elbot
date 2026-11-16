@@ -179,7 +179,7 @@ func TestSkillDeadlineSelection(t *testing.T) {
 						_, _, err = runner.call(ctx, args, record, execute)
 					} else {
 						command := commandTool{record: record{Root: dir}, manifest: AgentSkillManifest{Command: []string{binary}, TimeoutSeconds: int(tc.want.Seconds())}, media: newTestMediaRuntime(t)}
-						_, _, err = command.call(ctx, nil, nil, execute)
+						_, _, err = command.call(ctx, nil, nil, dir, execute)
 					}
 					if calls != 1 || !errors.Is(err, context.DeadlineExceeded) {
 						t.Fatalf("calls=%d error=%v", calls, err)

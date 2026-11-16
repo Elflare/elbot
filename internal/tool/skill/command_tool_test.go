@@ -5,6 +5,7 @@ import toolshare "elbot/internal/tool/share"
 import (
 	"context"
 	"elbot/internal/operationresult"
+	"elbot/internal/workspace"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -55,6 +56,43 @@ func TestCommandToolRunsCommandAndReturnsText(t *testing.T) {
 	}
 	if strings.TrimSpace(result.Data.Content) != "input=hello" {
 		t.Fatalf("content = %q", result.Data.Content)
+	}
+}
+
+func TestCommandToolUsesWorkspaceForCommandAndMedia(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses sh")
+	}
+	skillRoot := t.TempDir()
+	workspaceDir := t.TempDir()
+	script := "#!/bin/sh\nprintf 'media-output' > generated.bin\nprintf '{\"segments\":[{\"type\":\"file\",\"path\":\"generated.bin\"}]}'\n"
+	if err := os.WriteFile(filepath.Join(workspaceDir, "run.sh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := AgentSkillManifest{
+		UseWorkspace:   true,
+		TimeoutSeconds: 30,
+		Risk:           toolshare.RiskLow,
+		Command:        []string{"sh", "run.sh"},
+		Parameters:     map[string]any{"type": "object", "properties": map[string]any{}},
+	}
+	tool := commandTool{media: newTestMediaRuntime(t), record: record{Name: "workspace_skill", Kind: KindAgent, Root: skillRoot}, manifest: manifest}
+	ctx := workspace.WithPathScope(context.Background(), workspace.PathScope{Dir: workspaceDir, Restricted: true})
+	result, _, err := callTool(ctx, tool.Definition(), toolshare.CallRequest{Name: "workspace_skill", Arguments: json.RawMessage(`{}`)})
+	if err != nil || result.Status != operationresult.Success || len(result.Data.Segments) != 1 {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	if result.Data.Segments[0].MediaID == "" {
+		t.Fatalf("output media was not imported: %+v", result.Data.Segments[0])
+	}
+}
+
+func TestCommandToolWorkspaceRequiresRestrictedDirectory(t *testing.T) {
+	tool := commandTool{record: record{Name: "workspace_skill", Kind: KindAgent, Root: t.TempDir()}, manifest: AgentSkillManifest{UseWorkspace: true}}
+	ctx := workspace.WithPathScope(context.Background(), workspace.PathScope{Restricted: true})
+	prepared, err := tool.PrepareCall(ctx, toolshare.CallRequest{Name: "workspace_skill", Arguments: json.RawMessage(`{}`)})
+	if err != nil || prepared.Status != operationresult.Unavailable {
+		t.Fatalf("prepared=%+v err=%v", prepared, err)
 	}
 }
 

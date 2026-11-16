@@ -80,7 +80,7 @@ ELNIS_HOME_TOKEN=your-elnis-token
 | 根 Hook 规则 | 进程环境为基础，`plugins/.env` 覆盖同名普通变量。 |
 | 插件 exec 与 Worker | 根 Hook 环境为基础，插件目录 `.env` 再覆盖同名普通变量。 |
 
-- 技能工作目录是技能根目录；合并结果由 ElBot 传给子进程，脚本无需自行加载 `.env`。
+- 默认以技能根目录为工作目录；AgentSkill TOML 可用 `use_workspace = true` 切到当前 workspace。环境合并结果由 ElBot 传给子进程，脚本无需自行加载 `.env`。
 - Go Skill 编译阶段用基础环境，不加载技能 `.env`。
 - 配置根 `.env` 不注入 Hook。共用变量放 `plugins/.env`，单插件变量放插件目录 `.env`；一次性 exec、Persistent / Transient Worker 规则相同。
 - 需要代理时在对应环境层设 `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY`；子进程是否使用取决于具体程序。
@@ -288,6 +288,7 @@ tags = ["doc"]
 command = ["python", "foo.py"]
 timeout_seconds = 30
 expose_root = false
+use_workspace = true
 
 parameters = '''
 {
@@ -314,11 +315,12 @@ input = "--input"
 | `[args]` | 有未映射参数时必填 | 参数到 flag 的映射：`input = "--input"` 把参数 `input` 译为 `--input <value>`。可与 `positional` 配合使用。 |
 | `timeout_seconds` | 否 | 命令超时时间。 |
 | `expose_root` | 否 | 默认 `false`；`true` 时发现该 Skill 会暴露其根路径。 |
+| `use_workspace` | 否 | 默认 `false`；`true` 时命令在当前调用的 workspace 根目录执行，媒体路径也相对该目录解析。 |
 
 - ElBot 只读 Skill 根目录下的 `ELBOT_SKILL.toml`，不递归扫描。
-- 执行时工作目录固定为 Skill 根目录，stdout 作为工具结果；若 stdout 是 `{"content":"..."}` JSON，取 `content` 字段。
+- stdout 作为工具结果；若 stdout 是 `{"content":"..."}` JSON，取 `content` 字段。
 - 位置参数先按 `positional` 数组顺序输出，再输出按参数名排序的 `[args]` flag/value 对；缺失的可选值不输出。必填参数必须由其中一种方式映射，且不能重复映射。
-- 媒体参数在 `parameters.properties` 声明为 `{"type":"media"}`，可通过 `positional` 或 `[args]` 映射；LLM 传 `media:<sha256>`，宿主执行时导出为相对 Skill 根目录的临时文件路径。未声明为媒体的字符串不转换。stdout 也支持 `segments`，格式与生命周期见 [Skill 使用媒体](concepts.md#skill-使用媒体)。
+- 媒体参数在 `parameters.properties` 声明为 `{"type":"media"}`，可通过 `positional` 或 `[args]` 映射；LLM 传 `media:<sha256>`，宿主执行时导出为相对工作目录的临时文件路径。未声明为媒体的字符串不转换。stdout 也支持 `segments`，格式与生命周期见 [Skill 使用媒体](concepts.md#skill-使用媒体)。
 - 通过 `agent_skill` 元工具写入时，完整 reload 成功后才确认；reload 失败会恢复原 TOML，原先没有该文件则删除本次新建文件。
 
 ## Go Skill 编译器路径

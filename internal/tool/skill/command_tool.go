@@ -17,6 +17,7 @@ import (
 	"elbot/internal/config"
 	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
+	"elbot/internal/workspace"
 )
 
 type commandTool struct {
@@ -54,19 +55,26 @@ func (t commandTool) PrepareCall(ctx context.Context, req toolshare.CallRequest)
 	if err != nil {
 		return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 	}
+	workDir := t.record.Root
+	if t.manifest.UseWorkspace {
+		workDir, err = workspace.CurrentWorkspaceDir(ctx)
+		if err != nil {
+			return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Unavailable, Message: fmt.Sprintf("resolve AgentSkill workspace: %v", err)}, nil
+		}
+	}
 	details := []toolshare.ConfirmationDetailBlock{toolshare.FieldsConfirmationDetail(
 		toolshare.ConfirmationField{Key: "skill_name", Label: "技能", Value: t.record.Name},
 		toolshare.ConfirmationField{Key: "command", Label: "命令", Value: t.manifest.Command},
 		toolshare.ConfirmationField{Key: "args", Label: "命令行参数", Value: args},
-		toolshare.ConfirmationField{Key: "work_dir", Label: "工作目录", Value: t.record.Root},
+		toolshare.ConfirmationField{Key: "work_dir", Label: "工作目录", Value: workDir},
 		toolshare.ConfirmationField{Key: "timeout_ms", Label: "超时（ms）", Value: int64(t.manifest.TimeoutSeconds) * 1000},
 	)}
 	return operationresult.Result[*toolshare.PreparedCall]{Status: operationresult.Success, Data: toolshare.NewPreparedCall(req, toolshare.RiskAssessment{Level: t.manifest.Risk}, details, func(ctx context.Context) (operationresult.Result[*toolshare.Result], string, error) {
-		return t.call(ctx, raw, args, runMediaCommand)
+		return t.call(ctx, raw, args, workDir, runMediaCommand)
 	})}, nil
 }
 
-func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []string, run func(context.Context, string, *exec.Cmd, toolshare.MediaCall) (operationresult.Result[*toolshare.Result], error)) (operationresult.Result[*toolshare.Result], string, error) {
+func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []string, workDir string, run func(context.Context, string, *exec.Cmd, toolshare.MediaCall) (operationresult.Result[*toolshare.Result], error)) (operationresult.Result[*toolshare.Result], string, error) {
 
 	dotEnv, err := config.LoadEnvFile(filepath.Join(t.record.Root, ".env"))
 	if err != nil {
@@ -81,7 +89,7 @@ func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []strin
 	mediaCall := t.media.NewCall()
 	defer mediaCall.Close()
 	if schemaContainsMedia(t.manifest.Parameters) {
-		prepared, err := prepareCommandMedia(runCtx, raw, t.manifest, mediaCall, t.record.Root)
+		prepared, err := prepareCommandMedia(runCtx, raw, t.manifest, mediaCall, workDir)
 		if err != nil {
 			return operationresult.Result[*toolshare.Result]{}, err.Error(), err
 		}
@@ -96,7 +104,7 @@ func (t commandTool) call(ctx context.Context, raw json.RawMessage, args []strin
 	command := append([]string(nil), t.manifest.Command...)
 	command = append(command, args...)
 	cmd := environment.CommandContext(runCtx, command[0], command[1:]...)
-	cmd.Dir = t.record.Root
+	cmd.Dir = workDir
 	result, callErr := run(runCtx, "AgentSkill command", cmd, mediaCall)
 	if callErr != nil {
 		return operationresult.Result[*toolshare.Result]{}, "", callErr

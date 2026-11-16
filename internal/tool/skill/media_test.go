@@ -135,7 +135,7 @@ func TestSkillMediaBridge(t *testing.T) {
 						if parseErr != nil {
 							t.Fatal(parseErr)
 						}
-						result, _, err = current.call(runCtx, raw, args, execute)
+						result, _, err = current.call(runCtx, raw, args, current.record.Root, execute)
 					}
 					if mode == "ok" || mode == "large" {
 						if err != nil || result.Status != operationresult.Success || len(result.Data.Segments) != 2 {

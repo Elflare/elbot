@@ -4,6 +4,7 @@
 
 ### Added
 
+- AgentSkill TOML 新增 `use_workspace`，启用后命令和媒体路径以当前 workspace 为基准。
 - AgentSkill TOML 工具支持通过 `positional` 数组按指定顺序传入位置参数，可与 `[args]` flag 参数组合使用。
 - CLI 远程服务新增静态前端托管：自动识别主配置旁的 `frontend/index.html`。
 - 新增大量 CLI 远程协议
