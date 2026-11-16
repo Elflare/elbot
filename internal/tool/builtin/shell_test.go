@@ -305,15 +305,18 @@ func TestRejectBashShellDirectoryChangeCommand(t *testing.T) {
 	}
 }
 
-func TestAnalyzeBashShellAdviceWarnsForCommandPathArgument(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sample.txt")
-	if err := os.WriteFile(path, []byte("alpha\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	advice := analyzeBashShellAdvice(parseBashForTest(t, "cat "+filepath.ToSlash(path)), filepath.Dir(path), FileGuard{})
-	text := toolshare.AppendWarnings("", advice.warnings)
-	if !strings.Contains(text, warnUseWorkspace) {
-		t.Fatalf("expected path argument warning, got:\n%s", text)
+func TestAnalyzeBashShellAdviceDoesNotWarnWorkspaceForPathArguments(t *testing.T) {
+	workDir := t.TempDir()
+	for _, cmd := range []string{
+		"cat sample.txt",
+		`grep -rn "func (c \*ExecutionCoordinator) enterTurn\|func (c \*ExecutionCoordinator) EnterInput" -A 40 --include=*.go internal/agent/execution | head -80`,
+	} {
+		t.Run(cmd, func(t *testing.T) {
+			advice := analyzeBashShellAdvice(parseBashForTest(t, cmd), workDir, FileGuard{})
+			if len(advice.warnings) != 1 || advice.warnings[0] != warnUseReadFile {
+				t.Fatalf("expected only read_file warning, got: %v", advice.warnings)
+			}
+		})
 	}
 }
 

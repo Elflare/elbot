@@ -29,7 +29,6 @@ const (
 	defaultShellTimeout   = 10 * time.Second
 	maxShellOutput        = 256 * 1024
 	shellCmdRequired      = `cmd is required; use {"cmd":"..."}`
-	warnUseWorkspace      = "需要切换工作目录时请使用 workspace 工具，不要在 cmd 中切换目录或夹带目录切换。"
 	powershellUTF8Prelude = `$OutputEncoding = [System.Text.UTF8Encoding]::new($false); try { [Console]::OutputEncoding = $OutputEncoding } catch {}; `
 )
 

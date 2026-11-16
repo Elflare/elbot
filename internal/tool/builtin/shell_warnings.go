@@ -123,7 +123,6 @@ func (a *shellAdvice) checkProtectedPaths(fileGuard FileGuard, workDir string, a
 func (a *shellAdvice) addPathArgWarning(workDir string, args []string) bool {
 	for _, arg := range args {
 		if _, ok := resolveShellLiteralPath(workDir, arg); ok {
-			a.addWarning(warnUseWorkspace)
 			return true
 		}
 	}
