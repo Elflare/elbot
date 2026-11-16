@@ -44,13 +44,12 @@
 
 ### Fixed
 
-- Fixed an issue where Shell incorrectly reported ordinary file path parameters as changing the working directory.
-- Fixed issues where workspace still returned the old directory status after cleaning invalid directories or concurrent switching, and where cancellation errors were swallowed when Git diff output exceeded the limit.
+- Fixed issues where workspace cleanup of invalid directories or concurrent switching still returned the old directory state, and where cancellation errors were swallowed when Git diff output exceeded the limit.
 - File reference format errors, out-of-bounds errors, and target type rejections now display the business reason and terminate input processing, rather than propagating as program failures.
 - Fixed an issue where some commands reported `not found` due to the absence of a current Session after the first entry or using `/new`.
 - Fixed an issue where `/resume` ignored pinned items.
 - Fixed several potential bugs during refactoring.
-- Fixed a bug in the chat history search tool. Now both background and foreground can be searched without affecting each other.
-- Fixed a bug where duplicate content was compressed multiple times.
+- Fixed a bug in the chat history search tool. Both background and foreground searches are now functional and do not interfere with each other.
+- Fixed a bug where duplicate content occurred during multiple compressions.
 
 ## See releases for historical change logs

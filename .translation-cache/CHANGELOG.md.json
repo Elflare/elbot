@@ -1,12 +1,12 @@
 {
   "segments": {
-    "CHANGELOG.md:section:079502d8a557b69a56f755b4a3568ff19eabdfa32d0ebff19e20fbd0c8784877": {
+    "CHANGELOG.md:section:093b2e234d01074a039150306d9cd21715f5b2e8f30d210138165f3fc4b92f4c": {
       "kind": "section",
-      "source": "### Fixed\n\n- 修复 Shell 将普通文件路径参数误报为切换工作目录的问题。\n- 修复 workspace 清理失效目录或并发切换后仍返回旧目录状态，以及 Git diff 输出超限时吞掉取消错误的问题。\n- 文件引用的格式、越界和目标类型拒绝现在显示业务原因并结束输入处理，不再作为程序故障传播。\n- 修复首次进入或 `/new` 后，一些命令因没有当前 Session 而报 `not found` 的问题。\n- 修复 `/resume` 忽略置顶的问题。\n- 在重构中修复一些可能会出现的bug。\n- 修复chat历史搜索工具bug。现在后台、前台都能搜了，且互不影响。\n- 修复多次压缩重复内容的bug\n\n",
+      "source": "### Fixed\n\n- 修复 workspace 清理失效目录或并发切换后仍返回旧目录状态，以及 Git diff 输出超限时吞掉取消错误的问题。\n- 文件引用的格式、越界和目标类型拒绝现在显示业务原因并结束输入处理，不再作为程序故障传播。\n- 修复首次进入或 `/new` 后，一些命令因没有当前 Session 而报 `not found` 的问题。\n- 修复 `/resume` 忽略置顶的问题。\n- 在重构中修复一些可能会出现的bug。\n- 修复chat历史搜索工具bug。现在后台、前台都能搜了，且互不影响。\n- 修复多次压缩重复内容的bug\n\n",
       "source_file": "CHANGELOG.md",
-      "source_hash": "ea69c9eff1a9452efaec10d6bfc741dc60f97759ea9f2be077a9b48c68cc8671",
-      "translation": "### Fixed\n\n- Fixed an issue where Shell incorrectly reported ordinary file path parameters as changing the working directory.\n- Fixed issues where workspace still returned the old directory status after cleaning invalid directories or concurrent switching, and where cancellation errors were swallowed when Git diff output exceeded the limit.\n- File reference format errors, out-of-bounds errors, and target type rejections now display the business reason and terminate input processing, rather than propagating as program failures.\n- Fixed an issue where some commands reported `not found` due to the absence of a current Session after the first entry or using `/new`.\n- Fixed an issue where `/resume` ignored pinned items.\n- Fixed several potential bugs during refactoring.\n- Fixed a bug in the chat history search tool. Now both background and foreground can be searched without affecting each other.\n- Fixed a bug where duplicate content was compressed multiple times.\n\n",
-      "updated_at": 1794840949
+      "source_hash": "6953952727159228651010e30055921e1ee2bfe294a64eddd6716f933e2f8e0c",
+      "translation": "### Fixed\n\n- Fixed issues where workspace cleanup of invalid directories or concurrent switching still returned the old directory state, and where cancellation errors were swallowed when Git diff output exceeded the limit.\n- File reference format errors, out-of-bounds errors, and target type rejections now display the business reason and terminate input processing, rather than propagating as program failures.\n- Fixed an issue where some commands reported `not found` due to the absence of a current Session after the first entry or using `/new`.\n- Fixed an issue where `/resume` ignored pinned items.\n- Fixed several potential bugs during refactoring.\n- Fixed a bug in the chat history search tool. Both background and foreground searches are now functional and do not interfere with each other.\n- Fixed a bug where duplicate content occurred during multiple compressions.\n\n",
+      "updated_at": 1794842307
     },
     "CHANGELOG.md:section:98d9f36b0462433f4e4651c9202d33484606c1adac2e101f1f4a7dc57ff97175": {
       "kind": "section",
@@ -34,8 +34,8 @@
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "7fdbf542d714a6c4fe037f558217cd540384e42fa45d49598a07a005765f3c25",
+  "source_hash": "e90f1065c1d53b5e1261b8d77df421ca60fa7747ec1166847832f37a66aad4f4",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1794840952,
+  "updated_at": 1794842307,
   "version": 3
 }
