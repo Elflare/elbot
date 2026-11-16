@@ -75,17 +75,17 @@ Note: All variables in the configuration root `.env` will be passed to the LLM S
 
 ### Shell, Skill, and Hook Environments
 
-| Process Entry Point | Environment Source and Priority |
+| Process Entry | Environment Source and Priority |
 | --- | --- |
-| Built-in tools (including LLM Shell) | The process environment serves as the base, and the config root `.env` only supplements ordinary variables that do not yet exist. |
-| AgentSkill TOML commands and Go Skills | Skill `.env` > process environment > config root `.env`; null values in Skill `.env` also override variables with the same name. |
-| Root Hook Rules | The process environment serves as the base, and `plugins/.env` overrides ordinary variables with the same name. |
-| Plugin exec and Worker | The root Hook environment serves as the base, and the plugin directory `.env` further overrides ordinary variables with the same name. |
+| Built-in tools (including LLM Shell) | Based on process environment; the root `.env` only supplements ordinary variables that do not yet exist. |
+| AgentSkill TOML commands and Go Skills | Skill `.env` > Process environment > Root `.env`; empty values in the Skill `.env` also override variables of the same name. |
+| Root Hook rules | Based on process environment; `plugins/.env` overrides ordinary variables of the same name. |
+| Plugin exec and Workers | Based on the Root Hook environment; the plugin directory `.env` further overrides ordinary variables of the same name. |
 
-- The Skill working directory is the Skill root directory; the merged result is passed to the child process by ElBot, so the script does not need to load `.env` on its own.
-- The base environment is used during the Go Skill compilation phase, and Skill `.env` is not loaded.
-- The config root `.env` is not injected into Hooks. Place shared variables in `plugins/.env` and single-plugin variables in the plugin directory `.env`; One-time exec, Persistent / Transient Worker follow the same rules.
-- When a proxy is required, set `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` in the corresponding environment layer; whether child processes use them depends on the specific program.
+- The skill root directory is used as the working directory by default; AgentSkill TOML can use `use_workspace = true` to switch to the current workspace. The result of the environment merge is passed to the child process by ElBot, so scripts do not need to load `.env` files themselves.
+- Go Skills use the base environment during the compilation phase and do not load the Skill `.env`.
+- The root `.env` is not injected into Hooks. Shared variables should be placed in `plugins/.env`, and single-plugin variables in the plugin directory `.env`; the rules are the same for one-time exec and Persistent / Transient Workers.
+- When a proxy is required, set `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` in the corresponding environment layer; whether the child process uses them depends on the specific program.
 
 ### PATH Rules and systemd
 
@@ -267,14 +267,14 @@ token_env = ["ELBOT_CLI_WINDOWS_TOKEN"]
 
 ## AgentSkill Tooling Configuration
 
-AgentSkill is used as documentation by default; the risk of executing scripts according to the documentation is borne by the tools actually called, such as `shell`.
+By default, AgentSkill is used only as documentation; the risk of executing scripts according to the documentation is borne by the tools actually called, such as `shell`.
 
-To limit the visibility of documentation-type Skills, or to register `skills/agent/<skill>/` as a regular tool, add `ELBOT_SKILL.toml` to the root directory of the Skill:
+To restrict the visibility of documentation-type Skills, or to register `skills/agent/<skill>/` as a regular tool, add `ELBOT_SKILL.toml` to the root directory of that Skill:
 
-- If `command` / `parameters` / `[args]` are not specified: it only serves as a visibility configuration and is not registered as a tool.
-- If any tooling field is specified: the complete tooling configuration must be provided.
+- If `command` / `parameters` / `[args]` are not specified: it serves only as a visibility configuration and is not registered as a tool.
+- If any tooling field is specified: a complete tooling configuration must be provided.
 
-Limit visibility only:
+Restrict visibility only:
 
 ```toml
 risk = "high"
@@ -287,16 +287,18 @@ Register as a regular tool:
 risk = "medium"
 superadmin_only = false
 tags = ["doc"]
+depends_on = ["read_file"]
 command = ["python", "foo.py"]
 timeout_seconds = 30
 expose_root = false
+use_workspace = true
 
 parameters = '''
 {
   "type": "object",
   "required": ["input"],
   "properties": {
-    "input": {"type": "string", "description": "输入文本"}
+    "input": {"type": "string", "description": "Input text"}
   }
 }
 '''
@@ -307,19 +309,23 @@ input = "--input"
 
 | Field | Required | Description |
 | --- | --- | --- |
-| `risk` | Required when registering as a tool | `safe`, `low`, `medium`, `high`, `critical`; if not specified for document types, it is handled as `safe`. |
+| `risk` | Required when registering as a tool | `safe`, `low`, `medium`, `high`, `critical`; documentation-type Skills without this field are treated as `safe`. |
 | `superadmin_only` | No | When `true`, only the superadmin can discover, preload, or call it. |
 | `tags` | No | Tool category, used for `@tool:<tag>` preloading. |
-| `command` | Required for toolization | Command array, do not use shell strings. |
-| `parameters` | Required for toolization | JSON object schema, determines the parameters seen by the LLM. |
-| `[args]` | Required for toolization | Flat parameter mapping: `input = "--input"` translates parameter `input` to `--input <value>`. |
-| `timeout_seconds` | No | Command timeout. |
-| `expose_root` | No | Default is `false`; when `true`, the discovered Skill will expose its root path. |
+| `depends_on` | No | Names of tools/Skills that must be available when discovering or preloading this Skill. |
+| `command` | Required for tooling | Command array; do not use shell strings. |
+| `parameters` | Required for tooling | JSON object schema, determining the parameters seen by the LLM. |
+| `positional` | No | Array of parameter names, passed as positional arguments in the order declared; each item must correspond to `parameters.properties`. |
+| `[args]` | Required when there are unmapped parameters | Mapping from parameters to flags: `input = "--input"` translates the parameter `input` to `--input <value>`. Can be used in conjunction with `positional`. |
+| `timeout_seconds` | No | Command timeout in seconds. |
+| `expose_root` | No | Default is `false`; when `true`, discovering this Skill will expose its root path. |
+| `use_workspace` | No | Default is `false`; when `true`, the command is executed in the root directory of the currently called workspace, and media paths are also resolved relative to this directory. |
 
-- ElBot only reads `ELBOT_SKILL.toml` under the Skill root directory and does not scan recursively.
-- The working directory during execution is fixed to the Skill root directory, and stdout serves as the tool result; If stdout is `{"content":"..."}` JSON, the `content` field is used.
-- Media parameters are declared as `{"type":"media"}` in `parameters.properties`, and flags are still mapped via `[args]`; LLM passes `media:<sha256>`, which is exported as a temporary file path relative to the Skill root directory during host execution. Strings not declared as media are not converted. stdout also supports `segments`; see [Skill Media Usage](concepts.md#skill-使用媒体) for format and lifecycle.
-- When writing via the `agent_skill` meta-tool, it is only confirmed after a full reload succeeds; if reload fails, the original TOML will be restored, or the newly created file will be deleted if it did not exist previously.
+- ElBot only reads `ELBOT_SKILL.toml` in the Skill root directory and does not scan recursively.
+- stdout is used as the tool result; if stdout is a `{"content":"..."}` JSON, the `content` field is taken.
+- Positional arguments are output first according to the order of the `positional` array, followed by `[args]` flag/value pairs sorted by parameter name; missing optional values are not output. Required parameters must be mapped by one of these methods and cannot be mapped redundantly.
+- Media parameters are declared as `{"type":"media"}` in `parameters.properties` and can be mapped via `positional` or `[args]`; the LLM passes `media:<sha256>`, which the host exports as a temporary file path relative to the working directory during execution. Strings not declared as media are not converted. stdout also supports `segments`; see [Skill Media Usage](concepts.md#skill-使用媒体) for format and lifecycle.
+- When written via the `agent_skill` meta-tool, it is only confirmed after a successful full reload; if the reload fails, the original TOML is restored, or the newly created file is deleted if no such file existed previously.
 
 ## Go Skill Compiler Path
 
