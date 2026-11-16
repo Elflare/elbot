@@ -12,15 +12,15 @@ expose_root = true
 parameters = '''
 {"type":"object","required":["input"],"properties":{"input":{"type":"string"},"mode":{"type":"string"}}}
 '''
+positional = ["input"]
 
 [args]
-input = "--input"
 mode = "--mode"
 `))
 	if err != nil {
 		t.Fatalf("ParseAgentSkillManifest: %v", err)
 	}
-	if manifest.Risk != "medium" || !manifest.SuperadminOnly || len(manifest.Command) != 2 || !manifest.ExposeRoot || manifest.Args["input"] != "--input" || !manifest.Callable {
+	if manifest.Risk != "medium" || !manifest.SuperadminOnly || len(manifest.Command) != 2 || !manifest.ExposeRoot || manifest.Args["mode"] != "--mode" || len(manifest.Positional) != 1 || manifest.Positional[0] != "input" || !manifest.Callable {
 		t.Fatalf("manifest = %#v", manifest)
 	}
 	if len(manifest.Tags) != 3 || manifest.Tags[0] != "doc" || manifest.Tags[2] != "convert" {
@@ -76,6 +76,23 @@ input = "--input"
 `))
 	if err == nil {
 		t.Fatal("expected unknown field error")
+	}
+}
+
+func TestParseAgentSkillManifestRejectsPositionalMapping(t *testing.T) {
+	for name, positional := range map[string]string{
+		"unknown":   `positional = ["missing"]`,
+		"duplicate": `positional = ["input", "input"]`,
+		"empty":     `positional = [""]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := ParseAgentSkillManifest([]byte(`command = ["tool"]
+parameters = '''{"type":"object","required":["input"],"properties":{"input":{"type":"string"}}}'''
+` + positional))
+			if err == nil {
+				t.Fatal("expected positional mapping error")
+			}
+		})
 	}
 }
 

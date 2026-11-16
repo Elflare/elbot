@@ -25,6 +25,7 @@ type AgentSkillManifest struct {
 	ExposeRoot     bool
 	Parameters     map[string]any
 	Args           map[string]string
+	Positional     []string
 	Callable       bool
 }
 
@@ -37,6 +38,7 @@ type agentSkillManifestFile struct {
 	ExposeRoot     bool              `toml:"expose_root"`
 	Parameters     string            `toml:"parameters"`
 	Args           map[string]string `toml:"args"`
+	Positional     []string          `toml:"positional"`
 }
 
 func AgentSkillConfigPath(root string) string {
@@ -64,7 +66,7 @@ func ParseAgentSkillManifest(data []byte) (AgentSkillManifest, error) {
 	if err := toml.Unmarshal(data, &raw); err != nil {
 		return AgentSkillManifest{}, fmt.Errorf("parse %s: %w", AgentSkillConfigFile, err)
 	}
-	allowed := map[string]bool{"risk": true, "superadmin_only": true, "tags": true, "command": true, "timeout_seconds": true, "expose_root": true, "parameters": true, "args": true}
+	allowed := map[string]bool{"risk": true, "superadmin_only": true, "tags": true, "command": true, "timeout_seconds": true, "expose_root": true, "parameters": true, "args": true, "positional": true}
 	keys := make([]string, 0, len(raw))
 	for key := range raw {
 		if !allowed[key] {
@@ -93,7 +95,7 @@ func validateAgentSkillManifest(file agentSkillManifestFile) (AgentSkillManifest
 		if file.TimeoutSeconds < 0 {
 			return AgentSkillManifest{}, fmt.Errorf("timeout_seconds must be >= 0")
 		}
-		return AgentSkillManifest{Risk: risk, SuperadminOnly: file.SuperadminOnly, Tags: file.Tags, TimeoutSeconds: file.TimeoutSeconds, ExposeRoot: file.ExposeRoot}, nil
+		return AgentSkillManifest{Risk: risk, SuperadminOnly: file.SuperadminOnly, Tags: file.Tags, TimeoutSeconds: file.TimeoutSeconds, ExposeRoot: file.ExposeRoot, Positional: append([]string(nil), file.Positional...)}, nil
 	}
 	if len(file.Command) == 0 {
 		return AgentSkillManifest{}, fmt.Errorf("command is required")
@@ -114,8 +116,22 @@ func validateAgentSkillManifest(file agentSkillManifestFile) (AgentSkillManifest
 	if !ok {
 		return AgentSkillManifest{}, fmt.Errorf("parameters.properties is required")
 	}
-	if len(properties) > 0 && len(file.Args) == 0 {
-		return AgentSkillManifest{}, fmt.Errorf("[args] is required")
+	if len(properties) > 0 && len(file.Args) == 0 && len(file.Positional) == 0 {
+		return AgentSkillManifest{}, fmt.Errorf("[args] or positional is required")
+	}
+	mapped := make(map[string]struct{}, len(file.Args)+len(file.Positional))
+	for i, name := range file.Positional {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return AgentSkillManifest{}, fmt.Errorf("positional[%d] is empty", i)
+		}
+		if _, ok := properties[name]; !ok {
+			return AgentSkillManifest{}, fmt.Errorf("positional parameter %s is not defined in parameters.properties", name)
+		}
+		if _, ok := mapped[name]; ok {
+			return AgentSkillManifest{}, fmt.Errorf("parameter %s is mapped more than once", name)
+		}
+		mapped[name] = struct{}{}
 	}
 	for name, flag := range file.Args {
 		name = strings.TrimSpace(name)
@@ -128,9 +144,13 @@ func validateAgentSkillManifest(file agentSkillManifestFile) (AgentSkillManifest
 		if _, ok := properties[name]; !ok {
 			return AgentSkillManifest{}, fmt.Errorf("args.%s is not defined in parameters.properties", name)
 		}
+		if _, ok := mapped[name]; ok {
+			return AgentSkillManifest{}, fmt.Errorf("parameter %s is mapped more than once", name)
+		}
+		mapped[name] = struct{}{}
 	}
 	for _, name := range schemaRequired(parameters) {
-		if _, ok := file.Args[name]; !ok {
+		if _, ok := mapped[name]; !ok {
 			return AgentSkillManifest{}, fmt.Errorf("required parameter %s has no args mapping", name)
 		}
 	}
@@ -140,7 +160,7 @@ func validateAgentSkillManifest(file agentSkillManifestFile) (AgentSkillManifest
 	if file.TimeoutSeconds == 0 {
 		file.TimeoutSeconds = int(defaultRunnerTimeout.Seconds())
 	}
-	return AgentSkillManifest{Risk: risk, SuperadminOnly: file.SuperadminOnly, Tags: file.Tags, Command: append([]string(nil), file.Command...), TimeoutSeconds: file.TimeoutSeconds, ExposeRoot: file.ExposeRoot, Parameters: parameters, Args: copyStringMap(file.Args), Callable: true}, nil
+	return AgentSkillManifest{Risk: risk, SuperadminOnly: file.SuperadminOnly, Tags: file.Tags, Command: append([]string(nil), file.Command...), TimeoutSeconds: file.TimeoutSeconds, ExposeRoot: file.ExposeRoot, Parameters: parameters, Args: copyStringMap(file.Args), Positional: append([]string(nil), file.Positional...), Callable: true}, nil
 }
 
 func agentSkillManifestCallable(file agentSkillManifestFile) bool {

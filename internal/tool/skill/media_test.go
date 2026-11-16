@@ -48,7 +48,7 @@ func TestSkillMediaBridge(t *testing.T) {
 	catalog := newCatalog()
 	catalog.Replace([]record{{Name: "media", Kind: KindGo, Root: dir, BinaryPath: binary}})
 	runner := GoRunner{manager: &Manager{catalog: catalog, processEnv: environment, media: mediaRuntime}}
-	manifest := AgentSkillManifest{TimeoutSeconds: 30, Command: []string{binary}, Args: map[string]string{"input": "--input", "inputs": "--inputs", "mode": "--mode"}, Parameters: map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "media"}, "inputs": map[string]any{"type": "array", "items": map[string]any{"type": "media"}, "maxItems": 10}, "mode": map[string]any{"type": "string"}}}}
+	manifest := AgentSkillManifest{TimeoutSeconds: 30, Command: []string{binary}, Positional: []string{"input", "inputs"}, Args: map[string]string{"mode": "--mode"}, Parameters: map[string]any{"type": "object", "properties": map[string]any{"input": map[string]any{"type": "media"}, "inputs": map[string]any{"type": "array", "items": map[string]any{"type": "media"}, "maxItems": 10}, "mode": map[string]any{"type": "string"}}}}
 	command := commandTool{record: record{Name: "command", Kind: KindAgent, Root: dir}, manifest: manifest, media: mediaRuntime, processEnv: environment}
 	schema := command.Definition().Schema()
 	props := schema.Parameters["properties"].(map[string]any)

@@ -15,7 +15,8 @@ import (
 
 func TestCommandArgumentsBuildsComplexFlagArgs(t *testing.T) {
 	manifest := AgentSkillManifest{
-		Args: map[string]string{"items": "--items", "options": "--options", "text": "--text", "number": "--number", "boolean": "--boolean"},
+		Positional: []string{"text", "number"},
+		Args:       map[string]string{"items": "--items", "options": "--options", "boolean": "--boolean"},
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -28,7 +29,7 @@ func TestCommandArgumentsBuildsComplexFlagArgs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"--boolean", "true", "--items", `["a","b"]`, "--number", "9007199254740993", "--options", `{"width":1024,"nested":{"enabled":true}}`, "--text", "a \n b"}
+	want := []string{"a \n b", "9007199254740993", "--boolean", "true", "--items", `["a","b"]`, "--options", `{"width":1024,"nested":{"enabled":true}}`}
 	if len(args) != len(want) {
 		t.Fatalf("args = %#v, want %#v", args, want)
 	}

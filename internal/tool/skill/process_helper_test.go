@@ -96,12 +96,14 @@ func runOutputTestHelper() {
 func runMediaTestHelper() {
 	var path, mode, workspace string
 	if len(os.Args) > 1 {
-		for i := 1; i+1 < len(os.Args); i += 2 {
-			switch os.Args[i] {
-			case "--input":
-				path = os.Args[i+1]
-			case "--mode":
+		for i := 1; i < len(os.Args); i++ {
+			if !strings.HasPrefix(os.Args[i], "--") {
+				path = os.Args[i]
+				continue
+			}
+			if i+1 < len(os.Args) && os.Args[i] == "--mode" {
 				mode = os.Args[i+1]
+				i++
 			}
 		}
 		workspace = filepath.Dir(path)

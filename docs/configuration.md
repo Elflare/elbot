@@ -310,13 +310,15 @@ input = "--input"
 | `tags` | 否 | 工具分类，用于 `@tool:<tag>` 预载。 |
 | `command` | 工具化必填 | 命令数组，不用 shell 字符串。 |
 | `parameters` | 工具化必填 | JSON object schema，决定 LLM 看到的参数。 |
-| `[args]` | 工具化必填 | 扁平参数映射：`input = "--input"` 把参数 `input` 译为 `--input <value>`。 |
+| `positional` | 否 | 参数名数组，按声明顺序作为位置参数传入；每项必须对应 `parameters.properties`。 |
+| `[args]` | 有未映射参数时必填 | 参数到 flag 的映射：`input = "--input"` 把参数 `input` 译为 `--input <value>`。可与 `positional` 配合使用。 |
 | `timeout_seconds` | 否 | 命令超时时间。 |
 | `expose_root` | 否 | 默认 `false`；`true` 时发现该 Skill 会暴露其根路径。 |
 
 - ElBot 只读 Skill 根目录下的 `ELBOT_SKILL.toml`，不递归扫描。
 - 执行时工作目录固定为 Skill 根目录，stdout 作为工具结果；若 stdout 是 `{"content":"..."}` JSON，取 `content` 字段。
-- 媒体参数在 `parameters.properties` 声明为 `{"type":"media"}`，仍通过 `[args]` 映射 flag；LLM 传 `media:<sha256>`，宿主执行时导出为相对 Skill 根目录的临时文件路径。未声明为媒体的字符串不转换。stdout 也支持 `segments`，格式与生命周期见 [Skill 使用媒体](concepts.md#skill-使用媒体)。
+- 位置参数先按 `positional` 数组顺序输出，再输出按参数名排序的 `[args]` flag/value 对；缺失的可选值不输出。必填参数必须由其中一种方式映射，且不能重复映射。
+- 媒体参数在 `parameters.properties` 声明为 `{"type":"media"}`，可通过 `positional` 或 `[args]` 映射；LLM 传 `media:<sha256>`，宿主执行时导出为相对 Skill 根目录的临时文件路径。未声明为媒体的字符串不转换。stdout 也支持 `segments`，格式与生命周期见 [Skill 使用媒体](concepts.md#skill-使用媒体)。
 - 通过 `agent_skill` 元工具写入时，完整 reload 成功后才确认；reload 失败会恢复原 TOML，原先没有该文件则删除本次新建文件。
 
 ## Go Skill 编译器路径

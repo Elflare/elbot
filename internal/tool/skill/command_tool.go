@@ -116,19 +116,25 @@ func commandArguments(manifest AgentSkillManifest, raw json.RawMessage) ([]strin
 			return nil, fmt.Errorf("required argument %s is missing", name)
 		}
 	}
+	out := []string{}
+	for _, name := range manifest.Positional {
+		value, ok := values[name]
+		if !ok || string(value) == "null" {
+			continue
+		}
+		out = append(out, argumentText(value))
+	}
 	names := make([]string, 0, len(manifest.Args))
 	for name := range manifest.Args {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	out := []string{}
 	for _, name := range names {
 		value, ok := values[name]
 		if !ok || string(value) == "null" {
 			continue
 		}
-		text := argumentText(value)
-		out = append(out, manifest.Args[name], text)
+		out = append(out, manifest.Args[name], argumentText(value))
 	}
 	return out, nil
 }
