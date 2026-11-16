@@ -35,6 +35,17 @@
 - [ ] control包
 - [ ] delivery包
 
+## Python 代码执行与工具编排
+
+- [ ] 提供单一 Python 代码执行工具，LLM 通过工具 schema 提交代码、运行模式和临时依赖：
+  - `code`：必填，Python 源码；可在代码中直接以异步函数调用当前上下文可用的 ElBot 工具，例如 `a = await foo(i=i)`。
+  - `mode`：可选，`system` 或 `uv`；省略时按 Workspace 自动选择，有 uv 项目用项目环境，否则用系统 Python。
+  - `packages`：可选字符串数组，本次临时使用的第三方包；仅 uv 模式支持，不修改项目依赖文件。
+- 支持循环、结果处理及 `asyncio.gather` 并行调用；工具调用由 Python runner 通过 IPC 回到当前 ElBot Tool Runtime 执行，不静态解析代码猜测调用。
+- 按需启动系统 Python，每次执行结束后退出，不常驻 Python worker；同一段代码中的多次工具调用共用该进程。
+- 执行目录固定为当前 Workspace。uv 项目模式使用项目环境；无项目而显式指定 `uv` 时使用临时环境；`system` 模式使用系统 Python。
+- 临时依赖的解析或下载需明确告知并受控。
+- Python 执行风险按 Shell 最高风险处理；嵌套 ElBot 工具调用仍须经过既有 Tool Runtime 权限、确认与审计。
 
 ## 不一定实现
 
