@@ -35,9 +35,10 @@
   - `code`：必填，Python 源码；可在代码中直接以异步函数调用当前上下文可用的 ElBot 工具，例如 `a = await foo(i=i)`。
   - `mode`：可选，`system` 或 `uv`；省略时按 Workspace 自动选择，有 uv 项目用项目环境，否则用系统 Python。
   - `packages`：可选字符串数组，本次临时使用的第三方包；仅 uv 模式支持，不修改项目依赖文件。
+  - `timeout`: 选填，默认10秒。
   - desc的说明： 执行py代码，可直接调用当前可用的工具。
 适合需要循环、批量、并行调用多个工具，或在工具之间传递、过滤、转换结果的任务。
-只需要调用单个工具或执行简单 Shell 命令时，不要使用。 如： 
+只需要调用单个工具或执行简单命令时，不要使用。如： 
 from pathlib import Path
 import asyncio
 urls = Path("urls.txt").read_text().split()
@@ -60,6 +61,7 @@ print(f"检查 {len(urls)} 个页面，{len(report)} 个命中；已保存 depre
 - Python 执行风险按 Shell 最高风险处理；嵌套 ElBot 工具调用仍须经过既有 Tool Runtime 权限、确认与审计。
 - 使用固定 runner：负责建立 IPC 连接、注册工具代理、执行用户代码和管理异步响应
 - 把工具名注入 Python 命名空间：工具自己声明能否放入py执行器，默认不声明为否。每个允许的工具名对应一个异步代理函数。
+- 环境变量继承自shell或者elbot本身
 例：
 1. 多个工具联动处理
 
