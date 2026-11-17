@@ -108,7 +108,7 @@ func readFileBuilder() *toolshare.Builder {
 		DependsOn("workspace", "rollback_file").
 		String("path", "read/ast仅文件；grep可递归目录。", toolshare.Required()).
 		String("encoding", "文件编码，默认auto。").
-		String("mode", "默认read；grep文本搜索；ast仅Go单文件结构索引，无需query。", toolshare.Enum("read", "grep", "ast")).
+		String("mode", "默认read；grep文本搜索；ast仅Go单文件结构索引", toolshare.Enum("read", "grep", "ast")).
 		String("query", "仅grep必填，逐行Go regex，首尾空白忽略。").
 		StringArray("glob", "仅grep目录搜索；语法同rg -g，如[\"*.go\",\"!**/*_test.go\"]；省略/[]=不过滤。").
 		Integer("index", "grep匹配/ast声明编号，1-based；ast选中类型时展开全部成员，不返回函数体。").
