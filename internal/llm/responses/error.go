@@ -22,13 +22,11 @@ func streamAPIError(event Event) error {
 			apiErr.Code, apiErr.Message, apiErr.Param = event.Code, event.Message, event.Param
 		} else {
 			var envelope struct {
-				Error json.RawMessage `json:"error"`
+				Error *APIError `json:"error"`
 			}
-			if json.Unmarshal(event.Raw, &envelope) == nil {
-				var nested APIError
-				if json.Unmarshal(envelope.Error, &nested) == nil {
-					*apiErr = nested
-				}
+			_ = json.Unmarshal(event.Raw, &envelope)
+			if envelope.Error != nil {
+				*apiErr = *envelope.Error
 			}
 		}
 	} else {
@@ -54,7 +52,7 @@ func streamAPIError(event Event) error {
 	}
 	// Chain errors require rebuilding the request before replay is allowed.
 	failure := llm.MapProviderError(0, apiErr.Code, apiErr.Type, apiErr.Param, apiErr)
-	if failure.Kind == llm.ErrorPreviousResponseUnavailable {
+	if failure.Kind != llm.ErrorUnknown {
 		return failure
 	}
 	return apiErr

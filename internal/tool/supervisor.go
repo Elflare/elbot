@@ -93,9 +93,6 @@ func (m *Supervisor) QueryTools(ctx context.Context, query ToolQuery) ([]ToolInf
 		return nil, err
 	}
 	internalQuery := toInternalToolQuery(query)
-	if query.Tag != "" {
-		internalQuery.Scope, internalQuery.Kind = share.QueryCatalog, ""
-	}
 	definitions, err := m.catalog.registry.Query(ctx, internalQuery)
 	if err != nil {
 		return nil, err

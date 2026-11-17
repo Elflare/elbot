@@ -6,11 +6,9 @@ import (
 	"testing"
 
 	agentinput "elbot/internal/agent/input"
-
 	agentshare "elbot/internal/agent/share"
-	"elbot/internal/delivery"
 
-	"elbot/internal/security"
+	"elbot/internal/delivery"
 )
 
 type constructorMessageHooks struct{}
@@ -47,9 +45,8 @@ func (constructorOutput) Send(context.Context, delivery.StreamEvent) (delivery.R
 }
 
 func TestMessageEntryConstructsWithOnlyConsumptionCapabilities(t *testing.T) {
-	identity := agentshare.NewIdentityResolver(agentshare.IdentityResolverDeps{CLIPlatformName: "cli", Permission: security.DefaultPermission()})
 	input := &constructorInput{}
-	entry := agentinput.NewMessageHandler(agentinput.MessageHandlerDeps{Identity: identity, Hooks: constructorMessageHooks{}, Output: constructorOutput{}, Commands: constructorCommands{}, Input: input})
+	entry := agentinput.NewMessageHandler(agentinput.MessageHandlerDeps{Hooks: constructorMessageHooks{}, Output: constructorOutput{}, Commands: constructorCommands{}, Input: input})
 	if _, _, err := entry.HandleMessage(t.Context(), "plain input"); err != nil {
 		t.Fatal(err)
 	}

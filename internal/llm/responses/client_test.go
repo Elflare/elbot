@@ -133,6 +133,7 @@ func TestStreamRetainsNativeItemsAndFunctionEvents(t *testing.T) {
 func TestStreamRejectsFailedIncompleteAndPrematureEOF(t *testing.T) {
 	for _, tc := range []struct{ name, event, raw, want string }{
 		{"failed", "response.failed", `{"type":"response.failed","response":{"id":"r","status":"failed","error":{"code":"server_error","message":"failed generation"}}}`, "failed generation"},
+		{"failed numeric code", "response.failed", `{"type":"response.failed","response":{"id":"r","status":"failed","error":{"code":503,"message":"failed generation"}}}`, "failed generation"},
 		{"incomplete", "response.incomplete", `{"type":"response.incomplete","response":{"id":"r","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"}}}`, "max_output_tokens"},
 		{"error", "error", `{"type":"error","code":"bad","message":"bad event"}`, "bad event"},
 		{"invalid completed", "response.completed", `{"type":"response.completed","response":{"id":"r","status":"in_progress"}}`, "invalid completed"},
@@ -160,6 +161,24 @@ func TestStreamRejectsFailedIncompleteAndPrematureEOF(t *testing.T) {
 				t.Fatal("failed stream was replayed")
 			}
 		})
+	}
+}
+
+func TestStreamProviderRejectionDoesNotRetry(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		emit(w, "response.failed", `{"type":"response.failed","response":{"id":"r","status":"failed","error":{"code":400,"type":"invalid_request_error","message":"Invalid request. Please check the request parameters."}}}`)
+	}))
+	defer srv.Close()
+	client := mustClient(t, srv.URL, nil, nil, RequestOptions{RetryOptions: llm.RetryOptions{MaxRetries: 3, RetryInitialDelay: time.Millisecond}})
+	var retries atomic.Int32
+	client.SetRetryNotifier(func(context.Context, llm.RetryEvent) { retries.Add(1) })
+	_, err := llm.Retry(context.Background(), client, client.GenerateText, llm.TextRequest{Model: "m", Input: "input"})
+	var failure *llm.CallError
+	if err == nil || !errors.As(err, &failure) || failure.Kind != llm.ErrorRequestRejected || failure.Retryable || calls.Load() != 1 || retries.Load() != 0 || !strings.Contains(err.Error(), "Invalid request") {
+		t.Fatalf("calls=%d retries=%d failure=%+v error=%v", calls.Load(), retries.Load(), failure, err)
 	}
 }
 

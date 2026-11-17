@@ -108,6 +108,29 @@ type APIError struct {
 	EventType  string `json:"-"`
 	Detail     string `json:"-"` // Sanitized, bounded diagnostics for logs only.
 }
+
+func (e *APIError) UnmarshalJSON(data []byte) error {
+	var parsed struct {
+		Code    any    `json:"code"`
+		Type    string `json:"type"`
+		Message string `json:"message"`
+		Param   string `json:"param"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&parsed); err != nil {
+		return err
+	}
+	*e = APIError{Type: parsed.Type, Message: parsed.Message, Param: parsed.Param}
+	switch code := parsed.Code.(type) {
+	case string:
+		e.Code = code
+	case json.Number:
+		e.Code = code.String()
+	}
+	return nil
+}
+
 type IncompleteDetails struct {
 	Reason string `json:"reason"`
 }
