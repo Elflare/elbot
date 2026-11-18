@@ -45,7 +45,7 @@ func (m *MediaCenter) Close(ctx context.Context) error {
 	if err := m.usageFinished.Close(ctx); err != nil {
 		return err
 	}
-	if err := m.transfer.CleanupUsages(ctx, nil); err != nil {
+	if err := m.transfer.Close(ctx); err != nil {
 		return err
 	}
 	return m.objects.Close(ctx)

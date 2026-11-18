@@ -189,6 +189,9 @@ func TestS3BackendCancellation(t *testing.T) {
 	if err := b.Remove(ctx, "key"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Remove = %v", err)
 	}
+	if _, err := b.PresignGet(ctx, "key", time.Hour); !errors.Is(err, context.Canceled) {
+		t.Fatalf("PresignGet = %v", err)
+	}
 	if requests.Load() != 0 {
 		t.Fatalf("canceled operations sent %d requests", requests.Load())
 	}

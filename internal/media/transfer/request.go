@@ -167,11 +167,7 @@ func (m *Manager) readMedia(ctx context.Context, held share.HeldMedia) ([]byte, 
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if closeErr := reader.Close(); closeErr != nil {
-			m.options.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
-		}
-	}()
+	defer m.closeMediaReader(ctx, reader)
 	data, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, err
@@ -180,6 +176,12 @@ func (m *Manager) readMedia(ctx context.Context, held share.HeldMedia) ([]byte, 
 }
 
 // unavailable 将不可用媒体替换为包含展示名称和媒体标识的文本说明。
+func (m *Manager) closeMediaReader(ctx context.Context, reader io.Closer) {
+	if err := reader.Close(); err != nil {
+		m.options.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
+	}
+}
+
 func unavailable(segment llm.MessageSegment) llm.MessageSegment {
 	return llm.MessageSegment{Type: llm.SegmentText, Text: "[媒体不可用；" + strings.TrimSpace(segment.Name) + "；媒体 ID：" + segment.MediaID + "]"}
 }

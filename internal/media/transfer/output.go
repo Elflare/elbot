@@ -24,7 +24,7 @@ func (m *Manager) ResolveForOutput(ctx context.Context, id string) (result opera
 	}
 	held := retained.Data
 	defer func() {
-		if err != nil || result.Status != operationresult.Success {
+		if err != nil {
 			m.abortUsage(ctx, usageID)
 			usageID = ""
 		}
@@ -37,17 +37,13 @@ func (m *Manager) ResolveForOutput(ctx context.Context, id string) (result opera
 	u := m.usages[usageID]
 	m.usagesMu.Unlock()
 	u.mu <- struct{}{}
-	u.dirs = append(u.dirs, dir)
+	u.dir = dir
 	<-u.mu
 	reader, err := held.Open(ctx)
 	if err != nil {
 		return operationresult.Result[delivery.Source]{}, usageID, err
 	}
-	defer func() {
-		if closeErr := reader.Close(); closeErr != nil {
-			m.options.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
-		}
-	}()
+	defer m.closeMediaReader(ctx, reader)
 	path := filepath.Join(dir, "media")
 	file, err := os.Create(path)
 	if err != nil {

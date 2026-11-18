@@ -47,7 +47,7 @@ func NewS3Backend(ctx context.Context, opts S3Options) (*S3Backend, error) {
 // Put 写入内容寻址对象，返回实际对象键。
 // 不可 Seek 的输入同步暂存到系统临时文件，以支持签名、校验和及重试。
 // 暂存前后检查取消；原输入由调用方关闭，临时文件由本次调用释放。
-func (b *S3Backend) Put(ctx context.Context, id string, input io.Reader, size int64, contentType string) (location string, err error) {
+func (b *S3Backend) Put(ctx context.Context, id string, input io.Reader, size int64, contentType string) (string, error) {
 	if _, ok := input.(io.ReadSeeker); !ok {
 		if err := ctx.Err(); err != nil {
 			return "", err
@@ -56,8 +56,7 @@ func (b *S3Backend) Put(ctx context.Context, id string, input io.Reader, size in
 		if err != nil {
 			return "", fmt.Errorf("create media upload temporary file: %w", err)
 		}
-		tmpPath := tmp.Name()
-		defer os.Remove(tmpPath)
+		defer os.Remove(tmp.Name())
 		defer tmp.Close()
 		if _, err := io.Copy(tmp, input); err != nil {
 			return "", fmt.Errorf("prepare media upload: %w", err)
@@ -71,7 +70,7 @@ func (b *S3Backend) Put(ctx context.Context, id string, input io.Reader, size in
 		input = tmp
 	}
 	key := objectKey(id)
-	_, err = b.client.PutObject(ctx, &s3.PutObjectInput{
+	_, err := b.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(b.bucket), Key: aws.String(key), Body: input,
 		ContentLength: aws.Int64(size), ContentType: aws.String(contentType),
 	})
@@ -104,6 +103,9 @@ func (b *S3Backend) Remove(ctx context.Context, location string) error {
 
 // PresignGet 为给定对象键生成指定期限的读取 URL，不处理缓存。
 func (b *S3Backend) PresignGet(ctx context.Context, location string, expiry time.Duration) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	request, err := b.presign.PresignGetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(b.bucket), Key: aws.String(location)}, func(options *s3.PresignOptions) {
 		options.Expires = expiry
 	})

@@ -137,6 +137,26 @@ func TestUsageFailureRemainsOwnedAfterCanceledConsumerReturns(t *testing.T) {
 	}
 }
 
+func TestMediaCenterCloseReturnsUsageReleaseError(t *testing.T) {
+	m, store, refs := newUsageCenter(t)
+	item, err := m.ImportBytes(t.Context(), []byte("body"), Input{}, ImportLimits{})
+	mediaID := requireMediaSuccess(t, item, err).ID
+	hold, err := m.Hold(t.Context(), mediaID)
+	id := requireMediaSuccess(t, hold, err).UsageID
+	refs.fail.Store(true)
+	m.PublishUsageFinished(t.Context(), []UsageID{id})
+	if err := m.Close(t.Context()); err == nil || err.Error() != "reference store unavailable" {
+		t.Fatalf("Close error = %v", err)
+	}
+	refs.fail.Store(false)
+	if err := m.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if remaining, err := store.MediaReferences().ListMediaIDs(t.Context(), mediaID); err != nil || len(remaining) != 0 {
+		t.Fatalf("references after retry = %v, err = %v", remaining, err)
+	}
+}
+
 func TestUsageQueueRejectionAndCloseTimeoutKeepResources(t *testing.T) {
 	m, store, refs := newUsageCenter(t)
 	refs.started, refs.unblock = make(chan struct{}), make(chan struct{})

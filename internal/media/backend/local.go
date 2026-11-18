@@ -18,7 +18,7 @@ type LocalBackend struct {
 
 // Put 按内容 ID 写入本地对象，返回实际文件位置。
 // 文件写入同步执行，完成写入后在提交前检查取消。
-func (b *LocalBackend) Put(ctx context.Context, id string, input io.Reader, size int64, contentType string) (location string, err error) {
+func (b *LocalBackend) Put(ctx context.Context, id string, input io.Reader, size int64, contentType string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}

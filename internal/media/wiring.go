@@ -19,7 +19,7 @@ import (
 )
 
 // NewMediaCenter 接收完整配置，在根部拆分对象、交付和后端配置并装配。
-// 本地对象目录沿用沙盒根目录同级的 media；凭据解析归根部，远端后端延迟构造。
+// 本地对象目录沿用沙盒根目录同级的 media；凭据解析归根部，构造远端客户端不发起网络请求。
 // 构造负责中断恢复和首次历史对账，不接管借用存储。
 func NewMediaCenter(ctx context.Context, cfg *config.Config, deps MediaCenterDeps) (*MediaCenter, error) {
 	if err := ctx.Err(); err != nil {
@@ -38,13 +38,13 @@ func NewMediaCenter(ctx context.Context, cfg *config.Config, deps MediaCenterDep
 		if err != nil {
 			return nil, fmt.Errorf("media credentials: %w", err)
 		}
-		opts := backend.S3Options{
+		remote, err = backend.NewS3Backend(ctx, backend.S3Options{
 			Endpoint: deliveryConfig.S3Endpoint, Region: deliveryConfig.S3Region,
 			Bucket: deliveryConfig.S3Bucket, Credentials: provider,
-		}
-		remote = backend.NewLazyBackend(func(ctx context.Context) (share.RemoteBackend, error) {
-			return backend.NewS3Backend(ctx, opts)
 		})
+		if err != nil {
+			return nil, err
+		}
 	default:
 		return nil, fmt.Errorf("unsupported media backend %q", deliveryConfig.Backend)
 	}

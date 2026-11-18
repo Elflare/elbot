@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"elbot/internal/events"
 	"elbot/internal/operationresult"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -19,16 +20,13 @@ type usage struct {
 	mu    chan struct{}     // 串行清理资格，等待可取消。
 	ended atomic.Bool       // 收到结束事实后，维护才可释放资源。
 	held  []share.HeldMedia // 尚未成功释放的媒体持有。
-	dirs  []string          // 尚未成功删除的私有目录。
+	dir   string            // 尚未成功删除的私有目录。
 }
 
 func (m *Manager) registerUsage(held share.HeldMedia, dir string) string {
-	u := &usage{mu: make(chan struct{}, 1)}
+	u := &usage{mu: make(chan struct{}, 1), dir: dir}
 	if held != nil {
 		u.held = append(u.held, held)
-	}
-	if dir != "" {
-		u.dirs = append(u.dirs, dir)
 	}
 	id := rand.Text()
 	m.usagesMu.Lock()
@@ -52,11 +50,10 @@ func (m *Manager) addHeld(id string, held share.HeldMedia) string {
 
 // FinishUsages 仅登记结束事实，不做文件或数据库操作。
 func (m *Manager) FinishUsages(ids []string) {
+	m.usagesMu.Lock()
+	defer m.usagesMu.Unlock()
 	for _, id := range ids {
-		m.usagesMu.Lock()
-		u := m.usages[id]
-		m.usagesMu.Unlock()
-		if u != nil {
+		if u := m.usages[id]; u != nil {
 			u.ended.Store(true)
 		}
 	}
@@ -65,6 +62,13 @@ func (m *Manager) FinishUsages(ids []string) {
 // CleanupUsages 清理指定已结束记录；nil 参数表示维护当前集合快照。
 // 资源失败单独记录并保留重试；返回 nil 仅表示遍历完成，中断返回 ctx.Err()。
 func (m *Manager) CleanupUsages(ctx context.Context, ids []string) error {
+	return m.cleanupUsages(ctx, ids, false)
+}
+
+// Close 仅处理已结束的 usage，首个资源清理错误直接返回。
+func (m *Manager) Close(ctx context.Context) error { return m.cleanupUsages(ctx, nil, true) }
+
+func (m *Manager) cleanupUsages(ctx context.Context, ids []string, stopOnError bool) error {
 	m.usagesMu.Lock()
 	entries := make(map[string]*usage)
 	if ids == nil {
@@ -80,50 +84,56 @@ func (m *Manager) CleanupUsages(ctx context.Context, ids []string) error {
 	}
 	m.usagesMu.Unlock()
 	for id, u := range entries {
-		if err := ctx.Err(); err != nil {
+		if err := m.cleanupUsage(ctx, id, u, stopOnError); err != nil {
 			return err
 		}
-		select {
-		case u.mu <- struct{}{}:
-		case <-ctx.Done():
-			return ctx.Err()
+	}
+	return ctx.Err()
+}
+
+func (m *Manager) cleanupUsage(ctx context.Context, id string, u *usage, stopOnError bool) error {
+	select {
+	case u.mu <- struct{}{}:
+		defer func() { <-u.mu }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if err := ctx.Err(); err != nil || !u.ended.Load() {
+		return err
+	}
+	if u.dir != "" {
+		if err := os.RemoveAll(u.dir); err == nil {
+			u.dir = ""
+		} else if stopOnError {
+			return err
+		} else {
+			m.options.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError, EventName: "media_usage_cleanup_failed", Module: "media", Content: fmt.Sprintf("usage_id=%s operation=remove_directory path=%s error=%v", id, u.dir, err), ContentLimit: 4096, ResultStatus: events.ResultFailed})
 		}
-		if !u.ended.Load() {
-			<-u.mu
-			continue
-		}
-		dirs := u.dirs[:0]
-		for _, dir := range u.dirs {
-			if ctx.Err() != nil {
-				dirs = append(dirs, dir)
+	}
+	held := u.held[:0]
+	for i, item := range u.held {
+		err := ctx.Err()
+		if err == nil {
+			err = item.Close(ctx)
+			if err == nil {
 				continue
 			}
-			if err := os.RemoveAll(dir); err != nil {
-				dirs = append(dirs, dir)
-				m.options.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError, EventName: "media_usage_cleanup_failed", Module: "media", Content: fmt.Sprintf("usage_id=%s operation=remove_directory path=%s error=%v", id, dir, err), ContentLimit: 4096, ResultStatus: events.ResultFailed})
-			}
-		}
-		u.dirs = dirs
-		held := u.held[:0]
-		for _, item := range u.held {
-			if ctx.Err() != nil {
+			if !stopOnError {
 				held = append(held, item)
-				continue
-			}
-			if err := item.Close(ctx); err != nil {
-				held = append(held, item)
-				if err != ctx.Err() {
+				if !errors.Is(err, ctx.Err()) {
 					m.options.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelError, EventName: "media_usage_cleanup_failed", Module: "media", Content: fmt.Sprintf("usage_id=%s operation=release_hold media_id=%s error=%v", id, item.Info().ID, err), ContentLimit: 4096, ResultStatus: events.ResultFailed})
 				}
+				continue
 			}
 		}
-		u.held = held
-		if len(u.dirs) == 0 && len(u.held) == 0 {
-			m.usagesMu.Lock()
-			delete(m.usages, id)
-			m.usagesMu.Unlock()
-		}
-		<-u.mu
+		u.held = append(held, u.held[i:]...)
+		return err
+	}
+	u.held = held
+	if u.dir == "" && len(held) == 0 {
+		m.usagesMu.Lock()
+		delete(m.usages, id)
+		m.usagesMu.Unlock()
 	}
 	return ctx.Err()
 }
