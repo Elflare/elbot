@@ -4,7 +4,7 @@
 
 ### Added
 
-- 新增 `tool_weave`，可执行Python代码并调用elbot工具。纯文本 AgentSkill 可用 `weavable = true` 加入编排。
+- 新增 `tool_weave`，可执行Python代码并调用elbot工具。纯 AgentSkill 可用 `weavable = true` 加入编排。
 - AgentSkill TOML 支持 `depends_on`，Skill 标签参与 `@t:` 工具组补全和预载。
 - AgentSkill TOML 新增 `use_workspace`，启用后命令和媒体路径以当前 workspace 为基准。
 - AgentSkill TOML 工具支持通过 `positional` 数组按指定顺序传入位置参数，可与 `[args]` flag 参数组合使用。

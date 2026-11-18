@@ -23,7 +23,7 @@ func TestRunnerConcurrentCalls(t *testing.T) {
 		name, mode string
 		project    bool
 	}{
-		{"system", "system", false}, {"uv_project", "", true}, {"uv_temporary", "uv", false},
+		{"system", "system", false}, {"uv_project", "", true}, {"auto_no_project", "", false}, {"uv_temporary", "uv", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if test.mode != "system" {
@@ -71,8 +71,12 @@ print("script stderr", file=sys.stderr)`
 			if err != nil || got.Status != operationresult.Success || !strings.Contains(got.Data.Content, `["first", "second", "denied"]`) || !strings.Contains(got.Data.Content, "stderr:\nscript stderr") {
 				t.Fatalf("result=%+v data=%+v err=%v", got, got.Data, err)
 			}
-			if temporary := test.mode == "uv" && !test.project; strings.Contains(strings.Join(got.Data.Warnings, " "), "临时 uv 环境") != temporary {
-				t.Fatalf("warnings = %v", got.Data.Warnings)
+			wantWarning := ""
+			if test.mode == "uv" && !test.project {
+				wantWarning = "已使用临时 uv 环境。"
+			}
+			if strings.Join(got.Data.Warnings, "\n") != wantWarning {
+				t.Fatalf("warnings = %v, want %q", got.Data.Warnings, wantWarning)
 			}
 		})
 	}
@@ -93,15 +97,17 @@ func TestFallbackAndTimeout(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Setenv("PATH", dir)
-		for _, mode := range []string{"", "uv"} {
+		for mode, warning := range map[string]string{"": "", "uv": "未找到 uv，回退到系统 Python。"} {
 			got, _, err := run(t.Context(), processenv.Environment{}, dir, args{Code: "print(42)", Mode: mode, Timeout: 5})
-			if err != nil || got.Status != operationresult.Success || len(got.Data.Warnings) != 1 {
+			if err != nil || got.Status != operationresult.Success || strings.Join(got.Data.Warnings, "\n") != warning {
 				t.Fatalf("fallback: %+v %v", got, err)
 			}
 		}
-		got, _, _ := run(t.Context(), processenv.Environment{}, dir, args{Code: "raise AssertionError()", Packages: []string{"sample"}, Timeout: 5})
-		if got.Status != operationresult.InvalidArguments || !strings.Contains(got.Message, fallback) {
-			t.Fatalf("packages: %+v", got)
+		for mode, reason := range map[string]string{"": "未找到 uv", "uv": "未找到 uv", "system": `改用 mode="uv"。`} {
+			got, _, err := run(t.Context(), processenv.Environment{}, dir, args{Code: "raise AssertionError()", Mode: mode, Packages: []string{"sample"}, Timeout: 5})
+			if err != nil || got.Status != operationresult.InvalidArguments || got.Message != "packages 仅限 uv。"+reason {
+				t.Fatalf("mode=%q packages: %+v %v", mode, got, err)
+			}
 		}
 	}
 	stopped := make(chan struct{})
@@ -142,9 +148,15 @@ func TestUVPreparationFailureAndMissingPython(t *testing.T) {
 	if err := os.Symlink(python, filepath.Join(dir, "python3")); err != nil {
 		t.Fatal(err)
 	}
+	a.Mode = "" // 自动模式仍报告真实的 uv 准备失败。
 	got, _, err := run(t.Context(), processenv.Environment{}, dir, a)
 	if err != nil || got.Status != operationresult.Success || strings.TrimSpace(got.Data.Content) != "42" || !strings.Contains(strings.Join(got.Data.Warnings, " "), "uv setup failed") {
 		t.Fatalf("setup fallback: %+v %v", got, err)
+	}
+	a.Packages = []string{"sample"}
+	got, _, err = run(t.Context(), processenv.Environment{}, dir, a)
+	if err != nil || got.Status != operationresult.InvalidArguments || got.Message != "packages 仅限 uv。uv 环境准备失败：uv setup failed" {
+		t.Fatalf("setup failure with packages: %+v %v", got, err)
 	}
 }
 
@@ -192,6 +204,10 @@ func TestTemporaryPackageLeavesProjectDependenciesAlone(t *testing.T) {
 	}
 	// The same package also works outside a project with explicit uv.
 	plain := t.TempDir()
+	got, _, err = run(t.Context(), processenv.Environment{}, plain, a)
+	if err != nil || got.Status != operationresult.InvalidArguments || !strings.Contains(got.Message, `未检测到 uv 项目，改用 mode="uv"`) {
+		t.Fatalf("auto packages outside project: %+v %v", got, err)
+	}
 	a.Mode = "uv"
 	got, _, err = run(t.Context(), processenv.Environment{}, plain, a)
 	if err != nil || got.Status != operationresult.Success || strings.TrimSpace(got.Data.Content) != "42" || !strings.Contains(strings.Join(got.Data.Warnings, " "), "临时 uv 环境") {

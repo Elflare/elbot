@@ -39,8 +39,6 @@ type pipes struct {
 	close        func()
 }
 
-const fallback = "本次已自动回退到系统 Python。"
-
 func Definition(env processenv.Environment) share.ToolDefinition {
 	return share.NewBuilder("tool_weave").
 		Description(`执行py代码，也可直接编排已有工具，支持批量、并发和结果处理。复杂、多次工具调用尽量使用该工具，简单别用。例：
@@ -55,7 +53,7 @@ print(await send_file(source="weekly.md"))`).
 		Tags("agent", "files").
 		String("code", "Python 源码，支持顶层 await，用 print 输出。", share.Required()).
 		String("mode", "省略：项目 uv，否则系统 Python。显式 uv：无项目用临时环境，准备失败回退系统 Python。", share.Enum("system", "uv")).
-		StringArray("packages", "临时依赖，仅 uv。").
+		StringArray("packages", "临时依赖，仅 uv。项目外用 mode=\"uv\"。").
 		Integer("timeout", "总超时，秒，默认 10。").
 		Build(func(ctx context.Context, req share.CallRequest, info share.Info) (operationresult.Result[*share.PreparedCall], error) {
 			var a args
@@ -63,7 +61,7 @@ print(await send_file(source="weekly.md"))`).
 				return operationresult.Result[*share.PreparedCall]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 			}
 			if strings.TrimSpace(a.Code) == "" || (a.Mode != "" && a.Mode != "system" && a.Mode != "uv") || a.Timeout < 0 || a.Timeout > int64((1<<63-1)/time.Second) {
-				return operationresult.Result[*share.PreparedCall]{Status: operationresult.InvalidArguments, Message: "tool_weave 参数无效，请检查 code、mode、timeout"}, nil
+				return operationresult.Result[*share.PreparedCall]{Status: operationresult.InvalidArguments, Message: "tool_weave 参数无效，检查 code、mode、timeout"}, nil
 			}
 			if a.Timeout == 0 {
 				a.Timeout = 10
@@ -87,36 +85,43 @@ print(await send_file(source="weekly.md"))`).
 		})
 }
 
-// uvOptions 只选择运行环境。返回空参数表示使用系统 Python。
-func uvOptions(ctx context.Context, env processenv.Environment, dir string, a args) ([]string, []string) {
+// uvOptions 返回 uv 启动参数和选择原因；空参数表示使用系统 Python。
+func uvOptions(ctx context.Context, env processenv.Environment, dir string, a args) ([]string, string, error) {
 	if a.Mode == "system" {
-		return nil, nil
+		return nil, `改用 mode="uv"。`, nil
 	}
 	probe := env.CommandContext(ctx, "uv", "workspace", "dir")
 	probe.Dir = dir
 	err := probe.Run()
 	options := []string{"run", "--quiet"}
-	var warnings []string
+	var note string
 	var exit *exec.ExitError
 	switch {
 	case err == nil:
 		options = append(options, "--no-sync")
-	case a.Mode == "uv" && errors.As(err, &exit):
+	case errors.As(err, &exit):
+		if a.Mode != "uv" {
+			return nil, `未检测到 uv 项目，改用 mode="uv"。`, nil
+		}
 		options = append(options, "--no-project", "--isolated")
-		warnings = []string{"当前目录不在 uv 项目中，已自动使用临时 uv 环境。"}
+		note = "已使用临时 uv 环境。"
+	case errors.Is(err, exec.ErrNotFound), errors.Is(err, os.ErrNotExist):
+		return nil, "未找到 uv", nil
 	default:
-		return nil, []string{fallback}
+		return nil, "", err
 	}
 	for _, pkg := range a.Packages {
 		options = append(options, "--with="+pkg)
 	}
-	return append(options, "--", "python"), warnings
+	return append(options, "--", "python"), note, nil
 }
 
 func run(parent context.Context, env processenv.Environment, dir string, a args) (operationresult.Result[*share.Result], string, error) {
 	ctx, cancel := context.WithTimeout(parent, time.Duration(a.Timeout)*time.Second)
 	defer cancel()
-	options, warnings := uvOptions(ctx, env, dir, a)
+	options, note, err := uvOptions(ctx, env, dir, a)
+	var warnings []string
+	warnFallback := a.Mode == "uv"
 	var stdout, stderr share.ProcessOutput
 	var dispatched bool // 开始向就绪的 runner 交付代码后，不可再次执行。
 	execute := func(name string, prefix []string) error {
@@ -126,8 +131,7 @@ func run(parent context.Context, env processenv.Environment, dir string, a args)
 		cmd.WaitDelay = time.Second
 		return runProcess(ctx, cmd, a.Code, share.WeaveFromContext(ctx), &dispatched)
 	}
-	var err error
-	if options != nil {
+	if options != nil && ctx.Err() == nil {
 		err = execute("uv", options)
 		var exit *exec.ExitError
 		if !dispatched && ctx.Err() == nil && (errors.As(err, &exit) || errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist)) {
@@ -135,15 +139,22 @@ func run(parent context.Context, env processenv.Environment, dir string, a args)
 			if reason == "" {
 				reason = err.Error()
 			}
-			warnings = append(warnings, "uv 环境准备失败："+reason+"。"+fallback)
+			note = "uv 环境准备失败：" + reason
+			warnFallback = true
+			err = nil
 			options = nil
 			stdout, stderr = share.ProcessOutput{}, share.ProcessOutput{}
+		} else if dispatched && note != "" {
+			warnings = append(warnings, note)
 		}
 	}
-	if options == nil && ctx.Err() == nil {
+	if options == nil && err == nil && ctx.Err() == nil {
 		if len(a.Packages) > 0 {
-			message := share.AppendWarnings("packages 需要 uv 环境，脚本未执行", warnings)
+			message := "packages 仅限 uv。" + note
 			return operationresult.Result[*share.Result]{Status: operationresult.InvalidArguments, Message: message}, "Python 依赖需要 uv", nil
+		}
+		if warnFallback {
+			warnings = append(warnings, note+"，回退到系统 Python。")
 		}
 		python := "python3"
 		if runtime.GOOS == "windows" {
