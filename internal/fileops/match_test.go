@@ -34,13 +34,21 @@ func TestApplyEditsReplaceTextCanDelete(t *testing.T) {
 }
 
 func TestApplyEditsMatchAmbiguityShowsCandidates(t *testing.T) {
-	_, err := ApplyEdits("beta one\nbeta two\n", []Edit{{
-		Operation: "replace_text",
-		OldText:   "beta",
-		NewText:   textPtr("BETA"),
-	}})
-	if err == nil || !strings.Contains(err.Error(), "matched 2 locations") || !strings.Contains(err.Error(), "#1") || !strings.Contains(err.Error(), "#2") {
-		t.Fatalf("expected candidate error, got %v", err)
+	_, err := ApplyEdits(strings.Repeat("a\nb\n", 6), []Edit{{Operation: "replace_text", OldText: "a\nb\n", NewText: textPtr("x")}})
+	want := `edit 1: old_text matched 6 locations; provide a longer old_text, index, or all_matches:
+  #1 L1-2 "a\\nb\\n"
+  #2 L3-4 "a\\nb\\n"
+  #3 L5-6 "a\\nb\\n"
+  #4 L7-8 "a\\nb\\n"
+  #5 L9-10 "a\\nb\\n"
+  ...and 1 more
+`
+	if err == nil || err.Error() != want {
+		t.Fatalf("multiline candidates: %v", err)
+	}
+	_, err = ApplyEdits("  x one\n\tx two", []Edit{{Operation: "delete_line", Anchor: "x"}})
+	if err == nil || !strings.HasSuffix(err.Error(), "  #1 L1 \"x one\"\n  #2 L2 \"x two\"\n") {
+		t.Fatalf("anchor candidates: %v", err)
 	}
 }
 

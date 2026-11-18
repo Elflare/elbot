@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"elbot/internal/contextinfo"
 	"elbot/internal/operationresult"
 )
 
@@ -191,6 +192,29 @@ func TestRollbackConflictsAndGuardKeepRecord(t *testing.T) {
 	}
 	if result, err := s.Rollback(context.Background(), path, 0, nil); err != nil || result.Status != operationresult.Success {
 		t.Fatalf("rollback: %+v %v", result, err)
+	}
+}
+
+func TestRollbackByIDIsScopedAndRejectsReplacedRecord(t *testing.T) {
+	svc := NewService(nil)
+	ctx := contextinfo.WithActor(t.Context(), contextinfo.Actor{Role: contextinfo.RoleSuperadmin})
+	var owner, other testRollbackBinding
+	owner.valid.Store(true)
+	other.valid.Store(true)
+	ownerCtx := svc.WithBinding(ctx, &owner)
+	lease := svc.EditSession(ownerCtx).Data
+	path := filepath.Join(t.TempDir(), "file")
+	rollbackTestEdit(t, lease, path, "one", true)
+	id := lease.List().Data[0].ID
+	if r, err := svc.RollbackByID(svc.WithBinding(ctx, &other), id); err != nil || r.Status != operationresult.NotFound {
+		t.Fatalf("foreign ID: %+v, %v", r, err)
+	}
+	rollbackTestEdit(t, lease, path, "two", false)
+	if r, err := svc.RollbackByID(ownerCtx, id); err != nil || r.Status != operationresult.NotFound {
+		t.Fatalf("replaced ID: %+v, %v", r, err)
+	}
+	if r, err := svc.RollbackByID(ownerCtx, lease.List().Data[0].ID); err != nil || r.Status != operationresult.Success {
+		t.Fatalf("current ID: %+v, %v", r, err)
 	}
 }
 

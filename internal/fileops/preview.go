@@ -45,18 +45,11 @@ func PrepareFile(ctx context.Context, path string, transform func(string) (opera
 	if text.Status != operationresult.Success {
 		return operationresult.Result[*PreparedFile]{Status: text.Status, Message: text.Message}, nil
 	}
-	result := prepareFileResult(file.Data, false, text.Data, 3, EditFileOptions{})
+	result := prepareFileResult(file.Data, false, ContentRevision(file.Data.Bytes), text.Data, 3, EditFileOptions{})
 	if result.Status != operationresult.Success {
 		return operationresult.Result[*PreparedFile]{Status: result.Status, Message: result.Message}, nil
 	}
-	checked, err := checkFileTarget(path, target.Data, false)
-	if err != nil {
-		return operationresult.Result[*PreparedFile]{}, err
-	}
-	if checked.Status != operationresult.Success {
-		return operationresult.Result[*PreparedFile]{Status: checked.Status, Message: checked.Message}, nil
-	}
-	return operationresult.Result[*PreparedFile]{Status: operationresult.Success, Data: &PreparedFile{target: target.Data, result: result.Data}}, nil
+	return finishPreparedFile(target.Data, result.Data)
 }
 
 // PrepareFileEdit 复用编辑协议准备业务文件；不附加工作目录、会话或撤销策略。
@@ -96,14 +89,7 @@ func PrepareFileEdit(ctx context.Context, req EditRequest, validate func(string)
 			return operationresult.Result[*PreparedFile]{Status: checked.Status, Message: checked.Message}, nil
 		}
 	}
-	checked, err := checkFileTarget(req.Path, target.Data, data.Created)
-	if err != nil {
-		return operationresult.Result[*PreparedFile]{}, err
-	}
-	if checked.Status != operationresult.Success {
-		return operationresult.Result[*PreparedFile]{Status: checked.Status, Message: checked.Message}, nil
-	}
-	return operationresult.Result[*PreparedFile]{Status: operationresult.Success, Data: &PreparedFile{target: target.Data, result: data}}, nil
+	return finishPreparedFile(target.Data, data)
 }
 
 // PrepareFileWrite 固定业务生成的完整 UTF-8 文本，支持已有文件和新建文件。
@@ -139,14 +125,18 @@ func PrepareFileWrite(ctx context.Context, path, content string) (operationresul
 		RevisionBefore: ContentRevision(file.Data.Bytes), RevisionAfter: ContentRevision(data),
 		Diff: diff, NewBytes: data,
 	}
-	checked, err := checkFileTarget(path, target.Data, created)
+	return finishPreparedFile(target.Data, result)
+}
+
+func finishPreparedFile(target string, result EditResult) (operationresult.Result[*PreparedFile], error) {
+	checked, err := checkFileTarget(result.Path, target, result.Created)
 	if err != nil {
 		return operationresult.Result[*PreparedFile]{}, err
 	}
 	if checked.Status != operationresult.Success {
 		return operationresult.Result[*PreparedFile]{Status: checked.Status, Message: checked.Message}, nil
 	}
-	return operationresult.Result[*PreparedFile]{Status: operationresult.Success, Data: &PreparedFile{target: target.Data, result: result}}, nil
+	return operationresult.Result[*PreparedFile]{Status: operationresult.Success, Data: &PreparedFile{target: target, result: result}}, nil
 }
 
 // Preview 返回只读展示数据，不泄漏批准写入的字节。
@@ -225,7 +215,7 @@ func (p *PreparedFile) Commit(ctx context.Context) (operationresult.Result[EditR
 }
 
 // prepareFileResult 为普通编辑和业务文本更新共用编码、修订与差异计算。
-func prepareFileResult(file File, created bool, text string, contextLines int, options EditFileOptions) operationresult.Result[EditResult] {
+func prepareFileResult(file File, created bool, oldRevision, text string, contextLines int, options EditFileOptions) operationresult.Result[EditResult] {
 	oldText := NormalizeEditText(file.Text)
 	newText := NormalizeEditText(text)
 	if newText == oldText {
@@ -248,7 +238,7 @@ func prepareFileResult(file File, created bool, text string, contextLines int, o
 	}
 	return operationresult.Result[EditResult]{Status: operationresult.Success, Data: EditResult{
 		DryRun: true, Path: file.Path, Created: created, Encoding: file.Encoding,
-		RevisionBefore: ContentRevision(file.Bytes), RevisionAfter: ContentRevision(newBytes),
+		RevisionBefore: oldRevision, RevisionAfter: ContentRevision(newBytes),
 		Diff: diff, NewBytes: newBytes,
 	}}
 }

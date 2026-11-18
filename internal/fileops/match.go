@@ -11,34 +11,24 @@ const (
 )
 
 type matchLocation struct {
-	byteStart int
-	byteEnd   int
-	startLine int
-	endLine   int
-	preview   string
-	lineIndex int
+	byteStart  int
+	byteEnd    int
+	anchorLine int // 1-based for line anchors; zero for content matches.
 }
 
 func findContentMatches(text, needle string) []matchLocation {
-	needleNorm := NormalizeEditText(needle)
-	if needleNorm == "" {
-		return nil
-	}
 	var locations []matchLocation
 	offset := 0
 	for {
-		idx := strings.Index(text[offset:], needleNorm)
+		idx := strings.Index(text[offset:], needle)
 		if idx < 0 {
 			break
 		}
 		start := offset + idx
-		end := start + len(needleNorm)
+		end := start + len(needle)
 		locations = append(locations, matchLocation{
 			byteStart: start,
 			byteEnd:   end,
-			startLine: byteOffsetToLine(text, start),
-			endLine:   byteOffsetToLine(text, end-1),
-			preview:   matchPreview(text, start, end),
 		})
 		offset = end
 	}
@@ -50,25 +40,19 @@ func findLineMatches(lines []editSourceLine, needle string) []matchLocation {
 	for i, line := range lines {
 		if strings.HasPrefix(strings.TrimLeft(line.text, " \t"), needle) {
 			locations = append(locations, matchLocation{
-				byteStart: line.start,
-				byteEnd:   line.end,
-				startLine: i + 1,
-				endLine:   i + 1,
-				preview:   truncateLine(strings.TrimLeft(line.text, " \t")),
-				lineIndex: i,
+				byteStart:  line.start,
+				byteEnd:    line.end,
+				anchorLine: i + 1,
 			})
 		}
 	}
 	return locations
 }
 
-func selectMatches(locations []matchLocation, index *int, all bool, label string) ([]matchLocation, error) {
+func selectMatches(text string, locations []matchLocation, index *int, all bool, label string) ([]matchLocation, error) {
 	n := len(locations)
 	if n == 0 {
 		return nil, fmt.Errorf("%s not found", label)
-	}
-	if index != nil && all {
-		return nil, fmt.Errorf("index and all_matches are mutually exclusive")
 	}
 	if all {
 		return locations, nil
@@ -81,12 +65,12 @@ func selectMatches(locations []matchLocation, index *int, all bool, label string
 		return []matchLocation{locations[i-1]}, nil
 	}
 	if n > 1 {
-		return nil, fmt.Errorf("%s matched %d locations; provide a longer %s, index, or all_matches:\n%s", label, n, label, formatMatchLocations(locations))
+		return nil, fmt.Errorf("%s matched %d locations; provide a longer %s, index, or all_matches:\n%s", label, n, label, formatMatchLocations(text, locations))
 	}
 	return locations, nil
 }
 
-func formatMatchLocations(locations []matchLocation) string {
+func formatMatchLocations(text string, locations []matchLocation) string {
 	var b strings.Builder
 	limit := len(locations)
 	if limit > matchPreviewLimit {
@@ -94,7 +78,14 @@ func formatMatchLocations(locations []matchLocation) string {
 	}
 	for i := 0; i < limit; i++ {
 		loc := locations[i]
-		fmt.Fprintf(&b, "  #%d %s %q\n", i+1, formatLineRange(loc), loc.preview)
+		if loc.anchorLine != 0 {
+			line := strings.TrimLeft(text[loc.byteStart:loc.byteEnd], " \t")
+			fmt.Fprintf(&b, "  #%d L%d %q\n", i+1, loc.anchorLine, truncateLine(line))
+			continue
+		}
+		start := byteOffsetToLine(text, loc.byteStart)
+		end := byteOffsetToLine(text, loc.byteEnd-1)
+		fmt.Fprintf(&b, "  #%d %s %q\n", i+1, formatLineRange(start, end), matchPreview(text, loc.byteStart, loc.byteEnd))
 	}
 	if len(locations) > limit {
 		fmt.Fprintf(&b, "  ...and %d more\n", len(locations)-limit)
@@ -102,11 +93,11 @@ func formatMatchLocations(locations []matchLocation) string {
 	return b.String()
 }
 
-func formatLineRange(loc matchLocation) string {
-	if loc.startLine == loc.endLine {
-		return fmt.Sprintf("L%d", loc.startLine)
+func formatLineRange(start, end int) string {
+	if start == end {
+		return fmt.Sprintf("L%d", start)
 	}
-	return fmt.Sprintf("L%d-%d", loc.startLine, loc.endLine)
+	return fmt.Sprintf("L%d-%d", start, end)
 }
 
 func byteOffsetToLine(text string, offset int) int {

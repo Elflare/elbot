@@ -31,14 +31,23 @@ func (s *Service) List(ctx context.Context) operationresult.Result[[]RollbackInf
 // RollbackByID resolves a human-facing backup number through the same lease and
 // commit checks as tool rollback. Failed records retain their path for auditing.
 func (s *Service) RollbackByID(ctx context.Context, id uint64) (operationresult.Result[RollbackResult], error) {
-	records := s.List(ctx)
-	if records.Status != operationresult.Success {
-		return operationresult.Result[RollbackResult]{Status: records.Status, Message: records.Message}, nil
+	binding := s.rollbackBinding(ctx)
+	if binding.Status != operationresult.Success {
+		return operationresult.Result[RollbackResult]{Status: binding.Status, Message: binding.Message}, nil
 	}
-	for _, record := range records.Data {
-		if record.ID == id {
-			return s.Rollback(ctx, record.Path, id)
-		}
+	session := binding.Data.session
+	m := session.manager
+	m.mu.Lock()
+	if !session.validLocked() {
+		m.mu.Unlock()
+		return operationresult.Result[RollbackResult]{Status: operationresult.Conflict, Message: "rollback session expired"}, nil
 	}
-	return operationresult.Result[RollbackResult]{Status: operationresult.NotFound, Message: "no rollback record: it may have been consumed, replaced, or evicted"}, nil
+	record := m.records[id]
+	if record == nil || record.scope != session.scope {
+		m.mu.Unlock()
+		return operationresult.Result[RollbackResult]{Status: operationresult.NotFound, Message: "no rollback record: it may have been consumed, replaced, or evicted"}, nil
+	}
+	path := record.Path
+	m.mu.Unlock()
+	return s.Rollback(ctx, path, id)
 }

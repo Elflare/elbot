@@ -153,7 +153,7 @@ func editFileWithResult(path, requestedEncoding, expectedRevision string, create
 		if err != nil {
 			return operationresult.Result[EditResult]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
-		prepared := prepareFileResult(file, created, newText, contextLines, options)
+		prepared := prepareFileResult(file, created, oldRevision, newText, contextLines, options)
 		if prepared.Status != operationresult.Success {
 			return prepared, nil
 		}

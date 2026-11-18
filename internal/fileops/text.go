@@ -71,14 +71,6 @@ func NormalizeReadRange(total, start int, endLine LineNumber) (int, int, error) 
 	return start, end, nil
 }
 
-func EnsureTrailingNewline(text string) string {
-	text = NormalizeEditText(text)
-	if text == "" || strings.HasSuffix(text, "\n") {
-		return text
-	}
-	return text + "\n"
-}
-
 func NormalizeEditText(text string) string {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	return strings.ReplaceAll(text, "\r", "\n")

@@ -119,16 +119,17 @@ func resolveEdit(text string, lines []editSourceLine, edit Edit, operation strin
 	switch operation {
 	case "replace_text":
 		oldText := NormalizeEditText(edit.OldText)
-		locations, err := selectMatches(findContentMatches(text, oldText), edit.Index, edit.AllMatches, "old_text")
+		locations, err := selectMatches(text, findContentMatches(text, oldText), edit.Index, edit.AllMatches, "old_text")
 		if err != nil {
 			return nil, err
 		}
+		newText := NormalizeEditText(*edit.NewText)
 		out := make([]resolvedEdit, 0, len(locations))
 		for _, loc := range locations {
-			out = append(out, resolvedEdit{start: loc.byteStart, end: loc.byteEnd, text: NormalizeEditText(*edit.NewText)})
+			out = append(out, resolvedEdit{start: loc.byteStart, end: loc.byteEnd, text: newText})
 		}
 		return out, nil
-	case "replace":
+	case "replace", "delete":
 		endLine := edit.EndLine
 		if endLine == 0 {
 			endLine = edit.Line
@@ -137,7 +138,11 @@ func resolveEdit(text string, lines []editSourceLine, edit Edit, operation strin
 			return nil, err
 		}
 		start, end := lineDeleteRange(lines, edit.Line, endLine)
-		return []resolvedEdit{{start: start, end: end, text: NormalizeEditText(*edit.NewText)}}, nil
+		item := resolvedEdit{start: start, end: end}
+		if operation == "replace" {
+			item.text = NormalizeEditText(*edit.NewText)
+		}
+		return []resolvedEdit{item}, nil
 	case "insert":
 		block, err := normalizeLineBlock(*edit.NewText)
 		if err != nil {
@@ -148,19 +153,9 @@ func resolveEdit(text string, lines []editSourceLine, edit Edit, operation strin
 			return nil, err
 		}
 		return []resolvedEdit{{start: start, end: start, text: inserted}}, nil
-	case "delete":
-		endLine := edit.EndLine
-		if endLine == 0 {
-			endLine = edit.Line
-		}
-		if err := ValidateLineRange(len(lines), edit.Line, endLine); err != nil {
-			return nil, err
-		}
-		start, end := lineDeleteRange(lines, edit.Line, endLine)
-		return []resolvedEdit{{start: start, end: end}}, nil
 	case "insert_before", "insert_after", "replace_line", "delete_line":
 		anchor := NormalizeEditText(edit.Anchor)
-		locations, err := selectMatches(findLineMatches(lines, anchor), edit.Index, edit.AllMatches, "anchor")
+		locations, err := selectMatches(text, findLineMatches(lines, anchor), edit.Index, edit.AllMatches, "anchor")
 		if err != nil {
 			return nil, err
 		}
@@ -173,7 +168,7 @@ func resolveEdit(text string, lines []editSourceLine, edit Edit, operation strin
 		}
 		out := make([]resolvedEdit, 0, len(locations))
 		for _, loc := range locations {
-			line := lines[loc.lineIndex]
+			line := lines[loc.anchorLine-1]
 			switch operation {
 			case "insert_before":
 				out = append(out, resolvedEdit{start: line.start, end: line.start, text: block + "\n"})
@@ -186,7 +181,7 @@ func resolveEdit(text string, lines []editSourceLine, edit Edit, operation strin
 			case "replace_line":
 				out = append(out, resolvedEdit{start: line.start, end: line.end, text: block})
 			case "delete_line":
-				start, end := lineDeleteRange(lines, loc.lineIndex+1, loc.lineIndex+1)
+				start, end := lineDeleteRange(lines, loc.anchorLine, loc.anchorLine)
 				out = append(out, resolvedEdit{start: start, end: end})
 			}
 		}
@@ -217,7 +212,7 @@ func validateEditFields(edit Edit, operation string) error {
 	}
 	switch operation {
 	case "replace_text":
-		if NormalizeEditText(edit.OldText) == "" {
+		if edit.OldText == "" {
 			return fmt.Errorf("old_text is required")
 		}
 		if edit.NewText == nil {
@@ -311,11 +306,10 @@ func scanEditLines(text string) []editSourceLine {
 }
 
 func normalizeLineBlock(text string) (string, error) {
-	lines := SplitLines(EnsureTrailingNewline(text))
-	if len(lines) == 0 {
+	if text == "" {
 		return "", fmt.Errorf("new_text must contain at least one line")
 	}
-	return strings.Join(lines, "\n"), nil
+	return strings.TrimSuffix(NormalizeEditText(text), "\n"), nil
 }
 
 func resolveLineInsert(text string, lines []editSourceLine, line int, block string) (int, string, error) {

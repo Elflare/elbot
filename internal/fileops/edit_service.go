@@ -23,24 +23,11 @@ type PreparedEdit struct {
 	// service and binding retain the original operation authority.
 	service *Service
 	binding *fileBinding
-	// request is an independent copy of the approved edit arguments.
+	// request retains commit inputs, not the edit script already applied to file.
 	request EditRequest
 	// resolved pins the workspace path; file holds the shared file snapshot.
 	resolved workspace.ResolvedPath
 	file     *PreparedFile
-}
-
-func cloneEditRequest(req EditRequest) EditRequest {
-	req.Edits = append([]Edit(nil), req.Edits...)
-	for i := range req.Edits {
-		if req.Edits[i].NewText != nil {
-			req.Edits[i].NewText = new(*req.Edits[i].NewText)
-		}
-		if req.Edits[i].Index != nil {
-			req.Edits[i].Index = new(*req.Edits[i].Index)
-		}
-	}
-	return req
 }
 
 // Preview returns confirmation metadata without exposing the prepared bytes.
@@ -73,18 +60,13 @@ func (s *Service) editPath(ctx context.Context, req EditRequest) (workspace.Reso
 }
 
 func (s *Service) PrepareEdit(ctx context.Context, req EditRequest) (operationresult.Result[*PreparedEdit], error) {
-	captured, lease, err := s.editBinding(ctx)
+	captured, err := s.editBinding(ctx)
 	if err != nil {
 		return operationresult.Result[*PreparedEdit]{}, err
 	}
 	if captured.Status != operationresult.Success {
 		return operationresult.Result[*PreparedEdit]{Status: captured.Status, Message: captured.Message}, nil
 	}
-	binding := captured.Data
-	if binding != nil {
-		binding = &fileBinding{service: s, session: lease, admission: binding.admission}
-	}
-	req = cloneEditRequest(req)
 	resolved, target, checked, err := s.editPath(ctx, req)
 	if err != nil {
 		return operationresult.Result[*PreparedEdit]{}, err
@@ -118,7 +100,8 @@ func (s *Service) PrepareEdit(ctx context.Context, req EditRequest) (operationre
 	if file.target != target {
 		return operationresult.Result[*PreparedEdit]{Status: operationresult.Conflict, Message: "edit target changed during preparation"}, nil
 	}
-	return operationresult.Result[*PreparedEdit]{Status: operationresult.Success, Data: &PreparedEdit{service: s, binding: binding, request: req, resolved: resolved, file: file}}, nil
+	req.Edits = nil
+	return operationresult.Result[*PreparedEdit]{Status: operationresult.Success, Data: &PreparedEdit{service: s, binding: captured.Data, request: req, resolved: resolved, file: file}}, nil
 }
 
 // Edit directly commits an edit without building a confirmation preview.
@@ -127,7 +110,7 @@ func (s *Service) Edit(ctx context.Context, req EditRequest) (operationresult.Re
 }
 
 func (s *Service) edit(ctx context.Context, req EditRequest, prepared *PreparedEdit) (operationresult.Result[EditResult], workspace.ResolvedPath, error) {
-	captured, lease, err := s.editBinding(ctx)
+	captured, err := s.editBinding(ctx)
 	if err != nil {
 		return operationresult.Result[EditResult]{}, workspace.ResolvedPath{}, err
 	}
@@ -137,10 +120,6 @@ func (s *Service) edit(ctx context.Context, req EditRequest, prepared *PreparedE
 	binding := captured.Data
 	if prepared != nil {
 		binding = prepared.binding
-		lease = nil
-		if binding != nil {
-			lease = binding.session
-		}
 	}
 	resolved, target, checked, err := s.editPath(ctx, req)
 	if err != nil {
@@ -174,8 +153,10 @@ func (s *Service) edit(ctx context.Context, req EditRequest, prepared *PreparedE
 		}
 		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}}
+	var lease *RollbackSession
 	if binding != nil {
 		guard.admission = binding.admission
+		lease = binding.session
 	}
 	var result *EditResult
 	if prepared != nil {
