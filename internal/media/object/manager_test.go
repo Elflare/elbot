@@ -203,7 +203,7 @@ func TestImportLimitsAndRollback(t *testing.T) {
 	requireMediaLog(t, logs, rollback.Error())
 }
 
-func TestRecoveryAndPartialConstruction(t *testing.T) {
+func TestManagerRecovery(t *testing.T) {
 	m, store, _ := newTestManager(t)
 	item := importTestMedia(t, m, "recover")
 	held := holdTestMedia(t, m, item.ID)
@@ -221,9 +221,9 @@ func TestRecoveryAndPartialConstruction(t *testing.T) {
 	}
 	_ = held.Close(t.Context())
 	failure := errors.New("recovery failed")
-	partial, err := NewManager(t.Context(), m.options, Deps{Media: testRepository{recover: func(context.Context) error { return failure }}})
-	if partial == nil || !errors.Is(err, failure) {
-		t.Fatalf("partial = %v %v", partial, err)
+	manager, err := NewManager(t.Context(), m.options, Deps{Media: testRepository{recover: func(context.Context) error { return failure }}})
+	if manager != nil || !errors.Is(err, failure) {
+		t.Fatalf("manager = %v, err = %v", manager, err)
 	}
 }
 

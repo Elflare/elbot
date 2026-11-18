@@ -135,6 +135,29 @@ func TestExplicitHoldsAreNotReleasedByCleanup(t *testing.T) {
 	}
 }
 
+func TestManagerCloseStopsOnFirstReleaseError(t *testing.T) {
+	m, store, _ := newTestManager(t)
+	var holds []share.HeldMedia
+	for _, name := range []string{"first", "second", "third"} {
+		holds = append(holds, holdTestMedia(t, m, importTestMedia(t, m, name).ID))
+	}
+	m.pendingReleases = holds
+	failure := errors.New("cannot release second hold")
+	calls := 0
+	m.references = testReferences{ReferenceRepository: store.MediaReferences(), remove: func(ctx context.Context, ref storage.MediaReference) error {
+		calls++
+		if ref.MediaID == holds[1].Info().ID {
+			return failure
+		}
+		return store.MediaReferences().Remove(ctx, ref)
+	}}
+	if err := m.Close(t.Context()); !errors.Is(err, failure) {
+		t.Fatalf("Close error = %v, want %v", err, failure)
+	}
+	if calls != 2 || len(m.pendingReleases) != 2 || m.pendingReleases[0] != holds[1] || m.pendingReleases[1] != holds[2] {
+		t.Fatalf("release calls = %d, pending = %v", calls, m.pendingReleases)
+	}
+}
 func TestOwnedReleaseRetryFailureAllowsOtherCleanup(t *testing.T) {
 	m, store, _ := newTestManager(t)
 	item := importTestMedia(t, m, "pending release")

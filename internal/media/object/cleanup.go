@@ -30,7 +30,7 @@ func (m *Manager) Cleanup(ctx context.Context, history History) (err error) {
 		return err
 	}
 	defer unlock()
-	if err := m.retryReleases(ctx); err != nil {
+	if err := m.retryReleases(ctx, false); err != nil {
 		return err
 	}
 	if err := m.ReconcileHistory(ctx, history); err != nil {
@@ -50,8 +50,15 @@ func (m *Manager) Cleanup(ctx context.Context, history History) (err error) {
 	if err != nil {
 		return err
 	}
-	failedItems, canceledItems := make([]bool, len(items)), make([]bool, len(items))
-	deleted, started := make([]bool, len(items)), make([]bool, len(items))
+	const (
+		notStarted uint8 = iota
+		deleted
+		skipped
+		failed
+		canceled
+		outcomeCount
+	)
+	outcomes := make([]uint8, len(items))
 	jobs := make(chan int)
 	var workers sync.WaitGroup
 	for range min(cleanupConcurrency, len(items)) {
@@ -60,15 +67,17 @@ func (m *Manager) Cleanup(ctx context.Context, history History) (err error) {
 				if ctx.Err() != nil {
 					return
 				}
-				started[i] = true
-				var err error
-				deleted[i], err = m.deleteObject(ctx, items[i].ID)
-				if err != nil {
-					if errors.Is(err, ctx.Err()) {
-						canceledItems[i] = true
-						return
-					}
-					failedItems[i] = true
+				removed, err := m.deleteObject(ctx, items[i].ID)
+				switch {
+				case err == nil && removed:
+					outcomes[i] = deleted
+				case err == nil:
+					outcomes[i] = skipped
+				case errors.Is(err, ctx.Err()):
+					outcomes[i] = canceled
+					return
+				default:
+					outcomes[i] = failed
 					events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn,
 						EventName: "media_cleanup", Module: "media",
 						Content: fmt.Sprintf("media_id=%s error=%q", items[i].ID, err.Error()), ResultStatus: events.LogStatus(err)})
@@ -89,22 +98,11 @@ dispatch:
 	}
 	close(jobs)
 	workers.Wait()
-	var removed, skipped, failed, canceled, pending int
-	for i := range items {
-		switch {
-		case !started[i]:
-			pending++
-		case canceledItems[i]:
-			canceled++
-		case failedItems[i]:
-			failed++
-		case deleted[i]:
-			removed++
-		default:
-			skipped++
-		}
+	var counts [outcomeCount]int
+	for _, outcome := range outcomes {
+		counts[outcome]++
 	}
-	summary = fmt.Sprintf("claimed=%d deleted=%d skipped=%d failed=%d canceled=%d not_started=%d", len(items), removed, skipped, failed, canceled, pending)
+	summary = fmt.Sprintf("claimed=%d deleted=%d skipped=%d failed=%d canceled=%d not_started=%d", len(items), counts[deleted], counts[skipped], counts[failed], counts[canceled], counts[notStarted])
 	return ctx.Err()
 }
 

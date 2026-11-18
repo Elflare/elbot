@@ -120,20 +120,26 @@ func (m *Manager) releaseOwned(ctx context.Context, held share.HeldMedia) {
 
 // retryReleases 在清理轮次内重试一个快照；失败及未开始项留给后续轮次。
 // 集合锁不覆盖关闭操作，重试期间新增的待释放项独立保留。
-func (m *Manager) retryReleases(ctx context.Context) error {
+func (m *Manager) retryReleases(ctx context.Context, stopOnError bool) error {
 	m.releasesMu.Lock()
 	pending := m.pendingReleases
 	m.pendingReleases = nil
 	m.releasesMu.Unlock()
 	var remaining []share.HeldMedia
+	var releaseErr error
 	for i, held := range pending {
 		if ctx.Err() != nil {
 			remaining = append(remaining, pending[i:]...)
 			break
 		}
 		if err := held.Close(ctx); err != nil {
+			if stopOnError {
+				releaseErr = err
+				remaining = append(remaining, pending[i:]...)
+				break
+			}
 			remaining = append(remaining, held)
-			if err != ctx.Err() {
+			if !errors.Is(err, ctx.Err()) {
 				events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_release_failed", Module: "media", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
 			}
 		}
@@ -141,11 +147,14 @@ func (m *Manager) retryReleases(ctx context.Context) error {
 	m.releasesMu.Lock()
 	m.pendingReleases = append(m.pendingReleases, remaining...)
 	m.releasesMu.Unlock()
+	if releaseErr != nil {
+		return releaseErr
+	}
 	return ctx.Err()
 }
 
 // Close 只收尾自有失败持有，不关闭借用存储，也不执行周期性回收。
-func (m *Manager) Close(ctx context.Context) error { return m.retryReleases(ctx) }
+func (m *Manager) Close(ctx context.Context) error { return m.retryReleases(ctx, true) }
 
 // AddReference 添加持久业务引用，不承接会话事务。
 func (m *Manager) AddReference(ctx context.Context, reference Reference) error {

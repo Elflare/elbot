@@ -72,11 +72,12 @@ type History interface {
 	GetByPlatformMessage(ctx context.Context, platform string, conversationKind contextinfo.ChatType, scopeID string, messageID string) (*storage.ChatMessage, error)
 }
 
-// NewManager 保存裁剪后的配置、仓储和后端并执行中断恢复。
-// 部分构造失败仍交回已创建的组件；首次历史对账由根部构造流程发起。
+// NewManager 恢复中断状态后创建对象管理器；首次历史对账由根部负责。
 func NewManager(ctx context.Context, opts Options, deps Deps) (*Manager, error) {
-	m := &Manager{options: opts, media: deps.Media, references: deps.References, local: deps.Local, remote: deps.Remote}
-	return m, m.media.RecoverInterrupted(ctx)
+	if err := deps.Media.RecoverInterrupted(ctx); err != nil {
+		return nil, err
+	}
+	return &Manager{options: opts, media: deps.Media, references: deps.References, local: deps.Local, remote: deps.Remote}, nil
 }
 
 // 在编译时核对跨组件契约。
