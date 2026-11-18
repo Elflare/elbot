@@ -108,6 +108,12 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 			mentions = []share.Mention{{UserID: bot.UserID}}
 		}
 	}
+	nickname := strings.TrimSpace(msg.Author.Username)
+	card := strings.TrimSpace(msg.Author.MemberNickname)
+	name := card
+	if name == "" {
+		name = nickname
+	}
 	messageCtx := share.MessageContext{
 		CommandReply: a,
 		Conversation: contextinfo.Conversation{
@@ -119,7 +125,7 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 			},
 			Identity: contextinfo.Identity{
 
-				ID: senderID,
+				ID: senderID, Nickname: nickname, GroupCard: card, Name: name,
 			},
 			PlatformMessageID: strings.TrimSpace(msg.ID),
 			ReplyToMessageID:  replyID,
@@ -181,13 +187,21 @@ func (a *Adapter) handleInboundMessage(ctx context.Context, handler share.Messag
 		messageCtx.ResumeSessionID = ref.ResumeSessionID
 		messageCtx.ContextText = ref.Text
 		messageCtx.Reply = ref.Reply
+		messageCtx.Conversation.ReplyToSenderID = ref.Reply.SenderID
 		if strings.TrimSpace(ref.Text) != "" || len(ref.ReferenceSegments) > 0 {
 			messageCtx.ContextSegments = share.FinalMessageSegments(ref.Text, segments, ref.ReferenceSegments)
 		}
 		messageCtx.Segments = share.FinalMessageSegments(text, segments, nil)
 		msgCtx = share.WithMessageContext(ctx, messageCtx)
 	}
-	a.recordChatMessage(ctx, msg, conversation, senderID, scopeID, text, replyID, messageCtx.Reply)
+	historyReply := messageCtx.Reply
+	if historyReply.Text == "" {
+		historyReply.Text = referenced.Text
+	}
+	if historyReply.SenderID == "" && (ref.ResumeSessionID != "" || ref.ForkFromMessageID != "") {
+		historyReply.SenderID, historyReply.SenderName = bot.UserID, "bot"
+	}
+	a.recordChatMessage(ctx, msg, conversation, senderID, name, scopeID, text, replyID, historyReply)
 	a.recordMessageAlias(ctx, conversation, scopeID, msgIndex, msg.ID)
 	_ = handler(msgCtx, text, messageCtx)
 }
@@ -206,7 +220,7 @@ func normalizedInboundText(content string) string {
 	return strings.TrimSpace(qqOfficialFaceFallbackPattern.ReplaceAllString(content, ""))
 }
 
-func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, conversation contextinfo.ChatType, senderID, scopeID, text, replyID string, reply share.ReplyContext) {
+func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, conversation contextinfo.ChatType, senderID, name, scopeID, text, replyID string, reply share.ReplyContext) {
 	if (strings.TrimSpace(text) == "" && len(msg.Attachments) == 0) || strings.TrimSpace(msg.ID) == "" {
 		return
 	}
@@ -227,6 +241,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 		ChatType:                 conversation,
 		PlatformMessageID:        strings.TrimSpace(msg.ID),
 		SenderID:                 senderID,
+		SenderName:               name,
 		Text:                     strings.TrimSpace(text),
 		Raw:                      msg.Content,
 		Segments:                 storage.MarshalChatSegments(segments),
@@ -234,6 +249,10 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 		Metadata:                 storage.MarshalChatMetadata(storage.ChatReply{MessageID: reply.MessageID, SenderID: reply.SenderID, SenderName: reply.SenderName, Text: reply.Text}),
 		CreatedAt:                createdAt,
 	}
+	a.appendChatMessage(ctx, history)
+}
+
+func (a *Adapter) appendChatMessage(ctx context.Context, history *storage.ChatMessage) {
 	if err := a.chatHistory.Append(ctx, history); err != nil {
 		{
 			record := globalevents.LogRecord{
@@ -242,7 +261,7 @@ func (a *Adapter) recordChatMessage(ctx context.Context, msg inboundMessage, con
 				EventName:    "record_qqofficial_chat_message_failed",
 				Module:       a.Name(),
 				Type:         globalevents.ContentText,
-				Content:      fmt.Sprintf("record qqofficial chat message failed\nerror=%v\nmessage_id=%v", err, msg.ID),
+				Content:      fmt.Sprintf("record qqofficial chat message failed\nerror=%v\nmessage_id=%v", err, history.PlatformMessageID),
 				ContentLimit: 4096,
 				ResultStatus: globalevents.ResultFailed,
 			}

@@ -11,6 +11,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	platformshare "elbot/internal/platform/share"
+	"elbot/internal/storage"
 )
 
 func (a *Adapter) SendCommandResult(ctx context.Context, req command.Request, result command.Result, failure error) (delivery.Receipt, error) {
@@ -18,7 +19,7 @@ func (a *Adapter) SendCommandResult(ctx context.Context, req command.Request, re
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
-	return a.SendTo(ctx, delivery.Target{}, outputs)
+	return a.sendContextOutput(ctx, outputs, true)
 }
 
 const (
@@ -38,11 +39,17 @@ func receiptWithMessageID(id string) delivery.Receipt {
 	return delivery.Receipt{PlatformMessageIDs: []string{id}}
 }
 
-func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Output) (delivery.Receipt, error) {
+func (a *Adapter) sendContextOutput(ctx context.Context, outputs []delivery.Output, commandReply bool) (delivery.Receipt, error) {
+	ctx, finish, err := a.beginSend(ctx)
+	if err != nil {
+		return delivery.Receipt{}, err
+	}
+	defer finish()
 	t, err := a.contextTarget(ctx)
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
+	t.recordHistory = commandReply
 	return a.sendOutputs(ctx, t, outputs)
 }
 
@@ -81,6 +88,7 @@ func qqOfficialChatType(target sendTarget) contextinfo.ChatType {
 }
 
 func (a *Adapter) sendOutput(ctx context.Context, t sendTarget, out delivery.Output) (delivery.Receipt, error) {
+	t.recordHistory = t.Kind == targetGroup && (t.recordHistory || out.Delivery.HookPoint != "")
 	switch out.Kind {
 	case delivery.KindText:
 		if len(out.Blocks) == 0 {
@@ -143,6 +151,9 @@ func (a *Adapter) sendText(ctx context.Context, target sendTarget, text string, 
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
+	if target.recordHistory && resp.ID != "" {
+		a.recordGroupOutput(ctx, target, resp.ID, text, storage.ChatSegment{Type: "text", Text: text})
+	}
 	a.recordMessageAlias(ctx, qqOfficialChatType(target), target.OpenID, resp.ExtInfo.RefIdx, resp.ID)
 	return receiptWithMessageID(resp.ID), nil
 }
@@ -169,10 +180,20 @@ func (a *Adapter) sendMedia(ctx context.Context, target sendTarget, out delivery
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
+	if target.recordHistory && resp.ID != "" {
+		a.recordGroupOutput(ctx, target, resp.ID, "", storage.ChatSegment{Type: string(out.Kind), URL: out.Source.URL, Name: out.Name, MIMEType: out.Source.MIMEType})
+	}
 	a.recordMessageAlias(ctx, qqOfficialChatType(target), target.OpenID, resp.ExtInfo.RefIdx, resp.ID)
 	return receiptWithMessageID(resp.ID), nil
 }
 
+func (a *Adapter) recordGroupOutput(ctx context.Context, target sendTarget, id, text string, segment storage.ChatSegment) {
+	a.appendChatMessage(ctx, &storage.ChatMessage{
+		Platform: a.Name(), ChatType: contextinfo.ChatGroup, ChatID: target.OpenID,
+		PlatformMessageID: id, SenderID: a.cfg.AppID, SenderName: "bot",
+		Text: text, Raw: text, Segments: storage.MarshalChatSegments([]storage.ChatSegment{segment}), CreatedAt: storage.Now(),
+	})
+}
 func (a *Adapter) baseMessage(target sendTarget) messageToCreate {
 	msg := messageToCreate{}
 	if strings.TrimSpace(target.MsgID) != "" {
@@ -185,14 +206,14 @@ func (a *Adapter) baseMessage(target sendTarget) messageToCreate {
 }
 
 func (a *Adapter) SendTo(ctx context.Context, target delivery.Target, outputs []delivery.Output) (delivery.Receipt, error) {
+	if target.Empty() {
+		return a.sendContextOutput(ctx, outputs, false)
+	}
 	ctx, finish, err := a.beginSend(ctx)
 	if err != nil {
 		return delivery.Receipt{}, err
 	}
 	defer finish()
-	if target.Empty() {
-		return a.sendContextOutput(ctx, outputs)
-	}
 	if target.Superadmins {
 		if name := strings.TrimSpace(target.Platform); name != "" && name != a.Name() {
 			err := fmt.Errorf("qqofficial cannot send to platform %q", name)
@@ -240,11 +261,12 @@ func (a *Adapter) nextMsgSeq(msgID string) int {
 }
 
 type sendTarget struct {
-	Kind      sendTargetKind // 私聊或群聊目标。
-	OpenID    string         // 对应用户或群的开放标识。
-	MsgID     string         // 被回复的平台消息 ID，用于被动发送及序号分配。
-	EventID   string         // 无消息 ID 时使用的事件回复标识。
-	Proactive bool           // 是否属于显式目标的主动发送。
+	recordHistory bool           // 群内 Hook 和命令输出没有 assistant 正文，保存实发消息供引用。
+	Kind          sendTargetKind // 私聊或群聊目标。
+	OpenID        string         // 对应用户或群的开放标识。
+	MsgID         string         // 被回复的平台消息 ID，用于被动发送及序号分配。
+	EventID       string         // 无消息 ID 时使用的事件回复标识。
+	Proactive     bool           // 是否属于显式目标的主动发送。
 }
 
 type sendTargetKind string

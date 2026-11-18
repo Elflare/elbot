@@ -100,8 +100,10 @@ type inboundMessage struct {
 }
 
 type inboundAuthor struct {
-	UserOpenID   string `json:"user_openid,omitempty"`
-	MemberOpenID string `json:"member_openid,omitempty"`
+	Username       string `json:"username"`        // 平台昵称。
+	MemberNickname string `json:"member_nickname"` // 群名片，展示时优先于昵称。
+	UserOpenID     string `json:"user_openid,omitempty"`
+	MemberOpenID   string `json:"member_openid,omitempty"`
 }
 
 type messageAttachment struct {

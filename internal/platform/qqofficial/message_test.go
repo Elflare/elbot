@@ -9,12 +9,20 @@ import (
 	globalevents "elbot/internal/events"
 	"elbot/internal/signal"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"elbot/internal/contextinfo"
+	"elbot/internal/delivery"
+	"elbot/internal/operationresult"
+	"elbot/internal/platform/refcontext"
 	"elbot/internal/platform/share"
 	"elbot/internal/storage"
 	"elbot/internal/storage/sqlite"
@@ -117,6 +125,95 @@ func TestHandleOrdinaryGroupMessageKeepsWakeupInputs(t *testing.T) {
 	}
 	if msgCtx.ReplyToMessageID != "" || len(msgCtx.TriggerKeywords) != 1 {
 		t.Fatalf("reply/keywords = %q/%#v", msgCtx.ReplyToMessageID, msgCtx.TriggerKeywords)
+	}
+}
+
+func TestGroupReplyHistoryAndWakeupIdentity(t *testing.T) {
+	ctx := t.Context()
+	db, err := sqlite.NewChatHistory(ctx, filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	history := db.Repository()
+	markdown := false
+	a := newTestAdapter(t, Config{AppID: "bot", MarkdownByDefault: &markdown}, history)
+	deps := refcontext.Options{ChatHistory: history, ParseCommand: a.parseCommand,
+		FindByPlatformMessage: func(context.Context, string, contextinfo.ChatType, string, string) (*storage.Message, error) {
+			return nil, storage.ErrNotFound
+		},
+		FindHistory: func(context.Context, string, contextinfo.ChatType, string, string) ([]storage.HistoryMedia, error) {
+			return nil, nil
+		},
+		FindOutputs: func(context.Context, string, contextinfo.ChatType, string, string, time.Time) ([]storage.MediaOutput, error) {
+			return nil, nil
+		},
+	}
+	a.referenceResolver = func(ctx context.Context, o share.ReferenceOptions) (share.ReferenceResult, error) {
+		return refcontext.Apply(ctx, deps, o)
+	}
+	h := &captureHandler{}
+	receive := func(raw string) share.MessageContext {
+		t.Helper()
+		var m inboundMessage
+		if err := json.Unmarshal([]byte(raw), &m); err != nil {
+			t.Fatal(err)
+		}
+		a.handleGroupMessage(ctx, h.HandleMessage, payload{Type: eventGroupMessageCreate}, m)
+		mc, _ := share.MessageContextFrom(h.ctx)
+		return mc
+	}
+	receive(`{"id":"a","group_openid":"g","author":{"member_openid":"A","username":"nick A","member_nickname":"card A"},"content":"a","message_scene":{"ext":["msg_idx=idxA"]}}`)
+	mc := receive(`{"id":"b","group_openid":"g","author":{"member_openid":"B","username":"nick B"},"content":"b","message_scene":{"ext":["ref_msg_idx=idxA"]}}`)
+	row, err := history.GetByPlatformMessage(ctx, a.Name(), "group", "g", "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply := storage.ChatMessageReply(*row)
+	if row.SenderName != "nick B" || row.SenderID != "B" || row.Text != "b" || reply.SenderName != "card A" || reply.SenderID != "A" || reply.Text != "a" || mc.Conversation.ReplyToSenderID != "A" {
+		t.Errorf("history=%+v reply=%+v", row, reply)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req messageToCreate
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Error(err)
+			return
+		}
+		switch req.Content {
+		case "hook text":
+			fmt.Fprint(w, `{"id":"hook","ext_info":{"ref_idx":"idxHook"}}`)
+		case "status":
+			fmt.Fprint(w, `{"id":"cmd","ext_info":{"ref_idx":"idxCmd"}}`)
+		default:
+			fmt.Fprint(w, `{"id":"assistant"}`)
+		}
+	}))
+	defer server.Close()
+	a.client = newQQOfficialSendTestAdapter(t, server).client
+	out := delivery.Text("hook text")
+	out.Delivery.HookPoint = "platform.message.received"
+	_, err = a.sendOutputs(ctx, sendTarget{Kind: targetGroup, OpenID: "g"}, []delivery.Output{out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mc = receive(`{"id":"next","group_openid":"g","author":{"member_openid":"B"},"content":"why?","message_scene":{"ext":["ref_msg_idx=idxHook"]}}`)
+	if mc.Conversation.ReplyToSenderID != "bot" || mc.Reply.Text != "hook text" || !strings.Contains(mc.ContextText, "hook text") || mc.ResumeSessionID != "" || mc.ForkFromMessageID != "" {
+		t.Errorf("hook reply=%+v, context=%q, sender=%q", mc.Reply, mc.ContextText, mc.Conversation.ReplyToSenderID)
+	}
+	_, err = a.SendCommandResult(h.ctx, command.Request{}, command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "status"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mc = receive(`{"id":"cmdquote","group_openid":"g","author":{"member_openid":"B"},"content":"why?","message_scene":{"ext":["ref_msg_idx=idxCmd"]}}`)
+	if mc.Conversation.ReplyToSenderID != "bot" || !strings.Contains(mc.ContextText, "status") {
+		t.Fatalf("command reply=%+v", mc.Reply)
+	}
+	_, err = a.SendTo(h.ctx, delivery.Target{}, []delivery.Output{delivery.Text("assistant reply")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = history.GetByPlatformMessage(ctx, a.Name(), "group", "g", "assistant"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("unmarked output duplicated in history: %v", err)
 	}
 }
 
