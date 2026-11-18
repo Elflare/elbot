@@ -7,7 +7,6 @@ import (
 	"errors"
 	"sync"
 	"testing"
-	"testing/synctest"
 )
 
 func assertAgentSignalsClosed(t *testing.T, m *Supervisor) {
@@ -21,47 +20,6 @@ func assertAgentSignalsClosed(t *testing.T, m *Supervisor) {
 			t.Errorf("%s signal still running after Supervisor.Done", name)
 		}
 	}
-}
-
-func TestSupervisorBeginClosePreservesSignalsUntilClose(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		// External producers belong to App, so this lifecycle-only fixture has
-		// no owned component left to delay the BeginClose observer.
-		ctx, cancel := context.WithCancel(t.Context())
-		m := &Supervisor{
-			ctx: ctx, cancel: cancel, statusChanged: signal.New[agentexecution.StatusChangedEvent, signal.Empty]("agent.status_changed"),
-			done: make(chan struct{}),
-		}
-		t.Cleanup(func() { _ = m.Close(context.Background()) })
-		received := false
-		if _, err := m.ObserveStatusChanged(func(StatusChangedEvent) {
-			received = true
-
-		}, signal.ConnectOptions{}); err != nil {
-			t.Fatal(err)
-		}
-		m.BeginClose()
-		synctest.Wait()
-		for name, done := range map[string]<-chan struct{}{
-			"agent":  m.Done(),
-			"status": m.statusChanged.Done(),
-		} {
-			select {
-			case <-done:
-				t.Errorf("%s closed before Close joined external producers", name)
-			default:
-			}
-		}
-		m.statusChanged.EmitAsync(t.Context(), agentexecution.StatusChangedEvent{})
-		synctest.Wait()
-		if !received {
-			t.Fatal("external producer final status not delivered")
-		}
-		if err := m.Close(t.Context()); err != nil {
-			t.Fatal(err)
-		}
-		assertAgentSignalsClosed(t, m)
-	})
 }
 
 func checkAgentSignalCloseWaits[T any](t *testing.T, m *Supervisor, source interface {
@@ -140,6 +98,13 @@ func TestSupervisorAllowsFinalFactsButRejectsNewObservers(t *testing.T) {
 	case <-received:
 	case <-t.Context().Done():
 		t.Fatal("final status not delivered")
+	}
+	select {
+	case <-m.Done():
+		t.Fatal("agent closed before Close")
+	case <-m.statusChanged.Done():
+		t.Fatal("status signal closed before Close")
+	default:
 	}
 	if err := m.Close(t.Context()); err != nil {
 		t.Fatal(err)

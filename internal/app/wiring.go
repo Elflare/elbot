@@ -56,8 +56,8 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 	agentSupervisor, err := agent.NewSupervisor(ctx, cfg, agent.SupervisorDeps{
 		Control: controller,
 		Store:   resources.store, Models: resources.models, Media: resources.media,
-		Permission: resources.permission, Logs: resources.logs,
-		Tools: toolSupervisor, Platform: platformSupervisor, ChatHistory: history,
+		Permission: resources.permission,
+		Tools:      toolSupervisor, Platform: platformSupervisor, ChatHistory: history,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("agent build: %w", err)

@@ -19,7 +19,6 @@ import (
 	"elbot/internal/signal"
 	"elbot/internal/storage"
 	"elbot/internal/turn"
-	"errors"
 	"log/slog"
 	"sync"
 	"unicode/utf8"
@@ -53,9 +52,6 @@ type Supervisor struct {
 
 // ContinueControlInput resumes work requested by a Control operation after its result was delivered.
 func (m *Supervisor) ContinueControlInput(ctx context.Context, continuation control.Continuation) (context.Context, operationresult.Result[struct{}], error) {
-	if m.input == nil {
-		return ctx, operationresult.Result[struct{}]{}, errors.New("agent input coordinator is not connected")
-	}
 	return m.input.ContinueCommandInput(ctx, continuation)
 }
 

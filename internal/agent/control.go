@@ -38,7 +38,7 @@ func (a controlAdapter) StopSession(id string) { a.supervisor.turns.StopSession(
 func (a controlAdapter) Commands(context.Context) ([]control.CommandInfo, error) {
 	items := []control.CommandInfo{}
 	for _, info := range a.supervisor.Commands() {
-		items = append(items, control.CommandInfo{Name: info.Name, Args: info.Args, Aliases: slices.Clone(info.Aliases), Description: info.Description, Help: info.Help, MinRole: info.MinRole})
+		items = append(items, control.CommandInfo{Name: info.Name, Args: info.Args, Aliases: info.Aliases, Description: info.Description, Help: info.Help, MinRole: info.MinRole})
 	}
 	return items, nil
 }

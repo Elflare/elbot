@@ -10,7 +10,6 @@ import (
 	"elbot/internal/delivery"
 	"elbot/internal/fileops"
 	"elbot/internal/llm"
-	"elbot/internal/logging"
 	"elbot/internal/media"
 	"elbot/internal/memory/resident"
 	"elbot/internal/modelmgr"
@@ -31,7 +30,6 @@ type SupervisorDeps struct {
 	Models     ModelCapabilities
 	Media      *media.MediaCenter
 	Permission *security.Permission // Shared permission service; Agent does not own its lifecycle.
-	Logs       *logging.Manager
 	Tools      ToolCapabilities
 	Platform   PlatformCapabilities
 }

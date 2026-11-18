@@ -8,7 +8,6 @@ import (
 	"elbot/internal/session"
 	"elbot/internal/signal"
 	"elbot/internal/workspace"
-	"fmt"
 	"time"
 
 	chatroute "elbot/internal/agent/chat"
@@ -35,9 +34,6 @@ import (
 )
 
 func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps) (*Supervisor, error) {
-	if deps.Control == nil {
-		return nil, fmt.Errorf("agent: Control is required")
-	}
 	ctx, cancel := context.WithCancel(ctx)
 	m := &Supervisor{ctx: ctx, cancel: cancel, statusChanged: signal.New[agentexecution.StatusChangedEvent, signal.Empty]("agent.status_changed"), done: make(chan struct{})}
 	m.routes = routes.New()
@@ -79,7 +75,8 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		ReleaseBinding: func(binding *session.Binding) { deps.Tools.Forget(binding) },
 	})
 	if err != nil {
-		return m, err
+		cancel()
+		return nil, err
 	}
 	output := agentoutput.NewOutputSender(agentoutput.OutputSenderDeps{Dispatcher: deps.Platform, Hooks: bridge})
 	policy := agentconfirmation.NewConfirmationPolicy(agentconfirmation.ConfirmationPolicyDeps{Identity: identity, IdleExpiration: cfg.Session.IdleExpiration, UserConfirmationTimeout: 10 * time.Minute})
@@ -93,22 +90,22 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Policy:      policy,
 	})
 	toolRuntime := agenttools.NewToolRuntimeState(agenttools.ToolRuntimeStateDeps{FileRollback: deps.Tools})
+	newWorkspaceStore := func(id string) workspace.WorkspaceStore { return m.sessions.WorkspaceStore(id) }
 	toolDeps := agenttools.NewToolRunDeps(agenttools.ToolRunDeps{
-		NewWorkspaceStore: func(id string) workspace.WorkspaceStore {
-			return m.sessions.WorkspaceStore(id)
-		},
-		Status:        status,
-		Hooks:         bridge,
-		Requests:      m.requests,
-		Turns:         m.turns,
-		Identity:      identity,
-		Runtime:       toolRuntime,
-		Sessions:      m.sessions,
-		Confirmations: confirmations,
-		View:          view,
+		NewWorkspaceStore: newWorkspaceStore,
+		Status:            status,
+		Hooks:             bridge,
+		Requests:          m.requests,
+		Turns:             m.turns,
+		Identity:          identity,
+		Runtime:           toolRuntime,
+		Sessions:          m.sessions,
+		Confirmations:     confirmations,
+		View:              view,
 	})
+	newMessageID := storage.IDSequence(deps.Store.NextIDSequence).MessageID
 	runner := dialogue.NewRunner(dialogue.RunnerDeps{
-		NewMessageID:         storage.IDSequence(deps.Store.NextIDSequence).MessageID,
+		NewMessageID:         newMessageID,
 		Status:               status,
 		Routes:               m.routes,
 		Dialogues:            deps.Store.Dialogues(),
@@ -129,12 +126,13 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Preloader:            deps.Tools,
 		View:                 view,
 	})
+	selectionForTurn := func(ctx context.Context, row *storage.Session) modelmgr.Selection {
+		return modelmgr.SelectionForTurn(ctx, deps.Models, row)
+	}
 	chat := chatroute.NewLoop(chatroute.LoopDeps{
-		NewMessageID: storage.IDSequence(deps.Store.NextIDSequence).MessageID,
-		Identity:     identity,
-		SelectionForTurn: func(ctx context.Context, row *storage.Session) modelmgr.Selection {
-			return modelmgr.SelectionForTurn(ctx, deps.Models, row)
-		},
+		NewMessageID:     newMessageID,
+		Identity:         identity,
+		SelectionForTurn: selectionForTurn,
 		NewToolTranscriptCommitter: func() agentshare.ToolTranscriptCommitter {
 			return &dialogue.ToolTranscriptCommitter{Messages: runner.Messages}
 		},
@@ -154,22 +152,20 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Loader:    contextmgr.Loader{Store: deps.Store},
 	})
 	response := responseroute.NewLoop(responseroute.LoopDeps{
-		NewMessageID: storage.IDSequence(deps.Store.NextIDSequence).MessageID,
-		Identity:     identity,
-		Gate:         runner.Messages.Gate,
-		SessionRows:  deps.Store.Sessions(),
-		SelectionForTurn: func(ctx context.Context, row *storage.Session) modelmgr.Selection {
-			return modelmgr.SelectionForTurn(ctx, deps.Models, row)
-		},
-		Status:     status,
-		Repository: deps.Store.Dialogues(),
-		Turns:      m.turns,
-		View:       view,
-		Preparer:   runner.Preparer,
-		Tools:      runner.Preparer.Tools,
-		Messages:   runner.Messages,
-		Calls:      runner.Calls,
-		System:     runner.System,
+		NewMessageID:     newMessageID,
+		Identity:         identity,
+		Gate:             runner.Messages.Gate,
+		SessionRows:      deps.Store.Sessions(),
+		SelectionForTurn: selectionForTurn,
+		Status:           status,
+		Repository:       deps.Store.Dialogues(),
+		Turns:            m.turns,
+		View:             view,
+		Preparer:         runner.Preparer,
+		Tools:            runner.Preparer.Tools,
+		Messages:         runner.Messages,
+		Calls:            runner.Calls,
+		System:           runner.System,
 	})
 	bindProtocolRoutes(m.routes, chat, response)
 	execution := agentexecution.NewExecutionCoordinator(ctx, agentexecution.ExecutionCoordinatorDeps{
@@ -180,26 +176,22 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Turns:              m.turns,
 		Requests:           m.requests,
 		Contexts:           m.contexts,
-		SelectionForTurn: func(ctx context.Context, row *storage.Session) modelmgr.Selection {
-			return modelmgr.SelectionForTurn(ctx, deps.Models, row)
-		},
-		Dialogue:        runner,
-		Identity:        identity,
-		View:            view,
-		Output:          output,
-		Status:          status,
-		ResponseTimeout: time.Duration(cfg.LLMRequest.ResponseTimeoutSeconds) * time.Second,
+		SelectionForTurn:   selectionForTurn,
+		Dialogue:           runner,
+		Identity:           identity,
+		View:               view,
+		Output:             output,
+		Status:             status,
+		ResponseTimeout:    time.Duration(cfg.LLMRequest.ResponseTimeoutSeconds) * time.Second,
 	})
 	m.execution = execution
 	fileCommands := agentinput.NewFileCommandPreparer(agentinput.FileCommandPreparerDeps{
-		NewWorkspaceStore: func(id string) workspace.WorkspaceStore {
-			return m.sessions.WorkspaceStore(id)
-		},
-		Service:  deps.Tools,
-		Sessions: m.sessions,
-		Turns:    m.turns,
-		Requests: m.requests,
-		Identity: identity,
+		NewWorkspaceStore: newWorkspaceStore,
+		Service:           deps.Tools,
+		Sessions:          m.sessions,
+		Turns:             m.turns,
+		Requests:          m.requests,
+		Identity:          identity,
 	})
 	controlAdapter := controlAdapter{supervisor: m, store: deps.Store, models: deps.Models, scope: identity.Scope, status: status}
 	workspaces := workspace.NewService(func(ctx context.Context) (operationresult.Result[string], error) {
@@ -214,9 +206,6 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	}, func(id string) workspace.SessionStateStore {
 		return m.sessions.WorkspaceStore(id)
 	})
-	if err := deps.Control.ConnectAgent(control.AgentDeps{Sessions: m.sessions, Workspaces: workspaces, History: controlAdapter, Requests: m.requests, Execution: controlAdapter, Confirmations: confirmations, Scope: identity.Scope, Status: controlAdapter.Status, Commands: controlAdapter.Commands, Tools: deps.Tools, Skills: deps.Tools, FileRollback: fileRollbackCapabilities{tools: deps.Tools}, PrepareFileContext: fileCommands.PrepareFileCommand}); err != nil {
-		return m, err
-	}
 	m.background = agentinput.NewBackgroundHandler(agentinput.BackgroundHandlerDeps{
 		Sessions: m.sessions, Identity: identity, Execution: execution, Preloader: deps.Tools, ToolState: deps.Tools,
 		EnsureWorkspaceDir: func(ctx context.Context, id, dir string) error {
@@ -229,23 +218,22 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 			ctx = workspace.WithWorkspaceStore(ctx, m.sessions.WorkspaceStore(sessionID))
 			return deps.Platform.NormalizeInput(ctx, segments)
 		},
-		NewWorkspaceStore: func(id string) workspace.WorkspaceStore {
-			return m.sessions.WorkspaceStore(id)
-		},
-		Sessions:      m.sessions,
-		Turns:         m.turns,
-		Identity:      identity,
-		Hooks:         bridge,
-		Output:        output,
-		Execution:     execution,
-		Confirmations: deps.Control,
-		Preloader:     deps.Tools,
-		ToolState:     deps.Tools,
+		NewWorkspaceStore: newWorkspaceStore,
+		Sessions:          m.sessions,
+		Turns:             m.turns,
+		Identity:          identity,
+		Hooks:             bridge,
+		Output:            output,
+		Execution:         execution,
+		Confirmations:     deps.Control,
+		Preloader:         deps.Tools,
+		ToolState:         deps.Tools,
 	})
 	m.input = input
-	commands, err := wireCommands(m.commands, agentinput.CommandExecutorDeps{Router: m.commands, Sessions: m.sessions, Identity: identity, Output: deps.Platform, Confirmations: deps.Control, Input: input}, command.BuiltinDeps{Control: deps.Control, SessionListPageSize: cfg.View.SessionListPageSize, SessionRetentionDays: cfg.Maintenance.SessionCleanup.RetentionDays})
-	if err != nil {
-		return m, err
+	commands := agentinput.NewCommandExecutor(agentinput.CommandExecutorDeps{Router: m.commands, Sessions: m.sessions, Identity: identity, Output: deps.Platform, Confirmations: deps.Control, Input: input})
+	if err := command.RegisterBuiltins(m.commands, command.BuiltinDeps{Control: deps.Control, SessionListPageSize: cfg.View.SessionListPageSize, SessionRetentionDays: cfg.Maintenance.SessionCleanup.RetentionDays}); err != nil {
+		cancel()
+		return nil, err
 	}
 	handler := agentinput.NewMessageHandler(agentinput.MessageHandlerDeps{
 		History:   deps.ChatHistory,
@@ -265,16 +253,11 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		completion.RouterSource{Router: m.commands},
 	)
 	m.handler = handler
-	return m, nil
-}
-
-// wireCommands constructs the command consumer and registers its modules.
-func wireCommands(router *command.Router, deps agentinput.CommandExecutorDeps, modules command.BuiltinDeps) (*agentinput.CommandExecutor, error) {
-	executor := agentinput.NewCommandExecutor(deps)
-	if err := command.RegisterBuiltins(router, modules); err != nil {
+	if err := deps.Control.ConnectAgent(control.AgentDeps{Sessions: m.sessions, Workspaces: workspaces, History: controlAdapter, Requests: m.requests, Execution: controlAdapter, Confirmations: confirmations, Scope: identity.Scope, Status: controlAdapter.Status, Commands: controlAdapter.Commands, Tools: deps.Tools, Skills: deps.Tools, FileRollback: fileRollbackCapabilities{tools: deps.Tools}, PrepareFileContext: fileCommands.PrepareFileCommand}); err != nil {
+		cancel()
 		return nil, err
 	}
-	return executor, nil
+	return m, nil
 }
 
 // fileRollbackCapabilities adapts the command's List name to Tool's rollback operation.
