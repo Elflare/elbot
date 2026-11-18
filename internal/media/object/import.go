@@ -171,14 +171,18 @@ func (m *Manager) ImportReader(ctx context.Context, input io.Reader, size int64,
 		item.LocalPath = location
 	}
 	if err := m.media.Upsert(ctx, item); err != nil {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if cleanupErr := backend.Remove(cleanupCtx, location); cleanupErr != nil {
-			events.Log(cleanupCtx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_cleanup_failed", Module: "media", Content: cleanupErr.Error(), Identity: events.LogIdentityFromContext(cleanupCtx), ResultStatus: events.LogStatus(cleanupErr)})
-		}
+		removeUnrecordedObject(backend, location)
 		return operationresult.Result[share.MediaInfo]{}, err
 	}
 	return operationresult.Result[share.MediaInfo]{Status: operationresult.Success, Data: mediaInfo(item)}, nil
+}
+
+func removeUnrecordedObject(backend share.Backend, location string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := backend.Remove(ctx, location); err != nil {
+		events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_cleanup_failed", Module: "media", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
+	}
 }
 
 // sanitizeInput 是展示名称与来源事实的唯一清理入口。

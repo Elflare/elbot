@@ -3,7 +3,6 @@ package object
 import (
 	"bytes"
 	"context"
-	"elbot/internal/events"
 	"elbot/internal/operationresult"
 	"fmt"
 	"image"
@@ -12,7 +11,6 @@ import (
 	"image/jpeg"
 	_ "image/png"
 	"io"
-	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -37,11 +35,7 @@ func (m *Manager) ValidateImage(ctx context.Context, id string) (operationresult
 	if err != nil {
 		return operationresult.Result[share.MediaInfo]{}, err
 	}
-	defer func() {
-		if closeErr := reader.Close(); closeErr != nil {
-			events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
-		}
-	}()
+	defer closeMediaReader(ctx, reader)
 	if !strings.HasPrefix(info.MIMEType, "image/") {
 		return operationresult.Result[share.MediaInfo]{Status: operationresult.InvalidTarget, Message: "媒体类型不是图片"}, nil
 	}
@@ -56,14 +50,6 @@ func (m *Manager) ValidateImage(ctx context.Context, id string) (operationresult
 		return operationresult.Result[share.MediaInfo]{}, err
 	}
 	return operationresult.Result[share.MediaInfo]{Status: operationresult.Success, Data: info}, nil
-}
-
-func imageDimensions(data []byte) (int, int, error) {
-	config, _, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil {
-		return 0, 0, fmt.Errorf("decode image dimensions: %w", err)
-	}
-	return config.Width, config.Height, nil
 }
 
 func compressImage(data []byte, maxBytes int64, maxLength int) (operationresult.Result[[]byte], error) {
@@ -170,14 +156,10 @@ func shouldCompressImage(data []byte, cfg config.MediaConfig) bool {
 	if int64(len(data)) > cfg.LLMImageCompressionThresholdBytes {
 		return true
 	}
-	width, height, err := imageDimensions(data)
-	return err == nil && (width >= cfg.LLMImageMaxLength || height >= cfg.LLMImageMaxLength)
+	dim, _, err := image.DecodeConfig(bytes.NewReader(data))
+	return err == nil && (dim.Width >= cfg.LLMImageMaxLength || dim.Height >= cfg.LLMImageMaxLength)
 }
 
 func compressedName(name string) string {
-	ext := filepath.Ext(name)
-	if ext == "" {
-		return name + ".jpg"
-	}
-	return strings.TrimSuffix(name, ext) + ".jpg"
+	return strings.TrimSuffix(name, filepath.Ext(name)) + ".jpg"
 }

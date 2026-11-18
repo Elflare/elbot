@@ -14,6 +14,12 @@ import (
 	"elbot/internal/storage"
 )
 
+func closeMediaReader(ctx context.Context, reader io.Closer) {
+	if err := reader.Close(); err != nil {
+		events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)})
+	}
+}
+
 // Info 取得通用信息快照，不读取内容或增加引用。
 func (m *Manager) Info(ctx context.Context, id string) (operationresult.Result[share.MediaInfo], error) {
 	if !share.ValidID(id) {
@@ -39,7 +45,7 @@ func mediaInfo(item *storage.Media) share.MediaInfo {
 
 // Read 读取完整内容；读取器和引用释放故障独立记录。
 // 释放失败的自有持有交给 Cleanup 重试。
-func (m *Manager) Read(ctx context.Context, id string) (result operationresult.Result[[]byte], info share.MediaInfo, err error) {
+func (m *Manager) Read(ctx context.Context, id string) (operationresult.Result[[]byte], share.MediaInfo, error) {
 	retained, err := m.Hold(ctx, id)
 	if err != nil {
 		return operationresult.Result[[]byte]{}, share.MediaInfo{}, err
@@ -49,16 +55,12 @@ func (m *Manager) Read(ctx context.Context, id string) (result operationresult.R
 	}
 	held := retained.Data
 	defer m.releaseOwned(ctx, held)
-	info = held.Info()
+	info := held.Info()
 	reader, err := held.Open(ctx)
 	if err != nil {
 		return operationresult.Result[[]byte]{}, share.MediaInfo{}, err
 	}
-	defer func() {
-		if closeErr := reader.Close(); closeErr != nil {
-			events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
-		}
-	}()
+	defer closeMediaReader(ctx, reader)
 	data, err := io.ReadAll(reader)
 	if err != nil {
 		return operationresult.Result[[]byte]{}, share.MediaInfo{}, err
@@ -71,7 +73,7 @@ func (m *Manager) Read(ctx context.Context, id string) (result operationresult.R
 
 // Export 将对象写入目标文件并释放本次持有。
 // 释放失败的自有持有交给 Cleanup 重试。
-func (m *Manager) Export(ctx context.Context, id, destination string) (result operationresult.Result[share.MediaInfo], err error) {
+func (m *Manager) Export(ctx context.Context, id, destination string) (operationresult.Result[share.MediaInfo], error) {
 	retained, err := m.Hold(ctx, id)
 	if err != nil {
 		return operationresult.Result[share.MediaInfo]{}, err
@@ -86,11 +88,7 @@ func (m *Manager) Export(ctx context.Context, id, destination string) (result op
 	if err != nil {
 		return operationresult.Result[share.MediaInfo]{}, err
 	}
-	defer func() {
-		if closeErr := reader.Close(); closeErr != nil {
-			events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "media_reader_close_failed", Module: "media", Content: closeErr.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(closeErr)})
-		}
-	}()
+	defer closeMediaReader(ctx, reader)
 	file, err := os.Create(destination)
 	if err != nil {
 		return operationresult.Result[share.MediaInfo]{}, fmt.Errorf("create media export: %w", err)

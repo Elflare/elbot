@@ -80,8 +80,7 @@ func (h *heldMedia) Open(ctx context.Context) (io.ReadCloser, error) {
 	if h.record.Backend == "s3" {
 		location = h.record.ObjectKey
 	}
-	reader, err := backend.Open(ctx, location)
-	return reader, err
+	return backend.Open(ctx, location)
 }
 
 // Close 使用本轮清理上下文释放引用；等待可取消，失败保留引用。

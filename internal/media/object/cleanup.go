@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
@@ -20,40 +19,26 @@ const cleanupConcurrency = 4
 
 // Cleanup handles individual deletion failures and returns only failures that stop the batch.
 func (m *Manager) Cleanup(ctx context.Context, history History) (err error) {
-	stage := "lock"
-	var lines []string
+	var summary string
 	defer func() {
-		if err != nil {
-			return // Terminal failures belong to the maintenance task boundary.
+		if err == nil {
+			events.Log(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelInfo, Module: "media", EventName: "media_cleanup", ResultStatus: events.ResultSucceeded, ContentLimit: 8192, Content: summary})
 		}
-		record := events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelInfo, Module: "media", EventName: "media_cleanup", ResultStatus: events.ResultSucceeded, ContentLimit: 8192}
-		if stage != "delete" {
-			lines = append([]string{"stage=" + stage}, lines...)
-		}
-		if len(lines) > 50 {
-			lines = append(lines[:49], fmt.Sprintf("truncated=true omitted_details=%d", len(lines)-49))
-		}
-		record.Content = strings.Join(lines, "\n")
-		events.Log(ctx, record)
 	}()
 	unlock, err := m.cleanupMu.acquire(ctx, "cleanup")
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	stage = "release_owned"
 	if err := m.retryReleases(ctx); err != nil {
 		return err
 	}
-	stage = "history_reconcile"
 	if err := m.ReconcileHistory(ctx, history); err != nil {
 		return err
 	}
-	stage = "expire_outputs"
 	if err := m.media.ExpireOutputs(ctx, m.options.Now()); err != nil {
 		return err
 	}
-	stage = "reference_check"
 	issues, err := m.media.CheckReferences(ctx)
 	if err != nil {
 		return err
@@ -61,12 +46,10 @@ func (m *Manager) Cleanup(ctx context.Context, history History) (err error) {
 	if len(issues) > 0 {
 		return fmt.Errorf("media reference inconsistencies prevent cleanup: %v", issues)
 	}
-	stage = "claim"
 	items, err := m.media.ClaimOrphans(ctx, m.options.Now().Add(-OrphanGrace))
 	if err != nil {
 		return err
 	}
-	stage = "delete"
 	failedItems, canceledItems := make([]bool, len(items)), make([]bool, len(items))
 	deleted, started := make([]bool, len(items)), make([]bool, len(items))
 	jobs := make(chan int)
@@ -121,7 +104,7 @@ dispatch:
 			skipped++
 		}
 	}
-	lines = append(lines, fmt.Sprintf("claimed=%d deleted=%d skipped=%d failed=%d canceled=%d not_started=%d", len(items), removed, skipped, failed, canceled, pending))
+	summary = fmt.Sprintf("claimed=%d deleted=%d skipped=%d failed=%d canceled=%d not_started=%d", len(items), removed, skipped, failed, canceled, pending)
 	return ctx.Err()
 }
 
