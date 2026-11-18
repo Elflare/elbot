@@ -24,7 +24,7 @@ type discoverArgs struct {
 func NewDiscoverTool(resolver *Resolver) share.ToolDefinition {
 	t := discoverTool{resolver: resolver}
 	builder := share.NewBuilder("discover_tool").
-		Description("发现工具/Skill；name/names均空→简介列表，否则→schema或Skill内容。当前会话已有对应schema/内容则无需重复发现。").
+		Description("发现工具/Skill；name/names均空→简介列表，否则→schema或Skill内容。").
 		Risk(share.RiskSafe)
 
 	return builder.
