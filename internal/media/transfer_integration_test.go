@@ -70,6 +70,9 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 			store := testutil.NewSQLiteStore(t)
 			var usageID UsageID
 			m, err := NewMediaCenter(t.Context(), cfg, MediaCenterDeps{Store: store})
+			if err != nil {
+				t.Fatal(err)
+			}
 			t.Cleanup(func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
@@ -80,9 +83,6 @@ func TestMediaCenterTransferWiring(t *testing.T) {
 					t.Error(err)
 				}
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
 			info, err := m.ImportBytes(t.Context(), []byte("payload"), Input{Name: "report%2520.txt", MIMEType: "text/plain"}, ImportLimits{})
 			if err != nil || info.Status != operationresult.Success || info.Data.Name != "report%20.txt" {
 				t.Fatalf("imported=%+v err=%v", info, err)
@@ -153,6 +153,9 @@ func TestMediaCenterHistoryAndBoundedImport(t *testing.T) {
 	cfg.Sandbox.Root = filepath.Join(t.TempDir(), "sandbox")
 	store := testutil.NewSQLiteStore(t)
 	m, err := NewMediaCenter(t.Context(), cfg, MediaCenterDeps{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -160,9 +163,6 @@ func TestMediaCenterHistoryAndBoundedImport(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	if result, err := m.ImportReader(t.Context(), strings.NewReader("body"), -1, Input{}, ImportLimits{MaxImportBytes: 3}); err != nil || result.Status != operationresult.Rejected {
 		t.Fatal("ignored decoded byte limit")
 	}

@@ -20,28 +20,24 @@ import (
 
 // NewMediaCenter 接收完整配置，在根部拆分对象、交付和后端配置并装配。
 // 本地对象目录沿用沙盒根目录同级的 media；凭据解析归根部，远端后端延迟构造。
-// 构造负责中断恢复和首次历史对账，失败仍返回已构造的部分结果，不关闭借用存储。
+// 构造负责中断恢复和首次历史对账，不接管借用存储。
 func NewMediaCenter(ctx context.Context, cfg *config.Config, deps MediaCenterDeps) (*MediaCenter, error) {
-	m := &MediaCenter{chatHistory: deps.ChatHistory}
 	if err := ctx.Err(); err != nil {
-		return m, err
+		return nil, err
 	}
 	deliveryConfig := cfg.FileDelivery
 	objectBackend := "local"
-	switch deliveryConfig.Backend {
-	case "base64", "hybrid":
-	case "s3":
-		objectBackend = "s3"
-	default:
-		return m, fmt.Errorf("unsupported media backend %q", deliveryConfig.Backend)
-	}
-	local := &backend.LocalBackend{Root: filepath.Join(filepath.Dir(cfg.Sandbox.Root), "media")}
-	provider, err := resolveFileDeliveryCredentials(deliveryConfig, filepath.Dir(cfg.ConfigPath))
-	if err != nil {
-		return m, fmt.Errorf("media credentials: %w", err)
-	}
 	var remote share.RemoteBackend
-	if deliveryConfig.Backend != "base64" {
+	switch deliveryConfig.Backend {
+	case "base64":
+	case "hybrid", "s3":
+		if deliveryConfig.Backend == "s3" {
+			objectBackend = "s3"
+		}
+		provider, err := resolveFileDeliveryCredentials(deliveryConfig, filepath.Dir(cfg.ConfigPath))
+		if err != nil {
+			return nil, fmt.Errorf("media credentials: %w", err)
+		}
 		opts := backend.S3Options{
 			Endpoint: deliveryConfig.S3Endpoint, Region: deliveryConfig.S3Region,
 			Bucket: deliveryConfig.S3Bucket, Credentials: provider,
@@ -49,18 +45,25 @@ func NewMediaCenter(ctx context.Context, cfg *config.Config, deps MediaCenterDep
 		remote = backend.NewLazyBackend(func(ctx context.Context) (share.RemoteBackend, error) {
 			return backend.NewS3Backend(ctx, opts)
 		})
+	default:
+		return nil, fmt.Errorf("unsupported media backend %q", deliveryConfig.Backend)
 	}
+	local := &backend.LocalBackend{Root: filepath.Join(filepath.Dir(cfg.Sandbox.Root), "media")}
 	timeout := time.Duration(cfg.PlatformFiles.DownloadTimeoutSecs) * time.Second
-	m.objects, err = object.NewManager(ctx, object.Options{
+	objects, err := object.NewManager(ctx, object.Options{
 		Backend: objectBackend, MaxImportBytes: cfg.PlatformFiles.MaxReceiveFileBytes,
 		DownloadTimeout: timeout, Media: cfg.Media, Now: storage.Now,
 	}, object.Deps{
 		Media: deps.Store.Media(), References: deps.Store.MediaReferences(), Local: local, Remote: remote,
 	})
 	if err != nil {
-		return m, fmt.Errorf("media objects: %w", err)
+		return nil, fmt.Errorf("media objects: %w", err)
 	}
-	m.transfer = transfer.NewManager(m.objects, transfer.Options{
+	if err := objects.ReconcileHistory(ctx, deps.ChatHistory); err != nil {
+		return nil, fmt.Errorf("reconcile history media: %w", err)
+	}
+	m := &MediaCenter{objects: objects, chatHistory: deps.ChatHistory}
+	m.transfer = transfer.NewManager(objects, transfer.Options{
 		Log: func(ctx context.Context, record events.LogRecord) {
 			events.Log(context.WithoutCancel(ctx), record)
 		},
@@ -68,19 +71,13 @@ func NewMediaCenter(ctx context.Context, cfg *config.Config, deps MediaCenterDep
 		MaxImportBytes: cfg.PlatformFiles.MaxReceiveFileBytes, DownloadTimeout: timeout,
 	})
 	if err := m.connectUsageFinished(); err != nil {
-		return m, err
-	}
-	if err := m.objects.ReconcileHistory(ctx, m.chatHistory); err != nil {
-		return m, fmt.Errorf("reconcile history media: %w", err)
+		return nil, err
 	}
 	return m, nil
 }
 
-// resolveFileDeliveryCredentials 只为远端模式解析凭据，错误不包含凭据值。
+// resolveFileDeliveryCredentials 解析远端凭据，错误不包含凭据值。
 func resolveFileDeliveryCredentials(cfg config.FileDeliveryConfig, configDir string) (aws.CredentialsProvider, error) {
-	if cfg.Backend != "s3" && cfg.Backend != "hybrid" {
-		return nil, nil
-	}
 	resolve := func(name, label string) (string, error) {
 		name = strings.TrimSpace(name)
 		if name == "" {

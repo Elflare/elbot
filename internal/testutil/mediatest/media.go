@@ -19,11 +19,9 @@ func New(t *testing.T, deps media.MediaCenterDeps, root string, configure ...fun
 		apply(cfg)
 	}
 	center, err := media.NewMediaCenter(t.Context(), cfg, deps)
-	if center != nil {
-		t.Cleanup(func() { _ = center.Close(context.Background()) })
-	}
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = center.Close(context.Background()) })
 	return center
 }

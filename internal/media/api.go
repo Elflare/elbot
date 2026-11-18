@@ -16,17 +16,14 @@ import (
 
 // MediaCenter 持有内部组件，提供公开业务入口；不公开内部仓储或后端。
 type MediaCenter struct {
-	closed          atomic.Bool                            // 关闭后停止接纳新的媒体使用，已结束事实仍可登记。
-	objects         *object.Manager                        // 对象、引用、历史关联与回收。
-	transfer        *transfer.Manager                      // 入站、模型请求和平台交付。
-	chatHistory     History                                // 构造时借用的历史身份查询，对账和清理时传给对象管理。
-	usageFinished   *signal.Signal[[]string, signal.Empty] // 本实例的使用结束通知，携带自有的使用 ID 切片。
-	usageConnection *signal.Connection                     // Media 持有订阅，排空后解除。
+	closed        atomic.Bool                            // 关闭后停止接纳新的媒体使用，已结束事实仍可登记。
+	objects       *object.Manager                        // 对象、引用、历史关联与回收。
+	transfer      *transfer.Manager                      // 入站、模型请求和平台交付。
+	chatHistory   History                                // 构造时借用的历史身份查询，对账和清理时传给对象管理。
+	usageFinished *signal.Signal[[]string, signal.Empty] // 本实例的使用结束通知，携带自有的使用 ID 切片。
 }
 
-// Info 查询通用信息，不读内容、不校验图片、不增加持有。
-func (m *MediaCenter) Info(ctx context.Context, id string) (operationresult.Result[MediaInfo], error) {
-	info, err := m.objects.Info(ctx, id)
+func mediaInfoResult(info operationresult.Result[share.MediaInfo], err error) (operationresult.Result[MediaInfo], error) {
 	if err != nil {
 		return operationresult.Result[MediaInfo]{}, err
 	}
@@ -34,67 +31,37 @@ func (m *MediaCenter) Info(ctx context.Context, id string) (operationresult.Resu
 		return operationresult.Result[MediaInfo]{Status: info.Status, Message: info.Message}, nil
 	}
 	return operationresult.Result[MediaInfo]{Status: operationresult.Success, Data: MediaInfo(info.Data)}, nil
+}
+
+// Info 查询通用信息，不读内容、不校验图片、不增加持有。
+func (m *MediaCenter) Info(ctx context.Context, id string) (operationresult.Result[MediaInfo], error) {
+	return mediaInfoResult(m.objects.Info(ctx, id))
 }
 
 // ValidateImage 验证图片可解码且 MIME 属于图片，返回通用信息。
 // 自有持有释放失败时保留错误，并由 Cleanup 重试释放。
 func (m *MediaCenter) ValidateImage(ctx context.Context, id string) (operationresult.Result[MediaInfo], error) {
-	info, err := m.objects.ValidateImage(ctx, id)
-	if err != nil {
-		return operationresult.Result[MediaInfo]{}, err
-	}
-	if info.Status != operationresult.Success {
-		return operationresult.Result[MediaInfo]{Status: info.Status, Message: info.Message}, nil
-	}
-	return operationresult.Result[MediaInfo]{Status: operationresult.Success, Data: MediaInfo(info.Data)}, nil
+	return mediaInfoResult(m.objects.ValidateImage(ctx, id))
 }
 
 // ImportBytes 归档字节内容并返回通用信息。
 func (m *MediaCenter) ImportBytes(ctx context.Context, data []byte, input Input, limits ImportLimits) (operationresult.Result[MediaInfo], error) {
-	info, err := m.objects.ImportBytes(ctx, data, share.Input{Name: input.Name, MIMEType: input.MIMEType, Source: share.Source(input.Source)}, share.ImportLimits(limits))
-	if err != nil {
-		return operationresult.Result[MediaInfo]{}, err
-	}
-	if info.Status != operationresult.Success {
-		return operationresult.Result[MediaInfo]{Status: info.Status, Message: info.Message}, nil
-	}
-	return operationresult.Result[MediaInfo]{Status: operationresult.Success, Data: MediaInfo(info.Data)}, nil
+	return mediaInfoResult(m.objects.ImportBytes(ctx, data, share.Input{Name: input.Name, MIMEType: input.MIMEType, Source: share.Source(input.Source)}, share.ImportLimits(limits)))
 }
 
 // ImportURL 按配置下载、归档内容并清理持久化来源中的敏感信息。
 func (m *MediaCenter) ImportURL(ctx context.Context, rawURL string, input Input, limits ImportLimits) (operationresult.Result[MediaInfo], error) {
-	info, err := m.objects.ImportURL(ctx, rawURL, share.Input{Name: input.Name, MIMEType: input.MIMEType, Source: share.Source(input.Source)}, share.ImportLimits(limits))
-	if err != nil {
-		return operationresult.Result[MediaInfo]{}, err
-	}
-	if info.Status != operationresult.Success {
-		return operationresult.Result[MediaInfo]{Status: info.Status, Message: info.Message}, nil
-	}
-	return operationresult.Result[MediaInfo]{Status: operationresult.Success, Data: MediaInfo(info.Data)}, nil
+	return mediaInfoResult(m.objects.ImportURL(ctx, rawURL, share.Input{Name: input.Name, MIMEType: input.MIMEType, Source: share.Source(input.Source)}, share.ImportLimits(limits)))
 }
 
 // ImportFile 归档调用方已按其路径边界解析的普通文件。
 func (m *MediaCenter) ImportFile(ctx context.Context, path string, input Input, limits ImportLimits) (operationresult.Result[MediaInfo], error) {
-	info, err := m.objects.ImportFile(ctx, path, share.Input{Name: input.Name, MIMEType: input.MIMEType, Source: share.Source(input.Source)}, share.ImportLimits(limits))
-	if err != nil {
-		return operationresult.Result[MediaInfo]{}, err
-	}
-	if info.Status != operationresult.Success {
-		return operationresult.Result[MediaInfo]{Status: info.Status, Message: info.Message}, nil
-	}
-	return operationresult.Result[MediaInfo]{Status: operationresult.Success, Data: MediaInfo(info.Data)}, nil
+	return mediaInfoResult(m.objects.ImportFile(ctx, path, share.Input{Name: input.Name, MIMEType: input.MIMEType, Source: share.Source(input.Source)}, share.ImportLimits(limits)))
 }
 
 // ImportReader 读取受限内容并归档，size 是调用方已知的长度。
 func (m *MediaCenter) ImportReader(ctx context.Context, input io.Reader, size int64, spec Input, limits ImportLimits) (operationresult.Result[MediaInfo], error) {
-	info, err := m.objects.ImportReader(ctx, input, size, share.Input{Name: spec.Name, MIMEType: spec.MIMEType, Source: share.Source(spec.Source)}, share.ImportLimits(limits))
-	if err != nil {
-		return operationresult.Result[MediaInfo]{}, err
-	}
-	if info.Status != operationresult.Success {
-		return operationresult.Result[MediaInfo]{Status: info.Status, Message: info.Message}, nil
-	}
-	return operationresult.Result[MediaInfo]{Status: operationresult.Success, Data: MediaInfo(info.Data)}, nil
+	return mediaInfoResult(m.objects.ImportReader(ctx, input, size, share.Input{Name: spec.Name, MIMEType: spec.MIMEType, Source: share.Source(spec.Source)}, share.ImportLimits(limits)))
 }
 
 // Read 读取完整内容并结束本次读取持有，保留读取和清理错误。
@@ -107,14 +74,7 @@ func (m *MediaCenter) Read(ctx context.Context, id string) (operationresult.Resu
 // Export 写入调用方指定的目标文件，并结束本次读取持有。
 // 释放失败的自有持有交给 Cleanup 重试，原调用仍返回错误。
 func (m *MediaCenter) Export(ctx context.Context, id, destination string) (operationresult.Result[MediaInfo], error) {
-	info, err := m.objects.Export(ctx, id, destination)
-	if err != nil {
-		return operationresult.Result[MediaInfo]{}, err
-	}
-	if info.Status != operationresult.Success {
-		return operationresult.Result[MediaInfo]{Status: info.Status, Message: info.Message}, nil
-	}
-	return operationresult.Result[MediaInfo]{Status: operationresult.Success, Data: MediaInfo(info.Data)}, nil
+	return mediaInfoResult(m.objects.Export(ctx, id, destination))
 }
 
 // AcquireForLLM 准备请求副本；实际请求结束后发布对应使用 ID。
@@ -153,24 +113,21 @@ func (m *MediaCenter) ImportPlatform(ctx context.Context, platformName string, r
 			return resolver(ctx, PlatformMedia(segment), limit)
 		}
 	}
-	info, err := m.transfer.ImportPlatform(ctx, platformName, resolve, transfer.PlatformMedia(segment))
-	if err != nil {
-		return operationresult.Result[MediaInfo]{}, err
-	}
-	if info.Status != operationresult.Success {
-		return operationresult.Result[MediaInfo]{Status: info.Status, Message: info.Message}, nil
-	}
-	return operationresult.Result[MediaInfo]{Status: operationresult.Success, Data: MediaInfo(info.Data)}, nil
+	return mediaInfoResult(m.transfer.ImportPlatform(ctx, platformName, resolve, transfer.PlatformMedia(segment)))
+}
+
+func (row HistoryMessage) historyKey() share.HistoryKey {
+	return share.HistoryKey{ID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.MessageID, ChatType: row.ChatType}
 }
 
 // HistoryIDs 只查询有效历史关联和输出缓存，不下载媒体。
 func (m *MediaCenter) HistoryIDs(ctx context.Context, row HistoryMessage) (map[int]string, error) {
-	return m.objects.HistoryIDs(ctx, share.HistoryKey{ID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.MessageID, ChatType: row.ChatType})
+	return m.objects.HistoryIDs(ctx, row.historyKey())
 }
 
 // AssociateHistory 关联已归档的媒体与历史位置。
 func (m *MediaCenter) AssociateHistory(ctx context.Context, row HistoryMessage, index int, kind, id string) error {
-	return m.objects.AssociateHistory(ctx, share.HistoryKey{ID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.MessageID, ChatType: row.ChatType}, index, kind, id)
+	return m.objects.AssociateHistory(ctx, row.historyKey(), index, kind, id)
 }
 
 // GetHistoryMediaBatch 保留输入顺序、重复位置、逐项错误及未缓存获取额度。
