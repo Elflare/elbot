@@ -29,10 +29,6 @@
 - [ ] control包
 - [ ] delivery包
 
-## Python 代码执行与工具编排
-
-- [x] `tool_weave` 在当前 Workspace 中执行 Python 并编排已发现的文本工具。用法见[用 Python 编排工具](../docs/concepts.md#用-python-编排工具)。
-
 ## 不一定实现
 
 - [ ] CLI TUI 支持 Markdown 渲染。
