@@ -36,6 +36,10 @@ Responses limit the currently callable tools via `tool_choice` in each round; re
 
 Tools can restrict the applicable API types: discovery, completion, preloading, and execution are all filtered by the current conversation model, while background tasks are determined by the model they have selected.
 
+## Orchestrating Tools with Python
+
+The model writes loops, concurrent calls, and result processing into a Python script and hands it over to `tool_weave` for a single execution. The return values of various tools are processed directly by the script, and the model only receives the content selected by the script. For example, when batch-checking dozens of webpages, the script can write the matching lines to a file and only return the number of matches and the filename, which both reduces model round-trips and saves tokens that would be spent putting the full text of the webpages into the context.
+
 ## View Images
 
 `view_image` is only applicable to Responses and can be preloaded using `@tool:view_image`. Images are passed to the model as tool results and are not automatically sent to the chat.
@@ -51,9 +55,9 @@ Tools can restrict the applicable API types: discovery, completion, preloading, 
 - When `view_image` and `get_media` retrieve historical media, a maximum of 5 uncached locations are attempted each time (failures are also counted); cached locations do not count towards this limit, and repeated locations in the same request reuse the result.
 - `get_media` returns the Media ID, defaulting to the first media item of each message.
 
-## Shell Output Limits
+## Shell
 
-The stdout and stderr of `shell` each retain a maximum of the first 256 KiB (counted by bytes); if exceeded, a truncation notice is appended to the end of the corresponding output. The command will continue to run and drain the output; When complete large-scale output is required, write it to a file and then read it by range.
+The stdout and stderr of `shell` each retain a maximum of the first 256 KiB (measured in bytes); if exceeded, a truncation notice is appended to the end of the corresponding output. The command will continue to run and drain the output; when complete large-scale output is required, write it to a file and then read it by range.
 
 ## Inline Preloading
 
@@ -182,9 +186,9 @@ For tooling configuration, see [AgentSkill Tooling Configuration](configuration.
 
 ### Skill Media Usage
 
-Media uses the stable identifier `media:<64 位小写 SHA-256>`. Standard document-based Skills can guide the Agent to pass the identifier to tools that support media.
+Media uses a stable identifier `media:<64-bit lowercase SHA-256>`. Ordinary document-type Skills can instruct the Agent to pass this identifier to tools that support media.
 
-bash scripts explicitly declare inputs via `shell`, for example:
+Bash scripts explicitly declare inputs via `shell`, for example:
 
 ```json
 {
@@ -193,21 +197,21 @@ bash scripts explicitly declare inputs via `shell`, for example:
 }
 ```
 
-Each item in `media_inputs` only accepts `media`. The host exports or reuses files in the sandbox's `media-inputs/` directory and injects environment variables such as `ELBOT_MEDIA_1` and `ELBOT_MEDIA_2` for the current process. PowerShell uses `$env:ELBOT_MEDIA_1`. Scripts treat inputs as read-only and copy them before modification; Cache hits also refresh the file access time, and idle copies are cleaned up by the existing sandbox retention period. Original commands and call parameters remain unchanged.
+Each item in `media_inputs` only accepts `media`. The host exports or reuses files in the `media-inputs/` directory of the sandbox and injects environment variables such as `ELBOT_MEDIA_1`, `ELBOT_MEDIA_2`, etc., for the current process. PowerShell uses `$env:ELBOT_MEDIA_1`. Scripts treat inputs as read-only and must copy them before modification; cache hits also refresh the file access time, and idle copies are cleaned up by the existing sandbox retention period. The original command and call parameters remain unchanged.
 
-Tool-based AgentSkill uses `{"type":"media"}` to declare media parameters in `parameters.properties` of `ELBOT_SKILL.toml`, and maps command-line flags in `[args]`. The LLM passes the media ID, and the actual process receives the file path relative to the Skill root directory during the call; Ordinary string parameters will not be automatically converted.
+Tool-based AgentSkills declare media parameters using `{"type":"media"}` in `parameters.properties` of `ELBOT_SKILL.toml` and map them to command-line flags in `[args]`. The LLM passes the media ID, and the actual process receives a temporary file path relative to the working directory; the default working directory is the Skill root directory, or the current workspace when `use_workspace = true`.
 
-When calling a tool, if a JSON field uses a media ID, it will also be regarded as a reference to that Session. Plain text calls do not count.
+When calling a tool, if a JSON field uses a media ID, it is also considered a reference for that Session. Plain text calls are not counted.
 
-Go Skill uses the same input list in `payload.media_inputs` of `go_skill_run`. The host supplements `path`, `name`, `mime_type`, and `size` for each item in the execution copy of stdin; files not exceeding 1 MiB also provide `base64`. `payload.media_workspace` is a call-exclusive directory relative to the Skill root directory; An empty input list can be passed to request a directory used only for output. Temporary paths and base64 are not written back to the original call parameters.
+Go Skills use the same input list in `payload.media_inputs` of `go_skill_run`. The host supplements each item with `path`, `name`, `mime_type`, and `size` in the execution copy of stdin; files smaller than 1 MiB also provide `base64`. `payload.media_workspace` is a call-specific directory relative to the Skill root directory; an empty input list can be passed to request a directory used only for output. Temporary paths and base64 data are not written back to the original call parameters.
 
 The stdout of Go/TOML Skills can return media results:
 
 ```json
-{"content":"处理完成","segments":[{"type":"image","path":"result.png"}]}
+{"content":"Processing complete","segments":[{"type":"image","path":"result.png"}]}
 ```
 
-`segments` supports `text`, `image`, and `file`; Media segments must and can only provide `media` or `path`. Paths are resolved relative to the Skill root directory; absolute paths, `..`, and symlink/junction escapes are rejected. The host imports files before returning; the Tool Transcript saves a stable media ID and establishes a reference. Call-specific directories and call-period references are released after success, failure, cancellation, or timeout; Other working files in the Skill root directory are still managed by the Skill. Go Skills are recommended to write temporary output to `media_workspace`, and TOML scripts can write to the directory where the received media input is located.
+`segments` supports `text`, `image`, and `file`; media segments must and can only provide `media` or `path`. Paths are resolved relative to the working directory, and absolute paths, `..`, and symlink/junction escapes are rejected. The working directory for Go Skills is the Skill root directory; tool-based AgentSkill TOMLs also use the Skill root directory by default, or the current workspace after configuring `use_workspace = true`. The host imports files before returning, and the Tool Transcript saves the stable media ID and establishes a reference. Call-specific directories and temporary references are released after success, failure, cancellation, or timeout; other working files in the Skill root directory are still managed by the Skill. It is recommended that Go Skills write temporary output to `media_workspace`, while TOML scripts can write to the directory where the received media inputs are located.
 
 ## Platform Adapter
 

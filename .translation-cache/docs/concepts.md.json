@@ -104,6 +104,14 @@
       "translation": "# Core Concepts\n\nThis article explains the main concepts of ElBot: how it organizes conversations, tools, context, and extensibility.\n\n",
       "updated_at": 1793353326
     },
+    "docs/concepts.md:section:91961fce7cbf00f9f34788f974a0c64bd2d1425071181d14e89f087300162a52": {
+      "kind": "section",
+      "source": "## Shell\n\n`shell` 的 stdout 和 stderr 各自最多保留前 256 KiB（按字节计），超出时在对应输出末尾附上截断说明。命令仍会继续运行并排空输出；需要完整的大量输出时写入文件，再按范围读取。\n\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "0c74fb45b9be3b98bf664aac399b97bff54690c8c3a92724201e52dc0bd6d1ab",
+      "translation": "## Shell\n\nThe stdout and stderr of `shell` each retain a maximum of the first 256 KiB (measured in bytes); if exceeded, a truncation notice is appended to the end of the corresponding output. The command will continue to run and drain the output; when complete large-scale output is required, write it to a file and then read it by range.\n\n",
+      "updated_at": 1794984202
+    },
     "docs/concepts.md:section:9657deabf8f8b096a61cde7dbe1e14357983abcd11079ed3079edd41bb9ca4ea": {
       "kind": "section",
       "source": "## Session\n\nSession 是持久化会话单位：一次连续对话的上下文、模式、消息历史和工具调用记录。\n\n不同平台、不同作用域各用各自的 Session，避免上下文互相污染；CLI 是高权限入口，可跨平台查看和管理。\n\n创建、恢复、归档、置顶和删除，以及引用回复恢复 Session 的规则，见 [命令速查：Session](commands.md#session)。\n\n",
@@ -111,6 +119,14 @@
       "source_hash": "534dc5857971fd5a02be065ad599db6ed8375b1f8dafc3dc38974167e34d45f6",
       "translation": "## Session\n\nA Session is a persistent session unit: the context, mode, message history, and tool call records of a single continuous conversation.\n\nDifferent platforms and different scopes use their own Sessions to avoid cross-contamination of context; the CLI is a high-privilege entry point that allows cross-platform viewing and management.\n\nRules for creating, restoring, archiving, pinning, and deleting, as well as restoring a Session via quoted replies, can be found in [Command Quick Reference: Session](commands.md#session).\n\n",
       "updated_at": 1793353326
+    },
+    "docs/concepts.md:section:aa7c394b44aea0de28f0228be58ca104d8eaddc1beea1ca9a234f7094803477c": {
+      "kind": "section",
+      "source": "## 用 Python 编排工具\n\n模型把循环、并发调用和结果处理写进一段 Python，交给 `tool_weave` 一次执行。各个工具的返回值由脚本直接处理，模型只接收脚本选出的内容。例如，批量检查几十个网页时，脚本可以把命中行写入文件，只返回命中数和文件名，既减少模型往返，也省去把网页全文放进上下文的 Token。\n\n",
+      "source_file": "docs/concepts.md",
+      "source_hash": "7189af23aa57b7e07f9b9b812d566fd981f1da0b95f5e2af18fdcb1e640f4e0c",
+      "translation": "## Orchestrating Tools with Python\n\nThe model writes loops, concurrent calls, and result processing into a Python script and hands it over to `tool_weave` for a single execution. The return values of various tools are processed directly by the script, and the model only receives the content selected by the script. For example, when batch-checking dozens of webpages, the script can write the matching lines to a file and only return the number of matches and the filename, which both reduces model round-trips and saves tokens that would be spent putting the full text of the webpages into the context.\n\n",
+      "updated_at": 1794984252
     },
     "docs/concepts.md:section:aca8b03e2086d273e93c40cf7c6217223b978dc69ca962fd8806dcfbe366fd6f": {
       "kind": "section",
@@ -178,8 +194,8 @@
     }
   },
   "source": "docs/concepts.md",
-  "source_hash": "",
+  "source_hash": "3c239b07eddca01db1049f93c64685061db12413c6e211c75b7dc44c800afe5e",
   "target": "docs.en/concepts.md",
-  "updated_at": 1794840595,
+  "updated_at": 1794984252,
   "version": 3
 }
