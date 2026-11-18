@@ -43,11 +43,11 @@ const fallback = "本次已自动回退到系统 Python。"
 
 func Definition(env processenv.Environment) share.ToolDefinition {
 	return share.NewBuilder("tool_weave").
-		Description(`执行py代码，也可编排工具，支持批量、并发和结果处理。复杂、多次工具调用尽量使用该工具，简单别用。例：
+		Description(`执行py代码，也可直接编排已有工具，支持批量、并发和结果处理。复杂、多次工具调用尽量使用该工具，简单别用。例：
 import asyncio
 from pathlib import Path
 projects = {"Go": "go.dev", "Rust": "blog.rust-lang.org", "Python": "blog.python.org"}
-news = await asyncio.gather(*(web_search(query=f"{name} release", include_domains=[site], time_range="week", max_results=3) for name, site in projects.items()))
+news = await asyncio.gather(*(web_search(query=f"{name} release", include_domains=[site], time_range="week", max_results=3) for name, site in projects.items()))#函数名即为已发现工具，不用声明直接使用
 report = "\n\n".join(f"## {name}\n{text}" for name, text in zip(projects, news))
 Path("weekly.md").write_text(report, encoding="utf-8")
 print(await send_file(source="weekly.md"))`).
