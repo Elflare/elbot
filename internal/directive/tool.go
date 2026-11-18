@@ -29,15 +29,13 @@ type ToolMatch struct {
 
 type SkillMatch = ToolMatch
 
-type ToolCompletionToken struct {
+type CompletionToken struct {
 	Start      int
 	Query      string
 	Prefix     string
 	PrefixOnly bool
-	OK         bool
+	Kind       string // "tool" 或 "skill"；空值表示未匹配。
 }
-
-type SkillCompletionToken = ToolCompletionToken
 
 func ToolMatches(text string) []ToolMatch {
 	return matches(text, toolPattern)
@@ -70,44 +68,36 @@ func StripToolMatches(text string, matches []ToolMatch, remove []bool) string {
 	return strings.Join(strings.Fields(b.String()), " ")
 }
 
-func ParseToolCompletionToken(text string, cursor int) ToolCompletionToken {
-	return parseCompletionToken(text, cursor, []string{ToolShortPrefix, ToolShortFull, ToolPrefix, ToolFullPrefix})
-}
-
-func ParseSkillCompletionToken(text string, cursor int) SkillCompletionToken {
-	return parseCompletionToken(text, cursor, []string{SkillShortPrefix, SkillShortFull, SkillPrefix, SkillFullPrefix})
-}
-
-func parseCompletionToken(text string, cursor int, prefixes []string) ToolCompletionToken {
+func ParseCompletionToken(text string, cursor int) CompletionToken {
 	if cursor < 0 || cursor > len(text) {
 		cursor = len(text)
 	}
 	start := cursor
-	for start > 0 {
-		if isSpace(text[start-1]) {
-			break
-		}
+	for start > 0 && !isSpace(text[start-1]) {
 		start--
 	}
 	token := text[start:cursor]
 	if token == "" || token[0] != '@' {
-		return ToolCompletionToken{}
+		return CompletionToken{}
 	}
-	for _, prefix := range prefixes {
-		if token != prefix && strings.HasPrefix(prefix, token) {
-			return ToolCompletionToken{Start: start, Prefix: prefix, PrefixOnly: true, OK: true}
-		}
-		if strings.HasPrefix(token, prefix) {
-			query := strings.TrimPrefix(token, prefix)
+	// 单独的 @ 同时匹配两类指令，优先补成 @s:。
+	for _, p := range [...]struct{ prefix, kind string }{
+		{SkillShortPrefix, "skill"}, {SkillShortFull, "skill"}, {SkillPrefix, "skill"}, {SkillFullPrefix, "skill"},
+		{ToolShortPrefix, "tool"}, {ToolShortFull, "tool"}, {ToolPrefix, "tool"}, {ToolFullPrefix, "tool"},
+	} {
+		if query, ok := strings.CutPrefix(token, p.prefix); ok {
 			for i := 0; i < len(query); i++ {
 				if !IsToolNameByte(query[i]) {
-					return ToolCompletionToken{}
+					return CompletionToken{}
 				}
 			}
-			return ToolCompletionToken{Start: start, Query: query, Prefix: prefix, OK: true}
+			return CompletionToken{Kind: p.kind, Start: start, Prefix: p.prefix, Query: query}
+		}
+		if strings.HasPrefix(p.prefix, token) {
+			return CompletionToken{Kind: p.kind, Start: start, Prefix: p.prefix, PrefixOnly: true}
 		}
 	}
-	return ToolCompletionToken{}
+	return CompletionToken{}
 }
 
 func IsToolNameByte(c byte) bool {

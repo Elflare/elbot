@@ -27,20 +27,23 @@ type ToolDirectiveSource struct {
 
 func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item, error) {
 	cursor := req.CursorOrEnd()
-	token := directive.ParseToolCompletionToken(req.Text, cursor)
-	skillToken := directive.ParseSkillCompletionToken(req.Text, cursor)
-	if !skillToken.OK && !token.OK {
+	token := directive.ParseCompletionToken(req.Text, cursor)
+	if token.Kind == "" {
 		return nil, nil
 	}
 	ctx, err := s.Context(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if skillToken.OK {
-		return s.completeSkills(ctx, skillToken, cursor), nil
-	}
 	if token.PrefixOnly {
-		return []Item{{Text: token.Prefix, Label: token.Prefix, Kind: KindToolDirective, ReplaceStart: token.Start, ReplaceEnd: cursor}}, nil
+		kind := KindToolDirective
+		if token.Kind == "skill" {
+			kind = KindSkillDirective
+		}
+		return []Item{{Text: token.Prefix, Label: token.Prefix, Kind: kind, ReplaceStart: token.Start, ReplaceEnd: cursor}}, nil
+	}
+	if token.Kind == "skill" {
+		return s.completeSkills(ctx, token, cursor), nil
 	}
 	tags, err := s.Tools.ToolTags(ctx)
 	if err != nil {
@@ -77,10 +80,7 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item,
 	return out, nil
 }
 
-func (s ToolDirectiveSource) completeSkills(ctx context.Context, token directive.SkillCompletionToken, cursor int) []Item {
-	if token.PrefixOnly {
-		return []Item{{Text: token.Prefix, Label: token.Prefix, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor}}
-	}
+func (s ToolDirectiveSource) completeSkills(ctx context.Context, token directive.CompletionToken, cursor int) []Item {
 	availability, _ := contextinfo.ToolAvailabilityFromContext(ctx)
 	names := matchCandidates(availability.Skills, token.Query)
 	out := make([]Item, 0, len(names))

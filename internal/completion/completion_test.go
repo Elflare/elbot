@@ -131,6 +131,25 @@ func TestToolDirectiveSourceCompletesSkillsSeparately(t *testing.T) {
 	}
 }
 
+func TestDirectivePrefixCompletion(t *testing.T) {
+	failure := errors.New("context unavailable")
+	for _, tc := range []struct{ input, text, kind string }{
+		{"@", "@s:", KindSkillDirective},
+		{"@t", "@t:", KindToolDirective},
+		{"@s", "@s:", KindSkillDirective},
+	} {
+		source := ToolDirectiveSource{Context: func(ctx context.Context) (context.Context, error) { return ctx, nil }}
+		got, err := source.Complete(t.Context(), Request{Text: tc.input})
+		if err != nil || len(got) != 1 || got[0].Text != tc.text || got[0].Kind != tc.kind {
+			t.Fatalf("%q: got %#v, %v", tc.input, got, err)
+		}
+		source.Context = func(context.Context) (context.Context, error) { return nil, failure }
+		if _, err := source.Complete(t.Context(), Request{Text: tc.input}); !errors.Is(err, failure) {
+			t.Fatalf("%q: preparation error = %v", tc.input, err)
+		}
+	}
+}
+
 func TestToolDirectiveSourceCompletesConfiguredTags(t *testing.T) {
 	source := ToolDirectiveSource{Context: func(ctx context.Context) (context.Context, error) {
 		return contextinfo.WithToolAvailability(ctx, contextinfo.ToolAvailability{Tools: []string{"alpha"}}), nil

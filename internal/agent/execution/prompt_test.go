@@ -286,17 +286,17 @@ func TestToolNamesTextSeparatesToolsAndSkills(t *testing.T) {
 		{
 			name:  "mixed",
 			names: agentshare.PromptToolNames{Tools: []string{"shell", "web"}, Skills: []string{"code_review", "weather"}},
-			want:  "tools: shell,web. skills: code_review,weather. Use discover_tool(names) for all possibly relevant tools/skills, including uncertain ones; prefer extras over omissions.",
+			want:  "tools: shell,web. skills: code_review,weather. 需要工具或 Skill 时：当前上下文已有对应 schema 或 Skill 说明直接使用；否则discover_tool,宁多勿漏。",
 		},
 		{
 			name:  "tools only",
 			names: agentshare.PromptToolNames{Tools: []string{"shell"}},
-			want:  "tools: shell. Use discover_tool(names) for all possibly relevant tools/skills, including uncertain ones; prefer extras over omissions.",
+			want:  "tools: shell. 需要工具或 Skill 时：当前上下文已有对应 schema 或 Skill 说明直接使用；否则discover_tool,宁多勿漏。",
 		},
 		{
 			name:  "skills only",
 			names: agentshare.PromptToolNames{Skills: []string{"weather"}},
-			want:  "skills: weather. Use discover_tool(names) for all possibly relevant tools/skills, including uncertain ones; prefer extras over omissions.",
+			want:  "skills: weather. 需要工具或 Skill 时：当前上下文已有对应 schema 或 Skill 说明直接使用；否则discover_tool,宁多勿漏。",
 		},
 		{name: "empty", names: agentshare.PromptToolNames{}, want: ""},
 	}
