@@ -13,7 +13,7 @@ func (c *ExecutionCoordinator) ResolveInput(ctx context.Context, text string) (c
 	// Fork prepares native/media material outside scope admission. Capture the
 	// newly activated binding afterward, with the same final identity check.
 	if msg, ok := agentshare.MessageContextFrom(ctx); ok && msg.ResumeSessionID == "" && msg.ForkFromMessageID != "" {
-		result, err := c.sessions.Fork(ctx, c.identity.Scope(ctx), msg.ForkFromMessageID)
+		result, err := c.deps.Sessions.Fork(ctx, c.deps.Identity.Scope(ctx), msg.ForkFromMessageID)
 		if err != nil {
 			return ctx, operationresult.Result[*storage.Session]{}, err
 		}
@@ -21,12 +21,12 @@ func (c *ExecutionCoordinator) ResolveInput(ctx context.Context, text string) (c
 			return ctx, result, nil
 		}
 		row := result.Data
-		locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), row.ID)
+		locked, release, err := c.deps.Sessions.EnterActivation(ctx, c.deps.Identity.Scope(ctx), row.ID)
 		if err != nil {
 			return ctx, operationresult.Result[*storage.Session]{}, err
 		}
 		defer release()
-		locked, captured, err := agentshare.CaptureSessionBinding(locked, c.sessions, c.identity, row)
+		locked, captured, err := agentshare.CaptureSessionBinding(locked, c.deps.Sessions, c.deps.Identity, row)
 		if err != nil {
 			return ctx, operationresult.Result[*storage.Session]{}, err
 		}
@@ -35,7 +35,7 @@ func (c *ExecutionCoordinator) ResolveInput(ctx context.Context, text string) (c
 		}
 		return locked, result, nil
 	}
-	locked, release, err := c.sessions.EnterScope(ctx, c.identity.Scope(ctx))
+	locked, release, err := c.deps.Sessions.EnterScope(ctx, c.deps.Identity.Scope(ctx))
 	if err != nil {
 		return ctx, operationresult.Result[*storage.Session]{}, err
 	}
@@ -47,7 +47,7 @@ func (c *ExecutionCoordinator) ResolveInput(ctx context.Context, text string) (c
 	if result.Status != operationresult.Success {
 		return ctx, result, nil
 	}
-	locked, captured, err := agentshare.CaptureSessionBinding(locked, c.sessions, c.identity, result.Data)
+	locked, captured, err := agentshare.CaptureSessionBinding(locked, c.deps.Sessions, c.deps.Identity, result.Data)
 	if err != nil {
 		return ctx, operationresult.Result[*storage.Session]{}, err
 	}
@@ -58,21 +58,21 @@ func (c *ExecutionCoordinator) ResolveInput(ctx context.Context, text string) (c
 }
 
 func (c *ExecutionCoordinator) enterTurn(ctx context.Context, row *storage.Session) (context.Context, operationresult.Result[struct{}], func(), error) {
-	ctx = c.view.Context(ctx)
-	scope := c.identity.Scope(ctx)
+	ctx = c.deps.View.Context(ctx)
+	scope := c.deps.Identity.Scope(ctx)
 	background := agentshare.IsBackgroundSession(row)
 	var locked context.Context
 	var release func()
 	var err error
 	if background {
-		locked, release, err = c.sessions.EnterSessions(ctx, row.ID)
+		locked, release, err = c.deps.Sessions.EnterSessions(ctx, row.ID)
 	} else {
-		locked, release, err = c.sessions.EnterActivation(ctx, scope, row.ID)
+		locked, release, err = c.deps.Sessions.EnterActivation(ctx, scope, row.ID)
 	}
 	if err != nil {
 		return ctx, operationresult.Result[struct{}]{}, nil, err
 	}
-	latest, err := c.sessionRows.Get(locked, row.ID)
+	latest, err := c.deps.SessionRows.Get(locked, row.ID)
 	if err != nil {
 		release()
 		return ctx, operationresult.Result[struct{}]{}, nil, err
@@ -86,8 +86,8 @@ func (c *ExecutionCoordinator) enterTurn(ctx context.Context, row *storage.Sessi
 		default:
 		}
 	}
-	refreshed := c.view.Context(locked)
-	if c.identity.Scope(refreshed).Key() != scope.Key() || (background && !agentshare.IsBackgroundSession(row)) {
+	refreshed := c.deps.View.Context(locked)
+	if c.deps.Identity.Scope(refreshed).Key() != scope.Key() || (background && !agentshare.IsBackgroundSession(row)) {
 		release()
 		if e := turn.ExecutionFromContext(ctx); e == nil || e.Foreground() == nil {
 			return ctx, operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "当前会话已切换，请重新发送消息"}, nil, nil
@@ -96,7 +96,7 @@ func (c *ExecutionCoordinator) enterTurn(ctx context.Context, row *storage.Sessi
 	}
 	if !agentshare.IsBackgroundSession(row) {
 		var captured operationresult.Result[struct{}]
-		locked, captured, err = agentshare.CaptureSessionBinding(refreshed, c.sessions, c.identity, row)
+		locked, captured, err = agentshare.CaptureSessionBinding(refreshed, c.deps.Sessions, c.deps.Identity, row)
 		if err != nil || captured.Status != operationresult.Success {
 			release()
 			return ctx, captured, nil, err
@@ -106,16 +106,16 @@ func (c *ExecutionCoordinator) enterTurn(ctx context.Context, row *storage.Sessi
 }
 
 func (c *ExecutionCoordinator) EnterInput(ctx context.Context, row *storage.Session) (context.Context, operationresult.Result[struct{}], func(), error) {
-	locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), row.ID)
+	locked, release, err := c.deps.Sessions.EnterActivation(ctx, c.deps.Identity.Scope(ctx), row.ID)
 	if err != nil {
 		return ctx, operationresult.Result[struct{}]{}, nil, err
 	}
-	locked, captured, err := agentshare.CaptureSessionBinding(locked, c.sessions, c.identity, row)
+	locked, captured, err := agentshare.CaptureSessionBinding(locked, c.deps.Sessions, c.deps.Identity, row)
 	if err != nil || captured.Status != operationresult.Success {
 		release()
 		return ctx, captured, nil, err
 	}
-	latest, err := c.sessionRows.Get(locked, row.ID)
+	latest, err := c.deps.SessionRows.Get(locked, row.ID)
 	if err != nil {
 		release()
 		return ctx, operationresult.Result[struct{}]{}, nil, err
@@ -127,7 +127,7 @@ func (c *ExecutionCoordinator) EnterInput(ctx context.Context, row *storage.Sess
 	case latest.ArchivedAt != nil:
 		release()
 		return ctx, operationresult.Result[struct{}]{Status: operationresult.Rejected, Message: "会话已归档，取消归档后可继续"}, nil, nil
-	case c.CompactActive(row.ID) && c.turns.Snapshot(row.ID).Phase != turn.PhaseStopping:
+	case c.CompactActive(row.ID) && c.deps.Turns.Snapshot(row.ID).Phase != turn.PhaseStopping:
 		release()
 		return ctx, operationresult.Result[struct{}]{Status: operationresult.Busy, Message: "compacting · 请等待压缩完成，或停止当前请求"}, nil, nil
 	}
@@ -141,8 +141,8 @@ func (c *ExecutionCoordinator) EnterInput(ctx context.Context, row *storage.Sess
 func (c *ExecutionCoordinator) sessionForInput(ctx context.Context, text string) (operationresult.Result[*storage.Session], error) {
 	if msg, ok := agentshare.MessageContextFrom(ctx); ok {
 		if msg.ResumeSessionID != "" {
-			return c.sessions.Resume(ctx, c.identity.Scope(ctx), msg.ResumeSessionID)
+			return c.deps.Sessions.Resume(ctx, c.deps.Identity.Scope(ctx), msg.ResumeSessionID)
 		}
 	}
-	return c.sessions.GetOrCreateCurrent(ctx, c.identity.Scope(ctx), text)
+	return c.deps.Sessions.GetOrCreateCurrent(ctx, c.deps.Identity.Scope(ctx), text)
 }

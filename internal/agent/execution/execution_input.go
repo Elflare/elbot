@@ -14,27 +14,27 @@ import (
 func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, sessionID string) (context.Context, operationresult.Result[struct{}], error) {
 	defer c.sessionIdle(ctx, sessionID)
 	for {
-		locked, release, err := c.sessions.EnterActivation(ctx, c.identity.Scope(ctx), sessionID)
+		locked, release, err := c.deps.Sessions.EnterActivation(ctx, c.deps.Identity.Scope(ctx), sessionID)
 		if err != nil {
 			return ctx, operationresult.Result[struct{}]{}, err
 		}
-		row, err := c.sessionRows.Get(locked, sessionID)
+		row, err := c.deps.SessionRows.Get(locked, sessionID)
 		if err != nil {
 			release()
 			return ctx, operationresult.Result[struct{}]{}, err
 		}
 		var captured operationresult.Result[struct{}]
-		locked, captured, err = agentshare.CaptureSessionBinding(locked, c.sessions, c.identity, row)
+		locked, captured, err = agentshare.CaptureSessionBinding(locked, c.deps.Sessions, c.deps.Identity, row)
 		if err != nil || captured.Status != operationresult.Success {
 			release()
 			return ctx, captured, err
 		}
 		binding, _ := sessionpkg.BindingFromContext(locked)
-		if err := c.sessions.RecordActivity(locked, binding); err != nil {
+		if err := c.deps.Sessions.RecordActivity(locked, binding); err != nil {
 			release()
 			return ctx, operationresult.Result[struct{}]{}, err
 		}
-		snapshot := c.turns.Snapshot(row.ID)
+		snapshot := c.deps.Turns.Snapshot(row.ID)
 		if snapshot.Phase != turn.PhaseAwaitAppendConfirm {
 			release()
 			return ctx, operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "追加确认已失效"}, nil
@@ -46,7 +46,7 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, sessionID strin
 			}
 			continue
 		}
-		merged, execution, ok := c.turns.ResumeAppend(row.ID)
+		merged, execution, ok := c.deps.Turns.ResumeAppend(row.ID)
 		if !ok || (merged.Text == "" && len(merged.Segments) == 0) {
 			release()
 			return ctx, operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "追加确认已失效"}, nil
@@ -54,7 +54,7 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, sessionID strin
 		ctx = turn.WithExecution(locked, execution)
 		ctx = agentshare.WithInboundTurnInput(ctx, merged)
 		release()
-		return c.Run(ctx, row, merged.Text, foregroundTurnOutput{ExecutionSender: c.output})
+		return c.Run(ctx, row, merged.Text, foregroundTurnOutput{ExecutionSender: c.deps.Output})
 	}
 }
 
@@ -91,10 +91,10 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 			return ctx, operationresult.Result[agentshare.InputDisposition]{Status: admitted.Status, Message: admitted.Message}, nil
 		}
 		ctx = locked
-		snapshot := c.turns.Snapshot(session.ID)
+		snapshot := c.deps.Turns.Snapshot(session.ID)
 		if snapshot.Phase != turn.PhaseStopping && snapshot.Phase != turn.PhaseAwaitRiskConfirm && snapshot.Phase != turn.PhaseAwaitAppendConfirm {
 			binding, _ := sessionpkg.BindingFromContext(ctx)
-			if err := c.sessions.RecordActivity(ctx, binding); err != nil {
+			if err := c.deps.Sessions.RecordActivity(ctx, binding); err != nil {
 				release()
 				return ctx, operationresult.Result[agentshare.InputDisposition]{}, err
 			}
@@ -110,26 +110,26 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 			release()
 			return ctx, operationresult.Result[agentshare.InputDisposition]{Status: operationresult.Success, Data: agentshare.InputRiskConfirmation}, nil
 		case turn.PhaseAwaitAppendConfirm:
-			c.turns.AppendPendingInput(session.ID, agentshare.InboundTurnInput(ctx, text))
+			c.deps.Turns.AppendPendingInput(session.ID, agentshare.InboundTurnInput(ctx, text))
 			release()
 			return ctx, operationresult.Result[agentshare.InputDisposition]{Status: operationresult.Success, Data: agentshare.InputHandled}, nil
 		case turn.PhaseLLM:
-			if !c.turns.BeginAppend(session.ID, snapshot.Attempt, agentshare.InboundTurnInput(ctx, text)) {
+			if !c.deps.Turns.BeginAppend(session.ID, snapshot.Attempt, agentshare.InboundTurnInput(ctx, text)) {
 				release()
 				continue
 			}
-			c.requests.CancelSession(session.ID)
+			c.deps.Requests.CancelSession(session.ID)
 			release()
-			presentation := c.appendConfirmation
-			_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "stopped · append?\ny=send · " + presentation.Actions[1].Command + "=drop+stop", Actions: presentation.Actions})
+			presentation := c.deps.AppendConfirmation
+			_, err := c.deps.Output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "stopped · append?\ny=send · " + presentation.Actions[1].Command + "=drop+stop", Actions: presentation.Actions})
 			if err != nil {
 				return ctx, operationresult.Result[agentshare.InputDisposition]{}, err
 			}
 			return ctx, operationresult.Result[agentshare.InputDisposition]{Status: operationresult.Success, Data: agentshare.InputHandled}, nil
 		case turn.PhaseTool:
-			c.turns.AppendPendingInput(session.ID, agentshare.InboundTurnInput(ctx, text))
+			c.deps.Turns.AppendPendingInput(session.ID, agentshare.InboundTurnInput(ctx, text))
 			release()
-			_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "queued → next LLM call"})
+			_, err := c.deps.Output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "queued → next LLM call"})
 			if err != nil {
 				return ctx, operationresult.Result[agentshare.InputDisposition]{}, err
 			}
@@ -137,14 +137,14 @@ func (c *ExecutionCoordinator) AcceptInput(ctx context.Context, session *storage
 		default:
 			release()
 			var result operationresult.Result[struct{}]
-			ctx, result, err = c.Run(ctx, session, text, foregroundTurnOutput{ExecutionSender: c.output})
+			ctx, result, err = c.Run(ctx, session, text, foregroundTurnOutput{ExecutionSender: c.deps.Output})
 			// A competing execution won after the idle snapshot. Revalidate the
 			// original binding and dispatch the prepared input by its latest phase.
 			if err != nil {
 				return ctx, operationresult.Result[agentshare.InputDisposition]{}, err
 			}
 			if result.Status == operationresult.Busy {
-				current := c.turns.Snapshot(session.ID)
+				current := c.deps.Turns.Snapshot(session.ID)
 				if current.Execution != nil && current.Execution != turn.ExecutionFromContext(ctx) {
 					continue
 				}

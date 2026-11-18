@@ -12,7 +12,7 @@ import (
 )
 
 func (c *ExecutionCoordinator) usageForSession(ctx context.Context, row *storage.Session) *llm.Usage {
-	usage, err := c.status.Usage(row)
+	usage, err := c.deps.Status.Usage(row)
 	if err != nil {
 		record := globalevents.LogRecord{
 			Category:     globalevents.LogCategoryLog,
@@ -36,5 +36,5 @@ func (c *ExecutionCoordinator) usageForSession(ctx context.Context, row *storage
 }
 
 func (c *ExecutionCoordinator) shouldCompact(ctx context.Context, row *storage.Session, selection modelmgr.Selection) bool {
-	return row != nil && c.contexts.ReachedCompactThreshold(ctx, c.usageForSession(ctx, row), selection)
+	return row != nil && c.deps.Contexts.ReachedCompactThreshold(ctx, c.usageForSession(ctx, row), selection)
 }

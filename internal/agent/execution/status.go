@@ -4,7 +4,6 @@ import (
 	"context"
 	agentshare "elbot/internal/agent/share"
 	"sync"
-	"time"
 
 	"elbot/internal/contextinfo"
 	"elbot/internal/contextmgr"
@@ -155,26 +154,20 @@ func mergeRuntimeStatus(previous, next runtimestatus.Snapshot) runtimestatus.Sna
 	if next.StageStartedAt.IsZero() {
 		next.StageStartedAt = previous.StageStartedAt
 	}
-	if next.Usage == nil {
-		next.Usage = previous.Usage
-	}
 	if next.Phase == "" {
 		next.Phase = previous.Phase
 	}
 	return next
 }
 
-func runtimeDoneStatus(base runtimestatus.Snapshot, usageUpdatedAt time.Time) runtimestatus.Snapshot {
-	if usageUpdatedAt.IsZero() {
-		usageUpdatedAt = time.Now()
-	}
+func runtimeDoneStatus(base runtimestatus.Snapshot) runtimestatus.Snapshot {
 	base.Phase = runtimestatus.PhaseDone
 	base.RequestID = ""
 	base.Kind = ""
 	base.Label = ""
 	base.ToolName = ""
 	base.StageStartedAt = base.TurnStartedAt
-	base.FinishedAt = usageUpdatedAt
+	base.FinishedAt = storage.Now()
 	base.Error = ""
 	return base
 }

@@ -98,7 +98,7 @@ type ExecutionView interface {
 
 // ExecutionCoordinatorDeps declares only the capabilities consumed by ExecutionCoordinator.
 type ExecutionCoordinatorDeps struct {
-	AppendConfirmation delivery.Confirmation // 追加确认操作；为空时保留正文控制说明。
+	AppendConfirmation delivery.Confirmation // 根部提供追加确认操作，Actions[1].Command 用于提示丢弃并停止。
 	AppendWait         agentshare.ConfirmationWaitPolicy
 	Sessions           ExecutionSessions
 	SessionRows        interface {

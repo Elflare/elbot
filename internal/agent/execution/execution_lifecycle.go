@@ -17,10 +17,10 @@ type attemptWaitLifecycle struct {
 }
 
 func (c *ExecutionCoordinator) expireAppendAfter(ctx context.Context, sessionID string, waitID uint64) {
-	if c.appendWait == nil {
+	if c.deps.AppendWait == nil {
 		return
 	}
-	timeout := c.appendWait.WaitTimeout(ctx)
+	timeout := c.deps.AppendWait.WaitTimeout(ctx)
 	if timeout <= 0 {
 		return
 	}
@@ -37,11 +37,11 @@ func (c *ExecutionCoordinator) expireAppendAfter(ctx context.Context, sessionID 
 		case <-waitCtx.Done():
 			return
 		}
-		_, release, err := c.sessions.EnterSessions(waitCtx, sessionID)
+		_, release, err := c.deps.Sessions.EnterSessions(waitCtx, sessionID)
 		if err != nil {
 			return
 		}
-		expired := c.turns.ExpireAppend(sessionID, waitID)
+		expired := c.deps.Turns.ExpireAppend(sessionID, waitID)
 		release()
 		if expired {
 			c.sessionIdle(waitCtx, sessionID)
@@ -110,10 +110,10 @@ func (l *attemptWaitLifecycle) Close(ctx context.Context) error {
 
 // Execution shutdown owns append waits; entrypoints own foreground/background producers.
 func (c *ExecutionCoordinator) BeginClose() {
-	for _, snapshot := range c.turns.SnapshotAll() {
-		c.requests.CancelSession(snapshot.SessionID)
+	for _, snapshot := range c.deps.Turns.SnapshotAll() {
+		c.deps.Requests.CancelSession(snapshot.SessionID)
 	}
-	c.turns.StopAll()
+	c.deps.Turns.StopAll()
 	c.attemptWaits.beginClose()
 }
 

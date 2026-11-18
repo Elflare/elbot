@@ -4,7 +4,6 @@ import (
 	"context"
 	"elbot/internal/delivery"
 	"errors"
-	"fmt"
 	"time"
 
 	agentshare "elbot/internal/agent/share"
@@ -19,7 +18,7 @@ import (
 )
 
 func (c *ExecutionCoordinator) CompactCurrent(ctx context.Context, triggerReason string) (operationresult.Result[*storage.Session], error) {
-	current, err := c.sessions.Current(ctx, c.identity.Scope(ctx))
+	current, err := c.deps.Sessions.Current(ctx, c.deps.Identity.Scope(ctx))
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}
@@ -27,15 +26,7 @@ func (c *ExecutionCoordinator) CompactCurrent(ctx context.Context, triggerReason
 		return current, nil
 	}
 	row := current.Data
-	return c.runCompact(ctx, row, c.identity.Scope(ctx), triggerReason, c.SelectionForTurn(ctx, row))
-}
-
-func (c *ExecutionCoordinator) compactSession(ctx context.Context, current *storage.Session, triggerReason string, fallback modelmgr.Selection) (operationresult.Result[*storage.Session], string, error) {
-	next, err := c.runCompact(ctx, current, c.identity.Scope(ctx), triggerReason, fallback)
-	if err != nil || next.Status != operationresult.Success {
-		return next, "", err
-	}
-	return next, fmt.Sprintf("compacted → %s", next.Data.ID), nil
+	return c.runCompact(ctx, row, c.deps.Identity.Scope(ctx), triggerReason, c.deps.SelectionForTurn(ctx, row))
 }
 
 func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.Session, scope sessionpkg.Scope, triggerReason string, selection modelmgr.Selection) (result operationresult.Result[*storage.Session], runErr error) {
@@ -47,11 +38,11 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 		return operationresult.Result[*storage.Session]{Status: entered.Status, Message: entered.Message}, nil
 	}
 	locked := entered.Data
-	if len(c.requests.ListBySession(current.ID)) > 0 {
+	if len(c.deps.Requests.ListBySession(current.ID)) > 0 {
 		release()
 		return operationresult.Result[*storage.Session]{Status: operationresult.Busy, Message: "会话有运行中的请求，暂不能压缩"}, nil
 	}
-	compatible, err := c.view.CheckSelection(current, selection)
+	compatible, err := c.deps.View.CheckSelection(current, selection)
 	if err != nil {
 		release()
 		return operationresult.Result[*storage.Session]{}, err
@@ -60,19 +51,19 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 		release()
 		return operationresult.Result[*storage.Session]{Status: compatible.Status, Message: compatible.Message}, nil
 	}
-	info, reqCtx, done, err := c.requests.Start(locked, request.StartRequest{SessionID: current.ID, Kind: request.KindCompress, Label: "compact"})
+	info, reqCtx, done, err := c.deps.Requests.Start(locked, request.StartRequest{SessionID: current.ID, Kind: request.KindCompress, Label: "compact"})
 	if err != nil {
 		release()
 		return operationresult.Result[*storage.Session]{}, err
 	}
-	if !c.turns.StartCompactRun(current.ID, info.ID, turn.ExecutionFromContext(ctx)) {
+	if !c.deps.Turns.StartCompactRun(current.ID, info.ID, turn.ExecutionFromContext(ctx)) {
 		done()
 		release()
 		return operationresult.Result[*storage.Session]{Status: operationresult.Busy, Message: "会话忙，暂不能压缩"}, nil
 	}
 	reqCtx = turn.WithAttempt(reqCtx, info.ID)
 	release()
-	status := c.status.Snapshot(current.ID)
+	status := c.deps.Status.Snapshot(current.ID)
 	status.SessionID, status.Phase = current.ID, runtimestatus.PhaseCompact
 	status.Provider, status.Model, status.Mode = selection.Provider, selection.Model, current.Mode
 	status.RequestID, status.Kind, status.Label = info.ID, info.Kind, info.Label
@@ -81,9 +72,9 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 		status.TurnStartedAt = info.StartedAt
 	}
 	status.StageStartedAt = info.StartedAt
-	c.status.Record(reqCtx, status)
+	c.deps.Status.Record(reqCtx, status)
 	defer func() {
-		status := c.status.Snapshot(current.ID)
+		status := c.deps.Status.Snapshot(current.ID)
 		status.Phase = runtimestatus.PhaseDone
 		status.RequestID, status.Kind, status.Label, status.ToolName = "", "", "", ""
 		status.StageStartedAt = status.TurnStartedAt
@@ -97,9 +88,9 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 				status.Error = string(result.Status)
 			}
 		}
-		c.status.Record(context.WithoutCancel(reqCtx), status)
+		c.deps.Status.Record(context.WithoutCancel(reqCtx), status)
 		done()
-		c.turns.CompleteCompactRun(current.ID, info.ID)
+		c.deps.Turns.CompleteCompactRun(current.ID, info.ID)
 		c.sessionIdle(ctx, current.ID)
 	}()
 	stopObserver := c.observeRequestStop(reqCtx, current.ID, info.ID)
@@ -107,14 +98,14 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 	if err := reqCtx.Err(); err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}
-	prepared, err := c.contexts.Compact(reqCtx, current, triggerReason, selection)
+	prepared, err := c.deps.Contexts.Compact(reqCtx, current, triggerReason, selection)
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}
 	if prepared.Status != operationresult.Success {
 		return operationresult.Result[*storage.Session]{Status: prepared.Status, Message: prepared.Message}, nil
 	}
-	nextID, err := c.sessions.AllocateID(reqCtx, current)
+	nextID, err := c.deps.Sessions.AllocateID(reqCtx, current)
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}
@@ -130,7 +121,7 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 	if err := reqCtx.Err(); err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}
-	if !c.turns.CompleteCompactRun(current.ID, info.ID) {
+	if !c.deps.Turns.CompleteCompactRun(current.ID, info.ID) {
 		return operationresult.Result[*storage.Session]{Status: operationresult.Canceled, Message: "上下文压缩已取消"}, nil
 	}
 	// Carry field-owned metadata forward while replacing the compression seed.
@@ -139,7 +130,7 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}
-	created, err := c.sessions.CreateCompacted(locked, scope, current.ID, sessionpkg.CompactedRequest{ID: nextID, Title: data.Title, Metadata: encoded, InitialMessage: data.InitialMessage, Seed: data.Seed, ExpectedCheckpointID: data.ExpectedCheckpointID})
+	created, err := c.deps.Sessions.CreateCompacted(locked, scope, current.ID, sessionpkg.CompactedRequest{ID: nextID, Title: data.Title, Metadata: encoded, InitialMessage: data.InitialMessage, Seed: data.Seed, ExpectedCheckpointID: data.ExpectedCheckpointID})
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}
@@ -149,12 +140,12 @@ func (c *ExecutionCoordinator) runCompact(ctx context.Context, current *storage.
 	next := created.Data
 	if e := turn.ExecutionFromContext(ctx); e != nil {
 		e.SetResult(next.ID, "", "")
-		if !c.turns.ReserveExecution(next.ID, agentshare.InboundTurnInput(ctx, ""), e) {
+		if !c.deps.Turns.ReserveExecution(next.ID, agentshare.InboundTurnInput(ctx, ""), e) {
 			return operationresult.Result[*storage.Session]{Status: operationresult.Conflict, Message: "上下文压缩已完成，但新会话已有其他执行，无法继续当前处理"}, nil
 		}
 	}
 	if e := turn.ExecutionFromContext(ctx); e != nil && e.Foreground() != nil {
-		current, err := c.sessions.CurrentBound(locked, scope)
+		current, err := c.deps.Sessions.CurrentBound(locked, scope)
 		if err != nil {
 			return operationresult.Result[*storage.Session]{}, err
 		}
@@ -179,14 +170,14 @@ func (c *ExecutionCoordinator) enterCompact(ctx context.Context, row *storage.Se
 		var release func()
 		var err error
 		if background {
-			locked, release, err = c.sessions.EnterSessions(ctx, append([]string{row.ID}, targets...)...)
+			locked, release, err = c.deps.Sessions.EnterSessions(ctx, append([]string{row.ID}, targets...)...)
 		} else {
-			locked, release, err = c.sessions.EnterActivation(ctx, scope, append([]string{row.ID}, targets...)...)
+			locked, release, err = c.deps.Sessions.EnterActivation(ctx, scope, append([]string{row.ID}, targets...)...)
 		}
 		if err != nil {
 			return operationresult.Result[context.Context]{}, scope, nil, err
 		}
-		latest, err := c.sessionRows.Get(locked, row.ID)
+		latest, err := c.deps.SessionRows.Get(locked, row.ID)
 		if err != nil {
 			release()
 			return operationresult.Result[context.Context]{}, scope, nil, err
@@ -197,7 +188,7 @@ func (c *ExecutionCoordinator) enterCompact(ctx context.Context, row *storage.Se
 			continue
 		}
 		if !background {
-			current, err := c.sessions.CurrentBound(locked, scope)
+			current, err := c.deps.Sessions.CurrentBound(locked, scope)
 			if err != nil {
 				release()
 				return operationresult.Result[context.Context]{}, scope, nil, err
@@ -219,19 +210,20 @@ func (c *ExecutionCoordinator) enterCompact(ctx context.Context, row *storage.Se
 }
 
 func (c *ExecutionCoordinator) CompactActive(sessionID string) bool {
-	return agentshare.CompactActive(c.turns, c.requests, sessionID)
+	return agentshare.CompactActive(c.deps.Turns, c.deps.Requests, sessionID)
 }
 
 func (c *ExecutionCoordinator) compactBeforeTurn(ctx context.Context, session *storage.Session, text string, out agentshare.Output, selection modelmgr.Selection) (context.Context, operationresult.Result[*storage.Session], error) {
-	if c.turns.CanCompact(session.ID, turn.ExecutionFromContext(ctx)) && c.shouldCompact(ctx, session, selection) {
-		next, content, err := c.compactSession(agentshare.WithInboundTurnInput(ctx, agentshare.InboundTurnInput(ctx, text)), session, "auto", selection)
+	if c.deps.Turns.CanCompact(session.ID, turn.ExecutionFromContext(ctx)) && c.shouldCompact(ctx, session, selection) {
+		compactCtx := agentshare.WithInboundTurnInput(ctx, agentshare.InboundTurnInput(ctx, text))
+		next, err := c.runCompact(compactCtx, session, c.deps.Identity.Scope(compactCtx), "auto", selection)
 		if err != nil || next.Status != operationresult.Success {
 			return ctx, next, err
 		}
 		session = next.Data
-		ctx = c.view.Context(ctx)
+		ctx = c.deps.View.Context(ctx)
 		if !agentshare.IsBackgroundSession(session) {
-			current, err := c.sessions.CurrentBound(ctx, c.identity.Scope(ctx))
+			current, err := c.deps.Sessions.CurrentBound(ctx, c.deps.Identity.Scope(ctx))
 			if err != nil {
 				return ctx, operationresult.Result[*storage.Session]{}, err
 			}
@@ -240,7 +232,7 @@ func (c *ExecutionCoordinator) compactBeforeTurn(ctx context.Context, session *s
 			}
 			ctx = sessionpkg.WithBinding(ctx, current.Data.Binding)
 		}
-		_, _ = out.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: content})
+		_, _ = out.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: "compacted → " + session.ID})
 	}
 	return ctx, operationresult.Result[*storage.Session]{Status: operationresult.Success, Data: session}, nil
 }
