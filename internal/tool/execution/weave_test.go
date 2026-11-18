@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -21,6 +22,7 @@ import (
 	"elbot/internal/tool/builtin/weave"
 	"elbot/internal/tool/builtin/web"
 	"elbot/internal/tool/discovery"
+	"elbot/internal/tool/preload"
 	"elbot/internal/tool/registry"
 	"elbot/internal/tool/share"
 	"elbot/internal/workspace"
@@ -28,18 +30,14 @@ import (
 
 type weaveDeps struct {
 	runnerTestDeps
-	wait bool
+	prompts []string
 }
 
 func (d *weaveDeps) ConfirmToolCall(ctx context.Context, s string, call llm.ToolCallRequest, risk share.RiskAssessment, details []share.ConfirmationDetailBlock) (operationresult.Result[share.ConfirmResult], error) {
-	if call.Name == "restricted" {
-		if d.wait {
-			<-ctx.Done()
-			return operationresult.Result[share.ConfirmResult]{}, ctx.Err()
-		}
-		return operationresult.Result[share.ConfirmResult]{Status: operationresult.Rejected, Message: "denied"}, nil
-	}
-	return d.runnerTestDeps.ConfirmToolCall(ctx, s, call, risk, details)
+	d.prompts = append(d.prompts, call.Name)
+	result, err := d.runnerTestDeps.ConfirmToolCall(ctx, s, call, risk, details)
+	result.Data.Extra = call.ID
+	return result, err
 }
 
 func TestWeaveAuditsToolRemovedAfterDiscovery(t *testing.T) {
@@ -62,9 +60,9 @@ func TestWeaveDiscoveryAndExecution(t *testing.T) {
 	env := processenv.Environment{}
 	outer := weave.Definition(env)
 	original, _ := json.Marshal(outer.Schema())
-	restricted := (fakeTool{name: "restricted", risk: share.RiskHigh}).Definition()
-	restricted.Definition.Weavable = true
-	if err := registerTestTools(catalog, outer, web.NewWebExtractTool(env).Definition(), web.NewWebSearchTool(env).Definition(), restricted, discovery.NewDiscoverTool(discovery.NewResolver(catalog))); err != nil {
+	edit := (fakeTool{name: "edit_file", risk: share.RiskHigh}).Definition()
+	edit.Definition.Weavable = true
+	if err := registerTestTools(catalog, outer, web.NewWebExtractTool(env).Definition(), web.NewWebSearchTool(env).Definition(), edit, discovery.NewDiscoverTool(discovery.NewResolver(catalog))); err != nil {
 		t.Fatal(err)
 	}
 	manager := newTestManager(catalog, permission)
@@ -79,7 +77,7 @@ func TestWeaveDiscoveryAndExecution(t *testing.T) {
 		}
 		sink := &testToolCommitter{}
 		result := manager.Run(ctx, deps, share.RunRequest{Session: session, Actor: actor, Committer: sink, DiscoveredTools: state.DiscoveredTools, Calls: []llm.ToolCallRequest{{ID: "outer", Name: name, Arguments: arguments}}})
-		if result.Err != nil || len(sink.results) != 1 || deps.completed != 1 || len(deps.toolCalls) != 1 {
+		if result.Err != nil || len(sink.results) != 1 || len(deps.toolCalls) != 1 {
 			t.Fatalf("result=%+v messages=%+v hooks=%d calls=%v", result, sink.results, deps.completed, deps.toolCalls)
 		}
 		return sink.results[0].Content
@@ -87,7 +85,7 @@ func TestWeaveDiscoveryAndExecution(t *testing.T) {
 	if text := run("discover_tool", `{"name":"tool_weave"}`, &weaveDeps{}); !strings.Contains(text, "tool_weave 可调用：发现对应工具后显示") {
 		t.Fatal(text)
 	}
-	if text := run("discover_tool", `{"names":["web_extract","restricted"]}`, &weaveDeps{}); !strings.Contains(text, "tool_weave 可调用：restricted、web_extract、web_search") {
+	if text := run("discover_tool", `{"names":["web_extract","edit_file"]}`, &weaveDeps{}); !strings.Contains(text, "tool_weave 可调用：edit_file、web_extract、web_search") {
 		t.Fatal(text)
 	}
 	state, err := manager.DecodeState(session.Metadata)
@@ -101,6 +99,10 @@ func TestWeaveDiscoveryAndExecution(t *testing.T) {
 	// Even a hand-written IPC request cannot enter a callable registry fallback.
 	if denied, err := share.WeaveFromContext(bound).Call(ctx, "discover_tool", json.RawMessage("{}")); err != nil || denied.Status != operationresult.Forbidden {
 		t.Fatalf("undiscovered invocation: %+v %v", denied, err)
+	}
+	user := contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleUser})
+	if edit, err := share.WeaveFromContext(bound).Call(user, "edit_file", json.RawMessage("{}")); err != nil || edit.Status != operationresult.Success || edit.Data != "edit_file" {
+		t.Fatalf("edit within approved weave: %+v %v", edit, err)
 	}
 	for _, tool := range state.DiscoveredTools {
 		actual, _ := json.Marshal(tool.Schema)
@@ -116,17 +118,53 @@ func TestWeaveDiscoveryAndExecution(t *testing.T) {
 	defer server.Close()
 	code := fmt.Sprintf(`import asyncio
 pages = await asyncio.gather(*(web_extract(url=%q + path, method="direct", proxy="disabled") for path in ("/one", "/two")))
-try:
-    await restricted()
-except RuntimeError as exc:
-    print(str(exc), sum("deprecated" in p for p in pages))
+edits = await asyncio.gather(edit_file(), edit_file())
+print(*edits, sum("deprecated" in p for p in pages))
 `, server.URL)
 	args, _ := json.Marshal(map[string]any{"code": code, "mode": "system"})
-	if text := run("tool_weave", string(args), &weaveDeps{}); strings.TrimSpace(text) != "denied 2" || hits.Load() != 2 {
+	rejected := &weaveDeps{runnerTestDeps: runnerTestDeps{reject: true}}
+	if text := run("tool_weave", string(args), rejected); text != "rejected" || hits.Load() != 0 || rejected.completed != 0 {
+		t.Fatalf("rejected weave: %q hits=%d completed=%d", text, hits.Load(), rejected.completed)
+	}
+	deps := &weaveDeps{}
+	if text := run("tool_weave", string(args), deps); strings.TrimSpace(text) != "edit_file edit_file 2" || hits.Load() != 2 || deps.completed != 1 {
 		t.Fatalf("final=%q hits=%d", text, hits.Load())
 	}
-	text := run("tool_weave", `{"code":"await restricted()","mode":"system","timeout":1}`, &weaveDeps{wait: true})
-	if !strings.Contains(text, "deadline exceeded") {
-		t.Fatal(text)
+	if !slices.Equal(deps.prompts, []string{"tool_weave"}) {
+		t.Fatalf("weave prompts: %v", deps.prompts)
+	}
+	deps = &weaveDeps{}
+	result := manager.Run(ctx, deps, share.RunRequest{Session: session, Actor: actor, Committer: &testToolCommitter{}, DiscoveredTools: state.DiscoveredTools, Calls: []llm.ToolCallRequest{
+		{ID: "first", Name: "edit_file", Arguments: "{}"},
+		{ID: "second", Name: "edit_file", Arguments: "{}"},
+	}})
+	if result.Err != nil || result.ConfirmationExtra != "first\n\nsecond" || !slices.Equal(deps.prompts, []string{"edit_file", "edit_file"}) {
+		t.Fatalf("direct edits: result=%+v prompts=%v", result, deps.prompts)
+	}
+}
+
+func TestBackgroundRejectsWeave(t *testing.T) {
+	permission := security.DefaultPermission()
+	catalog := registry.NewRegistry(permission)
+	outer := weave.Definition(processenv.Environment{})
+	if err := registerTestTools(catalog, outer); err != nil {
+		t.Fatal(err)
+	}
+	actor := contextinfo.Actor{Role: contextinfo.RoleSuperadmin}
+	ctx := share.WithCallPolicy(contextinfo.WithActor(t.Context(), actor), share.CallPolicy{DisableForegroundTools: true})
+	preloader := preload.NewPreloadService(preload.PreloadOptions{Registry: catalog, Resolver: discovery.NewResolver(catalog), NativeDiscoveredToolsFromDiscovery: discovery.NativeDiscoveredToolsFromDiscovery, BackgroundDiscoveredTools: registry.BackgroundDiscoveredTools})
+	prepared, err := preloader.PrepareBackground(ctx, share.BackgroundPreloadRequest{Names: []string{"tool_weave"}})
+	if err != nil || len(prepared.Update.Tools) != 0 {
+		t.Fatalf("background preload: %+v err=%v", prepared, err)
+	}
+	// A previously discovered declaration still resolves against the current definition.
+	cached := []share.DiscoveredTool{{Name: "tool_weave", Source: share.SourceKindNative, Schema: outer.Schema()}}
+	manager := newTestManager(catalog, permission)
+	resolved, err := manager.resolve(ctx, "tool_weave", cached, storage.SessionModeBackground)
+	if err != nil || resolved.Status != operationresult.Forbidden {
+		t.Fatalf("background tool resolution: %+v err=%v", resolved, err)
+	}
+	if description, err := manager.WeaveDescription(ctx, cached); err != nil || description != "" {
+		t.Fatalf("background weave description=%q err=%v", description, err)
 	}
 }

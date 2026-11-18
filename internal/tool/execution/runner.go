@@ -28,9 +28,8 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		return toolshare.RunResult{}
 	}
 	sessionID := req.Session.ID
-	confirmations := &confirmingDeps{RunnerDeps: deps, slot: make(chan struct{}, 1)}
-	deps = confirmations
-	defer func() { out.ConfirmationExtra = confirmations.extra }()
+	var confirmationExtra string
+	defer func() { out.ConfirmationExtra = confirmationExtra }()
 	state, err := m.DecodeState(req.Session.Metadata)
 	if err != nil {
 		return toolshare.RunResult{Err: err}
@@ -289,6 +288,9 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		var confirmation operationresult.Result[toolshare.ConfirmResult]
 		if waitErr := await(func() {
 			confirmation, err = m.confirm(toolCtx, deps, actor, sessionID, call, resolvedTool, assessment, preparedCall.Details())
+			if err == nil && confirmation.Status == operationresult.Success {
+				confirmationExtra = joinAssistantText(confirmationExtra, confirmation.Data.Extra)
+			}
 		}); waitErr != nil {
 			return toolshare.RunResult{Err: waitErr}
 		}
@@ -358,7 +360,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 
 func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor contextinfo.Actor, sessionID string, call llm.ToolCallRequest, resolvedTool resolvedTool, assessment toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (operationresult.Result[toolshare.ConfirmResult], error) {
 	if resolvedTool.Source == toolshare.SourceKindELwisp {
-		return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Success, Data: toolshare.ConfirmResult{}}, nil
+		return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Success}, nil
 	}
 	info := resolvedTool.Native.Definition
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
@@ -391,10 +393,10 @@ func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor 
 			return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Forbidden, Message: fmt.Sprintf("tool call %s denied: risk %s is above your allowed tool level", call.Name, assessment.Level)}, nil
 		}
 	}
-	if !permission.NeedsConfirmation {
-		return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Success, Data: toolshare.ConfirmResult{}}, nil
+	if permission.NeedsConfirmation {
+		return deps.ConfirmToolCall(ctx, sessionID, call, assessment, detail)
 	}
-	return deps.ConfirmToolCall(ctx, sessionID, call, assessment, detail)
+	return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Success}, nil
 }
 
 func deliverOutputs(ctx context.Context, deps toolshare.RunnerDeps, result *executionResult) {

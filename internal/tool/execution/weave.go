@@ -16,30 +16,9 @@ import (
 	"elbot/internal/tool/share"
 )
 
-// Only interactive confirmations share this slot. Approved tools execute concurrently.
-type confirmingDeps struct {
-	share.RunnerDeps
-	slot  chan struct{} // 整批共用一个确认位置，包含编排中的子调用。
-	extra string        // 在确认位置内追加，整批退出时读取。
-}
-
-func (d *confirmingDeps) ConfirmToolCall(ctx context.Context, session string, call llm.ToolCallRequest, risk share.RiskAssessment, details []share.ConfirmationDetailBlock) (operationresult.Result[share.ConfirmResult], error) {
-	select {
-	case d.slot <- struct{}{}:
-		defer func() { <-d.slot }()
-	case <-ctx.Done():
-		return operationresult.Result[share.ConfirmResult]{}, ctx.Err()
-	}
-	result, err := d.RunnerDeps.ConfirmToolCall(ctx, session, call, risk, details)
-	if err == nil && result.Status == operationresult.Success {
-		d.extra = joinAssistantText(d.extra, result.Data.Extra)
-	}
-	return result, err
-}
-
 func (m *Manager) weaveNames(ctx context.Context, items []share.DiscoveredTool) ([]string, bool, error) {
 	if share.PolicyFromContext(ctx).DisableForegroundTools {
-		items = m.BackgroundDiscoveredTools(items)
+		return nil, false, nil
 	}
 	names := make([]string, 0, len(items))
 	for _, item := range items {
@@ -131,16 +110,8 @@ func (m *Manager) callWeave(ctx context.Context, deps share.RunnerDeps, session 
 	if prepared.Status != operationresult.Success {
 		return operationresult.Result[string]{Status: prepared.Status, Message: prepared.Message}, nil
 	}
-	assessment := prepared.Data.RiskAssessment()
-	risk = string(assessment.Level)
+	risk = string(prepared.Data.RiskAssessment().Level)
 	deps.AddToolUse(session.ID, call.Name)
-	approval, err := m.confirm(ctx, deps, actor, session.ID, call, target, assessment, prepared.Data.Details())
-	if err != nil {
-		return operationresult.Result[string]{}, err
-	}
-	if approval.Status != operationresult.Success {
-		return operationresult.Result[string]{Status: approval.Status, Message: approval.Message}, nil
-	}
 	child, done, err := deps.StartToolRequest(ctx, session.ID, call.Name)
 	if err != nil {
 		return operationresult.Result[string]{}, err
