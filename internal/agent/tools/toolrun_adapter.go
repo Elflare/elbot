@@ -11,6 +11,7 @@ import (
 	"elbot/internal/contextinfo"
 	"elbot/internal/delivery"
 	"elbot/internal/events"
+	"elbot/internal/fileops"
 	"elbot/internal/llm"
 	"elbot/internal/request"
 	runtimestatus "elbot/internal/runtime"
@@ -23,31 +24,7 @@ import (
 )
 
 type toolRunDeps struct {
-	status agentshare.ExecutionStatus
-	hooks  interface {
-		ToolCallPrepared(context.Context, agentshare.Session, llm.ToolCallRequest) (string, error)
-		ToolCallCompleted(context.Context, agentshare.Session, agentshare.ToolResult) ([]llm.MessageSegment, error)
-	}
-	requests interface {
-		ListBySession(string) []request.Request
-		Start(context.Context, request.StartRequest) (request.Request, context.Context, func(), error)
-	}
-	turns interface {
-		Snapshot(string) turn.Snapshot
-		AddToolUse(string, string, string)
-	}
-	identity ToolIdentity
-	runtime  *ToolRuntimeState
-	sessions interface {
-		CurrentBound(context.Context, sessionstate.Scope) (operationresult.Result[sessionstate.CurrentBoundData], error)
-		EnterBinding(context.Context, *sessionstate.Binding) (context.Context, func(), error)
-		EnterSessions(context.Context, ...string) (context.Context, func(), error)
-	}
-	NewWorkspaceStore func(string) workspace.WorkspaceStore
-	confirmations     ToolConfirmations
-	view              interface {
-		RefreshExecution(context.Context, *storage.Session) (context.Context, error)
-	}
+	ToolRunDeps
 	output  agentshare.Output
 	attempt string
 }
@@ -58,7 +35,7 @@ func (d toolRunDeps) ForTurn(out agentshare.Output, attempt string) tool.RunnerD
 }
 
 func (d toolRunDeps) PrepareToolCall(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) (llm.ToolCallRequest, error) {
-	arguments, err := d.hooks.ToolCallPrepared(ctx,
+	arguments, err := d.Hooks.ToolCallPrepared(ctx,
 		agentshare.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status}, call)
 	if err != nil {
 		return call, err
@@ -71,7 +48,7 @@ func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Sess
 	if callErr == nil && result.Status == operationresult.Success {
 		result.Data = append([]llm.MessageSegment(nil), result.Data...)
 	}
-	updated, err := d.hooks.ToolCallCompleted(ctx,
+	updated, err := d.Hooks.ToolCallCompleted(ctx,
 		agentshare.Session{ID: session.ID, Mode: session.Mode, Title: session.Title, Status: session.Status},
 		agentshare.ToolResult{Call: call, Risk: risk, Result: result, Err: callErr})
 	if err != nil {
@@ -81,11 +58,11 @@ func (d toolRunDeps) CompleteToolCall(ctx context.Context, session *storage.Sess
 }
 
 func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName string) (context.Context, func(), error) {
-	toolReq, toolCtx, done, err := d.requests.Start(ctx, request.StartRequest{ParentID: contextinfo.RootRequestIDFromContext(ctx), SessionID: sessionID, Kind: request.KindTool, Label: toolName})
+	toolReq, toolCtx, done, err := d.Requests.Start(ctx, request.StartRequest{ParentID: contextinfo.RootRequestIDFromContext(ctx), SessionID: sessionID, Kind: request.KindTool, Label: toolName})
 	if err != nil {
 		return nil, nil, err
 	}
-	d.status.Record(ctx, runtimestatus.Snapshot{
+	d.Status.Record(ctx, runtimestatus.Snapshot{
 		SessionID:      sessionID,
 		Phase:          runtimestatus.PhaseTool,
 		RequestID:      toolReq.ID,
@@ -98,7 +75,7 @@ func (d toolRunDeps) StartToolRequest(ctx context.Context, sessionID, toolName s
 }
 
 func (d toolRunDeps) PrepareToolContext(ctx context.Context, session *storage.Session, call llm.ToolCallRequest) context.Context {
-	ctx = agentshare.FileRollbackContext(ctx, d.runtime.fileRollback, d.sessions, d.turns, d.requests, d.identity, session)
+	ctx = agentshare.FileRollbackContext(ctx, d.FileRollback, d.Sessions, d.Turns, d.Requests, d.Identity, session)
 	if agentshare.IsBackgroundSession(session) {
 		return ctx
 	}
@@ -106,7 +83,7 @@ func (d toolRunDeps) PrepareToolContext(ctx context.Context, session *storage.Se
 }
 
 func (d toolRunDeps) ConfirmToolCall(ctx context.Context, sessionID string, call llm.ToolCallRequest, assessment tool.RiskAssessment, detail []tool.ConfirmationDetailBlock) (operationresult.Result[tool.ConfirmResult], error) {
-	return d.confirmations.AwaitToolConfirmation(ctx, sessionID, call, assessment, detail)
+	return d.Confirmations.AwaitToolConfirmation(ctx, sessionID, call, assessment, detail)
 }
 
 func (d toolRunDeps) PublishToolCalls(ctx context.Context, calls []llm.ToolCallRequest, assistantSpeaking bool) {
@@ -131,13 +108,9 @@ func (d toolRunDeps) PublishToolResult(ctx context.Context, toolCallID string, r
 }
 
 func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call llm.ToolCallRequest, risk security.RiskLevel, reason string) {
-	content := map[string]any{"actor": d.identity.Actor(ctx)}
+	content := map[string]any{"actor": d.Identity.Actor(ctx)}
 	for key, value := range map[string]string{"tool": call.Name, "risk": string(risk), "reason": reason} {
-		runes := []rune(value)
-		if len(runes) > 2048 {
-			value = string(runes[:2047]) + "…"
-		}
-		content[key] = value
+		content[key] = agentshare.TruncateLogContent(value, 2048)
 	}
 	data, _ := json.Marshal(content)
 	facts, _ := contextinfo.ExecutionFromContext(ctx)
@@ -156,7 +129,7 @@ func (d toolRunDeps) AuditToolDenied(ctx context.Context, sessionID string, call
 }
 
 func (d toolRunDeps) AddToolUse(sessionID, toolName string) {
-	d.turns.AddToolUse(sessionID, toolName, d.attempt)
+	d.Turns.AddToolUse(sessionID, toolName, d.attempt)
 }
 
 func (d toolRunDeps) ToolResultMessage(sessionID string, message llm.LLMMessage) storage.Message {
@@ -168,7 +141,7 @@ func (d toolRunDeps) ToolCallMessage(sessionID, content, rawText, reasoningConte
 }
 
 func (d toolRunDeps) RefreshExecution(ctx context.Context, row *storage.Session) (context.Context, error) {
-	return d.view.RefreshExecution(ctx, row)
+	return d.View.RefreshExecution(ctx, row)
 }
 
 type ToolIdentity interface {
@@ -196,8 +169,10 @@ type ToolRunDeps struct {
 		Snapshot(string) turn.Snapshot
 		AddToolUse(string, string, string)
 	}
-	Identity ToolIdentity
-	Runtime  *ToolRuntimeState
+	Identity     ToolIdentity
+	FileRollback interface {
+		WithBinding(context.Context, fileops.Binding, ...fileops.CommitAdmission) context.Context
+	}
 	Sessions interface {
 		CurrentBound(context.Context, sessionstate.Scope) (operationresult.Result[sessionstate.CurrentBoundData], error)
 		EnterBinding(context.Context, *sessionstate.Binding) (context.Context, func(), error)
@@ -211,16 +186,5 @@ type ToolRunDeps struct {
 }
 
 func NewToolRunDeps(deps ToolRunDeps) agentshare.ToolDepsFactory {
-	return &toolRunDeps{
-		status:            deps.Status,
-		hooks:             deps.Hooks,
-		requests:          deps.Requests,
-		turns:             deps.Turns,
-		identity:          deps.Identity,
-		runtime:           deps.Runtime,
-		sessions:          deps.Sessions,
-		NewWorkspaceStore: deps.NewWorkspaceStore,
-		confirmations:     deps.Confirmations,
-		view:              deps.View,
-	}
+	return toolRunDeps{ToolRunDeps: deps}
 }

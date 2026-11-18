@@ -9,9 +9,9 @@ import (
 	"elbot/internal/storage"
 )
 
-type toolRunPromptProvider struct{}
+type ToolRunPromptProvider struct{}
 
-func (p toolRunPromptProvider) ToolNames(ctx context.Context, mode string, session *storage.Session, _ session.Scope) (agentshare.PromptToolNames, error) {
+func (p ToolRunPromptProvider) ToolNames(ctx context.Context, mode string, session *storage.Session, _ session.Scope) (agentshare.PromptToolNames, error) {
 	if err := ctx.Err(); err != nil {
 		return agentshare.PromptToolNames{}, err
 	}

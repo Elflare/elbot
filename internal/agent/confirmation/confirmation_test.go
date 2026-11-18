@@ -24,7 +24,6 @@ import (
 
 	"elbot/internal/llm"
 
-	"elbot/internal/request"
 	"elbot/internal/session"
 	"elbot/internal/signal"
 
@@ -54,7 +53,7 @@ func TestConfirmationCoordinatorPreservesAutoConfirmationScope(t *testing.T) {
 			if !turns.StartAttempt(row.Data.ID, turn.Input{Text: "hello"}, execution, "attempt") || !turns.StartToolPhase(row.Data.ID, "attempt") {
 				t.Fatal("start tools")
 			}
-			coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: testCommandText, Sessions: sessions, Requests: request.NewManager(testutil.IDSequence()), Turns: turns, Identity: identity, Output: confirmationOutput{}, Policy: NewConfirmationPolicy(ConfirmationPolicyDeps{Identity: identity, UserConfirmationTimeout: time.Second})})
+			coordinator := NewConfirmationCoordinator(ConfirmationCoordinatorDeps{CommandText: testCommandText, Sessions: sessions, Turns: turns, Identity: identity, Output: confirmationOutput{}, Policy: NewConfirmationPolicy(ConfirmationPolicyDeps{Identity: identity, UserConfirmationTimeout: time.Second})})
 
 			done := make(chan operationresult.Result[toolshare.ConfirmResult], 1)
 			go func() {

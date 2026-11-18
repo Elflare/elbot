@@ -136,17 +136,10 @@ func (o *OutputSender) StartStream(ctx context.Context) delivery.MessageStream {
 				err = nil
 			}
 		}()
-		messageSent := false
-		switch event.Type {
-		case delivery.StreamSendExtras:
+		if event.Type == delivery.StreamSendExtras {
 			if len(event.Outputs) == 0 {
 				return receipt, nil
 			}
-			defer func() {
-				if err == nil {
-					o.observeDelivery(ctx, "send_outputs", receipt)
-				}
-			}()
 			target, err := delivery.ValidateOutputsTarget(event.Outputs)
 			if err != nil {
 				return receipt, err
@@ -159,53 +152,51 @@ func (o *OutputSender) StartStream(ctx context.Context) delivery.MessageStream {
 				o.Notify(ctx, slog.LevelWarn, sent.Message)
 				return receipt, nil
 			}
+			o.observeDelivery(ctx, "send_outputs", sent.Data)
 			return sent.Data, nil
-		case delivery.StreamSend:
-			defer func() {
-				if err == nil {
-					o.observeDelivery(ctx, "send_assistant_message", receipt)
-				}
-			}()
-			// Text hooks cannot rewrite typed blocks without flattening their content.
-			if len(event.Blocks) == 0 {
-				event.Text, err = o.hooks.AgentOutputPrepared(ctx, event.Text)
-				if err != nil {
-					return receipt, err
-				}
-			}
-			defer func() {
-				if messageSent && err == nil && len(event.Blocks) == 0 && strings.TrimSpace(event.Text) != "" {
-					o.hooks.PlatformMessageSent(ctx, event.Text)
-				}
-			}()
-			if buffered {
-				sent, err := o.dispatcher.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Blocks: event.Blocks, Actions: event.Actions}})
-				if err != nil {
-					return receipt, err
-				}
-				if sent.Status != operationresult.Success {
-					o.Notify(ctx, slog.LevelWarn, sent.Message)
-					return receipt, nil
-				}
-				messageSent = true
-				return sent.Data, nil
+		}
+		// Text hooks cannot rewrite typed blocks without flattening their content.
+		if event.Type == delivery.StreamSend && len(event.Blocks) == 0 {
+			event.Text, err = o.hooks.AgentOutputPrepared(ctx, event.Text)
+			if err != nil {
+				return receipt, err
 			}
 		}
-		if platformStream == nil {
-			opened, openErr := o.dispatcher.StartStream(ctx)
-			if openErr != nil {
-				return receipt, openErr
+		if buffered && event.Type == delivery.StreamSend {
+			sent, err := o.dispatcher.SendTo(ctx, delivery.Target{}, []delivery.Output{{Kind: delivery.KindText, Text: event.Text, Blocks: event.Blocks, Actions: event.Actions}})
+			if err != nil {
+				return receipt, err
 			}
-			if opened.Status != operationresult.Success {
-				closed = true
-				o.Notify(ctx, slog.LevelWarn, opened.Message)
+			if sent.Status != operationresult.Success {
+				o.Notify(ctx, slog.LevelWarn, sent.Message)
 				return receipt, nil
 			}
-			platformStream = opened.Data
+			receipt = sent.Data
+		} else {
+			if platformStream == nil {
+				opened, err := o.dispatcher.StartStream(ctx)
+				if err != nil {
+					return receipt, err
+				}
+				if opened.Status != operationresult.Success {
+					closed = true
+					o.Notify(ctx, slog.LevelWarn, opened.Message)
+					return receipt, nil
+				}
+				platformStream = opened.Data
+			}
+			receipt, err = platformStream.Send(ctx, event)
+			if err != nil {
+				return receipt, err
+			}
 		}
-		receipt, err = platformStream.Send(ctx, event)
-		messageSent = err == nil && event.Type == delivery.StreamSend
-		return receipt, err
+		if event.Type == delivery.StreamSend {
+			if len(event.Blocks) == 0 && strings.TrimSpace(event.Text) != "" {
+				o.hooks.PlatformMessageSent(ctx, event.Text)
+			}
+			o.observeDelivery(ctx, "send_assistant_message", receipt)
+		}
+		return receipt, nil
 	})
 }
 

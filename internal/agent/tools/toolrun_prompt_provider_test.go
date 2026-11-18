@@ -13,7 +13,7 @@ import (
 
 func TestPromptNamesReadToolAvailability(t *testing.T) {
 	ctx := contextinfo.WithToolAvailability(context.Background(), contextinfo.ToolAvailability{Tools: []string{"read_file"}, Skills: []string{"nls"}})
-	got, err := (toolRunPromptProvider{}).ToolNames(ctx, storage.SessionModeWork, &storage.Session{}, session.Scope{})
+	got, err := (ToolRunPromptProvider{}).ToolNames(ctx, storage.SessionModeWork, &storage.Session{}, session.Scope{})
 	want := agentshare.PromptToolNames{Tools: []string{"read_file"}, Skills: []string{"nls"}}
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("names = %#v, error = %v", got, err)
@@ -21,7 +21,7 @@ func TestPromptNamesReadToolAvailability(t *testing.T) {
 }
 
 func TestPromptNamesOmitUnavailableModes(t *testing.T) {
-	provider := toolRunPromptProvider{}
+	provider := ToolRunPromptProvider{}
 	for _, mode := range []string{storage.SessionModeChat, storage.SessionModeBackground} {
 		got, err := provider.ToolNames(context.Background(), mode, &storage.Session{}, session.Scope{})
 		if err != nil || len(got.Tools)+len(got.Skills) != 0 {

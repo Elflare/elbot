@@ -59,9 +59,8 @@ func (h *HookBridge) acquire() (*Points, func(), error) {
 	if h.points == nil {
 		return nil, nil, nil
 	}
-	points := h.points
 	h.active++
-	return points, func() {
+	return h.points, func() {
 		h.mu.Lock()
 		defer h.mu.Unlock()
 		h.active--

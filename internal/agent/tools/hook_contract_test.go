@@ -17,7 +17,4 @@ func (toolOnlyHooks) ToolCallCompleted(_ context.Context, _ agentshare.Session, 
 }
 
 // Compile-time contracts: tool execution must not require input, model or output callbacks.
-var (
-	_ = ToolRunDeps{Hooks: toolOnlyHooks{}}
-	_ = toolRunDeps{hooks: toolOnlyHooks{}}
-)
+var _ = ToolRunDeps{Hooks: toolOnlyHooks{}}

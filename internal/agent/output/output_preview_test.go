@@ -63,6 +63,7 @@ func TestPreviewConversationPolicyPrecedesHookAndSignal(t *testing.T) {
 }
 
 type previewTestHooks struct {
+	sent    []string
 	calls   int
 	input   string
 	rewrite bool
@@ -74,7 +75,9 @@ func (*previewTestHooks) AgentTurnOutputPrepared(_ context.Context, text string)
 	return text, nil
 }
 
-func (*previewTestHooks) PlatformMessageSent(context.Context, string) {}
+func (h *previewTestHooks) PlatformMessageSent(_ context.Context, text string) {
+	h.sent = append(h.sent, text)
+}
 
 // Both construction and storage accept only the three output callbacks.
 var (

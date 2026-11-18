@@ -31,9 +31,6 @@ type ConfirmationCoordinatorDeps struct {
 		EnterActivation(context.Context, session.Scope, ...string) (context.Context, func(), error)
 		RecordActivity(context.Context, *session.Binding) error
 	}
-	Requests interface {
-		CancelSession(string) int
-	}
 	Turns interface {
 		BeginRiskConfirmation(string, turn.RiskConfirmation, string) *turn.RiskConfirmationWait
 		PendingRiskConfirmation(string) (turn.RiskConfirmation, bool)

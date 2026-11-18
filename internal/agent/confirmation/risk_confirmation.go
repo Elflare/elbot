@@ -31,12 +31,12 @@ func RiskConfirmationCommandNames() []string {
 	return names
 }
 
-func riskConfirmationActions(commandText func(string, ...string) string) *delivery.Confirmation {
-	presentation := &delivery.Confirmation{Actions: []delivery.Action{}}
+func riskConfirmationActions(commandText func(string, ...string) string) []delivery.Action {
+	var actions []delivery.Action
 	for _, item := range riskConfirmationCommands() {
-		presentation.Actions = append(presentation.Actions, delivery.Action{ID: item.Name, Label: item.Description, Command: commandText(item.Name)})
+		actions = append(actions, delivery.Action{ID: item.Name, Label: item.Description, Command: commandText(item.Name)})
 	}
-	return presentation
+	return actions
 }
 
 func AppendConfirmationActions(commandText func(string, ...string) string) []delivery.Action {

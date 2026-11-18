@@ -83,13 +83,11 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	confirmations = agentconfirmation.NewConfirmationCoordinator(agentconfirmation.ConfirmationCoordinatorDeps{
 		CommandText: commandText,
 		Sessions:    m.sessions,
-		Requests:    m.requests,
 		Turns:       m.turns,
 		Identity:    identity,
 		Output:      output,
 		Policy:      policy,
 	})
-	toolRuntime := agenttools.NewToolRuntimeState(agenttools.ToolRuntimeStateDeps{FileRollback: deps.Tools})
 	newWorkspaceStore := func(id string) workspace.WorkspaceStore { return m.sessions.WorkspaceStore(id) }
 	toolDeps := agenttools.NewToolRunDeps(agenttools.ToolRunDeps{
 		NewWorkspaceStore: newWorkspaceStore,
@@ -98,7 +96,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Requests:          m.requests,
 		Turns:             m.turns,
 		Identity:          identity,
-		Runtime:           toolRuntime,
+		FileRollback:      deps.Tools,
 		Sessions:          m.sessions,
 		Confirmations:     confirmations,
 		View:              view,
@@ -119,7 +117,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 		Output:               output,
 		ToolManager:          deps.Tools,
 		ToolDeps:             toolDeps,
-		ToolProvider:         toolRuntime.Provider(),
+		ToolProvider:         agenttools.ToolRunPromptProvider{},
 		MaxRounds:            cfg.Tools.MaxRoundsPerTurn,
 		SoulPath:             cfg.Soul.Path,
 		Memory:               deps.Tools,

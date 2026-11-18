@@ -3,6 +3,7 @@ package output
 import (
 	"context"
 	"elbot/internal/testutil"
+	"errors"
 	"log/slog"
 	"reflect"
 	"testing"
@@ -81,5 +82,39 @@ func TestBackgroundOutputIsSilentExceptExplicitDelivery(t *testing.T) {
 	}
 	if probe.calls != 1 || probe.target != target {
 		t.Fatal("explicit delivery suppressed", probe)
+	}
+}
+
+type streamDeliveryProbe struct {
+	backgroundDeliveryProbe
+	opened operationresult.Result[delivery.MessageStream]
+}
+
+func (p *streamDeliveryProbe) StartStream(context.Context) (operationresult.Result[delivery.MessageStream], error) {
+	return p.opened, nil
+}
+
+func TestStreamReportsOnlyDeliveredText(t *testing.T) {
+	ctx := t.Context()
+	probe := &streamDeliveryProbe{}
+	hooks := &previewTestHooks{}
+	out := NewOutputSender(OutputSenderDeps{Dispatcher: probe, Hooks: hooks})
+	message := delivery.StreamEvent{Type: delivery.StreamSend, Text: "reply"}
+	probe.opened = operationresult.Result[delivery.MessageStream]{Status: operationresult.Rejected, Message: "unavailable"}
+	if _, err := out.Send(ctx, message); err != nil || len(hooks.sent) != 0 {
+		t.Fatalf("refused stream: sent=%v err=%v", hooks.sent, err)
+	}
+	probe.opened = operationresult.Result[delivery.MessageStream]{Status: operationresult.Success, Data: delivery.StreamFunc(func(_ context.Context, event delivery.StreamEvent) (delivery.Receipt, error) {
+		if event.Type == delivery.StreamReasoningDelta {
+			return delivery.Receipt{}, errors.New("preview failed")
+		}
+		return delivery.Receipt{}, nil
+	})}
+	stream := out.StartStream(ctx)
+	if _, err := stream.Send(ctx, delivery.StreamEvent{Type: delivery.StreamReasoningDelta}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stream.Send(ctx, message); err != nil || !reflect.DeepEqual(hooks.sent, []string{"reply"}) {
+		t.Fatalf("final message after failed reasoning preview: sent=%v err=%v", hooks.sent, err)
 	}
 }
