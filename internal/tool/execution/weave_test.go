@@ -84,7 +84,7 @@ func TestWeaveDiscoveryAndExecution(t *testing.T) {
 		}
 		return sink.results[0].Content
 	}
-	if text := run("discover_tool", `{"name":"tool_weave"}`, &weaveDeps{}); !strings.Contains(text, "tool_weave 可调用：暂无") {
+	if text := run("discover_tool", `{"name":"tool_weave"}`, &weaveDeps{}); !strings.Contains(text, "tool_weave 可调用：发现对应工具后显示") {
 		t.Fatal(text)
 	}
 	if text := run("discover_tool", `{"names":["web_extract","restricted"]}`, &weaveDeps{}); !strings.Contains(text, "tool_weave 可调用：restricted、web_extract、web_search") {

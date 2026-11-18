@@ -73,7 +73,7 @@ func (m *Manager) WeaveDescription(ctx context.Context, items []share.Discovered
 		if !open {
 			return "", nil
 		}
-		return "tool_weave 可调用：暂无", nil
+		return "tool_weave 可调用：发现对应工具后显示", nil
 	}
 	return "tool_weave 可调用：" + strings.Join(names, "、"), nil
 }

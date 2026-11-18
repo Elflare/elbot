@@ -43,20 +43,14 @@ const fallback = "本次已自动回退到系统 Python。"
 
 func Definition(env processenv.Environment) share.ToolDefinition {
 	return share.NewBuilder("tool_weave").
-		Description(`运行 Python，await 调工具取文本。适合批量、并发、串联、过滤。简单调用直接用原工具。示例：
-from pathlib import Path
+		Description(`执行py代码，也可编排工具，支持批量、并发和结果处理。简单调用别用该工具。例：
 import asyncio
-urls = Path("urls.txt").read_text().split()
-pages = await asyncio.gather(*[
-    web_extract(url=url, max_chars=16000) for url in urls
-])
-report = []
-for url, text in zip(urls, pages):
-    hits = [line for line in text.splitlines() if "deprecated" in line.lower()]
-    if hits:
-        report.append(url + "\n" + "\n".join(hits))
-Path("deprecated.txt").write_text("\n\n".join(report), encoding="utf-8")
-print(f"检查 {len(urls)} 个页面，{len(report)} 个命中；已保存 deprecated.txt")`).
+from pathlib import Path
+projects = {"Go": "go.dev", "Rust": "blog.rust-lang.org", "Python": "blog.python.org"}
+news = await asyncio.gather(*(web_search(query=f"{name} release", include_domains=[site], time_range="week", max_results=3) for name, site in projects.items()))
+report = "\n\n".join(f"## {name}\n{text}" for name, text in zip(projects, news))
+Path("weekly.md").write_text(report, encoding="utf-8")
+print(await send_file(source="weekly.md"))`).
 		Risk(share.RiskHigh).
 		Tags("agent", "files").
 		String("code", "Python 源码，支持顶层 await，用 print 输出。", share.Required()).
