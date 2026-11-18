@@ -15,34 +15,24 @@ func ResolveWorkspacePath(ctx context.Context, rawPath string, opts PathResolveO
 	if err := ctx.Err(); err != nil {
 		return operationresult.Result[ResolvedPath]{}, err
 	}
+	var path string
 	if scope, ok := PathScopeFromContext(ctx); ok && scope.Restricted {
 		relative, err := NormalizeRestrictedPath(rawPath)
 		if err != nil {
 			return operationresult.Result[ResolvedPath]{Status: operationresult.InvalidArguments, Message: err.Error()}, nil
 		}
-		baseDir, err := CurrentWorkspaceDir(ctx)
+		path = relative
+	} else {
+		rawPath = strings.TrimSpace(rawPath)
+		if rawPath == "" {
+			return operationresult.Result[ResolvedPath]{Status: operationresult.InvalidArguments, Message: "path is required"}, nil
+		}
+		expanded, err := expandWorkspacePath(rawPath)
 		if err != nil {
 			return operationresult.Result[ResolvedPath]{}, err
 		}
-		path := filepath.Join(baseDir, relative)
-		checked, err := validateResolvedPath(path, opts)
-		if err != nil {
-			return operationresult.Result[ResolvedPath]{}, err
-		}
-		if checked.Status != operationresult.Success {
-			return operationresult.Result[ResolvedPath]{Status: checked.Status, Message: checked.Message}, nil
-		}
-		return operationresult.Result[ResolvedPath]{Status: operationresult.Success, Data: ResolvedPath{Path: path, BaseDir: baseDir}}, nil
+		path = normalizeWorkspaceLocalPath(expanded)
 	}
-	rawPath = strings.TrimSpace(rawPath)
-	if rawPath == "" {
-		return operationresult.Result[ResolvedPath]{Status: operationresult.InvalidArguments, Message: "path is required"}, nil
-	}
-	expandedPath, err := expandWorkspacePath(rawPath)
-	if err != nil {
-		return operationresult.Result[ResolvedPath]{}, err
-	}
-	path := normalizeWorkspaceLocalPath(expandedPath)
 	wasAbs := filepath.IsAbs(path)
 	baseDir, err := CurrentWorkspaceDir(ctx)
 	if err != nil {

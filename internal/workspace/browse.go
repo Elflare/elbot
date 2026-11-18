@@ -138,6 +138,5 @@ func ListDirectories(ctx context.Context, path string) (operationresult.Result[D
 		}
 		result.Directories = append(result.Directories, Directory{Name: entry.Name(), Path: filepath.Join(path, entry.Name())})
 	}
-	slices.SortFunc(result.Directories, func(a, b Directory) int { return strings.Compare(a.Name, b.Name) })
 	return operationresult.Result[DirectoryListing]{Status: operationresult.Success, Data: result}, nil
 }

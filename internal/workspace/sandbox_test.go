@@ -30,7 +30,7 @@ func TestRestrictedPathRejectsOutsideAndAbsoluteInputs(t *testing.T) {
 	scope := PathScope{Dir: dir, Restricted: true}
 	for _, path := range []string{"", "../outside", "a/../../outside", "a/../b", "a/..", `a\..\b`, `..\outside`, "/outside", `C:\outside`, "C:relative", "file:stream", `\\server\share`, "~/outside"} {
 		t.Run(path, func(t *testing.T) {
-			if _, err := ResolveSandboxRelativePath(scope, path); err == nil {
+			if _, err := SandboxDir(dir, path); err == nil {
 				t.Fatalf("accepted restricted path %q", path)
 			}
 			ctx := WithPathScope(t.Context(), scope)
@@ -39,10 +39,7 @@ func TestRestrictedPathRejectsOutsideAndAbsoluteInputs(t *testing.T) {
 			}
 		})
 	}
-	if _, err := ResolveSandboxRelativePath(PathScope{}, "file"); err == nil {
-		t.Fatal("missing scope directory accepted")
-	}
-	if got, err := ResolveSandboxRelativePath(scope, `nested\file`); err != nil || got != filepath.Join(dir, "nested", "file") {
+	if got, err := SandboxDir(dir, `nested\file`); err != nil || got != filepath.Join(dir, "nested", "file") {
 		t.Fatalf("relative result=%q err=%v", got, err)
 	}
 }

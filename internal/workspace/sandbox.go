@@ -35,17 +35,11 @@ func NormalizeRestrictedPath(rawPath string) (string, error) {
 
 // SandboxDir 从配置根目录和业务提供的相对子目录计算绝对路径，不创建目录。
 func SandboxDir(root, subdir string) (string, error) {
-	return ResolveSandboxRelativePath(PathScope{Dir: root, Restricted: true}, subdir)
-}
-
-// ResolveSandboxRelativePath 总是按受限规则解析 Dir 内的路径，不依赖 Restricted 开关。
-// 只检查路径组成，不创建或打开文件。
-func ResolveSandboxRelativePath(scope PathScope, rawPath string) (string, error) {
-	path, err := NormalizeRestrictedPath(rawPath)
+	path, err := NormalizeRestrictedPath(subdir)
 	if err != nil {
 		return "", err
 	}
-	root := strings.TrimSpace(scope.Dir)
+	root = strings.TrimSpace(root)
 	if root == "" {
 		return "", fmt.Errorf("restricted workspace directory is not configured")
 	}

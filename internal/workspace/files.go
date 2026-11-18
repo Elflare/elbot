@@ -51,6 +51,7 @@ func SearchWorkspaceFiles(ctx context.Context, rootPath, query string) ([]Worksp
 	}
 	defer root.Close()
 
+	query = strings.ToLower(strings.TrimSpace(filepath.ToSlash(query)))
 	var candidates []fileCandidate
 	scanned := 0
 	err = fs.WalkDir(root.FS(), ".", func(path string, entry fs.DirEntry, walkErr error) error {
@@ -243,9 +244,8 @@ func FormatFileExpansion(path, content string) string {
 }
 
 func fileSearchScore(path, query string) (int, bool) {
-	query = strings.ToLower(strings.TrimSpace(filepath.ToSlash(query)))
 	pathLower := strings.ToLower(path)
-	baseLower := strings.ToLower(filepath.Base(pathLower))
+	baseLower := filepath.Base(pathLower)
 	if query == "" {
 		return 1000 - len(pathLower), true
 	}
@@ -265,9 +265,6 @@ func fileSearchScore(path, query string) (int, bool) {
 	}
 	if index := strings.Index(pathLower, query); index >= 0 {
 		return 7600 - index - len(pathLower), true
-	}
-	if index := strings.Index(baseLower, query); index >= 0 {
-		return 7400 - index - len(pathLower), true
 	}
 	score, ok := subsequenceScore(pathLower, query)
 	return score - len(pathLower), ok
