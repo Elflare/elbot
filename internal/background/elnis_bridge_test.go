@@ -44,7 +44,7 @@ func newElnisBridgeService(t *testing.T, b elnisBridge, opts elnis.Options) *eln
 	opts.Config.Enabled = true
 	opts.Config.Elwisps = map[string]config.ElnisElwispConfig{"watcher": {AllowedTokens: []string{"home"}}}
 	opts.EnabledPlatforms = []string{"cli"}
-	opts.SessionTakenOver = func(context.Context, string) (bool, error) { return false, nil }
+	opts.IsSessionForeground = func(context.Context, string) (bool, error) { return false, nil }
 	opts.ToolPreloader = emptyElnisSelections{}
 	opts.ResolveModel = func(string) config.ModelSelection { return config.ModelSelection{Provider: "provider", Model: "model"} }
 	if opts.Send == nil {

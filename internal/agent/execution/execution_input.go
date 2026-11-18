@@ -18,17 +18,12 @@ func (c *ExecutionCoordinator) ResumeAppend(ctx context.Context, sessionID strin
 		if err != nil {
 			return ctx, operationresult.Result[struct{}]{}, err
 		}
-		row, err := c.deps.SessionRows.Get(locked, sessionID)
-		if err != nil {
-			release()
-			return ctx, operationresult.Result[struct{}]{}, err
-		}
-		var captured operationresult.Result[struct{}]
-		locked, captured, err = agentshare.CaptureSessionBinding(locked, c.deps.Sessions, c.deps.Identity, row)
+		locked, captured, err := agentshare.CaptureSessionBinding(locked, c.deps.Sessions, c.deps.Identity, sessionID)
 		if err != nil || captured.Status != operationresult.Success {
 			release()
-			return ctx, captured, err
+			return ctx, operationresult.Result[struct{}]{Status: captured.Status, Message: captured.Message}, err
 		}
+		row := captured.Data
 		binding, _ := sessionpkg.BindingFromContext(locked)
 		if err := c.deps.Sessions.RecordActivity(locked, binding); err != nil {
 			release()

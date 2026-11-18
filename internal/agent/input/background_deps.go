@@ -36,7 +36,6 @@ type BackgroundRequest struct {
 type BackgroundHandlerDeps struct {
 	Sessions interface {
 		PrepareBackground(context.Context, session.Scope, session.BackgroundRequest) (operationresult.Result[*storage.Session], error)
-		SessionTakenOver(context.Context, string) (bool, error)
 	} // Creates or resumes a task session without activating a foreground binding.
 	Identity interface {
 		IsCLI(context.Context) bool

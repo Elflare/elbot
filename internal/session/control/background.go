@@ -19,26 +19,25 @@ func (s *Service) PrepareBackground(ctx context.Context, scope share.Scope, req 
 			return operationresult.Result[*storage.Session]{}, err
 		}
 		defer release()
-		row, err := s.deps.Sessions.Get(ctx, req.SessionID)
+		updated, err := s.deps.Sessions.Mutate(ctx, req.SessionID, func(row *storage.Session) error {
+			if !share.IsBackground(row) {
+				return nil
+			}
+			metadata, err := backgroundMetadata(row.Metadata, req, nil)
+			if err != nil {
+				return err
+			}
+			row.Metadata, row.UpdatedAt = metadata, storage.Now()
+			return nil
+		})
 		if errors.Is(err, storage.ErrNotFound) {
 			return operationresult.Result[*storage.Session]{Status: operationresult.NotFound, Message: "后台会话不存在"}, nil
 		}
 		if err != nil {
 			return operationresult.Result[*storage.Session]{}, err
 		}
-		if !share.IsBackground(row) {
+		if !share.IsBackground(updated) {
 			return operationresult.Result[*storage.Session]{Status: operationresult.Conflict, Message: "session is not a background session"}, nil
-		}
-		metadata, err := backgroundMetadata(row.Metadata, req, nil)
-		if err != nil {
-			return operationresult.Result[*storage.Session]{}, err
-		}
-		updated, err := s.deps.Sessions.Mutate(ctx, req.SessionID, func(row *storage.Session) error {
-			row.Metadata, row.UpdatedAt = metadata, storage.Now()
-			return nil
-		})
-		if err != nil {
-			return operationresult.Result[*storage.Session]{}, err
 		}
 		return operationresult.Result[*storage.Session]{Status: operationresult.Success, Data: updated}, nil
 	}
@@ -68,7 +67,7 @@ func (s *Service) PrepareBackground(ctx context.Context, scope share.Scope, req 
 	return operationresult.Result[*storage.Session]{Status: operationresult.Success, Data: row}, nil
 }
 
-func (s *Service) SessionTakenOver(ctx context.Context, id string) (bool, error) {
+func (s *Service) IsSessionForeground(ctx context.Context, id string) (bool, error) {
 	if id == "" {
 		return false, nil
 	}
@@ -79,7 +78,7 @@ func (s *Service) SessionTakenOver(ctx context.Context, id string) (bool, error)
 	if err != nil {
 		return false, err
 	}
-	return share.WasPromoted(row), nil
+	return !share.IsBackground(row), nil
 }
 
 func backgroundMetadata(raw string, req BackgroundRequest, origin *share.IDOrigin) (string, error) {

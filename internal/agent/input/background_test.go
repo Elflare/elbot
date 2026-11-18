@@ -47,7 +47,6 @@ func (h *backgroundHarness) PrepareBackground(ctx context.Context, scope session
 	}
 	return operationresult.Result[*storage.Session]{Status: operationresult.Success, Data: &storage.Session{ID: "session", Metadata: "{}"}}, nil
 }
-func (*backgroundHarness) SessionTakenOver(context.Context, string) (bool, error) { return true, nil }
 
 type backgroundPreloaderStub struct{ h *backgroundHarness }
 
@@ -168,7 +167,7 @@ func TestBackgroundPreparationStopsBeforeExecutionOnFailure(t *testing.T) {
 				t.Fatal("executed after preparation failure")
 			}
 			if stage == "taken_over" {
-				if err != nil || result.Status != operationresult.Success || !result.Data.TakenOver || result.Data.SessionID != "existing" || result.Data.Outcome != "taken_over" {
+				if err != nil || result.Status != operationresult.Conflict {
 					t.Fatalf("result=%+v err=%v", result, err)
 				}
 			} else if !errors.Is(err, failure) {

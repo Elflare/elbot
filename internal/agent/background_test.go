@@ -170,7 +170,7 @@ func TestBackgroundPublicRunPreloadContinuationAndCopy(t *testing.T) {
 		t.Fatalf("resume: %+v %v", result, err)
 	}
 	_, taken, err := m.RunBackground(ctx, req)
-	if err != nil || taken.Status != operationresult.Success || !taken.Data.TakenOver || taken.Data.Outcome != "taken_over" {
+	if err != nil || taken.Status != operationresult.Conflict {
 		t.Fatalf("takeover=%+v err=%v", taken, err)
 	}
 }

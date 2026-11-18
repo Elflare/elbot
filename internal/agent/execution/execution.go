@@ -136,9 +136,6 @@ func (c *ExecutionCoordinator) RunBackground(ctx context.Context, row *storage.S
 		execution.Finish(err)
 	}
 	result := execution.Wait(ctx)
-	if latest, err := c.deps.SessionRows.Get(context.WithoutCancel(ctx), row.ID); err == nil && session.WasPromoted(latest) {
-		result.TakenOver = true
-	}
 	if result.Err != nil && ctx.Err() != nil {
 		_, release, err := c.deps.Sessions.EnterSessions(context.WithoutCancel(ctx), result.SessionID)
 		if err == nil {

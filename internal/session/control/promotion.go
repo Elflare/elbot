@@ -72,19 +72,13 @@ func (s *Service) activateExisting(ctx context.Context, scope share.Scope, id st
 	if s.currentBusy(scope, id) {
 		return operationresult.Result[*storage.Session]{Status: operationresult.Busy, Message: "会话正忙"}, nil
 	}
-	current, err := s.deps.Sessions.Get(ctx, id)
-	if errors.Is(err, storage.ErrNotFound) {
-		return operationresult.Result[*storage.Session]{Status: operationresult.NotFound, Message: "会话不存在"}, nil
-	}
-	if err != nil {
-		return operationresult.Result[*storage.Session]{}, err
-	}
-	if (!share.IsBackground(current) || !s.deps.IsSuperadmin(scope)) && !share.CanAccess(scope, current) {
-		return operationresult.Result[*storage.Session]{Status: operationresult.Forbidden, Message: "无权访问该会话"}, nil
-	}
 	rejected := operationresult.Result[struct{}]{Status: operationresult.Success}
 	promoted := false
 	row, err := s.deps.Sessions.Mutate(ctx, id, func(row *storage.Session) error {
+		if (!share.IsBackground(row) || !s.deps.IsSuperadmin(scope)) && !share.CanAccess(scope, row) {
+			rejected = operationresult.Result[struct{}]{Status: operationresult.Forbidden, Message: "无权访问该会话"}
+			return nil
+		}
 		if share.IsBackground(row) {
 			result, err := s.deps.CheckForeground(ctx, row)
 			if err != nil {
@@ -116,6 +110,9 @@ func (s *Service) activateExisting(ctx context.Context, scope share.Scope, id st
 		row.UpdatedAt = storage.Now()
 		return nil
 	})
+	if errors.Is(err, storage.ErrNotFound) {
+		return operationresult.Result[*storage.Session]{Status: operationresult.NotFound, Message: "会话不存在"}, nil
+	}
 	if err != nil {
 		return operationresult.Result[*storage.Session]{}, err
 	}

@@ -127,39 +127,29 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 	runRequest.ToolListNames = meta.LLM.ToolListNames
 	runRequest.ModelProvider, runRequest.Model = model.Provider, model.Model
 	ctx, outcome, err := s.runner.RunBackground(ctx, runRequest)
-	facts, _ := contextinfo.ExecutionFromContext(ctx)
-	if err != nil {
-		if facts.SessionID != "" {
-			if taken, lookupErr := s.sessionTakenOver(context.WithoutCancel(ctx), facts.SessionID); lookupErr != nil {
+	var result background.RunResult
+	var parsed background.JSONResult
+	var parseErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		facts, _ := contextinfo.ExecutionFromContext(ctx)
+		if err == nil && outcome.Status == operationresult.Success {
+			result = outcome.Data
+		} else {
+			result.SessionID = firstNonEmpty(facts.SessionID, result.SessionID)
+			result.RunID = firstNonEmpty(facts.RunID, result.RunID)
+		}
+		if result.SessionID != "" {
+			foreground, lookupErr := s.isSessionForeground(context.WithoutCancel(ctx), result.SessionID)
+			if lookupErr != nil {
 				return ctx, state, lookupErr
-			} else if taken {
-				return ctx, takeoverState(state, background.RunResult{RunID: facts.RunID, SessionID: facts.SessionID, TakenOver: true, Outcome: "taken_over"}), err
+			}
+			if foreground {
+				if err != nil || outcome.Status != operationresult.Success {
+					result.Outcome = "taken_over"
+				}
+				return ctx, takeoverState(state, result), err
 			}
 		}
-		return ctx, state, err
-	}
-	if outcome.Status != operationresult.Success {
-		state.Outcome = "failed"
-		state.ReportReady, state.NeedReport = true, true
-		state.TaskCompleted = false
-		state.Report = outcome.Message
-		state.ReportSessionID = facts.SessionID
-		return ctx, state, nil
-	}
-	result := outcome.Data
-	if taken, lookupErr := s.sessionTakenOver(context.WithoutCancel(ctx), result.SessionID); lookupErr != nil {
-		return ctx, state, lookupErr
-	} else if taken {
-		result.TakenOver = true
-	}
-	if result.TakenOver {
-		return ctx, takeoverState(state, result), nil
-	}
-
-	parsed, err := background.ParseJSONResult(result.Text)
-	if err != nil {
-		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "cron_format_retry", Module: "cron", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
-		ctx, outcome, err = s.retryLLMResultFormat(ctx, job, meta, actor, result.SessionID, model)
 		if err != nil {
 			return ctx, state, err
 		}
@@ -171,14 +161,15 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 			state.ReportSessionID = result.SessionID
 			return ctx, state, nil
 		}
-		result = outcome.Data
-		if result.TakenOver {
-			return ctx, takeoverState(state, result), nil
+		parsed, parseErr = background.ParseJSONResult(result.Text)
+		if parseErr == nil || attempt == 1 {
+			break
 		}
-		parsed, err = background.ParseJSONResult(result.Text)
+		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "cron_format_retry", Module: "cron", Content: parseErr.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(parseErr)})
+		ctx, outcome, err = s.retryLLMResultFormat(ctx, job, meta, actor, result.SessionID, model)
 	}
-	if err != nil {
-		message := cronParseFailedMessage(meta.Title, result.SessionID, err)
+	if parseErr != nil {
+		message := cronParseFailedMessage(meta.Title, result.SessionID, parseErr)
 		state.Outcome = "failed"
 		state.ReportReady = true
 		state.TaskCompleted = false
@@ -186,7 +177,7 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 		state.Report = message
 		state.ReportSessionID = result.SessionID
 		state.ReportMessageID = result.MessageID
-		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "cron_format_failed", Module: "cron", Content: err.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(err)})
+		globalevents.AsyncLog(ctx, globalevents.LogRecord{Category: globalevents.LogCategoryLog, Level: slog.LevelWarn, EventName: "cron_format_failed", Module: "cron", Content: parseErr.Error(), Identity: globalevents.LogIdentityFromContext(ctx), ResultStatus: globalevents.LogStatus(parseErr)})
 		return ctx, state, nil
 	}
 	if meta.Target.AllEnabledPlatforms {
@@ -205,7 +196,7 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 			record.Identity = globalevents.LogIdentityFromContext(ctx)
 			globalevents.Log(ctx, record)
 		} else if copyResult.Status != operationresult.Success {
-			if taken, lookupErr := s.sessionTakenOver(context.WithoutCancel(ctx), result.SessionID); lookupErr != nil {
+			if taken, lookupErr := s.isSessionForeground(context.WithoutCancel(ctx), result.SessionID); lookupErr != nil {
 				return ctx, state, lookupErr
 			} else if taken {
 				return ctx, takeoverState(state, result), nil
@@ -243,12 +234,6 @@ func (s *Service) runLLMReport(ctx context.Context, job Job, meta Metadata, stat
 }
 
 func (s *Service) retryLLMResultFormat(ctx context.Context, job Job, meta Metadata, actor contextinfo.Actor, sessionID string, model config.ModelSelection) (context.Context, operationresult.Result[background.RunResult], error) {
-
-	if taken, err := s.sessionTakenOver(ctx, sessionID); err != nil {
-		return ctx, operationresult.Result[background.RunResult]{}, err
-	} else if taken {
-		return ctx, operationresult.Result[background.RunResult]{Status: operationresult.Success, Data: background.RunResult{SessionID: sessionID, TakenOver: true, Outcome: "taken_over"}}, nil
-	}
 	runRequest := background.RunRequest{TaskType: background.KindCron, TaskID: job.Name, Name: meta.Title, Actor: actor, SessionID: sessionID, Prompt: cronFormatRetryPrompt(), SandboxSubdir: cronSandboxSubdir(job.Name), Metadata: map[string]string{"cron_job_name": job.Name}}
 	runRequest.ModelProvider, runRequest.Model = model.Provider, model.Model
 	return s.runner.RunBackground(ctx, runRequest)

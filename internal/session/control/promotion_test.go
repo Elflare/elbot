@@ -69,7 +69,7 @@ func TestBackgroundPromotionCommitAndFailure(t *testing.T) {
 	if result, err := f.s.Resume(ctx, scope, row.ID); err != nil || result.Status != operationresult.Success || calls != 1 {
 		t.Fatalf("repeated promotion: %+v %v calls=%d", result, err, calls)
 	}
-	if taken, err := f.s.SessionTakenOver(ctx, row.ID); err != nil || !taken {
+	if taken, err := f.s.IsSessionForeground(ctx, row.ID); err != nil || !taken {
 		t.Fatalf("takeover fact: %v %v", taken, err)
 	}
 	if result, err := f.s.PrepareBackground(ctx, bgScope, BackgroundRequest{SessionID: row.ID}); err != nil || result.Status != operationresult.Conflict {

@@ -12,6 +12,15 @@ import (
 	"elbot/internal/signal"
 )
 
+func TestForegroundAfterFormatRetryStopsReport(t *testing.T) {
+	runner := &fakeCronRunner{text: "not a background JSON result"}
+	svc := newTestCronService(t, Options{Runner: runner, IsSessionForeground: func(context.Context, string) (bool, error) { return runner.calls == 2, nil }})
+	_, state, err := svc.runLLMReport(t.Context(), Job{Name: "job"}, Metadata{}, CronDeliveryState{})
+	if err != nil || runner.calls != 2 || !state.TakenOver || state.NeedReport || state.Report != "" {
+		t.Fatal(runner.calls, state, err)
+	}
+}
+
 func TestFormatRetryExecutionFailureStopsTask(t *testing.T) {
 	for _, failure := range []error{errors.New("model failed"), errors.New("save failed"), context.Canceled} {
 		t.Run(failure.Error(), func(t *testing.T) {

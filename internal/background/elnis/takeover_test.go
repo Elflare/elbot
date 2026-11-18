@@ -25,7 +25,7 @@ func (r *takeoverRunner) RunBackground(ctx context.Context, _ background.RunRequ
 	if r.err != nil {
 		return contextinfo.WithExecution(ctx, contextinfo.Execution{RunID: "logical-run", SessionID: "adopted"}), backgroundRunResult{}, r.err
 	}
-	return ctx, successfulBackgroundRun(background.RunResult{RunID: "logical-run", SessionID: "adopted", MessageID: "actual-answer", Text: "ordinary foreground answer", TakenOver: true, Outcome: outcome}), nil
+	return ctx, successfulBackgroundRun(background.RunResult{RunID: "logical-run", SessionID: "adopted", MessageID: "actual-answer", Text: "ordinary foreground answer", Outcome: outcome}), nil
 }
 
 func TestTakeoverSuppressesRepairAndReport(t *testing.T) {
@@ -42,7 +42,7 @@ func TestTakeoverSuppressesRepairAndReport(t *testing.T) {
 				return delivery.Receipt{}, nil
 			})
 			defer cleanup()
-			svc.sessionTakenOver = func(_ context.Context, id string) (bool, error) { return id == "adopted", nil }
+			svc.isSessionForeground = func(_ context.Context, id string) (bool, error) { return id == "adopted", nil }
 			var queued QueuedLLMEvent
 			svc.SetLLMEnqueuer(func(_ context.Context, event QueuedLLMEvent) error { queued = event; return nil })
 			if _, err := svc.Handle(context.Background(), "secret", testRequest(ModeLLM)); err != nil {

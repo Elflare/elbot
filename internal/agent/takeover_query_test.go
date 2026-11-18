@@ -16,18 +16,18 @@ func TestBackgroundTakeoverQueryUsesOwnedSessionAndCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"", "missing", "promoted"} {
-		taken, err := m.SessionTakenOver(ctx, id)
+		taken, err := m.IsSessionForeground(ctx, id)
 		if err != nil || taken != (id == "promoted") {
 			t.Fatalf("%q=%v,%v", id, taken, err)
 		}
 	}
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := m.SessionTakenOver(canceled, row.ID); !errors.Is(err, context.Canceled) {
+	if _, err := m.IsSessionForeground(canceled, row.ID); !errors.Is(err, context.Canceled) {
 		t.Fatalf("caller cancellation=%v", err)
 	}
 	m.BeginClose()
-	if _, err := m.SessionTakenOver(ctx, row.ID); !errors.Is(err, context.Canceled) {
+	if _, err := m.IsSessionForeground(ctx, row.ID); !errors.Is(err, context.Canceled) {
 		t.Fatalf("agent cancellation=%v", err)
 	}
 }

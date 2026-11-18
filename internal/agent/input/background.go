@@ -48,15 +48,6 @@ func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundReq
 		return ctx, operationresult.Result[turn.Result]{}, err
 	}
 	if prepared.Status != operationresult.Success {
-		if prepared.Status == operationresult.Conflict {
-			takenOver, err := r.Sessions.SessionTakenOver(ctx, req.SessionID)
-			if err != nil {
-				return ctx, operationresult.Result[turn.Result]{}, err
-			}
-			if takenOver {
-				return ctx, operationresult.Result[turn.Result]{Status: operationresult.Success, Data: turn.Result{SessionID: req.SessionID, TakenOver: true, Outcome: "taken_over"}}, nil
-			}
-		}
 		return ctx, operationresult.Result[turn.Result]{Status: prepared.Status, Message: prepared.Message}, nil
 	}
 	bgSession := prepared.Data

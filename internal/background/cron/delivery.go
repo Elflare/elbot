@@ -29,12 +29,8 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 	if !state.ReportReady {
 		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}
-	taken, err := s.sessionTakenOver(ctx, state.ReportSessionID)
-	if err != nil {
-		return operationresult.Result[struct{}]{}, err
-	}
-	state.TakenOver = state.TakenOver || taken
-	if state.TakenOver {
+	finishTakeover := func() (operationresult.Result[struct{}], error) {
+		state.TakenOver = true
 		state.Report, state.ReportSegments = "", nil
 		if _, err := s.persistDeliveryState(ctx, job, state, nil); err != nil {
 			return operationresult.Result[struct{}]{}, err
@@ -44,20 +40,15 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 		}
 		return operationresult.Result[struct{}]{Status: operationresult.Success}, nil
 	}
+	if state.TakenOver { // Already terminal; do not reopen on recovery.
+		return finishTakeover()
+	}
 	for _, resolved := range s.resolveDeliveryTargets(meta) {
 		if platformFilter != "" && resolved.Platform != platformFilter {
 			continue
 		}
 		targetState := ensureDeliveryTargetState(&state, resolved)
 		for index, outputID := range deliveryOutputIDs(state) {
-			taken, err := s.sessionTakenOver(ctx, state.ReportSessionID)
-			if err != nil {
-				return operationresult.Result[struct{}]{}, err
-			}
-			if taken {
-				state.TakenOver = true
-				return s.deliverPrepared(ctx, job, meta, state, platformFilter, recovery)
-			}
 			outputState := ensureDeliveryOutputState(targetState, outputID)
 			if deliveryStatusDone(outputState.Status) {
 				continue
@@ -90,6 +81,11 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 			}
 			sent := operationresult.Result[delivery.Receipt]{Status: out.Status, Message: out.Message}
 			if buildErr == nil && out.Status == operationresult.Success {
+				if foreground, err := s.isSessionForeground(ctx, state.ReportSessionID); err != nil {
+					return operationresult.Result[struct{}]{}, err
+				} else if foreground {
+					return finishTakeover()
+				}
 				sent, buildErr = s.sendDeliveryOutput(ctx, job.Name, resolved, out.Data, state.ReportSessionID)
 			}
 			if (buildErr != nil || sent.Status != operationresult.Success) && outputID != "text" && status != DeliveryFallbackDelivered && state.NeedReport && recovery && ctx.Err() == nil {
@@ -106,6 +102,11 @@ func (s *Service) deliverPrepared(ctx context.Context, job Job, meta Metadata, s
 				}
 				if !active {
 					return operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "cron delivery changed during recovery"}, nil
+				}
+				if foreground, err := s.isSessionForeground(ctx, state.ReportSessionID); err != nil {
+					return operationresult.Result[struct{}]{}, err
+				} else if foreground {
+					return finishTakeover()
 				}
 				sent, buildErr = s.sendDeliveryOutput(ctx, job.Name, resolved, delivery.Text(outputState.FallbackText), state.ReportSessionID)
 				status = DeliveryFallbackDelivered

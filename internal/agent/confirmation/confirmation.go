@@ -183,16 +183,12 @@ func (c *ConfirmationCoordinator) confirmationContext(ctx context.Context) (cont
 	if err != nil {
 		return ctx, operationresult.Result[*storage.Session]{}, nil, err
 	}
-	locked, captured, err := agentshare.CaptureSessionBinding(locked, c.sessions, c.identity, row)
-	if err != nil {
+	locked, captured, err := agentshare.CaptureSessionBinding(locked, c.sessions, c.identity, row.ID)
+	if err != nil || captured.Status != operationresult.Success {
 		release()
-		return ctx, operationresult.Result[*storage.Session]{}, nil, err
+		return ctx, captured, nil, err
 	}
-	if captured.Status != operationresult.Success {
-		release()
-		return ctx, operationresult.Result[*storage.Session]{Status: captured.Status, Message: captured.Message}, nil, nil
-	}
-	return locked, operationresult.Result[*storage.Session]{Status: operationresult.Success, Data: row}, release, nil
+	return locked, captured, release, nil
 }
 
 func confirmationAction(ctx context.Context, sessionID, action string, confirmation turn.RiskConfirmation, extra string) *events.LogRecord {

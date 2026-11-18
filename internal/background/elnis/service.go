@@ -34,11 +34,11 @@ type Options struct {
 	Tokens      map[string]string
 	Store       EventRepository
 
-	Send             SenderFunc
-	Runner           background.Runner
-	SessionTakenOver background.SessionTakenOver
-	ResolveModel     ModelResolverFunc
-	ToolPreloader    interface {
+	Send                SenderFunc
+	Runner              background.Runner
+	IsSessionForeground background.IsSessionForeground
+	ResolveModel        ModelResolverFunc
+	ToolPreloader       interface {
 		BackgroundSelections(context.Context, []string) ([]tool.BackgroundSelection, error)
 	} // 由 Tool 根部提供声明展开能力，授权仍归 Elnis。
 	EnabledPlatforms []string
@@ -52,11 +52,11 @@ type Service struct {
 	tokens      map[string]string
 	store       EventRepository
 
-	send             SenderFunc
-	runner           background.Runner
-	sessionTakenOver background.SessionTakenOver
-	resolveModel     ModelResolverFunc
-	toolPreloader    interface {
+	send                SenderFunc
+	runner              background.Runner
+	isSessionForeground background.IsSessionForeground
+	resolveModel        ModelResolverFunc
+	toolPreloader       interface {
 		BackgroundSelections(context.Context, []string) ([]tool.BackgroundSelection, error)
 	}
 	enabledPlatforms []string
@@ -69,18 +69,18 @@ func NewService(opts Options) (*Service, error) {
 		return nil, fmt.Errorf("elnis enabled but no tokens are configured")
 	}
 	return &Service{
-		media:            opts.Media,
-		cfg:              opts.Config,
-		sandboxRoot:      opts.SandboxRoot,
-		tokens:           opts.Tokens,
-		store:            opts.Store,
-		send:             opts.Send,
-		runner:           opts.Runner,
-		sessionTakenOver: opts.SessionTakenOver,
-		resolveModel:     opts.ResolveModel,
-		toolPreloader:    opts.ToolPreloader,
-		enabledPlatforms: uniqueSorted(opts.EnabledPlatforms),
-		callPlatformAPI:  opts.CallPlatformAPI,
+		media:               opts.Media,
+		cfg:                 opts.Config,
+		sandboxRoot:         opts.SandboxRoot,
+		tokens:              opts.Tokens,
+		store:               opts.Store,
+		send:                opts.Send,
+		runner:              opts.Runner,
+		isSessionForeground: opts.IsSessionForeground,
+		resolveModel:        opts.ResolveModel,
+		toolPreloader:       opts.ToolPreloader,
+		enabledPlatforms:    uniqueSorted(opts.EnabledPlatforms),
+		callPlatformAPI:     opts.CallPlatformAPI,
 	}, nil
 }
 

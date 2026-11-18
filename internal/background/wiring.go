@@ -205,7 +205,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 			return storage.IDSequence(deps.Store.NextIDSequence).ID(ctx, "run")
 		},
 		Manager: m.cronManager, Store: cron, Runner: runner,
-		SendTarget: deps.Platform.SendTo, Models: deps.Models, Media: deps.Media, CopyBackground: deps.Agent.CopyBackground, SessionTakenOver: deps.Agent.SessionTakenOver,
+		SendTarget: deps.Platform.SendTo, Models: deps.Models, Media: deps.Media, CopyBackground: deps.Agent.CopyBackground, IsSessionForeground: deps.Agent.IsSessionForeground,
 		EnabledPlatforms: enabledCronPlatforms(cfg), SandboxRoot: cfg.Sandbox.Root,
 	})
 	m.cronManager.RegisterHandler(elcron.UserHandlerName, m.cron.Handler)
@@ -233,7 +233,7 @@ func NewSupervisor(ctx context.Context, cfg *config.Config, deps SupervisorDeps)
 	service, err := elnis.NewService(elnis.Options{
 		Media: elnisDeps, Config: cfg.Elnis, SandboxRoot: cfg.Sandbox.Root, Tokens: tokens,
 		Store: elnisDeps, EnabledPlatforms: platforms, CallPlatformAPI: deps.Platform.CallPlatformAPI,
-		Send: deps.Platform.SendTo, Runner: runner, ToolPreloader: deps.Tools, SessionTakenOver: deps.Agent.SessionTakenOver,
+		Send: deps.Platform.SendTo, Runner: runner, ToolPreloader: deps.Tools, IsSessionForeground: deps.Agent.IsSessionForeground,
 		ResolveModel: func(slot string) config.ModelSelection {
 			return deps.Models.ResolveMode(slot).ModelSelection
 		},

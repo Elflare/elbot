@@ -115,7 +115,7 @@ func TestCronBridgeServicePersistsReportMappingAndCompletion(t *testing.T) {
 		NewRunID: func(ctx context.Context) (string, error) {
 			return storage.IDSequence(store.NextIDSequence).ID(ctx, "run")
 		},
-		SessionTakenOver: func(context.Context, string) (bool, error) { return false, nil },
+		IsSessionForeground: func(context.Context, string) (bool, error) { return false, nil },
 		CopyBackground: func(context.Context, agent.BackgroundCopyRequest) (operationresult.Result[string], error) {
 			return operationresult.Result[string]{Status: operationresult.Success, Data: "copy"}, nil
 		},

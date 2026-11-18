@@ -17,11 +17,11 @@ import (
 )
 
 func (s *Service) prepareReport(ctx context.Context, event Event, eventID, resultJSON, sessionID, messageID string, result background.JSONResult) (operationresult.Result[bool], error) {
-	taken, err := s.sessionTakenOver(ctx, sessionID)
+	taken, err := s.isSessionForeground(ctx, sessionID)
 	if err != nil {
 		return operationresult.Result[bool]{}, err
 	} else if taken {
-		return operationresult.Result[bool]{Status: operationresult.Success}, s.completeTakeover(ctx, eventID, event.ResolvedTargets, background.RunResult{SessionID: sessionID, MessageID: messageID, TakenOver: true, Outcome: "taken_over", Text: resultJSON}, nil)
+		return operationresult.Result[bool]{Status: operationresult.Success}, s.completeTakeover(ctx, eventID, event.ResolvedTargets, background.RunResult{SessionID: sessionID, MessageID: messageID, Outcome: "taken_over", Text: resultJSON}, nil)
 	}
 	resolved, err := decodeResolvedTargets(event.ResolvedTargets)
 	if err != nil {
@@ -103,11 +103,11 @@ func (s *Service) deliverReport(ctx context.Context, eventID string) (context.Co
 
 	for index := 0; index < len(deliveries); {
 		var taken bool
-		taken, err = s.sessionTakenOver(ctx, event.SessionID)
+		taken, err = s.isSessionForeground(ctx, event.SessionID)
 		if err != nil {
 			return ctx, operationresult.Result[struct{}]{}, s.releaseReport(ctx, eventID, err)
 		} else if taken {
-			return ctx, operationresult.Result[struct{}]{Status: operationresult.Success}, s.completeTakeover(ctx, eventID, event.ResolvedTargets, background.RunResult{SessionID: event.SessionID, TakenOver: true, Outcome: "taken_over", Text: event.Result}, nil)
+			return ctx, operationresult.Result[struct{}]{Status: operationresult.Success}, s.completeTakeover(ctx, eventID, event.ResolvedTargets, background.RunResult{SessionID: event.SessionID, Outcome: "taken_over", Text: event.Result}, nil)
 		}
 		item := deliveries[index]
 		if item.Status == ReportDeliveryDelivered {

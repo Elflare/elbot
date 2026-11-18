@@ -690,8 +690,8 @@ func newTestCronService(t *testing.T, opts Options) *Service {
 			return operationresult.Result[media.MediaInfo]{Status: operationresult.Success, Data: media.MediaInfo{ID: "media:report", Name: input.Name, MIMEType: input.MIMEType}}, err
 		})
 	}
-	if opts.SessionTakenOver == nil {
-		opts.SessionTakenOver = func(context.Context, string) (bool, error) { return false, nil }
+	if opts.IsSessionForeground == nil {
+		opts.IsSessionForeground = func(context.Context, string) (bool, error) { return false, nil }
 	}
 	if opts.CopyBackground == nil {
 		opts.CopyBackground = func(context.Context, agent.BackgroundCopyRequest) (operationresult.Result[string], error) {

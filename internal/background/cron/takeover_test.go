@@ -14,14 +14,14 @@ type takeoverRunner struct{ calls int }
 
 func (r *takeoverRunner) RunBackground(ctx context.Context, _ background.RunRequest) (context.Context, cronRunResult, error) {
 	r.calls++
-	return ctx, successfulRun(background.RunResult{RunID: "logical-run", SessionID: "adopted", MessageID: "actual-answer", Text: "ordinary foreground answer", TakenOver: true, Outcome: "completed"}), nil
+	return ctx, successfulRun(background.RunResult{RunID: "logical-run", SessionID: "adopted", MessageID: "actual-answer", Text: "ordinary foreground answer", Outcome: "completed"}), nil
 }
 
 func TestTakeoverSuppressesRepairAndDelivery(t *testing.T) {
 	repo := newFakeCronRepo()
 	runner := &takeoverRunner{}
 	sent := 0
-	svc := newTestCronService(t, Options{Store: repo, Runner: runner, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (receiptResult, error) {
+	svc := newTestCronService(t, Options{Store: repo, Runner: runner, IsSessionForeground: func(_ context.Context, id string) (bool, error) { return id == "adopted", nil }, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (receiptResult, error) {
 		sent++
 		return sentReceipt(delivery.Receipt{}), nil
 	}})
@@ -47,7 +47,7 @@ func TestInjectedTakeoverQuerySuppressesRepairAndSurfacesFailure(t *testing.T) {
 	for _, lookupErr := range []error{nil, failure} {
 		runner := &fakeCronRunner{text: "invalid JSON"}
 		queried := ""
-		svc := newTestCronService(t, Options{Runner: runner, SessionTakenOver: func(_ context.Context, id string) (bool, error) { queried = id; return lookupErr == nil, lookupErr }})
+		svc := newTestCronService(t, Options{Runner: runner, IsSessionForeground: func(_ context.Context, id string) (bool, error) { queried = id; return lookupErr == nil, lookupErr }})
 		_, state, err := svc.runLLMReport(t.Context(), Job{Name: "job"}, Metadata{Target: CronTarget{SourcePlatform: "cli"}}, CronDeliveryState{RunID: "run"})
 		if runner.calls != 1 || queried != "cron-session" || state.Report != "" {
 			t.Fatalf("calls=%d query=%q report=%q", runner.calls, queried, state.Report)
@@ -65,7 +65,7 @@ func TestInjectedTakeoverQuerySuppressesRepairAndSurfacesFailure(t *testing.T) {
 func TestInjectedTakeoverQueryStopsPreparedDelivery(t *testing.T) {
 	repo := newFakeCronRepo()
 	sent := 0
-	svc := newTestCronService(t, Options{Store: repo, SessionTakenOver: func(_ context.Context, id string) (bool, error) { return id == "adopted", nil }, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (receiptResult, error) {
+	svc := newTestCronService(t, Options{Store: repo, IsSessionForeground: func(_ context.Context, id string) (bool, error) { return id == "adopted", nil }, SendTarget: func(context.Context, delivery.Target, []delivery.Output) (receiptResult, error) {
 		sent++
 		return sentReceipt(delivery.Receipt{}), nil
 	}})

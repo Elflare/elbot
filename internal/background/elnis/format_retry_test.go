@@ -12,6 +12,28 @@ import (
 	"elbot/internal/signal"
 )
 
+func TestForegroundAfterFormatRetryStopsReport(t *testing.T) {
+	runner := &fakeBackgroundRunner{text: "not a background JSON result"}
+	svc, cleanup := newTestServiceWithRunner(t, runner, func(context.Context, delivery.Target, []delivery.Output) (delivery.Receipt, error) {
+		t.Fatal("foreground response sent as a report")
+		return delivery.Receipt{}, nil
+	})
+	defer cleanup()
+	svc.isSessionForeground = func(context.Context, string) (bool, error) { return len(runner.requests) == 2, nil }
+	var event QueuedLLMEvent
+	svc.SetLLMEnqueuer(func(_ context.Context, queued QueuedLLMEvent) error { event = queued; return nil })
+	if _, err := svc.Handle(t.Context(), "secret", testRequest(ModeLLM)); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RunLLMEvent(t.Context(), event.Event, event.EventID); err != nil {
+		t.Fatal(err)
+	}
+	row, err := testRepo(svc).snapshot(t.Context(), event.EventID)
+	if err != nil || row.Status != StatusTakenOver || len(runner.requests) != 2 {
+		t.Fatal(row, err, len(runner.requests))
+	}
+}
+
 func TestFormatRetryExecutionFailureKeepsOriginalCause(t *testing.T) {
 	for _, failure := range []error{errors.New("model failed"), errors.New("save failed"), context.Canceled} {
 		t.Run(failure.Error(), func(t *testing.T) {

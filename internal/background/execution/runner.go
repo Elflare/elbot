@@ -44,7 +44,7 @@ func (r *BackgroundRunner) RunBackground(ctx context.Context, req background.Run
 	data := result.Data
 	return ctx, operationresult.Result[background.RunResult]{Status: operationresult.Success, Data: background.RunResult{
 		RunID: data.RunID, SessionID: data.SessionID, MessageID: data.MessageID,
-		Text: data.Text, TakenOver: data.TakenOver, Outcome: data.Outcome,
+		Text: data.Text, Outcome: data.Outcome,
 	}}, nil
 }
 

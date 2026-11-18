@@ -45,7 +45,7 @@ type AgentCapabilities interface {
 	RunBackground(context.Context, agent.BackgroundRequest) (context.Context, operationresult.Result[agent.BackgroundResult], error)
 	CopyBackground(context.Context, agent.BackgroundCopyRequest) (operationresult.Result[string], error)
 	CleanupSessions(ctx context.Context, cutoff time.Time) (int, error)
-	SessionTakenOver(context.Context, string) (bool, error)
+	IsSessionForeground(context.Context, string) (bool, error)
 }
 
 // ToolCapabilities 消费 Tool 根包类型；订阅连接由 Background 持有和释放。

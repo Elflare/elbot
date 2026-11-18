@@ -15,25 +15,26 @@ func CaptureSessionBinding(ctx context.Context, sessions interface {
 	CurrentBound(context.Context, session.Scope) (operationresult.Result[session.CurrentBoundData], error)
 }, identity interface {
 	Scope(context.Context) session.Scope
-}, row *storage.Session) (context.Context, operationresult.Result[struct{}], error) {
+}, id string) (context.Context, operationresult.Result[*storage.Session], error) {
 	current, err := sessions.CurrentBound(ctx, identity.Scope(ctx))
 	if err != nil {
-		return ctx, operationresult.Result[struct{}]{}, err
+		return ctx, operationresult.Result[*storage.Session]{}, err
 	}
 	if current.Status != operationresult.Success {
-		return ctx, operationresult.Result[struct{}]{Status: current.Status, Message: current.Message}, nil
+		return ctx, operationresult.Result[*storage.Session]{Status: current.Status, Message: current.Message}, nil
 	}
 	binding := current.Data.Binding
-	if current.Data.Session.ID != row.ID {
-		return ctx, operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "当前会话已切换，请重新发送消息"}, nil
+	if current.Data.Session.ID != id {
+		return ctx, operationresult.Result[*storage.Session]{Status: operationresult.Conflict, Message: "当前会话已切换，请重新发送消息"}, nil
 	}
 	if original, ok := session.BindingFromContext(ctx); ok {
 		if original != binding || !original.Valid() {
-			return ctx, operationresult.Result[struct{}]{Status: operationresult.Conflict, Message: "当前会话已切换，请重新发送消息"}, nil
+			return ctx, operationresult.Result[*storage.Session]{Status: operationresult.Conflict, Message: "当前会话已切换，请重新发送消息"}, nil
 		}
-		return ctx, operationresult.Result[struct{}]{Status: operationresult.Success}, nil
+	} else {
+		ctx = session.WithBinding(ctx, binding)
 	}
-	return session.WithBinding(ctx, binding), operationresult.Result[struct{}]{Status: operationresult.Success}, nil
+	return ctx, operationresult.Result[*storage.Session]{Status: operationresult.Success, Data: current.Data.Session}, nil
 }
 
 func CompactActive(turns interface {

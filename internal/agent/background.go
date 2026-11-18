@@ -65,7 +65,7 @@ func (m *Supervisor) RunBackground(ctx context.Context, req BackgroundRequest) (
 	data := result.Data
 	return ctx, operationresult.Result[BackgroundResult]{Status: operationresult.Success, Data: BackgroundResult{
 		RunID: data.RunID, SessionID: data.SessionID, MessageID: data.MessageID,
-		Text: data.Text, TakenOver: data.TakenOver, Outcome: data.Outcome,
+		Text: data.Text, Outcome: data.Outcome,
 	}}, nil
 }
 
@@ -99,12 +99,12 @@ func (m *Supervisor) CleanupSessions(ctx context.Context, cutoff time.Time) (int
 	return m.sessions.CleanupExpired(ctx, cutoff)
 }
 
-// SessionTakenOver 查询后台会话是否已被前台接管。
-func (m *Supervisor) SessionTakenOver(ctx context.Context, id string) (bool, error) {
+// IsSessionForeground 按当前会话模式判断是否应停止后台处理。
+func (m *Supervisor) IsSessionForeground(ctx context.Context, id string) (bool, error) {
 	ctx, done, err := m.backgroundContext(ctx)
 	if err != nil {
 		return false, err
 	}
 	defer done()
-	return m.sessions.SessionTakenOver(ctx, id)
+	return m.sessions.IsSessionForeground(ctx, id)
 }

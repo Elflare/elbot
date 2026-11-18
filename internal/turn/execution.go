@@ -29,7 +29,6 @@ func (e *Execution) Adopt(ctx context.Context, row storage.Session) {
 	e.mu.Lock()
 	e.foreground = context.WithoutCancel(ctx)
 	e.foregroundSession = row
-	e.result.TakenOver = true
 	e.mu.Unlock()
 }
 func (e *Execution) Foreground() context.Context {

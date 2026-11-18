@@ -44,15 +44,15 @@ type Service struct {
 	manager         *Manager
 	store           JobRepository
 
-	sendTarget       TargetSenderFunc
-	runner           background.Runner
-	models           Models
-	media            background.ReportMedia
-	copyBackground   func(context.Context, agent.BackgroundCopyRequest) (operationresult.Result[string], error)
-	sessionTakenOver background.SessionTakenOver
-	enabledPlatforms []PlatformTarget
-	sandboxRoot      string
-	now              func() time.Time
+	sendTarget          TargetSenderFunc
+	runner              background.Runner
+	models              Models
+	media               background.ReportMedia
+	copyBackground      func(context.Context, agent.BackgroundCopyRequest) (operationresult.Result[string], error)
+	isSessionForeground background.IsSessionForeground
+	enabledPlatforms    []PlatformTarget
+	sandboxRoot         string
+	now                 func() time.Time
 
 	mu             sync.Mutex
 	deliveryGates  map[string]*deliveryGate
@@ -66,14 +66,14 @@ type Options struct {
 	Manager         *Manager
 	Store           JobRepository
 
-	SendTarget       TargetSenderFunc
-	Runner           background.Runner
-	Models           Models
-	Media            background.ReportMedia
-	CopyBackground   func(context.Context, agent.BackgroundCopyRequest) (operationresult.Result[string], error)
-	SessionTakenOver background.SessionTakenOver
-	EnabledPlatforms []PlatformTarget
-	SandboxRoot      string
+	SendTarget          TargetSenderFunc
+	Runner              background.Runner
+	Models              Models
+	Media               background.ReportMedia
+	CopyBackground      func(context.Context, agent.BackgroundCopyRequest) (operationresult.Result[string], error)
+	IsSessionForeground background.IsSessionForeground
+	EnabledPlatforms    []PlatformTarget
+	SandboxRoot         string
 }
 
 func NewService(opts Options) *Service {
@@ -92,7 +92,7 @@ func NewService(opts Options) *Service {
 	s.enabledPlatforms = normalizePlatformTargets(opts.CLIPlatformName, opts.EnabledPlatforms)
 	s.models = opts.Models
 	s.copyBackground = opts.CopyBackground
-	s.sessionTakenOver = opts.SessionTakenOver
+	s.isSessionForeground = opts.IsSessionForeground
 	return s
 }
 

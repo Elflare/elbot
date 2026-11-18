@@ -80,7 +80,7 @@ func TestRunnerForwardsTaskAndPreservesExecutionResult(t *testing.T) {
 		err             error
 	}{
 		{name: "new unrestricted", result: agent.BackgroundResult{RunID: "run", SessionID: "new", MessageID: "message", Text: "answer", Outcome: "completed"}},
-		{name: "continuation no local tools", sessionID: "existing", allowed: []string{}, result: agent.BackgroundResult{SessionID: "existing", TakenOver: true, Outcome: "taken_over"}},
+		{name: "continuation no local tools", sessionID: "existing", allowed: []string{}, result: agent.BackgroundResult{SessionID: "existing", Outcome: "completed"}},
 		{name: "partial failure", sessionID: "existing", allowed: []string{"local"}, result: agent.BackgroundResult{RunID: "run", SessionID: "existing", Text: "partial", Outcome: "failed"}, err: failure},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -119,7 +119,7 @@ func TestRunnerForwardsTaskAndPreservesExecutionResult(t *testing.T) {
 				}
 				return
 			}
-			wantResult := background.RunResult{RunID: tc.result.RunID, SessionID: tc.result.SessionID, MessageID: tc.result.MessageID, Text: tc.result.Text, TakenOver: tc.result.TakenOver, Outcome: tc.result.Outcome}
+			wantResult := background.RunResult{RunID: tc.result.RunID, SessionID: tc.result.SessionID, MessageID: tc.result.MessageID, Text: tc.result.Text, Outcome: tc.result.Outcome}
 			if outcome.Status != operationresult.Success || !reflect.DeepEqual(outcome.Data, wantResult) {
 				t.Fatalf("result=%+v want=%+v", outcome, wantResult)
 			}

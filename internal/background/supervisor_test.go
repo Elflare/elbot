@@ -35,7 +35,7 @@ func (*backgroundExecutionStub) CopyBackground(context.Context, agent.Background
 func (*backgroundExecutionStub) CleanupSessions(context.Context, time.Time) (int, error) {
 	return 0, nil
 }
-func (*backgroundExecutionStub) SessionTakenOver(context.Context, string) (bool, error) {
+func (*backgroundExecutionStub) IsSessionForeground(context.Context, string) (bool, error) {
 	return false, nil
 }
 

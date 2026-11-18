@@ -26,8 +26,8 @@ func (s *Supervisor) CopyBackground(ctx context.Context, target Scope, req Backg
 	})
 }
 
-func (s *Supervisor) SessionTakenOver(ctx context.Context, id string) (bool, error) {
-	return s.control.SessionTakenOver(ctx, id)
+func (s *Supervisor) IsSessionForeground(ctx context.Context, id string) (bool, error) {
+	return s.control.IsSessionForeground(ctx, id)
 }
 
 // IsBackground 只读取已保存的会话事实，不查询当前执行状态。

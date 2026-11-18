@@ -63,7 +63,6 @@ type Result struct {
 	SessionID string
 	MessageID string
 	Text      string
-	TakenOver bool
 	Outcome   string
 	Err       error
 }

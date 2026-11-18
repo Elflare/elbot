@@ -124,7 +124,6 @@ type BackgroundResult struct {
 	SessionID string // 实际使用的会话。
 	MessageID string // 最终持久化回复标识。
 	Text      string // 最终回复正文。
-	TakenOver bool   // 执行是否已由前台接管。
 	Outcome   string // 执行终态。
 }
 
