@@ -41,8 +41,7 @@ type pipes struct {
 
 func Definition(env processenv.Environment) share.ToolDefinition {
 	return share.NewBuilder("tool_weave").
-		Description(`执行py代码，也可直接编排已有工具，支持批量、并发和结果处理。复杂、多次工具调用尽量使用该工具，简单别用。例：
-import asyncio
+		Description(`执行py代码，也可直接编排已有工具，支持批量、并发和结果处理。脚本已导入asyncio可直接使用。复杂、多次工具调用尽量使用该工具，简单别用。例：
 from pathlib import Path
 projects = {"Go": "go.dev", "Rust": "blog.rust-lang.org", "Python": "blog.python.org"}
 news = await asyncio.gather(*(web_search(query=f"{name} release", include_domains=[site], time_range="week", max_results=3) for name, site in projects.items()))#函数名即为已发现工具，不用声明直接使用

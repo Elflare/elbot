@@ -238,7 +238,7 @@ func TestHandleC2CMessageAddsFallbackReferenceText(t *testing.T) {
 		Author:      inboundAuthor{UserOpenID: "user-1"},
 		Content:     "你看看有没",
 		MessageType: 103,
-		MsgElements: []messageElement{{MsgIdx: "REFIDX_notice-1", Content: "已保存附件：attachment-1\n路径：/tmp/attachment-1"}},
+		MsgElements: []messageElement{{Content: "已保存附件：attachment-1\n路径：/tmp/attachment-1"}},
 	})
 
 	want := "[引用:已保存附件：attachment-1\n路径：/tmp/attachment-1]\n\n你看看有没"

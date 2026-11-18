@@ -29,14 +29,6 @@ func inboundReferenceIndexes(msg inboundMessage) (msgIndex, refIndex string) {
 			refIndex = value
 		}
 	}
-	if msg.MessageType == 103 {
-		for _, element := range msg.MsgElements {
-			if index := strings.TrimSpace(element.MsgIdx); index != "" {
-				refIndex = index
-				break
-			}
-		}
-	}
 	return msgIndex, refIndex
 }
 
@@ -55,9 +47,16 @@ func inboundReferencedMessage(msg inboundMessage, refIndex string) share.Referen
 	if (refIndex == "" && msg.MessageType != 103) || len(msg.MsgElements) == 0 {
 		return share.ReferencedMessage{}
 	}
-	element := msg.MsgElements[0]
-	text := normalizedInboundText(element.Content)
-	segments := inboundSegments(text, inboundAttachmentSegments(element.Attachments))
+	var lines []string
+	var segments []share.MessageSegment
+	for _, element := range msg.MsgElements {
+		text := normalizedInboundText(element.Content)
+		if text != "" {
+			lines = append(lines, text)
+		}
+		segments = append(segments, inboundSegments(text, inboundAttachmentSegments(element.Attachments))...)
+	}
+	text := strings.Join(lines, "\n")
 	if text == "" && len(segments) > 0 {
 		text = "[媒体消息]"
 	}

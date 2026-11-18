@@ -33,7 +33,8 @@ func TestInboundReferenceIndexes(t *testing.T) {
 		name, raw, own, ref string
 	}{
 		{"scene", `{"message_scene":{"ext":["invalid","other=skip","msg_idx= OWN=1 "," ref_msg_idx = REF ","ref_msg_idx="]}}`, "OWN=1", "REF"},
-		{"element wins", `{"message_type":103,"message_scene":{"ext":["msg_idx=OWN","ref_msg_idx=scene"]},"msg_elements":[{"content":"quote"},{"msg_idx":"element"}]}`, "OWN", "element"},
+		{"scene identifies reply", `{"message_type":103,"message_scene":{"ext":["msg_idx=OWN","ref_msg_idx=scene"]},"msg_elements":[{"content":"quote"},{"msg_idx":"element"}]}`, "OWN", "scene"},
+		{"element alone is not a reply target", `{"message_type":103,"msg_elements":[{"msg_idx":"element"}]}`, "", ""},
 		{"ordinary element", `{"msg_elements":[{"msg_idx":"not-a-quote","content":"other"}]}`, "", ""},
 		{"empty", `{}`, "", ""},
 	} {
@@ -83,6 +84,31 @@ func TestReferenceAliasKeepsScope(t *testing.T) {
 	}
 }
 
+func TestGroupQuoteRequiresNewContent(t *testing.T) {
+	a := newTestAdapter(t, Config{}, nil)
+	mapTestReference(t, a, "group", "g", "target", "bot-reply")
+	msg := inboundMessage{ID: "reply", GroupOpenID: "g", Author: inboundAuthor{MemberOpenID: "u"}, Content: " ", MessageType: 103,
+		MessageScene: messageScene{Ext: []string{"ref_msg_idx=target"}},
+		MsgElements:  []messageElement{{Content: "quoted text", Attachments: []messageAttachment{{URL: "https://example.com/quoted.png", ContentType: "image/png"}}}},
+	}
+	h := &captureHandler{}
+	a.referenceResolver = func(_ context.Context, opts share.ReferenceOptions) (share.ReferenceResult, error) {
+		if len(msg.Attachments) == 0 {
+			t.Fatal("resolved a quote-only message")
+		}
+		return share.ReferenceResult{}, nil
+	}
+	a.handleGroupMessage(t.Context(), h.HandleMessage, payload{Type: eventGroupMessageCreate}, msg)
+	if h.ctx != nil {
+		t.Fatal("quote without new content reached handler")
+	}
+	msg.Attachments = []messageAttachment{{URL: "https://example.com/new.png", ContentType: "image/png"}}
+	a.handleGroupMessage(t.Context(), h.HandleMessage, payload{Type: eventGroupMessageCreate}, msg)
+	got, ok := share.MessageContextFrom(h.ctx)
+	if !ok || got.ReplyToMessageID != "bot-reply" || len(got.Segments) != 1 || got.Segments[0].URL != msg.Attachments[0].URL {
+		t.Fatalf("attachment reply = %+v", got)
+	}
+}
 func TestEventReferenceWithoutHistory(t *testing.T) {
 	for _, group := range []bool{false, true} {
 		for _, tc := range []struct {
@@ -102,7 +128,7 @@ func TestEventReferenceWithoutHistory(t *testing.T) {
 				a := newTestAdapter(t, Config{}, nil)
 				msg := inboundMessage{ID: "current", Author: inboundAuthor{UserOpenID: "user", MemberOpenID: "user"}, GroupOpenID: "group",
 					Content: tc.content, MessageType: tc.messageType,
-					MsgElements: []messageElement{{MsgIdx: "REFIDX_unknown", Content: tc.quote, Attachments: tc.attachments}},
+					MsgElements: []messageElement{{Content: tc.quote, Attachments: tc.attachments}},
 				}
 				h := &captureHandler{}
 				if group {
@@ -166,7 +192,7 @@ func TestMappedReferenceConsumesResolverMediaAndSuppliesEventFallback(t *testing
 					MessageScene: messageScene{Ext: []string{"ref_msg_idx=REFIDX_original"}},
 				}
 				if !fromHistory {
-					msg.MsgElements = []messageElement{{Content: "original text", Attachments: []messageAttachment{image}}}
+					msg.MsgElements = []messageElement{{Content: "original text"}, {Attachments: []messageAttachment{image}}}
 				}
 				h := &captureHandler{}
 				a.handleC2CMessage(t.Context(), h.HandleMessage, payload{}, msg)

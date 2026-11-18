@@ -55,6 +55,7 @@ async def main():
     try:
         scope = {name: proxy(name) for name in init["names"]}
         scope["__name__"] = "__main__"
+        scope["asyncio"] = asyncio
         code = compile(init["code"], "<tool_weave>", "exec", ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)
         result = eval(code, scope)
         if inspect.isawaitable(result):

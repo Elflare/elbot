@@ -60,7 +60,7 @@ func TestRunnerConcurrentCalls(t *testing.T) {
 					return operationresult.Result[string]{Status: operationresult.Rejected, Message: "denied"}, nil
 				}
 			}}
-			code := `import asyncio, json, sys
+			code := `import json, sys
 a, b = await asyncio.gather(fetch(i=0), fetch(i=1))
 try:
     await fetch(i=2)

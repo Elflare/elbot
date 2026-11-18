@@ -96,7 +96,7 @@ type inboundMessage struct {
 	Attachments  []messageAttachment `json:"attachments"`
 	MessageScene messageScene        `json:"message_scene,omitempty"` // Carries this message's and its reference's indexes.
 	MessageType  int                 `json:"message_type,omitempty"`  // 103 identifies a quoted message.
-	MsgElements  []messageElement    `json:"msg_elements,omitempty"`  // First element contains the quoted content and attachments.
+	MsgElements  []messageElement    `json:"msg_elements,omitempty"`  // Quoted content and attachments in element order.
 }
 
 type inboundAuthor struct {
@@ -119,7 +119,6 @@ type messageScene struct {
 }
 
 type messageElement struct {
-	MsgIdx      string              `json:"msg_idx,omitempty"`     // Reference index; distinct from the platform message ID.
 	Content     string              `json:"content,omitempty"`     // Quoted message text.
 	Attachments []messageAttachment `json:"attachments,omitempty"` // Quoted media; nested quotes are not expanded.
 }
