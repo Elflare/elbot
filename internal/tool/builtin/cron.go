@@ -262,7 +262,7 @@ func normalizeCronToolNames(names []string) []string {
 }
 
 func (t CronTool) Definition() toolshare.ToolDefinition {
-	builder := toolshare.NewBuilder("cron").Description("定时任务入口；查询→cron_query，修改→cron_write；调用本工具仅返回指引和当前时间。").Risk(toolshare.RiskMedium).SuperadminOnly().DependsOn("cron_query", "cron_write")
+	builder := toolshare.NewBuilder("cron").Weavable().Description("定时任务入口；查询→cron_query，修改→cron_write；调用本工具仅返回指引和当前时间。").Risk(toolshare.RiskMedium).SuperadminOnly().DependsOn("cron_query", "cron_write")
 	definition := builder.Build(t.PrepareCall)
 	definition.DiscoveryContent = func(context.Context) (string, bool, error) {
 		content, override := t.DiscoveryContent()
@@ -561,7 +561,7 @@ func stringPtrIfNotEmpty(value string) *string {
 }
 
 func cronBuilder(name, description string) *toolshare.Builder {
-	return toolshare.NewBuilder(name).Description(description).Risk(toolshare.RiskMedium).SuperadminOnly()
+	return toolshare.NewBuilder(name).Weavable().Description(description).Risk(toolshare.RiskMedium).SuperadminOnly()
 }
 
 func decodeArgs(raw json.RawMessage, out any) error {

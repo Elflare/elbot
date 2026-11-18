@@ -272,7 +272,7 @@ func longMemoryUpdateArgsFromWrite(args longMemoryWriteArgs) longMemoryUpdateArg
 }
 
 func longMemoryBuilder(name, description string) *toolshare.Builder {
-	return toolshare.NewBuilder(name).Description(description).Risk(toolshare.RiskMedium).Tags("agent").SuperadminOnly()
+	return toolshare.NewBuilder(name).Weavable().Description(description).Risk(toolshare.RiskMedium).Tags("agent").SuperadminOnly()
 }
 
 func lmDecodeArgs(raw []byte, out any, name string) error {

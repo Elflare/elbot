@@ -45,6 +45,9 @@ ElBot 不在每轮对话中注入所有工具的完整 schema，只暴露 `disco
 
 **常驻记忆与长期记忆分层**： 常驻记忆只存短小稳定的每轮注入信息，内部区分需确认修改的 core 与可整理的 normal；更长记忆由 LLM 按需通过 `long_memory` 查询，底层用 Markdown 源数据和 SQLite FTS，兼顾透明与检索效率。
 
+
+**tool_weave**：使用 Python，可一次调用多个elbot内置工具。适合批处理、并发、循环和结果过滤。曾经多次请求的一次请求就能完成调用，大幅减少token消耗[^3]
+
 ### 二、强大可扩展
 
 **可扩展的 Hook 系统**： Hook Layer 覆盖 Agent 输入、LLM 请求、LLM 响应、平台发送、平台连接等事件点，可修改消息、追加输出意图、调用脚本。插件可用**任意语言**编写。
@@ -106,3 +109,4 @@ ElBot 仍在快速开发中，接口、配置和内部实现可能继续调整�
 
 [^1]: Chatterji et al., [_How People Use ChatGPT_](https://www.nber.org/papers/w34255), NBER Working Paper 34255, 2025.
 [^2]: Yan et al., [_ShareChat: A Dataset of Chatbot Conversations in the Wild_](https://arxiv.org/abs/2512.17843), arXiv:2512.17843, 2025.
+[^3]: 灵感来源：https://github.com/tontinton/maki

@@ -81,7 +81,7 @@ func (t WebSearchTool) Definition() toolshare.ToolDefinition {
 }
 
 func webSearchBuilder() *toolshare.Builder {
-	return toolshare.NewBuilder("web_search").
+	return toolshare.NewBuilder("web_search").Weavable().
 		Description("网页搜索→答案+来源链接+摘要；正文→web_extract。").
 		Risk(toolshare.RiskLow).
 		Tags("web").

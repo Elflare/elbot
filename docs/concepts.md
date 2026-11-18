@@ -34,6 +34,25 @@ Responses 每轮通过 `tool_choice` 限定当前可调用工具；历史中保�
 
 工具可限制适用的 API 类型：发现、补全、预载和执行都按当前对话模型过滤，后台任务按自身选择的模型判断。
 
+## 用 Python 编排工具
+
+在工作会话中用 `@tool:tool_weave`、`@tool:agent` 或 `@tool:files` 预载编排工具。需要的子工具也可单独预载，或让 Agent 使用 `discover_tool` 发现它们。发现和预载的正文会列出当前完整的「tool_weave 可调用」名单。允许编排的工具以同名异步函数出现，`await` 返回该工具的展示文本；单次调用失败可以用 `except RuntimeError` 处理。图片等非文本工具、`shell` 和 `tool_weave` 本身不在名单中。
+
+`code` 是必填的 Python 源码，可以使用顶层 `await`。例如，发现 `web_extract` 后，可以读取工作区里的 URL 列表，并只向模型输出命中数。
+
+```python
+import asyncio
+from pathlib import Path
+
+urls = Path("urls.txt").read_text().splitlines()
+pages = await asyncio.gather(*(web_extract(url=url) for url in urls))
+print(f"{len(urls)} 个页面中，{sum('deprecated' in page for page in pages)} 个包含 deprecated")
+```
+
+脚本在当前 Workspace 启动，执行结束后退出。省略 `mode` 时由 uv 探测项目，探测失败就用系统 Python，并在工具结果中提示。显式选择 `system` 可直接使用系统 Python；显式 `uv` 在项目外使用临时环境并提示。uv 环境准备失败时回退到系统 Python。系统 Python 启动失败时直接返回错误。可通过 `packages` 传本次需要的临时依赖；选到系统 Python 时会报错并跳过脚本。
+
+外层调用按固定 `high` 风险走权限和 Hook。每个子调用单独经过权限、必要的确认和审计。外层获准执行后开始计时，`timeout` 单位为秒，默认 10，涵盖依赖准备、脚本、子工具和等待子调用确认的时间。
+
 ## 查看图片
 
 `view_image` 仅适用于 Responses，可用 `@tool:view_image` 预载。图片作为工具结果交给模型，不自动发送到聊天。

@@ -41,7 +41,8 @@ type StateUpdate struct {
 }
 
 type StateCommit struct {
-	Metadata string   // 提交后的完整 Session 元数据，保留其他模块的字段。
-	Injected []string // 本次新增声明的模型侧名称。
-	Existing []string // 本次覆盖已有声明的模型侧名称。
+	DiscoveredTools []DiscoveredTool // 合并后的声明，用于生成当前预载的可编排名单。
+	Metadata        string           // 提交后的完整 Session 元数据，保留其他模块的字段。
+	Injected        []string         // 本次新增声明的模型侧名称。
+	Existing        []string         // 本次覆盖已有声明的模型侧名称。
 }

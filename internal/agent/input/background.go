@@ -153,6 +153,9 @@ func (r *BackgroundHandler) preloadBackgroundResources(ctx context.Context, row 
 	if err != nil {
 		return backgroundPreloadResult{Err: err}
 	}
+	if committed.WeaveDescription != "" {
+		prepared.SkillPrompt = strings.TrimSpace(prepared.SkillPrompt + "\n\n" + committed.WeaveDescription)
+	}
 	return backgroundPreloadResult{Tools: committed.Injected, Skills: prepared.Skills, SkillPrompt: prepared.SkillPrompt, NeedsElyphRules: prepared.NeedsElyphRules}
 }
 

@@ -27,7 +27,6 @@ import (
 
 const (
 	defaultShellTimeout   = 10 * time.Second
-	maxShellOutput        = 256 * 1024
 	shellCmdRequired      = `cmd is required; use {"cmd":"..."}`
 	powershellUTF8Prelude = `$OutputEncoding = [System.Text.UTF8Encoding]::new($false); try { [Console]::OutputEncoding = $OutputEncoding } catch {}; `
 )
@@ -173,8 +172,7 @@ func (t ShellTool) PrepareCall(ctx context.Context, req toolshare.CallRequest, i
 		}
 		cmd := shellCommand(runCtx, environment, cmdText)
 		cmd.Dir = workDir
-		var stdout shellOutputBuffer
-		var stderr shellOutputBuffer
+		var stdout, stderr toolshare.ProcessOutput
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 		cancelCommand := cmd.Cancel
@@ -334,32 +332,6 @@ func formatShellContent(data shellData) string {
 		parts = append(parts, fmt.Sprintf("exit_code: %d", data.ExitCode))
 	}
 	return strings.Join(parts, "\n")
-}
-
-// shellOutputBuffer retains a bounded prefix while draining all process output.
-type shellOutputBuffer struct {
-	data      []byte
-	truncated bool
-}
-
-func (b *shellOutputBuffer) Write(p []byte) (int, error) {
-	keep := min(len(p), maxShellOutput-len(b.data))
-	if keep > 0 {
-		if b.data == nil {
-			b.data = make([]byte, 0, maxShellOutput)
-		}
-		b.data = append(b.data, p[:keep]...)
-	}
-	b.truncated = b.truncated || keep < len(p)
-	return len(p), nil
-}
-
-func (b *shellOutputBuffer) String() string {
-	text := string(b.data)
-	if b.truncated {
-		text += fmt.Sprintf("\n... output too long; truncated to first %d KiB ...\n", maxShellOutput/1024)
-	}
-	return text
 }
 
 func isPowerShellEnv() bool {

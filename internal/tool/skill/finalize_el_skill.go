@@ -31,7 +31,7 @@ type finalizeElSkillArgs struct {
 }
 
 func (t FinalizeElSkillTool) Definition() toolshare.ToolDefinition {
-	builder := toolshare.NewBuilder(FinalizeElSkillName).
+	builder := toolshare.NewBuilder(FinalizeElSkillName).Weavable().
 		Description("校验SKILL.elyph；有main.go→gofmt+校验package main+build；成功→reload。").
 		Risk(toolshare.RiskMedium)
 

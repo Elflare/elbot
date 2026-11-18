@@ -25,7 +25,7 @@ type readElSkillArgs struct {
 }
 
 func (t ReadElSkillTool) Definition() toolshare.ToolDefinition {
-	builder := toolshare.NewBuilder(ReadElSkillName).
+	builder := toolshare.NewBuilder(ReadElSkillName).Weavable().
 		Description("读EL Skill文件→1-based行号+revision；省略行范围→全文。").
 		DependsOn("modify_el_skill").
 		Risk(toolshare.RiskMedium)

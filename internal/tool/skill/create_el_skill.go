@@ -37,7 +37,7 @@ type createElSkillArgs struct {
 }
 
 func (t CreateElSkillTool) Definition() toolshare.ToolDefinition {
-	builder := toolshare.NewBuilder(CreateElSkillName).
+	builder := toolshare.NewBuilder(CreateElSkillName).Weavable().
 		NeedsElyphRules().
 		Description("创建可复用EL Skill，一次性任务不创建；有go_source→编译并用go_skill_run调用，否则→纯ELyph文档。").
 		Risk(toolshare.RiskHigh).

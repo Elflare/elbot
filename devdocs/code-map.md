@@ -103,6 +103,7 @@ rg -n '^<!-- locator:tool-flow -->$' devdocs/code-map.md devdocs/architecture.md
 - `tool/contracts.go`、`tool/supervisor.go`：公开工具定义、批量注册与统一查询入口；`tool/wiring.go`、`tool/builtin/wiring.go`：公共组件与 Builtin 内部接线。
 - `tool/share/`：`definition.go` 定义；`risk.go` 风险；`prepared.go` 准备结果；`media.go` 媒体契约。
 - `tool/builtin/`：`shell.go` Shell；`shell_warnings.go` 文件警告；`shell_risk.go` 风险；`shell_sandbox.go` 路径限制。
+- `tool/builtin/weave/`：Python runner、解释器选择与管道；`tool/execution/weave.go`：可编排名单和子调用。
 - `tool/builtin/`：`file_tools_ast.go` Go 单文件结构索引；`file_tools_directory.go` 目录文本搜索。
 - `tool/builtin/long_memory/`：`tools.go` 工具入口；`store.go` 记忆写入；`index.go` 索引同步；`files.go` 文件格式；`search.go` 检索与展示。
 - `tool/builtin/web/`：`extract.go` 网页提取入口；`extract_fetch.go` 提取请求与响应；`extract_html.go` 直抓文本与链接；`extract_cache.go` 提取缓存；`search.go` 网页搜索。

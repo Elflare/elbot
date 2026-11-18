@@ -189,7 +189,12 @@ func (m *Supervisor) Run(ctx context.Context, deps RunnerDeps, req RunRequest) R
 }
 func (m *Supervisor) Commit(ctx context.Context, id string, update StateUpdate) (StateCommit, error) {
 	committed, err := m.state.Commit(ctx, id, toInternalStateUpdate(update))
-	return toPublicStateCommit(committed), err
+	if err != nil {
+		return StateCommit{}, err
+	}
+	result := toPublicStateCommit(committed)
+	result.WeaveDescription, err = m.engine.WeaveDescription(toolPolicyContext(context.WithoutCancel(ctx)), committed.DiscoveredTools)
+	return result, err
 }
 func (m *Supervisor) PrepareTools(ctx context.Context, names []string) (ToolPreload, error) {
 	ctx = toolPolicyContext(ctx)

@@ -47,7 +47,7 @@ type modifyElSkillPreview struct {
 }
 
 func (t ModifyElSkillTool) Definition() toolshare.ToolDefinition {
-	builder := toolshare.NewBuilder(ModifyElSkillName).
+	builder := toolshare.NewBuilder(ModifyElSkillName).Weavable().
 		Description("编辑EL Skill→diff；skill_elyph校验ELyph，code_source仅写源码；完成修改→finalize_el_skill检查并reload。").
 		DependsOn(FinalizeElSkillName, "read_el_skill").
 		Risk(toolshare.RiskHigh)

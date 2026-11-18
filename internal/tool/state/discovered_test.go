@@ -135,7 +135,7 @@ func TestPrepareUpdateOwnsOnlyToolFieldsAndMatchesCommit(t *testing.T) {
 	service := NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)
 	item := stateTestTool("new")
 	update := toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{item}, Tags: []string{"new"}}
-	patch, err := PrepareUpdate(raw, update)
+	patch, _, err := PrepareUpdate(raw, update)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,12 +187,12 @@ func TestPrepareUpdateFailureReturnsNoPartialPatch(t *testing.T) {
 		{raw: `{"discovered_tools":"invalid"}`},
 		{raw: `{"tool_tags":["old"]}`, update: toolshare.StateUpdate{Tools: []toolshare.DiscoveredTool{item}, Tags: []string{"new"}}},
 	} {
-		patch, err := PrepareUpdate(tc.raw, tc.update)
+		patch, _, err := PrepareUpdate(tc.raw, tc.update)
 		if err == nil || patch != nil {
 			t.Fatalf("partial patch=%v err=%v", patch, err)
 		}
 	}
-	patch, err := PrepareUpdate(`{"unknown":1}`, toolshare.StateUpdate{})
+	patch, _, err := PrepareUpdate(`{"unknown":1}`, toolshare.StateUpdate{})
 	if err != nil || len(patch) != 0 {
 		t.Fatalf("empty update=%v err=%v", patch, err)
 	}

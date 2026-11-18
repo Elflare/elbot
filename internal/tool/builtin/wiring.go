@@ -9,6 +9,7 @@ import (
 	"elbot/internal/operationresult"
 	"elbot/internal/processenv"
 	"elbot/internal/tool/builtin/long_memory"
+	"elbot/internal/tool/builtin/weave"
 	"elbot/internal/tool/builtin/web"
 	"elbot/internal/tool/share"
 )
@@ -45,6 +46,7 @@ func NewTools(deps Deps) []share.ToolDefinition {
 	guard := FileGuard{NewElSkillFileGuardRule(deps.SkillRoot), NewResidentMemoryFileGuardRule(deps.ResidentMemoryPath), NewLongMemoryFileGuardRule(deps.LongMemoryDir)}
 	deps.FileRollback.CheckWrite = guard.CheckWrite
 	definitions := []share.ToolDefinition{
+		weave.Definition(deps.ProcessEnv),
 		(WorkspaceTool{}).Definition(),
 		(ViewImageTool{center: deps.Media, history: deps.ChatHistory}).Definition(),
 		(SendFileTool{media: deps.Media}).Definition(),

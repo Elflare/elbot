@@ -254,6 +254,25 @@ func TestManagerScansGoTextSkillWithoutBinary(t *testing.T) {
 	}
 }
 
+func TestReloadCommandSkillWeavable(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "agent", "text_skill")
+	writeSkill(t, dir, "---\nname: text_skill\ndescription: Text skill\n---\n")
+	registry := toolregistry.NewRegistry(security.DefaultPermission())
+	manager := NewManager(root, registry, nil, processenv.Environment{})
+	const manifest = "risk = 'low'\ncommand = ['cmd']\nparameters = '{\"type\":\"object\",\"properties\":{}}'\n"
+	for _, field := range []string{"", "weavable = true\n", "weavable = false\n"} {
+		writeAgentSkillConfig(t, dir, manifest+field)
+		if err := manager.Reload(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		got, ok := registry.Get("text_skill")
+		if !ok || got.Definition.Weavable != (field == "weavable = true\n") {
+			t.Fatalf("field %q: registered=%v weavable=%v", field, ok, got.Definition.Weavable)
+		}
+	}
+}
+
 func TestManagerReloadRemovesDeletedExternalSkill(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "agent", "docx")

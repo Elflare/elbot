@@ -57,7 +57,7 @@ func (WorkspaceTool) DiscoveryContent(ctx context.Context) (string, bool, error)
 }
 
 func workspaceBuilder() *toolshare.Builder {
-	return toolshare.NewBuilder("workspace").
+	return toolshare.NewBuilder("workspace").Weavable().
 		Description("当前工作目录，文件工具和shell的路径相对工作目录，工作时先切换；{}→查询，reset=true→重置，否则path→切换。").
 		Risk(toolshare.RiskLow).
 		SuperadminOnly().

@@ -131,9 +131,10 @@ type StateUpdate struct {
 }
 
 type StateCommit struct {
-	Metadata string   // 保留其他业务字段的完整会话元数据，用于同步调用方快照。
-	Injected []string // 本次新增的模型侧名称。
-	Existing []string // 本次更新的已有模型侧名称。
+	WeaveDescription string   // 随本次预载正文交付的全量可编排名单。
+	Metadata         string   // 保留其他业务字段的完整会话元数据，用于同步调用方快照。
+	Injected         []string // 本次新增的模型侧名称。
+	Existing         []string // 本次更新的已有模型侧名称。
 }
 
 type ToolPreload struct {

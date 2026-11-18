@@ -17,18 +17,20 @@ import (
 	"elbot/internal/elyph"
 	"elbot/internal/events"
 	"elbot/internal/llm"
-	"elbot/internal/media"
 	"elbot/internal/operationresult"
 	"elbot/internal/storage"
 	"elbot/internal/workspace"
 )
 
 // Run 顺序准备与确认、并发执行，并由单一协调器提交结果。
-func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolshare.RunRequest) toolshare.RunResult {
+func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolshare.RunRequest) (out toolshare.RunResult) {
 	if req.Session.Mode == storage.SessionModeChat {
 		return toolshare.RunResult{}
 	}
 	sessionID := req.Session.ID
+	confirmations := &confirmingDeps{RunnerDeps: deps, slot: make(chan struct{}, 1)}
+	deps = confirmations
+	defer func() { out.ConfirmationExtra = confirmations.extra }()
 	state, err := m.DecodeState(req.Session.Metadata)
 	if err != nil {
 		return toolshare.RunResult{Err: err}
@@ -99,18 +101,7 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 		actor := task.actor
 
 		metadata := storage.SessionMetadata{}
-		if result.Result.Status == operationresult.Success && result.Result.Data != nil && len(result.Result.Data.Outputs) > 0 {
-			sent, err := deps.SendOutputs(ctx, result.Result.Data.Outputs)
-			if err != nil {
-				events.LogAndNotify(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "tool_output_failed", Module: "tool", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}, events.NewNotification(ctx, slog.LevelWarn, err.Error()))
-				result.Error = err
-				result.Result = operationresult.Result[*toolshare.Result]{}
-				result.Message.Segments = llm.TextSegments(err.Error())
-			} else if sent.Status != operationresult.Success {
-				result.Result = operationresult.Result[*toolshare.Result]{Status: sent.Status, Message: sent.Message}
-				result.Message.Segments = llm.TextSegments(sent.Message)
-			}
-		}
+		deliverOutputs(ctx, deps, &result)
 		rawRecord := &storage.ToolCallRecord{SessionID: sessionID, ToolCallID: call.ID, ToolName: call.Name, Actor: actor.ActorIdentity, RiskLevel: task.risk, StartedAt: task.startedAt, FinishedAt: task.finishedAt, Success: result.Error == nil && result.Result.Status == operationresult.Success}
 		if result.Error != nil {
 			rawRecord.Error = result.Error.Error()
@@ -149,9 +140,17 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			if err != nil {
 				return err
 			}
-			metadata, err = m.PrepareUpdate(req.Session.Metadata, update)
+			var discovered []toolshare.DiscoveredTool
+			metadata, discovered, err = m.PrepareUpdate(req.Session.Metadata, update)
 			if err != nil {
 				return err
+			}
+			description, err := m.WeaveDescription(ctx, discovered)
+			if err != nil {
+				return err
+			}
+			if description != "" {
+				result.Message.Segments = llm.AppendSegmentText(result.Message.Segments, "\n\n"+description)
 			}
 		}
 		stored := deps.ToolResultMessage(sessionID, result.Message)
@@ -208,8 +207,6 @@ func (m *Manager) Run(ctx context.Context, deps toolshare.RunnerDeps, req toolsh
 			}
 		}
 	}
-	var confirmationExtra string
-prepare:
 	for index, original := range req.Calls {
 		if ctx.Err() != nil {
 			return toolshare.RunResult{Stopped: true, Err: ctx.Err()}
@@ -234,11 +231,6 @@ prepare:
 		task := &tasks[index]
 		task.startedAt = storage.Now()
 		task.actor = actor
-		fail := func(call llm.ToolCallRequest, err error, content string) {
-			task.result = executionResult{Message: toolMessage(call.Name, call.ID, content), Error: err}
-			task.finishedAt = storage.Now()
-			ready <- index
-		}
 		var call llm.ToolCallRequest
 		prepareCtx := ctx
 		if waitErr := await(func() { call, err = deps.PrepareToolCall(prepareCtx, &snapshot, original) }); waitErr != nil {
@@ -305,7 +297,7 @@ prepare:
 		}
 		switch confirmation.Status {
 		case operationresult.Timeout, operationresult.Canceled, operationresult.Conflict:
-			return toolshare.RunResult{ConfirmationExtra: confirmationExtra, Stopped: true}
+			return toolshare.RunResult{Stopped: true}
 		}
 		if confirmation.Status != operationresult.Success {
 			message := toolMessage(call.Name, call.ID, confirmation.Message)
@@ -315,29 +307,25 @@ prepare:
 			ready <- index
 			continue
 		}
-		confirm := confirmation.Data
-		confirmationExtra = joinAssistantText(confirmationExtra, confirm.Extra)
 		runToolCtx, done, err := deps.StartToolRequest(toolCtx, sessionID, call.Name)
 
 		if err != nil {
 			return toolshare.RunResult{Err: err}
 		}
 		runToolCtx = deps.PrepareToolContext(runToolCtx, &snapshot, call)
-		// Validate prepared argument references without opening another write transaction.
-		for _, id := range media.ArgumentMediaIDs(call.Arguments) {
-			referenced, err := m.Media.Metadata(runToolCtx, id)
+		if call.Name == "tool_weave" {
+			runToolCtx, err = m.bindWeave(runToolCtx, deps, snapshot, req.DiscoveredTools, call.ID, actor)
 			if err != nil {
 				done()
-				fail(call, err, fmt.Sprintf("tool call %s failed: retain media arguments: %v", call.Name, err))
-				continue prepare
+				return toolshare.RunResult{Err: err}
 			}
-			if referenced.Status != operationresult.Success {
-				done()
-				task.result = executionResult{Message: toolMessage(call.Name, call.ID, referenced.Message), Result: operationresult.Result[*toolshare.Result]{Status: referenced.Status, Message: referenced.Message}, Summary: referenced.Message}
-				task.finishedAt = storage.Now()
-				ready <- index
-				continue prepare
-			}
+		}
+		if rejected := m.checkMediaArguments(runToolCtx, call); rejected != nil {
+			done()
+			task.result = *rejected
+			task.finishedAt = storage.Now()
+			ready <- index
+			continue
 		}
 		workers.Go(func() {
 			startedAt := time.Now()
@@ -365,7 +353,7 @@ prepare:
 	}
 	err = req.Committer.Flush(ctx)
 
-	return toolshare.RunResult{ConfirmationExtra: confirmationExtra, Err: err}
+	return toolshare.RunResult{Err: err}
 }
 
 func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor contextinfo.Actor, sessionID string, call llm.ToolCallRequest, resolvedTool resolvedTool, assessment toolshare.RiskAssessment, detail []toolshare.ConfirmationDetailBlock) (operationresult.Result[toolshare.ConfirmResult], error) {
@@ -407,6 +395,21 @@ func (m *Manager) confirm(ctx context.Context, deps toolshare.RunnerDeps, actor 
 		return operationresult.Result[toolshare.ConfirmResult]{Status: operationresult.Success, Data: toolshare.ConfirmResult{}}, nil
 	}
 	return deps.ConfirmToolCall(ctx, sessionID, call, assessment, detail)
+}
+
+func deliverOutputs(ctx context.Context, deps toolshare.RunnerDeps, result *executionResult) {
+	if result.Result.Status == operationresult.Success && result.Result.Data != nil && len(result.Result.Data.Outputs) > 0 {
+		sent, err := deps.SendOutputs(ctx, result.Result.Data.Outputs)
+		if err != nil {
+			events.LogAndNotify(ctx, events.LogRecord{Category: events.LogCategoryLog, Level: slog.LevelWarn, EventName: "tool_output_failed", Module: "tool", Content: err.Error(), Identity: events.LogIdentityFromContext(ctx), ResultStatus: events.LogStatus(err)}, events.NewNotification(ctx, slog.LevelWarn, err.Error()))
+			result.Error = err
+			result.Result = operationresult.Result[*toolshare.Result]{}
+			result.Message.Segments = llm.TextSegments(err.Error())
+		} else if sent.Status != operationresult.Success {
+			result.Result = operationresult.Result[*toolshare.Result]{Status: sent.Status, Message: sent.Message}
+			result.Message.Segments = llm.TextSegments(sent.Message)
+		}
+	}
 }
 
 func toolMessage(name, id, content string) llm.LLMMessage {

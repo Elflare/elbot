@@ -50,12 +50,16 @@ func DecodeState(raw string) (toolshare.State, error) {
 
 // PrepareUpdate 根据调用方的会话快照生成工具字段补丁，不读取或写入数据库。
 // 返回值不含其他模块的元数据；调用方须与工具结果在同一事务中提交。
-func PrepareUpdate(raw string, update toolshare.StateUpdate) (storage.SessionMetadata, error) {
+func PrepareUpdate(raw string, update toolshare.StateUpdate) (storage.SessionMetadata, []toolshare.DiscoveredTool, error) {
 	state, err := DecodeState(raw)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return prepareUpdate(&state, update)
+	patch, err := prepareUpdate(&state, update)
+	if err != nil {
+		return nil, nil, err
+	}
+	return patch, state.DiscoveredTools, nil
 }
 
 // prepareUpdate 合并声明与标签，并编码工具拥有的非空字段。
@@ -144,6 +148,7 @@ func (s *StateService) Commit(ctx context.Context, id string, update toolshare.S
 			row.Metadata = metadata
 			row.UpdatedAt = storage.Now()
 		}
+		result.DiscoveredTools = state.DiscoveredTools
 		result.Injected, result.Existing = uniqueNames(injected), uniqueNames(existing)
 		return nil
 	})

@@ -42,6 +42,7 @@ const (
 
 // Info 是工具目录元数据，不携带可执行工具对象。
 type Info struct {
+	Weavable        bool          // 允许通过 tool_weave 调用；结果须能用纯文本完整表达。
 	NeedsElyphRules bool          // 发现该工具时需要 ELyph 通用规则。
 	APITypes        []llm.APIType // 限定可用协议，空值不限。
 	Name            string        // 工具名称。

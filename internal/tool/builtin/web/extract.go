@@ -59,7 +59,7 @@ func (t *WebExtractTool) Definition() toolshare.ToolDefinition {
 }
 
 func webExtractBuilder() *toolshare.Builder {
-	return toolshare.NewBuilder("web_extract").
+	return toolshare.NewBuilder("web_extract").Weavable().
 		Description("提取网页正文；同URL+offset→续读。").
 		Risk(toolshare.RiskLow).
 		Tags("web").

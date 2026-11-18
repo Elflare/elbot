@@ -25,7 +25,7 @@ type agentSkillArgs struct {
 }
 
 func (t AgentSkillTool) Definition() toolshare.ToolDefinition {
-	builder := toolshare.NewBuilder(AgentSkillManagerName).
+	builder := toolshare.NewBuilder(AgentSkillManagerName).Weavable().
 		Description(agentSkillToolDescription()).
 		Risk(toolshare.RiskHigh).
 		Hidden()
@@ -175,6 +175,6 @@ func readAgentSkillConfig(record record, path string) (string, error) {
 	}
 	b.WriteString("\nFormat:\n")
 	b.WriteString("位置参数用顶层 positional = [\\\"name\\\"] 按数组顺序声明；与 [args] 不能重复映射同一参数。必填参数由 positional 或 [args] 映射即可。\n")
-	b.WriteString("# 文档型 Skill 只限制可见性时，可以只写：\nrisk = \"high\"\nsuperadmin_only = true\n\n# 注册成普通工具时，补齐命令和 schema：\nrisk = \"medium\"\nsuperadmin_only = false\ntags = [\"doc\"]\ncommand = [\"python\", \"foo.py\"]\ntimeout_seconds = 30\nexpose_root = false\n\nparameters = '''\n{\n  \"type\": \"object\",\n  \"required\": [\"input\"],\n  \"properties\": {\n    \"input\": {\"type\": \"string\", \"description\": \"输入文本\"},\n    \"mode\": {\"type\": \"string\", \"description\": \"处理模式\"}\n  }\n}\n'''\n\n[args]\ninput = \"--input\"\nmode = \"--mode\"\n")
+	b.WriteString("# 文档型 Skill 只限制可见性时，可以只写：\nrisk = \"high\"\nsuperadmin_only = true\n\n# 注册成普通工具时，补齐命令和 schema：\nrisk = \"medium\"\nsuperadmin_only = false\nweavable = false # 纯文本工具可设为 true，允许 tool_weave 调用\ntags = [\"doc\"]\ncommand = [\"python\", \"foo.py\"]\ntimeout_seconds = 30\nexpose_root = false\n\nparameters = '''\n{\n  \"type\": \"object\",\n  \"required\": [\"input\"],\n  \"properties\": {\n    \"input\": {\"type\": \"string\", \"description\": \"输入文本\"},\n    \"mode\": {\"type\": \"string\", \"description\": \"处理模式\"}\n  }\n}\n'''\n\n[args]\ninput = \"--input\"\nmode = \"--mode\"\n")
 	return strings.TrimRight(b.String(), "\n"), nil
 }

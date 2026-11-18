@@ -9,6 +9,7 @@ import (
 )
 
 type Builder struct {
+	weavable        bool
 	needsElyphRules bool
 	apiTypes        []llm.APIType
 	name            string
@@ -38,6 +39,11 @@ func NewBuilder(name string) *Builder {
 
 func (b *Builder) Description(description string) *Builder {
 	b.description = description
+	return b
+}
+
+func (b *Builder) Weavable() *Builder {
+	b.weavable = true
 	return b
 }
 
@@ -126,7 +132,7 @@ func (b *Builder) ObjectArray(name, description string, properties map[string]an
 }
 
 func (b *Builder) BuildInfo() Info {
-	return Info{Name: b.name, NeedsElyphRules: b.needsElyphRules, APITypes: append([]llm.APIType(nil), b.apiTypes...), Description: b.description, Risk: b.risk, SuperadminOnly: b.superadminOnly, Hidden: b.hidden, OwnerScoped: b.ownerScoped, ForegroundOnly: b.foregroundOnly, Tags: append([]string(nil), b.tags...), DependsOn: append([]string(nil), b.dependsOn...)}
+	return Info{Weavable: b.weavable, Name: b.name, NeedsElyphRules: b.needsElyphRules, APITypes: append([]llm.APIType(nil), b.apiTypes...), Description: b.description, Risk: b.risk, SuperadminOnly: b.superadminOnly, Hidden: b.hidden, OwnerScoped: b.ownerScoped, ForegroundOnly: b.foregroundOnly, Tags: append([]string(nil), b.tags...), DependsOn: append([]string(nil), b.dependsOn...)}
 }
 
 func (b *Builder) Build(prepare func(context.Context, CallRequest, Info) (operationresult.Result[*PreparedCall], error)) ToolDefinition {

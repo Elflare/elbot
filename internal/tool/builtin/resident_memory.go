@@ -62,7 +62,7 @@ func NewResidentMemoryTools(service ResidentMemoryService) []toolshare.ToolDefin
 }
 
 func (t ResidentMemoryTool) Definition() toolshare.ToolDefinition {
-	builder := toolshare.NewBuilder(ResidentMemoryToolName).
+	builder := toolshare.NewBuilder(ResidentMemoryToolName).Weavable().
 		Description("当前用户/平台的常驻记忆入口；读→resident_memory_read，普通写→resident_memory_normal，核心写→resident_memory_core。").
 		Risk(toolshare.RiskLow).
 		DependsOn(ResidentMemoryReadToolName, ResidentMemoryNormalToolName, ResidentMemoryCoreToolName)
@@ -218,7 +218,7 @@ func (t ResidentMemoryCoreTool) PrepareCall(ctx context.Context, req toolshare.C
 }
 
 func memoryBuilder(name, description string, risk toolshare.RiskLevel) *toolshare.Builder {
-	return toolshare.NewBuilder(name).Description(description).Risk(risk).OwnerScoped()
+	return toolshare.NewBuilder(name).Weavable().Description(description).Risk(risk).OwnerScoped()
 }
 
 func normalDescription(service ResidentMemoryService) string {

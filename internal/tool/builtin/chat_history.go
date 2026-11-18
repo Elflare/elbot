@@ -73,7 +73,7 @@ func (t ReplyToChatHistoryMessageTool) Definition() toolshare.ToolDefinition {
 }
 
 func searchChatHistoryBuilder() *toolshare.Builder {
-	return toolshare.NewBuilder("search_chat_history").
+	return toolshare.NewBuilder("search_chat_history").Weavable().
 		Description("查聊天历史。前台→当前聊天，禁传platform/chat_type/chat_id；后台→platform+chat_type+chat_id非空必填。起始时间优先级：有效since > hours>0 > days>0。").
 		Risk(toolshare.RiskLow).
 		Tags("chat").
@@ -92,7 +92,7 @@ func searchChatHistoryBuilder() *toolshare.Builder {
 		Boolean("full", "默认false；true→取消单条300字符截断，总输出仍≤6000字符，超长行可省略。")
 }
 func aroundChatHistoryBuilder() *toolshare.Builder {
-	return toolshare.NewBuilder("get_chat_history_around").
+	return toolshare.NewBuilder("get_chat_history_around").Weavable().
 		Description("查当前聊天中指定消息前后的上下文。").
 		Risk(toolshare.RiskLow).
 		Hidden().
@@ -104,7 +104,7 @@ func aroundChatHistoryBuilder() *toolshare.Builder {
 		Boolean("full", "默认false；true→取消单条300字符截断，总输出仍≤6000字符，超长行可省略。")
 }
 func replyChatHistoryBuilder() *toolshare.Builder {
-	return toolshare.NewBuilder("reply_to_chat_history_message").
+	return toolshare.NewBuilder("reply_to_chat_history_message").Weavable().
 		Description("引用历史消息并回复当前聊天；成功后勿重复发送。").
 		Hidden().
 		Risk(toolshare.RiskLow).

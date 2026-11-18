@@ -284,6 +284,7 @@ superadmin_only = true
 ```toml
 risk = "medium"
 superadmin_only = false
+weavable = true
 tags = ["doc"]
 depends_on = ["read_file"]
 command = ["python", "foo.py"]
@@ -309,6 +310,7 @@ input = "--input"
 | --- | --- | --- |
 | `risk` | 注册成工具时必填 | `safe`、`low`、`medium`、`high`、`critical`；文档型未写按 `safe` 处理。 |
 | `superadmin_only` | 否 | `true` 时只有超级管理员能发现、预载或调用。 |
+| `weavable` | 否 | 允许 `tool_weave` 调用。仅用于返回纯文本的可执行 Skill，默认 `false`。 |
 | `tags` | 否 | 工具分类，用于 `@tool:<tag>` 预载。 |
 | `depends_on` | 否 | 发现或预载该 Skill 时必须同时可用的工具/Skill 名称。 |
 | `command` | 工具化必填 | 命令数组，不用 shell 字符串。 |

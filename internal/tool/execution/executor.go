@@ -10,6 +10,7 @@ import (
 	"log/slog"
 
 	"elbot/internal/llm"
+	"elbot/internal/media"
 	"elbot/internal/operationresult"
 )
 
@@ -75,4 +76,19 @@ func (m *Manager) executePrepared(ctx context.Context, call llm.ToolCallRequest,
 func executionError(call llm.ToolCallRequest, err error) executionResult {
 	content := err.Error()
 	return executionResult{Message: toolMessage(call.Name, call.ID, content), Error: err, Summary: content}
+}
+
+// 校验媒体引用时不打开额外的写事务。返回值只在需要结束本次调用时存在。
+func (m *Manager) checkMediaArguments(ctx context.Context, call llm.ToolCallRequest) *executionResult {
+	for _, id := range media.ArgumentMediaIDs(call.Arguments) {
+		ref, err := m.Media.Metadata(ctx, id)
+		if err != nil {
+			message := fmt.Sprintf("tool call %s failed: retain media arguments: %v", call.Name, err)
+			return &executionResult{Message: toolMessage(call.Name, call.ID, message), Error: err}
+		}
+		if ref.Status != operationresult.Success {
+			return &executionResult{Message: toolMessage(call.Name, call.ID, ref.Message), Result: operationresult.Result[*toolshare.Result]{Status: ref.Status, Message: ref.Message}, Summary: ref.Message}
+		}
+	}
+	return nil
 }

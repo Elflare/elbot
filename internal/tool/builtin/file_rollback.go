@@ -32,7 +32,7 @@ func (t RollbackFileTool) Definition() toolshare.ToolDefinition {
 }
 
 func rollbackFileBuilder() *toolshare.Builder {
-	return toolshare.NewBuilder("rollback_file").
+	return toolshare.NewBuilder("rollback_file").Weavable().
 		Description("撤销当前Session最近一次edit_file：已有→恢复，新建→删除；后续变化→拒绝；一次性，无redo；切换Session/重启/淘汰后失效；不含shell或外部修改。").
 		Hidden().
 		SuperadminOnly().

@@ -190,6 +190,9 @@ func (c *InputCoordinator) handleSessionInput(ctx context.Context, session *stor
 			return ctx, err
 		}
 		text = skillDirectives.Text
+		if directives.WeaveDescription != "" {
+			text = strings.TrimSpace(text + "\n\n" + directives.WeaveDescription)
+		}
 		ctx = agentshare.WithInboundSegments(ctx, agentshare.ReplaceInboundTextSegments(ctx, text))
 		input := agentshare.InboundTurnInput(ctx, text)
 		input.NeedsElyphRules = input.NeedsElyphRules || directives.NeedsElyphRules || skillDirectives.NeedsElyphRules

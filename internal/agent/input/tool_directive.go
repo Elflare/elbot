@@ -16,13 +16,14 @@ import (
 )
 
 type toolDirectiveResult struct {
-	NeedsElyphRules bool
-	update          tool.StateUpdate
-	Text            string
-	Injected        []string
-	Existing        []string
-	Invalid         []string
-	Err             error
+	WeaveDescription string // 当前预载结果中的可编排名单。
+	NeedsElyphRules  bool
+	update           tool.StateUpdate
+	Text             string
+	Injected         []string
+	Existing         []string
+	Invalid          []string
+	Err              error
 }
 
 type skillDirectiveResult struct {
@@ -129,6 +130,9 @@ func (c *InputCoordinator) notifyToolDirectiveResult(ctx context.Context, result
 	if len(result.Invalid) > 0 {
 		parts = append(parts, "tools unavailable: "+strings.Join(sortedUnique(result.Invalid), ", "))
 	}
+	if result.WeaveDescription != "" {
+		parts = append(parts, result.WeaveDescription)
+	}
 	if len(parts) == 0 {
 		return nil
 	}
@@ -214,6 +218,7 @@ func (c *InputCoordinator) applyInputDirectives(ctx context.Context, row *storag
 		return ctx, operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, err
 	}
 	toolNames := map[string]bool{}
+	tools.WeaveDescription = committed.WeaveDescription
 	skillNames := map[string]bool{}
 	for _, item := range tools.update.Tools {
 		toolNames[item.Name] = true

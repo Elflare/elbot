@@ -100,7 +100,7 @@ func isSensitiveReadFile(path string) bool {
 }
 
 func readFileBuilder() *toolshare.Builder {
-	return toolshare.NewBuilder("read_file").
+	return toolshare.NewBuilder("read_file").Weavable().
 		Description("读文本→行号+revision；grep搜索文本；ast查看Go文件声明骨架，再按行范围read实现。").
 		Risk(toolshare.RiskLow).
 		SuperadminOnly().
@@ -351,7 +351,7 @@ func (t EditFileTool) Definition() toolshare.ToolDefinition {
 
 func editFileBuilder() *toolshare.Builder {
 	editProperties := fileops.EditOperationProperties()
-	return toolshare.NewBuilder("edit_file").
+	return toolshare.NewBuilder("edit_file").Weavable().
 		Description("批量编辑单个文本文件；成功→unified diff，任一操作失败→不写入。").
 		Risk(toolshare.RiskHigh).
 		DependsOn("workspace", "rollback_file").

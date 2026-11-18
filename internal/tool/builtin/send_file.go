@@ -38,7 +38,7 @@ func (t SendFileTool) Definition() toolshare.ToolDefinition {
 }
 
 func sendFileBuilder() *toolshare.Builder {
-	return toolshare.NewBuilder("send_file").
+	return toolshare.NewBuilder("send_file").Weavable().
 		Description("发送文件到当前会话对应目标。").
 		Risk(toolshare.RiskLow).
 		String("source", "media ID / HTTP(S) / 本地路径 / file URI。", toolshare.Required()).

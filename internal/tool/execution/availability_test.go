@@ -73,7 +73,7 @@ func TestSchemasKeepStableOrderAcrossBatchAndIncrementalDiscovery(t *testing.T) 
 	beta := discovered("beta")
 	prepare := func(raw string, tools ...toolshare.DiscoveredTool) (string, []toolshare.DiscoveredTool) {
 		t.Helper()
-		patch, err := state.PrepareUpdate(raw, toolshare.StateUpdate{Tools: tools})
+		patch, items, err := state.PrepareUpdate(raw, toolshare.StateUpdate{Tools: tools})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -81,11 +81,7 @@ func TestSchemasKeepStableOrderAcrossBatchAndIncrementalDiscovery(t *testing.T) 
 		if err != nil {
 			t.Fatal(err)
 		}
-		snapshot, err := state.DecodeState(metadata)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return metadata, snapshot.DiscoveredTools
+		return metadata, items
 	}
 	_, batch := prepare("", beta, alpha)
 	first, _ := prepare("", beta)
