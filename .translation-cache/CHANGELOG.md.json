@@ -1,20 +1,12 @@
 {
   "segments": {
-    "CHANGELOG.md:section:093b2e234d01074a039150306d9cd21715f5b2e8f30d210138165f3fc4b92f4c": {
+    "CHANGELOG.md:section:2b4d70d82ebe9dc8fe9da8621364940be3b911953fc2abf65537cb7d9805561d": {
       "kind": "section",
-      "source": "### Fixed\n\n- 修复 workspace 清理失效目录或并发切换后仍返回旧目录状态，以及 Git diff 输出超限时吞掉取消错误的问题。\n- 文件引用的格式、越界和目标类型拒绝现在显示业务原因并结束输入处理，不再作为程序故障传播。\n- 修复首次进入或 `/new` 后，一些命令因没有当前 Session 而报 `not found` 的问题。\n- 修复 `/resume` 忽略置顶的问题。\n- 在重构中修复一些可能会出现的bug。\n- 修复chat历史搜索工具bug。现在后台、前台都能搜了，且互不影响。\n- 修复多次压缩重复内容的bug\n\n",
+      "source": "### Fixed\n\n- 修复 QQ 官方机器人在全量群消息模式下漏判 @ 自己，以及专用 @ 消息可能误删正文开头其他提及的问题。\n- 修复 workspace 清理失效目录或并发切换后仍返回旧目录状态，以及 Git diff 输出超限时吞掉取消错误的问题。\n- 文件引用的格式、越界和目标类型拒绝现在显示业务原因并结束输入处理，不再作为程序故障传播。\n- 修复首次进入或 `/new` 后，一些命令因没有当前 Session 而报 `not found` 的问题。\n- 修复 `/resume` 忽略置顶的问题。\n- 在重构中修复一些可能会出现的bug。\n- 修复chat历史搜索工具bug。现在后台、前台都能搜了，且互不影响。\n- 修复多次压缩重复内容的bug\n\n",
       "source_file": "CHANGELOG.md",
-      "source_hash": "6953952727159228651010e30055921e1ee2bfe294a64eddd6716f933e2f8e0c",
-      "translation": "### Fixed\n\n- Fixed issues where workspace cleanup of invalid directories or concurrent switching still returned the old directory state, and where cancellation errors were swallowed when Git diff output exceeded the limit.\n- File reference format errors, out-of-bounds errors, and target type rejections now display the business reason and terminate input processing, rather than propagating as program failures.\n- Fixed an issue where some commands reported `not found` due to the absence of a current Session after the first entry or using `/new`.\n- Fixed an issue where `/resume` ignored pinned items.\n- Fixed several potential bugs during refactoring.\n- Fixed a bug in the chat history search tool. Both background and foreground searches are now functional and do not interfere with each other.\n- Fixed a bug where duplicate content occurred during multiple compressions.\n\n",
-      "updated_at": 1794842307
-    },
-    "CHANGELOG.md:section:91428757620fd18c5c4040579fd878ba8f7f263bf3b52b4e70aaba5349ecae5e": {
-      "kind": "section",
-      "source": "### Added\n\n- 新增 `tool_weave`，可执行Python代码并调用elbot工具。纯文本 AgentSkill 可用 `weavable = true` 加入编排。\n- AgentSkill TOML 支持 `depends_on`，Skill 标签参与 `@t:` 工具组补全和预载。\n- AgentSkill TOML 新增 `use_workspace`，启用后命令和媒体路径以当前 workspace 为基准。\n- AgentSkill TOML 工具支持通过 `positional` 数组按指定顺序传入位置参数，可与 `[args]` flag 参数组合使用。\n- CLI 远程服务新增静态前端托管：自动识别主配置旁的 `frontend/index.html`。\n- 新增大量 CLI 远程协议\n- 新增配置文件锁，防止多个实例使用同一份配置文件。\n- web 搜索增加 `markdownnew`\n\n",
-      "source_file": "CHANGELOG.md",
-      "source_hash": "bba1de68a772a7640b56ba6f6c6cc5df2aa5de01c932e708dd7eefe179576d63",
-      "translation": "### Added\n\n- Added `tool_weave`, which can execute Python code and call elbot tools. Plain-text AgentSkills can be added to orchestration using `weavable = true`.\n- AgentSkill TOML now supports `depends_on`; Skill tags now participate in `@t:` tool group completion and preloading.\n- Added `use_workspace` to AgentSkill TOML; when enabled, command and media paths are based on the current workspace.\n- AgentSkill TOML tools now support passing positional arguments in a specified order via the `positional` array, which can be used in combination with `[args]` flag parameters.\n- Added static frontend hosting to the CLI remote service: automatically recognizes `frontend/index.html` next to the main configuration.\n- Added a large number of CLI remote protocols.\n- Added a configuration file lock to prevent multiple instances from using the same configuration file.\n- Added `markdownnew` to web search.\n\n",
-      "updated_at": 1794984524
+      "source_hash": "cbd62b72287e974e6a8d102b104553c1b92d2dd28d345c3ab32f2ddc1d54a999",
+      "translation": "### Fixed\n\n- Fixed an issue where the QQ official bot missed detections of @ self in full group message mode, and dedicated @ messages might incorrectly delete other mentions at the beginning of the body.\n- Fixed an issue where the workspace still returned the old directory state after cleaning invalid directories or concurrent switching, and an issue where cancellation errors were swallowed when Git diff output exceeded the limit.\n- Format, out-of-bounds, and target type rejection errors for file references now display the business reason and terminate input processing, instead of propagating as program faults.\n- Fixed an issue where some commands reported `not found` due to the absence of a current Session after the first entry or using `/new`.\n- Fixed an issue where `/resume` ignored pinned items.\n- Fixed some potential bugs during refactoring.\n- Fixed a bug in the chat history search tool. Now both background and foreground searches are available and do not interfere with each other.\n- Fixed a bug regarding multiple compressions of duplicate content.\n\n",
+      "updated_at": 1794990054
     },
     "CHANGELOG.md:section:98d9f36b0462433f4e4651c9202d33484606c1adac2e101f1f4a7dc57ff97175": {
       "kind": "section",
@@ -31,11 +23,19 @@
       "source_hash": "c3d40af5ddeac78f8183d18609533887d25fed99f0da73b49af7a108cc53efa6",
       "translation": "## See releases for historical change logs\n",
       "updated_at": 1794709262
+    },
+    "CHANGELOG.md:section:c5df2ffc60cb1703da0826f14c1b7a15b87010634708835bd2e208426877092d": {
+      "kind": "section",
+      "source": "### Added\n\n- 新增 `tool_weave`，可执行Python代码并调用elbot工具。纯 AgentSkill 可用 `weavable = true` 加入编排。\n- AgentSkill TOML 支持 `depends_on`，Skill 标签参与 `@t:` 工具组补全和预载。\n- AgentSkill TOML 新增 `use_workspace`，启用后命令和媒体路径以当前 workspace 为基准。\n- AgentSkill TOML 工具支持通过 `positional` 数组按指定顺序传入位置参数，可与 `[args]` flag 参数组合使用。\n- CLI 远程服务新增静态前端托管：自动识别主配置旁的 `frontend/index.html`。\n- 新增大量 CLI 远程协议\n- 新增配置文件锁，防止多个实例使用同一份配置文件。\n- web 搜索增加 `markdownnew`\n\n",
+      "source_file": "CHANGELOG.md",
+      "source_hash": "b2b0d4717fe9787814cc7acc41894e053bbc5b8a18032297f9dd17a877c839bf",
+      "translation": "### Added\n\n- Added `tool_weave`, which can execute Python code and call elbot tools. Pure AgentSkills can be added to orchestration using `weavable = true`.\n- AgentSkill TOML now supports `depends_on`; Skill tags now participate in `@t:` tool group completion and preloading.\n- Added `use_workspace` to AgentSkill TOML; when enabled, command and media paths are based on the current workspace.\n- AgentSkill TOML tools now support passing positional arguments in a specified order via the `positional` array, which can be used in combination with `[args]` flag parameters.\n- Added static frontend hosting to the CLI remote service: automatically recognizes `frontend/index.html` next to the main configuration.\n- Added a large number of CLI remote protocols.\n- Added a configuration file lock to prevent multiple instances from using the same configuration file.\n- Added `markdownnew` to web search.\n\n",
+      "updated_at": 1794990038
     }
   },
   "source": "CHANGELOG.md",
-  "source_hash": "9ebc52ae54a8c22e7ae98caa88553f339d8b49985c5b15cd67eb572677548a58",
+  "source_hash": "ea6834dbe695149b252bdbba4aed11a1f566909c2bbb2214b50dbccc98475525",
   "target": "CHANGELOG.en.md",
-  "updated_at": 1794984524,
+  "updated_at": 1794990055,
   "version": 3
 }

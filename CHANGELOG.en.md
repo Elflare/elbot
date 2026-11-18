@@ -6,7 +6,7 @@
 
 ### Added
 
-- Added `tool_weave`, which can execute Python code and call elbot tools. Plain-text AgentSkills can be added to orchestration using `weavable = true`.
+- Added `tool_weave`, which can execute Python code and call elbot tools. Pure AgentSkills can be added to orchestration using `weavable = true`.
 - AgentSkill TOML now supports `depends_on`; Skill tags now participate in `@t:` tool group completion and preloading.
 - Added `use_workspace` to AgentSkill TOML; when enabled, command and media paths are based on the current workspace.
 - AgentSkill TOML tools now support passing positional arguments in a specified order via the `positional` array, which can be used in combination with `[args]` flag parameters.
@@ -45,12 +45,13 @@
 
 ### Fixed
 
-- Fixed issues where workspace cleanup of invalid directories or concurrent switching still returned the old directory state, and where cancellation errors were swallowed when Git diff output exceeded the limit.
-- File reference format errors, out-of-bounds errors, and target type rejections now display the business reason and terminate input processing, rather than propagating as program failures.
+- Fixed an issue where the QQ official bot missed detections of @ self in full group message mode, and dedicated @ messages might incorrectly delete other mentions at the beginning of the body.
+- Fixed an issue where the workspace still returned the old directory state after cleaning invalid directories or concurrent switching, and an issue where cancellation errors were swallowed when Git diff output exceeded the limit.
+- Format, out-of-bounds, and target type rejection errors for file references now display the business reason and terminate input processing, instead of propagating as program faults.
 - Fixed an issue where some commands reported `not found` due to the absence of a current Session after the first entry or using `/new`.
 - Fixed an issue where `/resume` ignored pinned items.
-- Fixed several potential bugs during refactoring.
-- Fixed a bug in the chat history search tool. Both background and foreground searches are now functional and do not interfere with each other.
-- Fixed a bug where duplicate content occurred during multiple compressions.
+- Fixed some potential bugs during refactoring.
+- Fixed a bug in the chat history search tool. Now both background and foreground searches are available and do not interfere with each other.
+- Fixed a bug regarding multiple compressions of duplicate content.
 
 ## See releases for historical change logs
