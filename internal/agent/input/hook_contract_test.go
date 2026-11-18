@@ -15,5 +15,4 @@ func (inputOnlyHooks) AgentInputPrepared(_ context.Context, _ agentshare.Session
 // Compile-time contracts: input preparation must not require other hook points.
 var (
 	_ = InputCoordinatorDeps{CommandText: testCommandText, Hooks: inputOnlyHooks{}}
-	_ = InputCoordinator{hooks: inputOnlyHooks{}}
 )

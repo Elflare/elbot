@@ -18,7 +18,7 @@ func (h *MessageHandler) messageWakeup(ctx context.Context, text string) bool {
 	if info.Source.ChatType != contextinfo.ChatGroup && info.Source.ChatType != contextinfo.ChatChannel {
 		return true
 	}
-	if h.commands.IsCommand(text) {
+	if h.deps.Commands.IsCommand(text) {
 		return true
 	}
 	if _, ok := agentshare.StripTriggerKeyword(text, msg.TriggerKeywords); ok {
@@ -50,16 +50,13 @@ func (h *MessageHandler) isReplyToBot(ctx context.Context, msg agentshare.Messag
 		return true
 	}
 	replyID := info.ReplyToMessageID
-	if replyID == "" || h.messages == nil {
+	if replyID == "" {
 		return false
 	}
-	mapped, err := h.messages.FindByPlatformMessage(ctx, info.Source.Platform, info.Source.ChatType, info.Source.ChatID, replyID)
+	mapped, err := h.deps.Messages.FindByPlatformMessage(ctx, info.Source.Platform, info.Source.ChatType, info.Source.ChatID, replyID)
 	if err == nil && mapped.Role == storage.RoleAssistant {
 		return true
 	}
-	if h.mediaRows != nil {
-		outputs, err := h.mediaRows.FindOutputs(ctx, info.Source.Platform, info.Source.ChatType, info.Source.ChatID, replyID, storage.Now())
-		return err == nil && len(outputs) > 0
-	}
-	return false
+	outputs, err := h.deps.MediaRows.FindOutputs(ctx, info.Source.Platform, info.Source.ChatType, info.Source.ChatID, replyID, storage.Now())
+	return err == nil && len(outputs) > 0
 }

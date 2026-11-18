@@ -2,7 +2,6 @@ package input
 
 import (
 	"context"
-	"log/slog"
 
 	agentshare "elbot/internal/agent/share"
 	"elbot/internal/contextinfo"
@@ -24,7 +23,6 @@ type InputIdentity interface {
 
 type InputOutput interface {
 	Send(context.Context, delivery.StreamEvent) (delivery.Receipt, error)
-	Notify(context.Context, slog.Level, string)
 }
 
 type InputExecution interface {

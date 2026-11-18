@@ -13,31 +13,17 @@ import (
 )
 
 type CommandExecutor struct {
-	router interface {
-		IsCommand(string) bool
-		Parse(string) command.Parsed
-		CommandInfo(string) (command.Info, bool)
-		Dispatch(context.Context, string) (command.Result, error)
-	}
-	sessions interface {
-		CurrentBound(context.Context, session.Scope) (operationresult.Result[session.CurrentBoundData], error)
-	}
-	identity interface {
-		Scope(context.Context) session.Scope
-	}
-	output        CommandOutput
-	confirmations CommandConfirmations
-	input         CommandInput
+	deps CommandExecutorDeps
 }
 
 func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Context, bool, error) {
-	if !e.router.IsCommand(text) && !agentshare.IsAppendConfirm(text) {
+	if !e.deps.Router.IsCommand(text) && !agentshare.IsAppendConfirm(text) {
 		return ctx, false, nil
 	}
 	origin := ctx
-	parsed := e.router.Parse(text)
+	parsed := e.deps.Router.Parse(text)
 	req := command.Request{Raw: text, Prefix: parsed.Prefix, Name: parsed.Name, Args: parsed.Args}
-	if info, ok := e.router.CommandInfo(parsed.Name); ok {
+	if info, ok := e.deps.Router.CommandInfo(parsed.Name); ok {
 		req.Name = info.Name
 	}
 	ctx, result, handled, err := e.execute(ctx, text, parsed.OK)
@@ -48,7 +34,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Cont
 		req.Name = "append"
 	}
 	sendCtx := session.WithBinding(context.WithoutCancel(origin), nil)
-	if _, sendErr := e.output.SendCommandResult(sendCtx, req, result, err); sendErr != nil {
+	if _, sendErr := e.deps.Output.SendCommandResult(sendCtx, req, result, err); sendErr != nil {
 		return ctx, true, sendErr
 	}
 	if err != nil {
@@ -58,7 +44,7 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Cont
 		return ctx, true, nil
 	}
 	if result.Continuation != nil {
-		next, continued, err := e.input.ContinueCommandInput(ctx, *result.Continuation)
+		next, continued, err := e.deps.Input.ContinueCommandInput(ctx, *result.Continuation)
 		if err != nil {
 			globalevents.Notify(session.WithBinding(context.WithoutCancel(next), nil), globalevents.NewNotification(next, slog.LevelWarn, err.Error()))
 			if result.Continuation.Kind == "append" {
@@ -68,17 +54,16 @@ func (e *CommandExecutor) Handle(ctx context.Context, text string) (context.Cont
 		}
 		if continued.Status != operationresult.Success {
 			result = command.Result{Status: continued.Status, Message: continued.Message}
-			if _, sendErr := e.output.SendCommandResult(session.WithBinding(context.WithoutCancel(origin), nil), req, result, nil); sendErr != nil {
+			if _, sendErr := e.deps.Output.SendCommandResult(sendCtx, req, result, nil); sendErr != nil {
 				return next, true, sendErr
 			}
-			return next, true, nil
 		}
 		return next, true, nil
 	}
 	return ctx, true, nil
 }
 func (e *CommandExecutor) execute(ctx context.Context, text string, isCommand bool) (context.Context, command.Result, bool, error) {
-	current, err := e.sessions.CurrentBound(ctx, e.identity.Scope(ctx))
+	current, err := e.deps.Sessions.CurrentBound(ctx, e.deps.Identity.Scope(ctx))
 	if err != nil {
 		return ctx, command.Result{}, true, err
 	}
@@ -88,7 +73,7 @@ func (e *CommandExecutor) execute(ctx context.Context, text string, isCommand bo
 		return ctx, command.Result{Status: current.Status, Message: current.Message}, true, nil
 	}
 	if !isCommand {
-		current, err := e.confirmations.CurrentConfirmation(ctx, control.CurrentConfirmationRequest{})
+		current, err := e.deps.Confirmations.CurrentConfirmation(ctx, control.CurrentConfirmationRequest{})
 		if err != nil {
 			return ctx, command.Result{}, true, err
 		}
@@ -98,7 +83,7 @@ func (e *CommandExecutor) execute(ctx context.Context, text string, isCommand bo
 		if current.Data.Kind != "append" {
 			return ctx, command.Result{}, false, nil
 		}
-		result, err := e.confirmations.RespondConfirmation(ctx, control.RespondConfirmationRequest{Decision: "approve", Scope: "current"})
+		result, err := e.deps.Confirmations.RespondConfirmation(ctx, control.RespondConfirmationRequest{Decision: "approve", Scope: "current"})
 		if err != nil {
 			return ctx, command.Result{}, true, err
 		}
@@ -108,7 +93,7 @@ func (e *CommandExecutor) execute(ctx context.Context, text string, isCommand bo
 		data := result.Data
 		return ctx, command.Result{Status: operationresult.Success, Kind: command.ResultKindText, Data: command.TextData{Content: "追加输入已接受"}, Continuation: data.Continuation}, true, nil
 	}
-	result, err := e.router.Dispatch(ctx, text)
+	result, err := e.deps.Router.Dispatch(ctx, text)
 	return ctx, result, true, err
 }
 
@@ -141,6 +126,6 @@ type CommandExecutorDeps struct {
 }
 
 func NewCommandExecutor(deps CommandExecutorDeps) *CommandExecutor {
-	return &CommandExecutor{router: deps.Router, sessions: deps.Sessions, identity: deps.Identity, output: deps.Output, confirmations: deps.Confirmations, input: deps.Input}
+	return &CommandExecutor{deps: deps}
 }
-func (e *CommandExecutor) IsCommand(text string) bool { return e.router.IsCommand(text) }
+func (e *CommandExecutor) IsCommand(text string) bool { return e.deps.Router.IsCommand(text) }

@@ -51,6 +51,9 @@ func (activityTestPreloader) PrepareSkills(_ context.Context, _ string, names []
 	return tool.SkillPreload{Names: names, Accepted: []bool{true}, Update: tool.StateUpdate{Tools: []tool.DiscoveredTool{{Name: "wrapper", CanonicalName: "wrapper", Source: tool.SourceKindNative}}}}, nil
 }
 
+func passthroughInput(_ context.Context, _ string, segments []llm.MessageSegment) (operationresult.Result[[]llm.MessageSegment], error) {
+	return operationresult.Result[[]llm.MessageSegment]{Status: operationresult.Success, Data: segments}, nil
+}
 func TestSuccessfulPureDirectivesRenewOriginalBinding(t *testing.T) {
 	for _, tc := range []struct {
 		name, input     string
@@ -93,7 +96,7 @@ func TestSuccessfulPureDirectivesRenewOriginalBinding(t *testing.T) {
 				}
 				binding := current.Data.Binding
 				ctx := session.WithBinding(testutil.WithCLIConversation(t.Context()), binding)
-				coordinator := NewInputCoordinator(InputCoordinatorDeps{CommandText: testCommandText,
+				coordinator := NewInputCoordinator(InputCoordinatorDeps{CommandText: testCommandText, NormalizeInput: passthroughInput,
 					Sessions: sessions, Identity: identity,
 					Execution: directiveExecution{}, Turns: turn.NewSupervisor(testutil.IDSequence()), Hooks: activityTestHooks{}, Output: activityTestOutput{},
 					Preloader: activityTestPreloader{}, ToolState: directiveState{toolstate.NewStateService(store.Sessions(), toolregistry.BackgroundDiscoveredTools)},

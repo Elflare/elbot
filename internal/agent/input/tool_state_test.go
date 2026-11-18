@@ -71,7 +71,8 @@ func (promptAvailabilityPreloader) PrepareSkills(context.Context, string, []stri
 func TestHandleSessionInputIncludesToolsAndSkillsInSystemPrompt(t *testing.T) {
 	execution := &promptProbeExecution{}
 	coordinator := NewInputCoordinator(InputCoordinatorDeps{
-		Turns: turn.NewSupervisor(testutil.IDSequence()), Execution: execution,
+		NormalizeInput: passthroughInput,
+		Turns:          turn.NewSupervisor(testutil.IDSequence()), Execution: execution,
 		Hooks: activityTestHooks{}, Output: activityTestOutput{}, Preloader: promptAvailabilityPreloader{},
 	})
 	row := &storage.Session{ID: "session", Mode: storage.SessionModeWork}

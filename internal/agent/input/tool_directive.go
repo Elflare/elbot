@@ -23,13 +23,11 @@ type toolDirectiveResult struct {
 	Injected         []string
 	Existing         []string
 	Invalid          []string
-	Err              error
 }
 
 type skillDirectiveResult struct {
 	NeedsElyphRules  bool
 	update           tool.StateUpdate
-	Err              error
 	Text             string
 	Skills           []string
 	InjectedWrappers []string
@@ -37,77 +35,73 @@ type skillDirectiveResult struct {
 	Invalid          []string
 }
 
-func (c *InputCoordinator) prepareToolDirectives(ctx context.Context, row *storage.Session, text string) toolDirectiveResult {
+func (c *InputCoordinator) prepareToolDirectives(ctx context.Context, row *storage.Session, text string) (toolDirectiveResult, error) {
 	result := toolDirectiveResult{Text: text}
 	if row == nil || row.Mode != storage.SessionModeWork || !containsAny(text, directive.ToolPrefix, directive.ToolFullPrefix, directive.ToolShortPrefix, directive.ToolShortFull) {
-		return result
+		return result, nil
 	}
 	matches := directive.ToolMatches(text)
 	if len(matches) == 0 {
-		return result
+		return result, nil
 	}
 	if !agentshare.IsBackgroundSession(row) {
-		ctx = workspace.WithWorkspaceStore(ctx, c.NewWorkspaceStore(row.ID))
+		ctx = workspace.WithWorkspaceStore(ctx, c.deps.NewWorkspaceStore(row.ID))
 	}
 	names := make([]string, len(matches))
 	for i, match := range matches {
 		names[i] = match.Name
 	}
-	prepared, err := c.preloader.PrepareTools(ctx, names)
+	prepared, err := c.deps.Preloader.PrepareTools(ctx, names)
 	if err != nil {
-		result.Err = err
-		return result
+		return toolDirectiveResult{}, err
 	}
 	result.Invalid = prepared.Invalid
 	if len(prepared.Update.Tools) == 0 && prepared.Content == "" {
-		return result
+		return result, nil
 	}
 	result.update = prepared.Update
 	result.NeedsElyphRules = prepared.NeedsElyphRules
 	result.Text = directive.StripToolMatches(text, matches, prepared.Accepted)
-	if prepared.Content != "" {
-		if strings.TrimSpace(result.Text) == "" {
-			result.Text = prepared.Content
-		} else {
-			result.Text = strings.TrimSpace(result.Text) + "\n\n" + prepared.Content
-		}
-	}
-	return result
+	result.Text = appendDirectiveContent(result.Text, prepared.Content)
+	return result, nil
 }
 
-func (c *InputCoordinator) prepareSkillDirectives(ctx context.Context, row *storage.Session, text string) skillDirectiveResult {
+func (c *InputCoordinator) prepareSkillDirectives(ctx context.Context, row *storage.Session, text string) (skillDirectiveResult, error) {
 	result := skillDirectiveResult{Text: text}
 	if row == nil || row.Mode != storage.SessionModeWork || !containsAny(text, directive.SkillPrefix, directive.SkillFullPrefix, directive.SkillShortPrefix, directive.SkillShortFull) {
-		return result
+		return result, nil
 	}
 	matches := directive.SkillMatches(text)
 	if len(matches) == 0 {
-		return result
+		return result, nil
 	}
 	names := make([]string, len(matches))
 	for i, match := range matches {
 		names[i] = match.Name
 	}
-	prepared, err := c.preloader.PrepareSkills(ctx, row.ID, names)
+	prepared, err := c.deps.Preloader.PrepareSkills(ctx, row.ID, names)
 	if err != nil {
-		result.Err = err
-		return result
+		return skillDirectiveResult{}, err
 	}
 	result.Invalid = prepared.Invalid
 	if len(prepared.Names) == 0 {
-		return result
+		return result, nil
 	}
 	result.Skills, result.update = prepared.Names, prepared.Update
 	result.NeedsElyphRules = prepared.NeedsElyphRules
 	result.Text = directive.StripToolMatches(text, matches, prepared.Accepted)
-	if prepared.Content != "" {
-		if strings.TrimSpace(result.Text) == "" {
-			result.Text = prepared.Content
-		} else {
-			result.Text = strings.TrimSpace(result.Text) + "\n\n" + prepared.Content
-		}
+	result.Text = appendDirectiveContent(result.Text, prepared.Content)
+	return result, nil
+}
+
+func appendDirectiveContent(text, content string) string {
+	if content == "" {
+		return text
 	}
-	return result
+	if text = strings.TrimSpace(text); text == "" {
+		return content
+	}
+	return text + "\n\n" + content
 }
 
 func containsAny(text string, values ...string) bool {
@@ -136,7 +130,7 @@ func (c *InputCoordinator) notifyToolDirectiveResult(ctx context.Context, result
 	if len(parts) == 0 {
 		return nil
 	}
-	_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: strings.Join(parts, "\n")})
+	_, err := c.deps.Output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: strings.Join(parts, "\n")})
 	return err
 }
 
@@ -157,7 +151,7 @@ func (c *InputCoordinator) notifySkillDirectiveResult(ctx context.Context, resul
 	if len(parts) == 0 {
 		return nil
 	}
-	_, err := c.output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: strings.Join(parts, "\n")})
+	_, err := c.deps.Output.Send(ctx, delivery.StreamEvent{Type: delivery.StreamSend, Text: strings.Join(parts, "\n")})
 	return err
 }
 
@@ -176,7 +170,7 @@ func sortedUnique(values []string) []string {
 }
 
 func (c *InputCoordinator) applyInputDirectives(ctx context.Context, row *storage.Session, text string) (context.Context, operationresult.Result[toolDirectiveResult], skillDirectiveResult, error) {
-	locked, admitted, release, err := c.execution.EnterInput(ctx, row)
+	locked, admitted, release, err := c.deps.Execution.EnterInput(ctx, row)
 	if err != nil {
 		return ctx, operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, err
 	}
@@ -185,34 +179,34 @@ func (c *InputCoordinator) applyInputDirectives(ctx context.Context, row *storag
 	}
 	ctx = locked
 	release()
-	ctx, err = c.execution.ModelContext(ctx, row)
+	ctx, err = c.deps.Execution.ModelContext(ctx, row)
 	if err != nil {
 		return ctx, operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, err
 	}
-	ctx, err = c.preloader.PrepareAvailabilityContext(ctx)
+	ctx, err = c.deps.Preloader.PrepareAvailabilityContext(ctx)
 	if err != nil {
 		return ctx, operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, err
 	}
-	tools := c.prepareToolDirectives(ctx, row, text)
-	if tools.Err != nil {
-		return ctx, operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, tools.Err
+	tools, err := c.prepareToolDirectives(ctx, row, text)
+	if err != nil {
+		return ctx, operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, err
 	}
-	skills := c.prepareSkillDirectives(ctx, row, tools.Text)
-	if skills.Err != nil {
-		return ctx, operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, skills.Err
+	skills, err := c.prepareSkillDirectives(ctx, row, tools.Text)
+	if err != nil {
+		return ctx, operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, err
 	}
 	update := tool.StateUpdate{
 		Tools: append(append([]tool.DiscoveredTool(nil), tools.update.Tools...), skills.update.Tools...),
 		Tags:  tools.update.Tags,
 	}
-	locked, admitted, release, err = c.execution.EnterInput(ctx, row)
+	locked, admitted, release, err = c.deps.Execution.EnterInput(ctx, row)
 	if err != nil {
 		return ctx, operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, err
 	}
 	if admitted.Status != operationresult.Success {
 		return ctx, operationresult.Result[toolDirectiveResult]{Status: admitted.Status, Message: admitted.Message}, skillDirectiveResult{}, nil
 	}
-	committed, err := agentshare.CommitToolState(locked, c.toolState, row, update)
+	committed, err := agentshare.CommitToolState(locked, c.deps.ToolState, row, update)
 	release()
 	if err != nil {
 		return ctx, operationresult.Result[toolDirectiveResult]{}, skillDirectiveResult{}, err

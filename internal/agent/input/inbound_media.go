@@ -66,7 +66,7 @@ func (h *MessageHandler) materializePlatformMedia(ctx context.Context) (context.
 
 func (h *MessageHandler) materializePlatformSegment(ctx context.Context, msg agentshare.MessageContext, segment agentshare.MessageSegment) (agentshare.MessageSegment, error) {
 	info, _ := contextinfo.ConversationFromContext(ctx)
-	item, err := h.media.ImportPlatform(ctx, info.Source.Platform, msg.ResolveMedia, segment.Media)
+	item, err := h.deps.Media.ImportPlatform(ctx, info.Source.Platform, msg.ResolveMedia, segment.Media)
 	if err != nil {
 		return agentshare.MessageSegment{}, err
 	}
@@ -100,7 +100,7 @@ func (h *MessageHandler) associateInboundHistory(ctx context.Context, messageID 
 		return nil
 	}
 	info, _ := contextinfo.ConversationFromContext(ctx)
-	row, err := h.History.GetByPlatformMessage(ctx, info.Source.Platform, info.Source.ChatType, info.Source.ChatID, messageID)
+	row, err := h.deps.History.GetByPlatformMessage(ctx, info.Source.Platform, info.Source.ChatType, info.Source.ChatID, messageID)
 	if errors.Is(err, storage.ErrNotFound) {
 		return nil
 	}
@@ -116,7 +116,7 @@ func (h *MessageHandler) associateInboundHistory(ctx context.Context, messageID 
 		if resolved[i].Media.MediaID == "" {
 			continue
 		}
-		if err := h.media.AssociateHistory(ctx, media.HistoryMessage{ID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, ChatType: row.ChatType}, index, raw.Type, resolved[i].Media.MediaID); err != nil {
+		if err := h.deps.Media.AssociateHistory(ctx, media.HistoryMessage{ID: row.ID, Platform: row.Platform, ChatID: row.ChatID, MessageID: row.PlatformMessageID, ChatType: row.ChatType}, index, raw.Type, resolved[i].Media.MediaID); err != nil {
 			record := globalevents.LogRecord{
 				Category:     globalevents.LogCategoryLog,
 				Level:        slog.LevelError,

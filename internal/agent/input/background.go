@@ -75,10 +75,10 @@ func (r *BackgroundHandler) RunBackground(ctx context.Context, req BackgroundReq
 		if err != nil {
 			return ctx, operationresult.Result[turn.Result]{}, err
 		}
-		preloaded = r.preloadBackgroundResources(ctx, bgSession, req.ToolListNames, req.ELwispTools, req.AllowedToolNames)
-	}
-	if preloaded.Err != nil {
-		return ctx, operationresult.Result[turn.Result]{}, preloaded.Err
+		preloaded, err = r.preloadBackgroundResources(ctx, bgSession, req.ToolListNames, req.ELwispTools, req.AllowedToolNames)
+		if err != nil {
+			return ctx, operationresult.Result[turn.Result]{}, err
+		}
 	}
 	record := globalevents.LogRecord{
 		Category:     globalevents.LogCategoryAudit,
@@ -136,27 +136,26 @@ func backgroundPromptSegments(segments []llm.MessageSegment) []agentshare.Messag
 
 type backgroundPreloadResult struct {
 	NeedsElyphRules bool     // Prepared material requires the shared ELyph instructions.
-	Err             error    // Preparation or commit failure prevents execution.
 	Tools           []string // Tool declarations committed to the session.
 	Skills          []string // Skill names included in the prepared material.
 	SkillPrompt     string   // Prepared instructions prepended to the first task input.
 }
 
-func (r *BackgroundHandler) preloadBackgroundResources(ctx context.Context, row *storage.Session, names []string, declarations []tool.ELwispToolDeclaration, allowed []string) backgroundPreloadResult {
+func (r *BackgroundHandler) preloadBackgroundResources(ctx context.Context, row *storage.Session, names []string, declarations []tool.ELwispToolDeclaration, allowed []string) (backgroundPreloadResult, error) {
 	prepared, err := r.Preloader.PrepareBackground(ctx, tool.BackgroundPreloadRequest{
 		SessionID: row.ID, Names: names, AllowedToolNames: allowed, ELwispTools: declarations,
 	})
 	if err != nil {
-		return backgroundPreloadResult{Err: err}
+		return backgroundPreloadResult{}, err
 	}
 	committed, err := agentshare.CommitToolState(ctx, r.ToolState, row, prepared.Update)
 	if err != nil {
-		return backgroundPreloadResult{Err: err}
+		return backgroundPreloadResult{}, err
 	}
 	if committed.WeaveDescription != "" {
 		prepared.SkillPrompt = strings.TrimSpace(prepared.SkillPrompt + "\n\n" + committed.WeaveDescription)
 	}
-	return backgroundPreloadResult{Tools: committed.Injected, Skills: prepared.Skills, SkillPrompt: prepared.SkillPrompt, NeedsElyphRules: prepared.NeedsElyphRules}
+	return backgroundPreloadResult{Tools: committed.Injected, Skills: prepared.Skills, SkillPrompt: prepared.SkillPrompt, NeedsElyphRules: prepared.NeedsElyphRules}, nil
 }
 
 func backgroundPromptWithSkills(prompt, skillPrompt string) string {

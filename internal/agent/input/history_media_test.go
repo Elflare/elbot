@@ -25,7 +25,7 @@ func TestInboundMediaAssociatesHistoryPositions(t *testing.T) {
 	defer history.Close()
 	root := t.TempDir()
 	center := mediatest.New(t, media.MediaCenterDeps{Store: store, ChatHistory: history.Repository()}, root)
-	a := &MessageHandler{media: center, History: history.Repository()}
+	a := NewMessageHandler(MessageHandlerDeps{Media: center, History: history.Repository()})
 	resolver := &inboundMediaResolver{}
 	segments := []agentshare.MessageSegment{{Type: "image", Media: media.PlatformMedia{Type: "image", PlatformFileID: "bad", Size: config.Default().PlatformFiles.MaxReceiveFileBytes + 1}}, {Type: "text", Text: "hello"}, {Type: "image", Media: media.PlatformMedia{Type: "image", PlatformFileID: "good"}}}
 	row := &storage.ChatMessage{Platform: "p", ChatID: "s", PlatformMessageID: "1", SenderID: "u", Segments: storage.MarshalChatSegments([]storage.ChatSegment{

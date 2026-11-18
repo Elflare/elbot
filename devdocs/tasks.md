@@ -16,7 +16,15 @@
 每个包分两步，第一步不改变逻辑的精简，第二步可以改变逻辑，只不改变功能，从代码逻辑、架构方面还能怎么精简，主要是去重复逻辑、减少猜测、兜底之类的
 - [x] app包
 - [ ] agent包
+    - [x] agent 根部（不含子包）
     - [x] dialogue包
+    - [x] 第 1 批：hooks、output（与第 2 批合看）
+    - [x] 第 2 批：tools、confirmation
+    - [x] 第 3 批：input
+    - [ ] 第 4 批：execution
+    - [ ] 第 5 批：routes、chat
+    - [ ] 第 6 批：responses
+    - [ ] 第 7 批：share（最后按实际消费者核对共享契约）
 - [ ] platform包
 - [ ] tool包
 - [ ] hook 包
