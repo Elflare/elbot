@@ -12,7 +12,6 @@ const KindCommand = "command"
 
 type RouterSource struct {
 	Router *command.Router
-	Actor  func(context.Context) contextinfo.Actor // 已由 Agent 入口写入 context；不在 source 中调用。
 }
 
 func (s RouterSource) completeArgs(ctx context.Context, req Request, actor contextinfo.Actor) []Item {

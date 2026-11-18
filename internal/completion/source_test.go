@@ -49,11 +49,11 @@ func TestRiskConfirmationSourceQueriesControlAndCompletesOnlyForToolWait(t *test
 	if err != nil || len(got) != 2 || got[0].Text != "/confirm" || got[1].Text != "/c" {
 		t.Fatalf("Complete during risk wait = %#v, %v", got, err)
 	}
+	controlStub.currentErr = errors.New("confirmation unavailable")
 	argGot, err := source.Complete(ctx, Request{Text: "/confirm extra"})
 	if err != nil || len(argGot) != 0 {
 		t.Fatalf("argument completion = %#v, %v", argGot, err)
 	}
-	controlStub.currentErr = errors.New("confirmation unavailable")
 	if _, err := source.Complete(ctx, Request{Text: "/c"}); !errors.Is(err, controlStub.currentErr) {
 		t.Fatalf("confirmation read error = %v", err)
 	}

@@ -20,15 +20,15 @@ type RiskConfirmationSource struct {
 }
 
 func (s RiskConfirmationSource) Complete(ctx context.Context, req Request) ([]Item, error) {
+	parsed := s.Router.Parse(req.Text)
+	if !parsed.OK || parsed.Args != "" {
+		return nil, nil
+	}
 	current, err := s.Control.CurrentConfirmation(ctx, control.CurrentConfirmationRequest{})
 	if err != nil {
 		return nil, err
 	}
 	if current.Status != operationresult.Success || current.Data.Kind != "tool" {
-		return nil, nil
-	}
-	parsed := s.Router.Parse(req.Text)
-	if !parsed.OK || parsed.Args != "" {
 		return nil, nil
 	}
 	out := []Item{}

@@ -37,7 +37,7 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item,
 		return nil, err
 	}
 	if skillToken.OK {
-		return s.completeSkills(ctx, skillToken, cursor)
+		return s.completeSkills(ctx, skillToken, cursor), nil
 	}
 	if token.PrefixOnly {
 		return []Item{{Text: token.Prefix, Label: token.Prefix, Kind: KindToolDirective, ReplaceStart: token.Start, ReplaceEnd: cursor}}, nil
@@ -47,19 +47,23 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item,
 		return nil, err
 	}
 	availability, _ := contextinfo.ToolAvailabilityFromContext(ctx)
-	tags = matchCandidates(tags, token.Query, func(tag string) string { return tag })
-	toolNames := matchCandidates(availability.Tools, token.Query, func(name string) string { return name })
+	tags = matchCandidates(tags, token.Query)
+	toolNames := matchCandidates(availability.Tools, token.Query)
 	out := make([]Item, 0, len(tags)+len(toolNames))
 	seenText := map[string]bool{}
 	for _, tag := range tags {
 		text := token.Prefix + tag
 		seenText[text] = true
-		description, err := s.tagDescription(ctx, tag)
+		infos, err := s.Tools.QueryTools(ctx, tool.ToolQuery{Tag: tag})
 		if err != nil {
 			return nil, err
 		}
-		if description == "" {
+		if len(infos) == 0 {
 			continue
+		}
+		description := "1 item"
+		if len(infos) > 1 {
+			description = strconv.Itoa(len(infos)) + " items"
 		}
 		out = append(out, Item{Text: text, Label: tag + " <tag>", Description: description, Kind: KindToolTagDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
 	}
@@ -73,46 +77,31 @@ func (s ToolDirectiveSource) Complete(ctx context.Context, req Request) ([]Item,
 	return out, nil
 }
 
-func (s ToolDirectiveSource) completeSkills(ctx context.Context, token directive.SkillCompletionToken, cursor int) ([]Item, error) {
+func (s ToolDirectiveSource) completeSkills(ctx context.Context, token directive.SkillCompletionToken, cursor int) []Item {
 	if token.PrefixOnly {
-		return []Item{{Text: token.Prefix, Label: token.Prefix, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor}}, nil
+		return []Item{{Text: token.Prefix, Label: token.Prefix, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor}}
 	}
 	availability, _ := contextinfo.ToolAvailabilityFromContext(ctx)
-	names := matchCandidates(availability.Skills, token.Query, func(name string) string { return name })
+	names := matchCandidates(availability.Skills, token.Query)
 	out := make([]Item, 0, len(names))
 	for _, name := range names {
 		out = append(out, Item{Text: token.Prefix + name, Label: name, Kind: KindSkillDirective, ReplaceStart: token.Start, ReplaceEnd: cursor})
 	}
-	return out, nil
+	return out
 }
 
-func (s ToolDirectiveSource) tagDescription(ctx context.Context, tag string) (string, error) {
-	infos, err := s.Tools.QueryTools(ctx, tool.ToolQuery{Tag: tag})
-	if err != nil {
-		return "", err
-	}
-	if len(infos) == 0 {
-		return "", nil
-	}
-	if len(infos) == 1 {
-		return "1 item", nil
-	}
-	return strconv.Itoa(len(infos)) + " items", nil
-}
-
-func matchCandidates[T any](candidates []T, query string, name func(T) string) []T {
+func matchCandidates(candidates []string, query string) []string {
 	if query == "" {
 		return candidates
 	}
-	var prefix, fuzzy []T
-	for _, candidate := range candidates {
-		value := name(candidate)
+	var prefix, fuzzy []string
+	for _, value := range candidates {
 		if strings.HasPrefix(value, query) {
-			prefix = append(prefix, candidate)
+			prefix = append(prefix, value)
 			continue
 		}
 		if fuzzyMatch(value, query) {
-			fuzzy = append(fuzzy, candidate)
+			fuzzy = append(fuzzy, value)
 		}
 	}
 	if len(prefix) > 0 {

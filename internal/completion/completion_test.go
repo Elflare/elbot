@@ -77,8 +77,8 @@ func TestRouterSourceFiltersCommandsByActor(t *testing.T) {
 }
 func TestToolDirectiveSourceCompletesOnlyPlainTools(t *testing.T) {
 	source := ToolDirectiveSource{Context: func(ctx context.Context) (context.Context, error) {
-		return withCompletionNames(ctx, []string{"web_extract", "web_search", "my_web", "shell"}, []string{"docx"}), nil
-	}, Tools: completionCatalog{tools: []tool.Info{{Name: "web_extract"}, {Name: "web_search"}, {Name: "my_web"}, {Name: "shell"}}, skills: []tool.Info{{Name: "docx"}}, tags: []string{"web", "new_web"}, names: []string{"web_extract", "web_search"}}}
+		return contextinfo.WithToolAvailability(ctx, contextinfo.ToolAvailability{Tools: []string{"web_extract", "web_search", "my_web", "shell"}, Skills: []string{"docx"}}), nil
+	}, Tools: completionCatalog{tags: []string{"web", "new_web"}, names: []string{"web_extract", "web_search"}}}
 
 	items, _ := source.Complete(context.Background(), Request{Text: "查 @tool:we", Cursor: len("查 @tool:we")})
 	if len(items) != 3 || items[0].Text != "@tool:web" || items[0].Label != "web <tag>" || items[0].Kind != KindToolTagDirective || items[1].Text != "@tool:web_extract" || items[2].Text != "@tool:web_search" || items[0].ReplaceStart != len("查 ") || items[0].ReplaceEnd != len("查 @tool:we") {
@@ -107,8 +107,8 @@ func TestToolDirectiveSourceCompletesOnlyPlainTools(t *testing.T) {
 
 func TestToolDirectiveSourceCompletesSkillsSeparately(t *testing.T) {
 	source := ToolDirectiveSource{Context: func(ctx context.Context) (context.Context, error) {
-		return withCompletionNames(ctx, []string{"doc_tool"}, []string{"docx"}), nil
-	}, Tools: completionCatalog{tools: []tool.Info{{Name: "doc_tool"}}, skills: []tool.Info{{Name: "docx"}}}}
+		return contextinfo.WithToolAvailability(ctx, contextinfo.ToolAvailability{Tools: []string{"doc_tool"}, Skills: []string{"docx"}}), nil
+	}}
 
 	items, _ := source.Complete(context.Background(), Request{Text: "查 @skill:do", Cursor: len("查 @skill:do")})
 	if len(items) != 1 || items[0].Text != "@skill:docx" || items[0].Kind != KindSkillDirective || items[0].ReplaceStart != len("查 ") || items[0].ReplaceEnd != len("查 @skill:do") {
@@ -133,8 +133,8 @@ func TestToolDirectiveSourceCompletesSkillsSeparately(t *testing.T) {
 
 func TestToolDirectiveSourceCompletesConfiguredTags(t *testing.T) {
 	source := ToolDirectiveSource{Context: func(ctx context.Context) (context.Context, error) {
-		return withCompletionNames(ctx, []string{"alpha"}, nil), nil
-	}, Tools: completionCatalog{tools: []tool.Info{{Name: "alpha"}}, tags: []string{"agent"}, names: []string{"alpha"}}}
+		return contextinfo.WithToolAvailability(ctx, contextinfo.ToolAvailability{Tools: []string{"alpha"}}), nil
+	}, Tools: completionCatalog{tags: []string{"agent"}, names: []string{"alpha"}}}
 
 	items, _ := source.Complete(context.Background(), Request{Text: "@tool:ag", Cursor: len("@tool:ag")})
 	if len(items) != 1 || items[0].Text != "@tool:agent" || items[0].Description != "1 item" {
@@ -166,76 +166,42 @@ func (commandArgCompleter) Complete(_ context.Context, req command.CompletionReq
 
 // completionCatalog supplies query results; filtering policy belongs to Tool.
 type completionCatalog struct {
-	tools, skills []tool.Info
-	tags, names   []string
-	query         func(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
+	tags, names []string
+	query       func(context.Context, tool.ToolQuery) ([]tool.ToolInfo, error)
 }
 
 func (c completionCatalog) QueryTools(ctx context.Context, q tool.ToolQuery) ([]tool.ToolInfo, error) {
 	if c.query != nil {
 		return c.query(ctx, q)
 	}
-	if q.Tag != "" {
-		if q.Kind != "" {
-			return nil, errors.New("tag query must include tools and skills")
-		}
-		var infos []tool.ToolInfo
-		for _, name := range c.names {
-			infos = append(infos, tool.ToolInfo{Definition: tool.Info{Name: name}})
-		}
-		return infos, nil
-	}
-	values := c.tools
-	if q.Kind == "skill" {
-		values = c.skills
-	}
 	var infos []tool.ToolInfo
-	for _, info := range values {
-		infos = append(infos, tool.ToolInfo{Definition: info})
+	for _, name := range c.names {
+		infos = append(infos, tool.ToolInfo{Definition: tool.Info{Name: name}})
 	}
 	return infos, nil
 }
 func (c completionCatalog) ToolTags(context.Context) ([]string, error) { return c.tags, nil }
 
-func withCompletionNames(ctx context.Context, tools, skills []string) context.Context {
-	allowed := make(map[string]struct{}, len(tools)+len(skills))
-	for _, name := range append(tools, skills...) {
-		allowed[name] = struct{}{}
-	}
-	return contextinfo.WithToolAvailability(ctx, contextinfo.ToolAvailability{Tools: tools, Skills: skills, Allowed: allowed})
-}
-
 func TestToolCompletionPreservesPreparedContextAndReplacementRange(t *testing.T) {
 	ctx := contextinfo.WithModel(t.Context(), contextinfo.Model{APIType: "chat"})
 	source := ToolDirectiveSource{
 		Context: func(ctx context.Context) (context.Context, error) {
-			if err := ctx.Err(); err != nil {
-				return nil, err
-			}
 			ctx = contextinfo.WithActor(ctx, contextinfo.Actor{Role: contextinfo.RoleUser, ActorIdentity: contextinfo.ActorIdentity{Platform: "cli", ID: "user"}})
-			return withCompletionNames(ctx, []string{"visible"}, nil), nil
+			return ctx, nil
 		},
-		Tools: completionCatalog{query: func(ctx context.Context, q tool.ToolQuery) ([]tool.ToolInfo, error) {
+		Tools: completionCatalog{tags: []string{"visible"}, query: func(ctx context.Context, q tool.ToolQuery) ([]tool.ToolInfo, error) {
 			actor, _ := contextinfo.ActorFromContext(ctx)
 			model, _ := contextinfo.ModelFromContext(ctx)
-			if actor.ID != "user" || model.APIType != "chat" || q.Kind != "" {
+			if actor.ID != "user" || model.APIType != "chat" || q.Tag != "visible" || q.Kind != "" {
 				t.Fatalf("context or query lost: %+v %+v %+v", actor, model, q)
-			}
-			if err := ctx.Err(); err != nil {
-				return nil, err
 			}
 			return []tool.ToolInfo{{Definition: tool.Info{Name: "visible"}}}, nil
 		}},
 	}
 	cursor := len("中文 @tool:")
 	items, err := source.Complete(ctx, Request{Text: "中文 @tool: trailing", Cursor: cursor})
-	if err != nil || len(items) != 1 || items[0].Text != "@tool:visible" || items[0].ReplaceStart != len("中文 ") || items[0].ReplaceEnd != cursor {
+	if err != nil || len(items) != 1 || items[0].Text != "@tool:visible" || items[0].Kind != KindToolTagDirective || items[0].ReplaceStart != len("中文 ") || items[0].ReplaceEnd != cursor {
 		t.Fatalf("items=%+v err=%v", items, err)
-	}
-	canceled, cancel := context.WithCancel(ctx)
-	cancel()
-	if _, err := source.Complete(canceled, Request{Text: "@tool:v"}); !errors.Is(err, context.Canceled) {
-		t.Fatal(err)
 	}
 }
 func TestToolCompletionPropagatesPreparationAndQueryErrors(t *testing.T) {

@@ -18,7 +18,7 @@
 - [ ] tool包
 - [ ] hook 包
 - [ ] background包
-- [ ] completion包
+- [x] completion包
 - [ ] fileops包
 - [ ] workspace包
 - [x] llm包
