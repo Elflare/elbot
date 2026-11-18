@@ -99,24 +99,22 @@ func TestDoctorThroughProductionWiring(t *testing.T) {
 			ActorIdentity{Platform: "cli", ID: "local"},
 		}), platformshare.MessageContext{CommandReply: reply})
 		for _, text := range []string{"-doctor", "/doctor"} {
-			func() {
-				if err := supervisor.HandleMessage(ctx, agent.MessageRequest{Text: text}); err != nil {
-					t.Fatal(err)
+			if err := supervisor.HandleMessage(ctx, agent.MessageRequest{Text: text}); err != nil {
+				t.Fatal(err)
+			}
+			synctest.Wait()
+			report := reply.text
+			if strings.Count(report, "主配置：") != 1 {
+				t.Fatalf("expected one diagnosis report, got output=%s", report)
+			}
+			for _, want := range []string{"主配置：" + customPath, providersPath, hooksPath, "platform.telegram.enabled", "rules", "[错误]"} {
+				if !strings.Contains(report, want) {
+					t.Errorf("diagnosis missing %q:\n%s", want, report)
 				}
-				synctest.Wait()
-				report := reply.text
-				if strings.Count(report, "主配置：") != 1 {
-					t.Fatalf("expected one diagnosis report, got output=%s", report)
-				}
-				for _, want := range []string{"主配置：" + customPath, providersPath, hooksPath, "platform.telegram.enabled", "rules", "[错误]"} {
-					if !strings.Contains(report, want) {
-						t.Errorf("diagnosis missing %q:\n%s", want, report)
-					}
-				}
-				if after := doctorConfigSnapshot(t, root); !reflect.DeepEqual(before, after) {
-					t.Error("diagnosis created or modified configuration files")
-				}
-			}()
+			}
+			if after := doctorConfigSnapshot(t, root); !reflect.DeepEqual(before, after) {
+				t.Error("diagnosis created or modified configuration files")
+			}
 		}
 	})
 }

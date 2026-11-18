@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"sync"
 	"time"
@@ -150,17 +149,17 @@ func (r *runtimeControl) PrepareRestart(ctx context.Context) (operationresult.Re
 
 // Run 启动失败直接返回，调用方必须退出进程；成功运行后才关闭完整实例。
 // 运行期间正常外部取消返回 nil；关闭错误阻止重启，不覆盖已有运行错误。
-func Run(ctx context.Context, opts Options) (err error) {
+func Run(ctx context.Context, opts Options) error {
 	for {
 		if ctx.Err() != nil {
 			return nil
 		}
 		timing := startupTiming{startedAt: opts.StartedAt, stageStartedAt: time.Now()}
-		var configLock io.Closer
-		opts.ConfigPath, configLock, err = prepareEnvironment(opts.ConfigPath)
+		resolvedConfigPath, configLock, err := prepareEnvironment(opts.ConfigPath)
 		if err != nil {
 			return fmt.Errorf("app environment: %w", err)
 		}
+		opts.ConfigPath = resolvedConfigPath
 		timing.markStage(phaseEnvironment)
 		runCtx, cancel := context.WithCancel(ctx)
 		runtime := &runtimeControl{ctx: runCtx, cancel: cancel}

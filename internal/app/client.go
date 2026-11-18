@@ -23,11 +23,8 @@ func RunClient(ctx context.Context, opts ClientOptions) error {
 	if err != nil {
 		return fmt.Errorf("load client config: %w", err)
 	}
-	// Platform.RunClient(ctx, cfg, name) 负责连接选择、运行及结果分类。
-	// 返回 ClientResult{Kind, Err}：ClientCompleted 的 Err 为 nil，
-	// ClientFallback、ClientFailed 均保留原始错误；明确运行不触发回退。
-	result := platform.RunClient(ctx, cfg, opts.ClientName)
-	return result.Err
+	// 显式启动不回退。
+	return platform.RunClient(ctx, cfg, opts.ClientName).Err
 }
 
 // TryRunClient 根据 Platform 的分类结果决定是否返回回退信号。
@@ -36,8 +33,7 @@ func TryRunClient(ctx context.Context, opts ClientOptions) error {
 	if err != nil {
 		return fmt.Errorf("load client config: %w", err)
 	}
-	// Platform 仅将默认连接未配置、被禁用或本机服务拨号失败归为 ClientFallback。
-	// 指定连接、远端失败、配置、认证、握手及取消均不归为可回退；App 不重复判断。
+	// 仅在 Platform 判定可回退时通知调用方。
 	result := platform.RunClient(ctx, cfg, opts.ClientName)
 	if result.Kind == platform.ClientFallback {
 		return ErrClientFallback

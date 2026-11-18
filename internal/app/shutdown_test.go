@@ -20,12 +20,12 @@ func TestShutdownStepDeadlineDoesNotWaitForUncooperativeCloser(t *testing.T) {
 		defer cancel()
 		release := make(chan struct{})
 		defer close(release)
-		result := runShutdownStep(ctx, nil, shutdownStep{component: componentMedia, phase: phaseClose, close: func(context.Context) error { <-release; return nil }})
+		result := runShutdownStep(ctx, shutdownStep{component: componentMedia, phase: phaseClose, run: func(context.Context) error { <-release; return nil }})
 		if result.kind != stopTimedOut || !errors.Is(result.err, context.DeadlineExceeded) {
 			t.Fatalf("result=%+v", result)
 		}
 		called := false
-		result = runShutdownStep(ctx, nil, shutdownStep{component: componentStorage, phase: phaseClose, close: func(context.Context) error { called = true; return nil }})
+		result = runShutdownStep(ctx, shutdownStep{component: componentStorage, phase: phaseClose, run: func(context.Context) error { called = true; return nil }})
 		if result.kind != stopTimedOut || called {
 			t.Fatalf("started a dependency after deadline: result=%+v called=%v", result, called)
 		}
@@ -34,7 +34,7 @@ func TestShutdownStepDeadlineDoesNotWaitForUncooperativeCloser(t *testing.T) {
 
 func TestShutdownStepPreservesTypedCause(t *testing.T) {
 	for _, cause := range []error{errors.New("close failed"), context.DeadlineExceeded} {
-		result := runShutdownStep(t.Context(), nil, shutdownStep{component: componentModels, phase: phaseClose, close: func(context.Context) error { return cause }})
+		result := runShutdownStep(t.Context(), shutdownStep{component: componentModels, phase: phaseClose, run: func(context.Context) error { return cause }})
 		if result.kind != stopFailed || !errors.Is(result.err, cause) {
 			t.Fatalf("result=%+v", result)
 		}
@@ -46,14 +46,14 @@ func TestShutdownStepsPreservesOrderAndErrors(t *testing.T) {
 	var order []int
 	var steps []shutdownStep
 	for i, err := range []error{first, nil, last} {
-		steps = append(steps, shutdownStep{component: componentMedia, phase: phaseClose, close: func(context.Context) error {
+		steps = append(steps, shutdownStep{component: componentMedia, phase: phaseClose, run: func(context.Context) error {
 			order = append(order, i)
 			return err
 		}})
 	}
-	result := runShutdownSteps(t.Context(), nil, steps)
-	if result.kind != stopFailed || !errors.Is(result.err, first) || !errors.Is(result.err, last) {
-		t.Fatalf("result=%+v", result)
+	err := runShutdownSteps(t.Context(), steps)
+	if !errors.Is(err, first) || !errors.Is(err, last) {
+		t.Fatal(err)
 	}
 	if !slices.Equal(order, []int{0, 1, 2}) {
 		t.Fatalf("order=%v", order)
@@ -69,16 +69,16 @@ func TestShutdownStepsSharesDeadlineAndStopsDependencies(t *testing.T) {
 		cause := errors.New("earlier failure")
 		called := false
 		started := time.Now()
-		result := runShutdownSteps(ctx, nil, []shutdownStep{
-			{component: componentMedia, phase: phaseClose, close: func(context.Context) error {
+		err := runShutdownSteps(ctx, []shutdownStep{
+			{component: componentMedia, phase: phaseClose, run: func(context.Context) error {
 				time.Sleep(600 * time.Millisecond)
 				return cause
 			}},
-			{component: componentStorage, phase: phaseClose, close: func(context.Context) error { <-release; return nil }},
-			{component: componentLogs, phase: phaseClose, close: func(context.Context) error { called = true; return nil }},
+			{component: componentStorage, phase: phaseClose, run: func(context.Context) error { <-release; return nil }},
+			{component: componentLogs, phase: phaseClose, run: func(context.Context) error { called = true; return nil }},
 		})
-		if result.kind != stopTimedOut || !errors.Is(result.err, cause) || !errors.Is(result.err, context.DeadlineExceeded) {
-			t.Fatalf("result=%+v", result)
+		if !errors.Is(err, cause) || !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatal(err)
 		}
 		if called || time.Since(started) != time.Second {
 			t.Fatalf("called=%v elapsed=%s", called, time.Since(started))
@@ -94,16 +94,16 @@ func TestShutdownReportingDoesNotWaitForBlockedLogConsumer(t *testing.T) {
 	}
 	defer func() { close(release); _ = connection.Close(context.Background()) }()
 	cause := errors.New("cleanup failed")
-	done := make(chan stopResult, 1)
+	done := make(chan error, 1)
 	go func() {
-		done <- runShutdownSteps(t.Context(), nil, []shutdownStep{
-			{component: componentMedia, phase: phaseClose, close: func(context.Context) error { return cause }},
+		done <- runShutdownSteps(t.Context(), []shutdownStep{
+			{component: componentMedia, phase: phaseClose, run: func(context.Context) error { return cause }},
 		})
 	}()
 	select {
-	case result := <-done:
-		if result.kind != stopFailed || !errors.Is(result.err, cause) {
-			t.Fatal(result)
+	case err := <-done:
+		if !errors.Is(err, cause) {
+			t.Fatal(err)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("shutdown waited for log consumer")

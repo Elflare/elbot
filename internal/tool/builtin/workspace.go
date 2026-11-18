@@ -58,7 +58,7 @@ func (WorkspaceTool) DiscoveryContent(ctx context.Context) (string, bool, error)
 
 func workspaceBuilder() *toolshare.Builder {
 	return toolshare.NewBuilder("workspace").Weavable().
-		Description("持久化当前工作目录，文件工具和shell的路径相对工作目录。不用每次切，目标目录 ≠ 当前工作目录时切。{}→查询，reset=true→重置，否则path→切换。").
+		Description("持久化当前工作目录，文件工具和shell的路径相对工作目录。目标目录 ≠ 当前工作目录时切。{}→查询，reset=true→重置，否则path→切换。").
 		Risk(toolshare.RiskLow).
 		SuperadminOnly().
 		Tags("agent", "files").

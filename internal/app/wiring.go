@@ -25,7 +25,8 @@ func buildBusinessLines(ctx context.Context, resources *sharedResources, mode Ru
 	if err != nil {
 		return nil, err
 	}
-	controller, err := control.NewSupervisor(cfg, control.SupervisorDeps{Runtime: runtime, Models: resources.models, Logs: logging.Reader{Dir: resources.logs.LogDir()}, Doctor: doctorService, LogDir: resources.logs.LogDir()})
+	logDir := resources.logs.LogDir()
+	controller, err := control.NewSupervisor(cfg, control.SupervisorDeps{Runtime: runtime, Models: resources.models, Logs: logging.Reader{Dir: logDir}, Doctor: doctorService, LogDir: logDir})
 	if err != nil {
 		return nil, err
 	}
